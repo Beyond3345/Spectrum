@@ -849,16 +849,17 @@ button.compile-status:hover {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
+  /* PAD and GAP in PdfPreview.tsx match these */
+  gap: 12px;
   width: fit-content;
   min-width: 100%;
-  padding: 20px 20px 84px;
+  padding: 12px 12px 84px;
 }
 
 .pdf-spread {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
+  gap: 12px;
 }
 
 .pdf-page {
@@ -875,6 +876,27 @@ button.compile-status:hover {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/* Dark pages: the paper turns the panel's grey and the ink light; hue-rotate keeps colours close to their own */
+:root[data-theme="dark"] .pdf-scroll.dark-pages .pdf-page {
+  background: #1f1f1f;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+:root[data-theme="dark"] .pdf-scroll.dark-pages .pdf-page canvas {
+  filter: invert(0.88) hue-rotate(180deg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .pdf-scroll.dark-pages .pdf-page {
+    background: #1f1f1f;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+
+  :root:not([data-theme="light"]) .pdf-scroll.dark-pages .pdf-page canvas {
+    filter: invert(0.88) hue-rotate(180deg);
+  }
 }
 
 .pdf-annotation {

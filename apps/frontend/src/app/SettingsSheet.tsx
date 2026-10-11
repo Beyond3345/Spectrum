@@ -503,7 +503,7 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
-const SHORTCUT_GROUPS: Shortcut['group'][] = ['Editing', 'Selection', 'Folding', 'App'];
+const SHORTCUT_GROUPS: Shortcut['group'][] = ['Editing', 'Selection', 'Folding', 'PDF', 'App'];
 
 function ShortcutsPane() {
   const [settings, update] = useSettings();

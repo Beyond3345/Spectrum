@@ -2,6 +2,21 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.0.1 (11 October 2026)
+
+### Added
+
+- Pinch to zoom the PDF on a trackpad, and `⌘` with the scroll wheel on a mouse. The point under the fingers stays in place, and the pages are drawn sharp again once the pinch ends
+- Keyboard shortcuts to zoom the PDF in and out (`⌘=` and `⌘−`) and to fit it to the width (`⌘0`), which can be changed in Settings
+- Dark pages in dark mode, so the PDF matches the rest of the window. They can be turned off from the PDF's More menu
+
+### Changed
+
+- The PDF zoom is kept between launches, Fit width is the default and Zoom to fit is now called Fit page
+- The pages sit closer to the edges of the PDF column, so Fit width shows them larger
+- The zoom buttons step by a tenth of the current size, the same way a pinch scales
+- The editor's lines are closer together
+
 ## 1.0.0 (11 October 2026)
 
 ### Added

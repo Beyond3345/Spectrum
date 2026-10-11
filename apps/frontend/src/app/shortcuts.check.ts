@@ -1,5 +1,5 @@
 // Self-check for shortcut matching: `node apps/frontend/src/app/shortcuts.check.ts` (Node ≥ 23 strips the types).
-import { IS_MAC, canonical, formatShortcut, matchesShortcut, shortcutFromEvent, shortcutProblem } from './shortcuts.ts';
+import { IS_MAC, canonical, formatShortcut, matchesShortcut, matchesZoomIn, shortcutFromEvent, shortcutProblem } from './shortcuts.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -24,6 +24,12 @@ eq(matchesShortcut('Shift-Mod-k', press('E', 'KeyK', { ...mod, shiftKey: true })
 eq(matchesShortcut('Shift-Mod-k', press('K', 'KeyV', { ...mod, shiftKey: true })), true, 'Dvorak shift letter');
 eq(matchesShortcut('Mod-d', press('в', 'KeyD', mod)), true, 'Russian layout');
 
+// zoom in answers to ⌘= and the usual ⌘+ spellings, until it's changed
+eq(matchesZoomIn({}, press('=', 'Equal', mod)), true, 'zoom in');
+eq(matchesZoomIn({}, press('+', 'Equal', { ...mod, shiftKey: true })), true, 'US ⌘⇧=');
+eq(matchesZoomIn({}, press('+', 'BracketRight', mod)), true, 'German + key');
+eq(matchesZoomIn({}, press('+', 'NumpadAdd', mod)), true, 'keypad +');
+eq(matchesZoomIn({ zoomIn: 'Ctrl-Alt-z' }, press('+', 'NumpadAdd', mod)), false, 'not once changed');
 eq(shortcutFromEvent(press('Meta', 'MetaLeft', mod)), null, 'lone modifier');
 eq(canonical(shortcutFromEvent(press('÷', 'Slash', { altKey: true }))!), 'Alt-/', 'recorded option-slash');
 eq(shortcutProblem('Mod-c') !== '', true, 'copy is reserved');

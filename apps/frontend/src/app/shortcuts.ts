@@ -37,12 +37,12 @@ import { gotoLine, highlightSelectionMatches, searchKeymap, selectNextOccurrence
 
 export const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 
-export type AppCommand = 'save' | 'compile' | 'assistant' | 'suggest' | 'sidebar';
+export type AppCommand = 'save' | 'compile' | 'assistant' | 'suggest' | 'sidebar' | 'zoomIn' | 'zoomOut' | 'zoomWidth';
 
 export type Shortcut = {
   id: string;
   label: string;
-  group: 'Editing' | 'Selection' | 'Folding' | 'App';
+  group: 'Editing' | 'Selection' | 'Folding' | 'PDF' | 'App';
   key: string;
   /** editor commands; app commands are run by the page that owns them */
   run?: Command;
@@ -88,6 +88,9 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'unfold', label: 'Unfold', group: 'Folding', key: 'Mod-Alt-]', run: unfoldCode },
   { id: 'foldAll', label: 'Fold all', group: 'Folding', key: 'Ctrl-Alt-[', run: foldAll },
   { id: 'unfoldAll', label: 'Unfold all', group: 'Folding', key: 'Ctrl-Alt-]', run: unfoldAll },
+  { id: 'zoomIn', label: 'Zoom in', group: 'PDF', key: 'Mod-=' },
+  { id: 'zoomOut', label: 'Zoom out', group: 'PDF', key: 'Mod--' },
+  { id: 'zoomWidth', label: 'Fit width', group: 'PDF', key: 'Mod-0' },
   { id: 'save', label: 'Save', group: 'App', key: 'Mod-s' },
   { id: 'compile', label: 'Compile', group: 'App', key: 'Mod-Enter' },
   { id: 'assistant', label: 'Show or hide the assistant', group: 'App', key: 'Mod-l' },
@@ -153,6 +156,13 @@ function parse(binding: string): Parsed | null {
   // without a Command key, Ctrl and Mod are the same key
   if (!IS_MAC && parsed.ctrl) return { ...parsed, mod: true, ctrl: false };
   return parsed;
+}
+
+/** Zoom in also answers to ⌘+ (⌘⇧= on a US keyboard, the + key or keypad + elsewhere) while it keeps its default. */
+export function matchesZoomIn(overrides: Record<string, string>, e: KeyboardEvent) {
+  const binding = shortcutKey(overrides, 'zoomIn');
+  if (matchesShortcut(binding, e)) return true;
+  return canonical(binding) === 'Mod-=' && (matchesShortcut('Mod-+', e) || matchesShortcut('Shift-Mod-=', e) || matchesShortcut('Shift-Mod-+', e));
 }
 
 /** One spelling per shortcut, for comparing and storing. */

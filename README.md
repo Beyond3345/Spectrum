@@ -21,7 +21,7 @@ The projects page lists every project regardless of where its folder is stored. 
 The editor is divided into three columns, the file tree and saved chats on the left, the LaTeX source in the middle and the compiled PDF on the right.
 
 - The source editor has LaTeX highlighting, folding, an outline of the main file, snippets for common environments and AI autocomplete (`⌥/`, accepted with `Tab`),
-- the PDF preview supports zoom, a two-page view, sticky notes and jumping to the source by clicking text in the PDF,
+- the PDF preview fits the page to the width of its column by default, zooms with a trackpad pinch, `⌘` and the scroll wheel or `⌘=` and `⌘−`, shows the pages dark in dark mode, and supports a two-page view, sticky notes and jumping to the source by clicking text in the PDF,
 - the compiler can be pdfLaTeX, XeLaTeX, LuaLaTeX, Latexmk or Tectonic, and the Auto setting picks one from the `% !TEX program` comment and the packages the document uses and
 - the Tools panel holds the project information (word counts from `texcount`), version history, compile logs, research tools, AI review and figure tools.
 
@@ -52,7 +52,7 @@ Versions are kept inside each project in a hidden `.spectrum` folder, together w
 
 ## Installing
 
-1. Open `Spectrum_1.0.0_universal.dmg`
+1. Open `Spectrum_1.0.1_universal.dmg`
 2. Drag Spectrum into the Applications folder
 3. Open Spectrum from the Applications folder
 
@@ -123,6 +123,8 @@ Every shortcut below can be changed in the Shortcuts section of Settings. Click 
 | Show or hide the assistant | `⌘L` |
 | AI autocomplete | `⌥/` |
 | Show or hide the sidebar | `⌘\` |
+| Zoom the PDF in or out | `⌘=` and `⌘−` (or pinch) |
+| Fit the PDF to the width | `⌘0` |
 
 Find (`⌘F`), undo (`⌘Z`), redo (`⇧⌘Z`) and Settings (`⌘,`) cannot be changed.
 

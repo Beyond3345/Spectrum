@@ -12,8 +12,16 @@ export type PdfOutlineItem = { title: string; page?: number; level: number };
 export type PdfAnnotation = { id: string; page: number; x: number; y: number; text: string };
 export type PdfHandle = { scrollToPage(page: number): void };
 
-const PAD = 20;
-const GAP = 14;
+// keep in step with .pdf-pages padding and gap in editor.css
+const PAD = 12;
+const GAP = 12;
+// the fit modes are kept in this range too, so a zoom step from them never jumps the wrong way
+export const MIN_ZOOM = 0.1;
+export const MAX_ZOOM = 4;
+const clampZoom = (scale: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, scale));
+
+/** WebKit's trackpad pinch (Safari and the macOS app); Chromium sends ctrl + wheel instead. */
+type GestureEvent = UIEvent & { scale: number; clientX: number; clientY: number };
 // pdf.js's own cap on a page canvas (maxCanvasPixels); bigger ones fail or get the web view killed
 const MAX_CANVAS_PIXELS = 16_777_216;
 
@@ -64,6 +72,9 @@ function clearPage(box: HTMLElement) {
 
 type Layout = { url: string; scale: number; pages: PDFPageProxy[]; boxes: HTMLElement[] };
 
+/** The point under the fingers: a page box and where on it, and where in the view it sits. */
+type Anchor = { box: HTMLElement; fx: number; fy: number; vx: number; vy: number };
+
 /** Draws a page box for the current document and scale, unless it already shows them. Until then it keeps what it had. */
 function drawPage(box: HTMLElement, layout: Layout | null) {
   const page = layout?.pages[Number(box.dataset.pageNumber) - 1];
@@ -110,7 +121,8 @@ export async function pdfThumbnail(url: string, width = 240) {
 /**
  * A PDF as a scrolling column of page boxes. Only pages within about two screens of the view are drawn
  * (canvas + selectable text layer); the others are freed. Zoom, two-page view and, in the fit modes,
- * column resizes resize the boxes at once and redraw the visible pages.
+ * column resizes resize the boxes at once and redraw the visible pages. A pinch or ⌘-scroll zooms
+ * around the pointer: the pages are stretched while the fingers move, then laid out and drawn sharp.
  */
 const PdfPreview = forwardRef<
   PdfHandle,
@@ -118,15 +130,19 @@ const PdfPreview = forwardRef<
     url: string;
     zoom: PdfZoom;
     spread: boolean;
+    /** in dark mode, shows the pages dark (the colours inverted) */
+    darkPages: boolean;
     annotateMode: boolean;
     annotations: PdfAnnotation[];
     onAddAnnotation(page: number, x: number, y: number): void;
     onTextClick(text: string): void;
     onLoad(info: { pages: number; outline: PdfOutlineItem[] }): void;
     onScale(scale: number): void;
+    /** a pinch or ⌘-scroll chose this scale */
+    onZoom(scale: number): void;
     onPage(page: number): void;
   }
->(function PdfPreview({ url, zoom, spread, annotateMode, annotations, onAddAnnotation, onTextClick, onLoad, onScale, onPage }, ref) {
+>(function PdfPreview({ url, zoom, spread, darkPages, annotateMode, annotations, onAddAnnotation, onTextClick, onLoad, onScale, onZoom, onPage }, ref) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pagesRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -137,8 +153,10 @@ const PdfPreview = forwardRef<
   const visibleRef = useRef(new Set<HTMLElement>());
   const observerRef = useRef<IntersectionObserver | null>(null);
   // callbacks change on every parent render; the effects read the latest ones
-  const cb = useRef({ onLoad, onScale, onPage });
-  cb.current = { onLoad, onScale, onPage };
+  const cb = useRef({ onLoad, onScale, onZoom, onPage });
+  cb.current = { onLoad, onScale, onZoom, onPage };
+  // the point to keep still when the next layout applies a pinch
+  const anchorRef = useRef<Anchor | null>(null);
 
   useImperativeHandle(ref, () => ({
     scrollToPage(page) {
@@ -179,7 +197,8 @@ const PdfPreview = forwardRef<
           const box = entry.target as HTMLElement;
           if (entry.isIntersecting) {
             visible.add(box);
-            drawPage(box, layoutRef.current);
+            // not while a pinch stretches the pages: the scale is about to change, and the layout redraws these
+            if (!pagesRef.current?.style.transform) drawPage(box, layoutRef.current);
           } else {
             visible.delete(box);
             clearPage(box);
@@ -193,6 +212,113 @@ const PdfPreview = forwardRef<
     return () => {
       observer.disconnect();
       observerRef.current = null;
+    };
+  }, []);
+
+  // pinch and ⌘-scroll zoom
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    const host = pagesRef.current;
+    if (!scroller || !host) return;
+    let pinch: { from: number; to: number; base: number; anchor: Anchor; timer: number } | null = null;
+    let gesturing = false;
+    let lastScroll = -Infinity;
+    let gestureTarget: EventTarget | null = null;
+
+    const begin = (x: number, y: number) => {
+      const from = layoutRef.current?.scale;
+      if (pinch || !from) return pinch;
+      const view = scroller.getBoundingClientRect();
+      const under = document.elementFromPoint(x, y)?.closest<HTMLElement>('.pdf-page');
+      // between pages or beside them: the page nearest the pointer's height
+      const boxes = layoutRef.current?.boxes || [];
+      const box = under || (boxes.length ? boxes.reduce((best, b) => (Math.abs(mid(b) - y) < Math.abs(mid(best) - y) ? b : best)) : null);
+      if (!box) return null;
+      const r = box.getBoundingClientRect();
+      const anchor = { box, fx: (x - r.left) / r.width, fy: (y - r.top) / r.height, vx: x - view.left, vy: y - view.top };
+      host.style.transformOrigin = `${x - view.left + scroller.scrollLeft}px ${y - view.top + scroller.scrollTop}px`;
+      pinch = { from, to: from, base: from, anchor, timer: 0 };
+      return pinch;
+    };
+    const mid = (b: HTMLElement) => {
+      const r = b.getBoundingClientRect();
+      return r.top + r.height / 2;
+    };
+    const stretch = (to: number) => {
+      if (!pinch) return;
+      pinch.to = clampZoom(to);
+      host.style.transform = `scale(${pinch.to / pinch.from})`;
+    };
+    const finish = () => {
+      if (!pinch) return;
+      const { from, to, anchor, timer } = pinch;
+      window.clearTimeout(timer);
+      pinch = null;
+      if (Math.abs(to - from) < 0.005) {
+        host.style.transform = '';
+        visibleRef.current.forEach((b) => drawPage(b, layoutRef.current));
+        return;
+      }
+      // the layout for the new scale clears the stretch and scrolls the anchor back under the pointer
+      anchorRef.current = anchor;
+      cb.current.onZoom(Math.round(to * 1000) / 1000);
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      // a pinch arrives as ctrl + wheel (Chromium); ⌘ + wheel zooms with a mouse
+      if (!e.ctrlKey && !e.metaKey) {
+        lastScroll = e.timeStamp;
+        return;
+      }
+      // ⌘ pressed (say for ⌘S) while a trackpad scroll still coasts: the momentum keeps scrolling
+      if (!pinch && e.timeStamp - lastScroll < 250) {
+        lastScroll = e.timeStamp;
+        return;
+      }
+      e.preventDefault();
+      if (gesturing || !begin(e.clientX, e.clientY)) return;
+      stretch(pinch!.to * Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.01)));
+      window.clearTimeout(pinch!.timer);
+      pinch!.timer = window.setTimeout(finish, 180);
+    };
+    const onGestureChange = (e: Event) => {
+      e.preventDefault();
+      if (pinch) stretch(pinch.base * (e as GestureEvent).scale);
+    };
+    const detachTarget = () => {
+      gestureTarget?.removeEventListener('gesturechange', onGestureChange);
+      gestureTarget?.removeEventListener('gestureend', onGestureEnd);
+      gestureTarget = null;
+    };
+    const onGestureEnd = (e: Event) => {
+      e.preventDefault();
+      detachTarget();
+      gesturing = false;
+      finish();
+    };
+    const onGestureStart = (e: Event) => {
+      e.preventDefault();
+      const g = e as GestureEvent;
+      // WebKit sends the rest of a gesture to the node it started on, even after a redraw removes that
+      // node from the page, so listen there as well (on the page too the repeat is harmless)
+      detachTarget();
+      gestureTarget = e.target;
+      gestureTarget?.addEventListener('gesturechange', onGestureChange);
+      gestureTarget?.addEventListener('gestureend', onGestureEnd);
+      gesturing = true;
+      if (begin(g.clientX, g.clientY)) pinch!.base = pinch!.to;
+    };
+    scroller.addEventListener('wheel', onWheel, { passive: false });
+    scroller.addEventListener('gesturestart', onGestureStart);
+    scroller.addEventListener('gesturechange', onGestureChange);
+    scroller.addEventListener('gestureend', onGestureEnd);
+    return () => {
+      if (pinch) window.clearTimeout(pinch.timer);
+      detachTarget();
+      scroller.removeEventListener('wheel', onWheel);
+      scroller.removeEventListener('gesturestart', onGestureStart);
+      scroller.removeEventListener('gesturechange', onGestureChange);
+      scroller.removeEventListener('gestureend', onGestureEnd);
     };
   }, []);
 
@@ -258,7 +384,7 @@ const PdfPreview = forwardRef<
           scale = across / base.width;
           if (zoom === 'fit' && fitHeight) scale = Math.min(scale, (fitHeight - PAD * 2) / base.height);
         }
-        scale = Math.max(0.1, scale);
+        scale = clampZoom(scale);
 
         // keep the reading position
         const ratio = scroller.scrollHeight > scroller.clientHeight ? scroller.scrollTop / scroller.scrollHeight : 0;
@@ -282,7 +408,16 @@ const PdfPreview = forwardRef<
         }
         host.replaceChildren(...(spread ? rows : boxes));
         boxes.forEach((box) => observerRef.current?.observe(box));
-        scroller.scrollTop = ratio * scroller.scrollHeight;
+        host.style.transform = '';
+        const anchor = anchorRef.current;
+        anchorRef.current = null;
+        if (anchor && boxes.includes(anchor.box)) {
+          // a pinch: put the point that was under the fingers back under them
+          const view = scroller.getBoundingClientRect();
+          const r = anchor.box.getBoundingClientRect();
+          scroller.scrollLeft += r.left + anchor.fx * r.width - (view.left + anchor.vx);
+          scroller.scrollTop += r.top + anchor.fy * r.height - (view.top + anchor.vy);
+        } else scroller.scrollTop = ratio * scroller.scrollHeight;
         // pages already near the view don't cross the observer's edge again: redraw them now
         visibleRef.current.forEach((box) => drawPage(box, layoutRef.current));
         setError('');
@@ -346,7 +481,7 @@ const PdfPreview = forwardRef<
   return (
     <div
       ref={scrollRef}
-      className={`pdf-scroll ${annotateMode ? 'annotate' : ''} ${spread ? 'spread' : ''}`}
+      className={`pdf-scroll ${annotateMode ? 'annotate' : ''} ${spread ? 'spread' : ''} ${darkPages ? 'dark-pages' : ''}`}
       onClick={(event) => {
         const target = event.target as HTMLElement;
         const page = target.closest<HTMLElement>('.pdf-page');

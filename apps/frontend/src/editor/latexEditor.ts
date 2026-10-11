@@ -282,7 +282,7 @@ export const latexHighlight = HighlightStyle.define([
 export const editorTheme = EditorView.theme({
   '&': { height: '100%', color: 'var(--text)', backgroundColor: 'var(--bg-editor)' },
   '&.cm-focused': { outline: 'none' },
-  '.cm-scroller': { fontFamily: 'var(--font-mono)', fontSize: 'var(--editor-font-size, 13px)', lineHeight: '1.7' },
+  '.cm-scroller': { fontFamily: 'var(--font-mono)', fontSize: 'var(--editor-font-size, 13px)', lineHeight: '1.5' },
   '.cm-content': { padding: '10px 0 45vh', caretColor: 'var(--text)' },
   '.cm-line': { padding: '0 24px 0 8px' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--text)', borderLeftWidth: '1.5px' },

@@ -34,7 +34,7 @@ import { promptDialog } from './Dialogs';
 import { toast } from './Toast';
 import { IS_DESKTOP } from './desktop';
 import { COMPILE_ENGINES, effectiveEffort, llmConfigFor, useProviders, useSettings } from './settings';
-import { SHORTCUTS, editorBasics, matchesShortcut, shortcutKey, withShortcut } from './shortcuts';
+import { SHORTCUTS, editorBasics, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
 import type { AppCommand } from './shortcuts';
 import { EditorContext } from '../editor/EditorContext';
 import type { CompileError, EditorApi, PendingChange } from '../editor/EditorContext';
@@ -45,7 +45,7 @@ import type { ToolsTab } from '../editor/ToolsPanel';
 import ReviewChangesSheet from '../editor/ReviewChangesSheet';
 import FileTree from '../editor/FileTree';
 import type { FileTreeHandle } from '../editor/FileTree';
-import PdfPreview, { pdfThumbnail } from '../editor/PdfPreview';
+import PdfPreview, { MAX_ZOOM, MIN_ZOOM, pdfThumbnail } from '../editor/PdfPreview';
 import type { PdfAnnotation, PdfHandle, PdfOutlineItem, PdfZoom } from '../editor/PdfPreview';
 import { parseCompileLog, projectFile } from '../editor/compileLog';
 import {
@@ -87,21 +87,25 @@ async function smallTextFile(projectId: string, items: FileItem[]) {
 // the compiler picked in the PDF header lasts for the session, across projects
 let sessionEngine: CompileEngine | null = null;
 
-type Layout = { sidebarCollapsed: boolean; split: number; outlineOpen: boolean };
+/** pdfZoom and darkPages are the PDF view, kept between launches like the columns */
+type Layout = { sidebarCollapsed: boolean; split: number; outlineOpen: boolean; pdfZoom: PdfZoom; darkPages: boolean };
 const LAYOUT_KEY = 'spectrum-editor-layout';
-const DEFAULT_LAYOUT: Layout = { sidebarCollapsed: false, split: 0.46, outlineOpen: true };
+const DEFAULT_LAYOUT: Layout = { sidebarCollapsed: false, split: 0.46, outlineOpen: true, pdfZoom: 'width', darkPages: true };
 
 function loadLayout(): Layout {
   try {
-    return { ...DEFAULT_LAYOUT, ...JSON.parse(window.localStorage.getItem(LAYOUT_KEY) || '{}') };
+    const saved = { ...DEFAULT_LAYOUT, ...JSON.parse(window.localStorage.getItem(LAYOUT_KEY) || '{}') };
+    const zoom = saved.pdfZoom;
+    if (!(zoom === 'fit' || zoom === 'width' || (typeof zoom === 'number' && zoom >= MIN_ZOOM && zoom <= MAX_ZOOM))) saved.pdfZoom = 'width';
+    return saved;
   } catch {
     return DEFAULT_LAYOUT;
   }
 }
 
 const ZOOMS: [PdfZoom, string][] = [
-  ['fit', 'Zoom to fit'],
   ['width', 'Fit width'],
+  ['fit', 'Fit page'],
   [0.5, '50%'],
   [0.75, '75%'],
   [1, '100%'],
@@ -224,7 +228,6 @@ function Editor({ projectId }: { projectId: string }) {
   const [pdf, setPdf] = useState<{ url: string; blob: boolean } | null>(null);
   const [pdfPages, setPdfPages] = useState<number | null>(null);
   const [pdfOutline, setPdfOutline] = useState<PdfOutlineItem[]>([]);
-  const [zoom, setZoom] = useState<PdfZoom>('width');
   const [scale, setScale] = useState(1);
   const [page, setPage] = useState(1);
   const [spread, setSpread] = useState(false);
@@ -236,6 +239,8 @@ function Editor({ projectId }: { projectId: string }) {
 
   const [layout, setLayoutState] = useState(loadLayout);
   const setLayout = (patch: Partial<Layout>) => setLayoutState((prev) => ({ ...prev, ...patch }));
+  const zoom = layout.pdfZoom;
+  const setZoom = (pdfZoom: PdfZoom) => setLayout({ pdfZoom });
   const [toolsOpen, setToolsOpen] = useState(false);
   const [toolsMounted, setToolsMounted] = useState(false);
   const [toolsTab, setToolsTab] = useState<ToolsTab>('info');
@@ -868,6 +873,8 @@ function Editor({ projectId }: { projectId: string }) {
     toggleComposer: () => {},
     toggleSidebar: () => {},
     openSettings: () => {},
+    zoomBy: (_steps: number) => {},
+    fitWidth: () => {},
     suggest: () => {},
     acceptGhost: (_word: boolean) => {},
     clearGhost: () => false as boolean,
@@ -879,6 +886,8 @@ function Editor({ projectId }: { projectId: string }) {
     toggleComposer,
     toggleSidebar: () => setLayout({ sidebarCollapsed: !layout.sidebarCollapsed }),
     openSettings: () => setSettingsOpen(true),
+    zoomBy: (steps: number) => pdf && zoomBy(steps),
+    fitWidth: () => pdf && setZoom('width'),
     suggest: () => suggest(),
     acceptGhost,
     clearGhost,
@@ -966,13 +975,17 @@ function Editor({ projectId }: { projectId: string }) {
       compile: () => a().compile(),
       assistant: () => a().toggleComposer(),
       suggest: () => a().suggest(),
-      sidebar: () => a().toggleSidebar()
+      sidebar: () => a().toggleSidebar(),
+      zoomIn: () => a().zoomBy(1),
+      zoomOut: () => a().zoomBy(-1),
+      zoomWidth: () => a().fitWidth()
     };
     // matched by hand rather than with keymap.of, which can't see ⌥ shortcuts on a Mac (⌥/ types "÷")
     const shortcuts = EditorView.domEventHandlers({
       keydown(e, view) {
         for (const s of SHORTCUTS) {
-          if (!matchesShortcut(shortcutKey(shortcutsRef.current, s.id), e)) continue;
+          const hit = s.id === 'zoomIn' ? matchesZoomIn(shortcutsRef.current, e) : matchesShortcut(shortcutKey(shortcutsRef.current, s.id), e);
+          if (!hit) continue;
           const handled = s.run ? s.run(view) : (appCommands[s.id as AppCommand](), true);
           if (!handled) continue;
           e.preventDefault();
@@ -1074,6 +1087,9 @@ function Editor({ projectId }: { projectId: string }) {
       else if (is('compile')) a.compile();
       else if (is('assistant')) a.toggleComposer();
       else if (is('sidebar')) a.toggleSidebar();
+      else if (matchesZoomIn(shortcutsRef.current, e)) a.zoomBy(1);
+      else if (is('zoomOut')) a.zoomBy(-1);
+      else if (is('zoomWidth')) a.fitWidth();
       else if (matchesShortcut('Mod-,', e)) a.openSettings();
       else return;
       e.preventDefault();
@@ -1190,7 +1206,12 @@ function Editor({ projectId }: { projectId: string }) {
   const zoomLabel = ZOOMS.find(([z]) => z === zoom)?.[1] || `${Math.round(scale * 100)}%`;
   // in two-page view `page` is the left page of a row, so the next row starts two pages on
   const step = spread ? 2 : 1;
-  const zoomBy = (delta: number) => setZoom(Math.round(Math.min(4, Math.max(0.25, scale + delta)) * 100) / 100);
+  // in steps of a tenth, the way a pinch scales; from the zoom already asked for, so quick presses add up
+  const zoomBy = (steps: number) =>
+    setLayoutState((prev) => {
+      const from = typeof prev.pdfZoom === 'number' ? prev.pdfZoom : scale;
+      return { ...prev, pdfZoom: Math.round(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, from * 1.1 ** steps)) * 100) / 100 };
+    });
 
   return (
     <EditorContext.Provider value={api}>
@@ -1483,6 +1504,7 @@ function Editor({ projectId }: { projectId: string }) {
                   align="end"
                   items={[
                     { label: 'Two-page view', icon: 'book.pages', checked: spread, disabled: !pdf, onSelect: () => setSpread((v) => !v) },
+                    { label: 'Dark pages in dark mode', icon: 'moon', checked: layout.darkPages, onSelect: () => setLayout({ darkPages: !layout.darkPages }) },
                     { label: 'Annotate', icon: 'note.text.badge.plus', checked: annotate, disabled: !pdf, onSelect: () => setAnnotate((v) => !v) },
                     { label: 'Table of contents', icon: 'list.bullet.indent', checked: false, disabled: !pdf, onSelect: () => setTocOpen(true) },
                     { separator: true },
@@ -1498,6 +1520,7 @@ function Editor({ projectId }: { projectId: string }) {
                     url={pdf.url}
                     zoom={zoom}
                     spread={spread}
+                    darkPages={layout.darkPages}
                     annotateMode={annotate}
                     annotations={annotations}
                     onAddAnnotation={addAnnotation}
@@ -1507,6 +1530,7 @@ function Editor({ projectId }: { projectId: string }) {
                       setPdfOutline(toc);
                     }}
                     onScale={setScale}
+                    onZoom={setZoom}
                     onPage={setPage}
                   />
                 ) : (
@@ -1548,11 +1572,11 @@ function Editor({ projectId }: { projectId: string }) {
                       <Icon name="chevron.right" />
                     </button>
                     <span className="pdf-pill-sep" />
-                    <button className="icon-btn small" title="Zoom out" aria-label="Zoom out" onClick={() => zoomBy(-0.1)}>
+                    <button className="icon-btn small" title="Zoom out" aria-label="Zoom out" onClick={() => zoomBy(-1)}>
                       <Icon name="minus" />
                     </button>
                     <span className="pdf-pill-label">{Math.round(scale * 100)}%</span>
-                    <button className="icon-btn small" title="Zoom in" aria-label="Zoom in" onClick={() => zoomBy(0.1)}>
+                    <button className="icon-btn small" title="Zoom in" aria-label="Zoom in" onClick={() => zoomBy(1)}>
                       <Icon name="plus" />
                     </button>
                   </div>
