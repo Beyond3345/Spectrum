@@ -1,13 +1,15 @@
-import { Annotation, StateEffect, StateField } from '@codemirror/state';
+import { Annotation, EditorSelection, RangeSetBuilder, StateEffect, StateField, countColumn } from '@codemirror/state';
 import type { EditorState } from '@codemirror/state';
-import { Decoration, EditorView, GutterMarker, WidgetType, gutter } from '@codemirror/view';
-import type { DecorationSet } from '@codemirror/view';
+import { Decoration, EditorView, GutterMarker, ViewPlugin, WidgetType, gutter } from '@codemirror/view';
+import type { Command, DecorationSet, ViewUpdate } from '@codemirror/view';
+import { completionStatus } from '@codemirror/autocomplete';
 import type { Completion, CompletionContext } from '@codemirror/autocomplete';
-import { HighlightStyle } from '@codemirror/language';
+import { HighlightStyle, getIndentUnit, indentUnit } from '@codemirror/language';
+import { indentMore } from '@codemirror/commands';
 import { tags } from '@lezer/highlight';
 
-// CodeMirror pieces for LaTeX: folding, the environment scope gutter, completions,
-// the AI ghost text and the token-based theme.
+// CodeMirror pieces for LaTeX: indentation and wrapping, folding, the environment scope gutter,
+// completions, the AI ghost text and the token-based theme.
 
 /** Marks changes the app makes (opening, reloading, applying AI edits) so they don't count as typing. */
 export const programmatic = Annotation.define<boolean>();
@@ -200,6 +202,110 @@ export const scopeGutter = [
   })
 ];
 
+// ─── Indentation: four spaces, and Tab indents where the cursor is ───
+
+export const INDENT = '    ';
+export const indentation = indentUnit.of(INDENT);
+
+/** Tab: spaces to the next indent stop at the cursor, or with a selection, indent the selected lines. */
+export const insertIndent: Command = (view) => {
+  const { state } = view;
+  if (state.readOnly) return false;
+  if (state.selection.ranges.some((r) => !r.empty)) return indentMore(view);
+  const unit = getIndentUnit(state);
+  view.dispatch(
+    state.changeByRange((range) => {
+      const line = state.doc.lineAt(range.head);
+      const column = countColumn(line.text.slice(0, range.head - line.from), state.tabSize);
+      const spaces = ' '.repeat(unit - (column % unit));
+      return { changes: { from: range.head, insert: spaces }, range: EditorSelection.cursor(range.head + spaces.length) };
+    }),
+    { scrollIntoView: true, userEvent: 'input.indent' }
+  );
+  return true;
+};
+
+/**
+ * Return at the end of \begin{name} (with any [options] or {arguments}) closes the environment at the
+ * same indent, with the cursor on an indented line between, if the document doesn't already close it.
+ */
+export const closeEnvironment: Command = (view) => {
+  const { state } = view;
+  const sel = state.selection.main;
+  if (state.readOnly || state.selection.ranges.length > 1 || !sel.empty || completionStatus(state) === 'active') return false;
+  const line = state.doc.lineAt(sel.head);
+  if (sel.head !== line.to) return false;
+  const m = /\\begin\{([^{}]+)\}(?:\s*(?:\[[^\]]*\]|\{[^{}]*\}))*\s*$/.exec(stripComment(line.text));
+  if (!m) return false;
+  const name = m[1];
+  const text = state.doc.toString();
+  const count = (word: string) => text.split(`\\${word}{${name}}`).length - 1;
+  if (count('begin') <= count('end')) return false;
+  const base = /^[ \t]*/.exec(line.text)![0];
+  const inner = base + INDENT;
+  view.dispatch({
+    changes: { from: sel.head, insert: `\n${inner}\n${base}\\end{${name}}` },
+    selection: { anchor: sel.head + 1 + inner.length },
+    scrollIntoView: true,
+    userEvent: 'input'
+  });
+  return true;
+};
+
+// ─── Wrapping: rows of a long line sit under its indent, and formulas break between terms ───
+
+const CONTINUATION = 4;
+// a zero-width break after these (in CSS, so nothing is added to the text) and before these commands
+const BREAK_AFTER = /[=+&]|,(?!\d)/g;
+const BREAK_BEFORE = /\\(?:cdot|approx|times|le|ge|leq|geq|neq|pm|mp|to|equiv|sim|simeq|propto|quad|qquad|implies|iff)(?![A-Za-z])/g;
+const breakAfter = Decoration.mark({ class: 'cm-wrap-after' });
+const breakBefore = Decoration.mark({ class: 'cm-wrap-before' });
+const hangCache = new Map<number, Decoration>();
+const hang = (columns: number) => {
+  let deco = hangCache.get(columns);
+  if (!deco) {
+    deco = Decoration.line({ attributes: { style: `padding-left: calc(8px + ${columns}ch); text-indent: -${columns}ch` } });
+    hangCache.set(columns, deco);
+  }
+  return deco;
+};
+
+function wrapDecorations(view: EditorView) {
+  const builder = new RangeSetBuilder<Decoration>();
+  const { doc, tabSize } = view.state;
+  for (const { from, to } of view.visibleRanges) {
+    for (let pos = from; pos <= to; ) {
+      const line = doc.lineAt(pos);
+      const indent = countColumn(/^[ \t]*/.exec(line.text)![0], tabSize);
+      builder.add(line.from, line.from, hang(indent + CONTINUATION));
+      // breaks only matter in long runs without spaces, such as a formula
+      if (line.length > 40) {
+        const marks: [number, Decoration][] = [];
+        for (const m of line.text.matchAll(BREAK_AFTER)) if (line.text[m.index + 1] && line.text[m.index + 1] !== ' ') marks.push([m.index, breakAfter]);
+        for (const m of line.text.matchAll(BREAK_BEFORE)) if (m.index > 0 && line.text[m.index - 1] !== ' ') marks.push([m.index, breakBefore]);
+        marks.sort((a, b) => a[0] - b[0]);
+        for (const [at, deco] of marks) builder.add(line.from + at, line.from + at + 1, deco);
+      }
+      pos = line.to + 1;
+    }
+  }
+  return builder.finish();
+}
+
+/** Hanging indent for wrapped lines and clean break points in formulas (both drawn, never in the text). */
+export const wrapLayout = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = wrapDecorations(view);
+    }
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.viewportChanged) this.decorations = wrapDecorations(update.view);
+    }
+  },
+  { decorations: (plugin) => plugin.decorations }
+);
+
 // ─── Completions for "\" (and "/" as a quick trigger) ───
 
 function snippet(label: string, text: string, cursor = text.length): Completion {
@@ -211,11 +317,28 @@ function snippet(label: string, text: string, cursor = text.length): Completion 
 }
 
 const braces = (cmd: string) => snippet(`\\${cmd}{}`, `\\${cmd}{}`, cmd.length + 2);
-const env = (name: string, body: string[], cursorLine = 1) => {
-  const lines = [`\\begin{${name}}`, ...body, `\\end{${name}}`];
-  const cursor = lines.slice(0, cursorLine).join('\n').length + 1 + lines[cursorLine].length;
-  return snippet(`\\begin{${name}}`, lines.join('\n'), cursor);
-};
+
+/**
+ * An environment that keeps the indent of the line it's typed on: the body one step in (nested
+ * environments a step further), and \end{…} back under \begin{…}.
+ */
+const env = (name: string, body: string[], cursorLine = 1): Completion => ({
+  label: `\\begin{${name}}`,
+  type: 'keyword',
+  apply: (view, _completion, from, to) => {
+    const base = /^[ \t]*/.exec(view.state.doc.lineAt(from).text)![0];
+    let depth = 1;
+    const inner = body.map((line) => {
+      if (line.startsWith('\\end{')) depth -= 1;
+      const out = base + INDENT.repeat(depth) + line;
+      if (line.startsWith('\\begin{')) depth += 1;
+      return out;
+    });
+    const lines = [`\\begin{${name}}`, ...inner, `${base}\\end{${name}}`];
+    const cursor = lines.slice(0, cursorLine + 1).join('\n').length;
+    view.dispatch({ changes: { from, to, insert: lines.join('\n') }, selection: { anchor: from + cursor } });
+  }
+});
 
 const COMPLETIONS: Completion[] = [
   ...['section', 'subsection', 'subsubsection', 'paragraph', 'cite', 'citep', 'citet', 'ref', 'eqref', 'label', 'textbf', 'textit', 'emph', 'texttt', 'footnote', 'url', 'input', 'includegraphics', 'caption'].map(braces),

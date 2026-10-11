@@ -2,6 +2,19 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.1.1 (12 October 2026)
+
+### Changed
+
+- `Tab` indents at the cursor by four spaces, as other LaTeX editors do, and indents the selected lines when there is a selection. Indents are four spaces instead of two
+- The rows of a wrapped line start under the line's own indent, four columns in, instead of at the left edge
+- Long formulas break between terms, after `=`, `+`, `&` and commas and before `\cdot`, `\approx` and similar, instead of in the middle of a command such as `\vec{b}`
+- Pressing Return straight after `\begin{…}` adds the matching `\end{…}` at the same indent, with the cursor on an indented line between them, unless the environment is already closed
+
+### Fixed
+
+- The `\begin{…}` completions and the Insert menu snippets put `\end{…}` at the start of the line instead of under `\begin{…}` when used on an indented line
+
 ## 1.1.0 (11 October 2026)
 
 ### Added

@@ -15,7 +15,6 @@ import {
   defaultKeymap,
   history,
   historyKeymap,
-  indentWithTab,
   copyLineDown,
   copyLineUp,
   cursorMatchingBracket,
@@ -103,7 +102,7 @@ export const SHORTCUTS: Shortcut[] = [
 /** CodeMirror commands whose built-in bindings give way to the ones above. */
 export const CUSTOMISABLE_COMMANDS = new Set<Command>(SHORTCUTS.flatMap((s) => (s.run ? [s.run] : [])));
 
-/** codemirror's basicSetup, without the built-in bindings for commands listed above (Tab and ⇧Tab still indent). */
+/** codemirror's basicSetup, without the built-in bindings for commands listed above (Tab is the editor's own). */
 export const editorBasics = [
   lineNumbers(),
   highlightActiveLineGutter(),
@@ -123,8 +122,8 @@ export const editorBasics = [
   highlightActiveLine(),
   highlightSelectionMatches(),
   keymap.of(
-    [...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap, indentWithTab].filter(
-      (binding) => binding === indentWithTab || !binding.run || !CUSTOMISABLE_COMMANDS.has(binding.run)
+    [...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap].filter(
+      (binding) => !binding.run || !CUSTOMISABLE_COMMANDS.has(binding.run)
     )
   )
 ];

@@ -519,6 +519,13 @@
   height: 100%;
 }
 
+/* Break points in long formulas (after = + & , and before \cdot, \approx and the like): a zero-width
+   space drawn by CSS, so the text itself is unchanged */
+.editor-host .cm-wrap-after::after,
+.editor-host .cm-wrap-before::before {
+  content: "\200B";
+}
+
 /* A full stop or comma that doesn't fit hangs past the edge rather than wrapping onto a line of its
    own, as in typeset text (WebKit, so the macOS app; Chromium wraps as before) */
 .editor-host .cm-lineWrapping {

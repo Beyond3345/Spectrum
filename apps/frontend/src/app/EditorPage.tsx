@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { EditorState, Prec } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
+import { indentLess } from '@codemirror/commands';
 import { search } from '@codemirror/search';
 import { autocompletion } from '@codemirror/autocomplete';
 import { foldService, syntaxHighlighting } from '@codemirror/language';
@@ -58,12 +59,16 @@ import {
   ghostField,
   latexCompletionSource,
   latexFoldService,
+  closeEnvironment,
+  indentation,
+  insertIndent,
   latexHighlight,
   nearestHeading,
   parseOutline,
   programmatic,
   scopeGutter,
-  setGhost
+  setGhost,
+  wrapLayout
 } from '../editor/latexEditor';
 import { VERSIONS_CHANGED, errorText, extractBibKey, figureSnippet } from '../editor/shared';
 
@@ -124,13 +129,13 @@ const SNIPPETS: (Snippet | null)[] = [
   { label: 'Subsection', icon: 'list.bullet.indent', text: '\\subsection{Subsection title}', select: 'Subsection title', block: true },
   { label: 'Subsubsection', icon: 'list.bullet.indent', text: '\\subsubsection{Subsubsection title}', select: 'Subsubsection title', block: true },
   null,
-  { label: 'Itemize', icon: 'list.bullet', text: '\\begin{itemize}\n  \\item First item\n\\end{itemize}', select: 'First item', block: true },
-  { label: 'Enumerate', icon: 'list.number', text: '\\begin{enumerate}\n  \\item First item\n\\end{enumerate}', select: 'First item', block: true },
-  { label: 'Equation', icon: 'function', text: '\\begin{equation}\n  E = mc^2\n  \\label{eq:name}\n\\end{equation}', select: 'E = mc^2', block: true },
+  { label: 'Itemize', icon: 'list.bullet', text: '\\begin{itemize}\n    \\item First item\n\\end{itemize}', select: 'First item', block: true },
+  { label: 'Enumerate', icon: 'list.number', text: '\\begin{enumerate}\n    \\item First item\n\\end{enumerate}', select: 'First item', block: true },
+  { label: 'Equation', icon: 'function', text: '\\begin{equation}\n    E = mc^2\n    \\label{eq:name}\n\\end{equation}', select: 'E = mc^2', block: true },
   {
     label: 'Algorithm',
     icon: 'arrow.triangle.branch',
-    text: '\\begin{algorithm}[t]\n  \\caption{Algorithm name}\n  \\label{alg:name}\n  \\begin{algorithmic}[1]\n    \\State Initialise\n  \\end{algorithmic}\n\\end{algorithm}',
+    text: '\\begin{algorithm}[t]\n    \\caption{Algorithm name}\n    \\label{alg:name}\n    \\begin{algorithmic}[1]\n        \\State Initialise\n    \\end{algorithmic}\n\\end{algorithm}',
     select: 'Algorithm name',
     block: true
   },
@@ -138,14 +143,14 @@ const SNIPPETS: (Snippet | null)[] = [
   {
     label: 'Figure',
     icon: 'photo',
-    text: '\\begin{figure}[t]\n  \\centering\n  \\includegraphics[width=0.9\\linewidth]{figures/example.png}\n  \\caption{Caption.}\n  \\label{fig:name}\n\\end{figure}',
+    text: '\\begin{figure}[t]\n    \\centering\n    \\includegraphics[width=0.9\\linewidth]{figures/example.png}\n    \\caption{Caption.}\n    \\label{fig:name}\n\\end{figure}',
     select: 'figures/example.png',
     block: true
   },
   {
     label: 'Table',
     icon: 'tablecells',
-    text: '\\begin{table}[t]\n  \\centering\n  \\begin{tabular}{lcc}\n    \\toprule\n    Method & A & B \\\\\n    \\midrule\n    Ours & 0.0 & 0.0 \\\\\n    \\bottomrule\n  \\end{tabular}\n  \\caption{Table caption.}\n  \\label{tab:name}\n\\end{table}',
+    text: '\\begin{table}[t]\n    \\centering\n    \\begin{tabular}{lcc}\n        \\toprule\n        Method & A & B \\\\\n        \\midrule\n        Ours & 0.0 & 0.0 \\\\\n        \\bottomrule\n    \\end{tabular}\n    \\caption{Table caption.}\n    \\label{tab:name}\n\\end{table}',
     select: 'Table caption.',
     block: true
   },
@@ -530,7 +535,10 @@ function Editor({ projectId }: { projectId: string }) {
   };
 
   const insertSnippet = (snippet: Snippet) => {
-    const done = insertAtCursor(snippet.text, { block: snippet.block });
+    // every line after the first keeps the indent of the line the snippet goes into
+    const view = viewRef.current;
+    const indent = view ? /^[ \t]*/.exec(view.state.doc.lineAt(view.state.selection.main.from).text)![0] : '';
+    const done = insertAtCursor(snippet.text.replace(/\n/g, `\n${indent}`), { block: snippet.block });
     const at = done ? done.insert.indexOf(snippet.select) : -1;
     if (done && at !== -1) viewRef.current?.dispatch({ selection: { anchor: done.from + at, head: done.from + at + snippet.select.length } });
   };
@@ -1021,6 +1029,9 @@ function Editor({ projectId }: { projectId: string }) {
       shortcuts,
       keymap.of([
         { key: 'Tab', run: () => (ghostRef.current.text ? (a().acceptGhost(false), true) : false) },
+        // otherwise indent: spaces at the cursor, or the selected lines (⇧Tab takes them back)
+        { key: 'Tab', run: insertIndent, shift: indentLess },
+        { key: 'Enter', run: closeEnvironment },
         {
           key: 'ArrowRight',
           run: (view) => (ghostRef.current.text && ghostRef.current.pos === view.state.selection.main.head ? (a().acceptGhost(true), true) : false)
@@ -1031,6 +1042,8 @@ function Editor({ projectId }: { projectId: string }) {
     extensionsRef.current = [
       keys,
       editorBasics,
+      indentation,
+      wrapLayout,
       latex(),
       syntaxHighlighting(latexHighlight),
       foldService.of(latexFoldService),
