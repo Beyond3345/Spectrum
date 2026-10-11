@@ -224,9 +224,13 @@ input[type='radio'] {
   padding: 0 10px 0 18px;
 }
 
-/* the macOS app draws the traffic lights here */
+/* the macOS app draws the traffic lights here (except in full screen, where there are none) */
 .desktop .sidebar-top {
   padding-left: 76px;
+}
+
+.desktop.fullscreen .sidebar-top {
+  padding-left: 18px;
 }
 
 .app-icon {
@@ -372,6 +376,18 @@ input[type='radio'] {
 .desktop .sidebar-collapsed .panel-header {
   height: 52px;
   padding-left: 76px;
+}
+
+/* full screen has no traffic lights: the panel and its header go back to their usual places */
+.desktop.fullscreen .sidebar-collapsed .main-panel {
+  margin-top: 8px;
+  border-top-left-radius: var(--radius-panel);
+  border-top-right-radius: var(--radius-panel);
+}
+
+.desktop.fullscreen .sidebar-collapsed .panel-header {
+  height: 64px;
+  padding-left: 24px;
 }
 
 .panel-title {

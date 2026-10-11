@@ -307,6 +307,10 @@
   padding-left: 76px;
 }
 
+.desktop.fullscreen .sidebar-collapsed .editor-topbar {
+  padding-left: 12px;
+}
+
 .file-tabs {
   flex: 1;
   min-width: 0;

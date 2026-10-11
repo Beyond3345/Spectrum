@@ -2,6 +2,12 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.1.2 (12 October 2026)
+
+### Changed
+
+- In full screen, where macOS hides the window buttons, the app icon moves to the top left corner, and with the sidebar hidden the header and editor tabs move left too, instead of leaving room for buttons that aren't there
+
 ## 1.1.1 (12 October 2026)
 
 ### Changed
