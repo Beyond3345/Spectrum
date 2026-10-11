@@ -195,14 +195,35 @@ export function llmConfigFor(settings: AppSettings, purpose: LLMPurpose): Partia
       : purpose === 'vision'
         ? [settings.visionEndpoint, settings.visionApiKey, settings.visionModel]
         : [settings.referencesEndpoint, settings.referencesApiKey, settings.referencesModel];
-  // no endpoint of its own: the main model's provider and key, with its own model if it has one
-  if (!endpoint) return { ...main, model: model || main.model };
+  if (!endpoint) {
+    // a role moved to Other that has no address yet stays on the main model until it has one
+    if (purpose !== 'search' && !followsMain(settings, purpose)) return main;
+    // otherwise the main model's provider and key, with its own model if it has one
+    return { ...main, model: model || main.model };
+  }
+  const sameHost = hostOf(endpoint) === hostOf(main.endpoint);
   return {
     endpoint,
-    // a key only ever goes to the endpoint it was entered for
-    apiKey: apiKey || (endpoint === main.endpoint ? main.apiKey : undefined),
-    model: model || main.model
+    // a key only ever goes to the host it was entered for
+    apiKey: apiKey || (sameHost ? main.apiKey : savedKeyFor(settings, endpoint)) || undefined,
+    // another provider has no use for the main model's name; the backend picks its recommended one
+    model: model || (sameHost ? main.model : '')
   };
+}
+
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return '';
+  }
+};
+
+type Known = { key: string; endpoint: string };
+
+/** A key saved for this exact host, from when its provider was the main one or had a quick or vision key. */
+function savedKeyFor(settings: AppSettings, endpoint: string) {
+  return Object.values(settings.providerSaved).find((s) => s.key && hostOf(s.endpoint) === hostOf(endpoint))?.key;
 }
 
 export type ModelRole = 'quick' | 'vision';
@@ -213,10 +234,29 @@ export const ROLE_FIELDS = {
   vision: { provider: 'visionProvider', endpoint: 'visionEndpoint', apiKey: 'visionApiKey', model: 'visionModel', recommended: 'vision' }
 } as const;
 
+const ROLES = ['quick', 'vision'] as const;
+
 /** True when a role uses the main model's provider, so it follows the main provider when that changes. */
 export function followsMain(settings: AppSettings, role: ModelRole) {
   const f = ROLE_FIELDS[role];
   return !settings[f.provider] && !settings[f.endpoint];
+}
+
+/** The preset an endpoint belongs to, matched the way the backend matches it (so Qwen workspaces count). */
+export function presetForEndpoint(providers: ProviderPreset[], endpoint: string) {
+  let host = '';
+  try {
+    host = new URL(endpoint).hostname;
+  } catch {
+    return null;
+  }
+  return providers.find((p) => p.hosts.some((source) => new RegExp(source).test(host))) || null;
+}
+
+/** The chosen preset, or null for Custom. Settings saved before presets existed are matched by host. */
+export function presetOf(providers: ProviderPreset[], settings: AppSettings) {
+  if (settings.llmProvider) return providers.find((p) => p.id === settings.llmProvider) || null;
+  return presetForEndpoint(providers, settings.llmEndpoint);
 }
 
 /** A role's own preset (null for Other), or the main one while it follows the main provider. */
@@ -226,7 +266,11 @@ export function rolePresetOf(providers: ProviderPreset[], settings: AppSettings,
   const id = settings[f.provider];
   if (id) return providers.find((p) => p.id === id) || null;
   // saved before roles had a provider: work it out from the endpoint
-  return presetOf(providers, { ...settings, llmProvider: '', llmEndpoint: settings[f.endpoint] });
+  return presetForEndpoint(providers, settings[f.endpoint]);
+}
+
+export function modelOf(preset: ProviderPreset | null, id: string) {
+  return preset?.models.find((m) => m.id === id) || null;
 }
 
 /** The model a preset recommends for a role; for vision always one that reads images. */
@@ -237,23 +281,43 @@ export function recommendedFor(preset: ProviderPreset | null, role: ModelRole) {
   return preset.models.find((m) => m.vision)?.id || '';
 }
 
+/** Every key known for a provider, each with the endpoint it was entered for. */
+function knownKeys(settings: AppSettings, saved: AppSettings['providerSaved'], id: string, mainId: string): Known[] {
+  return [
+    mainId === id ? { key: settings.llmApiKey, endpoint: settings.llmEndpoint } : undefined,
+    saved[id],
+    ...ROLES.map((r) => ROLE_FIELDS[r]).filter((f) => settings[f.provider] === id).map((f) => ({ key: settings[f.apiKey], endpoint: settings[f.endpoint] }))
+  ].filter((k): k is Known => !!k?.key && !!k.endpoint);
+}
+
 /**
- * Points a role at a provider: 'same' (the main model's), a preset id or 'custom'. A provider used before
- * brings back its key and region, so a key never goes to another provider's host.
+ * Where a provider's requests go and with which key: a preset goes back to the region a known key
+ * was entered for (or its own endpoint), Other to the last address used. The key is only one entered
+ * for that same host, so a key never reaches another provider.
  */
+function endpointAndKey(known: Known[], next: ProviderPreset | null, typed?: string) {
+  const own = next ? [next.endpoint, ...(next.regions || []).map((r) => r.endpoint)] : [];
+  const endpoint = typed ?? (next ? known.find((k) => own.includes(k.endpoint))?.endpoint || next.endpoint : known[0]?.endpoint || '');
+  return { endpoint, key: known.find((k) => hostOf(k.endpoint) === hostOf(endpoint))?.key || '' };
+}
+
+/** The key a role leaves behind is kept for its provider, without touching the main model saved there. */
+function keepRoleKey(settings: AppSettings, providers: ProviderPreset[], role: ModelRole) {
+  const f = ROLE_FIELDS[role];
+  if (followsMain(settings, role) || !settings[f.apiKey] || !settings[f.endpoint]) return settings.providerSaved;
+  const id = rolePresetOf(providers, settings, role)?.id || 'custom';
+  return { ...settings.providerSaved, [id]: { model: settings.providerSaved[id]?.model || '', key: settings[f.apiKey], endpoint: settings[f.endpoint] } };
+}
+
+/** Points a role at a provider: 'same' (the main model's), a preset id or 'custom'. */
 export function rolePatch(settings: AppSettings, providers: ProviderPreset[], role: ModelRole, id: string): Partial<AppSettings> {
   const f = ROLE_FIELDS[role];
-  if (id === 'same') return { [f.provider]: '', [f.endpoint]: '', [f.apiKey]: '', [f.model]: recommendedFor(presetOf(providers, settings), role) };
+  const providerSaved = keepRoleKey(settings, providers, role);
+  if (id === 'same') return { providerSaved, [f.provider]: '', [f.endpoint]: '', [f.apiKey]: '', [f.model]: recommendedFor(presetOf(providers, settings), role) };
   const next = providers.find((p) => p.id === id) || null;
-  const mainId = presetOf(providers, settings)?.id || 'custom';
-  const back = mainId === id ? { key: settings.llmApiKey, endpoint: settings.llmEndpoint, model: settings.llmModel } : settings.providerSaved[id];
-  const own = next ? [next.endpoint, ...(next.regions || []).map((r) => r.endpoint)] : [];
-  return {
-    [f.provider]: next ? id : 'custom',
-    [f.endpoint]: next ? (back && own.includes(back.endpoint) ? back.endpoint : next.endpoint) : back?.endpoint || '',
-    [f.apiKey]: back?.key || '',
-    [f.model]: next ? recommendedFor(next, role) : ''
-  };
+  const known = knownKeys(settings, providerSaved, next ? id : 'custom', presetOf(providers, settings)?.id || 'custom');
+  const { endpoint, key } = endpointAndKey(known, next);
+  return { providerSaved, [f.provider]: next ? id : 'custom', [f.endpoint]: endpoint, [f.apiKey]: key, [f.model]: next ? recommendedFor(next, role) : '' };
 }
 
 let providersRequest: Promise<ProviderPreset[]> | null = null;
@@ -277,44 +341,23 @@ export function useProviders() {
   return providers;
 }
 
-const hostOf = (url: string) => {
-  try {
-    return new URL(url).host;
-  } catch {
-    return '';
-  }
-};
-
-/** The chosen preset, or null for Custom. Settings saved before presets existed are matched by host. */
-export function presetOf(providers: ProviderPreset[], settings: AppSettings) {
-  if (settings.llmProvider) return providers.find((p) => p.id === settings.llmProvider) || null;
-  const host = hostOf(settings.llmEndpoint);
-  return providers.find((p) => [p.endpoint, ...(p.regions || []).map((r) => r.endpoint)].some((e) => hostOf(e) === host)) || null;
-}
-
-export function modelOf(preset: ProviderPreset | null, id: string) {
-  return preset?.models.find((m) => m.id === id) || null;
-}
-
-/** Switches provider: back to what was last used with it, or to its endpoint, recommended models and effort. */
-export function presetPatch(settings: AppSettings, providers: ProviderPreset[], next: ProviderPreset | null): Partial<AppSettings> {
+/**
+ * Switches the main provider: back to what was last used with it, or to its endpoint, recommended
+ * models and effort. `typed` is an address typed into Endpoint, which is kept as it is.
+ */
+export function presetPatch(settings: AppSettings, providers: ProviderPreset[], next: ProviderPreset | null, typed?: string): Partial<AppSettings> {
   const id = next?.id || 'custom';
   const providerSaved = {
     ...settings.providerSaved,
     [presetOf(providers, settings)?.id || 'custom']: { key: settings.llmApiKey, endpoint: settings.llmEndpoint, model: settings.llmModel }
   };
-  const back = providerSaved[id];
-  // a preset only takes back one of its own endpoints (its region), so a key never goes to another host
-  const own = next ? [next.endpoint, ...(next.regions || []).map((r) => r.endpoint)] : [];
-  const endpoint = next ? (back && own.includes(back.endpoint) ? back.endpoint : next.endpoint) : back?.endpoint || '';
-  // a key entered for this provider under the quick or vision model counts too
-  const roleKey = (['quick', 'vision'] as const).map((r) => ROLE_FIELDS[r]).find((f) => settings[f.provider] === id && settings[f.apiKey])?.apiKey;
+  const { endpoint, key } = endpointAndKey(knownKeys(settings, providerSaved, id, ''), next, typed);
   return {
     llmProvider: id,
     providerSaved,
-    llmApiKey: back?.key || (roleKey ? settings[roleKey] : ''),
+    llmApiKey: key,
     llmEndpoint: endpoint,
-    llmModel: back?.model || next?.recommended.main || '',
+    llmModel: providerSaved[id]?.model || next?.recommended.main || '',
     reasoningEffort: 'default',
     // quick and vision models that follow the main provider move with it (none for Other); ones set up elsewhere stay
     ...(followsMain(settings, 'quick') && { referencesModel: recommendedFor(next, 'quick'), referencesApiKey: '' }),

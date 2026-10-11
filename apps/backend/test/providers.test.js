@@ -210,3 +210,23 @@ test('empty turns are left out of a Claude request', async () => {
   });
   assert.deepEqual(seen[0].body.messages, [{ role: 'user', content: [{ type: 'text', text: 'Return JSON' }, { type: 'text', text: 'Only JSON, please' }] }]);
 });
+
+test('the .env key and model only go to the .env endpoint', async () => {
+  const { resolveLLMConfig } = await import('../src/services/llmService.js');
+  const saved = { ...process.env };
+  try {
+    process.env.SPECTRUM_LLM_ENDPOINT = 'https://api.openai.com/v1';
+    process.env.SPECTRUM_LLM_API_KEY = 'sk-env';
+    process.env.SPECTRUM_LLM_MODEL = 'gpt-env';
+    assert.deepEqual(resolveLLMConfig({}), { endpoint: 'https://api.openai.com/v1', apiKey: 'sk-env', model: 'gpt-env' });
+    assert.equal(resolveLLMConfig({ endpoint: 'https://api.openai.com/v1/chat/completions' }).apiKey, 'sk-env');
+    const gemini = resolveLLMConfig({ endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions' });
+    assert.equal(gemini.apiKey, '', 'no OpenAI key for Gemini');
+    assert.equal(gemini.model, 'gemini-3.8-flash', 'and its own recommended model');
+  } finally {
+    for (const k of ['SPECTRUM_LLM_ENDPOINT', 'SPECTRUM_LLM_API_KEY', 'SPECTRUM_LLM_MODEL']) {
+      if (k in saved) process.env[k] = saved[k];
+      else delete process.env[k];
+    }
+  }
+});

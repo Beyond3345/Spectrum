@@ -14,6 +14,7 @@ import {
   followsMain,
   llmConfigFor,
   modelOf,
+  presetForEndpoint,
   presetOf,
   presetPatch,
   recommendedFor,
@@ -82,16 +83,11 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
   const visionConfig = llmConfigFor(settings, 'vision');
   const imagesGoElsewhere = visionConfig.model !== settings.llmModel || visionConfig.endpoint !== settings.llmEndpoint;
 
-  /** An address for another provider brings that provider's quick and vision models, keeping the key and model. */
+  /** Another provider's address switches to that provider as the menu does, so the key it had never goes there. */
   const setEndpoint = (value: string) => {
-    const next = presetOf(providers, { ...settings, llmProvider: '', llmEndpoint: value });
+    const next = presetForEndpoint(providers, value);
     if (next?.id === preset?.id) return update({ llmEndpoint: value });
-    update({
-      llmEndpoint: value,
-      llmProvider: next?.id || 'custom',
-      ...(followsMain(settings, 'quick') && { referencesModel: recommendedFor(next, 'quick') }),
-      ...(followsMain(settings, 'vision') && { visionModel: recommendedFor(next, 'vision') })
-    });
+    update(presetPatch(settings, providers, next, value));
   };
 
   const chooseModel = (id: string) => {
@@ -107,13 +103,14 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
     });
   };
 
-  const regionField = (label: string, id: string, preset: ProviderPreset, value: string, onChange: (endpoint: string) => void) => {
+  /** titleId: the section heading, so a screen reader hears “Quick model Region” rather than just “Region” */
+  const regionField = (titleId: string, id: string, preset: ProviderPreset, value: string, onChange: (endpoint: string) => void) => {
     const own = [preset.endpoint, ...(preset.regions || []).map((r) => r.endpoint)];
     return (
       <div className="field">
-        <label id={id}>{label}</label>
+        <label id={id}>Region</label>
         <Select
-          labelId={id}
+          labelId={`${titleId} ${id}`}
           value={value}
           options={[
             [preset.endpoint, 'International'],
@@ -141,18 +138,19 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
     const own = rolePresetOf(providers, settings, role);
     const value = settings[f.model];
     const choices = (own?.models || []).filter((m) => role === 'quick' || m.vision);
-    const typed = otherModel[role] || !own || (!!value && !choices.some((m) => m.id === value));
+    // an empty name only means “the main model's” while the role follows the main provider
+    const typed = otherModel[role] || !own || (value ? !choices.some((m) => m.id === value) : !same);
     const current = same ? 'same' : own?.id || 'custom';
     const picked = modelOf(own, value);
     const blindMain = role === 'vision' && same && !value && mainModel && !mainModel.vision;
     return (
       <>
-        <h3 className="form-section-title">{title}</h3>
+        <h3 id={`settings-${role}Title`} className="form-section-title">{title}</h3>
         <div className="field-hint section-hint">{use} {effort}</div>
         <div className="field">
           <label id={`settings-${role}Provider`}>Provider</label>
           <Select
-            labelId={`settings-${role}Provider`}
+            labelId={`settings-${role}Title settings-${role}Provider`}
             value={current}
             options={[
               ['same', `Same as main (${preset?.name || 'Other'})`],
@@ -166,13 +164,20 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
           />
           {!same && <div className="field-hint">{own ? own.note : 'Any server that speaks the OpenAI chat completions API.'}</div>}
         </div>
-        {!same && own?.regions && regionField('Region', `settings-${role}Region`, own, settings[f.endpoint], (endpoint) => update({ [f.endpoint]: endpoint }))}
-        {!same && !own && text('Endpoint', f.endpoint, { name: `${name} endpoint`, placeholder: 'http://localhost:1234/v1' })}
+        {!same && own?.regions && regionField(`settings-${role}Title`, `settings-${role}Region`, own, settings[f.endpoint], (endpoint) => update({ [f.endpoint]: endpoint }))}
+        {!same &&
+          text('Endpoint', f.endpoint, {
+            name: `${name} endpoint`,
+            placeholder: own?.endpoint || 'http://localhost:1234/v1',
+            hint: own || settings[f.endpoint] ? '' : 'Until this has an address, the main model is used.',
+            // pins the provider, so clearing the field to retype it keeps this section as it is
+            onChange: (value) => update({ [f.endpoint]: value, [f.provider]: settings[f.provider] || own?.id || 'custom' })
+          })}
         {own && (
           <div className="field">
             <label id={`settings-${role}ModelPick`}>Model</label>
             <Select
-              labelId={`settings-${role}ModelPick`}
+              labelId={`settings-${role}Title settings-${role}ModelPick`}
               value={typed ? 'other' : value}
               options={[
                 ...(same ? [['', 'Same as main model'] as [string, string]] : []),
@@ -334,11 +339,11 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
 
           {section === 'models' && (
             <>
-              <h3 className="form-section-title">Main model</h3>
+              <h3 id="settings-mainTitle" className="form-section-title">Main model</h3>
               <div className="field">
                 <label id="settings-llmProvider">Provider</label>
                 <Select
-                  labelId="settings-llmProvider"
+                  labelId="settings-mainTitle settings-llmProvider"
                   value={preset?.id || 'custom'}
                   options={[...providers.map((p): [string, string] => [p.id, p.name]), ['custom', 'Other (OpenAI-compatible)']]}
                   onChange={(id) => {
@@ -350,7 +355,7 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                   {preset ? preset.note : 'Any server that speaks the OpenAI chat completions API, such as LM Studio, Ollama or vLLM.'}
                 </div>
               </div>
-              {preset?.regions && regionField('Region', 'settings-llmRegion', preset, settings.llmEndpoint, (endpoint) => update({ llmEndpoint: endpoint }))}
+              {preset?.regions && regionField('settings-mainTitle', 'settings-llmRegion', preset, settings.llmEndpoint, (endpoint) => update({ llmEndpoint: endpoint }))}
               {text('Endpoint', 'llmEndpoint', {
                 name: 'Main model endpoint',
                 placeholder: 'https://api.openai.com/v1/chat/completions',
@@ -361,7 +366,7 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                 <div className="field">
                   <label id="settings-llmModelPick">Model</label>
                   <Select
-                    labelId="settings-llmModelPick"
+                    labelId="settings-mainTitle settings-llmModelPick"
                     value={typedModel ? 'other' : mainModel.id}
                     options={[
                       ...preset.models.map((m): [string, string] => [m.id, m.id === preset.recommended.main ? `${m.label} (recommended)` : m.label]),
@@ -386,17 +391,17 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
               <div className="field">
                 <label id="settings-reasoningEffort">Reasoning effort</label>
                 <Select
-                  labelId="settings-reasoningEffort"
+                  labelId="settings-mainTitle settings-reasoningEffort"
                   value={effectiveEffort(settings, providers)}
                   options={effortChoices}
                   onChange={(value) => update({ reasoningEffort: value as AppSettings['reasoningEffort'] })}
                 />
                 <div className="field-hint">
-                  How long the model may think before answering. Higher levels are slower and cost more. Autocomplete and other quick tasks always use the lowest level.
+                  How long the model may think before answering. Higher levels are slower and cost more.
                 </div>
               </div>
 
-              {roleModel('quick', 'Quick model', 'Used for autocomplete and for splitting pasted references.', 'Always thinks as little as the model allows, so it stays quick.')}
+              {roleModel('quick', 'Quick model', 'Used for autocomplete and for splitting pasted references.', 'Listed models think as little as they allow, so it stays quick; other servers use their own default.')}
               {roleModel('vision', 'Vision model', 'Used for image → LaTeX and the layout check in template transfer.', 'Uses the model’s recommended effort.')}
             </>
           )}

@@ -54,6 +54,8 @@ export interface ProviderPreset {
   name: string;
   endpoint: string;
   regions?: { label: string; endpoint: string }[];
+  /** host patterns (RegExp sources) the backend recognises as this provider */
+  hosts: string[];
   keyUrl: string;
   note: string;
   models: ProviderModel[];

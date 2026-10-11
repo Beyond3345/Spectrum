@@ -22,11 +22,24 @@ export function normalizeBaseURL(endpoint) {
   return trimmed.replace(/\/chat\/completions$/i, '');
 }
 
+const hostOf = (endpoint) => {
+  try {
+    return new URL(normalizeChatEndpoint(endpoint)).host;
+  } catch {
+    return '';
+  }
+};
+
 export function resolveLLMConfig(llmConfig) {
+  const envEndpoint = (process.env.SPECTRUM_LLM_ENDPOINT || DEFAULT_ENDPOINT).trim();
+  const endpoint = (llmConfig?.endpoint || envEndpoint).trim();
+  // the .env key and model belong to the .env endpoint, so another provider never gets them
+  const env = hostOf(endpoint) === hostOf(envEndpoint);
   return {
-    endpoint: (llmConfig?.endpoint || process.env.SPECTRUM_LLM_ENDPOINT || DEFAULT_ENDPOINT).trim(),
-    apiKey: (llmConfig?.apiKey || process.env.SPECTRUM_LLM_API_KEY || '').trim(),
-    model: (llmConfig?.model || process.env.SPECTRUM_LLM_MODEL || DEFAULT_MODEL).trim()
+    endpoint,
+    apiKey: (llmConfig?.apiKey || (env && process.env.SPECTRUM_LLM_API_KEY) || '').trim(),
+    // with no model named, a known provider gets its recommended one
+    model: (llmConfig?.model || (env && process.env.SPECTRUM_LLM_MODEL) || providerFor(normalizeChatEndpoint(endpoint))?.recommended.main || DEFAULT_MODEL).trim()
   };
 }
 
