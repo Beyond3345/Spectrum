@@ -20,7 +20,7 @@ The projects page lists every project regardless of where its folder is stored. 
 
 The editor is divided into three columns, the file tree and saved chats on the left, the LaTeX source in the middle and the compiled PDF on the right.
 
-- The source editor has LaTeX highlighting, folding, an outline of the main file, snippets for common environments and AI autocomplete (`⌥/`, accepted with `Tab`),
+- The source editor has LaTeX highlighting, folding, an outline of the main file, snippets for common environments, AI autocomplete (`⌥/`, accepted with `Tab`) and spell checking in Australian English,
 - the PDF preview fits the page to the width of its column by default, zooms with a trackpad pinch, `⌘` and the scroll wheel or `⌘=` and `⌘−`, shows the pages dark in dark mode, and supports a two-page view, sticky notes and jumping to the source by clicking text in the PDF,
 - the compiler can be pdfLaTeX, XeLaTeX, LuaLaTeX, Latexmk or Tectonic, and the Auto setting picks one from the `% !TEX program` comment and the packages the document uses and
 - the Tools panel holds the project information (word counts from `texcount`), version history, compile logs, research tools, AI review and figure tools.
@@ -38,6 +38,20 @@ A DOI, a link, an arXiv ID or a paper title can be pasted into the references ch
 
 The citation key is the first author's surname followed by the year, for example `Vaswani2017`. Accents are removed and name particles are joined, so "van der Waals" becomes `VanderWaals`. When the key already exists for a different paper, a letter is added (`Smith2020a`, `Smith2020b`). A paper whose DOI or arXiv ID is already in the project is reported as a duplicate and is not added again.
 
+### Spelling and grammar
+
+Spectrum checks writing in Australian English. Spelling is checked as you type in `.tex`, `.md` and `.txt` files, and misspelt words get a red underline. Right-clicking one offers suggestions, Add to dictionary, Add to project dictionary and Ignore. The project dictionary is kept in the project's `.spectrum` folder, so it travels with the project, while the main dictionary covers every project and can be edited in Settings under Spelling & grammar.
+
+Spelling uses [nodehun](https://github.com/Wulf/nodehun), a binding for the Hunspell spell checker, with three dictionaries,
+
+1. SCOWL en_AU-large, which sets the standard (colour, organise, centre, defence)
+2. AussieDic, which adds Australian places, names and slang such as Parramatta, Wiradjuri and arvo and
+3. SCOWL en_US, which is used only to recognise the American spellings in AussieDic, so color, organize and center are still flagged.
+
+The grammar check runs [Harper](https://github.com/Automattic/harper) with its Australian dialect over the open file. It is started with the button beside the assistant button or with `⇧⌘;`, and its results take the place of the PDF until the panel is closed. Each issue is underlined in the editor and listed with its sentence, and it can be fixed with one click, ignored, or turned off for the project with Ignore rule. Settings has options for style suggestions, such as long sentences and wordiness, which are off by default, and for the serial comma, which is flagged by default in line with the Australian Government Style Manual.
+
+Both checkers read only the prose of a LaTeX file. Commands, maths, comments, citation and reference keys, URLs, the preamble and code blocks are skipped, while the text of headings, captions, footnotes and `\emph`, `\textbf` and similar commands is checked.
+
 ### Version history
 
 Versions are kept inside each project in a hidden `.spectrum` folder, together with the project settings, saved chats and temporary build files. File contents are compressed and stored once, so unchanged files cost no extra space between versions. A version can be saved by hand from the Versions tab with an optional label. One is also saved automatically before AI changes are applied, before a restore and before a template change, so each of these can be undone. A version can be compared with the current files, restored as a whole or restored one file at a time.
@@ -52,7 +66,7 @@ Versions are kept inside each project in a hidden `.spectrum` folder, together w
 
 ## Installing
 
-1. Open `Spectrum_1.0.1_universal.dmg`
+1. Open `Spectrum_1.1.0_universal.dmg`
 2. Drag Spectrum into the Applications folder
 3. Open Spectrum from the Applications folder
 
@@ -121,6 +135,7 @@ Every shortcut below can be changed in the Shortcuts section of Settings. Click 
 | Save | `⌘S` |
 | Compile | `⌘↩` |
 | Show or hide the assistant | `⌘L` |
+| Check grammar | `⇧⌘;` |
 | AI autocomplete | `⌥/` |
 | Show or hide the sidebar | `⌘\` |
 | Zoom the PDF in or out | `⌘=` and `⌘−` (or pinch) |
@@ -137,6 +152,8 @@ Building requires Node.js 20.12 or later, Rust with the `aarch64-apple-darwin` a
 3. Run `npm run desktop:build` to build the universal application and the DMG
 
 The test that moves a project to the Bin is skipped by default, since it moves a real folder into the macOS Bin. Set `SPECTRUM_TEST_BIN=1` to include it.
+
+The spell checker and the grammar checker are compiled code that is kept in `native/`, so a normal build does not need to rebuild them. To rebuild them after changing their sources, run `npm run native:build`. This needs Xcode and Python for nodehun, and Rust with the `wasm32-unknown-unknown` target and `wasm-pack` for Harper, which is built from a Harper checkout at `../harper-master` unless `HARPER_DIR` points elsewhere.
 
 The build script downloads Node.js 24 LTS for both architectures, checks it against the published SHA-256 sums and joins the two into one universal binary. It then bundles the backend with esbuild and runs `tauri build --target universal-apple-darwin`. The results are written to `src-tauri/target/universal-apple-darwin/release/bundle/`.
 
@@ -171,7 +188,9 @@ The backend reads the following environment variables, either from the environme
 - `apps/frontend` is the React interface,
 - `src-tauri` is the macOS application shell, which starts the bundled backend and opens the interface,
 - `templates` holds the bundled LaTeX templates and
-- `scripts` holds the desktop build script and the SF Symbols renderer used for the interface icons.
+- `native` holds the spell checker (nodehun, with its source) and the grammar checker (Harper) as built for the application,
+- `dictionaries` holds the spell-check dictionaries, with their licences and
+- `scripts` holds the desktop build script, the script that builds `native` and the SF Symbols renderer used for the interface icons.
 
 ## Troubleshooting
 
@@ -191,12 +210,16 @@ The universal biber in TeX Live 2026 unpacks itself with a `lipo` command that m
 
 Applications opened from Finder do not receive the `PATH` that Terminal uses. Spectrum reads the `PATH` from the login shell and adds `/Library/TeX/texbin`, `/opt/homebrew/bin` and `/usr/local/bin`. If TeX is installed somewhere else, add its folder to `PATH` in `~/.zprofile` and restart Spectrum.
 
+### Spelling or grammar checking says it is not available
+
+The spell checker is a compiled add-on and the grammar checker a WebAssembly module, both loaded by the backend when they are first needed. If one cannot load, the editor shows the reason once and carries on without it. The details are in the backend log, at `~/Library/Logs/com.beyond3345.spectrum/backend.log` in the app. Rebuilding with `npm run native:build` fixes a missing or damaged file in a copy built from source.
+
 ### The table to chart tool fails
 
 The tool runs Python with matplotlib. Install it with `pip install matplotlib`, or set `SPECTRUM_PYTHON` to a Python that already has it.
 
 ## Acknowledgements and licence
 
-Spectrum is based on OpenPrism by OpenDCAI. It uses CodeMirror, PDF.js, Fastify, LangGraph and Tauri. The interface icons are drawn from Apple's SF Symbols, which are licensed for use in applications on Apple platforms.
+Spectrum is based on OpenPrism by OpenDCAI. It uses CodeMirror, PDF.js, Fastify, LangGraph and Tauri, and checks spelling with nodehun, Hunspell, SCOWL and AussieDic and grammar with Harper. Their licences are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The interface icons are drawn from Apple's SF Symbols, which are licensed for use in applications on Apple platforms.
 
 Spectrum is released under the MIT Licence given in [LICENSE](LICENSE).

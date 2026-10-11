@@ -37,7 +37,7 @@ import { gotoLine, highlightSelectionMatches, searchKeymap, selectNextOccurrence
 
 export const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 
-export type AppCommand = 'save' | 'compile' | 'assistant' | 'suggest' | 'sidebar' | 'zoomIn' | 'zoomOut' | 'zoomWidth';
+export type AppCommand = 'save' | 'compile' | 'assistant' | 'grammar' | 'suggest' | 'sidebar' | 'zoomIn' | 'zoomOut' | 'zoomWidth';
 
 export type Shortcut = {
   id: string;
@@ -94,6 +94,8 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'save', label: 'Save', group: 'App', key: 'Mod-s' },
   { id: 'compile', label: 'Compile', group: 'App', key: 'Mod-Enter' },
   { id: 'assistant', label: 'Show or hide the assistant', group: 'App', key: 'Mod-l' },
+  // ⇧⌘; is macOS's own Spelling and Grammar shortcut
+  { id: 'grammar', label: 'Check grammar', group: 'App', key: 'Shift-Mod-;' },
   { id: 'suggest', label: 'AI autocomplete', group: 'App', key: 'Alt-/' },
   { id: 'sidebar', label: 'Show or hide the sidebar', group: 'App', key: 'Mod-\\' }
 ];

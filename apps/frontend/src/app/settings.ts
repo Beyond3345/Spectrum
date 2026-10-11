@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { listProviders } from '../api/client';
-import type { CompileEngine, EffortLevel, LLMConfig, ProviderModel, ProviderPreset, ReasoningEffort, SearchProvider } from '../api/client';
+import type { CompileEngine, EffortLevel, LLMConfig, OxfordComma, ProviderModel, ProviderPreset, ReasoningEffort, SearchProvider } from '../api/client';
 import { setNativeTheme } from './desktop';
 
 export { IS_DESKTOP } from './desktop';
@@ -42,6 +42,12 @@ export type AppSettings = {
   mineruToken: string;
   /** shortcut id → key, only for the ones changed in Settings ('' = removed) */
   shortcuts: Record<string, string>;
+  /** spell checking as you type, in Australian English */
+  spellCheck: boolean;
+  /** Harper's style suggestions (long sentences, wordiness, readability) besides grammar */
+  grammarStyle: boolean;
+  /** the serial comma: flag it (Australian Government style), require it, or leave it */
+  oxfordComma: OxfordComma;
 };
 
 export const SETTINGS_KEY = 'spectrum-settings-v1';
@@ -76,7 +82,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   serpEngine: 'google',
   mineruApiBase: '',
   mineruToken: '',
-  shortcuts: {}
+  shortcuts: {},
+  spellCheck: true,
+  grammarStyle: false,
+  oxfordComma: 'avoid'
 };
 
 export const COMPILE_ENGINES: [CompileEngine, string][] = [
@@ -119,6 +128,7 @@ function parse(raw: string | null): AppSettings {
     if (!Number.isFinite(merged.editorFontSize)) merged.editorFontSize = DEFAULT_SETTINGS.editorFontSize;
     if (typeof merged.shortcuts !== 'object' || !merged.shortcuts) merged.shortcuts = {};
     if (typeof merged.providerSaved !== 'object' || !merged.providerSaved) merged.providerSaved = {};
+    if (!['avoid', 'require', 'off'].includes(merged.oxfordComma)) merged.oxfordComma = 'avoid';
     return merged;
   } catch {
     return DEFAULT_SETTINGS;

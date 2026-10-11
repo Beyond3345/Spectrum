@@ -1,0 +1,105 @@
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { maskLatex, proseWords } from '../src/latex/mask.js';
+
+// the word list lives in a scratch data folder; the dictionaries and engines are the repo's own
+const dataDir = mkdtempSync(path.join(os.tmpdir(), 'spectrum-language-'));
+process.env.SPECTRUM_DATA_DIR = dataDir;
+let spell;
+let grammar;
+
+before(async () => {
+  spell = await import('../src/services/spellService.js');
+  grammar = await import('../src/services/grammarService.js');
+});
+after(async () => {
+  await spell.stopSpeller();
+  await grammar.stopGrammar();
+  rmSync(dataDir, { recursive: true, force: true });
+});
+
+const words = (tex) => proseWords(maskLatex(tex)).map(([w]) => w);
+
+test('the mask keeps every position', () => {
+  const tex = '\\documentclass{article}\n\\begin{document}\nA $x^2$ test.\n\\end{document}\n';
+  const masked = maskLatex(tex);
+  assert.equal(masked.length, tex.length);
+  // a newline only ever stays or becomes a space (where a line of pure markup joins the next)
+  assert.ok([...masked].every((c, i) => c !== '\n' || tex[i] === '\n'), 'no newline moves');
+});
+
+test('the mask keeps prose and drops markup', () => {
+  const tex = [
+    '\\documentclass{article}\\usepackage{amsmath}',
+    '\\begin{document}',
+    '\\section[Short]{Results of the \\emph{first} trial}\\label{sec:results}',
+    'As shown by \\citet[p.~4]{smith2020} and in Figure~\\ref{fig:one}, the \\textbf{colour} changes.%  a comment here',
+    'We measured $\\alpha + \\beta$ and',
+    '\\begin{equation}\\label{eq:x} E = mc^2 \\end{equation}',
+    'then \\[ y = mx \\] holds \\(z\\) times.\\footnote{See the \\href{https://example.org}{project page}.}',
+    '\\begin{figure}[htbp]\\includegraphics[width=0.5\\textwidth]{figs/plot}\\caption{A {nested} caption}\\end{figure}',
+    '\\begin{tabular}{lll} one & two \\\\ \\end{tabular}',
+    '\\begin{verbatim}code_here = 1\\end{verbatim}',
+    "\\verb|x_y| and ``quoted'' words, \\LaTeX\\ too.",
+    '\\end{document}',
+    'trailing'
+  ].join('\n');
+  assert.deepEqual(words(tex), [
+    'Short', 'Results', 'of', 'the', 'first', 'trial',
+    'As', 'shown', 'by', 'and', 'in', 'Figure', 'the', 'colour', 'changes',
+    'We', 'measured', 'x', 'and',
+    'then', 'holds', 'x', 'times', 'See', 'the', 'project', 'page',
+    'A', 'nested', 'caption',
+    'one', 'two',
+    'and', 'quoted', 'words', 'LaTeX', 'too'
+  ]);
+});
+
+test('a line that was all markup joins its neighbours instead of breaking the paragraph', () => {
+  const tex = 'The sentence goes\n\\label{x}\non here.\n\nNext paragraph.';
+  const masked = maskLatex(tex);
+  assert.equal(masked.split('\n').length, 4, 'one line joined, the blank line kept');
+  assert.match(masked, /goes\n\s+on here\.\n\nNext/);
+});
+
+test('unknown commands: a key is dropped, prose is kept', () => {
+  assert.deepEqual(words('\\begin{document}\\mymacro{key-thing} and \\myemph{some words}\\end{document}'), ['and', 'some', 'words']);
+});
+
+test('spelling follows Australian English', async () => {
+  const status = await spell.spellStatus();
+  assert.equal(status.available, true, status.error);
+  const misspelt = await spell.checkWords(['colour', 'color', 'organise', 'organize', 'defence', 'defense', 'arvo', 'Wagga', 'recieve', 'CSIRO', 'LaTeX', 'iPhone', 'x2'], undefined);
+  assert.deepEqual(misspelt.sort(), ['color', 'defense', 'organize', 'recieve']);
+  assert.ok((await spell.suggestWord('recieve')).includes('receive'));
+  assert.ok((await spell.suggestWord('organize')).includes('organise'));
+});
+
+test('a word added to the list is accepted, and removed again', async () => {
+  assert.deepEqual(await spell.checkWords(['Spectrumish'], undefined), ['Spectrumish']);
+  const lists = await spell.changeWord({ word: 'Spectrumish' });
+  assert.deepEqual(lists.global, ['Spectrumish']);
+  assert.deepEqual(await spell.checkWords(['Spectrumish'], undefined), []);
+  await spell.changeWord({ word: 'Spectrumish', remove: true });
+  assert.deepEqual(await spell.checkWords(['Spectrumish'], undefined), ['Spectrumish']);
+  await assert.rejects(() => spell.changeWord({ word: 'two words' }), /single word/);
+});
+
+test('grammar: Australian dialect, no Oxford comma, positions in the source', async () => {
+  const tex = '\\begin{document}\nThis is a apple. I bought milk, eggs, and bread \\cite{key}. It are \\emph{the the} best.\n\\end{document}';
+  const issues = await grammar.checkGrammar({ text: tex, file: 'main.tex' });
+  const byRule = Object.fromEntries(issues.map((i) => [i.rule, i]));
+  assert.equal(tex.slice(byRule.AnA.from, byRule.AnA.to), 'a');
+  assert.deepEqual(byRule.AnA.suggestions[0], { kind: 'replace', text: 'an' });
+  assert.equal(byRule.AnA.fixable, true);
+  assert.ok(byRule.NoOxfordComma, 'serial comma flagged');
+  assert.ok(byRule.PronounInflectionBe, 'It are');
+  assert.ok(byRule.RepeatedWords, 'the the inside \\emph');
+  assert.ok(!issues.some((i) => i.kind === 'Spelling' && i.rule === 'SpellCheck'), 'spelling is left to nodehun');
+
+  const allowed = await grammar.checkGrammar({ text: tex, file: 'main.tex', oxford: 'off', ignoredRules: ['AnA'] });
+  assert.ok(!allowed.some((i) => i.rule === 'NoOxfordComma' || i.rule === 'AnA'));
+});

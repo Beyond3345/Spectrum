@@ -493,6 +493,51 @@ export function callLLM(payload: {
   return request<{ ok: boolean; content?: string; error?: string }>('/api/llm', json('POST', payload));
 }
 
+// ─── spelling (nodehun, Australian English) and grammar (Harper) ───
+
+export type CheckerStatus = { available: boolean; language: string; error?: string };
+export type SpellWordLists = { global: string[]; project: string[] };
+export type GrammarSuggestion = { kind: 'replace' | 'remove' | 'insertAfter'; text: string };
+export type GrammarIssue = {
+  rule: string;
+  kind: string;
+  from: number;
+  to: number;
+  message: string;
+  suggestions: GrammarSuggestion[];
+  /** false when the span runs into LaTeX markup, so a suggestion can't be applied as it is */
+  fixable: boolean;
+};
+export type OxfordComma = 'avoid' | 'require' | 'off';
+
+export function spellStatus() {
+  return request<CheckerStatus>('/api/spell/status');
+}
+
+export function spellCheck(words: string[], projectId?: string) {
+  return request<{ misspelt: string[] }>('/api/spell/check', json('POST', { words, projectId }));
+}
+
+export function spellSuggest(word: string) {
+  return request<{ suggestions: string[] }>('/api/spell/suggest', json('POST', { word }));
+}
+
+export function spellWords(projectId?: string) {
+  return request<SpellWordLists>(`/api/spell/words${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`);
+}
+
+export function changeSpellWord(payload: { word: string; scope: 'global' | 'project'; projectId?: string; remove?: boolean }) {
+  return request<SpellWordLists>('/api/spell/words', json('POST', payload));
+}
+
+export function grammarCheck(payload: { text: string; file: string; projectId?: string; style: boolean; oxford: OxfordComma }) {
+  return request<{ issues: GrammarIssue[]; ignoredRules: string[] }>('/api/grammar/check', json('POST', payload));
+}
+
+export function changeIgnoredGrammarRule(projectId: string, rule: string, remove = false) {
+  return request<{ ignoredRules: string[] }>('/api/grammar/ignored', json('POST', { projectId, rule, remove }));
+}
+
 export function listProviders() {
   return request<{ providers: ProviderPreset[] }>('/api/llm/providers');
 }

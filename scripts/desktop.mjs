@@ -33,8 +33,14 @@ async function bundleBackend() {
   const outDir = path.join(resourcesDir, 'backend');
   fs.rmSync(outDir, { recursive: true, force: true });
   await esbuild.build({
-    entryPoints: [path.join(root, 'apps/backend/src/index.js')],
-    outfile: path.join(outDir, 'server.mjs'),
+    // the spell and grammar workers run as threads of their own, from files beside server.mjs
+    entryPoints: {
+      server: path.join(root, 'apps/backend/src/index.js'),
+      spellWorker: path.join(root, 'apps/backend/src/services/spellWorker.mjs'),
+      grammarWorker: path.join(root, 'apps/backend/src/services/grammarWorker.mjs')
+    },
+    outdir: outDir,
+    outExtension: { '.js': '.mjs' },
     bundle: true,
     platform: 'node',
     format: 'esm',
@@ -135,6 +141,13 @@ async function resources() {
   await bundleBackend();
   copyDir(path.join(root, 'apps/frontend/dist'), path.join(resourcesDir, 'frontend'));
   copyDir(path.join(root, 'templates'), path.join(resourcesDir, 'templates'));
+  copyDir(path.join(root, 'dictionaries'), path.join(resourcesDir, 'dictionaries'));
+  // the built nodehun and Harper only, not nodehun's sources
+  const native = path.join(resourcesDir, 'native');
+  fs.rmSync(native, { recursive: true, force: true });
+  fs.mkdirSync(native, { recursive: true });
+  copyDir(path.join(root, 'native/harper'), path.join(native, 'harper'));
+  fs.copyFileSync(path.join(root, 'native/nodehun.node'), path.join(native, 'nodehun.node'));
   await nodeRuntime(['arm64', 'x64']);
 }
 
@@ -154,7 +167,7 @@ async function dev() {
   // the debug backend serves apps/frontend/dist from the repo
   run('npm', ['run', 'build']);
   // bundle inputs aren't used in dev, but tauri-build insists they exist
-  for (const dir of ['backend', 'frontend', 'templates']) fs.mkdirSync(path.join(resourcesDir, dir), { recursive: true });
+  for (const dir of ['backend', 'frontend', 'templates', 'native', 'dictionaries']) fs.mkdirSync(path.join(resourcesDir, dir), { recursive: true });
   if (!fs.existsSync(path.join(binDir, `node-${TRIPLES[process.arch]}`))) await nodeRuntime([process.arch]);
   run('npx', ['tauri', 'dev']);
 }

@@ -375,7 +375,9 @@ fn backend_command(app: &AppHandle, data_dir: &Path, _path_var: &str) -> Result<
         .env("SPECTRUM_REPO_ROOT", data_dir)
         .env("SPECTRUM_FRONTEND_DIST", resources.join("frontend"))
         .env("SPECTRUM_TEMPLATE_DIR", data_dir.join("templates"))
-        .env("SPECTRUM_TEMPLATE_SEED_DIR", resources.join("templates"));
+        .env("SPECTRUM_TEMPLATE_SEED_DIR", resources.join("templates"))
+        .env("SPECTRUM_NATIVE_DIR", resources.join("native"))
+        .env("SPECTRUM_DICT_DIR", resources.join("dictionaries"));
     Ok(cmd)
 }
 

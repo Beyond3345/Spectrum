@@ -1303,3 +1303,136 @@ span.log-location {
     max-height: 140px;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Grammar panel (in place of the PDF while it's open)
+   -------------------------------------------------------------------------- */
+
+.grammar-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  font-weight: 600;
+}
+
+.grammar-sub {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grammar-list {
+  gap: 10px;
+}
+
+.grammar-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.grammar-empty.error {
+  color: var(--red-text);
+}
+
+.grammar-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.grammar-issue {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--bg-elevated);
+}
+
+.grammar-issue.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.grammar-issue-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.grammar-kind {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--accent-on-soft);
+}
+
+.grammar-message {
+  font-size: 13px;
+}
+
+.grammar-excerpt {
+  font: 12px/1.5 var(--font-mono);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.grammar-excerpt mark {
+  color: var(--text);
+  background: var(--accent-soft);
+  border-radius: 2px;
+}
+
+.grammar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.grammar-actions .grow {
+  flex: 1;
+}
+
+.grammar-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.grammar-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.grammar-foot .checkbox-row {
+  margin: 0;
+}
+
+.grammar-oxford {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}

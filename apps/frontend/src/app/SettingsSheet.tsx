@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { systemCheck } from '../api/client';
-import type { SearchProvider, SystemCheck } from '../api/client';
+import { changeSpellWord, spellStatus, spellWords, systemCheck } from '../api/client';
+import type { CheckerStatus, SearchProvider, SystemCheck } from '../api/client';
 import Icon from './Icon';
 import Select from './Select';
 import Sheet from './Sheet';
@@ -28,11 +28,12 @@ import type { ProviderPreset } from '../api/client';
 import { FIXED_SHORTCUTS, SHORTCUTS, canonical, formatShortcut, shortcutFromEvent, shortcutKey, shortcutProblem } from './shortcuts';
 import type { Shortcut } from './shortcuts';
 
-type Section = 'appearance' | 'editor' | 'shortcuts' | 'projects' | 'models' | 'search' | 'transfer' | 'system';
+type Section = 'appearance' | 'editor' | 'language' | 'shortcuts' | 'projects' | 'models' | 'search' | 'transfer' | 'system';
 
 const SECTIONS: [Section, string, string][] = [
   ['appearance', 'Appearance', 'circle.lefthalf.filled'],
   ['editor', 'Editor', 'text.cursor'],
+  ['language', 'Spelling & grammar', 'textformat.abc.dottedunderline'],
   ['shortcuts', 'Shortcuts', 'keyboard'],
   ['projects', 'Projects', 'folder'],
   ['models', 'Models', 'sparkles'],
@@ -309,6 +310,8 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
               </label>
             </>
           )}
+
+          {section === 'language' && <LanguagePane />}
 
           {section === 'shortcuts' && <ShortcutsPane />}
 
@@ -619,6 +622,105 @@ function ShortcutsPane() {
           Restore all defaults
         </button>
       </div>
+    </>
+  );
+}
+
+/** Spelling and grammar in Australian English: the switches, the serial comma and the personal word list. */
+function LanguagePane() {
+  const [settings, update] = useSettings();
+  const [status, setStatus] = useState<CheckerStatus | null>(null);
+  const [words, setWords] = useState<string[] | null>(null);
+  const [draft, setDraft] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    spellStatus().then(setStatus).catch((err) => setStatus({ available: false, language: 'en-AU', error: err instanceof Error ? err.message : String(err) }));
+    spellWords().then((lists) => setWords(lists.global)).catch(() => setWords([]));
+  }, []);
+
+  const change = (word: string, remove = false) => {
+    setError('');
+    changeSpellWord({ word, scope: 'global', remove })
+      .then((lists) => {
+        setWords(lists.global);
+        if (!remove) setDraft('');
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  };
+
+  return (
+    <>
+      <div className="field-hint section-hint">
+        Spectrum checks writing in Australian English. Spelling uses SCOWL’s en_AU dictionary with Australian words from AussieDic, and grammar uses Harper.
+      </div>
+
+      <h3 className="form-section-title">Spelling</h3>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={settings.spellCheck} onChange={(e) => update({ spellCheck: e.target.checked })} />
+        <span>
+          Check spelling as you type
+          <span className="field-hint">Misspelt words in .tex, .md and .txt files get a red underline. Right-click one for suggestions.</span>
+        </span>
+      </label>
+      {status && !status.available && <div className="field-hint error">{status.error || 'The spell checker couldn’t start.'}</div>}
+
+      <h3 className="form-section-title">Grammar</h3>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={settings.grammarStyle} onChange={(e) => update({ grammarStyle: e.target.checked })} />
+        <span>
+          Include style suggestions
+          <span className="field-hint">Long sentences, wordiness, redundancy and readability, as well as grammar.</span>
+        </span>
+      </label>
+      <div className="field">
+        <label id="settings-oxfordComma">Serial (Oxford) comma</label>
+        <Select
+          labelId="settings-oxfordComma"
+          value={settings.oxfordComma}
+          options={[
+            ['avoid', 'Flag it (Australian Government style)'],
+            ['require', 'Require it'],
+            ['off', 'Don’t check']
+          ]}
+          onChange={(value) => update({ oxfordComma: value as AppSettings['oxfordComma'] })}
+        />
+        <div className="field-hint">Check grammar from the button beside the assistant, or with {formatShortcut(shortcutKey(settings.shortcuts, 'grammar')) || 'its shortcut'}.</div>
+      </div>
+
+      <h3 className="form-section-title">Your dictionary</h3>
+      <div className="field-hint section-hint">Words added here are accepted in every project. Words added to a project’s dictionary from the right-click menu stay with that project.</div>
+      <form
+        className="path-row"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (draft.trim()) change(draft.trim());
+        }}
+      >
+        <input className="input grow" aria-label="Word to add" placeholder="Add a word" value={draft} spellCheck={false} onChange={(e) => setDraft(e.target.value)} />
+        <button className="btn small" type="submit" disabled={!draft.trim()}>
+          Add
+        </button>
+      </form>
+      {error && <div className="field-hint error">{error}</div>}
+      {words && (
+        <div className="kv-list">
+          {words.length ? (
+            words.map((word) => (
+              <div key={word} className="kv-row">
+                <span>{word}</span>
+                <button className="icon-btn small" title={`Remove “${word}”`} aria-label={`Remove ${word}`} onClick={() => change(word, true)}>
+                  <Icon name="xmark" />
+                </button>
+              </div>
+            ))
+          ) : (
+            <div className="kv-row">
+              <span>No words yet.</span>
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }

@@ -4,6 +4,7 @@ arrow.clockwise
 arrow.counterclockwise
 arrow.down.circle
 arrow.down.doc
+arrow.down.right.and.arrow.up.left
 arrow.down.to.line
 arrow.left.and.right
 arrow.right
@@ -12,7 +13,6 @@ arrow.triangle.branch
 arrow.up
 arrow.up.circle.fill
 arrow.up.left.and.arrow.down.right
-arrow.down.right.and.arrow.up.left
 arrow.uturn.backward
 arrow.uturn.forward
 book
@@ -122,6 +122,7 @@ tablecells
 tag
 tag.fill
 terminal
+text.badge.checkmark
 text.badge.plus
 text.book.closed
 text.bubble
@@ -129,11 +130,12 @@ text.cursor
 text.insert
 text.viewfinder
 textformat
+textformat.abc.dottedunderline
 textformat.size.larger
 textformat.size.smaller
+trash
 tray.and.arrow.down
 tray.full
-trash
 wand.and.stars
 wrench.and.screwdriver
 xmark

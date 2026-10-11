@@ -2,6 +2,24 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.1.0 (11 October 2026)
+
+### Added
+
+- Spell checking as you type in Australian English, using nodehun (Hunspell) with SCOWL en_AU-large and the Australian words from AussieDic. American spellings are still flagged, and offensive words are never suggested. Right-clicking a misspelt word offers suggestions, Add to dictionary, Add to project dictionary and Ignore
+- A grammar check in Australian English, using Harper. The button beside the assistant button, or `⇧⌘;`, shows its results in place of the PDF, where each issue can be fixed with one click, ignored or turned off for the project
+- A Spelling & grammar section in Settings, with switches for spell checking and style suggestions, the serial comma setting (flagged by default, following the Australian Government Style Manual) and the personal dictionary
+- One LaTeX reader for both checkers, so commands, maths, comments, keys and code are skipped while the prose in headings, captions and footnotes is checked
+- THIRD_PARTY_NOTICES.md, listing the licences of everything Spectrum includes
+
+### Changed
+
+- A full stop or comma at the end of a wrapped line now hangs past the edge instead of moving to a line of its own
+
+### Security
+
+- The application is allowed to load libraries that are not signed by Apple or a developer team, which the spell checker's add-on needs
+
 ## 1.0.1 (11 October 2026)
 
 ### Added

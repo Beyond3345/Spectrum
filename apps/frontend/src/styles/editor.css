@@ -519,6 +519,12 @@
   height: 100%;
 }
 
+/* A full stop or comma that doesn't fit hangs past the edge rather than wrapping onto a line of its
+   own, as in typeset text (WebKit, so the macOS app; Chromium wraps as before) */
+.editor-host .cm-lineWrapping {
+  hanging-punctuation: allow-end;
+}
+
 .editor-empty {
   position: absolute;
   inset: 0;
@@ -1090,4 +1096,27 @@ button.compile-status:hover {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------------------
+   Spelling (red) and grammar (accent) underlines
+   -------------------------------------------------------------------------- */
+
+.cm-misspelt {
+  text-decoration: underline wavy var(--red);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-skip-ink: none;
+}
+
+.cm-grammar {
+  text-decoration: underline wavy var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-skip-ink: none;
+}
+
+.cm-grammar.active {
+  background: var(--accent-soft);
+  border-radius: 2px;
 }

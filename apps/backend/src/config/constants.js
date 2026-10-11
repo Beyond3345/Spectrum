@@ -18,6 +18,9 @@ export const TEMPLATE_DIR = process.env.SPECTRUM_TEMPLATE_DIR || path.join(REPO_
 // Read-only template set shipped with the desktop app; copied into TEMPLATE_DIR on startup.
 export const TEMPLATE_SEED_DIR = process.env.SPECTRUM_TEMPLATE_SEED_DIR || '';
 export const TEMPLATE_MANIFEST = path.join(TEMPLATE_DIR, 'manifest.json');
+// nodehun and Harper's engine (built by scripts/native.mjs), and the spell-check dictionaries
+export const NATIVE_DIR = process.env.SPECTRUM_NATIVE_DIR || path.join(REPO_ROOT, 'native');
+export const DICT_DIR = process.env.SPECTRUM_DICT_DIR || path.join(REPO_ROOT, 'dictionaries');
 export const FRONTEND_DIST = process.env.SPECTRUM_FRONTEND_DIST || path.join(REPO_ROOT, 'apps', 'frontend', 'dist');
 export const PORT = Number(process.env.PORT || 8787);
 export const HOST = process.env.SPECTRUM_HOST || '127.0.0.1';

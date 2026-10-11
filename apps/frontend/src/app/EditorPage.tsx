@@ -20,6 +20,8 @@ import {
   runAgent,
   saveThumbnail,
   setProjectMainFile,
+  changeSpellWord,
+  spellSuggest,
   writeFile
 } from '../api/client';
 import type { CompileEngine, FileItem, FileOrderMap, ProjectMeta, VersionReason } from '../api/client';
@@ -28,7 +30,7 @@ import Icon from './Icon';
 import Tabs from './Tabs';
 import Sheet from './Sheet';
 import SettingsSheet from './SettingsSheet';
-import { MenuButton } from './Menu';
+import { ContextMenu, MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
 import { promptDialog } from './Dialogs';
 import { toast } from './Toast';
@@ -41,6 +43,8 @@ import type { CompileError, EditorApi, PendingChange } from '../editor/EditorCon
 import Composer from '../editor/Composer';
 import ChatsList from '../editor/ChatsList';
 import ToolsPanel from '../editor/ToolsPanel';
+import GrammarPanel, { grammarMarks } from '../editor/GrammarPanel';
+import { ignoreSpelling, misspeltAt, recheckSpelling, spellChecker } from '../editor/spellcheck';
 import type { ToolsTab } from '../editor/ToolsPanel';
 import ReviewChangesSheet from '../editor/ReviewChangesSheet';
 import FileTree from '../editor/FileTree';
@@ -170,9 +174,12 @@ function Editor({ projectId }: { projectId: string }) {
   const navigate = useNavigate();
   const [settings] = useSettings();
   const providers = useProviders();
-  // read by the key handlers, which are set up once
+  // read by the key handlers and the spell checker, which are set up once
   const shortcutsRef = useRef(settings.shortcuts);
   shortcutsRef.current = settings.shortcuts;
+  const spellOnRef = useRef(settings.spellCheck);
+  spellOnRef.current = settings.spellCheck;
+  const spellFailedRef = useRef(false);
   const llm = useMemo(
     () => ({
       main: llmConfigFor(settings, 'main'),
@@ -242,6 +249,9 @@ function Editor({ projectId }: { projectId: string }) {
   const zoom = layout.pdfZoom;
   const setZoom = (pdfZoom: PdfZoom) => setLayout({ pdfZoom });
   const [toolsOpen, setToolsOpen] = useState(false);
+  // the grammar check takes the PDF's place while it's open, as Tools does
+  const [grammarOpen, setGrammarOpen] = useState(false);
+  const [spellMenu, setSpellMenu] = useState<{ x: number; y: number; from: number; to: number; word: string; suggestions: string[] | null } | null>(null);
   const [toolsMounted, setToolsMounted] = useState(false);
   const [toolsTab, setToolsTab] = useState<ToolsTab>('info');
   const [sidebarTab, setSidebarTab] = useState<'files' | 'chats'>('files');
@@ -812,6 +822,16 @@ function Editor({ projectId }: { projectId: string }) {
     if (tab) setToolsTab(tab);
     setToolsMounted(true);
     setToolsOpen(true);
+    setGrammarOpen(false);
+  };
+
+  const toggleGrammar = () => {
+    if (grammarOpen) {
+      setGrammarOpen(false);
+      return;
+    }
+    setToolsOpen(false);
+    setGrammarOpen(true);
   };
 
   const toggleComposer = () => {
@@ -871,6 +891,7 @@ function Editor({ projectId }: { projectId: string }) {
     save: () => {},
     compile: () => {},
     toggleComposer: () => {},
+    toggleGrammar: () => {},
     toggleSidebar: () => {},
     openSettings: () => {},
     zoomBy: (_steps: number) => {},
@@ -884,6 +905,7 @@ function Editor({ projectId }: { projectId: string }) {
     save: () => saveNow(true),
     compile: () => runCompile(),
     toggleComposer,
+    toggleGrammar,
     toggleSidebar: () => setLayout({ sidebarCollapsed: !layout.sidebarCollapsed }),
     openSettings: () => setSettingsOpen(true),
     zoomBy: (steps: number) => pdf && zoomBy(steps),
@@ -974,6 +996,7 @@ function Editor({ projectId }: { projectId: string }) {
       save: () => a().save(),
       compile: () => a().compile(),
       assistant: () => a().toggleComposer(),
+      grammar: () => a().toggleGrammar(),
       suggest: () => a().suggest(),
       sidebar: () => a().toggleSidebar(),
       zoomIn: () => a().zoomBy(1),
@@ -1017,14 +1040,39 @@ function Editor({ projectId }: { projectId: string }) {
       ghostField,
       search({ top: true }),
       autocompletion({ override: [latexCompletionSource] }),
+      spellChecker({
+        enabled: () => spellOnRef.current,
+        path: () => activeRef.current,
+        projectId: () => projectId,
+        onError: (message) => {
+          // once a session is enough; the editor works on without it
+          if (spellFailedRef.current) return;
+          spellFailedRef.current = true;
+          notify(message, 'error');
+        }
+      }),
+      grammarMarks,
       listener
     ];
     const view = new EditorView({ state: EditorState.create({ doc: '', extensions: extensionsRef.current }), parent: hostRef.current! });
     viewRef.current = view;
     const onScroll = () => a().placeGhost();
+    // right-click on a misspelt word: suggestions and the word lists instead of the browser menu
+    const onContextMenu = (e: MouseEvent) => {
+      const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+      const hit = pos == null ? null : misspeltAt(view.state, pos);
+      if (!hit) return;
+      e.preventDefault();
+      setSpellMenu({ x: e.clientX, y: e.clientY, ...hit, suggestions: null });
+      spellSuggest(hit.word)
+        .then((res) => setSpellMenu((m) => (m && m.from === hit.from ? { ...m, suggestions: res.suggestions } : m)))
+        .catch(() => setSpellMenu((m) => (m && m.from === hit.from ? { ...m, suggestions: [] } : m)));
+    };
     view.scrollDOM.addEventListener('scroll', onScroll, { passive: true });
+    view.contentDOM.addEventListener('contextmenu', onContextMenu);
     return () => {
       view.scrollDOM.removeEventListener('scroll', onScroll);
+      view.contentDOM.removeEventListener('contextmenu', onContextMenu);
       view.destroy();
       viewRef.current = null;
     };
@@ -1086,6 +1134,7 @@ function Editor({ projectId }: { projectId: string }) {
       if (is('save')) a.save();
       else if (is('compile')) a.compile();
       else if (is('assistant')) a.toggleComposer();
+      else if (is('grammar')) a.toggleGrammar();
       else if (is('sidebar')) a.toggleSidebar();
       else if (matchesZoomIn(shortcutsRef.current, e)) a.zoomBy(1);
       else if (is('zoomOut')) a.zoomBy(-1);
@@ -1097,6 +1146,11 @@ function Editor({ projectId }: { projectId: string }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // turning spell checking on or off in Settings applies straight away
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: recheckSpelling.of(null) });
+  }, [settings.spellCheck]);
 
   // autosave 1.5 s after the last keystroke
   useEffect(() => {
@@ -1392,6 +1446,15 @@ function Editor({ projectId }: { projectId: string }) {
               <button className={`icon-btn ${composerOpen ? 'active' : ''}`} title={withShortcut(settings.shortcuts, 'Assistant', 'assistant')} aria-label="Assistant" aria-pressed={composerOpen} onClick={toggleComposer}>
                 <Icon name="sparkles" />
               </button>
+              <button
+                className={`icon-btn ${grammarOpen ? 'active' : ''}`}
+                title={withShortcut(settings.shortcuts, 'Check grammar', 'grammar')}
+                aria-label="Check grammar"
+                aria-pressed={grammarOpen}
+                onClick={toggleGrammar}
+              >
+                <Icon name="text.badge.checkmark" />
+              </button>
               <button className={`tools-toggle ${toolsOpen ? 'open' : ''}`} aria-pressed={toolsOpen} onClick={() => (toolsOpen ? setToolsOpen(false) : openTools())}>
                 <span>{toolsOpen ? 'Close' : 'Tools'}</span>
                 <Icon name={toolsOpen ? 'xmark' : 'square.grid.2x2'} />
@@ -1460,7 +1523,7 @@ function Editor({ projectId }: { projectId: string }) {
           <div className="column-divider" role="separator" aria-orientation="vertical" aria-label="Resize" onMouseDown={startResize} />
 
           <section className="right-column" style={{ width: `${layout.split * 100}%` }}>
-            <div className="pdf-column" hidden={toolsOpen}>
+            <div className="pdf-column" hidden={toolsOpen || grammarOpen}>
               <div className="pdf-header" data-tauri-drag-region>
                 <div className="compile-split">
                   <button className="compile-main" onClick={runCompile} disabled={running} title={withShortcut(settings.shortcuts, 'Compile', 'compile')}>
@@ -1643,9 +1706,60 @@ function Editor({ projectId }: { projectId: string }) {
                 <ToolsPanel tab={toolsTab} onTabChange={setToolsTab} />
               </div>
             )}
+
+            {grammarOpen && (
+              <div className="tools-column">
+                <GrammarPanel
+                  view={() => viewRef.current}
+                  projectId={projectId}
+                  path={activePath}
+                  revision={editorValue}
+                  settings={settings}
+                  onClose={() => {
+                    setGrammarOpen(false);
+                    viewRef.current?.focus();
+                  }}
+                />
+              </div>
+            )}
           </section>
         </main>
       </div>
+
+      {spellMenu && (
+        <ContextMenu
+          x={spellMenu.x}
+          y={spellMenu.y}
+          onClose={() => setSpellMenu(null)}
+          items={[
+            ...(spellMenu.suggestions === null
+              ? [{ label: 'Looking for suggestions…', disabled: true }]
+              : spellMenu.suggestions.length
+                ? spellMenu.suggestions.map((suggestion) => ({
+                    label: suggestion,
+                    onSelect: () => {
+                      const view = viewRef.current;
+                      // only if the word is still there as it was
+                      if (view && view.state.sliceDoc(spellMenu.from, spellMenu.to) === spellMenu.word) {
+                        view.dispatch({ changes: { from: spellMenu.from, to: spellMenu.to, insert: suggestion }, userEvent: 'input.spell' });
+                      }
+                    }
+                  }))
+                : [{ label: 'No suggestions', disabled: true }]),
+            { separator: true },
+            ...(['global', 'project'] as const).map((scope) => ({
+              label: scope === 'global' ? 'Add to dictionary' : 'Add to project dictionary',
+              onSelect: () => {
+                const word = spellMenu.word;
+                changeSpellWord({ word, scope, projectId })
+                  .then(() => viewRef.current?.dispatch({ effects: recheckSpelling.of([word]) }))
+                  .catch((err) => notify(`Couldn’t add “${word}”: ${errorText(err)}`, 'error'));
+              }
+            })),
+            { label: 'Ignore', onSelect: () => viewRef.current?.dispatch({ effects: ignoreSpelling.of(spellMenu.word) }) }
+          ]}
+        />
+      )}
 
       {reviewOpen && (
         <ReviewChangesSheet

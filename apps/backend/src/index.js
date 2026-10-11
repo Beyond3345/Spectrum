@@ -18,6 +18,7 @@ import { registerTransferRoutes } from './routes/transfer.js';
 import { registerSearchRoutes } from './routes/search.js';
 import { registerSystemRoutes } from './routes/system.js';
 import { registerReferenceRoutes } from './routes/references.js';
+import { registerLanguageRoutes } from './routes/language.js';
 import { seedTemplates } from './services/templateService.js';
 import { migrateLegacyProjects } from './services/projectService.js';
 import { killAllChildren } from './services/compileService.js';
@@ -67,6 +68,7 @@ registerTransferRoutes(fastify);
 registerSearchRoutes(fastify);
 registerSystemRoutes(fastify);
 registerReferenceRoutes(fastify);
+registerLanguageRoutes(fastify);
 
 // Serve the built frontend (production and desktop modes)
 if (existsSync(FRONTEND_DIST)) {
