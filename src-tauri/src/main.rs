@@ -272,9 +272,20 @@ fn build_window(
     let _ = window.set_background_color(Some(background(window.theme().unwrap_or(Theme::Light))));
     let themed = window.clone();
     let closing = app.clone();
+    let full = AtomicBool::new(false);
     window.on_window_event(move |event| match event {
         WindowEvent::ThemeChanged(theme) => {
             let _ = themed.set_background_color(Some(background(*theme)));
+        }
+        // tao sends one more resize once a full screen change has finished, by which
+        // time is_fullscreen is final (mid-way through leaving it still says true)
+        WindowEvent::Resized(_) => {
+            let now = themed.is_fullscreen().unwrap_or(false);
+            if full.swap(now, Ordering::Relaxed) != now {
+                let _ = themed.eval(format!(
+                    "document.documentElement.classList.toggle('fullscreen', {now})"
+                ));
+            }
         }
         // closing the only window quits, so save first
         WindowEvent::CloseRequested { api, .. } => {

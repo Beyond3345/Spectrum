@@ -2,7 +2,7 @@ import { Annotation, EditorSelection, RangeSetBuilder, StateEffect, StateField, 
 import type { EditorState } from '@codemirror/state';
 import { Decoration, EditorView, GutterMarker, ViewPlugin, WidgetType, gutter } from '@codemirror/view';
 import type { Command, DecorationSet, ViewUpdate } from '@codemirror/view';
-import { completionStatus } from '@codemirror/autocomplete';
+import { acceptCompletion, completionStatus, currentCompletions } from '@codemirror/autocomplete';
 import type { Completion, CompletionContext } from '@codemirror/autocomplete';
 import { HighlightStyle, getIndentUnit, indentUnit } from '@codemirror/language';
 import { indentMore } from '@codemirror/commands';
@@ -326,6 +326,8 @@ const env = (name: string, body: string[], cursorLine = 1): Completion => ({
   label: `\\begin{${name}}`,
   type: 'keyword',
   apply: (view, _completion, from, to) => {
+    // typing { adds a } after the cursor, which the \end{…} line replaces
+    if (view.state.sliceDoc(from, to).includes('{') && view.state.sliceDoc(to, to + 1) === '}') to += 1;
     const base = /^[ \t]*/.exec(view.state.doc.lineAt(from).text)![0];
     let depth = 1;
     const inner = body.map((line) => {
@@ -350,15 +352,44 @@ const COMPLETIONS: Completion[] = [
   env('table', ['\\centering', '\\begin{tabular}{lcc}', '\\toprule', '\\midrule', '\\bottomrule', '\\end{tabular}', '\\caption{}', '\\label{tab:}'], 7)
 ];
 
+/** What the list completes: a command after \ (or /), or an environment name after \begin{. */
+const TYPED = /(?:[\\/][A-Za-z]*|\\begin\{[A-Za-z*]*)$/;
+
 export function latexCompletionSource(context: CompletionContext) {
-  const before = context.matchBefore(/[\\/][A-Za-z]*$/);
+  const before = context.matchBefore(TYPED);
   if (!before) return null;
   const prev = before.from > 0 ? context.state.doc.sliceString(before.from - 1, before.from) : ' ';
   // "/" only triggers at the start of a word, and never in URLs
   if (before.text.startsWith('/') && (!/[\s({]/.test(prev) || prev === ':')) return null;
   if (before.text.startsWith('\\') && prev === '\\') return null;
-  return { from: before.from, options: COMPLETIONS, validFor: /^[\\/][A-Za-z]*$/ };
+  return { from: before.from, options: COMPLETIONS, validFor: /^(?:[\\/][A-Za-z]*|\\begin\{[A-Za-z*]*)$/ };
 }
+
+/**
+ * What every entry starting with the typed text has in common, when that goes further than the
+ * typed text without being a whole entry ("\beg" gives "\begin{"), else null. "/" stands for "\".
+ */
+export function sharedStart(typed: string, labels: string[]) {
+  const matching = labels.filter((label) => label.slice(1).startsWith(typed.slice(1)));
+  if (!matching.length) return null;
+  let shared = matching[0];
+  for (const label of matching) while (!label.startsWith(shared)) shared = shared.slice(0, -1);
+  return shared.length > typed.length && !matching.includes(shared) ? shared : null;
+}
+
+/** Tab with the list open: fills in the shared start and keeps the list, or takes the highlighted entry. */
+export const completeOrAccept: Command = (view) => {
+  const { state } = view;
+  if (completionStatus(state) !== 'active') return false;
+  const head = state.selection.main.head;
+  const typed = TYPED.exec(state.sliceDoc(state.doc.lineAt(head).from, head))?.[0];
+  const shared = typed && sharedStart(typed, currentCompletions(state).map((c) => c.label));
+  if (!typed || !shared) return acceptCompletion(view);
+  const from = head - typed.length;
+  // as if typed, so the list stays open and narrows
+  view.dispatch({ changes: { from, to: head, insert: shared }, selection: { anchor: from + shared.length }, userEvent: 'input.type' });
+  return true;
+};
 
 // ─── AI ghost text after the cursor ───
 

@@ -54,21 +54,14 @@ export function setNativeTheme(theme: 'system' | 'light' | 'dark') {
 }
 
 /**
- * Marks <html> with .fullscreen while the window is in macOS full screen. There are no traffic
- * lights there, so the stylesheets drop the room kept for them. Entering and leaving full screen
- * both resize the window, so it's checked once the resizing settles.
+ * Marks <html> with .fullscreen if the page loads in macOS full screen. There are no traffic
+ * lights there, so the stylesheets drop the room kept for them. Later changes are set by the
+ * shell (main.rs), which hears when a change has finished.
  */
 export function followFullscreen() {
   if (!IS_DESKTOP) return;
-  let timer = 0;
-  const check = () =>
-    tauri()
-      .invoke('plugin:window|is_fullscreen', { label: 'main' })
-      .then((full) => document.documentElement.classList.toggle('fullscreen', full === true))
-      .catch(() => undefined);
-  window.addEventListener('resize', () => {
-    window.clearTimeout(timer);
-    timer = window.setTimeout(check, 150);
-  });
-  void check();
+  tauri()
+    .invoke('plugin:window|is_fullscreen', { label: 'main' })
+    .then((full) => document.documentElement.classList.toggle('fullscreen', full === true))
+    .catch(() => undefined);
 }

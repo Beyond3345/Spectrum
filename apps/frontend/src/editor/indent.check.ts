@@ -3,7 +3,7 @@
 import { EditorSelection, EditorState } from '@codemirror/state';
 import type { TransactionSpec } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
-import { closeEnvironment, indentation, insertIndent } from './latexEditor';
+import { closeEnvironment, indentation, insertIndent, sharedStart } from './latexEditor';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -28,4 +28,12 @@ eq(run(closeEnvironment, '\\begin{enumerate}[label=\\roman*.]|'), { handled: tru
 eq(run(closeEnvironment, '\\begin{itemize}|\n\\end{itemize}').handled, false, 'already closed');
 eq(run(closeEnvironment, '\\begin{itemize} text|').handled, false, 'only straight after \\begin{…}');
 eq(run(closeEnvironment, '\\begin{it|emize}').handled, false, 'only at the end of the line');
+const labels = ['\\section{}', '\\cite{}', '\\citep{}', '\\citet{}', '\\textbf{}', '\\textit{}', '\\begin{itemize}', '\\begin{equation}', '\\begin{enumerate}'];
+eq(sharedStart('\\beg', labels), '\\begin{', 'Tab fills \\beg up to \\begin{');
+eq(sharedStart('/beg', labels), '\\begin{', '/ stands for \\');
+eq(sharedStart('\\cit', labels), '\\cite', 'stops where the entries differ');
+eq(sharedStart('\\begin{e', labels), null, 'nothing shared past the typed text');
+eq(sharedStart('\\sec', labels), null, 'a single entry is picked, not typed out');
+eq(sharedStart('\\begin{eq', labels), null, 'one environment left');
+eq(sharedStart('\\xyz', labels), null, 'no entry');
 console.log('indent.check: ok');

@@ -60,6 +60,7 @@ import {
   latexCompletionSource,
   latexFoldService,
   closeEnvironment,
+  completeOrAccept,
   indentation,
   insertIndent,
   latexHighlight,
@@ -1029,6 +1030,8 @@ function Editor({ projectId }: { projectId: string }) {
       shortcuts,
       keymap.of([
         { key: 'Tab', run: () => (ghostRef.current.text ? (a().acceptGhost(false), true) : false) },
+        // with the completion list open, fill in or pick an entry
+        { key: 'Tab', run: completeOrAccept },
         // otherwise indent: spaces at the cursor, or the selected lines (⇧Tab takes them back)
         { key: 'Tab', run: insertIndent, shift: indentLess },
         { key: 'Enter', run: closeEnvironment },

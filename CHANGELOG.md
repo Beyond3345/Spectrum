@@ -2,6 +2,17 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.1.3 (12 October 2026)
+
+### Changed
+
+- With the completion list open, `Tab` fills in as much as the listed entries share, so `\beg` becomes `\begin{` and the environments stay listed. When there is nothing more to fill in, `Tab` picks the highlighted entry, as Return does. Before, `Tab` added spaces and closed the list
+- The environment list stays open after `\begin{`, so the name can be typed or picked from it, and picking one replaces a `}` already after the cursor instead of leaving it behind
+
+### Fixed
+
+- After leaving full screen, the app icon stayed in the top left corner, on top of the window buttons, until the app was restarted. The window now waits until macOS has finished leaving full screen before moving it back
+
 ## 1.1.2 (12 October 2026)
 
 ### Changed
