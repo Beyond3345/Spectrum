@@ -1,0 +1,103 @@
+{
+  "templates": [
+    {
+      "id": "acl",
+      "label": "ACL",
+      "mainFile": "main.tex",
+      "category": "academic",
+      "description": "ACL conference paper template for NLP research",
+      "tags": [
+        "ACL",
+        "NLP"
+      ],
+      "author": "OpenPrism",
+      "featured": true
+    },
+    {
+      "id": "cvpr",
+      "label": "CVPR (skeleton)",
+      "mainFile": "main.tex",
+      "category": "academic",
+      "description": "CVPR conference paper skeleton template for computer vision",
+      "tags": [
+        "CVPR",
+        "Computer Vision"
+      ],
+      "author": "OpenPrism",
+      "featured": true
+    },
+    {
+      "id": "neurips",
+      "label": "NeurIPS (skeleton)",
+      "mainFile": "main.tex",
+      "category": "academic",
+      "description": "NeurIPS conference paper skeleton template for machine learning",
+      "tags": [
+        "NeurIPS",
+        "Machine Learning"
+      ],
+      "author": "OpenPrism",
+      "featured": true
+    },
+    {
+      "id": "icml",
+      "label": "ICML (skeleton)",
+      "mainFile": "main.tex",
+      "category": "academic",
+      "description": "ICML conference paper skeleton template for machine learning",
+      "tags": [
+        "ICML",
+        "Machine Learning"
+      ],
+      "author": "OpenPrism",
+      "featured": true
+    },
+    {
+      "id": "arxiv",
+      "label": "arXiv preprint",
+      "mainFile": "main.tex",
+      "category": "academic",
+      "description": "Clean arXiv preprint style (arxiv.sty), handy for posting before submission",
+      "tags": [
+        "arXiv",
+        "Preprint"
+      ],
+      "author": "kourgeorge/arxiv-style",
+      "featured": false
+    }
+  ],
+  "categories": [
+    {
+      "id": "all",
+      "label": "All"
+    },
+    {
+      "id": "academic",
+      "label": "Academic"
+    },
+    {
+      "id": "thesis",
+      "label": "Thesis"
+    },
+    {
+      "id": "resume",
+      "label": "Resume"
+    },
+    {
+      "id": "presentation",
+      "label": "Presentation"
+    },
+    {
+      "id": "book",
+      "label": "Book"
+    },
+    {
+      "id": "letter",
+      "label": "Letter"
+    },
+    {
+      "id": "report",
+      "label": "Report"
+    }
+  ]
+}

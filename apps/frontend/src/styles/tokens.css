@@ -1,0 +1,175 @@
+/* ==========================================================================
+   Design tokens. Every colour in the app comes from here.
+   Theme: <html data-theme="light|dark"> forces a theme; without the attribute
+   the system appearance decides (Settings → Appearance → System).
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", system-ui, "Helvetica Neue", sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+  --font-serif: ui-serif, "New York", Georgia, serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+
+  /* the user's macOS accent colour where the engine exposes it */
+  --accent: #0a84ff;
+  --accent-text: #ffffff;
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --accent-strong: color-mix(in srgb, var(--accent) 85%, #000);
+
+  --red: #e5484d;
+  --green: #2f9e44;
+  --orange: #e8590c;
+  --yellow: #f2b100;
+  /* the colours above as small text on light surfaces and their 15% tints (WCAG AA) */
+  --red-text: #b8292f;
+  --green-text: #1c7232;
+  --orange-text: #a84106;
+  --accent-on-soft: color-mix(in srgb, var(--accent) 75%, #000);
+
+  /* surfaces, back to front */
+  --bg-app: #f7f7f8;         /* window + sidebar */
+  --bg-panel: #ffffff;       /* rounded main panel */
+  --bg-editor: #ffffff;      /* code editor */
+  --bg-pdf: #ececee;         /* behind PDF pages */
+  --bg-elevated: #ffffff;    /* menus, sheets, composer, cards */
+  --bg-subtle: #f3f3f4;      /* inputs, chips, stat cards */
+  --bg-hover: rgba(0, 0, 0, 0.045);
+  --bg-selected: rgba(0, 0, 0, 0.075);
+  --bg-inverse: #0d0d0d;     /* the "New" button */
+  --text-inverse: #ffffff;
+
+  --text: #0d0d0d;
+  --text-secondary: #5d5d63;
+  --text-tertiary: #67676c;
+  --border: rgba(0, 0, 0, 0.09);
+  --border-strong: rgba(0, 0, 0, 0.16);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.16), 0 3px 10px rgba(0, 0, 0, 0.08);
+
+  --diff-added: color-mix(in srgb, var(--green) 14%, transparent);
+  --diff-removed: color-mix(in srgb, var(--red) 13%, transparent);
+
+  /* LaTeX syntax */
+  --syntax-command: #116329;
+  --syntax-bracket: #9a6700;
+  --syntax-comment: #8c959f;
+  --syntax-math: #bf3989;
+  --editor-gutter: #a1a1a6;
+  --editor-active-line: rgba(0, 0, 0, 0.035);
+  --editor-selection: color-mix(in srgb, var(--accent) 22%, transparent);
+
+  --radius-panel: 16px;
+  --radius-card: 12px;
+  --radius-control: 10px;
+  --radius-pill: 999px;
+  --sidebar-width: 268px;
+}
+
+@supports (color: AccentColor) {
+  :root {
+    --accent: AccentColor;
+    --accent-text: AccentColorText;
+  }
+}
+
+/* dark: forced, or following the system when no theme is forced */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --red: #ff6369;
+  --green: #3dd68c;
+  --orange: #ff8b3e;
+  --yellow: #ffd60a;
+  --red-text: var(--red);
+  --green-text: var(--green);
+  --orange-text: var(--orange);
+  /* lighter than the accent so text on its own tint stays readable (AA) */
+  --accent-on-soft: color-mix(in srgb, var(--accent) 70%, #fff);
+
+  --bg-app: #181818;
+  --bg-panel: #212121;
+  --bg-editor: #0f0f0f;
+  --bg-pdf: #2a2a2a;
+  --bg-elevated: #2a2a2a;
+  --bg-subtle: #2a2a2a;
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-selected: rgba(255, 255, 255, 0.1);
+  --bg-inverse: #ffffff;
+  --text-inverse: #0d0d0d;
+
+  --text: #ececec;
+  --text-secondary: #a1a1a6;
+  --text-tertiary: #98989d;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
+
+  --syntax-command: #7ee787;
+  --syntax-bracket: #f2cc60;
+  --syntax-comment: #8b949e;
+  --syntax-math: #ff9bce;
+  --editor-gutter: #6e6e73;
+  --editor-active-line: rgba(255, 255, 255, 0.04);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --red: #ff6369;
+    --green: #3dd68c;
+    --orange: #ff8b3e;
+    --yellow: #ffd60a;
+    --red-text: var(--red);
+    --green-text: var(--green);
+    --orange-text: var(--orange);
+    --accent-on-soft: color-mix(in srgb, var(--accent) 70%, #fff);
+
+    --bg-app: #181818;
+    --bg-panel: #212121;
+    --bg-editor: #0f0f0f;
+    --bg-pdf: #2a2a2a;
+    --bg-elevated: #2a2a2a;
+    --bg-subtle: #2a2a2a;
+    --bg-hover: rgba(255, 255, 255, 0.06);
+    --bg-selected: rgba(255, 255, 255, 0.1);
+    --bg-inverse: #ffffff;
+    --text-inverse: #0d0d0d;
+
+    --text: #ececec;
+    --text-secondary: #a1a1a6;
+    --text-tertiary: #98989d;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.16);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
+
+    --syntax-command: #7ee787;
+    --syntax-bracket: #f2cc60;
+    --syntax-comment: #8b949e;
+    --syntax-math: #ff9bce;
+    --editor-gutter: #6e6e73;
+    --editor-active-line: rgba(255, 255, 255, 0.04);
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --border: var(--border-strong);
+    --text-secondary: var(--text);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

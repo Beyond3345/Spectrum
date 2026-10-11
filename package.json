@@ -1,0 +1,28 @@
+{
+  "name": "spectrum",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.12"
+  },
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm --workspace apps/backend run dev\" \"npm --workspace apps/frontend run dev\"",
+    "dev:backend": "npm --workspace apps/backend run dev",
+    "dev:frontend": "npm --workspace apps/frontend run dev",
+    "build": "npm --workspace apps/frontend run build",
+    "start": "node apps/backend/src/index.js",
+    "preview": "npm --workspace apps/frontend run preview",
+    "test": "npm --workspace apps/backend run test",
+    "typecheck": "npm --workspace apps/frontend run typecheck",
+    "desktop:dev": "node scripts/desktop.mjs dev",
+    "desktop:build": "node scripts/desktop.mjs build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.2",
+    "concurrently": "^10.0.6",
+    "esbuild": "^0.28.2"
+  }
+}

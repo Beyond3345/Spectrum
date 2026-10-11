@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- six lines of "text", one per colour of the spectrum -->
+  <rect x="322" y="396" width="380" height="44" rx="22" fill="#ff453a"/>
+  <rect x="322" y="468" width="380" height="44" rx="22" fill="#ff9f0a"/>
+  <rect x="322" y="540" width="312" height="44" rx="22" fill="#ffd60a"/>
+  <rect x="322" y="612" width="380" height="44" rx="22" fill="#30d158"/>
+  <rect x="322" y="684" width="344" height="44" rx="22" fill="#0a84ff"/>
+  <rect x="322" y="756" width="220" height="44" rx="22" fill="#bf5af2"/>
+</svg>

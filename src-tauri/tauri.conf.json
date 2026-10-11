@@ -1,0 +1,64 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Spectrum",
+  "version": "1.0.0",
+  "identifier": "com.beyond3345.spectrum",
+  "build": {
+    "frontendDist": "splash"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "category": "Productivity",
+    "shortDescription": "LaTeX writing workspace with an AI assistant",
+    "longDescription": "A local LaTeX editor with AI assistance, compile and PDF preview, citations from a DOI or link, and version history.",
+    "copyright": "© 2025 OpenDCAI (OpenPrism) · © 2026 Beyond3345. MIT Licence.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.png"
+    ],
+    "externalBin": [
+      "binaries/node"
+    ],
+    "resources": {
+      "resources/backend/": "backend/",
+      "resources/frontend/": "frontend/",
+      "resources/templates/": "templates/"
+    },
+    "macOS": {
+      "minimumSystemVersion": "13.5",
+      "signingIdentity": "-",
+      "hardenedRuntime": true,
+      "entitlements": "Entitlements.plist",
+      "files": {
+        "Resources/Assets.car": "icons/Assets.car"
+      },
+      "dmg": {
+        "windowSize": {
+          "width": 640,
+          "height": 400
+        },
+        "appPosition": {
+          "x": 180,
+          "y": 190
+        },
+        "applicationFolderPosition": {
+          "x": 460,
+          "y": 190
+        }
+      }
+    }
+  }
+}

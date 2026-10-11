@@ -1,0 +1,20 @@
+import { Navigate, Route, Routes } from 'react-router-dom';
+import EditorPage from './EditorPage';
+import ProjectPage from './ProjectPage';
+import { DialogHost } from './Dialogs';
+import { ToastHost } from './Toast';
+
+export default function App() {
+  return (
+    <>
+      <Routes>
+        <Route path="/" element={<Navigate to="/projects" replace />} />
+        <Route path="/projects" element={<ProjectPage />} />
+        <Route path="/editor/:projectId" element={<EditorPage />} />
+        <Route path="*" element={<Navigate to="/projects" replace />} />
+      </Routes>
+      <ToastHost />
+      <DialogHost />
+    </>
+  );
+}

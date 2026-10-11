@@ -1,0 +1,26 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "extended-srgb:0.16471,0.17647,0.23922,1.00000",
+      "extended-srgb:0.05490,0.05882,0.09020,1.00000"
+    ]
+  },
+  "groups" : [
+    {
+      "layers" : [ { "image-name" : "lines.svg", "name" : "Spectrum lines", "glass" : true } ],
+      "shadow" : { "kind" : "none", "opacity" : 0.5 },
+      "specular" : true,
+      "translucency" : { "enabled" : false, "value" : 0.5 }
+    },
+    {
+      "layers" : [
+        { "image-name" : "fold.svg", "name" : "Fold", "glass" : false },
+        { "image-name" : "page.svg", "name" : "Page", "glass" : true }
+      ],
+      "shadow" : { "kind" : "neutral", "opacity" : 0.5 },
+      "specular" : true,
+      "translucency" : { "enabled" : true, "value" : 0.25 }
+    }
+  ],
+  "supported-platforms" : { "squares" : [ "macOS" ] }
+}

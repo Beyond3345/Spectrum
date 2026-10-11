@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Spectrum</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font: 13px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        color: #0d0d0d;
+        background: #f7f7f8;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root { color: #ececec; background: #181818; }
+      }
+      html, body { height: 100%; margin: 0; }
+      body {
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+        -webkit-user-select: none; user-select: none; cursor: default;
+      }
+      img { width: 112px; height: 112px; filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.25)); }
+      h1 { margin: 0; font: 600 22px -apple-system, "SF Pro Display", system-ui; letter-spacing: -0.01em; }
+      .status { display: flex; align-items: center; gap: 8px; opacity: 0.65; }
+      .spinner {
+        width: 12px; height: 12px; border-radius: 50%;
+        border: 2px solid currentColor; border-right-color: transparent;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .error { display: none; max-width: 460px; text-align: center; line-height: 1.5; }
+      .error code { font: 11px ui-monospace, "SF Mono", monospace; opacity: 0.75; word-break: break-all; }
+      body.failed .status { display: none; }
+      body.failed .error { display: block; }
+    </style>
+  </head>
+  <body data-tauri-drag-region>
+    <img src="icon.png" alt="" data-tauri-drag-region />
+    <h1 data-tauri-drag-region>Spectrum</h1>
+    <div class="status"><span class="spinner"></span><span>Starting…</span></div>
+    <div class="error">
+      <p id="message"></p>
+      <p>Details are in the log:<br /><code id="log"></code></p>
+    </div>
+    <script>
+      // called from the Rust side if the bundled backend can't start
+      window.showError = (message, log) => {
+        document.getElementById('message').textContent = message;
+        document.getElementById('log').textContent = log;
+        document.body.classList.add('failed');
+      };
+    </script>
+  </body>
+</html>
