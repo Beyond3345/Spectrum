@@ -1,5 +1,6 @@
 // \begin{…} completion: the environments LaTeX, packages and classes provide, what to insert for them,
-// and a scan of what a project loads and defines. Names checked against the TeX Live 2026 sources.
+// and a scan of what a project loads and defines (its labels, commands and bibliography too, for the other
+// completions). Names checked against the TeX Live 2026 sources.
 
 /** Always offered and ranked first: the standard classes' essentials and amsmath's displays (nearly every paper loads it). */
 export const COMMON_ENVS = [
@@ -9,6 +10,17 @@ export const COMMON_ENVS = [
   'figure', 'figure*', 'table', 'table*', 'tabular', 'tabular*', 'array', 'center', 'flushleft', 'flushright',
   'minipage', 'abstract', 'quote', 'quotation', 'verse', 'verbatim', 'verbatim*', 'thebibliography', 'displaymath', 'titlepage'
 ];
+
+/** Only valid inside maths: what \begin{ offers there (with tikzcd, which works in both), and never in text. */
+export const MATHS_ONLY_ENVS = new Set([
+  'split', 'aligned', 'alignedat', 'gathered', 'lgathered', 'rgathered', 'multlined', 'array', 'subarray', 'crampedsubarray', 'darray',
+  'cases', 'cases*', 'dcases', 'dcases*', 'rcases', 'rcases*', 'drcases', 'drcases*',
+  'matrix', 'pmatrix', 'bmatrix', 'Bmatrix', 'vmatrix', 'Vmatrix', 'smallmatrix', 'matrix*', 'pmatrix*', 'bmatrix*', 'Bmatrix*',
+  'vmatrix*', 'Vmatrix*', 'smallmatrix*', 'psmallmatrix', 'psmallmatrix*', 'bsmallmatrix', 'bsmallmatrix*', 'Bsmallmatrix',
+  'Bsmallmatrix*', 'vsmallmatrix', 'vsmallmatrix*', 'Vsmallmatrix', 'Vsmallmatrix*',
+  'NiceArray', 'NiceMatrix', 'pNiceMatrix', 'bNiceMatrix', 'BNiceMatrix', 'vNiceMatrix', 'VNiceMatrix', 'pNiceArray', 'bNiceArray',
+  'BNiceArray', 'vNiceArray', 'VNiceArray'
+]);
 
 /** Always valid but rarely typed: offered without the boost. */
 export const KERNEL_ENVS = [
@@ -109,11 +121,14 @@ export const PACKAGE_ENVS: Record<string, string[]> = {
 /** Loading the key loads these too. */
 export const PACKAGE_IMPLIES: Record<string, string[]> = {
   mathtools: ['amsmath'], empheq: ['mathtools'], breqn: ['amsmath'], algpseudocode: ['algorithmicx'],
-  'tikz-cd': ['tikz'], pgfplots: ['tikz'], circuitikz: ['tikz'], forest: ['tikz'], quantikz: ['tikz'], tikz: ['pgf'],
-  xltabular: ['tabularx', 'longtable'], ltablex: ['tabularx', 'longtable'], threeparttablex: ['threeparttable'],
-  pdflscape: ['lscape'], minted: ['fancyvrb'], pythontex: ['fancyvrb'], fvextra: ['fancyvrb'],
-  amsart: ['amsmath', 'amsthm'], amsproc: ['amsmath', 'amsthm'], amsbook: ['amsmath', 'amsthm'],
-  beamer: ['amsmath', 'amsthm', 'hyperref'], acmart: ['amsart', 'framed', 'comment', 'hyperref'],
+  'tikz-cd': ['tikz'], pgfplots: ['tikz'], circuitikz: ['tikz'], forest: ['tikz'], quantikz: ['tikz'], tikz: ['pgf'], pgf: ['graphicx', 'xcolor'],
+  xltabular: ['tabularx', 'longtable'], ltablex: ['tabularx', 'longtable'], threeparttablex: ['threeparttable'], tabularx: ['array'],
+  pdflscape: ['lscape'], minted: ['fancyvrb'], pythontex: ['fancyvrb'], fvextra: ['fancyvrb'], hyperref: ['url'], xurl: ['url'],
+  subcaption: ['caption'], 'glossaries-extra': ['glossaries'], imakeidx: ['makeidx'],
+  amsart: ['amsmath', 'amsthm'], amsproc: ['amsart'], amsbook: ['amsart'],
+  beamer: ['amsmath', 'amsthm', 'hyperref', 'pgf'], acmart: ['amsart', 'framed', 'comment', 'hyperref', 'natbib', 'graphicx', 'xcolor'],
+  elsarticle: ['natbib', 'graphicx'], aastex701: ['natbib', 'graphicx'], 'revtex4-1': ['natbib'], 'revtex4-2': ['natbib'], achemso: ['natbib'],
+  quantumarticle: ['xcolor'], scrreprt: ['scrartcl'], scrbook: ['scrartcl'],
   llncs: ['multicol'], tikzposter: ['tikz'], moderncv: ['hyperref']
 };
 
@@ -214,15 +229,50 @@ const ENV_DEFINERS = [
 ];
 const VALID = /^[A-Za-z][\w*-]*$/; // drops #1, \macro and @internal
 
-export type TexScan = { packages: string[]; classes: string[]; libraries: [pkg: string, library: string][]; defined: string[]; inputs: string[] };
+const LABEL_RE = /\\label\s*\{([^{}#\\]+)\}/g;
+const BIB_RE = /\\(?:bibliography|addbibresource)\s*(?:\[[^\]]*\]\s*)?\{([^}]+)\}/g;
+// the name in braces or not, then [n] arguments and an [optional] first one; not an internal \name@part
+const NAME = String.raw`(?:\{\s*\\([A-Za-z]+)\s*\}|\\([A-Za-z]+)(?![@A-Za-z]))`;
+const NEWCOMMAND_RE = new RegExp(String.raw`\\(?:(?:re)?newcommand|providecommand|DeclareRobustCommand)\*?\s*${NAME}\s*(?:\[(\d)\]\s*(\[)?)?`, 'g');
+// the argument spec, with one level of braces for O{default} and the like
+const DOCUMENTCOMMAND_RE = new RegExp(String.raw`\\(?:New|Renew|Provide|Declare)DocumentCommand\s*${NAME}\s*\{((?:[^{}]|\{[^{}]*\})*)\}`, 'g');
+const MATHOP_RE = new RegExp(String.raw`\\DeclareMathOperator\*?\s*${NAME}`, 'g');
+// mathtools' \abs and \norm: one argument, in maths
+const PAIRED_RE = new RegExp(String.raw`\\DeclarePairedDelimiter(?:X|XPP)?\s*${NAME}`, 'g');
+// \def\name and \let\name, taken to have no arguments (and not \def\csname…, which names something else)
+const DEF_RE = /\\(?:[egx]?def|let)\s*\\(?!csname\b)([A-Za-z]+)(?![@A-Za-z])/g;
+
+export type TexScan = {
+  packages: string[];
+  classes: string[];
+  libraries: [pkg: string, library: string][];
+  defined: string[];
+  inputs: string[];
+  labels: string[];
+  /** the file's own commands: their mandatory argument count, and whether they only work in maths */
+  commands: [name: string, args: number, math: boolean][];
+  /** the names \bibliography and \addbibresource give */
+  bibs: string[];
+  /** the project file it came from (scanProject sets it) */
+  file?: string;
+};
 
 export function scanTex(src: string): TexScan {
   src = stripComments(src);
-  const scan: TexScan = { packages: [], classes: [], libraries: [], defined: [], inputs: [] };
+  const scan: TexScan = { packages: [], classes: [], libraries: [], defined: [], inputs: [], labels: [], commands: [], bibs: [] };
   const names = (list: string) => list.split(',').map((n) => n.trim()).filter(Boolean);
   for (const m of src.matchAll(LOAD_RE)) (/class/i.test(m[1]) ? scan.classes : scan.packages).push(...names(m[2]));
   for (const m of src.matchAll(LIB_RE)) for (const lib of names(m[2])) scan.libraries.push([LIBRARY_OF[m[1]], lib]);
   for (const m of src.matchAll(INPUT_RE)) scan.inputs.push(m[1]?.trim() ?? `${m[2].trim().replace(/\/?$/, '/')}${m[3].trim()}`);
+  for (const m of src.matchAll(LABEL_RE)) scan.labels.push(m[1].trim());
+  for (const m of src.matchAll(BIB_RE)) scan.bibs.push(...names(m[1]));
+  // with a default, the first of the [n] arguments is optional
+  for (const m of src.matchAll(NEWCOMMAND_RE)) scan.commands.push([m[1] ?? m[2], Math.max(0, Number(m[3] ?? 0) - (m[4] ? 1 : 0)), false]);
+  // xparse: count the m's once any {defaults} are gone
+  for (const m of src.matchAll(DOCUMENTCOMMAND_RE)) scan.commands.push([m[1] ?? m[2], m[3].replace(/\{[^{}]*\}/g, '').split('m').length - 1, false]);
+  for (const m of src.matchAll(MATHOP_RE)) scan.commands.push([m[1] ?? m[2], 0, true]);
+  for (const m of src.matchAll(PAIRED_RE)) scan.commands.push([m[1] ?? m[2], 1, true]);
+  for (const m of src.matchAll(DEF_RE)) scan.commands.push([m[1], 0, false]);
   const add = (n: string) => VALID.test(n) && scan.defined.push(n);
   for (const { re, star, prefix } of ENV_DEFINERS)
     for (const m of src.matchAll(re))
@@ -248,6 +298,18 @@ export function scanTex(src: string): TexScan {
   return scan;
 }
 
+/** The packages and classes these files load, and what those load in turn. */
+export function loadedPackages(scans: TexScan[]) {
+  const loaded = new Set<string>();
+  const load = (pkg: string) => {
+    if (loaded.has(pkg)) return;
+    loaded.add(pkg);
+    PACKAGE_IMPLIES[pkg]?.forEach(load);
+  };
+  for (const scan of scans) [...scan.classes, ...scan.packages].forEach(load);
+  return loaded;
+}
+
 /**
  * What \begin{ offers for these files: name → where it comes from (a package or class, "this project",
  * or '' for the kernel). The common ones come first, then the project's own, then what packages add.
@@ -258,17 +320,8 @@ export function availableEnvs(scans: TexScan[]) {
   const amsmath = new Set(PACKAGE_ENVS.amsmath);
   for (const name of COMMON_ENVS) add(name, amsmath.has(name) ? 'amsmath' : '');
   for (const scan of scans) for (const name of scan.defined) add(name, 'this project');
-  const loaded = new Set<string>();
-  const load = (pkg: string) => {
-    if (loaded.has(pkg)) return;
-    loaded.add(pkg);
-    PACKAGE_ENVS[pkg]?.forEach((name) => add(name, pkg));
-    PACKAGE_IMPLIES[pkg]?.forEach(load);
-  };
-  for (const scan of scans) {
-    [...scan.classes, ...scan.packages].forEach(load);
-    for (const [pkg, lib] of scan.libraries) LIBRARY_ENVS[pkg][lib]?.forEach((name) => add(name, pkg));
-  }
+  for (const pkg of loadedPackages(scans)) PACKAGE_ENVS[pkg]?.forEach((name) => add(name, pkg));
+  for (const scan of scans) for (const [pkg, lib] of scan.libraries) LIBRARY_ENVS[pkg][lib]?.forEach((name) => add(name, pkg));
   for (const name of KERNEL_ENVS) add(name, '');
   return envs;
 }
@@ -280,20 +333,56 @@ const normalise = (path: string) =>
     .reduce<string[]>((out, part) => (part === '..' ? out.slice(0, -1) : part && part !== '.' ? [...out, part] : out), [])
     .join('/');
 
-// each file's last text and scan, so a rescan only scans what changed
+export type BibEntry = { key: string; author: string; year: string; title: string };
+
+// a field's value starts after "name =": in braces, in quotes, or bare (a number or a @string name)
+const FIELD = Object.fromEntries(['author', 'editor', 'year', 'date', 'title'].map((n) => [n, new RegExp(String.raw`(?:^|[\s,])${n}\s*=\s*`, 'i')]));
+const BARE = /[^,}\s]*/y;
+function field(body: string, name: string) {
+  const m = FIELD[name].exec(body);
+  if (!m) return '';
+  let i = m.index + m[0].length;
+  const close = body[i] === '{' ? '}' : body[i] === '"' ? '"' : '';
+  const start = close ? (i += 1) : i;
+  if (close) for (let depth = 0; i < body.length && !(depth === 0 && body[i] === close); i += 1) depth += body[i] === '{' ? 1 : body[i] === '}' ? -1 : 0;
+  else {
+    BARE.lastIndex = i;
+    i += BARE.exec(body)![0].length;
+  }
+  return body.slice(start, i).replace(/[{}]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/** A .bib file's entries: the key, the first author's surname, the year and the title. */
+export function parseBib(src: string): BibEntry[] {
+  const starts = [...src.matchAll(/@\s*([A-Za-z]+)\s*[{(]\s*([^\s,{}()]+)\s*,/g)];
+  return starts.flatMap((m, i) => {
+    if (/^(?:string|comment|preamble)$/i.test(m[1])) return [];
+    // the entry runs to the next one
+    const body = src.slice(m.index! + m[0].length, starts[i + 1]?.index ?? src.length);
+    const first = (field(body, 'author') || field(body, 'editor')).split(/\s+and\s+/)[0];
+    const author = (first.includes(',') ? first.split(',')[0] : first.split(' ').pop() ?? '').trim();
+    return [{ key: m[2], author, year: (field(body, 'year') || field(body, 'date')).slice(0, 4), title: field(body, 'title') }];
+  });
+}
+
+export type Project = { mainFile: string; files: string[]; scans: TexScan[]; bib: BibEntry[] };
+export const NO_PROJECT: Project = { mainFile: '', files: [], scans: [], bib: [] };
+
+// each file's last text and what was made of it, so a rescan only scans what changed
 const scanned = new Map<string, [src: string, scan: TexScan]>();
+const bibScanned = new Map<string, [src: string, entries: BibEntry[]]>();
 
 /**
  * Scans the main file and what it pulls in: \input, \include, \subfile and \import, and the project's own
  * .sty and .cls files. Like the compile's TEXINPUTS, a name is looked up from the main file's folder first,
- * then the project root.
+ * then the project root. Then reads the .bib files it names (or, naming none that exist, every .bib).
  */
-export async function scanProject(mainFile: string, files: Set<string>, read: (path: string) => Promise<string>) {
+export async function scanProject(mainFile: string, files: Set<string>, read: (path: string) => Promise<string>): Promise<Project> {
   const dir = mainFile.slice(0, mainFile.lastIndexOf('/') + 1);
-  // TeX tries name.tex before the name as given; only a .tex is followed as given, so a big \input'd
-  // .pgf or .tikz figure is never read
+  // TeX tries name.tex before the name as given; only a name with the extension is followed as given, so a
+  // big \input'd .pgf or .tikz figure is never read
   const find = (name: string, ext: string) =>
-    [dir + name + ext, name + ext, ...(ext === '.tex' && /\.tex$/i.test(name) ? [dir + name, name] : [])].map(normalise).find((p) => files.has(p));
+    [dir + name + ext, name + ext, ...(name.toLowerCase().endsWith(ext) ? [dir + name, name] : [])].map(normalise).find((p) => files.has(p));
   const scans: TexScan[] = [];
   const queue = [mainFile];
   const seen = new Set(queue);
@@ -302,7 +391,7 @@ export async function scanProject(mainFile: string, files: Set<string>, read: (p
     if (!files.has(path)) continue;
     const src = await read(path).catch(() => '');
     const hit = scanned.get(path);
-    const scan = hit?.[0] === src ? hit[1] : scanTex(src);
+    const scan = hit?.[0] === src ? hit[1] : { ...scanTex(src), file: path };
     scanned.set(path, [src, scan]);
     scans.push(scan);
     for (const p of [...scan.inputs.map((n) => find(n, '.tex')), ...scan.packages.map((n) => find(n, '.sty')), ...scan.classes.map((n) => find(n, '.cls'))]) {
@@ -312,7 +401,18 @@ export async function scanProject(mainFile: string, files: Set<string>, read: (p
       }
     }
   }
+  const named = scans.flatMap((s) => s.bibs.map((n) => find(n, '.bib'))).filter((p): p is string => !!p);
+  const bibFiles = new Set(named.length ? named : [...files].filter((p) => /\.bib$/i.test(p)));
+  const bib: BibEntry[] = [];
+  for (const path of bibFiles) {
+    const src = await read(path).catch(() => '');
+    const hit = bibScanned.get(path);
+    const entries = hit?.[0] === src ? hit[1] : parseBib(src);
+    bibScanned.set(path, [src, entries]);
+    bib.push(...entries);
+  }
   // forget files the walk no longer reaches (another project's, a renamed one)
   for (const path of scanned.keys()) if (!seen.has(path)) scanned.delete(path);
-  return scans;
+  for (const path of bibScanned.keys()) if (!bibFiles.has(path)) bibScanned.delete(path);
+  return { mainFile, files: [...files], scans, bib };
 }

@@ -1,14 +1,18 @@
 import { Annotation, EditorSelection, RangeSetBuilder, StateEffect, StateField, countColumn } from '@codemirror/state';
-import type { EditorState } from '@codemirror/state';
+import type { EditorState, Text } from '@codemirror/state';
 import { Decoration, EditorView, GutterMarker, ViewPlugin, WidgetType, gutter } from '@codemirror/view';
 import type { Command, DecorationSet, ViewUpdate } from '@codemirror/view';
-import { acceptCompletion, completionStatus, currentCompletions } from '@codemirror/autocomplete';
+import { acceptCompletion, completionStatus, currentCompletions, hasNextSnippetField, pickedCompletion, snippet } from '@codemirror/autocomplete';
 import type { Completion, CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 import { HighlightStyle, getIndentUnit, indentUnit } from '@codemirror/language';
 import { indentMore } from '@codemirror/commands';
 import { tags } from '@lezer/highlight';
-import { ALGORITHM2E_SNIPPET, COMMON_ENVS, ENV_SNIPPETS, availableEnvs, scanTex } from './latexEnvs';
-import type { Snip, TexScan } from './latexEnvs';
+import { ALGORITHM2E_SNIPPET, COMMON_ENVS, ENV_SNIPPETS, MATHS_ONLY_ENVS, availableEnvs, loadedPackages, scanTex } from './latexEnvs';
+import type { Project, Snip, TexScan } from './latexEnvs';
+import { BIB_STYLES, CLASS_NAMES, MATH_COMMANDS, PACKAGE_NAMES, TEXT_COMMANDS } from './latexCommands';
+import type { Cmd } from './latexCommands';
+import { ARG_WINDOW, CITE_COMMANDS, REF_COMMANDS, VERBATIM_ENVS, argContext, texContext } from './latexContext';
+import type { TexContext } from './latexContext';
 
 // CodeMirror pieces for LaTeX: indentation and wrapping, folding, the environment scope gutter,
 // completions, the AI ghost text and the token-based theme.
@@ -308,18 +312,43 @@ export const wrapLayout = ViewPlugin.fromClass(
   { decorations: (plugin) => plugin.decorations }
 );
 
-// ─── Completions for "\" (and "/" as a quick trigger) ───
+// ─── Completions: commands after "\" (or "/" in text), environments, and what \ref, \cite and the like take ───
 
-function snippet(label: string, text: string, cursor = text.length): Completion {
+/** Typing { adds a } after the cursor, which the completion replaces. */
+const pastBrace = (state: EditorState, from: number, to: number) => (state.sliceDoc(from, to).includes('{') && state.sliceDoc(to, to + 1) === '}' ? to + 1 : to);
+
+/** The text a snippet template inserts, without its fields. */
+const plain = (template: string) => template.replace(/\$\{\}/g, '').replace(/\\([{}])/g, '$1');
+
+/** A command whose arguments are snippet fields: Tab goes on to the next one, then past the end. */
+function commandOption(template: string, detail: string): Completion {
+  const text = plain(template);
+  const fields = template.includes('${') && snippet(`${template}\${}`);
   return {
-    label,
+    // the label shows the empty arguments: \frac{}{}, \left( \right)
+    label: text.replace(/\s+/g, ' '),
+    detail: detail || undefined,
     type: 'keyword',
-    apply: (view, _completion, from, to) => view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + cursor } })
+    // in another command's field it goes in as text with the cursor in its first argument, as a snippet of its
+    // own would end that command's, and Tab would no longer go on to its next field
+    apply: !fields
+      ? template
+      : (view, completion, from, to) => {
+          if (!hasNextSnippetField(view.state)) return fields(view, completion, from, to);
+          const cursor = from + plain(template.slice(0, template.indexOf('${'))).length;
+          view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: cursor }, annotations: pickedCompletion.of(completion), userEvent: 'input.complete' });
+        }
   };
 }
+const snippetOf = (name: string, args = '') => `\\${name}${args.replace(/\{\}/g, '{${}}').replace(/\[\]/g, '[${}]')}`;
 
-// ranked above the environments (boost 1 for the common ones), so a bare "\" or "/" lists commands first
-const braces = (cmd: string) => ({ ...snippet(`\\${cmd}{}`, `\\${cmd}{}`, cmd.length + 2), boost: 2 });
+// built once: snippet() parses its template
+const builtIn = new Map<Cmd, Completion>();
+const commandOf = (cmd: Cmd) => {
+  let option = builtIn.get(cmd);
+  if (!option) builtIn.set(cmd, (option = commandOption(cmd.snippet ?? snippetOf(cmd.name, cmd.args), [cmd.glyph, cmd.pkg].filter(Boolean).join(' '))));
+  return option;
+};
 
 /**
  * An environment that keeps the indent of the line it's typed on: the body one step in (nested
@@ -334,8 +363,7 @@ const env = (name: string, detail: string, top: boolean): Completion => {
     boost: top ? 1 : 0,
     type: 'keyword',
     apply: (view, _completion, from, to) => {
-      // typing { adds a } after the cursor, which the \end{…} line replaces
-      if (view.state.sliceDoc(from, to).includes('{') && view.state.sliceDoc(to, to + 1) === '}') to += 1;
+      to = pastBrace(view.state, from, to);
       const base = /^[ \t]*/.exec(view.state.doc.lineAt(from).text)![0];
       let depth = 1;
       const inner = body.map((line) => {
@@ -352,35 +380,175 @@ const env = (name: string, detail: string, top: boolean): Completion => {
   };
 };
 
-const COMMANDS: Completion[] = ['section', 'subsection', 'subsubsection', 'paragraph', 'cite', 'citep', 'citet', 'ref', 'eqref', 'label', 'textbf', 'textit', 'emph', 'texttt', 'footnote', 'url', 'input', 'includegraphics', 'caption'].map(braces);
-const TOP_ENVS = new Set(COMMON_ENVS);
+/** \end{name} for an environment open at the cursor, ranked by depth so the innermost comes first. */
+const endOption = (name: string, depth: number): Completion => ({
+  label: `\\end{${name}}`,
+  boost: depth,
+  type: 'keyword',
+  apply: (view, _completion, from, to) => {
+    const insert = `\\end{${name}}`;
+    view.dispatch({ changes: { from, to: pastBrace(view.state, from, to), insert }, selection: { anchor: from + insert.length } });
+  }
+});
 
-/** What the list completes: a command after \ (or /), or an environment name after \begin{. */
-const TYPED = /[\\/](?:[A-Za-z]*|begin\{[\w*-]*)$/;
+const TOP_ENVS = new Set(COMMON_ENVS);
+const COMMANDS = [...MATH_COMMANDS, ...TEXT_COMMANDS];
+// nearly every paper loads amsmath and amssymb, so like amsmath's environments their commands are always offered
+const ALWAYS = new Set(['', 'amsmath', 'amssymb']);
+
+/** The commands that work here: by mode, by the packages loaded, and the project's own (ranked with the common ones). */
+function commandOptions(ctx: TexContext, scans: TexScan[]) {
+  const loaded = loadedPackages(scans);
+  const own = new Map<string, number>();
+  for (const scan of scans) {
+    // not a class's: one that ships with a template (IEEEtran.cls) defines hundreds of internals, \labelenumi and the like
+    if (/\.cls$/i.test(scan.file ?? '')) continue;
+    for (const [name, args, math] of scan.commands) if (!own.has(name) && (ctx.mode !== 'text' || !math)) own.set(name, args);
+  }
+  // preamble-only commands go once the document has begun, and lead the list before it
+  const body = ctx.openEnvs.includes('document');
+  const options: Completion[] = [];
+  for (const cmd of COMMANDS) {
+    if (!(ALWAYS.has(cmd.pkg) || loaded.has(cmd.pkg) || cmd.also?.some((pkg) => loaded.has(pkg)))) continue;
+    // what a loaded package defines keeps its arguments and mode when the project redefines it (\renewcommand\section)
+    own.delete(cmd.name);
+    if (cmd.mode !== 'both' && ctx.mode !== 'both' && cmd.mode !== ctx.mode) continue;
+    if ((cmd.numbered && !ctx.numbered) || (cmd.display && !ctx.display) || (cmd.preamble && body)) continue;
+    // \label gives way to a symbol that's as common: "\la" lists \lambda first
+    options.push({ ...commandOf(cmd), boost: (cmd.common ? 2 : 0) - (cmd.numbered ? 1 : 0) + (cmd.preamble && ctx.preamble ? 4 : 0) });
+  }
+  for (const [name, args] of own) options.push({ ...commandOption(snippetOf(name, '{}'.repeat(args)), 'this project'), boost: 2 });
+  return options;
+}
+
+/** The environments the project can use (the common ones, its packages' and classes', and its own) that work here. */
+function envOptions(ctx: TexContext, scans: TexScan[]) {
+  const math = ctx.mode === 'math';
+  return [...availableEnvs(scans)]
+    .filter(([name]) => ctx.mode === 'both' || (math ? MATHS_ONLY_ENVS.has(name) || name === 'tikzcd' : !MATHS_ONLY_ENVS.has(name)))
+    .map(([name, detail]) => env(name, detail, TOP_ENVS.has(name) || detail === 'this project'));
+}
+
+const nameOf = (path: string) => path.slice(path.lastIndexOf('/') + 1);
+const IMAGE = /\.(?:png|jpe?g|pdf|eps|svg)$/i;
+
+/** What the argument of \ref, \cite, \usepackage, \includegraphics, \input and the like can be. */
+function argOptions(command: string, project: Project, scans: () => TexScan[], open: string): Completion[] {
+  if (REF_COMMANDS.test(command)) {
+    // the open file's own labels as it is now (it's last), then the rest of the project's
+    const labels = new Map<string, string>();
+    for (const scan of [...scans()].reverse()) for (const label of scan.labels) if (!labels.has(label)) labels.set(label, nameOf(scan.file ?? open));
+    return [...labels].map(([label, file]) => ({ label, detail: file || undefined }));
+  }
+  if (CITE_COMMANDS.test(command)) {
+    const short = (title: string) => (title.length > 40 ? `${title.slice(0, 39).trim()}…` : title);
+    return project.bib.map((e) => ({ label: e.key, detail: (e.author ? `${e.author} ${e.year}`.trim() : short(e.title)) || undefined }));
+  }
+  const dir = project.mainFile.slice(0, project.mainFile.lastIndexOf('/') + 1);
+  // a path as the compiler finds it: from the main file's folder, else from the project root
+  const paths = (ext: RegExp, keepExt = true) =>
+    project.files
+      .filter((p) => ext.test(p) && p !== project.mainFile)
+      .map((p) => {
+        const path = p.startsWith(dir) ? p.slice(dir.length) : p;
+        return { label: keepExt ? path : path.replace(ext, '') };
+      });
+  const names = (list: string[]) => list.map((label) => ({ label }));
+  switch (command) {
+    case 'usepackage':
+    case 'RequirePackage':
+      return [...paths(/\.sty$/i, false), ...names(PACKAGE_NAMES)];
+    case 'documentclass':
+    case 'LoadClass':
+      return [...paths(/\.cls$/i, false), ...names(CLASS_NAMES)];
+    case 'bibliographystyle':
+      return [...paths(/\.bst$/i, false), ...names(BIB_STYLES)];
+    case 'bibliography':
+      return paths(/\.bib$/i, false);
+    case 'addbibresource':
+      return paths(/\.bib$/i);
+    case 'includegraphics':
+      return paths(IMAGE);
+    case 'subfile':
+      return paths(/\.tex$/i);
+    default:
+      // \input and \include
+      return paths(/\.tex$/i, false);
+  }
+}
+
+/** What the list completes: a command after \ (or /), or an environment name after \begin{ or \end{. */
+const TYPED = /[\\/](?:[A-Za-z]*|(?:begin|end)\{[\w*-]*)$/;
 const WHOLE_TYPED = new RegExp(`^${TYPED.source}`);
+/**
+ * What a typed name gets besides commands: environments from "\be" on (so "\ve" never matches \begin{verse},
+ * and Tab after "\be" fills in "\begin{"), and the open ones after "\end".
+ */
+const group = (typed: string) => {
+  const name = typed.slice(1);
+  return name.startsWith('begin{') || (name.length >= 2 && 'begin'.startsWith(name)) ? 'begin' : name === 'end' || name.startsWith('end{') ? 'end' : '';
+};
+
+// each version of the document scanned once, however often the list asks
+const docTexts = new WeakMap<Text, string>();
+const docScans = new WeakMap<Text, TexScan>();
+const textOf = (doc: Text) => docTexts.get(doc) ?? docTexts.set(doc, doc.toString()).get(doc)!;
+const scanOf = (doc: Text) => docScans.get(doc) ?? docScans.set(doc, scanTex(textOf(doc))).get(doc)!;
+
+const TEX_FILE = /\.(?:tex|sty|cls|ltx)$/i;
+/** In a file that isn't TeX (a .bib's titles): every command, as nothing says what the text there is. */
+const ANYWHERE: TexContext = { mode: 'both', mathEnv: null, numbered: false, display: false, preamble: false, openEnvs: [] };
 
 /**
- * Commands, and the environments the project can use: the common ones, its packages' and classes', and
- * its own. `projectScans` covers the main file and what it pulls in; the open file is scanned as it is now.
+ * Completion for where the cursor is: a label, citation key, package or file in the braces that take one;
+ * otherwise, after "\", the commands and environments that work there (maths or text), from LaTeX, the
+ * packages the project loads and the project itself. `project` covers the main file and what it pulls in;
+ * the open file (`openFile`), when it's TeX, is scanned as it is now.
  */
-export function latexCompletionSource(projectScans: () => TexScan[]) {
+export function latexCompletionSource(project: () => Project, openFile: () => string = () => '') {
   return (context: CompletionContext): CompletionResult | null => {
+    const { state, pos } = context;
+    const open = openFile();
+    // a file that isn't TeX (a .bib, which can be megabytes) is neither scanned nor read for its context
+    const tex = !open || TEX_FILE.test(open);
+    const scans = () => [...project().scans.filter((scan) => !open || scan.file !== open), ...(tex ? [scanOf(state.doc)] : [])];
+    const contextAt = (at: number) => (tex ? texContext(textOf(state.doc), at) : ANYWHERE);
+    const innermost = (ctx: TexContext) => ctx.openEnvs[ctx.openEnvs.length - 1];
+    // the braces are near the cursor, so this doesn't need the whole text
+    const start = Math.max(0, pos - ARG_WINDOW);
+    const arg = argContext(state.sliceDoc(start, pos), pos - start);
+    if (arg) {
+      const options = argOptions(arg.command, project(), scans, open);
+      // typing on keeps the list until the item ends; in verbatim, \ref{ is just text
+      return options.length && !VERBATIM_ENVS.has(innermost(contextAt(pos))) ? { from: start + arg.from, options, validFor: /^[^{},\s]*$/ } : null;
+    }
     const before = context.matchBefore(TYPED);
     if (!before) return null;
-    const prev = before.from > 0 ? context.state.doc.sliceString(before.from - 1, before.from) : ' ';
-    // "/" only triggers at the start of a word, and never in URLs
-    if (before.text.startsWith('/') && (!/[\s({]/.test(prev) || prev === ':')) return null;
-    if (before.text.startsWith('\\') && prev === '\\') return null;
-    const envs = availableEnvs([...projectScans(), scanTex(context.state.doc.toString())]);
-    let options = [...COMMANDS, ...[...envs].map(([name, detail]) => env(name, detail, TOP_ENVS.has(name) || detail === 'this project'))];
+    const prev = before.from > 0 ? state.doc.sliceString(before.from - 1, before.from) : ' ';
     const trigger = before.text[0];
+    // "/" only triggers at the start of a word, and never in URLs
+    if (trigger === '/' && (!/[\s({]/.test(prev) || prev === ':')) return null;
+    // after an odd run of "\" it's escaped; after \\ (a line break) it starts a command, as in \\\hline
+    if (trigger === '\\' && /\\*$/.exec(state.sliceDoc(Math.max(0, before.from - 64), before.from))![0].length % 2) return null;
+    const ctx = contextAt(before.from);
+    const top = innermost(ctx);
+    // in verbatim nothing is a command, and "\end{" only closes it
+    if (VERBATIM_ENVS.has(top)) return /^\\end(?:\{|$)/.test(before.text) ? { from: before.from, options: [endOption(top, 1)] } : null;
+    // in maths "/" is division
+    if (trigger === '/' && ctx.mode === 'math') return null;
+    const kind = group(before.text);
+    const all = scans();
+    let options = before.text.includes('{') ? [] : commandOptions(ctx, all);
+    if (kind === 'begin') options.push(...envOptions(ctx, all));
+    // each open environment once (nested lists), ranked by its innermost depth
+    if (kind === 'end') options.push(...[...new Map(ctx.openEnvs.map((name, depth) => [name, depth]))].map(([name, depth]) => endOption(name, depth)));
     // the list filters on the label, so after "/" the labels start with "/" too (and show with "\")
     if (trigger === '/') options = options.map((o) => ({ ...o, label: `/${o.label.slice(1)}`, displayLabel: o.label }));
     return {
       from: before.from,
       options,
-      // typing on keeps the list; "/beg" filled in to "\begin{" asks again for the "\" labels
-      validFor: (text) => text[0] === trigger && WHOLE_TYPED.test(text),
+      // typing on keeps the list while it gets the same entries; "/beg" filled in to "\begin{" asks again for the "\" labels
+      validFor: (typed) => typed[0] === trigger && WHOLE_TYPED.test(typed) && group(typed) === kind,
       getMatch: (_completion, matched) => matched ?? []
     };
   };
@@ -389,9 +557,10 @@ export function latexCompletionSource(projectScans: () => TexScan[]) {
 /**
  * What every entry starting with the typed text has in common, when that goes further than the
  * typed text without being a whole entry ("\beg" gives "\begin{"), else null. "/" stands for "\".
+ * Only commands count, not a path in \input{…} that the "/" in it happens to match.
  */
 export function sharedStart(typed: string, labels: string[]) {
-  const matching = labels.filter((label) => label.slice(1).startsWith(typed.slice(1)));
+  const matching = labels.filter((label) => /^[\\/]/.test(label) && label.slice(1).startsWith(typed.slice(1)));
   if (!matching.length) return null;
   let shared = matching[0];
   for (const label of matching) while (!label.startsWith(shared)) shared = shared.slice(0, -1);

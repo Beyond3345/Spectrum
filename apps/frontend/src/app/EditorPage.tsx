@@ -6,7 +6,7 @@ import type { Extension } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { indentLess } from '@codemirror/commands';
 import { search } from '@codemirror/search';
-import { autocompletion } from '@codemirror/autocomplete';
+import { autocompletion, nextSnippetField, prevSnippetField } from '@codemirror/autocomplete';
 import { foldService, syntaxHighlighting } from '@codemirror/language';
 import { applyPatch, structuredPatch } from 'diff';
 import {
@@ -73,8 +73,8 @@ import {
   setGhost,
   wrapLayout
 } from '../editor/latexEditor';
-import { scanProject } from '../editor/latexEnvs';
-import type { TexScan } from '../editor/latexEnvs';
+import { NO_PROJECT, scanProject } from '../editor/latexEnvs';
+import type { Project } from '../editor/latexEnvs';
 import { VERSIONS_CHANGED, errorText, extractBibKey, figureSnippet } from '../editor/shared';
 
 // ─── helpers ───
@@ -215,8 +215,10 @@ function Editor({ projectId }: { projectId: string }) {
   const filesRef = useRef(new Map<string, string>());
   /** editor state (undo history, cursor) per file that has been open */
   const statesRef = useRef(new Map<string, EditorState>());
-  /** what the main file and the files it pulls in load and define, for \begin{ completion */
-  const envScansRef = useRef<TexScan[]>([]);
+  /** what the main file and the files it pulls in load and define, its .bib entries and its files, for completion */
+  const projectScanRef = useRef<Project>(NO_PROJECT);
+  /** .bib files that aren't open, read once per tree or file change rather than after every save */
+  const bibRef = useRef(new Map<string, string>());
   // counts writes and reloads, which change filesRef without a render
   const [filesVersion, setFilesVersion] = useState(0);
 
@@ -523,7 +525,10 @@ function Editor({ projectId }: { projectId: string }) {
     setMainFile(texFiles.find((p) => /(^|\/)main\.tex$/i.test(p)) || texFiles[0] || '');
   }, [loaded, texFiles]);
 
-  // \begin{ completion rescans the project a moment after the tree, the main file or a file changes, and
+  // a reloaded tree or file can mean a .bib changed on disk
+  useEffect(() => bibRef.current.clear(), [items, filesVersion]);
+
+  // completion rescans the project a moment after the tree, the main file or a file changes, and
   // after each save rather than while typing; the completion source scans the open file's text itself
   useEffect(() => {
     if (dirty) return;
@@ -531,9 +536,15 @@ function Editor({ projectId }: { projectId: string }) {
     const timer = window.setTimeout(() => {
       const files = new Set(items.filter((i) => i.type === 'file').map((i) => i.path));
       // open files from their live text, the rest from disk each time: caching those here would show stale
-      // text, and autosave it, if the file changes on disk before it's opened
-      scanProject(mainFile, files, async (path) => filesRef.current.get(path) ?? (await getFile(projectId, path)).content).then((scans) => {
-        if (live) envScansRef.current = scans;
+      // text, and autosave it, if the file changes on disk before it's opened. A .bib (a Zotero export can be
+      // megabytes) is kept until the tree or a file reloads.
+      const read = async (path: string) => {
+        const text = filesRef.current.get(path) ?? bibRef.current.get(path) ?? (await getFile(projectId, path)).content;
+        if (/\.bib$/i.test(path) && !filesRef.current.has(path)) bibRef.current.set(path, text);
+        return text;
+      };
+      scanProject(mainFile, files, read).then((scan) => {
+        if (live) projectScanRef.current = scan;
       });
     }, 400);
     return () => {
@@ -1097,6 +1108,8 @@ function Editor({ projectId }: { projectId: string }) {
         { key: 'Tab', run: () => (ghostRef.current.text ? (a().acceptGhost(false), true) : false) },
         // with the completion list open, fill in or pick an entry
         { key: 'Tab', run: completeOrAccept },
+        // in a command's arguments, on to the next one (⇧Tab back)
+        { key: 'Tab', run: nextSnippetField, shift: prevSnippetField },
         // otherwise indent: spaces at the cursor, or the selected lines (⇧Tab takes them back)
         { key: 'Tab', run: insertIndent, shift: indentLess },
         { key: 'Enter', run: closeEnvironment },
@@ -1120,7 +1133,8 @@ function Editor({ projectId }: { projectId: string }) {
       editorTheme,
       ghostField,
       search({ top: true }),
-      autocompletion({ override: [latexCompletionSource(() => envScansRef.current)] }),
+      // picking \ref{}, \cite{} or \input{} opens the list of what goes in the braces
+      autocompletion({ override: [latexCompletionSource(() => projectScanRef.current, () => activeRef.current)], activateOnCompletion: (c) => /\{\}$/.test(c.displayLabel ?? c.label) }),
       spellChecker({
         enabled: () => spellOnRef.current,
         path: () => activeRef.current,

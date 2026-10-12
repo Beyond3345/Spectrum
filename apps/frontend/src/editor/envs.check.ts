@@ -6,7 +6,7 @@ import { CompletionContext } from '@codemirror/autocomplete';
 import type { Completion } from '@codemirror/autocomplete';
 import type { EditorView } from '@codemirror/view';
 import { latexCompletionSource } from './latexEditor';
-import { COMMON_ENVS, ENV_SNIPPETS, KERNEL_ENVS, PACKAGE_ENVS, availableEnvs, scanProject, scanTex } from './latexEnvs';
+import { COMMON_ENVS, ENV_SNIPPETS, KERNEL_ENVS, NO_PROJECT, PACKAGE_ENVS, availableEnvs, scanProject, scanTex } from './latexEnvs';
 import type { TexScan } from './latexEnvs';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -32,7 +32,7 @@ eq(Object.keys(ENV_SNIPPETS).filter((n) => !known.has(n)), [], 'every snippet is
 function complete(text: string, scans: TexScan[] = []) {
   const at = text.includes('|') ? text.indexOf('|') : text.length;
   const state = EditorState.create({ doc: text.replace('|', '') });
-  return latexCompletionSource(() => scans)(new CompletionContext(state, at, false));
+  return latexCompletionSource(() => ({ ...NO_PROJECT, scans }))(new CompletionContext(state, at, false));
 }
 const labels = (text: string, scans?: TexScan[]) => complete(text, scans)?.options.map((o) => o.label) ?? [];
 
@@ -46,7 +46,8 @@ eq([slash?.displayLabel, complete('see /sec')?.from], ['\\section{}', 4], '"/" m
 eq(complete('http://x'), null, 'never in URLs');
 // a bare trigger matches every label alike, so CodeMirror orders the list by boost, then label
 const first = (text: string) => [...complete(text)!.options].sort((a, b) => (b.boost ?? 0) - (a.boost ?? 0) || a.label.localeCompare(b.label))[0].label;
-eq([first('see \\'), first('see /')], ['\\caption{}', '/caption{}'], 'a bare "\\" or "/" lists the commands before the environments');
+eq([first('see \\'), first('see /')], ['\\appendix', '/appendix'], 'a bare "\\" or "/" lists the common commands first');
+eq(labels('see \\').some((l) => l.startsWith('\\begin{')), false, 'and environments only from "\\beg" on');
 
 /** Picks the named entry for the text with the cursor at "|" and returns the result with the cursor marked. */
 function accept(text: string, label: string) {
@@ -78,13 +79,13 @@ const files = new Set(Object.keys(tree));
 const reads: string[] = [];
 const read = async (path: string) => (reads.push(path), tree[path]);
 (async () => {
-  const scans = await scanProject('paper/main.tex', files, read);
+  const { scans } = await scanProject('paper/main.tex', files, read);
   eq(pick(availableEnvs(scans), 'lemma', 'note', 'tcolorbox', 'wrapfigure', 'gone', 'extra', 'plot'), ['this project', 'this project', 'tcolorbox', 'wrapfig', null, 'this project', null], 'the project walk');
   eq(reads.includes('paper/figs/plot.pgf'), false, 'an \\input figure that isn’t .tex is never read');
-  const again = await scanProject('paper/main.tex', files, read);
+  const { scans: again } = await scanProject('paper/main.tex', files, read);
   eq(again.every((scan, i) => scan === scans[i]), true, 'an unchanged rescan reuses every scan');
   tree['shared.tex'] = '\\newtheorem{fresh}{Fresh}';
-  const changed = await scanProject('paper/main.tex', files, read);
+  const { scans: changed } = await scanProject('paper/main.tex', files, read);
   eq([changed.filter((scan, i) => scan !== scans[i]).length, pick(availableEnvs(changed), 'fresh')], [1, ['this project']], 'a rescan scans only the changed file');
   console.log('envs.check: ok');
 })();
