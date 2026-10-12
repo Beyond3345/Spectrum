@@ -2,6 +2,18 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.4.0 (12 October 2026)
+
+### Added
+
+- A view switcher at the top right of the window, as in Texifier, that shows the editor only, the editor and the PDF side by side, or the PDF only, also with `⌘1`, `⌘2` and `⌘3`. The choice is kept, and the split width comes back with the split. The hidden side stays loaded, so undo, the scroll position, autosave and the PDF carry on
+- In editor only, the compile status shows in the editor's bar
+
+### Changed
+
+- Opening Tools, Grammar, the assistant or a chat, or anything that needs the cursor, from a single view switches back to the editor and PDF side by side. In PDF only, clicking the page doesn't jump to the source, so reading isn't interrupted
+- In a narrow PDF column, the labels of Save version and the zoom menu fold away earlier to make room for the switcher
+
 ## 1.3.1 (12 October 2026)
 
 ### Added

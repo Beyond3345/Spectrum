@@ -18,7 +18,7 @@ The projects page lists every project regardless of where its folder is stored. 
 
 ### Editor
 
-The editor is divided into three columns, the file tree and saved chats on the left, the LaTeX source in the middle and the compiled PDF on the right.
+The editor is divided into three columns, the file tree and saved chats on the left, the LaTeX source in the middle and the compiled PDF on the right. The switcher at the top right of the window, or `⌘1`, `⌘2` and `⌘3`, shows the source only, the source and the PDF side by side, or the PDF only.
 
 - The source editor has LaTeX highlighting, folding, an outline of the main file, snippets for common environments, AI autocomplete (`⌥/`, accepted with `Tab`) and spell checking in Australian English. Typing `\` (or `/` at the start of a word in text) lists the commands that work where the cursor is. In maths, inside `$…$`, `\[…\]` or an `equation` or `align` environment, it lists maths commands such as `\vec`, `\lambda` and `\frac` with their symbols, and in text it lists text commands, together with the project's own commands from `\newcommand` and `\DeclareMathOperator`. Commands with arguments go in with fields that `Tab` moves through, so `\frac` then `Tab` goes from the numerator to the denominator. Inside braces it lists the project's labels after `\ref{`, its BibTeX keys after `\cite{`, packages after `\usepackage{` and the project's images and files after `\includegraphics{` and `\input{`. Environments are listed once `\beg` is typed, where `Tab` fills in as much as the entries share, so `\beg` becomes `\begin{` with the environments still listed, and `Tab` or Return then picks one. After `\begin{` the list holds the common environments, such as `equation*`, `align*` and `gather` (only those that work in maths when the cursor is in maths), the environments of the packages and classes the project loads and the ones it defines itself, each marked with where it comes from. Typing `$` with text selected puts the text in maths, in the same way as `(` brackets it. Otherwise `Tab` indents at the cursor by four spaces, pressing Return after `\begin{…}` adds the matching `\end{…}` at the same indent, and long lines wrap under their own indent, with formulas breaking between terms,
 - the PDF preview fits the page to the width of its column by default, zooms with a trackpad pinch, `⌘` and the scroll wheel or `⌘=` and `⌘−`, shows the pages in a colour chosen for each mode (White, Cream, Sepia or Grey in light mode and Dark, Black, Dimmed or White in dark mode), and supports a two-page view, sticky notes and jumping to the source by clicking text in the PDF,
@@ -97,7 +97,7 @@ Versions are kept inside each project in a hidden `.spectrum` folder, together w
 
 ## Installing
 
-1. Open `Spectrum_1.3.1_universal.dmg`
+1. Open `Spectrum_1.4.0_universal.dmg`
 2. Drag Spectrum into the Applications folder
 3. Open Spectrum from the Applications folder
 
@@ -187,6 +187,7 @@ Every shortcut below can be changed in the Shortcuts section of Settings. Click 
 | Check grammar | `⇧⌘;` |
 | AI autocomplete | `⌥/` |
 | Show or hide the sidebar | `⌘\` |
+| Show the editor only, the editor and PDF, or the PDF only | `⌘1`, `⌘2` and `⌘3` |
 | Zoom the PDF in or out | `⌘=` and `⌘−` (or pinch) |
 | Fit the PDF to the width | `⌘0` |
 
