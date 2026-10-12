@@ -20,10 +20,10 @@ The projects page lists every project regardless of where its folder is stored. 
 
 The editor is divided into three columns, the file tree and saved chats on the left, the LaTeX source in the middle and the compiled PDF on the right.
 
-- The source editor has LaTeX highlighting, folding, an outline of the main file, snippets for common environments, AI autocomplete (`⌥/`, accepted with `Tab`) and spell checking in Australian English. Typing `\` (or `/` at the start of a word) lists commands and environments, where `Tab` fills in as much as the entries share, so `\beg` becomes `\begin{` with the environments still listed, and `Tab` or Return then picks one. After `\begin{` the list holds the common environments, such as `equation*`, `align*` and `gather`, the environments of the packages and classes the project loads and the ones it defines itself, each marked with where it comes from. Otherwise `Tab` indents at the cursor by four spaces, pressing Return after `\begin{…}` adds the matching `\end{…}` at the same indent, and long lines wrap under their own indent, with formulas breaking between terms,
+- The source editor has LaTeX highlighting, folding, an outline of the main file, snippets for common environments, AI autocomplete (`⌥/`, accepted with `Tab`) and spell checking in Australian English. Typing `\` (or `/` at the start of a word in text) lists the commands that work where the cursor is. In maths, inside `$…$`, `\[…\]` or an `equation` or `align` environment, it lists maths commands such as `\vec`, `\lambda` and `\frac` with their symbols, and in text it lists text commands, together with the project's own commands from `\newcommand` and `\DeclareMathOperator`. Commands with arguments go in with fields that `Tab` moves through, so `\frac` then `Tab` goes from the numerator to the denominator. Inside braces it lists the project's labels after `\ref{`, its BibTeX keys after `\cite{`, packages after `\usepackage{` and the project's images and files after `\includegraphics{` and `\input{`. Environments are listed once `\beg` is typed, where `Tab` fills in as much as the entries share, so `\beg` becomes `\begin{` with the environments still listed, and `Tab` or Return then picks one. After `\begin{` the list holds the common environments, such as `equation*`, `align*` and `gather` (only those that work in maths when the cursor is in maths), the environments of the packages and classes the project loads and the ones it defines itself, each marked with where it comes from. Otherwise `Tab` indents at the cursor by four spaces, pressing Return after `\begin{…}` adds the matching `\end{…}` at the same indent, and long lines wrap under their own indent, with formulas breaking between terms,
 - the PDF preview fits the page to the width of its column by default, zooms with a trackpad pinch, `⌘` and the scroll wheel or `⌘=` and `⌘−`, shows the pages in a colour chosen for each mode (White, Cream, Sepia or Grey in light mode and Dark, Black, Dimmed or White in dark mode), and supports a two-page view, sticky notes and jumping to the source by clicking text in the PDF,
 - the compiler can be pdfLaTeX, XeLaTeX, LuaLaTeX, Latexmk or Tectonic, and the Auto setting picks one from the `% !TEX program` comment and the packages the document uses and
-- the Tools panel holds the project information (word counts from `texcount`), version history, compile logs, research tools, AI review and figure tools.
+- the Tools panel holds the project information (word counts from `texcount`), version history, compile logs, research tools, AI review and the Floats tools (Section Floats).
 
 The assistant chat is opened with `⌘L` and has two modes. Assistant mode answers questions about the open file, the selection and the compile log, or proposes edits. Proposed edits are shown as a side-by-side diff that can be accepted or rejected file by file. References mode adds citations to the project's `.bib` file (Section References).
 
@@ -36,6 +36,27 @@ Settings has the following options under Appearance and Editor,
 - the PDF page colour for light mode and for dark mode,
 - the editor font, which can be one of the Mac's own fonts, one of four bundled open-source fonts (JetBrains Mono, Fira Code, IBM Plex Mono and Source Code Pro) or any installed font by name, and the font size and
 - an editor theme for light mode and another for dark mode, chosen from Spectrum, GitHub, One, Solarized, Xcode, Tokyo Night, Catppuccin, Gruvbox, Nord, Dracula, Monokai, Rosé Pine, Ayu and Texifier-like and Overleaf-like themes. Any light theme can be paired with any dark one, and each colour of a theme can be changed for its mode.
+
+### Floats
+
+The Floats tab in Tools inserts figures and tables at the cursor.
+
+- Insert figure takes an image that is dropped on the card or on the editor, pasted or chosen, saves it in the project's `images` folder without replacing an existing file and inserts it as a figure with a caption, a label and a width. Formats that pdfLaTeX cannot read, such as HEIC, WebP and SVG, are converted first,
+- Insert table builds a `tabular` or `tabularx` from a grid, which also takes cells pasted from Numbers, Excel or a CSV file, with booktabs, grid or minimal lines, a caption and a label and
+- the packages a float needs (`graphicx`, `float`, `booktabs` and `tabularx`) are added before `\begin{document}` when the project does not load them yet.
+
+The placement of a figure or table is chosen with the letters below, which can be combined. `H` is used on its own and is the default. Span both columns makes a `figure*` or `table*` for two-column papers, which only takes `t`, `p` and `!`.
+
+| Letter | Meaning |
+| --- | --- |
+| `H` | Exactly here, no longer floating (needs the `float` package) |
+| `h` | Roughly here in the text, if there is room on the page |
+| `t` | At the top of a page |
+| `b` | At the bottom of a page |
+| `p` | On a separate page that holds only floats |
+| `!` | Ignore LaTeX's limits on how many floats a page holds and how much of it they fill |
+
+With no letter, LaTeX uses `tbp`. The letters allow places rather than order them, so `[ht]` means here or else the top of a page.
 
 ### References
 
@@ -76,7 +97,7 @@ Versions are kept inside each project in a hidden `.spectrum` folder, together w
 
 ## Installing
 
-1. Open `Spectrum_1.2.1_universal.dmg`
+1. Open `Spectrum_1.3.0_universal.dmg`
 2. Drag Spectrum into the Applications folder
 3. Open Spectrum from the Applications folder
 

@@ -2,6 +2,24 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.3.0 (12 October 2026)
+
+### Added
+
+- Completion that follows where the cursor is. In maths (`$…$`, `\(…\)`, `\[…\]` and the `equation`, `align` and `gather` families) it lists maths commands such as `\vec`, `\lambda`, `\frac`, `\sum` and `\mathbb` with their symbols, and `\label` and `\tag` only in displays that take them. In text it lists text commands, with the preamble's own commands only before `\begin{document}`. Commands from packages appear once the package is loaded, and the project's own `\newcommand` and `\DeclareMathOperator` commands are included
+- Inside braces, completion lists the project's labels after `\ref{` and its kin, BibTeX keys with author and year after `\cite{` and its kin, packages, classes and bibliography styles, and the project's images and `.tex` and `.bib` files after `\includegraphics{`, `\input{`, `\include{` and `\bibliography{`
+- Commands with arguments insert with fields, and `Tab` moves to the next one
+- A Floats tab in Tools with Insert figure and Insert table. Insert figure saves a dropped, pasted or chosen image in `images/` and inserts it as a figure with a caption, a label, a width and a placement; an image dropped on the editor opens it too. Insert table builds a `tabular` or `tabularx` from a grid that takes pasted spreadsheet cells, with booktabs, grid or minimal lines and a live preview. The packages they need are added to the preamble when missing
+- Placement letters that combine (`h`, `t`, `b`, `p` and `!`), or `H` on its own as the default, each explained in the tab, and a Span both columns option for `figure*` and `table*`
+
+### Changed
+
+- The Figures tab in Tools is now Floats: Insert figure, Insert table, Project figures, Table to chart and Image to LaTeX. Inserting a project figure goes through Insert figure, so its options apply
+- Environments are listed once `\beg` is typed, so `\ve` no longer offers `\begin{verse}`, and `\begin{` in maths offers only the environments that work there. `\end{` offers the open environments
+- A command name only matches commands that contain it, and three letters that match none list the environments they start, so `\ali` offers `\begin{align}`
+- The `/` shortcut for commands works in text only, since `/` divides in maths
+- Uploads into a folder keep the folder
+
 ## 1.2.1 (12 October 2026)
 
 ### Fixed
