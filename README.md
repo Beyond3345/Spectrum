@@ -20,12 +20,22 @@ The projects page lists every project regardless of where its folder is stored. 
 
 The editor is divided into three columns, the file tree and saved chats on the left, the LaTeX source in the middle and the compiled PDF on the right.
 
-- The source editor has LaTeX highlighting, folding, an outline of the main file, snippets for common environments, AI autocomplete (`⌥/`, accepted with `Tab`) and spell checking in Australian English. Typing `\` lists commands and environments, where `Tab` fills in as much as the entries share, so `\beg` becomes `\begin{` with the environments still listed, and `Tab` or Return then picks one. Otherwise `Tab` indents at the cursor by four spaces, pressing Return after `\begin{…}` adds the matching `\end{…}` at the same indent, and long lines wrap under their own indent, with formulas breaking between terms,
-- the PDF preview fits the page to the width of its column by default, zooms with a trackpad pinch, `⌘` and the scroll wheel or `⌘=` and `⌘−`, shows the pages dark in dark mode, and supports a two-page view, sticky notes and jumping to the source by clicking text in the PDF,
+- The source editor has LaTeX highlighting, folding, an outline of the main file, snippets for common environments, AI autocomplete (`⌥/`, accepted with `Tab`) and spell checking in Australian English. Typing `\` (or `/` at the start of a word) lists commands and environments, where `Tab` fills in as much as the entries share, so `\beg` becomes `\begin{` with the environments still listed, and `Tab` or Return then picks one. After `\begin{` the list holds the common environments, such as `equation*`, `align*` and `gather`, the environments of the packages and classes the project loads and the ones it defines itself, each marked with where it comes from. Otherwise `Tab` indents at the cursor by four spaces, pressing Return after `\begin{…}` adds the matching `\end{…}` at the same indent, and long lines wrap under their own indent, with formulas breaking between terms,
+- the PDF preview fits the page to the width of its column by default, zooms with a trackpad pinch, `⌘` and the scroll wheel or `⌘=` and `⌘−`, shows the pages in a colour chosen for each mode (White, Cream, Sepia or Grey in light mode and Dark, Black, Dimmed or White in dark mode), and supports a two-page view, sticky notes and jumping to the source by clicking text in the PDF,
 - the compiler can be pdfLaTeX, XeLaTeX, LuaLaTeX, Latexmk or Tectonic, and the Auto setting picks one from the `% !TEX program` comment and the packages the document uses and
 - the Tools panel holds the project information (word counts from `texcount`), version history, compile logs, research tools, AI review and figure tools.
 
 The assistant chat is opened with `⌘L` and has two modes. Assistant mode answers questions about the open file, the selection and the compile log, or proposes edits. Proposed edits are shown as a side-by-side diff that can be accepted or rejected file by file. References mode adds citations to the project's `.bib` file (Section References).
+
+### Appearance
+
+Settings has the following options under Appearance and Editor,
+
+- the theme (System, Light or Dark) and an accent colour, which can follow macOS or be Blue, Purple, Pink, Red, Orange, Yellow, Green, Graphite or any other colour,
+- a see-through window, which uses Liquid Glass on macOS 26 and later and the system blur on older versions, with a Clarity slider that sets how much of the desktop shows through while the editor and the PDF stay readable,
+- the PDF page colour for light mode and for dark mode,
+- the editor font, which can be one of the Mac's own fonts, one of four bundled open-source fonts (JetBrains Mono, Fira Code, IBM Plex Mono and Source Code Pro) or any installed font by name, and the font size and
+- an editor theme for light mode and another for dark mode, chosen from Spectrum, GitHub, One, Solarized, Xcode, Tokyo Night, Catppuccin, Gruvbox, Nord, Dracula, Monokai, Rosé Pine, Ayu and Texifier-like and Overleaf-like themes. Any light theme can be paired with any dark one, and each colour of a theme can be changed for its mode.
 
 ### References
 
@@ -54,7 +64,7 @@ Both checkers read only the prose of a LaTeX file. Commands, maths, comments, ci
 
 ### Version history
 
-Versions are kept inside each project in a hidden `.spectrum` folder, together with the project settings, saved chats and temporary build files. File contents are compressed and stored once, so unchanged files cost no extra space between versions. A version can be saved by hand from the Versions tab with an optional label. One is also saved automatically before AI changes are applied, before a restore and before a template change, so each of these can be undone. A version can be compared with the current files, restored as a whole or restored one file at a time.
+Versions are kept inside each project in a hidden `.spectrum` folder, together with the project settings, saved chats and temporary build files. File contents are compressed and stored once, so unchanged files cost no extra space between versions. A version is saved with one click from the Save version button beside Compile or with `⇧⌘S`, and the notice that follows offers to name it. Versions can also be saved and named from the Versions tab. One is also saved automatically before AI changes are applied, before a restore and before a template change, so each of these can be undone. A version can be compared with the current files, restored as a whole or restored one file at a time.
 
 ## Requirements
 
@@ -62,11 +72,11 @@ Versions are kept inside each project in a hidden `.spectrum` folder, together w
 - a LaTeX distribution, either [MacTeX](https://www.tug.org/mactex/) or [Tectonic](https://tectonic-typesetting.github.io/) (`brew install tectonic`),
 - an API key from one of the providers in Section Models, or any OpenAI-compatible server, for the AI features,
 - Python 3 with matplotlib for the table to chart tool (optional) and
-- a [MinerU](https://mineru.net) token for PDF-based template conversion (optional).
+- an account with one of the PDF parsers in Section Template transfer, for converting a paper from its PDF (optional).
 
 ## Installing
 
-1. Open `Spectrum_1.1.3_universal.dmg`
+1. Open `Spectrum_1.2.0_universal.dmg`
 2. Drag Spectrum into the Applications folder
 3. Open Spectrum from the Applications folder
 
@@ -112,6 +122,23 @@ The reasoning effort sets how long the model may think before answering, from Of
 
 Keys for Moonshot, GLM and Qwen only work in the region they were created in, so choose the same region under Region. Meta's cheaper Contributor models are left out of the list on purpose, since Meta trains on what is sent to them.
 
+## Template transfer
+
+Change template moves a paper into another template, either directly from its LaTeX source or from its PDF. The PDF route first turns the PDF into Markdown with LaTeX maths and extracted figures, using one of the parsers below, and the main model then writes the paper into the new template. Each parser keeps its own address and key in Settings under Template transfer, and a key is only ever sent to the address it was entered for.
+
+| Parser | Where it runs | Key |
+| --- | --- | --- |
+| [MinerU](https://mineru.net) (default) | MinerU's servers, free with 1,000 priority pages a day | token |
+| [Mathpix](https://mathpix.com) | Mathpix's servers, paid per page | app ID and app key |
+| [Mistral OCR](https://mistral.ai) | Mistral's servers, paid per page | API key |
+| [Datalab](https://www.datalab.to) (Marker) | Datalab's servers, with a free monthly allowance | API key |
+| [LlamaParse](https://www.llamaindex.ai) | LlamaIndex's servers in the US or the EU, with free monthly credits | API key |
+| [PaddleOCR-VL](https://www.paddleocr.ai) | Baidu AI Studio, which needs an AI Studio account | access token |
+| [Docling](https://github.com/docling-project/docling-serve) | your own computer or server, for example with `docker run -p 5001:5001 quay.io/docling-project/docling-serve` | none, unless the server sets one |
+| Other | any server that speaks one of the APIs above | as that API needs |
+
+The PDF and the parser's output are kept in the new project's hidden `.spectrum` folder.
+
 ## Keyboard shortcuts
 
 Every shortcut below can be changed in the Shortcuts section of Settings. Click a shortcut and press the new keys, press Delete to remove it or press Escape to cancel. A shortcut that is already in use is marked, and shortcuts that macOS keeps for itself, such as `⌘C`, are refused.
@@ -133,6 +160,7 @@ Every shortcut below can be changed in the Shortcuts section of Settings. Click 
 | Fold and unfold | `⌥⌘[` and `⌥⌘]` |
 | Fold all and unfold all | `⌃⌥[` and `⌃⌥]` |
 | Save | `⌘S` |
+| Save a version | `⇧⌘S` |
 | Compile | `⌘↩` |
 | Show or hide the assistant | `⌘L` |
 | Check grammar | `⇧⌘;` |
@@ -180,7 +208,8 @@ The backend reads the following environment variables, either from the environme
 | `SPECTRUM_DATA_DIR` | Project list and user templates | `data/` in the repository, or the application support folder in the app |
 | `SPECTRUM_HOST` and `PORT` | Address the server listens on | `127.0.0.1` and `8787` |
 | `SPECTRUM_PYTHON` | Python used by the table to chart tool | `python3` |
-| `SPECTRUM_MINERU_TOKEN` | MinerU token for template conversion | none |
+| `SPECTRUM_MINERU_TOKEN` | MinerU token for template conversion, sent only to MinerU's own address or to `SPECTRUM_MINERU_API_BASE` | none |
+| `SPECTRUM_MINERU_API_BASE` | MinerU API address | `https://mineru.net/api/v4` |
 
 ## Repository layout
 
@@ -220,6 +249,6 @@ The tool runs Python with matplotlib. Install it with `pip install matplotlib`, 
 
 ## Acknowledgements and licence
 
-Spectrum is based on OpenPrism by OpenDCAI. It uses CodeMirror, PDF.js, Fastify, LangGraph and Tauri, and checks spelling with nodehun, Hunspell, SCOWL and AussieDic and grammar with Harper. Their licences are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The interface icons are drawn from Apple's SF Symbols, which are licensed for use in applications on Apple platforms.
+Spectrum is based on OpenPrism by OpenDCAI. It uses CodeMirror, PDF.js, Fastify, LangGraph and Tauri, checks spelling with nodehun, Hunspell, SCOWL and AussieDic and grammar with Harper, and bundles the JetBrains Mono, Fira Code, IBM Plex Mono and Source Code Pro fonts. The editor themes reuse the colours of the themes they are named after. Their licences are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The interface icons are drawn from Apple's SF Symbols, which are licensed for use in applications on Apple platforms.
 
 Spectrum is released under the MIT Licence given in [LICENSE](LICENSE).

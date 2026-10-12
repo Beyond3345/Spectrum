@@ -2,6 +2,32 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.2.0 (12 October 2026)
+
+### Added
+
+- `\begin{` completion lists every common environment, including `equation*`, the `align` and `gather` families, the matrices, `figure*`, `table*`, `tabular` and `minipage`, followed by the environments of the packages and classes the project loads and the ones it defines itself with `\newtheorem`, `\declaretheorem`, `\newtcolorbox`, `\newenvironment` and similar commands. Each entry says where it comes from and inserts its usual arguments, such as `{lcc}` for `tabular` and `{2}` for `alignat`. The project is read from the main file through `\input`, `\include`, `\subfile` and `\import` and its own `.sty` and `.cls` files, in the same way as the compiler finds them
+- Editor themes, chosen separately for light and dark mode, so any light theme goes with any dark one: Spectrum, GitHub, One, Solarized, Xcode, Tokyo Night, Catppuccin, Gruvbox, Nord, Dracula and Alucard, Monokai, Rosé Pine, Ayu and Texifier-like and Overleaf-like themes, each with a preview in Settings. Any colour of a theme can be changed for each mode and reset afterwards
+- A choice of editor font, from the Mac's own fonts (SF Mono, Menlo, Monaco, PT Mono, Andale Mono and Courier New), four bundled open-source fonts (JetBrains Mono, Fira Code, IBM Plex Mono and Source Code Pro) or any installed font by name
+- Accent colours in Settings under Appearance: Follow macOS, Blue, Purple, Pink, Red, Orange, Yellow, Green, Graphite or a custom colour
+- A see-through window, with Liquid Glass on macOS 26 and later and the system blur before that, and a Clarity slider that sets how much of the desktop shows through. The editor and the PDF always stay readable
+- A page colour for the PDF in each mode: White, Cream, Sepia or Grey in light mode and Dark, Black, Dimmed or White in dark mode, set in Settings or from the PDF's More menu
+- Six more PDF parsers for template transfer besides MinerU: Mathpix, Mistral OCR, Datalab (Marker), LlamaParse, PaddleOCR-VL and Docling, plus Other for a self-hosted or compatible server. Each has its own address and key, and a key is only ever sent to the address it was entered for
+- A Save version button beside Compile, also on `⇧⌘S`, which saves a version at once and offers Rename in the notice that follows. Versions are still saved automatically before AI changes are applied
+
+### Changed
+
+- Highlighting colours environment names and the keys and paths of labels, references, citations, files and packages
+- The sidebar icon, the header and the editor tabs move with the window when it goes in or out of full screen, instead of jumping once macOS has finished
+- The files a PDF parser reads and writes during a template transfer are kept in the new project's hidden `.spectrum` folder instead of in visible folders
+- The `.env` MinerU token is only sent to the MinerU address in the `.env` file or to MinerU's own address
+
+### Fixed
+
+- `\%` was coloured as the start of a comment and `\$` started maths in the highlighting
+- The `/` shortcut for commands listed nothing
+- The label of the "Insert `\cite`" option in Settings put each part on its own line
+
 ## 1.1.3 (12 October 2026)
 
 ### Changed
