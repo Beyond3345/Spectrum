@@ -1,0 +1,180 @@
+/* ==========================================================================
+   Editor theme. editorThemes.ts puts the chosen light theme (--ed-light-*),
+   dark theme (--ed-dark-*) and font (--editor-font) on <html>; the blocks
+   below pick the mode, so System switches with macOS without any script.
+   The fallbacks are Spectrum Light and Spectrum Dark.
+   --editor-bg stays the solid theme colour; --bg-editor is the surface, which
+   glass may make see-through.
+   ========================================================================== */
+
+:root {
+  --editor-font: var(--font-mono);
+
+  --editor-bg: var(--ed-light-bg, #ffffff);
+  --editor-fg: var(--ed-light-fg, #0d0d0d);
+  --editor-gutter: var(--ed-light-gutter, #a1a1a6);
+  --editor-active-line: var(--ed-light-active-line, rgba(0, 0, 0, 0.035));
+  --editor-selection: var(--ed-light-selection, color-mix(in srgb, var(--accent) 22%, transparent));
+  --editor-cursor: var(--ed-light-cursor, #0d0d0d);
+  --syntax-command: var(--ed-light-command, #116329);
+  --syntax-comment: var(--ed-light-comment, #8c959f);
+  --syntax-bracket: var(--ed-light-bracket, #9a6700);
+  --syntax-math: var(--ed-light-math, #bf3989);
+  --syntax-arg: var(--ed-light-arg, #0550ae);
+  --syntax-env: var(--ed-light-env, #8250df);
+  --bg-editor: var(--editor-bg);
+}
+
+:root[data-theme='dark'] {
+  --editor-bg: var(--ed-dark-bg, #0f0f0f);
+  --editor-fg: var(--ed-dark-fg, #ececec);
+  --editor-gutter: var(--ed-dark-gutter, #6e6e73);
+  --editor-active-line: var(--ed-dark-active-line, rgba(255, 255, 255, 0.04));
+  --editor-selection: var(--ed-dark-selection, color-mix(in srgb, var(--accent) 22%, transparent));
+  --editor-cursor: var(--ed-dark-cursor, #ececec);
+  --syntax-command: var(--ed-dark-command, #7ee787);
+  --syntax-comment: var(--ed-dark-comment, #8b949e);
+  --syntax-bracket: var(--ed-dark-bracket, #f2cc60);
+  --syntax-math: var(--ed-dark-math, #ff9bce);
+  --syntax-arg: var(--ed-dark-arg, #79c0ff);
+  --syntax-env: var(--ed-dark-env, #d2a8ff);
+  --bg-editor: var(--editor-bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --editor-bg: var(--ed-dark-bg, #0f0f0f);
+    --editor-fg: var(--ed-dark-fg, #ececec);
+    --editor-gutter: var(--ed-dark-gutter, #6e6e73);
+    --editor-active-line: var(--ed-dark-active-line, rgba(255, 255, 255, 0.04));
+    --editor-selection: var(--ed-dark-selection, color-mix(in srgb, var(--accent) 22%, transparent));
+    --editor-cursor: var(--ed-dark-cursor, #ececec);
+    --syntax-command: var(--ed-dark-command, #7ee787);
+    --syntax-comment: var(--ed-dark-comment, #8b949e);
+    --syntax-bracket: var(--ed-dark-bracket, #f2cc60);
+    --syntax-math: var(--ed-dark-math, #ff9bce);
+    --syntax-arg: var(--ed-dark-arg, #79c0ff);
+    --syntax-env: var(--ed-dark-env, #d2a8ff);
+    --bg-editor: var(--editor-bg);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Settings → Editor
+   -------------------------------------------------------------------------- */
+
+.editor-theme-columns,
+.colour-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+/* a theme in a menu: its background with three of its syntax colours */
+.theme-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 16px;
+  margin-right: 8px;
+  padding: 0 4px;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  vertical-align: -3px;
+}
+
+.theme-chip > i {
+  width: 4px;
+  height: 8px;
+  border-radius: 1px;
+}
+
+/* the colours come from the element's own variables, set from the theme it shows */
+.editor-preview {
+  padding: 8px 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--editor-bg);
+  color: var(--editor-fg);
+  font: 11.5px/1.6 var(--editor-font);
+  white-space: pre;
+}
+
+.editor-preview > div {
+  padding-right: 10px;
+}
+
+.editor-preview .pv-active {
+  background: var(--editor-active-line);
+}
+
+.pv-number {
+  display: inline-block;
+  width: 26px;
+  margin-right: 10px;
+  color: var(--editor-gutter);
+  text-align: right;
+}
+
+.pv-command { color: var(--syntax-command); }
+.pv-comment { color: var(--syntax-comment); font-style: italic; }
+.pv-bracket { color: var(--syntax-bracket); }
+.pv-math { color: var(--syntax-math); }
+.pv-arg { color: var(--syntax-arg); }
+.pv-env { color: var(--syntax-env); }
+.pv-selection { background: var(--editor-selection); }
+
+.pv-cursor {
+  margin-right: -1.5px;
+  border-left: 1.5px solid var(--editor-cursor);
+}
+
+.colours-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.colour-grid {
+  gap: 10px 14px;
+}
+
+.colour-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.colour-row input[type='color'] {
+  flex: none;
+  width: 36px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.colour-row input[type='color']::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.colour-row input[type='color']::-webkit-color-swatch {
+  border: 0;
+  border-radius: 5px;
+}
+
+/* a colour changed from the theme */
+.colour-changed {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+}

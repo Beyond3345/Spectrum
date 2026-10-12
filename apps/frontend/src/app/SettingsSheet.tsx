@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { changeSpellWord, spellStatus, spellWords, systemCheck } from '../api/client';
 import type { CheckerStatus, SearchProvider, SystemCheck } from '../api/client';
+import { COLOUR_ROLES, EDITOR_FONTS, EDITOR_THEMES, chosenColours, editorColours, highlightLines, themeFor, wellColour } from '../editor/editorThemes';
+import type { EditorMode } from '../editor/editorThemes';
 import Icon from './Icon';
 import Select from './Select';
 import Sheet from './Sheet';
@@ -279,38 +281,7 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
             </>
           )}
 
-          {section === 'editor' && (
-            <>
-              <div className="field">
-                <label id="settings-compileEngine">Default compiler</label>
-                <Select
-                  labelId="settings-compileEngine"
-                  value={settings.compileEngine}
-                  options={COMPILE_ENGINES.map(([value, label]) => [value, value === 'auto' ? 'Auto (recommended)' : label])}
-                  onChange={(value) => update({ compileEngine: value as AppSettings['compileEngine'] })}
-                />
-                <div className="field-hint">
-                  Auto reads a <code>% !TEX program</code> comment, uses XeLaTeX when the document needs Unicode fonts, and pdfLaTeX otherwise. The compiler can also be changed per session from the Compile button.
-                </div>
-              </div>
-              <div className="field">
-                <label id="settings-editorFontSize">Font size</label>
-                <Select
-                  labelId="settings-editorFontSize"
-                  value={String(settings.editorFontSize)}
-                  options={[11, 12, 13, 14, 15, 16, 18, 20].map((n) => [String(n), `${n} pt`])}
-                  onChange={(value) => update({ editorFontSize: Number(value) })}
-                />
-              </div>
-              <label className="checkbox-row">
-                <input type="checkbox" checked={settings.autoInsertCite} onChange={(e) => update({ autoInsertCite: e.target.checked })} />
-                <span>
-                  Insert <code>\cite</code> at the cursor after adding a reference
-                  <span className="field-hint">Applies when the References chat adds or finds a single reference.</span>
-                </span>
-              </label>
-            </>
-          )}
+          {section === 'editor' && <EditorPane />}
 
           {section === 'language' && <LanguagePane />}
 
@@ -621,6 +592,163 @@ function ShortcutsPane() {
         <button className="btn small" disabled={!Object.keys(overrides).length} onClick={() => update({ shortcuts: {} })}>
           Restore all defaults
         </button>
+      </div>
+    </>
+  );
+}
+
+const PREVIEW = highlightLines('\\section{Results} % draft\n\\begin{figure}[h]\n  \\includegraphics{plot}\n\\end{figure}\nEnergy is $E = mc^2$\nas shown by \\cite{einstein}.');
+const PREVIEW_ACTIVE = 2;
+const PREVIEW_SELECTED = 4;
+
+/** A few lines of LaTeX in a theme's colours, with the current line, a selection and the cursor. */
+function EditorPreview({ colours }: { colours: Record<string, string> }) {
+  const style = Object.fromEntries(COLOUR_ROLES.map(([role, , cssVar]) => [`--${cssVar}`, colours[role]])) as CSSProperties;
+  return (
+    <div className="editor-preview" style={style} aria-hidden="true">
+      {PREVIEW.map((pieces, i) => (
+        <div key={i} className={i === PREVIEW_ACTIVE ? 'pv-active' : undefined}>
+          <span className="pv-number">{i + 1}</span>
+          <span className={i === PREVIEW_SELECTED ? 'pv-selection' : undefined}>
+            {pieces.map(([role, text], j) => (role ? <span key={j} className={`pv-${role}`}>{text}</span> : text))}
+          </span>
+          {i === PREVIEW_ACTIVE && <span className="pv-cursor" />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const themeKey = (mode: EditorMode) => (mode === 'light' ? 'editorThemeLight' : 'editorThemeDark');
+
+/** The compiler, the font, a theme for each mode and any colour changed from the theme. */
+function EditorPane() {
+  const [settings, update] = useSettings();
+  // starts on the mode that's on screen
+  const [mode, setMode] = useState<EditorMode>(() =>
+    settings.theme === 'dark' || (settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'
+  );
+  const changed = settings.editorColours[mode];
+  const colours = chosenColours(settings, mode);
+  const font = settings.editorFont === 'custom' || EDITOR_FONTS.some((f) => f.id === settings.editorFont) ? settings.editorFont : 'system';
+
+  return (
+    <>
+      <div className="field">
+        <label id="settings-compileEngine">Default compiler</label>
+        <Select
+          labelId="settings-compileEngine"
+          value={settings.compileEngine}
+          options={COMPILE_ENGINES.map(([value, label]) => [value, value === 'auto' ? 'Auto (recommended)' : label])}
+          onChange={(value) => update({ compileEngine: value as AppSettings['compileEngine'] })}
+        />
+        <div className="field-hint">
+          Auto reads a <code>% !TEX program</code> comment, uses XeLaTeX when the document needs Unicode fonts, and pdfLaTeX otherwise. The compiler can also be changed per session from the Compile button.
+        </div>
+      </div>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={settings.autoInsertCite} onChange={(e) => update({ autoInsertCite: e.target.checked })} />
+        <span>
+          Insert <code>\cite</code> at the cursor after adding a reference
+          <span className="field-hint">Applies when the References chat adds or finds a single reference.</span>
+        </span>
+      </label>
+
+      <h3 className="form-section-title">Font</h3>
+      <div className="editor-theme-columns">
+        <div className="field">
+          <label id="settings-editorFont">Font</label>
+          <Select
+            labelId="settings-editorFont"
+            value={font}
+            options={[
+              ...EDITOR_FONTS.map((f): [string, ReactNode] => [f.id, <span style={{ fontFamily: f.css }}>{f.label}</span>]),
+              ['custom', 'Other installed font…']
+            ]}
+            onChange={(value) => update({ editorFont: value })}
+          />
+        </div>
+        <div className="field">
+          <label id="settings-editorFontSize">Font size</label>
+          <Select
+            labelId="settings-editorFontSize"
+            value={String(settings.editorFontSize)}
+            options={[11, 12, 13, 14, 15, 16, 18, 20].map((n) => [String(n), `${n} pt`])}
+            onChange={(value) => update({ editorFontSize: Number(value) })}
+          />
+        </div>
+      </div>
+      {font === 'custom' && (
+        <div className="field">
+          <label htmlFor="settings-editorFontCustom">Installed font name</label>
+          <input
+            id="settings-editorFontCustom"
+            className="input"
+            value={settings.editorFontCustom}
+            placeholder="Iosevka"
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
+            autoComplete="off"
+            onChange={(e) => update({ editorFontCustom: e.target.value })}
+          />
+          <div className="field-hint">The family name as Font Book shows it. SF Mono is used until it matches an installed font.</div>
+        </div>
+      )}
+
+      <h3 className="form-section-title">Theme</h3>
+      <div className="field-hint section-hint">Any light theme goes with any dark one. With System, the editor switches between them with macOS.</div>
+      <div className="editor-theme-columns">
+        {(['light', 'dark'] as const).map((m) => (
+          <div key={m} className="field">
+            <label id={`settings-${themeKey(m)}`}>{m === 'light' ? 'Light theme' : 'Dark theme'}</label>
+            <Select
+              labelId={`settings-${themeKey(m)}`}
+              value={themeFor(settings[themeKey(m)], m).id}
+              options={EDITOR_THEMES.filter((t) => t.mode === m).map((t): [string, ReactNode] => [
+                t.id,
+                <>
+                  <span className="theme-chip" style={{ background: t.colours.bg }}>
+                    {(['command', 'arg', 'math'] as const).map((role) => <i key={role} style={{ background: t.colours[role] }} />)}
+                  </span>
+                  {t.label}
+                </>
+              ])}
+              onChange={(id) => update({ [themeKey(m)]: id })}
+            />
+            <EditorPreview colours={editorColours(settings, m)} />
+          </div>
+        ))}
+      </div>
+
+      <h3 className="form-section-title">Colours</h3>
+      <div className="field-hint section-hint">
+        Changes go on top of {themeFor(settings[themeKey(mode)], mode).label} and stay when you choose another theme.
+      </div>
+      <div className="colours-bar">
+        <div className="segmented small" role="radiogroup" aria-label="Colours for">
+          {(['light', 'dark'] as const).map((m) => (
+            <button key={m} className={`segment ${mode === m ? 'active' : ''}`} role="radio" aria-checked={mode === m} onClick={() => setMode(m)}>
+              {m === 'light' ? 'Light' : 'Dark'}
+            </button>
+          ))}
+        </div>
+        <button className="btn small" disabled={!Object.keys(changed).length} onClick={() => update({ editorColours: { ...settings.editorColours, [mode]: {} } })}>
+          Reset to theme
+        </button>
+      </div>
+      <div className="colour-grid">
+        {COLOUR_ROLES.map(([role, label]) => (
+          <label key={role} className="colour-row">
+            <input
+              type="color"
+              value={wellColour(colours[role])}
+              onChange={(e) => update({ editorColours: { ...settings.editorColours, [mode]: { ...changed, [role]: e.target.value } } })}
+            />
+            <span>{label}</span>
+            {role in changed && <span className="colour-changed" role="img" aria-label="changed" title="Changed from the theme" />}
+          </label>
+        ))}
       </div>
     </>
   );

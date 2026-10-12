@@ -444,27 +444,31 @@ export const ghostField = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field)
 });
 
-// ─── Look: every colour is a token from tokens.css ───
+// ─── Look: the editor's colours come from the theme in editor-theme.css, the rest from tokens.css ───
 
+// every tag lang.ts emits needs an entry: this highlighter isn't a fallback, so the default style never applies
 export const latexHighlight = HighlightStyle.define([
   { tag: tags.keyword, color: 'var(--syntax-command)' },
   { tag: tags.comment, color: 'var(--syntax-comment)', fontStyle: 'italic' },
   { tag: tags.bracket, color: 'var(--syntax-bracket)' },
-  { tag: tags.number, color: 'var(--syntax-math)' }
+  { tag: tags.number, color: 'var(--syntax-math)' },
+  { tag: tags.string, color: 'var(--syntax-arg)' },
+  { tag: tags.typeName, color: 'var(--syntax-env)' }
 ]);
 
 export const editorTheme = EditorView.theme({
-  '&': { height: '100%', color: 'var(--text)', backgroundColor: 'var(--bg-editor)' },
+  // --bg-editor is the theme's background, see-through with glass
+  '&': { height: '100%', color: 'var(--editor-fg)', backgroundColor: 'var(--bg-editor)' },
   '&.cm-focused': { outline: 'none' },
-  '.cm-scroller': { fontFamily: 'var(--font-mono)', fontSize: 'var(--editor-font-size, 13px)', lineHeight: '1.5' },
-  '.cm-content': { padding: '10px 0 45vh', caretColor: 'var(--text)' },
+  '.cm-scroller': { fontFamily: 'var(--editor-font)', fontSize: 'var(--editor-font-size, 13px)', lineHeight: '1.5' },
+  '.cm-content': { padding: '10px 0 45vh', caretColor: 'var(--editor-cursor)' },
   '.cm-line': { padding: '0 24px 0 8px' },
-  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--text)', borderLeftWidth: '1.5px' },
+  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--editor-cursor)', borderLeftWidth: '1.5px' },
   '.cm-gutters': { backgroundColor: 'var(--bg-editor)', border: 'none', color: 'var(--editor-gutter)' },
   '.cm-lineNumbers .cm-gutterElement': { padding: '0 6px 0 16px', minWidth: '44px', fontVariantNumeric: 'tabular-nums' },
-  '.cm-foldGutter .cm-gutterElement': { padding: '0 2px', color: 'var(--text-tertiary)' },
+  '.cm-foldGutter .cm-gutterElement': { padding: '0 2px', color: 'var(--editor-gutter)' },
   '.cm-activeLine': { backgroundColor: 'var(--editor-active-line)' },
-  '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--text-secondary)' },
+  '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'color-mix(in srgb, var(--editor-fg) 60%, var(--editor-gutter))' },
   '.cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-content ::selection': {
     backgroundColor: 'var(--editor-selection) !important'
   },
@@ -483,7 +487,7 @@ export const editorTheme = EditorView.theme({
     boxShadow: 'var(--shadow-md)',
     overflow: 'hidden'
   },
-  '.cm-tooltip.cm-tooltip-autocomplete > ul': { fontFamily: 'var(--font-mono)', fontSize: '12px', padding: '4px' },
+  '.cm-tooltip.cm-tooltip-autocomplete > ul': { fontFamily: 'var(--editor-font)', fontSize: '12px', padding: '4px' },
   '.cm-tooltip.cm-tooltip-autocomplete > ul > li': { padding: '3px 8px', borderRadius: '6px' },
   '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': { backgroundColor: 'var(--accent)', color: 'var(--accent-text)' },
   '.cm-completionIcon': { display: 'none' },
