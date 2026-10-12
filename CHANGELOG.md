@@ -8,8 +8,13 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 - A view switcher at the top right of the window, as in Texifier, that shows the editor only, the editor and the PDF side by side, or the PDF only, also with `⌘1`, `⌘2` and `⌘3`. The choice is kept, and the split width comes back with the split. The hidden side stays loaded, so undo, the scroll position, autosave and the PDF carry on
 - In editor only, the compile status shows in the editor's bar
+- Double-clicking the PDF jumps to the line of the source that made it, opening another file when needed, and double-clicking a line of the source scrolls the PDF to it. Every compile now writes SyncTeX data for this, with pdfLaTeX, XeLaTeX, LuaLaTeX, Latexmk and Tectonic, and Spectrum reads it itself. In PDF only, a double-click switches to the split so the source shows. Without SyncTeX data, a double-click on the PDF falls back to matching the text
+- The spot a jump lands on is marked with a highlight that fades after a few seconds. Its colour (yellow by default, or the accent, green, pink, blue or any colour) and how long it stays (1 to 10 seconds) are set in Settings under Editor, where double-click jumping can also be turned off
 
 ### Changed
+
+- A single click on the PDF no longer jumps to the source; a double-click does
+- The review sheet for AI changes and the version comparison show only the changed parts, with three lines around each and the unchanged stretches folded into rows that open in place (Show whole file shows everything). An edited line sits beside its replacement and only the words that changed are marked, and both sides scroll and wrap together, so long files no longer slow the sheet down
 
 - Opening Tools, Grammar, the assistant or a chat, or anything that needs the cursor, from a single view switches back to the editor and PDF side by side. In PDF only, clicking the page doesn't jump to the source, so reading isn't interrupted
 - In a narrow PDF column, the labels of Save version and the zoom menu fold away earlier to make room for the switcher
