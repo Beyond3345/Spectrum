@@ -542,14 +542,27 @@ export function latexCompletionSource(project: () => Project, openFile: () => st
     if (kind === 'begin') options.push(...envOptions(ctx, all));
     // each open environment once (nested lists), ranked by its innermost depth
     if (kind === 'end') options.push(...[...new Map(ctx.openEnvs.map((name, depth) => [name, depth]))].map(([name, depth]) => endOption(name, depth)));
+    // a scattered fuzzy match ("\ali" finding \smallskip) is noise: keep the commands whose name holds what was
+    // typed, and when none does, the environments its first three letters or more start: "\ali" offers \begin{align},
+    // labelled \align so it matches and fills in like a command, and shown as \begin{align}
+    const typedName = before.text.slice(1).toLowerCase();
+    if (kind === '' && typedName) {
+      options = options.filter((o) => o.label.slice(1).toLowerCase().includes(typedName));
+      if (!options.length && typedName.length >= 3)
+        options = envOptions(ctx, all)
+          .filter((o) => o.label.slice('\\begin{'.length).toLowerCase().startsWith(typedName))
+          .map((o) => ({ ...o, label: `\\${o.label.slice('\\begin{'.length, -1)}`, displayLabel: o.label }));
+    }
     // the list filters on the label, so after "/" the labels start with "/" too (and show with "\")
-    if (trigger === '/') options = options.map((o) => ({ ...o, label: `/${o.label.slice(1)}`, displayLabel: o.label }));
+    if (trigger === '/') options = options.map((o) => ({ ...o, label: `/${o.label.slice(1)}`, displayLabel: o.displayLabel ?? o.label }));
     return {
       from: before.from,
       options,
       // typing on keeps the list while it gets the same entries; "/beg" filled in to "\begin{" asks again for the "\" labels
-      validFor: (typed) => typed[0] === trigger && WHOLE_TYPED.test(typed) && group(typed) === kind,
-      getMatch: (_completion, matched) => matched ?? []
+      // a command name asks again on each letter, as the narrowing above depends on all of it
+      validFor: (typed) => kind !== '' && typed[0] === trigger && WHOLE_TYPED.test(typed) && group(typed) === kind,
+      // an environment shown under another name (\begin{align} for \align) has nothing to highlight
+      getMatch: (completion, matched) => (completion.displayLabel && completion.displayLabel.slice(1) !== completion.label.slice(1) ? [] : matched ?? [])
     };
   };
 }

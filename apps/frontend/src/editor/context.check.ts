@@ -109,6 +109,14 @@ const numbered = shown('\\begin{align}\n  a &= \\la');
 eq([numbered[0], numbered.includes('\\label{}')], ['\\lambda', true], 'in align, \\lambda before \\label');
 eq(numbered.indexOf('\\lambda') < numbered.indexOf('\\label{}'), true, 'symbols outrank \\label');
 eq([shown('see \\ve').some((l) => l.startsWith('\\begin')), shown('see \\ve').includes('\\vec{}'), shown('see \\ve').includes('\\verb')], [false, false, false], 'text \\ve offers no \\begin{verse} and no maths');
+// a scattered fuzzy match is dropped, and a name no command holds lists the environments it starts
+eq(shown('see \\ali').includes('\\smallskip'), false, '\\ali does not find \\smallskip');
+eq(shown('see \\ali').slice(0, 2), ['\\align', '\\align*'], '\\ali offers align and align*');
+eq(complete('see \\ali')!.options.find((o) => o.label === '\\align')?.displayLabel, '\\begin{align}', 'shown as \\begin{align}');
+eq(sharedStart('\\ali', complete('see \\ali')!.options.map((o) => o.label)), null, 'Tab picks \\align rather than filling in');
+eq(complete('see /ali')!.options.find((o) => o.label === '/align')?.displayLabel, '\\begin{align}', 'after /, still shown as \\begin{align}');
+eq(complete('$\\eps')!.options.some((o) => o.label === '\\varepsilon'), true, 'a name inside another still counts: \\eps finds \\varepsilon');
+
 eq(sharedStart('\\beg', complete('see \\beg')!.options.map((o) => o.label)), '\\begin{', '"\\beg" still fills to "\\begin{"');
 eq(sharedStart('\\end', complete('\\begin{itemize}\n\\begin{enumerate}\n\\end')!.options.map((o) => o.label)), '\\end{', 'and "\\end" to "\\end{"');
 const inMaths = shown('\\[ \\begin{');
