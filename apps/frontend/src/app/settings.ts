@@ -6,9 +6,44 @@ import { setNativeTheme } from './desktop';
 export { IS_DESKTOP } from './desktop';
 
 export type Theme = 'system' | 'light' | 'dark';
+/** 'system' follows the macOS accent colour */
+export type Accent = 'system' | 'blue' | 'purple' | 'pink' | 'red' | 'orange' | 'yellow' | 'green' | 'graphite' | 'custom';
+export type PdfPageLight = 'white' | 'cream' | 'sepia' | 'grey';
+export type PdfPageDark = 'dark' | 'black' | 'dimmed' | 'white';
+/** The colours an editor theme sets, each of which can be changed on its own in Settings. */
+export type EditorColourRole = 'bg' | 'fg' | 'gutter' | 'activeLine' | 'selection' | 'cursor' | 'command' | 'comment' | 'bracket' | 'math' | 'arg' | 'env';
+export type EditorColours = Partial<Record<EditorColourRole, string>>;
+
+const ACCENTS: Accent[] = ['system', 'blue', 'purple', 'pink', 'red', 'orange', 'yellow', 'green', 'graphite', 'custom'];
+const HEX = /^#[0-9a-f]{6}$/i;
 
 export type AppSettings = {
   theme: Theme;
+  accent: Accent;
+  /** '#rrggbb' for the Custom accent */
+  accentCustom: string;
+  /** see-through window (Liquid Glass on macOS 26 and later, vibrancy before) */
+  glass: boolean;
+  /** 0 = least see-through, 100 = clearest */
+  glassClarity: number;
+  /** PDF page colour in light mode and in dark mode */
+  pdfPageLight: PdfPageLight;
+  pdfPageDark: PdfPageDark;
+  /** editor font id (a Mac or bundled font), or 'custom' for editorFontCustom */
+  editorFont: string;
+  /** the name of an installed font, used when editorFont is 'custom' */
+  editorFontCustom: string;
+  /** editor theme ids for each mode, picked separately so any light theme goes with any dark one */
+  editorThemeLight: string;
+  editorThemeDark: string;
+  /** colours changed from the chosen theme, per mode */
+  editorColours: { light: EditorColours; dark: EditorColours };
+  /** preset id from Settings → Template transfer */
+  parser: string;
+  /** each parser's endpoint ('' = the preset's own) and key, kept when switching between them */
+  parserSaved: Record<string, { endpoint: string; key: string; appId?: string }>;
+  /** the API a custom parser speaks (a preset id) */
+  parserProtocol: string;
   /** preset id from Settings → Models, 'custom', or '' to work it out from the endpoint */
   llmProvider: string;
   /** each provider's key, endpoint and model, kept when switching between them */
@@ -38,8 +73,6 @@ export type AppSettings = {
   searchProvider: SearchProvider;
   searchProviderKey: string;
   serpEngine: 'google' | 'google_scholar' | 'baidu';
-  mineruApiBase: string;
-  mineruToken: string;
   /** shortcut id → key, only for the ones changed in Settings ('' = removed) */
   shortcuts: Record<string, string>;
   /** spell checking as you type, in Australian English */
@@ -51,10 +84,26 @@ export type AppSettings = {
 };
 
 export const SETTINGS_KEY = 'spectrum-settings-v1';
-const CHANGE_EVENT = 'spectrum-settings-change';
+/** Fired on window after every settings write; read the new values with loadSettings(). */
+export const SETTINGS_CHANGE_EVENT = 'spectrum-settings-change';
+const CHANGE_EVENT = SETTINGS_CHANGE_EVENT;
 
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
+  accent: 'system',
+  accentCustom: '#0a84ff',
+  glass: false,
+  glassClarity: 50,
+  pdfPageLight: 'white',
+  pdfPageDark: 'dark',
+  editorFont: 'system',
+  editorFontCustom: '',
+  editorThemeLight: 'spectrum-light',
+  editorThemeDark: 'spectrum-dark',
+  editorColours: { light: {}, dark: {} },
+  parser: 'mineru',
+  parserSaved: {},
+  parserProtocol: 'mineru',
   llmProvider: '',
   providerSaved: {},
   llmEndpoint: 'https://api.openai.com/v1/chat/completions',
@@ -80,8 +129,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   searchProvider: 'llm',
   searchProviderKey: '',
   serpEngine: 'google',
-  mineruApiBase: '',
-  mineruToken: '',
   shortcuts: {},
   spellCheck: true,
   grammarStyle: false,
@@ -120,7 +167,11 @@ export function effortOptions(model: ProviderModel | null): [ReasoningEffort, st
 function parse(raw: string | null): AppSettings {
   if (!raw) return DEFAULT_SETTINGS;
   try {
-    const { ngrokToken: _dropped, ...parsed } = JSON.parse(raw) as Partial<AppSettings> & { ngrokToken?: string };
+    const { ngrokToken: _dropped, mineruApiBase, mineruToken, ...parsed } = JSON.parse(raw) as Partial<AppSettings> & {
+      ngrokToken?: string;
+      mineruApiBase?: string;
+      mineruToken?: string;
+    };
     const merged = { ...DEFAULT_SETTINGS, ...parsed };
     if (!COMPILE_ENGINES.some(([value]) => value === merged.compileEngine)) merged.compileEngine = DEFAULT_SETTINGS.compileEngine;
     if (!['system', 'light', 'dark'].includes(merged.theme)) merged.theme = 'system';
@@ -129,6 +180,26 @@ function parse(raw: string | null): AppSettings {
     if (typeof merged.shortcuts !== 'object' || !merged.shortcuts) merged.shortcuts = {};
     if (typeof merged.providerSaved !== 'object' || !merged.providerSaved) merged.providerSaved = {};
     if (!['avoid', 'require', 'off'].includes(merged.oxfordComma)) merged.oxfordComma = 'avoid';
+    if (!ACCENTS.includes(merged.accent)) merged.accent = 'system';
+    if (typeof merged.accentCustom !== 'string' || !HEX.test(merged.accentCustom)) merged.accentCustom = DEFAULT_SETTINGS.accentCustom;
+    merged.glass = merged.glass === true;
+    if (!Number.isFinite(merged.glassClarity)) merged.glassClarity = DEFAULT_SETTINGS.glassClarity;
+    merged.glassClarity = Math.min(100, Math.max(0, merged.glassClarity));
+    if (!['white', 'cream', 'sepia', 'grey'].includes(merged.pdfPageLight)) merged.pdfPageLight = 'white';
+    if (!['dark', 'black', 'dimmed', 'white'].includes(merged.pdfPageDark)) merged.pdfPageDark = 'dark';
+    for (const key of ['editorFont', 'editorFontCustom', 'editorThemeLight', 'editorThemeDark', 'parser', 'parserProtocol'] as const) {
+      if (typeof merged[key] !== 'string') merged[key] = DEFAULT_SETTINGS[key];
+    }
+    const colours = (value: unknown): EditorColours =>
+      Object.fromEntries(
+        Object.entries(typeof value === 'object' && value ? value : {}).filter(([, colour]) => typeof colour === 'string' && /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(colour))
+      );
+    merged.editorColours = { light: colours(merged.editorColours?.light), dark: colours(merged.editorColours?.dark) };
+    if (typeof merged.parserSaved !== 'object' || !merged.parserSaved) merged.parserSaved = {};
+    // 1.1 kept one MinerU address and token; they become the MinerU preset's saved values
+    if ((mineruApiBase || mineruToken) && !merged.parserSaved.mineru) {
+      merged.parserSaved = { ...merged.parserSaved, mineru: { endpoint: mineruApiBase || '', key: mineruToken || '' } };
+    }
     return merged;
   } catch {
     return DEFAULT_SETTINGS;

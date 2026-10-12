@@ -455,8 +455,7 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
               <div className="field-hint section-hint">
                 MinerU converts a compiled PDF to Markdown for the “MinerU (PDF → Markdown → LaTeX)” mode of Change template.
               </div>
-              {text('MinerU API', 'mineruApiBase', { placeholder: 'https://mineru.net/api/v4' })}
-              {text('MinerU token', 'mineruToken', { secret: true })}
+              {/* rebuilt as a parser picker in 1.2.0 */}
             </>
           )}
 

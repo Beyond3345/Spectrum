@@ -187,11 +187,12 @@ export default function TransferPanel({
     const parentDir = settings.projectsDir || undefined;
     let res: { jobId: string; newProjectId: string };
     if (mode === 'mineru') {
+      const saved = settings.parserSaved.mineru || { endpoint: '', key: '' };
       const mineruConfig =
-        settings.mineruApiBase || settings.mineruToken
+        saved.endpoint || saved.key
           ? {
-              ...(settings.mineruApiBase ? { apiBase: settings.mineruApiBase } : {}),
-              ...(settings.mineruToken ? { token: settings.mineruToken } : {})
+              ...(saved.endpoint ? { apiBase: saved.endpoint } : {}),
+              ...(saved.key ? { token: saved.key } : {})
             }
           : undefined;
       res = await mineruTransferStart({
@@ -258,7 +259,7 @@ export default function TransferPanel({
       ? ''
       : !llmConfigFor(settings, 'main').apiKey
         ? 'Needs an API key for the main model in Settings → Models, or in the .env file.'
-        : mode === 'mineru' && !settings.mineruToken.trim()
+        : mode === 'mineru' && !settings.parserSaved.mineru?.key.trim()
           ? 'Needs your MinerU token above, or one in the .env file.'
           : '';
   const canStart = !running && !!targetTemplateId && (usesProjectSource ? !!sourceMainFile : !!uploadedPdf);
@@ -356,8 +357,10 @@ export default function TransferPanel({
                   className="input"
                   placeholder="https://mineru.net/api/v4"
                   spellCheck={false}
-                  value={settings.mineruApiBase}
-                  onChange={(e) => updateSettings({ mineruApiBase: e.target.value })}
+                  value={settings.parserSaved.mineru?.endpoint || ''}
+                  onChange={(e) =>
+                    updateSettings({ parserSaved: { ...settings.parserSaved, mineru: { key: settings.parserSaved.mineru?.key || '', endpoint: e.target.value } } })
+                  }
                 />
               </div>
               <div className="field grow">
@@ -367,8 +370,10 @@ export default function TransferPanel({
                   className="input"
                   type="password"
                   placeholder="Paste your MinerU API token"
-                  value={settings.mineruToken}
-                  onChange={(e) => updateSettings({ mineruToken: e.target.value })}
+                  value={settings.parserSaved.mineru?.key || ''}
+                  onChange={(e) =>
+                    updateSettings({ parserSaved: { ...settings.parserSaved, mineru: { endpoint: settings.parserSaved.mineru?.endpoint || '', key: e.target.value } } })
+                  }
                 />
               </div>
             </div>
