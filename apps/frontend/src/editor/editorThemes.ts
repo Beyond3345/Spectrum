@@ -114,8 +114,18 @@ export function editorColours(settings: AppSettings, mode: EditorMode) {
   return { ...colours, activeLine: overBackground(colours.activeLine, colours.bg) };
 }
 
-/** The opaque #rrggbb a colour well can show: alpha is dropped, and Spectrum's accent selection starts from the default blue. */
-export const wellColour = (colour: string) => (/^#[0-9a-f]{6}/i.test(colour) ? colour.slice(0, 7).toLowerCase() : '#0a84ff');
+/** The opaque #rrggbb a colour well shows: a see-through colour as it looks over the background. */
+export function wellColour(colour: string, bg = '#ffffff', accent = '#0a84ff') {
+  // Spectrum's selection is the accent mixed with transparent
+  const mix = /var\(--accent\)\s+(\d+)%/.exec(colour);
+  if (mix && HEX6.test(accent)) colour = accent + Math.round((Number(mix[1]) / 100) * 255).toString(16).padStart(2, '0');
+  if (!/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(colour) || !HEX6.test(bg)) return '#0a84ff';
+  const alpha = colour.length === 9 ? parseInt(colour.slice(7), 16) / 255 : 1;
+  const b = channels(bg);
+  return `#${channels(colour)
+    .map((v, i) => Math.round(b[i] + (v - b[i]) * alpha).toString(16).padStart(2, '0'))
+    .join('')}`;
+}
 
 // Mac fonts are used by name and can't be bundled; ui-monospace is how WebKit reaches SF Mono.
 // The open-source ones are bundled from @fontsource (latin, regular and italic) in main.tsx.

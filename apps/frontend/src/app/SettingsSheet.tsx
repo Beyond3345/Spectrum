@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { changeSpellWord, spellStatus, spellWords, systemCheck } from '../api/client';
 import type { CheckerStatus, SearchProvider, SystemCheck } from '../api/client';
@@ -710,6 +710,15 @@ function EditorPane() {
   );
   const changed = settings.editorColours[mode];
   const colours = chosenColours(settings, mode);
+  // the accent as #rrggbb (it may be macOS's AccentColor), for Spectrum's accent-based selection
+  const accent = useMemo(() => {
+    const probe = document.createElement('i');
+    probe.style.color = 'var(--accent)';
+    document.body.append(probe);
+    const rgb = getComputedStyle(probe).color.match(/\d+/g) || [];
+    probe.remove();
+    return `#${rgb.slice(0, 3).map((n) => Number(n).toString(16).padStart(2, '0')).join('')}`;
+  }, [settings.accent, settings.accentCustom]);
   const font = settings.editorFont === 'custom' || EDITOR_FONTS.some((f) => f.id === settings.editorFont) ? settings.editorFont : 'system';
 
   return (
@@ -729,7 +738,9 @@ function EditorPane() {
       <label className="checkbox-row">
         <input type="checkbox" checked={settings.autoInsertCite} onChange={(e) => update({ autoInsertCite: e.target.checked })} />
         <span>
-          Insert <code>\cite</code> at the cursor after adding a reference
+          <span>
+            Insert <code>\cite</code> at the cursor after adding a reference
+          </span>
           <span className="field-hint">Applies when the References chat adds or finds a single reference.</span>
         </span>
       </label>
@@ -822,7 +833,7 @@ function EditorPane() {
           <label key={role} className="colour-row">
             <input
               type="color"
-              value={wellColour(colours[role])}
+              value={wellColour(colours[role], colours.bg, accent)}
               onChange={(e) => update({ editorColours: { ...settings.editorColours, [mode]: { ...changed, [role]: e.target.value } } })}
             />
             <span>{label}</span>

@@ -25,8 +25,9 @@ eq([r, g, b].map((v, i) => Math.round([0xfd, 0xf6, 0xe3][i] * (1 - a) + v * a)),
 eq(overBackground('#383a420d', '#fafafa'), '#383a420d', 'already see-through');
 eq(overBackground('#ffffff', '#ffffff'), 'transparent', 'same as the background');
 eq(editorColours(settings, 'light').activeLine.startsWith('rgba('), true, 'the editor gets the see-through one');
-eq(wellColour('#0969da33'), '#0969da', 'a well drops alpha');
-eq(wellColour('color-mix(in srgb, var(--accent) 22%, transparent)'), '#0a84ff', 'the accent selection starts from blue');
+eq(wellColour('#0969da33', '#ffffff'), '#cee1f8', 'a see-through colour shows as it looks over the background');
+eq(wellColour('#00000009', '#ffffff'), '#f6f6f6', 'a faint current line stays faint');
+eq(wellColour('color-mix(in srgb, var(--accent) 22%, transparent)', '#ffffff', '#a550a7'), '#ebd9ec', 'the accent selection uses the accent');
 
 eq(editorFontFamily(DEFAULT_SETTINGS), 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace', 'SF Mono by default');
 eq(editorFontFamily({ ...DEFAULT_SETTINGS, editorFont: 'fira-code' }), '"Fira Code", ui-monospace, monospace', 'a bundled font');
