@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
 import Tabs from '../app/Tabs';
 import { useEditor } from './EditorContext';
 import ProjectInfoTab from './tools/ProjectInfoTab';
@@ -20,8 +21,8 @@ const LABELS: [ToolsTab, string][] = [
 ];
 
 /** Right column when Tools is open. Tabs stay mounted once visited so results survive switching. */
-/** Closed with the Close pill in the editor top bar. */
-export default function ToolsPanel({ tab, onTabChange }: { tab: ToolsTab; onTabChange: (tab: ToolsTab) => void }) {
+/** Closed with the Close pill in the editor top bar. `trailing` ends the header (the view switcher). */
+export default function ToolsPanel({ tab, onTabChange, trailing }: { tab: ToolsTab; onTabChange: (tab: ToolsTab) => void; trailing?: ReactNode }) {
   const { compileErrors } = useEditor();
   const visited = useRef(new Set<ToolsTab>());
   visited.current.add(tab);
@@ -59,6 +60,7 @@ export default function ToolsPanel({ tab, onTabChange }: { tab: ToolsTab; onTabC
           onChange={onTabChange}
           items={LABELS.map(([value, label]) => ({ value, label, badge: value === 'logs' && compileErrors.length ? compileErrors.length : undefined }))}
         />
+        {trailing}
       </div>
       {LABELS.filter(([key]) => visited.current.has(key)).map(([key]) => (
         <div key={key} className="tools-body" role="tabpanel" hidden={key !== tab}>

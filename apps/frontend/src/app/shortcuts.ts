@@ -36,7 +36,20 @@ import { gotoLine, highlightSelectionMatches, searchKeymap, selectNextOccurrence
 
 export const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 
-export type AppCommand = 'save' | 'saveVersion' | 'compile' | 'assistant' | 'grammar' | 'suggest' | 'sidebar' | 'zoomIn' | 'zoomOut' | 'zoomWidth';
+export type AppCommand =
+  | 'save'
+  | 'saveVersion'
+  | 'compile'
+  | 'assistant'
+  | 'grammar'
+  | 'suggest'
+  | 'sidebar'
+  | 'viewEditor'
+  | 'viewSplit'
+  | 'viewPdf'
+  | 'zoomIn'
+  | 'zoomOut'
+  | 'zoomWidth';
 
 export type Shortcut = {
   id: string;
@@ -97,7 +110,10 @@ export const SHORTCUTS: Shortcut[] = [
   // ⇧⌘; is macOS's own Spelling and Grammar shortcut
   { id: 'grammar', label: 'Check grammar', group: 'App', key: 'Shift-Mod-;' },
   { id: 'suggest', label: 'AI autocomplete', group: 'App', key: 'Alt-/' },
-  { id: 'sidebar', label: 'Show or hide the sidebar', group: 'App', key: 'Mod-\\' }
+  { id: 'sidebar', label: 'Show or hide the sidebar', group: 'App', key: 'Mod-\\' },
+  { id: 'viewEditor', label: 'Show the editor only', group: 'App', key: 'Mod-1' },
+  { id: 'viewSplit', label: 'Show the editor and PDF', group: 'App', key: 'Mod-2' },
+  { id: 'viewPdf', label: 'Show the PDF only', group: 'App', key: 'Mod-3' }
 ];
 
 /** CodeMirror commands whose built-in bindings give way to the ones above. */

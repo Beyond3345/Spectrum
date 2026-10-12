@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
+import { flushSync } from 'react-dom';
 import { useNavigate, useParams } from 'react-router-dom';
 import { EditorState, Prec } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
@@ -103,10 +104,17 @@ async function smallTextFile(projectId: string, items: FileItem[]) {
 // the compiler picked in the PDF header lasts for the session, across projects
 let sessionEngine: CompileEngine | null = null;
 
-/** pdfZoom is the PDF view, kept between launches like the columns */
-type Layout = { sidebarCollapsed: boolean; split: number; outlineOpen: boolean; pdfZoom: PdfZoom };
+type View = 'editor' | 'split' | 'pdf';
+const VIEWS: [View, string, string, AppCommand][] = [
+  ['editor', 'Editor only', 'rectangle', 'viewEditor'],
+  ['split', 'Editor and PDF', 'rectangle.righthalf.filled', 'viewSplit'],
+  ['pdf', 'PDF only', 'rectangle.fill', 'viewPdf']
+];
+
+/** pdfZoom is the PDF view, kept between launches like the columns; split is kept while one column shows alone */
+type Layout = { sidebarCollapsed: boolean; view: View; split: number; outlineOpen: boolean; pdfZoom: PdfZoom };
 const LAYOUT_KEY = 'spectrum-editor-layout';
-const DEFAULT_LAYOUT: Layout = { sidebarCollapsed: false, split: 0.46, outlineOpen: true, pdfZoom: 'width' };
+const DEFAULT_LAYOUT: Layout = { sidebarCollapsed: false, view: 'split', split: 0.46, outlineOpen: true, pdfZoom: 'width' };
 
 function loadLayout(): Layout {
   try {
@@ -114,6 +122,7 @@ function loadLayout(): Layout {
     const saved = { ...DEFAULT_LAYOUT, ...JSON.parse(window.localStorage.getItem(LAYOUT_KEY) || '{}') };
     const zoom = saved.pdfZoom;
     if (!(zoom === 'fit' || zoom === 'width' || (typeof zoom === 'number' && zoom >= MIN_ZOOM && zoom <= MAX_ZOOM))) saved.pdfZoom = 'width';
+    if (!VIEWS.some(([view]) => view === saved.view)) saved.view = 'split';
     return saved;
   } catch {
     return DEFAULT_LAYOUT;
@@ -266,6 +275,9 @@ function Editor({ projectId }: { projectId: string }) {
   const tocRef = useRef<HTMLDivElement>(null);
 
   const [layout, setLayoutState] = useState(loadLayout);
+  // read after awaits, when a handler's own `layout` may be out of date
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
   const dark = useDarkMode();
   const setLayout = (patch: Partial<Layout>) => setLayoutState((prev) => ({ ...prev, ...patch }));
   const zoom = layout.pdfZoom;
@@ -386,6 +398,9 @@ function Editor({ projectId }: { projectId: string }) {
     if (!TEXT_FILE.test(path)) {
       if (path === mainPdf) {
         setToolsOpen(false);
+        setGrammarOpen(false);
+        // from editor only, the PDF comes back beside the editor
+        if (layoutRef.current.view === 'editor') setLayout({ view: 'split' });
         if (!pdf) setPdf({ url: blobUrl(projectId, path, Date.now()), blob: false });
       } else {
         setPreview(path);
@@ -570,6 +585,7 @@ function Editor({ projectId }: { projectId: string }) {
       const body = view.state.doc.toString().indexOf('\\begin{document}');
       if (!cursorPlacedRef.current || (body !== -1 && from < body + '\\begin{document}'.length)) return null;
     }
+    if (opts.focus !== false) showEditor();
     let insert = text;
     if (opts.block) {
       const before = from > 0 ? view.state.doc.sliceString(from - 1, from) : '';
@@ -595,6 +611,7 @@ function Editor({ projectId }: { projectId: string }) {
       notify(`${file} isn’t one of this project’s files.`);
       return;
     }
+    showEditor();
     await openFile(file);
     const view = viewRef.current;
     if (!view || activeRef.current !== file) return;
@@ -604,7 +621,9 @@ function Editor({ projectId }: { projectId: string }) {
     view.focus();
   };
 
+  // the outline and a click on PDF text land here; from PDF only (the outline), the editor shows again
   const select = async (file: string, from: number, to = from) => {
+    showEditor();
     await openFile(file);
     const view = viewRef.current;
     if (!view || activeRef.current !== file) return;
@@ -900,13 +919,37 @@ function Editor({ projectId }: { projectId: string }) {
     setEngine(value);
   };
 
-  // ─── panels ───
+  // ─── view and panels ───
+
+  // Tools and the grammar check take the PDF's place and are closed from the editor's top bar, so they
+  // only show with both columns: picking a view closes them (Editor and PDF shows the PDF), and opening one brings both back
+  const setView = (view: View) => {
+    // WebKit can leave focus on an element that's hidden, and typing would go on landing there
+    const hidden = view === 'pdf' ? '.editor-column, .tools-column' : view === 'editor' ? '.right-column' : '.tools-column';
+    const active = document.activeElement;
+    const fromSwitcher = !!active?.closest('.view-switcher');
+    if (active instanceof HTMLElement && active.closest(hidden)) active.blur();
+    flushSync(() => {
+      setToolsOpen(false);
+      setGrammarOpen(false);
+      setLayout({ view });
+    });
+    // focus carries on: to the switcher now showing (each header has its own), or back into the editor
+    if (fromSwitcher) [...document.querySelectorAll<HTMLElement>('.view-switcher .segment.active')].find((el) => el.offsetParent)?.focus();
+    else if (view !== 'pdf' && document.activeElement === document.body) viewRef.current?.focus();
+  };
+
+  /** Before something moves the cursor or focuses the editor: from PDF only, both columns show again, straight away so it can take focus. */
+  const showEditor = () => {
+    if (layoutRef.current.view === 'pdf') flushSync(() => setLayout({ view: 'split' }));
+  };
 
   const openTools = (tab?: ToolsTab) => {
     if (tab) setToolsTab(tab);
     setToolsMounted(true);
     setToolsOpen(true);
     setGrammarOpen(false);
+    setLayout({ view: 'split' });
   };
 
   const toggleGrammar = () => {
@@ -916,19 +959,23 @@ function Editor({ projectId }: { projectId: string }) {
     }
     setToolsOpen(false);
     setGrammarOpen(true);
+    setLayout({ view: 'split' });
   };
 
+  // the assistant sits under the editor, so in PDF only it opens (or shows, if it's open) with both columns
   const toggleComposer = () => {
-    if (composerOpen) {
+    if (composerOpen && layout.view !== 'pdf') {
       setComposerOpen(false);
       viewRef.current?.focus();
     } else {
+      showEditor();
       setComposerOpen(true);
       setFocusSignal((n) => n + 1);
     }
   };
 
   const openChat = (id: string | null) => {
+    showEditor();
     setChatId(id);
     setComposerOpen(true);
     setFocusSignal((n) => n + 1);
@@ -978,6 +1025,7 @@ function Editor({ projectId }: { projectId: string }) {
     toggleComposer: () => {},
     toggleGrammar: () => {},
     toggleSidebar: () => {},
+    setView: (_view: View) => {},
     openSettings: () => {},
     zoomBy: (_steps: number) => {},
     fitWidth: () => {},
@@ -993,9 +1041,11 @@ function Editor({ projectId }: { projectId: string }) {
     toggleComposer,
     toggleGrammar,
     toggleSidebar: () => setLayout({ sidebarCollapsed: !layout.sidebarCollapsed }),
+    setView,
     openSettings: () => setSettingsOpen(true),
-    zoomBy: (steps: number) => pdf && zoomBy(steps),
-    fitWidth: () => pdf && setZoom('width'),
+    // not in editor only, where the PDF's hidden
+    zoomBy: (steps: number) => pdf && layout.view !== 'editor' && zoomBy(steps),
+    fitWidth: () => pdf && layout.view !== 'editor' && setZoom('width'),
     suggest: () => suggest(),
     acceptGhost,
     clearGhost,
@@ -1086,6 +1136,9 @@ function Editor({ projectId }: { projectId: string }) {
       grammar: () => a().toggleGrammar(),
       suggest: () => a().suggest(),
       sidebar: () => a().toggleSidebar(),
+      viewEditor: () => a().setView('editor'),
+      viewSplit: () => a().setView('split'),
+      viewPdf: () => a().setView('pdf'),
       zoomIn: () => a().zoomBy(1),
       zoomOut: () => a().zoomBy(-1),
       zoomWidth: () => a().fitWidth()
@@ -1249,6 +1302,9 @@ function Editor({ projectId }: { projectId: string }) {
       else if (is('assistant')) a.toggleComposer();
       else if (is('grammar')) a.toggleGrammar();
       else if (is('sidebar')) a.toggleSidebar();
+      else if (is('viewEditor')) a.setView('editor');
+      else if (is('viewSplit')) a.setView('split');
+      else if (is('viewPdf')) a.setView('pdf');
       else if (matchesZoomIn(shortcutsRef.current, e)) a.zoomBy(1);
       else if (is('zoomOut')) a.zoomBy(-1);
       else if (is('zoomWidth')) a.fitWidth();
@@ -1259,6 +1315,11 @@ function Editor({ projectId }: { projectId: string }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // the editor's column came back or changed width: CodeMirror measures it again, and the ghost text's buttons follow
+  useEffect(() => {
+    if (layout.view !== 'pdf') viewRef.current?.requestMeasure({ read: () => null, write: () => actions.current.placeGhost() });
+  }, [layout.view]);
 
   // turning spell checking on or off in Settings applies straight away
   useEffect(() => {
@@ -1386,6 +1447,41 @@ function Editor({ projectId }: { projectId: string }) {
       return { ...prev, pdfZoom: Math.round(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, from * 1.1 ** steps)) * 100) / 100 };
     });
 
+  // at the top right of the window, in the rightmost header showing: the editor's in editor only, else the right column's
+  const viewSwitcher = (
+    <div className="segmented view-switcher" role="radiogroup" aria-label="View">
+      {VIEWS.map(([value, label, icon, command]) => (
+        <button
+          key={value}
+          className={`segment ${layout.view === value ? 'active' : ''}`}
+          role="radio"
+          aria-checked={layout.view === value}
+          title={withShortcut(settings.shortcuts, label, command)}
+          aria-label={label}
+          onClick={() => setView(value)}
+        >
+          <Icon name={icon} />
+        </button>
+      ))}
+    </div>
+  );
+  const compileStatus = (
+    <span role="status" className={`compile-status ${compile.state}`} title={compile.state === 'ok' ? `${status} · ${engineLabel(String(compile.engine))} · ${mainFile}` : status}>
+      {compile.state === 'failed' ? (
+        <button className="compile-status failed" onClick={() => openTools('logs')}>
+          Failed — see Logs
+        </button>
+      ) : (
+        status
+      )}
+    </span>
+  );
+  const sidebarButton = layout.sidebarCollapsed && (
+    <button className="icon-btn" title={withShortcut(settings.shortcuts, 'Show sidebar', 'sidebar')} aria-label="Show sidebar" onClick={() => setLayout({ sidebarCollapsed: false })}>
+      <Icon name="sidebar.left" />
+    </button>
+  );
+
   return (
     <EditorContext.Provider value={api}>
       <div className={`app-shell editor-page ${layout.sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
@@ -1468,7 +1564,11 @@ function Editor({ projectId }: { projectId: string }) {
                 filter={sidebarTab === 'files' ? filter : ''}
                 activePath={activePath}
                 mainFile={mainFile}
-                onOpen={open}
+                onOpen={(path) => {
+                  // a source file opened from the tree in PDF only shows in the editor beside it
+                  if (TEXT_FILE.test(path)) showEditor();
+                  open(path);
+                }}
                 onRefresh={async () => {
                   await refreshTree();
                 }}
@@ -1523,14 +1623,11 @@ function Editor({ projectId }: { projectId: string }) {
           </aside>
         )}
 
-        <main className="main-panel editor-panel" ref={panelRef}>
-          <section className="editor-column">
+        <main className={`main-panel editor-panel view-${layout.view}`} ref={panelRef}>
+          {/* hidden in PDF only rather than unmounted, so its files, undo history and scroll stay as they were */}
+          <section className="editor-column" hidden={layout.view === 'pdf'}>
             <div className="editor-topbar" data-tauri-drag-region>
-              {layout.sidebarCollapsed && (
-                <button className="icon-btn" title={withShortcut(settings.shortcuts, 'Show sidebar', 'sidebar')} aria-label="Show sidebar" onClick={() => setLayout({ sidebarCollapsed: false })}>
-                  <Icon name="sidebar.left" />
-                </button>
-              )}
+              {sidebarButton}
               <MenuButton icon="plus.circle" className="icon-btn" title="Insert" items={insertItems} disabled={!activePath} />
               <div className="file-tabs" role="tablist" data-tauri-drag-region>
                 {tabs.map((path) => (
@@ -1583,6 +1680,9 @@ function Editor({ projectId }: { projectId: string }) {
                   </span>
                 )}
               </button>
+              {/* the PDF header's is hidden in editor only; this one stays from the first compile, so changes are heard */}
+              {layout.view === 'editor' && compile.state !== 'idle' && compileStatus}
+              {layout.view === 'editor' && viewSwitcher}
             </div>
 
             {pending.length > 0 && (
@@ -1639,15 +1739,23 @@ function Editor({ projectId }: { projectId: string }) {
               chatId={chatId} onChatIdChange={setChatId} focusSignal={focusSignal} />
           </section>
 
-          <div className="column-divider" role="separator" aria-orientation="vertical" aria-label="Resize" onMouseDown={startResize} />
+          {layout.view === 'split' && <div className="column-divider" role="separator" aria-orientation="vertical" aria-label="Resize" onMouseDown={startResize} />}
 
-          <section className="right-column" style={{ width: `${layout.split * 100}%` }}>
+          {/* hidden in editor only, so the PDF needn't load again */}
+          <section className="right-column" hidden={layout.view === 'editor'} style={layout.view === 'split' ? { width: `${layout.split * 100}%` } : undefined}>
             <div className="pdf-column" hidden={toolsOpen || grammarOpen}>
               <div className="pdf-header" data-tauri-drag-region>
+                {layout.view === 'pdf' && sidebarButton}
                 <div className="compile-split">
-                  <button className="compile-main" onClick={runCompile} disabled={running} title={withShortcut(settings.shortcuts, 'Compile', 'compile')}>
+                  <button
+                    className="compile-main"
+                    onClick={runCompile}
+                    disabled={running}
+                    title={withShortcut(settings.shortcuts, 'Compile', 'compile')}
+                    aria-label="Compile"
+                  >
                     {running ? <span className="spinner" /> : <Icon name="play.fill" />}
-                    <span>Compile</span>
+                    <span className="btn-label">Compile</span>
                   </button>
                   <MenuButton
                     className="compile-engine"
@@ -1668,15 +1776,7 @@ function Editor({ projectId }: { projectId: string }) {
                   <span className="btn-label">Save version</span>
                 </button>
                 {/* always mounted, so screen readers hear each change */}
-                <span role="status" className={`compile-status ${compile.state}`} title={compile.state === 'ok' ? `${status} · ${engineLabel(String(compile.engine))} · ${mainFile}` : status}>
-                  {compile.state === 'failed' ? (
-                    <button className="compile-status failed" onClick={() => openTools('logs')}>
-                      Failed — see Logs
-                    </button>
-                  ) : (
-                    status
-                  )}
-                </span>
+                {compileStatus}
                 <span className="spacer" data-tauri-drag-region />
                 <MenuButton
                   className="btn ghost small zoom-button"
@@ -1704,6 +1804,7 @@ function Editor({ projectId }: { projectId: string }) {
                     { label: 'Show logs', icon: 'terminal', checked: false, onSelect: () => openTools('logs') }
                   ]}
                 />
+                {viewSwitcher}
               </div>
 
               <div className="pdf-body">
@@ -1716,7 +1817,8 @@ function Editor({ projectId }: { projectId: string }) {
                     annotateMode={annotate}
                     annotations={annotations}
                     onAddAnnotation={addAnnotation}
-                    onTextClick={(text) => findInSource(text)}
+                    // in PDF only a click is for reading (focus, clearing a selection), so it doesn't bring the editor back
+                    onTextClick={(text) => layout.view !== 'pdf' && findInSource(text)}
                     onLoad={({ pages, outline: toc }) => {
                       setPdfPages(pages);
                       setPdfOutline(toc);
@@ -1832,7 +1934,7 @@ function Editor({ projectId }: { projectId: string }) {
 
             {toolsMounted && (
               <div className="tools-column" hidden={!toolsOpen}>
-                <ToolsPanel tab={toolsTab} onTabChange={setToolsTab} />
+                <ToolsPanel tab={toolsTab} onTabChange={setToolsTab} trailing={viewSwitcher} />
               </div>
             )}
 
@@ -1848,6 +1950,7 @@ function Editor({ projectId }: { projectId: string }) {
                     setGrammarOpen(false);
                     viewRef.current?.focus();
                   }}
+                  trailing={viewSwitcher}
                 />
               </div>
             )}

@@ -301,6 +301,8 @@
   gap: 6px;
   height: 52px;
   padding: 0 10px 0 12px;
+  /* as the PDF and Tools headers have, so the view switcher sits at the same height in each */
+  border-bottom: 1px solid transparent;
 }
 
 .fs-moving .editor-topbar {
@@ -652,6 +654,36 @@
   background: color-mix(in srgb, var(--text-tertiary) 70%, transparent);
 }
 
+/* editor only or PDF only: the other column is hidden, not unmounted, and the one left fills the panel */
+.editor-column[hidden],
+.right-column[hidden] {
+  display: none;
+}
+
+.view-pdf .right-column {
+  flex: 1;
+  max-width: none;
+}
+
+/* --------------------------------------------------------------------------
+   View switcher: editor only, editor and PDF, PDF only (top right of the window)
+   -------------------------------------------------------------------------- */
+
+.view-switcher {
+  padding: 2px;
+}
+
+.view-switcher .segment {
+  width: 30px;
+  height: 26px;
+  padding: 0;
+}
+
+.view-switcher .segment .sf {
+  width: 16px;
+  height: 16px;
+}
+
 /* --------------------------------------------------------------------------
    Column divider
    -------------------------------------------------------------------------- */
@@ -739,6 +771,19 @@
 .pdf-header .spacer {
   flex: 1;
   align-self: stretch;
+}
+
+/* PDF only: the header is the panel's first row, so it keeps clear of the traffic lights as the editor's does */
+.fs-moving .pdf-header {
+  transition: padding-left 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+.desktop .sidebar-collapsed .view-pdf .pdf-header {
+  padding-left: 76px;
+}
+
+.desktop.fullscreen .sidebar-collapsed .view-pdf .pdf-header {
+  padding-left: 12px;
 }
 
 .compile-split {
@@ -829,8 +874,9 @@ button.compile-status:hover {
   text-overflow: ellipsis;
 }
 
-/* a narrow column keeps room for the compile status: the zoom menu shrinks to its icon */
-@container (max-width: 480px) {
+/* a narrow column keeps room for the compile status: the zoom menu shrinks to its icon
+   (the widths here and below leave room for the view switcher too) */
+@container (max-width: 580px) {
   .zoom-button .btn-label,
   .zoom-button .btn-chevron {
     display: none;
@@ -1181,7 +1227,7 @@ button.compile-status:hover {
 }
 
 /* shrinks to its icon before the zoom menu does, so the compile status keeps its words */
-@container (max-width: 600px) {
+@container (max-width: 700px) {
   .save-version .btn-label {
     display: none;
   }
@@ -1189,6 +1235,21 @@ button.compile-status:hover {
   .save-version.btn {
     width: 32px;
     padding: 0;
+  }
+}
+
+/* narrower still, Compile is the last label to go, so the view switcher stays in view; then the zoom menu
+   (the PDF's own − and + zoom too) and Save version (its shortcut, or Tools → Versions) give way */
+@container (max-width: 440px) {
+  .compile-main .btn-label {
+    display: none;
+  }
+}
+
+@container (max-width: 410px) {
+  .pdf-header .zoom-button,
+  .pdf-header .save-version {
+    display: none;
   }
 }
 

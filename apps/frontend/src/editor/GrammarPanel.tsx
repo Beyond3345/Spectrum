@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { StateEffect, StateField } from '@codemirror/state';
 import type { EditorState } from '@codemirror/state';
 import { Decoration, EditorView } from '@codemirror/view';
@@ -104,7 +105,8 @@ export default function GrammarPanel({
   path,
   revision,
   settings,
-  onClose
+  onClose,
+  trailing
 }: {
   view: () => EditorView | null;
   projectId: string;
@@ -113,6 +115,8 @@ export default function GrammarPanel({
   revision: unknown;
   settings: AppSettings;
   onClose(): void;
+  /** ends the header (the view switcher) */
+  trailing?: ReactNode;
 }) {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [state, setState] = useState<'checking' | 'done' | 'error' | 'unsupported'>('checking');
@@ -232,6 +236,7 @@ export default function GrammarPanel({
         <button className="icon-btn" title="Close and show the PDF" aria-label="Close grammar check" onClick={onClose}>
           <Icon name="xmark" />
         </button>
+        {trailing}
       </div>
       <div className="tools-body">
         <div className="tool-page grammar-list" role="status">

@@ -43,6 +43,9 @@ if (IS_MAC) eq(formatShortcut('Shift-Mod-Enter'), '⇧⌘↩', 'Mac symbols');
 const shiftS = press('S', 'KeyS', { ...mod, shiftKey: true });
 eq(matchesShortcut(shortcutKey({}, 'saveVersion'), shiftS), true, 'save version');
 eq(matchesShortcut(shortcutKey({}, 'save'), shiftS), false, 'save is not save version');
+// ⌘1, ⌘2 and ⌘3 pick the view (editor only, both, PDF only); ⌘0 still fits the PDF's width
+const digit = (n: string) => SHORTCUTS.find((s) => matchesShortcut(shortcutKey({}, s.id), press(n, `Digit${n}`, mod)))?.id;
+eq(['1', '2', '3', '0'].map(digit), ['viewEditor', 'viewSplit', 'viewPdf', 'zoomWidth'], 'view shortcuts');
 // the defaults are free and don't clash with each other (on a Mac: elsewhere Ctrl-g is Find next)
 if (IS_MAC) {
   const defaults = SHORTCUTS.map((s) => canonical(s.key));

@@ -476,7 +476,8 @@
   align-items: center;
   gap: 8px;
   height: 52px;
-  padding: 0 20px;
+  /* ends with the view switcher, which sits where it does in the PDF's header */
+  padding: 0 10px 0 20px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -486,6 +487,8 @@
   gap: 16px;
   overflow-x: auto;
   scrollbar-width: none;
+  /* the scrollbar's hidden, so a fade says there are more tabs past the edge */
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
 }
 
 .tools-tabs .tab {
