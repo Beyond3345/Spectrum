@@ -27,7 +27,7 @@ eq(accentInk('#ffc600', true), '#ffc600', 'yellow already reads on dark grey');
 for (const colour of [...ACCENTS.map(([, , c]) => c).filter(Boolean), '#ffffff', '#000000', '#34c759', '#123456']) {
   const [light, dark] = [accentInk(colour, false), accentInk(colour, true)];
   if (contrast(light, '#ffffff') < 4.5) throw new Error(`${colour} as text in light mode is ${contrast(light, '#ffffff')}:1`);
-  if (contrast(dark, '#212121') < 4.5) throw new Error(`${colour} as text in dark mode is ${contrast(dark, '#212121')}:1`);
+  if (contrast(dark, '#2a2a2a') < 4.5) throw new Error(`${colour} as text in dark mode is ${contrast(dark, '#2a2a2a')}:1`);
 }
 if (contrast(accentInk('#ffc600', false), '#ffffff') > 5) throw new Error('yellow is darkened only as far as it needs');
 eq(accentColour({ accent: 'system', accentCustom: '#123456' }), '', 'Follow macOS sets nothing');

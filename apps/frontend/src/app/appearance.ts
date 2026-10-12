@@ -67,7 +67,8 @@ export function accentText(hex: string) {
  * it reads at 4.5:1 (WCAG AA) on the panel (#ffffff or #212121). One that already does stays as it is.
  */
 export function accentInk(hex: string, dark: boolean) {
-  const [surface, towards] = dark ? ['#212121', '#ffffff'] : ['#ffffff', '#000000'];
+  // the lightest surface accent text sits on in each mode: white, and the dark sheets and menus
+  const [surface, towards] = dark ? ['#2a2a2a', '#ffffff'] : ['#ffffff', '#000000'];
   const [from, to] = [channels(hex), channels(towards)];
   for (let t = 0; t < 1; t += 0.02) {
     const ink = `#${from.map((v, i) => Math.round(v + (to[i] - v) * t).toString(16).padStart(2, '0')).join('')}`;

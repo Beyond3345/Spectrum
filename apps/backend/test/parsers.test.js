@@ -342,5 +342,5 @@ test('maths delimiters become $ and $$; line breaks, code and escaped citations 
   assert.equal(dollarMaths('\\( x \\) \\[y\\] a \\\\[3pt] b \\\\(c)'), '$x$ $$y$$ a \\\\[3pt] b \\\\(c)');
   const code = '```python\nm = re.match(r"\\((\\d+)\\)", s)\n```\nWith `\\[a-z\\]+` and \\(x\\).';
   assert.equal(dollarMaths(code), code.replace('\\(x\\)', '$x$'));
-  assert.equal(dollarMaths('see \\[1\\] and \\[2, 3–5\\], then \\[ 2x \\]'), 'see \\[1\\] and \\[2, 3–5\\], then $$ 2x $$');
+  assert.equal(dollarMaths('see \\[1\\] and \\[2, 3–5\\], then \\[ 2x \\]'), 'see [1] and [2, 3–5], then $$ 2x $$');
 });

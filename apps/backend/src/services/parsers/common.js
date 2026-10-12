@@ -43,7 +43,10 @@ export async function send(name, url, init = {}, hops = 5) {
     const { method, body, headers, ...rest } = init;
     // as fetch does: 303, or 301/302 after a POST, becomes a GET with no body
     const asGet = res.status === 303 || (res.status <= 302 && method === 'POST');
-    return send(name, next.href, { ...rest, ...(!asGet && { method, body }), ...(next.origin === originOf(url) && { headers }) }, hops - 1);
+    // the key stays on its own origin, or the same host moving up to https (it went there in the clear already)
+    const from = new URL(url);
+    const keep = next.origin === from.origin || (next.host === from.host && from.protocol === 'http:' && next.protocol === 'https:');
+    return send(name, next.href, { ...rest, ...(!asGet && { method, body }), ...(keep && { headers }) }, hops - 1);
   }
   if (!res.ok) {
     const body = snippet(await res.text().catch(() => ''));
@@ -129,7 +132,7 @@ export function relinkImages(markdown, renames) {
 const citation = /^\s*\d[\d\s,;–-]*$/;
 const convert = (text) =>
   text
-    .replace(/(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]/g, (all, maths) => (citation.test(maths) ? all : `$$${maths}$$`))
+    .replace(/(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]/g, (all, maths) => (citation.test(maths) ? `[${maths}]` : `$$${maths}$$`))
     .replace(/(?<!\\)\\\(([\s\S]+?)(?<!\\)\\\)/g, (all, maths) => (citation.test(maths) ? all : `$${maths.trim()}$`));
 
 /**
