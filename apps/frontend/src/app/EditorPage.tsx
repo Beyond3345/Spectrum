@@ -46,6 +46,7 @@ import type { CompileError, EditorApi, PendingChange } from '../editor/EditorCon
 import Composer from '../editor/Composer';
 import ChatsList from '../editor/ChatsList';
 import ToolsPanel from '../editor/ToolsPanel';
+import { figureFile, showFigure } from '../editor/tools/FloatsTab';
 import GrammarPanel, { grammarMarks } from '../editor/GrammarPanel';
 import { ignoreSpelling, misspeltAt, recheckSpelling, spellChecker } from '../editor/spellcheck';
 import type { ToolsTab } from '../editor/ToolsPanel';
@@ -1147,6 +1148,20 @@ function Editor({ projectId }: { projectId: string }) {
         }
       }),
       grammarMarks,
+      // an image dropped on the editor goes to Tools → Floats → Insert figure instead of into the text
+      EditorView.domEventHandlers({
+        drop(e, view) {
+          const file = figureFile(e.dataTransfer);
+          if (!file) return false;
+          e.preventDefault();
+          // the figure goes where it was dropped, as the drop cursor showed; a user 'select' counts as placing the cursor
+          const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+          if (pos != null) view.dispatch({ selection: { anchor: pos }, userEvent: 'select.pointer' });
+          showFigure(file);
+          openTools('floats');
+          return true;
+        }
+      }),
       listener
     ];
     const view = new EditorView({ state: EditorState.create({ doc: '', extensions: extensionsRef.current }), parent: hostRef.current! });
@@ -1295,6 +1310,7 @@ function Editor({ projectId }: { projectId: string }) {
       const done = insertAtCursor(text, opts);
       return done && viewRef.current ? viewRef.current.state.doc.lineAt(done.from + done.insert.length).number : null;
     },
+    editOpenFile: (change) => viewRef.current?.dispatch({ changes: change }),
     ensureFileContent,
     writeProjectFile,
     writeBibEntries,

@@ -27,6 +27,8 @@ import { isLocalRequest } from './utils/authUtils.js';
 const fastify = Fastify({ logger: true, bodyLimit: 50 * 1024 * 1024 });
 
 await fastify.register(multipart, {
+  // keep the folder in an upload's file name (images/cat.png); without it busboy cuts it down to cat.png
+  preservePath: true,
   limits: {
     fileSize: 200 * 1024 * 1024
   }

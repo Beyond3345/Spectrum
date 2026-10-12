@@ -42,6 +42,8 @@ export interface EditorApi {
    * document body (for automatic inserts). Returns the line the text went in, or null when nothing was inserted.
    */
   insertAtCursor(text: string, opts?: { block?: boolean; afterSelection?: boolean; focus?: boolean; placedOnly?: boolean }): number | null;
+  /** inserts into the open file through the editor, so it can be undone and the cursor moves along */
+  editOpenFile(change: { from: number; insert: string }): void;
   ensureFileContent(path: string): Promise<string>;
   /** writes + updates cache + editor if open */
   writeProjectFile(path: string, content: string): Promise<void>;

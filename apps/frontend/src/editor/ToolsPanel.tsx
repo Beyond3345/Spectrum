@@ -6,9 +6,9 @@ import VersionsTab from './tools/VersionsTab';
 import LogsTab from './tools/LogsTab';
 import ResearchTab from './tools/ResearchTab';
 import ReviewTab from './tools/ReviewTab';
-import FiguresTab from './tools/FiguresTab';
+import FloatsTab from './tools/FloatsTab';
 
-export type ToolsTab = 'info' | 'versions' | 'logs' | 'research' | 'review' | 'figures';
+export type ToolsTab = 'info' | 'versions' | 'logs' | 'research' | 'review' | 'floats';
 
 const LABELS: [ToolsTab, string][] = [
   ['info', 'Project info'],
@@ -16,7 +16,7 @@ const LABELS: [ToolsTab, string][] = [
   ['logs', 'Logs'],
   ['research', 'Research'],
   ['review', 'Review'],
-  ['figures', 'Figures']
+  ['floats', 'Floats']
 ];
 
 /** Right column when Tools is open. Tabs stay mounted once visited so results survive switching. */
@@ -45,8 +45,8 @@ export default function ToolsPanel({ tab, onTabChange }: { tab: ToolsTab; onTabC
         return <ResearchTab />;
       case 'review':
         return <ReviewTab />;
-      case 'figures':
-        return <FiguresTab />;
+      case 'floats':
+        return <FloatsTab />;
     }
   };
 

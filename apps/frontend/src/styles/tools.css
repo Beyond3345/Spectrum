@@ -582,7 +582,7 @@
   color: var(--text-secondary);
 }
 
-/* cards used by Research, Review and Figures */
+/* cards used by Research, Review and Floats */
 
 .tool-card {
   display: flex;
@@ -1011,7 +1011,7 @@ span.log-location {
 }
 
 /* --------------------------------------------------------------------------
-   Figures
+   Floats
    -------------------------------------------------------------------------- */
 
 .drop-zone {
@@ -1142,6 +1142,73 @@ span.log-location {
   width: 100%;
   height: 65vh;
   border: 0;
+}
+
+.tool-card .field > .segmented {
+  align-self: flex-start;
+}
+
+.figure-custom-width {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+/* the cell grid scrolls sideways inside its card when the Tools column is narrow */
+.table-grid-scroll {
+  overflow-x: auto;
+}
+
+/* the spacing leaves room for the focus ring, which the scroller would clip */
+.table-grid {
+  border-collapse: separate;
+  border-spacing: 4px;
+}
+
+.table-grid th,
+.table-grid td {
+  min-width: 80px;
+  padding: 0;
+}
+
+.table-grid .popup-button {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.table-grid .input {
+  height: 30px;
+  padding: 0 8px;
+}
+
+/* the header gets a rule in the LaTeX, not bold text */
+.table-grid .input.head {
+  border-bottom: 2px solid var(--text-tertiary);
+}
+
+.table-grid-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.table-size {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+textarea.table-latex {
+  min-height: 0;
+  overflow-x: auto;
+  white-space: pre;
 }
 
 /* --------------------------------------------------------------------------
@@ -1435,4 +1502,41 @@ span.log-location {
   gap: 8px;
   font-size: 12.5px;
   color: var(--text-secondary);
+}
+
+/* placement letters: toggles that combine, in a monospace face so the letters read as LaTeX */
+.placement-toggles .segment {
+  min-width: 34px;
+  font-family: var(--font-mono);
+}
+
+.placement-toggles .segment:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* what each letter means, always shown */
+.placement-key {
+  display: grid;
+  gap: 2px;
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.placement-key > div {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 6px;
+}
+
+.placement-key dt {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.placement-key dd {
+  margin: 0;
 }
