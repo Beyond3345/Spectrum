@@ -318,7 +318,8 @@ function snippet(label: string, text: string, cursor = text.length): Completion 
   };
 }
 
-const braces = (cmd: string) => snippet(`\\${cmd}{}`, `\\${cmd}{}`, cmd.length + 2);
+// ranked above the environments (boost 1 for the common ones), so a bare "\" or "/" lists commands first
+const braces = (cmd: string) => ({ ...snippet(`\\${cmd}{}`, `\\${cmd}{}`, cmd.length + 2), boost: 2 });
 
 /**
  * An environment that keeps the indent of the line it's typed on: the body one step in (nested
@@ -326,7 +327,7 @@ const braces = (cmd: string) => snippet(`\\${cmd}{}`, `\\${cmd}{}`, cmd.length +
  * arguments after \begin{…} and the body.
  */
 const env = (name: string, detail: string, top: boolean): Completion => {
-  const [args, body = [''], cursorLine = 1]: Snip = (name === 'algorithm' && detail === 'algorithm2e' ? ALGORITHM2E_SNIPPET : ENV_SNIPPETS[name]) || [''];
+  const [args, body = [''], cursorLine = 1]: Snip = (/^algorithm\*?$/.test(name) && detail === 'algorithm2e' ? ALGORITHM2E_SNIPPET : ENV_SNIPPETS[name]) || [''];
   return {
     label: `\\begin{${name}}`,
     detail,
@@ -466,9 +467,10 @@ export const editorTheme = EditorView.theme({
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--editor-cursor)', borderLeftWidth: '1.5px' },
   '.cm-gutters': { backgroundColor: 'var(--bg-editor)', border: 'none', color: 'var(--editor-gutter)' },
   '.cm-lineNumbers .cm-gutterElement': { padding: '0 6px 0 16px', minWidth: '44px', fontVariantNumeric: 'tabular-nums' },
-  '.cm-foldGutter .cm-gutterElement': { padding: '0 2px', color: 'var(--editor-gutter)' },
+  // the fold markers and the current line number take the UI greys, as in 1.1 (Spectrum's gutter colour is fainter)
+  '.cm-foldGutter .cm-gutterElement': { padding: '0 2px', color: 'var(--text-tertiary)' },
   '.cm-activeLine': { backgroundColor: 'var(--editor-active-line)' },
-  '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'color-mix(in srgb, var(--editor-fg) 60%, var(--editor-gutter))' },
+  '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--text-secondary)' },
   '.cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-content ::selection': {
     backgroundColor: 'var(--editor-selection) !important'
   },

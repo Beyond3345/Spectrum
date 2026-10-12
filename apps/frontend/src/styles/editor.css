@@ -1175,8 +1175,8 @@ button.compile-status:hover {
   padding: 0 12px;
 }
 
-/* shrinks to its icon with the zoom menu */
-@container (max-width: 480px) {
+/* shrinks to its icon before the zoom menu does, so the compile status keeps its words */
+@container (max-width: 600px) {
   .save-version .btn-label {
     display: none;
   }

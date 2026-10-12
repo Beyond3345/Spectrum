@@ -44,6 +44,9 @@ eq(complete('\\begin{claim2-b')?.from, 0, 'a name with digits and a hyphen keeps
 const slash = complete('see /sec')?.options.find((o) => o.label === '/section{}');
 eq([slash?.displayLabel, complete('see /sec')?.from], ['\\section{}', 4], '"/" matches labels that start with "/" and shows them with "\\"');
 eq(complete('http://x'), null, 'never in URLs');
+// a bare trigger matches every label alike, so CodeMirror orders the list by boost, then label
+const first = (text: string) => [...complete(text)!.options].sort((a, b) => (b.boost ?? 0) - (a.boost ?? 0) || a.label.localeCompare(b.label))[0].label;
+eq([first('see \\'), first('see /')], ['\\caption{}', '/caption{}'], 'a bare "\\" or "/" lists the commands before the environments');
 
 /** Picks the named entry for the text with the cursor at "|" and returns the result with the cursor marked. */
 function accept(text: string, label: string) {
@@ -58,17 +61,30 @@ function accept(text: string, label: string) {
 }
 eq(accept('    \\begin{tab|}', '\\begin{tabular}'), '    \\begin{tabular}{lcc}\n        |\n    \\end{tabular}', 'arguments, the indent and the } closeBrackets added');
 eq(accept('\\begin{fig|', '\\begin{figure}'), '\\begin{figure}\n    \\centering\n    \\includegraphics[width=0.9\\linewidth]{|}\n    \\caption{}\n    \\label{fig:}\n\\end{figure}', 'the cursor goes into the {} that ends its line');
+eq(accept('\\usepackage{algorithm2e}\n\\begin{algorithm*|', '\\begin{algorithm*}').includes('\\KwIn{}'), true, 'algorithm2e’s body for algorithm* too');
 eq(accept('/beg|', '/begin{subequations}'), '\\begin{subequations}\n    \\begin{align}\n        |\n    \\end{align}\n\\end{subequations}', 'nested environments from "/"');
 
 // the walk: \input from the main file's folder, then the root; local packages, and what they load
 const tree: Record<string, string> = {
-  'paper/main.tex': '\\documentclass{article}\n\\usepackage{house}\n\\input{sections/intro}\n\\input{shared}\n% \\input{gone}',
+  'paper/main.tex': '\\documentclass{article}\n\\usepackage{house}\n\\input{sections/intro}\n\\input{shared}\n% \\input{gone}\n\\input{figs/plot.pgf}\n\\input{appendix.tex}',
   'paper/sections/intro.tex': '\\newtheorem{lemma}{Lemma}',
   'shared.tex': '\\usepackage{wrapfig}',
   'house.sty': '\\RequirePackage{tcolorbox}\n\\newtcolorbox{note}{}',
-  'gone.tex': '\\newtheorem{gone}{Gone}'
+  'gone.tex': '\\newtheorem{gone}{Gone}',
+  'paper/figs/plot.pgf': '\\newtheorem{plot}{Plot}',
+  'paper/appendix.tex': '\\newtheorem{extra}{Extra}'
 };
-scanProject('paper/main.tex', new Set(Object.keys(tree)), async (path) => tree[path]).then((scans) => {
-  eq(pick(availableEnvs(scans), 'lemma', 'note', 'tcolorbox', 'wrapfigure', 'gone'), ['this project', 'this project', 'tcolorbox', 'wrapfig', null], 'the project walk');
+const files = new Set(Object.keys(tree));
+const reads: string[] = [];
+const read = async (path: string) => (reads.push(path), tree[path]);
+(async () => {
+  const scans = await scanProject('paper/main.tex', files, read);
+  eq(pick(availableEnvs(scans), 'lemma', 'note', 'tcolorbox', 'wrapfigure', 'gone', 'extra', 'plot'), ['this project', 'this project', 'tcolorbox', 'wrapfig', null, 'this project', null], 'the project walk');
+  eq(reads.includes('paper/figs/plot.pgf'), false, 'an \\input figure that isn’t .tex is never read');
+  const again = await scanProject('paper/main.tex', files, read);
+  eq(again.every((scan, i) => scan === scans[i]), true, 'an unchanged rescan reuses every scan');
+  tree['shared.tex'] = '\\newtheorem{fresh}{Fresh}';
+  const changed = await scanProject('paper/main.tex', files, read);
+  eq([changed.filter((scan, i) => scan !== scans[i]).length, pick(availableEnvs(changed), 'fresh')], [1, ['this project']], 'a rescan scans only the changed file');
   console.log('envs.check: ok');
-});
+})();

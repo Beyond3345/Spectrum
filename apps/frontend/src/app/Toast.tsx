@@ -12,10 +12,18 @@ let toasts: ToastItem[] = [];
 let nextId = 1;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((fn) => fn());
+const timers = new Map<number, number>();
 
 function dismiss(id: number) {
+  window.clearTimeout(timers.get(id));
+  timers.delete(id);
   toasts = toasts.filter((t) => t.id !== id);
   emit();
+}
+
+function schedule(id: number, ms: number) {
+  window.clearTimeout(timers.get(id));
+  timers.set(id, window.setTimeout(() => dismiss(id), ms));
 }
 
 /** Short-lived status message in the bottom-centre of the window. Errors, and toasts with an action, stay longer. */
@@ -25,7 +33,7 @@ export function toast(message: string, opts: { tone?: ToastTone; duration?: numb
   // the same message twice in a row replaces the old one instead of stacking
   toasts = [...toasts.filter((t) => t.message !== message).slice(-3), { id, message, tone, action: opts.action }];
   emit();
-  window.setTimeout(() => dismiss(id), opts.duration ?? (tone === 'error' ? 7000 : opts.action ? 6000 : 3500));
+  schedule(id, opts.duration ?? (tone === 'error' ? 7000 : opts.action ? 6000 : 3500));
 }
 
 const ICONS: Record<ToastTone, string> = {
@@ -43,7 +51,16 @@ export function ToastHost() {
     () => toasts
   );
   const render = (t: ToastItem) => (
-    <div key={t.id} className={`toast ${t.tone}`} onClick={() => dismiss(t.id)}>
+    // the timer waits while the toast is pointed at or its button has focus, so there's time to reach the action
+    <div
+      key={t.id}
+      className={`toast ${t.tone}`}
+      onClick={() => dismiss(t.id)}
+      onMouseEnter={() => window.clearTimeout(timers.get(t.id))}
+      onFocus={() => window.clearTimeout(timers.get(t.id))}
+      onMouseLeave={(e) => e.currentTarget.matches(':focus-within') || schedule(t.id, 3000)}
+      onBlur={(e) => e.currentTarget.matches(':hover') || schedule(t.id, 3000)}
+    >
       <Icon name={ICONS[t.tone]} className="toast-icon" />
       <span>{t.message}</span>
       {/* the click bubbles to the toast, which dismisses it */}

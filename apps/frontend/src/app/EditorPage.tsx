@@ -108,10 +108,8 @@ const DEFAULT_LAYOUT: Layout = { sidebarCollapsed: false, split: 0.46, outlineOp
 
 function loadLayout(): Layout {
   try {
-    const { darkPages, ...saved } = { ...DEFAULT_LAYOUT, ...JSON.parse(window.localStorage.getItem(LAYOUT_KEY) || '{}') };
-    // 1.1's "Dark pages in dark mode" lived here; off, it becomes White pages in dark mode. The layout is
-    // saved without it, so this happens once (after rendering, which mustn't change settings)
-    if (darkPages === false) queueMicrotask(() => updateSettings({ pdfPageDark: 'white' }));
+    // 1.1 also kept darkPages here; main.tsx moves it to the settings before anything renders
+    const saved = { ...DEFAULT_LAYOUT, ...JSON.parse(window.localStorage.getItem(LAYOUT_KEY) || '{}') };
     const zoom = saved.pdfZoom;
     if (!(zoom === 'fit' || zoom === 'width' || (typeof zoom === 'number' && zoom >= MIN_ZOOM && zoom <= MAX_ZOOM))) saved.pdfZoom = 'width';
     return saved;
@@ -525,13 +523,16 @@ function Editor({ projectId }: { projectId: string }) {
     setMainFile(texFiles.find((p) => /(^|\/)main\.tex$/i.test(p)) || texFiles[0] || '');
   }, [loaded, texFiles]);
 
-  // \begin{ completion rescans the project a moment after the tree, the main file or a file changes
-  // (dirty settles after each save); the completion source scans the open file's text itself
+  // \begin{ completion rescans the project a moment after the tree, the main file or a file changes, and
+  // after each save rather than while typing; the completion source scans the open file's text itself
   useEffect(() => {
+    if (dirty) return;
     let live = true;
     const timer = window.setTimeout(() => {
       const files = new Set(items.filter((i) => i.type === 'file').map((i) => i.path));
-      scanProject(mainFile, files, ensureFileContent).then((scans) => {
+      // open files from their live text, the rest from disk each time: caching those here would show stale
+      // text, and autosave it, if the file changes on disk before it's opened
+      scanProject(mainFile, files, async (path) => filesRef.current.get(path) ?? (await getFile(projectId, path)).content).then((scans) => {
         if (live) envScansRef.current = scans;
       });
     }, 400);

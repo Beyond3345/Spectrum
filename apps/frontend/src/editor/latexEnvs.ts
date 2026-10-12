@@ -280,6 +280,9 @@ const normalise = (path: string) =>
     .reduce<string[]>((out, part) => (part === '..' ? out.slice(0, -1) : part && part !== '.' ? [...out, part] : out), [])
     .join('/');
 
+// each file's last text and scan, so a rescan only scans what changed
+const scanned = new Map<string, [src: string, scan: TexScan]>();
+
 /**
  * Scans the main file and what it pulls in: \input, \include, \subfile and \import, and the project's own
  * .sty and .cls files. Like the compile's TEXINPUTS, a name is looked up from the main file's folder first,
@@ -287,15 +290,20 @@ const normalise = (path: string) =>
  */
 export async function scanProject(mainFile: string, files: Set<string>, read: (path: string) => Promise<string>) {
   const dir = mainFile.slice(0, mainFile.lastIndexOf('/') + 1);
-  // TeX tries name.tex before the name as given
-  const find = (name: string, ext: string) => [dir + name + ext, name + ext, ...(ext === '.tex' ? [dir + name, name] : [])].map(normalise).find((p) => files.has(p));
+  // TeX tries name.tex before the name as given; only a .tex is followed as given, so a big \input'd
+  // .pgf or .tikz figure is never read
+  const find = (name: string, ext: string) =>
+    [dir + name + ext, name + ext, ...(ext === '.tex' && /\.tex$/i.test(name) ? [dir + name, name] : [])].map(normalise).find((p) => files.has(p));
   const scans: TexScan[] = [];
   const queue = [mainFile];
   const seen = new Set(queue);
   // the loop picks up what each file adds to the queue
   for (const path of queue) {
     if (!files.has(path)) continue;
-    const scan = scanTex(await read(path).catch(() => ''));
+    const src = await read(path).catch(() => '');
+    const hit = scanned.get(path);
+    const scan = hit?.[0] === src ? hit[1] : scanTex(src);
+    scanned.set(path, [src, scan]);
     scans.push(scan);
     for (const p of [...scan.inputs.map((n) => find(n, '.tex')), ...scan.packages.map((n) => find(n, '.sty')), ...scan.classes.map((n) => find(n, '.cls'))]) {
       if (p && !seen.has(p)) {
@@ -304,5 +312,7 @@ export async function scanProject(mainFile: string, files: Set<string>, read: (p
       }
     }
   }
+  // forget files the walk no longer reaches (another project's, a renamed one)
+  for (const path of scanned.keys()) if (!seen.has(path)) scanned.delete(path);
   return scans;
 }
