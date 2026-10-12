@@ -1167,3 +1167,8 @@ button.compile-status:hover {
 .toast-action:hover {
   background: var(--accent-soft);
 }
+
+/* where a \begin{…} entry comes from, quieter than the name (the highlighted entry keeps its colour) */
+.cm-tooltip-autocomplete li:not([aria-selected]) .cm-completionDetail {
+  color: var(--text-tertiary);
+}

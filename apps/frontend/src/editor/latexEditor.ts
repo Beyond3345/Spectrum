@@ -3,10 +3,12 @@ import type { EditorState } from '@codemirror/state';
 import { Decoration, EditorView, GutterMarker, ViewPlugin, WidgetType, gutter } from '@codemirror/view';
 import type { Command, DecorationSet, ViewUpdate } from '@codemirror/view';
 import { acceptCompletion, completionStatus, currentCompletions } from '@codemirror/autocomplete';
-import type { Completion, CompletionContext } from '@codemirror/autocomplete';
+import type { Completion, CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 import { HighlightStyle, getIndentUnit, indentUnit } from '@codemirror/language';
 import { indentMore } from '@codemirror/commands';
 import { tags } from '@lezer/highlight';
+import { ALGORITHM2E_SNIPPET, COMMON_ENVS, ENV_SNIPPETS, availableEnvs, scanTex } from './latexEnvs';
+import type { Snip, TexScan } from './latexEnvs';
 
 // CodeMirror pieces for LaTeX: indentation and wrapping, folding, the environment scope gutter,
 // completions, the AI ghost text and the token-based theme.
@@ -320,49 +322,67 @@ const braces = (cmd: string) => snippet(`\\${cmd}{}`, `\\${cmd}{}`, cmd.length +
 
 /**
  * An environment that keeps the indent of the line it's typed on: the body one step in (nested
- * environments a step further), and \end{…} back under \begin{…}.
+ * environments a step further), and \end{…} back under \begin{…}. Its snippet (latexEnvs) adds
+ * arguments after \begin{…} and the body.
  */
-const env = (name: string, body: string[], cursorLine = 1): Completion => ({
-  label: `\\begin{${name}}`,
-  type: 'keyword',
-  apply: (view, _completion, from, to) => {
-    // typing { adds a } after the cursor, which the \end{…} line replaces
-    if (view.state.sliceDoc(from, to).includes('{') && view.state.sliceDoc(to, to + 1) === '}') to += 1;
-    const base = /^[ \t]*/.exec(view.state.doc.lineAt(from).text)![0];
-    let depth = 1;
-    const inner = body.map((line) => {
-      if (line.startsWith('\\end{')) depth -= 1;
-      const out = base + INDENT.repeat(depth) + line;
-      if (line.startsWith('\\begin{')) depth += 1;
-      return out;
-    });
-    const lines = [`\\begin{${name}}`, ...inner, `${base}\\end{${name}}`];
-    const cursor = lines.slice(0, cursorLine + 1).join('\n').length;
-    view.dispatch({ changes: { from, to, insert: lines.join('\n') }, selection: { anchor: from + cursor } });
-  }
-});
+const env = (name: string, detail: string, top: boolean): Completion => {
+  const [args, body = [''], cursorLine = 1]: Snip = (name === 'algorithm' && detail === 'algorithm2e' ? ALGORITHM2E_SNIPPET : ENV_SNIPPETS[name]) || [''];
+  return {
+    label: `\\begin{${name}}`,
+    detail,
+    boost: top ? 1 : 0,
+    type: 'keyword',
+    apply: (view, _completion, from, to) => {
+      // typing { adds a } after the cursor, which the \end{…} line replaces
+      if (view.state.sliceDoc(from, to).includes('{') && view.state.sliceDoc(to, to + 1) === '}') to += 1;
+      const base = /^[ \t]*/.exec(view.state.doc.lineAt(from).text)![0];
+      let depth = 1;
+      const inner = body.map((line) => {
+        if (line.startsWith('\\end{')) depth -= 1;
+        const out = base + INDENT.repeat(depth) + line;
+        if (line.startsWith('\\begin{')) depth += 1;
+        return out;
+      });
+      const lines = [`\\begin{${name}}${args}`, ...inner, `${base}\\end{${name}}`];
+      // the cursor goes to the end of its line, or into the {} that ends it
+      const cursor = lines.slice(0, cursorLine + 1).join('\n').length - (lines[cursorLine].endsWith('{}') ? 1 : 0);
+      view.dispatch({ changes: { from, to, insert: lines.join('\n') }, selection: { anchor: from + cursor } });
+    }
+  };
+};
 
-const COMPLETIONS: Completion[] = [
-  ...['section', 'subsection', 'subsubsection', 'paragraph', 'cite', 'citep', 'citet', 'ref', 'eqref', 'label', 'textbf', 'textit', 'emph', 'texttt', 'footnote', 'url', 'input', 'includegraphics', 'caption'].map(braces),
-  env('itemize', ['\\item ']),
-  env('enumerate', ['\\item ']),
-  env('equation', ['']),
-  env('align', ['']),
-  env('figure', ['\\centering', '\\includegraphics[width=0.9\\linewidth]{}', '\\caption{}', '\\label{fig:}'], 2),
-  env('table', ['\\centering', '\\begin{tabular}{lcc}', '\\toprule', '\\midrule', '\\bottomrule', '\\end{tabular}', '\\caption{}', '\\label{tab:}'], 7)
-];
+const COMMANDS: Completion[] = ['section', 'subsection', 'subsubsection', 'paragraph', 'cite', 'citep', 'citet', 'ref', 'eqref', 'label', 'textbf', 'textit', 'emph', 'texttt', 'footnote', 'url', 'input', 'includegraphics', 'caption'].map(braces);
+const TOP_ENVS = new Set(COMMON_ENVS);
 
 /** What the list completes: a command after \ (or /), or an environment name after \begin{. */
-const TYPED = /(?:[\\/][A-Za-z]*|\\begin\{[A-Za-z*]*)$/;
+const TYPED = /[\\/](?:[A-Za-z]*|begin\{[\w*-]*)$/;
+const WHOLE_TYPED = new RegExp(`^${TYPED.source}`);
 
-export function latexCompletionSource(context: CompletionContext) {
-  const before = context.matchBefore(TYPED);
-  if (!before) return null;
-  const prev = before.from > 0 ? context.state.doc.sliceString(before.from - 1, before.from) : ' ';
-  // "/" only triggers at the start of a word, and never in URLs
-  if (before.text.startsWith('/') && (!/[\s({]/.test(prev) || prev === ':')) return null;
-  if (before.text.startsWith('\\') && prev === '\\') return null;
-  return { from: before.from, options: COMPLETIONS, validFor: /^(?:[\\/][A-Za-z]*|\\begin\{[A-Za-z*]*)$/ };
+/**
+ * Commands, and the environments the project can use: the common ones, its packages' and classes', and
+ * its own. `projectScans` covers the main file and what it pulls in; the open file is scanned as it is now.
+ */
+export function latexCompletionSource(projectScans: () => TexScan[]) {
+  return (context: CompletionContext): CompletionResult | null => {
+    const before = context.matchBefore(TYPED);
+    if (!before) return null;
+    const prev = before.from > 0 ? context.state.doc.sliceString(before.from - 1, before.from) : ' ';
+    // "/" only triggers at the start of a word, and never in URLs
+    if (before.text.startsWith('/') && (!/[\s({]/.test(prev) || prev === ':')) return null;
+    if (before.text.startsWith('\\') && prev === '\\') return null;
+    const envs = availableEnvs([...projectScans(), scanTex(context.state.doc.toString())]);
+    let options = [...COMMANDS, ...[...envs].map(([name, detail]) => env(name, detail, TOP_ENVS.has(name) || detail === 'this project'))];
+    const trigger = before.text[0];
+    // the list filters on the label, so after "/" the labels start with "/" too (and show with "\")
+    if (trigger === '/') options = options.map((o) => ({ ...o, label: `/${o.label.slice(1)}`, displayLabel: o.label }));
+    return {
+      from: before.from,
+      options,
+      // typing on keeps the list; "/beg" filled in to "\begin{" asks again for the "\" labels
+      validFor: (text) => text[0] === trigger && WHOLE_TYPED.test(text),
+      getMatch: (_completion, matched) => matched ?? []
+    };
+  };
 }
 
 /**
@@ -386,8 +406,8 @@ export const completeOrAccept: Command = (view) => {
   const shared = typed && sharedStart(typed, currentCompletions(state).map((c) => c.label));
   if (!typed || !shared) return acceptCompletion(view);
   const from = head - typed.length;
-  // as if typed, so the list stays open and narrows
-  view.dispatch({ changes: { from, to: head, insert: shared }, selection: { anchor: from + shared.length }, userEvent: 'input.type' });
+  // as if typed, so the list stays open and narrows; "/" becomes "\"
+  view.dispatch({ changes: { from, to: head, insert: `\\${shared.slice(1)}` }, selection: { anchor: from + shared.length }, userEvent: 'input.type' });
   return true;
 };
 

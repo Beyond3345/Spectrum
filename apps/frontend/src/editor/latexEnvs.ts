@@ -1,0 +1,308 @@
+// \begin{…} completion: the environments LaTeX, packages and classes provide, what to insert for them,
+// and a scan of what a project loads and defines. Names checked against the TeX Live 2026 sources.
+
+/** Always offered and ranked first: the standard classes' essentials and amsmath's displays (nearly every paper loads it). */
+export const COMMON_ENVS = [
+  'itemize', 'enumerate', 'description', 'equation', 'equation*', 'align', 'align*', 'gather', 'gather*',
+  'multline', 'multline*', 'flalign', 'flalign*', 'alignat', 'alignat*', 'split', 'aligned', 'gathered', 'cases',
+  'matrix', 'pmatrix', 'bmatrix', 'Bmatrix', 'vmatrix', 'Vmatrix', 'smallmatrix', 'subequations',
+  'figure', 'figure*', 'table', 'table*', 'tabular', 'tabular*', 'array', 'center', 'flushleft', 'flushright',
+  'minipage', 'abstract', 'quote', 'quotation', 'verse', 'verbatim', 'verbatim*', 'thebibliography', 'displaymath', 'titlepage'
+];
+
+/** Always valid but rarely typed: offered without the boost. */
+export const KERNEL_ENVS = [
+  'document', 'list', 'trivlist', 'math', 'eqnarray', 'eqnarray*', 'tabbing', 'picture', 'lrbox', 'sloppypar',
+  'filecontents', 'filecontents*', 'theindex'
+];
+
+/** Offered only when the package or class is loaded (\usepackage, \RequirePackage, \documentclass, \LoadClass). */
+export const PACKAGE_ENVS: Record<string, string[]> = {
+  // maths
+  amsmath: ['equation*', 'align', 'align*', 'gather', 'gather*', 'multline', 'multline*', 'flalign', 'flalign*', 'alignat', 'alignat*', 'xalignat', 'xalignat*', 'split', 'aligned', 'alignedat', 'gathered', 'cases', 'matrix', 'pmatrix', 'bmatrix', 'Bmatrix', 'vmatrix', 'Vmatrix', 'smallmatrix', 'subarray', 'subequations'],
+  mathtools: ['dcases', 'dcases*', 'rcases', 'rcases*', 'drcases', 'drcases*', 'cases*', 'multlined', 'lgathered', 'rgathered', 'spreadlines', 'matrix*', 'pmatrix*', 'bmatrix*', 'Bmatrix*', 'vmatrix*', 'Vmatrix*', 'smallmatrix*', 'psmallmatrix', 'psmallmatrix*', 'bsmallmatrix', 'bsmallmatrix*', 'Bsmallmatrix', 'Bsmallmatrix*', 'vsmallmatrix', 'vsmallmatrix*', 'Vsmallmatrix', 'Vsmallmatrix*', 'crampedsubarray'],
+  empheq: ['empheq'],
+  breqn: ['dmath', 'dmath*', 'dgroup', 'dgroup*', 'darray', 'dseries', 'dseries*', 'dsuspend'],
+  cases: ['numcases', 'subnumcases'],
+  nicematrix: ['NiceTabular', 'NiceTabular*', 'NiceTabularX', 'NiceArray', 'NiceMatrix', 'pNiceMatrix', 'bNiceMatrix', 'BNiceMatrix', 'vNiceMatrix', 'VNiceMatrix', 'pNiceArray', 'bNiceArray', 'BNiceArray', 'vNiceArray', 'VNiceArray', 'NiceMatrixBlock'],
+  mathpartir: ['mathpar'],
+  bussproofs: ['prooftree'],
+  xy: ['xy'],
+  // theorems (the theorems themselves come from \newtheorem and friends, see scanTex)
+  amsthm: ['proof'],
+  thmtools: ['restatable', 'restatable*'],
+  // floats, captions, layout
+  subcaption: ['subfigure', 'subtable', 'subcaptionblock', 'subcaptiongroup', 'subcaptiongroup*'],
+  floatrow: ['floatrow', 'subfloatrow'],
+  sidecap: ['SCfigure', 'SCfigure*', 'SCtable', 'SCtable*'],
+  wrapfig: ['wrapfigure', 'wraptable'],
+  rotating: ['sidewaysfigure', 'sidewaysfigure*', 'sidewaystable', 'sidewaystable*', 'sideways', 'turn', 'rotate'],
+  lscape: ['landscape'],
+  pdflscape: ['landscape'],
+  adjustbox: ['adjustbox'],
+  multicol: ['multicols', 'multicols*'],
+  changepage: ['adjustwidth', 'adjustwidth*'],
+  appendix: ['appendices', 'subappendices'],
+  // tables
+  longtable: ['longtable'],
+  tabularx: ['tabularx'],
+  tabulary: ['tabulary'],
+  xltabular: ['xltabular'],
+  supertabular: ['supertabular', 'supertabular*', 'mpsupertabular', 'mpsupertabular*'],
+  threeparttable: ['threeparttable', 'tablenotes', 'measuredfigure'],
+  threeparttablex: ['ThreePartTable', 'TableNotes'],
+  tabularray: ['tblr', 'longtblr', 'talltblr'],
+  // lists (enumitem's inline lists need its [inline] option, and \newlist adds more)
+  paralist: ['compactitem', 'compactenum', 'compactdesc', 'asparaitem', 'asparaenum', 'asparadesc', 'inparaitem', 'inparaenum', 'inparadesc'],
+  tasks: ['tasks'],
+  acronym: ['acronym'],
+  // code, verbatim, comments
+  listings: ['lstlisting'],
+  minted: ['minted'],
+  fancyvrb: ['Verbatim', 'Verbatim*', 'BVerbatim', 'BVerbatim*', 'LVerbatim', 'LVerbatim*', 'SaveVerbatim', 'VerbatimOut'],
+  verbatim: ['verbatim', 'verbatim*', 'comment'],
+  comment: ['comment'],
+  spverbatim: ['spverbatim'],
+  pythontex: ['pycode', 'pyblock', 'pyverbatim', 'pyconsole', 'pysub'],
+  algorithm: ['algorithm', 'algorithm*'],
+  algorithmic: ['algorithmic'],
+  algorithmicx: ['algorithmic'],
+  algorithm2e: ['algorithm', 'algorithm*', 'procedure', 'procedure*', 'function', 'function*'],
+  // boxes, quotes
+  tcolorbox: ['tcolorbox'],
+  framed: ['framed', 'oframed', 'shaded', 'shaded*', 'snugshade', 'snugshade*', 'leftbar'],
+  mdframed: ['mdframed'],
+  csquotes: ['displayquote', 'displaycquote', 'foreigndisplayquote', 'foreigndisplaycquote', 'hyphendisplayquote', 'hyphendisplaycquote'],
+  biblatex: ['refsection', 'refsegment', 'refcontext'],
+  hyperref: ['Form'],
+  // graphics
+  tikz: ['tikzpicture', 'scope'],
+  pgf: ['pgfpicture', 'pgfscope'],
+  'tikz-cd': ['tikzcd'],
+  pgfplots: ['axis', 'semilogxaxis', 'semilogyaxis', 'loglogaxis'],
+  forest: ['forest'],
+  circuitikz: ['circuitikz'],
+  quantikz: ['quantikz'],
+
+  // classes
+  amsart: ['proof', 'abstract'],
+  amsproc: ['proof', 'abstract'],
+  amsbook: ['proof', 'abstract'],
+  beamer: ['frame', 'block', 'alertblock', 'exampleblock', 'columns', 'column', 'onlyenv', 'altenv', 'overprint', 'overlayarea', 'actionenv', 'uncoverenv', 'visibleenv', 'invisibleenv', 'alertenv', 'structureenv', 'semiverbatim', 'beamercolorbox', 'beamerboxesrounded', 'theorem', 'corollary', 'fact', 'lemma', 'problem', 'solution', 'definition', 'definitions', 'example', 'examples'],
+  llncs: ['theorem', 'case', 'claim', 'conjecture', 'corollary', 'definition', 'example', 'exercise', 'lemma', 'note', 'problem', 'property', 'proposition', 'question', 'solution', 'remark', 'proof', 'credits'],
+  svjour3: ['theorem', 'case', 'claim', 'conjecture', 'corollary', 'definition', 'example', 'exercise', 'lemma', 'note', 'problem', 'property', 'proposition', 'question', 'solution', 'remark', 'proof', 'acknowledgements'],
+  IEEEtran: ['IEEEeqnarray', 'IEEEeqnarray*', 'IEEEeqnarraybox', 'IEEEeqnarraybox*', 'IEEEeqnarrayboxm', 'IEEEeqnarrayboxt', 'IEEEbiography', 'IEEEbiographynophoto', 'IEEEkeywords', 'IEEEproof', 'IEEEitemize', 'IEEEenumerate', 'IEEEdescription'],
+  acmart: ['CCSXML', 'acks', 'teaserfigure', 'marginfigure', 'margintable', 'sidebar', 'printonly', 'screenonly', 'anonsuppress', 'translatedabstract', 'theorem', 'conjecture', 'proposition', 'lemma', 'corollary', 'example', 'definition'],
+  elsarticle: ['frontmatter', 'keyword', 'highlights', 'graphicalabstract'],
+  'revtex4-1': ['acknowledgments', 'acknowledgements', 'widetext', 'ruledtabular', 'turnpage', 'quasitable', 'mathletters', 'references', 'video', 'video*', 'longtable*'],
+  'revtex4-2': ['acknowledgments', 'acknowledgements', 'widetext', 'ruledtabular', 'turnpage', 'quasitable', 'mathletters', 'references', 'video', 'video*', 'longtable*'],
+  memoir: ['adjustwidth', 'adjustwidth*', 'appendices', 'subappendices', 'epigraphs', 'framed', 'shaded', 'snugshade', 'leftbar', 'vminipage', 'titlingpage', 'titlingpage*', 'onecolabstract', 'sidecaption', 'symbols', 'vplace', 'Spacing', 'SingleSpace', 'OnehalfSpace', 'DoubleSpace', 'boxedverbatim', 'marginfigure', 'margintable'],
+  scrartcl: ['addmargin', 'addmargin*', 'labeling', 'captionbeside'],
+  scrreprt: ['addmargin', 'addmargin*', 'labeling', 'captionbeside'],
+  scrbook: ['addmargin', 'addmargin*', 'labeling', 'captionbeside'],
+  exam: ['questions', 'parts', 'subparts', 'subsubparts', 'choices', 'oneparchoices', 'checkboxes', 'oneparcheckboxes', 'solution', 'solutionorbox', 'solutionorlines', 'solutionordottedlines', 'solutionorgrid', 'coverpages', 'EnvFullwidth', 'EnvUplevel'],
+  letter: ['letter'],
+  moderncv: ['cvcolumns'],
+  tikzposter: ['columns', 'subcolumns', 'tikzfigure']
+};
+
+/** Loading the key loads these too. */
+export const PACKAGE_IMPLIES: Record<string, string[]> = {
+  mathtools: ['amsmath'], empheq: ['mathtools'], breqn: ['amsmath'], algpseudocode: ['algorithmicx'],
+  'tikz-cd': ['tikz'], pgfplots: ['tikz'], circuitikz: ['tikz'], forest: ['tikz'], quantikz: ['tikz'], tikz: ['pgf'],
+  xltabular: ['tabularx', 'longtable'], ltablex: ['tabularx', 'longtable'], threeparttablex: ['threeparttable'],
+  pdflscape: ['lscape'], minted: ['fancyvrb'], pythontex: ['fancyvrb'], fvextra: ['fancyvrb'],
+  amsart: ['amsmath', 'amsthm'], amsproc: ['amsmath', 'amsthm'], amsbook: ['amsmath', 'amsthm'],
+  beamer: ['amsmath', 'amsthm', 'hyperref'], acmart: ['amsart', 'framed', 'comment', 'hyperref'],
+  llncs: ['multicol'], tikzposter: ['tikz'], moderncv: ['hyperref']
+};
+
+/** Environments that \usetikzlibrary, \usepgfplotslibrary and \tcbuselibrary add, by the package they extend. */
+const TCB_RASTER = ['tcbraster', 'tcbitemize', 'tcboxedraster', 'tcboxeditemize'];
+const LIBRARY_ENVS: Record<string, Record<string, string[]>> = {
+  tikz: { cd: ['tikzcd'], quantikz: ['quantikz'], quantikz2: ['quantikz'] },
+  pgfplots: { groupplots: ['groupplot'], polar: ['polaraxis'], ternary: ['ternaryaxis'], smithchart: ['smithchart'] },
+  tcolorbox: { listings: ['tcblisting'], listingsutf8: ['tcblisting'], minted: ['tcblisting'], raster: TCB_RASTER, poster: ['tcbposter'], most: ['tcblisting', ...TCB_RASTER], all: ['tcblisting', 'tcbposter', ...TCB_RASTER] }
+};
+const LIBRARY_OF: Record<string, string> = { usetikzlibrary: 'tikz', usepgfplotslibrary: 'pgfplots', tcbuselibrary: 'tcolorbox' };
+
+// ─── What to insert: name → [text after \begin{name}, body lines, cursorLine] ───
+// cursorLine indexes [\begin line, ...body] as env() in latexEditor.ts does. Missing: ['', [''], 1].
+
+export type Snip = [args: string, body?: string[], cursorLine?: number];
+export const ENV_SNIPPETS: Record<string, Snip> = {};
+const set = (names: string, s: Snip) => names.split(' ').forEach((n) => (ENV_SNIPPETS[n] = s));
+const FIG: Snip = ['', ['\\centering', '\\includegraphics[width=0.9\\linewidth]{}', '\\caption{}', '\\label{fig:}'], 2];
+const TAB: Snip = ['', ['\\centering', '\\begin{tabular}{lcc}', '\\toprule', '\\midrule', '\\bottomrule', '\\end{tabular}', '\\caption{}', '\\label{tab:}'], 7];
+set('itemize enumerate description compactitem compactenum compactdesc asparaitem asparaenum asparadesc inparaitem inparaenum inparadesc IEEEitemize IEEEenumerate IEEEdescription highlights tablenotes TableNotes', ['', ['\\item ']]);
+set('alignat alignat* alignedat xalignat xalignat*', ['{2}']);
+set('numcases subnumcases', ['{}', [''], 0]);
+set('subequations', ['', ['\\begin{align}', '', '\\end{align}'], 2]);
+set('empheq', ['[box=\\fbox]{align}']);
+set('spreadlines', ['{1em}']);
+set('figure figure* sidewaysfigure sidewaysfigure* SCfigure teaserfigure', FIG);
+set('table table* sidewaystable sidewaystable* SCtable', TAB);
+set('subfigure', ['[b]{0.48\\linewidth}', ['\\centering', '\\includegraphics[width=\\linewidth]{}', '\\caption{}', '\\label{fig:}'], 2]);
+set('subtable', ['[b]{0.48\\linewidth}', ['\\centering', '\\begin{tabular}{lc}', '', '\\end{tabular}', '\\caption{}', '\\label{tab:}'], 3]);
+set('wrapfigure', ['{r}{0.4\\linewidth}', ['\\centering', '\\includegraphics[width=\\linewidth]{}', '\\caption{}'], 2]);
+set('wraptable', ['{r}{0.4\\linewidth}']);
+set('tabular longtable supertabular NiceTabular', ['{lcc}']);
+set('tabular*', ['{\\linewidth}{@{\\extracolsep{\\fill}}lcc}']);
+set('tabularx xltabular', ['{\\linewidth}{lX}']);
+set('tabulary', ['{\\linewidth}{LC}']);
+set('tblr longtblr talltblr', ['{colspec={lcc}}']);
+set('array', ['{cc}']);
+set('threeparttable', ['', ['\\caption{}', '\\begin{tabular}{lcc}', '', '\\end{tabular}', '\\begin{tablenotes}', '\\item ', '\\end{tablenotes}'], 1]);
+set('minipage', ['{0.48\\linewidth}']);
+set('multicols multicols*', ['{2}']);
+set('adjustbox', ['{max width=\\linewidth}']);
+set('adjustwidth adjustwidth*', ['{1em}{1em}']);
+set('addmargin addmargin*', ['{1em}']);
+set('thebibliography', ['{99}', ['\\bibitem{}']]);
+set('list', ['{}{}', ['\\item ']]);
+set('picture', ['(100,100)']);
+set('filecontents filecontents*', ['[overwrite]{}', [''], 0]);
+set('letter', ['{}', ['\\opening{}', '', '\\closing{}'], 0]);
+set('labeling', ['{}', ['\\item '], 0]);
+// code
+set('lstlisting', ['[language=Python]']);
+set('minted', ['{python}']);
+set('algorithm algorithm*', ['', ['\\caption{}', '\\label{alg:}', '\\begin{algorithmic}[1]', '\\State ', '\\end{algorithmic}'], 4]);
+set('algorithmic', ['[1]', ['\\State ']]);
+// boxes, theorems
+set('restatable restatable*', ['{theorem}{}', [''], 0]);
+set('prooftree', ['', ['\\AxiomC{}', '\\UnaryInfC{}']]);
+// beamer
+set('frame', ['', ['\\frametitle{}', '']]);
+set('block alertblock exampleblock', ['{}', [''], 0]);
+set('columns', ['', ['\\begin{column}{0.48\\textwidth}', '', '\\end{column}', '\\begin{column}{0.48\\textwidth}', '', '\\end{column}'], 2]);
+set('column', ['{0.48\\textwidth}']);
+// classes
+set('IEEEeqnarray IEEEeqnarray*', ['{rCl}']);
+set('IEEEbiography', ['{}', [''], 0]);
+set('frontmatter', ['', ['\\title{}', '\\author{}', '\\affiliation{}', '\\begin{abstract}', '', '\\end{abstract}', '\\begin{keyword}', '', '\\end{keyword}']]);
+set('questions', ['', ['\\question ']]);
+set('parts', ['', ['\\part ']]);
+set('subparts', ['', ['\\subpart ']]);
+set('choices oneparchoices checkboxes oneparcheckboxes', ['', ['\\choice ']]);
+set('tasks', ['(2)', ['\\task ']]);
+
+/** algorithm2e's `algorithm` takes a different body; used when algorithm2e is what provides it. */
+export const ALGORITHM2E_SNIPPET: Snip = ['', ['\\caption{}', '\\KwIn{}', '\\KwOut{}', ''], 4];
+
+// ─── What a file loads and defines ───
+
+/** Drops comments, keeping \% (a % after \\ does start one). */
+const stripComments = (src: string) => src.replace(/(^|[^\\])((?:\\\\)*)%.*$/gm, '$1$2');
+
+// one \s* each side of an optional [...] (here and in def), so a long run of spaces can't make a match quadratic
+const LOAD_RE = /\\(usepackage|RequirePackage|documentclass|LoadClass)(?:WithOptions)?\s*(?:\[[^\]]*\]\s*)?\{([^}]+)\}/g;
+const LIB_RE = /\\(usetikzlibrary|usepgfplotslibrary|tcbuselibrary)\s*\{([^}]+)\}/g;
+const INPUT_RE = /\\(?:input|include|subfile)\s*\{([^}]+)\}|\\import\s*\{([^}]*)\}\s*\{([^}]+)\}/g;
+
+const def = (cmds: string, star = false, prefix = '') => ({ re: new RegExp(String.raw`\\(?:${cmds})\*?\s*(?:\[[^\]]*\]\s*)?\{([^{}]+)\}`, 'g'), star, prefix });
+/** The commands that define environments; the name (or a comma list) is the first argument. star: name* too. */
+const ENV_DEFINERS = [
+  def('(?:re)?newenvironmentx?|(?:New|Renew|Provide|Declare)DocumentEnvironment|(?:Re)?NewEnviron'),
+  // amsthm, ntheorem, beamer, thmtools (comma lists), llncs/svjour, elsarticle, SIAM, mdframed
+  def('newtheorem|spnewtheorem|declaretheorem|newframedtheorem|newshadedtheorem|newmdtheoremenv|newsiamthm|newsiamremark|newdefinition|newproof'),
+  def('(?:re)?newtcolorbox|(?:New|Renew|Provide|Declare)TColorBox|(?:re)?newtcblisting|(?:New|Renew|Provide|Declare)TCBListing'),
+  def('(?:re)?newtcbtheorem|(?:New|Renew|Provide|Declare)TcbTheorem|newfloat|DeclareFloatingEnvironment', true),
+  // listings, fancyvrb, mdframed, enumitem, tasks, tabularray, mathtools, the comment package
+  def('lstnewenvironment|(?:Define|Recustom)VerbatimEnvironment|newmdenv|(?:re)?newlist|NewTasksEnvironment|NewTblrEnviron|newcases|newgathered|(?:include|exclude|special|process)comment'),
+  def('DeclareCaptionSubType', false, 'sub')
+];
+const VALID = /^[A-Za-z][\w*-]*$/; // drops #1, \macro and @internal
+
+export type TexScan = { packages: string[]; classes: string[]; libraries: [pkg: string, library: string][]; defined: string[]; inputs: string[] };
+
+export function scanTex(src: string): TexScan {
+  src = stripComments(src);
+  const scan: TexScan = { packages: [], classes: [], libraries: [], defined: [], inputs: [] };
+  const names = (list: string) => list.split(',').map((n) => n.trim()).filter(Boolean);
+  for (const m of src.matchAll(LOAD_RE)) (/class/i.test(m[1]) ? scan.classes : scan.packages).push(...names(m[2]));
+  for (const m of src.matchAll(LIB_RE)) for (const lib of names(m[2])) scan.libraries.push([LIBRARY_OF[m[1]], lib]);
+  for (const m of src.matchAll(INPUT_RE)) scan.inputs.push(m[1]?.trim() ?? `${m[2].trim().replace(/\/?$/, '/')}${m[3].trim()}`);
+  const add = (n: string) => VALID.test(n) && scan.defined.push(n);
+  for (const { re, star, prefix } of ENV_DEFINERS)
+    for (const m of src.matchAll(re))
+      for (const name of names(m[1])) {
+        add(prefix + name);
+        if (star) add(`${prefix + name}*`);
+      }
+  // minted: \newminted[envname]{lang}{opts} defines envname or <lang>code, and its starred form
+  for (const m of src.matchAll(/\\newminted\s*(?:\[([^\]]*)\]\s*)?\{([^}]+)\}/g)) {
+    const n = m[1]?.trim() || `${m[2].trim()}code`;
+    add(n);
+    add(`${n}*`);
+  }
+  // tocbasic: \DeclareNewTOC[type=x,float]{ext} defines x and x*, [nonfloat] defines x-
+  for (const m of src.matchAll(/\\DeclareNewTOC\s*\[([^\]]*)\]\s*\{([^}]+)\}/g)) {
+    const type = /\btype\s*=\s*(\w+)/.exec(m[1])?.[1] ?? m[2].trim();
+    if (/\bnonfloat\b/.test(m[1])) add(`${type}-`);
+    else if (/\bfloat\b/.test(m[1])) {
+      add(type);
+      add(`${type}*`);
+    }
+  }
+  return scan;
+}
+
+/**
+ * What \begin{ offers for these files: name → where it comes from (a package or class, "this project",
+ * or '' for the kernel). The common ones come first, then the project's own, then what packages add.
+ */
+export function availableEnvs(scans: TexScan[]) {
+  const envs = new Map<string, string>();
+  const add = (name: string, from: string) => envs.has(name) || envs.set(name, from);
+  const amsmath = new Set(PACKAGE_ENVS.amsmath);
+  for (const name of COMMON_ENVS) add(name, amsmath.has(name) ? 'amsmath' : '');
+  for (const scan of scans) for (const name of scan.defined) add(name, 'this project');
+  const loaded = new Set<string>();
+  const load = (pkg: string) => {
+    if (loaded.has(pkg)) return;
+    loaded.add(pkg);
+    PACKAGE_ENVS[pkg]?.forEach((name) => add(name, pkg));
+    PACKAGE_IMPLIES[pkg]?.forEach(load);
+  };
+  for (const scan of scans) {
+    [...scan.classes, ...scan.packages].forEach(load);
+    for (const [pkg, lib] of scan.libraries) LIBRARY_ENVS[pkg][lib]?.forEach((name) => add(name, pkg));
+  }
+  for (const name of KERNEL_ENVS) add(name, '');
+  return envs;
+}
+
+/** A path as the file tree names it: no "./" or "//", and "../" resolved. */
+const normalise = (path: string) =>
+  path
+    .split('/')
+    .reduce<string[]>((out, part) => (part === '..' ? out.slice(0, -1) : part && part !== '.' ? [...out, part] : out), [])
+    .join('/');
+
+/**
+ * Scans the main file and what it pulls in: \input, \include, \subfile and \import, and the project's own
+ * .sty and .cls files. Like the compile's TEXINPUTS, a name is looked up from the main file's folder first,
+ * then the project root.
+ */
+export async function scanProject(mainFile: string, files: Set<string>, read: (path: string) => Promise<string>) {
+  const dir = mainFile.slice(0, mainFile.lastIndexOf('/') + 1);
+  // TeX tries name.tex before the name as given
+  const find = (name: string, ext: string) => [dir + name + ext, name + ext, ...(ext === '.tex' ? [dir + name, name] : [])].map(normalise).find((p) => files.has(p));
+  const scans: TexScan[] = [];
+  const queue = [mainFile];
+  const seen = new Set(queue);
+  // the loop picks up what each file adds to the queue
+  for (const path of queue) {
+    if (!files.has(path)) continue;
+    const scan = scanTex(await read(path).catch(() => ''));
+    scans.push(scan);
+    for (const p of [...scan.inputs.map((n) => find(n, '.tex')), ...scan.packages.map((n) => find(n, '.sty')), ...scan.classes.map((n) => find(n, '.cls'))]) {
+      if (p && !seen.has(p)) {
+        seen.add(p);
+        queue.push(p);
+      }
+    }
+  }
+  return scans;
+}

@@ -72,6 +72,8 @@ import {
   setGhost,
   wrapLayout
 } from '../editor/latexEditor';
+import { scanProject } from '../editor/latexEnvs';
+import type { TexScan } from '../editor/latexEnvs';
 import { VERSIONS_CHANGED, errorText, extractBibKey, figureSnippet } from '../editor/shared';
 
 // ─── helpers ───
@@ -211,6 +213,10 @@ function Editor({ projectId }: { projectId: string }) {
   const filesRef = useRef(new Map<string, string>());
   /** editor state (undo history, cursor) per file that has been open */
   const statesRef = useRef(new Map<string, EditorState>());
+  /** what the main file and the files it pulls in load and define, for \begin{ completion */
+  const envScansRef = useRef<TexScan[]>([]);
+  // counts writes and reloads, which change filesRef without a render
+  const [filesVersion, setFilesVersion] = useState(0);
 
   const [activePath, setActivePath] = useState('');
   const activeRef = useRef('');
@@ -432,6 +438,7 @@ function Editor({ projectId }: { projectId: string }) {
     if (path === activeRef.current) markClean();
     await queueWrite(path, content);
     filesRef.current.set(path, content);
+    setFilesVersion((v) => v + 1);
     if (path === activeRef.current) setDoc(content);
     if (!items.some((i) => i.path === path)) await refreshTree();
   };
@@ -445,6 +452,7 @@ function Editor({ projectId }: { projectId: string }) {
         setDoc(content);
       }
     }
+    setFilesVersion((v) => v + 1);
   };
 
   /** Files replaced by an upload: forget their cached text and undo history, and show the new contents. */
@@ -511,6 +519,22 @@ function Editor({ projectId }: { projectId: string }) {
     if (!loaded || (mainFile && texFiles.includes(mainFile))) return;
     setMainFile(texFiles.find((p) => /(^|\/)main\.tex$/i.test(p)) || texFiles[0] || '');
   }, [loaded, texFiles]);
+
+  // \begin{ completion rescans the project a moment after the tree, the main file or a file changes
+  // (dirty settles after each save); the completion source scans the open file's text itself
+  useEffect(() => {
+    let live = true;
+    const timer = window.setTimeout(() => {
+      const files = new Set(items.filter((i) => i.type === 'file').map((i) => i.path));
+      scanProject(mainFile, files, ensureFileContent).then((scans) => {
+        if (live) envScansRef.current = scans;
+      });
+    }, 400);
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [items, mainFile, dirty, filesVersion]);
 
   // ─── editor actions ───
 
@@ -1090,7 +1114,7 @@ function Editor({ projectId }: { projectId: string }) {
       editorTheme,
       ghostField,
       search({ top: true }),
-      autocompletion({ override: [latexCompletionSource] }),
+      autocompletion({ override: [latexCompletionSource(() => envScansRef.current)] }),
       spellChecker({
         enabled: () => spellOnRef.current,
         path: () => activeRef.current,
