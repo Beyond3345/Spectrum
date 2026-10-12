@@ -225,9 +225,10 @@ input[type='radio'] {
   padding: 0 10px 0 18px;
 }
 
-/* the macOS app draws the traffic lights here (except in full screen, where there are none) */
+/* the macOS app draws the traffic lights here (except in full screen, where there are none);
+   they end at 72px, and the icon keeps the same 16px from them as from the window edge */
 .desktop .sidebar-top {
-  padding-left: 76px;
+  padding-left: 88px;
 }
 
 .desktop.fullscreen .sidebar-top {

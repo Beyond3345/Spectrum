@@ -2,6 +2,12 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.2.1 (12 October 2026)
+
+### Fixed
+
+- The app icon at the top of the sidebar sat almost against the window buttons. It now keeps 16 points from them, the same distance it keeps from the edge of the window in full screen
+
 ## 1.2.0 (12 October 2026)
 
 ### Added

@@ -25,9 +25,10 @@ use tauri_plugin_window_state::StateFlags;
 
 const PREFERRED_PORT: u16 = 38787;
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(40);
-// Close button at x 12 (the zoom button ends at 72, inside the sidebar's 76px
-// gutter); tao grows the title bar to 14 + y, which puts the buttons' centre at
-// y - 2 = 26, the middle of the 52px sidebar top row.
+// Close button at x 12 (the zoom button ends at 72, left of the sidebar icon at
+// 88 and the collapsed header's 76px gutter); tao grows the title bar to 14 + y,
+// which puts the buttons' centre at y - 2 = 26, the middle of the 52px sidebar
+// top row.
 const TRAFFIC_LIGHTS: LogicalPosition<f64> = LogicalPosition { x: 12.0, y: 28.0 };
 
 /// How long Cmd+Q and the close button wait for the page to save before quitting
