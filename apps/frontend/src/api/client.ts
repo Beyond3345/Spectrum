@@ -687,13 +687,34 @@ export function transferSubmitImages(jobId: string, images: PageImage[]) {
   return request<{ ok: boolean }>('/api/transfer/submit-images', json('POST', { jobId, images }));
 }
 
-export interface MineruConfig {
-  apiBase?: string;
-  token?: string;
-  modelVersion?: string;
+/** A PDF parser from Settings → Template transfer. */
+export interface ParserPreset {
+  id: string;
+  name: string;
+  endpoint: string;
+  regions?: { label: string; endpoint: string }[];
+  /** where to create a key ('' for a self-hosted server) */
+  keyUrl: string;
+  note: string;
+  /** what the parser calls its key, e.g. 'token' or 'API key' */
+  keyName: string;
+  /** Mathpix also needs an app ID */
+  appId?: boolean;
+  /** a self-hosted server may run without a key */
+  keyOptional?: boolean;
 }
 
-export interface MineruTransferStartPayload {
+/** The parser a PDF transfer uses; empty fields fall back to the preset's (and for MinerU, the .env file's). */
+export interface ParserConfig {
+  /** a preset id, or 'custom' with the preset whose API it speaks as protocol */
+  id: string;
+  protocol?: string;
+  endpoint?: string;
+  key?: string;
+  appId?: string;
+}
+
+export interface PdfTransferStartPayload {
   sourceProjectId?: string;
   sourceMainFile?: string;
   targetTemplateId: string;
@@ -702,15 +723,19 @@ export interface MineruTransferStartPayload {
   layoutCheck?: boolean;
   llmConfig?: Partial<LLMConfig>;
   visionLlmConfig?: Partial<LLMConfig>;
-  mineruConfig?: MineruConfig;
+  parser: ParserConfig;
   parentDir?: string;
 }
 
-export function mineruTransferStart(payload: MineruTransferStartPayload) {
-  return request<{ jobId: string; newProjectId: string }>('/api/transfer/start-mineru', json('POST', payload));
+export function listParsers() {
+  return request<{ parsers: ParserPreset[] }>('/api/transfer/parsers');
 }
 
-export async function mineruTransferUploadPdf(jobId: string, pdfFile: File) {
+export function pdfTransferStart(payload: PdfTransferStartPayload) {
+  return request<{ jobId: string; newProjectId: string }>('/api/transfer/start-pdf', json('POST', payload));
+}
+
+export async function transferUploadPdf(jobId: string, pdfFile: File) {
   const form = new FormData();
   form.append('jobId', jobId);
   form.append('pdf', pdfFile);

@@ -1017,7 +1017,11 @@ test('a template change without a model creates nothing; one that errors leaves 
   const noKey = await api('/api/transfer/start', { method: 'POST', body });
   assert.equal(noKey.status, 400);
   assert.match(noKey.json.error, /No AI model is set up yet/);
-  assert.equal((await api('/api/transfer/start-mineru', { method: 'POST', body: { ...body, llmConfig: llmConfig() } })).status, 400);
+  const noToken = await api('/api/transfer/start-pdf', { method: 'POST', body: { ...body, llmConfig: llmConfig() } });
+  assert.equal(noToken.status, 400);
+  assert.equal(noToken.json.error, 'Add your MinerU token in Settings → Template transfer first.');
+  const badParser = await api('/api/transfer/start-pdf', { method: 'POST', body: { ...body, llmConfig: llmConfig(), parser: { id: 'docling', endpoint: 'ftp://x' } } });
+  assert.equal(badParser.json.error, 'The address for Docling must start with http:// or https://.');
   assert.equal(await count(), before);
 
   const started = (await api('/api/transfer/start', { method: 'POST', body: { ...body, llmConfig: llmConfig('broken') } })).json;
@@ -1029,6 +1033,23 @@ test('a template change without a model creates nothing; one that errors leaves 
   assert.ok(step.json.progressLog.every((line) => !line.startsWith('[')), step.json.progressLog.join('\n'));
   assert.equal(await count(), before);
   assert.ok(!existsSync(target.path));
+});
+
+test('PDF transfers list their parsers and keep the PDF out of the new project’s files', async () => {
+  const { parsers } = (await api('/api/transfer/parsers')).json;
+  assert.deepEqual(parsers.map((p) => p.id), ['mineru', 'mathpix', 'mistral', 'datalab', 'llamaparse', 'paddleocr', 'docling']);
+  assert.ok(parsers.every((p) => p.name && p.endpoint && p.note && !('parse' in p)));
+
+  const body = { targetTemplateId: 'cvpr', targetMainFile: 'main.tex', llmConfig: llmConfig(), parser: { id: 'docling' } };
+  const started = (await api('/api/transfer/start-pdf', { method: 'POST', body })).json;
+  const form = new FormData();
+  form.append('jobId', started.jobId);
+  form.append('pdf', new Blob(['%PDF-1.4']), 'paper.pdf');
+  assert.ok((await (await fetch(`${base}/api/transfer/upload-pdf`, { method: 'POST', body: form })).json()).ok);
+  const target = (await api('/api/projects')).json.projects.find((x) => x.id === started.newProjectId);
+  assert.ok(existsSync(path.join(target.path, '.spectrum', 'transfer', 'source.pdf')));
+  const tree = (await api(`/api/projects/${started.newProjectId}/tree`)).json.items.map((i) => i.path);
+  assert.ok(!tree.some((p) => /mineru|source\.pdf/i.test(p)), tree.join(', '));
 });
 
 test('model errors are plain sentences', async () => {

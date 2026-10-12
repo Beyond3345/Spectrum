@@ -98,14 +98,14 @@ async function copyAssetsLegacy(state) {
 }
 
 /**
- * MinerU mode: copy MinerU-extracted images to target project images/ dir,
+ * PDF mode: copy the parser's images to the target project's images/ dir,
  * and optionally copy bib files from source project if available.
  */
-async function copyAssetsMineru(state) {
+async function copyAssetsPdf(state) {
   const images = state.sourceImages || [];
   let copiedCount = 0;
 
-  // Copy MinerU-extracted images to target project images/
+  // Copy the parser's images to target project images/
   const imagesDir = path.join(state.targetProjectRoot, 'images');
   await ensureDir(imagesDir);
 
@@ -142,11 +142,11 @@ async function copyAssetsMineru(state) {
 }
 
 /**
- * copyAssets node — dispatches to legacy or MinerU mode.
+ * copyAssets node — dispatches to legacy or PDF mode.
  */
 export async function copyAssets(state) {
-  if (state.transferMode === 'mineru') {
-    return copyAssetsMineru(state);
+  if (state.transferMode === 'pdf') {
+    return copyAssetsPdf(state);
   }
   return copyAssetsLegacy(state);
 }

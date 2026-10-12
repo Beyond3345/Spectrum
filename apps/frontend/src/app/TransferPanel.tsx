@@ -6,23 +6,34 @@ import {
   createVersion,
   getProjectTree,
   listTemplates,
-  mineruTransferStart,
-  mineruTransferUploadPdf,
+  pdfTransferStart,
   setProjectMainFile,
   transferStart,
   transferStep,
-  transferSubmitImages
+  transferSubmitImages,
+  transferUploadPdf
 } from '../api/client';
 import type { CompileEngine, PageImage, TemplateMeta } from '../api/client';
 import Icon from './Icon';
 import Select from './Select';
 import { toast } from './Toast';
 import { COMPILE_ENGINES, llmConfigFor, useSettings } from './settings';
+import {
+  CUSTOM_PARSER,
+  parserConfigFor,
+  parserEndpointPatch,
+  parserId,
+  parserKeyPatch,
+  parserPreset,
+  parserWarning,
+  savedParser,
+  useParsers
+} from './parsers';
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
 
-type TransferMode = 'quick' | 'classic' | 'mineru';
-type MineruSource = 'project' | 'upload';
+type TransferMode = 'quick' | 'classic' | 'pdf';
+type PdfSource = 'project' | 'upload';
 export type TransferJob = { jobId: string; status: string; progressLog: string[]; error?: string; newProjectId?: string };
 
 const MAX_LAYOUT_PAGES = 8;
@@ -30,7 +41,7 @@ const MAX_LAYOUT_PAGES = 8;
 const MODES: [TransferMode, string, string][] = [
   ['quick', 'Quick switch', 'Swaps the preamble for the new template and keeps the body. No AI; a version is saved first.'],
   ['classic', 'Classic (LaTeX → LaTeX, AI)', 'The model rewrites the source for the new template into a new project.'],
-  ['mineru', 'MinerU (PDF → Markdown → LaTeX)', 'Converts the compiled PDF with MinerU, then rebuilds it in the new template as a new project.']
+  ['pdf', 'From the PDF (parser → LaTeX)', 'A parser reads the PDF, then the model rebuilds it in the new template as a new project.']
 ];
 
 const STATUS_LABELS: Record<string, string> = {
@@ -83,9 +94,10 @@ export default function TransferPanel({
   /** a quick switch changed this project in place */
   onSwitched?: () => void;
 }) {
-  const [settings, updateSettings] = useSettings();
+  const [settings] = useSettings();
+  const parsers = useParsers();
   const [mode, setMode] = useState<TransferMode>('quick');
-  const [mineruSource, setMineruSource] = useState<MineruSource>('project');
+  const [pdfSource, setPdfSource] = useState<PdfSource>('project');
   const [uploadedPdf, setUploadedPdf] = useState<File | null>(null);
   const [sourceFiles, setSourceFiles] = useState<string[]>([]);
   const [sourceMainFile, setSourceMainFile] = useState('');
@@ -186,30 +198,22 @@ export default function TransferPanel({
     const llmConfig = llmConfigFor(settings, 'main');
     const parentDir = settings.projectsDir || undefined;
     let res: { jobId: string; newProjectId: string };
-    if (mode === 'mineru') {
-      const saved = settings.parserSaved.mineru || { endpoint: '', key: '' };
-      const mineruConfig =
-        saved.endpoint || saved.key
-          ? {
-              ...(saved.endpoint ? { apiBase: saved.endpoint } : {}),
-              ...(saved.key ? { token: saved.key } : {})
-            }
-          : undefined;
-      res = await mineruTransferStart({
-        sourceProjectId: mineruSource === 'project' ? projectId : undefined,
-        sourceMainFile: mineruSource === 'project' ? sourceMainFile : undefined,
+    if (mode === 'pdf') {
+      res = await pdfTransferStart({
+        sourceProjectId: pdfSource === 'project' ? projectId : undefined,
+        sourceMainFile: pdfSource === 'project' ? sourceMainFile : undefined,
         targetTemplateId,
         targetMainFile,
         engine,
         layoutCheck,
         llmConfig,
         visionLlmConfig: llmConfigFor(settings, 'vision'),
-        mineruConfig,
+        parser: parserConfigFor(settings, parserPreset(parsers, settings)),
         parentDir
       });
-      if (mineruSource === 'upload' && uploadedPdf) {
+      if (pdfSource === 'upload' && uploadedPdf) {
         setStatus('uploading_pdf');
-        await mineruTransferUploadPdf(res.jobId, uploadedPdf);
+        await transferUploadPdf(res.jobId, uploadedPdf);
       }
     } else {
       res = await transferStart({
@@ -251,16 +255,16 @@ export default function TransferPanel({
     }
   };
 
-  const usesProjectSource = mode !== 'mineru' || mineruSource === 'project';
-  // AI conversions need the main model's key (and MinerU's token); the .env file can supply them instead,
-  // so this only warns
+  const usesProjectSource = mode !== 'pdf' || pdfSource === 'project';
+  // AI conversions need the main model's key (and most parsers one too); the .env file can supply the
+  // model's and MinerU's, so this only warns
   const missingKey =
     running || mode === 'quick'
       ? ''
       : !llmConfigFor(settings, 'main').apiKey
         ? 'Needs an API key for the main model in Settings → Models, or in the .env file.'
-        : mode === 'mineru' && !settings.parserSaved.mineru?.key.trim()
-          ? 'Needs your MinerU token above, or one in the .env file.'
+        : mode === 'pdf'
+          ? parserWarning(settings, parserPreset(parsers, settings))
           : '';
   const canStart = !running && !!targetTemplateId && (usesProjectSource ? !!sourceMainFile : !!uploadedPdf);
   const statusIcon = status === 'success' ? 'checkmark.circle.fill' : status === 'failed' || status === 'error' ? 'xmark.octagon.fill' : 'clock';
@@ -283,12 +287,12 @@ export default function TransferPanel({
         ))}
       </div>
 
-      {mode === 'mineru' && (
+      {mode === 'pdf' && (
         <div className="field">
           <label id="transfer-source">Source</label>
           <div className="segmented" role="group" aria-labelledby="transfer-source">
-            <button className={`segment ${mineruSource === 'project' ? 'active' : ''}`} onClick={() => setMineruSource('project')}>Compile this project</button>
-            <button className={`segment ${mineruSource === 'upload' ? 'active' : ''}`} onClick={() => setMineruSource('upload')}>Upload a PDF</button>
+            <button className={`segment ${pdfSource === 'project' ? 'active' : ''}`} onClick={() => setPdfSource('project')}>Compile this project</button>
+            <button className={`segment ${pdfSource === 'upload' ? 'active' : ''}`} onClick={() => setPdfSource('upload')}>Upload a PDF</button>
           </div>
         </div>
       )}
@@ -348,36 +352,7 @@ export default function TransferPanel({
               <span>Check the layout with the vision model</span>
             </label>
           </div>
-          {mode === 'mineru' && (
-            <div className="row">
-              <div className="field grow">
-                <label htmlFor="transfer-mineru-api">MinerU API</label>
-                <input
-                  id="transfer-mineru-api"
-                  className="input"
-                  placeholder="https://mineru.net/api/v4"
-                  spellCheck={false}
-                  value={settings.parserSaved.mineru?.endpoint || ''}
-                  onChange={(e) =>
-                    updateSettings({ parserSaved: { ...settings.parserSaved, mineru: { key: settings.parserSaved.mineru?.key || '', endpoint: e.target.value } } })
-                  }
-                />
-              </div>
-              <div className="field grow">
-                <label htmlFor="transfer-mineru-token">MinerU token</label>
-                <input
-                  id="transfer-mineru-token"
-                  className="input"
-                  type="password"
-                  placeholder="Paste your MinerU API token"
-                  value={settings.parserSaved.mineru?.key || ''}
-                  onChange={(e) =>
-                    updateSettings({ parserSaved: { ...settings.parserSaved, mineru: { endpoint: settings.parserSaved.mineru?.endpoint || '', key: e.target.value } } })
-                  }
-                />
-              </div>
-            </div>
-          )}
+          {mode === 'pdf' && <ParserFields inline />}
           <div className="field-hint">The result is a new project; this one is left as it is.</div>
         </>
       )}
@@ -412,6 +387,149 @@ export default function TransferPanel({
           {progressLog.map((line, i) => <div key={i}>{line}</div>)}
         </div>
       )}
+    </div>
+  );
+}
+
+const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/**
+ * The PDF parser and its key: the whole picker in Settings → Template transfer, and `inline` in this
+ * panel just the parser and its key fields. Each parser keeps its own endpoint and key.
+ */
+export function ParserFields({ inline = false }: { inline?: boolean }) {
+  const [settings, update] = useSettings();
+  const parsers = useParsers();
+  const preset = parserPreset(parsers, settings);
+  if (!preset) return null;
+  const id = parserId(settings, preset);
+  const custom = id === CUSTOM_PARSER;
+  const saved = savedParser(settings, id);
+  const at = inline ? 'transfer' : 'settings';
+  const setEndpoint = (endpoint: string) => update(parserEndpointPatch(settings, preset, id, endpoint));
+  const own = [preset.endpoint, ...(preset.regions || []).map((r) => r.endpoint)];
+  const current = saved.endpoint || preset.endpoint;
+
+  const keyField = (field: 'appId' | 'key', label: string) => (
+    <div className={`field ${inline ? 'grow' : ''}`}>
+      <label htmlFor={`${at}-parser-${field}`}>{label}</label>
+      <input
+        id={`${at}-parser-${field}`}
+        className="input"
+        type={field === 'key' ? 'password' : 'text'}
+        value={saved[field] || ''}
+        placeholder={field === 'appId' ? 'Paste your app ID' : custom || preset.keyOptional ? 'Optional' : `Paste your ${preset.keyName}`}
+        spellCheck={false}
+        autoCorrect="off"
+        autoCapitalize="off"
+        autoComplete="off"
+        onChange={(e) => update(parserKeyPatch(settings, id, field, e.target.value))}
+      />
+    </div>
+  );
+  const picker = (
+    <div className={`field ${inline ? 'grow' : ''}`}>
+      <label id={`${at}-parser`}>Parser</label>
+      <Select
+        labelId={`${at}-parser`}
+        value={custom ? CUSTOM_PARSER : preset.id}
+        options={[...parsers.map((p): [string, string] => [p.id, p.name]), [CUSTOM_PARSER, 'Other (self-hosted or compatible)']]}
+        onChange={(value) => update({ parser: value })}
+      />
+      {!inline && <div className="field-hint">{custom ? 'A self-hosted or compatible server that speaks one of these APIs.' : preset.note}</div>}
+    </div>
+  );
+  const keys = (
+    <>
+      {preset.appId && keyField('appId', 'App ID')}
+      {keyField('key', capitalise(preset.keyName))}
+    </>
+  );
+  if (inline) return <div className="row">{picker}{keys}</div>;
+
+  return (
+    <>
+      {picker}
+      {custom && (
+        <div className="field">
+          <label id="settings-parserProtocol">API</label>
+          <Select
+            labelId="settings-parserProtocol"
+            value={preset.id}
+            options={parsers.map((p): [string, string] => [p.id, p.name])}
+            onChange={(value) => update({ parserProtocol: value })}
+          />
+        </div>
+      )}
+      {!custom && preset.regions && (
+        <div className="field">
+          <label id="settings-parserRegion">Region</label>
+          <Select
+            labelId="settings-parserRegion"
+            value={current}
+            options={[
+              [preset.endpoint, 'Default'],
+              ...preset.regions.map((r): [string, string] => [r.endpoint, r.label]),
+              ...(own.includes(current) ? [] : [[current, 'Custom endpoint'] as [string, string]])
+            ]}
+            onChange={(endpoint) => setEndpoint(endpoint === preset.endpoint ? '' : endpoint)}
+          />
+        </div>
+      )}
+      <EndpointField
+        key={id}
+        id="settings-parserEndpoint"
+        value={saved.endpoint}
+        placeholder={custom ? 'http://localhost:8000' : preset.endpoint}
+        hint={custom ? `The base URL of a server that speaks the ${preset.name} API.` : ''}
+        onCommit={setEndpoint}
+      />
+      {keys}
+      <div className="field-hint">
+        {custom || preset.keyOptional ? 'Only needed if the server asks for one.' : (
+          <>Create one on the <a href={preset.keyUrl} target="_blank" rel="noreferrer">{preset.name} key page</a>.</>
+        )}{' '}
+        Each parser’s key is kept when you switch.
+      </div>
+    </>
+  );
+}
+
+/**
+ * Saved when it loses focus (or on Return), so the key is only left behind when the address has
+ * really moved to another host, not at every keystroke on the way there.
+ */
+function EndpointField({ id, value, placeholder, hint, onCommit }: { id: string; value: string; placeholder: string; hint: string; onCommit: (value: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  const latest = useRef({ draft, value, onCommit });
+  latest.current = { draft, value, onCommit };
+  useEffect(() => setDraft(value), [value]);
+  // closing Settings while typing still keeps the address
+  useEffect(
+    () => () => {
+      const { draft: typed, value: was, onCommit: commit } = latest.current;
+      if (typed !== was) commit(typed);
+    },
+    []
+  );
+  const commit = () => draft !== value && onCommit(draft);
+  return (
+    <div className="field">
+      <label htmlFor={id}>Endpoint</label>
+      <input
+        id={id}
+        className="input"
+        value={draft}
+        placeholder={placeholder}
+        spellCheck={false}
+        autoCorrect="off"
+        autoCapitalize="off"
+        autoComplete="off"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === 'Enter' && commit()}
+      />
+      {hint && <div className="field-hint">{hint}</div>}
     </div>
   );
 }

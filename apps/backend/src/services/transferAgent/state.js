@@ -42,13 +42,12 @@ export const TransferState = Annotation.Root({
   layoutCheckResult: Annotation({ reducer: replace }),
   layoutAttempt: Annotation({ reducer: replace, default: () => 0 }),
 
-  // --- MinerU pipeline ---
+  // --- PDF pipeline (a parser turns the PDF into Markdown) ---
   transferMode: Annotation({ reducer: replace, default: () => 'legacy' }),
-  mineruConfig: Annotation({ reducer: replace }),
+  parserConfig: Annotation({ reducer: replace }),
   sourcePdfPath: Annotation({ reducer: replace }),
   sourceMarkdown: Annotation({ reducer: replace }),
   sourceImages: Annotation({ reducer: replace }),
-  mineruOutputDir: Annotation({ reducer: replace }),
 
   // --- Final output ---
   finalPdf: Annotation({ reducer: replace }),

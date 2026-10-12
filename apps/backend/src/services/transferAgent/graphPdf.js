@@ -1,7 +1,7 @@
 import { StateGraph, END, MemorySaver } from '@langchain/langgraph';
 import { TransferState } from './state.js';
 import { compileSource } from './nodes/compileSource.js';
-import { parsePdfWithMineru } from './nodes/parsePdfWithMineru.js';
+import { parsePdf } from './nodes/parsePdf.js';
 import { analyzeTarget } from './nodes/analyzeTarget.js';
 import { applyTransfer } from './nodes/applyTransfer.js';
 import { copyAssets } from './nodes/copyAssets.js';
@@ -42,19 +42,19 @@ function afterLayoutCheck(state) {
 }
 
 /**
- * Build the MinerU-based transfer workflow.
+ * Build the PDF transfer workflow: a parser reads the PDF, the model fills the template.
  *
  * Flow:
- *   compileSource → parsePdfWithMineru → analyzeTarget → applyTransfer
+ *   compileSource → parsePdf → analyzeTarget → applyTransfer
  *     → copyAssets → compile → [fixCompile loop]
  *     → [requestPageImages → checkLayout → fixLayout loop] → finalize
  */
-export function buildMineruTransferGraph() {
+export function buildPdfTransferGraph() {
   const graph = new StateGraph(TransferState);
 
   // Add all nodes
   graph.addNode('compileSource', compileSource);
-  graph.addNode('parsePdfWithMineru', parsePdfWithMineru);
+  graph.addNode('parsePdf', parsePdf);
   graph.addNode('analyzeTarget', analyzeTarget);
   graph.addNode('applyTransfer', applyTransfer);
   graph.addNode('copyAssets', copyAssets);
@@ -69,8 +69,8 @@ export function buildMineruTransferGraph() {
   graph.setEntryPoint('compileSource');
 
   // Linear edges
-  graph.addEdge('compileSource', 'parsePdfWithMineru');
-  graph.addEdge('parsePdfWithMineru', 'analyzeTarget');
+  graph.addEdge('compileSource', 'parsePdf');
+  graph.addEdge('parsePdf', 'analyzeTarget');
   graph.addEdge('analyzeTarget', 'applyTransfer');
   graph.addEdge('applyTransfer', 'copyAssets');
   graph.addEdge('copyAssets', 'compile');

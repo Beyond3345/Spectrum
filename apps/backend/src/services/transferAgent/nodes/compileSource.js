@@ -2,11 +2,12 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { runCompile } from '../../compileService.js';
 import { getProjectRoot } from '../../projectService.js';
+import { transferDir } from '../../parsers/index.js';
 import { ensureDir } from '../../../utils/fsUtils.js';
 
 /**
  * compileSource node — compiles the source project to PDF
- * so MinerU can parse it. Skips if sourcePdfPath is already set
+ * for the parser to read. Skips if sourcePdfPath is already set
  * (e.g. user uploaded a PDF directly).
  */
 export async function compileSource(state) {
@@ -35,11 +36,10 @@ export async function compileSource(state) {
     );
   }
 
-  // runCompile returns PDF as base64; write it to a local file for MinerU upload.
-  const targetRoot = await getProjectRoot(state.targetProjectId);
-  const tmpDir = path.join(targetRoot, '_mineru_input');
+  // runCompile returns the PDF as base64; the parser reads it from a file
+  const tmpDir = transferDir(await getProjectRoot(state.targetProjectId));
   await ensureDir(tmpDir);
-  const pdfPath = path.join(tmpDir, `source_${Date.now()}.pdf`);
+  const pdfPath = path.join(tmpDir, 'source.pdf');
   await fs.writeFile(pdfPath, Buffer.from(result.pdf, 'base64'));
 
   return {

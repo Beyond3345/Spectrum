@@ -5,6 +5,7 @@ import type { CheckerStatus, SearchProvider, SystemCheck } from '../api/client';
 import Icon from './Icon';
 import Select from './Select';
 import Sheet from './Sheet';
+import { ParserFields } from './TransferPanel';
 import { pickFolder } from './desktop';
 import {
   COMPILE_ENGINES,
@@ -453,9 +454,9 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
           {section === 'transfer' && (
             <>
               <div className="field-hint section-hint">
-                MinerU converts a compiled PDF to Markdown for the “MinerU (PDF → Markdown → LaTeX)” mode of Change template.
+                The parser turns a PDF into Markdown for the “From the PDF (parser → LaTeX)” mode of Change template.
               </div>
-              {/* rebuilt as a parser picker in 1.2.0 */}
+              <ParserFields />
             </>
           )}
 

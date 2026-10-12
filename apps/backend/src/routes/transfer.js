@@ -2,12 +2,12 @@ import crypto from 'crypto';
 import path from 'path';
 import { promises as fs } from 'fs';
 import { buildTransferGraph } from '../services/transferAgent/graph.js';
-import { buildMineruTransferGraph } from '../services/transferAgent/graphMineru.js';
+import { buildPdfTransferGraph } from '../services/transferAgent/graphPdf.js';
 import { resolveLLMConfig, NO_API_KEY } from '../services/llmService.js';
-import { resolveMineruConfig, NO_MINERU_TOKEN } from '../services/mineruService.js';
+import { PARSERS, resolveParserConfig, transferDir } from '../services/parsers/index.js';
 import { readTemplateManifest, templatePath } from '../services/templateService.js';
 import { createProject, getProjectRoot, readMeta, unregister } from '../services/projectService.js';
-import { copyDir } from '../utils/fsUtils.js';
+import { copyDir, ensureDir } from '../utils/fsUtils.js';
 
 /** New project for a transfer: the target template's files, named after the source. */
 async function createTargetProject(template, sourceProjectId, parentDir) {
@@ -203,16 +203,21 @@ export function registerTransferRoutes(fastify) {
     return { ok: true };
   });
 
+  // the parser presets for Settings → Template transfer, without the request-building parts
+  fastify.get('/api/transfer/parsers', async () => ({
+    parsers: PARSERS.map(({ parse: _parse, maxMB: _maxMB, ...preset }) => preset)
+  }));
+
   /**
-   * POST /api/transfer/start-mineru
+   * POST /api/transfer/start-pdf
    * Body: { sourceProjectId?, sourceMainFile?, targetTemplateId, targetMainFile,
-   *         engine?, layoutCheck?, llmConfig?, mineruConfig? }
-   * MinerU-based transfer: PDF → Markdown → LaTeX.
+   *         engine?, layoutCheck?, llmConfig?, parser?: { id, protocol?, endpoint?, key?, appId? } }
+   * PDF transfer: a parser turns the PDF into Markdown, which the model fills into the template.
    * If sourceProjectId is provided, compiles source to PDF first.
    * If not, expects PDF to be uploaded via /api/transfer/upload-pdf.
    * Returns: { jobId, newProjectId }
    */
-  fastify.post('/api/transfer/start-mineru', async (request, reply) => {
+  fastify.post('/api/transfer/start-pdf', async (request, reply) => {
     const {
       sourceProjectId, sourceMainFile,
       targetTemplateId, targetMainFile,
@@ -220,7 +225,7 @@ export function registerTransferRoutes(fastify) {
       layoutCheck = false,
       llmConfig,
       visionLlmConfig,
-      mineruConfig,
+      parser,
       parentDir,
     } = request.body || {};
 
@@ -249,15 +254,17 @@ export function registerTransferRoutes(fastify) {
     if (!resolveLLMConfig(llmConfig).apiKey) {
       return reply.code(400).send({ error: NO_API_KEY });
     }
-    if (!resolveMineruConfig(mineruConfig).token) {
-      return reply.code(400).send({ error: NO_MINERU_TOKEN });
+    let parserConfig;
+    try {
+      parserConfig = resolveParserConfig(parser);
+    } catch (err) {
+      return reply.code(400).send({ error: err.message });
     }
 
     const newProjectId = await createTargetProject(template, sourceProjectId, parentDir);
 
-    // Build MinerU transfer graph
     const jobId = crypto.randomUUID();
-    const graph = buildMineruTransferGraph();
+    const graph = buildPdfTransferGraph();
 
     const initialState = {
       sourceProjectId: sourceProjectId || '',
@@ -268,8 +275,8 @@ export function registerTransferRoutes(fastify) {
       layoutCheck,
       llmConfig: resolveLLMConfig(llmConfig),
       visionLlmConfig: resolveLLMConfig(visionLlmConfig || llmConfig),
-      mineruConfig: resolveMineruConfig(mineruConfig),
-      transferMode: 'mineru',
+      parserConfig,
+      transferMode: 'pdf',
       jobId,
     };
 
@@ -288,7 +295,7 @@ export function registerTransferRoutes(fastify) {
   /**
    * POST /api/transfer/upload-pdf
    * Multipart: { jobId, pdf: File }
-   * Upload a PDF for MinerU-based transfer (when no source project).
+   * Upload a PDF for a PDF transfer (when no source project).
    */
   fastify.post('/api/transfer/upload-pdf', async (request, reply) => {
     const parts = request.parts();
@@ -315,16 +322,18 @@ export function registerTransferRoutes(fastify) {
     if (!job) {
       return reply.code(404).send({ error: 'Job not found.' });
     }
-    if (job.state?.transferMode !== 'mineru') {
-      return reply.code(400).send({ error: 'Job is not a MinerU transfer job.' });
+    if (job.state?.transferMode !== 'pdf') {
+      return reply.code(400).send({ error: 'Job is not a PDF transfer job.' });
     }
 
     if (!pdfBuffer) {
       return reply.code(400).send({ error: 'No PDF file uploaded.' });
     }
 
-    // Save PDF to target project directory
-    const pdfPath = path.join(await getProjectRoot(job.state.targetProjectId), '_uploaded_source.pdf');
+    // kept out of sight in the new project's .spectrum folder
+    const dir = transferDir(await getProjectRoot(job.state.targetProjectId));
+    await ensureDir(dir);
+    const pdfPath = path.join(dir, 'source.pdf');
     await fs.writeFile(pdfPath, pdfBuffer);
 
     // Set sourcePdfPath in state so compileSource skips compilation

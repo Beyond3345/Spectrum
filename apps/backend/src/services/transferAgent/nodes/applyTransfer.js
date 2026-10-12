@@ -37,9 +37,9 @@ Output ONLY the complete LaTeX file content. No explanations, no markdown fences
 }
 
 /**
- * Build the LLM prompt for MinerU-based migration (Markdown → LaTeX).
+ * Build the LLM prompt for a PDF transfer (the parser's Markdown → LaTeX).
  */
-function buildMineruTransferPrompt(state) {
+function buildPdfTransferPrompt(state) {
   const imageList = (state.sourceImages || [])
     .map(img => img.name)
     .join(', ');
@@ -95,13 +95,13 @@ async function applyTransferLegacy(state) {
 }
 
 /**
- * MinerU mode: LLM fills Markdown content into target template.
+ * PDF mode: LLM fills the parser's Markdown into the target template.
  */
-async function applyTransferMineru(state) {
+async function applyTransferPdf(state) {
 
   const llm = createLLM(state.llmConfig);
 
-  const prompt = buildMineruTransferPrompt(state);
+  const prompt = buildPdfTransferPrompt(state);
   const response = await llm.invoke([{ role: 'user', content: prompt }]);
   const newContent = stripCodeFences(response.content);
 
@@ -118,11 +118,11 @@ async function applyTransferMineru(state) {
 }
 
 /**
- * applyTransfer node — dispatches to legacy or MinerU mode.
+ * applyTransfer node — dispatches to legacy or PDF mode.
  */
 export async function applyTransfer(state) {
-  if (state.transferMode === 'mineru') {
-    return applyTransferMineru(state);
+  if (state.transferMode === 'pdf') {
+    return applyTransferPdf(state);
   }
   return applyTransferLegacy(state);
 }

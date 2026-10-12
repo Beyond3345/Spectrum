@@ -27,7 +27,6 @@ export const HOST = process.env.SPECTRUM_HOST || '127.0.0.1';
 // Default parent folder for new and imported projects.
 export const PROJECTS_DIR = path.resolve(process.env.SPECTRUM_PROJECTS_DIR || path.join(os.homedir(), 'Documents', 'Spectrum'));
 
-// MinerU API
-export const MINERU_API_BASE = 'https://mineru.net/api/v4';
-export const MINERU_POLL_INTERVAL_MS = 3000;
-export const MINERU_MAX_POLL_ATTEMPTS = 200;
+// PDF parsers for template transfer: how often to ask whether a job is done, and for how long
+export const PARSER_POLL_INTERVAL_MS = 3000;
+export const PARSER_TIMEOUT_MS = 10 * 60 * 1000;
