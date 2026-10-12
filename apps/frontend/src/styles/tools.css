@@ -1309,58 +1309,156 @@ textarea.table-latex {
 .split-diff {
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  overflow-y: auto;
+  /* a fold button focused from below scrolls into view clear of the sticky header */
+  scroll-padding-top: 28px;
   background: var(--bg-editor);
-}
-
-.split-column {
-  min-width: 0;
-  overflow: auto;
   font: 12px/1.6 var(--font-mono);
 }
 
-.split-column + .split-column {
-  border-left: 1px solid var(--border);
+/* both sides share a row, so they line up and wrap together */
+.split-header,
+.split-row {
+  display: grid;
+  grid-template-columns: 46px 16px minmax(0, 1fr) 46px 16px minmax(0, 1fr);
 }
 
 .split-header {
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: 6px 12px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
   color: var(--text-secondary);
   font: 600 11px var(--font-ui);
 }
 
-.split-row {
+.split-header > span {
+  grid-column: span 3;
   display: flex;
-  min-width: max-content;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 12px;
+}
+
+.split-header > span + span,
+.split-row .line-no.r {
+  border-left: 1px solid var(--border);
+}
+
+.split-toggle {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-ink);
+  font: inherit;
+}
+
+.split-toggle:hover {
+  text-decoration: underline;
+}
+
+.split-diff > .tool-empty {
+  font: 13px/1.45 var(--font-ui);
+}
+
+.split-row {
   min-height: 1.6em;
+  /* a long all-new file renders only the rows in view */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1.6em;
 }
 
-.split-row.added {
-  background: var(--diff-added);
-}
-
-.split-row.removed {
+.split-row.removed .l,
+.split-row.changed .l {
   background: var(--diff-removed);
 }
 
+.split-row.added .r,
+.split-row.changed .r {
+  background: var(--diff-added);
+}
+
+/* the side with no line */
+.split-row.added .l,
+.split-row.removed .r {
+  background: var(--bg-hover);
+}
+
 .line-no {
-  flex: none;
-  width: 46px;
   padding-right: 10px;
   color: var(--editor-gutter);
   text-align: right;
   user-select: none;
 }
 
+.diff-marker {
+  text-align: center;
+  user-select: none;
+}
+
+.diff-marker.l {
+  color: var(--red-text);
+}
+
+.diff-marker.r {
+  color: var(--green-text);
+}
+
 .line-text {
-  padding-right: 16px;
-  white-space: pre;
+  min-width: 0;
+  padding-right: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* a drag on one side selects that side's text only (set on mousedown) */
+.split-diff[data-side='l'] .line-text.r,
+.split-diff[data-side='r'] .line-text.l {
+  user-select: none;
+}
+
+.line-text del,
+.line-text ins {
+  border-radius: 2px;
+  text-decoration: none;
+}
+
+.line-text del {
+  background: var(--diff-removed-strong);
+}
+
+.line-text ins {
+  background: var(--diff-added-strong);
+}
+
+.diff-eof {
+  margin-left: 8px;
+  color: var(--text-tertiary);
+  font: italic 11px var(--font-ui);
+  user-select: none;
+}
+
+.split-fold {
+  display: block;
+  width: 100%;
+  padding: 2px 12px 2px 62px;
+  border: 0;
+  border-block: 1px solid var(--border);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+.split-fold:hover {
+  background: var(--bg-selected);
+  color: var(--text);
+}
+
+.split-fold:focus-visible {
+  outline-offset: -2px;
 }
 
 @media (max-width: 800px) {

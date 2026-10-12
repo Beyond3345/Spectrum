@@ -60,6 +60,9 @@
 
   --diff-added: color-mix(in srgb, var(--green) 14%, transparent);
   --diff-removed: color-mix(in srgb, var(--red) 13%, transparent);
+  /* the words that changed within a changed line */
+  --diff-added-strong: color-mix(in srgb, var(--green) 34%, transparent);
+  --diff-removed-strong: color-mix(in srgb, var(--red) 30%, transparent);
 
   /* LaTeX syntax */
   --syntax-command: #116329;
@@ -119,6 +122,9 @@
   --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
 
+  --diff-added-strong: color-mix(in srgb, var(--green) 28%, transparent);
+  --diff-removed-strong: color-mix(in srgb, var(--red) 32%, transparent);
+
   --syntax-command: #7ee787;
   --syntax-bracket: #f2cc60;
   --syntax-comment: #8b949e;
@@ -160,6 +166,9 @@
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.45);
     --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
+
+    --diff-added-strong: color-mix(in srgb, var(--green) 28%, transparent);
+    --diff-removed-strong: color-mix(in srgb, var(--red) 32%, transparent);
 
     --syntax-command: #7ee787;
     --syntax-bracket: #f2cc60;
