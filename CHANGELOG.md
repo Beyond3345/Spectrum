@@ -2,6 +2,12 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.3.1 (12 October 2026)
+
+### Added
+
+- Typing `$` with text selected puts the text in maths (`$…$`) and keeps it selected, in the same way as `(` brackets a selection. With nothing selected, `$` is typed as before
+
 ## 1.3.0 (12 October 2026)
 
 ### Added

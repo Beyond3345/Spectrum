@@ -235,6 +235,30 @@ export const insertIndent: Command = (view) => {
  * Return at the end of \begin{name} (with any [options] or {arguments}) closes the environment at the
  * same indent, with the cursor on an indented line between, if the document doesn't already close it.
  */
+/** Typing "$" with text selected puts it in maths, as "(" brackets it, and leaves the text selected. */
+export function wrapInMaths(view: EditorView, text: string) {
+  const { state } = view;
+  if (text !== '$' || state.readOnly || state.selection.ranges.every((range) => range.empty)) return false;
+  view.dispatch(
+    state.changeByRange((range) =>
+      range.empty
+        ? { changes: { from: range.from, insert: '$' }, range: EditorSelection.cursor(range.from + 1) }
+        : {
+            changes: [
+              { from: range.from, insert: '$' },
+              { from: range.to, insert: '$' }
+            ],
+            range: EditorSelection.range(range.anchor + 1, range.head + 1)
+          }
+    ),
+    { scrollIntoView: true, userEvent: 'input.type' }
+  );
+  return true;
+}
+
+// by the character typed rather than the key, so it works on any keyboard layout
+export const mathsWrap = EditorView.inputHandler.of((view, _from, _to, text) => !view.composing && wrapInMaths(view, text));
+
 export const closeEnvironment: Command = (view) => {
   const { state } = view;
   const sel = state.selection.main;

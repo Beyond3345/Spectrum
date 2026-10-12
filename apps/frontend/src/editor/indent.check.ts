@@ -3,7 +3,7 @@
 import { EditorSelection, EditorState } from '@codemirror/state';
 import type { TransactionSpec } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
-import { closeEnvironment, indentation, insertIndent, sharedStart } from './latexEditor';
+import { closeEnvironment, indentation, insertIndent, sharedStart, wrapInMaths } from './latexEditor';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -36,4 +36,15 @@ eq(sharedStart('\\begin{e', labels), null, 'nothing shared past the typed text')
 eq(sharedStart('\\sec', labels), null, 'a single entry is picked, not typed out');
 eq(sharedStart('\\begin{eq', labels), null, 'one environment left');
 eq(sharedStart('\\xyz', labels), null, 'no entry');
+// "$" around a selection: each range wrapped and still selected (backwards too), plain "$" left to the editor
+function wrap(doc: string, ranges: [number, number][]) {
+  let state = EditorState.create({ doc, selection: EditorSelection.create(ranges.map(([a, h]) => EditorSelection.range(a, h))), extensions: [EditorState.allowMultipleSelections.of(true)] });
+  const view = { get state() { return state; }, dispatch: (...specs: TransactionSpec[]) => (state = state.update(...specs).state) } as unknown as EditorView;
+  const handled = wrapInMaths(view, '$');
+  return { handled, doc: state.doc.toString(), ranges: state.selection.ranges.map((r) => [r.anchor, r.head]) };
+}
+eq(wrap('a x+y b', [[2, 5]]), { handled: true, doc: 'a $x+y$ b', ranges: [[3, 6]] }, '$ wraps the selection and keeps it selected');
+eq(wrap('a x+y b', [[5, 2]]), { handled: true, doc: 'a $x+y$ b', ranges: [[6, 3]] }, 'a backwards selection too');
+eq(wrap('x and y', [[0, 1], [6, 7]]), { handled: true, doc: '$x$ and $y$', ranges: [[1, 2], [9, 10]] }, 'every selection');
+eq(wrap('ab', [[1, 1]]).handled, false, 'no selection: "$" is typed as usual');
 console.log('indent.check: ok');
