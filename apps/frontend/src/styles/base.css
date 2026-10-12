@@ -74,7 +74,7 @@ p {
 }
 
 a {
-  color: var(--accent);
+  color: var(--accent-ink);
   text-decoration: none;
 }
 
@@ -112,8 +112,9 @@ kbd {
   color: var(--text-secondary);
 }
 
+/* the accent tint, whatever the editor theme picks for its own selection */
 ::selection {
-  background: var(--editor-selection);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 ::placeholder {
@@ -390,10 +391,11 @@ input[type='radio'] {
   padding-left: 24px;
 }
 
-/* main.rs flips .fullscreen as macOS starts the change, so these move along with the window */
-.desktop .sidebar-top,
-.desktop .main-panel,
-.desktop .panel-header {
+/* main.rs flips .fullscreen as macOS starts the change, so these move along with the window;
+   .fs-moving is on only then, so showing or hiding the sidebar stays instant */
+.fs-moving .sidebar-top,
+.fs-moving .main-panel,
+.fs-moving .panel-header {
   transition-property: padding-left, margin-top, border-radius, height;
   transition-duration: 0.3s;
   transition-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1);
@@ -563,7 +565,7 @@ input[type='radio'] {
 .icon-btn.active,
 .icon-btn.active:hover:not(:disabled) {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .icon-btn.destructive:hover:not(:disabled) {
@@ -1018,7 +1020,7 @@ button.chip.active:hover {
 .chip.on {
   border-color: transparent;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .chip.success {
@@ -1621,19 +1623,26 @@ button.chip.active:hover {
   border-radius: 50%;
   background: var(--swatch);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  --wheel: conic-gradient(#e0383e, #f7821b, #ffc600, #62ba46, #0a84ff, #a550a7, #f74f9e, #e0383e);
 }
 
 .accent-swatch.system {
-  background: conic-gradient(#e0383e, #f7821b, #ffc600, #62ba46, #0a84ff, #a550a7, #f74f9e, #e0383e);
+  background: var(--wheel);
 }
 
-/* the chosen one gets a white dot, as in System Settings */
+/* Custom shows its colour inside a ring of the wheel, like a colour well, so it never reads as another preset */
+.accent-swatch.custom {
+  background: radial-gradient(closest-side, var(--swatch) 60%, var(--bg-elevated) 62% 74%, transparent 76%), var(--wheel);
+}
+
+/* the chosen one gets a white dot, as in System Settings, edged so it shows on pale colours too */
 .accent-swatch[aria-checked='true']::after {
   content: '';
   position: absolute;
   inset: 7px;
   border-radius: 50%;
   background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
 }
 
 .colour-well {

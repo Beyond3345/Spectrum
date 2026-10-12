@@ -30,7 +30,7 @@ const invoke = (cmd: string, args: Record<string, unknown>) => tauri().invoke(cm
 /** Removes the System listener of the last `setNativeTheme` call. */
 let stopFollowingSystem = () => {};
 /** Paints the window background again for the current theme (set by `setNativeTheme`). */
-let repaint = () => {};
+let repaint: () => Promise<unknown> = () => Promise.resolve();
 let glassOn = false;
 
 /**
@@ -47,8 +47,10 @@ export function setNativeTheme(theme: 'system' | 'light' | 'dark') {
     const dark = theme === 'system' ? system.matches : theme === 'dark';
     // see-through: nothing behind the page but the glass
     const value = glassOn ? [0, 0, 0, 0] : dark ? [24, 24, 24, 255] : [247, 247, 248, 255];
-    invoke('plugin:window|set_background_color', { label: 'main', value });
-    invoke('plugin:webview|set_webview_background_color', { label: 'main', value });
+    return Promise.all([
+      invoke('plugin:window|set_background_color', { label: 'main', value }),
+      invoke('plugin:webview|set_webview_background_color', { label: 'main', value })
+    ]);
   };
   repaint = paint;
   paint();
@@ -66,11 +68,27 @@ export function setNativeTheme(theme: 'system' | 'light' | 'dark') {
 export function setNativeGlass(on: boolean) {
   if (!IS_DESKTOP || on === glassOn) return;
   glassOn = on;
-  invoke('plugin:window|set_effects', {
-    label: 'main',
-    value: on ? { effects: ['liquidGlassRegular', 'underWindowBackground'], state: 'active' } : null
-  });
-  repaint();
+  const apply = () =>
+    Promise.all([
+      invoke('plugin:window|set_effects', {
+        label: 'main',
+        value: on ? { effects: ['liquidGlassRegular', 'underWindowBackground'], state: 'active' } : null
+      }),
+      repaint()
+    ]);
+  // main.rs keeps the window opaque unless glass is on. An opaque window with a clear background
+  // shows black, so it turns see-through before the clear paint and opaque after the solid one;
+  // a step a later call has overtaken is skipped
+  const glass = () => invoke('plugin:event|emit', { event: 'glass', payload: on });
+  if (on) {
+    glass().then(() => {
+      if (glassOn) apply();
+    });
+  } else {
+    apply().then(() => {
+      if (!glassOn) glass();
+    });
+  }
 }
 
 /**

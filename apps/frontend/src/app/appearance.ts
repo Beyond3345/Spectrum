@@ -37,13 +37,43 @@ export function accentColour(settings: Pick<AppSettings, 'accent' | 'accentCusto
   return ACCENTS.find(([value]) => value === settings.accent)?.[2] || '';
 }
 
-/** Text on the accent: dark on light colours (yellow, pastels), white on the rest as macOS does. */
-export function accentText(hex: string) {
-  const [r, g, b] = [1, 3, 5].map((i) => {
-    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+const channels = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+
+/** WCAG relative luminance of '#rrggbb', 0 (black) to 1 (white) */
+function luminance(hex: string) {
+  const [r, g, b] = channels(hex).map((v) => {
+    const c = v / 255;
     return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
   });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? '#0d0d0d' : '#ffffff';
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** WCAG contrast ratio of two '#rrggbb' colours, 1 to 21 */
+export function contrast(a: string, b: string) {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * Text on the accent: dark on light colours (yellow, orange, green, pastels), white on the rest as
+ * macOS does. White stays at 3:1 or better up to the cut-off.
+ */
+export function accentText(hex: string) {
+  return luminance(hex) > 0.3 ? '#0d0d0d' : '#ffffff';
+}
+
+/**
+ * The accent as text (--accent-ink): mixed towards black for light mode, or white for dark, until
+ * it reads at 4.5:1 (WCAG AA) on the panel (#ffffff or #212121). One that already does stays as it is.
+ */
+export function accentInk(hex: string, dark: boolean) {
+  const [surface, towards] = dark ? ['#212121', '#ffffff'] : ['#ffffff', '#000000'];
+  const [from, to] = [channels(hex), channels(towards)];
+  for (let t = 0; t < 1; t += 0.02) {
+    const ink = `#${from.map((v, i) => Math.round(v + (to[i] - v) * t).toString(16).padStart(2, '0')).join('')}`;
+    if (contrast(ink, surface) >= 4.5) return ink;
+  }
+  return towards;
 }
 
 /**
@@ -85,14 +115,15 @@ export function followAppearance() {
     const settings = loadSettings();
     const root = document.documentElement;
     const accent = accentColour(settings);
-    // inline, so it beats the macOS accent in tokens.css; the derived tokens follow it
-    if (accent) {
-      root.style.setProperty('--accent', accent);
-      root.style.setProperty('--accent-text', accentText(accent));
-    } else {
-      root.style.removeProperty('--accent');
-      root.style.removeProperty('--accent-text');
-    }
+    // inline, so it beats the macOS accent in tokens.css; the derived tokens follow it, and
+    // tokens.css picks the ink for the mode showing. '' removes each, back to macOS's accent.
+    const tokens = {
+      '--accent': accent,
+      '--accent-text': accent && accentText(accent),
+      '--accent-ink-light': accent && accentInk(accent, false),
+      '--accent-ink-dark': accent && accentInk(accent, true)
+    };
+    for (const [name, value] of Object.entries(tokens)) root.style.setProperty(name, value);
     try {
       window.localStorage.setItem(ACCENT_KEY, accent && `${accent} ${accentText(accent)}`);
     } catch {

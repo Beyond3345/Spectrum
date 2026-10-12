@@ -18,6 +18,9 @@
   --accent-text: #ffffff;
   --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
   --accent-strong: color-mix(in srgb, var(--accent) 85%, #000);
+  /* the accent as text: for an accent picked in Settings, appearance.ts sets it darkened until it
+     reads at 4.5:1 on white (and lightened for dark mode); macOS's own is used as it is */
+  --accent-ink: var(--accent-ink-light, var(--accent));
 
   --red: #e5484d;
   --green: #2f9e44;
@@ -27,7 +30,7 @@
   --red-text: #b8292f;
   --green-text: #1c7232;
   --orange-text: #a84106;
-  --accent-on-soft: color-mix(in srgb, var(--accent) 75%, #000);
+  --accent-on-soft: color-mix(in srgb, var(--accent-ink) 75%, #000);
 
   /* surfaces, back to front; the first four turn see-through in glass.css */
   --bg-app-solid: #f7f7f8;    /* window + sidebar */
@@ -91,8 +94,9 @@
   --red-text: var(--red);
   --green-text: var(--green);
   --orange-text: var(--orange);
+  --accent-ink: var(--accent-ink-dark, var(--accent));
   /* lighter than the accent so text on its own tint stays readable (AA) */
-  --accent-on-soft: color-mix(in srgb, var(--accent) 70%, #fff);
+  --accent-on-soft: color-mix(in srgb, var(--accent-ink) 70%, #fff);
 
   --bg-app-solid: #181818;
   --bg-panel-solid: #212121;
@@ -133,7 +137,8 @@
     --red-text: var(--red);
     --green-text: var(--green);
     --orange-text: var(--orange);
-    --accent-on-soft: color-mix(in srgb, var(--accent) 70%, #fff);
+    --accent-ink: var(--accent-ink-dark, var(--accent));
+    --accent-on-soft: color-mix(in srgb, var(--accent-ink) 70%, #fff);
 
     --bg-app-solid: #181818;
     --bg-panel-solid: #212121;

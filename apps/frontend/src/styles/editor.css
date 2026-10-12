@@ -303,7 +303,7 @@
   padding: 0 10px 0 12px;
 }
 
-.desktop .editor-topbar {
+.fs-moving .editor-topbar {
   /* moves along with the window as full screen starts or ends, like .sidebar-top */
   transition: padding-left 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
@@ -900,6 +900,11 @@ button.compile-status:hover {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/* pdf.js tints selected text with macOS's accent; this follows the one chosen in Settings */
+.pdf-page .textLayer ::selection {
+  background: color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 /* Page colour for the mode showing (Settings → Appearance), set on <html> by appearance.ts.

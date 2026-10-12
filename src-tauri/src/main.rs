@@ -224,7 +224,7 @@ fn build_window(
         .title_bar_style(TitleBarStyle::Overlay)
         .hidden_title(true)
         .traffic_light_position(TRAFFIC_LIGHTS)
-        // so Settings can put glass behind the page; it looks opaque until then
+        // so Settings can put glass behind the page; follow_glass keeps it opaque until then
         .transparent(true)
         // let WebKit take drops itself, so files dragged in from Finder reach the page
         .disable_drag_drop_handler()
@@ -275,7 +275,10 @@ fn build_window(
     // or clear for glass) and follows theme changes, so nothing here repaints it after that
     let _ = window.set_background_color(Some(background(window.theme().unwrap_or(Theme::Light))));
     #[cfg(target_os = "macos")]
-    follow_fullscreen_changes(&window);
+    {
+        follow_fullscreen_changes(&window);
+        follow_glass(app, &window);
+    }
     let resized = window.clone();
     let closing = app.clone();
     let full = AtomicBool::new(false);
@@ -300,10 +303,14 @@ fn build_window(
     Ok(window)
 }
 
-/// Sets .fullscreen on the page, which drops the room kept for the traffic lights.
+/// Sets .fullscreen on the page, which drops the room kept for the traffic lights. .fs-moving
+/// turns the page's transitions on for this change only, so showing or hiding the sidebar
+/// (and the first paint) stays instant.
 fn mark_fullscreen(window: &WebviewWindow, full: bool) {
     let _ = window.eval(format!(
-        "document.documentElement.classList.toggle('fullscreen', {full})"
+        "{{const r = document.documentElement; r.classList.add('fs-moving'); \
+         r.classList.toggle('fullscreen', {full}); clearTimeout(window.__spectrumFsMoving); \
+         window.__spectrumFsMoving = setTimeout(() => r.classList.remove('fs-moving'), 400)}}"
     ));
 }
 
@@ -341,6 +348,34 @@ fn follow_fullscreen_changes(window: &WebviewWindow) {
         // the observers are wanted for as long as the app runs
         std::mem::forget(observer);
     }
+}
+
+/// Keeps the window opaque unless glass is on, so macOS doesn't blend it with what's behind
+/// on every frame for nothing. desktop.ts emits `glass` before it clears the background for
+/// glass and after it paints it solid again, so the window never shows black.
+#[cfg(target_os = "macos")]
+fn follow_glass(app: &AppHandle, window: &WebviewWindow) {
+    set_opaque(window, true);
+    let window = window.clone();
+    app.listen("glass", move |event| {
+        set_opaque(&window, event.payload() != "true")
+    });
+}
+
+/// NSWindow's setOpaque. The window is built transparent; this is all glass needs on top.
+#[cfg(target_os = "macos")]
+fn set_opaque(window: &WebviewWindow, opaque: bool) {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+
+    let target = window.clone();
+    // queued behind any repaint the page asked for first
+    let _ = window.run_on_main_thread(move || {
+        if let Ok(ns_window) = target.ns_window() {
+            // SAFETY: ns_window is this window's NSWindow, used on the main thread
+            let () = unsafe { msg_send![&*ns_window.cast::<AnyObject>(), setOpaque: opaque] };
+        }
+    });
 }
 
 /// Matches --bg-app, so resizing never flashes another colour.
