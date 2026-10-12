@@ -40,23 +40,25 @@ export const parserId = (settings: AppSettings, preset: ParserPreset | null) =>
 
 export const savedParser = (settings: AppSettings, id: string) => settings.parserSaved[id] || { endpoint: '', key: '' };
 
-const hostOf = (url: string) => {
+// scheme, host and port, so a key entered for https never goes over plain http
+const originOf = (url: string) => {
   try {
-    return new URL(url).host;
+    return new URL(url).origin;
   } catch {
     return '';
   }
 };
 
 /**
- * A parser's new endpoint ('' = the preset's own). Its key (and app ID) were entered for the old host,
- * so an address on another host leaves them behind; a key typed before Other had any address stays.
+ * A parser's new endpoint ('' = the preset's own). Its key (and app ID) were entered for the old origin,
+ * so an address on another one leaves them behind; a key typed before Other had any address stays.
  */
 export function parserEndpointPatch(settings: AppSettings, preset: ParserPreset | null, id: string, endpoint: string): Partial<AppSettings> {
   const was = savedParser(settings, id);
   const own = id === CUSTOM_PARSER ? '' : preset?.endpoint || '';
-  const before = hostOf(was.endpoint || own);
-  const moved = !!before && before !== hostOf(endpoint || own);
+  // any address counts, even one that isn't a URL: its key wasn't entered for the next one either
+  const before = was.endpoint || own;
+  const moved = !!before && originOf(before) !== originOf(endpoint || own);
   return { parserSaved: { ...settings.parserSaved, [id]: moved ? { endpoint, key: '' } : { ...was, endpoint } } };
 }
 

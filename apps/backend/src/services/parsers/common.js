@@ -16,13 +16,34 @@ export const hostOf = (url) => {
   }
 };
 
-/** fetch, with errors that say which parser failed, its HTTP status and the start of its reply. */
-export async function send(name, url, init = {}) {
+/** Scheme, host and port: a key only goes back to the origin it was entered for, never over http instead of https. */
+export const originOf = (url) => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return '';
+  }
+};
+
+/**
+ * fetch, with errors that say which parser failed, its HTTP status and the start of its reply.
+ * Redirects are followed here, as fetch only drops Authorization on another origin, not app_key or X-API-Key.
+ */
+export async function send(name, url, init = {}, hops = 5) {
   let res;
   try {
-    res = await fetch(url, init);
+    res = await fetch(url, { ...init, redirect: 'manual' });
   } catch (err) {
     throw new Error(`Couldn’t reach ${name} at ${hostOf(url)} (${err.cause?.message || err.message}).`);
+  }
+  const location = res.status >= 300 && res.status < 400 && res.headers.get('location');
+  if (location && hops > 0) {
+    res.body?.cancel().catch(() => {});
+    const next = new URL(location, url);
+    const { method, body, headers, ...rest } = init;
+    // as fetch does: 303, or 301/302 after a POST, becomes a GET with no body
+    const asGet = res.status === 303 || (res.status <= 302 && method === 'POST');
+    return send(name, next.href, { ...rest, ...(!asGet && { method, body }), ...(next.origin === originOf(url) && { headers }) }, hops - 1);
   }
   if (!res.ok) {
     const body = snippet(await res.text().catch(() => ''));
@@ -104,12 +125,22 @@ export function relinkImages(markdown, renames) {
     .replace(/(<img\b[^>]*?\bsrc\s*=\s*["'])([^"']+)/gi, (_, open, target) => open + find(target));
 }
 
-/** \(…\) and \[…\] as $…$ and $$…$$, the delimiters the transfer prompt expects. \\[2pt] stays a line break. */
-export function dollarMaths(markdown) {
-  return markdown
-    .replace(/(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]/g, (_, maths) => `$$${maths}$$`)
-    .replace(/(?<!\\)\\\(([\s\S]+?)(?<!\\)\\\)/g, (_, maths) => `$${maths.trim()}$`);
-}
+// \[1\] is a citation with its brackets escaped, not display maths
+const citation = /^\s*\d[\d\s,;–-]*$/;
+const convert = (text) =>
+  text
+    .replace(/(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]/g, (all, maths) => (citation.test(maths) ? all : `$$${maths}$$`))
+    .replace(/(?<!\\)\\\(([\s\S]+?)(?<!\\)\\\)/g, (all, maths) => (citation.test(maths) ? all : `$${maths.trim()}$`));
+
+/**
+ * \(…\) and \[…\] as $…$ and $$…$$, the delimiters the transfer prompt expects. \\[2pt] stays a line break,
+ * and code (fenced or `inline`) stays as it is, so r"\(\d+\)" isn't turned into maths.
+ */
+export const dollarMaths = (markdown) =>
+  markdown
+    .split(/(```[\s\S]*?```|`[^`\n]*`)/)
+    .map((part, i) => (i % 2 ? part : convert(part)))
+    .join('');
 
 /** The shape the transfer graph reads: markdown with $ maths, and the images it links to by basename. */
 export function result(name, markdown, images) {

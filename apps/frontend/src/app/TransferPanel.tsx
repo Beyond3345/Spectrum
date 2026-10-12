@@ -489,7 +489,7 @@ export function ParserFields({ inline = false }: { inline?: boolean }) {
         {custom || preset.keyOptional ? 'Only needed if the server asks for one.' : (
           <>Create one on the <a href={preset.keyUrl} target="_blank" rel="noreferrer">{preset.name} key page</a>.</>
         )}{' '}
-        Each parser’s key is kept when you switch.
+        Each parser’s key is kept when you switch parsers; a new region or address clears it, as a key only goes to the address it was entered for.
       </div>
     </>
   );

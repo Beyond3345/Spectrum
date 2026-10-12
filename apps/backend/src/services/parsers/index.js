@@ -5,7 +5,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { ensureDir } from '../../utils/fsUtils.js';
 import { appPath } from '../projectService.js';
-import { hostOf } from './common.js';
+import { originOf } from './common.js';
 import { parseWithDatalab } from './datalab.js';
 import { parseWithDocling } from './docling.js';
 import { parseWithLlamaParse } from './llamaparse.js';
@@ -95,8 +95,8 @@ export const transferDir = (projectRoot) => appPath(projectRoot, 'transfer');
 /**
  * What a transfer sends where. raw: { id, protocol? (for 'custom'), endpoint?, key?, appId? } from Settings.
  * A key typed in Settings goes with the endpoint it was entered for (the preset's when none was typed);
- * the .env MinerU token only goes to the .env (or default) MinerU host. Throws a message for the user
- * when the parser is unknown, the address isn't http(s), or a key is needed and missing.
+ * the .env MinerU token only goes to the .env (or default) MinerU origin, so never over plain http. Throws a
+ * message for the user when the parser is unknown, the address isn't http(s), or a key is needed and missing.
  */
 export function resolveParserConfig(raw) {
   const { id = 'mineru', protocol, endpoint: typed, key: typedKey, appId } = raw || {};
@@ -115,7 +115,7 @@ export function resolveParserConfig(raw) {
     // not a URL
   }
   if (scheme !== 'http:' && scheme !== 'https:') throw new Error(`The address for ${name} must start with http:// or https://.`);
-  const envKey = preset.id === 'mineru' && hostOf(endpoint) === hostOf(envBase || preset.endpoint) ? String(process.env.SPECTRUM_MINERU_TOKEN || '').trim() : '';
+  const envKey = preset.id === 'mineru' && originOf(endpoint) === originOf(envBase || preset.endpoint) ? String(process.env.SPECTRUM_MINERU_TOKEN || '').trim() : '';
   const config = {
     id: custom ? 'custom' : preset.id,
     protocol: preset.id,

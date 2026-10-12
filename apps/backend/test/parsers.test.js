@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync, promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parsePdf, resolveParserConfig } from '../src/services/parsers/index.js';
-import { dollarMaths } from '../src/services/parsers/common.js';
+import { dollarMaths, download, send } from '../src/services/parsers/common.js';
 
 // Never let a developer's own .env token into these tests.
 delete process.env.SPECTRUM_MINERU_TOKEN;
@@ -19,7 +19,7 @@ const pdfPath = path.join(tmp, 'source.pdf');
 const PDF = Buffer.from('%PDF-1.4 a tiny test paper');
 const b64 = (text) => Buffer.from(text).toString('base64');
 
-// "METHOD /path" → replies, each [status, body] or a 200 body; the last one repeats. Every request is kept in seen.
+// "METHOD /path" → replies, each [status, body, headers?] or a 200 body; the last one repeats. Every request is kept in seen.
 let server;
 let base;
 let port;
@@ -35,8 +35,8 @@ before(async () => {
       seen.push({ method: req.method, path: req.url, headers: req.headers, body: Buffer.concat(chunks) });
       const queue = routes[`${req.method} ${req.url}`] || [[404, { error: `no route for ${req.method} ${req.url}` }]];
       const next = queue.length > 1 ? queue.shift() : queue[0];
-      const [status, body] = Array.isArray(next) ? next : [200, next];
-      res.writeHead(status, { 'Content-Type': Buffer.isBuffer(body) ? 'application/octet-stream' : 'application/json' });
+      const [status, body, headers] = Array.isArray(next) ? next : [200, next];
+      res.writeHead(status, { 'Content-Type': Buffer.isBuffer(body) ? 'application/octet-stream' : 'application/json', ...headers });
       res.end(Buffer.isBuffer(body) ? body : JSON.stringify(body));
     });
   });
@@ -161,6 +161,47 @@ test('a key never follows a link to another host', async () => {
   });
   assert.ok(!seen.some((r) => r.path.startsWith('/elsewhere')), 'the check URL on another host is not used');
   assert.equal(sent('GET', '/datalab/convert/r2').headers['x-api-key'], 'dk');
+  // nor to the same host on another scheme (there, https instead of http; the fake only speaks http)
+  await run({ id: 'datalab', endpoint: `${base}/datalab`, key: 'dk' }, {
+    'POST /datalab/convert': [{ success: true, request_id: 'r3', request_check_url: `https://127.0.0.1:${port}/datalab/check/r3` }],
+    'GET /datalab/convert/r3': [{ status: 'complete', success: true, markdown: 'ok', images: {} }]
+  });
+  assert.equal(sent('GET', '/datalab/convert/r3').headers['x-api-key'], 'dk');
+});
+
+test('redirects keep the key on the same origin only, and a moved POST becomes a GET', async () => {
+  // a second server, as a CDN or storage host the download is sent on to
+  const landed = [];
+  const other = http.createServer((req, res) => {
+    landed.push(req.headers);
+    res.end('zip bytes');
+  });
+  await new Promise((resolve) => other.listen(0, '127.0.0.1', resolve));
+  try {
+    routes = {
+      'GET /v3/pdf/p1.md.zip': [[302, {}, { Location: '/moved/p1.md.zip' }]],
+      'GET /moved/p1.md.zip': [[302, {}, { Location: `http://127.0.0.1:${other.address().port}/bucket/p1.md.zip` }]],
+      'POST /convert': [[303, {}, { Location: '/convert/r1' }]],
+      'GET /convert/r1': [{ status: 'ok' }],
+      'PUT /upload': [[307, {}, { Location: '/upload/2' }]],
+      'PUT /upload/2': [{}],
+      'GET /loop': [[302, {}, { Location: '/loop' }]]
+    };
+    seen.length = 0;
+    const keys = { app_id: 'mid', app_key: 'mkey', 'X-API-Key': 'dk', Authorization: 'Bearer t' };
+    assert.equal((await download('Mathpix', `${base}/v3/pdf/p1.md.zip`, keys)).toString(), 'zip bytes');
+    assert.equal(sent('GET', '/moved/p1.md.zip').headers.app_key, 'mkey');
+    assert.equal(landed.length, 1);
+    for (const header of ['app_id', 'app_key', 'x-api-key', 'authorization']) assert.equal(landed[0][header], undefined, `${header} stays behind`);
+
+    await send('Datalab', `${base}/convert`, { method: 'POST', headers: keys, body: 'pdf' });
+    assert.deepEqual([sent('GET', '/convert/r1').body.length, sent('GET', '/convert/r1').headers['x-api-key']], [0, 'dk']);
+    await send('MinerU', `${base}/upload`, { method: 'PUT', body: 'pdf' });
+    assert.equal(sent('PUT', '/upload/2').body.toString(), 'pdf');
+    await assert.rejects(send('Docling', `${base}/loop`), { message: 'Docling returned HTTP 302: {}' });
+  } finally {
+    other.close();
+  }
 });
 
 test('LlamaParse: agentic tier, poll, then markdown and presigned images without the key', async () => {
@@ -176,7 +217,8 @@ test('LlamaParse: agentic tier, poll, then markdown and presigned images without
   });
   const upload = sent('POST', '/llama/api/v2/parse/upload');
   assert.equal(upload.headers.authorization, 'Bearer llx');
-  assert.equal(JSON.parse((await formOf(upload)).get('configuration')).tier, 'agentic');
+  const configuration = JSON.parse((await formOf(upload)).get('configuration'));
+  assert.deepEqual([configuration.tier, configuration.output_options], ['agentic', { images_to_save: ['layout'] }]);
   noKeyTo('/storage/');
   assert.equal(result.markdownContent, 'See $x$.\n\n![](img_p0_1.png)');
   assert.deepEqual(await contents(result.images), [['img_p0_1.png', 'png']]);
@@ -186,8 +228,8 @@ test('PaddleOCR-VL: job, poll, JSONL pages with <img> links', async () => {
   const line = (text, images) => JSON.stringify({ result: { layoutParsingResults: [{ markdown: { text, images } }] } });
   const jsonl = [line('## One\n<img src="imgs/a.jpg" alt="Image" />', { 'imgs/a.jpg': `${base}/storage/a.jpg` }), line('$$y$$', {})].join('\n');
   const result = await run({ id: 'paddleocr', endpoint: `${base}/paddle`, key: 'pk' }, {
-    'POST /paddle/api/v2/ocr/jobs': [{ errorCode: 0, data: { jobId: 'pj' } }],
-    'GET /paddle/api/v2/ocr/jobs/pj': [{ errorCode: 0, data: { state: 'running' } }, { errorCode: 0, data: { state: 'done', resultUrl: { jsonUrl: `${base}/storage/res.jsonl` } } }],
+    'POST /paddle/api/v2/ocr/jobs': [{ code: 0, msg: 'success', data: { jobId: 'pj' } }],
+    'GET /paddle/api/v2/ocr/jobs/pj': [{ code: 0, data: { state: 'running' } }, { code: 0, data: { state: 'done', resultUrl: { jsonUrl: `${base}/storage/res.jsonl` } } }],
     'GET /storage/res.jsonl': [Buffer.from(jsonl)],
     'GET /storage/a.jpg': [Buffer.from('a')]
   });
@@ -226,6 +268,17 @@ test('errors name the parser, the HTTP status and the reply', async () => {
       'GET /mineru/extract-results/batch/b9': [{ code: 0, data: { extract_result: [{ state: 'failed', err_msg: 'encrypted PDF' }] } }]
     }),
     { message: 'MinerU couldn’t read the PDF: encrypted PDF.' }
+  );
+  // a bad token comes back as HTTP 200 with a code, in either wrapper
+  await assert.rejects(run({ id: 'paddleocr', endpoint: `${base}/paddle`, key: 'bad' }, { 'POST /paddle/api/v2/ocr/jobs': [{ code: 10003, msg: 'token invalid', data: null }] }), {
+    message: 'PaddleOCR-VL returned an error: token invalid'
+  });
+  await assert.rejects(
+    run({ id: 'paddleocr', endpoint: `${base}/paddle`, key: 'pk' }, {
+      'POST /paddle/api/v2/ocr/jobs': [{ code: 0, data: { jobId: 'pk1' } }],
+      'GET /paddle/api/v2/ocr/jobs/pk1': [{ errorCode: 401, errorMsg: 'token expired' }]
+    }),
+    { message: 'PaddleOCR-VL returned an error: token expired' }
   );
   await assert.rejects(run({ id: 'custom', protocol: 'docling', endpoint: 'http://127.0.0.1:9' }, {}), /^Error: Couldn’t reach Docling \(custom\) at 127\.0\.0\.1:9 \(/);
   await assert.rejects(run({ id: 'mistral', endpoint: `${base}/mistral/v1`, key: 'mk' }, { 'POST /mistral/v1/ocr': [{ pages: [{ markdown: '  ' }] }] }), {
@@ -266,6 +319,8 @@ test('the .env MinerU token only goes to the .env MinerU host', () => {
     delete process.env.SPECTRUM_MINERU_API_BASE;
     assert.deepEqual(resolveParserConfig({}), { id: 'mineru', protocol: 'mineru', name: 'MinerU', endpoint: 'https://mineru.net/api/v4', key: 'env-tok', appId: '' });
     assert.equal(resolveParserConfig({ id: 'mineru', endpoint: 'https://mineru.net/api/v4/' }).key, 'env-tok');
+    // same host, but plain http: anyone on the network could read it
+    assert.throws(() => resolveParserConfig({ id: 'mineru', endpoint: 'http://mineru.net/api/v4' }), /Add your MinerU token/);
     assert.throws(() => resolveParserConfig({ id: 'mineru', endpoint: 'https://mirror.example/api/v4' }), /Add your MinerU token/);
     assert.equal(resolveParserConfig({ id: 'custom', protocol: 'mineru', endpoint: 'https://mirror.example/api/v4' }).key, '');
     assert.throws(() => resolveParserConfig({ id: 'mistral' }), /Add your Mistral OCR API key/);
@@ -283,6 +338,9 @@ test('the .env MinerU token only goes to the .env MinerU host', () => {
   }
 });
 
-test('maths delimiters become $ and $$; line breaks stay', () => {
+test('maths delimiters become $ and $$; line breaks, code and escaped citations stay', () => {
   assert.equal(dollarMaths('\\( x \\) \\[y\\] a \\\\[3pt] b \\\\(c)'), '$x$ $$y$$ a \\\\[3pt] b \\\\(c)');
+  const code = '```python\nm = re.match(r"\\((\\d+)\\)", s)\n```\nWith `\\[a-z\\]+` and \\(x\\).';
+  assert.equal(dollarMaths(code), code.replace('\\(x\\)', '$x$'));
+  assert.equal(dollarMaths('see \\[1\\] and \\[2, 3–5\\], then \\[ 2x \\]'), 'see \\[1\\] and \\[2, 3–5\\], then $$ 2x $$');
 });

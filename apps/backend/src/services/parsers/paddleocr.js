@@ -7,9 +7,11 @@ import { download, pdfBlob, poll, relinkImages, result, saveImages, sendJson } f
 export async function parseWithPaddleOcr(pdf, config, outputDir) {
   const { name, endpoint, key } = config;
   const headers = { Authorization: `Bearer ${key}` };
-  // [unconfirmed] the { errorCode, errorMsg, data } wrapper around replies
+  // replies are wrapped as { code, msg, data } ([unconfirmed] some say { errorCode, errorMsg, data }); a token
+  // error comes back as HTTP 200 with a code, so it is thrown here rather than polled on for 10 minutes
   const unwrap = (reply) => {
-    if (reply.errorCode) throw new Error(`${name} returned an error: ${reply.errorMsg || reply.errorCode}`);
+    const code = reply.code || reply.errorCode;
+    if (code) throw new Error(`${name} returned an error: ${reply.msg || reply.errorMsg || code}`);
     return reply.data || {};
   };
   const form = new FormData();

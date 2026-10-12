@@ -10,8 +10,9 @@ export async function parseWithLlamaParse(pdf, config, outputDir) {
   const form = new FormData();
   form.append('file', pdfBlob(pdf), pdf.name);
   // the agentic tier writes equations as LaTeX, [unconfirmed] with which delimiters (dollarMaths() covers \( \[);
-  // also [unconfirmed]: where images_to_save sits in v2's configuration
-  form.append('configuration', JSON.stringify({ tier: 'agentic', version: 'latest', output_options: { images_to_save: ['embedded'] } }));
+  // also [unconfirmed]: where images_to_save sits in v2's configuration. 'layout' saves each figure cropped from the
+  // page, as MinerU does; 'embedded' would miss vector plots and TikZ
+  form.append('configuration', JSON.stringify({ tier: 'agentic', version: 'latest', output_options: { images_to_save: ['layout'] } }));
   const sent = await sendJson(name, `${endpoint}/api/v2/parse/upload`, { method: 'POST', headers, body: form });
   const id = sent.id || sent.job?.id;
   if (!id) throw new Error(`${name} didn’t accept the PDF: ${sent.detail || sent.error_message || 'no job ID'}.`);

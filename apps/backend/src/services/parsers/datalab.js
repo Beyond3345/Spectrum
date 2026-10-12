@@ -1,4 +1,4 @@
-import { fromBase64, hostOf, pdfBlob, poll, relinkImages, result, saveImages, sendJson } from './common.js';
+import { fromBase64, originOf, pdfBlob, poll, relinkImages, result, saveImages, sendJson } from './common.js';
 
 /**
  * www.datalab.to/api/v1/convert (Marker, and Chandra in accurate mode): upload, then poll the
@@ -13,8 +13,8 @@ export async function parseWithDatalab(pdf, config, outputDir) {
   form.append('mode', 'accurate');
   const sent = await sendJson(name, `${endpoint}/convert`, { method: 'POST', headers, body: form });
   if (sent.success === false || !sent.request_id) throw new Error(`${name} didn’t accept the PDF: ${sent.error || 'no request ID'}.`);
-  // the key only goes back to the host it was entered for
-  const checkUrl = hostOf(sent.request_check_url) === hostOf(endpoint) ? sent.request_check_url : `${endpoint}/convert/${encodeURIComponent(sent.request_id)}`;
+  // the key only goes back to the origin it was entered for
+  const checkUrl = originOf(sent.request_check_url) === originOf(endpoint) ? sent.request_check_url : `${endpoint}/convert/${encodeURIComponent(sent.request_id)}`;
 
   const done = await poll(
     name,

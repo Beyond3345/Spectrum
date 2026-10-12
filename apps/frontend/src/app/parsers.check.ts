@@ -23,6 +23,9 @@ eq(parserEndpointPatch(llama, LLAMA, 'llamaparse', 'https://api.cloud.llamaindex
 eq(parserEndpointPatch(llama, LLAMA, 'llamaparse', 'https://api.cloud.eu.llamaindex.ai').parserSaved?.llamaparse, { endpoint: 'https://api.cloud.eu.llamaindex.ai', key: '' }, 'another region drops it');
 const mathpix = with_({ parser: 'mathpix', parserSaved: { mathpix: { endpoint: 'https://proxy.example', key: 'k', appId: 'id' } } });
 eq(parserEndpointPatch(mathpix, MATHPIX, 'mathpix', '').parserSaved?.mathpix, { endpoint: '', key: '' }, 'back to the preset’s own host drops the app ID and key too');
+eq(parserEndpointPatch(mathpix, MATHPIX, 'mathpix', 'http://proxy.example').parserSaved?.mathpix, { endpoint: 'http://proxy.example', key: '' }, 'https to http on the same host drops them');
+const typo = with_({ parser: 'mathpix', parserSaved: { mathpix: { endpoint: 'api.mathpix.com', key: 'K2', appId: 'ID2' } } });
+eq(parserEndpointPatch(typo, MATHPIX, 'mathpix', 'https://other-host.example').parserSaved?.mathpix, { endpoint: 'https://other-host.example', key: '' }, 'from an address that isn’t a URL to another host drops them');
 // Other: a key typed before any address goes with the first one
 const other = with_({ parser: 'custom', parserProtocol: 'docling', parserSaved: { custom: { endpoint: '', key: 'k' } } });
 eq(parserEndpointPatch(other, DOCLING, 'custom', 'http://gpu.local:5001').parserSaved?.custom, { endpoint: 'http://gpu.local:5001', key: 'k' }, 'first address keeps the key');
