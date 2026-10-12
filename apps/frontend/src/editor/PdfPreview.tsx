@@ -3,6 +3,8 @@ import { GlobalWorkerOptions, TextLayer, getDocument } from 'pdfjs-dist';
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import 'pdfjs-dist/web/pdf_viewer.css';
+import type { PdfBox, PdfPoint } from '../api/client';
+import { linger, overlayStyle, pdfPoint } from './synctex';
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -10,7 +12,11 @@ GlobalWorkerOptions.workerSrc = pdfWorker;
 export type PdfZoom = 'fit' | 'width' | number;
 export type PdfOutlineItem = { title: string; page?: number; level: number };
 export type PdfAnnotation = { id: string; page: number; x: number; y: number; text: string };
-export type PdfHandle = { scrollToPage(page: number): void };
+export type PdfHandle = {
+  scrollToPage(page: number): void;
+  /** Scrolls the first box to the middle of the view and highlights every box for `seconds`. */
+  highlight(boxes: PdfBox[], seconds: number): void;
+};
 
 // keep in step with .pdf-pages padding and gap in editor.css
 const PAD = 12;
@@ -134,14 +140,15 @@ const PdfPreview = forwardRef<
     annotateMode: boolean;
     annotations: PdfAnnotation[];
     onAddAnnotation(page: number, x: number, y: number): void;
-    onTextClick(text: string): void;
+    /** a double-click on a page, with the text run under it (if any) */
+    onDoubleClick(at: PdfPoint, text: string): void;
     onLoad(info: { pages: number; outline: PdfOutlineItem[] }): void;
     onScale(scale: number): void;
     /** a pinch or ⌘-scroll chose this scale */
     onZoom(scale: number): void;
     onPage(page: number): void;
   }
->(function PdfPreview({ url, zoom, spread, annotateMode, annotations, onAddAnnotation, onTextClick, onLoad, onScale, onZoom, onPage }, ref) {
+>(function PdfPreview({ url, zoom, spread, annotateMode, annotations, onAddAnnotation, onDoubleClick, onLoad, onScale, onZoom, onPage }, ref) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pagesRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -156,12 +163,51 @@ const PdfPreview = forwardRef<
   cb.current = { onLoad, onScale, onZoom, onPage };
   // the point to keep still when the next layout applies a pinch
   const anchorRef = useRef<Anchor | null>(null);
+  // stops the current highlight's timers
+  const unlingerRef = useRef(() => {});
 
   useImperativeHandle(ref, () => ({
     scrollToPage(page) {
       const el = pagesRef.current?.querySelector<HTMLElement>(`.pdf-page[data-page-number="${page}"]`);
       const scroller = scrollRef.current;
       if (el && scroller) scroller.scrollTo({ top: el.offsetTop - PAD, behavior: 'smooth' });
+    },
+    highlight(boxes, seconds) {
+      const layout = layoutRef.current;
+      const scroller = scrollRef.current;
+      unlingerRef.current();
+      pagesRef.current?.querySelectorAll('.pdf-sync-box').forEach((node) => node.remove());
+      if (!layout || !scroller) return;
+      // inside the page boxes, which keep them through zoom, scrolling and redraws (clearPage leaves them)
+      const marks = boxes.flatMap((b) => {
+        const box = layout.boxes[b.page - 1];
+        const page = layout.pages[b.page - 1];
+        if (!box || !page) return [];
+        const mark = document.createElement('div');
+        mark.className = 'pdf-sync-box';
+        Object.assign(mark.style, overlayStyle(b, page.getViewport({ scale: 1 })));
+        box.append(mark);
+        return [mark];
+      });
+      const first = marks[0];
+      if (!first) return;
+      // already in view: leave the PDF where it is, as a double-click also selects a word in the source
+      const [r, s] = [first.getBoundingClientRect(), scroller.getBoundingClientRect()];
+      if (r.top < s.top || r.bottom > s.bottom || r.left < s.left || r.right > s.right) {
+        // a page box's offsets count from the scroller (neither .pdf-pages nor a two-page row is positioned), a mark's from its page
+        const box = first.parentElement!;
+        scroller.scrollTo({
+          left: box.offsetLeft + first.offsetLeft + first.offsetWidth / 2 - scroller.clientWidth / 2,
+          top: box.offsetTop + first.offsetTop + first.offsetHeight / 2 - scroller.clientHeight / 2,
+          // the reduced-motion CSS doesn't reach a script's smooth scroll
+          behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+        });
+      }
+      unlingerRef.current = linger(
+        seconds,
+        () => marks.forEach((mark) => mark.classList.add('fading')),
+        () => marks.forEach((mark) => mark.remove())
+      );
     }
   }));
 
@@ -324,6 +370,7 @@ const PdfPreview = forwardRef<
   const docRef = useRef<{ url: string; task: PDFDocumentLoadingTask } | null>(null);
   useEffect(
     () => () => {
+      unlingerRef.current();
       docRef.current?.task.destroy();
       docRef.current = null;
       layoutRef.current?.boxes.forEach(clearPage);
@@ -482,18 +529,20 @@ const PdfPreview = forwardRef<
       ref={scrollRef}
       className={`pdf-scroll ${annotateMode ? 'annotate' : ''} ${spread ? 'spread' : ''}`}
       onClick={(event) => {
-        const target = event.target as HTMLElement;
-        const page = target.closest<HTMLElement>('.pdf-page');
+        const page = (event.target as HTMLElement).closest<HTMLElement>('.pdf-page');
         if (annotateMode && page) {
           const rect = page.getBoundingClientRect();
           onAddAnnotation(Number(page.dataset.pageNumber), (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
-          return;
         }
-        // a click (not a drag-selection) on a word jumps to the source
-        if (target.tagName === 'SPAN' && target.closest('.textLayer') && !window.getSelection()?.toString()) {
-          const text = (target.textContent || '').trim();
-          if (text.length >= 3) onTextClick(text);
-        }
+      }}
+      // a single click is for reading and selecting; a double-click (which still selects the word) jumps to the source
+      onDoubleClick={(event) => {
+        const target = event.target as HTMLElement;
+        const box = target.closest<HTMLElement>('.pdf-page');
+        const page = layoutRef.current?.pages[Number(box?.dataset.pageNumber) - 1];
+        if (annotateMode || !box || !page || target.closest('.pdf-annotation')) return;
+        const text = target.tagName === 'SPAN' && target.closest('.textLayer') ? (target.textContent || '').trim() : '';
+        onDoubleClick({ page: page.pageNumber, ...pdfPoint(event.clientX, event.clientY, box.getBoundingClientRect(), page.getViewport({ scale: 1 })) }, text);
       }}
     >
       <div ref={pagesRef} className="pdf-pages" />

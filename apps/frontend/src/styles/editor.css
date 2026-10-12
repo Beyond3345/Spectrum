@@ -1013,6 +1013,27 @@ button.compile-status:hover {
   transform: translate(-50%, -50%);
 }
 
+/* where a double-clicked source line went (PdfPreview's highlight), over the text layer and under the notes;
+   --sync-highlight is set on the editor page from Settings → Editor */
+.pdf-sync-box {
+  position: absolute;
+  z-index: 1;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--sync-highlight) 38%, transparent);
+  pointer-events: none;
+}
+
+/* the jump highlight's fade, in the PDF and on the editor's line (latexEditor.ts); reduced motion skips it (tokens.css) */
+.pdf-sync-box.fading {
+  animation: jump-fade 0.5s ease-out forwards;
+}
+
+@keyframes jump-fade {
+  to {
+    background-color: transparent;
+  }
+}
+
 .pdf-error {
   padding: 32px 24px;
   color: var(--text-secondary);

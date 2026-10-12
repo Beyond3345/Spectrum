@@ -311,8 +311,16 @@ test('renames, tags, archives, sets the main file and duplicates', async () => {
   assert.deepEqual(tagged.project.tags, ['ml', 'nlp']);
   const archived = (await api(`/api/projects/${p.id}/archive`, { method: 'PATCH', body: { archived: true } })).json;
   assert.equal(archived.project.archived, true);
+  // another main file means another PDF, so the SyncTeX data of the last one goes; the same one keeps it
+  const synctex = path.join(p.path, '.spectrum', 'synctex.gz');
+  mkdirSync(path.dirname(synctex), { recursive: true });
+  writeFileSync(synctex, '');
   assert.ok((await api(`/api/projects/${p.id}/main-file`, { method: 'PATCH', body: { mainFile: 'main.tex' } })).json.ok);
   assert.equal((await api(`/api/projects/${p.id}/tree`)).json.mainFile, 'main.tex');
+  assert.ok(!existsSync(synctex));
+  writeFileSync(synctex, '');
+  assert.ok((await api(`/api/projects/${p.id}/main-file`, { method: 'PATCH', body: { mainFile: 'main.tex' } })).json.ok);
+  assert.ok(existsSync(synctex));
   assert.equal((await api(`/api/projects/${p.id}/main-file`, { method: 'PATCH', body: { mainFile: '../escape.tex' } })).status, 400);
 
   const copy = (await api(`/api/projects/${p.id}/copy`, { method: 'POST', body: {} })).json.project;

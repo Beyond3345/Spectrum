@@ -3,7 +3,7 @@
 import { EditorSelection, EditorState } from '@codemirror/state';
 import type { TransactionSpec } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
-import { closeEnvironment, indentation, insertIndent, sharedStart, wrapInMaths } from './latexEditor';
+import { closeEnvironment, indentation, insertIndent, jumpHighlight, setJumpHighlight, sharedStart, wrapInMaths } from './latexEditor';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -47,4 +47,16 @@ eq(wrap('a x+y b', [[2, 5]]), { handled: true, doc: 'a $x+y$ b', ranges: [[3, 6]
 eq(wrap('a x+y b', [[5, 2]]), { handled: true, doc: 'a $x+y$ b', ranges: [[6, 3]] }, 'a backwards selection too');
 eq(wrap('x and y', [[0, 1], [6, 7]]), { handled: true, doc: '$x$ and $y$', ranges: [[1, 2], [9, 10]] }, 'every selection');
 eq(wrap('ab', [[1, 1]]).handled, false, 'no selection: "$" is typed as usual');
+// the jump highlight: whole lines, faded where they are, gone once the text changes
+const highlighted = (state: EditorState) => {
+  const lines: string[] = [];
+  state.field(jumpHighlight).between(0, state.doc.length, (from, _to, deco) => void lines.push(`${state.doc.lineAt(from).number} ${deco.spec.class}`));
+  return lines;
+};
+let lit = EditorState.create({ doc: 'one\ntwo\nthree\nfour', extensions: [jumpHighlight] }).update({ effects: setJumpHighlight.of({ from: 5, to: 10 }) }).state;
+eq(highlighted(lit), ['2 cm-jump-highlight', '3 cm-jump-highlight'], 'the lines from–to touch');
+lit = lit.update({ effects: setJumpHighlight.of('fade') }).state;
+eq(highlighted(lit), ['2 cm-jump-highlight cm-jump-fading', '3 cm-jump-highlight cm-jump-fading'], 'fades in place');
+eq(highlighted(lit.update({ changes: { from: 0, insert: 'x' } }).state), [], 'typing ends it');
+eq(highlighted(lit.update({ effects: setJumpHighlight.of(null) }).state), [], 'cleared');
 console.log('indent.check: ok');

@@ -5,6 +5,7 @@ import { spawn } from 'child_process';
 import { ensureDir, listFilesRecursive } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { getProjectRoot, appPath } from './projectService.js';
+import { keepSynctex } from './synctex.js';
 
 const ENGINES = ['pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic'];
 export const SUPPORTED_ENGINES = ['auto', ...ENGINES];
@@ -19,16 +20,17 @@ const MAX_LOG_BYTES = 200_000;
 // pdfLaTeX can't load these; Auto then retries with XeLaTeX or LuaLaTeX.
 const NEEDS_UNICODE_ENGINE = /fontspec Error|unicode-math Error|requires either XeTeX or|must use XeTeX/i;
 
+// Every engine writes <main>.synctex.gz too, for jumping between the source and the PDF.
 function buildCommand(engine, outDir, mainFile) {
   switch (engine) {
     case 'pdflatex':
     case 'xelatex':
     case 'lualatex':
-      return { cmd: engine, args: ['-interaction=nonstopmode', '-file-line-error', `-output-directory=${outDir}`, mainFile] };
+      return { cmd: engine, args: ['-interaction=nonstopmode', '-file-line-error', '-synctex=1', `-output-directory=${outDir}`, mainFile] };
     case 'latexmk':
-      return { cmd: 'latexmk', args: ['-pdf', '-interaction=nonstopmode', '-file-line-error', `-outdir=${outDir}`, mainFile] };
+      return { cmd: 'latexmk', args: ['-pdf', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', `-outdir=${outDir}`, mainFile] };
     case 'tectonic':
-      return { cmd: 'tectonic', args: ['--outdir', outDir, mainFile] };
+      return { cmd: 'tectonic', args: ['--synctex', '--outdir', outDir, mainFile] };
     default:
       return null;
   }
@@ -257,6 +259,7 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
   const absPdf = path.join(path.dirname(absMain), `${base}.pdf`);
   try {
     await fs.writeFile(absPdf, pdf);
+    await keepSynctex(projectRoot, path.join(outDir, `${base}.synctex.gz`), mainDir);
   } finally {
     await cleanBuild(buildRoot, outDir);
   }

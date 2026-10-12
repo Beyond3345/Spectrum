@@ -28,6 +28,7 @@ import {
   updateMeta
 } from '../services/projectService.js';
 import { projectStats } from '../services/statsService.js';
+import { dropSynctex } from '../services/synctex.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
 
 const execFileAsync = promisify(execFile);
@@ -259,7 +260,10 @@ export function registerProjectRoutes(fastify) {
     if (mainFile) safeJoin(root, mainFile);
     // the TeX engine would read a leading '-' as an option
     if (path.basename(mainFile).startsWith('-')) throw httpError('The main file’s name can’t start with “-”.', 400);
+    const { mainFile: before = '' } = await readMeta(root);
     await updateMeta(root, (meta) => ({ ...meta, mainFile }));
+    // the SyncTeX data is for the other main file's PDF, which may still be on disk
+    if (mainFile !== before) await dropSynctex(root);
     return { ok: true, project: await getProject(req.params.id) };
   });
 

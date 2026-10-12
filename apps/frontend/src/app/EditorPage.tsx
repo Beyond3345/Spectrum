@@ -25,9 +25,11 @@ import {
   setProjectMainFile,
   changeSpellWord,
   spellSuggest,
+  synctexEdit,
+  synctexView,
   writeFile
 } from '../api/client';
-import type { CompileEngine, FileItem, FileOrderMap, ProjectMeta, VersionMeta, VersionReason } from '../api/client';
+import type { CompileEngine, FileItem, FileOrderMap, PdfPoint, ProjectMeta, VersionMeta, VersionReason } from '../api/client';
 import { latex } from '../latex/lang';
 import Icon from './Icon';
 import Tabs from './Tabs';
@@ -57,6 +59,7 @@ import type { FileTreeHandle } from '../editor/FileTree';
 import PdfPreview, { MAX_ZOOM, MIN_ZOOM, pdfThumbnail } from '../editor/PdfPreview';
 import type { PdfAnnotation, PdfHandle, PdfOutlineItem, PdfZoom } from '../editor/PdfPreview';
 import { parseCompileLog, projectFile } from '../editor/compileLog';
+import { highlightColour, linger } from '../editor/synctex';
 import {
   closeEnvironment,
   completeOrAccept,
@@ -65,6 +68,7 @@ import {
   ghostField,
   indentation,
   insertIndent,
+  jumpHighlight,
   latexCompletionSource,
   latexFoldService,
   latexHighlight,
@@ -74,6 +78,7 @@ import {
   programmatic,
   scopeGutter,
   setGhost,
+  setJumpHighlight,
   wrapLayout
 } from '../editor/latexEditor';
 import { NO_PROJECT, scanProject } from '../editor/latexEnvs';
@@ -248,6 +253,10 @@ function Editor({ projectId }: { projectId: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
   const writeChain = useRef<Promise<unknown>>(Promise.resolve());
+  // stops the editor's jump highlight from fading on time (a newer jump replaces it)
+  const unlingerRef = useRef(() => {});
+  // the last notice a double-click in the source gave, which says it once per PDF and file
+  const syncNoticeRef = useRef('');
 
   const [suggesting, setSuggesting] = useState(false);
   const [ghostText, setGhostText] = useState('');
@@ -415,6 +424,8 @@ function Editor({ projectId }: { projectId: string }) {
       const content = await ensureFileContent(path);
       // typed into the old file while the new one loaded
       if (dirtyRef.current) await saveNow();
+      // a jump highlight would otherwise come back with the file and never fade
+      view.dispatch({ effects: setJumpHighlight.of(null) });
       if (activeRef.current) statesRef.current.set(activeRef.current, view.state);
       const saved = statesRef.current.get(path);
       clearGhost();
@@ -606,7 +617,8 @@ function Editor({ projectId }: { projectId: string }) {
     if (done && at !== -1) viewRef.current?.dispatch({ selection: { anchor: done.from + at, head: done.from + at + snippet.select.length } });
   };
 
-  const jumpTo = async (file: string, line: number) => {
+  /** To a line (1-based), and to its column (1-based) when there is one. */
+  const jumpTo = async (file: string, line: number, column?: number | null) => {
     if (!items.some((i) => i.path === file)) {
       notify(`${file} isn’t one of this project’s files.`);
       return;
@@ -616,12 +628,13 @@ function Editor({ projectId }: { projectId: string }) {
     const view = viewRef.current;
     if (!view || activeRef.current !== file) return;
     const target = view.state.doc.line(Math.min(Math.max(1, line), view.state.doc.lines));
-    view.dispatch({ selection: { anchor: target.from }, effects: EditorView.scrollIntoView(target.from, { y: 'center' }) });
+    const at = Math.min(target.to, target.from + Math.max(0, (column ?? 1) - 1));
+    view.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: 'center' }) });
     cursorPlacedRef.current = true;
     view.focus();
   };
 
-  // the outline and a click on PDF text land here; from PDF only (the outline), the editor shows again
+  // the outline and a double-click on PDF text land here; from PDF only, the editor shows again
   const select = async (file: string, from: number, to = from) => {
     showEditor();
     await openFile(file);
@@ -634,7 +647,7 @@ function Editor({ projectId }: { projectId: string }) {
   };
 
   /**
-   * Click on PDF text: find the line in the open file first, then in the other .tex files.
+   * PDF text without SyncTeX: find the line in the open file first, then in the other .tex files.
    * Source line breaks may sit anywhere, a hyphenated last word won't match and macros
    * change the text, so shorter word runs are tried when the whole line isn't found.
    */
@@ -649,10 +662,44 @@ function Editor({ projectId }: { projectId: string }) {
         const match = pattern.exec(content);
         if (match) {
           await select(path, match.index, match.index + match[0].length);
-          return;
+          return activeRef.current === path;
         }
       }
     }
+    return false;
+  };
+
+  /** Double-click on the PDF: the source line SyncTeX gives for that spot, else the text there found in the source. */
+  const jumpFromPdf = async (at: PdfPoint, text: string) => {
+    if (!settings.syncDoubleClick) return;
+    const res = await synctexEdit(projectId, at).catch(() => null);
+    let landed = false;
+    if (res?.ok && items.some((i) => i.path === res.file)) {
+      await jumpTo(res.file, res.line, res.column);
+      landed = activeRef.current === res.file;
+    } else if (text.length >= 3) landed = await findInSource(text);
+    const view = viewRef.current;
+    if (!landed || !view) return;
+    // the line landed on (or the text found) stays highlighted for as long as Settings → Editor says
+    const { from, to } = view.state.selection.main;
+    const highlight = (value: 'fade' | null) => viewRef.current?.dispatch({ effects: setJumpHighlight.of(value) });
+    unlingerRef.current();
+    view.dispatch({ effects: setJumpHighlight.of({ from, to }) });
+    unlingerRef.current = linger(settings.syncHighlightSeconds, () => highlight('fade'), () => highlight(null));
+  };
+
+  /** Double-click in a .tex file (CodeMirror selects the word as ever): where that line went, when the PDF shows beside it. */
+  const showInPdf = async (pos: number) => {
+    const view = viewRef.current;
+    const file = activeRef.current;
+    if (!settings.syncDoubleClick || !view || !pdf || !isTex(file) || layout.view !== 'split' || toolsOpen || grammarOpen) return;
+    const line = view.state.doc.lineAt(pos);
+    const res = await synctexView(projectId, { file, line: line.number, column: pos - line.from + 1 }).catch((err) => ({ ok: false as const, error: errorText(err) }));
+    const notice = `${pdf.url}\n${file}\n${res.ok ? '' : res.error}`;
+    if (res.ok) pdfRef.current?.highlight(res.boxes, settings.syncHighlightSeconds);
+    // a double-click is also how a word is selected, so the same notice doesn't come back every time
+    else if (syncNoticeRef.current !== notice) notify(res.error);
+    syncNoticeRef.current = notice;
   };
 
   const writeBibEntries = async (entries: string[], bibFile?: string) => {
@@ -1032,7 +1079,8 @@ function Editor({ projectId }: { projectId: string }) {
     suggest: () => {},
     acceptGhost: (_word: boolean) => {},
     clearGhost: () => false as boolean,
-    placeGhost: () => {}
+    placeGhost: () => {},
+    showInPdf: (_pos: number) => {}
   });
   actions.current = {
     save: () => saveNow(true),
@@ -1049,7 +1097,8 @@ function Editor({ projectId }: { projectId: string }) {
     suggest: () => suggest(),
     acceptGhost,
     clearGhost,
-    placeGhost: () => placeGhost(ghostRef.current.pos)
+    placeGhost: () => placeGhost(ghostRef.current.pos),
+    showInPdf: (pos: number) => showInPdf(pos)
   };
 
   // ─── effects: unsaved edits, CodeMirror, first load, shortcuts ───
@@ -1188,6 +1237,7 @@ function Editor({ projectId }: { projectId: string }) {
       EditorView.lineWrapping,
       editorTheme,
       ghostField,
+      jumpHighlight,
       search({ top: true }),
       // picking \ref{}, \cite{} or \input{} opens the list of what goes in the braces
       autocompletion({ override: [latexCompletionSource(() => projectScanRef.current, () => activeRef.current)], activateOnCompletion: (c) => /\{\}$/.test(c.displayLabel ?? c.label) }),
@@ -1215,6 +1265,12 @@ function Editor({ projectId }: { projectId: string }) {
           showFigure(file);
           openTools('floats');
           return true;
+        },
+        // CodeMirror has already selected the word; the PDF shows where the line went too
+        dblclick(e, view) {
+          const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+          if (pos != null) a().showInPdf(pos);
+          return false;
         }
       }),
       listener
@@ -1623,7 +1679,11 @@ function Editor({ projectId }: { projectId: string }) {
           </aside>
         )}
 
-        <main className={`main-panel editor-panel view-${layout.view}`} ref={panelRef}>
+        <main
+          className={`main-panel editor-panel view-${layout.view}`}
+          ref={panelRef}
+          style={{ '--sync-highlight': highlightColour(settings, dark) } as CSSProperties}
+        >
           {/* hidden in PDF only rather than unmounted, so its files, undo history and scroll stay as they were */}
           <section className="editor-column" hidden={layout.view === 'pdf'}>
             <div className="editor-topbar" data-tauri-drag-region>
@@ -1817,8 +1877,7 @@ function Editor({ projectId }: { projectId: string }) {
                     annotateMode={annotate}
                     annotations={annotations}
                     onAddAnnotation={addAnnotation}
-                    // in PDF only a click is for reading (focus, clearing a selection), so it doesn't bring the editor back
-                    onTextClick={(text) => layout.view !== 'pdf' && findInSource(text)}
+                    onDoubleClick={(at, text) => jumpFromPdf(at, text).catch((err) => notify(`Couldn’t jump to the source: ${errorText(err)}`, 'error'))}
                     onLoad={({ pages, outline: toc }) => {
                       setPdfPages(pages);
                       setPdfOutline(toc);

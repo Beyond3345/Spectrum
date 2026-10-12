@@ -651,6 +651,37 @@ export const ghostField = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field)
 });
 
+// ─── The highlight left on the line a jump from the PDF landed on ───
+
+/** The lines from–to to highlight, 'fade' when its time is up, or null to clear it. */
+export const setJumpHighlight = StateEffect.define<{ from: number; to: number } | 'fade' | null>();
+
+const jumpLine = Decoration.line({ class: 'cm-jump-highlight' });
+const jumpFading = Decoration.line({ class: 'cm-jump-highlight cm-jump-fading' });
+
+// decorations only, never a change to the text, so undo and autosave don't see it; typing ends it
+export const jumpHighlight = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    if (tr.docChanged) deco = Decoration.none;
+    for (const effect of tr.effects) {
+      if (!effect.is(setJumpHighlight)) continue;
+      const { value } = effect;
+      const starts: number[] = [];
+      if (value === 'fade') deco.between(0, tr.state.doc.length, (from) => void starts.push(from));
+      else if (value) {
+        for (let line = tr.state.doc.lineAt(value.from); ; line = tr.state.doc.line(line.number + 1)) {
+          starts.push(line.from);
+          if (line.to >= value.to || line.number === tr.state.doc.lines) break;
+        }
+      }
+      deco = Decoration.set(starts.map((from) => (value === 'fade' ? jumpFading : jumpLine).range(from)));
+    }
+    return deco;
+  },
+  provide: (field) => EditorView.decorations.from(field)
+});
+
 // ─── Look: the editor's colours come from the theme in editor-theme.css, the rest from tokens.css ───
 
 // every tag lang.ts emits needs an entry: this highlighter isn't a fallback, so the default style never applies
@@ -676,6 +707,9 @@ export const editorTheme = EditorView.theme({
   // the fold markers and the current line number take the UI greys, as in 1.1 (Spectrum's gutter colour is fainter)
   '.cm-foldGutter .cm-gutterElement': { padding: '0 2px', color: 'var(--text-tertiary)' },
   '.cm-activeLine': { backgroundColor: 'var(--editor-active-line)' },
+  // --sync-highlight is set on the editor page from Settings → Editor; jump-fade is in editor.css
+  '.cm-line.cm-jump-highlight': { backgroundColor: 'color-mix(in srgb, var(--sync-highlight) 30%, transparent)' },
+  '.cm-line.cm-jump-fading': { animation: 'jump-fade 0.5s ease-out forwards' },
   '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--text-secondary)' },
   '.cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-content ::selection': {
     backgroundColor: 'var(--editor-selection) !important'

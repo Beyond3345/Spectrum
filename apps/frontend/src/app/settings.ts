@@ -13,6 +13,8 @@ export type PdfPageDark = 'dark' | 'black' | 'dimmed' | 'white';
 /** The colours an editor theme sets, each of which can be changed on its own in Settings. */
 export type EditorColourRole = 'bg' | 'fg' | 'gutter' | 'activeLine' | 'selection' | 'cursor' | 'command' | 'comment' | 'bracket' | 'math' | 'arg' | 'env';
 export type EditorColours = Partial<Record<EditorColourRole, string>>;
+/** the highlight left after a jump between the source and the PDF */
+export type SyncHighlight = 'accent' | 'yellow' | 'green' | 'pink' | 'blue' | 'custom';
 
 const ACCENTS: Accent[] = ['system', 'blue', 'purple', 'pink', 'red', 'orange', 'yellow', 'green', 'graphite', 'custom'];
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -81,6 +83,13 @@ export type AppSettings = {
   grammarStyle: boolean;
   /** the serial comma: flag it (Australian Government style), require it, or leave it */
   oxfordComma: OxfordComma;
+  /** a double-click in the source or the PDF jumps to the same place in the other (SyncTeX) */
+  syncDoubleClick: boolean;
+  syncHighlightColour: SyncHighlight;
+  /** '#rrggbb' for the Custom highlight */
+  syncHighlightCustom: string;
+  /** how long the highlight stays before it fades, 1 to 10 */
+  syncHighlightSeconds: number;
 };
 
 export const SETTINGS_KEY = 'spectrum-settings-v1';
@@ -132,8 +141,21 @@ export const DEFAULT_SETTINGS: AppSettings = {
   shortcuts: {},
   spellCheck: true,
   grammarStyle: false,
-  oxfordComma: 'avoid'
+  oxfordComma: 'avoid',
+  syncDoubleClick: true,
+  syncHighlightColour: 'yellow',
+  syncHighlightCustom: '#ffd60a',
+  syncHighlightSeconds: 3
 };
+
+export const SYNC_HIGHLIGHTS: [SyncHighlight, string][] = [
+  ['accent', 'Accent colour'],
+  ['yellow', 'Yellow'],
+  ['green', 'Green'],
+  ['pink', 'Pink'],
+  ['blue', 'Blue'],
+  ['custom', 'Custom']
+];
 
 export const COMPILE_ENGINES: [CompileEngine, string][] = [
   ['auto', 'Auto'],
@@ -187,6 +209,11 @@ function parse(raw: string | null): AppSettings {
     merged.glassClarity = Math.min(100, Math.max(0, merged.glassClarity));
     if (!['white', 'cream', 'sepia', 'grey'].includes(merged.pdfPageLight)) merged.pdfPageLight = 'white';
     if (!['dark', 'black', 'dimmed', 'white'].includes(merged.pdfPageDark)) merged.pdfPageDark = 'dark';
+    merged.syncDoubleClick = merged.syncDoubleClick !== false;
+    if (!SYNC_HIGHLIGHTS.some(([value]) => value === merged.syncHighlightColour)) merged.syncHighlightColour = DEFAULT_SETTINGS.syncHighlightColour;
+    if (typeof merged.syncHighlightCustom !== 'string' || !HEX.test(merged.syncHighlightCustom)) merged.syncHighlightCustom = DEFAULT_SETTINGS.syncHighlightCustom;
+    if (!Number.isFinite(merged.syncHighlightSeconds)) merged.syncHighlightSeconds = DEFAULT_SETTINGS.syncHighlightSeconds;
+    merged.syncHighlightSeconds = Math.min(10, Math.max(1, Math.round(merged.syncHighlightSeconds)));
     for (const key of ['editorFont', 'editorFontCustom', 'editorThemeLight', 'editorThemeDark', 'parser', 'parserProtocol'] as const) {
       if (typeof merged[key] !== 'string') merged[key] = DEFAULT_SETTINGS[key];
     }

@@ -4,15 +4,17 @@ import { changeSpellWord, spellStatus, spellWords, systemCheck } from '../api/cl
 import type { CheckerStatus, SearchProvider, SystemCheck } from '../api/client';
 import { COLOUR_ROLES, EDITOR_FONTS, EDITOR_THEMES, chosenColours, editorColours, highlightLines, themeFor, wellColour } from '../editor/editorThemes';
 import type { EditorMode } from '../editor/editorThemes';
+import { highlightColour } from '../editor/synctex';
 import Icon from './Icon';
 import Select from './Select';
 import Sheet from './Sheet';
 import { ParserFields } from './TransferPanel';
 import { IS_DESKTOP, pickFolder } from './desktop';
-import { ACCENTS, PDF_PAGES_DARK, PDF_PAGES_LIGHT } from './appearance';
+import { ACCENTS, PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
 import {
   COMPILE_ENGINES,
   ROLE_FIELDS,
+  SYNC_HIGHLIGHTS,
   effectiveEffort,
   effortOptions,
   followsMain,
@@ -701,9 +703,11 @@ function EditorPreview({ colours }: { colours: Record<string, string> }) {
 
 const themeKey = (mode: EditorMode) => (mode === 'light' ? 'editorThemeLight' : 'editorThemeDark');
 
-/** The compiler, the font, a theme for each mode and any colour changed from the theme. */
+/** The compiler, jumping to the PDF, the font, a theme for each mode and any colour changed from the theme. */
 function EditorPane() {
   const [settings, update] = useSettings();
+  const dark = useDarkMode();
+  const lasts = settings.syncHighlightSeconds === 1 ? '1 second' : `${settings.syncHighlightSeconds} seconds`;
   // starts on the mode that's on screen
   const [mode, setMode] = useState<EditorMode>(() =>
     settings.theme === 'dark' || (settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'
@@ -744,6 +748,58 @@ function EditorPane() {
           <span className="field-hint">Applies when the References chat adds or finds a single reference.</span>
         </span>
       </label>
+
+      <h3 className="form-section-title">Jump between source and PDF</h3>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={settings.syncDoubleClick} onChange={(e) => update({ syncDoubleClick: e.target.checked })} />
+        <span>
+          Double-click jumps between the source and the PDF
+          <span className="field-hint">Double-click the PDF to find that spot in the source, or a line in a .tex file to find it in the PDF beside it.</span>
+        </span>
+      </label>
+      <div className="field">
+        <label id="settings-syncHighlight">Highlight colour</label>
+        <div className="row">
+          <div className="accent-picker" role="radiogroup" aria-labelledby="settings-syncHighlight">
+            {SYNC_HIGHLIGHTS.map(([value, label]) => (
+              <button
+                key={value}
+                className={`accent-swatch ${value}`}
+                style={{ '--swatch': highlightColour({ ...settings, syncHighlightColour: value }, dark) } as CSSProperties}
+                role="radio"
+                aria-checked={settings.syncHighlightColour === value}
+                aria-label={label}
+                title={label}
+                onClick={() => update({ syncHighlightColour: value })}
+              />
+            ))}
+          </div>
+          <input
+            type="color"
+            className="colour-well"
+            aria-label="Custom highlight colour"
+            title="Custom highlight colour"
+            value={settings.syncHighlightCustom}
+            onChange={(e) => update({ syncHighlightColour: 'custom', syncHighlightCustom: e.target.value })}
+          />
+        </div>
+      </div>
+      <div className="field">
+        <label htmlFor="settings-syncHighlightSeconds">Highlight lasts {lasts}</label>
+        <div className="range-row">
+          <span aria-hidden="true">1 s</span>
+          <input
+            id="settings-syncHighlightSeconds"
+            type="range"
+            min={1}
+            max={10}
+            value={settings.syncHighlightSeconds}
+            aria-valuetext={lasts}
+            onChange={(e) => update({ syncHighlightSeconds: Number(e.target.value) })}
+          />
+          <span aria-hidden="true">10 s</span>
+        </div>
+      </div>
 
       <h3 className="form-section-title">Font</h3>
       <div className="editor-theme-columns">

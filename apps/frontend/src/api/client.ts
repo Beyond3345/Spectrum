@@ -342,6 +342,31 @@ export function compileProject(payload: { projectId: string; mainFile: string; e
   return request<CompileResult>('/api/compile', json('POST', payload));
 }
 
+// ─── SyncTeX: between a spot in the PDF and the source line that made it ───
+
+/** A spot on a page (1-based) in PDF points from its top-left corner, as pdf.js shows the page at scale 1. */
+export interface PdfPoint {
+  page: number;
+  x: number;
+  y: number;
+}
+
+/** What a source line typeset on a page, in the same points; y is the top edge. */
+export interface PdfBox extends PdfPoint {
+  width: number;
+  height: number;
+}
+
+type SynctexFailure = { ok: false; error: string };
+
+export function synctexEdit(projectId: string, at: PdfPoint) {
+  return request<{ ok: true; file: string; line: number; column: number | null } | SynctexFailure>(`/api/projects/${projectId}/synctex/edit`, json('POST', at));
+}
+
+export function synctexView(projectId: string, at: { file: string; line: number; column?: number }) {
+  return request<{ ok: true; page: number; boxes: PdfBox[] } | SynctexFailure>(`/api/projects/${projectId}/synctex/view`, json('POST', at));
+}
+
 // ─── Version history ───
 
 export type VersionReason = 'manual' | 'before-ai' | 'before-restore' | 'before-transfer';
