@@ -17,6 +17,7 @@ import {
   getFile,
   getProjectTree,
   listProjects,
+  renameVersion,
   revealProject,
   runAgent,
   saveThumbnail,
@@ -25,7 +26,7 @@ import {
   spellSuggest,
   writeFile
 } from '../api/client';
-import type { CompileEngine, FileItem, FileOrderMap, ProjectMeta, VersionReason } from '../api/client';
+import type { CompileEngine, FileItem, FileOrderMap, ProjectMeta, VersionMeta, VersionReason } from '../api/client';
 import { latex } from '../latex/lang';
 import Icon from './Icon';
 import Tabs from './Tabs';
@@ -236,6 +237,8 @@ function Editor({ projectId }: { projectId: string }) {
   const [engine, setEngine] = useState<CompileEngine>(() => sessionEngine || settings.compileEngine);
   const [compile, setCompile] = useState<CompileState>({ state: 'idle', engine });
   const compilingRef = useRef(false);
+  const [savingVersion, setSavingVersion] = useState(false);
+  const savingVersionRef = useRef(false);
   const [compileLog, setCompileLog] = useState('');
   const [compileFailure, setCompileFailure] = useState('');
   const [pdf, setPdf] = useState<{ url: string; blob: boolean } | null>(null);
@@ -658,6 +661,35 @@ function Editor({ projectId }: { projectId: string }) {
     return res;
   };
 
+  // the Save version button and shortcut; the Versions tab has its own, with a label field
+  const saveVersionNow = async () => {
+    if (savingVersionRef.current) return;
+    savingVersionRef.current = true;
+    setSavingVersion(true);
+    try {
+      const { version, unchanged } = await createVersion('manual');
+      if (unchanged || !version) notify('Nothing has changed since the last version.');
+      else toast(`Saved version v${version.id}`, { tone: 'success', action: { label: 'Rename', onClick: () => renameSavedVersion(version) } });
+    } catch (err) {
+      notify(`Couldn’t save a version: ${errorText(err)}`, 'error');
+    } finally {
+      savingVersionRef.current = false;
+      setSavingVersion(false);
+    }
+  };
+
+  const renameSavedVersion = async (version: VersionMeta) => {
+    const label = (await promptDialog({ title: `Rename v${version.id}`, placeholder: 'Name, e.g. Submitted draft', confirmLabel: 'Rename' }))?.trim();
+    if (!label) return;
+    try {
+      await renameVersion(projectId, version.id, label);
+      window.dispatchEvent(new Event(VERSIONS_CHANGED));
+      notify(`Renamed v${version.id} “${label}”`, 'success');
+    } catch (err) {
+      notify(`Couldn’t rename the version: ${errorText(err)}`, 'error');
+    }
+  };
+
   const acceptChanges = async (list: PendingChange[]) => {
     const rebased = await Promise.all(list.map(rebase));
     const stale = rebased.filter((r) => !r.ok).map((r) => r.change);
@@ -898,6 +930,7 @@ function Editor({ projectId }: { projectId: string }) {
   // shortcuts and CodeMirror key bindings call the newest handlers through this
   const actions = useRef({
     save: () => {},
+    saveVersion: () => {},
     compile: () => {},
     toggleComposer: () => {},
     toggleGrammar: () => {},
@@ -912,6 +945,7 @@ function Editor({ projectId }: { projectId: string }) {
   });
   actions.current = {
     save: () => saveNow(true),
+    saveVersion: () => saveVersionNow(),
     compile: () => runCompile(),
     toggleComposer,
     toggleGrammar,
@@ -1003,6 +1037,7 @@ function Editor({ projectId }: { projectId: string }) {
     });
     const appCommands: Record<AppCommand, () => void> = {
       save: () => a().save(),
+      saveVersion: () => a().saveVersion(),
       compile: () => a().compile(),
       assistant: () => a().toggleComposer(),
       grammar: () => a().toggleGrammar(),
@@ -1148,6 +1183,7 @@ function Editor({ projectId }: { projectId: string }) {
       const a = actions.current;
       const is = (id: AppCommand) => matchesShortcut(shortcutKey(shortcutsRef.current, id), e);
       if (is('save')) a.save();
+      else if (is('saveVersion')) a.saveVersion();
       else if (is('compile')) a.compile();
       else if (is('assistant')) a.toggleComposer();
       else if (is('grammar')) a.toggleGrammar();
@@ -1554,6 +1590,16 @@ function Editor({ projectId }: { projectId: string }) {
                     items={COMPILE_ENGINES.map(([value, label]) => ({ label, checked: engine === value, onSelect: () => chooseEngine(value) }))}
                   />
                 </div>
+                <button
+                  className="btn save-version"
+                  onClick={saveVersionNow}
+                  disabled={savingVersion}
+                  title={withShortcut(settings.shortcuts, 'Save version', 'saveVersion')}
+                  aria-label="Save version"
+                >
+                  {savingVersion ? <span className="spinner" /> : <Icon name="clock.arrow.circlepath" />}
+                  <span className="btn-label">Save version</span>
+                </button>
                 {/* always mounted, so screen readers hear each change */}
                 <span role="status" className={`compile-status ${compile.state}`} title={compile.state === 'ok' ? `${status} · ${engineLabel(String(compile.engine))} · ${mainFile}` : status}>
                   {compile.state === 'failed' ? (

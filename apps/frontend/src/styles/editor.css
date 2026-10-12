@@ -1131,3 +1131,39 @@ button.compile-status:hover {
   background: var(--accent-soft);
   border-radius: 2px;
 }
+
+/* --------------------------------------------------------------------------
+   Save version: a neutral pill beside Compile, and the toast's Rename action
+   -------------------------------------------------------------------------- */
+
+.save-version.btn {
+  height: 32px;
+  padding: 0 12px;
+}
+
+/* shrinks to its icon with the zoom menu */
+@container (max-width: 480px) {
+  .save-version .btn-label {
+    display: none;
+  }
+
+  .save-version.btn {
+    width: 32px;
+    padding: 0;
+  }
+}
+
+.toast-action {
+  margin: -4px -8px -4px 2px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--accent-on-soft);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.toast-action:hover {
+  background: var(--accent-soft);
+}

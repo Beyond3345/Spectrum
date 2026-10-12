@@ -36,7 +36,7 @@ import { gotoLine, highlightSelectionMatches, searchKeymap, selectNextOccurrence
 
 export const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 
-export type AppCommand = 'save' | 'compile' | 'assistant' | 'grammar' | 'suggest' | 'sidebar' | 'zoomIn' | 'zoomOut' | 'zoomWidth';
+export type AppCommand = 'save' | 'saveVersion' | 'compile' | 'assistant' | 'grammar' | 'suggest' | 'sidebar' | 'zoomIn' | 'zoomOut' | 'zoomWidth';
 
 export type Shortcut = {
   id: string;
@@ -91,6 +91,7 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'zoomOut', label: 'Zoom out', group: 'PDF', key: 'Mod--' },
   { id: 'zoomWidth', label: 'Fit width', group: 'PDF', key: 'Mod-0' },
   { id: 'save', label: 'Save', group: 'App', key: 'Mod-s' },
+  { id: 'saveVersion', label: 'Save version', group: 'App', key: 'Shift-Mod-s' },
   { id: 'compile', label: 'Compile', group: 'App', key: 'Mod-Enter' },
   { id: 'assistant', label: 'Show or hide the assistant', group: 'App', key: 'Mod-l' },
   // ⇧⌘; is macOS's own Spelling and Grammar shortcut

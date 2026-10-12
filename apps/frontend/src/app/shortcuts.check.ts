@@ -1,5 +1,5 @@
 // Self-check for shortcut matching: `node apps/frontend/src/app/shortcuts.check.ts` (Node ≥ 23 strips the types).
-import { IS_MAC, canonical, formatShortcut, matchesShortcut, matchesZoomIn, shortcutFromEvent, shortcutProblem } from './shortcuts.ts';
+import { IS_MAC, SHORTCUTS, canonical, formatShortcut, matchesShortcut, matchesZoomIn, shortcutFromEvent, shortcutKey, shortcutProblem } from './shortcuts.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -38,4 +38,15 @@ eq(shortcutProblem('Shift-k') !== '', true, 'needs a modifier');
 eq(shortcutProblem('F5'), '', 'function key alone is fine');
 eq(shortcutProblem('Ctrl-Alt-]'), '', 'free shortcut');
 if (IS_MAC) eq(formatShortcut('Shift-Mod-Enter'), '⇧⌘↩', 'Mac symbols');
+
+// ⇧⌘S saves a version, ⌘S still only saves the file
+const shiftS = press('S', 'KeyS', { ...mod, shiftKey: true });
+eq(matchesShortcut(shortcutKey({}, 'saveVersion'), shiftS), true, 'save version');
+eq(matchesShortcut(shortcutKey({}, 'save'), shiftS), false, 'save is not save version');
+// the defaults are free and don't clash with each other (on a Mac: elsewhere Ctrl-g is Find next)
+if (IS_MAC) {
+  const defaults = SHORTCUTS.map((s) => canonical(s.key));
+  eq(defaults.filter((k, i) => defaults.indexOf(k) !== i), [], 'default shortcuts are distinct');
+  eq(SHORTCUTS.filter((s) => shortcutProblem(s.key)).map((s) => s.id), [], 'default shortcuts are allowed');
+}
 console.log('shortcuts.check: ok');
