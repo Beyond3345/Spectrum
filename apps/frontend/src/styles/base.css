@@ -9,7 +9,7 @@
   --fill: color-mix(in srgb, var(--text) 6.5%, transparent);
   --scrim: rgba(0, 0, 0, 0.28);
   /* the raised segment of a segmented control: white in light, lifted grey in dark */
-  --segment-active: var(--bg-panel);
+  --segment-active: var(--bg-panel-solid);
   --control-height: 34px;
 }
 
@@ -388,6 +388,15 @@ input[type='radio'] {
 .desktop.fullscreen .sidebar-collapsed .panel-header {
   height: 64px;
   padding-left: 24px;
+}
+
+/* main.rs flips .fullscreen as macOS starts the change, so these move along with the window */
+.desktop .sidebar-top,
+.desktop .main-panel,
+.desktop .panel-header {
+  transition-property: padding-left, margin-top, border-radius, height;
+  transition-duration: 0.3s;
+  transition-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 
 .panel-title {
@@ -1593,6 +1602,75 @@ button.chip.active:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+/* round like the macOS accent colours; Follow macOS shows them all */
+.accent-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.accent-swatch {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--swatch);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.accent-swatch.system {
+  background: conic-gradient(#e0383e, #f7821b, #ffc600, #62ba46, #0a84ff, #a550a7, #f74f9e, #e0383e);
+}
+
+/* the chosen one gets a white dot, as in System Settings */
+.accent-swatch[aria-checked='true']::after {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.colour-well {
+  width: 34px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: none;
+}
+
+.colour-well::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.colour-well::-webkit-color-swatch {
+  border: 0;
+  border-radius: 4px;
+}
+
+/* a slider with what each end means beside it */
+.range-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.range-row input {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.range-row:has(input:disabled) {
+  opacity: 0.5;
 }
 
 .sys-row {

@@ -37,7 +37,8 @@ import type { MenuItems } from './Menu';
 import { promptDialog } from './Dialogs';
 import { toast } from './Toast';
 import { IS_DESKTOP } from './desktop';
-import { COMPILE_ENGINES, effectiveEffort, llmConfigFor, useProviders, useSettings } from './settings';
+import { COMPILE_ENGINES, effectiveEffort, llmConfigFor, updateSettings, useProviders, useSettings } from './settings';
+import { PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
 import { SHORTCUTS, editorBasics, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
 import type { AppCommand } from './shortcuts';
 import { EditorContext } from '../editor/EditorContext';
@@ -100,14 +101,17 @@ async function smallTextFile(projectId: string, items: FileItem[]) {
 // the compiler picked in the PDF header lasts for the session, across projects
 let sessionEngine: CompileEngine | null = null;
 
-/** pdfZoom and darkPages are the PDF view, kept between launches like the columns */
-type Layout = { sidebarCollapsed: boolean; split: number; outlineOpen: boolean; pdfZoom: PdfZoom; darkPages: boolean };
+/** pdfZoom is the PDF view, kept between launches like the columns */
+type Layout = { sidebarCollapsed: boolean; split: number; outlineOpen: boolean; pdfZoom: PdfZoom };
 const LAYOUT_KEY = 'spectrum-editor-layout';
-const DEFAULT_LAYOUT: Layout = { sidebarCollapsed: false, split: 0.46, outlineOpen: true, pdfZoom: 'width', darkPages: true };
+const DEFAULT_LAYOUT: Layout = { sidebarCollapsed: false, split: 0.46, outlineOpen: true, pdfZoom: 'width' };
 
 function loadLayout(): Layout {
   try {
-    const saved = { ...DEFAULT_LAYOUT, ...JSON.parse(window.localStorage.getItem(LAYOUT_KEY) || '{}') };
+    const { darkPages, ...saved } = { ...DEFAULT_LAYOUT, ...JSON.parse(window.localStorage.getItem(LAYOUT_KEY) || '{}') };
+    // 1.1's "Dark pages in dark mode" lived here; off, it becomes White pages in dark mode. The layout is
+    // saved without it, so this happens once (after rendering, which mustn't change settings)
+    if (darkPages === false) queueMicrotask(() => updateSettings({ pdfPageDark: 'white' }));
     const zoom = saved.pdfZoom;
     if (!(zoom === 'fit' || zoom === 'width' || (typeof zoom === 'number' && zoom >= MIN_ZOOM && zoom <= MAX_ZOOM))) saved.pdfZoom = 'width';
     return saved;
@@ -260,6 +264,7 @@ function Editor({ projectId }: { projectId: string }) {
   const tocRef = useRef<HTMLDivElement>(null);
 
   const [layout, setLayoutState] = useState(loadLayout);
+  const dark = useDarkMode();
   const setLayout = (patch: Partial<Layout>) => setLayoutState((prev) => ({ ...prev, ...patch }));
   const zoom = layout.pdfZoom;
   const setZoom = (pdfZoom: PdfZoom) => setLayout({ pdfZoom });
@@ -1331,6 +1336,11 @@ function Editor({ projectId }: { projectId: string }) {
     { label: 'Upload folder…', icon: 'tray.and.arrow.down', onSelect: () => treeRef.current?.upload('folder') }
   ];
 
+  // page colours for the mode showing; both modes are in Settings → Appearance
+  const pageItems: MenuItems = dark
+    ? PDF_PAGES_DARK.map(([value, label]) => ({ label: `${label} pages`, checked: settings.pdfPageDark === value, onSelect: () => updateSettings({ pdfPageDark: value }) }))
+    : PDF_PAGES_LIGHT.map(([value, label]) => ({ label: `${label} pages`, checked: settings.pdfPageLight === value, onSelect: () => updateSettings({ pdfPageLight: value }) }));
+
   const insertItems: MenuItems = SNIPPETS.map((s) => (s ? { label: s.label, icon: s.icon, onSelect: () => insertSnippet(s) } : { separator: true }));
 
   const zoomLabel = ZOOMS.find(([z]) => z === zoom)?.[1] || `${Math.round(scale * 100)}%`;
@@ -1653,9 +1663,10 @@ function Editor({ projectId }: { projectId: string }) {
                   align="end"
                   items={[
                     { label: 'Two-page view', icon: 'book.pages', checked: spread, disabled: !pdf, onSelect: () => setSpread((v) => !v) },
-                    { label: 'Dark pages in dark mode', icon: 'moon', checked: layout.darkPages, onSelect: () => setLayout({ darkPages: !layout.darkPages }) },
                     { label: 'Annotate', icon: 'note.text.badge.plus', checked: annotate, disabled: !pdf, onSelect: () => setAnnotate((v) => !v) },
                     { label: 'Table of contents', icon: 'list.bullet.indent', checked: false, disabled: !pdf, onSelect: () => setTocOpen(true) },
+                    { separator: true },
+                    ...pageItems,
                     { separator: true },
                     { label: 'Show logs', icon: 'terminal', checked: false, onSelect: () => openTools('logs') }
                   ]}
@@ -1669,7 +1680,6 @@ function Editor({ projectId }: { projectId: string }) {
                     url={pdf.url}
                     zoom={zoom}
                     spread={spread}
-                    darkPages={layout.darkPages}
                     annotateMode={annotate}
                     annotations={annotations}
                     onAddAnnotation={addAnnotation}

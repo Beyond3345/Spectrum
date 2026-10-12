@@ -25,8 +25,13 @@ export async function pickFolder(opts: { title?: string; defaultPath?: string } 
   return typed?.trim() || null;
 }
 
+const invoke = (cmd: string, args: Record<string, unknown>) => tauri().invoke(cmd, args).catch(() => undefined);
+
 /** Removes the System listener of the last `setNativeTheme` call. */
 let stopFollowingSystem = () => {};
+/** Paints the window background again for the current theme (set by `setNativeTheme`). */
+let repaint = () => {};
+let glassOn = false;
 
 /**
  * Keep the native window chrome (traffic lights, vibrancy) and the background
@@ -36,15 +41,16 @@ export function setNativeTheme(theme: 'system' | 'light' | 'dark') {
   if (!IS_DESKTOP) return;
   stopFollowingSystem();
   stopFollowingSystem = () => {};
-  const invoke = (cmd: string, args: Record<string, unknown>) => tauri().invoke(cmd, args).catch(() => undefined);
   invoke('plugin:window|set_theme', { label: 'main', value: theme === 'system' ? null : theme });
   const system = window.matchMedia('(prefers-color-scheme: dark)');
   const paint = () => {
     const dark = theme === 'system' ? system.matches : theme === 'dark';
-    const value = dark ? [24, 24, 24, 255] : [247, 247, 248, 255];
+    // see-through: nothing behind the page but the glass
+    const value = glassOn ? [0, 0, 0, 0] : dark ? [24, 24, 24, 255] : [247, 247, 248, 255];
     invoke('plugin:window|set_background_color', { label: 'main', value });
     invoke('plugin:webview|set_webview_background_color', { label: 'main', value });
   };
+  repaint = paint;
   paint();
   // also repaints once leaving a forced theme takes effect (the query follows the window)
   if (theme === 'system') {
@@ -54,9 +60,23 @@ export function setNativeTheme(theme: 'system' | 'light' | 'dark') {
 }
 
 /**
+ * Puts macOS glass behind the window (Liquid Glass on macOS 26 and later, vibrancy before) or
+ * takes it away. Only when it turns on or off: each set_effects rebuilds the native view.
+ */
+export function setNativeGlass(on: boolean) {
+  if (!IS_DESKTOP || on === glassOn) return;
+  glassOn = on;
+  invoke('plugin:window|set_effects', {
+    label: 'main',
+    value: on ? { effects: ['liquidGlassRegular', 'underWindowBackground'], state: 'active' } : null
+  });
+  repaint();
+}
+
+/**
  * Marks <html> with .fullscreen if the page loads in macOS full screen. There are no traffic
  * lights there, so the stylesheets drop the room kept for them. Later changes are set by the
- * shell (main.rs), which hears when a change has finished.
+ * shell (main.rs) as macOS starts each change, so the page moves along with it.
  */
 export function followFullscreen() {
   if (!IS_DESKTOP) return;

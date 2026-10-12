@@ -12,7 +12,8 @@
   --font-serif: ui-serif, "New York", Georgia, serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
 
-  /* the user's macOS accent colour where the engine exposes it */
+  /* the user's macOS accent colour where the engine exposes it; an accent picked in
+     Settings is set inline on <html> by appearance.ts, and the tokens below follow it */
   --accent: #0a84ff;
   --accent-text: #ffffff;
   --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -28,11 +29,15 @@
   --orange-text: #a84106;
   --accent-on-soft: color-mix(in srgb, var(--accent) 75%, #000);
 
-  /* surfaces, back to front */
-  --bg-app: #f7f7f8;         /* window + sidebar */
-  --bg-panel: #ffffff;       /* rounded main panel */
-  --bg-editor: #ffffff;      /* code editor */
-  --bg-pdf: #ececee;         /* behind PDF pages */
+  /* surfaces, back to front; the first four turn see-through in glass.css */
+  --bg-app-solid: #f7f7f8;    /* window + sidebar */
+  --bg-panel-solid: #ffffff;  /* rounded main panel */
+  --bg-editor-solid: #ffffff; /* code editor */
+  --bg-pdf-solid: #ececee;    /* behind PDF pages */
+  --bg-app: var(--bg-app-solid);
+  --bg-panel: var(--bg-panel-solid);
+  --bg-editor: var(--bg-editor-solid);
+  --bg-pdf: var(--bg-pdf-solid);
   --bg-elevated: #ffffff;    /* menus, sheets, composer, cards */
   --bg-subtle: #f3f3f4;      /* inputs, chips, stat cards */
   --bg-hover: rgba(0, 0, 0, 0.045);
@@ -89,10 +94,10 @@
   /* lighter than the accent so text on its own tint stays readable (AA) */
   --accent-on-soft: color-mix(in srgb, var(--accent) 70%, #fff);
 
-  --bg-app: #181818;
-  --bg-panel: #212121;
-  --bg-editor: #0f0f0f;
-  --bg-pdf: #2a2a2a;
+  --bg-app-solid: #181818;
+  --bg-panel-solid: #212121;
+  --bg-editor-solid: #0f0f0f;
+  --bg-pdf-solid: #2a2a2a;
   --bg-elevated: #2a2a2a;
   --bg-subtle: #2a2a2a;
   --bg-hover: rgba(255, 255, 255, 0.06);
@@ -130,10 +135,10 @@
     --orange-text: var(--orange);
     --accent-on-soft: color-mix(in srgb, var(--accent) 70%, #fff);
 
-    --bg-app: #181818;
-    --bg-panel: #212121;
-    --bg-editor: #0f0f0f;
-    --bg-pdf: #2a2a2a;
+    --bg-app-solid: #181818;
+    --bg-panel-solid: #212121;
+    --bg-editor-solid: #0f0f0f;
+    --bg-pdf-solid: #2a2a2a;
     --bg-elevated: #2a2a2a;
     --bg-subtle: #2a2a2a;
     --bg-hover: rgba(255, 255, 255, 0.06);

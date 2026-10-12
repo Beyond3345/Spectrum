@@ -224,6 +224,8 @@ fn build_window(
         .title_bar_style(TitleBarStyle::Overlay)
         .hidden_title(true)
         .traffic_light_position(TRAFFIC_LIGHTS)
+        // so Settings can put glass behind the page; it looks opaque until then
+        .transparent(true)
         // let WebKit take drops itself, so files dragged in from Finder reach the page
         .disable_drag_drop_handler()
         .on_page_load(move |_, payload| {
@@ -269,22 +271,22 @@ fn build_window(
         })
         .build()?;
 
+    // the splash's colour; once the app's page loads, desktop.ts paints the window (opaque,
+    // or clear for glass) and follows theme changes, so nothing here repaints it after that
     let _ = window.set_background_color(Some(background(window.theme().unwrap_or(Theme::Light))));
-    let themed = window.clone();
+    #[cfg(target_os = "macos")]
+    follow_fullscreen_changes(&window);
+    let resized = window.clone();
     let closing = app.clone();
     let full = AtomicBool::new(false);
     window.on_window_event(move |event| match event {
-        WindowEvent::ThemeChanged(theme) => {
-            let _ = themed.set_background_color(Some(background(*theme)));
-        }
         // tao sends one more resize once a full screen change has finished, by which
-        // time is_fullscreen is final (mid-way through leaving it still says true)
+        // time is_fullscreen is final (mid-way through leaving it still says true), so
+        // this has the last word after follow_fullscreen_changes
         WindowEvent::Resized(_) => {
-            let now = themed.is_fullscreen().unwrap_or(false);
+            let now = resized.is_fullscreen().unwrap_or(false);
             if full.swap(now, Ordering::Relaxed) != now {
-                let _ = themed.eval(format!(
-                    "document.documentElement.classList.toggle('fullscreen', {now})"
-                ));
+                mark_fullscreen(&resized, now);
             }
         }
         // closing the only window quits, so save first
@@ -296,6 +298,49 @@ fn build_window(
     });
     window.show()?;
     Ok(window)
+}
+
+/// Sets .fullscreen on the page, which drops the room kept for the traffic lights.
+fn mark_fullscreen(window: &WebviewWindow, full: bool) {
+    let _ = window.eval(format!(
+        "document.documentElement.classList.toggle('fullscreen', {full})"
+    ));
+}
+
+/// Marks full screen as macOS starts going in or out (and undoes it if that fails), so
+/// the page's transition runs alongside the system animation instead of after it.
+#[cfg(target_os = "macos")]
+fn follow_fullscreen_changes(window: &WebviewWindow) {
+    use block2::RcBlock;
+    use objc2::runtime::AnyObject;
+    use objc2_foundation::{NSNotification, NSNotificationCenter, NSString};
+    use std::ptr::NonNull;
+
+    let Ok(ns_window) = window.ns_window() else {
+        return;
+    };
+    let center = NSNotificationCenter::defaultCenter();
+    for (name, full) in [
+        ("NSWindowWillEnterFullScreenNotification", true),
+        ("NSWindowWillExitFullScreenNotification", false),
+        ("NSWindowDidFailToEnterFullScreenNotification", false),
+        ("NSWindowDidFailToExitFullScreenNotification", true),
+    ] {
+        let window = window.clone();
+        let block = RcBlock::new(move |_: NonNull<NSNotification>| mark_fullscreen(&window, full));
+        // SAFETY: ns_window is this window's NSWindow, which lives as long as the app; with
+        // no queue, the block runs on the thread that posts (the main thread)
+        let observer = unsafe {
+            center.addObserverForName_object_queue_usingBlock(
+                Some(&NSString::from_str(name)),
+                Some(&*ns_window.cast::<AnyObject>()),
+                None,
+                &block,
+            )
+        };
+        // the observers are wanted for as long as the app runs
+        std::mem::forget(observer);
+    }
 }
 
 /// Matches --bg-app, so resizing never flashes another colour.

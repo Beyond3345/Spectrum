@@ -8,7 +8,8 @@ import Icon from './Icon';
 import Select from './Select';
 import Sheet from './Sheet';
 import { ParserFields } from './TransferPanel';
-import { pickFolder } from './desktop';
+import { IS_DESKTOP, pickFolder } from './desktop';
+import { ACCENTS, PDF_PAGES_DARK, PDF_PAGES_LIGHT } from './appearance';
 import {
   COMPILE_ENGINES,
   ROLE_FIELDS,
@@ -26,7 +27,7 @@ import {
   useProviders,
   useSettings
 } from './settings';
-import type { AppSettings, ModelRole, Theme } from './settings';
+import type { AppSettings, ModelRole, PdfPageDark, PdfPageLight, Theme } from './settings';
 import type { ProviderPreset } from '../api/client';
 import { FIXED_SHORTCUTS, SHORTCUTS, canonical, formatShortcut, shortcutFromEvent, shortcutKey, shortcutProblem } from './shortcuts';
 import type { Shortcut } from './shortcuts';
@@ -278,6 +279,85 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                 ))}
               </div>
               <div className="field-hint">System follows the macOS appearance and switches automatically.</div>
+
+              <h3 id="settings-accent" className="form-section-title">Accent colour</h3>
+              <div className="row">
+                <div className="accent-picker" role="radiogroup" aria-labelledby="settings-accent">
+                  {ACCENTS.map(([value, label, colour]) => (
+                    <button
+                      key={value}
+                      className={`accent-swatch ${value}`}
+                      style={{ '--swatch': value === 'custom' ? settings.accentCustom : colour } as CSSProperties}
+                      role="radio"
+                      aria-checked={settings.accent === value}
+                      aria-label={label}
+                      title={label}
+                      onClick={() => update({ accent: value })}
+                    />
+                  ))}
+                </div>
+                <input
+                  type="color"
+                  className="colour-well"
+                  aria-label="Custom accent colour"
+                  title="Custom accent colour"
+                  value={settings.accentCustom}
+                  onChange={(e) => update({ accent: 'custom', accentCustom: e.target.value })}
+                />
+              </div>
+              <div className="field-hint">Follow macOS uses the accent colour chosen in System Settings.</div>
+
+              {IS_DESKTOP && (
+                <>
+                  <h3 className="form-section-title">Window</h3>
+                  <label className="checkbox-row">
+                    <input type="checkbox" checked={settings.glass} onChange={(e) => update({ glass: e.target.checked })} />
+                    <span>
+                      See-through window
+                      <span className="field-hint">Liquid Glass on macOS 26 and later, a frosted blur on earlier versions.</span>
+                    </span>
+                  </label>
+                  <div className="field">
+                    <label htmlFor="settings-glassClarity">Clarity</label>
+                    <div className="range-row">
+                      <span aria-hidden="true">Frosted</span>
+                      <input
+                        id="settings-glassClarity"
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={settings.glassClarity}
+                        disabled={!settings.glass}
+                        onChange={(e) => update({ glassClarity: Number(e.target.value) })}
+                      />
+                      <span aria-hidden="true">Clear</span>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <h3 className="form-section-title">PDF pages</h3>
+              <div className="row">
+                <div className="field grow">
+                  <label id="settings-pdfPageLight">Light mode</label>
+                  <Select
+                    labelId="settings-pdfPageLight"
+                    value={settings.pdfPageLight}
+                    options={PDF_PAGES_LIGHT}
+                    onChange={(value) => update({ pdfPageLight: value as PdfPageLight })}
+                  />
+                </div>
+                <div className="field grow">
+                  <label id="settings-pdfPageDark">Dark mode</label>
+                  <Select
+                    labelId="settings-pdfPageDark"
+                    value={settings.pdfPageDark}
+                    options={PDF_PAGES_DARK}
+                    onChange={(value) => update({ pdfPageDark: value as PdfPageDark })}
+                  />
+                </div>
+              </div>
+              <div className="field-hint">Dark and Black turn the ink light. Dimmed keeps the page’s own colours, a little darker. The PDF’s More menu changes the colour for the mode showing.</div>
             </>
           )}
 

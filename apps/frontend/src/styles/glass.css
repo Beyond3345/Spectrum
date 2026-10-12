@@ -1,0 +1,44 @@
+/* ==========================================================================
+   See-through window: <html class="glass"> in the macOS app, with Liquid
+   Glass (or vibrancy) behind the page. appearance.ts sets how solid each
+   surface stays from the Clarity slider: --glass-chrome (window, sidebar),
+   --glass-panel (main panel) and --glass-reading (editor, PDF).
+   Loaded last: :root.glass is as specific as the dark blocks in tokens.css
+   and editor-theme.css, so it wins by coming after them.
+   ========================================================================== */
+
+:root.glass {
+  --bg-app: color-mix(in srgb, var(--bg-app-solid) var(--glass-chrome), transparent);
+  --bg-panel: color-mix(in srgb, var(--bg-panel-solid) var(--glass-panel), transparent);
+  --bg-editor: color-mix(in srgb, var(--editor-bg, var(--bg-editor-solid)) var(--glass-reading), transparent);
+  --bg-pdf: color-mix(in srgb, var(--bg-pdf-solid) var(--glass-reading), transparent);
+}
+
+/* full screen has nothing behind the window to see, so the chrome is as solid as the reading surfaces */
+:root.glass.fullscreen {
+  --bg-app: color-mix(in srgb, var(--bg-app-solid) var(--glass-reading), transparent);
+  --bg-panel: color-mix(in srgb, var(--bg-panel-solid) var(--glass-reading), transparent);
+}
+
+/* .app-shell paints the window colour; the body under it would double it */
+:root.glass body {
+  background: transparent;
+}
+
+/* these paint the same surface as what they sit on, which would double it too */
+:root.glass :is(.right-column, .tools-panel, .cm-editor, .cm-gutters) {
+  background-color: transparent;
+}
+
+/* overlays let a little through and blur what's under them */
+:root.glass :is(.menu, .sheet, .alert, .toast, .toc-popover, .cm-tooltip) {
+  background: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
+}
+
+/* the project list scrolls under its sticky header */
+:root.glass .project-row.list-header {
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+}

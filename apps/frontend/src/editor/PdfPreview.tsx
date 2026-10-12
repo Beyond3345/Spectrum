@@ -123,6 +123,7 @@ export async function pdfThumbnail(url: string, width = 240) {
  * (canvas + selectable text layer); the others are freed. Zoom, two-page view and, in the fit modes,
  * column resizes resize the boxes at once and redraw the visible pages. A pinch or ⌘-scroll zooms
  * around the pointer: the pages are stretched while the fingers move, then laid out and drawn sharp.
+ * The page colour is CSS on top (editor.css), so changing it never redraws.
  */
 const PdfPreview = forwardRef<
   PdfHandle,
@@ -130,8 +131,6 @@ const PdfPreview = forwardRef<
     url: string;
     zoom: PdfZoom;
     spread: boolean;
-    /** in dark mode, shows the pages dark (the colours inverted) */
-    darkPages: boolean;
     annotateMode: boolean;
     annotations: PdfAnnotation[];
     onAddAnnotation(page: number, x: number, y: number): void;
@@ -142,7 +141,7 @@ const PdfPreview = forwardRef<
     onZoom(scale: number): void;
     onPage(page: number): void;
   }
->(function PdfPreview({ url, zoom, spread, darkPages, annotateMode, annotations, onAddAnnotation, onTextClick, onLoad, onScale, onZoom, onPage }, ref) {
+>(function PdfPreview({ url, zoom, spread, annotateMode, annotations, onAddAnnotation, onTextClick, onLoad, onScale, onZoom, onPage }, ref) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pagesRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -481,7 +480,7 @@ const PdfPreview = forwardRef<
   return (
     <div
       ref={scrollRef}
-      className={`pdf-scroll ${annotateMode ? 'annotate' : ''} ${spread ? 'spread' : ''} ${darkPages ? 'dark-pages' : ''}`}
+      className={`pdf-scroll ${annotateMode ? 'annotate' : ''} ${spread ? 'spread' : ''}`}
       onClick={(event) => {
         const target = event.target as HTMLElement;
         const page = target.closest<HTMLElement>('.pdf-page');

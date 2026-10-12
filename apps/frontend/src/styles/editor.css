@@ -303,6 +303,11 @@
   padding: 0 10px 0 12px;
 }
 
+.desktop .editor-topbar {
+  /* moves along with the window as full screen starts or ends, like .sidebar-top */
+  transition: padding-left 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
 .desktop .sidebar-collapsed .editor-topbar {
   padding-left: 76px;
 }
@@ -887,6 +892,8 @@ button.compile-status:hover {
   border-radius: 2px;
   box-shadow: var(--shadow-md);
   overflow: hidden;
+  /* a tinted page blends the drawing with its own paper only */
+  isolation: isolate;
 }
 
 .pdf-page canvas {
@@ -895,25 +902,52 @@ button.compile-status:hover {
   height: 100%;
 }
 
-/* Dark pages: the paper turns the panel's grey and the ink light; hue-rotate keeps colours close to their own */
-:root[data-theme="dark"] .pdf-scroll.dark-pages .pdf-page {
-  background: #1f1f1f;
+/* Page colour for the mode showing (Settings → Appearance), set on <html> by appearance.ts.
+   Tints multiply the drawing onto tinted paper, so the ink stays dark. */
+[data-pdf-page='cream'] .pdf-page {
+  background: #f8f1e1;
+}
+
+[data-pdf-page='sepia'] .pdf-page {
+  background: #efe0c2;
+}
+
+[data-pdf-page='grey'] .pdf-page {
+  background: #e3e3e5;
+}
+
+:is([data-pdf-page='cream'], [data-pdf-page='sepia'], [data-pdf-page='grey']) .pdf-page canvas {
+  mix-blend-mode: multiply;
+}
+
+/* dark pages: the paper turns the panel's grey (or black) and the ink light; hue-rotate keeps colours close to their own */
+:is([data-pdf-page='dark'], [data-pdf-page='black']) .pdf-page {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
-:root[data-theme="dark"] .pdf-scroll.dark-pages .pdf-page canvas {
+[data-pdf-page='dark'] .pdf-page {
+  background: #1f1f1f;
+}
+
+[data-pdf-page='dark'] .pdf-page canvas {
   filter: invert(0.88) hue-rotate(180deg);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .pdf-scroll.dark-pages .pdf-page {
-    background: #1f1f1f;
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
-  }
+[data-pdf-page='black'] .pdf-page {
+  background: #000;
+}
 
-  :root:not([data-theme="light"]) .pdf-scroll.dark-pages .pdf-page canvas {
-    filter: invert(0.88) hue-rotate(180deg);
-  }
+[data-pdf-page='black'] .pdf-page canvas {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* the page's own colours, a little darker */
+[data-pdf-page='dimmed'] .pdf-page {
+  background: #cfcfcf;
+}
+
+[data-pdf-page='dimmed'] .pdf-page canvas {
+  filter: brightness(0.81);
 }
 
 .pdf-annotation {
