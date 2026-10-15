@@ -15,7 +15,7 @@ process.env.SPECTRUM_DATA_DIR = path.join(tmp, 'data');
 process.env.SPECTRUM_PROJECTS_DIR = path.join(tmp, 'projects');
 const { findExecutable, runCompile } = await import('../src/services/compileService.js');
 const { synctexEdit, synctexView } = await import('../src/services/synctex.js');
-const { createProject } = await import('../src/services/projectService.js');
+const { createProject, updateMeta } = await import('../src/services/projectService.js');
 const { registerCompileRoutes } = await import('../src/routes/compile.js');
 const { default: Fastify } = await import('fastify');
 
@@ -116,7 +116,7 @@ for (const engine of ['pdflatex', 'xelatex', 'lualatex', 'tectonic']) {
     const cli = path.join(tmp, `cli-${engine}`);
     await fs.mkdir(cli);
     await fs.copyFile(path.join(root, 'main.pdf'), path.join(cli, 'main.pdf'));
-    await fs.copyFile(path.join(root, '.spectrum', 'synctex.gz'), path.join(cli, 'main.synctex.gz'));
+    await fs.copyFile(path.join(root, '.spectrum', 'synctex', 'main.tex.gz'), path.join(cli, 'main.synctex.gz'));
     const pdf = path.join(cli, 'main.pdf');
 
     // PDF → source, over a grid covering both pages, margins included
@@ -128,7 +128,7 @@ for (const engine of ['pdflatex', 'xelatex', 'lualatex', 'tectonic']) {
     const wrong = [];
     await pool(points, async ({ page, x, y }) => {
       const theirs = await toolEdit(pdf, root, page, x, y);
-      const ours = await synctexEdit(root, page, x, y);
+      const ours = await synctexEdit(root, 'main.tex', page, x, y);
       if (!theirs) return assert.equal(ours.ok, false);
       answered += 1;
       // Left of a line that another file finished, the tool pairs that file with this file's
@@ -144,7 +144,7 @@ for (const engine of ['pdflatex', 'xelatex', 'lualatex', 'tectonic']) {
     for (const [file, lines] of Object.entries(TEXT_LINES)) {
       for (const line of lines) {
         const theirs = await toolView(pdf, root, file, line);
-        const ours = await synctexView(root, file, line);
+        const ours = await synctexView(root, 'main.tex', file, line);
         assert.ok(ours.ok, `${file}:${line} ${ours.error}`);
         assert.ok(theirs.length > 0, `${file}:${line}: the tool found nothing`);
         assert.equal(ours.boxes.length, theirs.length, `${file}:${line}: ${JSON.stringify({ ours: ours.boxes, theirs })}`);
@@ -153,15 +153,15 @@ for (const engine of ['pdflatex', 'xelatex', 'lualatex', 'tectonic']) {
       }
     }
     // the paragraph wraps, so its line has a box per typeset line, sorted down the page
-    const wrapped = (await synctexView(root, 'main.tex', 21)).boxes;
+    const wrapped = (await synctexView(root, 'main.tex', 'main.tex', 21)).boxes;
     assert.ok(wrapped.length > 10 && new Set(wrapped.map((b) => b.page)).size === 2);
     assert.deepEqual(wrapped, [...wrapped].sort((a, b) => a.page - b.page || a.y - b.y));
     // a comment goes to the next line that typeset something, past the end to the last one
     // (not a blank line: LuaTeX tags the end of the paragraph before it with the blank line)
-    assert.deepEqual(await synctexView(root, 'main.tex', 7), await synctexView(root, 'main.tex', 8));
-    assert.deepEqual(await synctexView(root, 'main.tex', 999), await synctexView(root, 'main.tex', 24));
-    assert.equal((await synctexView(root, 'missing.tex', 1)).ok, false);
-    assert.equal((await synctexEdit(root, 9, 100, 100)).ok, false);
+    assert.deepEqual(await synctexView(root, 'main.tex', 'main.tex', 7), await synctexView(root, 'main.tex', 'main.tex', 8));
+    assert.deepEqual(await synctexView(root, 'main.tex', 'main.tex', 999), await synctexView(root, 'main.tex', 'main.tex', 24));
+    assert.equal((await synctexView(root, 'main.tex', 'missing.tex', 1)).ok, false);
+    assert.equal((await synctexEdit(root, 'main.tex', 9, 100, 100)).ok, false);
   });
 }
 
@@ -180,28 +180,28 @@ test('a main file in a subfolder maps every input back to the project, and a fai
   assert.ok(res.ok, res.error || res.log);
   assert.ok(!existsSync(path.join(root, '.spectrum', 'build')) || (await fs.readdir(path.join(root, '.spectrum', 'build'))).length === 0);
   for (const file of ['paper/chapters/one.tex', 'shared/note.tex', DECOMPOSED]) {
-    const view = await synctexView(root, file, 1);
+    const view = await synctexView(root, 'paper/main.tex', file, 1);
     assert.ok(view.ok, view.error);
     const [box] = view.boxes;
     // a word in the middle of the line leads back to it
-    assert.deepEqual(await synctexEdit(root, box.page, box.x + 40, box.y + box.height / 2), { ok: true, file, line: 1, column: null });
+    assert.deepEqual(await synctexEdit(root, 'paper/main.tex', box.page, box.x + 40, box.y + box.height / 2), { ok: true, file, line: 1, column: null });
   }
   // compiling it again with latexmk keeps a SyncTeX file too
   if (await findExecutable('latexmk')) {
     const again = await runCompile({ projectId: project.id, mainFile: 'paper/main.tex', engine: 'latexmk' });
     assert.ok(again.ok, again.error || again.log);
-    assert.ok((await synctexView(root, 'shared/note.tex', 1)).ok);
+    assert.ok((await synctexView(root, 'paper/main.tex', 'shared/note.tex', 1)).ok);
   }
   await fs.writeFile(path.join(root, 'paper', 'main.tex'), '\\documentclass{article}\n\\begin{document}\n\\end{document}\n');
   const failed = await runCompile({ projectId: project.id, mainFile: 'paper/main.tex', engine: 'pdflatex' });
   assert.equal(failed.ok, false);
   // the last PDF stays on screen, and its SyncTeX file with it
-  assert.ok(existsSync(path.join(root, '.spectrum', 'synctex.gz')));
-  assert.ok((await synctexView(root, 'shared/note.tex', 1)).ok);
+  assert.ok(existsSync(path.join(root, '.spectrum', 'synctex', 'paper', 'main.tex.gz')));
+  assert.ok((await synctexView(root, 'paper/main.tex', 'shared/note.tex', 1)).ok);
   // a half-written one reads as none, not as an error
-  await fs.writeFile(path.join(root, '.spectrum', 'synctex.gz'), 'not gzip');
-  assert.deepEqual(await synctexEdit(root, 1, 200, 150), { ok: false, error: NOT_YET });
-  assert.deepEqual(await synctexView(root, 'shared/note.tex', 1), { ok: false, error: NOT_YET });
+  await fs.writeFile(path.join(root, '.spectrum', 'synctex', 'paper', 'main.tex.gz'), 'not gzip');
+  assert.deepEqual(await synctexEdit(root, 'paper/main.tex', 1, 200, 150), { ok: false, error: NOT_YET });
+  assert.deepEqual(await synctexView(root, 'paper/main.tex', 'shared/note.tex', 1), { ok: false, error: NOT_YET });
 });
 
 // A page, its header, footer and rules carry the line TeX was reading when the page went out:
@@ -216,18 +216,18 @@ for (const engine of ['pdflatex', 'xelatex', 'lualatex', 'tectonic']) {
     const { root, res } = await compiledProject(`Shipped ${engine}`, files, 'main.tex', engine);
     assert.ok(res.ok, res.error || res.log);
     // the title page, without its empty header
-    const title = await synctexView(root, 'main.tex', 4);
+    const title = await synctexView(root, 'main.tex', 'main.tex', 4);
     assert.ok(title.boxes.every((b) => b.page === 1 && b.height > 0), JSON.stringify(title.boxes));
     // the second chapter's heading on page 3, not page 2's header, footer or table struts
-    const chapter = await synctexView(root, 'ch2.tex', 1);
+    const chapter = await synctexView(root, 'main.tex', 'ch2.tex', 1);
     assert.ok(chapter.boxes.some((b) => b.page === 3), JSON.stringify(chapter.boxes));
     // (LuaTeX tags kerns with the line too, so the chapter before it comes along)
     if (engine !== 'lualatex') assert.ok(chapter.boxes.every((b) => b.page === 3), JSON.stringify(chapter.boxes));
     // \end{table} only closes the float's box, which goes round the table and its caption
-    const [table, ...more] = (await synctexView(root, 'ch1.tex', 8)).boxes;
+    const [table, ...more] = (await synctexView(root, 'main.tex', 'ch1.tex', 8)).boxes;
     assert.equal(more.length, 0);
     for (const line of [6, 7]) {
-      for (const b of (await synctexView(root, 'ch1.tex', line)).boxes) {
+      for (const b of (await synctexView(root, 'main.tex', 'ch1.tex', line)).boxes) {
         assert.ok(b.page === table.page && b.y >= table.y - 1 && b.y + b.height <= table.y + table.height + 1, JSON.stringify({ table, b }));
       }
     }
@@ -248,8 +248,91 @@ test('the jump routes check what they are given', async () => {
   for (const bad of [{ line: 1 }, { file: 'main.tex', line: 0 }, { file: 'main.tex', line: '2' }, { file: 'main.tex', line: 2, column: 'a' }, { file: '../outside.tex', line: 1 }]) {
     assert.equal((await post('view', bad)).status, 400, JSON.stringify(bad));
   }
+  for (const doc of [5, '', '../outside.tex']) {
+    assert.equal((await post('edit', { page: 1, x: 1, y: 1, doc })).status, 400, JSON.stringify(doc));
+    assert.equal((await post('view', { file: 'main.tex', line: 1, doc })).status, 400, JSON.stringify(doc));
+  }
+  assert.deepEqual(await post('view', { file: 'main.tex', line: 1, doc: 'other.tex' }), { status: 200, json: { ok: false, error: NOT_YET } });
   assert.deepEqual(await post('edit', { page: 1, x: 10, y: 10 }), { status: 200, json: { ok: false, error: NOT_YET } });
   assert.deepEqual(await post('view', { file: 'main.tex', line: 1, column: 3 }), { status: 200, json: { ok: false, error: NOT_YET } });
   assert.equal((await post('edit', { page: 1, x: 10, y: 10 }, 'nope')).status, 404);
   await app.close();
+});
+
+// Two documents in one folder, the tutorial citing the notes' equations through xr-hyper
+const NOTES = [
+  '\\documentclass{article}',
+  '\\usepackage{amsmath}',
+  '\\begin{document}',
+  '\\section{Circuits}\\label{sec:circuits}',
+  'Ohm’s law ties the voltage across a resistor to the current through it, as below.',
+  '\\begin{equation}\\label{eq:ohm} V = IR \\end{equation}',
+  '\\end{document}',
+  ''
+].join('\n');
+const TUTORIAL = [
+  '\\documentclass{article}',
+  '\\usepackage{amsmath}',
+  '\\usepackage{xr-hyper}',
+  '\\usepackage[hidelinks]{hyperref}',
+  '% \\externaldocument{missing}',
+  '\\externaldocument[notes:]{notes}',
+  '\\begin{document}',
+  'By \\eqref{notes:eq:ohm} in Section~\\ref{notes:sec:circuits}, the current is the voltage over the resistance.',
+  '\\end{document}',
+  ''
+].join('\n');
+
+test('a document compiles the one it cross-references first, and each PDF keeps its own SyncTeX', { skip: !(await findExecutable('pdflatex')) && 'needs pdflatex', timeout: 180000 }, async () => {
+  const { project, root, res } = await compiledProject('Two documents', { 'notes.tex': NOTES, 'tutorial.tex': TUTORIAL }, 'tutorial.tex', 'pdflatex');
+  assert.ok(res.ok, res.error || res.log);
+  assert.deepEqual(res.linked, [{ file: 'notes.tex', ok: true }]);
+  assert.ok(res.log.startsWith('[spectrum] Compiled notes.tex first for its cross-references.\n'), res.log.slice(0, 200));
+  assert.ok(existsSync(path.join(root, 'notes.pdf')));
+  // every notes: reference resolved
+  assert.doesNotMatch(res.log, /No file notes\.aux|Reference `notes:/);
+  // each document keeps its own .aux, not the other's
+  assert.ok(existsSync(path.join(root, '.spectrum', 'aux', 'notes.tex', 'notes.aux')));
+  assert.ok(existsSync(path.join(root, '.spectrum', 'aux', 'tutorial.tex', 'tutorial.aux')));
+  assert.ok(!existsSync(path.join(root, '.spectrum', 'aux', 'tutorial.tex', 'notes.aux')));
+
+  // 1.4.0's single SyncTeX file goes with the next compile
+  await fs.writeFile(path.join(root, '.spectrum', 'synctex.gz'), '');
+  await fs.writeFile(path.join(root, '.spectrum', 'synctex.json'), '{}');
+  const again = await runCompile({ projectId: project.id, mainFile: 'tutorial.tex', engine: 'pdflatex' });
+  assert.ok(again.ok, again.error || again.log);
+  assert.equal(again.linked, undefined);
+  assert.doesNotMatch(again.log, /\[spectrum\]|Reference `notes:/);
+  assert.ok(!existsSync(path.join(root, '.spectrum', 'synctex.gz')) && !existsSync(path.join(root, '.spectrum', 'synctex.json')));
+
+  // an edit to the notes compiles them again
+  await fs.writeFile(path.join(root, 'notes.tex'), NOTES.replace('as below', 'as shown below'));
+  const edited = await runCompile({ projectId: project.id, mainFile: 'tutorial.tex', engine: 'pdflatex' });
+  assert.deepEqual(edited.linked, [{ file: 'notes.tex', ok: true }]);
+
+  // each PDF jumps within its own document
+  for (const [doc, line] of [['notes.tex', 5], ['tutorial.tex', 8]]) {
+    const view = await synctexView(root, doc, doc, line);
+    assert.ok(view.ok, `${doc}: ${view.error}`);
+    const [box] = view.boxes;
+    assert.deepEqual(await synctexEdit(root, doc, box.page, box.x + 40, box.y + box.height / 2), { ok: true, file: doc, line, column: null });
+  }
+  assert.equal((await synctexView(root, 'tutorial.tex', 'notes.tex', 5)).ok, false);
+  // the routes take the document, or the main file without one
+  await updateMeta(root, (meta) => ({ ...meta, mainFile: 'tutorial.tex' }));
+  const app = Fastify();
+  registerCompileRoutes(app);
+  const view = async (payload) => (await app.inject({ method: 'POST', url: `/api/projects/${project.id}/synctex/view`, payload })).json();
+  assert.ok((await view({ file: 'notes.tex', line: 5, doc: 'notes.tex' })).ok);
+  assert.ok((await view({ file: 'tutorial.tex', line: 8 })).ok);
+  assert.equal((await view({ file: 'notes.tex', line: 5 })).ok, false);
+  await app.close();
+
+  // a linked document that doesn't compile is said so, and the tutorial still compiles
+  await fs.writeFile(path.join(root, 'broken.tex'), '\\documentclass{article}\n\\begin{document}\n\\end{document}\n');
+  await fs.writeFile(path.join(root, 'tutorial.tex'), TUTORIAL.replace('\\begin{document}', '\\externaldocument[b:]{broken}\n\\begin{document}'));
+  const broken = await runCompile({ projectId: project.id, mainFile: 'tutorial.tex', engine: 'pdflatex' });
+  assert.ok(broken.ok, broken.error || broken.log);
+  assert.deepEqual(broken.linked, [{ file: 'broken.tex', ok: false }]);
+  assert.ok(broken.log.startsWith('[spectrum] broken.tex didn’t compile, so references to it may show as ??.\n'));
 });

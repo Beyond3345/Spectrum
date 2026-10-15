@@ -207,6 +207,18 @@ test('tree hides app data, VCS internals and Finder litter', async () => {
   assert.equal((await api(`/api/projects/${p.id}/file?path=.`, { method: 'DELETE' })).status, 400);
 });
 
+test('tree lists the .tex files that are documents of their own', async () => {
+  const p = await newProject('Documents');
+  await writeFile(p.id, 'notes.tex', '% !TEX program = xelatex\n\\documentclass[11pt]{article}\n\\begin{document}\\input{chapters/one}\\end{document}\n');
+  await writeFile(p.id, 'chapters/one.tex', '% \\documentclass{article} in a comment\n50\\% \\section{One}\n');
+  await writeFile(p.id, 'sub/tut.tex', '\\documentclass{article}\\begin{document}Hi\\end{document}\n');
+  await writeFile(p.id, 'refs.bib', '\\documentclass{article}\n');
+  const tree = (await api(`/api/projects/${p.id}/tree`)).json;
+  assert.deepEqual([...tree.documents].sort(), ['notes.tex', 'sub/tut.tex']);
+  // in the tree's order
+  assert.deepEqual(tree.documents, tree.items.map((i) => i.path).filter((f) => tree.documents.includes(f)));
+});
+
 test('adopts an existing folder and recognises it again later', async () => {
   const folder = path.join(tmp, 'existing', 'My thesis');
   await fs.mkdir(folder, { recursive: true });
@@ -311,16 +323,8 @@ test('renames, tags, archives, sets the main file and duplicates', async () => {
   assert.deepEqual(tagged.project.tags, ['ml', 'nlp']);
   const archived = (await api(`/api/projects/${p.id}/archive`, { method: 'PATCH', body: { archived: true } })).json;
   assert.equal(archived.project.archived, true);
-  // another main file means another PDF, so the SyncTeX data of the last one goes; the same one keeps it
-  const synctex = path.join(p.path, '.spectrum', 'synctex.gz');
-  mkdirSync(path.dirname(synctex), { recursive: true });
-  writeFileSync(synctex, '');
   assert.ok((await api(`/api/projects/${p.id}/main-file`, { method: 'PATCH', body: { mainFile: 'main.tex' } })).json.ok);
   assert.equal((await api(`/api/projects/${p.id}/tree`)).json.mainFile, 'main.tex');
-  assert.ok(!existsSync(synctex));
-  writeFileSync(synctex, '');
-  assert.ok((await api(`/api/projects/${p.id}/main-file`, { method: 'PATCH', body: { mainFile: 'main.tex' } })).json.ok);
-  assert.ok(existsSync(synctex));
   assert.equal((await api(`/api/projects/${p.id}/main-file`, { method: 'PATCH', body: { mainFile: '../escape.tex' } })).status, 400);
 
   const copy = (await api(`/api/projects/${p.id}/copy`, { method: 'POST', body: {} })).json.project;

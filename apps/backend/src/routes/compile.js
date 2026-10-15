@@ -1,8 +1,11 @@
 import { runCompile, SUPPORTED_ENGINES } from '../services/compileService.js';
-import { getProjectRoot } from '../services/projectService.js';
+import { getProjectRoot, readMeta } from '../services/projectService.js';
 import { synctexEdit, synctexView } from '../services/synctex.js';
 
 const isCount = (n) => Number.isInteger(n) && n > 0;
+// doc is the project-relative .tex whose PDF is showing; without it, the main file's
+const isDoc = (doc) => doc == null || (typeof doc === 'string' && !!doc);
+const docOrMain = async (root, doc) => doc ?? ((await readMeta(root)).mainFile || 'main.tex');
 
 export function registerCompileRoutes(fastify) {
   fastify.post('/api/compile', async (req) => {
@@ -18,19 +21,21 @@ export function registerCompileRoutes(fastify) {
 
   // PDF → source: page is 1-based, x and y are points from the page's top-left corner
   fastify.post('/api/projects/:id/synctex/edit', async (req, reply) => {
-    const { page, x, y } = req.body || {};
-    if (!isCount(page) || !Number.isFinite(x) || !Number.isFinite(y)) {
+    const { page, x, y, doc } = req.body || {};
+    if (!isCount(page) || !Number.isFinite(x) || !Number.isFinite(y) || !isDoc(doc)) {
       return reply.code(400).send({ ok: false, error: 'Invalid position.' });
     }
-    return synctexEdit(await getProjectRoot(req.params.id), page, x, y);
+    const root = await getProjectRoot(req.params.id);
+    return synctexEdit(root, await docOrMain(root, doc), page, x, y);
   });
 
   // source → PDF: file is project-relative, line 1-based; engines rarely record columns, so column goes unused
   fastify.post('/api/projects/:id/synctex/view', async (req, reply) => {
-    const { file, line, column } = req.body || {};
-    if (typeof file !== 'string' || !file || !isCount(line) || (column != null && !Number.isFinite(column))) {
+    const { file, line, column, doc } = req.body || {};
+    if (typeof file !== 'string' || !file || !isCount(line) || (column != null && !Number.isFinite(column)) || !isDoc(doc)) {
       return reply.code(400).send({ ok: false, error: 'Invalid position.' });
     }
-    return synctexView(await getProjectRoot(req.params.id), file, line);
+    const root = await getProjectRoot(req.params.id);
+    return synctexView(root, await docOrMain(root, doc), file, line);
   });
 }

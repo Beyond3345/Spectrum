@@ -17,29 +17,32 @@ const SP_PER_BP = 65781.76;
 // <type><tag>,<line>[,<column>]:<h>,<v>[:<W>[,<H>,<D>]]; v is '=' when it repeats the last one
 const RECORD = /^([[(hvxkg$r])(\d+),(-?\d+)(?:,(-?\d+))?:(-?\d+),(-?\d+|=)(?::(-?\d+)(?:,(-?\d+),(-?\d+))?)?/;
 
-// ─── The project's SyncTeX file ───
+// ─── Each document's SyncTeX file ───
 
-// One per project, for the PDF the last compile made. Where TeX ran, to read the inputs it
-// names relative to that folder, goes beside it.
-const stored = (root) => ({ file: appPath(root, 'synctex.gz'), meta: appPath(root, 'synctex.json') });
+// One per document (project-relative), for the PDF its last compile made, e.g.
+// .spectrum/synctex/chapters/thesis.tex.gz. Where TeX ran, to read the inputs it names
+// relative to that folder, goes beside it in thesis.tex.json.
+const stored = (root, doc) => ({ file: appPath(root, 'synctex', `${doc}.gz`), meta: appPath(root, 'synctex', `${doc}.json`) });
 
-/** Keep the SyncTeX file a compile just built (`built` in its build folder, TeX run in `cwd`). */
-export async function keepSynctex(root, built, cwd) {
-  const { file, meta } = stored(root);
+/** Keep the SyncTeX file a compile of `doc` just built (`built` in its build folder, TeX run in `cwd`). */
+export async function keepSynctex(root, doc, built, cwd) {
+  const { file, meta } = stored(root, doc);
   await writeJsonAtomic(meta, { root, cwd });
   // an engine that wrote none leaves nothing to keep
-  await fs.rename(built, file).catch(() => dropSynctex(root));
+  await fs.rename(built, file).catch(() => dropSynctex(root, doc));
+  // 1.4.0 kept a single one for the whole project
+  for (const old of ['synctex.gz', 'synctex.json']) await fs.rm(appPath(root, old), { force: true });
 }
 
 /** Forget it, so a jump never lands in a PDF it didn't describe. */
-export async function dropSynctex(root) {
-  const { file, meta } = stored(root);
+async function dropSynctex(root, doc) {
+  const { file, meta } = stored(root, doc);
   await fs.rm(file, { force: true });
   await fs.rm(meta, { force: true });
 }
 
-async function load(root) {
-  const { file, meta } = stored(root);
+async function load(root, doc) {
+  const { file, meta } = stored(root, projectRelative(root, doc));
   try {
     return { data: await readSynctex(file), where: await readJson(meta) };
   } catch (err) {
@@ -58,6 +61,8 @@ const canonical = (p) => {
   }
 };
 
+const projectRelative = (root, file) => path.relative(root, safeJoin(root, file)).split(path.sep).join('/');
+
 /** An input as a project-relative path; TeX names them absolute or from where it ran, often with ./ */
 function projectPath(where, name) {
   if (!name) return null;
@@ -66,9 +71,9 @@ function projectPath(where, name) {
   return !rel || first === '..' || first.toLowerCase() === APP_DIR ? null : rel;
 }
 
-/** The source line under a point on a page of the PDF: page 1-based, x and y in points from the top left. */
-export async function synctexEdit(root, page, x, y) {
-  const loaded = await load(root);
+/** The source line under a point on a page of doc's PDF: page 1-based, x and y in points from the top left. */
+export async function synctexEdit(root, doc, page, x, y) {
+  const loaded = await load(root, doc);
   if (!loaded) return { ok: false, error: NOT_YET };
   const hit = inverseSearch(loaded.data, page, x, y);
   const file = hit && projectPath(loaded.where, loaded.data.inputs.get(hit.tag));
@@ -76,10 +81,10 @@ export async function synctexEdit(root, page, x, y) {
   return { ok: true, file, line: hit.line, column: hit.column };
 }
 
-/** Where a line of a project file ended up in the PDF: one box per typeset line, in points from each page's top left. */
-export async function synctexView(root, file, line) {
-  const rel = path.relative(root, safeJoin(root, file)).split(path.sep).join('/');
-  const loaded = await load(root);
+/** Where a line of a project file ended up in doc's PDF: one box per typeset line, in points from each page's top left. */
+export async function synctexView(root, doc, file, line) {
+  const rel = projectRelative(root, file);
+  const loaded = await load(root, doc);
   if (!loaded) return { ok: false, error: NOT_YET };
   const tags = new Set([...loaded.data.inputs].filter(([, name]) => projectPath(loaded.where, name) === rel).map(([tag]) => tag));
   const boxes = forwardSearch(loaded.data, tags, line);
@@ -98,7 +103,7 @@ export async function readSynctex(file) {
   const hit = cache.get(file);
   if (hit?.key === key) return hit.data;
   const data = parseSynctex((await gunzipAsync(await fs.readFile(file))).toString('utf8'));
-  // ponytail: one entry per project opened this session; an LRU if that ever adds up
+  // ponytail: one entry per document compiled this session; an LRU if that ever adds up
   cache.set(file, { key, data });
   return data;
 }

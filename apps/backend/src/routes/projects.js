@@ -8,7 +8,7 @@ import crypto from 'crypto';
 import { gunzipSync } from 'zlib';
 import { ensureDir, copyDir, extractZip, listFilesRecursive, skipInArchive, writeFileAtomic } from '../utils/fsUtils.js';
 import { safeJoin, safeJoinLink, sanitizeUploadPath } from '../utils/pathUtils.js';
-import { extractDocumentBody, mergeTemplateBody } from '../utils/texUtils.js';
+import { extractDocumentBody, mergeTemplateBody, withoutComments } from '../utils/texUtils.js';
 import { readTemplateManifest, copyTemplateIntoProject, templatePath } from '../services/templateService.js';
 import {
   APP_DIR,
@@ -28,7 +28,6 @@ import {
   updateMeta
 } from '../services/projectService.js';
 import { projectStats } from '../services/statsService.js';
-import { dropSynctex } from '../services/synctex.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
 
 const execFileAsync = promisify(execFile);
@@ -69,6 +68,21 @@ export async function extractArxivSource(file, projectRoot) {
     return;
   }
   await fs.writeFile(path.join(projectRoot, 'main.tex'), data);
+}
+
+// ponytail: reads the first 16 KB of every .tex per tree request, so a \documentclass after a longer
+// header is missed; read further, or cache by mtime, if that ever shows
+async function isDocument(root, relPath) {
+  let file;
+  try {
+    file = await fs.open(safeJoin(root, relPath));
+    const { buffer, bytesRead } = await file.read(Buffer.alloc(16384), 0, 16384, 0);
+    return /\\documentclass\b/.test(withoutComments(buffer.toString('utf8', 0, bytesRead)));
+  } catch {
+    return false; // unreadable, or a link out of the project
+  } finally {
+    await file?.close();
+  }
 }
 
 async function moveToBin(folder) {
@@ -260,10 +274,7 @@ export function registerProjectRoutes(fastify) {
     if (mainFile) safeJoin(root, mainFile);
     // the TeX engine would read a leading '-' as an option
     if (path.basename(mainFile).startsWith('-')) throw httpError('The main file’s name can’t start with “-”.', 400);
-    const { mainFile: before = '' } = await readMeta(root);
     await updateMeta(root, (meta) => ({ ...meta, mainFile }));
-    // the SyncTeX data is for the other main file's PDF, which may still be on disk
-    if (mainFile !== before) await dropSynctex(root);
     return { ok: true, project: await getProject(req.params.id) };
   });
 
@@ -298,7 +309,12 @@ export function registerProjectRoutes(fastify) {
     const root = await getProjectRoot(req.params.id);
     const items = await listFilesRecursive(root);
     const { fileOrder, mainFile } = await readMeta(root);
-    return { items, fileOrder, mainFile };
+    // .tex files that compile on their own
+    const documents = [];
+    for (const item of items) {
+      if (item.type === 'file' && item.path.endsWith('.tex') && await isDocument(root, item.path)) documents.push(item.path);
+    }
+    return { items, fileOrder, mainFile, documents };
   });
 
   fastify.post('/api/projects/:id/file-order', async (req) => {

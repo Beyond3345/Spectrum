@@ -2,6 +2,9 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { safeJoin } from './pathUtils.js';
 
+/** TeX with its % comments removed (an escaped \% stays). */
+export const withoutComments = (tex) => tex.replace(/(?<!\\)%.*$/gm, '');
+
 export function extractDocumentBody(tex) {
   const startMarker = '\\begin{document}';
   const endMarker = '\\end{document}';
@@ -41,7 +44,7 @@ export async function inlineInputs(root, mainFile, { stripComments = false } = {
       return null;
     }
     seen.add(rel);
-    if (stripComments) tex = tex.replace(/(?<!\\)%.*$/gm, '');
+    if (stripComments) tex = withoutComments(tex);
     const parts = [];
     let last = 0;
     for (const match of tex.matchAll(/\\(?:input|include|subfile)\{([^}]+)\}/g)) {
