@@ -2,6 +2,20 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.5.0 (15 October 2026)
+
+### Added
+
+- Compiling a document other than the main file. When a project holds more than one document (a `.tex` file with its own `\documentclass`), the menu beside Compile lists them above the compilers, and choosing one compiles it once without changing the main file. `⇧⌘↩` compiles the open file when it is a document of its own and the main file otherwise. Compile and `⌘↩` still compile the main file
+- Cross-references between documents with `xr` or `xr-hyper` (`\externaldocument`) and `zref-xr` (`\zexternaldocument`). The `.aux` files of each document are kept in the hidden `.spectrum` folder after a compile, so a document that links to another finds its labels with every compiler. A linked document that has not been compiled or has changed since is compiled first
+- The page bar at the bottom of the PDF names the PDF that is showing when there is more than one, by the part of its name the others do not share, and switches between them. A document's PDF in the file list opens in the PDF column too, and double-click jumping works in each PDF
+- Completion of the labels of a linked document with its prefix, so `\ref{notes:` lists the labels of the notes. Completion also follows the open document when it is a document of its own, so its packages, commands and labels are listed rather than those of the main file
+
+### Changed
+
+- SyncTeX data is kept for each document, so compiling one document no longer stops double-click jumping in another, and choosing another main file keeps it. After updating, each document needs one compile before jumping works again
+- The compile log names the document that was compiled, and a linked document that fails to compile shows as a warning
+
 ## 1.4.0 (12 October 2026)
 
 ### Added

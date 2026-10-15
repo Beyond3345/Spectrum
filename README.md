@@ -25,6 +25,8 @@ The editor is divided into three columns, the file tree and saved chats on the l
 - the compiler can be pdfLaTeX, XeLaTeX, LuaLaTeX, Latexmk or Tectonic, and the Auto setting picks one from the `% !TEX program` comment and the packages the document uses and
 - the Tools panel holds the project information (word counts from `texcount`), version history, compile logs, research tools, AI review and the Floats tools (Section Floats).
 
+A project can hold more than one document, such as a set of lecture notes and the tutorial solutions that refer to them. Compile and `⌘↩` compile the main file, which is chosen with Set as main file in a file's menu. The menu beside Compile lists the other documents, and choosing one compiles it once without changing the main file, as does `⇧⌘↩` for the open document. The page bar at the bottom of the PDF names the PDF that is showing and switches between the PDFs of the documents. Documents can refer to the labels of another with `xr-hyper`, for example `\externaldocument[notes:]{notes}` and `\eqref{notes:eq:ohm}`. Spectrum keeps the `.aux` files of every document for this, compiles a linked document first when it has not been compiled or has changed since, and completes `\ref{notes:` with the labels of the linked document.
+
 The assistant chat is opened with `⌘L` and has two modes. Assistant mode answers questions about the open file, the selection and the compile log, or proposes edits. Proposed edits are shown as a side-by-side diff of the changed parts, with the changed words marked and the unchanged stretches folded away, and they can be accepted or rejected file by file. References mode adds citations to the project's `.bib` file (Section References).
 
 ### Appearance
@@ -85,7 +87,7 @@ Both checkers read only the prose of a LaTeX file. Commands, maths, comments, ci
 
 ### Version history
 
-Versions are kept inside each project in a hidden `.spectrum` folder, together with the project settings, saved chats and temporary build files. File contents are compressed and stored once, so unchanged files cost no extra space between versions. A version is saved with one click from the Save version button beside Compile or with `⇧⌘S`, and the notice that follows offers to name it. Versions can also be saved and named from the Versions tab. One is also saved automatically before AI changes are applied, before a restore and before a template change, so each of these can be undone. A version can be compared with the current files, restored as a whole or restored one file at a time.
+Versions are kept inside each project in a hidden `.spectrum` folder, together with the project settings, saved chats, temporary build files and the SyncTeX and `.aux` files kept from the last compile of each document. File contents are compressed and stored once, so unchanged files cost no extra space between versions. A version is saved with one click from the Save version button beside Compile or with `⇧⌘S`, and the notice that follows offers to name it. Versions can also be saved and named from the Versions tab. One is also saved automatically before AI changes are applied, before a restore and before a template change, so each of these can be undone. A version can be compared with the current files, restored as a whole or restored one file at a time.
 
 ## Requirements
 
@@ -97,7 +99,7 @@ Versions are kept inside each project in a hidden `.spectrum` folder, together w
 
 ## Installing
 
-1. Open `Spectrum_1.4.0_universal.dmg`
+1. Open `Spectrum_1.5.0_universal.dmg`
 2. Drag Spectrum into the Applications folder
 3. Open Spectrum from the Applications folder
 
@@ -183,6 +185,7 @@ Every shortcut below can be changed in the Shortcuts section of Settings. Click 
 | Save | `⌘S` |
 | Save a version | `⇧⌘S` |
 | Compile | `⌘↩` |
+| Compile the open document | `⇧⌘↩` |
 | Show or hide the assistant | `⌘L` |
 | Check grammar | `⇧⌘;` |
 | AI autocomplete | `⌥/` |
