@@ -64,7 +64,9 @@ const formOf = (r) => new Response(r.body, { headers: { 'content-type': r.header
 const contents = (images) => Promise.all(images.map(async (img) => [img.name, await fs.readFile(img.localPath, 'utf8')]));
 const noKeyTo = (prefix) => assert.ok(seen.filter((r) => r.path.startsWith(prefix)).every((r) => !r.headers.authorization), `no key sent to ${prefix}`);
 
-const hasZip = (() => {
+// zip, or on Windows the bsdtar it ships (Git's GNU tar, also on PATH, can't write a zip)
+const WINDOWS = process.platform === 'win32';
+const hasZip = WINDOWS || (() => {
   try {
     execFileSync('zip', ['-v'], { stdio: 'ignore' });
     return true;
@@ -79,7 +81,8 @@ async function zipOf(files) {
     await fs.mkdir(path.dirname(path.join(dir, name)), { recursive: true });
     await fs.writeFile(path.join(dir, name), content);
   }
-  execFileSync('zip', ['-qr', 'out.zip', ...Object.keys(files)], { cwd: dir });
+  if (WINDOWS) execFileSync(path.join(process.env.SystemRoot, 'System32', 'tar.exe'), ['-a', '-cf', 'out.zip', ...Object.keys(files)], { cwd: dir });
+  else execFileSync('zip', ['-qr', 'out.zip', ...Object.keys(files)], { cwd: dir });
   return fs.readFile(path.join(dir, 'out.zip'));
 }
 

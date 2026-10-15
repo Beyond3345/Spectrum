@@ -1,7 +1,8 @@
 import path from 'path';
 import { lstatSync, realpathSync } from 'fs';
 
-const inside = (root, p) => p === root || p.startsWith(root + path.sep);
+// root resolved too, so '/p' compares as C:\p on Windows
+const inside = (root, p) => p === path.resolve(root) || p.startsWith(path.resolve(root) + path.sep);
 
 function invalidPath(message = 'Invalid path.') {
   const err = new Error(message);

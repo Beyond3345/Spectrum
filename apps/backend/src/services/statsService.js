@@ -105,7 +105,7 @@ export async function projectStats(root, mainFile) {
   if (texcount) {
     try {
       // -dir: included files are relative to the main file's folder, as in the compile
-      const { stdout } = await execFileAsync(texcount, ['-inc', '-total', '-utf8', '-dir', `./${mainFile}`], { cwd: root, timeout: 20_000, maxBuffer: 10 * 1024 * 1024 });
+      const { stdout } = await execFileAsync(texcount, ['-inc', '-total', '-utf8', '-dir', `./${mainFile}`], { cwd: root, timeout: 20_000, maxBuffer: 10 * 1024 * 1024, windowsHide: true });
       return parseTexcount(stdout);
     } catch {
       // fall back to the estimate

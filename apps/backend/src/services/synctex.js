@@ -6,7 +6,7 @@ import { promises as fs, realpathSync } from 'fs';
 import path from 'path';
 import { gunzip } from 'zlib';
 import { promisify } from 'util';
-import { readJson, writeJsonAtomic } from '../utils/fsUtils.js';
+import { readJson, renameOver, writeJsonAtomic } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { APP_DIR, appPath } from './projectService.js';
 
@@ -29,7 +29,7 @@ export async function keepSynctex(root, doc, built, cwd) {
   const { file, meta } = stored(root, doc);
   await writeJsonAtomic(meta, { root, cwd });
   // an engine that wrote none leaves nothing to keep
-  await fs.rename(built, file).catch(() => dropSynctex(root, doc));
+  await renameOver(built, file).catch(() => dropSynctex(root, doc));
   // 1.4.0 kept a single one for the whole project
   for (const old of ['synctex.gz', 'synctex.json']) await fs.rm(appPath(root, old), { force: true });
 }

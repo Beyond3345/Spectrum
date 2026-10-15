@@ -26,10 +26,25 @@ export async function writeFileAtomic(filePath, data) {
   try {
     await fs.writeFile(tmp, data);
     if (mode !== undefined) await fs.chmod(tmp, mode);
-    await fs.rename(tmp, filePath);
+    await renameOver(tmp, filePath);
   } catch (err) {
     await fs.rm(tmp, { force: true });
     throw err;
+  }
+}
+
+/**
+ * fs.rename, retried for a few seconds on Windows: it refuses while anyone holds the file open,
+ * which a virus scanner, the search indexer or a sync client does for a moment after each write.
+ */
+export async function renameOver(from, to) {
+  for (let wait = 50; ; wait *= 2) {
+    try {
+      return await fs.rename(from, to);
+    } catch (err) {
+      if (process.platform !== 'win32' || wait > 1600 || !['EPERM', 'EACCES', 'EBUSY'].includes(err.code)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
   }
 }
 
@@ -51,17 +66,17 @@ export async function copyDir(src, dest) {
   }
 }
 
-// App data, VCS internals and legacy bookkeeping never belong in the file tree, versions or AI context.
-export const HIDDEN_ENTRIES = new Set(['.spectrum', '.git', '.DS_Store', '.compile', '.snapshots']);
+// App data, VCS internals, legacy bookkeeping and Finder/Explorer litter never belong in the file tree, versions or AI context.
+export const HIDDEN_ENTRIES = new Set(['.spectrum', '.git', '.DS_Store', 'Thumbs.db', 'desktop.ini', '.compile', '.snapshots']);
 
+/** Every file and folder under root, as '/'-separated paths from root on every system. */
 export async function listFilesRecursive(root, rel = '') {
   const dirPath = path.join(root, rel);
   const entries = await fs.readdir(dirPath, { withFileTypes: true });
   const items = [];
   for (const entry of entries) {
     if (HIDDEN_ENTRIES.has(entry.name)) continue;
-    const itemRel = path.join(rel, entry.name);
-    const full = path.join(root, itemRel);
+    const itemRel = rel ? `${rel}/${entry.name}` : entry.name;
     if (entry.isDirectory()) {
       items.push({ path: itemRel, type: 'dir' });
       items.push(...await listFilesRecursive(root, itemRel));
@@ -101,8 +116,8 @@ export async function writeNewFile(abs, data) {
   }
 }
 
-// App data and Finder litter never come out of an imported archive (any letter case: APFS ignores it).
-const ARCHIVE_SKIP = new Set(['.spectrum', '__macosx', '.ds_store', '.snapshots', '.compile']);
+// App data and Finder/Explorer litter never come out of an imported archive (any letter case: APFS and NTFS ignore it).
+const ARCHIVE_SKIP = new Set(['.spectrum', '__macosx', '.ds_store', 'thumbs.db', 'desktop.ini', '.snapshots', '.compile']);
 export const skipInArchive = (relPath) => relPath.split('/').some((part) => ARCHIVE_SKIP.has(part.toLowerCase()));
 
 /** Extract a zip stream into root (path-traversal safe), then unwrap a single top-level folder. */
@@ -131,9 +146,9 @@ export async function unwrapSingleFolder(root) {
   const entries = (await fs.readdir(root, { withFileTypes: true })).filter((e) => !HIDDEN_ENTRIES.has(e.name));
   if (entries.length !== 1 || !entries[0].isDirectory()) return;
   const temp = path.join(root, `.unwrap-${crypto.randomUUID()}`);
-  await fs.rename(path.join(root, entries[0].name), temp);
+  await renameOver(path.join(root, entries[0].name), temp);
   for (const name of await fs.readdir(temp)) {
-    await fs.rename(path.join(temp, name), path.join(root, name));
+    await renameOver(path.join(temp, name), path.join(root, name));
   }
   await fs.rm(temp, { recursive: true, force: true });
 }

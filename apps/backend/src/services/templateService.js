@@ -142,7 +142,7 @@ export async function copyTemplateIntoProject(templateRoot, projectRoot, templat
           if (err.code === 'EEXIST') continue;
           throw err;
         }
-        changed.push(nextRel);
+        changed.push(nextRel.split(path.sep).join('/'));
       }
     }
   };

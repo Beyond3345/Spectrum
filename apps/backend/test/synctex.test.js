@@ -9,7 +9,8 @@ import { promises as fs, existsSync, mkdtempSync, realpathSync, rmSync } from 'n
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-const tmp = realpathSync(mkdtempSync(path.join(tmpdir(), 'spectrum-synctex-')));
+// native: Windows' temp folder can have an 8.3 name in it (RUNNER~1), which the app's realpath spells out
+const tmp = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'spectrum-synctex-')));
 // before the app's modules load, so the project registry lives in the throwaway folder
 process.env.SPECTRUM_DATA_DIR = path.join(tmp, 'data');
 process.env.SPECTRUM_PROJECTS_DIR = path.join(tmp, 'projects');
@@ -76,18 +77,21 @@ async function compiledProject(name, files, mainFile, engine) {
   return { project, root: project.path, res };
 }
 
+// the tool's output, with Windows' line ends made plain
+const runTool = async (args) => (await run(tool, args)).stdout.replace(/\r\n/g, '\n');
+
 /** The tool's answers, with its file as a project-relative path. */
 async function toolEdit(pdf, root, page, x, y) {
-  const { stdout } = await run(tool, ['edit', '-o', `${page}:${x}:${y}:${pdf}`]);
+  const stdout = await runTool(['edit', '-o', `${page}:${x}:${y}:${pdf}`]);
   const m = /Input:(.*)\nLine:(-?\d+)/.exec(stdout);
-  return m && { file: path.relative(root, path.resolve(root, m[1])), line: Number(m[2]) };
+  return m && { file: path.relative(root, path.resolve(root, m[1])).split(path.sep).join('/'), line: Number(m[2]) };
 }
 
 // The tool reports the box around each record it finds (h, v at its bottom, W, H); a box
 // inside another (a superscript, a footnote mark) is part of that line, like ours.
 async function toolView(pdf, root, file, line) {
   // by full path: the tool misses a relative name that TeX found through TEXINPUTS
-  const { stdout } = await run(tool, ['view', '-i', `${line}:0:${path.join(root, file)}`, '-o', pdf]);
+  const stdout = await runTool(['view', '-i', `${line}:0:${path.join(root, file)}`, '-o', pdf]);
   const boxes = [...stdout.matchAll(/Page:(\d+)\nx:.*\ny:.*\nh:(.*)\nv:(.*)\nW:(.*)\nH:(.*)/g)]
     .map(([, page, h, v, W, H]) => ({ page: +page, x: +h, y: +v - +H, width: +W, height: +H }))
     .filter((b) => b.width > 0 || b.height > 0);
@@ -165,8 +169,9 @@ for (const engine of ['pdflatex', 'xelatex', 'lualatex', 'tectonic']) {
   });
 }
 
-// a name the disk keeps decomposed (copied from a zip, say), which the source types precomposed
-const DECOMPOSED = 'paper/chapters/re\u0301sume\u0301.tex';
+// a name the disk keeps decomposed (copied from a zip, say), which the source types precomposed;
+// NTFS only matches the form a name was given in, so on Windows it's precomposed on disk too
+const DECOMPOSED = process.platform === 'win32' ? 'paper/chapters/r\u00e9sum\u00e9.tex' : 'paper/chapters/re\u0301sume\u0301.tex';
 
 test('a main file in a subfolder maps every input back to the project, and a failed compile keeps the last one', { skip: !(await findExecutable('pdflatex')) && 'needs pdflatex', timeout: 120000 }, async () => {
   const files = {

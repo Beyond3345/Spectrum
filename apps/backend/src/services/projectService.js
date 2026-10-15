@@ -216,7 +216,8 @@ async function resolveExistingFolder(input) {
   }
   if (!(await fs.stat(abs)).isDirectory()) throw httpError('That path is a file, not a folder.', 400);
   const real = (p) => fs.realpath(p).catch(() => p);
-  const refused = [path.parse(abs).root, await real(DATA_DIR), await real(PROJECTS_DIR), os.homedir()];
+  // the home folder through realpath too: on Windows that's what gives it the letter case abs has
+  const refused = [path.parse(abs).root, await real(DATA_DIR), await real(PROJECTS_DIR), await real(os.homedir())];
   if (refused.includes(abs)) throw httpError('That folder can’t be used as a project. Choose a folder inside it.', 400);
   return abs;
 }

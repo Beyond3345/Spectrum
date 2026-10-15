@@ -6,7 +6,7 @@ import { promisify } from 'util';
 import * as tar from 'tar';
 import crypto from 'crypto';
 import { gunzipSync } from 'zlib';
-import { ensureDir, copyDir, extractZip, listFilesRecursive, skipInArchive, writeFileAtomic } from '../utils/fsUtils.js';
+import { ensureDir, copyDir, extractZip, listFilesRecursive, renameOver, skipInArchive, writeFileAtomic } from '../utils/fsUtils.js';
 import { safeJoin, safeJoinLink, sanitizeUploadPath } from '../utils/pathUtils.js';
 import { extractDocumentBody, mergeTemplateBody, withoutComments } from '../utils/texUtils.js';
 import { readTemplateManifest, copyTemplateIntoProject, templatePath } from '../services/templateService.js';
@@ -86,6 +86,26 @@ async function isDocument(root, relPath) {
 }
 
 async function moveToBin(folder) {
+  if (process.platform === 'win32') {
+    // The path goes in through the environment, so nothing in it is read as PowerShell. A drive
+    // without a Recycle Bin (network, USB) would delete the folder for good, so those are refused.
+    // ponytail: a folder too big for the Bin is still deleted for good; compare its size with the Bin's if that bites
+    const script = [
+      '$p = $env:SPECTRUM_BIN_PATH',
+      "if ([IO.DriveInfo]::new([IO.Path]::GetPathRoot($p)).DriveType -ne 'Fixed') { exit 3 }",
+      'Add-Type -AssemblyName Microsoft.VisualBasic',
+      "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, 'OnlyErrorDialogs', 'SendToRecycleBin')"
+    ].join('; ');
+    await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+      env: { ...process.env, SPECTRUM_BIN_PATH: folder },
+      windowsHide: true,
+      timeout: 60_000
+    }).catch((err) => {
+      // the first line of PowerShell's error says what went wrong; the rest is where in the script
+      throw new Error(err.code === 3 ? 'This folder isn’t on a drive with a Recycle Bin.' : String(err.stderr ?? '').trim().split(/\r?\n/)[0] || 'Couldn’t move the folder to the Recycle Bin.');
+    });
+    return;
+  }
   try {
     await execFileAsync('/usr/bin/trash', [folder]);
   } catch {
@@ -237,7 +257,7 @@ export function registerProjectRoutes(fastify) {
   });
 
   fastify.post('/api/projects/:id/trash', async (req) => {
-    if (process.platform !== 'darwin') return { ok: false, error: 'Moving to the Bin is only supported on macOS.' };
+    if (!['darwin', 'win32'].includes(process.platform)) return { ok: false, error: 'Moving to the Bin is only supported on macOS and Windows.' };
     const root = await getProjectRoot(req.params.id);
     try {
       await moveToBin(root);
@@ -369,7 +389,7 @@ export function registerProjectRoutes(fastify) {
       try {
         await pipeline(part.file, createWriteStream(tmp));
         if (part.file.truncated) throw httpError(`${relPath} is larger than 200 MB.`, 413);
-        await fs.rename(tmp, abs);
+        await renameOver(tmp, abs);
       } catch (err) {
         await fs.rm(tmp, { force: true });
         throw err;
@@ -455,10 +475,11 @@ export function registerProjectRoutes(fastify) {
     const root = await getProjectRoot(req.params.id);
     const absFrom = editablePath(root, from, safeJoinLink);
     const absTo = editablePath(root, to, safeJoinLink);
-    // fs.rename would replace the destination. The same inode is a case-only rename on APFS.
-    const target = await fs.lstat(absTo).catch(() => null);
+    // fs.rename would replace the destination. The same inode is a case-only rename on APFS and NTFS.
+    // bigint: NTFS file ids are 64-bit, and two rounded to the same number would let a rename replace a file
+    const target = await fs.lstat(absTo, { bigint: true }).catch(() => null);
     if (target) {
-      const source = await fs.lstat(absFrom);
+      const source = await fs.lstat(absFrom, { bigint: true });
       if (target.dev !== source.dev || target.ino !== source.ino) {
         return reply.code(409).send({ ok: false, error: 'A file with that name already exists.' });
       }

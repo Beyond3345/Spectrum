@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import path from 'path';
 import { promises as fs, constants as fsConstants } from 'fs';
 import { spawn } from 'child_process';
-import { ensureDir, listFilesRecursive } from '../utils/fsUtils.js';
+import { ensureDir, listFilesRecursive, renameOver } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { withoutComments } from '../utils/texUtils.js';
 import { getProjectRoot, appPath } from './projectService.js';
@@ -27,7 +27,10 @@ const EXTERNAL_DOCUMENT = /\\(?:z?externaldocument|externalcitedocument)\*?\s*(?
 // Each document's .aux from its last good compile, e.g. .spectrum/aux/chapters/thesis.tex/thesis.aux,
 // for other documents' \externaldocument to read.
 const auxStore = (root, doc) => appPath(root, 'aux', doc);
-const docPath = (root, abs) => path.relative(root, abs).split(path.sep).join('/');
+// TeX reads '\' as a command, and every engine on Windows takes '/' as well
+const slashed = (p) => p.split(path.sep).join('/');
+const docPath = (root, abs) => slashed(path.relative(root, abs));
+const WINDOWS = process.platform === 'win32';
 
 // Every engine writes <main>.synctex.gz too, for jumping between the source and the PDF.
 function buildCommand(engine, outDir, mainFile) {
@@ -50,14 +53,17 @@ function buildCommand(engine, outDir, mainFile) {
 
 /** First match for `name` on PATH, or null. */
 export async function findExecutable(name) {
+  // Windows tries each extension it can run, in cmd.exe's order; there X_OK only means the file exists
+  const names = WINDOWS && !/\.(com|exe|bat|cmd)$/i.test(name) ? ['.com', '.exe', '.bat', '.cmd'].map((ext) => name + ext) : [name];
   for (const dir of (process.env.PATH || '').split(path.delimiter)) {
     if (!dir) continue;
-    const candidate = path.join(dir, name);
-    try {
-      await fs.access(candidate, fsConstants.X_OK);
-      return candidate;
-    } catch {
-      // keep looking
+    for (const candidate of names.map((n) => path.join(dir, n))) {
+      try {
+        await fs.access(candidate, fsConstants.X_OK);
+        return candidate;
+      } catch {
+        // keep looking
+      }
     }
   }
   return null;
@@ -85,6 +91,14 @@ async function autoEngineCandidates(absMain) {
 const children = new Set();
 
 function killGroup(child) {
+  if (WINDOWS) {
+    // no process groups: taskkill walks the tree down from the child, so only while it still runs.
+    // ponytail: what a child leaves running after exiting on its own carries on; a Job Object would catch it
+    if (child.exitCode === null && child.signalCode === null) {
+      spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore', windowsHide: true }).on('error', () => {});
+    }
+    return;
+  }
   try {
     process.kill(-child.pid, 'SIGKILL');
   } catch {
@@ -96,14 +110,32 @@ export function killAllChildren() {
   for (const child of children) killGroup(child);
 }
 
+// cmd.exe reads its own command line: quote each argument, then caret-escape its specials, % too (cross-spawn's way)
+const cmdEscape = (s) => s.replace(/[()\][%!^"`<>&|;, *?]/g, '^$&');
+
 /**
  * Run one command in its own process group, so the time limit also stops what it started
  * (latexmk's pdflatex would otherwise keep running and hold the output pipes open).
  * Resolves { code, timedOut }.
  */
-export function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOUT_MS[cmd] || DEFAULT_PASS_TIMEOUT_MS) {
+export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOUT_MS[cmd] || DEFAULT_PASS_TIMEOUT_MS) {
+  let file = cmd;
+  let options = { cwd, env: env || process.env, detached: true };
+  if (WINDOWS) {
+    // Windows would look in cwd (the project) before PATH
+    file = path.isAbsolute(cmd) ? cmd : await findExecutable(cmd);
+    if (!file) throw Object.assign(new Error(`spawn ${cmd} ENOENT`), { code: 'ENOENT' });
+    // detached gives it no console, so every program it runs would open a console window of its own
+    options = { ...options, detached: false, windowsHide: true };
+    if (/\.(bat|cmd)$/i.test(file)) {
+      // ponytail: a batch file that turns on delayed expansion still expands !name! in its arguments
+      args = ['/d', '/s', '/c', `"${[cmdEscape(file), ...args.map((a) => cmdEscape(`"${a}"`))].join(' ')}"`];
+      file = process.env.ComSpec || 'cmd.exe';
+      options.windowsVerbatimArguments = true;
+    }
+  }
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { cwd, env: env || process.env, detached: true });
+    const child = spawn(file, args, options);
     children.add(child);
     let timedOut = false;
     const timer = setTimeout(() => {
@@ -170,7 +202,7 @@ async function compileDocument(engine, projectRoot, absMain, mainFile) {
   if (engine !== 'auto') return { ...(await compileWith(engine, projectRoot, absMain, mainFile)), engine };
   const candidates = await autoEngineCandidates(absMain);
   if (!candidates.length) {
-    return { ok: false, error: 'No LaTeX engine found. Install MacTeX, TeX Live or Tectonic.', engine };
+    return { ok: false, error: `No LaTeX engine found. Install ${WINDOWS ? 'MiKTeX' : 'MacTeX'}, TeX Live or Tectonic.`, engine };
   }
   const result = await compileWith(candidates[0], projectRoot, absMain, mainFile);
   // fontspec & co. may sit in an \input'd preamble or a local .sty, which the guess can't see
@@ -226,7 +258,7 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
   const mainDir = path.dirname(absMain);
   const mainName = path.basename(absMain);
   const doc = docPath(projectRoot, absMain);
-  const searchPath = (name) => [mainDir, projectRoot, process.env[name] ?? ''].join(path.delimiter);
+  const searchPath = (name) => [slashed(mainDir), slashed(projectRoot), process.env[name] ?? ''].join(path.delimiter);
   const texEnv = {
     ...process.env,
     TEXINPUTS: searchPath('TEXINPUTS'),
@@ -252,7 +284,7 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
     const store = auxStore(projectRoot, item.path);
     for (const aux of await listFilesRecursive(store).catch(() => [])) {
       if (aux.type !== 'file') continue;
-      const rel = path.join(at, aux.path);
+      const rel = slashed(path.join(at, aux.path)); // as keepAux lists it
       const dest = path.join(outDir, rel);
       await ensureDir(path.dirname(dest));
       // two documents can leave an .aux of the same name (one's \include'd chapter, another's own): its own wins
@@ -275,10 +307,10 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
     logChunks.push(next);
   };
 
-  const { cmd, args } = buildCommand(engine, outDir, `./${mainName}`);
+  const { cmd, args } = buildCommand(engine, slashed(outDir), `./${mainName}`);
   if (engine === 'tectonic' && mainDir !== projectRoot) {
     // Tectonic ignores TEXINPUTS; its unstable search-path option does the same job
-    args.unshift('-Z', `search-path=${projectRoot}`);
+    args.unshift('-Z', `search-path=${slashed(projectRoot)}`);
   }
   const base = path.basename(mainFile, path.extname(mainFile));
 
@@ -360,11 +392,12 @@ async function keepAux(outDir, store, others) {
     if (type !== 'file' || !rel.endsWith('.aux')) continue;
     if (others.has(rel) && others.get(rel) === (await fs.stat(path.join(outDir, rel))).mtimeMs) continue;
     await ensureDir(path.dirname(path.join(store, rel)));
-    await fs.rename(path.join(outDir, rel), path.join(store, rel));
+    await renameOver(path.join(outDir, rel), path.join(store, rel));
   }
 }
 
 async function cleanBuild(buildRoot, outDir) {
-  await fs.rm(outDir, { recursive: true, force: true });
+  // retried: on Windows a virus scanner can still hold a file the engine just wrote
+  await fs.rm(outDir, { recursive: true, force: true, maxRetries: 5 });
   await fs.rmdir(buildRoot).catch(() => {}); // only succeeds once no other run is using it
 }

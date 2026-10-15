@@ -10,9 +10,24 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
+import * as tar from 'tar';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const tmp = realpathSync(mkdtempSync(path.join(tmpdir(), 'spectrum-test-')));
+// native: Windows' temp folder can have an 8.3 name in it (RUNNER~1), which the server's realpath spells out
+const tmp = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'spectrum-test-')));
+const WINDOWS = process.platform === 'win32';
+// zip, or on Windows the bsdtar it ships (Git's GNU tar, also on PATH, can't write a zip)
+const canZip = WINDOWS || (() => {
+  try {
+    execFileSync('zip', ['-v'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+const zip = (cwd, zipPath, ...entries) => (WINDOWS
+  ? execFileSync(path.join(process.env.SystemRoot, 'System32', 'tar.exe'), ['-a', '-cf', zipPath, ...entries], { cwd })
+  : execFileSync('zip', ['-qr', zipPath, ...entries], { cwd }));
 const dataDir = path.join(tmp, 'data');
 const projectsDir = path.join(tmp, 'projects');
 // uploads write templates, so never into the repo's own folder
@@ -192,11 +207,13 @@ test('creates projects in the chosen folder with safe, unique folder names', asy
   assert.equal((await api('/api/projects/no-such-project/tree')).status, 404);
 });
 
-test('tree hides app data, VCS internals and Finder litter', async () => {
+test('tree hides app data, VCS internals and Finder and Explorer litter', async () => {
   const p = await newProject('Tree');
   await fs.mkdir(path.join(p.path, '.git'));
   await fs.writeFile(path.join(p.path, '.git', 'config'), '');
   await fs.writeFile(path.join(p.path, '.DS_Store'), '');
+  await fs.writeFile(path.join(p.path, 'Thumbs.db'), '');
+  await fs.writeFile(path.join(p.path, 'desktop.ini'), '');
   await fs.writeFile(path.join(p.path, '.latexmkrc'), '');
   await writeFile(p.id, 'main.tex', 'x');
   const tree = (await api(`/api/projects/${p.id}/tree`)).json;
@@ -272,7 +289,8 @@ test('never opens or relocates to the projects folder, or a folder inside or hol
   await fs.mkdir(inner);
   const open = (folder) => api('/api/projects/open-folder', { method: 'POST', body: { path: folder } });
 
-  await fs.symlink(projectsDir, path.join(tmp, 'projects alias'));
+  // a junction on Windows, which needs no admin rights (other systems ignore the type)
+  await fs.symlink(projectsDir, path.join(tmp, 'projects alias'), 'junction');
   assert.equal((await open(projectsDir)).status, 400);
   assert.equal((await open(path.join(tmp, 'projects alias'))).status, 400);
   const inside = await open(inner);
@@ -299,8 +317,8 @@ test('removes from the list without touching the folder', async () => {
   assert.equal((await api(`/api/projects/${p.id}/remove`, { method: 'POST', body: {} })).status, 404);
 });
 
-// opt-in: on macOS this really moves a small temp folder into the user's Bin
-const binSkip = process.platform !== 'darwin' ? 'macOS only' : process.env.SPECTRUM_TEST_BIN !== '1' && 'set SPECTRUM_TEST_BIN=1 to run';
+// opt-in: this really moves a small temp folder into the user's Bin (Recycle Bin on Windows)
+const binSkip = !['darwin', 'win32'].includes(process.platform) ? 'macOS and Windows only' : process.env.SPECTRUM_TEST_BIN !== '1' && 'set SPECTRUM_TEST_BIN=1 to run';
 test('moves a project to the Bin', { skip: binSkip }, async () => {
   const p = await newProject(`Spectrum test ${crypto.randomUUID().slice(0, 8)}`);
   const res = (await api(`/api/projects/${p.id}/trash`, { method: 'POST', body: {} })).json;
@@ -550,19 +568,16 @@ test('saves, lists and deletes chats', async () => {
 });
 
 test('imports a zip, unwrapping a single top-level folder', async (t) => {
-  try {
-    execFileSync('zip', ['-v'], { stdio: 'ignore' });
-  } catch {
-    return t.skip('zip not installed');
-  }
+  if (!canZip) return t.skip('zip not installed');
   const src = path.join(tmp, 'zipsrc');
   await fs.mkdir(path.join(src, 'paper', 'sections'), { recursive: true });
   await fs.mkdir(path.join(src, 'paper', '.spectrum'), { recursive: true });
   await fs.writeFile(path.join(src, 'paper', 'main.tex'), 'zipped');
   await fs.writeFile(path.join(src, 'paper', 'sections', 'intro.tex'), 'intro');
   await fs.writeFile(path.join(src, 'paper', '.spectrum', 'project.json'), '{"id":"hijack"}');
+  await fs.writeFile(path.join(src, 'paper', 'sections', 'Thumbs.db'), 'litter');
   const zipPath = path.join(tmp, 'paper.zip');
-  execFileSync('zip', ['-qr', zipPath, 'paper'], { cwd: src });
+  zip(src, zipPath, 'paper');
 
   const form = new FormData();
   form.append('parentDir', path.join(tmp, 'imports'));
@@ -706,7 +721,8 @@ test('saving replaces a file in one step and keeps its links and permissions', a
   assert.ok((await writeFile(p.id, 'run.sh', 'new')).json.ok);
   const after = await fs.stat(script);
   assert.notEqual(after.ino, before.ino, 'a new file renamed into place, not the old one rewritten');
-  assert.equal(after.mode & 0o777, 0o755);
+  // Windows keeps only a read-only flag, which this file doesn't have
+  assert.equal(after.mode & 0o777, WINDOWS ? 0o666 : 0o755);
   assert.equal(await readFile(p.id, 'run.sh'), 'new');
 
   await fs.symlink('run.sh', path.join(p.path, 'link.sh'));
@@ -747,21 +763,35 @@ test('a compile that runs too long stops everything it started', async () => {
   const log = [];
   const started = Date.now();
   // the child leaves a grandchild holding the output pipes, like latexmk's pdflatex
-  const result = await runSpawn('sh', ['-c', 'sleep 30 & echo started; sleep 30'], tmp, (c) => log.push(String(c)), process.env, 500);
+  const sleep = 'setTimeout(() => {}, 30000)';
+  const leaver = `require('child_process').spawn(process.execPath, ['-e', '${sleep}'], { stdio: 'inherit' }); console.log('started'); ${sleep}`;
+  const result = await runSpawn(process.execPath, ['-e', leaver], tmp, (c) => log.push(String(c)), process.env, 1500);
   assert.ok(Date.now() - started < 5000, 'returned promptly');
   assert.equal(result.timedOut, true);
-  assert.match(log.join(''), /started[\s\S]*was stopped after 1s/);
-  const quick = await runSpawn('sh', ['-c', 'echo hi'], tmp, (c) => log.push(String(c)), process.env, 5000);
+  assert.match(log.join(''), /started[\s\S]*was stopped after 2s/);
+  const quick = await runSpawn(process.execPath, ['-e', "console.log('hi')"], tmp, (c) => log.push(String(c)), process.env, 5000);
   assert.deepEqual(quick, { code: 0, timedOut: false });
 
   // quitting stops whatever is still running, grandchildren included
   const { killAllChildren } = await import('../src/services/compileService.js');
-  const running = runSpawn('sh', ['-c', 'sleep 30 & sleep 30'], tmp, () => {}, process.env, 60_000);
+  const running = runSpawn(process.execPath, ['-e', leaver], tmp, () => {}, process.env, 60_000);
   await new Promise((r) => setTimeout(r, 200));
   const stopping = Date.now();
   killAllChildren();
   assert.equal((await running).timedOut, false);
   assert.ok(Date.now() - stopping < 5000, 'stopped promptly');
+});
+
+test('a .cmd gets its arguments as given, none of them read by cmd.exe', { skip: !WINDOWS && 'Windows only' }, async () => {
+  const { runSpawn } = await import('../src/services/compileService.js');
+  const bin = path.join(tmp, 'cmd bin (x86)');
+  await fs.mkdir(bin);
+  await fs.writeFile(path.join(bin, 'echoargs.cmd'), '@echo off\r\necho [%1] [%2]\r\n');
+  const odd = './100% a&b %PATH% (x) ^!.tex';
+  const log = [];
+  const res = await runSpawn(path.join(bin, 'echoargs.cmd'), ['-x', odd], tmp, (c) => log.push(String(c)), process.env, 10_000);
+  assert.equal(res.code, 0);
+  assert.equal(log.join('').trim(), `["-x"] ["${odd}"]`);
 });
 
 test('a main file named like an option is refused', async () => {
@@ -807,7 +837,8 @@ test('a broken link or unreadable file does not block versions', async () => {
   await writeFile(p.id, 'main.tex', 'hello');
   await fs.symlink('/Volumes/NotMounted/refs.bib', path.join(p.path, 'refs.bib'));
   await fs.writeFile(path.join(p.path, 'locked.log'), 'secret');
-  await fs.chmod(path.join(p.path, 'locked.log'), 0o000);
+  // Windows has no unreadable mode, only read-only (which a restore can't write)
+  if (!WINDOWS) await fs.chmod(path.join(p.path, 'locked.log'), 0o000);
   try {
     const v = (await api(`/api/projects/${p.id}/versions`, { method: 'POST', body: {} })).json;
     assert.ok(v.ok, v.error);
@@ -849,7 +880,8 @@ test('duplicating keeps links inside the project relative', async () => {
   await writeFile(p.id, 'shared/macros.tex', 'original');
   await fs.symlink('shared/macros.tex', path.join(p.path, 'macros.tex'));
   const copy = (await api(`/api/projects/${p.id}/copy`, { method: 'POST', body: {} })).json.project;
-  assert.equal(await fs.readlink(path.join(copy.path, 'macros.tex')), 'shared/macros.tex');
+  // Windows stores a link's target with backslashes
+  assert.equal(await fs.readlink(path.join(copy.path, 'macros.tex')), path.normalize('shared/macros.tex'));
   assert.ok((await writeFile(copy.id, 'macros.tex', 'edited in the copy')).json.ok);
   assert.equal(await readFile(p.id, 'shared/macros.tex'), 'original');
 });
@@ -857,17 +889,13 @@ test('duplicating keeps links inside the project relative', async () => {
 // ─── Fixes: projects and templates ───
 
 test('imports record the main file, not the first fragment', async (t) => {
-  try {
-    execFileSync('zip', ['-v'], { stdio: 'ignore' });
-  } catch {
-    return t.skip('zip not installed');
-  }
+  if (!canZip) return t.skip('zip not installed');
   const src = path.join(tmp, 'arxivlike');
   await fs.mkdir(src, { recursive: true });
   await fs.writeFile(path.join(src, 'background.tex'), '\\section{Background} text');
   await fs.writeFile(path.join(src, 'ms.tex'), '% \\documentclass{fake}\n\\documentclass{article}\n\\begin{document}\\input{background}\\end{document}');
   const zipPath = path.join(tmp, 'arxivlike.zip');
-  execFileSync('zip', ['-qr', zipPath, '.'], { cwd: src });
+  zip(src, zipPath, '.');
   const form = new FormData();
   form.append('zip', new Blob([await fs.readFile(zipPath)]), 'arxivlike.zip');
   const res = await (await fetch(`${base}/api/projects/import-zip`, { method: 'POST', body: form })).json();
@@ -887,7 +915,8 @@ test('arXiv sources never bring links along', async () => {
   await fs.writeFile(path.join(src, 'main.tex'), 'paper');
   await fs.symlink('/etc/hosts', path.join(src, 'refs.tex'));
   const tarball = path.join(tmp, 'source.tar');
-  execFileSync('tar', ['-cf', tarball, '-C', src, 'main.tex', 'refs.tex'], { env: { ...process.env, COPYFILE_DISABLE: '1' } });
+  // node-tar, the same on every system (Git's GNU tar on Windows reads C:\… as a remote host)
+  await tar.c({ file: tarball, cwd: src }, ['main.tex', 'refs.tex']);
   const out = path.join(tmp, 'tarout');
   await fs.mkdir(out);
   await extractArxivSource(tarball, out);
@@ -915,18 +944,14 @@ test('imports from arXiv, and a cancelled import stops the download and leaves n
 });
 
 test('template uploads unwrap Finder zips and never replace a template', async (t) => {
-  try {
-    execFileSync('zip', ['-v'], { stdio: 'ignore' });
-  } catch {
-    return t.skip('zip not installed');
-  }
+  if (!canZip) return t.skip('zip not installed');
   const src = path.join(tmp, 'tplsrc');
   await fs.mkdir(path.join(src, 'My Template'), { recursive: true });
   await fs.mkdir(path.join(src, '__MACOSX', 'My Template'), { recursive: true });
   await fs.writeFile(path.join(src, 'My Template', 'paper_latex.tex'), '\\documentclass{article}\\begin{document}T\\end{document}');
   await fs.writeFile(path.join(src, '__MACOSX', 'My Template', '._paper_latex.tex'), 'junk');
   const zipPath = path.join(tmp, 'MyTemplate.zip');
-  execFileSync('zip', ['-qr', zipPath, 'My Template', '__MACOSX'], { cwd: src });
+  zip(src, zipPath, 'My Template', '__MACOSX');
   const upload = async (id) => {
     const form = new FormData();
     form.append('templateId', id);
@@ -1108,7 +1133,7 @@ test('file routes do not follow links out of the project', async () => {
   assert.equal((await api(`/api/projects/${p.id}/file?path=link.tex`)).status, 400);
   assert.equal((await writeFile(p.id, 'link.tex', 'overwritten-through-link')).status, 400);
   assert.equal(await fs.readFile(outside, 'utf8'), 'secret');
-  await fs.symlink(tmp, path.join(p.path, 'dir-link'));
+  await fs.symlink(tmp, path.join(p.path, 'dir-link'), 'junction');
   assert.equal((await writeFile(p.id, 'dir-link/escape.txt', 'x')).status, 400);
   assert.ok(!existsSync(path.join(tmp, 'escape.txt')));
 });
