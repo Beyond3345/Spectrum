@@ -312,6 +312,10 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
     // Tectonic ignores TEXINPUTS; its unstable search-path option does the same job
     args.unshift('-Z', `search-path=${slashed(projectRoot)}`);
   }
+  // MiKTeX asks before installing a missing package, in a window the hidden engine never shows, so the
+  // compile would sit until its time limit; this installs it without asking. ponytail: latexmk's own
+  // engine runs still ask; pass -pdflatex="pdflatex --enable-installer %O %S" if that bites
+  if (WINDOWS && MULTI_PASS_ENGINES.includes(engine) && /[\\/]miktex[\\/]/i.test((await findExecutable(cmd)) || '')) args.unshift('--enable-installer');
   const base = path.basename(mainFile, path.extname(mainFile));
 
   let pass;
