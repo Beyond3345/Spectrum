@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// macOS app helper.
+// Desktop app helper.
 //   node scripts/desktop.mjs dev        run the shell against the repo backend (tauri dev)
-//   node scripts/desktop.mjs build      universal Spectrum.app + .dmg
+//   node scripts/desktop.mjs build      universal Spectrum.app + .dmg on macOS, the x64 installer on Windows
 //   node scripts/desktop.mjs resources  everything `build` bundles, without packaging
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -15,11 +15,15 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tauriDir = path.join(root, 'src-tauri');
 const resourcesDir = path.join(tauriDir, 'resources');
 const binDir = path.join(tauriDir, 'binaries');
-const cacheDir = path.join(os.homedir(), 'Library', 'Caches', 'spectrum-build');
-const TRIPLES = { arm64: 'aarch64-apple-darwin', x64: 'x86_64-apple-darwin' };
+const win = process.platform === 'win32';
+const cacheDir = win ? path.join(process.env.LOCALAPPDATA, 'spectrum-build') : path.join(os.homedir(), 'Library', 'Caches', 'spectrum-build');
+const TRIPLES = win ? { x64: 'x86_64-pc-windows-msvc' } : { arm64: 'aarch64-apple-darwin', x64: 'x86_64-apple-darwin' };
+const EXE = win ? '.exe' : '';
 
 function run(cmd, args, opts = {}) {
-  const res = spawnSync(cmd, args, { cwd: root, stdio: 'inherit', ...opts });
+  // npm and npx are .cmd scripts on Windows, which only run through a shell
+  const shell = win && ['npm', 'npx'].includes(cmd);
+  const res = spawnSync(cmd, args, { cwd: root, stdio: 'inherit', shell, ...opts });
   if (res.status !== 0) throw new Error(`${cmd} ${args.join(' ')} failed (${res.status ?? res.signal})`);
 }
 
@@ -92,27 +96,30 @@ async function expectedSha(version, file) {
   return line.split(/\s+/)[0];
 }
 
-/** Verified `bin/node` from the official darwin tarball, cached per version. */
+/** Verified `bin/node` from the official darwin tarball (`node.exe` from the Windows zip), cached per version. */
 async function nodeBinary(version, arch) {
-  const name = `node-${version}-darwin-${arch}`;
+  const name = `node-${version}-${win ? 'win' : 'darwin'}-${arch}`;
+  const file = `${name}.${win ? 'zip' : 'tar.gz'}`;
   const outDir = path.join(cacheDir, name);
-  const out = path.join(outDir, 'node');
+  const out = path.join(outDir, `node${EXE}`);
   if (fs.existsSync(out)) return out;
 
-  const tarball = path.join(cacheDir, `${name}.tar.gz`);
-  const expected = await expectedSha(version, `${name}.tar.gz`);
-  if (!fs.existsSync(tarball) || sha256(tarball) !== expected) {
-    console.log(`Downloading ${name}.tar.gz…`);
-    const res = await fetchOk(`https://nodejs.org/dist/${version}/${name}.tar.gz`);
-    fs.writeFileSync(`${tarball}.part`, Buffer.from(await res.arrayBuffer()));
-    fs.renameSync(`${tarball}.part`, tarball);
-    if (sha256(tarball) !== expected) {
-      fs.rmSync(tarball);
-      throw new Error(`Checksum mismatch for ${name}.tar.gz`);
+  const archive = path.join(cacheDir, file);
+  const expected = await expectedSha(version, file);
+  if (!fs.existsSync(archive) || sha256(archive) !== expected) {
+    console.log(`Downloading ${file}…`);
+    const res = await fetchOk(`https://nodejs.org/dist/${version}/${file}`);
+    fs.writeFileSync(`${archive}.part`, Buffer.from(await res.arrayBuffer()));
+    fs.renameSync(`${archive}.part`, archive);
+    if (sha256(archive) !== expected) {
+      fs.rmSync(archive);
+      throw new Error(`Checksum mismatch for ${file}`);
     }
   }
   fs.mkdirSync(outDir, { recursive: true });
-  run('tar', ['-xzf', tarball, '-C', outDir, '--strip-components', '2', `${name}/bin/node`]);
+  // Windows' own tar reads zips; the GNU tar that Git for Windows puts on PATH doesn't
+  if (win) run(path.join(process.env.SystemRoot, 'System32', 'tar.exe'), ['-xf', archive, '-C', outDir, '--strip-components', '1', `${name}/node.exe`]);
+  else run('tar', ['-xzf', archive, '-C', outDir, '--strip-components', '2', `${name}/bin/node`]);
   return out;
 }
 
@@ -124,7 +131,7 @@ async function nodeRuntime(arches) {
   const bins = {};
   for (const arch of arches) {
     bins[arch] = await nodeBinary(version, arch);
-    const dest = path.join(binDir, `node-${TRIPLES[arch]}`);
+    const dest = path.join(binDir, `node-${TRIPLES[arch]}${EXE}`);
     fs.copyFileSync(bins[arch], dest);
     fs.chmodSync(dest, 0o755);
   }
@@ -140,6 +147,8 @@ async function resources() {
   run('npm', ['run', 'build']);
   await bundleBackend();
   copyDir(path.join(root, 'apps/frontend/dist'), path.join(resourcesDir, 'frontend'));
+  // each platform its own icons: SF Symbols may only ship in apps for Apple platforms
+  fs.rmSync(path.join(resourcesDir, 'frontend', win ? 'sf' : 'fluent'), { recursive: true, force: true });
   copyDir(path.join(root, 'templates'), path.join(resourcesDir, 'templates'));
   copyDir(path.join(root, 'dictionaries'), path.join(resourcesDir, 'dictionaries'));
   // the built nodehun and Harper only, not nodehun's sources
@@ -147,12 +156,23 @@ async function resources() {
   fs.rmSync(native, { recursive: true, force: true });
   fs.mkdirSync(native, { recursive: true });
   copyDir(path.join(root, 'native/harper'), path.join(native, 'harper'));
-  fs.copyFileSync(path.join(root, 'native/nodehun.node'), path.join(native, 'nodehun.node'));
-  await nodeRuntime(['arm64', 'x64']);
+  const nodehun = path.join(root, win ? 'native/win32-x64/nodehun.node' : 'native/nodehun.node');
+  // the backend carries on without the spell checker, and says why
+  if (win && !fs.existsSync(nodehun)) console.warn(`\nWARNING: no ${path.relative(root, nodehun)} (node scripts/native.mjs nodehun builds it), so this build has no spell checker.\n`);
+  else fs.copyFileSync(nodehun, path.join(native, 'nodehun.node'));
+  await nodeRuntime(Object.keys(TRIPLES));
 }
 
 async function build() {
   await resources();
+  if (win) {
+    run('npx', ['tauri', 'build', '--target', TRIPLES.x64]);
+    const nsisDir = path.join(tauriDir, `target/${TRIPLES.x64}/release/bundle/nsis`);
+    for (const f of fs.readdirSync(nsisDir).filter((f) => f.endsWith('.exe'))) {
+      console.log(`\nInstaller: ${path.join(nsisDir, f)}`);
+    }
+    return;
+  }
   // CI skips the Finder AppleScript that lays out the DMG window
   run('npx', ['tauri', 'build', '--target', 'universal-apple-darwin'], { env: { ...process.env, CI: 'true' } });
   const bundle = path.join(tauriDir, 'target/universal-apple-darwin/release/bundle');
@@ -168,7 +188,7 @@ async function dev() {
   run('npm', ['run', 'build']);
   // bundle inputs aren't used in dev, but tauri-build insists they exist
   for (const dir of ['backend', 'frontend', 'templates', 'native', 'dictionaries']) fs.mkdirSync(path.join(resourcesDir, dir), { recursive: true });
-  if (!fs.existsSync(path.join(binDir, `node-${TRIPLES[process.arch]}`))) await nodeRuntime([process.arch]);
+  if (!fs.existsSync(path.join(binDir, `node-${TRIPLES[process.arch]}${EXE}`))) await nodeRuntime([process.arch]);
   run('npx', ['tauri', 'dev']);
 }
 

@@ -13,3 +13,4 @@ src-tauri/binaries/
 src-tauri/resources/
 
 AGENTS.md
+native/win32-x64/

@@ -1,25 +1,35 @@
-//! macOS shell: starts the Node backend on 127.0.0.1, shows a splash until it
-//! answers, then points the window at it.
+//! Desktop shell (macOS and Windows): starts the Node backend on 127.0.0.1, shows
+//! a splash until it answers, then points the window at it.
+// no console window behind the app on Windows
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+#[cfg(unix)]
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{env, thread};
 
+#[cfg(target_os = "macos")]
 use tauri::menu::{Menu, MenuItem, MenuItemKind};
 use tauri::webview::{DownloadEvent, NewWindowResponse, PageLoadEvent};
 use tauri::window::Color;
 use tauri::{
-    AppHandle, Listener, LogicalPosition, Manager, RunEvent, Theme, TitleBarStyle, Url, WebviewUrl,
-    WebviewWindow, WebviewWindowBuilder, WindowEvent,
+    AppHandle, Listener, Manager, RunEvent, Theme, Url, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder, WindowEvent,
 };
+#[cfg(target_os = "macos")]
+use tauri::{LogicalPosition, TitleBarStyle};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_window_state::StateFlags;
 
@@ -29,7 +39,11 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(40);
 // 88 and the collapsed header's 76px gutter); tao grows the title bar to 14 + y,
 // which puts the buttons' centre at y - 2 = 26, the middle of the 52px sidebar
 // top row.
+#[cfg(target_os = "macos")]
 const TRAFFIC_LIGHTS: LogicalPosition<f64> = LogicalPosition { x: 12.0, y: 28.0 };
+/// Keeps the backend and the tools it runs from opening console windows.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// How long Cmd+Q and the close button wait for the page to save before quitting
 /// anyway, so a hung page can't keep the app open.
@@ -45,7 +59,7 @@ static QUITTING: AtomicBool = AtomicBool::new(false);
 struct Backend(Mutex<Option<Child>>);
 
 fn main() {
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
@@ -60,7 +74,10 @@ fn main() {
         )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .manage(Backend(Mutex::new(None)))
+        .manage(Backend(Mutex::new(None)));
+    // Windows has no menu bar: closing the window quits there
+    #[cfg(target_os = "macos")]
+    let builder = builder
         .menu(|app| {
             // the stock Quit ends the app at once; ours lets the editor save first
             let menu = Menu::default(app)?;
@@ -81,7 +98,8 @@ fn main() {
             if event.id() == "quit" {
                 quit(app);
             }
-        })
+        });
+    let app = builder
         .setup(|app| {
             start(app.handle())?;
             Ok(())
@@ -149,10 +167,24 @@ fn stop_backend(mut child: Child) {
 }
 
 /// SIGKILLs every process in the group led by `pid` (spawned with `process_group(0)`).
+#[cfg(unix)]
 fn kill_group(pid: u32) {
     let _ = Command::new("/bin/kill")
         .args(["-KILL", &format!("-{pid}")])
         .stderr(Stdio::null())
+        .status();
+}
+
+/// Windows has no process groups: kills `pid` and the processes it started.
+// ponytail: /T only reaches what a still-running backend started (it stops its own
+// compiles on the way out); a job object would catch orphans too
+#[cfg(windows)]
+fn kill_group(pid: u32) {
+    let _ = Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
         .status();
 }
 
@@ -216,26 +248,31 @@ fn build_window(
     // the macOS "finished" event carries no path, so remember where each URL went
     let downloads = Mutex::new(HashMap::<String, PathBuf>::new());
 
-    let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+    let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .title("Spectrum")
         .inner_size(1320.0, 860.0)
         .min_inner_size(960.0, 620.0)
         .center()
-        .visible(false)
+        .visible(false);
+    // Windows keeps its standard title bar
+    #[cfg(target_os = "macos")]
+    let builder = builder
         .title_bar_style(TitleBarStyle::Overlay)
         .hidden_title(true)
         .traffic_light_position(TRAFFIC_LIGHTS)
         // so Settings can put glass behind the page; follow_glass keeps it opaque until then
-        .transparent(true)
+        .transparent(true);
+    let window = builder
         // let WebKit take drops itself, so files dragged in from Finder reach the page
         .disable_drag_drop_handler()
         .on_page_load(move |_, payload| {
-            if payload.event() == PageLoadEvent::Finished && payload.url().scheme() == "tauri" {
+            if payload.event() == PageLoadEvent::Finished && is_splash(payload.url()) {
                 splash_ready.store(true, Ordering::SeqCst);
             }
         })
         .on_navigation(move |url| match url.scheme() {
-            "tauri" | "about" | "blob" | "data" => true,
+            _ if is_splash(url) => true,
+            "about" | "blob" | "data" => true,
             "http" if url.host_str() == Some("127.0.0.1") && url.port() == Some(port) => true,
             "http" | "https" => {
                 let _ = opener.opener().open_url(url.as_str(), None::<&str>);
@@ -302,6 +339,11 @@ fn build_window(
     });
     window.show()?;
     Ok(window)
+}
+
+/// The splash's own address: tauri://localhost, or http://tauri.localhost in WebView2.
+fn is_splash(url: &Url) -> bool {
+    url.scheme() == "tauri" || cfg!(windows) && url.host_str() == Some("tauri.localhost")
 }
 
 /// Sets .fullscreen on the page, which drops the room kept for the traffic lights. .fs-moving
@@ -445,9 +487,12 @@ fn spawn_backend(app: &AppHandle, port: u16, log_path: &Path) -> Result<Child, S
         .env("PATH", &path_var)
         .stdin(Stdio::piped())
         .stdout(log)
-        .stderr(log_err)
-        // its own group, so quitting can stop the compilers it starts too
-        .process_group(0);
+        .stderr(log_err);
+    // its own group, so quitting can stop the compilers it starts too
+    #[cfg(unix)]
+    cmd.process_group(0);
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
     cmd.spawn()
         .map_err(|e| format!("Couldn't start the Spectrum server: {e}"))
 }
@@ -460,7 +505,7 @@ fn backend_command(app: &AppHandle, data_dir: &Path, _path_var: &str) -> Result<
     let exe = env::current_exe().map_err(|e| e.to_string())?;
     let node = exe
         .parent()
-        .map(|dir| dir.join("node"))
+        .map(|dir| dir.join(format!("node{}", env::consts::EXE_SUFFIX)))
         .ok_or("Couldn't find the bundled Node.js.")?;
     let mut cmd = Command::new(node);
     cmd.arg(resources.join("backend").join("server.mjs"))
@@ -480,9 +525,8 @@ fn backend_command(_app: &AppHandle, _data_dir: &Path, path_var: &str) -> Result
     let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("repo root");
-    let node = path_var
-        .split(':')
-        .map(|dir| Path::new(dir).join("node"))
+    let node = env::split_paths(path_var)
+        .map(|dir| dir.join(format!("node{}", env::consts::EXE_SUFFIX)))
         .find(|p| p.is_file())
         .ok_or("Node.js wasn't found on your PATH.")?;
     let mut cmd = Command::new(node);
@@ -491,8 +535,47 @@ fn backend_command(_app: &AppHandle, _data_dir: &Path, path_var: &str) -> Result
     Ok(cmd)
 }
 
+/// Apps started from Explorer get the PATH Explorer started with, so a MiKTeX or TeX
+/// Live installed since isn't on it yet: add their folders when they're there.
+#[cfg(windows)]
+fn search_path() -> String {
+    let local = env::var_os("LOCALAPPDATA").map(PathBuf::from);
+    let program_files = env::var_os("ProgramFiles").map(PathBuf::from);
+    // C:\texlive\<year>\bin\windows, the newest year
+    let texlive = Path::new(r"C:\texlive");
+    let newest = fs::read_dir(texlive).ok().and_then(|years| {
+        years
+            .flatten()
+            .map(|year| year.file_name())
+            .filter(|name| name.to_string_lossy().parse::<u16>().is_ok())
+            .max()
+    });
+    let tex = [
+        local.map(|dir| dir.join(r"Programs\MiKTeX\miktex\bin\x64")),
+        program_files.map(|dir| dir.join(r"MiKTeX\miktex\bin\x64")),
+        newest.map(|year| texlive.join(year).join(r"bin\windows")),
+    ];
+    let path = env::var("PATH").unwrap_or_default();
+    let mut dirs: Vec<String> = path
+        .split(';')
+        .filter(|dir| !dir.is_empty())
+        .map(str::to_string)
+        .collect();
+    for dir in tex.into_iter().flatten().filter(|dir| dir.is_dir()) {
+        let dir = dir.to_string_lossy().into_owned();
+        if !dirs
+            .iter()
+            .any(|d| d.trim_end_matches('\\').eq_ignore_ascii_case(&dir))
+        {
+            dirs.push(dir);
+        }
+    }
+    dirs.join(";")
+}
+
 /// Apps launched from Finder get a bare PATH; use the login shell's (where
 /// Homebrew, MacTeX, pyenv etc. are set up) plus the usual tool folders.
+#[cfg(unix)]
 fn search_path() -> String {
     let home = env::var("HOME").unwrap_or_default();
     let login = login_shell_path().unwrap_or_default();
@@ -515,10 +598,12 @@ fn search_path() -> String {
     dirs.join(":")
 }
 
+#[cfg(unix)]
 fn login_shell_path() -> Option<String> {
     shell_path(&env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into()))
 }
 
+#[cfg(unix)]
 fn shell_path(shell: &str) -> Option<String> {
     const MARK: &str = "__SPECTRUM_PATH__";
     // works in sh, bash, zsh and fish
@@ -632,6 +717,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn shell_path_ignores_jobs_left_running() {
         use std::os::unix::fs::PermissionsExt;
         // an rc file that leaves a job holding stdout open, then prints the PATH
@@ -646,6 +732,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn stopping_the_backend_stops_what_it_started() {
         // `cat` exits when stdin closes, like the backend; `sleep` stands in for a
         // compile it started, which would be left running
@@ -674,6 +761,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn search_path_has_tex_and_no_duplicates() {
         let path = search_path();
         let dirs: Vec<&str> = path.split(':').collect();
@@ -682,5 +770,23 @@ mod tests {
             dirs.len(),
             dirs.iter().collect::<std::collections::HashSet<_>>().len()
         );
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn search_path_adds_tex_once() {
+        // a MiKTeX installed for this user only, after the PATH was set
+        let local = env::temp_dir().join(format!("spectrum-local-{}", std::process::id()));
+        let miktex = local.join(r"Programs\MiKTeX\miktex\bin\x64");
+        fs::create_dir_all(&miktex).unwrap();
+        env::set_var("LOCALAPPDATA", &local);
+        env::set_var("ProgramFiles", &local);
+        env::set_var("PATH", r"C:\Windows;");
+        let path = search_path();
+        assert_eq!(path, format!(r"C:\Windows;{}", miktex.display()));
+        // already there, in any case
+        env::set_var("PATH", path.to_uppercase());
+        assert_eq!(search_path(), path.to_uppercase());
+        fs::remove_dir_all(&local).unwrap();
     }
 }

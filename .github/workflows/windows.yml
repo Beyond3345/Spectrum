@@ -1,0 +1,109 @@
+# Builds and tests the Windows (x64) app, and can attach its installer to a release.
+#   push to windows-port            build and test; the installer is a workflow artifact
+#   Run workflow, release_tag v1.5.0  also uploads the installer to that release
+name: Windows
+
+on:
+  push:
+    branches: [windows-port]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release to attach the installer to, e.g. v1.5.0 (empty to only build)
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      # the dictionaries and templates ship as they are in the repo, with LF line endings
+      - run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      # rustup comes with the runner
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # Visual Studio's C++ tools and Python come with the runner. Without nodehun the
+      # installer still builds (no spell checker), but isn't attached to a release.
+      - name: Spell checker (nodehun)
+        id: nodehun
+        continue-on-error: true
+        run: node scripts/native.mjs nodehun
+
+      - name: Installer
+        run: node scripts/desktop.mjs build
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: spectrum-windows-x64
+          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
+      # a TeX for the backend's compile tests, installing packages as they're asked for
+      - name: MiKTeX
+        run: |
+          choco install miktex --no-progress -y
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $bin = "$env:ProgramFiles\MiKTeX\miktex\bin\x64"
+          & "$bin\initexmf.exe" --admin --set-config-value='[MPM]AutoInstall=1'
+          & "$bin\initexmf.exe" --set-config-value='[MPM]AutoInstall=1'
+          Add-Content $env:GITHUB_PATH $bin
+
+      - name: Tectonic
+        continue-on-error: true
+        run: choco install tectonic --no-progress -y
+
+      # latexmk needs Perl (Strawberry Perl comes with the runner)
+      - name: TeX tools
+        run: |
+          Get-Command pdflatex, latexmk, biber, tectonic -ErrorAction SilentlyContinue | Format-Table Name, Source
+          perl -v
+
+      - name: Backend tests
+        env:
+          # nodehun and Harper as the installer has them
+          SPECTRUM_NATIVE_DIR: ${{ github.workspace }}\src-tauri\resources\native
+        run: npm test
+
+      - run: npm run typecheck
+
+      - name: Frontend checks
+        run: |
+          $out = "$env:RUNNER_TEMP\check.cjs"
+          foreach ($check in Get-ChildItem apps/frontend/src -Recurse -Filter *.check.ts) {
+            npx esbuild $check.FullName --bundle --platform=node --log-level=warning "--outfile=$out"
+            if ($LASTEXITCODE) { throw "esbuild couldn't bundle $($check.Name)" }
+            node $out
+            if ($LASTEXITCODE) { throw "$($check.Name) failed" }
+          }
+
+      - name: Shell tests
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Attach to the release
+        if: inputs.release_tag && steps.nodehun.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: gh release upload $env:TAG (Get-Item src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe).FullName --clobber
