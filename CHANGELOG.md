@@ -7,6 +7,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 ### Added
 
 - A Windows version for x64 PCs, as a preview, installed with `Spectrum_1.5.0_x64-setup.exe`. It has the standard Windows title bar, Microsoft's Fluent UI System Icons, `Ctrl` shortcuts, File Explorer and the Recycle Bin, and works with MiKTeX, TeX Live and Tectonic. It is built and tested on GitHub Actions
+- Windows' `Thumbs.db` and `desktop.ini` are hidden from the file list and left out of imports, on macOS too
 
 - Compiling a document other than the main file. When a project holds more than one document (a `.tex` file with its own `\documentclass`), the menu beside Compile lists them above the compilers, and choosing one compiles it once without changing the main file. `⇧⌘↩` compiles the open file when it is a document of its own and the main file otherwise. Compile and `⌘↩` still compile the main file
 - Cross-references between documents with `xr` or `xr-hyper` (`\externaldocument`) and `zref-xr` (`\zexternaldocument`). The `.aux` files of each document are kept in the hidden `.spectrum` folder after a compile, so a document that links to another finds its labels with every compiler. A linked document that has not been compiled or has changed since is compiled first

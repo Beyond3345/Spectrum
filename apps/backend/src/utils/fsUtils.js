@@ -26,6 +26,8 @@ export async function writeFileAtomic(filePath, data) {
   try {
     await fs.writeFile(tmp, data);
     if (mode !== undefined) await fs.chmod(tmp, mode);
+    // Windows won't rename over a read-only file (macOS ignores the target's mode); the copy keeps the mode
+    if (process.platform === 'win32' && mode !== undefined && !(mode & 0o200)) await fs.chmod(filePath, mode | 0o200);
     await renameOver(tmp, filePath);
   } catch (err) {
     await fs.rm(tmp, { force: true });

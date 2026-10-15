@@ -13,8 +13,10 @@ on:
         required: false
         default: ''
 
+# the build runs third-party code (npm install scripts, node-gyp, crates' build scripts), so it can only read;
+# the attach job, which runs none of it, is the only one that can write to a release
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   windows:
@@ -28,6 +30,8 @@ jobs:
       - run: git config --global core.autocrlf false
 
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v5
         with:
@@ -44,10 +48,9 @@ jobs:
       - run: npm ci
 
       # Visual Studio's C++ tools and Python come with the runner. Without nodehun the
-      # installer still builds (no spell checker), but isn't attached to a release.
+      # installer still builds (no spell checker), but a release run fails instead of attaching it.
       - name: Spell checker (nodehun)
-        id: nodehun
-        continue-on-error: true
+        continue-on-error: ${{ !inputs.release_tag }}
         run: node scripts/native.mjs nodehun
 
       - name: Installer
@@ -109,9 +112,17 @@ jobs:
         working-directory: src-tauri
         run: cargo test
 
-      - name: Attach to the release
-        if: inputs.release_tag && steps.nodehun.outcome == 'success'
-        env:
+  attach:
+    needs: windows
+    if: inputs.release_tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: spectrum-windows-x64
+      - env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.release_tag }}
-        run: gh release upload $env:TAG (Get-Item src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe).FullName --clobber
+        run: gh release upload "$TAG" ./*.exe --clobber --repo "$GITHUB_REPOSITORY"
