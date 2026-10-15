@@ -4,6 +4,7 @@ import { blobUrl, getFile, getProjectTree, plotFromTable, uploadFiles, visionToL
 import Icon from '../../app/Icon';
 import Select from '../../app/Select';
 import Sheet from '../../app/Sheet';
+import { IS_WINDOWS } from '../../app/platform';
 import { useEditor } from '../EditorContext';
 import type { EditorApi } from '../EditorContext';
 import { VISION_HINTS, VISION_MODES, errorText, figureSnippet, isTex } from '../shared';
@@ -693,7 +694,9 @@ function InsertTable() {
           {cells.length} × {cols}
         </span>
       </div>
-      <div className="field-hint">Tab moves to the next cell and Return moves down. Paste rows from Numbers, Excel or a CSV file to fill the grid.</div>
+      <div className="field-hint">
+        Tab moves to the next cell and {IS_WINDOWS ? 'Enter' : 'Return'} moves down. Paste rows from {IS_WINDOWS ? '' : 'Numbers, '}Excel or a CSV file to fill the grid.
+      </div>
       <Segmented
         label="Environment"
         value={env}

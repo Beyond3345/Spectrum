@@ -1,8 +1,9 @@
 import { promptDialog } from './Dialogs';
+import { IS_WINDOWS } from './platform';
 
 type TauriInternals = { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> };
 
-/** True inside the macOS app (Tauri injects this into every page it loads). */
+/** True inside the desktop app (Tauri injects this into every page it loads). */
 export const IS_DESKTOP = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 const tauri = () => (window as unknown as { __TAURI_INTERNALS__: TauriInternals }).__TAURI_INTERNALS__;
@@ -17,8 +18,8 @@ export async function pickFolder(opts: { title?: string; defaultPath?: string } 
   }
   const typed = await promptDialog({
     title: opts.title || 'Choose a folder',
-    message: 'Enter the full path of a folder on this Mac.',
-    placeholder: '/Users/…/Documents/Spectrum',
+    message: `Enter the full path of a folder on this ${IS_WINDOWS ? 'PC' : 'Mac'}.`,
+    placeholder: IS_WINDOWS ? 'C:\\Users\\…\\Documents\\Spectrum' : '/Users/…/Documents/Spectrum',
     defaultValue: opts.defaultPath,
     confirmLabel: 'Choose'
   });

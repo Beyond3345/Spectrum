@@ -10,6 +10,7 @@ import Select from './Select';
 import Sheet from './Sheet';
 import { ParserFields } from './TransferPanel';
 import { IS_DESKTOP, pickFolder } from './desktop';
+import { IS_MAC, IS_WINDOWS, OS_NAME } from './platform';
 import { ACCENTS, PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
 import {
   COMPILE_ENGINES,
@@ -63,16 +64,16 @@ const SEARCH_PROVIDERS: [SearchProvider, string][] = [
   ['brave', 'Brave Search']
 ];
 
-const MACTEX = 'brew install --cask mactex-no-gui';
+const TEX = IS_WINDOWS ? 'Install TeX Live or MiKTeX' : 'brew install --cask mactex-no-gui';
 const INSTALL_HINTS: Record<string, string> = {
-  pdflatex: MACTEX,
-  xelatex: MACTEX,
-  lualatex: MACTEX,
-  latexmk: MACTEX,
-  bibtex: MACTEX,
-  biber: MACTEX,
-  texcount: `Included with MacTeX (${MACTEX})`,
-  tectonic: 'brew install tectonic'
+  pdflatex: TEX,
+  xelatex: TEX,
+  lualatex: TEX,
+  latexmk: TEX,
+  bibtex: TEX,
+  biber: TEX,
+  texcount: IS_WINDOWS ? 'Included with TeX Live' : `Included with MacTeX (${TEX})`,
+  tectonic: IS_WINDOWS ? 'Install it from tectonic-typesetting.github.io' : 'brew install tectonic'
 };
 
 export default function SettingsSheet({ onClose }: { onClose: () => void }) {
@@ -280,7 +281,7 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                   </button>
                 ))}
               </div>
-              <div className="field-hint">System follows the macOS appearance and switches automatically.</div>
+              <div className="field-hint">System follows the {OS_NAME} appearance and switches automatically.</div>
 
               <h3 id="settings-accent" className="form-section-title">Accent colour</h3>
               <div className="row">
@@ -307,9 +308,12 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                   onChange={(e) => update({ accent: 'custom', accentCustom: e.target.value })}
                 />
               </div>
-              <div className="field-hint">Follow macOS uses the accent colour chosen in System Settings.</div>
+              <div className="field-hint">
+                Follow {OS_NAME} uses the accent colour chosen in {IS_WINDOWS ? 'Settings → Personalisation → Colours' : 'System Settings'}.
+              </div>
 
-              {IS_DESKTOP && (
+              {/* see-through glass is macOS's alone */}
+              {IS_DESKTOP && !IS_WINDOWS && (
                 <>
                   <h3 className="form-section-title">Window</h3>
                   <label className="checkbox-row">
@@ -620,7 +624,7 @@ function ShortcutsPane() {
   return (
     <>
       <div className="field-hint section-hint">
-        Click a shortcut and press the new keys. Delete removes it and Escape cancels. Tab and ⇧Tab also indent and unindent the selected lines.
+        Click a shortcut and press the new keys. Delete removes it and Escape cancels. Tab and {IS_MAC ? '⇧Tab' : 'Shift+Tab'} also indent and unindent the selected lines.
       </div>
       {SHORTCUT_GROUPS.map((group) => (
         <div key={group}>
@@ -839,12 +843,16 @@ function EditorPane() {
             autoComplete="off"
             onChange={(e) => update({ editorFontCustom: e.target.value })}
           />
-          <div className="field-hint">The family name as Font Book shows it. SF Mono is used until it matches an installed font.</div>
+          <div className="field-hint">
+            {IS_WINDOWS
+              ? 'The family name as Settings → Personalisation → Fonts shows it. Consolas is used until it matches an installed font.'
+              : 'The family name as Font Book shows it. SF Mono is used until it matches an installed font.'}
+          </div>
         </div>
       )}
 
       <h3 className="form-section-title">Theme</h3>
-      <div className="field-hint section-hint">Any light theme goes with any dark one. With System, the editor switches between them with macOS.</div>
+      <div className="field-hint section-hint">Any light theme goes with any dark one. With System, the editor switches between them with {OS_NAME}.</div>
       <div className="editor-theme-columns">
         {(['light', 'dark'] as const).map((m) => (
           <div key={m} className="field">

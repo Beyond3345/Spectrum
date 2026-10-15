@@ -3,6 +3,7 @@ import { ensureSyntaxTree } from '@codemirror/language';
 import { highlightCode, tagHighlighter, tags } from '@lezer/highlight';
 import { SETTINGS_CHANGE_EVENT, loadSettings } from '../app/settings';
 import type { AppSettings, EditorColourRole } from '../app/settings';
+import { IS_WINDOWS } from '../app/platform';
 import { latex } from '../latex/lang';
 
 export type EditorMode = 'light' | 'dark';
@@ -127,14 +128,22 @@ export function wellColour(colour: string, bg = '#ffffff', accent = '#0a84ff') {
     .join('')}`;
 }
 
-// Mac fonts are used by name and can't be bundled; ui-monospace is how WebKit reaches SF Mono.
+// System fonts are used by name and can't be bundled; ui-monospace is how WebKit reaches SF Mono.
+// Windows has its own ('system' there is Cascadia Mono, or Consolas where Windows has no Cascadia).
 // The open-source ones are bundled from @fontsource (latin, regular and italic) in main.tsx.
 export const EDITOR_FONTS = [
-  { id: 'system', label: 'SF Mono (System)', css: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace' },
-  { id: 'menlo', label: 'Menlo', css: 'Menlo, ui-monospace, monospace' },
-  { id: 'monaco', label: 'Monaco', css: 'Monaco, ui-monospace, monospace' },
-  { id: 'pt-mono', label: 'PT Mono', css: '"PT Mono", ui-monospace, monospace' },
-  { id: 'andale-mono', label: 'Andale Mono', css: '"Andale Mono", ui-monospace, monospace' },
+  ...(IS_WINDOWS
+    ? [
+        { id: 'system', label: 'Cascadia Mono (System)', css: '"Cascadia Mono", Consolas, monospace' },
+        { id: 'consolas', label: 'Consolas', css: 'Consolas, monospace' }
+      ]
+    : [
+        { id: 'system', label: 'SF Mono (System)', css: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace' },
+        { id: 'menlo', label: 'Menlo', css: 'Menlo, ui-monospace, monospace' },
+        { id: 'monaco', label: 'Monaco', css: 'Monaco, ui-monospace, monospace' },
+        { id: 'pt-mono', label: 'PT Mono', css: '"PT Mono", ui-monospace, monospace' },
+        { id: 'andale-mono', label: 'Andale Mono', css: '"Andale Mono", ui-monospace, monospace' }
+      ]),
   { id: 'courier-new', label: 'Courier New', css: '"Courier New", Courier, monospace' },
   { id: 'jetbrains-mono', label: 'JetBrains Mono', css: '"JetBrains Mono", ui-monospace, monospace' },
   { id: 'fira-code', label: 'Fira Code', css: '"Fira Code", ui-monospace, monospace' },

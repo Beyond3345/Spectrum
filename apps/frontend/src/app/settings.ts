@@ -31,7 +31,7 @@ export type AppSettings = {
   /** PDF page colour in light mode and in dark mode */
   pdfPageLight: PdfPageLight;
   pdfPageDark: PdfPageDark;
-  /** editor font id (a Mac or bundled font), or 'custom' for editorFontCustom */
+  /** editor font id (a system or bundled font), or 'custom' for editorFontCustom */
   editorFont: string;
   /** the name of an installed font, used when editorFont is 'custom' */
   editorFontCustom: string;

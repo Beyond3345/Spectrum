@@ -1,6 +1,7 @@
 // Self-check for editor themes, the font list and LaTeX highlighting. Run:
 // npx esbuild apps/frontend/src/editor/editorThemes.check.ts --bundle --platform=node --log-level=warning | node
 import { DEFAULT_SETTINGS } from '../app/settings';
+import { IS_WINDOWS } from '../app/platform';
 import { COLOUR_ROLES, EDITOR_THEMES, chosenColours, editorColours, editorFontFamily, highlightLines, overBackground, themeFor, wellColour } from './editorThemes';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -29,7 +30,9 @@ eq(wellColour('#0969da33', '#ffffff'), '#cee1f8', 'a see-through colour shows as
 eq(wellColour('#00000009', '#ffffff'), '#f6f6f6', 'a faint current line stays faint');
 eq(wellColour('color-mix(in srgb, var(--accent) 22%, transparent)', '#ffffff', '#a550a7'), '#ebd9ec', 'the accent selection uses the accent');
 
-eq(editorFontFamily(DEFAULT_SETTINGS), 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace', 'SF Mono by default');
+const systemFont = IS_WINDOWS ? '"Cascadia Mono", Consolas, monospace' : 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace';
+eq(editorFontFamily(DEFAULT_SETTINGS), systemFont, 'SF Mono (Cascadia Mono on Windows) by default');
+eq(editorFontFamily({ ...DEFAULT_SETTINGS, editorFont: 'menlo' }), IS_WINDOWS ? systemFont : 'Menlo, ui-monospace, monospace', 'Mac fonts on a Mac only');
 eq(editorFontFamily({ ...DEFAULT_SETTINGS, editorFont: 'fira-code' }), '"Fira Code", ui-monospace, monospace', 'a bundled font');
 eq(editorFontFamily({ ...DEFAULT_SETTINGS, editorFont: 'gone' }), editorFontFamily(DEFAULT_SETTINGS), 'an unknown font is SF Mono');
 eq(editorFontFamily({ ...DEFAULT_SETTINGS, editorFont: 'custom', editorFontCustom: ' Iosevka Term ' }), '"Iosevka Term", ui-monospace, monospace', 'a typed name is quoted');

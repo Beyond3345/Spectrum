@@ -7,6 +7,7 @@ import { ContextMenu } from '../app/Menu';
 import type { MenuItems } from '../app/Menu';
 import { confirmDialog } from '../app/Dialogs';
 import { IS_DESKTOP } from '../app/desktop';
+import { FILE_MANAGER } from '../app/platform';
 import { errorText } from './shared';
 
 type TreeNode = { name: string; path: string; type: 'file' | 'dir'; children: TreeNode[] };
@@ -279,7 +280,7 @@ const FileTree = forwardRef<
       { separator: true },
       !!path && isTex(path) && { label: 'Set as main file', icon: 'checkmark.seal', disabled: path === mainFile, onSelect: () => props.onSetMain(path) },
       !!path && { label: 'Rename…', icon: 'pencil', onSelect: () => setInline({ kind: 'rename', path, value: nameOf(path) }) },
-      IS_DESKTOP && { label: 'Show in Finder', icon: 'folder', onSelect: () => run(() => revealProject(projectId, path || undefined), 'Couldn’t show it in Finder') },
+      IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => run(() => revealProject(projectId, path || undefined), `Couldn’t show it in ${FILE_MANAGER}`) },
       !!path && { label: 'Delete…', icon: 'trash', destructive: true, onSelect: () => run(() => remove(path), 'Couldn’t delete') },
       !!path && { separator: true },
       { label: 'Expand all', icon: 'chevron.down', onSelect: () => setAll(true) },
