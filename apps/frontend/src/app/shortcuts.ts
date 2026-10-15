@@ -30,11 +30,12 @@ import {
 import { bracketMatching, defaultHighlightStyle, foldAll, foldCode, foldGutter, foldKeymap, indentOnInput, syntaxHighlighting, unfoldAll, unfoldCode } from '@codemirror/language';
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete';
 import { gotoLine, highlightSelectionMatches, searchKeymap, selectNextOccurrence, selectSelectionMatches } from '@codemirror/search';
+import { IS_MAC, OS_NAME } from './platform';
 
 // Keyboard shortcuts in CodeMirror notation ("Mod-Shift-k": Mod is ⌘ on a Mac, Ctrl elsewhere).
 // Settings stores only the ones the user changed; '' means the user removed the shortcut.
 
-export const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+export { IS_MAC };
 
 export type AppCommand =
   | 'save'
@@ -97,8 +98,9 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'cursorBelow', label: 'Add cursor below', group: 'Selection', key: 'Mod-Alt-ArrowDown', run: addCursorBelow },
   { id: 'matchingBracket', label: 'Go to matching bracket', group: 'Selection', key: 'Shift-Mod-\\', run: cursorMatchingBracket },
   { id: 'gotoLine', label: 'Go to line', group: 'Selection', key: 'Ctrl-g', run: gotoLine },
-  { id: 'fold', label: 'Fold', group: 'Folding', key: 'Mod-Alt-[', run: foldCode },
-  { id: 'unfold', label: 'Unfold', group: 'Folding', key: 'Mod-Alt-]', run: unfoldCode },
+  // elsewhere Ctrl and Mod are one key, so CodeMirror's own Ctrl-Shift-[, which leaves Ctrl-Alt-[ to fold all
+  { id: 'fold', label: 'Fold', group: 'Folding', key: IS_MAC ? 'Mod-Alt-[' : 'Shift-Mod-[', run: foldCode },
+  { id: 'unfold', label: 'Unfold', group: 'Folding', key: IS_MAC ? 'Mod-Alt-]' : 'Shift-Mod-]', run: unfoldCode },
   { id: 'foldAll', label: 'Fold all', group: 'Folding', key: 'Ctrl-Alt-[', run: foldAll },
   { id: 'unfoldAll', label: 'Unfold all', group: 'Folding', key: 'Ctrl-Alt-]', run: unfoldAll },
   { id: 'zoomIn', label: 'Zoom in', group: 'PDF', key: 'Mod-=' },
@@ -151,15 +153,17 @@ export const editorBasics = [
 /** Shortcuts that can't be changed, shown in Settings so new ones don't clash with them. */
 export const FIXED_SHORTCUTS: [string, string][] = [
   ['Find and replace', 'Mod-f'],
-  ['Find next', 'Mod-g'],
-  ['Find previous', 'Shift-Mod-g'],
+  // elsewhere Ctrl-G goes to a line, as in Notepad, and CodeMirror redoes with Ctrl-Y
+  ['Find next', IS_MAC ? 'Mod-g' : 'F3'],
+  ['Find previous', IS_MAC ? 'Shift-Mod-g' : 'Shift-F3'],
   ['Undo', 'Mod-z'],
-  ['Redo', 'Shift-Mod-z'],
+  ['Redo', IS_MAC ? 'Shift-Mod-z' : 'Mod-y'],
   ['Settings', 'Mod-,']
 ];
 
-/** Shortcuts macOS or the clipboard keep for themselves. */
-const RESERVED = ['Mod-q', 'Mod-w', 'Mod-h', 'Mod-m', 'Mod-Tab', 'Mod-Space', 'Mod-c', 'Mod-v', 'Mod-x', 'Mod-a'];
+/** Shortcuts the system or the clipboard keep for themselves. */
+// (on Windows, Ctrl-Space switches some input methods on and off)
+const RESERVED = [...(IS_MAC ? ['Mod-q', 'Mod-w', 'Mod-h', 'Mod-m', 'Mod-Tab'] : ['Alt-F4', 'Alt-Space']), 'Mod-Space', 'Mod-c', 'Mod-v', 'Mod-x', 'Mod-a'];
 
 export function shortcutKey(overrides: Record<string, string>, id: string) {
   const custom = overrides[id];
@@ -230,10 +234,10 @@ export function shortcutProblem(binding: string) {
   const p = parse(binding);
   if (!p) return '';
   const key = canonical(binding);
-  if (RESERVED.map(canonical).includes(key)) return `${formatShortcut(binding)} is kept by macOS.`;
+  if (RESERVED.map(canonical).includes(key)) return `${formatShortcut(binding)} is kept by ${OS_NAME}.`;
   const fixed = FIXED_SHORTCUTS.find(([, k]) => canonical(k) === key);
   if (fixed) return `${formatShortcut(binding)} is kept for ${fixed[0].toLowerCase()}.`;
-  if (!p.mod && !p.ctrl && !p.alt && !/^F\d+$/.test(p.key)) return 'Add ⌘, ⌃ or ⌥ so the key can still be typed.';
+  if (!p.mod && !p.ctrl && !p.alt && !/^F\d+$/.test(p.key)) return `Add ${IS_MAC ? '⌘, ⌃ or ⌥' : 'Ctrl or Alt'} so the key can still be typed.`;
   return '';
 }
 
@@ -252,7 +256,8 @@ export function withShortcut(overrides: Record<string, string>, label: string, i
 export function formatShortcut(binding: string) {
   const p = parse(binding);
   if (!p) return '';
-  const key = KEY_SYMBOLS[p.key] || (p.key.length === 1 ? p.key.toUpperCase() : p.key);
+  // elsewhere keys go by name (Ctrl+Enter), arrows aside
+  const key = ((IS_MAC || p.key.startsWith('Arrow')) && KEY_SYMBOLS[p.key]) || (p.key.length === 1 ? p.key.toUpperCase() : p.key);
   if (IS_MAC) return `${p.ctrl ? '⌃' : ''}${p.alt ? '⌥' : ''}${p.shift ? '⇧' : ''}${p.mod ? '⌘' : ''}${key}`;
   return [p.mod && 'Ctrl', p.alt && 'Alt', p.shift && 'Shift', key].filter(Boolean).join('+');
 }

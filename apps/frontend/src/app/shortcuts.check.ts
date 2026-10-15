@@ -49,10 +49,9 @@ eq([enters({}), enters({ shiftKey: true })], [['compile'], ['compileOpen']], 'co
 // ⌘1, ⌘2 and ⌘3 pick the view (editor only, both, PDF only); ⌘0 still fits the PDF's width
 const digit = (n: string) => SHORTCUTS.find((s) => matchesShortcut(shortcutKey({}, s.id), press(n, `Digit${n}`, mod)))?.id;
 eq(['1', '2', '3', '0'].map(digit), ['viewEditor', 'viewSplit', 'viewPdf', 'zoomWidth'], 'view shortcuts');
-// the defaults are free and don't clash with each other (on a Mac: elsewhere Ctrl-g is Find next)
-if (IS_MAC) {
-  const defaults = SHORTCUTS.map((s) => canonical(s.key));
-  eq(defaults.filter((k, i) => defaults.indexOf(k) !== i), [], 'default shortcuts are distinct');
-  eq(SHORTCUTS.filter((s) => shortcutProblem(s.key)).map((s) => s.id), [], 'default shortcuts are allowed');
-}
+// the defaults are free and don't clash with each other, on a Mac and elsewhere
+const defaults = SHORTCUTS.map((s) => canonical(s.key));
+eq(defaults.filter((k, i) => defaults.indexOf(k) !== i), [], 'default shortcuts are distinct');
+eq(SHORTCUTS.filter((s) => shortcutProblem(s.key)).map((s) => s.id), [], 'default shortcuts are allowed');
+if (!IS_MAC) eq([formatShortcut('Shift-Mod-Enter'), formatShortcut('Alt-ArrowUp')], ['Ctrl+Shift+Enter', 'Alt+↑'], 'key names elsewhere');
 console.log('shortcuts.check: ok');

@@ -99,7 +99,10 @@ plus.magnifyingglass
 plus.square.on.square
 quote.bubble
 quote.opening
+rectangle
+rectangle.fill
 rectangle.portrait.and.arrow.right
+rectangle.righthalf.filled
 rectangle.split.2x1
 scope
 sidebar.left

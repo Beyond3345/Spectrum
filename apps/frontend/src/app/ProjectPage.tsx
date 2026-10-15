@@ -35,8 +35,9 @@ import type { TransferJob } from './TransferPanel';
 import { confirmDialog, promptDialog } from './Dialogs';
 import { toast } from './Toast';
 import { IS_DESKTOP, pickFolder } from './desktop';
+import { BIN, FILE_MANAGER } from './platform';
 import { useSettings } from './settings';
-import { matchesShortcut, shortcutKey, withShortcut } from './shortcuts';
+import { formatShortcut, matchesShortcut, shortcutKey, withShortcut } from './shortcuts';
 
 // ─── helpers ───
 
@@ -306,16 +307,16 @@ export default function ProjectPage() {
 
   const moveToBin = async (p: ProjectMeta) => {
     const ok = await confirmDialog({
-      title: `Move “${p.name}” to the Bin?`,
-      message: `The project folder and everything in it will be moved to the Bin:\n${tildify(p.path)}`,
-      confirmLabel: 'Move to Bin',
+      title: `Move “${p.name}” to the ${BIN}?`,
+      message: `The project folder and everything in it will be moved to the ${BIN}:\n${tildify(p.path)}`,
+      confirmLabel: `Move to ${BIN}`,
       destructive: true
     });
     if (!ok) return;
     await attempt(async () => {
-      ensureOk(await binProject(p.id), 'Moving to the Bin failed');
-      toast(`Moved “${p.name}” to the Bin.`);
-    }, 'Couldn’t move the project to the Bin');
+      ensureOk(await binProject(p.id), `Moving to the ${BIN} failed`);
+      toast(`Moved “${p.name}” to the ${BIN}.`);
+    }, `Couldn’t move the project to the ${BIN}`);
   };
 
   const locate = async (p: ProjectMeta) => {
@@ -369,11 +370,11 @@ export default function ProjectPage() {
           { label: 'Duplicate', icon: 'plus.square.on.square', onSelect: () => duplicate(p) },
           { label: 'Tags…', icon: 'tag', onSelect: () => setSheet({ kind: 'tags', id: p.id }) },
           { label: 'Change template…', icon: 'arrow.triangle.2.circlepath', onSelect: () => setSheet({ kind: 'transfer', id: p.id }) },
-          IS_DESKTOP && { label: 'Show in Finder', icon: 'folder', onSelect: () => reveal(p) },
+          IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => reveal(p) },
           { separator: true },
           { label: p.archived ? 'Unarchive' : 'Archive', icon: 'archivebox', onSelect: () => toggleArchive(p) },
           { label: 'Remove from list', icon: 'minus.circle', onSelect: () => remove(p) },
-          { label: 'Move to Bin…', icon: 'trash', destructive: true, onSelect: () => moveToBin(p) }
+          { label: `Move to ${BIN}…`, icon: 'trash', destructive: true, onSelect: () => moveToBin(p) }
         ];
 
   const rowProps = (p: ProjectMeta) => ({
@@ -506,7 +507,7 @@ export default function ProjectPage() {
           </nav>
 
           <div className="sidebar-bottom">
-            <button className="nav-row" onClick={() => setSheet({ kind: 'settings' })} title="Settings (⌘,)">
+            <button className="nav-row" onClick={() => setSheet({ kind: 'settings' })} title={`Settings (${formatShortcut('Mod-,')})`}>
               <Icon name="gearshape" />
               <span className="nav-label">Settings</span>
             </button>

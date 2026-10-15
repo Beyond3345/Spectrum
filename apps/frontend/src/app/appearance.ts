@@ -1,11 +1,12 @@
 import { useSyncExternalStore } from 'react';
 import { IS_DESKTOP, setNativeGlass } from './desktop';
+import { IS_WINDOWS, OS_NAME } from './platform';
 import { SETTINGS_CHANGE_EVENT, loadSettings } from './settings';
 import type { Accent, AppSettings, PdfPageDark, PdfPageLight, Theme } from './settings';
 
 /** macOS-like accents that read on light and dark surfaces alike */
 export const ACCENTS: [Accent, string, string][] = [
-  ['system', 'Follow macOS', ''],
+  ['system', `Follow ${OS_NAME}`, ''],
   ['blue', 'Blue', '#0a84ff'],
   ['purple', 'Purple', '#a550a7'],
   ['pink', 'Pink', '#f74f9e'],
@@ -130,8 +131,8 @@ export function followAppearance() {
     } catch {
       // storage unavailable: the accent is applied a moment later instead
     }
-    // a browser has nothing behind the page to show, so glass is the app's alone
-    const glass = IS_DESKTOP && settings.glass;
+    // a browser has nothing behind the page to show, so glass is the Mac app's alone
+    const glass = IS_DESKTOP && !IS_WINDOWS && settings.glass;
     root.classList.toggle('glass', glass);
     for (const [name, value] of Object.entries(glassMix(settings.glassClarity))) root.style.setProperty(name, value);
     setNativeGlass(glass);

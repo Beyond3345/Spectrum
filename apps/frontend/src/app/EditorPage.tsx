@@ -40,6 +40,7 @@ import type { MenuItems } from './Menu';
 import { promptDialog } from './Dialogs';
 import { toast } from './Toast';
 import { IS_DESKTOP } from './desktop';
+import { FILE_MANAGER } from './platform';
 import { COMPILE_ENGINES, effectiveEffort, llmConfigFor, updateSettings, useProviders, useSettings } from './settings';
 import { PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
 import { SHORTCUTS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
@@ -1522,7 +1523,7 @@ function Editor({ projectId }: { projectId: string }) {
       .map((p) => ({ label: p.name, checked: p.id === projectId, onSelect: () => p.id !== projectId && leave(`/editor/${p.id}`) })),
     { separator: true },
     { label: 'All projects', icon: 'square.grid.2x2', onSelect: () => leave('/projects') },
-    IS_DESKTOP && { label: 'Show in Finder', icon: 'folder', onSelect: () => revealProject(projectId).catch(() => undefined) }
+    IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => revealProject(projectId).catch(() => undefined) }
   ];
 
   const filesMenu: MenuItems = [
@@ -1767,7 +1768,7 @@ function Editor({ projectId }: { projectId: string }) {
             )}
 
             <div className="sidebar-bottom">
-              <button className="nav-row" onClick={() => setSettingsOpen(true)} title="Settings (⌘,)">
+              <button className="nav-row" onClick={() => setSettingsOpen(true)} title={`Settings (${formatShortcut('Mod-,')})`}>
                 <Icon name="gearshape" />
                 <span className="nav-label">Settings</span>
               </button>
@@ -2167,7 +2168,7 @@ function Editor({ projectId }: { projectId: string }) {
             <>
               {IS_DESKTOP && (
                 <button className="btn" onClick={() => revealProject(projectId, preview).catch(() => undefined)}>
-                  Show in Finder
+                  Show in {FILE_MANAGER}
                 </button>
               )}
               {FIGURE_FILE.test(preview) && (

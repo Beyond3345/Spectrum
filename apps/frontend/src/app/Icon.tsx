@@ -1,4 +1,9 @@
 import type { CSSProperties } from 'react';
+import { IS_WINDOWS } from './platform';
+
+// SF Symbols may only be used on Apple platforms: Windows gets Fluent UI System Icons of the same
+// names, from scripts/fluent-icons.mjs
+const mask = (name: string) => (IS_WINDOWS ? `url(/fluent/${name}.svg)` : `url(/sf/${name}.png)`);
 
 /**
  * SF Symbol rendered as a CSS mask so it takes the current text colour.
@@ -10,8 +15,8 @@ export default function Icon({ name, size, className = '', style }: { name: stri
       aria-hidden="true"
       className={`sf ${className}`}
       style={{
-        WebkitMaskImage: `url(/sf/${name}.png)`,
-        maskImage: `url(/sf/${name}.png)`,
+        WebkitMaskImage: mask(name),
+        maskImage: mask(name),
         ...(size ? { width: size, height: size } : null),
         ...style
       }}
