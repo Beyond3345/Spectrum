@@ -160,8 +160,8 @@ export async function runCompile({ projectId, mainFile, engine = 'pdflatex' }) {
   const result = await compileDocument(engine, projectRoot, absMain, mainFile);
   if (!linked.length) return result;
   const notes = linked.map(({ file, ok }) => (ok
-    ? `[spectrum] Compiled ${file} first for its cross-references.`
-    : `[spectrum] ${file} didn’t compile, so references to it may show as ??.`));
+    ? `Compiled ${file} first for its cross-references.`
+    : `[spectrum warning] ${file} didn’t compile, so references to it may show as ??.`));
   return { ...result, linked, log: [...notes, result.log ?? ''].join('\n') };
 }
 

@@ -1554,8 +1554,30 @@ function Editor({ projectId }: { projectId: string }) {
       : []),
     ...COMPILE_ENGINES.map(([value, label]) => ({ label, checked: engine === value, onSelect: () => chooseEngine(value) }))
   ];
-  // the documents with a PDF to show; the header names the one showing when there's a choice
+  // the documents with a PDF to show; the PDF's page bar names the one showing when there's a choice, by the
+  // part of its name the others don't share (ELEC2410_Tutorial_Solutions.pdf beside ELEC2410_Lecture_Notes.pdf
+  // is Tutorial_Solutions)
   const pdfDocs = docs.filter((doc) => items.some((i) => i.path === pdfOf(doc)));
+  const baseOf = (doc: string) => nameOf(doc).replace(/\.tex$/i, '');
+  const commonStart = (a: string, b: string) => {
+    let i = 0;
+    while (i < a.length && a[i] === b[i]) i += 1;
+    return a.slice(0, i);
+  };
+  const shared = pdfDocs.map(baseOf).reduce(commonStart, baseOf(shownDoc));
+  const pdfLabel = baseOf(shownDoc).slice(shared.search(/[^_\- .]*$/)) || baseOf(shownDoc);
+  const pdfSwitcher = (pdfDocs.length > 1 || shownDoc !== mainFile) && (
+    <>
+      <MenuButton
+        className="btn ghost small pdf-switcher"
+        icon="doc.richtext"
+        label={pdfLabel}
+        title={`PDF: ${pdfOf(shownDoc)}`}
+        items={pdfDocs.map((doc) => ({ label: pdfOf(doc), checked: doc === shownDoc, onSelect: () => doc !== shownDoc && loadPdf(doc) }))}
+      />
+      <span className="pdf-pill-sep" />
+    </>
+  );
 
   const insertItems: MenuItems = SNIPPETS.map((s) => (s ? { label: s.label, icon: s.icon, onSelect: () => insertSnippet(s) } : { separator: true }));
 
@@ -1903,15 +1925,6 @@ function Editor({ projectId }: { projectId: string }) {
                 </button>
                 {/* always mounted, so screen readers hear each change */}
                 {compileStatus}
-                {pdf && (pdfDocs.length > 1 || shownDoc !== mainFile) && (
-                  <MenuButton
-                    className="btn ghost small pdf-switcher"
-                    icon="doc.richtext"
-                    label={nameOf(pdfOf(shownDoc))}
-                    title={`PDF: ${pdfOf(shownDoc)}`}
-                    items={pdfDocs.map((doc) => ({ label: pdfOf(doc), checked: doc === shownDoc, onSelect: () => doc !== shownDoc && loadPdf(doc) }))}
-                  />
-                )}
                 <span className="spacer" data-tauri-drag-region />
                 <MenuButton
                   className="btn ghost small zoom-button"
@@ -1978,6 +1991,7 @@ function Editor({ projectId }: { projectId: string }) {
 
                 {pdf && (
                   <div className="pdf-pill">
+                    {pdfSwitcher}
                     <button
                       className="icon-btn small"
                       title="Previous page"

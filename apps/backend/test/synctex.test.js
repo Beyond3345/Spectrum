@@ -287,7 +287,7 @@ test('a document compiles the one it cross-references first, and each PDF keeps 
   const { project, root, res } = await compiledProject('Two documents', { 'notes.tex': NOTES, 'tutorial.tex': TUTORIAL }, 'tutorial.tex', 'pdflatex');
   assert.ok(res.ok, res.error || res.log);
   assert.deepEqual(res.linked, [{ file: 'notes.tex', ok: true }]);
-  assert.ok(res.log.startsWith('[spectrum] Compiled notes.tex first for its cross-references.\n'), res.log.slice(0, 200));
+  assert.ok(res.log.startsWith('Compiled notes.tex first for its cross-references.\n'), res.log.slice(0, 200));
   assert.ok(existsSync(path.join(root, 'notes.pdf')));
   // every notes: reference resolved
   assert.doesNotMatch(res.log, /No file notes\.aux|Reference `notes:/);
@@ -334,5 +334,5 @@ test('a document compiles the one it cross-references first, and each PDF keeps 
   const broken = await runCompile({ projectId: project.id, mainFile: 'tutorial.tex', engine: 'pdflatex' });
   assert.ok(broken.ok, broken.error || broken.log);
   assert.deepEqual(broken.linked, [{ file: 'broken.tex', ok: false }]);
-  assert.ok(broken.log.startsWith('[spectrum] broken.tex didn’t compile, so references to it may show as ??.\n'));
+  assert.ok(broken.log.startsWith('[spectrum warning] broken.tex didn’t compile, so references to it may show as ??.\n'));
 });
