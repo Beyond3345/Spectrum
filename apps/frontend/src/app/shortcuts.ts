@@ -40,6 +40,7 @@ export type AppCommand =
   | 'save'
   | 'saveVersion'
   | 'compile'
+  | 'compileOpen'
   | 'assistant'
   | 'grammar'
   | 'suggest'
@@ -106,6 +107,8 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'save', label: 'Save', group: 'App', key: 'Mod-s' },
   { id: 'saveVersion', label: 'Save version', group: 'App', key: 'Shift-Mod-s' },
   { id: 'compile', label: 'Compile', group: 'App', key: 'Mod-Enter' },
+  // the open file when it has a \documentclass of its own, else the main file
+  { id: 'compileOpen', label: 'Compile open document', group: 'App', key: 'Shift-Mod-Enter' },
   { id: 'assistant', label: 'Show or hide the assistant', group: 'App', key: 'Mod-l' },
   // ⇧⌘; is macOS's own Spelling and Grammar shortcut
   { id: 'grammar', label: 'Check grammar', group: 'App', key: 'Shift-Mod-;' },

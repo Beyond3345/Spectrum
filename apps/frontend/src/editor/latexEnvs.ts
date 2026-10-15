@@ -230,6 +230,8 @@ const ENV_DEFINERS = [
 const VALID = /^[A-Za-z][\w*-]*$/; // drops #1, \macro and @internal
 
 const LABEL_RE = /\\label\s*\{([^{}#\\]+)\}/g;
+// xr and xr-hyper's \externaldocument[prefix]{name}, zref-xr's \zexternaldocument*: the prefix, then any further [options]
+const EXTERNAL_RE = /\\z?externaldocument\*?\s*(?:\[([^\]]*)\]\s*)?(?:\[[^\]]*\]\s*)*\{([^}]+)\}/g;
 const BIB_RE = /\\(?:bibliography|addbibresource)\s*(?:\[[^\]]*\]\s*)?\{([^}]+)\}/g;
 // the name in braces or not, then [n] arguments and an [optional] first one; not an internal \name@part
 const NAME = String.raw`(?:\{\s*\\([A-Za-z]+)\s*\}|\\([A-Za-z]+)(?![@A-Za-z]))`;
@@ -253,19 +255,22 @@ export type TexScan = {
   commands: [name: string, args: number, math: boolean][];
   /** the names \bibliography and \addbibresource give */
   bibs: string[];
+  /** the other documents whose labels \externaldocument brings in, and the prefix they get */
+  externals: [prefix: string, name: string][];
   /** the project file it came from (scanProject sets it) */
   file?: string;
 };
 
 export function scanTex(src: string): TexScan {
   src = stripComments(src);
-  const scan: TexScan = { packages: [], classes: [], libraries: [], defined: [], inputs: [], labels: [], commands: [], bibs: [] };
+  const scan: TexScan = { packages: [], classes: [], libraries: [], defined: [], inputs: [], labels: [], commands: [], bibs: [], externals: [] };
   const names = (list: string) => list.split(',').map((n) => n.trim()).filter(Boolean);
   for (const m of src.matchAll(LOAD_RE)) (/class/i.test(m[1]) ? scan.classes : scan.packages).push(...names(m[2]));
   for (const m of src.matchAll(LIB_RE)) for (const lib of names(m[2])) scan.libraries.push([LIBRARY_OF[m[1]], lib]);
   for (const m of src.matchAll(INPUT_RE)) scan.inputs.push(m[1]?.trim() ?? `${m[2].trim().replace(/\/?$/, '/')}${m[3].trim()}`);
   for (const m of src.matchAll(LABEL_RE)) scan.labels.push(m[1].trim());
   for (const m of src.matchAll(BIB_RE)) scan.bibs.push(...names(m[1]));
+  for (const m of src.matchAll(EXTERNAL_RE)) scan.externals.push([m[1]?.trim() ?? '', m[2].trim()]);
   // with a default, the first of the [n] arguments is optional
   for (const m of src.matchAll(NEWCOMMAND_RE)) scan.commands.push([m[1] ?? m[2], Math.max(0, Number(m[3] ?? 0) - (m[4] ? 1 : 0)), false]);
   // xparse: count the m's once any {defaults} are gone
@@ -376,8 +381,9 @@ const bibScanned = new Map<string, [src: string, entries: BibEntry[]]>();
  * Scans the main file and what it pulls in: \input, \include, \subfile and \import, and the project's own
  * .sty and .cls files. Like the compile's TEXINPUTS, a name is looked up from the main file's folder first,
  * then the project root. Then reads the .bib files it names (or, naming none that exist, every .bib).
+ * With follow, the labels of the documents \externaldocument names come too, with their prefix.
  */
-export async function scanProject(mainFile: string, files: Set<string>, read: (path: string) => Promise<string>): Promise<Project> {
+export async function scanProject(mainFile: string, files: Set<string>, read: (path: string) => Promise<string>, follow = true): Promise<Project> {
   const dir = mainFile.slice(0, mainFile.lastIndexOf('/') + 1);
   // TeX tries name.tex before the name as given; only a name with the extension is followed as given, so a
   // big \input'd .pgf or .tikz figure is never read
@@ -401,6 +407,17 @@ export async function scanProject(mainFile: string, files: Set<string>, read: (p
       }
     }
   }
+  // xr reads name.aux from the document's folder. The other document's externals aren't followed, so two
+  // documents that link each other can't loop; its packages and commands stay its own, only its labels come
+  if (follow)
+    for (const [prefix, name] of scans.flatMap((s) => s.externals)) {
+      const target = normalise(dir + (/\.tex$/i.test(name) ? name : `${name}.tex`));
+      if (target === mainFile || !files.has(target)) continue;
+      const other = (await scanProject(target, files, read, false)).scans;
+      for (const scan of other) seen.add(scan.file!);
+      scans.push({ ...scanTex(''), labels: other.flatMap((s) => s.labels.map((label) => prefix + label)), file: target });
+    }
+  if (!follow) return { mainFile, files: [...files], scans, bib: [] };
   const named = scans.flatMap((s) => s.bibs.map((n) => find(n, '.bib'))).filter((p): p is string => !!p);
   const bibFiles = new Set(named.length ? named : [...files].filter((p) => /\.bib$/i.test(p)));
   const bib: BibEntry[] = [];

@@ -42,7 +42,7 @@ import { toast } from './Toast';
 import { IS_DESKTOP } from './desktop';
 import { COMPILE_ENGINES, effectiveEffort, llmConfigFor, updateSettings, useProviders, useSettings } from './settings';
 import { PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
-import { SHORTCUTS, editorBasics, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
+import { SHORTCUTS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
 import type { AppCommand } from './shortcuts';
 import { EditorContext } from '../editor/EditorContext';
 import type { CompileError, EditorApi, PendingChange } from '../editor/EditorContext';
@@ -92,6 +92,9 @@ const FIGURE_FILE = /\.(png|jpe?g|pdf|svg|eps)$/i;
 const IMAGE_FILE = /\.(png|jpe?g|svg|gif)$/i;
 const isTex = (p: string) => /\.tex$/i.test(p);
 const nameOf = (p: string) => p.slice(p.lastIndexOf('/') + 1);
+const pdfOf = (tex: string) => tex.replace(/\.tex$/i, '.pdf');
+// a rough take on the backend's test for a document of its own: an uncommented \documentclass near the top
+const DOCUMENT_CLASS = /^[^%\n]*\\documentclass/m;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const MAX_TABS = 6;
 const timeFormat = new Intl.DateTimeFormat('en-AU', { hour: 'numeric', minute: '2-digit' });
@@ -226,12 +229,14 @@ function Editor({ projectId }: { projectId: string }) {
   const [items, setItems] = useState<FileItem[]>([]);
   const [fileOrder, setFileOrder] = useState<FileOrderMap>({});
   const [mainFile, setMainFile] = useState('');
+  /** the .tex files with a \documentclass of their own, as the tree last listed them */
+  const [documents, setDocuments] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
   /** file contents by path; the open file's entry follows every keystroke */
   const filesRef = useRef(new Map<string, string>());
   /** editor state (undo history, cursor) per file that has been open */
   const statesRef = useRef(new Map<string, EditorState>());
-  /** what the main file and the files it pulls in load and define, its .bib entries and its files, for completion */
+  /** what the document being edited and the files it pulls in load and define, its .bib entries and its files, for completion */
   const projectScanRef = useRef<Project>(NO_PROJECT);
   /** .bib files that aren't open, read once per tree or file change rather than after every save */
   const bibRef = useRef(new Map<string, string>());
@@ -272,6 +277,9 @@ function Editor({ projectId }: { projectId: string }) {
   const [compileLog, setCompileLog] = useState('');
   const [compileFailure, setCompileFailure] = useState('');
   const [pdf, setPdf] = useState<{ url: string; blob: boolean } | null>(null);
+  /** the document whose PDF the pane shows, and the one compiled last (whose log shows) */
+  const [shownDoc, setShownDoc] = useState('');
+  const [compiledDoc, setCompiledDoc] = useState('');
   const [pdfPages, setPdfPages] = useState<number | null>(null);
   const [pdfOutline, setPdfOutline] = useState<PdfOutlineItem[]>([]);
   const [scale, setScale] = useState(1);
@@ -322,12 +330,16 @@ function Editor({ projectId }: { projectId: string }) {
         .map((i) => i.path),
     [items, texFiles]
   );
-  const mainPdf = mainFile ? mainFile.replace(/\.tex$/i, '.pdf') : '';
+  const mainPdf = pdfOf(mainFile);
+  // the main file first, even before the tree counts it
+  const docs = useMemo(() => [...new Set([mainFile, ...documents])].filter(Boolean), [mainFile, documents]);
+  // the open file when it's a document of its own, else the main file: what completion scans and ⇧⌘↩ compiles
+  const docRoot = docs.includes(activePath) ? activePath : mainFile;
   const compileErrors = useMemo<CompileError[]>(() => {
     const files = items.map((i) => i.path);
-    const parsed = parseCompileLog(compileLog, project?.path).map((e) => (e.file ? { ...e, file: projectFile(e.file, mainFile, files) } : e));
+    const parsed = parseCompileLog(compileLog, project?.path).map((e) => (e.file ? { ...e, file: projectFile(e.file, compiledDoc, files) } : e));
     return compileFailure && !parsed.some((e) => e.severity === 'error') ? [{ severity: 'error', message: compileFailure }, ...parsed] : parsed;
-  }, [compileLog, compileFailure, project?.path, items, mainFile]);
+  }, [compileLog, compileFailure, project?.path, items, compiledDoc]);
   const selectionText = selectionRange[0] === selectionRange[1] ? '' : editorValue.slice(selectionRange[0], selectionRange[1]);
 
   useEffect(() => {
@@ -344,6 +356,7 @@ function Editor({ projectId }: { projectId: string }) {
     const res = await getProjectTree(projectId);
     setItems(res.items);
     setFileOrder(res.fileOrder || {});
+    setDocuments(res.documents ?? []);
     return res;
   };
 
@@ -382,6 +395,8 @@ function Editor({ projectId }: { projectId: string }) {
         notify(`Couldn’t save ${nameOf(path)}: ${errorText(err)}`, 'error');
         return;
       }
+      // a .tex that gained or lost its \documentclass: the tree says again which files are documents
+      if (isTex(path) && DOCUMENT_CLASS.test(content.slice(0, 16384)) !== documents.includes(path)) refreshTree().catch(() => undefined);
     }
     if (announce) notify(`Saved ${nameOf(path)}`, 'success');
   };
@@ -405,12 +420,13 @@ function Editor({ projectId }: { projectId: string }) {
   const openFile = async (path: string) => {
     if (!path) return;
     if (!TEXT_FILE.test(path)) {
-      if (path === mainPdf) {
+      const doc = docs.find((d) => pdfOf(d) === path);
+      if (doc) {
         setToolsOpen(false);
         setGrammarOpen(false);
         // from editor only, the PDF comes back beside the editor
         if (layoutRef.current.view === 'editor') setLayout({ view: 'split' });
-        if (!pdf) setPdf({ url: blobUrl(projectId, path, Date.now()), blob: false });
+        if (!pdf || doc !== shownDoc) loadPdf(doc);
       } else {
         setPreview(path);
       }
@@ -529,6 +545,8 @@ function Editor({ projectId }: { projectId: string }) {
       setActivePath(activeRef.current);
     }
     if (mainFile && remap(mainFile) !== mainFile) chooseMain(remap(mainFile), true);
+    setShownDoc(remap);
+    setCompiledDoc(remap);
   };
 
   const onDeleted = (path: string) => {
@@ -544,6 +562,9 @@ function Editor({ projectId }: { projectId: string }) {
       showEmptyEditor();
       if (rest[0]) open(rest[0]);
     }
+    // the pane shows main's PDF instead, when it has one
+    if (gone(shownDoc)) showPdf(mainFile, items.some((i) => i.path === mainPdf && !gone(i.path)) ? { url: blobUrl(projectId, mainPdf, Date.now()), blob: false } : null);
+    if (gone(compiledDoc)) setCompiledDoc(mainFile);
   };
 
   // keep a main file whenever there is a .tex file. Runs when the tree changes, not when the main file
@@ -556,7 +577,7 @@ function Editor({ projectId }: { projectId: string }) {
   // a reloaded tree or file can mean a .bib changed on disk
   useEffect(() => bibRef.current.clear(), [items, filesVersion]);
 
-  // completion rescans the project a moment after the tree, the main file or a file changes, and
+  // completion rescans the project a moment after the tree, the document being edited or a file changes, and
   // after each save rather than while typing; the completion source scans the open file's text itself
   useEffect(() => {
     if (dirty) return;
@@ -571,7 +592,7 @@ function Editor({ projectId }: { projectId: string }) {
         if (/\.bib$/i.test(path) && !filesRef.current.has(path)) bibRef.current.set(path, text);
         return text;
       };
-      scanProject(mainFile, files, read).then((scan) => {
+      scanProject(docRoot, files, read).then((scan) => {
         if (live) projectScanRef.current = scan;
       });
     }, 400);
@@ -579,7 +600,7 @@ function Editor({ projectId }: { projectId: string }) {
       live = false;
       window.clearTimeout(timer);
     };
-  }, [items, mainFile, dirty, filesVersion]);
+  }, [items, docRoot, dirty, filesVersion]);
 
   // ─── editor actions ───
 
@@ -672,7 +693,7 @@ function Editor({ projectId }: { projectId: string }) {
   /** Double-click on the PDF: the source line SyncTeX gives for that spot, else the text there found in the source. */
   const jumpFromPdf = async (at: PdfPoint, text: string) => {
     if (!settings.syncDoubleClick) return;
-    const res = await synctexEdit(projectId, at).catch(() => null);
+    const res = await synctexEdit(projectId, at, shownDoc).catch(() => null);
     let landed = false;
     if (res?.ok && items.some((i) => i.path === res.file)) {
       await jumpTo(res.file, res.line, res.column);
@@ -694,7 +715,7 @@ function Editor({ projectId }: { projectId: string }) {
     const file = activeRef.current;
     if (!settings.syncDoubleClick || !view || !pdf || !isTex(file) || layout.view !== 'split' || toolsOpen || grammarOpen) return;
     const line = view.state.doc.lineAt(pos);
-    const res = await synctexView(projectId, { file, line: line.number, column: pos - line.from + 1 }).catch((err) => ({ ok: false as const, error: errorText(err) }));
+    const res = await synctexView(projectId, { file, line: line.number, column: pos - line.from + 1 }, shownDoc).catch((err) => ({ ok: false as const, error: errorText(err) }));
     const notice = `${pdf.url}\n${file}\n${res.ok ? '' : res.error}`;
     if (res.ok) pdfRef.current?.highlight(res.boxes, settings.syncHighlightSeconds);
     // a double-click is also how a word is selected, so the same notice doesn't come back every time
@@ -915,9 +936,21 @@ function Editor({ projectId }: { projectId: string }) {
 
   // ─── compile ───
 
-  const runCompile = async () => {
+  /** Puts a PDF in the pane (null: none), freeing the blob URL of the one it replaces. */
+  const showPdf = (doc: string, next: { url: string; blob: boolean } | null) => {
+    const old = pdfNow.current;
+    setPdf(next);
+    setShownDoc(doc);
+    if (old?.blob) window.setTimeout(() => URL.revokeObjectURL(old.url), 10_000);
+  };
+
+  /** A document's PDF from its last compile. */
+  const loadPdf = (doc: string) => showPdf(doc, { url: blobUrl(projectId, pdfOf(doc), Date.now()), blob: false });
+
+  /** The main file, or another document once (the main file stays as it is). */
+  const runCompile = async (doc = mainFile) => {
     if (compilingRef.current) return;
-    if (!mainFile) {
+    if (!doc) {
       notify('There’s no .tex file to compile. Add one, or choose “Set as main file” from a file’s menu.');
       return;
     }
@@ -926,21 +959,22 @@ function Editor({ projectId }: { projectId: string }) {
     setCompile({ state: 'running', engine: used });
     try {
       await saveNow();
-      const res = await compileProject({ projectId, mainFile, engine: used });
+      const res = await compileProject({ projectId, mainFile: doc, engine: used });
       const actual = res.engine || used;
-      setCompileLog(`Engine: ${engineLabel(actual)}\nMain file: ${mainFile}\n\n${res.log || ''}`.trim());
+      setCompileLog(`Engine: ${engineLabel(actual)}\nDocument: ${doc}\n\n${res.log || ''}`.trim());
       if (res.ok && res.pdf) {
         const bytes = Uint8Array.from(atob(res.pdf), (c) => c.charCodeAt(0));
         const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-        const old = pdf;
-        setPdf({ url, blob: true });
-        if (old?.blob) window.setTimeout(() => URL.revokeObjectURL(old.url), 10_000);
+        showPdf(doc, { url, blob: true });
         setCompileFailure('');
         setCompile({ state: 'ok', engine: actual, at: new Date() });
-        if (res.pdfPath && !items.some((i) => i.path === res.pdfPath)) refreshTree().catch(() => undefined);
-        pdfThumbnail(url)
-          .then((png) => saveThumbnail(projectId, png))
-          .catch(() => undefined);
+        // a linked document compiled first writes its PDF too
+        const made = [res.pdfPath, ...(res.linked ?? []).filter((l) => l.ok).map((l) => pdfOf(l.file))];
+        if (made.some((p) => p && !items.some((i) => i.path === p))) refreshTree().catch(() => undefined);
+        if (doc === mainFile)
+          pdfThumbnail(url)
+            .then((png) => saveThumbnail(projectId, png))
+            .catch(() => undefined);
       } else {
         setCompileFailure(res.error || 'No PDF was produced.');
         setCompile({ state: 'failed', engine: actual, at: new Date() });
@@ -951,6 +985,7 @@ function Editor({ projectId }: { projectId: string }) {
       setCompile({ state: 'failed', engine: used, at: new Date() });
     } finally {
       compilingRef.current = false;
+      setCompiledDoc(doc);
     }
   };
 
@@ -1058,7 +1093,11 @@ function Editor({ projectId }: { projectId: string }) {
     if (!pdf) return;
     const link = document.createElement('a');
     link.href = pdf.url;
-    link.download = `${(project?.name || nameOf(mainPdf).replace(/\.pdf$/i, '') || 'document').replace(/[\\/:*?"<>|]+/g, '').trim() || 'document'}.pdf`;
+    // main's under the project's name, another document's under its own
+    link.download =
+      shownDoc !== mainFile
+        ? nameOf(pdfOf(shownDoc))
+        : `${(project?.name || nameOf(mainPdf).replace(/\.pdf$/i, '') || 'document').replace(/[\\/:*?"<>|]+/g, '').trim() || 'document'}.pdf`;
     document.body.append(link);
     link.click();
     link.remove();
@@ -1069,6 +1108,7 @@ function Editor({ projectId }: { projectId: string }) {
     save: () => {},
     saveVersion: () => {},
     compile: () => {},
+    compileOpen: () => {},
     toggleComposer: () => {},
     toggleGrammar: () => {},
     toggleSidebar: () => {},
@@ -1086,6 +1126,7 @@ function Editor({ projectId }: { projectId: string }) {
     save: () => saveNow(true),
     saveVersion: () => saveVersionNow(),
     compile: () => runCompile(),
+    compileOpen: () => runCompile(docRoot),
     toggleComposer,
     toggleGrammar,
     toggleSidebar: () => setLayout({ sidebarCollapsed: !layout.sidebarCollapsed }),
@@ -1181,6 +1222,7 @@ function Editor({ projectId }: { projectId: string }) {
       save: () => a().save(),
       saveVersion: () => a().saveVersion(),
       compile: () => a().compile(),
+      compileOpen: () => a().compileOpen(),
       assistant: () => a().toggleComposer(),
       grammar: () => a().toggleGrammar(),
       suggest: () => a().suggest(),
@@ -1322,6 +1364,7 @@ function Editor({ projectId }: { projectId: string }) {
       if (main && tree.items.some((i) => i.path === existing)) {
         const url = blobUrl(projectId, existing, Date.now());
         setPdf({ url, blob: false });
+        setShownDoc(main);
         if (!current.hasThumbnail) pdfThumbnail(url).then((png) => saveThumbnail(projectId, png)).catch(() => undefined);
       }
     })().catch((err) => notify(`Couldn’t open the project: ${errorText(err)}`, 'error'));
@@ -1355,6 +1398,7 @@ function Editor({ projectId }: { projectId: string }) {
       if (is('save')) a.save();
       else if (is('saveVersion')) a.saveVersion();
       else if (is('compile')) a.compile();
+      else if (is('compileOpen')) a.compileOpen();
       else if (is('assistant')) a.toggleComposer();
       else if (is('grammar')) a.toggleGrammar();
       else if (is('sidebar')) a.toggleSidebar();
@@ -1442,7 +1486,8 @@ function Editor({ projectId }: { projectId: string }) {
     openFile,
     jumpTo,
     proposeChanges,
-    compile: runCompile,
+    // the document whose log the AI read, so a fix loop stays on it
+    compile: () => runCompile(compiledDoc || mainFile),
     createVersion
   };
 
@@ -1491,6 +1536,27 @@ function Editor({ projectId }: { projectId: string }) {
     ? PDF_PAGES_DARK.map(([value, label]) => ({ label: `${label} pages`, checked: settings.pdfPageDark === value, onSelect: () => updateSettings({ pdfPageDark: value }) }))
     : PDF_PAGES_LIGHT.map(([value, label]) => ({ label: `${label} pages`, checked: settings.pdfPageLight === value, onSelect: () => updateSettings({ pdfPageLight: value }) }));
 
+  // with other documents, the compile menu lists them above the compilers: picking one compiles it once
+  const shortcutOf = (id: AppCommand) => formatShortcut(shortcutKey(settings.shortcuts, id));
+  const compileItems: MenuItems = [
+    ...(docs.length > 1
+      ? [
+          { heading: true, label: 'Compile' },
+          ...docs.map((doc) => ({
+            label: doc,
+            disabled: running,
+            shortcut: doc === mainFile ? shortcutOf('compile') : doc === activePath ? shortcutOf('compileOpen') : undefined,
+            onSelect: () => runCompile(doc)
+          })),
+          { separator: true },
+          { heading: true, label: 'Compiler' }
+        ]
+      : []),
+    ...COMPILE_ENGINES.map(([value, label]) => ({ label, checked: engine === value, onSelect: () => chooseEngine(value) }))
+  ];
+  // the documents with a PDF to show; the header names the one showing when there's a choice
+  const pdfDocs = docs.filter((doc) => items.some((i) => i.path === pdfOf(doc)));
+
   const insertItems: MenuItems = SNIPPETS.map((s) => (s ? { label: s.label, icon: s.icon, onSelect: () => insertSnippet(s) } : { separator: true }));
 
   const zoomLabel = ZOOMS.find(([z]) => z === zoom)?.[1] || `${Math.round(scale * 100)}%`;
@@ -1522,7 +1588,7 @@ function Editor({ projectId }: { projectId: string }) {
     </div>
   );
   const compileStatus = (
-    <span role="status" className={`compile-status ${compile.state}`} title={compile.state === 'ok' ? `${status} · ${engineLabel(String(compile.engine))} · ${mainFile}` : status}>
+    <span role="status" className={`compile-status ${compile.state}`} title={compile.state === 'ok' ? `${status} · ${engineLabel(String(compile.engine))} · ${compiledDoc}` : status}>
       {compile.state === 'failed' ? (
         <button className="compile-status failed" onClick={() => openTools('logs')}>
           Failed — see Logs
@@ -1809,7 +1875,7 @@ function Editor({ projectId }: { projectId: string }) {
                 <div className="compile-split">
                   <button
                     className="compile-main"
-                    onClick={runCompile}
+                    onClick={() => runCompile()}
                     disabled={running}
                     title={withShortcut(settings.shortcuts, 'Compile', 'compile')}
                     aria-label="Compile"
@@ -1822,7 +1888,7 @@ function Editor({ projectId }: { projectId: string }) {
                     icon="chevron.down"
                     chevron={false}
                     title={`Compiler (${engineLabel(engine)})`}
-                    items={COMPILE_ENGINES.map(([value, label]) => ({ label, checked: engine === value, onSelect: () => chooseEngine(value) }))}
+                    items={compileItems}
                   />
                 </div>
                 <button
@@ -1837,6 +1903,15 @@ function Editor({ projectId }: { projectId: string }) {
                 </button>
                 {/* always mounted, so screen readers hear each change */}
                 {compileStatus}
+                {pdf && (pdfDocs.length > 1 || shownDoc !== mainFile) && (
+                  <MenuButton
+                    className="btn ghost small pdf-switcher"
+                    icon="doc.richtext"
+                    label={nameOf(pdfOf(shownDoc))}
+                    title={`PDF: ${pdfOf(shownDoc)}`}
+                    items={pdfDocs.map((doc) => ({ label: pdfOf(doc), checked: doc === shownDoc, onSelect: () => doc !== shownDoc && loadPdf(doc) }))}
+                  />
+                )}
                 <span className="spacer" data-tauri-drag-region />
                 <MenuButton
                   className="btn ghost small zoom-button"
@@ -1892,7 +1967,7 @@ function Editor({ projectId }: { projectId: string }) {
                     <div className="empty-title">No PDF yet</div>
                     <div className="empty-text">Compile the project to see it here.</div>
                     <div className="empty-actions">
-                      <button className="btn primary" onClick={runCompile} disabled={running || !mainFile}>
+                      <button className="btn primary" onClick={() => runCompile()} disabled={running || !mainFile}>
                         {running ? <span className="spinner" /> : <Icon name="play.fill" />} Compile
                       </button>
                     </div>

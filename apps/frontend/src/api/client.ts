@@ -198,8 +198,9 @@ export function getProjectStats(id: string, mainFile: string) {
 
 // ─── Files ───
 
+/** documents: the .tex files with a \documentclass of their own, so each compiles to a PDF */
 export function getProjectTree(id: string) {
-  return request<{ items: FileItem[]; fileOrder?: FileOrderMap; mainFile?: string }>(`/api/projects/${id}/tree`);
+  return request<{ items: FileItem[]; fileOrder?: FileOrderMap; mainFile?: string; documents: string[] }>(`/api/projects/${id}/tree`);
 }
 
 export function getFile(id: string, filePath: string) {
@@ -330,14 +331,17 @@ export function importArxivSSE(
 export interface CompileResult {
   ok: boolean;
   pdf?: string;
-  /** relative path of the PDF written next to the main file, e.g. "main.pdf" */
+  /** relative path of the PDF written next to the document, e.g. "main.pdf" */
   pdfPath?: string;
   log?: string;
   status?: number;
   engine?: string;
   error?: string;
+  /** documents it links with \externaldocument, compiled first because their .aux was missing or out of date */
+  linked?: { file: string; ok: boolean }[];
 }
 
+/** mainFile: the document to compile, the project's main file or another */
 export function compileProject(payload: { projectId: string; mainFile: string; engine: CompileEngine }) {
   return request<CompileResult>('/api/compile', json('POST', payload));
 }
@@ -359,12 +363,13 @@ export interface PdfBox extends PdfPoint {
 
 type SynctexFailure = { ok: false; error: string };
 
-export function synctexEdit(projectId: string, at: PdfPoint) {
-  return request<{ ok: true; file: string; line: number; column: number | null } | SynctexFailure>(`/api/projects/${projectId}/synctex/edit`, json('POST', at));
+/** doc: the document whose PDF is showing */
+export function synctexEdit(projectId: string, at: PdfPoint, doc: string) {
+  return request<{ ok: true; file: string; line: number; column: number | null } | SynctexFailure>(`/api/projects/${projectId}/synctex/edit`, json('POST', { ...at, doc }));
 }
 
-export function synctexView(projectId: string, at: { file: string; line: number; column?: number }) {
-  return request<{ ok: true; page: number; boxes: PdfBox[] } | SynctexFailure>(`/api/projects/${projectId}/synctex/view`, json('POST', at));
+export function synctexView(projectId: string, at: { file: string; line: number; column?: number }, doc: string) {
+  return request<{ ok: true; page: number; boxes: PdfBox[] } | SynctexFailure>(`/api/projects/${projectId}/synctex/view`, json('POST', { ...at, doc }));
 }
 
 // ─── Version history ───

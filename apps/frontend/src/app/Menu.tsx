@@ -13,6 +13,8 @@ export type MenuItem = {
   checked?: boolean;
   /** a divider line; the other fields are ignored */
   separator?: boolean;
+  /** a section's name above its items, as macOS menus have; only the label is used */
+  heading?: boolean;
   /** right-aligned hint such as a keyboard shortcut */
   shortcut?: string;
 };
@@ -45,7 +47,7 @@ export function MenuList({
   const list = items.filter(Boolean) as MenuItem[];
   const ref = useRef<HTMLDivElement>(null);
   const idPrefix = useId();
-  const selectable = (i: number) => !!list[i] && !list[i].separator && !list[i].disabled;
+  const selectable = (i: number) => !!list[i] && !list[i].separator && !list[i].heading && !list[i].disabled;
   const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
   const [active, setActive] = useState(() => (highlightFirst ? list.findIndex((_, i) => selectable(i)) : -1));
   const hasChecks = list.some((item) => item.checked !== undefined);
@@ -132,6 +134,13 @@ export function MenuList({
       {list.map((item, i) =>
         item.separator ? (
           <div key={i} className="menu-sep" role="separator" />
+        ) : item.heading ? (
+          // text, not an item: never announced as a dimmed one, and the arrow keys pass over it
+          <div key={i} className="menu-heading" role="presentation">
+            {hasChecks && <span className="menu-check" />}
+            {hasIcons && <span className="menu-icon" />}
+            {item.label}
+          </div>
         ) : (
           <div
             key={i}

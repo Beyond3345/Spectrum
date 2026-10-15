@@ -25,6 +25,11 @@ eq(
   ['notes', 'theorem', 'remark', 'definition', 'example', 'lem', 'lem*'],
   'definitions'
 );
+eq(
+  scanTex('\\externaldocument[notes:]{ELEC2410_Lecture_Notes}\n\\zexternaldocument*[A-][http://x.org/a.pdf]{sub/other.tex}\n\\externaldocument{plain}\n% \\externaldocument[x:]{gone}').externals,
+  [['notes:', 'ELEC2410_Lecture_Notes'], ['A-', 'sub/other.tex'], ['', 'plain']],
+  'xr externals: the prefix, further options, none commented out'
+);
 const known = new Set([...COMMON_ENVS, ...KERNEL_ENVS, ...Object.values(PACKAGE_ENVS).flat()]);
 eq(Object.keys(ENV_SNIPPETS).filter((n) => !known.has(n)), [], 'every snippet is for an environment the lists offer');
 
@@ -87,5 +92,18 @@ const read = async (path: string) => (reads.push(path), tree[path]);
   tree['shared.tex'] = '\\newtheorem{fresh}{Fresh}';
   const { scans: changed } = await scanProject('paper/main.tex', files, read);
   eq([changed.filter((scan, i) => scan !== scans[i]).length, pick(availableEnvs(changed), 'fresh')], [1, ['this project']], 'a rescan scans only the changed file');
+  // xr: the tutorial offers the notes' labels (and those of the files they \input) prefixed, and nothing else of theirs;
+  // the notes link back, which isn't followed
+  const docs: Record<string, string> = {
+    'unit/tutorial.tex': '\\documentclass{article}\n\\usepackage{xr-hyper}\n\\externaldocument[notes:]{notes}\n\\label{q:one}',
+    'unit/notes.tex': '\\documentclass{article}\n\\usepackage{tikz}\n\\externaldocument[tut:]{tutorial}\n\\newcommand\\ohm{\\Omega}\n\\label{eq:ohm}\n\\input{ch1}',
+    'unit/ch1.tex': '\\label{sec:one}'
+  };
+  const docRead = async (path: string) => docs[path];
+  const { scans: linked } = await scanProject('unit/tutorial.tex', new Set(Object.keys(docs)), docRead);
+  eq(complete('\\eqref{notes:|}', linked)?.options.map((o) => [o.label, o.detail]), [['notes:eq:ohm', 'notes.tex'], ['notes:sec:one', 'notes.tex'], ['q:one', 'tutorial.tex']], 'prefixed labels');
+  eq([pick(availableEnvs(linked), 'tikzpicture'), linked.flatMap((s) => s.commands)], [[null], []], 'only labels from the other document');
+  const { scans: back } = await scanProject('unit/notes.tex', new Set(Object.keys(docs)), docRead);
+  eq(back.flatMap((s) => s.labels).filter((l) => l.startsWith('tut:')), ['tut:q:one'], 'and the other way, without looping');
   console.log('envs.check: ok');
 })();
