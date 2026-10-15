@@ -21,7 +21,7 @@ function unwrap(log: string) {
   let carry = '';
   for (const line of log.split(/\r?\n/)) {
     carry += line;
-    if (line.length === 79) continue;
+    if (line.length === 79 && !/^(?:\[spectrum|Compiled )/.test(line)) continue;
     out.push(carry);
     carry = '';
   }

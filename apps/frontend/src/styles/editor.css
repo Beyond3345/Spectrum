@@ -1086,7 +1086,7 @@ button.compile-status:hover {
 }
 
 /* in a narrow column, its icon (the file list opens each PDF too) */
-@container (max-width: 410px) {
+@container (max-width: 445px) {
   .pdf-pill .pdf-switcher .btn-label {
     display: none;
   }

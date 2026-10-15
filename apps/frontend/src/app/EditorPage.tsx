@@ -93,6 +93,7 @@ const IMAGE_FILE = /\.(png|jpe?g|svg|gif)$/i;
 const isTex = (p: string) => /\.tex$/i.test(p);
 const nameOf = (p: string) => p.slice(p.lastIndexOf('/') + 1);
 const pdfOf = (tex: string) => tex.replace(/\.tex$/i, '.pdf');
+const PART_OF_MAIN = /^[^%\n]*\\documentclass\s*(?:\[[^\]]*\]\s*)?\{(?:subfiles|standalone)\}/m;
 // a rough take on the backend's test for a document of its own: an uncommented \documentclass near the top
 const DOCUMENT_CLASS = /^[^%\n]*\\documentclass/m;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -286,7 +287,7 @@ function Editor({ projectId }: { projectId: string }) {
   const [page, setPage] = useState(1);
   const [spread, setSpread] = useState(false);
   const [annotate, setAnnotate] = useState(false);
-  const [annotations, setAnnotations] = useState<PdfAnnotation[]>([]);
+  const [allAnnotations, setAnnotations] = useState<(PdfAnnotation & { doc: string })[]>([]);
   const [tocOpen, setTocOpen] = useState(false);
   const pdfRef = useRef<PdfHandle>(null);
   const tocRef = useRef<HTMLDivElement>(null);
@@ -592,7 +593,9 @@ function Editor({ projectId }: { projectId: string }) {
         if (/\.bib$/i.test(path) && !filesRef.current.has(path)) bibRef.current.set(path, text);
         return text;
       };
-      scanProject(docRoot, files, read).then((scan) => {
+      // a subfiles chapter or a standalone figure is a document of its own, but completes with what main has
+      const root = docRoot !== mainFile && PART_OF_MAIN.test(filesRef.current.get(docRoot) ?? '') ? mainFile : docRoot;
+      scanProject(root, files, read).then((scan) => {
         if (live) projectScanRef.current = scan;
       });
     }, 400);
@@ -600,7 +603,7 @@ function Editor({ projectId }: { projectId: string }) {
       live = false;
       window.clearTimeout(timer);
     };
-  }, [items, docRoot, dirty, filesVersion]);
+  }, [items, docRoot, mainFile, dirty, filesVersion]);
 
   // ─── editor actions ───
 
@@ -968,9 +971,6 @@ function Editor({ projectId }: { projectId: string }) {
         showPdf(doc, { url, blob: true });
         setCompileFailure('');
         setCompile({ state: 'ok', engine: actual, at: new Date() });
-        // a linked document compiled first writes its PDF too
-        const made = [res.pdfPath, ...(res.linked ?? []).filter((l) => l.ok).map((l) => pdfOf(l.file))];
-        if (made.some((p) => p && !items.some((i) => i.path === p))) refreshTree().catch(() => undefined);
         if (doc === mainFile)
           pdfThumbnail(url)
             .then((png) => saveThumbnail(projectId, png))
@@ -979,6 +979,9 @@ function Editor({ projectId }: { projectId: string }) {
         setCompileFailure(res.error || 'No PDF was produced.');
         setCompile({ state: 'failed', engine: actual, at: new Date() });
       }
+      // a linked document compiled first writes its PDF too, whether or not this one compiled
+      const made = [res.ok ? res.pdfPath : undefined, ...(res.linked ?? []).filter((l) => l.ok).map((l) => pdfOf(l.file))];
+      if (made.some((p) => p && !items.some((i) => i.path === p))) refreshTree().catch(() => undefined);
     } catch (err) {
       setCompileLog(`Compile request failed: ${errorText(err)}`);
       setCompileFailure(errorText(err));
@@ -1086,7 +1089,7 @@ function Editor({ projectId }: { projectId: string }) {
 
   const addAnnotation = async (pageNumber: number, x: number, y: number) => {
     const text = (await promptDialog({ title: 'Add a note', message: `Page ${pageNumber}`, placeholder: 'Note', confirmLabel: 'Add' }))?.trim();
-    if (text) setAnnotations((prev) => [...prev, { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, page: pageNumber, x, y, text }]);
+    if (text) setAnnotations((prev) => [...prev, { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, page: pageNumber, x, y, text, doc: shownDoc }]);
   };
 
   const downloadPdf = () => {
@@ -1558,14 +1561,19 @@ function Editor({ projectId }: { projectId: string }) {
   // part of its name the others don't share (ELEC2410_Tutorial_Solutions.pdf beside ELEC2410_Lecture_Notes.pdf
   // is Tutorial_Solutions)
   const pdfDocs = docs.filter((doc) => items.some((i) => i.path === pdfOf(doc)));
+  // notes stay with the PDF they were added on
+  const annotations = allAnnotations.filter((note) => note.doc === shownDoc);
   const baseOf = (doc: string) => nameOf(doc).replace(/\.tex$/i, '');
   const commonStart = (a: string, b: string) => {
     let i = 0;
     while (i < a.length && a[i] === b[i]) i += 1;
     return a.slice(0, i);
   };
-  const shared = pdfDocs.map(baseOf).reduce(commonStart, baseOf(shownDoc));
-  const pdfLabel = baseOf(shownDoc).slice(shared.search(/[^_\- .]*$/)) || baseOf(shownDoc);
+  const others = pdfDocs.filter((doc) => doc !== shownDoc);
+  const shared = others.length ? others.map(baseOf).reduce(commonStart, baseOf(shownDoc)) : '';
+  const pdfLabel = others.some((doc) => baseOf(doc) === baseOf(shownDoc))
+    ? shownDoc.replace(/\.tex$/i, '')
+    : baseOf(shownDoc).slice(shared.search(/[^_\- .]*$/)) || baseOf(shownDoc);
   const pdfSwitcher = (pdfDocs.length > 1 || shownDoc !== mainFile) && (
     <>
       <MenuButton
@@ -1909,7 +1917,7 @@ function Editor({ projectId }: { projectId: string }) {
                     className="compile-engine"
                     icon="chevron.down"
                     chevron={false}
-                    title={`Compiler (${engineLabel(engine)})`}
+                    title={docs.length > 1 ? `Compile another document, or choose the compiler (${engineLabel(engine)})` : `Compiler (${engineLabel(engine)})`}
                     items={compileItems}
                   />
                 </div>
@@ -2056,7 +2064,7 @@ function Editor({ projectId }: { projectId: string }) {
                 <div className="pdf-notes">
                   <div className="pdf-notes-head">
                     <span>Notes</span>
-                    <button className="btn small ghost" onClick={() => setAnnotations([])}>
+                    <button className="btn small ghost" onClick={() => setAnnotations((prev) => prev.filter((n) => n.doc !== shownDoc))}>
                       Clear all
                     </button>
                   </div>

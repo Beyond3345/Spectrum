@@ -40,7 +40,8 @@ function buildCommand(engine, outDir, mainFile) {
       return { cmd: 'latexmk', args: ['-pdf', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', `-outdir=${outDir}`, mainFile] };
     case 'tectonic':
       // Tectonic keeps its .aux in memory unless told otherwise, and only finds other
-      // documents' .aux in outDir when it's on the search path
+      // documents' .aux in outDir when it's on the search path. ponytail: it looks beside the source first, so
+      // an old notes.aux another editor left there wins over the kept one; warn about such a file if that bites
       return { cmd: 'tectonic', args: ['-Z', `search-path=${outDir}`, '--synctex', '--keep-intermediates', '--outdir', outDir, mainFile] };
     default:
       return null;
@@ -194,10 +195,14 @@ async function staleLinks(projectRoot, absMain) {
     } catch {
       continue; // outside the project
     }
-    // a leading '-' would be read as an engine option
-    if (target === absMain || stale.includes(target) || path.basename(target).startsWith('-')) continue;
     const source = await fs.stat(target).catch(() => null);
     if (!source?.isFile()) continue;
+    // macOS finds {Notes} as notes.tex: go by the name on disk, so it's the same document (and store) as the file
+    const onDisk = path.relative(await fs.realpath(projectRoot), await fs.realpath(target));
+    if (onDisk.startsWith('..') || path.isAbsolute(onDisk)) continue; // a link out of the project
+    target = path.join(projectRoot, onDisk);
+    // a leading '-' would be read as an engine option
+    if (target === absMain || stale.includes(target) || path.basename(target).startsWith('-')) continue;
     // ponytail: only the target's own .tex mtime counts, so edits only in its \input files don't
     // make it stale; compare its inputs too (inlineInputs walks them) if that bites
     const base = path.basename(target, path.extname(target));
@@ -231,7 +236,7 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
   // \include{chapters/x} writes chapters/x.aux into the output dir, so mirror the folders
   // as seen from the main file's folder and from the project root.
   // Other documents' kept .aux go in it too, where TeX looks first, for \externaldocument to find.
-  const others = new Set();
+  const others = new Map(); // where each copy went, and its mtime then
   for (const item of await listFilesRecursive(projectRoot)) {
     if (item.type === 'dir') {
       await ensureDir(path.join(outDir, item.path));
@@ -240,7 +245,7 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
       continue;
     }
     // its own stay out, so every compile starts clean
-    if (!item.path.endsWith('.tex') || item.path === doc) continue;
+    if (!/\.tex$/i.test(item.path) || item.path === doc) continue;
     // ponytail: a document in a parent folder (\externaldocument{../notes}) isn't reached; a per-run TEXINPUTS folder would reach it
     const at = path.relative(mainDir, path.join(projectRoot, path.dirname(item.path)));
     if (at.startsWith('..')) continue;
@@ -248,9 +253,16 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
     for (const aux of await listFilesRecursive(store).catch(() => [])) {
       if (aux.type !== 'file') continue;
       const rel = path.join(at, aux.path);
-      await ensureDir(path.dirname(path.join(outDir, rel)));
-      await fs.copyFile(path.join(store, aux.path), path.join(outDir, rel));
-      others.add(rel);
+      const dest = path.join(outDir, rel);
+      await ensureDir(path.dirname(dest));
+      // two documents can leave an .aux of the same name (one's \include'd chapter, another's own): its own wins
+      const own = aux.path === `${path.basename(item.path, path.extname(item.path))}.aux`;
+      try {
+        await fs.copyFile(path.join(store, aux.path), dest, own ? 0 : fsConstants.COPYFILE_EXCL);
+      } catch {
+        continue;
+      }
+      others.set(rel, (await fs.stat(dest)).mtimeMs);
     }
   }
 
@@ -338,11 +350,15 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
   return { ok: true, pdf: pdf.toString('base64'), pdfPath, log, status: code ?? 0 };
 }
 
-/** Replace the document's kept .aux with this build's, \include'd chapters' too, but not other documents'. */
+/**
+ * Replace the document's kept .aux with this build's, \include'd chapters' too, but not other documents'
+ * (a copy TeX wrote over is this document's own).
+ */
 async function keepAux(outDir, store, others) {
   await fs.rm(store, { recursive: true, force: true });
   for (const { path: rel, type } of await listFilesRecursive(outDir)) {
-    if (type !== 'file' || !rel.endsWith('.aux') || others.has(rel)) continue;
+    if (type !== 'file' || !rel.endsWith('.aux')) continue;
+    if (others.has(rel) && others.get(rel) === (await fs.stat(path.join(outDir, rel))).mtimeMs) continue;
     await ensureDir(path.dirname(path.join(store, rel)));
     await fs.rename(path.join(outDir, rel), path.join(store, rel));
   }

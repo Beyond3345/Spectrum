@@ -158,5 +158,9 @@ eq(brief('error: couldn\'t open main.tex'), [['error', '', 0, "couldn't open mai
 eq(brief('[spectrum] Compile it with Auto instead.'), [['error', '', 0, 'Compile it with Auto instead.']], 'backend note');
 eq(brief('[spectrum warning] notes.tex didn’t compile.'), [['warning', '', 0, 'notes.tex didn’t compile.']], 'backend warning');
 eq(brief('Compiled notes.tex first for its cross-references.'), [], 'linked compile note');
+// a 79-character note isn't glued to the next line as TeX's own wrapped lines are
+const note79 = '[spectrum warning] main.tex didn’t compile, so references to it may show as ??.';
+eq(note79.length, 79, 'the note is 79 characters');
+eq(brief(`${note79}\nThis is pdfTeX, Version 3.141592653-2.6-1.40.26\n! Undefined control sequence.`).find((e) => e[0] === 'warning')?.[3], note79.slice(19), 'note before a pass');
 
 console.log('compileLog: all checks passed');

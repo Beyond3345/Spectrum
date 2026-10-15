@@ -336,3 +336,29 @@ test('a document compiles the one it cross-references first, and each PDF keeps 
   assert.deepEqual(broken.linked, [{ file: 'broken.tex', ok: false }]);
   assert.ok(broken.log.startsWith('[spectrum warning] broken.tex didn’t compile, so references to it may show as ??.\n'));
 });
+
+test('a document keeps its own .aux when another left one of the same name, and a link in another letter case finds it', { skip: !(await findExecutable('pdflatex')) && 'needs pdflatex', timeout: 180000 }, async () => {
+  const intro = '\\section{Introduction}\\label{sec:intro} Both documents include this chapter.\n';
+  const paper = '\\documentclass{article}\n\\begin{document}\n\\section{Preliminaries}\n\\include{intro}\n\\end{document}\n';
+  const short = '\\documentclass{article}\n\\begin{document}\n\\include{intro}\n\\end{document}\n';
+  // {Short} is short.tex on macOS
+  const third = '\\documentclass{article}\n\\usepackage{xr}\n\\externaldocument[s:]{Short}\n\\begin{document}\nSection~\\ref{s:sec:intro}.\n\\end{document}\n';
+  const { project, root, res } = await compiledProject('Shared chapter', { 'intro.tex': intro, 'paper.tex': paper, 'short.tex': short, 'third.tex': third }, 'paper.tex', 'pdflatex');
+  assert.ok(res.ok, res.error || res.log);
+  const compile = (mainFile) => runCompile({ projectId: project.id, mainFile, engine: 'pdflatex' });
+  // short's own intro.aux, written over paper's copy of it, is short's
+  assert.ok((await compile('short.tex')).ok);
+  const kept = await fs.readFile(path.join(root, '.spectrum', 'aux', 'short.tex', 'intro.aux'), 'utf8');
+  assert.match(kept, /\\newlabel\{sec:intro\}\{\{1\}/);
+
+  // the link goes by the name on disk: short.tex is fresh, so nothing compiles first, and the reference resolves
+  const first = await compile('third.tex');
+  assert.ok(first.ok, first.error || first.log);
+  assert.equal(first.linked, undefined);
+  assert.doesNotMatch(first.log, /No file Short\.aux|Reference `s:sec:intro' .* undefined/);
+  await fs.utimes(path.join(root, 'short.tex'), new Date(), new Date(Date.now() + 5000));
+  const again = await compile('third.tex');
+  assert.deepEqual(again.linked, [{ file: 'short.tex', ok: true }]);
+  assert.doesNotMatch(again.log, /No file Short\.aux|Reference `s:sec:intro' .* undefined/);
+  assert.ok(!existsSync(path.join(root, 'Short.pdf')) || realpathSync.native(path.join(root, 'Short.pdf')).endsWith('short.pdf'));
+});

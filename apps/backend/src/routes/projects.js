@@ -312,7 +312,7 @@ export function registerProjectRoutes(fastify) {
     // .tex files that compile on their own
     const documents = [];
     for (const item of items) {
-      if (item.type === 'file' && item.path.endsWith('.tex') && await isDocument(root, item.path)) documents.push(item.path);
+      if (item.type === 'file' && /\.tex$/i.test(item.path) && await isDocument(root, item.path)) documents.push(item.path);
     }
     return { items, fileOrder, mainFile, documents };
   });
