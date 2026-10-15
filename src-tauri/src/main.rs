@@ -247,6 +247,9 @@ fn build_window(
     let download_dir = app.path().download_dir()?;
     // the macOS "finished" event carries no path, so remember where each URL went
     let downloads = Mutex::new(HashMap::<String, PathBuf>::new());
+    // WebView2 keeps the splash in its history, where Alt+Left or the mouse's back button would
+    // strand the window on "Starting…"; once the app has loaded, the splash is behind it for good
+    let left_splash = AtomicBool::new(false);
 
     let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .title("Spectrum")
@@ -254,6 +257,9 @@ fn build_window(
         .min_inner_size(960.0, 620.0)
         .center()
         .visible(false);
+    // shrunk to fit a short screen before it's centred, or its title bar would start above the top
+    #[cfg(windows)]
+    let builder = builder.prevent_overflow();
     // Windows keeps its standard title bar
     #[cfg(target_os = "macos")]
     let builder = builder
@@ -271,9 +277,12 @@ fn build_window(
             }
         })
         .on_navigation(move |url| match url.scheme() {
-            _ if is_splash(url) => true,
+            _ if is_splash(url) => !(cfg!(windows) && left_splash.load(Ordering::Relaxed)),
             "about" | "blob" | "data" => true,
-            "http" if url.host_str() == Some("127.0.0.1") && url.port() == Some(port) => true,
+            "http" if url.host_str() == Some("127.0.0.1") && url.port() == Some(port) => {
+                left_splash.store(true, Ordering::Relaxed);
+                true
+            }
             "http" | "https" => {
                 let _ = opener.opener().open_url(url.as_str(), None::<&str>);
                 false
@@ -343,7 +352,11 @@ fn build_window(
 
 /// The splash's own address: tauri://localhost, or http://tauri.localhost in WebView2.
 fn is_splash(url: &Url) -> bool {
-    url.scheme() == "tauri" || cfg!(windows) && url.host_str() == Some("tauri.localhost")
+    url.scheme() == "tauri"
+        || cfg!(windows)
+            && url.scheme() == "http"
+            && url.host_str() == Some("tauri.localhost")
+            && url.port().is_none()
 }
 
 /// Sets .fullscreen on the page, which drops the room kept for the traffic lights. .fs-moving
@@ -492,7 +505,13 @@ fn spawn_backend(app: &AppHandle, port: u16, log_path: &Path) -> Result<Child, S
     #[cfg(unix)]
     cmd.process_group(0);
     #[cfg(windows)]
-    cmd.creation_flags(CREATE_NO_WINDOW);
+    {
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        // Documents may be redirected (OneDrive's folder backup); the known folder follows it
+        if let Ok(docs) = app.path().document_dir() {
+            cmd.env("SPECTRUM_PROJECTS_DIR", docs.join("Spectrum"));
+        }
+    }
     cmd.spawn()
         .map_err(|e| format!("Couldn't start the Spectrum server: {e}"))
 }

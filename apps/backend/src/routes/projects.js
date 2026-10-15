@@ -90,9 +90,13 @@ async function moveToBin(folder) {
     // The path goes in through the environment, so nothing in it is read as PowerShell. A drive
     // without a Recycle Bin (network, USB) would delete the folder for good, so those are refused.
     // ponytail: a folder too big for the Bin is still deleted for good; compare its size with the Bin's if that bites
+    // A network share (\\server\share, or a mapped drive realpath turned into one) has no Bin, and DriveInfo
+    // throws on it, so the check fails closed: any error stops the script before the delete
+    if (folder.startsWith('\\\\')) throw new Error('This folder isn’t on a drive with a Recycle Bin.');
     const script = [
+      "$ErrorActionPreference = 'Stop'",
       '$p = $env:SPECTRUM_BIN_PATH',
-      "if ([IO.DriveInfo]::new([IO.Path]::GetPathRoot($p)).DriveType -ne 'Fixed') { exit 3 }",
+      "try { if ([IO.DriveInfo]::new([IO.Path]::GetPathRoot($p)).DriveType -ne 'Fixed') { exit 3 } } catch { exit 3 }",
       'Add-Type -AssemblyName Microsoft.VisualBasic',
       "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, 'OnlyErrorDialogs', 'SendToRecycleBin')"
     ].join('; ');

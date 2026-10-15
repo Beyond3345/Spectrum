@@ -185,7 +185,10 @@ export function sanitiseFolderName(name) {
     .trim()
     .replace(/^\.+/, '')
     .trim();
-  return Array.from(clean).slice(0, 100).join('').trim() || 'Untitled';
+  let short = Array.from(clean).slice(0, 100).join('').trim();
+  // Windows drops a trailing dot or space, and CON, AUX and the like are devices, which TeX and Explorer can't open
+  if (process.platform === 'win32') short = short.replace(/[. ]+$/, '').replace(/^(con|prn|aux|nul|com\d|lpt\d)(?=\.|$)/i, '$1_');
+  return short || 'Untitled';
 }
 
 function expandHome(input) {

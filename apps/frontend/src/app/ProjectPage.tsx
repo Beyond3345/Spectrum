@@ -35,7 +35,7 @@ import type { TransferJob } from './TransferPanel';
 import { confirmDialog, promptDialog } from './Dialogs';
 import { toast } from './Toast';
 import { IS_DESKTOP, pickFolder } from './desktop';
-import { BIN, FILE_MANAGER } from './platform';
+import { BIN, FILE_MANAGER, IS_WINDOWS } from './platform';
 import { useSettings } from './settings';
 import { formatShortcut, matchesShortcut, shortcutKey, withShortcut } from './shortcuts';
 
@@ -236,7 +236,7 @@ export default function ProjectPage() {
         (p) =>
           p.name.toLowerCase().includes(q) ||
           // the folder's own name only: every path shares ~/Documents/Spectrum
-          (p.path.split('/').pop() || '').toLowerCase().includes(q) ||
+          (p.path.split(IS_WINDOWS ? /[\\/]/ : '/').pop() || '').toLowerCase().includes(q) ||
           p.tags.some((tag) => tag.toLowerCase().includes(q))
       );
     }

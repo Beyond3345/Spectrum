@@ -1,11 +1,13 @@
 import type { CompileError } from './EditorContext';
+import { IS_WINDOWS } from '../app/platform';
 
 // Turns a pdfLaTeX / XeLaTeX / LuaLaTeX / Latexmk / Tectonic log into error and warning cards.
 
-const LOCATED = /^(?:\.\/)?([^\s:()][^:()\n]*\.[A-Za-z]{2,4}):(\d+):\s*(.*)$/;
+// a Windows path starts with its drive, C:/…
+const LOCATED = /^(?:\.\/)?((?:[A-Za-z]:)?[^\s:()][^:()\n]*\.[A-Za-z]{2,4}):(\d+):\s*(.*)$/;
 const TECTONIC = /^(error|warning):\s*(.*)$/;
 // Tectonic names \input files as written, without ".tex": "warning: sections/intro:2: …"
-const TECTONIC_LOCATED = /^(?:\.\/)?([^\s:()][^:()\n]*):(\d+):\s*(.*)$/;
+const TECTONIC_LOCATED = /^(?:\.\/)?((?:[A-Za-z]:)?[^\s:()][^:()\n]*):(\d+):\s*(.*)$/;
 // A TeX pass runs from its banner to "Transcript written on" (Tectonic: to its next "note:")
 const PASS_START = /^(This is (pdf|Xe|LuaHB|Lua|e-)?TeX, Version|note: (Re)?running TeX)/i;
 const PASS_END = /^(Transcript written on|note: )/;
@@ -47,6 +49,8 @@ function earlierPasses(lines: string[]) {
 /** Project-relative path: drops the project folder, the build folder and "./". */
 function relative(file: string, root: string) {
   let path = file.replace(/^\.\//, '');
+  // TeX is given the project folder with forward slashes on Windows too
+  if (IS_WINDOWS) root = root.replace(/\\/g, '/');
   if (root && path.startsWith(`${root}/`)) path = path.slice(root.length + 1);
   return path.replace(/^.*?(^|\/)\.spectrum\/build\/[^/]+\//, '');
 }

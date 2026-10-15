@@ -26,7 +26,8 @@ const EXTERNAL_DOCUMENT = /\\(?:z?externaldocument|externalcitedocument)\*?\s*(?
 
 // Each document's .aux from its last good compile, e.g. .spectrum/aux/chapters/thesis.tex/thesis.aux,
 // for other documents' \externaldocument to read.
-const auxStore = (root, doc) => appPath(root, 'aux', doc);
+// not .spectrum/aux: AUX is a device name on Windows, which Explorer and OneDrive can't handle as a folder
+const auxStore = (root, doc) => appPath(root, 'aux-files', doc);
 // TeX reads '\' as a command, and every engine on Windows takes '/' as well
 const slashed = (p) => p.split(path.sep).join('/');
 const docPath = (root, abs) => slashed(path.relative(root, abs));
@@ -57,7 +58,8 @@ export async function findExecutable(name) {
   const names = WINDOWS && !/\.(com|exe|bat|cmd)$/i.test(name) ? ['.com', '.exe', '.bat', '.cmd'].map((ext) => name + ext) : [name];
   for (const dir of (process.env.PATH || '').split(path.delimiter)) {
     if (!dir) continue;
-    for (const candidate of names.map((n) => path.join(dir, n))) {
+    // Windows allows an entry in quotes, as cmd.exe and libuv read it
+    for (const candidate of names.map((n) => path.join(WINDOWS ? dir.replace(/^"(.*)"$/, '$1') : dir, n))) {
       try {
         await fs.access(candidate, fsConstants.X_OK);
         return candidate;
@@ -342,6 +344,8 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
       // paths). Both find the project's .bib files through BIBINPUTS. biber must not get
       // --input-directory=<project>: it looks for the .bcf there and fails.
       const bibArgs = [base];
+      // MiKTeX's bibtex asks before installing a missing .bst, as its engines do
+      if (WINDOWS && bibCmd === 'bibtex' && /[\\/]miktex[\\/]/i.test((await findExecutable('bibtex')) || '')) bibArgs.unshift('--enable-installer');
       try {
         await runSpawn(bibCmd, bibArgs, outDir, pushLog, texEnv);
       } catch {
@@ -376,7 +380,11 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
   }
   const absPdf = path.join(path.dirname(absMain), `${base}.pdf`);
   try {
-    await fs.writeFile(absPdf, pdf);
+    await fs.writeFile(absPdf, pdf).catch((err) => {
+      // Windows locks a PDF open in another viewer (Acrobat); the preview, SyncTeX and .aux still update
+      if (!WINDOWS || !['EBUSY', 'EPERM'].includes(err.code)) throw err;
+      log += `\n[spectrum warning] ${path.basename(absPdf)} is open in another program, so the copy next to the source wasn’t updated.\n`;
+    });
     await keepSynctex(projectRoot, doc, path.join(outDir, `${base}.synctex.gz`), mainDir);
     await keepAux(outDir, auxStore(projectRoot, doc), others);
   } finally {

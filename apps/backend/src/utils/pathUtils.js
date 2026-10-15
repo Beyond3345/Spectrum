@@ -56,6 +56,8 @@ export function safeJoinLink(root, targetPath) {
 export function sanitizeUploadPath(filename) {
   if (!filename) return '';
   const normalized = filename.replace(/\\/g, '/').replace(/^\/+/, '');
-  const parts = normalized.split('/').filter((part) => part && part !== '.' && part !== '..');
+  // NTFS can't hold <>:"|?* (a ':' would make a hidden stream) or a trailing dot or space
+  const fit = (part) => (process.platform === 'win32' ? part.replace(/[<>:"|?*]/g, '_').replace(/[. ]+$/, '') : part);
+  const parts = normalized.split('/').map(fit).filter((part) => part && part !== '.' && part !== '..');
   return parts.join('/');
 }

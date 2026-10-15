@@ -302,9 +302,9 @@ test('a document compiles the one it cross-references first, and each PDF keeps 
   // every notes: reference resolved
   assert.doesNotMatch(res.log, /No file notes\.aux|Reference `notes:/);
   // each document keeps its own .aux, not the other's
-  assert.ok(existsSync(path.join(root, '.spectrum', 'aux', 'notes.tex', 'notes.aux')));
-  assert.ok(existsSync(path.join(root, '.spectrum', 'aux', 'tutorial.tex', 'tutorial.aux')));
-  assert.ok(!existsSync(path.join(root, '.spectrum', 'aux', 'tutorial.tex', 'notes.aux')));
+  assert.ok(existsSync(path.join(root, '.spectrum', 'aux-files', 'notes.tex', 'notes.aux')));
+  assert.ok(existsSync(path.join(root, '.spectrum', 'aux-files', 'tutorial.tex', 'tutorial.aux')));
+  assert.ok(!existsSync(path.join(root, '.spectrum', 'aux-files', 'tutorial.tex', 'notes.aux')));
 
   // 1.4.0's single SyncTeX file goes with the next compile
   await fs.writeFile(path.join(root, '.spectrum', 'synctex.gz'), '');
@@ -358,7 +358,7 @@ test('a document keeps its own .aux when another left one of the same name, and 
   const compile = (mainFile) => runCompile({ projectId: project.id, mainFile, engine: 'pdflatex' });
   // short's own intro.aux, written over paper's copy of it, is short's
   assert.ok((await compile('short.tex')).ok);
-  const kept = await fs.readFile(path.join(root, '.spectrum', 'aux', 'short.tex', 'intro.aux'), 'utf8');
+  const kept = await fs.readFile(path.join(root, '.spectrum', 'aux-files', 'short.tex', 'intro.aux'), 'utf8');
   assert.match(kept, /\\newlabel\{sec:intro\}\{\{1\}/);
 
   // the link goes by the name on disk: short.tex is fresh, so nothing compiles first, and the reference resolves
