@@ -2,7 +2,7 @@
 
 # Spectrum
 
-This project is a macOS application for writing LaTeX documents with an AI assistant, a references assistant and local version history built in. It is intended for students and researchers who want to keep their papers as ordinary folders on their own Mac while still having help with drafting, citations and compile errors.
+This project is an application for macOS and Windows for writing LaTeX documents with an AI assistant, a references assistant and local version history built in. It is intended for students and researchers who want to keep their papers as ordinary folders on their own Mac while still having help with drafting, citations and compile errors.
 
 Spectrum is a fork of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) by OpenDCAI, which is no longer being maintained. While OpenPrism was a self-hosted web application built around real-time collaboration, Spectrum is a single-user desktop application. Apart from the AI features and reference look-ups, it works entirely offline. The full list of changes from upstream is given in [CHANGELOG.md](CHANGELOG.md).
 
@@ -91,8 +91,8 @@ Versions are kept inside each project in a hidden `.spectrum` folder, together w
 
 ## Requirements
 
-- macOS 13.5 or later on Apple silicon or Intel (the Liquid Glass app icon needs macOS 26 or later),
-- a LaTeX distribution, either [MacTeX](https://www.tug.org/mactex/) or [Tectonic](https://tectonic-typesetting.github.io/) (`brew install tectonic`),
+- macOS 13.5 or later on Apple silicon or Intel (the Liquid Glass app icon needs macOS 26 or later), or Windows 10 or 11 on an x64 PC (Section Windows),
+- a LaTeX distribution, either [MacTeX](https://www.tug.org/mactex/) or [Tectonic](https://tectonic-typesetting.github.io/) (`brew install tectonic`) on macOS, or [MiKTeX](https://miktex.org), [TeX Live](https://www.tug.org/texlive/) or Tectonic on Windows,
 - an API key from one of the providers in Section Models, or any OpenAI-compatible server, for the AI features,
 - Python 3 with matplotlib for the table to chart tool (optional) and
 - an account with one of the PDF parsers in Section Template transfer, for converting a paper from its PDF (optional).
@@ -109,6 +109,19 @@ Since the application is signed ad hoc rather than with an Apple Developer ID, m
 xattr -dr com.apple.quarantine /Applications/Spectrum.app
 ```
 
+On Windows, run `Spectrum_1.5.0_x64-setup.exe`. It installs Spectrum for the current user without administrator rights and adds it to the Start menu, and it installs Microsoft Edge WebView2 when the PC does not have it yet. Since the installer is not signed, Windows SmartScreen may warn about it on the first run. To continue, select More info and then Run anyway.
+
+## Windows
+
+The Windows version is a preview. It is built and tested on GitHub Actions, but it has had less use than the macOS version. It differs from the macOS version as follows,
+
+- the window has the standard Windows title bar, and Liquid Glass is not available,
+- the icons are Microsoft's Fluent UI System Icons, since Apple's SF Symbols may only be used on Apple platforms,
+- the shortcuts use `Ctrl` for `⌘`, `Alt` for `⌥` and `Shift` for `⇧`, so Compile is `Ctrl+Enter`. Fold and unfold are `Ctrl+Shift+[` and `Ctrl+Shift+]`, find next and previous are `F3` and `Shift+F3`, and redo is `Ctrl+Y`,
+- Show in Finder is Show in File Explorer, and projects are moved to the Recycle Bin,
+- MiKTeX installs a missing package without asking, since its question would appear in a hidden window and
+- settings are kept in `%APPDATA%\com.beyond3345.spectrum` and new projects are placed in `Documents\Spectrum`.
+
 ## Setting up
 
 1. Open Settings with `⌘,`
@@ -116,7 +129,7 @@ xattr -dr com.apple.quarantine /Applications/Spectrum.app
 3. Choose the theme and the default compiler
 4. Check the System section to confirm which TeX tools Spectrum can find
 
-Choosing a provider fills in its endpoint, the recommended models and the recommended reasoning effort, which are described in Section Models. The model settings can also be given in a `.env` file at `~/Library/Application Support/com.beyond3345.spectrum/.env`, using the variables listed in Section Configuration. Settings entered in the application take priority over the `.env` file.
+Choosing a provider fills in its endpoint, the recommended models and the recommended reasoning effort, which are described in Section Models. The model settings can also be given in a `.env` file at `~/Library/Application Support/com.beyond3345.spectrum/.env` (`%APPDATA%\com.beyond3345.spectrum\.env` on Windows), using the variables listed in Section Configuration. Settings entered in the application take priority over the `.env` file.
 
 ## Models
 
@@ -209,6 +222,8 @@ The test that moves a project to the Bin is skipped by default, since it moves a
 The spell checker and the grammar checker are compiled code that is kept in `native/`, so a normal build does not need to rebuild them. To rebuild them after changing their sources, run `npm run native:build`. This needs Xcode and Python for nodehun, and Rust with the `wasm32-unknown-unknown` target and `wasm-pack` for Harper, which is built from a Harper checkout at `../harper-master` unless `HARPER_DIR` points elsewhere.
 
 The build script downloads Node.js 24 LTS for both architectures, checks it against the published SHA-256 sums and joins the two into one universal binary. It then bundles the backend with esbuild and runs `tauri build --target universal-apple-darwin`. The results are written to `src-tauri/target/universal-apple-darwin/release/bundle/`.
+
+The Windows installer is built on Windows with the same command. It needs Node.js, Rust with the MSVC toolchain and the Visual Studio Build Tools with C++ and Python for nodehun, which is built for Windows with `node scripts/native.mjs nodehun`. The build script downloads the Windows Node.js 24 LTS, checks it in the same way and runs `tauri build --target x86_64-pc-windows-msvc`, which writes an NSIS installer. The workflow in `.github/workflows/windows.yml` does all of this on GitHub Actions, runs the backend tests with MiKTeX and attaches the installer to a release when it is run with a release tag. The Fluent icons in `apps/frontend/public/fluent/` are written by `node scripts/fluent-icons.mjs`.
 
 For development there are two options. `npm run desktop:dev` runs the macOS shell against the backend in the repository, and `npm run dev` runs the interface in a browser at `http://localhost:5173` with the backend on port 8787.
 
