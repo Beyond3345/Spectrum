@@ -20,7 +20,7 @@ import { registerSystemRoutes } from './routes/system.js';
 import { registerReferenceRoutes } from './routes/references.js';
 import { registerLanguageRoutes } from './routes/language.js';
 import { seedTemplates } from './services/templateService.js';
-import { migrateLegacyProjects } from './services/projectService.js';
+import { dropOldAuxFolders, migrateLegacyProjects } from './services/projectService.js';
 import { killAllChildren } from './services/compileService.js';
 import { isLocalRequest } from './utils/authUtils.js';
 
@@ -94,6 +94,7 @@ if (existsSync(FRONTEND_DIST)) {
 await ensureDir(DATA_DIR);
 await seedTemplates();
 await migrateLegacyProjects();
+await dropOldAuxFolders();
 
 // Stop compiles and plots (they run in their own process groups, so nothing else would), let
 // in-flight requests such as a file save finish for up to 2 s, then exit.

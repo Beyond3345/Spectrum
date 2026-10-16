@@ -99,7 +99,7 @@ Versions are kept inside each project in a hidden `.spectrum` folder, together w
 
 ## Installing
 
-1. Open `Spectrum_1.5.0_universal.dmg`
+1. Open `Spectrum_1.5.1_universal.dmg`
 2. Drag Spectrum into the Applications folder
 3. Open Spectrum from the Applications folder
 
@@ -109,7 +109,7 @@ Since the application is signed ad hoc rather than with an Apple Developer ID, m
 xattr -dr com.apple.quarantine /Applications/Spectrum.app
 ```
 
-On Windows, run `Spectrum_1.5.0_x64-setup.exe`. It installs Spectrum for the current user without administrator rights and adds it to the Start menu, and it installs Microsoft Edge WebView2 when the PC does not have it yet. Since the installer is not signed, Windows SmartScreen may warn about it on the first run. To continue, select More info and then Run anyway.
+On Windows, run `Spectrum_1.5.1_x64-setup.exe`. It installs Spectrum for the current user without administrator rights and adds it to the Start menu, and it installs Microsoft Edge WebView2 when the PC does not have it yet. Since the installer is not signed, Windows SmartScreen may warn about it on the first run. To continue, select More info and then Run anyway.
 
 ## Windows
 

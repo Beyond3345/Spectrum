@@ -875,6 +875,15 @@ test('startup migration leaves a later project.json alone', async () => {
   assert.equal(await fs.readFile(path.join(legacyRoot, 'project.json'), 'utf8'), '{"experiment":"results I need"}');
 });
 
+test('startup removes the .spectrum/aux folder 1.5.0 kept, which OneDrive refuses to sync', async () => {
+  const p = await newProject('Old aux');
+  await fs.mkdir(path.join(p.path, '.spectrum', 'aux', 'main.tex'), { recursive: true });
+  await fs.writeFile(path.join(p.path, '.spectrum', 'aux', 'main.tex', 'main.aux'), '\\relax\n');
+  await restartServer();
+  assert.ok(!existsSync(path.join(p.path, '.spectrum', 'aux')));
+  assert.ok(existsSync(path.join(p.path, '.spectrum', 'project.json')));
+});
+
 test('duplicating keeps links inside the project relative', async () => {
   const p = await newProject('Link src');
   await writeFile(p.id, 'shared/macros.tex', 'original');

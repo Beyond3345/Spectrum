@@ -2,12 +2,22 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.5.1 (16 October 2026)
+
+### Fixed
+
+- The `.aux` files kept for cross-references are now in `.spectrum/aux-files` instead of `.spectrum/aux`. OneDrive refuses to sync a folder named `aux`, which is a reserved name on Windows, and asked to rename it in every project that had one. Spectrum removes the old folder when it starts, and a linked document is compiled once more to rebuild its files
+
+### Changed
+
+- Windows' `Thumbs.db` and `desktop.ini` are hidden from the file list and left out of imports
+- The Windows installer is the 1.5.0 build, which already kept these files in `.spectrum/aux-files`, so it still reports version 1.5.0
+
 ## 1.5.0 (15 October 2026)
 
 ### Added
 
 - A Windows version for x64 PCs, as a preview, installed with `Spectrum_1.5.0_x64-setup.exe`. It has the standard Windows title bar, Microsoft's Fluent UI System Icons, `Ctrl` shortcuts, File Explorer and the Recycle Bin, and works with MiKTeX, TeX Live and Tectonic. It is built and tested on GitHub Actions
-- Windows' `Thumbs.db` and `desktop.ini` are hidden from the file list and left out of imports, on macOS too
 
 - Compiling a document other than the main file. When a project holds more than one document (a `.tex` file with its own `\documentclass`), the menu beside Compile lists them above the compilers, and choosing one compiles it once without changing the main file. `⇧⌘↩` compiles the open file when it is a document of its own and the main file otherwise. Compile and `⌘↩` still compile the main file
 - Cross-references between documents with `xr` or `xr-hyper` (`\externaldocument`) and `zref-xr` (`\zexternaldocument`). The `.aux` files of each document are kept in the hidden `.spectrum` folder after a compile, so a document that links to another finds its labels with every compiler. A linked document that has not been compiled or has changed since is compiled first

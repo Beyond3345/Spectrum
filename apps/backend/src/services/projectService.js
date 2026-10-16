@@ -344,6 +344,13 @@ export function siblingParent(root) {
 
 // ─── Legacy layout ───
 
+/** 1.5.0 kept .aux files in .spectrum/aux, a name OneDrive and Windows refuse; they're in aux-files now. */
+export async function dropOldAuxFolders() {
+  for (const { path: root } of (await readRegistry()).projects) {
+    await fs.rm(appPath(root, 'aux'), { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 /**
  * Upstream kept every project in DATA_DIR/<uuid>/ with project.json at the root.
  * Register those in place and move their metadata into .spectrum/. Safe to rerun.
