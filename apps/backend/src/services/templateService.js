@@ -25,10 +25,8 @@ export function templatePath(id) {
 /**
  * Desktop builds ship templates read-only inside the app bundle, but users can upload
  * their own, so the live set lives in a writable dir. Copy in any bundled template the
- * user doesn't have yet, refresh the bundled ones' manifest entries and the categories,
- * and keep the user's uploads (author "User") and the bundled ones they edited (edited) as they are.
- * ponytail: a bundled template's files are copied once, so later edits to them reach new
- * installs only; copy changed files over too (never into an edited one) if a fix ever has to reach everyone.
+ * user doesn't have yet, refresh the bundled ones' files (when an update changed them) and manifest entries and
+ * the categories, and keep the user's uploads (author "User") and the bundled ones they edited (edited) as they are.
  */
 export async function seedTemplates() {
   if (!SEEDED) return;
@@ -56,11 +54,24 @@ export async function seedTemplates() {
     await writeJson(TEMPLATE_MANIFEST, seed);
     return;
   }
-  const shipped = new Map((seed.templates || []).map((t) => [t.id, t]));
+  // A shipped template the user hasn't edited follows the app: when an update changes its files, the user's copy
+  // is replaced with them (an upload under the same name and an edited template keep theirs)
+  const mine = new Map((current.templates || []).map((t) => [t.id, t]));
+  const hashes = new Map();
+  for (const t of seed.templates || []) {
+    const was = mine.get(t.id);
+    if (was && (was.author === 'User' || was.edited)) continue;
+    const seedDir = path.join(TEMPLATE_SEED_DIR, t.id);
+    const hash = await folderHash(seedDir).catch(() => '');
+    if (!hash) continue;
+    hashes.set(t.id, hash);
+    if (was && was.shippedHash !== hash) await replaceTemplateFolder(t.id, (staged) => copyDir(seedDir, staged));
+  }
+  const shipped = new Map((seed.templates || []).map((t) => [t.id, hashes.has(t.id) ? { ...t, shippedHash: hashes.get(t.id) } : t]));
   const kept = (current.templates || []).map((t) => (shipped.has(t.id) && t.author !== 'User' && !t.edited ? shipped.get(t.id) : t));
   const known = new Set(kept.map((t) => t.id));
   const next = {
-    templates: [...kept, ...(seed.templates || []).filter((t) => !known.has(t.id))],
+    templates: [...kept, ...[...shipped.values()].filter((t) => !known.has(t.id))],
     categories: seed.categories || current.categories || []
   };
   if (JSON.stringify(next) !== JSON.stringify(current)) await writeJson(TEMPLATE_MANIFEST, next);
@@ -171,6 +182,14 @@ async function copyTemplateFiles(src, dest) {
  * old copy or the new one, never part of each.
  * ponytail: a crash between the two renames leaves the old copy as .<id>-…-old; put it back at startup if that bites
  */
+/** A folder's files as one hash, so seeding can tell when an update changed a shipped template. */
+async function folderHash(dir) {
+  const hash = crypto.createHash('sha1');
+  const files = (await listFilesRecursive(dir)).filter((i) => i.type === 'file').sort((a, b) => (a.path < b.path ? -1 : 1));
+  for (const file of files) hash.update(`${file.path}\0`).update(await fs.readFile(path.join(dir, file.path))).update('\0');
+  return hash.digest('hex');
+}
+
 async function replaceTemplateFolder(id, fill) {
   const root = templatePath(id);
   const staged = safeJoin(TEMPLATE_DIR, `.${id}-${crypto.randomUUID()}`);

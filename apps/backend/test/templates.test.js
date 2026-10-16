@@ -44,15 +44,25 @@ test('seeding an existing install adds new templates, refreshes shipped entries 
   await fs.writeFile(path.join(userDir, 'cv', 'cv.tex'), 'my cv');
   const mine = { id: 'mine', label: 'Mine', mainFile: 'main.tex', category: 'academic', description: 'Mine', tags: [], author: 'User', featured: false };
   const myCv = { ...mine, id: 'cv', label: 'My CV', mainFile: 'cv.tex' };
+  // and a shipped template the user edited
+  const letter = { ...shipped.templates.find((t) => t.id === 'letter'), edited: true };
+  await fs.mkdir(path.join(userDir, 'letter'));
+  await fs.writeFile(path.join(userDir, 'letter', 'main.tex'), 'my letter');
   await fs.writeFile(path.join(userDir, 'manifest.json'), JSON.stringify({
-    templates: [{ ...acl, featured: true, descriptionEn: 'old' }, mine, myCv],
+    templates: [{ ...acl, featured: true, descriptionEn: 'old' }, mine, myCv, letter],
     categories: [{ id: 'all', label: 'All' }, { id: 'academic', label: 'Academic' }, { id: 'resume', label: 'Resume' }]
   }));
 
   await seedTemplates();
   const manifest = await readManifest();
   assert.deepEqual(manifest.categories, shipped.categories);
-  assert.deepEqual(manifest.templates.find((t) => t.id === 'acl'), acl);
+  const { shippedHash, ...aclNow } = manifest.templates.find((t) => t.id === 'acl');
+  assert.deepEqual(aclNow, acl);
+  assert.match(shippedHash, /^[0-9a-f]{40}$/);
+  // the app's newer files reach a shipped template the user never edited, not one they did
+  assert.equal(await fs.readFile(path.join(userDir, 'acl', 'main.tex'), 'utf8'), await fs.readFile(path.join(shippedDir, 'acl', 'main.tex'), 'utf8'));
+  assert.deepEqual(manifest.templates.find((t) => t.id === 'letter'), letter);
+  assert.equal(await fs.readFile(path.join(userDir, 'letter', 'main.tex'), 'utf8'), 'my letter');
   assert.deepEqual(manifest.templates.find((t) => t.id === 'mine'), mine);
   assert.deepEqual(manifest.templates.find((t) => t.id === 'cv'), myCv);
   assert.deepEqual(manifest.templates.map((t) => t.id).sort(), [...new Set([...shipped.templates.map((t) => t.id), 'mine'])].sort());

@@ -1146,7 +1146,9 @@ test('templates are edited in a hidden copy, saved in place or as new ones, rest
   // Save replaces the template's files, without app data or build leftovers, and marks a shipped one edited
   const saved = (await post(`/api/projects/${draft.id}/save-template`)).json;
   assert.ok(saved.ok, saved.error);
-  assert.deepEqual(saved.template, { ...shippedLetter, edited: true });
+  // (shippedHash: the fingerprint seeding keeps of the shipped files)
+  const { shippedHash: _hash, ...savedEntry } = saved.template;
+  assert.deepEqual(savedEntry, { ...shippedLetter, edited: true });
   assert.deepEqual((await fs.readdir(path.join(templateDir, 'letter'))).sort(), ['logo.pdf', 'main.tex', 'parts']);
   assert.ok(!(await fs.readdir(templateDir)).some((name) => name.startsWith('.')), 'nothing left of the swap');
   assert.equal((await template('letter')).edited, true);
