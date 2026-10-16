@@ -170,10 +170,6 @@
       "label": "All"
     },
     {
-      "id": "academic",
-      "label": "Academic"
-    },
-    {
       "id": "notes",
       "label": "Notes"
     },
@@ -192,6 +188,10 @@
     {
       "id": "cv",
       "label": "CV"
+    },
+    {
+      "id": "academic",
+      "label": "Academic"
     }
   ]
 }

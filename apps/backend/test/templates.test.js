@@ -20,7 +20,7 @@ const readManifest = async () => JSON.parse(await fs.readFile(path.join(userDir,
 after(() => rmSync(tmp, { recursive: true, force: true }));
 
 test('the shipped manifest has a folder and a known category for every template', () => {
-  assert.deepEqual(shipped.categories.map((c) => c.id), ['all', 'academic', 'notes', 'reports', 'letters', 'slides', 'cv']);
+  assert.deepEqual(shipped.categories.map((c) => c.id), ['all', 'notes', 'reports', 'letters', 'slides', 'cv', 'academic']);
   const ids = new Set(shipped.categories.map((c) => c.id));
   for (const t of shipped.templates) {
     assert.ok(existsSync(path.join(shippedDir, t.id, t.mainFile)), `${t.id}/${t.mainFile}`);
