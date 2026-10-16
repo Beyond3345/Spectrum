@@ -339,11 +339,18 @@ export interface CompileResult {
   error?: string;
   /** documents it links with \externaldocument, compiled first because their .aux was missing or out of date */
   linked?: { file: string; ok: boolean }[];
+  /** Stop ended it; the last PDF stays */
+  stopped?: boolean;
 }
 
 /** mainFile: the document to compile, the project's main file or another */
 export function compileProject(payload: { projectId: string; mainFile: string; engine: CompileEngine }) {
   return request<CompileResult>('/api/compile', json('POST', payload));
+}
+
+/** Ends the project's running compile (false when none is running). */
+export function stopCompile(projectId: string) {
+  return request<{ ok: boolean }>('/api/compile/stop', json('POST', { projectId }));
 }
 
 // ─── SyncTeX: between a spot in the PDF and the source line that made it ───

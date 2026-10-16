@@ -1,4 +1,4 @@
-import { runCompile, SUPPORTED_ENGINES } from '../services/compileService.js';
+import { runCompile, stopCompile, SUPPORTED_ENGINES } from '../services/compileService.js';
 import { getProjectRoot, readMeta } from '../services/projectService.js';
 import { synctexEdit, synctexView } from '../services/synctex.js';
 
@@ -18,6 +18,8 @@ export function registerCompileRoutes(fastify) {
     }
     return runCompile({ projectId, mainFile, engine });
   });
+
+  fastify.post('/api/compile/stop', async (req) => ({ ok: stopCompile(String(req.body?.projectId || '')) }));
 
   // PDF → source: page is 1-based, x and y are points from the page's top-left corner
   fastify.post('/api/projects/:id/synctex/edit', async (req, reply) => {

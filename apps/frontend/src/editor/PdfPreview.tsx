@@ -10,10 +10,14 @@ GlobalWorkerOptions.workerSrc = pdfWorker;
 
 /** 'fit' = whole page visible, 'width' = page as wide as the column, or a fixed scale (1 = 100%) */
 export type PdfZoom = 'fit' | 'width' | number;
-export type PdfOutlineItem = { title: string; page?: number; level: number };
+/** A place in the PDF: a named destination, or pdf.js's explicit one ([page ref or index, { name: 'XYZ' }, left, top, zoom]) */
+export type PdfDest = string | unknown[];
+export type PdfOutlineItem = { title: string; page?: number; dest?: PdfDest; level: number };
 export type PdfAnnotation = { id: string; page: number; x: number; y: number; text: string };
 export type PdfHandle = {
   scrollToPage(page: number): void;
+  /** Scrolls to the spot a link or contents entry names; with `url`, once that PDF (about to be shown) has loaded. */
+  goTo(dest: PdfDest, url?: string): void;
   /** Scrolls the first box to the middle of the view and highlights every box for `seconds`. */
   highlight(boxes: PdfBox[], seconds: number): void;
 };
@@ -42,7 +46,7 @@ async function readOutline(pdf: PDFDocumentProxy) {
       } catch {
         // an outline entry without a usable destination
       }
-      items.push({ title: entry.title || '(untitled)', page, level });
+      items.push({ title: entry.title || '(untitled)', page, dest: entry.dest ?? undefined, level });
       await walk(entry.items, level + 1);
     }
   };
@@ -66,7 +70,35 @@ async function paintPage(page: PDFPageProxy, scale: number) {
   return { canvas, textLayer };
 }
 
-/** Frees a page box's canvas and text (its annotation markers stay). */
+/**
+ * The page's links (\\ref, \\cite, the contents, URLs) as clear areas over it, sized in percent so they hold
+ * through zoom, made once per PDF. Each keeps where it goes: a destination in this PDF, a web address, or another
+ * PDF (xr-hyper's links to a linked document).
+ */
+async function addLinks(box: HTMLElement, page: PDFPageProxy, url: string) {
+  if (box.dataset.links === url) return;
+  box.dataset.links = url;
+  const annotations = await page.getAnnotations({ intent: 'display' }).catch(() => []);
+  if (box.dataset.links !== url) return;
+  box.querySelectorAll(':scope > .pdf-link').forEach((node) => node.remove());
+  const view = page.getViewport({ scale: 1 });
+  for (const a of annotations) {
+    if (a.subtype !== 'Link' || !(a.dest || a.url || a.unsafeUrl)) continue;
+    const [x1, y1] = view.convertToViewportPoint(a.rect[0], a.rect[1]);
+    const [x2, y2] = view.convertToViewportPoint(a.rect[2], a.rect[3]);
+    const link = document.createElement('a');
+    link.className = 'pdf-link';
+    Object.assign(link.style, overlayStyle({ page: page.pageNumber, x: Math.min(x1, x2), y: Math.min(y1, y2), width: Math.abs(x2 - x1), height: Math.abs(y2 - y1) }, view));
+    if (a.dest) link.dataset.dest = JSON.stringify(a.dest);
+    else if (a.url) {
+      link.href = a.url;
+      link.title = a.url;
+    } else link.dataset.file = a.unsafeUrl;
+    box.append(link);
+  }
+}
+
+/** Frees a page box's canvas and text (its annotation markers and links stay). */
 function clearPage(box: HTMLElement) {
   box.querySelectorAll<HTMLElement>(':scope > canvas, :scope > .textLayer').forEach((node) => {
     if (node instanceof HTMLCanvasElement) node.width = node.height = 0;
@@ -98,6 +130,7 @@ function drawPage(box: HTMLElement, layout: Layout | null) {
       clearPage(box);
       box.prepend(canvas, textLayer);
       box.dataset.drawn = key;
+      addLinks(box, page, layout.url);
     },
     () => {
       if (box.dataset.drawing === key) delete box.dataset.drawing;
@@ -147,8 +180,10 @@ const PdfPreview = forwardRef<
     /** a pinch or ⌘-scroll chose this scale */
     onZoom(scale: number): void;
     onPage(page: number): void;
+    /** a link to another PDF, as written in the link: "notes.pdf#eq:ohm" */
+    onFileLink(target: string): void;
   }
->(function PdfPreview({ url, zoom, spread, annotateMode, annotations, onAddAnnotation, onDoubleClick, onLoad, onScale, onZoom, onPage }, ref) {
+>(function PdfPreview({ url, zoom, spread, annotateMode, annotations, onAddAnnotation, onDoubleClick, onLoad, onScale, onZoom, onPage, onFileLink }, ref) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pagesRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -165,8 +200,37 @@ const PdfPreview = forwardRef<
   const anchorRef = useRef<Anchor | null>(null);
   // stops the current highlight's timers
   const unlingerRef = useRef(() => {});
+  // a place to go once the PDF at `url` has loaded
+  const pendingRef = useRef<{ url: string; dest: PdfDest } | null>(null);
+
+  const goTo = async (dest: PdfDest) => {
+    const pdf = await docRef.current?.task.promise.catch(() => null);
+    const layout = layoutRef.current;
+    const scroller = scrollRef.current;
+    if (!pdf || !layout || !scroller) return;
+    const explicit = typeof dest === 'string' ? await pdf.getDestination(dest).catch(() => null) : dest;
+    if (!Array.isArray(explicit) || explicit[0] == null) return;
+    const index = typeof explicit[0] === 'number' ? explicit[0] : await pdf.getPageIndex(explicit[0] as Parameters<PDFDocumentProxy['getPageIndex']>[0]).catch(() => -1);
+    const box = layout.boxes[index];
+    const page = layout.pages[index];
+    if (!box || !page) return;
+    // XYZ left top zoom, FitH and FitBH top, FitR left bottom right top; Fit and FitB show the page from its top
+    const kind = (explicit[1] as { name?: string } | undefined)?.name;
+    const top = kind === 'XYZ' ? explicit[3] : kind === 'FitH' || kind === 'FitBH' ? explicit[2] : kind === 'FitR' ? explicit[5] : null;
+    const view = page.getViewport({ scale: 1 });
+    const fy = typeof top === 'number' ? Math.min(1, Math.max(0, view.convertToViewportPoint(0, top)[1] / view.height)) : 0;
+    // a page box's offsets count from the scroller (see highlight)
+    scroller.scrollTo({
+      top: Math.max(0, box.offsetTop + fy * box.offsetHeight - PAD),
+      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+    });
+  };
 
   useImperativeHandle(ref, () => ({
+    goTo(dest, target) {
+      if (target && target !== layoutRef.current?.url) pendingRef.current = { url: target, dest };
+      else goTo(dest);
+    },
     scrollToPage(page) {
       const el = pagesRef.current?.querySelector<HTMLElement>(`.pdf-page[data-page-number="${page}"]`);
       const scroller = scrollRef.current;
@@ -466,6 +530,12 @@ const PdfPreview = forwardRef<
         } else scroller.scrollTop = ratio * scroller.scrollHeight;
         // pages already near the view don't cross the observer's edge again: redraw them now
         visibleRef.current.forEach((box) => drawPage(box, layoutRef.current));
+        // a link from another PDF said where to go in this one
+        if (pendingRef.current?.url === url) {
+          const { dest } = pendingRef.current;
+          pendingRef.current = null;
+          goTo(dest);
+        }
         setError('');
         setRendered((n) => n + 1);
         cb.current.onScale(scale);
@@ -529,6 +599,15 @@ const PdfPreview = forwardRef<
       ref={scrollRef}
       className={`pdf-scroll ${annotateMode ? 'annotate' : ''} ${spread ? 'spread' : ''}`}
       onClick={(event) => {
+        const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('.pdf-link');
+        if (link && !annotateMode) {
+          // never a navigation of the page itself; a web address opens in the browser
+          event.preventDefault();
+          if (link.dataset.dest) goTo(JSON.parse(link.dataset.dest));
+          else if (link.dataset.file) onFileLink(link.dataset.file);
+          else if (link.href) window.open(link.href, '_blank', 'noopener');
+          return;
+        }
         const page = (event.target as HTMLElement).closest<HTMLElement>('.pdf-page');
         if (annotateMode && page) {
           const rect = page.getBoundingClientRect();

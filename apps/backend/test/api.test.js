@@ -782,6 +782,54 @@ test('a compile that runs too long stops everything it started', async () => {
   assert.ok(Date.now() - stopping < 5000, 'stopped promptly');
 });
 
+test('the editor hears when files appear or go outside the app, and not when one is only edited', async () => {
+  const p = await newProject('Watched');
+  await writeFile(p.id, 'main.tex', 'x');
+  const stream = await fetch(`${base}/api/projects/${p.id}/events`);
+  const reader = stream.body.getReader();
+  let heard = '';
+  const reading = (async () => {
+    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) heard += new TextDecoder().decode(chunk.value);
+  })();
+  const listen = async (ms) => {
+    for (const end = Date.now() + ms; Date.now() < end && !heard.includes('event: tree'); ) await new Promise((r) => setTimeout(r, 100));
+  };
+  // an edit, a save through the app and a compile's build folder change no names in the list
+  await fs.appendFile(path.join(p.path, 'main.tex'), 'more');
+  await writeFile(p.id, 'main.tex', 'saved');
+  await fs.mkdir(path.join(p.path, '.spectrum', 'build', 'run'), { recursive: true });
+  await listen(1500);
+  assert.doesNotMatch(heard, /event: tree/);
+  // a file put in the folder by another app does
+  await fs.writeFile(path.join(p.path, 'appendix.tex'), '\\section{Appendix}');
+  await listen(5000);
+  assert.match(heard, /event: tree/);
+  await reader.cancel();
+  await reading.catch(() => {});
+});
+
+test('Stop ends a compile at once and keeps the last PDF', async (t) => {
+  if (!(await api('/api/system/check')).json.tools.pdflatex) return t.skip('needs pdflatex');
+  const p = await newProject('Stop me');
+  await writeFile(p.id, 'main.tex', '\\documentclass{article}\\begin{document}Hello\\end{document}\n');
+  const compile = () => api('/api/compile', { method: 'POST', body: { projectId: p.id, mainFile: 'main.tex', engine: 'pdflatex' } });
+  assert.ok((await compile()).json.ok);
+  const pdf = await fs.readFile(path.join(p.path, 'main.pdf'));
+  // a macro that calls itself keeps TeX busy for good
+  await writeFile(p.id, 'main.tex', '\\documentclass{article}\\begin{document}\\def\\x{\\x}\\x\\end{document}\n');
+  const pending = compile();
+  await new Promise((r) => setTimeout(r, 1500));
+  const stopping = Date.now();
+  assert.deepEqual((await api('/api/compile/stop', { method: 'POST', body: { projectId: p.id } })).json, { ok: true });
+  const res = (await pending).json;
+  assert.ok(Date.now() - stopping < 5000, 'stopped promptly');
+  assert.equal(res.ok, false);
+  assert.equal(res.stopped, true);
+  assert.deepEqual(await fs.readFile(path.join(p.path, 'main.pdf')), pdf);
+  // nothing running: nothing to stop
+  assert.deepEqual((await api('/api/compile/stop', { method: 'POST', body: { projectId: p.id } })).json, { ok: false });
+});
+
 test('a .cmd gets its arguments as given, none of them read by cmd.exe', { skip: !WINDOWS && 'Windows only' }, async () => {
   const { runSpawn } = await import('../src/services/compileService.js');
   const bin = path.join(tmp, 'cmd bin (x86)');

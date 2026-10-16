@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import path from 'path';
 import { promises as fs, constants as fsConstants } from 'fs';
 import { spawn } from 'child_process';
+import { AsyncLocalStorage } from 'async_hooks';
 import { ensureDir, listFilesRecursive, renameOver } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { withoutComments } from '../utils/texUtils.js';
@@ -91,6 +92,19 @@ async function autoEngineCandidates(absMain) {
 
 // Every running runSpawn child, so quitting can stop them rather than leave them orphaned.
 const children = new Set();
+// The compile each child belongs to (a project's), so Stop ends that compile and nothing else
+const jobs = new AsyncLocalStorage();
+const running = new Map();
+const stopped = () => jobs.getStore()?.stopped === true;
+
+/** Stops the project's compile: the TeX, BibTeX or biber run going now and what it started. */
+export function stopCompile(projectId) {
+  const job = running.get(projectId);
+  if (!job) return false;
+  job.stopped = true;
+  for (const child of job.children) killGroup(child);
+  return true;
+}
 
 function killGroup(child) {
   if (WINDOWS) {
@@ -136,9 +150,13 @@ export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOU
       options.windowsVerbatimArguments = true;
     }
   }
+  // a stopped compile starts nothing more
+  if (stopped()) return { code: null, timedOut: false };
+  const job = jobs.getStore();
   return new Promise((resolve, reject) => {
     const child = spawn(file, args, options);
     children.add(child);
+    job?.children.add(child);
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
@@ -149,6 +167,7 @@ export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOU
     child.on('error', (err) => {
       clearTimeout(timer);
       children.delete(child);
+      job?.children.delete(child);
       reject(err);
     });
     child.on('exit', () => {
@@ -156,6 +175,7 @@ export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOU
       // leftovers would keep 'close' from ever firing; the pipes still drain into the log
       killGroup(child);
       children.delete(child);
+      job?.children.delete(child);
       setTimeout(() => {
         child.stdout.destroy();
         child.stderr.destroy();
@@ -185,10 +205,21 @@ export async function runCompile({ projectId, mainFile, engine = 'pdflatex' }) {
     return { ok: false, error: `The main file “${mainFile}” doesn’t exist.`, engine };
   }
 
+  const job = { stopped: false, children: new Set() };
+  running.set(projectId, job);
+  try {
+    return await jobs.run(job, () => compileWithLinks(engine, projectRoot, absMain, mainFile));
+  } finally {
+    if (running.get(projectId) === job) running.delete(projectId);
+  }
+}
+
+async function compileWithLinks(engine, projectRoot, absMain, mainFile) {
   // Documents it cross-references go first when their .aux is missing or old. One level only,
   // so two documents that reference each other don't loop.
   const linked = [];
   for (const target of await staleLinks(projectRoot, absMain)) {
+    if (stopped()) break;
     const file = docPath(projectRoot, target);
     linked.push({ file, ok: (await compileDocument(engine, projectRoot, target, file)).ok });
   }
@@ -209,7 +240,7 @@ async function compileDocument(engine, projectRoot, absMain, mainFile) {
   const result = await compileWith(candidates[0], projectRoot, absMain, mainFile);
   // fontspec & co. may sit in an \input'd preamble or a local .sty, which the guess can't see
   const fallback = candidates.find((e) => e === 'xelatex' || e === 'lualatex');
-  if (!result.ok && candidates[0] === 'pdflatex' && fallback && NEEDS_UNICODE_ENGINE.test(result.log || '')) {
+  if (!result.ok && !result.stopped && candidates[0] === 'pdflatex' && fallback && NEEDS_UNICODE_ENGINE.test(result.log || '')) {
     return { ...(await compileWith(fallback, projectRoot, absMain, mainFile)), engine: fallback };
   }
   return { ...result, engine: candidates[0] };
@@ -325,7 +356,7 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
     // Pass 1: generate .aux with \citation{} entries
     pass = await runSpawn(cmd, args, mainDir, pushLog, texEnv);
 
-    if (MULTI_PASS_ENGINES.includes(engine) && !pass.timedOut) {
+    if (MULTI_PASS_ENGINES.includes(engine) && !pass.timedOut && !stopped()) {
       const auxPath = path.join(outDir, `${base}.aux`);
 
       // biblatex writes \abx@aux@... commands in .aux; traditional bibtex does not
@@ -354,7 +385,7 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
 
       // Pass 2 + 3: resolve citations and cross-references
       pass = await runSpawn(cmd, args, mainDir, pushLog, texEnv);
-      if (!pass.timedOut) pass = await runSpawn(cmd, args, mainDir, pushLog, texEnv);
+      if (!pass.timedOut && !stopped()) pass = await runSpawn(cmd, args, mainDir, pushLog, texEnv);
     }
   } catch (err) {
     await cleanBuild(buildRoot, outDir);
@@ -363,6 +394,11 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
   const { code } = pass;
 
   let log = logChunks.join('');
+  // the last PDF, SyncTeX and .aux stay as they were
+  if (stopped()) {
+    await cleanBuild(buildRoot, outDir);
+    return { ok: false, stopped: true, error: 'The compile was stopped.', log, status: -1 };
+  }
   if (pass.timedOut) {
     await cleanBuild(buildRoot, outDir);
     return { ok: false, error: 'The compile took too long and was stopped.', log, status: -1 };

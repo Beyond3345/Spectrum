@@ -1001,6 +1001,18 @@ button.compile-status:hover {
   filter: brightness(0.81);
 }
 
+/* a link in the PDF (addLinks in PdfPreview): above the text, so a click follows it */
+.pdf-link {
+  position: absolute;
+  z-index: 2;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.pdf-link:hover {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
 .pdf-annotation {
   position: absolute;
   z-index: 3;

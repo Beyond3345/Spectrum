@@ -14,6 +14,7 @@ import {
   ApiError,
   blobUrl,
   compileProject,
+  stopCompile,
   createVersion as saveVersion,
   getFile,
   getProjectTree,
@@ -58,7 +59,7 @@ import ReviewChangesSheet from '../editor/ReviewChangesSheet';
 import FileTree from '../editor/FileTree';
 import type { FileTreeHandle } from '../editor/FileTree';
 import PdfPreview, { MAX_ZOOM, MIN_ZOOM, pdfThumbnail } from '../editor/PdfPreview';
-import type { PdfAnnotation, PdfHandle, PdfOutlineItem, PdfZoom } from '../editor/PdfPreview';
+import type { PdfAnnotation, PdfDest, PdfHandle, PdfOutlineItem, PdfZoom } from '../editor/PdfPreview';
 import { parseCompileLog, projectFile } from '../editor/compileLog';
 import { highlightColour, linger } from '../editor/synctex';
 import {
@@ -194,7 +195,7 @@ const SNIPPETS: (Snippet | null)[] = [
   { label: 'Label', icon: 'tag', text: '\\label{label}', select: 'label' }
 ];
 
-type CompileState = { state: 'idle' | 'running' | 'ok' | 'failed'; engine: CompileEngine | string; at?: Date; slow?: boolean };
+type CompileState = { state: 'idle' | 'running' | 'ok' | 'failed' | 'stopped'; engine: CompileEngine | string; at?: Date; slow?: boolean };
 
 export default function EditorPage() {
   const { projectId = '' } = useParams();
@@ -948,8 +949,41 @@ function Editor({ projectId }: { projectId: string }) {
     if (old?.blob) window.setTimeout(() => URL.revokeObjectURL(old.url), 10_000);
   };
 
-  /** A document's PDF from its last compile. */
-  const loadPdf = (doc: string) => showPdf(doc, { url: blobUrl(projectId, pdfOf(doc), Date.now()), blob: false });
+  /** A document's PDF from its last compile; returns the URL it shows from. */
+  const loadPdf = (doc: string) => {
+    const url = blobUrl(projectId, pdfOf(doc), Date.now());
+    showPdf(doc, { url, blob: false });
+    return url;
+  };
+
+  /** A link in the PDF to another PDF (xr-hyper's links to a linked document): that document's PDF, at the spot. */
+  const followFileLink = (target: string) => {
+    const [file, fragment = ''] = target.replace(/^file:(\/\/)?/, '').split('#');
+    // the link is written from the shown PDF's folder
+    const parts: string[] = [];
+    for (const part of `${shownDoc.slice(0, shownDoc.lastIndexOf('/') + 1)}${decodeURI(file)}`.split('/')) {
+      if (part === '..') parts.pop();
+      else if (part && part !== '.') parts.push(part);
+    }
+    const wanted = parts.join('/').toLowerCase();
+    const doc = pdfDocs.find((d) => pdfOf(d).toLowerCase() === wanted);
+    if (!doc) {
+      notify(`That link goes to ${file}, which isn’t the PDF of a document in this project.`);
+      return;
+    }
+    const name = decodeURIComponent(fragment).replace(/^nameddest=/, '');
+    const page = name.match(/^page=(\d+)/);
+    let dest: PdfDest = page ? [Number(page[1]) - 1, { name: 'Fit' }] : name;
+    if (name.startsWith('[')) {
+      try {
+        dest = JSON.parse(name);
+      } catch {
+        // a name after all
+      }
+    }
+    const url = doc === shownDoc ? undefined : loadPdf(doc);
+    if (name) pdfRef.current?.goTo(dest, url);
+  };
 
   /** The main file, or another document once (the main file stays as it is). */
   const runCompile = async (doc = mainFile) => {
@@ -976,6 +1010,8 @@ function Editor({ projectId }: { projectId: string }) {
           pdfThumbnail(url)
             .then((png) => saveThumbnail(projectId, png))
             .catch(() => undefined);
+      } else if (res.stopped) {
+        setCompile({ state: 'stopped', engine: actual, at: new Date() });
       } else {
         setCompileFailure(res.error || 'No PDF was produced.');
         setCompile({ state: 'failed', engine: actual, at: new Date() });
@@ -1377,6 +1413,13 @@ function Editor({ projectId }: { projectId: string }) {
     };
   }, []);
 
+  // files added, removed or renamed outside the app (Finder, another editor, a git pull) show in the list as they happen
+  useEffect(() => {
+    const events = new EventSource(`/api/projects/${projectId}/events`);
+    events.addEventListener('tree', () => refreshTree().catch(() => undefined));
+    return () => events.close();
+  }, [projectId]);
+
   // the compiled PDF lives in a blob URL; free it when the page goes away
   const pdfNow = useRef(pdf);
   pdfNow.current = pdf;
@@ -1513,7 +1556,9 @@ function Editor({ projectId }: { projectId: string }) {
         : 'Compiling…'
       : compile.state === 'ok' && compile.at
         ? `Compiled ${timeFormat.format(compile.at)}`
-        : '';
+        : compile.state === 'stopped'
+          ? 'Stopped'
+          : '';
 
   const switcherItems: MenuItems = [
     ...projects
@@ -1904,15 +1949,15 @@ function Editor({ projectId }: { projectId: string }) {
               <div className="pdf-header" data-tauri-drag-region>
                 {layout.view === 'pdf' && sidebarButton}
                 <div className="compile-split">
+                  {/* while it runs, Compile is Stop: a TeX run can only be ended, not paused */}
                   <button
-                    className="compile-main"
-                    onClick={() => runCompile()}
-                    disabled={running}
-                    title={withShortcut(settings.shortcuts, 'Compile', 'compile')}
-                    aria-label="Compile"
+                    className={`compile-main ${running ? 'stop' : ''}`}
+                    onClick={() => (running ? stopCompile(projectId).catch(() => undefined) : runCompile())}
+                    title={running ? 'Stop compiling' : withShortcut(settings.shortcuts, 'Compile', 'compile')}
+                    aria-label={running ? 'Stop compiling' : 'Compile'}
                   >
-                    {running ? <span className="spinner" /> : <Icon name="play.fill" />}
-                    <span className="btn-label">Compile</span>
+                    <Icon name={running ? 'stop.fill' : 'play.fill'} />
+                    <span className="btn-label">{running ? 'Stop' : 'Compile'}</span>
                   </button>
                   <MenuButton
                     className="compile-engine"
@@ -1975,6 +2020,7 @@ function Editor({ projectId }: { projectId: string }) {
                     annotations={annotations}
                     onAddAnnotation={addAnnotation}
                     onDoubleClick={(at, text) => jumpFromPdf(at, text).catch((err) => notify(`Couldn’t jump to the source: ${errorText(err)}`, 'error'))}
+                    onFileLink={followFileLink}
                     onLoad={({ pages, outline: toc }) => {
                       setPdfPages(pages);
                       setPdfOutline(toc);
@@ -2045,7 +2091,9 @@ function Editor({ projectId }: { projectId: string }) {
                             style={{ paddingLeft: 10 + item.level * 14 }}
                             disabled={!item.page}
                             onClick={() => {
-                              if (item.page) pdfRef.current?.scrollToPage(item.page);
+                              // to the section's own spot, not the top of its page
+                              if (item.dest) pdfRef.current?.goTo(item.dest);
+                              else if (item.page) pdfRef.current?.scrollToPage(item.page);
                               setTocOpen(false);
                             }}
                           >

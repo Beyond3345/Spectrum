@@ -1,5 +1,5 @@
 import path from 'path';
-import { promises as fs, createWriteStream } from 'fs';
+import { promises as fs, createWriteStream, watch } from 'fs';
 import { pipeline } from 'stream/promises';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -327,6 +327,46 @@ export function registerProjectRoutes(fastify) {
     const root = await getProjectRoot(req.params.id);
     const mainFile = String(req.query?.mainFile || '') || (await readMeta(root)).mainFile || 'main.tex';
     return projectStats(root, mainFile);
+  });
+
+  // Tells the open editor when files appear, go or are renamed outside the app (Finder, another editor, a git
+  // pull), so its file list follows. After each burst of events it lists the folder again and says so only when
+  // the list changed: edits to a file, the app's own saves and compiles (in .spectrum) don't count.
+  fastify.get('/api/projects/:id/events', async (req, reply) => {
+    const root = await getProjectRoot(req.params.id);
+    const listing = async () => (await listFilesRecursive(root).catch(() => [])).map((i) => `${i.type} ${i.path}`).join('\n');
+    let last = await listing();
+    reply.hijack();
+    reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    // sends the headers now rather than with the first event
+    reply.raw.write(': watching\n\n');
+    let timer = null;
+    const check = async () => {
+      timer = null;
+      const now = await listing();
+      if (now === last || reply.raw.writableEnded) return;
+      last = now;
+      reply.raw.write('event: tree\ndata: {}\n\n');
+    };
+    let watcher;
+    try {
+      // recursive: FSEvents on macOS, ReadDirectoryChangesW on Windows
+      watcher = watch(root, { recursive: true }, () => {
+        timer ??= setTimeout(check, 300);
+      });
+    } catch {
+      reply.raw.end();
+      return reply;
+    }
+    // the folder went away, or the system ran out of watches: the list just stops following
+    watcher.on('error', () => reply.raw.end());
+    const ping = setInterval(() => reply.raw.write(': ping\n\n'), 30_000);
+    reply.raw.on('close', () => {
+      watcher.close();
+      clearInterval(ping);
+      clearTimeout(timer);
+    });
+    return reply;
   });
 
   fastify.get('/api/projects/:id/tree', async (req) => {
