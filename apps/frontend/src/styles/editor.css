@@ -511,6 +511,15 @@
   color: var(--accent);
 }
 
+/* its buttons go under the name when the editor column is narrow */
+.template-banner {
+  flex-wrap: wrap;
+}
+
+.template-banner > .grow {
+  min-width: 160px;
+}
+
 /* --------------------------------------------------------------------------
    CodeMirror host, empty state, AI suggestion hint
    -------------------------------------------------------------------------- */

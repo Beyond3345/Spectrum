@@ -30,8 +30,9 @@ const zip = (cwd, zipPath, ...entries) => (WINDOWS
   : execFileSync('zip', ['-qr', zipPath, ...entries], { cwd }));
 const dataDir = path.join(tmp, 'data');
 const projectsDir = path.join(tmp, 'projects');
-// uploads write templates, so never into the repo's own folder
+// uploads write templates, so never into the repo's own folder, which is only read, as the app's shipped copy
 const templateDir = path.join(tmp, 'templates');
+const shippedDir = path.join(here, '..', '..', '..', 'templates');
 const port = 20000 + Math.floor(Math.random() * 20000);
 const base = `http://127.0.0.1:${port}`;
 const legacyId = crypto.randomUUID();
@@ -115,7 +116,7 @@ before(async () => {
   writeFileSync(path.join(legacyRoot, 'project.json'), JSON.stringify({ id: legacyId, name: 'Legacy paper', createdAt: '2025-01-01T00:00:00.000Z', tags: ['old'] }));
   writeFileSync(path.join(legacyRoot, 'main.tex'), 'legacy');
 
-  await fs.cp(path.join(here, '..', '..', '..', 'templates'), templateDir, { recursive: true });
+  await fs.cp(shippedDir, templateDir, { recursive: true });
   await startMockLLM();
   await startServer();
 });
@@ -129,6 +130,7 @@ async function startServer() {
       SPECTRUM_DATA_DIR: dataDir,
       SPECTRUM_PROJECTS_DIR: projectsDir,
       SPECTRUM_TEMPLATE_DIR: templateDir,
+      SPECTRUM_TEMPLATE_SEED_DIR: shippedDir,
       SPECTRUM_LLM_API_KEY: '',
       SPECTRUM_MINERU_TOKEN: '',
       SPECTRUM_ARXIV_BASE: `http://127.0.0.1:${mockPort}/arxiv`
@@ -1108,6 +1110,111 @@ test('template uploads unwrap Finder zips and never replace a template', async (
   assert.equal(switched.mainFile, 'main.tex');
   assert.equal(await readFile(q.id, 'main.tex'), '\\documentclass{article}\\begin{document}\nKept body\n\\end{document}');
   assert.ok(!existsSync(path.join(q.path, 'paper_latex.tex')));
+});
+
+test('templates are edited in a hidden copy, saved in place or as new ones, restored and deleted', async () => {
+  const post = (url, body = {}) => api(url, { method: 'POST', body });
+  const template = async (id) => (await api('/api/templates')).json.templates.find((t) => t.id === id);
+  const shippedLetter = JSON.parse(await fs.readFile(path.join(shippedDir, 'manifest.json'), 'utf8')).templates.find((t) => t.id === 'letter');
+
+  // Edit opens a copy in the app's data folder, marked so the list leaves it out, and opens the same copy again
+  const edit = (await post('/api/templates/letter/edit')).json;
+  assert.ok(edit.ok && !edit.existing, edit.error);
+  const draft = edit.project;
+  assert.equal(draft.templateDraft, 'letter');
+  assert.equal(draft.name, shippedLetter.label);
+  assert.equal(path.dirname(draft.path), path.join(dataDir, 'template-drafts'));
+  const again = (await post('/api/templates/letter/edit')).json;
+  assert.ok(again.existing);
+  assert.equal(again.project.id, draft.id);
+  assert.equal((await api('/api/projects')).json.projects.find((p) => p.id === draft.id).templateDraft, 'letter');
+
+  // an unchanged copy closes without asking; a changed one asks first
+  const scratch = (await post('/api/templates/cv/edit')).json.project;
+  assert.ok((await post(`/api/projects/${scratch.id}/close-template`)).json.ok);
+  assert.ok(!existsSync(scratch.path));
+  await new Promise((resolve) => setTimeout(resolve, 5)); // a change in the millisecond the copy was made can't be told apart
+  await writeFile(draft.id, 'main.tex', '\\documentclass{article}\\begin{document}Edited letter\\end{document}\n');
+  await writeFile(draft.id, 'parts/sign.tex', 'Yours sincerely');
+  await fs.writeFile(path.join(draft.path, 'main.pdf'), '%PDF-1.5 compiled');
+  await fs.writeFile(path.join(draft.path, 'main.synctex.gz'), '');
+  await fs.writeFile(path.join(draft.path, 'logo.pdf'), '%PDF-1.5 a figure');
+  const unsaved = await post(`/api/projects/${draft.id}/close-template`);
+  assert.equal(unsaved.status, 409);
+  assert.match(unsaved.json.error, /aren’t saved/);
+
+  // Save replaces the template's files, without app data or build leftovers, and marks a shipped one edited
+  const saved = (await post(`/api/projects/${draft.id}/save-template`)).json;
+  assert.ok(saved.ok, saved.error);
+  assert.deepEqual(saved.template, { ...shippedLetter, edited: true });
+  assert.deepEqual((await fs.readdir(path.join(templateDir, 'letter'))).sort(), ['logo.pdf', 'main.tex', 'parts']);
+  assert.ok(!(await fs.readdir(templateDir)).some((name) => name.startsWith('.')), 'nothing left of the swap');
+  assert.equal((await template('letter')).edited, true);
+  const made = await newProject('From my letter', { template: 'letter' });
+  assert.match(await readFile(made.id, 'main.tex'), /Edited letter/);
+  assert.equal(await readFile(made.id, 'parts/sign.tex'), 'Yours sincerely');
+
+  // the next start's seeding leaves an edited template alone
+  await restartServer();
+  assert.match(await fs.readFile(path.join(templateDir, 'letter', 'main.tex'), 'utf8'), /Edited letter/);
+  assert.equal((await template('letter')).edited, true);
+
+  // saved, so Done just closes it, and deletes the copy
+  assert.ok((await post(`/api/projects/${draft.id}/close-template`)).json.ok);
+  assert.ok(!existsSync(draft.path));
+  assert.ok(!(await listIds()).includes(draft.id));
+
+  // Restore puts back the shipped files and entry
+  const restored = (await post('/api/templates/letter/restore')).json;
+  assert.ok(restored.ok, restored.error);
+  assert.deepEqual(restored.template, shippedLetter);
+  assert.deepEqual(await fs.readdir(path.join(templateDir, 'letter')), ['main.tex']);
+  assert.equal(await fs.readFile(path.join(templateDir, 'letter', 'main.tex'), 'utf8'), await fs.readFile(path.join(shippedDir, 'letter', 'main.tex'), 'utf8'));
+  assert.deepEqual(await template('letter'), shippedLetter);
+
+  // a project saved as a template: a new id from its name, the user's own, not featured, no app data or compiled PDF
+  const p = await newProject('Lab work');
+  await writeFile(p.id, 'report.tex', '\\documentclass{article}\\begin{document}Lab\\end{document}');
+  await fs.writeFile(path.join(p.path, 'report.pdf'), '%PDF-1.5 compiled');
+  await fs.writeFile(path.join(p.path, 'report.log'), 'log');
+  const saveAs = (body) => post('/api/templates', { projectId: p.id, category: 'reports', description: 'For lab\nreports', ...body });
+  const mine = (await saveAs({ label: 'Lab Report é' })).json;
+  assert.ok(mine.ok, mine.error);
+  assert.deepEqual(mine.template, { id: 'lab-report-e', label: 'Lab Report é', mainFile: 'report.tex', category: 'reports', description: 'For lab reports', tags: [], author: 'User', featured: false });
+  assert.deepEqual(await fs.readdir(path.join(templateDir, 'lab-report-e')), ['report.tex']);
+  assert.equal((await saveAs({ label: 'Lab report É' })).json.template.id, 'lab-report-e-2');
+  assert.equal((await saveAs({ label: 'Aux' })).json.template.id, 'aux-template');
+  assert.equal((await saveAs({ label: 'Letter' })).json.template.id, 'letter-2');
+  assert.equal((await saveAs({ label: '  ' })).status, 400);
+  assert.equal((await saveAs({ label: 'X', category: 'all' })).status, 400);
+  assert.ok(existsSync(path.join(p.path, '.spectrum')), 'the project is left as it was');
+
+  // Save as new from a copy being edited: the copy carries on as the new template's
+  const cv = (await post('/api/templates/cv/edit')).json.project;
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await writeFile(cv.id, 'main.tex', '\\documentclass{article}\\begin{document}My CV\\end{document}');
+  const myCv = (await post('/api/templates', { projectId: cv.id, label: 'My CV', category: 'cv', description: '' })).json.template;
+  assert.equal(myCv.id, 'my-cv');
+  const moved = (await api('/api/projects')).json.projects.find((x) => x.id === cv.id);
+  assert.equal(moved.templateDraft, 'my-cv');
+  assert.equal(moved.name, 'My CV');
+  assert.equal((await template('cv')).edited, undefined);
+  assert.ok((await post(`/api/projects/${cv.id}/close-template`)).json.ok);
+
+  // only the user's own can be deleted, and only Spectrum's own restored
+  assert.equal((await api('/api/templates/letter', { method: 'DELETE' })).status, 400);
+  assert.equal((await post('/api/templates/lab-report-e/restore')).status, 400);
+  assert.ok((await api('/api/templates/lab-report-e-2', { method: 'DELETE' })).json.ok);
+  assert.ok(!existsSync(path.join(templateDir, 'lab-report-e-2')));
+  assert.equal(await template('lab-report-e-2'), undefined);
+  assert.ok(!(await fs.readdir(templateDir)).some((name) => name.startsWith('.')));
+
+  // ids and projects are checked: no path out of the templates folder, no draft that isn't one
+  assert.equal((await post('/api/templates/..%2F..%2Fdata/edit')).status, 400);
+  assert.equal((await post('/api/templates/nope/edit')).status, 404);
+  assert.equal((await post(`/api/projects/${p.id}/close-template`, { discard: true })).status, 400);
+  assert.equal((await post(`/api/projects/${p.id}/save-template`)).status, 400);
+  assert.ok(existsSync(p.path));
 });
 
 test('word count follows \\input from the main file\'s folder', async () => {

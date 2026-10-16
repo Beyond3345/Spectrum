@@ -113,7 +113,8 @@ function normaliseMeta(meta) {
     archived: !!meta.archived,
     fileOrder: meta.fileOrder && typeof meta.fileOrder === 'object' ? meta.fileOrder : {}
   };
-  if (typeof meta.mainFile === 'string' && meta.mainFile) next.mainFile = meta.mainFile;
+  // templateDraft: the project is a working copy of that template (templateService), last saved to it at templateSavedAt
+  for (const key of ['mainFile', 'templateDraft', 'templateSavedAt']) if (typeof meta[key] === 'string' && meta[key]) next[key] = meta[key];
   return next;
 }
 
@@ -159,6 +160,7 @@ async function describe(entry) {
     thumbnailAt: thumb ? Math.round(thumb.mtimeMs) : null
   };
   if (base.mainFile) project.mainFile = base.mainFile;
+  if (base.templateDraft) project.templateDraft = base.templateDraft;
   return project;
 }
 
@@ -315,7 +317,8 @@ export async function openFolder(input) {
     if (other && (await readMetaId(other.path)).id === id) id = null;
   }
   id ||= projects.find((p) => p.path === root)?.id || crypto.randomUUID();
-  const next = normaliseMeta({ ...(meta || {}), id, name: (meta?.id === id && meta.name) || path.basename(root) });
+  // a copy of a template draft's folder is a project like any other
+  const next = normaliseMeta({ ...(meta || {}), templateDraft: undefined, id, name: (meta?.id === id && meta.name) || path.basename(root) });
   next.mainFile ||= await detectMainFile(root);
   await metaLock(() => writeJsonAtomic(metaPath(root), next));
   await register(id, root, next);

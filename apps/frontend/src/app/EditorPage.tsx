@@ -13,7 +13,9 @@ import { applyPatch, structuredPatch } from 'diff';
 import {
   ApiError,
   blobUrl,
+  closeTemplateDraft,
   compileProject,
+  saveTemplateDraft,
   stopCompile,
   createVersion as saveVersion,
   getFile,
@@ -38,7 +40,8 @@ import Sheet from './Sheet';
 import SettingsSheet from './SettingsSheet';
 import { ContextMenu, MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
-import { promptDialog } from './Dialogs';
+import { confirmDialog, promptDialog } from './Dialogs';
+import { SaveTemplateSheet } from './ProjectPage';
 import { toast } from './Toast';
 import { IS_DESKTOP } from './desktop';
 import { FILE_MANAGER } from './platform';
@@ -228,6 +231,10 @@ function Editor({ projectId }: { projectId: string }) {
 
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
   const project = projects.find((p) => p.id === projectId);
+  /** the template this project is a working copy of */
+  const draft = project?.templateDraft;
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   const [items, setItems] = useState<FileItem[]>([]);
   const [fileOrder, setFileOrder] = useState<FileOrderMap>({});
@@ -1120,6 +1127,46 @@ function Editor({ projectId }: { projectId: string }) {
     navigate(to);
   };
 
+  // ─── a working copy of a template ───
+
+  const openSaveTemplate = () => saveNow().then(() => setSaveTemplateOpen(true));
+
+  const saveTemplate = async () => {
+    setSavingTemplate(true);
+    try {
+      await saveNow();
+      await saveTemplateDraft(projectId);
+      notify(`Saved the “${project?.name}” template.`, 'success');
+    } catch (err) {
+      notify(`Couldn’t save the template: ${errorText(err)}`, 'error');
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  // Done: the copy goes, after asking when it has changes the template doesn't
+  const closeTemplate = async () => {
+    try {
+      await saveNow();
+      try {
+        await closeTemplateDraft(projectId);
+      } catch (err) {
+        if (!(err instanceof ApiError && err.status === 409)) throw err;
+        const discard = await confirmDialog({
+          title: `Discard your changes to the “${project?.name}” template?`,
+          message: 'They aren’t saved to the template yet. To keep them, choose Save template or Save as new template… first.',
+          confirmLabel: 'Discard changes',
+          destructive: true
+        });
+        if (!discard) return;
+        await closeTemplateDraft(projectId, true);
+      }
+      navigate('/projects');
+    } catch (err) {
+      notify(`Couldn’t close the template: ${errorText(err)}`, 'error');
+    }
+  };
+
   const startResize = (e: ReactMouseEvent) => {
     e.preventDefault();
     const panel = panelRef.current;
@@ -1597,12 +1644,14 @@ function Editor({ projectId }: { projectId: string }) {
 
   const switcherItems: MenuItems = [
     ...projects
-      .filter((p) => !p.missing && (!p.archived || p.id === projectId))
+      .filter((p) => p.id === projectId || (!p.missing && !p.archived && !p.templateDraft))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .slice(0, 12)
       .map((p) => ({ label: p.name, checked: p.id === projectId, onSelect: () => p.id !== projectId && leave(`/editor/${p.id}`) })),
     { separator: true },
     { label: 'All projects', icon: 'square.grid.2x2', onSelect: () => leave('/projects') },
+    // a working copy has its own Save as new template… above the editor
+    !draft && { label: 'Save as template…', icon: 'square.and.arrow.down', onSelect: openSaveTemplate },
     IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => revealProject(projectId).catch(() => undefined) }
   ];
 
@@ -1921,6 +1970,18 @@ function Editor({ projectId }: { projectId: string }) {
               {layout.view === 'editor' && compile.state !== 'idle' && compileStatus}
               {layout.view === 'editor' && viewSwitcher}
             </div>
+
+            {draft && (
+              <div className="review-banner template-banner" role="status">
+                <Icon name="square.and.pencil" />
+                <span className="grow truncate">Editing the “{project?.name}” template</span>
+                <button className="btn small ghost" onClick={closeTemplate}>Done</button>
+                <button className="btn small ghost" onClick={openSaveTemplate}>Save as new template…</button>
+                <button className="btn small primary" disabled={savingTemplate} onClick={saveTemplate}>
+                  Save template
+                </button>
+              </div>
+            )}
 
             {pending.length > 0 && (
               <div className="review-banner" role="status">
@@ -2284,6 +2345,20 @@ function Editor({ projectId }: { projectId: string }) {
       )}
 
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
+
+      {saveTemplateOpen && project && (
+        <SaveTemplateSheet
+          projectId={projectId}
+          name={draft ? `${project.name} copy` : project.name}
+          template={draft}
+          onClose={() => setSaveTemplateOpen(false)}
+          onSaved={() => {
+            setSaveTemplateOpen(false);
+            // a working copy is now the new template's: its name changes
+            if (draft) listProjects().then((list) => setProjects(list.projects)).catch(() => undefined);
+          }}
+        />
+      )}
     </EditorContext.Provider>
   );
 }

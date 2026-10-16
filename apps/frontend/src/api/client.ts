@@ -18,6 +18,8 @@ export interface ProjectMeta {
   /** when the thumbnail was last saved (ms); compiles don't always change updatedAt */
   thumbnailAt?: number | null;
   mainFile?: string;
+  /** a working copy of this template, being edited; kept out of the projects list */
+  templateDraft?: string;
 }
 
 export interface FileItem {
@@ -73,8 +75,11 @@ export interface TemplateMeta {
   category: string;
   description: string;
   tags: string[];
+  /** 'User' for the user's own */
   author: string;
   featured: boolean;
+  /** one Spectrum ships, changed by the user */
+  edited?: boolean;
 }
 
 export interface TemplateCategory {
@@ -267,6 +272,36 @@ export async function uploadTemplate(templateId: string, templateLabel: string, 
   form.append('templateLabel', templateLabel);
   form.append('file', file);
   return request<{ ok: boolean; templateId?: string; error?: string }>('/api/templates/upload', { method: 'POST', body: form });
+}
+
+/** Open a working copy of the template as a project, or the one already open for it (existing). */
+export function editTemplate(id: string) {
+  return request<{ ok: boolean; project: ProjectMeta; existing: boolean }>(`/api/templates/${encodeURIComponent(id)}/edit`, json('POST'));
+}
+
+/** A new template of the user's own from the project's files; a working copy carries on as the new one's. */
+export function saveAsTemplate(projectId: string, details: { label: string; category: string; description: string }) {
+  return request<{ ok: boolean; template: TemplateMeta }>('/api/templates', json('POST', { projectId, ...details }));
+}
+
+/** Put a working copy's files in its template's place. */
+export function saveTemplateDraft(projectId: string) {
+  return request<{ ok: boolean; template: TemplateMeta }>(`/api/projects/${projectId}/save-template`, json('POST'));
+}
+
+/** Close a working copy and delete it; an ApiError with status 409 means changes not saved to the template, unless discard. */
+export function closeTemplateDraft(projectId: string, discard = false) {
+  return request<{ ok: boolean }>(`/api/projects/${projectId}/close-template`, json('POST', { discard }));
+}
+
+/** Put back the files and details Spectrum ships for an edited template. */
+export function restoreTemplate(id: string) {
+  return request<{ ok: boolean; template: TemplateMeta }>(`/api/templates/${encodeURIComponent(id)}/restore`, json('POST'));
+}
+
+/** Delete one of the user's own templates. */
+export function deleteTemplate(id: string) {
+  return request<{ ok: boolean }>(`/api/templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 /** Swap the project onto another template's preamble, keeping the document body. No AI involved. */

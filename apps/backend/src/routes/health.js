@@ -1,5 +1,15 @@
 import { promises as fs } from 'fs';
-import { readTemplateManifest, addTemplateToManifest, templatePath } from '../services/templateService.js';
+import {
+  addTemplateToManifest,
+  closeTemplateDraft,
+  deleteTemplate,
+  editTemplate,
+  readTemplateManifest,
+  restoreTemplate,
+  saveAsTemplate,
+  saveTemplateDraft,
+  templatePath
+} from '../services/templateService.js';
 import { detectMainFile } from '../services/projectService.js';
 import { TEMPLATE_DIR } from '../config/constants.js';
 import { ensureDir, extractZip } from '../utils/fsUtils.js';
@@ -12,6 +22,28 @@ export function registerHealthRoutes(fastify) {
   fastify.get('/api/templates', async () => {
     const { templates, categories } = await readTemplateManifest();
     return { templates, categories };
+  });
+
+  // a new template from a project: { projectId, label, category, description }
+  fastify.post('/api/templates', async (req) => ({ ok: true, template: await saveAsTemplate(String(req.body?.projectId || ''), req.body || {}) }));
+
+  // a working copy of the template to edit, as a project kept out of the list
+  fastify.post('/api/templates/:id/edit', async (req) => ({ ok: true, ...(await editTemplate(req.params.id)) }));
+
+  fastify.post('/api/templates/:id/restore', async (req) => ({ ok: true, template: await restoreTemplate(req.params.id) }));
+
+  fastify.delete('/api/templates/:id', async (req) => {
+    await deleteTemplate(req.params.id);
+    return { ok: true };
+  });
+
+  // a working copy's files into its template
+  fastify.post('/api/projects/:id/save-template', async (req) => ({ ok: true, template: await saveTemplateDraft(req.params.id) }));
+
+  // done with a working copy; a 409 says it has changes not saved to the template, unless discard is set
+  fastify.post('/api/projects/:id/close-template', async (req) => {
+    await closeTemplateDraft(req.params.id, !!req.body?.discard);
+    return { ok: true };
   });
 
   // Extracted like a project zip (Finder litter skipped, a single top-level folder unwrapped)
