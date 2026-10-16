@@ -21,6 +21,24 @@
     "category": "Productivity",
     "shortDescription": "LaTeX writing workspace with an AI assistant",
     "longDescription": "A local LaTeX editor with AI assistance, compile and PDF preview, citations from a DOI or link, and version history.",
+    "fileAssociations": [
+      {
+        "ext": ["tex", "ltx"],
+        "name": "TeX document",
+        "description": "TeX document",
+        "role": "Editor",
+        "rank": "Owner",
+        "mimeType": "text/x-tex"
+      },
+      {
+        "ext": ["bib"],
+        "name": "BibTeX bibliography",
+        "description": "BibTeX bibliography",
+        "role": "Editor",
+        "rank": "Owner",
+        "mimeType": "text/x-bibtex"
+      }
+    ],
     "copyright": "© 2025 OpenDCAI (OpenPrism) · © 2026 Beyond3345. MIT Licence.",
     "icon": [
       "icons/32x32.png",

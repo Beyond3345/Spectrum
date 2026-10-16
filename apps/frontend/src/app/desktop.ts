@@ -28,6 +28,9 @@ export async function pickFolder(opts: { title?: string; defaultPath?: string } 
 
 const invoke = (cmd: string, args: Record<string, unknown>) => tauri().invoke(cmd, args).catch(() => undefined);
 
+/** macOS app: makes Spectrum the default for .tex, .ltx and .bib files (main.rs). Rejects with macOS's reason. */
+export const claimDefaultHandler = () => tauri().invoke('claim_default_handler');
+
 /** Removes the System listener of the last `setNativeTheme` call. */
 let stopFollowingSystem = () => {};
 /** Paints the window background again for the current theme (set by `setNativeTheme`). */

@@ -58,14 +58,27 @@ static QUITTING: AtomicBool = AtomicBool::new(false);
 /// the backend exits when it closes, so it can't outlive a crashed shell.
 struct Backend(Mutex<Option<Child>>);
 
+/// A file opened from Finder or Explorer waits here until the app's page has loaded.
+#[derive(Default)]
+struct Opened {
+    loaded: bool,
+    waiting: Option<PathBuf>,
+}
+
+// UTType, for claim_defaults (AppKit loads it too, but nothing promises that)
+#[cfg(target_os = "macos")]
+#[link(name = "UniformTypeIdentifiers", kind = "framework")]
+extern "C" {}
+
 fn main() {
     let builder = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+        // Windows: a file double-clicked while Spectrum runs starts a second copy, which hands
+        // its arguments over to this one and quits
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            open_files(
+                app,
+                argv.iter().skip(1).map(|arg| Path::new(&cwd).join(arg)),
+            );
         }))
         .plugin(
             tauri_plugin_window_state::Builder::default()
@@ -74,10 +87,12 @@ fn main() {
         )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .manage(Backend(Mutex::new(None)));
+        .manage(Backend(Mutex::new(None)))
+        .manage(Mutex::new(Opened::default()));
     // Windows has no menu bar: closing the window quits there
     #[cfg(target_os = "macos")]
     let builder = builder
+        .invoke_handler(tauri::generate_handler![claim_default_handler])
         .menu(|app| {
             // the stock Quit ends the app at once; ours lets the editor save first
             let menu = Menu::default(app)?;
@@ -101,13 +116,22 @@ fn main() {
         });
     let app = builder
         .setup(|app| {
+            // Windows starts Spectrum with the file double-clicked in Explorer
+            open_files(app.handle(), env::args_os().skip(1).map(PathBuf::from));
             start(app.handle())?;
+            #[cfg(all(target_os = "macos", not(debug_assertions)))]
+            claim_once(app.handle());
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("failed to build the Spectrum app");
 
     app.run(|app, event| match event {
+        // a file opened from Finder, at launch (maybe before setup) or later
+        #[cfg(target_os = "macos")]
+        RunEvent::Opened { urls } => {
+            open_files(app, urls.iter().filter_map(|url| url.to_file_path().ok()));
+        }
         // any other way out (`app.exit`) saves first too
         RunEvent::ExitRequested { api, .. } if !QUITTING.load(Ordering::SeqCst) => {
             api.prevent_exit();
@@ -203,8 +227,8 @@ fn start(app: &AppHandle) -> tauri::Result<()> {
         });
         match started {
             Ok(()) => {
-                let url = format!("http://127.0.0.1:{port}/projects");
-                let _ = window.navigate(Url::parse(&url).expect("valid backend URL"));
+                let waiting = app.state::<Mutex<Opened>>().lock().unwrap().waiting.take();
+                let _ = window.navigate(app_url(port, waiting.as_deref()));
             }
             Err(message) => {
                 // eval is lost if it lands before the splash has loaded
@@ -222,6 +246,147 @@ fn start(app: &AppHandle) -> tauri::Result<()> {
             }
         }
     });
+    Ok(())
+}
+
+/// The app's first page: the projects, or the file opened from Finder or Explorer (the page's
+/// /open route finds its project).
+fn app_url(port: u16, file: Option<&Path>) -> Url {
+    let mut url =
+        Url::parse(&format!("http://127.0.0.1:{port}/projects")).expect("valid backend URL");
+    if let Some(file) = file {
+        url.set_path("/open");
+        url.query_pairs_mut()
+            .append_pair("path", &file.to_string_lossy());
+    }
+    url
+}
+
+/// Brings the window forward and opens the first .tex, .ltx or .bib file of `paths` (never a
+/// PDF). Until the app's page has loaded, the file waits for it (see start and build_window).
+// ponytail: several files at once open the first; tabs for the rest if anyone asks
+fn open_files(app: &AppHandle, paths: impl IntoIterator<Item = PathBuf>) {
+    let window = app.get_webview_window("main");
+    if let Some(window) = &window {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+    let Some(path) = paths.into_iter().find(|path| openable(path)) else {
+        return;
+    };
+    let mut opened = app.state::<Mutex<Opened>>().inner().lock().unwrap();
+    match window {
+        // App.tsx's __spectrumOpen keeps the open editor; the /open route reloads the page, so
+        // it's only for a page that hasn't registered yet
+        Some(window) if opened.loaded => {
+            let _ = window.eval(format!(
+                "(window.__spectrumOpen ?? ((p) => location.assign('/open?path=' + encodeURIComponent(p))))({})",
+                serde_json::Value::from(path.to_string_lossy().into_owned())
+            ));
+        }
+        _ => opened.waiting = Some(path),
+    }
+}
+
+fn openable(path: &Path) -> bool {
+    let ext = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(str::to_ascii_lowercase);
+    path.is_file() && matches!(ext.as_deref(), Some("tex" | "ltx" | "bib"))
+}
+
+/// Once per Mac (a marker in the app data folder remembers it), so another app picked in Finder
+/// later stays picked. Not in a debug build: `tauri dev` leaves this Mac's defaults alone.
+#[cfg(all(target_os = "macos", not(debug_assertions)))]
+fn claim_once(app: &AppHandle) {
+    let Ok(dir) = app.path().app_data_dir() else {
+        return;
+    };
+    if dir.join(CLAIMED).exists() {
+        return;
+    }
+    // Launch Services can be slow to answer
+    thread::spawn(move || {
+        if let Err(message) = claim_defaults(&dir) {
+            eprintln!("Couldn’t make Spectrum the default for .tex and .bib files: {message}");
+        }
+    });
+}
+
+/// Settings → Projects, for when another app has taken the files since.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+async fn claim_default_handler(app: AppHandle) -> Result<(), String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || claim_defaults(&dir))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Marks that Spectrum has made itself the default once.
+#[cfg(target_os = "macos")]
+const CLAIMED: &str = "default-handler-claimed";
+
+/// Makes Spectrum the default app for the content types macOS gives .tex, .ltx and .bib files
+/// (MacTeX declares org.tug.tex; with no app declaring one, a dynamic type), waits for macOS
+/// to confirm each, then leaves the CLAIMED marker in `data_dir`.
+#[cfg(target_os = "macos")]
+fn claim_defaults(data_dir: &Path) -> Result<(), String> {
+    use block2::RcBlock;
+    use objc2::rc::Retained;
+    use objc2::runtime::{AnyClass, AnyObject};
+    use objc2::{class, msg_send};
+    use objc2_foundation::NSString;
+
+    if cfg!(debug_assertions) {
+        return Err("A debug build leaves this Mac’s defaults alone.".into());
+    }
+    let ut_type = AnyClass::get(c"UTType").ok_or("macOS has no UTType here.")?;
+    // SAFETY: class methods and a getter of NSWorkspace and NSBundle, which AppKit always loads
+    let (workspace, app_url): (Retained<AnyObject>, Retained<AnyObject>) = unsafe {
+        let bundle: Retained<AnyObject> = msg_send![class!(NSBundle), mainBundle];
+        (
+            msg_send![class!(NSWorkspace), sharedWorkspace],
+            msg_send![&bundle, bundleURL],
+        )
+    };
+    let exts = ["tex", "ltx", "bib"];
+    let (tx, rx) = mpsc::channel();
+    for ext in exts {
+        // SAFETY: +[UTType typeWithFilenameExtension:] takes an NSString and returns a UTType or nil
+        let content_type: Option<Retained<AnyObject>> =
+            unsafe { msg_send![ut_type, typeWithFilenameExtension: &*NSString::from_str(ext)] };
+        let Some(content_type) = content_type else {
+            return Err(format!("macOS has no type for .{ext} files."));
+        };
+        let tx = tx.clone();
+        // called once, on a queue of macOS's choosing, with nil or an NSError
+        let done = RcBlock::new(move |error: *mut AnyObject| {
+            // SAFETY: error is nil or an NSError, whose localizedDescription is an NSString
+            let failed = unsafe { error.as_ref() }.map(|error| {
+                let text: Retained<NSString> = unsafe { msg_send![error, localizedDescription] };
+                format!(".{ext}: {text}")
+            });
+            let _ = tx.send(failed);
+        });
+        // SAFETY: an app URL, a UTType and a block taking an NSError, as the method expects (macOS 12+)
+        let () = unsafe {
+            msg_send![&workspace, setDefaultApplicationAtURL: &*app_url, toOpenContentType: &*content_type, completionHandler: &*done]
+        };
+    }
+    let failures: Vec<String> = exts
+        .iter()
+        .filter_map(|_| match rx.recv_timeout(Duration::from_secs(10)) {
+            Ok(failed) => failed,
+            Err(_) => Some("macOS didn’t answer.".into()),
+        })
+        .collect();
+    if !failures.is_empty() {
+        return Err(failures.join(" "));
+    }
+    let _ = fs::create_dir_all(data_dir).and_then(|()| fs::write(data_dir.join(CLAIMED), ""));
     Ok(())
 }
 
@@ -271,9 +436,20 @@ fn build_window(
     let window = builder
         // let WebKit take drops itself, so files dragged in from Finder reach the page
         .disable_drag_drop_handler()
-        .on_page_load(move |_, payload| {
-            if payload.event() == PageLoadEvent::Finished && is_splash(payload.url()) {
+        .on_page_load(move |window, payload| {
+            if payload.event() != PageLoadEvent::Finished {
+                return;
+            }
+            if is_splash(payload.url()) {
                 splash_ready.store(true, Ordering::SeqCst);
+            } else if payload.url().port() == Some(port) {
+                // the app's page (the backend's): it takes files from now on, and one that came
+                // while it loaded goes there now
+                let mut opened = window.state::<Mutex<Opened>>().inner().lock().unwrap();
+                opened.loaded = true;
+                if let Some(file) = opened.waiting.take() {
+                    let _ = window.navigate(app_url(port, Some(&file)));
+                }
             }
         })
         .on_navigation(move |url| match url.scheme() {
@@ -732,6 +908,25 @@ mod tests {
             download_path(&dir, &dir.join("Results (2).pdf")),
             dir.join("Results (2).pdf")
         );
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn opens_tex_ltx_and_bib_files_only() {
+        let dir = env::temp_dir().join(format!("spectrum-open-{}", std::process::id()));
+        fs::create_dir_all(dir.join("folder.tex")).unwrap();
+        for name in ["a.tex", "b.LTX", "c.bib", "d.pdf"] {
+            fs::write(dir.join(name), "").unwrap();
+        }
+        let ok = |name: &str| openable(&dir.join(name));
+        assert!(ok("a.tex") && ok("b.LTX") && ok("c.bib"));
+        assert!(!ok("d.pdf") && !ok("gone.tex") && !ok("folder.tex"));
+        // the path survives the trip through the query string
+        let file = dir.join("a b&c#d.tex");
+        let url = app_url(PREFERRED_PORT, Some(&file));
+        assert_eq!(url.path(), "/open");
+        assert_eq!(url.query_pairs().next().unwrap().1, file.to_string_lossy());
+        assert_eq!(app_url(PREFERRED_PORT, None).path(), "/projects");
         fs::remove_dir_all(&dir).unwrap();
     }
 
