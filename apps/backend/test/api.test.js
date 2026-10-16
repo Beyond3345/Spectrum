@@ -1112,6 +1112,40 @@ test('template uploads unwrap Finder zips and never replace a template', async (
   assert.ok(!existsSync(path.join(q.path, 'paper_latex.tex')));
 });
 
+test('editing keeps a template’s own files, Done sees changes made outside the app, and a deleted template takes its copy', async () => {
+  const post = (url, body = {}) => api(url, { method: 'POST', body });
+  // a template of the user's own from an arXiv source: a .bbl and no .bib, a standalone figure with its PDF
+  const p = await newProject('Arxiv source');
+  await writeFile(p.id, 'main.tex', '\\documentclass{article}\\begin{document}\\includegraphics{figs/plot}\\bibliography{x}\\end{document}');
+  await writeFile(p.id, 'main.bbl', '\\begin{thebibliography}{1}\\end{thebibliography}');
+  await writeFile(p.id, 'figs/plot.tex', '\\documentclass{standalone}\\begin{document}x\\end{document}');
+  await fs.writeFile(path.join(p.path, 'figs', 'plot.pdf'), '%PDF-1.5 figure');
+  await fs.writeFile(path.join(p.path, 'main.pdf'), '%PDF-1.5 compiled');
+  const made = (await post('/api/templates', { projectId: p.id, label: 'Arxiv source', category: 'academic' })).json;
+  assert.ok(made.ok, made.error);
+  const id = made.template.id;
+  const files = async () => (await fs.readdir(path.join(templateDir, id), { recursive: true })).map((f) => f.split(path.sep).join('/')).sort();
+  // the main file's compiled PDF stays out; the .bbl (no .bib) and the figure's PDF stay in
+  assert.deepEqual(await files(), ['figs', 'figs/plot.pdf', 'figs/plot.tex', 'main.bbl', 'main.tex']);
+
+  const draft = (await post(`/api/templates/${id}/edit`)).json.project;
+  // a compile in the copy isn't a change; an edit made in Finder is
+  await fs.writeFile(path.join(draft.path, 'main.pdf'), '%PDF-1.5 compiled in the copy');
+  assert.ok((await post(`/api/projects/${draft.id}/close-template`)).json.ok, 'a compile alone closes without asking');
+  const draft2 = (await post(`/api/templates/${id}/edit`)).json.project;
+  await fs.appendFile(path.join(draft2.path, 'main.tex'), '% edited in another editor');
+  assert.equal((await post(`/api/projects/${draft2.id}/close-template`)).status, 409);
+  const saved = (await post(`/api/projects/${draft2.id}/save-template`)).json;
+  assert.ok(saved.ok, saved.error);
+  assert.deepEqual(await files(), ['figs', 'figs/plot.pdf', 'figs/plot.tex', 'main.bbl', 'main.tex']);
+  assert.match(await fs.readFile(path.join(templateDir, id, 'main.tex'), 'utf8'), /edited in another editor/);
+
+  // deleting the template closes its copy, so a later one with the same name starts afresh
+  assert.ok((await api(`/api/templates/${id}`, { method: 'DELETE' })).json.ok);
+  assert.ok(!existsSync(draft2.path));
+  assert.ok(!(await api('/api/projects')).json.projects.some((x) => x.templateDraft === id));
+});
+
 test('templates are edited in a hidden copy, saved in place or as new ones, restored and deleted', async () => {
   const post = (url, body = {}) => api(url, { method: 'POST', body });
   const template = async (id) => (await api('/api/templates')).json.templates.find((t) => t.id === id);

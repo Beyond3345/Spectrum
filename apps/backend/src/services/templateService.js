@@ -2,9 +2,8 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { DATA_DIR, TEMPLATE_DIR, TEMPLATE_MANIFEST, TEMPLATE_SEED_DIR } from '../config/constants.js';
-import { HIDDEN_ENTRIES, copyDir, ensureDir, listFilesRecursive, readJson, renameOver, writeJson, writeJsonAtomic } from '../utils/fsUtils.js';
+import { copyDir, ensureDir, listFilesRecursive, readJson, renameOver, writeJsonAtomic } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
-import { isDocumentFile } from '../utils/texUtils.js';
 import { createProject, detectMainFile, getProjectRoot, httpError, listProjects, readMeta, serialiser, unregister, updateMeta } from './projectService.js';
 
 // the desktop app's read-only copy of the shipped templates (dev runs straight from the repo's)
@@ -50,8 +49,10 @@ export async function seedTemplates() {
   let current = null;
   try {
     current = await readJson(TEMPLATE_MANIFEST);
-  } catch {
-    await writeJson(TEMPLATE_MANIFEST, seed);
+  } catch (err) {
+    // an unreadable manifest is left for the user to see, never replaced: it holds their edited and own templates
+    if (err.code === 'ENOENT') await writeJsonAtomic(TEMPLATE_MANIFEST, seed);
+    else console.error(`Couldn’t read ${TEMPLATE_MANIFEST}: ${err.message}`);
     return;
   }
   // A shipped template the user hasn't edited follows the app: when an update changes its files, the user's copy
@@ -64,8 +65,12 @@ export async function seedTemplates() {
     const seedDir = path.join(TEMPLATE_SEED_DIR, t.id);
     const hash = await folderHash(seedDir).catch(() => '');
     if (!hash) continue;
+    if (was && was.shippedHash !== hash) {
+      // a file held open (Windows) or a full disk: the old files stay, and the next launch tries again
+      const replaced = await replaceTemplateFolder(t.id, (staged) => copyDir(seedDir, staged)).then(() => true, () => false);
+      if (!replaced) continue;
+    }
     hashes.set(t.id, hash);
-    if (was && was.shippedHash !== hash) await replaceTemplateFolder(t.id, (staged) => copyDir(seedDir, staged));
   }
   const shipped = new Map((seed.templates || []).map((t) => [t.id, hashes.has(t.id) ? { ...t, shippedHash: hashes.get(t.id) } : t]));
   const kept = (current.templates || []).map((t) => (shipped.has(t.id) && t.author !== 'User' && !t.edited ? shipped.get(t.id) : t));
@@ -74,7 +79,7 @@ export async function seedTemplates() {
     templates: [...kept, ...[...shipped.values()].filter((t) => !known.has(t.id))],
     categories: seed.categories || current.categories || []
   };
-  if (JSON.stringify(next) !== JSON.stringify(current)) await writeJson(TEMPLATE_MANIFEST, next);
+  if (JSON.stringify(next) !== JSON.stringify(current)) await writeJsonAtomic(TEMPLATE_MANIFEST, next);
 }
 
 export async function readTemplateManifest() {
@@ -132,7 +137,11 @@ const manifestLock = serialiser();
 /** fn receives the manifest's templates and returns the next list. */
 function updateManifest(fn) {
   return manifestLock(async () => {
-    const data = await readJson(TEMPLATE_MANIFEST).catch(() => ({ templates: [], categories: [] }));
+    // only a missing manifest starts empty: an unreadable one would be written over with this one change
+    const data = await readJson(TEMPLATE_MANIFEST).catch((err) => {
+      if (err.code === 'ENOENT') return { templates: [], categories: [] };
+      throw httpError('The list of templates can’t be read, so nothing was changed.', 500);
+    });
     data.templates = fn(Array.isArray(data.templates) ? data.templates : []);
     await writeJsonAtomic(TEMPLATE_MANIFEST, data);
   });
@@ -163,19 +172,41 @@ async function shippedEntry(id) {
  * Copy a project's files into dest (made if need be) for a template: not app data, links, the
  * compiled PDFs of its documents (x.pdf beside x.tex) or other build leftovers.
  */
-async function copyTemplateFiles(src, dest) {
-  const compiled = new Set();
-  for (const item of await listFilesRecursive(src)) {
-    if (item.type === 'file' && /\.tex$/i.test(item.path) && (await isDocumentFile(path.join(src, item.path)))) {
-      compiled.add(path.join(src, item.path.replace(/\.tex$/i, '.pdf')));
-    }
+/**
+ * The files of src a template keeps: not the app's data, links, build leftovers or the main file's compiled PDF;
+ * a .bbl stays when there's no .bib (arXiv sources ship one), and so does anything in keep (the template's own files).
+ */
+async function templateFiles(src, { mainFile = '', keep = new Set() } = {}) {
+  const files = (await listFilesRecursive(src)).filter((i) => i.type === 'file').map((i) => i.path);
+  const hasBib = files.some((f) => /\.bib$/i.test(f));
+  const mainPdf = mainFile.replace(/\.tex$/i, '.pdf');
+  const kept = [];
+  for (const file of files) {
+    const leftover = file === mainPdf || (BUILD_LEFTOVER.test(file) && (hasBib || !/\.bbl$/i.test(file)));
+    if (leftover && !keep.has(file)) continue;
+    if ((await fs.lstat(path.join(src, file))).isSymbolicLink()) continue;
+    kept.push(file);
   }
-  await fs.cp(src, dest, {
-    recursive: true,
-    filter: async (p) =>
-      p === src || (!HIDDEN_ENTRIES.has(path.basename(p)) && !BUILD_LEFTOVER.test(p) && !compiled.has(p) && !(await fs.lstat(p)).isSymbolicLink())
-  });
+  return kept.sort();
 }
+
+async function copyTemplateFiles(src, dest, options) {
+  await ensureDir(dest);
+  for (const file of await templateFiles(src, options)) {
+    await ensureDir(path.dirname(path.join(dest, file)));
+    await fs.copyFile(path.join(src, file), path.join(dest, file));
+  }
+}
+
+/** A working copy's content as one hash, so Done can tell edits (in the app or not) from a compile. */
+async function draftHash(root, mainFile, keep) {
+  const hash = crypto.createHash('sha1').update(`${mainFile}\0`);
+  for (const file of await templateFiles(root, { mainFile, keep })) hash.update(`${file}\0`).update(await fs.readFile(path.join(root, file))).update('\0');
+  return hash.digest('hex');
+}
+
+/** The files a template has now, kept through a save whatever they are. */
+const ownFiles = async (id) => new Set(((await listFilesRecursive(templatePath(id)).catch(() => [])).filter((i) => i.type === 'file')).map((i) => i.path));
 
 /**
  * Replace a template's folder with one fill(folder) builds beside it, so the template is always the
@@ -205,7 +236,8 @@ async function replaceTemplateFolder(id, fill) {
     await fs.rm(staged, { recursive: true, force: true });
     throw err;
   }
-  await fs.rm(old, { recursive: true, force: true, maxRetries: 5 });
+  // the new copy is in place: an old one Windows still holds is only clutter
+  await fs.rm(old, { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
 }
 
 /** The project's main file as its metadata has it, while that file is there, else the one detected. */
@@ -232,8 +264,12 @@ export async function editTemplate(id) {
     name: template.label,
     parentDir: DRAFTS_DIR,
     meta: { templateDraft: id, mainFile: template.mainFile },
-    populate: (root) => copyTemplateFiles(templatePath(id), root)
+    // the whole template, whatever its files are
+    populate: (root) => copyDir(templatePath(id), root)
   });
+  const keep = await ownFiles(id);
+  const templateHash = await draftHash(project.path, template.mainFile, keep);
+  await updateMeta(project.path, (m) => ({ ...m, templateHash }));
   return { project, existing: false };
 }
 
@@ -243,11 +279,16 @@ export async function saveTemplateDraft(projectId) {
   const template = await findTemplate(meta.templateDraft).catch(() => {
     throw httpError(`The “${meta.name}” template doesn’t exist any more. Save it as a new template instead.`, 404);
   });
-  await replaceTemplateFolder(template.id, (dest) => copyTemplateFiles(root, dest));
+  const mainFile = await mainFileOf(root, meta);
+  const keep = await ownFiles(template.id);
+  // taken first, so a change made while the files copy still counts as unsaved
+  const savedAt = new Date().toISOString();
+  const templateHash = await draftHash(root, mainFile, keep);
+  await replaceTemplateFolder(template.id, (dest) => copyTemplateFiles(root, dest, { mainFile, keep }));
   const edited = template.author !== 'User' && !!(await shippedEntry(template.id));
-  const entry = { ...template, mainFile: await mainFileOf(root, meta), ...(edited && { edited: true }) };
+  const entry = { ...template, mainFile, ...(edited && { edited: true }) };
   await addTemplateToManifest(entry);
-  await updateMeta(root, (m) => ({ ...m, templateSavedAt: new Date().toISOString() }));
+  await updateMeta(root, (m) => ({ ...m, templateSavedAt: savedAt, templateHash }));
   return entry;
 }
 
@@ -279,8 +320,11 @@ export async function saveAsTemplate(projectId, { label, category, description }
   const root = await getProjectRoot(projectId);
   const meta = await readMeta(root);
   const id = await newTemplateFolder(name);
+  const mainFile = await mainFileOf(root, meta);
+  const savedAt = new Date().toISOString();
+  const templateHash = await draftHash(root, mainFile, new Set());
   try {
-    await copyTemplateFiles(root, templatePath(id));
+    await copyTemplateFiles(root, templatePath(id), { mainFile });
   } catch (err) {
     await fs.rm(templatePath(id), { recursive: true, force: true });
     throw err;
@@ -288,7 +332,7 @@ export async function saveAsTemplate(projectId, { label, category, description }
   const entry = {
     id,
     label: name,
-    mainFile: await mainFileOf(root, meta),
+    mainFile,
     category,
     description: String(description || '').replace(/\s+/g, ' ').trim().slice(0, 200),
     tags: [],
@@ -296,14 +340,18 @@ export async function saveAsTemplate(projectId, { label, category, description }
     featured: false
   };
   await addTemplateToManifest(entry);
-  if (meta.templateDraft) await updateMeta(root, (m) => ({ ...m, name, templateDraft: id, templateSavedAt: new Date().toISOString() }));
+  if (meta.templateDraft) await updateMeta(root, (m) => ({ ...m, name, templateDraft: id, templateSavedAt: savedAt, templateHash }));
   return entry;
 }
 
 /** Done with a draft: forget it and delete its folder. Changes not saved to the template need discard. */
 export async function closeTemplateDraft(projectId, discard) {
   const { root, meta } = await draftOf(projectId);
-  if (!discard && meta.updatedAt > (meta.templateSavedAt || meta.createdAt)) {
+  // by content when the copy has a fingerprint (edits made outside the app count, a compile doesn't), else by time
+  const changed = meta.templateHash
+    ? (await draftHash(root, await mainFileOf(root, meta), await ownFiles(meta.templateDraft))) !== meta.templateHash
+    : meta.updatedAt > (meta.templateSavedAt || meta.createdAt);
+  if (!discard && changed) {
     throw httpError('This template has changes that aren’t saved yet.', 409, 'UNSAVED');
   }
   await unregister(projectId);
@@ -332,6 +380,8 @@ export async function deleteTemplate(id) {
   });
   await updateManifest((templates) => templates.filter((t) => t.id !== id));
   await fs.rm(gone, { recursive: true, force: true, maxRetries: 5 });
+  // its working copy goes too, or a later template given the same name would open it and be saved over
+  for (const p of await listProjects()) if (p.templateDraft === id) await closeTemplateDraft(p.id, true).catch(() => {});
 }
 
 /**

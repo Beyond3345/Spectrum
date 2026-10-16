@@ -81,3 +81,11 @@ test('seeding an existing install adds new templates, refreshes shipped entries 
   assert.ok(categories.every((c) => c.id === 'all' || templates.some((t) => t.category === c.id)));
   assert.ok(categories.some((c) => c.id === 'reports'));
 });
+
+test('an unreadable template list is left alone, so edited and own templates aren’t lost', async () => {
+  await fs.writeFile(path.join(userDir, 'manifest.json'), '﻿{ "templates": [ broken');
+  await fs.writeFile(path.join(userDir, 'letter', 'main.tex'), 'my letter, still');
+  await seedTemplates();
+  assert.equal(await fs.readFile(path.join(userDir, 'manifest.json'), 'utf8'), '﻿{ "templates": [ broken');
+  assert.equal(await fs.readFile(path.join(userDir, 'letter', 'main.tex'), 'utf8'), 'my letter, still');
+});

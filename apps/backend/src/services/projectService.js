@@ -114,7 +114,7 @@ function normaliseMeta(meta) {
     fileOrder: meta.fileOrder && typeof meta.fileOrder === 'object' ? meta.fileOrder : {}
   };
   // templateDraft: the project is a working copy of that template (templateService), last saved to it at templateSavedAt
-  for (const key of ['mainFile', 'templateDraft', 'templateSavedAt']) if (typeof meta[key] === 'string' && meta[key]) next[key] = meta[key];
+  for (const key of ['mainFile', 'templateDraft', 'templateSavedAt', 'templateHash']) if (typeof meta[key] === 'string' && meta[key]) next[key] = meta[key];
   return next;
 }
 
