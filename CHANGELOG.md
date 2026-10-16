@@ -2,6 +2,19 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.6.0 (16 October 2026)
+
+### Added
+
+- Double-clicking a `.tex`, `.ltx` or `.bib` file in Finder or File Explorer opens it in Spectrum, in the project it belongs to. A file from a folder Spectrum has not seen yet opens together with the folder holding its document, which becomes a project. On macOS Spectrum makes itself the default app for these files the first time it opens, and Settings under Projects can do it again. On Windows the installer offers Spectrum for these files. PDFs are left alone
+- Links in the PDF work. The contents, `\ref`, `\eqref` and `\cite` jump to the spot they point to, a web address opens in the browser and a reference into a linked document (`xr-hyper`) shows that document's PDF at the place it names
+- While a compile runs, Compile becomes Stop, which ends it at once and keeps the last PDF
+- The file list follows the project folder, so a file added, removed or renamed outside Spectrum shows up straight away
+
+### Changed
+
+- The PDF's table of contents goes to each section rather than to the top of its page
+
 ## 1.5.1 (16 October 2026)
 
 ### Fixed
