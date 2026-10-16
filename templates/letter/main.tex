@@ -1,0 +1,67 @@
+\documentclass[11pt,a4paper]{article}   % 11 pt text on A4 paper
+
+% Page
+\usepackage[margin=2.5cm]{geometry}     % 2.5 cm margins all round
+\usepackage{parskip}                    % a blank line between paragraphs instead of an indent
+\usepackage[australian]{babel}          % Australian hyphenation, and \today as 17 October 2026
+\usepackage[T1]{fontenc}                % proper accented letters, and text that copies cleanly from the PDF
+\usepackage{lmodern}                    % Latin Modern, a crisp scalable version of the default font
+\pagestyle{empty}                       % no page number on a one-page letter
+
+% Links
+\usepackage[hidelinks]{hyperref}        % clickable email and web addresses, without coloured boxes
+\hypersetup{                            % details shown in the PDF viewer’s document properties
+  pdftitle  = {Application for the Graduate Engineer position},
+  pdfauthor = {Alex Morgan},
+  pdflang   = {en-AU}
+}
+
+\begin{document}
+
+% Sender
+{\Large\bfseries Alex Morgan}\\[2pt]
+42 Banksia Street, Fitzroy VIC 3065\\
+0491 570 156 \quad \href{mailto:alex.morgan@example.com}{alex.morgan@example.com}
+
+\rule{\textwidth}{0.4pt}
+
+% Date: \today prints today’s date; type the date instead to fix it, e.g. 17 October 2026
+\today
+
+% Recipient
+Ms Priya Nguyen\\
+Graduate Programs Manager\\
+Wattle Power Systems Pty Ltd\\
+Level 12, 100 Collins Street\\
+Melbourne VIC 3000
+
+Dear Ms Nguyen
+
+\textbf{Application for the Graduate Engineer position (reference GE-2026-14)}
+
+I am writing to apply for the Graduate Engineer position advertised on your website on
+2 October 2026. I am completing a Bachelor of Engineering (Electrical) and will graduate in
+December, and I would welcome the chance to start my career with your grid modelling team.
+
+During my final-year project I modelled voltage regulation on a rural feeder with high rooftop
+solar uptake, and recommended inverter settings that kept every customer within the voltage
+limits of AS~61000.3.100. That work taught me to organise
+messy field data, to explain technical results to people outside engineering, and to check my
+assumptions before trusting a simulation.
+
+Last summer I completed a twelve-week placement with a distribution network service provider,
+where I helped prepare protection settings for two zone substations. I enjoyed working within a
+small, careful team and would bring the same attention to detail to Wattle Power Systems.
+
+My résumé is enclosed. I am available for an interview at any time and can be reached on the
+number above. Thank you for considering my application.
+
+Yours sincerely
+
+\vspace{1.5cm}% room for a signature
+
+Alex Morgan
+
+Enc.\ résumé
+
+\end{document}

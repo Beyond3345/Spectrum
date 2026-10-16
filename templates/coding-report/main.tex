@@ -1,0 +1,174 @@
+\documentclass[11pt,a4paper]{article}   % 11 pt text on A4 paper
+
+% Page
+\usepackage[margin=2.5cm]{geometry}     % 2.5 cm margins all round
+\usepackage{parskip}                    % a blank line between paragraphs instead of an indent
+\usepackage[T1]{fontenc}                % real < > | " characters in code, and text that copies cleanly from the PDF
+\usepackage{lmodern}                    % Latin Modern, a crisp scalable version of the default font
+
+% Maths
+\usepackage{amsmath}                    % align, cases and \text inside maths
+
+% Figures and tables
+\usepackage{booktabs}                   % clean table rules: \toprule, \midrule, \bottomrule
+
+% Code
+\usepackage{xcolor}                     % named colours for the code highlighting below
+\usepackage{listings}                   % highlighted code blocks and \lstinline, with no shell-escape
+\usepackage{algorithm}                  % numbered, captioned boxes for algorithms
+\usepackage{algpseudocode}              % pseudocode commands: \State, \If, \While, \Function, ...
+\algrenewcommand\algorithmicrequire{\textbf{Input:}}    % \Require prints Input: rather than Require:
+\algrenewcommand\algorithmicensure{\textbf{Output:}}    % \Ensure prints Output: rather than Ensure:
+
+% How code looks: set language=... per listing (Python, C, Java, Matlab, bash, SQL, ...).
+% Under pdfLaTeX listings only reads plain ASCII, so keep accents and emoji out of code.
+\lstdefinestyle{report}{
+  basicstyle       = \ttfamily\small,
+  keywordstyle     = \color{blue!70!black}\bfseries,
+  commentstyle     = \color{green!40!black}\itshape,
+  stringstyle      = \color{red!60!black},
+  numbers          = left,              % line numbers down the left
+  numberstyle      = \tiny\color{gray},
+  frame            = single,
+  rulecolor        = \color{gray!40},
+  backgroundcolor  = \color{gray!5},
+  breaklines       = true,              % wrap long lines instead of running off the page
+  postbreak        = \mbox{\textcolor{gray}{$\hookrightarrow$}\space},
+  columns          = fullflexible,      % copying from the PDF gives back the code as written
+  keepspaces       = true,
+  showstringspaces = false,
+  upquote          = true,              % straight quotes, as typed
+  tabsize          = 4,
+  xleftmargin      = 1.5em,             % room for the line numbers
+  framexleftmargin = 0.5em
+}
+\lstset{style=report}
+
+% Links
+\usepackage[hidelinks]{hyperref}        % clickable cross-references, without coloured boxes
+\hypersetup{                            % details shown in the PDF viewer’s document properties
+  pdftitle  = {Assignment 2: Shortest paths in weighted graphs},
+  pdfauthor = {Your Name},
+  pdflang   = {en-AU}
+}
+
+\title{Assignment 2: Shortest paths in weighted graphs}
+\author{Your Name\\ Student number 12345678}
+\date{Due 24 October 2026}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+
+This report describes an implementation of Dijkstra's algorithm, which finds the length of the
+shortest path from one vertex to every other vertex of a graph whose edge weights are
+non-negative. Section~\ref{sec:method} gives the algorithm, Section~\ref{sec:code} the code, and
+Section~\ref{sec:analysis} its running time.
+
+\section{Method}\label{sec:method}
+
+Algorithm~\ref{alg:dijkstra} keeps a tentative distance $d[v]$ for every vertex and a
+priority queue of vertices to visit, always taking the closest unvisited vertex next. Rather than
+lowering a key already in the queue, it pushes a new entry and skips stale ones when they come out,
+which suits a plain binary heap.
+
+\begin{algorithm}[ht]
+  \caption{Dijkstra's algorithm with a binary heap}
+  \label{alg:dijkstra}
+  \begin{algorithmic}[1]
+    \Require a graph $G = (V, E)$ with weights $w(u, v) \ge 0$, and a source $s \in V$
+    \Ensure $d[v]$, the length of a shortest path from $s$ to each $v$
+    \State $d[v] \gets \infty$ for every $v \in V$, and $d[s] \gets 0$
+    \State $Q \gets \{(0, s)\}$ \Comment{a min-priority queue of (distance, vertex)}
+    \While{$Q$ is not empty}
+      \State $(k, u) \gets \Call{ExtractMin}{Q}$
+      \If{$k > d[u]$}
+        \State \textbf{continue} \Comment{a stale entry}
+      \EndIf
+      \ForAll{edges $(u, v) \in E$}
+        \If{$d[u] + w(u, v) < d[v]$}
+          \State $d[v] \gets d[u] + w(u, v)$
+          \State \Call{Insert}{$Q, (d[v], v)$}
+        \EndIf
+      \EndFor
+    \EndWhile
+    \State \Return $d$
+  \end{algorithmic}
+\end{algorithm}
+
+\section{Implementation}\label{sec:code}
+
+Listing~\ref{lst:python} implements Algorithm~\ref{alg:dijkstra} in Python, using the standard
+library's \lstinline[language=Python]|heapq| module as the queue. The call
+\lstinline[language=Python]|heapq.heappop(queue)| returns the entry with the smallest distance.
+
+% float=tp moves the listing to the top of a page rather than splitting it; leave it off for code longer than a page
+\begin{lstlisting}[language=Python, float=tp, caption={Dijkstra's algorithm in Python.}, label={lst:python}]
+import heapq
+
+def dijkstra(graph, source):
+    """Return the shortest distance from source to every reachable vertex."""
+    dist = {source: 0}
+    queue = [(0, source)]
+    while queue:
+        d, u = heapq.heappop(queue)
+        if d > dist[u]:
+            continue  # stale entry: u was already reached by a shorter path
+        for v, weight in graph[u]:
+            if d + weight < dist.get(v, float("inf")):
+                dist[v] = d + weight
+                heapq.heappush(queue, (dist[v], v))
+    return dist
+
+graph = {
+    "A": [("B", 4), ("C", 1)],
+    "B": [("D", 1)],
+    "C": [("B", 2), ("D", 5)],
+    "D": [],
+}
+print(dijkstra(graph, "A"))  # {'A': 0, 'B': 3, 'C': 1, 'D': 4}
+\end{lstlisting}
+
+The inner step, relaxing one edge, is the same in any language. Listing~\ref{lst:c} shows it in C,
+where an unreached vertex has distance \lstinline[language=C]|INT_MAX|.
+
+\begin{lstlisting}[language=C, caption={Relaxing an edge in C.}, label={lst:c}]
+#include <limits.h>
+
+/* Relax the edge (u, v) with weight w; returns 1 when dist[v] got shorter. */
+int relax(int dist[], int u, int v, int w)
+{
+    if (dist[u] != INT_MAX && dist[u] + w < dist[v]) {
+        dist[v] = dist[u] + w;
+        return 1;
+    }
+    return 0;
+}
+\end{lstlisting}
+
+\section{Analysis}\label{sec:analysis}
+
+Every edge is relaxed at most once, and each relaxation can push one entry onto the queue, so
+with a binary heap the algorithm runs in $O\bigl((|V| + |E|) \log |V|\bigr)$ time.
+Table~\ref{tab:queues} compares this with other choices of priority queue.
+
+\begin{table}[ht]
+  \centering
+  \caption{Running time of Dijkstra's algorithm by priority queue.}
+  \label{tab:queues}
+  \begin{tabular}{lccc}
+    \toprule
+    Priority queue & Decrease-key & Extract-min & Total \\
+    \midrule
+    Unsorted array & $O(1)$ & $O(|V|)$ & $O(|V|^2)$ \\
+    Binary heap & $O(\log |V|)$ & $O(\log |V|)$ & $O\bigl((|V| + |E|) \log |V|\bigr)$ \\
+    Fibonacci heap & $O(1)$ amortised & $O(\log |V|)$ amortised & $O(|E| + |V| \log |V|)$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+For sparse graphs, where $|E|$ is close to $|V|$, the binary heap is the practical choice; the
+unsorted array only wins on dense graphs with $|E|$ close to $|V|^2$.
+
+\end{document}
