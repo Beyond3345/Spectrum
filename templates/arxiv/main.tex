@@ -1,21 +1,21 @@
-\documentclass{article}
+\documentclass{article}     % the standard article class
 
 
 
-\usepackage{arxiv}
+\usepackage{arxiv}          % the preprint look: page layout (geometry) and headers (fancyhdr)
 
-\usepackage[utf8]{inputenc} % allow utf-8 input
-\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
-\usepackage{hyperref}       % hyperlinks
-\usepackage{url}            % simple URL typesetting
-\usepackage{booktabs}       % professional-quality tables
-\usepackage{amsfonts}       % blackboard math symbols
-\usepackage{nicefrac}       % compact symbols for 1/2, etc.
-\usepackage{microtype}      % microtypography
-\usepackage{lipsum}		% Can be removed after putting your text content
-\usepackage{graphicx}
-\usepackage{natbib}
-\usepackage{doi}
+\usepackage[utf8]{inputenc} % read this file as UTF-8
+\usepackage[T1]{fontenc}    % modern font encoding: accented words hyphenate and copy properly
+\usepackage{hyperref}       % clickable links and PDF bookmarks
+\usepackage{url}            % \url{...} breaks long web addresses tidily
+\usepackage{booktabs}       % \toprule, \midrule, \bottomrule for clean tables
+\usepackage{amsfonts}       % blackboard-bold maths letters such as \mathbb{R}
+\usepackage{nicefrac}       % \nicefrac{1}{2} for slanted fractions in text
+\usepackage{microtype}      % small spacing tweaks so lines break more evenly
+\usepackage{lipsum}         % filler text for the sample; remove once your own text is in
+\usepackage{graphicx}       % \includegraphics, for figures
+\usepackage{natbib}         % author-year and numbered citations: \citet, \citep
+\usepackage{doi}            % \doi{...} prints a DOI as a link
 
 
 
@@ -66,7 +66,7 @@
 %%% Add PDF metadata to help others organize their library
 %%% Once the PDF is generated, you can check the metadata with
 %%% $ pdfinfo template.pdf
-\hypersetup{
+\hypersetup{                % title, author and keywords stored in the PDF's properties
 pdftitle={A template for the arxiv style},
 pdfsubject={q-bio.NC, q-bio.QM},
 pdfauthor={David S.~Hippocampus, Elias D.~Striatum},

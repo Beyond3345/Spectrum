@@ -15,7 +15,10 @@ export function templatePath(id) {
 /**
  * Desktop builds ship templates read-only inside the app bundle, but users can upload
  * their own, so the live set lives in a writable dir. Copy in any bundled template the
- * user doesn't have yet and merge the bundled manifest entries.
+ * user doesn't have yet, refresh the bundled ones' manifest entries and the categories,
+ * and keep the user's uploads (author "User") as they are.
+ * ponytail: a bundled template's files are copied once, so later edits to them reach new
+ * installs only; copy changed files over too if a fix ever has to reach everyone.
  */
 export async function seedTemplates() {
   if (!TEMPLATE_SEED_DIR || path.resolve(TEMPLATE_SEED_DIR) === path.resolve(TEMPLATE_DIR)) return;
@@ -43,14 +46,14 @@ export async function seedTemplates() {
     await writeJson(TEMPLATE_MANIFEST, seed);
     return;
   }
-  const known = new Set((current.templates || []).map((t) => t.id));
-  const missing = (seed.templates || []).filter((t) => !known.has(t.id));
-  if (missing.length || !current.categories) {
-    await writeJson(TEMPLATE_MANIFEST, {
-      templates: [...(current.templates || []), ...missing],
-      categories: current.categories || seed.categories || []
-    });
-  }
+  const shipped = new Map((seed.templates || []).map((t) => [t.id, t]));
+  const kept = (current.templates || []).map((t) => (shipped.has(t.id) && t.author !== 'User' ? shipped.get(t.id) : t));
+  const known = new Set(kept.map((t) => t.id));
+  const next = {
+    templates: [...kept, ...(seed.templates || []).filter((t) => !known.has(t.id))],
+    categories: seed.categories || current.categories || []
+  };
+  if (JSON.stringify(next) !== JSON.stringify(current)) await writeJson(TEMPLATE_MANIFEST, next);
 }
 
 export async function readTemplateManifest() {
@@ -97,6 +100,8 @@ export async function readTemplateManifest() {
   // a category chip with no template behind it only ever shows an empty gallery
   const used = new Set(manifestTemplates.map((t) => t.category));
   categories = categories.filter((c) => c.id === 'all' || used.has(c.id));
+  // featured first in the gallery and the new-project menu; otherwise manifest order (sort is stable)
+  manifestTemplates.sort((a, b) => Number(!!b.featured) - Number(!!a.featured));
   return { templates: manifestTemplates, categories };
 }
 

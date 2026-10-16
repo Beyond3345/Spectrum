@@ -11,7 +11,7 @@
         "NLP"
       ],
       "author": "OpenPrism",
-      "featured": true
+      "featured": false
     },
     {
       "id": "cvpr",
@@ -24,7 +24,7 @@
         "Computer Vision"
       ],
       "author": "OpenPrism",
-      "featured": true
+      "featured": false
     },
     {
       "id": "neurips",
@@ -37,7 +37,7 @@
         "Machine Learning"
       ],
       "author": "OpenPrism",
-      "featured": true
+      "featured": false
     },
     {
       "id": "icml",
@@ -50,7 +50,7 @@
         "Machine Learning"
       ],
       "author": "OpenPrism",
-      "featured": true
+      "featured": false
     },
     {
       "id": "arxiv",
@@ -64,6 +64,49 @@
       ],
       "author": "kourgeorge/arxiv-style",
       "featured": false
+    },
+    {
+      "id": "report-thesis",
+      "label": "Report or thesis",
+      "mainFile": "main.tex",
+      "category": "reports",
+      "description": "Thesis or long report with a title page, abstract, contents, chapters and a bibliography",
+      "tags": [
+        "Thesis",
+        "Report",
+        "Chapters",
+        "Bibliography"
+      ],
+      "author": "Spectrum",
+      "featured": true
+    },
+    {
+      "id": "slides",
+      "label": "Slides (Beamer)",
+      "mainFile": "main.tex",
+      "category": "slides",
+      "description": "16:9 Beamer talk with maths, a chart and code listings",
+      "tags": [
+        "Beamer",
+        "Presentation",
+        "Lecture"
+      ],
+      "author": "Spectrum",
+      "featured": true
+    },
+    {
+      "id": "cv",
+      "label": "Academic CV",
+      "mainFile": "main.tex",
+      "category": "cv",
+      "description": "One-page academic CV with education, appointments, publications and links",
+      "tags": [
+        "CV",
+        "Resume",
+        "Academic"
+      ],
+      "author": "Spectrum",
+      "featured": true
     }
   ],
   "categories": [
@@ -76,28 +119,24 @@
       "label": "Academic"
     },
     {
-      "id": "thesis",
-      "label": "Thesis"
+      "id": "notes",
+      "label": "Notes"
     },
     {
-      "id": "resume",
-      "label": "Resume"
+      "id": "reports",
+      "label": "Reports"
     },
     {
-      "id": "presentation",
-      "label": "Presentation"
+      "id": "letters",
+      "label": "Letters"
     },
     {
-      "id": "book",
-      "label": "Book"
+      "id": "slides",
+      "label": "Slides"
     },
     {
-      "id": "letter",
-      "label": "Letter"
-    },
-    {
-      "id": "report",
-      "label": "Report"
+      "id": "cv",
+      "label": "CV"
     }
   ]
 }

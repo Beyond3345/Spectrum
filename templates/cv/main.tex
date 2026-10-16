@@ -1,0 +1,86 @@
+\documentclass[10pt,a4paper]{article}   % 10 pt text on A4 paper
+
+% Page
+\usepackage[margin=18mm]{geometry}      % narrow margins, so a full career fits on one page
+\usepackage{parskip}                    % a blank line between paragraphs instead of an indent
+\usepackage[australian]{babel}          % Australian hyphenation, and \today as 17 October 2026
+\usepackage[T1]{fontenc}                % proper accented letters, and text that copies cleanly from the PDF
+\usepackage{lmodern}                    % Latin Modern, a crisp scalable version of the default font
+\renewcommand{\familydefault}{\sfdefault} % sans-serif text, which reads well on screen
+\usepackage{microtype}                  % small spacing tweaks so lines break more evenly
+\pagestyle{empty}                       % no page number on a one-page CV
+
+% Headings and lists
+\usepackage{xcolor}                     % named colours, for the headings and links
+\definecolor{accent}{RGB}{0,82,147}     % a deep blue; change it to restyle the whole CV
+\usepackage{titlesec}                   % restyle section headings
+\titleformat{\section}{\large\bfseries\color{accent}}{}{0pt}{}[\titlerule] % bold, coloured, ruled underneath
+\titlespacing*{\section}{0pt}{10pt}{4pt} % less space around headings than in an article
+\usepackage{enumitem}                   % control list spacing
+\setlist{nosep, leftmargin=*}           % tight lists that line up with the text
+
+% One line per entry: what on the left, when on the right, details below
+\newcommand{\entry}[3]{\textbf{#1}\hfill #2\\#3\par}
+
+% Links
+\usepackage{hyperref}                   % clickable email, ORCID and web addresses
+\hypersetup{                            % link colour, and details shown in the PDF viewer’s document properties
+  colorlinks = true,
+  urlcolor   = accent,
+  linkcolor  = accent,
+  pdftitle   = {Curriculum vitae: Dr Jane Citizen},
+  pdfauthor  = {Jane Citizen},
+  pdflang    = {en-AU}
+}
+
+\begin{document}
+
+{\LARGE\bfseries Dr Jane Citizen}\\[3pt]
+Lecturer in Environmental Science, School of Earth Sciences, Your University\\
+\href{mailto:jane.citizen@example.edu.au}{jane.citizen@example.edu.au} \quad
+ORCID \href{https://orcid.org/0000-0002-1825-0097}{0000-0002-1825-0097} \quad
+\href{https://example.edu.au/jane-citizen}{example.edu.au/jane-citizen}
+
+\section{Research interests}
+Soil moisture and drought in south-eastern Australia; low-cost field sensors; open data for
+farmers and land managers.
+
+\section{Education}
+\entry{PhD, Environmental Science}{2017--2021}{Your University. Thesis: \emph{Measuring soil moisture with low-cost sensors}.}
+\entry{Bachelor of Science (Honours), first class}{2012--2016}{Your University. Majors in soil science and statistics.}
+
+\section{Appointments}
+\entry{Lecturer, School of Earth Sciences}{2024--now}{Your University. Teaching and research, level B.}
+\entry{Postdoctoral Research Fellow}{2021--2024}{Your University. Soil moisture network across 40 Victorian farms.}
+
+\section{Selected publications}
+% Sample entries: replace with your own, newest first
+\begin{enumerate}
+  \item Citizen, J. and Nguyen, T. (2025). Calibrating capacitive soil sensors in clay soils.
+        \emph{Example Journal of Soil Science}, 12(3), 45--58.
+  \item Citizen, J., Smith, A. and Lee, K. (2023). A year of soil moisture on 40 Victorian farms.
+        \emph{Example Journal of Hydrology}, 8(1), 1--14.
+  \item Citizen, J. (2021). \emph{Measuring soil moisture with low-cost sensors}. PhD thesis,
+        Your University.
+\end{enumerate}
+
+\section{Grants and awards}
+\entry{Early career research grant, \$48,000}{2024}{Your University, for a drought early-warning pilot.}
+\entry{Best student paper}{2020}{Example Soil Science Conference, Adelaide.}
+
+\section{Teaching}
+\begin{itemize}
+  \item Coordinator, \emph{Soils and Landscapes} (second year, about 120 students), 2024--now.
+  \item Tutor, \emph{Introductory Statistics}, 2017--2020.
+\end{itemize}
+
+\section{Service}
+\begin{itemize}
+  \item Reviewer for several soil science and hydrology journals.
+  \item School representative, university early career researcher network, 2024--now.
+\end{itemize}
+
+\section{Referees}
+Available on request.
+
+\end{document}

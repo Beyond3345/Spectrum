@@ -1,14 +1,14 @@
 % CVPR 2026 Paper Template; see https://github.com/cvpr-org/author-kit
 
-\documentclass[10pt,twocolumn,letterpaper]{article}
+\documentclass[10pt,twocolumn,letterpaper]{article} % article class: 10pt, two columns, US Letter as CVPR requires
 
 %%%%%%%%% PAPER TYPE  - PLEASE UPDATE FOR FINAL VERSION
 % \usepackage{cvpr}              % To produce the CAMERA-READY version
-\usepackage[review]{cvpr}      % To produce the REVIEW version
+\usepackage[review]{cvpr}      % To produce the REVIEW version (also loads Times, graphicx, amsmath, booktabs, natbib)
 % \usepackage[pagenumbers]{cvpr} % To force page numbers, e.g. for an arXiv version
 
 % Import additional packages in the preamble file, before hyperref
-\input{preamble}
+\input{preamble}               % preamble.tex: your own macros and optional tweaks
 
 % It is strongly recommended to use hyperref, especially for the review version.
 % hyperref with option pagebackref eases the reviewers' job.
@@ -17,8 +17,8 @@
 %
 % If you comment hyperref and then uncomment it, you should delete *.aux before re-running LaTeX.
 % (Or just hit 'q' on the first LaTeX run, let it finish, and you should be clear).
-\definecolor{cvprblue}{rgb}{0.21,0.49,0.74}
-\usepackage[pagebackref,breaklinks,colorlinks,allcolors=cvprblue]{hyperref}
+\definecolor{cvprblue}{rgb}{0.21,0.49,0.74} % the blue CVPR uses for links
+\usepackage[pagebackref,breaklinks,colorlinks,allcolors=cvprblue]{hyperref} % clickable blue links; each reference lists the pages citing it
 
 %%%%%%%%% PAPER ID  - PLEASE UPDATE
 \def\paperID{*****} % *** Enter the Paper ID here
