@@ -362,6 +362,22 @@
   transform: translateY(-1px);
 }
 
+/* the card picks the template; its ··· menu sits on the corner, as on a project card */
+.template-item {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.template-item > .template-card {
+  flex: 1;
+}
+
+.template-item:hover .card-menu,
+.template-item:focus-within .card-menu {
+  opacity: 1;
+}
+
 .template-paper {
   position: relative;
   display: flex;
@@ -436,6 +452,11 @@
 .template-title {
   font-size: 13px;
   font-weight: 600;
+}
+
+.template-title .badge {
+  margin-left: 6px;
+  vertical-align: 1px;
 }
 
 .template-desc {

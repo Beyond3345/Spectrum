@@ -6,6 +6,8 @@ import {
   binProject,
   copyProject,
   createProject,
+  deleteTemplate,
+  editTemplate,
   getProjectTree,
   importArxivSSE,
   importZip,
@@ -15,7 +17,9 @@ import {
   relocateProject,
   removeProject,
   renameProject,
+  restoreTemplate,
   revealProject,
+  saveAsTemplate,
   setProjectMainFile,
   systemCheck,
   thumbnailUrl,
@@ -129,6 +133,7 @@ type SheetState =
   | { kind: 'arxiv' }
   | { kind: 'tags'; id: string }
   | { kind: 'transfer'; id: string }
+  | { kind: 'saveTemplate'; id: string }
   | { kind: 'settings' }
   | null;
 
@@ -140,6 +145,8 @@ export default function ProjectPage() {
   const navigate = useNavigate();
   const [settings] = useSettings();
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
+  /** the templates with a working copy open, which the gallery offers to go on editing */
+  const [drafts, setDrafts] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
@@ -169,7 +176,10 @@ export default function ProjectPage() {
   const reload = useCallback(async () => {
     try {
       const res = await listProjects();
-      setProjects((res.projects || []).map((p) => ({ ...p, tags: p.tags || [] })));
+      const all = (res.projects || []).map((p) => ({ ...p, tags: p.tags || [] }));
+      // working copies of templates open from the template gallery, not the list
+      setProjects(all.filter((p) => !p.templateDraft));
+      setDrafts(all.flatMap((p) => p.templateDraft || []));
       setLoadError('');
     } catch (err) {
       setLoadError(errorText(err));
@@ -370,6 +380,7 @@ export default function ProjectPage() {
           { label: 'Duplicate', icon: 'plus.square.on.square', onSelect: () => duplicate(p) },
           { label: 'Tags…', icon: 'tag', onSelect: () => setSheet({ kind: 'tags', id: p.id }) },
           { label: 'Change template…', icon: 'arrow.triangle.2.circlepath', onSelect: () => setSheet({ kind: 'transfer', id: p.id }) },
+          { label: 'Save as template…', icon: 'square.and.arrow.down', onSelect: () => setSheet({ kind: 'saveTemplate', id: p.id }) },
           IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => reveal(p) },
           { separator: true },
           { label: p.archived ? 'Unarchive' : 'Archive', icon: 'archivebox', onSelect: () => toggleArchive(p) },
@@ -418,7 +429,7 @@ export default function ProjectPage() {
     { label: 'Oldest first', checked: prefs.sortKey === 'date' && prefs.sortDir === 'asc', onSelect: () => updatePrefs({ sortKey: 'date', sortDir: 'asc' }) }
   ];
 
-  const sheetProject = sheet && (sheet.kind === 'tags' || sheet.kind === 'transfer') ? projects.find((p) => p.id === sheet.id) : undefined;
+  const sheetProject = sheet && 'id' in sheet ? projects.find((p) => p.id === sheet.id) : undefined;
 
   // ─── render ───
 
@@ -677,9 +688,23 @@ export default function ProjectPage() {
         <TemplateGallerySheet
           templates={templates}
           categories={categories}
+          drafts={drafts}
           onClose={() => setSheet(null)}
           onPick={(id) => setSheet({ kind: 'new', template: id })}
-          onUploaded={reloadTemplates}
+          onEdit={(projectId) => navigate(`/editor/${projectId}`)}
+          onChanged={reloadTemplates}
+        />
+      )}
+
+      {sheet?.kind === 'saveTemplate' && sheetProject && (
+        <SaveTemplateSheet
+          projectId={sheetProject.id}
+          name={sheetProject.name}
+          onClose={() => setSheet(null)}
+          onSaved={() => {
+            setSheet(null);
+            reloadTemplates().catch(() => undefined);
+          }}
         />
       )}
 
@@ -866,15 +891,21 @@ function NewProjectSheet({
 function TemplateGallerySheet({
   templates,
   categories,
+  drafts,
   onClose,
   onPick,
-  onUploaded
+  onEdit,
+  onChanged
 }: {
   templates: TemplateMeta[];
   categories: TemplateCategory[];
+  drafts: string[];
   onClose: () => void;
   onPick: (id: string) => void;
-  onUploaded: () => Promise<void>;
+  /** opens the working copy, a project */
+  onEdit: (projectId: string) => void;
+  /** a template was added, changed or deleted */
+  onChanged: () => Promise<void>;
 }) {
   const [category, setCategory] = useState('all');
   const [featuredOnly, setFeaturedOnly] = useState(false);
@@ -897,7 +928,7 @@ function TemplateGallerySheet({
     setUploading(true);
     try {
       ensureOk(await uploadTemplate(base.toLowerCase().replace(/[^a-z0-9_-]/g, '_'), base, file), 'Upload failed');
-      await onUploaded();
+      await onChanged();
       toast(`Added the “${base}” template.`, { tone: 'success' });
     } catch (err) {
       toast(`Couldn’t add the template: ${errorText(err)}`, { tone: 'error' });
@@ -905,6 +936,56 @@ function TemplateGallerySheet({
       setUploading(false);
     }
   };
+
+  const edit = async (t: TemplateMeta) => {
+    try {
+      onEdit((await editTemplate(t.id)).project.id);
+    } catch (err) {
+      toast(`Couldn’t open the template: ${errorText(err)}`, { tone: 'error' });
+    }
+  };
+
+  const restore = async (t: TemplateMeta) => {
+    const ok = await confirmDialog({
+      title: `Restore the original “${t.label}” template?`,
+      message: 'Your changes to it are replaced by the template as it comes with Spectrum. Projects already made from it don’t change.',
+      confirmLabel: 'Restore',
+      destructive: true
+    });
+    if (!ok) return;
+    try {
+      await restoreTemplate(t.id);
+      await onChanged();
+      toast(`Restored the original “${t.label}” template.`, { tone: 'success' });
+    } catch (err) {
+      toast(`Couldn’t restore the template: ${errorText(err)}`, { tone: 'error' });
+    }
+  };
+
+  const remove = async (t: TemplateMeta) => {
+    const ok = await confirmDialog({
+      title: `Delete the “${t.label}” template?`,
+      message: 'This can’t be undone. Projects already made from it don’t change.',
+      confirmLabel: 'Delete',
+      destructive: true
+    });
+    if (!ok) return;
+    try {
+      await deleteTemplate(t.id);
+      await onChanged();
+      toast(`Deleted the “${t.label}” template.`);
+    } catch (err) {
+      toast(`Couldn’t delete the template: ${errorText(err)}`, { tone: 'error' });
+    }
+  };
+
+  // Spectrum's own can be edited and restored, the user's own edited and deleted
+  const menuFor = (t: TemplateMeta): MenuItems => [
+    { label: drafts.includes(t.id) ? 'Continue editing' : 'Edit template', icon: 'square.and.pencil', onSelect: () => edit(t) },
+    t.edited && { label: 'Restore original…', icon: 'arrow.uturn.backward', onSelect: () => restore(t) },
+    t.author === 'User' && { separator: true },
+    t.author === 'User' && { label: 'Delete…', icon: 'trash', destructive: true, onSelect: () => remove(t) }
+  ];
 
   return (
     <Sheet title="Choose a template" width={880} className="gallery-sheet" onClose={onClose}>
@@ -960,20 +1041,113 @@ function TemplateGallerySheet({
       ) : (
         <div className="template-grid">
           {shown.map((t) => (
-            <button key={t.id} className="template-card" onClick={() => onPick(t.id)}>
-              <span className="template-paper" aria-hidden="true">
-                <span className="paper-title">{t.label.replace(/\s*\(.*\)\s*$/, '')}</span>
-                <span className="paper-lines"><i /><i /><i /><i /><i /><i /><i /></span>
-                {t.featured && <span className="template-star"><Icon name="star.fill" /></span>}
+            <div key={t.id} className="template-item">
+              <button className="template-card" onClick={() => onPick(t.id)}>
+                <span className="template-paper" aria-hidden="true">
+                  <span className="paper-title">{t.label.replace(/\s*\(.*\)\s*$/, '')}</span>
+                  <span className="paper-lines"><i /><i /><i /><i /><i /><i /><i /></span>
+                  {t.featured && <span className="template-star"><Icon name="star.fill" /></span>}
+                </span>
+                <span className="template-body">
+                  <span className="template-title">
+                    {t.label}
+                    {t.author === 'User' ? <span className="badge accent">Yours</span> : t.edited && <span className="badge">Edited</span>}
+                  </span>
+                  {t.description && <span className="template-desc">{t.description}</span>}
+                </span>
+              </button>
+              <span className="card-menu">
+                <MenuButton icon="ellipsis" title={`More for ${t.label}`} className="icon-btn small" align="end" items={menuFor(t)} />
               </span>
-              <span className="template-body">
-                <span className="template-title">{t.label}</span>
-                {t.description && <span className="template-desc">{t.description}</span>}
-              </span>
-            </button>
+            </div>
           ))}
         </div>
       )}
+    </Sheet>
+  );
+}
+
+/** Name, section and description for a new template made from a project (the editor uses it too). */
+export function SaveTemplateSheet({
+  projectId,
+  name,
+  template,
+  onClose,
+  onSaved
+}: {
+  projectId: string;
+  name: string;
+  /** the template a working copy is of, whose section and description start the form */
+  template?: string;
+  onClose: () => void;
+  onSaved: (template: TemplateMeta) => void;
+}) {
+  const [label, setLabel] = useState(name);
+  const [category, setCategory] = useState('');
+  const [description, setDescription] = useState('');
+  const [categories, setCategories] = useState<TemplateCategory[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    listTemplates()
+      .then((res) => {
+        const sections = (res.categories || []).filter((c) => c.id !== 'all');
+        const from = res.templates.find((t) => t.id === template);
+        setCategories(sections);
+        setCategory(from?.category || sections[0]?.id || '');
+        setDescription(from?.description || '');
+      })
+      .catch((err) => toast(`Couldn’t load the template sections: ${errorText(err)}`, { tone: 'error' }));
+  }, [template]);
+
+  const save = async () => {
+    if (!label.trim() || !category || saving) return;
+    setSaving(true);
+    try {
+      const res = await saveAsTemplate(projectId, { label: label.trim(), category, description });
+      toast(`Saved the “${res.template.label}” template.`, { tone: 'success' });
+      onSaved(res.template);
+    } catch (err) {
+      toast(`Couldn’t save the template: ${errorText(err)}`, { tone: 'error' });
+      setSaving(false);
+    }
+  };
+  const onEnter = (e: ReactKeyboardEvent) => e.key === 'Enter' && !e.nativeEvent.isComposing && save();
+
+  return (
+    <Sheet
+      title={template ? 'Save as new template' : 'Save as template'}
+      width={520}
+      onClose={onClose}
+      actions={
+        <>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn primary" disabled={!label.trim() || !category || saving} onClick={save}>
+            {saving ? <><span className="spinner" /> Saving…</> : 'Save template'}
+          </button>
+        </>
+      }
+    >
+      <div className="field">
+        <label htmlFor="template-name">Name</label>
+        <input id="template-name" className="input" autoFocus value={label} onChange={(e) => setLabel(e.target.value)} onKeyDown={onEnter} />
+      </div>
+      <div className="field">
+        <label id="template-section">Section</label>
+        <Select labelId="template-section" value={category} options={categories.map((c): [string, string] => [c.id, c.label])} onChange={setCategory} />
+      </div>
+      <div className="field">
+        <label htmlFor="template-description">Description</label>
+        <input
+          id="template-description"
+          className="input"
+          value={description}
+          placeholder="What it’s for, in a line"
+          onChange={(e) => setDescription(e.target.value)}
+          onKeyDown={onEnter}
+        />
+        <div className="field-hint">The template gets a copy of the project’s files, without its compiled PDFs.</div>
+      </div>
     </Sheet>
   );
 }

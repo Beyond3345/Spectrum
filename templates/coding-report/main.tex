@@ -3,8 +3,11 @@
 % Page
 \usepackage[margin=2.5cm]{geometry}     % 2.5 cm margins all round
 \usepackage{parskip}                    % a blank line between paragraphs instead of an indent
-\usepackage[T1]{fontenc}                % real < > | " characters in code, and text that copies cleanly from the PDF
-\usepackage{lmodern}                    % Latin Modern, a crisp scalable version of the default font
+\usepackage{iftex}                      % tells which TeX engine is running
+\ifPDFTeX                               % for pdfLaTeX only:
+  \usepackage[T1]{fontenc}              % real < > | " characters in code, and text that copies cleanly from the PDF
+  \usepackage{lmodern}                  % Latin Modern, a crisp scalable version of the default font
+\fi                                     % XeLaTeX, LuaLaTeX and Tectonic already use Unicode fonts, which print a typed ’ or é as it is
 
 % Maths
 \usepackage{amsmath}                    % align, cases and \text inside maths

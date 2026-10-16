@@ -4,8 +4,11 @@
 \usepackage[margin=18mm]{geometry}      % narrow margins, so a full career fits on one page
 \usepackage{parskip}                    % a blank line between paragraphs instead of an indent
 \usepackage[australian]{babel}          % Australian hyphenation, and \today as 17 October 2026
-\usepackage[T1]{fontenc}                % proper accented letters, and text that copies cleanly from the PDF
-\usepackage{lmodern}                    % Latin Modern, a crisp scalable version of the default font
+\usepackage{iftex}                      % tells which TeX engine is running
+\ifPDFTeX                               % for pdfLaTeX only:
+  \usepackage[T1]{fontenc}              % proper accented letters, and text that copies cleanly from the PDF
+  \usepackage{lmodern}                  % Latin Modern, a crisp scalable version of the default font
+\fi                                     % XeLaTeX, LuaLaTeX and Tectonic already use Unicode fonts, which print a typed ’ or é as it is
 \renewcommand{\familydefault}{\sfdefault} % sans-serif text, which reads well on screen
 \usepackage{microtype}                  % small spacing tweaks so lines break more evenly
 \pagestyle{empty}                       % no page number on a one-page CV
