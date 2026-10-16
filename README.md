@@ -16,7 +16,31 @@ Each project is a normal folder that is chosen when the project is created. By d
 
 Double-clicking a `.tex`, `.ltx` or `.bib` file in Finder or File Explorer opens it in Spectrum, in the project it belongs to. A file from a folder Spectrum has not seen yet opens together with the folder holding its document, which becomes a project, so a chapter in `chapters/` brings the whole thesis. On macOS Spectrum makes itself the default app for these files the first time it opens, and the button under Opening files in the Projects section of Settings does it again if another app has taken them since. On Windows the installer offers Spectrum for these files and Windows asks which app to use. PDFs stay with the PDF viewer either way.
 
-The projects page lists every project regardless of where its folder is stored. Each row shows the first page of the last compiled PDF, and projects can be tagged, archived, duplicated, removed from the list or moved to the Bin. New projects can start from the template gallery (ACL, CVPR, NeurIPS, ICML and arXiv), from a `.zip` file such as an Overleaf export or from an arXiv ID. If a folder is moved in Finder, the project is marked as missing and can be pointed at its new location.
+The projects page lists every project regardless of where its folder is stored. Each row shows the first page of the last compiled PDF, and projects can be tagged, archived, duplicated, removed from the list or moved to the Bin. New projects can start from the template gallery (Section Templates), from a `.zip` file such as an Overleaf export or from an arXiv ID. If a folder is moved in Finder, the project is marked as missing and can be pointed at its new location.
+
+### Templates
+
+The template gallery has templates for notes, reports, letters, slides and a CV, listed first, and the conference templates (ACL, CVPR, NeurIPS, ICML and arXiv) under Academic.
+
+| Template | For | Main packages |
+| --- | --- | --- |
+| Maths notes | lecture notes or assignments with theorems, worked examples and their solutions, matrices and figures | `amsmath`, `amsthm`, `mathtools`, `tikz`, `pgfplots` |
+| Electronics notes | notes or lab reports with circuits, quantities with units and Bode plots | `circuitikz`, `siunitx`, `pgfplots` |
+| Coding report | programming assignments with highlighted code and pseudocode | `listings`, `algorithm`, `algpseudocode`, `booktabs` |
+| Report or thesis | a long document with a title page, abstract, contents, chapters and an author-year bibliography | `report` class, `natbib`, `cleveref`, `setspace` |
+| Formal letter | a letter in Australian block layout | `babel` with Australian English |
+| Slides | a 16:9 Beamer presentation with maths, a chart and code | `beamer` (Madrid), `listings`, `pgfplots` |
+| Academic CV | a one-page CV with links for email, ORCID and a website | `titlesec`, `enumitem`, `xcolor` |
+
+Every package these templates load has a short comment beside it saying what it does, so a preamble can be read and changed without looking each package up. All of them load `hyperref` for links and `parskip` for a blank line between paragraphs, except the slides, where Beamer handles both itself. They are A4 apart from the slides, use Australian English, need no shell escape and compile with pdfLaTeX, XeLaTeX, LuaLaTeX and Tectonic. The conference templates also have a comment on each package, but nothing else in them changed, since those venues do not allow changes to their layout.
+
+Each template in the gallery has a menu. Edit template opens a working copy of it in the editor, where it can be changed and compiled like any project, with a bar above the editor holding three buttons,
+
+- Save template replaces the template's files with the copy's, leaving out compiled PDFs and the app's own files,
+- Save as new template asks for a name, a section and a one-line description, and keeps the original as it was and
+- Done closes the copy, and asks first if it has changes that were not saved to the template.
+
+The copy is kept until Done, so Continue editing in the menu picks up where it was left. Any project can also become a template with Save as template in its menu, on the projects page or in the editor. Templates of your own are marked Yours and can be deleted. An edited built-in template is marked Edited and keeps your version when Spectrum is updated, and Restore original puts back the one that came with Spectrum. The built-in templates you have not edited follow each update. Projects already made from a template do not change when the template does.
 
 ### Editor
 
@@ -73,6 +97,23 @@ A DOI, a link, an arXiv ID or a paper title can be pasted into the references ch
 
 The citation key is the first author's surname followed by the year, for example `Vaswani2017`. Accents are removed and name particles are joined, so "van der Waals" becomes `VanderWaals`. When the key already exists for a different paper, a letter is added (`Smith2020a`, `Smith2020b`). A paper whose DOI or arXiv ID is already in the project is reported as a duplicate and is not added again.
 
+### Web search
+
+The Research tab in Tools finds sources for a question and writes their BibTeX into the project. It splits the question into two to four searches, runs them at once, merges the repeats (by DOI, arXiv ID, title or address) and shows each result with its authors, year and venue. Entries are built from the provider's metadata as `@article`, `@inproceedings`, `@book` and so on, in the same way as the references chat builds them. A result that is a DOI or arXiv link is looked up for its full metadata, and a page that is neither becomes `@misc` with its address and the day it was found. The provider is chosen in Settings under Search, and each provider's key is kept when switching between them.
+
+| Provider | What it searches | Needs |
+| --- | --- | --- |
+| The model's own search | whatever the search model finds, asked for peer-reviewed or authoritative sources with a DOI or arXiv ID | a model with built-in web search |
+| [OpenAlex](https://openalex.org) | scholarly works only (articles, conference papers, preprints, books, theses, reports and standards), without retracted ones | nothing, or a free key for more searches a day |
+| [Semantic Scholar](https://www.semanticscholar.org) | papers in every field | nothing, or a free key, since the shared pool is often busy |
+| [SerpApi](https://serpapi.com) | Google Scholar by default, or Google or Baidu | a SerpApi key |
+| [Exa](https://exa.ai) | its publications category for research questions, and the whole web for questions about LaTeX or software | an Exa key |
+| [Tavily](https://tavily.com) | the web, preferring arXiv, DOI publishers, the main proceedings, standards bodies, CTAN and TeX Stack Exchange | a Tavily key (two credits a search) |
+| [Brave Search](https://brave.com/search/api/) | the web, with the same sites boosted | a Brave Search key |
+| [DDGS](https://pypi.org/project/ddgs/) | Google, Bing, Brave, DuckDuckGo, Mojeek and Yahoo at once | no key, but Python 3.10 or later with `ddgs` installed (`python3 -m pip install ddgs`) |
+
+The System section of Settings shows whether Python and `ddgs` are found, and DDGS uses the same Python as the table to chart tool.
+
 ### Spelling and grammar
 
 Spectrum checks writing in Australian English. Spelling is checked as you type in `.tex`, `.md` and `.txt` files, and misspelt words get a red underline. Right-clicking one offers suggestions, Add to dictionary, Add to project dictionary and Ignore. The project dictionary is kept in the project's `.spectrum` folder, so it travels with the project, while the main dictionary covers every project and can be edited in Settings under Spelling & grammar.
@@ -96,12 +137,12 @@ Versions are kept inside each project in a hidden `.spectrum` folder, together w
 - macOS 13.5 or later on Apple silicon or Intel (the Liquid Glass app icon needs macOS 26 or later), or Windows 10 or 11 on an x64 PC (Section Windows),
 - a LaTeX distribution, either [MacTeX](https://www.tug.org/mactex/) or [Tectonic](https://tectonic-typesetting.github.io/) (`brew install tectonic`) on macOS, or [MiKTeX](https://miktex.org), [TeX Live](https://www.tug.org/texlive/) or Tectonic on Windows,
 - an API key from one of the providers in Section Models, or any OpenAI-compatible server, for the AI features,
-- Python 3 with matplotlib for the table to chart tool (optional) and
+- Python 3 with matplotlib for the table to chart tool and with `ddgs` for DDGS web search (both optional) and
 - an account with one of the PDF parsers in Section Template transfer, for converting a paper from its PDF (optional).
 
 ## Installing
 
-1. Open `Spectrum_1.6.0_universal.dmg`
+1. Open `Spectrum_1.7.0_universal.dmg`
 2. Drag Spectrum into the Applications folder
 3. Open Spectrum from the Applications folder
 
@@ -111,7 +152,7 @@ Since the application is signed ad hoc rather than with an Apple Developer ID, m
 xattr -dr com.apple.quarantine /Applications/Spectrum.app
 ```
 
-On Windows, run `Spectrum_1.6.0_x64-setup.exe`. It installs Spectrum for the current user without administrator rights and adds it to the Start menu, and it installs Microsoft Edge WebView2 when the PC does not have it yet. Since the installer is not signed, Windows SmartScreen may warn about it on the first run. To continue, select More info and then Run anyway.
+On Windows, run `Spectrum_1.7.0_x64-setup.exe`. It installs Spectrum for the current user without administrator rights and adds it to the Start menu, and it installs Microsoft Edge WebView2 when the PC does not have it yet. Since the installer is not signed, Windows SmartScreen may warn about it on the first run. To continue, select More info and then Run anyway.
 
 ## Windows
 
@@ -147,18 +188,22 @@ Spectrum does not include a model of its own, so the AI features use an API key 
 | Moonshot Kimi | Kimi K3 | Kimi K2.6 | Kimi K3 | High |
 | Z.ai GLM | GLM-5.3 | GLM-5.3 Flash | GLM-5.3 Flash | High |
 | Alibaba Qwen | Qwen3.8 Max | Qwen3.8 Flash | Qwen3.8 Max | Medium |
-| Meta Muse Spark | Muse Spark 1.3 | Muse Spark 1.3 | Muse Spark 1.3 | Medium |
+| Meta | Muse Spark 1.3 | Muse Spark 1.3 | Muse Spark 1.3 | Medium |
+| Ollama | the newest installed model | the smallest installed model | the first installed model that reads images | the model's own, at most High |
+| Ollama Cloud | Kimi K3 | DeepSeek V4.1 Flash | Kimi K3 | High |
 
-Other models from the same provider can be picked from the list, and any other name can be typed in. The quick and vision models can each be set separately. By default they use the main model's provider and key and move with it when it changes. Choosing another provider for either one gives it its own region, model and key, for example Gemini 3.8 Flash for images while Claude writes the text. A key is only ever sent to the address it was entered for, including the key in the `.env` file. The Other provider takes any server that speaks the OpenAI chat completions API, such as LM Studio, Ollama or vLLM. Each provider's key is kept when switching between them, so going back to a provider does not need the key again.
+Other models from the same provider can be picked from the list, and any other name can be typed in. The quick and vision models can each be set separately. By default they use the main model's provider and key and move with it when it changes. Choosing another provider for either one gives it its own region, model and key, for example Gemini 3.8 Flash for images while Claude writes the text. A key is only ever sent to the address it was entered for, including the key in the `.env` file. The Other provider takes any server that speaks the OpenAI chat completions API, such as LM Studio or vLLM, and a server at a plain `http://` address needs no key. Each provider's key is kept when switching between them, so going back to a provider does not need the key again.
 
 The reasoning effort sets how long the model may think before answering, from Off to Max. Settings and the assistant only offer the levels the chosen model accepts, and Recommended uses the level in the table. Autocomplete, reference parsing and search queries use the lowest level a listed model accepts, so they stay quick, while models on other servers use their own default. Spectrum sends the effort in the form each provider expects,
 
 - OpenAI is called through the Responses API, since its chat completions API does not allow reasoning together with the file editing tools. Requests are sent with storage turned off, so nothing is kept on OpenAI's servers,
 - Claude is called through Anthropic's Messages API, since the OpenAI-compatible endpoint ignores the effort setting,
-- DeepSeek, GLM and Qwen turn thinking off when the effort is Off, and Gemini 3, Kimi K3, GLM-5.3 and Muse Spark always think a little, so they start at their lowest level instead and
+- DeepSeek, GLM and Qwen turn thinking off when the effort is Off, and Gemini 3, Kimi K3, GLM-5.3 and Meta's Muse models always think a little, so they start at their lowest level instead and
 - temperature is left at each provider's default, since several of them reject any other value.
 
-Keys for Moonshot, GLM and Qwen only work in the region they were created in, so choose the same region under Region. Meta's cheaper Contributor models are left out of the list on purpose, since Meta trains on what is sent to them.
+Keys for Moonshot, GLM and Qwen only work in the region they were created in, so choose the same region under Region. Meta lists Muse Wonder 1.0 (a preview) and Muse Spark 1.3, 1.2 and 1.1. Its cheaper Contributor models are left out of the list on purpose, since Meta trains on what is sent to them.
+
+Ollama runs models on your own computer, or on another one on the network when its address is entered. It needs no key, and its models are read from Ollama itself with Refresh, so the list is whatever has been downloaded, with the effort levels each model offers. Ollama keeps a short context by default, so raising Context length to 32k or more in its settings lets whole documents fit. Ollama Cloud runs larger models on Ollama's servers with a key from [ollama.com](https://ollama.com/settings/keys), and Ollama says it does not keep or train on what is sent.
 
 ## Template transfer
 

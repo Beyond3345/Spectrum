@@ -2,6 +2,29 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.7.0 (17 October 2026)
+
+### Added
+
+- Seven templates: Maths notes, Electronics notes, Coding report, Report or thesis, Formal letter, Slides and Academic CV. Every package they load has a short comment saying what it does, and all of them load `hyperref` and `parskip` (Beamer handles both itself in the slides). They are A4, in Australian English, and compile with pdfLaTeX, XeLaTeX, LuaLaTeX and Tectonic
+- Templates can be edited. Edit template in a template's menu opens a working copy in the editor, with Save template, Save as new template and Done. Any project can be saved as a template too. Your own templates can be deleted, and an edited built-in template can be put back with Restore original
+- Exa and DDGS web search. Exa searches its publications category for research questions and the whole web for LaTeX questions; DDGS searches several engines at once with no key, through the Python `ddgs` library
+- Ollama, for models on your own computer or network with no key and the model list read from Ollama itself, and Ollama Cloud with a key
+- Meta's Muse Wonder 1.0 (a preview) and Muse Spark 1.1, next to Muse Spark 1.3 and 1.2
+
+### Changed
+
+- Every web search provider now favours sources that can be cited: OpenAlex searches only scholarly works, SerpApi uses Google Scholar for new settings, and Tavily and Brave prefer arXiv, publishers, proceedings, standards bodies, CTAN and TeX Stack Exchange. Results show their authors, year and venue, repeats across the searches are merged, and BibTeX is built from each result's metadata, with DOI and arXiv links looked up for full entries
+- Each search provider keeps its own key, so a key is only sent to the provider it was entered for
+- The template gallery lists notes, reports, letters, slides and the CV first, and the conference templates under Academic, no longer featured. Their preambles have a comment on each package, with nothing else changed
+- The built-in templates you have not edited follow app updates; edited ones keep your version
+- The Meta provider is called Meta rather than Meta Muse Spark
+- A model server at a plain `http://` address needs no API key
+
+### Fixed
+
+- A typed ’ or accented letter no longer goes missing in the PDF when the letter, coding report, report, slides or CV template is compiled with XeLaTeX, LuaLaTeX or Tectonic
+
 ## 1.6.0 (16 October 2026)
 
 ### Added
