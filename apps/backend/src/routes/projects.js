@@ -8,7 +8,7 @@ import crypto from 'crypto';
 import { gunzipSync } from 'zlib';
 import { ensureDir, copyDir, extractZip, listFilesRecursive, renameOver, skipInArchive, writeFileAtomic } from '../utils/fsUtils.js';
 import { safeJoin, safeJoinLink, sanitizeUploadPath } from '../utils/pathUtils.js';
-import { extractDocumentBody, mergeTemplateBody, withoutComments } from '../utils/texUtils.js';
+import { extractDocumentBody, isDocumentFile, mergeTemplateBody, withoutComments } from '../utils/texUtils.js';
 import { readTemplateManifest, copyTemplateIntoProject, templatePath } from '../services/templateService.js';
 import {
   APP_DIR,
@@ -74,15 +74,10 @@ export async function extractArxivSource(file, projectRoot) {
 // ponytail: reads the first 16 KB of every .tex per tree request, so a \documentclass after a longer
 // header is missed; read further, or cache by mtime, if that ever shows
 async function isDocument(root, relPath) {
-  let file;
   try {
-    file = await fs.open(safeJoin(root, relPath));
-    const { buffer, bytesRead } = await file.read(Buffer.alloc(16384), 0, 16384, 0);
-    return /\\documentclass\b/.test(withoutComments(buffer.toString('utf8', 0, bytesRead)));
+    return await isDocumentFile(safeJoin(root, relPath));
   } catch {
-    return false; // unreadable, or a link out of the project
-  } finally {
-    await file?.close();
+    return false; // a link out of the project
   }
 }
 

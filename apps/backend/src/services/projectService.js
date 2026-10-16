@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { DATA_DIR, PROJECTS_DIR } from '../config/constants.js';
 import { ensureDir, listFilesRecursive, readJson, writeJsonAtomic } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
+import { isDocumentFile } from '../utils/texUtils.js';
 
 // Projects are ordinary folders anywhere on disk. DATA_DIR/registry.json lists them;
 // each folder keeps its own metadata, history and chats in a hidden .spectrum/ folder.
@@ -344,21 +345,43 @@ export async function openFile(input) {
   const owner = projects.filter((p) => inside(p.path)).sort((a, b) => b.path.length - a.path.length)[0];
   if (owner) return { projectId: owner.id, file: relative(owner.path) };
 
-  let folder = path.dirname(file);
-  for (let dir = folder; dir !== path.dirname(dir); dir = path.dirname(dir)) {
+  const own = path.dirname(file);
+  let folder = own;
+  let carried = false;
+  for (let dir = own; dir !== path.dirname(dir); dir = path.dirname(dir)) {
     if (await exists(metaPath(dir))) {
       folder = dir;
+      carried = true;
       break;
     }
   }
-  try {
-    const project = await openFolder(folder);
-    return { projectId: project.id, file: relative(project.path) };
-  } catch (err) {
-    // the home folder, the projects folder, or one holding listed projects
-    if (err.statusCode !== 400 && err.statusCode !== 409) throw err;
-    throw httpError(`Spectrum opens a file together with the folder it’s in, and “${path.basename(folder) || folder}” can’t be a project. Move “${path.basename(file)}” into a folder of its own.`, 400);
+  // a chapter (no \documentclass of its own) or a .bib belongs with the document that uses it: the nearest
+  // folder, this one or up to three above, holding a .tex that compiles on its own
+  if (!carried && !(await isDocumentFile(file))) {
+    for (let dir = own, up = 0; up <= 3 && dir !== path.dirname(dir) && dir !== os.homedir(); dir = path.dirname(dir), up++) {
+      const names = (await fs.readdir(dir).catch(() => [])).filter((name) => /\.(tex|ltx)$/i.test(name)).slice(0, 50);
+      if (await anyDocument(dir, names)) {
+        folder = dir;
+        break;
+      }
+    }
   }
+  // the home folder, the projects folder, or one holding listed projects can't be a project; a document's folder
+  // that is one of those leaves the file's own folder
+  for (const candidate of folder === own ? [own] : [folder, own]) {
+    try {
+      const project = await openFolder(candidate);
+      return { projectId: project.id, file: relative(project.path) };
+    } catch (err) {
+      if (err.statusCode !== 400 && err.statusCode !== 409) throw err;
+    }
+  }
+  throw httpError(`Spectrum opens a file together with the folder it’s in, and “${path.basename(own) || own}” can’t be a project. Move “${path.basename(file)}” into a folder of its own.`, 400);
+}
+
+async function anyDocument(dir, names) {
+  for (const name of names) if (await isDocumentFile(path.join(dir, name))) return true;
+  return false;
 }
 
 /** Point a project at a new folder, e.g. after it was moved in Finder. */

@@ -337,6 +337,15 @@ test('opens a file from Finder or Explorer in its project, or adopts its folder'
   assert.equal(whole.file, 'sections/intro.tex');
   assert.equal((await api('/api/projects')).json.projects.find((p) => p.id === whole.projectId)?.name, 'Carried');
 
+  // a chapter of a LaTeX folder Spectrum hasn't seen: the folder holding its document, not just chapters/
+  const thesis = path.join(tmp, 'thesis');
+  mkdirSync(path.join(thesis, 'chapters'), { recursive: true });
+  writeFileSync(path.join(thesis, 'main.tex'), '% a thesis\n\\documentclass{report}\n\\begin{document}\\input{chapters/intro}\\end{document}\n');
+  writeFileSync(path.join(thesis, 'chapters', 'intro.tex'), '\\chapter{Introduction}\n');
+  const chapter = (await open(path.join(thesis, 'chapters', 'intro.tex'))).json;
+  assert.equal(chapter.file, 'chapters/intro.tex');
+  assert.equal((await api('/api/projects')).json.projects.find((p) => p.id === chapter.projectId)?.path, thesis);
+
   writeFileSync(path.join(loose, 'paper.pdf'), '%PDF-');
   for (const bad of [path.join(loose, 'paper.pdf'), path.join(loose, 'gone.tex'), loose, 'refs.bib']) {
     assert.equal((await open(bad)).status, 400, bad);

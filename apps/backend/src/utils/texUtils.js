@@ -5,6 +5,21 @@ import { safeJoin } from './pathUtils.js';
 /** TeX with its % comments removed (an escaped \% stays). */
 export const withoutComments = (tex) => tex.replace(/(?<!\\)%.*$/gm, '');
 
+/** Whether a .tex file compiles on its own: a \documentclass outside a comment in its first 16 KB. */
+export async function isDocumentFile(file) {
+  // ponytail: 16 KB covers any preamble's start; read more if a document ever hides it further down
+  let handle;
+  try {
+    handle = await fs.open(file);
+    const { buffer, bytesRead } = await handle.read(Buffer.alloc(16384), 0, 16384, 0);
+    return /\\documentclass\b/.test(withoutComments(buffer.toString('utf8', 0, bytesRead)));
+  } catch {
+    return false;
+  } finally {
+    await handle?.close();
+  }
+}
+
 export function extractDocumentBody(tex) {
   const startMarker = '\\begin{document}';
   const endMarker = '\\end{document}';
