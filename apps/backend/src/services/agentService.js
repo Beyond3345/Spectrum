@@ -3,7 +3,7 @@ import { applyPatch, createTwoFilesPatch } from 'diff';
 import { safeJoin } from '../utils/pathUtils.js';
 import { listFilesRecursive } from '../utils/fsUtils.js';
 import { extractPathFromPatch } from '../utils/diffUtils.js';
-import { resolveLLMConfig, chatCompletion, NO_API_KEY } from './llmService.js';
+import { resolveLLMConfig, chatCompletion, missingKey, NO_API_KEY } from './llmService.js';
 import { getProjectRoot } from './projectService.js';
 import { extractArxivId, fetchArxivEntry, buildArxivBibtex, searchArxiv } from './arxivService.js';
 
@@ -90,7 +90,7 @@ export async function runToolAgent({
   };
 
   const resolved = resolveLLMConfig(llmConfig);
-  if (!resolved.apiKey) {
+  if (missingKey(resolved)) {
     return { ok: false, reply: NO_API_KEY, patches: [] };
   }
 

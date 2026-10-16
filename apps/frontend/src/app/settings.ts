@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { listProviders } from '../api/client';
+import { listLiveModels, listProviders } from '../api/client';
 import type { CompileEngine, EffortLevel, LLMConfig, OxfordComma, ProviderModel, ProviderPreset, ReasoningEffort, SearchProvider } from '../api/client';
 import { setNativeTheme } from './desktop';
 
@@ -368,7 +368,8 @@ export function followsMain(settings: AppSettings, role: ModelRole) {
 export function presetForEndpoint(providers: ProviderPreset[], endpoint: string) {
   let host = '';
   try {
-    host = new URL(endpoint).hostname;
+    // with the port, which is all that marks an Ollama
+    host = new URL(endpoint).host;
   } catch {
     return null;
   }
@@ -420,7 +421,8 @@ function knownKeys(settings: AppSettings, saved: AppSettings['providerSaved'], i
 function endpointAndKey(known: Known[], next: ProviderPreset | null, typed?: string) {
   const own = next ? [next.endpoint, ...(next.regions || []).map((r) => r.endpoint)] : [];
   const endpoint = typed ?? (next ? known.find((k) => own.includes(k.endpoint))?.endpoint || next.endpoint : known[0]?.endpoint || '');
-  return { endpoint, key: known.find((k) => hostOf(k.endpoint) === hostOf(endpoint))?.key || '' };
+  // a local Ollama has no key field, so none may hide there
+  return { endpoint, key: next?.local ? '' : known.find((k) => hostOf(k.endpoint) === hostOf(endpoint))?.key || '' };
 }
 
 /** The key a role leaves behind is kept for its provider, without touching the main model saved there. */
@@ -461,6 +463,44 @@ export function useProviders() {
     };
   }, []);
   return providers;
+}
+
+type LiveList = Awaited<ReturnType<typeof listLiveModels>>;
+// each server's list, asked for once per launch (or again on Refresh)
+const liveLists = new Map<string, Promise<LiveList>>();
+
+/**
+ * A live preset (Ollama) with the models its server lists now, and why there are none if it can't
+ * be reached; any other preset as it is.
+ */
+export function useLivePreset(preset: ProviderPreset | null, endpoint: string) {
+  const key = preset?.live ? `${preset.id} ${endpoint || preset.endpoint}` : '';
+  const [got, setGot] = useState<{ key: string; list: LiveList } | null>(null);
+  const [asked, setAsked] = useState(0);
+  useEffect(() => {
+    if (!key || !preset) return;
+    let live = true;
+    if (!liveLists.has(key)) {
+      liveLists.set(key, listLiveModels(preset.id, endpoint).catch((err) => ({ ok: false, error: err instanceof Error ? err.message : String(err) })));
+    }
+    liveLists.get(key)!.then((list) => {
+      // a server that couldn't be reached is asked again next time
+      if (!list.ok) liveLists.delete(key);
+      if (live) setGot({ key, list });
+    });
+    return () => {
+      live = false;
+    };
+  }, [key, asked]);
+  const list = got?.key === key ? got.list : null;
+  return {
+    preset: preset && list?.ok && list.models ? { ...preset, models: list.models, recommended: list.recommended || preset.recommended } : preset,
+    error: list?.ok ? '' : list?.error || '',
+    refresh: () => {
+      liveLists.delete(key);
+      setAsked((n) => n + 1);
+    }
+  };
 }
 
 /**

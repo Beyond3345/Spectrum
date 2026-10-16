@@ -60,6 +60,10 @@ export interface ProviderPreset {
   note: string;
   models: ProviderModel[];
   recommended: { main: string; fast: string; vision: string; references: string };
+  /** takes no key (a local Ollama) */
+  local?: boolean;
+  /** its server lists the models (Ollama); `models` is only a fallback */
+  live?: boolean;
 }
 
 export interface TemplateMeta {
@@ -583,6 +587,11 @@ export function changeIgnoredGrammarRule(projectId: string, rule: string, remove
 
 export function listProviders() {
   return request<{ providers: ProviderPreset[] }>('/api/llm/providers');
+}
+
+/** The models a live preset's server (Ollama) lists right now. */
+export function listLiveModels(provider: string, endpoint: string) {
+  return request<{ ok: boolean; error?: string } & Partial<Pick<ProviderPreset, 'models' | 'recommended'>>>('/api/llm/models', json('POST', { provider, endpoint }));
 }
 
 export async function visionToLatex(payload: {

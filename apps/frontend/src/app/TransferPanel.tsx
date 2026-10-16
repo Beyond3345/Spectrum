@@ -257,12 +257,12 @@ export default function TransferPanel({
 
   const usesProjectSource = mode !== 'pdf' || pdfSource === 'project';
   // AI conversions need the main model's key (and most parsers one too); the .env file can supply the
-  // model's and MinerU's, so this only warns
+  // model's and MinerU's, so this only warns. A local server on plain http, such as Ollama, takes none.
   const missingKey =
     running || mode === 'quick'
       ? ''
-      : !llmConfigFor(settings, 'main').apiKey
-        ? 'Needs an API key for the main model in Settings → Models, or in the .env file.'
+      : !llmConfigFor(settings, 'main').apiKey && !/^http:\/\//i.test(settings.llmEndpoint)
+        ?'Needs an API key for the main model in Settings → Models, or in the .env file.'
         : mode === 'pdf'
           ? parserWarning(settings, parserPreset(parsers, settings))
           : '';

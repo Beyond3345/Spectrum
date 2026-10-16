@@ -2,7 +2,7 @@ import path from 'path';
 import { safeJoin, sanitizeUploadPath } from '../utils/pathUtils.js';
 import { ensureDir, freePath } from '../utils/fsUtils.js';
 import { getProjectRoot } from '../services/projectService.js';
-import { resolveLLMConfig, callOpenAICompatible, NO_API_KEY } from '../services/llmService.js';
+import { resolveLLMConfig, callOpenAICompatible, missingKey, NO_API_KEY } from '../services/llmService.js';
 import { runPythonPlot } from '../services/plotService.js';
 
 export function registerPlotRoutes(fastify) {
@@ -16,7 +16,7 @@ export function registerPlotRoutes(fastify) {
     const finalName = ext ? safeNameBase : `${safeNameBase}.png`;
 
     const resolved = resolveLLMConfig(llmConfig);
-    if (!resolved.apiKey) {
+    if (missingKey(resolved)) {
       return { ok: false, error: NO_API_KEY };
     }
     // never replace an existing plot: plot.png, plot-2.png, …

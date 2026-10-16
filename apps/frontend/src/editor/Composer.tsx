@@ -4,7 +4,7 @@ import type { ChatMessage, ChatMode, ChatThread, ReferenceResult } from '../api/
 import Icon from '../app/Icon';
 import Select from '../app/Select';
 import { MenuButton } from '../app/Menu';
-import { effortOptions, modelOf, presetOf, updateSettings, useProviders } from '../app/settings';
+import { effortOptions, modelOf, presetOf, updateSettings, useLivePreset, useProviders } from '../app/settings';
 import { useEditor } from './EditorContext';
 import type { PendingChange } from './EditorContext';
 import { CHATS_CHANGED, Markdown, VISION_HINTS, VISION_MODES, buildProjectContext, errorText, isTex, patchesToChanges } from './shared';
@@ -74,7 +74,8 @@ export default function Composer({
 
   const [mode, setMode] = useState<ChatMode>('assistant');
   const providers = useProviders();
-  const effortChoices = effortOptions(modelOf(presetOf(providers, api.settings), api.settings.llmModel));
+  const { preset } = useLivePreset(presetOf(providers, api.settings), api.settings.llmEndpoint);
+  const effortChoices = effortOptions(modelOf(preset, api.settings.llmModel));
   const [thread, setThread] = useState<ChatThread | null>(null);
   const threadRef = useRef<ChatThread | null>(null);
   const [input, setInput] = useState('');

@@ -25,12 +25,14 @@ const KIMI = 'https://api.moonshot.ai/v1/chat/completions';
 const KIMI_CN = 'https://api.moonshot.cn/v1/chat/completions';
 const GEMINI = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 const QWEN = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions';
+const OLLAMA = 'http://localhost:11434';
 const providers = [
   preset('openai', OPENAI, ['(^|\\.)api\\.openai\\.com$']),
   preset('deepseek', DEEPSEEK, ['^api\\.deepseek\\.com$']),
   preset('moonshot', KIMI, ['^api\\.moonshot\\.(ai|cn)$'], { regions: [{ label: 'China', endpoint: KIMI_CN }] }),
   preset('gemini', GEMINI, ['^generativelanguage\\.googleapis\\.com$']),
-  preset('qwen', QWEN, ['(^|\\.)dashscope(-intl|-us)?\\.aliyuncs\\.com$', '\\.maas\\.aliyuncs\\.com$'])
+  preset('qwen', QWEN, ['(^|\\.)dashscope(-intl|-us)?\\.aliyuncs\\.com$', '\\.maas\\.aliyuncs\\.com$']),
+  preset('ollama', OLLAMA, [':11434$'], { local: true, live: true })
 ];
 const at = (patch: Partial<AppSettings>, base: AppSettings = { ...DEFAULT_SETTINGS, llmProvider: 'openai', llmApiKey: 'sk-openai' }) => ({ ...base, ...patch });
 
@@ -42,6 +44,15 @@ eq(at(presetPatch(s, providers, providers[0]), s).llmApiKey, 'sk-openai', 'switc
 
 // a Qwen workspace address belongs to Qwen, as the backend sees it
 eq(presetForEndpoint(providers, 'https://ws1.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1')?.id, 'qwen', 'workspace host');
+// Ollama is known by its port, on any computer
+eq(presetForEndpoint(providers, 'http://192.168.1.20:11434')?.id, 'ollama', 'Ollama on the network');
+eq(presetForEndpoint(providers, 'http://localhost:1234/v1')?.id, undefined, 'LM Studio stays Other');
+
+// a key typed for an address under Other never follows it into the local Ollama, which has no key field
+const other = at({ llmProvider: 'custom', llmEndpoint: OLLAMA, llmApiKey: 'sk-local' });
+const o = at(presetPatch(other, providers, providers[5]), other);
+eq([o.llmProvider, o.llmEndpoint, o.llmApiKey], ['ollama', OLLAMA, ''], 'Ollama starts without a key');
+eq(at(rolePatch(other, providers, 'quick', 'ollama'), other).referencesApiKey, '', 'nor does a quick model there');
 
 // the main model borrows a quick or vision key only with that model's own region
 let v = at(rolePatch(at({}), providers, 'vision', 'moonshot'));

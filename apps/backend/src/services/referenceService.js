@@ -6,7 +6,7 @@ import path from 'path';
 import { XMLParser } from 'fast-xml-parser';
 import { listFilesRecursive } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
-import { callOpenAICompatible, resolveLLMConfig } from './llmService.js';
+import { callOpenAICompatible, missingKey, resolveLLMConfig } from './llmService.js';
 import { extractJSON } from './transferAgent/utils.js';
 
 const TIMEOUT_MS = 20_000;
@@ -119,7 +119,7 @@ export async function splitInput(text, llmConfig) {
   let items = splitLines(text);
   // Only free text needs splitting; a lone short title or a list of ids does not.
   const freeText = items.some((it) => it.kind === 'query');
-  if (freeText && (items.length > 1 || text.length > 200) && resolveLLMConfig(llmConfig).apiKey) {
+  if (freeText && (items.length > 1 || text.length > 200) && !missingKey(resolveLLMConfig(llmConfig))) {
     const llmItems = await splitWithLLM(text, llmConfig).catch(() => null);
     if (llmItems?.length) items = llmItems;
   }
