@@ -115,6 +115,13 @@ async function moveToBin(folder) {
 }
 
 export function registerProjectRoutes(fastify) {
+  // the open editors' folder watches, ended first when the server closes, so quitting doesn't wait for them
+  const watches = new Set();
+  fastify.addHook('preClose', (done) => {
+    for (const res of watches) res.end();
+    done();
+  });
+
   fastify.get('/api/projects', async () => ({ projects: await listProjects() }));
 
   fastify.post('/api/projects', async (req) => {
@@ -336,6 +343,8 @@ export function registerProjectRoutes(fastify) {
     const listing = async () => (await listFilesRecursive(root).catch(() => [])).map((i) => `${i.type} ${i.path}`).join('\n');
     let last = await listing();
     reply.hijack();
+    // the editor went away during the listing
+    if (reply.raw.destroyed) return reply;
     reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
     // sends the headers now rather than with the first event
     reply.raw.write(': watching\n\n');
@@ -360,7 +369,9 @@ export function registerProjectRoutes(fastify) {
     // the folder went away, or the system ran out of watches: the list just stops following
     watcher.on('error', () => reply.raw.end());
     const ping = setInterval(() => reply.raw.write(': ping\n\n'), 30_000);
+    watches.add(reply.raw);
     reply.raw.on('close', () => {
+      watches.delete(reply.raw);
       watcher.close();
       clearInterval(ping);
       clearTimeout(timer);

@@ -6,6 +6,7 @@ import { errorText } from '../editor/shared';
 import EditorPage from './EditorPage';
 import ProjectPage from './ProjectPage';
 import { DialogHost } from './Dialogs';
+import { IS_DESKTOP } from './desktop';
 import { ToastHost, toast } from './Toast';
 
 /** A file opened from Finder or Explorer, shown in its project (EditorPage opens ?file=). */
@@ -37,6 +38,7 @@ export default function App() {
   const navigate = useNavigate();
   // the desktop shell (main.rs) calls this when a file is double-clicked while Spectrum is open
   useEffect(() => {
+    if (!IS_DESKTOP) return;
     const hooks = window as Window & { __spectrumOpen?: (path: string) => void };
     hooks.__spectrumOpen = (path) => openPath(path, navigate, false);
     return () => {
@@ -49,7 +51,8 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/projects" replace />} />
         <Route path="/projects" element={<ProjectPage />} />
-        <Route path="/open" element={<OpenFile />} />
+        {/* the app's own: a web page sending a browser here mustn't make a project of a folder */}
+        <Route path="/open" element={IS_DESKTOP ? <OpenFile /> : <Navigate to="/projects" replace />} />
         <Route path="/editor/:projectId" element={<EditorPage />} />
         <Route path="*" element={<Navigate to="/projects" replace />} />
       </Routes>

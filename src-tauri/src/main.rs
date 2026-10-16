@@ -116,8 +116,12 @@ fn main() {
         });
     let app = builder
         .setup(|app| {
-            // Windows starts Spectrum with the file double-clicked in Explorer
-            open_files(app.handle(), env::args_os().skip(1).map(PathBuf::from));
+            // Windows starts Spectrum with the file double-clicked in Explorer (or one named from a terminal)
+            let cwd = env::current_dir().unwrap_or_default();
+            open_files(
+                app.handle(),
+                env::args_os().skip(1).map(|arg| cwd.join(arg)),
+            );
             start(app.handle())?;
             #[cfg(all(target_os = "macos", not(debug_assertions)))]
             claim_once(app.handle());
@@ -383,11 +387,13 @@ fn claim_defaults(data_dir: &Path) -> Result<(), String> {
             Err(_) => Some("macOS didn’t answer.".into()),
         })
         .collect();
-    if !failures.is_empty() {
-        return Err(failures.join(" "));
-    }
+    // tried once, whatever came of it: a later launch never takes back a type the user gave another app
     let _ = fs::create_dir_all(data_dir).and_then(|()| fs::write(data_dir.join(CLAIMED), ""));
-    Ok(())
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join(" "))
+    }
 }
 
 /// The first free port of 38787–38796, so the page's origin (and with it the
@@ -466,7 +472,8 @@ fn build_window(
             _ => false,
         })
         .on_new_window(move |url, _| {
-            if matches!(url.scheme(), "http" | "https") {
+            // a web address, or an email address in the PDF
+            if matches!(url.scheme(), "http" | "https" | "mailto") {
                 let _ = new_window_opener
                     .opener()
                     .open_url(url.as_str(), None::<&str>);

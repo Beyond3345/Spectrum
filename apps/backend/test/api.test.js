@@ -857,26 +857,32 @@ test('the editor hears when files appear or go outside the app, and not when one
   await reading.catch(() => {});
 });
 
-test('Stop ends a compile at once and keeps the last PDF', async (t) => {
+test('Stop ends a compile at once and keeps the last PDF, even one asked for before the compile began', async (t) => {
   if (!(await api('/api/system/check')).json.tools.pdflatex) return t.skip('needs pdflatex');
   const p = await newProject('Stop me');
   await writeFile(p.id, 'main.tex', '\\documentclass{article}\\begin{document}Hello\\end{document}\n');
-  const compile = () => api('/api/compile', { method: 'POST', body: { projectId: p.id, mainFile: 'main.tex', engine: 'pdflatex' } });
-  assert.ok((await compile()).json.ok);
+  const compile = (compileId) => api('/api/compile', { method: 'POST', body: { projectId: p.id, mainFile: 'main.tex', engine: 'pdflatex', compileId } });
+  const stop = (compileId) => api('/api/compile/stop', { method: 'POST', body: { compileId } });
+  assert.ok((await compile('first')).json.ok);
   const pdf = await fs.readFile(path.join(p.path, 'main.pdf'));
   // a macro that calls itself keeps TeX busy for good
   await writeFile(p.id, 'main.tex', '\\documentclass{article}\\begin{document}\\def\\x{\\x}\\x\\end{document}\n');
-  const pending = compile();
+  const pending = compile('looping');
   await new Promise((r) => setTimeout(r, 1500));
   const stopping = Date.now();
-  assert.deepEqual((await api('/api/compile/stop', { method: 'POST', body: { projectId: p.id } })).json, { ok: true });
+  // another compile's id stops nothing
+  assert.deepEqual((await stop('someone-else')).json, { ok: false });
+  assert.deepEqual((await stop('looping')).json, { ok: true });
   const res = (await pending).json;
   assert.ok(Date.now() - stopping < 5000, 'stopped promptly');
   assert.equal(res.ok, false);
   assert.equal(res.stopped, true);
   assert.deepEqual(await fs.readFile(path.join(p.path, 'main.pdf')), pdf);
-  // nothing running: nothing to stop
-  assert.deepEqual((await api('/api/compile/stop', { method: 'POST', body: { projectId: p.id } })).json, { ok: false });
+  // Stop pressed while the editor was still saving: the compile, when it comes, stops at once
+  await stop('early');
+  const early = (await compile('early')).json;
+  assert.equal(early.stopped, true);
+  assert.equal((await stop('')).status, 400);
 });
 
 test('a .cmd gets its arguments as given, none of them read by cmd.exe', { skip: !WINDOWS && 'Windows only' }, async () => {

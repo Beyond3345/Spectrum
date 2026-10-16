@@ -221,7 +221,9 @@ async function resolveExistingFolder(input) {
   if (!(await fs.stat(abs)).isDirectory()) throw httpError('That path is a file, not a folder.', 400);
   const real = (p) => fs.realpath(p).catch(() => p);
   // the home folder through realpath too: on Windows that's what gives it the letter case abs has
-  const refused = [path.parse(abs).root, await real(DATA_DIR), await real(PROJECTS_DIR), await real(os.homedir())];
+  // and the folders a loose file usually sits in, which a double-click on it would otherwise adopt whole
+  const everyday = ['Desktop', 'Downloads', 'Documents'].map((name) => real(path.join(os.homedir(), name)));
+  const refused = [path.parse(abs).root, await real(DATA_DIR), await real(PROJECTS_DIR), await real(os.homedir()), ...(await Promise.all(everyday))];
   if (refused.includes(abs)) throw httpError('That folder can’t be used as a project. Choose a folder inside it.', 400);
   return abs;
 }

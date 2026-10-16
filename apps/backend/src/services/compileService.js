@@ -97,10 +97,17 @@ const jobs = new AsyncLocalStorage();
 const running = new Map();
 const stopped = () => jobs.getStore()?.stopped === true;
 
-/** Stops the project's compile: the TeX, BibTeX or biber run going now and what it started. */
-export function stopCompile(projectId) {
-  const job = running.get(projectId);
-  if (!job) return false;
+// Stops asked for before their compile had started (the editor saves first), kept for a minute
+const stoppedEarly = new Set();
+
+/** Stops a compile, by the id the editor gave it: the TeX, BibTeX or biber run going now and what it started. */
+export function stopCompile(compileId) {
+  const job = running.get(compileId);
+  if (!job) {
+    stoppedEarly.add(compileId);
+    setTimeout(() => stoppedEarly.delete(compileId), 60_000).unref();
+    return false;
+  }
   job.stopped = true;
   for (const child of job.children) killGroup(child);
   return true;
@@ -188,7 +195,7 @@ export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOU
   });
 }
 
-export async function runCompile({ projectId, mainFile, engine = 'pdflatex' }) {
+export async function runCompile({ projectId, mainFile, engine = 'pdflatex', compileId }) {
   if (!SUPPORTED_ENGINES.includes(engine)) {
     return { ok: false, error: `Unsupported engine: ${engine}` };
   }
@@ -205,12 +212,13 @@ export async function runCompile({ projectId, mainFile, engine = 'pdflatex' }) {
     return { ok: false, error: `The main file “${mainFile}” doesn’t exist.`, engine };
   }
 
-  const job = { stopped: false, children: new Set() };
-  running.set(projectId, job);
+  // only the editor's compiles can be stopped, each by its own id (another of the project's may be running too)
+  const job = { stopped: stoppedEarly.delete(compileId), children: new Set() };
+  if (compileId) running.set(compileId, job);
   try {
     return await jobs.run(job, () => compileWithLinks(engine, projectRoot, absMain, mainFile));
   } finally {
-    if (running.get(projectId) === job) running.delete(projectId);
+    if (compileId) running.delete(compileId);
   }
 }
 

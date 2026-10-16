@@ -9,17 +9,22 @@ const docOrMain = async (root, doc) => doc ?? ((await readMeta(root)).mainFile |
 
 export function registerCompileRoutes(fastify) {
   fastify.post('/api/compile', async (req) => {
-    const { projectId, mainFile = 'main.tex', engine = 'pdflatex' } = req.body || {};
+    const { projectId, mainFile = 'main.tex', engine = 'pdflatex', compileId } = req.body || {};
     if (!projectId) {
       return { ok: false, error: 'Missing projectId.' };
     }
     if (!SUPPORTED_ENGINES.includes(engine)) {
       return { ok: false, error: `Unsupported engine: ${engine}. Supported: ${SUPPORTED_ENGINES.join(', ')}` };
     }
-    return runCompile({ projectId, mainFile, engine });
+    return runCompile({ projectId, mainFile, engine, compileId: typeof compileId === 'string' && compileId ? compileId : undefined });
   });
 
-  fastify.post('/api/compile/stop', async (req) => ({ ok: stopCompile(String(req.body?.projectId || '')) }));
+  // by the id the editor gave the compile: a stop that arrives before its compile still stops it
+  fastify.post('/api/compile/stop', async (req, reply) => {
+    const { compileId } = req.body || {};
+    if (typeof compileId !== 'string' || !compileId) return reply.code(400).send({ ok: false, error: 'Missing compileId.' });
+    return { ok: stopCompile(compileId) };
+  });
 
   // PDF → source: page is 1-based, x and y are points from the page's top-left corner
   fastify.post('/api/projects/:id/synctex/edit', async (req, reply) => {

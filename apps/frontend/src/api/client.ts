@@ -349,13 +349,14 @@ export interface CompileResult {
 }
 
 /** mainFile: the document to compile, the project's main file or another */
-export function compileProject(payload: { projectId: string; mainFile: string; engine: CompileEngine }) {
+/** compileId: the editor's name for this compile, so Stop ends this one (even before it has started) */
+export function compileProject(payload: { projectId: string; mainFile: string; engine: CompileEngine; compileId?: string }) {
   return request<CompileResult>('/api/compile', json('POST', payload));
 }
 
-/** Ends the project's running compile (false when none is running). */
-export function stopCompile(projectId: string) {
-  return request<{ ok: boolean }>('/api/compile/stop', json('POST', { projectId }));
+/** Ends the compile started with this id (false when it hasn't started yet; it then stops as it starts). */
+export function stopCompile(compileId: string) {
+  return request<{ ok: boolean }>('/api/compile/stop', json('POST', { compileId }));
 }
 
 // ─── SyncTeX: between a spot in the PDF and the source line that made it ───

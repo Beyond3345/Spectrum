@@ -202,6 +202,8 @@ const PdfPreview = forwardRef<
   const unlingerRef = useRef(() => {});
   // a place to go once the PDF at `url` has loaded
   const pendingRef = useRef<{ url: string; dest: PdfDest } | null>(null);
+  // a link is followed once a double-click (the jump to the source) can no longer be on its way
+  const linkTimerRef = useRef(0);
 
   const goTo = async (dest: PdfDest) => {
     const pdf = await docRef.current?.task.promise.catch(() => null);
@@ -603,9 +605,13 @@ const PdfPreview = forwardRef<
         if (link && !annotateMode) {
           // never a navigation of the page itself; a web address opens in the browser
           event.preventDefault();
-          if (link.dataset.dest) goTo(JSON.parse(link.dataset.dest));
-          else if (link.dataset.file) onFileLink(link.dataset.file);
-          else if (link.href) window.open(link.href, '_blank', 'noopener');
+          window.clearTimeout(linkTimerRef.current);
+          if (event.detail > 1) return;
+          linkTimerRef.current = window.setTimeout(() => {
+            if (link.dataset.dest) goTo(JSON.parse(link.dataset.dest));
+            else if (link.dataset.file) onFileLink(link.dataset.file);
+            else if (link.href) window.open(link.href, '_blank', 'noopener');
+          }, 250);
           return;
         }
         const page = (event.target as HTMLElement).closest<HTMLElement>('.pdf-page');
@@ -620,7 +626,10 @@ const PdfPreview = forwardRef<
         const box = target.closest<HTMLElement>('.pdf-page');
         const page = layoutRef.current?.pages[Number(box?.dataset.pageNumber) - 1];
         if (annotateMode || !box || !page || target.closest('.pdf-annotation')) return;
-        const text = target.tagName === 'SPAN' && target.closest('.textLayer') ? (target.textContent || '').trim() : '';
+        window.clearTimeout(linkTimerRef.current);
+        // on a link, the text is under it
+        const span = document.elementsFromPoint(event.clientX, event.clientY).find((el) => el.tagName === 'SPAN' && el.closest('.textLayer'));
+        const text = span ? (span.textContent || '').trim() : '';
         onDoubleClick({ page: page.pageNumber, ...pdfPoint(event.clientX, event.clientY, box.getBoundingClientRect(), page.getViewport({ scale: 1 })) }, text);
       }}
     >

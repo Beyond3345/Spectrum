@@ -275,6 +275,8 @@ function Editor({ projectId }: { projectId: string }) {
   const [engine, setEngine] = useState<CompileEngine>(() => sessionEngine || settings.compileEngine);
   const [compile, setCompile] = useState<CompileState>({ state: 'idle', engine });
   const compilingRef = useRef(false);
+  // the running compile's id, for Stop
+  const compileIdRef = useRef('');
   const [savingVersion, setSavingVersion] = useState(false);
   const savingVersionRef = useRef(false);
   const [compileLog, setCompileLog] = useState('');
@@ -958,10 +960,18 @@ function Editor({ projectId }: { projectId: string }) {
 
   /** A link in the PDF to another PDF (xr-hyper's links to a linked document): that document's PDF, at the spot. */
   const followFileLink = (target: string) => {
+    // a stray % (a file called "50% draft.pdf") isn't an escape
+    const decode = (text: string) => {
+      try {
+        return decodeURIComponent(text);
+      } catch {
+        return text;
+      }
+    };
     const [file, fragment = ''] = target.replace(/^file:(\/\/)?/, '').split('#');
     // the link is written from the shown PDF's folder
     const parts: string[] = [];
-    for (const part of `${shownDoc.slice(0, shownDoc.lastIndexOf('/') + 1)}${decodeURI(file)}`.split('/')) {
+    for (const part of `${shownDoc.slice(0, shownDoc.lastIndexOf('/') + 1)}${decode(file)}`.split('/')) {
       if (part === '..') parts.pop();
       else if (part && part !== '.') parts.push(part);
     }
@@ -971,7 +981,7 @@ function Editor({ projectId }: { projectId: string }) {
       notify(`That link goes to ${file}, which isn’t the PDF of a document in this project.`);
       return;
     }
-    const name = decodeURIComponent(fragment).replace(/^nameddest=/, '');
+    const name = decode(fragment).replace(/^nameddest=/, '');
     const page = name.match(/^page=(\d+)/);
     let dest: PdfDest = page ? [Number(page[1]) - 1, { name: 'Fit' }] : name;
     if (name.startsWith('[')) {
@@ -993,11 +1003,12 @@ function Editor({ projectId }: { projectId: string }) {
       return;
     }
     compilingRef.current = true;
+    compileIdRef.current = crypto.randomUUID();
     const used = engine;
     setCompile({ state: 'running', engine: used });
     try {
       await saveNow();
-      const res = await compileProject({ projectId, mainFile: doc, engine: used });
+      const res = await compileProject({ projectId, mainFile: doc, engine: used, compileId: compileIdRef.current });
       const actual = res.engine || used;
       setCompileLog(`Engine: ${engineLabel(actual)}\nDocument: ${doc}\n\n${res.log || ''}`.trim());
       if (res.ok && res.pdf) {
@@ -1011,6 +1022,7 @@ function Editor({ projectId }: { projectId: string }) {
             .then((png) => saveThumbnail(projectId, png))
             .catch(() => undefined);
       } else if (res.stopped) {
+        setCompileFailure('');
         setCompile({ state: 'stopped', engine: actual, at: new Date() });
       } else {
         setCompileFailure(res.error || 'No PDF was produced.');
@@ -1975,7 +1987,8 @@ function Editor({ projectId }: { projectId: string }) {
                   {/* while it runs, Compile is Stop: a TeX run can only be ended, not paused */}
                   <button
                     className={`compile-main ${running ? 'stop' : ''}`}
-                    onClick={() => (running ? stopCompile(projectId).catch(() => undefined) : runCompile())}
+                    // the second click of a double-click on Compile would land on Stop
+                    onClick={(event) => (running ? event.detail <= 1 && stopCompile(compileIdRef.current).catch(() => undefined) : runCompile())}
                     title={running ? 'Stop compiling' : withShortcut(settings.shortcuts, 'Compile', 'compile')}
                     aria-label={running ? 'Stop compiling' : 'Compile'}
                   >
