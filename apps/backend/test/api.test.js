@@ -1077,7 +1077,9 @@ test('template uploads unwrap Finder zips and never replace a template', async (
   assert.deepEqual(await fs.readdir(path.join(templateDir, 'mytemplate')), ['paper_latex.tex']);
   const { templates, categories } = (await api('/api/templates')).json;
   assert.equal(templates.find((x) => x.id === 'mytemplate').mainFile, 'paper_latex.tex');
-  assert.deepEqual(categories.map((c) => c.id), ['all', 'academic']);
+  // a category chip with no template behind it is left out
+  assert.equal(categories[0].id, 'all');
+  assert.ok(categories.every((c) => c.id === 'all' || templates.some((x) => x.category === c.id)), JSON.stringify(categories));
   assert.equal(templates.find((x) => x.id === 'arxiv').label, 'arXiv preprint');
 
   assert.equal((await upload('mytemplate')).status, 409);
