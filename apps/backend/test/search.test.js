@@ -212,22 +212,34 @@ test('DDGS passes the query safely and maps its results', { skip: noPython }, as
   const tricky = 'O’Brien "quoted" $(rm -rf ~) `x` & | ; % ! \\ naïve';
   const [hit] = await webSearch({ provider: 'ddgs', query: tricky, maxResults: 4 });
   assert.equal(hit.title, tricky);
-  assert.equal(hit.summary, 'google,bing,brave,duckduckgo,startpage,mojeek,yahoo|4');
+  assert.equal(hit.summary, 'google,bing,brave,duckduckgo,mojeek,yahoo|4');
   assert.equal(typeAndKey(hit.bibtex)[0], 'misc');
   assert.equal(fields(hit.bibtex).howpublished, '\\url{https://example.com/a}');
-  assert.deepEqual(await searchDdgs('none', 5), []);
-  await assert.rejects(searchDdgs('busy', 5), /limiting requests/);
+  // nothing at all can be every engine limiting requests: said, not shown as an empty search
+  await assert.rejects(searchDdgs('none', 5), /DDGS found nothing\. The search engines behind it may be limiting requests/);
+  await assert.rejects(searchDdgs('busy', 5), /DDGS failed: 202 Ratelimit/);
 });
 
 test('DDGS says how to install it when the package is missing', { skip: noPython }, async (t) => {
   t.after(() => delete process.env.PYTHONPATH);
   process.env.PYTHONPATH = fakeDdgs('missing', 'raise ImportError("No module named ddgs")\n');
-  await assert.rejects(searchDdgs('q', 5), /DDGS isn’t installed for .+\. Install it with: pip install ddgs/);
+  await assert.rejects(searchDdgs('q', 5), /DDGS isn’t installed for (.+)\. Install it with: \1 -m pip install ddgs/);
 });
 
 test('DDGS without Python says so', async (t) => {
   const was = process.env.SPECTRUM_PYTHON;
   t.after(() => (was === undefined ? delete process.env.SPECTRUM_PYTHON : (process.env.SPECTRUM_PYTHON = was)));
   process.env.SPECTRUM_PYTHON = path.join(scratch, 'no-such-python');
-  await assert.rejects(searchDdgs('q', 5), /Python wasn’t found .+ pip install ddgs/);
+  await assert.rejects(searchDdgs('q', 5), /Python wasn’t found .+ -m pip install ddgs/);
+});
+
+test('web page titles are plain text, Scholar\'s cut lists end in others, and a title with no Latin word still keys apart', async () => {
+  const { toResult } = await import('../src/services/searchService.js');
+  const tex = toResult({ rec: { type: 'webpage', title: 'What is the difference between \\def and \\newcommand? x^2 & 50% ~ #1 _', URL: 'https://tex.stackexchange.com/q/1' } }, 'brave');
+  assert.equal(fields(tex.bibtex).title, 'What is the difference between \\textbackslash{}def and \\textbackslash{}newcommand? x\\^{}2 \\& 50\\% \\~{} \\#1 \\_');
+  const cut = toResult({ rec: { type: 'article-journal', title: 'Attention is all you need', author: [{ family: 'Vaswani', given: 'A' }, { literal: 'others' }], 'container-title': 'NeurIPS', issued: { 'date-parts': [[2017]] } } }, 'serpapi');
+  assert.match(fields(cut.bibtex).author, / and others$/);
+  const a = toResult({ rec: { type: 'article-journal', title: '计算机学报论文', author: [{ family: '张伟' }], 'container-title': '计算机学报', issued: { 'date-parts': [[2020]] }, URL: 'https://example.cn/a' } }, 'serpapi');
+  const b = toResult({ rec: { type: 'article-journal', title: '软件学报论文', author: [{ family: '王芳' }], 'container-title': '软件学报', issued: { 'date-parts': [[2020]] }, URL: 'https://example.cn/b' } }, 'serpapi');
+  assert.notEqual(typeAndKey(a.bibtex)[1], typeAndKey(b.bibtex)[1]);
 });

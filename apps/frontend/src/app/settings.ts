@@ -205,6 +205,9 @@ function parse(raw: string | null): AppSettings {
     if (!Number.isFinite(merged.editorFontSize)) merged.editorFontSize = DEFAULT_SETTINGS.editorFontSize;
     if (typeof merged.shortcuts !== 'object' || !merged.shortcuts) merged.shortcuts = {};
     if (typeof merged.providerSaved !== 'object' || !merged.providerSaved) merged.providerSaved = {};
+    // 1.6 kept one search key and left it in place when switching to a provider without a key field: it was
+    // another provider's, and OpenAlex now sends a key it's given
+    if (!parsed.searchProviderKeys && !['serpapi', 'tavily', 'brave', 'semanticscholar'].includes(String(merged.searchProvider))) merged.searchProviderKey = '';
     if (typeof merged.searchProviderKeys !== 'object' || !merged.searchProviderKeys) merged.searchProviderKeys = {};
     if (!['avoid', 'require', 'off'].includes(merged.oxfordComma)) merged.oxfordComma = 'avoid';
     if (!ACCENTS.includes(merged.accent)) merged.accent = 'system';

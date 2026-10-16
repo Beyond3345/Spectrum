@@ -206,6 +206,18 @@ export function pdfTexSafe(text) {
 }
 
 /**
+ * Plain text with every TeX special escaped, as a web page's title is never TeX (“What does \\def do?”,
+ * “x^2 in text”); for titles, words with internal capitals braced as texEscape does.
+ */
+export function plainTex(text, { protect = false } = {}) {
+  const SPECIAL = { '\\': '\\textbackslash{}', '^': '\\^{}', '~': '\\~{}' };
+  const s = String(text ?? '');
+  const escaped = s.replace(/[\\{}$&%#_^~]/g, (ch) => SPECIAL[ch] || `\\${ch}`);
+  // the escapes are lower-case words, so they're never braced
+  return pdfTexSafe(protect && /\p{Ll}/u.test(s) ? escaped.replace(COMPOUND_RE, (w) => (keepsCase(w) ? `{${w}}` : w)) : escaped);
+}
+
+/**
  * Escape `& % $ # _` outside existing TeX (commands, {groups}, $maths$) and, for
  * titles, brace words with internal capitals or all caps ({BERT}, {ImageNet}).
  */
@@ -295,6 +307,8 @@ function displayName(author) {
 }
 
 function bibName(author) {
+  // a list cut short (Google Scholar's …): BibTeX's own "and others"
+  if (author?.literal === 'others') return 'others';
   const a = normaliseAuthor(author);
   const literal = literalOf(a);
   if (literal) return `{${texEscape(literal)}}`;
@@ -394,7 +408,8 @@ export function toBibtex(rec, key) {
   };
   add('author', authors.join(' and '));
   add('editor', editors.join(' and '));
-  add('title', texEscape(cleanText(first(rec.title)), { protect: true }));
+  // a page's title is plain text; a publisher's may carry TeX
+  add('title', (webpage ? plainTex : texEscape)(cleanText(first(rec.title)), { protect: true }));
   if (type === 'article') add('journal', preprint ? `arXiv preprint arXiv:${arxiv.id}` : container);
   if (type === 'inproceedings' || type === 'incollection') add('booktitle', container);
   add('year', yearOf(rec));

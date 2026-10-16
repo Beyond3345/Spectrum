@@ -28,4 +28,15 @@ eq(
   'repeats by arXiv id, DOI, title or address'
 );
 
+// the same title on two works with their own DOIs: both stay
+eq(
+  ids(uniqueWorks([
+    item('book', { title: 'Deep Learning', url: 'https://www.deeplearningbook.org/' }),
+    item('nature', { title: 'Deep learning', doi: '10.1038/nature14539' }),
+    item('other', { title: 'Deep learning', doi: '10.1000/other' })
+  ])),
+  ['book', 'nature', 'other'],
+  'a title alone doesn’t merge works that have DOIs'
+);
+
 console.log('research.check: ok');

@@ -97,15 +97,17 @@ export async function listLiveModels(preset, endpoint) {
   });
   if (!models.length) return { ok: false, error: preset.local ? 'Ollama has no models yet. Download one in the Ollama app, or with ollama pull.' : 'ollama.com listed no models.' };
   const listed = (id) => (models.some((m) => m.id === id) ? id : '');
+  // the local app's :cloud models run on ollama.com: recommend what runs here before them
+  const here = models.filter((m) => !tags.find((t) => t.name === m.id)?.remote_host);
   // Ollama lists the newest first
-  const main = listed(preset.recommended.main) || models[0].id;
+  const main = listed(preset.recommended.main) || (here[0] || models[0]).id;
   // for quick jobs, the smallest model that runs here
   const smallest = tags.filter((t) => listed(t.name) && !t.remote_host).sort((a, b) => a.size - b.size)[0]?.name;
   const fast = listed(preset.recommended.fast) || smallest || main;
   return {
     ok: true,
     models,
-    recommended: { main, fast, vision: listed(preset.recommended.vision) || models.find((m) => m.vision)?.id || main, references: fast }
+    recommended: { main, fast, vision: listed(preset.recommended.vision) || (here.find((m) => m.vision) || models.find((m) => m.vision))?.id || main, references: fast }
   };
 }
 
@@ -316,6 +318,8 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
     };
   }
   if (!res.ok) {
+    // the local app has no key: a 401 is a :cloud model while it's signed out of ollama.com
+    if (provider?.local && res.status === 401) return { ok: false, error: 'Ollama needs you to sign in to use its cloud models. Sign in from the Ollama app, or run ollama signin.' };
     return { ok: false, error: providerError(res.status, text) };
   }
   let data = null;

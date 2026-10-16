@@ -114,7 +114,12 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
 
   // a fresh Ollama has no model chosen until it lists what's installed
   const firstModels: Partial<AppSettings> = {};
-  if (preset?.live && !settings.llmModel && !otherModel.main && preset.recommended.main) firstModels.llmModel = preset.recommended.main;
+  if (preset?.live && !settings.llmModel && !otherModel.main && preset.recommended.main) {
+    firstModels.llmModel = preset.recommended.main;
+    // a text-only main model sends images to the installed model that reads them, as choosing one does
+    const reader = recommendedFor(preset, 'vision');
+    if (!modelOf(preset, preset.recommended.main)?.vision && followsMain(settings, 'vision') && !settings.visionModel && reader) firstModels.visionModel = reader;
+  }
   for (const role of ['quick', 'vision'] as const) {
     const f = ROLE_FIELDS[role];
     const pick = live[role].preset?.live && !settings[f.model] && !otherModel[role] && recommendedFor(live[role].preset, role);
@@ -128,8 +133,9 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
   /** Another provider's address switches to that provider as the menu does, so the key it had never goes there. */
   const setEndpoint = (value: string) => {
     const next = presetForEndpoint(providers, value);
-    // an Ollama on another port is still Ollama, and has no key to leak
-    if (next?.id === preset?.id || (!next && preset?.local)) return update({ llmEndpoint: value });
+    // an Ollama on another port is still Ollama, and has no key to leak; an empty field or an https address
+    // (a server that wants a key) leaves it, so the key field shows
+    if (next?.id === preset?.id || (!next && preset?.local && value.trim() && !/^https:/i.test(value.trim()))) return update({ llmEndpoint: value });
     update(presetPatch(settings, providers, next, value));
   };
 
@@ -304,8 +310,8 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
   const ddgsMissing =
     settings.searchProvider === 'ddgs' && check && !check.python.ddgs
       ? check.python.found
-        ? `ddgs isn’t installed for ${check.python.path}. Install it with: pip install ddgs`
-        : 'Python wasn’t found. Install Python 3, then: pip install ddgs'
+        ? `ddgs isn’t installed for ${check.python.path}. Install it with: ${check.python.path} -m pip install ddgs`
+        : 'Python wasn’t found. Install Python 3, then: python3 -m pip install ddgs'
       : '';
 
   return (
@@ -636,7 +642,7 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                       <Icon name={check.python[module] ? 'checkmark.circle.fill' : 'minus.circle'} />
                       <span className="sys-name">python + {module}</span>
                       <span className="sys-detail">
-                        {check.python[module] ? check.python.path : check.python.found ? `pip install ${module}` : 'Python not found'}
+                        {check.python[module] ? check.python.path : check.python.found ? `${check.python.path} -m pip install ${module}` : 'Python not found'}
                       </span>
                     </div>
                   ))}

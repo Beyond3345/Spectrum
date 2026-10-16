@@ -22,7 +22,8 @@ async function getJson(url, init = {}) {
   const res = await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT) });
   const text = await res.text();
   const host = new URL(url).host;
-  if (res.status === 429) throw new Error(`${host} is limiting requests. Wait a minute and try again.`);
+  // some (SerpApi, Brave) also say so when the plan's searches have run out: keep what they said
+  if (res.status === 429) throw new Error(`${host} is limiting requests, or the plan’s searches have run out: ${text.slice(0, 200)}`);
   if (!res.ok) throw new Error(`${host} returned ${res.status}: ${text.slice(0, 200)}`);
   return JSON.parse(text);
 }
@@ -42,9 +43,11 @@ export function toResult({ rec, summary }, source) {
   if (!rec['container-title'] && /^(article-journal|paper-conference|chapter)$/.test(rec.type)) rec = { ...rec, type: 'misc' };
   const id = detectInput(rec.DOI || rec.URL || '');
   const meta = summaryOf(rec);
-  // results never see the project's .bib, so their keys must not clash: AuthorYear plus a title word,
-  // or for a page with no author a short hash of its address
-  const key = baseKey(rec) + (rec.author?.length ? baseKey({ title: rec.title }) : crypto.createHash('sha1').update(rec.URL || rec.title || '').digest('hex').slice(0, 4));
+  // results never see the project's .bib, so their keys must not clash: AuthorYear plus a title word, or a
+  // short hash of the work when there's no author or the title has no Latin word (张伟 2020 would be Ref2020Ref)
+  const word = baseKey({ title: rec.title });
+  const hash = crypto.createHash('sha1').update(rec.DOI || rec.URL || rec.title || '').digest('hex').slice(0, 4);
+  const key = baseKey(rec) + (rec.author?.length && word !== 'Ref' ? word : hash);
   return {
     ...meta,
     title: meta.title || '',
@@ -173,7 +176,7 @@ function scholarHit(item) {
     rec: {
       type: item.type === 'Book' ? 'book' : 'article-journal',
       title: item.title,
-      author: names.split(',').map((n) => parseName(n.replace(/…/g, ''))).filter(Boolean),
+      author: [...names.split(',').map((n) => parseName(n.replace(/…/g, ''))).filter(Boolean), ...(/…/.test(names) ? [{ literal: 'others' }] : [])],
       issued: issued(venueYear.match(/\d{4}\s*$/)?.[0]),
       // Scholar shortens long venues with …, which would go into the .bib as is
       'container-title': /^\d*$|…/.test(venue) ? undefined : venue,
@@ -230,7 +233,7 @@ async function searchTavily(query, limit, apiKey) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     // advanced (2 credits) finds better passages; prefer ranks the citable sites first and keeps the rest
-    body: JSON.stringify({ query, max_results: limit, search_depth: 'advanced', include_domains: CITABLE_SITES, include_domains_mode: 'prefer' })
+    body: JSON.stringify({ query, max_results: limit, search_depth: 'advanced', include_domains: CITABLE_SITES, include_domains_mode: 'prefer', include_published_date: true })
   });
   return (data.results || []).map((item) => page(item.title, item.url, item.content, item.published_date));
 }
@@ -272,7 +275,8 @@ except Exception as err:
 `;
 
 // the general engines: auto would put Wikipedia and Grokipedia first, and neither is a source to cite
-const DDGS_BACKENDS = 'google,bing,brave,duckduckgo,startpage,mojeek,yahoo';
+// not startpage: ddgs before 9.14.3 doesn't know it, and an unknown name sends the whole list back to 'auto'
+const DDGS_BACKENDS = 'google,bing,brave,duckduckgo,mojeek,yahoo';
 
 export async function searchDdgs(query, limit) {
   const python = resolvePythonExecutable();
@@ -283,7 +287,7 @@ export async function searchDdgs(query, limit) {
     // runSpawn: hidden on Windows, its own process group, a time limit, and stopped when Spectrum quits
     run = await runSpawn(python, ['-c', DDGS_SCRIPT, args], os.tmpdir(), (chunk) => (output += chunk), process.env, TIMEOUT);
   } catch (err) {
-    throw new Error(err.code === 'ENOENT' ? `Python wasn’t found (${python}). Install Python 3, then: pip install ddgs` : `Couldn’t run ${python}: ${err.message}`);
+    throw new Error(err.code === 'ENOENT' ? `Python wasn’t found (${python}). Install Python 3, then: ${python} -m pip install ddgs` : `Couldn’t run ${python}: ${err.message}`);
   }
   if (run.timedOut) throw new Error('DDGS took too long to answer. Try again.');
   let answer;
@@ -292,10 +296,12 @@ export async function searchDdgs(query, limit) {
   } catch {
     throw new Error(`DDGS failed: ${output.trim().slice(0, 300) || `${python} exited with ${run.code}`}`);
   }
-  if (answer.error === 'missing') throw new Error(`DDGS isn’t installed for ${python}. Install it with: pip install ddgs`);
-  if (answer.error === 'RatelimitException') throw new Error('The search engines behind DDGS are limiting requests. Wait a minute and try again.');
-  // ddgs raises when every engine came back empty
-  if (answer.error === 'DDGSException' && answer.message === 'No results found.') return [];
+  // into the Python Spectrum runs, whichever pip is first on PATH
+  if (answer.error === 'missing') throw new Error(`DDGS isn’t installed for ${python}. Install it with: ${python} -m pip install ddgs`);
+  // ddgs says this when every engine came back empty, and a blocked or rate-limited engine comes back empty too
+  if (answer.error === 'DDGSException' && answer.message === 'No results found.') {
+    throw new Error('DDGS found nothing. The search engines behind it may be limiting requests: try again in a minute, or reword the search.');
+  }
   if (answer.error) throw new Error(`DDGS failed: ${answer.message || answer.error}`);
   return (answer.results || []).map((item) => page(item.title, item.href, item.body));
 }

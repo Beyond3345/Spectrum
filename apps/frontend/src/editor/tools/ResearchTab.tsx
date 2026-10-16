@@ -434,7 +434,8 @@ export function uniqueWorks(items: WebItem[]) {
     const keys = [
       doi && `doi:${doi}`,
       arxiv && `arxiv:${arxiv}`,
-      item.title && `title:${item.title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()}`,
+      // a title only stands for the work when nothing better does: “Deep Learning” (a book) isn't “Deep learning” (Nature)
+      !doi && !arxiv && item.title && `title:${item.title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()}`,
       item.url && `url:${item.url.replace(/^https?:\/\/(www\.)?/i, '').replace(/[/?#]+$/, '').toLowerCase()}`
     ].filter((key): key is string => Boolean(key));
     const repeat = keys.some((key) => seen.has(key));
