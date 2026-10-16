@@ -11,8 +11,10 @@ const PROVIDERS: Record<SearchProvider, string> = {
   openalex: 'OpenAlex',
   semanticscholar: 'Semantic Scholar',
   serpapi: 'SerpApi',
+  exa: 'Exa',
   tavily: 'Tavily',
-  brave: 'Brave Search'
+  brave: 'Brave Search',
+  ddgs: 'DDGS'
 };
 
 /** .bib picker shared by the arXiv and web search sections, with a "New .bib" button. */
@@ -416,7 +418,33 @@ interface WebItem {
   url: string;
   bibtex: string;
   citeKey: string;
+  /** authors, year and venue, for the list */
+  meta: string;
+  doi?: string;
+  arxiv?: string;
 }
+
+/** One entry per work across the parallel searches: the same DOI, arXiv id, title or address is a repeat. */
+export function uniqueWorks(items: WebItem[]) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const doi = (item.doi || '').replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').toLowerCase();
+    // an arXiv DOI is the arXiv id too
+    const arxiv = (item.arxiv || doi.match(/^10\.48550\/arxiv\.(.+)$/)?.[1] || '').replace(/^arxiv:/i, '').replace(/v\d+$/i, '').toLowerCase();
+    const keys = [
+      doi && `doi:${doi}`,
+      arxiv && `arxiv:${arxiv}`,
+      item.title && `title:${item.title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()}`,
+      item.url && `url:${item.url.replace(/^https?:\/\/(www\.)?/i, '').replace(/[/?#]+$/, '').toLowerCase()}`
+    ].filter((key): key is string => Boolean(key));
+    const repeat = keys.some((key) => seen.has(key));
+    keys.forEach((key) => seen.add(key));
+    return !repeat;
+  });
+}
+
+const metaLine = (item: { authors?: string[]; year?: string; venue?: string }) =>
+  [item.authors?.length ? `${item.authors.slice(0, 3).join(', ')}${item.authors.length > 3 ? ' et al.' : ''}` : '', item.year, item.venue].filter(Boolean).join(' · ');
 
 function WebSearch() {
   const api = useEditor();
@@ -452,11 +480,21 @@ function WebSearch() {
         llmConfig,
         reasoningEffort: 'fast',
         messages: [
-          { role: 'system', content: 'Split the query into 2-4 targeted search queries. Return JSON only: {"queries":["..."]}.' },
+          {
+            role: 'system',
+            content: [
+              'Split the question into 2-4 targeted search queries that find sources a researcher can cite: papers, books, standards or official documentation.',
+              'For a question about using LaTeX itself, aim at package documentation on CTAN and answers on TeX Stack Exchange.',
+              'Use plain keywords, no search operators.',
+              'Set scholarly to false when the question is about using LaTeX or software rather than about research.',
+              'Return JSON only: {"queries":["..."],"scholarly":true}.'
+            ].join(' ')
+          },
           { role: 'user', content: `User query: ${q}` }
         ]
       }).catch((err) => ({ ok: false, error: errorText(err), content: '' }));
-      let queries = ((split.ok && split.content && parseJsonReply<{ queries?: string[] }>(split.content)?.queries) || []).filter(Boolean).slice(0, 4);
+      const plan = split.ok && split.content ? parseJsonReply<{ queries?: string[]; scholarly?: boolean }>(split.content) : null;
+      let queries = (plan?.queries || []).filter(Boolean).slice(0, 4);
       if (!queries.length) {
         if (provider === 'llm') throw new Error(split.error || 'Couldn’t split the query.');
         // a search provider can still run the question as typed
@@ -469,9 +507,14 @@ function WebSearch() {
         queries.map(async (sub, qi) => {
           say(`Searching: ${sub}`);
           if (provider !== 'llm') {
-            const res = await webSearch({ query: sub, provider, apiKey: settings.searchProviderKey || undefined, engine: settings.serpEngine, maxResults: 5 }).catch(
-              (err) => ({ ok: false, error: errorText(err), results: [] })
-            );
+            const res = await webSearch({
+              query: sub,
+              provider,
+              apiKey: settings.searchProviderKey || undefined,
+              engine: settings.serpEngine,
+              maxResults: 5,
+              scholarly: plan?.scholarly !== false
+            }).catch((err) => ({ ok: false, error: errorText(err), results: [] }));
             if (!res.ok) {
               say(`Search failed: ${sub} (${res.error})`);
               return;
@@ -479,11 +522,14 @@ function WebSearch() {
             (res.results || []).forEach((item, i) =>
               found.push({
                 id: `${qi}-${i}-${item.url || item.title}`,
-                title: item.title || 'Untitled',
+                title: item.title || '',
                 summary: item.summary || '',
                 url: item.url || '',
                 bibtex: item.bibtex || '',
-                citeKey: item.bibtex ? extractBibKey(item.bibtex) : ''
+                citeKey: item.bibtex ? extractBibKey(item.bibtex) : '',
+                meta: metaLine(item),
+                doi: item.doi,
+                arxiv: item.arxiv
               })
             );
             say(`Done: ${sub} (${res.results?.length || 0})`);
@@ -494,7 +540,13 @@ function WebSearch() {
             messages: [
               {
                 role: 'system',
-                content: 'You are a search assistant. Use the provider search. Return JSON only: {"results":[{"title":"","summary":"","url":"","bibtex":""}]}.'
+                content: [
+                  'You are a search assistant for academic writing in LaTeX. Use web search to find peer-reviewed papers, books, standards or authoritative documentation;',
+                  'for questions about LaTeX itself, CTAN package documentation and TeX Stack Exchange answers.',
+                  'List only sources the search actually found, each with its DOI or arXiv id when it has one, its authors, year and venue,',
+                  'and BibTeX that matches them: @article, @inproceedings or @book, or @misc with the url for a web page.',
+                  'Return JSON only: {"results":[{"title":"","authors":[],"year":"","venue":"","doi":"","arxiv":"","url":"","summary":"","bibtex":""}]}.'
+                ].join(' ')
               },
               { role: 'user', content: `Search for: ${sub}` }
             ]
@@ -503,7 +555,9 @@ function WebSearch() {
             say(`Search failed: ${sub}`);
             return;
           }
-          const parsed = parseJsonReply<{ results?: { title?: string; summary?: string; url?: string; bibtex?: string }[] }>(res.content);
+          const parsed = parseJsonReply<{
+            results?: { title?: string; summary?: string; url?: string; bibtex?: string; authors?: string[]; year?: string; venue?: string; doi?: string; arxiv?: string }[];
+          }>(res.content);
           if (!parsed) {
             say(`Couldn’t read the results for: ${sub}`);
             return;
@@ -512,19 +566,20 @@ function WebSearch() {
             const bibtex = (item.bibtex || '').replace(/\\n/g, '\n');
             found.push({
               id: `${qi}-${i}-${item.url || item.title || 'result'}`,
-              title: item.title || 'Untitled',
+              title: item.title || '',
               summary: item.summary || '',
               url: item.url || '',
               bibtex,
-              citeKey: bibtex ? extractBibKey(bibtex) : ''
+              citeKey: bibtex ? extractBibKey(bibtex) : '',
+              meta: metaLine({ authors: Array.isArray(item.authors) ? item.authors : [], year: String(item.year || ''), venue: item.venue }),
+              doi: item.doi,
+              arxiv: item.arxiv
             });
           });
           say(`Done: ${sub} (${parsed.results?.length || 0})`);
         })
       );
-      const unique = found.filter(
-        (item, i) => found.findIndex((d) => (d.url && d.url === item.url) || d.title === item.title) === i
-      );
+      const unique = uniqueWorks(found);
       setResults(unique);
       say(`${unique.length} results in total.`);
       if (!unique.length) return;
@@ -671,12 +726,13 @@ function WebSearch() {
               <div key={item.id} className="pick-item">
                 <input
                   type="checkbox"
-                  aria-label={item.title}
+                  aria-label={item.title || 'Untitled'}
                   checked={Boolean(selected[item.id])}
                   onChange={(e) => setSelected((prev) => ({ ...prev, [item.id]: e.target.checked }))}
                 />
                 <div className="pick-body">
-                  <div className="pick-title">{item.title}</div>
+                  <div className="pick-title">{item.title || 'Untitled'}</div>
+                  {item.meta && <div className="pick-meta">{item.meta}</div>}
                   {item.url && (
                     <a className="pick-link" href={item.url} target="_blank" rel="noreferrer">
                       {item.url}
@@ -686,7 +742,7 @@ function WebSearch() {
                   <textarea
                     className="input"
                     rows={3}
-                    aria-label={`Summary of ${item.title}`}
+                    aria-label={`Summary of ${item.title || 'Untitled'}`}
                     value={notes[item.id] ?? item.summary}
                     onChange={(e) => setNotes((prev) => ({ ...prev, [item.id]: e.target.value }))}
                   />

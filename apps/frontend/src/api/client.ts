@@ -620,7 +620,7 @@ export function arxivSearch(payload: { query: string; maxResults?: number }) {
   return request<{ ok: boolean; papers?: ArxivPaper[]; error?: string }>('/api/arxiv/search', json('POST', payload));
 }
 
-export type SearchProvider = 'llm' | 'openalex' | 'semanticscholar' | 'serpapi' | 'tavily' | 'brave';
+export type SearchProvider = 'llm' | 'openalex' | 'semanticscholar' | 'serpapi' | 'exa' | 'tavily' | 'brave' | 'ddgs';
 
 export interface SearchResult {
   title: string;
@@ -629,10 +629,22 @@ export interface SearchResult {
   bibtex: string;
   authors?: string[];
   year?: string;
+  venue?: string;
+  doi?: string;
+  /** arXiv id without its version */
+  arxiv?: string;
   source?: string;
 }
 
-export function webSearch(payload: { query: string; provider: Exclude<SearchProvider, 'llm'>; apiKey?: string; engine?: string; maxResults?: number }) {
+/** scholarly: the question is about research literature (Exa then searches publications only) */
+export function webSearch(payload: {
+  query: string;
+  provider: Exclude<SearchProvider, 'llm'>;
+  apiKey?: string;
+  engine?: string;
+  maxResults?: number;
+  scholarly?: boolean;
+}) {
   return request<{ ok: boolean; results?: SearchResult[]; error?: string }>('/api/websearch', json('POST', payload));
 }
 
@@ -794,7 +806,7 @@ export interface SystemCheck {
   tools: Record<string, string | null>;
   /** tools that are on PATH but fail to run, with a short reason */
   problems?: Record<string, string>;
-  python: { path: string; found: boolean; matplotlib: boolean };
+  python: { path: string; found: boolean; matplotlib: boolean; ddgs: boolean };
   platform: string;
 }
 

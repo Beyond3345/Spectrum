@@ -73,7 +73,9 @@ export type AppSettings = {
   /** parent folder for new projects; '' = the backend default (~/Documents/Spectrum) */
   projectsDir: string;
   searchProvider: SearchProvider;
+  /** the key for searchProvider; the others' keys wait in searchProviderKeys */
   searchProviderKey: string;
+  searchProviderKeys: Partial<Record<SearchProvider, string>>;
   serpEngine: 'google' | 'google_scholar' | 'baidu';
   /** shortcut id → key, only for the ones changed in Settings ('' = removed) */
   shortcuts: Record<string, string>;
@@ -137,7 +139,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   projectsDir: '',
   searchProvider: 'llm',
   searchProviderKey: '',
-  serpEngine: 'google',
+  searchProviderKeys: {},
+  // Scholar finds papers to cite; settings saved before this keep the engine they had
+  serpEngine: 'google_scholar',
   shortcuts: {},
   spellCheck: true,
   grammarStyle: false,
@@ -201,6 +205,7 @@ function parse(raw: string | null): AppSettings {
     if (!Number.isFinite(merged.editorFontSize)) merged.editorFontSize = DEFAULT_SETTINGS.editorFontSize;
     if (typeof merged.shortcuts !== 'object' || !merged.shortcuts) merged.shortcuts = {};
     if (typeof merged.providerSaved !== 'object' || !merged.providerSaved) merged.providerSaved = {};
+    if (typeof merged.searchProviderKeys !== 'object' || !merged.searchProviderKeys) merged.searchProviderKeys = {};
     if (!['avoid', 'require', 'off'].includes(merged.oxfordComma)) merged.oxfordComma = 'avoid';
     if (!ACCENTS.includes(merged.accent)) merged.accent = 'system';
     if (typeof merged.accentCustom !== 'string' || !HEX.test(merged.accentCustom)) merged.accentCustom = DEFAULT_SETTINGS.accentCustom;
@@ -289,6 +294,15 @@ export function useSettings(): [AppSettings, (patch: Partial<AppSettings>) => vo
 
 export function updateSettings(patch: Partial<AppSettings>) {
   persistSettings({ ...loadSettings(), ...patch });
+}
+
+/** Switches the web search provider: its own key comes back, the old one's is kept for it. */
+export function searchProviderPatch(settings: AppSettings, next: SearchProvider): Partial<AppSettings> {
+  return {
+    searchProvider: next,
+    searchProviderKey: settings.searchProviderKeys[next] || '',
+    searchProviderKeys: { ...settings.searchProviderKeys, [settings.searchProvider]: settings.searchProviderKey }
+  };
 }
 
 export type LLMPurpose = 'main' | 'search' | 'vision' | 'quick';

@@ -1,6 +1,6 @@
 // Self-check for where model requests and keys go. Run (it imports React, so bundle it first):
 // npx esbuild apps/frontend/src/app/settings.check.ts --bundle --platform=node --log-level=warning | node
-import { DEFAULT_SETTINGS, llmConfigFor, presetForEndpoint, presetPatch, rolePatch } from './settings';
+import { DEFAULT_SETTINGS, llmConfigFor, presetForEndpoint, presetPatch, rolePatch, searchProviderPatch } from './settings';
 import type { AppSettings } from './settings';
 import type { ProviderPreset } from '../api/client';
 
@@ -73,5 +73,13 @@ v = at({ referencesProvider: 'custom', referencesEndpoint: '', referencesApiKey:
 eq(llmConfigFor(v, 'quick'), llmConfigFor(v, 'main'), 'Other without an address stays on the main model');
 v = at({ referencesModel: 'gpt-6-luna' });
 eq(llmConfigFor(v, 'quick'), { endpoint: OPENAI, apiKey: 'sk-openai', model: 'gpt-6-luna' }, 'following the main provider');
+
+// a search key only goes to the provider it was entered for, and comes back with it
+let w = at({ searchProvider: 'serpapi', searchProviderKey: 'serp-key' });
+w = at(searchProviderPatch(w, 'exa'), w);
+eq([w.searchProvider, w.searchProviderKey], ['exa', ''], 'Exa starts without the SerpApi key');
+w = at({ searchProviderKey: 'exa-key' }, w);
+w = at(searchProviderPatch(w, 'serpapi'), w);
+eq([w.searchProviderKey, w.searchProviderKeys.exa], ['serp-key', 'exa-key'], 'switching back restores the SerpApi key');
 
 console.log('settings.check: ok');

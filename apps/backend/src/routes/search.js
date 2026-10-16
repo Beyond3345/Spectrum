@@ -4,11 +4,11 @@ import { resolveLLMConfig } from '../services/llmService.js';
 
 export function registerSearchRoutes(fastify) {
   fastify.post('/api/websearch', async (req) => {
-    const { query, provider, apiKey, maxResults, engine } = req.body || {};
+    const { query, provider, apiKey, maxResults, engine, scholarly } = req.body || {};
     if (!query || !String(query).trim()) return { ok: false, error: 'Missing query.' };
     if (!SEARCH_PROVIDERS.includes(provider)) return { ok: false, error: `Unknown provider: ${provider}` };
     try {
-      return { ok: true, results: await webSearch({ provider, query: String(query), apiKey, maxResults, engine }) };
+      return { ok: true, results: await webSearch({ provider, query: String(query), apiKey, maxResults, engine, scholarly: scholarly !== false }) };
     } catch (err) {
       return { ok: false, error: err.message };
     }

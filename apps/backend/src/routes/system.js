@@ -25,13 +25,15 @@ export function registerSystemRoutes(fastify) {
     }
     const python = resolvePythonExecutable();
     const probe = spawnSync(python, ['-c', 'import matplotlib'], { timeout: 20_000, windowsHide: true });
+    // for the DDGS web search provider
+    const ddgs = !probe.error && spawnSync(python, ['-c', 'import ddgs'], { timeout: 20_000, windowsHide: true }).status === 0;
     return {
       ok: true,
       dataDir: DATA_DIR,
       projectsDir: PROJECTS_DIR,
       tools,
       problems,
-      python: { path: python, found: !probe.error, matplotlib: probe.status === 0 },
+      python: { path: python, found: !probe.error, matplotlib: probe.status === 0, ddgs },
       platform: process.platform
     };
   });

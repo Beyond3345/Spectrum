@@ -28,6 +28,7 @@ import {
   recommendedFor,
   rolePatch,
   rolePresetOf,
+  searchProviderPatch,
   useProviders,
   useSettings
 } from './settings';
@@ -61,9 +62,22 @@ const SEARCH_PROVIDERS: [SearchProvider, string][] = [
   ['openalex', 'OpenAlex (free)'],
   ['semanticscholar', 'Semantic Scholar'],
   ['serpapi', 'SerpApi (Google, Scholar, Baidu)'],
+  ['exa', 'Exa'],
   ['tavily', 'Tavily'],
-  ['brave', 'Brave Search']
+  ['brave', 'Brave Search'],
+  ['ddgs', 'DDGS (free)']
 ];
+
+const SEARCH_NOTES: Record<SearchProvider, string> = {
+  llm: 'The search model looks the sources up itself, so it needs built-in web search. Check its DOIs before you cite them.',
+  openalex: 'Papers, preprints, books and theses with full details for BibTeX. No key needed; a free key from openalex.org raises the daily limit.',
+  semanticscholar: 'Papers in every field with authors, venue and DOI. Works without a key but is often busy; a free key avoids that.',
+  serpapi: 'Google Scholar, Google or Baidu results. Needs a SerpApi key.',
+  exa: 'Neural search that looks only at papers for research questions and at the whole web for LaTeX ones. Needs an Exa key.',
+  tavily: 'Web search that puts arXiv, publishers, standards, CTAN and TeX Stack Exchange first. Needs a Tavily key; each search uses 2 credits.',
+  brave: 'Brave’s own index, ranked to put papers, standards and LaTeX documentation first. Needs a Brave Search API key.',
+  ddgs: 'Google, Bing, Brave, DuckDuckGo and others through the ddgs Python library. No key needed, but it needs Python with ddgs installed.'
+};
 
 const TEX = IS_WINDOWS ? 'Install TeX Live or MiKTeX' : 'brew install --cask mactex-no-gui';
 const INSTALL_HINTS: Record<string, string> = {
@@ -251,7 +265,14 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
   );
 
   const defaultProjectsDir = check?.projectsDir || '~/Documents/Spectrum';
-  const providerNeedsKey = ['serpapi', 'tavily', 'brave', 'semanticscholar'].includes(settings.searchProvider);
+  const providerNeedsKey = !['llm', 'ddgs'].includes(settings.searchProvider);
+  const keyOptional = ['openalex', 'semanticscholar'].includes(settings.searchProvider);
+  const ddgsMissing =
+    settings.searchProvider === 'ddgs' && check && !check.python.ddgs
+      ? check.python.found
+        ? `ddgs isn’t installed for ${check.python.path}. Install it with: pip install ddgs`
+        : 'Python wasn’t found. Install Python 3, then: pip install ddgs'
+      : '';
 
   return (
     <Sheet title="Settings" onClose={onClose} width={780} className="settings-sheet">
@@ -503,13 +524,10 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                   labelId="settings-searchProvider"
                   value={settings.searchProvider}
                   options={SEARCH_PROVIDERS}
-                  onChange={(value) => update({ searchProvider: value as SearchProvider })}
+                  onChange={(value) => update(searchProviderPatch(settings, value as SearchProvider))}
                 />
-                <div className="field-hint">
-                  {settings.searchProvider === 'llm'
-                    ? 'Relies on a model with built-in web search.'
-                    : 'The provider finds the sources; the model only splits the question and writes the summary.'}
-                </div>
+                <div className="field-hint">{SEARCH_NOTES[settings.searchProvider]}</div>
+                {ddgsMissing && <div className="field-hint error">{ddgsMissing}</div>}
               </div>
               {settings.searchProvider === 'serpapi' && (
                 <div className="field">
@@ -517,15 +535,15 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                   <Select
                     labelId="settings-serpEngine"
                     value={settings.serpEngine}
-                    options={[['google', 'Google'], ['google_scholar', 'Google Scholar'], ['baidu', 'Baidu']]}
+                    options={[['google_scholar', 'Google Scholar (papers)'], ['google', 'Google'], ['baidu', 'Baidu']]}
                     onChange={(value) => update({ serpEngine: value as AppSettings['serpEngine'] })}
                   />
                 </div>
               )}
               {providerNeedsKey &&
-                text('Provider API key', 'searchProviderKey', {
+                text(keyOptional ? 'Provider API key (optional)' : 'Provider API key', 'searchProviderKey', {
                   secret: true,
-                  hint: settings.searchProvider === 'semanticscholar' ? 'Optional; raises the Semantic Scholar rate limit.' : ''
+                  hint: 'Each provider’s key is kept when you switch.'
                 })}
 
               <h3 className="form-section-title">Search model <span className="optional">Optional</span></h3>
@@ -564,13 +582,15 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                       </div>
                     );
                   })}
-                  <div className={`sys-row ${check.python.matplotlib ? 'ok' : 'missing'}`}>
-                    <Icon name={check.python.matplotlib ? 'checkmark.circle.fill' : 'minus.circle'} />
-                    <span className="sys-name">python + matplotlib</span>
-                    <span className="sys-detail">
-                      {check.python.matplotlib ? check.python.path : check.python.found ? 'pip install matplotlib' : 'Python not found'}
-                    </span>
-                  </div>
+                  {(['matplotlib', 'ddgs'] as const).map((module) => (
+                    <div key={module} className={`sys-row ${check.python[module] ? 'ok' : 'missing'}`}>
+                      <Icon name={check.python[module] ? 'checkmark.circle.fill' : 'minus.circle'} />
+                      <span className="sys-name">python + {module}</span>
+                      <span className="sys-detail">
+                        {check.python[module] ? check.python.path : check.python.found ? `pip install ${module}` : 'Python not found'}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
               <h3 className="form-section-title">Folders</h3>

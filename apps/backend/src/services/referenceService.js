@@ -435,7 +435,7 @@ function identityOf(rec) {
   };
 }
 
-function summaryOf(rec) {
+export function summaryOf(rec) {
   return {
     title: cleanText(first(rec.title)) || undefined,
     authors: (rec.author || []).map(displayName).filter(Boolean),
@@ -749,6 +749,9 @@ async function recordFromArxiv(id) {
   }
   return parsed.record;
 }
+
+/** The record for a DOI or arXiv item from detectInput; web search upgrades its results with it. */
+export const recordFor = (item) => (item.kind === 'doi' ? recordFromDoi(item.doi) : recordFromArxiv(item.arxiv));
 
 /** <meta name|property=… content=…> → { lowercased name: [decoded values] } */
 export function parseHtmlMeta(html) {
