@@ -64,6 +64,61 @@
       ],
       "author": "kourgeorge/arxiv-style",
       "featured": false
+    },
+    {
+      "id": "letter",
+      "label": "Formal letter",
+      "mainFile": "main.tex",
+      "category": "letters",
+      "description": "A formal letter in Australian block layout: sender, date, recipient, body and sign-off",
+      "tags": [
+        "Letter",
+        "Cover letter"
+      ],
+      "author": "Spectrum",
+      "featured": true
+    },
+    {
+      "id": "maths-notes",
+      "label": "Maths notes",
+      "mainFile": "main.tex",
+      "category": "notes",
+      "description": "Lecture notes or an assignment with theorems, proofs, worked solutions and plots",
+      "tags": [
+        "Maths",
+        "Notes",
+        "Assignment"
+      ],
+      "author": "Spectrum",
+      "featured": true
+    },
+    {
+      "id": "electronics-notes",
+      "label": "Electronics notes",
+      "mainFile": "main.tex",
+      "category": "notes",
+      "description": "Notes or a lab report with circuit diagrams, units and frequency-response plots",
+      "tags": [
+        "Electronics",
+        "Circuits",
+        "Lab report"
+      ],
+      "author": "Spectrum",
+      "featured": true
+    },
+    {
+      "id": "coding-report",
+      "label": "Coding report",
+      "mainFile": "main.tex",
+      "category": "reports",
+      "description": "A programming assignment or technical report with highlighted code and pseudocode",
+      "tags": [
+        "Programming",
+        "Code",
+        "Algorithms"
+      ],
+      "author": "Spectrum",
+      "featured": true
     }
   ],
   "categories": [
