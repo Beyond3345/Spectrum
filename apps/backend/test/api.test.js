@@ -309,6 +309,46 @@ test('never opens or relocates to the projects folder, or a folder inside or hol
   assert.equal((await api(`/api/projects/${mover.id}/tree`)).status, 200);
 });
 
+test('opens a file from Finder or Explorer in its project, or adopts its folder', async () => {
+  const open = (file) => api('/api/projects/open-file', { method: 'POST', body: { path: file } });
+
+  const listed = await newProject('Opened');
+  await writeFile(listed.id, 'main.tex', 'x');
+  await writeFile(listed.id, 'chapters/One.ltx', 'x');
+  assert.deepEqual((await open(path.join(listed.path, 'main.tex'))).json, { projectId: listed.id, file: 'main.tex' });
+  assert.deepEqual((await open(path.join(listed.path, 'chapters', 'One.ltx'))).json, { projectId: listed.id, file: 'chapters/One.ltx' });
+
+  // a loose file: its folder becomes a project, and the next time it's found in the list
+  const loose = path.join(tmp, 'loose');
+  mkdirSync(loose);
+  writeFileSync(path.join(loose, 'refs.bib'), '@misc{a}');
+  const adopted = (await open(path.join(loose, 'refs.bib'))).json;
+  assert.equal(adopted.file, 'refs.bib');
+  assert.equal((await api('/api/projects')).json.projects.find((p) => p.id === adopted.projectId)?.path, loose);
+  assert.deepEqual((await open(path.join(loose, 'refs.bib'))).json, adopted);
+
+  // a Spectrum project from another computer comes in whole, not just the file's folder
+  const carried = path.join(tmp, 'carried');
+  mkdirSync(path.join(carried, '.spectrum'), { recursive: true });
+  mkdirSync(path.join(carried, 'sections'));
+  writeFileSync(path.join(carried, '.spectrum', 'project.json'), JSON.stringify({ id: crypto.randomUUID(), name: 'Carried' }));
+  writeFileSync(path.join(carried, 'sections', 'intro.tex'), 'x');
+  const whole = (await open(path.join(carried, 'sections', 'intro.tex'))).json;
+  assert.equal(whole.file, 'sections/intro.tex');
+  assert.equal((await api('/api/projects')).json.projects.find((p) => p.id === whole.projectId)?.name, 'Carried');
+
+  writeFileSync(path.join(loose, 'paper.pdf'), '%PDF-');
+  for (const bad of [path.join(loose, 'paper.pdf'), path.join(loose, 'gone.tex'), loose, 'refs.bib']) {
+    assert.equal((await open(bad)).status, 400, bad);
+  }
+  // the projects folder can't be a project itself
+  mkdirSync(projectsDir, { recursive: true });
+  writeFileSync(path.join(projectsDir, 'stray.tex'), 'x');
+  const stray = await open(path.join(projectsDir, 'stray.tex'));
+  assert.equal(stray.status, 400);
+  assert.match(stray.json.error, /can’t be a project. Move “stray.tex” into a folder of its own/);
+});
+
 test('removes from the list without touching the folder', async () => {
   const p = await newProject('Keep my files');
   assert.ok((await api(`/api/projects/${p.id}/remove`, { method: 'POST', body: {} })).json.ok);

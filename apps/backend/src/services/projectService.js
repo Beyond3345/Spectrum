@@ -319,6 +319,48 @@ export async function openFolder(input) {
   return getProject(id);
 }
 
+// APFS and NTFS ignore case
+const caseless = (p) => (process.platform === 'darwin' || process.platform === 'win32' ? p.toLowerCase() : p);
+
+/**
+ * A .tex, .ltx or .bib file opened from Finder or Explorer: the listed project it's in (the
+ * deepest), or else the folder around it adopted as one, which is the nearest with a
+ * .spectrum/project.json (a project from another computer) or the file's own folder.
+ * Returns the project's id and the file's path in it.
+ */
+export async function openFile(input) {
+  const raw = expandHome(input);
+  if (!raw || !path.isAbsolute(raw)) throw httpError('Open a file using its full path.', 400);
+  let file;
+  try {
+    file = await fs.realpath(raw);
+  } catch {
+    throw httpError('That file doesn’t exist.', 400);
+  }
+  if (!/\.(tex|ltx|bib)$/i.test(file) || !(await fs.stat(file)).isFile()) throw httpError('Spectrum opens .tex, .ltx and .bib files.', 400);
+  const inside = (root) => caseless(file).startsWith(caseless(root) + path.sep);
+  const relative = (root) => file.slice(root.length + 1).split(path.sep).join('/');
+  const { projects } = await readRegistry();
+  const owner = projects.filter((p) => inside(p.path)).sort((a, b) => b.path.length - a.path.length)[0];
+  if (owner) return { projectId: owner.id, file: relative(owner.path) };
+
+  let folder = path.dirname(file);
+  for (let dir = folder; dir !== path.dirname(dir); dir = path.dirname(dir)) {
+    if (await exists(metaPath(dir))) {
+      folder = dir;
+      break;
+    }
+  }
+  try {
+    const project = await openFolder(folder);
+    return { projectId: project.id, file: relative(project.path) };
+  } catch (err) {
+    // the home folder, the projects folder, or one holding listed projects
+    if (err.statusCode !== 400 && err.statusCode !== 409) throw err;
+    throw httpError(`Spectrum opens a file together with the folder it’s in, and “${path.basename(folder) || folder}” can’t be a project. Move “${path.basename(file)}” into a folder of its own.`, 400);
+  }
+}
+
 /** Point a project at a new folder, e.g. after it was moved in Finder. */
 export async function relocateProject(id, input) {
   const entry = await findEntry(id);

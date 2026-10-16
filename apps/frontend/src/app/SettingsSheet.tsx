@@ -9,7 +9,8 @@ import Icon from './Icon';
 import Select from './Select';
 import Sheet from './Sheet';
 import { ParserFields } from './TransferPanel';
-import { IS_DESKTOP, pickFolder } from './desktop';
+import { IS_DESKTOP, claimDefaultHandler, pickFolder } from './desktop';
+import { toast } from './Toast';
 import { IS_MAC, IS_WINDOWS, OS_NAME } from './platform';
 import { ACCENTS, PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
 import {
@@ -395,6 +396,33 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                   New, imported and arXiv projects are created here unless another location is chosen. Existing projects stay where they are.
                 </div>
               </div>
+              {IS_DESKTOP && (
+                <>
+                  <h3 className="form-section-title">Opening files</h3>
+                  {IS_WINDOWS ? (
+                    <div className="field-hint">
+                      Windows leaves the choice to you: right-click a .tex or .bib file, choose Open with → Choose another app, pick Spectrum and select Always.
+                    </div>
+                  ) : (
+                    <div className="field">
+                      <div>
+                        <button
+                          className="btn small"
+                          onClick={() =>
+                            claimDefaultHandler().then(
+                              () => toast('Spectrum now opens .tex and .bib files.', { tone: 'success' }),
+                              (err) => toast(`Couldn’t make Spectrum the default: ${err}`, { tone: 'error' })
+                            )
+                          }
+                        >
+                          Make Spectrum the default for .tex and .bib files
+                        </button>
+                      </div>
+                      <div className="field-hint">Spectrum did this when it first opened. Use it again if another app has taken them since. PDFs stay with your PDF viewer.</div>
+                    </div>
+                  )}
+                </>
+              )}
             </>
           )}
 

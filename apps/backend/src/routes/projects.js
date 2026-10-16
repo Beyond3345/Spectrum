@@ -18,6 +18,7 @@ import {
   getProjectRoot,
   httpError,
   listProjects,
+  openFile,
   openFolder,
   readMeta,
   relocateProject,
@@ -144,6 +145,9 @@ export function registerProjectRoutes(fastify) {
   });
 
   fastify.post('/api/projects/open-folder', async (req) => openFolder(req.body?.path));
+
+  // a file double-clicked in Finder or Explorer (the desktop app's /open page)
+  fastify.post('/api/projects/open-file', async (req) => openFile(req.body?.path));
 
   // Fields (projectName, parentDir) must come before the zip file part.
   fastify.post('/api/projects/import-zip', async (req) => {

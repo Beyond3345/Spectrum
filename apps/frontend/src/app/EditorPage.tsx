@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import { flushSync } from 'react-dom';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { EditorState, Prec } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
@@ -1345,6 +1345,10 @@ function Editor({ projectId }: { projectId: string }) {
     };
   }, []);
 
+  // ?file=: a file opened from Finder or Explorer (App.tsx)
+  const [params, setParams] = useSearchParams();
+  const wanted = params.get('file');
+
   useEffect(() => {
     let live = true;
     (async () => {
@@ -1361,7 +1365,8 @@ function Editor({ projectId }: { projectId: string }) {
       const main = tree.mainFile && tex.includes(tree.mainFile) ? tree.mainFile : tex.find((p) => /(^|\/)main\.tex$/i.test(p)) || tex[0] || '';
       setMainFile(main);
       setLoaded(true);
-      const first = main || (await smallTextFile(projectId, tree.items));
+      // a wanted file opens instead, below
+      const first = tree.items.some((i) => i.path === wanted) ? '' : main || (await smallTextFile(projectId, tree.items));
       if (first) await openFile(first);
       // show the PDF from the last compile straight away
       const existing = main.replace(/\.tex$/i, '.pdf');
@@ -1376,6 +1381,24 @@ function Editor({ projectId }: { projectId: string }) {
       live = false;
     };
   }, []);
+
+  // the wanted file, once the project has loaded and whenever another comes while it's open; then the
+  // address drops it, so a reload opens the project as usual
+  useEffect(() => {
+    if (!loaded || !wanted) return;
+    setParams(
+      (p) => {
+        p.delete('file');
+        return p;
+      },
+      { replace: true }
+    );
+    const has = (list: FileItem[]) => list.some((i) => i.type === 'file' && i.path === wanted);
+    (async () => {
+      // or one made since the tree was listed
+      if (has(items) || has((await refreshTree()).items)) await openFile(wanted);
+    })().catch((err) => notify(`Couldn’t open ${nameOf(wanted)}: ${errorText(err)}`, 'error'));
+  }, [loaded, wanted]);
 
   // the compiled PDF lives in a blob URL; free it when the page goes away
   const pdfNow = useRef(pdf);

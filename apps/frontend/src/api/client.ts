@@ -133,6 +133,11 @@ export function openFolder(path: string) {
   return request<ProjectMeta>('/api/projects/open-folder', json('POST', { path }));
 }
 
+/** A file opened from Finder or Explorer: its project (adopting the folder around it if need be) and its path there. */
+export function openFile(path: string) {
+  return request<{ projectId: string; file: string }>('/api/projects/open-file', json('POST', { path }));
+}
+
 export function renameProject(id: string, name: string) {
   return request<{ ok: boolean; project?: ProjectMeta; error?: string }>(`/api/projects/${id}/rename-project`, json('POST', { name }));
 }
