@@ -17,7 +17,6 @@ import {
   COMPILE_ENGINES,
   ROLE_FIELDS,
   SYNC_HIGHLIGHTS,
-  effectiveEffort,
   effortOptions,
   followsMain,
   llmConfigFor,
@@ -28,6 +27,7 @@ import {
   recommendedFor,
   rolePatch,
   rolePresetOf,
+  useLivePreset,
   useProviders,
   useSettings
 } from './settings';
@@ -83,7 +83,13 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
   const [check, setCheck] = useState<SystemCheck | null>(null);
   const [checkError, setCheckError] = useState('');
   const providers = useProviders();
-  const preset = presetOf(providers, settings);
+  // Ollama's models come from Ollama itself
+  const live = {
+    main: useLivePreset(presetOf(providers, settings), settings.llmEndpoint),
+    quick: useLivePreset(followsMain(settings, 'quick') ? null : rolePresetOf(providers, settings, 'quick'), settings.referencesEndpoint),
+    vision: useLivePreset(followsMain(settings, 'vision') ? null : rolePresetOf(providers, settings, 'vision'), settings.visionEndpoint)
+  };
+  const preset = live.main.preset;
   const mainModel = modelOf(preset, settings.llmModel);
   const effortChoices = effortOptions(mainModel);
   // stays on Other… while a typed name happens to match a listed model, e.g. glm-5.3 on the way to glm-5.3-flashx
@@ -92,10 +98,24 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
   const visionConfig = llmConfigFor(settings, 'vision');
   const imagesGoElsewhere = visionConfig.model !== settings.llmModel || visionConfig.endpoint !== settings.llmEndpoint;
 
+  // a fresh Ollama has no model chosen until it lists what's installed
+  const firstModels: Partial<AppSettings> = {};
+  if (preset?.live && !settings.llmModel && !otherModel.main && preset.recommended.main) firstModels.llmModel = preset.recommended.main;
+  for (const role of ['quick', 'vision'] as const) {
+    const f = ROLE_FIELDS[role];
+    const pick = live[role].preset?.live && !settings[f.model] && !otherModel[role] && recommendedFor(live[role].preset, role);
+    if (pick) firstModels[f.model] = pick;
+  }
+  const fill = JSON.stringify(firstModels);
+  useEffect(() => {
+    if (fill !== '{}') update(JSON.parse(fill));
+  }, [fill]);
+
   /** Another provider's address switches to that provider as the menu does, so the key it had never goes there. */
   const setEndpoint = (value: string) => {
     const next = presetForEndpoint(providers, value);
-    if (next?.id === preset?.id) return update({ llmEndpoint: value });
+    // an Ollama on another port is still Ollama, and has no key to leak
+    if (next?.id === preset?.id || (!next && preset?.local)) return update({ llmEndpoint: value });
     update(presetPatch(settings, providers, next, value));
   };
 
@@ -132,6 +152,13 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
     );
   };
 
+  const refreshButton = (l: (typeof live)['main']) =>
+    l.preset?.live && (
+      <button className="btn small" onClick={l.refresh}>
+        Refresh
+      </button>
+    );
+
   const keyHint = (p: ProviderPreset | null) =>
     p && (
       <>
@@ -144,7 +171,8 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
     const f = ROLE_FIELDS[role];
     const name = role === 'quick' ? 'Quick model' : 'Vision model';
     const same = followsMain(settings, role);
-    const own = rolePresetOf(providers, settings, role);
+    const ownLive = same ? live.main : live[role];
+    const own = ownLive.preset;
     const value = settings[f.model];
     const choices = (own?.models || []).filter((m) => role === 'quick' || m.vision);
     // an empty name only means “the main model's” while the role follows the main provider
@@ -185,32 +213,38 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
         {own && (
           <div className="field">
             <label id={`settings-${role}ModelPick`}>Model</label>
-            <Select
-              labelId={`settings-${role}Title settings-${role}ModelPick`}
-              value={typed ? 'other' : value}
-              options={[
-                ...(same ? [['', 'Same as main model'] as [string, string]] : []),
-                ...choices.map((m): [string, string] => [m.id, m.id === recommendedFor(own, role) ? `${m.label} (recommended)` : m.label]),
-                ['other', 'Other…']
-              ]}
-              onChange={(id) => {
-                setOtherModel((was) => ({ ...was, [role]: id === 'other' }));
-                update({ [f.model]: id === 'other' ? '' : id });
-              }}
-            />
-            <div className={`field-hint ${blindMain ? 'error' : ''}`}>
+            <div className="row">
+              <Select
+                className="grow"
+                labelId={`settings-${role}Title settings-${role}ModelPick`}
+                value={typed ? 'other' : value}
+                options={[
+                  ...(same ? [['', 'Same as main model'] as [string, string]] : []),
+                  ...choices.map((m): [string, string] => [m.id, m.id === recommendedFor(own, role) ? `${m.label} (recommended)` : m.label]),
+                  ['other', 'Other…']
+                ]}
+                onChange={(id) => {
+                  setOtherModel((was) => ({ ...was, [role]: id === 'other' }));
+                  update({ [f.model]: id === 'other' ? '' : id });
+                }}
+              />
+              {!same && refreshButton(ownLive)}
+            </div>
+            <div className={`field-hint ${blindMain || (!same && ownLive.error) ? 'error' : ''}`}>
               {blindMain
                 ? 'The main model reads text only, so choose a model that reads images.'
-                : typed
-                  ? 'Type the model’s name exactly as the provider lists it.'
-                  : picked
-                    ? `${picked.note}.`
-                    : ''}
+                : !same && ownLive.error
+                  ? ownLive.error
+                  : typed
+                    ? 'Type the model’s name exactly as the provider lists it.'
+                    : picked?.note
+                      ? `${picked.note}.`
+                      : ''}
             </div>
           </div>
         )}
         {typed && text(own ? 'Model name' : 'Model', f.model, { name: `${name} name`, placeholder: same ? settings.llmModel || 'Same as main model' : 'Model name' })}
-        {!same && text('API key', f.apiKey, { name: `${name} API key`, placeholder: 'Paste your key', secret: true, hint: keyHint(own) })}
+        {!same && !own?.local && text('API key', f.apiKey, { name: `${name} API key`, placeholder: 'Paste your key', secret: true, hint: keyHint(own) })}
       </>
     );
   };
@@ -441,47 +475,62 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                   }}
                 />
                 <div className="field-hint">
-                  {preset ? preset.note : 'Any server that speaks the OpenAI chat completions API, such as LM Studio, Ollama or vLLM.'}
+                  {preset ? preset.note : 'Any server that speaks the OpenAI chat completions API, such as LM Studio or vLLM.'}
                 </div>
               </div>
               {preset?.regions && regionField('settings-mainTitle', 'settings-llmRegion', preset, settings.llmEndpoint, (endpoint) => update({ llmEndpoint: endpoint }))}
               {text('Endpoint', 'llmEndpoint', {
                 name: 'Main model endpoint',
-                placeholder: 'https://api.openai.com/v1/chat/completions',
-                hint: preset ? '' : 'The chat completions address or the base URL, e.g. http://localhost:1234/v1',
+                placeholder: preset?.endpoint || 'https://api.openai.com/v1/chat/completions',
+                hint: preset?.local
+                  ? 'For Ollama on another computer, use its address, e.g. http://192.168.1.20:11434, and turn on Expose Ollama to the network in its settings.'
+                  : preset
+                    ? ''
+                    : 'The chat completions address or the base URL, e.g. http://localhost:1234/v1',
                 onChange: setEndpoint
               })}
               {preset && (
                 <div className="field">
                   <label id="settings-llmModelPick">Model</label>
-                  <Select
-                    labelId="settings-mainTitle settings-llmModelPick"
-                    value={typedModel ? 'other' : mainModel.id}
-                    options={[
-                      ...preset.models.map((m): [string, string] => [m.id, m.id === preset.recommended.main ? `${m.label} (recommended)` : m.label]),
-                      ['other', 'Other…']
-                    ]}
-                    onChange={chooseModel}
-                  />
-                  <div className="field-hint">
-                    {typedModel
-                      ? 'Type the model’s name exactly as the provider lists it.'
-                      : `${mainModel.note}.${mainModel.vision ? '' : imagesGoElsewhere ? ' Reads text only, so images go to the vision model.' : ' Reads text only, so set a vision model below for images.'}`}
+                  <div className="row">
+                    <Select
+                      className="grow"
+                      labelId="settings-mainTitle settings-llmModelPick"
+                      value={typedModel ? 'other' : mainModel.id}
+                      options={[
+                        ...preset.models.map((m): [string, string] => [m.id, m.id === preset.recommended.main ? `${m.label} (recommended)` : m.label]),
+                        ['other', 'Other…']
+                      ]}
+                      onChange={chooseModel}
+                    />
+                    {refreshButton(live.main)}
+                  </div>
+                  <div className={`field-hint ${live.main.error ? 'error' : ''}`}>
+                    {live.main.error ||
+                      (typedModel
+                        ? 'Type the model’s name exactly as the provider lists it.'
+                        : [
+                            mainModel.note && `${mainModel.note}.`,
+                            !mainModel.vision && (imagesGoElsewhere ? 'Reads text only, so images go to the vision model.' : 'Reads text only, so set a vision model below for images.')
+                          ]
+                            .filter(Boolean)
+                            .join(' '))}
                   </div>
                 </div>
               )}
               {typedModel && text(preset ? 'Model name' : 'Model', 'llmModel', { name: 'Main model name', placeholder: preset?.recommended.main || 'Model name' })}
-              {text('API key', 'llmApiKey', {
-                name: 'Main model API key',
-                placeholder: 'Paste your key',
-                secret: true,
-                hint: keyHint(preset)
-              })}
+              {!preset?.local &&
+                text('API key', 'llmApiKey', {
+                  name: 'Main model API key',
+                  placeholder: 'Paste your key',
+                  secret: true,
+                  hint: keyHint(preset)
+                })}
               <div className="field">
                 <label id="settings-reasoningEffort">Reasoning effort</label>
                 <Select
                   labelId="settings-mainTitle settings-reasoningEffort"
-                  value={effectiveEffort(settings, providers)}
+                  value={effortChoices.some(([value]) => value === settings.reasoningEffort) ? settings.reasoningEffort : 'default'}
                   options={effortChoices}
                   onChange={(value) => update({ reasoningEffort: value as AppSettings['reasoningEffort'] })}
                 />

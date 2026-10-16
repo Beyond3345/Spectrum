@@ -1,5 +1,5 @@
-import { callOpenAICompatible } from '../services/llmService.js';
-import { PROVIDERS } from '../services/providers.js';
+import { callOpenAICompatible, listLiveModels } from '../services/llmService.js';
+import { PROVIDERS, providerFor } from '../services/providers.js';
 
 export function registerLLMRoutes(fastify) {
   fastify.post('/api/llm', async (req) => {
@@ -18,4 +18,12 @@ export function registerLLMRoutes(fastify) {
   fastify.get('/api/llm/providers', async () => ({
     providers: PROVIDERS.map(({ hosts, fields: _fields, api: _api, ...preset }) => ({ ...preset, hosts: hosts.map((re) => re.source) }))
   }));
+
+  // the models an Ollama server has right now; the page can't ask it itself, since it's another origin
+  fastify.post('/api/llm/models', async (req) => {
+    const { provider, endpoint } = req.body || {};
+    const preset = providerFor('', provider);
+    if (!preset?.live) return { ok: false, error: `Unknown provider: ${provider}` };
+    return listLiveModels(preset, typeof endpoint === 'string' ? endpoint : '');
+  });
 }

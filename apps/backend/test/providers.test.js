@@ -1,22 +1,25 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { chatCompletion } from '../src/services/llmService.js';
-import { PROVIDERS, effortFor, providerFor } from '../src/services/providers.js';
+import { chatCompletion, listLiveModels } from '../src/services/llmService.js';
+import { PROVIDERS, effortFor, ollamaModel, providerFor } from '../src/services/providers.js';
 
 // A fake provider: records each request and answers with whatever the test queued.
+// It's also a fake Ollama, answering /api/show from `shows` by model name.
 let server;
 let base;
 const seen = [];
 const replies = [];
+const shows = {};
 
 before(async () => {
   server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (chunk) => (body += chunk));
     req.on('end', () => {
-      seen.push({ path: req.url, headers: req.headers, body: JSON.parse(body) });
-      const [status, reply] = replies.shift() || [200, {}];
+      seen.push({ path: req.url, headers: req.headers, body: body ? JSON.parse(body) : null });
+      const show = req.url === '/api/show' && shows[JSON.parse(body).model];
+      const [status, reply] = req.url === '/api/show' ? (show ? [200, show] : [404, { error: 'not found' }]) : replies.shift() || [200, {}];
       res.writeHead(status, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(reply));
     });
@@ -54,8 +57,11 @@ test('providers are recognised from the endpoint host', () => {
   assert.equal(id('https://abc123.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions'), 'qwen');
   assert.equal(id('https://api.moonshot.cn/v1/chat/completions'), 'moonshot');
   assert.equal(id('http://localhost:1234/v1/chat/completions'), null);
+  assert.equal(id('http://192.168.1.20:11434'), 'ollama', 'an Ollama on another computer');
   for (const p of PROVIDERS) {
     assert.equal(id(p.endpoint), p.id, `${p.id} preset endpoint`);
+    // a local Ollama's models are only known once it lists them
+    if (!p.models.length) continue;
     for (const role of ['main', 'fast', 'vision', 'references']) assert.ok(p.models.some((m) => m.id === p.recommended[role]), `${p.id} ${role} model is listed`);
     assert.ok(p.models.find((m) => m.id === p.recommended.vision).vision, `${p.id} vision model reads images`);
   }
@@ -229,4 +235,81 @@ test('the .env key and model only go to the .env endpoint', async () => {
       else delete process.env[k];
     }
   }
+});
+
+test('Meta lists its Muse models, without the Contributor ones', () => {
+  const meta = PROVIDERS.find((p) => p.id === 'meta');
+  assert.equal(meta.name, 'Meta');
+  assert.deepEqual(meta.models.map((m) => m.id), ['muse-wonder-1.0', 'muse-spark-1.3', 'muse-spark-1.2', 'muse-spark-1.1']);
+  assert.ok(meta.models.every((m) => m.vision && m.levels[0] === 'minimal'), 'all read images and always think');
+  assert.deepEqual(meta.models.filter((m) => m.levels.includes('max')).map((m) => m.id), ['muse-wonder-1.0', 'muse-spark-1.3']);
+  const openrouter = PROVIDERS.find((p) => p.id === 'openrouter').models.map((m) => m.id);
+  assert.ok(openrouter.includes('meta/muse-wonder') && !openrouter.some((id) => id.endsWith('-contributor')));
+});
+
+// what a local Ollama answers for /api/tags and /api/show
+const tag = (name, size, details = {}, extra = {}) => ({ name, model: name, size, details, ...extra });
+const TAGS = {
+  models: [
+    tag('gemma4:e4b', 9.6e9, { parameter_size: '8.0B', quantization_level: 'Q4_K_M' }),
+    tag('gpt-oss:20b', 13.8e9, { parameter_size: '20.9B', quantization_level: 'MXFP4' }),
+    tag('nomic-embed-text', 2.7e8),
+    tag('llama3.2:1b', 1.3e9, { parameter_size: '1.2B', quantization_level: 'Q8_0' }),
+    tag('kimi-k3:cloud', 384, {}, { remote_host: 'https://ollama.com:443', remote_model: 'kimi-k3' })
+  ]
+};
+Object.assign(shows, {
+  'gemma4:e4b': { capabilities: ['completion', 'vision', 'thinking'], thinking: { values: [false, true], default: true } },
+  'gpt-oss:20b': { capabilities: ['completion', 'tools', 'thinking'], thinking: { values: ['low', 'medium', 'high'], default: 'medium' } },
+  'nomic-embed-text': { capabilities: ['embedding'] },
+  'llama3.2:1b': { capabilities: ['completion', 'tools'] },
+  'kimi-k3:cloud': { capabilities: ['completion', 'tools', 'thinking', 'vision'], thinking: { values: [false, 'low', 'high', 'max'], default: 'max' } }
+});
+const ollama = PROVIDERS.find((p) => p.id === 'ollama');
+
+test('Ollama lists the installed models it can chat with, with their effort levels', async () => {
+  replies.push([200, TAGS]);
+  const list = await listLiveModels(ollama, base);
+  assert.equal(list.ok, true);
+  const by = Object.fromEntries(list.models.map((m) => [m.id, m]));
+  assert.deepEqual(Object.keys(by), ['gemma4:e4b', 'gpt-oss:20b', 'llama3.2:1b', 'kimi-k3:cloud'], 'no embedding model');
+  assert.deepEqual(by['gemma4:e4b'], { id: 'gemma4:e4b', label: 'gemma4:e4b', note: '8.0B, Q4_K_M', vision: true, levels: ['none', 'high'], effort: 'high' });
+  assert.deepEqual([by['gpt-oss:20b'].levels, by['gpt-oss:20b'].effort], [['low', 'medium', 'high'], 'medium']);
+  assert.deepEqual([by['llama3.2:1b'].levels, by['llama3.2:1b'].vision], [[], false], 'no thinking, no effort');
+  assert.deepEqual([by['kimi-k3:cloud'].levels, by['kimi-k3:cloud'].effort], [['none', 'low', 'high', 'max'], 'high'], 'a Max default is capped at High');
+  assert.equal(by['kimi-k3:cloud'].note, 'Runs on Ollama’s servers');
+  assert.deepEqual(list.recommended, { main: 'gemma4:e4b', fast: 'llama3.2:1b', vision: 'gemma4:e4b', references: 'llama3.2:1b' });
+  // older Ollama versions give no thinking details
+  assert.deepEqual(ollamaModel('qwen3', { capabilities: ['completion', 'thinking'] }, '').levels, ['none', 'low', 'medium', 'high']);
+
+  const down = await listLiveModels(ollama, 'http://127.0.0.1:1');
+  assert.equal(down.ok, false);
+  assert.match(down.error, /Start Ollama, or install it from ollama\.com/);
+});
+
+test('a local Ollama gets no key and each model’s own effort', async () => {
+  replies.push(chatReply('ok'));
+  const res = await call('ollama', { apiKey: 'sk-secret', model: 'gpt-oss:20b', reasoningEffort: 'fast' });
+  assert.equal(res.ok, true);
+  const chat = seen.find((r) => r.path === '/v1/chat/completions');
+  assert.equal(chat.headers.authorization, undefined, 'the key stays behind');
+  assert.equal(chat.body.reasoning_effort, 'low', 'gpt-oss can’t turn thinking off');
+  assert.equal('temperature' in chat.body, false);
+
+  replies.push(chatReply('ok'));
+  await call('ollama', { model: 'gemma4:e4b', reasoningEffort: 'fast' });
+  assert.equal(seen.find((r) => r.path === '/v1/chat/completions').body.reasoning_effort, 'none');
+
+  replies.push(chatReply('ok'));
+  await call('ollama', { model: 'llama3.2:1b', reasoningEffort: 'high' });
+  assert.equal('reasoning_effort' in seen.find((r) => r.path === '/v1/chat/completions').body, false, 'a model that can’t think gets no effort');
+
+  // no key is needed for a server on plain http, but is for anything else
+  replies.push(chatReply('ok'));
+  assert.equal((await call(undefined, { apiKey: '', model: 'local' })).ok, true);
+  assert.equal(seen[0].headers.authorization, undefined);
+  assert.match((await chatCompletion({ apiKey: '', endpoint: 'https://example.com/v1', messages: [] })).error, /No AI model is set up/);
+
+  const down = await chatCompletion({ endpoint: 'http://127.0.0.1:1', provider: 'ollama', model: 'gemma4', messages: [] });
+  assert.equal(down.error, 'Couldn’t reach Ollama at 127.0.0.1:1. Start Ollama, or install it from ollama.com.');
 });

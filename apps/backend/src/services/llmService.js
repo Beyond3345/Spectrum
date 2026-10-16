@@ -1,4 +1,4 @@
-import { LEVELS, effortFields, providerFor } from './providers.js';
+import { LEVELS, effortFields, ollamaModel, providerFor } from './providers.js';
 
 const DEFAULT_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 const DEFAULT_MODEL = 'gpt-6-sol';
@@ -44,6 +44,70 @@ export function resolveLLMConfig(llmConfig) {
 }
 
 export const NO_API_KEY = 'No AI model is set up yet. Add an endpoint, model and API key in Settings → Models.';
+
+/** A resolved config that can't work without a key. Local servers such as Ollama speak plain http and take none. */
+export const missingKey = (config) => !config.apiKey && !/^http:\/\//i.test(config.endpoint);
+
+const NO_OLLAMA = 'Start Ollama, or install it from ollama.com.';
+const ollamaBase = (endpoint) => normalizeChatEndpoint(endpoint).replace(/\/v1\/chat\/completions$/i, '');
+
+async function ollamaJson(url, body) {
+  const res = await fetch(url, {
+    method: body ? 'POST' : 'GET',
+    ...(body && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// /api/show answers, kept for the session; ollama.com answers it without a key
+const shown = new Map();
+function ollamaShow(base, name) {
+  const key = `${base} ${name}`;
+  if (!shown.has(key)) {
+    shown.set(key, ollamaJson(`${base}/api/show`, { model: name }).catch((err) => {
+      shown.delete(key);
+      throw err;
+    }));
+  }
+  return shown.get(key);
+}
+
+/** A live preset's model as its server describes it, or null when it can't say. */
+const liveModel = (endpoint, name) => ollamaShow(ollamaBase(endpoint), name).then((show) => ollamaModel(name, show, ''), () => null);
+
+/** The models a live preset's server lists, as preset models with recommendations, for Settings. */
+export async function listLiveModels(preset, endpoint) {
+  const base = ollamaBase(endpoint || preset.endpoint);
+  let tags;
+  try {
+    tags = (await ollamaJson(`${base}/api/tags`)).models || [];
+  } catch {
+    return { ok: false, error: preset.local ? `Couldn’t reach Ollama. ${NO_OLLAMA}` : 'Couldn’t reach ollama.com for its models.' };
+  }
+  const shows = await Promise.all(tags.map((t) => ollamaShow(base, t.name).catch(() => ({ capabilities: t.capabilities }))));
+  const models = tags.flatMap((t, i) => {
+    // embedding models can't chat
+    if (shows[i].capabilities && !shows[i].capabilities.includes('completion')) return [];
+    const known = preset.models.find((m) => m.id === t.name);
+    const size = [t.details?.parameter_size, t.details?.quantization_level].filter(Boolean).join(', ');
+    const note = known?.note || (t.remote_host ? 'Runs on Ollama’s servers' : size);
+    return [{ ...ollamaModel(t.name, shows[i], note), ...(known && { label: known.label }) }];
+  });
+  if (!models.length) return { ok: false, error: preset.local ? 'Ollama has no models yet. Download one in the Ollama app, or with ollama pull.' : 'ollama.com listed no models.' };
+  const listed = (id) => (models.some((m) => m.id === id) ? id : '');
+  // Ollama lists the newest first
+  const main = listed(preset.recommended.main) || models[0].id;
+  // for quick jobs, the smallest model that runs here
+  const smallest = tags.filter((t) => listed(t.name) && !t.remote_host).sort((a, b) => a.size - b.size)[0]?.name;
+  const fast = listed(preset.recommended.fast) || smallest || main;
+  return {
+    ok: true,
+    models,
+    recommended: { main, fast, vision: listed(preset.recommended.vision) || models.find((m) => m.vision)?.id || main, references: fast }
+  };
+}
 
 /** A provider's non-2xx answer as one plain sentence, never the raw body. */
 export function providerError(status, text) {
@@ -195,16 +259,20 @@ const ADAPTERS = {
  */
 export async function chatCompletion({ messages, model, endpoint, apiKey, tools, temperature = 0.2, reasoningEffort, provider: providerId }) {
   const resolved = resolveLLMConfig({ endpoint, apiKey, model });
-  if (!resolved.apiKey) {
+  if (missingKey(resolved)) {
     return { ok: false, error: NO_API_KEY };
   }
   const url = normalizeChatEndpoint(resolved.endpoint);
   const provider = providerFor(url, providerId);
   const adapter = ADAPTERS[provider?.api || 'chat'];
+  // a local Ollama takes no key, so a key typed for another server never goes there
+  const key = provider?.local ? '' : resolved.apiKey;
+  // an Ollama model's effort levels come from Ollama itself
+  const known = (provider?.live && (await liveModel(url, resolved.model))) || provider?.models.find((m) => m.id === resolved.model);
   const options = {
     // several presets reject any temperature but their own
     temperature: provider ? undefined : temperature,
-    extra: provider ? effortFields(provider, resolved.model, reasoningEffort) : LEVELS.includes(reasoningEffort) ? { reasoning_effort: reasoningEffort } : {}
+    extra: provider ? effortFields(provider, known, reasoningEffort) : LEVELS.includes(reasoningEffort) ? { reasoning_effort: reasoningEffort } : {}
   };
   let res;
   let text;
@@ -213,7 +281,7 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
     for (;;) {
       res = await fetch(adapter.url(url), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...adapter.headers(resolved.apiKey) },
+        headers: { 'Content-Type': 'application/json', ...(key && adapter.headers(key)) },
         body: JSON.stringify(adapter.body({ model: resolved.model, messages, tools, ...options })),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
       });
@@ -242,7 +310,9 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
       ok: false,
       error: err.name === 'TimeoutError'
         ? `${host} took too long to answer. Try again.`
-        : `Couldn’t reach ${host}. Check the endpoint in Settings → Models.`
+        : provider?.local
+          ? `Couldn’t reach Ollama at ${host}. ${NO_OLLAMA}`
+          : `Couldn’t reach ${host}. Check the endpoint in Settings → Models.`
     };
   }
   if (!res.ok) {

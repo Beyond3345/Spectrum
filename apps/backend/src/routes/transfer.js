@@ -3,7 +3,7 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { buildTransferGraph } from '../services/transferAgent/graph.js';
 import { buildPdfTransferGraph } from '../services/transferAgent/graphPdf.js';
-import { resolveLLMConfig, NO_API_KEY } from '../services/llmService.js';
+import { resolveLLMConfig, missingKey, NO_API_KEY } from '../services/llmService.js';
 import { PARSERS, resolveParserConfig, transferDir } from '../services/parsers/index.js';
 import { readTemplateManifest, templatePath } from '../services/templateService.js';
 import { createProject, getProjectRoot, readMeta, unregister } from '../services/projectService.js';
@@ -85,7 +85,7 @@ export function registerTransferRoutes(fastify) {
       return reply.code(400).send({ error: `Unknown template: ${targetTemplateId}` });
     }
     // check before anything is created, so a missing key leaves no stray project behind
-    if (!resolveLLMConfig(llmConfig).apiKey) {
+    if (missingKey(resolveLLMConfig(llmConfig))) {
       return reply.code(400).send({ error: NO_API_KEY });
     }
 
@@ -251,7 +251,7 @@ export function registerTransferRoutes(fastify) {
     if (!template) {
       return reply.code(400).send({ error: `Unknown template: ${targetTemplateId}` });
     }
-    if (!resolveLLMConfig(llmConfig).apiKey) {
+    if (missingKey(resolveLLMConfig(llmConfig))) {
       return reply.code(400).send({ error: NO_API_KEY });
     }
     let parserConfig;

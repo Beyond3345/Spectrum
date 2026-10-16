@@ -669,6 +669,15 @@ test('tool agent runs the tool loop and returns proposed patches', async () => {
   assert.equal(res.patches[0].content, 'patched');
 });
 
+test('the Ollama model list is asked for by the server, and only for this computer', async () => {
+  const body = { provider: 'ollama', endpoint: 'http://127.0.0.1:1' };
+  const down = (await api('/api/llm/models', { method: 'POST', body })).json;
+  assert.equal(down.ok, false);
+  assert.match(down.error, /Start Ollama/);
+  assert.equal((await api('/api/llm/models', { method: 'POST', body, headers: { origin: 'https://evil.example' } })).status, 403);
+  assert.equal((await api('/api/llm/models', { method: 'POST', body: { provider: 'openai' } })).json.ok, false, 'only live presets');
+});
+
 test('retries without temperature for models that reject it', async () => {
   mockCalls.length = 0;
   const res = (await api('/api/llm', {

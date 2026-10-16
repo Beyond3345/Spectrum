@@ -1,11 +1,14 @@
 // Presets for the providers Settings offers, checked against each provider's API docs in October 2026.
 // Each model lists the effort levels it accepts (lowest first) and the level Spectrum uses by default.
 // `fields(level, model)` gives the extra request fields for a level; `api` picks the request format.
+// `live` presets list their models from the server itself (Ollama), and `local` ones take no key.
 
 export const LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
 const ALL = ['none', 'low', 'medium', 'high', 'xhigh', 'max'];
 const LOW_TO_MAX = ['low', 'medium', 'high', 'xhigh', 'max'];
+const MINIMAL_TO_MAX = ['minimal', ...LOW_TO_MAX];
+const MINIMAL_TO_XHIGH = MINIMAL_TO_MAX.slice(0, -1);
 const reasoningEffort = (level) => ({ reasoning_effort: level });
 
 const model = (id, label, note, opts) => ({ id, label, note, vision: false, ...opts });
@@ -83,7 +86,8 @@ export const PROVIDERS = [
       model('moonshotai/kimi-k3', 'Kimi K3', 'Strong reasoning; slow at Max', { vision: true, levels: ['low', 'high', 'max'], effort: 'high' }),
       model('z-ai/glm-5.3', 'GLM-5.3', 'Text only', { levels: ['low', 'high', 'max'], effort: 'high' }),
       model('qwen/qwen3.8-max-0902', 'Qwen3.8 Max', 'Qwen’s strongest model', { vision: true, levels: ['minimal', 'low', 'medium', 'high', 'xhigh'], effort: 'medium' }),
-      model('meta/muse-spark-1.3', 'Muse Spark 1.3', 'Meta’s current model', { vision: true, levels: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'], effort: 'medium' }),
+      model('meta/muse-spark-1.3', 'Muse Spark 1.3', 'Meta’s current model', { vision: true, levels: MINIMAL_TO_MAX, effort: 'medium' }),
+      model('meta/muse-wonder', 'Muse Wonder (preview)', 'Meta’s most capable model, at about four times the price', { vision: true, levels: MINIMAL_TO_MAX, effort: 'medium' }),
       model('openai/gpt-6-luna', 'GPT-6 Luna', 'Fast and cheap, for autocomplete and references', { vision: true, levels: ALL, effort: 'low' })
     ],
     recommended: { main: 'anthropic/claude-sonnet-5.5', fast: 'openai/gpt-6-luna', vision: 'google/gemini-3.8-flash', references: 'openai/gpt-6-luna' }
@@ -165,18 +169,58 @@ export const PROVIDERS = [
   },
   {
     id: 'meta',
-    name: 'Meta Muse Spark',
+    name: 'Meta',
     api: 'chat',
     hosts: [/^api\.meta\.ai$/],
     endpoint: 'https://api.meta.ai/v1/chat/completions',
     keyUrl: 'https://dev.meta.ai/api-keys',
-    note: 'Muse Spark always thinks, so Off isn’t offered. The cheaper Contributor models let Meta train on what you send, so they aren’t listed.',
+    note: 'Muse models always think, so Off isn’t offered. The cheaper Contributor models let Meta train on what you send, so they aren’t listed.',
     fields: reasoningEffort,
     models: [
-      model('muse-spark-1.3', 'Muse Spark 1.3', 'Meta’s current model', { vision: true, levels: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'], effort: 'medium' }),
-      model('muse-spark-1.2', 'Muse Spark 1.2', 'Previous version', { vision: true, levels: ['minimal', 'low', 'medium', 'high', 'xhigh'], effort: 'medium' })
+      model('muse-wonder-1.0', 'Muse Wonder 1.0 (preview)', 'Meta’s most capable model, at about four times the price', { vision: true, levels: MINIMAL_TO_MAX, effort: 'medium' }),
+      model('muse-spark-1.3', 'Muse Spark 1.3', 'Meta’s current model', { vision: true, levels: MINIMAL_TO_MAX, effort: 'medium' }),
+      model('muse-spark-1.2', 'Muse Spark 1.2', 'Previous version', { vision: true, levels: MINIMAL_TO_XHIGH, effort: 'medium' }),
+      model('muse-spark-1.1', 'Muse Spark 1.1', 'Oldest version, at the same price', { vision: true, levels: MINIMAL_TO_XHIGH, effort: 'medium' })
     ],
     recommended: { main: 'muse-spark-1.3', fast: 'muse-spark-1.3', vision: 'muse-spark-1.3', references: 'muse-spark-1.3' }
+  },
+  {
+    id: 'ollama',
+    name: 'Ollama',
+    api: 'chat',
+    local: true,
+    live: true,
+    // Ollama's own port, on this computer or another on the network
+    // ponytail: requests only carry the endpoint, so an Ollama moved to another port is treated as Other
+    // here (no effort mapping); send the preset id with llmConfig if anyone needs that
+    hosts: [/:11434$/],
+    endpoint: 'http://localhost:11434',
+    keyUrl: '',
+    note: 'Runs the models installed in Ollama, on this computer or another on your network, without a key. Set Context length to 32k or more in Ollama’s settings so whole documents fit.',
+    fields: reasoningEffort,
+    models: [],
+    recommended: { main: '', fast: '', vision: '', references: '' }
+  },
+  {
+    id: 'ollama-cloud',
+    name: 'Ollama Cloud',
+    api: 'chat',
+    // these models are only shown when ollama.com can't be reached for its own list
+    live: true,
+    hosts: [/^ollama\.com$/],
+    endpoint: 'https://ollama.com/v1/chat/completions',
+    keyUrl: 'https://ollama.com/settings/keys',
+    note: 'Open models on Ollama’s servers, which don’t keep what you send or train on it.',
+    fields: reasoningEffort,
+    models: [
+      model('kimi-k3', 'Kimi K3', 'Moonshot’s strongest model', { vision: true, levels: ['none', 'low', 'high', 'max'], effort: 'high' }),
+      model('glm-5.3', 'GLM-5.3', 'Z.ai’s flagship, text only', { levels: ['low', 'high', 'max'], effort: 'high' }),
+      model('deepseek-v4.1-flash', 'DeepSeek V4.1 Flash', 'Fast and reads images; thinking can be turned off', { vision: true, levels: ['none', 'low', 'high', 'max'], effort: 'high' }),
+      model('muse-spark-open', 'Muse Spark Open', 'Meta’s open-weight Muse Spark', { vision: true, levels: ['none', 'low', 'medium', 'high', 'max'], effort: 'high' }),
+      model('gemma4:31b', 'Gemma 4 31B', 'Google’s open model; thinks only when asked', { vision: true, levels: ['none', 'high'], effort: 'none' }),
+      model('gpt-oss:120b', 'gpt-oss 120B', 'OpenAI’s open-weight model, text only', { levels: ['low', 'medium', 'high'], effort: 'medium' })
+    ],
+    recommended: { main: 'kimi-k3', fast: 'deepseek-v4.1-flash', vision: 'kimi-k3', references: 'deepseek-v4.1-flash' }
   }
 ];
 
@@ -185,7 +229,8 @@ export function providerFor(endpoint, id) {
   if (id) return PROVIDERS.find((p) => p.id === id) || null;
   let host = '';
   try {
-    host = new URL(endpoint).hostname;
+    // with the port, which is all that marks an Ollama
+    host = new URL(endpoint).host;
   } catch {
     return null;
   }
@@ -206,9 +251,26 @@ export function effortFor(m, requested = 'default') {
   return m.levels.reduce((best, level) => (distance(level) <= distance(best) ? level : best));
 }
 
-/** Extra request fields for a provider, model and requested effort. */
-export function effortFields(provider, modelId, requested) {
-  const m = provider.models.find((x) => x.id === modelId);
+/** Extra request fields for a provider, model (undefined if it isn't known) and requested effort. */
+export function effortFields(provider, m, requested) {
   const level = effortFor(m, requested);
   return level ? provider.fields(level, m) : {};
+}
+
+/**
+ * An Ollama model from its /api/show details. Thinking values become effort levels: false is Off,
+ * true (models that can only switch it on) is High, and named levels stay as they are.
+ */
+export function ollamaModel(name, show, note) {
+  const caps = show.capabilities || [];
+  const m = { id: name, label: name, note, vision: caps.includes('vision'), levels: [], effort: 'none' };
+  if (!caps.includes('thinking')) return m;
+  const level = (v) => (v === false ? 'none' : v === true ? 'high' : v);
+  // older Ollama versions give no thinking details, but take the usual names
+  const values = show.thinking ? show.thinking.values.map(level) : ['none', 'low', 'medium', 'high'];
+  const levels = LEVELS.filter((l) => values.includes(l));
+  const fallback = show.thinking ? level(show.thinking.default) : 'medium';
+  // the model's own default, but no higher than High, since several default to a slow Max
+  const want = LEVELS.includes(fallback) && LEVELS.indexOf(fallback) <= LEVELS.indexOf('high') ? fallback : 'high';
+  return { ...m, levels, effort: effortFor({ levels }, want) || 'none' };
 }
