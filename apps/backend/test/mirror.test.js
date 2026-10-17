@@ -487,7 +487,7 @@ test('a cloud copy deleted on another computer, which goes a file at a time, del
     const before = tree(p.root);
     // the sync app removing it: the user's files first, .spectrum last
     for (const rel of ['main.tex', 'refs.bib', 'intro.tex', 'figs/a.png', 'figs/b.png']) await fs.rm(path.join(p.cloud, rel));
-    assert.deepEqual(await mirror.syncProject(p.id), { state: 'syncing', message: '5 files not synced yet' });
+    assert.deepEqual(await mirror.syncProject(p.id), { state: 'syncing', message: '5 files not synced yet', confirming: true });
     await fs.rm(p.cloud, { recursive: true });
     Date.now = () => now() + 31_000;
     assert.deepEqual(await mirror.syncProject(p.id), { state: 'not-found', message: `Not in ${LABEL}` });
@@ -498,7 +498,7 @@ test('a cloud copy deleted on another computer, which goes a file at a time, del
     const q = await project('Deleted there for real', { 'main.tex': 'main\n', 'old.tex': 'old\n' });
     synced(await syncTo(q));
     await fs.rm(path.join(q.cloud, 'old.tex'));
-    assert.deepEqual(await mirror.syncProject(q.id), { state: 'syncing', message: '1 file not synced yet' });
+    assert.deepEqual(await mirror.syncProject(q.id), { state: 'syncing', message: '1 file not synced yet', confirming: true });
     assert.deepEqual(userFiles(q.root), ['main.tex', 'old.tex']);
     Date.now = () => now() + 62_000;
     synced(await mirror.syncProject(q.id));

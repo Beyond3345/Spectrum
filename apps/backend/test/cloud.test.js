@@ -397,6 +397,17 @@ test('Stop syncing deletes the copy in the location only when no other computer 
   rmSync(path.join(machines, `${otherPc}.json`));
 });
 
+test('Stop syncing › Delete goes ahead while a deletion there is still to be made here, as the copy here has the file', async () => {
+  const p = await local('Confirming');
+  writeFileSync(path.join(p.path, 'old.tex'), 'old\n');
+  assert.equal((await post(`/api/projects/${p.id}/cloud`, { location: loc })).status, 200);
+  rmSync(path.join(loc, 'Confirming', 'old.tex'));
+  const res = await post(`/api/projects/${p.id}/cloud/stop`, { deleteCloud: true });
+  assert.equal(res.status, 200, res.json.message);
+  assert.ok(!existsSync(path.join(loc, 'Confirming')));
+  assert.equal(read(p.path, 'old.tex'), 'old\n');
+});
+
 test('Stop syncing a moved project copies it back to the projects folder first', async () => {
   let res = await post(`/api/projects/${ids.moving}/cloud/stop`, { deleteCloud: false });
   assert.equal(res.status, 200, res.json.message);

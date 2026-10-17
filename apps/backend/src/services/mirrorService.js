@@ -458,9 +458,10 @@ async function mirror(id, record, label, force) {
   }
   // brake: what Sync anyway is for, which nothing else needing attention is
   if (problems.length) return { ...attention(problems[0]), ...(brake && { brake: true, deleting }) };
-  // files not synced yet, either way: not in step, which Stop syncing › Delete needs
+  // files not synced yet, either way: not in step, which Stop syncing › Delete needs. confirming: only deletions there
+  // still to be made here, which a copy here kept whole loses nothing by
   const behind = unread.size + deferred.length;
-  if (behind) return { state: 'syncing', message: `${behind} file${behind > 1 ? 's' : ''} not synced yet` };
+  if (behind) return { state: 'syncing', message: `${behind} file${behind > 1 ? 's' : ''} not synced yet`, ...(!unread.size && { confirming: true }) };
   return { state: 'synced', at: new Date().toISOString() };
 }
 
