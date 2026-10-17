@@ -279,6 +279,12 @@ async function mirror(id, record, label, force) {
   let cloudRoot = cloudRootOf(record);
   const cloudMeta = await readJson(join(cloudRoot, META)).catch((err) => (err instanceof SyntaxError ? {} : absent(err)));
   if (!cloudMeta) {
+    // only project.json gone (a sync app replacing it, iCloud Drive's stand-in for it, asked for back): the copy is
+    // still there, and another folder with its id may be a Finder duplicate. An empty folder left by a move isn't
+    if (await exists(join(cloudRoot, '.spectrum'))) {
+      if (process.platform === 'darwin') execFile('/usr/bin/brctl', ['download', join(cloudRoot, META)], () => {});
+      return { state: 'waiting', message: `Waiting for ${label}` };
+    }
     // moved or renamed in the location: followed there, never unlinked by itself (the sync app may be bringing it
     // back). With no base, as the folder found may be another copy (a Finder duplicate made weeks ago): the first pass
     // there is a union, which deletes and overwrites nothing

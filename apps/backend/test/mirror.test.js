@@ -295,6 +295,31 @@ test('a copy followed to another folder with its id (a Finder duplicate) starts 
   assert.ok(!binned.some((b) => b.abs.startsWith(p.root)));
 });
 
+test('a cloud copy whose project.json is missing for a moment is waited for, never left for a Finder duplicate', async () => {
+  const p = await project('Paper', { 'main.tex': 'as submitted\n' });
+  synced(await syncTo(p));
+  const snapshot = path.join(location, 'Paper - submitted');
+  await fs.cp(p.cloud, snapshot, { recursive: true });
+  await write(path.join(p.root, 'main.tex'), 'revised\n');
+  synced(await mirror.syncProject(p.id));
+  // iCloud Drive (macOS 13) moved the copy's project.json off this Mac, leaving its stand-in, or a sync app replacing it
+  const cloudMeta = path.join(p.cloud, '.spectrum', 'project.json');
+  const standIn = path.join(p.cloud, '.spectrum', '.project.json.icloud');
+  await fs.rename(cloudMeta, standIn);
+  assert.deepEqual(await mirror.syncProject(p.id), { state: 'waiting', message: `Waiting for ${LABEL}` });
+  await fs.rename(standIn, cloudMeta);
+  await fs.rm(cloudMeta);
+  assert.deepEqual(await mirror.syncProject(p.id), { state: 'waiting', message: `Waiting for ${LABEL}` });
+  assert.equal((await mirror.readMirror(p.id)).rel, 'Paper');
+  // back, with a file from the other computer in it
+  await writeMeta(p.cloud, meta(p.root));
+  await write(path.join(p.cloud, 'from-pc.tex'), 'pc\n');
+  synced(await mirror.syncProject(p.id));
+  assert.equal(read(path.join(p.root, 'from-pc.tex')), 'pc\n');
+  assert.deepEqual(userFiles(snapshot), ['main.tex']);
+  assert.equal(read(path.join(snapshot, 'main.tex')), 'as submitted\n');
+});
+
 test('a cloud copy going while a pass walks it is waited for, never taken for deletions', async () => {
   const p = await project('Going', { 'main.tex': 'main\n', 'figs/a.png': 'a', 'figs/b.png': 'b' });
   await versions.createVersion(p.root);
