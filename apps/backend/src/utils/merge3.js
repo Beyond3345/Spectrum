@@ -2,10 +2,10 @@ import { diffLines } from 'diff';
 
 // Three-way merge by lines, as git merge-file does it (diff3): each side's changes from the base become hunks in the
 // base's lines, and hunks from the two sides that overlap or touch must give the same text, else it's a conflict.
-// ponytail: where the base repeats a line (\hline, a brace, blank lines) the diff can still, rarely, place a change one
-// copy away from where git does, so a merge git calls a conflict comes out clean or the other way round. Every line
-// either side added is kept; what a clean one can undo is a deletion of a repeated line. Fuzzing against git
-// merge-file on text made only of such lines finds about 1 case in 300. Diff with git's own heuristics if that shows
+// ponytail: where the base repeats a line (\hline, a brace, blank lines) a change can sit at more than one copy. Each
+// side's changes are read as the diff places them and slid up along repeated lines as git does, and the merge is clean
+// only where both readings give the same text. A clean merge that every reading agrees on would need a search over all
+// of them.
 
 // past this many changed lines a diff takes long, and a merge of that much is better left to the user
 const MAX_EDIT_LENGTH = 2000;
@@ -29,7 +29,7 @@ function hunks(base, other) {
     if (part.removed) hunk.end = at += part.count;
     else hunk.lines.push(...lines(part.value));
   }
-  return compact(found, lines(base));
+  return found;
 }
 
 /**
@@ -67,6 +67,13 @@ export function merge3(base, local, cloud) {
   const mine = hunks(base, local);
   const theirs = mine && hunks(base, cloud);
   if (!theirs) return null;
+  const merged = merge(baseLines, compact(mine, baseLines), compact(theirs, baseLines));
+  // sliding can move one side's change off the other's same change, and then both go in
+  return merged !== null && merged === merge(baseLines, mine, theirs) ? merged : null;
+}
+
+/** The merge of the two sides' hunks in the base's lines, or null where hunks that overlap or touch differ. */
+function merge(baseLines, mine, theirs) {
   const all = [...mine.map((h) => ({ ...h, side: 0 })), ...theirs.map((h) => ({ ...h, side: 1 }))].sort((a, b) => a.start - b.start || a.end - b.end);
   const out = [];
   let done = 0;

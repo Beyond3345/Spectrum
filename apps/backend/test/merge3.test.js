@@ -1,7 +1,9 @@
 // The three-way merge the mirror uses when a file changed on this computer and in the cloud copy since they last
-// agreed. Each clean case gives what git merge-file gives, and each conflict is one git reports too. Run: npm test
+// agreed. Each clean case is one git also merges cleanly, and where a repeated line makes the reading ambiguous it's a
+// conflict. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { diffLines } from 'diff';
 import { merge3, mergeText } from '../src/utils/merge3.js';
 
 const doc = (...lines) => lines.join('\n') + '\n';
@@ -48,6 +50,63 @@ test('a repeated line one side deleted merges as in git: a conflict where the ot
   assert.equal(merge3(doc('a & b \\\\', '\\hline', '\\hline', 'c & d \\\\'), doc('a & b \\\\', '\\hline', 'c & d \\\\'), doc('a & b \\\\', '\\midrule', '\\hline', 'c & d \\\\')), null);
   // a stray brace removed here, an argument edited there
   assert.equal(merge3(doc('\\foo{', '}', '}'), doc('\\foo{', '}'), doc('\\foo{x', '}', '}')), doc('\\foo{x', '}'));
+});
+
+test('the same change to a repeated line on both sides, next to another change on one, is a conflict, not made twice', () => {
+  // both deleted one of three rules, and here the row above too: git keeps one rule, though both sides kept two
+  assert.equal(merge3(doc('a & b \\\\', '\\hline', '\\hline', '\\hline', 'c & d \\\\'), doc('\\hline', '\\hline', 'c & d \\\\'), doc('a & b \\\\', '\\hline', '\\hline', 'c & d \\\\')), null);
+  assert.equal(merge3(doc('\\caption{Results}', '}', '}', '}', '\\end{figure}'), doc('}', '}', '\\end{figure}'), doc('\\caption{Results}', '}', '}', '\\end{figure}')), null);
+  // both added a third rule, and here the heading renamed: git gives four rules
+  const table = (name, rules) => doc('\\toprule', `Name & ${name} \\\\`, ...Array(rules).fill('\\hline'), 'Ann & 3 \\\\');
+  assert.equal(merge3(table('Score', 2), table('Mark', 3), table('Score', 3)), null);
+});
+
+test('a clean merge keeps, in order, each side’s added lines and the lines both kept, on random text of repeated lines', () => {
+  let seed = 1; // mulberry32
+  const rnd = () => {
+    let t = (seed = (seed + 0x6d2b79f5) | 0);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 2 ** 32;
+  };
+  const pick = (list) => list[Math.floor(rnd() * list.length)];
+  const words = ['\\item', '\\end{itemize}', '', '}', '\\hline', '\\midrule', 'x'];
+  const text = (lines) => lines.map((line) => `${line}\n`).join('');
+  const edit = (lines) => {
+    const out = [...lines];
+    for (let n = 1 + Math.floor(rnd() * 3); n--; ) {
+      const at = Math.floor(rnd() * (out.length + 1));
+      const r = rnd();
+      if (r < 0.4) out.splice(at, 0, pick(words));
+      else if (r < 0.7) out.splice(at, 1);
+      else out.splice(at, 1, pick(words));
+    }
+    return text(out);
+  };
+  // a side's added lines, and the indexes of the base lines it kept, as the diff reads it
+  const read = (base, side) => {
+    const added = [];
+    const kept = new Set();
+    let at = 0;
+    for (const part of diffLines(base, side)) {
+      if (part.added) added.push(...part.value.match(/[^\n]*\n/g));
+      else if (part.removed) at += part.count;
+      else for (let k = 0; k < part.count; k++) kept.add(at++);
+    }
+    return { added, kept };
+  };
+  const within = (need, have) => need.reduce((from, line) => (from < 0 ? from : have.indexOf(line, from) + 1 || -1), 0) >= 0;
+  for (let i = 0; i < 5000; i++) {
+    const lines = Array.from({ length: 1 + Math.floor(rnd() * 10) }, () => pick(words));
+    const base = text(lines);
+    const [here, there] = [edit(lines), edit(lines)];
+    const merged = merge3(base, here, there);
+    if (merged === null) continue;
+    const got = merged.match(/[^\n]*\n/g) || [];
+    const [a, b] = [read(base, here), read(base, there)];
+    const both = base.match(/[^\n]*\n/g).filter((_, k) => a.kept.has(k) && b.kept.has(k));
+    assert.ok(within(a.added, got) && within(b.added, got) && within(both, got), JSON.stringify({ base, here, there, merged }));
+  }
 });
 
 test('lines added at the start and at the end both go in', () => {
