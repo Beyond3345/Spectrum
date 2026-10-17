@@ -361,13 +361,14 @@ test('Stop syncing deletes the copy in the location only when no other computer 
   assert.deepEqual([res.status, res.json.message], [409, 'Study PC runs an older Spectrum, which may use the copy in OneDrive itself. Keep the copy in OneDrive instead.']);
 
   // a computer that works on the cloud copy itself (in place, or Move)
-  const machine = (mirror) => writeFileSync(path.join(machines, `${otherPc}.json`), JSON.stringify({ format: 2, machineName: 'Study PC', updatedAt: now, projects: [{ id: ids.thesis, name: 'Thesis', place: null, ...(mirror && { mirror }) }] }));
+  const machine = (mirror, format = 2) => writeFileSync(path.join(machines, `${otherPc}.json`), JSON.stringify({ format, machineName: 'Study PC', updatedAt: now, projects: [{ id: ids.thesis, name: 'Thesis', place: null, ...(mirror && { mirror }) }] }));
   machine(undefined);
   res = await post(`/api/projects/${ids.thesis}/cloud/stop`, { deleteCloud: true });
   assert.deepEqual([res.status, res.json.message], [409, 'Study PC works on the copy in OneDrive itself, so deleting it would delete “Thesis” there too. Keep the copy in OneDrive instead.']);
   assert.ok(existsSync(copy));
 
-  machine(true);
+  // with a copy of its own, in a list a later Spectrum wrote, which lists every project as this one does
+  machine(true, 3);
   res = await post(`/api/projects/${ids.thesis}/cloud/stop`, { deleteCloud: true });
   assert.equal(res.status, 200, res.json.message);
   assert.equal(res.json.project.cloud, undefined);

@@ -362,7 +362,10 @@ export async function otherComputersProjects() {
   );
 }
 
-/** The other computers whose list an older Spectrum wrote, which may work on any project in a location in place: their names. */
+/**
+ * The other computers whose list an older Spectrum wrote, which may work on any project in a location in place: their
+ * names. A later format still lists every project, as this one does.
+ */
 export async function olderComputers() {
-  return [...new Set((await otherLists()).filter((data) => data.format !== FORMAT).map((data) => data.machineName))];
+  return [...new Set((await otherLists()).filter((data) => !(Number(data.format) >= FORMAT)).map((data) => data.machineName))];
 }
