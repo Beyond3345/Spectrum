@@ -194,6 +194,12 @@
   line-height: 17px;
 }
 
+/* a sync app's conflict copy, like .badge.warning */
+.tree-badge.conflict {
+  background: color-mix(in srgb, var(--orange) 15%, transparent);
+  color: var(--orange-text);
+}
+
 .tree-input {
   flex: 1;
   min-width: 0;

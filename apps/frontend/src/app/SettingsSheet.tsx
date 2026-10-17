@@ -485,6 +485,16 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                   )}
                 </>
               )}
+              <h3 className="form-section-title">Your other computers</h3>
+              <label className="checkbox-row">
+                <input type="checkbox" checked={settings.syncSettings} onChange={(e) => update({ syncSettings: e.target.checked })} />
+                <span>
+                  Use the same settings on each computer
+                  <span className="field-hint">
+                    Through the synced projects folder: appearance, editor, spelling and shortcuts. API keys, models, folders and the window’s look stay on each computer.
+                  </span>
+                </span>
+              </label>
             </>
           )}
 

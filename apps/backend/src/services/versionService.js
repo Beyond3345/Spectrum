@@ -8,12 +8,22 @@ import { ensureDir, freePath, listFilesRecursive, readJson, writeFileAtomic, wri
 import { safeJoin } from '../utils/pathUtils.js';
 import { appPath, httpError, serialiser } from './projectService.js';
 
-// Content-addressed history in .spectrum/history:
+// Content-addressed history in .spectrum/history, which a sync app may share between computers:
 //   objects/<sha[0:2]>/<sha>.gz   gzipped file bytes, shared between versions
-//   manifests/<id>.json           { files: { "<relPath>": "<sha>" } }
+//   manifests/<id>.json           { files: { "<relPath>": "<sha>" }, skipped?, createdAt, label, reason, summary }
 //   index.json                    { nextId, versions: VersionMeta[] } (oldest first)
+// Versions are the manifests on disk, whichever computer wrote them. 1.7.0 numbered them from index.json's nextId,
+// so two computers made the same number and overwrote each other's manifests. Ids are now the second and random
+// digits, still whole numbers as 1.7.0 needs, and index.json is rewritten with every version on disk and a nextId
+// above them all, so 1.7.0 lists them and never reuses one. Manifests 1.7.0 made have only files; their details
+// stay in index.json.
 
 const MAX_TRACKED_BYTES = 50 * 1024 * 1024;
+// 1.7.0's ids count from 1; every id made since is far above
+const LEGACY_IDS = 1e9;
+const EPOCH_2026 = Date.UTC(2026, 0, 1);
+const REASONS = ['manual', 'before-ai', 'before-restore', 'before-transfer'];
+const DAY_MS = 24 * 60 * 60 * 1000;
 const TEXT_EXTENSIONS = new Set([
   '.tex', '.bib', '.sty', '.cls', '.bst', '.txt', '.md', '.json', '.yaml', '.yml', '.csv', '.tsv',
   '.bbx', '.cbx', '.lbx', '.cfg', '.def', '.clo', '.ltx'
@@ -40,10 +50,70 @@ async function readIndex(root) {
   }
 }
 
-const writeIndex = (root, index) => writeJsonAtomic(historyPath(root, 'index.json'), index);
+const details = (v) => ({ createdAt: v.createdAt, label: v.label, reason: v.reason, summary: v.summary });
 
-async function readManifest(root, id) {
-  return (await readJson(manifestPath(root, id))).files || {};
+/** index.json with every version on disk (oldest first) and a nextId above them all and any deleted, for 1.7.0. */
+async function writeIndex(root, versions) {
+  await writeJsonAtomic(historyPath(root, 'index.json'), {
+    nextId: Math.max((await readIndex(root)).nextId, ...versions.map((v) => v.id + 1)),
+    versions: versions.map((v) => ({ id: v.id, ...details(v) }))
+  });
+}
+
+/**
+ * Every version whose manifest is on disk, oldest first, each with its files and a number to show (1.7.0's
+ * versions keep theirs; later ones count on from them by time). partial: a manifest couldn't be read, as when
+ * it's still arriving from another computer.
+ */
+async function readVersions(root) {
+  const fromIndex = new Map((await readIndex(root)).versions.map((v) => [v.id, v]));
+  const dir = historyPath(root, 'manifests');
+  const versions = [];
+  let partial = false;
+  for (const name of await fs.readdir(dir).catch(() => [])) {
+    // <id>.json: not a temp file, or a sync app's conflict copy
+    const id = Number(name.match(/^(\d+)\.json$/)?.[1]);
+    if (!Number.isSafeInteger(id) || id < 1) continue;
+    let data;
+    try {
+      data = await readJson(path.join(dir, name));
+    } catch {
+      partial = true;
+      continue;
+    }
+    const meta = data.createdAt ? data : fromIndex.get(id) || { createdAt: (await fs.stat(path.join(dir, name))).mtime.toISOString() };
+    versions.push({
+      id,
+      createdAt: String(meta.createdAt),
+      label: String(meta.label || ''),
+      reason: REASONS.includes(meta.reason) ? meta.reason : 'manual',
+      summary: meta.summary && typeof meta.summary === 'object' ? meta.summary : { kind: 'updated', files: [], added: 0, removed: 0 },
+      files: data.files || {},
+      skipped: new Set(Array.isArray(data.skipped) ? data.skipped : [])
+    });
+  }
+  versions.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id);
+  let shown = 0;
+  for (const v of versions) {
+    v.number = v.id < LEGACY_IDS ? v.id : shown + 1;
+    shown = Math.max(shown, v.number);
+  }
+  return { versions, partial };
+}
+
+const shownVersion = (v) => ({ id: v.id, number: v.number, ...details(v) });
+
+/** One version's files, read from its manifest. */
+async function readVersion(root, versionId) {
+  const id = parseId(versionId);
+  let data;
+  try {
+    data = await readJson(manifestPath(root, id));
+  } catch (err) {
+    if (err.code === 'ENOENT' || err instanceof SyntaxError) throw httpError('Version not found.', 404);
+    throw err;
+  }
+  return { id, files: data.files || {}, skipped: new Set(Array.isArray(data.skipped) ? data.skipped : []) };
 }
 
 async function readObject(root, sha) {
@@ -54,9 +124,10 @@ const diskFiles = async (root) => (await listFilesRecursive(root)).filter((item)
 
 /**
  * Files a version captures: the visible tree minus compiled PDFs, anything over 50 MB, and
- * anything that can't be read (broken or outside links, no permission) rather than failing.
+ * anything that can't be read (broken or outside links, no permission) rather than failing;
+ * those go in `skipped`.
  */
-async function trackedFiles(root) {
+async function trackedFiles(root, skipped = []) {
   const files = await diskFiles(root);
   const present = new Set(files);
   const tracked = [];
@@ -68,21 +139,22 @@ async function trackedFiles(root) {
       await fs.access(abs, fsConstants.R_OK);
       if (stat.isFile() && stat.size <= MAX_TRACKED_BYTES) tracked.push(rel);
     } catch {
-      // skip it
+      skipped.push(rel);
     }
   }
   return tracked.sort();
 }
 
-/** Hash the tracked files; with store=true also save their contents as objects. */
-async function snapshotDisk(root, store) {
+/** Hash the tracked files; with store=true also save their contents as objects. Unreadable ones go in `skipped`. */
+async function snapshotDisk(root, store, skipped = []) {
   const files = {};
-  for (const rel of await trackedFiles(root)) {
+  for (const rel of await trackedFiles(root, skipped)) {
     let buf;
     try {
       buf = await fs.readFile(path.join(root, rel));
     } catch {
-      continue; // unreadable: leave it out
+      skipped.push(rel); // unreadable (online-only and offline, say): leave it out
+      continue;
     }
     const sha = sha256(buf);
     files[rel] = sha;
@@ -146,44 +218,57 @@ const fromDisk = (root, files) => ({ files, read: (rel) => fs.readFile(path.join
 
 function parseId(versionId) {
   const id = Number(versionId);
-  if (!Number.isInteger(id) || id < 1) throw httpError('Version not found.', 404);
+  if (!Number.isSafeInteger(id) || id < 1) throw httpError('Version not found.', 404);
   return id;
 }
 
-function findVersion(index, versionId) {
+function findVersion(versions, versionId) {
   const id = parseId(versionId);
-  const position = index.versions.findIndex((v) => v.id === id);
+  const position = versions.findIndex((v) => v.id === id);
   if (position === -1) throw httpError('Version not found.', 404);
-  return { version: index.versions[position], position };
+  return { version: versions[position], position };
 }
 
 export async function listVersions(root) {
-  return (await readIndex(root)).versions.slice().reverse();
+  return (await readVersions(root)).versions.map(shownVersion).reverse();
+}
+
+/** An id another computer won't also make: the second since 2026 and three random digits. */
+async function newId(root, versions) {
+  const taken = new Set(versions.map((v) => v.id));
+  let id = Math.floor((Date.now() - EPOCH_2026) / 1000) * 1000 + crypto.randomInt(1000);
+  // or a manifest still arriving
+  while (taken.has(id) || (await fs.access(manifestPath(root, id)).then(() => true, () => false))) id += 1;
+  return id;
 }
 
 async function createVersionUnlocked(root, { label = '', reason = 'manual' } = {}) {
-  const index = await readIndex(root);
-  const latest = index.versions.at(-1);
-  const previous = latest ? await readManifest(root, latest.id) : {};
-  const files = await snapshotDisk(root, true);
-  if (latest && sameFiles(previous, files)) return { version: latest, unchanged: true };
+  const { versions } = await readVersions(root);
+  const latest = versions.at(-1);
+  const previous = latest ? latest.files : {};
+  const skipped = [];
+  const files = await snapshotDisk(root, true, skipped);
+  // a file that can't be read now keeps what the latest version had of it, and restoring leaves it as it is
+  for (const rel of skipped) if (previous[rel]) files[rel] = previous[rel];
+  if (latest && sameFiles(previous, files)) return { version: shownVersion(latest), unchanged: true };
 
   const changes = await diffManifests(fromHistory(root, previous), fromHistory(root, files));
   const version = {
-    id: index.nextId,
+    id: await newId(root, versions),
     createdAt: new Date().toISOString(),
     label: String(label || '').slice(0, 120),
-    reason: ['manual', 'before-ai', 'before-restore', 'before-transfer'].includes(reason) ? reason : 'manual',
+    reason: REASONS.includes(reason) ? reason : 'manual',
     summary: {
       kind: !latest ? 'initial' : changes.length === 1 ? 'edited' : 'updated',
       files: changes.map((c) => c.path),
       added: changes.reduce((sum, c) => sum + c.added, 0),
       removed: changes.reduce((sum, c) => sum + c.removed, 0)
-    }
+    },
+    number: Math.max(0, ...versions.map((v) => v.number)) + 1
   };
-  await writeJsonAtomic(manifestPath(root, version.id), { files });
-  await writeIndex(root, { nextId: version.id + 1, versions: [...index.versions, version] });
-  return { version, unchanged: false };
+  await writeJsonAtomic(manifestPath(root, version.id), { files, ...(skipped.length && { skipped }), ...details(version) });
+  await writeIndex(root, [...versions, version]);
+  return { version: shownVersion(version), unchanged: false };
 }
 
 /** Save a version unless nothing changed since the latest one. */
@@ -193,10 +278,10 @@ export function createVersion(root, options) {
 
 /** What a version changed compared with the version before it. */
 export async function versionChanges(root, versionId) {
-  const index = await readIndex(root);
-  const { version, position } = findVersion(index, versionId);
-  const before = position > 0 ? await readManifest(root, index.versions[position - 1].id) : {};
-  return diffManifests(fromHistory(root, before), fromHistory(root, await readManifest(root, version.id)));
+  const { versions } = await readVersions(root);
+  const { version, position } = findVersion(versions, versionId);
+  const before = position > 0 ? versions[position - 1].files : {};
+  return diffManifests(fromHistory(root, before), fromHistory(root, version.files));
 }
 
 /** Files on disk that versions don't capture (too big, compiled PDFs, unreadable). */
@@ -210,15 +295,14 @@ async function untrackedFiles(root) {
  * is still on disk but no longer tracked is 'untracked', not 'removed'.
  */
 export async function compareWithCurrent(root, versionId) {
-  const { version } = findVersion(await readIndex(root), versionId);
-  const changes = await diffManifests(fromHistory(root, await readManifest(root, version.id)), fromDisk(root, await snapshotDisk(root, false)));
+  const { files } = await readVersion(root, versionId);
+  const changes = await diffManifests(fromHistory(root, files), fromDisk(root, await snapshotDisk(root, false)));
   const untracked = await untrackedFiles(root);
   return changes.map((c) => (c.status === 'removed' && untracked.has(c.path) ? { ...c, status: 'untracked', added: 0, removed: 0 } : c));
 }
 
 export async function readVersionFile(root, versionId, relPath) {
-  const { version } = findVersion(await readIndex(root), versionId);
-  const sha = (await readManifest(root, version.id))[relPath];
+  const sha = (await readVersion(root, versionId)).files[relPath];
   if (!sha) return { ok: false, error: 'That file isn’t in this version.' };
   if (!isText(relPath)) return { ok: false, error: 'Binary files can’t be shown.' };
   return { ok: true, content: (await readObject(root, sha)).toString('utf8') };
@@ -227,9 +311,15 @@ export async function readVersionFile(root, versionId, relPath) {
 /** Restore the whole project, or one file, after saving a safety version of the current state. */
 export function restoreVersion(root, versionId, relPath) {
   return locked(async () => {
-    const { version } = findVersion(await readIndex(root), versionId);
-    const files = await readManifest(root, version.id);
+    const { files, skipped } = await readVersion(root, versionId);
     if (relPath) safeJoin(root, relPath);
+    if (relPath && skipped.has(relPath)) throw httpError('That file couldn’t be read when this version was saved, so it isn’t in it.', 400);
+    // a version from another computer whose stored files haven't all synced yet would only half restore
+    for (const sha of new Set(relPath ? [files[relPath]].filter(Boolean) : Object.values(files))) {
+      if (!(await fs.access(objectPath(root, sha)).then(() => true, () => false))) {
+        throw httpError('Some of this version’s files haven’t arrived from your other computer yet. Try again once syncing has finished.', 409);
+      }
+    }
     const { version: safety, unchanged } = await createVersionUnlocked(root, { reason: 'before-restore' });
 
     // The safety version can't hold untracked files, so move those aside instead of overwriting them.
@@ -237,6 +327,8 @@ export function restoreVersion(root, versionId, relPath) {
     const keptAside = [];
     const targets = relPath ? [relPath] : [...new Set([...await trackedFiles(root), ...Object.keys(files)])];
     for (const rel of targets) {
+      // couldn't be read for the version (online-only and offline, say): neither replaced nor deleted
+      if (skipped.has(rel)) continue;
       if (files[rel] && untracked.has(rel)) {
         const ext = path.extname(rel);
         const aside = await freePath(safeJoin(root, `${rel.slice(0, rel.length - ext.length)} (before restore)${ext}`));
@@ -257,32 +349,41 @@ export function restoreVersion(root, versionId, relPath) {
 
 export function renameVersion(root, versionId, label) {
   return locked(async () => {
-    const index = await readIndex(root);
-    const { version } = findVersion(index, versionId);
+    const { versions } = await readVersions(root);
+    const { version } = findVersion(versions, versionId);
     version.label = String(label || '').slice(0, 120);
-    await writeIndex(root, index);
-    return version;
+    // the manifest carries the label, and from now on the rest of a 1.7.0 version's details too
+    const data = await readJson(manifestPath(root, version.id));
+    await writeJsonAtomic(manifestPath(root, version.id), { ...data, ...details(version) });
+    await writeIndex(root, versions);
+    return shownVersion(version);
   });
 }
 
-/** Delete a version, then drop objects no remaining version uses. */
+/** Delete a version, then drop stored files no remaining version uses. */
 export function deleteVersion(root, versionId) {
   return locked(async () => {
-    const index = await readIndex(root);
-    const { position } = findVersion(index, versionId);
-    const [removed] = index.versions.splice(position, 1);
-    await writeIndex(root, index);
+    const { versions, partial } = await readVersions(root);
+    const { position } = findVersion(versions, versionId);
+    const [removed] = versions.splice(position, 1);
     await fs.rm(manifestPath(root, removed.id), { force: true });
+    await writeIndex(root, versions);
+    // a manifest that couldn't be read may use any of them
+    if (partial) return;
 
-    const used = new Set();
-    for (const v of index.versions) {
-      for (const sha of Object.values(await readManifest(root, v.id))) used.add(sha);
-    }
+    const used = new Set(versions.flatMap((v) => Object.values(v.files)));
+    // ponytail: a stored file goes only when no manifest here uses it and it came more than 7 days ago, as a
+    // version another computer made may still be on its way; one that computer reused from long ago isn't kept
+    // by this, which only a list of every computer's versions would fix
+    const cutoff = Date.now() - 7 * DAY_MS;
     const objectsRoot = historyPath(root, 'objects');
     for (const shard of await fs.readdir(objectsRoot).catch(() => [])) {
       const dir = path.join(objectsRoot, shard);
       for (const name of await fs.readdir(dir).catch(() => [])) {
-        if (!used.has(name.replace(/\.gz$/, ''))) await fs.rm(path.join(dir, name), { force: true });
+        if (used.has(name.replace(/\.gz$/, ''))) continue;
+        const stat = await fs.stat(path.join(dir, name)).catch(() => null);
+        // ctime: when the file came to this disk, which a sync app may leave out of mtime
+        if (stat && Math.max(stat.mtimeMs, stat.ctimeMs) < cutoff) await fs.rm(path.join(dir, name), { force: true });
       }
       await fs.rmdir(dir).catch(() => {}); // only when empty
     }

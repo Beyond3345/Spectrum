@@ -21,6 +21,9 @@ export function registerChatRoutes(fastify) {
       if (!name.endsWith('.json')) continue;
       try {
         const chat = await readJson(path.join(dir, name));
+        // each chat is its own file, and two computers' chats have different ids; a sync app's conflict copy
+        // of one (the same chat continued on both) isn't listed twice
+        if (name !== `${chat.id}.json`) continue;
         chats.push({
           id: chat.id,
           title: chat.title || 'Untitled chat',

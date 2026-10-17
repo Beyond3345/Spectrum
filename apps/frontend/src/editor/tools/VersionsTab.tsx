@@ -80,7 +80,7 @@ export default function VersionsTab({ active }: { active: boolean }) {
       const res = await api.createVersion('manual', typed || undefined);
       if (!res.unchanged && res.version) {
         setLabel('');
-        api.notify(`Saved version v${res.version.id}`, 'success');
+        api.notify(`Saved version v${res.version.number}`, 'success');
         return;
       }
       // nothing new to save; a typed label can still go on the latest version
@@ -91,19 +91,19 @@ export default function VersionsTab({ active }: { active: boolean }) {
       }
       const ok = await confirmDialog({
         title: 'Nothing has changed since the last version',
-        message: `Label v${latest.id} “${typed}” instead?`,
+        message: `Label v${latest.number} “${typed}” instead?`,
         confirmLabel: 'Add label'
       });
       if (!ok) return;
       await renameVersion(projectId, latest.id, typed);
       await load();
       setLabel('');
-      api.notify(`Labelled v${latest.id} “${typed}”`, 'success');
+      api.notify(`Labelled v${latest.number} “${typed}”`, 'success');
     }, 'Couldn’t save a version');
 
   const restore = async (v: VersionMeta) => {
     const ok = await confirmDialog({
-      title: `Restore v${v.id}?`,
+      title: `Restore v${v.number}?`,
       message: 'Every file goes back to how it was in this version. The current state is saved as a version first, so this can be undone.',
       confirmLabel: 'Restore'
     });
@@ -113,7 +113,7 @@ export default function VersionsTab({ active }: { active: boolean }) {
       if (!res.ok) throw new Error(res.error || 'Restore failed.');
       await api.reloadProject();
       await load();
-      api.notify(`Restored v${v.id}${keptAsideNote(res.keptAside)}`, 'success');
+      api.notify(`Restored v${v.number}${keptAsideNote(res.keptAside)}`, 'success');
     }, 'Couldn’t restore');
   };
 
@@ -128,7 +128,7 @@ export default function VersionsTab({ active }: { active: boolean }) {
 
   const remove = async (v: VersionMeta) => {
     const ok = await confirmDialog({
-      title: `Delete v${v.id}?`,
+      title: `Delete v${v.number}?`,
       message: 'This version is removed from the history. Your files are not changed.',
       confirmLabel: 'Delete',
       destructive: true
@@ -178,7 +178,7 @@ export default function VersionsTab({ active }: { active: boolean }) {
           {list.map((v) => (
             <div key={v.id} className="version-card">
               <div className="version-row">
-                <span className="version-badge">v{v.id}</span>
+                <span className="version-badge">v{v.number}</span>
                 <span className="version-title" title={v.summary.files.join('\n')}>
                   {v.label || summaryTitle(v)}
                 </span>
@@ -302,7 +302,7 @@ function VersionDiffSheet({
   const restoreFile = async () => {
     if (!file) return;
     const ok = await confirmDialog({
-      title: `Restore ${file.path} from v${version.id}?`,
+      title: `Restore ${file.path} from v${version.number}?`,
       message: 'The file goes back to how it was in this version. The current state is saved as a version first.',
       confirmLabel: 'Restore'
     });
@@ -323,9 +323,9 @@ function VersionDiffSheet({
     }
   };
 
-  const title = kind === 'compare' ? `v${version.id} compared with the current files` : `What changed in v${version.id}`;
-  const leftLabel = kind === 'compare' ? `v${version.id}` : previous ? `v${previous.id}` : 'Before';
-  const rightLabel = kind === 'compare' ? 'Current' : `v${version.id}`;
+  const title = kind === 'compare' ? `v${version.number} compared with the current files` : `What changed in v${version.number}`;
+  const leftLabel = kind === 'compare' ? `v${version.number}` : previous ? `v${previous.number}` : 'Before';
+  const rightLabel = kind === 'compare' ? 'Current' : `v${version.number}`;
 
   return (
     <Sheet title={title} onClose={onClose} width={1080} className="review-sheet">
@@ -353,7 +353,7 @@ function VersionDiffSheet({
                 <button
                   className="btn small"
                   disabled={busy || !canRestore}
-                  title={canRestore ? undefined : kind === 'compare' ? `This file isn’t in v${version.id}.` : 'This version removed the file.'}
+                  title={canRestore ? undefined : kind === 'compare' ? `This file isn’t in v${version.number}.` : 'This version removed the file.'}
                   onClick={restoreFile}
                 >
                   {busy ? <span className="spinner" /> : <Icon name="arrow.uturn.backward" />} Restore this file

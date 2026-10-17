@@ -543,13 +543,16 @@ test('version history: save, compare, restore, rename, delete', async () => {
 
   const v1 = (await api(versions, { method: 'POST', body: { label: 'First' } })).json;
   assert.equal(v1.unchanged, false);
-  assert.equal(v1.version.id, 1);
+  // ids two computers can't both make; the number shown counts from 1
+  assert.ok(v1.version.id > 1e9);
+  assert.equal(v1.version.number, 1);
   assert.equal(v1.version.label, 'First');
   assert.deepEqual(v1.version.summary, { kind: 'initial', files: ['figure.png', 'main.tex', 'refs.bib'], added: 3, removed: 0 });
 
   const same = (await api(versions, { method: 'POST', body: {} })).json;
   assert.equal(same.unchanged, true);
-  assert.equal(same.version.id, 1);
+  assert.equal(same.version.id, v1.version.id);
+  const one = `${versions}/${v1.version.id}`;
 
   await writeFile(p.id, 'main.tex', 'a\nB\nc\n');
   const v2 = (await api(versions, { method: 'POST', body: { reason: 'before-ai' } })).json.version;
@@ -562,32 +565,33 @@ test('version history: save, compare, restore, rename, delete', async () => {
   assert.equal(v3.summary.kind, 'updated');
   assert.deepEqual(v3.summary.files, ['new.txt', 'refs.bib']);
 
-  assert.deepEqual((await api(versions)).json.versions.map((v) => v.id), [3, 2, 1]);
-  assert.deepEqual((await api(`${versions}/2/changes`)).json.files, [
+  assert.deepEqual((await api(versions)).json.versions.map((v) => v.number), [3, 2, 1]);
+  assert.deepEqual((await api(versions)).json.versions.map((v) => v.id), [v3.id, v2.id, v1.version.id]);
+  assert.deepEqual((await api(`${versions}/${v2.id}/changes`)).json.files, [
     { path: 'main.tex', status: 'modified', added: 2, removed: 1, binary: false }
   ]);
-  const compare = (await api(`${versions}/1/compare`)).json.files;
+  const compare = (await api(`${one}/compare`)).json.files;
   assert.deepEqual(compare.map((f) => [f.path, f.status]), [['main.tex', 'modified'], ['new.txt', 'added'], ['refs.bib', 'removed']]);
-  assert.equal((await api(`${versions}/1/file?path=main.tex`)).json.content, 'a\nb\n');
-  assert.equal((await api(`${versions}/1/file?path=figure.png`)).json.ok, false);
+  assert.equal((await api(`${one}/file?path=main.tex`)).json.content, 'a\nb\n');
+  assert.equal((await api(`${one}/file?path=figure.png`)).json.ok, false);
 
   // one file: nothing changed since v3, so no safety version is needed
-  const single = (await api(`${versions}/1/restore`, { method: 'POST', body: { path: 'refs.bib' } })).json;
+  const single = (await api(`${one}/restore`, { method: 'POST', body: { path: 'refs.bib' } })).json;
   assert.ok(single.ok);
   assert.equal(single.safety, null);
   assert.equal(await readFile(p.id, 'refs.bib'), '@misc{x}\n');
   assert.equal(await readFile(p.id, 'main.tex'), 'a\nB\nc\n');
 
   // whole project: the restored .bib makes this a change, so a safety version is saved first
-  const all = (await api(`${versions}/1/restore`, { method: 'POST', body: {} })).json;
+  const all = (await api(`${one}/restore`, { method: 'POST', body: {} })).json;
   assert.ok(all.ok);
-  assert.equal(all.safety.id, 4);
+  assert.equal(all.safety.number, 4);
   assert.equal(all.safety.reason, 'before-restore');
   assert.equal(await readFile(p.id, 'main.tex'), 'a\nb\n');
   assert.ok(!existsSync(path.join(p.path, 'new.txt')));
-  assert.deepEqual((await api(`${versions}/1/compare`)).json.files, []);
+  assert.deepEqual((await api(`${one}/compare`)).json.files, []);
 
-  const renamed = (await api(`${versions}/2`, { method: 'PATCH', body: { label: 'Before polish' } })).json;
+  const renamed = (await api(`${versions}/${v2.id}`, { method: 'PATCH', body: { label: 'Before polish' } })).json;
   assert.equal(renamed.version.label, 'Before polish');
 
   const objects = async () => {
@@ -597,10 +601,11 @@ test('version history: save, compare, restore, rename, delete', async () => {
     return count;
   };
   assert.equal(await objects(), 5);
-  for (const id of [2, 3, 4]) assert.ok((await api(`${versions}/${id}`, { method: 'DELETE' })).json.ok);
-  assert.deepEqual((await api(versions)).json.versions.map((v) => v.id), [1]);
-  assert.equal(await objects(), 3);
-  assert.equal((await api(`${versions}/2`, { method: 'DELETE' })).status, 404);
+  for (const id of [v2.id, v3.id, all.safety.id]) assert.ok((await api(`${versions}/${id}`, { method: 'DELETE' })).json.ok);
+  assert.deepEqual((await api(versions)).json.versions.map((v) => v.id), [v1.version.id]);
+  // stored files no version uses stay a week, for a version another computer may still be sending (sync.test.js)
+  assert.equal(await objects(), 5);
+  assert.equal((await api(`${versions}/${v2.id}`, { method: 'DELETE' })).status, 404);
   assert.equal((await api(`${versions}/abc/changes`)).status, 404);
 });
 
@@ -627,6 +632,31 @@ test('saves, lists and deletes chats', async () => {
   assert.equal((await api(`${chats}/nope`)).status, 404);
   assert.ok((await api(`${chats}/chat_1`, { method: 'DELETE' })).json.ok);
   assert.deepEqual((await api(chats)).json.chats.map((c) => c.id), ['chat_2']);
+  // a sync app's conflict copy of a chat (the same chat continued on two computers) isn't listed twice
+  await fs.copyFile(path.join(p.path, '.spectrum', 'chats', 'chat_2.json'), path.join(p.path, '.spectrum', 'chats', 'chat_2_DESKTOP-AB12CD_Oct-17-1042-2026_Conflict.json'));
+  assert.deepEqual((await api(chats)).json.chats.map((c) => c.id), ['chat_2']);
+});
+
+test('conflict copies: marked in the tree, never documents, and one can take the original’s place', async () => {
+  const p = await newProject('Synced');
+  const doc = '\\documentclass{article}\\begin{document}%s\\end{document}\n';
+  const copy = 'thesis_DESKTOP-AB12CD_Oct-17-1042-2026_Conflict.tex';
+  await writeFile(p.id, 'thesis.tex', doc.replace('%s', 'mine'));
+  await writeFile(p.id, copy, doc.replace('%s', 'theirs'));
+  // OneDrive's kind, once Spectrum knows the computer's name from its presence file
+  await writeFile(p.id, 'thesis-DESKTOP-AB12CD.tex', doc.replace('%s', 'onedrive'));
+  assert.deepEqual((await api(`/api/projects/${p.id}/presence`, { method: 'POST' })).json, { ok: true, others: [] });
+  await fs.writeFile(path.join(p.path, '.spectrum', 'open', `${crypto.randomUUID()}.json`), JSON.stringify({ host: 'DESKTOP-AB12CD', since: new Date().toISOString(), at: new Date().toISOString() }));
+  assert.deepEqual((await api(`/api/projects/${p.id}/presence`, { method: 'POST' })).json.others.map((o) => o.host), ['DESKTOP-AB12CD']);
+
+  const tree = (await api(`/api/projects/${p.id}/tree`)).json;
+  assert.deepEqual(tree.conflicts, { [copy]: 'thesis.tex', 'thesis-DESKTOP-AB12CD.tex': 'thesis.tex' });
+  assert.deepEqual(tree.documents, ['thesis.tex']);
+  assert.equal((await api(`/api/projects/${p.id}/conflict-copy/use`, { method: 'POST', body: { path: 'thesis.tex' } })).status, 400);
+  assert.deepEqual((await api(`/api/projects/${p.id}/conflict-copy/use`, { method: 'POST', body: { path: copy } })).json, { ok: true, original: 'thesis.tex' });
+  assert.equal(await readFile(p.id, 'thesis.tex'), doc.replace('%s', 'theirs'));
+  assert.ok(!existsSync(path.join(p.path, copy)));
+  assert.ok((await api(`/api/projects/${p.id}/presence`, { method: 'DELETE' })).json.ok);
 });
 
 test('imports a zip, unwrapping a single top-level folder', async (t) => {
@@ -1031,13 +1061,13 @@ test('restore moves aside files versions never captured instead of overwriting t
   const versions = `/api/projects/${p.id}/versions`;
   await fs.writeFile(path.join(p.path, 'data.csv'), 'a,b\n1,2\n');
   await writeFile(p.id, 'main.tex', 'v1');
-  assert.ok((await api(versions, { method: 'POST', body: {} })).json.version);
+  const { id } = (await api(versions, { method: 'POST', body: {} })).json.version;
   const big = Buffer.alloc(51 * 1024 * 1024, 120);
   await fs.writeFile(path.join(p.path, 'data.csv'), big);
 
-  const compare = (await api(`${versions}/1/compare`)).json.files;
+  const compare = (await api(`${versions}/${id}/compare`)).json.files;
   assert.deepEqual(compare.find((f) => f.path === 'data.csv')?.status, 'untracked');
-  const res = (await api(`${versions}/1/restore`, { method: 'POST', body: {} })).json;
+  const res = (await api(`${versions}/${id}/restore`, { method: 'POST', body: {} })).json;
   assert.ok(res.ok);
   assert.deepEqual(res.keptAside, ['data (before restore).csv']);
   assert.equal(await fs.readFile(path.join(p.path, 'data.csv'), 'utf8'), 'a,b\n1,2\n');
@@ -1056,8 +1086,8 @@ test('a broken link or unreadable file does not block versions', async () => {
     assert.ok(v.ok, v.error);
     assert.ok(v.version.summary.files.includes('main.tex'));
     assert.ok(!v.version.summary.files.includes('refs.bib'));
-    assert.ok((await api(`/api/projects/${p.id}/versions/1/compare`)).json.ok);
-    assert.ok((await api(`/api/projects/${p.id}/versions/1/restore`, { method: 'POST', body: {} })).json.ok);
+    assert.ok((await api(`/api/projects/${p.id}/versions/${v.version.id}/compare`)).json.ok);
+    assert.ok((await api(`/api/projects/${p.id}/versions/${v.version.id}/restore`, { method: 'POST', body: {} })).json.ok);
     assert.ok(existsSync(path.join(p.path, 'locked.log')), 'restore leaves an unreadable file alone');
     // the link itself can still be removed
     assert.ok((await api(`/api/projects/${p.id}/file?path=refs.bib`, { method: 'DELETE' })).json.ok);

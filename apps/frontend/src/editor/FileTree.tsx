@@ -95,6 +95,8 @@ const FileTree = forwardRef<
     filter: string;
     activePath: string;
     mainFile: string;
+    /** a sync app's conflict copies, each with its original's path */
+    conflicts?: Record<string, string>;
     onOpen(path: string): void;
     onRefresh(): Promise<void>;
     /** saves the open file, so a pending autosave can't land on top of an upload */
@@ -409,6 +411,11 @@ const FileTree = forwardRef<
             <Icon name={isDir ? 'folder' : fileIcon(node.path)} className="tree-icon" />
             {renaming ? input(inline) : <span className="tree-name">{node.name}</span>}
             {node.path === mainFile && <span className="tree-badge">Main</span>}
+            {props.conflicts?.[node.path] && (
+              <span className="tree-badge conflict" title={`Your sync app kept this copy of ${props.conflicts[node.path]} when both changed`}>
+                Conflict
+              </span>
+            )}
           </div>
           {open && (
             <div role="group">

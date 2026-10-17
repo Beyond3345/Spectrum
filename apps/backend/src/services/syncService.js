@@ -18,6 +18,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { DATA_DIR } from '../config/constants.js';
 import { readJson, writeJsonAtomic } from '../utils/fsUtils.js';
+import { looksLikeConflictCopy } from '../utils/conflictCopies.js';
 
 const CONFIG_PATH = path.join(DATA_DIR, 'sync.json');
 export const SHARED_DIR_NAME = '.spectrum-shared';
@@ -232,7 +233,7 @@ export async function unhideProject(id) {
  * A sync app's copy of something two computers changed at once: Synology's
  * <name>_<computer>_<Mon-DD-HHMM[SS]-YYYY>_<reason>[_n] and Dropbox's "<name> (<computer>'s conflicted copy <date>)".
  */
-export const isConflictCopy = (name) => /_[a-z]{3}-\d{1,2}-\d{4,6}-\d{4}_[a-z]+(?:_\d+)?(?:\.[^.]*)?$|conflicted copy/i.test(name);
+export const isConflictCopy = (name) => looksLikeConflictCopy(name);
 
 /**
  * Online-only files the sync app can't download right now (offline, or the NAS out of reach): macOS's File Provider
