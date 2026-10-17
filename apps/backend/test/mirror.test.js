@@ -58,7 +58,8 @@ let onBin = null;
 mirror.mirrorHooks({
   rootOf: async (id) => {
     const root = roots.get(id);
-    if (!root || !existsSync(path.join(root, '.spectrum', 'project.json'))) throw Object.assign(new Error('Folder missing.'), { code: 'PROJECT_MISSING' });
+    if (!root) throw Object.assign(new Error('Project not found.'), { code: 'PROJECT_NOT_FOUND' });
+    if (!existsSync(path.join(root, '.spectrum', 'project.json'))) throw Object.assign(new Error('Folder missing.'), { code: 'PROJECT_MISSING' });
     return root;
   },
   toBin: async (abs, cloud) => {
@@ -217,6 +218,14 @@ test('a missing, moved or emptied side never reads as everything deleted', async
   assert.deepEqual(await mirror.syncProject(p.id), { state: 'missing', message: 'Folder missing' });
   assert.deepEqual(userFiles(p.cloud), files);
   await fs.rename(`${p.root}-moved`, p.root);
+
+  // gone from the list (removed or binned by 1.8.0, which doesn't know about mirrors): the mirror goes too
+  const q = await project('Unlisted', { 'main.tex': 'main\n' });
+  synced(await syncTo(q));
+  roots.delete(q.id);
+  assert.equal(await mirror.syncProject(q.id), null);
+  assert.equal(await mirror.readMirror(q.id), null);
+  assert.ok(existsSync(path.join(q.cloud, 'main.tex')), 'its cloud copy stays');
 
   // the location not there (the drive not plugged in, the app signed out)
   await fs.rename(location, `${location}-away`);

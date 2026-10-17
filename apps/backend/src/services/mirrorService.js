@@ -240,7 +240,9 @@ async function mirror(id, record, label, force) {
   let localRoot;
   try {
     localRoot = await hooks.rootOf(id);
-  } catch {
+  } catch (err) {
+    // not in the list any more: removed or binned by 1.8.0 or 1.7.0, which don't know about mirrors
+    if (err.code === 'PROJECT_NOT_FOUND') return forget(id).then(() => null);
     return { state: 'missing', message: 'Folder missing' };
   }
   // the folder is in the location itself (moved there, or Locate… chose the cloud copy): a project used in place
