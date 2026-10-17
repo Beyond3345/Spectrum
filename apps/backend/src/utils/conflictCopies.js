@@ -1,11 +1,12 @@
 import path from 'path';
 
 // The copies a sync app makes when a file changed on two computers before it could sync, kept beside the original:
-//   Synology Drive  a_Andy-PC_Jan-03-0901-2013_CaseConflict_1.txt (<name>_<computer>_<Mon-DD-HHMM[SS]-YYYY>_<reason>[_n])
+//   Synology Drive  a_Andy-PC_Jan-03-0901-2013_CaseConflict_1.txt (<name>_<computer>_<Mon-D[D]-HHMM[SS]-YYYY>_<reason>[_n];
+//                   whether the day is padded isn't documented)
 //   Dropbox         a (Andy's conflicted copy 2013-01-03).txt, a (Case Conflict).txt
 //   OneDrive        a-DESKTOP-AB12CD.txt, which reads like any name with a dash, so only for a known computer's name
 //                   when a.txt is there too
-const SYNOLOGY = /^(.+)_(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{2}-\d{4}(?:\d{2})?-\d{4}_[A-Za-z]*Conflict[A-Za-z]*(?:_\d+)?$/i;
+const SYNOLOGY = /^(.+)_(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{1,2}-\d{4}(?:\d{2})?-\d{4}_[A-Za-z]*Conflict[A-Za-z]*(?:_\d+)?$/i;
 const DROPBOX = /^(.*\S) \((?:[^()]*conflicted copy[^()]*(?:\(\d+\))?|case conflict(?: \d+)?|unicode encoding conflict)\)(?: \(\d+\))?$/i;
 
 /** Whether a file or folder name is a Synology or Dropbox conflict copy, without knowing its original (scanning). */
