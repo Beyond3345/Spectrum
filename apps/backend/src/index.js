@@ -19,9 +19,11 @@ import { registerSearchRoutes } from './routes/search.js';
 import { registerSystemRoutes } from './routes/system.js';
 import { registerReferenceRoutes } from './routes/references.js';
 import { registerLanguageRoutes } from './routes/language.js';
+import { registerSyncRoutes } from './routes/sync.js';
 import { seedTemplates } from './services/templateService.js';
 import { dropOldAuxFolders, migrateLegacyProjects } from './services/projectService.js';
 import { killAllChildren } from './services/compileService.js';
+import { offlineMessage } from './services/syncService.js';
 import { isLocalRequest } from './utils/authUtils.js';
 
 const fastify = Fastify({ logger: true, bodyLimit: 50 * 1024 * 1024 });
@@ -45,10 +47,15 @@ fastify.addHook('onRequest', async (req, reply) => {
   }
 });
 
-fastify.setErrorHandler((err, req, reply) => {
+fastify.setErrorHandler(async (err, req, reply) => {
   let status = err.statusCode || 500;
   let message = err.message;
-  if (err.code === 'ENOENT') {
+  // ponytail: only errors that reach here; a route that catches its own (compile, transfer) shows the raw one
+  const offline = await offlineMessage(err).catch(() => null);
+  if (offline) {
+    status = 503;
+    message = offline;
+  } else if (err.code === 'ENOENT') {
     status = 404;
     message = 'File not found.';
   }
@@ -71,6 +78,7 @@ registerSearchRoutes(fastify);
 registerSystemRoutes(fastify);
 registerReferenceRoutes(fastify);
 registerLanguageRoutes(fastify);
+registerSyncRoutes(fastify);
 
 // Serve the built frontend (production and desktop modes)
 if (existsSync(FRONTEND_DIST)) {

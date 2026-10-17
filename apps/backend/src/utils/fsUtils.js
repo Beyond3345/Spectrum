@@ -68,8 +68,12 @@ export async function copyDir(src, dest) {
   }
 }
 
-// App data, VCS internals, legacy bookkeeping and Finder/Explorer litter never belong in the file tree, versions or AI context.
-export const HIDDEN_ENTRIES = new Set(['.spectrum', '.git', '.DS_Store', 'Thumbs.db', 'desktop.ini', '.compile', '.snapshots']);
+// App data, VCS internals, legacy bookkeeping, Finder/Explorer litter and sync apps' (and a Synology NAS's) own files
+// never belong in the file tree, versions or AI context.
+export const HIDDEN_ENTRIES = new Set([
+  '.spectrum', '.git', '.DS_Store', 'Thumbs.db', 'desktop.ini', '.compile', '.snapshots',
+  '.SynologyWorkingDirectory', '.dropbox', '.dropbox.cache', 'Icon\r', '@eaDir', '#recycle', '.spectrum-shared'
+]);
 
 /** Every file and folder under root, as '/'-separated paths from root on every system. */
 export async function listFilesRecursive(root, rel = '') {
