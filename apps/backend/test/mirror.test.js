@@ -477,6 +477,31 @@ test('a file changed here after the walk isn’t written over, and its edit come
   assert.deepEqual(Object.values(conflictCopies(userFiles(p.root))), ['b.tex']);
 });
 
+test('a file here that changes while it’s copied never reaches the cloud half written', async () => {
+  const p = await project('Torn', { 'main.tex': 'one\n' });
+  synced(await syncTo(p));
+  const local = path.join(p.root, 'main.tex');
+  const full = 'one\ntwo\nthree\n';
+  await write(local, 'one\ntwo\n');
+  const { copyFile } = fs;
+  // another app saving it in place, with no temp file, as it's read
+  fs.copyFile = async (src, dest, ...rest) => {
+    if (src !== local) return copyFile(src, dest, ...rest);
+    fs.copyFile = copyFile;
+    await fs.writeFile(dest, 'on');
+    await fs.writeFile(local, full);
+  };
+  try {
+    synced(await mirror.syncProject(p.id));
+  } finally {
+    fs.copyFile = copyFile;
+  }
+  assert.equal(read(path.join(p.cloud, 'main.tex')), 'one\n');
+  synced(await mirror.syncProject(p.id));
+  assert.equal(read(path.join(p.cloud, 'main.tex')), full);
+  assert.equal(read(local), full);
+});
+
 test('a "Before sync" version comes before what this computer wrote is replaced, and for the cloud’s at most every 10 minutes', async () => {
   const p = await project('Versions', { 'main.tex': 'one\n' });
   synced(await syncTo(p));

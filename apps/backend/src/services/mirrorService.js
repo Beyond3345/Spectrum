@@ -583,11 +583,14 @@ async function apply(ctx, it, held) {
     case 'toCloud':
     case 'conflict': {
       if (!(await unchanged(it.action === 'conflict' ? 'lc' : 'c'))) return later();
-      if (it.action === 'conflict') await fs.copyFile(it.fetched, await freePath(join(ctx.localRoot, conflictCopyPath(l.rel, ctx.label))), constants.COPYFILE_EXCL);
-      await place(ctx, ctx.cloudRoot, local, cloud);
-      const now = await statOf(local);
+      // copied and checked before anything reaches the cloud, where the next pass would take half a file for its edit
+      const copy = path.join(ctx.incoming, String(ctx.fetched++));
+      await fs.copyFile(local, copy);
       // changed while it was copied: the next pass copies it again
-      return sameStat(now, l) ? entry(l.rel, l.hash, now, await statOf(cloud), 'here') : later();
+      if (!sameStat(await statOf(local), l)) return later();
+      if (it.action === 'conflict') await fs.copyFile(it.fetched, await freePath(join(ctx.localRoot, conflictCopyPath(l.rel, ctx.label))), constants.COPYFILE_EXCL);
+      await place(ctx, ctx.cloudRoot, copy, cloud);
+      return entry(l.rel, l.hash, l, await statOf(cloud), 'here');
     }
     case 'toLocal': {
       if (!(await unchanged('l'))) return later();
