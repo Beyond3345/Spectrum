@@ -107,11 +107,13 @@ export function mirrorSkips(rel) {
 /**
  * fs.readdir's entries with their types, a link's from lstat: Windows' readdir calls every reparse point a link, the
  * placeholders of OneDrive, Dropbox and iCloud too, and lstat tells those from a real link. One gone in between is left out.
+ * skipUnreadable: one that can't be lstat'ed is left out too, only for a listing that looks for folders by name (Windows'
+ * legacy junctions in the home folder deny it), never for a walk, where a folder left out reads as its files deleted.
  */
-export async function readdirTyped(dir) {
+export async function readdirTyped(dir, { skipUnreadable = false } = {}) {
   const entries = await fs.readdir(dir, { withFileTypes: true });
   const typed = await Promise.all(
-    entries.map((e) => (e.isSymbolicLink() ? fs.lstat(path.join(dir, e.name)).then((s) => Object.assign(s, { name: e.name }), (err) => (err.code === 'ENOENT' ? null : Promise.reject(err))) : e))
+    entries.map((e) => (e.isSymbolicLink() ? fs.lstat(path.join(dir, e.name)).then((s) => Object.assign(s, { name: e.name }), (err) => (err.code === 'ENOENT' || skipUnreadable ? null : Promise.reject(err))) : e))
   );
   return typed.filter(Boolean);
 }

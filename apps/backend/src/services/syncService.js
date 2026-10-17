@@ -160,7 +160,7 @@ export async function detectSyncRoots() {
     for (const account of Object.values(info && typeof info === 'object' ? info : {})) await add(account?.path, 'dropbox');
   }
   // classic Synology tasks go anywhere; ~/SynologyDrive is the default
-  for (const entry of await readdirTyped(home).catch(() => [])) {
+  for (const entry of await readdirTyped(home, { skipUnreadable: true }).catch(() => [])) {
     if (!entry.isDirectory() || entry.name.startsWith('.') || (process.platform === 'darwin' && PROTECTED.has(entry.name))) continue;
     if (await exists(path.join(home, entry.name, MARKER))) await add(path.join(home, entry.name), 'synology');
   }

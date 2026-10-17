@@ -3,7 +3,7 @@
 // sync folders. Run: npm test
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { promises as fs, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { promises as fs, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -38,7 +38,7 @@ const { registerProjectRoutes } = await import('../src/routes/projects.js');
 const { registerSyncRoutes } = await import('../src/routes/sync.js');
 const { registerCloudRoutes } = await import('../src/routes/cloud.js');
 const { registerSystemRoutes } = await import('../src/routes/system.js');
-const { isConflictCopy, offlineMessage, sharedDir } = await import('../src/services/syncService.js');
+const { detectSyncRoots, isConflictCopy, offlineMessage, sharedDir } = await import('../src/services/syncService.js');
 const { default: Fastify } = await import('fastify');
 
 const app = Fastify();
@@ -101,6 +101,21 @@ test('suggests the sync apps’ folders, each with where it would go, and adds o
   mkdirSync(path.join(drive, 'Spectrum'), { recursive: true });
   assert.match((await setFolders([drive, path.join(drive, 'Spectrum')])).json.message, /is inside/);
   assert.deepEqual(syncJson().folders, [{ path: drive, place: { provider: 'synology', label: 'Synology Drive', rel: '' } }]);
+});
+
+test('a classic Synology Drive task is found in the home folder when another entry there can’t be looked at', async () => {
+  // Windows' legacy Application Data junction, which denies the open lstat needs
+  const junction = path.join(home, 'Application Data');
+  mkdirSync(path.join(home, 'AppData', 'Roaming'), { recursive: true });
+  symlinkSync(path.join(home, 'AppData', 'Roaming'), junction, 'junction');
+  const { lstat } = fs;
+  fs.lstat = (p, ...rest) => (p === junction ? Promise.reject(Object.assign(new Error(`EPERM: operation not permitted, lstat '${p}'`), { code: 'EPERM' })) : lstat(p, ...rest));
+  try {
+    assert.ok((await detectSyncRoots()).some((r) => r.provider === 'synology' && r.path === drive));
+  } finally {
+    fs.lstat = lstat;
+    rmSync(junction);
+  }
 });
 
 test('lists the projects in a cloud location, three levels deep, for Download, without adding or writing to them', async () => {
