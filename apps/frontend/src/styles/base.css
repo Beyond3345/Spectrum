@@ -803,6 +803,8 @@ textarea.input {
 
 .path-row {
   display: flex;
+  /* as tall as its wrapped path, even straight in a pane that scrolls */
+  flex-shrink: 0;
   align-items: center;
   gap: 8px;
   min-height: 36px;
@@ -1249,6 +1251,8 @@ button.chip.active:hover {
 .sheet-actions {
   flex: none;
   display: flex;
+  /* buttons too wide for one line (a long cloud location's name) go onto two, not off the edge */
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   padding: 4px 22px 20px;
