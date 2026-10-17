@@ -1,6 +1,6 @@
 // A project and templates shared between two computers through a sync folder: presence files, conflict copies,
-// version history both computers write (and 1.7.0 still reads), settings and templates that follow the user.
-// Run: npm test
+// version history both computers write (and 1.7.0 still reads), settings and templates that follow the user, and the
+// cloud projects 1.7.0 and 1.8.0 still list. Run: npm test
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -21,17 +21,36 @@ const otherId = crypto.randomUUID();
 await fs.mkdir(path.join(tmp, 'data'), { recursive: true });
 await fs.mkdir(synced);
 await fs.writeFile(path.join(tmp, 'data', 'sync.json'), JSON.stringify({ machineId, machineName: 'MacBook', folders: [{ path: synced }], hidden: [] }));
-// the services read these when they're first imported
-process.env.SPECTRUM_DATA_DIR = path.join(tmp, 'data');
-process.env.SPECTRUM_TEMPLATE_DIR = templateDir;
-process.env.SPECTRUM_TEMPLATE_SEED_DIR = '';
+// the services read these when they're first imported; a home folder of its own, so looking for the sync apps'
+// folders never looks at the real ones
+await fs.mkdir(path.join(tmp, 'home'));
+Object.assign(process.env, {
+  HOME: path.join(tmp, 'home'),
+  USERPROFILE: path.join(tmp, 'home'),
+  SPECTRUM_DATA_DIR: path.join(tmp, 'data'),
+  SPECTRUM_PROJECTS_DIR: path.join(tmp, 'projects'),
+  SPECTRUM_TEMPLATE_DIR: templateDir,
+  SPECTRUM_TEMPLATE_SEED_DIR: '',
+  SPECTRUM_TEST_BIN_DIR: path.join(tmp, 'Bin')
+});
 const { conflictCopies } = await import('../src/utils/conflictCopies.js');
 const presence = await import('../src/services/presenceService.js');
 const versions = await import('../src/services/versionService.js');
 const templates = await import('../src/services/templateService.js');
+const projects = await import('../src/services/projectService.js');
 const { systemNames } = await import('../src/services/syncService.js');
+const { registerProjectRoutes } = await import('../src/routes/projects.js');
+const { registerCloudRoutes } = await import('../src/routes/cloud.js');
+const { default: Fastify } = await import('fastify');
 
-after(() => rmSync(tmp, { recursive: true, force: true }));
+const app = Fastify();
+registerProjectRoutes(app);
+registerCloudRoutes(app);
+after(async () => {
+  await app.close();
+  rmSync(tmp, { recursive: true, force: true });
+});
+const post = async (url, body = {}) => (await app.inject({ method: 'POST', url, payload: body })).json();
 
 const json = async (file) => JSON.parse(await fs.readFile(file, 'utf8'));
 const write = async (file, data) => {
@@ -506,4 +525,62 @@ test('a template changed in 1.7.0 is shared, and kept beside the PC’s when tha
     const listed = (await oldTemplates.readTemplateManifest()).templates.map((t) => t.id);
     for (const id of ['lab', 'lab-macbook', 'thesis-macbook', 'same', 'old']) assert.ok(listed.includes(id), `1.7.0 lists ${id}`);
   }
+});
+
+/** A release's services that import each other, from git, with this checkout's utils and config (the same since). */
+async function servicesAt(rev, names) {
+  const dir = path.join(tmp, rev);
+  await fs.mkdir(dir, { recursive: true });
+  for (const name of names) {
+    let code;
+    try {
+      code = execFileSync('git', ['show', `${rev}:apps/backend/src/services/${name}.js`], { cwd: here, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch {
+      return null;
+    }
+    await fs.writeFile(path.join(dir, `${name}.mjs`), code
+      .replaceAll("'../utils/", `'${pathToFileURL(path.join(src, 'utils'))}/`)
+      .replaceAll("'../config/", `'${pathToFileURL(path.join(src, 'config'))}/`)
+      .replace(/'\.\/(\w+)\.js'/g, "'./$1.mjs'"));
+  }
+  return import(pathToFileURL(path.join(dir, `${names[0]}.mjs`)));
+}
+// 1.8.0 kept projects in place in its synced folders, which are the cloud locations now
+const v18 = await servicesAt(process.env.SPECTRUM_18_REV || 'ac37fa6', ['projectService', 'syncService', 'presenceService']);
+const oldProjects = await oldService('projectService');
+let made;
+/** This build's cloud projects: one mirrored (its folder here, a copy in the location) and one moved there. */
+const cloudProjects = () => (made ||= (async () => {
+  const make = async (name, mode) => {
+    const p = await post('/api/projects', { name });
+    await fs.writeFile(path.join(p.path, 'main.tex'), `${name}\n`);
+    return (await post(`/api/projects/${p.id}/cloud`, { location: synced, mode })).project;
+  };
+  return { mirrored: await make('Mirrored', 'mirror'), moved: await make('Moved', 'move') };
+})());
+const where = (list, id) => list.filter((p) => p.id === id).map((p) => [p.path, p.missing]);
+
+test('1.8.0 lists a mirrored project at its own folder, never its cloud copy too, and a moved one in the location', { skip: !v18 && 'no 1.8.0 in git (set SPECTRUM_18_REV)' }, async () => {
+  const { mirrored, moved } = await cloudProjects();
+  assert.deepEqual([mirrored.cloud.mode, moved.cloud.mode], ['mirror', 'move']);
+  const listed = (await v18.projectsPage({ scan: true })).projects;
+  assert.deepEqual(where(listed, mirrored.id), [[mirrored.path, false]]);
+  assert.deepEqual(where(listed, moved.id), [[path.join(synced, 'Moved'), false]]);
+  assert.ok(!listed.some((p) => p.path === path.join(synced, 'Mirrored')), 'the cloud copy isn’t a project of its own');
+  // back on 1.8.0, new projects go in the first location again (the CHANGELOG says so)
+  assert.equal(await v18.newProjectsDir(), synced);
+
+  // and on this build again: still mirrored and moved, and what 1.8.0 found in the location is in place
+  const now = await projects.listProjects();
+  assert.equal(now.find((p) => p.id === mirrored.id).cloud.mode, 'mirror');
+  assert.equal(now.find((p) => p.id === moved.id).cloud.mode, 'move');
+  assert.equal(now.find((p) => p.path === path.join(synced, 'Shared paper'))?.cloud.mode, 'move');
+  for (const entry of (await json(path.join(tmp, 'data', 'registry.json'))).projects) assert.deepEqual(Object.keys(entry).sort(), ['addedAt', 'archived', 'id', 'name', 'path', 'tags']);
+});
+
+test('1.7.0 lists them both at their own folders', { skip: !oldProjects && 'no v1.7.0 in git (set SPECTRUM_OLD_REV)' }, async () => {
+  const { mirrored, moved } = await cloudProjects();
+  const listed = await oldProjects.listProjects();
+  assert.deepEqual(where(listed, mirrored.id), [[mirrored.path, false]]);
+  assert.deepEqual(where(listed, moved.id), [[path.join(synced, 'Moved'), false]]);
 });
