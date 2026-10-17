@@ -2,9 +2,10 @@ import { diffLines } from 'diff';
 
 // Three-way merge by lines, as git merge-file does it (diff3): each side's changes from the base become hunks in the
 // base's lines, and hunks from the two sides that overlap or touch must give the same text, else it's a conflict.
-// ponytail: where the base repeats a line (\end{itemize}, blank lines) the diff can place a change one copy away from
-// where git does; both sides' lines are still all kept, and fuzzing against git merge-file found no clean merge that
-// differs in more than blank lines. Diff with git's own heuristics if that ever shows
+// ponytail: where the base repeats a line (\hline, a brace, blank lines) the diff can still, rarely, place a change one
+// copy away from where git does, so a merge git calls a conflict comes out clean or the other way round. Every line
+// either side added is kept; what a clean one can undo is a deletion of a repeated line. Fuzzing against git
+// merge-file on text made only of such lines finds about 1 case in 300. Diff with git's own heuristics if that shows
 
 // past this many changed lines a diff takes long, and a merge of that much is better left to the user
 const MAX_EDIT_LENGTH = 2000;
@@ -28,7 +29,36 @@ function hunks(base, other) {
     if (part.removed) hunk.end = at += part.count;
     else hunk.lines.push(...lines(part.value));
   }
-  return found;
+  return compact(found, lines(base));
+}
+
+/**
+ * A deletion or an insertion the diff left a run of repeated lines away from the side's previous change is slid up to
+ * it, as git's diff does, so one change (\hline made \midrule, say) is one hunk and meets the other side's.
+ */
+function compact(found, base) {
+  const out = [];
+  for (const h of found) {
+    const a = out.at(-1);
+    const g = a ? h.start - a.end : 0;
+    let ok = g > 0;
+    if (ok && h.end > h.start && !h.lines.length) {
+      for (let k = 1; ok && k <= g; k++) ok = base[h.start - k] === base[h.end - k];
+      if (ok) {
+        a.end += h.end - h.start;
+        continue;
+      }
+    } else if (ok && h.end === h.start) {
+      const y = [...h.lines];
+      for (let k = 1; ok && k <= g; k++) if ((ok = base[h.start - k] === y.at(-1))) y.unshift(y.pop());
+      if (ok) {
+        a.lines.push(...y);
+        continue;
+      }
+    }
+    out.push({ ...h, lines: [...h.lines] });
+  }
+  return out;
 }
 
 /** The merged text, or null where both sides changed the same or touching lines differently (or too much to tell). */

@@ -43,6 +43,13 @@ test('lines the base repeats (\\end{itemize}, blank lines) keep each side’s ch
   );
 });
 
+test('a repeated line one side deleted merges as in git: a conflict where the other changed it', () => {
+  // here a double rule made single, there its first rule made \midrule
+  assert.equal(merge3(doc('a & b \\\\', '\\hline', '\\hline', 'c & d \\\\'), doc('a & b \\\\', '\\hline', 'c & d \\\\'), doc('a & b \\\\', '\\midrule', '\\hline', 'c & d \\\\')), null);
+  // a stray brace removed here, an argument edited there
+  assert.equal(merge3(doc('\\foo{', '}', '}'), doc('\\foo{', '}'), doc('\\foo{x', '}', '}')), doc('\\foo{x', '}'));
+});
+
 test('lines added at the start and at the end both go in', () => {
   assert.equal(merge3(doc('a', 'b', 'c'), doc('first', 'a', 'b', 'c'), doc('a', 'b', 'c', 'last')), doc('first', 'a', 'b', 'c', 'last'));
 });
