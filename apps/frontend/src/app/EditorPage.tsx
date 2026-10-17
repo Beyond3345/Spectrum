@@ -476,7 +476,8 @@ function Editor({ projectId }: { projectId: string }) {
     const action = onDiskChange({ queued, changed: !!heldRef.current.get(path), unsaved: hasUnsaved(path), mine: filesRef.current.get(path), disk: disk && disk.content });
     if (action === 'wait') return;
     if (!disk) {
-      if (tabsRef.current.includes(path)) hold(path, null);
+      // a closed tab's unsaved text is kept like an open one's, so leaving writes it as a copy
+      if (tabsRef.current.includes(path) || unsavedRef.current.has(path)) hold(path, null);
       else for (const cache of [filesRef.current, hashesRef.current, statesRef.current] as Map<string, unknown>[]) cache.delete(path);
     } else if (action === 'ask') hold(path, { theirs: disk.content, hash: disk.hash });
     else adoptDiskText(path, disk.content, disk.hash);
@@ -708,7 +709,8 @@ function Editor({ projectId }: { projectId: string }) {
   /** Each held file with text here that isn't on disk, and the conflict copy beside it that leaving keeps it in. */
   const heldCopies = () =>
     [...heldRef.current.keys()]
-      .filter(hasUnsaved)
+      // never an empty copy: only text this editor still has
+      .filter((path) => hasUnsaved(path) && filesRef.current.has(path))
       .map((path) => ({ path, copy: conflictCopyPath(path, machineRef.current, new Date()), content: filesRef.current.get(path) ?? '' }));
 
   /**

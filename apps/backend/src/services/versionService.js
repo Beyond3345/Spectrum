@@ -261,6 +261,9 @@ function findVersion(versions, versionId) {
 export async function listVersions(root) {
   const { versions, unindexed } = await readVersions(root);
   // put them back for 1.7.0, which otherwise doesn't list them and deletes their stored files in its clean-up
+  // ponytail: a version another computer has just deleted can be written back as an entry here when its index.json
+  // arrives before the manifest's deletion; the entry then lists a version that won't open (its contents are never
+  // at risk). Repair only ids at or above index.json's nextId if that ever matters
   if (unindexed) {
     await locked(async () => {
       const again = await readVersions(root);

@@ -224,8 +224,10 @@ export async function foldersAt(place) {
   const found = [];
   for (const top of tops) {
     if (top.rel.length >= parts.length || top.rel.some((s, i) => !sameFolder(s, parts[i]))) continue;
-    const p = path.join(top.path, ...parts.slice(top.rel.length));
-    if (!found.some((q) => sameFolder(q, p))) found.push(p);
+    // by its real path, so one folder reached through a link (or a junction above the sync app's folder) counts once;
+    // a place that isn't here drops out
+    const p = await fs.realpath(path.join(top.path, ...parts.slice(top.rel.length))).catch(() => null);
+    if (p && !found.some((q) => sameFolder(q, p))) found.push(p);
   }
   return found;
 }
