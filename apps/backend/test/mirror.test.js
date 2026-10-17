@@ -51,7 +51,7 @@ const { listFilesRecursive } = await import('../src/utils/fsUtils.js');
 
 // this computer's project folders by id, as the registry would give them
 const roots = new Map();
-// what went to the Bin: [{ abs, cloud }]; binFails: the cloud side's volume has none
+// what went to the Bin: [{ abs, cloud }]; binFails: the volume has none
 const binned = [];
 let binFails = false;
 // run as a file goes to the Bin, which a pass does before anything else: to change a file mid-pass
@@ -63,9 +63,9 @@ mirror.mirrorHooks({
     if (!existsSync(path.join(root, '.spectrum', 'project.json'))) throw Object.assign(new Error('Folder missing.'), { code: 'PROJECT_MISSING' });
     return root;
   },
-  toBin: async (abs, cloud) => {
-    if (cloud && binFails) throw new Error('No Bin on this volume.');
-    binned.push({ abs, cloud, text: readFileSync(abs, 'utf8') });
+  toBin: async (abs) => {
+    if (binFails) throw new Error('No Bin on this volume.');
+    binned.push({ abs, cloud: abs.startsWith(location + path.sep), text: readFileSync(abs, 'utf8') });
     await fs.rm(abs);
     await onBin?.();
   }
@@ -569,6 +569,24 @@ test('a deletion goes to the Bin unless this computer’s history holds the file
   assert.deepEqual(binned.splice(0).map((b) => [path.relative(p.root, b.abs).split(path.sep).join('/'), b.cloud]).sort(), [['.spectrum/chats/c2.json', false], ['main.pdf', false]]);
   synced(await mirror.syncProject(p.id));
   sameTree(p.root, p.cloud);
+});
+
+test('a file deleted there that no version holds goes into the project’s app data when the drive here has no Bin', async () => {
+  const p = await project('No Bin here', { 'main.tex': '\\documentclass{article}\n', 'main.pdf': '%PDF' });
+  synced(await syncTo(p));
+  // a compiled PDF, which versions leave out
+  await fs.rm(path.join(p.cloud, 'main.pdf'));
+  binFails = true;
+  try {
+    synced(await mirror.syncProject(p.id));
+  } finally {
+    binFails = false;
+  }
+  const day = new Date().toISOString().slice(0, 10);
+  assert.equal(read(path.join(p.root, '.spectrum', 'deleted', day, 'main.pdf')), '%PDF');
+  assert.deepEqual(userFiles(p.root), ['main.tex']);
+  synced(await mirror.syncProject(p.id));
+  assert.ok(!existsSync(path.join(p.cloud, '.spectrum', 'deleted')), 'never mirrored');
 });
 
 test('a file deleted there goes to the Bin when the version that would hold it goes there too', async () => {

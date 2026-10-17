@@ -63,10 +63,10 @@ const attention = (message) => ({ state: 'attention', message });
 
 const defaults = {
   rootOf: getProjectRoot,
-  // on the cloud side never through Finder, which on a volume without a Bin (a NAS) asks before deleting for good:
-  // macOS 15's trash command fails there instead (not with the tests' stand-in for the Bin, which moveToBin uses)
-  toBin: async (abs, cloud) => {
-    if (!cloud || process.platform !== 'darwin' || process.env.SPECTRUM_TEST_BIN_DIR) return moveToBin(abs);
+  // never through Finder, which on a volume without a Bin (a NAS) asks before deleting for good: macOS 15's trash
+  // command fails there instead (not with the tests' stand-in for the Bin, which moveToBin uses)
+  toBin: async (abs) => {
+    if (process.platform !== 'darwin' || process.env.SPECTRUM_TEST_BIN_DIR) return moveToBin(abs);
     try {
       await execFileAsync('/usr/bin/trash', [abs]);
     } catch (err) {
@@ -84,7 +84,7 @@ export function mirrorHooks(next = {}) {
 }
 
 /** A cloud copy, or a file in one, to the Bin as the mirror sends one: through Finder only on the home folder's volume. */
-export const cloudToBin = (abs) => hooks.toBin(abs, true);
+export const cloudToBin = (abs) => hooks.toBin(abs);
 
 // ─── Records ───
 
@@ -674,7 +674,14 @@ async function apply(ctx, it, held) {
       if (!(await unchanged('l'))) return later();
       // for good when the version just made holds it, and the app's files but a chat, which nothing else keeps; else the Bin
       if ((inApp(it.key) && !it.key.startsWith('.spectrum/chats/')) || held[l.rel] === l.hash) await fs.rm(local, { force: true });
-      else await hooks.toBin(local, false);
+      else {
+        await hooks.toBin(local).catch(async () => {
+          // no Bin on that drive (a network share, a USB disk): into the project's app data, which the mirror passes by
+          const aside = await freePath(appPath(ctx.localRoot, 'deleted', new Date().toISOString().slice(0, 10), ...l.rel.split('/')));
+          await fs.mkdir(path.dirname(aside), { recursive: true });
+          await renameOver(local, aside);
+        });
+      }
       await pruneUp(ctx.localRoot, local);
       return null;
     }
@@ -690,7 +697,7 @@ async function removeCloud(ctx, it, abs) {
   const { hash } = it.c;
   if (inApp(it.key) || (await exists(appPath(ctx.localRoot, 'history', 'objects', hash.slice(0, 2), `${hash}.gz`)))) return fs.rm(abs, { force: true });
   try {
-    await hooks.toBin(abs, true);
+    await hooks.toBin(abs);
   } catch {
     // ponytail: never emptied; clear out days older than a month if it grows
     const aside = await freePath(join(ctx.record.location, ['.spectrum-bin', new Date().toISOString().slice(0, 10), ctx.record.rel, it.c.rel].filter(Boolean).join('/')));
