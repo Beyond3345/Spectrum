@@ -11,6 +11,7 @@
 //   DATA_DIR/mirror/<id>/incoming/      the cloud's files read during a pass, where nothing else looks
 import { promises as fs, constants } from 'fs';
 import path from 'path';
+import os from 'os';
 import crypto from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -63,8 +64,17 @@ const attention = (message) => ({ state: 'attention', message });
 const defaults = {
   rootOf: getProjectRoot,
   // on the cloud side never through Finder, which on a volume without a Bin (a NAS) asks before deleting for good:
-  // macOS 14's trash command fails there instead (not with the tests' stand-in for the Bin, which moveToBin uses)
-  toBin: (abs, cloud) => (cloud && process.platform === 'darwin' && !process.env.SPECTRUM_TEST_BIN_DIR ? execFileAsync('/usr/bin/trash', [abs]) : moveToBin(abs))
+  // macOS 15's trash command fails there instead (not with the tests' stand-in for the Bin, which moveToBin uses)
+  toBin: async (abs, cloud) => {
+    if (!cloud || process.platform !== 'darwin' || process.env.SPECTRUM_TEST_BIN_DIR) return moveToBin(abs);
+    try {
+      await execFileAsync('/usr/bin/trash', [abs]);
+    } catch (err) {
+      // macOS 13 and 14 have no trash command: Finder's Bin then, but only on the home folder's volume, which has one
+      if (err.code !== 'ENOENT' || (await fs.stat(abs)).dev !== (await fs.stat(os.homedir())).dev) throw err;
+      await moveToBin(abs);
+    }
+  }
 };
 let hooks = defaults;
 
@@ -73,7 +83,7 @@ export function mirrorHooks(next = {}) {
   hooks = { ...defaults, ...next };
 }
 
-/** A cloud copy, or a file in one, to the Bin as the mirror sends one: never through Finder. */
+/** A cloud copy, or a file in one, to the Bin as the mirror sends one: through Finder only on the home folder's volume. */
 export const cloudToBin = (abs) => hooks.toBin(abs, true);
 
 // ─── Records ───
