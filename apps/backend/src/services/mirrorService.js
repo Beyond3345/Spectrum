@@ -166,7 +166,7 @@ export function mirrorStatus(id) {
 /**
  * Bring the project and its cloud copy into step after any pass before it, whichever project's; resolves to the
  * status, or null when it isn't mirrored. A project already waiting for its turn goes once. force: Sync anyway, past
- * the brake on deleting many files.
+ * the brake on deleting many files for the deletions it last held back.
  */
 export function syncProject(id, { force = false } = {}) {
   let next = waiting.get(id);
@@ -333,8 +333,10 @@ async function mirror(id, record, label, force) {
   }
 
   // a pass that would delete a good part of a side is more likely a sync app halfway through than the user; of all its
-  // files, and of the user's alone, which a long history would otherwise hide
-  const count = (action, user) => items.filter((it) => it.action === action && !(user && inApp(it.key))).length;
+  // files, and of the user's alone, which a long history would otherwise hide. Sync anyway lets through the deletions
+  // the brake held back last, and only those: any others are counted again
+  const approved = new Set(force ? statuses.get(id)?.deleting : []);
+  const count = (action, user) => items.filter((it) => it.action === action && !approved.has(it.key) && !(user && inApp(it.key))).length;
   const users = (side) => [...side.files.keys()].filter((key) => !inApp(key)).length;
   const brake = [
     [count('deleteLocal'), here.files.size, 'on this computer'],
@@ -342,10 +344,10 @@ async function mirror(id, record, label, force) {
     [count('deleteLocal', true), users(here), 'on this computer'],
     [count('deleteCloud', true), users(there), `in ${label}`]
   ].find(([n, of]) => n > 5 && n > of / 4);
-  if (brake && !force) {
-    problems.unshift(`Syncing would delete ${brake[0]} files ${brake[2]}, so nothing has been deleted. Check the project, then choose Sync anyway if that’s right.`);
-    for (const it of items) if (it.action.startsWith('delete')) it.action = 'keep';
-  }
+  const braked = brake ? items.filter((it) => it.action.startsWith('delete') && !approved.has(it.key)) : [];
+  const more = brake && items.some((it) => it.action.startsWith('delete') && approved.has(it.key));
+  if (brake) problems.unshift(`Syncing would delete ${brake[0]} ${more ? 'more ' : ''}files ${brake[2]}, so ${more ? 'those haven’t' : 'nothing has'} been deleted. Check the project, then choose Sync anyway if that’s right.`);
+  for (const it of braked) it.action = 'keep';
   // history objects are named by their content: whichever side lacks one gets it, and none is ever deleted (so a
   // clean-up on one computer, 1.7.0's or 1.8.0's, doesn't spread)
   let history = false;
@@ -391,7 +393,7 @@ async function mirror(id, record, label, force) {
     problems.push((await offlineMessage(err).catch(() => null)) || `“${path.basename(stuck)}” hasn’t synced: ${err.message}`);
   }
   // brake: what Sync anyway is for, which nothing else needing attention is
-  if (problems.length) return { ...attention(problems[0]), ...(brake && !force && { brake: true }) };
+  if (problems.length) return { ...attention(problems[0]), ...(brake && { brake: true, deleting: braked.map((it) => it.key) }) };
   // still to come: not in step, which Stop syncing › Delete needs
   if (unread.size) return { state: 'syncing', message: `${unread.size} file${unread.size > 1 ? 's' : ''} still to come from ${label}` };
   return { state: 'synced', at: new Date().toISOString() };

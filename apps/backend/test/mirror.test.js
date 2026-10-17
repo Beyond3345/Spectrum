@@ -396,6 +396,23 @@ test('deleting a good part of a side waits for Sync anyway', async () => {
   assert.deepEqual(userFiles(p.root), ['ch8.tex', 'ch9.tex', 'new.tex']);
 });
 
+test('Sync anyway deletes only what the brake held back, and counts any other deletion again', async () => {
+  const files = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`ch${i}.tex`, `chapter ${i}\n`]));
+  const p = await project('Brake again', files);
+  synced(await syncTo(p));
+  const gone = (from, to) => Promise.all(Array.from({ length: to - from }, (_, i) => fs.rm(path.join(p.cloud, `ch${from + i}.tex`))));
+  await gone(0, 8);
+  assert.match((await mirror.syncProject(p.id)).message, /would delete 8 files on this computer/);
+  // more going in the cloud copy before Sync anyway (the sync app halfway through bringing them again, say)
+  await gone(8, 16);
+  const status = await mirror.syncProject(p.id, { force: true });
+  assert.equal(status.brake, true);
+  assert.match(status.message, /would delete 8 more files on this computer, so those haven’t been deleted/);
+  assert.deepEqual(userFiles(p.root), Array.from({ length: 12 }, (_, i) => `ch${i + 8}.tex`).sort());
+  synced(await mirror.syncProject(p.id, { force: true }));
+  assert.deepEqual(userFiles(p.root), ['ch16.tex', 'ch17.tex', 'ch18.tex', 'ch19.tex']);
+});
+
 test('the brake counts the user’s files apart, so a long history doesn’t hide most of them going', async () => {
   const files = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`ch${i}.tex`, `chapter ${i}\n`]));
   const p = await project('Long history', { 'main.tex': 'main\n', ...files });
