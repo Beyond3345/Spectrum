@@ -270,6 +270,27 @@ test('a missing, moved or emptied side never reads as everything deleted', async
   synced(await mirror.syncProject(p.id));
 });
 
+test('a copy followed to another folder with its id (a Finder duplicate) starts with no base, so nothing newer here is undone', async () => {
+  const p = await project('Duplicate', { 'main.tex': 'submitted text\n', 'refs.bib': '@a\n' });
+  synced(await syncTo(p));
+  // a snapshot made in Finder when the paper was submitted: the same project.json, so the same id
+  const snapshot = path.join(location, 'Duplicate - submitted');
+  await fs.cp(p.cloud, snapshot, { recursive: true });
+  await write(path.join(p.root, 'main.tex'), 'revised after review\n');
+  await write(path.join(p.root, 'response.tex'), 'response to reviewers\n');
+  await versions.createVersion(p.root, { label: 'Revised' });
+  synced(await mirror.syncProject(p.id));
+  // the copy it synced with goes (Stop syncing › Delete on another computer): the duplicate is followed, as a union
+  await fs.rename(p.cloud, path.join(tmp, 'Duplicate-binned'));
+  synced(await mirror.syncProject(p.id));
+  assert.equal((await mirror.readMirror(p.id)).rel, 'Duplicate - submitted');
+  assert.equal(read(path.join(p.root, 'main.tex')), 'revised after review\n');
+  assert.equal(read(path.join(p.root, 'response.tex')), 'response to reviewers\n');
+  assert.deepEqual(Object.values(conflictCopies(userFiles(p.root))), ['main.tex']);
+  assert.ok((await latestLabels(p.root)).includes('Revised'));
+  assert.ok(!binned.some((b) => b.abs.startsWith(p.root)));
+});
+
 test('a cloud copy going while a pass walks it is waited for, never taken for deletions', async () => {
   const p = await project('Going', { 'main.tex': 'main\n', 'figs/a.png': 'a', 'figs/b.png': 'b' });
   await versions.createVersion(p.root);

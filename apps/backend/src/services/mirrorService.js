@@ -263,10 +263,13 @@ async function mirror(id, record, label, force) {
   let cloudRoot = cloudRootOf(record);
   const cloudMeta = await readJson(join(cloudRoot, META)).catch((err) => (err instanceof SyntaxError ? {} : absent(err)));
   if (!cloudMeta) {
-    // moved or renamed in the location: followed there, never unlinked by itself (the sync app may be bringing it back)
+    // moved or renamed in the location: followed there, never unlinked by itself (the sync app may be bringing it
+    // back). With no base, as the folder found may be another copy (a Finder duplicate made weeks ago): the first pass
+    // there is a union, which deletes and overwrites nothing
     const rel = await findCopy(record.location, id);
     if (rel === null) return { state: 'not-found', message: `Not in ${label}` };
     record.rel = rel;
+    record.files = {};
     cloudRoot = cloudRootOf(record);
     await writeJsonAtomic(recordPath(id), record);
   } else if (cloudMeta.id !== id) return attention(`The copy in ${label} holds another project now.`);

@@ -242,18 +242,25 @@ export function registerCloudRoutes(fastify) {
     if (!project.cloud) throw httpError(`“${project.name}” isn’t syncing.`, 400);
     const { mode, label, location } = project.cloud;
     if (mode === 'mirror') {
-      if (deleteCloud) {
-        // the copy here is all that will be left, so it must be here
-        await getProjectRoot(id);
-        const cloudRoot = cloudRootOf(await readMirror(id));
-        await refuseDelete(id, project.name, cloudRoot, label);
-        // the cloud copy may still hold work this computer hasn't had
-        const status = await syncProject(id);
-        if (status.state !== 'synced') throw httpError(`“${project.name}” isn’t in step with ${label} yet${status.message ? ` (${status.message})` : ''}. Sync it first, or keep the copy in ${label}.`, 409);
-        await binCloudCopy(cloudRoot, location);
+      if (!deleteCloud) {
+        await unlinkMirror(id);
+        return { project: await getProject(id) };
       }
+      // the copy here is all that will be left, so it must be here
+      await getProjectRoot(id);
+      const cloudRoot = cloudRootOf(await readMirror(id));
+      await refuseDelete(id, project.name, cloudRoot, label);
+      // the cloud copy may still hold work this computer hasn't had
+      const status = await syncProject(id);
+      if (status.state !== 'synced') throw httpError(`“${project.name}” isn’t in step with ${label} yet${status.message ? ` (${status.message})` : ''}. Sync it first, or keep the copy in ${label}.`, 409);
+      // unlinked first, so a pass a save or the minute queued meanwhile finds no mirror, rather than the copy gone and
+      // another folder with the project's id (a Finder duplicate) to follow
       await unlinkMirror(id);
-      return { project: await getProject(id) };
+      const warning = await binCloudCopy(cloudRoot, location).then(
+        () => undefined,
+        (err) => `Stopped syncing, but the copy in ${label} couldn’t be deleted (${err.message}). It’s still at ${cloudRoot}.`
+      );
+      return { project: await getProject(id), ...(warning && { warning }) };
     }
     const root = await getProjectRoot(id);
     const parent = await defaultFolder(req.body?.parentDir);
