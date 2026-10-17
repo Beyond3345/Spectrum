@@ -312,6 +312,8 @@ async function mirror(id, record, label, force) {
   } else if (cloudMeta.id !== id) return attention(`The copy in ${label} holds another project now.`);
   else metaGone.delete(id);
 
+  // the copy's identity now, before anything can move it: a rename during the pass keeps it, and the path then has none
+  const folder = await folderOf(cloudRoot);
   const here = await walk(localRoot);
   const there = await walk(cloudRoot);
   // project.json gone from a walk: that side is going, or can't be seen into, so nothing is decided from it. Read again
@@ -432,7 +434,7 @@ async function mirror(id, record, label, force) {
   }
   // 1.7.0 lists the versions in index.json, which this computer's copy (kept on a conflict) may lack
   if (history) await listVersions(localRoot).catch(() => {});
-  await writeJsonAtomic(recordPath(id), { ...record, files: next, folder: await folderOf(cloudRoot) });
+  await writeJsonAtomic(recordPath(id), { ...record, files: next, folder });
   await storeBases(ctx, next);
 
   // a file that couldn't be read 3 passes running (OneDrive's download notice turned off, say) needs the user

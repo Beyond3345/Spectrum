@@ -353,6 +353,37 @@ test('a cloud copy renamed while a sync app brings a file to its old path is fol
   }
 });
 
+test('a cloud copy renamed during a pass keeps its base, so the other computer’s edits and deletions there come across', async () => {
+  const p = await project('Mid-pass', { 'main.tex': 'one\n', 'old.tex': 'old\n', 'refs.bib': '@a\n' });
+  synced(await syncTo(p));
+  const local = path.join(p.root, 'refs.bib');
+  await write(local, '@a\n@b\n');
+  const renamed = path.join(location, 'Mid-pass 2026');
+  const { copyFile } = fs;
+  // the other computer's rename of the copy arrives while this pass copies the edit for it
+  fs.copyFile = async (src, dest, ...rest) => {
+    await copyFile(src, dest, ...rest);
+    if (src === local) {
+      fs.copyFile = copyFile;
+      await fs.rename(p.cloud, renamed);
+    }
+  };
+  try {
+    assert.equal((await mirror.syncProject(p.id)).state, 'syncing');
+  } finally {
+    fs.copyFile = copyFile;
+  }
+  await write(path.join(renamed, 'main.tex'), 'one, revised on the other computer\n');
+  await fs.rm(path.join(renamed, 'old.tex'));
+  synced(await mirror.syncProject(p.id));
+  assert.equal((await mirror.readMirror(p.id)).rel, 'Mid-pass 2026');
+  for (const root of [p.root, renamed]) {
+    assert.deepEqual(userFiles(root), ['main.tex', 'refs.bib'], root);
+    assert.equal(read(path.join(root, 'main.tex')), 'one, revised on the other computer\n', root);
+    assert.equal(read(path.join(root, 'refs.bib')), '@a\n@b\n', root);
+  }
+});
+
 test('a cloud copy’s .spectrum without project.json is waited for 10 minutes at most, but for iCloud Drive’s stand-in', async () => {
   const { now } = Date;
   const waiting = { state: 'waiting', message: `Waiting for ${LABEL}` };
