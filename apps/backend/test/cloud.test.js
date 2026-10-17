@@ -312,3 +312,15 @@ test('Sync now runs a mirrored project’s pass; a moved one syncs through its a
   assert.equal((await post(`/api/projects/${ids.backedUp}/cloud/sync`)).json.message, 'OneDrive keeps “Backed up” in step itself.');
   assert.equal((await post(`/api/projects/${ids.moving}/cloud/sync`)).json.message, '“Moving” isn’t syncing.');
 });
+
+test('this computer’s list goes in every cloud location, so any computer sharing one sees what it works on there', async () => {
+  const nas = path.join(drive, 'Spectrum');
+  mkdirSync(nas);
+  assert.equal((await api('/api/sync', { method: 'PATCH', body: { folders: [loc, nas] } })).status, 200);
+  await list();
+  const { machineId } = JSON.parse(read(tmp, 'data', 'sync.json'));
+  for (const folder of [loc, nas]) {
+    const { projects } = JSON.parse(read(folder, '.spectrum-shared', 'machines', `${machineId}.json`));
+    assert.ok(projects.some((p) => p.id === ids.backedUp && p.mirror === false), folder);
+  }
+});

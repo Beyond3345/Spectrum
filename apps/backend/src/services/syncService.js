@@ -292,7 +292,8 @@ export async function offlineMessage(err) {
 const MACHINES_DIR = 'machines';
 const MAX_AGE = 90 * 24 * 3600 * 1000;
 const REFRESH = 24 * 3600 * 1000;
-let published = { key: '', at: 0 };
+// each file's last write: { key, at }
+const published = new Map();
 
 const validPlace = (place) =>
   place && Object.hasOwn(PROVIDERS, place.provider) && typeof place.rel === 'string'
@@ -301,24 +302,29 @@ const validPlace = (place) =>
 
 /**
  * Tell the other computers which cloud projects this one has, [{ id, name, place, mirror }], in this computer's own
- * file (an empty list still says what it's called). Written when the list changes, and once a day so the file doesn't
- * go stale.
+ * file (an empty list still says what it's called). In every cloud location here, not just the shared folder's: a
+ * computer that shares any location with this one then sees what this one works on in it, so Stop syncing there never
+ * deletes this one's only copy. Written when the list changes, and once a day so the file doesn't go stale.
  */
 export async function publishProjects(projects) {
-  const shared = await sharedDir();
-  if (!shared) return;
-  const { machineId: id, machineName } = await readSyncConfig();
+  const { machineId: id, machineName, folders } = await readSyncConfig();
   const names = await systemNames();
-  const file = path.join(shared, MACHINES_DIR, `${id}.json`);
-  const key = JSON.stringify([file, machineName, names, projects]);
-  if (published.key !== key) {
-    const old = await readJson(file).catch(() => null);
-    published = { key: old && JSON.stringify([file, old.machineName, old.systemNames, old.projects]), at: Date.parse(old?.updatedAt) || 0 };
+  const key = JSON.stringify([machineName, names, projects]);
+  for (const { path: folder } of folders) {
+    if (!(await isDir(folder))) continue;
+    const file = path.join(folder, SHARED_DIR_NAME, MACHINES_DIR, `${id}.json`);
+    let last = published.get(file);
+    if (last?.key !== key) {
+      const old = await readJson(file).catch(() => null);
+      last = { key: old && JSON.stringify([old.machineName, old.systemNames, old.projects]), at: Date.parse(old?.updatedAt) || 0 };
+    }
+    if (last.key !== key || Date.now() - last.at >= REFRESH) {
+      const updatedAt = new Date();
+      await writeJsonAtomic(file, { machineName, systemNames: names, updatedAt: updatedAt.toISOString(), projects });
+      last = { key, at: updatedAt.getTime() };
+    }
+    published.set(file, last);
   }
-  if (published.key === key && Date.now() - published.at < REFRESH) return;
-  const updatedAt = new Date();
-  await writeJsonAtomic(file, { machineName, systemNames: names, updatedAt: updatedAt.toISOString(), projects });
-  published = { key, at: updatedAt.getTime() };
 }
 
 /** What the other computers list, from files updated in the last 90 days, newest first: [{ id, name, place, mirror, machineName }]. */
