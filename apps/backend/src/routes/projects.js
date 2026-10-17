@@ -6,7 +6,7 @@ import { promisify } from 'util';
 import * as tar from 'tar';
 import crypto from 'crypto';
 import { gunzipSync } from 'zlib';
-import { HIDDEN_ENTRIES, ensureDir, copyDir, extractZip, listFilesRecursive, renameOver, skipInArchive, writeFileAtomic } from '../utils/fsUtils.js';
+import { ensureDir, copyDir, extractZip, listFilesRecursive, mirrorSkips, renameOver, skipInArchive, writeFileAtomic } from '../utils/fsUtils.js';
 import { safeJoin, safeJoinLink, sanitizeUploadPath } from '../utils/pathUtils.js';
 import { extractDocumentBody, isDocumentFile, mergeTemplateBody, withoutComments } from '../utils/texUtils.js';
 import { readTemplateManifest, copyTemplateIntoProject, templatePath } from '../services/templateService.js';
@@ -41,7 +41,7 @@ const MAX_THUMBNAIL_BYTES = 2 * 1024 * 1024;
 // what the editor knows a file's text by, to tell whether it changed on disk since it loaded or saved it
 const sha256 = (data) => crypto.createHash('sha256').update(data).digest('hex');
 // a change to anything else (app data, VCS internals, Finder litter, the app's own save and upload temp files) is no news to the editor
-const watched = (rel) => !/\.(tmp|upload)$/i.test(rel) && !rel.split('/').some((part) => HIDDEN_ENTRIES.has(part) || part.toLowerCase() === APP_DIR);
+const watched = (rel) => !mirrorSkips(rel) && rel.split('/')[0].toLowerCase() !== APP_DIR;
 
 /**
  * A path inside the project the user may change: not the folder itself, not app data

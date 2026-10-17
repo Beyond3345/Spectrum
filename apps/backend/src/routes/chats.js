@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { appPath, getProjectRoot, httpError } from '../services/projectService.js';
 import { readJson, writeFileAtomic } from '../utils/fsUtils.js';
+import { mergeChat } from '../utils/chatMerge.js';
 
 const CHAT_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const MAX_CHAT_BYTES = 5 * 1024 * 1024;
@@ -60,14 +61,7 @@ export function registerChatRoutes(fastify) {
     // ponytail: a copy that can't be read (online-only and offline) is replaced, as before
     const disk = await readJson(file).catch(() => null);
     const merged = disk?.id === chat.id && Array.isArray(disk.messages) && disk.updatedAt !== req.body.base;
-    if (merged) {
-      const key = (m) => JSON.stringify([m?.role, m?.createdAt, m?.content]);
-      const there = new Set(disk.messages.map(key));
-      const added = (Array.isArray(chat.messages) ? chat.messages : []).filter((m) => !there.has(key(m)));
-      // later than the copy sent, so a save made from that copy merges too
-      const updatedAt = new Date(Math.max(Date.now(), Date.parse(chat.updatedAt) + 1 || 0)).toISOString();
-      chat = { ...chat, messages: [...disk.messages, ...added], updatedAt };
-    }
+    if (merged) chat = mergeChat(disk, chat);
     const data = JSON.stringify(chat);
     if (Buffer.byteLength(data) > MAX_CHAT_BYTES) throw httpError('This chat is too large to save (over 5 MB).', 413);
     await writeFileAtomic(file, data);
