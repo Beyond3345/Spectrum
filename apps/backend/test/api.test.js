@@ -843,6 +843,23 @@ test('create and rename never replace another file, in any letter case', async (
   assert.ok((await api(`/api/projects/${p.id}/versions`)).json.ok);
 });
 
+test('a new name that Windows or a sync app can’t hold is refused, and a file already called one still saves and renames', async () => {
+  const p = await newProject('Names');
+  await writeFile(p.id, 'main.tex', 'main');
+  const create = (filePath) => api(`/api/projects/${p.id}/file`, { method: 'PUT', body: { path: filePath, content: '', create: true } });
+  const rename = (from, to) => api(`/api/projects/${p.id}/rename`, { method: 'POST', body: { from, to } });
+  for (const name of ['Fig: plot.tex', 'notes.', 'notes ', 'con.tex', 'AUX', 'a|b.tex']) assert.equal((await create(name)).status, 400, name);
+  assert.equal((await api(`/api/projects/${p.id}/folder`, { method: 'POST', body: { path: 'Figures ' } })).status, 400);
+  assert.equal((await rename('main.tex', 'main:2.tex')).json.error, 'That name can’t be used on Windows or in a sync app. Choose another one.');
+  assert.deepEqual((await fs.readdir(p.path)).filter((name) => name !== '.spectrum'), ['main.tex']);
+  if (!WINDOWS) {
+    // made in Finder, say
+    await fs.writeFile(path.join(p.path, 'con.tex'), 'x');
+    assert.ok((await writeFile(p.id, 'con.tex', 'y')).json.ok);
+    assert.equal((await rename('con.tex', 'console.tex')).status, 200);
+  }
+});
+
 test('saving replaces a file in one step and keeps its links and permissions', async () => {
   const p = await newProject('Atomic save');
   const script = path.join(p.path, 'run.sh');

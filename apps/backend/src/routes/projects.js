@@ -56,6 +56,17 @@ function editablePath(root, relPath, join = safeJoin) {
   return abs;
 }
 
+/**
+ * A name NTFS or a sync app can't hold: ':' makes a hidden stream on NTFS, Windows drops a trailing dot or space, and
+ * CON and the like are devices. Refused on every system for a file or folder made here, as the project may be opened
+ * on Windows; one already there (from a Mac) still opens, saves and renames.
+ */
+const unfit = (rel) => {
+  const name = String(rel).split('/').pop();
+  return /[<>:"|?*\\\u0000-\u001f]/.test(name) || /[. ]$/.test(name) || /^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(name);
+};
+const UNFIT = 'That name can’t be used on Windows or in a sync app. Choose another one.';
+
 // arXiv e-prints are a gzipped tarball, or for single-file papers a gzipped .tex,
 // or for PDF-only submissions just a PDF.
 export async function extractArxivSource(file, projectRoot) {
@@ -495,6 +506,7 @@ export function registerProjectRoutes(fastify) {
     // sync client) isn't written over, and the answer carries its text; one deleted since isn't made again.
     const { path: filePath, content, create, base } = req.body || {};
     if (!filePath) return { ok: false };
+    if (create && unfit(filePath)) throw httpError(UNFIT, 400);
     const root = await getProjectRoot(req.params.id);
     const abs = editablePath(root, filePath);
     if (base && !create) {
@@ -567,6 +579,7 @@ export function registerProjectRoutes(fastify) {
   fastify.post('/api/projects/:id/folder', async (req) => {
     const { path: folderPath } = req.body || {};
     if (!folderPath) return { ok: false };
+    if (unfit(folderPath)) throw httpError(UNFIT, 400);
     const root = await getProjectRoot(req.params.id);
     await ensureDir(editablePath(root, folderPath));
     await touchProject(root).catch(() => {});
@@ -576,6 +589,8 @@ export function registerProjectRoutes(fastify) {
   fastify.post('/api/projects/:id/rename', async (req, reply) => {
     const { from, to } = req.body || {};
     if (!from || !to) return { ok: false };
+    // a new name only: one already there can still move into another folder
+    if (String(to).split('/').pop() !== String(from).split('/').pop() && unfit(to)) throw httpError(UNFIT, 400);
     const root = await getProjectRoot(req.params.id);
     const absFrom = editablePath(root, from, safeJoinLink);
     const absTo = editablePath(root, to, safeJoinLink);
