@@ -640,6 +640,12 @@ async function apply(ctx, it, held) {
     (!sides.includes('l') || (await hashOf(local)) === (l?.hash ?? null)) && (!sides.includes('c') || sameStat(await statOf(cloud), c));
   // left for the next pass, which hashes the file here again: an edit that kept its size and time would pass for none
   const later = () => base && { ...base, l: undefined };
+  // through place, which never makes the copy's own folder again when it has gone since the check
+  const toCloud = async (bytes) => {
+    const tmp = path.join(ctx.incoming, String(ctx.fetched++));
+    await fs.writeFile(tmp, bytes);
+    await place(ctx, ctx.cloudRoot, tmp, cloud);
+  };
   switch (it.action) {
     case 'keep':
       return base;
@@ -670,14 +676,14 @@ async function apply(ctx, it, held) {
       await updateMeta(ctx.localRoot, () => it.meta);
       const bytes = await fs.readFile(local);
       const changed = sha256(bytes) !== c.hash;
-      if (changed) await writeFileAtomic(cloud, bytes);
+      if (changed) await toCloud(bytes);
       // a side written is hashed again next pass: a save landing just after the write would pass for it
       return entry(l.rel, sha256(bytes), undefined, changed ? undefined : c, 'there');
     }
     case 'write': {
       if (!(await unchanged('lc'))) return later();
       await writeFileAtomic(local, it.data);
-      await writeFileAtomic(cloud, it.data);
+      await toCloud(it.data);
       return entry(l.rel, sha256(it.data), undefined, undefined, 'here');
     }
     case 'deleteCloud': {

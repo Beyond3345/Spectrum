@@ -379,6 +379,35 @@ test('a cloud copy deleted on another computer, which goes a file at a time, del
   }
 });
 
+test('a cloud copy moved away just before project.json is written there is never made again as a folder holding only that', async () => {
+  const p = await project('Ghost', { 'main.tex': 'main\n', 'refs.bib': '@a\n', 'intro.tex': 'intro\n', 'figs/a.png': 'A', 'figs/b.png': 'B' });
+  synced(await syncTo(p));
+  const files = userFiles(p.root);
+  // renamed on another computer, tagged here: merged, then written to both sides
+  await writeMeta(p.cloud, { ...meta(p.cloud), name: 'Ghost renamed' });
+  await writeMeta(p.root, { ...meta(p.root), tags: ['x'] });
+  const { readFile } = fs;
+  const away = path.join(tmp, 'Ghost-away');
+  // the merged bytes read here for the cloud copy, which the user moves out of the location just then
+  fs.readFile = async (file, ...rest) => {
+    const bytes = await readFile(file, ...rest);
+    if (file === path.join(p.root, '.spectrum', 'project.json') && !rest.length) {
+      fs.readFile = readFile;
+      await fs.rename(p.cloud, away);
+    }
+    return bytes;
+  };
+  try {
+    assert.equal((await mirror.syncProject(p.id)).state, 'syncing');
+  } finally {
+    fs.readFile = readFile;
+  }
+  assert.ok(!existsSync(p.cloud));
+  assert.deepEqual(await mirror.syncProject(p.id), { state: 'not-found', message: `Not in ${LABEL}` });
+  assert.deepEqual(userFiles(p.root), files);
+  assert.deepEqual(userFiles(away), files);
+});
+
 test('Windows’ placeholders, which its readdir calls links, are walked into as what they are', async () => {
   const p = await project('Placeholders', { 'main.tex': 'main\n', 'chapters/one.tex': 'one\n' });
   synced(await syncTo(p));
