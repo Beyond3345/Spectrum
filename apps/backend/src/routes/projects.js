@@ -30,7 +30,6 @@ import {
   unregister,
   updateMeta
 } from '../services/projectService.js';
-import { afterSave } from '../services/mirrorService.js';
 import { projectStats } from '../services/statsService.js';
 import { knownMachineNames } from '../services/presenceService.js';
 import { conflictCopies } from '../utils/conflictCopies.js';
@@ -518,7 +517,6 @@ export function registerProjectRoutes(fastify) {
       throw err;
     }
     await touchProject(root).catch(() => {});
-    afterSave(req.params.id);
     return { ok: true, hash: sha256(content ?? '') };
   });
 

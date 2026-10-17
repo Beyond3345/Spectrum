@@ -10,8 +10,9 @@
 // folder has gone.
 // <a cloud location>/.spectrum-shared/ (sharedDir picks the same one on each computer): one file per computer where
 // several computers write (never a shared file two computers rewrite, which a sync client would split into conflict copies)
-//   machines/<machineId>.json, in every location: { machineName, systemNames, updatedAt, projects: [{ id, name, place, mirror }] }
-//   mirror: that computer keeps a copy of its own, so it doesn't lose the project if the cloud copy is deleted
+//   machines/<machineId>.json, in every location: { format: 2, machineName, systemNames, updatedAt, projects: [{ id, name, place, mirror }] }
+//   mirror: that computer keeps a copy of its own, so it doesn't lose the project if the cloud copy is deleted; name and
+//   place only in the location the cloud copy is in. No format: 1.8.0's list, which leaves archived projects out
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -290,6 +291,7 @@ export async function offlineMessage(err) {
 // ─── Each computer's projects, for the others ───
 
 const MACHINES_DIR = 'machines';
+const FORMAT = 2;
 const MAX_AGE = 90 * 24 * 3600 * 1000;
 const REFRESH = 24 * 3600 * 1000;
 // each file's last write: { key, at }
@@ -301,34 +303,37 @@ const validPlace = (place) =>
     : null;
 
 /**
- * Tell the other computers which cloud projects this one has, [{ id, name, place, mirror }], in this computer's own
- * file (an empty list still says what it's called). In every cloud location here, not just the shared folder's: a
- * computer that shares any location with this one then sees what this one works on in it, so Stop syncing there never
- * deletes this one's only copy. Written when the list changes, and once a day so the file doesn't go stale.
+ * Tell the other computers which cloud projects this one has, [{ id, name, place, mirror, root }] with root the cloud
+ * copy's folder, in this computer's own file (an empty list still says what it's called). In every cloud location
+ * here, not just the shared folder's: a computer that shares any location with this one then sees what this one works
+ * on in it, so Stop syncing there never deletes this one's only copy. A location without the copy gets only its id and
+ * mirror, which is all that needs, so a location shared with other people doesn't list the rest. format 2: 1.9.0's
+ * list, which has archived projects too. Written when the list changes, and once a day so the file doesn't go stale.
  */
 export async function publishProjects(projects) {
   const { machineId: id, machineName, folders } = await readSyncConfig();
   const names = await systemNames();
-  const key = JSON.stringify([machineName, names, projects]);
   for (const { path: folder } of folders) {
     if (!(await isDir(folder))) continue;
+    const listed = projects.map(({ root, ...p }) => (within(root, folder) ? p : { id: p.id, mirror: p.mirror }));
+    const key = JSON.stringify([FORMAT, machineName, names, listed]);
     const file = path.join(folder, SHARED_DIR_NAME, MACHINES_DIR, `${id}.json`);
     let last = published.get(file);
     if (last?.key !== key) {
       const old = await readJson(file).catch(() => null);
-      last = { key: old && JSON.stringify([old.machineName, old.systemNames, old.projects]), at: Date.parse(old?.updatedAt) || 0 };
+      last = { key: old && JSON.stringify([old.format, old.machineName, old.systemNames, old.projects]), at: Date.parse(old?.updatedAt) || 0 };
     }
     if (last.key !== key || Date.now() - last.at >= REFRESH) {
       const updatedAt = new Date();
-      await writeJsonAtomic(file, { machineName, systemNames: names, updatedAt: updatedAt.toISOString(), projects });
+      await writeJsonAtomic(file, { format: FORMAT, machineName, systemNames: names, updatedAt: updatedAt.toISOString(), projects: listed });
       last = { key, at: updatedAt.getTime() };
     }
     published.set(file, last);
   }
 }
 
-/** What the other computers list, from files updated in the last 90 days, newest first: [{ id, name, place, mirror, machineName }]. */
-export async function otherComputersProjects() {
+/** The other computers' lists updated in the last 90 days, newest first. */
+async function otherLists() {
   const { machineId: own, folders } = await readSyncConfig();
   const lists = [];
   for (const { path: folder } of folders) {
@@ -342,11 +347,22 @@ export async function otherComputersProjects() {
       if (Date.now() - at < MAX_AGE && Array.isArray(data.projects)) lists.push({ at, data });
     }
   }
-  return lists
-    .sort((a, b) => b.at - a.at)
-    .flatMap(({ data }) =>
-      data.projects
-        .filter((p) => typeof p?.id === 'string' && typeof p.name === 'string')
-        .map((p) => ({ id: p.id, name: p.name, place: validPlace(p.place), mirror: p.mirror === true, machineName: String(data.machineName || 'another computer').slice(0, 60) }))
-    );
+  return lists.sort((a, b) => b.at - a.at).map(({ data }) => ({ ...data, machineName: String(data.machineName || 'another computer').slice(0, 60) }));
+}
+
+/**
+ * What the other computers list, newest first: [{ id, name, place, mirror, machineName }], name '' and place null
+ * from a location the cloud copy isn't in.
+ */
+export async function otherComputersProjects() {
+  return (await otherLists()).flatMap((data) =>
+    data.projects
+      .filter((p) => typeof p?.id === 'string')
+      .map((p) => ({ id: p.id, name: typeof p.name === 'string' ? p.name : '', place: validPlace(p.place), mirror: p.mirror === true, machineName: data.machineName }))
+  );
+}
+
+/** The other computers whose list an older Spectrum wrote, which may work on any project in a location in place: their names. */
+export async function olderComputers() {
+  return [...new Set((await otherLists()).filter((data) => data.format !== FORMAT).map((data) => data.machineName))];
 }

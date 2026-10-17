@@ -157,6 +157,11 @@ test('the cloud copy of a mirrored project opens the project here, and is never 
   const other = (await post('/api/projects', { name: 'Elsewhere' })).json;
   assert.equal((await post(`/api/projects/${other.id}/relocate`, { path: copy })).status, 409);
   assert.equal(JSON.parse(read(copy, '.spectrum', 'project.json')).id, ids.thesis);
+  // nor a folder in a location that holds projects (another computer's, say), which it would hide
+  theirs(path.join(loc, 'Group', 'Inner'));
+  const group = await post('/api/projects/open-folder', { path: path.join(loc, 'Group') });
+  assert.deepEqual([group.status, group.json.message], [409, 'That folder holds other projects. Open one of them instead.']);
+  rmSync(path.join(loc, 'Group'), { recursive: true });
 });
 
 test('the editor says a mirrored project is open in its cloud copy, where the other computers look', async () => {
@@ -199,6 +204,12 @@ test('Sync to links to a copy with the project’s id that’s already in the lo
   await syncProject(ids.thesis);
   assert.equal(read(projectsDir, 'Thesis', 'added there.tex'), 'later\n');
   assert.equal(read(loc, 'Thesis', 'main.tex'), 'Thesis\n');
+
+  // a rename, like any change through the file routes, starts a pass 2 s later
+  assert.equal((await post(`/api/projects/${ids.thesis}/rename`, { from: 'added there.tex', to: 'renamed.tex' })).json.ok, true);
+  for (let i = 0; i < 50 && !existsSync(path.join(loc, 'Thesis', 'renamed.tex')); i++) await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(read(loc, 'Thesis', 'renamed.tex'), 'later\n');
+  assert.ok(!existsSync(path.join(loc, 'Thesis', 'added there.tex')));
 });
 
 test('Download copies another computer’s project into the projects folder and mirrors it, or opens it in place', async () => {
@@ -263,6 +274,14 @@ test('Sync to with Move moves the folder into the location, its original to the 
   await post(`/api/projects/${kept.id}/cloud`, { location: loc });
   await post(`/api/projects/${kept.id}/cloud/stop`, { deleteCloud: false });
   assert.equal((await post(`/api/projects/${kept.id}/cloud`, { location: loc, mode: 'move' })).json.message, 'Already in OneDrive as Kept.');
+  // its folder here gone (renamed, a drive unplugged): Folder missing, never the copy kept there
+  await fs.rename(kept.path, path.join(tmp, 'Kept away'));
+  try {
+    const missing = await listed(kept.id);
+    assert.deepEqual([missing.path, missing.missing, missing.cloud], [kept.path, true, undefined]);
+  } finally {
+    await fs.rename(path.join(tmp, 'Kept away'), kept.path);
+  }
 });
 
 test('a project in a sync app’s folder already isn’t synced to a location', async () => {
@@ -348,12 +367,49 @@ test('Sync now runs a mirrored project’s pass; a moved one syncs through its a
 
 test('this computer’s list goes in every cloud location, so any computer sharing one sees what it works on there', async () => {
   const nas = path.join(drive, 'Spectrum');
-  mkdirSync(nas);
   assert.equal((await api('/api/sync', { method: 'PATCH', body: { folders: [loc, nas] } })).status, 200);
   await list();
   const { machineId } = JSON.parse(read(tmp, 'data', 'sync.json'));
+  const listIn = (folder) => JSON.parse(read(folder, '.spectrum-shared', 'machines', `${machineId}.json`));
   for (const folder of [loc, nas]) {
-    const { projects } = JSON.parse(read(folder, '.spectrum-shared', 'machines', `${machineId}.json`));
-    assert.ok(projects.some((p) => p.id === ids.backedUp && p.mirror === false), folder);
+    assert.equal(listIn(folder).format, 2);
+    assert.ok(listIn(folder).projects.some((p) => p.id === ids.backedUp && p.mirror === false), folder);
   }
+  // its name and place only where its copy is, so a location shared with other people doesn't list them
+  assert.equal(listIn(loc).projects.find((p) => p.id === ids.backedUp).name, 'Backed up');
+  assert.deepEqual(listIn(nas).projects.find((p) => p.id === ids.backedUp), { id: ids.backedUp, mirror: false });
+});
+
+test('Locate… on a mirrored project starts its mirror again, so an older copy deletes nothing in the cloud and overwrites nothing unkept', async () => {
+  const p = await local('Backup');
+  assert.equal((await post(`/api/projects/${p.id}/cloud`, { location: loc })).status, 200);
+  const old = path.join(tmp, 'Backup old');
+  await fs.cp(p.path, old, { recursive: true });
+  writeFileSync(path.join(p.path, 'main.tex'), 'Backup, newer\n');
+  writeFileSync(path.join(p.path, 'ch3.tex'), 'chapter three\n');
+  await syncProject(p.id);
+  assert.equal(read(loc, 'Backup', 'ch3.tex'), 'chapter three\n');
+  // the folder here gone, and the older copy, with the same id, located in its place
+  await fs.rm(p.path, { recursive: true });
+  assert.equal((await post(`/api/projects/${p.id}/relocate`, { path: old })).status, 200);
+  assert.equal((await syncProject(p.id)).state, 'synced');
+  assert.equal(read(loc, 'Backup', 'ch3.tex'), 'chapter three\n');
+  assert.equal(read(old, 'ch3.tex'), 'chapter three\n');
+  // the newer text beside the older one, as a conflicted copy
+  const copy = readdirSync(old).find((name) => name.startsWith('main (OneDrive’s conflicted copy '));
+  assert.ok(copy, readdirSync(old).join(', '));
+  assert.equal(read(old, copy), 'Backup, newer\n');
+});
+
+test('Remove from list on a mirrored project whose folder has gone leaves its cloud copy to download again', async () => {
+  const p = await local('Lost');
+  assert.equal((await post(`/api/projects/${p.id}/cloud`, { location: loc })).status, 200);
+  // in step, so no pass is under way as the folder goes
+  await syncProject(p.id);
+  await fs.rm(p.path, { recursive: true });
+  assert.equal((await post(`/api/projects/${p.id}/remove`)).status, 200);
+  assert.ok((await list()).cloudOnly.some((c) => c.id === p.id && c.rel === 'Lost'));
+  const back = await post('/api/cloud/download', { location: loc, rel: 'Lost', id: p.id, mode: 'mirror' });
+  assert.equal(back.status, 200, back.json.message);
+  assert.equal(read(back.json.project.path, 'main.tex'), 'Lost\n');
 });

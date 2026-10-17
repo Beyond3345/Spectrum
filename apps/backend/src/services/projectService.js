@@ -22,7 +22,7 @@ import {
   unhideProject,
   within
 } from './syncService.js';
-import { cloudCopyOwner, listMirrored, mirrorStatus, readMirror, unlinkMirror } from './mirrorService.js';
+import { afterSave, cloudCopyOwner, linkMirror, listMirrored, mirrorStatus, readMirror, unlinkMirror } from './mirrorService.js';
 import { conflictCopies } from '../utils/conflictCopies.js';
 import { knownMachineNames } from './presenceService.js';
 
@@ -108,13 +108,15 @@ export function moveEntry(id, root) {
 /** Forget a project; its folder stays where it is, and so does its cloud copy, which Spectrum stops mirroring. */
 export async function unregister(id) {
   const entry = await findEntry(id);
+  // a mirrored project whose folder here has gone: its cloud copy shows in Cloud projects, to download again
+  const lostMirror = (await readMirror(id)) && !(await exists(metaPath(entry.path)));
   await updateRegistry((registry) => {
     registry.projects = registry.projects.filter((p) => p.id !== id);
   });
   await unlinkMirror(id);
   // or its copy in a cloud location shows in Cloud projects (not a template's working copy in the app's data folder,
   // which is deleted next)
-  if ((await readSyncConfig()).folders.length && !within(entry.path, DATA_DIR)) await hideProject(id);
+  if (!lostMirror && (await readSyncConfig()).folders.length && !within(entry.path, DATA_DIR)) await hideProject(id);
 }
 
 async function findEntry(id) {
@@ -169,8 +171,11 @@ export function updateMeta(root, fn) {
 // computers have the project open, so Modified moves on at most every 10 minutes
 const TOUCH_EVERY_MS = 10 * 60 * 1000;
 
+/** A file of the project changed: Modified moves on, and a mirrored project's pass follows. */
 export async function touchProject(root) {
-  if (Date.now() - Date.parse((await readMeta(root)).updatedAt) < TOUCH_EVERY_MS) return;
+  const meta = await readMeta(root);
+  afterSave(meta.id);
+  if (Date.now() - Date.parse(meta.updatedAt) < TOUCH_EVERY_MS) return;
   await updateMeta(root, (meta) => ({ ...meta, updatedAt: new Date().toISOString() }));
 }
 
@@ -270,8 +275,9 @@ export async function projectsPage({ scan = false } = {}) {
   // never deletes a cloud copy that this computer has no copy of its own besides
   const cloud = [];
   for (const p of projects.filter((project) => project.cloud)) {
-    const place = await placeOf(path.join(p.cloud.location, p.cloud.rel));
-    cloud.push({ id: p.id, name: p.name, place: place && { provider: place.provider, label: place.label, rel: place.rel }, mirror: p.cloud.mode === 'mirror' && !p.missing });
+    const root = path.join(p.cloud.location, p.cloud.rel);
+    const place = await placeOf(root);
+    cloud.push({ id: p.id, name: p.name, place: place && { provider: place.provider, label: place.label, rel: place.rel }, mirror: p.cloud.mode === 'mirror' && !p.missing, root });
   }
   await publishProjects(cloud).catch(() => {});
   const known = new Set([...projects.map((p) => p.id), ...hidden, ...(await listMirrored()).map((m) => m.id)]);
@@ -316,8 +322,9 @@ async function lost(root, id) {
 /**
  * Look through the cloud locations on this computer for projects, at most every 30 s unless forced (the window came
  * to the front). Nothing is written into the folders, and nothing is added to the list: Download and Sync to do that.
- * A listed project in place whose folder has gone follows its id to the new one (moved, or synced to another place);
- * one Spectrum mirrors never does, so a missing local copy says so rather than turning into the cloud copy. The same
+ * A listed project used in place whose folder has gone follows its id to the new one (moved, or synced to another
+ * place); one on this computer never does, mirrored or not, so a missing local folder says so rather than turning into
+ * a cloud copy (the one Stop syncing kept, say). The same
  * id in two folders is a copy (Finder's, a sync app's): neither counts, and a listed project stays where it is (the
  * copy gets its own id when it's opened, through openFolder).
  */
@@ -336,6 +343,8 @@ function scanSyncFolders(force) {
         const entry = registry.projects.find((p) => p.id === id);
         // a template's working copy belongs in the app's data folder; one copied into a cloud location is left alone
         if (!entry || mirrored.has(id) || meta.templateDraft || sameFolder(entry.path, root)) continue;
+        // only one used in place: a project here whose folder has gone shows Folder missing, never a copy left there
+        if (!(await locationOf(entry.path))) continue;
         if (registry.projects.some((p) => p.id !== id && (within(p.path, root) || within(root, p.path)))) continue;
         if (await lost(entry.path, id)) Object.assign(entry, { path: root }, cached(normaliseMeta({ ...meta, id })));
       }
@@ -490,12 +499,17 @@ async function readMetaId(root) {
   }
 }
 
-/** A mirrored project's cloud copy is never a project of its own: it would get a second id, which the mirror spreads. */
+/**
+ * A mirrored project's cloud copy is never a project of its own: it would get a second id, which the mirror spreads.
+ * Nor is a folder in a location that holds projects (cloud copies, other computers'), which it would hide.
+ */
 async function refuseCloudCopy(root) {
   const owner = await cloudCopyOwner(root);
-  if (!owner) return;
-  const name = (await readRegistry()).projects.find((p) => p.id === owner.id)?.name || 'a project';
-  throw httpError(`This is the cloud copy of “${name}”, which Spectrum keeps in step with the project on this computer. Open “${name}” from the projects list instead.`, 409);
+  if (owner) {
+    const name = (await readRegistry()).projects.find((p) => p.id === owner.id)?.name || 'a project';
+    throw httpError(`This is the cloud copy of “${name}”, which Spectrum keeps in step with the project on this computer. Open “${name}” from the projects list instead.`, 409);
+  }
+  if ((await locationOf(root)) && (await findSyncedProjects(root, Date.now() + 5000)).length) throw httpError('That folder holds other projects. Open one of them instead.', 409);
 }
 
 /** Adopt an existing folder as a project without moving or copying anything. */
@@ -601,6 +615,10 @@ export async function relocateProject(id, input) {
   await refuseNested(root, projects.filter((p) => p.id !== id));
   const own = folderId === id ? meta : null;
   const next = normaliseMeta({ ...(own || { createdAt: entry.addedAt }), id, name: own?.name || entry.name });
+  // the base was the old folder's, whose differences the chosen one (an older copy, say) would pass for its own edits:
+  // from no base they become conflicted copies, never overwrites or deletions. First, while a pass sees the old folder
+  const record = await readMirror(id);
+  if (record) await linkMirror(id, { location: record.location, rel: record.rel });
   await writeMetaIfChanged(root, meta, next);
   await register(id, root, next);
   await unhideProject(id);

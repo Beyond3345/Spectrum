@@ -24,9 +24,11 @@ const isDir = (p) => fs.stat(p).then((s) => s.isDirectory(), () => false);
 
 /**
  * Where a sync app's folder is added as a cloud location: its own Spectrum folder, or the app's folder itself when a
- * 1.8.0 computer shares settings and templates through it (so both go through the same shared folder).
+ * 1.8.0 computer shares settings and templates through it (so both go through the same shared folder), unless it holds
+ * the projects folder (Documents backed up into OneDrive, say), which a location can't.
  */
-const targetIn = async (appRoot) => ((await isDir(path.join(appRoot, SHARED_DIR_NAME))) ? appRoot : path.join(appRoot, 'Spectrum'));
+const targetIn = async (appRoot) =>
+  (await isDir(path.join(appRoot, SHARED_DIR_NAME))) && !within(await fs.realpath(PROJECTS_DIR).catch(() => PROJECTS_DIR), appRoot) ? appRoot : path.join(appRoot, 'Spectrum');
 
 /**
  * Settings › Projects: this computer's cloud locations (with how many projects mirror into each) and name, the sync
