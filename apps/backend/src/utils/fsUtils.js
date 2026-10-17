@@ -26,8 +26,6 @@ export async function writeFileAtomic(filePath, data) {
   try {
     await fs.writeFile(tmp, data);
     if (mode !== undefined) await fs.chmod(tmp, mode);
-    // Windows won't rename over a read-only file (macOS ignores the target's mode); the copy keeps the mode
-    if (process.platform === 'win32' && mode !== undefined && !(mode & 0o200)) await fs.chmod(filePath, mode | 0o200);
     await renameOver(tmp, filePath);
   } catch (err) {
     await fs.rm(tmp, { force: true });
@@ -42,6 +40,11 @@ export async function writeFileAtomic(filePath, data) {
  * target and renames that over it, so readers still never see half a file.
  */
 export async function renameOver(from, to) {
+  // Windows won't rename over a read-only file (macOS ignores the target's mode); the file put there brings its own
+  if (process.platform === 'win32') {
+    const target = await fs.lstat(to).catch(() => null);
+    if (target?.isFile() && !(target.mode & 0o200)) await fs.chmod(to, target.mode | 0o200);
+  }
   for (let wait = 50; ; wait *= 2) {
     try {
       return await fs.rename(from, to);
