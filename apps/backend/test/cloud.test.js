@@ -123,8 +123,9 @@ test('Sync to keeps the project here and mirrors it into a copy in the location'
   assert.equal(res.status, 200, res.json.message);
   const { project } = res.json;
   assert.equal(project.path, p.path);
-  assert.deepEqual({ ...project.cloud, status: typeof project.cloud.status }, { mode: 'mirror', label: 'OneDrive', rel: 'Thesis', location: loc, status: 'object' });
+  assert.deepEqual(project.cloud, { mode: 'mirror', label: 'OneDrive', rel: 'Thesis', location: loc, status: { state: 'synced', at: project.cloud.status.at } }, 'its first pass done');
   const copy = path.join(loc, 'Thesis');
+  assert.ok(!existsSync(path.join(copy, '.git')));
   assert.equal(read(copy, 'main.tex'), 'Thesis\n');
   assert.equal(JSON.parse(read(copy, '.spectrum', 'project.json')).id, p.id);
   assert.ok(existsSync(path.join(copy, '.spectrum', 'history', 'objects', 'abc.gz')));
@@ -293,6 +294,14 @@ test('Sync to with Move moves the folder into the location, its original to the 
   } finally {
     await fs.rename(path.join(tmp, 'Kept away'), kept.path);
   }
+});
+
+test('one Sync to at a time for a project, so two can’t each make a copy', async () => {
+  const p = await local('Twice');
+  const both = await Promise.all([post(`/api/projects/${p.id}/cloud`, { location: loc }), post(`/api/projects/${p.id}/cloud`, { location: loc })]);
+  assert.deepEqual(both.map((r) => r.status).sort(), [200, 409]);
+  assert.equal(both.find((r) => r.status === 409).json.message, 'That project is already being synced. Try again once that’s finished.');
+  assert.ok(!existsSync(path.join(loc, 'Twice 2')));
 });
 
 test('a project in a sync app’s folder already isn’t synced to a location in that app, only copied to another’s', async () => {

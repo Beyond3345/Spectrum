@@ -71,6 +71,26 @@ async function copyChecked(from, to, exclude = ['.spectrum/open']) {
   }
 }
 
+// the projects whose Sync to, Download or Stop syncing is under way, so two at once can't each make a copy with its id
+const busy = new Set();
+
+/** The route's handler, one request at a time for each project. */
+function alone(handler) {
+  return async (req) => {
+    const id = String(req.params?.id ?? req.body?.id ?? '');
+    if (busy.has(id)) throw httpError('That project is already being synced. Try again once that’s finished.', 409);
+    busy.add(id);
+    try {
+      return await handler(req);
+    } finally {
+      busy.delete(id);
+    }
+  };
+}
+
+/** The first pass, which most projects finish in moments; a big or slow one carries on, showing that it's syncing. */
+const firstPass = (id) => Promise.race([syncProject(id).catch(() => {}), new Promise((resolve) => setTimeout(resolve, 10_000).unref())]);
+
 /** The folder is about to move: nothing may be compiling in it, or converting from or into it, with the old path. */
 function refuseBusy(id, name) {
   if (compiling(id) || transferring(id)) throw httpError(`“${name}” is compiling or being converted. Try again once that’s finished.`, 409);
@@ -128,7 +148,7 @@ async function moveProject(id, root, parent) {
 export function registerCloudRoutes(fastify) {
   // Sync to: mode 'mirror' keeps the folder here and mirrors it into a copy in the location (linking to the one there
   // with its id, if any), 'move' moves the folder into the location, as 1.8.0 had its projects
-  fastify.post('/api/projects/:id/cloud', async (req) => {
+  fastify.post('/api/projects/:id/cloud', alone(async (req) => {
     const { id } = req.params;
     const mode = req.body?.mode === 'move' ? 'move' : 'mirror';
     const root = await getProjectRoot(id);
@@ -159,7 +179,7 @@ export function registerCloudRoutes(fastify) {
         rel = relFrom(location.path, target);
       }
       await linkMirror(id, { location: location.path, rel, files });
-      syncProject(id).catch(() => {});
+      await firstPass(id);
       return { project: await getProject(id) };
     }
     if (there.length) throw httpError(`Already in ${location.label} as ${rels[0]}.`, 409);
@@ -172,11 +192,11 @@ export function registerCloudRoutes(fastify) {
       (err) => `The folder on this computer couldn’t go to the ${process.platform === 'win32' ? 'Recycle Bin' : 'Bin'} (${err.message}), so it’s still at ${root}.`
     );
     return { project: await getProject(id), ...(warning && { warning }) };
-  });
+  }));
 
   // Download a project in a cloud location that this computer doesn't have: with mode 'mirror', a copy in the default
   // folder that Spectrum mirrors; with 'move', or a default folder that's in a sync app's folder itself, in place
-  fastify.post('/api/cloud/download', async (req) => {
+  fastify.post('/api/cloud/download', alone(async (req) => {
     const { id, rel, mode, parentDir } = req.body || {};
     const location = await cloudLocation(req.body?.location);
     const parts = String(rel || '').split('/');
@@ -207,16 +227,15 @@ export function registerCloudRoutes(fastify) {
         throw httpError(await why(err), 409);
       }
       await linkMirror(id, { location: location.path, rel: parts.join('/'), files: {} });
-      // most projects are down in moments; a big or slow one carries on, showing that it's syncing
-      await Promise.race([syncProject(id).catch(() => {}), new Promise((resolve) => setTimeout(resolve, 10_000).unref())]);
+      await firstPass(id);
     }
     await unhideProject(id);
     return { project: await getProject(id) };
-  });
+  }));
 
   // Stop syncing: keep the copy in the location, or delete it from there. A moved project is copied back into the
   // default folder first.
-  fastify.post('/api/projects/:id/cloud/stop', async (req) => {
+  fastify.post('/api/projects/:id/cloud/stop', alone(async (req) => {
     const { id } = req.params;
     const deleteCloud = !!req.body?.deleteCloud;
     const project = await getProject(id);
@@ -250,7 +269,7 @@ export function registerCloudRoutes(fastify) {
         )
       : undefined;
     return { project: await getProject(id), ...(warning && { warning }) };
-  });
+  }));
 
   // Sync now, or with force, Sync anyway past the brake on a pass that would delete many files
   fastify.post('/api/projects/:id/cloud/sync', async (req) => {
