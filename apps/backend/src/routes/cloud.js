@@ -11,6 +11,7 @@ import {
   getProject,
   getProjectRoot,
   httpError,
+  keptHere,
   makeUniqueFolder,
   moveEntry,
   readMeta,
@@ -247,6 +248,7 @@ export function registerCloudRoutes(fastify) {
     if (mode === 'mirror') {
       if (!deleteCloud) {
         await unlinkMirror(id);
+        await keptHere(id);
         return { project: await getProject(id) };
       }
       // the copy here is all that will be left, so it must be here
@@ -259,6 +261,8 @@ export function registerCloudRoutes(fastify) {
       // unlinked first, so a pass a save or the minute queued meanwhile finds no mirror, rather than the copy gone and
       // another folder with the project's id (a Finder duplicate) to follow
       await unlinkMirror(id);
+      // the copy may stay, if it can't be deleted
+      await keptHere(id);
       const warning = await binCloudCopy(cloudRoot, location).then(
         () => undefined,
         (err) => `Stopped syncing, but the copy in ${label} couldn’t be deleted (${err.message}). It’s still at ${cloudRoot}.`
@@ -271,6 +275,7 @@ export function registerCloudRoutes(fastify) {
     if (deleteCloud) await refuseDelete(id, project.name, root, label);
     refuseBusy(id, project.name);
     await moveProject(id, root, parent);
+    await keptHere(id);
     // it's on this computer now, so a Delete that fails can't be tried again: said, with where the copy is
     const warning = deleteCloud
       ? await binCloudCopy(root, location).then(

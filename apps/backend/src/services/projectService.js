@@ -101,7 +101,17 @@ function cacheMeta(meta) {
 export function moveEntry(id, root) {
   return updateRegistry((registry) => {
     const entry = registry.projects.find((p) => p.id === id);
-    if (entry) entry.path = root;
+    if (!entry) return;
+    entry.path = root;
+    delete entry.keptHere;
+  });
+}
+
+/** Stop syncing left a copy with the project's id in the location, which its folder here never turns into. */
+export function keptHere(id) {
+  return updateRegistry((registry) => {
+    const entry = registry.projects.find((p) => p.id === id);
+    if (entry) entry.keptHere = true;
   });
 }
 
@@ -325,11 +335,11 @@ async function lost(root, id) {
 /**
  * Look through the cloud locations on this computer for projects, at most every 30 s unless forced (the window came
  * to the front). Nothing is written into the folders, and nothing is added to the list: Download and Sync to do that.
- * A listed project used in place whose folder has gone follows its id to the new one (moved, or synced to another
- * place); one on this computer never does, mirrored or not, so a missing local folder says so rather than turning into
- * a cloud copy (the one Stop syncing kept, say). The same
- * id in two folders is a copy (Finder's, a sync app's): neither counts, and a listed project stays where it is (the
- * copy gets its own id when it's opened, through openFolder).
+ * A listed project whose folder has gone follows its id to the new one (moved, or synced to another place, or its
+ * location added again at a new path), but a mirrored one never does, nor one whose copy Stop syncing kept, so a
+ * missing folder here says so rather than turning into the cloud copy. The same id in two folders is a copy (Finder's,
+ * a sync app's): neither counts, and a listed project stays where it is (the copy gets its own id when it's opened,
+ * through openFolder).
  */
 function scanSyncFolders(force) {
   if (scanning || (!force && Date.now() - scannedAt < 30_000)) return scanning;
@@ -346,8 +356,8 @@ function scanSyncFolders(force) {
         const entry = registry.projects.find((p) => p.id === id);
         // a template's working copy belongs in the app's data folder; one copied into a cloud location is left alone
         if (!entry || mirrored.has(id) || meta.templateDraft || sameFolder(entry.path, root)) continue;
-        // only one used in place: a project here whose folder has gone shows Folder missing, never a copy left there
-        if (!(await locationOf(entry.path))) continue;
+        // not the copy Stop syncing left there: a project here whose folder has gone shows Folder missing
+        if (entry.keptHere) continue;
         if (registry.projects.some((p) => p.id !== id && (within(p.path, root) || within(root, p.path)))) continue;
         if (await lost(entry.path, id)) Object.assign(entry, { path: root }, cached(normaliseMeta({ ...meta, id })));
       }

@@ -463,6 +463,21 @@ test('Remove from list on a mirrored project whose folder has gone leaves its cl
   assert.equal(read(back.json.project.path, 'main.tex'), 'Lost\n');
 });
 
+test('a project used in place follows its id when its location is added again at a new path', async () => {
+  const nas = path.join(drive, 'Spectrum');
+  assert.equal((await api('/api/sync', { method: 'PATCH', body: { folders: [loc, nas] } })).status, 200);
+  const id = theirs(path.join(nas, 'Roaming'));
+  assert.equal((await post('/api/cloud/download', { location: nas, rel: 'Roaming', id, mode: 'move' })).status, 200);
+  // the location taken out, then its folder moved (a sync task set up again elsewhere) and added again there
+  assert.equal((await api('/api/sync', { method: 'PATCH', body: { folders: [loc] } })).status, 200);
+  const moved = path.join(drive, 'Spectrum moved');
+  await fs.rename(nas, moved);
+  assert.equal((await api('/api/sync', { method: 'PATCH', body: { folders: [loc, moved] } })).status, 200);
+  const p = await listed(id);
+  assert.deepEqual([p.path, p.missing], [path.join(moved, 'Roaming'), false]);
+  assert.equal((await api('/api/sync', { method: 'PATCH', body: { folders: [loc] } })).status, 200);
+});
+
 test('Move to Bin on a mirrored project leaves its cloud copy out of Cloud projects, as Remove from list does', { skip: !['darwin', 'win32'].includes(process.platform) && 'macOS and Windows only' }, async () => {
   const p = await local('Binned');
   assert.equal((await post(`/api/projects/${p.id}/cloud`, { location: loc })).status, 200);
