@@ -170,28 +170,32 @@ test('a version from another computer whose files haven’t all arrived isn’t 
   assert.equal(await fs.readFile(path.join(root, 'main.tex'), 'utf8'), 'second\n');
 });
 
-test('deleting a version keeps stored files another computer may still need for a week', async () => {
+test('deleting a version keeps stored files another computer may still need for 90 days', async () => {
   const root = await project('Clean up');
-  await write(path.join(root, 'main.tex'), 'a\n');
-  const first = (await versions.createVersion(root, {})).version;
-  await write(path.join(root, 'main.tex'), 'b\n');
-  const second = (await versions.createVersion(root, {})).version;
-  await write(path.join(root, 'main.tex'), 'c\n');
-  const third = (await versions.createVersion(root, {})).version;
+  const made = [];
+  for (const text of ['a\n', 'b\n', 'c\n', 'd\n']) {
+    await write(path.join(root, 'main.tex'), text);
+    made.push((await versions.createVersion(root, {})).version);
+  }
   const objects = path.join(root, '.spectrum', 'history', 'objects');
   const count = async () => (await Promise.all((await fs.readdir(objects)).map((s) => fs.readdir(path.join(objects, s))))).flat().length;
+  const days = (n) => n * 24 * 60 * 60 * 1000;
 
-  await versions.deleteVersion(root, first.id);
-  assert.equal(await count(), 3, 'a fresh stored file stays');
+  await versions.deleteVersion(root, made[0].id);
+  assert.equal(await count(), 4, 'a fresh stored file stays');
+  // a laptop away for weeks may have made versions that use them
+  let back = shiftClock(days(30));
+  await versions.deleteVersion(root, made[1].id).finally(back);
+  assert.equal(await count(), 4);
   // a manifest still arriving (half written) could use any stored file: nothing goes
   await write(path.join(root, '.spectrum', 'history', 'manifests', '99.json'), '{"files": {');
-  const back = shiftClock(8 * 24 * 60 * 60 * 1000);
+  back = shiftClock(days(91));
   try {
-    await versions.deleteVersion(root, second.id);
-    assert.equal(await count(), 3);
+    await versions.deleteVersion(root, made[2].id);
+    assert.equal(await count(), 4);
     await fs.rm(path.join(root, '.spectrum', 'history', 'manifests', '99.json'));
-    await versions.deleteVersion(root, third.id);
-    assert.equal(await count(), 0, 'a week on, no version uses them');
+    await versions.deleteVersion(root, made[3].id);
+    assert.equal(await count(), 0, '90 days on, no version uses them');
   } finally {
     back();
   }
@@ -272,6 +276,84 @@ test('a 1.7.0 history keeps its numbers here, and 1.7.0 carries on after this bu
   const theirs = (await old.createVersion(root, {})).version;
   assert.ok(theirs.id > mine.id);
   assert.deepEqual((await versions.listVersions(root)).map((v) => [v.number, v.label]), [[4, ''], [3, ''], [2, 'b'], [1, 'First draft']]);
+});
+
+const noOld = !old && 'no v1.7.0 in git (set SPECTRUM_OLD_REV)';
+const indexOf = (root) => path.join(root, '.spectrum', 'history', 'index.json');
+
+test('a version whose manifest can’t be read keeps its details in index.json, and 1.7.0 keeps it', { skip: noOld || (process.platform === 'win32' && 'Windows has no unreadable mode') }, async () => {
+  const root = await project('Online only');
+  for (const text of ['a\n', 'b\n']) {
+    await write(path.join(root, 'main.tex'), text);
+    await old.createVersion(root, { label: `Sent ${text.trim()}` });
+  }
+  // online-only and offline, say
+  const first = path.join(root, '.spectrum', 'history', 'manifests', '1.json');
+  await fs.chmod(first, 0o000);
+  try {
+    await write(path.join(root, 'main.tex'), 'c\n');
+    await versions.createVersion(root, { label: 'Offline save' });
+  } finally {
+    await fs.chmod(first, 0o644);
+  }
+  assert.deepEqual((await versions.listVersions(root)).map((v) => [v.number, v.label]), [[3, 'Offline save'], [2, 'Sent b'], [1, 'Sent a']]);
+  assert.deepEqual((await old.listVersions(root)).map((v) => v.label), ['Offline save', 'Sent b', 'Sent a']);
+  // and 1.7.0's clean-up keeps its stored files
+  await old.deleteVersion(root, 2);
+  assert.equal((await old.readVersionFile(root, 1, 'main.tex')).content, 'a\n');
+});
+
+test('an index.json that lost a sync conflict gets this build’s versions back, so 1.7.0 keeps them', { skip: noOld }, async () => {
+  const root = await project('Lost race');
+  await write(path.join(root, 'main.tex'), 'one\n');
+  const first = (await versions.createVersion(root, { label: 'One' })).version;
+  const behind = await fs.readFile(indexOf(root));
+  await write(path.join(root, 'main.tex'), 'two\n');
+  const second = (await versions.createVersion(root, { label: 'Two' })).version;
+  // the other computer's index.json, from before the second version, wins
+  await fs.writeFile(indexOf(root), behind);
+  assert.deepEqual((await versions.listVersions(root)).map((v) => v.id), [second.id, first.id]);
+  assert.deepEqual((await old.listVersions(root)).map((v) => v.label), ['Two', 'One']);
+  await old.deleteVersion(root, first.id);
+  assert.equal((await versions.readVersionFile(root, second.id, 'main.tex')).content, 'two\n');
+  // history still arriving, its index.json not yet here: listing doesn't make one
+  await fs.rm(indexOf(root));
+  await versions.listVersions(root);
+  assert.ok(!existsSync(indexOf(root)));
+});
+
+test('a label renamed in 1.7.0 stays once this build saves again', { skip: noOld }, async () => {
+  const root = await project('Renamed in 1.7.0');
+  await write(path.join(root, 'main.tex'), 'a\n');
+  const { version } = await versions.createVersion(root, { label: 'draft' });
+  const behind = await fs.readFile(indexOf(root));
+  await old.renameVersion(root, version.id, 'Submitted to journal');
+  assert.equal((await versions.listVersions(root))[0].label, 'Submitted to journal');
+  await write(path.join(root, 'main.tex'), 'b\n');
+  await versions.createVersion(root, {});
+  assert.equal((await versions.listVersions(root))[1].label, 'Submitted to journal');
+  assert.equal((await old.listVersions(root))[1].label, 'Submitted to journal');
+  // and the manifest has it now, so it doesn't rest on index.json alone
+  assert.equal((await json(path.join(root, '.spectrum', 'history', 'manifests', `${version.id}.json`))).label, 'Submitted to journal');
+  // renamed here since: another computer's index.json that's behind isn't taken for a rename
+  await versions.renameVersion(root, version.id, 'Final');
+  await fs.writeFile(indexOf(root), behind);
+  assert.equal((await versions.listVersions(root)).at(-1).label, 'Final');
+});
+
+test('a 1.7.0 version made from an index.json that’s behind gets a number of its own', { skip: noOld }, async () => {
+  const root = await project('Same number');
+  await write(path.join(root, 'main.tex'), 'a\n');
+  await old.createVersion(root, {});
+  const behind = await fs.readFile(indexOf(root));
+  await write(path.join(root, 'main.tex'), 'b on the Mac\n');
+  const mac = (await versions.createVersion(root, {})).version;
+  assert.equal(mac.number, 2);
+  // the PC, still on 1.7.0, saves from its index.json before the Mac's version came
+  await fs.writeFile(indexOf(root), behind);
+  await write(path.join(root, 'main.tex'), 'b on the PC\n');
+  assert.equal((await old.createVersion(root, {})).version.id, 2);
+  assert.deepEqual((await versions.listVersions(root)).map((v) => [v.id, v.number]), [[2, 3], [mac.id, 2], [1, 1]]);
 });
 
 test('settings follow the user without keys or paths, and only another computer’s count', async () => {

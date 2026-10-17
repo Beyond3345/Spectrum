@@ -603,7 +603,7 @@ test('version history: save, compare, restore, rename, delete', async () => {
   assert.equal(await objects(), 5);
   for (const id of [v2.id, v3.id, all.safety.id]) assert.ok((await api(`${versions}/${id}`, { method: 'DELETE' })).json.ok);
   assert.deepEqual((await api(versions)).json.versions.map((v) => v.id), [v1.version.id]);
-  // stored files no version uses stay a week, for a version another computer may still be sending (sync.test.js)
+  // stored files no version uses stay 90 days, for a version another computer may still be sending (sync-both.test.js)
   assert.equal(await objects(), 5);
   assert.equal((await api(`${versions}/${v2.id}`, { method: 'DELETE' })).status, 404);
   assert.equal((await api(`${versions}/abc/changes`)).status, 404);
@@ -635,6 +635,36 @@ test('saves, lists and deletes chats', async () => {
   // a sync app's conflict copy of a chat (the same chat continued on two computers) isn't listed twice
   await fs.copyFile(path.join(p.path, '.spectrum', 'chats', 'chat_2.json'), path.join(p.path, '.spectrum', 'chats', 'chat_2_DESKTOP-AB12CD_Oct-17-1042-2026_Conflict.json'));
   assert.deepEqual((await api(chats)).json.chats.map((c) => c.id), ['chat_2']);
+});
+
+test('a chat saved from an older copy keeps what another computer added since', async () => {
+  const p = await newProject('Chats on two computers');
+  const url = `/api/projects/${p.id}/chats/chat_x`;
+  const file = path.join(p.path, '.spectrum', 'chats', 'chat_x.json');
+  const message = (role, content, at) => ({ role, content, createdAt: `2026-01-0${at}T00:00:00.000Z` });
+  const chat = { id: 'chat_x', title: 'Intro', mode: 'assistant', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', messages: [message('user', 'one', 1)] };
+  assert.deepEqual((await api(url, { method: 'PUT', body: { chat } })).json, { ok: true });
+  // the MacBook carries on with the chat, and the sync app brings its copy here
+  const fromMac = { ...chat, updatedAt: '2026-01-03T00:00:00.000Z', messages: [...chat.messages, message('user', 'two on the Mac', 2), message('assistant', 'answer on the Mac', 3)] };
+  await fs.writeFile(file, JSON.stringify(fromMac));
+
+  // the PC's panel still shows the first copy: its message goes after the Mac's
+  const mine = { ...chat, updatedAt: '2026-01-04T00:00:00.000Z', messages: [...chat.messages, message('user', 'two on the PC', 4)] };
+  const saved = (await api(url, { method: 'PUT', body: { chat: mine, base: chat.updatedAt } })).json.chat;
+  const contents = (c) => c.messages.map((m) => m.content);
+  assert.deepEqual(contents(saved), ['one', 'two on the Mac', 'answer on the Mac', 'two on the PC']);
+  assert.deepEqual(JSON.parse(await fs.readFile(file, 'utf8')), saved);
+  assert.ok(saved.updatedAt > mine.updatedAt);
+  // the reply to it, made from the copy sent before that answer came back, merges too
+  const reply = { ...mine, updatedAt: '2026-01-05T00:00:00.000Z', messages: [...mine.messages, message('assistant', 'answer on the PC', 5)] };
+  await api(url, { method: 'PUT', body: { chat: reply, base: mine.updatedAt } });
+  const disk = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.deepEqual(contents(disk), ['one', 'two on the Mac', 'answer on the Mac', 'two on the PC', 'answer on the PC']);
+
+  // made from the copy on disk: saved as sent, a change to a message's details too
+  const picked = { ...disk, updatedAt: '2026-01-06T00:00:00.000Z', messages: disk.messages.map((m, i) => (i === 0 ? { ...m, meta: { picked: true } } : m)) };
+  assert.deepEqual((await api(url, { method: 'PUT', body: { chat: picked, base: disk.updatedAt } })).json, { ok: true });
+  assert.deepEqual(JSON.parse(await fs.readFile(file, 'utf8')), picked);
 });
 
 test('conflict copies: marked in the tree, never documents, and one can take the original’s place', async () => {
