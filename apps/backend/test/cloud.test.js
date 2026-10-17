@@ -286,13 +286,31 @@ test('Sync to with Move moves the folder into the location, its original to the 
   await post(`/api/projects/${kept.id}/cloud`, { location: loc });
   await post(`/api/projects/${kept.id}/cloud/stop`, { deleteCloud: false });
   assert.equal((await post(`/api/projects/${kept.id}/cloud`, { location: loc, mode: 'move' })).json.message, 'Already in OneDrive as Kept.');
-  // its folder here gone (renamed, a drive unplugged): Folder missing, never the copy kept there
-  await fs.rename(kept.path, path.join(tmp, 'Kept away'));
+  // its folder here gone (renamed, a drive unplugged): Folder missing, never the copy kept there, after Locate… too
+  const away = path.join(tmp, 'Kept away');
+  await fs.rename(kept.path, away);
   try {
     const missing = await listed(kept.id);
     assert.deepEqual([missing.path, missing.missing, missing.cloud], [kept.path, true, undefined]);
+    assert.equal((await post(`/api/projects/${kept.id}/relocate`, { path: away })).status, 200);
+    await fs.rename(away, `${away} again`);
+    const again = await listed(kept.id);
+    assert.deepEqual([again.path, again.missing], [away, true]);
   } finally {
-    await fs.rename(path.join(tmp, 'Kept away'), kept.path);
+    await fs.rename(`${away} again`, away).catch(() => {});
+  }
+
+  // nor a Finder copy of a project here put in the location to share it, which was never synced
+  const shared = await local('Shared');
+  await fs.cp(shared.path, path.join(loc, 'Shared with Ana'), { recursive: true });
+  writeFileSync(path.join(loc, 'Shared with Ana', 'main.tex'), 'Ana’s edits\n');
+  await fs.rename(shared.path, `${shared.path} away`);
+  try {
+    const missing = await listed(shared.id);
+    assert.deepEqual([missing.path, missing.missing], [shared.path, true]);
+  } finally {
+    await fs.rename(`${shared.path} away`, shared.path);
+    rmSync(path.join(loc, 'Shared with Ana'), { recursive: true });
   }
 });
 

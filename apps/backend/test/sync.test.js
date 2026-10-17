@@ -132,9 +132,10 @@ test('a project downloaded in place stays where it is and follows itself when mo
   assert.deepEqual(thesis.place, { provider: 'synology', label: 'Synology Drive', rel: 'Spectrum/Thesis', here: true });
   assert.deepEqual(thesis.cloud, { mode: 'move', label: 'Synology Drive', rel: 'Spectrum/Thesis', location: drive });
   assert.ok(!(await list()).cloudOnly.some((p) => p.id === ids.thesis));
-  // 1.7.0 rewrites the registry with only the fields it knows, so nothing else goes in it
+  // 1.7.0 rewrites the registry with only the fields it knows, so nothing else goes in it but inPlace, which the scan
+  // works out again from the path when it's gone
   const registry = JSON.parse(readFileSync(path.join(tmp, 'data', 'registry.json'), 'utf8'));
-  for (const entry of registry.projects) assert.deepEqual(Object.keys(entry).sort(), ['addedAt', 'archived', 'id', 'name', 'path', 'tags']);
+  for (const entry of registry.projects) assert.deepEqual(Object.keys(entry).sort(), ['addedAt', 'archived', 'id', 'inPlace', 'name', 'path', 'tags']);
 
   await fs.mkdir(path.join(drive, 'Moved'));
   await fs.rename(path.join(drive, 'Spectrum', 'Thesis'), path.join(drive, 'Moved', 'Thesis'));

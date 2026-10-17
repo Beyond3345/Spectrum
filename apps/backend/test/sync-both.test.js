@@ -575,7 +575,8 @@ test('1.8.0 lists a mirrored project at its own folder, never its cloud copy too
   assert.equal(now.find((p) => p.id === mirrored.id).cloud.mode, 'mirror');
   assert.equal(now.find((p) => p.id === moved.id).cloud.mode, 'move');
   assert.equal(now.find((p) => p.path === path.join(synced, 'Shared paper'))?.cloud.mode, 'move');
-  for (const entry of (await json(path.join(tmp, 'data', 'registry.json'))).projects) assert.deepEqual(Object.keys(entry).sort(), ['addedAt', 'archived', 'id', 'name', 'path', 'tags']);
+  // and inPlace, which 1.8.0 drops and the scan works out again from the path
+  for (const entry of (await json(path.join(tmp, 'data', 'registry.json'))).projects) assert.deepEqual(Object.keys(entry).filter((k) => k !== 'inPlace').sort(), ['addedAt', 'archived', 'id', 'name', 'path', 'tags']);
 });
 
 test('1.7.0 lists them both at their own folders', { skip: !oldProjects && 'no v1.7.0 in git (set SPECTRUM_OLD_REV)' }, async () => {

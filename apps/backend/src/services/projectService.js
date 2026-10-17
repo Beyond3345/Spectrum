@@ -82,11 +82,13 @@ function updateRegistry(fn) {
 // The registry keeps name, tags and archived so a project whose folder is missing still lists right.
 const cached = (meta) => ({ name: meta.name, tags: meta.tags, archived: meta.archived });
 
+// inPlace: listed at its folder in a cloud location, used there, which the scan follows when it moves
 export async function register(id, root, meta) {
+  const inPlace = !!(await locationOf(root));
   await updateRegistry((registry) => {
     const previous = registry.projects.find((p) => p.id === id);
     registry.projects = registry.projects.filter((p) => p.id !== id && p.path !== root);
-    registry.projects.push({ id, path: root, ...cached(meta), addedAt: previous?.addedAt || new Date().toISOString() });
+    registry.projects.push({ id, path: root, ...cached(meta), addedAt: previous?.addedAt || new Date().toISOString(), inPlace });
   });
 }
 
@@ -98,20 +100,11 @@ function cacheMeta(meta) {
 }
 
 /** The project's folder has moved (Sync to, Stop syncing): its entry, with whatever else it holds, points there now. */
-export function moveEntry(id, root) {
+export async function moveEntry(id, root) {
+  const inPlace = !!(await locationOf(root));
   return updateRegistry((registry) => {
     const entry = registry.projects.find((p) => p.id === id);
-    if (!entry) return;
-    entry.path = root;
-    delete entry.keptHere;
-  });
-}
-
-/** Stop syncing left a copy with the project's id in the location, which its folder here never turns into. */
-export function keptHere(id) {
-  return updateRegistry((registry) => {
-    const entry = registry.projects.find((p) => p.id === id);
-    if (entry) entry.keptHere = true;
+    if (entry) Object.assign(entry, { path: root, inPlace });
   });
 }
 
@@ -335,9 +328,9 @@ async function lost(root, id) {
 /**
  * Look through the cloud locations on this computer for projects, at most every 30 s unless forced (the window came
  * to the front). Nothing is written into the folders, and nothing is added to the list: Download and Sync to do that.
- * A listed project whose folder has gone follows its id to the new one (moved, or synced to another place, or its
- * location added again at a new path), but a mirrored one never does, nor one whose copy Stop syncing kept, so a
- * missing folder here says so rather than turning into the cloud copy. The same id in two folders is a copy (Finder's,
+ * A listed project used in place whose folder has gone follows its id to the new one (moved, or synced to another
+ * place, or its location added again at a new path), but a mirrored one never does, nor one on this computer (whose
+ * copy Stop syncing kept, say), so a missing folder here says so rather than turning into the cloud copy. The same id in two folders is a copy (Finder's,
  * a sync app's): neither counts, and a listed project stays where it is (the copy gets its own id when it's opened,
  * through openFolder).
  */
@@ -352,12 +345,15 @@ function scanSyncFolders(force) {
     const once = found.filter((f) => found.filter((g) => g.id === f.id).length === 1);
     const mirrored = new Set((await listMirrored()).map((m) => m.id));
     await updateRegistry(async (registry) => {
+      // one listed before 1.9.0, or by 1.8.0 or 1.7.0, is used in place when its folder is in a location
+      for (const e of registry.projects) e.inPlace ??= folders.some((f) => within(e.path, f.path));
       for (const { id, root, meta } of once) {
         const entry = registry.projects.find((p) => p.id === id);
         // a template's working copy belongs in the app's data folder; one copied into a cloud location is left alone
         if (!entry || mirrored.has(id) || meta.templateDraft || sameFolder(entry.path, root)) continue;
-        // not the copy Stop syncing left there: a project here whose folder has gone shows Folder missing
-        if (entry.keptHere) continue;
+        // only one used in place: a project here whose folder has gone shows Folder missing, rather than turning into
+        // a copy with its id (the one Stop syncing kept, or a Finder copy someone shared)
+        if (!entry.inPlace) continue;
         if (registry.projects.some((p) => p.id !== id && (within(p.path, root) || within(root, p.path)))) continue;
         if (await lost(entry.path, id)) Object.assign(entry, { path: root }, cached(normaliseMeta({ ...meta, id })));
       }
