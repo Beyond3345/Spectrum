@@ -4,8 +4,8 @@ import path from 'path';
 //   Synology Drive  a_Andy-PC_Jan-03-0901-2013_CaseConflict_1.txt (<name>_<computer>_<Mon-D[D]-HHMM[SS]-YYYY>_<reason>[_n];
 //                   whether the day is padded isn't documented)
 //   Dropbox         a (Andy's conflicted copy 2013-01-03).txt, a (Case Conflict).txt
-//   OneDrive        a-DESKTOP-AB12CD.txt, which reads like any name with a dash, so only for a known computer's name
-//                   when a.txt is there too
+//   OneDrive        a-DESKTOP-AB12CD.txt, which reads like any name with a dash, so only for the system's name of a
+//                   known computer (presenceService's knownMachineNames) when a.txt is there too
 const SYNOLOGY = /^(.+)_(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{1,2}-\d{4}(?:\d{2})?-\d{4}_[A-Za-z]*Conflict[A-Za-z]*(?:_\d+)?$/i;
 const DROPBOX = /^(.*\S) \((?:[^()]*conflicted copy[^()]*(?:\(\d+\))?|case conflict(?: \d+)?|unicode encoding conflict)\)(?: \(\d+\))?$/i;
 

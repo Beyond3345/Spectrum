@@ -733,6 +733,9 @@ function SyncedFolders({ onChange }: { onChange: () => void }) {
       <div>
         <button className="btn small" disabled={!sync} onClick={() => add()}>Add…</button>
       </div>
+      {sync && sync.folders.length > 1 && sync.sharedFolder && (
+        <div className="field-hint">Settings and templates go between your computers through {sync.sharedFolder}, so add it on each one.</div>
+      )}
       {error && <div className="field-hint error">{error}</div>}
       <div className="field">
         <label htmlFor="settings-machineName">This computer’s name</label>

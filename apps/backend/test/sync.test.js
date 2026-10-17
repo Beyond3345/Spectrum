@@ -36,7 +36,7 @@ delete process.env.OneDriveConsumer;
 const { registerProjectRoutes } = await import('../src/routes/projects.js');
 const { registerSyncRoutes } = await import('../src/routes/sync.js');
 const { registerSystemRoutes } = await import('../src/routes/system.js');
-const { isConflictCopy, offlineMessage } = await import('../src/services/syncService.js');
+const { isConflictCopy, offlineMessage, sharedDir } = await import('../src/services/syncService.js');
 const { default: Fastify } = await import('fastify');
 
 const app = Fastify();
@@ -245,4 +245,105 @@ test('recognises conflict copies and explains online-only files it can’t read'
   assert.match(await offlineMessage(err(path.join(drive, 'Spectrum', 'Tidy', 'main.tex'))), /^“main.tex” is online-only, and Synology Drive can’t download it right now/);
   assert.equal(await offlineMessage(err(path.join(tmp, 'elsewhere', 'main.tex'))), null);
   assert.equal(await offlineMessage(err(path.join(drive, 'main.tex'), 'ENOENT')), null);
+});
+
+test('never takes a project’s folder, or one inside it, as a synced folder', async () => {
+  const notes = path.join(tmp, 'OneDrive notes', 'Notes');
+  project(notes);
+  mkdirSync(path.join(notes, 'chapters'));
+  for (const folder of [notes, path.join(notes, 'chapters')]) {
+    const res = await setFolders([drive, folder]);
+    assert.equal(res.status, 400, folder);
+    assert.match(res.json.message, /a project\. Choose the folder that holds your projects/);
+  }
+  assert.deepEqual(syncJson().folders.map((f) => f.path), [drive, onedrive]);
+});
+
+test('a Finder copy never takes a listed project’s place, nor does a project.json that can’t be read for a moment', async () => {
+  const spectrum = path.join(drive, 'Spectrum');
+  const report = path.join(spectrum, 'Report');
+  const id = project(report);
+  assert.equal((await listed(id)).path, report);
+  // a backup made in Finder carries the same id; then the original is renamed
+  await fs.cp(report, path.join(spectrum, 'Report backup'), { recursive: true });
+  await fs.rename(report, path.join(spectrum, 'Report final'));
+  const entry = await listed(id);
+  assert.deepEqual([entry.path, entry.missing], [report, true], 'two folders hold it: the user chooses');
+  rmSync(path.join(spectrum, 'Report backup'), { recursive: true });
+  assert.equal((await listed(id)).path, path.join(spectrum, 'Report final'), 'one does: it follows');
+
+  if (WINDOWS) return;
+  await fs.cp(path.join(spectrum, 'Report final'), path.join(spectrum, 'Report old'), { recursive: true });
+  const meta = path.join(spectrum, 'Report final', '.spectrum', 'project.json');
+  await fs.chmod(meta, 0o000);
+  try {
+    assert.equal((await listed(id)).path, path.join(spectrum, 'Report final'));
+  } finally {
+    await fs.chmod(meta, 0o644);
+  }
+  rmSync(path.join(spectrum, 'Report old'), { recursive: true });
+});
+
+test('finds a project another computer lists at the place it gave, deeper down or in a sync app’s folder not listed here', async () => {
+  await setFolders([drive]);
+  mkdirSync(onedrive, { recursive: true });
+  const deep = path.join(drive, 'Uni', '2025', 'S2', 'ELEC2410');
+  const elec = project(deep);
+  const notes = project(path.join(onedrive, 'Lecture notes'));
+  // copies with the same id that sort first: only the one at the place given counts, and neither without one
+  const paper = project(path.join(drive, 'Spectrum', 'Paper'));
+  await fs.cp(path.join(drive, 'Spectrum', 'Paper'), path.join(drive, 'Spectrum', 'A Paper old'), { recursive: true });
+  const twice = project(path.join(drive, 'Spectrum', 'Twice'));
+  await fs.cp(path.join(drive, 'Spectrum', 'Twice'), path.join(drive, 'Spectrum', 'A Twice old'), { recursive: true });
+  const outside = project(path.join(home, 'Outside'));
+  writeFileSync(path.join(drive, '.spectrum-shared', 'machines', `${crypto.randomUUID()}.json`), JSON.stringify({
+    machineName: 'Uni PC',
+    updatedAt: new Date().toISOString(),
+    projects: [
+      { id: elec, name: 'ELEC2410', place: { provider: 'synology', rel: 'Uni/2025/S2/ELEC2410' } },
+      { id: notes, name: 'Lecture notes', place: { provider: 'onedrive', rel: 'Lecture notes' } },
+      { id: paper, name: 'Paper', place: { provider: 'synology', rel: 'Spectrum/Paper' } },
+      { id: outside, name: 'Outside', place: { provider: 'synology', rel: '../Outside' } }
+    ]
+  }));
+  const { projects, elsewhere } = await list();
+  const at = (id) => projects.find((p) => p.id === id)?.path;
+  assert.equal(at(elec), deep);
+  assert.equal(at(notes), path.join(onedrive, 'Lecture notes'));
+  assert.equal(at(paper), path.join(drive, 'Spectrum', 'Paper'));
+  assert.equal(at(twice), undefined);
+  assert.equal(at(outside), undefined);
+  assert.ok(!elsewhere.some((p) => [elec, notes, paper].includes(p.id)));
+});
+
+test('a project removed from the list stays out while another computer lists it, wherever its folder is', async () => {
+  const p = (await api('/api/projects', { method: 'POST', body: { name: 'Shared notes', parentDir: path.join(tmp, 'elsewhere') } })).json;
+  writeFileSync(path.join(drive, '.spectrum-shared', 'machines', `${crypto.randomUUID()}.json`), JSON.stringify({
+    machineName: 'Laptop', updatedAt: new Date().toISOString(), projects: [{ id: p.id, name: 'Shared notes', place: null }]
+  }));
+  assert.equal((await api(`/api/projects/${p.id}/remove`, { method: 'POST', body: {} })).status, 200);
+  const res = await list();
+  assert.ok(!res.projects.some((x) => x.id === p.id) && !res.elsewhere.some((x) => x.id === p.id));
+});
+
+test('archived projects aren’t listed for the other computers', async () => {
+  const p = (await api('/api/projects', { method: 'POST', body: { name: 'Old course' } })).json;
+  const ownFile = path.join(drive, '.spectrum-shared', 'machines', `${syncJson().machineId}.json`);
+  await list();
+  assert.ok(JSON.parse(readFileSync(ownFile, 'utf8')).projects.some((x) => x.id === p.id));
+  assert.equal((await api(`/api/projects/${p.id}/archive`, { method: 'PATCH', body: { archived: true } })).status, 200);
+  await list();
+  assert.ok(!JSON.parse(readFileSync(ownFile, 'utf8')).projects.some((x) => x.id === p.id));
+});
+
+test('settings and templates go through the same synced folder on each computer, whatever order its folders are in', async () => {
+  for (const folders of [[drive, dropbox], [dropbox, drive]]) {
+    await setFolders(folders);
+    assert.equal(await sharedDir(), path.join(dropbox, '.spectrum-shared'), folders.join(', '));
+  }
+  assert.equal((await api('/api/sync')).json.sharedFolder, dropbox, 'and Settings says which');
+  // new projects still go in the first
+  await setFolders([drive, dropbox]);
+  assert.equal((await api('/api/system/check')).json.projectsDir, drive);
+  await setFolders([drive]);
 });
