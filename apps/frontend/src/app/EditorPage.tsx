@@ -21,6 +21,7 @@ import {
   getFile,
   getFileIfChanged,
   getProjectTree,
+  getSyncSettings,
   listProjects,
   renameVersion,
   revealProject,
@@ -62,6 +63,7 @@ import { ignoreSpelling, misspeltAt, recheckSpelling, spellChecker } from '../ed
 import type { ToolsTab } from '../editor/ToolsPanel';
 import ReviewChangesSheet from '../editor/ReviewChangesSheet';
 import SyncBanners from '../editor/SyncBanners';
+import { conflictCopyPath, onDiskChange } from '../editor/heldFiles';
 import FileTree from '../editor/FileTree';
 import type { FileTreeHandle } from '../editor/FileTree';
 import PdfPreview, { MAX_ZOOM, MIN_ZOOM, pdfThumbnail } from '../editor/PdfPreview';
@@ -264,6 +266,10 @@ function Editor({ projectId }: { projectId: string }) {
   const hashesRef = useRef(new Map<string, string>());
   /** open files that aren't saved until the user says what to keep: changed on another computer, or deleted on disk */
   const heldRef = useRef(new Map<string, Held>());
+  /** held files with text here that isn't on disk, kept beside them as conflict copies if the user leaves first */
+  const unsavedRef = useRef(new Map<string, true>());
+  /** this computer's name, for those copies' names; asked for when a file is first held */
+  const machineRef = useRef('');
   const [, setHeldVersion] = useState(0);
   const [comparing, setComparing] = useState(false);
   /** editor state (undo history, cursor) per file that has been open */
@@ -292,6 +298,8 @@ function Editor({ projectId }: { projectId: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
   const writeChain = useRef<Promise<unknown>>(Promise.resolve());
+  /** each path's writes waiting in writeChain or running */
+  const queuedRef = useRef(new Map<string, number>());
   // stops the editor's jump highlight from fading on time (a newer jump replaces it)
   const unlingerRef = useRef(() => {});
   // the last notice a double-click in the source gave, which says it once per PDF and file
@@ -409,11 +417,18 @@ function Editor({ projectId }: { projectId: string }) {
   /**
    * One write at a time, so an autosave can never land after a newer write. Each goes from the text last loaded
    * or saved, so a file changed or deleted on disk since (another computer, through a sync client) isn't written over.
+   * create: only made if nothing (in any letter case) is there.
    */
-  const queueWrite = (path: string, content: string) => {
+  const queueWrite = (path: string, content: string, create = false) => {
+    const queued = queuedRef.current;
+    queued.set(path, (queued.get(path) ?? 0) + 1);
     const job = writeChain.current.then(async () => {
-      const { hash } = await writeFile(projectId, path, content, { base: hashesRef.current.get(path) });
-      hashesRef.current.set(path, hash);
+      try {
+        const { hash } = await writeFile(projectId, path, content, create ? { create } : { base: hashesRef.current.get(path) });
+        hashesRef.current.set(path, hash);
+      } finally {
+        queued.set(path, (queued.get(path) ?? 1) - 1);
+      }
     });
     writeChain.current = job.catch(() => undefined);
     return job;
@@ -425,10 +440,18 @@ function Editor({ projectId }: { projectId: string }) {
   };
 
   const hold = (path: string, value?: Held) => {
-    if (value === undefined) heldRef.current.delete(path);
-    else heldRef.current.set(path, value);
+    if (value === undefined) {
+      heldRef.current.delete(path);
+      unsavedRef.current.delete(path);
+    } else {
+      heldRef.current.set(path, value);
+      if (!machineRef.current) getSyncSettings().then((s) => (machineRef.current = s.machineName), () => undefined);
+    }
     setHeldVersion((v) => v + 1);
   };
+
+  /** The file has text here that isn't on disk: typed in the open file, or kept while it's held. */
+  const hasUnsaved = (path: string) => unsavedRef.current.has(path) || (path === activeRef.current && dirtyRef.current);
 
   /** A file's text as it is on disk now: cached, and shown (undoably) when it's the open file. */
   const adoptDiskText = (path: string, content: string, hash: string) => {
@@ -443,15 +466,19 @@ function Editor({ projectId }: { projectId: string }) {
   };
 
   /**
-   * A loaded file isn't on disk as the editor last loaded or saved it (disk null: it was deleted). The open file
-   * with unsaved edits, or one already held for that, is held for the user to say which to keep; a file without
-   * edits here takes the new text; a deleted tab is marked, and anything else deleted is forgotten.
+   * A loaded file isn't on disk as the editor last loaded or saved it (disk null: it was deleted). One with unsaved
+   * text here (a deleted tab's too), or already held for a change, is held for the user to say which to keep,
+   * unless the disk has that text now; a file without edits here takes the new text; a deleted tab is marked, and
+   * anything else deleted is forgotten. While a save of it is queued, that save's refusal says so instead.
    */
   const changedOnDisk = (path: string, disk: { content: string; hash: string } | null) => {
+    const queued = !!queuedRef.current.get(path);
+    const action = onDiskChange({ queued, changed: !!heldRef.current.get(path), unsaved: hasUnsaved(path), mine: filesRef.current.get(path), disk: disk && disk.content });
+    if (action === 'wait') return;
     if (!disk) {
       if (tabsRef.current.includes(path)) hold(path, null);
       else for (const cache of [filesRef.current, hashesRef.current, statesRef.current] as Map<string, unknown>[]) cache.delete(path);
-    } else if (heldRef.current.get(path) || (path === activeRef.current && dirtyRef.current)) hold(path, { theirs: disk.content, hash: disk.hash });
+    } else if (action === 'ask') hold(path, { theirs: disk.content, hash: disk.hash });
     else adoptDiskText(path, disk.content, disk.hash);
     setFilesVersion((v) => v + 1);
   };
@@ -467,10 +494,9 @@ function Editor({ projectId }: { projectId: string }) {
           const known = hashesRef.current.get(path);
           if (known === undefined) return;
           try {
-            const disk = await getFileIfChanged(projectId, path, known);
+            // a deleted tab's file that's back comes with its text, to compare with the tab's
+            const disk = heldRef.current.get(path) === null ? await getFile(projectId, path) : await getFileIfChanged(projectId, path, known);
             if (disk.content !== undefined) changedOnDisk(path, { content: disk.content, hash: disk.hash });
-            // back as it was (restored, or the deletion undone): no longer marked
-            else if (heldRef.current.get(path) === null) hold(path);
           } catch (err) {
             if (err instanceof ApiError && err.status === 404) changedOnDisk(path, null);
           }
@@ -484,8 +510,12 @@ function Editor({ projectId }: { projectId: string }) {
   const saveNow = async (announce = false) => {
     const path = activeRef.current;
     const view = viewRef.current;
-    // a held file waits for the user to say what to keep
-    if (!path || !view || heldRef.current.has(path)) return;
+    if (!path || !view) return;
+    // a held file waits for the user to say what to keep, its text kept should they leave first
+    if (heldRef.current.has(path)) {
+      if (dirtyRef.current) unsavedRef.current.set(path, true);
+      return;
+    }
     if (dirtyRef.current) {
       const content = view.state.doc.toString();
       markClean();
@@ -624,7 +654,10 @@ function Editor({ projectId }: { projectId: string }) {
 
   // ─── a file changed on another computer, or deleted on disk ───
 
-  /** Keep mine: a version of the project as it is on disk first, with their text, then this text over it. Restore, for a deleted file: this text, made again. */
+  /**
+   * Keep mine: a version of the project as it is on disk first, with their text, then this text over it. Restore,
+   * for a deleted file: this text, made again, unless a file has taken its place since.
+   */
   const keepMine = async (path: string) => {
     const held = heldRef.current.get(path);
     if (held === undefined) return;
@@ -636,10 +669,10 @@ function Editor({ projectId }: { projectId: string }) {
         if (!res.ok) throw new Error('The version couldn’t be saved.');
         if (!res.unchanged) window.dispatchEvent(new Event(VERSIONS_CHANGED));
         hashesRef.current.set(path, held.hash);
-      } else hashesRef.current.delete(path); // Restore: made again, whatever is there now
+      }
       hold(path);
       if (active) markClean();
-      await queueWrite(path, filesRef.current.get(path) ?? '');
+      await queueWrite(path, filesRef.current.get(path) ?? '', !held);
       if (!held) await refreshTree();
     } catch (err) {
       if (active) {
@@ -649,7 +682,11 @@ function Editor({ projectId }: { projectId: string }) {
       const disk = refusedFor(err);
       // changed again meanwhile: asked again
       if (disk !== undefined) changedOnDisk(path, disk);
-      else notify(`Couldn’t ${held ? 'keep your' : 'restore'} ${nameOf(path)}: ${errorText(err)}`, 'error');
+      // a file is there again (back, or in another letter case): asked about as one changed on another computer
+      else if (!held && err instanceof ApiError && err.status === 409) {
+        hold(path, null);
+        await recheck([path]);
+      } else notify(`Couldn’t ${held ? 'keep your' : 'restore'} ${nameOf(path)}: ${errorText(err)}`, 'error');
     }
   };
 
@@ -664,9 +701,34 @@ function Editor({ projectId }: { projectId: string }) {
   /** Close a deleted file's tab, and forget its text. */
   const closeGone = async (path: string) => {
     await closeTab(path);
-    for (const cache of [filesRef.current, hashesRef.current, heldRef.current] as Map<string, unknown>[]) cache.delete(path);
+    for (const cache of [filesRef.current, hashesRef.current, heldRef.current, unsavedRef.current] as Map<string, unknown>[]) cache.delete(path);
     setHeldVersion((v) => v + 1);
   };
+
+  /** Each held file with text here that isn't on disk, and the conflict copy beside it that leaving keeps it in. */
+  const heldCopies = () =>
+    [...heldRef.current.keys()]
+      .filter(hasUnsaved)
+      .map((path) => ({ path, copy: conflictCopyPath(path, machineRef.current, new Date()), content: filesRef.current.get(path) ?? '' }));
+
+  /**
+   * Leaving or quitting before saying what to keep of held files: each one's text here goes beside it as a conflict
+   * copy, which the conflict-copy banner offers, so it's neither lost nor written over the text on disk.
+   */
+  const keepHeldText = async () => {
+    const copies = heldCopies();
+    for (const { path } of copies) unsavedRef.current.delete(path);
+    if (heldRef.current.has(activeRef.current)) dirtyRef.current = false;
+    try {
+      await Promise.all(copies.map(({ copy, content }) => writeFile(projectId, copy, content, { create: true })));
+    } catch (err) {
+      for (const { path } of copies) unsavedRef.current.set(path, true);
+      throw err;
+    }
+  };
+
+  /** Leaving the project or quitting: the open file saved, and held files' text kept. */
+  const saveAll = () => saveNow().then(keepHeldText);
 
   /** Files replaced by an upload: forget their cached text and undo history, and show the new contents. */
   const onUploaded = async (paths: string[]) => {
@@ -676,7 +738,7 @@ function Editor({ projectId }: { projectId: string }) {
 
   const reloadProject = async () => {
     setPending([]);
-    for (const cache of [filesRef.current, statesRef.current, hashesRef.current, heldRef.current]) cache.clear();
+    for (const cache of [filesRef.current, statesRef.current, hashesRef.current, heldRef.current, unsavedRef.current]) cache.clear();
     const res = await refreshTree();
     const exists = (p: string) => res.items.some((i) => i.path === p && i.type === 'file');
     const keep = [activeRef.current, mainFile].find((p) => p && exists(p)) || (await smallTextFile(projectId, res.items));
@@ -694,7 +756,7 @@ function Editor({ projectId }: { projectId: string }) {
 
   const onMoved = (from: string, to: string) => {
     const remap = (p: string) => (p === from ? to : p.startsWith(`${from}/`) ? to + p.slice(from.length) : p);
-    for (const cache of [filesRef.current, statesRef.current, hashesRef.current, heldRef.current] as Map<string, unknown>[]) {
+    for (const cache of [filesRef.current, statesRef.current, hashesRef.current, heldRef.current, unsavedRef.current] as Map<string, unknown>[]) {
       for (const [key, value] of [...cache]) {
         if (remap(key) === key) continue;
         cache.delete(key);
@@ -714,7 +776,7 @@ function Editor({ projectId }: { projectId: string }) {
 
   const onDeleted = (path: string) => {
     const gone = (p: string) => p === path || p.startsWith(`${path}/`);
-    for (const cache of [filesRef.current, statesRef.current, hashesRef.current, heldRef.current] as Map<string, unknown>[]) {
+    for (const cache of [filesRef.current, statesRef.current, hashesRef.current, heldRef.current, unsavedRef.current] as Map<string, unknown>[]) {
       for (const key of [...cache.keys()]) if (gone(key)) cache.delete(key);
     }
     const rest = tabs.filter((p) => !gone(p));
@@ -1286,7 +1348,13 @@ function Editor({ projectId }: { projectId: string }) {
   };
 
   const leave = async (to: string) => {
-    await saveNow();
+    try {
+      await saveAll();
+    } catch (err) {
+      // staying, with the text still here
+      notify(`Couldn’t keep your unsaved changes: ${errorText(err)}`, 'error');
+      return;
+    }
     navigate(to);
   };
 
@@ -1412,36 +1480,35 @@ function Editor({ projectId }: { projectId: string }) {
 
   // declared before CodeMirror so its cleanup runs while the view still exists
   useEffect(() => {
-    // browsers refuse keepalive bodies over 64 KiB.
-    // ponytail: leaving or quitting, a file changed on another computer since it loaded isn't written over, so the
-    // last few seconds' unsaved typing in it are lost; a conflict copy beside it would keep them
-    const keepaliveBody = () => {
-      const path = activeRef.current;
-      const body = JSON.stringify({ path, content: viewRef.current?.state.doc.toString() ?? '', base: hashesRef.current.get(path) });
-      return new Blob([body]).size <= 60 * 1024 ? body : null;
-    };
-    const flush = (keepalive: boolean) => {
+    // what closing the page still has to write: the open file's unsaved text, or held files' as conflict copies.
+    // Browsers refuse keepalive bodies over 64 KiB, all of a page's together.
+    // ponytail: a keepalive save refused because the file changed on disk in the last moments is lost; the
+    // desktop app quits through __spectrumFlush, which keeps it as a conflict copy
+    const keepaliveBodies = () => {
       const path = activeRef.current;
       const view = viewRef.current;
-      if (!dirtyRef.current || !path || !view || heldRef.current.has(path)) return;
-      if (!keepalive) {
-        dirtyRef.current = false;
-        queueWrite(path, view.state.doc.toString()).catch(() => undefined);
-        return;
+      const bodies = heldCopies().map(({ copy, content }) => JSON.stringify({ path: copy, content, create: true }));
+      if (dirtyRef.current && path && view && !heldRef.current.has(path)) {
+        bodies.push(JSON.stringify({ path, content: view.state.doc.toString(), base: hashesRef.current.get(path) }));
       }
-      const body = keepaliveBody();
-      // too big: beforeunload has already started a normal save and held the page for it
-      if (!body) return;
-      dirtyRef.current = false;
-      fetch(`/api/projects/${projectId}/file`, { method: 'PUT', keepalive: true, headers: { 'Content-Type': 'application/json' }, body }).catch(
-        () => undefined
-      );
+      return new Blob(bodies).size <= 60 * 1024 ? bodies : null;
     };
-    const onHide = () => flush(true);
-    // a file too big for keepalive is saved normally, and the browser's leave prompt holds the page until it lands
+    const onHide = () => {
+      const bodies = keepaliveBodies();
+      // too big: beforeunload has already started normal saves and held the page for them
+      if (!bodies) return;
+      dirtyRef.current = false;
+      unsavedRef.current.clear();
+      for (const body of bodies) {
+        fetch(`/api/projects/${projectId}/file`, { method: 'PUT', keepalive: true, headers: { 'Content-Type': 'application/json' }, body }).catch(
+          () => undefined
+        );
+      }
+    };
+    // too big for keepalive: saved normally, and the browser's leave prompt holds the page until it lands
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (!dirtyRef.current || keepaliveBody()) return;
-      saveNow();
+      if (keepaliveBodies()) return;
+      saveAll().catch(() => undefined);
       e.preventDefault();
       e.returnValue = '';
     };
@@ -1451,7 +1518,7 @@ function Editor({ projectId }: { projectId: string }) {
     const onFocus = () => actions.current.recheck();
     // the desktop shell calls this before it closes the window (pagehide may not run there)
     const hooks = window as Window & { __spectrumFlush?: () => Promise<void> };
-    hooks.__spectrumFlush = () => saveNow();
+    hooks.__spectrumFlush = () => saveAll();
     window.addEventListener('pagehide', onHide);
     window.addEventListener('beforeunload', onBeforeUnload);
     document.addEventListener('visibilitychange', onVisibility);
@@ -1462,7 +1529,7 @@ function Editor({ projectId }: { projectId: string }) {
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('focus', onFocus);
       delete hooks.__spectrumFlush;
-      flush(false);
+      saveAll().catch(() => undefined);
     };
   }, []);
 
