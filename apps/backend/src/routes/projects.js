@@ -287,7 +287,7 @@ export function registerProjectRoutes(fastify) {
     const root = await getProjectRoot(req.params.id);
     // used in its cloud location, so it goes from the other computers too: what Stop syncing › Delete checks first
     const p = await getProject(req.params.id);
-    if (p.cloud?.mode === 'move') await refuseDelete(p.id, p.name, root, p.cloud.label);
+    if (p.cloud?.mode === 'move') await refuseDelete(p.id, p.name, root, p.cloud.label, 'remove it from the list');
     try {
       await moveToBin(root);
     } catch (err) {

@@ -100,14 +100,16 @@ function refuseBusy(id, name) {
  * Delete it from the cloud location only when no other computer has it open, and every other computer that lists it
  * keeps a copy of its own: for one that works on the cloud copy itself (in place, or moved there), it would be gone.
  * An older Spectrum's list can't say (1.8.0 leaves archived projects out of it), so no such computer may be about.
+ * keep: what to do instead.
  */
-export async function refuseDelete(id, name, cloudRoot, label) {
+export async function refuseDelete(id, name, cloudRoot, label, keep = `keep the copy in ${label}`) {
+  const instead = `${keep[0].toUpperCase()}${keep.slice(1)} instead.`;
   const open = await othersOpen(cloudRoot);
-  if (open.length) throw httpError(`“${name}” is open on ${open[0].host}. Close it there, or keep the copy in ${label}.`, 409);
+  if (open.length) throw httpError(`“${name}” is open on ${open[0].host}. Close it there, or ${keep}.`, 409);
   const user = (await otherComputersProjects()).find((p) => p.id === id && !p.mirror);
-  if (user) throw httpError(`${user.machineName} works on the copy in ${label} itself, so deleting it would delete “${name}” there too. Keep the copy in ${label} instead.`, 409);
+  if (user) throw httpError(`${user.machineName} works on the copy in ${label} itself, so deleting it would delete “${name}” there too. ${instead}`, 409);
   const [older] = await olderComputers();
-  if (older) throw httpError(`${older} runs an older Spectrum, which may use the copy in ${label} itself. Keep the copy in ${label} instead.`, 409);
+  if (older) throw httpError(`${older} runs an older Spectrum, which may use the copy in ${label} itself. ${instead}`, 409);
 }
 
 /**

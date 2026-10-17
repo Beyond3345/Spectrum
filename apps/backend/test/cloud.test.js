@@ -276,7 +276,7 @@ test('Sync to with Move moves the folder into the location, its original to the 
     mkdirSync(path.dirname(presence), { recursive: true });
     writeFileSync(presence, JSON.stringify({ host: 'Study PC', since: now, at: now }));
     const trash = await post(`/api/projects/${p.id}/trash`);
-    assert.deepEqual([trash.status, trash.json.message], [409, '“Moving” is open on Study PC. Close it there, or keep the copy in OneDrive.']);
+    assert.deepEqual([trash.status, trash.json.message], [409, '“Moving” is open on Study PC. Close it there, or remove it from the list.']);
     assert.ok(existsSync(path.join(loc, 'Moving', 'main.tex')));
     rmSync(presence);
   }
