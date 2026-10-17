@@ -34,7 +34,7 @@ import {
 import { othersOpen } from '../services/presenceService.js';
 import { compiling } from '../services/compileService.js';
 import { copyProject, preflight } from '../utils/projectCopy.js';
-import { mirrorSkips } from '../utils/fsUtils.js';
+import { mirrorSkips, renameOver } from '../utils/fsUtils.js';
 import { moveToBin } from './projects.js';
 import { transferring } from './transfer.js';
 
@@ -125,7 +125,7 @@ async function binCloudCopy(root, location) {
   } catch {
     const bin = path.join(location, '.spectrum-bin', new Date().toISOString().slice(0, 10));
     await fs.mkdir(bin, { recursive: true });
-    await fs.rename(root, await freeFolder(bin, root));
+    await renameOver(root, await freeFolder(bin, root));
   }
 }
 

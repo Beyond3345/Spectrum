@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import { promisify } from 'util';
 import { gzip, gunzip } from 'zlib';
 import { diffLines } from 'diff';
-import { ensureDir, freePath, listFilesRecursive, readJson, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
+import { ensureDir, freePath, listFilesRecursive, readJson, renameOver, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { appPath, httpError, serialiser } from './projectService.js';
 
@@ -381,13 +381,14 @@ export function restoreVersion(root, versionId, relPath) {
       if (files[rel] && untracked.has(rel)) {
         const ext = path.extname(rel);
         const aside = await freePath(safeJoin(root, `${rel.slice(0, rel.length - ext.length)} (before restore)${ext}`));
-        await fs.rename(path.join(root, rel), aside);
+        await renameOver(path.join(root, rel), aside);
         keptAside.push(path.relative(root, aside).split(path.sep).join('/'));
       }
       const abs = safeJoin(root, rel);
       if (files[rel]) {
         await ensureDir(path.dirname(abs));
-        await fs.writeFile(abs, await readObject(root, files[rel]));
+        // through a temp file, which Windows' brief locks and a read-only file don't stop; a link keeps its target
+        await writeFileAtomic(await fs.realpath(abs).catch(() => abs), await readObject(root, files[rel]));
       } else {
         await fs.rm(abs, { force: true });
       }

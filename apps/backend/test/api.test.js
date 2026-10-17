@@ -1121,6 +1121,23 @@ test('restore moves aside files versions never captured instead of overwriting t
   assert.equal((await fs.stat(path.join(p.path, 'data (before restore).csv'))).size, big.length);
 });
 
+test('restore writes over a read-only file, keeping it read-only', async () => {
+  const p = await newProject('Read-only');
+  const file = path.join(p.path, 'main.tex');
+  await writeFile(p.id, 'main.tex', 'v1');
+  const { id } = (await api(`/api/projects/${p.id}/versions`, { method: 'POST', body: {} })).json.version;
+  await writeFile(p.id, 'main.tex', 'v2');
+  await fs.chmod(file, 0o444);
+  try {
+    const res = (await api(`/api/projects/${p.id}/versions/${id}/restore`, { method: 'POST', body: {} })).json;
+    assert.ok(res.ok, res.error);
+    assert.equal((await fs.stat(file)).mode & 0o200, 0);
+  } finally {
+    await fs.chmod(file, 0o644);
+  }
+  assert.equal(await readFile(p.id, 'main.tex'), 'v1');
+});
+
 test('a broken link or unreadable file does not block versions', async () => {
   const p = await newProject('Broken link');
   await writeFile(p.id, 'main.tex', 'hello');

@@ -604,7 +604,7 @@ export function registerProjectRoutes(fastify) {
       }
     }
     await ensureDir(path.dirname(absTo));
-    await fs.rename(absFrom, absTo);
+    await renameOver(absFrom, absTo);
     await touchProject(root).catch(() => {});
     return { ok: true };
   });
