@@ -249,7 +249,7 @@ export function downloadCloudProject(payload: { location: string; rel: string; i
  * computer needs it there.
  */
 export function stopSyncing(id: string, deleteCloud: boolean, parentDir?: string) {
-  return request<{ project: ProjectMeta }>(`/api/projects/${id}/cloud/stop`, json('POST', { deleteCloud, parentDir }));
+  return request<{ project: ProjectMeta; warning?: string }>(`/api/projects/${id}/cloud/stop`, json('POST', { deleteCloud, parentDir }));
 }
 
 /** Sync now; force: Sync anyway, past the stop for a sync that would delete many files. */

@@ -2,7 +2,6 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ApiError,
   archiveProject,
   binProject,
   copyProject,
@@ -1775,20 +1774,21 @@ function StopSyncingSheet({
 }) {
   // the choice being carried out: whether it deletes the copy
   const [stopping, setStopping] = useState<boolean | null>(null);
-  // why Delete can't be done: another computer has the project open, or uses the copy there as its own
-  const [refused, setRefused] = useState('');
+  // why it couldn't be done (for Delete: another computer has the project open, say), which may clear: tried again
   const [error, setError] = useState('');
+  // Spectrum can't find its copy there, so there's nothing to keep or delete
+  const gone = cloud.status?.state === 'not-found';
 
   const stop = async (deleteCloud: boolean) => {
     setStopping(deleteCloud);
     setError('');
     try {
-      await stopSyncing(project.id, deleteCloud, defaultDir || undefined);
-      toast(deleteCloud ? `Deleted “${project.name}” from ${cloud.label}.` : `“${project.name}” no longer syncs. The copy in ${cloud.label} stays.`);
+      const { warning } = await stopSyncing(project.id, deleteCloud, defaultDir || undefined);
+      if (warning) toast(warning, { tone: 'error' });
+      else toast(deleteCloud ? `Deleted “${project.name}” from ${cloud.label}.` : gone ? `“${project.name}” no longer syncs.` : `“${project.name}” no longer syncs. The copy in ${cloud.label} stays.`);
       onStopped();
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) setRefused(err.message);
-      else setError(errorText(err));
+      setError(errorText(err));
       setStopping(null);
     }
   };
@@ -1806,22 +1806,29 @@ function StopSyncingSheet({
       actions={
         <>
           <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn destructive" disabled={stopping !== null || !!refused} onClick={() => stop(true)}>
-            {stopping === true ? working : `Delete it from ${cloud.label}`}
-          </button>
+          {!gone && (
+            <button className="btn destructive" disabled={stopping !== null} onClick={() => stop(true)}>
+              {stopping === true ? working : `Delete it from ${cloud.label}`}
+            </button>
+          )}
           <button className="btn primary" disabled={stopping !== null} onClick={() => stop(false)}>
-            {stopping === false ? working : `Keep the copy in ${cloud.label}`}
+            {stopping === false ? working : gone ? 'Stop syncing' : `Keep the copy in ${cloud.label}`}
           </button>
         </>
       }
     >
       <div className="field-hint">
-        {cloud.mode === 'move'
-          ? `Spectrum copies it back to ${defaultDir ? tildify(defaultDir) : 'the default projects folder'} on this computer.`
-          : 'It stays on this computer as it is.'}{' '}
-        Keep the copy in {cloud.label} for your other computers, or delete it there.
+        {gone ? (
+          `Spectrum can’t find its copy in ${cloud.label}. The project stays on this computer as it is.`
+        ) : (
+          <>
+            {cloud.mode === 'move'
+              ? `Spectrum copies it back to ${defaultDir ? tildify(defaultDir) : 'the default projects folder'} on this computer.`
+              : 'It stays on this computer as it is.'}{' '}
+            Keep the copy in {cloud.label} for your other computers, or delete it there.
+          </>
+        )}
       </div>
-      {refused && <div className="field-hint error">{refused}</div>}
       {error && <div className="field-hint error">{error}</div>}
     </Sheet>
   );
