@@ -465,7 +465,7 @@ test('an iCloud Drive stand-in is a file not readable yet, never a deletion', as
   assert.equal(read(path.join(p.root, 'big.tex')), 'big\n');
   assert.ok(!existsSync(path.join(p.root, '.big.tex.icloud')), 'the stand-in isn’t copied');
   // not in step while it's still to come, so Stop syncing › Delete waits
-  assert.deepEqual(await mirror.syncProject(p.id), { state: 'syncing', message: `1 file still to come from ${LABEL}` });
+  assert.deepEqual(await mirror.syncProject(p.id), { state: 'syncing', message: '1 file not synced yet' });
   // three passes running: the user is asked to keep it on this device
   const status = await mirror.syncProject(p.id);
   assert.equal(status.state, 'attention');

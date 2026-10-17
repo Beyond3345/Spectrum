@@ -404,8 +404,8 @@ async function mirror(id, record, label, force) {
   }
   // brake: what Sync anyway is for, which nothing else needing attention is
   if (problems.length) return { ...attention(problems[0]), ...(brake && { brake: true, deleting: braked.map((it) => it.key) }) };
-  // still to come: not in step, which Stop syncing › Delete needs
-  if (unread.size) return { state: 'syncing', message: `${unread.size} file${unread.size > 1 ? 's' : ''} still to come from ${label}` };
+  // files not synced yet, either way: not in step, which Stop syncing › Delete needs
+  if (unread.size) return { state: 'syncing', message: `${unread.size} file${unread.size > 1 ? 's' : ''} not synced yet` };
   return { state: 'synced', at: new Date().toISOString() };
 }
 
