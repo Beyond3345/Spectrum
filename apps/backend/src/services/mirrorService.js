@@ -7,7 +7,9 @@
 //                                       each file as both sides last agreed on it, keyed by its path in NFC and lower
 //                                       case (APFS and NTFS ignore case): { rel, hash, l: { size, mtimeMs }, c: { size,
 //                                       mtimeMs }, by }, with each side's own stat then and which side wrote it ('here',
-//                                       'there'); and the copy's folder's identity then, which a rename keeps
+//                                       'there'), and for a project.json this computer wrote to the cloud copy, prev:
+//                                       the hash of the one it was written on; and the copy's folder's identity then,
+//                                       which a rename keeps
 //   DATA_DIR/mirror/<id>/base/<sha>.gz  the base's text of the files a merge needs (text files and project.json)
 //   DATA_DIR/mirror/<id>/incoming/      the cloud's files read during a pass, where nothing else looks
 import { promises as fs, constants } from 'fs';
@@ -359,6 +361,9 @@ async function mirror(id, record, label, force) {
       if (l && c && l.rel.normalize('NFC') !== c.rel.normalize('NFC')) await respell(ctx, it);
       if (l) l.hash = sameStat(l, base?.l) ? base.hash : await hashFile(join(localRoot, l.rel));
       if (c) c.hash = sameStat(c, base?.c) ? base.hash : await fetchCloud(ctx, it);
+      // this computer's project.json set aside by a sync app for another computer's: merged against what it was written on
+      if (key === META && base?.prev) it.setAside = await ownCopy(ctx, base);
+      if (it.setAside) it.base = { ...base, hash: base.prev };
       it.action = decide(it);
       if (it.action === 'merge') await merge(ctx, it);
       if (it.action === 'toLocal' && key === META) {
@@ -551,6 +556,21 @@ function mergeMeta(base, local, cloud) {
   return { ...merged, id: local.id };
 }
 
+/**
+ * This computer's last project.json, as a sync app set it aside beside another computer's (named its own way:
+ * project (Mac's conflicted copy 2026-10-18).json, project-DESKTOP-AB12CD.json), so known by its bytes; null when
+ * there's none, or the one it was written on isn't kept to merge against.
+ */
+async function ownCopy(ctx, base) {
+  if (!(await exists(basePath(ctx.id, base.prev)))) return null;
+  const dir = path.join(ctx.cloudRoot, '.spectrum');
+  for (const e of await readdirTyped(dir).catch(() => [])) {
+    const abs = path.join(dir, e.name);
+    if (e.isFile() && /^project.+\.json$/i.test(e.name) && (await hashOf(abs)) === base.hash) return abs;
+  }
+  return null;
+}
+
 const readBase = (id, hash) => fs.readFile(basePath(id, hash)).then(gunzipAsync).catch(() => null);
 
 /**
@@ -686,7 +706,7 @@ async function apply(ctx, it, held) {
     case 'keep':
       return base;
     case 'equal':
-      return entry(l.rel, l.hash, l, c, base?.by || 'there');
+      return { ...entry(l.rel, l.hash, l, c, base?.by || 'there'), ...(base?.prev && base.hash === l.hash && { prev: base.prev }) };
     case 'toCloud':
     case 'conflict': {
       if (!(await unchanged(it.action === 'conflict' ? 'lc' : 'c'))) return later();
@@ -697,7 +717,9 @@ async function apply(ctx, it, held) {
       if (!sameStat(await statOf(local), l)) return later();
       if (it.action === 'conflict') await fs.copyFile(it.fetched, await freePath(join(ctx.localRoot, conflictCopyPath(l.rel, ctx.label))), constants.COPYFILE_EXCL);
       const written = await place(ctx, ctx.cloudRoot, copy, cloud, c ?? null);
-      return written ? entry(l.rel, l.hash, l, written, 'here') : later();
+      if (!written) return later();
+      // project.json: what this computer's writes since it last took the cloud's were made on, to merge against
+      return { ...entry(l.rel, l.hash, l, written, 'here'), ...(it.key === META && base && { prev: base.prev ?? base.hash }) };
     }
     case 'toLocal': {
       if (!(await unchanged('l'))) return later();
@@ -714,8 +736,11 @@ async function apply(ctx, it, held) {
       const bytes = await fs.readFile(local);
       const changed = sha256(bytes) !== c.hash;
       if (changed && !(await toCloud(bytes))) return later();
+      if (it.setAside) await fs.rm(it.setAside, { force: true });
+      // what the cloud had, which this was written on, kept to merge against if a sync app sets this aside too
+      if (changed && it.fetched) await writeFileAtomic(basePath(ctx.id, c.hash), await gzipAsync(await fs.readFile(it.fetched)));
       // a side written is hashed again next pass: a save landing just after the write would pass for it
-      return entry(l.rel, sha256(bytes), undefined, changed ? undefined : c, 'there');
+      return { ...entry(l.rel, sha256(bytes), undefined, changed ? undefined : c, 'there'), ...(changed && { prev: c.hash }) };
     }
     case 'write': {
       if (!(await unchanged('lc'))) return later();
@@ -780,6 +805,7 @@ async function storeBases(ctx, files) {
   const wanted = new Set();
   for (const [key, f] of Object.entries(files)) {
     if (!(key === META || (!inApp(key) && isText(f.rel))) || f.l?.size > MERGE_MAX_BYTES) continue;
+    if (f.prev) wanted.add(`${f.prev}.gz`);
     const name = `${f.hash}.gz`;
     if (!stored.has(name)) {
       const bytes = await fs.readFile(join(ctx.localRoot, f.rel)).catch(() => null);

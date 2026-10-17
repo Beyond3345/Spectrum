@@ -760,6 +760,30 @@ test('the app’s own files: objects come back, project.json and chats merge, an
   assert.ok(!existsSync(path.join(p.cloud, '.spectrum', 'open')));
 });
 
+test('this computer’s project.json a sync app set aside for another computer’s is merged with it, field by field', async () => {
+  const p = await project('Set aside', { 'main.tex': 'main\n' });
+  synced(await syncTo(p));
+  const before = meta(p.root);
+  await writeMeta(p.root, { ...before, tags: ['here'] });
+  synced(await mirror.syncProject(p.id));
+  // and again before the sync app sent either (offline, say)
+  await writeMeta(p.root, { ...meta(p.root), mainFile: 'main.tex' });
+  synced(await mirror.syncProject(p.id));
+  // the other computer's rename reached the sync app's server first: this computer's goes beside it
+  const copy = path.join(p.cloud, '.spectrum', 'project (MacBook’s conflicted copy 2026-10-18).json');
+  await fs.rename(path.join(p.cloud, '.spectrum', 'project.json'), copy);
+  await writeMeta(p.cloud, { ...before, name: 'Renamed there' });
+  synced(await mirror.syncProject(p.id));
+  for (const root of [p.root, p.cloud]) {
+    assert.equal(meta(root).name, 'Renamed there', root);
+    assert.deepEqual(meta(root).tags, ['here'], root);
+    assert.equal(meta(root).mainFile, 'main.tex', root);
+  }
+  assert.ok(!existsSync(copy));
+  synced(await mirror.syncProject(p.id));
+  sameTree(p.root, p.cloud);
+});
+
 test('a deletion goes to the Bin unless this computer’s history holds the file', async () => {
   const p = await project('Bin', { 'main.tex': '\\documentclass{article}\n', 'main.pdf': '%PDF', 'old.tex': 'old\n', 'older.tex': 'older\n' });
   const chat = { id: 'c2', messages: [] };
