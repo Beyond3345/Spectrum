@@ -11,12 +11,13 @@ import { appPath, httpError, serialiser } from './projectService.js';
 // Content-addressed history in .spectrum/history, which a sync app may share between computers:
 //   objects/<sha[0:2]>/<sha>.gz   gzipped file bytes, shared between versions
 //   manifests/<id>.json           { files: { "<relPath>": "<sha>" }, skipped?, createdAt, label, reason, summary }
-//   index.json                    { nextId, versions: VersionMeta[] } (oldest first)
+//   index.json                    { nextId, versions: (VersionMeta & { manifestLabel? })[] } (oldest first)
 // Versions are the manifests on disk, whichever computer wrote them. 1.7.0 numbered them from index.json's nextId,
 // so two computers made the same number and overwrote each other's manifests. Ids are now the second and random
 // digits, still whole numbers as 1.7.0 needs, and index.json is rewritten with every version on disk and a nextId
 // above them all, so 1.7.0 lists them and never reuses one. Manifests 1.7.0 made have only files; their details
-// stay in index.json.
+// stay in index.json. 1.7.0 renames a version in index.json only; manifestLabel, the label the manifest had when
+// index.json was written, tells such a rename apart from an index.json that's just behind.
 
 const MAX_TRACKED_BYTES = 50 * 1024 * 1024;
 // 1.7.0's ids count from 1; every id made since is far above
@@ -45,31 +46,51 @@ async function readIndex(root) {
     const data = await readJson(historyPath(root, 'index.json'));
     return { nextId: Number(data.nextId) || 1, versions: Array.isArray(data.versions) ? data.versions : [] };
   } catch (err) {
-    if (err.code === 'ENOENT') return { nextId: 1, versions: [] };
+    if (err.code === 'ENOENT') return { nextId: 1, versions: [], missing: true };
     throw err;
   }
 }
 
 const details = (v) => ({ createdAt: v.createdAt, label: v.label, reason: v.reason, summary: v.summary });
 
+const exists = (file) => fs.access(file).then(() => true, () => false);
+
 /** index.json with every version on disk (oldest first) and a nextId above them all and any deleted, for 1.7.0. */
 async function writeIndex(root, versions) {
+  const old = await readIndex(root);
+  const ids = new Set(versions.map((v) => v.id));
+  // a manifest that couldn't be read (online-only and offline, still arriving) keeps its entry, for a 1.7.0
+  // version the only copy of its details; a deleted version's manifest is gone by now
+  const kept = [];
+  for (const v of old.versions) if (!ids.has(v.id) && (await exists(manifestPath(root, v.id)))) kept.push(v);
+  for (const v of versions) {
+    if (v.manifestLabel === undefined || v.label === v.manifestLabel) continue;
+    // renamed in 1.7.0: the manifest takes the label too, so it isn't only in index.json
+    const data = await readJson(manifestPath(root, v.id)).catch(() => null);
+    if (!data) continue;
+    await writeJsonAtomic(manifestPath(root, v.id), { ...data, label: v.label });
+    v.manifestLabel = v.label;
+  }
+  const entries = versions.map((v) => ({ id: v.id, ...details(v), ...(v.manifestLabel !== undefined && { manifestLabel: v.manifestLabel }) }));
   await writeJsonAtomic(historyPath(root, 'index.json'), {
-    nextId: Math.max((await readIndex(root)).nextId, ...versions.map((v) => v.id + 1)),
-    versions: versions.map((v) => ({ id: v.id, ...details(v) }))
+    nextId: Math.max(old.nextId, ...[...kept, ...versions].map((v) => Number(v.id) + 1 || 0)),
+    versions: [...kept, ...entries].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)) || a.id - b.id)
   });
 }
 
 /**
  * Every version whose manifest is on disk, oldest first, each with its files and a number to show (1.7.0's
  * versions keep theirs; later ones count on from them by time). partial: a manifest couldn't be read, as when
- * it's still arriving from another computer.
+ * it's still arriving from another computer. unindexed: index.json is here but misses a version this build made,
+ * as when another computer's index.json won a sync conflict.
  */
 async function readVersions(root) {
-  const fromIndex = new Map((await readIndex(root)).versions.map((v) => [v.id, v]));
+  const index = await readIndex(root);
+  const fromIndex = new Map(index.versions.map((v) => [v.id, v]));
   const dir = historyPath(root, 'manifests');
   const versions = [];
   let partial = false;
+  let unindexed = false;
   for (const name of await fs.readdir(dir).catch(() => [])) {
     // <id>.json: not a temp file, or a sync app's conflict copy
     const id = Number(name.match(/^(\d+)\.json$/)?.[1]);
@@ -81,11 +102,18 @@ async function readVersions(root) {
       partial = true;
       continue;
     }
-    const meta = data.createdAt ? data : fromIndex.get(id) || { createdAt: (await fs.stat(path.join(dir, name))).mtime.toISOString() };
+    const entry = fromIndex.get(id);
+    const own = Boolean(data.createdAt);
+    if (own && !entry && !index.missing) unindexed = true;
+    const meta = own ? data : entry || { createdAt: (await fs.stat(path.join(dir, name))).mtime.toISOString() };
+    const manifestLabel = own ? String(data.label || '') : undefined;
+    // renamed in 1.7.0 since this build last wrote index.json
+    const renamed = own && entry && entry.manifestLabel === manifestLabel && entry.label !== manifestLabel;
     versions.push({
       id,
       createdAt: String(meta.createdAt),
-      label: String(meta.label || ''),
+      label: String((renamed ? entry : meta).label || ''),
+      manifestLabel,
       reason: REASONS.includes(meta.reason) ? meta.reason : 'manual',
       summary: meta.summary && typeof meta.summary === 'object' ? meta.summary : { kind: 'updated', files: [], added: 0, removed: 0 },
       files: data.files || {},
@@ -95,10 +123,11 @@ async function readVersions(root) {
   versions.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id);
   let shown = 0;
   for (const v of versions) {
-    v.number = v.id < LEGACY_IDS ? v.id : shown + 1;
+    // a 1.7.0 id another version's number already took (1.7.0 on another computer, its index.json behind) counts on
+    v.number = v.id < LEGACY_IDS && v.id > shown ? v.id : shown + 1;
     shown = Math.max(shown, v.number);
   }
-  return { versions, partial };
+  return { versions, partial, unindexed };
 }
 
 const shownVersion = (v) => ({ id: v.id, number: v.number, ...details(v) });
@@ -230,7 +259,15 @@ function findVersion(versions, versionId) {
 }
 
 export async function listVersions(root) {
-  return (await readVersions(root)).versions.map(shownVersion).reverse();
+  const { versions, unindexed } = await readVersions(root);
+  // put them back for 1.7.0, which otherwise doesn't list them and deletes their stored files in its clean-up
+  if (unindexed) {
+    await locked(async () => {
+      const again = await readVersions(root);
+      if (again.unindexed) await writeIndex(root, again.versions);
+    }).catch(() => {}); // listing still works where index.json can't be written
+  }
+  return versions.map(shownVersion).reverse();
 }
 
 /** An id another computer won't also make: the second since 2026 and three random digits. */
@@ -238,7 +275,7 @@ async function newId(root, versions) {
   const taken = new Set(versions.map((v) => v.id));
   let id = Math.floor((Date.now() - EPOCH_2026) / 1000) * 1000 + crypto.randomInt(1000);
   // or a manifest still arriving
-  while (taken.has(id) || (await fs.access(manifestPath(root, id)).then(() => true, () => false))) id += 1;
+  while (taken.has(id) || (await exists(manifestPath(root, id)))) id += 1;
   return id;
 }
 
@@ -266,6 +303,7 @@ async function createVersionUnlocked(root, { label = '', reason = 'manual' } = {
     },
     number: Math.max(0, ...versions.map((v) => v.number)) + 1
   };
+  version.manifestLabel = version.label;
   await writeJsonAtomic(manifestPath(root, version.id), { files, ...(skipped.length && { skipped }), ...details(version) });
   await writeIndex(root, [...versions, version]);
   return { version: shownVersion(version), unchanged: false };
@@ -316,7 +354,7 @@ export function restoreVersion(root, versionId, relPath) {
     if (relPath && skipped.has(relPath)) throw httpError('That file couldn’t be read when this version was saved, so it isn’t in it.', 400);
     // a version from another computer whose stored files haven't all synced yet would only half restore
     for (const sha of new Set(relPath ? [files[relPath]].filter(Boolean) : Object.values(files))) {
-      if (!(await fs.access(objectPath(root, sha)).then(() => true, () => false))) {
+      if (!(await exists(objectPath(root, sha)))) {
         throw httpError('Some of this version’s files haven’t arrived from your other computer yet. Try again once syncing has finished.', 409);
       }
     }
@@ -355,6 +393,7 @@ export function renameVersion(root, versionId, label) {
     // the manifest carries the label, and from now on the rest of a 1.7.0 version's details too
     const data = await readJson(manifestPath(root, version.id));
     await writeJsonAtomic(manifestPath(root, version.id), { ...data, ...details(version) });
+    version.manifestLabel = version.label;
     await writeIndex(root, versions);
     return shownVersion(version);
   });
@@ -372,10 +411,11 @@ export function deleteVersion(root, versionId) {
     if (partial) return;
 
     const used = new Set(versions.flatMap((v) => Object.values(v.files)));
-    // ponytail: a stored file goes only when no manifest here uses it and it came more than 7 days ago, as a
-    // version another computer made may still be on its way; one that computer reused from long ago isn't kept
-    // by this, which only a list of every computer's versions would fix
-    const cutoff = Date.now() - 7 * DAY_MS;
+    // ponytail: a stored file goes only when no manifest here uses it and it came more than 90 days ago (as long
+    // as syncService trusts another computer's list), as a version another computer made may still be on its way,
+    // even from a laptop away for weeks; one reused from longer ago isn't kept by this, which only a list of every
+    // computer's versions would fix
+    const cutoff = Date.now() - 90 * DAY_MS;
     const objectsRoot = historyPath(root, 'objects');
     for (const shard of await fs.readdir(objectsRoot).catch(() => [])) {
       const dir = path.join(objectsRoot, shard);

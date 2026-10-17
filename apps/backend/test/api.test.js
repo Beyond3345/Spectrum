@@ -603,7 +603,7 @@ test('version history: save, compare, restore, rename, delete', async () => {
   assert.equal(await objects(), 5);
   for (const id of [v2.id, v3.id, all.safety.id]) assert.ok((await api(`${versions}/${id}`, { method: 'DELETE' })).json.ok);
   assert.deepEqual((await api(versions)).json.versions.map((v) => v.id), [v1.version.id]);
-  // stored files no version uses stay a week, for a version another computer may still be sending (sync.test.js)
+  // stored files no version uses stay 90 days, for a version another computer may still be sending (sync-both.test.js)
   assert.equal(await objects(), 5);
   assert.equal((await api(`${versions}/${v2.id}`, { method: 'DELETE' })).status, 404);
   assert.equal((await api(`${versions}/abc/changes`)).status, 404);
