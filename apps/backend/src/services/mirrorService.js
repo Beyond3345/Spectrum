@@ -16,12 +16,12 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { gzip, gunzip } from 'zlib';
 import { DATA_DIR } from '../config/constants.js';
-import { HIDDEN_ENTRIES, freePath, mirrorSkips, readJson, renameOver, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
+import { freePath, mirrorSkips, readJson, renameOver, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
 import { mergeText } from '../utils/merge3.js';
 import { mergeChat } from '../utils/chatMerge.js';
 import { hashFile } from '../utils/projectCopy.js';
-import { appPath, getProjectRoot, httpError, serialiser, updateMeta } from './projectService.js';
-import { isConflictCopy, offlineMessage, otherComputersProjects, placeOf, sameFolder, within } from './syncService.js';
+import { appPath, findSyncedProjects, getProjectRoot, httpError, serialiser, updateMeta } from './projectService.js';
+import { locationLabel, offlineMessage, otherComputersProjects, relFrom, sameFolder, within } from './syncService.js';
 import { createVersionUnlocked, isText, listVersions } from './versionService.js';
 import { moveToBin } from '../routes/projects.js';
 
@@ -213,7 +213,7 @@ export function stopMirroring() {
 async function pass(id, force) {
   const record = await readMirror(id);
   if (!record) return null;
-  const label = await labelOf(record.location);
+  const label = await locationLabel(record.location).catch(() => path.basename(record.location));
   let status;
   try {
     status = await mirror(id, record, label, force);
@@ -228,24 +228,10 @@ async function pass(id, force) {
   return status;
 }
 
-/** What the user calls the location: its sync app's name, or the folder's own (a NAS share, anywhere else). */
-const labelOf = async (location) => (await placeOf(location).catch(() => null))?.label || path.basename(location);
-
 /** The project's folder somewhere else in the location (moved or renamed there), up to 3 levels down: its rel, or null unless just one. */
 async function findCopy(location, id) {
-  const found = [];
-  const look = async (dir, depth) => {
-    for (const entry of await fs.readdir(dir, { withFileTypes: true }).catch(() => [])) {
-      if (!entry.isDirectory() || entry.name.startsWith('.') || HIDDEN_ENTRIES.has(entry.name) || isConflictCopy(entry.name)) continue;
-      const sub = path.join(dir, entry.name);
-      const meta = await readJson(join(sub, META)).catch(() => null);
-      if (meta) {
-        if (meta.id === id) found.push(sub);
-      } else if (depth < 3) await look(sub, depth + 1);
-    }
-  };
-  await look(location, 1);
-  return found.length === 1 ? found[0].slice(location.length + 1).split(path.sep).join('/') : null;
+  const found = (await findSyncedProjects(location, Date.now() + 20_000)).filter((f) => f.id === id);
+  return found.length === 1 ? relFrom(location, found[0].root) : null;
 }
 
 /** One pass: the guards, both walks, what each file needs, a version before anything here is replaced, then doing it. */
