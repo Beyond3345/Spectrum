@@ -9,6 +9,7 @@ import {
   deleteTemplate,
   editTemplate,
   getProjectTree,
+  hideProject,
   importArxivSSE,
   importZip,
   listProjects,
@@ -27,7 +28,7 @@ import {
   uploadTemplate,
   writeFile
 } from '../api/client';
-import type { ProjectMeta, TemplateCategory, TemplateMeta } from '../api/client';
+import type { ElsewhereProject, ProjectMeta, SyncPlace, TemplateCategory, TemplateMeta } from '../api/client';
 import Icon from './Icon';
 import { ContextMenu, MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
@@ -78,6 +79,32 @@ const formatFull = (iso: string) => {
 };
 
 const tildify = (p: string) => p.replace(/^\/Users\/[^/]+/, '~');
+
+/** A listed project, or one only another computer has (onlyOn: that computer's name), shown greyed out */
+type Row = ProjectMeta & { onlyOn?: string };
+
+/** In place of the path once the project is in a sync app's folder: “Synology Drive · Spectrum/Thesis” */
+const whereText = (p: Row) => (p.place ? `${p.place.label} · ${p.place.rel}` : tildify(p.path));
+
+// what to check when a sync app's folder isn't on this computer
+const SIGNED_IN: Record<SyncPlace['provider'], string> = {
+  synology: 'is Drive Client installed and signed in?',
+  onedrive: 'is OneDrive installed and signed in?',
+  dropbox: 'is Dropbox installed and signed in?',
+  google: 'is Google Drive installed and signed in?',
+  icloud: 'is iCloud Drive turned on?'
+};
+
+/**
+ * Why a project can't open here, for the list and (shorter) for a card. A sync app can't say whether a folder is
+ * still on its way or was moved or binned on the other computer, so the words cover both.
+ */
+function absence(p: Row): [string, string] {
+  if (p.place?.here) return [`On ${p.place.label} – not on this computer yet`, 'Not on this computer yet'];
+  if (p.onlyOn) return [`Only on ${p.onlyOn}`, `Only on ${p.onlyOn}`];
+  if (p.place) return [`${p.place.label} folder not found – ${SIGNED_IN[p.place.provider]}`, `${p.place.label} not found`];
+  return ['Folder missing', 'Folder missing'];
+}
 
 const TAG_COLOURS = [
   'var(--accent)',
@@ -145,6 +172,8 @@ export default function ProjectPage() {
   const navigate = useNavigate();
   const [settings] = useSettings();
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
+  /** what only other computers list; null until a synced folder is set up */
+  const [elsewhere, setElsewhere] = useState<ElsewhereProject[] | null>(null);
   /** the templates with a working copy open, which the gallery offers to go on editing */
   const [drafts, setDrafts] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -156,7 +185,7 @@ export default function ProjectPage() {
   const [query, setQuery] = useState('');
   const [prefs, setPrefs] = useState(loadPrefs);
   const [sheet, setSheet] = useState<SheetState>(null);
-  const [ctx, setCtx] = useState<{ x: number; y: number; project: ProjectMeta } | null>(null);
+  const [ctx, setCtx] = useState<{ x: number; y: number; project: Row } | null>(null);
   const [job, setJob] = useState<ActiveJob | null>(null);
   const [busy, setBusy] = useState(false);
   const zipInputRef = useRef<HTMLInputElement>(null);
@@ -173,13 +202,14 @@ export default function ProjectPage() {
       return next;
     });
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (scan = false) => {
     try {
-      const res = await listProjects();
+      const res = await listProjects(scan);
       const all = (res.projects || []).map((p) => ({ ...p, tags: p.tags || [] }));
       // working copies of templates open from the template gallery, not the list
       setProjects(all.filter((p) => !p.templateDraft));
       setDrafts(all.flatMap((p) => p.templateDraft || []));
+      setElsewhere(res.elsewhere ?? null);
       setLoadError('');
     } catch (err) {
       setLoadError(errorText(err));
@@ -194,11 +224,27 @@ export default function ProjectPage() {
     setCategories(res.categories || []);
   }, []);
 
+  // the first synced folder, once there is one
+  const loadDefaultDir = () => systemCheck().then((res) => setDefaultDir(res.projectsDir || '')).catch(() => undefined);
+
   useEffect(() => {
     reload();
     reloadTemplates().catch((err) => toast(`Couldn’t load templates: ${errorText(err)}`, { tone: 'error' }));
-    systemCheck().then((res) => setDefaultDir(res.projectsDir || '')).catch(() => undefined);
+    loadDefaultDir();
   }, [reload, reloadTemplates]);
+
+  // with synced folders, projects arriving from another computer show up when the window comes to the front, and every 30 s
+  const synced = elsewhere !== null;
+  useEffect(() => {
+    if (!synced) return;
+    const onFocus = () => reload(true);
+    const timer = window.setInterval(() => document.visibilityState === 'visible' && reload(), 30_000);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.clearInterval(timer);
+    };
+  }, [synced, reload]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -259,12 +305,22 @@ export default function ProjectPage() {
     );
   }, [projects, view, activeTag, query, prefs.sortKey, prefs.sortDir, prefs.dateField]);
 
+  // greyed out after the rest of All projects
+  const rows = useMemo((): Row[] => {
+    const q = query.trim().toLowerCase();
+    const ghosts = view !== 'all' || !elsewhere ? [] : elsewhere.filter((e) => !q || e.name.toLowerCase().includes(q));
+    return [
+      ...visible,
+      ...ghosts.map((e) => ({ id: e.id, name: e.name, path: '', createdAt: '', updatedAt: '', tags: [], archived: false, missing: true, hasThumbnail: false, place: e.place ?? undefined, onlyOn: e.machineName }))
+    ];
+  }, [visible, elsewhere, view, query]);
+
   const title = activeTag ?? (view === 'archived' ? 'Archived' : 'All projects');
   const parentDir = settings.projectsDir || undefined;
 
   // ─── actions ───
 
-  const open = (p: ProjectMeta) => {
+  const open = (p: Row) => {
     if (p.missing) locate(p);
     else navigate(`/editor/${p.id}`);
   };
@@ -306,13 +362,15 @@ export default function ProjectPage() {
       toast(p.archived ? `“${p.name}” is back in All projects.` : `Archived “${p.name}”.`);
     }, 'Couldn’t change the project');
 
-  const remove = async (p: ProjectMeta) => {
+  const remove = async (p: Row) => {
     const ok = await confirmDialog({
       title: `Remove “${p.name}” from the list?`,
-      message: 'The folder stays where it is on disk. Add it again any time with Import › Open existing folder…',
+      message: p.onlyOn
+        ? `It stays on ${p.onlyOn}. If it comes to this computer, add it with Import › Open existing folder…`
+        : 'The folder stays where it is on disk. Add it again any time with Import › Open existing folder…',
       confirmLabel: 'Remove'
     });
-    if (ok) await attempt(() => removeProject(p.id), 'Couldn’t remove the project');
+    if (ok) await attempt(() => (p.onlyOn ? hideProject(p.id) : removeProject(p.id)), 'Couldn’t remove the project');
   };
 
   const moveToBin = async (p: ProjectMeta) => {
@@ -329,11 +387,13 @@ export default function ProjectPage() {
     }, `Couldn’t move the project to the ${BIN}`);
   };
 
-  const locate = async (p: ProjectMeta) => {
+  const locate = async (p: Row) => {
     const path = await pickFolder({ title: `Locate the folder for “${p.name}”` });
     if (!path) return;
     await attempt(async () => {
-      ensureOk(await relocateProject(p.id, path), 'That folder couldn’t be used');
+      // one only another computer lists joins the list, as that project when the folder holds it
+      if (p.onlyOn) await openFolder(path);
+      else ensureOk(await relocateProject(p.id, path), 'That folder couldn’t be used');
       toast(`Found “${p.name}”.`, { tone: 'success' });
     }, 'Couldn’t relocate the project');
   };
@@ -366,7 +426,7 @@ export default function ProjectPage() {
     }
   };
 
-  const menuFor = (p: ProjectMeta): MenuItems =>
+  const menuFor = (p: Row): MenuItems =>
     p.missing
       ? [
           { label: 'Locate…', icon: 'folder.badge.questionmark', onSelect: () => locate(p) },
@@ -388,7 +448,7 @@ export default function ProjectPage() {
           { label: `Move to ${BIN}…`, icon: 'trash', destructive: true, onSelect: () => moveToBin(p) }
         ];
 
-  const rowProps = (p: ProjectMeta) => ({
+  const rowProps = (p: Row) => ({
     tabIndex: 0,
     onDoubleClick: () => open(p),
     onKeyDown: (e: ReactKeyboardEvent) => {
@@ -441,7 +501,7 @@ export default function ProjectPage() {
           <Icon name="exclamationmark.triangle" size={36} />
           <div className="empty-title">Couldn’t load projects</div>
           <div className="empty-text">{loadError}</div>
-          <button className="btn" onClick={reload}><Icon name="arrow.clockwise" /> Try again</button>
+          <button className="btn" onClick={() => reload()}><Icon name="arrow.clockwise" /> Try again</button>
         </div>
       );
     }
@@ -599,7 +659,7 @@ export default function ProjectPage() {
         </header>
 
         <div className="panel-body">
-          {visible.length === 0 ? (
+          {rows.length === 0 ? (
             emptyState()
           ) : prefs.layout === 'list' ? (
             <div className="project-list" role="table" aria-label={title}>
@@ -617,16 +677,16 @@ export default function ProjectPage() {
                 </span>
                 <span className="col-actions" />
               </div>
-              {visible.map((p) => (
+              {rows.map((p) => (
                 <div key={p.id} role="row" className={`project-row ${p.missing ? 'missing' : ''}`} {...rowProps(p)}>
                   <span className="col-thumb"><Thumb project={p} /></span>
                   <span className="col-name">
                     <span className="project-name-line">
                       <span className="project-name">{p.name}</span>
-                      {p.missing && <span className="badge warning">Folder missing</span>}
+                      {p.missing && <span className={`badge ${p.onlyOn ? '' : 'warning'}`}>{absence(p)[0]}</span>}
                       {p.archived && view !== 'archived' && <span className="badge">Archived</span>}
                     </span>
-                    <span className="project-path" title={p.path}>{tildify(p.path)}</span>
+                    <span className="project-path" title={p.path || undefined}>{whereText(p)}</span>
                   </span>
                   <span className="col-tags">{tagChips(p)}</span>
                   <span className="col-date" title={formatFull(p[prefs.dateField])}>{timeAgo(p[prefs.dateField])}</span>
@@ -638,18 +698,18 @@ export default function ProjectPage() {
             </div>
           ) : (
             <div className="project-grid">
-              {visible.map((p) => (
+              {rows.map((p) => (
                 <div key={p.id} className={`project-card ${p.missing ? 'missing' : ''}`} {...rowProps(p)}>
                   <div className="card-thumb">
                     <Thumb project={p} />
-                    {p.missing && <span className="badge warning card-badge">Folder missing</span>}
+                    {p.missing && <span className={`badge card-badge ${p.onlyOn ? '' : 'warning'}`} title={absence(p)[0]}>{absence(p)[1]}</span>}
                     <span className="card-menu">
                       <MenuButton icon="ellipsis" title="More" className="icon-btn small" align="end" items={menuFor(p)} />
                     </span>
                   </div>
                   <div className="card-name" title={p.name}>{p.name}</div>
                   <div className="card-meta" title={formatFull(p[prefs.dateField])}>
-                    {dateLabel} {timeAgo(p[prefs.dateField]).replace(/^Just now$/, 'just now')}
+                    {p.onlyOn ? p.place && whereText(p) : `${dateLabel} ${timeAgo(p[prefs.dateField]).replace(/^Just now$/, 'just now')}`}
                   </div>
                   {p.tags.length > 0 && <div className="card-tags">{tagChips(p)}</div>}
                 </div>
@@ -736,7 +796,16 @@ export default function ProjectPage() {
         </Sheet>
       )}
 
-      {sheet?.kind === 'settings' && <SettingsSheet onClose={() => setSheet(null)} />}
+      {sheet?.kind === 'settings' && (
+        <SettingsSheet
+          onClose={() => {
+            setSheet(null);
+            // the synced folders may have changed
+            reload(true);
+            loadDefaultDir();
+          }}
+        />
+      )}
 
       {job && sheet?.kind !== 'transfer' && (
         <div className="transfer-widget" role="status">

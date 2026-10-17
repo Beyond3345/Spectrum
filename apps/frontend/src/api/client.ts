@@ -20,6 +20,27 @@ export interface ProjectMeta {
   mainFile?: string;
   /** a working copy of this template, being edited; kept out of the projects list */
   templateDraft?: string;
+  /** where it is in a sync app's folder, once a synced folder is set up */
+  place?: SyncPlace;
+}
+
+/** A folder's place in a sync app's folder, the same on every computer */
+export interface SyncPlace {
+  provider: 'synology' | 'onedrive' | 'dropbox' | 'google' | 'icloud';
+  /** e.g. 'Synology Drive' */
+  label: string;
+  /** '/'-separated from the top of the sync app's folder, e.g. 'Spectrum/Thesis' */
+  rel: string;
+  /** the sync app's folder is on this computer, so a missing project may still be on its way */
+  here: boolean;
+}
+
+/** A project another computer lists that this one doesn't have */
+export interface ElsewhereProject {
+  id: string;
+  name: string;
+  machineName: string;
+  place: SyncPlace | null;
 }
 
 export interface FileItem {
@@ -128,8 +149,9 @@ const json = (method: string, body: unknown = {}): RequestInit => ({ method, bod
 
 // ─── Projects ───
 
-export function listProjects() {
-  return request<{ projects: ProjectMeta[] }>('/api/projects');
+/** scan: look in the synced folders now rather than after the usual 30 s. elsewhere comes once a synced folder is set up. */
+export function listProjects(scan = false) {
+  return request<{ projects: ProjectMeta[]; elsewhere?: ElsewhereProject[] }>(`/api/projects${scan ? '?scan=1' : ''}`);
 }
 
 /** parentDir: absolute folder to create the project in; defaults to ~/Documents/Spectrum */
@@ -856,6 +878,30 @@ export interface SystemCheck {
 
 export function systemCheck() {
   return request<SystemCheck>('/api/system/check');
+}
+
+// ─── Synced folders ───
+
+export interface SyncSettings {
+  /** this computer's name, as the other computers show it */
+  machineName: string;
+  folders: { path: string; label?: string; found: boolean }[];
+  /** the sync apps' folders on this computer not in the list */
+  suggestions: { path: string; provider: SyncPlace['provider']; label: string }[];
+}
+
+export function getSyncSettings() {
+  return request<SyncSettings>('/api/sync');
+}
+
+/** folders: the whole list, in order (new projects go in the first) */
+export function updateSyncSettings(patch: { folders?: string[]; machineName?: string }) {
+  return request<SyncSettings>('/api/sync', json('PATCH', patch));
+}
+
+/** Stop listing a project only another computer has. */
+export function hideProject(id: string) {
+  return request<{ ok: boolean }>('/api/sync/hide', json('POST', { id }));
 }
 
 export function revealProject(projectId: string, filePath?: string) {
