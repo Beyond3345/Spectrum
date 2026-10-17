@@ -6,16 +6,16 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ### Added
 
-- Cloud locations in Settings under Projects, in place of Synced project folders: a folder that OneDrive, Dropbox, Synology Drive, iCloud Drive or any other sync app keeps the same on each computer. Spectrum suggests a `Spectrum` folder in each sync app's folder it finds
+- Cloud locations in Settings under Projects, in place of Synced project folders: a folder that OneDrive, Dropbox, Synology Drive, iCloud Drive or any other sync app keeps the same on each computer. Spectrum suggests a `Spectrum` folder in each sync app's folder it finds, or that folder itself when a computer with 1.8.0 already shares through it
 - Sync to in a project's menu puts the project in a cloud location. By default the project stays on this computer and Spectrum mirrors it into a copy there, merging a file changed on both computers line by line and keeping a conflicted copy beside it when both changed the same lines. When a project syncs, in Settings, can move the folder into the cloud location instead, as 1.8.0 kept its projects
 - Cloud projects in the sidebar, between All projects and Archived. Each cloud project has a cloud symbol and says how it stands, with Sync now, Stop syncing… and Show cloud copy in Finder (or File Explorer) in its menu. The projects your other computers put in a cloud location show there too, with Download
-- Stop syncing… keeps the project on this computer and keeps or deletes the copy in the cloud location. Delete is refused while another computer has the project open or works on that copy itself
-- A version named "Before sync from" and the other computer's name is saved before a sync replaces or deletes files in a mirrored project, and a sync that would delete many files at once waits for Sync anyway
+- Stop syncing… keeps the project on this computer and keeps or deletes the copy in the cloud location. Delete is refused while the two copies are not yet in step or another computer has the project open, works on that copy itself or runs 1.8.0
+- A version named "Before sync from" and the other computer's name (the cloud location's when several computers share the project) is saved before a sync replaces or deletes files in a mirrored project, at most every 10 minutes when the files only came from the other computer. A sync that would delete many files at once waits for Sync anyway
 - Project folders: projects can be sorted into nested folders under All projects, by dragging them there or with Move to folder…. The folders follow you to your other computers with your settings
 
 ### Changed
 
-- New projects always go into the default folder for new projects, never into a cloud location, and only the projects you sync leave this computer
+- New projects always go into the default folder for new projects, never into a cloud location, and only the projects you sync leave this computer. The default folder can no longer be set to a folder in a cloud location. One set to a synced folder in 1.8.0 stays as it is, so new projects there are cloud projects used in place until you choose a folder on this computer
 - A project in a cloud location is no longer added to the list by itself: Download adds it. The projects 1.8.0 kept in its synced folders stay where they are and show as cloud projects
 - Each computer tells the others about its cloud projects in every cloud location, not only the first, so Stop syncing on any computer knows which others still need the copy there
 - On a Mac with iCloud's Desktop and Documents folders turned on, projects in them count as in iCloud Drive
@@ -31,6 +31,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Everything stays readable by 1.8.0 and 1.7.0. The mirror's records are in new files that neither reads, and project folders and the sync mode are settings both keep without using
 - 1.8.0 lists a mirrored project at its folder on this computer, not its copy in the cloud location, and a moved project in the cloud location. Mirroring stops until this version runs again, which then brings the changes made on both copies together. A cloud location is a synced folder to 1.8.0, so it lists the projects there as before, and after going back new projects go into the first cloud location unless Default folder for new projects is set
 - 1.7.0 lists mirrored and moved projects at their folders. Mirroring stops there too, and projects added on the other computer need Open existing folder
+- Stop syncing with Delete is refused while a computer with 1.8.0 uses a cloud location, as 1.8.0 leaves its archived projects out of the list it shares. 1.7.0 shares no list at all, so before deleting a cloud copy, check that no computer with 1.7.0 uses it
 
 ## 1.8.0 (17 October 2026)
 
