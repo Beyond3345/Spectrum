@@ -433,6 +433,21 @@ test('a cloud copy moved away just before project.json is written there is never
   assert.deepEqual(userFiles(away), files);
 });
 
+test('a folder here replaced by a link keeps what was in it in the cloud copy, and nothing goes through the link', { skip: WINDOWS }, async () => {
+  const p = await project('Linked', { 'main.tex': 'main\n', 'figs/a.png': 'A', 'figs/b.png': 'B', 'figs/c.png': 'C' });
+  synced(await syncTo(p));
+  // the figures moved to a folder shared with another paper, and linked to from here
+  const shared = path.join(tmp, 'shared-figs');
+  await fs.cp(path.join(p.root, 'figs'), shared, { recursive: true });
+  await fs.rm(path.join(p.root, 'figs'), { recursive: true });
+  await fs.symlink(shared, path.join(p.root, 'figs'));
+  await write(path.join(p.cloud, 'figs', 'd.png'), 'D');
+  synced(await mirror.syncProject(p.id));
+  assert.deepEqual(userFiles(p.cloud), ['figs/a.png', 'figs/b.png', 'figs/c.png', 'figs/d.png', 'main.tex']);
+  assert.deepEqual(tree(shared), ['a.png', 'b.png', 'c.png']);
+  assert.ok(!binned.some((b) => b.abs.startsWith(p.cloud)));
+});
+
 test('Windows’ placeholders, which its readdir calls links, are walked into as what they are', async () => {
   const p = await project('Placeholders', { 'main.tex': 'main\n', 'chapters/one.tex': 'one\n' });
   synced(await syncTo(p));

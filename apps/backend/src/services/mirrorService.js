@@ -322,7 +322,9 @@ async function mirror(id, record, label, force) {
       keep();
       continue;
     }
-    if (l?.link || c?.link) {
+    // or a file in a folder a side has as a link, which the walk never goes into: its files there would read as deleted
+    const linked = (side) => key.split('/').slice(0, -1).some((_, i, parts) => side.files.get(parts.slice(0, i + 1).join('/'))?.[0]?.link);
+    if (l?.link || c?.link || linked(here) || linked(there)) {
       keep();
       continue;
     }
