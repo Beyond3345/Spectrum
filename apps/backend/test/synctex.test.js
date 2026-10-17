@@ -199,6 +199,10 @@ test('a main file in a subfolder maps every input back to the project, and a fai
     // a word in the middle of the line leads back to it
     assert.deepEqual(await synctexEdit(root, 'paper/main.tex', box.page, box.x + 40, box.y + box.height / 2), { ok: true, file, line: 1, column: null });
   }
+  // a project 1.7.0 compiled: the SyncTeX it kept in the folder is read until this computer compiles it
+  await fs.rename(cached(project, 'synctex'), path.join(root, '.spectrum', 'synctex'));
+  assert.ok((await synctexView(root, 'paper/main.tex', 'shared/note.tex', 1)).ok);
+  await fs.rename(path.join(root, '.spectrum', 'synctex'), cached(project, 'synctex'));
   // compiling it again with latexmk keeps a SyncTeX file too
   if (await findExecutable('latexmk')) {
     const again = await runCompile({ projectId: project.id, mainFile: 'paper/main.tex', engine: 'latexmk' });

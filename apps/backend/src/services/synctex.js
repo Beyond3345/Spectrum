@@ -22,16 +22,14 @@ const RECORD = /^([[(hvxkg$r])(\d+),(-?\d+)(?:,(-?\d+))?:(-?\d+),(-?\d+|=)(?::(-
 // One per document (project-relative), for the PDF its last compile made, e.g.
 // <cache>/synctex/chapters/thesis.tex.gz. Where TeX ran, to read the inputs it names
 // relative to that folder, goes beside it in thesis.tex.json.
-// ponytail: 1.7.0 kept them in .spectrum/synctex, which is left in place for it to go on reading if the user goes
-// back to it (stale until its first compile there); remove it once that's moot
-const stored = async (root, doc) => {
-  const dir = await cachePath(root, 'synctex');
-  return { file: path.join(dir, `${doc}.gz`), meta: path.join(dir, `${doc}.json`) };
-};
+// 1.7.0 kept them in the project's .spectrum/synctex, still read until this computer compiles the project.
+// ponytail: that folder is left in place for 1.7.0 to go on reading if the user goes back to it (stale until its
+// first compile there); remove it once that's moot
+const stored = (dir, doc) => ({ file: path.join(dir, `${doc}.gz`), meta: path.join(dir, `${doc}.json`) });
 
 /** Keep the SyncTeX file a compile of `doc` just built (`built` in its build folder, TeX run in `cwd`). */
 export async function keepSynctex(root, doc, built, cwd) {
-  const { file, meta } = await stored(root, doc);
+  const { file, meta } = stored(await cachePath(root, 'synctex'), doc);
   await writeJsonAtomic(meta, { root, cwd });
   // an engine that wrote none leaves nothing to keep
   await renameOver(built, file).catch(() => dropSynctex(root, doc));
@@ -41,13 +39,15 @@ export async function keepSynctex(root, doc, built, cwd) {
 
 /** Forget it, so a jump never lands in a PDF it didn't describe. */
 async function dropSynctex(root, doc) {
-  const { file, meta } = await stored(root, doc);
+  const { file, meta } = stored(await cachePath(root, 'synctex'), doc);
   await fs.rm(file, { force: true });
   await fs.rm(meta, { force: true });
 }
 
 async function load(root, doc) {
-  const { file, meta } = await stored(root, projectRelative(root, doc));
+  const dir = await cachePath(root, 'synctex');
+  const compiled = await fs.access(dir).then(() => true, () => false);
+  const { file, meta } = stored(compiled ? dir : appPath(root, 'synctex'), projectRelative(root, doc));
   try {
     return { data: await readSynctex(file), where: await readJson(meta) };
   } catch (err) {

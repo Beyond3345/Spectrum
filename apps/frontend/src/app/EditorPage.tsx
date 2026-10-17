@@ -432,6 +432,7 @@ function Editor({ projectId }: { projectId: string }) {
     hashesRef.current.set(path, hash);
     if (heldRef.current.has(path)) hold(path);
     if (path === activeRef.current) {
+      setComparing(false);
       markClean();
       setDoc(content);
     }
