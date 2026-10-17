@@ -20,7 +20,7 @@ import crypto from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { DATA_DIR } from '../config/constants.js';
-import { readJson, writeJsonAtomic } from '../utils/fsUtils.js';
+import { readJson, readdirTyped, writeJsonAtomic } from '../utils/fsUtils.js';
 import { looksLikeConflictCopy } from '../utils/conflictCopies.js';
 
 const CONFIG_PATH = path.join(DATA_DIR, 'sync.json');
@@ -160,7 +160,7 @@ export async function detectSyncRoots() {
     for (const account of Object.values(info && typeof info === 'object' ? info : {})) await add(account?.path, 'dropbox');
   }
   // classic Synology tasks go anywhere; ~/SynologyDrive is the default
-  for (const entry of await fs.readdir(home, { withFileTypes: true }).catch(() => [])) {
+  for (const entry of await readdirTyped(home).catch(() => [])) {
     if (!entry.isDirectory() || entry.name.startsWith('.') || (process.platform === 'darwin' && PROTECTED.has(entry.name))) continue;
     if (await exists(path.join(home, entry.name, MARKER))) await add(path.join(home, entry.name), 'synology');
   }

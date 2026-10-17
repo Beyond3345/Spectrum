@@ -47,6 +47,7 @@ const mirror = await import(mirrorUrl);
 const { copyProject, preflight } = await import('../src/utils/projectCopy.js');
 const versions = await import('../src/services/versionService.js');
 const { conflictCopies } = await import('../src/utils/conflictCopies.js');
+const { listFilesRecursive } = await import('../src/utils/fsUtils.js');
 
 // this computer's project folders by id, as the registry would give them
 const roots = new Map();
@@ -362,6 +363,28 @@ test('Windows’ placeholders, which its readdir calls links, are walked into as
   assert.deepEqual(userFiles(p.root), ['chapters/one.tex', 'main.tex']);
   assert.ok(existsSync(path.join(p.root, '.spectrum', 'project.json')));
   assert.equal(read(path.join(p.cloud, 'main.tex')), 'main, edited\n');
+});
+
+test('Windows’ placeholders are folders in the file list and versions too, so a restore keeps what’s in them', async () => {
+  const p = await project('Placeholder versions', { 'main.tex': 'main\n', 'chapters/intro.tex': 'intro v1\n' });
+  const { version } = await versions.createVersion(p.root, { label: 'One' });
+  await write(path.join(p.root, 'chapters', 'intro.tex'), 'intro v2: a week of work\n');
+  const { readdir } = fs;
+  // as libuv types every reparse point, the redirected Documents folder's placeholders among them
+  const asLink = (e) => ({ name: e.name, isSymbolicLink: () => true, isDirectory: () => false, isFile: () => false });
+  fs.readdir = async (dir, options) => {
+    const entries = await readdir(dir, options);
+    return options?.withFileTypes && String(dir).startsWith(p.root) ? entries.map(asLink) : entries;
+  };
+  let safety;
+  try {
+    assert.deepEqual(await listFilesRecursive(p.root), [{ path: 'chapters', type: 'dir' }, { path: 'chapters/intro.tex', type: 'file' }, { path: 'main.tex', type: 'file' }]);
+    ({ safety } = await versions.restoreVersion(p.root, version.id));
+  } finally {
+    fs.readdir = readdir;
+  }
+  assert.equal(read(path.join(p.root, 'chapters', 'intro.tex')), 'intro v1\n');
+  assert.equal((await versions.readVersionFile(p.root, safety.id, 'chapters/intro.tex')).content, 'intro v2: a week of work\n');
 });
 
 test('a folder that can’t be read stops the pass before anything is deleted', { skip: WINDOWS || process.getuid?.() === 0 }, async () => {

@@ -113,12 +113,10 @@ export async function readdirTyped(dir) {
   return typed.filter(Boolean);
 }
 
-/** Every file and folder under root, as '/'-separated paths from root on every system. */
+/** Every file and folder under root, as '/'-separated paths from root on every system (a link is a file). */
 export async function listFilesRecursive(root, rel = '') {
-  const dirPath = path.join(root, rel);
-  const entries = await fs.readdir(dirPath, { withFileTypes: true });
   const items = [];
-  for (const entry of entries) {
+  for (const entry of await readdirTyped(path.join(root, rel))) {
     if (HIDDEN_ENTRIES.has(entry.name)) continue;
     const itemRel = rel ? `${rel}/${entry.name}` : entry.name;
     if (entry.isDirectory()) {
@@ -187,7 +185,7 @@ export async function extractZip(stream, root) {
 
 /** Zips made by compressing a folder hold just that folder; use its contents instead. */
 export async function unwrapSingleFolder(root) {
-  const entries = (await fs.readdir(root, { withFileTypes: true })).filter((e) => !HIDDEN_ENTRIES.has(e.name));
+  const entries = (await readdirTyped(root)).filter((e) => !HIDDEN_ENTRIES.has(e.name));
   if (entries.length !== 1 || !entries[0].isDirectory()) return;
   const temp = path.join(root, `.unwrap-${crypto.randomUUID()}`);
   await renameOver(path.join(root, entries[0].name), temp);
