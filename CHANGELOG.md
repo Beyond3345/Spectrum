@@ -2,6 +2,21 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.8.0 (unreleased)
+
+### Added
+
+- Projects in a sync folder (Synology Drive, OneDrive, Dropbox, iCloud Drive) can be used on two computers. Synced project folders in Settings under Projects lists where your projects are; Spectrum suggests the sync folders it finds and lists the projects in them, so a project made on one computer appears on the other
+- The projects page shows where each synced project lives, says when one is not on this computer yet, and greys out the projects only another computer has
+- A file changed on the other computer reloads in the editor, or, with unsaved edits here, asks whether to keep this computer's text or the other's, keeping the other in a version. A file deleted on the other computer is marked in its tab
+- A banner when the project is also open on the other computer, and handling of the conflict copies sync apps make: Compare, Use this copy and Delete copy
+- Versions and chats made on either computer appear on both, and your own templates and settings (not API keys) follow you through the sync folder
+
+### Changed
+
+- A compile writes only the PDF into the project folder. SyncTeX data, the kept `.aux` files and the thumbnail are kept in the app's own data folder on each computer
+- Spectrum writes the project's details file less often, and folder names follow the Windows rules on every computer
+
 ## 1.7.0 (17 October 2026)
 
 ### Added

@@ -132,6 +132,18 @@ Both checkers read only the prose of a LaTeX file. Commands, maths, comments, ci
 
 Versions are kept inside each project in a hidden `.spectrum` folder, together with the project settings, saved chats, temporary build files and the SyncTeX and `.aux` files kept from the last compile of each document. File contents are compressed and stored once, so unchanged files cost no extra space between versions. A version is saved with one click from the Save version button beside Compile or with `⇧⌘S`, and the notice that follows offers to name it. Versions can also be saved and named from the Versions tab. One is also saved automatically before AI changes are applied, before a restore and before a template change, so each of these can be undone. A version can be compared with the current files, restored as a whole or restored one file at a time.
 
+### Syncing between computers
+
+Spectrum works with projects kept in a sync folder, such as Synology Drive on a Synology NAS, OneDrive, Dropbox or iCloud Drive, so the same projects can be used on a Mac and a Windows PC. Spectrum does not connect to the NAS or the cloud itself: the sync app keeps a normal folder the same on both computers, and Spectrum finds its projects there and handles changes that arrive from the other computer.
+
+To set it up, keep your projects in one folder inside the sync folder, for example `SynologyDrive/Spectrum`, and add that folder under Synced project folders in the Projects section of Settings on each computer. Spectrum suggests the sync folders it finds. With Synology Drive, use a classic two-way sync task on both computers rather than On-demand Sync, so every file is on each computer and works offline, and turn on versioning for the Team Folder on the NAS as a safety net. One folder should only ever be in one sync app.
+
+- **Projects follow you.** Spectrum finds the projects in the synced folders, so a project made on one computer appears on the other once it has synced. The projects page shows where each one lives, for example "Synology Drive · Spectrum/Thesis", says "On Synology Drive – not on this computer yet" while one is still on its way, and greys out the projects another computer has that this one does not ("Only on Study PC").
+- **Changes from the other computer.** A file changed on the other computer is reloaded in the editor when it has no unsaved edits here. If it does, Spectrum asks whether to keep this computer's text or use the other computer's, and offers to compare them. The text that is not used is kept in a version, so nothing is lost. A file deleted on the other computer is marked in its tab rather than brought back by a save.
+- **Open on both computers.** A banner says when the project is also open on the other computer, for example "Also open on DESKTOP-AB12CD since 10:42". The conflict copies a sync app makes when both computers changed a file are marked in the file list, with Compare, Use this copy and Delete copy.
+- **What else follows.** Version history and chats travel with each project, and versions made on either computer appear on both. Your own templates and the built-in ones you edited follow too, and so do settings such as the theme, the editor and the shortcuts, which can be turned off in Settings. API keys, model choices and folders stay on each computer, so no key is ever stored on the NAS.
+- **Compiling.** A compile writes only the PDF into the project. SyncTeX data, the kept `.aux` files and the thumbnail are kept on each computer, so the other computer needs one compile of its own before double-click jumping works there.
+
 ## Requirements
 
 - macOS 13.5 or later on Apple silicon or Intel (the Liquid Glass app icon needs macOS 26 or later), or Windows 10 or 11 on an x64 PC (Section Windows),
