@@ -295,6 +295,22 @@ test('a copy followed to another folder with its id (a Finder duplicate) starts 
   assert.ok(!binned.some((b) => b.abs.startsWith(p.root)));
 });
 
+test('a cloud copy renamed in the location keeps its base, so the other computer’s edits and deletions there come across', async () => {
+  const p = await project('Renamed', { 'main.tex': 'old text\n', 'gone.tex': 'deleted there\n' });
+  synced(await syncTo(p));
+  // the other computer edits a file and deletes one, then renames the folder there
+  await write(path.join(p.cloud, 'main.tex'), 'newer text from the other computer\n');
+  await fs.rm(path.join(p.cloud, 'gone.tex'));
+  const renamed = path.join(location, 'Renamed in 2026');
+  await fs.rename(p.cloud, renamed);
+  synced(await mirror.syncProject(p.id));
+  assert.equal((await mirror.readMirror(p.id)).rel, 'Renamed in 2026');
+  for (const root of [p.root, renamed]) {
+    assert.deepEqual(userFiles(root), ['main.tex'], root);
+    assert.equal(read(path.join(root, 'main.tex')), 'newer text from the other computer\n', root);
+  }
+});
+
 test('a cloud copy whose project.json is missing for a moment is waited for, never left for a Finder duplicate', async () => {
   const p = await project('Paper', { 'main.tex': 'as submitted\n' });
   synced(await syncTo(p));

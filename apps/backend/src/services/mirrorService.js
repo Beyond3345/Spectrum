@@ -3,10 +3,11 @@
 // side goes across, one changed on both is merged by lines, or this computer's is kept and the other text put beside
 // it as a conflicted copy. Deletions go across too, but only ever from a whole view of both sides.
 // This computer's own records, never synced (1.7.0 and 1.8.0 never look):
-//   DATA_DIR/mirror/<id>.json           { location, rel, files }: the copy at <location>/<rel>, and the base, each file
-//                                       as both sides last agreed on it, keyed by its path in NFC and lower case (APFS
-//                                       and NTFS ignore case): { rel, hash, l: { size, mtimeMs }, c: { size, mtimeMs },
-//                                       by }, with each side's own stat then and which side wrote it ('here', 'there')
+//   DATA_DIR/mirror/<id>.json           { location, rel, files, folder }: the copy at <location>/<rel>, and the base,
+//                                       each file as both sides last agreed on it, keyed by its path in NFC and lower
+//                                       case (APFS and NTFS ignore case): { rel, hash, l: { size, mtimeMs }, c: { size,
+//                                       mtimeMs }, by }, with each side's own stat then and which side wrote it ('here',
+//                                       'there'); and the copy's folder's identity then, which a rename keeps
 //   DATA_DIR/mirror/<id>/base/<sha>.gz  the base's text of the files a merge needs (text files and project.json)
 //   DATA_DIR/mirror/<id>/incoming/      the cloud's files read during a pass, where nothing else looks
 import { promises as fs, constants } from 'fs';
@@ -90,12 +91,12 @@ export const cloudToBin = (abs) => hooks.toBin(abs);
 
 // ─── Records ───
 
-/** The project's mirror record, { location, rel, files }, or null when it isn't mirrored. */
+/** The project's mirror record, { location, rel, files, folder }, or null when it isn't mirrored. */
 export async function readMirror(id) {
   if (!ID_RE.test(String(id || ''))) return null;
   const data = await readJson(recordPath(id)).catch(() => null);
   if (typeof data?.location !== 'string' || !path.isAbsolute(data.location) || typeof data.rel !== 'string' || data.rel.split('/').includes('..')) return null;
-  return { location: data.location, rel: data.rel, files: data.files && typeof data.files === 'object' ? data.files : {} };
+  return { location: data.location, rel: data.rel, files: data.files && typeof data.files === 'object' ? data.files : {}, folder: data.folder };
 }
 
 /** Every mirrored project: [{ id, location, rel }]. */
@@ -253,6 +254,9 @@ async function findCopy(location, id) {
   return found.length === 1 ? relFrom(location, found[0].root) : null;
 }
 
+// a folder's identity on its volume, which a rename keeps and a copy doesn't (APFS's inode, NTFS's file id); null unknown
+const folderOf = (root) => fs.stat(root, { bigint: true }).then((s) => (s.ino ? `${s.dev}:${s.ino}` : null), () => null);
+
 /** One pass: the guards, both walks, what each file needs, a version before anything here is replaced, then doing it. */
 async function mirror(id, record, label, force) {
   // both sides there, and both this project, else a missing or emptied one would read as everything deleted
@@ -286,13 +290,13 @@ async function mirror(id, record, label, force) {
       return { state: 'waiting', message: `Waiting for ${label}` };
     }
     // moved or renamed in the location: followed there, never unlinked by itself (the sync app may be bringing it
-    // back). With no base, as the folder found may be another copy (a Finder duplicate made weeks ago): the first pass
-    // there is a union, which deletes and overwrites nothing
+    // back). The same folder under a new name keeps its base; another copy (a Finder duplicate made weeks ago) starts
+    // with none, so the first pass there is a union, which deletes and overwrites nothing
     const rel = await findCopy(record.location, id);
     if (rel === null) return { state: 'not-found', message: `Not in ${label}` };
     record.rel = rel;
-    record.files = {};
     cloudRoot = cloudRootOf(record);
+    if (!record.folder || (await folderOf(cloudRoot)) !== record.folder) record.files = {};
     await writeJsonAtomic(recordPath(id), record);
   } else if (cloudMeta.id !== id) return attention(`The copy in ${label} holds another project now.`);
 
@@ -416,7 +420,7 @@ async function mirror(id, record, label, force) {
   }
   // 1.7.0 lists the versions in index.json, which this computer's copy (kept on a conflict) may lack
   if (history) await listVersions(localRoot).catch(() => {});
-  await writeJsonAtomic(recordPath(id), { ...record, files: next });
+  await writeJsonAtomic(recordPath(id), { ...record, files: next, folder: await folderOf(cloudRoot) });
   await storeBases(ctx, next);
 
   // a file that couldn't be read 3 passes running (OneDrive's download notice turned off, say) needs the user
