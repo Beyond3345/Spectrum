@@ -17,6 +17,11 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A compile writes only the PDF into the project folder. SyncTeX data, the kept `.aux` files and the thumbnail are kept in the app's own data folder on each computer
 - Spectrum writes the project's details file less often, and folder names follow the Windows rules on every computer
 
+### Going back to 1.7.0
+
+- Everything stays readable by 1.7.0: projects, versions, chats, templates and settings keep their formats, and the new data is in new files 1.7.0 ignores. After going back, synced projects show their full path, projects added on the other computer need Open existing folder, and versions made by this version show with longer numbers
+- In a synced project, avoid deleting versions on a computer running 1.7.0 until this version has opened the project's history there since the last sync, so 1.7.0's clean-up never removes files the other computer's versions use
+
 ## 1.7.0 (17 October 2026)
 
 ### Added
