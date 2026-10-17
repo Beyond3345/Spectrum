@@ -784,6 +784,26 @@ test('this computer’s project.json a sync app set aside for another computer�
   sameTree(p.root, p.cloud);
 });
 
+test('a chat continued on both computers keeps this computer’s messages when a sync app set its copy aside', async () => {
+  const p = await project('Chats aside', { 'main.tex': 'main\n' });
+  const file = (root) => path.join(root, '.spectrum', 'chats', 'c1.json');
+  const chat = { id: 'c1', title: 'Help', mode: 'assistant', updatedAt: '2026-10-01T00:00:00.000Z', messages: [{ role: 'user', createdAt: '1', content: 'first' }] };
+  const asked = (who) => ({ ...chat, messages: [...chat.messages, { role: 'user', createdAt: who, content: `asked ${who}` }] });
+  await write(file(p.root), JSON.stringify(chat));
+  synced(await syncTo(p));
+  await write(file(p.root), JSON.stringify(asked('here')));
+  synced(await mirror.syncProject(p.id));
+  // the other computer's reached the sync app's server first: this computer's goes beside it
+  await fs.rename(file(p.cloud), path.join(p.cloud, '.spectrum', 'chats', 'c1 (MacBook’s conflicted copy 2026-10-18).json'));
+  await write(file(p.cloud), JSON.stringify(asked('there')));
+  synced(await mirror.syncProject(p.id));
+  for (const root of [p.root, p.cloud]) assert.deepEqual(json(file(root)).messages.map((m) => m.content), ['first', 'asked there', 'asked here'], root);
+  // and then left as it is
+  const merged = read(file(p.cloud));
+  synced(await mirror.syncProject(p.id));
+  assert.equal(read(file(p.cloud)), merged);
+});
+
 test('a deletion goes to the Bin unless this computer’s history holds the file', async () => {
   const p = await project('Bin', { 'main.tex': '\\documentclass{article}\n', 'main.pdf': '%PDF', 'old.tex': 'old\n', 'older.tex': 'older\n' });
   const chat = { id: 'c2', messages: [] };

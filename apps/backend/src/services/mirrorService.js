@@ -366,6 +366,11 @@ async function mirror(id, record, label, force) {
       if (it.setAside) it.base = { ...base, hash: base.prev };
       it.action = decide(it);
       if (it.action === 'merge') await merge(ctx, it);
+      // a chat only gains messages: the cloud's lacking some this computer's has lost them to a sync app's conflicted copy
+      if (it.action === 'toLocal' && l && CHAT.test(key)) {
+        const both = await bothChats(ctx, it);
+        if (both?.more) Object.assign(it, { data: both.data, action: 'write' });
+      }
       if (it.action === 'toLocal' && key === META) {
         it.meta = JSON.parse(await fs.readFile(it.fetched, 'utf8'));
         it.action = 'meta';
@@ -571,6 +576,17 @@ async function ownCopy(ctx, base) {
   return null;
 }
 
+const CHAT = /^\.spectrum\/chats\/[^/]+\.json$/;
+
+/** A chat with both sides' messages, the cloud's first, and whether this computer's had any it lacked; null unless both are it. */
+async function bothChats(ctx, it) {
+  const [mine, theirs] = await Promise.all([readJson(join(ctx.localRoot, it.l.rel)), readJson(it.fetched)]).catch(() => []);
+  const chat = (x) => typeof x?.id === 'string' && Array.isArray(x.messages);
+  if (!chat(mine) || !chat(theirs) || mine.id !== theirs.id) return null;
+  const merged = mergeChat(theirs, mine);
+  return { data: Buffer.from(JSON.stringify(merged)), more: merged.messages.length > theirs.messages.length };
+}
+
 const readBase = (id, hash) => fs.readFile(basePath(id, hash)).then(gunzipAsync).catch(() => null);
 
 /**
@@ -589,11 +605,10 @@ async function merge(ctx, it) {
     // ponytail: a tag change made on both computers between passes keeps this computer's tags, the other's lost
     it.meta = mergeMeta(JSON.parse(base), await readJson(local), await readJson(it.fetched));
     it.action = 'meta';
-  } else if (/^\.spectrum\/chats\/[^/]+\.json$/.test(key)) {
-    const [mine, theirs] = await Promise.all([readJson(local), readJson(it.fetched)]).catch(() => []);
-    const chat = (x) => typeof x?.id === 'string' && Array.isArray(x.messages);
-    if (!chat(mine) || !chat(theirs) || mine.id !== theirs.id) return;
-    it.data = Buffer.from(JSON.stringify(mergeChat(theirs, mine)));
+  } else if (CHAT.test(key)) {
+    const both = await bothChats(ctx, it);
+    if (!both) return;
+    it.data = both.data;
     it.action = 'write';
   } else if (key.startsWith('.spectrum/history/manifests/')) {
     if (it.c.mtimeMs > it.l.mtimeMs) it.action = 'toLocal';
