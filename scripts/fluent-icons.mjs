@@ -58,6 +58,8 @@ const FLUENT = {
   'circle.lefthalf.filled': 'dark_theme',
   clock: 'clock',
   'clock.arrow.circlepath': 'history',
+  // cloud projects
+  cloud: 'cloud',
   // ⌘ has no Windows twin
   command: 'keyboard',
   curlybraces: 'braces',

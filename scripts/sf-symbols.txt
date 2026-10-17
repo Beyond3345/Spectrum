@@ -39,6 +39,7 @@ chevron.up.chevron.down
 circle.lefthalf.filled
 clock
 clock.arrow.circlepath
+cloud
 command
 curlybraces
 doc

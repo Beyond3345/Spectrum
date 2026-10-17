@@ -22,3 +22,6 @@ export const IS_MAC = !IS_WINDOWS && /Mac|iPhone|iPad/.test(platform);
 export const OS_NAME = IS_WINDOWS ? 'Windows' : 'macOS';
 export const FILE_MANAGER = IS_WINDOWS ? 'File Explorer' : 'Finder';
 export const BIN = IS_WINDOWS ? 'Recycle Bin' : 'Bin';
+
+/** A path with the home folder as ~. */
+export const tildify = (p: string) => p.replace(/^(\/Users\/[^/]+|[A-Za-z]:\\Users\\[^\\]+)/, '~');

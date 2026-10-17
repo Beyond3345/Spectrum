@@ -108,10 +108,11 @@ const mine = at({
   projectsDir: '/Users/me/Spectrum',
   glass: true,
   editorFont: 'menlo',
-  compileEngine: 'tectonic'
+  compileEngine: 'tectonic',
+  cloudMode: 'move'
 });
 const sent = JSON.stringify(sharedPart(mine));
-for (const secret of ['sk-openai', 'mineru-token', 'v-key', 'q-key', 's-key', 'serp-key', 'exa-key', '/Users/me', DEEPSEEK, 'menlo', 'tectonic', 'glass', 'syncSettings']) {
+for (const secret of ['sk-openai', 'mineru-token', 'v-key', 'q-key', 's-key', 'serp-key', 'exa-key', '/Users/me', DEEPSEEK, 'menlo', 'tectonic', 'glass', 'syncSettings', 'cloudMode']) {
   if (sent.includes(secret)) throw new Error(`shared settings hold ${secret}`);
 }
 eq([sharedPart(mine).theme, sharedPart(mine).spellCheck], ['dark', false], 'theme and spelling are shared');
@@ -122,6 +123,13 @@ eq([merged.theme, merged.spellCheck, merged.editorFontSize], ['dark', false, 99]
 eq([merged.llmApiKey, merged.projectsDir, merged.glass, merged.syncSettings], ['sk-windows', theirs.projectsDir, false, false], 'this computer’s own stay');
 eq(withShared(theirs, { accent: 'neon' }).accent, 'system', 'shared values are checked like stored ones');
 eq(withShared(theirs, { syncHighlightSeconds: 60 }).syncHighlightSeconds, 10, 'and kept in range');
+
+// the folders on the Projects page follow the user, checked like stored ones; what Sync to does stays on each computer
+const tree = { folders: [{ id: 'f1', name: 'Thesis', parent: null }], placement: { p1: 'f1', p2: 'deleted' } };
+const sorted = withShared(theirs, { projectFolders: tree, cloudMode: 'move' });
+eq(sorted.projectFolders, { folders: tree.folders, placement: { p1: 'f1' } }, 'the folders come in, checked');
+eq(sorted.cloudMode, 'mirror', 'Sync to’s choice stays');
+eq(withShared(at({ cloudMode: 'sideways' as AppSettings['cloudMode'], projectFolders: 'junk' as never }), {}), at({}), 'an unknown choice is Mirror, and junk no folders');
 
 // the Mac went dark since the PC last shared, then the PC changed its font size: both changes stay, and the PC's
 // old theme doesn't go back to the Mac

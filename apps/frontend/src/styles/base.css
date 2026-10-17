@@ -815,12 +815,18 @@ textarea.input {
   color: var(--text-secondary);
 }
 
+/* the whole path, wrapped anywhere: a sync app's folder can be longer than the row */
 .path-text {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  padding: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+/* a cloud location's name, above its path */
+.path-label {
+  display: block;
+  font-weight: 500;
 }
 
 /* --------------------------------------------------------------------------

@@ -3,6 +3,50 @@
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
+   Sidebar folders
+   -------------------------------------------------------------------------- */
+
+.folder-row {
+  display: flex;
+  align-items: center;
+}
+
+.folder-row > .nav-row {
+  flex: 1;
+  min-width: 0;
+}
+
+/* the chevron before a folder with folders inside, or the room for one */
+.folder-disclosure {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+button.folder-disclosure:hover {
+  color: var(--text-secondary);
+}
+
+/* a project dragged over it goes in, like a folder in the file tree */
+.nav-row.drop-into {
+  background: var(--accent-soft);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* Needs attention: says what, and offers Sync anyway */
+button.badge {
+  border: 0;
+}
+
+/* --------------------------------------------------------------------------
    List view
    -------------------------------------------------------------------------- */
 
