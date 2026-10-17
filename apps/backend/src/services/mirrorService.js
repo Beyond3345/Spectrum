@@ -63,8 +63,8 @@ const attention = (message) => ({ state: 'attention', message });
 const defaults = {
   rootOf: getProjectRoot,
   // on the cloud side never through Finder, which on a volume without a Bin (a NAS) asks before deleting for good:
-  // macOS 14's trash command fails there instead
-  toBin: (abs, cloud) => (cloud && process.platform === 'darwin' ? execFileAsync('/usr/bin/trash', [abs]) : moveToBin(abs))
+  // macOS 14's trash command fails there instead (not with the tests' stand-in for the Bin, which moveToBin uses)
+  toBin: (abs, cloud) => (cloud && process.platform === 'darwin' && !process.env.SPECTRUM_TEST_BIN_DIR ? execFileAsync('/usr/bin/trash', [abs]) : moveToBin(abs))
 };
 let hooks = defaults;
 
