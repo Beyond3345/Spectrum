@@ -7,9 +7,9 @@
 //   { machineId, machineName, folders: [{ path, place? }], hidden: [projectId] }
 // place is where the folder was in its sync app's folder when it was added, so a project in it still says
 // which app it's waiting for after that app's folder has gone.
-// <first synced folder>/.spectrum-shared/: one file per computer where several computers write (never a shared
-// file two computers rewrite, which a sync client would split into conflict copies)
-//   machines/<machineId>.json: { machineName, updatedAt, projects: [{ id, name, place }] }
+// <a synced folder>/.spectrum-shared/ (sharedDir picks the same one on each computer): one file per computer where
+// several computers write (never a shared file two computers rewrite, which a sync client would split into conflict copies)
+//   machines/<machineId>.json: { machineName, systemNames, updatedAt, projects: [{ id, name, place }] }
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -30,6 +30,17 @@ let cached = null;
 export async function defaultMachineName() {
   const mac = process.platform === 'darwin' && (await execFileAsync('scutil', ['--get', 'ComputerName'], { timeout: 2000 }).then((r) => r.stdout.trim(), () => ''));
   return mac || os.hostname().replace(/\..*$/, '');
+}
+
+let systemNamesCache = null;
+
+/**
+ * The names the system gives this computer, which OneDrive puts in its conflict copies' names; never the one set in
+ * Settings. ponytail: read once per run, so a computer renamed while Spectrum runs is known by its new name next time
+ */
+export function systemNames() {
+  systemNamesCache ||= defaultMachineName().then((name) => [...new Set([name, os.hostname().replace(/\.local$/i, ''), process.env.COMPUTERNAME].filter(Boolean))]);
+  return systemNamesCache;
 }
 
 /** This computer's sync settings, with a machine id made on first use. */
@@ -75,12 +86,16 @@ export async function machineId() {
 const isDir = (p) => fs.stat(p).then((s) => s.isDirectory(), () => false);
 const exists = (p) => fs.access(p).then(() => true, () => false);
 
-/** The shared folder in the first synced folder that exists here, or null when none is set up. */
+/**
+ * The shared folder, in the synced folder here that comes first by its place in its sync app's folder, which is the
+ * same on each computer whatever order the folders were added in (else the first in the list); null with none here.
+ */
 export async function sharedDir() {
-  for (const { path: folder } of (await readSyncConfig()).folders) {
-    if (await isDir(folder)) return path.join(folder, SHARED_DIR_NAME);
-  }
-  return null;
+  const here = [];
+  for (const f of (await readSyncConfig()).folders) if (await isDir(f.path)) here.push(f);
+  const key = (f) => (f.place ? `${f.place.provider}/${f.place.rel}`.toLowerCase() : '\uffff');
+  const folder = here.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0))[0];
+  return folder ? path.join(folder.path, SHARED_DIR_NAME) : null;
 }
 
 // ─── The sync apps' folders ───
@@ -197,6 +212,24 @@ export async function placeOfNew(p) {
   return locate(p, await detectSyncRoots(), []);
 }
 
+/**
+ * Where a place another computer gave is on this one: that folder in each of its sync app's folders here, and in the
+ * synced folders that app keeps. Never outside them.
+ */
+export async function foldersAt(place) {
+  const parts = place.rel.split('/');
+  if (parts.some((s) => !s || s === '.' || s === '..' || /[\\:]/.test(s))) return [];
+  const tops = (await syncRoots()).filter((r) => r.provider === place.provider).map((r) => ({ path: r.path, rel: [] }));
+  for (const f of (await readSyncConfig()).folders) if (f.place?.provider === place.provider) tops.push({ path: f.path, rel: f.place.rel.split('/').filter(Boolean) });
+  const found = [];
+  for (const top of tops) {
+    if (top.rel.length >= parts.length || top.rel.some((s, i) => !sameFolder(s, parts[i]))) continue;
+    const p = path.join(top.path, ...parts.slice(top.rel.length));
+    if (!found.some((q) => sameFolder(q, p))) found.push(p);
+  }
+  return found;
+}
+
 /** The sync app's folder is on this computer. */
 export async function providerHere(provider) {
   for (const r of await syncRoots()) if (r.provider === provider && (await isDir(r.path))) return true;
@@ -211,12 +244,8 @@ export async function syncFolderRoots() {
 
 /** The first synced folder that exists here, where new projects go, or null. */
 export async function syncedProjectsDir() {
-  const shared = await sharedDir();
-  return shared && path.dirname(shared);
-}
-
-export async function inSyncFolder(p) {
-  return (await readSyncConfig()).folders.some((f) => within(p, f.path));
+  for (const { path: folder } of (await readSyncConfig()).folders) if (await isDir(folder)) return folder;
+  return null;
 }
 
 /** Keep a project the user removed from the list from coming back with the next scan, or from another computer's list. */
@@ -269,15 +298,16 @@ export async function publishProjects(projects) {
   const shared = await sharedDir();
   if (!shared) return;
   const { machineId: id, machineName } = await readSyncConfig();
+  const names = await systemNames();
   const file = path.join(shared, MACHINES_DIR, `${id}.json`);
-  const key = JSON.stringify([file, machineName, projects]);
+  const key = JSON.stringify([file, machineName, names, projects]);
   if (published.key !== key) {
     const old = await readJson(file).catch(() => null);
-    published = { key: old && JSON.stringify([file, old.machineName, old.projects]), at: Date.parse(old?.updatedAt) || 0 };
+    published = { key: old && JSON.stringify([file, old.machineName, old.systemNames, old.projects]), at: Date.parse(old?.updatedAt) || 0 };
   }
   if (published.key === key && Date.now() - published.at < REFRESH) return;
   const updatedAt = new Date();
-  await writeJsonAtomic(file, { machineName, updatedAt: updatedAt.toISOString(), projects });
+  await writeJsonAtomic(file, { machineName, systemNames: names, updatedAt: updatedAt.toISOString(), projects });
   published = { key, at: updatedAt.getTime() };
 }
 

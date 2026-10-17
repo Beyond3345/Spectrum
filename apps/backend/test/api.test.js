@@ -643,10 +643,10 @@ test('conflict copies: marked in the tree, never documents, and one can take the
   const copy = 'thesis_DESKTOP-AB12CD_Oct-17-1042-2026_Conflict.tex';
   await writeFile(p.id, 'thesis.tex', doc.replace('%s', 'mine'));
   await writeFile(p.id, copy, doc.replace('%s', 'theirs'));
-  // OneDrive's kind, once Spectrum knows the computer's name from its presence file
+  // OneDrive's kind, once Spectrum knows the computer's system name from its presence file
   await writeFile(p.id, 'thesis-DESKTOP-AB12CD.tex', doc.replace('%s', 'onedrive'));
   assert.deepEqual((await api(`/api/projects/${p.id}/presence`, { method: 'POST' })).json, { ok: true, others: [] });
-  await fs.writeFile(path.join(p.path, '.spectrum', 'open', `${crypto.randomUUID()}.json`), JSON.stringify({ host: 'DESKTOP-AB12CD', since: new Date().toISOString(), at: new Date().toISOString() }));
+  await fs.writeFile(path.join(p.path, '.spectrum', 'open', `${crypto.randomUUID()}.json`), JSON.stringify({ host: 'DESKTOP-AB12CD', systemNames: ['DESKTOP-AB12CD'], since: new Date().toISOString(), at: new Date().toISOString() }));
   assert.deepEqual((await api(`/api/projects/${p.id}/presence`, { method: 'POST' })).json.others.map((o) => o.host), ['DESKTOP-AB12CD']);
 
   const tree = (await api(`/api/projects/${p.id}/tree`)).json;

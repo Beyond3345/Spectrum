@@ -5,7 +5,7 @@ import { DATA_DIR, TEMPLATE_DIR, TEMPLATE_MANIFEST, TEMPLATE_SEED_DIR } from '..
 import { copyDir, ensureDir, listFilesRecursive, readJson, renameOver, writeJsonAtomic } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { createProject, detectMainFile, getProjectRoot, httpError, listProjects, readMeta, serialiser, unregister, updateMeta } from './projectService.js';
-import { sharedDir } from './syncService.js';
+import { readSyncConfig, sharedDir } from './syncService.js';
 
 // the desktop app's read-only copy of the shipped templates (dev runs straight from the repo's)
 const SEEDED = !!TEMPLATE_SEED_DIR && path.resolve(TEMPLATE_SEED_DIR) !== path.resolve(TEMPLATE_DIR);
@@ -150,20 +150,26 @@ function updateManifest(fn) {
 
 /** A saved template's entry (merged into the one it had); one that follows the user goes to the shared folder too. */
 export async function addTemplateToManifest(entry) {
+  // what its files are now, so a change made where this build doesn't stamp it (1.7.0) shows
+  const files = followsUser(entry) ? await fileHashes(templatePath(entry.id)).catch(() => null) : null;
   let saved = entry;
   await updateManifest((templates) => {
     const i = templates.findIndex((t) => t.id === entry.id);
-    saved = { ...templates[i], ...entry, updatedAt: new Date().toISOString() };
+    saved = { ...templates[i], ...entry, updatedAt: new Date().toISOString(), ...(files && { files }) };
     return i >= 0 ? templates.with(i, saved) : [...templates, saved];
   });
-  if (followsUser(saved)) await shareTemplate(saved.id, saved);
+  if (followsUser(saved)) await syncTemplates().catch((err) => console.error(`Couldn’t share the “${saved.id}” template with your other computers: ${err.message}`));
 }
 
 // ─── Templates that follow the user ───
 // The user's own templates and the shipped ones they edited, mirrored in <shared>/templates/<id>/:
-//   template.json   the manifest entry with updatedAt and each file's sha1, or { id, deleted: true, updatedAt }
+//   template.json   the manifest entry with updatedAt, origin and each file's sha1 (files), or
+//                   { id, origin, deleted: true, updatedAt }
 //   files/          the template's files
-// Copied each way, never moved, so TEMPLATE_DIR keeps every template whole for 1.7.0; the newest save wins.
+// The manifest entry keeps the same updatedAt, origin and files, which 1.7.0 carries through its own saves: files
+// that no longer match were changed there. origin is the template's own, made when it's first shared, so two with
+// one id that were made apart are both kept. Copied each way, never moved, so TEMPLATE_DIR keeps every template whole
+// for 1.7.0; the newest save wins.
 // ponytail: a template deleted while the shared folder isn't there comes back from it; keep tombstones here too
 // if that bites
 
@@ -190,15 +196,15 @@ async function fileHashes(dir) {
 
 const sameHashes = (a = {}, b = {}) => Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((k) => a[k] === b[k]);
 
-/** Write a template, or its deletion (entry null), to the shared folder. Only logs when it can't. */
+/** Write a template, or its deletion ({ origin, deleted: true }), to the shared folder. Only logs when it can't. */
 async function shareTemplate(id, entry) {
   try {
     const dir = await sharedTemplatesDir();
     if (!dir) return;
     const shared = safeJoin(dir, id);
     await fs.rm(path.join(shared, 'files'), { recursive: true, force: true });
-    if (!entry) {
-      await writeJsonAtomic(path.join(shared, 'template.json'), { id, deleted: true, updatedAt: new Date().toISOString() });
+    if (entry.deleted) {
+      await writeJsonAtomic(path.join(shared, 'template.json'), { id, origin: entry.origin, deleted: true, updatedAt: new Date().toISOString() });
       return;
     }
     await copyDir(templatePath(id), path.join(shared, 'files'));
@@ -219,11 +225,32 @@ async function copySharedFiles(src, hashes, dest) {
   }
 }
 
+/**
+ * A template moved to an id of its own, named after this computer, and shared there: another template has its id on
+ * the user's other computers (made apart), or it changed on both since. Its working copy goes with it.
+ */
+async function moveAside(t, files) {
+  const label = `${t.label} (${(await readSyncConfig()).machineName})`;
+  const id = await newTemplateFolder(label);
+  await fs.rmdir(templatePath(id));
+  await renameOver(templatePath(t.id), templatePath(id));
+  let entry;
+  await updateManifest((templates) => templates.map((x) => {
+    if (x.id !== t.id) return x;
+    // the user's own now, with an origin of its own: Spectrum ships nothing under this id
+    const { edited: _edited, ...rest } = x;
+    entry = { ...rest, id, label, author: 'User', origin: crypto.randomUUID(), files, updatedAt: new Date().toISOString() };
+    return entry;
+  }));
+  for (const p of await listProjects()) if (p.templateDraft === t.id) await updateMeta(p.path, (m) => ({ ...m, templateDraft: id })).catch(() => {});
+  if (entry) await shareTemplate(id, entry);
+}
+
 const syncLock = serialiser();
 
 /**
  * Bring in the templates the user saved or deleted on their other computers since, and share this computer's
- * newer ones. On start and whenever the gallery lists the templates.
+ * newer ones. On start, whenever the gallery lists the templates and after a save.
  */
 export function syncTemplates() {
   return syncLock(async () => {
@@ -239,38 +266,53 @@ export function syncTemplates() {
       const s = await readJson(path.join(dir, id, 'template.json')).catch(() => null);
       if (s?.id === id && typeof s.updatedAt === 'string') shared.set(id, s);
     }
-    const stamp = (id, updatedAt) => updateManifest((templates) => templates.map((t) => (t.id === id ? { ...t, updatedAt } : t)));
+    const stamp = (id, fields) => updateManifest((templates) => templates.map((t) => (t.id === id ? { ...t, ...fields } : t)));
 
-    for (const [id, s] of shared) {
+    for (const id of new Set([...local.keys(), ...shared.keys()])) {
       const t = local.get(id);
-      if (t && followsUser(t) && !t.updatedAt) {
-        // made here before templates followed the user: joined to the shared one only when they're the same
-        if (!s.deleted && sameHashes(await fileHashes(templatePath(id)).catch(() => ({})), s.files)) await stamp(id, s.updatedAt);
-        continue;
+      const s = shared.get(id);
+      const live = !!s && !s.deleted;
+      if (t && followsUser(t)) {
+        const files = await fileHashes(templatePath(id)).catch(() => null);
+        if (!files) continue;
+        const joined = !!t.origin && t.origin === s?.origin;
+        // changed since this build saved, shared or took it in: in 1.7.0, which keeps the entry as it was, or by hand
+        const outside = !!t.files && !sameHashes(files, t.files);
+        if (live && !joined && sameHashes(files, s.files)) {
+          // the same files on both (from before templates followed the user, or stamped on both before the shared
+          // folder synced): one template from now on
+          const origin = s.origin || t.origin || crypto.randomUUID();
+          await stamp(id, { origin, files, updatedAt: s.updatedAt });
+          if (!s.origin) await shareTemplate(id, { ...t, origin, updatedAt: s.updatedAt });
+          continue;
+        }
+        if (live && (!joined || (outside && s.updatedAt > t.updatedAt))) {
+          // another template under this id, or this one changed on both: this computer's moves aside, theirs comes in
+          await moveAside(t, files);
+        } else if (!joined || outside || (t.updatedAt || '') > s.updatedAt) {
+          // new to the shared folder (or over another one's deletion), changed outside this build, or saved here since
+          const fields = { origin: t.origin || crypto.randomUUID(), files, updatedAt: !t.updatedAt || outside ? new Date().toISOString() : t.updatedAt };
+          await stamp(id, fields);
+          await shareTemplate(id, { ...t, ...fields });
+          continue;
+        } else if (s.updatedAt <= (t.updatedAt || '')) {
+          continue;
+        } else if (s.deleted) {
+          await (t.author === 'User' ? deleteTemplate(id, { share: false }) : restoreTemplate(id, { share: false })).catch(() => {});
+          continue;
+        }
       }
-      if (t && (t.updatedAt || '') >= s.updatedAt) continue;
-      if (s.deleted) {
-        if (t && followsUser(t)) await (t.author === 'User' ? deleteTemplate(id, { share: false }) : restoreTemplate(id, { share: false })).catch(() => {});
-        continue;
-      }
+      if (!live) continue;
       try {
         await replaceTemplateFolder(id, (staged) => copySharedFiles(path.join(dir, id, 'files'), s.files, staged));
       } catch {
         continue; // still syncing: next time
       }
-      const { files: _files, deleted: _deleted, ...entry } = s;
+      const { deleted: _deleted, ...entry } = s;
       await updateManifest((templates) => {
         const i = templates.findIndex((x) => x.id === id);
         return i >= 0 ? templates.with(i, entry) : [...templates, entry];
       });
-    }
-
-    for (const t of local.values()) {
-      const s = shared.get(t.id);
-      if (!followsUser(t) || (s && (t.updatedAt || '') <= s.updatedAt)) continue;
-      const entry = t.updatedAt ? t : { ...t, updatedAt: new Date().toISOString() };
-      if (!t.updatedAt) await stamp(t.id, entry.updatedAt);
-      await shareTemplate(t.id, entry);
     }
   });
 }
@@ -490,7 +532,7 @@ export async function restoreTemplate(id, { share = true } = {}) {
   if (!shipped) throw httpError(`“${template.label}” doesn’t come with Spectrum, so there’s no original to restore.`, 400);
   await replaceTemplateFolder(id, (dest) => copyDir(safeJoin(TEMPLATE_SEED_DIR, id), dest));
   await updateManifest((templates) => templates.map((t) => (t.id === id ? shipped : t)));
-  if (share) await shareTemplate(id, null);
+  if (share) await shareTemplate(id, { origin: template.origin, deleted: true });
   return shipped;
 }
 
@@ -510,7 +552,7 @@ export async function deleteTemplate(id, { share = true } = {}) {
   await fs.rm(gone, { recursive: true, force: true, maxRetries: 5 });
   // its working copy goes too, or a later template given the same name would open it and be saved over
   for (const p of await listProjects()) if (p.templateDraft === id) await closeTemplateDraft(p.id, share).catch(() => {});
-  if (share) await shareTemplate(id, null);
+  if (share) await shareTemplate(id, { origin: template.origin, deleted: true });
 }
 
 /**

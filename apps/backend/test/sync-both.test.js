@@ -29,6 +29,7 @@ const { conflictCopies } = await import('../src/utils/conflictCopies.js');
 const presence = await import('../src/services/presenceService.js');
 const versions = await import('../src/services/versionService.js');
 const templates = await import('../src/services/templateService.js');
+const { systemNames } = await import('../src/services/syncService.js');
 
 after(() => rmSync(tmp, { recursive: true, force: true }));
 
@@ -67,9 +68,10 @@ test('another computer shows as having the project open only while its file is f
   assert.deepEqual(await presence.markOpen(root), []);
   const mine = await json(path.join(open, `${machineId}.json`));
   assert.equal(mine.host, 'MacBook');
+  assert.deepEqual(mine.systemNames, await systemNames(), 'the system’s names, for OneDrive’s copies');
 
   const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  await write(path.join(open, `${otherId}.json`), { host: 'DESKTOP-AB12CD', since, at: new Date().toISOString() });
+  await write(path.join(open, `${otherId}.json`), { host: 'DESKTOP-AB12CD', systemNames: ['DESKTOP-AB12CD'], since, at: new Date().toISOString() });
   // a stale one, left by a crash, and a sync app's conflict copy of a presence file
   await write(path.join(open, `${crypto.randomUUID()}.json`), { host: 'OLD-PC', since, at: new Date(Date.now() - 6 * 60 * 1000).toISOString() });
   await write(path.join(open, `${otherId}_DESKTOP_Oct-17-1042-2026_Conflict.json`), { host: 'COPY', since, at: new Date().toISOString() });
@@ -80,6 +82,16 @@ test('another computer shows as having the project open only while its file is f
   await presence.markClosed(root);
   assert.ok(!existsSync(path.join(open, `${machineId}.json`)));
   assert.ok((await presence.knownMachineNames(root)).includes('DESKTOP-AB12CD'));
+});
+
+test('OneDrive’s copies go by the system’s name for a computer, never one typed in Settings', async () => {
+  const root = await project('Names');
+  await write(path.join(root, '.spectrum', 'open', `${otherId}.json`), { host: 'Work', systemNames: ['DESKTOP-AB12CD'], since: new Date().toISOString(), at: new Date().toISOString() });
+  const names = await presence.knownMachineNames(root);
+  assert.ok(names.includes('DESKTOP-AB12CD'));
+  assert.ok(!names.includes('Work'));
+  const files = ['cv.tex', 'cv-work.tex', 'main.tex', 'main-DESKTOP-AB12CD.tex'];
+  assert.deepEqual(conflictCopies(files, names), { 'main-DESKTOP-AB12CD.tex': 'main.tex' });
 });
 
 test('conflict copies of each sync app are recognised, and ordinary names aren’t', () => {
@@ -219,23 +231,25 @@ test('a file that can’t be read is skipped, not removed, and a restore leaves 
   }
 });
 
-// 1.7.0's own versionService, from git, with its imports pointed at this checkout's (the same since)
-async function oldVersionService() {
+// 1.7.0's own services, from git, with their imports pointed at this checkout's (the same since)
+async function oldService(name) {
   const rev = process.env.SPECTRUM_OLD_REV || 'v1.7.0';
   let code;
   try {
-    code = execFileSync('git', ['show', `${rev}:apps/backend/src/services/versionService.js`], { cwd: here, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    code = execFileSync('git', ['show', `${rev}:apps/backend/src/services/${name}.js`], { cwd: here, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   } catch {
     return null;
   }
-  const file = path.join(tmp, 'versionService-1.7.0.mjs');
+  const file = path.join(tmp, `${name}-1.7.0.mjs`);
   await fs.writeFile(file, code
     .replaceAll("'../utils/", `'${pathToFileURL(path.join(src, 'utils'))}/`)
+    .replaceAll("'../config/", `'${pathToFileURL(path.join(src, 'config'))}/`)
     .replace("'./projectService.js'", `'${pathToFileURL(path.join(src, 'services', 'projectService.js'))}'`)
     .replace("from 'diff'", `from '${import.meta.resolve('diff')}'`));
   return import(pathToFileURL(file));
 }
-const old = await oldVersionService();
+const old = await oldService('versionService');
+const oldTemplates = await oldService('templateService');
 
 test('1.7.0 lists and restores versions both computers made, and its own don’t clash', { skip: !old && 'no v1.7.0 in git (set SPECTRUM_OLD_REV)' }, async () => {
   const root = path.join(synced, 'Shared paper');
@@ -278,7 +292,7 @@ test('settings follow the user without keys or paths, and only another computer�
   assert.deepEqual(await presence.sharedSettings(), { shared: true, latest: null });
   const at = await presence.shareSettings({ theme: 'dark', llmApiKey: 'sk-secret', searchProviderKeys: { exa: 'k' }, providerSaved: {}, projectsDir: '/x', shortcuts: {} });
   const mine = await json(path.join(shared, 'settings', `${machineId}.json`));
-  assert.deepEqual(mine, { updatedAt: at, machineName: 'MacBook', settings: { theme: 'dark', shortcuts: {} } });
+  assert.deepEqual(mine, { updatedAt: at, machineName: 'MacBook', systemNames: await systemNames(), settings: { theme: 'dark', shortcuts: {} } });
   // this computer's own file isn't news to it
   assert.equal((await presence.sharedSettings()).latest, null);
   const theirs = { updatedAt: new Date(Date.now() + 1000).toISOString(), machineName: 'DESKTOP-AB12CD', settings: { theme: 'light' } };
@@ -287,10 +301,24 @@ test('settings follow the user without keys or paths, and only another computer�
   assert.deepEqual((await presence.sharedSettings()).latest, theirs);
 });
 
+const sharedTemplates = path.join(shared, 'templates');
+const sha1 = (text) => crypto.createHash('sha1').update(text).digest('hex');
+const entry = (id, extra = {}) => ({ id, label: id, mainFile: 'main.tex', category: 'academic', description: id, tags: [], author: 'User', featured: false, ...extra });
+const manifest = () => json(path.join(templateDir, 'manifest.json'));
+const read = (...parts) => fs.readFile(path.join(...parts), 'utf8');
+/** One the PC saved, as its sync app brings it. */
+async function fromPc(id, text, extra) {
+  await write(path.join(sharedTemplates, id, 'files', 'main.tex'), text);
+  await write(path.join(sharedTemplates, id, 'template.json'), { ...entry(id), files: { 'main.tex': sha1(text) }, ...extra });
+}
+/** One made here as 1.7.0 makes them: a folder and a manifest entry, never stamped. */
+async function madeHere(id, text) {
+  await write(path.join(templateDir, id, 'main.tex'), text);
+  const m = await manifest();
+  await write(path.join(templateDir, 'manifest.json'), { ...m, templates: [...m.templates, entry(id)] });
+}
+
 test('templates follow the user both ways, deletions too, and only once they’ve fully synced', async () => {
-  const sharedTemplates = path.join(shared, 'templates');
-  const sha1 = (text) => crypto.createHash('sha1').update(text).digest('hex');
-  const entry = (id, extra = {}) => ({ id, label: id, mainFile: 'main.tex', category: 'academic', description: id, tags: [], author: 'User', featured: false, ...extra });
   await write(path.join(templateDir, 'manifest.json'), { templates: [], categories: [{ id: 'all', label: 'All' }, { id: 'academic', label: 'Academic' }] });
 
   // saved here: mirrored with its files, and the local folder stays whole
@@ -298,41 +326,102 @@ test('templates follow the user both ways, deletions too, and only once they’v
   await templates.addTemplateToManifest(entry('mine'));
   const mine = await json(path.join(sharedTemplates, 'mine', 'template.json'));
   assert.deepEqual(mine.files, { 'main.tex': sha1('mine\n') });
-  assert.equal(await fs.readFile(path.join(sharedTemplates, 'mine', 'files', 'main.tex'), 'utf8'), 'mine\n');
+  assert.ok(mine.origin);
+  assert.equal(await read(sharedTemplates, 'mine', 'files', 'main.tex'), 'mine\n');
   assert.ok(existsSync(path.join(templateDir, 'mine', 'main.tex')));
 
   // saved on the PC: copied in once all its files are here
   const later = new Date(Date.now() + 60_000).toISOString();
-  await write(path.join(sharedTemplates, 'theirs', 'template.json'), { ...entry('theirs'), updatedAt: later, files: { 'main.tex': sha1('theirs\n'), 'logo.png': sha1('png') } });
+  const origin = crypto.randomUUID();
+  const files = { 'main.tex': sha1('theirs\n'), 'logo.png': sha1('png') };
+  await write(path.join(sharedTemplates, 'theirs', 'template.json'), { ...entry('theirs'), updatedAt: later, origin, files });
   await write(path.join(sharedTemplates, 'theirs', 'files', 'main.tex'), 'theirs\n');
   await templates.syncTemplates();
   assert.ok(!(await templates.readTemplateManifest()).templates.some((t) => t.id === 'theirs'), 'logo.png hasn’t arrived');
   await write(path.join(sharedTemplates, 'theirs', 'files', 'logo.png'), 'png');
   await templates.syncTemplates();
-  const local = await json(path.join(templateDir, 'manifest.json'));
-  assert.deepEqual(local.templates.find((t) => t.id === 'theirs'), { ...entry('theirs'), updatedAt: later });
-  assert.equal(await fs.readFile(path.join(templateDir, 'theirs', 'logo.png'), 'utf8'), 'png');
+  assert.deepEqual((await manifest()).templates.find((t) => t.id === 'theirs'), { ...entry('theirs'), updatedAt: later, origin, files });
+  assert.equal(await read(templateDir, 'theirs', 'logo.png'), 'png');
 
   // deleted on the PC: gone here; deleted here: a tombstone for the PC
-  await write(path.join(sharedTemplates, 'mine', 'template.json'), { id: 'mine', deleted: true, updatedAt: later });
+  await write(path.join(sharedTemplates, 'mine', 'template.json'), { id: 'mine', origin: mine.origin, deleted: true, updatedAt: later });
   await templates.syncTemplates();
   assert.ok(!existsSync(path.join(templateDir, 'mine')));
-  assert.ok(!(await json(path.join(templateDir, 'manifest.json'))).templates.some((t) => t.id === 'mine'));
+  assert.ok(!(await manifest()).templates.some((t) => t.id === 'mine'));
   await templates.deleteTemplate('theirs');
-  assert.equal((await json(path.join(sharedTemplates, 'theirs', 'template.json'))).deleted, true);
+  const tombstone = await json(path.join(sharedTemplates, 'theirs', 'template.json'));
+  assert.deepEqual([tombstone.deleted, tombstone.origin], [true, origin]);
   assert.ok(!existsSync(path.join(sharedTemplates, 'theirs', 'files')));
 
-  // one made here before templates followed the user, unlike the shared one of that name: both stay as they are
-  await write(path.join(templateDir, 'lab', 'main.tex'), 'my lab\n');
-  const manifest = await json(path.join(templateDir, 'manifest.json'));
-  await write(path.join(templateDir, 'manifest.json'), { ...manifest, templates: [...manifest.templates, entry('lab')] });
-  await write(path.join(sharedTemplates, 'lab', 'template.json'), { ...entry('lab'), updatedAt: later, files: { 'main.tex': sha1('their lab\n') } });
-  await write(path.join(sharedTemplates, 'lab', 'files', 'main.tex'), 'their lab\n');
+  // made on both before templates followed the user, and the same: one template from now on
+  await madeHere('same', 'same\n');
+  await fromPc('same', 'same\n', { updatedAt: later, origin });
   await templates.syncTemplates();
-  assert.equal(await fs.readFile(path.join(templateDir, 'lab', 'main.tex'), 'utf8'), 'my lab\n');
+  assert.equal((await manifest()).templates.find((t) => t.id === 'same').origin, origin);
+  assert.equal((await manifest()).templates.filter((t) => t.id.startsWith('same')).length, 1);
   // and one that isn't in the shared folder yet goes there
-  await write(path.join(templateDir, 'old', 'main.tex'), 'old\n');
-  await write(path.join(templateDir, 'manifest.json'), { ...manifest, templates: [...manifest.templates, entry('lab'), entry('old')] });
+  await madeHere('old', 'old\n');
   await templates.syncTemplates();
-  assert.equal(await fs.readFile(path.join(sharedTemplates, 'old', 'files', 'main.tex'), 'utf8'), 'old\n');
+  assert.equal(await read(sharedTemplates, 'old', 'files', 'main.tex'), 'old\n');
+});
+
+test('two templates with one id made apart are both kept, and neither is saved or deleted over the other', async () => {
+  await madeHere('thesis', 'my thesis\n');
+  const pc = crypto.randomUUID();
+  await fromPc('thesis', 'their thesis\n', { updatedAt: new Date().toISOString(), origin: pc });
+  await templates.syncTemplates();
+  assert.equal(await read(templateDir, 'thesis', 'main.tex'), 'their thesis\n');
+  const moved = (await manifest()).templates.find((t) => t.label === 'thesis (MacBook)');
+  assert.equal(moved?.id, 'thesis-macbook');
+  assert.notEqual(moved.origin, pc);
+  assert.equal(await read(templateDir, moved.id, 'main.tex'), 'my thesis\n');
+  assert.equal(await read(sharedTemplates, moved.id, 'files', 'main.tex'), 'my thesis\n');
+
+  // saved here: the PC's stays as it is
+  await write(path.join(templateDir, moved.id, 'main.tex'), 'my thesis, edited\n');
+  await templates.addTemplateToManifest(moved);
+  assert.equal(await read(sharedTemplates, 'thesis', 'files', 'main.tex'), 'their thesis\n');
+  assert.equal(await read(sharedTemplates, moved.id, 'files', 'main.tex'), 'my thesis, edited\n');
+
+  // the PC deletes its own: only that one goes, and another template's deletion under this one's id deletes nothing
+  const later = new Date(Date.now() + 60_000).toISOString();
+  await write(path.join(sharedTemplates, 'thesis', 'template.json'), { id: 'thesis', origin: pc, deleted: true, updatedAt: later });
+  await write(path.join(sharedTemplates, moved.id, 'template.json'), { id: moved.id, origin: crypto.randomUUID(), deleted: true, updatedAt: later });
+  await templates.syncTemplates();
+  assert.ok(!existsSync(path.join(templateDir, 'thesis')));
+  assert.equal(await read(templateDir, moved.id, 'main.tex'), 'my thesis, edited\n');
+  assert.equal(await read(sharedTemplates, moved.id, 'files', 'main.tex'), 'my thesis, edited\n', 'shared again');
+
+  // stamped on both before the shared folder synced, with the same files: still one template
+  await write(path.join(templateDir, 'twin', 'main.tex'), 'twin\n');
+  await templates.addTemplateToManifest(entry('twin'));
+  await fromPc('twin', 'twin\n', { updatedAt: later, origin: crypto.randomUUID() });
+  await templates.syncTemplates();
+  assert.deepEqual((await manifest()).templates.filter((t) => t.id.startsWith('twin')).map((t) => t.id), ['twin']);
+});
+
+test('a template changed in 1.7.0 is shared, and kept beside the PC’s when that changed too', async () => {
+  await write(path.join(templateDir, 'lab', 'main.tex'), 'lab\n');
+  await templates.addTemplateToManifest(entry('lab'));
+  const first = await json(path.join(sharedTemplates, 'lab', 'template.json'));
+  // a save in 1.7.0 (or, without it in git, what that save leaves): the files change, the entry keeps this build's date
+  const in170 = async (text) => {
+    await write(path.join(templateDir, 'lab', 'main.tex'), text);
+    if (oldTemplates) await oldTemplates.addTemplateToManifest((await oldTemplates.readTemplateManifest()).templates.find((t) => t.id === 'lab'));
+  };
+  await in170('lab, edited in 1.7.0\n');
+  assert.equal((await manifest()).templates.find((t) => t.id === 'lab').updatedAt, first.updatedAt);
+  await templates.syncTemplates();
+  assert.equal(await read(sharedTemplates, 'lab', 'files', 'main.tex'), 'lab, edited in 1.7.0\n');
+
+  // again, while the PC saved it as well
+  await in170('lab, edited in 1.7.0 again\n');
+  await fromPc('lab', 'lab, edited on the PC\n', { updatedAt: new Date(Date.now() + 60_000).toISOString(), origin: first.origin });
+  await templates.syncTemplates();
+  assert.equal(await read(templateDir, 'lab', 'main.tex'), 'lab, edited on the PC\n');
+  assert.equal(await read(templateDir, 'lab-macbook', 'main.tex'), 'lab, edited in 1.7.0 again\n');
+  if (oldTemplates) {
+    const listed = (await oldTemplates.readTemplateManifest()).templates.map((t) => t.id);
+    for (const id of ['lab', 'lab-macbook', 'thesis-macbook', 'same', 'old']) assert.ok(listed.includes(id), `1.7.0 lists ${id}`);
+  }
 });

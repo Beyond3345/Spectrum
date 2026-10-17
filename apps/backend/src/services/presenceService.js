@@ -1,15 +1,16 @@
 // The user's other computers: which have a project open, what they're called, and the settings they share.
 // Each computer writes only its own files, so a sync app never makes conflict copies of them:
-//   <project>/.spectrum/open/<machine id>.json   { host, since, at }, rewritten every 2 minutes while the editor is
-//                                                open and removed when it closes; one left by a crash goes stale.
-//                                                Not "*.lock" names: OneDrive refuses them.
-//   <shared>/settings/<machine id>.json          { updatedAt, machineName, settings }, the settings that follow the
-//                                                user (settings.ts picks them: never keys, paths or the window's look)
+//   <project>/.spectrum/open/<machine id>.json   { host, systemNames, since, at }, rewritten every 2 minutes while the
+//                                                editor is open and removed when it closes; one left by a crash goes
+//                                                stale. Not "*.lock" names: OneDrive refuses them.
+//   <shared>/settings/<machine id>.json          { updatedAt, machineName, systemNames, settings }, the settings that
+//                                                follow the user (settings.ts picks them: never keys, paths or the
+//                                                window's look)
+// systemNames: the system's names for the computer (syncService), which OneDrive's conflict copies carry
 import { promises as fs } from 'fs';
-import os from 'os';
 import path from 'path';
 import { readJson, writeJsonAtomic } from '../utils/fsUtils.js';
-import { readSyncConfig, sharedDir } from './syncService.js';
+import { readSyncConfig, sharedDir, systemNames } from './syncService.js';
 
 // projectService's APP_DIR, spelt out: projectService reads machine names from here for detectMainFile
 const openDir = (root) => path.join(root, '.spectrum', 'open');
@@ -44,7 +45,7 @@ export async function markOpen(root) {
   const file = path.join(openDir(root), `${machineId}.json`);
   const was = await readJson(file).catch(() => null);
   const at = new Date().toISOString();
-  await writeJsonAtomic(file, { host: machineName, since: was && fresh(was.at) ? was.since : at, at });
+  await writeJsonAtomic(file, { host: machineName, systemNames: await systemNames(), since: was && fresh(was.at) ? was.since : at, at });
   return othersOpen(root);
 }
 
@@ -54,17 +55,16 @@ export async function markClosed(root) {
 }
 
 /**
- * The names this computer and the others go by, for OneDrive's conflict copies: this one's, the ones in the
- * project's presence files and the ones in the shared folder's settings files.
+ * The system's names for this computer and the others, for OneDrive's conflict copies: this one's, and the ones in
+ * the project's presence files and the shared folder's settings and machines files. Never a name set in Settings
+ * ('Work', 'Mac'), which OneDrive doesn't use and an ordinary file name could end in.
  */
 export async function knownMachineNames(root) {
-  const { machineId, machineName } = await readSyncConfig();
-  const names = [machineName, os.hostname().replace(/\.local$/i, ''), process.env.COMPUTERNAME];
-  for (const p of await readMachineFiles(openDir(root), machineId)) names.push(p.host);
-  for (const s of await readMachineFiles(await settingsDir(), machineId)) names.push(s.machineName);
-  // and every computer that lists its projects in the shared folder
+  const { machineId } = await readSyncConfig();
+  const names = [...(await systemNames())];
   const shared = await sharedDir().catch(() => null);
-  if (shared) for (const m of await readMachineFiles(path.join(shared, 'machines'), machineId)) names.push(m.machineName);
+  const dirs = [openDir(root), await settingsDir(), shared && path.join(shared, 'machines')];
+  for (const dir of dirs.filter(Boolean)) for (const m of await readMachineFiles(dir, machineId)) if (Array.isArray(m.systemNames)) names.push(...m.systemNames);
   return names.filter((n) => typeof n === 'string' && n.trim());
 }
 
@@ -93,6 +93,6 @@ export async function shareSettings(settings) {
   const { machineId, machineName } = await readSyncConfig();
   const updatedAt = new Date().toISOString();
   const kept = Object.fromEntries(Object.entries(settings).filter(([key]) => !SECRET.test(key)));
-  await writeJsonAtomic(path.join(dir, `${machineId}.json`), { updatedAt, machineName, settings: kept });
+  await writeJsonAtomic(path.join(dir, `${machineId}.json`), { updatedAt, machineName, systemNames: await systemNames(), settings: kept });
   return updatedAt;
 }

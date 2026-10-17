@@ -951,6 +951,8 @@ export interface SyncSettings {
   folders: { path: string; label?: string; found: boolean }[];
   /** the sync apps' folders on this computer not in the list */
   suggestions: { path: string; provider: SyncPlace['provider']; label: string }[];
+  /** the synced folder settings and templates go through, the same on each computer that lists it */
+  sharedFolder: string | null;
 }
 
 export function getSyncSettings() {

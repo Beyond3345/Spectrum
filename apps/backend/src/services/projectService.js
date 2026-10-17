@@ -7,8 +7,8 @@ import { HIDDEN_ENTRIES, ensureDir, listFilesRecursive, readJson, writeJsonAtomi
 import { safeJoin } from '../utils/pathUtils.js';
 import { isDocumentFile } from '../utils/texUtils.js';
 import {
+  foldersAt,
   hideProject,
-  inSyncFolder,
   isConflictCopy,
   otherComputersProjects,
   placeOf,
@@ -101,8 +101,9 @@ export async function unregister(id) {
   await updateRegistry((registry) => {
     registry.projects = registry.projects.filter((p) => p.id !== id);
   });
-  // or the next scan of the synced folders brings it back
-  if (await inSyncFolder(entry.path)) await hideProject(id);
+  // or the next scan of the synced folders, or another computer's list, brings it back (not a template's working
+  // copy in the app's data folder, which is deleted next)
+  if ((await readSyncConfig()).folders.length && !within(entry.path, DATA_DIR)) await hideProject(id);
 }
 
 async function findEntry(id) {
@@ -236,14 +237,15 @@ export async function projectsPage({ scan = false } = {}) {
   // a slow folder (online-only, the NAS out of reach) finishes in the background and shows next time
   await Promise.race([scanSyncFolders(scan), new Promise((resolve) => setTimeout(resolve, 2000))]);
   const projects = await listProjects();
-  const own = projects.filter((p) => !p.missing && !p.templateDraft);
+  // archived ones aren't the other computers' to list
+  const own = projects.filter((p) => !p.missing && !p.templateDraft && !p.archived);
   await publishProjects(own.map(({ id, name, place }) => ({ id, name, place: place ? { provider: place.provider, label: place.label, rel: place.rel } : null }))).catch(() => {});
   const known = new Set([...projects.map((p) => p.id), ...hidden]);
   const elsewhere = [];
   for (const p of await otherComputersProjects()) {
     if (known.has(p.id) || !ID_RE.test(p.id)) continue;
     known.add(p.id);
-    // ponytail: "not on this computer yet" when its sync app is here, without looking for the folder outside the synced folders
+    // "not on this computer yet" when its sync app is here: the scan looked at the place it gave
     elsewhere.push({ ...p, place: p.place && { ...p.place, here: await providerHere(p.place.provider) } });
   }
   return { projects, elsewhere };
@@ -267,11 +269,22 @@ async function findSyncedProjects(dir, deadline, found = [], depth = 1) {
   return found;
 }
 
+/** The listed folder no longer holds the project: it's not there, or holds another one now. Not when it can't be read. */
+async function lost(root, id) {
+  try {
+    return (await readJson(metaPath(root)))?.id !== id;
+  } catch (err) {
+    return err.code === 'ENOENT' || err.code === 'ENOTDIR';
+  }
+}
+
 /**
- * List the projects in the synced folders on this computer, at most every 30 s unless forced (the window came to the
- * front). Nothing is written into the folders. A new id is added with its folder here; a listed project whose folder
- * has gone follows its id to the new one (moved, or synced to another place); the same id in two folders is a copy,
- * and the listed one wins (the copy gets its own id when it's opened, through openFolder).
+ * List the projects in the synced folders on this computer, and at the places the other computers give for theirs, at
+ * most every 30 s unless forced (the window came to the front). Nothing is written into the folders. A new id is added
+ * with its folder here; a listed project whose folder has gone follows its id to the new one (moved, or synced to
+ * another place). The same id in two folders is a copy (Finder's, a sync app's): only the one at the place another
+ * computer gave counts, else neither, and a listed project stays where it is (the copy gets its own id when it's
+ * opened, through openFolder).
  */
 function scanSyncFolders(force) {
   if (scanning || (!force && Date.now() - scannedAt < 30_000)) return scanning;
@@ -281,14 +294,31 @@ function scanSyncFolders(force) {
     const deadline = Date.now() + 20_000;
     const found = [];
     for (const { path: folder } of folders) await findSyncedProjects(folder, deadline, found);
+    // deeper down, or in a sync app's folder that isn't a synced folder here
+    for (const { id, place } of await otherComputersProjects()) {
+      for (const root of place && Date.now() < deadline ? await foldersAt(place) : []) {
+        const seen = found.find((f) => sameFolder(f.root, root));
+        const at = seen || { root, ...(await readMetaId(root)) };
+        if (at.id !== id) continue;
+        at.given = true;
+        if (!seen) found.push(at);
+      }
+    }
+    const pick = (id) => {
+      const all = found.filter((f) => f.id === id);
+      const given = all.filter((f) => f.given);
+      return all.length === 1 ? all[0] : given.length === 1 ? given[0] : null;
+    };
     await updateRegistry(async (registry) => {
-      for (const { id, root, meta } of found) {
+      for (const f of found) {
+        const { id, root, meta } = f;
+        if (pick(id) !== f || hidden.includes(id)) continue;
         // a template's working copy belongs in the app's data folder; one copied into a synced folder is left alone
-        if (hidden.includes(id) || meta.templateDraft || registry.projects.some((p) => p.id !== id && (within(p.path, root) || within(root, p.path)))) continue;
+        if (meta.templateDraft || registry.projects.some((p) => p.id !== id && (within(p.path, root) || within(root, p.path)))) continue;
         const entry = registry.projects.find((p) => p.id === id);
         if (!entry) {
           registry.projects.push({ id, path: root, ...cached(normaliseMeta({ ...meta, id })), addedAt: new Date().toISOString() });
-        } else if (!sameFolder(entry.path, root) && (await readMetaId(entry.path)).id !== id) {
+        } else if (!sameFolder(entry.path, root) && (await lost(entry.path, id))) {
           Object.assign(entry, { path: root }, cached(normaliseMeta({ ...meta, id })));
         }
       }
