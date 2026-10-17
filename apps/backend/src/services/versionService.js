@@ -32,7 +32,7 @@ const TEXT_EXTENSIONS = new Set([
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
 
-const isText = (relPath) => TEXT_EXTENSIONS.has(path.extname(relPath).toLowerCase());
+export const isText = (relPath) => TEXT_EXTENSIONS.has(path.extname(relPath).toLowerCase());
 const historyPath = (root, ...parts) => appPath(root, 'history', ...parts);
 const objectPath = (root, sha) => historyPath(root, 'objects', sha.slice(0, 2), `${sha}.gz`);
 const manifestPath = (root, id) => historyPath(root, 'manifests', `${id}.json`);
@@ -282,7 +282,11 @@ async function newId(root, versions) {
   return id;
 }
 
-async function createVersionUnlocked(root, { label = '', reason = 'manual' } = {}) {
+/**
+ * createVersion without the history lock, which is one for every project: for restoreVersion, which holds it, and
+ * the mirror, whose one pass at a time mustn't wait behind another project's history.
+ */
+export async function createVersionUnlocked(root, { label = '', reason = 'manual' } = {}) {
   const { versions } = await readVersions(root);
   const latest = versions.at(-1);
   const previous = latest ? latest.files : {};
