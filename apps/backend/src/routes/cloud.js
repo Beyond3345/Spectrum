@@ -120,10 +120,11 @@ export function registerCloudRoutes(fastify) {
     const project = await getProject(id);
     if (project.templateDraft) throw httpError('A template’s working copy stays with the templates.', 400);
     if (project.cloud) throw httpError(project.cloud.mode === 'mirror' ? `“${project.name}” already syncs to ${project.cloud.label}.` : `Already in ${project.cloud.label}.`, 409);
-    // in a sync app's folder already (Documents backed up by OneDrive or iCloud, say): it syncs as it is
-    const place = await placeOf(root);
-    if (place) throw httpError(`Already in ${place.label}.`, 409);
     const location = await cloudLocation(req.body?.location);
+    // in that sync app's folder already (Documents backed up by OneDrive, say): it syncs as it is. In another app's,
+    // the copy is one like any other
+    const place = await placeOf(root);
+    if (place && place.provider === (await placeOf(location.path))?.provider) throw httpError(`Already in ${place.label}.`, 409);
     const there = (await findSyncedProjects(location.path, Date.now() + 20_000)).filter((f) => f.id === id);
     const rels = there.map((f) => relFrom(location.path, f.root));
     if (there.length > 1) throw httpError(`“${project.name}” is in ${location.label} twice, as ${rels.join(' and ')}. Keep one of them and try again.`, 409);

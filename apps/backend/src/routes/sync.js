@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { DATA_DIR, PROJECTS_DIR } from '../config/constants.js';
-import { getProject, httpError } from '../services/projectService.js';
+import { getProject, getProjectRoot, httpError } from '../services/projectService.js';
 import { listMirrored } from '../services/mirrorService.js';
 import {
   SHARED_DIR_NAME,
@@ -101,6 +101,11 @@ export function registerSyncRoutes(fastify) {
         if (overlap && sameFolder(overlap.path, folder.path)) throw httpError('That folder is already in the list.', 409);
         if (overlap) throw httpError(`That folder ${within(folder.path, overlap.path) ? 'is inside' : 'contains'} “${overlap.path}”, which is already in the list.`, 409);
         if (!kept) {
+          // its folder here would be a project used in place, and the mirror dropped without a word
+          for (const m of await listMirrored()) {
+            const root = await getProjectRoot(m.id).catch(() => null);
+            if (root && within(root, folder.path)) throw httpError(`That folder holds “${(await getProject(m.id)).name}”, which syncs to ${await locationLabel(m.location)}. Stop syncing it first.`, 409);
+          }
           const place = await placeOfNew(folder.path);
           if (place) folder.place = place;
         }

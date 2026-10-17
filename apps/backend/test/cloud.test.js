@@ -284,10 +284,18 @@ test('Sync to with Move moves the folder into the location, its original to the 
   }
 });
 
-test('a project in a sync app’s folder already isn’t synced to a location', async () => {
+test('a project in a sync app’s folder already isn’t synced to a location in that app, only copied to another’s', async () => {
   const p = (await post('/api/projects', { name: 'On the NAS', parentDir: path.join(drive, 'Papers') })).json;
-  const res = await post(`/api/projects/${p.id}/cloud`, { location: loc });
+  const nas = path.join(drive, 'Spectrum');
+  assert.equal((await api('/api/sync', { method: 'PATCH', body: { folders: [loc, nas] } })).status, 200);
+  const res = await post(`/api/projects/${p.id}/cloud`, { location: nas });
   assert.deepEqual([res.status, res.json.message], [409, 'Already in Synology Drive.']);
+  // another app's location: a copy like any other
+  assert.equal((await post(`/api/projects/${p.id}/cloud`, { location: loc })).json.project.cloud.mode, 'mirror');
+  // a location holding its folder would drop the mirror without a word
+  const holds = await api('/api/sync', { method: 'PATCH', body: { folders: [loc, nas, path.join(drive, 'Papers')] } });
+  assert.deepEqual([holds.status, holds.json.message], [409, 'That folder holds “On the NAS”, which syncs to OneDrive. Stop syncing it first.']);
+  assert.equal((await api('/api/sync', { method: 'PATCH', body: { folders: [loc] } })).status, 200);
 });
 
 test('iCloud’s Desktop & Documents counts as iCloud Drive', { skip: process.platform !== 'darwin' && 'macOS only' }, async () => {
@@ -297,7 +305,7 @@ test('iCloud’s Desktop & Documents counts as iCloud Drive', { skip: process.pl
   symlinkSync(path.join(home, 'Documents'), path.join(icloud, 'Documents'));
   const p = (await post('/api/projects', { name: 'Essay', parentDir: path.join(home, 'Documents', 'Uni') })).json;
   assert.deepEqual(p.place, { provider: 'icloud', label: 'iCloud Drive', rel: 'Documents/Uni/Essay', here: true });
-  assert.equal((await post(`/api/projects/${p.id}/cloud`, { location: loc })).json.message, 'Already in iCloud Drive.');
+  assert.equal((await post(`/api/projects/${p.id}/cloud`, { location: loc })).json.project.cloud.mode, 'mirror', 'OneDrive’s location: a copy');
 });
 
 test('a project isn’t moved while it compiles or is being converted', { skip: WINDOWS && 'the fake engine is a shell script' }, async () => {
