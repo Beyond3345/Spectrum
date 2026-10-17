@@ -615,8 +615,12 @@ export function getChat(projectId: string, chatId: string) {
   return request<{ ok: boolean; chat: ChatThread }>(`/api/projects/${projectId}/chats/${chatId}`);
 }
 
-export function saveChat(projectId: string, chat: ChatThread) {
-  return request<{ ok: boolean }>(`/api/projects/${projectId}/chats/${chat.id}`, json('PUT', { chat }));
+/**
+ * base: the updatedAt of the copy this chat was made from. When the chat was saved since (on another computer),
+ * the answer has the chat as saved: the messages there with this one's new ones after them.
+ */
+export function saveChat(projectId: string, chat: ChatThread, base?: string) {
+  return request<{ ok: boolean; chat?: ChatThread }>(`/api/projects/${projectId}/chats/${chat.id}`, json('PUT', { chat, base }));
 }
 
 export function deleteChat(projectId: string, chatId: string) {

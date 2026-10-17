@@ -48,16 +48,30 @@ export function registerChatRoutes(fastify) {
     }
   });
 
+  // base: the updatedAt of the copy this chat was made from. Saved since (on another computer, say), the
+  // messages there stay and this copy's new ones go after them, as chats only ever gain messages; the
+  // answer then has the chat as saved.
   fastify.put('/api/projects/:id/chats/:cid', async (req) => {
     const file = await chatFile(req);
-    const chat = req.body?.chat;
+    let chat = req.body?.chat;
     if (!chat || typeof chat !== 'object' || chat.id !== req.params.cid) {
       throw httpError('The chat’s id doesn’t match the address.', 400);
+    }
+    // ponytail: a copy that can't be read (online-only and offline) is replaced, as before
+    const disk = await readJson(file).catch(() => null);
+    const merged = disk?.id === chat.id && Array.isArray(disk.messages) && disk.updatedAt !== req.body.base;
+    if (merged) {
+      const key = (m) => JSON.stringify([m?.role, m?.createdAt, m?.content]);
+      const there = new Set(disk.messages.map(key));
+      const added = (Array.isArray(chat.messages) ? chat.messages : []).filter((m) => !there.has(key(m)));
+      // later than the copy sent, so a save made from that copy merges too
+      const updatedAt = new Date(Math.max(Date.now(), Date.parse(chat.updatedAt) + 1 || 0)).toISOString();
+      chat = { ...chat, messages: [...disk.messages, ...added], updatedAt };
     }
     const data = JSON.stringify(chat);
     if (Buffer.byteLength(data) > MAX_CHAT_BYTES) throw httpError('This chat is too large to save (over 5 MB).', 413);
     await writeFileAtomic(file, data);
-    return { ok: true };
+    return { ok: true, ...(merged && { chat }) };
   });
 
   fastify.delete('/api/projects/:id/chats/:cid', async (req) => {

@@ -131,18 +131,25 @@ export default function Composer({
     if (el) el.scrollTop = el.scrollHeight;
   }, [thread?.messages.length, busy, open]);
 
-  const save = (next: ChatThread) => {
+  /** from: the copy next was made from, so the server can tell when another computer saved the chat since. */
+  const save = (next: ChatThread, from: ChatThread) => {
     const projectId = latest.current.projectId;
     saveChain.current = saveChain.current
-      .then(() => saveChat(projectId, next))
-      .then(() => window.dispatchEvent(new Event(CHATS_CHANGED)))
+      .then(() => saveChat(projectId, next, from.updatedAt))
+      .then((res) => {
+        // with what another computer added: shown unless there's more here since
+        if (res.chat && threadRef.current === next) show(res.chat);
+        window.dispatchEvent(new Event(CHATS_CHANGED));
+      })
       .catch((err) => latest.current.notify(`Couldn’t save the chat: ${errorText(err)}`, 'error'));
   };
 
   /** Adds messages to a thread (starting a new one when base is null), saves it and shows it if it's still open. */
   const append = (base: ChatThread | null, ...messages: ChatMessage[]) => {
     const now = new Date().toISOString();
-    const start: ChatThread = base ?? { id: newChatId(), title: '', mode, createdAt: now, updatedAt: now, messages: [] };
+    // the open copy is the newest, with any other computer's messages a save brought in
+    const newest = base && threadRef.current?.id === base.id ? threadRef.current : base;
+    const start: ChatThread = newest ?? { id: newChatId(), title: '', mode, createdAt: now, updatedAt: now, messages: [] };
     const next = { ...start, updatedAt: now, messages: [...start.messages, ...messages] };
     if (!next.title) {
       const first = next.messages.find((m) => m.role === 'user')?.content.trim() || '';
@@ -156,7 +163,7 @@ export default function Composer({
     } else {
       latest.current.notify(`Reply added to “${next.title}”`);
     }
-    save(next);
+    save(next, start);
     return next;
   };
 
@@ -165,7 +172,7 @@ export default function Composer({
     const current = threadRef.current?.id === owner.id ? threadRef.current : owner;
     const next = { ...current, updatedAt: new Date().toISOString(), messages: current.messages.map((m, i) => (i === index ? { ...m, meta } : m)) };
     if (current === threadRef.current) show(next);
-    save(next);
+    save(next, current);
   };
 
   const startNewChat = () => {
