@@ -293,7 +293,7 @@ export function registerProjectRoutes(fastify) {
     } catch (err) {
       return { ok: false, error: err.message };
     }
-    await unregister(req.params.id);
+    await unregister(req.params.id, { binned: true });
     return { ok: true };
   });
 

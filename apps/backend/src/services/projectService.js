@@ -105,11 +105,14 @@ export function moveEntry(id, root) {
   });
 }
 
-/** Forget a project; its folder stays where it is, and so does its cloud copy, which Spectrum stops mirroring. */
-export async function unregister(id) {
+/**
+ * Forget a project; its folder stays where it is, and so does its cloud copy, which Spectrum stops mirroring. binned:
+ * its folder was just moved to the Bin, which isn't a folder lost.
+ */
+export async function unregister(id, { binned = false } = {}) {
   const entry = await findEntry(id);
   // a mirrored project whose folder here has gone: its cloud copy shows in Cloud projects, to download again
-  const lostMirror = (await readMirror(id)) && !(await exists(metaPath(entry.path)));
+  const lostMirror = !binned && (await readMirror(id)) && !(await exists(metaPath(entry.path)));
   await updateRegistry((registry) => {
     registry.projects = registry.projects.filter((p) => p.id !== id);
   });

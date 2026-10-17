@@ -462,3 +462,13 @@ test('Remove from list on a mirrored project whose folder has gone leaves its cl
   assert.equal(back.status, 200, back.json.message);
   assert.equal(read(back.json.project.path, 'main.tex'), 'Lost\n');
 });
+
+test('Move to Bin on a mirrored project leaves its cloud copy out of Cloud projects, as Remove from list does', { skip: !['darwin', 'win32'].includes(process.platform) && 'macOS and Windows only' }, async () => {
+  const p = await local('Binned');
+  assert.equal((await post(`/api/projects/${p.id}/cloud`, { location: loc })).status, 200);
+  await syncProject(p.id);
+  assert.equal((await post(`/api/projects/${p.id}/trash`)).json.ok, true);
+  assert.ok(!existsSync(p.path));
+  assert.ok(existsSync(path.join(loc, 'Binned', 'main.tex')), 'its copy in OneDrive stays');
+  assert.ok(!(await list()).cloudOnly.some((c) => c.id === p.id));
+});
