@@ -111,8 +111,8 @@ export async function refuseDelete(id, name, cloudRoot, label) {
 }
 
 /**
- * A cloud copy deleted: to the Bin, never through Finder (which asks before deleting for good on a volume without
- * one), or on a volume without one (a NAS share) into <location>/.spectrum-bin/<date>/, which the scan passes by.
+ * A cloud copy deleted: to the Bin, though never through Finder, which asks before deleting for good on a volume with
+ * no Bin (a NAS share). There it goes into <location>/.spectrum-bin/<date>/, which the scan passes by.
  * ponytail: never emptied; clear out old days if it grows
  */
 async function binCloudCopy(root, location) {
