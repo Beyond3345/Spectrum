@@ -345,8 +345,12 @@ function scanSyncFolders(force) {
     const once = found.filter((f) => found.filter((g) => g.id === f.id).length === 1);
     const mirrored = new Set((await listMirrored()).map((m) => m.id));
     await updateRegistry(async (registry) => {
-      // one listed before 1.9.0, or by 1.8.0 or 1.7.0, is used in place when its folder is in a location
-      for (const e of registry.projects) e.inPlace ??= folders.some((f) => within(e.path, f.path));
+      // used in place while its folder is in a location (one listed before 1.9.0 or by 1.8.0 or 1.7.0, or a location
+      // added or removed since); one whose folder has gone keeps what it was, which the follow needs
+      for (const e of registry.projects) {
+        const inLocation = folders.some((f) => within(e.path, f.path));
+        e.inPlace = (await exists(metaPath(e.path))) ? inLocation : (e.inPlace ?? inLocation);
+      }
       for (const { id, root, meta } of once) {
         const entry = registry.projects.find((p) => p.id === id);
         // a template's working copy belongs in the app's data folder; one copied into a cloud location is left alone

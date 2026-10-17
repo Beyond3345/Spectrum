@@ -497,6 +497,29 @@ test('a project used in place follows its id when its location is added again at
   assert.equal((await api('/api/sync', { method: 'PATCH', body: { folders: [loc] } })).status, 200);
 });
 
+test('a project is used in place while its folder is in a location, whenever that location was added or removed', async () => {
+  // opened in a Synology Drive folder before that was a location, then renamed there by another computer: followed
+  const papers = path.join(drive, 'Writing');
+  const thesis = theirs(path.join(papers, 'Thesis'));
+  assert.equal((await post('/api/projects/open-folder', { path: path.join(papers, 'Thesis') })).status, 200);
+  assert.equal((await api('/api/sync', { method: 'PATCH', body: { folders: [loc, papers] } })).status, 200);
+  await list();
+  await fs.rename(path.join(papers, 'Thesis'), path.join(papers, 'Thesis 2026'));
+  let p = await listed(thesis);
+  assert.deepEqual([p.path, p.missing], [path.join(papers, 'Thesis 2026'), false]);
+  // opened there while it's a location, which is then taken out: a folder on this computer, which never turns into a
+  // copy with its id in another location (the one Stop syncing kept, say) when it goes
+  const notes = theirs(path.join(papers, 'Notes'));
+  assert.equal((await post('/api/projects/open-folder', { path: path.join(papers, 'Notes') })).status, 200);
+  assert.equal((await api('/api/sync', { method: 'PATCH', body: { folders: [loc] } })).status, 200);
+  await list();
+  await fs.cp(path.join(papers, 'Notes'), path.join(loc, 'Notes kept'), { recursive: true });
+  await fs.rm(path.join(papers, 'Notes'), { recursive: true });
+  p = await listed(notes);
+  assert.deepEqual([p.path, p.missing], [path.join(papers, 'Notes'), true]);
+  await fs.rm(path.join(loc, 'Notes kept'), { recursive: true });
+});
+
 test('Move to Bin on a mirrored project leaves its cloud copy out of Cloud projects, as Remove from list does', { skip: !['darwin', 'win32'].includes(process.platform) && 'macOS and Windows only' }, async () => {
   const p = await local('Binned');
   assert.equal((await post(`/api/projects/${p.id}/cloud`, { location: loc })).status, 200);
