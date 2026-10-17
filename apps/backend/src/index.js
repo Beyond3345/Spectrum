@@ -19,7 +19,8 @@ import { registerSearchRoutes } from './routes/search.js';
 import { registerSystemRoutes } from './routes/system.js';
 import { registerReferenceRoutes } from './routes/references.js';
 import { registerLanguageRoutes } from './routes/language.js';
-import { seedTemplates } from './services/templateService.js';
+import { registerPresenceRoutes } from './routes/presence.js';
+import { seedTemplates, syncTemplates } from './services/templateService.js';
 import { dropOldAuxFolders, migrateLegacyProjects } from './services/projectService.js';
 import { killAllChildren } from './services/compileService.js';
 import { isLocalRequest } from './utils/authUtils.js';
@@ -71,6 +72,7 @@ registerSearchRoutes(fastify);
 registerSystemRoutes(fastify);
 registerReferenceRoutes(fastify);
 registerLanguageRoutes(fastify);
+registerPresenceRoutes(fastify);
 
 // Serve the built frontend (production and desktop modes)
 if (existsSync(FRONTEND_DIST)) {
@@ -93,6 +95,8 @@ if (existsSync(FRONTEND_DIST)) {
 
 await ensureDir(DATA_DIR);
 await seedTemplates();
+// the shared folder may be slow to answer, so the server doesn't wait for it
+syncTemplates().catch((err) => fastify.log.error(err));
 await migrateLegacyProjects();
 await dropOldAuxFolders();
 

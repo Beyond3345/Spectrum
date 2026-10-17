@@ -1,6 +1,6 @@
 // Self-check for where model requests and keys go. Run (it imports React, so bundle it first):
 // npx esbuild apps/frontend/src/app/settings.check.ts --bundle --platform=node --log-level=warning | node
-import { DEFAULT_SETTINGS, llmConfigFor, presetForEndpoint, presetPatch, rolePatch, searchProviderPatch } from './settings';
+import { DEFAULT_SETTINGS, llmConfigFor, presetForEndpoint, presetPatch, rolePatch, searchProviderPatch, sharedPart, withShared } from './settings';
 import type { AppSettings } from './settings';
 import type { ProviderPreset } from '../api/client';
 
@@ -92,5 +92,35 @@ eq([w.searchProvider, w.searchProviderKey], ['exa', ''], 'Exa starts without the
 w = at({ searchProviderKey: 'exa-key' }, w);
 w = at(searchProviderPatch(w, 'serpapi'), w);
 eq([w.searchProviderKey, w.searchProviderKeys.exa], ['serp-key', 'exa-key'], 'switching back restores the SerpApi key');
+
+// what follows the user to the other computer: never a key, an endpoint, a path or the window's look
+const mine = at({
+  theme: 'dark',
+  spellCheck: false,
+  llmEndpoint: DEEPSEEK,
+  providerSaved: { openai: { key: 'sk-openai', endpoint: OPENAI, model: '' } },
+  parserSaved: { mineru: { endpoint: '', key: 'mineru-token' } },
+  visionApiKey: 'v-key',
+  referencesApiKey: 'q-key',
+  searchApiKey: 's-key',
+  searchProviderKey: 'serp-key',
+  searchProviderKeys: { exa: 'exa-key' },
+  projectsDir: '/Users/me/Spectrum',
+  glass: true,
+  editorFont: 'menlo',
+  compileEngine: 'tectonic'
+});
+const sent = JSON.stringify(sharedPart(mine));
+for (const secret of ['sk-openai', 'mineru-token', 'v-key', 'q-key', 's-key', 'serp-key', 'exa-key', '/Users/me', DEEPSEEK, 'menlo', 'tectonic', 'glass', 'syncSettings']) {
+  if (sent.includes(secret)) throw new Error(`shared settings hold ${secret}`);
+}
+eq([sharedPart(mine).theme, sharedPart(mine).spellCheck], ['dark', false], 'theme and spelling are shared');
+// taken in on a computer with its own keys, folder and window: those stay, and nothing else rides along
+const theirs = at({ llmApiKey: 'sk-windows', projectsDir: 'C:\\Users\\me\\Spectrum', glass: false, syncSettings: false, editorFontSize: 13 });
+const merged = withShared(theirs, { ...sharedPart(mine), editorFontSize: 99, llmApiKey: 'stolen', projectsDir: '/elsewhere' });
+eq([merged.theme, merged.spellCheck, merged.editorFontSize], ['dark', false, 99], 'shared settings come in');
+eq([merged.llmApiKey, merged.projectsDir, merged.glass, merged.syncSettings], ['sk-windows', theirs.projectsDir, false, false], 'this computer’s own stay');
+eq(withShared(theirs, { accent: 'neon' }).accent, 'system', 'shared values are checked like stored ones');
+eq(withShared(theirs, { syncHighlightSeconds: 60 }).syncHighlightSeconds, 10, 'and kept in range');
 
 console.log('settings.check: ok');

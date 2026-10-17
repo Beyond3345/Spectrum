@@ -29,6 +29,8 @@ import {
   updateMeta
 } from '../services/projectService.js';
 import { projectStats } from '../services/statsService.js';
+import { knownMachineNames } from '../services/presenceService.js';
+import { conflictCopies } from '../utils/conflictCopies.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
 
 const execFileAsync = promisify(execFile);
@@ -81,7 +83,7 @@ async function isDocument(root, relPath) {
   }
 }
 
-async function moveToBin(folder) {
+export async function moveToBin(folder) {
   if (process.platform === 'win32') {
     // The path goes in through the environment, so nothing in it is read as PowerShell. A drive
     // without a Recycle Bin (network, USB) would delete the folder for good, so those are refused.
@@ -94,7 +96,8 @@ async function moveToBin(folder) {
       '$p = $env:SPECTRUM_BIN_PATH',
       "try { if ([IO.DriveInfo]::new([IO.Path]::GetPathRoot($p)).DriveType -ne 'Fixed') { exit 3 } } catch { exit 3 }",
       'Add-Type -AssemblyName Microsoft.VisualBasic',
-      "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, 'OnlyErrorDialogs', 'SendToRecycleBin')"
+      // a folder, or one file (a sync app's conflict copy)
+      "if (Test-Path -LiteralPath $p -PathType Container) { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, 'OnlyErrorDialogs', 'SendToRecycleBin') } else { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, 'OnlyErrorDialogs', 'SendToRecycleBin') }"
     ].join('; ');
     await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
       env: { ...process.env, SPECTRUM_BIN_PATH: folder },
@@ -383,12 +386,14 @@ export function registerProjectRoutes(fastify) {
     const root = await getProjectRoot(req.params.id);
     const items = await listFilesRecursive(root);
     const { fileOrder, mainFile } = await readMeta(root);
+    // a sync app's conflict copies, each with its original's path; never documents
+    const conflicts = conflictCopies(items.filter((i) => i.type === 'file').map((i) => i.path), await knownMachineNames(root));
     // .tex files that compile on their own
     const documents = [];
     for (const item of items) {
-      if (item.type === 'file' && /\.tex$/i.test(item.path) && await isDocument(root, item.path)) documents.push(item.path);
+      if (item.type === 'file' && /\.tex$/i.test(item.path) && !conflicts[item.path] && await isDocument(root, item.path)) documents.push(item.path);
     }
-    return { items, fileOrder, mainFile, documents };
+    return { items, fileOrder, mainFile, documents, conflicts };
   });
 
   fastify.post('/api/projects/:id/file-order', async (req) => {

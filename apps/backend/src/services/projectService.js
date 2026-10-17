@@ -6,6 +6,8 @@ import { DATA_DIR, PROJECTS_DIR } from '../config/constants.js';
 import { ensureDir, listFilesRecursive, readJson, writeJsonAtomic } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { isDocumentFile } from '../utils/texUtils.js';
+import { conflictCopies } from '../utils/conflictCopies.js';
+import { knownMachineNames } from './presenceService.js';
 
 // Projects are ordinary folders anywhere on disk. DATA_DIR/registry.json lists them;
 // each folder keeps its own metadata, history and chats in a hidden .spectrum/ folder.
@@ -245,7 +247,7 @@ async function refuseNested(root, projects) {
 
 /**
  * The .tex file that compiles on its own: \documentclass and \begin{document} outside
- * comments. Shallowest first, then main.tex, ms.tex, paper.tex, then by name.
+ * comments. Shallowest first, then main.tex, ms.tex, paper.tex, then by name. Never a sync app's conflict copy.
  */
 export async function detectMainFile(root) {
   const preferred = ['main.tex', 'ms.tex', 'paper.tex'];
@@ -254,8 +256,10 @@ export async function detectMainFile(root) {
     return i === -1 ? preferred.length : i;
   };
   const found = [];
-  for (const item of await listFilesRecursive(root)) {
-    if (item.type !== 'file' || !/\.tex$/i.test(item.path)) continue;
+  const items = await listFilesRecursive(root);
+  const copies = conflictCopies(items.filter((i) => i.type === 'file').map((i) => i.path), await knownMachineNames(root));
+  for (const item of items) {
+    if (item.type !== 'file' || !/\.tex$/i.test(item.path) || copies[item.path]) continue;
     let tex = '';
     try {
       tex = (await fs.readFile(safeJoin(root, item.path), 'utf8')).replace(/(?<!\\)%.*$/gm, '');

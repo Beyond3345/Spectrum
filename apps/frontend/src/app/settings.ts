@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { listLiveModels, listProviders } from '../api/client';
+import { getSharedSettings, listLiveModels, listProviders, shareSettings } from '../api/client';
 import type { CompileEngine, EffortLevel, LLMConfig, OxfordComma, ProviderModel, ProviderPreset, ReasoningEffort, SearchProvider } from '../api/client';
 import { setNativeTheme } from './desktop';
 
@@ -92,6 +92,8 @@ export type AppSettings = {
   syncHighlightCustom: string;
   /** how long the highlight stays before it fades, 1 to 10 */
   syncHighlightSeconds: number;
+  /** settings follow the user to their other computers through the synced folder (SHARED_KEYS) */
+  syncSettings: boolean;
 };
 
 export const SETTINGS_KEY = 'spectrum-settings-v1';
@@ -149,7 +151,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   syncDoubleClick: true,
   syncHighlightColour: 'yellow',
   syncHighlightCustom: '#ffd60a',
-  syncHighlightSeconds: 3
+  syncHighlightSeconds: 3,
+  syncSettings: true
 };
 
 export const SYNC_HIGHLIGHTS: [SyncHighlight, string][] = [
@@ -222,6 +225,7 @@ function parse(raw: string | null): AppSettings {
     if (typeof merged.syncHighlightCustom !== 'string' || !HEX.test(merged.syncHighlightCustom)) merged.syncHighlightCustom = DEFAULT_SETTINGS.syncHighlightCustom;
     if (!Number.isFinite(merged.syncHighlightSeconds)) merged.syncHighlightSeconds = DEFAULT_SETTINGS.syncHighlightSeconds;
     merged.syncHighlightSeconds = Math.min(10, Math.max(1, Math.round(merged.syncHighlightSeconds)));
+    merged.syncSettings = merged.syncSettings !== false;
     for (const key of ['editorFont', 'editorFontCustom', 'editorThemeLight', 'editorThemeDark', 'parser', 'parserProtocol'] as const) {
       if (typeof merged[key] !== 'string') merged[key] = DEFAULT_SETTINGS[key];
     }
@@ -297,6 +301,82 @@ export function useSettings(): [AppSettings, (patch: Partial<AppSettings>) => vo
 
 export function updateSettings(patch: Partial<AppSettings>) {
   persistSettings({ ...loadSettings(), ...patch });
+}
+
+// ─── Settings that follow the user ───
+
+/**
+ * What goes to the user's other computers. Never a key, nor the providers, endpoints and models that go with the
+ * keys, a path, the window's see-through look, an editor font or compiler only one computer may have, or this switch.
+ */
+const SHARED_KEYS = [
+  'theme', 'accent', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize',
+  'autoInsertCite', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
+  'syncHighlightSeconds'
+] as const satisfies readonly (keyof AppSettings)[];
+
+export const sharedPart = (settings: AppSettings): Record<string, unknown> => Object.fromEntries(SHARED_KEYS.map((key) => [key, settings[key]]));
+
+/** This computer's settings with another's shared ones in, checked as stored ones are; the rest stay as they are. */
+export const withShared = (settings: AppSettings, shared: Record<string, unknown>) =>
+  parse(JSON.stringify({ ...settings, ...Object.fromEntries(SHARED_KEYS.filter((key) => key in shared).map((key) => [key, shared[key]])) }));
+
+// when this computer last shared settings or took some in, and what they were (JSON)
+const SYNC_KEY = 'spectrum-settings-sync';
+
+function syncState(): { at: string; sent: string } {
+  try {
+    return { at: '', sent: '', ...JSON.parse(window.localStorage.getItem(SYNC_KEY) || '{}') };
+  } catch {
+    return { at: '', sent: '' };
+  }
+}
+
+function keepSyncState(state: { at: string; sent: string }) {
+  try {
+    window.localStorage.setItem(SYNC_KEY, JSON.stringify(state));
+  } catch {
+    // storage unavailable: they're taken in again next time
+  }
+}
+
+/**
+ * On start and whenever the window comes to the front, takes in the newest settings another computer shared
+ * since this one last shared or took some; a change here is shared 2 s after the last one. Off in Settings ›
+ * Projects. ponytail: newest by each computer's clock, which is fine while both keep the right time.
+ */
+export function followSharedSettings() {
+  const share = async () => {
+    const settings = loadSettings();
+    const sent = JSON.stringify(sharedPart(settings));
+    if (!settings.syncSettings || sent === syncState().sent) return;
+    const res = await shareSettings(sharedPart(settings));
+    if (res.updatedAt) keepSyncState({ at: res.updatedAt, sent });
+  };
+  const takeIn = async () => {
+    if (!loadSettings().syncSettings) return;
+    const { shared, latest } = await getSharedSettings();
+    if (!shared) return;
+    if (!latest || latest.updatedAt <= syncState().at) return share();
+    const next = withShared(loadSettings(), latest.settings);
+    keepSyncState({ at: latest.updatedAt, sent: JSON.stringify(sharedPart(next)) });
+    persistSettings(next);
+  };
+  let on = loadSettings().syncSettings;
+  let turnedOn = false;
+  let timer = 0;
+  window.addEventListener(CHANGE_EVENT, () => {
+    // turned on: the other computers' settings come first
+    turnedOn ||= loadSettings().syncSettings && !on;
+    on = loadSettings().syncSettings;
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      (turnedOn ? takeIn() : share()).catch(() => undefined);
+      turnedOn = false;
+    }, 2000);
+  });
+  window.addEventListener('focus', () => takeIn().catch(() => undefined));
+  takeIn().catch(() => undefined);
 }
 
 /** Switches the web search provider: its own key comes back, the old one's is kept for it. */

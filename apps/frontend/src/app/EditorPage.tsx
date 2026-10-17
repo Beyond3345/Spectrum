@@ -59,6 +59,7 @@ import GrammarPanel, { grammarMarks } from '../editor/GrammarPanel';
 import { ignoreSpelling, misspeltAt, recheckSpelling, spellChecker } from '../editor/spellcheck';
 import type { ToolsTab } from '../editor/ToolsPanel';
 import ReviewChangesSheet from '../editor/ReviewChangesSheet';
+import SyncBanners from '../editor/SyncBanners';
 import FileTree from '../editor/FileTree';
 import type { FileTreeHandle } from '../editor/FileTree';
 import PdfPreview, { MAX_ZOOM, MIN_ZOOM, pdfThumbnail } from '../editor/PdfPreview';
@@ -241,6 +242,8 @@ function Editor({ projectId }: { projectId: string }) {
   const [mainFile, setMainFile] = useState('');
   /** the .tex files with a \documentclass of their own, as the tree last listed them */
   const [documents, setDocuments] = useState<string[]>([]);
+  /** a sync app's conflict copies, each with its original's path */
+  const [conflicts, setConflicts] = useState<Record<string, string>>({});
   const [loaded, setLoaded] = useState(false);
   /** file contents by path; the open file's entry follows every keystroke */
   const filesRef = useRef(new Map<string, string>());
@@ -369,6 +372,7 @@ function Editor({ projectId }: { projectId: string }) {
     setItems(res.items);
     setFileOrder(res.fileOrder || {});
     setDocuments(res.documents ?? []);
+    setConflicts(res.conflicts ?? {});
     return res;
   };
 
@@ -583,7 +587,9 @@ function Editor({ projectId }: { projectId: string }) {
   // does: a rename sets the new name before the refreshed tree contains it.
   useEffect(() => {
     if (!loaded || (mainFile && texFiles.includes(mainFile))) return;
-    setMainFile(texFiles.find((p) => /(^|\/)main\.tex$/i.test(p)) || texFiles[0] || '');
+    // never a sync app's conflict copy
+    const tex = texFiles.filter((p) => !conflicts[p]);
+    setMainFile(tex.find((p) => /(^|\/)main\.tex$/i.test(p)) || tex[0] || '');
   }, [loaded, texFiles]);
 
   // a reloaded tree or file can mean a .bib changed on disk
@@ -813,7 +819,7 @@ function Editor({ projectId }: { projectId: string }) {
     try {
       const { version, unchanged } = await createVersion('manual');
       if (unchanged || !version) notify('Nothing has changed since the last version.');
-      else toast(`Saved version v${version.id}`, { tone: 'success', action: { label: 'Rename', onClick: () => renameSavedVersion(version) } });
+      else toast(`Saved version v${version.number}`, { tone: 'success', action: { label: 'Rename', onClick: () => renameSavedVersion(version) } });
     } catch (err) {
       notify(`Couldn’t save a version: ${errorText(err)}`, 'error');
     } finally {
@@ -823,12 +829,12 @@ function Editor({ projectId }: { projectId: string }) {
   };
 
   const renameSavedVersion = async (version: VersionMeta) => {
-    const label = (await promptDialog({ title: `Rename v${version.id}`, placeholder: 'Name, e.g. Submitted draft', confirmLabel: 'Rename' }))?.trim();
+    const label = (await promptDialog({ title: `Rename v${version.number}`, placeholder: 'Name, e.g. Submitted draft', confirmLabel: 'Rename' }))?.trim();
     if (!label) return;
     try {
       await renameVersion(projectId, version.id, label);
       window.dispatchEvent(new Event(VERSIONS_CHANGED));
-      notify(`Renamed v${version.id} “${label}”`, 'success');
+      notify(`Renamed v${version.number} “${label}”`, 'success');
     } catch (err) {
       notify(`Couldn’t rename the version: ${errorText(err)}`, 'error');
     }
@@ -1456,7 +1462,7 @@ function Editor({ projectId }: { projectId: string }) {
         navigate('/projects', { replace: true });
         return;
       }
-      const tex = tree.items.filter((i) => i.type === 'file' && isTex(i.path)).map((i) => i.path);
+      const tex = tree.items.filter((i) => i.type === 'file' && isTex(i.path) && !tree.conflicts?.[i.path]).map((i) => i.path);
       const main = tree.mainFile && tex.includes(tree.mainFile) ? tree.mainFile : tex.find((p) => /(^|\/)main\.tex$/i.test(p)) || tex[0] || '';
       setMainFile(main);
       setLoaded(true);
@@ -1846,6 +1852,7 @@ function Editor({ projectId }: { projectId: string }) {
                 filter={sidebarTab === 'files' ? filter : ''}
                 activePath={activePath}
                 mainFile={mainFile}
+                conflicts={conflicts}
                 onOpen={(path) => {
                   // a source file opened from the tree in PDF only shows in the editor beside it
                   if (TEXT_FILE.test(path)) showEditor();
@@ -1970,6 +1977,8 @@ function Editor({ projectId }: { projectId: string }) {
               {layout.view === 'editor' && compile.state !== 'idle' && compileStatus}
               {layout.view === 'editor' && viewSwitcher}
             </div>
+
+            <SyncBanners conflicts={conflicts} onDeleted={onDeleted} />
 
             {draft && (
               <div className="review-banner template-banner" role="status">

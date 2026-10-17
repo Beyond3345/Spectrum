@@ -212,9 +212,14 @@ export function getProjectStats(id: string, mainFile: string) {
 
 // ─── Files ───
 
-/** documents: the .tex files with a \documentclass of their own, so each compiles to a PDF */
+/**
+ * documents: the .tex files with a \documentclass of their own, so each compiles to a PDF. conflicts: a sync app's
+ * conflict copies, each with its original's path.
+ */
 export function getProjectTree(id: string) {
-  return request<{ items: FileItem[]; fileOrder?: FileOrderMap; mainFile?: string; documents: string[] }>(`/api/projects/${id}/tree`);
+  return request<{ items: FileItem[]; fileOrder?: FileOrderMap; mainFile?: string; documents: string[]; conflicts?: Record<string, string> }>(
+    `/api/projects/${id}/tree`
+  );
 }
 
 export function getFile(id: string, filePath: string) {
@@ -430,6 +435,8 @@ export type VersionReason = 'manual' | 'before-ai' | 'before-restore' | 'before-
 
 export interface VersionMeta {
   id: number;
+  /** the number to show (v3); ids made since 1.7.0 are long, so two computers never make the same one */
+  number: number;
   createdAt: string;
   label: string;
   reason: VersionReason;
@@ -491,6 +498,42 @@ export function renameVersion(projectId: string, versionId: number, label: strin
 
 export function deleteVersion(projectId: string, versionId: number) {
   return request<{ ok: boolean }>(`/api/projects/${projectId}/versions/${versionId}`, { method: 'DELETE' });
+}
+
+// ─── The user's other computers ───
+
+/** This computer has the project open (sent every 2 minutes); the answer lists the other computers that do. */
+export function markOpen(projectId: string) {
+  return request<{ ok: boolean; others: { host: string; since: string }[] }>(`/api/projects/${projectId}/presence`, json('POST'));
+}
+
+/** Leaving the project; keepalive, so it still goes when the page is closing. */
+export function markClosed(projectId: string) {
+  return fetch(`/api/projects/${projectId}/presence`, { method: 'DELETE', keepalive: true }).catch(() => undefined);
+}
+
+/** A sync app's conflict copy takes its original's place. */
+export function keepConflictCopy(projectId: string, path: string) {
+  return request<{ ok: boolean; original: string }>(`/api/projects/${projectId}/conflict-copy/use`, json('POST', { path }));
+}
+
+export function binConflictCopy(projectId: string, path: string) {
+  return request<{ ok: boolean; error?: string }>(`/api/projects/${projectId}/conflict-copy/bin`, json('POST', { path }));
+}
+
+export interface SharedSettings {
+  updatedAt: string;
+  machineName: string;
+  settings: Record<string, unknown>;
+}
+
+/** The newest settings another computer shared; shared is false without a synced folder. */
+export function getSharedSettings() {
+  return request<{ ok: boolean; shared: boolean; latest: SharedSettings | null }>('/api/shared/settings');
+}
+
+export function shareSettings(settings: Record<string, unknown>) {
+  return request<{ ok: boolean; shared: boolean; updatedAt: string | null }>('/api/shared/settings', json('PUT', { settings }));
 }
 
 // ─── Saved chats ───

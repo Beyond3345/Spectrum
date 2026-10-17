@@ -8,6 +8,7 @@ import {
   restoreTemplate,
   saveAsTemplate,
   saveTemplateDraft,
+  syncTemplates,
   templatePath
 } from '../services/templateService.js';
 import { detectMainFile } from '../services/projectService.js';
@@ -19,7 +20,9 @@ const EXISTS = 'A template with that name already exists.';
 export function registerHealthRoutes(fastify) {
   fastify.get('/api/health', async () => ({ ok: true, app: 'spectrum' }));
 
-  fastify.get('/api/templates', async () => {
+  fastify.get('/api/templates', async (req) => {
+    // the gallery shows templates saved on the user's other computers too
+    await syncTemplates().catch((err) => req.log.error(err));
     const { templates, categories } = await readTemplateManifest();
     return { templates, categories };
   });
