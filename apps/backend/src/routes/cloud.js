@@ -22,6 +22,7 @@ import { locationLabel, locationOf, offlineMessage, otherComputersProjects, plac
 import { othersOpen } from '../services/presenceService.js';
 import { compiling } from '../services/compileService.js';
 import { copyProject, preflight } from '../utils/projectCopy.js';
+import { mirrorSkips } from '../utils/fsUtils.js';
 import { moveToBin } from './projects.js';
 import { transferring } from './transfer.js';
 
@@ -46,11 +47,14 @@ async function freeFolder(parent, from) {
   return target;
 }
 
-/** A project's folder copied to `to` and checked file by file; nothing is left at `to` when it fails. */
-async function copyChecked(from, to) {
+/**
+ * A project's folder copied to `to` and checked file by file; nothing is left at `to` when it fails. exclude: what
+ * stays out, the mirror's skip rule for a copy Spectrum mirrors, else this computer's presence.
+ */
+async function copyChecked(from, to, exclude = ['.spectrum/open']) {
   try {
-    await preflight(from, { windows: process.platform === 'win32', to });
-    return await copyProject(from, to, { exclude: ['.spectrum/open'] });
+    await preflight(from, { windows: process.platform === 'win32', to, exclude });
+    return await copyProject(from, to, { exclude });
   } catch (err) {
     throw httpError(await why(err), err.statusCode || 409);
   }
@@ -86,11 +90,14 @@ async function binCloudCopy(root, location) {
   }
 }
 
-/** The folder Download and Stop syncing copy into: the one chosen in Settings, else the projects folder. */
-function defaultFolder(parentDir) {
+/**
+ * The folder Download and Stop syncing copy into: the one chosen in Settings, else the projects folder. Where its
+ * links lead, as the copy goes there, so a link into a cloud location counts as in it; one not made yet as typed.
+ */
+async function defaultFolder(parentDir) {
   const dir = typeof parentDir === 'string' && parentDir.trim() ? parentDir.trim() : PROJECTS_DIR;
   if (!path.isAbsolute(dir)) throw httpError('The location must be a full folder path.', 400);
-  return dir;
+  return fs.realpath(dir).catch(() => dir);
 }
 
 /** The project's folder copied (and checked) into `parent`, then listed there: its own cache's SyncTeX holds the old path. */
@@ -125,9 +132,14 @@ export function registerCloudRoutes(fastify) {
       // union, which deletes nothing
       let rel = rels[0];
       let files = {};
-      if (!there.length) {
+      // only what the mirror carries, so a link in .git, say, doesn't stop it
+      if (there.length) {
+        await preflight(root, { to: there[0].root, exclude: mirrorSkips }).catch(async (err) => {
+          throw httpError(await why(err), err.statusCode || 409);
+        });
+      } else {
         const target = await freeFolder(location.path, root);
-        ({ files } = await copyChecked(root, target));
+        ({ files } = await copyChecked(root, target, mirrorSkips));
         rel = relFrom(location.path, target);
       }
       await linkMirror(id, { location: location.path, rel, files });
@@ -160,13 +172,15 @@ export function registerCloudRoutes(fastify) {
     });
     if (meta?.id !== id) throw httpError(`That project isn’t in ${location.label} any more.`, 404);
     if (await getProject(id).then(() => true, () => false)) throw httpError(`“${meta.name}” is already on this computer.`, 409);
-    const parent = defaultFolder(parentDir);
+    const parent = await defaultFolder(parentDir);
     if (mode === 'move' || (await placeOf(parent)) || (await locationOf(parent))) {
       await register(id, cloudRoot, meta);
     } else {
       await fs.mkdir(parent, { recursive: true });
       const target = await makeUniqueFolder(await fs.realpath(parent), sanitiseFolderName(path.basename(cloudRoot)));
       try {
+        // what the mirror will bring checked first: no long paths on Windows, and room for it
+        await preflight(cloudRoot, { to: target, exclude: mirrorSkips });
         // its project.json alone: the first pass brings the rest, as a union, which never takes a file it can't read
         // yet for one deleted
         await fs.mkdir(appPath(target));
@@ -207,7 +221,7 @@ export function registerCloudRoutes(fastify) {
       return { project: await getProject(id) };
     }
     const root = await getProjectRoot(id);
-    const parent = defaultFolder(req.body?.parentDir);
+    const parent = await defaultFolder(req.body?.parentDir);
     if (await locationOf(parent)) throw httpError('The folder new projects go in is in a cloud location. Choose another one in Settings › Projects first.', 409);
     if (deleteCloud) await refuseDelete(id, project.name, root, label);
     refuseBusy(id, project.name);

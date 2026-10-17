@@ -115,6 +115,10 @@ test('a suggestion goes in its app’s Spectrum folder, made on Add, and a locat
 test('Sync to keeps the project here and mirrors it into a copy in the location', async () => {
   const p = await local('Thesis');
   ids.thesis = p.id;
+  // what the mirror never carries, a link in it included, stays out of the copy
+  mkdirSync(path.join(p.path, '.git'));
+  writeFileSync(path.join(p.path, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+  if (!WINDOWS) symlinkSync('HEAD', path.join(p.path, '.git', 'ORIG_HEAD'));
   const res = await post(`/api/projects/${p.id}/cloud`, { location: loc, mode: 'mirror' });
   assert.equal(res.status, 200, res.json.message);
   const { project } = res.json;
@@ -216,6 +220,24 @@ test('Download copies another computer’s project into the projects folder and 
   const backedUp = (await post('/api/cloud/download', { location: loc, rel: 'Backed up', id: ids.backedUp, mode: 'mirror', parentDir: path.join(drive, 'Papers') })).json.project;
   assert.deepEqual([backedUp.path, backedUp.cloud.mode], [path.join(loc, 'Backed up'), 'move']);
   assert.equal(await readMirror(ids.backedUp), null);
+
+  if (!WINDOWS) {
+    // a default folder chosen through a link into the location is in it, so the project is used there
+    ids.linked = theirs(path.join(loc, 'Linked'));
+    mkdirSync(path.join(loc, 'Papers'));
+    symlinkSync(path.join(loc, 'Papers'), path.join(tmp, 'Papers link'));
+    const linked = (await post('/api/cloud/download', { location: loc, rel: 'Linked', id: ids.linked, mode: 'mirror', parentDir: path.join(tmp, 'Papers link') })).json.project;
+    assert.deepEqual([linked.path, linked.cloud.mode], [path.join(loc, 'Linked'), 'move']);
+    assert.deepEqual(readdirSync(path.join(loc, 'Papers')), []);
+    // checked before anything is copied
+    ids.linky = theirs(path.join(loc, 'Linky'));
+    symlinkSync('main.tex', path.join(loc, 'Linky', 'link.tex'));
+    const linky = await post('/api/cloud/download', { location: loc, rel: 'Linky', id: ids.linky, mode: 'mirror' });
+    assert.equal(linky.status, 409);
+    assert.match(linky.json.message, /“link\.tex” is a symbolic link/);
+    assert.ok(!existsSync(path.join(projectsDir, 'Linky')));
+    rmSync(path.join(loc, 'Linky'), { recursive: true });
+  }
 
   for (const rel of ['../Thesis', '', 'Other/../Other']) assert.equal((await post('/api/cloud/download', { location: loc, rel, id: ids.other })).status, 404, rel);
   assert.equal((await post('/api/cloud/download', { location: path.join(home, 'Nowhere'), rel: 'Other', id: ids.other })).status, 400);

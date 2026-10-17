@@ -19,7 +19,8 @@ export async function hashFile(file) {
   return hash.digest('hex');
 }
 
-const excluded = (rel, exclude) => exclude.some((e) => rel === e || rel.startsWith(`${e}/`));
+// exclude: paths left out with all in them, or a test of a path (the mirror's skip rule)
+const excluded = (rel, exclude) => (typeof exclude === 'function' ? exclude(rel) : exclude.some((e) => rel === e || rel.startsWith(`${e}/`)));
 
 /** Every file under root but the excluded, [{ rel, size }] with '/'-separated rels; a link anywhere stops it, as sync apps don't carry links. */
 async function filesIn(root, exclude, rel = '', found = []) {
