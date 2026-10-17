@@ -268,6 +268,17 @@ test('Sync to with Move moves the folder into the location, its original to the 
   assert.ok(!existsSync(path.join(tmp, 'data', 'cache', p.id, 'synctex')), 'its SyncTeX had the old path');
   ids.moving = p.id;
   assert.equal((await post(`/api/projects/${p.id}/cloud`, { location: loc, mode: 'move' })).json.message, 'Already in OneDrive.');
+  if (['darwin', 'win32'].includes(process.platform)) {
+    // Move to Bin deletes it on every computer, so it checks what Stop syncing › Delete does
+    const presence = path.join(loc, 'Moving', '.spectrum', 'open', `${otherPc}.json`);
+    const now = new Date().toISOString();
+    mkdirSync(path.dirname(presence), { recursive: true });
+    writeFileSync(presence, JSON.stringify({ host: 'Study PC', since: now, at: now }));
+    const trash = await post(`/api/projects/${p.id}/trash`);
+    assert.deepEqual([trash.status, trash.json.message], [409, '“Moving” is open on Study PC. Close it there, or keep the copy in OneDrive.']);
+    assert.ok(existsSync(path.join(loc, 'Moving', 'main.tex')));
+    rmSync(presence);
+  }
 
   // a copy with its id there already (kept by Stop syncing): moving would make two
   const kept = await local('Kept');
@@ -335,8 +346,13 @@ test('Stop syncing deletes the copy in the location only when no other computer 
   assert.deepEqual([res.status, res.json.message], [409, '“Thesis” is open on Study PC. Close it there, or keep the copy in OneDrive.']);
   rmSync(path.join(copy, '.spectrum', 'open', `${otherPc}.json`));
 
-  // a computer that works on the cloud copy itself (1.8.0, or Move)
-  const machine = (mirror) => writeFileSync(path.join(machines, `${otherPc}.json`), JSON.stringify({ machineName: 'Study PC', updatedAt: now, projects: [{ id: ids.thesis, name: 'Thesis', place: null, ...(mirror && { mirror }) }] }));
+  // a computer whose list an older Spectrum wrote (1.8.0 leaves archived projects out): it may use the copy itself
+  writeFileSync(path.join(machines, `${otherPc}.json`), JSON.stringify({ machineName: 'Study PC', updatedAt: now, projects: [] }));
+  res = await post(`/api/projects/${ids.thesis}/cloud/stop`, { deleteCloud: true });
+  assert.deepEqual([res.status, res.json.message], [409, 'Study PC runs an older Spectrum, which may use the copy in OneDrive itself. Keep the copy in OneDrive instead.']);
+
+  // a computer that works on the cloud copy itself (in place, or Move)
+  const machine = (mirror) => writeFileSync(path.join(machines, `${otherPc}.json`), JSON.stringify({ format: 2, machineName: 'Study PC', updatedAt: now, projects: [{ id: ids.thesis, name: 'Thesis', place: null, ...(mirror && { mirror }) }] }));
   machine(undefined);
   res = await post(`/api/projects/${ids.thesis}/cloud/stop`, { deleteCloud: true });
   assert.deepEqual([res.status, res.json.message], [409, 'Study PC works on the copy in OneDrive itself, so deleting it would delete “Thesis” there too. Keep the copy in OneDrive instead.']);
@@ -365,6 +381,22 @@ test('Stop syncing a moved project copies it back to the projects folder first',
   assert.equal(res.json.project.path, path.join(projectsDir, 'In place'));
   assert.equal(read(projectsDir, 'In place', 'main.tex'), 'from the PC\n');
   assert.ok(!existsSync(path.join(loc, 'In place')));
+
+  if (!WINDOWS && process.getuid?.() !== 0) {
+    // the copy can't be deleted (the location's folder read-only), once the project is here again: said, not a 500
+    const p = await local('Stuck');
+    await post(`/api/projects/${p.id}/cloud`, { location: loc, mode: 'move' });
+    await fs.chmod(loc, 0o555);
+    try {
+      res = await post(`/api/projects/${p.id}/cloud/stop`, { deleteCloud: true });
+    } finally {
+      await fs.chmod(loc, 0o755);
+    }
+    assert.equal(res.status, 200, res.json.message);
+    assert.match(res.json.warning, /^Stopped syncing, but the copy in OneDrive couldn’t be deleted \(.+\)\. It’s still at .+Stuck\.$/);
+    assert.deepEqual([res.json.project.path, res.json.project.cloud], [path.join(projectsDir, 'Stuck'), undefined]);
+    assert.ok(existsSync(path.join(loc, 'Stuck', 'main.tex')));
+  }
 });
 
 test('Sync now runs a mirrored project’s pass; a moved one syncs through its app', async () => {

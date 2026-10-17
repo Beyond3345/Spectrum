@@ -30,6 +30,7 @@ import {
   unregister,
   updateMeta
 } from '../services/projectService.js';
+import { refuseDelete } from './cloud.js';
 import { projectStats } from '../services/statsService.js';
 import { knownMachineNames } from '../services/presenceService.js';
 import { conflictCopies } from '../utils/conflictCopies.js';
@@ -284,6 +285,9 @@ export function registerProjectRoutes(fastify) {
   fastify.post('/api/projects/:id/trash', async (req) => {
     if (!['darwin', 'win32'].includes(process.platform)) return { ok: false, error: 'Moving to the Bin is only supported on macOS and Windows.' };
     const root = await getProjectRoot(req.params.id);
+    // used in its cloud location, so it goes from the other computers too: what Stop syncing › Delete checks first
+    const p = await getProject(req.params.id);
+    if (p.cloud?.mode === 'move') await refuseDelete(p.id, p.name, root, p.cloud.label);
     try {
       await moveToBin(root);
     } catch (err) {

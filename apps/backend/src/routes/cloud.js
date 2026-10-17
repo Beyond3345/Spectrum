@@ -17,8 +17,19 @@ import {
   register,
   sanitiseFolderName
 } from '../services/projectService.js';
-import { cloudRootOf, linkMirror, readMirror, syncProject, unlinkMirror } from '../services/mirrorService.js';
-import { locationLabel, locationOf, offlineMessage, otherComputersProjects, placeOf, readSyncConfig, relFrom, sameFolder, unhideProject } from '../services/syncService.js';
+import { cloudRootOf, cloudToBin, linkMirror, readMirror, syncProject, unlinkMirror } from '../services/mirrorService.js';
+import {
+  locationLabel,
+  locationOf,
+  offlineMessage,
+  olderComputers,
+  otherComputersProjects,
+  placeOf,
+  readSyncConfig,
+  relFrom,
+  sameFolder,
+  unhideProject
+} from '../services/syncService.js';
 import { othersOpen } from '../services/presenceService.js';
 import { compiling } from '../services/compileService.js';
 import { copyProject, preflight } from '../utils/projectCopy.js';
@@ -68,21 +79,25 @@ function refuseBusy(id, name) {
 /**
  * Delete it from the cloud location only when no other computer has it open, and every other computer that lists it
  * keeps a copy of its own: for one that works on the cloud copy itself (in place, or moved there), it would be gone.
+ * An older Spectrum's list can't say (1.8.0 leaves archived projects out of it), so no such computer may be about.
  */
-async function refuseDelete(id, name, cloudRoot, label) {
+export async function refuseDelete(id, name, cloudRoot, label) {
   const open = await othersOpen(cloudRoot);
   if (open.length) throw httpError(`“${name}” is open on ${open[0].host}. Close it there, or keep the copy in ${label}.`, 409);
   const user = (await otherComputersProjects()).find((p) => p.id === id && !p.mirror);
   if (user) throw httpError(`${user.machineName} works on the copy in ${label} itself, so deleting it would delete “${name}” there too. Keep the copy in ${label} instead.`, 409);
+  const [older] = await olderComputers();
+  if (older) throw httpError(`${older} runs an older Spectrum, which may use the copy in ${label} itself. Keep the copy in ${label} instead.`, 409);
 }
 
 /**
- * A cloud copy deleted: to the Bin, or on a volume without one (a NAS share), into <location>/.spectrum-bin/<date>/,
- * which the scan passes by. ponytail: never emptied; clear out old days if it grows
+ * A cloud copy deleted: to the Bin, never through Finder (which asks before deleting for good on a volume without
+ * one), or on a volume without one (a NAS share) into <location>/.spectrum-bin/<date>/, which the scan passes by.
+ * ponytail: never emptied; clear out old days if it grows
  */
 async function binCloudCopy(root, location) {
   try {
-    await moveToBin(root);
+    await cloudToBin(root);
   } catch {
     const bin = path.join(location, '.spectrum-bin', new Date().toISOString().slice(0, 10));
     await fs.mkdir(bin, { recursive: true });
@@ -154,7 +169,7 @@ export function registerCloudRoutes(fastify) {
     // the folder in the Bin, and the editor's next save then finds the file changed on disk
     const warning = await moveToBin(root).then(
       () => undefined,
-      (err) => `The folder on this computer couldn’t go to the Bin (${err.message}), so it’s still at ${root}.`
+      (err) => `The folder on this computer couldn’t go to the ${process.platform === 'win32' ? 'Recycle Bin' : 'Bin'} (${err.message}), so it’s still at ${root}.`
     );
     return { project: await getProject(id), ...(warning && { warning }) };
   });
@@ -227,8 +242,14 @@ export function registerCloudRoutes(fastify) {
     if (deleteCloud) await refuseDelete(id, project.name, root, label);
     refuseBusy(id, project.name);
     await moveProject(id, root, parent);
-    if (deleteCloud) await binCloudCopy(root, location);
-    return { project: await getProject(id) };
+    // it's on this computer now, so a Delete that fails can't be tried again: said, with where the copy is
+    const warning = deleteCloud
+      ? await binCloudCopy(root, location).then(
+          () => undefined,
+          (err) => `Stopped syncing, but the copy in ${label} couldn’t be deleted (${err.message}). It’s still at ${root}.`
+        )
+      : undefined;
+    return { project: await getProject(id), ...(warning && { warning }) };
   });
 
   // Sync now, or with force, Sync anyway past the brake on a pass that would delete many files

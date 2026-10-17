@@ -73,6 +73,9 @@ export function mirrorHooks(next = {}) {
   hooks = { ...defaults, ...next };
 }
 
+/** A cloud copy, or a file in one, to the Bin as the mirror sends one: never through Finder. */
+export const cloudToBin = (abs) => hooks.toBin(abs, true);
+
 // ─── Records ───
 
 /** The project's mirror record, { location, rel, files }, or null when it isn't mirrored. */
