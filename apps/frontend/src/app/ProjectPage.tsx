@@ -487,9 +487,9 @@ export default function ProjectPage() {
       toast(project?.cloud?.mode === 'move' ? `“${c.name}” is in your list, used in ${c.label}.` : `“${c.name}” is on this computer now.`, { tone: 'success' });
     }, 'Couldn’t download the project');
 
-  const syncNow = (p: ProjectMeta, force = false) => {
+  const syncNow = (p: ProjectMeta, deleting?: string[]) => {
     setProjects((prev) => prev.map((q) => (q.id === p.id && q.cloud ? { ...q, cloud: { ...q.cloud, status: { state: 'syncing' } } } : q)));
-    return attempt(() => syncCloudProject(p.id, force), 'Couldn’t sync the project');
+    return attempt(() => syncCloudProject(p.id, deleting), 'Couldn’t sync the project');
   };
 
   // past the stop for a sync that would delete many files
@@ -500,7 +500,8 @@ export default function ProjectPage() {
       confirmLabel: 'Sync anyway',
       destructive: true
     });
-    if (ok) await syncNow(p, true);
+    // the deletions the dialog showed, not whatever a pass since has held back
+    if (ok) await syncNow(p, p.cloud?.status?.deleting);
   };
 
   const revealCloud = (p: ProjectMeta) => revealCloudCopy(p.id).catch((err) => toast(errorText(err), { tone: 'error' }));

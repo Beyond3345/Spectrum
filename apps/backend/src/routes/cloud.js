@@ -286,10 +286,11 @@ export function registerCloudRoutes(fastify) {
     return { project: await getProject(id), ...(warning && { warning }) };
   }));
 
-  // Sync now, or with force, Sync anyway past the brake on a pass that would delete many files
+  // Sync now, or with deleting (the status's that Sync anyway's dialog showed), past the brake on a pass that would
+  // delete many files for those
   fastify.post('/api/projects/:id/cloud/sync', async (req) => {
     const project = await getProject(req.params.id);
     if (project.cloud?.mode !== 'mirror') throw httpError(project.cloud ? `${project.cloud.label} keeps “${project.name}” in step itself.` : `“${project.name}” isn’t syncing.`, 400);
-    return { status: await syncProject(project.id, { force: !!req.body?.force }) };
+    return { status: await syncProject(project.id, { force: Array.isArray(req.body?.deleting) ? req.body.deleting.map(String) : [] }) };
   });
 }

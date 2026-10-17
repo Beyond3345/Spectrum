@@ -182,19 +182,19 @@ export function mirrorStatus(id) {
 /**
  * Bring the project and its cloud copy into step after any pass before it, whichever project's; resolves to the
  * status, or null when it isn't mirrored. A project already waiting for its turn goes once. force: Sync anyway, past
- * the brake on deleting many files for the deletions it last held back.
+ * the brake on deleting many files for the deletions the dialog showed (the status's deleting) that it still holds back.
  */
-export function syncProject(id, { force = false } = {}) {
+export function syncProject(id, { force = [] } = {}) {
   let next = waiting.get(id);
   if (!next) {
-    next = { force: false };
+    next = { force: [] };
     next.done = queue(() => {
       waiting.delete(id);
       return lockOf(id)(() => pass(id, next.force));
     });
     waiting.set(id, next);
   }
-  next.force ||= force;
+  next.force.push(...force);
   return next.done;
 }
 
@@ -359,9 +359,11 @@ async function mirror(id, record, label, force) {
 
   // a pass that would delete a good part of a side is more likely a sync app halfway through than the user; of all its
   // files, and of the user's alone, which a long history would otherwise hide. Sync anyway lets through the deletions
-  // the brake held back last, and only those: any others are counted again
-  const approved = new Set(force ? statuses.get(id)?.deleting : []);
-  const count = (action, user) => items.filter((it) => it.action === action && !approved.has(it.key) && !(user && inApp(it.key))).length;
+  // its dialog showed that the brake still holds back, each the way it showed, and only those: any others are counted
+  // again (a pass between may have held back more)
+  const tag = (it) => `${it.action} ${it.key}`;
+  const approved = new Set((statuses.get(id)?.deleting || []).filter((d) => force.includes(d)));
+  const count = (action, user) => items.filter((it) => it.action === action && !approved.has(tag(it)) && !(user && inApp(it.key))).length;
   const users = (side) => [...side.files.keys()].filter((key) => !inApp(key)).length;
   const brake = [
     [count('deleteLocal'), here.files.size, 'on this computer'],
@@ -369,9 +371,10 @@ async function mirror(id, record, label, force) {
     [count('deleteLocal', true), users(here), 'on this computer'],
     [count('deleteCloud', true), users(there), `in ${label}`]
   ].find(([n, of]) => n > 5 && n > of / 4);
-  const braked = brake ? items.filter((it) => it.action.startsWith('delete') && !approved.has(it.key)) : [];
-  const more = brake && items.some((it) => it.action.startsWith('delete') && approved.has(it.key));
+  const braked = brake ? items.filter((it) => it.action.startsWith('delete') && !approved.has(tag(it))) : [];
+  const more = brake && items.some((it) => it.action.startsWith('delete') && approved.has(tag(it)));
   if (brake) problems.unshift(`Syncing would delete ${brake[0]} ${more ? 'more ' : ''}files ${brake[2]}, so ${more ? 'those haven’t' : 'nothing has'} been deleted. Check the project, then choose Sync anyway if that’s right.`);
+  const deleting = braked.map(tag);
   for (const it of braked) it.action = 'keep';
   // history objects are named by their content: whichever side lacks one gets it, and none is ever deleted (so a
   // clean-up on one computer, 1.7.0's or 1.8.0's, doesn't spread)
@@ -418,7 +421,7 @@ async function mirror(id, record, label, force) {
     problems.push((await offlineMessage(err).catch(() => null)) || `“${path.basename(stuck)}” hasn’t synced: ${err.message}`);
   }
   // brake: what Sync anyway is for, which nothing else needing attention is
-  if (problems.length) return { ...attention(problems[0]), ...(brake && { brake: true, deleting: braked.map((it) => it.key) }) };
+  if (problems.length) return { ...attention(problems[0]), ...(brake && { brake: true, deleting }) };
   // files not synced yet, either way: not in step, which Stop syncing › Delete needs
   const behind = unread.size + deferred.length;
   if (behind) return { state: 'syncing', message: `${behind} file${behind > 1 ? 's' : ''} not synced yet` };

@@ -59,6 +59,8 @@ export interface MirrorStatus {
   message?: string;
   /** the pass stopped short of deleting many files: Sync anyway goes on */
   brake?: boolean;
+  /** the deletions the brake held back, which Sync anyway sends back to let through */
+  deleting?: string[];
 }
 
 /** A project in a cloud location that this computer doesn't have; Download brings it here */
@@ -252,9 +254,9 @@ export function stopSyncing(id: string, deleteCloud: boolean, parentDir?: string
   return request<{ project: ProjectMeta; warning?: string }>(`/api/projects/${id}/cloud/stop`, json('POST', { deleteCloud, parentDir }));
 }
 
-/** Sync now; force: Sync anyway, past the stop for a sync that would delete many files. */
-export function syncCloudProject(id: string, force = false) {
-  return request<{ status: MirrorStatus }>(`/api/projects/${id}/cloud/sync`, json('POST', { force }));
+/** Sync now; deleting: Sync anyway, past the stop for a sync that would delete many files, for the status's deleting its dialog showed. */
+export function syncCloudProject(id: string, deleting: string[] = []) {
+  return request<{ status: MirrorStatus }>(`/api/projects/${id}/cloud/sync`, json('POST', { deleting }));
 }
 
 export function setProjectMainFile(id: string, mainFile: string) {

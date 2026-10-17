@@ -479,25 +479,33 @@ test('deleting a good part of a side waits for Sync anyway', async () => {
   assert.equal(read(path.join(p.root, 'new.tex')), 'new\n');
   assert.equal(userFiles(p.root).length, 11);
   assert.equal((await mirror.syncProject(p.id)).state, 'attention', 'still waiting');
-  synced(await mirror.syncProject(p.id, { force: true }));
+  synced(await mirror.syncProject(p.id, { force: mirror.mirrorStatus(p.id).deleting }));
   assert.deepEqual(userFiles(p.root), ['ch8.tex', 'ch9.tex', 'new.tex']);
 });
 
-test('Sync anyway deletes only what the brake held back, and counts any other deletion again', async () => {
-  const files = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`ch${i}.tex`, `chapter ${i}\n`]));
+test('Sync anyway deletes only what its dialog showed, and counts any other deletion again', async () => {
+  const files = Object.fromEntries(Array.from({ length: 24 }, (_, i) => [`ch${i}.tex`, `chapter ${i}\n`]));
   const p = await project('Brake again', files);
   synced(await syncTo(p));
   const gone = (from, to) => Promise.all(Array.from({ length: to - from }, (_, i) => fs.rm(path.join(p.cloud, `ch${from + i}.tex`))));
+  const left = (from) => Array.from({ length: 24 - from }, (_, i) => `ch${i + from}.tex`).sort();
   await gone(0, 8);
-  assert.match((await mirror.syncProject(p.id)).message, /would delete 8 files on this computer/);
-  // more going in the cloud copy before Sync anyway (the sync app halfway through bringing them again, say)
-  await gone(8, 16);
-  const status = await mirror.syncProject(p.id, { force: true });
+  const shown = await mirror.syncProject(p.id);
+  assert.match(shown.message, /would delete 8 files on this computer/);
+  // more going in the cloud copy before Sync anyway (the sync app halfway through bringing them again, say), which
+  // a pass of the minute's sees while the dialog is open
+  await gone(8, 20);
+  assert.match((await mirror.syncProject(p.id)).message, /would delete 20 files on this computer/);
+  const status = await mirror.syncProject(p.id, { force: shown.deleting });
   assert.equal(status.brake, true);
-  assert.match(status.message, /would delete 8 more files on this computer, so those haven’t been deleted/);
-  assert.deepEqual(userFiles(p.root), Array.from({ length: 12 }, (_, i) => `ch${i + 8}.tex`).sort());
-  synced(await mirror.syncProject(p.id, { force: true }));
-  assert.deepEqual(userFiles(p.root), ['ch16.tex', 'ch17.tex', 'ch18.tex', 'ch19.tex']);
+  assert.match(status.message, /would delete 12 more files on this computer, so those haven’t been deleted/);
+  assert.equal(status.deleting.length, 12);
+  assert.deepEqual(userFiles(p.root), left(8));
+  // the dialog's again does nothing more, and the one showing those 12 deletes them
+  assert.equal((await mirror.syncProject(p.id, { force: shown.deleting })).brake, true);
+  assert.deepEqual(userFiles(p.root), left(8));
+  synced(await mirror.syncProject(p.id, { force: status.deleting }));
+  assert.deepEqual(userFiles(p.root), left(20));
 });
 
 test('the brake counts the user’s files apart, so a long history doesn’t hide most of them going', async () => {
