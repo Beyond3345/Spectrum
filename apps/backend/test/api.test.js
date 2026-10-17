@@ -846,7 +846,7 @@ test('create and rename never replace another file, in any letter case', async (
 test('a new name that Windows or a sync app can’t hold is refused, and a file already called one still saves and renames', async () => {
   const p = await newProject('Names');
   await writeFile(p.id, 'main.tex', 'main');
-  const create = (filePath) => api(`/api/projects/${p.id}/file`, { method: 'PUT', body: { path: filePath, content: '', create: true } });
+  const create = (filePath, typed = true) => api(`/api/projects/${p.id}/file`, { method: 'PUT', body: { path: filePath, content: '', create: true, typed } });
   const rename = (from, to) => api(`/api/projects/${p.id}/rename`, { method: 'POST', body: { from, to } });
   for (const name of ['Fig: plot.tex', 'notes.', 'notes ', 'con.tex', 'AUX', 'a|b.tex']) assert.equal((await create(name)).status, 400, name);
   assert.equal((await api(`/api/projects/${p.id}/folder`, { method: 'POST', body: { path: 'Figures ' } })).status, 400);
@@ -857,6 +857,10 @@ test('a new name that Windows or a sync app can’t hold is refused, and a file 
     await fs.writeFile(path.join(p.path, 'con.tex'), 'x');
     assert.ok((await writeFile(p.id, 'con.tex', 'y')).json.ok);
     assert.equal((await rename('con.tex', 'console.tex')).status, 200);
+    // the editor's conflicted copy of one, or a deleted one put back, keeps the file's own name: never refused
+    for (const name of ['Why LaTeX? (conflicted copy 2026-10-18 104233).tex', 'Draft 1:2.tex', 'Chapter "One".tex']) {
+      assert.equal((await create(name, false)).status, 200, name);
+    }
   }
 });
 

@@ -321,10 +321,11 @@ export function getFileIfChanged(id: string, filePath: string, base: string) {
  * throws an ApiError with status 409 and data { code: 'CHANGED_ON_DISK', content, hash } (the text there now), and
  * one deleted since data { code: 'DELETED_ON_DISK' }. Without a base it's written whatever is there.
  */
-export function writeFile(id: string, filePath: string, content: string, options: { create?: boolean; base?: string } = {}) {
+/** typed: a new file's name the user typed, refused when Windows or a sync app can't hold it. */
+export function writeFile(id: string, filePath: string, content: string, options: { create?: boolean; base?: string; typed?: boolean } = {}) {
   return request<{ ok: boolean; hash: string }>(
     `/api/projects/${id}/file`,
-    json('PUT', { path: filePath, content, ...(options.create && { create: true }), ...(options.base && { base: options.base }) })
+    json('PUT', { path: filePath, content, ...(options.create && { create: true }), ...(options.base && { base: options.base }), ...(options.typed && { typed: true }) })
   );
 }
 

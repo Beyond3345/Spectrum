@@ -236,7 +236,7 @@ const FileTree = forwardRef<
         setSelected(target);
       } else {
         if (edit.kind === 'folder') await createFolder(projectId, target);
-        else await writeFile(projectId, target, '', { create: true });
+        else await writeFile(projectId, target, '', { create: true, typed: true });
         if (fileOrder[edit.parent]) await updateFileOrder(projectId, edit.parent, [...fileOrder[edit.parent], value]);
       }
       setInline(null);

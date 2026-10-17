@@ -504,9 +504,11 @@ export function registerProjectRoutes(fastify) {
     // create: true makes a new file only, never replacing one (APFS also matches other letter cases).
     // base: the hash of the text the editor last loaded or saved. A file changed since (on another computer, through a
     // sync client) isn't written over, and the answer carries its text; one deleted since isn't made again.
-    const { path: filePath, content, create, base } = req.body || {};
+    // typed: a name the user typed, which must be one NTFS and the sync apps can hold; a name made from a file's own
+    // (a conflicted copy, a restore) isn't checked, so the text it holds is never refused.
+    const { path: filePath, content, create, base, typed } = req.body || {};
     if (!filePath) return { ok: false };
-    if (create && unfit(filePath)) throw httpError(UNFIT, 400);
+    if (create && typed && unfit(filePath)) throw httpError(UNFIT, 400);
     const root = await getProjectRoot(req.params.id);
     const abs = editablePath(root, filePath);
     if (base && !create) {
