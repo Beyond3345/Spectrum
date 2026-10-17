@@ -89,9 +89,12 @@ const formatFull = (iso: string) => {
 /** A listed project, or one only in a cloud location (cloudOnly), shown greyed out */
 type Row = ProjectMeta & { cloudOnly?: CloudOnlyProject };
 
-/** In place of the path once the project is in a sync app's folder: “Synology Drive · Spectrum/Thesis” */
+/**
+ * In place of the path once the project is in a sync app's folder: “Synology Drive · Spectrum/Thesis”; one in a cloud
+ * location from the location, as the ones only there are: “OneDrive · Thesis”
+ */
 const whereText = (p: Row) => {
-  const place = p.cloudOnly || p.place;
+  const place = p.cloudOnly || (p.cloud?.mode === 'move' ? p.cloud : p.place);
   return place ? `${place.label} · ${place.rel}` : tildify(p.path);
 };
 
@@ -277,18 +280,19 @@ export default function ProjectPage() {
   }, [reload, reloadTemplates]);
 
   // with cloud locations, projects arriving from another computer and how syncing stands show up when the window comes
-  // to the front, and every 30 s
+  // to the front, and every 30 s; every 3 s while a project is syncing, so Synced shows when it is
   const synced = locations.length > 0;
+  const syncing = projects.some((p) => p.cloud?.status?.state === 'syncing');
   useEffect(() => {
     if (!synced) return;
     const onFocus = () => reload(true);
-    const timer = window.setInterval(() => document.visibilityState === 'visible' && reload(), 30_000);
+    const timer = window.setInterval(() => document.visibilityState === 'visible' && reload(), syncing ? 3000 : 30_000);
     window.addEventListener('focus', onFocus);
     return () => {
       window.removeEventListener('focus', onFocus);
       window.clearInterval(timer);
     };
-  }, [synced, reload]);
+  }, [synced, syncing, reload]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -423,8 +427,10 @@ export default function ProjectPage() {
     const ok = await confirmDialog({
       title: `Remove “${p.name}” from the list?`,
       message: p.cloudOnly
-        ? `It stays in ${p.cloudOnly.label}. Add it any time with Import › Open existing folder…`
-        : 'The folder stays where it is on disk. Add it again any time with Import › Open existing folder…',
+        ? `It stays in ${p.cloudOnly.label}. To use it again, open its folder there with Import › Open existing folder…, and Spectrum works on it in ${p.cloudOnly.label} itself.`
+        : p.missing && p.cloud?.mode === 'mirror'
+          ? `Its copy in ${p.cloud.label} stays, and shows in Cloud projects to download again.`
+          : 'The folder stays where it is on disk. Add it again any time with Import › Open existing folder…',
       confirmLabel: 'Remove'
     });
     if (ok) await attempt(() => (p.cloudOnly ? hideProject(p.id) : removeProject(p.id)), 'Couldn’t remove the project');
@@ -433,7 +439,9 @@ export default function ProjectPage() {
   const moveToBin = async (p: ProjectMeta) => {
     const ok = await confirmDialog({
       title: `Move “${p.name}” to the ${BIN}?`,
-      message: `The project folder and everything in it will be moved to the ${BIN}:\n${tildify(p.path)}`,
+      message: `The project folder and everything in it will be moved to the ${BIN}:\n${tildify(p.path)}${
+        p.cloud?.mode === 'move' ? `\nIt’s in ${p.cloud.label}, so it goes from your other computers too.` : ''
+      }`,
       confirmLabel: `Move to ${BIN}`,
       destructive: true
     });

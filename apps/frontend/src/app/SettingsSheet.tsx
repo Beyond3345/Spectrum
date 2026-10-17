@@ -446,7 +446,14 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                     className="btn small"
                     onClick={async () => {
                       const picked = await pickFolder({ title: 'Choose the default folder for new projects', defaultPath: settings.projectsDir || check?.projectsDir });
-                      if (picked) update({ projectsDir: picked });
+                      if (!picked) return;
+                      // never in a cloud location, or holding one: every new project would be a cloud project there
+                      const sep = IS_WINDOWS ? '\\' : '/';
+                      const under = (p: string, root: string) => `${p.toLowerCase()}${sep}`.startsWith(`${root.toLowerCase()}${sep}`);
+                      const folders = (await getSyncSettings().catch(() => null))?.folders || [];
+                      const inside = folders.find((f) => under(picked, f.path) || under(f.path, picked));
+                      if (inside) toast(`That folder ${under(picked, inside.path) ? 'is in' : 'holds'} ${inside.label}, a cloud location. Choose a folder on this computer.`, { tone: 'error' });
+                      else update({ projectsDir: picked });
                     }}
                   >
                     Change…
