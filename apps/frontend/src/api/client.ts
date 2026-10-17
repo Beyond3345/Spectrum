@@ -57,6 +57,8 @@ export interface MirrorStatus {
   state: 'synced' | 'syncing' | 'waiting' | 'attention' | 'missing' | 'not-found';
   /** what needs attention, for the user */
   message?: string;
+  /** the pass stopped short of deleting many files: Sync anyway goes on */
+  brake?: boolean;
 }
 
 /** A project in a cloud location that this computer doesn't have; Download brings it here */

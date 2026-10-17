@@ -560,7 +560,7 @@ export default function ProjectPage() {
       return [
         { separator: true },
         mirrored && { label: 'Sync now', icon: 'arrow.clockwise', onSelect: () => syncNow(p) },
-        p.cloud.status?.state === 'attention' && { label: 'Sync anyway…', icon: 'exclamationmark.triangle', onSelect: () => syncAnyway(p) },
+        p.cloud.status?.brake && { label: 'Sync anyway…', icon: 'exclamationmark.triangle', onSelect: () => syncAnyway(p) },
         { label: 'Stop syncing…', icon: 'xmark', onSelect: () => setSheet({ kind: 'stopSyncing', id: p.id }) },
         IS_DESKTOP && mirrored && { label: `Show cloud copy in ${FILE_MANAGER}`, icon: 'cloud', onSelect: () => revealCloud(p) }
       ];
@@ -696,7 +696,7 @@ export default function ProjectPage() {
       );
     });
 
-  /** The badge after a project's name (short on a card); one that needs attention says what, with Sync anyway. */
+  /** The badge after a project's name (short on a card); one that needs attention says what, with Sync anyway past the brake. */
   const badge = (p: Row, card = false) => {
     const b = badgeOf(p);
     if (!b) return null;
@@ -707,11 +707,12 @@ export default function ProjectPage() {
         {b.text[card ? 1 : 0]}
       </>
     );
-    if (p.cloud?.status?.state === 'attention' && !p.missing) {
+    if (p.cloud?.status?.brake && !p.missing) {
       return (
         <button
           className={className}
           title={p.cloud.status.message}
+          aria-label={`${b.text[0]}: Sync anyway…`}
           onClick={(e) => {
             e.stopPropagation();
             syncAnyway(p);
@@ -722,7 +723,7 @@ export default function ProjectPage() {
         </button>
       );
     }
-    return <span className={className} title={card ? b.text[0] : undefined}>{content}</span>;
+    return <span className={className} title={(!p.missing && p.cloud?.status?.message) || (card ? b.text[0] : undefined)}>{content}</span>;
   };
 
   const tagChips = (p: ProjectMeta) =>
