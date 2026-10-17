@@ -130,7 +130,7 @@ Both checkers read only the prose of a LaTeX file. Commands, maths, comments, ci
 
 ### Version history
 
-Versions are kept inside each project in a hidden `.spectrum` folder, together with the project settings, saved chats, temporary build files and the SyncTeX and `.aux` files kept from the last compile of each document. File contents are compressed and stored once, so unchanged files cost no extra space between versions. A version is saved with one click from the Save version button beside Compile or with `⇧⌘S`, and the notice that follows offers to name it. Versions can also be saved and named from the Versions tab. One is also saved automatically before AI changes are applied, before a restore and before a template change, so each of these can be undone. A version can be compared with the current files, restored as a whole or restored one file at a time.
+Versions are kept inside each project in a hidden `.spectrum` folder, together with the project settings and saved chats, so they travel with the project. Builds run in a temporary folder, and the SyncTeX data and `.aux` files kept from the last compile of each document are in the app's own data folder. File contents are compressed and stored once, so unchanged files cost no extra space between versions. A version is saved with one click from the Save version button beside Compile or with `⇧⌘S`, and the notice that follows offers to name it. Versions can also be saved and named from the Versions tab. One is also saved automatically before AI changes are applied, before a restore and before a template change, so each of these can be undone. A version can be compared with the current files, restored as a whole or restored one file at a time.
 
 ### Syncing between computers
 
