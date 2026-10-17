@@ -336,6 +336,64 @@ test('a cloud copy whose project.json is missing for a moment is waited for, nev
   assert.equal(read(path.join(snapshot, 'main.tex')), 'as submitted\n');
 });
 
+test('a cloud copy renamed while a sync app brings a file to its old path is followed at once, with its base', async () => {
+  const p = await project('Remade', { 'main.tex': 'old text\n', 'gone.tex': 'deleted there\n' });
+  synced(await syncTo(p));
+  // the other computer edits a file and deletes one, then renames the folder; a version saved meanwhile comes to the old path
+  await write(path.join(p.cloud, 'main.tex'), 'newer text from the other computer\n');
+  await fs.rm(path.join(p.cloud, 'gone.tex'));
+  const renamed = path.join(location, 'Remade in 2026');
+  await fs.rename(p.cloud, renamed);
+  await write(path.join(p.cloud, '.spectrum', 'history', 'manifests', '7.json'), '{}');
+  synced(await mirror.syncProject(p.id));
+  assert.equal((await mirror.readMirror(p.id)).rel, 'Remade in 2026');
+  for (const root of [p.root, renamed]) {
+    assert.deepEqual(userFiles(root), ['main.tex'], root);
+    assert.equal(read(path.join(root, 'main.tex')), 'newer text from the other computer\n', root);
+  }
+});
+
+test('a cloud copy’s .spectrum without project.json is waited for 10 minutes at most, but for iCloud Drive’s stand-in', async () => {
+  const { now } = Date;
+  const waiting = { state: 'waiting', message: `Waiting for ${LABEL}` };
+  try {
+    // a sync app bringing a rename a file at a time: the new folder whole, and the old one going, project.json first
+    const p = await project('Slow rename', { 'main.tex': 'main\n' });
+    synced(await syncTo(p));
+    const renamed = path.join(location, 'Slow rename 2026');
+    await fs.cp(p.cloud, renamed, { recursive: true });
+    await fs.rm(path.join(p.cloud, '.spectrum', 'project.json'));
+    assert.deepEqual(await mirror.syncProject(p.id), waiting);
+    assert.equal((await mirror.readMirror(p.id)).rel, 'Slow rename');
+    Date.now = () => now() + 11 * 60 * 1000;
+    synced(await mirror.syncProject(p.id));
+    assert.equal((await mirror.readMirror(p.id)).rel, 'Slow rename 2026');
+    Date.now = now;
+
+    // a copy deleted a file at a time whose .spectrum outlives the rest: Not in the location after 10 minutes, and stays so
+    const q = await project('Shell', { 'main.tex': 'main\n' });
+    synced(await syncTo(q));
+    await fs.rm(path.join(q.cloud, '.spectrum', 'project.json'));
+    assert.deepEqual(await mirror.syncProject(q.id), waiting);
+    Date.now = () => now() + 11 * 60 * 1000;
+    const notFound = { state: 'not-found', message: `Not in ${LABEL}` };
+    assert.deepEqual(await mirror.syncProject(q.id), notFound);
+    assert.deepEqual(await mirror.syncProject(q.id), notFound);
+    // iCloud Drive's stand-in for it, however long it takes; back, a later gap is waited for again
+    const standIn = path.join(q.cloud, '.spectrum', '.project.json.icloud');
+    await write(standIn, 'bplist');
+    assert.deepEqual(await mirror.syncProject(q.id), waiting);
+    await fs.rm(standIn);
+    await writeMeta(q.cloud, meta(q.root));
+    synced(await mirror.syncProject(q.id));
+    await fs.rm(path.join(q.cloud, '.spectrum', 'project.json'));
+    assert.deepEqual(await mirror.syncProject(q.id), waiting);
+    assert.deepEqual(userFiles(q.root), ['main.tex']);
+  } finally {
+    Date.now = now;
+  }
+});
+
 test('a cloud copy going while a pass walks it is waited for, never taken for deletions', async () => {
   const p = await project('Going', { 'main.tex': 'main\n', 'figs/a.png': 'a', 'figs/b.png': 'b' });
   await versions.createVersion(p.root);

@@ -129,6 +129,7 @@ export function linkMirror(id, { location, rel, files = {} }) {
     statuses.delete(id);
     unreadFor.delete(id);
     deletedThere.delete(id);
+    metaGone.delete(id);
   });
 }
 
@@ -145,6 +146,7 @@ async function forget(id) {
   unreadFor.delete(id);
   versionedAt.delete(id);
   deletedThere.delete(id);
+  metaGone.delete(id);
 }
 
 /** The mirrored project whose cloud copy p is in, and p's '/'-separated path in it; null outside them all. */
@@ -171,6 +173,9 @@ const unreadFor = new Map();
 const versionedAt = new Map();
 // the deletions there a pass hasn't made here yet, by project: key → when a pass first saw it
 const deletedThere = new Map();
+// when a pass first found the cloud copy's .spectrum without its project.json, by project
+const metaGone = new Map();
+const WAIT_META_MS = 10 * 60 * 1000;
 
 /**
  * How the project's mirror is: { state: 'synced'|'syncing'|'waiting'|'attention'|'missing'|'not-found', message?, at? },
@@ -284,8 +289,13 @@ async function mirror(id, record, label, force) {
   const cloudMeta = await readJson(join(cloudRoot, META)).catch((err) => (err instanceof SyntaxError ? {} : absent(err)));
   if (!cloudMeta) {
     // only project.json gone (a sync app replacing it, iCloud Drive's stand-in for it, asked for back): the copy is
-    // still there, and another folder with its id may be a Finder duplicate. One a move left empty has no .spectrum
-    if (await exists(join(cloudRoot, '.spectrum'))) {
+    // still there, and another folder with its id may be a Finder duplicate. One a move left empty has no .spectrum.
+    // Only while the folder there is still the copy (not one a sync app made again at the old path for a file it
+    // brought after a rename), and for 10 minutes at most but for iCloud Drive's stand-in (a copy removed a file at a
+    // time can leave a .spectrum of history a pass put back as it went)
+    const since = metaGone.get(id) ?? metaGone.set(id, Date.now()).get(id);
+    const copy = (await exists(join(cloudRoot, '.spectrum'))) && (!record.folder || (await folderOf(cloudRoot)) === record.folder);
+    if (copy && (Date.now() - since < WAIT_META_MS || (await exists(join(cloudRoot, '.spectrum/.project.json.icloud'))))) {
       if (process.platform === 'darwin') execFile('/usr/bin/brctl', ['download', join(cloudRoot, META)], () => {});
       return { state: 'waiting', message: `Waiting for ${label}` };
     }
@@ -294,11 +304,13 @@ async function mirror(id, record, label, force) {
     // with none, so the first pass there is a union, which deletes and overwrites nothing
     const rel = await findCopy(record.location, id);
     if (rel === null) return { state: 'not-found', message: `Not in ${label}` };
+    metaGone.delete(id);
     record.rel = rel;
     cloudRoot = cloudRootOf(record);
     if (!record.folder || (await folderOf(cloudRoot)) !== record.folder) record.files = {};
     await writeJsonAtomic(recordPath(id), record);
   } else if (cloudMeta.id !== id) return attention(`The copy in ${label} holds another project now.`);
+  else metaGone.delete(id);
 
   const here = await walk(localRoot);
   const there = await walk(cloudRoot);
