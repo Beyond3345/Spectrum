@@ -247,7 +247,9 @@ test('a missing, moved or emptied side never reads as everything deleted', async
   const theirs = meta(cloud);
   await writeMeta(cloud, { ...theirs, id: crypto.randomUUID() });
   await fs.rm(path.join(p.root, 'main.tex'));
-  assert.equal((await mirror.syncProject(p.id)).state, 'attention');
+  const other = await mirror.syncProject(p.id);
+  assert.equal(other.state, 'attention');
+  assert.equal(other.brake, undefined, 'Sync anyway wouldn’t help');
   assert.ok(existsSync(path.join(cloud, 'main.tex')));
   await writeMeta(cloud, theirs);
   const mine = meta(p.root);
@@ -327,12 +329,25 @@ test('deleting a good part of a side waits for Sync anyway', async () => {
   const status = await mirror.syncProject(p.id);
   assert.equal(status.state, 'attention');
   assert.match(status.message, /would delete 8 files on this computer/);
+  assert.equal(status.brake, true);
   // the rest still goes across
   assert.equal(read(path.join(p.root, 'new.tex')), 'new\n');
   assert.equal(userFiles(p.root).length, 11);
   assert.equal((await mirror.syncProject(p.id)).state, 'attention', 'still waiting');
   synced(await mirror.syncProject(p.id, { force: true }));
   assert.deepEqual(userFiles(p.root), ['ch8.tex', 'ch9.tex', 'new.tex']);
+});
+
+test('the brake counts the user’s files apart, so a long history doesn’t hide most of them going', async () => {
+  const files = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`ch${i}.tex`, `chapter ${i}\n`]));
+  const p = await project('Long history', { 'main.tex': 'main\n', ...files });
+  for (let i = 0; i < 40; i++) await write(path.join(p.root, '.spectrum', 'history', 'manifests', `old${i}.json`), '{}');
+  synced(await syncTo(p));
+  for (const f of Object.keys(files)) await fs.rm(path.join(p.cloud, f));
+  const status = await mirror.syncProject(p.id);
+  assert.equal(status.state, 'attention');
+  assert.match(status.message, /would delete 12 files on this computer/);
+  assert.equal(userFiles(p.root).length, 13);
 });
 
 test('a name changed only in letter case is renamed on the other side, both ways', async () => {
@@ -371,10 +386,11 @@ test('an iCloud Drive stand-in is a file not readable yet, never a deletion', as
   synced(await syncTo(p));
   await fs.rm(path.join(p.cloud, 'big.tex'));
   await write(path.join(p.cloud, '.big.tex.icloud'), 'bplist');
-  synced(await mirror.syncProject(p.id));
+  assert.equal((await mirror.syncProject(p.id)).state, 'syncing');
   assert.equal(read(path.join(p.root, 'big.tex')), 'big\n');
   assert.ok(!existsSync(path.join(p.root, '.big.tex.icloud')), 'the stand-in isn’t copied');
-  synced(await mirror.syncProject(p.id));
+  // not in step while it's still to come, so Stop syncing › Delete waits
+  assert.deepEqual(await mirror.syncProject(p.id), { state: 'syncing', message: `1 file still to come from ${LABEL}` });
   // three passes running: the user is asked to keep it on this device
   const status = await mirror.syncProject(p.id);
   assert.equal(status.state, 'attention');
@@ -455,6 +471,17 @@ test('a deletion goes to the Bin unless this computer’s history holds the file
   assert.deepEqual(binned.splice(0).map((b) => [path.relative(p.root, b.abs).split(path.sep).join('/'), b.cloud]).sort(), [['.spectrum/chats/c2.json', false], ['main.pdf', false]]);
   synced(await mirror.syncProject(p.id));
   sameTree(p.root, p.cloud);
+});
+
+test('a file deleted there goes to the Bin when the version that would hold it goes there too', async () => {
+  const p = await project('Gone version', { 'main.tex': 'main\n', 'fig.png': 'PNG' });
+  const { version } = await versions.createVersion(p.root, { label: 'Only' });
+  synced(await syncTo(p));
+  await fs.rm(path.join(p.cloud, 'fig.png'));
+  await fs.rm(path.join(p.cloud, '.spectrum', 'history', 'manifests', `${version.id}.json`));
+  synced(await mirror.syncProject(p.id));
+  assert.deepEqual(binned.splice(0).map((b) => [path.relative(p.root, b.abs), b.cloud, b.text]), [['fig.png', false, 'PNG']]);
+  assert.deepEqual(userFiles(p.root), ['main.tex']);
 });
 
 test('a file changed here after the walk isn’t written over, and its edit comes through after', async () => {

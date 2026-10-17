@@ -321,22 +321,37 @@ async function mirror(id, record, label, force) {
     items.push(it);
   }
 
-  // a pass that would delete a good part of a side is more likely a sync app halfway through than the user
-  const count = (action) => items.filter((it) => it.action === action).length;
-  const brake = [[count('deleteLocal'), here.files.size, 'on this computer'], [count('deleteCloud'), there.files.size, `in ${label}`]].find(([n, of]) => n > 5 && n > of / 4);
+  // a pass that would delete a good part of a side is more likely a sync app halfway through than the user; of all its
+  // files, and of the user's alone, which a long history would otherwise hide
+  const count = (action, user) => items.filter((it) => it.action === action && !(user && inApp(it.key))).length;
+  const users = (side) => [...side.files.keys()].filter((key) => !inApp(key)).length;
+  const brake = [
+    [count('deleteLocal'), here.files.size, 'on this computer'],
+    [count('deleteCloud'), there.files.size, `in ${label}`],
+    [count('deleteLocal', true), users(here), 'on this computer'],
+    [count('deleteCloud', true), users(there), `in ${label}`]
+  ].find(([n, of]) => n > 5 && n > of / 4);
   if (brake && !force) {
-    problems.push(`Syncing would delete ${brake[0]} files ${brake[2]}, so nothing has been deleted. Check the project, then choose Sync anyway if that’s right.`);
+    problems.unshift(`Syncing would delete ${brake[0]} files ${brake[2]}, so nothing has been deleted. Check the project, then choose Sync anyway if that’s right.`);
     for (const it of items) if (it.action.startsWith('delete')) it.action = 'keep';
   }
   const replaced = items.filter((it) => it.l && !inApp(it.key) && ['toLocal', 'write', 'deleteLocal'].includes(it.action));
-  const held = replaced.length ? await keepBefore(ctx, replaced) : {};
+  const held = replaced.length ? await keepBefore(ctx, replaced, items) : {};
 
   // history objects are named by their content: whichever side lacks one gets it, and none is ever deleted (so a
   // clean-up on one computer, 1.7.0's or 1.8.0's, doesn't spread)
   let history = false;
   for (const [name, rel] of here.objects) if (!there.objects.has(name)) await place(ctx, cloudRoot, join(localRoot, rel), join(cloudRoot, rel)).catch(() => {});
   for (const [name, rel] of there.objects) {
-    if (!here.objects.has(name)) history = (await place(ctx, localRoot, join(cloudRoot, rel), join(localRoot, rel)).then(() => true, () => false)) || history;
+    if (here.objects.has(name)) continue;
+    const got = await place(ctx, localRoot, join(cloudRoot, rel), join(localRoot, rel)).then(
+      () => true,
+      (err) => {
+        unread.set(`${OBJECTS}/${name}`, err);
+        return false;
+      }
+    );
+    history ||= got;
   }
   // deletions first, so a file can become a folder of the same name
   items.sort((a, b) => Number(b.action.startsWith('delete')) - Number(a.action.startsWith('delete')));
@@ -364,7 +379,11 @@ async function mirror(id, record, label, force) {
     const err = unread.get(stuck);
     problems.push((await offlineMessage(err).catch(() => null)) || `“${path.basename(stuck)}” hasn’t synced: ${err.message}`);
   }
-  return problems.length ? attention(problems[0]) : { state: 'synced', at: new Date().toISOString() };
+  // brake: what Sync anyway is for, which nothing else needing attention is
+  if (problems.length) return { ...attention(problems[0]), ...(brake && !force && { brake: true }) };
+  // still to come: not in step, which Stop syncing › Delete needs
+  if (unread.size) return { state: 'syncing', message: `${unread.size} file${unread.size > 1 ? 's' : ''} still to come from ${label}` };
+  return { state: 'synced', at: new Date().toISOString() };
 }
 
 /**
@@ -503,7 +522,7 @@ async function merge(ctx, it) {
  * cloud only when the latest version lacks one and at most every 10 minutes, or each pass would add one while another
  * computer is typing. Returns the files of the version that holds them.
  */
-async function keepBefore(ctx, replaced) {
+async function keepBefore(ctx, replaced, items) {
   const [latest] = await listVersions(ctx.localRoot);
   const files = latest ? await versionFiles(ctx.localRoot, latest.id) : {};
   const due = Date.now() - (versionedAt.get(ctx.id) || 0) >= VERSION_EVERY_MS;
@@ -513,7 +532,9 @@ async function keepBefore(ctx, replaced) {
   const others = [...new Set((await otherComputersProjects().catch(() => [])).filter((p) => p.id === ctx.id).map((p) => p.machineName))];
   const { version } = await createVersionUnlocked(ctx.localRoot, { label: `Before sync from ${others.length === 1 ? others[0] : ctx.label}` });
   versionedAt.set(ctx.id, Date.now());
-  return versionFiles(ctx.localRoot, version.id);
+  // the latest, when nothing changed since, which this pass may be deleting: then it holds nothing
+  const gone = items.some((it) => it.action === 'deleteLocal' && it.key === keyOf(`.spectrum/history/manifests/${version.id}.json`));
+  return gone ? {} : versionFiles(ctx.localRoot, version.id);
 }
 
 const versionFiles = async (root, id) => (await readJson(appPath(root, 'history', 'manifests', `${id}.json`)).catch(() => null))?.files || {};
