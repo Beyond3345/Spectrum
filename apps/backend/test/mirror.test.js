@@ -259,6 +259,51 @@ test('a missing, moved or emptied side never reads as everything deleted', async
   synced(await mirror.syncProject(p.id));
 });
 
+test('a cloud copy going while a pass walks it is waited for, never taken for deletions', async () => {
+  const p = await project('Going', { 'main.tex': 'main\n', 'figs/a.png': 'a', 'figs/b.png': 'b' });
+  await versions.createVersion(p.root);
+  synced(await syncTo(p));
+  const before = tree(p.root);
+  const { readdir } = fs;
+  // the sync app removing it file by file, project.json first, just after the pass read it
+  fs.readdir = async (dir, ...rest) => {
+    if (dir === p.cloud) {
+      fs.readdir = readdir;
+      await fs.rm(path.join(p.cloud, '.spectrum', 'project.json'));
+      await fs.rm(path.join(p.cloud, 'figs'), { recursive: true });
+    }
+    return readdir(dir, ...rest);
+  };
+  try {
+    assert.deepEqual(await mirror.syncProject(p.id), { state: 'waiting', message: `Waiting for ${LABEL}` });
+  } finally {
+    fs.readdir = readdir;
+  }
+  assert.deepEqual(tree(p.root), before);
+  assert.deepEqual(binned, []);
+});
+
+test('Windows’ placeholders, which its readdir calls links, are walked into as what they are', async () => {
+  const p = await project('Placeholders', { 'main.tex': 'main\n', 'chapters/one.tex': 'one\n' });
+  synced(await syncTo(p));
+  const { readdir } = fs;
+  // as libuv types every reparse point, OneDrive's and Dropbox's placeholders among them
+  const asLink = (e) => ({ name: e.name, isSymbolicLink: () => true, isDirectory: () => false, isFile: () => false });
+  fs.readdir = async (dir, options) => {
+    const entries = await readdir(dir, options);
+    return options?.withFileTypes && String(dir).startsWith(p.cloud) ? entries.map(asLink) : entries;
+  };
+  try {
+    await write(path.join(p.root, 'main.tex'), 'main, edited\n');
+    synced(await mirror.syncProject(p.id));
+  } finally {
+    fs.readdir = readdir;
+  }
+  assert.deepEqual(userFiles(p.root), ['chapters/one.tex', 'main.tex']);
+  assert.ok(existsSync(path.join(p.root, '.spectrum', 'project.json')));
+  assert.equal(read(path.join(p.cloud, 'main.tex')), 'main, edited\n');
+});
+
 test('a folder that can’t be read stops the pass before anything is deleted', { skip: WINDOWS || process.getuid?.() === 0 }, async () => {
   const p = await project('Locked', { 'main.tex': 'main\n', 'figs/a.png': 'a' });
   synced(await syncTo(p));

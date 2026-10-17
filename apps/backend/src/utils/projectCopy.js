@@ -4,6 +4,7 @@ import { promises as fs, constants, createReadStream } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { httpError } from '../services/projectService.js';
+import { readdirTyped } from './fsUtils.js';
 import { offlineMessage } from '../services/syncService.js';
 
 // this computer's presence in the project, which only it writes
@@ -22,7 +23,7 @@ const excluded = (rel, exclude) => exclude.some((e) => rel === e || rel.startsWi
 
 /** Every file under root but the excluded, [{ rel, size }] with '/'-separated rels; a link anywhere stops it, as sync apps don't carry links. */
 async function filesIn(root, exclude, rel = '', found = []) {
-  for (const entry of await fs.readdir(path.join(root, rel), { withFileTypes: true })) {
+  for (const entry of await readdirTyped(path.join(root, rel))) {
     const itemRel = rel ? `${rel}/${entry.name}` : entry.name;
     if (excluded(itemRel, exclude)) continue;
     if (entry.isSymbolicLink()) throw httpError(`“${itemRel}” is a symbolic link, which sync apps don’t copy. Put what it points to in its place, then try again.`, 400);

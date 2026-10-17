@@ -101,6 +101,18 @@ export function mirrorSkips(rel) {
   return parts.slice(app ? 1 : 0).some((part) => HIDDEN_ENTRIES.has(part) || part.toLowerCase() === '.spectrum');
 }
 
+/**
+ * fs.readdir's entries with their types, a link's from lstat: Windows' readdir calls every reparse point a link, the
+ * placeholders of OneDrive, Dropbox and iCloud too, and lstat tells those from a real link. One gone in between is left out.
+ */
+export async function readdirTyped(dir) {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const typed = await Promise.all(
+    entries.map((e) => (e.isSymbolicLink() ? fs.lstat(path.join(dir, e.name)).then((s) => Object.assign(s, { name: e.name }), (err) => (err.code === 'ENOENT' ? null : Promise.reject(err))) : e))
+  );
+  return typed.filter(Boolean);
+}
+
 /** Every file and folder under root, as '/'-separated paths from root on every system. */
 export async function listFilesRecursive(root, rel = '') {
   const dirPath = path.join(root, rel);

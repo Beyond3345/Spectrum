@@ -3,7 +3,7 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import { DATA_DIR, PROJECTS_DIR } from '../config/constants.js';
-import { HIDDEN_ENTRIES, ensureDir, listFilesRecursive, readJson, writeJsonAtomic } from '../utils/fsUtils.js';
+import { HIDDEN_ENTRIES, ensureDir, listFilesRecursive, readJson, readdirTyped, writeJsonAtomic } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { isDocumentFile } from '../utils/texUtils.js';
 import {
@@ -293,7 +293,7 @@ let scanned = [];
 
 /** Every project folder up to 3 levels into a cloud location, reading only their project.json: [{ id, root, meta }]. */
 export async function findSyncedProjects(dir, deadline, found = [], depth = 1) {
-  for (const entry of await fs.readdir(dir, { withFileTypes: true }).catch(() => [])) {
+  for (const entry of await readdirTyped(dir).catch(() => [])) {
     if (Date.now() > deadline) break;
     if (!entry.isDirectory() || entry.name.startsWith('.') || HIDDEN_ENTRIES.has(entry.name) || isConflictCopy(entry.name)) continue;
     const sub = path.join(dir, entry.name);

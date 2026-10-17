@@ -16,7 +16,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { gzip, gunzip } from 'zlib';
 import { DATA_DIR } from '../config/constants.js';
-import { freePath, mirrorSkips, readJson, renameOver, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
+import { freePath, mirrorSkips, readJson, readdirTyped, renameOver, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
 import { mergeText } from '../utils/merge3.js';
 import { mergeChat } from '../utils/chatMerge.js';
 import { hashFile } from '../utils/projectCopy.js';
@@ -268,6 +268,8 @@ async function mirror(id, record, label, force) {
 
   const here = await walk(localRoot);
   const there = await walk(cloudRoot);
+  // project.json gone from a walk: that side is going, or can't be seen into, so nothing is decided from it
+  if (!here.files.has(META) || !there.files.has(META)) return { state: 'waiting', message: `Waiting for ${label}` };
   const ctx = { id, label, record, localRoot, cloudRoot, here, incoming: workDir(id, 'incoming'), fetched: 0, made: new Set() };
   await fs.rm(ctx.incoming, { recursive: true, force: true });
   await fs.mkdir(ctx.incoming, { recursive: true });
@@ -376,7 +378,7 @@ async function walk(root) {
   const objects = new Map();
   const add = (rel, item) => files.set(keyOf(rel), [...(files.get(keyOf(rel)) || []), { rel, ...item }]);
   // a folder gone since the one around it was listed was moved or deleted: not there
-  const list = (rel) => fs.readdir(join(root, rel), { withFileTypes: true }).catch((err) => (rel ? absent(err).then(() => []) : Promise.reject(err)));
+  const list = (rel) => readdirTyped(join(root, rel)).catch((err) => (rel ? absent(err).then(() => []) : Promise.reject(err)));
   const into = async (rel) => {
     for (const entry of await list(rel)) {
       const itemRel = rel ? `${rel}/${entry.name}` : entry.name;
