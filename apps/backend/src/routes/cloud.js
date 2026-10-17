@@ -27,6 +27,7 @@ import { transferring } from './transfer.js';
 
 const ID_RE = /^[A-Za-z0-9_-]+$/;
 const isDir = (p) => fs.stat(p).then((s) => s.isDirectory(), () => false);
+// what went wrong, in the sync app's terms for a file that's online-only
 const why = async (err) => (await offlineMessage(err).catch(() => null)) || err.message;
 
 /** One of this computer's cloud locations, which must be here now: { path, label }. */

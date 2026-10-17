@@ -10,7 +10,7 @@
 // folder has gone.
 // <a cloud location>/.spectrum-shared/ (sharedDir picks the same one on each computer): one file per computer where
 // several computers write (never a shared file two computers rewrite, which a sync client would split into conflict copies)
-//   machines/<machineId>.json: { machineName, systemNames, updatedAt, projects: [{ id, name, place, mirror }] }
+//   machines/<machineId>.json, in every location: { machineName, systemNames, updatedAt, projects: [{ id, name, place, mirror }] }
 //   mirror: that computer keeps a copy of its own, so it doesn't lose the project if the cloud copy is deleted
 import { promises as fs } from 'fs';
 import os from 'os';
@@ -200,8 +200,8 @@ async function synologyRootOf(p) {
 function iCloudKeeps(name) {
   if (!keptInICloud.has(name)) {
     const real = (p) => fs.realpath(p).catch(() => null);
-    const home = path.join(os.homedir(), name);
-    keptInICloud.set(name, Promise.all([real(path.join(os.homedir(), ...ICLOUD, name)), real(home)]).then(([a, b]) => !!a && !!b && sameFolder(a, b)));
+    const both = [real(path.join(os.homedir(), ...ICLOUD, name)), real(path.join(os.homedir(), name))];
+    keptInICloud.set(name, Promise.all(both).then(([a, b]) => !!a && !!b && sameFolder(a, b)));
   }
   return keptInICloud.get(name);
 }
