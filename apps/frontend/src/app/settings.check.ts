@@ -1,6 +1,7 @@
 // Self-check for where model requests and keys go. Run (it imports React, so bundle it first):
 // npx esbuild apps/frontend/src/app/settings.check.ts --bundle --platform=node --log-level=warning | node
-import { DEFAULT_SETTINGS, llmConfigFor, presetForEndpoint, presetPatch, rolePatch, searchProviderPatch, sharedPart, takeInShared, withShared } from './settings';
+import { DEFAULT_SETTINGS, keysBackFromOlder, llmConfigFor, presetForEndpoint, presetPatch, rolePatch, searchProviderPatch, sharedPart, takeInShared, withShared } from './settings';
+import { NO_FOLDERS } from './folders';
 import type { AppSettings } from './settings';
 import type { ProviderPreset } from '../api/client';
 
@@ -138,5 +139,26 @@ const pcNow = at({ theme: 'light', editorFontSize: 15 });
 const both = takeInShared(pcNow, sharedPart(at({ theme: 'dark', editorFontSize: 13 })), pcSent);
 eq([both.theme, both.editorFontSize, both.llmApiKey], ['dark', 15, 'sk-openai'], 'a newer change from the other computer under one made here');
 eq(takeInShared(pcNow, { theme: 'dark' }, '').theme, 'light', 'never shared: this computer’s own stay');
+
+// a folder tree this computer never shared (it just joined, or came from 1.8.0, whose sent has no tree) joins the
+// other's, so neither empties the other's when it shares next
+const macTree = { folders: [{ id: 'a', name: 'Drafts', parent: null }], placement: { alpha: 'a' } };
+const pcTree = { folders: [{ id: 'b', name: 'Papers', parent: null }], placement: { beta: 'b' } };
+eq(takeInShared(at({}), sharedPart(at({ projectFolders: macTree })), '').projectFolders, macTree, 'a computer just joined takes the tree in');
+const sent18 = JSON.stringify({ ...sharedPart(at({ projectFolders: pcTree })), projectFolders: undefined });
+const joined = takeInShared(at({ projectFolders: pcTree }), sharedPart(at({ projectFolders: macTree })), sent18);
+eq(joined.projectFolders, { folders: [...macTree.folders, ...pcTree.folders], placement: { beta: 'b', alpha: 'a' } }, 'one with its own joins them');
+// and the computer that shared its tree before takes the joined one in, a later change of its own still going across
+eq(takeInShared(at({ projectFolders: macTree }), sharedPart(joined), JSON.stringify(sharedPart(at({ projectFolders: macTree })))).projectFolders, joined.projectFolders, 'the joined tree goes back');
+eq(takeInShared(joined, sharedPart(at({})), JSON.stringify(sharedPart(joined))).projectFolders, NO_FOLDERS, 'emptied there: emptied here');
+eq(takeInShared(at({}), sharedPart(joined), JSON.stringify(sharedPart(at({ projectFolders: macTree })))).projectFolders, NO_FOLDERS, 'emptied here: stays empty');
+
+// back from 1.8.0, which last took in the Mac's file and shared without the tree: the Mac's tree, never the old one here
+const macFile = { updatedAt: '2026-10-02T00:00:00.000Z', machineName: 'Mac', settings: sharedPart(at({ projectFolders: macTree })) };
+const back = keysBackFromOlder(at({ projectFolders: pcTree }), macFile, macFile.updatedAt, sent18);
+eq(back?.settings.projectFolders, macTree, 'the newer file’s tree comes in');
+eq(back && JSON.parse(back.sent).projectFolders, macTree, 'and counts as shared');
+eq(keysBackFromOlder(at({ projectFolders: pcTree }), macFile, '2026-10-03T00:00:00.000Z', sent18), null, 'shared since: its own tree goes');
+eq(keysBackFromOlder(at({ projectFolders: pcTree }), macFile, macFile.updatedAt, JSON.stringify(sharedPart(at({ projectFolders: pcTree })))), null, 'nothing missing');
 
 console.log('settings.check: ok');

@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { getSharedSettings, listLiveModels, listProviders, shareSettings } from '../api/client';
-import type { CloudMode, CompileEngine, EffortLevel, LLMConfig, OxfordComma, ProviderModel, ProviderPreset, ReasoningEffort, SearchProvider } from '../api/client';
+import type { CloudMode, CompileEngine, EffortLevel, LLMConfig, OxfordComma, ProviderModel, ProviderPreset, ReasoningEffort, SearchProvider, SharedSettings } from '../api/client';
 import { setNativeTheme } from './desktop';
 import { NO_FOLDERS, cleanFolders } from './folders';
 import type { ProjectFolders } from './folders';
@@ -344,7 +344,35 @@ export function takeInShared(settings: AppSettings, theirs: Record<string, unkno
     // never shared: every one counts as changed here
   }
   const mine = SHARED_KEYS.filter((key) => JSON.stringify(settings[key]) !== JSON.stringify(before[key]));
-  return withShared(withShared(settings, theirs), Object.fromEntries(mine.map((key) => [key, settings[key]])));
+  const kept: Record<string, unknown> = Object.fromEntries(mine.map((key) => [key, settings[key]]));
+  // a tree this computer never shared (it just joined, came from 1.8.0, or the switch was just turned on) joins theirs
+  // rather than replacing it, else whichever computer shares next would empty the other's
+  if (!('projectFolders' in before) && 'projectFolders' in theirs) {
+    const t = cleanFolders(theirs.projectFolders);
+    const m = settings.projectFolders;
+    kept.projectFolders = { folders: [...t.folders, ...m.folders.filter((f) => !t.folders.some((g) => g.id === f.id))], placement: { ...m.placement, ...t.placement } };
+  }
+  return withShared(withShared(settings, theirs), kept);
+}
+
+/**
+ * Back from 1.8.0, which last took in the other computer's file of `at` and kept what this computer had shared without
+ * the keys it doesn't know (sent): those keys are that file's, newer than this computer's. The settings with them in
+ * and what counts as shared then, or null when nothing is missing or this computer shared since.
+ */
+export function keysBackFromOlder(settings: AppSettings, latest: SharedSettings | null, at: string, sent: string) {
+  if (!latest || latest.updatedAt !== at) return null;
+  let before: unknown;
+  try {
+    before = JSON.parse(sent);
+  } catch {
+    return null;
+  }
+  if (!before || typeof before !== 'object') return null;
+  const missing = SHARED_KEYS.filter((key) => !(key in before) && key in latest.settings);
+  if (!missing.length) return null;
+  const next = withShared(settings, Object.fromEntries(missing.map((key) => [key, latest.settings[key]])));
+  return { settings: next, sent: JSON.stringify({ ...sharedPart(next), ...before }) };
 }
 
 // when this computer last shared settings or took some in, and what they were (JSON)
@@ -380,9 +408,16 @@ export function followSharedSettings() {
     const { shared, latest } = await getSharedSettings();
     if (!shared) return;
     let { at, sent } = syncState();
+    const back = keysBackFromOlder(settings, latest, at, sent);
+    if (back) {
+      ({ settings, sent } = back);
+      keepSyncState({ at, sent });
+      persistSettings(settings);
+    }
     if (latest && latest.updatedAt > at) {
-      // first, or this computer's old values of the other settings would go back under a newer date and undo them there
-      settings = takeInShared(settings, latest.settings, theirsFirst ? JSON.stringify(sharedPart(settings)) : sent);
+      // first, or this computer's old values of the other settings would go back under a newer date and undo them
+      // there; the folder tree joins the others' all the same
+      settings = takeInShared(settings, latest.settings, theirsFirst ? JSON.stringify({ ...sharedPart(settings), projectFolders: undefined }) : sent);
       at = latest.updatedAt;
       sent = JSON.stringify(sharedPart(withShared(settings, latest.settings)));
       keepSyncState({ at, sent });
