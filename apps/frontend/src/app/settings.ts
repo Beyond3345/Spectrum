@@ -321,6 +321,21 @@ export const sharedPart = (settings: AppSettings): Record<string, unknown> => Ob
 export const withShared = (settings: AppSettings, shared: Record<string, unknown>) =>
   parse(JSON.stringify({ ...settings, ...Object.fromEntries(SHARED_KEYS.filter((key) => key in shared).map((key) => [key, shared[key]])) }));
 
+/**
+ * Another computer's newer shared settings taken in, except the ones changed here since this computer last shared or
+ * took some in (sent: what they were then, as JSON), which stay as they are.
+ */
+export function takeInShared(settings: AppSettings, theirs: Record<string, unknown>, sent: string) {
+  let before: Record<string, unknown> = {};
+  try {
+    before = JSON.parse(sent);
+  } catch {
+    // never shared: every one counts as changed here
+  }
+  const mine = SHARED_KEYS.filter((key) => JSON.stringify(settings[key]) !== JSON.stringify(before[key]));
+  return withShared(withShared(settings, theirs), Object.fromEntries(mine.map((key) => [key, settings[key]])));
+}
+
 // when this computer last shared settings or took some in, and what they were (JSON)
 const SYNC_KEY = 'spectrum-settings-sync';
 
@@ -341,26 +356,32 @@ function keepSyncState(state: { at: string; sent: string }) {
 }
 
 /**
- * On start and whenever the window comes to the front, takes in the newest settings another computer shared
- * since this one last shared or took some; a change here is shared 2 s after the last one. Off in Settings ›
- * Projects. ponytail: newest by each computer's clock, which is fine while both keep the right time.
+ * On start, whenever the window comes to the front and 2 s after the last change here: takes in the newest settings
+ * another computer shared since this one last shared or took some (under the ones changed here since), then shares
+ * this computer's if they differ. Off in Settings › Projects. ponytail: newest by each computer's clock, which is fine
+ * while both keep the right time.
  */
 export function followSharedSettings() {
-  const share = async () => {
-    const settings = loadSettings();
-    const sent = JSON.stringify(sharedPart(settings));
-    if (!settings.syncSettings || sent === syncState().sent) return;
-    const res = await shareSettings(sharedPart(settings));
-    if (res.updatedAt) keepSyncState({ at: res.updatedAt, sent });
-  };
-  const takeIn = async () => {
-    if (!loadSettings().syncSettings) return;
+  // theirsFirst: just turned on, so the other computers' settings win over this one's
+  const follow = async (theirsFirst = false) => {
+    let settings = loadSettings();
+    if (!settings.syncSettings) return;
     const { shared, latest } = await getSharedSettings();
     if (!shared) return;
-    if (!latest || latest.updatedAt <= syncState().at) return share();
-    const next = withShared(loadSettings(), latest.settings);
-    keepSyncState({ at: latest.updatedAt, sent: JSON.stringify(sharedPart(next)) });
-    persistSettings(next);
+    let { at, sent } = syncState();
+    if (latest && latest.updatedAt > at) {
+      // first, or this computer's old values of the other settings would go back under a newer date and undo them there
+      settings = takeInShared(settings, latest.settings, theirsFirst ? JSON.stringify(sharedPart(settings)) : sent);
+      at = latest.updatedAt;
+      sent = JSON.stringify(sharedPart(withShared(settings, latest.settings)));
+      keepSyncState({ at, sent });
+      persistSettings(settings);
+    }
+    const mine = JSON.stringify(sharedPart(settings));
+    if (mine === sent) return;
+    const res = await shareSettings(sharedPart(settings));
+    // never before the file just taken in, so one from a computer whose clock is ahead isn't taken in twice
+    if (res.updatedAt) keepSyncState({ at: res.updatedAt > at ? res.updatedAt : at, sent: mine });
   };
   let on = loadSettings().syncSettings;
   let turnedOn = false;
@@ -371,12 +392,12 @@ export function followSharedSettings() {
     on = loadSettings().syncSettings;
     window.clearTimeout(timer);
     timer = window.setTimeout(() => {
-      (turnedOn ? takeIn() : share()).catch(() => undefined);
+      follow(turnedOn).catch(() => undefined);
       turnedOn = false;
     }, 2000);
   });
-  window.addEventListener('focus', () => takeIn().catch(() => undefined));
-  takeIn().catch(() => undefined);
+  window.addEventListener('focus', () => follow().catch(() => undefined));
+  follow().catch(() => undefined);
 }
 
 /** Switches the web search provider: its own key comes back, the old one's is kept for it. */

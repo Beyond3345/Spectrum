@@ -1,6 +1,6 @@
 // Self-check for where model requests and keys go. Run (it imports React, so bundle it first):
 // npx esbuild apps/frontend/src/app/settings.check.ts --bundle --platform=node --log-level=warning | node
-import { DEFAULT_SETTINGS, llmConfigFor, presetForEndpoint, presetPatch, rolePatch, searchProviderPatch, sharedPart, withShared } from './settings';
+import { DEFAULT_SETTINGS, llmConfigFor, presetForEndpoint, presetPatch, rolePatch, searchProviderPatch, sharedPart, takeInShared, withShared } from './settings';
 import type { AppSettings } from './settings';
 import type { ProviderPreset } from '../api/client';
 
@@ -122,5 +122,13 @@ eq([merged.theme, merged.spellCheck, merged.editorFontSize], ['dark', false, 99]
 eq([merged.llmApiKey, merged.projectsDir, merged.glass, merged.syncSettings], ['sk-windows', theirs.projectsDir, false, false], 'this computer’s own stay');
 eq(withShared(theirs, { accent: 'neon' }).accent, 'system', 'shared values are checked like stored ones');
 eq(withShared(theirs, { syncHighlightSeconds: 60 }).syncHighlightSeconds, 10, 'and kept in range');
+
+// the Mac went dark since the PC last shared, then the PC changed its font size: both changes stay, and the PC's
+// old theme doesn't go back to the Mac
+const pcSent = JSON.stringify(sharedPart(at({ theme: 'light', editorFontSize: 13 })));
+const pcNow = at({ theme: 'light', editorFontSize: 15 });
+const both = takeInShared(pcNow, sharedPart(at({ theme: 'dark', editorFontSize: 13 })), pcSent);
+eq([both.theme, both.editorFontSize, both.llmApiKey], ['dark', 15, 'sk-openai'], 'a newer change from the other computer under one made here');
+eq(takeInShared(pcNow, { theme: 'dark' }, '').theme, 'light', 'never shared: this computer’s own stay');
 
 console.log('settings.check: ok');
