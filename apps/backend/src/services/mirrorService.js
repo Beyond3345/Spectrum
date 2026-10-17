@@ -63,6 +63,8 @@ const attention = (message) => ({ state: 'attention', message });
 
 const defaults = {
   rootOf: getProjectRoot,
+  // a deletion there reaches here only when a pass this long after the first that saw it still does
+  confirmMs: EVERY_MS / 2,
   // never through Finder, which on a volume without a Bin (a NAS) asks before deleting for good: macOS 15's trash
   // command fails there instead (not with the tests' stand-in for the Bin, which moveToBin uses)
   toBin: async (abs) => {
@@ -125,6 +127,7 @@ export function linkMirror(id, { location, rel, files = {} }) {
     await writeJsonAtomic(recordPath(id), { location, rel, files: base });
     statuses.delete(id);
     unreadFor.delete(id);
+    deletedThere.delete(id);
   });
 }
 
@@ -140,6 +143,7 @@ async function forget(id) {
   statuses.delete(id);
   unreadFor.delete(id);
   versionedAt.delete(id);
+  deletedThere.delete(id);
 }
 
 /** The mirrored project whose cloud copy p is in, and p's '/'-separated path in it; null outside them all. */
@@ -164,6 +168,8 @@ const statuses = new Map();
 const unreadFor = new Map();
 // when each project last had a "Before sync" version
 const versionedAt = new Map();
+// the deletions there a pass hasn't made here yet, by project: key → when a pass first saw it
+const deletedThere = new Map();
 
 /**
  * How the project's mirror is: { state: 'synced'|'syncing'|'waiting'|'attention'|'missing'|'not-found', message?, at? },
@@ -342,6 +348,15 @@ async function mirror(id, record, label, force) {
     items.push(it);
   }
 
+  // a copy a sync app is removing a file at a time (another computer's Stop syncing › Delete) still has its
+  // project.json for a moment: by a later pass it hasn't, and what went first isn't deleted here. ponytail: a sync app
+  // that keeps project.json longer than confirmMs mid-delete still lets the deletions before it through
+  const seen = deletedThere.get(id) || new Map();
+  const due = new Map(items.filter((it) => it.action === 'deleteLocal').map((it) => [it.key, seen.get(it.key) ?? Date.now()]));
+  deletedThere.set(id, due);
+  const deferred = items.filter((it) => it.action === 'deleteLocal' && Date.now() - due.get(it.key) < hooks.confirmMs);
+  for (const it of deferred) it.action = 'keep';
+
   // a pass that would delete a good part of a side is more likely a sync app halfway through than the user; of all its
   // files, and of the user's alone, which a long history would otherwise hide. Sync anyway lets through the deletions
   // the brake held back last, and only those: any others are counted again
@@ -405,7 +420,8 @@ async function mirror(id, record, label, force) {
   // brake: what Sync anyway is for, which nothing else needing attention is
   if (problems.length) return { ...attention(problems[0]), ...(brake && { brake: true, deleting: braked.map((it) => it.key) }) };
   // files not synced yet, either way: not in step, which Stop syncing › Delete needs
-  if (unread.size) return { state: 'syncing', message: `${unread.size} file${unread.size > 1 ? 's' : ''} not synced yet` };
+  const behind = unread.size + deferred.length;
+  if (behind) return { state: 'syncing', message: `${behind} file${behind > 1 ? 's' : ''} not synced yet` };
   return { state: 'synced', at: new Date().toISOString() };
 }
 

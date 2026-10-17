@@ -56,7 +56,9 @@ const binned = [];
 let binFails = false;
 // run as a file goes to the Bin, which a pass does before anything else: to change a file mid-pass
 let onBin = null;
-mirror.mirrorHooks({
+const hooks = {
+  // a deletion there comes across on the pass that sees it, but in the test of waiting for a second pass
+  confirmMs: 0,
   rootOf: async (id) => {
     const root = roots.get(id);
     if (!root) throw Object.assign(new Error('Project not found.'), { code: 'PROJECT_NOT_FOUND' });
@@ -69,7 +71,8 @@ mirror.mirrorHooks({
     await fs.rm(abs);
     await onBin?.();
   }
-});
+};
+mirror.mirrorHooks(hooks);
 
 const workers = [];
 after(async () => {
@@ -341,6 +344,38 @@ test('a side moved away whole while it’s walked is waited for, never taken for
     await fs.rename(away, p[side]);
     assert.deepEqual([tree(p.root), tree(p.cloud)], before, side);
     assert.ok(!binned.some((b) => b.abs.startsWith(p.root) || b.abs.startsWith(p.cloud)), side);
+  }
+});
+
+test('a cloud copy deleted on another computer, which goes a file at a time, deletes nothing here', async () => {
+  mirror.mirrorHooks({ ...hooks, confirmMs: 30_000 });
+  const { now } = Date;
+  try {
+    const p = await project('Deleted there', { 'main.tex': 'main\n', 'refs.bib': '@a\n', 'intro.tex': 'intro\n', 'figs/a.png': 'A', 'figs/b.png': 'B' });
+    await versions.createVersion(p.root);
+    synced(await syncTo(p));
+    const before = tree(p.root);
+    // the sync app removing it: the user's files first, .spectrum last
+    for (const rel of ['main.tex', 'refs.bib', 'intro.tex', 'figs/a.png', 'figs/b.png']) await fs.rm(path.join(p.cloud, rel));
+    assert.deepEqual(await mirror.syncProject(p.id), { state: 'syncing', message: '5 files not synced yet' });
+    await fs.rm(p.cloud, { recursive: true });
+    Date.now = () => now() + 31_000;
+    assert.deepEqual(await mirror.syncProject(p.id), { state: 'not-found', message: `Not in ${LABEL}` });
+    assert.deepEqual(tree(p.root), before);
+    assert.deepEqual(binned.filter((b) => b.abs.startsWith(p.root)), []);
+
+    // a file deleted there for real comes across on a pass that long after the first that saw it
+    const q = await project('Deleted there for real', { 'main.tex': 'main\n', 'old.tex': 'old\n' });
+    synced(await syncTo(q));
+    await fs.rm(path.join(q.cloud, 'old.tex'));
+    assert.deepEqual(await mirror.syncProject(q.id), { state: 'syncing', message: '1 file not synced yet' });
+    assert.deepEqual(userFiles(q.root), ['main.tex', 'old.tex']);
+    Date.now = () => now() + 62_000;
+    synced(await mirror.syncProject(q.id));
+    assert.deepEqual(userFiles(q.root), ['main.tex']);
+  } finally {
+    Date.now = now;
+    mirror.mirrorHooks(hooks);
   }
 });
 
@@ -783,7 +818,7 @@ function computer(name, root) {
   const worker = new Worker(
     `const { parentPort, workerData } = require('node:worker_threads');
     import(workerData.url).then((m) => {
-      m.mirrorHooks({ rootOf: async () => workerData.root, toBin: async () => { throw new Error('No Bin.'); } });
+      m.mirrorHooks({ confirmMs: 0, rootOf: async () => workerData.root, toBin: async () => { throw new Error('No Bin.'); } });
       parentPort.on('message', async ([fn, args]) => parentPort.postMessage(await m[fn](...args)));
       parentPort.postMessage('ready');
     });`,
