@@ -30,6 +30,7 @@ import {
   unregister,
   updateMeta
 } from '../services/projectService.js';
+import { afterSave } from '../services/mirrorService.js';
 import { projectStats } from '../services/statsService.js';
 import { knownMachineNames } from '../services/presenceService.js';
 import { conflictCopies } from '../utils/conflictCopies.js';
@@ -90,6 +91,11 @@ async function isDocument(root, relPath) {
 }
 
 export async function moveToBin(folder) {
+  // the tests' stand-in for the Bin, so they never fill the user's
+  if (process.env.SPECTRUM_TEST_BIN_DIR) {
+    await ensureDir(process.env.SPECTRUM_TEST_BIN_DIR);
+    return renameOver(folder, path.join(process.env.SPECTRUM_TEST_BIN_DIR, `${crypto.randomUUID()} ${path.basename(folder)}`));
+  }
   if (process.platform === 'win32') {
     // The path goes in through the environment, so nothing in it is read as PowerShell. A drive
     // without a Recycle Bin (network, USB) would delete the folder for good, so those are refused.
@@ -131,7 +137,7 @@ export function registerProjectRoutes(fastify) {
     done();
   });
 
-  // ?scan=1: look in the synced folders now (the window came to the front), not after the usual 30 s
+  // ?scan=1: look in the cloud locations now (the window came to the front), not after the usual 30 s
   fastify.get('/api/projects', async (req) => projectsPage({ scan: req.query?.scan === '1' }));
 
   fastify.post('/api/projects', async (req) => {
@@ -512,6 +518,7 @@ export function registerProjectRoutes(fastify) {
       throw err;
     }
     await touchProject(root).catch(() => {});
+    afterSave(req.params.id);
     return { ok: true, hash: sha256(content ?? '') };
   });
 

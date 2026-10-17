@@ -20,9 +20,11 @@ import { registerSystemRoutes } from './routes/system.js';
 import { registerReferenceRoutes } from './routes/references.js';
 import { registerLanguageRoutes } from './routes/language.js';
 import { registerSyncRoutes } from './routes/sync.js';
+import { registerCloudRoutes } from './routes/cloud.js';
 import { registerPresenceRoutes } from './routes/presence.js';
 import { seedTemplates, syncTemplates } from './services/templateService.js';
 import { dropOldAuxFolders, migrateLegacyProjects } from './services/projectService.js';
+import { startMirroring, stopMirroring } from './services/mirrorService.js';
 import { killAllChildren } from './services/compileService.js';
 import { offlineMessage } from './services/syncService.js';
 import { isLocalRequest } from './utils/authUtils.js';
@@ -80,6 +82,7 @@ registerSystemRoutes(fastify);
 registerReferenceRoutes(fastify);
 registerLanguageRoutes(fastify);
 registerSyncRoutes(fastify);
+registerCloudRoutes(fastify);
 registerPresenceRoutes(fastify);
 
 // Serve the built frontend (production and desktop modes)
@@ -107,6 +110,8 @@ await seedTemplates();
 syncTemplates().catch((err) => fastify.log.error(err));
 await migrateLegacyProjects();
 await dropOldAuxFolders();
+// mirrored projects: a pass for each now, then every minute
+startMirroring();
 
 // Stop compiles and plots (they run in their own process groups, so nothing else would), let
 // in-flight requests such as a file save finish for up to 2 s, then exit.
@@ -114,6 +119,7 @@ let quitting = false;
 async function quit() {
   if (quitting) return;
   quitting = true;
+  stopMirroring();
   killAllChildren();
   await Promise.race([fastify.close(), new Promise((resolve) => setTimeout(resolve, 2000))]);
   killAllChildren(); // a compile's next pass may have started meanwhile

@@ -39,6 +39,8 @@ async function discardTarget(job) {
   job.discarded = true;
   try {
     const root = await getProjectRoot(id);
+    // moved since (Sync to): not this job's own folder any more
+    if (root !== job.root) return;
     await unregister(id);
     await fs.rm(root, { recursive: true, force: true });
   } catch {
@@ -46,8 +48,17 @@ async function discardTarget(job) {
   }
 }
 
-// In-memory job store: jobId → { graph, state, status, progressLog }
+// In-memory job store: jobId → { graph, state, status, progressLog, projectId, root }, projectId the new project's and
+// root its folder when the job began
 const jobs = new Map();
+const FINISHED = new Set(['success', 'failed', 'error']);
+
+/**
+ * A transfer from or into the project hasn't finished: its steps keep the folder's path, so it mustn't move.
+ * ponytail: one left waiting (its panel closed) counts until Spectrum restarts; time jobs out if that bites
+ */
+export const transferring = (projectId) =>
+  [...jobs.values()].some((job) => !FINISHED.has(job.status) && (job.projectId === projectId || job.state?.sourceProjectId === projectId));
 
 export function registerTransferRoutes(fastify) {
 
@@ -114,6 +125,8 @@ export function registerTransferRoutes(fastify) {
       progressLog: [],
       hasStarted: false,
       iterator: null,
+      projectId: newProjectId,
+      root: await getProjectRoot(newProjectId),
     });
 
     return { jobId, newProjectId };
@@ -287,6 +300,8 @@ export function registerTransferRoutes(fastify) {
       progressLog: [],
       hasStarted: false,
       iterator: null,
+      projectId: newProjectId,
+      root: await getProjectRoot(newProjectId),
     });
 
     return { jobId, newProjectId };
