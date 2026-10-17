@@ -6,13 +6,14 @@ import { promisify } from 'util';
 import * as tar from 'tar';
 import crypto from 'crypto';
 import { gunzipSync } from 'zlib';
-import { ensureDir, copyDir, extractZip, listFilesRecursive, renameOver, skipInArchive, writeFileAtomic } from '../utils/fsUtils.js';
+import { HIDDEN_ENTRIES, ensureDir, copyDir, extractZip, listFilesRecursive, renameOver, skipInArchive, writeFileAtomic } from '../utils/fsUtils.js';
 import { safeJoin, safeJoinLink, sanitizeUploadPath } from '../utils/pathUtils.js';
 import { extractDocumentBody, isDocumentFile, mergeTemplateBody, withoutComments } from '../utils/texUtils.js';
 import { readTemplateManifest, copyTemplateIntoProject, templatePath } from '../services/templateService.js';
 import {
   APP_DIR,
   appPath,
+  cachePath,
   createProject,
   getProject,
   getProjectRoot,
@@ -24,6 +25,7 @@ import {
   relocateProject,
   renameProject,
   siblingParent,
+  thumbnailFile,
   touchProject,
   unregister,
   updateMeta
@@ -34,6 +36,10 @@ import { downloadArxivSource, extractArxivId } from '../services/arxivService.js
 const execFileAsync = promisify(execFile);
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const MAX_THUMBNAIL_BYTES = 2 * 1024 * 1024;
+// what the editor knows a file's text by, to tell whether it changed on disk since it loaded or saved it
+const sha256 = (data) => crypto.createHash('sha256').update(data).digest('hex');
+// a change to anything else (app data, VCS internals, Finder litter, the app's own save and upload temp files) is no news to the editor
+const watched = (rel) => !/\.(tmp|upload)$/i.test(rel) && !rel.split('/').some((part) => HIDDEN_ENTRIES.has(part) || part.toLowerCase() === APP_DIR);
 
 /**
  * A path inside the project the user may change: not the folder itself, not app data
@@ -312,7 +318,7 @@ export function registerProjectRoutes(fastify) {
     const root = await getProjectRoot(req.params.id);
     let png;
     try {
-      png = await fs.readFile(appPath(root, 'thumbnail.png'));
+      png = await fs.readFile(await thumbnailFile(root));
     } catch {
       return reply.code(404).send({ ok: false, error: 'No thumbnail yet.' });
     }
@@ -325,7 +331,8 @@ export function registerProjectRoutes(fastify) {
     if (png.length > MAX_THUMBNAIL_BYTES || !png.subarray(0, 8).equals(PNG_MAGIC)) {
       return reply.code(400).send({ ok: false, error: 'The thumbnail must be a PNG image under 2 MB.' });
     }
-    await writeFileAtomic(appPath(root, 'thumbnail.png'), png);
+    // ponytail: the one 1.7.0 kept in .spectrum stays there, stale, for it to show if the user goes back to it
+    await writeFileAtomic(await cachePath(root, 'thumbnail.png'), png);
     return { ok: true };
   });
 
@@ -336,8 +343,10 @@ export function registerProjectRoutes(fastify) {
   });
 
   // Tells the open editor when files appear, go or are renamed outside the app (Finder, another editor, a git
-  // pull), so its file list follows. After each burst of events it lists the folder again and says so only when
-  // the list changed: edits to a file, the app's own saves and compiles (in .spectrum) don't count.
+  // pull, a sync client bringing another computer's work), so its file list follows, and which files changed, so
+  // it can load them again. After each burst of events it sends the paths that changed (all, when the system
+  // didn't say which), and lists the folder again to send tree only when the list changed. The app's own saves
+  // count as changes too: the editor tells them apart by the text's hash. Its data in .spectrum doesn't count.
   fastify.get('/api/projects/:id/events', async (req, reply) => {
     const root = await getProjectRoot(req.params.id);
     const listing = async () => (await listFilesRecursive(root).catch(() => [])).map((i) => `${i.type} ${i.path}`).join('\n');
@@ -349,17 +358,26 @@ export function registerProjectRoutes(fastify) {
     // sends the headers now rather than with the first event
     reply.raw.write(': watching\n\n');
     let timer = null;
+    // '' when the system didn't say which file changed
+    let changed = new Set();
     const check = async () => {
       timer = null;
+      const paths = [...changed];
+      changed = new Set();
       const now = await listing();
-      if (now === last || reply.raw.writableEnded) return;
+      if (reply.raw.writableEnded) return;
+      reply.raw.write(`event: changed\ndata: ${JSON.stringify(paths.includes('') ? { all: true } : { paths })}\n\n`);
+      if (now === last) return;
       last = now;
       reply.raw.write('event: tree\ndata: {}\n\n');
     };
     let watcher;
     try {
-      // recursive: FSEvents on macOS, ReadDirectoryChangesW on Windows
-      watcher = watch(root, { recursive: true }, () => {
+      // recursive: FSEvents on macOS, ReadDirectoryChangesW on Windows; names come relative to root
+      watcher = watch(root, { recursive: true }, (type, name) => {
+        const rel = name ? String(name).split(path.sep).join('/') : '';
+        if (rel && !watched(rel)) return;
+        changed.add(rel);
         timer ??= setTimeout(check, 300);
       });
     } catch {
@@ -401,12 +419,14 @@ export function registerProjectRoutes(fastify) {
     return { ok: true };
   });
 
+  // hash: what a save gives as its base. base: the hash of the text the editor has, which then isn't sent again when it's unchanged
   fastify.get('/api/projects/:id/file', async (req) => {
-    const { path: filePath } = req.query;
+    const { path: filePath, base } = req.query;
     if (!filePath) return { content: '' };
     const root = await getProjectRoot(req.params.id);
-    const content = await fs.readFile(safeJoin(root, filePath), 'utf8');
-    return { content };
+    const data = await fs.readFile(safeJoin(root, filePath));
+    const hash = sha256(data);
+    return base === hash ? { hash } : { content: data.toString('utf8'), hash };
   });
 
   fastify.get('/api/projects/:id/blob', async (req, reply) => {
@@ -454,12 +474,27 @@ export function registerProjectRoutes(fastify) {
     return { ok: true, files: saved };
   });
 
-  fastify.put('/api/projects/:id/file', async (req) => {
-    // create: true makes a new file only, never replacing one (APFS also matches other letter cases)
-    const { path: filePath, content, create } = req.body || {};
+  fastify.put('/api/projects/:id/file', async (req, reply) => {
+    // create: true makes a new file only, never replacing one (APFS also matches other letter cases).
+    // base: the hash of the text the editor last loaded or saved. A file changed since (on another computer, through a
+    // sync client) isn't written over, and the answer carries its text; one deleted since isn't made again.
+    const { path: filePath, content, create, base } = req.body || {};
     if (!filePath) return { ok: false };
     const root = await getProjectRoot(req.params.id);
     const abs = editablePath(root, filePath);
+    if (base && !create) {
+      // ponytail: a change landing in the milliseconds between this check and the write is still written over
+      const disk = await fs.readFile(abs).catch((err) => {
+        if (err.code === 'ENOENT') return null;
+        throw err;
+      });
+      const name = path.basename(abs);
+      if (!disk) return reply.code(409).send({ ok: false, code: 'DELETED_ON_DISK', error: `${name} was deleted on disk.` });
+      const hash = sha256(disk);
+      if (hash !== base) {
+        return reply.code(409).send({ ok: false, code: 'CHANGED_ON_DISK', error: `${name} was changed on another computer.`, content: disk.toString('utf8'), hash });
+      }
+    }
     await ensureDir(path.dirname(abs));
     try {
       if (create) await fs.writeFile(abs, content ?? '', { encoding: 'utf8', flag: 'wx' });
@@ -471,7 +506,7 @@ export function registerProjectRoutes(fastify) {
       throw err;
     }
     await touchProject(root).catch(() => {});
-    return { ok: true };
+    return { ok: true, hash: sha256(content ?? '') };
   });
 
   fastify.post('/api/projects/:id/convert-template', async (req) => {

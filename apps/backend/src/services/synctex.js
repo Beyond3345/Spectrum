@@ -8,7 +8,7 @@ import { gunzip } from 'zlib';
 import { promisify } from 'util';
 import { readJson, renameOver, writeJsonAtomic } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
-import { APP_DIR, appPath } from './projectService.js';
+import { APP_DIR, appPath, cachePath } from './projectService.js';
 
 const gunzipAsync = promisify(gunzip);
 const NOT_YET = 'Compile the project first to jump between the source and the PDF.';
@@ -20,13 +20,18 @@ const RECORD = /^([[(hvxkg$r])(\d+),(-?\d+)(?:,(-?\d+))?:(-?\d+),(-?\d+|=)(?::(-
 // ─── Each document's SyncTeX file ───
 
 // One per document (project-relative), for the PDF its last compile made, e.g.
-// .spectrum/synctex/chapters/thesis.tex.gz. Where TeX ran, to read the inputs it names
+// <cache>/synctex/chapters/thesis.tex.gz. Where TeX ran, to read the inputs it names
 // relative to that folder, goes beside it in thesis.tex.json.
-const stored = (root, doc) => ({ file: appPath(root, 'synctex', `${doc}.gz`), meta: appPath(root, 'synctex', `${doc}.json`) });
+// ponytail: 1.7.0 kept them in .spectrum/synctex, which is left in place for it to go on reading if the user goes
+// back to it (stale until its first compile there); remove it once that's moot
+const stored = async (root, doc) => {
+  const dir = await cachePath(root, 'synctex');
+  return { file: path.join(dir, `${doc}.gz`), meta: path.join(dir, `${doc}.json`) };
+};
 
 /** Keep the SyncTeX file a compile of `doc` just built (`built` in its build folder, TeX run in `cwd`). */
 export async function keepSynctex(root, doc, built, cwd) {
-  const { file, meta } = stored(root, doc);
+  const { file, meta } = await stored(root, doc);
   await writeJsonAtomic(meta, { root, cwd });
   // an engine that wrote none leaves nothing to keep
   await renameOver(built, file).catch(() => dropSynctex(root, doc));
@@ -36,13 +41,13 @@ export async function keepSynctex(root, doc, built, cwd) {
 
 /** Forget it, so a jump never lands in a PDF it didn't describe. */
 async function dropSynctex(root, doc) {
-  const { file, meta } = stored(root, doc);
+  const { file, meta } = await stored(root, doc);
   await fs.rm(file, { force: true });
   await fs.rm(meta, { force: true });
 }
 
 async function load(root, doc) {
-  const { file, meta } = stored(root, projectRelative(root, doc));
+  const { file, meta } = await stored(root, projectRelative(root, doc));
   try {
     return { data: await readSynctex(file), where: await readJson(meta) };
   } catch (err) {

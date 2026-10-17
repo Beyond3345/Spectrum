@@ -133,8 +133,30 @@ export function updateMeta(root, fn) {
   });
 }
 
-export function touchProject(root) {
-  return updateMeta(root, (meta) => ({ ...meta, updatedAt: new Date().toISOString() }));
+// a project.json rewritten on every autosave keeps a sync client busy and splits into conflict copies when two
+// computers have the project open, so Modified moves on at most every 10 minutes
+const TOUCH_EVERY_MS = 10 * 60 * 1000;
+
+export async function touchProject(root) {
+  if (Date.now() - Date.parse((await readMeta(root)).updatedAt) < TOUCH_EVERY_MS) return;
+  await updateMeta(root, (meta) => ({ ...meta, updatedAt: new Date().toISOString() }));
+}
+
+/** Rewrites project.json only when next differs from what it holds (meta, as read), so opening a synced project leaves it alone. */
+async function writeMetaIfChanged(root, meta, next) {
+  if (JSON.stringify(meta) !== JSON.stringify(next)) await metaLock(() => writeJsonAtomic(metaPath(root), next));
+}
+
+/**
+ * This computer's own files for a project, kept out of its folder so a sync client never copies them: SyncTeX
+ * (it holds absolute paths), the .aux files other documents' \externaldocument read, and the thumbnail.
+ * By the id in the folder, so they follow it when it moves.
+ * ponytail: a project removed from the list leaves its cache behind; clear it in unregister if that adds up
+ */
+export async function cachePath(root, ...parts) {
+  const { id } = await readMetaId(root);
+  if (!id) throw httpError('Project not found.', 404, 'PROJECT_NOT_FOUND');
+  return path.join(DATA_DIR, 'cache', id, ...parts);
 }
 
 async function describe(entry) {
@@ -145,7 +167,7 @@ async function describe(entry) {
     // folder moved or deleted outside the app
   }
   const base = meta || { name: entry.name, createdAt: entry.addedAt, updatedAt: entry.addedAt, tags: entry.tags || [], archived: !!entry.archived };
-  const thumb = meta && (await fs.stat(appPath(entry.path, 'thumbnail.png')).catch(() => null));
+  const thumb = meta && (await thumbnailStat(entry.path));
   const project = {
     id: entry.id,
     name: base.name,
@@ -162,6 +184,19 @@ async function describe(entry) {
   if (base.mainFile) project.mainFile = base.mainFile;
   if (base.templateDraft) project.templateDraft = base.templateDraft;
   return project;
+}
+
+/** The thumbnail's file: this computer's, or the one 1.7.0 and earlier kept in the folder. */
+export async function thumbnailFile(root) {
+  for (const file of [await cachePath(root, 'thumbnail.png'), appPath(root, 'thumbnail.png')]) {
+    if (await exists(file)) return file;
+  }
+  return null;
+}
+
+async function thumbnailStat(root) {
+  const file = await thumbnailFile(root).catch(() => null);
+  return file && fs.stat(file).catch(() => null);
 }
 
 export async function listProjects() {
@@ -188,9 +223,9 @@ export function sanitiseFolderName(name) {
     .trim()
     .replace(/^\.+/, '')
     .trim();
-  let short = Array.from(clean).slice(0, 100).join('').trim();
-  // Windows drops a trailing dot or space, and CON, AUX and the like are devices, which TeX and Explorer can't open
-  if (process.platform === 'win32') short = short.replace(/[. ]+$/, '').replace(/^(con|prn|aux|nul|com\d|lpt\d)(?=\.|$)/i, '$1_');
+  // Windows drops a trailing dot or space, and CON, AUX and the like are devices, which TeX and Explorer can't open;
+  // on macOS too, so a folder made here still syncs to and opens on a Windows computer
+  const short = Array.from(clean).slice(0, 100).join('').trim().replace(/[. ]+$/, '').replace(/^(con|prn|aux|nul|com\d|lpt\d)(?=\.|$)/i, '$1_');
   return short || 'Untitled';
 }
 
@@ -320,7 +355,7 @@ export async function openFolder(input) {
   // a copy of a template draft's folder is a project like any other
   const next = normaliseMeta({ ...(meta || {}), templateDraft: undefined, id, name: (meta?.id === id && meta.name) || path.basename(root) });
   next.mainFile ||= await detectMainFile(root);
-  await metaLock(() => writeJsonAtomic(metaPath(root), next));
+  await writeMetaIfChanged(root, meta, next);
   await register(id, root, next);
   return getProject(id);
 }
@@ -401,7 +436,7 @@ export async function relocateProject(id, input) {
   await refuseNested(root, projects.filter((p) => p.id !== id));
   const own = folderId === id ? meta : null;
   const next = normaliseMeta({ ...(own || { createdAt: entry.addedAt }), id, name: own?.name || entry.name });
-  await metaLock(() => writeJsonAtomic(metaPath(root), next));
+  await writeMetaIfChanged(root, meta, next);
   await register(id, root, next);
   return getProject(id);
 }

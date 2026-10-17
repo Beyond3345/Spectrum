@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import os from 'os';
 import path from 'path';
 import { promises as fs, constants as fsConstants } from 'fs';
 import { spawn } from 'child_process';
@@ -6,7 +7,7 @@ import { AsyncLocalStorage } from 'async_hooks';
 import { ensureDir, listFilesRecursive, renameOver } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { withoutComments } from '../utils/texUtils.js';
-import { getProjectRoot, appPath } from './projectService.js';
+import { cachePath, getProjectRoot } from './projectService.js';
 import { keepSynctex } from './synctex.js';
 
 const ENGINES = ['pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic'];
@@ -25,10 +26,12 @@ const NEEDS_UNICODE_ENGINE = /fontspec Error|unicode-math Error|requires either 
 // optional *, [options], then {name}
 const EXTERNAL_DOCUMENT = /\\(?:z?externaldocument|externalcitedocument)\*?\s*(?:\[[^\]]*\]\s*)*\{([^}]+)\}/g;
 
-// Each document's .aux from its last good compile, e.g. .spectrum/aux/chapters/thesis.tex/thesis.aux,
+// Each document's .aux from its last good compile, e.g. <cache>/aux-files/chapters/thesis.tex/thesis.aux,
 // for other documents' \externaldocument to read.
-// not .spectrum/aux: AUX is a device name on Windows, which Explorer and OneDrive can't handle as a folder
-const auxStore = (root, doc) => appPath(root, 'aux-files', doc);
+// not aux: AUX is a device name on Windows, which Explorer and OneDrive can't handle as a folder
+// ponytail: 1.7.0 kept them in .spectrum/aux-files, which is left in place for it to go on reading if the user
+// goes back to it (stale, so its first compile there redoes linked documents); remove it once that's moot
+const auxStore = (cache, doc) => path.join(cache, 'aux-files', doc);
 // TeX reads '\' as a command, and every engine on Windows takes '/' as well
 const slashed = (p) => p.split(path.sep).join('/');
 const docPath = (root, abs) => slashed(path.relative(root, abs));
@@ -279,19 +282,21 @@ async function staleLinks(projectRoot, absMain) {
     // ponytail: only the target's own .tex mtime counts, so edits only in its \input files don't
     // make it stale; compare its inputs too (inlineInputs walks them) if that bites
     const base = path.basename(target, path.extname(target));
-    const aux = await fs.stat(path.join(auxStore(projectRoot, docPath(projectRoot, target)), `${base}.aux`)).catch(() => null);
+    const aux = await fs.stat(path.join(auxStore(await cachePath(projectRoot), docPath(projectRoot, target)), `${base}.aux`)).catch(() => null);
     if (!aux || source.mtimeMs > aux.mtimeMs) stale.push(target);
   }
   return stale;
 }
 
 /**
- * Build in .spectrum/build/<runId> (removed afterwards) and put the PDF next to the
- * main file, e.g. chapters/thesis.tex -> chapters/thesis.pdf. Its .aux files are kept too.
+ * Build in the temp folder's spectrum-build/<runId> (removed afterwards) and put the PDF next to the
+ * main file, e.g. chapters/thesis.tex -> chapters/thesis.pdf, the only file a compile writes in the project:
+ * a sync client would copy anything else to the other computer. Its .aux files and SyncTeX are kept in the cache.
  */
 async function compileWith(engine, projectRoot, absMain, mainFile) {
-  const buildRoot = appPath(projectRoot, 'build');
+  const buildRoot = path.join(os.tmpdir(), 'spectrum-build');
   const outDir = path.join(buildRoot, crypto.randomUUID());
+  const cache = await cachePath(projectRoot);
   await ensureDir(outDir);
   // Like TeXShop, LaTeX Workshop and Tectonic, run from the main file's folder so
   // \input paths are relative to the main file. The project root stays on the search
@@ -322,7 +327,7 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
     // ponytail: a document in a parent folder (\externaldocument{../notes}) isn't reached; a per-run TEXINPUTS folder would reach it
     const at = path.relative(mainDir, path.join(projectRoot, path.dirname(item.path)));
     if (at.startsWith('..')) continue;
-    const store = auxStore(projectRoot, item.path);
+    const store = auxStore(cache, item.path);
     for (const aux of await listFilesRecursive(store).catch(() => [])) {
       if (aux.type !== 'file') continue;
       const rel = slashed(path.join(at, aux.path)); // as keepAux lists it
@@ -430,7 +435,7 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
       log += `\n[spectrum warning] ${path.basename(absPdf)} is open in another program, so the copy next to the source wasn’t updated.\n`;
     });
     await keepSynctex(projectRoot, doc, path.join(outDir, `${base}.synctex.gz`), mainDir);
-    await keepAux(outDir, auxStore(projectRoot, doc), others);
+    await keepAux(outDir, auxStore(cache, doc), others);
   } finally {
     await cleanBuild(buildRoot, outDir);
   }

@@ -38,12 +38,25 @@ export async function writeFileAtomic(filePath, data) {
 /**
  * fs.rename, retried for a few seconds on Windows: it refuses while anyone holds the file open,
  * which a virus scanner, the search indexer or a sync client does for a moment after each write.
+ * Across drives (a build in the temp folder, the app's data on another disk) it copies beside the
+ * target and renames that over it, so readers still never see half a file.
  */
 export async function renameOver(from, to) {
   for (let wait = 50; ; wait *= 2) {
     try {
       return await fs.rename(from, to);
     } catch (err) {
+      if (err.code === 'EXDEV') {
+        const tmp = `${to}.${crypto.randomUUID()}.tmp`;
+        try {
+          await fs.cp(from, tmp, { recursive: true });
+          await renameOver(tmp, to);
+        } catch (copyErr) {
+          await fs.rm(tmp, { recursive: true, force: true });
+          throw copyErr;
+        }
+        return fs.rm(from, { recursive: true, force: true });
+      }
       if (process.platform !== 'win32' || wait > 1600 || !['EPERM', 'EACCES', 'EBUSY'].includes(err.code)) throw err;
       await new Promise((resolve) => setTimeout(resolve, wait));
     }

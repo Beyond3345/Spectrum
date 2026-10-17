@@ -202,6 +202,9 @@ test('creates projects in the chosen folder with safe, unique folder names', asy
   assert.equal(b.path, path.join(parent, 'Draft v1final 2'));
   const c = await newProject('..');
   assert.equal(c.path, path.join(projectsDir, 'Untitled'));
+  // names Windows refuses or changes, on macOS too, so the folder still opens on a Windows computer it syncs to
+  assert.equal((await newProject('Notes. ', { parentDir: parent })).path, path.join(parent, 'Notes'));
+  assert.equal((await newProject('aux', { parentDir: parent })).path, path.join(parent, 'aux_'));
 
   assert.equal((await api('/api/projects', { method: 'POST', body: { name: 'x', template: '../..' } })).status, 400);
   assert.equal((await api('/api/projects', { method: 'POST', body: { name: 'x', parentDir: 'relative/dir' } })).status, 400);
@@ -405,7 +408,7 @@ test('renames, tags, archives, sets the main file and duplicates', async () => {
   assert.deepEqual((await api(`/api/projects/${copy.id}/versions`)).json.versions, []);
 });
 
-test('compiles next to the main file and cleans the build folder', async (t) => {
+test('compiles next to the main file and writes nothing else into the project', async (t) => {
   const check = (await api('/api/system/check')).json;
   assert.equal(check.projectsDir, projectsDir);
   assert.ok('texcount' in check.tools);
@@ -418,8 +421,9 @@ test('compiles next to the main file and cleans the build folder', async (t) => 
   assert.equal(res.pdfPath, 'main.pdf');
   assert.equal(Buffer.from(res.pdf, 'base64').subarray(0, 4).toString(), '%PDF');
   assert.equal((await fs.readFile(path.join(p.path, 'main.pdf'))).subarray(0, 4).toString(), '%PDF');
-  const build = path.join(p.path, '.spectrum', 'build');
-  assert.ok(!existsSync(build) || (await fs.readdir(build)).length === 0);
+  // the build, SyncTeX and .aux stay out of a folder a sync client copies to the other computer
+  assert.deepEqual((await fs.readdir(p.path, { recursive: true })).sort(), ['.spectrum', path.join('.spectrum', 'project.json'), 'main.pdf', 'main.tex']);
+  assert.ok(existsSync(path.join(dataDir, 'cache', p.id, 'aux-files', 'main.tex', 'main.aux')));
 
   // the compiled PDF isn't part of version history
   const version = (await api(`/api/projects/${p.id}/versions`, { method: 'POST', body: {} })).json.version;
@@ -490,6 +494,13 @@ test('stores and serves the thumbnail', async () => {
   assert.equal(listed.hasThumbnail, true);
   assert.equal(typeof listed.thumbnailAt, 'number'); // the frontend's cache-buster
   assert.equal((await api(`/api/projects/${p.id}/thumbnail`, { method: 'PUT', body: { png: Buffer.from('nope').toString('base64') } })).status, 400);
+  assert.ok(!existsSync(path.join(p.path, '.spectrum', 'thumbnail.png')));
+
+  // the one 1.7.0 kept in the folder shows until there's a new one
+  const old = await newProject('Thumb from 1.7.0');
+  await fs.writeFile(path.join(old.path, '.spectrum', 'thumbnail.png'), Buffer.from(png, 'base64'));
+  assert.equal((await api('/api/projects')).json.projects.find((x) => x.id === old.id).hasThumbnail, true);
+  assert.equal((await api(`/api/projects/${old.id}/thumbnail`)).status, 200);
 });
 
 test('counts words', async () => {
@@ -842,7 +853,7 @@ test('a compile that runs too long stops everything it started', async () => {
   assert.ok(Date.now() - stopping < 5000, 'stopped promptly');
 });
 
-test('the editor hears when files appear or go outside the app, and not when one is only edited', async () => {
+test('the editor hears when files appear or go outside the app, and which ones changed', async () => {
   const p = await newProject('Watched');
   await writeFile(p.id, 'main.tex', 'x');
   const stream = await fetch(`${base}/api/projects/${p.id}/events`);
@@ -858,14 +869,101 @@ test('the editor hears when files appear or go outside the app, and not when one
   await fs.appendFile(path.join(p.path, 'main.tex'), 'more');
   await writeFile(p.id, 'main.tex', 'saved');
   await fs.mkdir(path.join(p.path, '.spectrum', 'build', 'run'), { recursive: true });
+  // a temp file of another app's atomic save, there for a moment
+  await fs.writeFile(path.join(p.path, 'notes.tex.123.tmp'), '');
+  await fs.rm(path.join(p.path, 'notes.tex.123.tmp'));
   await listen(1500);
   assert.doesNotMatch(heard, /event: tree/);
+  // the edit and the save are said, by name; app data and temp files aren't
+  const changed = [...heard.matchAll(/event: changed\ndata: (.*)\n/g)].flatMap(([, data]) => JSON.parse(data).paths ?? ['(all)']);
+  assert.ok(changed.length > 0 && changed.every((p) => p === 'main.tex'), JSON.stringify(changed));
   // a file put in the folder by another app does
   await fs.writeFile(path.join(p.path, 'appendix.tex'), '\\section{Appendix}');
   await listen(5000);
   assert.match(heard, /event: tree/);
   await reader.cancel();
   await reading.catch(() => {});
+});
+
+test('a save from text that changed or went on disk since is refused, with what is there now', async () => {
+  const p = await newProject('Synced');
+  const put = (body) => api(`/api/projects/${p.id}/file`, { method: 'PUT', body: { path: 'main.tex', ...body } });
+  const first = await put({ content: 'one' });
+  const loaded = (await api(`/api/projects/${p.id}/file?path=main.tex`)).json;
+  assert.deepEqual(loaded, { content: 'one', hash: first.json.hash });
+  // a reload of text the editor already has sends only the hash
+  assert.deepEqual((await api(`/api/projects/${p.id}/file?path=main.tex&base=${loaded.hash}`)).json, { hash: loaded.hash });
+  const saved = await put({ content: 'two', base: loaded.hash });
+  assert.equal(saved.status, 200);
+  assert.notEqual(saved.json.hash, loaded.hash);
+
+  // another computer's edit, brought by the sync client
+  await fs.writeFile(path.join(p.path, 'main.tex'), 'theirs');
+  const stale = await put({ content: 'mine', base: saved.json.hash });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.json.code, 'CHANGED_ON_DISK');
+  assert.equal(stale.json.content, 'theirs');
+  assert.equal(stale.json.error, 'main.tex was changed on another computer.');
+  assert.equal(await readFile(p.id, 'main.tex'), 'theirs');
+  // Keep mine: a save from their text goes through
+  assert.equal((await put({ content: 'mine', base: stale.json.hash })).status, 200);
+  assert.equal(await readFile(p.id, 'main.tex'), 'mine');
+
+  // deleted on the other computer: a save from the old text doesn't make it again, nor its folder
+  const nested = await api(`/api/projects/${p.id}/file`, { method: 'PUT', body: { path: 'chapters/one.tex', content: 'x' } });
+  await fs.rm(path.join(p.path, 'chapters'), { recursive: true });
+  const gone = await api(`/api/projects/${p.id}/file`, { method: 'PUT', body: { path: 'chapters/one.tex', content: 'y', base: nested.json.hash } });
+  assert.equal(gone.status, 409);
+  assert.equal(gone.json.code, 'DELETED_ON_DISK');
+  assert.ok(!existsSync(path.join(p.path, 'chapters')));
+  // Restore saves it without a base
+  assert.equal((await api(`/api/projects/${p.id}/file`, { method: 'PUT', body: { path: 'chapters/one.tex', content: 'y' } })).status, 200);
+  assert.equal(await readFile(p.id, 'chapters/one.tex'), 'y');
+});
+
+test('saves and opening the folder again leave project.json alone, which a sync client would otherwise copy each time', async () => {
+  const p = await newProject('Quiet');
+  const meta = path.join(p.path, '.spectrum', 'project.json');
+  const before = { text: await fs.readFile(meta, 'utf8'), mtime: (await fs.stat(meta)).mtimeMs };
+  await new Promise((r) => setTimeout(r, 20));
+  await writeFile(p.id, 'main.tex', 'one');
+  await writeFile(p.id, 'main.tex', 'two');
+  assert.equal((await api('/api/projects/open-folder', { method: 'POST', body: { path: p.path } })).status, 200);
+  assert.deepEqual({ text: await fs.readFile(meta, 'utf8'), mtime: (await fs.stat(meta)).mtimeMs }, before);
+  // Modified still moves on once it's 10 minutes old
+  const old = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+  await fs.writeFile(meta, JSON.stringify({ ...JSON.parse(before.text), updatedAt: old }));
+  await writeFile(p.id, 'main.tex', 'three');
+  assert.ok(JSON.parse(await fs.readFile(meta, 'utf8')).updatedAt > old);
+});
+
+test('a rename across drives copies beside the target, then renames it over', async () => {
+  const { renameOver } = await import('../src/utils/fsUtils.js');
+  const dir = path.join(tmp, 'exdev');
+  await fs.mkdir(path.join(dir, 'from-dir'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'from.txt'), 'new');
+  await fs.writeFile(path.join(dir, 'to.txt'), 'old');
+  await fs.writeFile(path.join(dir, 'from-dir', 'a.aux'), 'aux');
+  const { rename } = fs;
+  // the first rename of each move fails as one from another drive does; the copy's rename beside the target works
+  let refused = 0;
+  fs.rename = async (from, to) => {
+    if (!from.endsWith('.tmp')) {
+      refused += 1;
+      throw Object.assign(new Error('cross-device link not permitted'), { code: 'EXDEV' });
+    }
+    return rename(from, to);
+  };
+  try {
+    await renameOver(path.join(dir, 'from.txt'), path.join(dir, 'to.txt'));
+    await renameOver(path.join(dir, 'from-dir'), path.join(dir, 'to-dir'));
+  } finally {
+    fs.rename = rename;
+  }
+  assert.equal(refused, 2);
+  assert.equal(await fs.readFile(path.join(dir, 'to.txt'), 'utf8'), 'new');
+  assert.equal(await fs.readFile(path.join(dir, 'to-dir', 'a.aux'), 'utf8'), 'aux');
+  assert.deepEqual((await fs.readdir(dir)).sort(), ['to-dir', 'to.txt']);
 });
 
 test('Stop ends a compile at once and keeps the last PDF, even one asked for before the compile began', async (t) => {

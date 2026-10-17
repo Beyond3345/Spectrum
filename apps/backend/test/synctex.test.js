@@ -23,6 +23,8 @@ const { default: Fastify } = await import('fastify');
 const run = promisify(execFile);
 const tool = await findExecutable('synctex');
 const NOT_YET = 'Compile the project first to jump between the source and the PDF.';
+// what a compile keeps of a project, on this computer and out of its folder
+const cached = (project, ...parts) => path.join(process.env.SPECTRUM_DATA_DIR, 'cache', project.id, ...parts);
 after(() => rmSync(tmp, { recursive: true, force: true }));
 
 const MAIN = [
@@ -118,14 +120,14 @@ async function pool(items, fn) {
 for (const engine of ['pdflatex', 'xelatex', 'lualatex', 'tectonic']) {
   const missing = !tool ? 'needs the synctex tool' : !(await findExecutable(engine)) && `needs ${engine}`;
   test(`${engine}: jumps agree with the synctex tool`, { skip: missing, timeout: 180000 * SLOW }, async (t) => {
-    const { root, res } = await compiledProject(engine, { 'main.tex': MAIN, 'chapters/one.tex': CHAPTER }, 'main.tex', engine);
+    const { project, root, res } = await compiledProject(engine, { 'main.tex': MAIN, 'chapters/one.tex': CHAPTER }, 'main.tex', engine);
     if (engine === 'tectonic' && !res.ok) return t.skip(`tectonic didn't compile: ${res.error}`);
     assert.ok(res.ok, res.error || res.log);
     // the tool wants the PDF and its SyncTeX file side by side
     const cli = path.join(tmp, `cli-${engine}`);
     await fs.mkdir(cli);
     await fs.copyFile(path.join(root, 'main.pdf'), path.join(cli, 'main.pdf'));
-    await fs.copyFile(path.join(root, '.spectrum', 'synctex', 'main.tex.gz'), path.join(cli, 'main.synctex.gz'));
+    await fs.copyFile(cached(project, 'synctex', 'main.tex.gz'), path.join(cli, 'main.synctex.gz'));
     const pdf = path.join(cli, 'main.pdf');
 
     // PDF → source, over a grid covering both pages, margins included
@@ -188,7 +190,8 @@ test('a main file in a subfolder maps every input back to the project, and a fai
   };
   const { project, root, res } = await compiledProject('Subfolder', files, 'paper/main.tex', 'pdflatex');
   assert.ok(res.ok, res.error || res.log);
-  assert.ok(!existsSync(path.join(root, '.spectrum', 'build')) || (await fs.readdir(path.join(root, '.spectrum', 'build'))).length === 0);
+  // nothing of the build in the project but the PDF
+  assert.deepEqual(await fs.readdir(path.join(root, '.spectrum')), ['project.json']);
   for (const file of ['paper/chapters/one.tex', 'shared/note.tex', DECOMPOSED]) {
     const view = await synctexView(root, 'paper/main.tex', file, 1);
     assert.ok(view.ok, view.error);
@@ -206,10 +209,10 @@ test('a main file in a subfolder maps every input back to the project, and a fai
   const failed = await runCompile({ projectId: project.id, mainFile: 'paper/main.tex', engine: 'pdflatex' });
   assert.equal(failed.ok, false);
   // the last PDF stays on screen, and its SyncTeX file with it
-  assert.ok(existsSync(path.join(root, '.spectrum', 'synctex', 'paper', 'main.tex.gz')));
+  assert.ok(existsSync(cached(project, 'synctex', 'paper', 'main.tex.gz')));
   assert.ok((await synctexView(root, 'paper/main.tex', 'shared/note.tex', 1)).ok);
   // a half-written one reads as none, not as an error
-  await fs.writeFile(path.join(root, '.spectrum', 'synctex', 'paper', 'main.tex.gz'), 'not gzip');
+  await fs.writeFile(cached(project, 'synctex', 'paper', 'main.tex.gz'), 'not gzip');
   assert.deepEqual(await synctexEdit(root, 'paper/main.tex', 1, 200, 150), { ok: false, error: NOT_YET });
   assert.deepEqual(await synctexView(root, 'paper/main.tex', 'shared/note.tex', 1), { ok: false, error: NOT_YET });
 });
@@ -302,9 +305,10 @@ test('a document compiles the one it cross-references first, and each PDF keeps 
   // every notes: reference resolved
   assert.doesNotMatch(res.log, /No file notes\.aux|Reference `notes:/);
   // each document keeps its own .aux, not the other's
-  assert.ok(existsSync(path.join(root, '.spectrum', 'aux-files', 'notes.tex', 'notes.aux')));
-  assert.ok(existsSync(path.join(root, '.spectrum', 'aux-files', 'tutorial.tex', 'tutorial.aux')));
-  assert.ok(!existsSync(path.join(root, '.spectrum', 'aux-files', 'tutorial.tex', 'notes.aux')));
+  assert.ok(existsSync(cached(project, 'aux-files', 'notes.tex', 'notes.aux')));
+  assert.ok(existsSync(cached(project, 'aux-files', 'tutorial.tex', 'tutorial.aux')));
+  assert.ok(!existsSync(cached(project, 'aux-files', 'tutorial.tex', 'notes.aux')));
+  assert.ok(!existsSync(path.join(root, '.spectrum', 'aux-files')));
 
   // 1.4.0's single SyncTeX file goes with the next compile
   await fs.writeFile(path.join(root, '.spectrum', 'synctex.gz'), '');
@@ -358,7 +362,7 @@ test('a document keeps its own .aux when another left one of the same name, and 
   const compile = (mainFile) => runCompile({ projectId: project.id, mainFile, engine: 'pdflatex' });
   // short's own intro.aux, written over paper's copy of it, is short's
   assert.ok((await compile('short.tex')).ok);
-  const kept = await fs.readFile(path.join(root, '.spectrum', 'aux-files', 'short.tex', 'intro.aux'), 'utf8');
+  const kept = await fs.readFile(cached(project, 'aux-files', 'short.tex', 'intro.aux'), 'utf8');
   assert.match(kept, /\\newlabel\{sec:intro\}\{\{1\}/);
 
   // the link goes by the name on disk: short.tex is fresh, so nothing compiles first, and the reference resolves
