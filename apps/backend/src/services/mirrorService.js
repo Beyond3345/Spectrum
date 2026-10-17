@@ -254,7 +254,7 @@ async function findCopy(location, id) {
   return found.length === 1 ? relFrom(location, found[0].root) : null;
 }
 
-// a folder's identity on its volume, which a rename keeps and a copy doesn't (APFS's inode, NTFS's file id); null unknown
+// a folder's identity on its volume, which a rename keeps and a copy doesn't (APFS's inode, NTFS's file id), or null
 const folderOf = (root) => fs.stat(root, { bigint: true }).then((s) => (s.ino ? `${s.dev}:${s.ino}` : null), () => null);
 
 /** One pass: the guards, both walks, what each file needs, a version before anything here is replaced, then doing it. */
@@ -284,7 +284,7 @@ async function mirror(id, record, label, force) {
   const cloudMeta = await readJson(join(cloudRoot, META)).catch((err) => (err instanceof SyntaxError ? {} : absent(err)));
   if (!cloudMeta) {
     // only project.json gone (a sync app replacing it, iCloud Drive's stand-in for it, asked for back): the copy is
-    // still there, and another folder with its id may be a Finder duplicate. An empty folder left by a move isn't
+    // still there, and another folder with its id may be a Finder duplicate. One a move left empty has no .spectrum
     if (await exists(join(cloudRoot, '.spectrum'))) {
       if (process.platform === 'darwin') execFile('/usr/bin/brctl', ['download', join(cloudRoot, META)], () => {});
       return { state: 'waiting', message: `Waiting for ${label}` };
