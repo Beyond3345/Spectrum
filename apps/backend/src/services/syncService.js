@@ -28,7 +28,7 @@ let cached = null;
 
 /** What the user calls this computer: macOS's name for it in Sharing settings, elsewhere its network name. */
 export async function defaultMachineName() {
-  const mac = process.platform === 'darwin' && (await execFileAsync('scutil', ['--get', 'ComputerName'], { timeout: 2000 }).then((r) => r.stdout.trim(), () => ''));
+  const mac = process.platform === 'darwin' && (await execFileAsync('/usr/sbin/scutil', ['--get', 'ComputerName'], { timeout: 2000 }).then((r) => r.stdout.trim(), () => ''));
   return mac || os.hostname().replace(/\..*$/, '');
 }
 
