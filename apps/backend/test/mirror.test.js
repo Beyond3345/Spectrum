@@ -862,6 +862,32 @@ test('a file here that changes while it’s copied never reaches the cloud half 
   assert.equal(read(local), full);
 });
 
+test('an edit a sync app brings while a pass copies one for the cloud isn’t written over, and the two merge after', async () => {
+  const p = await project('Race', { 'main.tex': 'one\n' });
+  synced(await syncTo(p));
+  const local = path.join(p.root, 'main.tex');
+  const cloud = path.join(p.cloud, 'main.tex');
+  await write(local, 'one\nadded here\n');
+  const { copyFile } = fs;
+  // the other computer's edit arrives just after the pass copied this one's
+  fs.copyFile = async (src, dest, ...rest) => {
+    await copyFile(src, dest, ...rest);
+    if (src === local) {
+      fs.copyFile = copyFile;
+      await write(cloud, 'added there\none\n');
+    }
+  };
+  try {
+    synced(await mirror.syncProject(p.id));
+  } finally {
+    fs.copyFile = copyFile;
+  }
+  assert.equal(read(cloud), 'added there\none\n');
+  synced(await mirror.syncProject(p.id));
+  assert.equal(read(cloud), 'added there\none\nadded here\n');
+  assert.equal(read(local), 'added there\none\nadded here\n');
+});
+
 test('a save landing just after the mirror wrote the file here is an edit here, which goes across', async () => {
   const p = await project('Landed', { 'main.tex': 'base\n' });
   synced(await syncTo(p));
