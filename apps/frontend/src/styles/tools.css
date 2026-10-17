@@ -1234,6 +1234,11 @@ textarea.table-latex {
   min-height: 0;
 }
 
+/* the diff alone, for a file changed on another computer */
+.compare-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .review-files {
   display: flex;
   flex-direction: column;

@@ -100,9 +100,12 @@ export type CompileEngine = 'auto' | 'pdflatex' | 'xelatex' | 'lualatex' | 'late
 /** A non-2xx answer; status tells e.g. a 409 (already exists) apart from other failures. */
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  /** the answer's JSON, e.g. a refused save's code and the text on disk */
+  data: Record<string, unknown>;
+  constructor(message: string, status: number, data: Record<string, unknown> = {}) {
     super(message);
     this.status = status;
+    this.data = data;
   }
 }
 
@@ -114,12 +117,14 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...options, headers });
   if (!res.ok) {
     let message = await res.text();
+    let data = {};
     try {
-      message = JSON.parse(message).error || message;
+      data = JSON.parse(message);
+      message = (data as { error?: string }).error || message;
     } catch {
       // plain text error
     }
-    throw new ApiError(message || `Request failed (${res.status})`, res.status);
+    throw new ApiError(message || `Request failed (${res.status})`, res.status, data);
   }
   return res.json() as Promise<T>;
 }
@@ -217,14 +222,29 @@ export function getProjectTree(id: string) {
   return request<{ items: FileItem[]; fileOrder?: FileOrderMap; mainFile?: string; documents: string[] }>(`/api/projects/${id}/tree`);
 }
 
+/** hash: the text's, for a later writeFile's base */
 export function getFile(id: string, filePath: string) {
   const qs = new URLSearchParams({ path: filePath }).toString();
-  return request<{ content: string }>(`/api/projects/${id}/file?${qs}`);
+  return request<{ content: string; hash: string }>(`/api/projects/${id}/file?${qs}`);
 }
 
-/** create: only make a new file; it throws an ApiError with status 409 instead of replacing one (any letter case). */
-export function writeFile(id: string, filePath: string, content: string, options: { create?: boolean } = {}) {
-  return request<{ ok: boolean }>(`/api/projects/${id}/file`, json('PUT', { path: filePath, content, ...(options.create && { create: true }) }));
+/** The file as getFile gives it, without the text when that's still the text with hash `base`. */
+export function getFileIfChanged(id: string, filePath: string, base: string) {
+  const qs = new URLSearchParams({ path: filePath, base }).toString();
+  return request<{ content?: string; hash: string }>(`/api/projects/${id}/file?${qs}`);
+}
+
+/**
+ * create: only make a new file; it throws an ApiError with status 409 instead of replacing one (any letter case).
+ * base: the hash of the text this replaces, as getFile or the last writeFile gave it. A file changed on disk since
+ * throws an ApiError with status 409 and data { code: 'CHANGED_ON_DISK', content, hash } (the text there now), and
+ * one deleted since data { code: 'DELETED_ON_DISK' }. Without a base it's written whatever is there.
+ */
+export function writeFile(id: string, filePath: string, content: string, options: { create?: boolean; base?: string } = {}) {
+  return request<{ ok: boolean; hash: string }>(
+    `/api/projects/${id}/file`,
+    json('PUT', { path: filePath, content, ...(options.create && { create: true }), ...(options.base && { base: options.base }) })
+  );
 }
 
 export function createFolder(id: string, folderPath: string) {

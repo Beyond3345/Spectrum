@@ -19,6 +19,7 @@ import {
   stopCompile,
   createVersion as saveVersion,
   getFile,
+  getFileIfChanged,
   getProjectTree,
   listProjects,
   renameVersion,
@@ -55,6 +56,7 @@ import Composer from '../editor/Composer';
 import ChatsList from '../editor/ChatsList';
 import ToolsPanel from '../editor/ToolsPanel';
 import { figureFile, showFigure } from '../editor/tools/FloatsTab';
+import SplitDiffView from '../editor/SplitDiffView';
 import GrammarPanel, { grammarMarks } from '../editor/GrammarPanel';
 import { ignoreSpelling, misspeltAt, recheckSpelling, spellChecker } from '../editor/spellcheck';
 import type { ToolsTab } from '../editor/ToolsPanel';
@@ -117,6 +119,17 @@ async function smallTextFile(projectId: string, items: FileItem[]) {
 
 // the compiler picked in the PDF header lasts for the session, across projects
 let sessionEngine: CompileEngine | null = null;
+
+/** What's on disk now for a file a save was refused for (null: it was deleted); undefined for any other failure. */
+function refusedFor(err: unknown) {
+  if (!(err instanceof ApiError) || err.status !== 409) return undefined;
+  if (err.data.code === 'DELETED_ON_DISK') return null;
+  if (err.data.code === 'CHANGED_ON_DISK') return { content: String(err.data.content), hash: String(err.data.hash) };
+  return undefined;
+}
+
+/** A file held back from saving: changed on disk while it had edits here (theirs, the text there now), or gone (null). */
+type Held = { theirs: string; hash: string } | null;
 
 type View = 'editor' | 'split' | 'pdf';
 const VIEWS: [View, string, string, AppCommand][] = [
@@ -244,6 +257,12 @@ function Editor({ projectId }: { projectId: string }) {
   const [loaded, setLoaded] = useState(false);
   /** file contents by path; the open file's entry follows every keystroke */
   const filesRef = useRef(new Map<string, string>());
+  /** the hash of each of those files' text on disk as the editor last loaded or saved it, so a save can tell when it changed since */
+  const hashesRef = useRef(new Map<string, string>());
+  /** open files that aren't saved until the user says what to keep: changed on another computer, or deleted on disk */
+  const heldRef = useRef(new Map<string, Held>());
+  const [, setHeldVersion] = useState(0);
+  const [comparing, setComparing] = useState(false);
   /** editor state (undo history, cursor) per file that has been open */
   const statesRef = useRef(new Map<string, EditorState>());
   /** what the document being edited and the files it pulls in load and define, its .bib entries and its files, for completion */
@@ -256,6 +275,8 @@ function Editor({ projectId }: { projectId: string }) {
   const [activePath, setActivePath] = useState('');
   const activeRef = useRef('');
   const [tabs, setTabs] = useState<string[]>([]);
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
   const usedRef = useRef(new Map<string, number>());
   const [editorValue, setEditorValue] = useState('');
   const [selectionRange, setSelectionRange] = useState<[number, number]>([0, 0]);
@@ -375,14 +396,21 @@ function Editor({ projectId }: { projectId: string }) {
   const ensureFileContent = async (path: string) => {
     const cached = filesRef.current.get(path);
     if (cached !== undefined) return cached;
-    const { content } = await getFile(projectId, path);
+    const { content, hash } = await getFile(projectId, path);
     filesRef.current.set(path, content);
+    hashesRef.current.set(path, hash);
     return content;
   };
 
-  /** One write at a time, so an autosave can never land after a newer write. */
+  /**
+   * One write at a time, so an autosave can never land after a newer write. Each goes from the text last loaded
+   * or saved, so a file changed or deleted on disk since (another computer, through a sync client) isn't written over.
+   */
   const queueWrite = (path: string, content: string) => {
-    const job = writeChain.current.then(() => writeFile(projectId, path, content));
+    const job = writeChain.current.then(async () => {
+      const { hash } = await writeFile(projectId, path, content, { base: hashesRef.current.get(path) });
+      hashesRef.current.set(path, hash);
+    });
     writeChain.current = job.catch(() => undefined);
     return job;
   };
@@ -392,10 +420,67 @@ function Editor({ projectId }: { projectId: string }) {
     setDirty(false);
   };
 
+  const hold = (path: string, value?: Held) => {
+    if (value === undefined) heldRef.current.delete(path);
+    else heldRef.current.set(path, value);
+    setHeldVersion((v) => v + 1);
+  };
+
+  /** A file's text as it is on disk now: cached, and shown (undoably) when it's the open file. */
+  const adoptDiskText = (path: string, content: string, hash: string) => {
+    filesRef.current.set(path, content);
+    hashesRef.current.set(path, hash);
+    if (heldRef.current.has(path)) hold(path);
+    if (path === activeRef.current) {
+      markClean();
+      setDoc(content);
+    }
+  };
+
+  /**
+   * A loaded file isn't on disk as the editor last loaded or saved it (disk null: it was deleted). The open file
+   * with unsaved edits, or one already held for that, is held for the user to say which to keep; a file without
+   * edits here takes the new text; a deleted tab is marked, and anything else deleted is forgotten.
+   */
+  const changedOnDisk = (path: string, disk: { content: string; hash: string } | null) => {
+    if (!disk) {
+      if (tabsRef.current.includes(path)) hold(path, null);
+      else for (const cache of [filesRef.current, hashesRef.current, statesRef.current] as Map<string, unknown>[]) cache.delete(path);
+    } else if (heldRef.current.get(path) || (path === activeRef.current && dirtyRef.current)) hold(path, { theirs: disk.content, hash: disk.hash });
+    else adoptDiskText(path, disk.content, disk.hash);
+    setFilesVersion((v) => v + 1);
+  };
+
+  /**
+   * Asks the disk again for files the editor has loaded (all of them by default), after the folder watch says
+   * they changed or when the window comes back. Its own saves come back as the same hash, without the text.
+   */
+  const recheck = (paths = [...hashesRef.current.keys()]) => {
+    const job = writeChain.current.then(() =>
+      Promise.all(
+        paths.map(async (path) => {
+          const known = hashesRef.current.get(path);
+          if (known === undefined) return;
+          try {
+            const disk = await getFileIfChanged(projectId, path, known);
+            if (disk.content !== undefined) changedOnDisk(path, { content: disk.content, hash: disk.hash });
+            // back as it was (restored, or the deletion undone): no longer marked
+            else if (heldRef.current.get(path) === null) hold(path);
+          } catch (err) {
+            if (err instanceof ApiError && err.status === 404) changedOnDisk(path, null);
+          }
+        })
+      )
+    );
+    writeChain.current = job.catch(() => undefined);
+    return job;
+  };
+
   const saveNow = async (announce = false) => {
     const path = activeRef.current;
     const view = viewRef.current;
-    if (!path || !view) return;
+    // a held file waits for the user to say what to keep
+    if (!path || !view || heldRef.current.has(path)) return;
     if (dirtyRef.current) {
       const content = view.state.doc.toString();
       markClean();
@@ -404,7 +489,9 @@ function Editor({ projectId }: { projectId: string }) {
       } catch (err) {
         dirtyRef.current = true;
         setDirty(true);
-        notify(`Couldn’t save ${nameOf(path)}: ${errorText(err)}`, 'error');
+        const disk = refusedFor(err);
+        if (disk !== undefined) changedOnDisk(path, disk);
+        else notify(`Couldn’t save ${nameOf(path)}: ${errorText(err)}`, 'error');
         return;
       }
       // a .tex that gained or lost its \documentclass: the tree says again which files are documents
@@ -413,11 +500,16 @@ function Editor({ projectId }: { projectId: string }) {
     if (announce) notify(`Saved ${nameOf(path)}`, 'success');
   };
 
-  /** Replaces the open document without counting it as typing (it stays undoable). */
+  /** Replaces the open document without counting it as typing (it stays undoable). Only the part that differs changes, so the cursor stays put outside it. */
   const setDoc = (content: string) => {
     const view = viewRef.current;
-    if (!view || view.state.doc.toString() === content) return;
-    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content }, annotations: programmatic.of(true) });
+    const old = view?.state.doc.toString();
+    if (!view || old === undefined || old === content) return;
+    let from = 0;
+    while (from < old.length && from < content.length && old[from] === content[from]) from += 1;
+    let end = 0;
+    while (end < old.length - from && end < content.length - from && old[old.length - 1 - end] === content[content.length - 1 - end]) end += 1;
+    view.dispatch({ changes: { from, to: old.length - end, insert: content.slice(from, content.length - end) }, annotations: programmatic.of(true) });
   };
 
   const showEmptyEditor = () => {
@@ -497,7 +589,20 @@ function Editor({ projectId }: { projectId: string }) {
 
   const writeProjectFile = async (path: string, content: string) => {
     if (path === activeRef.current) markClean();
-    await queueWrite(path, content);
+    try {
+      await queueWrite(path, content);
+    } catch (err) {
+      // changed or deleted on disk since it loaded: the open file's text is held as unsaved, another takes the disk's
+      const disk = refusedFor(err);
+      if (disk !== undefined) {
+        if (path === activeRef.current) {
+          dirtyRef.current = true;
+          setDirty(true);
+        }
+        changedOnDisk(path, disk);
+      }
+      throw err;
+    }
     filesRef.current.set(path, content);
     setFilesVersion((v) => v + 1);
     if (path === activeRef.current) setDoc(content);
@@ -506,14 +611,56 @@ function Editor({ projectId }: { projectId: string }) {
 
   const reloadFiles = async (paths: string[]) => {
     for (const path of paths) {
-      const { content } = await getFile(projectId, path);
-      filesRef.current.set(path, content);
-      if (path === activeRef.current) {
-        markClean();
-        setDoc(content);
-      }
+      const { content, hash } = await getFile(projectId, path);
+      adoptDiskText(path, content, hash);
     }
     setFilesVersion((v) => v + 1);
+  };
+
+  // ─── a file changed on another computer, or deleted on disk ───
+
+  /** Keep mine: a version of the project as it is on disk first, with their text, then this text over it. Restore, for a deleted file: this text, made again. */
+  const keepMine = async (path: string) => {
+    const held = heldRef.current.get(path);
+    if (held === undefined) return;
+    setComparing(false);
+    const active = path === activeRef.current;
+    try {
+      if (held) {
+        const res = await saveVersion(projectId, { reason: 'manual', label: `${nameOf(path)} from another computer` });
+        if (!res.ok) throw new Error('The version couldn’t be saved.');
+        if (!res.unchanged) window.dispatchEvent(new Event(VERSIONS_CHANGED));
+        hashesRef.current.set(path, held.hash);
+      } else hashesRef.current.delete(path); // Restore: made again, whatever is there now
+      hold(path);
+      if (active) markClean();
+      await queueWrite(path, filesRef.current.get(path) ?? '');
+      if (!held) await refreshTree();
+    } catch (err) {
+      if (active) {
+        dirtyRef.current = true;
+        setDirty(true);
+      }
+      const disk = refusedFor(err);
+      // changed again meanwhile: asked again
+      if (disk !== undefined) changedOnDisk(path, disk);
+      else notify(`Couldn’t ${held ? 'keep your' : 'restore'} ${nameOf(path)}: ${errorText(err)}`, 'error');
+    }
+  };
+
+  /** Use theirs: the text on disk, undoably, so the editor's own is a ⌘Z away. */
+  const takeTheirs = (path: string) => {
+    const held = heldRef.current.get(path);
+    setComparing(false);
+    if (held) adoptDiskText(path, held.theirs, held.hash);
+    setFilesVersion((v) => v + 1);
+  };
+
+  /** Close a deleted file's tab, and forget its text. */
+  const closeGone = async (path: string) => {
+    await closeTab(path);
+    for (const cache of [filesRef.current, hashesRef.current, heldRef.current] as Map<string, unknown>[]) cache.delete(path);
+    setHeldVersion((v) => v + 1);
   };
 
   /** Files replaced by an upload: forget their cached text and undo history, and show the new contents. */
@@ -524,8 +671,7 @@ function Editor({ projectId }: { projectId: string }) {
 
   const reloadProject = async () => {
     setPending([]);
-    filesRef.current.clear();
-    statesRef.current.clear();
+    for (const cache of [filesRef.current, statesRef.current, hashesRef.current, heldRef.current]) cache.clear();
     const res = await refreshTree();
     const exists = (p: string) => res.items.some((i) => i.path === p && i.type === 'file');
     const keep = [activeRef.current, mainFile].find((p) => p && exists(p)) || (await smallTextFile(projectId, res.items));
@@ -543,7 +689,7 @@ function Editor({ projectId }: { projectId: string }) {
 
   const onMoved = (from: string, to: string) => {
     const remap = (p: string) => (p === from ? to : p.startsWith(`${from}/`) ? to + p.slice(from.length) : p);
-    for (const cache of [filesRef.current, statesRef.current] as Map<string, unknown>[]) {
+    for (const cache of [filesRef.current, statesRef.current, hashesRef.current, heldRef.current] as Map<string, unknown>[]) {
       for (const [key, value] of [...cache]) {
         if (remap(key) === key) continue;
         cache.delete(key);
@@ -563,7 +709,7 @@ function Editor({ projectId }: { projectId: string }) {
 
   const onDeleted = (path: string) => {
     const gone = (p: string) => p === path || p.startsWith(`${path}/`);
-    for (const cache of [filesRef.current, statesRef.current] as Map<string, unknown>[]) {
+    for (const cache of [filesRef.current, statesRef.current, hashesRef.current, heldRef.current] as Map<string, unknown>[]) {
       for (const key of [...cache.keys()]) if (gone(key)) cache.delete(key);
     }
     const rest = tabs.filter((p) => !gone(p));
@@ -585,6 +731,16 @@ function Editor({ projectId }: { projectId: string }) {
     if (!loaded || (mainFile && texFiles.includes(mainFile))) return;
     setMainFile(texFiles.find((p) => /(^|\/)main\.tex$/i.test(p)) || texFiles[0] || '');
   }, [loaded, texFiles]);
+
+  // a tab whose file went from the tree (deleted or renamed on another computer, in Finder, by git) is marked
+  // and not saved back unasked; one marked that's back is checked against the disk
+  useEffect(() => {
+    if (!loaded) return;
+    const files = new Set(items.filter((i) => i.type === 'file').map((i) => i.path));
+    const back = tabs.filter((p) => files.has(p) && heldRef.current.get(p) === null);
+    for (const path of tabs) if (!files.has(path) && heldRef.current.get(path) !== null) hold(path, null);
+    if (back.length) recheck(back).catch(() => undefined);
+  }, [items]);
 
   // a reloaded tree or file can mean a .bib changed on disk
   useEffect(() => bibRef.current.clear(), [items, filesVersion]);
@@ -1219,7 +1375,8 @@ function Editor({ projectId }: { projectId: string }) {
     acceptGhost: (_word: boolean) => {},
     clearGhost: () => false as boolean,
     placeGhost: () => {},
-    showInPdf: (_pos: number) => {}
+    showInPdf: (_pos: number) => {},
+    recheck: (_paths?: string[]) => {}
   });
   actions.current = {
     save: () => saveNow(true),
@@ -1238,22 +1395,28 @@ function Editor({ projectId }: { projectId: string }) {
     acceptGhost,
     clearGhost,
     placeGhost: () => placeGhost(ghostRef.current.pos),
-    showInPdf: (pos: number) => showInPdf(pos)
+    showInPdf: (pos: number) => showInPdf(pos),
+    recheck: (paths?: string[]) => {
+      recheck(paths).catch(() => undefined);
+    }
   };
 
   // ─── effects: unsaved edits, CodeMirror, first load, shortcuts ───
 
   // declared before CodeMirror so its cleanup runs while the view still exists
   useEffect(() => {
-    // browsers refuse keepalive bodies over 64 KiB
+    // browsers refuse keepalive bodies over 64 KiB.
+    // ponytail: leaving or quitting, a file changed on another computer since it loaded isn't written over, so the
+    // last few seconds' unsaved typing in it are lost; a conflict copy beside it would keep them
     const keepaliveBody = () => {
-      const body = JSON.stringify({ path: activeRef.current, content: viewRef.current?.state.doc.toString() ?? '' });
+      const path = activeRef.current;
+      const body = JSON.stringify({ path, content: viewRef.current?.state.doc.toString() ?? '', base: hashesRef.current.get(path) });
       return new Blob([body]).size <= 60 * 1024 ? body : null;
     };
     const flush = (keepalive: boolean) => {
       const path = activeRef.current;
       const view = viewRef.current;
-      if (!dirtyRef.current || !path || !view) return;
+      if (!dirtyRef.current || !path || !view || heldRef.current.has(path)) return;
       if (!keepalive) {
         dirtyRef.current = false;
         queueWrite(path, view.state.doc.toString()).catch(() => undefined);
@@ -1275,18 +1438,22 @@ function Editor({ projectId }: { projectId: string }) {
       e.preventDefault();
       e.returnValue = '';
     };
-    // switching away (another app, another tab) saves with a normal request, which has no size limit
-    const onVisibility = () => document.visibilityState === 'hidden' && saveNow();
+    // switching away (another app, another tab) saves with a normal request, which has no size limit; coming back
+    // (or waking from sleep) checks the loaded files against the disk, for changes the folder watch missed
+    const onVisibility = () => (document.visibilityState === 'hidden' ? saveNow() : actions.current.recheck());
+    const onFocus = () => actions.current.recheck();
     // the desktop shell calls this before it closes the window (pagehide may not run there)
     const hooks = window as Window & { __spectrumFlush?: () => Promise<void> };
     hooks.__spectrumFlush = () => saveNow();
     window.addEventListener('pagehide', onHide);
     window.addEventListener('beforeunload', onBeforeUnload);
     document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onFocus);
     return () => {
       window.removeEventListener('pagehide', onHide);
       window.removeEventListener('beforeunload', onBeforeUnload);
       document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onFocus);
       delete hooks.__spectrumFlush;
       flush(false);
     };
@@ -1477,10 +1644,15 @@ function Editor({ projectId }: { projectId: string }) {
     };
   }, []);
 
-  // files added, removed or renamed outside the app (Finder, another editor, a git pull) show in the list as they happen
+  // files added, removed or renamed outside the app (Finder, another editor, a git pull, a sync client) show in the
+  // list as they happen, and loaded files changed there are checked against the editor's text
   useEffect(() => {
     const events = new EventSource(`/api/projects/${projectId}/events`);
     events.addEventListener('tree', () => refreshTree().catch(() => undefined));
+    events.addEventListener('changed', (e) => {
+      const { paths, all } = JSON.parse((e as MessageEvent<string>).data) as { paths?: string[]; all?: boolean };
+      actions.current.recheck(all ? undefined : paths);
+    });
     return () => events.close();
   }, [projectId]);
 
@@ -1622,6 +1794,7 @@ function Editor({ projectId }: { projectId: string }) {
 
   // ─── render pieces ───
 
+  const held = heldRef.current.get(activePath);
   const outlineFile = isTex(activePath) ? activePath : mainFile;
   const outlineText = outlineFile === activePath ? editorValue : filesRef.current.get(outlineFile) || '';
   const outline = useMemo(() => parseOutline(outlineText), [outlineText]);
@@ -1922,13 +2095,13 @@ function Editor({ projectId }: { projectId: string }) {
                     role="tab"
                     tabIndex={0}
                     aria-selected={path === activePath}
-                    className={`file-tab ${path === activePath ? 'active' : ''}`}
-                    title={path}
+                    className={`file-tab ${path === activePath ? 'active' : ''} ${heldRef.current.has(path) ? 'held' : ''} ${heldRef.current.get(path) === null ? 'gone' : ''}`}
+                    title={heldRef.current.get(path) === null ? `${path} · Deleted on disk` : heldRef.current.get(path) ? `${path} · Changed on another computer` : path}
                     onClick={() => open(path)}
                     onKeyDown={(e) => e.key === 'Enter' && open(path)}
                     onAuxClick={(e) => e.button === 1 && closeTab(path).catch(() => undefined)}
                   >
-                    <Icon name={/\.bib$/i.test(path) ? 'books.vertical' : 'doc.text'} className="file-tab-icon" />
+                    <Icon name={heldRef.current.has(path) ? 'exclamationmark.triangle' : /\.bib$/i.test(path) ? 'books.vertical' : 'doc.text'} className="file-tab-icon" />
                     <span className="file-tab-name">{nameOf(path)}</span>
                     {path === activePath && dirty && <span className="file-tab-dot" title="Unsaved changes" />}
                     <button
@@ -1979,6 +2152,35 @@ function Editor({ projectId }: { projectId: string }) {
                 <button className="btn small ghost" onClick={openSaveTemplate}>Save as new template…</button>
                 <button className="btn small primary" disabled={savingTemplate} onClick={saveTemplate}>
                   Save template
+                </button>
+              </div>
+            )}
+
+            {held === null && (
+              <div className="review-banner template-banner" role="status">
+                <Icon name="exclamationmark.triangle" />
+                <span className="grow truncate">{nameOf(activePath)} was deleted on disk</span>
+                <button className="btn small ghost" onClick={() => closeGone(activePath).catch((err) => notify(errorText(err), 'error'))}>
+                  Close
+                </button>
+                <button className="btn small primary" onClick={() => keepMine(activePath)}>
+                  Restore
+                </button>
+              </div>
+            )}
+
+            {held && (
+              <div className="review-banner template-banner" role="status">
+                <Icon name="exclamationmark.triangle" />
+                <span className="grow truncate">{nameOf(activePath)} was changed on another computer</span>
+                <button className="btn small ghost" onClick={() => setComparing(true)}>
+                  Compare
+                </button>
+                <button className="btn small ghost" onClick={() => takeTheirs(activePath)}>
+                  Use theirs
+                </button>
+                <button className="btn small primary" onClick={() => keepMine(activePath)}>
+                  Keep mine
                 </button>
               </div>
             )}
@@ -2340,6 +2542,27 @@ function Editor({ projectId }: { projectId: string }) {
             ) : (
               <div className="tool-empty">There’s no preview for this kind of file.</div>
             )}
+          </div>
+        </Sheet>
+      )}
+
+      {comparing && held && (
+        <Sheet
+          title={`${nameOf(activePath)}: theirs and mine`}
+          onClose={() => setComparing(false)}
+          width={1080}
+          className="review-sheet"
+          actions={
+            <>
+              <button className="btn" onClick={() => takeTheirs(activePath)}>Use theirs</button>
+              <button className="btn primary" onClick={() => keepMine(activePath)}>Keep mine</button>
+            </>
+          }
+        >
+          <div className="review-layout compare-layout">
+            <div className="review-diff">
+              <SplitDiffView original={held.theirs} proposed={editorValue} leftLabel="Theirs" rightLabel="Mine" />
+            </div>
           </div>
         </Sheet>
       )}

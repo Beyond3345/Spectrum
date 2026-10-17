@@ -436,6 +436,15 @@
   display: none;
 }
 
+/* held back from saving: changed on another computer while it had edits here, or deleted on disk */
+.file-tab.held .file-tab-icon {
+  color: var(--orange-text);
+}
+
+.file-tab.gone .file-tab-name {
+  text-decoration: line-through;
+}
+
 .tools-toggle {
   position: relative;
   display: inline-flex;
