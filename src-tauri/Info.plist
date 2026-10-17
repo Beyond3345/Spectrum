@@ -5,5 +5,8 @@
 	<!-- macOS 26+: the Liquid Glass icon in Resources/Assets.car (compiled from icons/AppIcon.icon); older systems use icon.icns -->
 	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
+	<!-- what macOS says when Spectrum first reaches into a cloud location kept by OneDrive, Dropbox, Google Drive or Synology Drive -->
+	<key>NSFileProviderDomainUsageDescription</key>
+	<string>Spectrum keeps your cloud projects in step with their copies in this folder.</string>
 </dict>
 </plist>
