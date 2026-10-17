@@ -276,8 +276,11 @@ async function mirror(id, record, label, force) {
 
   const here = await walk(localRoot);
   const there = await walk(cloudRoot);
-  // project.json gone from a walk: that side is going, or can't be seen into, so nothing is decided from it
-  if (!here.files.has(META) || !there.files.has(META)) return { state: 'waiting', message: `Waiting for ${label}` };
+  // project.json gone from a walk: that side is going, or can't be seen into, so nothing is decided from it. Read again
+  // after both walks too: readdir lists .spectrum first, so a side moved away whole (to the Bin, say) during its walk
+  // would otherwise read as emptied
+  const still = async (root) => (await readJson(join(root, META)).catch(() => null))?.id === id;
+  if (!here.files.has(META) || !there.files.has(META) || !(await still(localRoot)) || !(await still(cloudRoot))) return { state: 'waiting', message: `Waiting for ${label}` };
   const ctx = { id, label, record, localRoot, cloudRoot, here, incoming: workDir(id, 'incoming'), fetched: 0, made: new Set() };
   await fs.rm(ctx.incoming, { recursive: true, force: true });
   await fs.mkdir(ctx.incoming, { recursive: true });

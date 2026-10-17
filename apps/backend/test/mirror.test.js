@@ -315,6 +315,34 @@ test('a cloud copy going while a pass walks it is waited for, never taken for de
   assert.deepEqual(binned, []);
 });
 
+test('a side moved away whole while it’s walked is waited for, never taken for emptied', async () => {
+  for (const side of ['cloud', 'root']) {
+    const p = await project(`Moved away ${side}`, { 'main.tex': 'main\n', 'figs/a.png': 'a', 'figs/b.png': 'b' });
+    await versions.createVersion(p.root);
+    synced(await syncTo(p));
+    const before = [tree(p.root), tree(p.cloud)];
+    const away = `${p[side]}-away`;
+    const { lstat } = fs;
+    // readdir lists .spectrum first: the folder goes (to the Bin, say) just after the walk read its project.json
+    fs.lstat = async (abs, ...rest) => {
+      const found = await lstat(abs, ...rest);
+      if (abs === path.join(p[side], '.spectrum', 'project.json')) {
+        fs.lstat = lstat;
+        await fs.rename(p[side], away);
+      }
+      return found;
+    };
+    try {
+      assert.deepEqual(await mirror.syncProject(p.id), { state: 'waiting', message: `Waiting for ${LABEL}` }, side);
+    } finally {
+      fs.lstat = lstat;
+    }
+    await fs.rename(away, p[side]);
+    assert.deepEqual([tree(p.root), tree(p.cloud)], before, side);
+    assert.ok(!binned.some((b) => b.abs.startsWith(p.root) || b.abs.startsWith(p.cloud)), side);
+  }
+});
+
 test('Windows’ placeholders, which its readdir calls links, are walked into as what they are', async () => {
   const p = await project('Placeholders', { 'main.tex': 'main\n', 'chapters/one.tex': 'one\n' });
   synced(await syncTo(p));
