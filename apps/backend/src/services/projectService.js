@@ -3,9 +3,24 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import { DATA_DIR, PROJECTS_DIR } from '../config/constants.js';
-import { ensureDir, listFilesRecursive, readJson, writeJsonAtomic } from '../utils/fsUtils.js';
+import { HIDDEN_ENTRIES, ensureDir, listFilesRecursive, readJson, writeJsonAtomic } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { isDocumentFile } from '../utils/texUtils.js';
+import {
+  hideProject,
+  inSyncFolder,
+  isConflictCopy,
+  otherComputersProjects,
+  placeOf,
+  providerHere,
+  publishProjects,
+  readSyncConfig,
+  sameFolder,
+  syncFolderRoots,
+  syncedProjectsDir,
+  unhideProject,
+  within
+} from './syncService.js';
 
 // Projects are ordinary folders anywhere on disk. DATA_DIR/registry.json lists them;
 // each folder keeps its own metadata, history and chats in a hidden .spectrum/ folder.
@@ -53,8 +68,9 @@ async function readRegistry() {
 function updateRegistry(fn) {
   return registryLock(async () => {
     const registry = await readRegistry();
+    const before = JSON.stringify(registry);
     const result = await fn(registry);
-    await writeJsonAtomic(REGISTRY_PATH, registry);
+    if (JSON.stringify(registry) !== before) await writeJsonAtomic(REGISTRY_PATH, registry);
     return result;
   });
 }
@@ -79,10 +95,12 @@ function cacheMeta(meta) {
 
 /** Forget a project; its folder stays where it is. */
 export async function unregister(id) {
-  await findEntry(id);
+  const entry = await findEntry(id);
   await updateRegistry((registry) => {
     registry.projects = registry.projects.filter((p) => p.id !== id);
   });
+  // or the next scan of the synced folders brings it back
+  if (await inSyncFolder(entry.path)) await hideProject(id);
 }
 
 async function findEntry(id) {
@@ -183,6 +201,9 @@ async function describe(entry) {
   };
   if (base.mainFile) project.mainFile = base.mainFile;
   if (base.templateDraft) project.templateDraft = base.templateDraft;
+  // here: the sync app's folder is on this computer, so a missing project may still be on its way
+  const place = await placeOf(entry.path);
+  if (place) project.place = { ...place, here: !!meta || (await providerHere(place.provider)) };
   return project;
 }
 
@@ -201,6 +222,81 @@ async function thumbnailStat(root) {
 
 export async function listProjects() {
   return Promise.all((await readRegistry()).projects.map(describe));
+}
+
+/**
+ * The projects page: this computer's projects, with what the synced folders hold found first, and those only
+ * another computer lists (`elsewhere`, shown greyed out; only once a synced folder is set up).
+ */
+export async function projectsPage({ scan = false } = {}) {
+  const { folders, hidden } = await readSyncConfig();
+  if (!folders.length) return { projects: await listProjects() };
+  // a slow folder (online-only, the NAS out of reach) finishes in the background and shows next time
+  await Promise.race([scanSyncFolders(scan), new Promise((resolve) => setTimeout(resolve, 2000))]);
+  const projects = await listProjects();
+  const own = projects.filter((p) => !p.missing && !p.templateDraft);
+  await publishProjects(own.map(({ id, name, place }) => ({ id, name, place: place ? { provider: place.provider, label: place.label, rel: place.rel } : null }))).catch(() => {});
+  const known = new Set([...projects.map((p) => p.id), ...hidden]);
+  const elsewhere = [];
+  for (const p of await otherComputersProjects()) {
+    if (known.has(p.id) || !ID_RE.test(p.id)) continue;
+    known.add(p.id);
+    // ponytail: "not on this computer yet" when its sync app is here, without looking for the folder outside the synced folders
+    elsewhere.push({ ...p, place: p.place && { ...p.place, here: await providerHere(p.place.provider) } });
+  }
+  return { projects, elsewhere };
+}
+
+// ─── Synced folders ───
+
+let scanning = null;
+let scannedAt = 0;
+
+/** Every project folder up to 3 levels into a synced folder, reading only their project.json: [{ id, root, meta }]. */
+async function findSyncedProjects(dir, deadline, found = [], depth = 1) {
+  for (const entry of await fs.readdir(dir, { withFileTypes: true }).catch(() => [])) {
+    if (Date.now() > deadline) break;
+    if (!entry.isDirectory() || entry.name.startsWith('.') || HIDDEN_ENTRIES.has(entry.name) || isConflictCopy(entry.name)) continue;
+    const sub = path.join(dir, entry.name);
+    const { meta, id } = await readMetaId(sub);
+    if (id) found.push({ id, root: sub, meta });
+    else if (depth < 3) await findSyncedProjects(sub, deadline, found, depth + 1);
+  }
+  return found;
+}
+
+/**
+ * List the projects in the synced folders on this computer, at most every 30 s unless forced (the window came to the
+ * front). Nothing is written into the folders. A new id is added with its folder here; a listed project whose folder
+ * has gone follows its id to the new one (moved, or synced to another place); the same id in two folders is a copy,
+ * and the listed one wins (the copy gets its own id when it's opened, through openFolder).
+ */
+function scanSyncFolders(force) {
+  if (scanning || (!force && Date.now() - scannedAt < 30_000)) return scanning;
+  scannedAt = Date.now();
+  scanning = (async () => {
+    const { folders, hidden } = await readSyncConfig();
+    const deadline = Date.now() + 20_000;
+    const found = [];
+    for (const { path: folder } of folders) await findSyncedProjects(folder, deadline, found);
+    await updateRegistry(async (registry) => {
+      for (const { id, root, meta } of found) {
+        // a template's working copy belongs in the app's data folder; one copied into a synced folder is left alone
+        if (hidden.includes(id) || meta.templateDraft || registry.projects.some((p) => p.id !== id && (within(p.path, root) || within(root, p.path)))) continue;
+        const entry = registry.projects.find((p) => p.id === id);
+        if (!entry) {
+          registry.projects.push({ id, path: root, ...cached(normaliseMeta({ ...meta, id })), addedAt: new Date().toISOString() });
+        } else if (!sameFolder(entry.path, root) && (await readMetaId(entry.path)).id !== id) {
+          Object.assign(entry, { path: root }, cached(normaliseMeta({ ...meta, id })));
+        }
+      }
+    });
+  })()
+    .catch(() => {})
+    .finally(() => {
+      scanning = null;
+    });
+  return scanning;
 }
 
 export async function getProject(id) {
@@ -261,6 +357,8 @@ async function resolveExistingFolder(input) {
   // and the folders a loose file usually sits in, which a double-click on it would otherwise adopt whole
   const everyday = ['Desktop', 'Downloads', 'Documents'].map((name) => real(path.join(os.homedir(), name)));
   const refused = [path.parse(abs).root, await real(DATA_DIR), await real(PROJECTS_DIR), await real(os.homedir()), ...(await Promise.all(everyday))];
+  // a synced folder, or a sync app's own, holds projects
+  refused.push(...(await Promise.all((await syncFolderRoots()).map(real))));
   if (refused.includes(abs)) throw httpError('That folder can’t be used as a project. Choose a folder inside it.', 400);
   return abs;
 }
@@ -309,7 +407,7 @@ export async function detectMainFile(root) {
  * or when `signal` aborts before the project is registered.
  */
 export async function createProject({ name, parentDir, populate, signal, meta: extra = {} } = {}) {
-  const parentInput = expandHome(parentDir) || PROJECTS_DIR;
+  const parentInput = expandHome(parentDir) || (await newProjectsDir());
   if (!path.isAbsolute(parentInput)) throw httpError('The location must be a full folder path.', 400);
   await ensureDir(parentInput);
   const parent = await fs.realpath(parentInput);
@@ -357,6 +455,7 @@ export async function openFolder(input) {
   next.mainFile ||= await detectMainFile(root);
   await writeMetaIfChanged(root, meta, next);
   await register(id, root, next);
+  await unhideProject(id);
   return getProject(id);
 }
 
@@ -438,7 +537,13 @@ export async function relocateProject(id, input) {
   const next = normaliseMeta({ ...(own || { createdAt: entry.addedAt }), id, name: own?.name || entry.name });
   await writeMetaIfChanged(root, meta, next);
   await register(id, root, next);
+  await unhideProject(id);
   return getProject(id);
+}
+
+/** Where new projects go unless another folder is chosen: the first synced folder, else the projects folder. */
+export async function newProjectsDir() {
+  return (await syncedProjectsDir()) || PROJECTS_DIR;
 }
 
 /** Where a copy of this project goes: next to it, unless it still lives in the app data folder. */

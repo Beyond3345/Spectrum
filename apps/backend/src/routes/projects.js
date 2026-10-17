@@ -18,9 +18,9 @@ import {
   getProject,
   getProjectRoot,
   httpError,
-  listProjects,
   openFile,
   openFolder,
+  projectsPage,
   readMeta,
   relocateProject,
   renameProject,
@@ -128,7 +128,8 @@ export function registerProjectRoutes(fastify) {
     done();
   });
 
-  fastify.get('/api/projects', async () => ({ projects: await listProjects() }));
+  // ?scan=1: look in the synced folders now (the window came to the front), not after the usual 30 s
+  fastify.get('/api/projects', async (req) => projectsPage({ scan: req.query?.scan === '1' }));
 
   fastify.post('/api/projects', async (req) => {
     const { name, template, parentDir } = req.body || {};

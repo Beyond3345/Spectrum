@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { changeSpellWord, spellStatus, spellWords, systemCheck } from '../api/client';
-import type { CheckerStatus, SearchProvider, SystemCheck } from '../api/client';
+import { changeSpellWord, getSyncSettings, spellStatus, spellWords, systemCheck, updateSyncSettings } from '../api/client';
+import type { CheckerStatus, SearchProvider, SyncSettings, SystemCheck } from '../api/client';
 import { COLOUR_ROLES, EDITOR_FONTS, EDITOR_THEMES, chosenColours, editorColours, highlightLines, themeFor, wellColour } from '../editor/editorThemes';
 import type { EditorMode } from '../editor/editorThemes';
 import { highlightColour } from '../editor/synctex';
@@ -457,6 +457,7 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                   New, imported and arXiv projects are created here unless another location is chosen. Existing projects stay where they are.
                 </div>
               </div>
+              <SyncedFolders onChange={recheck} />
               {IS_DESKTOP && (
                 <>
                   <h3 className="form-section-title">Opening files</h3>
@@ -663,6 +664,81 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </Sheet>
+  );
+}
+
+/** Settings › Projects: the folders a sync app keeps the same on each computer, where Spectrum looks for projects. */
+function SyncedFolders({ onChange }: { onChange: () => void }) {
+  const [sync, setSync] = useState<SyncSettings | null>(null);
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+
+  const show = (next: SyncSettings) => {
+    setSync(next);
+    setName(next.machineName);
+  };
+  useEffect(() => {
+    getSyncSettings().then(show, (err) => setError(err instanceof Error ? err.message : String(err)));
+  }, []);
+
+  const save = async (patch: { folders?: string[]; machineName?: string }) => {
+    try {
+      show(await updateSyncSettings(patch));
+      setError('');
+      // the first synced folder is where new projects go
+      if (patch.folders) onChange();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+  const paths = sync?.folders.map((f) => f.path) || [];
+  const add = async (path?: string) => {
+    const picked = path || (await pickFolder({ title: 'Choose a folder your sync app keeps on each computer' }));
+    if (picked) await save({ folders: [...paths, picked] });
+  };
+
+  return (
+    <>
+      <h3 className="form-section-title">Synced project folders</h3>
+      <div className="field-hint section-hint">
+        Folders that Synology Drive, OneDrive, Dropbox or iCloud Drive keep the same on your other computers. Spectrum finds the projects in them, so a project
+        started on one computer turns up on the other once it has synced. Add the same folders on each computer. New projects go in
+        the first one unless you choose a default folder above.
+      </div>
+      {sync?.folders.map((f) => (
+        <div key={f.path} className="path-row">
+          <Icon name="folder" />
+          <span className="path-text" title={f.path}>{f.label ? `${f.label}: ${f.path}` : f.path}</span>
+          {!f.found && <span className="badge warning">Not found</span>}
+          <button className="btn small" onClick={() => save({ folders: paths.filter((p) => p !== f.path) })}>Remove</button>
+        </div>
+      ))}
+      {sync?.suggestions.map((s) => (
+        <div key={s.path} className="path-row">
+          <Icon name="folder.badge.plus" />
+          <span className="path-text" title={s.path}>{s.label}: {s.path}</span>
+          <button className="btn small" onClick={() => add(s.path)}>Add</button>
+        </div>
+      ))}
+      <div>
+        <button className="btn small" disabled={!sync} onClick={() => add()}>Add…</button>
+      </div>
+      {error && <div className="field-hint error">{error}</div>}
+      <div className="field">
+        <label htmlFor="settings-machineName">This computer’s name</label>
+        <input
+          id="settings-machineName"
+          className="input"
+          value={name}
+          disabled={!sync}
+          spellCheck={false}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={() => sync && name.trim() !== sync.machineName && save({ machineName: name })}
+          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+        />
+        <div className="field-hint">Your other computers show it, e.g. for a project that’s only on this one.</div>
+      </div>
+    </>
   );
 }
 
