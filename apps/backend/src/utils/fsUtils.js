@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { pipeline } from 'stream/promises';
 import unzipper from 'unzipper';
 import { safeJoin, sanitizeUploadPath } from './pathUtils.js';
+import { looksLikeConflictCopy } from './conflictCopies.js';
 
 export async function ensureDir(dir) {
   await fs.mkdir(dir, { recursive: true });
@@ -94,13 +95,15 @@ export const HIDDEN_ENTRIES = new Set([
 /**
  * What a cloud project's mirror leaves out, and the editor's folder watch too: anything in HIDDEN_ENTRIES and the app's
  * own save and upload temp files. Of the app's data (.spectrum, in any letter case) only project.json, history and
- * chats go across; the rest is this computer's.
+ * chats go across, never a sync app's conflicted copy of one (nothing reads it, and the mirror merges a chat's and
+ * project.json's back); the rest is this computer's.
  */
 export function mirrorSkips(rel) {
   if (/\.(tmp|upload)$/i.test(rel)) return true;
   const parts = rel.split('/');
   const app = parts[0].toLowerCase() === '.spectrum';
   if (app && parts.length > 1 && !(parts.length === 2 && parts[1] === 'project.json') && !['history', 'chats'].includes(parts[1])) return true;
+  if (app && looksLikeConflictCopy(parts[parts.length - 1])) return true;
   return parts.slice(app ? 1 : 0).some((part) => HIDDEN_ENTRIES.has(part) || part.toLowerCase() === '.spectrum');
 }
 

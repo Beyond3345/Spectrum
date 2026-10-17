@@ -804,6 +804,20 @@ test('a chat continued on both computers keeps this computer’s messages when a
   assert.equal(read(file(p.cloud)), merged);
 });
 
+test('a sync app’s conflicted copies of the app’s files stay in the cloud copy, never copied here', async () => {
+  const p = await project('App copies', { 'main.tex': 'main\n' });
+  await write(path.join(p.root, '.spectrum', 'chats', 'c1.json'), JSON.stringify({ id: 'c1', messages: [] }));
+  await versions.createVersion(p.root, { label: 'Start' });
+  synced(await syncTo(p));
+  const copies = ['.spectrum/chats/c1 (PC’s conflicted copy 2026-10-18).json', '.spectrum/history/index_PC_Oct-18-0901-2026_Conflict.json'];
+  for (const rel of copies) await write(path.join(p.cloud, rel), '{}');
+  synced(await mirror.syncProject(p.id));
+  for (const rel of copies) {
+    assert.ok(!existsSync(path.join(p.root, rel)), rel);
+    assert.ok(existsSync(path.join(p.cloud, rel)), rel);
+  }
+});
+
 test('a deletion goes to the Bin unless this computer’s history holds the file', async () => {
   const p = await project('Bin', { 'main.tex': '\\documentclass{article}\n', 'main.pdf': '%PDF', 'old.tex': 'old\n', 'older.tex': 'older\n' });
   const chat = { id: 'c2', messages: [] };
