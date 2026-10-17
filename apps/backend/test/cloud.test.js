@@ -43,6 +43,7 @@ const { registerSyncRoutes } = await import('../src/routes/sync.js');
 const { registerCloudRoutes } = await import('../src/routes/cloud.js');
 const { registerCompileRoutes } = await import('../src/routes/compile.js');
 const { registerTransferRoutes } = await import('../src/routes/transfer.js');
+const { registerPresenceRoutes } = await import('../src/routes/presence.js');
 const { readMirror, syncProject } = await import('../src/services/mirrorService.js');
 const { default: Fastify } = await import('fastify');
 
@@ -52,6 +53,7 @@ registerSyncRoutes(app);
 registerCloudRoutes(app);
 registerCompileRoutes(app);
 registerTransferRoutes(app);
+registerPresenceRoutes(app);
 await app.ready();
 after(async () => {
   await app.close();
@@ -151,6 +153,15 @@ test('the cloud copy of a mirrored project opens the project here, and is never 
   const other = (await post('/api/projects', { name: 'Elsewhere' })).json;
   assert.equal((await post(`/api/projects/${other.id}/relocate`, { path: copy })).status, 409);
   assert.equal(JSON.parse(read(copy, '.spectrum', 'project.json')).id, ids.thesis);
+});
+
+test('the editor says a mirrored project is open in its cloud copy, where the other computers look', async () => {
+  const { machineId } = JSON.parse(read(tmp, 'data', 'sync.json'));
+  const mine = path.join(loc, 'Thesis', '.spectrum', 'open', `${machineId}.json`);
+  assert.equal((await post(`/api/projects/${ids.thesis}/presence`)).status, 200);
+  assert.ok(existsSync(mine));
+  await api(`/api/projects/${ids.thesis}/presence`, { method: 'DELETE' });
+  assert.ok(!existsSync(mine));
 });
 
 test('the scan lists another computer’s project in a location without adding it, and a mirrored project never turns into its cloud copy', async () => {

@@ -3,6 +3,7 @@ import { DATA_DIR, PROJECTS_DIR } from '../config/constants.js';
 import { findExecutable } from '../services/compileService.js';
 import { resolvePythonExecutable } from '../services/plotService.js';
 import { getProjectRoot } from '../services/projectService.js';
+import { cloudRootOf, readMirror } from '../services/mirrorService.js';
 import { safeJoin } from '../utils/pathUtils.js';
 
 const TOOLS = ['pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic', 'bibtex', 'biber', 'texcount'];
@@ -40,7 +41,9 @@ export function registerSystemRoutes(fastify) {
 
   // Show the project folder, or a file inside it, in Finder or File Explorer.
   fastify.post('/api/system/reveal', async (req) => {
-    const root = await getProjectRoot(req.body?.projectId);
+    // cloud: a mirrored project's copy in its cloud location
+    const mirror = req.body?.cloud ? await readMirror(req.body.projectId) : null;
+    const root = mirror ? cloudRootOf(mirror) : await getProjectRoot(req.body?.projectId);
     const target = req.body?.path ? safeJoin(root, String(req.body.path)) : root;
     // explorer reads its own command line and wants /select,"path" as is (Windows paths can't hold a
     // double quote); it exits with 1 even when it worked, which nothing here waits for

@@ -693,7 +693,7 @@ function CloudLocations() {
     getSyncSettings().then(show, (err) => setError(err instanceof Error ? err.message : String(err)));
   }, []);
 
-  const save = async (patch: { folders?: string[]; machineName?: string }) => {
+  const save = async (patch: Parameters<typeof updateSyncSettings>[0]) => {
     try {
       show(await updateSyncSettings(patch));
       setError('');
@@ -704,7 +704,7 @@ function CloudLocations() {
   const paths = sync?.folders.map((f) => f.path) || [];
   const add = async (path?: string) => {
     const picked = path || (await pickFolder({ title: 'Choose a folder your sync app keeps on each computer' }));
-    if (picked) await save({ folders: [...paths, picked] });
+    if (picked) await save({ folders: [...paths, picked], projectsDir: settings.projectsDir || undefined });
   };
 
   return (

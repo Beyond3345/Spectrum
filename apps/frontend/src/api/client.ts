@@ -231,9 +231,9 @@ export function archiveProject(id: string, archived: boolean) {
   return request<{ ok: boolean; project?: ProjectMeta }>(`/api/projects/${id}/archive`, json('PATCH', { archived }));
 }
 
-/** Sync to: mirror the project into a cloud location, or move it there. */
+/** Sync to: mirror the project into a cloud location, or move it there; warning: the moved folder's original couldn't go to the Bin. */
 export function syncProjectTo(id: string, payload: { location: string; mode: CloudMode }) {
-  return request<{ project: ProjectMeta }>(`/api/projects/${id}/cloud`, json('POST', payload));
+  return request<{ project: ProjectMeta; warning?: string }>(`/api/projects/${id}/cloud`, json('POST', payload));
 }
 
 /** Bring a project that's only in a cloud location to this computer; a mirrored one's copy goes in parentDir, as createProject's. */
@@ -1023,8 +1023,8 @@ export function getSyncSettings() {
   return request<SyncSettings>('/api/sync');
 }
 
-/** folders: the whole list of cloud locations */
-export function updateSyncSettings(patch: { folders?: string[]; machineName?: string }) {
+/** folders: the whole list of cloud locations; projectsDir: the default folder for new projects, which a new one mustn't overlap */
+export function updateSyncSettings(patch: { folders?: string[]; machineName?: string; projectsDir?: string }) {
   return request<SyncSettings>('/api/sync', json('PATCH', patch));
 }
 

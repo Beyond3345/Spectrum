@@ -462,8 +462,8 @@ export default function ProjectPage() {
     attempt(async () => {
       const move = settings.cloudMode === 'move';
       toast(`${move ? 'Moving' : 'Copying'} “${p.name}” to ${l.label}…`);
-      await syncProjectTo(p.id, { location: l.path, mode: settings.cloudMode });
-      toast(move ? `Moved “${p.name}” to ${l.label}.` : `“${p.name}” now syncs with ${l.label}.`, { tone: 'success' });
+      const { warning } = await syncProjectTo(p.id, { location: l.path, mode: settings.cloudMode });
+      toast(warning || (move ? `Moved “${p.name}” to ${l.label}.` : `“${p.name}” now syncs with ${l.label}.`), { tone: warning ? 'error' : 'success' });
     }, `Couldn’t sync the project to ${l.label}`);
 
   const download = (c: CloudOnlyProject) =>
