@@ -457,19 +457,26 @@ export default function ProjectPage() {
 
   // ─── cloud projects ───
 
-  const syncTo = (p: ProjectMeta, l: CloudLocation) =>
-    attempt(async () => {
+  /** A location's name, with its folder's when another in the same sync app has that name too */
+  const locationName = (l: CloudLocation) =>
+    locations.filter((m) => m.label === l.label).length > 1 ? `${l.label} · ${l.path.split(/[\\/]/).pop()}` : l.label || l.path;
+
+  const syncTo = (p: ProjectMeta, l: CloudLocation) => {
+    const name = locationName(l);
+    return attempt(async () => {
       const move = settings.cloudMode === 'move';
-      toast(`${move ? 'Moving' : 'Copying'} “${p.name}” to ${l.label}…`);
+      toast(`${move ? 'Moving' : 'Syncing'} “${p.name}” to ${name}…`);
       const { warning } = await syncProjectTo(p.id, { location: l.path, mode: settings.cloudMode });
-      toast(warning || (move ? `Moved “${p.name}” to ${l.label}.` : `“${p.name}” now syncs with ${l.label}.`), { tone: warning ? 'error' : 'success' });
-    }, `Couldn’t sync the project to ${l.label}`);
+      toast(warning || (move ? `Moved “${p.name}” to ${name}.` : `“${p.name}” now syncs with ${name}.`), { tone: warning ? 'error' : 'success' });
+    }, `Couldn’t sync the project to ${name}`);
+  };
 
   const download = (c: CloudOnlyProject) =>
     attempt(async () => {
-      toast(`Downloading “${c.name}” from ${c.label}…`);
-      await downloadCloudProject({ location: c.location, rel: c.rel, id: c.id, mode: settings.cloudMode, parentDir });
-      toast(`“${c.name}” is on this computer now.`, { tone: 'success' });
+      toast(settings.cloudMode === 'move' ? `Adding “${c.name}” from ${c.label}…` : `Downloading “${c.name}” from ${c.label}…`);
+      const { project } = await downloadCloudProject({ location: c.location, rel: c.rel, id: c.id, mode: settings.cloudMode, parentDir });
+      // used where it is (Move, or a default folder in a sync app's folder): nothing came down
+      toast(project?.cloud?.mode === 'move' ? `“${c.name}” is in your list, used in ${c.label}.` : `“${c.name}” is on this computer now.`, { tone: 'success' });
     }, 'Couldn’t download the project');
 
   const syncNow = (p: ProjectMeta, force = false) => {
@@ -568,10 +575,14 @@ export default function ProjectPage() {
     return [
       { separator: true },
       { heading: true, label: 'Sync to' },
-      // its folder is in a sync app's already (Documents backed up to OneDrive, say), which syncs it as it is
-      ...(p.place
-        ? [{ label: `Already in ${p.place.label}`, icon: 'cloud', disabled: true }]
-        : locations.map((l) => ({ label: l.label || l.path, icon: 'cloud', disabled: !l.found, onSelect: () => syncTo(p, l) })))
+      // not a location in the sync app its folder is in already (Documents backed up to OneDrive, say), which syncs it
+      // as it is; another app's is a copy like any other
+      ...locations.map((l) => ({
+        label: locationName(l),
+        icon: 'cloud',
+        disabled: !l.found || (!!p.place && p.place.provider === l.place?.provider),
+        onSelect: () => syncTo(p, l)
+      }))
     ];
   };
 

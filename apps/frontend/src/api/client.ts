@@ -1007,6 +1007,8 @@ export interface CloudLocation {
   /** e.g. 'OneDrive' */
   label: string;
   found: boolean;
+  /** where it is in its sync app's folder */
+  place?: SyncPlace | null;
   /** the projects mirrored into it; it can't be removed while there are any */
   mirrored: number;
 }
