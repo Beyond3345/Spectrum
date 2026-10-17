@@ -604,6 +604,30 @@ test('a file here that changes while it’s copied never reaches the cloud half 
   assert.equal(read(local), full);
 });
 
+test('a save landing just after the mirror wrote the file here is an edit here, which goes across', async () => {
+  const p = await project('Landed', { 'main.tex': 'base\n' });
+  synced(await syncTo(p));
+  await write(path.join(p.cloud, 'main.tex'), 'from the other computer\n');
+  const local = path.join(p.root, 'main.tex');
+  const { rename } = fs;
+  // the editor saving just after the pass put the cloud's text in place
+  fs.rename = async (from, to) => {
+    await rename(from, to);
+    if (to === local) {
+      fs.rename = rename;
+      await fs.writeFile(local, 'typed here after it came in\n');
+    }
+  };
+  try {
+    synced(await mirror.syncProject(p.id));
+  } finally {
+    fs.rename = rename;
+  }
+  synced(await mirror.syncProject(p.id));
+  assert.equal(read(path.join(p.cloud, 'main.tex')), 'typed here after it came in\n');
+  assert.equal(read(local), 'typed here after it came in\n');
+});
+
 test('a "Before sync" version comes before what this computer wrote is replaced, and for the cloud’s at most every 10 minutes', async () => {
   const p = await project('Versions', { 'main.tex': 'one\n' });
   synced(await syncTo(p));

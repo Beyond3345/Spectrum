@@ -48,7 +48,7 @@ const basePath = (id, hash) => workDir(id, 'base', `${hash}.gz`);
 const keyOf = (rel) => rel.normalize('NFC').toLowerCase();
 const inApp = (key) => key.startsWith('.spectrum/');
 const join = (root, rel) => path.join(root, ...rel.split('/').filter(Boolean));
-const stat = (s) => ({ size: s.size, mtimeMs: s.mtimeMs });
+const stat = (s) => s && { size: s.size, mtimeMs: s.mtimeMs };
 const sameStat = (a, b) => (!a && !b) || (!!a && !!b && a.size === b.size && a.mtimeMs === b.mtimeMs);
 const entry = (rel, hash, l, c, by) => ({ rel, hash, l: stat(l), c: stat(c), by });
 // not there (a missing folder on the way included) is null; anything else is an error
@@ -565,13 +565,18 @@ async function folderIn(ctx, root, dir) {
   ctx.made.add(dir);
 }
 
-/** src's bytes at dest in root, through a temp file beside it, so neither a reader nor a sync app sees half a file. */
+/**
+ * src's bytes at dest in root, through a temp file beside it, so neither a reader nor a sync app sees half a file.
+ * Returns the stat of what was written, which a rename keeps, whatever lands at dest after it.
+ */
 async function place(ctx, root, src, dest) {
   await folderIn(ctx, root, path.dirname(dest));
   const tmp = `${dest}.${crypto.randomUUID()}.tmp`;
   try {
     await fs.copyFile(src, tmp);
+    const written = await fs.lstat(tmp);
     await renameOver(tmp, dest);
+    return written;
   } catch (err) {
     await fs.rm(tmp, { force: true });
     throw err;
@@ -623,28 +628,31 @@ async function apply(ctx, it, held) {
       // changed while it was copied: the next pass copies it again
       if (!sameStat(await statOf(local), l)) return later();
       if (it.action === 'conflict') await fs.copyFile(it.fetched, await freePath(join(ctx.localRoot, conflictCopyPath(l.rel, ctx.label))), constants.COPYFILE_EXCL);
-      await place(ctx, ctx.cloudRoot, copy, cloud);
-      return entry(l.rel, l.hash, l, await statOf(cloud), 'here');
+      return entry(l.rel, l.hash, l, await place(ctx, ctx.cloudRoot, copy, cloud), 'here');
     }
     case 'toLocal': {
       if (!(await unchanged('l'))) return later();
       await folderIn(ctx, ctx.localRoot, path.dirname(local));
+      // the stat of what was written, which a rename keeps: a save landing just after it is then an edit here
+      const written = await fs.lstat(it.fetched);
       await renameOver(it.fetched, local);
-      return entry(c.rel, c.hash, await statOf(local), c, 'there');
+      return entry(c.rel, c.hash, written, c, 'there');
     }
     case 'meta': {
       if (!(await unchanged('lc'))) return later();
       // through updateMeta, so the list's copy of the name and tags follows (and the id stays); the cloud gets its bytes
       await updateMeta(ctx.localRoot, () => it.meta);
       const bytes = await fs.readFile(local);
-      if (sha256(bytes) !== c.hash) await writeFileAtomic(cloud, bytes);
-      return entry(l.rel, sha256(bytes), await statOf(local), await statOf(cloud), 'there');
+      const changed = sha256(bytes) !== c.hash;
+      if (changed) await writeFileAtomic(cloud, bytes);
+      // a side written is hashed again next pass: a save landing just after the write would pass for it
+      return entry(l.rel, sha256(bytes), undefined, changed ? undefined : c, 'there');
     }
     case 'write': {
       if (!(await unchanged('lc'))) return later();
       await writeFileAtomic(local, it.data);
       await writeFileAtomic(cloud, it.data);
-      return entry(l.rel, sha256(it.data), await statOf(local), await statOf(cloud), 'here');
+      return entry(l.rel, sha256(it.data), undefined, undefined, 'here');
     }
     case 'deleteCloud': {
       if (!(await unchanged('c'))) return later();
