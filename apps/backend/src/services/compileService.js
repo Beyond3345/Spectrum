@@ -215,15 +215,20 @@ export async function runCompile({ projectId, mainFile, engine = 'pdflatex', com
     return { ok: false, error: `The main file “${mainFile}” doesn’t exist.`, engine };
   }
 
-  // only the editor's compiles can be stopped, each by its own id (another of the project's may be running too)
-  const job = { stopped: stoppedEarly.delete(compileId), children: new Set() };
-  if (compileId) running.set(compileId, job);
+  // only the editor's compiles can be stopped, each by its own id (another of the project's may be running too); the
+  // others (a transfer's) are listed too, so the project's folder isn't moved from under them
+  const job = { projectId, stopped: stoppedEarly.delete(compileId), children: new Set() };
+  const key = compileId || Symbol('compile');
+  running.set(key, job);
   try {
     return await jobs.run(job, () => compileWithLinks(engine, projectRoot, absMain, mainFile));
   } finally {
-    if (compileId) running.delete(compileId);
+    running.delete(key);
   }
 }
+
+/** A compile of the project is running. */
+export const compiling = (projectId) => [...running.values()].some((job) => job.projectId === projectId);
 
 async function compileWithLinks(engine, projectRoot, absMain, mainFile) {
   // Documents it cross-references go first when their .aux is missing or old. One level only,

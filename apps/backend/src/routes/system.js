@@ -1,8 +1,8 @@
 import { spawn, spawnSync } from 'child_process';
-import { DATA_DIR } from '../config/constants.js';
+import { DATA_DIR, PROJECTS_DIR } from '../config/constants.js';
 import { findExecutable } from '../services/compileService.js';
 import { resolvePythonExecutable } from '../services/plotService.js';
-import { getProjectRoot, newProjectsDir } from '../services/projectService.js';
+import { getProjectRoot } from '../services/projectService.js';
 import { safeJoin } from '../utils/pathUtils.js';
 
 const TOOLS = ['pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic', 'bibtex', 'biber', 'texcount'];
@@ -30,7 +30,7 @@ export function registerSystemRoutes(fastify) {
     return {
       ok: true,
       dataDir: DATA_DIR,
-      projectsDir: await newProjectsDir(),
+      projectsDir: PROJECTS_DIR,
       tools,
       problems,
       python: { path: python, found: !probe.error, matplotlib: probe.status === 0, ddgs },
