@@ -7,20 +7,22 @@ import { HIDDEN_ENTRIES, ensureDir, listFilesRecursive, readJson, writeJsonAtomi
 import { safeJoin } from '../utils/pathUtils.js';
 import { isDocumentFile } from '../utils/texUtils.js';
 import {
-  foldersAt,
+  caseless,
   hideProject,
   isConflictCopy,
-  otherComputersProjects,
+  locationLabel,
+  locationOf,
   placeOf,
   providerHere,
   publishProjects,
   readSyncConfig,
+  relFrom,
   sameFolder,
   syncFolderRoots,
-  syncedProjectsDir,
   unhideProject,
   within
 } from './syncService.js';
+import { cloudCopyOwner, listMirrored, mirrorStatus, readMirror, unlinkMirror } from './mirrorService.js';
 import { conflictCopies } from '../utils/conflictCopies.js';
 import { knownMachineNames } from './presenceService.js';
 
@@ -80,7 +82,7 @@ function updateRegistry(fn) {
 // The registry keeps name, tags and archived so a project whose folder is missing still lists right.
 const cached = (meta) => ({ name: meta.name, tags: meta.tags, archived: meta.archived });
 
-async function register(id, root, meta) {
+export async function register(id, root, meta) {
   await updateRegistry((registry) => {
     const previous = registry.projects.find((p) => p.id === id);
     registry.projects = registry.projects.filter((p) => p.id !== id && p.path !== root);
@@ -95,14 +97,23 @@ function cacheMeta(meta) {
   });
 }
 
-/** Forget a project; its folder stays where it is. */
+/** The project's folder has moved (Sync to, Stop syncing): its entry, with whatever else it holds, points there now. */
+export function moveEntry(id, root) {
+  return updateRegistry((registry) => {
+    const entry = registry.projects.find((p) => p.id === id);
+    if (entry) entry.path = root;
+  });
+}
+
+/** Forget a project; its folder stays where it is, and so does its cloud copy, which Spectrum stops mirroring. */
 export async function unregister(id) {
   const entry = await findEntry(id);
   await updateRegistry((registry) => {
     registry.projects = registry.projects.filter((p) => p.id !== id);
   });
-  // or the next scan of the synced folders, or another computer's list, brings it back (not a template's working
-  // copy in the app's data folder, which is deleted next)
+  await unlinkMirror(id);
+  // or its copy in a cloud location shows in Cloud projects (not a template's working copy in the app's data folder,
+  // which is deleted next)
   if ((await readSyncConfig()).folders.length && !within(entry.path, DATA_DIR)) await hideProject(id);
 }
 
@@ -207,7 +218,25 @@ async function describe(entry) {
   // here: the sync app's folder is on this computer, so a missing project may still be on its way
   const place = await placeOf(entry.path);
   if (place) project.place = { ...place, here: !!meta || (await providerHere(place.provider)) };
+  const cloud = await cloudOf(entry);
+  if (cloud) project.cloud = cloud;
   return project;
+}
+
+/**
+ * A cloud project's { mode, label, rel, location, status? }, rel '/'-separated from the location: one in a cloud
+ * location ('move': moved there, or 1.8.0's in place), or one Spectrum mirrors into one ('mirror', with how that's going).
+ */
+async function cloudOf(entry) {
+  const location = await locationOf(entry.path);
+  const record = await readMirror(entry.id);
+  if (location) {
+    // its own folder is the cloud copy (1.8.0 followed it there, or Locate… found it), so there's nothing to mirror
+    if (record) await unlinkMirror(entry.id);
+    return { mode: 'move', label: await locationLabel(location.path), rel: relFrom(location.path, entry.path), location: location.path };
+  }
+  if (!record) return null;
+  return { mode: 'mirror', label: await locationLabel(record.location), rel: record.rel, location: record.location, status: await mirrorStatus(entry.id) };
 }
 
 /** The thumbnail's file: this computer's, or the one 1.7.0 and earlier kept in the folder. */
@@ -228,36 +257,42 @@ export async function listProjects() {
 }
 
 /**
- * The projects page: this computer's projects, with what the synced folders hold found first, and those only
- * another computer lists (`elsewhere`, shown greyed out; only once a synced folder is set up).
+ * The projects page: this computer's projects, with the cloud locations looked through first, and the projects in
+ * them this computer doesn't have (`cloudOnly`, for Download).
  */
 export async function projectsPage({ scan = false } = {}) {
   const { folders, hidden } = await readSyncConfig();
-  if (!folders.length) return { projects: await listProjects() };
+  if (!folders.length) return { projects: await listProjects(), cloudOnly: [] };
   // a slow folder (online-only, the NAS out of reach) finishes in the background and shows next time
   await Promise.race([scanSyncFolders(scan), new Promise((resolve) => setTimeout(resolve, 2000))]);
   const projects = await listProjects();
-  // archived ones aren't the other computers' to list
-  const own = projects.filter((p) => !p.missing && !p.templateDraft && !p.archived);
-  await publishProjects(own.map(({ id, name, place }) => ({ id, name, place: place ? { provider: place.provider, label: place.label, rel: place.rel } : null }))).catch(() => {});
-  const known = new Set([...projects.map((p) => p.id), ...hidden]);
-  const elsewhere = [];
-  for (const p of await otherComputersProjects()) {
-    if (known.has(p.id) || !ID_RE.test(p.id)) continue;
-    known.add(p.id);
-    // "not on this computer yet" when its sync app is here: the scan looked at the place it gave
-    elsewhere.push({ ...p, place: p.place && { ...p.place, here: await providerHere(p.place.provider) } });
+  // only the cloud projects are the other computers' business, archived and missing ones too, so Stop syncing there
+  // never deletes a cloud copy that this computer has no copy of its own besides
+  const cloud = [];
+  for (const p of projects.filter((project) => project.cloud)) {
+    const place = await placeOf(path.join(p.cloud.location, p.cloud.rel));
+    cloud.push({ id: p.id, name: p.name, place: place && { provider: place.provider, label: place.label, rel: place.rel }, mirror: p.cloud.mode === 'mirror' && !p.missing });
   }
-  return { projects, elsewhere };
+  await publishProjects(cloud).catch(() => {});
+  const known = new Set([...projects.map((p) => p.id), ...hidden, ...(await listMirrored()).map((m) => m.id)]);
+  const cloudOnly = [];
+  for (const { id, root, meta, location } of scanned) {
+    if (known.has(id) || meta.templateDraft) continue;
+    const { name, updatedAt } = normaliseMeta({ ...meta, id });
+    cloudOnly.push({ id, name, label: await locationLabel(location), rel: relFrom(location, root), location, updatedAt });
+  }
+  return { projects, cloudOnly };
 }
 
-// ─── Synced folders ───
+// ─── Cloud locations ───
 
 let scanning = null;
 let scannedAt = 0;
+// what the last scan found, each id once: [{ id, root, meta, location }]
+let scanned = [];
 
-/** Every project folder up to 3 levels into a synced folder, reading only their project.json: [{ id, root, meta }]. */
-async function findSyncedProjects(dir, deadline, found = [], depth = 1) {
+/** Every project folder up to 3 levels into a cloud location, reading only their project.json: [{ id, root, meta }]. */
+export async function findSyncedProjects(dir, deadline, found = [], depth = 1) {
   for (const entry of await fs.readdir(dir, { withFileTypes: true }).catch(() => [])) {
     if (Date.now() > deadline) break;
     if (!entry.isDirectory() || entry.name.startsWith('.') || HIDDEN_ENTRIES.has(entry.name) || isConflictCopy(entry.name)) continue;
@@ -279,50 +314,33 @@ async function lost(root, id) {
 }
 
 /**
- * List the projects in the synced folders on this computer, and at the places the other computers give for theirs, at
- * most every 30 s unless forced (the window came to the front). Nothing is written into the folders. A new id is added
- * with its folder here; a listed project whose folder has gone follows its id to the new one (moved, or synced to
- * another place). The same id in two folders is a copy (Finder's, a sync app's): only the one at the place another
- * computer gave counts, else neither, and a listed project stays where it is (the copy gets its own id when it's
- * opened, through openFolder).
+ * Look through the cloud locations on this computer for projects, at most every 30 s unless forced (the window came
+ * to the front). Nothing is written into the folders, and nothing is added to the list: Download and Sync to do that.
+ * A listed project in place whose folder has gone follows its id to the new one (moved, or synced to another place);
+ * one Spectrum mirrors never does, so a missing local copy says so rather than turning into the cloud copy. The same
+ * id in two folders is a copy (Finder's, a sync app's): neither counts, and a listed project stays where it is (the
+ * copy gets its own id when it's opened, through openFolder).
  */
 function scanSyncFolders(force) {
   if (scanning || (!force && Date.now() - scannedAt < 30_000)) return scanning;
   scannedAt = Date.now();
   scanning = (async () => {
-    const { folders, hidden } = await readSyncConfig();
+    const { folders } = await readSyncConfig();
     const deadline = Date.now() + 20_000;
     const found = [];
-    for (const { path: folder } of folders) await findSyncedProjects(folder, deadline, found);
-    // deeper down, or in a sync app's folder that isn't a synced folder here
-    for (const { id, place } of await otherComputersProjects()) {
-      for (const root of place && Date.now() < deadline ? await foldersAt(place) : []) {
-        const seen = found.find((f) => sameFolder(f.root, root));
-        const at = seen || { root, ...(await readMetaId(root)) };
-        if (at.id !== id) continue;
-        at.given = true;
-        if (!seen) found.push(at);
-      }
-    }
-    const pick = (id) => {
-      const all = found.filter((f) => f.id === id);
-      const given = all.filter((f) => f.given);
-      return all.length === 1 ? all[0] : given.length === 1 ? given[0] : null;
-    };
+    for (const { path: location } of folders) for (const f of await findSyncedProjects(location, deadline)) found.push({ ...f, location });
+    const once = found.filter((f) => found.filter((g) => g.id === f.id).length === 1);
+    const mirrored = new Set((await listMirrored()).map((m) => m.id));
     await updateRegistry(async (registry) => {
-      for (const f of found) {
-        const { id, root, meta } = f;
-        if (pick(id) !== f || hidden.includes(id)) continue;
-        // a template's working copy belongs in the app's data folder; one copied into a synced folder is left alone
-        if (meta.templateDraft || registry.projects.some((p) => p.id !== id && (within(p.path, root) || within(root, p.path)))) continue;
+      for (const { id, root, meta } of once) {
         const entry = registry.projects.find((p) => p.id === id);
-        if (!entry) {
-          registry.projects.push({ id, path: root, ...cached(normaliseMeta({ ...meta, id })), addedAt: new Date().toISOString() });
-        } else if (!sameFolder(entry.path, root) && (await lost(entry.path, id))) {
-          Object.assign(entry, { path: root }, cached(normaliseMeta({ ...meta, id })));
-        }
+        // a template's working copy belongs in the app's data folder; one copied into a cloud location is left alone
+        if (!entry || mirrored.has(id) || meta.templateDraft || sameFolder(entry.path, root)) continue;
+        if (registry.projects.some((p) => p.id !== id && (within(p.path, root) || within(root, p.path)))) continue;
+        if (await lost(entry.path, id)) Object.assign(entry, { path: root }, cached(normaliseMeta({ ...meta, id })));
       }
     });
+    scanned = once;
   })()
     .catch(() => {})
     .finally(() => {
@@ -349,7 +367,8 @@ export function sanitiseFolderName(name) {
   const clean = String(name || '')
     .replace(/[/\\:*?"<>|\u0000-\u001f\u007f]/g, '')
     .trim()
-    .replace(/^\.+/, '')
+    // and a leading ~, which Synology passes by and OneDrive refuses
+    .replace(/^[.~]+/, '')
     .trim();
   // Windows drops a trailing dot or space, and CON, AUX and the like are devices, which TeX and Explorer can't open;
   // on macOS too, so a folder made here still syncs to and opens on a Windows computer
@@ -362,7 +381,7 @@ function expandHome(input) {
 }
 
 /** Create `<parent>/<base>`, or `<base> 2`, `<base> 3`… if that's taken. */
-async function makeUniqueFolder(parent, base) {
+export async function makeUniqueFolder(parent, base) {
   for (let n = 1; ; n += 1) {
     const candidate = path.join(parent, n === 1 ? base : `${base} ${n}`);
     try {
@@ -441,7 +460,7 @@ export async function detectMainFile(root) {
  * or when `signal` aborts before the project is registered.
  */
 export async function createProject({ name, parentDir, populate, signal, meta: extra = {} } = {}) {
-  const parentInput = expandHome(parentDir) || (await newProjectsDir());
+  const parentInput = expandHome(parentDir) || PROJECTS_DIR;
   if (!path.isAbsolute(parentInput)) throw httpError('The location must be a full folder path.', 400);
   await ensureDir(parentInput);
   const parent = await fs.realpath(parentInput);
@@ -471,9 +490,18 @@ async function readMetaId(root) {
   }
 }
 
+/** A mirrored project's cloud copy is never a project of its own: it would get a second id, which the mirror spreads. */
+async function refuseCloudCopy(root) {
+  const owner = await cloudCopyOwner(root);
+  if (!owner) return;
+  const name = (await readRegistry()).projects.find((p) => p.id === owner.id)?.name || 'a project';
+  throw httpError(`This is the cloud copy of “${name}”, which Spectrum keeps in step with the project on this computer. Open “${name}” from the projects list instead.`, 409);
+}
+
 /** Adopt an existing folder as a project without moving or copying anything. */
 export async function openFolder(input) {
   const root = await resolveExistingFolder(input);
+  await refuseCloudCopy(root);
   const { meta, id: folderId } = await readMetaId(root);
   let id = folderId;
   const { projects } = await readRegistry();
@@ -493,9 +521,6 @@ export async function openFolder(input) {
   return getProject(id);
 }
 
-// APFS and NTFS ignore case
-const caseless = (p) => (process.platform === 'darwin' || process.platform === 'win32' ? p.toLowerCase() : p);
-
 /**
  * A .tex, .ltx or .bib file opened from Finder or Explorer: the listed project it's in (the
  * deepest), or else the folder around it adopted as one, which is the nearest with a
@@ -514,6 +539,12 @@ export async function openFile(input) {
   if (!/\.(tex|ltx|bib)$/i.test(file) || !(await fs.stat(file)).isFile()) throw httpError('Spectrum opens .tex, .ltx and .bib files.', 400);
   const inside = (root) => caseless(file).startsWith(caseless(root) + path.sep);
   const relative = (root) => file.slice(root.length + 1).split(path.sep).join('/');
+  // in a mirrored project's cloud copy: the same file in the project here, while it has its folder
+  const mirrored = await cloudCopyOwner(file);
+  if (mirrored) {
+    if (!(await getProjectRoot(mirrored.id).catch(() => null))) await refuseCloudCopy(file);
+    return { projectId: mirrored.id, file: mirrored.rel };
+  }
   const { projects } = await readRegistry();
   const owner = projects.filter((p) => inside(p.path)).sort((a, b) => b.path.length - a.path.length)[0];
   if (owner) return { projectId: owner.id, file: relative(owner.path) };
@@ -561,6 +592,7 @@ async function anyDocument(dir, names) {
 export async function relocateProject(id, input) {
   const entry = await findEntry(id);
   const root = await resolveExistingFolder(input);
+  await refuseCloudCopy(root);
   const { meta, id: folderId } = await readMetaId(root);
   const { projects } = await readRegistry();
   if (projects.some((p) => p.id !== id && (p.id === folderId || p.path === root))) {
@@ -573,11 +605,6 @@ export async function relocateProject(id, input) {
   await register(id, root, next);
   await unhideProject(id);
   return getProject(id);
-}
-
-/** Where new projects go unless another folder is chosen: the first synced folder, else the projects folder. */
-export async function newProjectsDir() {
-  return (await syncedProjectsDir()) || PROJECTS_DIR;
 }
 
 /** Where a copy of this project goes: next to it, unless it still lives in the app data folder. */

@@ -1,15 +1,17 @@
-// Projects shared between computers through a sync folder (Synology Drive, OneDrive, Dropbox, iCloud): which
-// folders this computer treats as synced, this computer's id, and the shared folder for what follows the user
-// (settings, templates, the list of each computer's projects).
+// Projects shared between computers through a sync app's folder (Synology Drive, OneDrive, Dropbox, iCloud): this
+// computer's cloud locations, its id, and the shared folder for what follows the user (settings, templates, the list
+// of each computer's cloud projects).
 //
 // DATA_DIR/sync.json, this computer's own (never synced, and kept apart from registry.json, which 1.7.0 rewrites
 // without fields it doesn't know):
 //   { machineId, machineName, folders: [{ path, place? }], hidden: [projectId] }
-// place is where the folder was in its sync app's folder when it was added, so a project in it still says
-// which app it's waiting for after that app's folder has gone.
-// <a synced folder>/.spectrum-shared/ (sharedDir picks the same one on each computer): one file per computer where
+// folders are the cloud locations (1.8.0's synced folders, which it still reads). place is where the folder was in its
+// sync app's folder when it was added, so a project in it still says which app it's waiting for after that app's
+// folder has gone.
+// <a cloud location>/.spectrum-shared/ (sharedDir picks the same one on each computer): one file per computer where
 // several computers write (never a shared file two computers rewrite, which a sync client would split into conflict copies)
-//   machines/<machineId>.json: { machineName, systemNames, updatedAt, projects: [{ id, name, place }] }
+//   machines/<machineId>.json: { machineName, systemNames, updatedAt, projects: [{ id, name, place, mirror }] }
+//   mirror: that computer keeps a copy of its own, so it doesn't lose the project if the cloud copy is deleted
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -103,15 +105,17 @@ export async function sharedDir() {
 export const PROVIDERS = { synology: 'Synology Drive', onedrive: 'OneDrive', dropbox: 'Dropbox', google: 'Google Drive', icloud: 'iCloud Drive' };
 // Synology's documented marker in the folder of a classic sync task
 const MARKER = '.SynologyWorkingDirectory';
+const ICLOUD = ['Library', 'Mobile Documents', 'com~apple~CloudDocs'];
 // macOS asks before an app looks inside these, so the marker check passes them by
 const PROTECTED = new Set(['Desktop', 'Documents', 'Downloads', 'Library', 'Movies', 'Music', 'Pictures']);
 
 // APFS and NTFS ignore case
-const caseless = (p) => (process.platform === 'darwin' || process.platform === 'win32' ? p.toLowerCase() : p);
+export const caseless = (p) => (process.platform === 'darwin' || process.platform === 'win32' ? p.toLowerCase() : p);
 export const sameFolder = (a, b) => caseless(a) === caseless(b);
 /** p is root or inside it */
 export const within = (p, root) => sameFolder(p, root) || caseless(p).startsWith(caseless(root.endsWith(path.sep) ? root : root + path.sep));
-const relFrom = (root, p) => p.slice(root.length).split(path.sep).filter(Boolean).join('/');
+/** p's place in root, '/'-separated. */
+export const relFrom = (root, p) => p.slice(root.length).split(path.sep).filter(Boolean).join('/');
 
 /** OneDrive's folders as its own settings list them, for when the environment doesn't say. */
 async function oneDriveFromRegistry() {
@@ -139,7 +143,7 @@ export async function detectSyncRoots() {
       const provider = { OneDrive: 'onedrive', SynologyDrive: 'synology', Dropbox: 'dropbox', GoogleDrive: 'google' }[name.split('-')[0]];
       if (provider) await add(path.join(cloud, name), provider);
     }
-    await add(path.join(home, 'Library', 'Mobile Documents', 'com~apple~CloudDocs'), 'icloud');
+    await add(path.join(home, ...ICLOUD), 'icloud');
   }
   if (process.platform === 'win32') {
     const onedrive = ['OneDrive', 'OneDriveCommercial', 'OneDriveConsumer'].map((name) => process.env[name]).filter(Boolean);
@@ -166,6 +170,7 @@ export async function detectSyncRoots() {
 let roots = null;
 let rootsAt = 0;
 const marked = new Map();
+const keptInICloud = new Map();
 
 /** detectSyncRoots, kept for a minute, and only once a synced folder is set up: before that nothing here looks. */
 async function syncRoots() {
@@ -174,6 +179,7 @@ async function syncRoots() {
     roots = detectSyncRoots();
     rootsAt = Date.now();
     marked.clear();
+    keptInICloud.clear();
   }
   return roots;
 }
@@ -187,9 +193,26 @@ async function synologyRootOf(p) {
   return null;
 }
 
+/**
+ * iCloud's Desktop & Documents leaves those folders where they are and syncs them as iCloud Drive's own: its
+ * Desktop and Documents are then the same folders as the home folder's.
+ */
+function iCloudKeeps(name) {
+  if (!keptInICloud.has(name)) {
+    const real = (p) => fs.realpath(p).catch(() => null);
+    const home = path.join(os.homedir(), name);
+    keptInICloud.set(name, Promise.all([real(path.join(os.homedir(), ...ICLOUD, name)), real(home)]).then(([a, b]) => !!a && !!b && sameFolder(a, b)));
+  }
+  return keptInICloud.get(name);
+}
+
 async function locate(p, appRoots, folders) {
   const root = appRoots.filter((r) => within(p, r.path)).sort((a, b) => b.path.length - a.path.length)[0];
   if (root) return { provider: root.provider, label: root.label, rel: relFrom(root.path, p) };
+  for (const name of process.platform === 'darwin' ? ['Desktop', 'Documents'] : []) {
+    const dir = path.join(os.homedir(), name);
+    if (within(p, dir) && (await iCloudKeeps(name))) return { provider: 'icloud', label: PROVIDERS.icloud, rel: [name, relFrom(dir, p)].filter(Boolean).join('/') };
+  }
   // a synced folder whose app's folder has gone (Drive Client signed out, a drive not plugged in)
   const known = folders.find((f) => f.place && within(p, f.path));
   if (known) return { ...known.place, rel: [known.place.rel, relFrom(known.path, p)].filter(Boolean).join('/') };
@@ -212,26 +235,6 @@ export async function placeOfNew(p) {
   return locate(p, await detectSyncRoots(), []);
 }
 
-/**
- * Where a place another computer gave is on this one: that folder in each of its sync app's folders here, and in the
- * synced folders that app keeps. Never outside them.
- */
-export async function foldersAt(place) {
-  const parts = place.rel.split('/');
-  if (parts.some((s) => !s || s === '.' || s === '..' || /[\\:]/.test(s))) return [];
-  const tops = (await syncRoots()).filter((r) => r.provider === place.provider).map((r) => ({ path: r.path, rel: [] }));
-  for (const f of (await readSyncConfig()).folders) if (f.place?.provider === place.provider) tops.push({ path: f.path, rel: f.place.rel.split('/').filter(Boolean) });
-  const found = [];
-  for (const top of tops) {
-    if (top.rel.length >= parts.length || top.rel.some((s, i) => !sameFolder(s, parts[i]))) continue;
-    // by its real path, so one folder reached through a link (or a junction above the sync app's folder) counts once;
-    // a place that isn't here drops out
-    const p = await fs.realpath(path.join(top.path, ...parts.slice(top.rel.length))).catch(() => null);
-    if (p && !found.some((q) => sameFolder(q, p))) found.push(p);
-  }
-  return found;
-}
-
 /** The sync app's folder is on this computer. */
 export async function providerHere(provider) {
   for (const r of await syncRoots()) if (r.provider === provider && (await isDir(r.path))) return true;
@@ -244,13 +247,17 @@ export async function syncFolderRoots() {
   return [...(await readSyncConfig()).folders.map((f) => f.path), ...(await syncRoots()).map((r) => r.path)];
 }
 
-/** The first synced folder that exists here, where new projects go, or null. */
-export async function syncedProjectsDir() {
-  for (const { path: folder } of (await readSyncConfig()).folders) if (await isDir(folder)) return folder;
-  return null;
+/** The cloud location p is in, { path, place? } as sync.json keeps it, or null. */
+export async function locationOf(p) {
+  return (await readSyncConfig()).folders.find((f) => within(p, f.path)) || null;
 }
 
-/** Keep a project the user removed from the list from coming back with the next scan, or from another computer's list. */
+/** What a cloud location is called: its sync app's name, else its own folder's (a NAS share, say). */
+export async function locationLabel(location) {
+  return (await placeOf(location))?.label || path.basename(location);
+}
+
+/** Keep a project the user removed from the list out of Cloud projects, where its cloud copy would show it again. */
 export async function hideProject(id) {
   if (!(await readSyncConfig()).hidden.includes(id)) await updateSyncConfig((c) => ({ ...c, hidden: [...c.hidden, id] }));
 }
@@ -293,8 +300,9 @@ const validPlace = (place) =>
     : null;
 
 /**
- * Tell the other computers which projects this one has, [{ id, name, place }], in this computer's own file. Written when
- * the list changes, and once a day so the file doesn't go stale.
+ * Tell the other computers which cloud projects this one has, [{ id, name, place, mirror }], in this computer's own
+ * file (an empty list still says what it's called). Written when the list changes, and once a day so the file doesn't
+ * go stale.
  */
 export async function publishProjects(projects) {
   const shared = await sharedDir();
@@ -313,7 +321,7 @@ export async function publishProjects(projects) {
   published = { key, at: updatedAt.getTime() };
 }
 
-/** What the other computers list, from files updated in the last 90 days, newest first: [{ id, name, place, machineName }]. */
+/** What the other computers list, from files updated in the last 90 days, newest first: [{ id, name, place, mirror, machineName }]. */
 export async function otherComputersProjects() {
   const { machineId: own, folders } = await readSyncConfig();
   const lists = [];
@@ -333,6 +341,6 @@ export async function otherComputersProjects() {
     .flatMap(({ data }) =>
       data.projects
         .filter((p) => typeof p?.id === 'string' && typeof p.name === 'string')
-        .map((p) => ({ id: p.id, name: p.name, place: validPlace(p.place), machineName: String(data.machineName || 'another computer').slice(0, 60) }))
+        .map((p) => ({ id: p.id, name: p.name, place: validPlace(p.place), mirror: p.mirror === true, machineName: String(data.machineName || 'another computer').slice(0, 60) }))
     );
 }
