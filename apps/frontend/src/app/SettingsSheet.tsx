@@ -79,6 +79,10 @@ const SEARCH_NOTES: Record<SearchProvider, string> = {
   ddgs: 'Google, Bing, Brave, DuckDuckGo and others through the ddgs Python library. No key needed, but it needs Python with ddgs installed.'
 };
 
+const SEP = IS_WINDOWS ? '\\' : '/';
+/** p is root or inside it, in any letter case. */
+const under = (p: string, root: string) => `${p.toLowerCase()}${SEP}`.startsWith(`${root.toLowerCase()}${SEP}`);
+
 const TEX = IS_WINDOWS ? 'Install TeX Live or MiKTeX' : 'brew install --cask mactex-no-gui';
 const INSTALL_HINTS: Record<string, string> = {
   pdflatex: TEX,
@@ -448,8 +452,6 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                       const picked = await pickFolder({ title: 'Choose the default folder for new projects', defaultPath: settings.projectsDir || check?.projectsDir });
                       if (!picked) return;
                       // never in a cloud location, or holding one: every new project would be a cloud project there
-                      const sep = IS_WINDOWS ? '\\' : '/';
-                      const under = (p: string, root: string) => `${p.toLowerCase()}${sep}`.startsWith(`${root.toLowerCase()}${sep}`);
                       const folders = (await getSyncSettings().catch(() => null))?.folders || [];
                       const inside = folders.find((f) => under(picked, f.path) || under(f.path, picked));
                       if (inside) toast(`That folder ${under(picked, inside.path) ? 'is in' : 'holds'} ${inside.label}, a cloud location. Choose a folder on this computer.`, { tone: 'error' });
@@ -732,16 +734,20 @@ function CloudLocations() {
           <button className="btn small" onClick={() => save({ folders: paths.filter((p) => p !== f.path) })}>Remove</button>
         </div>
       ))}
-      {sync?.suggestions.map((s) => (
-        <div key={s.target} className="path-row">
-          <Icon name="folder.badge.plus" />
-          <span className="path-text">
-            <span className="path-label">{s.label}</span>
-            {tildify(s.target)}
-          </span>
-          <button className="btn small" onClick={() => add(s.target)}>Add</button>
-        </div>
-      ))}
+      {sync?.suggestions.map((s) => {
+        // the app's own folder can't be added when it holds the default folder chosen here: its Spectrum folder then
+        const target = settings.projectsDir && under(settings.projectsDir, s.target) ? `${s.path}${SEP}Spectrum` : s.target;
+        return (
+          <div key={target} className="path-row">
+            <Icon name="folder.badge.plus" />
+            <span className="path-text">
+              <span className="path-label">{s.label}</span>
+              {tildify(target)}
+            </span>
+            <button className="btn small" onClick={() => add(target)}>Add</button>
+          </div>
+        );
+      })}
       <div>
         <button className="btn small" disabled={!sync} onClick={() => add()}>Add…</button>
       </div>
