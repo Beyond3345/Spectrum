@@ -1,7 +1,9 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { getSharedSettings, listLiveModels, listProviders, shareSettings } from '../api/client';
-import type { CompileEngine, EffortLevel, LLMConfig, OxfordComma, ProviderModel, ProviderPreset, ReasoningEffort, SearchProvider } from '../api/client';
+import type { CloudMode, CompileEngine, EffortLevel, LLMConfig, OxfordComma, ProviderModel, ProviderPreset, ReasoningEffort, SearchProvider } from '../api/client';
 import { setNativeTheme } from './desktop';
+import { NO_FOLDERS, cleanFolders } from './folders';
+import type { ProjectFolders } from './folders';
 
 export { IS_DESKTOP } from './desktop';
 
@@ -92,8 +94,12 @@ export type AppSettings = {
   syncHighlightCustom: string;
   /** how long the highlight stays before it fades, 1 to 10 */
   syncHighlightSeconds: number;
-  /** settings follow the user to their other computers through the synced folder (SHARED_KEYS) */
+  /** settings follow the user to their other computers through the cloud locations (SHARED_KEYS) */
   syncSettings: boolean;
+  /** what Sync to and Download do on this computer */
+  cloudMode: CloudMode;
+  /** the folders on the Projects page (folders.ts) */
+  projectFolders: ProjectFolders;
 };
 
 export const SETTINGS_KEY = 'spectrum-settings-v1';
@@ -152,7 +158,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   syncHighlightColour: 'yellow',
   syncHighlightCustom: '#ffd60a',
   syncHighlightSeconds: 3,
-  syncSettings: true
+  syncSettings: true,
+  cloudMode: 'mirror',
+  projectFolders: NO_FOLDERS
 };
 
 export const SYNC_HIGHLIGHTS: [SyncHighlight, string][] = [
@@ -226,6 +234,8 @@ function parse(raw: string | null): AppSettings {
     if (!Number.isFinite(merged.syncHighlightSeconds)) merged.syncHighlightSeconds = DEFAULT_SETTINGS.syncHighlightSeconds;
     merged.syncHighlightSeconds = Math.min(10, Math.max(1, Math.round(merged.syncHighlightSeconds)));
     merged.syncSettings = merged.syncSettings !== false;
+    if (merged.cloudMode !== 'move') merged.cloudMode = 'mirror';
+    merged.projectFolders = cleanFolders(merged.projectFolders);
     for (const key of ['editorFont', 'editorFontCustom', 'editorThemeLight', 'editorThemeDark', 'parser', 'parserProtocol'] as const) {
       if (typeof merged[key] !== 'string') merged[key] = DEFAULT_SETTINGS[key];
     }
@@ -307,12 +317,13 @@ export function updateSettings(patch: Partial<AppSettings>) {
 
 /**
  * What goes to the user's other computers. Never a key, nor the providers, endpoints and models that go with the
- * keys, a path, the window's see-through look, an editor font or compiler only one computer may have, or this switch.
+ * keys, a path, the window's see-through look, an editor font or compiler only one computer may have, what Sync to
+ * does on this computer, or this switch.
  */
 const SHARED_KEYS = [
   'theme', 'accent', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize',
   'autoInsertCite', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
-  'syncHighlightSeconds'
+  'syncHighlightSeconds', 'projectFolders'
 ] as const satisfies readonly (keyof AppSettings)[];
 
 export const sharedPart = (settings: AppSettings): Record<string, unknown> => Object.fromEntries(SHARED_KEYS.map((key) => [key, settings[key]]));

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { changeSpellWord, getSyncSettings, spellStatus, spellWords, systemCheck, updateSyncSettings } from '../api/client';
-import type { CheckerStatus, SearchProvider, SyncSettings, SystemCheck } from '../api/client';
+import type { CheckerStatus, CloudMode, SearchProvider, SyncSettings, SystemCheck } from '../api/client';
 import { COLOUR_ROLES, EDITOR_FONTS, EDITOR_THEMES, chosenColours, editorColours, highlightLines, themeFor, wellColour } from '../editor/editorThemes';
 import type { EditorMode } from '../editor/editorThemes';
 import { highlightColour } from '../editor/synctex';
@@ -11,7 +11,7 @@ import Sheet from './Sheet';
 import { ParserFields } from './TransferPanel';
 import { IS_DESKTOP, claimDefaultHandler, pickFolder } from './desktop';
 import { toast } from './Toast';
-import { IS_MAC, IS_WINDOWS, OS_NAME } from './platform';
+import { IS_MAC, IS_WINDOWS, OS_NAME, tildify } from './platform';
 import { ACCENTS, PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
 import {
   COMPILE_ENGINES,
@@ -457,7 +457,7 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                   New, imported and arXiv projects are created here unless another location is chosen. Existing projects stay where they are.
                 </div>
               </div>
-              <SyncedFolders onChange={recheck} />
+              <CloudLocations />
               {IS_DESKTOP && (
                 <>
                   <h3 className="form-section-title">Opening files</h3>
@@ -491,7 +491,8 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                 <span>
                   Use the same settings on each computer
                   <span className="field-hint">
-                    Through the synced projects folder: appearance, editor, spelling and shortcuts. API keys, models, folders and the window’s look stay on each computer.
+                    Through your cloud locations: appearance, editor, spelling, shortcuts and the folders on the Projects page. API keys, models, folders on disk, what Sync to does and
+                    the window’s look stay on each computer.
                   </span>
                 </span>
               </label>
@@ -677,8 +678,9 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** Settings › Projects: the folders a sync app keeps the same on each computer, where Spectrum looks for projects. */
-function SyncedFolders({ onChange }: { onChange: () => void }) {
+/** Settings › Projects: the cloud locations, folders a sync app keeps the same on each computer, which projects sync to. */
+function CloudLocations() {
+  const [settings, update] = useSettings();
   const [sync, setSync] = useState<SyncSettings | null>(null);
   const [name, setName] = useState('');
   const [error, setError] = useState('');
@@ -695,8 +697,6 @@ function SyncedFolders({ onChange }: { onChange: () => void }) {
     try {
       show(await updateSyncSettings(patch));
       setError('');
-      // the first synced folder is where new projects go
-      if (patch.folders) onChange();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -709,34 +709,57 @@ function SyncedFolders({ onChange }: { onChange: () => void }) {
 
   return (
     <>
-      <h3 className="form-section-title">Synced project folders</h3>
+      <h3 className="form-section-title">Cloud locations</h3>
       <div className="field-hint section-hint">
-        Folders that Synology Drive, OneDrive, Dropbox or iCloud Drive keep the same on your other computers. Spectrum finds the projects in them, so a project
-        started on one computer turns up on the other once it has synced. Add the same folders on each computer. New projects go in
-        the first one unless you choose a default folder above.
+        Folders that OneDrive, Dropbox, Synology Drive or iCloud Drive keep the same on your other computers, or any folder that syncs. Choose Sync to from a
+        project’s ··· menu to keep it in one, and add the same locations on each computer to find it there.
       </div>
       {sync?.folders.map((f) => (
         <div key={f.path} className="path-row">
-          <Icon name="folder" />
-          <span className="path-text" title={f.path}>{f.label ? `${f.label}: ${f.path}` : f.path}</span>
+          <Icon name="cloud" />
+          <span className="path-text">
+            <span className="path-label">{f.label}</span>
+            {tildify(f.path)}
+          </span>
           {!f.found && <span className="badge warning">Not found</span>}
           <button className="btn small" onClick={() => save({ folders: paths.filter((p) => p !== f.path) })}>Remove</button>
         </div>
       ))}
       {sync?.suggestions.map((s) => (
-        <div key={s.path} className="path-row">
+        <div key={s.target} className="path-row">
           <Icon name="folder.badge.plus" />
-          <span className="path-text" title={s.path}>{s.label}: {s.path}</span>
-          <button className="btn small" onClick={() => add(s.path)}>Add</button>
+          <span className="path-text">
+            <span className="path-label">{s.label}</span>
+            {tildify(s.target)}
+          </span>
+          <button className="btn small" onClick={() => add(s.target)}>Add</button>
         </div>
       ))}
       <div>
         <button className="btn small" disabled={!sync} onClick={() => add()}>Add…</button>
       </div>
       {sync && sync.folders.length > 1 && sync.sharedFolder && (
-        <div className="field-hint">Settings and templates go between your computers through {sync.sharedFolder}, so add it on each one.</div>
+        <div className="field-hint">Settings and templates go between your computers through {tildify(sync.sharedFolder)}, so add it on each one.</div>
       )}
       {error && <div className="field-hint error">{error}</div>}
+      <div className="field">
+        <label id="settings-cloudMode">When a project syncs</label>
+        <Select
+          labelId="settings-cloudMode"
+          value={settings.cloudMode}
+          options={[
+            ['mirror', 'Keep a local copy and mirror it'],
+            ['move', 'Move it into the cloud location']
+          ]}
+          onChange={(value) => update({ cloudMode: value as CloudMode })}
+        />
+        <div className="field-hint">
+          {settings.cloudMode === 'mirror'
+            ? 'The project stays in its folder here, and Spectrum keeps a copy in the cloud location in step with it.'
+            : 'The project’s folder moves into the cloud location, and the sync app keeps it the same on each computer.'}{' '}
+          On this computer, for the next Sync to or Download; projects syncing now stay as they are.
+        </div>
+      </div>
       <div className="field">
         <label htmlFor="settings-machineName">This computer’s name</label>
         <input
@@ -749,7 +772,7 @@ function SyncedFolders({ onChange }: { onChange: () => void }) {
           onBlur={() => sync && name.trim() !== sync.machineName && save({ machineName: name })}
           onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
         />
-        <div className="field-hint">Your other computers show it, e.g. for a project that’s only on this one.</div>
+        <div className="field-hint">Your other computers show it, e.g. for a project open on this one.</div>
       </div>
     </>
   );
