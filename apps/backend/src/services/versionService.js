@@ -233,9 +233,13 @@ async function diffManifests(from, to) {
     const binary = !isText(rel);
     let counts = { added: 0, removed: 0 };
     if (!binary) {
-      const before = a ? (await from.read(rel, a)).toString('utf8') : '';
-      const after = b ? (await to.read(rel, b)).toString('utf8') : '';
-      counts = countLines(before, after);
+      try {
+        const before = a ? (await from.read(rel, a)).toString('utf8') : '';
+        const after = b ? (await to.read(rel, b)).toString('utf8') : '';
+        counts = countLines(before, after);
+      } catch {
+        // a stored file still to arrive from another computer: no line counts, rather than no new version
+      }
     }
     changes.push({ path: rel, status, ...counts, binary });
   }

@@ -346,9 +346,6 @@ async function mirror(id, record, label, force) {
     problems.unshift(`Syncing would delete ${brake[0]} files ${brake[2]}, so nothing has been deleted. Check the project, then choose Sync anyway if that’s right.`);
     for (const it of items) if (it.action.startsWith('delete')) it.action = 'keep';
   }
-  const replaced = items.filter((it) => it.l && !inApp(it.key) && ['toLocal', 'write', 'deleteLocal'].includes(it.action));
-  const held = replaced.length ? await keepBefore(ctx, replaced, items) : {};
-
   // history objects are named by their content: whichever side lacks one gets it, and none is ever deleted (so a
   // clean-up on one computer, 1.7.0's or 1.8.0's, doesn't spread)
   let history = false;
@@ -364,6 +361,9 @@ async function mirror(id, record, label, force) {
     );
     history ||= got;
   }
+  // after the objects, as the version reads the newest manifest's files, and another computer's can come before them
+  const replaced = items.filter((it) => it.l && !inApp(it.key) && ['toLocal', 'write', 'deleteLocal'].includes(it.action));
+  const held = replaced.length ? await keepBefore(ctx, replaced, items) : {};
   // deletions first, so a file can become a folder of the same name
   items.sort((a, b) => Number(b.action.startsWith('delete')) - Number(a.action.startsWith('delete')));
   for (const it of items) {

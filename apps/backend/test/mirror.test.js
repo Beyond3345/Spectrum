@@ -613,6 +613,28 @@ test('a "Before sync" version comes before what this computer wrote is replaced,
   assert.equal(read(path.join(p.root, 'main.tex')), 'four\n');
 });
 
+test('a version’s manifest that comes before its stored files holds nothing up once they arrive', async () => {
+  const p = await project('Early manifest', { 'main.tex': 'one\n' });
+  await versions.createVersion(p.root, { label: 'Mac' });
+  synced(await syncTo(p));
+  // the other computer saves a version of its edit, and the sync app brings the small manifest first
+  const pc = path.join(tmp, 'pc', 'Early manifest');
+  await fs.cp(p.cloud, pc, { recursive: true });
+  await write(path.join(pc, 'main.tex'), 'one, edited on the PC\n');
+  const { version } = await versions.createVersion(pc, { label: 'PC' });
+  for (const rel of [`.spectrum/history/manifests/${version.id}.json`, '.spectrum/history/index.json']) await fs.copyFile(path.join(pc, rel), path.join(p.cloud, rel));
+  synced(await mirror.syncProject(p.id));
+  // then its stored files, and the edit itself
+  await fs.cp(path.join(pc, '.spectrum', 'history', 'objects'), path.join(p.cloud, '.spectrum', 'history', 'objects'), { recursive: true, force: false });
+  await write(path.join(p.cloud, 'main.tex'), 'one, edited on the PC\n');
+  synced(await mirror.syncProject(p.id));
+  assert.equal(read(path.join(p.root, 'main.tex')), 'one, edited on the PC\n');
+  await versions.createVersion(p.root, { label: 'After' });
+  const mac = (await versions.listVersions(p.root)).find((v) => v.label === 'Mac');
+  await versions.restoreVersion(p.root, mac.id);
+  assert.equal(read(path.join(p.root, 'main.tex')), 'one\n');
+});
+
 test('a first pass with no base keeps everything from both sides and deletes nothing', async () => {
   const p = await project('Union', { 'here.tex': 'here\n', 'both.tex': 'both, here\n', 'same.tex': 'same\n' });
   await fs.cp(p.root, p.cloud, { recursive: true });
