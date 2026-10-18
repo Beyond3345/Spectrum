@@ -273,7 +273,7 @@ export async function listProjects() {
  */
 export async function projectsPage({ scan = false } = {}) {
   const { folders, hidden } = await readSyncConfig();
-  if (!folders.length) return { projects: await listProjects(), cloudOnly: [] };
+  if (!folders.length) return { projects: await listProjects(), cloudOnly: [], skipped: [] };
   // a slow folder (online-only, the NAS out of reach) finishes in the background and shows next time
   await Promise.race([scanSyncFolders(scan), new Promise((resolve) => setTimeout(resolve, 2000))]);
   const projects = await listProjects();
@@ -293,7 +293,13 @@ export async function projectsPage({ scan = false } = {}) {
     const { name, updatedAt } = normaliseMeta({ ...meta, id });
     cloudOnly.push({ id, name, label: await locationLabel(location), rel: relFrom(location, root), location, updatedAt });
   }
-  return { projects, cloudOnly };
+  // ones not listed here (a project used in place keeps its .spectrum on this computer) are what the sync app left out
+  const skipped = [];
+  for (const { root, location } of unmarked) {
+    if (projects.some((p) => within(root, p.path) || within(p.path, root))) continue;
+    skipped.push({ label: await locationLabel(location), rel: relFrom(location, root) });
+  }
+  return { projects, cloudOnly, skipped };
 }
 
 // ─── Cloud locations ───
@@ -302,16 +308,32 @@ let scanning = null;
 let scannedAt = 0;
 // what the last scan found, each id once: [{ id, root, meta, location }]
 let scanned = [];
+// folders with LaTeX in them but no project file: [{ root, location }]
+let unmarked = [];
 
-/** Every project folder up to 3 levels into a cloud location, reading only their project.json: [{ id, root, meta }]. */
-export async function findSyncedProjects(dir, deadline, found = [], depth = 1) {
+/**
+ * Every project folder up to 3 levels into a cloud location, reading only their project.json: [{ id, root, meta }].
+ * With unmarked, also the folders holding a .tex file but no .spectrum, which a sync app leaving out names that start
+ * with a dot gives (Synology Drive's "." prefix rule).
+ */
+export async function findSyncedProjects(dir, deadline, found = [], depth = 1, unmarked = null) {
   for (const entry of await readdirTyped(dir).catch(() => [])) {
     if (Date.now() > deadline) break;
     if (!entry.isDirectory() || entry.name.startsWith('.') || HIDDEN_ENTRIES.has(entry.name) || isConflictCopy(entry.name)) continue;
     const sub = path.join(dir, entry.name);
     const { meta, id } = await readMetaId(sub);
-    if (id) found.push({ id, root: sub, meta });
-    else if (depth < 3) await findSyncedProjects(sub, deadline, found, depth + 1);
+    if (id) {
+      found.push({ id, root: sub, meta });
+      continue;
+    }
+    if (unmarked) {
+      const names = await fs.readdir(sub).catch(() => []);
+      if (!names.includes('.spectrum') && names.some((n) => /\.tex$/i.test(n))) {
+        unmarked.push(sub);
+        continue;
+      }
+    }
+    if (depth < 3) await findSyncedProjects(sub, deadline, found, depth + 1, unmarked);
   }
   return found;
 }
@@ -341,7 +363,12 @@ function scanSyncFolders(force) {
     const { folders } = await readSyncConfig();
     const deadline = Date.now() + 20_000;
     const found = [];
-    for (const { path: location } of folders) for (const f of await findSyncedProjects(location, deadline)) found.push({ ...f, location });
+    const bare = [];
+    for (const { path: location } of folders) {
+      const roots = [];
+      for (const f of await findSyncedProjects(location, deadline, [], 1, roots)) found.push({ ...f, location });
+      for (const root of roots) bare.push({ root, location });
+    }
     const once = found.filter((f) => found.filter((g) => g.id === f.id).length === 1);
     const mirrored = new Set((await listMirrored()).map((m) => m.id));
     await updateRegistry(async (registry) => {
@@ -363,6 +390,7 @@ function scanSyncFolders(force) {
       }
     });
     scanned = once;
+    unmarked = bare;
   })()
     .catch(() => {})
     .finally(() => {

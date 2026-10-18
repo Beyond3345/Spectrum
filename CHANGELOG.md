@@ -2,6 +2,12 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.9.2 (18 October 2026)
+
+### Fixed
+
+- When a sync app leaves out folders whose names start with a dot, such as a Synology Drive task with a "`.`" prefix rule, a cloud location's projects arrive without their `.spectrum` folder and did not show anywhere. Cloud projects now names those folders, says the sync app is probably skipping hidden folders and warns not to open them as new projects
+
 ## 1.9.1 (18 October 2026)
 
 Version 1.9.0 was a test build only, so this is the first release with these changes.

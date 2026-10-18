@@ -136,7 +136,7 @@ Versions are kept inside each project in a hidden `.spectrum` folder, together w
 
 Spectrum works with sync apps such as Synology Drive on a Synology NAS, OneDrive, Dropbox or iCloud Drive, so the same projects can be used on a Mac and a Windows PC. Spectrum does not connect to the NAS or the cloud itself: the sync app keeps a normal folder the same on each computer, and Spectrum keeps the projects you choose in that folder.
 
-To set it up, add a cloud location under Cloud locations in the Projects section of Settings on each computer. Spectrum suggests the sync folders it finds and makes a `Spectrum` folder inside the one you add, for example `SynologyDrive/Spectrum`, or uses that folder itself when a computer with 1.8.0 already shares through it. Add… takes any folder that syncs. Your other projects stay in the default folder for new projects and never leave this computer. With Synology Drive, use a classic two-way sync task on both computers rather than On-demand Sync, so every file is on each computer and works offline, and turn on versioning for the Team Folder on the NAS as a safety net. One folder should only ever be in one sync app.
+To set it up, add a cloud location under Cloud locations in the Projects section of Settings on each computer. Spectrum suggests the sync folders it finds and makes a `Spectrum` folder inside the one you add, for example `SynologyDrive/Spectrum`, or uses that folder itself when a computer with 1.8.0 already shares through it. Add… takes any folder that syncs. Your other projects stay in the default folder for new projects and never leave this computer. With Synology Drive, use a classic two-way sync task on both computers rather than On-demand Sync, so every file is on each computer and works offline, and turn on versioning for the Team Folder on the NAS as a safety net. One folder should only ever be in one sync app. The sync app must also sync files and folders whose names start with a dot, as Spectrum keeps each project's details in a `.spectrum` folder. Synology Drive can skip them with a "`.`" prefix rule in a sync task. When folders with LaTeX files but no `.spectrum` folder are in a cloud location, Cloud projects says so rather than listing them.
 
 - **Sync to.** A project's menu lists the cloud locations under Sync to, and When a project syncs in Settings chooses what that does. Keep a local copy and mirror it, the default, leaves the project in its folder on this computer and keeps a copy in the cloud location in step with it, so the project works offline and a slow sync app never holds up the editor. Move it into the cloud location moves the folder there, as 1.8.0 kept its projects, and the sync app keeps it the same on each computer. A project already in a sync app's folder, for example in Documents backed up by iCloud Drive or OneDrive, syncs as it is.
 - **Cloud projects.** The sidebar lists All projects, Cloud projects, Archived and your tags. Cloud projects shows the projects that sync, each with a cloud symbol and how it stands (Synced, Syncing…, Waiting for OneDrive or Needs attention), and the projects your other computers put in a cloud location that this one does not have yet ("In OneDrive, not on this computer") with Download. Download keeps a mirrored copy on this computer, or with Move opens the project where it is.
@@ -158,7 +158,7 @@ To set it up, add a cloud location under Cloud locations in the Projects section
 
 ## Installing
 
-1. Open `Spectrum_1.9.1_universal.dmg`
+1. Open `Spectrum_1.9.2_universal.dmg`
 2. Drag Spectrum into the Applications folder
 3. Open Spectrum from the Applications folder
 
@@ -168,7 +168,7 @@ Since the application is signed ad hoc rather than with an Apple Developer ID, m
 xattr -dr com.apple.quarantine /Applications/Spectrum.app
 ```
 
-On Windows, run `Spectrum_1.9.1_x64-setup.exe`. It installs Spectrum for the current user without administrator rights and adds it to the Start menu, and it installs Microsoft Edge WebView2 when the PC does not have it yet. Since the installer is not signed, Windows SmartScreen may warn about it on the first run. To continue, select More info and then Run anyway.
+On Windows, run `Spectrum_1.9.2_x64-setup.exe`. It installs Spectrum for the current user without administrator rights and adds it to the Start menu, and it installs Microsoft Edge WebView2 when the PC does not have it yet. Since the installer is not signed, Windows SmartScreen may warn about it on the first run. To continue, select More info and then Run anyway.
 
 ## Windows
 

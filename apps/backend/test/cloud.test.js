@@ -191,6 +191,20 @@ test('the scan lists another computer’s project in a location without adding i
   }
 });
 
+test('a folder of LaTeX files whose .spectrum the sync app left out is reported, not listed', async () => {
+  const bare = path.join(loc, 'Notes');
+  mkdirSync(bare, { recursive: true });
+  writeFileSync(path.join(bare, 'notes.tex'), '\\documentclass{article}');
+  try {
+    const { cloudOnly, skipped } = await list();
+    assert.ok(!cloudOnly.some((p) => p.name === 'Notes'));
+    assert.deepEqual(skipped, [{ label: 'OneDrive', rel: 'Notes' }]);
+  } finally {
+    rmSync(bare, { recursive: true });
+  }
+  assert.deepEqual((await list()).skipped, [], 'a project of this computer’s, or one with its project file, is never reported');
+});
+
 test('Sync to links to a copy with the project’s id that’s already in the location', async () => {
   const stop = await post(`/api/projects/${ids.thesis}/cloud/stop`, { deleteCloud: false });
   assert.equal(stop.json.project.cloud, undefined);

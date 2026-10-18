@@ -34,7 +34,7 @@ import {
   uploadTemplate,
   writeFile
 } from '../api/client';
-import type { CloudLocation, CloudOnlyProject, MirrorStatus, ProjectCloud, ProjectMeta, SyncPlace, TemplateCategory, TemplateMeta } from '../api/client';
+import type { CloudLocation, CloudOnlyProject, MirrorStatus, SkippedFolder, ProjectCloud, ProjectMeta, SyncPlace, TemplateCategory, TemplateMeta } from '../api/client';
 import Icon from './Icon';
 import { ContextMenu, MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
@@ -218,6 +218,7 @@ export default function ProjectPage() {
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
   /** projects in the cloud locations that this computer doesn't have */
   const [cloudOnly, setCloudOnly] = useState<CloudOnlyProject[]>([]);
+  const [skipped, setSkipped] = useState<SkippedFolder[]>([]);
   const [locations, setLocations] = useState<CloudLocation[]>([]);
   /** the templates with a working copy open, which the gallery offers to go on editing */
   const [drafts, setDrafts] = useState<string[]>([]);
@@ -257,6 +258,7 @@ export default function ProjectPage() {
       setProjects(all.filter((p) => !p.templateDraft));
       setDrafts(all.flatMap((p) => p.templateDraft || []));
       setCloudOnly(res.cloudOnly || []);
+      setSkipped(res.skipped || []);
       setLoadError('');
     } catch (err) {
       setLoadError(errorText(err));
@@ -1018,6 +1020,7 @@ export default function ProjectPage() {
         </header>
 
         <div className="panel-body">
+          {view === 'cloud' && skipped.length > 0 && <SkippedNotice skipped={skipped} />}
           {rows.length === 0 ? (
             emptyState()
           ) : prefs.layout === 'list' ? (
@@ -1694,6 +1697,29 @@ function ArxivSheet({
       )}
       {error && <div className="field-hint error">{error}</div>}
     </Sheet>
+  );
+}
+
+/** Folders a sync app brought here without their hidden project file, so they can't be listed. */
+function SkippedNotice({ skipped }: { skipped: SkippedFolder[] }) {
+  const labels = [...new Set(skipped.map((s) => s.label))].join(' and ');
+  const names = skipped.map((s) => `“${s.rel}”`);
+  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
+  return (
+    <div className="skipped-notice" role="status">
+      <Icon name="exclamationmark.triangle" />
+      <div>
+        <div className="skipped-title">
+          {skipped.length > 1 ? `${skipped.length} folders` : 'A folder'} in {labels} can’t be shown as {skipped.length > 1 ? 'projects' : 'a project'}
+        </div>
+        <div className="skipped-text">
+          {list} {skipped.length > 1 ? 'have' : 'has'} LaTeX files but no Spectrum project file. {labels} on this computer is probably leaving out
+          folders whose names start with a dot, such as .spectrum. Allow them in the sync task’s rules (in Synology Drive, remove the “.” prefix
+          rule), and the projects will appear here with Download. Don’t open these folders as new projects: they would get a new identity and stop
+          syncing with your other computer.
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -64,6 +64,12 @@ export interface MirrorStatus {
 }
 
 /** A project in a cloud location that this computer doesn't have; Download brings it here */
+/** A folder in a cloud location with LaTeX files but no project file: the sync app left out .spectrum here. */
+export interface SkippedFolder {
+  label: string;
+  rel: string;
+}
+
 export interface CloudOnlyProject {
   id: string;
   name: string;
@@ -186,7 +192,7 @@ const json = (method: string, body: unknown = {}): RequestInit => ({ method, bod
 
 /** scan: look in the cloud locations now rather than after the usual 30 s. */
 export function listProjects(scan = false) {
-  return request<{ projects: ProjectMeta[]; cloudOnly?: CloudOnlyProject[] }>(`/api/projects${scan ? '?scan=1' : ''}`);
+  return request<{ projects: ProjectMeta[]; cloudOnly?: CloudOnlyProject[]; skipped?: SkippedFolder[] }>(`/api/projects${scan ? '?scan=1' : ''}`);
 }
 
 /** parentDir: absolute folder to create the project in; defaults to ~/Documents/Spectrum */

@@ -643,3 +643,30 @@ button.badge {
     grid-template-columns: 1fr;
   }
 }
+
+/* Cloud projects: folders a sync app brought here without their .spectrum */
+.skipped-notice {
+  display: flex;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--orange) 12%, transparent);
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.skipped-notice > .sf {
+  flex: none;
+  margin-top: 2px;
+  color: var(--orange);
+}
+
+.skipped-title {
+  font-weight: 600;
+}
+
+.skipped-text {
+  margin-top: 2px;
+  color: var(--text-secondary);
+}
