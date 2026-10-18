@@ -16,7 +16,7 @@ Each project is a normal folder that is chosen when the project is created. By d
 
 Double-clicking a `.tex`, `.ltx` or `.bib` file in Finder or File Explorer opens it in Spectrum, in the project it belongs to. A file from a folder Spectrum has not seen yet opens together with the folder holding its document, which becomes a project, so a chapter in `chapters/` brings the whole thesis. On macOS Spectrum makes itself the default app for these files the first time it opens, and the button under Opening files in the Projects section of Settings does it again if another app has taken them since. On Windows the installer offers Spectrum for these files and Windows asks which app to use. PDFs stay with the PDF viewer either way.
 
-The projects page lists every project regardless of where its folder is stored. Each row shows the first page of the last compiled PDF, and projects can be tagged, archived, duplicated, removed from the list or moved to the Bin. New projects can start from the template gallery (Section Templates), from a `.zip` file such as an Overleaf export or from an arXiv ID. If a folder is moved in Finder, the project is marked as missing and can be pointed at its new location.
+The projects page lists every project regardless of where its folder is stored. Each row shows the first page of the last compiled PDF, and projects can be tagged (right-click a tag in the sidebar to rename it or choose its colour), archived, duplicated, removed from the list or moved to the Bin. New projects can start from the template gallery (Section Templates), from a `.zip` file such as an Overleaf export or from an arXiv ID. If a folder is moved in Finder, the project is marked as missing and can be pointed at its new location.
 
 ### Templates
 
@@ -158,7 +158,7 @@ To set it up, add a cloud location under Cloud locations in the Projects section
 
 ## Installing
 
-1. Open `Spectrum_1.9.0_universal.dmg`
+1. Open `Spectrum_1.9.1_universal.dmg`
 2. Drag Spectrum into the Applications folder
 3. Open Spectrum from the Applications folder
 
@@ -168,7 +168,7 @@ Since the application is signed ad hoc rather than with an Apple Developer ID, m
 xattr -dr com.apple.quarantine /Applications/Spectrum.app
 ```
 
-On Windows, run `Spectrum_1.9.0_x64-setup.exe`. It installs Spectrum for the current user without administrator rights and adds it to the Start menu, and it installs Microsoft Edge WebView2 when the PC does not have it yet. Since the installer is not signed, Windows SmartScreen may warn about it on the first run. To continue, select More info and then Run anyway.
+On Windows, run `Spectrum_1.9.1_x64-setup.exe`. It installs Spectrum for the current user without administrator rights and adds it to the Start menu, and it installs Microsoft Edge WebView2 when the PC does not have it yet. Since the installer is not signed, Windows SmartScreen may warn about it on the first run. To continue, select More info and then Run anyway.
 
 ## Windows
 

@@ -2,10 +2,13 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
-## 1.9.0 (unreleased)
+## 1.9.1 (18 October 2026)
+
+Version 1.9.0 was a test build only, so this is the first release with these changes.
 
 ### Added
 
+- A tag can be renamed and given a colour by right-clicking it in the sidebar of the projects page. Renaming a tag changes it on every project that has it, and the colours follow you to your other computers with your settings
 - Cloud locations in Settings under Projects, in place of Synced project folders: a folder that OneDrive, Dropbox, Synology Drive, iCloud Drive or any other sync app keeps the same on each computer. Spectrum suggests a `Spectrum` folder in each sync app's folder it finds, or that folder itself when a computer with 1.8.0 already shares through it
 - Sync to in a project's menu puts the project in a cloud location. By default the project stays on this computer and Spectrum mirrors it into a copy there, merging a file changed on both computers line by line and keeping a conflicted copy beside it when both changed the same lines. When a project syncs, in Settings, can move the folder into the cloud location instead, as 1.8.0 kept its projects
 - Cloud projects in the sidebar, between All projects and Archived. Each cloud project has a cloud symbol and says how it stands, with Sync now, Stop syncing… and Show cloud copy in Finder (or File Explorer) in its menu. The projects your other computers put in a cloud location show there too, with Download

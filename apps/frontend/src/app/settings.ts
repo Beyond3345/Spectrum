@@ -100,7 +100,12 @@ export type AppSettings = {
   cloudMode: CloudMode;
   /** the folders on the Projects page (folders.ts) */
   projectFolders: ProjectFolders;
+  /** a colour chosen for a tag; the others get one from their name */
+  tagColours: Record<string, TagColour>;
 };
+
+export const TAG_COLOUR_NAMES = ['blue', 'green', 'orange', 'red', 'yellow', 'purple', 'teal'] as const;
+export type TagColour = (typeof TAG_COLOUR_NAMES)[number];
 
 export const SETTINGS_KEY = 'spectrum-settings-v1';
 /** Fired on window after every settings write; read the new values with loadSettings(). */
@@ -160,7 +165,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   syncHighlightSeconds: 3,
   syncSettings: true,
   cloudMode: 'mirror',
-  projectFolders: NO_FOLDERS
+  projectFolders: NO_FOLDERS,
+  tagColours: {}
 };
 
 export const SYNC_HIGHLIGHTS: [SyncHighlight, string][] = [
@@ -236,6 +242,9 @@ function parse(raw: string | null): AppSettings {
     merged.syncSettings = merged.syncSettings !== false;
     if (merged.cloudMode !== 'move') merged.cloudMode = 'mirror';
     merged.projectFolders = cleanFolders(merged.projectFolders);
+    merged.tagColours = Object.fromEntries(
+      Object.entries(typeof merged.tagColours === 'object' && merged.tagColours ? merged.tagColours : {}).filter(([, c]) => TAG_COLOUR_NAMES.includes(c as TagColour))
+    ) as AppSettings['tagColours'];
     for (const key of ['editorFont', 'editorFontCustom', 'editorThemeLight', 'editorThemeDark', 'parser', 'parserProtocol'] as const) {
       if (typeof merged[key] !== 'string') merged[key] = DEFAULT_SETTINGS[key];
     }
@@ -323,7 +332,7 @@ export function updateSettings(patch: Partial<AppSettings>) {
 const SHARED_KEYS = [
   'theme', 'accent', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize',
   'autoInsertCite', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
-  'syncHighlightSeconds', 'projectFolders'
+  'syncHighlightSeconds', 'projectFolders', 'tagColours'
 ] as const satisfies readonly (keyof AppSettings)[];
 
 export const sharedPart = (settings: AppSettings): Record<string, unknown> => Object.fromEntries(SHARED_KEYS.map((key) => [key, settings[key]]));

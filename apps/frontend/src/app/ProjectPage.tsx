@@ -49,7 +49,7 @@ import { IS_DESKTOP, pickFolder } from './desktop';
 import { addFolder, childFolders, deleteFolder, placeProject, renameFolder } from './folders';
 import type { ProjectFolder, ProjectFolders } from './folders';
 import { BIN, FILE_MANAGER, IS_WINDOWS, tildify } from './platform';
-import { loadSettings, useSettings } from './settings';
+import { TAG_COLOUR_NAMES, loadSettings, useSettings, type AppSettings, type TagColour } from './settings';
 import { formatShortcut, matchesShortcut, shortcutKey, withShortcut } from './shortcuts';
 
 // ─── helpers ───
@@ -144,16 +144,18 @@ function badgeOf(p: Row): { icon?: string; text: [string, string]; warning: bool
 // a project card or row on its way to a folder in the sidebar
 const DRAG_TYPE = 'application/x-spectrum-project';
 
-const TAG_COLOURS = [
-  'var(--accent)',
-  'var(--green)',
-  'var(--orange)',
-  'var(--red)',
-  'var(--yellow)',
-  'color-mix(in srgb, var(--accent) 55%, var(--red))',
-  'color-mix(in srgb, var(--green) 55%, var(--accent))'
-];
-const tagColour = (tag: string) => TAG_COLOURS[[...tag].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % TAG_COLOURS.length];
+const TAG_COLOURS: Record<TagColour, [string, string]> = {
+  blue: ['Blue', 'var(--accent)'],
+  green: ['Green', 'var(--green)'],
+  orange: ['Orange', 'var(--orange)'],
+  red: ['Red', 'var(--red)'],
+  yellow: ['Yellow', 'var(--yellow)'],
+  purple: ['Purple', 'color-mix(in srgb, var(--accent) 55%, var(--red))'],
+  teal: ['Teal', 'color-mix(in srgb, var(--green) 55%, var(--accent))']
+};
+/** The colour chosen for the tag, or one picked from its name. */
+const tagColour = (tag: string, chosen: AppSettings['tagColours']) =>
+  TAG_COLOURS[chosen[tag] ?? TAG_COLOUR_NAMES[[...tag].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % TAG_COLOUR_NAMES.length]][1];
 
 const texEscape = (s: string) => s.replace(/[\\~^]/g, '').replace(/[&%$#_{}]/g, '\\$&');
 const blankTex = (name: string) => `\\documentclass[11pt]{article}
@@ -416,6 +418,37 @@ export default function ProjectPage() {
       await reload();
     }
   };
+
+  /** Renames the tag on every project that has it (into an existing tag, the two become one), keeping its colour. */
+  const renameTag = async (tag: string) => {
+    const name = (await promptDialog({ title: 'Rename tag', defaultValue: tag, confirmLabel: 'Rename' }))?.trim();
+    if (!name || name === tag) return;
+    const { [tag]: colour, ...others } = loadSettings().tagColours;
+    update({ tagColours: colour && !others[name] ? { ...others, [name]: colour } : others });
+    if (activeTag === tag) setView(`tag:${name}`);
+    for (const p of projects.filter((q) => q.tags.includes(tag))) await setTags(p.id, [...new Set(p.tags.map((t) => (t === tag ? name : t)))]);
+  };
+
+  const setTagColour = (tag: string, colour: TagColour | null) => {
+    const { [tag]: _, ...others } = loadSettings().tagColours;
+    update({ tagColours: colour ? { ...others, [tag]: colour } : others });
+  };
+
+  const tagMenu = (tag: string): MenuItems => [
+    { label: 'Rename…', icon: 'pencil', onSelect: () => renameTag(tag) },
+    { separator: true },
+    { label: 'Colour', heading: true },
+    ...TAG_COLOUR_NAMES.map((c) => ({
+      label: (
+        <>
+          <span className="tag-dot" style={{ background: TAG_COLOURS[c][1] }} /> {TAG_COLOURS[c][0]}
+        </>
+      ),
+      checked: settings.tagColours[tag] === c,
+      onSelect: () => setTagColour(tag, c)
+    })),
+    { label: 'Automatic', checked: !settings.tagColours[tag], onSelect: () => setTagColour(tag, null) }
+  ];
 
   const toggleArchive = (p: ProjectMeta) =>
     attempt(async () => {
@@ -757,7 +790,7 @@ export default function ProjectPage() {
         }}
         onDoubleClick={(e) => e.stopPropagation()}
       >
-        <span className="tag-dot" style={{ background: tagColour(tag) }} />
+        <span className="tag-dot" style={{ background: tagColour(tag, settings.tagColours) }} />
         {tag}
       </button>
     ));
@@ -884,8 +917,13 @@ export default function ProjectPage() {
             {prefs.tagsOpen && (
               <>
                 {allTags.map(([tag, count]) => (
-                  <button key={tag} className={`nav-row ${activeTag === tag ? 'active' : ''}`} onClick={() => setView(`tag:${tag}`)}>
-                    <span className="tag-dot" style={{ background: tagColour(tag) }} />
+                  <button
+                    key={tag}
+                    className={`nav-row ${activeTag === tag ? 'active' : ''}`}
+                    onClick={() => setView(`tag:${tag}`)}
+                    {...menuProps(() => tagMenu(tag))}
+                  >
+                    <span className="tag-dot" style={{ background: tagColour(tag, settings.tagColours) }} />
                     <span className="nav-label">{tag}</span>
                     <span className="nav-count">{count}</span>
                   </button>
@@ -912,7 +950,7 @@ export default function ProjectPage() {
             </button>
           )}
           <h1 className="panel-title" data-tauri-drag-region>
-            {activeTag && <span className="tag-dot large" style={{ background: tagColour(activeTag) }} />}
+            {activeTag && <span className="tag-dot large" style={{ background: tagColour(activeTag, settings.tagColours) }} />}
             {title}
           </h1>
           <div className="panel-header-tools">
@@ -1670,6 +1708,7 @@ function TagsSheet({
   onChange: (tags: string[]) => void;
   onClose: () => void;
 }) {
+  const [settings] = useSettings();
   const [input, setInput] = useState('');
   const add = (raw: string) => {
     const tag = raw.trim();
@@ -1684,7 +1723,7 @@ function TagsSheet({
         {project.tags.length === 0 && <span className="field-hint">No tags yet.</span>}
         {project.tags.map((tag) => (
           <span key={tag} className="chip tag-chip">
-            <span className="tag-dot" style={{ background: tagColour(tag) }} />
+            <span className="tag-dot" style={{ background: tagColour(tag, settings.tagColours) }} />
             {tag}
             <button className="chip-remove" aria-label={`Remove ${tag}`} onClick={() => onChange(project.tags.filter((t) => t !== tag))}>
               <Icon name="xmark" />
@@ -1714,7 +1753,7 @@ function TagsSheet({
           <div className="chip-row" role="group" aria-labelledby="existing-tags">
             {suggestions.map((tag) => (
               <button key={tag} className="chip tag-chip" onClick={() => add(tag)}>
-                <span className="tag-dot" style={{ background: tagColour(tag) }} />
+                <span className="tag-dot" style={{ background: tagColour(tag, settings.tagColours) }} />
                 {tag}
                 <Icon name="plus" />
               </button>

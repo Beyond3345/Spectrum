@@ -1,6 +1,6 @@
 [package]
 name = "spectrum"
-version = "1.9.0"
+version = "1.9.1"
 description = "Spectrum: a local LaTeX + AI writing workspace"
 edition = "2021"
 publish = false

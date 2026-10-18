@@ -161,4 +161,8 @@ eq(back && JSON.parse(back.sent).projectFolders, macTree, 'and counts as shared'
 eq(keysBackFromOlder(at({ projectFolders: pcTree }), macFile, '2026-10-03T00:00:00.000Z', sent18), null, 'shared since: its own tree goes');
 eq(keysBackFromOlder(at({ projectFolders: pcTree }), macFile, macFile.updatedAt, JSON.stringify(sharedPart(at({ projectFolders: pcTree })))), null, 'nothing missing');
 
+// tag colours follow the user, and only the named ones are kept
+eq(withShared(at({}), { tagColours: { Thesis: 'red', Notes: 'pink' } as never }).tagColours, { Thesis: 'red' }, 'a known tag colour comes in, an unknown one is dropped');
+eq('tagColours' in sharedPart(at({ tagColours: { Thesis: 'teal' } })), true, 'tag colours are shared');
+
 console.log('settings.check: ok');
