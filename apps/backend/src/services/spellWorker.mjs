@@ -1,12 +1,13 @@
 // The spell checker's own thread. Hunspell 1.3.3 keeps state between calls, so it must never run
 // two at once: every request lands here and is answered in turn.
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { parentPort, workerData } from 'node:worker_threads';
 
 const require = createRequire(import.meta.url);
-const nodehun = require(join(workerData.nativeDir, 'nodehun.node'));
+const platformModule = join(workerData.nativeDir, `${process.platform}-${process.arch}`, 'nodehun.node');
+const nodehun = require(existsSync(platformModule) ? platformModule : join(workerData.nativeDir, 'nodehun.node'));
 const Nodehun = nodehun.Nodehun || nodehun;
 const read = (...parts) => readFileSync(join(workerData.dictDir, ...parts));
 

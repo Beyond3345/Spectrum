@@ -1863,6 +1863,10 @@ function Editor({ projectId }: { projectId: string }) {
     openFile,
     jumpTo,
     proposeChanges,
+    prepareAgent: async () => {
+      await saveNow();
+      if (heldRef.current.size) throw new Error('Resolve the files changed on disk before starting or applying agent work.');
+    },
     // the document whose log the AI read, so a fix loop stays on it
     compile: () => runCompile(compiledDoc || mainFile),
     createVersion

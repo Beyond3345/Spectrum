@@ -1,0 +1,352 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { Readable, Writable } from 'node:stream';
+import { createServer } from 'node:net';
+import { client, ndJsonStream } from '@agentclientprotocol/sdk';
+import { getProjectRoot, mutateProjectFiles } from './projectService.js';
+import { AGENT_DIR, profileFor, agentConfigs, agentHome } from './agentProfiles.js';
+import { spawnAgentProcess, killAgentProcess, resolveExecutable, isolationAvailable } from './agentSandbox.js';
+import { initialiseWorkspace, workspaceChanges, applyWorkspaceChanges, captureAgentProposal } from './agentWorkspace.js';
+import { safeJoin } from '../utils/pathUtils.js';
+import { writeJsonAtomic } from '../utils/fsUtils.js';
+
+const runs = new Map();
+const ID = /^[a-f0-9-]{36}$/;
+const textLimit = (value, max = 100000) => typeof value === 'string' ? value.slice(0, max) : '';
+const metadata = (r) => ({ id: r.id, projectId: r.projectId, agentId: r.agentId, mode: r.mode, createdAt: r.createdAt, updatedAt: r.updatedAt, status: r.status, events: r.events, remoteId: r.remoteId, resolved: [...r.resolved], turnCount: r.turnCount });
+const persist = (r) => {
+  r.saveChain = (r.saveChain || Promise.resolve()).catch(() => {}).then(() => writeJsonAtomic(path.join(r.dir, 'session.json'), metadata(r)));
+  return r.saveChain;
+};
+const emit = (r, type, data) => {
+  r.updatedAt = new Date().toISOString();
+  const event = { id: ++r.sequence, type, data, at: r.updatedAt };
+  r.events.push(event);
+  while (r.events.length > 1000 || (r.events.length > 1 && JSON.stringify(r.events).length > 2 * 1024 * 1024)) r.events.shift();
+  for (const listener of r.listeners) listener(event);
+  return event;
+};
+const state = (r, status, error) => { r.status = status; emit(r, 'state', { status, ...(error && { error }) }); void persist(r); };
+const busyProject = (r) => [...runs.values()].some((other) => other !== r && other.projectId === r.projectId && (other.busy || other.reviewing));
+
+export async function getAgentRun(id) {
+  if (!ID.test(id)) throw new Error('Invalid agent session id.');
+  if (runs.has(id)) return runs.get(id);
+  const dir = path.join(AGENT_DIR, 'runs', id);
+  const data = JSON.parse(await fs.readFile(path.join(dir, 'session.json'), 'utf8'));
+  profileFor(data.agentId);
+  const root = await getProjectRoot(data.projectId);
+  const r = { ...data, id, dir, root, workspace: data.mode === 'direct' ? root : path.join(dir, 'work'), home: await agentHome(data.agentId), resolved: new Set(data.resolved || []), events: data.events || [], sequence: data.events?.at(-1)?.id || 0, listeners: new Set(), pending: new Map(), terminals: new Map(), busy: false, turnCount: data.turnCount || 0 };
+  runs.set(id, r);
+  if (['running', 'starting', 'stopping'].includes(r.status)) state(r, 'interrupted', 'Spectrum closed during the task. The working copy has been preserved.');
+  return r;
+}
+
+export async function listAgentRuns(projectId) {
+  const dir = path.join(AGENT_DIR, 'runs');
+  const found = [];
+  for (const id of await fs.readdir(dir).catch((err) => err.code === 'ENOENT' ? [] : Promise.reject(err))) {
+    if (!ID.test(id)) continue;
+    try {
+      const r = await getAgentRun(id);
+      if (r.projectId === projectId) found.push({ id: r.id, agentId: r.agentId, mode: r.mode, status: r.status, createdAt: r.createdAt, updatedAt: r.updatedAt });
+    } catch { /* not a readable session for an available project */ }
+  }
+  return found.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export async function newAgentRun({ projectId, agentId, mode = 'review' }) {
+  const profile = profileFor(agentId);
+  if (profile.unavailable) throw new Error(profile.unavailable);
+  if (!(await isolationAvailable())) throw new Error('Native agent isolation is unavailable. Install or repair the Windows isolation worker before starting an agent.');
+  if (!['review', 'direct'].includes(mode)) throw new Error('Choose review or direct editing.');
+  const root = await getProjectRoot(projectId);
+  const id = crypto.randomUUID();
+  const dir = path.join(AGENT_DIR, 'runs', id);
+  const r = { id, dir, root, projectId, agentId, mode, createdAt: new Date().toISOString(), events: [], sequence: 0, resolved: new Set(), listeners: new Set(), pending: new Map(), terminals: new Map(), busy: true, turnCount: 0 };
+  if (busyProject(r)) throw new Error('Another agent is working on this project. Stop it before starting another.');
+  runs.set(id, r);
+  try {
+    await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+    r.workspace = await initialiseWorkspace(root, dir, mode);
+    r.home = await agentHome(agentId);
+    state(r, 'starting');
+    r.ready = connect(r).then(() => { r.busy = false; state(r, 'ready'); }).catch((err) => { r.busy = false; state(r, r.cancelled ? 'interrupted' : 'failed', [err.message, r.diagnostic].filter(Boolean).join('\n')); disconnect(r); throw err; });
+    void r.ready.catch(() => {});
+    return metadata(r);
+  } catch (err) { runs.delete(id); throw err; }
+}
+
+function sessionPath(r, value) {
+  if (typeof value !== 'string' || !path.isAbsolute(value)) throw new Error('Agent file paths must be absolute.');
+  const rel = path.relative(r.workspace, value);
+  if (!rel || rel.split(path.sep).some((p) => ['.spectrum', '.git', '.claude'].includes(p.toLowerCase()) || /^\.env(?:\.|$)|\.(pem|key)$/i.test(p))) throw new Error('This path is not available to the agent.');
+  return safeJoin(r.workspace, rel);
+}
+
+function requestUser(r, kind, params) {
+  if (r.cancelled) return Promise.reject(new Error('Task cancelled.'));
+  const requestId = crypto.randomUUID();
+  return new Promise((resolve, reject) => {
+    r.pending.set(requestId, { kind, params, resolve, reject });
+    emit(r, 'request', { requestId, kind, params });
+    void persist(r);
+  });
+}
+
+export function answerAgentRequest(r, requestId, answer) {
+  const pending = r.pending.get(requestId);
+  if (!pending) throw new Error('That request is no longer waiting for an answer.');
+  let response;
+  if (pending.kind === 'permission') {
+    if (answer?.cancelled) response = { outcome: { outcome: 'cancelled' } };
+    else {
+      const option = pending.params.options?.find((o) => o.optionId === answer?.optionId);
+      if (!option) throw new Error('Choose one of the agent’s permission options.');
+      response = { outcome: { outcome: 'selected', optionId: option.optionId } };
+    }
+  } else if (pending.kind === 'plan') response = { approved: answer?.approved === true };
+  else if (pending.kind === 'cursor-question') response = { answers: answer?.content || {} };
+  else {
+    if (!['accept', 'decline', 'cancel'].includes(answer?.action)) throw new Error('Invalid answer.');
+    response = { action: answer.action, ...(answer.action === 'accept' && { content: answer.content || {} }) };
+  }
+  r.pending.delete(requestId);
+  emit(r, 'answered', { requestId });
+  pending.resolve(response);
+}
+
+async function connect(r) {
+  r.connectionAbort = new AbortController();
+  const profile = profileFor(r.agentId);
+  const config = (await agentConfigs())[r.agentId] || {};
+  const credentialVariable = config.keyEnv || profile.key;
+  r.processOptions = { command: config.command || profile.command, args: config.args || profile.args, workspace: r.workspace, home: r.home, runtimePaths: config.runtimePaths || [], forbiddenRoots: r.mode === 'review' ? [r.root] : [], env: { ...(config.apiKey && credentialVariable && { [credentialVariable]: config.apiKey }), ...(r.agentId === 'zcode' && { ZCODE_ACP_MODE: 'build' }) } };
+  r.processOptions.runtimeExecutable = await resolveExecutable(r.processOptions.command);
+  if (r.agentId === 'opencode') {
+    const server = createServer();
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+    const port = server.address().port;
+    await new Promise((resolve) => server.close(resolve));
+    r.processOptions.internalPort = port;
+    r.processOptions.args = [...r.processOptions.args, '--port', String(port), '--hostname', '127.0.0.1'];
+    r.processOptions.env.OPENCODE_SERVER_PASSWORD = crypto.randomBytes(32).toString('hex');
+  }
+  if (r.cancelled) throw new Error('Task cancelled.');
+  r.connectionAbort.signal.throwIfAborted();
+  r.child = await spawnAgentProcess(r.processOptions);
+  if (r.cancelled || r.connectionAbort.signal.aborted) { killAgentProcess(r.child); throw new Error('Task cancelled.'); }
+  let stderr = '';
+  const redact = (text) => [config.apiKey, r.processOptions.env.OPENCODE_SERVER_PASSWORD].filter(Boolean).reduce((value, key) => value.replaceAll(key, '[hidden]'), text);
+  r.child.stderr.on('data', (chunk) => { stderr = (stderr + chunk.toString()).slice(-12000); r.diagnostic = redact(stderr); });
+  r.child.on('error', (err) => { if (!r.cancelled) state(r, 'failed', err.message); });
+  const ownedChild = r.child;
+  r.child.on('exit', (code, signal) => {
+    if (r.child !== ownedChild) return;
+    r.connection?.close();
+    r.connectionAbort.abort(new Error(`Agent exited (${signal || code}).`));
+    if (!r.cancelled && r.status !== 'closed') { state(r, 'failed', `Agent exited (${signal || code}). ${redact(stderr)}`); }
+  });
+  const checkSession = (params) => { if (r.remoteId && params.sessionId && params.sessionId !== r.remoteId) throw new Error('Unknown agent session.'); };
+  const app = client({ name: 'spectrum', version: '1.10.0' })
+    .onNotification('session/update', ({ params }) => { checkSession(params); emit(r, 'update', params.update); })
+    .onRequest('session/request_permission', ({ params }) => { checkSession(params); return requestUser(r, 'permission', params); })
+    .onRequest('elicitation/create', ({ params }) => requestUser(r, 'question', params))
+    .onNotification('elicitation/complete', ({ params }) => emit(r, 'notice', params))
+    .onRequest('fs/read_text_file', async ({ params }) => {
+      checkSession(params);
+      const content = await agentFile(r, 'read', sessionPath(r, params.path));
+      const start = Math.max(0, (params.line || 1) - 1);
+      return { content: content.split('\n').slice(start, params.limit ? start + params.limit : undefined).join('\n') };
+    })
+    .onRequest('fs/write_text_file', async ({ params }) => {
+      checkSession(params);
+      if (Buffer.byteLength(params.content) > 50 * 1024 * 1024) throw new Error('File exceeds 50 MB.');
+      await agentFile(r, 'write', sessionPath(r, params.path), params.content);
+      return {};
+    })
+    .onRequest('terminal/create', async ({ params }) => {
+      checkSession(params);
+      const id = crypto.randomUUID();
+      const cwd = !params.cwd || path.resolve(params.cwd) === path.resolve(r.workspace) ? r.workspace : sessionPath(r, params.cwd);
+      const extra = Object.fromEntries((params.env || []).filter((e) => /^[A-Z_][A-Z0-9_]*$/.test(e.name) && !/^(HOME|PATH|TMPDIR|DYLD_|NODE_OPTIONS|XDG_)/.test(e.name)).map((e) => [e.name, e.value]));
+      const child = await spawnAgentProcess({ ...r.processOptions, command: params.command, args: params.args || [], cwd, env: { ...r.processOptions.env, ...extra } });
+      const terminal = { child, output: '', truncated: false, exitStatus: undefined };
+      const output = (chunk) => { terminal.output += chunk.toString(); if (terminal.output.length > 64000) { terminal.output = terminal.output.slice(-64000); terminal.truncated = true; } };
+      child.stdout.on('data', output); child.stderr.on('data', output);
+      terminal.done = new Promise((resolve) => { child.once('exit', (exitCode, signal) => { terminal.exitStatus = { ...(exitCode !== null && { exitCode }), ...(signal && { signal }) }; resolve(terminal.exitStatus); }); child.once('error', (err) => { output(Buffer.from(err.message)); terminal.exitStatus = { exitCode: 1 }; resolve(terminal.exitStatus); }); });
+      r.terminals.set(id, terminal);
+      emit(r, 'terminal', { terminalId: id, command: params.command, args: params.args || [] });
+      return { terminalId: id };
+    });
+  for (const method of ['terminal/output', 'terminal/wait_for_exit', 'terminal/kill', 'terminal/release']) app.onRequest(method, async ({ params }) => {
+    checkSession(params);
+    const t = r.terminals.get(params.terminalId);
+    if (!t) throw new Error('Unknown terminal.');
+    if (method === 'terminal/output') return { output: t.output, truncated: t.truncated, ...(t.exitStatus && { exitStatus: t.exitStatus }) };
+    if (method === 'terminal/wait_for_exit') return await t.done;
+    killAgentProcess(t.child);
+    if (method === 'terminal/release') r.terminals.delete(params.terminalId);
+    return {};
+  });
+  for (const method of ['cursor/ask_question', '_cursor/ask_question']) app.onRequest(method, (v) => v, ({ params }) => requestUser(r, 'cursor-question', params));
+  for (const method of ['cursor/create_plan', '_cursor/create_plan']) app.onRequest(method, (v) => v, ({ params }) => requestUser(r, 'plan', params));
+  r.connection = app.connect(ndJsonStream(Writable.toWeb(r.child.stdin), Readable.toWeb(r.child.stdout)));
+  r.peer = r.connection.agent;
+  const initial = await timeout(r.peer.request('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true, elicitation: { form: {}, url: {} } }, clientInfo: { name: 'spectrum', title: 'Spectrum', version: '1.10.0' } }), 30000, 'The agent did not initialize.', r.connectionAbort.signal);
+  if (initial.protocolVersion !== 1) throw new Error('This agent does not support ACP v1.');
+  r.capabilities = initial.agentCapabilities || {};
+  emit(r, 'initialized', { agentInfo: initial.agentInfo, capabilities: r.capabilities, authMethods: initial.authMethods });
+  if (r.agentId === 'cursor') await timeout(r.peer.request('authenticate', { methodId: 'cursor_login' }), 30000, 'Cursor authentication did not finish. Configure its API key in Setup.', r.connectionAbort.signal);
+  let session;
+  const spec = { cwd: r.workspace, mcpServers: [] };
+  try {
+    if (r.remoteId && (r.capabilities.loadSession || r.capabilities.sessionCapabilities?.resume)) {
+      const method = r.capabilities.loadSession ? 'session/load' : 'session/resume';
+      session = await timeout(r.peer.request(method, { ...spec, sessionId: r.remoteId }), 30000, 'The session could not be loaded.', r.connectionAbort.signal);
+    } else {
+      r.freshSession = !!r.remoteId;
+      session = await timeout(r.peer.request('session/new', spec), 30000, 'The agent did not create a session.', r.connectionAbort.signal);
+    }
+  } catch (err) { throw new Error(`Agent setup failed: ${err.message}. Configure its API key or import a supported login in Agents.`); }
+  if (session.sessionId) r.remoteId = session.sessionId;
+  if (!r.remoteId) throw new Error('The agent did not return a session id.');
+  emit(r, 'session', { modes: session.modes, configOptions: session.configOptions });
+}
+
+async function timeout(promise, ms, message, signal) {
+  let timer, abort;
+  try {
+    return await Promise.race([promise, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), ms);
+      abort = () => reject(signal.reason || new Error('The agent disconnected.'));
+      if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, { once: true });
+    })]);
+  } finally { clearTimeout(timer); if (abort) signal?.removeEventListener('abort', abort); }
+}
+
+// Keep callbacks inside native isolation: an agent can swap a checked path while the host awaits I/O.
+async function agentFile(r, operation, file, content = '') {
+  const script = `const fs=require('node:fs'); const [op,file]=process.argv.slice(1);
+    if(op==='read') { if(fs.statSync(file).size>1048576) throw Error('File exceeds 1 MB.'); const b=fs.readFileSync(file); if(b.length>1048576||b.includes(0)) throw Error('File is too large or is not text.'); process.stdout.write(JSON.stringify(b.toString('utf8'))); }
+    else { const path=require('node:path'); const b=fs.readFileSync(0); if(b.length>52428800) throw Error('File exceeds 50 MB.'); fs.mkdirSync(path.dirname(file),{recursive:true}); const tmp=file+'.spectrum-agent-'+process.pid; try { fs.writeFileSync(tmp,b); fs.renameSync(tmp,file); } finally { fs.rmSync(tmp,{force:true}); } }`;
+  const child = await spawnAgentProcess({ ...r.processOptions, command: process.execPath, args: ['-e', script, operation, file], runtimePaths: [...r.processOptions.runtimePaths, process.platform === 'win32' ? process.execPath : path.dirname(process.execPath)] });
+  r.fileOperations ||= new Set(); r.fileOperations.add(child);
+  let output = '', error = '';
+  child.stdout.on('data', (chunk) => { output += chunk; if (output.length > 8 * 1024 * 1024) killAgentProcess(child); });
+  child.stderr.on('data', (chunk) => { error = (error + chunk).slice(-4000); });
+  const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', (code) => code === 0 ? resolve() : reject(new Error(error || 'The isolated file operation failed.'))); });
+  child.stdin.on('error', () => {}); child.stdin.end(content);
+  try { await timeout(done, 10000, 'The isolated file operation timed out.'); return operation === 'read' ? JSON.parse(output) : ''; }
+  catch (err) { emit(r, 'notice', { message: err.message }); throw err; }
+  finally { r.fileOperations.delete(child); killAgentProcess(child); }
+}
+
+export async function promptAgent(r, prompt) {
+  prompt = textLimit(prompt);
+  if (!prompt.trim()) throw new Error('Enter a task for the agent.');
+  if (r.busy || r.reviewing || busyProject(r)) throw new Error('An agent is already working on this project.');
+  r.busy = true; r.cancelled = false;
+  try {
+    const changes = await workspaceChanges(r);
+    if (r.mode === 'review' && changes.some((c) => !r.resolved.has(c.path))) throw new Error('Apply or reject the pending changes before continuing.');
+  } catch (err) { r.busy = false; throw err; }
+  state(r, 'running');
+  const task = (async () => {
+    try {
+      if (r.ready) await r.ready;
+      if (r.turnCount) {
+        if (r.mode === 'review') await fs.rm(r.workspace, { recursive: true });
+        await fs.rm(path.join(r.dir, 'baseline'), { recursive: true });
+        await fs.rm(path.join(r.dir, 'proposal'), { recursive: true, force: true });
+        await fs.rm(path.join(r.dir, 'proposal.json'), { force: true });
+        r.workspace = await initialiseWorkspace(r.root, r.dir, r.mode);
+        r.resolved.clear();
+      }
+      if (r.cancelled) throw new Error('Task cancelled.');
+      if (!r.connection || r.connection.signal.aborted) await connect(r);
+      if (r.cancelled) throw new Error('Task cancelled.');
+      emit(r, 'user', { text: prompt });
+      const context = r.turnCount ? 'The working files now match the user’s project after their review. Re-read them; rejected proposals were discarded.\n\n' : 'You are working in Spectrum. All file and terminal operations are confined to your workspace and private runtime state. Use relative paths. Do not attempt to access the original project or other host services.\n\n';
+      const handoff = r.freshSession ? `Previous conversation (a new agent session was required):\n${r.events.filter((e) => e.type === 'user' || (e.type === 'update' && e.data.sessionUpdate === 'agent_message_chunk')).map((e) => e.data.text || e.data.content?.text || '').join('\n').slice(-12000)}\n\n` : '';
+      const result = await timeout(r.peer.request('session/prompt', { sessionId: r.remoteId, prompt: [{ type: 'text', text: context + handoff + prompt }] }), 30 * 60 * 1000, 'The agent task exceeded 30 minutes.', r.connectionAbort.signal);
+      r.turnCount++;
+      emit(r, 'complete', result);
+      state(r, r.cancelled || result.stopReason === 'cancelled' || ['max_tokens', 'max_turn_requests'].includes(result.stopReason) ? 'interrupted' : result.stopReason === 'end_turn' ? 'completed' : 'failed', result.stopReason === 'refusal' ? 'The agent refused this task.' : undefined);
+    } catch (err) { state(r, r.cancelled ? 'interrupted' : 'failed', err.message); disconnect(r); }
+    finally {
+      for (const pending of r.pending.values()) pending.reject(new Error('The task ended.'));
+      r.pending.clear();
+      disconnect(r);
+      try { await r.stopChain; await captureAgentProposal(r); emit(r, 'changes', { changes: (await workspaceChanges(r)).filter((c) => !r.resolved.has(c.path)) }); }
+      catch (err) { emit(r, 'notice', { error: err.message }); }
+      await persist(r);
+      r.busy = false;
+    }
+  })();
+  r.task = task;
+  return { ok: true };
+}
+
+function disconnect(r) {
+  r.connectionAbort?.abort(new Error('The agent disconnected.'));
+  r.connection?.close();
+  r.connection = null;
+  const child = r.child;
+  r.child = null;
+  const children = [child, ...[...r.terminals.values()].map((t) => t.child), ...r.fileOperations || []].filter(Boolean);
+  const closed = children.map((owned) => {
+    if (!owned.pid || owned.exitCode !== null || owned.signalCode !== null) return Promise.resolve();
+    const done = new Promise((resolve) => owned.once('close', resolve));
+    killAgentProcess(owned);
+    return timeout(done, 10000, 'The isolated process tree did not stop. No proposal was captured.');
+  });
+  r.stopChain = Promise.all([r.stopChain, ...closed]);
+  void r.stopChain.catch(() => {});
+  r.terminals.clear();
+  r.fileOperations?.clear();
+}
+export async function stopAgentRun(r) {
+  r.cancelled = true;
+  for (const [id, pending] of r.pending) { pending.reject(new Error('Task cancelled.')); emit(r, 'answered', { requestId: id }); }
+  r.pending.clear();
+  if (r.peer && r.remoteId) void r.peer.notify('session/cancel', { sessionId: r.remoteId }).catch(() => {});
+  disconnect(r);
+  await r.stopChain;
+  if (r.task) {
+    const finished = await timeout(r.task.then(() => true), 10000, 'The agent is still stopping.').catch(() => false);
+    if (!finished) { state(r, 'stopping'); await persist(r); return; }
+  }
+  r.busy = false;
+  state(r, 'interrupted');
+  await persist(r);
+}
+export async function setAgentOption(r, configId, value) {
+  if (r.busy || r.reviewing || busyProject(r)) throw new Error('Wait for the task to finish before changing its settings.');
+  r.busy = true; r.cancelled = false;
+  try {
+    if (r.ready) await r.ready;
+    if (!r.connection || r.connection.signal.aborted) await connect(r);
+    const result = await timeout(configId === '__mode'
+      ? r.peer.request('session/set_mode', { sessionId: r.remoteId, modeId: value })
+      : r.peer.request('session/set_config_option', { sessionId: r.remoteId, configId, value }), 30000, 'The agent did not change its settings.', r.connectionAbort.signal);
+    emit(r, 'session', result); return result;
+  } finally { r.busy = false; }
+}
+export async function reviewAgentChanges(r, body) {
+  if (r.busy || r.reviewing || busyProject(r)) throw new Error('Wait for the agent to finish before reviewing changes.');
+  r.reviewing = true;
+  try {
+    const changes = await workspaceChanges(r);
+    if (body.action === 'apply') await mutateProjectFiles(() => applyWorkspaceChanges(r, body.paths, body.expected));
+    else if (body.action !== 'reject') throw new Error('Choose apply or reject.');
+    if (!Array.isArray(body.paths) || body.paths.some((rel) => !changes.some((c) => c.path === rel))) throw new Error('Unknown change path.');
+    for (const rel of body.paths) r.resolved.add(rel);
+    await persist(r);
+    return changes.filter((c) => !r.resolved.has(c.path));
+  } finally { r.reviewing = false; }
+}
+export function runSnapshot(r) { return { ...metadata(r), pending: [...r.pending].map(([requestId, p]) => ({ requestId, kind: p.kind, params: p.params })) }; }
+export function subscribeAgent(r, fn) { r.listeners.add(fn); return () => r.listeners.delete(fn); }
+export async function shutdownAgents() { await Promise.allSettled([...runs.values()].map(stopAgentRun)); }

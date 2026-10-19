@@ -1054,3 +1054,35 @@ export function revealProject(projectId: string, filePath?: string) {
 export function revealCloudCopy(projectId: string) {
   return request<{ ok: boolean; path?: string }>('/api/system/reveal', json('POST', { projectId, cloud: true }));
 }
+
+// ─── Local ACP agents ───
+export interface LocalAgent {
+  id: string; name: string; command: string; args: string[]; runtimePaths: string[];
+  installed: boolean; supported: boolean; hasKey: boolean; canImport: boolean;
+  keyEnv: string; keyEnvs: string[];
+  url: string; note?: string; unavailable?: string; experimental?: boolean;
+}
+export interface AgentEvent { id: number; type: string; data: any; at: string }
+export interface AgentChange {
+  path: string; kind: 'created' | 'modified' | 'deleted'; binary: boolean; beforeHash: string | null;
+  afterHash: string | null; size: number; original?: string; proposed?: string;
+}
+export interface AgentUserRequest { requestId: string; kind: string; params: any }
+export interface LocalAgentSession {
+  id: string; projectId: string; agentId: string; mode: 'review' | 'direct'; status: string;
+  createdAt: string; updatedAt: string; events: AgentEvent[]; pending?: AgentUserRequest[];
+  recoveries?: { id: string; files: string[] }[];
+}
+export const listLocalAgents = () => request<{ ok: boolean; agents: LocalAgent[] }>('/api/agents');
+export const configureLocalAgent = (id: string, value: { command: string; args: string[]; runtimePaths: string[]; apiKey?: string; keyEnv?: string }) => request<{ ok: boolean }>(`/api/agents/${id}`, json('PUT', value));
+export const importLocalAgentLogin = (id: string) => request<{ ok: boolean; files: number }>(`/api/agents/${id}/import-login`, json('POST', {}));
+export const listLocalAgentSessions = (projectId: string) => request<{ ok: boolean; sessions: LocalAgentSession[] }>(`/api/agent-sessions?projectId=${encodeURIComponent(projectId)}`);
+export const getLocalAgentSession = (id: string) => request<{ ok: boolean; session: LocalAgentSession }>(`/api/agent-sessions/${id}`);
+export const createLocalAgentSession = (projectId: string, agentId: string, mode: 'review' | 'direct') => request<{ ok: boolean; session: LocalAgentSession }>('/api/agent-sessions', json('POST', { projectId, agentId, mode }));
+export const sendLocalAgentPrompt = (id: string, prompt: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/prompt`, json('POST', { prompt }));
+export const stopLocalAgentSession = (id: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/stop`, json('POST', {}));
+export const answerLocalAgent = (id: string, requestId: string, answer: unknown) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/answer`, json('POST', { requestId, answer }));
+export const setLocalAgentOption = (id: string, configId: string, value: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/option`, json('POST', { configId, value }));
+export const getLocalAgentChanges = (id: string) => request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/changes`);
+export const recoverLocalAgentApply = (id: string, recoveryId: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/recover`, json('POST', { recoveryId }));
+export const reviewLocalAgentChanges = (id: string, action: 'apply' | 'reject', changes: AgentChange[]) => request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/review`, json('POST', { action, paths: changes.map((c) => c.path), expected: Object.fromEntries(changes.map((c) => [c.path, c.afterHash])) }));

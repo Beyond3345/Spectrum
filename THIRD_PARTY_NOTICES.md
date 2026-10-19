@@ -35,3 +35,7 @@ The editor themes reuse the colour values of the themes below. Only the colours 
 Spectrum's own word list, `dictionaries/spectrum-extra.dic`, is part of Spectrum and under its MIT Licence.
 
 If the application is given to anyone else, this file and the licence files it points to must go with it.
+
+## Agent Client Protocol SDK
+
+Spectrum includes `@agentclientprotocol/sdk` 1.9.0 by the Agent Client Protocol contributors, licensed under Apache-2.0. Source and license: https://github.com/agentclientprotocol/typescript-sdk. Agent executables/adapters are installed separately and retain their own licenses; launcher profiles do not bundle those agents.

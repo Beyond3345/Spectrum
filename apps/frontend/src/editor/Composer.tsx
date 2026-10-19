@@ -9,6 +9,7 @@ import { useEditor } from './EditorContext';
 import type { PendingChange } from './EditorContext';
 import { CHATS_CHANGED, Markdown, VISION_HINTS, VISION_MODES, buildProjectContext, errorText, isTex, patchesToChanges } from './shared';
 import type { VisionMode } from './shared';
+import AgentPanel from './AgentPanel';
 
 type QuickAction = 'polish' | 'rewrite' | 'structure' | 'translate';
 type TranslateScope = 'selection' | 'file' | 'project';
@@ -73,6 +74,7 @@ export default function Composer({
   latest.current = api;
 
   const [mode, setMode] = useState<ChatMode>('assistant');
+  const [showAgents, setShowAgents] = useState(false);
   const providers = useProviders();
   const { preset } = useLivePreset(presetOf(providers, api.settings), api.settings.llmEndpoint);
   const effortChoices = effortOptions(modelOf(preset, api.settings.llmModel));
@@ -458,10 +460,11 @@ export default function Composer({
         <div className="composer-head">
           <div className="segmented small" role="tablist">
             {(['assistant', 'references'] as ChatMode[]).map((m) => (
-              <button key={m} role="tab" aria-selected={mode === m} className={`segment ${mode === m ? 'active' : ''}`} onClick={() => switchMode(m)}>
+              <button key={m} role="tab" aria-selected={!showAgents && mode === m} className={`segment ${!showAgents && mode === m ? 'active' : ''}`} onClick={() => { setShowAgents(false); switchMode(m); }}>
                 {m === 'assistant' ? 'Assistant' : 'References'}
               </button>
             ))}
+            <button role="tab" aria-selected={showAgents} className={`segment ${showAgents ? 'active' : ''}`} onClick={() => setShowAgents(true)}>Agents</button>
           </div>
           <span className="composer-title">{thread?.title}</span>
           <button className="icon-btn" title="New chat" aria-label="New chat" onClick={startNewChat} disabled={!messages.length}>
@@ -472,6 +475,7 @@ export default function Composer({
           </button>
         </div>
 
+        {showAgents ? <AgentPanel /> : <>
         <div className="composer-messages" ref={listRef} role="log">
           {messages.length === 0 && (
             <div className="composer-welcome">
@@ -629,6 +633,7 @@ export default function Composer({
             if (file) imageToLatex(file, visionModeRef.current);
           }}
         />
+        </>}
       </div>
     </div>
   );

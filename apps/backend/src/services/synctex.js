@@ -6,11 +6,37 @@ import { promises as fs, realpathSync } from 'fs';
 import path from 'path';
 import { gunzip } from 'zlib';
 import { promisify } from 'util';
+import { execFile } from 'node:child_process';
 import { readJson, renameOver, writeJsonAtomic } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { APP_DIR, appPath, cachePath } from './projectService.js';
 
 const gunzipAsync = promisify(gunzip);
+const execFileAsync = promisify(execFile);
+let ansiEncoding;
+async function windowsAnsiEncoding() {
+  ansiEncoding ||= (async () => {
+    const { stdout } = await execFileAsync(path.join(process.env.SystemRoot, 'System32', 'reg.exe'), ['query', 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Nls\\CodePage', '/v', 'ACP'], { windowsHide: true });
+    const code = /ACP\s+REG_SZ\s+(\d+)/i.exec(stdout)?.[1];
+    return ({ 65001: 'utf-8', 936: 'gbk', 950: 'big5', 932: 'shift_jis', 949: 'euc-kr', 874: 'windows-874' })[code] || (code && `windows-${code}`);
+  })().catch(() => null);
+  return ansiEncoding;
+}
+
+// Windows TeX engines can write paths in the system ANSI code page. Decode
+// each line separately so UTF-8 paths in the same file keep their spelling.
+export function decodeSynctex(bytes, fallback) {
+  const utf8 = new TextDecoder('utf-8', { fatal: true });
+  try { return utf8.decode(bytes); } catch { /* legacy path bytes */ }
+  let legacy;
+  try { if (fallback) legacy = new TextDecoder(fallback, { fatal: true }); } catch { /* unsupported system encoding */ }
+  return bytes.toString('latin1').split('\n').map((line) => {
+    const raw = Buffer.from(line, 'latin1');
+    try { return utf8.decode(raw); } catch {
+      try { return legacy ? legacy.decode(raw) : raw.toString('utf8'); } catch { return raw.toString('utf8'); }
+    }
+  }).join('\n');
+}
 const NOT_YET = 'Compile the project first to jump between the source and the PDF.';
 // scaled points per PDF point (big point): 65536 sp/pt × 72.27 pt/in ÷ 72 bp/in
 const SP_PER_BP = 65781.76;
@@ -107,7 +133,8 @@ export async function readSynctex(file) {
   const key = `${mtimeMs}:${size}`;
   const hit = cache.get(file);
   if (hit?.key === key) return hit.data;
-  const data = parseSynctex((await gunzipAsync(await fs.readFile(file))).toString('utf8'));
+  const bytes = await gunzipAsync(await fs.readFile(file));
+  const data = parseSynctex(decodeSynctex(bytes, process.platform === 'win32' ? await windowsAnsiEncoding() : null));
   // ponytail: one entry per document compiled this session; an LRU if that ever adds up
   cache.set(file, { key, data });
   return data;

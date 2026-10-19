@@ -1646,3 +1646,19 @@ textarea.table-latex {
 .placement-key dd {
   margin: 0;
 }
+
+/* Agents use the existing composer, form controls and file review surface. */
+.agent-panel { display: flex; flex-direction: column; min-height: 0; gap: 10px; padding: 12px; overflow: auto; max-height: min(72vh, 760px); }
+.agent-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.agent-toolbar > .popup-button { min-width: 120px; max-width: 100%; }
+.agent-panel .row.wrap, .agent-start .row { flex-wrap: wrap; }
+.agent-start, .agent-setup, .agent-request { padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+.agent-panel p { margin: 0 0 10px; }
+.agent-panel .field { margin: 8px 0; }
+.agent-panel input:not([type="checkbox"]), .agent-panel textarea { width: 100%; }
+.agent-transcript { min-height: 100px; max-height: 320px; overflow: auto; }
+.agent-activity { color: var(--text-secondary); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.agent-request { background: var(--bg-subtle); }
+.agent-request pre { max-height: 180px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.agent-request strong { display: block; margin-bottom: 10px; }
+.agent-error { padding: 10px; border: 1px solid var(--border); border-radius: 8px; overflow-wrap: anywhere; color: var(--red); }

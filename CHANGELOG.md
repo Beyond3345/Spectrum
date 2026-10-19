@@ -2,6 +2,27 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.10.0 (19 October 2026)
+
+### Added
+
+- An Agents tab with local ACP launcher profiles, private session history, streamed activity, permission/question controls, agent-provided settings, cancellation, and file review
+- Native macOS and Windows isolation for agent processes and commands, with a separate project copy by default and optional direct editing
+- Immutable review proposals, text/binary/create/delete handling, conflict checks, complete application journals and recovery of interrupted changes
+- Explicit copying of supported agent login files and local API-key setup; no global agent configuration is changed
+- Experimental launcher profiles for Pi, DeepSeek Harness and ZCode; WorkBuddy remains planned through official interfaces with later remote support
+
+### Fixed
+
+- Agent and terminal processes finish before review changes are captured
+- Windows source runs select the Windows spelling module, and SyncTeX navigation handles legacy ANSI filenames alongside UTF-8 paths
+
+### Compatibility
+
+- Native containment and the fixture ACP lifecycle are checked on macOS and Windows; the installed OpenCode handshake is checked on macOS. Inference/account compatibility across every agent is not certified
+- OpenCode 1.19.3 and the Codex, Claude Agent, Pi and ZCode adapters are disabled on Windows while runtime compatibility is unresolved; other Windows vendor launchers remain unverified. See [Windows validation](docs/WINDOWS_AGENT_VALIDATION.md)
+- The universal Mac app is ad hoc signed and not notarized. The Windows x64 installer is unsigned, and an installed Windows GUI walkthrough has not been performed
+
 ## 1.9.2 (18 October 2026)
 
 ### Fixed

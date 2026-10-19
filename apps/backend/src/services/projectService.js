@@ -54,6 +54,8 @@ export function serialiser() {
   };
 }
 const registryLock = serialiser();
+// Agent application and editor saves must not interleave their read/check/write steps.
+export const mutateProjectFiles = serialiser();
 // ponytail: one lock for every project's metadata; per-project locks if it ever becomes a bottleneck
 const metaLock = serialiser();
 

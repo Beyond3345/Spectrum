@@ -158,7 +158,9 @@ To set it up, add a cloud location under Cloud locations in the Projects section
 
 ## Installing
 
-1. Open `Spectrum_1.9.2_universal.dmg`
+Download the macOS or Windows installer from the [latest GitHub release](https://github.com/Beyond3345/Spectrum/releases/latest). The release includes SHA-256 checksums for both installers.
+
+1. Open `Spectrum_1.10.0_universal.dmg`
 2. Drag Spectrum into the Applications folder
 3. Open Spectrum from the Applications folder
 
@@ -168,11 +170,11 @@ Since the application is signed ad hoc rather than with an Apple Developer ID, m
 xattr -dr com.apple.quarantine /Applications/Spectrum.app
 ```
 
-On Windows, run `Spectrum_1.9.2_x64-setup.exe`. It installs Spectrum for the current user without administrator rights and adds it to the Start menu, and it installs Microsoft Edge WebView2 when the PC does not have it yet. Since the installer is not signed, Windows SmartScreen may warn about it on the first run. To continue, select More info and then Run anyway.
+On Windows, run `Spectrum_1.10.0_x64-setup.exe`. It installs Spectrum for the current user without administrator rights and adds it to the Start menu, and it installs Microsoft Edge WebView2 when the PC does not have it yet. Since the installer is not signed, Windows SmartScreen may warn about it on the first run. To continue, select More info and then Run anyway.
 
 ## Windows
 
-The Windows version is a preview. It is built and tested on GitHub Actions, but it has had less use than the macOS version. It differs from the macOS version as follows,
+The Windows version is a preview. Version 1.10.0 was built and tested on a Windows x64 PC, including the packaged backend and native agent isolation. An installed GUI walkthrough has not been performed; see the [Windows delivery report](docs/WINDOWS_DELIVERY_REPORT.md). It differs from the macOS version as follows,
 
 - the window has the standard Windows title bar, and Liquid Glass is not available,
 - the icons are Microsoft's Fluent UI System Icons, since Apple's SF Symbols may only be used on Apple platforms,
@@ -313,6 +315,20 @@ The backend reads the following environment variables, either from the environme
 | `SPECTRUM_PYTHON` | Python used by the table to chart tool | `python3` |
 | `SPECTRUM_MINERU_TOKEN` | MinerU token for template conversion, sent only to MinerU's own address or to `SPECTRUM_MINERU_API_BASE` | none |
 | `SPECTRUM_MINERU_API_BASE` | MinerU API address | `https://mineru.net/api/v4` |
+
+## External agents (local preview)
+
+Open the assistant and select **Agents**. Choose an installed agent, open **Setup** to set its executable or API key, then start a session. Supported login/configuration files can be explicitly copied into the agent’s private state with **Copy existing login**. Keys, working copies, session mappings and transcripts stay on this computer.
+
+The launcher profiles cover OpenCode, Codex, Claude Agent, Qoder, Cursor, Kimi Code, Hermes, Pi, DeepSeek Harness and ZCode. Some need a separately installed ACP adapter; each profile links its setup guide. Pi and ZCode use community adapters, and DeepSeek’s source and published versions can differ. An available launcher does not certify every installed release or login method. WorkBuddy is listed as planned: it will use official interfaces in the later remote integration, without private desktop gateways.
+
+**Review changes first** is the default. On macOS, the agent and its commands run under a native Seatbelt policy, in a separate project copy and private agent home. The live project is excluded. Apply or reject the resulting text, new, deleted and binary files; overlapping edits are refused. Application journals preserve recovery copies if an operation is interrupted. **Edit this project directly** permits immediate project edits and saves recovery copies before each task.
+
+On macOS the isolated process can use public HTTPS and DNS. It cannot call arbitrary local HTTP services or Unix sockets. OpenCode receives one private loopback port for its internal server. Windows uses a less-privileged AppContainer (LPAC), explicit file grants, and a job that contains descendants. It grants public Internet client access, without private-network access or a loopback exemption. Local model endpoints, host browser automation and host MCP servers are unavailable unless a future integration explicitly brokers them. Runtime folders grant read access to installed agent libraries; choose specific folders rather than personal data directories.
+
+The default grants exclude unrelated home files. Some CLI installations need their runtime folder added in Advanced setup, and some authentication methods require an API key or separate sandbox login. Claude subscription reuse is not assumed. The preview requires macOS `sandbox-exec` or the bundled Windows isolation worker and fails closed when either is unavailable. Projects containing symlinks/hardlinks, files above 50 MB, or more than 500 MB/10,000 files are refused rather than copied incompletely. Windows launchers must be native `.exe` programs; script adapters need an explicit interpreter and script arguments. OpenCode 1.19.3 and the Codex, Claude Agent, Pi and ZCode adapters remain unavailable on Windows while runtime compatibility is unresolved. They remain integration targets; global Claude configuration is unchanged. See [Windows validation](docs/WINDOWS_AGENT_VALIDATION.md) for the tested boundary and current limitations.
+
+The existing Assistant, References, autocomplete and image-to-LaTeX continue to use model APIs. `npm run test:agents` exercises native containment, an ACP fixture lifecycle, review/recovery and an installed OpenCode handshake, without inference calls. The [integration plan](docs/AGENT_INTEGRATION_PLAN.md) records the remaining rollout work.
 
 ## Repository layout
 

@@ -14,3 +14,8 @@ src-tauri/resources/
 
 AGENTS.md
 native/win32-x64/
+
+.build-tools/
+native/agent-sandbox/bin/
+native/nodehun/build/
+windows-delivery/

@@ -1,0 +1,64 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { fileURLToPath } from 'node:url';
+
+const native = ['darwin', 'win32'].includes(process.platform) && process.env.SPECTRUM_NATIVE_AGENT_TESTS === '1';
+test('ACP lifecycle: permissions, isolated changes, application, resume, cancellation', { skip: !native && 'Requires native macOS or Windows sandbox execution.', timeout: 60000 }, async () => {
+  const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-agent-session-')));
+  process.env.SPECTRUM_DATA_DIR = path.join(dir, 'data');
+  process.env.SPECTRUM_PROJECTS_DIR = path.join(dir, 'projects');
+  const { createProject } = await import('../src/services/projectService.js');
+  const { saveAgentConfig } = await import('../src/services/agentProfiles.js');
+  const { newAgentRun, getAgentRun, promptAgent, answerAgentRequest, stopAgentRun, shutdownAgents, reviewAgentChanges } = await import('../src/services/agentSessionService.js');
+  const { workspaceChanges } = await import('../src/services/agentWorkspace.js');
+  const fixture = fileURLToPath(new URL('./fixtures/acp-agent.mjs', import.meta.url));
+  try {
+    const project = await createProject({ name: 'Agent fixture' });
+    const root = project.path;
+    await fs.writeFile(path.join(root, 'main.tex'), 'original\n');
+    await fs.writeFile(path.join(root, 'delete.txt'), 'delete after review');
+    await saveAgentConfig('qoder', { command: process.execPath, args: [fixture], runtimePaths: [path.dirname(fixture)] });
+    const meta = await newAgentRun({ projectId: project.id, agentId: 'qoder', mode: 'review' });
+    const run = await getAgentRun(meta.id);
+    try { await run.ready; } catch (err) { throw new Error(`${err.message}\n${run.diagnostic || ''}`); }
+    assert.equal(run.status, 'ready');
+    await promptAgent(run, 'edit the project');
+    const deadline = Date.now() + 5000;
+    while (!run.pending.size && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(run.pending.size, 1);
+    const requestId = [...run.pending.keys()][0];
+    assert.throws(() => answerAgentRequest(run, requestId, { optionId: 'invented' }), /permission options/);
+    answerAgentRequest(run, requestId, { optionId: 'yes' });
+    await run.task;
+    assert.equal(run.status, 'completed', JSON.stringify(run.events.filter((e) => ['state', 'notice'].includes(e.type))));
+    const terminalPid = Number(await fs.readFile(path.join(run.home, 'terminal.pid'), 'utf8'));
+    assert.throws(() => process.kill(terminalPid, 0), { code: 'ESRCH' }, 'owned terminals must stop before proposal capture');
+    assert.equal(await fs.readFile(path.join(root, 'main.tex'), 'utf8'), 'original\n');
+    const changes = await workspaceChanges(run);
+    assert.equal(changes.length, 4);
+    await reviewAgentChanges(run, { action: 'apply', paths: changes.map((c) => c.path), expected: Object.fromEntries(changes.map((c) => [c.path, c.afterHash])) });
+    assert.equal(await fs.readFile(path.join(root, 'main.tex'), 'utf8'), 'agent draft\n');
+    await promptAgent(run, 'wait forever');
+    const resumeDeadline = Date.now() + 10000;
+    while (run.events.filter((e) => e.type === 'session').length < 2 && run.status !== 'failed' && Date.now() < resumeDeadline) await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(run.events.filter((e) => e.type === 'session').length, 2, JSON.stringify(run.events.filter((e) => ['state', 'notice'].includes(e.type))));
+    await stopAgentRun(run);
+    await Promise.race([run.task, new Promise((_, reject) => setTimeout(() => reject(new Error('Cancelled task did not settle.')), 1000).unref())]);
+    assert.equal(run.status, 'interrupted');
+    assert.equal(run.busy, false);
+    const directProject = await createProject({ name: 'Direct agent fixture' });
+    await fs.writeFile(path.join(directProject.path, 'main.tex'), 'direct original\n');
+    const directMeta = await newAgentRun({ projectId: directProject.id, agentId: 'qoder', mode: 'direct' });
+    const direct = await getAgentRun(directMeta.id); await direct.ready;
+    await promptAgent(direct, 'edit directly');
+    const directDeadline = Date.now() + 5000;
+    while (!direct.pending.size && Date.now() < directDeadline) await new Promise((resolve) => setTimeout(resolve, 20));
+    answerAgentRequest(direct, [...direct.pending.keys()][0], { optionId: 'yes' });
+    await direct.task;
+    assert.equal(direct.status, 'completed', JSON.stringify(direct.events.filter((e) => ['state', 'notice'].includes(e.type))));
+    assert.equal(await fs.readFile(path.join(directProject.path, 'main.tex'), 'utf8'), 'agent draft\n');
+  } finally { await shutdownAgents(); await fs.rm(dir, { recursive: true, force: true }); }
+});

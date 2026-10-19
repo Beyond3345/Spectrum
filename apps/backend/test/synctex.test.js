@@ -194,7 +194,7 @@ test('a main file in a subfolder maps every input back to the project, and a fai
   assert.deepEqual(await fs.readdir(path.join(root, '.spectrum')), ['project.json']);
   for (const file of ['paper/chapters/one.tex', 'shared/note.tex', DECOMPOSED]) {
     const view = await synctexView(root, 'paper/main.tex', file, 1);
-    assert.ok(view.ok, view.error);
+    assert.ok(view.ok, `${file}: ${view.error}`);
     const [box] = view.boxes;
     // a word in the middle of the line leads back to it
     assert.deepEqual(await synctexEdit(root, 'paper/main.tex', box.page, box.x + 40, box.y + box.height / 2), { ok: true, file, line: 1, column: null });

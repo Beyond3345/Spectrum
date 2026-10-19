@@ -10,9 +10,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
+import { buildAgentSandbox } from './build-agent-sandbox.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tauriDir = path.join(root, 'src-tauri');
+const targetDir = process.env.CARGO_TARGET_DIR ? path.resolve(root, process.env.CARGO_TARGET_DIR) : path.join(tauriDir, 'target');
+if (process.env.CARGO_TARGET_DIR) process.env.CARGO_TARGET_DIR = targetDir;
 const resourcesDir = path.join(tauriDir, 'resources');
 const binDir = path.join(tauriDir, 'binaries');
 const win = process.platform === 'win32';
@@ -59,6 +62,7 @@ async function bundleBackend() {
       js: "import { createRequire as __spectrumCreateRequire } from 'node:module';\nconst require = __spectrumCreateRequire(import.meta.url);",
     },
   });
+  if (win) fs.copyFileSync(buildAgentSandbox(), path.join(outDir, 'Spectrum.AgentWorker.exe'));
   console.log(`Bundled backend → ${path.relative(root, path.join(outDir, 'server.mjs'))}`);
 }
 
@@ -167,7 +171,7 @@ async function build() {
   await resources();
   if (win) {
     run('npx', ['tauri', 'build', '--target', TRIPLES.x64]);
-    const nsisDir = path.join(tauriDir, `target/${TRIPLES.x64}/release/bundle/nsis`);
+    const nsisDir = path.join(targetDir, `${TRIPLES.x64}/release/bundle/nsis`);
     for (const f of fs.readdirSync(nsisDir).filter((f) => f.endsWith('.exe'))) {
       console.log(`\nInstaller: ${path.join(nsisDir, f)}`);
     }
@@ -175,7 +179,7 @@ async function build() {
   }
   // CI skips the Finder AppleScript that lays out the DMG window
   run('npx', ['tauri', 'build', '--target', 'universal-apple-darwin'], { env: { ...process.env, CI: 'true' } });
-  const bundle = path.join(tauriDir, 'target/universal-apple-darwin/release/bundle');
+  const bundle = path.join(targetDir, 'universal-apple-darwin/release/bundle');
   const dmgDir = path.join(bundle, 'dmg');
   console.log(`\nApp: ${path.join(bundle, 'macos/Spectrum.app')}`);
   for (const f of fs.readdirSync(dmgDir).filter((f) => f.endsWith('.dmg'))) {

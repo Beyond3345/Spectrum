@@ -59,6 +59,7 @@ export interface EditorApi {
   /** queue for review (replaces same-path entries); open: also show the review sheet */
   proposeChanges(changes: PendingChange[], opts?: { open?: boolean }): void;
   compile(): Promise<void>;
+  prepareAgent(): Promise<void>;
   /** saves the open file first; silent (callers report the outcome). unchanged: nothing new, `version` is the latest one */
   createVersion(reason: VersionReason, label?: string): Promise<{ version: VersionMeta | null; unchanged: boolean }>;
 }

@@ -14,6 +14,8 @@ import { registerLLMRoutes } from './routes/llm.js';
 import { registerVisionRoutes } from './routes/vision.js';
 import { registerPlotRoutes } from './routes/plot.js';
 import { registerAgentRoutes } from './routes/agent.js';
+import { registerAgentSessionRoutes } from './routes/agentSessions.js';
+import { shutdownAgents } from './services/agentSessionService.js';
 import { registerTransferRoutes } from './routes/transfer.js';
 import { registerSearchRoutes } from './routes/search.js';
 import { registerSystemRoutes } from './routes/system.js';
@@ -76,6 +78,7 @@ registerLLMRoutes(fastify);
 registerVisionRoutes(fastify);
 registerPlotRoutes(fastify);
 registerAgentRoutes(fastify);
+registerAgentSessionRoutes(fastify);
 registerTransferRoutes(fastify);
 registerSearchRoutes(fastify);
 registerSystemRoutes(fastify);
@@ -120,6 +123,7 @@ async function quit() {
   if (quitting) return;
   quitting = true;
   stopMirroring();
+  await shutdownAgents();
   killAllChildren();
   await Promise.race([fastify.close(), new Promise((resolve) => setTimeout(resolve, 2000))]);
   killAllChildren(); // a compile's next pass may have started meanwhile

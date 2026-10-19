@@ -12,6 +12,7 @@ import { extractDocumentBody, isDocumentFile, mergeTemplateBody, withoutComments
 import { readTemplateManifest, copyTemplateIntoProject, templatePath } from '../services/templateService.js';
 import {
   APP_DIR,
+  mutateProjectFiles,
   appPath,
   cachePath,
   createProject,
@@ -500,7 +501,7 @@ export function registerProjectRoutes(fastify) {
     return { ok: true, files: saved };
   });
 
-  fastify.put('/api/projects/:id/file', async (req, reply) => {
+  fastify.put('/api/projects/:id/file', async (req, reply) => mutateProjectFiles(async () => {
     // create: true makes a new file only, never replacing one (APFS also matches other letter cases).
     // base: the hash of the text the editor last loaded or saved. A file changed since (on another computer, through a
     // sync client) isn't written over, and the answer carries its text; one deleted since isn't made again.
@@ -512,7 +513,7 @@ export function registerProjectRoutes(fastify) {
     const root = await getProjectRoot(req.params.id);
     const abs = editablePath(root, filePath);
     if (base && !create) {
-      // ponytail: a change landing in the milliseconds between this check and the write is still written over
+      // External sync clients can still write independently of this process's file lock.
       const disk = await fs.readFile(abs).catch((err) => {
         if (err.code === 'ENOENT') return null;
         throw err;
@@ -536,7 +537,7 @@ export function registerProjectRoutes(fastify) {
     }
     await touchProject(root).catch(() => {});
     return { ok: true, hash: sha256(content ?? '') };
-  });
+  }));
 
   fastify.post('/api/projects/:id/convert-template', async (req) => {
     const { targetTemplate, mainFile = 'main.tex' } = req.body || {};
