@@ -1,0 +1,34 @@
+\documentclass[11pt,a4paper]{article}
+
+% Page and language
+\usepackage[margin=25mm]{geometry}
+\usepackage{parskip}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage[australian]{babel}
+\usepackage{microtype}
+
+% APA 7 references; Spectrum runs Biber when you compile with Auto or pdfLaTeX.
+\usepackage{csquotes}
+\usepackage[backend=biber,style=apa,natbib=true]{biblatex}
+\addbibresource{references.bib}
+
+\usepackage[hidelinks]{hyperref}
+\hypersetup{pdftitle={Your document title},pdfauthor={Your Name},pdflang={en-AU}}
+\usepackage[capitalise,noabbrev]{cleveref}
+
+\title{Your document title}
+\author{Your Name}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+Start writing here. This simple document uses A4 paper, 25\,mm margins and one-and-a-half line spacing, without a separate title page or table of contents.
+
+Use \textcite{Knuth1984} for a citation in a sentence, or \parencite{Knuth1984} for a citation in parentheses. The familiar \verb|\citet| and \verb|\citep| commands also work. Add more sources using Spectrum's References tab.
+
+LaTeX single quotation marks look like `this'; an apostrophe in a word, such as author's, stays an apostrophe.
+
+\printbibliography[title={References}]
+\end{document}

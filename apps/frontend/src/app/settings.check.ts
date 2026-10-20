@@ -1,6 +1,6 @@
 // Self-check for where model requests and keys go. Run (it imports React, so bundle it first):
 // npx esbuild apps/frontend/src/app/settings.check.ts --bundle --platform=node --log-level=warning | node
-import { DEFAULT_SETTINGS, keysBackFromOlder, llmConfigFor, presetForEndpoint, presetPatch, rolePatch, searchProviderPatch, sharedPart, takeInShared, withShared } from './settings';
+import { DEFAULT_SETTINGS, keysBackFromOlder, llmConfigFor, loadSettings, presetForEndpoint, presetPatch, rolePatch, searchConfigFor, searchProviderPatch, sharedPart, takeInShared, withShared } from './settings';
 import { NO_FOLDERS } from './folders';
 import type { AppSettings } from './settings';
 import type { ProviderPreset } from '../api/client';
@@ -93,6 +93,8 @@ eq([w.searchProvider, w.searchProviderKey], ['exa', ''], 'Exa starts without the
 w = at({ searchProviderKey: 'exa-key' }, w);
 w = at(searchProviderPatch(w, 'serpapi'), w);
 eq([w.searchProviderKey, w.searchProviderKeys.exa], ['serp-key', 'exa-key'], 'switching back restores the SerpApi key');
+const search = searchConfigFor(at({ searchProvider: 'tavily', searchProviderKey: 't-key', searchConnections: ['exa', 'tavily', 'exa'], searchProviderKeys: { exa: 'e-key', brave: 'disabled-key' } }));
+eq(search.connections.map((c) => [c.provider, c.apiKey]), [['tavily', 't-key'], ['exa', 'e-key']], 'default first, each enabled connection keeps its own key, and disabled connections stay out');
 
 // what follows the user to the other computer: never a key, an endpoint, a path or the window's look
 const mine = at({
@@ -164,5 +166,17 @@ eq(keysBackFromOlder(at({ projectFolders: pcTree }), macFile, macFile.updatedAt,
 // tag colours follow the user, and only the named ones are kept
 eq(withShared(at({}), { tagColours: { Thesis: 'red', Notes: 'pink' } as never }).tagColours, { Thesis: 'red' }, 'a known tag colour comes in, an unknown one is dropped');
 eq('tagColours' in sharedPart(at({ tagColours: { Thesis: 'teal' } })), true, 'tag colours are shared');
+
+const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+try {
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: { getItem: () => JSON.stringify({
+    searchProvider: 'exa', searchProviderKey: 'old-exa', searchProviderKeys: { exa: 'old-exa', tavily: 'old-tavily' }
+  }) } } });
+  const migrated = searchConfigFor(loadSettings());
+  eq(migrated.connections.map((c) => [c.provider, c.apiKey]), [['exa', 'old-exa'], ['tavily', 'old-tavily']], 'previously configured keys migrate into simultaneous connections');
+} finally {
+  if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow);
+  else Reflect.deleteProperty(globalThis, 'window');
+}
 
 console.log('settings.check: ok');

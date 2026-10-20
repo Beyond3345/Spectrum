@@ -150,6 +150,24 @@ export function decodeEntities(s) {
 const cleanText = (s) => decodeEntities(String(s ?? '').replace(/<\/?[a-z][^>]*>/gi, '')).replace(/\s+/g, ' ').trim();
 const first = (v) => (Array.isArray(v) ? v[0] : v);
 
+/** Keep publication precision; never infer dates from URLs or copyright years. */
+export function issuedFromDate(value) {
+  const match = String(value ?? '').trim().match(/^(\d{4})(?:[-/](\d{1,2})(?:[-/](\d{1,2}))?)?(?:$|[T\s])/);
+  if (!match) return undefined;
+  const parts = match.slice(1).filter(Boolean).map(Number);
+  const [y, m, d] = parts;
+  if (m != null && (m < 1 || m > 12)) return undefined;
+  if (d != null && (d < 1 || d > new Date(Date.UTC(y, m, 0)).getUTCDate())) return undefined;
+  return { 'date-parts': [parts] };
+}
+
+// Opening quotes use TeX's backtick; apostrophes inside words stay apostrophes.
+function texQuotes(s) {
+  return s.replace(/[‘’“”]/g, (c) => ({ '‘': '`', '’': "'", '“': '``', '”': "''" })[c])
+    .replace(/(^|[\s([{])"([^"\n]+)"/g, '$1``$2\'\'')
+    .replace(/(^|[\s([{])'(?=\S)(.+?)'(?![\p{L}\p{N}'])/gu, '$1`$2\'');
+}
+
 const FOLD = { ß: 'ss', æ: 'ae', Æ: 'Ae', œ: 'oe', Œ: 'Oe', ø: 'o', Ø: 'O', ł: 'l', Ł: 'L', đ: 'd', Đ: 'D', þ: 'th', Þ: 'Th', ı: 'i' };
 
 export function foldAscii(s) {
@@ -211,7 +229,7 @@ export function pdfTexSafe(text) {
  */
 export function plainTex(text, { protect = false } = {}) {
   const SPECIAL = { '\\': '\\textbackslash{}', '^': '\\^{}', '~': '\\~{}' };
-  const s = String(text ?? '');
+  const s = texQuotes(String(text ?? ''));
   const escaped = s.replace(/[\\{}$&%#_^~]/g, (ch) => SPECIAL[ch] || `\\${ch}`);
   // the escapes are lower-case words, so they're never braced
   return pdfTexSafe(protect && /\p{Ll}/u.test(s) ? escaped.replace(COMPOUND_RE, (w) => (keepsCase(w) ? `{${w}}` : w)) : escaped);
@@ -228,6 +246,7 @@ export function texEscape(text, { protect = false } = {}) {
   let out = '';
   let plain = '';
   const flush = () => {
+    plain = texQuotes(plain);
     out += pdfTexSafe(shouldProtect ? plain.replace(COMPOUND_RE, (w) => (keepsCase(w) ? `{${w}}` : w)) : plain);
     plain = '';
   };
@@ -387,8 +406,6 @@ function arxivOf(rec) {
   return { id: stripVersion(id), primaryClass };
 }
 
-const AU_DATE = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
-
 export function toBibtex(rec, key) {
   const arxiv = arxivOf(rec);
   let type = TYPE_MAP[rec.type] || 'misc';
@@ -397,7 +414,7 @@ export function toBibtex(rec, key) {
   const webpage = rec.type === 'webpage';
   const container = texEscape(cleanText(first(rec['container-title'])));
   const doi = doiOf(rec);
-  const url = cleanText(rec.URL);
+  const url = arxiv ? `https://arxiv.org/abs/${arxiv.id}` : cleanText(rec.URL);
   const authors = (rec.author || []).map(bibName).filter(Boolean);
   const editors = authors.length ? [] : (rec.editor || []).map(bibName).filter(Boolean);
   const plain = (v) => texEscape(cleanText(v));
@@ -413,6 +430,12 @@ export function toBibtex(rec, key) {
   if (type === 'article') add('journal', preprint ? `arXiv preprint arXiv:${arxiv.id}` : container);
   if (type === 'inproceedings' || type === 'incollection') add('booktitle', container);
   add('year', yearOf(rec));
+  if (webpage) {
+    const parts = rec.issued?.['date-parts']?.[0];
+    if (parts?.length > 1) add('date', parts.map((n, i) => i ? String(n).padStart(2, '0') : n).join('-'));
+    const site = cleanText(rec.publisher || container);
+    if (rec.author?.length !== 1 || displayName(rec.author[0]).toLowerCase() !== site.toLowerCase()) add('organization', plain(site));
+  }
   add('volume', plain(rec.volume));
   add('number', plain(rec.issue ?? (type === 'techreport' ? rec.number : '')));
   // article-numbered journals (APS, Nature Communications…) have no page range
@@ -421,10 +444,8 @@ export function toBibtex(rec, key) {
   add('doi', doi);
   if (webpage) {
     add('howpublished', url && `\\url{${url}}`);
-    if (rec.accessed) add('note', `Accessed ${AU_DATE.format(new Date(rec.accessed))}`);
-  } else if (!doi || type === 'misc') {
-    add('url', url);
   }
+  if (webpage || arxiv || !doi || type === 'misc') add('url', url);
   // published versions keep their arXiv id too, so pasting the preprint later is a duplicate
   if (arxiv) {
     add('eprint', arxiv.id);
@@ -678,11 +699,12 @@ function isPrivateAddress(address) {
   return v6 === '::' || v6 === '::1' || /^f[cd]/.test(v6) || /^fe[89ab]/.test(v6) || /^ff/.test(v6);
 }
 
-const blockedLink = () => lookupError('That link points to this computer or the local network, so it wasn’t opened.');
+const blockedLink = () => lookupError('That link points to this computer or the local network, so it wasn’t opened.', 'BLOCKED_URL');
 
 async function assertPublicUrl(url) {
   const { protocol, hostname, host } = new URL(url);
-  if (protocol !== 'http:' && protocol !== 'https:') throw lookupError('Only http and https links can be looked up.');
+  if (protocol !== 'http:' && protocol !== 'https:') throw lookupError('Only http and https links can be looked up.', 'BLOCKED_URL');
+  if (new URL(url).username || new URL(url).password) throw lookupError('Links containing a username or password aren’t sent to citation services.', 'BLOCKED_URL');
   // the lookup services themselves (local mocks in tests) are always fine
   if ([doiBase(), crossrefBase(), arxivBase()].some((b) => new URL(b).host === host)) return;
   const name = hostname.replace(/^\[|\]$/g, '').toLowerCase();
@@ -783,9 +805,44 @@ export function parseHtmlMeta(html) {
   return meta;
 }
 
+function structuredPage(html, url) {
+  const nodes = [];
+  const collect = (value) => {
+    if (Array.isArray(value)) value.forEach(collect);
+    else if (value && typeof value === 'object') {
+      nodes.push(value);
+      if (value['@graph']) collect(value['@graph']);
+    }
+  };
+  for (const m of String(html).matchAll(/<script\b[^>]*\btype\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try { collect(JSON.parse(m[1])); } catch { /* malformed metadata is not a failed page */ }
+  }
+  const canonical = (u) => {
+    try { const parsed = new URL(u, url); parsed.hash = ''; return parsed.href.replace(/\/$/, ''); } catch { return ''; }
+  };
+  const candidates = nodes.filter((n) => [].concat(n['@type'] || []).some((t) => /(?:^|[/#])(?:NewsArticle|Article|BlogPosting|ScholarlyArticle|WebPage)$/.test(t)))
+    .sort((a, b) => Number([].concat(a['@type']).includes('WebPage')) - Number([].concat(b['@type']).includes('WebPage')));
+  const address = (n) => n.url || n.mainEntityOfPage?.['@id'] || (typeof n.mainEntityOfPage === 'string' && n.mainEntityOfPage) || n['@id'];
+  const page = candidates.find((n) => address(n) && canonical(address(n)) === canonical(url))
+    || candidates.find((n) => !address(n));
+  if (!page) return null;
+  const deref = (v) => nodes.find((n) => n['@id'] === (typeof v === 'string' ? v : v?.['@id']) && n.name) || v;
+  const authors = [].concat(page.author || []).map(deref).map((a) => {
+    if (typeof a === 'string') return /^https?:/i.test(a) ? null : parseName(a);
+    if (a?.['@type'] === 'Organization') return a.name ? { literal: cleanText(a.name) } : null;
+    return a?.familyName ? { family: cleanText(a.familyName), given: cleanText(a.givenName) } : parseName(a?.name);
+  }).filter(Boolean);
+  return {
+    title: cleanText(page.headline || page.name), author: authors,
+    issued: issuedFromDate(page.datePublished || page.dateCreated),
+    publisher: cleanText(deref(page.publisher)?.name)
+  };
+}
+
 /** A page → { doi } | { arxiv } | { record } | null, following §6's order. */
 export function readHtmlCitation(html, url, now = new Date()) {
   const meta = parseHtmlMeta(html);
+  const structured = structuredPage(html, url);
   const one = (...names) => names.map((n) => meta[n]?.[0]).find(Boolean) || '';
   const metaDoi = ['citation_doi', 'dc.identifier', 'prism.doi', 'bepress_citation_doi']
     .flatMap((n) => meta[n] || [])
@@ -797,12 +854,11 @@ export function readHtmlCitation(html, url, now = new Date()) {
     const journal = one('citation_journal_title');
     const conference = one('citation_conference_title');
     const book = one('citation_book_title');
-    const year = one('citation_publication_date', 'citation_date', 'citation_year').match(/\d{4}/)?.[0];
     record = {
       type: journal ? 'article-journal' : conference ? 'paper-conference' : book ? 'chapter' : 'other',
       title,
       author: (meta.citation_author || []).map(parseName).filter(Boolean),
-      issued: { 'date-parts': [[year ? Number(year) : null]] },
+      issued: issuedFromDate(one('citation_publication_date', 'citation_date', 'citation_year')) || structured?.issued,
       'container-title': journal || conference || book,
       volume: one('citation_volume'),
       issue: one('citation_issue'),
@@ -818,14 +874,16 @@ export function readHtmlCitation(html, url, now = new Date()) {
     return arxiv ? { arxiv: stripVersion(arxiv) } : { record };
   }
 
-  const pageTitle = one('og:title', 'twitter:title') || cleanText(String(html).match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]);
+  const pageTitle = structured?.title || one('og:title', 'twitter:title') || cleanText(String(html).match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]);
   const author = one('author');
-  const year = one('article:published_time').match(/\d{4}/)?.[0];
+  const published = structured?.issued || issuedFromDate(one('article:published_time', 'og:published_time', 'datepublished', 'parsely-pub-date', 'sailthru.date', 'dc.date.issued', 'dcterms.issued', 'dc.date', 'pubdate', 'date'))
+    || issuedFromDate(String(html).match(/<time\b[^>]*\bdatetime\s*=\s*["']([^"']+)["'][^>]*>/i)?.[1]);
   const webpage = pageTitle ? {
     type: 'webpage',
     title: pageTitle,
-    author: author && !/^https?:/i.test(author) ? [parseName(author)].filter(Boolean) : [],
-    issued: { 'date-parts': [[year ? Number(year) : null]] },
+    author: structured?.author.length ? structured.author : author && !/^https?:/i.test(author) ? [parseName(author)].filter(Boolean) : [],
+    issued: published,
+    publisher: structured?.publisher || one('og:site_name'),
     URL: url,
     accessed: now.toISOString()
   } : null;
@@ -873,7 +931,7 @@ async function readLimited(res, max) {
 
 const NO_PAGE = 'That site didn’t return the page. Open it in a browser and paste the DOI instead.';
 
-async function recordFromUrl(url) {
+async function recordFromPage(url) {
   const { res, finalUrl } = await getPage(url, 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8');
   if (res.status === 404 || res.status === 410) throw notFound(`Couldn’t open that link (HTTP ${res.status}).`);
   // 202/203 and friends are bot checks and interstitials, not the page
@@ -899,6 +957,26 @@ async function recordFromUrl(url) {
   if (found.arxiv) return recordFromArxiv(found.arxiv);
   if (found.record?.type === 'webpage' && isChallenge(found.record, finalUrl)) throw lookupError(NO_PAGE);
   return found.record;
+}
+
+async function recordFromUrl(url, searchConfig) {
+  await assertPublicUrl(url);
+  let record, failure;
+  try { record = await recordFromPage(url); } catch (err) {
+    if (err.code === 'BLOCKED_URL') throw err;
+    failure = err;
+  }
+  if (searchConfig && (!record || (record.type === 'webpage' && (!yearOf(record) || !record.author?.length)))) {
+    try {
+      const { searchReferenceRecords } = await import('./searchService.js');
+      const extra = (await searchReferenceRecords({ searchConfig, targetUrl: record?.URL || url }))[0];
+      if (extra && !isChallenge(extra, extra.URL)) {
+        record = record ? { ...extra, ...record, author: record.author?.length ? record.author : extra.author, issued: yearOf(record) ? record.issued : extra.issued } : extra;
+      }
+    } catch (err) { failure = err; }
+  }
+  if (record) return record;
+  throw failure || notFound('Couldn’t find citation details for that page.');
 }
 
 /**
@@ -943,7 +1021,7 @@ export function pickCandidate(query, items) {
 
 function toCandidate(item) {
   return {
-    id: item.DOI,
+    id: item.DOI || item.URL,
     title: cleanText(first(item.title)),
     authors: (item.author || []).map(displayName).filter(Boolean),
     year: yearOf(item) || undefined,
@@ -982,18 +1060,23 @@ function duplicateResult(input, existing, rec) {
 }
 
 /** → { input, record } or { result } (duplicate / choose / not_found / error). */
-async function lookup(item, index) {
+async function lookup(item, index, searchConfig) {
   const { input } = item;
   try {
     const known = findDuplicate(index, { doi: item.doi, arxiv: item.arxiv });
     if (known) return { result: duplicateResult(input, known) };
     if (item.kind === 'doi') return { input, record: await recordFromDoi(item.doi) };
     if (item.kind === 'arxiv') return { input, record: await recordFromArxiv(item.arxiv) };
-    if (item.kind === 'url') return { input, record: await recordFromUrl(item.url) };
-    const hits = await searchCrossref(item.query);
+    if (item.kind === 'url') return { input, record: await recordFromUrl(item.url, searchConfig) };
+    let hits;
+    try { hits = await searchCrossref(item.query); } catch (err) { if (!searchConfig) throw err; hits = []; }
+    if (!hits.length && searchConfig) {
+      const { searchReferenceRecords } = await import('./searchService.js');
+      hits = await searchReferenceRecords({ searchConfig, query: item.query });
+    }
     if (!hits.length) return { result: { input, status: 'not_found', message: 'No matching works found.' } };
     const pick = pickCandidate(item.query, hits);
-    if (pick) return { input, record: await recordFromDoi(pick.DOI) };
+    if (pick) return { input, record: pick.DOI ? await recordFromDoi(pick.DOI) : pick };
     return { result: { input, status: 'choose', candidates: hits.map(toCandidate), message: 'Several works match. Choose the right one to add it.' } };
   } catch (err) {
     const status = err.code === 'NOT_FOUND' ? 'not_found' : 'error';
@@ -1023,13 +1106,13 @@ function withBibLock(fn) {
   return run;
 }
 
-async function resolveItems(projectRoot, items, bibFile) {
+async function resolveItems(projectRoot, items, bibFile, searchConfig) {
   return withBibLock(async () => {
     const files = await projectFiles(projectRoot);
     const target = pickBibTarget(projectRoot, files, bibFile);
     const index = await loadBibIndex(projectRoot, files);
     const taken = new Set(index.map((e) => e.key.toLowerCase()));
-    const outcomes = await mapPool(items, 4, (item) => lookup(item, index));
+    const outcomes = await mapPool(items, 4, (item) => lookup(item, index, searchConfig));
 
     const results = [];
     for (const outcome of outcomes) {
@@ -1060,10 +1143,10 @@ async function resolveItems(projectRoot, items, bibFile) {
   });
 }
 
-export async function resolveReferences({ projectRoot, input, bibFile, llmConfig }) {
+export async function resolveReferences({ projectRoot, input, bibFile, llmConfig, searchConfig }) {
   const items = await splitInput(String(input || ''), llmConfig);
   if (!items.length) throw badRequest('Paste a DOI, link, arXiv ID or title.');
-  const out = await resolveItems(projectRoot, items.slice(0, MAX_ITEMS), bibFile);
+  const out = await resolveItems(projectRoot, items.slice(0, MAX_ITEMS), bibFile, searchConfig);
   if (items.length > MAX_ITEMS) {
     out.results.push({ input: '…', status: 'error', message: `Only the first ${MAX_ITEMS} references were processed. Paste the rest separately.` });
   }
@@ -1071,9 +1154,9 @@ export async function resolveReferences({ projectRoot, input, bibFile, llmConfig
 }
 
 /** candidateId is a DOI, arXiv id or URL from a 'choose' result. */
-export async function addReference({ projectRoot, candidateId, bibFile }) {
+export async function addReference({ projectRoot, candidateId, bibFile, searchConfig }) {
   const item = detectInput(candidateId);
   if (item.kind === 'query') throw badRequest('That isn’t a DOI, arXiv ID or link.');
-  const { results, ...rest } = await resolveItems(projectRoot, [item], bibFile);
+  const { results, ...rest } = await resolveItems(projectRoot, [item], bibFile, searchConfig);
   return { result: results[0], ...rest };
 }

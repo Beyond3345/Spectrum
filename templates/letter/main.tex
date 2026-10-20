@@ -1,6 +1,10 @@
 \documentclass[11pt,a4paper]{article}   % 11 pt text on A4 paper
 
 % Page
+\usepackage{csquotes}
+\usepackage[backend=biber,style=apa,natbib=true]{biblatex} % APA 7; compile with Biber
+\addbibresource{references.bib}
+
 \usepackage[margin=2.5cm]{geometry}     % 2.5 cm margins all round
 \usepackage{parskip}                    % a blank line between paragraphs instead of an indent
 \usepackage[australian]{babel}          % Australian hyphenation, and \today as 17 October 2026
@@ -66,5 +70,7 @@ Yours sincerely
 Alex Morgan
 
 Enc.\ résumé
+
+\printbibliography
 
 \end{document}

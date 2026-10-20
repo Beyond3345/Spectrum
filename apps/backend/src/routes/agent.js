@@ -13,12 +13,14 @@ export function registerAgentRoutes(fastify) {
       activePath,
       compileLog,
       llmConfig,
+      searchConfig,
       interaction = 'agent',
       history = [],
       reasoningEffort
     } = req.body || {};
 
     if (interaction === 'chat') {
+      if (searchConfig) return { ...(await runToolAgent({ projectId, activePath, task, prompt, selection, content, compileLog, llmConfig, reasoningEffort, searchConfig, history, readOnly: true })), suggestion: '' };
       const safeHistory = Array.isArray(history)
         ? history.filter((item) => item && (item.role === 'user' || item.role === 'assistant') && typeof item.content === 'string')
         : [];
@@ -54,7 +56,7 @@ export function registerAgentRoutes(fastify) {
     }
 
     if (mode === 'tools') {
-      return runToolAgent({ projectId, activePath, task, prompt, selection, compileLog, llmConfig, reasoningEffort });
+      return runToolAgent({ projectId, activePath, task, prompt, selection, compileLog, llmConfig, reasoningEffort, searchConfig });
     }
 
     const system =

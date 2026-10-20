@@ -1379,7 +1379,7 @@ test('templates are edited in a hidden copy, saved in place or as new ones, rest
   // (shippedHash: the fingerprint seeding keeps of the shipped files)
   const { shippedHash: _hash, ...savedEntry } = saved.template;
   assert.deepEqual(savedEntry, { ...shippedLetter, edited: true });
-  assert.deepEqual((await fs.readdir(path.join(templateDir, 'letter'))).sort(), ['logo.pdf', 'main.tex', 'parts']);
+  assert.deepEqual((await fs.readdir(path.join(templateDir, 'letter'))).sort(), ['logo.pdf', 'main.tex', 'parts', 'references.bib']);
   assert.ok(!(await fs.readdir(templateDir)).some((name) => name.startsWith('.')), 'nothing left of the swap');
   assert.equal((await template('letter')).edited, true);
   const made = await newProject('From my letter', { template: 'letter' });
@@ -1400,7 +1400,7 @@ test('templates are edited in a hidden copy, saved in place or as new ones, rest
   const restored = (await post('/api/templates/letter/restore')).json;
   assert.ok(restored.ok, restored.error);
   assert.deepEqual(restored.template, shippedLetter);
-  assert.deepEqual(await fs.readdir(path.join(templateDir, 'letter')), ['main.tex']);
+  assert.deepEqual((await fs.readdir(path.join(templateDir, 'letter'))).sort(), ['main.tex', 'references.bib']);
   assert.equal(await fs.readFile(path.join(templateDir, 'letter', 'main.tex'), 'utf8'), await fs.readFile(path.join(shippedDir, 'letter', 'main.tex'), 'utf8'));
   assert.deepEqual(await template('letter'), shippedLetter);
 

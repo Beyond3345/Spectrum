@@ -1,6 +1,10 @@
 \documentclass[10pt,a4paper]{article}   % 10 pt text on A4 paper
 
 % Page
+\usepackage{csquotes}
+\usepackage[backend=biber,style=apa,natbib=true]{biblatex} % APA 7; compile with Biber
+\addbibresource{references.bib}
+
 \usepackage[margin=18mm]{geometry}      % narrow margins, so a full career fits on one page
 \usepackage{parskip}                    % a blank line between paragraphs instead of an indent
 \usepackage[australian]{babel}          % Australian hyphenation, and \today as 17 October 2026
@@ -85,5 +89,7 @@ farmers and land managers.
 
 \section{Referees}
 Available on request.
+
+\printbibliography
 
 \end{document}

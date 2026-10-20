@@ -3,8 +3,9 @@ import { addReference, arxivSearch, callLLM, runAgent, suggestCitations, webSear
 import type { ArxivPaper, CitationSuggestion, SearchProvider } from '../../api/client';
 import Icon from '../../app/Icon';
 import Select from '../../app/Select';
+import { searchConfigFor } from '../../app/settings';
 import { useEditor } from '../EditorContext';
-import { errorText, extractBibKey, insertBeforeEnd, isTex, parseJsonReply, patchesToChanges } from '../shared';
+import { citationText, errorText, extractBibKey, insertBeforeEnd, isTex, parseJsonReply, patchesToChanges } from '../shared';
 
 const PROVIDERS: Record<SearchProvider, string> = {
   llm: 'the model’s built-in web search',
@@ -78,7 +79,7 @@ function CitationAssistant() {
     setStatus('');
     setPapers([]);
     try {
-      const res = await suggestCitations({ text: selection, llmConfig: api.llm.search, maxResults: 5 });
+      const res = await suggestCitations({ text: selection, llmConfig: api.llm.search, searchConfig: searchConfigFor(api.settings, api.llm.search), maxResults: 5 });
       if (!res.ok) throw new Error(res.error);
       setQueries(res.queries || []);
       setPapers(res.papers || []);
@@ -97,7 +98,7 @@ function CitationAssistant() {
     setBusy(true);
     try {
       const { target, keys } = await api.writeBibEntries(chosen.map((p) => p.bibtex));
-      if (keys.length && isTex(api.activePath)) api.insertAtCursor(`~\\cite{${keys.join(',')}}`, { afterSelection: true });
+      if (keys.length && isTex(api.activePath)) api.insertAtCursor('~' + await citationText(api, keys), { afterSelection: true });
       setStatus(`Added ${keys.length} ${keys.length === 1 ? 'reference' : 'references'} to ${target}.`);
     } catch (err) {
       setStatus(`Couldn’t write the references: ${errorText(err)}`);
@@ -261,7 +262,7 @@ function ArxivSearch() {
       if (keys.length && !bibIncluded) notes.push(`${bibFile} isn’t included in ${api.mainFile || 'the main file'} yet.`);
 
       if (autoCite && keys.length) {
-        const line = isTex(api.activePath) ? api.insertAtCursor(`\\cite{${keys.join(',')}}`, { afterSelection: true, placedOnly: true }) : null;
+        const line = isTex(api.activePath) ? api.insertAtCursor(await citationText(api, keys), { afterSelection: true, placedOnly: true }) : null;
         if (line) notes.push(`Inserted the citation in ${api.activePath.split('/').pop()}, line ${line}.`);
         else notes.push(isTex(api.activePath) ? 'Click in the document where the citation goes, then try again.' : 'Open a .tex file to insert the citation.');
       }
@@ -278,7 +279,7 @@ function ArxivSearch() {
             prompt: [
               'Insert citations into the target TeX file.',
               `Target file: ${targetFile}.`,
-              `Use \\cite{${keys.join(',')}}.`,
+              `Use ${await citationText(api, keys)}.`,
               'If a Related Work section exists, add the citations there.',
               'Otherwise add a Related Work subsection near the end and cite the papers.',
               'Keep edits minimal and preserve formatting.',
@@ -379,7 +380,7 @@ function ArxivSearch() {
           <BibPicker value={bibTarget} onChange={setBibTarget} />
           <label className="checkbox-row">
             <input type="checkbox" checked={autoCite} onChange={(e) => setAutoCite(e.target.checked)} />
-            Insert \cite at the cursor
+            Insert citation at the cursor
           </label>
           <label className="checkbox-row">
             <input type="checkbox" checked={aiInsert} onChange={(e) => setAiInsert(e.target.checked)} />
@@ -475,7 +476,6 @@ function WebSearch() {
     setParagraph('');
     setNotes({});
     try {
-      const provider = settings.searchProvider;
       say('Splitting the question into searches…');
       const split = await callLLM({
         llmConfig,
@@ -497,7 +497,6 @@ function WebSearch() {
       const plan = split.ok && split.content ? parseJsonReply<{ queries?: string[]; scholarly?: boolean }>(split.content) : null;
       let queries = (plan?.queries || []).filter(Boolean).slice(0, 4);
       if (!queries.length) {
-        if (provider === 'llm') throw new Error(split.error || 'Couldn’t split the query.');
         // a search provider can still run the question as typed
         say('Couldn’t split the query; searching for it as typed.');
         queries = [q];
@@ -507,77 +506,17 @@ function WebSearch() {
       await Promise.all(
         queries.map(async (sub, qi) => {
           say(`Searching: ${sub}`);
-          if (provider !== 'llm') {
-            const res = await webSearch({
-              query: sub,
-              provider,
-              apiKey: settings.searchProviderKey || undefined,
-              engine: settings.serpEngine,
-              maxResults: 5,
-              scholarly: plan?.scholarly !== false
-            }).catch((err) => ({ ok: false, error: errorText(err), results: [] }));
-            if (!res.ok) {
-              say(`Search failed: ${sub} (${res.error})`);
-              return;
-            }
-            (res.results || []).forEach((item, i) =>
-              found.push({
-                id: `${qi}-${i}-${item.url || item.title}`,
-                title: item.title || '',
-                summary: item.summary || '',
-                url: item.url || '',
-                bibtex: item.bibtex || '',
-                citeKey: item.bibtex ? extractBibKey(item.bibtex) : '',
-                meta: metaLine(item),
-                doi: item.doi,
-                arxiv: item.arxiv
-              })
-            );
-            say(`Done: ${sub} (${res.results?.length || 0})`);
-            return;
-          }
-          const res = await callLLM({
-            llmConfig,
-            messages: [
-              {
-                role: 'system',
-                content: [
-                  'You are a search assistant for academic writing in LaTeX. Use web search to find peer-reviewed papers, books, standards or authoritative documentation;',
-                  'for questions about LaTeX itself, CTAN package documentation and TeX Stack Exchange answers.',
-                  'List only sources the search actually found, each with its DOI or arXiv id when it has one, its authors, year and venue,',
-                  'and BibTeX that matches them: @article, @inproceedings or @book, or @misc with the url for a web page.',
-                  'Return JSON only: {"results":[{"title":"","authors":[],"year":"","venue":"","doi":"","arxiv":"","url":"","summary":"","bibtex":""}]}.'
-                ].join(' ')
-              },
-              { role: 'user', content: `Search for: ${sub}` }
-            ]
-          }).catch((err) => ({ ok: false, error: errorText(err), content: '' }));
-          if (!res.ok || !res.content) {
-            say(`Search failed: ${sub}`);
-            return;
-          }
-          const parsed = parseJsonReply<{
-            results?: { title?: string; summary?: string; url?: string; bibtex?: string; authors?: string[]; year?: string; venue?: string; doi?: string; arxiv?: string }[];
-          }>(res.content);
-          if (!parsed) {
-            say(`Couldn’t read the results for: ${sub}`);
-            return;
-          }
-          (parsed.results || []).forEach((item, i) => {
-            const bibtex = (item.bibtex || '').replace(/\\n/g, '\n');
-            found.push({
-              id: `${qi}-${i}-${item.url || item.title || 'result'}`,
-              title: item.title || '',
-              summary: item.summary || '',
-              url: item.url || '',
-              bibtex,
-              citeKey: bibtex ? extractBibKey(bibtex) : '',
-              meta: metaLine({ authors: Array.isArray(item.authors) ? item.authors : [], year: String(item.year || ''), venue: item.venue }),
-              doi: item.doi,
-              arxiv: item.arxiv
-            });
-          });
-          say(`Done: ${sub} (${parsed.results?.length || 0})`);
+          const res = await webSearch({ query: sub, searchConfig: searchConfigFor(settings, llmConfig),
+            maxResults: 5, purpose: 'references', scholarly: plan?.scholarly !== false
+          }).catch((err) => ({ ok: false, error: errorText(err), results: [], provider: undefined, failures: [] }));
+          if (!res.ok) { say(`Search failed: ${sub} (${res.error})`); return; }
+          res.failures?.forEach((failure) => say(`${PROVIDERS[failure.provider]} unavailable; tried another connection.`));
+          (res.results || []).forEach((item, i) => found.push({
+            id: `${qi}-${i}-${item.url || item.title}`, title: item.title || '', summary: item.summary || '',
+            url: item.url || '', bibtex: item.bibtex || '', citeKey: item.bibtex ? extractBibKey(item.bibtex) : '',
+            meta: metaLine(item), doi: item.doi, arxiv: item.arxiv
+          }));
+          say(`Done: ${sub} (${res.results?.length || 0}, ${PROVIDERS[res.provider || settings.searchProvider]})`);
         })
       );
       const unique = uniqueWorks(found);
@@ -608,7 +547,7 @@ function WebSearch() {
       const overall = await callLLM({
         llmConfig,
         messages: [
-          { role: 'system', content: 'Generate a 3-5 sentence overall summary (no bullet points). You may use \\cite{...}. Return only the text.' },
+          { role: 'system', content: `Generate a 3-5 sentence overall summary (no bullet points). You may use ${await citationText(api, ['...'])}. Return only the text.` },
           {
             role: 'user',
             content: JSON.stringify({
@@ -646,7 +585,7 @@ function WebSearch() {
         const { target } = await api.writeBibEntries(entries, targetBib || undefined);
         say(`References written to ${target}.`);
       }
-      const items = chosen.map((item) => `  \\item ${notes[item.id] || item.summary || item.title}${item.citeKey ? ` \\cite{${item.citeKey}}` : ''}`);
+      const items = await Promise.all(chosen.map(async (item) => `  \\item ${notes[item.id] || item.summary || item.title}${item.citeKey ? ' ' + await citationText(api, [item.citeKey]) : ''}`));
       const block = [
         `\\paragraph{Summary of each paper}\n\\begin{itemize}\n${items.join('\n')}\n\\end{itemize}`,
         paragraph && `\\paragraph{Overall summary}\n${paragraph}`
@@ -713,13 +652,13 @@ function WebSearch() {
             <button
               className="btn small"
               disabled={!chosen.some((item) => item.citeKey)}
-              onClick={() => {
+              onClick={async () => {
                 const keys = chosen.map((item) => item.citeKey).filter(Boolean);
-                api.insertAtCursor(`\\cite{${keys.join(',')}}`, { afterSelection: true });
+                api.insertAtCursor(await citationText(api, keys), { afterSelection: true });
                 say('Selected citations inserted at the cursor.');
               }}
             >
-              Insert selected \cite
+              Insert selected citations
             </button>
           </div>
           <div className="pick-list">
@@ -750,10 +689,10 @@ function WebSearch() {
                 </div>
                 <button
                   className="icon-btn"
-                  title="Insert \cite"
+                  title="Insert citation"
                   aria-label="Insert citation"
                   disabled={!item.citeKey}
-                  onClick={() => api.insertAtCursor(`\\cite{${item.citeKey}}`, { afterSelection: true })}
+                  onClick={async () => api.insertAtCursor(await citationText(api, [item.citeKey]), { afterSelection: true })}
                 >
                   <Icon name="text.insert" />
                 </button>

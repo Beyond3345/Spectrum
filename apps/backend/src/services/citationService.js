@@ -1,5 +1,5 @@
 import { callOpenAICompatible } from './llmService.js';
-import { searchPapers } from './searchService.js';
+import { searchPapers, searchWithFallback } from './searchService.js';
 import { extractJSON } from './transferAgent/utils.js';
 
 function citeKey(bibtex) {
@@ -11,7 +11,7 @@ function citeKey(bibtex) {
  * let the model pick the ones that actually support the passage. Works without an
  * LLM too (plain keyword search, no ranking).
  */
-export async function suggestCitations({ text, llmConfig, maxResults = 5 }) {
+export async function suggestCitations({ text, llmConfig, searchConfig, maxResults = 5 }) {
   const passage = String(text || '').trim().slice(0, 4000);
   const limit = Math.min(10, Math.max(1, Number(maxResults) || 5));
 
@@ -37,7 +37,8 @@ export async function suggestCitations({ text, llmConfig, maxResults = 5 }) {
   const seen = new Set();
   const candidates = [];
   for (const query of queries) {
-    for (const paper of await searchPapers(query, 6)) {
+    const papers = searchConfig ? (await searchWithFallback({ query, searchConfig, purpose: 'references', maxResults: 6 })).results : await searchPapers(query, 6);
+    for (const paper of papers) {
       const id = paper.title.toLowerCase();
       if (!paper.title || seen.has(id)) continue;
       seen.add(id);

@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { getSharedSettings, listLiveModels, listProviders, shareSettings } from '../api/client';
-import type { CloudMode, CompileEngine, EffortLevel, LLMConfig, OxfordComma, ProviderModel, ProviderPreset, ReasoningEffort, SearchProvider, SharedSettings } from '../api/client';
+import type { CloudMode, CompileEngine, EffortLevel, LLMConfig, OxfordComma, ProviderModel, ProviderPreset, ReasoningEffort, SearchConfig, SearchProvider, SharedSettings } from '../api/client';
 import { setNativeTheme } from './desktop';
 import { NO_FOLDERS, cleanFolders } from './folders';
 import type { ProjectFolders } from './folders';
@@ -78,6 +78,7 @@ export type AppSettings = {
   /** the key for searchProvider; the others' keys wait in searchProviderKeys */
   searchProviderKey: string;
   searchProviderKeys: Partial<Record<SearchProvider, string>>;
+  searchConnections: SearchProvider[];
   serpEngine: 'google' | 'google_scholar' | 'baidu';
   /** shortcut id → key, only for the ones changed in Settings ('' = removed) */
   shortcuts: Record<string, string>;
@@ -153,6 +154,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   searchProvider: 'llm',
   searchProviderKey: '',
   searchProviderKeys: {},
+  searchConnections: ['llm'],
   // Scholar finds papers to cite; settings saved before this keep the engine they had
   serpEngine: 'google_scholar',
   shortcuts: {},
@@ -226,6 +228,7 @@ function parse(raw: string | null): AppSettings {
     // another provider's, and OpenAlex now sends a key it's given
     if (!parsed.searchProviderKeys && !['serpapi', 'tavily', 'brave', 'semanticscholar'].includes(String(merged.searchProvider))) merged.searchProviderKey = '';
     if (typeof merged.searchProviderKeys !== 'object' || !merged.searchProviderKeys) merged.searchProviderKeys = {};
+    if (!Array.isArray(parsed.searchConnections)) merged.searchConnections = [...new Set([merged.searchProvider, ...Object.keys(merged.searchProviderKeys).filter((p) => merged.searchProviderKeys[p as SearchProvider]) as SearchProvider[]])];
     if (!['avoid', 'require', 'off'].includes(merged.oxfordComma)) merged.oxfordComma = 'avoid';
     if (!ACCENTS.includes(merged.accent)) merged.accent = 'system';
     if (typeof merged.accentCustom !== 'string' || !HEX.test(merged.accentCustom)) merged.accentCustom = DEFAULT_SETTINGS.accentCustom;
@@ -455,12 +458,34 @@ export function followSharedSettings() {
   follow().catch(() => undefined);
 }
 
-/** Switches the web search provider: its own key comes back, the old one's is kept for it. */
+export const SEARCH_PROVIDERS: [SearchProvider, string][] = [
+  ['llm', 'Model’s built-in web search'],
+  ['openalex', 'OpenAlex (free)'],
+  ['semanticscholar', 'Semantic Scholar'],
+  ['serpapi', 'SerpApi (Google, Scholar, Baidu)'],
+  ['exa', 'Exa'],
+  ['tavily', 'Tavily'],
+  ['brave', 'Brave Search'],
+  ['ddgs', 'DDGS (free)']
+];
+
+/** Switches the default without losing the other connections or their keys. */
 export function searchProviderPatch(settings: AppSettings, next: SearchProvider): Partial<AppSettings> {
   return {
     searchProvider: next,
     searchProviderKey: settings.searchProviderKeys[next] || '',
+    searchConnections: [...new Set([...settings.searchConnections, next])],
     searchProviderKeys: { ...settings.searchProviderKeys, [settings.searchProvider]: settings.searchProviderKey }
+  };
+}
+
+/** Credentials stay in the request, never in chat history or shared settings. */
+export function searchConfigFor(settings: AppSettings, llmConfig?: Partial<LLMConfig>): SearchConfig {
+  const keys = { ...settings.searchProviderKeys, [settings.searchProvider]: settings.searchProviderKey };
+  return {
+    provider: settings.searchProvider,
+    connections: [settings.searchProvider, ...SEARCH_PROVIDERS.map(([provider]) => provider).filter((provider) => provider !== settings.searchProvider && settings.searchConnections.includes(provider))].map((provider) => ({ provider, apiKey: keys[provider] || '', engine: settings.serpEngine })),
+    llmConfig
   };
 }
 

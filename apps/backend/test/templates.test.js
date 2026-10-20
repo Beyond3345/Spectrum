@@ -33,6 +33,26 @@ test('the shipped manifest has a folder and a known category for every template'
   }
 });
 
+test('every shipped template has APA 7 references and a usable bibliography resource', async () => {
+  for (const template of shipped.templates) {
+    const dir = path.join(shippedDir, template.id);
+    const main = await fs.readFile(path.join(dir, template.mainFile), 'utf8');
+    let source = main;
+    for (const style of ['acl', 'cvpr']) if (main.includes(`{${style}}`)) source += await fs.readFile(path.join(dir, `${style}.sty`), 'utf8');
+    source = source.replace(/(^|[^\\])%.*$/gm, '$1');
+    const options = source.match(/\\(?:usepackage|RequirePackage)\[([^\]]+)\]\{biblatex\}/)?.[1];
+    assert.ok(options?.includes('style=apa') && options.includes('backend=biber'), template.id);
+    assert.doesNotMatch(source, /\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{natbib\}/, template.id);
+    const bib = main.match(/\\addbibresource\{([^}]+)\}/)?.[1];
+    assert.ok(bib && existsSync(path.join(dir, bib)), `${template.id}: bibliography exists`);
+    assert.match(main, /\\printbibliography/, template.id);
+  }
+  const simple = await fs.readFile(path.join(shippedDir, 'simple-document', 'main.tex'), 'utf8');
+  assert.match(simple, /\\documentclass\[11pt,a4paper\]\{article\}/);
+  assert.match(simple, /margin=25mm/);
+  assert.match(simple, /\\onehalfspacing/);
+});
+
 test('seeding an existing install adds new templates, refreshes shipped entries and keeps uploads', async () => {
   // an install from before the new templates: an old ACL entry, an upload, and an upload that took the "cv" id
   const acl = shipped.templates.find((t) => t.id === 'acl');

@@ -1,4 +1,9 @@
 \documentclass[11pt]{article} % the standard article class at 11pt
+% Spectrum adaptation: APA 7 references; use the venue's official style for submission.
+\usepackage{csquotes}
+\usepackage[backend=biber,style=apa,natbib=true]{biblatex} % APA 7; compile with Biber
+\addbibresource{references.bib}
+
 \usepackage[utf8]{inputenc}   % read this file as UTF-8, so accents and symbols type straight in
 \usepackage{times}            % Times Roman for the text
 \usepackage{graphicx}         % \includegraphics, for figures
@@ -29,7 +34,6 @@ Present results and analysis.
 \section{Conclusion}
 Summarize and discuss future work.
 
-\bibliographystyle{plain}
-\bibliography{references}
+\printbibliography
 
 \end{document}

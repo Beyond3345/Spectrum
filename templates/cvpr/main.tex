@@ -1,10 +1,12 @@
 % CVPR 2026 Paper Template; see https://github.com/cvpr-org/author-kit
 
 \documentclass[10pt,twocolumn,letterpaper]{article} % article class: 10pt, two columns, US Letter as CVPR requires
+% Spectrum adaptation: APA 7 references; use the venue's official style for submission.
 
 %%%%%%%%% PAPER TYPE  - PLEASE UPDATE FOR FINAL VERSION
 % \usepackage{cvpr}              % To produce the CAMERA-READY version
-\usepackage[review]{cvpr}      % To produce the REVIEW version (also loads Times, graphicx, amsmath, booktabs, natbib)
+\usepackage[review]{cvpr}      % To produce the REVIEW version (also loads Times, graphicx, amsmath, booktabs, APA 7 citations)
+\addbibresource{main.bib}
 % \usepackage[pagenumbers]{cvpr} % To force page numbers, e.g. for an arXiv version
 
 % Import additional packages in the preamble file, before hyperref
@@ -18,7 +20,7 @@
 % If you comment hyperref and then uncomment it, you should delete *.aux before re-running LaTeX.
 % (Or just hit 'q' on the first LaTeX run, let it finish, and you should be clear).
 \definecolor{cvprblue}{rgb}{0.21,0.49,0.74} % the blue CVPR uses for links
-\usepackage[pagebackref,breaklinks,colorlinks,allcolors=cvprblue]{hyperref} % clickable blue links; each reference lists the pages citing it
+\usepackage[breaklinks,colorlinks,allcolors=cvprblue]{hyperref} % clickable blue links; each reference lists the pages citing it
 
 %%%%%%%%% PAPER ID  - PLEASE UPDATE
 \def\paperID{*****} % *** Enter the Paper ID here
@@ -53,8 +55,8 @@ First line of institution2 address\\
 \input{sec/3_finalcopy}
 {
     \small
-    \bibliographystyle{ieeenat_fullname}
-    \bibliography{main}
+
+    \printbibliography
 }
 
 % WARNING: do not forget to delete the supplementary pages from your submission 

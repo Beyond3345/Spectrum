@@ -1,8 +1,10 @@
 \documentclass[11pt]{article} % the standard article class at 11pt, as ACL asks
+% Spectrum adaptation: APA 7 references; use the venue's official style for submission.
 
 % Change "review" to "final" to generate the final (sometimes called camera-ready) version.
 % Change to "preprint" to generate a non-anonymous version with page numbers.
-\usepackage[review]{acl}  % ACL's page layout, citations (natbib) and links; review numbers the lines and hides names
+\usepackage[review]{acl}  % ACL's page layout, APA 7 citations and links; review numbers the lines and hides names
+\addbibresource{custom.bib}
 
 % Standard package includes
 \usepackage{times}        % Times Roman for the text
@@ -287,19 +289,23 @@ with other style files.
 
 \nocite{Ando2005,andrew2007scalable,rasooli-tetrault-2015}
 
-The \LaTeX{} and Bib\TeX{} style files provided roughly follow the American Psychological Association format.
+Spectrum uses APA 7 through \texttt{biblatex-apa} and Biber. The citation commands above are available through the natbib compatibility option. Load \verb|\addbibresource{custom.bib}| in the preamble.
 If your own bib file is named \texttt{custom.bib}, then placing the following before any appendices in your \LaTeX{} file will generate the references section for you:
 \begin{quote}
 \begin{verbatim}
-\bibliography{custom}
+\printbibliography
 \end{verbatim}
 \end{quote}
 
 You can obtain the complete ACL Anthology as a Bib\TeX{} file from \url{https://aclweb.org/anthology/anthology.bib.gz}.
-To include both the Anthology and your own .bib file, use the following instead of the above.
+To include both the Anthology and your own .bib file, add both resources to the preamble and print the bibliography before any appendices.
 \begin{quote}
 \begin{verbatim}
-\bibliography{anthology,custom}
+% Preamble:
+\addbibresource{anthology.bib}
+\addbibresource{custom.bib}
+% Document body:
+\printbibliography
 \end{verbatim}
 \end{quote}
 
@@ -364,7 +370,7 @@ Additional elements were taken from the formatting instructions of the \emph{Int
 % Bibliography entries for the entire Anthology, followed by custom entries
 %\bibliography{anthology,custom}
 % Custom bibliography entries only
-\bibliography{custom}
+\printbibliography
 
 \appendix
 

@@ -3,11 +3,13 @@ import os from 'os';
 import { searchArxiv, buildArxivBibtex } from './arxivService.js';
 import { runSpawn } from './compileService.js';
 import { resolvePythonExecutable } from './plotService.js';
-import { baseKey, detectInput, parseName, recordFor, summaryOf, toBibtex } from './referenceService.js';
+import { baseKey, detectInput, issuedFromDate, parseName, recordFor, summaryOf, toBibtex, yearOf } from './referenceService.js';
+import { nativeWebSearch } from './llmService.js';
+import { extractJSON } from './transferAgent/utils.js';
 
 const TIMEOUT = 30_000;
 
-export const SEARCH_PROVIDERS = ['openalex', 'semanticscholar', 'serpapi', 'exa', 'tavily', 'brave', 'ddgs'];
+export const SEARCH_PROVIDERS = ['llm', 'openalex', 'semanticscholar', 'serpapi', 'exa', 'tavily', 'brave', 'ddgs'];
 
 // Papers, standards and LaTeX documentation: Brave ranks these sites higher and Tavily prefers them,
 // without leaving the rest of the web out
@@ -19,7 +21,7 @@ const CITABLE_SITES = [
 ];
 
 async function getJson(url, init = {}) {
-  const res = await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT) });
+  const res = await fetch(url, { ...init, redirect: 'error', signal: AbortSignal.timeout(TIMEOUT) });
   const text = await res.text();
   const host = new URL(url).host;
   // some (SerpApi, Brave) also say so when the plan's searches have run out: keep what they said
@@ -28,9 +30,9 @@ async function getJson(url, init = {}) {
   return JSON.parse(text);
 }
 
-const issued = (date) => (/^\d{4}/.test(String(date ?? '')) ? { 'date-parts': [[Number(String(date).slice(0, 4))]] } : undefined);
+const issued = issuedFromDate;
 
-/** A web page: @misc with its address and the day it was found. */
+/** A web page keeps its address and available publication date. */
 const page = (title, url, summary, date) => ({
   // Bing and Google mark PDFs in the title
   rec: { type: 'webpage', title: String(title || '').replace(/^\[?PDF\]?\s+/, ''), URL: url, issued: issued(date), accessed: new Date().toISOString() },
@@ -97,7 +99,7 @@ const OPENALEX_TYPES = 'article|conference-paper|preprint|review|book|book-chapt
 const OPENALEX_CSL = { article: 'article-journal', review: 'article-journal', 'conference-paper': 'paper-conference', book: 'book', 'book-chapter': 'chapter', dissertation: 'thesis', report: 'report' };
 
 // OpenAlex: free; a free key raises the daily budget. Abstracts come as an inverted index.
-export async function searchOpenAlex(query, limit = 5, apiKey = '') {
+export async function searchOpenAlex(query, limit = 5, apiKey = '', raw = false) {
   const params = new URLSearchParams({
     search: query,
     filter: `type:${OPENALEX_TYPES},is_retracted:false`,
@@ -128,13 +130,14 @@ export async function searchOpenAlex(query, limit = 5, apiKey = '') {
       DOI: String(work.doi || '').replace(/^https?:\/\/doi\.org\//i, ''),
       URL: location.landing_page_url || work.doi || work.id
     };
-    return toResult({ rec, summary: words.filter(Boolean).join(' ') }, 'openalex');
+    const result = { rec, summary: words.filter(Boolean).join(' ') };
+    return raw ? result : toResult(result, 'openalex');
   });
 }
 
 const S2_CSL = { JournalArticle: 'article-journal', Review: 'article-journal', Conference: 'paper-conference', Book: 'book', BookSection: 'chapter' };
 
-export async function searchSemanticScholar(query, limit = 5, apiKey = '') {
+export async function searchSemanticScholar(query, limit = 5, apiKey = '', raw = false) {
   const params = new URLSearchParams({
     query,
     limit: String(limit),
@@ -160,7 +163,8 @@ export async function searchSemanticScholar(query, limit = 5, apiKey = '') {
       _arxiv: ids.ArXiv ? { id: ids.ArXiv } : undefined,
       URL: paper.url
     };
-    return toResult({ rec, summary: paper.abstract }, 'semanticscholar');
+    const result = { rec, summary: paper.abstract };
+    return raw ? result : toResult(result, 'semanticscholar');
   });
 }
 
@@ -214,7 +218,11 @@ async function searchExa(query, limit, apiKey, scholarly) {
   return (data.results || []).map((item) => {
     const work = item.entities?.find((e) => e.type === 'publication')?.properties;
     const summary = work?.abstract || (item.highlights || []).join(' … ') || item.summary;
-    if (!work) return page(item.title, item.url, summary, item.publishedDate);
+    if (!work) {
+      const result = page(item.title, item.url, summary, item.publishedDate);
+      result.rec.author = item.author ? [parseName(item.author)].filter(Boolean) : [];
+      return result;
+    }
     const rec = {
       type: EXA_CSL[work.type] || 'misc',
       title: work.title || item.title,
@@ -227,25 +235,26 @@ async function searchExa(query, limit, apiKey, scholarly) {
   });
 }
 
-async function searchTavily(query, limit, apiKey) {
+async function searchTavily(query, limit, apiKey, references = true) {
   if (!apiKey) throw new Error('Tavily needs an API key');
   const data = await getJson('https://api.tavily.com/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     // advanced (2 credits) finds better passages; prefer ranks the citable sites first and keeps the rest
-    body: JSON.stringify({ query, max_results: limit, search_depth: 'advanced', include_domains: CITABLE_SITES, include_domains_mode: 'prefer', include_published_date: true })
+    body: JSON.stringify({ query, max_results: limit,
+      ...(references ? { search_depth: 'advanced', include_domains: CITABLE_SITES, include_domains_mode: 'prefer', include_published_date: true } : { search_depth: 'basic' }) })
   });
   return (data.results || []).map((item) => page(item.title, item.url, item.content, item.published_date));
 }
 
-async function searchBrave(query, limit, apiKey) {
+async function searchBrave(query, limit, apiKey, references = true) {
   if (!apiKey) throw new Error('Brave Search needs an API key');
   const params = new URLSearchParams({
     q: query,
     count: String(limit),
     text_decorations: 'false',
     // an inline Goggle: the citable sites rank higher, nothing is dropped
-    goggles: CITABLE_SITES.map((site) => `$boost=3,site=${site}`).join('\n')
+    ...(references && { goggles: CITABLE_SITES.map((site) => `$boost=3,site=${site}`).join('\n') })
   });
   const data = await getJson(`https://api.search.brave.com/res/v1/web/search?${params}`, {
     headers: { Accept: 'application/json', 'X-Subscription-Token': apiKey }
@@ -306,22 +315,107 @@ export async function searchDdgs(query, limit) {
   return (answer.results || []).map((item) => page(item.title, item.href, item.body));
 }
 
-export async function webSearch({ provider = 'openalex', query, maxResults = 5, apiKey = '', engine, scholarly = true }) {
+async function searchRecords({ provider = 'openalex', query, maxResults = 5, apiKey = '', engine, scholarly = true, purpose = 'references', llmConfig }) {
   const limit = Math.min(10, Math.max(1, Number(maxResults) || 5));
-  if (provider === 'openalex') return searchOpenAlex(query, limit, apiKey);
-  if (provider === 'semanticscholar') return searchSemanticScholar(query, limit, apiKey);
+  const references = purpose === 'references';
+  if (provider === 'openalex') return searchOpenAlex(query, limit, apiKey, true);
+  if (provider === 'semanticscholar') return searchSemanticScholar(query, limit, apiKey, true);
+  if (provider === 'llm') {
+    const { content, sources } = await nativeWebSearch({ query, purpose, llmConfig });
+    const items = extractJSON(content)?.results;
+    // Only provider-attested URLs can become results, even if the model invents extra JSON rows.
+    return sources.slice(0, limit).map((source) => {
+      const item = Array.isArray(items) ? items.find((i) => i.url === source.url) : null;
+      const result = page(item?.title || source.title || source.url, source.url, item?.summary || '', item?.publishedDate);
+      result.rec.author = (Array.isArray(item?.authors) ? item.authors : []).map(parseName).filter(Boolean);
+      const identifier = detectInput(item?.doi || '');
+      if (identifier.kind === 'doi') result.rec.DOI = identifier.doi;
+      return result;
+    });
+  }
   const search = {
-    serpapi: () => searchSerpApi(query, limit, apiKey, engine || 'google_scholar'),
-    exa: () => searchExa(query, limit, apiKey, scholarly),
-    tavily: () => searchTavily(query, limit, apiKey),
-    brave: () => searchBrave(query, limit, apiKey),
+    serpapi: () => searchSerpApi(query, limit, apiKey, references ? engine || 'google_scholar' : engine === 'baidu' ? 'baidu' : 'google'),
+    exa: () => searchExa(query, limit, apiKey, references && scholarly),
+    tavily: () => searchTavily(query, limit, apiKey, references),
+    brave: () => searchBrave(query, limit, apiKey, references),
     ddgs: () => searchDdgs(query, limit)
   }[provider];
   if (!search) throw new Error(`Unknown search provider "${provider}"`);
-  const source = provider === 'serpapi' ? `serpapi:${engine || 'google_scholar'}` : provider;
-  const hits = await search();
+  return search();
+}
+
+export async function webSearch(options) {
+  const { provider = 'openalex', engine, purpose = 'references' } = options;
+  const source = provider === 'serpapi' ? `serpapi:${engine || (purpose === 'references' ? 'google_scholar' : 'google')}` : provider;
+  const hits = (await searchRecords(options)).filter((hit) => hit?.rec?.title && (hit.rec.DOI || /^https?:\/\//i.test(hit.rec.URL || '')));
+  if (purpose === 'chat') return hits.map(({ rec, summary }) => ({ title: rec.title, url: rec.URL, summary: String(summary || '').slice(0, 1200), source, bibtex: '' }));
+  if (['openalex', 'semanticscholar'].includes(provider)) return hits.map((hit) => toResult(hit, source));
   const deadline = Date.now() + LOOKUP_MS;
   return Promise.all(hits.map((hit) => upgradeResult(toResult(hit, source), deadline)));
+}
+
+/** Default first, then only enabled connections. Never try another provider's key. */
+export function searchConnections(config = {}) {
+  const connections = Array.isArray(config.connections) ? config.connections : [config];
+  const unique = new Map(connections.filter((c) => c && SEARCH_PROVIDERS.includes(c.provider)).map((c) => [c.provider, c]));
+  return [...unique.values()].sort((a, b) => Number(b.provider === config.provider) - Number(a.provider === config.provider));
+}
+
+async function tryConnections(config, run) {
+  const errors = [];
+  for (const connection of searchConnections(config)) {
+    try {
+      const results = await run({ ...connection, llmConfig: config.llmConfig });
+      if (results?.length) return { results, provider: connection.provider, failures: errors };
+      errors.push({ provider: connection.provider, error: 'No usable results.' });
+    } catch (err) {
+      let error = String(err.message || 'Search failed.');
+      for (const c of [...searchConnections(config), config.llmConfig || {}]) if (c.apiKey) error = error.split(c.apiKey).join('[redacted]');
+      errors.push({ provider: connection.provider, error });
+    }
+  }
+  throw new Error(errors.length ? errors.map((e) => `${e.provider}: ${e.error}`).join(' · ') : 'Set up a search connection in Settings → Search.');
+}
+
+export function searchWithFallback({ searchConfig, ...options }) {
+  return tryConnections(searchConfig || {}, (connection) => webSearch({ ...options, ...connection }));
+}
+
+/** Known URLs use exact-page metadata; free queries use reference-oriented search. */
+export async function searchReferenceRecords({ searchConfig, query, targetUrl }) {
+  const canonical = (value) => { try { const u = new URL(value); u.hash = ''; return u.href.replace(/\/$/, ''); } catch { return ''; } };
+  let partial = [];
+  try {
+    return (await tryConnections(searchConfig || {}, async (connection) => {
+      let hits;
+      if (targetUrl && connection.provider === 'exa') {
+        if (!connection.apiKey) throw new Error('Exa needs an API key');
+        const base = (process.env.SPECTRUM_EXA_BASE || 'https://api.exa.ai').replace(/\/+$/, '');
+        const data = await getJson(`${base}/contents`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': connection.apiKey }, body: JSON.stringify({ urls: [targetUrl], text: { maxCharacters: 1000 } }) });
+        hits = (data.results || []).map((item) => {
+          const hit = page(item.title, item.url, '', item.publishedDate);
+          hit.rec.author = item.author ? [parseName(item.author)].filter(Boolean) : [];
+          return hit;
+        });
+      } else {
+        hits = await searchRecords({ ...connection, purpose: 'references', query: targetUrl ? `Citation metadata: title, author, original publication date, publisher and DOI for ${targetUrl}` : query });
+      }
+      const records = hits.map((hit) => hit.rec).filter((rec) => rec.title && (!targetUrl || canonical(rec.URL) === canonical(targetUrl)));
+      if (targetUrl) {
+        for (const record of records) {
+          const previous = partial[0];
+          const merged = previous ? { ...record, ...previous,
+            author: previous.author?.length ? previous.author : record.author,
+            issued: yearOf(previous) ? previous.issued : record.issued,
+            publisher: previous.publisher || record.publisher } : record;
+          partial = [merged];
+          if (merged.author?.length && yearOf(merged)) return partial;
+        }
+        return [];
+      }
+      return records;
+    })).results;
+  } catch (err) { if (partial.length) return partial; throw err; }
 }
 
 /** Papers for a query: OpenAlex, then Semantic Scholar, then arXiv if both are down. */

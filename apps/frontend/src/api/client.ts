@@ -708,6 +708,7 @@ export function runAgent(payload: {
   activePath?: string;
   compileLog?: string;
   llmConfig?: Partial<LLMConfig>;
+  searchConfig?: SearchConfig;
   interaction?: 'chat' | 'agent';
   history?: { role: 'user' | 'assistant'; content: string }[];
   reasoningEffort?: ReasoningEffort;
@@ -816,6 +817,12 @@ export function arxivSearch(payload: { query: string; maxResults?: number }) {
 
 export type SearchProvider = 'llm' | 'openalex' | 'semanticscholar' | 'serpapi' | 'exa' | 'tavily' | 'brave' | 'ddgs';
 
+export interface SearchConfig {
+  provider: SearchProvider;
+  connections: { provider: SearchProvider; apiKey?: string; engine?: string }[];
+  llmConfig?: Partial<LLMConfig>;
+}
+
 export interface SearchResult {
   title: string;
   summary: string;
@@ -833,13 +840,15 @@ export interface SearchResult {
 /** scholarly: the question is about research literature (Exa then searches publications only) */
 export function webSearch(payload: {
   query: string;
-  provider: Exclude<SearchProvider, 'llm'>;
+  provider?: SearchProvider;
+  searchConfig?: SearchConfig;
+  purpose?: 'chat' | 'references';
   apiKey?: string;
   engine?: string;
   maxResults?: number;
   scholarly?: boolean;
 }) {
-  return request<{ ok: boolean; results?: SearchResult[]; error?: string }>('/api/websearch', json('POST', payload));
+  return request<{ ok: boolean; results?: SearchResult[]; provider?: SearchProvider; failures?: { provider: SearchProvider; error: string }[]; error?: string }>('/api/websearch', json('POST', payload));
 }
 
 export interface CitationSuggestion extends SearchResult {
@@ -847,7 +856,7 @@ export interface CitationSuggestion extends SearchResult {
   citeKey: string;
 }
 
-export function suggestCitations(payload: { text: string; maxResults?: number; llmConfig?: Partial<LLMConfig> }) {
+export function suggestCitations(payload: { text: string; maxResults?: number; llmConfig?: Partial<LLMConfig>; searchConfig?: SearchConfig }) {
   return request<{ ok: boolean; queries?: string[]; papers?: CitationSuggestion[]; error?: string }>(
     '/api/citations/suggest',
     json('POST', payload)
@@ -880,14 +889,14 @@ export interface ReferenceResult {
   message?: string;
 }
 
-export function resolveReferences(payload: { projectId: string; input: string; bibFile?: string; llmConfig?: Partial<LLMConfig> }) {
+export function resolveReferences(payload: { projectId: string; input: string; bibFile?: string; llmConfig?: Partial<LLMConfig>; searchConfig?: SearchConfig }) {
   return request<{ ok: boolean; results: ReferenceResult[]; bibFile: string; bibIncluded: boolean; error?: string }>(
     '/api/references/resolve',
     json('POST', payload)
   );
 }
 
-export function addReference(payload: { projectId: string; candidateId: string; bibFile?: string }) {
+export function addReference(payload: { projectId: string; candidateId: string; bibFile?: string; searchConfig?: SearchConfig }) {
   return request<{ ok: boolean; result: ReferenceResult; bibFile: string; bibIncluded: boolean; error?: string }>(
     '/api/references/add',
     json('POST', payload)

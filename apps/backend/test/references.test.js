@@ -11,7 +11,7 @@ import {
   detectInput, splitLines, splitInput, cleanDoi, baseKey, uniqueKey, findDuplicate, buildBibIndex,
   parseBibEntries, toBibtex, texEscape, parseHtmlMeta, readHtmlCitation, pickCandidate, titleFitsPage,
   texIncludesBib, normaliseTitle, pickBibTarget, arxivRecordFromAtom, resolveReferences, addReference,
-  parseName, pdfTexSafe
+  parseName, pdfTexSafe, issuedFromDate
 } from '../src/services/referenceService.js';
 
 // Never let a developer's own key send test input to a real provider.
@@ -228,6 +228,7 @@ test('arXiv DOIs become article + eprint', () => {
     '  journal       = {arXiv preprint arXiv:1706.03762},',
     '  year          = {2017},',
     '  doi           = {10.48550/arXiv.1706.03762},',
+    '  url           = {https://arxiv.org/abs/1706.03762},',
     '  eprint        = {1706.03762},',
     '  archivePrefix = {arXiv},',
     '  primaryClass  = {cs.CL},',
@@ -260,6 +261,30 @@ test('escapes and protects titles without touching existing TeX', () => {
 test('article numbers stand in for pages', () => {
   const bib = toBibtex({ type: 'article-journal', title: 'GW150914', 'container-title': 'Phys. Rev. Lett.', volume: '116', issue: '6', 'article-number': '061102', DOI: '10.1103/PhysRevLett.116.061102' }, 'K');
   assert.equal(fieldsOf(bib).pages, '061102');
+});
+
+test('arXiv links survive a published DOI and missing provider URLs', () => {
+  const bib = toBibtex({ type: 'article-journal', title: 'Published paper', DOI: '10.1234/published', _arxiv: { id: '2101.00001' } }, 'K');
+  assert.equal(fieldsOf(bib).url, 'https://arxiv.org/abs/2101.00001');
+  assert.equal(fieldsOf(bib).doi, '10.1234/published');
+});
+
+test('imported titles use TeX quotes without changing apostrophes or existing TeX', () => {
+  const title = (text, type = 'webpage') => fieldsOf(toBibtex({ type, title: text }, 'K')).title;
+  assert.equal(title("Forget prompts: 'Loop engineering' is all the rage now"), "Forget prompts: `Loop engineering' is all the rage now");
+  assert.equal(title('“Loop engineering” and ‘AI’'), "``Loop engineering'' and `{AI}'");
+  assert.equal(title('About "Loop engineering"'), "About ``Loop engineering''");
+  assert.equal(title("'It's O'Brien's idea' and authors' rights"), "`It's O'Brien's idea' and authors' rights");
+  assert.equal(title("Already `quoted' and ``double quoted''"), "Already `quoted' and ``double quoted''");
+  assert.equal(title("A 'quoted' $O(n)$ algorithm", 'article'), "A `quoted' $O(n)$ algorithm");
+});
+
+test('publication dates retain available precision and reject impossible dates', () => {
+  assert.deepEqual(issuedFromDate('2026-06-20T09:01:01.239Z'), { 'date-parts': [[2026, 6, 20]] });
+  assert.deepEqual(issuedFromDate('2026/06'), { 'date-parts': [[2026, 6]] });
+  assert.equal(issuedFromDate('2026-02-30'), undefined);
+  assert.equal(issuedFromDate('2026-13-20'), undefined);
+  assert.equal(issuedFromDate('Copyright 2026'), undefined);
 });
 
 // ─── HTML pages ───
@@ -314,12 +339,35 @@ test('reads citations from pages in the documented order', () => {
     '@misc{Blog2024,',
     '  title        = {A Blog Post},',
     '  year         = {2024},',
+    '  date         = {2024-03-02},',
     '  howpublished = {\\url{https://blog.test/post}},',
-    '  note         = {Accessed 11 Oct 2026},',
+    '  url          = {https://blog.test/post},',
     '}'
   ].join('\n'));
   assert.equal(readHtmlCitation('<title>Only &amp; title</title>', 'https://x.test').record.title, 'Only & title');
   assert.equal(readHtmlCitation('<p>nothing</p>', 'https://x.test'), null);
+});
+
+test('JSON-LD supplies the article author, full publication date and publisher', () => {
+  const url = 'https://www.businessinsider.com/what-are-loops-ai-engineering-tips-2026-6';
+  const html = `<title>Short search title</title><script type="application/ld+json">${JSON.stringify({ '@graph': [
+    { '@type': 'WebPage', '@id': url, name: 'Short title' },
+    { '@type': 'NewsArticle', '@id': url + '#article', headline: "Forget prompts: 'Loop engineering' is all the rage now", datePublished: '2026-06-20T09:01:01.239Z', dateModified: '2026-10-20', author: { '@id': '#author' }, publisher: { '@type': 'Organization', name: 'Business Insider' } },
+    { '@type': 'Person', '@id': '#author', name: 'Brent D. Griffiths' }
+  ] })}</script>`;
+  const { record } = readHtmlCitation(html, url);
+  assert.equal(baseKey(record), 'Griffiths2026');
+  assert.deepEqual(record.author, [{ given: 'Brent D.', family: 'Griffiths' }]);
+  const fields = fieldsOf(toBibtex(record, baseKey(record)));
+  assert.equal(fields.date, '2026-06-20');
+  assert.equal(fields.organization, 'Business Insider');
+  assert.equal(fields.url, url);
+  assert.match(fields.title, /`Loop engineering'/);
+  const organization = readHtmlCitation('<script type="application/ld+json">{"@type":"Article","headline":"A result","author":{"@type":"Organization","name":"OpenAI"},"publisher":{"name":"OpenAI"},"datePublished":"2026-09-08"}</script>', 'https://openai.com/article').record;
+  assert.equal(fieldsOf(toBibtex(organization, 'K')).author, '{OpenAI}');
+  assert.equal(fieldsOf(toBibtex(organization, 'K')).organization, undefined, 'APA 7 omits a repeated site name');
+  assert.equal(readHtmlCitation('<script type="application/ld+json">broken</script><title>Fallback</title><time datetime="2026-06-20"></time>', url).record.issued['date-parts'][0][2], 20);
+  assert.equal(readHtmlCitation('<title>No date</title><script type="application/ld+json">{"@type":"Article","url":"https://other.test/story","headline":"Other story","datePublished":"2000-01-01"}</script>', url).record.issued, undefined);
 });
 
 test('parses arXiv Atom entries', () => {
@@ -417,13 +465,26 @@ let base;
 const hits = [];
 
 before(async () => {
-  mock = createServer((req, res) => {
+  mock = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://mock');
     hits.push(url.pathname);
     const send = (status, body, type = 'application/json') => {
       res.writeHead(status, { 'content-type': type });
       res.end(typeof body === 'string' ? body : JSON.stringify(body));
     };
+    if (url.pathname === '/exa/contents') {
+      assert.equal(req.headers['x-api-key'], 'test-exa-key');
+      let text = '';
+      for await (const chunk of req) text += chunk;
+      const { urls } = JSON.parse(text);
+      const target = new URL(urls[0]);
+      return send(200, { results: target.pathname === '/page/exa-empty' ? [] : [{
+        url: target.pathname === '/page/exa-wrong' ? 'https://other.test/unrelated' : urls[0],
+        title: 'On the Widget Millennium Problem', author: 'OpenAI', publishedDate: '2026-09-08'
+      }] });
+    }
+    assert.equal(req.headers['x-api-key'], undefined, 'Exa credentials must never reach a pasted page');
+    if (['/page/blocked', '/page/exa-empty', '/page/exa-wrong'].includes(url.pathname)) return send(403, '<title>Access denied</title>', 'text/html');
     if (url.pathname === '/page/bot-check') return send(203, '<title>pubmed.example</title>', 'text/html');
     if (url.pathname === '/page/to-challenge') {
       res.writeHead(302, { location: '/challenge' });
@@ -471,6 +532,7 @@ before(async () => {
   process.env.SPECTRUM_DOI_BASE = `${base}/doi`;
   process.env.SPECTRUM_CROSSREF_BASE = `${base}/crossref`;
   process.env.SPECTRUM_ARXIV_BASE = `${base}/arxiv`;
+  process.env.SPECTRUM_EXA_BASE = `${base}/exa`;
 });
 
 after(() => mock?.close());
@@ -483,6 +545,28 @@ function tempProject(files) {
   }
   return root;
 }
+
+test('configured Exa resolves blocked pages without inventing records or leaking keys', async () => {
+  const root = tempProject({ 'main.tex': '' });
+  const searchConfig = { provider: 'exa', apiKey: 'test-exa-key' };
+  try {
+    const run = (url, config = searchConfig) => resolveReferences({ projectRoot: root, input: url, searchConfig: config });
+    const first = (await run(`${base}/page/blocked`)).results[0];
+    assert.equal(first.status, 'added');
+    assert.equal(first.key, 'OpenAI2026');
+    assert.equal(fieldsOf(first.bibtex).date, '2026-09-08');
+    assert.equal(fieldsOf(first.bibtex).url, `${base}/page/blocked`);
+    assert.equal((await run(`${base}/page/exa-empty`)).results[0].status, 'error');
+    assert.equal((await run(`${base}/page/exa-wrong`)).results[0].status, 'error');
+    const before = hits.filter((h) => h === '/exa/contents').length;
+    assert.equal((await run('http://127.0.0.1:9/private')).results[0].status, 'error');
+    assert.equal((await run(`${base}/page/to-local`)).results[0].status, 'error');
+    assert.equal((await run(`${base}/page/blocked`, { provider: 'brave', apiKey: 'test-exa-key' })).results[0].status, 'error');
+    assert.equal((await run('https://name:password@example.com/')).results[0].status, 'error');
+    assert.equal(hits.filter((h) => h === '/exa/contents').length, before);
+    assert.doesNotMatch(readFileSync(path.join(root, 'references.bib'), 'utf8'), /test-exa-key/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 test('resolves, deduplicates and writes references into a project', async (t) => {
   // No trailing newline on purpose: the original bytes must survive untouched.
@@ -590,7 +674,7 @@ test('resolves, deduplicates and writes references into a project', async (t) =>
     assert.equal(plain.status, 'added');
     assert.equal(plain.key, 'Plain');
     assert.match(plain.bibtex, /howpublished = \{\\url\{.+\/page\/plain\}\}/);
-    assert.match(plain.bibtex, /note {9}= \{Accessed \d{1,2} \w+ \d{4}\}/);
+    assert.equal(fieldsOf(plain.bibtex).note, undefined, 'static web pages do not need retrieval dates in APA 7');
   });
 
   await t.test('bot checks, challenge pages and local addresses are refused', async () => {

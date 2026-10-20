@@ -21,21 +21,21 @@ async function withProject(req, reply, run) {
 
 export function registerReferenceRoutes(fastify) {
   fastify.post('/api/references/resolve', async (req, reply) => {
-    const { input, bibFile, llmConfig } = req.body || {};
+    const { input, bibFile, llmConfig, searchConfig } = req.body || {};
     if (typeof input !== 'string' || !input.trim()) {
       return reply.code(400).send({ ok: false, error: 'Paste a DOI, link, arXiv ID or title.' });
     }
     if (input.length > MAX_INPUT_CHARS) {
       return reply.code(400).send({ ok: false, error: 'That’s too much text. Paste fewer references at a time.' });
     }
-    return withProject(req, reply, (projectRoot) => resolveReferences({ projectRoot, input, bibFile, llmConfig }));
+    return withProject(req, reply, (projectRoot) => resolveReferences({ projectRoot, input, bibFile, llmConfig, searchConfig }));
   });
 
   fastify.post('/api/references/add', async (req, reply) => {
-    const { candidateId, bibFile } = req.body || {};
+    const { candidateId, bibFile, searchConfig } = req.body || {};
     if (typeof candidateId !== 'string' || !candidateId.trim()) {
       return reply.code(400).send({ ok: false, error: 'Choose a reference to add.' });
     }
-    return withProject(req, reply, (projectRoot) => addReference({ projectRoot, candidateId, bibFile }));
+    return withProject(req, reply, (projectRoot) => addReference({ projectRoot, candidateId, bibFile, searchConfig }));
   });
 }

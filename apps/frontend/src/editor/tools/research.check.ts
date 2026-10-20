@@ -1,6 +1,7 @@
 // Self-check for merging the Research tab's parallel web searches. Run:
 // npx esbuild apps/frontend/src/editor/tools/research.check.ts --bundle --platform=node --log-level=warning | node
 import { uniqueWorks } from './ResearchTab';
+import { citationCommand } from '../shared';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -9,6 +10,11 @@ const item = (id: string, extra: { title?: string; url?: string; doi?: string; a
   id, title: '', summary: '', url: '', bibtex: '', citeKey: '', meta: '', ...extra
 });
 const ids = (items: { id: string }[]) => items.map((i) => i.id);
+
+eq(citationCommand('\\usepackage[backend=biber,style=apa]{biblatex}'), '\\parencite', 'APA uses parenthetical citations');
+eq(citationCommand('\\usepackage{acl}\n\\addbibresource{custom.bib}'), '\\parencite', 'APA styles loaded through another package');
+eq(citationCommand('\\usepackage[round]{natbib}'), '\\citep', 'natbib keeps its compatible command');
+eq(citationCommand('% \\usepackage{biblatex}\n\\bibliography{references}'), '\\cite', 'traditional projects keep their citation command');
 
 eq(
   ids(uniqueWorks([

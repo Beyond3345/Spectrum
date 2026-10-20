@@ -28,6 +28,7 @@ import {
   rolePatch,
   rolePresetOf,
   searchProviderPatch,
+  SEARCH_PROVIDERS,
   useLivePreset,
   useProviders,
   useSettings
@@ -57,25 +58,14 @@ const THEMES: [Theme, string, string][] = [
   ['dark', 'Dark', 'moon']
 ];
 
-const SEARCH_PROVIDERS: [SearchProvider, string][] = [
-  ['llm', 'Model’s built-in web search'],
-  ['openalex', 'OpenAlex (free)'],
-  ['semanticscholar', 'Semantic Scholar'],
-  ['serpapi', 'SerpApi (Google, Scholar, Baidu)'],
-  ['exa', 'Exa'],
-  ['tavily', 'Tavily'],
-  ['brave', 'Brave Search'],
-  ['ddgs', 'DDGS (free)']
-];
-
 const SEARCH_NOTES: Record<SearchProvider, string> = {
-  llm: 'The search model looks the sources up itself, so it needs built-in web search. Check its DOIs before you cite them.',
+  llm: 'Uses verified native web search on supported OpenAI or Claude APIs. Other model APIs fall back to your enabled connections.',
   openalex: 'Papers, preprints, books and theses with full details for BibTeX. No key needed; a free key from openalex.org raises the daily limit.',
   semanticscholar: 'Papers in every field with authors, venue and DOI. Works without a key but is often busy; a free key avoids that.',
   serpapi: 'Google Scholar, Google or Baidu results. Needs a SerpApi key.',
-  exa: 'Neural search that looks only at papers for research questions and at the whole web for LaTeX ones. Needs an Exa key.',
-  tavily: 'Web search that puts arXiv, publishers, standards, CTAN and TeX Stack Exchange first. Needs a Tavily key; each search uses 2 credits.',
-  brave: 'Brave’s own index, ranked to put papers, standards and LaTeX documentation first. Needs a Brave Search API key.',
+  exa: 'Reference searches request publication metadata; chat searches use the whole web. Needs an Exa key.',
+  tavily: 'Reference searches prioritise citable sources with dates; chat uses ordinary web search. Needs a Tavily key.',
+  brave: 'Reference searches favour citable sources; chat uses ordinary web results. Needs a Brave Search API key.',
   ddgs: 'Google, Bing, Brave, DuckDuckGo and others through the ddgs Python library. No key needed, but it needs Python with ddgs installed.'
 };
 
@@ -309,10 +299,8 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
   );
 
   const defaultProjectsDir = check?.projectsDir || '~/Documents/Spectrum';
-  const providerNeedsKey = !['llm', 'ddgs'].includes(settings.searchProvider);
-  const keyOptional = ['openalex', 'semanticscholar'].includes(settings.searchProvider);
   const ddgsMissing =
-    settings.searchProvider === 'ddgs' && check && !check.python.ddgs
+    settings.searchConnections.includes('ddgs') && check && !check.python.ddgs
       ? check.python.found
         ? `ddgs isn’t installed for ${check.python.path}. Install it with: ${check.python.path} -m pip install ddgs`
         : 'Python wasn’t found. Install Python 3, then: python3 -m pip install ddgs'
@@ -595,32 +583,44 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
           {section === 'search' && (
             <>
               <div className="field">
-                <label id="settings-searchProvider">Web search provider</label>
-                <Select
-                  labelId="settings-searchProvider"
-                  value={settings.searchProvider}
-                  options={SEARCH_PROVIDERS}
-                  onChange={(value) => update(searchProviderPatch(settings, value as SearchProvider))}
-                />
-                <div className="field-hint">{SEARCH_NOTES[settings.searchProvider]}</div>
-                {ddgsMissing && <div className="field-hint error">{ddgsMissing}</div>}
+                <label id="settings-searchProvider">Default search</label>
+                <Select labelId="settings-searchProvider" value={settings.searchProvider} options={SEARCH_PROVIDERS}
+                  onChange={(value) => update(searchProviderPatch(settings, value as SearchProvider))} />
+                <div className="field-hint">Tried first. If it fails or returns no usable results, Spectrum tries the other enabled connections below in order.</div>
               </div>
-              {settings.searchProvider === 'serpapi' && (
-                <div className="field">
-                  <label id="settings-serpEngine">SerpApi engine</label>
-                  <Select
-                    labelId="settings-serpEngine"
-                    value={settings.serpEngine}
-                    options={[['google_scholar', 'Google Scholar (papers)'], ['google', 'Google'], ['baidu', 'Baidu']]}
-                    onChange={(value) => update({ serpEngine: value as AppSettings['serpEngine'] })}
-                  />
-                </div>
-              )}
-              {providerNeedsKey &&
-                text(keyOptional ? 'Provider API key (optional)' : 'Provider API key', 'searchProviderKey', {
-                  secret: true,
-                  hint: 'Each provider’s key is kept when you switch.'
-                })}
+              <h3 className="form-section-title">Search connections</h3>
+              <div className="field-hint section-hint">Keep several connected at once. Reference lookups request citation details; chat searches use the general web. Fallback requests use each connection’s own account.</div>
+              {SEARCH_PROVIDERS.map(([provider, label]) => {
+                const enabled = provider === settings.searchProvider || settings.searchConnections.includes(provider);
+                const needsKey = !['llm', 'ddgs'].includes(provider);
+                const optional = ['openalex', 'semanticscholar'].includes(provider);
+                return <div className="field" key={provider}>
+                  <label className="checkbox-row">
+                    <input type="checkbox" checked={enabled} disabled={provider === settings.searchProvider}
+                      onChange={(e) => update({ searchConnections: e.target.checked
+                        ? [...new Set([...settings.searchConnections, provider])]
+                        : settings.searchConnections.filter((p) => p !== provider) })} />
+                    {label}{provider === settings.searchProvider ? ' (default)' : ''}
+                  </label>
+                  {enabled && <>
+                    <div className="field-hint">{SEARCH_NOTES[provider]}</div>
+                    {provider === 'ddgs' && ddgsMissing && <div className="field-hint error">{ddgsMissing}</div>}
+                    {needsKey && <>
+                      <label htmlFor={`search-key-${provider}`}>{label} API key{optional ? ' (optional)' : ''}</label>
+                      <input id={`search-key-${provider}`} className="input" type="password" autoComplete="off" spellCheck={false}
+                        value={provider === settings.searchProvider ? settings.searchProviderKey : settings.searchProviderKeys[provider] || ''}
+                        onChange={(e) => update({ searchProviderKeys: { ...settings.searchProviderKeys, [provider]: e.target.value },
+                          ...(provider === settings.searchProvider && { searchProviderKey: e.target.value }) })} />
+                    </>}
+                    {provider === 'serpapi' && <>
+                      <label id="settings-serpEngine">SerpApi engine for references</label>
+                      <Select labelId="settings-serpEngine" value={settings.serpEngine}
+                        options={[["google_scholar", "Google Scholar (papers)"], ["google", "Google"], ["baidu", "Baidu"]]}
+                        onChange={(value) => update({ serpEngine: value as AppSettings['serpEngine'] })} />
+                    </>}
+                  </>}
+                </div>;
+              })}
 
               <h3 className="form-section-title">Search model <span className="optional">Optional</span></h3>
               <div className="field-hint section-hint">Used for web search only. Leave blank to use the main model.</div>

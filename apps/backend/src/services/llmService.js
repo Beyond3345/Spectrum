@@ -356,6 +356,52 @@ export async function callOpenAICompatible({ messages, model, endpoint, apiKey, 
   return { ok: true, content: result.message.content };
 }
 
+/** Search requires provider-returned sources, not a model's claim that it browsed. */
+export async function nativeWebSearch({ query, purpose = 'chat', llmConfig }) {
+  const config = resolveLLMConfig(llmConfig);
+  if (missingKey(config)) throw new Error(NO_API_KEY);
+  const endpoint = normalizeChatEndpoint(config.endpoint);
+  const provider = providerFor(endpoint);
+  const messages = [{ role: 'user', content: [
+    'Search the live web for this request. Return JSON only: {"results":[{"title":"","url":"","summary":"","authors":[],"publishedDate":"","doi":""}]} .',
+    purpose === 'references'
+      ? 'Find original sources and their citation metadata: complete title, named authors, original publication date (ISO format), publisher and DOI. Leave unknown fields empty; do not infer a publication date from a URL or a copyright year.'
+      : 'Return useful web results for the question, with concise summaries and source links. Search the general web without academic or bibliography restrictions.',
+    `Request: ${String(query).slice(0, 6000)}`
+  ].join('\n') }];
+  let url, headers, body;
+  if (provider?.api === 'responses' || provider?.api === 'anthropic') {
+    const adapter = ADAPTERS[provider.api];
+    url = adapter.url(endpoint);
+    headers = adapter.headers(config.apiKey);
+    const extra = provider.api === 'responses'
+      ? { tools: [{ type: 'web_search' }], tool_choice: 'required', include: ['web_search_call.action.sources'] }
+      : { tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }], max_tokens: 4000 };
+    body = adapter.body({ model: config.model, messages, extra });
+  } else {
+    // shortcut: Gemini grounding needs its required Search Suggestions UI before native support can be enabled.
+    throw new Error('This model API does not support verified built-in web search.');
+  }
+  const response = await fetch(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(40_000),
+    headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
+  if (!response.ok) throw new Error(`Model web search failed (HTTP ${response.status}).`);
+  const data = await response.json();
+  let content, sources;
+  if (provider.api === 'responses') {
+    if (data.status === 'incomplete') throw new Error('Model web search was cut off.');
+    content = ADAPTERS.responses.message(data)?.content;
+    sources = (data.output || []).flatMap((item) => item.type === 'web_search_call' ? item.action?.sources || [] : [])
+      .concat((data.output || []).flatMap((item) => (item.content || []).flatMap((part) => part.annotations || [])));
+  } else {
+    if (data.stop_reason === 'max_tokens' || data.stop_reason === 'pause_turn') throw new Error('Model web search did not finish.');
+    content = ADAPTERS.anthropic.message(data)?.content;
+    sources = (data.content || []).flatMap((item) => item.type === 'web_search_tool_result' && Array.isArray(item.content) ? item.content : []);
+  }
+  sources = (sources || []).filter((s) => /^https?:\/\//i.test(s.url || ''));
+  if (!sources.length) throw new Error('The model returned no verified web sources.');
+  return { content: content || '', sources };
+}
+
 /** Minimal `{ invoke(messages) -> { content } }` client used by the transfer workflow. */
 export function createLLM(llmConfig) {
   const config = resolveLLMConfig(llmConfig);

@@ -4,10 +4,10 @@ import type { ChatMessage, ChatMode, ChatThread, ReferenceResult } from '../api/
 import Icon from '../app/Icon';
 import Select from '../app/Select';
 import { MenuButton } from '../app/Menu';
-import { effortOptions, modelOf, presetOf, updateSettings, useLivePreset, useProviders } from '../app/settings';
+import { effortOptions, modelOf, presetOf, searchConfigFor, updateSettings, useLivePreset, useProviders } from '../app/settings';
 import { useEditor } from './EditorContext';
 import type { PendingChange } from './EditorContext';
-import { CHATS_CHANGED, Markdown, VISION_HINTS, VISION_MODES, buildProjectContext, errorText, isTex, patchesToChanges } from './shared';
+import { CHATS_CHANGED, Markdown, VISION_HINTS, VISION_MODES, buildProjectContext, citationText, errorText, isTex, patchesToChanges } from './shared';
 import type { VisionMode } from './shared';
 import AgentPanel from './AgentPanel';
 
@@ -190,13 +190,13 @@ export default function Composer({
     inputRef.current?.focus();
   };
 
-  const insertCite = (key: string) => {
+  const insertCite = async (key: string) => {
     const a = latest.current;
     if (!isTex(a.activePath)) {
       a.notify('Open a .tex file to insert the citation.');
       return;
     }
-    a.insertAtCursor(`\\cite{${key}}`, { afterSelection: true });
+    a.insertAtCursor(await citationText(a, [key]), { afterSelection: true });
   };
 
   const afterReferences = async (results: ReferenceResult[], bibFile: string) => {
@@ -207,13 +207,13 @@ export default function Composer({
   };
 
   /** Cites a single looked-up reference at the cursor, but only where the user has put it (and without taking focus from here). */
-  const autoCite = (results: ReferenceResult[]) => {
+  const autoCite = async (results: ReferenceResult[]) => {
     const [only] = results;
     const a = latest.current;
     if (!a.settings.autoInsertCite || results.length !== 1 || !only.key || (only.status !== 'added' && only.status !== 'duplicate')) return;
-    const cite = `\\cite{${only.key}}`;
+    const cite = await citationText(a, [only.key]);
     const line = isTex(a.activePath) ? a.insertAtCursor(cite, { afterSelection: true, focus: false, placedOnly: true }) : null;
-    a.notify(line ? `Inserted ${cite} in ${a.activePath.split('/').pop()}, line ${line}.` : `Click where ${cite} should go, then choose Insert \\cite.`);
+    a.notify(line ? `Inserted ${cite} in ${a.activePath.split('/').pop()}, line ${line}.` : `Click where ${cite} should go, then choose Insert citation.`);
   };
 
   const markBusy = (chatId: string, on: boolean) => setBusyChats((prev) => (on ? [...prev, chatId] : prev.filter((id) => id !== chatId)));
@@ -223,12 +223,13 @@ export default function Composer({
     const base = append(threadRef.current, msg('user', text));
     markBusy(base.id, true);
     try {
-      const res = await resolveReferences({ projectId: api.projectId, input: text, llmConfig: api.llm.quick });
+      const res = await resolveReferences({ projectId: api.projectId, input: text, llmConfig: api.llm.quick,
+        searchConfig: searchConfigFor(api.settings, api.llm.search) });
       if (!res.ok) throw new Error(res.error || 'The lookup failed.');
       const references: ReferencesMeta = { results: res.results, bibFile: res.bibFile, bibIncluded: res.bibIncluded };
       append(base, msg('assistant', summariseReferences(res.results, res.bibFile) || 'Nothing to add.', { references }));
       await afterReferences(res.results, res.bibFile);
-      autoCite(res.results);
+      await autoCite(res.results);
     } catch (err) {
       append(base, msg('assistant', `Couldn’t look that up: ${errorText(err)}`, { error: true }));
     } finally {
@@ -243,7 +244,8 @@ export default function Composer({
     if (!owner || !refs) return;
     markBusy(owner.id, true);
     try {
-      const res = await addReference({ projectId: api.projectId, candidateId, bibFile: refs.bibFile });
+      const res = await addReference({ projectId: api.projectId, candidateId, bibFile: refs.bibFile,
+        searchConfig: searchConfigFor(api.settings, api.llm.search) });
       if (!res.ok) throw new Error(res.error || 'The reference couldn’t be added.');
       const results = refs.results.map((r, i) => (i === resultIndex ? { ...res.result, input: r.input } : r));
       updateMeta(owner, index, { ...metaOf(message), references: { results, bibFile: res.bibFile, bibIncluded: res.bibIncluded } });
@@ -319,6 +321,7 @@ export default function Composer({
         activePath,
         compileLog: api.compileLog,
         llmConfig: api.llm.main,
+        searchConfig: searchConfigFor(api.settings, api.llm.search),
         interaction: chat ? 'chat' : 'agent',
         history,
         reasoningEffort: api.settings.reasoningEffort
@@ -419,7 +422,7 @@ export default function Composer({
                 )}
                 {r.key && (
                   <button className="btn small" onClick={() => insertCite(r.key!)}>
-                    <Icon name="text.insert" /> Insert \cite
+                    <Icon name="text.insert" /> Insert citation
                   </button>
                 )}
               </>

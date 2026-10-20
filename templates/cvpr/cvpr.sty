@@ -34,8 +34,11 @@
 \RequirePackage{amsmath}
 \RequirePackage{amssymb}
 \RequirePackage{booktabs}
-\RequirePackage[numbers,sort&compress]{natbib}
-\setlength{\bibsep}{1pt plus 1pt minus 1pt}
+% Spectrum adaptation: APA 7 replaces the venue bibliography.
+\PassOptionsToPackage{hyphens}{url}
+\RequirePackage{csquotes}
+\RequirePackage[backend=biber,style=apa,natbib=true]{biblatex} % APA 7; compile with Biber
+
 
 \RequirePackage{silence}  % Suppress unwanted warnings
 \hbadness=10000 \vbadness=10000 \vfuzz=30pt \hfuzz=30pt
@@ -68,7 +71,7 @@
 }{}
 
 % Breaking lines for URLs in the bib
-\RequirePackage[hyphens]{url}
+\RequirePackage{url}
 \Urlmuskip=0mu plus 1mu\relax
 
 

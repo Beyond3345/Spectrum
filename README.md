@@ -24,15 +24,18 @@ The template gallery has templates for notes, reports, letters, slides and a CV,
 
 | Template | For | Main packages |
 | --- | --- | --- |
+| Simple document | a short A4 article with a title, paragraphs, 25 mm margins and one-and-a-half line spacing | `article`, `geometry`, `setspace`, `biblatex` |
 | Maths notes | lecture notes or assignments with theorems, worked examples and their solutions, matrices and figures | `amsmath`, `amsthm`, `mathtools`, `tikz`, `pgfplots` |
 | Electronics notes | notes or lab reports with circuits, quantities with units and Bode plots | `circuitikz`, `siunitx`, `pgfplots` |
 | Coding report | programming assignments with highlighted code and pseudocode | `listings`, `algorithm`, `algpseudocode`, `booktabs` |
-| Report or thesis | a long document with a title page, abstract, contents, chapters and an author-year bibliography | `report` class, `natbib`, `cleveref`, `setspace` |
+| Report or thesis | a long document with a title page, abstract, contents, chapters and an APA 7 bibliography | `report` class, `biblatex`, `cleveref`, `setspace` |
 | Formal letter | a letter in Australian block layout | `babel` with Australian English |
 | Slides | a 16:9 Beamer presentation with maths, a chart and code | `beamer` (Madrid), `listings`, `pgfplots` |
 | Academic CV | a one-page CV with links for email, ORCID and a website | `titlesec`, `enumitem`, `xcolor` |
 
-Every package these templates load has a short comment beside it saying what it does, so a preamble can be read and changed without looking each package up. All of them load `hyperref` for links and `parskip` for a blank line between paragraphs, except the slides, where Beamer handles both itself. They are A4 apart from the slides, use Australian English, need no shell escape and compile with pdfLaTeX, XeLaTeX, LuaLaTeX and Tectonic. The conference templates also have a comment on each package, but nothing else in them changed, since those venues do not allow changes to their layout.
+Every shipped template uses APA 7 citations and references through `biblatex-apa` and Biber. Use Auto, pdfLaTeX, XeLaTeX or LuaLaTeX with a current TeX distribution; Tectonic's older bibliography bundle can require a different Biber version. `\textcite` and `\parencite` produce narrative and parenthetical citations; the familiar `\citet` and `\citep` commands also work.
+
+The general templates use A4 paper apart from the slides, Australian English and no shell escape. Conference templates retain their page layouts but use an APA 7 bibliography adaptation. Use the venue's official reference style for an actual conference submission.
 
 Each template in the gallery has a menu. Edit template opens a working copy of it in the editor, where it can be changed and compiled like any project, with a bar above the editor holding three buttons,
 
@@ -92,14 +95,18 @@ A DOI, a link, an arXiv ID or a paper title can be pasted into the references ch
 
 1. a DOI is resolved through doi.org content negotiation, which covers both Crossref and DataCite DOIs, with the Crossref API as a fallback
 2. an arXiv ID uses the arXiv API, and the published DOI is used instead when the paper has one
-3. any other link is read for the citation metadata that publishers embed in their pages
+3. any other link is read for publisher metadata, including JSON-LD, authors and complete publication dates. When a page is blocked or missing author/date metadata, enabled search connections are tried for the exact page, starting with the default. Exa uses its Contents endpoint; other providers use citation-focused queries. Unknown dates and authors are left empty
 4. a title is searched on Crossref, and if no single result clearly matches, the closest candidates are shown to choose from
 
 The citation key is the first author's surname followed by the year, for example `Vaswani2017`. Accents are removed and name particles are joined, so "van der Waals" becomes `VanderWaals`. When the key already exists for a different paper, a letter is added (`Smith2020a`, `Smith2020b`). A paper whose DOI or arXiv ID is already in the project is reported as a duplicate and is not added again.
 
+Imported titles use LaTeX opening/closing quotation marks while preserving apostrophes inside words. arXiv references retain their canonical `https://arxiv.org/abs/…` URL alongside their DOI and identifier. Unknown publication dates stay unknown rather than being guessed from an address or copyright notice.
+
 ### Web search
 
-The Research tab in Tools finds sources for a question and writes their BibTeX into the project. It splits the question into two to four searches, runs them at once, merges the repeats (by DOI, arXiv ID, title or address) and shows each result with its authors, year and venue. Entries are built from the provider's metadata as `@article`, `@inproceedings`, `@book` and so on, in the same way as the references chat builds them. A result that is a DOI or arXiv link is looked up for its full metadata, and a page that is neither becomes `@misc` with its address and the day it was found. The provider is chosen in Settings under Search, and each provider's key is kept when switching between them.
+The Research tab in Tools finds sources for a question and writes their BibTeX into the project. It splits the question into two to four searches, runs them at once, merges the repeats (by DOI, arXiv ID, title or address) and shows each result with its authors, year and venue. Entries are built from the provider's metadata as `@article`, `@inproceedings`, `@book` and so on, in the same way as the references chat builds them. A result that is a DOI or arXiv link is looked up for its full metadata, and a page that is neither becomes `@misc` with its address and available publication date. Settings → Search lets you enable several connections with separate keys and choose the default. The default is tried first, then the other enabled connections in their displayed order when a request fails or returns no usable results. Existing saved keys are retained. Each fallback can use the next provider's search allowance.
+
+Chat can call general web search without academic ranking or BibTeX generation. References, citation suggestions and the Research tab request authors, publication dates, source links and bibliography metadata. Model search uses real provider-side search on supported OpenAI Responses and Claude Messages APIs and requires provider-returned sources; models without verified native search, including DeepSeek's chat API, fall back to enabled connections.
 
 | Provider | What it searches | Needs |
 | --- | --- | --- |
@@ -158,9 +165,9 @@ To set it up, add a cloud location under Cloud locations in the Projects section
 
 ## Installing
 
-Download the macOS or Windows installer from the [latest GitHub release](https://github.com/Beyond3345/Spectrum/releases/latest). The release includes SHA-256 checksums for both installers.
+Download the macOS 1.10.1 installer and its SHA-256 checksum from the [latest GitHub release](https://github.com/Beyond3345/Spectrum/releases/latest). The Windows 1.10.1 installer will be added to the same release later; Windows users can use [version 1.10.0](https://github.com/Beyond3345/Spectrum/releases/tag/v1.10.0) meanwhile.
 
-1. Open `Spectrum_1.10.0_universal.dmg`
+1. Open `Spectrum_1.10.1_universal.dmg`
 2. Drag Spectrum into the Applications folder
 3. Open Spectrum from the Applications folder
 

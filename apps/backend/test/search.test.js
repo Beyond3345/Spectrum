@@ -66,7 +66,8 @@ test('Exa: publications for research questions, the whole web otherwise, DOIs lo
   assert.deepEqual([paper.doi, paper.year, paper.venue], ['10.1038/nature14539', '2015', 'Nature']);
   assert.equal(typeAndKey(page.bibtex)[0], 'misc');
   assert.equal(fields(page.bibtex).howpublished, '\\url{https://ctan.org/pkg/circuitikz}');
-  assert.match(fields(page.bibtex).note, /^Accessed \d+ \w+ \d{4}$/);
+  assert.equal(fields(page.bibtex).note, undefined);
+  assert.equal(fields(page.bibtex).date, '2024-05-01');
   assert.equal(fields(page.bibtex).year, '2024');
   assert.equal(page.summary, 'Draw electrical networks … with TikZ');
 

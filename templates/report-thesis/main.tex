@@ -26,7 +26,9 @@
 \pgfplotsset{compat=1.18}               % use current pgfplots behaviour (label placement and so on)
 
 % References
-\usepackage[round]{natbib}              % author-year citations: \citet{key} in text, \citep{key} in brackets
+\usepackage{csquotes}
+\usepackage[backend=biber,style=apa,natbib=true]{biblatex} % APA 7; compile with Biber
+\addbibresource{references.bib}
 
 % Links
 \usepackage[hidelinks]{hyperref}        % clickable contents, cross-references and citations, without coloured boxes
@@ -182,8 +184,8 @@ writing it up rather less painful.
 \cleardoublepage
 \phantomsection
 \addcontentsline{toc}{chapter}{Bibliography}
-\bibliographystyle{plainnat}
-\bibliography{references}
+
+\printbibliography
 
 \appendix
 \chapter{Logger settings}\label{app:logger}

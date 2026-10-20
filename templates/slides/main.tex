@@ -5,6 +5,10 @@
 \usetheme{Madrid}                       % a built-in theme: coloured title bars, and author, title and page number along the bottom
 % \usecolortheme{seahorse}              % uncomment for softer colours; try dolphin or whale too
 \setbeamertemplate{navigation symbols}{} % hide the small navigation icons in the corner
+\usepackage{csquotes}
+\usepackage[backend=biber,style=apa,natbib=true]{biblatex} % APA 7; compile with Biber
+\addbibresource{references.bib}
+
 \usepackage[australian]{babel}          % Australian hyphenation, and \today as 17 October 2026
 \usepackage{iftex}                      % tells which TeX engine is running
 \ifPDFTeX                               % for pdfLaTeX only:
@@ -144,6 +148,10 @@ def merge_sort(items):
   \vfill
   \centering
   \Large Questions?
+\end{frame}
+
+\begin{frame}[allowframebreaks]{References}
+\printbibliography[heading=none]
 \end{frame}
 
 \end{document}

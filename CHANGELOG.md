@@ -2,6 +2,22 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.10.1 (20 October 2026)
+
+### Added
+
+- Multiple search connections, a default search choice, and automatic fallback across enabled connections
+- General web search in read-only chat and citation-focused search for references and research
+- Verified native model web search for supported OpenAI and Claude APIs; unsupported models use configured fallback connections
+- A simple A4 document template based on an 11 pt article with 25 mm margins and one-and-a-half line spacing
+
+### Fixed
+
+- Reference imports read JSON-LD authors, publishers and complete publication dates, including Business Insider's article metadata
+- Blocked pages can use configured search connections; API keys stay with their own provider
+- Imported titles use LaTeX quotation marks while preserving apostrophes, and arXiv references retain their canonical URL alongside the DOI
+- Every shipped template uses APA 7 with Biber, including the conference template adaptations
+
 ## 1.10.0 (19 October 2026)
 
 ### Added

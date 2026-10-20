@@ -14,7 +14,9 @@
 \usepackage{microtype}      % small spacing tweaks so lines break more evenly
 \usepackage{lipsum}         % filler text for the sample; remove once your own text is in
 \usepackage{graphicx}       % \includegraphics, for figures
-\usepackage{natbib}         % author-year and numbered citations: \citet, \citep
+\usepackage{csquotes}
+\usepackage[backend=biber,style=apa,natbib=true]{biblatex} % APA 7; compile with Biber
+\addbibresource{references.bib}
 \usepackage{doi}            % \doi{...} prints a DOI as a link
 
 
@@ -165,9 +167,7 @@ The documentation for \verb+booktabs+ (`Publication quality tables in LaTeX') is
 	\item Aliquam dignissim blandit est, in dictum tortor gravida eget. In ac rutrum magna.
 \end{itemize}
 
-
-\bibliographystyle{unsrtnat}
-\bibliography{references}  %%% Uncomment this line and comment out the ``thebibliography'' section below to use the external .bib file (using bibtex) .
+\printbibliography
 
 
 %%% Uncomment this section and comment out the \bibliography{references} line above to use inline references.

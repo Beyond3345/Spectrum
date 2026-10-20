@@ -7,6 +7,17 @@ import type { EditorApi, PendingChange } from './EditorContext';
 
 export const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
+export function citationCommand(source: string) {
+  const text = source.replace(/(^|[^\\])%.*$/gm, '$1');
+  if (/\\addbibresource\b|\\(?:usepackage|RequirePackage)(?:\s*\[[^\]]*\])?\s*\{biblatex\}/.test(text)) return '\\parencite';
+  return /\\usepackage(?:\s*\[[^\]]*\])?\s*\{natbib\}/.test(text) ? '\\citep' : '\\cite';
+}
+
+export async function citationText(api: EditorApi, keys: string[]) {
+  const source = api.activePath === api.mainFile ? api.editorValue : await api.ensureFileContent(api.mainFile).catch(() => '');
+  return `${citationCommand(source)}{${keys.join(',')}}`;
+}
+
 const dateFormat = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
 const relativeFormat = new Intl.RelativeTimeFormat('en-AU', { numeric: 'always' });
 
