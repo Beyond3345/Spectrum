@@ -1,7 +1,9 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { safeJoin } from '../../../utils/pathUtils.js';
-import { ensureDir, listFilesRecursive } from '../../../utils/fsUtils.js';
+import { ensureDir, listFilesRecursive, writeNewFile } from '../../../utils/fsUtils.js';
+import { withBiblatexResources } from '../../../utils/texUtils.js';
+import { writeFileWithSnapshot } from '../utils.js';
 
 /**
  * Check if a file exists at the given absolute path.
@@ -57,10 +59,20 @@ async function copySingleAsset(srcRoot, destRoot, relPath, wanted = relPath) {
     destRel = path.join('assets', 'source', wanted);
   }
 
-  const finalAbs = safeJoin(destRoot, destRel);
-  await ensureDir(path.dirname(finalAbs));
-  await fs.copyFile(srcAbs, finalAbs);
+  const finalAbs = await writeNewFile(safeJoin(destRoot, destRel), await fs.readFile(srcAbs));
+  destRel = path.relative(destRoot, finalAbs);
   return { path: relPath, destRel, status: destRel !== wanted ? 'conflict' : 'copied' };
+}
+
+async function connectBibliographies(state, files) {
+  if (!files.length) return;
+  const main = state.targetMainFile || 'main.tex';
+  const abs = safeJoin(state.targetProjectRoot, main);
+  let tex;
+  try { tex = await fs.readFile(abs, 'utf8'); } catch (err) { if (err.code === 'ENOENT') return; throw err; }
+  const names = files.map((file) => path.relative(path.dirname(main), file).split(path.sep).join('/'));
+  const updated = withBiblatexResources(tex, names);
+  if (updated !== tex) await writeFileWithSnapshot(state.targetProjectRoot, main, updated, state.jobId);
 }
 
 /**
@@ -72,12 +84,19 @@ async function copyAssetsLegacy(state) {
   const mainDir = path.dirname(state.sourceMainFile || '');
   const copyRef = async (ref, exts, extraDirs) => {
     const found = await findAsset(state.sourceProjectRoot, mainDir, ref, exts, extraDirs);
-    results.push(found
+    const result = found
       ? await copySingleAsset(state.sourceProjectRoot, state.targetProjectRoot, found.from, found.to)
-      : { path: ref, status: 'missing' });
+      : { path: ref, status: 'missing' };
+    results.push(result);
+    return result;
   };
 
-  for (const bib of (assets.bib || [])) await copyRef(bib, ['']);
+  const bibs = [];
+  for (const bib of new Set(assets.bib || [])) {
+    const result = await copyRef(bib, ['']);
+    if (result.destRel) bibs.push(result.destRel);
+  }
+  await connectBibliographies(state, bibs);
   for (const img of (assets.images || [])) await copyRef(img, GRAPHICS_EXTS, assets.graphicsPaths || []);
 
   for (const sty of (assets.styles || [])) {
@@ -119,6 +138,7 @@ async function copyAssetsPdf(state) {
 
   // Copy bib files from source project if available
   let bibCount = 0;
+  const bibs = [];
   if (state.sourceProjectRoot) {
     let bibCandidates = state.sourceAssets?.bib || [];
     if (!bibCandidates.length) {
@@ -132,9 +152,10 @@ async function copyAssetsPdf(state) {
       const r = await copySingleAsset(
         state.sourceProjectRoot, state.targetProjectRoot, bib
       );
-      if (r.status === 'copied') bibCount++;
+      if (r.destRel) { bibCount++; bibs.push(r.destRel); }
     }
   }
+  await connectBibliographies(state, bibs);
 
   return {
     progressLog: `Copied ${copiedCount} ${copiedCount === 1 ? 'image' : 'images'} and ${bibCount} .bib ${bibCount === 1 ? 'file' : 'files'}.`,

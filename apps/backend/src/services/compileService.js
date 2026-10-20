@@ -370,6 +370,7 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
   const base = path.basename(mainFile, path.extname(mainFile));
 
   let pass;
+  let bibliographyStatus = 0;
   try {
     // Pass 1: generate .aux with \citation{} entries
     pass = await runSpawn(cmd, args, mainDir, pushLog, texEnv);
@@ -396,9 +397,16 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
       // MiKTeX's bibtex asks before installing a missing .bst, as its engines do
       if (WINDOWS && bibCmd === 'bibtex' && /[\\/]miktex[\\/]/i.test((await findExecutable('bibtex')) || '')) bibArgs.unshift('--enable-installer');
       try {
-        await runSpawn(bibCmd, bibArgs, outDir, pushLog, texEnv);
-      } catch {
-        pushLog(Buffer.from(`[warn] ${bibCmd} not available, skipping bibliography pass.\n`));
+        const bibliography = await runSpawn(bibCmd, bibArgs, outDir, pushLog, texEnv);
+        if (useBiber && (bibliography.code !== 0 || bibliography.timedOut)) {
+          bibliographyStatus = bibliography.code || 1;
+          pushLog(Buffer.from('[spectrum] Biber failed. Fix the bibliography errors above and compile again.\n'));
+        }
+      } catch (err) {
+        if (useBiber) {
+          bibliographyStatus = 1;
+          pushLog(Buffer.from(`[spectrum] Biber could not run: ${err.message}. Install Biber with your TeX distribution and compile again.\n`));
+        } else pushLog(Buffer.from(`[warn] ${bibCmd} not available, skipping bibliography pass.\n`));
       }
 
       // Pass 2 + 3: resolve citations and cross-references
@@ -409,7 +417,8 @@ async function compileWith(engine, projectRoot, absMain, mainFile) {
     await cleanBuild(buildRoot, outDir);
     return { ok: false, error: `${engine} isn’t available: ${err.message}` };
   }
-  const { code } = pass;
+  // A later TeX pass can create a PDF even when Biber failed.
+  const code = pass.code !== 0 ? pass.code : bibliographyStatus;
 
   let log = logChunks.join('');
   // the last PDF, SyncTeX and .aux stay as they were

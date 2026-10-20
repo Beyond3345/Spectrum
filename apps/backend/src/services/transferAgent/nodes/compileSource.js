@@ -4,6 +4,7 @@ import { runCompile } from '../../compileService.js';
 import { getProjectRoot } from '../../projectService.js';
 import { transferDir } from '../../parsers/index.js';
 import { ensureDir } from '../../../utils/fsUtils.js';
+import { inlineInputs } from '../../../utils/texUtils.js';
 
 /**
  * compileSource node — compiles the source project to PDF
@@ -12,11 +13,13 @@ import { ensureDir } from '../../../utils/fsUtils.js';
  */
 export async function compileSource(state) {
   const sourceProjectRoot = state.sourceProjectId ? await getProjectRoot(state.sourceProjectId) : undefined;
+  const sourceFullContent = sourceProjectRoot && state.sourceMainFile ? await inlineInputs(sourceProjectRoot, state.sourceMainFile) : undefined;
 
   // If user uploaded a PDF directly, skip compilation
   if (state.sourcePdfPath) {
     return {
       sourceProjectRoot,
+      sourceFullContent,
       progressLog: 'Using the uploaded PDF.',
     };
   }
@@ -30,7 +33,7 @@ export async function compileSource(state) {
     engine: state.engine,
   });
 
-  if (!result.ok || !result.pdf) {
+  if (!result.ok || result.status !== 0 || !result.pdf) {
     throw new Error(
       `Source compilation failed: ${result.error || result.log || 'unknown error'}`
     );
@@ -45,6 +48,7 @@ export async function compileSource(state) {
   return {
     sourcePdfPath: pdfPath,
     sourceProjectRoot,
+    sourceFullContent,
     progressLog: 'Compiled the source project to PDF.',
   };
 }

@@ -8,7 +8,7 @@ import crypto from 'crypto';
 import { gunzipSync } from 'zlib';
 import { ensureDir, copyDir, extractZip, listFilesRecursive, mirrorSkips, renameOver, skipInArchive, writeFileAtomic } from '../utils/fsUtils.js';
 import { safeJoin, safeJoinLink, sanitizeUploadPath } from '../utils/pathUtils.js';
-import { extractDocumentBody, isDocumentFile, mergeTemplateBody, withoutComments } from '../utils/texUtils.js';
+import { bibliographyFiles, extractDocumentBody, isDocumentFile, mergeTemplateBody, preserveDocumentMetadata, withBiblatexResources, withoutComments } from '../utils/texUtils.js';
 import { readTemplateManifest, copyTemplateIntoProject, templatePath } from '../services/templateService.js';
 import {
   APP_DIR,
@@ -560,7 +560,7 @@ export function registerProjectRoutes(fastify) {
       }
 
       const templateTex = await fs.readFile(path.join(templateRoot, templateMain), 'utf8');
-      const merged = mergeTemplateBody(templateTex, extractDocumentBody(currentTex));
+      const merged = preserveDocumentMetadata(withBiblatexResources(mergeTemplateBody(templateTex, extractDocumentBody(currentTex)), bibliographyFiles(currentTex)), currentTex);
       // The merged document goes back into the project's own main file, whatever the template calls its main file.
       const changedFiles = await copyTemplateIntoProject(templateRoot, root, templateMain);
       await fs.writeFile(currentMainPath, merged, 'utf8');

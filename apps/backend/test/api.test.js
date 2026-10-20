@@ -456,6 +456,18 @@ test('compiles a main file in a subfolder with biblatex, local and root-relative
   assert.doesNotMatch(lastPass, /Citation .* undefined/);
 });
 
+test('a failed Biber pass cannot report a clean compile when TeX still produces a PDF', async (t) => {
+  const { tools } = (await api('/api/system/check')).json;
+  if (!tools.pdflatex || !tools.biber) return t.skip('needs pdflatex and biber');
+  const p = await newProject('Broken bibliography');
+  await writeFile(p.id, 'main.tex', '\\documentclass{article}\\usepackage[backend=biber,style=apa]{biblatex}\\addbibresource{references.bib}\\begin{document}Text \\cite{Broken}.\\printbibliography\\end{document}');
+  await writeFile(p.id, 'references.bib', '@misc{Broken, title={Missing entry brace}\n@article{Next,title={Next},year={2026}}');
+  const result = (await api('/api/compile', { method: 'POST', body: { projectId: p.id, mainFile: 'main.tex', engine: 'pdflatex' } })).json;
+  assert.ok(result.pdf, result.error || result.log);
+  assert.notEqual(result.status, 0);
+  assert.match(result.log, /\[spectrum\] Biber failed/);
+});
+
 test('Tectonic compiles a main file in a subfolder with BibTeX, local and root-relative inputs', async (t) => {
   const { tools, problems } = (await api('/api/system/check')).json;
   if (!tools.tectonic || problems?.tectonic) return t.skip('needs a working tectonic');
@@ -1176,6 +1188,26 @@ test('quick template switch keeps the user\'s own files', async () => {
   assert.equal(await readFile(p.id, 'main.tex'), 'unrelated notes');
   assert.match(await readFile(p.id, 'paper.tex'), /^\\documentclass\[11pt\]\{article\}[\s\S]*My body/);
   assert.ok(!res.changedFiles.includes('references.bib'));
+});
+
+test('quick APA template switching reconnects a custom bibliography and compiles it', async (t) => {
+  const p = await newProject('Switch custom bibliography');
+  const bib = '@misc{Mine2026,author={{Example}},title={Source reference},year={2026}}\n';
+  await writeFile(p.id, 'sources/myrefs.bib', bib);
+  await writeFile(p.id, 'main.tex', '\\documentclass{article}\\begin{document}Body \\cite{Mine2026}.\\bibliographystyle{plain}\\bibliography{sources/myrefs}\\end{document}');
+  const switched = (await api(`/api/projects/${p.id}/convert-template`, { method: 'POST', body: { targetTemplate: 'simple-document' } })).json;
+  assert.ok(switched.ok, switched.error);
+  const main = await readFile(p.id, 'main.tex');
+  assert.match(main, /\\addbibresource\{sources\/myrefs\.bib\}/);
+  assert.doesNotMatch(main, /\\bibliography\{|\\bibliographystyle\{|\\addbibresource\{references\.bib\}/);
+  assert.equal(await readFile(p.id, 'sources/myrefs.bib'), bib);
+  const { tools } = (await api('/api/system/check')).json;
+  if (!tools.pdflatex || !tools.biber) return t.skip('compile needs pdflatex and biber');
+  const compiled = (await api('/api/compile', { method: 'POST', body: { projectId: p.id, mainFile: 'main.tex', engine: 'pdflatex' } })).json;
+  assert.ok(compiled.ok, compiled.error || compiled.log);
+  assert.equal(compiled.status, 0, compiled.log);
+  const last = compiled.log.slice(compiled.log.lastIndexOf('This is pdfTeX'));
+  assert.doesNotMatch(last, /Citation .*undefined|australian-apa\.lbx|Can be used only in preamble|Please \(re\)run Biber/);
 });
 
 test('startup migration leaves a later project.json alone', async () => {

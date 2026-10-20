@@ -49,6 +49,7 @@ test('every shipped template has APA 7 references and a usable bibliography reso
     const bib = main.match(/\\addbibresource\{([^}]+)\}/)?.[1];
     assert.ok(bib && existsSync(path.join(dir, bib)), `${template.id}: bibliography exists`);
     assert.match(main, /\\printbibliography/, template.id);
+    if (source.includes('australian')) assert.match(source, /\\DeclareLanguageMapping\{australian\}\{british-apa\}/, template.id);
   }
   const simple = await fs.readFile(path.join(shippedDir, 'simple-document', 'main.tex'), 'utf8');
   assert.match(simple, /\\documentclass\[11pt,a4paper\]\{article\}/);
@@ -64,7 +65,7 @@ for (const style of ['apa', 'plainnat', 'plainurl', 'plain']) test(`${style} bib
   const dir = await fs.mkdtemp(path.join(tmp, `url-${style}-`));
   let preamble = (await fs.readFile(path.join(shippedDir, 'simple-document/main.tex'), 'utf8')).split('\\begin{document}')[0];
   preamble = preamble.replace('margin=25mm', 'textwidth=85mm,marginparwidth=0pt');
-  if (style !== 'apa') preamble = preamble.replace(/\\usepackage\[[^\]]+\]\{biblatex\}/, '\\usepackage[numbers]{natbib}').replace('\\addbibresource{references.bib}', '');
+  if (style !== 'apa') preamble = preamble.replace(/\\usepackage\[[^\]]+\]\{biblatex\}/, '\\usepackage[numbers]{natbib}').replace('\\addbibresource{references.bib}', '').replace('\\DeclareLanguageMapping{australian}{british-apa}', '');
   const bibliography = style === 'apa' ? '\\printbibliography' : `\\bibliographystyle{${style}}\n\\bibliography{references}`;
   await fs.writeFile(path.join(dir, 'main.tex'), `${preamble}\n\\begin{document}\n\\nocite{*}\n${bibliography}\n\\end{document}\n`);
   const urls = [
@@ -84,7 +85,7 @@ for (const style of ['apa', 'plainnat', 'plainurl', 'plain']) test(`${style} bib
     assert.equal(result.status, 0, result.error?.message || `${result.stdout}\n${result.stderr}`);
   }
   const log = await fs.readFile(path.join(dir, 'main.log'), 'utf8');
-  assert.doesNotMatch(log, /Overfull \\hbox|undefined citations/i);
+  assert.doesNotMatch(log, /Overfull \\hbox|undefined citations|australian-apa\.lbx|Ignoring mapping/i);
   const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const task = getDocument({ data: new Uint8Array(await fs.readFile(path.join(dir, 'main.pdf'))) });
   const document = await task.promise;

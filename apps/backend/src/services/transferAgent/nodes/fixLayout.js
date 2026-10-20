@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import { createLLM } from '../../llmService.js';
 import { safeJoin } from '../../../utils/pathUtils.js';
 import { writeFileWithSnapshot, stripCodeFences } from '../utils.js';
+import { bibliographyFiles, preserveDocumentMetadata, withBiblatexResources } from '../../../utils/texUtils.js';
 
 /**
  * fixLayout node — LLM reads current main.tex + VLM layout issues,
@@ -36,7 +37,7 @@ Common layout fixes:
 Output ONLY the complete corrected LaTeX file. No explanations, no markdown fences.`;
 
   const response = await llm.invoke([{ role: 'user', content: prompt }]);
-  const fixed = stripCodeFences(response.content);
+  const fixed = preserveDocumentMetadata(withBiblatexResources(stripCodeFences(response.content), bibliographyFiles(currentTex)), currentTex);
 
   await writeFileWithSnapshot(
     state.targetProjectRoot,

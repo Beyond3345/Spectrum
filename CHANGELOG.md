@@ -2,6 +2,16 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.10.3 (20 October 2026)
+
+### Fixed
+
+- AI template conversions retain source titles, authors and dates in the preamble and PDF properties, including during compile and layout repair
+- Copied source bibliographies are connected to their actual destination paths after filename collisions, for both LaTeX and PDF conversion
+- Quick template switches preserve custom bibliography paths and replace classic bibliography commands when moving to biblatex
+- Australian English templates use an explicit APA language mapping
+- Biber failures remain failed compiles even when a later TeX pass produces a PDF; PDF conversion refuses an unsuccessfully compiled source
+
 ## 1.10.2 (20 October 2026)
 
 ### Fixed

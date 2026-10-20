@@ -1,24 +1,14 @@
 import path from 'path';
 import { getProjectRoot } from '../../projectService.js';
 import { listFilesRecursive } from '../../../utils/fsUtils.js';
-import { inlineInputs, parseSectionOutline } from '../../../utils/texUtils.js';
+import { bibliographyFiles, inlineInputs, parseSectionOutline } from '../../../utils/texUtils.js';
 
 /**
  * Collect asset references from LaTeX content.
  */
 function collectAssets(content, allFiles) {
-  const assets = { bib: [], images: [], styles: [], other: [] };
-
-  // Collect \bibliography{} and \addbibresource{}
-  const bibPattern = /\\(?:bibliography|addbibresource)\{([^}]+)\}/g;
+  const assets = { bib: bibliographyFiles(content), images: [], styles: [], other: [] };
   let match;
-  while ((match = bibPattern.exec(content)) !== null) {
-    const refs = match[1].split(',').map(r => r.trim());
-    for (let ref of refs) {
-      if (!path.extname(ref)) ref += '.bib';
-      assets.bib.push(ref);
-    }
-  }
 
   // \graphicspath{{figs/}{img/}}: more folders \includegraphics looks in
   const graphicsPath = content.match(/\\graphicspath\s*\{((?:\s*\{[^}]*\})+)\s*\}/);

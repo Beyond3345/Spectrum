@@ -6,3 +6,13 @@ export function escapeTexText(value) {
 
 /** TeX comments outside escaped characters; preserves line endings. */
 export const withoutComments = (text) => String(text).replace(/\\.|%[^\r\n]*/g, (token) => token[0] === '%' ? '' : token);
+
+export function matchBrace(text, start) {
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === '\\') i++;
+    else if (text[i] === '{') depth++;
+    else if (text[i] === '}' && --depth === 0) return i;
+  }
+  return -1;
+}

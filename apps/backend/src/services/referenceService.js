@@ -6,7 +6,7 @@ import path from 'path';
 import { XMLParser } from 'fast-xml-parser';
 import { parseEntities } from 'parse-entities';
 import { latexToText, unicodeToLatex } from '../latex/conversion.js';
-import { escapeTexText, withoutComments } from '../latex/text.js';
+import { escapeTexText, matchBrace, withoutComments } from '../latex/text.js';
 import { listFilesRecursive } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { callOpenAICompatible, missingKey, resolveLLMConfig } from './llmService.js';
@@ -163,16 +163,6 @@ export function foldAscii(s) {
 
 export function normaliseTitle(s) {
   return foldAscii(latexToText(s)).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-}
-
-function matchBrace(s, i) {
-  let depth = 0;
-  for (let j = i; j < s.length; j++) {
-    if (s[j] === '\\') j++;
-    else if (s[j] === '{') depth++;
-    else if (s[j] === '}' && --depth === 0) return j;
-  }
-  return -1;
 }
 
 // Words with their digits and hyphens: "3D", "R-CNN", "GPT-4", "Self-Supervised".
