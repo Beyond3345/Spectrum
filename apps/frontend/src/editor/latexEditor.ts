@@ -1,3 +1,4 @@
+import { withoutComments } from '../../../backend/src/latex/text.js';
 import { Annotation, EditorSelection, RangeSetBuilder, StateEffect, StateField, countColumn } from '@codemirror/state';
 import type { EditorState, Text } from '@codemirror/state';
 import { Decoration, EditorView, GutterMarker, ViewPlugin, WidgetType, gutter } from '@codemirror/view';
@@ -20,14 +21,7 @@ import type { TexContext } from './latexContext';
 /** Marks changes the app makes (opening, reloading, applying AI edits) so they don't count as typing. */
 export const programmatic = Annotation.define<boolean>();
 
-export function stripComment(line: string) {
-  let escaped = false;
-  for (let i = 0; i < line.length; i += 1) {
-    if (line[i] === '%' && !escaped) return line.slice(0, i);
-    escaped = line[i] === '\\' && !escaped;
-  }
-  return line;
-}
+export const stripComment = withoutComments;
 
 // ─── Outline ───
 

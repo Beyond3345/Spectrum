@@ -1,7 +1,7 @@
 // Self-check for merging the Research tab's parallel web searches. Run:
 // npx esbuild apps/frontend/src/editor/tools/research.check.ts --bundle --platform=node --log-level=warning | node
 import { uniqueWorks } from './ResearchTab';
-import { citationCommand } from '../shared';
+import { citationCommand, bibtexForDocument, parseJsonReply } from '../shared';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -11,10 +11,21 @@ const item = (id: string, extra: { title?: string; url?: string; doi?: string; a
 });
 const ids = (items: { id: string }[]) => items.map((i) => i.id);
 
+eq(parseJsonReply('Here: {"items":[{"title":"Braces } [ in text"}]} trailing {"ignored":true}'), { items: [{ title: 'Braces } [ in text' }] }, 'balanced extraction uses the first complete reply');
+eq(parseJsonReply('```json\n{"text":"line\nbreak"}\n```'), { text: 'line\nbreak' }, 'literal newlines from a model are still repaired');
+eq(parseJsonReply('{"files":[{"content":"truncated'), null, 'incomplete instructions stay rejected');
+
 eq(citationCommand('\\usepackage[backend=biber,style=apa]{biblatex}'), '\\parencite', 'APA uses parenthetical citations');
 eq(citationCommand('\\usepackage{acl}\n\\addbibresource{custom.bib}'), '\\parencite', 'APA styles loaded through another package');
 eq(citationCommand('\\usepackage[round]{natbib}'), '\\citep', 'natbib keeps its compatible command');
 eq(citationCommand('% \\usepackage{biblatex}\n\\bibliography{references}'), '\\cite', 'traditional projects keep their citation command');
+
+const webpage = '@misc{OpenAI2026,\n  title = {Paper},\n  url = {https://example.com/paper},\n}';
+eq(bibtexForDocument(webpage, '\\bibliographystyle{plain}'), webpage.replace('url = {https://example.com/paper}', 'howpublished = {\\url{https://example.com/paper}}'), 'Research URLs remain visible with classic BibTeX');
+for (const source of ['\\usepackage[style=apa]{biblatex}', '\\bibliographystyle{plainnat}', '\\bibliographystyle{plainurl}', '% \\bibliographystyle{plain}']) {
+  eq(bibtexForDocument(webpage, source), webpage, 'URL-aware styles retain a single URL field');
+}
+eq(bibtexForDocument(webpage.replace('@misc', '@article'), '\\bibliographystyle{plain}'), webpage.replace('@misc', '@article'), 'article metadata is preserved');
 
 eq(
   ids(uniqueWorks([

@@ -2,8 +2,12 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { safeJoin } from './pathUtils.js';
 
-/** TeX with its % comments removed (an escaped \% stays). */
-export const withoutComments = (tex) => tex.replace(/(?<!\\)%.*$/gm, '');
+import { withoutComments } from '../latex/text.js';
+export { withoutComments };
+
+/** Section names for template transfer; the editor also tracks positions and uses its own parser. */
+export const parseSectionOutline = (content) => [...content.matchAll(/\\(section|subsection|subsubsection)\*?\{([^}]*)\}/g)]
+  .map((match) => ({ level: match[1], title: match[2].trim() }));
 
 /** Whether a .tex file compiles on its own: a \documentclass outside a comment in its first 16 KB. */
 export async function isDocumentFile(file) {

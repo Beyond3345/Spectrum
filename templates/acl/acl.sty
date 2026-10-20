@@ -186,6 +186,7 @@
 % Spectrum adaptation: APA 7 replaces the venue bibliography.
 \RequirePackage{csquotes}
 \RequirePackage[backend=biber,style=apa,natbib=true]{biblatex} % APA 7; compile with Biber
+\RequirePackage{xurl} % allow long bibliography URLs to wrap within the page
 % for citation commands in the .tex, authors can use:
 % \citep, \citet, and \citeyearpar for compatibility with natbib, or
 % \cite, \newcite, and \shortcite for compatibility with older ACL .sty files
@@ -310,5 +311,4 @@
   % It provides a backup, no-op definiton of \href.
   % This is necessary because \href command is used in the acl_natbib.bst file.
   \def\href#1#2{{#2}}
-  \usepackage{url}
 \fi

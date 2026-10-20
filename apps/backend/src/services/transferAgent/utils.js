@@ -2,101 +2,8 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { ensureDir } from '../../utils/fsUtils.js';
 import { safeJoin } from '../../utils/pathUtils.js';
-
-// ---------------------------------------------------------------------------
-// Shared text helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Strip markdown code fences (```json, ```latex, ```tex, etc.) from LLM output.
- */
-export function stripCodeFences(text) {
-  return text
-    .replace(/^```(?:json|latex|tex)?\s*\n?/i, '')
-    .replace(/\n?```\s*$/i, '')
-    .trim();
-}
-
-/**
- * Extract the first JSON object or array from a string that may contain
- * surrounding prose. Handles cases where the LLM outputs explanatory text
- * before/after the JSON.
- */
-export function extractJSON(text) {
-  const cleaned = stripCodeFences(text);
-
-  // Fast path: the whole string is valid JSON
-  try {
-    return JSON.parse(cleaned);
-  } catch { /* fall through */ }
-
-  // Slow path: find the first { ... } or [ ... ] block
-  const startObj = cleaned.indexOf('{');
-  const startArr = cleaned.indexOf('[');
-  const start = startObj === -1 ? startArr
-    : startArr === -1 ? startObj
-    : Math.min(startObj, startArr);
-
-  if (start === -1) return null;
-
-  const open = cleaned[start];
-  const close = open === '{' ? '}' : ']';
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-
-  for (let i = start; i < cleaned.length; i++) {
-    const ch = cleaned[i];
-    if (escape) { escape = false; continue; }
-    if (ch === '\\') { escape = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
-    if (inString) continue;
-    if (ch === open) depth++;
-    else if (ch === close) depth--;
-    if (depth === 0) {
-      try {
-        return JSON.parse(cleaned.slice(start, i + 1));
-      } catch {
-        return null;
-      }
-    }
-  }
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// Schema validation
-// ---------------------------------------------------------------------------
-
-/**
- * Validate a parsed JSON object against a simple schema definition.
- *
- * Schema format:
- *   { fieldName: { type: 'string'|'array'|'object', required: true|false } }
- *
- * Returns { valid: true } or { valid: false, errors: string[] }.
- */
-export function validateSchema(obj, schema) {
-  if (!obj || typeof obj !== 'object') {
-    return { valid: false, errors: ['Value is not an object'] };
-  }
-  const errors = [];
-  for (const [field, rule] of Object.entries(schema)) {
-    const val = obj[field];
-    if (val === undefined || val === null) {
-      if (rule.required) errors.push(`Missing required field "${field}"`);
-      continue;
-    }
-    if (rule.type === 'array' && !Array.isArray(val)) {
-      errors.push(`Field "${field}" should be an array`);
-    } else if (rule.type === 'object' && (typeof val !== 'object' || Array.isArray(val))) {
-      errors.push(`Field "${field}" should be an object`);
-    } else if (rule.type === 'string' && typeof val !== 'string') {
-      errors.push(`Field "${field}" should be a string`);
-    }
-  }
-  return errors.length ? { valid: false, errors } : { valid: true };
-}
+import { extractJSON } from '../../utils/jsonUtils.js';
+export { extractJSON, stripCodeFences } from '../../utils/jsonUtils.js';
 
 // ---------------------------------------------------------------------------
 // Retryable LLM JSON call
@@ -108,20 +15,19 @@ export function validateSchema(obj, schema) {
  * @param {object}   llm        - client from createLLM()
  * @param {Array}    messages   - Messages to send
  * @param {object}   opts
- * @param {object}   [opts.schema]     - Schema to validate against (optional)
+ * @param {import('zod').ZodType} [opts.schema] - Schema to validate against (optional)
  * @param {number}   [opts.maxRetries] - Max retry attempts (default 2)
- * @param {string}   [opts.nodeName]   - Node name for logging
  * @returns {{ parsed: object|null, raw: string, retries: number }}
  */
 export async function invokeLLMForJSON(llm, messages, opts = {}) {
-  const { schema, maxRetries = 2, nodeName = 'unknown' } = opts;
+  const { schema, maxRetries = 2 } = opts;
   let lastRaw = '';
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const response = await llm.invoke(messages);
     lastRaw = typeof response.content === 'string' ? response.content : '';
 
-    const parsed = extractJSON(lastRaw);
+    let parsed = extractJSON(lastRaw);
     if (parsed === null) {
       // JSON extraction failed — build a retry prompt
       if (attempt < maxRetries) {
@@ -137,19 +43,17 @@ export async function invokeLLMForJSON(llm, messages, opts = {}) {
       break;
     }
 
-    // Schema validation (if provided)
     if (schema) {
-      const { valid, errors } = validateSchema(parsed, schema);
-      if (!valid && attempt < maxRetries) {
-        messages = [
+      const checked = schema.safeParse(parsed);
+      if (!checked.success) {
+        if (attempt < maxRetries) messages = [
           ...messages,
           { role: 'assistant', content: lastRaw },
-          { role: 'user', content:
-            `The JSON was parsed but has schema issues: ${errors.join('; ')}. `
-            + 'Please fix and output ONLY the corrected JSON object.' },
+          { role: 'user', content: `The JSON has schema issues: ${checked.error.message}. Please fix it and output only the corrected JSON.` }
         ];
         continue;
       }
+      parsed = checked.data;
     }
 
     return { parsed, raw: lastRaw, retries: attempt };

@@ -1,3 +1,5 @@
+import { withoutComments } from '../../../backend/src/latex/text.js';
+
 // \begin{…} completion: the environments LaTeX, packages and classes provide, what to insert for them,
 // and a scan of what a project loads and defines (its labels, commands and bibliography too, for the other
 // completions). Names checked against the TeX Live 2026 sources.
@@ -207,9 +209,6 @@ export const ALGORITHM2E_SNIPPET: Snip = ['', ['\\caption{}', '\\KwIn{}', '\\KwO
 
 // ─── What a file loads and defines ───
 
-/** Drops comments, keeping \% (a % after \\ does start one). */
-const stripComments = (src: string) => src.replace(/(^|[^\\])((?:\\\\)*)%.*$/gm, '$1$2');
-
 // one \s* each side of an optional [...] (here and in def), so a long run of spaces can't make a match quadratic
 const LOAD_RE = /\\(usepackage|RequirePackage|documentclass|LoadClass)(?:WithOptions)?\s*(?:\[[^\]]*\]\s*)?\{([^}]+)\}/g;
 const LIB_RE = /\\(usetikzlibrary|usepgfplotslibrary|tcbuselibrary)\s*\{([^}]+)\}/g;
@@ -262,7 +261,7 @@ export type TexScan = {
 };
 
 export function scanTex(src: string): TexScan {
-  src = stripComments(src);
+  src = withoutComments(src);
   const scan: TexScan = { packages: [], classes: [], libraries: [], defined: [], inputs: [], labels: [], commands: [], bibs: [], externals: [] };
   const names = (list: string) => list.split(',').map((n) => n.trim()).filter(Boolean);
   for (const m of src.matchAll(LOAD_RE)) (/class/i.test(m[1]) ? scan.classes : scan.packages).push(...names(m[2]));

@@ -1,20 +1,7 @@
 import path from 'path';
 import { getProjectRoot } from '../../projectService.js';
 import { listFilesRecursive } from '../../../utils/fsUtils.js';
-import { inlineInputs } from '../../../utils/texUtils.js';
-
-/**
- * Parse section/subsection outline from LaTeX content.
- */
-function parseOutline(content) {
-  const outline = [];
-  const pattern = /\\(section|subsection|subsubsection)\*?\{([^}]*)\}/g;
-  let match;
-  while ((match = pattern.exec(content)) !== null) {
-    outline.push({ level: match[1], title: match[2].trim() });
-  }
-  return outline;
-}
+import { inlineInputs, parseSectionOutline } from '../../../utils/texUtils.js';
 
 /**
  * Collect asset references from LaTeX content.
@@ -64,7 +51,7 @@ export async function analyzeSource(state) {
 
   // Resolve all \input/\include and get full content
   const fullContent = await inlineInputs(projectRoot, state.sourceMainFile);
-  const outline = parseOutline(fullContent);
+  const outline = parseSectionOutline(fullContent);
   const assets = collectAssets(fullContent, allFiles);
 
   return {

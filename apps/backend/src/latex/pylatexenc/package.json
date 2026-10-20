@@ -1,0 +1,8 @@
+{
+  "name": "spectrum-pylatexenc",
+  "version": "3.0.0-beta.2",
+  "private": true,
+  "type": "module",
+  "license": "MIT AND Apache-2.0 AND W3C",
+  "upstreamRevision": "316f9c00814da019ec24d3b06e9866f3be94258d"
+}

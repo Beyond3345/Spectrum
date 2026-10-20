@@ -2,6 +2,21 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.10.2 (20 October 2026)
+
+### Fixed
+
+- Long bibliography URLs wrap within the page in every built-in template, including APA 7 and conference layouts
+- Generated webpage references print the URL once, with compatibility for classic BibTeX styles that do not support the URL field
+- Reference imports recover missing authors from matching on-page BibTeX exports, including alphaXiv; partial scholarly metadata can use configured search fallbacks
+- Reference text and fallback citation queries use pylatexenc for TeX decoding; HTML entities use the complete standard entity set
+- Shared escaping preserves literal backslashes, carets and tildes in project titles; comment handling is consistent across editor and backend tools
+- Model JSON validation uses Zod and rejects invalid answers after all retries instead of accepting malformed layout results
+
+### Changed
+
+- Consolidated duplicate JSON extraction and template transfer outline helpers; documented the helper review in `docs/HELPER_REUSE_REVIEW.md`
+
 ## 1.10.1 (20 October 2026)
 
 ### Added

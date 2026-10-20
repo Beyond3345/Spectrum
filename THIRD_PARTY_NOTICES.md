@@ -5,6 +5,7 @@ Spectrum is released under the MIT Licence given in [LICENSE](LICENSE). It inclu
 | Component | Where | Licence |
 | --- | --- | --- |
 | [OpenPrism](https://github.com/OpenDCAI/OpenPrism) | the code Spectrum was forked from | MIT, see [LICENSE](LICENSE) |
+| [pylatexenc](https://github.com/phfaist/pylatexenc) 3.0b2, upstream revision `316f9c0`, generated with Transcrypt 3.9.3 | `apps/backend/src/latex/pylatexenc/`, adapted as documented in its README and shipped with the backend | MIT, Apache 2.0 and W3C Software Licence; includes debug 4.4.3 and ms under MIT. See [the included licences](apps/backend/src/latex/pylatexenc/licences/) |
 | [nodehun](https://github.com/Wulf/nodehun) 3.0.2 | `native/nodehun/`, built into `native/nodehun.node` | MIT, see [native/nodehun/LICENSE.md](native/nodehun/LICENSE.md) |
 | [Hunspell](https://hunspell.github.io) 1.3.3 (the hunspell-distributed fork bundled with nodehun) | `native/nodehun/hunspell/`, compiled into `native/nodehun.node` | MPL 1.1, LGPL 2.1 or GPL 2, at the user's choice. Spectrum uses it under the MPL 1.1, see [native/nodehun/hunspell/COPYING.MPL](native/nodehun/hunspell/COPYING.MPL). The source is included in this repository |
 | [Harper](https://github.com/Automattic/harper) 2.12.0 | `native/harper/`, built from harper-wasm without the thesaurus and Typst features | Apache 2.0, see [native/harper/LICENSE](native/harper/LICENSE) |

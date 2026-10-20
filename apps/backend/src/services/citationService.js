@@ -1,6 +1,7 @@
 import { callOpenAICompatible } from './llmService.js';
 import { searchPapers, searchWithFallback } from './searchService.js';
 import { extractJSON } from './transferAgent/utils.js';
+import { latexToText } from '../latex/conversion.js';
 
 function citeKey(bibtex) {
   return String(bibtex).match(/@\w+\s*\{\s*([^,\s]+)\s*,/)?.[1] || '';
@@ -31,7 +32,7 @@ export async function suggestCitations({ text, llmConfig, searchConfig, maxResul
     queries = (extractJSON(queryRes.content)?.queries || []).filter((q) => typeof q === 'string' && q.trim()).slice(0, 3);
   }
   if (!queries.length) {
-    queries = [passage.replace(/\\[a-zA-Z]+(\{[^}]*\})?|[{}$%]/g, ' ').split(/\s+/).filter(Boolean).slice(0, 12).join(' ')];
+    queries = [latexToText(passage).split(/\s+/).filter(Boolean).slice(0, 12).join(' ')];
   }
 
   const seen = new Set();

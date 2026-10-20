@@ -1,3 +1,4 @@
+import { escapeTexText } from '../../../backend/src/latex/text.js';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -157,10 +158,9 @@ const TAG_COLOURS: Record<TagColour, [string, string]> = {
 const tagColour = (tag: string, chosen: AppSettings['tagColours']) =>
   TAG_COLOURS[chosen[tag] ?? TAG_COLOUR_NAMES[[...tag].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % TAG_COLOUR_NAMES.length]][1];
 
-const texEscape = (s: string) => s.replace(/[\\~^]/g, '').replace(/[&%$#_{}]/g, '\\$&');
 const blankTex = (name: string) => `\\documentclass[11pt]{article}
 
-\\title{${texEscape(name)}}
+\\title{${escapeTexText(name)}}
 \\author{}
 \\date{\\today}
 

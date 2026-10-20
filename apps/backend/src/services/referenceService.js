@@ -4,6 +4,9 @@ import { lookup as dnsLookup } from 'dns/promises';
 import net from 'net';
 import path from 'path';
 import { XMLParser } from 'fast-xml-parser';
+import { parseEntities } from 'parse-entities';
+import { latexToText, unicodeToLatex } from '../latex/conversion.js';
+import { escapeTexText, withoutComments } from '../latex/text.js';
 import { listFilesRecursive } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { callOpenAICompatible, missingKey, resolveLLMConfig } from './llmService.js';
@@ -128,23 +131,7 @@ export async function splitInput(text, llmConfig) {
 
 // ─── Text helpers ───
 
-const NAMED_ENTITIES = {
-  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ndash: '–', mdash: '—', hellip: '…',
-  lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', szlig: 'ß', aelig: 'æ', AElig: 'Æ', oslash: 'ø', Oslash: 'Ø'
-};
-const ENTITY_MARKS = { acute: '́', grave: '̀', circ: '̂', uml: '̈', tilde: '̃', cedil: '̧', ring: '̊', caron: '̌' };
-
-export function decodeEntities(s) {
-  return String(s ?? '').replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (m, e) => {
-    if (e[0] === '#') {
-      const cp = /^#x/i.test(e) ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
-      return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : m;
-    }
-    if (NAMED_ENTITIES[e]) return NAMED_ENTITIES[e];
-    const accent = e.match(/^([a-z])(acute|grave|circ|uml|tilde|cedil|ring|caron)$/i);
-    return accent ? (accent[1] + ENTITY_MARKS[accent[2].toLowerCase()]).normalize('NFC') : m;
-  });
-}
+export const decodeEntities = (value) => parseEntities(String(value ?? ''), { attribute: true });
 
 /** Provider strings may carry HTML/MathML tags and entities. */
 const cleanText = (s) => decodeEntities(String(s ?? '').replace(/<\/?[a-z][^>]*>/gi, '')).replace(/\s+/g, ' ').trim();
@@ -174,10 +161,8 @@ export function foldAscii(s) {
   return String(s ?? '').replace(/[ßæÆœŒøØłŁđĐþÞı]/g, (c) => FOLD[c]).normalize('NFD').replace(/\p{M}/gu, '');
 }
 
-const stripTex = (s) => String(s ?? '').replace(/\\[A-Za-z]+\s*|\\./g, '').replace(/[{}]/g, '');
-
 export function normaliseTitle(s) {
-  return foldAscii(stripTex(s)).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  return foldAscii(latexToText(s)).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
 function matchBrace(s, i) {
@@ -200,26 +185,21 @@ function keepsCase(word) {
 }
 
 // pdfLaTeX (what Auto picks for most documents) only knows characters up to Latin Extended-A.
-const GREEK = {
-  Α: 'A', Β: 'B', Γ: '\\Gamma', Δ: '\\Delta', Ε: 'E', Ζ: 'Z', Η: 'H', Θ: '\\Theta', Ι: 'I', Κ: 'K', Λ: '\\Lambda', Μ: 'M',
-  Ν: 'N', Ξ: '\\Xi', Ο: 'O', Π: '\\Pi', Ρ: 'P', Σ: '\\Sigma', Τ: 'T', Υ: '\\Upsilon', Φ: '\\Phi', Χ: 'X', Ψ: '\\Psi', Ω: '\\Omega',
-  α: '\\alpha', β: '\\beta', γ: '\\gamma', δ: '\\delta', ε: '\\varepsilon', ζ: '\\zeta', η: '\\eta', θ: '\\theta', ι: '\\iota',
-  κ: '\\kappa', λ: '\\lambda', μ: '\\mu', ν: '\\nu', ξ: '\\xi', ο: 'o', π: '\\pi', ρ: '\\rho', ς: '\\varsigma', σ: '\\sigma',
-  τ: '\\tau', υ: '\\upsilon', φ: '\\varphi', χ: '\\chi', ψ: '\\psi', ω: '\\omega'
-};
 const ACCENT_MACROS = {
   '\u0300': '`', '\u0301': "'", '\u0302': '^', '\u0303': '~', '\u0304': '=', '\u0306': 'u', '\u0307': '.',
   '\u0308': '"', '\u030a': 'r', '\u030b': 'H', '\u030c': 'v', '\u0323': 'd', '\u0327': 'c', '\u0328': 'k'
 };
 
-/** β → {$\beta$}, ễ → {\~{\^{e}}}; anything else past U+017F stays as it is. */
+/** Encode Greek and compound Latin accents for pdfLaTeX, preserving other Unicode. */
 export function pdfTexSafe(text) {
   return text.replace(/[^\u0000-\u017f]/gu, (ch) => {
-    const greek = GREEK[ch];
-    if (greek) return greek.startsWith('\\') ? `{$${greek}$}` : greek;
+    const encoded = /\p{Script=Greek}/u.test(ch) ? unicodeToLatex(ch) : ch;
+    if (encoded !== ch) return encoded;
+    // shortcut: pylatexenc leaves compound Vietnamese accents unchanged; keep this until its encoder covers them.
     const [letter, ...marks] = [...ch.normalize('NFD')];
     if (!marks.length || letter > '\u017f' || marks.some((m) => !ACCENT_MACROS[m])) return ch;
-    return `{${marks.reduce((inner, m) => `\\${ACCENT_MACROS[m]}{${inner}}`, letter)}}`;
+    // Biber can decode the inner accent; an extra group keeps its multibyte result a single TeX argument.
+    return `{${marks.reduce((inner, m, i) => `\\${ACCENT_MACROS[m]}{${i ? `{${inner}}` : inner}}`, letter)}}`;
   });
 }
 
@@ -228,9 +208,8 @@ export function pdfTexSafe(text) {
  * “x^2 in text”); for titles, words with internal capitals braced as texEscape does.
  */
 export function plainTex(text, { protect = false } = {}) {
-  const SPECIAL = { '\\': '\\textbackslash{}', '^': '\\^{}', '~': '\\~{}' };
   const s = texQuotes(String(text ?? ''));
-  const escaped = s.replace(/[\\{}$&%#_^~]/g, (ch) => SPECIAL[ch] || `\\${ch}`);
+  const escaped = escapeTexText(s);
   // the escapes are lower-case words, so they're never braced
   return pdfTexSafe(protect && /\p{Ll}/u.test(s) ? escaped.replace(COMPOUND_RE, (w) => (keepsCase(w) ? `{${w}}` : w)) : escaped);
 }
@@ -363,7 +342,7 @@ export function baseKey(rec) {
     }
   }
   if (!stem) {
-    const words = foldAscii(stripTex(cleanText(first(rec.title)))).split(/\s+/);
+    const words = foldAscii(latexToText(cleanText(first(rec.title)))).split(/\s+/);
     stem = words.map((w) => w.replace(/[^A-Za-z]/g, '')).find((w) => w && !TITLE_STOPWORDS.has(w.toLowerCase())) || 'Ref';
   }
   return capitalise(stem) + yearOf(rec);
@@ -406,7 +385,7 @@ function arxivOf(rec) {
   return { id: stripVersion(id), primaryClass };
 }
 
-export function toBibtex(rec, key) {
+export function toBibtex(rec, key, legacyUrls = false) {
   const arxiv = arxivOf(rec);
   let type = TYPE_MAP[rec.type] || 'misc';
   const preprint = Boolean(arxiv) && type === 'misc';
@@ -442,10 +421,10 @@ export function toBibtex(rec, key) {
   add('pages', plain(rec.page || rec['article-number']).replace(/\s*[-–—]+\s*/g, '--'));
   if (!preprint) add({ techreport: 'institution', phdthesis: 'school' }[type] || 'publisher', plain(rec.publisher));
   add('doi', doi);
-  if (webpage) {
+  if (webpage && legacyUrls) {
     add('howpublished', url && `\\url{${url}}`);
   }
-  if (webpage || arxiv || !doi || type === 'misc') add('url', url);
+  if (!(webpage && legacyUrls) && (webpage || arxiv || !doi || type === 'misc')) add('url', url);
   // published versions keep their arXiv id too, so pasting the preprint later is a duplicate
   if (arxiv) {
     add('eprint', arxiv.id);
@@ -541,7 +520,7 @@ function bibIdentity(entry, file) {
     firstAuthor: surnameKey(author.includes(',') ? author.split(',')[0] : author),
     title: normaliseTitle(f.title || ''),
     year: String(f.year || f.date || '').match(/\d{4}/)?.[0] || '',
-    displayTitle: stripTex(f.title || '').replace(/\s+/g, ' ').trim()
+    displayTitle: latexToText(f.title || '').replace(/\s+/g, ' ').trim()
   };
 }
 
@@ -605,19 +584,11 @@ export function pickBibTarget(root, files, requested) {
 export function texIncludesBib(texSources, bibFile) {
   const name = path.posix.basename(bibFile).replace(/\.bib$/i, '').toLowerCase();
   return texSources.some((source) => {
-    const text = String(source).replace(/(^|[^\\])%.*$/gm, '$1');
+    const text = withoutComments(source);
     return [...text.matchAll(/\\(?:bibliography|addbibresource)\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}/g)].some((m) =>
       m[1].split(',').some((p) => path.posix.basename(p.trim()).replace(/\.bib$/i, '').toLowerCase() === name)
     );
   });
-}
-
-async function isBibIncluded(root, files, bibFile) {
-  const sources = [];
-  for (const file of files.filter((f) => /\.tex$/i.test(f))) {
-    sources.push(await fs.readFile(path.join(root, file), 'utf8').catch(() => ''));
-  }
-  return texIncludesBib(sources, bibFile);
 }
 
 /** Append one entry, leaving every existing byte untouched; one blank line between entries. */
@@ -826,7 +797,10 @@ function structuredPage(html, url) {
   const page = candidates.find((n) => address(n) && canonical(address(n)) === canonical(url))
     || candidates.find((n) => !address(n));
   if (!page) return null;
-  const deref = (v) => nodes.find((n) => n['@id'] === (typeof v === 'string' ? v : v?.['@id']) && n.name) || v;
+  const deref = (v) => {
+    const id = typeof v === 'string' ? v : v?.['@id'];
+    return id ? nodes.find((n) => n['@id'] === id && n.name) || v : v;
+  };
   const authors = [].concat(page.author || []).map(deref).map((a) => {
     if (typeof a === 'string') return /^https?:/i.test(a) ? null : parseName(a);
     if (a?.['@type'] === 'Organization') return a.name ? { literal: cleanText(a.name) } : null;
@@ -839,6 +813,37 @@ function structuredPage(html, url) {
   };
 }
 
+/** Some paper pages omit authors from metadata but display a complete citation export. */
+function exportedCitation(html, title) {
+  if (!title) return null;
+  const visible = String(html).replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '');
+  for (const block of visible.matchAll(/<(pre|code|button)\b[^>]*>([\s\S]*?)<\/\1>/gi)) {
+    const entry = parseBibEntries(cleanText(block[2])).find((e) => normaliseTitle(e.fields.title) === normaliseTitle(title));
+    if (!entry) continue;
+    const names = (entry.fields.author || '').trim();
+    const authors = [];
+    let start = 0;
+    for (let i = 0; i <= names.length; i++) {
+      if (names[i] === '{') {
+        const end = matchBrace(names, i);
+        if (end < 0) return null;
+        i = end;
+      } else {
+        const separator = names.slice(i).match(/^\s+and\s+/i);
+        if (!separator && i < names.length) continue;
+        const name = names.slice(start, i).trim();
+        const author = name.startsWith('{') && matchBrace(name, 0) === name.length - 1
+          ? { literal: latexToText(name.slice(1, -1)) } : parseName(latexToText(name));
+        if (author) authors.push(author);
+        if (separator) i += separator[0].length - 1;
+        start = i + 1;
+      }
+    }
+    return { author: authors, publisher: latexToText(entry.fields.publisher || ''), issued: issuedFromDate(entry.fields.date || entry.fields.year) };
+  }
+  return null;
+}
+
 /** A page → { doi } | { arxiv } | { record } | null, following §6's order. */
 export function readHtmlCitation(html, url, now = new Date()) {
   const meta = parseHtmlMeta(html);
@@ -849,6 +854,12 @@ export function readHtmlCitation(html, url, now = new Date()) {
     .map((v) => v.match(DOI_RE)?.[1])
     .find(Boolean);
   const title = one('citation_title');
+  const pageTitle = title || structured?.title || one('og:title', 'twitter:title') || cleanText(String(html).match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]);
+  const exported = exportedCitation(html, pageTitle);
+  const citationAuthors = (meta.citation_author || []).map(parseName).filter(Boolean);
+  const author = one('author');
+  const authors = citationAuthors.length ? citationAuthors : structured?.author.length ? structured.author : exported?.author.length ? exported.author
+    : author && !/^https?:/i.test(author) ? [parseName(author)].filter(Boolean) : [];
   let record = null;
   if (title) {
     const journal = one('citation_journal_title');
@@ -857,13 +868,13 @@ export function readHtmlCitation(html, url, now = new Date()) {
     record = {
       type: journal ? 'article-journal' : conference ? 'paper-conference' : book ? 'chapter' : 'other',
       title,
-      author: (meta.citation_author || []).map(parseName).filter(Boolean),
-      issued: issuedFromDate(one('citation_publication_date', 'citation_date', 'citation_year')) || structured?.issued,
+      author: authors,
+      issued: issuedFromDate(one('citation_publication_date', 'citation_date', 'citation_year')) || structured?.issued || exported?.issued,
       'container-title': journal || conference || book,
       volume: one('citation_volume'),
       issue: one('citation_issue'),
       page: [one('citation_firstpage'), one('citation_lastpage')].filter(Boolean).join('-'),
-      publisher: one('citation_publisher'),
+      publisher: one('citation_publisher') || exported?.publisher || structured?.publisher,
       URL: url
     };
   }
@@ -874,16 +885,14 @@ export function readHtmlCitation(html, url, now = new Date()) {
     return arxiv ? { arxiv: stripVersion(arxiv) } : { record };
   }
 
-  const pageTitle = structured?.title || one('og:title', 'twitter:title') || cleanText(String(html).match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]);
-  const author = one('author');
   const published = structured?.issued || issuedFromDate(one('article:published_time', 'og:published_time', 'datepublished', 'parsely-pub-date', 'sailthru.date', 'dc.date.issued', 'dcterms.issued', 'dc.date', 'pubdate', 'date'))
-    || issuedFromDate(String(html).match(/<time\b[^>]*\bdatetime\s*=\s*["']([^"']+)["'][^>]*>/i)?.[1]);
+    || issuedFromDate(String(html).match(/<time\b[^>]*\bdatetime\s*=\s*["']([^"']+)["'][^>]*>/i)?.[1]) || exported?.issued;
   const webpage = pageTitle ? {
     type: 'webpage',
     title: pageTitle,
-    author: structured?.author.length ? structured.author : author && !/^https?:/i.test(author) ? [parseName(author)].filter(Boolean) : [],
+    author: authors,
     issued: published,
-    publisher: structured?.publisher || one('og:site_name'),
+    publisher: exported?.publisher || structured?.publisher || one('og:site_name'),
     URL: url,
     accessed: now.toISOString()
   } : null;
@@ -966,7 +975,7 @@ async function recordFromUrl(url, searchConfig) {
     if (err.code === 'BLOCKED_URL') throw err;
     failure = err;
   }
-  if (searchConfig && (!record || (record.type === 'webpage' && (!yearOf(record) || !record.author?.length)))) {
+  if (searchConfig && (!record || !yearOf(record) || !record.author?.length && !record.editor?.length)) {
     try {
       const { searchReferenceRecords } = await import('./searchService.js');
       const extra = (await searchReferenceRecords({ searchConfig, targetUrl: record?.URL || url }))[0];
@@ -1110,6 +1119,11 @@ async function resolveItems(projectRoot, items, bibFile, searchConfig) {
   return withBibLock(async () => {
     const files = await projectFiles(projectRoot);
     const target = pickBibTarget(projectRoot, files, bibFile);
+    const sources = await Promise.all(files.filter((f) => /\.tex$/i.test(f)).map((file) => fs.readFile(path.join(projectRoot, file), 'utf8').catch(() => '')));
+    const bibliographySources = withoutComments(sources.filter((source) => texIncludesBib([source], target)).join('\n'));
+    // Classic BibTeX styles ignore url; modern styles print it, so never emit both fields.
+    const legacyUrls = /\\bibliographystyle\s*\{(?:plain|abbrv|alpha|unsrt|acm|apalike|ieeetr)\}/.test(bibliographySources)
+      && !/\\addbibresource\b|\{biblatex\}/.test(bibliographySources);
     const index = await loadBibIndex(projectRoot, files);
     const taken = new Set(index.map((e) => e.key.toLowerCase()));
     const outcomes = await mapPool(items, 4, (item) => lookup(item, index, searchConfig));
@@ -1128,7 +1142,7 @@ async function resolveItems(projectRoot, items, bibFile, searchConfig) {
         continue;
       }
       const key = uniqueKey(baseKey(record), taken);
-      const bibtex = toBibtex(record, key);
+      const bibtex = toBibtex(record, key, legacyUrls);
       try {
         await appendEntry(safeJoin(projectRoot, target), bibtex);
       } catch (err) {
@@ -1139,7 +1153,7 @@ async function resolveItems(projectRoot, items, bibFile, searchConfig) {
       index.push({ ...id, key, file: target, displayTitle: cleanText(first(record.title)) });
       results.push({ input, status: 'added', key, bibtex, bibFile: target, ...summaryOf(record) });
     }
-    return { results, bibFile: target, bibIncluded: await isBibIncluded(projectRoot, files, target) };
+    return { results, bibFile: target, bibIncluded: texIncludesBib(sources, target) };
   });
 }
 

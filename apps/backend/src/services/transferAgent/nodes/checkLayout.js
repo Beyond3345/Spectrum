@@ -1,5 +1,6 @@
+import { z } from 'zod';
 import { createLLM } from '../../llmService.js';
-import { extractJSON, validateSchema } from '../utils.js';
+import { extractJSON } from '../utils.js';
 
 /**
  * checkLayout node — sends page screenshots to VLM
@@ -33,10 +34,10 @@ export async function checkLayout(state) {
   const message = { role: 'user', content: contentParts };
 
   // Schema for layout check result
-  const layoutSchema = {
-    summary: { type: 'string', required: false },
-    issues:  { type: 'array', required: true },
-  };
+  const layoutSchema = z.object({
+    summary: z.string().nullish(),
+    issues: z.array(z.object({ severity: z.enum(['high', 'medium', 'low']) }).passthrough())
+  }).passthrough();
 
   const MAX_RETRIES = 2;
   let result = null;
@@ -73,19 +74,17 @@ export async function checkLayout(state) {
       break;
     }
 
-    const { valid, errors } = validateSchema(parsed, layoutSchema);
-    if (!valid && attempt < MAX_RETRIES) {
-      messages = [
-        message,
-        { role: 'assistant', content: raw },
-        { role: 'user', content:
-          `The JSON was parsed but has schema issues: ${errors.join('; ')}. `
-          + 'Please fix and output ONLY the corrected JSON object.' },
-      ];
-      continue;
+    const checked = layoutSchema.safeParse(parsed);
+    if (!checked.success) {
+      if (attempt < MAX_RETRIES) {
+        messages = [message, { role: 'assistant', content: raw },
+          { role: 'user', content: `The JSON has schema issues: ${checked.error.message}. Please fix it and output only the corrected JSON.` }];
+        continue;
+      }
+      result = { ok: false, issues: [], parseError: true, raw };
+      break;
     }
-
-    result = parsed;
+    result = checked.data;
     break;
   }
 
@@ -97,7 +96,7 @@ export async function checkLayout(state) {
   const count = (result.issues || []).length;
 
   return {
-    layoutCheckResult: { ok: !hasIssues, ...result },
+    layoutCheckResult: { ...result, ok: !result.parseError && !hasIssues },
     layoutAttempt: (state.layoutAttempt || 0) + 1,
     progressLog: result.parseError
       ? 'Layout check: the model’s answer couldn’t be read.'

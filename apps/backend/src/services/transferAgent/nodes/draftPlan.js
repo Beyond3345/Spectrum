@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { createLLM } from '../../llmService.js';
 import { invokeLLMForJSON } from '../utils.js';
 
@@ -46,16 +47,16 @@ Rules:
 - Keep the target preamble unchanged
 - Output ONLY valid JSON, no markdown fences`;
 
-  const planSchema = {
-    sectionMapping: { type: 'array', required: true },
-    assetStrategy:  { type: 'object', required: true },
-    notes:          { type: 'string', required: false },
-  };
+  const planSchema = z.object({
+    sectionMapping: z.array(z.unknown()),
+    assetStrategy: z.record(z.string(), z.unknown()),
+    notes: z.string().nullish()
+  }).passthrough();
 
   const { parsed, raw } = await invokeLLMForJSON(
     llm,
     [{ role: 'user', content: prompt }],
-    { schema: planSchema, maxRetries: 2, nodeName: 'draftPlan' },
+    { schema: planSchema, maxRetries: 2 },
   );
 
   const plan = parsed || { raw, parseError: true, sectionMapping: [], assetStrategy: {}, notes: '' };

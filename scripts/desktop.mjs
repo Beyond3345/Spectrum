@@ -40,11 +40,12 @@ async function bundleBackend() {
   const outDir = path.join(resourcesDir, 'backend');
   fs.rmSync(outDir, { recursive: true, force: true });
   await esbuild.build({
-    // the spell and grammar workers run as threads of their own, from files beside server.mjs
+    // Workers run as threads of their own, from files beside server.mjs.
     entryPoints: {
       server: path.join(root, 'apps/backend/src/index.js'),
       spellWorker: path.join(root, 'apps/backend/src/services/spellWorker.mjs'),
-      grammarWorker: path.join(root, 'apps/backend/src/services/grammarWorker.mjs')
+      grammarWorker: path.join(root, 'apps/backend/src/services/grammarWorker.mjs'),
+      latexTextWorker: path.join(root, 'apps/backend/src/latex/latexTextWorker.mjs')
     },
     outdir: outDir,
     outExtension: { '.js': '.mjs' },
@@ -62,6 +63,7 @@ async function bundleBackend() {
       js: "import { createRequire as __spectrumCreateRequire } from 'node:module';\nconst require = __spectrumCreateRequire(import.meta.url);",
     },
   });
+  copyDir(path.join(root, 'apps/backend/src/latex/pylatexenc'), path.join(outDir, 'pylatexenc'));
   if (win) fs.copyFileSync(buildAgentSandbox(), path.join(outDir, 'Spectrum.AgentWorker.exe'));
   console.log(`Bundled backend → ${path.relative(root, path.join(outDir, 'server.mjs'))}`);
 }

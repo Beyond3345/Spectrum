@@ -65,7 +65,8 @@ test('Exa: publications for research questions, the whole web otherwise, DOIs lo
   assert.equal(paper.summary, 'Deep learning allows…');
   assert.deepEqual([paper.doi, paper.year, paper.venue], ['10.1038/nature14539', '2015', 'Nature']);
   assert.equal(typeAndKey(page.bibtex)[0], 'misc');
-  assert.equal(fields(page.bibtex).howpublished, '\\url{https://ctan.org/pkg/circuitikz}');
+  assert.equal(fields(page.bibtex).url, 'https://ctan.org/pkg/circuitikz');
+  assert.equal(fields(page.bibtex).howpublished, undefined);
   assert.equal(fields(page.bibtex).note, undefined);
   assert.equal(fields(page.bibtex).date, '2024-05-01');
   assert.equal(fields(page.bibtex).year, '2024');
@@ -215,7 +216,8 @@ test('DDGS passes the query safely and maps its results', { skip: noPython }, as
   assert.equal(hit.title, tricky);
   assert.equal(hit.summary, 'google,bing,brave,duckduckgo,mojeek,yahoo|4');
   assert.equal(typeAndKey(hit.bibtex)[0], 'misc');
-  assert.equal(fields(hit.bibtex).howpublished, '\\url{https://example.com/a}');
+  assert.equal(fields(hit.bibtex).url, 'https://example.com/a');
+  assert.equal(fields(hit.bibtex).howpublished, undefined);
   // nothing at all can be every engine limiting requests: said, not shown as an empty search
   await assert.rejects(searchDdgs('none', 5), /DDGS found nothing\. The search engines behind it may be limiting requests/);
   await assert.rejects(searchDdgs('busy', 5), /DDGS failed: 202 Ratelimit/);
@@ -237,7 +239,7 @@ test('DDGS without Python says so', async (t) => {
 test('web page titles are plain text, Scholar\'s cut lists end in others, and a title with no Latin word still keys apart', async () => {
   const { toResult } = await import('../src/services/searchService.js');
   const tex = toResult({ rec: { type: 'webpage', title: 'What is the difference between \\def and \\newcommand? x^2 & 50% ~ #1 _', URL: 'https://tex.stackexchange.com/q/1' } }, 'brave');
-  assert.equal(fields(tex.bibtex).title, 'What is the difference between \\textbackslash{}def and \\textbackslash{}newcommand? x\\^{}2 \\& 50\\% \\~{} \\#1 \\_');
+  assert.equal(fields(tex.bibtex).title, 'What is the difference between \\textbackslash{}def and \\textbackslash{}newcommand? x\\textasciicircum{}2 \\& 50\\% \\textasciitilde{} \\#1 \\_');
   const cut = toResult({ rec: { type: 'article-journal', title: 'Attention is all you need', author: [{ family: 'Vaswani', given: 'A' }, { literal: 'others' }], 'container-title': 'NeurIPS', issued: { 'date-parts': [[2017]] } } }, 'serpapi');
   assert.match(fields(cut.bibtex).author, / and others$/);
   const a = toResult({ rec: { type: 'article-journal', title: '计算机学报论文', author: [{ family: '张伟' }], 'container-title': '计算机学报', issued: { 'date-parts': [[2020]] }, URL: 'https://example.cn/a' } }, 'serpapi');

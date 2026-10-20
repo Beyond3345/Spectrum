@@ -95,10 +95,12 @@ A DOI, a link, an arXiv ID or a paper title can be pasted into the references ch
 
 1. a DOI is resolved through doi.org content negotiation, which covers both Crossref and DataCite DOIs, with the Crossref API as a fallback
 2. an arXiv ID uses the arXiv API, and the published DOI is used instead when the paper has one
-3. any other link is read for publisher metadata, including JSON-LD, authors and complete publication dates. When a page is blocked or missing author/date metadata, enabled search connections are tried for the exact page, starting with the default. Exa uses its Contents endpoint; other providers use citation-focused queries. Unknown dates and authors are left empty
+3. any other link is read for publisher metadata, including JSON-LD, authors and complete publication dates. If authors are absent, a displayed BibTeX export with the same title can supply them, including on alphaXiv. When a page is blocked or missing author/date metadata, enabled search connections are tried for the exact page, starting with the default. Exa uses its Contents endpoint; other providers use citation-focused queries. Unknown dates and authors are left empty
 4. a title is searched on Crossref, and if no single result clearly matches, the closest candidates are shown to choose from
 
 The citation key is the first author's surname followed by the year, for example `Vaswani2017`. Accents are removed and name particles are joined, so "van der Waals" becomes `VanderWaals`. When the key already exists for a different paper, a letter is added (`Smith2020a`, `Smith2020b`). A paper whose DOI or arXiv ID is already in the project is reported as a duplicate and is not added again.
+
+Built-in templates use `xurl` so long bibliography links can wrap within the page. In an existing document, add `\usepackage{xurl}` after the bibliography package (such as `biblatex` or `natbib`) and before `hyperref`, then recompile. Keep URLs intact in the `.bib` file. Generated webpage entries store the address once in `url`; the reference importer uses `howpublished` instead for classic styles such as `plain` that ignore `url`. If an older generated entry contains both fields, remove `howpublished` when using APA 7 or another URL-aware style.
 
 Imported titles use LaTeX opening/closing quotation marks while preserving apostrophes inside words. arXiv references retain their canonical `https://arxiv.org/abs/…` URL alongside their DOI and identifier. Unknown publication dates stay unknown rather than being guessed from an address or copyright notice.
 
@@ -165,9 +167,9 @@ To set it up, add a cloud location under Cloud locations in the Projects section
 
 ## Installing
 
-Download the macOS 1.10.1 installer and its SHA-256 checksum from the [latest GitHub release](https://github.com/Beyond3345/Spectrum/releases/latest). The Windows 1.10.1 installer will be added to the same release later; Windows users can use [version 1.10.0](https://github.com/Beyond3345/Spectrum/releases/tag/v1.10.0) meanwhile.
+Download the macOS 1.10.2 installer and its SHA-256 checksum from the [latest GitHub release](https://github.com/Beyond3345/Spectrum/releases/latest). The Windows 1.10.2 installer will be added to the same release later; Windows users can use [version 1.10.0](https://github.com/Beyond3345/Spectrum/releases/tag/v1.10.0) meanwhile.
 
-1. Open `Spectrum_1.10.1_universal.dmg`
+1. Open `Spectrum_1.10.2_universal.dmg`
 2. Drag Spectrum into the Applications folder
 3. Open Spectrum from the Applications folder
 

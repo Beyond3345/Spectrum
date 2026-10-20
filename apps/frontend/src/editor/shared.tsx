@@ -1,3 +1,6 @@
+import { extractJsonBlock } from '../../../backend/src/utils/jsonUtils.js';
+export { extractJsonBlock } from '../../../backend/src/utils/jsonUtils.js';
+import { withoutComments } from '../../../backend/src/latex/text.js';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { AgentPatch } from '../api/client';
@@ -8,7 +11,7 @@ import type { EditorApi, PendingChange } from './EditorContext';
 export const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 export function citationCommand(source: string) {
-  const text = source.replace(/(^|[^\\])%.*$/gm, '$1');
+  const text = withoutComments(source);
   if (/\\addbibresource\b|\\(?:usepackage|RequirePackage)(?:\s*\[[^\]]*\])?\s*\{biblatex\}/.test(text)) return '\\parencite';
   return /\\usepackage(?:\s*\[[^\]]*\])?\s*\{natbib\}/.test(text) ? '\\citep' : '\\cite';
 }
@@ -79,13 +82,6 @@ export const VISION_HINTS: Partial<Record<VisionMode, string>> = {
 
 // ─── LLM output parsing ───
 
-export function extractJsonBlock(text: string) {
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) return '';
-  return text.slice(start, end + 1);
-}
-
 /** Escapes raw control characters inside JSON strings (models often emit literal newlines). */
 function sanitizeJsonString(raw: string) {
   let inString = false;
@@ -137,6 +133,15 @@ export const parseJsonReply = <T,>(text: string) => {
 
 export const extractBibKey = (bibtex: string) => bibtex.match(/@\w+\s*{\s*([^,\s]+)\s*,/)?.[1].trim() || '';
 
+/** Classic BibTeX styles ignore url; keep Research imports visible there too. */
+export function bibtexForDocument(bibtex: string, source: string) {
+  const text = withoutComments(source);
+  const legacyUrls = /\\bibliographystyle\s*\{(?:plain|abbrv|alpha|unsrt|acm|apalike|ieeetr)\}/.test(text)
+    && !/\\addbibresource\b|\{biblatex\}/.test(text);
+  if (!legacyUrls || !/^@misc\s*\{/i.test(bibtex) || /\bhowpublished\s*=/i.test(bibtex)) return bibtex;
+  return bibtex.replace(/^(\s*)url\s*=\s*\{([^{}\r\n]+)\}/m, (_, space, url) => `${space}howpublished = {\\url{${url}}}`);
+}
+
 export const isTex = (path: string) => path.toLowerCase().endsWith('.tex');
 
 export function figureSnippet(filePath: string) {
@@ -155,15 +160,6 @@ export function insertBeforeEnd(source: string, block: string) {
   const idx = source.lastIndexOf('\\end{document}');
   if (idx === -1) return `${source.replace(/\s*$/, '')}\n\n${block}\n`;
   return `${source.slice(0, idx).replace(/\s*$/, '')}\n\n${block}\n\n${source.slice(idx)}`;
-}
-
-function stripLineComment(line: string) {
-  let escaped = false;
-  for (let i = 0; i < line.length; i += 1) {
-    if (line[i] === '%' && !escaped) return line.slice(0, i);
-    escaped = line[i] === '\\';
-  }
-  return line;
 }
 
 const parentPath = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '');
@@ -189,7 +185,7 @@ export async function buildProjectContext(api: Pick<EditorApi, 'mainFile' | 'act
     const headings: string[] = [];
     const includes: string[] = [];
     for (const line of content.split(/\r?\n/)) {
-      const clean = stripLineComment(line);
+      const clean = withoutComments(line);
       for (const m of clean.matchAll(/\\+(section|subsection|subsubsection)\*?\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}/g)) {
         const level = m[1] === 'section' ? 0 : m[1] === 'subsection' ? 1 : 2;
         if (headings.length < 12) headings.push(`${'  '.repeat(level)}- ${m[2].trim() || '(untitled)'}`);

@@ -93,7 +93,7 @@ import {
 } from '../editor/latexEditor';
 import { NO_PROJECT, scanProject } from '../editor/latexEnvs';
 import type { Project } from '../editor/latexEnvs';
-import { VERSIONS_CHANGED, errorText, extractBibKey, figureSnippet } from '../editor/shared';
+import { VERSIONS_CHANGED, errorText, extractBibKey, figureSnippet, bibtexForDocument } from '../editor/shared';
 
 // ─── helpers ───
 
@@ -967,9 +967,10 @@ function Editor({ projectId }: { projectId: string }) {
   const writeBibEntries = async (entries: string[], bibFile?: string) => {
     const target = bibFile || bibFiles[0] || 'references.bib';
     let content = await ensureFileContent(target).catch(() => '');
+    const source = mainFile ? await ensureFileContent(mainFile).catch(() => '') : '';
     const keys: string[] = [];
     for (const raw of entries) {
-      const entry = raw.replace(/\\n/g, '\n').trim();
+      const entry = bibtexForDocument(raw.replace(/\\n/g, '\n').trim(), source);
       const key = extractBibKey(entry);
       if (!key) continue;
       keys.push(key);

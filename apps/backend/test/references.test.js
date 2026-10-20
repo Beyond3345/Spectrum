@@ -253,8 +253,8 @@ test('escapes and protects titles without touching existing TeX', () => {
   assert.equal(t('ends with \\'), 'ends with \\textbackslash{}');
   assert.equal(texEscape('R&D_Lab'), 'R\\&D\\_Lab');
   // pdfLaTeX only knows characters up to Latin Extended-A
-  assert.equal(t('Limiting TGF-β signaling'), 'Limiting {TGF-{$\\beta$}} signaling');
-  assert.equal(texEscape('Nguyễn Văn Ánh, Łódź, Ω'), 'Nguy{\\~{\\^{e}}}n Văn Ánh, Łódź, {$\\Omega$}');
+  assert.equal(t('Limiting TGF-β signaling'), 'Limiting {TGF-\\ensuremath{\\beta}} signaling');
+  assert.equal(texEscape('Nguyễn Văn Ánh, Łódź, Ω'), 'Nguy{\\~{{\\^{e}}}}n Văn Ánh, Łódź, \\ensuremath{\\Omega}');
   assert.equal(pdfTexSafe('“Quotes” – fine'), '“Quotes” – fine');
 });
 
@@ -337,15 +337,50 @@ test('reads citations from pages in the documented order', () => {
   const misc = toBibtex(page.record, baseKey(page.record));
   assert.equal(misc, [
     '@misc{Blog2024,',
-    '  title        = {A Blog Post},',
-    '  year         = {2024},',
-    '  date         = {2024-03-02},',
-    '  howpublished = {\\url{https://blog.test/post}},',
-    '  url          = {https://blog.test/post},',
+    '  title = {A Blog Post},',
+    '  year  = {2024},',
+    '  date  = {2024-03-02},',
+    '  url   = {https://blog.test/post},',
     '}'
   ].join('\n'));
   assert.equal(readHtmlCitation('<title>Only &amp; title</title>', 'https://x.test').record.title, 'Only & title');
   assert.equal(readHtmlCitation('<p>nothing</p>', 'https://x.test'), null);
+});
+
+test('alphaXiv citation exports supply authors omitted from scholarly metadata', () => {
+  const url = 'https://www.alphaxiv.org/abs/2609.navier-stokes';
+  const html = `<meta name="citation_title" content="Finite Time Blowup for Navier–Stokes">
+    <meta name="citation_publication_date" content="2026/9/8">
+    <script type="application/ld+json">${JSON.stringify({ '@type': 'ScholarlyArticle', headline: 'Finite Time Blowup for Navier–Stokes', url, author: [], publisher: { name: 'arXiv' } })}</script>
+    <button aria-label="Copy BibTeX"><span><span>@misc</span>{openai-finite-time-blowup,
+      <span>author</span> = {<span>OpenAI</span>},
+      <span>title</span> = {Finite Time Blowup for Navier–Stokes},
+      <span>publisher</span> = {OpenAI}
+    }</span></button>`;
+  const { record } = readHtmlCitation(html, url);
+  assert.deepEqual(record.author, [{ family: 'OpenAI' }]);
+  assert.deepEqual(record.issued['date-parts'][0], [2026, 9, 8]);
+  assert.equal(record.publisher, 'OpenAI');
+  assert.equal(baseKey(record), 'OpenAI2026');
+  const fields = fieldsOf(toBibtex(record, baseKey(record)));
+  assert.equal(fields.author, 'OpenAI');
+  assert.equal(fields.url, url);
+  assert.equal(fields.eprint, undefined, 'alphaXiv identifiers are not necessarily arXiv IDs');
+});
+
+test('citation exports match the page title, preserve grouped names, and supplement metadata only', () => {
+  const url = 'https://example.com/paper';
+  const metadata = '<meta name="citation_title" content="A Paper">';
+  const citation = (title, author) => `<pre>@misc{k, title = {${title}}, author = {${author}}, year = {2026}}</pre>`;
+  assert.deepEqual(readHtmlCitation(metadata + citation('Another Paper', 'Wrong Author'), url).record.author, []);
+  assert.deepEqual(readHtmlCitation(metadata + `<script>${citation('A Paper', 'Script Author')}</script>`, url).record.author, []);
+  const author = 'Doe, Jane and {Research and {Development}} and Roe, John';
+  const { record } = readHtmlCitation(metadata + citation('A Paper', author), url);
+  assert.deepEqual(record.author, [{ family: 'Doe', given: 'Jane' }, { literal: 'Research and Development' }, { family: 'Roe', given: 'John' }]);
+  assert.equal(fieldsOf(toBibtex(record, 'K')).author, 'Doe, Jane and {Research and Development} and Roe, John');
+  assert.deepEqual(readHtmlCitation(metadata + '<meta name="citation_author" content="Right Author">' + citation('A Paper', 'Wrong Author'), url).record.author, [{ family: 'Author', given: 'Right' }]);
+  const structured = `<script type="application/ld+json">${JSON.stringify({ '@type': 'ScholarlyArticle', url, name: 'A Paper', author: { '@type': 'Organization', name: 'Right Organization' } })}</script>`;
+  assert.deepEqual(readHtmlCitation(metadata + structured + citation('A Paper', 'Wrong Author'), url).record.author, [{ literal: 'Right Organization' }]);
 });
 
 test('JSON-LD supplies the article author, full publication date and publisher', () => {
@@ -457,6 +492,7 @@ const PAGES = {
   '/page/body-doi': '<html><head><title>Widget Safety Report – CSIRO</title></head><body>Cite: <a href="https://doi.org/10.1234/journal.4">doi</a></body></html>',
   '/page/cites-others': '<html><head><title>Widgets - Wikipedia</title></head><body>See <a href="https://doi.org/10.1234/journal.1">ref</a></body></html>',
   '/page/plain': '<html><head><title>A Plain Page</title></head></html>',
+  '/page/meta-no-author': '<meta name="citation_title" content="A Paper Without Author Metadata"><meta name="citation_year" content="2026">',
   '/challenge': '<html><head><title>Verifying your browser | Widgets</title></head></html>'
 };
 
@@ -568,6 +604,36 @@ test('configured Exa resolves blocked pages without inventing records or leaking
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('incomplete scholarly citation metadata can recover an author through configured search', async (t) => {
+  const root = tempProject({ 'main.tex': '' });
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const before = hits.filter((hit) => hit === '/exa/contents').length;
+  const out = await resolveReferences({ projectRoot: root, input: `${base}/page/meta-no-author`, searchConfig: { provider: 'exa', apiKey: 'test-exa-key' } });
+  assert.equal(out.results[0].status, 'added');
+  assert.equal(out.results[0].key, 'OpenAI2026');
+  const fields = fieldsOf(out.results[0].bibtex);
+  assert.equal(fields.author, 'OpenAI');
+  assert.equal(fields.title, 'A Paper Without Author Metadata');
+  assert.equal(fields.url, `${base}/page/meta-no-author`);
+  assert.equal(hits.filter((hit) => hit === '/exa/contents').length, before + 1);
+});
+
+test('generated webpage URLs appear once, including with classic BibTeX styles', async (t) => {
+  for (const style of ['apa', 'plainnat', 'plainurl', 'plain']) {
+    const bibliography = style === 'apa'
+      ? '\\usepackage[style=apa]{biblatex}\n\\addbibresource{references.bib}'
+      : `\\bibliographystyle{${style}}\n\\bibliography{references}`;
+    const root = tempProject({ 'main.tex': bibliography });
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const out = await resolveReferences({ projectRoot: root, input: `${base}/page/plain` });
+    assert.equal(out.results[0].status, 'added', style);
+    assert.equal(out.bibIncluded, true, style);
+    const fields = fieldsOf(out.results[0].bibtex);
+    assert.equal(fields.url, style === 'plain' ? undefined : `${base}/page/plain`, style);
+    assert.equal(fields.howpublished, style === 'plain' ? `\\url{${base}/page/plain}` : undefined, style);
+  }
+});
+
 test('resolves, deduplicates and writes references into a project', async (t) => {
   // No trailing newline on purpose: the original bytes must survive untouched.
   const original = '% keep me exactly\n@article{Smith2020,\n  title = {Old},\n  year = {2020},\n  doi = {10.9999/EXISTING}\n}';
@@ -673,7 +739,8 @@ test('resolves, deduplicates and writes references into a project', async (t) =>
     const plain = await only(`${base}/page/plain`);
     assert.equal(plain.status, 'added');
     assert.equal(plain.key, 'Plain');
-    assert.match(plain.bibtex, /howpublished = \{\\url\{.+\/page\/plain\}\}/);
+    assert.equal(fieldsOf(plain.bibtex).url, `${base}/page/plain`);
+    assert.equal(fieldsOf(plain.bibtex).howpublished, undefined);
     assert.equal(fieldsOf(plain.bibtex).note, undefined, 'static web pages do not need retrieval dates in APA 7');
   });
 
