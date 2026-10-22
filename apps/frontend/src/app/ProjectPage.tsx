@@ -939,6 +939,7 @@ export default function ProjectPage() {
             <button className="nav-row" onClick={() => setSheet({ kind: 'settings' })} title={`Settings (${formatShortcut('Mod-,')})`}>
               <Icon name="gearshape" />
               <span className="nav-label">Settings</span>
+              <span className="nav-count" aria-label={`Spectrum ${__APP_VERSION__}`}>{__APP_VERSION__}</span>
             </button>
           </div>
         </aside>

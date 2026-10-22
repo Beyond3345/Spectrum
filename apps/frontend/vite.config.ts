@@ -1,9 +1,13 @@
-import { rmSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// the app's version, which the release sets in the root package.json
+const { version } = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(version) },
   plugins: [
     react(),
     // SF Symbols are licensed for Apple platforms only: a Windows build ships the Fluent icons alone
