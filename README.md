@@ -167,9 +167,9 @@ To set it up, add a cloud location under Cloud locations in the Projects section
 
 ## Installing
 
-Download the macOS 1.10.3 installer and its SHA-256 checksum from the [latest GitHub release](https://github.com/Beyond3345/Spectrum/releases/latest). The Windows 1.10.3 installer will be added to the same release later; Windows users can use [version 1.10.0](https://github.com/Beyond3345/Spectrum/releases/tag/v1.10.0) meanwhile.
+Download the macOS 1.10.4 installer and its SHA-256 checksum from the [latest GitHub release](https://github.com/Beyond3345/Spectrum/releases/latest). The Windows 1.10.4 installer will be added to the same release later; Windows users can use [version 1.10.0](https://github.com/Beyond3345/Spectrum/releases/tag/v1.10.0) meanwhile.
 
-1. Open `Spectrum_1.10.3_universal.dmg`
+1. Open `Spectrum_1.10.4_universal.dmg`
 2. Drag Spectrum into the Applications folder
 3. Open Spectrum from the Applications folder
 

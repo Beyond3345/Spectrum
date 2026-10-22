@@ -2,6 +2,12 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 1.10.4 (22 October 2026)
+
+### Added
+
+- The app's version is shown beside Settings at the bottom of the projects page sidebar
+
 ## 1.10.3 (20 October 2026)
 
 ### Fixed
