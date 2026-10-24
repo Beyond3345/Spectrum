@@ -665,6 +665,22 @@ test('the brake counts the user’s files apart, so a long history doesn’t hid
   assert.equal(userFiles(p.root).length, 13);
 });
 
+test('Delete automatic checkpoints doesn’t trip the brake on either computer, nor hold back the user’s own deletion', async () => {
+  const p = await project('Automatic', { 'main.tex': 'main\n', 'results.tex': 'results\n' });
+  const manifest = (root, i) => path.join(root, '.spectrum', 'history', 'manifests', `${1000 + i}.json`);
+  for (let i = 0; i < 30; i++) await write(manifest(p.root, i), JSON.stringify({ files: {}, createdAt: new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString(), label: '', reason: 'compile' }));
+  synced(await syncTo(p));
+  // this computer's, then the other's arriving through the cloud copy
+  for (let i = 0; i < 15; i++) await fs.rm(manifest(p.root, i));
+  await fs.rm(path.join(p.root, 'results.tex'));
+  synced(await mirror.syncProject(p.id));
+  assert.deepEqual(userFiles(p.cloud), ['main.tex']);
+  assert.deepEqual(binned.splice(0).map((b) => [path.basename(b.abs), b.cloud]), [['results.tex', true]]);
+  for (let i = 15; i < 30; i++) await fs.rm(manifest(p.cloud, i));
+  synced(await mirror.syncProject(p.id));
+  assert.equal(existsSync(manifest(p.root, 29)), false);
+});
+
 test('a name changed only in letter case is renamed on the other side, both ways', async () => {
   const p = await project('Case', { 'Intro.tex': 'intro\n', 'Figs/a.png': 'a' });
   synced(await syncTo(p));
