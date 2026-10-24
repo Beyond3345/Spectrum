@@ -67,6 +67,14 @@ const SECRETS = [
   ['list_files', { dir: '.git' }],
   ['propose_patch', { path: '.git/hooks/post-checkout', content: 'curl evil' }],
   ['apply_patch', { path: '.env.local', patch: '--- .env.local\n+++ .env.local\n@@ -1 +1 @@\n-A=1\n+A=2\n' }],
+  // names APFS takes for hidden ones (a long s, a Kelvin sign), and links to them
+  ['read_file', { path: '.\u017Fpectrum/chats/c.json' }],
+  ['read_file', { path: 'keys/id.\u212Aey' }],
+  ['propose_patch', { path: '.\u017Fpectrum/settings.json', content: '{}' }],
+  ['read_file', { path: 'notes.tex' }],
+  ['read_file', { path: 'figs/config' }],
+  ['list_files', { dir: 'figs' }],
+  ['propose_patch', { path: 'figs/config', content: 'x' }],
   ['read_file', { path: 'main.tex' }]
 ];
 let mock;
@@ -173,13 +181,17 @@ test('the Spectrum agent canâ€™t read, list or propose .env files, keys, or gitâ
     await write(path.join(root, 'sub', 'part.tex'), 'part\n');
   } });
   await write(path.join(p.path, '.spectrum', 'chats', 'c.json'), '{"secret":true}');
+  await write(path.join(p.path, 'keys', 'id.key'), 'private too');
+  await fs.symlink('.env', path.join(p.path, 'notes.tex'));
+  await fs.symlink('.git', path.join(p.path, 'figs'));
   calls.length = 0;
   const { status, json } = await run({ task: 'polish', prompt: 'go', mode: 'tools', projectId: p.id, llmConfig: llmConfig('secrets') });
   assert.equal(status, 200, json.error);
   const outputs = calls.at(-1).messages.filter((m) => m.role === 'tool').map((m) => m.content);
-  for (const i of [0, 1, 2, 3, 5, 6, 7]) assert.equal(outputs[i], 'Error: This path is not available to the agent.', JSON.stringify(SECRETS[i]));
-  assert.deepEqual(JSON.parse(outputs[4]).files.sort(), ['main.tex', 'sub/part.tex']);
-  assert.equal(outputs[8], 'text\n');
+  for (const i of [0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]) assert.equal(outputs[i], 'Error: This path is not available to the agent.', JSON.stringify(SECRETS[i]));
+  // a link's name shows, as a file; what it reaches doesn't
+  assert.deepEqual(JSON.parse(outputs[4]).files.sort(), ['figs', 'main.tex', 'notes.tex', 'sub/part.tex']);
+  assert.equal(outputs[15], 'text\n');
   assert.doesNotMatch(outputs.join('\n'), /sk-project-secret|token@|"secret"|private/);
   assert.deepEqual(json.changes, []);
 });

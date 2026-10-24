@@ -44,8 +44,35 @@ export function safeJoin(root, targetPath) {
   return resolved;
 }
 
-/** Whether a relative path is one no agent may read or write: Spectrum's, git's or Claude's folders, an .env file or a key. */
-export const agentHidden = (rel) => String(rel).split(/[\\/]/).some((p) => ['.spectrum', '.git', '.claude'].includes(p.toLowerCase()) || /^\.env(?:\.|$)|\.(pem|key)$/i.test(p));
+/**
+ * Whether a file or folder name is one no agent may read or write: Spectrum's, git's or Claude's folders, an .env file
+ * or a key, also as a file system that ignores case takes it (APFS folds 'ſ' to 's' and the Kelvin sign to 'k').
+ * Self-contained, as the isolated workspace reader runs it too.
+ */
+export function agentHiddenName(p) {
+  return [p.toLowerCase(), p.toUpperCase().toLowerCase()].some((n) => ['.spectrum', '.git', '.claude'].includes(n) || /^\.env(?:\.|$)|\.(pem|key)$/.test(n));
+}
+/** Whether a relative path is one no agent may read or write: any of its names agentHiddenName's. */
+export const agentHidden = (rel) => String(rel).split(/[\\/]/).some(agentHiddenName);
+
+/**
+ * abs (inside root) as the disk has it, from root and '/'-separated: links followed, and each name as stored where the
+ * file system ignores case (and on Windows a short name expanded); the parts that don't exist yet as given.
+ */
+export function onDiskRel(root, abs) {
+  const missing = [];
+  for (let probe = abs; ; probe = path.dirname(probe)) {
+    let real;
+    try {
+      real = realpathSync.native(probe);
+    } catch (err) {
+      if (!['ENOENT', 'ENOTDIR'].includes(err.code) || probe === path.dirname(probe)) throw err;
+      missing.unshift(path.basename(probe));
+      continue;
+    }
+    return [...path.relative(realpathSync.native(root), real).split(path.sep), ...missing].filter(Boolean).join('/');
+  }
+}
 
 /** Like safeJoin, but the last part may itself be a symlink: for moving or deleting the link. */
 export function safeJoinLink(root, targetPath) {

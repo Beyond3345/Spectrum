@@ -226,6 +226,11 @@ test('tree hides app data, VCS internals and Finder and Explorer litter', async 
   assert.deepEqual(paths, ['.latexmkrc', 'main.tex']);
   assert.equal(tree.mainFile, undefined);
   assert.equal((await writeFile(p.id, '.spectrum/project.json', '{}')).status, 400);
+  // nor by a name APFS takes for it (a long s), or through a folder link to it
+  await fs.symlink('.spectrum', path.join(p.path, 'app'));
+  for (const rel of ['.ſpectrum/settings.json', 'app/settings.json']) assert.equal((await writeFile(p.id, rel, '{}')).status, 400, rel);
+  assert.equal((await api(`/api/projects/${p.id}/file?path=app`, { method: 'DELETE' })).status, 200, 'the link itself can go');
+  assert.ok(existsSync(path.join(p.path, '.spectrum', 'project.json')));
   assert.equal((await api(`/api/projects/${p.id}/file?path=.`, { method: 'DELETE' })).status, 400);
 });
 
