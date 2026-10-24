@@ -44,6 +44,9 @@ export function safeJoin(root, targetPath) {
   return resolved;
 }
 
+/** Whether a relative path is one no agent may read or write: Spectrum's, git's or Claude's folders, an .env file or a key. */
+export const agentHidden = (rel) => String(rel).split(/[\\/]/).some((p) => ['.spectrum', '.git', '.claude'].includes(p.toLowerCase()) || /^\.env(?:\.|$)|\.(pem|key)$/i.test(p));
+
 /** Like safeJoin, but the last part may itself be a symlink: for moving or deleting the link. */
 export function safeJoinLink(root, targetPath) {
   const resolved = path.resolve(root, targetPath);

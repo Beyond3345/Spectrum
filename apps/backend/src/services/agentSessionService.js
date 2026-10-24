@@ -18,7 +18,7 @@ import { spawnAgentProcess, killAgentProcess, resolveExecutable, isolationAvaila
 import { initialiseWorkspace, workspaceChanges, applyWorkspaceChanges, captureAgentProposal, readCurrent, rebaseChange, refreshDraft } from './agentWorkspace.js';
 import { ITEM_ID, readItems } from '../routes/todos.js';
 import { activeSkills, listSkills, loadSkill, SKILL_ID } from './skillService.js';
-import { safeJoin } from '../utils/pathUtils.js';
+import { agentHidden, safeJoin } from '../utils/pathUtils.js';
 import { writeJsonAtomic } from '../utils/fsUtils.js';
 
 const execFileAsync = promisify(execFile);
@@ -163,7 +163,7 @@ export async function newAgentRun({ projectId, agentId, mode = 'review', persona
 function sessionPath(r, value) {
   if (typeof value !== 'string' || !path.isAbsolute(value)) throw new Error('Agent file paths must be absolute.');
   const rel = path.relative(r.workspace, value);
-  if (!rel || rel.split(path.sep).some((p) => ['.spectrum', '.git', '.claude'].includes(p.toLowerCase()) || /^\.env(?:\.|$)|\.(pem|key)$/i.test(p))) throw new Error('This path is not available to the agent.');
+  if (!rel || agentHidden(rel)) throw new Error('This path is not available to the agent.');
   return safeJoin(r.workspace, rel);
 }
 

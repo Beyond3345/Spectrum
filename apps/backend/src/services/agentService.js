@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { applyPatch, createTwoFilesPatch } from 'diff';
-import { safeJoin } from '../utils/pathUtils.js';
+import { agentHidden, safeJoin } from '../utils/pathUtils.js';
 import { listFilesRecursive } from '../utils/fsUtils.js';
 import { extractPathFromPatch } from '../utils/diffUtils.js';
 import { resolveLLMConfig, chatCompletion, missingKey, NO_API_KEY } from './llmService.js';
@@ -138,7 +138,11 @@ export async function runToolAgent({
   const todos = [];
   // what each tool call was, for the transcript's cards: { tool, about, ok }
   const steps = [];
-  const projectPath = (filePath) => path.relative(projectRoot, safeJoin(projectRoot, String(filePath || ''))).split(path.sep).join('/');
+  const projectPath = (filePath) => {
+    const rel = path.relative(projectRoot, safeJoin(projectRoot, String(filePath || ''))).split(path.sep).join('/');
+    if (agentHidden(rel)) throw new Error('This path is not available to the agent.');
+    return rel;
+  };
   // the thread's proposals not applied or rejected yet ({ path, original, proposed }), which this run goes on from
   if (!readOnly) {
     for (const d of Array.isArray(open) ? open.slice(0, 200) : []) {
@@ -161,9 +165,9 @@ export async function runToolAgent({
     web_search: async ({ query }) => JSON.stringify(await searchWithFallback({ query, searchConfig, purpose: 'chat', maxResults: 5 })),
     read_file: async ({ path: filePath }) => (await current(projectPath(filePath))).slice(0, 20000),
     list_files: async ({ dir }) => {
-      const root = dir ? safeJoin(projectRoot, dir) : projectRoot;
+      const root = dir ? safeJoin(projectRoot, projectPath(dir)) : projectRoot;
       const items = await listFilesRecursive(root, '');
-      return JSON.stringify({ files: items.filter((item) => item.type === 'file').map((item) => item.path) });
+      return JSON.stringify({ files: items.filter((item) => item.type === 'file' && !agentHidden(item.path)).map((item) => item.path) });
     },
     propose_patch: async ({ path: filePath, content }) => {
       if (typeof content !== 'string') throw new Error('Give the file’s new content.');
