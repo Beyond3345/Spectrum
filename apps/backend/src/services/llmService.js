@@ -381,7 +381,7 @@ export async function nativeWebSearch({ query, purpose = 'chat', llmConfig }) {
     body = adapter.body({ model: config.model, messages, extra });
   } else {
     // shortcut: Gemini grounding needs its required Search Suggestions UI before native support can be enabled.
-    throw new Error('This model API does not support verified built-in web search.');
+    throw new Error('This model API has no verified built-in web search. Turn on OpenAlex (no key needed) or another connection in Settings › Search.');
   }
   const response = await fetch(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(40_000),
     headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
