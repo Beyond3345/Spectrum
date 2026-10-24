@@ -65,21 +65,23 @@ export default function Preview({ preview, fixing, onFix, onJump }: { preview: P
 
   const errors = preview.errors.filter((e) => e.severity === 'error');
   const failed = preview.state === 'failed';
+  // TeX carries on past most errors, so a PDF can come with some
+  const troubled = failed || (preview.state === 'ok' && errors.length > 0);
 
   return (
     <div className="diagram-preview">
       <div className="diagram-preview-head">
         <span className="diagram-preview-title">Preview</span>
-        <span className={`diagram-preview-status${failed ? ' failed' : ''}`} role="status">
+        <span className={`diagram-preview-status${troubled ? ' failed' : ''}`} role="status">
           {preview.state === 'compiling' && (
             <>
               <span className="spinner" /> Compiling…
             </>
           )}
-          {failed && 'Couldn’t compile'}
+          {failed ? 'Couldn’t compile' : troubled && `Compiled with ${errors.length === 1 ? 'an error' : `${errors.length} errors`}`}
         </span>
         <span className="grow" />
-        {failed && (
+        {troubled && (
           <button type="button" className="btn small" disabled={fixing} onClick={onFix}>
             {fixing ? <span className="spinner" /> : <Icon name="sparkles" />} Fix with AI
           </button>
@@ -91,10 +93,10 @@ export default function Preview({ preview, fixing, onFix, onJump }: { preview: P
         )}
       </div>
       <div className="diagram-preview-body">
-        {(failed || logOpen) && (
+        {(troubled || logOpen) && (
           <div className="diagram-preview-errors">
             {failed && !errors.length && <div className="diagram-error-card">{preview.failure || 'No PDF was produced.'}</div>}
-            {failed &&
+            {troubled &&
               errors.map((error, i) => (
                 <div key={i} className="diagram-error-card">
                   <Icon name="xmark.octagon.fill" className="log-icon" />

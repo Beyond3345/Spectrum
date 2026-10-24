@@ -100,12 +100,16 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
   const [kind, setKind] = useState<'tikz' | 'mermaid'>(lang === 'mermaid' ? 'mermaid' : 'tikz');
   const [pkg, setPkg] = useState(tikzModes[0]?.id ?? 'tikz');
   const [taken, setTaken] = useState<Set<string> | null>(null);
-  const [name, setName] = useState('');
-  const [typed, setTyped] = useState(false);
+  const [typed, setTyped] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const mode = kind === 'mermaid' ? modeFor('mermaid') : modeFor(pkg);
   const ext = kind === 'mermaid' ? 'mmd' : 'tex';
+  // a free name to start with, until one is typed
+  const base = BASE_NAMES[mode?.id ?? ''] ?? 'diagram';
+  let free = 1;
+  while (taken?.has(`${base}-${free}`)) free += 1;
+  const name = typed ?? (taken ? `${base}-${free}` : '');
 
   useEffect(() => {
     document.title = 'Draw a diagram';
@@ -113,15 +117,6 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
       .then(({ items }) => setTaken(new Set(items.filter((i) => i.path.startsWith('figures/')).map((i) => stemOf(i.path).toLowerCase()))))
       .catch(() => setTaken(new Set()));
   }, [projectId]);
-
-  // a free name to start with, until one is typed
-  useEffect(() => {
-    if (typed || !taken || !mode) return;
-    const base = BASE_NAMES[mode.id] ?? 'diagram';
-    let n = 1;
-    while (taken.has(`${base}-${n}`)) n += 1;
-    setName(`${base}-${n}`);
-  }, [taken, mode?.id, typed]);
 
   const create = async () => {
     if (!mode) return;
@@ -197,9 +192,8 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
               spellCheck={false}
               autoFocus
               onChange={(e) => {
-                setTyped(true);
+                setTyped(e.target.value.trim());
                 setError('');
-                setName(e.target.value.trim());
               }}
             />
             <span className="muted">.{ext}</span>
@@ -229,13 +223,13 @@ type Loaded = { doc: Doc; edited: boolean; hash: string };
 /** A diagram file opened: its drawing, and its code when that isn't the drawing's (edited by hand, or never drawn). */
 async function openDiagram(projectId: string, path: string): Promise<Loaded> {
   const { content, hash } = await getFile(projectId, path);
-  const { code, diagram, edited } = await readDiagramFile(content);
+  const { code, diagram, edited, mark } = await readDiagramFile(content);
   if (/\.mmd$/i.test(path)) {
     // Mermaid's canvas is its code, so what's in the file is the drawing
     const model = { code: diagram ? code : content };
     return { doc: { diagram: { language: 'mermaid', style: {}, ...diagram, model, version: 1 }, hand: null }, edited: false, hash };
   }
-  if (!diagram || !modeFor(diagram.pkg)) return { doc: { diagram, hand: code, tail: content.slice(code.length) }, edited: false, hash };
+  if (!diagram || !modeFor(diagram.pkg)) return { doc: { diagram, hand: code, tail: mark ? `${mark}\n` : '' }, edited: false, hash };
   return { doc: { diagram, hand: edited ? code : null }, edited, hash };
 }
 
@@ -575,7 +569,7 @@ function Editor({ projectId, path, loaded, settings, onReload }: { projectId: st
       const res = await runAgent({
         task: 'fix_diagram',
         prompt: [
-          `This standalone LaTeX file (${mode?.label ?? 'a TikZ figure'}) doesn’t compile.`,
+          `This standalone LaTeX file (${mode?.label ?? 'a TikZ figure'}) has errors when it compiles.`,
           errors.length ? `Errors:\n${errors.join('\n')}` : preview.failure || '',
           `End of the log:\n${preview.log.slice(-3000)}`,
           'Fix it and give the whole corrected file as the suggestion, without code fences. Keep the picture as it is apart from the fix.'
