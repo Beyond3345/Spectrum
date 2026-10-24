@@ -1407,15 +1407,18 @@ function Editor({ projectId }: { projectId: string }) {
     };
     for (const doc of docs) await visit(doc, []);
     const shown = shownDoc;
+    // it has a PDF to come back to: from before, or one this run made (items is still the tree from before it)
+    let made = items.some((i) => i.path === pdfOf(shown));
     try {
       for (const doc of order) {
         const ended = await runCompile(doc, { fresh: true });
+        if (doc === shown && ended === 'ok') made = true;
         if (ended === 'stopped' || ended === 'busy') break;
       }
     } finally {
       // each compile that worked showed its own PDF; the one that was showing comes back (a failed compile left it as
       // it was), so Compile goes on building it
-      if (shown && shownRef.current !== shown && items.some((i) => i.path === pdfOf(shown))) loadPdf(shown);
+      if (shown && shownRef.current !== shown && made) loadPdf(shown);
     }
   };
 
