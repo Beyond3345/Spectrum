@@ -15,7 +15,7 @@ Object.assign(process.env, {
   SPECTRUM_TEMPLATE_SEED_DIR: ''
 });
 const { createProject } = await import('../src/services/projectService.js');
-const { findExecutable, runCompile, stopCompile } = await import('../src/services/compileService.js');
+const { findExecutable, keptFileFailed, runCompile, stopCompile } = await import('../src/services/compileService.js');
 const { documentLabels, projectStats } = await import('../src/services/statsService.js');
 const { compile: compileTarget } = await import('../src/services/transferAgent/nodes/compile.js');
 const { registerSystemRoutes } = await import('../src/routes/system.js');
@@ -139,6 +139,55 @@ test('a kept file TeX can’t read is cleared, and the document compiles again f
   const cut = await compile(p);
   assert.equal(cut.status, 0, cut.log);
   assert.match(cut.log, /compiled again from scratch/);
+});
+
+test('a kept list of any name that TeX can’t read compiles again from scratch, with Stop on first error too', { skip: needs('pdflatex') }, async () => {
+  const p = await newProject({ 'main.tex': '\\documentclass{article}\\makeatletter\\begin{document}\\@starttoc{xyz}Hi\\end{document}\n' });
+  assert.equal((await compile(p)).status, 0);
+  await fs.writeFile(kept(p, 'main.xyz'), '\\bogusmacro\n');
+  for (const haltOnError of [true, false]) {
+    const res = await compile(p, { haltOnError });
+    assert.equal(res.status, 0, res.log);
+    assert.match(res.log, /compiled again from scratch/);
+    await fs.writeFile(kept(p, 'main.xyz'), '\\bogusmacro\n');
+  }
+});
+
+test('a kept file is told by its own name, a Windows drive letter or backslashes and all', () => {
+  const names = ['main.toc', 'chapters/x.aux'];
+  assert.ok(keptFileFailed('C:/Users/me/AppData/Local/Temp/spectrum-build/0b1c/main.toc:3: Undefined control sequence.', names));
+  assert.ok(keptFileFailed('C:\\Users\\me\\AppData\\Local\\Temp\\spectrum-build\\0b1c\\chapters\\x.aux:3: Undefined control sequence.', names));
+  assert.ok(keptFileFailed("./main.tex:4: Package biblatex Error: File 'main.bbl' not created by biblatex.", ['main.bbl']));
+  assert.ok(!keptFileFailed('(./main.out)\n./main.tex:5: Undefined control sequence.', ['main.out']));
+  assert.ok(keptFileFailed('(./main.aux)\n./main.tex:1: File ended while scanning use of \\@newl@bel.', ['main.aux']));
+});
+
+test('a kept file that breaks a later pass compiles again from scratch: plain to natbib', { skip: needs('pdflatex', 'bibtex') }, async () => {
+  const p = await newProject({ 'main.tex': paper(), 'refs.bib': refs });
+  const natbib = paper().replace('\\begin{document}', '\\usepackage{natbib}\\begin{document}').replace('{plain}', '{plainnat}').replace('\\cite{', '\\citet{');
+  for (const haltOnError of [true, false]) {
+    await fs.writeFile(path.join(p.path, 'main.tex'), paper());
+    assert.equal((await compile(p)).status, 0);
+    await fs.writeFile(path.join(p.path, 'main.tex'), natbib);
+    const res = await compile(p, { haltOnError });
+    assert.equal(res.status, 0, res.log);
+    assert.match(res.log, /compiled again from scratch/);
+    assert.doesNotMatch(res.log.slice(res.log.indexOf('from scratch')), /natbib Error/);
+  }
+});
+
+test('BibTeX to biblatex compiles again from scratch, with Stop on first error too', { skip: needs('pdflatex', 'bibtex', 'biber') }, async () => {
+  const p = await newProject({ 'main.tex': paper(), 'refs.bib': refs });
+  const biblatex = '\\documentclass{article}\\usepackage{biblatex}\\addbibresource{refs.bib}\n\\begin{document}\n\\cite{Knuth1984}\\printbibliography\n\\end{document}\n';
+  for (const haltOnError of [true, false]) {
+    await fs.writeFile(path.join(p.path, 'main.tex'), paper());
+    assert.equal((await compile(p)).status, 0);
+    await fs.writeFile(path.join(p.path, 'main.tex'), biblatex);
+    const res = await compile(p, { haltOnError });
+    assert.ok(res.ok, res.error || res.log);
+    assert.equal(res.status, 0, res.log);
+    assert.doesNotMatch(res.log, /biblatex Error/);
+  }
 });
 
 test('what filecontents writes is never kept, so its new text and a project file of the same name are read', { skip: needs('pdflatex', 'bibtex') }, async () => {

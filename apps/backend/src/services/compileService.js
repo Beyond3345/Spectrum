@@ -473,7 +473,8 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
     pass = await runSpawn(cmd, args, mainDir, pushLog, texEnv);
     let log = await passLog();
     const carryOn = () => !pass.timedOut && !stopped() && !(options.haltOnError && pass.code !== 0);
-    retry = kept && pass.code !== 0 && !pass.timedOut && !stopped() && keptFileFailed(log);
+    const keptFailed = () => kept && pass.code !== 0 && !pass.timedOut && !stopped() && keptFileFailed(log, kept);
+    retry = keptFailed();
 
     if (multiPass && !options.draft && !retry && carryOn()) {
       bibliographyStatus = await runBibliography(outDir, base, tex, options.bibTool, texEnv, pushLog);
@@ -503,6 +504,9 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
         before = now;
         pass = await runSpawn(cmd, args, mainDir, pushLog, texEnv);
         log = await passLog();
+        // a kept file can break a later pass too: natbib's on the .aux pass 1 wrote from a kept plain .bbl
+        retry = keptFailed();
+        if (retry) break;
       }
     }
   } catch (err) {
@@ -622,31 +626,35 @@ async function keptFiles(outDir) {
 
 const sameFiles = (a, b) => a.size === b.size && [...a].every(([rel, bytes]) => b.get(rel)?.equals(bytes));
 
-const KEPT_NAME = /\.(?:aux|bbl|toc|lof|lot|out|ind|gls|nav|snm)\b/i;
 /**
- * An error in a kept file: one that names it (with -file-line-error), or a file cut short ending in the middle of an
- * argument just after TeX opened it, which TeX puts down to the main file ("./main.tex:1: File ended while scanning
- * use of \@newl@bel" after "(./main.aux)"). An ordinary error just after hyperref opens main.out isn't one.
+ * An error in one of the kept files `names`: one that names it (with -file-line-error, at its path in the output
+ * folder, a drive letter's colon and all, or in quotes, as biblatex's "File 'main.bbl' not created by biblatex"), or a
+ * file cut short ending in the middle of an argument just after TeX opened it, which TeX puts down to the main file
+ * ("./main.tex:1: File ended while scanning use of \@newl@bel" after "(./main.aux)"). An ordinary error just after
+ * hyperref opens main.out isn't one.
  */
-function keptFileFailed(log) {
-  const lines = log.split('\n');
-  return lines.some((line, i) => /^[^:\n]*\.(?:aux|bbl|toc|lof|lot|out|ind|gls|nav|snm):\d+: /i.test(line)
-    || (/File ended while scanning/.test(line) && lines.slice(Math.max(0, i - 3), i + 1).some((l) => KEPT_NAME.test(l))));
+export function keptFileFailed(log, names) {
+  const lines = log.replace(/\\/g, '/').split('\n');
+  const at = (l) => names.some((rel) => l.includes(`/${rel}:`) || l.includes(`'${rel}'`));
+  return lines.some((line, i) => (/:\d+: /.test(line) && at(line))
+    || (/File ended while scanning/.test(line) && lines.slice(Math.max(0, i - 3), i + 1).some((l) => names.some((rel) => l.includes(rel)))));
 }
 
-/** Copy the document's kept build files into outDir: false when there are none from a compile that succeeded. */
+/** Copy the document's kept build files into outDir: their names, or null when there are none from a compile that succeeded. */
 async function copyKept(store, outDir) {
-  if (!(await exists(path.join(store, KEPT_MARKER)))) return false;
+  if (!(await exists(path.join(store, KEPT_MARKER)))) return null;
+  const names = [];
   try {
     for (const { path: rel, type } of await listFilesRecursive(store)) {
       if (type !== 'file' || rel === KEPT_MARKER) continue;
       await ensureDir(path.dirname(path.join(outDir, rel)));
       await fs.copyFile(path.join(store, rel), path.join(outDir, rel));
+      names.push(slashed(rel));
     }
-    return true;
   } catch {
-    return false; // the compile still goes ahead, from what was copied
+    // the compile still goes ahead, from what was copied
   }
+  return names;
 }
 
 /**
