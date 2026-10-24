@@ -694,17 +694,19 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
               <h3 className="form-section-title">Research sources</h3>
               <div className="field-hint section-hint">
                 Research in the sidebar searches OpenAlex, Semantic Scholar, arXiv, Crossref and PubMed itself. Each works without these; a key or email gets more
-                searches a day, and they stay on this computer.
+                searches a day, and they stay on this computer. The OpenAlex and Semantic Scholar connections above share their keys with Research.
               </div>
-              {(['openalex', 'semanticscholar'] as const).map((provider) => (
-                <div className="field" key={provider}>
-                  <label htmlFor={`research-key-${provider}`}>{provider === 'openalex' ? 'OpenAlex' : 'Semantic Scholar'} API key <span className="optional">Optional</span></label>
+              {(['openalex', 'semanticscholar'] as const).map((provider) => {
+                const label = provider === 'openalex' ? 'OpenAlex' : 'Semantic Scholar';
+                // a connection that's on shows its key above
+                if (provider === settings.searchProvider || settings.searchConnections.includes(provider)) return null;
+                return <div className="field" key={provider}>
+                  <label htmlFor={`research-key-${provider}`}>{label} API key <span className="optional">Optional</span></label>
                   <input id={`research-key-${provider}`} className="input" type="password" autoComplete="off" spellCheck={false}
                     value={providerKey(settings, provider)} onChange={(e) => update(providerKeyPatch(settings, provider, e.target.value))} />
-                  <div className="field-hint">The same key as the {provider === 'openalex' ? 'OpenAlex' : 'Semantic Scholar'} connection above.</div>
-                </div>
-              ))}
-              {text('OpenAlex email', 'openalexEmail', { placeholder: 'you@example.com', hint: 'Sent with each OpenAlex request, so its people can reach you about heavy use.' })}
+                </div>;
+              })}
+              {text('OpenAlex email', 'openalexEmail', { placeholder: 'you@example.com', hint: 'Sent with each OpenAlex request, so OpenAlex can contact you about heavy use.' })}
               {text('NCBI API key', 'ncbiKey', { secret: true, hint: 'Lets PubMed take more searches a second. Make one in your NCBI account settings.' })}
               {text('Unpaywall email', 'unpaywallEmail', { placeholder: 'you@example.com', hint: 'Get PDF asks Unpaywall for an open-access copy of a paper, and Unpaywall needs an email address with each request.' })}
 
