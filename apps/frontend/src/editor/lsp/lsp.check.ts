@@ -2,7 +2,7 @@
 // errors and the outline from TexLab's symbols. Bundle it first:
 // `npx esbuild apps/frontend/src/editor/lsp/lsp.check.ts --bundle --platform=node --log-level=warning | node`
 import { documentOutline } from '../latexEditor.ts';
-import { symbolHeadings } from './outline.ts';
+import { outlineDelay, symbolHeadings } from './outline.ts';
 import { applyEdits, newName, renameEdits } from './rename.ts';
 import { syntaxErrors } from './syntax.ts';
 import { EditorState } from '@codemirror/state';
@@ -195,6 +195,9 @@ async function outline() {
     'sections and floats in reading order, across \\input, levels from the command'
   );
   eq([...seen].sort(), ['chapters/one.tex', 'main.tex'], 'the files read, never a commented-out one');
+  // the compile's numbers reach TexLab 2.6 s after it ends, even when the new PDF reloads the tree 0.7 s after it
+  const now = 100_000;
+  eq([outlineDelay(false, 0, now), outlineDelay(true, 0, now), outlineDelay(false, now, now), outlineDelay(false, now - 700, now)], [600, 1500, 2600, 1900], 'the waits');
 }
 
 // ─── paths ───

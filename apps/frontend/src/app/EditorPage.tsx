@@ -118,7 +118,7 @@ import { Texlab, clearMarks, texlabSlot } from '../editor/lsp/texlab';
 import type { Reference } from '../editor/lsp/texlab';
 import { applyEdits, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
-import { symbolHeadings } from '../editor/lsp/outline';
+import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
 import { VERSIONS_CHANGED, errorText, figureSnippet } from '../editor/shared';
 
 // ─── helpers ───
@@ -2177,6 +2177,11 @@ function Editor({ projectId }: { projectId: string }) {
     };
   }, []);
 
+  // the files no editor has open, as TexLab's outline read them: once until the tree or a file changes, rather than
+  // after each pause in typing
+  const outlineReads = useRef(new Map<string, string>());
+  useEffect(() => outlineReads.current.clear(), [fileSet, filesVersion]);
+
   // files added, removed or renamed outside the app (Finder, another editor, a git pull, a sync client) show in the
   // list as they happen, and loaded files changed there are checked against the editor's text
   useEffect(() => {
@@ -2184,6 +2189,7 @@ function Editor({ projectId }: { projectId: string }) {
     events.addEventListener('tree', () => refreshTree().catch(() => undefined));
     events.addEventListener('changed', (e) => {
       const { paths, all } = JSON.parse((e as MessageEvent<string>).data) as { paths?: string[]; all?: boolean };
+      outlineReads.current.clear();
       actions.current.recheck(all ? undefined : paths);
     });
     return () => events.close();
@@ -2216,22 +2222,40 @@ function Editor({ projectId }: { projectId: string }) {
   useEffect(() => attachTexlab(), [texlabOn]);
 
   // TexLab's outline of the document being edited, a moment after typing stops, a file changes, a compile ends or
-  // TexLab starts. A compile's numbers reach TexLab two seconds after it ends (the backend's auxKept).
+  // TexLab starts. A compile's numbers reach TexLab two seconds after it ends (the backend's auxKept), so no outline
+  // comes before then, even when the compile's new PDF reloads the tree meanwhile.
   const outlinedLog = useRef(compileLog);
+  const compiledAt = useRef(0);
+  const outlinedWith = useRef<unknown[]>([]);
   useEffect(() => {
     const texlab = texlabRef.current;
     if (!texlabOn || !texlab || !docRoot) {
       setSymbolOutline(null);
       return;
     }
-    const wait = outlinedLog.current === compileLog ? 600 : 2600;
+    if (outlinedLog.current !== compileLog) compiledAt.current = Date.now();
     outlinedLog.current = compileLog;
+    const deps = [texlabOn, docRoot, fileSet, filesVersion, compileLog];
+    const typing = deps.every((dep, i) => dep === outlinedWith.current[i]);
+    outlinedWith.current = deps;
+    const wait = outlineDelay(typing, compiledAt.current, Date.now());
+    // an open file's live text, and a file read before it was opened is read again once it's closed
+    const read = async (path: string) => {
+      const open = filesRef.current.get(path);
+      if (open !== undefined) {
+        outlineReads.current.delete(path);
+        return open;
+      }
+      const kept = outlineReads.current.get(path) ?? (await getFile(projectId, path)).content;
+      outlineReads.current.set(path, kept);
+      return kept;
+    };
     let live = true;
     const timer = window.setTimeout(async () => {
       try {
         const symbols = await texlab.symbols();
         const seen = new Set<string>();
-        const found = await documentOutline(docRoot, fileSet, readText, symbolHeadings(symbols), seen);
+        const found = await documentOutline(docRoot, fileSet, read, symbolHeadings(symbols), seen);
         if (live) setSymbolOutline({ root: docRoot, items: found, seen });
       } catch {
         // the parser's outline shows meanwhile
