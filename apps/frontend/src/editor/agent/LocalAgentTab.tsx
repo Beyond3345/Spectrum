@@ -22,7 +22,7 @@ import { MenuButton } from '../../app/Menu';
 import { useEditor } from '../EditorContext';
 import type { TodosState } from '../TodosList';
 import { resolveInstructions } from '../personas';
-import { VERSIONS_CHANGED, errorText, relativeTime } from '../shared';
+import { AGENTS_CHANGED, VERSIONS_CHANGED, errorText, relativeTime } from '../shared';
 import { AgentComposer, ChangesTray, PersonaPicker, PlanStrip, ReviewView, Transcript, Welcome, taskPersona, useFollow, useSkills } from './parts';
 import type { ContextKind, Draft, TrayChange } from './parts';
 import { RUNNING, addEvent, project } from './transcript';
@@ -132,7 +132,10 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
 
   // Settings › Agents may have set one up since
   useEffect(() => {
-    if (active) listLocalAgents().then((r) => setAgents(r.agents), () => undefined);
+    const refresh = () => listLocalAgents().then((r) => setAgents(r.agents), () => undefined);
+    if (active) refresh();
+    window.addEventListener(AGENTS_CHANGED, refresh);
+    return () => window.removeEventListener(AGENTS_CHANGED, refresh);
   }, [active]);
 
   const deliver = async (id: string, message: NonNullable<typeof queued.current>) => {

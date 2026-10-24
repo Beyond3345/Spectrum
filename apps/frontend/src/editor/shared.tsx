@@ -63,6 +63,9 @@ export const CHATS_CHANGED = 'spectrum-chats-changed';
 /** Fired after the editor saves a checkpoint (e.g. "Before AI changes") so Tools › Checkpoints can refresh. */
 export const VERSIONS_CHANGED = 'spectrum-versions-changed';
 
+/** Fired after Settings › Agents saves an agent's setup, so the agent workspace's picker sees it. */
+export const AGENTS_CHANGED = 'spectrum-agents-changed';
+
 export type VisionMode = 'equation' | 'table' | 'figure' | 'algorithm' | 'ocr';
 
 export const VISION_MODES: [VisionMode, string, string][] = [

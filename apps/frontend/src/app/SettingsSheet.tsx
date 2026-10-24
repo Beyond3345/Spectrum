@@ -32,7 +32,7 @@ import { highlightColour } from '../editor/synctex';
 import { CheckpointCleanup } from '../editor/tools/VersionsTab';
 import { resetPersonas } from '../editor/personas';
 import type { Persona } from '../editor/personas';
-import { errorText } from '../editor/shared';
+import { AGENTS_CHANGED, errorText } from '../editor/shared';
 import { confirmDialog } from './Dialogs';
 import Icon from './Icon';
 import Select from './Select';
@@ -1920,7 +1920,14 @@ function SkillSharing() {
 /** Settings › Agents: each local agent's program, key, launcher arguments and runtime folders, and copying its login in. */
 function AgentsPane() {
   const [agents, setAgents] = useState<LocalAgent[] | null>(null);
-  const [agentId, setAgentId] = useState('opencode');
+  // the agent last picked in the agent workspace, which its "Set up in Settings › Agents" opens
+  const [agentId, setAgentId] = useState(() => {
+    try {
+      return localStorage.getItem('spectrum-agent-pick') || 'opencode';
+    } catch {
+      return 'opencode';
+    }
+  });
   const [command, setCommand] = useState('');
   const [args, setArgs] = useState('[]');
   const [runtimePaths, setRuntimePaths] = useState('');
@@ -1971,6 +1978,7 @@ function AgentsPane() {
       await configureLocalAgent(agent.id, { command, args: launcherArgs(), runtimePaths: paths, keyEnv, ...(key && { apiKey: key }) });
       setKey('');
       await refresh();
+      window.dispatchEvent(new Event(AGENTS_CHANGED));
     });
   const copyLogin = (agent: LocalAgent) =>
     run(async () => {
@@ -1982,6 +1990,7 @@ function AgentsPane() {
     run(async () => {
       await configureLocalAgent(agent.id, { command: agent.command, args: agent.args, runtimePaths: agent.runtimePaths, apiKey: '' });
       await refresh();
+      window.dispatchEvent(new Event(AGENTS_CHANGED));
     });
 
   return (
