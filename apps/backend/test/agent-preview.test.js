@@ -21,7 +21,7 @@ test('the draft’s preview PDF is compiled where TeX reads only the draft, into
     await fs.mkdir(path.dirname(secret), { recursive: true });
     await fs.writeFile(secret, '\\typeout{SECRET-READ}Outside the draft.');
     const project = await createProject({ name: 'Preview fixture' });
-    await fs.writeFile(path.join(project.path, 'main.tex'), `\\documentclass{article}\n\\begin{document}\nThe draft.\n\\IfFileExists{${secret}}{\\input{${secret}}}{\\typeout{SECRET-HIDDEN}}\n\\end{document}\n`);
+    await fs.writeFile(path.join(project.path, 'main.tex'), `\\documentclass{article}\n\\begin{document}\nThe draft.\n\\IfFileExists{${secret}}{\\input{${secret}}}{\\typeout{SECRET-HIDDEN}}\n\\immediate\\write18{echo WRITE18-RAN}\n\\end{document}\n`);
     await saveAgentConfig('qoder', { command: process.execPath, args: [fixture], runtimePaths: [path.dirname(fixture)] });
     const run = await getAgentRun((await newAgentRun({ projectId: project.id, agentId: 'qoder' })).id);
     await run.ready;
@@ -45,6 +45,8 @@ test('the draft’s preview PDF is compiled where TeX reads only the draft, into
     assert.equal(preview.ok, true, preview.log);
     assert.doesNotMatch(preview.log, /SECRET-READ/, 'TeX could not read the file outside the draft');
     assert.match(preview.log, /SECRET-HIDDEN/);
+    // on Windows nothing but TeX runs, not even restricted shell escape (macOS's isolation contains what it runs)
+    if (process.platform === 'win32') assert.doesNotMatch(preview.log, /write18 enabled|WRITE18-RAN\r?\n/);
     assert.deepEqual((await fs.readdir(run.workspace, { recursive: true })).sort(), before, 'nothing was written into the draft');
     await assert.rejects(previewDraft(run, { mainFile: '../escape.tex' }), /Invalid path/);
     await assert.rejects(previewDraft(run, { engine: 'troff' }), /Unsupported engine/);
