@@ -321,6 +321,13 @@ export interface CompileOptions {
 /** .spectrum/settings.json, which travels with the project (1.10.4 ignores it) */
 export interface ProjectSettings {
   compile?: CompileOptions;
+  /** skills this project switches on or off against Settings › Skills (stub: build/p2-backend validates it) */
+  skills?: ProjectSkills;
+}
+
+export interface ProjectSkills {
+  on: string[];
+  off: string[];
 }
 
 export function getProjectSettings(id: string) {
@@ -328,7 +335,7 @@ export function getProjectSettings(id: string) {
 }
 
 /** A key set to null is removed, so the app's default applies again. */
-export function updateProjectSettings(id: string, patch: { compile?: { [K in keyof CompileOptions]?: CompileOptions[K] | null } }) {
+export function updateProjectSettings(id: string, patch: { compile?: { [K in keyof CompileOptions]?: CompileOptions[K] | null }; skills?: ProjectSkills }) {
   return request<{ settings: ProjectSettings }>(`/api/projects/${id}/settings`, json('PATCH', patch));
 }
 
@@ -1266,3 +1273,43 @@ export const setLocalAgentOption = (id: string, configId: string, value: string)
 export const getLocalAgentChanges = (id: string) => request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/changes`);
 export const recoverLocalAgentApply = (id: string, recoveryId: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/recover`, json('POST', { recoveryId }));
 export const reviewLocalAgentChanges = (id: string, action: 'apply' | 'reject', changes: AgentChange[]) => request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/review`, json('POST', { action, paths: changes.map((c) => c.path), expected: Object.fromEntries(changes.map((c) => [c.path, c.afterHash])) }));
+
+// ─── Skills ───
+// ponytail: stubs written against the phase 2 contract while build/p2-backend builds the routes; take its versions
+// when the branches meet. The list, share and file reads are all Settings › Skills relies on.
+
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  author: string;
+  licence: string;
+  version: string;
+  source: 'bundled' | 'own';
+  files: number;
+  /** what its scripts need to run, e.g. Python 3.11 or later */
+  compatibility?: string;
+  /** on in Settings › Skills for every project */
+  enabled: boolean;
+  /** the project's own choice, when listed for one that differs */
+  project?: 'on' | 'off';
+}
+
+export interface SkillShare {
+  enabled: boolean;
+  targets: { agent: string; path: string; exists: boolean; linked: boolean }[];
+}
+
+const skillUrl = (id: string, rest = '') => `/api/skills/${encodeURIComponent(id)}${rest}`;
+export const listSkills = (projectId?: string) => request<{ skills: Skill[] }>(`/api/skills${projectId ? `?project=${encodeURIComponent(projectId)}` : ''}`);
+export const setSkillEnabled = (id: string, enabled: boolean) => request<unknown>(skillUrl(id), json('PATCH', { enabled }));
+export const createSkill = (skill: { id: string; name: string; description: string; body: string }) => request<unknown>('/api/skills', json('POST', skill));
+export const importSkill = (path: string) => request<unknown>('/api/skills/import', json('POST', { path }));
+export const duplicateSkill = (id: string) => request<unknown>(skillUrl(id, '/duplicate'), json('POST', {}));
+export const deleteSkill = (id: string) => request<unknown>(skillUrl(id), { method: 'DELETE' });
+/** the skill's files, relative to its folder */
+export const listSkillFiles = (id: string) => request<{ files: string[] }>(skillUrl(id, '/files'));
+export const readSkillFile = (id: string, path: string) => request<{ content: string }>(skillUrl(id, `/file?path=${encodeURIComponent(path)}`));
+export const writeSkillFile = (id: string, path: string, content: string) => request<unknown>(skillUrl(id, `/file?path=${encodeURIComponent(path)}`), json('PUT', { content }));
+export const getSkillShare = () => request<SkillShare>('/api/skills/share');
+export const setSkillShare = (enabled: boolean) => request<SkillShare>('/api/skills/share', json('PUT', { enabled }));
