@@ -1576,23 +1576,29 @@ function Editor({ projectId }: { projectId: string }) {
 
   // ─── PDF notes and to-dos ───
 
+  /** Saves a note, showing it while its document's PDF shows; one that can't be saved can be tried again. */
+  const keepNote = (note: PdfNote) => {
+    if (note.doc === shownRef.current) setNotes((prev) => [...prev.filter((n) => n.id !== note.id), note]);
+    saveNote(projectId, note).catch((err) => {
+      setNotes((prev) => prev.filter((n) => n.id !== note.id));
+      const what = note.text.length > 60 ? `${note.text.slice(0, 59)}…` : note.text;
+      toast(`Couldn’t save the note “${what}”: ${errorText(err)}`, { tone: 'error', action: { label: 'Try again', onClick: () => keepNote(note) } });
+    });
+  };
+
   const addAnnotation = async (at: PdfPoint) => {
     const doc = shownDoc;
     const text = (await promptDialog({ title: 'Add a note', message: `Page ${at.page}`, placeholder: 'Note', confirmLabel: 'Add' }))?.trim();
     if (!text) return;
     const now = new Date().toISOString();
-    const note: PdfNote = { id: crypto.randomUUID(), doc, ...at, text: text.slice(0, 2000), createdAt: now, updatedAt: now };
-    setNotes((prev) => [...prev, note]);
-    saveNote(projectId, note).catch((err) => {
-      setNotes((prev) => prev.filter((n) => n.id !== note.id));
-      notify(`Couldn’t save the note: ${errorText(err)}`, 'error');
-    });
+    keepNote({ id: crypto.randomUUID(), doc, ...at, text: text.slice(0, 2000), createdAt: now, updatedAt: now });
   };
 
   const removeNotes = async (gone: PdfNote[]) => {
     setNotes((prev) => prev.filter((n) => !gone.includes(n)));
     try {
       await Promise.all(gone.map((n) => deleteNote(projectId, n.id)));
+      toast(gone.length === 1 ? 'Deleted the note' : `Deleted ${gone.length} notes`, { action: { label: 'Undo', onClick: () => gone.forEach(keepNote) } });
     } catch (err) {
       notify(`Couldn’t delete ${gone.length === 1 ? 'the note' : 'the notes'}: ${errorText(err)}`, 'error');
       listNotes(projectId, shownDoc)
