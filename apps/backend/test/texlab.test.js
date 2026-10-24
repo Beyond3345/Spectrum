@@ -16,6 +16,7 @@ Object.assign(process.env, {
 });
 const { createProject, cachePath } = await import('../src/services/projectService.js');
 const { auxStore, findExecutable } = await import('../src/services/compileService.js');
+const { writeFileAtomic } = await import('../src/utils/fsUtils.js');
 const { frame, readFrames, stopTexlab } = await import('../src/services/texlabService.js');
 const { registerTexlabRoutes } = await import('../src/routes/texlab.js');
 const { default: Fastify } = await import('fastify');
@@ -172,9 +173,22 @@ test('the bridge does the handshake, relays an editor’s messages and keeps the
   assert.ok(!methods.some((m) => m.includes('elsewhere') || m.includes('chap.tex') || m.includes('executeCommand')), methods.join('\n'));
   assert.equal((await post(p, 'nobody', { jsonrpc: '2.0', method: 'initialized' })).status, 404);
 
-  // the editor goes: what it had open goes back to the disk's text
+  // a TeX file replaced on disk, as Spectrum saves, is read again; app data and other files aren't TexLab's business
+  await writeFileAtomic(path.join(p.path, 'chap.tex'), 'Chapter\n');
+  await writeFileAtomic(path.join(p.path, '.spectrum', 'notes.tex'), 'x');
+  await writeFileAtomic(path.join(p.path, 'figure.png'), 'x');
+  const reread = () => received().filter((m) => m.method === 'workspace/didChangeWatchedFiles').flatMap((m) => m.params.changes);
+  await until(() => reread().some((c) => c.uri === `${rootUri}/chap.tex` && c.type === 2), 'chap.tex read again');
+  assert.ok(!reread().some((c) => /\.spectrum|figure/.test(c.uri)), JSON.stringify(reread()));
+
+  // the editor goes: what it had open goes back to the disk's text, which TexLab 5.26 only takes as a change, and so do
+  // later changes on disk
   editor.close();
   await until(() => received().some((m) => m.method === 'textDocument/didClose' && m.params.textDocument.uri === uri), 'didClose');
+  const changedTo = (text) => received().some((m) => m.method === 'textDocument/didChange' && m.params.textDocument.uri === uri && m.params.contentChanges[0].text === text);
+  await until(() => changedTo(readFileSync(path.join(p.path, 'main.tex'), 'utf8')), 'the disk’s text');
+  await writeFileAtomic(path.join(p.path, 'main.tex'), 'Rewritten\n');
+  await until(() => changedTo('Rewritten\n'), 'the new text on disk');
   await stopTexlab();
 });
 
@@ -209,6 +223,9 @@ test('the real TexLab finds a project’s errors, follows the editor and renames
   await post(p, client, [
     { jsonrpc: '2.0', id: 1, method: 'initialize', params: { capabilities: {} } },
     { jsonrpc: '2.0', method: 'initialized', params: {} },
+    // main.tex first, which the editor shows and then leaves for chap.tex
+    { jsonrpc: '2.0', method: 'textDocument/didOpen', params: { textDocument: { uri: main, languageId: 'latex', version: 0, text: readFileSync(path.join(p.path, 'main.tex'), 'utf8') } } },
+    { jsonrpc: '2.0', method: 'textDocument/didClose', params: { textDocument: { uri: main } } },
     { jsonrpc: '2.0', method: 'textDocument/didOpen', params: { textDocument: { uri: chap, languageId: 'latex', version: 0, text: '\\section{Chapter}\nFixed.\nBack to \\ref{sec:intro}.\n' } } }
   ]);
   await editor.next((e) => e.data.id === 1, 'initialize answered');
@@ -225,6 +242,10 @@ test('the real TexLab finds a project’s errors, follows the editor and renames
   const symbols = (await editor.next((e) => e.data.id === 3, 'symbols')).data.result;
   assert.equal(symbols[0].name, '1 Intro');
   assert.ok(symbols[0].selectionRange);
+
+  // main.tex replaced on disk, as Spectrum saves it: TexLab, which had it from the editor, gets the new text
+  await writeFileAtomic(path.join(p.path, 'main.tex'), '\\documentclass{article}\n\\begin{document}\nSee \\ref{sec:elsewhere}.\n\\section{Intro}\\label{sec:intro}\n\\input{chap}\n\\end{document}\n');
+  await until(async () => codes((await diagnostics(p)).files, 'main.tex').join() === '3 undefined-label', 'the new main.tex read', 15_000);
   assert.ok(!existsSync(marker), 'the project’s latexmkrc was run');
   editor.close();
   await stopTexlab();

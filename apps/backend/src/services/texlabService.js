@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
-import { promises as fs } from 'node:fs';
+import { promises as fs, watch } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { auxStore, findExecutable, killGroup } from './compileService.js';
@@ -18,6 +18,13 @@ const DIAGNOSTICS_DELAY = 500;
 // a TexLab that stops this soon after starting isn't started again for a minute, so a broken one doesn't loop
 const CRASH_MS = 10_000;
 const RETRY_MS = 60_000;
+// TexLab 5.26 never lets go of a file an editor has had open: its didClose leaves the file as the editor's (the
+// document set keeps the old entry), so it never reads that file from disk again. The bridge keeps such a file's text
+// up to date itself, sending the disk's text as a change whenever it changes there (and when the last editor closes
+// it), and tells TexLab of other TeX files that change too, after TexLab's own one-second debounce.
+// ponytail: TexLab can't forget such a file, so one deleted stays with no text
+const WATCHED = /\.(tex|sty|cls|ltx|dtx|bib)$/i;
+const REREAD_MS = 2000;
 
 // TexLab reads a project's latexmkrc by running latexmk on it, and a latexmkrc is Perl that can do anything (compiles
 // run latexmk with -norc for the same reason). With only the system's own folders on its PATH it finds no latexmk,
@@ -177,6 +184,9 @@ async function start(projectId) {
     clients: new Map(),
     // project path → the editors that have it open
     opened: new Map(),
+    // project path → its URI, for each file an editor has had open, which TexLab holds as the editor's from then on
+    adopted: new Map(),
+    versions: 0,
     // project path → TexLab's latest diagnostics for it
     diagnostics: new Map(),
     // a change (or the start) TexLab hasn't published diagnostics for yet, and when they'd have come by
@@ -188,6 +198,7 @@ async function start(projectId) {
     stopping: false,
     ended: false
   };
+  session.watcher = watchFiles(session);
   proc.on('error', () => ended(session));
   proc.on('exit', () => ended(session));
   // after it stops, writes fail with EPIPE
@@ -326,6 +337,7 @@ function disconnect(session, client) {
     session.opened.delete(rel);
     changed(session);
     write(session, { jsonrpc: '2.0', method: 'textDocument/didClose', params: { textDocument: { uri } } });
+    adopt(session, rel, uri);
   }
   for (const [id, waiting] of session.pending) if (waiting.client === client) session.pending.delete(id);
   scheduleIdle(session);
@@ -380,11 +392,72 @@ function syncDocument(session, client, method, params) {
   }
   changed(session);
   write(session, { jsonrpc: '2.0', method, params });
+  if (method === 'textDocument/didClose') adopt(session, rel, uri);
+}
+
+/** A file no editor has open any more, which TexLab still holds as the editor's: it gets the disk's text, now and when that changes. */
+function adopt(session, rel, uri) {
+  session.adopted.set(rel, uri);
+  reread(session, rel).catch(() => {});
+}
+
+async function reread(session, rel) {
+  const text = await fs.readFile(path.join(session.root, ...rel.split('/')), 'utf8').catch(() => '');
+  // an editor has it open again meanwhile: its text counts
+  if (session.ended || session.opened.has(rel)) return;
+  changed(session);
+  const textDocument = { uri: session.adopted.get(rel), version: ++session.versions };
+  write(session, { jsonrpc: '2.0', method: 'textDocument/didChange', params: { textDocument, contentChanges: [{ text }] } });
 }
 
 function changed(session) {
   session.stale = true;
   session.settleBy = Date.now() + DIAGNOSTICS_DELAY + 400;
+}
+
+/**
+ * Each TeX file that changes in the project (not in its app data), REREAD_MS after the last change: an adopted one's
+ * new text, and TexLab told to read the others again. An open file's text is the editor's.
+ */
+function watchFiles(session) {
+  let pending = new Set();
+  let timer = null;
+  const flush = async () => {
+    const paths = [...pending].filter((rel) => !session.opened.has(rel));
+    pending = new Set();
+    const changes = [];
+    for (const rel of paths) {
+      if (session.adopted.has(rel)) {
+        await reread(session, rel);
+        continue;
+      }
+      const file = path.join(session.root, ...rel.split('/'));
+      const there = await fs.stat(file).then((stat) => stat.isFile(), () => false);
+      changes.push({ uri: pathToFileURL(file).href, type: there ? 2 : 3 });
+    }
+    if (session.ended || !changes.length) return;
+    changed(session);
+    write(session, { jsonrpc: '2.0', method: 'workspace/didChangeWatchedFiles', params: { changes } });
+  };
+  try {
+    const watcher = watch(session.root, { recursive: true }, (type, name) => {
+      const rel = name ? String(name).split(path.sep).join('/') : '';
+      if (!WATCHED.test(rel) || rel.split('/')[0].toLowerCase() === APP_DIR) return;
+      pending.add(rel);
+      clearTimeout(timer);
+      timer = setTimeout(() => flush().catch(() => {}), REREAD_MS);
+    });
+    // the folder went away, or the system ran out of watches: TexLab's own watcher is left
+    watcher.on('error', () => watcher.close());
+    return {
+      close: () => {
+        clearTimeout(timer);
+        watcher.close();
+      }
+    };
+  } catch {
+    return { close: () => {} };
+  }
 }
 
 /** Once TexLab has had its say on the latest change: its next diagnostics, or the time they'd have come by (it says nothing about a clean project). */
@@ -446,6 +519,7 @@ function stopSession(session) {
 function ended(session) {
   if (session.ended) return;
   session.ended = true;
+  session.watcher.close();
   clearTimeout(session.idle);
   clearTimeout(session.settling);
   if (!session.stopping && Date.now() - session.started < CRASH_MS) failed.set(session.projectId, Date.now());
