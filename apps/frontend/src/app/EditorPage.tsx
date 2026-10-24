@@ -50,7 +50,7 @@ import type { MenuItems } from './Menu';
 import { confirmDialog, promptDialog } from './Dialogs';
 import { SaveTemplateSheet } from './ProjectPage';
 import { toast } from './Toast';
-import { IS_DESKTOP } from './desktop';
+import { IS_DESKTOP, focusWindow, openDiagram } from './desktop';
 import { FILE_MANAGER } from './platform';
 import { BIB_TOOLS, COMPILE_ENGINES, ERROR_HANDLING, autoCompileLabel, effectiveCompile, effectiveEffort, llmConfigFor, updateSettings, useProviders, useSettings } from './settings';
 import { PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
@@ -64,7 +64,8 @@ import ToolsPanel from '../editor/ToolsPanel';
 import FloatsPanel from '../editor/FloatsPanel';
 import type { FloatCard } from '../editor/FloatsPanel';
 import InsightsPanel from '../editor/InsightsPanel';
-import { figureFile, showFigure } from '../editor/tools/FloatsTab';
+import { figureFile, showDiagram, showFigure } from '../editor/tools/FloatsTab';
+import type { DiagramLanguage } from '../diagram/types';
 import SplitDiffView from '../editor/SplitDiffView';
 import GrammarPanel, { grammarMarks } from '../editor/GrammarPanel';
 import { ignoreSpelling, misspeltAt, recheckSpelling, spellChecker } from '../editor/spellcheck';
@@ -111,7 +112,9 @@ import { VERSIONS_CHANGED, errorText, extractBibKey, figureSnippet, bibtexForDoc
 
 // ─── helpers ───
 
-const TEXT_FILE = /\.(tex|bib|sty|cls|bst|bbx|cbx|lbx|cfg|def|clo|ltx|dtx|txt|md|json|ya?ml|csv|tsv)$|(^|\/)\.latexmkrc$/i;
+const TEXT_FILE = /\.(tex|bib|sty|cls|bst|bbx|cbx|lbx|cfg|def|clo|ltx|dtx|txt|md|mmd|json|ya?ml|csv|tsv)$|(^|\/)\.latexmkrc$/i;
+// \includestandalone[…]{figures/name}: the diagram its line takes in
+const INCLUDE_STANDALONE = /\\includestandalone\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/;
 const FIGURE_FILE = /\.(png|jpe?g|pdf|svg|eps)$/i;
 const IMAGE_FILE = /\.(png|jpe?g|svg|gif)$/i;
 const isTex = (p: string) => /\.tex$/i.test(p);
@@ -184,7 +187,7 @@ const ZOOMS: [PdfZoom, string][] = [
 ];
 
 type Snippet = { label: string; icon: string; text: string; select: string; block?: boolean };
-/** a snippet, the Floats panel's figure or table card, or a divider */
+/** a snippet, the Floats panel's figure or table card, the diagram composer, or a divider */
 const SNIPPETS: (Snippet | FloatCard | null)[] = [
   { label: 'Section', icon: 'number', text: '\\section{Section title}', select: 'Section title', block: true },
   { label: 'Subsection', icon: 'list.bullet.indent', text: '\\subsection{Subsection title}', select: 'Subsection title', block: true },
@@ -203,6 +206,7 @@ const SNIPPETS: (Snippet | FloatCard | null)[] = [
   null,
   'figure',
   'table',
+  'diagram',
   {
     label: 'Code listing',
     icon: 'chevron.left.forwardslash.chevron.right',
@@ -275,6 +279,8 @@ function Editor({ projectId }: { projectId: string }) {
   const [mainFile, setMainFile] = useState('');
   /** the .tex files with a \documentclass of their own, as the tree last listed them */
   const [documents, setDocuments] = useState<string[]>([]);
+  /** the files the diagram composer can open (Edit diagram), as the tree last listed them */
+  const [diagrams, setDiagrams] = useState<string[]>([]);
   /** a sync app's conflict copies, each with its original's path */
   const [conflicts, setConflicts] = useState<Record<string, string>>({});
   const [loaded, setLoaded] = useState(false);
@@ -454,9 +460,16 @@ function Editor({ projectId }: { projectId: string }) {
     setItems(res.items);
     setFileOrder(res.fileOrder || {});
     setDocuments(res.documents ?? []);
+    setDiagrams(res.diagrams ?? []);
     setConflicts(res.conflicts ?? {});
     return res;
   };
+
+  /** The diagram composer's window, at its chooser or at a diagram of the project (a figures/*.tex or an .mmd). */
+  const drawDiagram = (file?: string) =>
+    openDiagram(projectId, file, file ? (/\.mmd$/i.test(file) ? 'mermaid' : 'tikz') : undefined).catch((err) =>
+      notify(`Couldn’t open the diagram composer: ${errorText(err)}`, 'error')
+    );
 
   /** A file's text: the editor's when it has it, else from disk without keeping it (so it can't go stale here). */
   const readText = async (path: string) => filesRef.current.get(path) ?? (await getFile(projectId, path)).content;
@@ -2004,6 +2017,35 @@ function Editor({ projectId }: { projectId: string }) {
     return () => events.close();
   }, [projectId]);
 
+  // the diagram composer's window (desktop.ts openDiagram): its Insert as figure hands the diagram to the Floats panel's
+  // Insert diagram card and brings this window forward, and its saves show without waiting for the folder watch
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const channel = new BroadcastChannel('spectrum-diagram');
+    channel.onmessage = ({ data }: MessageEvent) => {
+      if (data?.projectId !== projectId || typeof data.path !== 'string') return;
+      const path: string = data.path;
+      if (data.type === 'saved') {
+        refreshTree().catch(() => undefined);
+        actions.current.recheck([path]);
+        return;
+      }
+      const language = (['tikz', 'typst', 'mermaid'] as DiagramLanguage[]).find((l) => l === data.language);
+      if (data.type !== 'insert' || !language) return;
+      // names only, as they go into the preamble
+      const names = (list: unknown) => (Array.isArray(list) ? list.filter((n): n is string => typeof n === 'string' && /^[\w.-]+$/.test(n)) : []);
+      // its exported image may be newer than the file list
+      refreshTree()
+        .catch(() => undefined)
+        .finally(() => {
+          showDiagram({ path, language, packages: names(data.packages), libraries: names(data.libraries) });
+          actions.current.openFloats('diagram');
+          focusWindow();
+        });
+    };
+    return () => channel.close();
+  }, [projectId]);
+
   // the wanted file, once the project has loaded and whenever another comes while it's open; then the
   // address drops it, so a reload opens the project as usual
   useEffect(() => {
@@ -2299,11 +2341,13 @@ function Editor({ projectId }: { projectId: string }) {
   );
 
   const insertItems: MenuItems = SNIPPETS.map((s) =>
-    s === 'figure' || s === 'table'
-      ? { label: s === 'figure' ? 'Figure…' : 'Table…', icon: s === 'figure' ? 'photo' : 'tablecells', onSelect: () => openFloats(s) }
-      : s
-        ? { label: s.label, icon: s.icon, onSelect: () => insertSnippet(s) }
-        : { separator: true }
+    s === 'diagram'
+      ? { label: 'Draw a diagram…', icon: 'pencil', onSelect: () => drawDiagram() }
+      : s === 'figure' || s === 'table'
+        ? { label: s === 'figure' ? 'Figure…' : 'Table…', icon: s === 'figure' ? 'photo' : 'tablecells', onSelect: () => openFloats(s) }
+        : s
+          ? { label: s.label, icon: s.icon, onSelect: () => insertSnippet(s) }
+          : { separator: true }
   );
 
   const zoomLabel = ZOOMS.find(([z]) => z === zoom)?.[1] || `${Math.round(scale * 100)}%`;
@@ -2476,6 +2520,8 @@ function Editor({ projectId }: { projectId: string }) {
                 onMoved={onMoved}
                 onDeleted={onDeleted}
                 onSetMain={(path) => chooseMain(path)}
+                diagrams={diagrams}
+                onEditDiagram={(path) => drawDiagram(path)}
                 onNewBib={() => createBibFile().catch((err) => notify(`Couldn’t create the .bib file: ${errorText(err)}`, 'error'))}
                 notify={notify}
               />
@@ -2543,6 +2589,9 @@ function Editor({ projectId }: { projectId: string }) {
               </button>
               <button className="icon-btn float-button" title="Insert table" aria-label="Insert table" onClick={() => openFloats('table')}>
                 <Icon name="tablecells" />
+              </button>
+              <button className="icon-btn float-button" title="Draw a diagram" aria-label="Draw a diagram" onClick={() => drawDiagram()}>
+                <Icon name="pencil" />
               </button>
               <div ref={stripRef} className="file-tabs" role="tablist" data-tauri-drag-region>
                 {tabs.map((path) => (
@@ -3018,6 +3067,10 @@ function Editor({ projectId }: { projectId: string }) {
               view?.focus();
             };
             const copied = () => navigator.clipboard.writeText(selected);
+            // a diagram the line takes in, by its name from the main file's folder or the project's, as TeX finds it
+            const included = view && INCLUDE_STANDALONE.exec(view.state.doc.lineAt(lineMenu.pos).text)?.[1].trim().replace(/\.tex$/i, '');
+            const dir = mainFile.slice(0, mainFile.lastIndexOf('/') + 1);
+            const diagram = included && [`${dir}${included}.tex`, `${included}.tex`].find((p) => diagrams.includes(p));
             return [
               { label: 'Cut', shortcut: formatShortcut('Mod-x'), disabled: !selected, onSelect: () => copied().then(() => edit('', 'delete.cut'), () => undefined) },
               { label: 'Copy', shortcut: formatShortcut('Mod-c'), disabled: !selected, onSelect: () => copied().catch(() => undefined) },
@@ -3031,6 +3084,7 @@ function Editor({ projectId }: { projectId: string }) {
                   )
               },
               { separator: true },
+              !!diagram && { label: 'Edit diagram', onSelect: () => drawDiagram(diagram) },
               { label: 'Add to-do here', onSelect: () => addTodoAtLine(lineMenu.pos) }
             ];
           })()}

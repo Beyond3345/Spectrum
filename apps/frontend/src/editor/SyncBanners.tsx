@@ -12,7 +12,7 @@ import { errorText, formatDate } from './shared';
 const timeFormat = new Intl.DateTimeFormat('en-AU', { hour: 'numeric', minute: '2-digit' });
 const nameOf = (p: string) => p.slice(p.lastIndexOf('/') + 1);
 // the files a side-by-side diff can show
-const TEXT_FILE = /\.(tex|bib|sty|cls|bst|bbx|cbx|lbx|cfg|def|clo|ltx|dtx|txt|md|json|ya?ml|csv|tsv)$/i;
+const TEXT_FILE = /\.(tex|bib|sty|cls|bst|bbx|cbx|lbx|cfg|def|clo|ltx|dtx|txt|md|mmd|json|ya?ml|csv|tsv)$/i;
 
 /** 10:42 am today, else with the date */
 function since(iso: string) {

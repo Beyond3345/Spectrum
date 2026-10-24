@@ -106,6 +106,9 @@ const FileTree = forwardRef<
     onMoved(from: string, to: string): void;
     onDeleted(path: string): void;
     onSetMain(path: string): void;
+    /** the files the diagram composer can open: figures that end with their drawing, and .mmd */
+    diagrams: string[];
+    onEditDiagram(path: string): void;
     onNewBib(): void;
     notify(message: string, tone?: 'info' | 'success' | 'error'): void;
   }
@@ -280,6 +283,7 @@ const FileTree = forwardRef<
       { label: 'Upload files…', icon: 'square.and.arrow.up', onSelect: () => pick('files', folder) },
       { label: 'Upload folder…', icon: 'tray.and.arrow.down', onSelect: () => pick('folder', folder) },
       { separator: true },
+      !!path && props.diagrams.includes(path) && { label: 'Edit diagram', icon: 'pencil', onSelect: () => props.onEditDiagram(path) },
       !!path && isTex(path) && { label: 'Set as main file', icon: 'checkmark.seal', disabled: path === mainFile, onSelect: () => props.onSetMain(path) },
       !!path && { label: 'Rename…', icon: 'pencil', onSelect: () => setInline({ kind: 'rename', path, value: nameOf(path) }) },
       IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => run(() => revealProject(projectId, path || undefined), `Couldn’t show it in ${FILE_MANAGER}`) },
