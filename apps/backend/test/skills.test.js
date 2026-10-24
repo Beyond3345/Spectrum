@@ -30,7 +30,7 @@ const { default: Fastify } = await import('fastify');
 const { registerProjectRoutes } = await import('../src/routes/projects.js');
 const { registerSkillRoutes } = await import('../src/routes/skills.js');
 const { createProject } = await import('../src/services/projectService.js');
-const { activeSkills, loadSkill, readSkillFile, SKILLS_DIR } = await import('../src/services/skillService.js');
+const { activeSkills, loadSkill, readFrontMatter, readSkillFile, SKILLS_DIR } = await import('../src/services/skillService.js');
 const app = Fastify();
 // as the server answers: the error's own message
 app.setErrorHandler(async (err, req, reply) => reply.code(err.statusCode || 500).send({ ok: false, error: err.message }));
@@ -163,4 +163,22 @@ test('a skill picked in the composer goes to a local agent in whole', async () =
   assert.deepEqual(await readContext({}, { skill: 'beta' }), { skill: { id: 'beta', text: 'Review carefully.' } });
   await assert.rejects(readContext({}, { skill: '../beta' }), /Invalid context/);
   await assert.rejects(readContext({}, { skill: 'gamma' }), /not found/);
+});
+
+test('front matter after a BOM or on the next line, duplicates of long ids and of titled or shipped skills, and the scripts left out', async () => {
+  assert.deepEqual(readFrontMatter('\uFEFF---\nname: bom\ndescription: After a BOM\n---\nBody').data, { name: 'bom', description: 'After a BOM' });
+  assert.equal(readFrontMatter('---\nname: x\ndescription:\n  Finds papers when the user\n  asks for a literature sweep.\n---\n').data.description, 'Finds papers when the user asks for a literature sweep.');
+  assert.deepEqual(readFrontMatter('---\ntags:\n  - a\n  - b\n---\n').data.tags, {}, 'a list is still passed over');
+
+  const long = `${'a'.repeat(58)}-bcdef`;
+  assert.equal((await api('/api/skills', 'POST', { id: long, name: 'Lab style guide', description: 'House style' })).status, 200);
+  const first = (await api(`/api/skills/${long}/duplicate`, 'POST')).json.skill;
+  assert.equal(first?.id, `${'a'.repeat(58)}-copy`, 'no hyphen before the suffix');
+  assert.equal(first.name, 'Lab style guide (copy)');
+  assert.equal((await api(`/api/skills/${long}/duplicate`, 'POST')).json.skill?.id, `${'a'.repeat(57)}-copy-2`);
+  assert.equal((await api('/api/skills/beta/duplicate', 'POST')).json.skill.licence, 'MIT', 'the shipped licence goes with the copy');
+
+  assert.equal((await api('/api/skills', 'POST', { id: 'figures', description: 'Figures', body: 'Run scripts/generate_schematic.py for each figure.' })).status, 200);
+  assert.match((await loadSkill('figures')).body, /generate_schematic\.py for each figure\.\n\nSpectrum doesn’t ship the generate_schematic or generate_slide_image scripts/);
+  assert.equal((await loadSkill('beta')).body, 'Review carefully.', 'only where a skill names them');
 });

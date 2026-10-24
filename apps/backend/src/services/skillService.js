@@ -3,7 +3,7 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import { APP_VERSION, DATA_DIR, SKILLS_SEED_DIR } from '../config/constants.js';
-import { readJson, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
+import { readJson, renameOver, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { httpError, serialiser } from './projectService.js';
 import { readProjectSettings } from './projectSettings.js';
@@ -42,10 +42,12 @@ function scalar(lines, i, indent, raw) {
 }
 
 /**
- * { data, body } of a SKILL.md: its front matter's strings, and one level of map (metadata) as an object of strings.
- * ponytail: a subset of YAML, enough for the keys Spectrum reads; lists and deeper maps are passed over
+ * { data, body } of a SKILL.md: its front matter's strings (a plain one may start on the next line), and one level of
+ * map (metadata) as an object of strings. ponytail: a subset of YAML, enough for the keys Spectrum reads; lists and
+ * deeper maps are passed over
  */
 export function readFrontMatter(text) {
+  text = text.replace(/^\uFEFF/, '');
   const match = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(text);
   if (!match) return { data: {}, body: text };
   const lines = match[1].split(/\r?\n/);
@@ -58,8 +60,9 @@ export function readFrontMatter(text) {
       ({ value: data[key], next: i } = scalar(lines, i, 0, raw));
       continue;
     }
-    // a map of strings, one level down; anything deeper or a list is skipped
+    // a map of strings, one level down, or a plain string on the lines below; anything deeper or a list is skipped
     const map = {};
+    const plain = [];
     let indent = null;
     while (i + 1 < lines.length && (!lines[i + 1].trim() || /^\s/.test(lines[i + 1]))) {
       const line = lines[++i];
@@ -67,8 +70,9 @@ export function readFrontMatter(text) {
       const entry = /^\s+([A-Za-z0-9_.-]+):\s+(.*)$/.exec(line);
       indent ??= entry ? own : null;
       if (entry && own === indent) ({ value: map[entry[1]], next: i } = scalar(lines, i, own, entry[2]));
+      else if (indent === null && line.trim()) plain.push(line.trim());
     }
-    data[key] = map;
+    data[key] = indent === null && plain.length && !plain[0].startsWith('-') ? plain.join(' ') : map;
   }
   return { data, body: text.slice(match[0].length) };
 }
@@ -110,7 +114,8 @@ function seedBundled() {
       await fs.copyFile(path.join(SKILLS_SEED_DIR, 'manifest.json'), path.join(staged, 'manifest.json')).catch(() => {});
       await fs.writeFile(path.join(staged, '.version'), APP_VERSION);
       await fs.rm(BUNDLED_DIR, { recursive: true, force: true });
-      await fs.rename(staged, BUNDLED_DIR);
+      // retried while a virus scanner on Windows still holds a file just copied
+      await renameOver(staged, BUNDLED_DIR);
     } finally { await fs.rm(staged, { recursive: true, force: true }); }
   })();
   // a failed copy is tried again next time
@@ -264,30 +269,39 @@ export function importSkill(folder) {
     const staged = path.join(OWN_DIR, `.import-${crypto.randomUUID()}`);
     try {
       await copySkillFolder(folder, staged);
-      await fs.rename(staged, path.join(OWN_DIR, id));
+      await renameOver(staged, path.join(OWN_DIR, id));
     } finally { await fs.rm(staged, { recursive: true, force: true }); }
     await syncShare();
     return (await listSkills()).find((s) => s.id === id);
   });
 }
 
-/** An editable copy, <id>-copy (then -copy-2…), its SKILL.md named after it; the licence and author lines go with it. */
+/**
+ * An editable copy, <id>-copy (then -copy-2…), its SKILL.md named after it and its title marked as a copy; the licence
+ * (the shipped one too, where its front matter names none) and author lines go with it.
+ */
 export function duplicateSkill(id) {
   return lock(async () => {
     const skill = await findSkill(id);
     const taken = new Set((await allSkills()).map((s) => s.id));
-    let copy = `${id.slice(0, 59)}-copy`;
-    for (let n = 2; taken.has(copy); n += 1) copy = `${id.slice(0, 64 - `-copy-${n}`.length)}-copy-${n}`;
+    // an id cut short before a hyphen would make one SKILL_ID refuses
+    const cut = (n) => id.slice(0, n).replace(/-+$/, '');
+    let copy = `${cut(59)}-copy`;
+    for (let n = 2; taken.has(copy); n += 1) copy = `${cut(64 - `-copy-${n}`.length)}-copy-${n}`;
     const staged = path.join(OWN_DIR, `.copy-${crypto.randomUUID()}`);
     try {
       await copySkillFolder(skill.dir, staged);
       const file = path.join(staged, 'SKILL.md');
       const source = await fs.readFile(file, 'utf8');
-      const head = /^---\r?\n([\s\S]*?)\r?\n---/.exec(source);
-      const renamed = !head ? `---\nname: ${copy}\ndescription: ${JSON.stringify(text(skill.data.description) || copy)}\n---\n\n${source}`
-        : (/^name:.*$/m.test(head[1]) ? head[0].replace(/^name:.*$/m, `name: ${copy}`) : head[0].replace(/^---\r?\n/, `---\nname: ${copy}\n`)) + source.slice(head[0].length);
-      await fs.writeFile(file, renamed);
-      await fs.rename(staged, path.join(OWN_DIR, copy));
+      const head = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/.exec(source);
+      const title = skill.data.metadata && text(skill.data.metadata.title);
+      const licence = !text(skill.data.license) && skill.shipped?.licence;
+      let front = !head ? `---\nname: ${copy}\ndescription: ${JSON.stringify(text(skill.data.description) || copy)}\n---`
+        : /^name:.*$/m.test(head[1]) ? head[0].replace(/^name:.*$/m, `name: ${copy}`) : head[0].replace(/^\uFEFF?---\r?\n/, `---\nname: ${copy}\n`);
+      if (title) front = front.replace(/^(\s+)title:.*$/m, `$1title: ${JSON.stringify(`${title} (copy)`)}`);
+      if (licence) front = front.replace(/^name:.*$/m, (line) => `${line}\nlicense: ${licence}`);
+      await fs.writeFile(file, front + (head ? source.slice(head[0].length) : `\n\n${source}`));
+      await renameOver(staged, path.join(OWN_DIR, copy));
     } finally { await fs.rm(staged, { recursive: true, force: true }); }
     await syncShare();
     return (await listSkills()).find((s) => s.id === copy);
@@ -331,10 +345,16 @@ export function writeSkillFile(id, rel, content) {
   });
 }
 
+// K-Dense's figure and slide scripts spend an OpenRouter key, so sync-skills leaves them out; the skills that run them
+// say so when they're loaded
+const LEFT_OUT = /generate_(?:schematic|slide_image)/;
+/** A skill's instructions as an agent reads them, with a line on the scripts Spectrum doesn't ship where they name one. */
+export const skillBody = (body) => LEFT_OUT.test(body) ? `${body}\n\nSpectrum doesn’t ship the generate_schematic or generate_slide_image scripts (they need an OpenRouter key): build figures and slides in TikZ or Beamer instead.` : body;
+
 /** The skill's instructions and files, as an agent loads it. */
 export async function loadSkill(id) {
   const skill = await findSkill(id);
-  return { id: skill.id, description: text(skill.data.description), body: skill.body.trim(), files: (await walk(skill.dir)).map((f) => f.path).sort() };
+  return { id: skill.id, description: text(skill.data.description), body: skillBody(skill.body.trim()), files: (await walk(skill.dir)).map((f) => f.path).sort() };
 }
 
 // ─── Sharing with agents run outside Spectrum ───

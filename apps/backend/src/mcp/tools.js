@@ -3,7 +3,7 @@ import path from 'path';
 import { compileFolder, unwrap } from '../services/compileService.js';
 import { parseBibEntries } from '../services/referenceService.js';
 import { fetchBibtex, literatureSearch } from '../services/researchTools.js';
-import { SKILL_ID, readFrontMatter } from '../services/skillService.js';
+import { SKILL_ID, readFrontMatter, skillBody } from '../services/skillService.js';
 import { suggestedTodo } from '../services/agentService.js';
 import { withoutComments } from '../latex/text.js';
 import { listFilesRecursive } from '../utils/fsUtils.js';
@@ -163,7 +163,7 @@ export async function loadHomeSkill(id) {
     const text = await fs.readFile(path.join(dir, 'SKILL.md'), 'utf8').catch(() => null);
     if (text === null) continue;
     const files = (await listFilesRecursive(dir)).filter((f) => f.type === 'file' && f.path !== '.spectrum-managed').map((f) => f.path).sort();
-    return { id, folder: dir, body: readFrontMatter(text).body.trim(), files };
+    return { id, folder: dir, body: skillBody(readFrontMatter(text).body.trim()), files };
   }
   throw new Error(`No skill “${id}” is available in this project.`);
 }
