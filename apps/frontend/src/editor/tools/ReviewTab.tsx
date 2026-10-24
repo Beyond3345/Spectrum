@@ -169,9 +169,10 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
       await api.save();
       let reviewed = doc;
       let status = await getReviewState(projectId, doc, true);
-      // compiled since the last edit, with that compile's log at hand
-      const fresh =
-        status.pdfAt !== null && (status.sourceAt === null || status.pdfAt >= status.sourceAt) && latest.current.compiledDoc === doc && Boolean(latest.current.compileLog);
+      // compiled since the last edit, with that compile's log at hand; a PDF the compile couldn't write over the copy
+      // on disk (another program holds it, on Windows) counts from when that compile started
+      const pdfAt = latest.current.keptPdf(doc)?.at ?? status.pdfAt;
+      const fresh = pdfAt !== null && (status.sourceAt === null || pdfAt >= status.sourceAt) && latest.current.compiledDoc === doc && Boolean(latest.current.compileLog);
       if (!fresh) {
         // ponytail: Cancel stops the review, not a compile it started; Stop on the Compile button does
         setStep('Compiling…');
@@ -195,12 +196,13 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
           if (text !== null) texts.set(path, text);
         })
       );
-      // the build's PDF; a failed one's would be an older build's
-      const pdf = reviewed.replace(/\.tex$/i, '.pdf');
+      // the build's PDF, the compile's own when the copy on disk is an older one; a failed build's would be older too
+      const kept = latest.current.keptPdf(reviewed);
+      const pdf = kept ? URL.createObjectURL(kept.blob) : blobUrl(projectId, reviewed.replace(/\.tex$/i, '.pdf'), Date.now());
       const [facts, diagnostics] = await Promise.all([
-        compileFailed ? null : pdfFacts(blobUrl(projectId, pdf, Date.now()), abort.signal).catch(() => null),
+        compileFailed ? null : pdfFacts(pdf, abort.signal).catch(() => null),
         latest.current.diagnostics().then((d) => (d.available ? d.files : undefined), () => undefined)
-      ]);
+      ]).finally(() => kept && URL.revokeObjectURL(pdf));
       abort.signal.throwIfAborted();
       const input = {
         doc: reviewed,

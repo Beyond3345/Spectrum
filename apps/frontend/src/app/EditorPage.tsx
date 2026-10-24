@@ -362,8 +362,9 @@ function Editor({ projectId }: { projectId: string }) {
   const editedDocRef = useRef('');
   // the document whose PDF shows, as of now (shownDoc is as of the last render)
   const shownRef = useRef('');
-  // a document's PDF from a compile that couldn't write over the copy on disk, which another program held (Windows)
-  const stalePdf = useRef(new Map<string, Blob>());
+  // a document's PDF from a compile that couldn't write over the copy on disk, which another program held (Windows),
+  // and when that compile started
+  const stalePdf = useRef(new Map<string, { blob: Blob; at: number }>());
   const autoRunningRef = useRef(false);
   const autoWaitingRef = useRef(false);
   // the files a checkpoint after compiling left out that the notice has named
@@ -1354,8 +1355,8 @@ function Editor({ projectId }: { projectId: string }) {
 
   /** A document's PDF from its last compile: the copy on disk, or the compile's own when it couldn't write over that. */
   const pdfFor = (doc: string) => {
-    const blob = stalePdf.current.get(doc);
-    return blob ? { url: URL.createObjectURL(blob), blob: true } : { url: blobUrl(projectId, pdfOf(doc), Date.now()), blob: false };
+    const kept = stalePdf.current.get(doc);
+    return kept ? { url: URL.createObjectURL(kept.blob), blob: true } : { url: blobUrl(projectId, pdfOf(doc), Date.now()), blob: false };
   };
 
   /** A document's PDF from its last compile; returns the URL it shows from. */
@@ -1458,6 +1459,7 @@ function Editor({ projectId }: { projectId: string }) {
     setCompile({ state: 'running', engine: used });
     try {
       await saveNow();
+      const startedAt = Date.now();
       const res = await compileProject({
         projectId,
         mainFile: doc,
@@ -1485,7 +1487,7 @@ function Editor({ projectId }: { projectId: string }) {
         if (!opts.auto || built === shownRef.current) showPdf(built, { url, blob: true });
         else window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
         // a copy on disk another program holds (Windows) is older: this one shows when the document's PDF comes back
-        if (res.pdfStale) stalePdf.current.set(built, blob);
+        if (res.pdfStale) stalePdf.current.set(built, { blob, at: startedAt });
         else stalePdf.current.delete(built);
         setCompileFailure('');
         ended = 'ok';
@@ -2478,6 +2480,7 @@ function Editor({ projectId }: { projectId: string }) {
     // by default the document whose log the AI read, so a fix loop stays on it
     compile: (doc) => runCompile(doc || compiledDoc || mainFile),
     save: () => saveNow(),
+    keptPdf: (doc) => stalePdf.current.get(doc) ?? null,
     diagnostics: async () => (texlabRef.current?.available ? texlabRef.current.diagnostics() : { available: false, files: {} }),
     createVersion
   };
