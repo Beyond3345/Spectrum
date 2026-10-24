@@ -2,7 +2,7 @@ import { matchBrace, withoutComments } from '../../../../backend/src/latex/text.
 import { lastPass, parseCompileLog, projectFile } from '../compileLog';
 import { figureKind } from '../floats';
 import { plainText, scanInsights } from '../insights';
-import { CITE_COMMANDS, REF_COMMANDS } from '../latexContext';
+import { CITE_COMMANDS, REF_COMMANDS, VERBATIM_ENVS } from '../latexContext';
 import { INPUT_RE, externalDocuments, includedFile, inputName, scanTex } from '../latexEnvs';
 import { scanTodos } from '../todos';
 
@@ -105,8 +105,18 @@ function lineFinder(text: string) {
   };
 }
 
+// the code verbatim environments and \verb|…| show, which isn't LaTeX
+const VERBATIM = new RegExp(
+  String.raw`\\begin\s*\{(${[...VERBATIM_ENVS].map((env) => env.replace('*', '\\*')).join('|')})\}[\s\S]*?\\end\s*\{\1\}|\\verb\*?([^A-Za-z\s])[^\n]*?\2`,
+  'g'
+);
+/** A source's code: its comments gone and what verbatim environments and \verb show blanked, its line breaks kept. */
+const codeOf = (text: string) => withoutComments(text).replace(VERBATIM, (code) => code.replace(/[^\n]/g, ' '));
+
 type Place = { file: string; line: number };
 const LABEL = /\\label\s*\{([^{}]+)\}/g;
+// a listing's or box's label in its options, such as \begin{lstlisting}[label={lst:a}]
+const OPTION_LABEL = /\\(?:begin\s*\{(?:lstlisting|minted|tcolorbox)\}|lstinputlisting|inputminted)[^\n]*?\blabel\s*=\s*\{?([^,{}\]\s]+)/g;
 // a command with up to two [optional] arguments before its first {argument}: \ref, \cite and their kin
 const COMMAND_ARG = /\\([A-Za-z]+)\*?\s*(?:\[[^\]]*\]\s*){0,2}\{([^{}]*)\}/g;
 const BIBITEM = /\\bibitem\s*(?:\[[^\]]*\]\s*)?\{([^{}]+)\}/g;
@@ -219,23 +229,26 @@ export function runPreflight(input: PreflightInput): Finding[] {
   const graphicsDirs = [''];
   let citesAll = false;
   for (const { path, text } of sources) {
-    const code = withoutComments(text);
+    const code = codeOf(text);
     const lineOf = lineFinder(code);
-    for (const m of code.matchAll(LABEL)) {
-      const key = m[1].trim();
-      labels.set(key, [...(labels.get(key) ?? []), { file: path, line: lineOf(m.index!) }]);
-    }
+    // a key with a # in it is a \newcommand's argument, not a label, citation or image of the document's
+    const label = (key: string, at: number) => {
+      if (!key.includes('#')) labels.set(key, [...(labels.get(key) ?? []), { file: path, line: lineOf(at) }]);
+    };
+    for (const m of code.matchAll(LABEL)) label(m[1].trim(), m.index!);
+    // the options are blanked in code with the listing they open, and have the same length in withoutComments' text
+    for (const m of withoutComments(text).matchAll(OPTION_LABEL)) label(m[1].trim(), m.index!);
     for (const m of code.matchAll(COMMAND_ARG)) {
       const list = REF_COMMANDS.test(m[1]) ? refs : CITE_COMMANDS.test(m[1]) ? cites : null;
       if (!list) continue;
       for (const key of m[2].split(',').map((k) => k.trim())) {
         if (key === '*' && list === cites) citesAll = true;
-        else if (key) list.push({ key, file: path, line: lineOf(m.index!) });
+        else if (key && !key.includes('#')) list.push({ key, file: path, line: lineOf(m.index!) });
       }
     }
     for (const m of code.matchAll(BIBITEM)) bibitems.add(m[1].trim());
     for (const m of code.matchAll(GRAPHICSPATH)) graphicsDirs.push(...[...m[1].matchAll(/\{([^{}]*)\}/g)].map((d) => d[1].trim()));
-    for (const m of code.matchAll(GRAPHICS)) images.push({ name: m[2].trim(), options: m[1] ?? '', file: path, line: lineOf(m.index!) });
+    for (const m of code.matchAll(GRAPHICS)) if (!m[2].includes('#')) images.push({ name: m[2].trim(), options: m[1] ?? '', file: path, line: lineOf(m.index!) });
     for (const m of code.matchAll(INPUT_RE)) included.push({ name: inputName(m), command: m[0].match(/\\(\w+)/)![1], file: path, line: lineOf(m.index!) });
   }
   // the labels of the documents \externaldocument links, with their prefix
@@ -364,6 +377,8 @@ export function runPreflight(input: PreflightInput): Finding[] {
     const referenced = new Set(refs.map((r) => r.key));
     for (const [kind, rows] of [['Figure', insights.figures], ['Table', insights.tables]] as const)
       for (const row of rows) {
+        // one in a \newcommand's body, labelled by its argument
+        if (row.label?.includes('#')) continue;
         const name = row.text ? `${kind} ${quoted(row.text, 50)}` : `A ${kind.toLowerCase()} without a caption`;
         if (!row.label) add({ group, severity: 'info', message: `${name} has no \\label, so the text can’t refer to it`, file: row.file, line: row.line, fixable: true });
         else if (!referenced.has(row.label)) add({ group, severity: 'info', message: `${name} is never referred to in the text`, file: row.file, line: row.line, fixable: true });
@@ -398,7 +413,7 @@ export function runPreflight(input: PreflightInput): Finding[] {
       add({ group, severity: comment ? 'info' : 'warning', message: comment ? `${todo.kind} comment: ${quoted(todo.text)}` : `A \\${todo.kind} note is left in: ${quoted(todo.text)}`, file: todo.file, line: todo.line });
     }
     for (const { path, text } of sources) {
-      const code = withoutComments(text);
+      const code = codeOf(text);
       const lineOf = lineFinder(code);
       for (const m of code.matchAll(/\\hl\s*\{/g)) add({ group, severity: 'warning', message: 'Highlighted text (\\hl) is left in', file: path, line: lineOf(m.index!), fixable: true });
     }
@@ -453,7 +468,7 @@ export function runPreflight(input: PreflightInput): Finding[] {
         add({ group, severity: 'warning', message: `${quoted(headings[i].text, 50)} jumps from a ${LEVELS[before]} to a ${LEVELS[now]}`, file: headings[i].file, line: headings[i].line, fixable: true });
     }
     for (const { path, text } of sources) {
-      const code = withoutComments(text);
+      const code = codeOf(text);
       const lineOf = lineFinder(code);
       for (const m of code.matchAll(HREF)) if (VAGUE_LINK.test(plainText(m[1]))) add({ group, severity: 'info', message: `The link text ${quoted(plainText(m[1]))} doesn’t say where it goes`, file: path, line: lineOf(m.index!), fixable: true });
     }

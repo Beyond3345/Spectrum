@@ -236,6 +236,30 @@ eq(
   'TexLab'
 );
 
+// code isn't the document: verbatim, listings, \verb and a \newcommand's body, whose # arguments aren't keys
+const CODE = String.raw`\documentclass{article}
+\usepackage{graphicx}
+\usepackage{listings}
+\newcommand{\fig}[2]{\begin{figure}\includegraphics{#1}\caption{#2}\label{fig:#1}\end{figure}}
+\begin{document}
+\begin{verbatim}
+\includegraphics{nothere.png} see \ref{sec:none} and \cite{nobody}
+\end{verbatim}
+Use \verb|\cite{alsonobody}| to cite.
+\begin{lstlisting}[language=Python, label={lst:python}]
+print("\ref{inside}")
+\end{lstlisting}
+See Listing~\ref{lst:python} and \ref{lst:c}.
+\lstinputlisting[label=lst:c]{code.c}
+\end{document}
+`;
+const code = runPreflight(input({ files: [{ path: 'main.tex', text: CODE }, { path: 'code.c' }] }));
+eq(
+  code.filter((f) => f.group === 'references' || f.group === 'accessibility').map((f) => f.message),
+  [],
+  'nothing from code or a definition'
+);
+
 // what can’t be checked yet says so
 eq(
   preflightGaps({ log: '', failed: false, pdfFacts: null, anonymous: true }),
