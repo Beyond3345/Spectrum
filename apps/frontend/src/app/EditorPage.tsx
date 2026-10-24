@@ -339,8 +339,10 @@ function Editor({ projectId }: { projectId: string }) {
   const compilingRef = useRef(false);
   // the running compile's id, for Stop
   const compileIdRef = useRef('');
-  // auto compile: typed since the last one, the running compile is one, and one is waiting for it to end
+  // auto compile: typed since the last one (in the document Compile built then), the running compile is one, and
+  // one is waiting for it to end
   const editedRef = useRef(false);
+  const editedDocRef = useRef('');
   // the document whose PDF shows, as of now (shownDoc is as of the last render)
   const shownRef = useRef('');
   // a document's PDF from a compile that couldn't write over the copy on disk, which another program held (Windows)
@@ -828,6 +830,7 @@ function Editor({ projectId }: { projectId: string }) {
     }
     if (mainFile && remap(mainFile) !== mainFile) chooseMain(remap(mainFile), true);
     setShownDoc(remap);
+    shownRef.current = remap(shownRef.current);
     setCompiledDoc(remap);
   };
 
@@ -1336,7 +1339,10 @@ function Editor({ projectId }: { projectId: string }) {
         const bytes = Uint8Array.from(atob(res.pdf), (c) => c.charCodeAt(0));
         const blob = new Blob([bytes], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
-        showPdf(built, { url, blob: true });
+        // an auto compile of a document whose PDF was put away meanwhile (another file opened) leaves the pane be;
+        // the copy on disk, or stalePdf, shows when it comes back
+        if (!opts.auto || built === shownRef.current) showPdf(built, { url, blob: true });
+        else window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
         // a copy on disk another program holds (Windows) is older: this one shows when the document's PDF comes back
         if (res.pdfStale) stalePdf.current.set(built, blob);
         else stalePdf.current.delete(built);
@@ -1386,7 +1392,8 @@ function Editor({ projectId }: { projectId: string }) {
     }
     // a compile since the edits (Compile pressed during the pause) already built them
     if (!editedRef.current) return;
-    runCompile(compileTarget, { auto: true });
+    // the document they were made in, which opening another file with PDF follows the open file may have put away
+    runCompile(editedDocRef.current || compileTarget, { auto: true });
   };
 
   /** Every document from scratch, each after the documents it links (xr-hyper reads their .aux); Stop ends the run. */
@@ -1713,6 +1720,7 @@ function Editor({ projectId }: { projectId: string }) {
     showInPdf: (_pos: number) => {},
     recheck: (_paths?: string[]) => {},
     autoCompile: () => {},
+    target: () => '' as string,
     openFloats: (_card: FloatCard) => {}
   });
   actions.current = {
@@ -1738,6 +1746,7 @@ function Editor({ projectId }: { projectId: string }) {
       recheck(paths).catch(() => undefined);
     },
     autoCompile,
+    target: () => compileTarget,
     openFloats
   };
 
@@ -1809,6 +1818,7 @@ function Editor({ projectId }: { projectId: string }) {
         if (path && !update.transactions.some((tr) => tr.annotation(programmatic))) {
           dirtyRef.current = true;
           editedRef.current = true;
+          editedDocRef.current = a().target();
           setDirty(true);
         }
       }
@@ -1978,6 +1988,7 @@ function Editor({ projectId }: { projectId: string }) {
       // finds it showing
       const existing = main.replace(/\.tex$/i, '.pdf');
       setShownDoc(main);
+      shownRef.current = main;
       if (main && tree.items.some((i) => i.path === existing)) {
         const url = blobUrl(projectId, existing, Date.now());
         setPdf({ url, blob: false });
