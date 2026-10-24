@@ -464,6 +464,11 @@ test('a checkpoint after a successful compile, when asked for and the source cha
   assert.ok(first.checkpoint.id);
   assert.deepEqual((await compile(p, { checkpoint: true })).checkpoint, { saved: false });
   assert.equal((await compile(p)).checkpoint, undefined);
+  await fs.writeFile(path.join(p.path, 'main.tex'), '\\documentclass{article}\\begin{document}\\undefinedthing Hi\\end{document}\n');
+  const partial = await compile(p, { checkpoint: true });
+  assert.equal(partial.ok, true, partial.log);
+  assert.notEqual(partial.status, 0);
+  assert.equal(partial.checkpoint, undefined, 'a PDF with errors must not replace a good compile checkpoint');
   await fs.writeFile(path.join(p.path, 'main.tex'), '\\documentclass{article}\\begin{document}\\end{document}\n');
   const failed = await compile(p, { checkpoint: true });
   assert.equal(failed.ok, false);

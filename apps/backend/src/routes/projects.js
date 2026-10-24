@@ -116,6 +116,22 @@ async function isDocument(root, relPath) {
   }
 }
 
+// the composer's drawing on a line of its own (% for TikZ, %% for Mermaid): base64 JSON, then the hash of the text the
+// drawing writes. It goes last, but the composer finds it anywhere (diagram/fileFormat.ts), as text added below it is a
+// hand edit there
+const DIAGRAM_MARK = /^%%? spectrum-diagram v1 [A-Za-z0-9+/=]+ [0-9a-f]{16}[ \t]*\r?$/m;
+
+/** A file the diagram composer can open (Edit diagram): a .tex in figures/ with its drawing, or any .mmd. */
+async function isDiagram(root, relPath) {
+  if (/\.mmd$/i.test(relPath)) return true;
+  if (!/^figures\/.+\.tex$/i.test(relPath)) return false;
+  try {
+    return DIAGRAM_MARK.test(await fs.readFile(safeJoin(root, relPath), 'utf8'));
+  } catch {
+    return false; // gone, or a link out of the project
+  }
+}
+
 export async function moveToBin(folder) {
   // the tests' stand-in for the Bin, so they never fill the user's
   if (process.env.SPECTRUM_TEST_BIN_DIR) {
@@ -460,12 +476,15 @@ export function registerProjectRoutes(fastify) {
     const { fileOrder, mainFile } = await readMeta(root);
     // a sync app's conflict copies, each with its original's path; never documents
     const conflicts = conflictCopies(items.filter((i) => i.type === 'file').map((i) => i.path), await knownMachineNames(root));
-    // .tex files that compile on their own
+    // .tex files that compile on their own, and the diagram composer's
     const documents = [];
+    const diagrams = [];
     for (const item of items) {
-      if (item.type === 'file' && /\.tex$/i.test(item.path) && !conflicts[item.path] && await isDocument(root, item.path)) documents.push(item.path);
+      if (item.type !== 'file' || conflicts[item.path]) continue;
+      if (/\.tex$/i.test(item.path) && await isDocument(root, item.path)) documents.push(item.path);
+      if (await isDiagram(root, item.path)) diagrams.push(item.path);
     }
-    return { items, fileOrder, mainFile, documents, conflicts };
+    return { items, fileOrder, mainFile, documents, diagrams, conflicts };
   });
 
   fastify.post('/api/projects/:id/file-order', async (req) => {

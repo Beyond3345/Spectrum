@@ -1,0 +1,388 @@
+/* The circuit mode: canvas, parts rail, inspector and style menu.
+   The symbols are black ink on a clear background, so a dark canvas inverts them. The canvas follows the
+   app's theme; a container with data-canvas="light" or "dark" overrides it. */
+
+.ckt-canvas {
+  --ckt-ink: var(--text);
+  --ckt-muted: var(--text-secondary);
+  --ckt-paper: var(--bg-editor);
+  --ckt-grid: var(--border-strong);
+  --ckt-glyph-filter: none;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  overflow: hidden;
+  background: var(--ckt-paper);
+  color: var(--ckt-ink);
+  outline: none;
+  user-select: none;
+  touch-action: none;
+}
+
+:root[data-theme='dark'] .ckt-canvas,
+:root[data-theme='dark'] .ckt-rail {
+  --ckt-glyph-filter: invert(1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .ckt-canvas,
+  :root:not([data-theme='light']) .ckt-rail {
+    --ckt-glyph-filter: invert(1);
+  }
+}
+
+/* :root, so the composer's choice outweighs the app's theme above */
+:root [data-canvas='light'] .ckt-canvas {
+  --ckt-ink: #111;
+  --ckt-muted: rgba(0, 0, 0, 0.55);
+  --ckt-paper: #fff;
+  --ckt-grid: rgba(0, 0, 0, 0.18);
+  --ckt-glyph-filter: none;
+}
+
+:root [data-canvas='dark'] .ckt-canvas {
+  --ckt-ink: #ececec;
+  --ckt-muted: rgba(255, 255, 255, 0.6);
+  --ckt-paper: #1b1b1d;
+  --ckt-grid: rgba(255, 255, 255, 0.2);
+  --ckt-glyph-filter: invert(1);
+}
+
+.ckt-canvas:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent-soft);
+}
+
+.ckt-canvas svg {
+  display: block;
+}
+
+.ckt-dot {
+  fill: var(--ckt-grid);
+}
+
+.ckt-glyph {
+  filter: var(--ckt-glyph-filter);
+}
+
+.ckt-wire {
+  fill: none;
+  stroke: var(--ckt-ink);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+
+.ckt-draft {
+  stroke: var(--accent);
+  stroke-dasharray: 5 4;
+}
+
+/* wide, invisible strokes and boxes that take the clicks */
+.ckt-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+}
+
+.ckt-hit-box {
+  fill: transparent;
+}
+
+.ckt-part {
+  cursor: pointer;
+}
+
+.ckt-part.ghost {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.ckt-halo {
+  fill: none;
+  stroke: var(--accent-soft);
+  stroke-width: 12;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ckt-halo-box {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+  stroke-width: 0.6;
+}
+
+.ckt-outline {
+  fill: color-mix(in srgb, var(--ckt-ink) 5%, transparent);
+  stroke: var(--ckt-muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.ckt-text {
+  fill: var(--ckt-ink);
+  font-family: var(--font-serif);
+  font-style: italic;
+  pointer-events: none;
+}
+
+.ckt-name {
+  fill: var(--ckt-muted);
+  font-family: var(--font-ui);
+  font-style: normal;
+  font-size: 10px;
+}
+
+.ckt-sketch line {
+  stroke: var(--ckt-muted);
+  stroke-width: 1;
+}
+
+.ckt-sketch polygon,
+.ckt-arrowhead {
+  fill: var(--ckt-muted);
+}
+
+.ckt-sketch-text {
+  fill: var(--ckt-muted);
+}
+
+.ckt-pole {
+  fill: var(--ckt-ink);
+  stroke: var(--ckt-ink);
+  stroke-width: 1;
+}
+
+.ckt-pole.open {
+  fill: var(--ckt-paper);
+}
+
+.ckt-junction {
+  fill: var(--ckt-ink);
+  pointer-events: none;
+}
+
+.ckt-pin {
+  fill: var(--ckt-paper);
+  stroke: var(--accent);
+  stroke-width: 1.2;
+  pointer-events: none;
+}
+
+.ckt-target {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.ckt-handle {
+  fill: var(--ckt-paper);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  cursor: move;
+}
+
+.ckt-marquee {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+  stroke-width: 1;
+}
+
+.ckt-zoom {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-sm);
+}
+
+.ckt-minimap {
+  position: absolute;
+  right: 10px;
+  bottom: 54px;
+  width: min(180px, 40%);
+  height: 110px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--ckt-paper);
+  box-shadow: var(--shadow-sm);
+  cursor: crosshair;
+}
+
+.ckt-minimap svg {
+  width: 100%;
+  height: 100%;
+}
+
+.ckt-minimap-part { fill: var(--ckt-muted); }
+.ckt-minimap-wire { fill: none; stroke: var(--ckt-ink); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.ckt-minimap-view { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1; vector-effect: non-scaling-stroke; }
+
+.ckt-zoom-level {
+  min-width: 42px;
+  font-size: 12px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ckt-status {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  max-width: min(460px, calc(100% - 200px));
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-sm);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.ckt-status.error {
+  color: var(--red-text);
+}
+
+/* ─── rail ─── */
+
+.ckt-rail {
+  --ckt-glyph-filter: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 216px;
+  height: 100%;
+  min-height: 0;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.ckt-rail-tools {
+  align-self: stretch;
+}
+
+.ckt-rail-tools .segment {
+  flex: 1;
+}
+
+.ckt-rail-filter {
+  flex: none;
+}
+
+.ckt-rail-groups {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+
+.ckt-rail-group h3 {
+  margin: 12px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.ckt-rail-group:first-child h3 {
+  margin-top: 2px;
+}
+
+.ckt-rail-parts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.ckt-rail-part {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 6px 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text);
+}
+
+.ckt-rail-part:hover {
+  background: var(--bg-hover);
+}
+
+.ckt-rail-part.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.ckt-rail-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 34px;
+}
+
+.ckt-rail-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.ckt-rail-blank {
+  width: 40px;
+  height: 14px;
+  border: 1px dashed var(--text-tertiary);
+  border-radius: 3px;
+}
+
+.ckt-rail-label {
+  max-width: 100%;
+  font-size: 11px;
+  line-height: 1.25;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+/* ─── inspector and style menu ─── */
+
+.ckt-inspector,
+.ckt-style {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  min-width: 0;
+}
+
+.ckt-inspector-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ckt-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ckt-row > .input,
+.ckt-row > .popup-button {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+
+.ckt-inspector input[type='range'],
+.ckt-style input[type='range'] {
+  width: 100%;
+}

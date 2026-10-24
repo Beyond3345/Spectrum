@@ -61,13 +61,13 @@ const NEW_GLOSSARY = /\\@newglossary\{[^}]*\}\{[^}]*\}\{([^}]*)\}\{([^}]*)\}/g;
 // draft mode's images, as boxes of their size (Overleaf's fast mode)
 const DRAFT_IMAGES = '\\PassOptionsToPackage{draft}{graphicx}';
 // TeX breaks its log's lines at 79 characters
-const unwrap = (log) => log.replace(/^(.{79})\r?\n/gm, '$1');
+export const unwrap = (log) => log.replace(/^(.{79})\r?\n/gm, '$1');
 // TeX reads '\' as a command, and every engine on Windows takes '/' as well
 const slashed = (p) => p.split(path.sep).join('/');
 const docPath = (root, abs) => slashed(path.relative(root, abs));
 const WINDOWS = process.platform === 'win32';
 // Windows spells it Path
-const PATH_KEY = Object.keys(process.env).find((key) => key.toUpperCase() === 'PATH') ?? 'PATH';
+export const PATH_KEY = Object.keys(process.env).find((key) => key.toUpperCase() === 'PATH') ?? 'PATH';
 const exists = (p) => fs.access(p).then(() => true, () => false);
 
 // Every engine writes <main>.synctex.gz too, for jumping between the source and the PDF.
@@ -297,7 +297,7 @@ export async function runCompile({ projectId, mainFile, engine = 'pdflatex', com
   try {
     const result = await jobs.run(job, () => compileWithLinks(engine, projectRoot, absMain, mainFile, options));
     // inside the compile, so the project's folder isn't moved from under it either
-    if (checkpoint && result.ok) result.checkpoint = await createCompileCheckpoint(projectRoot);
+    if (checkpoint && result.ok && result.status === 0) result.checkpoint = await createCompileCheckpoint(projectRoot);
     // doc: the document compiled, which a % !TEX root comment may have changed
     return { ...result, doc: mainFile };
   } finally {

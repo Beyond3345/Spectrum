@@ -335,11 +335,12 @@ export function updateProjectSettings(id: string, patch: { compile?: { [K in key
 // ─── Files ───
 
 /**
- * documents: the .tex files with a \documentclass of their own, so each compiles to a PDF. conflicts: a sync app's
- * conflict copies, each with its original's path.
+ * documents: the .tex files with a \documentclass of their own, so each compiles to a PDF. diagrams: the files the
+ * diagram composer can open (a figures/*.tex that ends with its drawing, any .mmd). conflicts: a sync app's conflict
+ * copies, each with its original's path.
  */
 export function getProjectTree(id: string) {
-  return request<{ items: FileItem[]; fileOrder?: FileOrderMap; mainFile?: string; documents: string[]; conflicts?: Record<string, string> }>(
+  return request<{ items: FileItem[]; fileOrder?: FileOrderMap; mainFile?: string; documents: string[]; diagrams?: string[]; conflicts?: Record<string, string> }>(
     `/api/projects/${id}/tree`
   );
 }
@@ -561,6 +562,56 @@ export function compileProject(payload: {
 /** Ends the compile started with this id (false when it hasn't started yet; it then stops as it starts). */
 export function stopCompile(compileId: string) {
   return request<{ ok: boolean }>('/api/compile/stop', json('POST', { compileId }));
+}
+
+// ─── Diagram composer ───
+
+/**
+ * A diagram's preview: its figures/<name>.tex compiled as a document of its own, with the files kept from its last
+ * compile and no checkpoint, which leaves the project's main file and the editor's PDF as they are. Writes
+ * figures/<name>.pdf, which the editor's Insert diagram can also use. compileId: for stopCompile, when a newer change
+ * makes this preview stale.
+ */
+export function compileDiagram(payload: { projectId: string; file: string; engine?: CompileEngine; compileId?: string; texFolder?: string }) {
+  const { file, engine = 'auto', ...rest } = payload;
+  return compileProject({ ...rest, mainFile: file, engine, draft: false, fresh: false });
+}
+
+/**
+ * A circuit part to draw: tikz is its circuitikz key ('R', 'op amp'), options its other keys ('mirror'), pins the
+ * anchors to measure ('+', 'out'). Letters, digits, spaces and . , = + - / * < > ^ ! | : only.
+ */
+export interface SymbolPart {
+  id: string;
+  tikz: string;
+  kind: 'path' | 'node';
+  options?: string[];
+  pins?: string[];
+}
+
+/**
+ * A part's page of the PDF, in PDF points (pdf.js at scale 1): origin is its reference point from the page's top-left
+ * corner (y down), each pin an offset from the reference point (y up, as in TikZ). A path part's glyph lies between its
+ * start and end pins, with no leads; a node part sits with its reference point where \node … at (x,y) puts it.
+ */
+export interface SymbolPage {
+  id: string;
+  page: number;
+  width: number;
+  height: number;
+  origin: { x: number; y: number };
+  pins: { name: string; x: number; y: number }[];
+  /** TeX's first error while drawing this part */
+  error?: string;
+}
+
+/**
+ * The parts drawn by the installed circuitikz, a page each, in the diagram's style: ctikzOptions are the picture's
+ * options (a \ctikzset key as /tikz/circuitikz/<key>). texFolder: Settings › Engines › LaTeX's TeX folder. Kept in the
+ * data folder's cache by the request, so asking again is quick.
+ */
+export function diagramSymbols(payload: { parts: SymbolPart[]; style: { ctikzOptions: string }; texFolder?: string }) {
+  return request<{ ok: boolean; pdf?: string; pages?: SymbolPage[]; log?: string; error?: string }>('/api/diagram/symbols', json('POST', payload));
 }
 
 // ─── SyncTeX: between a spot in the PDF and the source line that made it ───
