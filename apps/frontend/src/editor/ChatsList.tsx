@@ -6,7 +6,7 @@ import { confirmDialog } from '../app/Dialogs';
 import { useEditor } from './EditorContext';
 import { CHATS_CHANGED, errorText, relativeTime } from './shared';
 
-/** Saved conversations of this project (sidebar "Chats" tab). */
+/** Saved conversations of this project, in the bottom card's history menu; agent threads are the workspace's. */
 export default function ChatsList({
   activeChatId,
   filter,

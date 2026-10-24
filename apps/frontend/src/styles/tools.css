@@ -168,6 +168,10 @@
   padding: 8px 18px 6px;
 }
 
+.composer-messages[hidden] {
+  display: none;
+}
+
 .composer-welcome {
   display: flex;
   flex-direction: column;
@@ -345,19 +349,16 @@
   font-size: 12px;
 }
 
-.ref-bibtex,
-.raw-output {
+.ref-bibtex {
   width: 100%;
   font-size: 12px;
 }
 
-.ref-bibtex summary,
-.raw-output summary {
+.ref-bibtex summary {
   color: var(--text-secondary);
 }
 
-.ref-bibtex pre,
-.raw-output pre {
+.ref-bibtex pre {
   margin: 6px 0 0;
   padding: 8px 10px;
   border-radius: 8px;
@@ -365,11 +366,6 @@
   font-size: 11.5px;
   line-height: 1.5;
   overflow-x: auto;
-}
-
-.raw-output pre {
-  max-height: 200px;
-  white-space: pre-wrap;
 }
 
 .ref-candidate {
@@ -382,7 +378,7 @@
 }
 
 /* --------------------------------------------------------------------------
-   Chats list (sidebar)
+   Chats list (the bottom card's history), also the rows of Research's sessions
    -------------------------------------------------------------------------- */
 
 .chats-list {
@@ -598,6 +594,237 @@
 }
 
 /* --------------------------------------------------------------------------
+   Research (sidebar)
+   -------------------------------------------------------------------------- */
+
+.research {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 2px 12px;
+}
+
+.research-form,
+.research-session {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.research-question.input {
+  min-height: 50px;
+  padding: 6px 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.research .chip-row {
+  gap: 4px;
+}
+
+.research .chip,
+.research-actions .chip {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11.5px;
+}
+
+.research-filters {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-tertiary);
+}
+
+.research-filters .input.number {
+  width: 54px;
+  height: 26px;
+  font-size: 12.5px;
+}
+
+.research-filters .checkbox-row {
+  margin-left: auto;
+}
+
+.research-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.research-buttons .btn {
+  flex: 1;
+  justify-content: center;
+}
+
+.research-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.research-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  list-style: none;
+}
+
+.research-card-title::-webkit-details-marker {
+  display: none;
+}
+
+.research-card-title .sf {
+  color: var(--text-secondary);
+}
+
+.research-card-title .disclosure {
+  margin-left: auto;
+}
+
+.research-card[open] .research-card-title .disclosure {
+  transform: rotate(90deg);
+}
+
+.research-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.research-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.research-head-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.research-log {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+}
+
+.research-log-run {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 0 0 12px;
+  overflow-wrap: anywhere;
+}
+
+/* the four filters share the sidebar's width */
+.research .segmented.small {
+  display: flex;
+}
+
+.research .segmented.small .segment {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 4px;
+  font-size: 11.5px;
+}
+
+.research-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.research-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: var(--radius-control);
+  background: var(--bg-subtle);
+  font-size: 12.5px;
+}
+
+.research-row.drop > :not(.research-actions, .research-reason) {
+  opacity: 0.55;
+}
+
+.research-title {
+  color: var(--text);
+  font-weight: 500;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+a.research-title:hover {
+  color: var(--accent-ink);
+  text-decoration: underline;
+}
+
+.research-meta,
+.research-why,
+.research-abstract {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.research-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.research-theme,
+.research-abstract summary {
+  color: var(--text-tertiary);
+}
+
+.research-abstract p {
+  margin: 4px 0 0;
+}
+
+.research-reason.input {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.research-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* --------------------------------------------------------------------------
+   The bottom card's history
+   -------------------------------------------------------------------------- */
+
+.composer-history {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  max-height: 55cqh;
+  padding: 8px 12px;
+  overflow-y: auto;
+}
+
+.composer-history .search-field {
+  width: 100%;
+}
+
+/* --------------------------------------------------------------------------
    Tools panel
    -------------------------------------------------------------------------- */
 
@@ -771,16 +998,6 @@
   justify-content: space-between;
 }
 
-.search-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.search-row .search-field {
-  flex: 1;
-}
-
 .input.number {
   flex: none;
   width: 64px;
@@ -825,29 +1042,6 @@
 .pick-reason {
   color: var(--text-secondary);
   font-size: 12px;
-}
-
-.pick-link {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-}
-
-.pick-body textarea.input {
-  min-height: 60px;
-  margin-top: 4px;
-  font-size: 12.5px;
-}
-
-.search-log {
-  max-height: 160px;
-  overflow: auto;
-  padding: 8px 10px;
-  border-radius: var(--radius-control);
-  background: var(--bg-subtle);
-  color: var(--text-secondary);
-  font: 11.5px/1.6 var(--font-mono);
 }
 
 /* --------------------------------------------------------------------------

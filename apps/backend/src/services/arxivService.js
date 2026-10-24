@@ -33,13 +33,26 @@ function toPaper(entry) {
     authors: authors.map((a) => a?.name).filter(Boolean),
     url: id,
     arxivId: id ? id.split('/').pop() : '',
-    year: String(entry.published || '').slice(0, 4)
+    year: String(entry.published || '').slice(0, 4),
+    // the published version's DOI and citation, when the authors gave them
+    doi: String(entry['arxiv:doi']?.['#text'] ?? entry['arxiv:doi'] ?? '').trim() || undefined,
+    journalRef: String(entry['arxiv:journal_ref']?.['#text'] ?? entry['arxiv:journal_ref'] ?? '').replace(/\s+/g, ' ').trim() || undefined
   };
 }
 
-export async function searchArxiv(query, maxResults = 5) {
+/** Words a search leaves out: arXiv finds nothing for one when every word must match. */
+export const STOPWORDS = new Set(('a an and are as at be by can do does for from has have how in into is it its of on or that the their this to '
+  + 'was what when where which who why with within without using use used based between about over under via vs versus').split(' '));
+
+/** yearFrom and yearTo limit the submission date (Research's year filter). */
+export async function searchArxiv(query, maxResults = 5, { yearFrom, yearTo } = {}) {
   const max = Math.min(10, Math.max(1, Number(maxResults) || 5));
-  const url = `https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(String(query))}&start=0&max_results=${max}`;
+  // arXiv reads words apart as OR, and ranks half its papers for a few common words, so every word must match
+  const typed = String(query).split(/\s+/).map((word) => word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')).filter(Boolean);
+  const kept = typed.filter((word) => !STOPWORDS.has(word.toLowerCase()));
+  const words = (kept.length ? kept : typed.length ? typed : [String(query)]).map((word) => `all:${encodeURIComponent(word)}`);
+  if (yearFrom || yearTo) words.push(`submittedDate:%5B${yearFrom || 1991}01010000+TO+${yearTo || 9999}12312359%5D`);
+  const url = `https://export.arxiv.org/api/query?search_query=${words.join('+AND+')}&start=0&max_results=${max}`;
   const res = await fetch(url, { headers: ARXIV_HEADERS, signal: AbortSignal.timeout(30_000) });
   if (!res.ok) {
     throw new Error(`arXiv search failed: ${res.status}`);

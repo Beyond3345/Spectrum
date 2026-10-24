@@ -4,16 +4,14 @@ import Tabs from '../app/Tabs';
 import { useEditor } from './EditorContext';
 import VersionsTab from './tools/VersionsTab';
 import LogsTab from './tools/LogsTab';
-import ResearchTab from './tools/ResearchTab';
 import ReviewTab from './tools/ReviewTab';
 
-export type ToolsTab = 'versions' | 'logs' | 'review' | 'research';
+export type ToolsTab = 'versions' | 'logs' | 'review';
 
 const LABELS: [ToolsTab, string][] = [
   ['versions', 'Checkpoints'],
   ['logs', 'Logs'],
-  ['review', 'Review'],
-  ['research', 'Research']
+  ['review', 'Review']
 ];
 
 /** Right column when Tools is open. Tabs stay mounted once visited so results survive switching. */
@@ -38,8 +36,6 @@ export default function ToolsPanel({ tab, onTabChange, doc, trailing }: { tab: T
         return <LogsTab />;
       case 'review':
         return <ReviewTab doc={doc} active={active} />;
-      case 'research':
-        return <ResearchTab />;
     }
   };
 

@@ -6,6 +6,7 @@ import type { TodosState } from '../TodosList';
 import LocalAgentTab from './LocalAgentTab';
 import type { AgentStatus } from './LocalAgentTab';
 import SpectrumAgentTab from './SpectrumAgentTab';
+import type { TaskRequest } from './parts';
 
 type Tab = 'spectrum' | 'local';
 
@@ -26,6 +27,7 @@ export default function AgentWorkspace({
   trailing,
   todos,
   openThread,
+  task,
   onStatus,
   onOpenSettings
 }: {
@@ -33,6 +35,8 @@ export default function AgentWorkspace({
   trailing: ReactNode;
   todos: TodosState;
   openThread: { id: string; n: number } | null;
+  /** a task from Research, for the tab showing when it came */
+  task: TaskRequest | null;
   onStatus(status: AgentStatus): void;
   onOpenSettings(section: Section): void;
 }) {
@@ -62,6 +66,12 @@ export default function AgentWorkspace({
     if (openThread) setTab('spectrum');
   }, [openThread?.n]);
 
+  const [routed, setRouted] = useState<{ task: TaskRequest; tab: Tab } | null>(null);
+  useEffect(() => {
+    if (task) setRouted({ task, tab });
+  }, [task?.n]);
+  const taskFor = (t: Tab) => (routed?.tab === t ? routed.task : null);
+
   const overall = (['waiting', 'running', 'changes'] as const).find((s) => status.spectrum === s || status.local === s) ?? null;
   useEffect(() => onStatus(overall), [overall]);
 
@@ -84,10 +94,11 @@ export default function AgentWorkspace({
         active={active}
         todos={todos}
         openThread={openThread}
+        task={taskFor('spectrum')}
         onStatus={(s) => setStatus((old) => ({ ...old, spectrum: s }))}
         onOpenSettings={onOpenSettings}
       />
-      <LocalAgentTab hidden={tab !== 'local'} active={active} todos={todos} onStatus={(s) => setStatus((old) => ({ ...old, local: s }))} onOpenSettings={onOpenSettings} />
+      <LocalAgentTab hidden={tab !== 'local'} active={active} todos={todos} task={taskFor('local')} onStatus={(s) => setStatus((old) => ({ ...old, local: s }))} onOpenSettings={onOpenSettings} />
     </div>
   );
 }

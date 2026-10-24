@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getChat, listChats, runAgent } from '../../api/client';
-import type { ChatSummary, ChatThread } from '../../api/client';
+import { getChat, getResearch, listChats, runAgent } from '../../api/client';
+import type { ChatSummary, ChatThread, ResearchSession } from '../../api/client';
 import type { Section } from '../../app/SettingsSheet';
 import Icon from '../../app/Icon';
 import { MenuButton } from '../../app/Menu';
@@ -12,11 +12,20 @@ import { chatMessage, useChatThread } from '../chatThread';
 import { resolveInstructions } from '../personas';
 import { CHATS_CHANGED, buildProjectContext, errorText, patchesToChanges, relativeTime } from '../shared';
 import { AgentComposer, ChangesTray, PersonaPicker, ReviewView, Transcript, Welcome, openTodos, readStored, taskPersona, useFollow, useSkills, writeStored } from './parts';
-import type { ContextKind, Draft, TrayChange } from './parts';
+import type { ContextKind, Draft, TaskRequest, TrayChange } from './parts';
 import type { AgentStatus } from './LocalAgentTab';
 import { closeChanges, metaOf, openChanges, stepCall } from './transcript';
 import type { Checkpoint, Item, ThreadMeta as Meta } from './transcript';
 
+
+/** A research session as the agent reads it: its question, runs and results, abstracts cut short. */
+const sessionContext = ({ question, runs, results }: ResearchSession) =>
+  JSON.stringify({
+    question,
+    runs: runs.map(({ at, queries, perSource }) => ({ at, queries, perSource })),
+    // ponytail: 100 results with 400-character abstracts; a local agent gets the whole file
+    results: results.slice(0, 100).map(({ abstract, ...r }) => ({ ...r, ...(abstract && { abstract: abstract.slice(0, 400) }) }))
+  });
 
 const trayOf = (c: PendingChange): TrayChange => ({ path: c.filePath, kind: c.original ? 'modified' : 'created', binary: false, original: c.original, proposed: c.proposed, size: c.proposed.length });
 
@@ -29,6 +38,7 @@ export default function SpectrumAgentTab({
   active,
   todos,
   openThread,
+  task,
   onStatus,
   onOpenSettings
 }: {
@@ -37,6 +47,8 @@ export default function SpectrumAgentTab({
   todos: TodosState;
   /** a chat to carry on here (an Edit chat from the bottom card) */
   openThread: { id: string; n: number } | null;
+  /** a task from elsewhere: its prompt and skill go in the message box of a new thread */
+  task: TaskRequest | null;
   onStatus(status: AgentStatus): void;
   onOpenSettings(section: Section): void;
 }) {
@@ -105,7 +117,7 @@ export default function SpectrumAgentTab({
 
   const scroll = useFollow([thread, running, reviewing, hidden]);
 
-  const send = async (text: string, { skill, context }: { skill?: string; context: Record<ContextKind, boolean> }) => {
+  const send = async (text: string, { skill, research, context }: { skill?: string; research?: string; context: Record<ContextKind, boolean> }) => {
     const a = latest.current;
     const base = append(threadRef.current, chatMessage('user', text || `/${skill}`));
     const run = ++runRef.current;
@@ -114,6 +126,7 @@ export default function SpectrumAgentTab({
       let prompt = text || 'Follow the skill’s instructions for this project.';
       const list = context.todos ? openTodos(todos) : [];
       if (list.length) prompt += `\n\n[Open to-dos]\n${list.map((t) => `- ${t.text}`).join('\n')}`;
+      if (research) prompt += `\n\n[Research session]\n${sessionContext((await getResearch(a.projectId, research)).session)}`;
       const outline = await buildProjectContext(a);
       if (outline) prompt += `\n\n[Project Context]\n${outline}`;
       const history = base.messages
@@ -223,6 +236,16 @@ export default function SpectrumAgentTab({
     if (thread) update(thread, (chat) => ({ ...chat, persona: id }));
     else setNewPersona(id);
   };
+
+  // a new thread for it with its persona, unless one is still going
+  useEffect(() => {
+    if (!task) return;
+    if (!running) {
+      if (threadRef.current) void open(null);
+      setNewPersona(taskPersona(api.settings.personas, task) ?? picked.current);
+    }
+    setDraft({ text: task.prompt, skill: task.skill, research: task.research, n: task.n });
+  }, [task?.n]);
 
   const trayChanges = useMemo(() => tray.map(trayOf), [tray]);
   const here = running && running.id === thread?.id;

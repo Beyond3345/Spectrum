@@ -9,7 +9,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A diagram composer in its own window, with circuits, TikZ flowcharts, commutative diagrams, plots from functions or project data, and Mermaid. It saves editable drawings with their source files, previews them, and hands figures to the editor's Floats panel
 - A circuit catalogue of 49 parts drawn by the installed circuitikz, with attached wires, snapping, style controls, a minimap and copy, paste, undo and redo
 - Document insights, a panel beside Check grammar, with tabs for the Overview, Headings, Figures, Tables, Equations, Labels, Citations and To-dos, each with its count. Rows show the number and page from the last compile and jump to their line in the source. The Overview has the counts, the `texcount` word counts and the submission metadata (title, authors, keywords, date and abstract) with Copy submission metadata. The footer says that the numbers and pages are from the last compile, marks them as out of date when the source has changed since and has Refresh
-- A to-do list in the sidebar, beside Files and Chats, with a badge counting the open items. Mine holds your own to-dos, each with a tick box, an optional link to a source line, a PDF page or a reference, Edit and Delete. In the source lists `\todo`, `\missingfigure`, `\fixme`, the fixme package's notes and `TODO`, `FIXME` and `XXX` in comments, each jumping to its line. To-dos are added in the box at the top of the tab or with Add to-do here in the editor's and the PDF's right-click menus, and filtered by Open, Done or All, by Mine or Source and with the sidebar's search
+- A to-do list in the sidebar, beside Files and Research, with a badge counting the open items. Mine holds your own to-dos, each with a tick box, an optional link to a source line, a PDF page or a reference, Edit and Delete. In the source lists `\todo`, `\missingfigure`, `\fixme`, the fixme package's notes and `TODO`, `FIXME` and `XXX` in comments, each jumping to its line. To-dos are added in the box at the top of the tab or with Add to-do here in the editor's and the PDF's right-click menus, and filtered by Open, Done or All, by Mine or Source and with the sidebar's search
 - Insert figure and Insert table in the top bar, which open the Floats panel at the figure or table card. At narrow widths they stay in Insert (+), whose Figure… and Table… open the same cards
 - A PDF sidebar, opened with Document outline in the PDF's header, beside the pages. Contents lists the PDF's bookmarks with the current section marked, or the source headings across `\input` files when the PDF has none, and Pages shows a thumbnail of each page with the current one outlined
 - Find in the PDF with `⌘F` while the PDF has the focus, with the previous and next match and every match highlighted
@@ -33,12 +33,17 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - To-dos an agent suggests appear as cards with Add, and are only saved once they are added
 - Tools › Review runs Preflight checks and an AI review with one press. It compiles first when the PDF is older than the source, then checks Compile and layout, References and assets, Privacy and blind review (with an Anonymous review switch), Accessibility (with a screen reader view of the PDF's text) and Submission readiness, each with a tick box. Rows jump to their line or PDF page and have Fix with AI and Dismiss, and Copy report copies the results
 - The AI review reads the whole document once in `\input` order without tools. It returns Major, Minor and Note points tied to a line and quote, with a summary, strengths, a score, confidence and the limits of the review. A point whose quote cannot be found near its line shows without a link
+- Research in the sidebar, beside Files and To-dos. A question is searched in OpenAlex, Semantic Scholar, arXiv, Crossref, PubMed, the web and the project's `.bib` at once, with a range of years and preprints in or out, and one source failing does not stop the others. The results are merged by DOI, arXiv ID and title, and show their sources, citation count, Open access, Preprint and In .bib with the key the project has them under. Sort the results with AI adds a line on why each one matters, a keep or drop suggestion and a theme in one call
+- Each question is a research session kept with the project in `.spectrum/research`, with a log of its searches (the words, the filters and each source's count or failure), Search again and the results shown as All, Kept, Dropped or To decide
+- Each result has Keep and Drop with a reason, Cite at the cursor, Open note and Get PDF. Open note makes `research/notes/<key>.md` the first time, Get PDF downloads a free copy from arXiv, Unpaywall or the copy a source named into `research/papers/` and Add kept papers to .bib adds the kept ones the project does not have yet
+- Deep research, Draft related work and Verify claims in Research open the agent workspace with a prepared task, its skill and the research session
+- Settings › Search has the keys and emails Research uses on this computer: the OpenAlex and Semantic Scholar keys, an email for OpenAlex, an NCBI key for PubMed and the email Unpaywall asks for
 
 ### Changed
 
 - Versions are now called checkpoints. Save version is Save checkpoint (`⇧⌘S`), and the Versions tab in Tools is Checkpoints
 - Tools, Check grammar, Document insights and the Floats panel each take the PDF's place with a header holding Close and the view switcher, and the Compile button stays in the top bar while one is open
-- Tools holds Checkpoints, Logs, Review and Research. Project info moved to Document insights and Floats to its own panel
+- Tools holds Checkpoints, Logs and Review. Project info moved to Document insights, Floats to its own panel and Research to the sidebar
 - The Review tab's Full review report, Consistency check, Missing citations and Compile log summary buttons are replaced by the one Review, whose AI review covers the first three in about one read of the paper and cannot propose patches
 - A project's compiler is saved with the project in `.spectrum/settings.json`, so it follows the project to your other computer. A project uses the defaults from Settings until one of its compile settings is changed, and the default compiler is Auto
 - Compiles are faster. Each document's `.aux`, `.bbl`, `.toc` and similar files are kept between compiles for each compiler and read back by the next one, so an unchanged document is done in one pass. BibTeX and Biber only run when something is cited, and another pass only runs when the log asks for one or a pass changed what TeX reads back. Files are kept only from a compile without errors, and when TeX cannot read one, Spectrum clears them and compiles once more from scratch
@@ -50,9 +55,14 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Setting up local agents moved from the assistant's Agents tab to Settings › Agents, which checks the launcher arguments as a list of text and says on Windows that local agents get no Spectrum tools yet
 - An isolated local agent keeps working on its copy while its changes wait for review. Applying a file makes it the agent's new starting point for that file, and rejecting one puts your version back in the agent's copy and tells the agent with its next task
 - Local agents receive the open file, the selection, the compile log, the open to-dos and a chosen skill as ACP resources instead of pasted text, and are told Spectrum's real version
+- The sidebar's Chats tab is now History in the assistant's header, which lists the saved Assistant and References chats with the Edit chats from before 2.0, and has a search and Delete
+- Find citations for selection is in Research, and adds papers through the references chat's look-up
+- Research no longer has the arXiv search through an AI model or puts the summaries of web results into a `.tex` file. Abstracts are shown as the sources give them
 
 ### Fixed
 
+- Web search and Find citations for selection could add a paper the project already had under a second key, and wrote the whole `.bib` again while a references chat could be adding to it. Every add now goes through the references chat's look-up, which finds a paper already in any `.bib` by its DOI, arXiv ID or title
+- A web search took only the first connection that answered, and its results were lost when Tools was closed
 - Document insights follows document reading order, refreshes after compilation and file changes, and handles multi-row equations and publication punctuation
 - Presentation mode keeps a valid page when recompiling a shorter deck
 - Compiles that produce a PDF with errors cannot replace a successful compile checkpoint
@@ -70,7 +80,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ### Going back to 1.10.4
 
-- 1.10.4 opens every project 2.0.0 has used. The new data is in files 1.10.4 does not read: `.spectrum/settings.json` and the `.spectrum/todos` and `.spectrum/notes` folders, which it leaves as they are. Checkpoints keep their storage in `.spectrum/history`, so 1.10.4 lists every checkpoint as a version, with the compile checkpoints as manual ones
+- 1.10.4 opens every project 2.0.0 has used. The new data is in files 1.10.4 does not read: `.spectrum/settings.json` and the `.spectrum/todos`, `.spectrum/notes` and `.spectrum/research` folders, which it leaves as they are. Checkpoints keep their storage in `.spectrum/history`, so 1.10.4 lists every checkpoint as a version, with the compile checkpoints as manual ones
 - Spectrum agent threads are chats in `.spectrum/chats` with an `agent` mark that 1.10.4 ignores, so 1.10.4 lists them with the other chats. A project's skill choices are kept in `.spectrum/settings.json`
 - 1.10.4 rewrites `project.json` through its own list of keys, so nothing new is kept in it. 2.0.0 keeps the keys in `project.json` it does not know, so a file another version wrote comes through a save here whole
 

@@ -11,6 +11,7 @@ import type {
   ProviderModel,
   ProviderPreset,
   ReasoningEffort,
+  ResearchKeys,
   SearchConfig,
   SearchProvider,
   SharedSettings
@@ -106,6 +107,10 @@ export type AppSettings = {
   searchProviderKeys: Partial<Record<SearchProvider, string>>;
   searchConnections: SearchProvider[];
   serpEngine: 'google' | 'google_scholar' | 'baidu';
+  /** Research's sources (Settings › Search), on this computer only; its OpenAlex and Semantic Scholar keys are the connections' */
+  openalexEmail: string;
+  ncbiKey: string;
+  unpaywallEmail: string;
   /** shortcut id → key, only for the ones changed in Settings ('' = removed) */
   shortcuts: Record<string, string>;
   /** spell checking as you type, in Australian English */
@@ -195,6 +200,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   searchConnections: ['llm'],
   // Scholar finds papers to cite; settings saved before this keep the engine they had
   serpEngine: 'google_scholar',
+  openalexEmail: '',
+  ncbiKey: '',
+  unpaywallEmail: '',
   shortcuts: {},
   spellCheck: true,
   grammarStyle: false,
@@ -345,7 +353,7 @@ function parse(raw: string | null): AppSettings {
     ) as AppSettings['tagColours'];
     merged.personas = cleanPersonas(merged.personas);
     if (typeof merged.defaultInstructions !== 'string') merged.defaultInstructions = '';
-    for (const key of ['editorFont', 'editorFontCustom', 'editorThemeLight', 'editorThemeDark', 'parser', 'parserProtocol'] as const) {
+    for (const key of ['editorFont', 'editorFontCustom', 'editorThemeLight', 'editorThemeDark', 'parser', 'parserProtocol', 'openalexEmail', 'ncbiKey', 'unpaywallEmail'] as const) {
       if (typeof merged[key] !== 'string') merged[key] = DEFAULT_SETTINGS[key];
     }
     const colours = (value: unknown): EditorColours =>
@@ -617,6 +625,24 @@ export function searchProviderPatch(settings: AppSettings, next: SearchProvider)
     searchProviderKeys: { ...settings.searchProviderKeys, [settings.searchProvider]: settings.searchProviderKey }
   };
 }
+
+/** A search connection's key, kept in searchProviderKey while it's the default. */
+export const providerKey = (settings: AppSettings, provider: SearchProvider) =>
+  (provider === settings.searchProvider ? settings.searchProviderKey : settings.searchProviderKeys[provider]) || '';
+
+/** Sets a connection's key wherever providerKey reads it. */
+export const providerKeyPatch = (settings: AppSettings, provider: SearchProvider, key: string): Partial<AppSettings> => ({
+  searchProviderKeys: { ...settings.searchProviderKeys, [provider]: key },
+  ...(provider === settings.searchProvider && { searchProviderKey: key })
+});
+
+/** What Research sends to its sources with each search: the connections' OpenAlex and Semantic Scholar keys, and the rest. */
+export const researchKeysFor = (settings: AppSettings): ResearchKeys => ({
+  openalexKey: providerKey(settings, 'openalex'),
+  openalexEmail: settings.openalexEmail,
+  semanticScholarKey: providerKey(settings, 'semanticscholar'),
+  ncbiKey: settings.ncbiKey
+});
 
 /** Credentials stay in the request, never in chat history or shared settings. */
 export function searchConfigFor(settings: AppSettings, llmConfig?: Partial<LLMConfig>): SearchConfig {

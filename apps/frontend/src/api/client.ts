@@ -146,14 +146,6 @@ export interface TemplateCategory {
   label: string;
 }
 
-export interface ArxivPaper {
-  title: string;
-  abstract: string;
-  authors: string[];
-  url: string;
-  arxivId: string;
-}
-
 export type CompileEngine = 'auto' | 'pdflatex' | 'xelatex' | 'lualatex' | 'latexmk' | 'tectonic';
 
 /** A non-2xx answer; status tells e.g. a 409 (already exists) apart from other failures. */
@@ -1066,9 +1058,99 @@ export function plotFromTable(payload: {
 
 // ─── Research ───
 
-export function arxivSearch(payload: { query: string; maxResults?: number }) {
-  return request<{ ok: boolean; papers?: ArxivPaper[]; error?: string }>('/api/arxiv/search', json('POST', payload));
+export type ResearchSource = 'openalex' | 'semanticscholar' | 'arxiv' | 'crossref' | 'pubmed' | 'web' | 'bib';
+
+/** One paper in a session, merged across the sources that found it. inBib: its key in the project's .bib. */
+export interface ResearchResult {
+  id: string;
+  title: string;
+  authors?: string[];
+  year?: string;
+  venue?: string;
+  doi?: string;
+  arxiv?: string;
+  url?: string;
+  abstract?: string;
+  sources: ResearchSource[];
+  citations?: number;
+  /** a link to an open-access copy */
+  openAccess?: string;
+  /** false: a source knows it as published; missing: none can tell */
+  preprint?: boolean;
+  inBib?: string;
+  decision?: 'keep' | 'drop';
+  reason?: string;
+  /** from the optional AI triage */
+  why?: string;
+  suggest?: 'keep' | 'drop';
+  theme?: string;
 }
+
+export interface ResearchRun {
+  at: string;
+  queries: string[];
+  perSource: Partial<Record<ResearchSource, { count: number; error?: string }>>;
+  filters?: { yearFrom?: number; yearTo?: number; preprints?: false };
+  triage?: { count: number; error?: string };
+}
+
+export interface ResearchSession {
+  id: string;
+  question: string;
+  sources: ResearchSource[];
+  createdAt: string;
+  updatedAt: string;
+  runs: ResearchRun[];
+  results: ResearchResult[];
+}
+
+export interface ResearchSummary { id: string; question: string; sources: ResearchSource[]; createdAt: string; updatedAt: string; count: number; kept: number }
+
+/** This computer's keys for the sources, sent with each search and never stored. */
+export interface ResearchKeys { openalexKey?: string; openalexEmail?: string; semanticScholarKey?: string; ncbiKey?: string }
+
+/** sessionId: another run of that session. triage: one AI call adds why, suggest and theme. */
+export function searchResearch(payload: {
+  projectId: string;
+  question: string;
+  sources: ResearchSource[];
+  yearFrom?: number;
+  yearTo?: number;
+  preprints?: boolean;
+  triage?: boolean;
+  sessionId?: string;
+  keys?: ResearchKeys;
+  searchConfig?: SearchConfig;
+  llmConfig?: Partial<LLMConfig>;
+}) {
+  return request<{ ok: boolean; session: ResearchSession }>('/api/research/search', json('POST', payload));
+}
+
+export const listResearch = (projectId: string) => request<{ ok: boolean; sessions: ResearchSummary[] }>(`/api/projects/${projectId}/research`);
+export const getResearch = (projectId: string, id: string) => request<{ ok: boolean; session: ResearchSession }>(`/api/projects/${projectId}/research/${id}`);
+export const deleteResearch = (projectId: string, id: string) => request<{ ok: boolean }>(`/api/projects/${projectId}/research/${id}`, { method: 'DELETE' });
+
+/** Merged into the stored session field by field; null takes a field out. */
+export type ResearchChange = { id: string } & { [K in 'decision' | 'suggest' | 'reason' | 'why' | 'theme']?: ResearchResult[K] | null };
+export function updateResearch(projectId: string, id: string, change: { question?: string; results?: ResearchChange[] }) {
+  return request<{ ok: boolean; session: ResearchSession }>(`/api/projects/${projectId}/research/${id}`, json('PUT', change));
+}
+
+/** Through the references resolver; without resultIds, the kept results not in the .bib yet. */
+export function addResearchResults(projectId: string, id: string, payload: { resultIds?: string[]; bibFile?: string; searchConfig?: SearchConfig }) {
+  return request<{ ok: boolean; results: { id: string; status: ReferenceResult['status']; key?: string; message?: string }[]; bibFile: string; bibIncluded: boolean; session: ResearchSession }>(
+    `/api/projects/${projectId}/research/${id}/add`,
+    json('POST', payload)
+  );
+}
+
+/** research/notes/<key>.md, made only when it isn't there yet. */
+export const researchNote = (projectId: string, id: string, resultId: string) =>
+  request<{ ok: boolean; path: string; created: boolean }>(`/api/projects/${projectId}/research/${id}/note`, json('POST', { resultId }));
+
+/** An open-access PDF into research/papers; email lets Unpaywall be asked. existing: it was there already. */
+export const researchPdf = (projectId: string, id: string, resultId: string, email?: string) =>
+  request<{ ok: boolean; path: string; existing?: boolean }>(`/api/projects/${projectId}/research/${id}/pdf`, json('POST', { resultId, email }));
 
 export type SearchProvider = 'llm' | 'openalex' | 'semanticscholar' | 'serpapi' | 'exa' | 'tavily' | 'brave' | 'ddgs';
 

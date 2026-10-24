@@ -135,17 +135,6 @@ export const parseJsonReply = <T,>(text: string) => {
 
 // ─── LaTeX helpers ───
 
-export const extractBibKey = (bibtex: string) => bibtex.match(/@\w+\s*{\s*([^,\s]+)\s*,/)?.[1].trim() || '';
-
-/** Classic BibTeX styles ignore url; keep Research imports visible there too. */
-export function bibtexForDocument(bibtex: string, source: string) {
-  const text = withoutComments(source);
-  const legacyUrls = /\\bibliographystyle\s*\{(?:plain|abbrv|alpha|unsrt|acm|apalike|ieeetr)\}/.test(text)
-    && !/\\addbibresource\b|\{biblatex\}/.test(text);
-  if (!legacyUrls || !/^@misc\s*\{/i.test(bibtex) || /\bhowpublished\s*=/i.test(bibtex)) return bibtex;
-  return bibtex.replace(/^(\s*)url\s*=\s*\{([^{}\r\n]+)\}/m, (_, space, url) => `${space}howpublished = {\\url{${url}}}`);
-}
-
 export const isTex = (path: string) => path.toLowerCase().endsWith('.tex');
 
 export function figureSnippet(filePath: string) {
@@ -157,13 +146,6 @@ export function figureSnippet(filePath: string) {
     `\\label{fig:${filePath.replace(/[^a-zA-Z0-9]+/g, '-')}}`,
     '\\end{figure}'
   ].join('\n');
-}
-
-/** Puts a block before \end{document} (or at the end when there is none). */
-export function insertBeforeEnd(source: string, block: string) {
-  const idx = source.lastIndexOf('\\end{document}');
-  if (idx === -1) return `${source.replace(/\s*$/, '')}\n\n${block}\n`;
-  return `${source.slice(0, idx).replace(/\s*$/, '')}\n\n${block}\n\n${source.slice(idx)}`;
 }
 
 const parentPath = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '');

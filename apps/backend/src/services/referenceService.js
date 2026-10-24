@@ -21,7 +21,7 @@ const CSL_JSON = 'application/vnd.citationstyles.csl+json';
 // Read at call time so tests can point them at a local mock server.
 const baseUrl = (name, fallback) => (process.env[name] || fallback).replace(/\/+$/, '');
 const doiBase = () => baseUrl('SPECTRUM_DOI_BASE', 'https://doi.org');
-const crossrefBase = () => baseUrl('SPECTRUM_CROSSREF_BASE', 'https://api.crossref.org');
+export const crossrefBase = () => baseUrl('SPECTRUM_CROSSREF_BASE', 'https://api.crossref.org');
 const arxivBase = () => baseUrl('SPECTRUM_ARXIV_BASE', 'https://export.arxiv.org');
 
 // ─── Input detection ───
@@ -625,7 +625,7 @@ function queued(fn) {
   return run;
 }
 
-async function get(url, accept) {
+export async function get(url, accept) {
   const viaQueue = url.startsWith(crossrefBase()) || url.startsWith(doiBase());
   const search = viaQueue && /\/works\?/.test(url);
   const once = async () => {
@@ -676,7 +676,7 @@ async function assertPublicUrl(url) {
 }
 
 /** Fetch a pasted link, following at most 5 redirects, each checked like the link itself. */
-async function getPage(url, accept) {
+export async function getPage(url, accept) {
   let current = url;
   for (let hop = 0; hop <= 5; hop++) {
     await assertPublicUrl(current);
@@ -1105,7 +1105,8 @@ function withBibLock(fn) {
   return run;
 }
 
-async function resolveItems(projectRoot, items, bibFile, searchConfig) {
+/** items: detectInput's { kind, … }. Looks each up and appends the new ones to the target .bib, duplicates caught. */
+export async function resolveItems(projectRoot, items, bibFile, searchConfig) {
   return withBibLock(async () => {
     const files = await projectFiles(projectRoot);
     const target = pickBibTarget(projectRoot, files, bibFile);

@@ -12,6 +12,7 @@ import type { VisionMode } from './shared';
 import { chatMessage, useChatThread } from './chatThread';
 import { resolveInstructions } from './personas';
 import { PersonaPicker } from './agent/parts';
+import ChatsList from './ChatsList';
 
 type QuickAction = 'polish' | 'rewrite' | 'structure' | 'translate';
 type TranslateScope = 'selection' | 'file' | 'project';
@@ -87,6 +88,9 @@ export default function Composer({
     onCreate: onChatIdChange
   });
   const [input, setInput] = useState('');
+  // the history menu: every saved Ask and References chat, and the Edit chats from before 2.0
+  const [history, setHistory] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState('');
   /** chats with a request running; the spinner and the disabled send belong to those chats only */
   const [busyChats, setBusyChats] = useState<string[]>([]);
   const [useSelection, setUseSelection] = useState(true);
@@ -143,6 +147,7 @@ export default function Composer({
   };
 
   const startNewChat = () => {
+    setHistory(false);
     show(null);
     onChatIdChange(null);
     inputRef.current?.focus();
@@ -435,8 +440,20 @@ export default function Composer({
               </button>
             ))}
           </div>
-          <span className="composer-title">{thread?.title}</span>
-          <button className="icon-btn" title="New chat" aria-label="New chat" onClick={startNewChat} disabled={!messages.length}>
+          <span className="composer-title">{history ? 'History' : thread?.title}</span>
+          <button
+            className={`icon-btn ${history ? 'active' : ''}`}
+            title="History"
+            aria-label="History"
+            aria-pressed={history}
+            onClick={() => {
+              setHistory((v) => !v);
+              setHistoryFilter('');
+            }}
+          >
+            <Icon name="clock.arrow.circlepath" />
+          </button>
+          <button className="icon-btn" title="New chat" aria-label="New chat" onClick={startNewChat} disabled={!messages.length && !history}>
             <Icon name="square.and.pencil" />
           </button>
           <button className="icon-btn" title="Close" aria-label="Close" onClick={() => onOpenChange(false)}>
@@ -444,7 +461,33 @@ export default function Composer({
           </button>
         </div>
 
-        <div className="composer-messages" ref={listRef} role="log">
+        {history && (
+          <div className="composer-history">
+            <label className="search-field">
+              <Icon name="magnifyingglass" />
+              <input
+                autoFocus
+                value={historyFilter}
+                placeholder="Search chats"
+                aria-label="Search chats"
+                onChange={(e) => setHistoryFilter(e.target.value)}
+                onKeyDown={(e) => e.key === 'Escape' && setHistory(false)}
+              />
+            </label>
+            <ChatsList
+              activeChatId={thread?.id ?? null}
+              filter={historyFilter}
+              onOpen={(id) => {
+                setHistory(false);
+                onChatIdChange(id);
+              }}
+              onNew={startNewChat}
+              refreshSignal={0}
+            />
+          </div>
+        )}
+
+        <div className="composer-messages" ref={listRef} role="log" hidden={history}>
           {messages.length === 0 && (
             <div className="composer-welcome">
               {mode === 'assistant' ? (

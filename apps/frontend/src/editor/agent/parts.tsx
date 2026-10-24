@@ -137,8 +137,11 @@ export const TASKS: AgentTask[] = [
   }
 ];
 
+/** A task handed to the workspace from elsewhere (Research's Deep research, Draft related work and Verify claims). */
+export type TaskRequest = { prompt: string; skill: string; persona?: string; research?: string; n: number };
+
 /** The task's persona, a starter's id (Settings › Personas), while the user still has it. */
-export const taskPersona = (personas: { id: string }[], task: AgentTask) => personas.find((p) => p.id === task.persona)?.id;
+export const taskPersona = (personas: { id: string }[], task: { persona?: string }) => personas.find((p) => p.id === task.persona)?.id;
 
 export function Welcome({ onTask }: { onTask(task: AgentTask): void }) {
   const { projectName } = useEditor();
@@ -586,7 +589,8 @@ export function ReviewView({
 // ─── Composer ───
 
 export type ContextKind = 'file' | 'selection' | 'log' | 'todos';
-export type Draft = { text: string; skill?: string; n: number };
+/** research: a research session's id, sent with the message */
+export type Draft = { text: string; skill?: string; research?: string; n: number };
 
 const CONTEXT_ICONS: Record<ContextKind, string> = { file: 'doc.text', selection: 'text.cursor', log: 'terminal', todos: 'checklist' };
 
@@ -615,11 +619,12 @@ export function AgentComposer({
   draft: Draft | null;
   picker?: ReactNode;
   placeholder: string;
-  onSend(text: string, opts: { skill?: string; context: Record<ContextKind, boolean> }): void;
+  onSend(text: string, opts: { skill?: string; research?: string; context: Record<ContextKind, boolean> }): void;
 }) {
   const api = useEditor();
   const [text, setText] = useState('');
   const [skill, setSkill] = useState<string | undefined>();
+  const [research, setResearch] = useState<string | undefined>();
   const [chosen, setChosen] = useState<Partial<Record<ContextKind, boolean>>>({});
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState<string | null>(null);
@@ -630,6 +635,7 @@ export function AgentComposer({
     setText(draft.text);
     // a task's skill only while it's on for the project
     setSkill(draft.skill && skills.some((s) => s.id === draft.skill) ? draft.skill : undefined);
+    setResearch(draft.research);
     inputRef.current?.focus();
   }, [draft?.n]);
 
@@ -677,9 +683,10 @@ export function AgentComposer({
       message = typed[2].trim();
     }
     if (busy || (!message && !use)) return;
-    onSend(message, { skill: use, context: { file: on('file'), selection: on('selection'), log: on('log'), todos: on('todos') } });
+    onSend(message, { skill: use, research, context: { file: on('file'), selection: on('selection'), log: on('log'), todos: on('todos') } });
     setText('');
     setSkill(undefined);
+    setResearch(undefined);
   };
 
   const skillName = skill && (skills.find((s) => s.id === skill)?.name || skill);
@@ -742,6 +749,14 @@ export function AgentComposer({
           <span className="chip active" title="This skill’s instructions go with the message">
             <Icon name="book.pages" /> {skillName}
             <button className="chip-remove" aria-label={`Remove the ${skillName} skill`} onClick={() => setSkill(undefined)}>
+              <Icon name="xmark" />
+            </button>
+          </span>
+        )}
+        {research && (
+          <span className="chip active" title="The research session’s question, runs and results go with the message">
+            <Icon name="books.vertical" /> Research session
+            <button className="chip-remove" aria-label="Don’t send the research session" onClick={() => setResearch(undefined)}>
               <Icon name="xmark" />
             </button>
           </span>
