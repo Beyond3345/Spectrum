@@ -27,7 +27,7 @@ const write = async (file, text) => {
 const { default: Fastify } = await import('fastify');
 const { registerReviewRoutes } = await import('../src/routes/review.js');
 const { createProject } = await import('../src/services/projectService.js');
-const { REVIEW_BUDGET, anchor } = await import('../src/services/reviewService.js');
+const { REVIEW_BUDGET, anchor, readReview } = await import('../src/services/reviewService.js');
 const app = Fastify();
 app.setErrorHandler(async (err, req, reply) => reply.code(err.statusCode || 500).send({ ok: false, error: err.message }));
 registerReviewRoutes(app);
@@ -251,4 +251,24 @@ test('an anchor looks about 10 lines either way, nearest first', () => {
   assert.deepEqual([at(28).line, at(28).anchored], [31, true]);
   assert.deepEqual([at(18).line, at(18).anchored], [18, false], 'too far from either');
   assert.equal(anchor({ file: 'b.tex', line: 5, quote: 'the same words' }, files).anchored, false);
+});
+
+test('a model’s answer is read past its thinking, prose, LaTeX it didn’t escape and a capital severity', () => {
+  const files = [{ path: 'main.tex', lines: ['\\section{Intro}', 'As \\cite{smith20} shows, see \\ref{tab:main} for more.', 'Done.'] }];
+  // the JSON as a model writes it, with \cite and \ref left single and a trailing comma
+  const body = String.raw`{"summary": "Fine.", "findings": [
+    {"severity": "Major", "file": "main.tex", "line": 2, "quote": "As \cite{smith20} shows", "issue": "Unsupported."},
+    {"severity": "Minor", "file": "main.tex", "line": 2, "quote": "see \ref{tab:main} for more", "issue": "Vague."},
+    {"severity": "Minor", "file": "main.tex", "line": 2, "quote": "see \ref{tab:main} for more", "issue": "Vague."},
+  ]}`;
+  const review = readReview(`<think>Let me plan {summary, findings} first.</think>Here is my review [as JSON]:\n${body}`, files);
+  assert.deepEqual(
+    review.findings.map((f) => [f.severity, f.line, f.anchored]),
+    [
+      ['major', 2, true],
+      ['minor', 2, true]
+    ]
+  );
+  assert.equal(review.summary, 'Fine.');
+  assert.equal(readReview('No review today.', files), null);
 });
