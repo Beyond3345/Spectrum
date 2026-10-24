@@ -35,20 +35,26 @@ const EXTERNAL_DOCUMENT = /\\(?:z?externaldocument|externalcitedocument)\*?\s*(?
 // goes back to it (stale, so its first compile there redoes linked documents); remove it once that's moot
 export const auxStore = (cache, doc) => path.join(cache, 'aux-files', doc);
 // What a compile keeps of the document's own build for its next one, per engine, as TeX reads them back: a document
-// whose labels, headings, citations and index haven't changed is then done in one pass.
-const KEPT_FILE = /\.(?:aux|bbl|bcf|toc|lof|lot|out|idx|ind|glo|gls|ist|nav|snm)$/i;
+// whose labels, headings, citations and index haven't changed is then done in one pass. Every file the build wrote
+// but the PDF, SyncTeX and the logs, as packages keep lists of their own (listings' .lol, algorithm's .loa, the
+// acronyms' .acn); Biber's log has the time in it, so every compile would look changed
+const keptFile = (rel) => !/\.(?:pdf|log|blg|ilg|glg|synctex\.gz)$/i.test(rel);
 const keptStore = (cache, doc, engine) => path.join(cache, 'build-files', doc, engine);
 // written last, so a store a crash left half copied isn't read
 const KEPT_MARKER = '.complete';
-// a pass's log asking for another (LaTeX's labels, hyperref's outlines, longtable's widths, natbib's citations)
-const RERUN = /\brerun\b/i;
+// a pass's log asking for another (LaTeX's labels, hyperref's outlines, longtable's widths, natbib's citations), but
+// not rerunfilecheck's banner, which every hyperref document's log has
+const RERUN = /\brerun\b(?! checks for auxiliary files)/i;
 // a % !TEX root = ../thesis.tex comment on a line of its own
 const TEX_ROOT = /^\s*%\s*!TEX\s+root\s*=\s*(.+?)\s*$/im;
-// the index's and the glossaries' programs, each run when a pass changed its input or it made nothing yet
+// the index's and the glossaries' programs, each run when a pass changed its input or it made nothing yet.
+// makeglossaries is Perl, which MiKTeX doesn't come with; makeglossaries-lite is Lua
 const INDEXERS = [
   { input: 'idx', output: 'ind', cmd: 'makeindex', args: (base) => [`${base}.idx`] },
-  { input: 'glo', output: 'gls', cmd: 'makeglossaries', args: (base) => [base] }
+  { input: 'glo', output: 'gls', cmd: 'makeglossaries', fallback: 'makeglossaries-lite', args: (base) => [base] }
 ];
+// each glossary's files, as the glossaries package names them in the .aux: \@newglossary{name}{log}{out}{in}
+const NEW_GLOSSARY = /\\@newglossary\{[^}]*\}\{[^}]*\}\{([^}]*)\}\{([^}]*)\}/g;
 // draft mode's images, as boxes of their size (Overleaf's fast mode)
 const DRAFT_IMAGES = '\\PassOptionsToPackage{draft}{graphicx}';
 // TeX breaks its log's lines at 79 characters
@@ -466,13 +472,21 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
       // TeX reads back
       for (let n = 2; n <= 3 && carryOn(); n += 1) {
         let now = await keptFiles(outDir);
-        for (const { input, output, cmd: indexer, args: indexArgs } of INDEXERS) {
-          const file = `${base}.${input}`;
-          if (!now.has(file) || (before.get(file)?.equals(now.get(file)) && now.has(`${base}.${output}`))) continue;
-          try {
-            await runSpawn(indexer, indexArgs(base), outDir, pushLog, texEnv);
-          } catch {
-            pushLog(Buffer.from(`[warn] ${indexer} not available, skipping the ${input === 'idx' ? 'index' : 'glossaries'}.\n`));
+        for (const { input, output, cmd: indexer, fallback, args: indexArgs } of INDEXERS) {
+          // every glossary's files (the acronyms' too), or the main glossary's when the .aux names none
+          const named = input === 'glo' ? [...(now.get(`${base}.aux`)?.toString() ?? '').matchAll(NEW_GLOSSARY)].map(([, out, from]) => [from, out]) : [];
+          const changed = (ext) => !before.get(`${base}.${ext}`)?.equals(now.get(`${base}.${ext}`));
+          // an empty one may make nothing (makeglossaries-lite's main glossary with no entries)
+          const due = (named.length ? named : [[input, output]]).some(([from, out]) => now.get(`${base}.${from}`)
+            && (changed(from) || (!now.has(`${base}.${out}`) && now.get(`${base}.${from}`).length > 0)));
+          if (!due) continue;
+          let ran = null;
+          for (const tool of [indexer, fallback].filter(Boolean)) {
+            ran = await runSpawn(tool, indexArgs(base), outDir, pushLog, texEnv).catch(() => null); // not installed
+            if (ran?.code === 0 || stopped()) break;
+          }
+          if (ran?.code !== 0 && !stopped()) {
+            pushLog(Buffer.from(`\n[spectrum warning] ${indexer} didn’t run, so the ${input === 'idx' ? 'index wasn’t' : 'glossaries weren’t'} built.\n`));
           }
           now = await keptFiles(outDir);
         }
@@ -542,7 +556,8 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
  * a `% !BIB program = biber` comment's, else Biber for biblatex. Resolves 1 or Biber's code when Biber failed.
  */
 async function runBibliography(outDir, base, tex, bibTool, env, pushLog) {
-  const aux = await fs.readFile(path.join(outDir, `${base}.aux`), 'utf8').catch(() => '');
+  // with the \include'd chapters' .aux, where the citations and \bibliography may be
+  const aux = await auxWithInputs(outDir, `${base}.aux`);
   // biblatex writes \abx@aux@... commands in .aux; traditional bibtex \citation and \bibdata
   if (!/\\(?:citation|bibdata)\{|\\abx@aux@/.test(aux)) return 0;
   const magic = tex.match(/%\s*!BIB\s+(?:TS-)?program\s*=\s*(\w+)/i)?.[1]?.toLowerCase();
@@ -571,11 +586,20 @@ async function runBibliography(outDir, base, tex, bibTool, env, pushLog) {
   return 0;
 }
 
+/** An .aux with the .aux files its \@input lines name (\include'd chapters'), as BibTeX reads them, as one text. */
+async function auxWithInputs(outDir, rel, seen = new Set()) {
+  if (seen.has(rel)) return '';
+  seen.add(rel);
+  let text = await fs.readFile(path.join(outDir, rel), 'utf8').catch(() => '');
+  for (const [, name] of text.matchAll(/\\@input\{([^}]+)\}/g)) text += await auxWithInputs(outDir, name, seen);
+  return text;
+}
+
 /** The files of the kind a compile keeps in outDir, with their bytes, to tell whether a pass changed any. */
 async function keptFiles(outDir) {
   const files = new Map();
   for (const { path: rel, type } of await listFilesRecursive(outDir)) {
-    if (type === 'file' && KEPT_FILE.test(rel)) files.set(rel, await fs.readFile(path.join(outDir, rel)));
+    if (type === 'file' && keptFile(rel)) files.set(rel, await fs.readFile(path.join(outDir, rel)));
   }
   return files;
 }
@@ -616,7 +640,7 @@ async function keepBuild(outDir, store, others) {
   await fs.rm(store, { recursive: true, force: true });
   await ensureDir(store);
   for (const { path: rel, type } of await listFilesRecursive(outDir)) {
-    if (type !== 'file' || !KEPT_FILE.test(rel)) continue;
+    if (type !== 'file' || !keptFile(rel)) continue;
     if (others.has(rel) && others.get(rel) === (await fs.stat(path.join(outDir, rel))).mtimeMs) continue;
     await ensureDir(path.dirname(path.join(store, rel)));
     await fs.copyFile(path.join(outDir, rel), path.join(store, rel));

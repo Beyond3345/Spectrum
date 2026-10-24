@@ -22,7 +22,7 @@ const WINDOWS = process.platform === 'win32';
 after(() => rmSync(tmp, { recursive: true, force: true }));
 
 const tools = {};
-for (const name of ['pdflatex', 'bibtex', 'biber', 'makeindex', 'makeglossaries', 'latexmk', 'tectonic']) tools[name] = await findExecutable(name);
+for (const name of ['pdflatex', 'bibtex', 'biber', 'makeindex', 'makeglossaries', 'makeglossaries-lite', 'latexmk', 'tectonic']) tools[name] = await findExecutable(name);
 const needs = (...names) => names.filter((name) => !tools[name]).map((name) => `needs ${name}`)[0] || false;
 
 const newProject = (files) => createProject({
@@ -79,6 +79,37 @@ test('a document whose kept files are current compiles in one pass, and in full 
   const fresh = await compile(p, { fresh: true });
   assert.ok(passes(fresh.log) >= 2);
   assert.doesNotMatch(lastPass(fresh.log), /undefined/);
+});
+
+test('a list a package reads back from a file of its own is kept, so a one-pass compile still shows it', { skip: needs('pdflatex') }, async () => {
+  // \@starttoc{xyz} reads main.xyz back, as \lstlistoflistings reads main.lol
+  const p = await newProject({
+    'main.tex': '\\documentclass{article}\\makeatletter\\begin{document}\\@starttoc{xyz}\\addtocontents{xyz}{\\protect\\typeout{read-from-xyz}}Hi\\end{document}\n'
+  });
+  assert.equal((await compile(p)).status, 0);
+  const again = await compile(p);
+  assert.equal(passes(again.log), 1);
+  assert.match(again.log, /read-from-xyz/);
+  assert.ok(existsSync(kept(p, 'main.xyz')));
+});
+
+test('a hyperref document whose kept files are current compiles in one pass', { skip: needs('pdflatex') }, async () => {
+  const p = await newProject({ 'main.tex': '\\documentclass{article}\\usepackage{hyperref}\\begin{document}\\section{A}\\label{a}\\ref{a}\\end{document}\n' });
+  assert.equal((await compile(p)).status, 0);
+  assert.equal(passes((await compile(p)).log), 1);
+});
+
+test('BibTeX runs when the citations and \\bibliography are in \\include’d chapters', { skip: needs('pdflatex', 'bibtex') }, async () => {
+  const p = await newProject({
+    'main.tex': '\\documentclass{report}\\begin{document}\\include{chapters/one}\\include{chapters/back}\\end{document}\n',
+    'chapters/one.tex': '\\chapter{One} See \\cite{Knuth1984}.\n',
+    'chapters/back.tex': '\\bibliographystyle{plain}\\bibliography{refs}\n',
+    'refs.bib': refs
+  });
+  const res = await compile(p, { fresh: true });
+  assert.equal(res.status, 0, res.log);
+  assert.match(res.log, /This is BibTeX/);
+  assert.doesNotMatch(lastPass(res.log), /undefined/);
 });
 
 test('nothing cited, no BibTeX run', { skip: needs('pdflatex') }, async () => {
@@ -162,6 +193,44 @@ test('makeindex and makeglossaries run when their files appear, and not again wh
   const again = await compile(p);
   assert.equal(passes(again.log), 1);
   assert.doesNotMatch(again.log, /This is makeindex|makeglossaries/);
+});
+
+test('the acronyms’ list is kept, and a new acronym runs makeglossaries', { skip: needs('pdflatex', 'makeglossaries') }, async () => {
+  const doc = (extra) => [
+    '\\documentclass{article}',
+    '\\usepackage[acronym]{glossaries}\\makeglossaries',
+    '\\newacronym{cpu}{CPU}{central processing unit}\\newacronym{gpu}{GPU}{graphics processing unit}',
+    '\\begin{document}',
+    `\\printglossary[type=\\acronymtype] Uses \\gls{cpu}. ${extra}`,
+    '\\end{document}',
+    ''
+  ].join('\n');
+  const p = await newProject({ 'main.tex': doc('') });
+  assert.equal((await compile(p)).status, 0);
+  const again = await compile(p);
+  assert.equal(passes(again.log), 1);
+  assert.doesNotMatch(again.log, /makeglossaries/);
+  assert.match(await fs.readFile(kept(p, 'main.acr'), 'utf8'), /glossentry\{cpu\}/);
+  await fs.writeFile(path.join(p.path, 'main.tex'), doc('And \\gls{gpu}.'));
+  const added = await compile(p);
+  assert.match(added.log, /makeglossaries/);
+  assert.match(await fs.readFile(kept(p, 'main.acr'), 'utf8'), /glossentry\{gpu\}/);
+});
+
+test('makeglossaries-lite stands in for a makeglossaries that fails, and a warning says when neither ran', { skip: WINDOWS ? 'shell scripts stand in for makeglossaries' : needs('pdflatex', 'makeglossaries-lite') }, async () => {
+  const bin = path.join(tmp, 'no Perl');
+  await fs.mkdir(bin);
+  // MiKTeX's makeglossaries without Perl
+  await fs.writeFile(path.join(bin, 'makeglossaries'), '#!/bin/sh\necho "makeglossaries: perl.exe not found"\nexit 1\n', { mode: 0o755 });
+  const main = '\\documentclass{article}\\usepackage{glossaries}\\makeglossaries\\newglossaryentry{tex}{name=TeX,description={a typesetting system}}\\begin{document}\\gls{tex}\\printglossaries\\end{document}\n';
+  const p = await newProject({ 'main.tex': main });
+  const lite = await compile(p, { texFolder: bin });
+  assert.equal(lite.status, 0, lite.log);
+  assert.match(await fs.readFile(kept(p, 'main.gls'), 'utf8'), /glossentry\{tex\}/);
+  assert.doesNotMatch(lite.log, /\[spectrum warning\]/);
+  await fs.writeFile(path.join(bin, 'makeglossaries-lite'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+  const neither = await compile(p, { texFolder: bin, fresh: true });
+  assert.match(neither.log, /\[spectrum warning\] makeglossaries didn’t run, so the glossaries weren’t built/);
 });
 
 test('a chapter naming its document with % !TEX root compiles the document', { skip: needs('pdflatex') }, async () => {
