@@ -16,6 +16,7 @@ Spectrum is released under the MIT Licence given in [LICENSE](LICENSE). It inclu
 | [React Flow](https://github.com/xyflow/xyflow) (`@xyflow/react`) 12.12.0, with zustand and the d3 modules it uses | bundled into the diagram composer as its canvas | MIT (the d3 modules ISC) |
 | [Mermaid](https://github.com/mermaid-js/mermaid) 11.17.2, with the packages it depends on | bundled into the diagram composer, loaded only for Mermaid diagrams | MIT; of its dependencies DOMPurify is used under Apache 2.0 (it is offered under MPL 2.0 or Apache 2.0), robust-predicates is under the Unlicense and the rest are MIT, ISC or BSD 3-Clause |
 | [pdf-lib](https://github.com/Hopding/pdf-lib) 1.17.1 | loaded when a Mermaid diagram is exported or inserted as PDF; its high-resolution image is embedded at its original size | MIT; @pdf-lib/standard-fonts and @pdf-lib/upng are MIT, pako is MIT AND Zlib, and tslib is 0BSD. Their licence texts are included in `apps/frontend/public/licences/` |
+| [K-Dense scientific agent skills](https://github.com/K-Dense-AI/scientific-agent-skills), 12 skills at commit `593377b` | `skills/`, copied unmodified by `scripts/sync-skills.mjs`, without the scripts that spend an OpenRouter key (`generate_schematic*.py` and `generate_slide_image*.py`); listed below | MIT, see [skills/K-Dense-LICENSE.md](skills/K-Dense-LICENSE.md); one skill is Apache 2.0, see [skills/Apache-2.0.txt](skills/Apache-2.0.txt); the Elsevier files in venue-templates are LPPL 1.3c |
 | Node.js, CodeMirror, PDF.js, Fastify, React, Tauri and the other npm and Cargo dependencies | bundled into the application | their own licences, listed in `package-lock.json` and `src-tauri/Cargo.lock` |
 
 The editor themes reuse the colour values of the themes below. Only the colours are taken, no files or code of theirs are included, and the Texifier-like and Overleaf-like themes are Spectrum's own approximations, built from Apple's system colours and from Ace's TextMate theme respectively.
@@ -37,6 +38,29 @@ The editor themes reuse the colour values of the themes below. Only the colours 
 | Xcode Light and Dark | the colour values of Xcode's default themes | no Apple file is included |
 
 Spectrum's own word list, `dictionaries/spectrum-extra.dic`, is part of Spectrum and under its MIT Licence.
+
+## Bundled skills
+
+The skills in `skills/` come from [K-Dense-AI/scientific-agent-skills](https://github.com/K-Dense-AI/scientific-agent-skills) at commit `593377bb048752abb0152deab9fbb1083a6087df`, each as its own front matter names its author and licence. `scripts/sync-skills.mjs` copies them, checks every file against that commit and stops on a licence other than MIT or Apache 2.0. `skills/manifest.json` records the same list.
+
+| Skill | Author | Licence |
+| --- | --- | --- |
+| citation-management | K-Dense Inc. | MIT |
+| hypothesis-generation | K-Dense Inc. | MIT |
+| latex-posters | K-Dense Inc. | MIT (the skill names none, so the repository’s MIT licence applies) |
+| literature-review | K-Dense Inc. | MIT |
+| markdown-mermaid-writing | Clayton Young / Superior Byte Works, LLC (@borealBytes) | Apache-2.0 |
+| paper-lookup | K-Dense Inc. | MIT |
+| peer-review | K-Dense Inc. | MIT |
+| research-grants | K-Dense Inc. | MIT |
+| scientific-critical-thinking | K-Dense Inc. | MIT |
+| scientific-slides | K-Dense Inc. | MIT |
+| scientific-writing | K-Dense Inc. | MIT |
+| venue-templates | K-Dense Inc. | MIT |
+
+In venue-templates, `assets/journals/elsarticle-*.bst` and `assets/journals/elsarticle-template-*.tex` are © Elsevier Ltd under the LaTeX Project Public License 1.3c, as their headers say.
+
+Spectrum's own skills (`spectrum-latex`, `spectrum-related-work` and `spectrum-verify-claims`) are part of Spectrum and under its MIT Licence.
 
 If the application is given to anyone else, this file and the licence files it points to must go with it.
 
