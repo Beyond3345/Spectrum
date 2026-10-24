@@ -68,9 +68,13 @@ export default function PdfPresentation({
   // the page drawn to fit; the one before stays until it's ready, so moving on never flashes
   useEffect(() => {
     let live = true;
-    pdf.current?.renderPage(page, size.width, size.height).then((canvas) => {
-      if (live && canvas) stageRef.current?.replaceChildren(canvas);
-    });
+    pdf.current
+      ?.renderPage(page, size.width, size.height)
+      .then((canvas) => {
+        if (live && canvas) stageRef.current?.replaceChildren(canvas);
+      })
+      // a new PDF cancels what the old one was drawing
+      .catch(() => undefined);
     return () => {
       live = false;
     };
