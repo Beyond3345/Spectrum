@@ -4,11 +4,13 @@ import crypto from 'node:crypto';
 import { Readable, Writable } from 'node:stream';
 import os from 'node:os';
 import { createServer } from 'node:net';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { client, ndJsonStream } from '@agentclientprotocol/sdk';
 import { APP_VERSION } from '../config/constants.js';
 import { appPath, cachePath, detectMainFile, getProjectRoot, mutateProjectFiles, readMeta } from './projectService.js';
-import { compileFolder, SUPPORTED_ENGINES } from './compileService.js';
+import { compileFolder, findExecutable, SUPPORTED_ENGINES } from './compileService.js';
 import { readProjectSettings } from './projectSettings.js';
 import { openTodos, suggestedTodo } from './agentService.js';
 import { AGENT_DIR, profileFor, agentConfigs, agentHome } from './agentProfiles.js';
@@ -19,6 +21,7 @@ import { activeSkills } from './skillService.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { writeJsonAtomic } from '../utils/fsUtils.js';
 
+const execFileAsync = promisify(execFile);
 const runs = new Map();
 const ID = /^[a-f0-9-]{36}$/;
 const textLimit = (value, max = 100000) => typeof value === 'string' ? value.slice(0, max) : '';
@@ -402,6 +405,10 @@ async function takeSuggestions(r) {
   return text.split('\n').slice(0, 50).flatMap((line) => { try { return [suggestedTodo(JSON.parse(line))]; } catch { return []; } });
 }
 
+// Whether TeX on Windows can be told to read only below the draft, by its --version: MiKTeX through AllowUnsafeInputFiles,
+// TeX Live through openin_any only until 2026, which made that a no-op
+export const confinableTeX = (version) => /MiKTeX/i.test(version) || Number(String(version).match(/TeX Live (\d{4})/)?.[1]) < 2026;
+
 // The document a preview compiles, and with what: the project's main file and engine unless the request names them
 async function previewTarget(r, { mainFile, engine }) {
   const main = mainFile || (await readMeta(r.root).catch(() => ({}))).mainFile || await detectMainFile(r.workspace).catch(() => null);
@@ -412,8 +419,8 @@ async function previewTarget(r, { mainFile, engine }) {
 /**
  * The agent's draft as a PDF: { ok, pdf (base64, or null), log }. It is compiled where it can read nothing but the draft
  * and TeX, into this computer's cache, never into the draft. On macOS inside isolation, the draft read-only; on Windows
- * with TeX told to read only below the draft's folder (TeX Live's openin_any, MiKTeX's AllowUnsafeInputFiles), and
- * never with Tectonic, which can't be told.
+ * with TeX told to read only below the draft's folder (MiKTeX's AllowUnsafeInputFiles, TeX Live's openin_any before
+ * 2026), and with no preview where TeX can't be told: Tectonic, and TeX Live 2026 and later.
  */
 export async function previewDraft(r, options = {}) {
   if (r.mode !== 'review') throw Object.assign(new Error('A direct session works in the project itself. Compile the project to see it.'), { statusCode: 409 });
@@ -431,8 +438,12 @@ export async function previewDraft(r, options = {}) {
     await fs.mkdir(path.join(home, 'tmp'), { recursive: true, mode: 0o700 });
     if (process.platform === 'win32') {
       if (engine === 'tectonic') return { ok: false, pdf: null, log: 'Preview PDF needs TeX Live or MiKTeX on Windows.' };
-      // ponytail: MiKTeX's setting through its environment is to be confirmed by the Windows build machine's test
-      const result = await compileFolder({ root: r.workspace, mainFile: main, engine, without: ['tectonic'], buildDir: out, env: { openin_any: 'p', MIKTEX_ALLOWUNSAFEINPUTFILES: '0', MIKTEX_CORE_ALLOWUNSAFEINPUTFILES: '0' } });
+      const tex = await findExecutable('pdflatex');
+      const version = tex ? (await execFileAsync(tex, ['--version'], { timeout: 20000, windowsHide: true }).catch(() => ({ stdout: '' }))).stdout : '';
+      if (!confinableTeX(version)) return { ok: false, pdf: null, log: 'Preview PDF on Windows needs MiKTeX, or TeX Live 2025 or earlier: later TeX Live can’t limit what a compile reads, so the draft isn’t compiled. Review its changes as text.' };
+      // and no shell escape, not even TeX Live's restricted one, for a draft an agent wrote. ponytail: MiKTeX's setting
+      // through its environment is to be confirmed by the Windows build machine's test
+      const result = await compileFolder({ root: r.workspace, mainFile: main, engine, without: ['tectonic'], buildDir: out, env: { openin_any: 'p', shell_escape: 'f', MIKTEX_ALLOWUNSAFEINPUTFILES: '0', MIKTEX_CORE_ALLOWUNSAFEINPUTFILES: '0' } });
       return { ok: result.ok && result.status === 0, pdf: result.pdf || null, log: result.log || result.error || '' };
     }
     const { entry, reads } = await toolsLaunch();

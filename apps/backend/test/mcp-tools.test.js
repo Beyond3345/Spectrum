@@ -19,6 +19,7 @@ const tools = await import('../src/mcp/tools.js');
 after(() => rmSync(tmp, { recursive: true, force: true }));
 const write = async (file, text) => { await fs.mkdir(path.dirname(file), { recursive: true }); await fs.writeFile(file, text); };
 const hasTeX = (() => { try { execFileSync('kpsewhich', ['article.cls'], { stdio: 'ignore' }); return true; } catch { return false; } })();
+const texLive = hasTeX && (() => { try { return /TeX Live/.test(execFileSync('pdflatex', ['--version'], { encoding: 'utf8' })); } catch { return false; } })();
 
 await write(path.join(root, 'paper', 'main.tex'), [
   '\\documentclass{article}',
@@ -106,4 +107,30 @@ test('the server answers over stdio with every tool', async () => {
     assert.equal(JSON.parse(await text('load_skill', { id: 'alpha' })).body, 'Do alpha things.');
   } finally { await client.close(); }
   assert.equal(JSON.parse((await fs.readFile(path.join(state, 'suggestions.jsonl'), 'utf8')).trim()).text, 'From the server');
+});
+
+test('a scratch compile takes TeX settings from its environment, as the Windows preview sets them', { skip: !texLive && 'Needs TeX Live.' }, async () => {
+  const { compileFolder } = await import('../src/services/compileService.js');
+  const { confinableTeX } = await import('../src/services/agentSessionService.js');
+  const secret = path.join(tmp, 'secret.tex').split(path.sep).join('/');
+  await write(secret, '\\typeout{SECRET-READ}');
+  const draft = path.join(tmp, 'restricted');
+  await write(path.join(draft, 'main.tex'), `\\documentclass{article}\\begin{document}Hi.\\IfFileExists{${secret}}{\\input{${secret}}}{\\typeout{SECRET-HIDDEN}}\\end{document}\n`);
+  const open = await compileFolder({ root: draft, mainFile: 'main.tex', engine: 'pdflatex' });
+  assert.match(open.log, /restricted \\write18 enabled/);
+  const restricted = await compileFolder({ root: draft, mainFile: 'main.tex', engine: 'pdflatex', env: { openin_any: 'p', shell_escape: 'f' } });
+  assert.ok(restricted.pdf, restricted.log);
+  assert.doesNotMatch(restricted.log, /write18 enabled/, 'no shell escape at all');
+  // TeX Live 2026 made openin_any a no-op, which is why the Windows preview refuses it
+  const version = execFileSync('pdflatex', ['--version'], { encoding: 'utf8' });
+  assert.match(restricted.log, confinableTeX(version) ? /SECRET-HIDDEN/ : /SECRET-READ/);
+  assert.deepEqual(await fs.readdir(draft), ['main.tex'], 'nothing was written beside it');
+});
+
+test('the Windows preview compiles only with a TeX that can be told to read only the draft', async () => {
+  const { confinableTeX } = await import('../src/services/agentSessionService.js');
+  assert.equal(confinableTeX('MiKTeX-pdfTeX 4.20 (MiKTeX 25.4)'), true);
+  assert.equal(confinableTeX('pdfTeX 3.141592653-2.6-1.40.27 (TeX Live 2025)'), true);
+  assert.equal(confinableTeX('pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)'), false);
+  assert.equal(confinableTeX(''), false, 'no TeX, or one that would not say, is refused');
 });
