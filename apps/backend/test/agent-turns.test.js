@@ -146,6 +146,25 @@ test('requests still open when a turn ends, or when Spectrum closed during it, a
   assert.ok(crashed.events.some((e) => e.type === 'answered' && e.data.requestId === request.data.requestId));
 });
 
+test('a turn Spectrum closed during keeps its prompt, and what the agent did in the draft reaches the tray', { skip, timeout: 120000 }, async () => {
+  const { open, turn, promptAgent, stopAgentRun, reopen, pendingChanges } = await setup();
+  const { run } = await open({ 'main.tex': 'original\n' });
+  await turn(run, 'draft one');
+  await promptAgent(run, 'please-hang');
+  for (const deadline = Date.now() + 20000; !run.events.some((e) => e.type === 'user' && e.data.text === 'please-hang');) {
+    if (Date.now() > deadline) throw new Error('The prompt was never sent.');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  // the agent's edit in the turn, and Spectrum's state on disk as it closes
+  await fs.writeFile(path.join(run.workspace, 'main.tex'), 'original\nagent line 1\nagent line 2\n');
+  await run.saveChain;
+  const crashed = await reopen(run, (data) => data);
+  await stopAgentRun(run);
+  assert.equal(crashed.status, 'interrupted');
+  assert.deepEqual(crashed.events.filter((e) => e.type === 'user').map((e) => e.data.text), ['draft one', 'please-hang']);
+  assert.equal((await pendingChanges(crashed))[0].proposed, 'original\nagent line 1\nagent line 2\n');
+});
+
 test('a 1.10 review session’s applied or rejected file goes back to the user’s, and its text doesn’t return', { skip, timeout: 120000 }, async () => {
   const { open, turn, reopen, pendingChanges } = await setup();
   const { run } = await open({ 'main.tex': 'original\n' });

@@ -103,8 +103,11 @@ export async function getAgentRun(id) {
       else if (change) r.resolved.add(changeKey(change));
     }
   }
+  const crashed = ['running', 'starting', 'stopping'].includes(r.status);
+  // best effort: what the agent did in the draft before Spectrum closed reaches the tray
+  if (crashed) await captureAgentProposal(r).catch(() => {});
   runs.set(id, r);
-  if (['running', 'starting', 'stopping'].includes(r.status)) {
+  if (crashed) {
     // nothing waits for an answer any more
     const answered = new Set(r.events.filter((e) => e.type === 'answered').map((e) => e.data.requestId));
     for (const e of r.events.filter((e) => e.type === 'request' && !answered.has(e.data.requestId))) emit(r, 'answered', { requestId: e.data.requestId });
@@ -609,6 +612,8 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       const earlier = r.freshSession && r.events.filter((e) => e.type === 'user' || (e.type === 'update' && e.data.sessionUpdate === 'agent_message_chunk')).map((e) => e.data.text || e.data.content?.text || '').join('\n').slice(-12000);
       emit(r, 'user', { text: prompt, ...(Object.keys(context).length && { context: Object.keys(context) }) });
       r.title ||= firstLine(prompt);
+      // kept should Spectrum close during the turn
+      void persist(r);
       const intro = r.openedNew && 'You are working in Spectrum. All file and terminal operations are confined to your workspace and private runtime state. Use relative paths. Do not attempt to access the original project or other host services.';
       const persona = r.openedNew && r.persona && !r.capabilities.sessionCapabilities?.systemPrompt && personaText(r.persona);
       const notes = r.notes.length && `Since your last turn:\n${r.notes.map((note) => `- ${note}`).join('\n')}`;
