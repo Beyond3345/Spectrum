@@ -1269,9 +1269,7 @@ function CheckpointsPane() {
       </label>
       <h3 className="form-section-title">Clearing out</h3>
       <div>
-        <CheckpointCleanup
-          projects={async () => (await listProjects()).projects.filter((p) => !p.missing).map((p) => p.id)}
-        />
+        <CheckpointCleanup projects={async () => (await listProjects()).projects.filter((p) => !p.missing).map((p) => p.id)} />
       </div>
       <div className="field-hint">In every project on this computer. Tools › Checkpoints does the same for one project.</div>
     </>
