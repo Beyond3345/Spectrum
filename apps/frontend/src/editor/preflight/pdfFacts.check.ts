@@ -1,5 +1,6 @@
 // Self-check for pdfFacts on a real PDF read by pdf.js, here a small tagged one made below. Bundle it first:
 // `npx esbuild apps/frontend/src/editor/preflight/pdfFacts.check.ts --bundle --platform=node --log-level=warning --outfile=<file>.js`, then `node <file>.js`
+// @ts-expect-error: the worker module comes without types
 import * as worker from 'pdfjs-dist/build/pdf.worker.mjs';
 import { pdfFacts } from './pdfFacts.ts';
 
@@ -33,7 +34,7 @@ function pdf(catalog: string) {
   const xref = out.length;
   out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((at) => `${String(at).padStart(10, '0')} 00000 n \n`).join('')}`;
   out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info << /Title (Tagged) /Author (Ada) >> >>\nstartxref\n${xref}\n%%EOF\n`;
-  return `data:application/pdf;base64,${Buffer.from(out, 'latin1').toString('base64')}`;
+  return `data:application/pdf;base64,${btoa(out)}`;
 }
 
 async function main() {
@@ -47,7 +48,5 @@ async function main() {
   console.log('pdfFacts.check: ok');
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// a failure rejects, which ends Node with an error
+main();
