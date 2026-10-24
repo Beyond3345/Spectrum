@@ -1,9 +1,10 @@
-// Self-check for TexLab's editor side: the transport's framing and order, F2's edit planning and the outline from
-// TexLab's symbols. Bundle it first:
+// Self-check for TexLab's editor side: the transport's framing and order, F2's edit planning, the syntax check's
+// errors and the outline from TexLab's symbols. Bundle it first:
 // `npx esbuild apps/frontend/src/editor/lsp/lsp.check.ts --bundle --platform=node --log-level=warning | node`
 import { documentOutline } from '../latexEditor.ts';
 import { symbolHeadings } from './outline.ts';
 import { applyEdits, newName, renameEdits } from './rename.ts';
+import { syntaxErrors } from './syntax.ts';
 import { lspTransport } from './transport.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -192,8 +193,44 @@ async function outline() {
   eq([...seen].sort(), ['chapters/one.tex', 'main.tex'], 'the files read, never a commented-out one');
 }
 
+// ─── the syntax check before compiling ───
+
+function syntax() {
+  const mark = (line: number, col: number, code: string, severity: 'error' | 'warning' = 'error') => ({ line, col, endLine: line, endCol: col + 1, severity, message: code, code, source: 'texlab' as const });
+  const texts = new Map([
+    // what TexLab 5.26 marks in these: a lone } in verbatim, lstlisting and minted, and the end of a file whose
+    // inline code it doesn't know holds a brace
+    ['a.tex', '\\begin{verbatim}\n}\n\\end{verbatim}\n'],
+    ['b.tex', '\\begin{lstlisting}\nint f() {\n}\n}\n\\end{lstlisting}\n'],
+    ['c.tex', '\\begin{minted}{c}\n}\n\\end{minted}\n'],
+    ['d.tex', 'A \\verb+{+ b\n'],
+    ['e.tex', '\\lstinline|{| and \\verb*|{|\n'],
+    // and real ones
+    ['f.tex', 'Text {unbalanced\n'],
+    ['g.tex', 'Text }\n\\begin{itemize}\n\\end{enumerate}\n'],
+    ['h.tex', '\\verb|x| {open\n']
+  ]);
+  const found = {
+    'a.tex': [mark(2, 1, 'unexpected-brace')],
+    'b.tex': [mark(4, 1, 'unexpected-brace')],
+    'c.tex': [mark(2, 1, 'unexpected-brace')],
+    'd.tex': [mark(2, 1, 'missing-brace')],
+    'e.tex': [mark(2, 1, 'missing-brace')],
+    'f.tex': [mark(2, 1, 'missing-brace'), mark(1, 1, 'undefined-label'), mark(1, 1, 'missing-brace', 'warning')],
+    'g.tex': [mark(1, 6, 'unexpected-brace'), mark(2, 1, 'mismatched-environment')],
+    'h.tex': [mark(2, 1, 'missing-brace')],
+    'other.tex': [mark(1, 1, 'missing-brace')]
+  };
+  eq(
+    syntaxErrors([...texts.keys()], found, texts).map((e) => `${e.file} ${e.line}:${e.col} ${e.code}`),
+    ['f.tex 2:1 missing-brace', 'g.tex 1:6 unexpected-brace', 'g.tex 2:1 mismatched-environment', 'h.tex 2:1 missing-brace'],
+    'brace and environment errors in the document’s files, not those code makes'
+  );
+}
+
 // a failure rejects, which ends Node with an error
 transport()
   .then(rename)
+  .then(syntax)
   .then(outline)
   .then(() => console.log('lsp.check: ok'));

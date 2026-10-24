@@ -90,7 +90,11 @@ const settings = (auxUri) => ({
   chktex: { onOpenAndSave: false, onEdit: false },
   diagnosticsDelay: DIAGNOSTICS_DELAY,
   latexFormatter: 'none',
-  bibtexFormatter: 'none'
+  bibtexFormatter: 'none',
+  // code in these isn't LaTeX, so a lone brace there is no error (TexLab knows verbatim, lstlisting and minted itself)
+  experimental: {
+    verbatimEnvironments: ['Verbatim', 'Verbatim*', 'BVerbatim', 'LVerbatim', 'SaveVerbatim', 'VerbatimOut', 'comment', 'filecontents', 'filecontents*', 'tcblisting']
+  }
 });
 
 /** A message in the LSP's framing. */

@@ -39,7 +39,7 @@ import {
   updateProjectSettings,
   writeFile
 } from '../api/client';
-import type { CompileEngine, CompileOptions, CompileResult, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TexlabDiagnostic, TodoLink, VersionMeta, VersionReason } from '../api/client';
+import type { CompileEngine, CompileOptions, CompileResult, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
 import { latex } from '../latex/lang';
 import Icon from './Icon';
 import Tabs from './Tabs';
@@ -117,6 +117,7 @@ import type { OutlineItem } from '../editor/latexEditor';
 import { Texlab, texlabSlot } from '../editor/lsp/texlab';
 import type { Reference } from '../editor/lsp/texlab';
 import { applyEdits, newName, renameEdits } from '../editor/lsp/rename';
+import { syntaxErrors } from '../editor/lsp/syntax';
 import { symbolHeadings } from '../editor/lsp/outline';
 import { VERSIONS_CHANGED, errorText, figureSnippet } from '../editor/shared';
 
@@ -137,8 +138,6 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const MAX_TABS = 6;
 const timeFormat = new Intl.DateTimeFormat('en-AU', { hour: 'numeric', minute: '2-digit' });
 const engineLabel = (engine: string) => COMPILE_ENGINES.find(([value]) => value === engine)?.[1] || engine;
-// the TexLab findings the syntax check before compiling stops for; an undefined reference or citation never does
-const SYNTAX_ERRORS = new Set(['unexpected-brace', 'missing-brace', 'mismatched-environment']);
 
 /** The first text file, or '' when it's 1 MB or more: with no .tex to show, never open a huge log or data file unasked. */
 async function smallTextFile(projectId: string, items: FileItem[]) {
@@ -1408,10 +1407,14 @@ function Editor({ projectId }: { projectId: string }) {
     if (!texlab?.available) return true;
     const found = await Promise.race([texlab.diagnostics(), new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 5000))]).catch(() => null);
     if (!found?.available) return true;
-    const { scans } = await scanProject(doc, fileSet, readText, false);
-    const errors = scans.flatMap(({ file = '' }) =>
-      (found.files[file] ?? []).filter((d: TexlabDiagnostic) => d.severity === 'error' && SYNTAX_ERRORS.has(d.code ?? '')).map((d) => ({ ...d, file }))
-    );
+    const texts = new Map<string, string>();
+    const read = async (path: string) => {
+      const text = await readText(path);
+      texts.set(path, text);
+      return text;
+    };
+    const { scans } = await scanProject(doc, fileSet, read, false);
+    const errors = syntaxErrors(scans.map(({ file = '' }) => file), found.files, texts);
     if (!errors.length) return true;
     const listed = errors.slice(0, 6).map((e) => `${e.file}, line ${e.line}: ${e.message}`);
     if (errors.length > 6) listed.push(`and ${errors.length - 6} more`);

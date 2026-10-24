@@ -145,6 +145,7 @@ test('the bridge does the handshake, relays an editor’s messages and keeps the
   const settings = configuration.params.settings.texlab;
   assert.equal(configuration.method, 'workspace/didChangeConfiguration');
   assert.deepEqual([settings.build.onSave, settings.chktex.onOpenAndSave, settings.diagnosticsDelay, settings.latexFormatter], [false, false, 500, 'none']);
+  assert.ok(['Verbatim', 'comment', 'filecontents'].every((env) => settings.experimental.verbatimEnvironments.includes(env)));
   assert.equal(settings.build.auxDirectory, `${pathToFileURL(auxStore(await cachePath(p.path), 'main.tex')).href}/`);
   // the main document, which TexLab only reads the files around
   assert.deepEqual(seeded.params, { changes: [{ uri: `${rootUri}/main.tex`, type: 1 }] });
@@ -299,5 +300,24 @@ test('the real TexLab finds a project’s errors, follows the editor, renames ac
   await until(async () => codes((await diagnostics(p)).files, 'main.tex').join() === '3 undefined-label', 'the new main.tex read', 15_000);
   assert.ok(!existsSync(marker), 'the project’s latexmkrc was run');
   editor.close();
+  await stopTexlab();
+});
+
+test('the real TexLab takes code in Verbatim and the like as code, and a file’s marks come under its own name', { skip: !realTexlab && 'needs texlab on the PATH', timeout: 60_000 }, async () => {
+  process.env.SPECTRUM_TEXLAB = realTexlab;
+  const p = await newProject({
+    'main.tex': '\\documentclass{article}\n\\begin{document}\n\\input{Chapters/Intro}\nSee \\ref{sec:a}.\n\\input{code}\n\\input{broken}\n\\end{document}\n',
+    'code.tex': '\\begin{Verbatim}\nprintf("{");\n\\end{Verbatim}\n\\begin{comment}\n{\n\\end{comment}\n\\begin{filecontents}{x.dat}\n{\n\\end{filecontents}\n',
+    'broken.tex': 'Text {unbalanced\n'
+  });
+  await fs.mkdir(path.join(p.path, 'chapters'));
+  await fs.writeFile(path.join(p.path, 'chapters', 'intro.tex'), '\\section{A}\\label{sec:a}\n');
+  const errors = (files, name) => (files[name] ?? []).filter((d) => d.severity === 'error').map((d) => d.code);
+  const found = await until(async () => {
+    const res = await diagnostics(p);
+    return res.files['broken.tex'] && res;
+  }, 'diagnostics');
+  assert.deepEqual(errors(found.files, 'code.tex'), [], JSON.stringify(found.files));
+  assert.deepEqual(errors(found.files, 'broken.tex'), ['missing-brace']);
   await stopTexlab();
 });
