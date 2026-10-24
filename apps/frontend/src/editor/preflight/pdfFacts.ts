@@ -24,7 +24,9 @@ const figuresWithoutAlt = (node: StructTreeNode | null): number =>
 
 /** The facts of the PDF at url, page by page; aborting signal stops between pages. */
 export async function pdfFacts(url: string, signal?: AbortSignal): Promise<PdfFacts> {
-  const bytes = new Uint8Array(await (await fetch(url, { signal })).arrayBuffer());
+  const res = await fetch(url, { signal });
+  if (!res.ok) throw new Error(`Couldn’t read the PDF (${res.status}).`);
+  const bytes = new Uint8Array(await res.arrayBuffer());
   const version = /%PDF-(\d\.\d)/.exec(new TextDecoder('latin1').decode(bytes.subarray(0, 1024)))?.[1] ?? '';
   const empty: PdfFacts = { version, encrypted: false, title: '', author: '', lang: '', outline: false, tagged: false, figuresWithoutAlt: 0, fonts: null, pages: [] };
   // fonts aren't installed in the page, and are kept with their names
