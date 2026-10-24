@@ -111,5 +111,6 @@ const read = async (path: string) => (reads.push(path), tree[path]);
   eq(texRoot('chapters/one.tex', '% !TEX root = ../thesis.tex\n\\chapter{One}'), 'thesis.tex', '% !TEX root');
   eq(texRoot('one.tex', '%!TeX root=main.tex'), 'main.tex', 'any letter case, no spaces');
   eq(texRoot('one.tex', '\\chapter{One} % no root here'), '', 'no root');
+  eq(texRoot('chapters/one.tex', '% !TEX root = ..\\thesis.tex'), 'thesis.tex', 'a Windows path');
   console.log('envs.check: ok');
 })();

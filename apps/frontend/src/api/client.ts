@@ -520,6 +520,8 @@ export interface CompileResult {
   pdf?: string;
   /** relative path of the PDF written next to the document, e.g. "main.pdf" */
   pdfPath?: string;
+  /** that copy wasn't updated (another program on Windows holds it), so only `pdf` is this compile's */
+  pdfStale?: boolean;
   log?: string;
   status?: number;
   engine?: string;

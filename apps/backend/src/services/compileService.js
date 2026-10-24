@@ -541,10 +541,13 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
     return { ok: false, error: 'No PDF was produced.', log, status: code ?? -1 };
   }
   const absPdf = path.join(path.dirname(absMain), `${base}.pdf`);
+  // the copy on disk is older than this compile's, so the editor keeps showing the one it was sent
+  let pdfStale = false;
   try {
     await fs.writeFile(absPdf, pdf).catch((err) => {
       // Windows locks a PDF open in another viewer (Acrobat); the preview, SyncTeX and .aux still update
       if (!WINDOWS || !['EBUSY', 'EPERM'].includes(err.code)) throw err;
+      pdfStale = true;
       log += `\n[spectrum warning] ${path.basename(absPdf)} is open in another program, so the copy next to the source wasn’t updated.\n`;
     });
     await keepSynctex(projectRoot, doc, path.join(outDir, `${base}.synctex.gz`), mainDir);
@@ -555,7 +558,7 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
     await cleanBuild(buildRoot, outDir);
   }
   const pdfPath = docPath(projectRoot, absPdf);
-  return { ok: true, pdf: pdf.toString('base64'), pdfPath, log, status: code ?? 0 };
+  return { ok: true, pdf: pdf.toString('base64'), pdfPath, log, status: code ?? 0, ...(pdfStale && { pdfStale }) };
 }
 
 /**

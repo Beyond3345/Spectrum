@@ -339,6 +339,10 @@ function Editor({ projectId }: { projectId: string }) {
   const compileIdRef = useRef('');
   // auto compile: typed since the last one, the running compile is one, and one is waiting for it to end
   const editedRef = useRef(false);
+  // the document whose PDF shows, as of now (shownDoc is as of the last render)
+  const shownRef = useRef('');
+  // a document's PDF from a compile that couldn't write over the copy on disk, which another program held (Windows)
+  const stalePdf = useRef(new Map<string, Blob>());
   const autoRunningRef = useRef(false);
   const autoWaitingRef = useRef(false);
   // the files a checkpoint after compiling left out that the notice has named
@@ -1230,14 +1234,21 @@ function Editor({ projectId }: { projectId: string }) {
     const old = pdfNow.current;
     setPdf(next);
     setShownDoc(doc);
+    shownRef.current = doc;
     if (old?.blob) window.setTimeout(() => URL.revokeObjectURL(old.url), 10_000);
+  };
+
+  /** A document's PDF from its last compile: the copy on disk, or the compile's own when it couldn't write over that. */
+  const pdfFor = (doc: string) => {
+    const blob = stalePdf.current.get(doc);
+    return blob ? { url: URL.createObjectURL(blob), blob: true } : { url: blobUrl(projectId, pdfOf(doc), Date.now()), blob: false };
   };
 
   /** A document's PDF from its last compile; returns the URL it shows from. */
   const loadPdf = (doc: string) => {
-    const url = blobUrl(projectId, pdfOf(doc), Date.now());
-    showPdf(doc, { url, blob: false });
-    return url;
+    const next = pdfFor(doc);
+    showPdf(doc, next);
+    return next.url;
   };
 
   /** A link in the PDF to another PDF (xr-hyper's links to a linked document): that document's PDF, at the spot. */
@@ -1288,6 +1299,8 @@ function Editor({ projectId }: { projectId: string }) {
       return 'failed';
     }
     compilingRef.current = true;
+    // this compile builds every edit so far; one made from now on is owed another
+    editedRef.current = false;
     autoRunningRef.current = !!opts.auto;
     compileIdRef.current = crypto.randomUUID();
     const used = engine;
@@ -1317,8 +1330,12 @@ function Editor({ projectId }: { projectId: string }) {
       setCompileLog(`Engine: ${engineLabel(actual)}\nDocument: ${built}\n\n${res.log || ''}`.trim());
       if (res.ok && res.pdf) {
         const bytes = Uint8Array.from(atob(res.pdf), (c) => c.charCodeAt(0));
-        const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
         showPdf(built, { url, blob: true });
+        // a copy on disk another program holds (Windows) is older: this one shows when the document's PDF comes back
+        if (res.pdfStale) stalePdf.current.set(built, blob);
+        else stalePdf.current.delete(built);
         setCompileFailure('');
         ended = 'ok';
         if (built === mainFile)
@@ -1358,12 +1375,13 @@ function Editor({ projectId }: { projectId: string }) {
    * waits for it to end, and stops it first when that one was automatic too, since it's now out of date.
    */
   const autoCompile = () => {
-    editedRef.current = false;
     if (compilingRef.current) {
       autoWaitingRef.current = true;
       if (autoRunningRef.current) stopCompile(compileIdRef.current).catch(() => undefined);
       return;
     }
+    // a compile since the edits (Compile pressed during the pause) already built them
+    if (!editedRef.current) return;
     runCompile(compileTarget, { auto: true });
   };
 
@@ -1378,12 +1396,16 @@ function Editor({ projectId }: { projectId: string }) {
     };
     for (const doc of docs) await visit(doc, []);
     const shown = shownDoc;
-    for (const doc of order) {
-      const ended = await runCompile(doc, { fresh: true });
-      if (ended === 'stopped' || ended === 'busy') return;
+    try {
+      for (const doc of order) {
+        const ended = await runCompile(doc, { fresh: true });
+        if (ended === 'stopped' || ended === 'busy') break;
+      }
+    } finally {
+      // each compile that worked showed its own PDF; the one that was showing comes back (a failed compile left it as
+      // it was), so Compile goes on building it
+      if (shown && shownRef.current !== shown && items.some((i) => i.path === pdfOf(shown))) loadPdf(shown);
     }
-    // each compile showed its own PDF; the one that was showing comes back, so Compile goes on building it
-    if (shown && shown !== order[order.length - 1] && items.some((i) => i.path === pdfOf(shown))) loadPdf(shown);
   };
 
   /** A project compile choice (null: back to the app's default), kept in the project's .spectrum/settings.json. */
@@ -2059,13 +2081,16 @@ function Editor({ projectId }: { projectId: string }) {
   }, [editorValue, compileOptions.autoCompile]);
 
   // PDF follows the open file: another document's .tex, or a chapter whose % !TEX root names one, shows that
-  // document's PDF; any other file leaves it. A PDF or document picked by hand stays until the next file switch.
+  // document's PDF; any other file leaves it. A subfiles chapter or a standalone figure is part of its document, so it
+  // leaves it too (it can still be picked by hand). A PDF or document picked by hand stays until the next file switch.
   useEffect(() => {
     if (!settings.pdfFollowsFile || !activePath) return;
-    const root = texRoot(activePath, filesRef.current.get(activePath) ?? '');
-    const doc = docs.includes(activePath) ? activePath : docs.includes(root) ? root : '';
+    const text = filesRef.current.get(activePath) ?? '';
+    const root = texRoot(activePath, text);
+    const own = docs.includes(activePath) && !PART_OF_MAIN.test(text);
+    const doc = own ? activePath : docs.includes(root) ? root : '';
     if (!doc || doc === shownDoc) return;
-    showPdf(doc, items.some((i) => i.path === pdfOf(doc)) ? { url: blobUrl(projectId, pdfOf(doc), Date.now()), blob: false } : null);
+    showPdf(doc, items.some((i) => i.path === pdfOf(doc)) || stalePdf.current.has(doc) ? pdfFor(doc) : null);
   }, [activePath]);
 
   // the notes of the document whose PDF shows, from the project
