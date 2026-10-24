@@ -24,7 +24,8 @@ test('every bundled skill is in the manifest with its licence and reads as an Ag
     assert.ok(['MIT', 'Apache-2.0'].includes(manifest.skills[id].licence), `${id}: ${manifest.skills[id].licence}`);
     assert.ok(manifest.skills[id].author);
     const files = await fs.readdir(path.join(pack, id), { recursive: true });
-    assert.deepEqual(files.filter((f) => /(^|\/)generate_(?:schematic|slide_image)[^/]*\.py$/.test(f)), [], `${id} leaves out the OpenRouter scripts`);
+    // readdir joins with path.sep, a backslash on Windows
+    assert.deepEqual(files.filter((f) => /^generate_(?:schematic|slide_image).*\.py$/.test(path.basename(f))), [], `${id} leaves out the OpenRouter scripts`);
   }
   assert.ok((await fs.readFile(path.join(pack, 'K-Dense-LICENSE.md'), 'utf8')).includes('MIT'));
   if (Object.values(manifest.skills).some((s) => s.licence === 'Apache-2.0')) assert.match(await fs.readFile(path.join(pack, 'Apache-2.0.txt'), 'utf8'), /Apache License\s+Version 2\.0/);
