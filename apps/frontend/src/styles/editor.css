@@ -330,12 +330,15 @@
   max-width: 140px;
 }
 
-/* Insert figure and Insert table: a narrow editor leaves them to Insert (+); the status is still read out */
+/* Insert figure and Insert table: a narrow editor leaves them to Insert (+) */
 @container editor (max-width: 560px) {
   .float-button {
     display: none;
   }
+}
 
+/* the status goes first, as a panel beside the editor on a laptop leaves the file tabs little room; it's still read out */
+@container editor (max-width: 760px) {
   .editor-topbar .compile-status:not(:has(button)) {
     position: absolute;
     width: 1px;
