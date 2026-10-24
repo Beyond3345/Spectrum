@@ -19,6 +19,7 @@ test('native agent sandbox contains files, descendants, and local services', { s
     await fs.mkdir(workspace); await fs.mkdir(home); await fs.mkdir(path.join(home, 'tmp'));
     await fs.writeFile(outside, 'personal');
     await fs.symlink(outside, path.join(workspace, 'escape.txt'));
+    await fs.mkdir(path.join(workspace, '.claude'));
     const externalCommand = path.join(root, 'command');
     await fs.writeFile(externalCommand, '#!/bin/sh\nexit 0\n', { mode: 0o700 });
     await assert.rejects(spawnAgentProcess({ command: externalCommand, runtimeExecutable: process.execPath, workspace, home }), /outside the approved runtime/);
@@ -32,7 +33,10 @@ test('native agent sandbox contains files, descendants, and local services', { s
         assert.throws(()=>fs.readFileSync(file));
         assert.throws(()=>fs.writeFileSync(file,'changed'));
       }
-      for (const file of ['.ENV', '.env.local', '.GIT', '.SPECTRUM', 'secret.KEY']) assert.throws(()=>fs.writeFileSync(file,'secret'));
+      for (const file of ['.ENV', '.env.local', '.GIT', '.SPECTRUM', 'secret.KEY', '.Claude']) assert.throws(()=>fs.writeFileSync(file,'secret'));
+      // Claude's project settings, which Claude Code reads outside isolation: neither made nor written into
+      assert.throws(()=>fs.mkdirSync('sub/.claude',{recursive:true}));
+      assert.throws(()=>fs.writeFileSync('.claude/settings.json','{}'));
       const child = spawnSync('/bin/sh',['-c', 'cat "$1"; echo changed > "$1"', 'test', ${JSON.stringify(outside)}]);
       assert.notEqual(child.status,0);
       const socket = net.connect(${server.address().port},'127.0.0.1');

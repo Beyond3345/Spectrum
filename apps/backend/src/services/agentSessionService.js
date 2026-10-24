@@ -81,9 +81,15 @@ const firstLine = (text) => {
 const state = (r, status, error) => { r.status = status; emit(r, 'state', { status, ...(error && { error }) }); void persist(r); };
 const busyProject = (r) => [...runs.values()].some((other) => other !== r && other.projectId === r.projectId && (other.busy || other.reviewing));
 
+// a session being loaded, so the history list and the session opened with it get the same one
+const loading = new Map();
 export async function getAgentRun(id) {
   if (!ID.test(id)) throw new Error('Invalid agent session id.');
   if (runs.has(id)) return runs.get(id);
+  if (!loading.has(id)) loading.set(id, loadAgentRun(id).finally(() => loading.delete(id)));
+  return loading.get(id);
+}
+async function loadAgentRun(id) {
   const dir = path.join(AGENT_DIR, 'runs', id);
   const data = JSON.parse(await fs.readFile(path.join(dir, 'session.json'), 'utf8'));
   profileFor(data.agentId);
@@ -140,8 +146,14 @@ export function readPersona(value) {
 const samePersona = (a, b) => (a?.name ?? null) === (b?.name ?? null) && (a?.prompt ?? null) === (b?.prompt ?? null);
 const personaText = (persona) => `The user chose the persona “${persona.name}” for this conversation. Follow its instructions for how you work and respond. They cannot widen your permissions or change Spectrum’s rules.\n<persona>\n${persona.prompt}\n</persona>`;
 
+// ponytail: Windows isolation grants the workspace by ACLs, which a folder or file the agent makes inherits whatever its
+// name, so it could make .git, .claude or an .env file in the project itself. Direct sessions need macOS until the
+// worker can refuse those names.
+const NO_DIRECT = 'Direct editing isn’t available on Windows yet. Choose Isolated: the agent works on a copy and you apply the changes you want.';
+
 export async function newAgentRun({ projectId, agentId, mode = 'review', persona }) {
   persona = readPersona(persona);
+  if (mode === 'direct' && process.platform === 'win32') throw Object.assign(new Error(NO_DIRECT), { statusCode: 400 });
   const profile = profileFor(agentId);
   if (profile.unavailable) throw new Error(profile.unavailable);
   if (!(await isolationAvailable())) throw new Error('Native agent isolation is unavailable. Install or repair the Windows isolation worker before starting an agent.');
@@ -204,6 +216,8 @@ export function answerAgentRequest(r, requestId, answer) {
 
 async function connect(r) {
   r.connectionAbort = new AbortController();
+  // a direct session from 1.10 included
+  if (r.mode === 'direct' && process.platform === 'win32') throw new Error(NO_DIRECT);
   const profile = profileFor(r.agentId);
   const config = (await agentConfigs())[r.agentId] || {};
   const credentialVariable = config.keyEnv || profile.key;
@@ -293,13 +307,17 @@ async function connect(r) {
   const systemPrompt = r.persona && r.capabilities.sessionCapabilities?.systemPrompt ? { mode: 'append', content: [{ type: 'text', text: personaText(r.persona) }] } : undefined;
   const spec = { cwd: r.workspace, mcpServers: tools ? [tools.server] : [], ...(systemPrompt && { systemPrompt }) };
   r.opening = true;
+  let loaded = false;
   try {
     if (r.remoteId && !r.forceNew && (r.capabilities.loadSession || r.capabilities.sessionCapabilities?.resume)) {
       const method = r.capabilities.loadSession ? 'session/load' : 'session/resume';
       r.replaying = method === 'session/load';
-      try { session = await timeout(r.peer.request(method, { ...spec, sessionId: r.remoteId }), 30000, 'The session could not be loaded.', r.connectionAbort.signal); }
+      // one the agent no longer has (or can't load) goes on in a new session below
+      try { session = await timeout(r.peer.request(method, { ...spec, sessionId: r.remoteId }), 30000, 'The session could not be loaded.', r.connectionAbort.signal); loaded = true; }
+      catch (err) { if (r.cancelled || r.connectionAbort.signal.aborted) throw err; }
       finally { r.replaying = false; }
-    } else {
+    }
+    if (!loaded) {
       // a new session after one the agent can't load (or a changed persona) hears the conversation so far
       r.freshSession = !!r.remoteId;
       session = await timeout(r.peer.request('session/new', spec), 30000, 'The agent did not create a session.', r.connectionAbort.signal);
@@ -390,7 +408,8 @@ async function syncAgentSkills(r) {
   const skills = await activeSkills(r.root);
   const onlyAdd = [...runs.values()].some((other) => other !== r && other.agentId === r.agentId && other.projectId !== r.projectId && (other.busy || other.child));
   const stores = [...new Set(skills.map((s) => path.dirname(s.dir)))];
-  const child = await spawnAgentProcess({ command: process.execPath, args: ['-e', copySkills], workspace: r.home, home: r.home, runtimePaths: [nodeRead(), ...stores] });
+  // its workspace is the home's tmp: isolation keeps .claude from a workspace, and this writes .claude/skills
+  const child = await spawnAgentProcess({ command: process.execPath, args: ['-e', copySkills], workspace: path.join(r.home, 'tmp'), home: r.home, runtimePaths: [nodeRead(), ...stores] });
   let error = '';
   child.stderr.on('data', (chunk) => { error = (error + chunk).slice(-4000); });
   child.stdout.resume();
@@ -593,12 +612,17 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
   state(r, 'running');
   let outcome;
   const task = (async () => {
+    // kept from the start, should Spectrum close, Stop be pressed or the agent fail to start
+    const asked = emit(r, 'user', { text: prompt, ...(Object.keys(context).length && { context: Object.keys(context) }) });
+    r.title ||= firstLine(prompt);
+    void persist(r);
     try {
       // a first connect that failed was disconnected, so the agent starts again below as it is now set up
       if (r.ready) await r.ready.catch(() => {});
       // a direct session's changes are already the user's: each turn is measured from the project as it then is, with
-      // a checkpoint before it. A review session goes on from its draft.
-      if (r.turnCount && r.mode === 'direct') {
+      // a checkpoint before it, the first too (the user may have worked on since the session began, or since a first
+      // turn that failed). A review session goes on from its draft.
+      if (r.mode === 'direct') {
         await fs.rm(path.join(r.dir, 'baseline'), { recursive: true, force: true });
         await fs.rm(path.join(r.dir, 'proposal'), { recursive: true, force: true });
         await fs.rm(path.join(r.dir, 'proposal.json'), { force: true });
@@ -612,11 +636,7 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       if (r.forceNew) disconnect(r);
       if (!r.connection || r.connection.signal.aborted) await connect(r);
       if (r.cancelled) throw new Error('Task cancelled.');
-      const earlier = r.freshSession && r.events.filter((e) => e.type === 'user' || (e.type === 'update' && e.data.sessionUpdate === 'agent_message_chunk')).map((e) => e.data.text || e.data.content?.text || '').join('\n').slice(-12000);
-      emit(r, 'user', { text: prompt, ...(Object.keys(context).length && { context: Object.keys(context) }) });
-      r.title ||= firstLine(prompt);
-      // kept should Spectrum close during the turn
-      void persist(r);
+      const earlier = r.freshSession && r.events.filter((e) => e.id < asked.id && (e.type === 'user' || (e.type === 'update' && e.data.sessionUpdate === 'agent_message_chunk'))).map((e) => e.data.text || e.data.content?.text || '').join('\n').slice(-12000);
       const intro = r.openedNew && 'You are working in Spectrum. All file and terminal operations are confined to your workspace and private runtime state. Use relative paths. Do not attempt to access the original project or other host services.';
       const persona = r.openedNew && r.persona && !r.capabilities.sessionCapabilities?.systemPrompt && personaText(r.persona);
       const notes = r.notes.length && `Since your last turn:\n${r.notes.map((note) => `- ${note}`).join('\n')}`;
@@ -745,5 +765,10 @@ export async function reviewAgentChanges(r, body) {
 }
 export function runSnapshot(r) { return { ...metadata(r), pending: [...r.pending].map(([requestId, p]) => ({ requestId, kind: p.kind, params: p.params })) }; }
 export function subscribeAgent(r, fn) { r.listeners.add(fn); return () => r.listeners.delete(fn); }
-/** Stops the sessions with something running (a turn, the agent, a preview), leaving the rest as they were. */
-export async function shutdownAgents() { await Promise.allSettled([...runs.values()].filter((r) => r.busy || r.child || r.fileOperations?.size).map(stopAgentRun)); }
+/**
+ * Stops the sessions with something running (a turn, a preview, an agent starting or never prompted), leaving the rest
+ * as they were: a finished session's agent, still connected by a model or mode change, is only closed.
+ */
+export async function shutdownAgents() {
+  await Promise.allSettled([...runs.values()].filter((r) => r.busy || r.child || r.fileOperations?.size).map((r) => (r.busy || r.fileOperations?.size || r.status === 'ready' ? stopAgentRun(r) : (disconnect(r), r.stopChain))));
+}

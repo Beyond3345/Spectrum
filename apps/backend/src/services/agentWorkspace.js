@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import readline from 'node:readline';
 import { spawnAgentProcess, killAgentProcess } from './agentSandbox.js';
-import { safeJoin } from '../utils/pathUtils.js';
+import { agentHidden, agentHiddenName, safeJoin } from '../utils/pathUtils.js';
 import { HIDDEN_ENTRIES, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
 import { mergeText } from '../utils/merge3.js';
 import { createVersion } from './versionService.js';
@@ -15,15 +15,15 @@ const MAX_FILES = 10000;
 export const fileHash = (buf) => buf === null ? null : crypto.createHash('sha256').update(buf).digest('hex');
 const binary = (buf) => buf !== null && (buf.subarray(0, 8000).includes(0) || !Buffer.from(buf.toString('utf8')).equals(buf));
 
-// This fixed reader runs in a separate sandbox; a concurrently swapped link cannot expose host files.
-async function collectWorkspace(root, excluded, maxFile, maxProject, maxFiles) {
+// This fixed reader runs in a separate sandbox; a concurrently swapped link cannot expose host files. hidden: agentHiddenName.
+async function collectWorkspace(root, excluded, hidden, maxFile, maxProject, maxFiles) {
   const fs = await import('node:fs/promises');
   const path = await import('node:path');
   const { constants } = await import('node:fs');
   let total = 0, count = 0;
   const walk = async (dir, prefix = '') => {
     for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
-      if (excluded.includes(entry.name.toLowerCase()) || /^\.env(?:\.|$)|\.(pem|key)$/i.test(entry.name)) continue;
+      if (excluded.includes(entry.name.toLowerCase()) || hidden(entry.name)) continue;
       const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
       const abs = path.join(root, rel);
       const stat = await fs.lstat(abs);
@@ -54,7 +54,7 @@ export async function workspaceFiles(root) {
   let child, timer;
   try {
     const excluded = [...HIDDEN_ENTRIES, 'node_modules', '.claude', '.DS_Store'].map((name) => name.toLowerCase());
-    const script = `(${collectWorkspace.toString()})(process.argv[1], ${JSON.stringify(excluded)}, ${MAX_FILE}, ${MAX_PROJECT}, ${MAX_FILES}).catch(e=>{console.error(e.message);process.exitCode=1;})`;
+    const script = `(${collectWorkspace.toString()})(process.argv[1], ${JSON.stringify(excluded)}, ${agentHiddenName.toString()}, ${MAX_FILE}, ${MAX_PROJECT}, ${MAX_FILES}).catch(e=>{console.error(e.message);process.exitCode=1;})`;
     child = await spawnAgentProcess({ command: process.execPath, args: ['-e', script, root], workspace: root, home });
     let error = '', timedOut = false;
     child.stderr.on('data', (chunk) => { error = (error + chunk).slice(-4000); });
@@ -139,6 +139,8 @@ export async function applyWorkspaceChanges(run, selected, expected) {
   if (new Set(selected).size !== selected.length) throw new Error('Duplicate change paths.');
   const writes = [];
   for (const rel of selected) {
+    // a name the reader now leaves out, from a proposal taken before it did
+    if (agentHidden(rel)) throw new Error(`“${rel}” is a name agents may not change. Nothing was applied.`);
     const change = changes.find((c) => c.path === rel);
     if (expected?.[rel] !== change.afterHash) throw new Error(`“${rel}” changed after the review opened. Refresh and review it again.`);
     const current = await readCurrent(run.root, rel);

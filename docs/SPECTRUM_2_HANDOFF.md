@@ -187,10 +187,52 @@ Skipped as optional: trimming a large ACP tool call's diff in the stored events,
 
 The tests ran in a worktree with scratch data, projects and template folders, a scratch home and temp folder, and the ACP fixtures, with no model calls. The 26 skips are the earlier 22 and the four new native agent turn tests.
 
+### Phase 2 third review fixes
+
+The third round's 14 confirmed findings are fixed on **`fix/p2-review3`**, branched from `49ea758`, in 13 commits (the two about the Spectrum agent's paths share one), each with a test or check:
+
+- **Local agent sessions** (`agentSessionService.js`):
+  - The history menu and the open session load a session once between them. Reopening one Spectrum closed during had made two copies, and the open session listened to the copy that was replaced, so its next turn was never heard.
+  - Every direct turn is measured from the project as it then is, with a checkpoint before it, the first too. A session whose first start or turn failed, or that Spectrum closed during, had gone on from the project as it was when the session began, so the tray counted the user's edits since as the agent's and no checkpoint held them.
+  - The prompt is saved as the turn starts, before the agent does (which every turn does again), so closing Spectrum, Stop or an agent that won't start no longer loses it. The handoff to a new agent session takes only what came before it.
+  - A session the agent can no longer load goes on in a new agent session, which hears the conversation so far, rather than failing every prompt as a setup fault.
+  - Quitting only closes the agent a model or mode change left connected for a finished session, which keeps its status and time.
+  - Preview PDF saves the editor first, as sending a task and applying do.
+- **Spectrum agent threads** (`transcript.ts`, `SpectrumAgentTab.tsx`, `chatMerge.js`):
+  - Where a proposal and its base pass 1 MB together, the base is kept as the patch from the proposal back to it (`storedChanges`). One proposal for a file over about 2.4 MB had made the thread too large to save from then on. Keeping no base would have brought back Apply writing over the user's edits after a reopen.
+  - A turn's reply and the superseded marks it makes are one save, so a reply too large to save leaves the earlier proposal open.
+  - A closed change goes in `meta.closed` with its file and status, and `meta.changes` keeps only the open ones, so 1.10.4, which offers every change in a thread for review, never meets one without its text (its review sheet crashed on one). A merge closes by file what either copy closed, and threads saved by earlier 2.0 builds, with the status in `changes`, read as before.
+- **Isolation:**
+  - The Spectrum agent's file tools also check a path as the disk has it (`onDiskRel` in `utils/pathUtils.js`: links followed, each name as stored), and `agentHidden` compares names as a case-insensitive file system folds them. On APFS `.ſpectrum` (a long s) had reached `.spectrum` and `id.Key` (a Kelvin sign) `id.key`, a link such as `notes.tex` to `.env` or `figs` to `.git` reached what it points to, and a proposal made through them could be applied. The isolated workspace reader uses the same names, and the file routes' check for app data looks at the path on disk too.
+  - On Windows a name with a colon (an NTFS stream), a short name's `~1` or a trailing dot or space is hidden from agents: the workspace reader leaves it out of a review draft, and Apply refuses one from a proposal taken before.
+  - macOS isolation keeps an agent out of `.claude` in its workspace, as it does `.git`. The skill copy, which writes `.claude/skills` in the agent's home, now runs with the home's `tmp` folder as its workspace.
+  - Direct local agent sessions are refused on Windows, a 1.10 one included, and the workspace offers only Isolated there. The isolation worker grants the workspace by an inheritable ACL, which a folder the agent makes takes on whatever its name, so a direct session's agent could make `.git`, `.env` or `.claude` in the project.
+
+Changed from the findings' suggestions:
+
+- Names aren't refused for differing from their NFKC form, or for an upper case that lowers to something else, as that refuses ordinary names such as `straße.tex` or a decomposed `café.tex`. Each name is compared after folding instead (lower case, and upper then lower case), which catches what APFS and NTFS take for a hidden name.
+- A colon counts as hidden only on Windows. Elsewhere it is an ordinary character, and hiding it would leave such files out of review drafts.
+- The Windows worker isn't changed, as there is no Windows machine here. Refusing direct sessions is the finding's simplest option.
+- No test drives the Spectrum agent tab's single save or Preview's save, as the workspace has no component tests. The closing the single save relies on is in `transcript.check.ts`.
+
+| Check | Result |
+| --- | --- |
+| Full backend suite, `node --test "test/*.test.js"` | 393 passed, 31 skipped, 0 failed (424 total) |
+| The same with `SPECTRUM_NATIVE_AGENT_TESTS=1` | 419 passed, 5 skipped (Windows only, the Bin, a live request), 0 failed |
+| Each new or extended backend test, the native sandbox test and the API path test, run on `49ea758`'s code | Each fails on the fault it covers |
+| Frontend, `npm run typecheck` | Passed |
+| Frontend production build, `npm run build` | Passed |
+| Every `apps/frontend/src/**/*.check.ts`, bundled with esbuild and run separately | 29 passed |
+| Native Rust unit tests | 7 passed |
+
+The tests ran in a worktree with scratch data, projects and template folders, a scratch home and temp folder, and the ACP fixtures, with no model calls. The 31 skips are the earlier 26 and the five new native agent turn tests. The two existing turn tests that stop a turn now wait for the prompt to reach the agent, as the prompt is saved before it starts.
+
 ### Phase 2 limits and open items
 
-- Windows is untested. On the Windows build machine, run `test/agent-preview.test.js` with `SPECTRUM_NATIVE_AGENT_TESTS=1`, and `test/mcp-tools.test.js`. The checks of what `initexmf --show-config-value` prints for MiKTeX's `[Core]` settings (`false` or `0`, and `Forbidden`) come from reading MiKTeX's source, not from a run. They fail closed: no preview. Check too that MiKTeX's bibtex keeps to those settings. TeX Live 2026 and later ignore `openin_any`, so a Windows preview needs MiKTeX or TeX Live 2025 or earlier and refuses otherwise.
+- Windows is untested. On the Windows build machine, run `test/agent-preview.test.js` with `SPECTRUM_NATIVE_AGENT_TESTS=1`, and `test/mcp-tools.test.js`. The checks of what `initexmf --show-config-value` prints for MiKTeX's `[Core]` settings (`false` or `0`, and `Forbidden`) come from reading MiKTeX's source, not from a run. They fail closed: no preview. Check too that MiKTeX's bibtex keeps to those settings. TeX Live 2026 and later ignore `openin_any`, so a Windows preview needs MiKTeX or TeX Live 2025 or earlier and refuses otherwise. The Windows rules for hidden names are tested on any system with `process.platform` set to Windows; on the build machine, check that the Spectrum agent's `read_file` of `GIT~1/config` and `.env::$DATA` is refused in a project with `.git` and `.env`.
 - On Windows, a reparse point (a link or junction) anywhere in an agent's private home stops that agent from launching, as the isolation worker refuses to grant one.
+- Direct local agent sessions are refused on Windows until the isolation worker can keep an agent from making `.git`, `.env` and `.claude` in the workspace. NTFS access rules can't match names, and placeholders made first with an access list that leaves out the agent's AppContainer cover only the folders that already exist. Then add a Windows case that `mkdir .git` fails in a direct workspace.
+- On Windows, a project file whose name has `~` and digits (as a short 8.3 name does) or ends in a dot or space is hidden from agents and left out of review drafts, as it may be a short or trimmed name for a hidden one.
 - The Spectrum agent's tool cards appear when its run ends; showing them live needs the run to stream.
 - Settings that follow you: a computer upgraded from 1.10.4 still takes nothing in when the newest file is a third computer's, still on 1.10.4, though it no longer shares its starters over the others'. It takes them in once a 2.0 computer shares again, but personas edited on it before then go across over the others' own. Closing it needs `sharedSettings` to also return, for keys the newest file lacks, the newest file that has them.
 - Local agents on Windows get no Spectrum tools, so there suggested to-dos come only through Save open steps as to-dos.

@@ -1,6 +1,6 @@
 // An ACP agent that keeps a draft: each "draft" prompt adds a line to main.tex in its workspace, streamed back in
 // pieces. --embedded and --system-prompt turn those capabilities on, and --fresh-ids gives each new session an id of
-// its own. A prompt ending in please-fail fails, please-ask asks for permission and ends the turn without waiting,
+// its own, and --lose-sessions loads none (an agent that no longer has the session). A prompt ending in please-fail fails, please-ask asks for permission and ends the turn without waiting,
 // please-hang never answers, please-link leaves a link in the workspace, and please-flood and please-huge stream a
 // long message (30,000 short pieces, or 40 of 64 KB). Every request it gets goes to $HOME/acp-log.jsonl.
 import readline from 'node:readline';
@@ -18,6 +18,8 @@ lines.on('line', async (line) => {
   if (m.method) log({ method: m.method, params: m.params });
   if (m.method === 'initialize') {
     send({ id: m.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true, promptCapabilities: { embeddedContext: process.argv.includes('--embedded') }, sessionCapabilities: process.argv.includes('--system-prompt') ? { systemPrompt: {} } : {} }, agentInfo: { name: 'Draft fixture', version: '1' }, authMethods: [] } });
+  } else if (m.method === 'session/load' && process.argv.includes('--lose-sessions')) {
+    send({ id: m.id, error: { code: -32002, message: 'Session not found' } });
   } else if (m.method === 'session/new' || m.method === 'session/load') {
     workspace = m.params.cwd;
     sessionId = m.method === 'session/load' ? m.params.sessionId : process.argv.includes('--fresh-ids') ? `draft-session-${process.pid}-${++opened}` : 'draft-session';

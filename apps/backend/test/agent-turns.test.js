@@ -33,18 +33,30 @@ const setup = () => (ready ??= (async () => {
     await run.task;
     if (status) assert.equal(run.status, status, JSON.stringify(run.events.filter((e) => ['state', 'notice'].includes(e.type)).slice(-4)));
   };
-  const lastPrompt = async (run) => (await fs.readFile(path.join(run.home, 'acp-log.jsonl'), 'utf8')).trim().split('\n').map((l) => JSON.parse(l)).filter((q) => q.method === 'session/prompt').at(-1).params.prompt[0].text;
+  // the prompts the agent got, in every session (they share its home)
+  const prompts = async (run) => (await fs.readFile(path.join(run.home, 'acp-log.jsonl'), 'utf8').catch(() => '')).trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((q) => q.method === 'session/prompt');
+  const lastPrompt = async (run) => (await prompts(run)).at(-1).params.prompt[0].text;
   const stored = async (run) => JSON.parse(await fs.readFile(path.join(run.dir, 'session.json'), 'utf8'));
+  // prompt, once it has reached the agent
+  const sending = async (run, prompt) => {
+    const before = (await prompts(run)).length;
+    await s.promptAgent(run, prompt);
+    for (const deadline = Date.now() + 20000; (await prompts(run)).length === before;) {
+      if (Date.now() > deadline) throw new Error('The prompt was never sent.');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  };
   // another computer's copy of the session as Spectrum finds it on disk: its folder under a new id, changed by edit
-  const reopen = async (run, edit) => {
+  const copy = async (run, edit) => {
     const id = crypto.randomUUID();
     await fs.cp(run.dir, path.join(AGENT_DIR, 'runs', id), { recursive: true });
     const file = path.join(AGENT_DIR, 'runs', id, 'session.json');
     await fs.writeFile(file, JSON.stringify(edit({ ...JSON.parse(await fs.readFile(file, 'utf8')), id })));
-    return s.getAgentRun(id);
+    return id;
   };
+  const reopen = async (run, edit) => s.getAgentRun(await copy(run, edit));
   after(async () => { await s.shutdownAgents(); await fs.rm(dir, { recursive: true, force: true }); });
-  return { ...s, open, turn, lastPrompt, stored, reopen };
+  return { ...s, open, turn, lastPrompt, sending, stored, copy, reopen };
 })());
 
 test('a long streamed message keeps the turn’s start, and a huge one is stored in parts under the caps', { skip, timeout: 120000 }, async () => {
@@ -147,14 +159,10 @@ test('requests still open when a turn ends, or when Spectrum closed during it, a
 });
 
 test('a turn Spectrum closed during keeps its prompt, and what the agent did in the draft reaches the tray', { skip, timeout: 120000 }, async () => {
-  const { open, turn, promptAgent, stopAgentRun, reopen, pendingChanges } = await setup();
+  const { open, turn, stopAgentRun, reopen, pendingChanges, sending } = await setup();
   const { run } = await open({ 'main.tex': 'original\n' });
   await turn(run, 'draft one');
-  await promptAgent(run, 'please-hang');
-  for (const deadline = Date.now() + 20000; !run.events.some((e) => e.type === 'user' && e.data.text === 'please-hang');) {
-    if (Date.now() > deadline) throw new Error('The prompt was never sent.');
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
+  await sending(run, 'please-hang');
   // the agent's edit in the turn, and Spectrum's state on disk as it closes
   await fs.writeFile(path.join(run.workspace, 'main.tex'), 'original\nagent line 1\nagent line 2\n');
   await run.saveChain;
@@ -211,13 +219,9 @@ test('a new agent session’s updates sent before its id are kept', { skip, time
 });
 
 test('Stop ends the turn as stopped, with its card no longer waiting', { skip, timeout: 120000 }, async () => {
-  const { open, promptAgent, stopAgentRun } = await setup();
+  const { open, stopAgentRun, sending } = await setup();
   const { run } = await open({ 'main.tex': 'original\n' });
-  await promptAgent(run, 'please-hang');
-  for (const deadline = Date.now() + 20000; !run.events.some((e) => e.type === 'user');) {
-    if (Date.now() > deadline) throw new Error('The prompt was never sent.');
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
+  await sending(run, 'please-hang');
   await stopAgentRun(run);
   assert.equal(run.status, 'interrupted');
   const errors = run.events.filter((e) => e.type === 'state' && e.data.error).map((e) => e.data.error);
@@ -238,4 +242,65 @@ test('quitting stops the sessions with an agent running and leaves the others as
   assert.deepEqual(await stored(done), before, 'its status and time stay');
   assert.equal(live.status, 'interrupted');
   assert.equal(live.child, null);
+});
+
+test('a session Spectrum closed during is loaded once when the history list and the open session ask for it together', { skip, timeout: 120000 }, async () => {
+  const { open, turn, copy, getAgentRun, listAgentRuns } = await setup();
+  const { run } = await open({ 'main.tex': 'original\n' });
+  await turn(run, 'hello');
+  const id = await copy(run, (data) => ({ ...data, status: 'running' }));
+  const [, opened, again] = await Promise.all([listAgentRuns(run.projectId), getAgentRun(id), getAgentRun(id)]);
+  assert.equal(opened, again, 'one session, whose listeners hear its turns');
+  assert.equal(await getAgentRun(id), opened);
+  assert.equal(opened.events.filter((e) => e.type === 'state' && e.data.status === 'interrupted').length, 1);
+});
+
+test('a direct turn after a first one that failed is measured from the project as it then is, with a checkpoint', { skip, timeout: 120000 }, async () => {
+  const { open, turn, pendingChanges } = await setup();
+  const { listVersions, readVersionFile } = await import('../src/services/versionService.js');
+  const { run, root } = await open({ 'main.tex': 'original\n' }, { mode: 'direct' });
+  await turn(run, 'please-fail', 'failed');
+  await fs.writeFile(path.join(root, 'main.tex'), 'original\nuser paragraph\n');
+  await turn(run, 'draft two');
+  assert.deepEqual((await pendingChanges(run)).map((c) => [c.original, c.proposed]), [['original\nuser paragraph\n', 'original\nuser paragraph\nagent line 1\n']], 'the user’s paragraph isn’t the agent’s');
+  const checkpoints = (await listVersions(root)).filter((v) => v.reason === 'before-ai');
+  assert.equal(checkpoints.length, 2, 'one at the start, one before the turn, none for the failed turn that changed nothing');
+  assert.equal((await readVersionFile(root, checkpoints[0].id, 'main.tex')).content, 'original\nuser paragraph\n', 'the newest holds the user’s paragraph');
+});
+
+test('a prompt is kept from the start of its turn, so Stop before the agent starts doesn’t lose it', { skip, timeout: 120000 }, async () => {
+  const { open, turn, promptAgent, stopAgentRun, stored, reopen } = await setup();
+  const { run } = await open({ 'main.tex': 'original\n' });
+  await turn(run, 'hello');
+  // every turn starts the agent again; Stop comes first
+  await promptAgent(run, 'stopped while starting');
+  await stopAgentRun(run);
+  assert.equal(run.status, 'interrupted');
+  const users = (events) => events.filter((e) => e.type === 'user').map((e) => e.data.text);
+  assert.deepEqual(users((await stored(run)).events), ['hello', 'stopped while starting']);
+  assert.deepEqual(users((await reopen(run, (data) => data)).events), ['hello', 'stopped while starting']);
+});
+
+test('a session its agent can no longer load goes on in a new one, which hears the conversation so far', { skip, timeout: 120000 }, async () => {
+  const { open, turn, lastPrompt } = await setup();
+  const { run } = await open({ 'main.tex': 'original\n' }, { args: ['--lose-sessions'] });
+  await turn(run, 'hello');
+  await turn(run, 'again');
+  assert.match(await lastPrompt(run), /Previous conversation \(a new agent session was required\):\nhello\n[\s\S]*\n\nagain$/);
+  assert.doesNotMatch(await lastPrompt(run), /hello[\s\S]*again[\s\S]*again/, 'the prompt goes once');
+  await turn(run, 'third');
+});
+
+test('quitting closes a finished session’s agent left connected by a settings change, and keeps its status and time', { skip, timeout: 120000 }, async () => {
+  const { open, turn, stored, setAgentOption, shutdownAgents } = await setup();
+  const { run } = await open({ 'main.tex': 'original\n' });
+  await turn(run, 'hello');
+  const before = await stored(run);
+  // the fixture has no models to choose, but the agent was started for it
+  await assert.rejects(setAgentOption(run, 'model', 'other'));
+  assert.ok(run.child);
+  await shutdownAgents();
+  assert.equal(run.child, null);
+  assert.equal(run.status, 'completed');
+  assert.deepEqual(await stored(run), before);
 });

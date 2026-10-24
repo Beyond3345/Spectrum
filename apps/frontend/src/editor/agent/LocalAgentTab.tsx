@@ -18,6 +18,7 @@ import type { AgentChange, AgentEvent, AgentPersona, AgentPromptContext, AgentUs
 import type { Section } from '../../app/SettingsSheet';
 import Icon from '../../app/Icon';
 import Select from '../../app/Select';
+import { IS_WINDOWS } from '../../app/platform';
 import { MenuButton } from '../../app/Menu';
 import { useEditor } from '../EditorContext';
 import type { TodosState } from '../TodosList';
@@ -314,10 +315,8 @@ export default function LocalAgentTab({
             className="agent-mode"
             title="Isolated: the agent works on a copy and you review its changes. Direct: it edits your project, with a checkpoint saved before each task."
             value={mode}
-            options={[
-              ['review', 'Isolated'],
-              ['direct', 'Direct']
-            ]}
+            // Windows can't keep a direct session's agent from making .git or .env in the project (the backend refuses one)
+            options={IS_WINDOWS ? [['review', 'Isolated']] : [['review', 'Isolated'], ['direct', 'Direct']]}
             onChange={(v) => setMode(v as typeof mode)}
           />
         )}
@@ -367,7 +366,7 @@ export default function LocalAgentTab({
           onApply={(list) => resolve('apply', list)}
           onReject={(list) => resolve('reject', list)}
           onClose={() => setReviewing(false)}
-          preview={session?.mode === 'review' ? () => previewLocalAgentDraft(session.id) : undefined}
+          preview={session?.mode === 'review' ? () => latest.current.prepareAgent().then(() => previewLocalAgentDraft(session.id)) : undefined}
         />
       ) : (
         <div className="agent-scroll" ref={scroll.ref} onScroll={scroll.onScroll} role="log">

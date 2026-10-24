@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { applyPatch, createTwoFilesPatch } from 'diff';
-import { agentHidden, safeJoin } from '../utils/pathUtils.js';
+import { agentHidden, onDiskRel, safeJoin } from '../utils/pathUtils.js';
 import { listFilesRecursive } from '../utils/fsUtils.js';
 import { extractPathFromPatch } from '../utils/diffUtils.js';
 import { resolveLLMConfig, chatCompletion, missingKey, NO_API_KEY } from './llmService.js';
@@ -139,8 +139,10 @@ export async function runToolAgent({
   // what each tool call was, for the transcript's cards: { tool, about, ok }
   const steps = [];
   const projectPath = (filePath) => {
-    const rel = path.relative(projectRoot, safeJoin(projectRoot, String(filePath || ''))).split(path.sep).join('/');
-    if (agentHidden(rel)) throw new Error('This path is not available to the agent.');
+    const abs = safeJoin(projectRoot, String(filePath || ''));
+    const rel = path.relative(projectRoot, abs).split(path.sep).join('/');
+    // as named, and the file it reaches: through a link, or by a name the disk takes for a hidden one
+    if (agentHidden(rel) || agentHidden(onDiskRel(projectRoot, abs))) throw new Error('This path is not available to the agent.');
     return rel;
   };
   // the thread's proposals not applied or rejected yet ({ path, original, proposed }), which this run goes on from

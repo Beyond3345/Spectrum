@@ -7,7 +7,7 @@ import * as tar from 'tar';
 import crypto from 'crypto';
 import { gunzipSync } from 'zlib';
 import { ensureDir, copyDir, extractZip, listFilesRecursive, mirrorSkips, renameOver, skipInArchive, writeFileAtomic } from '../utils/fsUtils.js';
-import { safeJoin, safeJoinLink, sanitizeUploadPath } from '../utils/pathUtils.js';
+import { onDiskRel, safeJoin, safeJoinLink, sanitizeUploadPath } from '../utils/pathUtils.js';
 import { bibliographyFiles, extractDocumentBody, isDocumentFile, mergeTemplateBody, preserveDocumentMetadata, withBiblatexResources, withoutComments } from '../utils/texUtils.js';
 import { readTemplateManifest, copyTemplateIntoProject, templatePath } from '../services/templateService.js';
 import {
@@ -57,7 +57,10 @@ const watched = (rel) => !mirrorSkips(rel) && rel.split('/')[0].toLowerCase() !=
 function editablePath(root, relPath, join = safeJoin) {
   const abs = join(root, String(relPath || ''));
   const first = path.relative(root, abs).split(path.sep)[0];
-  if (abs === root || first.toLowerCase() === APP_DIR) throw httpError('Invalid path.', 400);
+  // and as the disk takes it: a name APFS folds to app data's ('.ſpectrum'), or a folder link to it (a link moved or
+  // deleted is itself what changes)
+  const disk = onDiskRel(root, join === safeJoinLink ? path.dirname(abs) : abs).split('/')[0] || first;
+  if (abs === root || [first, disk].some((part) => part.toUpperCase().toLowerCase() === APP_DIR)) throw httpError('Invalid path.', 400);
   return abs;
 }
 

@@ -86,12 +86,15 @@ test('workspace creation refuses links and omits secrets and app identity', asyn
     await fs.writeFile(path.join(dir, '.env'), 'do not copy');
     await fs.writeFile(path.join(dir, '.ENV.local'), 'do not copy either');
     await fs.mkdir(path.join(dir, '.spectrum')); await fs.writeFile(path.join(dir, '.spectrum/project.json'), 'identity');
+    // a key by a name APFS would take for id.key (with a Kelvin sign)
+    await fs.writeFile(path.join(dir, 'id.Key'), 'do not copy');
     const run = await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-agent-copy-'));
     try {
       const workspace = await initialiseWorkspace(dir, run, 'review');
       await assert.rejects(fs.stat(path.join(workspace, '.env')), { code: 'ENOENT' });
       await assert.rejects(fs.stat(path.join(workspace, '.ENV.local')), { code: 'ENOENT' });
       await assert.rejects(fs.stat(path.join(workspace, '.spectrum')), { code: 'ENOENT' });
+      assert.deepEqual(await fs.readdir(workspace), ['main.tex']);
       await fs.symlink(path.join(dir, 'main.tex'), path.join(dir, 'alias.tex'));
       await assert.rejects(initialiseWorkspace(dir, path.join(run, 'bad'), 'review'), /symbolic link|reparse point/);
     } finally { await fs.rm(run, { recursive: true, force: true }); }

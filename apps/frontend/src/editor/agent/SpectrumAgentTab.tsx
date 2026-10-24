@@ -14,7 +14,7 @@ import { CHATS_CHANGED, buildProjectContext, errorText, patchesToChanges, relati
 import { AgentComposer, ChangesTray, PersonaPicker, ReviewView, Transcript, Welcome, openTodos, readStored, taskPersona, useFollow, useSkills, writeStored } from './parts';
 import type { ContextKind, Draft, TaskRequest, TrayChange } from './parts';
 import type { AgentStatus } from './LocalAgentTab';
-import { closeChanges, metaOf, openChanges, stepCall } from './transcript';
+import { closeChanges, metaOf, openChanges, stepCall, storedChanges } from './transcript';
 import type { Checkpoint, Item, ThreadMeta as Meta } from './transcript';
 
 
@@ -158,14 +158,15 @@ export default function SpectrumAgentTab({
       if (!res.ok) throw new Error(res.reply || 'The AI request failed.');
       const changes = (await patchesToChanges(latest.current, res.patches || [], 'Spectrum agent')).filter((c) => c.original !== c.proposed);
       const meta: Meta = {
-        ...(changes.length && { changes: changes.map(({ filePath, original, proposed }) => ({ filePath, original, proposed })) }),
+        ...(changes.length && { changes: storedChanges(changes) }),
         ...(res.todos?.length && { todos: res.todos }),
         ...(res.steps?.length && { steps: res.steps })
       };
-      // each file's new proposal goes on from the thread's open one, from the same base, which it closes
-      const paths = changes.map((c) => c.filePath);
-      const owner = paths.length ? update(base, (chat) => ({ ...chat, messages: closeChanges(chat.messages, paths, 'superseded').messages })) : base;
-      append(owner, chatMessage('assistant', res.reply || (changes.length ? 'The changes are ready to review.' : 'No changes were suggested.'), Object.keys(meta).length ? meta : undefined));
+      // each file's new proposal goes on from the thread's open one, from the same base, which it closes in the same
+      // save as the reply: a reply too large to save leaves the open one as it was
+      const reply = chatMessage('assistant', res.reply || (changes.length ? 'The changes are ready to review.' : 'No changes were suggested.'), Object.keys(meta).length ? meta : undefined);
+      update(base, (chat) => ({ ...chat, messages: [...closeChanges(chat.messages, changes.map((c) => c.filePath), 'superseded').messages, reply] }));
+      if (threadRef.current?.id !== base.id) latest.current.notify(`Reply added to “${base.title}”`);
       if (changes.length && threadRef.current?.id === base.id) setTray((old) => [...old.filter((o) => !changes.some((c) => c.filePath === o.filePath)), ...changes]);
     } catch (err) {
       if (runRef.current === run) append(base, chatMessage('assistant', `Request failed: ${errorText(err)}`, { error: true }));
