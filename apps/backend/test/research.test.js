@@ -130,6 +130,7 @@ test('PubMed records keep their markup-free title, structured abstract, group au
     url: 'https://pubmed.ncbi.nlm.nih.gov/42/',
     abstract: 'BACKGROUND: Flies 2 attend. RESULTS: They do.',
     openAccess: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC123/',
+    preprint: false,
     sources: ['pubmed']
   }]);
 });
@@ -154,6 +155,15 @@ test('merging: by DOI, then arXiv id, then title; a title alone never joins two 
   assert.match(merged[1].id, /^[0-9a-f]{12}$/);
   // the same paper gets the same id in another computer's session
   assert.equal(mergeResults([], [{ title: 'Deep learning', doi: '10.7551/mitpress/book' }])[0].id, merged[1].id);
+
+  // a bioRxiv preprint joins its published version by title, which it then shows; two publishers' DOIs still don't join
+  const [paper, other] = mergeResults([], [
+    { title: 'Folding proteins', doi: '10.1101/2021.01.01.1', year: '2021', venue: 'bioRxiv', url: 'https://www.biorxiv.org/1', preprint: true, abstract: 'The preprint’s longer abstract.', sources: ['crossref'] },
+    { title: 'Folding proteins', doi: '10.1038/s1', year: '2022', venue: 'Nature', preprint: false, sources: ['openalex'] },
+    { title: 'Folding proteins', doi: '10.1016/other', year: '2022', venue: 'Cell', preprint: false, sources: ['openalex'] }
+  ]);
+  assert.deepEqual([paper.doi, paper.venue, paper.year, paper.url, paper.preprint, paper.abstract], ['10.1038/s1', 'Nature', '2022', 'https://www.biorxiv.org/1', false, 'The preprint’s longer abstract.']);
+  assert.equal(other.doi, '10.1016/other');
 });
 
 test('Search runs every source at once, merges the paper they share, marks the .bib’s and logs each source', async () => {
@@ -194,6 +204,7 @@ test('Search runs every source at once, merges the paper they share, marks the .
   assert.equal(attention.arxiv, '1706.03762', 'arXiv joins by title within a year');
   assert.equal(attention.citations, 950);
   assert.equal(attention.abstract, 'The dominant sequence transduction models.');
+  assert.equal(attention.preprint, false, 'arXiv’s copy, but published');
   const preprint = session.results.find((r) => r.title === 'A preprint on attention');
   assert.deepEqual([preprint.inBib, preprint.preprint, preprint.sources], ['Hopper2024', true, ['arxiv', 'bib']]);
   assert.equal(session.results.find((r) => r.title === 'Literate programming with attention').inBib, 'Knuth1984');

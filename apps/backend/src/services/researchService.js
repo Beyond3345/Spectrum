@@ -42,19 +42,24 @@ export function keywords(question) {
 }
 
 // ─── Sources: each gives { title, authors, year, venue, doi, arxiv, url, abstract, citations, openAccess, preprint } ───
+// preprint: true for a preprint, false when the source knows the work as published, missing when it can't tell
+
+// a preprint server's record that its source files as an article
+const PREPRINT_VENUE = /\b(?:arxiv|biorxiv|medrxiv|chemrxiv|ssrn|research square|preprints?)\b/i;
 
 /** From a CSL record as the OpenAlex and Semantic Scholar searches return them (raw), or a Crossref work. */
 function fromRecord({ rec, summary, citations, openAccess, preprint }, source) {
   const meta = summaryOf(rec);
+  const venue = plain([rec['container-title']].flat()[0]);
   return tidy({
     ...meta,
-    venue: plain([rec['container-title']].flat()[0]),
+    venue,
     arxiv: rec._arxiv?.id || arxivOfDoi(meta.doi),
     url: rec.URL,
     abstract: plain(summary),
     citations: Number.isFinite(citations) ? citations : undefined,
     openAccess,
-    preprint: preprint || undefined,
+    preprint: preprint || PREPRINT_VENUE.test(venue) ? true : venue ? false : undefined,
     sources: [source]
   });
 }
@@ -75,7 +80,7 @@ async function fromArxiv(question, { yearFrom, yearTo }) {
       url: `https://arxiv.org/abs/${id}`,
       abstract: p.abstract,
       openAccess: `https://arxiv.org/pdf/${id}`,
-      preprint: !p.doi && !p.journalRef ? true : undefined,
+      preprint: !p.doi && !p.journalRef,
       sources: ['arxiv']
     });
   });
@@ -131,7 +136,7 @@ export function parsePubmed(xml) {
       // a structured abstract keeps its headings
       abstract: (article.Abstract?.AbstractText || []).map((t) => [t?.['@_Label'] && `${t['@_Label']}:`, text(t)].filter(Boolean).join(' ')).join(' '),
       openAccess: pmc ? `https://pmc.ncbi.nlm.nih.gov/articles/${pmc}/` : undefined,
-      preprint: (article.PublicationTypeList?.PublicationType || []).some((t) => text(t) === 'Preprint') || undefined,
+      preprint: (article.PublicationTypeList?.PublicationType || []).some((t) => text(t) === 'Preprint'),
       sources: ['pubmed']
     });
   });
@@ -206,7 +211,7 @@ const SEARCHES = {
 
 function identity(r) {
   const doi = String(r.doi || '').toLowerCase();
-  return { doi, arxiv: String(r.arxiv || arxivOfDoi(doi)).toLowerCase().replace(/v\d+$/, ''), title: normaliseTitle(r.title || ''), year: Number(r.year) || 0 };
+  return { doi, arxiv: String(r.arxiv || arxivOfDoi(doi)).toLowerCase().replace(/v\d+$/, ''), title: normaliseTitle(r.title || ''), year: Number(r.year) || 0, preprint: r.preprint === true };
 }
 
 /** The same DOI or arXiv id, or the same title within a year where no publisher DOIs disagree. */
@@ -214,9 +219,9 @@ function sameWork(a, b) {
   if (a.doi && a.doi === b.doi) return true;
   if (a.arxiv && a.arxiv === b.arxiv) return true;
   if (!a.title || a.title !== b.title) return false;
-  // "Deep learning" is a book and a Nature review; an arXiv DOI and a publisher's stand for one paper
-  const own = (doi) => (arxivOfDoi(doi) ? '' : doi);
-  if (own(a.doi) && own(b.doi) && own(a.doi) !== own(b.doi)) return false;
+  // "Deep learning" is a book and a Nature review; a preprint's DOI (arXiv's, bioRxiv's) and a publisher's stand for one paper
+  const own = (x) => (x.preprint || arxivOfDoi(x.doi) ? '' : x.doi);
+  if (own(a) && own(b) && own(a) !== own(b)) return false;
   return !a.year || !b.year || Math.abs(a.year - b.year) <= 1;
 }
 
@@ -233,8 +238,10 @@ function combine(old, next) {
   out.citations = Math.max(old.citations ?? -1, next.citations ?? -1);
   if (out.citations < 0) delete out.citations;
   out.sources = [...new Set([...(old.sources || []), ...(next.sources || [])])];
-  // a preprint only while no source knows it as published
-  out.preprint = old.preprint !== false && next.preprint !== false && (old.preprint || next.preprint) ? true : undefined;
+  // published once any source knows it so, and then shown as published rather than as its preprint
+  const published = [old, next].find((r) => r.preprint === false);
+  if (published && [old, next].some((r) => r.preprint === true)) for (const k of ['doi', 'venue', 'year', 'url']) if (published[k]) out[k] = published[k];
+  out.preprint = old.preprint === false || next.preprint === false ? false : old.preprint || next.preprint || undefined;
   for (const k of USER_FIELDS) if (old[k] !== undefined) out[k] = old[k];
   return tidy(out);
 }
@@ -414,7 +421,7 @@ export async function updateSession(root, id, change) {
   return getSession(root, id);
 }
 
-const redact = (message, keys) => Object.values(keys).filter((k) => typeof k === 'string' && k.length >= 6).reduce((m, k) => m.split(k).join('[redacted]'), String(message || 'Search failed.'));
+const redact = (message, keys) => Object.values(keys).filter((k) => typeof k === 'string' && k.length >= 6).reduce((m, k) => m.split(k).join('[redacted]'), String(message || 'Search failed.')).slice(0, 300);
 
 /**
  * Runs the question against every source at once; one failing doesn't stop the rest, and each one's count or error

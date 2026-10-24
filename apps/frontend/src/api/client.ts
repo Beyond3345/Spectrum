@@ -1013,7 +1013,8 @@ export interface ResearchResult {
   citations?: number;
   /** a link to an open-access copy */
   openAccess?: string;
-  preprint?: true;
+  /** false: a source knows it as published; missing: none can tell */
+  preprint?: boolean;
   inBib?: string;
   decision?: 'keep' | 'drop';
   reason?: string;

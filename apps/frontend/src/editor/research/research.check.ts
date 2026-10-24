@@ -30,6 +30,7 @@ eq(
 );
 eq(badges(result('b', { citations: 1 })).map((b) => b.label), ['OpenAlex', '1 citation'], 'one citation');
 eq(badges(result('c', { citations: 0 })).map((b) => b.label), ['OpenAlex', '0 citations'], 'none counted is still a count');
+eq(badges(result('d', { preprint: false })).map((b) => b.label), ['OpenAlex'], 'known as published: no preprint badge');
 
 const run: ResearchRun = {
   at: '2026-10-25T00:00:00.000Z',
