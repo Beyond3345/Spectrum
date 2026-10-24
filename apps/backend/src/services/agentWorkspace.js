@@ -144,7 +144,8 @@ export async function applyWorkspaceChanges(run, selected, expected) {
     const current = await readCurrent(run.root, rel);
     let proposed = change.afterHash === null ? null : await fs.readFile(safeJoin(path.join(run.dir, 'proposal'), rel));
     if (fileHash(proposed) !== change.afterHash) throw new Error(`The saved proposal for “${rel}” is damaged. Nothing was applied.`);
-    if (fileHash(current) !== change.beforeHash) {
+    // the user may have made the same change
+    if (fileHash(current) !== change.beforeHash && fileHash(current) !== change.afterHash) {
       if (current === null || proposed === null || change.beforeHash === null) throw new Error(`“${rel}” changed in your project. Review the conflict before applying.`);
       const original = await fs.readFile(safeJoin(path.join(run.dir, 'baseline'), rel));
       proposed = mergeText(original, current, proposed);
@@ -167,7 +168,7 @@ export async function applyWorkspaceChanges(run, selected, expected) {
       const { rel, before, after } = writes[i];
       if (fileHash(await readCurrent(run.root, rel)) !== fileHash(before)) throw new Error(`“${rel}” changed while applying. Your newer work was preserved.`);
       const target = safeJoin(run.root, rel);
-      if (after === null) await fs.unlink(target);
+      if (after === null) await fs.rm(target, { force: true });
       else await writeFileAtomic(target, after);
       journal.files[i].applied = true;
       await writeJsonAtomic(path.join(transaction, 'journal.json'), journal);
