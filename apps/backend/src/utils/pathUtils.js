@@ -46,11 +46,13 @@ export function safeJoin(root, targetPath) {
 
 /**
  * Whether a file or folder name is one no agent may read or write: Spectrum's, git's or Claude's folders, an .env file
- * or a key, also as a file system that ignores case takes it (APFS folds 'ſ' to 's' and the Kelvin sign to 'k').
- * Self-contained, as the isolated workspace reader runs it too.
+ * or a key, also as a file system that ignores case takes it (APFS folds 'ſ' to 's' and the Kelvin sign to 'k'), and
+ * on Windows an NTFS stream, a short 8.3 name or a name Windows trims, which may each be one of those. Self-contained,
+ * as the isolated workspace reader runs it too.
  */
 export function agentHiddenName(p) {
-  return [p.toLowerCase(), p.toUpperCase().toLowerCase()].some((n) => ['.spectrum', '.git', '.claude'].includes(n) || /^\.env(?:\.|$)|\.(pem|key)$/.test(n));
+  return [p.toLowerCase(), p.toUpperCase().toLowerCase()].some((n) => ['.spectrum', '.git', '.claude'].includes(n) || /^\.env(?:\.|$)|\.(pem|key)$/.test(n))
+    || (process.platform === 'win32' && (p.includes(':') || /~\d+(\.|$)/.test(p) || /[. ]$/.test(p)));
 }
 /** Whether a relative path is one no agent may read or write: any of its names agentHiddenName's. */
 export const agentHidden = (rel) => String(rel).split(/[\\/]/).some(agentHiddenName);

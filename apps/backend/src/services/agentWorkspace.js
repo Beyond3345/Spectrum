@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import readline from 'node:readline';
 import { spawnAgentProcess, killAgentProcess } from './agentSandbox.js';
-import { agentHiddenName, safeJoin } from '../utils/pathUtils.js';
+import { agentHidden, agentHiddenName, safeJoin } from '../utils/pathUtils.js';
 import { HIDDEN_ENTRIES, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
 import { mergeText } from '../utils/merge3.js';
 import { createVersion } from './versionService.js';
@@ -139,6 +139,8 @@ export async function applyWorkspaceChanges(run, selected, expected) {
   if (new Set(selected).size !== selected.length) throw new Error('Duplicate change paths.');
   const writes = [];
   for (const rel of selected) {
+    // a name the reader now leaves out, from a proposal taken before it did
+    if (agentHidden(rel)) throw new Error(`“${rel}” is a name agents may not change. Nothing was applied.`);
     const change = changes.find((c) => c.path === rel);
     if (expected?.[rel] !== change.afterHash) throw new Error(`“${rel}” changed after the review opened. Refresh and review it again.`);
     const current = await readCurrent(run.root, rel);

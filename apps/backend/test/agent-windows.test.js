@@ -93,3 +93,21 @@ test('Windows cancellation kills background descendants and preserves ordinary p
     await fs.writeFile(path.join(workspace, 'after.txt'), 'ordinary user can write');
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
+
+// Windows' rules, run on any system with process.platform as Windows reports it
+const asWindows = async (fn) => {
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { ...platform, value: 'win32' });
+  try { return await fn(); } finally { Object.defineProperty(process, 'platform', platform); }
+};
+
+test('on Windows, short names, streams and names Windows trims count as hidden ones', async () => {
+  const { agentHidden } = await import('../src/utils/pathUtils.js');
+  const hidden = ['GIT~1/config', 'SPECTR~1/chats/c.json', 'CLAUDE~1', 'ENV~1', '.env::$DATA', 'main.tex:secret', '.git./config', '.env ', 'sub\\.git\\config'];
+  const shown = ['main.tex', 'figures/fig~a.png', 'notes~.tex', 'chapter 1/intro.tex'];
+  await asWindows(() => {
+    for (const rel of hidden) assert.equal(agentHidden(rel), true, rel);
+    for (const rel of shown) assert.equal(agentHidden(rel), false, rel);
+  });
+  if (process.platform !== 'win32') for (const rel of ['GIT~1/config', 'a:b.tex', 'notes.']) assert.equal(agentHidden(rel), false, `${rel}, elsewhere`);
+});
