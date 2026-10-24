@@ -127,6 +127,9 @@ export type AppSettings = {
   projectFolders: ProjectFolders;
   /** a colour chosen for a tag; the others get one from their name */
   tagColours: Record<string, TagColour>;
+  /** reusable instructions picked in chat (Settings › Personas); one chosen replaces defaultInstructions */
+  personas: { id: string; name: string; colour: string; prompt: string }[];
+  defaultInstructions: string;
 };
 
 export type CompileDefaults = Required<CompileOptions>;
@@ -200,7 +203,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   syncSettings: true,
   cloudMode: 'mirror',
   projectFolders: NO_FOLDERS,
-  tagColours: {}
+  tagColours: {},
+  personas: [],
+  defaultInstructions: ''
 };
 
 export const SYNC_HIGHLIGHTS: [SyncHighlight, string][] = [

@@ -773,6 +773,10 @@ export interface ChatThread {
   createdAt: string;
   updatedAt: string;
   messages: ChatMessage[];
+  /** a Spectrum agent thread, listed in the agent workspace rather than with the chats; 1.10.4 ignores it */
+  agent?: boolean;
+  /** the persona chosen for this chat (Settings › Personas) */
+  persona?: string;
 }
 
 export interface ChatSummary {
@@ -781,6 +785,7 @@ export interface ChatSummary {
   mode: ChatMode;
   updatedAt: string;
   messageCount: number;
+  agent?: boolean;
 }
 
 export function listChats(projectId: string) {
@@ -816,6 +821,9 @@ export interface Todo {
   updatedAt: string;
   link?: TodoLink;
 }
+
+/** A to-do an agent suggests (its suggest_todo tool); it is only saved when the user adds it */
+export type SuggestedTodo = { text: string; link?: TodoLink };
 
 export function listTodos(projectId: string) {
   return request<{ todos: Todo[] }>(`/api/projects/${projectId}/todos`);
@@ -879,8 +887,12 @@ export function runAgent(payload: {
   interaction?: 'chat' | 'agent';
   history?: { role: 'user' | 'assistant'; content: string }[];
   reasoningEffort?: ReasoningEffort;
+  /** the persona's or the default instructions, never sent with autocomplete */
+  instructions?: string;
+  /** a skill whose instructions go with the prompt */
+  skill?: string;
 }) {
-  return request<{ ok: boolean; reply: string; suggestion: string; patches?: AgentPatch[] }>('/api/agent/run', json('POST', payload));
+  return request<{ ok: boolean; reply: string; suggestion: string; patches?: AgentPatch[]; todos?: SuggestedTodo[] }>('/api/agent/run', json('POST', payload));
 }
 
 export function callLLM(payload: {
@@ -1253,16 +1265,41 @@ export interface LocalAgentSession {
   createdAt: string; updatedAt: string; events: AgentEvent[]; pending?: AgentUserRequest[];
   recoveries?: { id: string; files: string[] }[];
 }
+/** What a persona or the default instructions add to a local agent's own system prompt */
+export interface AgentPersona { name: string; prompt: string }
+/** What goes with a prompt besides its text; the backend sends each to the agent as an ACP resource */
+export interface AgentContext {
+  /** the open file, as a link to the agent's copy of it */
+  activePath?: string;
+  selection?: { path: string; text: string; startLine: number; endLine: number };
+  /** the latest compile log */
+  log?: string;
+  /** the open to-dos */
+  todos?: SuggestedTodo[];
+  /** a skill whose SKILL.md goes with the prompt */
+  skill?: string;
+}
 export const listLocalAgents = () => request<{ ok: boolean; agents: LocalAgent[] }>('/api/agents');
 export const configureLocalAgent = (id: string, value: { command: string; args: string[]; runtimePaths: string[]; apiKey?: string; keyEnv?: string }) => request<{ ok: boolean }>(`/api/agents/${id}`, json('PUT', value));
 export const importLocalAgentLogin = (id: string) => request<{ ok: boolean; files: number }>(`/api/agents/${id}/import-login`, json('POST', {}));
 export const listLocalAgentSessions = (projectId: string) => request<{ ok: boolean; sessions: LocalAgentSession[] }>(`/api/agent-sessions?projectId=${encodeURIComponent(projectId)}`);
 export const getLocalAgentSession = (id: string) => request<{ ok: boolean; session: LocalAgentSession }>(`/api/agent-sessions/${id}`);
-export const createLocalAgentSession = (projectId: string, agentId: string, mode: 'review' | 'direct') => request<{ ok: boolean; session: LocalAgentSession }>('/api/agent-sessions', json('POST', { projectId, agentId, mode }));
-export const sendLocalAgentPrompt = (id: string, prompt: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/prompt`, json('POST', { prompt }));
+export const createLocalAgentSession = (projectId: string, agentId: string, mode: 'review' | 'direct', persona?: AgentPersona) => request<{ ok: boolean; session: LocalAgentSession }>('/api/agent-sessions', json('POST', { projectId, agentId, mode, persona }));
+export const sendLocalAgentPrompt = (id: string, prompt: string, extra: { persona?: AgentPersona; context?: AgentContext } = {}) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/prompt`, json('POST', { prompt, ...extra }));
 export const stopLocalAgentSession = (id: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/stop`, json('POST', {}));
 export const answerLocalAgent = (id: string, requestId: string, answer: unknown) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/answer`, json('POST', { requestId, answer }));
 export const setLocalAgentOption = (id: string, configId: string, value: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/option`, json('POST', { configId, value }));
 export const getLocalAgentChanges = (id: string) => request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/changes`);
 export const recoverLocalAgentApply = (id: string, recoveryId: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/recover`, json('POST', { recoveryId }));
 export const reviewLocalAgentChanges = (id: string, action: 'apply' | 'reject', changes: AgentChange[]) => request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/review`, json('POST', { action, paths: changes.map((c) => c.path), expected: Object.fromEntries(changes.map((c) => [c.path, c.afterHash])) }));
+/** A preview of the agent's copy, compiled where it can't read outside that copy */
+export const getLocalAgentPreview = (id: string) => request<{ ok: boolean; pdf: string | null; log: string }>(`/api/agent-sessions/${id}/preview`);
+
+// ─── Skills (Settings › Skills) ───
+export interface Skill {
+  id: string; name: string; description: string; author: string; licence: string; version: string;
+  source: 'bundled' | 'own'; files: number; compatibility?: string; enabled: boolean;
+  /** this project's own choice, when it differs from All projects */
+  project?: 'on' | 'off';
+}
+export const listSkills = (projectId?: string) => request<{ skills: Skill[] }>(`/api/skills${projectId ? `?project=${encodeURIComponent(projectId)}` : ''}`);
