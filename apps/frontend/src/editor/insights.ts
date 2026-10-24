@@ -23,6 +23,9 @@ export type Insights = {
 const FLOAT = /\\begin\s*\{(figure|table|wrapfigure|wraptable|sidewaysfigure|sidewaystable)\*?\}/g;
 // the numbered displays (not their starred forms)
 const EQUATION = /\\begin\s*\{(equation|align|gather|multline|flalign|alignat|eqnarray)\}/g;
+// a display's lines: \\, \\* and \\[2pt], and the environments inside it, whose \\ don't end one
+const LINE_END = /\\\\\*?(?:\[[^\]]*\])?/g;
+const NESTED_ENV = /\\begin\s*\{([^}]*)\}[\s\S]*?\\end\s*\{\1\}/g;
 const CAPTION = /\\caption\s*(?:\[[^\]]*\]\s*)?\{/g;
 const LABEL = /\\label\s*\{([^{}]+)\}/g;
 const FIRST_LABEL = /\\label\s*\{([^{}]+)\}/;
@@ -37,6 +40,7 @@ const OPTIONS = String.raw`(?:\[[^\]]*\]\s*)?`;
 const LOGOS: Record<string, string> = { LaTeXe: 'LaTeX2e', LaTeX: 'LaTeX', TeX: 'TeX', BibTeX: 'BibTeX', XeLaTeX: 'XeLaTeX', LuaLaTeX: 'LuaLaTeX', pdfLaTeX: 'pdfLaTeX' };
 // a \ref's keys, kept in the text for withNumbers to put the last compile's numbers (n) or pages (p) in
 const REF_MARK = /\u0001([np]):([^\u0001]*)\u0001/g;
+const TYPESET: Record<string, string> = { '``': '“', "''": '”', '---': '—', '--': '–' };
 
 /**
  * LaTeX made readable for a list: commands dropped (their arguments kept), ties, control spaces (`\LaTeX\ Guide`) and
@@ -48,13 +52,13 @@ export function plainText(tex: string) {
     .replace(new RegExp(String.raw`\\texorpdfstring\s*${BRACED}\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}`, 'g'), '$1')
     .replace(new RegExp(String.raw`\\href\s*${OPTIONS}\{[^{}]*\}\s*${BRACED}`, 'g'), '$1')
     .replace(new RegExp(String.raw`[ \t~]*\\(?:url|includegraphics|[hv]space\*?|[A-Za-z]*[cC]ite[A-Za-z]*\*?)\s*(?:\[[^\]]*\]\s*){0,2}\{[^{}]*\}`, 'g'), '')
-    .replace(new RegExp(String.raw`\\(?:qty|SI)\s*${OPTIONS}\{([^{}]*)\}\s*\{([^{}]*)\}`, 'g'), (_, n: string, unit: string) => `${n} ${unitName(unit)}`)
+    .replace(new RegExp(String.raw`\\(?:qty|SI)\s*${OPTIONS}\{([^{}]*)\}\s*\{([^{}]*)\}`, 'g'), (_, n: string, unit: string) => `${n} ${unitName(unit)}`.trim())
     .replace(new RegExp(String.raw`\\(?:unit|si)\s*${OPTIONS}\{([^{}]*)\}`, 'g'), (_, unit: string) => unitName(unit))
     .replace(/\\(page)?(?:ref|eqref|autoref|cref|Cref|vref)\*?\s*\{([^{}]*)\}/g, (_, page: string | undefined, keys: string) => `\u0001${page ? 'p' : 'n'}:${keys}\u0001`)
     .replace(/\\(LaTeXe|LaTeX|TeX|BibTeX|XeLaTeX|LuaLaTeX|pdfLaTeX)(?![A-Za-z])(?:\{\})?/g, (_, logo: string) => LOGOS[logo])
     .replace(/\\today(?![A-Za-z])/g, new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }))
-    // TeX's quotes as typeset, outside maths (where '' is a double prime)
-    .replace(/((?<!\\)\$[^$]*(?<!\\)\$)|``|''/g, (m, maths: string | undefined) => maths ?? (m === '``' ? '“' : '”'))
+    // TeX's quotes and dashes as typeset, outside maths (where '' is a double prime) and a \ref's keys
+    .replace(/((?<!\\)\$[^$]*(?<!\\)\$|\u0001[^\u0001]*\u0001)|``|''|---|--/g, (m, kept: string | undefined) => kept ?? TYPESET[m])
     .replace(/\\(?:label|index|footnote|thanks)\s*(?:\[[^\]]*\])?\s*\{(?:[^{}]|\{[^{}]*\})*\}/g, '')
     .replace(/\\\\(?:\[[^\]]*\])?/g, ' ')
     .replace(/\\([&%$#_{} ])/g, '$1')
@@ -116,6 +120,13 @@ const inReadingOrder = (a: number[], b: number[]) => {
   return a.length - b.length;
 };
 
+/** Sorts each list of rows in place into the order `doc` reads them: a file's rows go where it's \input, a file not reached last. */
+export function inReading(doc: string, files: { path: string; text: string }[], ...lists: { file: string; line: number }[][]) {
+  const keys = readingKeys(doc, files);
+  const at = (row: { file: string; line: number }) => [...(keys.get(row.file) ?? [Infinity]), row.line];
+  for (const list of lists) list.sort((a, b) => inReadingOrder(at(a), at(b)));
+}
+
 /** What `files` hold; with `doc`, the document they're read in, each list in reading order. */
 export function scanInsights(files: { path: string; text: string }[], doc?: string): Insights {
   const out: Insights = {
@@ -127,7 +138,6 @@ export function scanInsights(files: { path: string; text: string }[], doc?: stri
     citations: [],
     metadata: { title: '', authors: [], keywords: [], date: '', abstract: '' }
   };
-  const cited = new Map<string, Citation>();
   const meta = out.metadata;
   for (const { path, text } of files) {
     // comments go, line breaks stay, so a match's line is the same in the file
@@ -173,11 +183,31 @@ export function scanInsights(files: { path: string; text: string }[], doc?: stri
       (m[1].includes('table') ? out.tables : out.figures).push(row(m.index!, text, label));
     }
 
-    // ponytail: one row per display, numbered by its first label; an align with several numbered lines is one row
+    // an equation or multline is one numbered row; an align, gather, flalign, alignat or eqnarray a row for each line
+    // without \nonumber or \notag, a \\ inside a nested environment (cases, a matrix) not ending one.
+    // ponytail: eqnarray's lines are read as amsmath's, so its unnumbered ones are approximate
     for (const m of code.matchAll(EQUATION)) {
-      const body = envBody(m.index! + m[0].length, m[1]);
-      const maths = body.replace(LABEL, '').replace(/\s+/g, ' ').trim();
-      out.equations.push(row(m.index!, maths.length > 90 ? `${maths.slice(0, 89)}…` : maths, firstLabel(body)));
+      let start = m.index! + m[0].length;
+      // alignat starts with the number of column pairs, not equation content.
+      if (m[1] === 'alignat') start += /^\s*\{[^{}]*\}/.exec(code.slice(start))?.[0].length ?? 0;
+      const body = envBody(start, m[1]);
+      const push = (at: number, src: string) => {
+        const maths = src.replace(LABEL, '').replace(/\s+/g, ' ').trim();
+        out.equations.push(row(at, maths.length > 90 ? `${maths.slice(0, 89)}…` : maths, firstLabel(src)));
+      };
+      if (m[1] === 'equation' || m[1] === 'multline') {
+        push(m.index!, body);
+        continue;
+      }
+      const flat = body.replace(NESTED_ENV, (env) => ' '.repeat(env.length));
+      const ends = [...flat.matchAll(LINE_END)].map((e) => [e.index!, e.index! + e[0].length]);
+      let from = 0;
+      for (const [end, next] of [...ends, [body.length, body.length]]) {
+        const line = body.slice(from, end);
+        // each at its own line in the file
+        if (line.trim() && !/\\no(?:number|tag)(?![A-Za-z])/.test(line)) push(start + from + line.length - line.trimStart().length, line);
+        from = next;
+      }
     }
 
     for (const m of code.matchAll(LABEL)) out.labels.push(row(m.index!, m[1].trim(), m[1].trim()));
@@ -186,9 +216,7 @@ export function scanInsights(files: { path: string; text: string }[], doc?: stri
       if (!CITE_COMMANDS.test(m[1])) continue;
       for (const key of m[2].split(',').map((k) => k.trim())) {
         if (!key || key === '*') continue;
-        const known = cited.get(key);
-        if (known) known.count += 1;
-        else cited.set(key, { key, count: 1, file: path, line: lineOf(m.index!) });
+        out.citations.push({ key, count: 1, file: path, line: lineOf(m.index!) });
       }
     }
 
@@ -212,13 +240,14 @@ export function scanInsights(files: { path: string; text: string }[], doc?: stri
     }
     meta.abstract ||= plainText(/\\begin\s*\{abstract\}([\s\S]*?)\\end\s*\{abstract\}/.exec(code)?.[1] ?? args('abstract')[0] ?? '');
   }
-  out.citations = [...cited.values()];
-  if (doc) {
-    // a file's rows go where it's \input, not after the files read before it (a file not reached, last)
-    const keys = readingKeys(doc, files);
-    const at = (row: InsightRow) => [...(keys.get(row.file) ?? [Infinity]), row.line];
-    for (const list of [out.headings, out.figures, out.tables, out.equations, out.labels]) list.sort((a, b) => inReadingOrder(at(a), at(b)));
+  if (doc) inReading(doc, files, out.headings, out.figures, out.tables, out.equations, out.labels, out.citations);
+  const cited = new Map<string, Citation>();
+  for (const citation of out.citations) {
+    const known = cited.get(citation.key);
+    if (known) known.count += 1;
+    else cited.set(citation.key, citation);
   }
+  out.citations = [...cited.values()];
   return out;
 }
 

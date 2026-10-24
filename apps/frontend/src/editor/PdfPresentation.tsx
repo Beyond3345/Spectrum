@@ -32,6 +32,9 @@ export default function PdfPresentation({
   closeRef.current = onClose;
   const go = (to: number) => setPage(Math.min(pages, Math.max(1, to)));
 
+  // A recompile can remove the slide being shown.
+  useEffect(() => setPage((current) => Math.min(pages, Math.max(1, current))), [pages]);
+
   // full screen while presenting, unless the window was already
   useEffect(() => {
     const was = document.documentElement.classList.contains('fullscreen') || !!document.fullscreenElement;

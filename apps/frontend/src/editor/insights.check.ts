@@ -1,6 +1,6 @@
 // Self-check for the Document insights scanner. It imports latexEditor.ts, which Node can't strip, so bundle it first:
 // `npx esbuild apps/frontend/src/editor/insights.check.ts --bundle --platform=node --log-level=warning --outfile=<file>.js`, then `node <file>.js`
-import { headingNumbers, metadataText, plainText, scanInsights, withNumbers } from './insights.ts';
+import { headingNumbers, inReading, metadataText, plainText, scanInsights, withNumbers } from './insights.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -87,6 +87,39 @@ eq(
 );
 eq(withNumbers(plainText(String.raw`See page~\pageref{ex:design} and \cref{ex:design,missing}.`), labels), 'See page 3 and 6.2, ?.', 'pages, and a label the compile hasn’t seen');
 eq(plainText("``Abstract'' with $f'' = 0$ and \\SI{3}{\\kilo\\hertz}"), '“Abstract” with $f\'\' = 0$ and 3 kilohertz', 'TeX’s quotes outside maths only');
+eq(
+  withNumbers(plainText(String.raw`The Sallen--Key low-pass filter---see \ref{sec--a}, with $a--b$ and $Q = \qty{0.707}{}$.`), { 'sec--a': { number: '2', page: '1' } }),
+  'The Sallen–Key low-pass filter—see 2, with $a--b$ and $Q = 0.707$.',
+  'dashes as typeset, outside maths and a \\ref’s keys, and a quantity without a unit'
+);
+
+// an align's numbered lines, one row each; a \\ in a nested environment doesn't end one
+const maths = scanInsights([{ path: 'm.tex', text: String.raw`\begin{align}
+  s &= \sigma + j\omega \label{eq:sk} \\
+  s_0 &= 0 \nonumber \\[2pt]
+  f(s) &= \begin{cases} 1 & s > 0 \\ 0 & \text{otherwise} \end{cases} \label{eq:sk-w0}
+\end{align}
+\begin{multline}
+  a + b \\ + c \label{eq:long}
+\end{multline}` }]);
+eq(
+  maths.equations.map((e) => [e.text, e.label ?? null, e.line]),
+  [
+    ['s &= \\sigma + j\\omega', 'eq:sk', 2],
+    ['f(s) &= \\begin{cases} 1 & s > 0 \\\\ 0 & \\text{otherwise} \\end{cases}', 'eq:sk-w0', 4],
+    ['a + b \\\\ + c', 'eq:long', 6]
+  ],
+  'an align’s lines, without \\nonumber ones; a multline is one'
+);
+
+eq(
+  scanInsights([{ path: 'm.tex', text: String.raw`\begin{alignat}{2}
+ x &= 1 & y &= 2 \\
+ z &= 3 \label{eq:z}
+\end{alignat}` }]).equations.map((e) => [e.text, e.line]),
+  [['x &= 1 & y &= 2', 2], ['z &= 3', 3]],
+  'alignat column pairs are not equation content'
+);
 
 // reading order: a file's rows where it's \input, after the files a breadth-first walk reads first
 const order = scanInsights(
@@ -99,6 +132,21 @@ const order = scanInsights(
   'main.tex'
 );
 eq(order.headings.map((h) => h.text), ['One', 'Two', 'Two point one', 'Three', 'Four'], 'headings in reading order');
+const citations = scanInsights([
+  { path: 'main.tex', text: '\\cite{first}\n\\input{chapter}\n\\cite{shared,last}' },
+  { path: 'chapter.tex', text: '\\cite{shared,middle}\n' }
+], 'main.tex').citations;
+eq(citations.map((c) => [c.key, c.count, c.file, c.line]), [
+  ['first', 1, 'main.tex', 1], ['shared', 2, 'chapter.tex', 1], ['middle', 1, 'chapter.tex', 1], ['last', 1, 'main.tex', 3]
+], 'citations follow reading order and jump to the actual first citation');
+const marks = [
+  { file: 'main.tex', line: 3 },
+  { file: 'sec/b.tex', line: 1 },
+  { file: 'sec/a1.tex', line: 1 },
+  { file: 'other.tex', line: 1 }
+];
+inReading('main.tex', [{ path: 'main.tex', text: '\\section{One}\n\\input{sec/a}\n\\section{Three}\n\\input{sec/b}\n' }, { path: 'sec/b.tex', text: '' }, { path: 'sec/a.tex', text: '\\input{sec/a1}\n' }, { path: 'sec/a1.tex', text: '' }], marks);
+eq(marks.map((m) => m.file), ['sec/a1.tex', 'main.tex', 'sec/b.tex', 'other.tex'], 'any rows in reading order, a file not reached last');
 
 // numbers and pages for headings without a \label, from the contents, while the levels agree
 const toc = [
