@@ -102,7 +102,7 @@ export default function TransferPanel({
   const [sourceFiles, setSourceFiles] = useState<string[]>([]);
   const [sourceMainFile, setSourceMainFile] = useState('');
   const [targetTemplateId, setTargetTemplateId] = useState('');
-  const [engine, setEngine] = useState<CompileEngine>(settings.compileEngine);
+  const [engine, setEngine] = useState<CompileEngine>(settings.compileDefaults.engine);
   const [layoutCheck, setLayoutCheck] = useState(false);
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
   const [status, setStatus] = useState('idle');

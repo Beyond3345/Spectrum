@@ -1,6 +1,20 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { getSharedSettings, listLiveModels, listProviders, shareSettings } from '../api/client';
-import type { CloudMode, CompileEngine, EffortLevel, LLMConfig, OxfordComma, ProviderModel, ProviderPreset, ReasoningEffort, SearchConfig, SearchProvider, SharedSettings } from '../api/client';
+import type {
+  BibTool,
+  CloudMode,
+  CompileEngine,
+  CompileOptions,
+  EffortLevel,
+  LLMConfig,
+  OxfordComma,
+  ProviderModel,
+  ProviderPreset,
+  ReasoningEffort,
+  SearchConfig,
+  SearchProvider,
+  SharedSettings
+} from '../api/client';
 import { setNativeTheme } from './desktop';
 import { NO_FOLDERS, cleanFolders } from './folders';
 import type { ProjectFolders } from './folders';
@@ -70,7 +84,17 @@ export type AppSettings = {
   referencesApiKey: string;
   referencesModel: string;
   autoInsertCite: boolean;
-  compileEngine: CompileEngine;
+  /** what a project compiles with until it makes its own choice in the compile menu (Settings › Engines › LaTeX) */
+  compileDefaults: CompileDefaults;
+  /** a second TeX installation's folder, tried first by every compile ('' = none) */
+  texFolder: string;
+  /** a failed compile opens Tools › Logs */
+  openLogsOnFail: boolean;
+  /** a checkpoint after each successful compile, and a notice when one can't be saved */
+  checkpointOnCompile: boolean;
+  checkpointNotice: boolean;
+  /** switching to another document's .tex shows that document's PDF, and Compile builds it */
+  pdfFollowsFile: boolean;
   editorFontSize: number;
   /** parent folder for new projects; '' = the backend default (~/Documents/Spectrum) */
   projectsDir: string;
@@ -104,6 +128,8 @@ export type AppSettings = {
   /** a colour chosen for a tag; the others get one from their name */
   tagColours: Record<string, TagColour>;
 };
+
+export type CompileDefaults = Required<CompileOptions>;
 
 export const TAG_COLOUR_NAMES = ['blue', 'green', 'orange', 'red', 'yellow', 'purple', 'teal'] as const;
 export type TagColour = (typeof TAG_COLOUR_NAMES)[number];
@@ -148,7 +174,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   // the OpenAI preset's quick model, to match the default main model
   referencesModel: 'gpt-6-luna',
   autoInsertCite: true,
-  compileEngine: 'pdflatex',
+  // a new setting, so 1.x's saved compiler (compileEngine, left in place for it) doesn't carry over
+  compileDefaults: { engine: 'auto', autoCompile: 0, haltOnError: false, bibTool: 'auto', draft: false },
+  texFolder: '',
+  openLogsOnFail: false,
+  checkpointOnCompile: true,
+  checkpointNotice: true,
+  pdfFollowsFile: true,
   editorFontSize: 13,
   projectsDir: '',
   searchProvider: 'llm',
@@ -189,6 +221,37 @@ export const COMPILE_ENGINES: [CompileEngine, string][] = [
   ['tectonic', 'Tectonic']
 ];
 
+export const BIB_TOOLS: [BibTool, string][] = [
+  ['auto', 'Auto'],
+  ['bibtex', 'BibTeX'],
+  ['biber', 'Biber']
+];
+
+/** haltOnError's two choices */
+export const ERROR_HANDLING: [boolean, string][] = [
+  [false, 'Try to compile despite errors'],
+  [true, 'Stop on first error']
+];
+
+export const autoCompileLabel = (seconds: number) => (seconds ? `After a pause of ${seconds} s` : 'Off');
+
+/** Each compile setting from `value` where it's one Spectrum knows, else from `fallback`. */
+function cleanCompile(value: unknown, fallback: CompileDefaults): CompileDefaults {
+  const v = (typeof value === 'object' && value ? value : {}) as Record<string, unknown>;
+  const seconds = Number(v.autoCompile);
+  return {
+    engine: COMPILE_ENGINES.find(([engine]) => engine === v.engine)?.[0] ?? fallback.engine,
+    autoCompile: Number.isInteger(seconds) && seconds >= 0 && seconds <= 10 ? seconds : fallback.autoCompile,
+    haltOnError: typeof v.haltOnError === 'boolean' ? v.haltOnError : fallback.haltOnError,
+    bibTool: BIB_TOOLS.find(([tool]) => tool === v.bibTool)?.[0] ?? fallback.bibTool,
+    draft: typeof v.draft === 'boolean' ? v.draft : fallback.draft
+  };
+}
+
+/** What a project compiles with: its own choices from .spectrum/settings.json, the app's defaults for the rest. */
+export const effectiveCompile = (project: CompileOptions | undefined, defaults: CompileDefaults) =>
+  cleanCompile(Object.fromEntries(Object.entries(project ?? {}).filter(([, value]) => value != null)), defaults);
+
 export const REASONING_EFFORTS: [ReasoningEffort, string][] = [
   ['default', 'Recommended'],
   ['none', 'Off'],
@@ -218,7 +281,12 @@ function parse(raw: string | null): AppSettings {
       mineruToken?: string;
     };
     const merged = { ...DEFAULT_SETTINGS, ...parsed };
-    if (!COMPILE_ENGINES.some(([value]) => value === merged.compileEngine)) merged.compileEngine = DEFAULT_SETTINGS.compileEngine;
+    merged.compileDefaults = cleanCompile(merged.compileDefaults, DEFAULT_SETTINGS.compileDefaults);
+    if (typeof merged.texFolder !== 'string') merged.texFolder = '';
+    merged.openLogsOnFail = merged.openLogsOnFail === true;
+    merged.checkpointOnCompile = merged.checkpointOnCompile !== false;
+    merged.checkpointNotice = merged.checkpointNotice !== false;
+    merged.pdfFollowsFile = merged.pdfFollowsFile !== false;
     if (!['system', 'light', 'dark'].includes(merged.theme)) merged.theme = 'system';
     if (!REASONING_EFFORTS.some(([value]) => value === merged.reasoningEffort)) merged.reasoningEffort = 'default';
     if (!Number.isFinite(merged.editorFontSize)) merged.editorFontSize = DEFAULT_SETTINGS.editorFontSize;

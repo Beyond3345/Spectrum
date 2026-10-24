@@ -311,7 +311,7 @@ function Editor({ projectId }: { projectId: string }) {
   const ghostRef = useRef<{ text: string; pos: number | null }>({ text: '', pos: null });
   const acceptingRef = useRef(false);
 
-  const [engine, setEngine] = useState<CompileEngine>(() => sessionEngine || settings.compileEngine);
+  const [engine, setEngine] = useState<CompileEngine>(() => sessionEngine || settings.compileDefaults.engine);
   const [compile, setCompile] = useState<CompileState>({ state: 'idle', engine });
   const compilingRef = useRef(false);
   // the running compile's id, for Stop

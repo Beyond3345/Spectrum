@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { changeSpellWord, getSyncSettings, spellStatus, spellWords, systemCheck, updateSyncSettings } from '../api/client';
-import type { CheckerStatus, CloudMode, SearchProvider, SyncSettings, SystemCheck } from '../api/client';
+import type { CheckerStatus, CloudMode, CompileEngine, SearchProvider, SyncSettings, SystemCheck } from '../api/client';
 import { COLOUR_ROLES, EDITOR_FONTS, EDITOR_THEMES, chosenColours, editorColours, highlightLines, themeFor, wellColour } from '../editor/editorThemes';
 import type { EditorMode } from '../editor/editorThemes';
 import { highlightColour } from '../editor/synctex';
@@ -963,9 +963,9 @@ function EditorPane() {
         <label id="settings-compileEngine">Default compiler</label>
         <Select
           labelId="settings-compileEngine"
-          value={settings.compileEngine}
+          value={settings.compileDefaults.engine}
           options={COMPILE_ENGINES.map(([value, label]) => [value, value === 'auto' ? 'Auto (recommended)' : label])}
-          onChange={(value) => update({ compileEngine: value as AppSettings['compileEngine'] })}
+          onChange={(value) => update({ compileDefaults: { ...settings.compileDefaults, engine: value as CompileEngine } })}
         />
         <div className="field-hint">
           Auto reads a <code>% !TEX program</code> comment, uses XeLaTeX when the document needs Unicode fonts, and pdfLaTeX otherwise. The compiler can also be changed per session from the Compile button.

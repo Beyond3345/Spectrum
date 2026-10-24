@@ -290,11 +290,44 @@ export interface ProjectStats {
   mathInline: number;
   mathDisplay: number;
   error?: string;
+  /** each \label's number and page, from the document's kept .aux files after its last compile */
+  labels?: Record<string, { number: string; page: string }>;
+  /** when those .aux files were written (ms), null before the first compile */
+  auxAt?: number | null;
+  /** a source file is newer than the kept .aux */
+  stale?: boolean;
 }
 
-export function getProjectStats(id: string, mainFile: string) {
-  const qs = new URLSearchParams({ mainFile }).toString();
+/** doc: the project-relative document; sent as mainFile too, which texcount counts from */
+export function getProjectStats(id: string, doc: string) {
+  const qs = new URLSearchParams({ mainFile: doc, doc }).toString();
   return request<ProjectStats>(`/api/projects/${id}/stats?${qs}`);
+}
+
+export type BibTool = 'auto' | 'bibtex' | 'biber';
+
+/** A project's compile choices; a key that's missing uses the app's default (Settings › Engines › LaTeX). */
+export interface CompileOptions {
+  engine?: CompileEngine;
+  /** seconds after the last edit, 0 = off */
+  autoCompile?: number;
+  haltOnError?: boolean;
+  bibTool?: BibTool;
+  draft?: boolean;
+}
+
+/** .spectrum/settings.json, which travels with the project (1.10.4 ignores it) */
+export interface ProjectSettings {
+  compile?: CompileOptions;
+}
+
+export function getProjectSettings(id: string) {
+  return request<{ settings: ProjectSettings }>(`/api/projects/${id}/settings`);
+}
+
+/** A key set to null is removed, so the app's default applies again. */
+export function updateProjectSettings(id: string, patch: { compile?: { [K in keyof CompileOptions]?: CompileOptions[K] | null } }) {
+  return request<{ settings: ProjectSettings }>(`/api/projects/${id}/settings`, json('PATCH', patch));
 }
 
 // ─── Files ───
@@ -493,11 +526,28 @@ export interface CompileResult {
   linked?: { file: string; ok: boolean }[];
   /** Stop ended it; the last PDF stays */
   stopped?: boolean;
+  /** the checkpoint asked for: saved or not, why it couldn't be, and files it left out (too large or unreadable) */
+  checkpoint?: { saved: boolean; id?: number; error?: string; skipped?: string[] };
 }
 
-/** mainFile: the document to compile, the project's main file or another */
-/** compileId: the editor's name for this compile, so Stop ends this one (even before it has started) */
-export function compileProject(payload: { projectId: string; mainFile: string; engine: CompileEngine; compileId?: string }) {
+/**
+ * mainFile: the document to compile, the project's main file or another. compileId: the editor's name for this
+ * compile, so Stop ends this one (even before it has started). fresh: clear the document's kept build files first.
+ * texFolder: a TeX installation's folder to try first. checkpoint: save one if the compile succeeds and the source
+ * changed since the last.
+ */
+export function compileProject(payload: {
+  projectId: string;
+  mainFile: string;
+  engine: CompileEngine;
+  compileId?: string;
+  haltOnError?: boolean;
+  bibTool?: BibTool;
+  draft?: boolean;
+  fresh?: boolean;
+  texFolder?: string;
+  checkpoint?: boolean;
+}) {
   return request<CompileResult>('/api/compile', json('POST', payload));
 }
 
@@ -534,7 +584,8 @@ export function synctexView(projectId: string, at: { file: string; line: number;
 
 // ─── Version history ───
 
-export type VersionReason = 'manual' | 'before-ai' | 'before-restore' | 'before-transfer';
+/** compile: saved after a successful compile (Settings › Checkpoints), the one kind called automatic */
+export type VersionReason = 'manual' | 'before-ai' | 'before-restore' | 'before-transfer' | 'compile';
 
 export interface VersionMeta {
   id: number;
@@ -601,6 +652,12 @@ export function renameVersion(projectId: string, versionId: number, label: strin
 
 export function deleteVersion(projectId: string, versionId: number) {
   return request<{ ok: boolean }>(`/api/projects/${projectId}/versions/${versionId}`, { method: 'DELETE' });
+}
+
+/** Deletes the automatic (after compile) checkpoints older than this many days; manual and “Before …” ones stay. */
+export function deleteOldCheckpoints(projectId: string, olderThanDays: number) {
+  const qs = new URLSearchParams({ automatic: '1', olderThanDays: String(olderThanDays) }).toString();
+  return request<{ removed: number }>(`/api/projects/${projectId}/versions?${qs}`, { method: 'DELETE' });
 }
 
 // ─── The user's other computers ───
