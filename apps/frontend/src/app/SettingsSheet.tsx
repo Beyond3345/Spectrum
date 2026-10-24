@@ -272,13 +272,16 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     if (check || checkError) return;
-    systemCheck().then(setCheck).catch((err) => setCheckError(err instanceof Error ? err.message : String(err)));
+    systemCheck(settings.texFolder || undefined).then(setCheck).catch((err) => setCheckError(err instanceof Error ? err.message : String(err)));
   }, [check, checkError]);
 
   const recheck = () => {
     setCheck(null);
     setCheckError('');
   };
+
+  // a TeX folder chosen or cleared is looked in at once
+  useEffect(recheck, [settings.texFolder]);
 
   /** name: the spoken name when the visible label repeats across sections, e.g. “Vision model API key” */
   const text = (

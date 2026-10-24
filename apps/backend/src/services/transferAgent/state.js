@@ -10,6 +10,8 @@ export const TransferState = Annotation.Root({
   targetProjectId: Annotation({ reducer: replace }),
   targetMainFile: Annotation({ reducer: replace }),
   engine: Annotation({ reducer: replace, default: () => 'pdflatex' }),
+  // Settings › Engines › LaTeX's TeX folder, which both compiles look in first
+  texFolder: Annotation({ reducer: replace }),
   maxCompileLoops: Annotation({ reducer: replace, default: () => 5 }),
   maxLayoutLoops: Annotation({ reducer: replace, default: () => 3 }),
   layoutCheck: Annotation({ reducer: replace, default: () => false }),

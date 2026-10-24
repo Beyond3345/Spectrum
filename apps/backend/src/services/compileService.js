@@ -100,6 +100,12 @@ function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = f
   }
 }
 
+/** The PATH with a TeX folder first (Settings › Engines › LaTeX), or undefined when it isn't a folder: the PATH as it is. */
+export async function texPath(texFolder) {
+  const folder = typeof texFolder === 'string' && path.isAbsolute(texFolder) && (await fs.stat(texFolder).catch(() => null))?.isDirectory();
+  return folder ? [texFolder, process.env.PATH].join(path.delimiter) : undefined;
+}
+
 /** First match for `name` on PATH (a compile's, with its TeX folder first), or null. */
 export async function findExecutable(name, searchPath = jobs.getStore()?.searchPath ?? process.env.PATH) {
   // Windows tries each extension it can run, in cmd.exe's order; there X_OK only means the file exists
@@ -275,15 +281,13 @@ export async function runCompile({ projectId, mainFile, engine = 'pdflatex', com
     absMain = target;
     mainFile = docPath(projectRoot, target);
   }
-  const folder = typeof texFolder === 'string' && path.isAbsolute(texFolder) && (await fs.stat(texFolder).catch(() => null))?.isDirectory() ? texFolder : null;
-
   // only the editor's compiles can be stopped, each by its own id (another of the project's may be running too); the
   // others (a transfer's) are listed too, so the project's folder isn't moved from under them
   const job = {
     projectId,
     stopped: stoppedEarly.delete(compileId),
     children: new Set(),
-    searchPath: folder ? [folder, process.env.PATH].join(path.delimiter) : undefined
+    searchPath: await texPath(texFolder)
   };
   const key = compileId || Symbol('compile');
   running.set(key, job);

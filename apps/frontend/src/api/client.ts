@@ -1022,6 +1022,8 @@ export interface TransferStartPayload {
   targetTemplateId: string;
   targetMainFile: string;
   engine?: CompileEngine;
+  /** Settings › Engines › LaTeX's TeX folder, which the compiles look in first */
+  texFolder?: string;
   layoutCheck?: boolean;
   llmConfig?: Partial<LLMConfig>;
   visionLlmConfig?: Partial<LLMConfig>;
@@ -1089,6 +1091,7 @@ export interface PdfTransferStartPayload {
   targetTemplateId: string;
   targetMainFile: string;
   engine?: CompileEngine;
+  texFolder?: string;
   layoutCheck?: boolean;
   llmConfig?: Partial<LLMConfig>;
   visionLlmConfig?: Partial<LLMConfig>;
@@ -1124,8 +1127,9 @@ export interface SystemCheck {
   platform: string;
 }
 
-export function systemCheck() {
-  return request<SystemCheck>('/api/system/check');
+/** texFolder: Settings › Engines › LaTeX's TeX folder, looked in first */
+export function systemCheck(texFolder?: string) {
+  return request<SystemCheck>(`/api/system/check${texFolder ? `?${new URLSearchParams({ texFolder })}` : ''}`);
 }
 
 // ─── Cloud locations ───

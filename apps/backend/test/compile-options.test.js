@@ -16,7 +16,10 @@ Object.assign(process.env, {
 });
 const { createProject } = await import('../src/services/projectService.js');
 const { findExecutable, runCompile, stopCompile } = await import('../src/services/compileService.js');
-const { documentLabels } = await import('../src/services/statsService.js');
+const { documentLabels, projectStats } = await import('../src/services/statsService.js');
+const { compile: compileTarget } = await import('../src/services/transferAgent/nodes/compile.js');
+const { registerSystemRoutes } = await import('../src/routes/system.js');
+const { default: Fastify } = await import('fastify');
 const WINDOWS = process.platform === 'win32';
 
 after(() => rmSync(tmp, { recursive: true, force: true }));
@@ -287,6 +290,22 @@ test('a TeX folder comes first on the PATH, and one that isn’t a folder is pas
     const res = await compile(p, { texFolder });
     assert.equal(res.status, 0, res.log);
   }
+});
+
+test('the system check, texcount and a transfer’s compiles look in the TeX folder too', { skip: WINDOWS ? 'shell scripts stand in for TeX' : false }, async () => {
+  const bin = path.join(tmp, 'folder TeX');
+  await fs.mkdir(bin);
+  await fs.writeFile(path.join(bin, 'texcount'), '#!/bin/sh\necho "Words in text: 42"\n', { mode: 0o755 });
+  await fs.writeFile(path.join(bin, 'pdflatex'), '#!/bin/sh\necho "the folder’s TeX ran"\nexit 1\n', { mode: 0o755 });
+  const p = await newProject({ 'main.tex': '\\documentclass{article}\\begin{document}Hi\\end{document}\n' });
+  const app = Fastify();
+  registerSystemRoutes(app);
+  const check = (await app.inject({ url: `/api/system/check?${new URLSearchParams({ texFolder: bin })}` })).json();
+  await app.close();
+  assert.equal(check.tools.texcount, path.join(bin, 'texcount'));
+  assert.equal((await projectStats(p.path, 'main.tex', bin)).wordsInText, 42);
+  const { compileResult } = await compileTarget({ targetProjectId: p.id, targetMainFile: 'main.tex', engine: 'pdflatex', texFolder: bin });
+  assert.match(compileResult.log, /the folder’s TeX ran/);
 });
 
 test('latexmk never reads a project’s own latexmkrc', { skip: needs('latexmk', 'pdflatex') }, async () => {

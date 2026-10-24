@@ -396,7 +396,7 @@ export function registerProjectRoutes(fastify) {
   fastify.get('/api/projects/:id/stats', async (req) => {
     const root = await getProjectRoot(req.params.id);
     const doc = String(req.query?.doc || req.query?.mainFile || '') || (await readMeta(root)).mainFile || 'main.tex';
-    return { ...(await projectStats(root, doc)), ...(await documentLabels(root, doc)) };
+    return { ...(await projectStats(root, doc, req.query?.texFolder)), ...(await documentLabels(root, doc)) };
   });
 
   // Tells the open editor when files appear, go or are renamed outside the app (Finder, another editor, a git

@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { auxStore, findExecutable } from './compileService.js';
+import { auxStore, findExecutable, texPath } from './compileService.js';
 import { cachePath } from './projectService.js';
 import { listFilesRecursive } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
@@ -97,14 +97,15 @@ export function estimateStats(tex) {
   };
 }
 
-export async function projectStats(root, mainFile) {
+/** texFolder: Settings › Engines › LaTeX's TeX folder, where texcount is looked for first. */
+export async function projectStats(root, mainFile, texFolder) {
   try {
     await fs.access(safeJoin(root, mainFile));
   } catch (err) {
     if (err.statusCode) throw err;
     throw Object.assign(new Error(`The main file “${mainFile}” doesn’t exist.`), { statusCode: 404 });
   }
-  const texcount = await findExecutable('texcount');
+  const texcount = await findExecutable('texcount', await texPath(texFolder));
   if (texcount) {
     try {
       // -dir: included files are relative to the main file's folder, as in the compile
