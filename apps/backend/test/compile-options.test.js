@@ -15,7 +15,7 @@ Object.assign(process.env, {
   SPECTRUM_TEMPLATE_SEED_DIR: ''
 });
 const { createProject } = await import('../src/services/projectService.js');
-const { findExecutable, runCompile, stopCompile } = await import('../src/services/compileService.js');
+const { findExecutable, keptFileFailed, runCompile, stopCompile } = await import('../src/services/compileService.js');
 const { documentLabels, projectStats } = await import('../src/services/statsService.js');
 const { compile: compileTarget } = await import('../src/services/transferAgent/nodes/compile.js');
 const { registerSystemRoutes } = await import('../src/routes/system.js');
@@ -141,6 +141,88 @@ test('a kept file TeX can’t read is cleared, and the document compiles again f
   assert.match(cut.log, /compiled again from scratch/);
 });
 
+test('a kept list of any name that TeX can’t read compiles again from scratch, with Stop on first error too', { skip: needs('pdflatex') }, async () => {
+  const p = await newProject({ 'main.tex': '\\documentclass{article}\\makeatletter\\begin{document}\\@starttoc{xyz}Hi\\end{document}\n' });
+  assert.equal((await compile(p)).status, 0);
+  await fs.writeFile(kept(p, 'main.xyz'), '\\bogusmacro\n');
+  for (const haltOnError of [true, false]) {
+    const res = await compile(p, { haltOnError });
+    assert.equal(res.status, 0, res.log);
+    assert.match(res.log, /compiled again from scratch/);
+    await fs.writeFile(kept(p, 'main.xyz'), '\\bogusmacro\n');
+  }
+});
+
+test('a kept file is told by its own name, a Windows drive letter or backslashes and all', () => {
+  const names = ['main.toc', 'chapters/x.aux'];
+  assert.ok(keptFileFailed('C:/Users/me/AppData/Local/Temp/spectrum-build/0b1c/main.toc:3: Undefined control sequence.', names));
+  assert.ok(keptFileFailed('C:\\Users\\me\\AppData\\Local\\Temp\\spectrum-build\\0b1c\\chapters\\x.aux:3: Undefined control sequence.', names));
+  assert.ok(keptFileFailed("./main.tex:4: Package biblatex Error: File 'main.bbl' not created by biblatex.", ['main.bbl']));
+  assert.ok(!keptFileFailed('(./main.out)\n./main.tex:5: Undefined control sequence.', ['main.out']));
+  assert.ok(keptFileFailed('(./main.aux)\n./main.tex:1: File ended while scanning use of \\@newl@bel.', ['main.aux']));
+});
+
+test('a citation only a kept list still had is gone from the bibliography on the same compile', { skip: needs('pdflatex', 'bibtex') }, async () => {
+  const doc = (caption) => `\\documentclass{article}\\begin{document}\\listoffigures\\begin{figure}\\caption{${caption}}\\end{figure}See \\cite{Knuth1984}.\\bibliographystyle{plain}\\bibliography{refs}\\end{document}\n`;
+  const p = await newProject({ 'main.tex': doc('Plan \\cite{Lamport1994}'), 'refs.bib': `${refs}@book{Lamport1994, author = {Lamport, Leslie}, title = {LaTeX}, publisher = {Addison-Wesley}, year = {1994}}\n` });
+  assert.equal((await compile(p)).status, 0);
+  assert.match(await fs.readFile(kept(p, 'main.bbl'), 'utf8'), /Lamport/);
+  await fs.writeFile(path.join(p.path, 'main.tex'), doc('Plan'));
+  const res = await compile(p);
+  assert.equal(res.status, 0, res.log);
+  assert.doesNotMatch(await fs.readFile(kept(p, 'main.bbl'), 'utf8'), /Lamport/);
+});
+
+test('a kept file that breaks a later pass compiles again from scratch: plain to natbib', { skip: needs('pdflatex', 'bibtex') }, async () => {
+  const p = await newProject({ 'main.tex': paper(), 'refs.bib': refs });
+  const natbib = paper().replace('\\begin{document}', '\\usepackage{natbib}\\begin{document}').replace('{plain}', '{plainnat}').replace('\\cite{', '\\citet{');
+  for (const haltOnError of [true, false]) {
+    await fs.writeFile(path.join(p.path, 'main.tex'), paper());
+    assert.equal((await compile(p)).status, 0);
+    await fs.writeFile(path.join(p.path, 'main.tex'), natbib);
+    const res = await compile(p, { haltOnError });
+    assert.equal(res.status, 0, res.log);
+    assert.match(res.log, /compiled again from scratch/);
+    assert.doesNotMatch(res.log.slice(res.log.indexOf('from scratch')), /natbib Error/);
+  }
+});
+
+test('BibTeX to biblatex compiles again from scratch, with Stop on first error too', { skip: needs('pdflatex', 'bibtex', 'biber') }, async () => {
+  const p = await newProject({ 'main.tex': paper(), 'refs.bib': refs });
+  const biblatex = '\\documentclass{article}\\usepackage{biblatex}\\addbibresource{refs.bib}\n\\begin{document}\n\\cite{Knuth1984}\\printbibliography\n\\end{document}\n';
+  for (const haltOnError of [true, false]) {
+    await fs.writeFile(path.join(p.path, 'main.tex'), paper());
+    assert.equal((await compile(p)).status, 0);
+    await fs.writeFile(path.join(p.path, 'main.tex'), biblatex);
+    const res = await compile(p, { haltOnError });
+    assert.ok(res.ok, res.error || res.log);
+    assert.equal(res.status, 0, res.log);
+    assert.doesNotMatch(res.log, /biblatex Error/);
+  }
+});
+
+test('what filecontents writes is never kept, so its new text and a project file of the same name are read', { skip: needs('pdflatex', 'bibtex') }, async () => {
+  const doc = (value) => `\\documentclass{article}\n${value ? `\\begin{filecontents*}{data.dat}\n\\def\\myvalue{${value}}\n\\end{filecontents*}\n` : ''}\\begin{document}\\input{data.dat}\\typeout{VALUE\\myvalue}\\end{document}\n`;
+  const p = await newProject({ 'main.tex': doc('111') });
+  assert.match(lastPass((await compile(p)).log), /VALUE111/);
+  await fs.writeFile(path.join(p.path, 'main.tex'), doc('222'));
+  assert.match(lastPass((await compile(p)).log), /VALUE222/);
+  assert.match(lastPass((await compile(p)).log), /VALUE222/);
+  await fs.writeFile(path.join(p.path, 'main.tex'), doc(''));
+  await fs.writeFile(path.join(p.path, 'data.dat'), '\\def\\myvalue{999}\n');
+  assert.match(lastPass((await compile(p)).log), /VALUE999/);
+  assert.ok(!existsSync(kept(p, 'data.dat')));
+  // a bibliography the document writes for itself
+  const bib = (title) => `\\documentclass{article}\n\\begin{filecontents*}{\\jobname.bib}\n@book{k, author = {Knuth, Donald}, title = {${title}}, publisher = {AW}, year = {1984}}\n\\end{filecontents*}\n\\begin{document}\\cite{k}\\bibliographystyle{plain}\\bibliography{\\jobname}\\end{document}\n`;
+  await fs.writeFile(path.join(p.path, 'main.tex'), bib('Alpha'));
+  await fs.rm(path.join(p.path, 'data.dat'));
+  assert.equal((await compile(p)).status, 0);
+  await fs.writeFile(path.join(p.path, 'main.tex'), bib('Beta'));
+  assert.equal((await compile(p)).status, 0);
+  assert.match(await fs.readFile(kept(p, 'main.bbl'), 'utf8'), /Beta/);
+  assert.ok(!existsSync(kept(p, 'main.bib')));
+});
+
 test('an ordinary error just after hyperref reads its kept file compiles once', { skip: needs('pdflatex') }, async () => {
   const doc = (body) => `\\documentclass{article}\\usepackage{hyperref}\n\\begin{document}\n${body}\n\\section{S}\\label{s} See \\ref{s}.\n\\end{document}\n`;
   const p = await newProject({ 'main.tex': doc('Text.') });
@@ -212,6 +294,32 @@ test('makeindex and makeglossaries run when their files appear, and not again wh
   const again = await compile(p);
   assert.equal(passes(again.log), 1);
   assert.doesNotMatch(again.log, /This is makeindex|makeglossaries/);
+});
+
+test('after a draft the next full compile makes the index again', { skip: needs('pdflatex', 'makeindex') }, async () => {
+  const doc = (extra) => `\\documentclass{article}\\usepackage{makeidx}\\makeindex\\begin{document}Alpha\\index{alpha} ${extra}\\printindex\\end{document}\n`;
+  const p = await newProject({ 'main.tex': doc('') });
+  assert.equal((await compile(p)).status, 0);
+  await fs.writeFile(path.join(p.path, 'main.tex'), doc('Beta\\index{beta}'));
+  assert.ok((await compile(p, { draft: true })).ok);
+  assert.equal((await compile(p)).status, 0);
+  assert.match(await fs.readFile(kept(p, 'main.ind'), 'utf8'), /beta/);
+  assert.equal(passes((await compile(p)).log), 1);
+});
+
+test('a new glossary sort order runs makeglossaries again', { skip: needs('pdflatex', 'makeglossaries') }, async () => {
+  const doc = (options) => `\\documentclass{article}\\usepackage[${options}]{glossaries}\\makeglossaries\\newglossaryentry{sealion}{name={sea lion},description={a}}\\newglossaryentry{seal}{name={seal},description={b}}\\begin{document}\\gls{sealion} \\gls{seal}\\printglossaries\\end{document}\n`;
+  const order = async () => {
+    const gls = await fs.readFile(kept(p, 'main.gls'), 'utf8');
+    return gls.indexOf('glossentry{seal}') < gls.indexOf('glossentry{sealion}') ? 'seal first' : 'sea lion first';
+  };
+  const p = await newProject({ 'main.tex': doc('') });
+  assert.equal((await compile(p)).status, 0);
+  assert.equal(await order(), 'sea lion first');
+  await fs.writeFile(path.join(p.path, 'main.tex'), doc('order=letter'));
+  assert.equal((await compile(p)).status, 0);
+  assert.equal(await order(), 'seal first');
+  assert.equal(passes((await compile(p)).log), 1);
 });
 
 test('the acronyms’ list is kept, and a new acronym runs makeglossaries', { skip: needs('pdflatex', 'makeglossaries') }, async () => {

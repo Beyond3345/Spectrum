@@ -4,6 +4,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { promises as fs, existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -163,6 +164,17 @@ test('renaming a document or its folder takes its PDF notes and the to-dos linke
     { doc: 'paper.tex', page: 1 },
     { file: 'chapters-old/one.tex', line: 1 }
   ]);
+  // a note that can't be rewritten is passed by, the to-dos still move, and the rename says how many stayed
+  if (process.platform === 'win32') return; // no read-only folders
+  const notes = path.join(p.path, '.spectrum', 'notes');
+  await fs.chmod(notes, 0o555);
+  try {
+    assert.deepEqual((await api(`${url}/rename`, 'POST', { from: 'paper.tex', to: 'thesis.tex' })).json, { ok: true, unmoved: 1 });
+  } finally {
+    await fs.chmod(notes, 0o755);
+  }
+  assert.deepEqual((await api(`${url}/notes?doc=paper.tex`)).json.notes.map((n) => n.id), ['n1']);
+  assert.equal((await api(`${url}/todos`)).json.todos[1].link.doc, 'thesis.tex');
 });
 
 test('labels are read from the kept .aux files, with when they were written and whether the source is newer', async () => {
@@ -315,9 +327,48 @@ test('a compile’s checkpoint taking another’s place removes the stored files
   await edit('two');
   await createCompileCheckpoint(p.path);
   assert.deepEqual([stored('saved by hand'), stored('one'), stored('two')], [true, false, true]);
-  // one the hand-saved checkpoint still uses stays
+  // back to an older checkpoint's files, as a restore 1.10.4 made leaves them, which saves nothing first when nothing
+  // changed since this compile's checkpoint (to it a manual one): that one, the only copy of 'two', is kept
   await edit('saved by hand');
   await createCompileCheckpoint(p.path);
-  assert.deepEqual([stored('saved by hand'), stored('two')], [true, false]);
+  assert.deepEqual([stored('saved by hand'), stored('two')], [true, true]);
+  assert.equal((await listVersions(p.path)).length, 3);
+  // one the hand-saved checkpoint still uses stays
+  await fs.writeFile(path.join(p.path, 'extra.txt'), 'x');
+  await createCompileCheckpoint(p.path);
+  await edit('three');
+  await createCompileCheckpoint(p.path);
+  assert.deepEqual([stored('saved by hand'), stored('two'), stored('x')], [true, true, true]);
+  assert.equal((await listVersions(p.path)).length, 3);
+});
+
+test('a compile’s checkpoint is saved even when what it replaces can’t all be tidied away', { skip: process.platform === 'win32' ? 'POSIX permissions and macOS’s locked flag' : false }, async () => {
+  const p = await newProject('Untidy');
+  const edit = (text) => fs.writeFile(path.join(p.path, 'main.tex'), text);
+  const shard = (text) => path.join(p.path, '.spectrum', 'history', 'objects', crypto.createHash('sha256').update(text).digest('hex').slice(0, 2));
+  // a stored file that can't be removed is left, used by nothing
+  await edit('one');
+  assert.equal((await createCompileCheckpoint(p.path)).saved, true);
+  await fs.chmod(shard('one'), 0o555);
+  try {
+    await edit('two');
+    const res = await createCompileCheckpoint(p.path);
+    assert.equal(res.saved, true, res.error);
+  } finally {
+    await fs.chmod(shard('one'), 0o755);
+  }
+  const [two, ...rest] = await listVersions(p.path);
+  assert.equal(rest.length, 0);
+  // a manifest that can't be removed (macOS's locked flag) stays an ordinary compile checkpoint, its stored files too
+  if (process.platform !== 'darwin') return;
+  const manifest = path.join(p.path, '.spectrum', 'history', 'manifests', `${two.id}.json`);
+  execFileSync('chflags', ['uchg', manifest]);
+  try {
+    await edit('three');
+    assert.equal((await createCompileCheckpoint(p.path)).saved, true);
+  } finally {
+    execFileSync('chflags', ['nouchg', manifest]);
+  }
   assert.equal((await listVersions(p.path)).length, 2);
+  assert.equal((await readVersionFile(p.path, two.id, 'main.tex')).content, 'two');
 });

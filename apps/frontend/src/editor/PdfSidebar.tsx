@@ -52,6 +52,8 @@ export default function PdfSidebar({
   const [headings, setHeadings] = useState<Heading[] | null>(null);
   // hyperref loaded, but a one-pass compile (draft, from scratch) made no bookmarks yet
   const [hyperref, setHyperref] = useState(false);
+  // the first page's shape, for the thumbnails not drawn yet: kept here, as each compile's PDF lays out new ones
+  const [ratio, setRatio] = useState(Math.SQRT2);
   const fromSource = tab === 'contents' && !!loadedUrl && !outline.length;
 
   useEffect(() => {
@@ -85,7 +87,7 @@ export default function PdfSidebar({
       />
       <div className="pdf-sidebar-list" ref={listRef}>
         {tab === 'pages' ? (
-          loadedUrl && <Thumbnails key={loadedUrl} pdf={pdf} pages={pages} page={page} root={listRef} />
+          loadedUrl && <Thumbnails key={loadedUrl} pdf={pdf} pages={pages} page={page} root={listRef} ratio={ratio} onRatio={setRatio} />
         ) : !fromSource ? (
           outline.map((item, i) => (
             <button
@@ -132,10 +134,22 @@ export default function PdfSidebar({
 }
 
 /** Each page as a thumbnail, drawn while near the view and freed once far from it. */
-function Thumbnails({ pdf, pages, page, root }: { pdf: RefObject<PdfHandle>; pages: number; page: number; root: RefObject<HTMLDivElement> }) {
-  // the first page's shape, for the pages not drawn yet
-  const [ratio, setRatio] = useState(Math.SQRT2);
-
+function Thumbnails({
+  pdf,
+  pages,
+  page,
+  root,
+  ratio,
+  onRatio
+}: {
+  pdf: RefObject<PdfHandle>;
+  pages: number;
+  page: number;
+  root: RefObject<HTMLDivElement>;
+  /** the first page's height over its width, for the pages not drawn yet */
+  ratio: number;
+  onRatio(ratio: number): void;
+}) {
   useEffect(() => {
     const list = root.current;
     if (!list) return;
@@ -151,15 +165,21 @@ function Thumbnails({ pdf, pages, page, root }: { pdf: RefObject<PdfHandle>; pag
             delete box.dataset.drawn;
           } else if (!box.dataset.drawn) {
             box.dataset.drawn = 'yes';
-            pdf.current?.renderPage(Number(box.dataset.page), box.clientWidth, Infinity).then((canvas) => {
-              // scrolled away meanwhile
-              if (!canvas || !box.dataset.drawn) return;
-              box.replaceChildren(canvas);
-              // drawn at the sidebar's width then, scaled with it as the window or the split narrows
-              canvas.style.width = '100%';
-              canvas.style.height = 'auto';
-              if (box.dataset.page === '1') setRatio(canvas.height / canvas.width);
-            });
+            pdf.current
+              ?.renderPage(Number(box.dataset.page), box.clientWidth, Infinity)
+              .then((canvas) => {
+                // scrolled away meanwhile
+                if (!canvas || !box.dataset.drawn) return;
+                box.replaceChildren(canvas);
+                // drawn at the sidebar's width then, scaled with it as the window or the split narrows
+                canvas.style.width = '100%';
+                canvas.style.height = 'auto';
+                if (box.dataset.page === '1') onRatio(canvas.height / canvas.width);
+              })
+              // a new PDF cancels what the old one was drawing
+              .catch(() => {
+                delete box.dataset.drawn;
+              });
           }
         }
       },

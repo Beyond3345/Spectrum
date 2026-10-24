@@ -26,7 +26,7 @@ import { mergeChat } from '../utils/chatMerge.js';
 import { hashFile } from '../utils/projectCopy.js';
 import { appPath, findSyncedProjects, getProjectRoot, httpError, serialiser, updateMeta } from './projectService.js';
 import { locationLabel, offlineMessage, otherComputersProjects, relFrom, sameFolder, within } from './syncService.js';
-import { createVersionUnlocked, isText, listVersions } from './versionService.js';
+import { createVersion, isText, listVersions } from './versionService.js';
 import { moveToBin } from '../routes/projects.js';
 
 const MIRROR_DIR = path.join(DATA_DIR, 'mirror');
@@ -401,12 +401,17 @@ async function mirror(id, record, label, force) {
   const tag = (it) => `${it.action} ${it.key}`;
   const approved = new Set((statuses.get(id)?.deleting || []).filter((d) => force.includes(d)));
   // Delete automatic checkpoints, on either computer, isn't counted: an unnamed compile checkpoint's manifest, as the
-  // side that still has it says
+  // side that still has it says. Only while every checkpoint going that way is one: with a named or manual one among
+  // them (the whole history gone from a side) they all count
   const automatic = new Set();
   for (const it of items) {
     if (!MANIFEST.test(it.key) || !['deleteLocal', 'deleteCloud'].includes(it.action)) continue;
     const data = await readJson(it.action === 'deleteLocal' ? join(localRoot, it.l.rel) : join(cloudRoot, it.c.rel)).catch(() => null);
     if (data?.reason === 'compile' && !data.label) automatic.add(it.key);
+  }
+  for (const action of ['deleteLocal', 'deleteCloud']) {
+    const going = items.filter((it) => it.action === action && MANIFEST.test(it.key));
+    if (going.some((it) => !automatic.has(it.key))) for (const it of going) automatic.delete(it.key);
   }
   const count = (action, user) => items.filter((it) => it.action === action && !approved.has(tag(it)) && !automatic.has(it.key) && !(user && inApp(it.key))).length;
   const users = (side) => [...side.files.keys()].filter((key) => !inApp(key)).length;
@@ -643,7 +648,8 @@ async function keepBefore(ctx, replaced, items) {
   if (!always && !(due && replaced.some((it) => files[it.l.rel] !== it.l.hash))) return files;
   // the computer it came from, when only one other mirrors the project
   const others = [...new Set((await otherComputersProjects().catch(() => [])).filter((p) => p.id === ctx.id).map((p) => p.machineName))];
-  const { version } = await createVersionUnlocked(ctx.localRoot, { label: `Before sync from ${others.length === 1 ? others[0] : ctx.label}` });
+  // in the project's history lock, which only this project's checkpoints hold
+  const { version } = await createVersion(ctx.localRoot, { label: `Before sync from ${others.length === 1 ? others[0] : ctx.label}` });
   versionedAt.set(ctx.id, Date.now());
   // the latest, when nothing changed since, which this pass may be deleting: then it holds nothing
   const gone = items.some((it) => it.action === 'deleteLocal' && it.key === keyOf(`.spectrum/history/manifests/${version.id}.json`));

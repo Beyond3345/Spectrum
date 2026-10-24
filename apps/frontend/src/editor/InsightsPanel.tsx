@@ -5,7 +5,7 @@ import type { ProjectStats } from '../api/client';
 import Icon from '../app/Icon';
 import Tabs from '../app/Tabs';
 import { useEditor } from './EditorContext';
-import { headingNumbers, metadataText, scanInsights, withNumbers } from './insights';
+import { headingNumbers, inReading, metadataText, scanInsights, withNumbers } from './insights';
 import type { InsightRow, Insights } from './insights';
 import { scanProject } from './latexEnvs';
 import { scanTodos } from './todos';
@@ -53,7 +53,7 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
   // the files that aren't open, from disk once per opening, Refresh, compile or file switch (the open one is live)
   const disk = useRef(new Map<string, string>());
 
-  useEffect(() => disk.current.clear(), [active, asked, api.compileLog, api.activePath]);
+  useEffect(() => disk.current.clear(), [active, asked, api.projectId, api.compileLog, api.activePath]);
 
   useEffect(() => {
     if (!active || !doc) return;
@@ -67,13 +67,16 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
     const timer = window.setTimeout(async () => {
       const { scans } = await scanProject(doc, new Set(api.texFiles), read, false);
       const files = await Promise.all(scans.map(async (s) => ({ path: s.file!, text: await read(s.file!).catch(() => '') })));
-      if (live) setScan({ ...scanInsights(files, doc), todos: scanTodos(files) });
+      // in reading order, as the other lists are
+      const todos = scanTodos(files);
+      inReading(doc, files, todos);
+      if (live) setScan({ ...scanInsights(files, doc), todos });
     }, 300);
     return () => {
       live = false;
       window.clearTimeout(timer);
     };
-  }, [active, doc, asked, api.editorValue, api.texFiles]);
+  }, [active, doc, asked, api.projectId, api.activePath, api.compileLog, api.editorValue, api.texFiles]);
 
   // word counts, numbers and pages: again after each compile
   useEffect(() => {
@@ -93,7 +96,7 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
     return () => {
       live = false;
     };
-  }, [active, doc, asked, api.compileLog]);
+  }, [active, doc, asked, api.projectId, api.compileLog, api.settings.texFolder]);
 
   const labels = stats?.labels ?? {};
   // a heading without a \label of its own gets its number and page from the contents' entries

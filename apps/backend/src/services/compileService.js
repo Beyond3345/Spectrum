@@ -39,6 +39,9 @@ export const auxStore = (cache, doc) => path.join(cache, 'aux-files', doc);
 // but the PDF, SyncTeX and the logs, as packages keep lists of their own (listings' .lol, algorithm's .loa, the
 // acronyms' .acn); Biber's log has the time in it, so every compile would look changed
 const keptFile = (rel) => !/\.(?:pdf|log|blg|ilg|glg|synctex\.gz)$/i.test(rel);
+// what filecontents wrote, as the last pass's log names it: kept, TeX would find it before the source's new text, and
+// before a project file of the same name ("Writing file `./data.dat'", "File `data.dat' already exists on the system")
+const FILECONTENTS = /(?:Writing(?: or overwriting)? file|File) `(?:\.\/)?([^']+)'(?:\.| already exists)/g;
 const keptStore = (cache, doc, engine) => path.join(cache, 'build-files', doc, engine);
 // written last, so a store a crash left half copied isn't read
 const KEPT_MARKER = '.complete';
@@ -470,21 +473,29 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
     pass = await runSpawn(cmd, args, mainDir, pushLog, texEnv);
     let log = await passLog();
     const carryOn = () => !pass.timedOut && !stopped() && !(options.haltOnError && pass.code !== 0);
-    retry = kept && pass.code !== 0 && !pass.timedOut && !stopped() && keptFileFailed(log);
+    const keptFailed = () => kept && pass.code !== 0 && !pass.timedOut && !stopped() && keptFileFailed(log, kept);
+    retry = keptFailed();
 
     if (multiPass && !options.draft && !retry && carryOn()) {
+      // what BibTeX reads, so a citation only a kept list put there (a caption's, from the .lof) goes again
+      const cites = async () => (await auxWithInputs(outDir, `${base}.aux`)).match(/^\\(?:citation|bibdata|bibstyle)\{.*$/gm)?.join('\n') ?? '';
+      let cited = await cites();
       bibliographyStatus = await runBibliography(outDir, base, tex, options.bibTool, texEnv, pushLog);
       // Pass 2 + 3: resolve citations and cross-references, while the last pass asks for another or changed what
       // TeX reads back
       for (let n = 2; n <= 3 && carryOn(); n += 1) {
+        if (n > 2 && cited !== (cited = await cites())) bibliographyStatus = await runBibliography(outDir, base, tex, options.bibTool, texEnv, pushLog);
         let now = await keptFiles(outDir);
         for (const { input, output, cmd: indexer, fallback, args: indexArgs } of INDEXERS) {
           // every glossary's files (the acronyms' too), or the main glossary's when the .aux names none
           const named = input === 'glo' ? [...(now.get(`${base}.aux`)?.toString() ?? '').matchAll(NEW_GLOSSARY)].map(([, out, from]) => [from, out]) : [];
           const changed = (ext) => !before.get(`${base}.${ext}`)?.equals(now.get(`${base}.${ext}`));
+          // the glossaries' sort order and style, which change the .gls but not the .glo
+          const setup = (files) => (input === 'glo' && files.get(`${base}.aux`)?.toString().match(/^\\@(?:newglossary|glsorder|istfilename|xdylanguage|gls@codepage)\{.*$/gm)?.join('\n')) || '';
+          const redo = setup(before) !== setup(now) || (input === 'glo' && changed('ist'));
           // an empty one may make nothing (makeglossaries-lite's main glossary with no entries)
           const due = (named.length ? named : [[input, output]]).some(([from, out]) => now.get(`${base}.${from}`)
-            && (changed(from) || (!now.has(`${base}.${out}`) && now.get(`${base}.${from}`).length > 0)));
+            && (changed(from) || redo || (!now.has(`${base}.${out}`) && now.get(`${base}.${from}`).length > 0)));
           if (!due) continue;
           let ran = null;
           for (const tool of [indexer, fallback].filter(Boolean)) {
@@ -500,6 +511,9 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
         before = now;
         pass = await runSpawn(cmd, args, mainDir, pushLog, texEnv);
         log = await passLog();
+        // a kept file can break a later pass too: natbib's on the .aux pass 1 wrote from a kept plain .bbl
+        retry = keptFailed();
+        if (retry) break;
       }
     }
   } catch (err) {
@@ -551,8 +565,9 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
       log += `\n[spectrum warning] ${path.basename(absPdf)} is open in another program, so the copy next to the source wasn’t updated.\n`;
     });
     await keepSynctex(projectRoot, doc, path.join(outDir, `${base}.synctex.gz`), mainDir);
-    // only a build without errors is read back; after one with errors the next compile starts from nothing
-    if (multiPass) await (code === 0 ? keepBuild(outDir, store, others) : fs.rm(store, { recursive: true, force: true })).catch(() => {});
+    // only a build without errors is read back; after one with errors the next compile starts from nothing. A draft
+    // leaves the last full compile's: its .idx kept beside the old .ind would keep makeindex from running again
+    if (multiPass && !options.draft) await (code === 0 ? keepBuild(outDir, store, others, await passLog()) : fs.rm(store, { recursive: true, force: true })).catch(() => {});
     await keepAux(outDir, auxStore(cache, doc), others);
   } finally {
     await cleanBuild(buildRoot, outDir);
@@ -618,31 +633,35 @@ async function keptFiles(outDir) {
 
 const sameFiles = (a, b) => a.size === b.size && [...a].every(([rel, bytes]) => b.get(rel)?.equals(bytes));
 
-const KEPT_NAME = /\.(?:aux|bbl|toc|lof|lot|out|ind|gls|nav|snm)\b/i;
 /**
- * An error in a kept file: one that names it (with -file-line-error), or a file cut short ending in the middle of an
- * argument just after TeX opened it, which TeX puts down to the main file ("./main.tex:1: File ended while scanning
- * use of \@newl@bel" after "(./main.aux)"). An ordinary error just after hyperref opens main.out isn't one.
+ * An error in one of the kept files `names`: one that names it (with -file-line-error, at its path in the output
+ * folder, a drive letter's colon and all, or in quotes, as biblatex's "File 'main.bbl' not created by biblatex"), or a
+ * file cut short ending in the middle of an argument just after TeX opened it, which TeX puts down to the main file
+ * ("./main.tex:1: File ended while scanning use of \@newl@bel" after "(./main.aux)"). An ordinary error just after
+ * hyperref opens main.out isn't one.
  */
-function keptFileFailed(log) {
-  const lines = log.split('\n');
-  return lines.some((line, i) => /^[^:\n]*\.(?:aux|bbl|toc|lof|lot|out|ind|gls|nav|snm):\d+: /i.test(line)
-    || (/File ended while scanning/.test(line) && lines.slice(Math.max(0, i - 3), i + 1).some((l) => KEPT_NAME.test(l))));
+export function keptFileFailed(log, names) {
+  const lines = log.replace(/\\/g, '/').split('\n');
+  const at = (l) => names.some((rel) => l.includes(`/${rel}:`) || l.includes(`'${rel}'`));
+  return lines.some((line, i) => (/:\d+: /.test(line) && at(line))
+    || (/File ended while scanning/.test(line) && lines.slice(Math.max(0, i - 3), i + 1).some((l) => names.some((rel) => l.includes(rel)))));
 }
 
-/** Copy the document's kept build files into outDir: false when there are none from a compile that succeeded. */
+/** Copy the document's kept build files into outDir: their names, or null when there are none from a compile that succeeded. */
 async function copyKept(store, outDir) {
-  if (!(await exists(path.join(store, KEPT_MARKER)))) return false;
+  if (!(await exists(path.join(store, KEPT_MARKER)))) return null;
+  const names = [];
   try {
     for (const { path: rel, type } of await listFilesRecursive(store)) {
       if (type !== 'file' || rel === KEPT_MARKER) continue;
       await ensureDir(path.dirname(path.join(outDir, rel)));
       await fs.copyFile(path.join(store, rel), path.join(outDir, rel));
+      names.push(slashed(rel));
     }
-    return true;
   } catch {
-    return false; // the compile still goes ahead, from what was copied
+    // the compile still goes ahead, from what was copied
   }
+  return names;
 }
 
 /**
@@ -650,11 +669,12 @@ async function copyKept(store, outDir) {
  * ponytail: two compiles of one document finishing at once can mix their files; the next compile's reruns, or its
  * second go from scratch, put that right. A lock per store if it ever shows
  */
-async function keepBuild(outDir, store, others) {
+async function keepBuild(outDir, store, others, log) {
+  const written = new Set([...log.matchAll(FILECONTENTS)].map(([, name]) => name));
   await fs.rm(store, { recursive: true, force: true });
   await ensureDir(store);
   for (const { path: rel, type } of await listFilesRecursive(outDir)) {
-    if (type !== 'file' || !keptFile(rel)) continue;
+    if (type !== 'file' || !keptFile(rel) || written.has(slashed(rel))) continue;
     if (others.has(rel) && others.get(rel) === (await fs.stat(path.join(outDir, rel))).mtimeMs) continue;
     await ensureDir(path.dirname(path.join(store, rel)));
     await fs.copyFile(path.join(outDir, rel), path.join(store, rel));

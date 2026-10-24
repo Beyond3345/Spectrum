@@ -681,6 +681,72 @@ test('Delete automatic checkpoints doesn’t trip the brake on either computer, 
   assert.equal(existsSync(manifest(p.root, 29)), false);
 });
 
+test('a whole history gone from one side trips the brake, however many compile checkpoints are in it', async () => {
+  const files = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`ch${i}.tex`, `chapter ${i}\n`]));
+  const p = await project('Whole history', files);
+  const manifest = (root, i) => path.join(root, '.spectrum', 'history', 'manifests', `${2000 + i}.json`);
+  for (let i = 0; i < 56; i++) {
+    const named = i < 6;
+    await write(manifest(p.root, i), JSON.stringify({ files: {}, createdAt: new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString(), label: named ? `Draft ${i}` : '', reason: named ? 'manual' : 'compile' }));
+  }
+  synced(await syncTo(p));
+  await fs.rm(path.join(p.cloud, '.spectrum', 'history', 'manifests'), { recursive: true });
+  const status = await mirror.syncProject(p.id);
+  assert.equal(status.state, 'attention');
+  assert.match(status.message, /would delete 56 files on this computer/);
+  assert.equal(readdirSync(path.join(p.root, '.spectrum', 'history', 'manifests')).length, 56);
+});
+
+test('a "Before sync" checkpoint saved while a compile’s is being saved is kept', async () => {
+  const p = await project('Racing', { 'main.tex': 'one\n' });
+  synced(await syncTo(p));
+  assert.equal((await versions.createCompileCheckpoint(p.root)).saved, true);
+  // the other computer's text comes in, and a compile's checkpoint reads main.tex only after the pass has written it
+  // if the pass doesn't wait for it
+  await write(path.join(p.cloud, 'main.tex'), 'two\n');
+  const realRead = fs.readFile;
+  let held = false;
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  fs.readFile = async function (file, ...rest) {
+    if (!held && file === path.join(p.root, 'main.tex')) {
+      held = true;
+      await gate;
+    }
+    return realRead.call(this, file, ...rest);
+  };
+  try {
+    const compile = versions.createCompileCheckpoint(p.root);
+    while (!held) await new Promise((resolve) => setTimeout(resolve, 5));
+    const pass = mirror.syncProject(p.id);
+    await Promise.race([pass, new Promise((resolve) => setTimeout(resolve, 300))]);
+    release();
+    await compile;
+    synced(await pass);
+  } finally {
+    fs.readFile = realRead;
+  }
+  assert.equal(read(path.join(p.root, 'main.tex')), 'two\n');
+  const before = (await versions.listVersions(p.root)).find((v) => v.label === `Before sync from ${LABEL}`);
+  assert.ok(before);
+  assert.equal((await versions.readVersionFile(p.root, before.id, 'main.tex')).content, 'one\n');
+});
+
+test('PDF notes and to-dos go across, so a rename on the other computer takes them along here', async () => {
+  const note = (doc) => JSON.stringify({ id: 'n1', doc, page: 1, x: 1, y: 1, text: 'Note', createdAt: '2026-10-24T01:00:00.000Z', updatedAt: '2026-10-24T01:00:00.000Z' });
+  const p = await project('Notes', { 'main.tex': 'main\n', '.spectrum/notes/n1.json': note('main.tex'), '.spectrum/todos/t1.json': '{"id":"t1"}' });
+  synced(await syncTo(p));
+  assert.ok(existsSync(path.join(p.cloud, '.spectrum', 'todos', 't1.json')));
+  // the other computer renames the document, and its note follows
+  await fs.rename(path.join(p.cloud, 'main.tex'), path.join(p.cloud, 'paper.tex'));
+  await write(path.join(p.cloud, '.spectrum', 'notes', 'n1.json'), note('paper.tex'));
+  synced(await mirror.syncProject(p.id));
+  assert.deepEqual(userFiles(p.root), ['paper.tex']);
+  assert.equal(json(path.join(p.root, '.spectrum', 'notes', 'n1.json')).doc, 'paper.tex');
+});
+
 test('a name changed only in letter case is renamed on the other side, both ways', async () => {
   const p = await project('Case', { 'Intro.tex': 'intro\n', 'Figs/a.png': 'a' });
   synced(await syncTo(p));

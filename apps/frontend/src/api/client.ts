@@ -374,8 +374,9 @@ export function createFolder(id: string, folderPath: string) {
   return request<{ ok: boolean }>(`/api/projects/${id}/folder`, json('POST', { path: folderPath }));
 }
 
+/** unmoved: how many PDF notes and to-dos couldn't follow the file */
 export function renamePath(id: string, from: string, to: string) {
-  return request<{ ok: boolean }>(`/api/projects/${id}/rename`, json('POST', { from, to }));
+  return request<{ ok: boolean; unmoved?: number }>(`/api/projects/${id}/rename`, json('POST', { from, to }));
 }
 
 export function deleteFile(id: string, filePath: string) {

@@ -41,12 +41,16 @@ const objectPath = (root, sha) => historyPath(root, 'objects', sha.slice(0, 2), 
 const manifestPath = (root, id) => historyPath(root, 'manifests', `${id}.json`);
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 
-// ponytail: one lock for every project's history; per-project locks if it ever matters
-const locked = serialiser();
+// one lock per project's history, which every checkpoint takes, the mirror's Before sync too: a compile's can't then
+// take the place of one saved meanwhile, nor remove a stored file it uses
+const locks = new Map();
+const lockFor = (root) => {
+  const key = path.resolve(root);
+  if (!locks.has(key)) locks.set(key, serialiser());
+  return locks.get(key);
+};
 // stored files this run of the app wrote, which a compile's checkpoint taking another's place may remove again
 const written = new Set();
-// checkpoints being saved now, the lock's and the mirror's
-let saving = 0;
 
 async function readIndex(root) {
   try {
@@ -279,7 +283,7 @@ export async function listVersions(root) {
   // arrives before the manifest's deletion; the entry then lists a version that won't open (its contents are never
   // at risk). Repair only ids at or above index.json's nextId if that ever matters
   if (unindexed) {
-    await locked(async () => {
+    await lockFor(root)(async () => {
       const again = await readVersions(root);
       if (again.unindexed) await writeIndex(root, again.versions);
     }).catch(() => {}); // listing still works where index.json can't be written
@@ -296,20 +300,7 @@ async function newId(root, versions) {
   return id;
 }
 
-/**
- * createVersion without the history lock, which is one for every project: for restoreVersion, which holds it, and
- * the mirror, whose one pass at a time mustn't wait behind another project's history. skipped: what it couldn't
- * capture, unreadable or over 50 MB.
- */
-export async function createVersionUnlocked(root, options) {
-  saving += 1;
-  try {
-    return await saveVersion(root, options);
-  } finally {
-    saving -= 1;
-  }
-}
-
+/** createVersion inside the project's history lock (restoreVersion's). skipped: what it couldn't capture, unreadable or over 50 MB. */
 async function saveVersion(root, { label = '', reason = 'manual' } = {}) {
   const { versions, partial } = await readVersions(root);
   const latest = versions.at(-1);
@@ -330,9 +321,12 @@ async function saveVersion(root, { label = '', reason = 'manual' } = {}) {
   }
 
   // compiles leave at most one checkpoint every 10 minutes: the latest one in that time takes the place of the others,
-  // unless one was given a name
+  // unless one was given a name. Not when the files are an older checkpoint's: a restore 1.10.4 made, which saves no
+  // safety copy when nothing changed since its latest (this compile's, to it a manual one), so that one holds the
+  // only copy of what the restore replaced
   const since = latest?.since || latest?.createdAt;
-  const replaceable = reason === 'compile' && latest?.reason === 'compile' && !latest.label && Date.now() - Date.parse(since) < COMPILE_WINDOW_MS;
+  const restored = versions.some((v) => v !== latest && sameFiles(v.files, files));
+  const replaceable = reason === 'compile' && latest?.reason === 'compile' && !latest.label && !restored && Date.now() - Date.parse(since) < COMPILE_WINDOW_MS;
   const replaced = replaceable ? versions.pop() : null;
   const previous = versions.at(-1);
   const changes = await diffManifests(fromHistory(root, previous?.files || {}), fromHistory(root, files));
@@ -351,19 +345,20 @@ async function saveVersion(root, { label = '', reason = 'manual' } = {}) {
   };
   version.manifestLabel = version.label;
   await writeJsonAtomic(manifestPath(root, version.id), { files, ...(skipped.length && { skipped }), ...details(version), ...(replaced && { since }) });
-  // before index.json is written, which would otherwise keep an entry for it
-  if (replaced) await fs.rm(manifestPath(root, replaced.id), { force: true });
+  // before index.json is written, which would otherwise keep an entry for it. Tidying only: one that can't be removed
+  // (read-only, say) stays as an ordinary compile checkpoint, and the checkpoint just saved still counts as saved
+  const gone = replaced && (await fs.rm(manifestPath(root, replaced.id), { force: true }).then(() => true, () => false));
   await writeIndex(root, [...versions, version]);
   // and the stored files only it used that this run of the app wrote, which the 90-day clean-up would keep, every
-  // compile's, for months. Not while a manifest can't be read, nor while another checkpoint (the mirror's, outside
-  // the lock) is being saved and may be using one. ponytail: a sync app's other computer that saved a checkpoint of
-  // the same text, whose manifest hasn't arrived yet, loses that file of it; a list of every computer's manifests
-  // would close that
-  if (replaced && !partial && saving === 1) {
+  // compile's, for months. Not while a manifest can't be read, nor when the one replaced stayed, which still uses them.
+  // ponytail: a sync app's other computer that saved a checkpoint of the same text, whose manifest hasn't arrived yet,
+  // loses that file of it; a list of every computer's manifests would close that
+  if (gone && !partial) {
     const used = new Set([...versions.flatMap((v) => Object.values(v.files)), ...Object.values(files)]);
     for (const sha of new Set(Object.values(replaced.files))) {
       const target = objectPath(root, sha);
-      if (!used.has(sha) && written.delete(target)) await fs.rm(target, { force: true });
+      // one left behind is used by nothing, and harmless
+      if (!used.has(sha) && written.delete(target)) await fs.rm(target, { force: true }).catch(() => {});
     }
   }
   return { version: shownVersion(version), unchanged: false, skipped: [...skipped, ...large] };
@@ -371,7 +366,7 @@ async function saveVersion(root, { label = '', reason = 'manual' } = {}) {
 
 /** Save a version unless nothing changed since the latest one. */
 export function createVersion(root, options) {
-  return locked(() => createVersionUnlocked(root, options));
+  return lockFor(root)(() => saveVersion(root, options));
 }
 
 /**
@@ -421,7 +416,7 @@ export async function readVersionFile(root, versionId, relPath) {
 
 /** Restore the whole project, or one file, after saving a safety version of the current state. */
 export function restoreVersion(root, versionId, relPath) {
-  return locked(async () => {
+  return lockFor(root)(async () => {
     const { files, skipped } = await readVersion(root, versionId);
     if (relPath) safeJoin(root, relPath);
     if (relPath && skipped.has(relPath)) throw httpError('That file couldn’t be read when this checkpoint was saved, so it isn’t in it.', 400);
@@ -431,7 +426,7 @@ export function restoreVersion(root, versionId, relPath) {
         throw httpError('Some of this checkpoint’s files haven’t arrived from your other computer yet. Try again once syncing has finished.', 409);
       }
     }
-    const { version: safety, unchanged } = await createVersionUnlocked(root, { reason: 'before-restore' });
+    const { version: safety, unchanged } = await saveVersion(root, { reason: 'before-restore' });
 
     // The safety version can't hold untracked files, so move those aside instead of overwriting them.
     const untracked = await untrackedFiles(root);
@@ -460,7 +455,7 @@ export function restoreVersion(root, versionId, relPath) {
 }
 
 export function renameVersion(root, versionId, label) {
-  return locked(async () => {
+  return lockFor(root)(async () => {
     const { versions } = await readVersions(root);
     const { version } = findVersion(versions, versionId);
     version.label = String(label || '').slice(0, 120);
@@ -475,7 +470,7 @@ export function renameVersion(root, versionId, label) {
 
 /** Delete a version, then drop stored files no remaining version uses. */
 export function deleteVersion(root, versionId) {
-  return locked(async () => {
+  return lockFor(root)(async () => {
     const { versions, partial } = await readVersions(root);
     const { position } = findVersion(versions, versionId);
     const [removed] = versions.splice(position, 1);
@@ -485,7 +480,7 @@ export function deleteVersion(root, versionId) {
 
 /** Delete the automatic checkpoints (compiles', unless given a name) saved more than `days` days ago. Resolves how many went. */
 export function deleteAutomaticVersions(root, days) {
-  return locked(async () => {
+  return lockFor(root)(async () => {
     const { versions, partial } = await readVersions(root);
     const cutoff = Date.now() - days * DAY_MS;
     const old = versions.filter((v) => v.reason === 'compile' && !v.label && Date.parse(v.createdAt) < cutoff);

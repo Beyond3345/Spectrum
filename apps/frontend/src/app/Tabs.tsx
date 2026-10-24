@@ -16,7 +16,14 @@ export default function Tabs<T extends string>({
   className?: string;
 }) {
   return (
-    <div className={`tabs ${className}`} role="tablist">
+    <div
+      className={`tabs ${className}`}
+      role="tablist"
+      // a mouse wheel scrolls a strip wider than its panel, whose scroll bar is hidden
+      onWheel={(e) => {
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY;
+      }}
+    >
       {items.map((item) => (
         <button
           key={item.value}

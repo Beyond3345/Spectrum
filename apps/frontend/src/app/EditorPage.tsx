@@ -339,8 +339,10 @@ function Editor({ projectId }: { projectId: string }) {
   const compilingRef = useRef(false);
   // the running compile's id, for Stop
   const compileIdRef = useRef('');
-  // auto compile: typed since the last one, the running compile is one, and one is waiting for it to end
+  // auto compile: typed since the last one (in the document Compile built then), the running compile is one, and
+  // one is waiting for it to end
   const editedRef = useRef(false);
+  const editedDocRef = useRef('');
   // the document whose PDF shows, as of now (shownDoc is as of the last render)
   const shownRef = useRef('');
   // a document's PDF from a compile that couldn't write over the copy on disk, which another program held (Windows)
@@ -828,6 +830,7 @@ function Editor({ projectId }: { projectId: string }) {
     }
     if (mainFile && remap(mainFile) !== mainFile) chooseMain(remap(mainFile), true);
     setShownDoc(remap);
+    shownRef.current = remap(shownRef.current);
     setCompiledDoc(remap);
   };
 
@@ -1336,7 +1339,10 @@ function Editor({ projectId }: { projectId: string }) {
         const bytes = Uint8Array.from(atob(res.pdf), (c) => c.charCodeAt(0));
         const blob = new Blob([bytes], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
-        showPdf(built, { url, blob: true });
+        // an auto compile of a document whose PDF was put away meanwhile (another file opened) leaves the pane be;
+        // the copy on disk, or stalePdf, shows when it comes back
+        if (!opts.auto || built === shownRef.current) showPdf(built, { url, blob: true });
+        else window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
         // a copy on disk another program holds (Windows) is older: this one shows when the document's PDF comes back
         if (res.pdfStale) stalePdf.current.set(built, blob);
         else stalePdf.current.delete(built);
@@ -1386,7 +1392,8 @@ function Editor({ projectId }: { projectId: string }) {
     }
     // a compile since the edits (Compile pressed during the pause) already built them
     if (!editedRef.current) return;
-    runCompile(compileTarget, { auto: true });
+    // the document they were made in, which opening another file with PDF follows the open file may have put away
+    runCompile(editedDocRef.current || compileTarget, { auto: true });
   };
 
   /** Every document from scratch, each after the documents it links (xr-hyper reads their .aux); Stop ends the run. */
@@ -1400,15 +1407,18 @@ function Editor({ projectId }: { projectId: string }) {
     };
     for (const doc of docs) await visit(doc, []);
     const shown = shownDoc;
+    // it has a PDF to come back to: from before, or one this run made (items is still the tree from before it)
+    let made = items.some((i) => i.path === pdfOf(shown));
     try {
       for (const doc of order) {
         const ended = await runCompile(doc, { fresh: true });
+        if (doc === shown && ended === 'ok') made = true;
         if (ended === 'stopped' || ended === 'busy') break;
       }
     } finally {
       // each compile that worked showed its own PDF; the one that was showing comes back (a failed compile left it as
       // it was), so Compile goes on building it
-      if (shown && shownRef.current !== shown && items.some((i) => i.path === pdfOf(shown))) loadPdf(shown);
+      if (shown && shownRef.current !== shown && made) loadPdf(shown);
     }
   };
 
@@ -1713,6 +1723,7 @@ function Editor({ projectId }: { projectId: string }) {
     showInPdf: (_pos: number) => {},
     recheck: (_paths?: string[]) => {},
     autoCompile: () => {},
+    target: () => '' as string,
     openFloats: (_card: FloatCard) => {}
   });
   actions.current = {
@@ -1738,6 +1749,7 @@ function Editor({ projectId }: { projectId: string }) {
       recheck(paths).catch(() => undefined);
     },
     autoCompile,
+    target: () => compileTarget,
     openFloats
   };
 
@@ -1809,6 +1821,7 @@ function Editor({ projectId }: { projectId: string }) {
         if (path && !update.transactions.some((tr) => tr.annotation(programmatic))) {
           dirtyRef.current = true;
           editedRef.current = true;
+          editedDocRef.current = a().target();
           setDirty(true);
         }
       }
@@ -1978,6 +1991,7 @@ function Editor({ projectId }: { projectId: string }) {
       // finds it showing
       const existing = main.replace(/\.tex$/i, '.pdf');
       setShownDoc(main);
+      shownRef.current = main;
       if (main && tree.items.some((i) => i.path === existing)) {
         const url = blobUrl(projectId, existing, Date.now());
         setPdf({ url, blob: false });
@@ -2071,15 +2085,23 @@ function Editor({ projectId }: { projectId: string }) {
     if (layout.view !== 'pdf') viewRef.current?.requestMeasure({ read: () => null, write: () => actions.current.placeGhost() });
   }, [layout.view]);
 
-  // the open file's tab scrolls into the strip's view; by hand, as scrollIntoView would slide the editor's column too
+  // the open file's tab scrolls into the strip's view, and stays there as the strip narrows (the window, the split);
+  // by hand, as scrollIntoView would slide the editor's column too
   useEffect(() => {
     const strip = stripRef.current;
-    const tab = strip?.querySelector<HTMLElement>('.file-tab.active');
-    if (!strip || !tab) return;
-    const s = strip.getBoundingClientRect();
-    const t = tab.getBoundingClientRect();
-    if (t.left < s.left) strip.scrollLeft -= s.left - t.left;
-    else if (t.right > s.right) strip.scrollLeft += Math.min(t.right - s.right, t.left - s.left);
+    if (!strip) return;
+    const show = () => {
+      const tab = strip.querySelector<HTMLElement>('.file-tab.active');
+      if (!tab) return;
+      const s = strip.getBoundingClientRect();
+      const t = tab.getBoundingClientRect();
+      if (t.left < s.left) strip.scrollLeft -= s.left - t.left;
+      else if (t.right > s.right) strip.scrollLeft += Math.min(t.right - s.right, t.left - s.left);
+    };
+    // it also reports the strip's size as soon as it's watched
+    const observer = new ResizeObserver(show);
+    observer.observe(strip);
+    return () => observer.disconnect();
   }, [activePath, tabs, panel]);
 
   // turning spell checking on or off in Settings applies straight away

@@ -32,6 +32,9 @@ export default function PdfPresentation({
   closeRef.current = onClose;
   const go = (to: number) => setPage(Math.min(pages, Math.max(1, to)));
 
+  // A recompile can remove the slide being shown.
+  useEffect(() => setPage((current) => Math.min(pages, Math.max(1, current))), [pages]);
+
   // full screen while presenting, unless the window was already
   useEffect(() => {
     const was = document.documentElement.classList.contains('fullscreen') || !!document.fullscreenElement;
@@ -68,9 +71,13 @@ export default function PdfPresentation({
   // the page drawn to fit; the one before stays until it's ready, so moving on never flashes
   useEffect(() => {
     let live = true;
-    pdf.current?.renderPage(page, size.width, size.height).then((canvas) => {
-      if (live && canvas) stageRef.current?.replaceChildren(canvas);
-    });
+    pdf.current
+      ?.renderPage(page, size.width, size.height)
+      .then((canvas) => {
+        if (live && canvas) stageRef.current?.replaceChildren(canvas);
+      })
+      // a new PDF cancels what the old one was drawing
+      .catch(() => undefined);
     return () => {
       live = false;
     };

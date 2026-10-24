@@ -335,7 +335,7 @@
 @container editor (max-width: 560px) {
   .float-button,
   .editor-topbar .compile-main .btn-label,
-  .tools-toggle > span:not(.tools-badge) {
+  .tools-toggle > span:not(.tools-badge):not(.sf) {
     display: none;
   }
 
