@@ -165,6 +165,18 @@ test('a turn Spectrum closed during keeps its prompt, and what the agent did in 
   assert.equal((await pendingChanges(crashed))[0].proposed, 'original\nagent line 1\nagent line 2\n');
 });
 
+test('a session whose agent didn’t start starts it again for the next prompt, as it is now set up', { skip, timeout: 120000 }, async () => {
+  const { open, turn, getAgentRun, newAgentRun } = await setup();
+  const { saveAgentConfig } = await import('../src/services/agentProfiles.js');
+  const { run: other } = await open({ 'main.tex': 'original\n' });
+  await saveAgentConfig('qoder', { command: process.execPath, args: [path.join(path.dirname(fixture), 'no-such-agent.mjs')], runtimePaths: [path.dirname(fixture)] });
+  const run = await getAgentRun((await newAgentRun({ projectId: other.projectId, agentId: 'qoder' })).id);
+  await assert.rejects(run.ready);
+  assert.equal(run.status, 'failed');
+  await saveAgentConfig('qoder', { command: process.execPath, args: [fixture], runtimePaths: [path.dirname(fixture)] });
+  await turn(run, 'draft one');
+});
+
 test('a 1.10 review session’s applied or rejected file goes back to the user’s, and its text doesn’t return', { skip, timeout: 120000 }, async () => {
   const { open, turn, reopen, pendingChanges } = await setup();
   const { run } = await open({ 'main.tex': 'original\n' });

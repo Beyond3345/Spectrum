@@ -592,7 +592,8 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
   let outcome;
   const task = (async () => {
     try {
-      if (r.ready) await r.ready;
+      // a first connect that failed was disconnected, so the agent starts again below as it is now set up
+      if (r.ready) await r.ready.catch(() => {});
       // a direct session's changes are already the user's: each turn is measured from the project as it then is, with
       // a checkpoint before it. A review session goes on from its draft.
       if (r.turnCount && r.mode === 'direct') {
@@ -687,7 +688,7 @@ export async function setAgentOption(r, configId, value) {
   if (r.busy || r.reviewing || busyProject(r)) throw new Error('Wait for the task to finish before changing its settings.');
   r.busy = true; r.cancelled = false;
   try {
-    if (r.ready) await r.ready;
+    if (r.ready) await r.ready.catch(() => {});
     if (!r.connection || r.connection.signal.aborted) await connect(r);
     const result = await timeout(configId === '__mode'
       ? r.peer.request('session/set_mode', { sessionId: r.remoteId, modeId: value })
