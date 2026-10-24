@@ -253,6 +253,8 @@ const PdfPreview = forwardRef<
     /** a right-click on a page, and where the pointer is in the window */
     onPageMenu(at: PdfPoint, x: number, y: number): void;
     onLoad(info: { pages: number; outline: PdfOutlineItem[] }): void;
+    /** the page count, as soon as the PDF opens (before its pages are laid out, which a hidden pane never does) */
+    onPages?(pages: number): void;
     onScale(scale: number): void;
     /** a pinch or ⌘-scroll chose this scale */
     onZoom(scale: number): void;
@@ -262,7 +264,7 @@ const PdfPreview = forwardRef<
     /** a link to another PDF, as written in the link: "notes.pdf#eq:ohm" */
     onFileLink(target: string): void;
   }
->(function PdfPreview({ url, pageKey, zoom, spread, annotateMode, annotations, onAddAnnotation, onDoubleClick, onPageMenu, onLoad, onScale, onZoom, onPage, onSection, onFileLink }, ref) {
+>(function PdfPreview({ url, pageKey, zoom, spread, annotateMode, annotations, onAddAnnotation, onDoubleClick, onPageMenu, onLoad, onPages, onScale, onZoom, onPage, onSection, onFileLink }, ref) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pagesRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -273,8 +275,8 @@ const PdfPreview = forwardRef<
   const visibleRef = useRef(new Set<HTMLElement>());
   const observerRef = useRef<IntersectionObserver | null>(null);
   // callbacks change on every parent render; the effects read the latest ones
-  const cb = useRef({ onLoad, onScale, onZoom, onPage, onSection });
-  cb.current = { onLoad, onScale, onZoom, onPage, onSection };
+  const cb = useRef({ onLoad, onPages, onScale, onZoom, onPage, onSection });
+  cb.current = { onLoad, onPages, onScale, onZoom, onPage, onSection };
   // the PDF's contents, for the section being read
   const outlineRef = useRef<PdfOutlineItem[]>([]);
   // the point to keep still when the next layout applies a pinch
@@ -593,6 +595,23 @@ const PdfPreview = forwardRef<
 
   const fitWidth = typeof zoom === 'number' ? 0 : width;
   const fitHeight = zoom === 'fit' ? height : 0;
+
+  // the document opens, and its page count is known, even while a panel hides the pane and it has no width to lay out
+  useEffect(() => {
+    if (!url) return;
+    if (docRef.current?.url !== url) {
+      docRef.current?.task.destroy();
+      docRef.current = { url, task: getDocument({ url }) };
+    }
+    let live = true;
+    docRef.current.task.promise.then(
+      (pdf) => live && cb.current.onPages?.(pdf.numPages),
+      () => undefined // the layout below shows the error
+    );
+    return () => {
+      live = false;
+    };
+  }, [url]);
 
   useEffect(() => {
     const scroller = scrollRef.current;

@@ -356,6 +356,8 @@ function Editor({ projectId }: { projectId: string }) {
   const [shownDoc, setShownDoc] = useState('');
   const [compiledDoc, setCompiledDoc] = useState('');
   const [pdfPages, setPdfPages] = useState<number | null>(null);
+  // the page count of the PDF at url, from as soon as it opens (pdfPages waits for its pages to be laid out)
+  const [pagesOf, setPagesOf] = useState({ url: '', pages: 0 });
   const [pdfOutline, setPdfOutline] = useState<PdfOutlineItem[]>([]);
   /** the contents entry being read */
   const [pdfSection, setPdfSection] = useState(-1);
@@ -2128,7 +2130,8 @@ function Editor({ projectId }: { projectId: string }) {
     editorValue,
     compileLog,
     compileErrors,
-    pdfPages,
+    // only for the PDF showing, when it's the document Document insights describes; another's, or none, is '—'
+    pdfPages: pdf && pagesOf.url === pdf.url && shownDoc === compileTarget ? pagesOf.pages : null,
     // a level the main model can't use is sent as its recommended one
     settings: { ...settings, reasoningEffort: effectiveEffort(settings, providers) },
     llm,
@@ -2793,6 +2796,7 @@ function Editor({ projectId }: { projectId: string }) {
                       setPdfMenu({ x, y, at, text });
                     }}
                     onFileLink={followFileLink}
+                    onPages={(pages) => setPagesOf({ url: pdf.url, pages })}
                     onLoad={({ pages, outline: toc }) => {
                       setPdfPages(pages);
                       setPdfOutline(toc);
