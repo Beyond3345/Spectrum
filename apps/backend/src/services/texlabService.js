@@ -468,6 +468,23 @@ function watchFiles(session) {
   }
 }
 
+/**
+ * After a compile, the project's TexLab (if it runs) reads the main document's kept .aux files again, for the outline's
+ * numbers. A compile renames them into place, which TexLab's own watcher takes for their removal, so this waits
+ * REREAD_MS, past that watcher's one-second debounce.
+ */
+export function auxKept(projectId) {
+  setTimeout(async () => {
+    const session = await sessions.get(projectId);
+    const dir = session?.settings.build.auxDirectory;
+    if (!dir || session.ended) return;
+    const folder = fileURLToPath(dir);
+    const files = await fs.readdir(folder, { recursive: true }).catch(() => []);
+    const changes = files.filter((f) => /\.aux$/i.test(f)).map((f) => ({ uri: pathToFileURL(path.join(folder, f)).href, type: 1 }));
+    if (changes.length) write(session, { jsonrpc: '2.0', method: 'workspace/didChangeWatchedFiles', params: { changes } });
+  }, REREAD_MS).unref();
+}
+
 /** Once TexLab has had its say on the latest change: its next diagnostics, or the time they'd have come by (it says nothing about a clean project). */
 function settled(session) {
   const wait = session.settleBy - Date.now();

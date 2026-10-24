@@ -17,7 +17,7 @@ Object.assign(process.env, {
 const { createProject, cachePath } = await import('../src/services/projectService.js');
 const { auxStore, findExecutable } = await import('../src/services/compileService.js');
 const { writeFileAtomic } = await import('../src/utils/fsUtils.js');
-const { frame, readFrames, stopTexlab } = await import('../src/services/texlabService.js');
+const { auxKept, frame, readFrames, stopTexlab } = await import('../src/services/texlabService.js');
 const { registerTexlabRoutes } = await import('../src/routes/texlab.js');
 const { default: Fastify } = await import('fastify');
 const { PassThrough } = await import('node:stream');
@@ -198,7 +198,7 @@ test('the bridge does the handshake, relays an editor’s messages and keeps the
   await stopTexlab();
 });
 
-test('the real TexLab finds a project’s errors, follows the editor and renames across files', { skip: !realTexlab && 'needs texlab on the PATH', timeout: 60_000 }, async () => {
+test('the real TexLab finds a project’s errors, follows the editor, renames across files and reads a compile’s .aux', { skip: !realTexlab && 'needs texlab on the PATH', timeout: 60_000 }, async () => {
   process.env.SPECTRUM_TEXLAB = realTexlab;
   const marker = path.join(tmp, 'latexmkrc-ran');
   const p = await newProject({
@@ -248,6 +248,22 @@ test('the real TexLab finds a project’s errors, follows the editor and renames
   const symbols = (await editor.next((e) => e.data.id === 3, 'symbols')).data.result;
   assert.equal(symbols[0].name, '1 Intro');
   assert.ok(symbols[0].selectionRange);
+
+  // a compile's .aux, renamed into a fresh store as compiles keep them, which TexLab's own watcher takes for a removal
+  await fs.rm(aux, { recursive: true, force: true });
+  await fs.mkdir(aux, { recursive: true });
+  await fs.writeFile(path.join(tmp, 'main.aux'), '\\relax\n\\@writefile{toc}{\\contentsline {section}{\\numberline {3}Intro}{1}{}\\protected@file@percent }\n');
+  await fs.rename(path.join(tmp, 'main.aux'), path.join(aux, 'main.aux'));
+  auxKept(p.id);
+  let asked = 10;
+  await until(
+    async () => {
+      await post(p, client, { jsonrpc: '2.0', id: ++asked, method: 'textDocument/documentSymbol', params: { textDocument: { uri: main } } });
+      return (await editor.next((e) => e.data.id === asked, 'symbols')).data.result[0]?.name === '3 Intro';
+    },
+    'the new .aux read',
+    10_000
+  );
 
   // main.tex replaced on disk, as Spectrum saves it: TexLab, which had it from the editor, gets the new text
   await writeFileAtomic(path.join(p.path, 'main.tex'), '\\documentclass{article}\n\\begin{document}\nSee \\ref{sec:elsewhere}.\n\\section{Intro}\\label{sec:intro}\n\\input{chap}\n\\end{document}\n');

@@ -2191,13 +2191,17 @@ function Editor({ projectId }: { projectId: string }) {
 
   useEffect(() => attachTexlab(), [texlabOn]);
 
-  // TexLab's outline of the document being edited, a moment after typing stops, a file changes or TexLab starts
+  // TexLab's outline of the document being edited, a moment after typing stops, a file changes, a compile ends or
+  // TexLab starts. A compile's numbers reach TexLab two seconds after it ends (the backend's auxKept).
+  const outlinedLog = useRef(compileLog);
   useEffect(() => {
     const texlab = texlabRef.current;
     if (!texlabOn || !texlab || !docRoot) {
       setSymbolOutline(null);
       return;
     }
+    const wait = outlinedLog.current === compileLog ? 600 : 2600;
+    outlinedLog.current = compileLog;
     let live = true;
     const timer = window.setTimeout(async () => {
       try {
@@ -2208,12 +2212,12 @@ function Editor({ projectId }: { projectId: string }) {
       } catch {
         // the parser's outline shows meanwhile
       }
-    }, 600);
+    }, wait);
     return () => {
       live = false;
       window.clearTimeout(timer);
     };
-  }, [texlabOn, docRoot, editorValue, fileSet, filesVersion]);
+  }, [texlabOn, docRoot, editorValue, fileSet, filesVersion, compileLog]);
 
   // the diagram composer's window (desktop.ts openDiagram): its Insert as figure hands the diagram to the Floats panel's
   // Insert diagram card and brings this window forward, and its saves show without waiting for the folder watch

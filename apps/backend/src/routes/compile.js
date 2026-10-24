@@ -1,6 +1,7 @@
 import { BIB_TOOLS, runCompile, stopCompile, SUPPORTED_ENGINES } from '../services/compileService.js';
 import { getProjectRoot, readMeta } from '../services/projectService.js';
 import { synctexEdit, synctexView } from '../services/synctex.js';
+import { auxKept } from '../services/texlabService.js';
 
 const isCount = (n) => Number.isInteger(n) && n > 0;
 // doc is the project-relative .tex whose PDF is showing; without it, the main file's
@@ -20,7 +21,7 @@ export function registerCompileRoutes(fastify) {
     if (!BIB_TOOLS.includes(bibTool)) {
       return { ok: false, error: `Unsupported bibliography tool: ${bibTool}. Supported: ${BIB_TOOLS.join(', ')}` };
     }
-    return runCompile({
+    const res = await runCompile({
       projectId,
       mainFile,
       engine,
@@ -32,6 +33,8 @@ export function registerCompileRoutes(fastify) {
       texFolder: typeof texFolder === 'string' ? texFolder : undefined,
       checkpoint: checkpoint === true
     });
+    if (res.ok) auxKept(projectId);
+    return res;
   });
 
   // by the id the editor gave the compile: a stop that arrives before its compile still stops it
