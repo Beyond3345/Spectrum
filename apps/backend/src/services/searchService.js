@@ -20,7 +20,7 @@ const CITABLE_SITES = [
   'w3.org', 'nist.gov', 'ctan.org', 'tex.stackexchange.com', 'latex-project.org', 'tug.org'
 ];
 
-async function getJson(url, init = {}) {
+export async function getJson(url, init = {}) {
   const res = await fetch(url, { ...init, redirect: 'error', signal: AbortSignal.timeout(TIMEOUT) });
   const text = await res.text();
   const host = new URL(url).host;
@@ -99,14 +99,18 @@ const OPENALEX_TYPES = 'article|conference-paper|preprint|review|book|book-chapt
 const OPENALEX_CSL = { article: 'article-journal', review: 'article-journal', 'conference-paper': 'paper-conference', book: 'book', 'book-chapter': 'chapter', dissertation: 'thesis', report: 'report' };
 
 // OpenAlex: free; a free key raises the daily budget. Abstracts come as an inverted index.
-export async function searchOpenAlex(query, limit = 5, apiKey = '', raw = false) {
+// Research also passes an email (OpenAlex's polite pool), a year range and whether preprints count.
+export async function searchOpenAlex(query, limit = 5, apiKey = '', raw = false, { mailto = '', yearFrom, yearTo, preprints = true } = {}) {
+  const types = preprints ? OPENALEX_TYPES : OPENALEX_TYPES.replace('|preprint', '');
+  const years = [yearFrom && `from_publication_date:${yearFrom}-01-01`, yearTo && `to_publication_date:${yearTo}-12-31`].filter(Boolean);
   const params = new URLSearchParams({
     search: query,
-    filter: `type:${OPENALEX_TYPES},is_retracted:false`,
+    filter: [`type:${types}`, 'is_retracted:false', ...years].join(','),
     per_page: String(limit),
-    select: 'id,doi,display_name,publication_year,type,authorships,primary_location,biblio,abstract_inverted_index'
+    select: 'id,doi,display_name,publication_year,type,authorships,primary_location,biblio,abstract_inverted_index,cited_by_count,open_access'
   });
   if (apiKey) params.set('api_key', apiKey);
+  if (mailto) params.set('mailto', mailto);
   const data = await getJson(`https://api.openalex.org/works?${params}`);
   return (data.results || []).map((work) => {
     const words = [];
@@ -130,19 +134,20 @@ export async function searchOpenAlex(query, limit = 5, apiKey = '', raw = false)
       DOI: String(work.doi || '').replace(/^https?:\/\/doi\.org\//i, ''),
       URL: location.landing_page_url || work.doi || work.id
     };
-    const result = { rec, summary: words.filter(Boolean).join(' ') };
+    const result = { rec, summary: words.filter(Boolean).join(' '), citations: work.cited_by_count, openAccess: work.open_access?.is_oa ? work.open_access.oa_url : undefined, preprint: work.type === 'preprint' };
     return raw ? result : toResult(result, 'openalex');
   });
 }
 
 const S2_CSL = { JournalArticle: 'article-journal', Review: 'article-journal', Conference: 'paper-conference', Book: 'book', BookSection: 'chapter' };
 
-export async function searchSemanticScholar(query, limit = 5, apiKey = '', raw = false) {
+export async function searchSemanticScholar(query, limit = 5, apiKey = '', raw = false, { yearFrom, yearTo } = {}) {
   const params = new URLSearchParams({
     query,
     limit: String(limit),
-    fields: 'title,abstract,url,year,authors,venue,publicationVenue,journal,externalIds,publicationTypes'
+    fields: 'title,abstract,url,year,authors,venue,publicationVenue,journal,externalIds,publicationTypes,citationCount,openAccessPdf'
   });
+  if (yearFrom || yearTo) params.set('year', `${yearFrom || ''}-${yearTo || ''}`);
   const data = await getJson(`https://api.semanticscholar.org/graph/v1/paper/search?${params}`, {
     headers: apiKey ? { 'x-api-key': apiKey } : {}
   });
@@ -163,7 +168,7 @@ export async function searchSemanticScholar(query, limit = 5, apiKey = '', raw =
       _arxiv: ids.ArXiv ? { id: ids.ArXiv } : undefined,
       URL: paper.url
     };
-    const result = { rec, summary: paper.abstract };
+    const result = { rec, summary: paper.abstract, citations: paper.citationCount, openAccess: paper.openAccessPdf?.url || undefined, preprint };
     return raw ? result : toResult(result, 'semanticscholar');
   });
 }

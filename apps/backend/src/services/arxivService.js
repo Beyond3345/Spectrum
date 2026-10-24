@@ -33,13 +33,20 @@ function toPaper(entry) {
     authors: authors.map((a) => a?.name).filter(Boolean),
     url: id,
     arxivId: id ? id.split('/').pop() : '',
-    year: String(entry.published || '').slice(0, 4)
+    year: String(entry.published || '').slice(0, 4),
+    // the published version's DOI and citation, when the authors gave them
+    doi: String(entry['arxiv:doi']?.['#text'] ?? entry['arxiv:doi'] ?? '').trim() || undefined,
+    journalRef: String(entry['arxiv:journal_ref']?.['#text'] ?? entry['arxiv:journal_ref'] ?? '').replace(/\s+/g, ' ').trim() || undefined
   };
 }
 
-export async function searchArxiv(query, maxResults = 5) {
+/** yearFrom and yearTo limit the submission date (Research's year filter). */
+export async function searchArxiv(query, maxResults = 5, { yearFrom, yearTo } = {}) {
   const max = Math.min(10, Math.max(1, Number(maxResults) || 5));
-  const url = `https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(String(query))}&start=0&max_results=${max}`;
+  // arXiv reads words apart as OR, and ranks half its papers for a few common words, so every word must match
+  const words = String(query).split(/\s+/).filter(Boolean).map((word) => `all:${encodeURIComponent(word)}`);
+  if (yearFrom || yearTo) words.push(`submittedDate:%5B${yearFrom || 1991}01010000+TO+${yearTo || 9999}12312359%5D`);
+  const url = `https://export.arxiv.org/api/query?search_query=${words.join('+AND+')}&start=0&max_results=${max}`;
   const res = await fetch(url, { headers: ARXIV_HEADERS, signal: AbortSignal.timeout(30_000) });
   if (!res.ok) {
     throw new Error(`arXiv search failed: ${res.status}`);
