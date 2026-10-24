@@ -56,6 +56,7 @@ export function FlowCanvas({
   // what React Flow measured of each node, given back with the rebuilt nodes so it never measures them from nothing
   const measured = useRef(new Map<string, Size>());
   const [, remeasured] = useState(0);
+  const [fitAtStart] = useState(nodes.length > 0);
   // node and edge selection changes come in separate calls for one click; each builds on the last
   const picked = useRef(selection);
   picked.current = selection;
@@ -100,7 +101,11 @@ export function FlowCanvas({
       onConnect={onConnect}
       isValidConnection={(c) => c.source !== c.target}
       connectionMode={ConnectionMode.Loose}
-      onPaneClick={(e) => onPlace?.(screenToFlowPosition({ x: e.clientX, y: e.clientY }))}
+      onPaneClick={(e) => {
+        const at = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+        // after React Flow has cleared the selection for the click, so what's placed stays selected
+        queueMicrotask(() => onPlace?.(at));
+      }}
       onNodeDoubleClick={(_, node) => onNodeDoubleClick?.(node.id)}
       nodesDraggable={!readOnly}
       nodesConnectable={!readOnly}
@@ -113,7 +118,8 @@ export function FlowCanvas({
       panOnScroll
       minZoom={0.2}
       maxZoom={4}
-      fitView
+      // a drawing opened is fitted to the window; a new one starts at 100% and stays put as it grows
+      fitView={fitAtStart}
       fitViewOptions={{ padding: 0.3, maxZoom: 1.5 }}
       colorMode={prefs.dark ? 'dark' : 'light'}
       proOptions={{ hideAttribution: true }}
