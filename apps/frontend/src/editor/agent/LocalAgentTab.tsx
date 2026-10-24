@@ -159,7 +159,8 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
       if (e.type === 'request') setPending((old) => [...old.filter((p) => p.requestId !== e.data.requestId), e.data]);
       if (e.type === 'answered') setPending((old) => old.filter((p) => p.requestId !== e.data.requestId));
       if (e.type === 'changes') {
-        setChanges(e.data.changes);
+        // the event names them; their texts come from the session
+        getLocalAgentChanges(id).then((r) => setChanges(r.changes), fail);
         if (session.mode === 'direct') latest.current.reloadProject().catch(fail);
       }
     };

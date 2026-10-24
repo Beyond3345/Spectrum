@@ -626,7 +626,9 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       for (const [id, pending] of r.pending) { pending.reject(new Error('The task ended.')); emit(r, 'answered', { requestId: id }); }
       r.pending.clear();
       disconnect(r);
-      try { await r.stopChain; await captureAgentProposal(r); emit(r, 'changes', { changes: await pendingChanges(r) }); }
+      // the event names the changes, whose texts the client asks for, so the stored events keep the transcript under
+      // their cap however large the files
+      try { await r.stopChain; await captureAgentProposal(r); emit(r, 'changes', { changes: (await pendingChanges(r)).map(({ original, proposed, ...c }) => c) }); }
       catch (err) {
         emit(r, 'notice', { error: err.message });
         // the user can't reach the draft to put it right, so the agent hears of it

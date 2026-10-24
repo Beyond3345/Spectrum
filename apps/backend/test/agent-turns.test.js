@@ -67,6 +67,19 @@ test('a long streamed message keeps the turn’s start, and a huge one is stored
   assert.ok((await fs.stat(path.join(run.dir, 'session.json'))).size < 2.2 * 1024 * 1024);
 });
 
+test('a turn’s changes are stored by name, without their text, so a large file sheds none of the transcript', { skip, timeout: 120000 }, async () => {
+  const { open, turn, stored, pendingChanges } = await setup();
+  // 1.25 MB, and more again as JSON
+  const big = '\\big\n'.repeat(250000);
+  const { run } = await open({ 'main.tex': big });
+  await turn(run, 'draft one');
+  const events = (await stored(run)).events;
+  assert.deepEqual(events.filter((e) => e.type === 'user').map((e) => e.data.text), ['draft one']);
+  const { changes } = events.findLast((e) => e.type === 'changes').data;
+  assert.deepEqual(changes.map((c) => [c.path, c.kind, 'original' in c, 'proposed' in c]), [['main.tex', 'modified', false, false]]);
+  assert.equal((await pendingChanges(run))[0].proposed, `${big}agent line 1\n`, 'the texts come from the session');
+});
+
 test('a review turn starts from the project as it is, for every file the agent hasn’t changed', { skip, timeout: 120000 }, async () => {
   const { open, turn, pendingChanges } = await setup();
   const { run, root } = await open({ 'main.tex': 'original\n', 'other.tex': 'other v1\n', 'gone.tex': 'bye\n' });
