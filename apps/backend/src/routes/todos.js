@@ -30,6 +30,20 @@ export async function readItems(root, folder) {
   return items.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 }
 
+/** PDF notes' documents and to-dos' files and documents follow a rename of `from` (a file, or a folder's files) to `to`. */
+export async function followRename(root, from, to) {
+  const moved = (p) => (typeof p === 'string' && (p === from || p.startsWith(`${from}/`)) ? to + p.slice(from.length) : null);
+  for (const note of await readItems(root, 'notes')) {
+    const doc = moved(note.doc);
+    if (doc) await writeJsonAtomic(appPath(root, 'notes', `${note.id}.json`), { ...note, doc });
+  }
+  for (const todo of await readItems(root, 'todos')) {
+    const file = moved(todo.link?.file);
+    const doc = moved(todo.link?.doc);
+    if (file || doc) await writeJsonAtomic(appPath(root, 'todos', `${todo.id}.json`), { ...todo, link: { ...todo.link, ...(file && { file }), ...(doc && { doc }) } });
+  }
+}
+
 // where a to-do points: a source line (found again by its text if lines move), a PDF page or a reference. Fields a
 // later version adds go through, and a kind of link it adds is kept as it is
 function todoLink(link) {

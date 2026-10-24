@@ -147,6 +147,24 @@ test('PDF notes are saved one file each and listed per document', async () => {
   assert.deepEqual((await api(`${url}?doc=main.tex`)).json.notes, []);
 });
 
+test('renaming a document or its folder takes its PDF notes and the to-dos linked to it along', async () => {
+  const p = await newProject('Renamed', { 'main.tex': '\\documentclass{article}\\begin{document}\\input{chapters/one}\\end{document}\n', 'chapters/one.tex': 'One\n' });
+  const at = (minute) => `2026-10-24T01:0${minute}:00.000Z`;
+  const url = `/api/projects/${p.id}`;
+  await api(`${url}/notes/n1`, 'PUT', { id: 'n1', doc: 'main.tex', page: 1, x: 1, y: 2, text: 'Note', createdAt: at(0), updatedAt: at(0) });
+  await api(`${url}/todos/t1`, 'PUT', { id: 't1', text: 'Line', done: false, createdAt: at(1), updatedAt: at(1), link: { file: 'chapters/one.tex', line: 1, snippet: 'One' } });
+  await api(`${url}/todos/t2`, 'PUT', { id: 't2', text: 'Page', done: false, createdAt: at(2), updatedAt: at(2), link: { doc: 'main.tex', page: 1 } });
+  await api(`${url}/todos/t3`, 'PUT', { id: 't3', text: 'Other', done: false, createdAt: at(3), updatedAt: at(3), link: { file: 'chapters-old/one.tex', line: 1 } });
+  assert.equal((await api(`${url}/rename`, 'POST', { from: 'main.tex', to: 'paper.tex' })).json.ok, true);
+  assert.equal((await api(`${url}/rename`, 'POST', { from: 'chapters', to: 'parts' })).json.ok, true);
+  assert.deepEqual((await api(`${url}/notes?doc=paper.tex`)).json.notes.map((n) => n.id), ['n1']);
+  assert.deepEqual((await api(`${url}/todos`)).json.todos.map((t) => t.link), [
+    { file: 'parts/one.tex', line: 1, snippet: 'One' },
+    { doc: 'paper.tex', page: 1 },
+    { file: 'chapters-old/one.tex', line: 1 }
+  ]);
+});
+
 test('labels are read from the kept .aux files, with when they were written and whether the source is newer', async () => {
   assert.deepEqual(parseLabels([
     '\\newlabel{fig:left}{{1a}{1}{Left}{figure.caption.1}{}}',
