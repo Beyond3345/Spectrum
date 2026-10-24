@@ -14,10 +14,10 @@ Object.assign(process.env, {
   SPECTRUM_TEMPLATE_DIR: path.join(tmp, 'templates'),
   SPECTRUM_TEMPLATE_SEED_DIR: ''
 });
-const { createProject, cachePath } = await import('../src/services/projectService.js');
+const { createProject, cachePath, moveEntry } = await import('../src/services/projectService.js');
 const { auxStore, findExecutable } = await import('../src/services/compileService.js');
 const { writeFileAtomic } = await import('../src/utils/fsUtils.js');
-const { auxKept, frame, readFrames, stopTexlab } = await import('../src/services/texlabService.js');
+const { auxKept, frame, readFrames, stopProjectTexlab, stopTexlab } = await import('../src/services/texlabService.js');
 const { registerTexlabRoutes } = await import('../src/routes/texlab.js');
 const { default: Fastify } = await import('fastify');
 const { PassThrough } = await import('node:stream');
@@ -134,6 +134,8 @@ test('the bridge does the handshake, relays an editor’s messages and keeps the
   const answer = log.find((m) => m.id === 'config-1');
   assert.equal(start.path, WINDOWS ? `${process.env.SystemRoot}\\System32;${process.env.SystemRoot}` : '/usr/bin:/bin');
   assert.deepEqual(start.args, ['run']);
+  // not in the project's folder, which Windows then couldn't move or bin while it runs
+  assert.equal(start.cwd.toLowerCase(), realpathSync.native(tmpdir()).toLowerCase());
   assert.equal(initialize.method, 'initialize');
   assert.equal(initialize.params.rootUri, rootUri);
   assert.deepEqual(initialize.params.workspaceFolders, [{ uri: rootUri, name: path.basename(p.path) }]);
@@ -195,6 +197,33 @@ test('the bridge does the handshake, relays an editor’s messages and keeps the
   await until(() => changedTo(readFileSync(path.join(p.path, 'main.tex'), 'utf8')), 'the disk’s text');
   await writeFileAtomic(path.join(p.path, 'main.tex'), 'Rewritten\n');
   await until(() => changedTo('Rewritten\n'), 'the new text on disk');
+  await stopTexlab();
+});
+
+test('a moved project gets a TexLab on its new folder, one can be stopped before a move, and a name TexLab can’t take goes without', async () => {
+  const logFile = path.join(tmp, 'fake-moved.log');
+  Object.assign(process.env, { SPECTRUM_TEXLAB: fixture, FAKE_TEXLAB_LOG: logFile });
+  const roots = () => (existsSync(logFile) ? readFileSync(logFile, 'utf8').trim().split('\n').map((line) => JSON.parse(line)) : []).filter((m) => m.method === 'initialize').map((m) => m.params.rootUri);
+  const p = await newProject({ 'main.tex': '\\documentclass{article}\n' });
+  assert.equal((await diagnostics(p)).available, true);
+  // Relocate or a cloud move: the registry points elsewhere, and the TexLab on the old folder makes way
+  const moved = path.join(tmp, 'projects', 'Moved here');
+  await fs.rename(p.path, moved);
+  await moveEntry(p.id, moved);
+  assert.equal((await diagnostics(p)).available, true);
+  assert.deepEqual(roots(), [pathToFileURL(p.path).href, pathToFileURL(moved).href]);
+  // stopped, and gone once it's said so
+  await stopProjectTexlab(p.id);
+  assert.equal((await diagnostics(p)).available, true);
+  assert.equal(roots().length, 3);
+  await stopProjectTexlab(p.id);
+
+  // TexLab 5.26 panics on a file URI with [, ] or ^ in it
+  const odd = await createProject({ name: 'Thesis [draft]', populate: (root) => fs.writeFile(path.join(root, 'main.tex'), 'x') });
+  assert.match(odd.path, /\[draft\]/);
+  assert.deepEqual(await diagnostics(odd), { ok: true, available: false, files: {} });
+  assert.equal((await connect(odd)).status, 503);
+  assert.equal(roots().length, 3);
   await stopTexlab();
 });
 

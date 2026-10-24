@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import { promises as fs, watch } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { auxStore, findExecutable, killGroup } from './compileService.js';
@@ -149,7 +150,14 @@ const sessions = new Map();
 const failed = new Map();
 
 /** The project's TexLab, started if it isn't running; null when there's none to run. */
-export function texlabSession(projectId) {
+export async function texlabSession(projectId) {
+  const entry = sessions.get(projectId);
+  const current = await entry;
+  // its folder has moved (Relocate, Sync to): a TexLab on the old one has old text, and F2 would plan against it
+  if (current && !current.ended && sessions.get(projectId) === entry) {
+    const root = await getProjectRoot(projectId).catch(() => current.root);
+    if (root !== current.root && sessions.get(projectId) === entry) await stopProjectTexlab(projectId);
+  }
   if (!sessions.has(projectId)) {
     const starting = start(projectId).catch(() => null);
     sessions.set(projectId, starting);
@@ -166,9 +174,14 @@ async function start(projectId) {
   const program = await texlabProgram();
   if (!program) return null;
   const root = await getProjectRoot(projectId);
+  // ponytail: TexLab 5.26 panics on a file URI with [, ] or ^ in it (and Spectrum would start it again each minute), so
+  // such a project goes without; drop this when TexLab handles them
+  if (/[[\]^]/.test(root)) return null;
   // tests stand a Node script in for it
   const [file, args] = /\.m?js$/i.test(program) ? [process.execPath, [program, 'run']] : [program, ['run']];
-  const proc = spawn(file, args, { cwd: root, env: { ...process.env, PATH: SAFE_PATH }, stdio: ['pipe', 'pipe', 'ignore'], detached: !WINDOWS, windowsHide: true });
+  // not the project's folder, which Windows wouldn't then let be moved or binned while TexLab runs (it only runs
+  // latexindent there, which is off)
+  const proc = spawn(file, args, { cwd: os.tmpdir(), env: { ...process.env, PATH: SAFE_PATH }, stdio: ['pipe', 'pipe', 'ignore'], detached: !WINDOWS, windowsHide: true });
   const session = {
     projectId,
     root,
@@ -568,6 +581,21 @@ function forget(session) {
   entry?.then((current) => {
     if (current === session && sessions.get(session.projectId) === entry) sessions.delete(session.projectId);
   });
+}
+
+/**
+ * Ends the project's TexLab, if it runs, and waits until it has gone: before its folder is moved, binned or forgotten.
+ * On Windows its watches would hold the folder, which then couldn't be moved or binned for the ten minutes it idles.
+ */
+export async function stopProjectTexlab(projectId) {
+  const entry = sessions.get(projectId);
+  const session = await entry;
+  if (sessions.get(projectId) === entry) sessions.delete(projectId);
+  if (!session || session.ended) return;
+  session.stopping = true;
+  const gone = new Promise((resolve) => session.proc.once('exit', resolve));
+  killGroup(session.proc);
+  await gone;
 }
 
 /** Ends every project's TexLab, when Spectrum quits. */

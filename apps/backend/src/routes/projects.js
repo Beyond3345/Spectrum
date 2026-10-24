@@ -38,6 +38,7 @@ import { readProjectSettings, updateProjectSettings } from '../services/projectS
 import { BIB_TOOLS, SUPPORTED_ENGINES } from '../services/compileService.js';
 import { SKILL_ID } from '../services/skillService.js';
 import { knownMachineNames } from '../services/presenceService.js';
+import { stopProjectTexlab } from '../services/texlabService.js';
 import { conflictCopies } from '../utils/conflictCopies.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
 
@@ -323,6 +324,7 @@ export function registerProjectRoutes(fastify) {
   });
 
   fastify.post('/api/projects/:id/remove', async (req) => {
+    await stopProjectTexlab(req.params.id);
     await unregister(req.params.id);
     return { ok: true };
   });
@@ -333,6 +335,8 @@ export function registerProjectRoutes(fastify) {
     // used in its cloud location, so it goes from the other computers too: what Stop syncing › Delete checks first
     const p = await getProject(req.params.id);
     if (p.cloud?.mode === 'move') await refuseDelete(p.id, p.name, root, p.cloud.label, 'remove it from the list');
+    // Windows can't bin a folder its TexLab is watching
+    await stopProjectTexlab(p.id);
     try {
       await moveToBin(root);
     } catch (err) {
@@ -342,10 +346,12 @@ export function registerProjectRoutes(fastify) {
     return { ok: true };
   });
 
-  fastify.post('/api/projects/:id/relocate', async (req) => ({
-    ok: true,
-    project: await relocateProject(req.params.id, req.body?.path)
-  }));
+  fastify.post('/api/projects/:id/relocate', async (req) => {
+    const project = await relocateProject(req.params.id, req.body?.path);
+    // a TexLab on the old folder has its old text
+    await stopProjectTexlab(req.params.id);
+    return { ok: true, project };
+  });
 
   fastify.patch('/api/projects/:id/tags', async (req) => {
     const { tags } = req.body || {};
