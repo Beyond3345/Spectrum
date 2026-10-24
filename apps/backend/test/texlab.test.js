@@ -125,7 +125,13 @@ test('the bridge does the handshake, relays an editor’s messages and keeps the
       { line: 6, col: 8, endLine: 6, endCol: 13, severity: 'info', message: 'Unused label', code: 'unused-label', source: 'texlab' }
     ]
   });
-  const [start, initialize, initialized, configuration, seeded, answer] = received();
+  // the stand-in logs as it reads, which can be after the diagnostics came back; its own request and the settings
+  // Spectrum sends can come either way round
+  const log = await until(() => received().length >= 6 && received(), 'the handshake logged');
+  const [start, initialize, initialized] = log;
+  const configuration = log.find((m) => m.method === 'workspace/didChangeConfiguration');
+  const seeded = log.find((m) => m.method === 'workspace/didChangeWatchedFiles');
+  const answer = log.find((m) => m.id === 'config-1');
   assert.equal(start.path, WINDOWS ? `${process.env.SystemRoot}\\System32;${process.env.SystemRoot}` : '/usr/bin:/bin');
   assert.deepEqual(start.args, ['run']);
   assert.equal(initialize.method, 'initialize');

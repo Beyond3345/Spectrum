@@ -205,6 +205,8 @@ async function start(projectId) {
   proc.stdin.on('error', () => {});
   readFrames(proc.stdout, (message) => fromServer(session, message));
   try {
+    // ready for TexLab's first ask, which can come before configure has sent them
+    await mainSettings(session);
     session.result = await ownRequest(session, 'initialize', {
       processId: process.pid,
       clientInfo: { name: 'Spectrum' },
@@ -246,13 +248,19 @@ function ownRequest(session, method, params, timeout = 20_000) {
  * whenever an editor connects, as the main file may have changed.
  */
 async function configure(session) {
-  const doc = (await readMeta(session.root).catch(() => ({}))).mainFile || (await detectMainFile(session.root).catch(() => '')) || 'main.tex';
-  const aux = await cachePath(session.root).then((cache) => `${pathToFileURL(auxStore(cache, doc)).href}/`, () => '');
-  session.settings = settings(aux);
+  const doc = await mainSettings(session);
   write(session, { jsonrpc: '2.0', method: 'workspace/didChangeConfiguration', params: { settings: { texlab: session.settings } } });
   // as if it had just been made: TexLab reads it from disk, and follows it there
   const uri = pathToFileURL(path.join(session.root, ...doc.split('/'))).href;
   write(session, { jsonrpc: '2.0', method: 'workspace/didChangeWatchedFiles', params: { changes: [{ uri, type: 1 }] } });
+}
+
+/** The main document, after making TexLab's settings with its kept .aux files. */
+async function mainSettings(session) {
+  const doc = (await readMeta(session.root).catch(() => ({}))).mainFile || (await detectMainFile(session.root).catch(() => '')) || 'main.tex';
+  const aux = await cachePath(session.root).then((cache) => `${pathToFileURL(auxStore(cache, doc)).href}/`, () => '');
+  session.settings = settings(aux);
+  return doc;
 }
 
 /** A file URI's path in the project, '/'-separated; null for one outside it or in its app data. */
