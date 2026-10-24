@@ -66,7 +66,8 @@ The menu beside Compile holds the following choices. Use for all projects beside
 - Compiler (this project), which is pdfLaTeX, XeLaTeX, LuaLaTeX, Latexmk, Tectonic or Auto, the default. The project's choice is saved in its `.spectrum/settings.json`, so it follows the project to your other computer, and Use the default puts it back,
 - Auto compile, which is Off, the default, or compiles after a pause of 1 to 10 seconds since the last edit. A newer automatic compile takes the place of one that is out of date,
 - Compile error handling, which is Try to compile despite errors, the default, or Stop on first error,
-- Bibliography tool, which is Auto, BibTeX or Biber. Auto follows a `% !BIB program = biber` comment in the main file and otherwise uses Biber for `biblatex` and BibTeX for the rest and
+- Bibliography tool, which is Auto, BibTeX or Biber. Auto follows a `% !BIB program = biber` comment in the main file and otherwise uses Biber for `biblatex` and BibTeX for the rest,
+- Syntax checks, which is Check before compiling, the default, or Don’t check (Section TexLab) and
 - Fast draft mode, which compiles in one pass with each image drawn as a box of its size.
 
 The menu also has Stop compilation and Recompile from scratch, which first clears what earlier compiles of the open document kept. Recompile all does the same for every document in the project and compiles each one, linked documents first. While a compile runs, Compile becomes Stop, which ends it at once and keeps the last PDF.
@@ -74,6 +75,22 @@ The menu also has Stop compilation and Recompile from scratch, which first clear
 The `.aux`, `.bbl`, `.toc` and similar files of each document are kept between compiles, for each compiler, in the app's own data folder, and the next compile reads them back, so a document whose labels, headings and citations have not changed is done in one pass. BibTeX and Biber only run when something is cited and another pass only runs when the log asks for one or a pass changed what TeX reads back. makeindex and makeglossaries run when the document has an index or glossaries. Files are kept only from a compile without errors, and when TeX cannot read one of them, Spectrum clears them and compiles once more from scratch, so a damaged `.aux` never locks a document out.
 
 A chapter with a `% !TEX root = ../thesis.tex` comment compiles the document it names. Latexmk always runs with `-norc`, so a project's own `latexmkrc` cannot run code. Settings › Engines › LaTeX also has a TeX folder for a second TeX installation, whose programs are used before the ones on the `PATH`, and Open Logs when a compile fails. A checkpoint is saved after each successful compile (Section Checkpoints).
+
+### TexLab
+
+Spectrum includes [TexLab](https://github.com/latex-lsp/texlab) 5.26.0, a language server for LaTeX, and starts it for each open project. TexLab reads the project's files from the disk and the open file as it is typed, and gives the editor the following,
+
+- squiggles under references and citations that have no label or entry, labels defined twice or never used, missing braces, environments that end with the wrong `\end` and mistakes in `.bib` files, each with its message when the pointer rests on it,
+- the entry a citation stands for, or what a `\ref` points to, when the pointer rests on it,
+- Go to definition (`F12`, or a click with `⌘` held) on a `\ref`, `\cite` or `\input`, which opens the file it leads to,
+- Find references (`⇧F12`), which lists every use of the label, citation key or command at the cursor in a panel below the editor, with each line a click away and
+- Rename (`F2`), which renames a label, citation key or command everywhere in the project, the `.bib` files included. It lists the files with the number of changes in each, saves a Before rename checkpoint and then saves every file through the usual save, or puts back those already saved when one cannot be.
+
+With TexLab the sidebar's Outline covers the whole document across its `\input` files, with the section numbers of the last compile and the figures and tables by their captions. Document insights marks the labels TexLab finds unused or defined twice and the citations missing from the `.bib`, and Review adds TexLab's findings to its References and assets group (Section Review).
+
+When Syntax checks in the compile menu is set to Check before compiling, the default, Compile first looks at TexLab's findings in the document's files. When there are missing braces or mismatched environments, it lists them and asks whether to compile anyway, and Cancel goes to the first one. References and citations with no label or entry never stop a compile, and auto compile skips the check. The default for every project is in Settings › Engines › LaTeX.
+
+TexLab's own completion, building and formatting are left off, so Spectrum's completion stays as it is. Without TexLab, for example when Spectrum runs in a browser and `texlab` is not on the `PATH`, the editor works as before and the Outline reads the headings itself.
 
 ### Appearance
 
@@ -371,7 +388,7 @@ Every shortcut below can be changed in the Shortcuts section of Settings. Click 
 | Zoom the PDF in or out | `⌘=` and `⌘−` (or pinch) |
 | Fit the PDF to the width | `⌘0` |
 
-Find (`⌘F`), undo (`⌘Z`), redo (`⇧⌘Z`) and Settings (`⌘,`) cannot be changed. While the PDF has the focus, `⌘F` finds text in it, `⌘9` fits the whole page and Page Up, Page Down, Home and End move through its pages.
+Find (`⌘F`), undo (`⌘Z`), redo (`⇧⌘Z`) and Settings (`⌘,`) cannot be changed, and nor can TexLab's Go to definition (`F12`), Find references (`⇧F12`) and Rename (`F2`) (Section TexLab). While the PDF has the focus, `⌘F` finds text in it, `⌘9` fits the whole page and Page Up, Page Down, Home and End move through its pages.
 
 ## Building from source
 
@@ -385,11 +402,11 @@ The test that moves a project to the Bin is skipped by default, since it moves a
 
 The spell checker and the grammar checker are compiled code that is kept in `native/`, so a normal build does not need to rebuild them. To rebuild them after changing their sources, run `npm run native:build`. This needs Xcode and Python for nodehun, and Rust with the `wasm32-unknown-unknown` target and `wasm-pack` for Harper, which is built from a Harper checkout at `../harper-master` unless `HARPER_DIR` points elsewhere.
 
-The build script downloads Node.js 24 LTS for both architectures, checks it against the published SHA-256 sums and joins the two into one universal binary. It then bundles the backend with esbuild and runs `tauri build --target universal-apple-darwin`. The results are written to `src-tauri/target/universal-apple-darwin/release/bundle/`.
+The build script downloads Node.js 24 LTS and TexLab 5.26.0 for both architectures, checks them against pinned SHA-256 sums and joins each pair into one universal binary. It then bundles the backend with esbuild and runs `tauri build --target universal-apple-darwin`. The results are written to `src-tauri/target/universal-apple-darwin/release/bundle/`.
 
-The Windows installer is built on Windows with the same command. It needs Node.js, Rust with the MSVC toolchain and the Visual Studio Build Tools with C++ and Python for nodehun, which is built for Windows with `node scripts/native.mjs nodehun`. The build script downloads the Windows Node.js 24 LTS, checks it in the same way and runs `tauri build --target x86_64-pc-windows-msvc`, which writes an NSIS installer. The workflow in `.github/workflows/windows.yml` does all of this on GitHub Actions, runs the backend tests with MiKTeX and attaches the installer to a release when it is run with a release tag. The Fluent icons in `apps/frontend/public/fluent/` are written by `node scripts/fluent-icons.mjs`.
+The Windows installer is built on Windows with the same command. It needs Node.js, Rust with the MSVC toolchain and the Visual Studio Build Tools with C++ and Python for nodehun, which is built for Windows with `node scripts/native.mjs nodehun`. The build script downloads the Windows Node.js 24 LTS, checks it in the same way, builds `texlab.exe` from TexLab's checked source with the C runtime linked in and runs `tauri build --target x86_64-pc-windows-msvc`, which writes an NSIS installer. The workflow in `.github/workflows/windows.yml` does all of this on GitHub Actions, runs the backend tests with MiKTeX and attaches the installer to a release when it is run with a release tag. The Fluent icons in `apps/frontend/public/fluent/` are written by `node scripts/fluent-icons.mjs`.
 
-For development there are two options. `npm run desktop:dev` runs the macOS shell against the backend in the repository, and `npm run dev` runs the interface in a browser at `http://localhost:5173` with the backend on port 8787.
+For development there are two options. `npm run desktop:dev` runs the macOS shell against the backend in the repository, and `npm run dev` runs the interface in a browser at `http://localhost:5173` with the backend on port 8787, which uses a `texlab` on the `PATH` (`brew install texlab`) when there is one.
 
 ## Running in a browser
 
@@ -474,6 +491,6 @@ The tool runs Python with matplotlib. Install it with `pip install matplotlib`, 
 
 ## Acknowledgements and licence
 
-Spectrum is based on OpenPrism by OpenDCAI. Many ideas in Spectrum's later versions, such as the agent workspace, the preflight checks, Zotero and source control, were inspired by [Oleafly](https://github.com/Oleafly/Oleafly) by Prajwal Murthy and contributors, and the circuit drawing in the diagram composer by [CircuiTikZ-Designer](https://github.com/Circuit2TikZ/CircuiTikZ-Designer). Thank you to both teams for building them in the open. Oleafly is released under the GNU Affero General Public License and CircuiTikZ-Designer under the GNU General Public License, so Spectrum learns from their designs but contains none of their code. Spectrum uses CodeMirror, PDF.js, Fastify, LangGraph and Tauri, checks spelling with nodehun, Hunspell, SCOWL and AussieDic and grammar with Harper, and bundles the JetBrains Mono, Fira Code, IBM Plex Mono and Source Code Pro fonts. The editor themes reuse the colours of the themes they are named after. Their licences are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The interface icons are drawn from Apple's SF Symbols, which are licensed for use in applications on Apple platforms.
+Spectrum is based on OpenPrism by OpenDCAI. Many ideas in Spectrum's later versions, such as the agent workspace, the preflight checks, Zotero and source control, were inspired by [Oleafly](https://github.com/Oleafly/Oleafly) by Prajwal Murthy and contributors, and the circuit drawing in the diagram composer by [CircuiTikZ-Designer](https://github.com/Circuit2TikZ/CircuiTikZ-Designer). Thank you to both teams for building them in the open. Oleafly is released under the GNU Affero General Public License and CircuiTikZ-Designer under the GNU General Public License, so Spectrum learns from their designs but contains none of their code. Spectrum uses CodeMirror, PDF.js, Fastify, LangGraph and Tauri, runs TexLab beside it as a separate program, checks spelling with nodehun, Hunspell, SCOWL and AussieDic and grammar with Harper, and bundles the JetBrains Mono, Fira Code, IBM Plex Mono and Source Code Pro fonts. The editor themes reuse the colours of the themes they are named after. Their licences are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The interface icons are drawn from Apple's SF Symbols, which are licensed for use in applications on Apple platforms.
 
 Spectrum is released under the MIT Licence given in [LICENSE](LICENSE).
