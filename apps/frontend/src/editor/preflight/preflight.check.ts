@@ -284,6 +284,10 @@ has(elsewhere(''), 'references', 'error', /^The document cites sources but has n
 has(elsewhere(`${usedLog}LaTeX Warning: Citation \`knuth84' on page 1 undefined on input line 4.\n`), 'references', 'error', /^The document cites sources but has no bibliography/);
 has(elsewhere(`${usedLog}I couldn't open database file central.bib\n`), 'references', 'error', /^The document cites sources but has no bibliography/);
 
+// the same finding twice on a line is one, which Review's Dismiss and its row keys need
+const twice = runPreflight(input({ files: [{ path: 'main.tex', text: '\\documentclass{article}\n\\begin{document}\n\\hl{a} and \\hl{b}\n\\end{document}\n' }] }));
+eq(brief(twice, 'privacy'), [['warning', 'Highlighted text (\\hl) is left in', 'main.tex:3']], 'once');
+
 // a venue style's review option hides the authors itself, and an Author field of Anonymous names no one
 const REVIEW = MAIN.replace('\\usepackage{soul}', '\\usepackage[review]{cvpr}');
 const reviewed = runPreflight(input({ files: [{ path: 'main.tex', text: REVIEW }], pdfFacts: { ...FACTS, author: 'Anonymous CVPR submission' }, anonymous: true }));

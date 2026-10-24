@@ -190,7 +190,14 @@ export function preflightGaps(input: Pick<PreflightInput, 'log' | 'failed' | 'pd
 export function runPreflight(input: PreflightInput): Finding[] {
   const { doc, pdfFacts: pdf } = input;
   const found: Finding[] = [];
-  const add = (finding: Finding) => found.push(finding);
+  // a second of the same finding (two \hl on one line, a token twice on one) says nothing more, and would share its
+  // row's id in Review, so Dismiss would hide both
+  const seenFindings = new Set<string>();
+  const add = (finding: Finding) => {
+    const id = JSON.stringify([finding.group, finding.severity, finding.message, finding.file, finding.line, finding.page]);
+    if (!seenFindings.has(id)) found.push(finding);
+    seenFindings.add(id);
+  };
   const paths = input.files.map((f) => f.path);
   const pathSet = new Set(paths);
   const folded = new Map(paths.map((p) => [p.toLowerCase(), p]));
