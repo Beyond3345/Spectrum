@@ -257,9 +257,9 @@ const ADAPTERS = {
  * reasoningEffort: a level from providers.js LEVELS, 'default' (the preset's level) or 'fast' (the lowest).
  * For the presets in providers.js the level is mapped to that provider's fields and temperature is left
  * to the provider; any other endpoint gets reasoning_effort for an explicit level only.
- * provider: a preset id, otherwise it's worked out from the endpoint's host.
+ * provider: a preset id, otherwise it's worked out from the endpoint's host. signal: aborting it stops the request.
  */
-export async function chatCompletion({ messages, model, endpoint, apiKey, tools, temperature = 0.2, reasoningEffort, provider: providerId }) {
+export async function chatCompletion({ messages, model, endpoint, apiKey, tools, temperature = 0.2, reasoningEffort, provider: providerId, signal }) {
   const resolved = resolveLLMConfig({ endpoint, apiKey, model });
   if (missingKey(resolved)) {
     return { ok: false, error: NO_API_KEY };
@@ -285,7 +285,7 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(key && adapter.headers(key)) },
         body: JSON.stringify(adapter.body({ model: resolved.model, messages, tools, ...options })),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS)
       });
       text = await res.text();
       if (res.status !== 400) break;
@@ -302,6 +302,7 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
       break;
     }
   } catch (err) {
+    if (signal?.aborted) return { ok: false, error: 'Stopped.', stopped: true };
     let host = 'the model provider';
     try {
       host = new URL(url).host;

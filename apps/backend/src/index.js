@@ -28,6 +28,7 @@ import { registerLanguageRoutes } from './routes/language.js';
 import { registerSyncRoutes } from './routes/sync.js';
 import { registerCloudRoutes } from './routes/cloud.js';
 import { registerPresenceRoutes } from './routes/presence.js';
+import { registerReviewRoutes } from './routes/review.js';
 import { seedTemplates, syncTemplates } from './services/templateService.js';
 import { dropOldAuxFolders, migrateLegacyProjects } from './services/projectService.js';
 import { startMirroring, stopMirroring } from './services/mirrorService.js';
@@ -95,6 +96,7 @@ registerLanguageRoutes(fastify);
 registerSyncRoutes(fastify);
 registerCloudRoutes(fastify);
 registerPresenceRoutes(fastify);
+registerReviewRoutes(fastify);
 
 // Serve the built frontend (production and desktop modes)
 if (existsSync(FRONTEND_DIST)) {
