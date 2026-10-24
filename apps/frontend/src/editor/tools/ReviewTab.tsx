@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { GlobalWorkerOptions } from 'pdfjs-dist';
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { blobUrl, getFile, getReviewState, runAiReview } from '../../api/client';
 import type { AiFinding, AiReview, LLMConfig } from '../../api/client';
 import Icon from '../../app/Icon';
@@ -12,6 +14,9 @@ import { Markdown, errorText, fixWithAI, relativeTime } from '../shared';
 
 // Tools › Review: one press compiles when the PDF is older than the source, runs the Preflight checks that are ticked
 // and, when ticked, the AI review (one read-only model call). The latest run is kept per project while Spectrum runs.
+
+// for pdfFacts, which leaves the worker to its caller
+GlobalWorkerOptions.workerSrc ||= pdfWorker;
 
 type Tick = PreflightGroup | 'ai';
 type Row = Finding & { id: string };
