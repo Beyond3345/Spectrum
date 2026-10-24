@@ -141,6 +141,28 @@ test('a kept file TeX can’t read is cleared, and the document compiles again f
   assert.match(cut.log, /compiled again from scratch/);
 });
 
+test('what filecontents writes is never kept, so its new text and a project file of the same name are read', { skip: needs('pdflatex', 'bibtex') }, async () => {
+  const doc = (value) => `\\documentclass{article}\n${value ? `\\begin{filecontents*}{data.dat}\n\\def\\myvalue{${value}}\n\\end{filecontents*}\n` : ''}\\begin{document}\\input{data.dat}\\typeout{VALUE\\myvalue}\\end{document}\n`;
+  const p = await newProject({ 'main.tex': doc('111') });
+  assert.match(lastPass((await compile(p)).log), /VALUE111/);
+  await fs.writeFile(path.join(p.path, 'main.tex'), doc('222'));
+  assert.match(lastPass((await compile(p)).log), /VALUE222/);
+  assert.match(lastPass((await compile(p)).log), /VALUE222/);
+  await fs.writeFile(path.join(p.path, 'main.tex'), doc(''));
+  await fs.writeFile(path.join(p.path, 'data.dat'), '\\def\\myvalue{999}\n');
+  assert.match(lastPass((await compile(p)).log), /VALUE999/);
+  assert.ok(!existsSync(kept(p, 'data.dat')));
+  // a bibliography the document writes for itself
+  const bib = (title) => `\\documentclass{article}\n\\begin{filecontents*}{\\jobname.bib}\n@book{k, author = {Knuth, Donald}, title = {${title}}, publisher = {AW}, year = {1984}}\n\\end{filecontents*}\n\\begin{document}\\cite{k}\\bibliographystyle{plain}\\bibliography{\\jobname}\\end{document}\n`;
+  await fs.writeFile(path.join(p.path, 'main.tex'), bib('Alpha'));
+  await fs.rm(path.join(p.path, 'data.dat'));
+  assert.equal((await compile(p)).status, 0);
+  await fs.writeFile(path.join(p.path, 'main.tex'), bib('Beta'));
+  assert.equal((await compile(p)).status, 0);
+  assert.match(await fs.readFile(kept(p, 'main.bbl'), 'utf8'), /Beta/);
+  assert.ok(!existsSync(kept(p, 'main.bib')));
+});
+
 test('an ordinary error just after hyperref reads its kept file compiles once', { skip: needs('pdflatex') }, async () => {
   const doc = (body) => `\\documentclass{article}\\usepackage{hyperref}\n\\begin{document}\n${body}\n\\section{S}\\label{s} See \\ref{s}.\n\\end{document}\n`;
   const p = await newProject({ 'main.tex': doc('Text.') });
@@ -212,6 +234,17 @@ test('makeindex and makeglossaries run when their files appear, and not again wh
   const again = await compile(p);
   assert.equal(passes(again.log), 1);
   assert.doesNotMatch(again.log, /This is makeindex|makeglossaries/);
+});
+
+test('after a draft the next full compile makes the index again', { skip: needs('pdflatex', 'makeindex') }, async () => {
+  const doc = (extra) => `\\documentclass{article}\\usepackage{makeidx}\\makeindex\\begin{document}Alpha\\index{alpha} ${extra}\\printindex\\end{document}\n`;
+  const p = await newProject({ 'main.tex': doc('') });
+  assert.equal((await compile(p)).status, 0);
+  await fs.writeFile(path.join(p.path, 'main.tex'), doc('Beta\\index{beta}'));
+  assert.ok((await compile(p, { draft: true })).ok);
+  assert.equal((await compile(p)).status, 0);
+  assert.match(await fs.readFile(kept(p, 'main.ind'), 'utf8'), /beta/);
+  assert.equal(passes((await compile(p)).log), 1);
 });
 
 test('the acronyms’ list is kept, and a new acronym runs makeglossaries', { skip: needs('pdflatex', 'makeglossaries') }, async () => {

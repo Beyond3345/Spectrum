@@ -39,6 +39,9 @@ export const auxStore = (cache, doc) => path.join(cache, 'aux-files', doc);
 // but the PDF, SyncTeX and the logs, as packages keep lists of their own (listings' .lol, algorithm's .loa, the
 // acronyms' .acn); Biber's log has the time in it, so every compile would look changed
 const keptFile = (rel) => !/\.(?:pdf|log|blg|ilg|glg|synctex\.gz)$/i.test(rel);
+// what filecontents wrote, as the last pass's log names it: kept, TeX would find it before the source's new text, and
+// before a project file of the same name ("Writing file `./data.dat'", "File `data.dat' already exists on the system")
+const FILECONTENTS = /(?:Writing(?: or overwriting)? file|File) `(?:\.\/)?([^']+)'(?:\.| already exists)/g;
 const keptStore = (cache, doc, engine) => path.join(cache, 'build-files', doc, engine);
 // written last, so a store a crash left half copied isn't read
 const KEPT_MARKER = '.complete';
@@ -551,8 +554,9 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
       log += `\n[spectrum warning] ${path.basename(absPdf)} is open in another program, so the copy next to the source wasn’t updated.\n`;
     });
     await keepSynctex(projectRoot, doc, path.join(outDir, `${base}.synctex.gz`), mainDir);
-    // only a build without errors is read back; after one with errors the next compile starts from nothing
-    if (multiPass) await (code === 0 ? keepBuild(outDir, store, others) : fs.rm(store, { recursive: true, force: true })).catch(() => {});
+    // only a build without errors is read back; after one with errors the next compile starts from nothing. A draft
+    // leaves the last full compile's: its .idx kept beside the old .ind would keep makeindex from running again
+    if (multiPass && !options.draft) await (code === 0 ? keepBuild(outDir, store, others, await passLog()) : fs.rm(store, { recursive: true, force: true })).catch(() => {});
     await keepAux(outDir, auxStore(cache, doc), others);
   } finally {
     await cleanBuild(buildRoot, outDir);
@@ -650,11 +654,12 @@ async function copyKept(store, outDir) {
  * ponytail: two compiles of one document finishing at once can mix their files; the next compile's reruns, or its
  * second go from scratch, put that right. A lock per store if it ever shows
  */
-async function keepBuild(outDir, store, others) {
+async function keepBuild(outDir, store, others, log) {
+  const written = new Set([...log.matchAll(FILECONTENTS)].map(([, name]) => name));
   await fs.rm(store, { recursive: true, force: true });
   await ensureDir(store);
   for (const { path: rel, type } of await listFilesRecursive(outDir)) {
-    if (type !== 'file' || !keptFile(rel)) continue;
+    if (type !== 'file' || !keptFile(rel) || written.has(slashed(rel))) continue;
     if (others.has(rel) && others.get(rel) === (await fs.stat(path.join(outDir, rel))).mtimeMs) continue;
     await ensureDir(path.dirname(path.join(store, rel)));
     await fs.copyFile(path.join(outDir, rel), path.join(store, rel));
