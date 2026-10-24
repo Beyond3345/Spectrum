@@ -45,6 +45,8 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
   eq((await readDiagramFile(handEdited)).edited, true, 'a hand edit shows');
   eq((await readDiagramFile(handEdited)).diagram, circuit, 'and the drawing is still there');
   eq((await readDiagramFile(text.replace(/\n/g, '\r\n'))).edited, true, 'line endings changed count as edited');
+  const below = await readDiagramFile(`${text}% added below\n`);
+  eq([below.diagram, below.edited, below.code.endsWith('\\end{document}\n% added below\n')], [circuit, true, true], 'text added below the drawing’s line is an edit, kept');
 
   // kept as code: the hand-edited text goes above, the hash stays the drawing's, so it reopens as edited
   const kept = await diagramFileText(circuit, code, '\\documentclass{standalone}\n% mine');
@@ -59,6 +61,6 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
 
   eq(await readDiagramFile('flowchart LR\n  a --> b\n'), { code: 'flowchart LR\n  a --> b\n', diagram: null, edited: false }, 'no last line');
   const damaged = await readDiagramFile('x\n% spectrum-diagram v1 bm90IGpzb24= 0123456789abcdef\n');
-  eq([damaged.code, damaged.diagram], ['x\n', null], 'a damaged drawing opens as code');
+  eq([damaged.code, damaged.diagram, damaged.mark], ['x\n', null, '% spectrum-diagram v1 bm90IGpzb24= 0123456789abcdef'], 'a damaged drawing opens as code, its line kept');
   console.log('fileFormat.check: ok');
 })();
