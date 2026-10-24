@@ -1,11 +1,39 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { changeSpellWord, getSyncSettings, listProjects, spellStatus, spellWords, systemCheck, updateSyncSettings } from '../api/client';
-import type { BibTool, CheckerStatus, CloudMode, CompileEngine, SearchProvider, SyncSettings, SystemCheck } from '../api/client';
+import {
+  changeSpellWord,
+  configureLocalAgent,
+  createSkill,
+  deleteSkill,
+  duplicateSkill,
+  getProjectSettings,
+  getSkillShare,
+  getSyncSettings,
+  importLocalAgentLogin,
+  importSkill,
+  listLocalAgents,
+  listProjects,
+  listSkillFiles,
+  listSkills,
+  readSkillFile,
+  setSkillEnabled,
+  setSkillShare,
+  spellStatus,
+  spellWords,
+  systemCheck,
+  updateProjectSettings,
+  updateSyncSettings,
+  writeSkillFile
+} from '../api/client';
+import type { BibTool, CheckerStatus, CloudMode, CompileEngine, LocalAgent, SearchProvider, Skill, SkillShare, SyncSettings, SystemCheck } from '../api/client';
 import { COLOUR_ROLES, EDITOR_FONTS, EDITOR_THEMES, chosenColours, editorColours, highlightLines, themeFor, wellColour } from '../editor/editorThemes';
 import type { EditorMode } from '../editor/editorThemes';
 import { highlightColour } from '../editor/synctex';
 import { CheckpointCleanup } from '../editor/tools/VersionsTab';
+import { resetPersonas } from '../editor/personas';
+import type { Persona } from '../editor/personas';
+import { errorText } from '../editor/shared';
+import { confirmDialog } from './Dialogs';
 import Icon from './Icon';
 import Select from './Select';
 import Sheet from './Sheet';
@@ -14,7 +42,8 @@ import { ParserFields } from './TransferPanel';
 import { IS_DESKTOP, claimDefaultHandler, pickFolder } from './desktop';
 import { toast } from './Toast';
 import { IS_MAC, IS_WINDOWS, OS_NAME, tildify } from './platform';
-import { ACCENTS, PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
+import { ACCENTS, PDF_PAGES_DARK, PDF_PAGES_LIGHT, TAG_COLOURS, useDarkMode } from './appearance';
+import { groupSkills, projectSkills, skillId, skillOn } from './skills';
 import {
   BIB_TOOLS,
   COMPILE_ENGINES,
@@ -34,6 +63,8 @@ import {
   rolePresetOf,
   searchProviderPatch,
   SEARCH_PROVIDERS,
+  TAG_COLOUR_NAMES,
+  loadSettings,
   useLivePreset,
   useProviders,
   useSettings
@@ -43,7 +74,21 @@ import type { ProviderPreset } from '../api/client';
 import { FIXED_SHORTCUTS, SHORTCUTS, canonical, formatShortcut, shortcutFromEvent, shortcutKey, shortcutProblem } from './shortcuts';
 import type { Shortcut } from './shortcuts';
 
-type Section = 'appearance' | 'editor' | 'engines' | 'checkpoints' | 'language' | 'shortcuts' | 'projects' | 'models' | 'search' | 'transfer' | 'system';
+export type Section =
+  | 'appearance'
+  | 'editor'
+  | 'engines'
+  | 'checkpoints'
+  | 'language'
+  | 'shortcuts'
+  | 'projects'
+  | 'models'
+  | 'personas'
+  | 'skills'
+  | 'agents'
+  | 'search'
+  | 'transfer'
+  | 'system';
 
 const SECTIONS: [Section, string, string][] = [
   ['appearance', 'Appearance', 'circle.lefthalf.filled'],
@@ -54,6 +99,9 @@ const SECTIONS: [Section, string, string][] = [
   ['shortcuts', 'Shortcuts', 'keyboard'],
   ['projects', 'Projects', 'folder'],
   ['models', 'Models', 'sparkles'],
+  ['personas', 'Personas', 'brain.head.profile'],
+  ['skills', 'Skills', 'graduationcap'],
+  ['agents', 'Agents', 'terminal'],
   ['search', 'Search', 'magnifyingglass'],
   ['transfer', 'Template transfer', 'arrow.triangle.2.circlepath'],
   ['system', 'System', 'stethoscope']
@@ -92,9 +140,10 @@ const INSTALL_HINTS: Record<string, string> = {
   tectonic: IS_WINDOWS ? 'Install it from tectonic-typesetting.github.io' : 'brew install tectonic'
 };
 
-export default function SettingsSheet({ onClose }: { onClose: () => void }) {
+/** projectId: the open project, for Skills' This project; section: the one to open on */
+export default function SettingsSheet({ onClose, projectId, section: start = 'appearance' }: { onClose: () => void; projectId?: string; section?: Section }) {
   const [settings, update] = useSettings();
-  const [section, setSection] = useState<Section>('appearance');
+  const [section, setSection] = useState<Section>(start);
   const [check, setCheck] = useState<SystemCheck | null>(null);
   const [checkError, setCheckError] = useState('');
   const providers = useProviders();
@@ -441,6 +490,12 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
 
           {section === 'shortcuts' && <ShortcutsPane />}
 
+          {section === 'personas' && <PersonasPane />}
+
+          {section === 'skills' && <SkillsPane projectId={projectId} />}
+
+          {section === 'agents' && <AgentsPane />}
+
           {section === 'projects' && (
             <>
               <div className="field">
@@ -502,7 +557,7 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                 <span>
                   Use the same settings on each computer
                   <span className="field-hint">
-                    Through your cloud locations: appearance, editor, spelling, shortcuts and the folders on the Projects page. API keys, models, folders on disk, what Sync to does and
+                    Through your cloud locations: appearance, editor, spelling, shortcuts, personas and the folders on the Projects page. API keys, models, folders on disk, what Sync to does and
                     the window’s look stay on each computer.
                   </span>
                 </span>
@@ -1374,6 +1429,685 @@ function LanguagePane() {
           )}
         </div>
       )}
+    </>
+  );
+}
+
+/** Settings › Personas: the default instructions, and the personas picked in chat that take their place. */
+function PersonasPane() {
+  const [settings, update] = useSettings();
+  // a copy of the one being edited or created, kept only with Save
+  const [editing, setEditing] = useState<Persona | null>(null);
+  const creating = !!editing && !settings.personas.some((p) => p.id === editing.id);
+
+  const save = () => {
+    if (!editing) return;
+    const next = { ...editing, name: editing.name.trim() };
+    const personas = loadSettings().personas;
+    update({ personas: creating ? [...personas, next] : personas.map((p) => (p.id === next.id ? next : p)) });
+    setEditing(null);
+  };
+  const remove = async (persona: Persona) => {
+    const ok = await confirmDialog({
+      title: `Delete “${persona.name}”?`,
+      message: 'Chats that use it go back to your default instructions.',
+      confirmLabel: 'Delete',
+      destructive: true
+    });
+    if (ok) update({ personas: loadSettings().personas.filter((p) => p.id !== persona.id) });
+  };
+  const reset = async () => {
+    const ok = await confirmDialog({
+      title: 'Reset the starter personas?',
+      message: 'Research writer, Document editor, Critical reviewer and Draw a figure go back to how Spectrum wrote them. Your own personas stay as they are.',
+      confirmLabel: 'Reset'
+    });
+    if (ok) update({ personas: resetPersonas(loadSettings().personas) });
+  };
+
+  const form = editing && (
+    <div key="persona-form" className="persona-form">
+      <div className="field">
+        <label htmlFor="persona-name">Name</label>
+        <input id="persona-name" className="input" value={editing.name} autoFocus onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+      </div>
+      <div className="field">
+        <label id="persona-colour">Colour</label>
+        <div className="accent-picker" role="radiogroup" aria-labelledby="persona-colour">
+          {TAG_COLOUR_NAMES.map((colour) => (
+            <button
+              key={colour}
+              className="accent-swatch"
+              style={{ '--swatch': TAG_COLOURS[colour][1] } as CSSProperties}
+              role="radio"
+              aria-checked={editing.colour === colour}
+              aria-label={TAG_COLOURS[colour][0]}
+              title={TAG_COLOURS[colour][0]}
+              onClick={() => setEditing({ ...editing, colour })}
+            />
+          ))}
+        </div>
+      </div>
+      <div className="field">
+        <label htmlFor="persona-prompt">Instructions</label>
+        <textarea id="persona-prompt" className="input" rows={7} value={editing.prompt} onChange={(e) => setEditing({ ...editing, prompt: e.target.value })} />
+        <div className="field-hint">How the assistant should work and write while this persona is chosen. They take the place of your default instructions.</div>
+      </div>
+      <div className="row">
+        <span className="grow" />
+        <button className="btn small" onClick={() => setEditing(null)}>Cancel</button>
+        <button className="btn small primary" disabled={!editing.name.trim() || !editing.prompt.trim()} onClick={save}>
+          {creating ? 'Create' : 'Save'}
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      <div className="field-hint section-hint">
+        Pick a persona in the assistant or the agent workspace to give a chat instructions for a task. They follow you to your other computers with your settings.
+      </div>
+      <div className="field">
+        <label htmlFor="settings-defaultInstructions">Default instructions</label>
+        <textarea
+          id="settings-defaultInstructions"
+          className="input"
+          rows={4}
+          value={settings.defaultInstructions}
+          placeholder="For example: keep answers short, and ask before restructuring a section."
+          onChange={(e) => update({ defaultInstructions: e.target.value })}
+        />
+        <div className="field-hint">Used in every chat without a persona. Autocomplete never uses them.</div>
+      </div>
+
+      <h3 className="form-section-title">Personas</h3>
+      <div className="kv-list">
+        {settings.personas.map((persona) =>
+          editing?.id === persona.id ? (
+            form
+          ) : (
+            <div key={persona.id} className="kv-row persona-row">
+              <span className="tag-dot large" style={{ background: TAG_COLOURS[persona.colour][1] }} />
+              <span className="persona-text">
+                {persona.name}
+                <span className="field-hint">{persona.prompt}</span>
+              </span>
+              <button className="icon-btn small" title="Edit" aria-label={`Edit ${persona.name}`} disabled={!!editing} onClick={() => setEditing(persona)}>
+                <Icon name="pencil" />
+              </button>
+              <button className="icon-btn small" title="Delete" aria-label={`Delete ${persona.name}`} disabled={!!editing} onClick={() => remove(persona)}>
+                <Icon name="trash" />
+              </button>
+            </div>
+          )
+        )}
+        {creating && form}
+        {!settings.personas.length && !creating && (
+          <div className="kv-row">
+            <span>No personas. Reset to defaults puts the starters back.</span>
+          </div>
+        )}
+      </div>
+      <div className="row">
+        <button className="btn small" disabled={!!editing} onClick={() => setEditing({ id: crypto.randomUUID(), name: '', colour: 'blue', prompt: '' })}>
+          <Icon name="plus" /> Create persona
+        </button>
+        <button className="btn small" disabled={!!editing} onClick={reset}>
+          Reset to defaults
+        </button>
+      </div>
+    </>
+  );
+}
+
+// the native switch look where the web view has one (Safari 17.4 and later); elsewhere a tick box
+const SWITCH = { switch: '' } as object;
+
+/** Settings › Skills: every skill in its group with a switch for all projects or this one, your own skills' files, and sharing. */
+function SkillsPane({ projectId }: { projectId?: string }) {
+  const [skills, setSkills] = useState<Skill[] | null>(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState('');
+  const [scope, setScope] = useState<'all' | 'project'>('all');
+  const [view, setView] = useState<'create' | Skill | null>(null);
+  const inProject = !!projectId && scope === 'project';
+
+  const load = () =>
+    listSkills(projectId).then(
+      (res) => {
+        setSkills(res.skills);
+        setError('');
+      },
+      (err) => setError(errorText(err))
+    );
+  useEffect(() => {
+    load();
+  }, [projectId]);
+
+  /** Runs a change, then lists the skills again; false if it failed. */
+  const run = async (work: () => Promise<unknown>) => {
+    setBusy(true);
+    setError('');
+    try {
+      await work();
+      await load();
+      return true;
+    } catch (err) {
+      setError(errorText(err));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+  /** on, off, or null to follow Settings again; read fresh so choices made on the other computer stay */
+  const setForProject = (skill: Skill, on: boolean | null) =>
+    run(async () => {
+      const { settings } = await getProjectSettings(projectId!);
+      await updateProjectSettings(projectId!, { skills: projectSkills(settings.skills, skill.id, on) });
+    });
+  const toggle = (skill: Skill, on: boolean) => (inProject ? setForProject(skill, on === skill.enabled ? null : on) : run(() => setSkillEnabled(skill.id, on)));
+  const addFolder = async () => {
+    const picked = await pickFolder({ title: 'Choose a skill’s folder, the one with its SKILL.md' });
+    if (picked) run(() => importSkill(picked));
+  };
+  const remove = async (skill: Skill) => {
+    const ok = await confirmDialog({
+      title: `Delete “${skill.name}”?`,
+      message: 'Spectrum deletes its folder and every file in it, and agents stop using it.',
+      confirmLabel: 'Delete',
+      destructive: true
+    });
+    if (ok) run(() => deleteSkill(skill.id));
+  };
+
+  if (view === 'create') return <CreateSkill busy={busy} error={error} onCancel={() => setView(null)} onCreate={async (skill) => (await run(() => createSkill(skill))) && setView(null)} />;
+  if (view) return <SkillFiles skill={view} onBack={() => (setView(null), load())} />;
+
+  const groups = skills ? groupSkills(skills, query) : [];
+  return (
+    <>
+      <div className="field-hint section-hint">
+        Instructions in the Agent Skills format: a folder with a SKILL.md. The assistant sees each skill’s name and description and reads the rest when it needs it,
+        or straight away when you type /skill-id. Local agents get the ones switched on in their private home.
+      </div>
+      <div className="row skills-bar">
+        <label className="search-field grow">
+          <Icon name="magnifyingglass" />
+          <input value={query} placeholder="Search" aria-label="Search skills" spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
+          {query && (
+            <button className="search-clear" aria-label="Clear search" onClick={() => setQuery('')}>
+              <Icon name="xmark.circle.fill" />
+            </button>
+          )}
+        </label>
+        {projectId && (
+          <div className="segmented small" role="radiogroup" aria-label="Switches apply to">
+            {(['all', 'project'] as const).map((value) => (
+              <button key={value} className={`segment ${scope === value ? 'active' : ''}`} role="radio" aria-checked={scope === value} onClick={() => setScope(value)}>
+                {value === 'all' ? 'All projects' : 'This project'}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="field-hint">
+        {inProject
+          ? 'Switches change this project alone. Its choices travel with the project.'
+          : projectId
+            ? 'Switches change every project that hasn’t made its own choice.'
+            : 'Switches change every project. Open Settings from a project to change one project alone.'}
+      </div>
+      <div className="row">
+        <button className="btn small" disabled={busy} onClick={() => setView('create')}>
+          <Icon name="plus" /> Create skill
+        </button>
+        <button className="btn small" disabled={busy} onClick={addFolder}>
+          <Icon name="folder.badge.plus" /> Add folder…
+        </button>
+      </div>
+      {error && <div className="field-hint error">{error}</div>}
+      {!skills && !error && (
+        <div className="field-hint">
+          <span className="spinner" /> Loading…
+        </div>
+      )}
+      {skills && !groups.length && <div className="field-hint">{query ? 'No skills match.' : 'No skills yet.'}</div>}
+      {groups.map(([group, list]) => (
+        <div key={group} className="skill-group">
+          <h3 className="form-section-title">{group}</h3>
+          {list.map((skill) => (
+            <div key={skill.id} className="skill-card">
+              <div className="skill-card-head">
+                <span className="skill-name">{skill.name}</span>
+                {skill.project && <span className="badge accent">Changed for this project</span>}
+                {skill.project && (
+                  <button className="btn small" disabled={busy} onClick={() => setForProject(skill, null)}>
+                    Reset
+                  </button>
+                )}
+                <span className="grow" />
+                <input
+                  type="checkbox"
+                  role="switch"
+                  {...SWITCH}
+                  checked={skillOn(skill, inProject)}
+                  disabled={busy}
+                  aria-label={`Use ${skill.name} ${inProject ? 'in this project' : 'in every project'}`}
+                  onChange={(e) => toggle(skill, e.target.checked)}
+                />
+              </div>
+              {skill.description && <div className="field-hint skill-description">{skill.description}</div>}
+              <div className="skill-meta">
+                {[skill.author, skill.licence, skill.version && `Version ${skill.version}`, `${skill.files} ${skill.files === 1 ? 'file' : 'files'}`].filter(Boolean).join(' · ')}
+              </div>
+              {skill.compatibility && <div className="skill-meta">Needs: {skill.compatibility}</div>}
+              <div className="row">
+                <button className="btn small" onClick={() => setView(skill)}>
+                  {skill.source === 'own' ? 'Edit files' : 'Files'}
+                </button>
+                <button className="btn small" disabled={busy} onClick={() => run(() => duplicateSkill(skill.id))}>
+                  Duplicate
+                </button>
+                {skill.source === 'own' && (
+                  <button className="btn small" disabled={busy} onClick={() => remove(skill)}>
+                    Delete
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+      <SkillSharing />
+    </>
+  );
+}
+
+/** A new skill of your own: its name, the description the assistant decides by, and the instructions. */
+function CreateSkill({
+  busy,
+  error,
+  onCancel,
+  onCreate
+}: {
+  busy: boolean;
+  error: string;
+  onCancel: () => void;
+  onCreate: (skill: { id: string; name: string; description: string; body: string }) => void;
+}) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [body, setBody] = useState('');
+  const id = skillId(name);
+  return (
+    <>
+      <div className="row">
+        <button className="btn small" onClick={onCancel}>
+          <Icon name="chevron.left" /> Skills
+        </button>
+      </div>
+      <h3 className="form-section-title">New skill</h3>
+      <div className="field">
+        <label htmlFor="skill-name">Name</label>
+        <input id="skill-name" className="input" value={name} autoFocus placeholder="Lab style guide" onChange={(e) => setName(e.target.value)} />
+        <div className="field-hint">{id ? `Saved as ${id}, and typed as /${id} in chat.` : 'Use letters or numbers: they become its folder’s name.'}</div>
+      </div>
+      <div className="field">
+        <label htmlFor="skill-description">Description</label>
+        <textarea id="skill-description" className="input" rows={3} maxLength={1024} value={description} onChange={(e) => setDescription(e.target.value)} />
+        <div className="field-hint">What it does and when to use it. The assistant reads only this until it needs the skill, so name the tasks it’s for.</div>
+      </div>
+      <div className="field">
+        <label htmlFor="skill-body">Instructions</label>
+        <textarea id="skill-body" className="input mono" rows={10} value={body} onChange={(e) => setBody(e.target.value)} />
+        <div className="field-hint">In Markdown, saved as the skill’s SKILL.md.</div>
+      </div>
+      {error && <div className="field-hint error">{error}</div>}
+      <div className="row">
+        <span className="grow" />
+        <button className="btn small" onClick={onCancel}>Cancel</button>
+        <button
+          className="btn small primary"
+          disabled={busy || !id || !description.trim() || !body.trim()}
+          onClick={() => onCreate({ id, name: name.trim(), description: description.trim(), body })}
+        >
+          Create skill
+        </button>
+      </div>
+    </>
+  );
+}
+
+/** A skill's files, read-only for a built-in one; your own skill's are edited here. */
+function SkillFiles({ skill, onBack }: { skill: Skill; onBack: () => void }) {
+  const own = skill.source === 'own';
+  const [files, setFiles] = useState<string[]>([]);
+  const [path, setPath] = useState('SKILL.md');
+  const [text, setText] = useState<string | null>(null);
+  const [saved, setSaved] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const changed = text !== null && text !== saved;
+
+  useEffect(() => {
+    listSkillFiles(skill.id).then((res) => setFiles(res.files), (err) => setError(errorText(err)));
+  }, [skill.id]);
+  // ponytail: every file reads as text, so a picture shows as garbage; a preview can come when skills carry images
+  useEffect(() => {
+    setText(null);
+    readSkillFile(skill.id, path).then(
+      (res) => {
+        setText(res.content);
+        setSaved(res.content);
+        setError('');
+      },
+      (err) => setError(errorText(err))
+    );
+  }, [skill.id, path]);
+
+  /** Leaves this file only once unsaved changes are let go. ponytail: closing Settings itself doesn't ask; a guard on the sheet if that loses work */
+  const leave = async (then: () => void) => {
+    if (changed && !(await confirmDialog({ title: `Discard your changes to ${path}?`, confirmLabel: 'Discard', destructive: true }))) return;
+    then();
+  };
+  const save = async () => {
+    if (text === null) return;
+    setSaving(true);
+    try {
+      await writeSkillFile(skill.id, path, text);
+      setSaved(text);
+      setError('');
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="row skills-bar">
+        <button className="btn small" onClick={() => leave(onBack)}>
+          <Icon name="chevron.left" /> Skills
+        </button>
+        <span className="skill-name grow truncate">{skill.name}</span>
+        {!own && <span className="badge">Built in: duplicate it to make changes</span>}
+      </div>
+      <div className="skill-files">
+        <div className="skill-file-list" role="listbox" aria-label="Files">
+          {(files.length ? files : ['SKILL.md']).map((file) => (
+            <button key={file} className={`nav-row ${file === path ? 'active' : ''}`} role="option" aria-selected={file === path} onClick={() => leave(() => setPath(file))}>
+              <Icon name="doc.text" />
+              <span className="truncate">{file}</span>
+            </button>
+          ))}
+        </div>
+        <textarea
+          className="input mono skill-file-text"
+          aria-label={path}
+          value={text ?? ''}
+          placeholder={text === null ? 'Loading…' : undefined}
+          readOnly={!own || text === null}
+          spellCheck={false}
+          onChange={(e) => setText(e.target.value)}
+        />
+      </div>
+      {error && <div className="field-hint error">{error}</div>}
+      {own && (
+        <div className="row">
+          <span className="grow" />
+          <button className="btn small" disabled={!changed || saving} onClick={() => setText(saved)}>Revert</button>
+          <button className="btn small primary" disabled={!changed || saving} onClick={save}>Save</button>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** The switch that links your skills where agents run outside Spectrum look for them, off by default. */
+function SkillSharing() {
+  const [share, setShare] = useState<SkillShare | null>(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    getSkillShare().then(setShare, (err) => setError(errorText(err)));
+  }, []);
+  const turn = async (enabled: boolean) => {
+    setBusy(true);
+    try {
+      setShare(await setSkillShare(enabled));
+      setError('');
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const linked = share?.targets.filter((t) => t.linked).length ?? 0;
+  return (
+    <>
+      <h3 className="form-section-title">
+        Share skills with other agents on this computer
+        {share && <span className="badge">{linked} of {share.targets.length} linked</span>}
+      </h3>
+      <label className="checkbox-row">
+        <input type="checkbox" role="switch" {...SWITCH} checked={!!share?.enabled} disabled={!share || busy} onChange={(e) => turn(e.target.checked)} />
+        <span>
+          Link your skills for agents you run yourself
+          <span className="field-hint">
+            Your own skills that are switched on, linked into the folders below where that agent’s folder already exists. Nothing already there is replaced. Agents
+            started from Spectrum don’t need this.
+          </span>
+        </span>
+      </label>
+      {share?.targets.map((target) => (
+        <div key={target.path} className="path-row">
+          <Icon name="link" />
+          <span className="path-text">
+            <span className="path-label">{target.agent}</span>
+            {tildify(target.path)}
+          </span>
+          <span className={`badge ${target.linked ? 'success' : ''}`}>{target.linked ? 'Linked' : target.exists ? 'Not linked' : 'Not on this computer'}</span>
+        </div>
+      ))}
+      {error && <div className="field-hint error">{error}</div>}
+    </>
+  );
+}
+
+/** Settings › Agents: each local agent's program, key, launcher arguments and runtime folders, and copying its login in. */
+function AgentsPane() {
+  const [agents, setAgents] = useState<LocalAgent[] | null>(null);
+  const [agentId, setAgentId] = useState('opencode');
+  const [command, setCommand] = useState('');
+  const [args, setArgs] = useState('[]');
+  const [runtimePaths, setRuntimePaths] = useState('');
+  const [key, setKey] = useState('');
+  const [keyEnv, setKeyEnv] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const current = agents?.find((a) => a.id === agentId) ?? agents?.[0];
+
+  const refresh = () => listLocalAgents().then((res) => setAgents(res.agents));
+  useEffect(() => {
+    refresh().catch((err) => setError(errorText(err)));
+  }, []);
+  // the form shows what's saved for the agent picked, and again after each save
+  useEffect(() => {
+    if (!current) return;
+    setCommand(current.command);
+    setArgs(JSON.stringify(current.args));
+    setRuntimePaths(current.runtimePaths.join('\n'));
+    setKey('');
+    setKeyEnv(current.keyEnv);
+  }, [current?.id, current?.command, current?.keyEnv, JSON.stringify(current?.args), JSON.stringify(current?.runtimePaths)]);
+
+  const run = async (work: () => Promise<unknown>) => {
+    setBusy(true);
+    setError('');
+    try {
+      await work();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const launcherArgs = () => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(args);
+    } catch {
+      // the message below
+    }
+    if (!Array.isArray(parsed) || !parsed.every((a) => typeof a === 'string')) throw new Error('Launcher arguments must be a JSON list of strings, e.g. ["acp"].');
+    return parsed as string[];
+  };
+  const save = (agent: LocalAgent) =>
+    run(async () => {
+      const paths = runtimePaths.split('\n').map((p) => p.trim()).filter(Boolean);
+      await configureLocalAgent(agent.id, { command, args: launcherArgs(), runtimePaths: paths, keyEnv, ...(key && { apiKey: key }) });
+      setKey('');
+      await refresh();
+    });
+  const copyLogin = (agent: LocalAgent) =>
+    run(async () => {
+      const res = await importLocalAgentLogin(agent.id);
+      toast(`Copied ${res.files} login and configuration ${res.files === 1 ? 'file' : 'files'} into ${agent.name}’s private home.`, { tone: 'success' });
+    });
+  // with what's saved rather than the form, so unsaved edits stay unsaved
+  const removeKey = (agent: LocalAgent) =>
+    run(async () => {
+      await configureLocalAgent(agent.id, { command: agent.command, args: agent.args, runtimePaths: agent.runtimePaths, apiKey: '' });
+      await refresh();
+    });
+
+  return (
+    <>
+      <div className="field-hint section-hint">
+        Coding agents installed on this computer, such as OpenCode, Codex and Claude, work on a project from the agent workspace. Each runs isolated with a private
+        home of its own, and in review mode on a copy of the project, so you choose which changes come in.
+      </div>
+      {IS_WINDOWS && (
+        <div className="field-hint">
+          On Windows, local agents get no Spectrum tools yet, such as compiling or searching the literature. Skills and the workspace’s task buttons work all the
+          same.
+        </div>
+      )}
+      {!agents && !error && (
+        <div className="field-hint">
+          <span className="spinner" /> Loading…
+        </div>
+      )}
+      {current && (
+        <>
+          <div className="field">
+            <label id="settings-agent">Agent</label>
+            <Select
+              labelId="settings-agent"
+              value={current.id}
+              disabled={busy}
+              options={agents!.map((a): [string, string] => [
+                a.id,
+                `${a.name}${a.experimental ? ' · Experimental' : ''}${a.unavailable ? (a.id === 'workbuddy' ? ' · Planned' : ' · Unavailable') : ''}`
+              ])}
+              onChange={(id) => {
+                setAgentId(id);
+                setError('');
+              }}
+            />
+            <div className="field-hint">
+              {current.unavailable || current.note}{' '}
+              <a href={current.url} target="_blank" rel="noreferrer">
+                Setup guide
+              </a>
+            </div>
+            {!current.unavailable && !current.installed && <div className="field-hint error">Not found. Install it, or choose its executable below.</div>}
+            {!current.unavailable && !current.supported && (
+              <div className="field-hint error">Agent isolation isn’t available on this computer. Repair or reinstall Spectrum before starting an agent.</div>
+            )}
+          </div>
+          {!current.unavailable && (
+            <>
+              <div className="field">
+                <label htmlFor="settings-agentCommand">Executable</label>
+                <input
+                  id="settings-agentCommand"
+                  className="input"
+                  value={command}
+                  placeholder={current.command}
+                  spellCheck={false}
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  autoComplete="off"
+                  onChange={(e) => setCommand(e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label id="settings-agentKeyEnv">Provider credential</label>
+                <Select
+                  labelId="settings-agentKeyEnv"
+                  value={keyEnv}
+                  options={current.keyEnvs.map((name): [string, string] => [name, name.replace(/_(API_KEY|PERSONAL_ACCESS_TOKEN)$/, '').replace(/_/g, ' ')])}
+                  onChange={setKeyEnv}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="settings-agentKey">API key or access token</label>
+                <input
+                  id="settings-agentKey"
+                  className="input"
+                  type="password"
+                  autoComplete="off"
+                  value={key}
+                  placeholder={current.hasKey && keyEnv === current.keyEnv ? 'Saved on this computer; leave blank to keep it' : 'Optional when a copied login is there'}
+                  onChange={(e) => setKey(e.target.value)}
+                />
+                {current.hasKey && keyEnv !== current.keyEnv && (
+                  <div className="field-hint">Saving another provider removes the saved key, so enter that provider’s key here.</div>
+                )}
+              </div>
+              <details className="agent-advanced">
+                <summary>Advanced</summary>
+                <div className="field">
+                  <label htmlFor="settings-agentArgs">Launcher arguments (a JSON list)</label>
+                  <input id="settings-agentArgs" className="input mono" value={args} spellCheck={false} onChange={(e) => setArgs(e.target.value)} />
+                </div>
+                <div className="field">
+                  <label htmlFor="settings-agentRuntime">Runtime folders, one a line</label>
+                  <textarea id="settings-agentRuntime" className="input mono" rows={3} value={runtimePaths} spellCheck={false} onChange={(e) => setRuntimePaths(e.target.value)} />
+                  <div className="field-hint">
+                    Folders the agent may read its installed libraries from, such as a Python 3.11 or later for skills’ scripts. Choose specific folders: your
+                    home folder and the live project are never opened to it.
+                  </div>
+                </div>
+              </details>
+              <div className="row">
+                <button className="btn small primary" disabled={busy} onClick={() => save(current)}>
+                  Save setup
+                </button>
+                {current.canImport && (
+                  <button className="btn small" disabled={busy} onClick={() => copyLogin(current)}>
+                    Copy existing login
+                  </button>
+                )}
+                {current.hasKey && (
+                  <button className="btn small" disabled={busy} onClick={() => removeKey(current)}>
+                    Remove saved key
+                  </button>
+                )}
+              </div>
+              <div className="field-hint">
+                Keys and copied logins stay in Spectrum’s private data on this computer. The agent’s tools and commands stay isolated, and MCP servers set up for it
+                outside Spectrum get no access to this computer.
+              </div>
+            </>
+          )}
+        </>
+      )}
+      {error && <div className="field-hint error">{error}</div>}
     </>
   );
 }

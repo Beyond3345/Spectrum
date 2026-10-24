@@ -3213,7 +3213,7 @@ function Editor({ projectId }: { projectId: string }) {
         </Sheet>
       )}
 
-      {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsSheet projectId={projectId} onClose={() => setSettingsOpen(false)} />}
 
       {saveTemplateOpen && project && (
         <SaveTemplateSheet
