@@ -1433,6 +1433,15 @@ function LanguagePane() {
   );
 }
 
+// what the agent routes take: a persona's name, and instructions (a persona's or the default ones)
+const PERSONA_NAME_MAX = 200;
+const INSTRUCTIONS_MAX = 20000;
+
+/** A count once text nears its limit. */
+function CharactersLeft({ text, max }: { text: string; max: number }) {
+  return text.length > max * 0.9 ? <div className="field-hint">{`${text.length.toLocaleString('en-AU')} of ${max.toLocaleString('en-AU')} characters`}</div> : null;
+}
+
 /** Settings › Personas: the default instructions, and the personas picked in chat that take their place. */
 function PersonasPane() {
   const [settings, update] = useSettings();
@@ -1469,7 +1478,7 @@ function PersonasPane() {
     <div key="persona-form" className="persona-form">
       <div className="field">
         <label htmlFor="persona-name">Name</label>
-        <input id="persona-name" className="input" value={editing.name} autoFocus onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+        <input id="persona-name" className="input" maxLength={PERSONA_NAME_MAX} value={editing.name} autoFocus onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
       </div>
       <div className="field">
         <label id="persona-colour">Colour</label>
@@ -1490,8 +1499,9 @@ function PersonasPane() {
       </div>
       <div className="field">
         <label htmlFor="persona-prompt">Instructions</label>
-        <textarea id="persona-prompt" className="input" rows={7} value={editing.prompt} onChange={(e) => setEditing({ ...editing, prompt: e.target.value })} />
+        <textarea id="persona-prompt" className="input" rows={7} maxLength={INSTRUCTIONS_MAX} value={editing.prompt} onChange={(e) => setEditing({ ...editing, prompt: e.target.value })} />
         <div className="field-hint">How the assistant should work and write while this persona is chosen. They take the place of your default instructions.</div>
+        <CharactersLeft text={editing.prompt} max={INSTRUCTIONS_MAX} />
       </div>
       <div className="row">
         <span className="grow" />
@@ -1514,11 +1524,13 @@ function PersonasPane() {
           id="settings-defaultInstructions"
           className="input"
           rows={4}
+          maxLength={INSTRUCTIONS_MAX}
           value={settings.defaultInstructions}
           placeholder="For example: keep answers short, and ask before restructuring a section."
           onChange={(e) => update({ defaultInstructions: e.target.value })}
         />
         <div className="field-hint">Used in every chat without a persona. Autocomplete never uses them.</div>
+        <CharactersLeft text={settings.defaultInstructions} max={INSTRUCTIONS_MAX} />
       </div>
 
       <h3 className="form-section-title">Personas</h3>
