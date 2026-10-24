@@ -302,6 +302,8 @@ function Editor({ projectId }: { projectId: string }) {
   const [activePath, setActivePath] = useState('');
   const activeRef = useRef('');
   const [tabs, setTabs] = useState<string[]>([]);
+  // the file tabs' strip, scrolled to the open file's tab
+  const stripRef = useRef<HTMLDivElement>(null);
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
   const usedRef = useRef(new Map<string, number>());
@@ -2069,6 +2071,17 @@ function Editor({ projectId }: { projectId: string }) {
     if (layout.view !== 'pdf') viewRef.current?.requestMeasure({ read: () => null, write: () => actions.current.placeGhost() });
   }, [layout.view]);
 
+  // the open file's tab scrolls into the strip's view; by hand, as scrollIntoView would slide the editor's column too
+  useEffect(() => {
+    const strip = stripRef.current;
+    const tab = strip?.querySelector<HTMLElement>('.file-tab.active');
+    if (!strip || !tab) return;
+    const s = strip.getBoundingClientRect();
+    const t = tab.getBoundingClientRect();
+    if (t.left < s.left) strip.scrollLeft -= s.left - t.left;
+    else if (t.right > s.right) strip.scrollLeft += Math.min(t.right - s.right, t.left - s.left);
+  }, [activePath, tabs, panel]);
+
   // turning spell checking on or off in Settings applies straight away
   useEffect(() => {
     viewRef.current?.dispatch({ effects: recheckSpelling.of(null) });
@@ -2531,7 +2544,7 @@ function Editor({ projectId }: { projectId: string }) {
               <button className="icon-btn float-button" title="Insert table" aria-label="Insert table" onClick={() => openFloats('table')}>
                 <Icon name="tablecells" />
               </button>
-              <div className="file-tabs" role="tablist" data-tauri-drag-region>
+              <div ref={stripRef} className="file-tabs" role="tablist" data-tauri-drag-region>
                 {tabs.map((path) => (
                   <div
                     key={path}
@@ -2582,7 +2595,14 @@ function Editor({ projectId }: { projectId: string }) {
               >
                 <Icon name="chart.bar.xaxis" />
               </button>
-              <button className={`tools-toggle ${panel === 'tools' ? 'open' : ''}`} aria-pressed={panel === 'tools'} onClick={() => (panel === 'tools' ? setPanel(null) : openTools())}>
+              <button
+                className={`tools-toggle ${panel === 'tools' ? 'open' : ''}`}
+                aria-pressed={panel === 'tools'}
+                // its words go in a narrow editor
+                aria-label={panel === 'tools' ? 'Close Tools' : problems > 0 ? `Tools, ${plural(problems, 'problem')}` : 'Tools'}
+                title={panel === 'tools' ? 'Close Tools' : 'Tools'}
+                onClick={() => (panel === 'tools' ? setPanel(null) : openTools())}
+              >
                 <span>{panel === 'tools' ? 'Close' : 'Tools'}</span>
                 <Icon name={panel === 'tools' ? 'xmark' : 'square.grid.2x2'} />
                 {panel !== 'tools' && problems > 0 && (
