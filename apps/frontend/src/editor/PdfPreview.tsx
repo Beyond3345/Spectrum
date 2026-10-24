@@ -1,10 +1,12 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { GlobalWorkerOptions, TextLayer, getDocument } from 'pdfjs-dist';
-import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
+import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy, PageViewport } from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import type { PdfBox, PdfPoint } from '../api/client';
 import { linger, overlayStyle, pdfPoint } from './synctex';
+import { findAll, matchBoxes, pageText } from './pdfFind';
+import type { TextRun } from './pdfFind';
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -12,7 +14,9 @@ GlobalWorkerOptions.workerSrc = pdfWorker;
 export type PdfZoom = 'fit' | 'width' | number;
 /** A place in the PDF: a named destination, or pdf.js's explicit one ([page ref or index, { name: 'XYZ' }, left, top, zoom]) */
 export type PdfDest = string | unknown[];
-export type PdfOutlineItem = { title: string; page?: number; dest?: PdfDest; level: number };
+/** top: how far down its page the entry points, 0 at the top and 1 at the foot */
+export type PdfOutlineItem = { title: string; page?: number; top?: number; dest?: PdfDest; level: number };
+/** x and y are PDF points from the page's top-left, as PdfPoint */
 export type PdfAnnotation = { id: string; page: number; x: number; y: number; text: string };
 export type PdfHandle = {
   scrollToPage(page: number): void;
@@ -20,7 +24,44 @@ export type PdfHandle = {
   goTo(dest: PdfDest, url?: string): void;
   /** Scrolls the first box to the middle of the view and highlights every box for `seconds`. */
   highlight(boxes: PdfBox[], seconds: number): void;
+  /**
+   * Marks every match of `query` (none for '') and brings match `index` (counted round) into view; resolves to how
+   * many there are, at most MAX_MATCHES. The marks follow the PDF through recompiles.
+   */
+  find(query: string, index: number): Promise<number>;
+  /** A page drawn to fit `width` × `height` CSS pixels (thumbnails, presentation mode); null until the PDF has loaded. */
+  renderPage(page: number, width: number, height: number): Promise<HTMLCanvasElement | null>;
 };
+
+export const MAX_MATCHES = 1000;
+
+// the page each document's PDF was last read at, by pageKey, for the most recent ones
+const PAGES_KEY = 'spectrum-pdf-pages';
+const KEPT_PAGES = 200;
+
+function rememberedPages(): Record<string, number> {
+  try {
+    const pages = JSON.parse(window.localStorage.getItem(PAGES_KEY) || '{}');
+    return pages && typeof pages === 'object' ? pages : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Opens `key`'s PDF at `page` the next time it is shown. */
+export function rememberPage(key: string, page: number) {
+  const pages = rememberedPages();
+  if (pages[key] === page) return;
+  // newest last, so the oldest go first
+  delete pages[key];
+  pages[key] = page;
+  for (const old of Object.keys(pages).slice(0, -KEPT_PAGES)) delete pages[old];
+  try {
+    window.localStorage.setItem(PAGES_KEY, JSON.stringify(pages));
+  } catch {
+    // storage unavailable: the page just isn't remembered
+  }
+}
 
 // keep in step with .pdf-pages padding and gap in editor.css
 const PAD = 12;
@@ -35,18 +76,32 @@ type GestureEvent = UIEvent & { scale: number; clientX: number; clientY: number 
 // pdf.js's own cap on a page canvas (maxCanvasPixels); bigger ones fail or get the web view killed
 const MAX_CANVAS_PIXELS = 16_777_216;
 
+/**
+ * How far down its page an explicit destination points, 0 at the top: XYZ (left top zoom), FitH and FitBH name
+ * a top, FitR (left bottom right top) its top edge; Fit and FitB show the page from its top.
+ */
+function destTop(explicit: unknown[], view: PageViewport) {
+  const kind = (explicit[1] as { name?: string } | undefined)?.name;
+  const top = kind === 'XYZ' ? explicit[3] : kind === 'FitH' || kind === 'FitBH' ? explicit[2] : kind === 'FitR' ? explicit[5] : null;
+  return typeof top === 'number' ? Math.min(1, Math.max(0, view.convertToViewportPoint(0, top)[1] / view.height)) : 0;
+}
+
 async function readOutline(pdf: PDFDocumentProxy) {
   const items: PdfOutlineItem[] = [];
   const walk = async (entries: Awaited<ReturnType<PDFDocumentProxy['getOutline']>> | undefined, level: number) => {
     for (const entry of entries || []) {
       let page: number | undefined;
+      let top: number | undefined;
       try {
         const dest = typeof entry.dest === 'string' ? await pdf.getDestination(entry.dest) : entry.dest;
-        if (Array.isArray(dest) && dest[0]) page = (await pdf.getPageIndex(dest[0])) + 1;
+        if (Array.isArray(dest) && dest[0]) {
+          page = (await pdf.getPageIndex(dest[0])) + 1;
+          top = destTop(dest, (await pdf.getPage(page)).getViewport({ scale: 1 }));
+        }
       } catch {
         // an outline entry without a usable destination
       }
-      items.push({ title: entry.title || '(untitled)', page, dest: entry.dest ?? undefined, level });
+      items.push({ title: entry.title || '(untitled)', page, top, dest: entry.dest ?? undefined, level });
       await walk(entry.items, level + 1);
     }
   };
@@ -54,20 +109,38 @@ async function readOutline(pdf: PDFDocumentProxy) {
   return items;
 }
 
-/** A page's canvas and selectable text layer at `scale`. */
-async function paintPage(page: PDFPageProxy, scale: number) {
+/** A page drawn at `scale`, sharper by the screen's pixel ratio. */
+async function drawCanvas(page: PDFPageProxy, scale: number) {
   const view = page.getViewport({ scale });
   const sharpness = Math.min(3, (window.devicePixelRatio || 1) * 1.25, Math.sqrt(MAX_CANVAS_PIXELS / (view.width * view.height)));
   const sharp = page.getViewport({ scale: scale * sharpness });
   const canvas = document.createElement('canvas');
   canvas.width = Math.floor(sharp.width);
   canvas.height = Math.floor(sharp.height);
-  const textLayer = document.createElement('div');
-  textLayer.className = 'textLayer';
   const canvasContext = canvas.getContext('2d');
   if (canvasContext) await page.render({ canvas, canvasContext, viewport: sharp }).promise;
-  await new TextLayer({ textContentSource: page.streamTextContent(), container: textLayer, viewport: view }).render();
+  return canvas;
+}
+
+/** A page's canvas and selectable text layer at `scale`. */
+async function paintPage(page: PDFPageProxy, scale: number) {
+  const textLayer = document.createElement('div');
+  textLayer.className = 'textLayer';
+  const canvas = await drawCanvas(page, scale);
+  await new TextLayer({ textContentSource: page.streamTextContent(), container: textLayer, viewport: page.getViewport({ scale }) }).render();
   return { canvas, textLayer };
+}
+
+let measurer: CanvasRenderingContext2D | null = null;
+
+/** Text's width in a stand-in for a run's font (pdf.js names a generic family for each), for Find's boxes. */
+function measure(styles: Record<string, { fontFamily?: string }>) {
+  return (text: string, run: TextRun) => {
+    measurer ??= document.createElement('canvas').getContext('2d');
+    if (!measurer) return 0;
+    measurer.font = `100px ${styles[run.fontName ?? '']?.fontFamily || 'serif'}`;
+    return measurer.measureText(text).width;
+  };
 }
 
 /**
@@ -168,22 +241,28 @@ const PdfPreview = forwardRef<
   PdfHandle,
   {
     url: string;
+    /** where the page being read is remembered (the project and document): a new key opens at its page */
+    pageKey: string;
     zoom: PdfZoom;
     spread: boolean;
     annotateMode: boolean;
     annotations: PdfAnnotation[];
-    onAddAnnotation(page: number, x: number, y: number): void;
+    onAddAnnotation(at: PdfPoint): void;
     /** a double-click on a page, with the text run under it (if any) */
     onDoubleClick(at: PdfPoint, text: string): void;
+    /** a right-click on a page, and where the pointer is in the window */
+    onPageMenu(at: PdfPoint, x: number, y: number): void;
     onLoad(info: { pages: number; outline: PdfOutlineItem[] }): void;
     onScale(scale: number): void;
     /** a pinch or ⌘-scroll chose this scale */
     onZoom(scale: number): void;
     onPage(page: number): void;
+    /** the contents entry being read changed: the last one above the upper third of the view (-1 before the first) */
+    onSection(index: number): void;
     /** a link to another PDF, as written in the link: "notes.pdf#eq:ohm" */
     onFileLink(target: string): void;
   }
->(function PdfPreview({ url, zoom, spread, annotateMode, annotations, onAddAnnotation, onDoubleClick, onLoad, onScale, onZoom, onPage, onFileLink }, ref) {
+>(function PdfPreview({ url, pageKey, zoom, spread, annotateMode, annotations, onAddAnnotation, onDoubleClick, onPageMenu, onLoad, onScale, onZoom, onPage, onSection, onFileLink }, ref) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pagesRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -194,8 +273,10 @@ const PdfPreview = forwardRef<
   const visibleRef = useRef(new Set<HTMLElement>());
   const observerRef = useRef<IntersectionObserver | null>(null);
   // callbacks change on every parent render; the effects read the latest ones
-  const cb = useRef({ onLoad, onScale, onZoom, onPage });
-  cb.current = { onLoad, onScale, onZoom, onPage };
+  const cb = useRef({ onLoad, onScale, onZoom, onPage, onSection });
+  cb.current = { onLoad, onScale, onZoom, onPage, onSection };
+  // the PDF's contents, for the section being read
+  const outlineRef = useRef<PdfOutlineItem[]>([]);
   // the point to keep still when the next layout applies a pinch
   const anchorRef = useRef<Anchor | null>(null);
   // stops the current highlight's timers
@@ -204,6 +285,71 @@ const PdfPreview = forwardRef<
   const pendingRef = useRef<{ url: string; dest: PdfDest } | null>(null);
   // a link is followed once a double-click (the jump to the source) can no longer be on its way
   const linkTimerRef = useRef(0);
+  const keyRef = useRef(pageKey);
+  keyRef.current = pageKey;
+  // the pageKey of the document the pages show, once they're laid out
+  const shownKeyRef = useRef('');
+  // Find: what's asked for, and each page's text runs for the PDF they came from
+  const findRef = useRef({ query: '', index: 0 });
+  const textRef = useRef<{ url: string; pages: Promise<{ runs: TextRun[]; measure: ReturnType<typeof measure> }[]> } | null>(null);
+
+  /** Brings a mark on a page to the middle of the view, unless it's in view already. */
+  const reveal = (mark: HTMLElement) => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const [r, s] = [mark.getBoundingClientRect(), scroller.getBoundingClientRect()];
+    if (r.top >= s.top && r.bottom <= s.bottom && r.left >= s.left && r.right <= s.right) return;
+    // a page box's offsets count from the scroller (neither .pdf-pages nor a two-page row is positioned), a mark's from its page
+    const box = mark.parentElement!;
+    scroller.scrollTo({
+      left: box.offsetLeft + mark.offsetLeft + mark.offsetWidth / 2 - scroller.clientWidth / 2,
+      top: box.offsetTop + mark.offsetTop + mark.offsetHeight / 2 - scroller.clientHeight / 2,
+      // the reduced-motion CSS doesn't reach a script's smooth scroll
+      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+    });
+  };
+
+  /** Marks Find's matches on the pages laid out now, and brings the chosen one into view when `show`. */
+  const markMatches = async (show: boolean) => {
+    const layout = layoutRef.current;
+    const asked = findRef.current;
+    pagesRef.current?.querySelectorAll('.pdf-find-box').forEach((node) => node.remove());
+    if (!layout || !asked.query.trim()) return 0;
+    if (textRef.current?.url !== layout.url) {
+      const pages = Promise.all(
+        layout.pages.map(async (page) => {
+          const content = await page.getTextContent();
+          return { runs: content.items.filter((item) => 'str' in item), measure: measure(content.styles) };
+        })
+      );
+      textRef.current = { url: layout.url, pages };
+    }
+    const texts = await textRef.current.pages.catch(() => []);
+    // asked again, or another PDF, meanwhile: that call marks its own
+    if (findRef.current !== asked || layoutRef.current?.url !== layout.url) return 0;
+    const matches: HTMLElement[][] = [];
+    texts.forEach(({ runs, measure }, i) => {
+      const { text, starts } = pageText(runs);
+      const view = layout.pages[i].getViewport({ scale: 1 });
+      for (const match of findAll(text, asked.query)) {
+        if (matches.length >= MAX_MATCHES) return;
+        const boxes = matchBoxes(runs, starts, match, i + 1, (x, y) => view.convertToViewportPoint(x, y), measure);
+        matches.push(
+          boxes.map((b) => {
+            const mark = document.createElement('div');
+            mark.className = 'pdf-find-box';
+            Object.assign(mark.style, overlayStyle(b, view));
+            layout.boxes[i].append(mark);
+            return mark;
+          })
+        );
+      }
+    });
+    const chosen = matches[((asked.index % matches.length) + matches.length) % matches.length] || [];
+    chosen.forEach((mark) => mark.classList.add('current'));
+    if (show && chosen[0]) reveal(chosen[0]);
+    return matches.length;
+  };
 
   const goTo = async (dest: PdfDest) => {
     const pdf = await docRef.current?.task.promise.catch(() => null);
@@ -216,11 +362,7 @@ const PdfPreview = forwardRef<
     const box = layout.boxes[index];
     const page = layout.pages[index];
     if (!box || !page) return;
-    // XYZ left top zoom, FitH and FitBH top, FitR left bottom right top; Fit and FitB show the page from its top
-    const kind = (explicit[1] as { name?: string } | undefined)?.name;
-    const top = kind === 'XYZ' ? explicit[3] : kind === 'FitH' || kind === 'FitBH' ? explicit[2] : kind === 'FitR' ? explicit[5] : null;
-    const view = page.getViewport({ scale: 1 });
-    const fy = typeof top === 'number' ? Math.min(1, Math.max(0, view.convertToViewportPoint(0, top)[1] / view.height)) : 0;
+    const fy = destTop(explicit, page.getViewport({ scale: 1 }));
     // a page box's offsets count from the scroller (see highlight)
     scroller.scrollTo({
       top: Math.max(0, box.offsetTop + fy * box.offsetHeight - PAD),
@@ -255,25 +397,30 @@ const PdfPreview = forwardRef<
         box.append(mark);
         return [mark];
       });
-      const first = marks[0];
-      if (!first) return;
+      if (!marks[0]) return;
       // already in view: leave the PDF where it is, as a double-click also selects a word in the source
-      const [r, s] = [first.getBoundingClientRect(), scroller.getBoundingClientRect()];
-      if (r.top < s.top || r.bottom > s.bottom || r.left < s.left || r.right > s.right) {
-        // a page box's offsets count from the scroller (neither .pdf-pages nor a two-page row is positioned), a mark's from its page
-        const box = first.parentElement!;
-        scroller.scrollTo({
-          left: box.offsetLeft + first.offsetLeft + first.offsetWidth / 2 - scroller.clientWidth / 2,
-          top: box.offsetTop + first.offsetTop + first.offsetHeight / 2 - scroller.clientHeight / 2,
-          // the reduced-motion CSS doesn't reach a script's smooth scroll
-          behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
-        });
-      }
+      reveal(marks[0]);
       unlingerRef.current = linger(
         seconds,
         () => marks.forEach((mark) => mark.classList.add('fading')),
         () => marks.forEach((mark) => mark.remove())
       );
+    },
+    find(query, index) {
+      // only a new search or another match moves the view
+      const moved = query !== findRef.current.query || index !== findRef.current.index;
+      findRef.current = { query, index };
+      return markMatches(moved);
+    },
+    async renderPage(number, width, height) {
+      const page = layoutRef.current?.pages[number - 1];
+      if (!page) return null;
+      const base = page.getViewport({ scale: 1 });
+      const scale = Math.min(width / base.width, height / base.height);
+      const canvas = await drawCanvas(page, scale);
+      canvas.style.width = `${Math.floor(base.width * scale)}px`;
+      canvas.style.height = `${Math.floor(base.height * scale)}px`;
+      return canvas;
     }
   }));
 
@@ -455,14 +602,7 @@ const PdfPreview = forwardRef<
 
     if (docRef.current?.url !== url) {
       docRef.current?.task.destroy();
-      const task = getDocument({ url });
-      docRef.current = { url, task };
-      task.promise
-        .then(async (doc) => {
-          const outline = await readOutline(doc);
-          if (docRef.current?.url === url) cb.current.onLoad({ pages: doc.numPages, outline });
-        })
-        .catch(() => undefined);
+      docRef.current = { url, task: getDocument({ url }) };
     }
 
     (async () => {
@@ -470,7 +610,11 @@ const PdfPreview = forwardRef<
         const pdf = await docRef.current!.task.promise;
         if (cancelled) return;
         let layout = layoutRef.current;
-        if (layout?.url !== url) {
+        // a new PDF: its matches are marked again; another document's opens at its remembered page (or its top)
+        const fresh = layout?.url !== url;
+        const opening = fresh && shownKeyRef.current !== keyRef.current;
+        const outline = fresh ? readOutline(pdf) : null;
+        if (!layout || fresh) {
           const pages = await Promise.all(Array.from({ length: pdf.numPages }, (_, i) => pdf.getPage(i + 1)));
           if (cancelled) return;
           // a recompiled PDF reuses the page boxes, which show the old pages until the new ones are drawn
@@ -487,6 +631,7 @@ const PdfPreview = forwardRef<
             return box;
           });
           layout = { url, scale: 0, pages, boxes };
+          shownKeyRef.current = keyRef.current;
         }
         const base = layout.pages[0].getViewport({ scale: 1 });
         let scale: number;
@@ -529,9 +674,11 @@ const PdfPreview = forwardRef<
           const r = anchor.box.getBoundingClientRect();
           scroller.scrollLeft += r.left + anchor.fx * r.width - (view.left + anchor.vx);
           scroller.scrollTop += r.top + anchor.fy * r.height - (view.top + anchor.vy);
-        } else scroller.scrollTop = ratio * scroller.scrollHeight;
+        } else if (opening) scroller.scrollTop = Math.max(0, (boxes[(rememberedPages()[keyRef.current] || 1) - 1]?.offsetTop ?? PAD) - PAD);
+        else scroller.scrollTop = ratio * scroller.scrollHeight;
         // pages already near the view don't cross the observer's edge again: redraw them now
         visibleRef.current.forEach((box) => drawPage(box, layoutRef.current));
+        if (fresh && findRef.current.query) markMatches(false);
         // a link from another PDF said where to go in this one
         if (pendingRef.current?.url === url) {
           const { dest } = pendingRef.current;
@@ -541,6 +688,14 @@ const PdfPreview = forwardRef<
         setError('');
         setRendered((n) => n + 1);
         cb.current.onScale(scale);
+        // once its pages are laid out, so what's drawn from them (thumbnails, slides) is this PDF's
+        outline?.then((items) => {
+          if (layoutRef.current?.url !== url) return;
+          outlineRef.current = items;
+          cb.current.onLoad({ pages: pdf.numPages, outline: items });
+          // the section being read, now there are sections
+          setRendered((n) => n + 1);
+        });
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       }
@@ -556,15 +711,18 @@ const PdfPreview = forwardRef<
     const host = pagesRef.current;
     if (!host) return;
     host.querySelectorAll('.pdf-annotation').forEach((node) => node.remove());
+    const layout = layoutRef.current;
     for (const note of annotations) {
-      const page = host.querySelector(`.pdf-page[data-page-number="${note.page}"]`);
-      if (!page) continue;
+      const box = layout?.boxes[note.page - 1];
+      const page = layout?.pages[note.page - 1];
+      if (!box || !page) continue;
+      const view = page.getViewport({ scale: 1 });
       const marker = document.createElement('div');
       marker.className = 'pdf-annotation';
-      marker.style.left = `${note.x * 100}%`;
-      marker.style.top = `${note.y * 100}%`;
+      marker.style.left = `${(note.x / view.width) * 100}%`;
+      marker.style.top = `${(note.y / view.height) * 100}%`;
       marker.title = note.text;
-      page.appendChild(marker);
+      box.appendChild(marker);
     }
   }, [annotations, rendered]);
 
@@ -573,19 +731,38 @@ const PdfPreview = forwardRef<
     const scroller = scrollRef.current;
     if (!scroller) return;
     let frame = 0;
+    let saved = '';
+    let section = -2;
     const update = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const line = scroller.scrollTop + scroller.clientHeight / 3;
         let current = 1;
+        let down = 0;
         let rowTop = -1;
         // in two-page view the left page of a row counts
         scroller.querySelectorAll<HTMLElement>('.pdf-page').forEach((page) => {
           const top = page.offsetTop;
-          if (top <= line && top !== rowTop) current = Number(page.dataset.pageNumber) || current;
+          if (top <= line && top !== rowTop) {
+            current = Number(page.dataset.pageNumber) || current;
+            down = (line - top) / (page.offsetHeight || 1);
+          }
           rowTop = top;
         });
         cb.current.onPage(current);
+        let reading = -1;
+        outlineRef.current.forEach((item, i) => {
+          if (item.page && (item.page < current || (item.page === current && (item.top ?? 0) <= down))) reading = i;
+        });
+        if (reading !== section) {
+          section = reading;
+          cb.current.onSection(reading);
+        }
+        // only once the pages are this document's
+        if (shownKeyRef.current === keyRef.current && saved !== `${keyRef.current}#${current}`) {
+          saved = `${keyRef.current}#${current}`;
+          rememberPage(keyRef.current, current);
+        }
       });
     };
     update();
@@ -595,6 +772,14 @@ const PdfPreview = forwardRef<
       cancelAnimationFrame(frame);
     };
   }, [rendered]);
+
+  /** Where on which page the pointer is, in PDF points; null between pages. */
+  const pointAt = (event: { target: EventTarget; clientX: number; clientY: number }): PdfPoint | null => {
+    const box = (event.target as HTMLElement).closest<HTMLElement>('.pdf-page');
+    const page = layoutRef.current?.pages[Number(box?.dataset.pageNumber) - 1];
+    if (!box || !page) return null;
+    return { page: page.pageNumber, ...pdfPoint(event.clientX, event.clientY, box.getBoundingClientRect(), page.getViewport({ scale: 1 })) };
+  };
 
   return (
     <div
@@ -614,24 +799,27 @@ const PdfPreview = forwardRef<
           }, 250);
           return;
         }
-        const page = (event.target as HTMLElement).closest<HTMLElement>('.pdf-page');
-        if (annotateMode && page) {
-          const rect = page.getBoundingClientRect();
-          onAddAnnotation(Number(page.dataset.pageNumber), (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
-        }
+        const at = annotateMode && pointAt(event);
+        if (at) onAddAnnotation(at);
       }}
       // a single click is for reading and selecting; a double-click (which still selects the word) jumps to the source
       onDoubleClick={(event) => {
-        const target = event.target as HTMLElement;
-        const box = target.closest<HTMLElement>('.pdf-page');
-        const page = layoutRef.current?.pages[Number(box?.dataset.pageNumber) - 1];
-        if (annotateMode || !box || !page || target.closest('.pdf-annotation')) return;
+        const at = pointAt(event);
+        if (annotateMode || !at || (event.target as HTMLElement).closest('.pdf-annotation')) return;
         window.clearTimeout(linkTimerRef.current);
         // on a link, the text is under it
         const span = document.elementsFromPoint(event.clientX, event.clientY).find((el) => el.tagName === 'SPAN' && el.closest('.textLayer'));
         const text = span ? (span.textContent || '').trim() : '';
-        onDoubleClick({ page: page.pageNumber, ...pdfPoint(event.clientX, event.clientY, box.getBoundingClientRect(), page.getViewport({ scale: 1 })) }, text);
+        onDoubleClick(at, text);
       }}
+      onContextMenu={(event) => {
+        const at = pointAt(event);
+        if (!at) return;
+        event.preventDefault();
+        onPageMenu(at, event.clientX, event.clientY);
+      }}
+      // focusable, so the page keys and ⌘F know the PDF has focus
+      tabIndex={-1}
     >
       <div ref={pagesRef} className="pdf-pages" />
       {error && <div className="pdf-error">Couldn’t show the PDF: {error}</div>}
@@ -640,3 +828,31 @@ const PdfPreview = forwardRef<
 });
 
 export default PdfPreview;
+
+/** The page box in the PDF's pill: the page being read, which ↩ goes to once it's changed; Esc puts it back. */
+export function PageBox({ page, pages, onGo }: { page: number; pages: number | null; onGo(page: number): void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <input
+      className="pdf-page-box"
+      value={draft ?? String(page)}
+      inputMode="numeric"
+      aria-label="Page"
+      style={{ width: `${String(pages ?? page).length + 1.5}ch` }}
+      onFocus={(e) => {
+        setDraft(String(page));
+        e.currentTarget.select();
+      }}
+      onChange={(e) => setDraft(e.target.value.replace(/\D/g, ''))}
+      onBlur={() => setDraft(null)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          if (Number(draft) && pages) onGo(Math.min(pages, Math.max(1, Number(draft))));
+        } else if (e.key !== 'Escape') return;
+        e.preventDefault();
+        // back to the pages, whose keys go on from there
+        e.currentTarget.closest('.pdf-body')?.querySelector<HTMLElement>('.pdf-scroll')?.focus();
+      }}
+    />
+  );
+}

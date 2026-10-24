@@ -8,7 +8,7 @@ import type { Completion, CompletionContext, CompletionResult } from '@codemirro
 import { HighlightStyle, getIndentUnit, indentUnit } from '@codemirror/language';
 import { indentMore } from '@codemirror/commands';
 import { tags } from '@lezer/highlight';
-import { ALGORITHM2E_SNIPPET, COMMON_ENVS, ENV_SNIPPETS, MATHS_ONLY_ENVS, availableEnvs, loadedPackages, scanTex } from './latexEnvs';
+import { ALGORITHM2E_SNIPPET, COMMON_ENVS, ENV_SNIPPETS, INPUT_RE, MATHS_ONLY_ENVS, availableEnvs, includedFile, inputName, loadedPackages, scanTex } from './latexEnvs';
 import type { Project, Snip, TexScan } from './latexEnvs';
 import { BIB_STYLES, CLASS_NAMES, MATH_COMMANDS, PACKAGE_NAMES, TEXT_COMMANDS } from './latexCommands';
 import type { Cmd } from './latexCommands';
@@ -54,6 +54,30 @@ export function parseOutline(text: string): OutlineItem[] {
     offset += line.length + 1;
   });
   return items;
+}
+
+/** A document's headings in reading order, into the files it \input, \include, \subfile or \import (each read once). */
+export async function documentOutline(root: string, files: Set<string>, read: (path: string) => Promise<string>) {
+  const headings: (OutlineItem & { file: string })[] = [];
+  const seen = new Set<string>();
+  const walk = async (path: string) => {
+    seen.add(path);
+    let offset = 0;
+    for (const [index, line] of (await read(path).catch(() => '')).split('\n').entries()) {
+      const code = stripComment(line);
+      const marks = [
+        ...parseOutline(code).map((heading) => ({ at: heading.pos, heading })),
+        ...[...code.matchAll(INPUT_RE)].map((m) => ({ at: m.index ?? 0, input: includedFile(files, root, inputName(m), '.tex') }))
+      ].sort((a, b) => a.at - b.at);
+      for (const mark of marks) {
+        if ('heading' in mark) headings.push({ ...mark.heading, pos: offset + mark.at, line: index + 1, file: path });
+        else if (mark.input && !seen.has(mark.input)) await walk(mark.input);
+      }
+      offset += line.length + 1;
+    }
+  };
+  if (files.has(root)) await walk(root);
+  return headings;
 }
 
 export function nearestHeading(text: string, pos: number) {

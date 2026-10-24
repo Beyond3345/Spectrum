@@ -95,6 +95,13 @@ export function setNativeGlass(on: boolean) {
   }
 }
 
+/** Takes the window into full screen or out of it (presentation mode); in a browser, the page. */
+export function setFullscreen(on: boolean) {
+  if (IS_DESKTOP) invoke('plugin:window|set_fullscreen', { label: 'main', value: on });
+  else if (on) document.documentElement.requestFullscreen?.().catch(() => undefined);
+  else if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined);
+}
+
 /**
  * Marks <html> with .fullscreen if the page loads in macOS full screen. There are no traffic
  * lights there, so the stylesheets drop the room kept for them. Later changes are set by the

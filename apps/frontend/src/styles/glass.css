@@ -31,7 +31,7 @@
 }
 
 /* overlays let a little through and blur what's under them */
-:root.glass :is(.menu, .sheet, .alert, .toast, .toc-popover, .cm-tooltip) {
+:root.glass :is(.menu, .sheet, .alert, .toast, .pdf-find, .cm-tooltip) {
   background: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
   -webkit-backdrop-filter: blur(24px) saturate(1.6);
   backdrop-filter: blur(24px) saturate(1.6);
