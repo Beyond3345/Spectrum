@@ -15,19 +15,31 @@ export function mergeChat(disk, chat) {
 }
 
 /**
- * A message as disk has it, with what the other copy marked on it since: a Spectrum agent thread's proposals applied or
- * rejected there (disk's mark first) and the checkpoints saved with them.
+ * A message as disk has it, with what the other copy marked on it since: a Spectrum agent thread's proposals applied,
+ * rejected or superseded there, by file (disk's mark first), and the checkpoints saved with them. A closed proposal is
+ * in `closed`, or for a thread saved by an earlier 2.0 build, in `changes` with its status.
  */
 function withMarks(m, twin) {
   const theirs = twin?.meta;
   if (!theirs || typeof theirs !== 'object') return m;
   const meta = m.meta && typeof m.meta === 'object' ? m.meta : {};
-  const changes = Array.isArray(meta.changes) ? meta.changes.map((c, i) => {
-    const status = c?.status ?? theirs.changes?.[i]?.status;
-    return status ? { ...c, status } : c;
-  }) : undefined;
-  const ids = new Set((Array.isArray(meta.checkpoints) ? meta.checkpoints : []).map((c) => c?.id));
-  const more = (Array.isArray(theirs.checkpoints) ? theirs.checkpoints : []).filter((c) => !ids.has(c?.id));
-  if (!changes && !more.length) return m;
-  return { ...m, meta: { ...meta, ...(changes && { changes }), ...(more.length && { checkpoints: [...(meta.checkpoints || []), ...more] }) } };
+  const list = (value) => (Array.isArray(value) ? value : []);
+  const changes = list(meta.changes);
+  const closed = [...list(meta.closed)];
+  for (const c of [...list(theirs.closed), ...list(theirs.changes).filter((c) => c?.status)]) {
+    const open = changes.find((d) => d?.filePath === c?.filePath && !d.status);
+    if (open && !closed.some((d) => d?.filePath === c.filePath)) closed.push({ filePath: c.filePath, status: c.status });
+  }
+  const shut = closed.length - list(meta.closed).length;
+  const ids = new Set(list(meta.checkpoints).map((c) => c?.id));
+  const more = list(theirs.checkpoints).filter((c) => !ids.has(c?.id));
+  if (!shut && !more.length) return m;
+  const next = { ...meta, ...(more.length && { checkpoints: [...list(meta.checkpoints), ...more] }) };
+  if (shut) {
+    const left = changes.filter((c) => c?.status || !closed.some((d) => d.filePath === c?.filePath));
+    next.closed = closed;
+    if (left.length) next.changes = left;
+    else delete next.changes;
+  }
+  return { ...m, meta: next };
 }

@@ -160,11 +160,15 @@ export function project(events: AgentEvent[], { pending = [], checkpoints = [] }
 /**
  * What a Spectrum agent thread keeps in ChatMessage.meta; changes as the bottom card's Edit chats kept them, now with
  * the file each was proposed against (original), and steps its tool calls. A closed change (applied, rejected, or
- * superseded by a later turn's proposal for its file, made from the same base) keeps only its file and status.
+ * superseded by a later turn's proposal for its file, made from the same base) moves to closed with only its file and
+ * status: a thread on a large file stays under the chat cap, and 1.10.4, which offers to review every change it finds,
+ * never meets one without its text. Threads saved by earlier 2.0 builds kept a closed change in changes, with its status.
  */
 export type ChangeStatus = 'applied' | 'rejected' | 'superseded';
+type StoredChange = { filePath: string; original?: string; proposed?: string; status?: ChangeStatus };
 export type ThreadMeta = {
-  changes?: { filePath: string; original?: string; proposed?: string; status?: ChangeStatus }[];
+  changes?: StoredChange[];
+  closed?: { filePath: string; status: ChangeStatus }[];
   todos?: SuggestedTodo[];
   checkpoints?: Checkpoint[];
   steps?: AgentStep[];
@@ -178,26 +182,36 @@ export const metaOf = (m: { meta?: Record<string, unknown> }) => (m.meta || {}) 
  * is now (read).
  */
 export async function openChanges(chat: ChatThread, read: (path: string) => Promise<string>) {
-  const proposed = new Map<string, { original?: string; proposed?: string }>();
-  for (const m of chat.messages)
-    for (const c of metaOf(m).changes || []) {
+  const proposed = new Map<string, StoredChange>();
+  for (const m of chat.messages) {
+    const meta = metaOf(m);
+    for (const c of meta.changes || []) {
       if (c.status) proposed.delete(c.filePath);
       else proposed.set(c.filePath, c);
     }
+    for (const c of meta.closed || []) proposed.delete(c.filePath);
+  }
   const list = await Promise.all(
     [...proposed].map(async ([filePath, c]) => ({ filePath, original: c.original ?? (await read(filePath).catch(() => '')), proposed: c.proposed ?? '', source: 'Spectrum agent' }))
   );
   return list.filter((c) => c.original !== c.proposed);
 }
 
-/** The thread's open changes to these files closed with status, keeping only the file and status; last: the last message closed in (-1: none). */
+/**
+ * The thread's open changes to these files closed with status: moved to closed with only the file and status (and an
+ * earlier build's closed ones in the same message with them); last: the last message closed in (-1: none).
+ */
 export function closeChanges(messages: ChatThread['messages'], paths: string[], status: ChangeStatus) {
   let last = -1;
   const closed = messages.map((m, i) => {
     const meta = metaOf(m);
     if (!meta.changes?.some((c) => !c.status && paths.includes(c.filePath))) return m;
     last = i;
-    return { ...m, meta: { ...meta, changes: meta.changes.map((c) => (!c.status && paths.includes(c.filePath) ? { filePath: c.filePath, status } : c)) } };
+    const open = meta.changes.filter((c) => !c.status && !paths.includes(c.filePath));
+    const next: ThreadMeta = { ...meta, closed: [...(meta.closed || []), ...meta.changes.filter((c) => !open.includes(c)).map((c) => ({ filePath: c.filePath, status: c.status ?? status }))] };
+    if (open.length) next.changes = open;
+    else delete next.changes;
+    return { ...m, meta: next };
   });
   return { messages: closed, last };
 }

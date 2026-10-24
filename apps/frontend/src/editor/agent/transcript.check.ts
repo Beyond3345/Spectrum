@@ -151,16 +151,19 @@ eq(project([ev('terminal', { terminalId: 'x', command: 'latexmk', args: ['-pdf',
     ]
   };
   const disk: Record<string, string> = { 'a.tex': 'A0', 'b.tex': 'B2', 'd.tex': 'same', 'e.tex': 'user edit\nE0' };
-  // closed (applied, rejected, or superseded by a turn's proposal from the same base), a change keeps no texts
+  // closed (applied, rejected, or superseded by a turn's proposal from the same base), a change moves to closed with no
+  // texts, and an earlier build's closed ones in the same message with it; changes keeps only those still open, which
+  // 1.10.4 offers to review
   const closed = closeChanges(chat.messages, ['a.tex', 'e.tex'], 'superseded');
   eq(closed.last, 3, 'the last message closed in');
-  eq(closed.messages.map((m) => m.meta?.changes), [
-    [{ filePath: 'a.tex', status: 'superseded' }, { filePath: 'b.tex', proposed: 'B1' }, { filePath: 'gone.tex', proposed: 'G' }],
-    [{ filePath: 'a.tex', status: 'superseded' }, { filePath: 'b.tex', proposed: 'B2', status: 'applied' }, { filePath: 'c.tex', proposed: 'C1', status: 'rejected' }],
-    [{ filePath: 'd.tex', proposed: 'same' }],
-    [{ filePath: 'e.tex', status: 'superseded' }]
+  eq(closed.messages.map((m) => m.meta), [
+    { changes: [{ filePath: 'b.tex', proposed: 'B1' }, { filePath: 'gone.tex', proposed: 'G' }], closed: [{ filePath: 'a.tex', status: 'superseded' }] },
+    { closed: [{ filePath: 'a.tex', status: 'superseded' }, { filePath: 'b.tex', status: 'applied' }, { filePath: 'c.tex', status: 'rejected' }] },
+    { changes: [{ filePath: 'd.tex', proposed: 'same' }] },
+    { closed: [{ filePath: 'e.tex', status: 'superseded' }] }
   ], 'only the open changes to those files, without their texts');
   eq(closeChanges(chat.messages, ['c.tex'], 'applied').messages, chat.messages, 'nothing open: unchanged');
+  eq(closeChanges(closed.messages, ['gone.tex'], 'rejected').messages[0].meta, { changes: [{ filePath: 'b.tex', proposed: 'B1' }], closed: [{ filePath: 'a.tex', status: 'superseded' }, { filePath: 'gone.tex', status: 'rejected' }] }, 'closed again');
   const next = { ...chat, messages: [...closed.messages, message([{ filePath: 'a.tex', original: 'A0', proposed: 'A3' }])] };
   void Promise.all([openChanges(chat, async (p) => (p in disk ? disk[p] : Promise.reject(new Error('missing')))), openChanges(next, async (p) => disk[p] ?? '')]).then(([open, after]) => {
     eq(open.map((c) => [c.filePath, c.original, c.proposed]), [['a.tex', 'A0', 'A2'], ['gone.tex', '', 'G'], ['e.tex', 'E0', 'E1']], 'open proposals');

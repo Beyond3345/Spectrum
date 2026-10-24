@@ -237,5 +237,14 @@ test('a Spectrum agent thread is a chat marked as one, listed with its mark, and
   const checkpoint = { id: 7, number: 3, label: 'Before applying agent changes', createdAt: '2026-01-03T00:01:00.000Z' };
   const marked = { ...proposed, meta: { changes: [{ ...proposed.meta.changes[0], status: 'applied' }, { ...proposed.meta.changes[1], status: 'applied' }], checkpoints: [checkpoint] } };
   const again = (await put({ ...withProposal, messages: [...merged.messages, marked], updatedAt: '2026-01-01T00:00:00.000Z' }, 'older')).json().chat;
-  assert.deepEqual(again.messages.at(-1).meta, { changes: [{ filePath: 'a.tex', proposed: 'A', status: 'applied' }, { filePath: 'b.tex', proposed: 'B', status: 'rejected' }], checkpoints: [checkpoint] });
+  // an earlier 2.0 build marked them in changes: the one open on disk moves to closed, which 1.10.4 doesn't offer to review
+  assert.deepEqual(again.messages.at(-1).meta, { changes: [{ filePath: 'b.tex', proposed: 'B', status: 'rejected' }], closed: [{ filePath: 'a.tex', status: 'applied' }], checkpoints: [checkpoint] });
+
+  // closed by file, not by place, on either copy
+  const later = { role: 'assistant', content: 'Changed more', createdAt: '2026-01-04T00:00:00.000Z', meta: { changes: [{ filePath: 'c.tex', original: 'c', proposed: 'C' }, { filePath: 'd.tex', original: 'd', proposed: 'D' }], closed: [{ filePath: 'e.tex', status: 'rejected' }] } };
+  const withLater = { ...again, messages: [...again.messages, later] };
+  await put(withLater, again.updatedAt);
+  const closedThere = { ...later, meta: { changes: [{ filePath: 'c.tex', original: 'c', proposed: 'C' }], closed: [{ filePath: 'e.tex', status: 'applied' }, { filePath: 'd.tex', status: 'superseded' }] } };
+  const third = (await put({ ...withLater, messages: [...again.messages, closedThere], updatedAt: '2026-01-01T00:00:00.000Z' }, 'older')).json().chat;
+  assert.deepEqual(third.messages.at(-1).meta, { changes: [{ filePath: 'c.tex', original: 'c', proposed: 'C' }], closed: [{ filePath: 'e.tex', status: 'rejected' }, { filePath: 'd.tex', status: 'superseded' }] });
 });
