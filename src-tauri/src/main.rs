@@ -907,6 +907,11 @@ fn spawn_backend(app: &AppHandle, port: u16, log_path: &Path) -> Result<Child, S
         .stdin(Stdio::piped())
         .stdout(log)
         .stderr(log_err);
+    // TexLab sits beside Spectrum like Node (tauri dev copies it beside the debug build); without it the backend looks
+    // on the PATH, and the editor works as before when there's none
+    if let Some(dir) = env::current_exe().ok().as_deref().and_then(Path::parent) {
+        cmd.env("SPECTRUM_TEXLAB", dir.join(format!("texlab{}", env::consts::EXE_SUFFIX)));
+    }
     // its own group, so quitting can stop the compilers it starts too
     #[cfg(unix)]
     cmd.process_group(0);
