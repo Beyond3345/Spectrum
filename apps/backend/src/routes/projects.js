@@ -33,6 +33,8 @@ import {
 } from '../services/projectService.js';
 import { refuseDelete } from './cloud.js';
 import { projectStats } from '../services/statsService.js';
+import { readProjectSettings, updateProjectSettings } from '../services/projectSettings.js';
+import { BIB_TOOLS, SUPPORTED_ENGINES } from '../services/compileService.js';
 import { knownMachineNames } from '../services/presenceService.js';
 import { conflictCopies } from '../utils/conflictCopies.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
@@ -67,6 +69,17 @@ const unfit = (rel) => {
   return /[<>:"|?*\\\u0000-\u001f]/.test(name) || /[. ]$/.test(name) || /^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(name);
 };
 const UNFIT = 'That name can’t be used on Windows or in a sync app. Choose another one.';
+
+// What each of a project's compile settings may be; null takes it back to the app's default. autoCompile: seconds after
+// the last edit, 0 for off
+const COMPILE_SETTINGS = {
+  engine: (v) => SUPPORTED_ENGINES.includes(v),
+  autoCompile: (v) => Number.isInteger(v) && v >= 0 && v <= 10,
+  haltOnError: (v) => typeof v === 'boolean',
+  bibTool: (v) => BIB_TOOLS.includes(v),
+  draft: (v) => typeof v === 'boolean'
+};
+const isObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 
 // arXiv e-prints are a gzipped tarball, or for single-file papers a gzipped .tex,
 // or for PDF-only submissions just a PDF.
@@ -337,6 +350,23 @@ export function registerProjectRoutes(fastify) {
     if (path.basename(mainFile).startsWith('-')) throw httpError('The main file’s name can’t start with “-”.', 400);
     await updateMeta(root, (meta) => ({ ...meta, mainFile }));
     return { ok: true, project: await getProject(req.params.id) };
+  });
+
+  fastify.get('/api/projects/:id/settings', async (req) => ({ ok: true, settings: await readProjectSettings(await getProjectRoot(req.params.id)) }));
+
+  fastify.patch('/api/projects/:id/settings', async (req) => {
+    const { compile = {}, ...others } = req.body || {};
+    if (Object.keys(others).length || !isObject(compile)) throw httpError('Only compile settings can be changed here.', 400);
+    for (const [key, value] of Object.entries(compile)) {
+      if (!Object.hasOwn(COMPILE_SETTINGS, key) || (value !== null && !COMPILE_SETTINGS[key](value))) throw httpError(`Invalid compile setting: ${key}.`, 400);
+    }
+    const root = await getProjectRoot(req.params.id);
+    const settings = await updateProjectSettings(root, ({ compile: old, ...rest }) => {
+      const next = { ...(isObject(old) ? old : {}), ...compile };
+      for (const key of Object.keys(next)) if (next[key] === null) delete next[key];
+      return Object.keys(next).length ? { ...rest, compile: next } : rest;
+    });
+    return { ok: true, settings };
   });
 
   fastify.get('/api/projects/:id/thumbnail', async (req, reply) => {
