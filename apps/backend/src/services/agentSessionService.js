@@ -17,7 +17,7 @@ import { AGENT_DIR, profileFor, agentConfigs, agentHome } from './agentProfiles.
 import { spawnAgentProcess, killAgentProcess, resolveExecutable, isolationAvailable } from './agentSandbox.js';
 import { initialiseWorkspace, workspaceChanges, applyWorkspaceChanges, captureAgentProposal, readCurrent, rebaseChange } from './agentWorkspace.js';
 import { ITEM_ID, readItems } from '../routes/todos.js';
-import { activeSkills } from './skillService.js';
+import { activeSkills, loadSkill, SKILL_ID } from './skillService.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { writeJsonAtomic } from '../utils/fsUtils.js';
 
@@ -470,15 +470,16 @@ export async function previewDraft(r, options = {}) {
 const TEXT_URI = 'spectrum:';
 /**
  * The editor's context for a prompt: activePath (the open file), selection, log (the last compile's), todos (the
- * project's open to-dos) and research (a research session's id). Read and checked before the turn starts.
+ * project's open to-dos), research (a research session's id) and skill (a skill's id, whose instructions go in whole,
+ * as the composer's /skill-id). Read and checked before the turn starts.
  */
 export async function readContext(r, value) {
   if (value == null) return {};
   const bad = () => Object.assign(new Error('Invalid context.'), { statusCode: 400 });
   if (typeof value !== 'object' || Array.isArray(value)) throw bad();
-  const { activePath, selection, log, todos, research } = value;
+  const { activePath, selection, log, todos, research, skill } = value;
   for (const [text, max] of [[activePath, 1024], [selection, 100000], [log, 200000]]) if (text != null && (typeof text !== 'string' || text.length > max)) throw bad();
-  if ((todos != null && typeof todos !== 'boolean') || (research != null && !ITEM_ID.test(String(research)))) throw bad();
+  if ((todos != null && typeof todos !== 'boolean') || (research != null && !ITEM_ID.test(String(research))) || (skill != null && !SKILL_ID.test(String(skill)))) throw bad();
   const context = {};
   if (activePath) {
     sessionPath(r, path.join(r.workspace, activePath));
@@ -494,6 +495,7 @@ export async function readContext(r, value) {
     const text = await fs.readFile(appPath(r.root, 'research', `${research}.json`), 'utf8').catch(() => { throw Object.assign(new Error('That research session wasn’t found.'), { statusCode: 404 }); });
     context.research = { id: research, text: text.slice(0, 200000) };
   }
+  if (skill) context.skill = { id: skill, text: (await loadSkill(skill)).body };
   return context;
 }
 
@@ -506,7 +508,8 @@ function contextBlocks(r, context) {
     context.selection && { uri: fileUri ? `${fileUri}#selection` : `${TEXT_URI}selection`, label: `Selected text${context.activePath ? ` in ${context.activePath}` : ''}`, mimeType: 'text/plain', text: context.selection },
     context.log && { uri: `${TEXT_URI}compile-log`, label: 'The last compile log', mimeType: 'text/plain', text: context.log },
     context.todos && { uri: `${TEXT_URI}todos`, label: 'The project’s open to-dos', mimeType: 'text/markdown', text: context.todos },
-    context.research && { uri: `${TEXT_URI}research/${context.research.id}`, label: 'The research session', mimeType: 'application/json', text: context.research.text }
+    context.research && { uri: `${TEXT_URI}research/${context.research.id}`, label: 'The research session', mimeType: 'application/json', text: context.research.text },
+    context.skill && { uri: `${TEXT_URI}skills/${context.skill.id}/SKILL.md`, label: `The skill “${context.skill.id}” to follow for this task`, mimeType: 'text/markdown', text: context.skill.text }
   ].filter(Boolean);
   for (const { label, ...resource } of parts) {
     blocks.push(r.capabilities?.promptCapabilities?.embeddedContext ? { type: 'resource', resource } : { type: 'text', text: `${label}:\n${resource.text}` });

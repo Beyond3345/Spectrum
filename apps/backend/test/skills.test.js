@@ -157,3 +157,10 @@ test('sharing links the user’s skills that are on into agent folders that exis
   assert.deepEqual(stopped.json.targets.map((t) => t.linked), [false, false]);
   assert.deepEqual((await fs.readdir(claude)).sort(), ['mine', 'their-link'], 'only our links go');
 });
+
+test('a skill picked in the composer goes to a local agent in whole', async () => {
+  const { readContext } = await import('../src/services/agentSessionService.js');
+  assert.deepEqual(await readContext({}, { skill: 'beta' }), { skill: { id: 'beta', text: 'Review carefully.' } });
+  await assert.rejects(readContext({}, { skill: '../beta' }), /Invalid context/);
+  await assert.rejects(readContext({}, { skill: 'gamma' }), /not found/);
+});

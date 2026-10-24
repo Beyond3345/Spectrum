@@ -60,7 +60,7 @@ export function registerAgentRoutes(fastify) {
     }
 
     if (mode === 'tools') {
-      return runToolAgent({ projectId, activePath, task, prompt, selection, compileLog, llmConfig, reasoningEffort, searchConfig, instructions: extra });
+      return runToolAgent({ projectId, activePath, task, prompt, selection, compileLog, llmConfig, reasoningEffort, searchConfig, history, instructions: extra });
     }
 
     const system =
