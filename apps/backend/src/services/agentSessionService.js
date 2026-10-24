@@ -400,7 +400,8 @@ async function syncAgentSkills(r) {
   const skills = await activeSkills(r.root);
   const onlyAdd = [...runs.values()].some((other) => other !== r && other.agentId === r.agentId && other.projectId !== r.projectId && (other.busy || other.child));
   const stores = [...new Set(skills.map((s) => path.dirname(s.dir)))];
-  const child = await spawnAgentProcess({ command: process.execPath, args: ['-e', copySkills], workspace: r.home, home: r.home, runtimePaths: [nodeRead(), ...stores] });
+  // its workspace is the home's tmp: isolation keeps .claude from a workspace, and this writes .claude/skills
+  const child = await spawnAgentProcess({ command: process.execPath, args: ['-e', copySkills], workspace: path.join(r.home, 'tmp'), home: r.home, runtimePaths: [nodeRead(), ...stores] });
   let error = '';
   child.stderr.on('data', (chunk) => { error = (error + chunk).slice(-4000); });
   child.stdout.resume();

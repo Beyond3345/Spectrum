@@ -25,7 +25,7 @@ export function sandboxProfile({ workspace, home, executable, runtimeExecutable 
 ${forbiddenRoots.map((p) => `(deny file-read* file-write* (subpath ${q(p)}))`).join('\n')}
 (allow file-read* file-write-data (literal "/dev/null") (literal "/dev/zero") (subpath "/dev/fd"))
 (allow file-read* (literal "/dev/random") (literal "/dev/urandom"))
-(deny file-read* file-write* (regex ${q(`${workspace.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/(.*/)?(\\.[sS][pP][eE][cC][tT][rR][uU][mM]|\\.[gG][iI][tT]|\\.[eE][nN][vV](\\..*)?|.*\\.[pP][eE][mM]|.*\\.[kK][eE][yY])(/.*)?$`)}))
+(deny file-read* file-write* (regex ${q(`${workspace.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/(.*/)?(\\.[sS][pP][eE][cC][tT][rR][uU][mM]|\\.[gG][iI][tT]|\\.[cC][lL][aA][uU][dD][eE]|\\.[eE][nN][vV](\\..*)?|.*\\.[pP][eE][mM]|.*\\.[kK][eE][yY])(/.*)?$`)}))
 (allow mach-lookup
   (global-name "com.apple.system.opendirectoryd.libinfo")
   (global-name "com.apple.system.opendirectoryd.membership")
