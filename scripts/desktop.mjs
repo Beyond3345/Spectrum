@@ -3,6 +3,7 @@
 //   node scripts/desktop.mjs dev        run the shell against the repo backend (tauri dev)
 //   node scripts/desktop.mjs build      universal Spectrum.app + .dmg on macOS, the x64 installer on Windows
 //   node scripts/desktop.mjs resources  everything `build` bundles, without packaging
+//   node scripts/desktop.mjs texlab     TexLab alone (the Windows workflow builds it as a step of its own)
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -22,6 +23,8 @@ const win = process.platform === 'win32';
 const cacheDir = win ? path.join(process.env.LOCALAPPDATA, 'spectrum-build') : path.join(os.homedir(), 'Library', 'Caches', 'spectrum-build');
 const TRIPLES = win ? { x64: 'x86_64-pc-windows-msvc' } : { arm64: 'aarch64-apple-darwin', x64: 'x86_64-apple-darwin' };
 const EXE = win ? '.exe' : '';
+// Windows' own tar reads zips; the GNU tar that Git for Windows puts on PATH doesn't
+const winTar = win && path.join(process.env.SystemRoot, 'System32', 'tar.exe');
 
 function run(cmd, args, opts = {}) {
   // npm and npx are .cmd scripts on Windows, which only run through a shell
@@ -104,6 +107,20 @@ async function expectedSha(version, file) {
   return line.split(/\s+/)[0];
 }
 
+/** url saved as file, kept from an earlier run when it matches the SHA-256 expected. */
+async function verifiedDownload(url, file, expected) {
+  if (fs.existsSync(file) && sha256(file) === expected) return file;
+  console.log(`Downloading ${path.basename(url)}…`);
+  const res = await fetchOk(url);
+  fs.writeFileSync(`${file}.part`, Buffer.from(await res.arrayBuffer()));
+  fs.renameSync(`${file}.part`, file);
+  if (sha256(file) !== expected) {
+    fs.rmSync(file);
+    throw new Error(`Checksum mismatch for ${path.basename(url)}`);
+  }
+  return file;
+}
+
 /** Verified `bin/node` from the official darwin tarball (`node.exe` from the Windows zip), cached per version. */
 async function nodeBinary(version, arch) {
   const name = `node-${version}-${win ? 'win' : 'darwin'}-${arch}`;
@@ -112,43 +129,85 @@ async function nodeBinary(version, arch) {
   const out = path.join(outDir, `node${EXE}`);
   if (fs.existsSync(out)) return out;
 
-  const archive = path.join(cacheDir, file);
-  const expected = await expectedSha(version, file);
-  if (!fs.existsSync(archive) || sha256(archive) !== expected) {
-    console.log(`Downloading ${file}…`);
-    const res = await fetchOk(`https://nodejs.org/dist/${version}/${file}`);
-    fs.writeFileSync(`${archive}.part`, Buffer.from(await res.arrayBuffer()));
-    fs.renameSync(`${archive}.part`, archive);
-    if (sha256(archive) !== expected) {
-      fs.rmSync(archive);
-      throw new Error(`Checksum mismatch for ${file}`);
-    }
-  }
+  const archive = await verifiedDownload(`https://nodejs.org/dist/${version}/${file}`, path.join(cacheDir, file), await expectedSha(version, file));
   fs.mkdirSync(outDir, { recursive: true });
-  // Windows' own tar reads zips; the GNU tar that Git for Windows puts on PATH doesn't
-  if (win) run(path.join(process.env.SystemRoot, 'System32', 'tar.exe'), ['-xf', archive, '-C', outDir, '--strip-components', '1', `${name}/node.exe`]);
+  if (win) run(winTar, ['-xf', archive, '-C', outDir, '--strip-components', '1', `${name}/node.exe`]);
   else run('tar', ['-xzf', archive, '-C', outDir, '--strip-components', '2', `${name}/bin/node`]);
   return out;
 }
 
-/** Writes binaries/node-<triple> for each arch, plus the universal binary when both are asked for. */
-async function nodeRuntime(arches) {
-  fs.mkdirSync(cacheDir, { recursive: true });
+/** Writes binaries/<name>-<triple> from binary(arch) for each arch, plus the universal binary when both are asked for. */
+async function sidecar(name, arches, binary) {
   fs.mkdirSync(binDir, { recursive: true });
-  const version = await latestNode24();
   const bins = {};
   for (const arch of arches) {
-    bins[arch] = await nodeBinary(version, arch);
-    const dest = path.join(binDir, `node-${TRIPLES[arch]}${EXE}`);
+    bins[arch] = await binary(arch);
+    const dest = path.join(binDir, `${name}-${TRIPLES[arch]}${EXE}`);
     fs.copyFileSync(bins[arch], dest);
     fs.chmodSync(dest, 0o755);
   }
   if (bins.arm64 && bins.x64) {
-    const universal = path.join(binDir, 'node-universal-apple-darwin');
+    const universal = path.join(binDir, `${name}-universal-apple-darwin`);
     run('lipo', ['-create', bins.arm64, bins.x64, '-output', universal]);
     fs.chmodSync(universal, 0o755);
   }
+}
+
+async function nodeRuntime(arches) {
+  fs.mkdirSync(cacheDir, { recursive: true });
+  const version = await latestNode24();
+  await sidecar('node', arches, (arch) => nodeBinary(version, arch));
   console.log(`Node.js ${version} (${arches.join(', ')}) → ${path.relative(root, binDir)}`);
+}
+
+// TexLab (GPL-3.0-only) ships beside Spectrum as a program of its own; THIRD_PARTY_NOTICES.md gives its licence and
+// source. The Mac binaries are the release's; the Windows one is built from the tagged source with the C runtime linked
+// in, so it needs no Visual C++ install (crates.io stops at 4.3.2, so not with cargo install --version). The digests
+// are the ones GitHub lists for the release's assets, and the source's is that of the tag's tarball.
+const TEXLAB = {
+  version: '5.26.0',
+  mac: {
+    arm64: ['texlab-aarch64-macos.tar.gz', 'af7972ffd230711ba04ada9b69cc32ce9111d9196ba69538062872faefdbee56'],
+    x64: ['texlab-x86_64-macos.tar.gz', '6091611f756b28e1a57612b130c196df4b0bb6e22dde5cf5d890578513397daf']
+  },
+  source: ['https://github.com/latex-lsp/texlab/archive/refs/tags/v5.26.0.tar.gz', '47af7e71247fe186ddbaa62373ce5fbebc802ab8df9924958ac62788a644f84e']
+};
+
+/** The release's `texlab` for a Mac arch, verified and cached. */
+async function texlabMac(arch) {
+  const [file, expected] = TEXLAB.mac[arch];
+  const outDir = path.join(cacheDir, `texlab-${TEXLAB.version}-${arch}`);
+  const out = path.join(outDir, 'texlab');
+  if (fs.existsSync(out)) return out;
+  const url = `https://github.com/latex-lsp/texlab/releases/download/v${TEXLAB.version}/${file}`;
+  const archive = await verifiedDownload(url, path.join(cacheDir, `texlab-${TEXLAB.version}-${file}`), expected);
+  fs.mkdirSync(outDir, { recursive: true });
+  run('tar', ['-xzf', archive, '-C', outDir, 'texlab']);
+  return out;
+}
+
+/** `texlab.exe` built from the verified source with the C runtime linked in, cached. */
+async function texlabWindows() {
+  const installDir = path.join(cacheDir, `texlab-${TEXLAB.version}-x64`);
+  const out = path.join(installDir, 'bin', 'texlab.exe');
+  if (fs.existsSync(out)) return out;
+  const [url, expected] = TEXLAB.source;
+  const archive = await verifiedDownload(url, path.join(cacheDir, `texlab-${TEXLAB.version}-source.tar.gz`), expected);
+  const src = path.join(cacheDir, `texlab-${TEXLAB.version}-source`);
+  fs.rmSync(src, { recursive: true, force: true });
+  fs.mkdirSync(src, { recursive: true });
+  run(winTar, ['-xzf', archive, '-C', src, '--strip-components', '1']);
+  // a target folder of its own: the static C runtime's flags would otherwise rebuild Spectrum's crates
+  run('cargo', ['install', '--locked', '--path', path.join(src, 'crates', 'texlab'), '--root', installDir, '--target-dir', path.join(src, 'target')], {
+    env: { ...process.env, RUSTFLAGS: '-C target-feature=+crt-static' }
+  });
+  return out;
+}
+
+async function texlabRuntime(arches) {
+  fs.mkdirSync(cacheDir, { recursive: true });
+  await sidecar('texlab', arches, (arch) => (win ? texlabWindows() : texlabMac(arch)));
+  console.log(`TexLab ${TEXLAB.version} (${arches.join(', ')}) → ${path.relative(root, binDir)}`);
 }
 
 async function resources() {
@@ -171,6 +230,7 @@ async function resources() {
   if (win && !fs.existsSync(nodehun)) console.warn(`\nWARNING: no ${path.relative(root, nodehun)} (node scripts/native.mjs nodehun builds it), so this build has no spell checker.\n`);
   else fs.copyFileSync(nodehun, path.join(native, 'nodehun.node'));
   await nodeRuntime(Object.keys(TRIPLES));
+  await texlabRuntime(Object.keys(TRIPLES));
 }
 
 async function build() {
@@ -199,13 +259,14 @@ async function dev() {
   // bundle inputs aren't used in dev, but tauri-build insists they exist
   for (const dir of ['backend', 'frontend', 'templates', 'native', 'dictionaries', 'skills']) fs.mkdirSync(path.join(resourcesDir, dir), { recursive: true });
   if (!fs.existsSync(path.join(binDir, `node-${TRIPLES[process.arch]}${EXE}`))) await nodeRuntime([process.arch]);
+  if (!fs.existsSync(path.join(binDir, `texlab-${TRIPLES[process.arch]}${EXE}`))) await texlabRuntime([process.arch]);
   run('npx', ['tauri', 'dev']);
 }
 
-const commands = { dev, build, resources };
+const commands = { dev, build, resources, texlab: () => texlabRuntime(Object.keys(TRIPLES)) };
 const command = commands[process.argv[2]];
 if (!command) {
-  console.error('Usage: node scripts/desktop.mjs dev|build|resources');
+  console.error('Usage: node scripts/desktop.mjs dev|build|resources|texlab');
   process.exit(1);
 }
 try {
