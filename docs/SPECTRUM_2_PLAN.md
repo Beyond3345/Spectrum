@@ -281,6 +281,8 @@ Biblatex with Biber isn't covered: Tectonic's packages need Biber 2.17, so with 
 
 Your request, modelled on Oleafly's composer but going further: Oleafly only draws boxes and arrows, while you draw circuits.
 
+- **Where the ideas come from (your choice):** the window, layout and controls follow Oleafly's composer; the circuit logic (how parts, pins, wires, rotation, labels and the circuitikz export work) follows [CircuiTikZ-Designer](https://github.com/Circuit2TikZ/CircuiTikZ-Designer). Both are GPL-family licensed, so Spectrum studies them and writes its own version in its own words; it copies none of their code or symbol drawings and stays MIT. The README thanks CircuiTikZ-Designer alongside Oleafly.
+
 - **Its own window (your request):** Draw a diagram (top bar and Insert (+)) opens a chooser (TikZ diagram, Typst diagram, Mermaid diagram), then a separate composer window you can put beside the document or on another screen. The main window keeps working, and closing the composer never quits Spectrum.
 - **TikZ package menu (your choice: all four):**
   - **circuitikz:** about 40 parts in groups (resistors, capacitors, inductors, voltage and current sources including controlled ones, batteries, switches, diodes including LED and Zener, BJTs, MOSFETs, op-amps, logic gates, ground and supply, meters, transformers). Two-terminal parts sit on wires between grid points; op-amps, transistors and gates are placed parts with their named pins, so wires follow them when moved. Junction dots appear where three wires meet. An inspector sets each part's label, value, voltage and current arrows, and pole dots.
