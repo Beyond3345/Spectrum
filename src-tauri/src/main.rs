@@ -13,7 +13,7 @@ use std::os::unix::process::CommandExt;
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 #[cfg(unix)]
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -26,7 +26,7 @@ use tauri::webview::{DownloadEvent, NewWindowResponse, PageLoadEvent};
 use tauri::window::Color;
 use tauri::{
     AppHandle, Listener, Manager, RunEvent, Theme, Url, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder, WindowEvent,
+    WebviewWindowBuilder, WindowEvent, Wry,
 };
 #[cfg(target_os = "macos")]
 use tauri::{LogicalPosition, TitleBarStyle};
@@ -53,10 +53,15 @@ const FLUSH_TIMEOUT: Duration = Duration::from_secs(3);
 const FLUSH_GRACE: Duration = Duration::from_millis(500);
 /// Set once quitting starts, so the editor is flushed only once.
 static QUITTING: AtomicBool = AtomicBool::new(false);
+/// The diagram composer's window (open_diagram), beside the main one.
+const DIAGRAM: &str = "diagram";
 
 /// The backend process. Its stdin pipe stays open for as long as we hold it;
 /// the backend exits when it closes, so it can't outlive a crashed shell.
 struct Backend(Mutex<Option<Child>>);
+
+/// The backend's port, for the windows built after the first.
+struct Port(u16);
 
 /// A file opened from Finder or Explorer waits here until the app's page has loaded.
 #[derive(Default)]
@@ -89,10 +94,15 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .manage(Backend(Mutex::new(None)))
         .manage(Mutex::new(Opened::default()));
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.invoke_handler(tauri::generate_handler![open_diagram]);
     // Windows has no menu bar: closing the window quits there
     #[cfg(target_os = "macos")]
     let builder = builder
-        .invoke_handler(tauri::generate_handler![claim_default_handler])
+        .invoke_handler(tauri::generate_handler![
+            claim_default_handler,
+            open_diagram
+        ])
         .menu(|app| {
             // the stock Quit ends the app at once; ours lets the editor save first
             let menu = Menu::default(app)?;
@@ -155,15 +165,23 @@ fn main() {
     });
 }
 
-/// Cmd+Q and the close button: quit once the page says it has saved, or after
+/// Cmd+Q and the close button: quit once every window's page says it has saved, or after
 /// FLUSH_TIMEOUT.
 fn quit(app: &AppHandle) {
     if QUITTING.swap(true, Ordering::SeqCst) {
         return;
     }
+    let windows = app.webview_windows();
+    let left = AtomicUsize::new(windows.len());
     let flushed = app.clone();
-    app.once("flushed", move |_| flushed.exit(0));
-    flush_editor(app);
+    app.listen("flushed", move |_| {
+        if left.fetch_sub(1, Ordering::SeqCst) == 1 {
+            flushed.exit(0);
+        }
+    });
+    for window in windows.values() {
+        flush(window, "flushed");
+    }
     let app = app.clone();
     thread::spawn(move || {
         thread::sleep(FLUSH_TIMEOUT);
@@ -171,15 +189,22 @@ fn quit(app: &AppHandle) {
     });
 }
 
-/// Saves the open file now instead of after the autosave delay, then emits
-/// `flushed` (heard only while quitting).
+/// Saves every window's open work now instead of after the autosave delay.
 fn flush_editor(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.eval(
-            "Promise.resolve(window.__spectrumFlush?.()).finally(() => \
-             window.__TAURI_INTERNALS__.invoke('plugin:event|emit', { event: 'flushed' }))",
-        );
+    for window in app.webview_windows().values() {
+        flush(window, "flushed");
     }
+}
+
+/// Has the window's page save its open work (window.__spectrumFlush), then emit `event`, which
+/// only quitting (`flushed`) or closing the composer (`closable`) listens for.
+fn flush(window: &WebviewWindow, event: &str) {
+    // a flush that throws still answers
+    let _ = window.eval(format!(
+        "Promise.resolve().then(() => window.__spectrumFlush?.()).finally(() => \
+         window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {{ event: {} }}))",
+        serde_json::Value::from(event)
+    ));
 }
 
 /// Closes the backend's stdin so it can finish and exit, then kills its process
@@ -218,6 +243,7 @@ fn kill_group(pid: u32) {
 
 fn start(app: &AppHandle) -> tauri::Result<()> {
     let port = pick_port();
+    app.manage(Port(port));
     let splash_ready = Arc::new(AtomicBool::new(false));
     let window = build_window(app, port, splash_ready.clone())?;
     let log_path = app.path().app_log_dir()?.join("backend.log");
@@ -264,6 +290,53 @@ fn app_url(port: u16, file: Option<&Path>) -> Url {
             .append_pair("path", &file.to_string_lossy());
     }
     url
+}
+
+/// The composer's page (App.tsx's /diagram) for a project, with the project-relative diagram file to
+/// open, or the language its chooser starts in.
+fn diagram_url(port: u16, project: &str, file: Option<&str>, language: Option<&str>) -> Url {
+    let mut url =
+        Url::parse(&format!("http://127.0.0.1:{port}/diagram")).expect("valid backend URL");
+    {
+        let mut query = url.query_pairs_mut();
+        query.append_pair("project", project);
+        if let Some(file) = file.filter(|file| !file.is_empty()) {
+            query.append_pair("file", file);
+        }
+        if let Some(language) = language.filter(|l| matches!(*l, "tikz" | "typst" | "mermaid")) {
+            query.append_pair("lang", language);
+        }
+    }
+    url
+}
+
+/// Draw a diagram and Edit diagram: the composer's window at the diagram asked for, built beside the
+/// main one or brought forward. One showing another diagram saves it first, then turns to this one.
+// async: building a window from a command that runs on the main thread can hang WebView2
+#[tauri::command]
+async fn open_diagram(
+    app: AppHandle,
+    project: String,
+    file: Option<String>,
+    language: Option<String>,
+) -> Result<(), String> {
+    let port = app.state::<Port>().0;
+    let url = diagram_url(port, &project, file.as_deref(), language.as_deref());
+    let Some(window) = app.get_webview_window(DIAGRAM) else {
+        return build_diagram_window(&app, port, url)
+            .map(|_| ())
+            .map_err(|e| e.to_string());
+    };
+    if window.url().map_or(true, |at| at != url) {
+        let _ = window.eval(format!(
+            "Promise.resolve().then(() => window.__spectrumFlush?.()).finally(() => location.assign({}))",
+            serde_json::Value::from(url.as_str())
+        ));
+    }
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+    Ok(())
 }
 
 /// Brings the window forward and opens the first .tex, .ltx or .bib file of `paths` (never a
@@ -407,11 +480,14 @@ fn pick_port() -> u16 {
         .map_or(PREFERRED_PORT, |addr| addr.port())
 }
 
-fn build_window(
+/// What every window gets: it stays on the app's own pages (a web address opens in the browser),
+/// opens no windows of its own, saves downloads to Downloads and lets WebKit take drops itself, so
+/// files dragged in from Finder reach the page.
+fn guarded<'a>(
+    builder: WebviewWindowBuilder<'a, Wry, AppHandle>,
     app: &AppHandle,
     port: u16,
-    splash_ready: Arc<AtomicBool>,
-) -> tauri::Result<WebviewWindow> {
+) -> tauri::Result<WebviewWindowBuilder<'a, Wry, AppHandle>> {
     let opener = app.clone();
     let new_window_opener = app.clone();
     let download_opener = app.clone();
@@ -421,46 +497,8 @@ fn build_window(
     // WebView2 keeps the splash in its history, where Alt+Left or the mouse's back button would
     // strand the window on "Starting…"; once the app has loaded, the splash is behind it for good
     let left_splash = AtomicBool::new(false);
-
-    let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-        .title("Spectrum")
-        .inner_size(1320.0, 860.0)
-        .min_inner_size(960.0, 620.0)
-        .center()
-        .visible(false)
-        // the editor's right-click Paste reads the clipboard, which WebView2 otherwise asks about each time (Windows
-        // and Linux only; on_navigation keeps the window on the app's own pages)
-        .enable_clipboard_access();
-    // shrunk to fit a short screen before it's centred, or its title bar would start above the top
-    #[cfg(windows)]
-    let builder = builder.prevent_overflow();
-    // Windows keeps its standard title bar
-    #[cfg(target_os = "macos")]
-    let builder = builder
-        .title_bar_style(TitleBarStyle::Overlay)
-        .hidden_title(true)
-        .traffic_light_position(TRAFFIC_LIGHTS)
-        // so Settings can put glass behind the page; follow_glass keeps it opaque until then
-        .transparent(true);
-    let window = builder
-        // let WebKit take drops itself, so files dragged in from Finder reach the page
+    Ok(builder
         .disable_drag_drop_handler()
-        .on_page_load(move |window, payload| {
-            if payload.event() != PageLoadEvent::Finished {
-                return;
-            }
-            if is_splash(payload.url()) {
-                splash_ready.store(true, Ordering::SeqCst);
-            } else if payload.url().port() == Some(port) {
-                // the app's page (the backend's): it takes files from now on, and one that came
-                // while it loaded goes there now
-                let mut opened = window.state::<Mutex<Opened>>().inner().lock().unwrap();
-                opened.loaded = true;
-                if let Some(file) = opened.waiting.take() {
-                    let _ = window.navigate(app_url(port, Some(&file)));
-                }
-            }
-        })
         .on_navigation(move |url| match url.scheme() {
             _ if is_splash(url) => !(cfg!(windows) && left_splash.load(Ordering::Relaxed)),
             "about" | "blob" | "data" => true,
@@ -501,6 +539,50 @@ fn build_window(
                 _ => {}
             }
             true
+        }))
+}
+
+fn build_window(
+    app: &AppHandle,
+    port: u16,
+    splash_ready: Arc<AtomicBool>,
+) -> tauri::Result<WebviewWindow> {
+    let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+        .title("Spectrum")
+        .inner_size(1320.0, 860.0)
+        .min_inner_size(960.0, 620.0)
+        .center()
+        .visible(false)
+        // the editor's right-click Paste reads the clipboard, which WebView2 otherwise asks about each time (Windows
+        // and Linux only; on_navigation keeps the window on the app's own pages)
+        .enable_clipboard_access();
+    // shrunk to fit a short screen before it's centred, or its title bar would start above the top
+    #[cfg(windows)]
+    let builder = builder.prevent_overflow();
+    // Windows keeps its standard title bar
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .title_bar_style(TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(TRAFFIC_LIGHTS)
+        // so Settings can put glass behind the page; follow_glass keeps it opaque until then
+        .transparent(true);
+    let window = guarded(builder, app, port)?
+        .on_page_load(move |window, payload| {
+            if payload.event() != PageLoadEvent::Finished {
+                return;
+            }
+            if is_splash(payload.url()) {
+                splash_ready.store(true, Ordering::SeqCst);
+            } else if payload.url().port() == Some(port) {
+                // the app's page (the backend's): it takes files from now on, and one that came
+                // while it loaded goes there now
+                let mut opened = window.state::<Mutex<Opened>>().inner().lock().unwrap();
+                opened.loaded = true;
+                if let Some(file) = opened.waiting.take() {
+                    let _ = window.navigate(app_url(port, Some(&file)));
+                }
+            }
         })
         .build()?;
 
@@ -525,12 +607,48 @@ fn build_window(
                 mark_fullscreen(&resized, now);
             }
         }
-        // closing the only window quits, so save first
+        // closing the main window quits, so save first
         WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
             quit(&closing);
         }
         _ => {}
+    });
+    window.show()?;
+    Ok(window)
+}
+
+/// The diagram composer, at `url`: a window of its own with the standard title bar, so it can sit
+/// beside the document or on another screen. Closing it saves its diagram and never quits. Glass
+/// stays the main window's (appearance.ts).
+fn build_diagram_window(app: &AppHandle, port: u16, url: Url) -> tauri::Result<WebviewWindow> {
+    let builder = WebviewWindowBuilder::new(app, DIAGRAM, WebviewUrl::External(url))
+        .title("Diagram")
+        .inner_size(1180.0, 780.0)
+        .min_inner_size(760.0, 520.0)
+        .center()
+        .visible(false)
+        .enable_clipboard_access();
+    #[cfg(windows)]
+    let builder = builder.prevent_overflow();
+    let window = guarded(builder, app, port)?.build()?;
+    // desktop.ts paints it for the app's theme once the page loads
+    let _ = window.set_background_color(Some(background(window.theme().unwrap_or(Theme::Light))));
+    let target = window.clone();
+    let closing = AtomicBool::new(false);
+    window.on_window_event(move |event| {
+        if let WindowEvent::CloseRequested { api, .. } = event {
+            // a second click closes a page that never answers
+            if closing.swap(true, Ordering::SeqCst) {
+                return;
+            }
+            api.prevent_close();
+            let closed = target.clone();
+            target.once("closable", move |_| {
+                let _ = closed.destroy();
+            });
+            flush(&target, "closable");
+        }
     });
     window.show()?;
     Ok(window)
@@ -941,6 +1059,30 @@ mod tests {
         assert_eq!(url.query_pairs().next().unwrap().1, file.to_string_lossy());
         assert_eq!(app_url(PREFERRED_PORT, None).path(), "/projects");
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn diagram_url_names_the_project_file_and_known_languages() {
+        let url = diagram_url(
+            PREFERRED_PORT,
+            "p1",
+            Some("figures/a b&c.tex"),
+            Some("tikz"),
+        );
+        assert_eq!(url.path(), "/diagram");
+        let query: Vec<(String, String)> = url.query_pairs().into_owned().collect();
+        let pair = |k: &str, v: &str| (k.to_string(), v.to_string());
+        assert_eq!(
+            query,
+            [
+                pair("project", "p1"),
+                pair("file", "figures/a b&c.tex"),
+                pair("lang", "tikz")
+            ]
+        );
+        // no file, and a language the composer doesn't know, leave the chooser as it starts
+        let chooser = diagram_url(PREFERRED_PORT, "p1", Some(""), Some("dot"));
+        assert_eq!(chooser.query(), Some("project=p1"));
     }
 
     #[test]

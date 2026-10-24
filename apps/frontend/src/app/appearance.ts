@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { IS_DESKTOP, setNativeGlass } from './desktop';
+import { IS_DESKTOP, WINDOW_LABEL, setNativeGlass } from './desktop';
 import { IS_WINDOWS, OS_NAME } from './platform';
 import { SETTINGS_CHANGE_EVENT, loadSettings } from './settings';
 import type { Accent, AppSettings, PdfPageDark, PdfPageLight, Theme } from './settings';
@@ -131,8 +131,9 @@ export function followAppearance() {
     } catch {
       // storage unavailable: the accent is applied a moment later instead
     }
-    // a browser has nothing behind the page to show, so glass is the Mac app's alone
-    const glass = IS_DESKTOP && !IS_WINDOWS && settings.glass;
+    // a browser has nothing behind the page to show, so glass is the Mac app's alone, and its main window's: the
+    // diagram composer's is built opaque (main.rs)
+    const glass = IS_DESKTOP && !IS_WINDOWS && WINDOW_LABEL === 'main' && settings.glass;
     root.classList.toggle('glass', glass);
     for (const [name, value] of Object.entries(glassMix(settings.glassClarity))) root.style.setProperty(name, value);
     setNativeGlass(glass);
