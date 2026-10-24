@@ -16,6 +16,7 @@ const skill = (id: string, extra: Partial<Skill> = {}): Skill => ({
   source: 'bundled',
   files: 1,
   enabled: true,
+  active: true,
   ...extra
 });
 const skills = [

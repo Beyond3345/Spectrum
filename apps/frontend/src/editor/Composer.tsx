@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { addReference, getChat, resolveReferences, runAgent, saveChat, visionToLatex } from '../api/client';
+import { addReference, getChat, resolveReferences, runAgent, visionToLatex } from '../api/client';
 import type { ChatMessage, ChatMode, ChatThread, ReferenceResult } from '../api/client';
 import Icon from '../app/Icon';
 import Select from '../app/Select';
@@ -7,9 +7,11 @@ import { MenuButton } from '../app/Menu';
 import { effortOptions, modelOf, presetOf, searchConfigFor, updateSettings, useLivePreset, useProviders } from '../app/settings';
 import { useEditor } from './EditorContext';
 import type { PendingChange } from './EditorContext';
-import { CHATS_CHANGED, Markdown, VISION_HINTS, VISION_MODES, buildProjectContext, citationText, errorText, isTex, patchesToChanges } from './shared';
+import { Markdown, VISION_HINTS, VISION_MODES, buildProjectContext, citationText, errorText, isTex, patchesToChanges } from './shared';
 import type { VisionMode } from './shared';
-import AgentPanel from './AgentPanel';
+import { chatMessage, useChatThread } from './chatThread';
+import { resolveInstructions } from './personas';
+import { PersonaPicker } from './agent/parts';
 
 type QuickAction = 'polish' | 'rewrite' | 'structure' | 'translate';
 type TranslateScope = 'selection' | 'file' | 'project';
@@ -21,13 +23,7 @@ type MessageMeta = { changes?: ProposedFile[]; references?: ReferencesMeta; late
 const LANGUAGES = ['English', 'Chinese', 'Japanese', 'Korean', 'French', 'German', 'Spanish'];
 const ACTION_VERBS: Record<Exclude<QuickAction, 'translate'>, string> = { polish: 'Polish', rewrite: 'Rewrite', structure: 'Restructure' };
 
-const newChatId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-const msg = (role: ChatMessage['role'], content: string, meta?: MessageMeta): ChatMessage => ({
-  role,
-  content,
-  createdAt: new Date().toISOString(),
-  ...(meta ? { meta } : null)
-});
+const msg = (role: ChatMessage['role'], content: string, meta?: MessageMeta) => chatMessage(role, content, meta);
 const metaOf = (m: ChatMessage) => (m.meta || {}) as MessageMeta;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
@@ -51,22 +47,27 @@ const authorLine = (authors?: string[], year?: string, venue?: string) =>
   [authors?.length ? `${authors.slice(0, 3).join(', ')}${authors.length > 3 ? ' et al.' : ''}` : '', year, venue].filter(Boolean).join(' · ');
 
 /**
- * Floating chat card at the bottom of the editor column. "Assistant" talks to the
- * main model (Ask = read-only, Edit = agent that proposes changes); "References"
- * turns DOIs, links, arXiv IDs or titles into .bib entries.
+ * Floating chat card at the bottom of the editor column. "Assistant" asks the main model about the open file (and
+ * rewrites a selection for review); "References" turns DOIs, links, arXiv IDs or titles into .bib entries. Work on
+ * the project's files is the agent workspace's.
  */
 export default function Composer({
   open,
   onOpenChange,
   chatId,
   onChatIdChange,
-  focusSignal
+  focusSignal,
+  onContinueInAgent,
+  onManagePersonas
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   chatId: string | null;
   onChatIdChange: (id: string | null) => void;
   focusSignal: number;
+  /** an Edit chat saved before 2.0 carries on as a Spectrum agent thread */
+  onContinueInAgent: (chatId: string) => void;
+  onManagePersonas: () => void;
 }) {
   const api = useEditor();
   // async handlers read the newest editor state, not the one from when they started
@@ -74,32 +75,31 @@ export default function Composer({
   latest.current = api;
 
   const [mode, setMode] = useState<ChatMode>('assistant');
-  const [showAgents, setShowAgents] = useState(false);
+  // the persona for a chat not started yet; a chat keeps its own
+  const [newPersona, setNewPersona] = useState<string | undefined>();
   const providers = useProviders();
   const { preset } = useLivePreset(presetOf(providers, api.settings), api.settings.llmEndpoint);
   const effortChoices = effortOptions(modelOf(preset, api.settings.llmModel));
-  const [thread, setThread] = useState<ChatThread | null>(null);
-  const threadRef = useRef<ChatThread | null>(null);
+  const { thread, threadRef, show, append, update } = useChatThread({
+    projectId: api.projectId,
+    notify: api.notify,
+    fresh: () => ({ mode, ...(newPersona && { persona: newPersona }) }),
+    onCreate: onChatIdChange
+  });
   const [input, setInput] = useState('');
   /** chats with a request running; the spinner and the disabled send belong to those chats only */
   const [busyChats, setBusyChats] = useState<string[]>([]);
-  const [editMode, setEditMode] = useState(false);
   const [useSelection, setUseSelection] = useState(true);
   const [scope, setScope] = useState<TranslateScope>('selection');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const visionModeRef = useRef<VisionMode>('equation');
-  const saveChain = useRef<Promise<unknown>>(Promise.resolve());
 
   const busy = !!thread && busyChats.includes(thread.id);
   const hasSelection = Boolean(api.selectionText);
   const translateScope: TranslateScope = scope === 'selection' && !hasSelection ? 'file' : scope;
-
-  const show = (next: ChatThread | null) => {
-    threadRef.current = next;
-    setThread(next);
-  };
+  const personaId = thread ? thread.persona : newPersona;
 
   // open the chat picked in the Chats list
   useEffect(() => {
@@ -133,48 +133,13 @@ export default function Composer({
     if (el) el.scrollTop = el.scrollHeight;
   }, [thread?.messages.length, busy, open]);
 
-  /** from: the copy next was made from, so the server can tell when another computer saved the chat since. */
-  const save = (next: ChatThread, from: ChatThread) => {
-    const projectId = latest.current.projectId;
-    saveChain.current = saveChain.current
-      .then(() => saveChat(projectId, next, from.updatedAt))
-      .then((res) => {
-        // with what another computer added: shown unless there's more here since
-        if (res.chat && threadRef.current === next) show(res.chat);
-        window.dispatchEvent(new Event(CHATS_CHANGED));
-      })
-      .catch((err) => latest.current.notify(`Couldn’t save the chat: ${errorText(err)}`, 'error'));
-  };
-
-  /** Adds messages to a thread (starting a new one when base is null), saves it and shows it if it's still open. */
-  const append = (base: ChatThread | null, ...messages: ChatMessage[]) => {
-    const now = new Date().toISOString();
-    // the open copy is the newest, with any other computer's messages a save brought in
-    const newest = base && threadRef.current?.id === base.id ? threadRef.current : base;
-    const start: ChatThread = newest ?? { id: newChatId(), title: '', mode, createdAt: now, updatedAt: now, messages: [] };
-    const next = { ...start, updatedAt: now, messages: [...start.messages, ...messages] };
-    if (!next.title) {
-      const first = next.messages.find((m) => m.role === 'user')?.content.trim() || '';
-      next.title = first.length > 60 ? `${first.slice(0, 59)}…` : first;
-    }
-    if (!base) {
-      show(next);
-      onChatIdChange(next.id);
-    } else if (threadRef.current?.id === next.id) {
-      show(next);
-    } else {
-      latest.current.notify(`Reply added to “${next.title}”`);
-    }
-    save(next, start);
-    return next;
-  };
-
   /** owner: the thread as it was when the action started (the user may have switched chats since) */
-  const updateMeta = (owner: ChatThread, index: number, meta: MessageMeta) => {
-    const current = threadRef.current?.id === owner.id ? threadRef.current : owner;
-    const next = { ...current, updatedAt: new Date().toISOString(), messages: current.messages.map((m, i) => (i === index ? { ...m, meta } : m)) };
-    if (current === threadRef.current) show(next);
-    save(next, current);
+  const updateMeta = (owner: ChatThread, index: number, meta: MessageMeta) =>
+    update(owner, (chat) => ({ ...chat, messages: chat.messages.map((m, i) => (i === index ? { ...m, meta } : m)) }));
+
+  const choosePersona = (id: string | undefined) => {
+    if (thread) update(thread, (chat) => ({ ...chat, persona: id }));
+    else setNewPersona(id);
   };
 
   const startNewChat = () => {
@@ -268,7 +233,7 @@ export default function Composer({
     // snapshot: the editor keeps changing while the model works
     const { activePath, editorValue, selectionRange } = api;
     const selection = useSelection ? api.selectionText : '';
-    const chat = !action && !editMode;
+    const chat = !action;
     if (!chat && !activePath) {
       api.notify('Open a file first.');
       return;
@@ -324,7 +289,8 @@ export default function Composer({
         searchConfig: searchConfigFor(api.settings, api.llm.search),
         interaction: chat ? 'chat' : 'agent',
         history,
-        reasoningEffort: api.settings.reasoningEffort
+        reasoningEffort: api.settings.reasoningEffort,
+        instructions: resolveInstructions(api.settings, personaId) || undefined
       });
       // the backend words AI failures as a reply; show them as errors, kept out of the history
       if (!res.ok) throw new Error(res.reply || 'The AI request failed.');
@@ -391,8 +357,9 @@ export default function Composer({
   };
 
   const messages = thread?.messages || [];
-  const placeholder =
-    mode === 'references' ? 'Paste a DOI, link, arXiv ID or title' : editMode ? 'Describe the change you want' : 'Ask anything';
+  const placeholder = mode === 'references' ? 'Paste a DOI, link, arXiv ID or title' : 'Ask anything';
+  // an Edit chat from before 2.0, whose suggested changes the agent workspace now looks after
+  const editChat = mode === 'assistant' && messages.some((m) => metaOf(m).changes?.length);
 
   const renderReferences = (refs: ReferencesMeta, index: number) => {
     const bibName = refs.bibFile.split('/').pop()?.replace(/\.bib$/i, '') || 'references';
@@ -463,11 +430,10 @@ export default function Composer({
         <div className="composer-head">
           <div className="segmented small" role="tablist">
             {(['assistant', 'references'] as ChatMode[]).map((m) => (
-              <button key={m} role="tab" aria-selected={!showAgents && mode === m} className={`segment ${!showAgents && mode === m ? 'active' : ''}`} onClick={() => { setShowAgents(false); switchMode(m); }}>
+              <button key={m} role="tab" aria-selected={mode === m} className={`segment ${mode === m ? 'active' : ''}`} onClick={() => switchMode(m)}>
                 {m === 'assistant' ? 'Assistant' : 'References'}
               </button>
             ))}
-            <button role="tab" aria-selected={showAgents} className={`segment ${showAgents ? 'active' : ''}`} onClick={() => setShowAgents(true)}>Agents</button>
           </div>
           <span className="composer-title">{thread?.title}</span>
           <button className="icon-btn" title="New chat" aria-label="New chat" onClick={startNewChat} disabled={!messages.length}>
@@ -478,7 +444,6 @@ export default function Composer({
           </button>
         </div>
 
-        {showAgents ? <AgentPanel /> : <>
         <div className="composer-messages" ref={listRef} role="log">
           {messages.length === 0 && (
             <div className="composer-welcome">
@@ -486,8 +451,8 @@ export default function Composer({
                 <>
                   <div className="composer-welcome-title">How can I help with your paper?</div>
                   <div>
-                    Ask a question about the open file, or switch to Edit to have changes drafted for review. Select text first to polish, rewrite or
-                    translate it. To add a citation, switch to References.
+                    Ask a question about the open file. Select text first to polish, rewrite or translate it. For changes across the project, open the
+                    agent workspace. To add a citation, switch to References.
                   </div>
                 </>
               ) : (
@@ -525,16 +490,23 @@ export default function Composer({
               <span className="spinner" /> {mode === 'references' ? 'Looking it up…' : 'Thinking…'}
             </div>
           )}
+          {editChat && thread && (
+            <div className="composer-hint row">
+              <span className="grow">Edit now lives in the agent workspace as the Spectrum agent.</span>
+              <button className="btn small" onClick={() => onContinueInAgent(thread.id)}>
+                Continue there
+              </button>
+            </div>
+          )}
         </div>
 
-        {mode === 'assistant' && (hasSelection || editMode) && (
+        {mode === 'assistant' && hasSelection && (
           <div className="composer-chips">
-            {hasSelection &&
-              (Object.keys(ACTION_VERBS) as (keyof typeof ACTION_VERBS)[]).map((action) => (
-                <button key={action} className="chip" disabled={busy} onClick={() => send(action)}>
-                  {ACTION_VERBS[action]}
-                </button>
-              ))}
+            {(Object.keys(ACTION_VERBS) as (keyof typeof ACTION_VERBS)[]).map((action) => (
+              <button key={action} className="chip" disabled={busy} onClick={() => send(action)}>
+                {ACTION_VERBS[action]}
+              </button>
+            ))}
             <MenuButton
               label="Translate"
               className="chip"
@@ -595,14 +567,7 @@ export default function Composer({
                   <Icon name="text.cursor" /> Use selection
                 </button>
               )}
-              <div className="segmented small" role="tablist" title="Ask answers without touching your files; Edit drafts changes for you to review">
-                <button role="tab" aria-selected={!editMode} className={`segment ${!editMode ? 'active' : ''}`} onClick={() => setEditMode(false)}>
-                  Ask
-                </button>
-                <button role="tab" aria-selected={editMode} className={`segment ${editMode ? 'active' : ''}`} onClick={() => setEditMode(true)}>
-                  Edit
-                </button>
-              </div>
+              <PersonaPicker value={personaId} onChange={choosePersona} onManage={onManagePersonas} />
             </>
           )}
           <span className="grow" />
@@ -636,7 +601,6 @@ export default function Composer({
             if (file) imageToLatex(file, visionModeRef.current);
           }}
         />
-        </>}
       </div>
     </div>
   );

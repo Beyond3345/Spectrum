@@ -14,7 +14,7 @@ export default function ReviewChangesSheet({
   onClose
 }: {
   changes: PendingChange[];
-  onAccept: (changes: PendingChange[]) => Promise<void>;
+  onAccept: (changes: PendingChange[]) => Promise<unknown>;
   onReject: (changes: PendingChange[]) => void;
   onClose: () => void;
 }) {

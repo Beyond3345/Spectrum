@@ -58,6 +58,11 @@ export interface EditorApi {
   jumpTo(file: string, line: number): Promise<void>;
   /** queue for review (replaces same-path entries); open: also show the review sheet */
   proposeChanges(changes: PendingChange[], opts?: { open?: boolean }): void;
+  /**
+   * Writes reviewed changes after a "Before AI changes" checkpoint. stale: those whose file changed since in a way
+   * they can't be merged with, as they would now replace it; they aren't written.
+   */
+  applyChanges(changes: PendingChange[]): Promise<{ applied: PendingChange[]; stale: PendingChange[]; checkpoint: VersionMeta | null }>;
   compile(): Promise<void>;
   prepareAgent(): Promise<void>;
   /** saves the open file first; silent (callers report the outcome). unchanged: nothing new, `version` is the latest one */

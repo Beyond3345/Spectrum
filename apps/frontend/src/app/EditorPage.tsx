@@ -71,6 +71,8 @@ import GrammarPanel, { grammarMarks } from '../editor/GrammarPanel';
 import { ignoreSpelling, misspeltAt, recheckSpelling, spellChecker } from '../editor/spellcheck';
 import type { ToolsTab } from '../editor/ToolsPanel';
 import ReviewChangesSheet from '../editor/ReviewChangesSheet';
+import AgentWorkspace, { STATUS_TEXT } from '../editor/agent/AgentWorkspace';
+import type { AgentStatus } from '../editor/agent/LocalAgentTab';
 import SyncBanners from '../editor/SyncBanners';
 import { conflictCopyPath, onDiskChange } from '../editor/heldFiles';
 import FileTree from '../editor/FileTree';
@@ -223,7 +225,7 @@ const SNIPPETS: (Snippet | FloatCard | null)[] = [
 type CompileState = { state: 'idle' | 'running' | 'ok' | 'failed' | 'stopped'; engine: CompileEngine | string; at?: Date; slow?: boolean };
 
 /** what takes the PDF's place, from the top bar */
-type Panel = 'tools' | 'grammar' | 'insights' | 'floats';
+type Panel = 'tools' | 'grammar' | 'insights' | 'floats' | 'agent';
 
 /**
  * Why a compile's checkpoint couldn't be saved, or the files it left out that `told` doesn't hold yet (they're added,
@@ -396,6 +398,9 @@ function Editor({ projectId }: { projectId: string }) {
   const [panel, setPanel] = useState<Panel | null>(null);
   // Tools, insights and floats stay mounted once opened, so their results and typing survive closing; the grammar check runs afresh
   const [keptPanels, setKeptPanels] = useState<Panel[]>([]);
+  // the agent workspace's dot on its button, and a chat it's asked to carry on
+  const [agentStatus, setAgentStatus] = useState<AgentStatus>(null);
+  const [agentThread, setAgentThread] = useState<{ id: string; n: number } | null>(null);
   const [floatsCard, setFloatsCard] = useState<{ card: FloatCard | null; signal: number }>({ card: null, signal: 0 });
   const [spellMenu, setSpellMenu] = useState<{ x: number; y: number; from: number; to: number; word: string; suggestions: string[] | null } | null>(null);
   // right-click elsewhere in the editor: pos is where
@@ -1146,11 +1151,12 @@ function Editor({ projectId }: { projectId: string }) {
         'error'
       );
     }
-    if (!ready.length) return;
-    await createVersion('before-ai');
+    if (!ready.length) return { applied: [], stale, checkpoint: null };
+    const { version } = await createVersion('before-ai');
     for (const change of ready) await writeProjectFile(change.filePath, change.proposed);
     setPending((prev) => prev.filter((p) => !ready.some((c) => c.filePath === p.filePath)));
     notify(ready.length === 1 ? `Applied the changes to ${nameOf(ready[0].filePath)}` : `Applied changes to ${ready.length} files`, 'success');
+    return { applied: ready, stale, checkpoint: version };
   };
 
   // ─── AI autocomplete (ghost text) ───
@@ -1532,6 +1538,14 @@ function Editor({ projectId }: { projectId: string }) {
     setChatId(id);
     setComposerOpen(true);
     setFocusSignal((n) => n + 1);
+  };
+
+  // an Edit chat from before 2.0 leaves the bottom card for the Spectrum agent
+  const continueInAgent = (id: string) => {
+    setChatId(null);
+    setComposerOpen(false);
+    setAgentThread((was) => ({ id, n: (was?.n || 0) + 1 }));
+    openPanel('agent');
   };
 
   const leave = async (to: string) => {
@@ -2230,6 +2244,7 @@ function Editor({ projectId }: { projectId: string }) {
     openFile,
     jumpTo,
     proposeChanges,
+    applyChanges: acceptChanges,
     prepareAgent: async () => {
       await saveNow();
       if (heldRef.current.size) throw new Error('Resolve the files changed on disk before starting or applying agent work.');
@@ -2682,6 +2697,16 @@ function Editor({ projectId }: { projectId: string }) {
                   </span>
                 )}
               </button>
+              <button
+                className={`icon-btn agent-toggle ${panel === 'agent' ? 'active' : ''}`}
+                title={agentStatus ? `Agent · ${STATUS_TEXT[agentStatus]}` : 'Agent'}
+                aria-label={agentStatus ? `Agent, ${STATUS_TEXT[agentStatus].toLowerCase()}` : 'Agent'}
+                aria-pressed={panel === 'agent'}
+                onClick={() => togglePanel('agent')}
+              >
+                <Icon name="wand.and.stars" />
+                {agentStatus && <span className={`agent-dot ${agentStatus}`} />}
+              </button>
               {/* while a panel has the PDF header's place, compiling stays here */}
               {panel && compileSplit}
               {/* the PDF header's is hidden in editor only or behind a panel; this one stays from the first compile, so changes are heard */}
@@ -2783,7 +2808,12 @@ function Editor({ projectId }: { projectId: string }) {
                 setComposerOpen(open);
                 if (!open) viewRef.current?.focus();
               }}
-              chatId={chatId} onChatIdChange={setChatId} focusSignal={focusSignal} />
+              chatId={chatId}
+              onChatIdChange={setChatId}
+              focusSignal={focusSignal}
+              onContinueInAgent={continueInAgent}
+              onManagePersonas={() => setSettingsOpen(true)}
+            />
           </section>
 
           {layout.view === 'split' && <div className="column-divider" role="separator" aria-orientation="vertical" aria-label="Resize" onMouseDown={startResize} />}
@@ -3017,6 +3047,26 @@ function Editor({ projectId }: { projectId: string }) {
             {keptPanels.includes('floats') && (
               <div className="tools-column" hidden={panel !== 'floats'}>
                 <FloatsPanel card={floatsCard.card} signal={floatsCard.signal} trailing={panelEnd} />
+              </div>
+            )}
+
+            {keptPanels.includes('agent') && (
+              <div className="tools-column" hidden={panel !== 'agent'}>
+                <AgentWorkspace
+                  active={panel === 'agent'}
+                  todos={todos}
+                  openThread={agentThread}
+                  onStatus={setAgentStatus}
+                  onOpenSettings={() => setSettingsOpen(true)}
+                  trailing={
+                    <>
+                      <button className="btn small ghost" title="Show the PDF; the agent carries on" onClick={closePanel}>
+                        <Icon name="doc.richtext" /> PDF
+                      </button>
+                      {viewSwitcher}
+                    </>
+                  }
+                />
               </div>
             )}
 

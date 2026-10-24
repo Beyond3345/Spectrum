@@ -25,7 +25,8 @@ export default function ChatsList({
 
   const refresh = useCallback(() => {
     listChats(projectId)
-      .then((res) => setChats(res.chats || []))
+      // Spectrum agent threads are the agent workspace's
+      .then((res) => setChats((res.chats || []).filter((chat) => !chat.agent)))
       .catch((err) => {
         setChats([]);
         notify(`Couldn’t load chats: ${errorText(err)}`, 'error');

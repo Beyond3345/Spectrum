@@ -277,7 +277,7 @@ export function CheckpointCleanup({ projects, onDone }: { projects: () => Promis
 }
 
 /** Restore leaves files checkpoints don't keep beside the restored copy, renamed “… (before restore)”. */
-const keptAsideNote = (kept?: string[]) => (kept?.length ? `. Kept your current ${kept.join(', ')} beside it.` : '');
+export const keptAsideNote = (kept?: string[]) => (kept?.length ? `. Kept your current ${kept.join(', ')} beside it.` : '');
 
 /** Changed files of a version (vs the one before it, or vs the files on disk) with a side-by-side diff. */
 function VersionDiffSheet({

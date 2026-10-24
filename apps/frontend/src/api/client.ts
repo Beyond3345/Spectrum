@@ -782,6 +782,8 @@ export interface ChatThread {
   messages: ChatMessage[];
   /** a Spectrum agent thread, listed in the agent workspace rather than the bottom card */
   agent?: true;
+  /** the persona chosen for this chat (Settings › Personas) */
+  persona?: string;
 }
 
 export interface ChatSummary {
@@ -826,6 +828,9 @@ export interface Todo {
   updatedAt: string;
   link?: TodoLink;
 }
+
+/** A to-do an agent suggests (its suggest_todo tool); it is only saved when the user adds it */
+export type SuggestedTodo = { text: string; link?: TodoLink };
 
 export function listTodos(projectId: string) {
   return request<{ todos: Todo[] }>(`/api/projects/${projectId}/todos`);
@@ -897,9 +902,6 @@ export function runAgent(payload: {
   // tools mode: changes lists its patches as local agents' changes tray does, todos the to-dos it suggests
   return request<{ ok: boolean; reply: string; suggestion: string; patches?: AgentPatch[]; changes?: AgentChange[]; todos?: SuggestedTodo[] }>('/api/agent/run', json('POST', payload));
 }
-
-/** A to-do an agent suggests; the user adds it with Add. */
-export interface SuggestedTodo { text: string; link?: { file: string; line: number } | { doc: string; page: number } | { key: string } }
 
 export function callLLM(payload: {
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[];
@@ -1268,8 +1270,11 @@ export interface LocalAgent {
 export interface AgentEvent { id: number; type: string; data: any; at: string; first?: number }
 /** A persona's instructions for a local agent; null clears the session's. */
 export interface AgentPersona { name: string; prompt: string }
-/** What the editor sends with a prompt, as ACP resources: todos sends the open to-dos, research a research session's id */
-export interface AgentPromptContext { activePath?: string; selection?: string; log?: string; todos?: boolean; research?: string }
+/**
+ * What the editor sends with a prompt, as ACP resources: todos sends the open to-dos, research a research session's id,
+ * skill a skill's SKILL.md in whole
+ */
+export interface AgentPromptContext { activePath?: string; selection?: string; log?: string; todos?: boolean; research?: string; skill?: string }
 export interface AgentChange {
   path: string; kind: 'created' | 'modified' | 'deleted'; binary: boolean; beforeHash: string | null;
   afterHash: string | null; size: number; original?: string; proposed?: string;
