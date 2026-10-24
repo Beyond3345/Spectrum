@@ -1,4 +1,5 @@
 import { GlobalWorkerOptions, OPS, getDocument } from 'pdfjs-dist';
+import type { PDFPageProxy } from 'pdfjs-dist';
 import type { StructTreeNode } from 'pdfjs-dist/types/src/display/api';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { PdfFacts, PdfPage } from './run';
@@ -27,7 +28,7 @@ export async function pdfFacts(url: string, signal?: AbortSignal): Promise<PdfFa
   const version = /%PDF-(\d\.\d)/.exec(new TextDecoder('latin1').decode(bytes.subarray(0, 1024)))?.[1] ?? '';
   const empty: PdfFacts = { version, encrypted: false, title: '', author: '', lang: '', outline: false, tagged: false, figuresWithoutAlt: 0, fonts: null, pages: [] };
   // fonts aren't installed in the page, and are kept with their names
-  const task = getDocument({ data: bytes, disableFontFace: true, fontExtraProperties: true, isEvalSupported: false });
+  const task = getDocument({ data: bytes, disableFontFace: true, fontExtraProperties: true });
   let doc;
   try {
     doc = await task.promise;
@@ -52,11 +53,11 @@ export async function pdfFacts(url: string, signal?: AbortSignal): Promise<PdfFa
     const pages: PdfPage[] = [];
     const fontIds = new Set<string>();
     let fontsReadable = true;
-    let commonObjs: { get(id: string, callback: (data: unknown) => void): unknown } | null = null;
+    let commonObjs: PDFPageProxy['commonObjs'] | null = null;
     for (let n = 1; n <= doc.numPages; n += 1) {
       signal?.throwIfAborted();
       const page = await doc.getPage(n);
-      commonObjs ??= page.commonObjs as unknown as typeof commonObjs;
+      commonObjs ??= page.commonObjs;
       const [x0, y0, x1, y1] = page.view;
       const { width, height } = page.getViewport({ scale: 1 });
       const counts = { chars: 0, smallChars: 0, outside: false };

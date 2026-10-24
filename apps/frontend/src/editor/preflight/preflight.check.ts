@@ -203,37 +203,51 @@ const ranks = found.filter((f) => f.group === 'references').map((f) => f.severit
 eq(ranks, [...ranks].sort((a, b) => ['error', 'warning', 'info'].indexOf(a) - ['error', 'warning', 'info'].indexOf(b)), 'errors first');
 
 // TexLab's diagnostics add what the scan missed, and nothing it found already
+// \subref is one the scan doesn't know
+const LATER = `${METHOD}Again \\ref{sec:nowhere} and \\subref{sec:later}.\n`;
+/** A diagnostic over `word` on `line` of `text`, as the route gives it. */
+const over = (text: string, line: number, word: string, message: string, code: string) => {
+  const col = text.split('\n')[line - 1].indexOf(word) + 1;
+  return { line, col, endLine: line, endCol: col + word.length, severity: 'error' as const, message, code, source: 'texlab' };
+};
 const diagnosed = runPreflight(
   input({
-    files: FILES,
+    files: FILES.map((f) => (f.path === 'sections/method.tex' ? { ...f, text: LATER } : f)),
     bib: BIB,
     diagnostics: {
-      'main.tex': [
-        { line: 14, col: 60, endLine: 14, endCol: 71, severity: 'error', message: 'Undefined reference', source: 'texlab' },
-        { line: 33, col: 1, endLine: 33, endCol: 5, severity: 'error', message: 'Undefined citation', source: 'texlab' },
-        { line: 13, col: 1, endLine: 13, endCol: 5, severity: 'info', message: 'Unused label', source: 'texlab' }
+      // found by the scan already, on the same line
+      'main.tex': [over(MAIN, 14, 'sec:nowhere', 'Undefined reference', 'undefined-label'), { ...over(MAIN, 13, 'sec:intro', 'Unused label', 'unused-label'), severity: 'info' }],
+      'sections/method.tex': [
+        // found by the scan already, by its key
+        over(LATER, 4, 'sec:nowhere', 'Undefined reference', 'undefined-label'),
+        over(LATER, 4, 'sec:later', 'Undefined reference', 'undefined-label')
       ],
-      'other.tex': [{ line: 1, col: 1, endLine: 1, endCol: 2, severity: 'error', message: 'Undefined reference', source: 'texlab' }]
+      'refs.bib': [{ line: 6, col: 1, endLine: 6, endCol: 2, severity: 'error', message: 'Expecting a curly bracket', code: 'bib-syntax', source: 'texlab' }],
+      'other.tex': [{ line: 1, col: 1, endLine: 1, endCol: 2, severity: 'error', message: 'Undefined reference', code: 'undefined-label', source: 'texlab' }]
     }
   })
 );
 eq(
   brief(diagnosed, 'references').filter(([, m]) => String(m).includes('TexLab')),
-  [['warning', 'Undefined citation (TexLab)', 'main.tex:33']],
+  [
+    ['error', 'Expecting a curly bracket (TexLab)', 'refs.bib:6'],
+    ['warning', 'Undefined reference: “sec:later” (TexLab)', 'sections/method.tex:4']
+  ],
   'TexLab'
 );
 
 // what can’t be checked yet says so
 eq(
-  preflightGaps({ log: '', pdfFacts: null, anonymous: true }),
+  preflightGaps({ log: '', failed: false, pdfFacts: null, anonymous: true }),
   {
     compile: 'Compile first.',
     accessibility: 'Compile first: most of these checks read the PDF.',
     submission: 'Compile first: the PDF’s version, fonts and encryption need a PDF.',
-    privacy: 'Compile first to check the PDF’s Author field.'
+    privacy: 'Compile first: the PDF’s Author field needs a PDF.'
   },
   'gaps'
 );
-eq(preflightGaps({ log: 'x', pdfFacts: FACTS, anonymous: true }), {}, 'no gaps');
+eq(preflightGaps({ log: 'x', failed: true, pdfFacts: null, anonymous: false }).compile, 'The last compile made no PDF: the page checks need a PDF.', 'a failed compile');
+eq(preflightGaps({ log: 'x', failed: false, pdfFacts: FACTS, anonymous: true }), {}, 'no gaps');
 
 console.log('preflight.check: ok');

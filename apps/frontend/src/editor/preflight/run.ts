@@ -158,14 +158,16 @@ const PAPER: [string, number, number][] = [
 ];
 
 /** What a group can't check without the PDF or the log: "Compile first", and why. */
-export function preflightGaps(input: Pick<PreflightInput, 'log' | 'pdfFacts' | 'anonymous'>): Partial<Record<PreflightGroup, string>> {
+export function preflightGaps(input: Pick<PreflightInput, 'log' | 'failed' | 'pdfFacts' | 'anonymous'>): Partial<Record<PreflightGroup, string>> {
   const gaps: Partial<Record<PreflightGroup, string>> = {};
+  // a failed compile's PDF, if there is one, is an older one's
+  const first = input.failed ? 'The last compile made no PDF' : 'Compile first';
   if (!input.log) gaps.compile = 'Compile first.';
-  else if (!input.pdfFacts) gaps.compile = 'Compile first: the page checks need a PDF.';
+  else if (!input.pdfFacts) gaps.compile = `${first}: the page checks need a PDF.`;
   if (!input.pdfFacts) {
-    gaps.accessibility = 'Compile first: most of these checks read the PDF.';
-    gaps.submission = 'Compile first: the PDF’s version, fonts and encryption need a PDF.';
-    if (input.anonymous) gaps.privacy = 'Compile first to check the PDF’s Author field.';
+    gaps.accessibility = `${first}: most of these checks read the PDF.`;
+    gaps.submission = `${first}: the PDF’s version, fonts and encryption need a PDF.`;
+    if (input.anonymous) gaps.privacy = `${first}: the PDF’s Author field needs a PDF.`;
   }
   return gaps;
 }
@@ -365,12 +367,16 @@ export function runPreflight(input: PreflightInput): Finding[] {
         if (!row.label) add({ group, severity: 'info', message: `${name} has no \\label, so the text can’t refer to it`, file: row.file, line: row.line, fixable: true });
         else if (!referenced.has(row.label)) add({ group, severity: 'info', message: `${name} is never referred to in the text`, file: row.file, line: row.line, fixable: true });
       }
-    // TexLab's undefined and duplicate labels and citations that the scan above missed
-    for (const file of docFiles)
+    // TexLab's undefined and duplicate labels and citations and its .bib syntax errors, those the scan above missed
+    for (const file of new Set([...docFiles, ...entries.map((e) => e.file)]))
       for (const d of input.diagnostics?.[file] ?? []) {
-        if (!/undefined|duplicate/i.test(d.message)) continue;
-        if (found.some((f) => f.group === group && f.file === file && f.line === d.line)) continue;
-        add({ group, severity: 'warning', message: `${d.message} (TexLab)`, file, line: d.line, fixable: true });
+        const kind = String(d.code ?? '');
+        if (kind ? !/^(?:undefined|duplicate)-|^bib-syntax$/.test(kind) : !/undefined|duplicate/i.test(d.message)) continue;
+        // what the diagnostic is about, such as the key
+        const token = d.endLine === d.line ? texts.get(file)?.split('\n')[d.line - 1]?.slice(d.col - 1, d.endCol - 1).trim() : '';
+        if (found.some((f) => f.group === group && ((f.file === file && f.line === d.line) || (token && f.message.includes(quoted(token)))))) continue;
+        const syntax = kind === 'bib-syntax';
+        add({ group, severity: syntax ? 'error' : 'warning', message: `${d.message}${token && !syntax ? `: ${quoted(token)}` : ''} (TexLab)`, file, line: d.line, fixable: true });
       }
   }
 
