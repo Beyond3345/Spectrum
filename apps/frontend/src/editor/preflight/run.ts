@@ -268,12 +268,22 @@ export function runPreflight(input: PreflightInput): Finding[] {
       )
     );
 
+  // A compile that made its PDF says in its log what TeX found, in the project or in the TeX tree (a TEXMFHOME image, a
+  // central .bib through BIBINPUTS): an image it used, and citations it resolved
+  const clean = input.log && !input.failed ? lastPass(input.log).join('\n') : '';
+  const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const texFound = (image: string) =>
+    !!clean &&
+    !new RegExp(`File \`${escaped(image)}' not found`).test(clean) &&
+    new RegExp(`^File: (?:\\S*/)?${escaped(image.split('/').pop()!)}(?:\\.[A-Za-z0-9]+)? Graphic file`, 'm').test(clean);
+  const unresolved = { citations: new Set<string>(), references: new Set<string>() };
+  const noDatabase = /I couldn't open database file|ERROR - Cannot find '[^']*'/.test(clean);
+
   // ─── Compile and layout ───
   if (input.log) {
     const group = 'compile';
     if (input.failed) add({ group, severity: 'error', message: 'The last compile failed and made no PDF.', fixable: true });
     const parsed = parseCompileLog(input.log, input.root).map((e) => (e.file ? { ...e, file: projectFile(e.file, doc, paths) } : e));
-    const unresolved = { citations: new Set<string>(), references: new Set<string>(), page: 0 };
     let rerun = false;
     for (const e of parsed) {
       const where = { ...(e.file && { file: e.file }), ...(e.line && { line: e.line }) };
@@ -282,19 +292,21 @@ export function runPreflight(input: PreflightInput): Finding[] {
         continue;
       }
       const box = /^Overfull \\([hv])box \((\d+(?:\.\d+)?)pt too (?:wide|high)\)/.exec(e.message);
-      const missing = /^(Citation|Reference) [`'‘]([^'’]+)['’] on page (\d+) undefined/.exec(e.message);
+      const missing = /^(Citation|Reference) [`'‘]([^'’]+)['’] on page \S+ undefined/.exec(e.message);
       if (box) {
         const pt = Math.round(Number(box[2]) * 10) / 10;
         add({ group, severity: pt >= 1 ? 'warning' : 'info', message: box[1] === 'h' ? `A line runs ${pt}pt past the margin` : `A page’s content is ${pt}pt too tall`, ...where, fixable: true });
       } else if (missing) {
         unresolved[missing[1] === 'Citation' ? 'citations' : 'references'].add(missing[2]);
-        unresolved.page ||= Number(missing[3]);
       } else if (/Rerun to get|rerun LaTeX|Please rerun|Label\(s\) may have changed/i.test(e.message)) rerun = true;
     }
     const keys = [...unresolved.citations, ...unresolved.references];
     if (keys.length) {
       const what = [unresolved.citations.size && plural(unresolved.citations.size, 'citation'), unresolved.references.size && plural(unresolved.references.size, 'reference')].filter(Boolean).join(' and ');
-      add({ group, severity: 'warning', message: `The PDF shows ?? for ${what} the last compile couldn’t resolve: ${listed(keys)}`, ...(unresolved.page && { page: unresolved.page }) });
+      // the page in the PDF that shows them: the log's "on page N" is the printed number, which a title page or roman
+      // front matter puts out of step with the PDF's own
+      const shown = pdf ? pdf.pages.findIndex((p) => p.text.includes('??')) : -1;
+      add({ group, severity: 'warning', message: `The PDF shows ?? for ${what} the last compile couldn’t resolve: ${listed(keys)}`, ...(shown >= 0 && { page: shown + 1 }) });
     }
     if (rerun) add({ group, severity: 'warning', message: 'The last compile still needed another pass, so references or the contents may be out of date. Compile again.' });
     const glyphs = new Map<string, { char: string; font: string; n: number }>();
@@ -339,11 +351,14 @@ export function runPreflight(input: PreflightInput): Finding[] {
     const named = new Set(scans.flatMap((s) => s.bibs.map((n) => includedFile(pathSet, doc, n, '.bib'))).filter(Boolean) as string[]);
     const entries = input.bib?.filter((e) => !named.size || named.has(e.file)) ?? [];
     const keys = new Set([...entries.map((e) => e.key), ...bibitems]);
-    if (input.bib && cites.length && !keys.size) add({ group, severity: 'error', message: 'The document cites sources but has no bibliography: no .bib file and no thebibliography', ...cites[0] });
-    else if (input.bib) {
+    // after a compile that made its PDF, a key the project lacks is missing only if the log says so too
+    const unfound = (key?: string) => !clean || noDatabase || (key === undefined ? unresolved.citations.size > 0 : unresolved.citations.has(key));
+    if (input.bib && cites.length && !keys.size) {
+      if (unfound()) add({ group, severity: 'error', message: 'The document cites sources but has no bibliography: no .bib file and no thebibliography', ...cites[0] });
+    } else if (input.bib) {
       const seen = new Set<string>();
       for (const c of cites)
-        if (!keys.has(c.key) && !seen.has(c.key)) {
+        if (!keys.has(c.key) && !seen.has(c.key) && unfound(c.key)) {
           seen.add(c.key);
           add({ group, severity: 'warning', message: `No bibliography entry has the key ${quoted(c.key)}`, file: c.file, line: c.line, fixable: true });
         }
@@ -373,7 +388,8 @@ export function runPreflight(input: PreflightInput): Finding[] {
       for (const [file, list] of unused)
         add({ group, severity: 'info', message: `${plural(list.length, 'entry', 'entries')} in ${file} ${list.length === 1 ? 'is' : 'are'} never cited: ${listed(list.map((e) => e.key))}`, file, line: list[0].line });
     }
-    for (const image of images) if (!Object.keys(imageFile(image.name)).length) add({ group, severity: 'error', message: `Can’t find the image ${quoted(image.name)}`, file: image.file, line: image.line });
+    for (const image of images)
+      if (!Object.keys(imageFile(image.name)).length && !texFound(image.name)) add({ group, severity: 'error', message: `Can’t find the image ${quoted(image.name)}`, file: image.file, line: image.line });
     const referenced = new Set(refs.map((r) => r.key));
     for (const [kind, rows] of [['Figure', insights.figures], ['Table', insights.tables]] as const)
       for (const row of rows) {

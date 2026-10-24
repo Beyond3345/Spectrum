@@ -48,10 +48,14 @@ eq(
   [
     ['error', 'Bad character code (8594).', 'main.tex:10'],
     ['warning', 'A line runs 134.9pt past the margin', 'main.tex:7'],
-    ['warning', 'The PDF shows ?? for 1 citation and 1 reference the last compile couldn’t resolve: nobody and sec:missing', 'p1']
+    ['warning', 'The PDF shows ?? for 1 citation and 1 reference the last compile couldn’t resolve: nobody and sec:missing', '']
   ],
   'pdfLaTeX: the last pass only, so the first pass’s “Rerun” is gone'
 );
+// the ?? link goes to the PDF's page that shows them, not the printed page number the log gives (a title page or roman
+// front matter puts them out of step)
+const shows = (texts: string[]): PdfFacts => ({ version: '1.5', encrypted: false, title: 'T', author: '', lang: 'en', outline: true, tagged: true, figuresWithoutAlt: 0, fonts: [], pages: texts.map((text) => ({ width: 595, height: 842, chars: 9, smallChars: 0, outside: false, text })) });
+has(compiled(PDFLATEX_TWO_PASSES, { pdfFacts: shows(['Title', 'See ?? and [?]']) }), 'compile', 'warning', /^The PDF shows \?\? for/, 'p2');
 const firstPass = PDFLATEX_TWO_PASSES.slice(0, PDFLATEX_TWO_PASSES.indexOf('Transcript written on') + 200);
 has(compiled(firstPass.slice(0, firstPass.indexOf('\nThis is pdfTeX'))), 'compile', 'warning', /still needed another pass/);
 has(compiled(PDFLATEX_TWO_PASSES, { failed: true }), 'compile', 'error', /^The last compile failed and made no PDF\.$/);
@@ -259,6 +263,26 @@ eq(
   [],
   'nothing from code or a definition'
 );
+
+// after a compile that made its PDF, what TeX found outside the project (the TeX tree, a central .bib) isn't missing
+const ELSEWHERE = String.raw`\documentclass{article}
+\usepackage{graphicx}
+\begin{document}
+\includegraphics{example-image-golden} \includegraphics{gone} \cite{knuth84}
+\bibliography{central}
+\end{document}
+`;
+const usedLog = "File: example-image-golden.pdf Graphic file (type pdf)\n<use example-image-golden.pdf>\n! LaTeX Error: File `gone' not found.\n";
+const elsewhere = (log: string, failed = false) => runPreflight(input({ files: [{ path: 'main.tex', text: ELSEWHERE }], log, failed, bib: [] }));
+eq(
+  brief(elsewhere(usedLog), 'references'),
+  [['error', 'Can’t find the image “gone”', 'main.tex:4']],
+  'the TeX tree’s image and a .bib found through BIBINPUTS'
+);
+has(elsewhere(usedLog, true), 'references', 'error', /^Can’t find the image “example-image-golden”$/);
+has(elsewhere(''), 'references', 'error', /^The document cites sources but has no bibliography/);
+has(elsewhere(`${usedLog}LaTeX Warning: Citation \`knuth84' on page 1 undefined on input line 4.\n`), 'references', 'error', /^The document cites sources but has no bibliography/);
+has(elsewhere(`${usedLog}I couldn't open database file central.bib\n`), 'references', 'error', /^The document cites sources but has no bibliography/);
 
 // what can’t be checked yet says so
 eq(
