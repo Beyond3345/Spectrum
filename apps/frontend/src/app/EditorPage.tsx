@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { EditorState, Prec } from '@codemirror/state';
@@ -18,14 +18,17 @@ import {
   saveTemplateDraft,
   stopCompile,
   createVersion as saveVersion,
+  deleteNote,
   getFile,
   getFileIfChanged,
   getProjectTree,
   getSyncSettings,
+  listNotes,
   listProjects,
   renameVersion,
   revealProject,
   runAgent,
+  saveNote,
   saveThumbnail,
   setProjectMainFile,
   changeSpellWord,
@@ -34,7 +37,7 @@ import {
   synctexView,
   writeFile
 } from '../api/client';
-import type { CompileEngine, FileItem, FileOrderMap, PdfPoint, ProjectMeta, VersionMeta, VersionReason } from '../api/client';
+import type { CompileEngine, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, VersionMeta, VersionReason } from '../api/client';
 import { latex } from '../latex/lang';
 import Icon from './Icon';
 import Tabs from './Tabs';
@@ -66,8 +69,12 @@ import SyncBanners from '../editor/SyncBanners';
 import { conflictCopyPath, onDiskChange } from '../editor/heldFiles';
 import FileTree from '../editor/FileTree';
 import type { FileTreeHandle } from '../editor/FileTree';
-import PdfPreview, { MAX_ZOOM, MIN_ZOOM, pdfThumbnail } from '../editor/PdfPreview';
-import type { PdfAnnotation, PdfDest, PdfHandle, PdfOutlineItem, PdfZoom } from '../editor/PdfPreview';
+import PdfPreview, { MAX_ZOOM, MIN_ZOOM, PageBox, pdfThumbnail } from '../editor/PdfPreview';
+import type { PdfDest, PdfHandle, PdfOutlineItem, PdfZoom } from '../editor/PdfPreview';
+import PdfSidebar from '../editor/PdfSidebar';
+import type { PdfSidebarTab } from '../editor/PdfSidebar';
+import PdfFindBar from '../editor/PdfFindBar';
+import PdfPresentation from '../editor/PdfPresentation';
 import { parseCompileLog, projectFile } from '../editor/compileLog';
 import { highlightColour, linger } from '../editor/synctex';
 import {
@@ -141,10 +148,10 @@ const VIEWS: [View, string, string, AppCommand][] = [
   ['pdf', 'PDF only', 'rectangle.fill', 'viewPdf']
 ];
 
-/** pdfZoom is the PDF view, kept between launches like the columns; split is kept while one column shows alone */
-type Layout = { sidebarCollapsed: boolean; view: View; split: number; outlineOpen: boolean; pdfZoom: PdfZoom };
+/** pdfZoom and the PDF's sidebar are the PDF view, kept between launches like the columns; split is kept while one column shows alone */
+type Layout = { sidebarCollapsed: boolean; view: View; split: number; outlineOpen: boolean; pdfZoom: PdfZoom; pdfSidebarOpen: boolean; pdfSidebarTab: PdfSidebarTab };
 const LAYOUT_KEY = 'spectrum-editor-layout';
-const DEFAULT_LAYOUT: Layout = { sidebarCollapsed: false, view: 'split', split: 0.46, outlineOpen: true, pdfZoom: 'width' };
+const DEFAULT_LAYOUT: Layout = { sidebarCollapsed: false, view: 'split', split: 0.46, outlineOpen: true, pdfZoom: 'width', pdfSidebarOpen: false, pdfSidebarTab: 'contents' };
 
 function loadLayout(): Layout {
   try {
@@ -153,6 +160,8 @@ function loadLayout(): Layout {
     const zoom = saved.pdfZoom;
     if (!(zoom === 'fit' || zoom === 'width' || (typeof zoom === 'number' && zoom >= MIN_ZOOM && zoom <= MAX_ZOOM))) saved.pdfZoom = 'width';
     if (!VIEWS.some(([view]) => view === saved.view)) saved.view = 'split';
+    saved.pdfSidebarOpen = saved.pdfSidebarOpen === true;
+    if (saved.pdfSidebarTab !== 'pages') saved.pdfSidebarTab = 'contents';
     return saved;
   } catch {
     return DEFAULT_LAYOUT;
@@ -326,14 +335,21 @@ function Editor({ projectId }: { projectId: string }) {
   const [compiledDoc, setCompiledDoc] = useState('');
   const [pdfPages, setPdfPages] = useState<number | null>(null);
   const [pdfOutline, setPdfOutline] = useState<PdfOutlineItem[]>([]);
+  /** the contents entry being read */
+  const [pdfSection, setPdfSection] = useState(-1);
   const [scale, setScale] = useState(1);
   const [page, setPage] = useState(1);
   const [spread, setSpread] = useState(false);
   const [annotate, setAnnotate] = useState(false);
-  const [allAnnotations, setAnnotations] = useState<(PdfAnnotation & { doc: string })[]>([]);
-  const [tocOpen, setTocOpen] = useState(false);
+  /** the shown document's notes, saved with the project */
+  const [notes, setNotes] = useState<PdfNote[]>([]);
+  /** the PDF whose pages are laid out, for what's drawn from them */
+  const [loadedUrl, setLoadedUrl] = useState('');
+  const [findOpen, setFindOpen] = useState(false);
+  const [findSignal, setFindSignal] = useState(0);
+  const [presenting, setPresenting] = useState(false);
+  const [pdfMenu, setPdfMenu] = useState<{ x: number; y: number; at: PdfPoint; text: string } | null>(null);
   const pdfRef = useRef<PdfHandle>(null);
-  const tocRef = useRef<HTMLDivElement>(null);
 
   const [layout, setLayoutState] = useState(loadLayout);
   // read after awaits, when a handler's own `layout` may be out of date
@@ -385,6 +401,7 @@ function Editor({ projectId }: { projectId: string }) {
     return compileFailure && !parsed.some((e) => e.severity === 'error') ? [{ severity: 'error', message: compileFailure }, ...parsed] : parsed;
   }, [compileLog, compileFailure, project?.path, items, compiledDoc]);
   const selectionText = selectionRange[0] === selectionRange[1] ? '' : editorValue.slice(selectionRange[0], selectionRange[1]);
+  const fileSet = useMemo(() => new Set(items.filter((i) => i.type === 'file').map((i) => i.path)), [items]);
 
   useEffect(() => {
     try {
@@ -404,6 +421,9 @@ function Editor({ projectId }: { projectId: string }) {
     setConflicts(res.conflicts ?? {});
     return res;
   };
+
+  /** A file's text: the editor's when it has it, else from disk without keeping it (so it can't go stale here). */
+  const readText = async (path: string) => filesRef.current.get(path) ?? (await getFile(projectId, path)).content;
 
   const ensureFileContent = async (path: string) => {
     const cached = filesRef.current.get(path);
@@ -1417,9 +1437,57 @@ function Editor({ projectId }: { projectId: string }) {
     window.addEventListener('mouseup', up);
   };
 
-  const addAnnotation = async (pageNumber: number, x: number, y: number) => {
-    const text = (await promptDialog({ title: 'Add a note', message: `Page ${pageNumber}`, placeholder: 'Note', confirmLabel: 'Add' }))?.trim();
-    if (text) setAnnotations((prev) => [...prev, { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, page: pageNumber, x, y, text, doc: shownDoc }]);
+  // ─── PDF notes ───
+
+  const addAnnotation = async (at: PdfPoint) => {
+    const doc = shownDoc;
+    const text = (await promptDialog({ title: 'Add a note', message: `Page ${at.page}`, placeholder: 'Note', confirmLabel: 'Add' }))?.trim();
+    if (!text) return;
+    const now = new Date().toISOString();
+    const note: PdfNote = { id: crypto.randomUUID(), doc, ...at, text: text.slice(0, 2000), createdAt: now, updatedAt: now };
+    setNotes((prev) => [...prev, note]);
+    saveNote(projectId, note).catch((err) => {
+      setNotes((prev) => prev.filter((n) => n.id !== note.id));
+      notify(`Couldn’t save the note: ${errorText(err)}`, 'error');
+    });
+  };
+
+  const removeNotes = async (gone: PdfNote[]) => {
+    setNotes((prev) => prev.filter((n) => !gone.includes(n)));
+    try {
+      await Promise.all(gone.map((n) => deleteNote(projectId, n.id)));
+    } catch (err) {
+      notify(`Couldn’t delete ${gone.length === 1 ? 'the note' : 'the notes'}: ${errorText(err)}`, 'error');
+      listNotes(projectId, shownDoc)
+        .then((res) => setNotes(res.notes || []))
+        .catch(() => undefined);
+    }
+  };
+
+  /** A heading the PDF's contents took from the source: where SyncTeX puts it. */
+  const showHeading = async (file: string, line: number) => {
+    const res = await synctexView(projectId, { file, line }, shownDoc).catch((err) => ({ ok: false as const, error: errorText(err) }));
+    if (res.ok) pdfRef.current?.highlight(res.boxes, settings.syncHighlightSeconds);
+    else notify(res.error);
+  };
+
+  const openFind = () => {
+    setFindOpen(true);
+    setFindSignal((n) => n + 1);
+  };
+
+  // with the pages focused (the page box and Find's search box have keys of their own)
+  const onPdfKey = (e: ReactKeyboardEvent) => {
+    if (!(e.target as HTMLElement).closest('.pdf-scroll') || !pdfPages) return;
+    const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+    if (matchesShortcut('Mod-f', e.nativeEvent)) openFind();
+    else if (matchesShortcut('Mod-9', e.nativeEvent)) setZoom('fit');
+    else if (plain && e.key === 'PageDown') pdfRef.current?.scrollToPage(Math.min(pdfPages, page + step));
+    else if (plain && e.key === 'PageUp') pdfRef.current?.scrollToPage(Math.max(1, page - step));
+    else if (plain && e.key === 'Home') pdfRef.current?.scrollToPage(1);
+    else if (plain && e.key === 'End') pdfRef.current?.scrollToPage(pdfPages);
+    else return;
+    e.preventDefault();
   };
 
   const downloadPdf = () => {
@@ -1811,20 +1879,18 @@ function Editor({ projectId }: { projectId: string }) {
     return () => window.clearTimeout(timer);
   }, [dirty, editorValue]);
 
-  // the table of contents closes on any click elsewhere
+  // the notes of the document whose PDF shows, from the project
   useEffect(() => {
-    if (!tocOpen) return;
-    const close = (e: Event) => {
-      if (!tocRef.current?.contains(e.target as Node)) setTocOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setTocOpen(false);
-    document.addEventListener('mousedown', close, true);
-    window.addEventListener('keydown', onKey);
+    setNotes([]);
+    if (!shownDoc) return;
+    let live = true;
+    listNotes(projectId, shownDoc)
+      .then((res) => live && setNotes(res.notes || []))
+      .catch((err) => live && notify(`Couldn’t load the PDF’s notes: ${errorText(err)}`, 'error'));
     return () => {
-      document.removeEventListener('mousedown', close, true);
-      window.removeEventListener('keydown', onKey);
+      live = false;
     };
-  }, [tocOpen]);
+  }, [shownDoc]);
 
   // ─── shared API for the composer, chats and Tools ───
 
@@ -1945,8 +2011,6 @@ function Editor({ projectId }: { projectId: string }) {
   // part of its name the others don't share (ELEC2410_Tutorial_Solutions.pdf beside ELEC2410_Lecture_Notes.pdf
   // is Tutorial_Solutions)
   const pdfDocs = docs.filter((doc) => items.some((i) => i.path === pdfOf(doc)));
-  // notes stay with the PDF they were added on
-  const annotations = allAnnotations.filter((note) => note.doc === shownDoc);
   const baseOf = (doc: string) => nameOf(doc).replace(/\.tex$/i, '');
   const commonStart = (a: string, b: string) => {
     let i = 0;
@@ -2363,6 +2427,16 @@ function Editor({ projectId }: { projectId: string }) {
                 {/* always mounted, so screen readers hear each change */}
                 {compileStatus}
                 <span className="spacer" data-tauri-drag-region />
+                <button
+                  className={`icon-btn ${layout.pdfSidebarOpen ? 'active' : ''}`}
+                  title="Document outline"
+                  aria-label="Document outline"
+                  aria-pressed={layout.pdfSidebarOpen}
+                  disabled={!pdf}
+                  onClick={() => setLayout({ pdfSidebarOpen: !layout.pdfSidebarOpen })}
+                >
+                  <Icon name="sidebar.left" />
+                </button>
                 <MenuButton
                   className="btn ghost small zoom-button"
                   icon="plus.magnifyingglass"
@@ -2370,7 +2444,12 @@ function Editor({ projectId }: { projectId: string }) {
                   label={zoomLabel}
                   disabled={!pdf}
                   align="end"
-                  items={ZOOMS.map(([z, label]) => ({ label, checked: zoom === z, onSelect: () => setZoom(z) }))}
+                  items={ZOOMS.map(([z, label]) => ({
+                    label,
+                    checked: zoom === z,
+                    shortcut: z === 'width' ? shortcutOf('zoomWidth') : z === 'fit' ? formatShortcut('Mod-9') : undefined,
+                    onSelect: () => setZoom(z)
+                  }))}
                 />
                 <button className="icon-btn" title="Download PDF" aria-label="Download PDF" disabled={!pdf} onClick={downloadPdf}>
                   <Icon name="arrow.down.to.line" />
@@ -2382,7 +2461,8 @@ function Editor({ projectId }: { projectId: string }) {
                   items={[
                     { label: 'Two-page view', icon: 'book.pages', checked: spread, disabled: !pdf, onSelect: () => setSpread((v) => !v) },
                     { label: 'Annotate', icon: 'note.text.badge.plus', checked: annotate, disabled: !pdf, onSelect: () => setAnnotate((v) => !v) },
-                    { label: 'Table of contents', icon: 'list.bullet.indent', checked: false, disabled: !pdf, onSelect: () => setTocOpen(true) },
+                    { label: 'Find in PDF', icon: 'magnifyingglass', shortcut: formatShortcut('Mod-f'), disabled: !pdf, onSelect: openFind },
+                    { label: 'Presentation mode', icon: 'play.fill', disabled: !pdf || !pdfPages, onSelect: () => setPresenting(true) },
                     { separator: true },
                     ...pageItems,
                     { separator: true },
@@ -2392,25 +2472,50 @@ function Editor({ projectId }: { projectId: string }) {
                 {viewSwitcher}
               </div>
 
-              <div className="pdf-body">
+              <div className={`pdf-body ${pdf && layout.pdfSidebarOpen ? 'with-sidebar' : ''}`} onKeyDown={onPdfKey}>
+                {pdf && layout.pdfSidebarOpen && (
+                  <PdfSidebar
+                    tab={layout.pdfSidebarTab}
+                    onTabChange={(pdfSidebarTab) => setLayout({ pdfSidebarTab })}
+                    pdf={pdfRef}
+                    loadedUrl={loadedUrl === pdf.url ? loadedUrl : ''}
+                    pages={pdfPages ?? 0}
+                    page={page}
+                    outline={pdfOutline}
+                    section={pdfSection}
+                    doc={shownDoc}
+                    files={fileSet}
+                    read={readText}
+                    revision={`${filesVersion} ${dirty}`}
+                    onHeading={(file, line) => showHeading(file, line).catch(() => undefined)}
+                  />
+                )}
                 {pdf ? (
                   <PdfPreview
                     ref={pdfRef}
                     url={pdf.url}
+                    pageKey={`${projectId}:${shownDoc}`}
                     zoom={zoom}
                     spread={spread}
                     annotateMode={annotate}
-                    annotations={annotations}
+                    annotations={notes}
                     onAddAnnotation={addAnnotation}
                     onDoubleClick={(at, text) => jumpFromPdf(at, text).catch((err) => notify(`Couldn’t jump to the source: ${errorText(err)}`, 'error'))}
+                    onPageMenu={(at, x, y) => {
+                      const selection = window.getSelection();
+                      const text = selection?.anchorNode?.parentElement?.closest('.pdf-scroll') ? selection.toString() : '';
+                      setPdfMenu({ x, y, at, text });
+                    }}
                     onFileLink={followFileLink}
                     onLoad={({ pages, outline: toc }) => {
                       setPdfPages(pages);
                       setPdfOutline(toc);
+                      setLoadedUrl(pdf.url);
                     }}
                     onScale={setScale}
                     onZoom={setZoom}
                     onPage={setPage}
+                    onSection={setPdfSection}
                   />
                 ) : (
                   <div className="empty-state">
@@ -2427,6 +2532,17 @@ function Editor({ projectId }: { projectId: string }) {
 
                 {pdf && annotate && <div className="pdf-annotate-hint">Click the page to add a note</div>}
 
+                {pdf && findOpen && (
+                  <PdfFindBar
+                    pdf={pdfRef}
+                    focusSignal={findSignal}
+                    onClose={() => {
+                      setFindOpen(false);
+                      document.querySelector<HTMLElement>('.pdf-scroll')?.focus();
+                    }}
+                  />
+                )}
+
                 {pdf && (
                   <div className="pdf-pill">
                     {pdfSwitcher}
@@ -2440,7 +2556,7 @@ function Editor({ projectId }: { projectId: string }) {
                       <Icon name="chevron.left" />
                     </button>
                     <span className="pdf-pill-label">
-                      {page} / {pdfPages ?? '–'}
+                      <PageBox page={page} pages={pdfPages} onGo={(at) => pdfRef.current?.scrollToPage(at)} /> / {pdfPages ?? '–'}
                     </span>
                     <button
                       className="icon-btn small"
@@ -2462,45 +2578,28 @@ function Editor({ projectId }: { projectId: string }) {
                   </div>
                 )}
 
-                {tocOpen && (
-                  <div className="toc-popover" ref={tocRef} role="dialog" aria-label="Table of contents">
-                    <div className="toc-title">Table of contents</div>
-                    {pdfOutline.length ? (
-                      <div className="toc-list">
-                        {pdfOutline.map((item, i) => (
-                          <button
-                            key={i}
-                            className="toc-item"
-                            style={{ paddingLeft: 10 + item.level * 14 }}
-                            disabled={!item.page}
-                            onClick={() => {
-                              // to the section's own spot, not the top of its page
-                              if (item.dest) pdfRef.current?.goTo(item.dest);
-                              else if (item.page) pdfRef.current?.scrollToPage(item.page);
-                              setTocOpen(false);
-                            }}
-                          >
-                            <span className="toc-item-title">{item.title}</span>
-                            {item.page && <span className="toc-page">{item.page}</span>}
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="toc-empty">This PDF has no table of contents. Add \usepackage{'{hyperref}'} to the preamble to create one.</div>
-                    )}
-                  </div>
-                )}
               </div>
 
-              {annotations.length > 0 && (
+              {notes.length > 0 && (
                 <div className="pdf-notes">
                   <div className="pdf-notes-head">
                     <span>Notes</span>
-                    <button className="btn small ghost" onClick={() => setAnnotations((prev) => prev.filter((n) => n.doc !== shownDoc))}>
+                    <button
+                      className="btn small ghost"
+                      onClick={async () => {
+                        const sure = await confirmDialog({
+                          title: `Delete the ${plural(notes.length, 'note')} on this PDF?`,
+                          message: 'They’re removed from the project.',
+                          confirmLabel: 'Delete',
+                          destructive: true
+                        });
+                        if (sure) removeNotes(notes);
+                      }}
+                    >
                       Clear all
                     </button>
                   </div>
-                  {annotations.map((note) => (
+                  {notes.map((note) => (
                     <div key={note.id} className="pdf-note">
                       <button className="pdf-note-page" onClick={() => pdfRef.current?.scrollToPage(note.page)}>
                         p. {note.page}
@@ -2510,7 +2609,7 @@ function Editor({ projectId }: { projectId: string }) {
                         className="icon-btn small"
                         title="Remove note"
                         aria-label="Remove note"
-                        onClick={() => setAnnotations((prev) => prev.filter((n) => n.id !== note.id))}
+                        onClick={() => removeNotes([note])}
                       >
                         <Icon name="xmark" />
                       </button>
@@ -2578,6 +2677,32 @@ function Editor({ projectId }: { projectId: string }) {
             })),
             { label: 'Ignore', onSelect: () => viewRef.current?.dispatch({ effects: ignoreSpelling.of(spellMenu.word) }) }
           ]}
+        />
+      )}
+
+      {pdfMenu && (
+        <ContextMenu
+          x={pdfMenu.x}
+          y={pdfMenu.y}
+          onClose={() => setPdfMenu(null)}
+          items={[
+            !!pdfMenu.text && { label: 'Copy', shortcut: formatShortcut('Mod-c'), onSelect: () => navigator.clipboard.writeText(pdfMenu.text).catch(() => undefined) },
+            !!pdfMenu.text && { separator: true },
+            { label: 'Add a note here', onSelect: () => addAnnotation(pdfMenu.at) }
+          ]}
+        />
+      )}
+
+      {presenting && pdf && pdfPages && (
+        <PdfPresentation
+          pdf={pdfRef}
+          loadedUrl={loadedUrl}
+          pages={pdfPages}
+          start={page}
+          onClose={(at) => {
+            setPresenting(false);
+            pdfRef.current?.scrollToPage(at);
+          }}
         />
       )}
 
