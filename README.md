@@ -2,7 +2,7 @@
 
 # Spectrum
 
-This project is an application for macOS and Windows for writing LaTeX documents with an AI assistant, a references assistant and local version history built in. It is intended for students and researchers who want to keep their papers as ordinary folders on their own Mac while still having help with drafting, citations and compile errors.
+This project is an application for macOS and Windows for writing LaTeX documents with an AI assistant, a references assistant and local checkpoints built in. It is intended for students and researchers who want to keep their papers as ordinary folders on their own Mac while still having help with drafting, citations and compile errors.
 
 Spectrum is a fork of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) by OpenDCAI, which is no longer being maintained. While OpenPrism was a self-hosted web application built around real-time collaboration, Spectrum is a single-user desktop application. Apart from the AI features and reference look-ups, it works entirely offline. The full list of changes from upstream is given in [CHANGELOG.md](CHANGELOG.md).
 
@@ -47,16 +47,33 @@ The copy is kept until Done, so Continue editing in the menu picks up where it w
 
 ### Editor
 
-The editor is divided into three columns, the file tree and saved chats on the left, the LaTeX source in the middle and the compiled PDF on the right. The switcher at the top right of the window, or `⌘1`, `⌘2` and `⌘3`, shows the source only, the source and the PDF side by side, or the PDF only.
+The editor is divided into three columns, the file tree, saved chats and the to-do list on the left, the LaTeX source in the middle and the compiled PDF on the right. The switcher at the top right of the window, or `⌘1`, `⌘2` and `⌘3`, shows the source only, the source and the PDF side by side, or the PDF only.
 
 - The source editor has LaTeX highlighting, folding, an outline of the main file, snippets for common environments, AI autocomplete (`⌥/`, accepted with `Tab`) and spell checking in Australian English. Typing `\` (or `/` at the start of a word in text) lists the commands that work where the cursor is. In maths, inside `$…$`, `\[…\]` or an `equation` or `align` environment, it lists maths commands such as `\vec`, `\lambda` and `\frac` with their symbols, and in text it lists text commands, together with the project's own commands from `\newcommand` and `\DeclareMathOperator`. Commands with arguments go in with fields that `Tab` moves through, so `\frac` then `Tab` goes from the numerator to the denominator. Inside braces it lists the project's labels after `\ref{`, its BibTeX keys after `\cite{`, packages after `\usepackage{` and the project's images and files after `\includegraphics{` and `\input{`. Environments are listed once `\beg` is typed, where `Tab` fills in as much as the entries share, so `\beg` becomes `\begin{` with the environments still listed, and `Tab` or Return then picks one. After `\begin{` the list holds the common environments, such as `equation*`, `align*` and `gather` (only those that work in maths when the cursor is in maths), the environments of the packages and classes the project loads and the ones it defines itself, each marked with where it comes from. Typing `$` with text selected puts the text in maths, in the same way as `(` brackets it. Otherwise `Tab` indents at the cursor by four spaces, pressing Return after `\begin{…}` adds the matching `\end{…}` at the same indent, and long lines wrap under their own indent, with formulas breaking between terms,
-- the PDF preview fits the page to the width of its column by default, zooms with a trackpad pinch, `⌘` and the scroll wheel or `⌘=` and `⌘−`, shows the pages in a colour chosen for each mode (White, Cream, Sepia or Grey in light mode and Dark, Black, Dimmed or White in dark mode), and supports a two-page view and sticky notes. Links in the PDF work as in a PDF viewer: the contents, `\ref`, `\eqref` and `\cite` jump to the spot they point to, a web address opens in the browser and a reference into a linked document opens that document's PDF at the place it names. Double-clicking the PDF jumps to the line of the source that made it, and double-clicking a line of the source scrolls the PDF to it, using the SyncTeX data every compile writes. The spot is marked with a highlight that fades after a few seconds, whose colour and length are set in Settings under Editor,
-- the compiler can be pdfLaTeX, XeLaTeX, LuaLaTeX, Latexmk or Tectonic, and the Auto setting picks one from the `% !TEX program` comment and the packages the document uses. While a compile runs, Compile becomes Stop, which ends it at once and keeps the last PDF, and
-- the Tools panel holds the project information (word counts from `texcount`), version history, compile logs, research tools, AI review and the Floats tools (Section Floats).
+- the PDF preview fits the page to the width of its column by default, zooms with a trackpad pinch, `⌘` and the scroll wheel or `⌘=` and `⌘−`, shows the pages in a colour chosen for each mode (White, Cream, Sepia or Grey in light mode and Dark, Black, Dimmed or White in dark mode), and supports a two-page view and sticky notes, which are saved with the project. Links in the PDF work as in a PDF viewer: the contents, `\ref`, `\eqref` and `\cite` jump to the spot they point to, a web address opens in the browser and a reference into a linked document opens that document's PDF at the place it names. Double-clicking the PDF jumps to the line of the source that made it, and double-clicking a line of the source scrolls the PDF to it, using the SyncTeX data every compile writes. The spot is marked with a highlight that fades after a few seconds, whose colour and length are set in Settings under Editor,
+- Document outline in the PDF's header opens a sidebar beside the pages with two tabs, Contents, which lists the PDF's bookmarks with the current section marked (or the source headings across `\input` files when the PDF has none), and Pages, which shows a thumbnail of each page with the current one outlined. `⌘F` finds text in the PDF while it has the focus, the page number in the page bar can be typed over, Page Up, Page Down, Home and End move through the pages and `⌘0` and `⌘9` fit the width and the whole page. Each document's PDF opens at the page it was left at, and Presentation mode shows slides one page at a time in full screen,
+- the compiler can be pdfLaTeX, XeLaTeX, LuaLaTeX, Latexmk or Tectonic, and the Auto setting picks one from the `% !TEX program` comment and the packages the document uses (Section Compiling) and
+- the top bar holds Insert (+), Insert figure, Insert table, the file tabs, Assistant, Check grammar, Document insights and Tools. Tools, Check grammar, Document insights and the Floats panel each take the PDF's place with a header holding Close and the view switcher, and the Compile button stays in the top bar while one of them is open. Tools has the Checkpoints, Logs, Review and Research tabs. Document insights, Floats and Checkpoints have sections of their own below.
 
-A project can hold more than one document, such as a set of lecture notes and the tutorial solutions that refer to them. Compile and `⌘↩` compile the main file, which is chosen with Set as main file in a file's menu. The menu beside Compile lists the other documents, and choosing one compiles it once without changing the main file, as does `⇧⌘↩` for the open document. The page bar at the bottom of the PDF names the PDF that is showing and switches between the PDFs of the documents. Documents can refer to the labels of another with `xr-hyper`, for example `\externaldocument[notes:]{notes}` and `\eqref{notes:eq:ohm}`. Spectrum keeps the `.aux` files of every document for this, compiles a linked document first when it has not been compiled or has changed since, and completes `\ref{notes:` with the labels of the linked document.
+A project can hold more than one document, such as a set of lecture notes and the tutorial solutions that refer to them. Compile and `⌘↩` compile the main file, which is chosen with Set as main file in a file's menu. The menu beside Compile lists the other documents, and choosing one compiles it once without changing the main file, as does `⇧⌘↩` for the open document. With PDF follows the open file in Settings (on by default), opening another document's `.tex`, or a chapter whose `% !TEX root` comment names one, shows that document's PDF, and Compile and auto compile then build the document that is showing. Opening a file that is not a document leaves the PDF as it is, and choosing a PDF or a document by hand stops the PDF following until another file is opened. The page bar at the bottom of the PDF names the PDF that is showing and switches between the PDFs of the documents. Documents can refer to the labels of another with `xr-hyper`, for example `\externaldocument[notes:]{notes}` and `\eqref{notes:eq:ohm}`. Spectrum keeps the `.aux` files of every document for this, compiles a linked document first when it has not been compiled or has changed since, and completes `\ref{notes:` with the labels of the linked document.
 
 The assistant chat is opened with `⌘L` and has two modes. Assistant mode answers questions about the open file, the selection and the compile log, or proposes edits. Proposed edits are shown as a side-by-side diff of the changed parts, with the changed words marked and the unchanged stretches folded away, and they can be accepted or rejected file by file. References mode adds citations to the project's `.bib` file (Section References).
+
+### Compiling
+
+The menu beside Compile holds the following choices. Use for all projects beside each one makes it the default in Settings › Engines › LaTeX, which every project uses until one of its own compile settings is changed,
+
+- Compiler (this project), which is pdfLaTeX, XeLaTeX, LuaLaTeX, Latexmk, Tectonic or Auto, the default. The project's choice is saved in its `.spectrum/settings.json`, so it follows the project to your other computer, and Use the default puts it back,
+- Auto compile, which is Off, the default, or compiles after a pause of 1 to 10 seconds since the last edit. A newer automatic compile takes the place of one that is out of date,
+- Compile error handling, which is Try to compile despite errors, the default, or Stop on first error,
+- Bibliography tool, which is Auto, BibTeX or Biber. Auto follows a `% !BIB program = biber` comment in the main file and otherwise uses Biber for `biblatex` and BibTeX for the rest and
+- Fast draft mode, which compiles in one pass with each image drawn as a box of its size.
+
+The menu also has Stop compilation and Recompile from scratch, which first clears what earlier compiles of the open document kept. Recompile all does the same for every document in the project and compiles each one, linked documents first. While a compile runs, Compile becomes Stop, which ends it at once and keeps the last PDF.
+
+The `.aux`, `.bbl`, `.toc` and similar files of each document are kept between compiles, for each compiler, in the app's own data folder, and the next compile reads them back, so a document whose labels, headings and citations have not changed is done in one pass. BibTeX and Biber only run when something is cited and another pass only runs when the log asks for one or a pass changed what TeX reads back. makeindex and makeglossaries run when the document has an index or glossaries. Files are kept only from a compile without errors, and when TeX cannot read one of them, Spectrum clears them and compiles once more from scratch, so a damaged `.aux` never locks a document out.
+
+A chapter with a `% !TEX root = ../thesis.tex` comment compiles the document it names. Latexmk always runs with `-norc`, so a project's own `latexmkrc` cannot run code. Settings › Engines › LaTeX also has a TeX folder for a second TeX installation, whose programs are used before the ones on the `PATH`, and Open Logs when a compile fails. A checkpoint is saved after each successful compile (Section Checkpoints).
 
 ### Appearance
 
@@ -70,7 +87,7 @@ Settings has the following options under Appearance and Editor,
 
 ### Floats
 
-The Floats tab in Tools inserts figures and tables at the cursor.
+The Floats panel inserts figures and tables at the cursor. Insert figure and Insert table in the top bar open it at the figure or the table card, and so do Figure… and Table… in Insert (+), which also holds the two buttons when the editor is too narrow for them.
 
 - Insert figure takes an image that is dropped on the card or on the editor, pasted or chosen, saves it in the project's `images` folder without replacing an existing file and inserts it as a figure with a caption, a label and a width. Formats that pdfLaTeX cannot read, such as HEIC, WebP and SVG, are converted first,
 - Insert table builds a `tabular` or `tabularx` from a grid, which also takes cells pasted from Numbers, Excel or a CSV file, with booktabs, grid or minimal lines, a caption and a label and
@@ -88,6 +105,19 @@ The placement of a figure or table is chosen with the letters below, which can b
 | `!` | Ignore LaTeX's limits on how many floats a page holds and how much of it they fill |
 
 With no letter, LaTeX uses `tbp`. The letters allow places rather than order them, so `[ht]` means here or else the top of a page.
+
+### Document insights
+
+Document insights, beside Check grammar in the top bar, takes the PDF's place with tabs for the Overview, Headings, Figures, Tables, Equations, Labels, Citations and To-dos, each with its count. Rows show the label with the number and page it had in the last compile, read from the `.aux` files that compile kept, and clicking one jumps to its line in the source. The To-dos tab lists the to-dos in the source (Section To-do list). The Overview has the counts, the word counts from `texcount` and the submission metadata (title, authors, keywords, date and abstract), with Copy submission metadata for a submission form. The footer says that the numbers and pages are from the last compile, marks them as out of date when the source has changed since and has Refresh.
+
+### To-do list
+
+The To-dos tab in the sidebar, beside Files and Chats, holds a to-do list with a badge counting the open to-dos. It has two groups,
+
+- Mine, your own to-dos, each with a tick box, its text, an optional link, Edit and Delete. A link points at a line of the source, which is found again by its text when lines move, at a PDF page or at a reference and
+- In the source, which lists `\todo`, `\missingfigure` and `\fixme`, the notes of the fixme package (`\fxnote`, `\fxwarning`, `\fxerror` and `\fxfatal`) and `TODO`, `FIXME` and `XXX` in comments. Each one jumps to its line and is done once its mark is removed from the source.
+
+A to-do is added in the box at the top of the tab or with Add to-do here in the editor's right-click menu, which links the line, or in the PDF's, which links the page. The tab shows Open, Done or All and Mine or Source, and the sidebar's search finds to-dos too. Each to-do is a small file in the project's `.spectrum/todos` folder, and each PDF note one in `.spectrum/notes`.
 
 ### References
 
@@ -137,9 +167,17 @@ The grammar check runs [Harper](https://github.com/Automattic/harper) with its A
 
 Both checkers read only the prose of a LaTeX file. Commands, maths, comments, citation and reference keys, URLs, the preamble and code blocks are skipped, while the text of headings, captions, footnotes and `\emph`, `\textbf` and similar commands is checked.
 
-### Version history
+### Checkpoints
 
-Versions are kept inside each project in a hidden `.spectrum` folder, together with the project settings and saved chats, so they travel with the project. Builds run in a temporary folder, and the SyncTeX data and `.aux` files kept from the last compile of each document are in the app's own data folder. File contents are compressed and stored once, so unchanged files cost no extra space between versions. A version is saved with one click from the Save version button beside Compile or with `⇧⌘S`, and the notice that follows offers to name it. Versions can also be saved and named from the Versions tab. One is also saved automatically before AI changes are applied, before a restore and before a template change, so each of these can be undone. A version can be compared with the current files, restored as a whole or restored one file at a time.
+Checkpoints are kept inside each project in a hidden `.spectrum` folder, together with the project settings, saved chats, to-dos and PDF notes, so they travel with the project. Builds run in a temporary folder, and the SyncTeX data and the files kept from the last compile of each document are in the app's own data folder. File contents are compressed and stored once, so unchanged files cost no extra space between checkpoints. A checkpoint is saved with one click from the Save checkpoint button beside Compile or with `⇧⌘S`, and the notice that follows offers to name it. Checkpoints can also be saved and named in the Checkpoints tab of Tools. One is also saved automatically before AI changes are applied, before a restore and before a template change, so each of these can be undone. A checkpoint can be compared with the current files, restored as a whole or restored one file at a time.
+
+Settings › Checkpoints has the following options,
+
+- Save a checkpoint after each successful compile (on by default), which saves one in the background when the source has changed since the last checkpoint. Compiles save at most one every 10 minutes, as a newer compile's checkpoint takes the place of the one saved earlier in that time, while manual, named and Before checkpoints are never replaced,
+- Show a notice when a checkpoint cannot be saved (on by default), which says when saving fails or when a file was too large (over 50 MB) or could not be read and
+- Delete automatic checkpoints older than…, which removes the compile checkpoints older than the chosen age and is also in Tools › Checkpoints.
+
+Checkpoints are stored as 1.10.4 stored its versions, so going back to 1.10.4 lists every checkpoint as a version.
 
 ### Syncing between computers
 
@@ -149,12 +187,12 @@ To set it up, add a cloud location under Cloud locations in the Projects section
 
 - **Sync to.** A project's menu lists the cloud locations under Sync to, and When a project syncs in Settings chooses what that does. Keep a local copy and mirror it, the default, leaves the project in its folder on this computer and keeps a copy in the cloud location in step with it, so the project works offline and a slow sync app never holds up the editor. Move it into the cloud location moves the folder there, as 1.8.0 kept its projects, and the sync app keeps it the same on each computer. A project already in a sync app's folder, for example in Documents backed up by iCloud Drive or OneDrive, syncs as it is.
 - **Cloud projects.** The sidebar lists All projects, Cloud projects, Archived and your tags. Cloud projects shows the projects that sync, each with a cloud symbol and how it stands (Synced, Syncing…, Waiting for OneDrive or Needs attention), and the projects your other computers put in a cloud location that this one does not have yet ("In OneDrive, not on this computer") with Download. Download keeps a mirrored copy on this computer, or with Move opens the project where it is.
-- **How mirroring works.** Spectrum compares the two copies file by file, much as git merges branches: a file changed on one side goes across, and a file changed on both is merged line by line. When both changed the same lines, this computer's file is kept and the other text is put beside it as a conflicted copy, for example `main (OneDrive’s conflicted copy 2026-10-18 104233).tex`. Before a sync replaces or deletes files on this computer, Spectrum saves a version named "Before sync from" and the other computer's name, or the cloud location's name when several computers share the project. When the files only came from the other computer, it saves one at most every 10 minutes. Deletions only go across from a complete view of both copies, and a sync that would delete many files at once stops with Needs attention until you choose Sync anyway. Projects sync every minute, two seconds after a change made in Spectrum and with Sync now.
+- **How mirroring works.** Spectrum compares the two copies file by file, much as git merges branches: a file changed on one side goes across, and a file changed on both is merged line by line. When both changed the same lines, this computer's file is kept and the other text is put beside it as a conflicted copy, for example `main (OneDrive’s conflicted copy 2026-10-18 104233).tex`. Before a sync replaces or deletes files on this computer, Spectrum saves a checkpoint named "Before sync from" and the other computer's name, or the cloud location's name when several computers share the project. When the files only came from the other computer, it saves one at most every 10 minutes. Deletions only go across from a complete view of both copies, and a sync that would delete many files at once stops with Needs attention until you choose Sync anyway. Projects sync every minute, two seconds after a change made in Spectrum and with Sync now.
 - **Stop syncing.** Stop syncing… keeps the project on this computer, and either keeps the copy in the cloud location for your other computers or deletes it there. Delete is refused, with the reason, while the two copies are not yet in step or another computer has the project open, works on the cloud copy itself or runs 1.8.0. A moved project is first copied back to the default folder for new projects. Move to Bin on a moved project is refused for the same reasons, as it deletes the project on the other computers too.
 - **Project folders.** Projects can be sorted into folders under All projects, and folders can hold folders. A folder's menu has New folder…, Rename… and Delete…, and a project goes into a folder when it is dragged there or with Move to folder…. Deleting a folder moves what was in it up a level. Folders only arrange the list, so the projects stay where they are on disk, and the arrangement follows you to your other computers with your settings.
-- **Changes from the other computer.** A file changed on the other computer is reloaded in the editor when it has no unsaved edits here. If it does, Spectrum asks whether to keep this computer's text or use the other computer's, and offers to compare them. The text that is not used is kept in a version, so nothing is lost. A file deleted on the other computer is marked in its tab rather than brought back by a save.
+- **Changes from the other computer.** A file changed on the other computer is reloaded in the editor when it has no unsaved edits here. If it does, Spectrum asks whether to keep this computer's text or use the other computer's, and offers to compare them. The text that is not used is kept in a checkpoint, so nothing is lost. A file deleted on the other computer is marked in its tab rather than brought back by a save.
 - **Open on both computers.** A banner says when the project is also open on the other computer, for example "Also open on DESKTOP-AB12CD since 10:42". The conflicted copies a sync app or the mirror makes when both computers changed a file are marked in the file list, with Compare, Use this copy and Delete copy.
-- **What else follows.** Version history and chats travel with each cloud project, and versions made on either computer appear on both. Your own templates and the built-in ones you edited follow too, and so do settings such as the theme, the editor, the shortcuts and your project folders, which can be turned off in Settings. API keys, model choices and folder paths stay on each computer, so no key is ever stored on the NAS.
+- **What else follows.** Checkpoints and chats travel with each cloud project, and checkpoints made on either computer appear on both. A mirrored project's compile settings, to-dos and PDF notes are not mirrored yet, so they stay on each computer. Your own templates and the built-in ones you edited follow too, and so do settings such as the theme, the editor, the shortcuts and your project folders, which can be turned off in Settings. API keys, model choices and folder paths stay on each computer, so no key is ever stored on the NAS.
 - **Compiling.** A compile writes only the PDF into the project. SyncTeX data, the kept `.aux` files and the thumbnail are kept on each computer, so the other computer needs one compile of its own before double-click jumping works there.
 
 ## Requirements
@@ -196,7 +234,7 @@ The Windows version is a preview. Version 1.10.0 was built and tested on a Windo
 
 1. Open Settings with `⌘,`
 2. Choose a provider under Models and paste its API key
-3. Choose the theme and the default compiler
+3. Choose the theme under Appearance and the default compiler under Engines
 4. Check the System section to confirm which TeX tools Spectrum can find
 
 Choosing a provider fills in its endpoint, the recommended models and the recommended reasoning effort, which are described in Section Models. The model settings can also be given in a `.env` file at `~/Library/Application Support/com.beyond3345.spectrum/.env` (`%APPDATA%\com.beyond3345.spectrum\.env` on Windows), using the variables listed in Section Configuration. Settings entered in the application take priority over the `.env` file.
@@ -270,7 +308,7 @@ Every shortcut below can be changed in the Shortcuts section of Settings. Click 
 | Fold and unfold | `⌥⌘[` and `⌥⌘]` |
 | Fold all and unfold all | `⌃⌥[` and `⌃⌥]` |
 | Save | `⌘S` |
-| Save a version | `⇧⌘S` |
+| Save a checkpoint | `⇧⌘S` |
 | Compile | `⌘↩` |
 | Compile the open document | `⇧⌘↩` |
 | Show or hide the assistant | `⌘L` |
@@ -281,7 +319,7 @@ Every shortcut below can be changed in the Shortcuts section of Settings. Click 
 | Zoom the PDF in or out | `⌘=` and `⌘−` (or pinch) |
 | Fit the PDF to the width | `⌘0` |
 
-Find (`⌘F`), undo (`⌘Z`), redo (`⇧⌘Z`) and Settings (`⌘,`) cannot be changed.
+Find (`⌘F`), undo (`⌘Z`), redo (`⇧⌘Z`) and Settings (`⌘,`) cannot be changed. While the PDF has the focus, `⌘F` finds text in it, `⌘9` fits the whole page and Page Up, Page Down, Home and End move through its pages.
 
 ## Building from source
 
@@ -341,7 +379,7 @@ The existing Assistant, References, autocomplete and image-to-LaTeX continue to 
 
 ## Repository layout
 
-- `apps/backend` is the Fastify server that manages projects, compiling, the AI tools, references and versions,
+- `apps/backend` is the Fastify server that manages projects, compiling, the AI tools, references and checkpoints,
 - `apps/frontend` is the React interface,
 - `src-tauri` is the macOS application shell, which starts the bundled backend and opens the interface,
 - `templates` holds the bundled LaTeX templates and
@@ -365,7 +403,7 @@ The universal biber in TeX Live 2026 unpacks itself with a `lipo` command that m
 
 ### Spectrum cannot find `pdflatex` or `tectonic`
 
-Applications opened from Finder do not receive the `PATH` that Terminal uses. Spectrum reads the `PATH` from the login shell and adds `/Library/TeX/texbin`, `/opt/homebrew/bin` and `/usr/local/bin`. If TeX is installed somewhere else, add its folder to `PATH` in `~/.zprofile` and restart Spectrum.
+Applications opened from Finder do not receive the `PATH` that Terminal uses. Spectrum reads the `PATH` from the login shell and adds `/Library/TeX/texbin`, `/opt/homebrew/bin` and `/usr/local/bin`. If TeX is installed somewhere else, add its folder to `PATH` in `~/.zprofile` and restart Spectrum, or choose the folder as the TeX folder in Settings › Engines › LaTeX.
 
 ### Spelling or grammar checking says it is not available
 

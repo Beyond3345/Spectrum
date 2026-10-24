@@ -2,6 +2,44 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.0.0 (unreleased)
+
+### Added
+
+- Document insights, a panel beside Check grammar, with tabs for the Overview, Headings, Figures, Tables, Equations, Labels, Citations and To-dos, each with its count. Rows show the number and page from the last compile and jump to their line in the source. The Overview has the counts, the `texcount` word counts and the submission metadata (title, authors, keywords, date and abstract) with Copy submission metadata. The footer says that the numbers and pages are from the last compile, marks them as out of date when the source has changed since and has Refresh
+- A to-do list in the sidebar, beside Files and Chats, with a badge counting the open items. Mine holds your own to-dos, each with a tick box, an optional link to a source line, a PDF page or a reference, Edit and Delete. In the source lists `\todo`, `\missingfigure`, `\fixme`, the fixme package's notes and `TODO`, `FIXME` and `XXX` in comments, each jumping to its line. To-dos are added in the box at the top of the tab or with Add to-do here in the editor's and the PDF's right-click menus, and filtered by Open, Done or All, by Mine or Source and with the sidebar's search
+- Insert figure and Insert table in the top bar, which open the Floats panel at the figure or table card. At narrow widths they stay in Insert (+), whose Figure… and Table… open the same cards
+- A PDF sidebar, opened with Document outline in the PDF's header, beside the pages. Contents lists the PDF's bookmarks with the current section marked, or the source headings across `\input` files when the PDF has none, and Pages shows a thumbnail of each page with the current one outlined
+- Find in the PDF with `⌘F` while the PDF has the focus, with the previous and next match and every match highlighted
+- An editable page number in the page bar, Page Up, Page Down, Home and End, `⌘0` to fit the width and `⌘9` to fit the page. Each document's PDF opens at the page it was left at
+- Presentation mode for slides, one page at a time in full screen, with the arrow keys and Escape
+- PDF follows the open file (on by default): opening another document's `.tex` shows that document's PDF, and Compile and auto compile build the document that is showing
+- New choices in the compile menu, each with Use for all projects: the compiler for this project, Auto compile after a pause of 1 to 10 seconds, Try to compile despite errors or Stop on first error, the bibliography tool (Auto, BibTeX or Biber) and Fast draft mode with one pass and images drawn as boxes. The menu also has Stop compilation, Recompile from scratch and Recompile all, which compiles every document with linked documents first
+- Settings › Engines › LaTeX holds the defaults for every project, a TeX folder for a second TeX installation and Open Logs when a compile fails
+- Settings › Checkpoints: Save a checkpoint after each successful compile (on by default), Show a notice when a checkpoint cannot be saved (on by default) and Delete automatic checkpoints older than…, which Tools › Checkpoints also offers
+- `% !TEX root` in a chapter compiles the document it names and `% !BIB program` chooses the bibliography tool. makeindex and makeglossaries run when a document has an index or glossaries
+
+### Changed
+
+- Versions are now called checkpoints. Save version is Save checkpoint (`⇧⌘S`), and the Versions tab in Tools is Checkpoints
+- Tools, Check grammar, Document insights and the Floats panel each take the PDF's place with a header holding Close and the view switcher, and the Compile button stays in the top bar while one is open
+- Tools holds Checkpoints, Logs, Review and Research. Project info moved to Document insights and Floats to its own panel
+- A project's compiler is saved with the project in `.spectrum/settings.json`, so it follows the project to your other computer. A project uses the defaults from Settings until one of its compile settings is changed, and the default compiler is Auto
+- Compiles are faster. Each document's `.aux`, `.bbl`, `.toc` and similar files are kept between compiles for each compiler and read back by the next one, so an unchanged document is done in one pass. BibTeX and Biber only run when something is cited, and another pass only runs when the log asks for one or a pass changed what TeX reads back. Files are kept only from a compile without errors, and when TeX cannot read one, Spectrum clears them and compiles once more from scratch
+- Tectonic carries on past errors like the other compilers unless Stop on first error is chosen, and a compile with errors no longer reports a clean status
+- A checkpoint is saved after a successful compile, only when the source changed since the last one and at most one every 10 minutes, as the latest compile's checkpoint takes the place of the earlier one in that time. Manual, named and "Before" checkpoints are never replaced
+- The More › Table of contents popover is replaced by the PDF sidebar. The sidebar's source Outline stays
+- PDF notes are saved with the project, one file each in `.spectrum/notes`, rather than only while the editor is open
+
+### Security
+
+- latexmk always runs with `-norc`, so a project's own `latexmkrc` cannot run code
+
+### Going back to 1.10.4
+
+- 1.10.4 opens every project 2.0.0 has used. The new data is in files 1.10.4 does not read: `.spectrum/settings.json` and the `.spectrum/todos` and `.spectrum/notes` folders, which it leaves as they are. Checkpoints keep their storage in `.spectrum/history`, so 1.10.4 lists every checkpoint as a version, with the compile checkpoints as manual ones
+- 1.10.4 rewrites `project.json` through its own list of keys, so nothing new is kept in it. 2.0.0 keeps the keys in `project.json` it does not know, so a file another version wrote comes through a save here whole
+
 ## 1.10.4 (22 October 2026)
 
 ### Added
