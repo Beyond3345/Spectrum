@@ -226,7 +226,8 @@ async function connect(r) {
     r.connectionAbort.abort(new Error(`Agent exited (${signal || code}).`));
     if (!r.cancelled && r.status !== 'closed') { state(r, 'failed', `Agent exited (${signal || code}). ${redact(stderr)}`); }
   });
-  const checkSession = (params) => { if (r.remoteId && params.sessionId && params.sessionId !== r.remoteId) throw new Error('Unknown agent session.'); };
+  // while a session opens, its updates may come before its id does
+  const checkSession = (params) => { if (r.remoteId && !r.opening && params.sessionId && params.sessionId !== r.remoteId) throw new Error('Unknown agent session.'); };
   const app = client({ name: 'spectrum', version: APP_VERSION })
     .onNotification('session/update', ({ params }) => { checkSession(params); if (!(r.replaying && HISTORY.includes(params.update?.sessionUpdate))) emit(r, 'update', params.update); })
     .onRequest('session/request_permission', ({ params }) => { checkSession(params); return requestUser(r, 'permission', params); })
@@ -281,6 +282,7 @@ async function connect(r) {
   // a persona goes in the agent's own system prompt where it takes one, on every new, loaded or resumed session
   const systemPrompt = r.persona && r.capabilities.sessionCapabilities?.systemPrompt ? { mode: 'append', content: [{ type: 'text', text: personaText(r.persona) }] } : undefined;
   const spec = { cwd: r.workspace, mcpServers: tools ? [tools.server] : [], ...(systemPrompt && { systemPrompt }) };
+  r.opening = true;
   try {
     if (r.remoteId && !r.forceNew && (r.capabilities.loadSession || r.capabilities.sessionCapabilities?.resume)) {
       const method = r.capabilities.loadSession ? 'session/load' : 'session/resume';
@@ -295,6 +297,7 @@ async function connect(r) {
       r.forceNew = false;
     }
   } catch (err) { throw new Error(`Agent setup failed: ${err.message}. Configure its API key or import a supported login in Agents.`); }
+  finally { r.opening = false; }
   if (session.sessionId) r.remoteId = session.sessionId;
   if (!r.remoteId) throw new Error('The agent did not return a session id.');
   emit(r, 'session', { modes: session.modes, configOptions: session.configOptions });

@@ -153,6 +153,17 @@ test('a direct turn that fails while measuring the project doesn’t fail the tu
   await turn(run, 'hello');
 });
 
+test('a new agent session’s updates sent before its id are kept', { skip, timeout: 120000 }, async () => {
+  const { open, turn } = await setup();
+  const { run } = await open({ 'main.tex': 'original\n' }, { args: ['--fresh-ids'] });
+  await turn(run, 'hello');
+  const first = run.remoteId;
+  await turn(run, 'hello', 'completed', { persona: { name: 'Writer', prompt: 'Be kind.' } });
+  assert.notEqual(run.remoteId, first, 'a new session');
+  // the first turn used the connection the session opened with; the persona's new session sent its commands first
+  assert.equal(run.events.filter((e) => e.data?.sessionUpdate === 'available_commands_update').length, 2, 'one from each connection');
+});
+
 test('Stop ends the turn as stopped, with its card no longer waiting', { skip, timeout: 120000 }, async () => {
   const { open, promptAgent, stopAgentRun } = await setup();
   const { run } = await open({ 'main.tex': 'original\n' });
