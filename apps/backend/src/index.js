@@ -28,6 +28,8 @@ import { registerLanguageRoutes } from './routes/language.js';
 import { registerSyncRoutes } from './routes/sync.js';
 import { registerCloudRoutes } from './routes/cloud.js';
 import { registerPresenceRoutes } from './routes/presence.js';
+import { registerTexlabRoutes } from './routes/texlab.js';
+import { stopTexlab } from './services/texlabService.js';
 import { seedTemplates, syncTemplates } from './services/templateService.js';
 import { dropOldAuxFolders, migrateLegacyProjects } from './services/projectService.js';
 import { startMirroring, stopMirroring } from './services/mirrorService.js';
@@ -95,6 +97,7 @@ registerLanguageRoutes(fastify);
 registerSyncRoutes(fastify);
 registerCloudRoutes(fastify);
 registerPresenceRoutes(fastify);
+registerTexlabRoutes(fastify);
 
 // Serve the built frontend (production and desktop modes)
 if (existsSync(FRONTEND_DIST)) {
@@ -124,7 +127,7 @@ await dropOldAuxFolders();
 // mirrored projects: a pass for each now, then every minute
 startMirroring();
 
-// Stop compiles and plots (they run in their own process groups, so nothing else would), let
+// Stop compiles, plots and TexLab (they run in their own process groups, so nothing else would), let
 // in-flight requests such as a file save finish for up to 2 s, then exit.
 let quitting = false;
 async function quit() {
@@ -132,6 +135,7 @@ async function quit() {
   quitting = true;
   stopMirroring();
   await shutdownAgents();
+  await stopTexlab();
   killAllChildren();
   await Promise.race([fastify.close(), new Promise((resolve) => setTimeout(resolve, 2000))]);
   killAllChildren(); // a compile's next pass may have started meanwhile

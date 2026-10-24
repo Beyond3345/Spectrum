@@ -170,7 +170,8 @@ export function stopCompile(compileId) {
   return true;
 }
 
-function killGroup(child) {
+/** Stops a child started in its own process group (detached), and what it started; on Windows its process tree. */
+export function killGroup(child) {
   if (WINDOWS) {
     // no process groups: taskkill walks the tree down from the child, so only while it still runs.
     // ponytail: what a child leaves running after exiting on its own carries on; a Job Object would catch it
