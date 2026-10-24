@@ -20,6 +20,17 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Settings › Engines › LaTeX holds the defaults for every project, a TeX folder for a second TeX installation and Open Logs when a compile fails
 - Settings › Checkpoints: Save a checkpoint when a compile succeeds (on by default), Warn me when a checkpoint fails to save (on by default) and Delete automatic checkpoints older than…, which Tools › Checkpoints also offers
 - `% !TEX root` in a chapter compiles the document it names and `% !BIB program` chooses the bibliography tool. makeindex and makeglossaries run when a document has an index or glossaries
+- An agent workspace, opened with Agent in the top bar, in the PDF's place. Its Spectrum agent tab is the assistant's former Edit mode and its Local agents tab runs the installed ACP agents. The header has the session history, the Isolated or Direct badge, the agent's model and mode options, a persona picker and Stop. Closing the workspace does not stop a task, and a dot on the Agent button shows a task running, waiting for you or with changes to review
+- The workspace opens on What would you like to do today? with task buttons for Literature sweep, Related work, Citation audit, Manuscript review and Verify claims, each a prepared prompt with its skill (and, for Manuscript review, the Critical reviewer persona)
+- The workspace's transcript has a card for each tool call that updates in place with its output or a side-by-side diff, the agent's thinking folded away, questions and permission requests in line, Restore rows for the Before AI changes checkpoints and the agent's plan at the top with Save open steps as to-dos
+- Chips under the workspace's message box send the open file, the selection, the compile log and the open to-dos, and `/` lists the agent's commands and the project's skills
+- A changes tray, such as "3 files, +12 −4", for both agents. It opens a review with each file's diff, Apply and Reject for each file, Apply all, Reject all and Preview PDF, which compiles a local agent's copy where it cannot read your other files
+- Personas in Settings › Personas: instructions picked in the assistant or the agent workspace, which replace your default instructions while chosen. Four starters (Research writer, Document editor, Critical reviewer and Draw a figure), with Create, Edit, Delete and Reset to defaults. They go to local agents too, in the agent's own system prompt where it offers one
+- Skills in Settings › Skills: 12 research and writing skills from K-Dense's scientific agent skills and Spectrum's own LaTeX, related work and verify claims skills, with a search, groups, cards showing each skill's author, licence and version and a switch for all projects or this project. Your own skills are made with Create skill, Add folder or Duplicate and edited in a file browser
+- Share skills with other agents on this computer (off by default), which links your own skills into `~/.agents/skills` and `~/.claude/skills` where those folders exist
+- The Spectrum agent follows the persona and a skill picked with `/`, loads skills itself and reads the to-do list, suggests to-dos and searches the literature, with up to 25 steps
+- On macOS, local agents get Spectrum's tools (compile, the log, the project map, the bibliography, literature search, the to-dos, suggested to-dos and skills) from a small server they start inside their isolation. The skills that are on for the project are copied into each agent's private home
+- To-dos an agent suggests appear as cards with Add, and are only saved once they are added
 
 ### Changed
 
@@ -32,6 +43,10 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A checkpoint is saved after a successful compile, only when the source changed since the last one and at most one every 10 minutes, as the latest compile's checkpoint takes the place of the earlier one in that time. Manual, named and "Before" checkpoints are never replaced
 - The More › Table of contents popover is replaced by the PDF sidebar. The sidebar's source Outline stays
 - PDF notes are saved with the project, one file each in `.spectrum/notes`, rather than only while the editor is open
+- The assistant keeps Assistant and References. Its Edit mode is the Spectrum agent in the agent workspace, and an Edit chat from before 2.0 has Continue there to carry it on in the workspace. Spectrum agent threads are listed in the workspace, not with the chats
+- Setting up local agents moved from the assistant's Agents tab to Settings › Agents, which checks the launcher arguments as a list of text and says on Windows that local agents get no Spectrum tools yet
+- An isolated local agent keeps working on its copy while its changes wait for review. Applying a file makes it the agent's new starting point for that file, and rejecting one puts your version back in the agent's copy and tells the agent with its next task
+- Local agents receive the open file, the selection, the compile log, the open to-dos and a chosen skill as ACP resources instead of pasted text, and are told Spectrum's real version
 
 ### Fixed
 
@@ -41,15 +56,19 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Circuit previews crop to their drawing, including unchanged diagrams saved by the earlier composer, and use the measured symbol endpoints
 - The composer preserves hand edits and damaged drawing metadata, refuses stale exports, and keeps newer edits when an AI fix arrives late
 - Failed diagram saves block closing, switching or quitting after the failure is reported, so the work stays open for another save attempt
+- A long local agent turn keeps its start, since its streamed pieces are joined before they are stored, and a session the agent loads again no longer stores its conversation twice
 
 ### Security
 
 - latexmk always runs with `-norc`, so a project's own `latexmkrc` cannot run code
 - Circuit symbol options reject TeX's encoded command escapes as well as literal commands
+- Preview PDF compiles a local agent's copy inside the agent's isolation on macOS, reading only that copy, into Spectrum's cache. On Windows it reads only the copy with MiKTeX or TeX Live 2025 or earlier and without shell escape, and makes no preview with TeX Live 2026 or later, which can no longer limit what a compile reads
+- A skill added with Add folder takes regular files only, and Share skills never replaces anything already in an agent's folder and removes only its own links
 
 ### Going back to 1.10.4
 
 - 1.10.4 opens every project 2.0.0 has used. The new data is in files 1.10.4 does not read: `.spectrum/settings.json` and the `.spectrum/todos` and `.spectrum/notes` folders, which it leaves as they are. Checkpoints keep their storage in `.spectrum/history`, so 1.10.4 lists every checkpoint as a version, with the compile checkpoints as manual ones
+- Spectrum agent threads are chats in `.spectrum/chats` with an `agent` mark that 1.10.4 ignores, so 1.10.4 lists them with the other chats. A project's skill choices are kept in `.spectrum/settings.json`
 - 1.10.4 rewrites `project.json` through its own list of keys, so nothing new is kept in it. 2.0.0 keeps the keys in `project.json` it does not know, so a file another version wrote comes through a save here whole
 
 ## 1.10.4 (22 October 2026)
