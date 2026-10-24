@@ -87,6 +87,7 @@ export default function PdfSidebar({
             <button
               key={i}
               className={`pdf-contents-item ${i === section ? 'active' : ''}`}
+              aria-current={i === section ? 'location' : undefined}
               style={{ paddingLeft: 8 + (item.level - base) * 12 }}
               disabled={!item.page}
               title={item.title}
@@ -163,7 +164,13 @@ function Thumbnails({ pdf, pages, page, root }: { pdf: RefObject<PdfHandle>; pag
   return (
     <div className="pdf-thumbs">
       {Array.from({ length: pages }, (_, i) => (
-        <button key={i} className={`pdf-thumb ${i + 1 === page ? 'active' : ''}`} aria-label={`Page ${i + 1}`} onClick={() => pdf.current?.scrollToPage(i + 1)}>
+        <button
+          key={i}
+          className={`pdf-thumb ${i + 1 === page ? 'active' : ''}`}
+          aria-label={`Page ${i + 1}`}
+          aria-current={i + 1 === page ? 'page' : undefined}
+          onClick={() => pdf.current?.scrollToPage(i + 1)}
+        >
           <span className="pdf-thumb-page" data-page={i + 1} style={{ '--ratio': ratio } as CSSProperties} />
           <span className="pdf-thumb-number">{i + 1}</span>
         </button>

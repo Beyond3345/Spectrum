@@ -7,9 +7,10 @@ import type { PdfHandle } from './PdfPreview';
 
 /**
  * Find in the PDF, over the top of the pages: the matches are marked as you type, ↩ and ⇧↩ step through them
- * and Esc closes it. `focusSignal` changes when ⌘F is pressed again, to pick the search box once more.
+ * and Esc closes it. `focusSignal` changes when ⌘F is pressed again, to pick the search box once more; `loadedUrl`
+ * when another PDF is laid out, whose matches the pages mark themselves and which are counted again here.
  */
-export default function PdfFindBar({ pdf, focusSignal, onClose }: { pdf: RefObject<PdfHandle>; focusSignal: number; onClose(): void }) {
+export default function PdfFindBar({ pdf, loadedUrl, focusSignal, onClose }: { pdf: RefObject<PdfHandle>; loadedUrl: string; focusSignal: number; onClose(): void }) {
   const [query, setQuery] = useState('');
   const [index, setIndex] = useState(0);
   // null while searching
@@ -39,6 +40,10 @@ export default function PdfFindBar({ pdf, focusSignal, onClose }: { pdf: RefObje
   useEffect(() => () => void pdf.current?.find('', 0), []);
 
   useEffect(() => {
+    if (query.trim()) run(query, index);
+  }, [loadedUrl]);
+
+  useEffect(() => {
     inputRef.current?.focus();
     inputRef.current?.select();
   }, [focusSignal]);
@@ -50,7 +55,7 @@ export default function PdfFindBar({ pdf, focusSignal, onClose }: { pdf: RefObje
     run(query, next);
   };
 
-  const label = count === null ? 'Searching…' : !query.trim() ? '' : count ? `${index + 1} of ${count}${count >= MAX_MATCHES ? '+' : ''}` : 'No matches';
+  const label = count === null ? 'Searching…' : !query.trim() ? '' : count ? `${(index % count) + 1} of ${count}${count >= MAX_MATCHES ? '+' : ''}` : 'No matches';
 
   return (
     <div className="pdf-find" role="search">

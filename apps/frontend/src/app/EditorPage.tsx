@@ -2598,6 +2598,7 @@ function Editor({ projectId }: { projectId: string }) {
                 {pdf && findOpen && (
                   <PdfFindBar
                     pdf={pdfRef}
+                    loadedUrl={loadedUrl}
                     focusSignal={findSignal}
                     onClose={() => {
                       setFindOpen(false);
