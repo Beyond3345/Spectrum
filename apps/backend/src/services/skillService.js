@@ -356,10 +356,12 @@ async function ourLinks(dir) {
 
 /**
  * With sharing on, a link to each of the user's skills that is on, in every target whose agent folder exists; never in
- * place of something already there. Links of ours to anything else are removed, and every one when sharing is off.
+ * place of something already there. Links of ours to anything else are removed, and every one when sharing is turned
+ * off (prune); with it off, the user's agent folders are not looked at.
  */
-async function syncShare(state) {
+async function syncShare(state, { prune = false } = {}) {
   state ??= await readState();
+  if (!state.share && !prune) return;
   const wanted = state.share ? (await allSkills()).filter((s) => s.source === 'own' && !state.off.includes(s.id)) : [];
   for (const { parent, dir } of shareTargets()) {
     if (!(await fs.stat(parent).catch(() => null))?.isDirectory()) continue;
@@ -399,7 +401,7 @@ export function setSharing(enabled) {
   return lock(async () => {
     const state = { ...(await readState()), share: enabled };
     await writeJsonAtomic(STATE_FILE, state);
-    await syncShare(state);
+    await syncShare(state, { prune: true });
     return shareStatus();
   });
 }
