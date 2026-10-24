@@ -203,7 +203,8 @@ export function MenuButton({
         type="button"
         className={`${className ?? (label ? 'btn' : 'icon-btn')}${anchor ? ' open' : ''}`}
         title={title}
-        aria-label={title}
+        // a visible label names it, and the title only describes it
+        aria-label={label ? undefined : title}
         disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={!!anchor}

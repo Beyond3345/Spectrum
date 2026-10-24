@@ -405,13 +405,28 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
           onSend={(text, opts) => void send(text, opts)}
           picker={
             <div className="agent-picker">
-              <div className="agent-picker-icons" role="radiogroup" aria-label="Agent">
+              <div
+                className="agent-picker-icons"
+                role="radiogroup"
+                aria-label="Agent"
+                // one tab stop, the arrow keys moving the choice
+                onKeyDown={(e) => {
+                  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) || !usable.length) return;
+                  e.preventDefault();
+                  const at = usable.findIndex((a) => a.id === currentId);
+                  const next = usable[(at + (e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? usable.length - 1 : 1)) % usable.length];
+                  pickAgent(next.id);
+                  e.currentTarget.querySelector<HTMLElement>(`[data-agent="${next.id}"]`)?.focus();
+                }}
+              >
                 {usable.map((a) => (
                   <button
                     key={a.id}
+                    data-agent={a.id}
                     role="radio"
-                    aria-checked={a.id === agentId}
-                    className={`agent-icon ${a.id === agentId ? 'active' : ''} ${a.installed && a.supported ? '' : 'missing'}`}
+                    aria-checked={a.id === currentId}
+                    tabIndex={a.id === currentId ? 0 : -1}
+                    className={`agent-icon ${a.id === currentId ? 'active' : ''} ${a.installed && a.supported ? '' : 'missing'}`}
                     title={a.installed && a.supported ? a.name : `${a.name} · Not set up`}
                     aria-label={a.name}
                     disabled={running}

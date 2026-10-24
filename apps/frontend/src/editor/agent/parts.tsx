@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { listSkills, restoreVersion } from '../../api/client';
 import type { AgentUserRequest, Skill, SuggestedTodo, TodoLink } from '../../api/client';
@@ -650,10 +650,14 @@ export function AgentComposer({
       ? []
       : [
           ...commands.map((c) => ({ id: c.name, skill: false, hint: c.description })),
-          ...skills.map((s) => ({ id: s.id, skill: true, hint: s.name }))
-        ]
-          .filter((e) => e.id.toLowerCase().includes(query))
-          .slice(0, 12);
+          ...skills.map((s) => ({ id: s.id, skill: true, hint: s.description }))
+        ].filter((e) => e.id.toLowerCase().includes(query));
+  const listId = useId();
+  const optionId = (i: number) => `${listId}-${i}`;
+  // the option chosen with the arrow keys stays in sight in the scrolling list
+  useEffect(() => {
+    if (entries.length) document.getElementById(optionId(Math.min(active, entries.length - 1)))?.scrollIntoView({ block: 'nearest' });
+  }, [active, entries.length]);
   const pick = (entry: (typeof entries)[number]) => {
     if (entry.skill) {
       setSkill(entry.id);
@@ -683,10 +687,12 @@ export function AgentComposer({
     <div className="agent-composer">
       {picker}
       {entries.length > 0 && (
-        <div className="agent-slash" role="listbox" aria-label="Commands and skills">
+        <div className="agent-slash" role="listbox" id={listId} aria-label="Commands and skills">
           {entries.map((e, i) => (
             <button
               key={`${e.skill}-${e.id}`}
+              id={optionId(i)}
+              tabIndex={-1}
               role="option"
               aria-selected={i === active}
               className={`agent-slash-item ${i === active ? 'active' : ''}`}
@@ -704,6 +710,9 @@ export function AgentComposer({
         ref={inputRef}
         className="composer-input"
         aria-label="Message the agent"
+        aria-controls={entries.length ? listId : undefined}
+        aria-expanded={entries.length > 0}
+        aria-activedescendant={entries.length ? optionId(Math.min(active, entries.length - 1)) : undefined}
         rows={2}
         value={text}
         placeholder={placeholder}
