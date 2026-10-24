@@ -10,6 +10,12 @@ const FLOAT = 6;
 const LEVELS = new Map(Object.entries({ part: -1, ...HEADING_LEVEL, paragraph: 4, subparagraph: 5 }));
 
 /**
+ * How long the outline waits before asking TexLab: a moment after a change, longer after typing (each pause would read
+ * the document again), and never before a compile's numbers reach TexLab, two seconds after it ends (auxKept).
+ */
+export const outlineDelay = (typing: boolean, compiledAt: number, now: number) => Math.max(typing ? 1500 : 600, compiledAt + 2600 - now);
+
+/**
  * documentOutline's headingsOf from TexLab's symbols: its sections, numbered once the document has compiled, and its
  * floats with their captions, a level below the heading before them. documentOutline asks in reading order.
  */

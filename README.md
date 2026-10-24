@@ -82,7 +82,7 @@ Spectrum includes [TexLab](https://github.com/latex-lsp/texlab) 5.26.0, a langua
 
 - squiggles under references and citations that have no label or entry, labels defined twice or never used, missing braces, environments that end with the wrong `\end` and mistakes in `.bib` files, each with its message when the pointer rests on it,
 - the entry a citation stands for, or what a `\ref` points to, when the pointer rests on it,
-- Go to definition (`F12`, or a click with `⌘` held) on a `\ref`, `\cite` or `\input`, which opens the file it leads to,
+- Go to definition (`F12`, or a click with `⌘` held) on a `\ref`, `\cite` or `\input`, which opens the file it leads to (a click with `⌥` held adds a cursor, in every file),
 - Find references (`⇧F12`), which lists every use of the label, citation key or command at the cursor in a panel below the editor, with each line a click away and
 - Rename (`F2`), which renames a label, citation key or command everywhere in the project, the `.bib` files included. It lists the files with the number of changes in each, saves a Before rename checkpoint and then saves every file through the usual save, or puts back those already saved when one cannot be.
 

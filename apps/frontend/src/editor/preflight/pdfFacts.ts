@@ -1,16 +1,17 @@
-import { GlobalWorkerOptions, OPS, getDocument } from 'pdfjs-dist';
+import { OPS, getDocument } from 'pdfjs-dist';
 import type { PDFPageProxy } from 'pdfjs-dist';
 import type { StructTreeNode } from 'pdfjs-dist/types/src/display/api';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { PdfFacts, PdfPage } from './run';
 
 // What Preflight reads from a PDF with pdf.js: page sizes, text and where it sits, fonts, properties, bookmarks and
-// tags. The screen reader view shows the text it collects.
+// tags. The screen reader view shows the text it collects. Its caller sets pdf.js's worker (ReviewTab.tsx), so
+// pdfFacts.check.ts runs this in Node.
 
-GlobalWorkerOptions.workerSrc ||= pdfWorker;
-
-/** Text set smaller than this many points counts as small. */
-const SMALL = 6;
+/**
+ * Text set smaller than 6pt counts as small: TeX's 6pt is 5.978 of the PDF's points (6 × 72/72.27), so text set at
+ * exactly that, such as slides' footnotes and review line numbers, doesn't count.
+ */
+const SMALL = (6 * 72) / 72.27 - 0.01;
 /** How long a font pdf.js is still loading gets before the font check says it couldn't look. */
 const FONT_WAIT_MS = 5000;
 
@@ -50,7 +51,8 @@ export async function pdfFacts(url: string, signal?: AbortSignal): Promise<PdfFa
       author: field('Author') || String(metadata?.get('dc:creator') ?? ''),
       lang: field('Language'),
       outline: Boolean(outline?.length),
-      tagged: Boolean(mark?.Marked)
+      // a Map from pdf.js 6 on, although its types still say an object
+      tagged: ((mark as unknown) instanceof Map ? (mark as unknown as Map<string, unknown>).get('Marked') : mark?.Marked) === true
     };
     const pages: PdfPage[] = [];
     const fontIds = new Set<string>();

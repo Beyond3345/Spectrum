@@ -1,5 +1,6 @@
 import { Compartment, Prec } from '@codemirror/state';
-import type { Extension } from '@codemirror/state';
+import type { EditorState, Extension } from '@codemirror/state';
+import { diagnosticCount, setDiagnostics } from '@codemirror/lint';
 import { EditorView, keymap } from '@codemirror/view';
 import { LSPClient, LSPPlugin, Workspace, hoverTooltips, jumpToDefinition, serverDiagnostics } from '@codemirror/lsp-client';
 import type { WorkspaceFile } from '@codemirror/lsp-client';
@@ -17,6 +18,8 @@ import { lspTransport } from './transport';
 export type TexlabHost = {
   open: (path: string) => Promise<EditorView | null>;
   read: (path: string) => Promise<string>;
+  /** the project's files, by path */
+  files: () => ReadonlySet<string>;
   showReferences: (references: Reference[]) => void;
   rename: () => void;
 };
@@ -26,6 +29,12 @@ export type Reference = { path: string; line: number; col: number; text: string 
 
 /** The open file's TexLab extensions go here: none without TexLab, or for a file it doesn't read. */
 export const texlabSlot = new Compartment();
+
+/**
+ * What clears TexLab's squiggles once it has stopped, or null when there are none: they live in @codemirror/lint's
+ * state, which the client adds outside texlabSlot, so emptying the slot leaves the last ones.
+ */
+export const clearMarks = (state: EditorState) => (diagnosticCount(state) ? setDiagnostics(state, []) : null);
 
 const languageOf = (path: string) => (/\.bib$/i.test(path) ? 'bibtex' : /\.(tex|ltx|sty|cls|dtx)$/i.test(path) ? 'latex' : null);
 
@@ -176,7 +185,11 @@ export class Texlab {
     return new URL(`${this.rootUri}/${path.replace(/[%#?]/g, encodeURIComponent)}`).href;
   }
 
-  /** A URI's project path, '/'-separated; null for one outside the project. */
+  /**
+   * A URI's project path, '/'-separated; null for one outside the project. On a Mac or Windows disk, which ignores case,
+   * a name spelt in another case (an \input{Chapters/Intro} of chapters/intro.tex, which TexLab keeps as a file of its
+   * own) is the project file's, so its marks and edits go to that file and its open text.
+   */
   pathOf(uri: string) {
     const decode = (text: string) => {
       try {
@@ -187,9 +200,16 @@ export class Texlab {
     };
     const root = decode(this.rootUri);
     const full = decode(uri);
-    const fold = (text: string) => (IS_WINDOWS ? text.toLowerCase() : text);
+    const folds = IS_MAC || IS_WINDOWS;
+    const fold = (text: string) => (folds ? text.toLowerCase() : text);
     if (!this.rootUri || !fold(full).startsWith(`${fold(root)}/`)) return null;
-    return full.slice(root.length + 1) || null;
+    const path = full.slice(root.length + 1);
+    if (!path) return null;
+    const files = this.host.files();
+    if (!folds || files.has(path)) return path;
+    // ponytail: a walk of the project's files, only for a path not among them as spelt
+    for (const file of files) if (fold(file) === fold(path)) return file;
+    return path;
   }
 
   /** The extensions for a file the editor shows, the same object each time for the same file (none without TexLab). */
@@ -257,7 +277,10 @@ export class Texlab {
     this.client.sync();
   }
 
-  /** What F2 would rename at pos (a label, citation key or command), as the text shows it; null when there's nothing. */
+  /**
+   * What F2 would rename at pos (a label, citation key or command), as the text shows it, and whether it's a command's
+   * name (TexLab's range leaves its backslash out); null when there's nothing.
+   */
   async renameTarget(view: EditorView, pos: number) {
     const plugin = LSPPlugin.get(view);
     if (!plugin) return null;
@@ -268,10 +291,11 @@ export class Texlab {
     });
     if (!found) return null;
     const { placeholder, range = found as lsp.Range } = found as { placeholder?: string; range?: lsp.Range };
-    if (placeholder !== undefined) return placeholder;
     // { defaultBehavior }: left to the editor, which has nothing to go on
     if (!range.start) return null;
-    return view.state.sliceDoc(plugin.fromPosition(range.start), plugin.fromPosition(range.end));
+    const from = plugin.fromPosition(range.start);
+    const text = placeholder ?? view.state.sliceDoc(from, plugin.fromPosition(range.end));
+    return { text, command: from > 0 && view.state.sliceDoc(from - 1, from) === '\\' };
   }
 
   /** TexLab's edits for renaming what's at pos. */

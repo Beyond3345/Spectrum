@@ -1,10 +1,15 @@
-// Self-check for TexLab's editor side: the transport's framing and order, F2's edit planning and the outline from
-// TexLab's symbols. Bundle it first:
+// Self-check for TexLab's editor side: the transport's framing and order, F2's edit planning, the syntax check's
+// errors and the outline from TexLab's symbols. Bundle it first:
 // `npx esbuild apps/frontend/src/editor/lsp/lsp.check.ts --bundle --platform=node --log-level=warning | node`
 import { documentOutline } from '../latexEditor.ts';
-import { symbolHeadings } from './outline.ts';
-import { applyEdits, renameEdits } from './rename.ts';
+import { outlineDelay, symbolHeadings } from './outline.ts';
+import { applyEdits, newName, renameEdits } from './rename.ts';
+import { syntaxErrors } from './syntax.ts';
+import { EditorState } from '@codemirror/state';
+import { diagnosticCount, setDiagnostics } from '@codemirror/lint';
+import { Texlab, clearMarks, texlabSlot } from './texlab.ts';
 import { lspTransport } from './transport.ts';
+import { IS_MAC, IS_WINDOWS } from '../../app/platform.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -113,23 +118,48 @@ function rename() {
   throws(() => renameEdits({ changes: { 'file:///usr/share/texmf/x.sty': [{ range: range(0, 0, 1), newText: 'y' }] } }, pathOf), /outside the project/, 'a file outside');
   throws(() => renameEdits({ documentChanges: [{ kind: 'create', uri: `${root}/new.tex` }] }, pathOf), /make, move or delete/, 'a new file');
   eq(renameEdits(null, pathOf).size, 0, 'no answer, no edits');
+  const twice = { range: range(0, 7, 12), newText: 'sec:b' };
+  eq(
+    renameEdits({ changes: { [`${root}/Chap.tex`]: [twice], [`${root}/chap.tex`]: [twice, { range: range(2, 0, 5), newText: 'sec:b' }] } }, (uri) => pathOf(uri)?.toLowerCase() ?? null).get('chap.tex')?.length,
+    2,
+    'one file under two spellings: the same edit once'
+  );
 
   const text = '\\section{Intro}\\label{sec:intro}\nSee \\ref{sec:intro} and \\ref{sec:intro}.\n';
   eq(
-    applyEdits(text, [
-      { range: range(1, 29, 38), newText: 'sec:start' },
-      { range: range(0, 22, 31), newText: 'sec:start' },
-      { range: range(1, 9, 18), newText: 'sec:start' }
-    ]),
+    applyEdits(
+      text,
+      [
+        { range: range(1, 29, 38), newText: 'sec:start' },
+        { range: range(0, 22, 31), newText: 'sec:start' },
+        { range: range(1, 9, 18), newText: 'sec:start' }
+      ],
+      'sec:intro'
+    ),
     '\\section{Intro}\\label{sec:start}\nSee \\ref{sec:start} and \\ref{sec:start}.\n',
     'edits in any order, several to a line'
   );
   // columns count UTF-16 code units, as JavaScript does: 😀 is two
-  eq(applyEdits('😀 \\cite{knuth}', [{ range: range(0, 9, 14), newText: 'knuth84' }]), '😀 \\cite{knuth84}', 'past a character outside the BMP');
-  eq(applyEdits('a\r\n\\ref{x}\r\n', [{ range: range(1, 5, 6), newText: 'y' }]), 'a\r\n\\ref{y}\r\n', 'Windows line endings');
-  eq(applyEdits('ab\ncd', [{ range: range(0, 1, 1, 1), newText: 'X' }]), 'aXd', 'across lines');
-  eq(applyEdits('ab', [{ range: range(0, 5, 9), newText: '!' }, { range: range(4, 0, 0), newText: '?' }]), 'ab!?', 'past the end of a line or the text');
-  throws(() => applyEdits('abcdef', [{ range: range(0, 0, 3), newText: 'x' }, { range: range(0, 2, 4), newText: 'y' }]), /overlap/, 'overlapping edits');
+  eq(applyEdits('😀 \\cite{knuth}', [{ range: range(0, 9, 14), newText: 'knuth84' }], 'knuth'), '😀 \\cite{knuth84}', 'past a character outside the BMP');
+  eq(applyEdits('a\r\n\\ref{x}\r\n', [{ range: range(1, 5, 6), newText: 'y' }], 'x'), 'a\r\n\\ref{y}\r\n', 'Windows line endings');
+  eq(applyEdits('ab\ncd', [{ range: range(0, 1, 1, 1), newText: 'X' }], 'b\nc'), 'aXd', 'across lines');
+  throws(() => applyEdits('abcdef', [{ range: range(0, 0, 3), newText: 'x' }, { range: range(0, 2, 4), newText: 'y' }], 'abc'), /overlap/, 'overlapping edits');
+  // TexLab's copy of a file behind the disk's (a reread still to come, or the file under another spelling of its name):
+  // its ranges no longer hold the name, so nothing is written
+  const disk = '% notes\n% more\n\\section{A}\\label{sec:intro}\n';
+  throws(() => applyEdits(disk, [{ range: range(0, 18, 23), newText: 'sec:b' }], 'sec:intro'), /out of date/, 'a range past the end of its line');
+  throws(() => applyEdits(disk, [{ range: range(9, 0, 4), newText: 'sec:b' }], 'sec:intro'), /out of date/, 'a line past the end of the text');
+  throws(() => applyEdits(disk, [{ range: range(2, 9, 18), newText: 'sec:b' }], 'sec:intro'), /out of date/, 'a range over other text');
+  eq(applyEdits(disk, [{ range: range(2, 18, 27), newText: 'sec:b' }], 'sec:intro'), '% notes\n% more\n\\section{A}\\label{sec:b}\n', 'the file as TexLab has it');
+
+  // the new name
+  eq(newName('  fig:b  ', false), 'fig:b', 'trimmed');
+  eq(newName('\\bar', true), 'bar', 'a command’s backslash left out');
+  eq(newName('', false), '', 'nothing typed');
+  throws(() => newName('eq:power} law', false), /can’t hold/, 'a brace or a space');
+  throws(() => newName('smith,jones', false), /can’t hold/, 'a comma');
+  throws(() => newName('a%b', false), /can’t hold/, 'a percent sign');
+  throws(() => newName('my2cmd', true), /only letters/, 'a command with a digit');
 }
 
 // ─── outline ───
@@ -165,10 +195,76 @@ async function outline() {
     'sections and floats in reading order, across \\input, levels from the command'
   );
   eq([...seen].sort(), ['chapters/one.tex', 'main.tex'], 'the files read, never a commented-out one');
+  // the compile's numbers reach TexLab 2.6 s after it ends, even when the new PDF reloads the tree 0.7 s after it
+  const now = 100_000;
+  eq([outlineDelay(false, 0, now), outlineDelay(true, 0, now), outlineDelay(false, now, now), outlineDelay(false, now - 700, now)], [600, 1500, 2600, 1900], 'the waits');
+}
+
+// ─── paths ───
+
+function paths() {
+  const files = new Set(['main.tex', 'chapters/intro.tex']);
+  const pathOf = (uri: string) => Texlab.prototype.pathOf.call({ rootUri: 'file:///Users/me/Paper', host: { files: () => files } } as unknown as Texlab, uri);
+  eq(pathOf('file:///Users/me/Paper/chapters/intro.tex'), 'chapters/intro.tex', 'a project file');
+  eq(pathOf('file:///Users/me/Paper/new.tex'), 'new.tex', 'one the editor doesn’t list yet');
+  eq(pathOf('file:///Users/me/Elsewhere/x.tex'), null, 'outside');
+  // a Mac's or Windows disk ignores case, and TexLab keeps \input{Chapters/Intro} as a file of its own
+  eq(pathOf('file:///Users/me/Paper/Chapters/Intro.tex'), IS_MAC || IS_WINDOWS ? 'chapters/intro.tex' : 'Chapters/Intro.tex', 'another spelling of a project file');
+}
+
+// ─── squiggles once TexLab stops ───
+
+function marks() {
+  // the client's squiggles go to @codemirror/lint, which adds its state outside the slot
+  let state = EditorState.create({ doc: 'Text {', extensions: [texlabSlot.of([])] });
+  eq(clearMarks(state), null, 'nothing to clear');
+  state = state.update(setDiagnostics(state, [{ from: 5, to: 6, severity: 'error', message: 'Expecting a curly bracket' }])).state;
+  state = state.update({ effects: texlabSlot.reconfigure([]) }).state;
+  eq(diagnosticCount(state), 1, 'kept when the slot empties');
+  state = state.update(clearMarks(state)!).state;
+  eq(diagnosticCount(state), 0, 'cleared');
+}
+
+// ─── the syntax check before compiling ───
+
+function syntax() {
+  const mark = (line: number, col: number, code: string, severity: 'error' | 'warning' = 'error') => ({ line, col, endLine: line, endCol: col + 1, severity, message: code, code, source: 'texlab' as const });
+  const texts = new Map([
+    // what TexLab 5.26 marks in these: a lone } in verbatim, lstlisting and minted, and the end of a file whose
+    // inline code it doesn't know holds a brace
+    ['a.tex', '\\begin{verbatim}\n}\n\\end{verbatim}\n'],
+    ['b.tex', '\\begin{lstlisting}\nint f() {\n}\n}\n\\end{lstlisting}\n'],
+    ['c.tex', '\\begin{minted}{c}\n}\n\\end{minted}\n'],
+    ['d.tex', 'A \\verb+{+ b\n'],
+    ['e.tex', '\\lstinline|{| and \\verb*|{|\n'],
+    // and real ones
+    ['f.tex', 'Text {unbalanced\n'],
+    ['g.tex', 'Text }\n\\begin{itemize}\n\\end{enumerate}\n'],
+    ['h.tex', '\\verb|x| {open\n']
+  ]);
+  const found = {
+    'a.tex': [mark(2, 1, 'unexpected-brace')],
+    'b.tex': [mark(4, 1, 'unexpected-brace')],
+    'c.tex': [mark(2, 1, 'unexpected-brace')],
+    'd.tex': [mark(2, 1, 'missing-brace')],
+    'e.tex': [mark(2, 1, 'missing-brace')],
+    'f.tex': [mark(2, 1, 'missing-brace'), mark(1, 1, 'undefined-label'), mark(1, 1, 'missing-brace', 'warning')],
+    'g.tex': [mark(1, 6, 'unexpected-brace'), mark(2, 1, 'mismatched-environment')],
+    'h.tex': [mark(2, 1, 'missing-brace')],
+    'other.tex': [mark(1, 1, 'missing-brace')]
+  };
+  eq(
+    syntaxErrors([...texts.keys()], found, texts).map((e) => `${e.file} ${e.line}:${e.col} ${e.code}`),
+    ['f.tex 2:1 missing-brace', 'g.tex 1:6 unexpected-brace', 'g.tex 2:1 mismatched-environment', 'h.tex 2:1 missing-brace'],
+    'brace and environment errors in the document’s files, not those code makes'
+  );
 }
 
 // a failure rejects, which ends Node with an error
 transport()
   .then(rename)
+  .then(paths)
+  .then(marks)
+  .then(syntax)
   .then(outline)
   .then(() => console.log('lsp.check: ok'));

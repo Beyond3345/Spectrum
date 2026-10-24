@@ -32,6 +32,7 @@ import {
 } from '../services/syncService.js';
 import { othersOpen } from '../services/presenceService.js';
 import { compiling } from '../services/compileService.js';
+import { stopProjectTexlab } from '../services/texlabService.js';
 import { copyProject, preflight } from '../utils/projectCopy.js';
 import { mirrorSkips, renameOver } from '../utils/fsUtils.js';
 import { moveToBin } from './projects.js';
@@ -188,6 +189,8 @@ export function registerCloudRoutes(fastify) {
     if (there.length) throw httpError(`Already in ${location.label} as ${rels[0]}.`, 409);
     refuseBusy(id, project.name);
     await moveProject(id, root, location.path);
+    // its TexLab follows the project to the new folder, and lets go of this one, which Windows can't bin while it runs
+    await stopProjectTexlab(id);
     // the copy is whole, so the folder here goes; ponytail: a save landing between the check and the move reaches
     // the folder in the Bin, and the editor's next save then finds the file changed on disk
     const warning = await moveToBin(root).then(
@@ -271,6 +274,7 @@ export function registerCloudRoutes(fastify) {
     if (deleteCloud) await refuseDelete(id, project.name, root, label);
     refuseBusy(id, project.name);
     await moveProject(id, root, parent);
+    await stopProjectTexlab(id);
     // it's on this computer now, so a Delete that fails can't be tried again: said, with where the copy is
     const warning = deleteCloud
       ? await binCloudCopy(root, location).then(

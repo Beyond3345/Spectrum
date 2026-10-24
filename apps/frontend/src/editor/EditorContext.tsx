@@ -75,6 +75,11 @@ export interface EditorApi {
   compile(doc?: string): Promise<'idle' | 'running' | 'ok' | 'failed' | 'stopped' | 'busy'>;
   /** saves the open file */
   save(): Promise<void>;
+  /**
+   * doc's PDF from its last compile when that couldn't write over the copy on disk, which another program holds
+   * (Windows), and when that compile started; null when the copy on disk is the last compile's
+   */
+  keptPdf(doc: string): { blob: Blob; at: number } | null;
   /** TexLab's diagnostics by project file, once it has the open file's latest text; available is false without TexLab */
   diagnostics(): Promise<{ available: boolean; files: Record<string, TexlabDiagnostic[]> }>;
   prepareAgent(): Promise<void>;

@@ -227,7 +227,7 @@ function sameWork(a, b) {
 }
 
 const filled = (r) => Object.values(r).filter((v) => !empty(v)).length;
-const USER_FIELDS = ['id', 'decision', 'reason', 'why', 'suggest', 'theme'];
+const USER_FIELDS = ['id', 'decision', 'reason', 'why', 'suggest', 'theme', 'note', 'pdf'];
 
 /** One work's two records: the fuller one's fields, the other's for its gaps, the longer abstract and author list. */
 function combine(old, next) {
@@ -262,9 +262,17 @@ export function mergeResults(results, incoming) {
   const out = results.map((r) => ({ ...r }));
   for (const next of incoming) {
     const id = identity(next);
-    const i = out.findIndex((r) => sameWork(identity(r), id));
-    if (i >= 0) out[i] = combine(out[i], next);
-    else {
+    let i = out.findIndex((r) => sameWork(identity(r), id));
+    if (i >= 0) {
+      out[i] = combine(out[i], next);
+      // a record that links two rows (a preprint's arXiv id and the paper's DOI) makes them one work
+      for (let j = out.length - 1; j >= 0; j -= 1) {
+        if (j === i || !sameWork(identity(out[i]), identity(out[j]))) continue;
+        out[i] = combine(out[i], out[j]);
+        out.splice(j, 1);
+        if (j < i) i -= 1;
+      }
+    } else {
       let rid = resultId(next);
       while (out.some((r) => r.id === rid)) rid = crypto.createHash('sha1').update(rid).digest('hex').slice(0, 12);
       out.push({ id: rid, ...next });
@@ -277,13 +285,14 @@ export function mergeResults(results, incoming) {
 export function markInBib(results, index) {
   for (const r of results) {
     const id = identity(r);
-    const found = findDuplicate(index, {
-      doi: id.doi,
-      arxiv: id.arxiv,
-      title: id.title,
-      year: r.year || '',
-      firstAuthor: normaliseTitle(r.authors?.[0] || '').split(' ').at(-1) || ''
-    });
+    const firstAuthor = normaliseTitle(r.authors?.[0] || '').split(' ').at(-1) || '';
+    const found =
+      findDuplicate(index, { doi: id.doi, arxiv: id.arxiv, title: id.title, year: r.year || '', firstAuthor }) ||
+      // a preprint whose published version the .bib has without a DOI or eprint, a year or more later: the same title
+      // and first author, within the years sameWork allows a preprint
+      (id.title && firstAuthor && id.year
+        ? index.find((e) => e.title === id.title && e.firstAuthor === firstAuthor && e.year && Math.abs(Number(e.year) - id.year) <= 3 && !(e.doi && id.doi && e.doi !== id.doi))
+        : null);
     if (found) r.inBib = found.key;
     else delete r.inBib;
   }
@@ -518,7 +527,36 @@ function stemOf(r) {
   const rec = { author: author ? [author] : [], title: r.title, issued: r.year ? { 'date-parts': [[Number(r.year)]] } : undefined };
   const word = baseKey({ title: r.title });
   const stem = r.inBib || baseKey(rec) + (author && word !== 'Ref' ? word : '');
-  return stem.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || r.id;
+  // CON, AUX and the like are devices on Windows, as sanitiseFolderName has it
+  return (stem.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || r.id).replace(/^(con|prn|aux|nul|com\d|lpt\d)(?=\.|$)/i, '$1_');
+}
+
+const FOLDERS = { note: ['research/notes', '.md'], pdf: ['research/papers', '.pdf'] };
+
+/**
+ * The result's note or PDF (kind), made with make(rel, result, session) unless it's there: at the path the session
+ * keeps for it, or else the first free one from its name (stemOf, then -2, -3, …), which the session then keeps. So two
+ * papers with the same AuthorYear and title word get a file each, and the name stays once the paper is in the .bib under
+ * a key. make writes with 'wx'; { path, existing: true } when the file is there already.
+ */
+function keepFile(root, id, resultId, kind, make) {
+  return locked(async () => {
+    const session = await getSession(root, id);
+    const r = findResult(session, resultId);
+    const [folder, ext] = FOLDERS[kind];
+    await fs.mkdir(safeJoin(root, folder), { recursive: true });
+    const attempt = (rel) => make(rel, r, session).catch((err) => (err.code === 'EEXIST' ? null : Promise.reject(err)));
+    if (r[kind]) return (await attempt(r[kind])) ?? { path: r[kind], existing: true };
+    const stem = stemOf(r);
+    for (let n = 1; ; n += 1) {
+      const rel = `${folder}/${stem}${n > 1 ? `-${n}` : ''}${ext}`;
+      const made = (await fs.stat(safeJoin(root, rel)).then(() => true, () => false)) ? null : await attempt(rel);
+      if (!made) continue;
+      r[kind] = rel;
+      await writeJsonAtomic(sessionFile(root, id), session);
+      return made;
+    }
+  });
 }
 
 const dateFormat = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -546,25 +584,21 @@ function noteText(r, session) {
   ].filter((line) => typeof line === 'string').join('\n');
 }
 
-/** research/notes/<key>.md for the result, made only when it isn't there yet. */
+/** research/notes/<key>.md for the result, made only when it isn't there yet (keepFile). */
 export async function openNote({ root, id, resultId }) {
-  const session = await getSession(root, id);
-  const r = findResult(session, resultId);
-  const rel = `research/notes/${stemOf(r)}.md`;
-  const abs = safeJoin(root, rel);
-  await fs.mkdir(path.dirname(abs), { recursive: true });
-  try {
-    await fs.writeFile(abs, noteText(r, session), { flag: 'wx' });
+  const res = await keepFile(root, id, resultId, 'note', async (rel, r, session) => {
+    await fs.writeFile(safeJoin(root, rel), noteText(r, session), { flag: 'wx' });
     return { path: rel, created: true };
-  } catch (err) {
-    if (err.code === 'EEXIST') return { path: rel, created: false };
-    throw err;
-  }
+  });
+  return res.existing ? { path: res.path, created: false } : res;
 }
 
-/** The PDF's bytes, or null when the link gives something else. */
+// a download's whole time, the body's reading included: 10 MB at 1 Mbit/s takes 80 s (tests make it shorter)
+const pdfTimeout = () => Number(process.env.SPECTRUM_PDF_TIMEOUT_MS) || 180_000;
+
+/** The PDF's bytes, or null when the link gives something else; throws when the download fails partway. */
 async function downloadPdf(url) {
-  const { res } = await getPage(url, 'application/pdf');
+  const { res } = await getPage(url, 'application/pdf', { timeoutMs: pdfTimeout() });
   if (!res.ok) {
     res.body?.cancel().catch(() => {});
     return null;
@@ -573,7 +607,10 @@ async function downloadPdf(url) {
   const chunks = [];
   let size = 0;
   for (;;) {
-    const { done, value } = await reader.read();
+    const { done, value } = await reader.read().catch((err) => {
+      const host = new URL(url).host;
+      throw new Error(err?.name === 'TimeoutError' ? `${host} took too long to send the PDF.` : `The download from ${host} broke off.`);
+    });
     if (done) break;
     size += value.length;
     if (size > MAX_PDF) {
@@ -604,9 +641,7 @@ async function unpaywallLinks(doi, email) {
 export async function fetchPdf({ root, id, resultId, email }) {
   const session = await getSession(root, id);
   const r = findResult(session, resultId);
-  const rel = `research/papers/${stemOf(r)}.pdf`;
-  const abs = safeJoin(root, rel);
-  if (await fs.stat(abs).then(() => true, () => false)) return { path: rel, existing: true };
+  if (r.pdf && (await fs.stat(safeJoin(root, r.pdf)).then(() => true, () => false))) return { path: r.pdf, existing: true };
   const own = r.doi && !arxivOfDoi(r.doi) ? r.doi : '';
   const links = [];
   if (r.arxiv) links.push(`https://arxiv.org/pdf/${r.arxiv}`);
@@ -615,17 +650,20 @@ export async function fetchPdf({ root, id, resultId, email }) {
   if (!links.length) {
     throw httpError(own && !email ? 'No open-access copy is known for this paper. Add your email in Settings › Search so Spectrum can ask Unpaywall.' : 'No open-access PDF was found for this paper.', 404);
   }
+  // why each link failed: not a PDF, or the download's own error (too slow, unreachable)
+  let notPdf = false;
+  let failure = null;
   for (const link of new Set(links)) {
-    const bytes = await downloadPdf(link).catch(() => null);
+    const bytes = await downloadPdf(link).catch((err) => {
+      failure = err;
+      return undefined;
+    });
+    if (bytes === null) notPdf = true;
     if (!bytes) continue;
-    await fs.mkdir(path.dirname(abs), { recursive: true });
-    try {
-      await fs.writeFile(abs, bytes, { flag: 'wx' });
-    } catch (err) {
-      if (err.code !== 'EEXIST') throw err;
-      return { path: rel, existing: true };
-    }
-    return { path: rel };
+    return keepFile(root, id, resultId, 'pdf', async (rel) => {
+      await fs.writeFile(safeJoin(root, rel), bytes, { flag: 'wx' });
+      return { path: rel };
+    });
   }
-  throw httpError('The open-access copies found aren’t PDFs Spectrum can download. Open the paper’s page instead.', 404);
+  throw httpError(failure && !notPdf ? failure.message : 'The open-access copies found aren’t PDFs Spectrum can download. Open the paper’s page instead.', 404);
 }

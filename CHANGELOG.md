@@ -61,6 +61,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - The sidebar's Chats tab is now History in the assistant's header, which lists the saved Assistant and References chats with the Edit chats from before 2.0, and has a search and Delete
 - Find citations for selection is in Research, and adds papers through the references chat's look-up
 - Research no longer has the arXiv search through an AI model or puts the summaries of web results into a `.tex` file. Abstracts are shown as the sources give them
+- A click with `⌥` held adds a cursor, as in VS Code, as a click with `⌘` held is Go to definition
 
 ### Fixed
 

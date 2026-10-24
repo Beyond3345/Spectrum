@@ -21,7 +21,7 @@ const diagnose = (uri, text) => {
 };
 
 let root = '';
-log({ path: process.env.PATH, args: process.argv.slice(2) });
+log({ path: process.env.PATH, args: process.argv.slice(2), cwd: process.cwd() });
 let buffer = Buffer.alloc(0);
 process.stdin.on('data', (chunk) => {
   buffer = Buffer.concat([buffer, chunk]);

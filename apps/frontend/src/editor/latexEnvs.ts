@@ -212,7 +212,7 @@ export const ALGORITHM2E_SNIPPET: Snip = ['', ['\\caption{}', '\\KwIn{}', '\\KwO
 // one \s* each side of an optional [...] (here and in def), so a long run of spaces can't make a match quadratic
 const LOAD_RE = /\\(usepackage|RequirePackage|documentclass|LoadClass)(?:WithOptions)?\s*(?:\[[^\]]*\]\s*)?\{([^}]+)\}/g;
 const LIB_RE = /\\(usetikzlibrary|usepgfplotslibrary|tcbuselibrary)\s*\{([^}]+)\}/g;
-export const INPUT_RE = /\\(?:input|include|subfile)\s*\{([^}]+)\}|\\import\s*\{([^}]*)\}\s*\{([^}]+)\}/g;
+export const INPUT_RE = /\\(?:input|include|subfile)\s*\{([^}]+)\}|\\(?:sub)?import\*?\s*\{([^}]*)\}\s*\{([^}]+)\}/g;
 /** The name an INPUT_RE match pulls in; \import's folder and file joined. */
 export const inputName = (m: RegExpMatchArray) => m[1]?.trim() ?? `${m[2].trim().replace(/\/?$/, '/')}${m[3].trim()}`;
 

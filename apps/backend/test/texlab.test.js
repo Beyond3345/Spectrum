@@ -14,10 +14,10 @@ Object.assign(process.env, {
   SPECTRUM_TEMPLATE_DIR: path.join(tmp, 'templates'),
   SPECTRUM_TEMPLATE_SEED_DIR: ''
 });
-const { createProject, cachePath } = await import('../src/services/projectService.js');
+const { createProject, cachePath, moveEntry } = await import('../src/services/projectService.js');
 const { auxStore, findExecutable } = await import('../src/services/compileService.js');
 const { writeFileAtomic } = await import('../src/utils/fsUtils.js');
-const { auxKept, frame, readFrames, stopTexlab } = await import('../src/services/texlabService.js');
+const { auxKept, frame, readFrames, stopProjectTexlab, stopTexlab } = await import('../src/services/texlabService.js');
 const { registerTexlabRoutes } = await import('../src/routes/texlab.js');
 const { default: Fastify } = await import('fastify');
 const { PassThrough } = await import('node:stream');
@@ -134,6 +134,8 @@ test('the bridge does the handshake, relays an editor’s messages and keeps the
   const answer = log.find((m) => m.id === 'config-1');
   assert.equal(start.path, WINDOWS ? `${process.env.SystemRoot}\\System32;${process.env.SystemRoot}` : '/usr/bin:/bin');
   assert.deepEqual(start.args, ['run']);
+  // not in the project's folder, which Windows then couldn't move or bin while it runs
+  assert.equal(start.cwd.toLowerCase(), realpathSync.native(tmpdir()).toLowerCase());
   assert.equal(initialize.method, 'initialize');
   assert.equal(initialize.params.rootUri, rootUri);
   assert.deepEqual(initialize.params.workspaceFolders, [{ uri: rootUri, name: path.basename(p.path) }]);
@@ -143,6 +145,7 @@ test('the bridge does the handshake, relays an editor’s messages and keeps the
   const settings = configuration.params.settings.texlab;
   assert.equal(configuration.method, 'workspace/didChangeConfiguration');
   assert.deepEqual([settings.build.onSave, settings.chktex.onOpenAndSave, settings.diagnosticsDelay, settings.latexFormatter], [false, false, 500, 'none']);
+  assert.ok(['Verbatim', 'comment', 'filecontents'].every((env) => settings.experimental.verbatimEnvironments.includes(env)));
   assert.equal(settings.build.auxDirectory, `${pathToFileURL(auxStore(await cachePath(p.path), 'main.tex')).href}/`);
   // the main document, which TexLab only reads the files around
   assert.deepEqual(seeded.params, { changes: [{ uri: `${rootUri}/main.tex`, type: 1 }] });
@@ -195,6 +198,33 @@ test('the bridge does the handshake, relays an editor’s messages and keeps the
   await until(() => changedTo(readFileSync(path.join(p.path, 'main.tex'), 'utf8')), 'the disk’s text');
   await writeFileAtomic(path.join(p.path, 'main.tex'), 'Rewritten\n');
   await until(() => changedTo('Rewritten\n'), 'the new text on disk');
+  await stopTexlab();
+});
+
+test('a moved project gets a TexLab on its new folder, one can be stopped before a move, and a name TexLab can’t take goes without', async () => {
+  const logFile = path.join(tmp, 'fake-moved.log');
+  Object.assign(process.env, { SPECTRUM_TEXLAB: fixture, FAKE_TEXLAB_LOG: logFile });
+  const roots = () => (existsSync(logFile) ? readFileSync(logFile, 'utf8').trim().split('\n').map((line) => JSON.parse(line)) : []).filter((m) => m.method === 'initialize').map((m) => m.params.rootUri);
+  const p = await newProject({ 'main.tex': '\\documentclass{article}\n' });
+  assert.equal((await diagnostics(p)).available, true);
+  // Relocate or a cloud move: the registry points elsewhere, and the TexLab on the old folder makes way
+  const moved = path.join(tmp, 'projects', 'Moved here');
+  await fs.rename(p.path, moved);
+  await moveEntry(p.id, moved);
+  assert.equal((await diagnostics(p)).available, true);
+  assert.deepEqual(roots(), [pathToFileURL(p.path).href, pathToFileURL(moved).href]);
+  // stopped, and gone once it's said so
+  await stopProjectTexlab(p.id);
+  assert.equal((await diagnostics(p)).available, true);
+  assert.equal(roots().length, 3);
+  await stopProjectTexlab(p.id);
+
+  // TexLab 5.26 panics on a file URI with [, ] or ^ in it
+  const odd = await createProject({ name: 'Thesis [draft]', populate: (root) => fs.writeFile(path.join(root, 'main.tex'), 'x') });
+  assert.match(odd.path, /\[draft\]/);
+  assert.deepEqual(await diagnostics(odd), { ok: true, available: false, files: {} });
+  assert.equal((await connect(odd)).status, 503);
+  assert.equal(roots().length, 3);
   await stopTexlab();
 });
 
@@ -270,5 +300,26 @@ test('the real TexLab finds a project’s errors, follows the editor, renames ac
   await until(async () => codes((await diagnostics(p)).files, 'main.tex').join() === '3 undefined-label', 'the new main.tex read', 15_000);
   assert.ok(!existsSync(marker), 'the project’s latexmkrc was run');
   editor.close();
+  await stopTexlab();
+});
+
+test('the real TexLab takes code in Verbatim and the like as code, and a file’s marks come under its own name', { skip: !realTexlab && 'needs texlab on the PATH', timeout: 60_000 }, async () => {
+  process.env.SPECTRUM_TEXLAB = realTexlab;
+  const p = await newProject({
+    'main.tex': '\\documentclass{article}\n\\begin{document}\n\\input{Chapters/Intro}\nSee \\ref{sec:a}.\n\\input{code}\n\\input{broken}\n\\end{document}\n',
+    'code.tex': '\\begin{Verbatim}\nprintf("{");\n\\end{Verbatim}\n\\begin{comment}\n{\n\\end{comment}\n\\begin{filecontents}{x.dat}\n{\n\\end{filecontents}\n',
+    'broken.tex': 'Text {unbalanced\n'
+  });
+  await fs.mkdir(path.join(p.path, 'chapters'));
+  await fs.writeFile(path.join(p.path, 'chapters', 'intro.tex'), '\\section{A}\\label{sec:a}\n');
+  const errors = (files, name) => (files[name] ?? []).filter((d) => d.severity === 'error').map((d) => d.code);
+  const found = await until(async () => {
+    const res = await diagnostics(p);
+    return res.files['broken.tex'] && res;
+  }, 'diagnostics');
+  assert.deepEqual(errors(found.files, 'code.tex'), [], JSON.stringify(found.files));
+  assert.deepEqual(errors(found.files, 'broken.tex'), ['missing-brace']);
+  // a disk that ignores case: \input{Chapters/Intro} is chapters/intro.tex, which TexLab keeps as a file of its own
+  if (WINDOWS || process.platform === 'darwin') assert.ok(!Object.keys(found.files).some((f) => f !== f.toLowerCase()), JSON.stringify(Object.keys(found.files)));
   await stopTexlab();
 });

@@ -18,7 +18,7 @@ const SEVERITIES = ['major', 'minor', 'note'];
 const slashed = (p) => p.split(path.sep).join('/');
 const lineOf = (text, index) => text.slice(0, index).split('\n').length;
 
-/** The files a document reads, in the order it first reads them (\input, \include and \subfile, as the compile finds them). */
+/** The files a document reads, in the order it first reads them (\input, \include, \subfile and \import, as the compile finds them). */
 async function documentFiles(root, doc) {
   const files = new Set();
   await inlineInputs(root, doc, { stripComments: true, files });
@@ -87,7 +87,7 @@ Severity: "major" for problems that affect whether the conclusions hold or the p
 
 Each source line starts with its number and a bar, as in "12| text". Anchor each finding: "file" is the path in the file's header, "line" the number of the line it is about and "quote" an exact excerpt of 4 to 20 words copied from that line or the next few, without the number and bar. A remark about the paper as a whole takes the line where it shows most.
 
-Reply with JSON only, in this shape:
+Reply with JSON only, writing each backslash twice inside its strings (a quote of \\cite{key} is "\\\\cite{key}"), in this shape:
 {"summary": "", "strengths": [""], "score": 6, "confidence": 3, "findings": [{"severity": "major", "category": "", "file": "", "line": 1, "quote": "", "issue": "", "suggestion": ""}], "limits": [""]}
 "score" is your overall rating out of 10 and "confidence" how sure you are of it, out of 5. "limits" says what you could not judge from the source alone, such as figures you cannot see or data you cannot check.`;
 
@@ -108,8 +108,7 @@ export function anchor(finding, files) {
   const named = finding.file.replace(/^\.\//, '');
   const byName = files.filter((f) => path.posix.basename(f.path) === path.posix.basename(named));
   const file = files.find((f) => f.path === named) ?? (byName.length === 1 ? byName[0] : null);
-  const want = squash(finding.quote);
-  if (!file || !want || !finding.line) return { ...finding, file: file?.path ?? named, anchored: false };
+  if (!file || !squash(finding.quote) || !finding.line) return { ...finding, file: file?.path ?? named, anchored: false };
   const from = Math.max(1, finding.line - 10);
   const to = Math.min(file.lines.length, finding.line + 10);
   // a quote may run on past the window's last line
@@ -119,27 +118,54 @@ export function anchor(finding, files) {
     starts.push(flat.length);
     flat += `${squash(line)} `;
   }
-  let best = 0;
-  for (let at = flat.indexOf(want); at !== -1; at = flat.indexOf(want, at + 1)) {
-    let k = starts.length - 1;
-    while (starts[k] > at) k -= 1;
-    const n = from + k;
-    if (n <= to && (!best || Math.abs(n - finding.line) < Math.abs(best - finding.line))) best = n;
-  }
+  const nearest = (want) => {
+    let best = 0;
+    for (let at = flat.indexOf(want); at !== -1; at = flat.indexOf(want, at + 1)) {
+      let k = starts.length - 1;
+      while (starts[k] > at) k -= 1;
+      const n = from + k;
+      if (n <= to && (!best || Math.abs(n - finding.line) < Math.abs(best - finding.line))) best = n;
+    }
+    return best;
+  };
+  // a \ref or \textbf the model didn't double in its JSON reads as a control character and the letters after it
+  const best = nearest(squash(finding.quote)) || nearest(squash(finding.quote.replace(/[\r\t\b\f\n](?=[A-Za-z])/g, (c) => `\\${CONTROL[c]}`)));
   return { ...finding, file: file.path, line: best || finding.line, anchored: Boolean(best) };
 }
 
+const CONTROL = { '\r': 'r', '\t': 't', '\b': 'b', '\f': 'f', '\n': 'n' };
+
+/**
+ * The JSON in a model's answer: from its first {, past a reasoning model's <think> and prose before it that could hold a
+ * [ or braces of its own, and failing that with the backslashes of LaTeX it didn't double (\cite, \usepackage) doubled
+ * and trailing commas gone.
+ */
+export function replyJSON(content) {
+  const body = String(content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '');
+  const from = body.indexOf('{');
+  if (from === -1) return null;
+  const json = body.slice(from);
+  return extractJSON(json) ?? extractJSON(json.replace(/\\(["\\/bfnrt]|u[0-9a-fA-F]{4})?/g, (m, escape) => (escape ? m : '\\\\')).replace(/,(\s*[}\]])/g, '$1'));
+}
+
 /** The model's answer as the review the panel shows, or null when it isn't one. */
-function readReview(content, files) {
-  const json = extractJSON(content);
+export function readReview(content, files) {
+  const json = replyJSON(content);
   if (!json || typeof json !== 'object' || Array.isArray(json)) return null;
+  const seen = new Set();
   const findings = (Array.isArray(json.findings) ? json.findings : []).flatMap((f) => {
     if (!f || typeof f !== 'object') return [];
     const issue = text(f.issue, 2000);
     if (!issue) return [];
     const line = Number.isInteger(Number(f.line)) && Number(f.line) > 0 ? Number(f.line) : 0;
-    const severity = SEVERITIES.includes(f.severity) ? f.severity : 'note';
-    return [anchor({ severity, category: text(f.category, 40) || 'General', file: text(f.file, 500), line, quote: text(f.quote, 400), issue, suggestion: text(f.suggestion, 2000) }, files)];
+    const said = String(f.severity ?? '').trim().toLowerCase();
+    const severity = SEVERITIES.includes(said) ? said : 'note';
+    const found = anchor({ severity, category: text(f.category, 40) || 'General', file: text(f.file, 500), line, quote: text(f.quote, 400), issue, suggestion: text(f.suggestion, 2000) }, files);
+    // the same point twice would share its row's id in Review, so Dismiss would hide both
+    const id = JSON.stringify([found.severity, found.file, found.line, found.issue]);
+    if (seen.has(id)) return [];
+    seen.add(id);
+    return [found];
   });
   return {
     summary: text(json.summary, 6000),

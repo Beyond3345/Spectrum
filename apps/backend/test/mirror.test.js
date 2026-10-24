@@ -798,6 +798,33 @@ test('an iCloud Drive stand-in is a file not readable yet, never a deletion', as
   synced(await mirror.syncProject(p.id));
 });
 
+test('a research session changed on both computers keeps both sides’ searches and choices', async () => {
+  const session = (over) => JSON.stringify({ id: 'r1', question: 'widgets', sources: ['openalex'], createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z', ...over });
+  const r1 = { id: 'a', title: 'Widget scaling laws', doi: '10.1000/w', sources: ['openalex'] };
+  const r2 = { id: 'b', title: 'Gadgets', doi: '10.1000/g', sources: ['openalex'] };
+  const start = { runs: [{ at: '2026-10-01T00:00:00.000Z', queries: ['widgets'], perSource: {} }], results: [r1, r2] };
+  const p = await project('Research', { 'main.tex': 'main\n', '.spectrum/research/r1.json': session(start) });
+  synced(await syncTo(p));
+  // here r1 is kept; there r2 is dropped with a reason, and a search again found a third paper
+  await write(path.join(p.root, '.spectrum', 'research', 'r1.json'), session({ ...start, updatedAt: '2026-10-02T00:00:00.000Z', results: [{ ...r1, decision: 'keep' }, r2] }));
+  await write(
+    path.join(p.cloud, '.spectrum', 'research', 'r1.json'),
+    session({
+      updatedAt: '2026-10-03T00:00:00.000Z',
+      runs: [...start.runs, { at: '2026-10-03T00:00:00.000Z', queries: ['widgets again'], perSource: {} }],
+      results: [r1, { ...r2, decision: 'drop', reason: 'Off topic' }, { id: 'c', title: 'Sprockets', doi: '10.1000/s', sources: ['crossref'] }]
+    })
+  );
+  synced(await mirror.syncProject(p.id));
+  for (const root of [p.root, p.cloud]) {
+    const s = json(path.join(root, '.spectrum', 'research', 'r1.json'));
+    assert.deepEqual(s.results.map((r) => [r.id, r.decision, r.reason]), [['a', 'keep', undefined], ['b', 'drop', 'Off topic'], ['c', undefined, undefined]]);
+    assert.deepEqual(s.runs.map((r) => r.queries[0]), ['widgets', 'widgets again']);
+    assert.equal(s.updatedAt, '2026-10-03T00:00:00.000Z');
+  }
+  assert.ok(!tree(p.root).some((r) => r.includes('conflicted copy')));
+});
+
 test('the app’s own files: objects come back, project.json and chats merge, and never a conflicted copy', async () => {
   const p = await project('App', { 'main.tex': 'main\n' });
   const chat = { id: 'c1', title: 'Help', mode: 'assistant', updatedAt: '2026-10-01T00:00:00.000Z', messages: [{ role: 'user', createdAt: '1', content: 'one' }] };

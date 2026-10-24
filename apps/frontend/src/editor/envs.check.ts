@@ -30,6 +30,7 @@ eq(
   [['notes:', 'ELEC2410_Lecture_Notes'], ['A-', 'sub/other.tex'], ['', 'plain']],
   'xr externals: the prefix, further options, none commented out'
 );
+eq(scanTex('\\input {a}\n\\include{b}\n\\import{sec/}{c}\n\\subimport*{parts}{d}').inputs, ['a', 'b', 'sec/c', 'parts/d'], 'inputs, as the backend’s review reads them');
 const known = new Set([...COMMON_ENVS, ...KERNEL_ENVS, ...Object.values(PACKAGE_ENVS).flat()]);
 eq(Object.keys(ENV_SNIPPETS).filter((n) => !known.has(n)), [], 'every snippet is for an environment the lists offer');
 

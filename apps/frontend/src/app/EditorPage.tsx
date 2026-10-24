@@ -39,7 +39,7 @@ import {
   updateProjectSettings,
   writeFile
 } from '../api/client';
-import type { CompileEngine, CompileOptions, CompileResult, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TexlabDiagnostic, TodoLink, VersionMeta, VersionReason } from '../api/client';
+import type { CompileEngine, CompileOptions, CompileResult, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
 import { latex } from '../latex/lang';
 import Icon from './Icon';
 import Tabs from './Tabs';
@@ -114,10 +114,11 @@ import {
 import { NO_PROJECT, externalDocuments, scanProject, texRoot } from '../editor/latexEnvs';
 import type { Project } from '../editor/latexEnvs';
 import type { OutlineItem } from '../editor/latexEditor';
-import { Texlab, texlabSlot } from '../editor/lsp/texlab';
+import { Texlab, clearMarks, texlabSlot } from '../editor/lsp/texlab';
 import type { Reference } from '../editor/lsp/texlab';
-import { applyEdits, renameEdits } from '../editor/lsp/rename';
-import { symbolHeadings } from '../editor/lsp/outline';
+import { applyEdits, newName, renameEdits } from '../editor/lsp/rename';
+import { syntaxErrors } from '../editor/lsp/syntax';
+import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
 import { VERSIONS_CHANGED, errorText, figureSnippet } from '../editor/shared';
 
 // ─── helpers ───
@@ -137,8 +138,6 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const MAX_TABS = 6;
 const timeFormat = new Intl.DateTimeFormat('en-AU', { hour: 'numeric', minute: '2-digit' });
 const engineLabel = (engine: string) => COMPILE_ENGINES.find(([value]) => value === engine)?.[1] || engine;
-// the TexLab findings the syntax check before compiling stops for; an undefined reference or citation never does
-const SYNTAX_ERRORS = new Set(['unexpected-brace', 'missing-brace', 'mismatched-environment']);
 
 /** The first text file, or '' when it's 1 MB or more: with no .tex to show, never open a huge log or data file unasked. */
 async function smallTextFile(projectId: string, items: FileItem[]) {
@@ -363,8 +362,9 @@ function Editor({ projectId }: { projectId: string }) {
   const editedDocRef = useRef('');
   // the document whose PDF shows, as of now (shownDoc is as of the last render)
   const shownRef = useRef('');
-  // a document's PDF from a compile that couldn't write over the copy on disk, which another program held (Windows)
-  const stalePdf = useRef(new Map<string, Blob>());
+  // a document's PDF from a compile that couldn't write over the copy on disk, which another program held (Windows),
+  // and when that compile started
+  const stalePdf = useRef(new Map<string, { blob: Blob; at: number }>());
   const autoRunningRef = useRef(false);
   const autoWaitingRef = useRef(false);
   // the files a checkpoint after compiling left out that the notice has named
@@ -656,7 +656,11 @@ function Editor({ projectId }: { projectId: string }) {
 
   /** TexLab's squiggles, hovers and jumps for the open file, when TexLab is answering and reads that kind of file. */
   const attachTexlab = () => {
-    viewRef.current?.dispatch({ effects: texlabSlot.reconfigure(texlabRef.current?.extensionFor(activeRef.current) ?? []) });
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({ effects: texlabSlot.reconfigure(texlabRef.current?.extensionFor(activeRef.current) ?? []) });
+    const clear = texlabRef.current?.available ? null : clearMarks(view.state);
+    if (clear) view.dispatch(clear);
   };
 
   const openFile = async (path: string) => {
@@ -1180,13 +1184,20 @@ function Editor({ projectId }: { projectId: string }) {
     if (!view || !texlab?.available || !activeRef.current) return;
     const pos = view.state.selection.main.head;
     try {
-      const target = await texlab.renameTarget(view, pos);
-      if (!target) {
+      const found = await texlab.renameTarget(view, pos);
+      if (!found) {
         notify('There’s nothing here to rename. Put the cursor on a label, citation key or command.');
         return;
       }
-      const name = (await promptDialog({ title: `Rename “${target}”`, message: 'Every use of it in the project changes too.', defaultValue: target, confirmLabel: 'Rename' }))?.trim();
+      const target = found.text;
+      const typed = await promptDialog({ title: `Rename “${target}”`, message: 'Every use of it in the project changes too.', defaultValue: target, confirmLabel: 'Rename' });
+      const name = newName(typed ?? '', found.command);
       if (!name || name === target) return;
+      // TexLab doesn't check either: a second \label or .bib entry by that name
+      const scan = projectScanRef.current;
+      if (!found.command && (scan.scans.some((s) => s.labels.includes(name)) || scan.bib.some((b) => b.key === name))) {
+        throw new Error(`“${name}” is already used in this project. Pick another name.`);
+      }
       // TexLab plans against the open file's text and the others' on disk, so the open file goes to disk first
       await saveNow();
       const edits = renameEdits(await texlab.renameEdits(view, pos, name), (uri) => texlab.pathOf(uri));
@@ -1199,7 +1210,12 @@ function Editor({ projectId }: { projectId: string }) {
       const plan = await Promise.all(
         [...edits].map(async ([file, list]) => {
           const before = file === activeRef.current ? view.state.doc.toString() : await ensureFileContent(file);
-          return { file, before, after: applyEdits(before, list), count: list.length };
+          try {
+            // each edit must replace the old name, or TexLab planned it against other text than this
+            return { file, before, after: applyEdits(before, list, target), count: list.length };
+          } catch (err) {
+            throw new Error(`${nameOf(file)}: ${errorText(err)}`);
+          }
         })
       );
       const ok = await confirmDialog({
@@ -1225,6 +1241,8 @@ function Editor({ projectId }: { projectId: string }) {
         throw new Error(`${errorText(err)}${after}`);
       }
       notify(`Renamed “${target}” to “${name}” in ${plural(plan.length, 'file')}`, 'success');
+      // ⇧F12's list shows the old name and lines
+      setReferences(null);
     } catch (err) {
       notify(`Couldn’t rename: ${errorText(err)}`, 'error');
     }
@@ -1337,8 +1355,8 @@ function Editor({ projectId }: { projectId: string }) {
 
   /** A document's PDF from its last compile: the copy on disk, or the compile's own when it couldn't write over that. */
   const pdfFor = (doc: string) => {
-    const blob = stalePdf.current.get(doc);
-    return blob ? { url: URL.createObjectURL(blob), blob: true } : { url: blobUrl(projectId, pdfOf(doc), Date.now()), blob: false };
+    const kept = stalePdf.current.get(doc);
+    return kept ? { url: URL.createObjectURL(kept.blob), blob: true } : { url: blobUrl(projectId, pdfOf(doc), Date.now()), blob: false };
   };
 
   /** A document's PDF from its last compile; returns the URL it shows from. */
@@ -1394,10 +1412,14 @@ function Editor({ projectId }: { projectId: string }) {
     if (!texlab?.available) return true;
     const found = await Promise.race([texlab.diagnostics(), new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 5000))]).catch(() => null);
     if (!found?.available) return true;
-    const { scans } = await scanProject(doc, fileSet, readText, false);
-    const errors = scans.flatMap(({ file = '' }) =>
-      (found.files[file] ?? []).filter((d: TexlabDiagnostic) => d.severity === 'error' && SYNTAX_ERRORS.has(d.code ?? '')).map((d) => ({ ...d, file }))
-    );
+    const texts = new Map<string, string>();
+    const read = async (path: string) => {
+      const text = await readText(path);
+      texts.set(path, text);
+      return text;
+    };
+    const { scans } = await scanProject(doc, fileSet, read, false);
+    const errors = syntaxErrors(scans.map(({ file = '' }) => file), found.files, texts);
     if (!errors.length) return true;
     const listed = errors.slice(0, 6).map((e) => `${e.file}, line ${e.line}: ${e.message}`);
     if (errors.length > 6) listed.push(`and ${errors.length - 6} more`);
@@ -1437,6 +1459,7 @@ function Editor({ projectId }: { projectId: string }) {
     setCompile({ state: 'running', engine: used });
     try {
       await saveNow();
+      const startedAt = Date.now();
       const res = await compileProject({
         projectId,
         mainFile: doc,
@@ -1464,7 +1487,7 @@ function Editor({ projectId }: { projectId: string }) {
         if (!opts.auto || built === shownRef.current) showPdf(built, { url, blob: true });
         else window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
         // a copy on disk another program holds (Windows) is older: this one shows when the document's PDF comes back
-        if (res.pdfStale) stalePdf.current.set(built, blob);
+        if (res.pdfStale) stalePdf.current.set(built, { blob, at: startedAt });
         else stalePdf.current.delete(built);
         setCompileFailure('');
         ended = 'ok';
@@ -1863,6 +1886,7 @@ function Editor({ projectId }: { projectId: string }) {
     openFloats: (_card: FloatCard) => {},
     showFile: async (_path: string) => {},
     readText: async (_path: string) => '' as string,
+    files: (): ReadonlySet<string> => new Set(),
     renameSymbol: () => {}
   });
   actions.current = {
@@ -1895,6 +1919,7 @@ function Editor({ projectId }: { projectId: string }) {
       await openFile(path);
     },
     readText,
+    files: () => fileSet,
     renameSymbol: () => {
       renameSymbol();
     }
@@ -2154,6 +2179,11 @@ function Editor({ projectId }: { projectId: string }) {
     };
   }, []);
 
+  // the files no editor has open, as TexLab's outline read them: once until the tree or a file changes, rather than
+  // after each pause in typing
+  const outlineReads = useRef(new Map<string, string>());
+  useEffect(() => outlineReads.current.clear(), [fileSet, filesVersion]);
+
   // files added, removed or renamed outside the app (Finder, another editor, a git pull, a sync client) show in the
   // list as they happen, and loaded files changed there are checked against the editor's text
   useEffect(() => {
@@ -2161,6 +2191,7 @@ function Editor({ projectId }: { projectId: string }) {
     events.addEventListener('tree', () => refreshTree().catch(() => undefined));
     events.addEventListener('changed', (e) => {
       const { paths, all } = JSON.parse((e as MessageEvent<string>).data) as { paths?: string[]; all?: boolean };
+      outlineReads.current.clear();
       actions.current.recheck(all ? undefined : paths);
     });
     return () => events.close();
@@ -2177,6 +2208,7 @@ function Editor({ projectId }: { projectId: string }) {
           return activeRef.current === path ? viewRef.current : null;
         },
         read: (path) => actions.current.readText(path),
+        files: () => actions.current.files(),
         showReferences: setReferences,
         rename: () => actions.current.renameSymbol()
       },
@@ -2192,22 +2224,40 @@ function Editor({ projectId }: { projectId: string }) {
   useEffect(() => attachTexlab(), [texlabOn]);
 
   // TexLab's outline of the document being edited, a moment after typing stops, a file changes, a compile ends or
-  // TexLab starts. A compile's numbers reach TexLab two seconds after it ends (the backend's auxKept).
+  // TexLab starts. A compile's numbers reach TexLab two seconds after it ends (the backend's auxKept), so no outline
+  // comes before then, even when the compile's new PDF reloads the tree meanwhile.
   const outlinedLog = useRef(compileLog);
+  const compiledAt = useRef(0);
+  const outlinedWith = useRef<unknown[]>([]);
   useEffect(() => {
     const texlab = texlabRef.current;
     if (!texlabOn || !texlab || !docRoot) {
       setSymbolOutline(null);
       return;
     }
-    const wait = outlinedLog.current === compileLog ? 600 : 2600;
+    if (outlinedLog.current !== compileLog) compiledAt.current = Date.now();
     outlinedLog.current = compileLog;
+    const deps = [texlabOn, docRoot, fileSet, filesVersion, compileLog];
+    const typing = deps.every((dep, i) => dep === outlinedWith.current[i]);
+    outlinedWith.current = deps;
+    const wait = outlineDelay(typing, compiledAt.current, Date.now());
+    // an open file's live text, and a file read before it was opened is read again once it's closed
+    const read = async (path: string) => {
+      const open = filesRef.current.get(path);
+      if (open !== undefined) {
+        outlineReads.current.delete(path);
+        return open;
+      }
+      const kept = outlineReads.current.get(path) ?? (await getFile(projectId, path)).content;
+      outlineReads.current.set(path, kept);
+      return kept;
+    };
     let live = true;
     const timer = window.setTimeout(async () => {
       try {
         const symbols = await texlab.symbols();
         const seen = new Set<string>();
-        const found = await documentOutline(docRoot, fileSet, readText, symbolHeadings(symbols), seen);
+        const found = await documentOutline(docRoot, fileSet, read, symbolHeadings(symbols), seen);
         if (live) setSymbolOutline({ root: docRoot, items: found, seen });
       } catch {
         // the parser's outline shows meanwhile
@@ -2430,6 +2480,7 @@ function Editor({ projectId }: { projectId: string }) {
     // by default the document whose log the AI read, so a fix loop stays on it
     compile: (doc) => runCompile(doc || compiledDoc || mainFile),
     save: () => saveNow(),
+    keptPdf: (doc) => stalePdf.current.get(doc) ?? null,
     diagnostics: async () => (texlabRef.current?.available ? texlabRef.current.diagnostics() : { available: false, files: {} }),
     createVersion
   };

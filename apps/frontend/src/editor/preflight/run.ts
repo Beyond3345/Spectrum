@@ -2,7 +2,7 @@ import { matchBrace, withoutComments } from '../../../../backend/src/latex/text.
 import { lastPass, parseCompileLog, projectFile } from '../compileLog';
 import { figureKind } from '../floats';
 import { plainText, scanInsights } from '../insights';
-import { CITE_COMMANDS, REF_COMMANDS } from '../latexContext';
+import { CITE_COMMANDS, REF_COMMANDS, VERBATIM_ENVS } from '../latexContext';
 import { INPUT_RE, externalDocuments, includedFile, inputName, scanTex } from '../latexEnvs';
 import { scanTodos } from '../todos';
 
@@ -105,8 +105,18 @@ function lineFinder(text: string) {
   };
 }
 
+// the code verbatim environments and \verb|…| show, which isn't LaTeX
+const VERBATIM = new RegExp(
+  String.raw`\\begin\s*\{(${[...VERBATIM_ENVS].map((env) => env.replace('*', '\\*')).join('|')})\}[\s\S]*?\\end\s*\{\1\}|\\verb\*?([^A-Za-z\s])[^\n]*?\2`,
+  'g'
+);
+/** A source's code: its comments gone and what verbatim environments and \verb show blanked, its line breaks kept. */
+const codeOf = (text: string) => withoutComments(text).replace(VERBATIM, (code) => code.replace(/[^\n]/g, ' '));
+
 type Place = { file: string; line: number };
 const LABEL = /\\label\s*\{([^{}]+)\}/g;
+// a listing's or box's label in its options, such as \begin{lstlisting}[label={lst:a}]
+const OPTION_LABEL = /\\(?:begin\s*\{(?:lstlisting|minted|tcolorbox)\}|lstinputlisting|inputminted)[^\n]*?\blabel\s*=\s*\{?([^,{}\]\s]+)/g;
 // a command with up to two [optional] arguments before its first {argument}: \ref, \cite and their kin
 const COMMAND_ARG = /\\([A-Za-z]+)\*?\s*(?:\[[^\]]*\]\s*){0,2}\{([^{}]*)\}/g;
 const BIBITEM = /\\bibitem\s*(?:\[[^\]]*\]\s*)?\{([^{}]+)\}/g;
@@ -158,6 +168,9 @@ const PAPER: [string, number, number][] = [
   ['A3', 842, 1191]
 ];
 
+/** A PDF pdf.js couldn't open for its password: nothing but that it's encrypted was read from it. */
+const unreadable = (pdf: PdfFacts) => pdf.encrypted && !pdf.pages.length;
+
 /** What a group can't check without the PDF or the log: "Compile first", and why. */
 export function preflightGaps(input: Pick<PreflightInput, 'log' | 'failed' | 'pdfFacts' | 'anonymous'>): Partial<Record<PreflightGroup, string>> {
   const gaps: Partial<Record<PreflightGroup, string>> = {};
@@ -169,7 +182,7 @@ export function preflightGaps(input: Pick<PreflightInput, 'log' | 'failed' | 'pd
     gaps.accessibility = `${first}: most of these checks read the PDF.`;
     gaps.submission = `${first}: the PDF’s version, fonts and encryption need a PDF.`;
     if (input.anonymous) gaps.privacy = `${first}: the PDF’s Author field needs a PDF.`;
-  }
+  } else if (unreadable(input.pdfFacts)) gaps.accessibility = 'The PDF is password-protected, so its accessibility couldn’t be read.';
   return gaps;
 }
 
@@ -177,7 +190,14 @@ export function preflightGaps(input: Pick<PreflightInput, 'log' | 'failed' | 'pd
 export function runPreflight(input: PreflightInput): Finding[] {
   const { doc, pdfFacts: pdf } = input;
   const found: Finding[] = [];
-  const add = (finding: Finding) => found.push(finding);
+  // a second of the same finding (two \hl on one line, a token twice on one) says nothing more, and would share its
+  // row's id in Review, so Dismiss would hide both
+  const seenFindings = new Set<string>();
+  const add = (finding: Finding) => {
+    const id = JSON.stringify([finding.group, finding.severity, finding.message, finding.file, finding.line, finding.page]);
+    if (!seenFindings.has(id)) found.push(finding);
+    seenFindings.add(id);
+  };
   const paths = input.files.map((f) => f.path);
   const pathSet = new Set(paths);
   const folded = new Map(paths.map((p) => [p.toLowerCase(), p]));
@@ -219,23 +239,26 @@ export function runPreflight(input: PreflightInput): Finding[] {
   const graphicsDirs = [''];
   let citesAll = false;
   for (const { path, text } of sources) {
-    const code = withoutComments(text);
+    const code = codeOf(text);
     const lineOf = lineFinder(code);
-    for (const m of code.matchAll(LABEL)) {
-      const key = m[1].trim();
-      labels.set(key, [...(labels.get(key) ?? []), { file: path, line: lineOf(m.index!) }]);
-    }
+    // a key with a # in it is a \newcommand's argument, not a label, citation or image of the document's
+    const label = (key: string, at: number) => {
+      if (!key.includes('#')) labels.set(key, [...(labels.get(key) ?? []), { file: path, line: lineOf(at) }]);
+    };
+    for (const m of code.matchAll(LABEL)) label(m[1].trim(), m.index!);
+    // the options are blanked in code with the listing they open, and have the same length in withoutComments' text
+    for (const m of withoutComments(text).matchAll(OPTION_LABEL)) label(m[1].trim(), m.index!);
     for (const m of code.matchAll(COMMAND_ARG)) {
       const list = REF_COMMANDS.test(m[1]) ? refs : CITE_COMMANDS.test(m[1]) ? cites : null;
       if (!list) continue;
       for (const key of m[2].split(',').map((k) => k.trim())) {
         if (key === '*' && list === cites) citesAll = true;
-        else if (key) list.push({ key, file: path, line: lineOf(m.index!) });
+        else if (key && !key.includes('#')) list.push({ key, file: path, line: lineOf(m.index!) });
       }
     }
     for (const m of code.matchAll(BIBITEM)) bibitems.add(m[1].trim());
     for (const m of code.matchAll(GRAPHICSPATH)) graphicsDirs.push(...[...m[1].matchAll(/\{([^{}]*)\}/g)].map((d) => d[1].trim()));
-    for (const m of code.matchAll(GRAPHICS)) images.push({ name: m[2].trim(), options: m[1] ?? '', file: path, line: lineOf(m.index!) });
+    for (const m of code.matchAll(GRAPHICS)) if (!m[2].includes('#')) images.push({ name: m[2].trim(), options: m[1] ?? '', file: path, line: lineOf(m.index!) });
     for (const m of code.matchAll(INPUT_RE)) included.push({ name: inputName(m), command: m[0].match(/\\(\w+)/)![1], file: path, line: lineOf(m.index!) });
   }
   // the labels of the documents \externaldocument links, with their prefix
@@ -255,12 +278,22 @@ export function runPreflight(input: PreflightInput): Finding[] {
       )
     );
 
+  // A compile that made its PDF says in its log what TeX found, in the project or in the TeX tree (a TEXMFHOME image, a
+  // central .bib through BIBINPUTS): an image it used, and citations it resolved
+  const clean = input.log && !input.failed ? lastPass(input.log).join('\n') : '';
+  const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const texFound = (image: string) =>
+    !!clean &&
+    !new RegExp(`File \`${escaped(image)}' not found`).test(clean) &&
+    new RegExp(`^File: (?:\\S*/)?${escaped(image.split('/').pop()!)}(?:\\.[A-Za-z0-9]+)? Graphic file`, 'm').test(clean);
+  const unresolved = { citations: new Set<string>(), references: new Set<string>() };
+  const noDatabase = /I couldn't open database file|ERROR - Cannot find '[^']*'/.test(clean);
+
   // ─── Compile and layout ───
   if (input.log) {
     const group = 'compile';
     if (input.failed) add({ group, severity: 'error', message: 'The last compile failed and made no PDF.', fixable: true });
     const parsed = parseCompileLog(input.log, input.root).map((e) => (e.file ? { ...e, file: projectFile(e.file, doc, paths) } : e));
-    const unresolved = { citations: new Set<string>(), references: new Set<string>(), page: 0 };
     let rerun = false;
     for (const e of parsed) {
       const where = { ...(e.file && { file: e.file }), ...(e.line && { line: e.line }) };
@@ -269,19 +302,21 @@ export function runPreflight(input: PreflightInput): Finding[] {
         continue;
       }
       const box = /^Overfull \\([hv])box \((\d+(?:\.\d+)?)pt too (?:wide|high)\)/.exec(e.message);
-      const missing = /^(Citation|Reference) [`'‘]([^'’]+)['’] on page (\d+) undefined/.exec(e.message);
+      const missing = /^(Citation|Reference) [`'‘]([^'’]+)['’] on page \S+ undefined/.exec(e.message);
       if (box) {
         const pt = Math.round(Number(box[2]) * 10) / 10;
         add({ group, severity: pt >= 1 ? 'warning' : 'info', message: box[1] === 'h' ? `A line runs ${pt}pt past the margin` : `A page’s content is ${pt}pt too tall`, ...where, fixable: true });
       } else if (missing) {
         unresolved[missing[1] === 'Citation' ? 'citations' : 'references'].add(missing[2]);
-        unresolved.page ||= Number(missing[3]);
       } else if (/Rerun to get|rerun LaTeX|Please rerun|Label\(s\) may have changed/i.test(e.message)) rerun = true;
     }
     const keys = [...unresolved.citations, ...unresolved.references];
     if (keys.length) {
       const what = [unresolved.citations.size && plural(unresolved.citations.size, 'citation'), unresolved.references.size && plural(unresolved.references.size, 'reference')].filter(Boolean).join(' and ');
-      add({ group, severity: 'warning', message: `The PDF shows ?? for ${what} the last compile couldn’t resolve: ${listed(keys)}`, ...(unresolved.page && { page: unresolved.page }) });
+      // the page in the PDF that shows them: the log's "on page N" is the printed number, which a title page or roman
+      // front matter puts out of step with the PDF's own
+      const shown = pdf ? pdf.pages.findIndex((p) => p.text.includes('??')) : -1;
+      add({ group, severity: 'warning', message: `The PDF shows ?? for ${what} the last compile couldn’t resolve: ${listed(keys)}`, ...(shown >= 0 && { page: shown + 1 }) });
     }
     if (rerun) add({ group, severity: 'warning', message: 'The last compile still needed another pass, so references or the contents may be out of date. Compile again.' });
     const glyphs = new Map<string, { char: string; font: string; n: number }>();
@@ -326,11 +361,14 @@ export function runPreflight(input: PreflightInput): Finding[] {
     const named = new Set(scans.flatMap((s) => s.bibs.map((n) => includedFile(pathSet, doc, n, '.bib'))).filter(Boolean) as string[]);
     const entries = input.bib?.filter((e) => !named.size || named.has(e.file)) ?? [];
     const keys = new Set([...entries.map((e) => e.key), ...bibitems]);
-    if (input.bib && cites.length && !keys.size) add({ group, severity: 'error', message: 'The document cites sources but has no bibliography: no .bib file and no thebibliography', ...cites[0] });
-    else if (input.bib) {
+    // after a compile that made its PDF, a key the project lacks is missing only if the log says so too
+    const unfound = (key?: string) => !clean || noDatabase || (key === undefined ? unresolved.citations.size > 0 : unresolved.citations.has(key));
+    if (input.bib && cites.length && !keys.size) {
+      if (unfound()) add({ group, severity: 'error', message: 'The document cites sources but has no bibliography: no .bib file and no thebibliography', ...cites[0] });
+    } else if (input.bib) {
       const seen = new Set<string>();
       for (const c of cites)
-        if (!keys.has(c.key) && !seen.has(c.key)) {
+        if (!keys.has(c.key) && !seen.has(c.key) && unfound(c.key)) {
           seen.add(c.key);
           add({ group, severity: 'warning', message: `No bibliography entry has the key ${quoted(c.key)}`, file: c.file, line: c.line, fixable: true });
         }
@@ -360,10 +398,13 @@ export function runPreflight(input: PreflightInput): Finding[] {
       for (const [file, list] of unused)
         add({ group, severity: 'info', message: `${plural(list.length, 'entry', 'entries')} in ${file} ${list.length === 1 ? 'is' : 'are'} never cited: ${listed(list.map((e) => e.key))}`, file, line: list[0].line });
     }
-    for (const image of images) if (!Object.keys(imageFile(image.name)).length) add({ group, severity: 'error', message: `Can’t find the image ${quoted(image.name)}`, file: image.file, line: image.line });
+    for (const image of images)
+      if (!Object.keys(imageFile(image.name)).length && !texFound(image.name)) add({ group, severity: 'error', message: `Can’t find the image ${quoted(image.name)}`, file: image.file, line: image.line });
     const referenced = new Set(refs.map((r) => r.key));
     for (const [kind, rows] of [['Figure', insights.figures], ['Table', insights.tables]] as const)
       for (const row of rows) {
+        // one in a \newcommand's body, labelled by its argument
+        if (row.label?.includes('#')) continue;
         const name = row.text ? `${kind} ${quoted(row.text, 50)}` : `A ${kind.toLowerCase()} without a caption`;
         if (!row.label) add({ group, severity: 'info', message: `${name} has no \\label, so the text can’t refer to it`, file: row.file, line: row.line, fixable: true });
         else if (!referenced.has(row.label)) add({ group, severity: 'info', message: `${name} is never referred to in the text`, file: row.file, line: row.line, fixable: true });
@@ -398,15 +439,17 @@ export function runPreflight(input: PreflightInput): Finding[] {
       add({ group, severity: comment ? 'info' : 'warning', message: comment ? `${todo.kind} comment: ${quoted(todo.text)}` : `A \\${todo.kind} note is left in: ${quoted(todo.text)}`, file: todo.file, line: todo.line });
     }
     for (const { path, text } of sources) {
-      const code = withoutComments(text);
+      const code = codeOf(text);
       const lineOf = lineFinder(code);
       for (const m of code.matchAll(/\\hl\s*\{/g)) add({ group, severity: 'warning', message: 'Highlighted text (\\hl) is left in', file: path, line: lineOf(m.index!), fixable: true });
     }
     if (input.anonymous) {
-      // a class's anonymous option leaves the authors out itself
-      const hidden = sources.some(({ text }) => /\\documentclass\s*\[[^\]]*\banonymous\b/.test(withoutComments(text)));
+      // a class's anonymous option leaves the authors out itself, and so does a venue style's review option
+      const hidden = sources.some(({ text }) =>
+        /\\documentclass\s*\[[^\]]*\banonymous\b|\\usepackage\s*\[[^\]]*\breview\b[^\]]*\]\s*\{(?:cvpr|iccv|eccv|acl)\}/.test(withoutComments(text))
+      );
       for (const { path, text } of hidden ? [] : sources) {
-        const code = withoutComments(text);
+        const code = codeOf(text);
         const lineOf = lineFinder(code);
         for (const m of code.matchAll(/\\author\s*(?:\[[^\]]*\]\s*)?\{/g)) {
           const open = m.index! + m[0].length - 1;
@@ -421,14 +464,16 @@ export function runPreflight(input: PreflightInput): Finding[] {
         }
         for (const m of code.matchAll(ACKNOWLEDGEMENTS)) add({ group, severity: 'warning', message: 'The acknowledgements can identify the authors', file: path, line: lineOf(m.index!), fixable: true });
       }
-      if (pdf?.author.trim()) add({ group, severity: 'warning', message: `The PDF’s Author field says ${quoted(pdf.author.trim(), 60)}`, fixable: true });
+      const author = pdf?.author.trim();
+      if (author && !/^anonymous/i.test(author)) add({ group, severity: 'warning', message: `The PDF’s Author field says ${quoted(author, 60)}`, fixable: true });
     }
   }
 
   // ─── Accessibility ───
   {
     const group = 'accessibility';
-    if (pdf) {
+    // a password-protected PDF pdf.js couldn't open has nothing read from it to go on (preflightGaps says so)
+    if (pdf && !unreadable(pdf)) {
       if (!pdf.title.trim()) add({ group, severity: 'warning', message: 'The PDF has no title in its properties, so readers and screen readers show its file name', fixable: true });
       if (!pdf.lang.trim()) add({ group, severity: 'warning', message: 'The PDF doesn’t say what language it’s in, so a screen reader may read it in the wrong one', fixable: true });
       if (!pdf.tagged) add({ group, severity: 'warning', message: 'The PDF isn’t tagged, so screen readers can’t follow its headings, lists and figures', fixable: true });
@@ -453,7 +498,7 @@ export function runPreflight(input: PreflightInput): Finding[] {
         add({ group, severity: 'warning', message: `${quoted(headings[i].text, 50)} jumps from a ${LEVELS[before]} to a ${LEVELS[now]}`, file: headings[i].file, line: headings[i].line, fixable: true });
     }
     for (const { path, text } of sources) {
-      const code = withoutComments(text);
+      const code = codeOf(text);
       const lineOf = lineFinder(code);
       for (const m of code.matchAll(HREF)) if (VAGUE_LINK.test(plainText(m[1]))) add({ group, severity: 'info', message: `The link text ${quoted(plainText(m[1]))} doesn’t say where it goes`, file: path, line: lineOf(m.index!), fixable: true });
     }
@@ -489,8 +534,11 @@ export function runPreflight(input: PreflightInput): Finding[] {
     }
     for (const path of new Set([...docFiles, ...used].filter((p) => /[^A-Za-z0-9._/-]/.test(p))))
       add({ group, severity: 'warning', message: `The file name ${path} has spaces or other characters some systems handle badly` });
-    if (![...classes].some((c) => NO_ABSTRACT.has(c))) {
-      if (!insights.metadata.abstract) add({ group, severity: 'warning', message: 'The document has no abstract' });
+    // a paper's: one with a title (a CV or a letter has none), and as notes, reports and theses go without, a note
+    const titled = sources.some(({ text }) => /\\maketitle\b|\\begin\s*\{titlepage\}/.test(codeOf(text)));
+    if (titled && ![...classes].some((c) => NO_ABSTRACT.has(c))) {
+      const abstract = insights.metadata.abstract || sources.some(({ text }) => /\\(?:chapter|section)\*?\s*\{\s*Abstract\s*\}/i.test(codeOf(text)));
+      if (!abstract) add({ group, severity: 'info', message: 'The document has no abstract' });
       if (!insights.metadata.keywords.length) add({ group, severity: 'info', message: 'The document has no keywords' });
     }
   }
