@@ -32,6 +32,7 @@ import {
   updateMeta
 } from '../services/projectService.js';
 import { refuseDelete } from './cloud.js';
+import { followRename } from './todos.js';
 import { documentLabels, projectStats } from '../services/statsService.js';
 import { readProjectSettings, updateProjectSettings } from '../services/projectSettings.js';
 import { BIB_TOOLS, SUPPORTED_ENGINES } from '../services/compileService.js';
@@ -395,7 +396,7 @@ export function registerProjectRoutes(fastify) {
   fastify.get('/api/projects/:id/stats', async (req) => {
     const root = await getProjectRoot(req.params.id);
     const doc = String(req.query?.doc || req.query?.mainFile || '') || (await readMeta(root)).mainFile || 'main.tex';
-    return { ...(await projectStats(root, doc)), ...(await documentLabels(root, doc)) };
+    return { ...(await projectStats(root, doc, req.query?.texFolder)), ...(await documentLabels(root, doc)) };
   });
 
   // Tells the open editor when files appear, go or are renamed outside the app (Finder, another editor, a git
@@ -639,6 +640,8 @@ export function registerProjectRoutes(fastify) {
     }
     await ensureDir(path.dirname(absTo));
     await renameOver(absFrom, absTo);
+    // the notes on its PDF and the to-dos linked to it go with it (the file moved whether or not they do)
+    await followRename(root, String(from), String(to)).catch(() => {});
     await touchProject(root).catch(() => {});
     return { ok: true };
   });

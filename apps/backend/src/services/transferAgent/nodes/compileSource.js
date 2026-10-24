@@ -31,6 +31,7 @@ export async function compileSource(state) {
     projectId: state.sourceProjectId,
     mainFile: state.sourceMainFile,
     engine: state.engine,
+    texFolder: state.texFolder,
   });
 
   if (!result.ok || result.status !== 0 || !result.pdf) {

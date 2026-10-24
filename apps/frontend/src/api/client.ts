@@ -294,13 +294,15 @@ export interface ProjectStats {
   labels?: Record<string, { number: string; page: string }>;
   /** when those .aux files were written (ms), null before the first compile */
   auxAt?: number | null;
-  /** a source file is newer than the kept .aux */
+  /** a file the document reads is newer than the kept .aux */
   stale?: boolean;
+  /** the contents' entries from the kept .aux files, in order; number '' for an unnumbered one */
+  headings?: { level: string; number: string; page: string }[];
 }
 
-/** doc: the project-relative document; sent as mainFile too, which texcount counts from */
-export function getProjectStats(id: string, doc: string) {
-  const qs = new URLSearchParams({ mainFile: doc, doc }).toString();
+/** doc: the project-relative document; sent as mainFile too, which texcount counts from (looked for in texFolder first) */
+export function getProjectStats(id: string, doc: string, texFolder?: string) {
+  const qs = new URLSearchParams({ mainFile: doc, doc, ...(texFolder && { texFolder }) }).toString();
   return request<ProjectStats>(`/api/projects/${id}/stats?${qs}`);
 }
 
@@ -518,6 +520,8 @@ export interface CompileResult {
   pdf?: string;
   /** relative path of the PDF written next to the document, e.g. "main.pdf" */
   pdfPath?: string;
+  /** that copy wasn't updated (another program on Windows holds it), so only `pdf` is this compile's */
+  pdfStale?: boolean;
   log?: string;
   status?: number;
   engine?: string;
@@ -1022,6 +1026,8 @@ export interface TransferStartPayload {
   targetTemplateId: string;
   targetMainFile: string;
   engine?: CompileEngine;
+  /** Settings › Engines › LaTeX's TeX folder, which the compiles look in first */
+  texFolder?: string;
   layoutCheck?: boolean;
   llmConfig?: Partial<LLMConfig>;
   visionLlmConfig?: Partial<LLMConfig>;
@@ -1089,6 +1095,7 @@ export interface PdfTransferStartPayload {
   targetTemplateId: string;
   targetMainFile: string;
   engine?: CompileEngine;
+  texFolder?: string;
   layoutCheck?: boolean;
   llmConfig?: Partial<LLMConfig>;
   visionLlmConfig?: Partial<LLMConfig>;
@@ -1124,8 +1131,9 @@ export interface SystemCheck {
   platform: string;
 }
 
-export function systemCheck() {
-  return request<SystemCheck>('/api/system/check');
+/** texFolder: Settings › Engines › LaTeX's TeX folder, looked in first */
+export function systemCheck(texFolder?: string) {
+  return request<SystemCheck>(`/api/system/check${texFolder ? `?${new URLSearchParams({ texFolder })}` : ''}`);
 }
 
 // ─── Cloud locations ───

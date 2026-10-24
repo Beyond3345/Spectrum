@@ -25,20 +25,40 @@ export async function readItems(root, folder) {
   for (const name of await fs.readdir(dir).catch(() => [])) {
     if (!name.endsWith('.json')) continue;
     const item = await readJson(path.join(dir, name)).catch(() => null); // half-written or hand-edited
-    if (item && name === `${item.id}.json`) items.push(item);
+    if (item && name === `${item.id}.json` && typeof item.text === 'string' && typeof item.createdAt === 'string') items.push(item);
   }
   return items.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 }
 
-// where a to-do points: a source line (found again by its text if lines move), a PDF page or a reference
+/** PDF notes' documents and to-dos' files and documents follow a rename of `from` (a file, or a folder's files) to `to`. */
+export async function followRename(root, from, to) {
+  const moved = (p) => (typeof p === 'string' && (p === from || p.startsWith(`${from}/`)) ? to + p.slice(from.length) : null);
+  for (const note of await readItems(root, 'notes')) {
+    const doc = moved(note.doc);
+    if (doc) await writeJsonAtomic(appPath(root, 'notes', `${note.id}.json`), { ...note, doc });
+  }
+  for (const todo of await readItems(root, 'todos')) {
+    const file = moved(todo.link?.file);
+    const doc = moved(todo.link?.doc);
+    if (file || doc) await writeJsonAtomic(appPath(root, 'todos', `${todo.id}.json`), { ...todo, link: { ...todo.link, ...(file && { file }), ...(doc && { doc }) } });
+  }
+}
+
+// where a to-do points: a source line (found again by its text if lines move), a PDF page or a reference. Fields a
+// later version adds go through, and a kind of link it adds is kept as it is
 function todoLink(link) {
   if (link == null) return undefined;
-  if (isText(link.file, 1024) && link.file && isCount(link.line) && (link.snippet == null || typeof link.snippet === 'string')) {
-    return { file: link.file, line: link.line, ...(link.snippet != null && { snippet: link.snippet.slice(0, MAX_TEXT) }) };
+  if (typeof link !== 'object' || Array.isArray(link)) throw httpError('Invalid to-do link.', 400);
+  if ('file' in link) {
+    if (!isText(link.file, 1024) || !link.file || !isCount(link.line) || (link.snippet != null && typeof link.snippet !== 'string')) throw httpError('Invalid line link.', 400);
+    return { ...link, ...(link.snippet != null && { snippet: link.snippet.slice(0, MAX_TEXT) }) };
   }
-  if (isText(link.doc, 1024) && link.doc && isCount(link.page)) return { doc: link.doc, page: link.page };
-  if (isText(link.key, 200) && link.key) return { key: link.key };
-  throw httpError('A to-do links to a line, a PDF page or a reference.', 400);
+  if ('doc' in link) {
+    if (!isText(link.doc, 1024) || !link.doc || !isCount(link.page)) throw httpError('Invalid page link.', 400);
+    return link;
+  }
+  if ('key' in link && (!isText(link.key, 200) || !link.key)) throw httpError('Invalid reference link.', 400);
+  return link;
 }
 
 export function registerTodoRoutes(fastify) {
@@ -46,11 +66,12 @@ export function registerTodoRoutes(fastify) {
 
   fastify.put('/api/projects/:id/todos/:tid', async (req) => {
     const file = await itemFile(req, 'todos', req.params.tid);
-    const { id, text, done, createdAt, updatedAt, link } = req.body || {};
+    // the rest: fields a later version adds, which a save here keeps
+    const { id, text, done, createdAt, updatedAt, link, ...rest } = req.body || {};
     if (id !== req.params.tid) throw httpError('The to-do’s id doesn’t match the address.', 400);
     if (!isText(text, MAX_TEXT)) throw httpError(`A to-do’s text is at most ${MAX_TEXT} characters.`, 400);
     if (typeof done !== 'boolean' || !isText(createdAt, 40) || !isText(updatedAt, 40)) throw httpError('Invalid to-do.', 400);
-    const todo = { id, text, done, createdAt, updatedAt, ...(link != null && { link: todoLink(link) }) };
+    const todo = { ...rest, id, text, done, createdAt, updatedAt, ...(link != null && { link: todoLink(link) }) };
     await writeJsonAtomic(file, todo);
     return { ok: true, todo };
   });

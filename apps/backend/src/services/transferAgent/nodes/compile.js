@@ -12,6 +12,7 @@ export async function compile(state) {
     projectId: state.targetProjectId,
     mainFile: state.targetMainFile,
     engine: state.engine,
+    texFolder: state.texFolder,
   });
 
   const attempt = (state.compileAttempt || 0) + 1;

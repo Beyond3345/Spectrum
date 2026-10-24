@@ -3,7 +3,8 @@
 // folders and a fake home folder. Run: npm test
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { promises as fs, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import crypto from 'node:crypto';
+import { promises as fs, existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -23,7 +24,7 @@ const { registerVersionRoutes } = await import('../src/routes/versions.js');
 const { registerTodoRoutes } = await import('../src/routes/todos.js');
 const { registerNoteRoutes } = await import('../src/routes/notes.js');
 const { createProject } = await import('../src/services/projectService.js');
-const { createCompileCheckpoint, createVersion } = await import('../src/services/versionService.js');
+const { createCompileCheckpoint, createVersion, listVersions, readVersionFile, restoreVersion } = await import('../src/services/versionService.js');
 const { parseLabels } = await import('../src/services/statsService.js');
 
 const app = Fastify();
@@ -103,7 +104,11 @@ test('to-dos are saved one file each and checked', async () => {
   const line = await api(`${url}/b`, 'PUT', todo('b', { link: { file: 'main.tex', line: 3, snippet: 'x'.repeat(3000) }, junk: 1 }));
   assert.equal(line.status, 200);
   assert.equal(line.json.todo.link.snippet.length, 2000);
-  assert.equal(line.json.todo.junk, undefined);
+  // a field a later version adds, and a kind of link it adds, come through a save here
+  assert.equal(line.json.todo.junk, 1);
+  const later = todo('l', { priority: 'high', link: { url: 'https://example.org', note: 'x' } });
+  assert.deepEqual((await api(`${url}/l`, 'PUT', later)).json.todo, later);
+  assert.equal((await api(`${url}/l`, 'DELETE')).status, 200);
   assert.equal((await api(`${url}/a`, 'PUT', todo('a', { createdAt: '2026-10-23T00:00:00.000Z', link: { doc: 'main.tex', page: 2 } }))).status, 200);
   assert.equal((await api(`${url}/c`, 'PUT', todo('c', { done: true, createdAt: '2026-10-25T00:00:00.000Z', link: { key: 'Knuth1984' } }))).status, 200);
   assert.deepEqual((await api(url)).json.todos.map((t) => t.id), ['a', 'b', 'c']);
@@ -112,10 +117,12 @@ test('to-dos are saved one file each and checked', async () => {
   // a sync app's conflict copy isn't listed twice, nor a half-written file
   await fs.copyFile(path.join(p.path, '.spectrum', 'todos', 'a.json'), path.join(p.path, '.spectrum', 'todos', 'a (conflicted copy).json'));
   await fs.writeFile(path.join(p.path, '.spectrum', 'todos', 'd.json'), '{"id":');
+  // nor one edited by hand into something the editor can't show
+  await fs.writeFile(path.join(p.path, '.spectrum', 'todos', 'f.json'), '{"id":"f","text":5,"createdAt":1}');
   assert.equal((await api(url)).json.todos.length, 3);
 
   for (const [id, body] of [['a', todo('b')], ['bad id', todo('bad id')], ['e', todo('e', { text: 'x'.repeat(2001) })], ['e', todo('e', { done: 'no' })],
-    ['e', todo('e', { link: { file: 'main.tex', line: 0 } })], ['e', todo('e', { link: { page: 2 } })], ['e', { id: 'e' }]]) {
+    ['e', todo('e', { link: { file: 'main.tex', line: 0 } })], ['e', todo('e', { link: { doc: 'main.tex' } })], ['e', todo('e', { link: 'main.tex' })], ['e', { id: 'e' }]]) {
     assert.equal((await api(`${url}/${encodeURIComponent(id)}`, 'PUT', body)).status, 400, JSON.stringify(body));
   }
   assert.equal((await api(`${url}/b`, 'DELETE')).status, 200);
@@ -131,11 +138,31 @@ test('PDF notes are saved one file each and listed per document', async () => {
   assert.deepEqual((await api(`${url}?doc=main.tex`)).json.notes, [note('n1', 'main.tex', { colour: '#ffcc00' })]);
   assert.equal((await api(url)).json.notes.length, 2);
   assert.ok((await fs.stat(path.join(p.path, '.spectrum', 'notes', 'n2.json'))).isFile());
+  // a field a later version adds comes through a save here
+  assert.equal((await api(`${url}/n2`, 'PUT', note('n2', 'chapters/notes.tex', { pinned: true }))).json.note.pinned, true);
   for (const body of [note('n3', ''), note('n3', 'main.tex', { page: 0 }), note('n3', 'main.tex', { x: 'left' }), note('n3', 'main.tex', { text: 'x'.repeat(2001) }), note('n4', 'main.tex')]) {
     assert.equal((await api(`${url}/n3`, 'PUT', body)).status, 400, JSON.stringify(body));
   }
   assert.equal((await api(`${url}/n1`, 'DELETE')).status, 200);
   assert.deepEqual((await api(`${url}?doc=main.tex`)).json.notes, []);
+});
+
+test('renaming a document or its folder takes its PDF notes and the to-dos linked to it along', async () => {
+  const p = await newProject('Renamed', { 'main.tex': '\\documentclass{article}\\begin{document}\\input{chapters/one}\\end{document}\n', 'chapters/one.tex': 'One\n' });
+  const at = (minute) => `2026-10-24T01:0${minute}:00.000Z`;
+  const url = `/api/projects/${p.id}`;
+  await api(`${url}/notes/n1`, 'PUT', { id: 'n1', doc: 'main.tex', page: 1, x: 1, y: 2, text: 'Note', createdAt: at(0), updatedAt: at(0) });
+  await api(`${url}/todos/t1`, 'PUT', { id: 't1', text: 'Line', done: false, createdAt: at(1), updatedAt: at(1), link: { file: 'chapters/one.tex', line: 1, snippet: 'One' } });
+  await api(`${url}/todos/t2`, 'PUT', { id: 't2', text: 'Page', done: false, createdAt: at(2), updatedAt: at(2), link: { doc: 'main.tex', page: 1 } });
+  await api(`${url}/todos/t3`, 'PUT', { id: 't3', text: 'Other', done: false, createdAt: at(3), updatedAt: at(3), link: { file: 'chapters-old/one.tex', line: 1 } });
+  assert.equal((await api(`${url}/rename`, 'POST', { from: 'main.tex', to: 'paper.tex' })).json.ok, true);
+  assert.equal((await api(`${url}/rename`, 'POST', { from: 'chapters', to: 'parts' })).json.ok, true);
+  assert.deepEqual((await api(`${url}/notes?doc=paper.tex`)).json.notes.map((n) => n.id), ['n1']);
+  assert.deepEqual((await api(`${url}/todos`)).json.todos.map((t) => t.link), [
+    { file: 'parts/one.tex', line: 1, snippet: 'One' },
+    { doc: 'paper.tex', page: 1 },
+    { file: 'chapters-old/one.tex', line: 1 }
+  ]);
 });
 
 test('labels are read from the kept .aux files, with when they were written and whether the source is newer', async () => {
@@ -159,15 +186,28 @@ test('labels are read from the kept .aux files, with when they were written and 
   // as a compile keeps them: the document's own .aux and its \include'd chapters'
   const store = path.join(dataDir, 'cache', p.id, 'aux-files', 'main.tex');
   await fs.mkdir(path.join(store, 'chapters'), { recursive: true });
-  await fs.writeFile(path.join(store, 'main.aux'), '\\relax\n\\@input{chapters/one.aux}\n\\newlabel{fig:x}{{2}{3}}\n');
-  await fs.writeFile(path.join(store, 'chapters', 'one.aux'), '\\relax\n\\newlabel{sec:one}{{1}{1}{One}{section.1}{}}\n');
+  await fs.writeFile(path.join(store, 'main.aux'), [
+    '\\relax',
+    '\\@writefile{toc}{\\contentsline {section}{Preface}{i}{section*.1}\\protected@file@percent }',
+    '\\@input{chapters/one.aux}',
+    '\\@writefile{toc}{\\contentsline {section}{\\numberline {2}Two}{3}{section.2}\\protected@file@percent }',
+    '\\newlabel{fig:x}{{2}{3}}',
+    ''
+  ].join('\n'));
+  await fs.writeFile(path.join(store, 'chapters', 'one.aux'), '\\relax\n\\@writefile{toc}{\\contentsline {section}{\\numberline {1}One}{1}{section.1}}\n\\newlabel{sec:one}{{1}{1}{One}{section.1}{}}\n');
   const later = new Date(Date.now() + 60_000);
   await fs.utimes(path.join(store, 'main.aux'), later, later);
   const fresh = await stats();
   assert.deepEqual(fresh.labels, { 'fig:x': { number: '2', page: '3' }, 'sec:one': { number: '1', page: '1' } });
+  // every heading's number and page in reading order, a chapter's where it's \include'd
+  assert.deepEqual(fresh.headings, [{ level: 'section', number: '', page: 'i' }, { level: 'section', number: '1', page: '1' }, { level: 'section', number: '2', page: '3' }]);
   // as precise as the disk keeps times
   assert.ok(Math.abs(fresh.auxAt - later.getTime()) < 1000, String(fresh.auxAt));
   assert.equal(fresh.stale, false);
+  // a file the document doesn't read doesn't count
+  await fs.writeFile(path.join(p.path, 'other.tex'), 'Elsewhere\n');
+  await fs.utimes(path.join(p.path, 'other.tex'), new Date(Date.now() + 120_000), new Date(Date.now() + 120_000));
+  assert.equal((await stats()).stale, false);
 
   const newer = new Date(Date.now() + 120_000);
   await fs.utimes(path.join(p.path, 'chapters', 'one.tex'), newer, newer);
@@ -230,4 +270,54 @@ test('compile checkpoints: only when something changed, at most one every 10 min
   assert.deepEqual((await versions()).map((v) => v.id), before.filter((v) => v.id !== third.id).map((v) => v.id));
   assert.equal((await api(`${url}?automatic=1&olderThanDays=0`, 'DELETE')).json.removed, 2);
   assert.deepEqual((await versions()).map((v) => [v.reason, v.label]), [['compile', 'Submitted'], ['manual', '']]);
+});
+
+test('a checkpoint asked for with nothing changed since a compile’s becomes that one, so the next compile keeps it', async () => {
+  const p = await newProject('Promoted');
+  const versions = async () => listVersions(p.path);
+  const edit = (text) => fs.writeFile(path.join(p.path, 'main.tex'), text);
+  const holding = async (text) => {
+    const held = [];
+    for (const v of await versions()) if ((await readVersionFile(p.path, v.id, 'main.tex')).content === text) held.push(v.reason);
+    return held;
+  };
+  for (const [reason, label] of [['manual', ''], ['before-ai', 'Before applying agent changes'], ['before-restore', '']]) {
+    await edit(`saved: ${reason}`);
+    await createCompileCheckpoint(p.path);
+    const { unchanged } = await createVersion(p.path, { reason, label });
+    assert.equal(unchanged, true);
+    assert.deepEqual((await versions()).slice(0, 1).map((v) => [v.reason, v.label]), [[reason, label]]);
+    await edit(`after ${reason}`);
+    await createCompileCheckpoint(p.path);
+    assert.deepEqual(await holding(`saved: ${reason}`), [reason]);
+  }
+  // a restore's safety copy too, which the restore itself makes
+  await edit('before the restore');
+  await createCompileCheckpoint(p.path);
+  const [, older] = await versions();
+  await restoreVersion(p.path, older.id);
+  await edit('after the restore');
+  await createCompileCheckpoint(p.path);
+  assert.deepEqual(await holding('before the restore'), ['before-restore']);
+});
+
+test('a compile’s checkpoint taking another’s place removes the stored files only that one used', async () => {
+  const p = await newProject('Replaced');
+  const edit = (text) => fs.writeFile(path.join(p.path, 'main.tex'), text);
+  const stored = (text) => {
+    const sha = crypto.createHash('sha256').update(text).digest('hex');
+    return existsSync(path.join(p.path, '.spectrum', 'history', 'objects', sha.slice(0, 2), `${sha}.gz`));
+  };
+  await edit('saved by hand');
+  await createVersion(p.path, { label: '' });
+  await edit('one');
+  await createCompileCheckpoint(p.path);
+  await edit('two');
+  await createCompileCheckpoint(p.path);
+  assert.deepEqual([stored('saved by hand'), stored('one'), stored('two')], [true, false, true]);
+  // one the hand-saved checkpoint still uses stays
+  await edit('saved by hand');
+  await createCompileCheckpoint(p.path);
+  assert.deepEqual([stored('saved by hand'), stored('two')], [true, false]);
+  assert.equal((await listVersions(p.path)).length, 2);
 });

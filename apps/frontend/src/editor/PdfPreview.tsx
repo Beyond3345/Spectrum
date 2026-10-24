@@ -253,6 +253,8 @@ const PdfPreview = forwardRef<
     /** a right-click on a page, and where the pointer is in the window */
     onPageMenu(at: PdfPoint, x: number, y: number): void;
     onLoad(info: { pages: number; outline: PdfOutlineItem[] }): void;
+    /** the page count, as soon as the PDF opens (before its pages are laid out, which a hidden pane never does) */
+    onPages?(pages: number): void;
     onScale(scale: number): void;
     /** a pinch or ⌘-scroll chose this scale */
     onZoom(scale: number): void;
@@ -262,7 +264,7 @@ const PdfPreview = forwardRef<
     /** a link to another PDF, as written in the link: "notes.pdf#eq:ohm" */
     onFileLink(target: string): void;
   }
->(function PdfPreview({ url, pageKey, zoom, spread, annotateMode, annotations, onAddAnnotation, onDoubleClick, onPageMenu, onLoad, onScale, onZoom, onPage, onSection, onFileLink }, ref) {
+>(function PdfPreview({ url, pageKey, zoom, spread, annotateMode, annotations, onAddAnnotation, onDoubleClick, onPageMenu, onLoad, onPages, onScale, onZoom, onPage, onSection, onFileLink }, ref) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pagesRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -273,8 +275,8 @@ const PdfPreview = forwardRef<
   const visibleRef = useRef(new Set<HTMLElement>());
   const observerRef = useRef<IntersectionObserver | null>(null);
   // callbacks change on every parent render; the effects read the latest ones
-  const cb = useRef({ onLoad, onScale, onZoom, onPage, onSection });
-  cb.current = { onLoad, onScale, onZoom, onPage, onSection };
+  const cb = useRef({ onLoad, onPages, onScale, onZoom, onPage, onSection });
+  cb.current = { onLoad, onPages, onScale, onZoom, onPage, onSection };
   // the PDF's contents, for the section being read
   const outlineRef = useRef<PdfOutlineItem[]>([]);
   // the point to keep still when the next layout applies a pinch
@@ -289,6 +291,9 @@ const PdfPreview = forwardRef<
   keyRef.current = pageKey;
   // the pageKey of the document the pages show, once they're laid out
   const shownKeyRef = useRef('');
+  // the page scrollToPage last went to, and what works out the current page, for a scroll that can't move
+  const askedRef = useRef(0);
+  const updatePageRef = useRef(() => {});
   // Find: what's asked for, and each page's text runs for the PDF they came from
   const findRef = useRef({ query: '', index: 0 });
   const textRef = useRef<{ url: string; pages: Promise<{ runs: TextRun[]; measure: ReturnType<typeof measure> }[]> } | null>(null);
@@ -378,7 +383,11 @@ const PdfPreview = forwardRef<
     scrollToPage(page) {
       const el = pagesRef.current?.querySelector<HTMLElement>(`.pdf-page[data-page-number="${page}"]`);
       const scroller = scrollRef.current;
-      if (el && scroller) scroller.scrollTo({ top: el.offsetTop - PAD, behavior: 'smooth' });
+      if (!el || !scroller) return;
+      askedRef.current = page;
+      scroller.scrollTo({ top: el.offsetTop - PAD, behavior: 'smooth' });
+      // a scroll that can't move (the last pages already in view) sends no scroll event
+      updatePageRef.current();
     },
     highlight(boxes, seconds) {
       const layout = layoutRef.current;
@@ -594,6 +603,23 @@ const PdfPreview = forwardRef<
   const fitWidth = typeof zoom === 'number' ? 0 : width;
   const fitHeight = zoom === 'fit' ? height : 0;
 
+  // the document opens, and its page count is known, even while a panel hides the pane and it has no width to lay out
+  useEffect(() => {
+    if (!url) return;
+    if (docRef.current?.url !== url) {
+      docRef.current?.task.destroy();
+      docRef.current = { url, task: getDocument({ url }) };
+    }
+    let live = true;
+    docRef.current.task.promise.then(
+      (pdf) => live && cb.current.onPages?.(pdf.numPages),
+      () => undefined // the layout below shows the error
+    );
+    return () => {
+      live = false;
+    };
+  }, [url]);
+
   useEffect(() => {
     const scroller = scrollRef.current;
     const host = pagesRef.current;
@@ -726,7 +752,9 @@ const PdfPreview = forwardRef<
     }
   }, [annotations, rendered]);
 
-  // current page = the one crossing the upper third of the view
+  // current page = the last one whose top is above the upper third of the view, or above its own middle when it's
+  // shorter than two thirds of the view (slides), so the first page counts at the top and page n after going to it.
+  // A page asked for (End, PgDn) counts while it's all in view, as the end of the document may not scroll to it
   useEffect(() => {
     const scroller = scrollRef.current;
     if (!scroller) return;
@@ -736,19 +764,24 @@ const PdfPreview = forwardRef<
     const update = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        const line = scroller.scrollTop + scroller.clientHeight / 3;
         let current = 1;
         let down = 0;
         let rowTop = -1;
         // in two-page view the left page of a row counts
         scroller.querySelectorAll<HTMLElement>('.pdf-page').forEach((page) => {
           const top = page.offsetTop;
-          if (top <= line && top !== rowTop) {
+          const reach = scroller.scrollTop + Math.min(scroller.clientHeight / 3, page.offsetHeight / 2);
+          if (top <= reach && top !== rowTop) {
             current = Number(page.dataset.pageNumber) || current;
-            down = (line - top) / (page.offsetHeight || 1);
+            down = (reach - top) / (page.offsetHeight || 1);
           }
           rowTop = top;
         });
+        const asked = scroller.querySelector<HTMLElement>(`.pdf-page[data-page-number="${askedRef.current}"]`);
+        if (asked && asked.offsetTop >= scroller.scrollTop && asked.offsetTop + asked.offsetHeight <= scroller.scrollTop + scroller.clientHeight) {
+          current = askedRef.current;
+          down = 0;
+        }
         cb.current.onPage(current);
         let reading = -1;
         outlineRef.current.forEach((item, i) => {
@@ -766,6 +799,7 @@ const PdfPreview = forwardRef<
       });
     };
     update();
+    updatePageRef.current = update;
     scroller.addEventListener('scroll', update, { passive: true });
     return () => {
       scroller.removeEventListener('scroll', update);
@@ -818,8 +852,8 @@ const PdfPreview = forwardRef<
         event.preventDefault();
         onPageMenu(at, event.clientX, event.clientY);
       }}
-      // focusable, so the page keys and ⌘F know the PDF has focus
-      tabIndex={-1}
+      // a Tab stop, so the page keys and ⌘F can be reached from the keyboard and know the PDF has focus
+      tabIndex={0}
     >
       <div ref={pagesRef} className="pdf-pages" />
       {error && <div className="pdf-error">Couldn’t show the PDF: {error}</div>}

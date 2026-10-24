@@ -65,7 +65,7 @@ export function registerTransferRoutes(fastify) {
   /**
    * POST /api/transfer/start
    * Body: { sourceProjectId, sourceMainFile, targetTemplateId, targetMainFile,
-   *         engine?, layoutCheck?, llmConfig? }
+   *         engine?, texFolder?, layoutCheck?, llmConfig? }
    * Creates a new project from the target template, then starts the transfer.
    * Returns: { jobId, newProjectId }
    */
@@ -74,6 +74,7 @@ export function registerTransferRoutes(fastify) {
       sourceProjectId, sourceMainFile,
       targetTemplateId, targetMainFile,
       engine = 'pdflatex',
+      texFolder,
       layoutCheck = false,
       llmConfig,
       visionLlmConfig,
@@ -112,6 +113,7 @@ export function registerTransferRoutes(fastify) {
       targetProjectId: newProjectId,
       targetMainFile,
       engine,
+      texFolder,
       layoutCheck,
       llmConfig: resolveLLMConfig(llmConfig),
       visionLlmConfig: resolveLLMConfig(visionLlmConfig || llmConfig),
@@ -224,7 +226,7 @@ export function registerTransferRoutes(fastify) {
   /**
    * POST /api/transfer/start-pdf
    * Body: { sourceProjectId?, sourceMainFile?, targetTemplateId, targetMainFile,
-   *         engine?, layoutCheck?, llmConfig?, parser?: { id, protocol?, endpoint?, key?, appId? } }
+   *         engine?, texFolder?, layoutCheck?, llmConfig?, parser?: { id, protocol?, endpoint?, key?, appId? } }
    * PDF transfer: a parser turns the PDF into Markdown, which the model fills into the template.
    * If sourceProjectId is provided, compiles source to PDF first.
    * If not, expects PDF to be uploaded via /api/transfer/upload-pdf.
@@ -235,6 +237,7 @@ export function registerTransferRoutes(fastify) {
       sourceProjectId, sourceMainFile,
       targetTemplateId, targetMainFile,
       engine = 'pdflatex',
+      texFolder,
       layoutCheck = false,
       llmConfig,
       visionLlmConfig,
@@ -285,6 +288,7 @@ export function registerTransferRoutes(fastify) {
       targetProjectId: newProjectId,
       targetMainFile,
       engine,
+      texFolder,
       layoutCheck,
       llmConfig: resolveLLMConfig(llmConfig),
       visionLlmConfig: resolveLLMConfig(visionLlmConfig || llmConfig),

@@ -1,5 +1,5 @@
 // Self-check for shortcut matching: `node apps/frontend/src/app/shortcuts.check.ts` (Node ≥ 23 strips the types).
-import { IS_MAC, SHORTCUTS, canonical, formatShortcut, matchesShortcut, matchesZoomIn, shortcutFromEvent, shortcutKey, shortcutProblem } from './shortcuts.ts';
+import { FIND_NEXT, FIND_PREVIOUS, IS_MAC, SHORTCUTS, canonical, formatShortcut, matchesShortcut, matchesZoomIn, shortcutFromEvent, shortcutKey, shortcutProblem } from './shortcuts.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -16,6 +16,9 @@ eq(matchesShortcut('Alt-/', press('÷', 'Slash', { altKey: true })), true, 'opti
 eq(matchesShortcut('Shift-Mod-k', press('K', 'KeyK', { ...mod, shiftKey: true })), true, 'shift letter');
 eq(matchesShortcut('Mod-Alt-[', press('“', 'BracketLeft', { ...mod, altKey: true })), true, 'option bracket');
 eq(matchesShortcut('Alt-ArrowUp', press('ArrowUp', 'ArrowUp', { altKey: true })), true, 'named key');
+// Find in the PDF steps with the system's find next and previous
+const next = IS_MAC ? press('g', 'KeyG', mod) : press('F3', 'F3');
+eq([matchesShortcut(FIND_NEXT, next), matchesShortcut(FIND_PREVIOUS, next), matchesShortcut(FIND_PREVIOUS, { ...next, shiftKey: true })], [true, false, true], 'find next and previous');
 eq(matchesShortcut('Mod--', press('-', 'Minus', mod)), true, 'minus key');
 eq(matchesShortcut('', press('s', 'KeyS', mod)), false, 'removed shortcut');
 // other layouts: Colemak's E sits on the QWERTY K key, Dvorak's K on V; Russian falls back to the physical key
@@ -46,9 +49,9 @@ eq(matchesShortcut(shortcutKey({}, 'save'), shiftS), false, 'save is not save ch
 // ⇧⌘↩ compiles the open document, ⌘↩ the main file
 const enters = (mods: object) => SHORTCUTS.filter((s) => matchesShortcut(shortcutKey({}, s.id), press('Enter', 'Enter', { ...mod, ...mods }))).map((s) => s.id);
 eq([enters({}), enters({ shiftKey: true })], [['compile'], ['compileOpen']], 'compile shortcuts');
-// ⌘1, ⌘2 and ⌘3 pick the view (editor only, both, PDF only); ⌘0 still fits the PDF's width
+// ⌘1, ⌘2 and ⌘3 pick the view (editor only, both, PDF only); ⌘0 still fits the PDF's width, ⌘9 its page
 const digit = (n: string) => SHORTCUTS.find((s) => matchesShortcut(shortcutKey({}, s.id), press(n, `Digit${n}`, mod)))?.id;
-eq(['1', '2', '3', '0'].map(digit), ['viewEditor', 'viewSplit', 'viewPdf', 'zoomWidth'], 'view shortcuts');
+eq(['1', '2', '3', '0', '9'].map(digit), ['viewEditor', 'viewSplit', 'viewPdf', 'zoomWidth', 'zoomPage'], 'view shortcuts');
 // the defaults are free and don't clash with each other, on a Mac and elsewhere
 const defaults = SHORTCUTS.map((s) => canonical(s.key));
 eq(defaults.filter((k, i) => defaults.indexOf(k) !== i), [], 'default shortcuts are distinct');

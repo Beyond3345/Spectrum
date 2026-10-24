@@ -344,7 +344,8 @@ const folderOf = (path: string) => path.slice(0, path.lastIndexOf('/') + 1);
 /** The document a `% !TEX root = …` comment near the top of a file names, as a project path; '' without one. */
 export function texRoot(path: string, src: string) {
   const name = /^[ \t]*%[ \t]*!TEX[ \t]+root[ \t]*=[ \t]*(.+?)[ \t]*$/im.exec(src.slice(0, 4096))?.[1];
-  return name ? normalise(folderOf(path) + name) : '';
+  // '..\main.tex' as Windows writes it, which the compile reads the same way
+  return name ? normalise(folderOf(path) + name.replace(/\\/g, '/')) : '';
 }
 
 /** The documents a document's \externaldocument names, as project paths (xr reads them from its folder). */

@@ -43,6 +43,10 @@ const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 
 // ponytail: one lock for every project's history; per-project locks if it ever matters
 const locked = serialiser();
+// stored files this run of the app wrote, which a compile's checkpoint taking another's place may remove again
+const written = new Set();
+// checkpoints being saved now, the lock's and the mirror's
+let saving = 0;
 
 async function readIndex(root) {
   try {
@@ -197,6 +201,7 @@ async function snapshotDisk(root, store, skipped = [], large = []) {
         await fs.access(target);
       } catch {
         await writeFileAtomic(target, await gzipAsync(buf));
+        written.add(target);
       }
     }
   }
@@ -240,7 +245,8 @@ async function diffManifests(from, to) {
       try {
         const before = a ? (await from.read(rel, a)).toString('utf8') : '';
         const after = b ? (await to.read(rel, b)).toString('utf8') : '';
-        counts = countLines(before, after);
+        // a file added or removed is all its lines, which diffing against nothing takes seconds to say for a big .csv
+        counts = !a ? { added: lineCount(after), removed: 0 } : !b ? { added: 0, removed: lineCount(before) } : countLines(before, after);
       } catch {
         // a stored file still to arrive from another computer: no line counts, rather than no new version
       }
@@ -295,18 +301,36 @@ async function newId(root, versions) {
  * the mirror, whose one pass at a time mustn't wait behind another project's history. skipped: what it couldn't
  * capture, unreadable or over 50 MB.
  */
-export async function createVersionUnlocked(root, { label = '', reason = 'manual' } = {}) {
-  const { versions } = await readVersions(root);
+export async function createVersionUnlocked(root, options) {
+  saving += 1;
+  try {
+    return await saveVersion(root, options);
+  } finally {
+    saving -= 1;
+  }
+}
+
+async function saveVersion(root, { label = '', reason = 'manual' } = {}) {
+  const { versions, partial } = await readVersions(root);
   const latest = versions.at(-1);
   const skipped = [];
   const large = [];
   const files = await snapshotDisk(root, true, skipped, large);
   // a file that can't be read now keeps what the latest version had of it, and restoring leaves it as it is
   for (const rel of skipped) if (latest?.files[rel]) files[rel] = latest.files[rel];
-  if (latest && sameFiles(latest.files, files)) return { version: shownVersion(latest), unchanged: true, skipped: [] };
+  if (latest && sameFiles(latest.files, files)) {
+    // a checkpoint asked for that only matches a compile's, which the next compile would replace: that one becomes it
+    if (latest.reason === 'compile' && !latest.label && (reason !== 'compile' || label)) {
+      Object.assign(latest, { reason: REASONS.includes(reason) ? reason : 'manual', label: String(label || '').slice(0, 120) });
+      await writeJsonAtomic(manifestPath(root, latest.id), { ...(await readJson(manifestPath(root, latest.id))), ...details(latest) });
+      latest.manifestLabel = latest.label;
+      await writeIndex(root, versions);
+    }
+    return { version: shownVersion(latest), unchanged: true, skipped: [] };
+  }
 
   // compiles leave at most one checkpoint every 10 minutes: the latest one in that time takes the place of the others,
-  // unless one was given a name (its stored files go in a later delete's clean-up, as a deleted version's do)
+  // unless one was given a name
   const since = latest?.since || latest?.createdAt;
   const replaceable = reason === 'compile' && latest?.reason === 'compile' && !latest.label && Date.now() - Date.parse(since) < COMPILE_WINDOW_MS;
   const replaced = replaceable ? versions.pop() : null;
@@ -330,6 +354,18 @@ export async function createVersionUnlocked(root, { label = '', reason = 'manual
   // before index.json is written, which would otherwise keep an entry for it
   if (replaced) await fs.rm(manifestPath(root, replaced.id), { force: true });
   await writeIndex(root, [...versions, version]);
+  // and the stored files only it used that this run of the app wrote, which the 90-day clean-up would keep, every
+  // compile's, for months. Not while a manifest can't be read, nor while another checkpoint (the mirror's, outside
+  // the lock) is being saved and may be using one. ponytail: a sync app's other computer that saved a checkpoint of
+  // the same text, whose manifest hasn't arrived yet, loses that file of it; a list of every computer's manifests
+  // would close that
+  if (replaced && !partial && saving === 1) {
+    const used = new Set([...versions.flatMap((v) => Object.values(v.files)), ...Object.values(files)]);
+    for (const sha of new Set(Object.values(replaced.files))) {
+      const target = objectPath(root, sha);
+      if (!used.has(sha) && written.delete(target)) await fs.rm(target, { force: true });
+    }
+  }
   return { version: shownVersion(version), unchanged: false, skipped: [...skipped, ...large] };
 }
 

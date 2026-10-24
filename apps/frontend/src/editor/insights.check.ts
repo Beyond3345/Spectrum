@@ -1,6 +1,6 @@
 // Self-check for the Document insights scanner. It imports latexEditor.ts, which Node can't strip, so bundle it first:
 // `npx esbuild apps/frontend/src/editor/insights.check.ts --bundle --platform=node --log-level=warning --outfile=<file>.js`, then `node <file>.js`
-import { metadataText, plainText, scanInsights } from './insights.ts';
+import { headingNumbers, metadataText, plainText, scanInsights, withNumbers } from './insights.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -63,8 +63,8 @@ eq(got.citations.map((c) => [c.key, c.count, c.line]), [['knuth84', 2, 13], ['la
 eq(got.metadata, {
   title: 'On Small Things',
   authors: ['Ada Lovelace', 'Charles Babbage'],
-  keywords: ['small things', 'tricks', 'scale'],
-  date: 'Today',
+  keywords: ['small things', 'LaTeX tricks', 'scale'],
+  date: new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }),
   abstract: 'We look at small things.\n\nThen at smaller ones.'
 }, 'submission metadata');
 eq(metadataText(got.metadata).split('\n').slice(0, 2), ['Title: On Small Things', 'Authors: Ada Lovelace; Charles Babbage'], 'metadata as text');
@@ -73,6 +73,44 @@ const ieee = scanInsights([{ path: 'paper.tex', text: String.raw`\author{\IEEEau
 \begin{IEEEkeywords}compilers, COBOL\end{IEEEkeywords}` }]);
 eq([ieee.metadata.authors, ieee.metadata.keywords], [['Grace Hopper'], ['compilers', 'COBOL']], 'IEEE authors and keywords');
 eq(plainText('A {\\bf bold}~move\\\\ on 50\\% of \\$5'), 'A bold move on 50% of $5', 'plain text');
-eq(plainText('The \\LaTeX\\ Author Guidelines'), 'The Author Guidelines', 'a control space is a space');
+eq(plainText('The \\LaTeX\\ Author Guidelines'), 'The LaTeX Author Guidelines', 'a control space is a space, and \\LaTeX is a word');
+
+// the bundled templates' titles, authors, headings and captions
+const labels = { 'ex:design': { number: '6.2', page: '3' } };
+eq(plainText(String.raw`\href{https://orcid.org/0000-0000-0000-0000}{\includegraphics[scale=0.06]{orcid.pdf}\hspace{1mm}David S.~Hippocampus}`), 'David S. Hippocampus', 'arXiv: a link keeps its text, not the image');
+eq(plainText(String.raw`\LaTeX\ Author Guidelines for \confName~Proceedings`), 'LaTeX Author Guidelines for Proceedings', 'CVPR’s title');
+eq(plainText(String.raw`Solving \texorpdfstring{$\mathbf{x}' = A\mathbf{x}$}{x' = Ax}`), "Solving $x' = Ax$", 'maths notes: \\texorpdfstring once');
+eq(
+  withNumbers(plainText(String.raw`Gain of the filter in Example~\ref{ex:design}: flat at \qty{20}{\decibel}, then falling at \qty{20}{\decibel\per\decade} above $f_c$, as in~\cite{k} and \url{https://x.org}.`), labels),
+  'Gain of the filter in Example 6.2: flat at 20 decibel, then falling at 20 decibel per decade above $f_c$, as in and.',
+  'electronics notes: the number from the last compile, units kept, citations and URLs gone'
+);
+eq(withNumbers(plainText(String.raw`See page~\pageref{ex:design} and \cref{ex:design,missing}.`), labels), 'See page 3 and 6.2, ?.', 'pages, and a label the compile hasn’t seen');
+eq(plainText("``Abstract'' with $f'' = 0$ and \\SI{3}{\\kilo\\hertz}"), '“Abstract” with $f\'\' = 0$ and 3 kilohertz', 'TeX’s quotes outside maths only');
+
+// reading order: a file's rows where it's \input, after the files a breadth-first walk reads first
+const order = scanInsights(
+  [
+    { path: 'main.tex', text: '\\section{One}\n\\input{sec/a}\n\\section{Three}\n\\input{sec/b}\n' },
+    { path: 'sec/b.tex', text: '\\section{Four}\n' },
+    { path: 'sec/a.tex', text: '\\section{Two}\n\\input{sec/a1}\n' },
+    { path: 'sec/a1.tex', text: '\\subsection{Two point one}\n' }
+  ],
+  'main.tex'
+);
+eq(order.headings.map((h) => h.text), ['One', 'Two', 'Two point one', 'Three', 'Four'], 'headings in reading order');
+
+// numbers and pages for headings without a \label, from the contents, while the levels agree
+const toc = [
+  { level: 'section', number: '1', page: '1' },
+  { level: 'section', number: '2', page: '2' },
+  { level: 'subsection', number: '2.1', page: '2' },
+  { level: 'section', number: '', page: '3' },
+  { level: 'section', number: '3', page: '4' },
+  { level: 'section', number: '4', page: '5' }
+];
+const numbered = scanInsights([{ path: 'main.tex', text: '\\section{One}\\section{Two}\\subsection{Two point one}\\section*{Aside}\\section{Three}\\section{Four}\\subsubsection{Deep}' }]).headings;
+eq([...headingNumbers(numbered, toc)].map(([row, at]) => `${row.text} ${at.number} p. ${at.page}`), ['One 1 p. 1', 'Two 2 p. 2', 'Two point one 2.1 p. 2', 'Three 3 p. 4', 'Four 4 p. 5'], 'contents numbers by order');
+eq(headingNumbers(numbered.slice(1), toc).size, 0, 'none when the source and the contents disagree');
 
 console.log('insights: all checks passed');

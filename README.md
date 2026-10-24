@@ -173,8 +173,8 @@ Checkpoints are kept inside each project in a hidden `.spectrum` folder, togethe
 
 Settings › Checkpoints has the following options,
 
-- Save a checkpoint after each successful compile (on by default), which saves one in the background when the source has changed since the last checkpoint. Compiles save at most one every 10 minutes, as a newer compile's checkpoint takes the place of the one saved earlier in that time, while manual, named and Before checkpoints are never replaced,
-- Show a notice when a checkpoint cannot be saved (on by default), which says when saving fails or when a file was too large (over 50 MB) or could not be read and
+- Save a checkpoint when a compile succeeds (on by default), which saves one when the source has changed since the last checkpoint. Compiles save at most one every 10 minutes, as a newer compile's checkpoint takes the place of the one saved earlier in that time, while manual, named and Before checkpoints are never replaced,
+- Warn me when a checkpoint fails to save (on by default), which says when saving fails or when a file was too large (over 50 MB) or could not be read and
 - Delete automatic checkpoints older than…, which removes the compile checkpoints older than the chosen age and is also in Tools › Checkpoints.
 
 Checkpoints are stored as 1.10.4 stored its versions, so going back to 1.10.4 lists every checkpoint as a version.

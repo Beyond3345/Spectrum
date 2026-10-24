@@ -427,7 +427,10 @@ fn build_window(
         .inner_size(1320.0, 860.0)
         .min_inner_size(960.0, 620.0)
         .center()
-        .visible(false);
+        .visible(false)
+        // the editor's right-click Paste reads the clipboard, which WebView2 otherwise asks about each time (Windows
+        // and Linux only; on_navigation keeps the window on the app's own pages)
+        .enable_clipboard_access();
     // shrunk to fit a short screen before it's centred, or its title bar would start above the top
     #[cfg(windows)]
     let builder = builder.prevent_overflow();

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import Icon from '../app/Icon';
-import { formatShortcut, matchesShortcut } from '../app/shortcuts';
+import { FIND_NEXT, FIND_PREVIOUS, formatShortcut, matchesShortcut } from '../app/shortcuts';
 import { MAX_MATCHES } from './PdfPreview';
 import type { PdfHandle } from './PdfPreview';
 
@@ -71,12 +71,16 @@ export default function PdfFindBar({ pdf, loadedUrl, focusSignal, onClose }: { p
           setIndex(0);
         }}
         onKeyDown={(e) => {
-          e.stopPropagation();
-          if (e.key === 'Enter') step(e.shiftKey ? -1 : 1);
+          // only the keys Find has: the app's own shortcuts (⌘S, ⌘↩) still work from here
+          if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.altKey) step(e.shiftKey ? -1 : 1);
           else if (e.key === 'Escape') onClose();
           else if (matchesShortcut('Mod-f', e.nativeEvent)) e.currentTarget.select();
+          // the system's find next and previous, as the editor has them
+          else if (matchesShortcut(FIND_NEXT, e.nativeEvent)) step(1);
+          else if (matchesShortcut(FIND_PREVIOUS, e.nativeEvent)) step(-1);
           else return;
           e.preventDefault();
+          e.stopPropagation();
         }}
       />
       <span className="pdf-find-count" aria-live="polite">

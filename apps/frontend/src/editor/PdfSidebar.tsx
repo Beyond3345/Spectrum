@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, RefObject } from 'react';
 import Tabs from '../app/Tabs';
 import { documentOutline } from './latexEditor';
+import { loadedPackages, scanProject } from './latexEnvs';
 import type { PdfHandle, PdfOutlineItem } from './PdfPreview';
 
 export type PdfSidebarTab = 'contents' | 'pages';
@@ -49,12 +50,15 @@ export default function PdfSidebar({
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [headings, setHeadings] = useState<Heading[] | null>(null);
+  // hyperref loaded, but a one-pass compile (draft, from scratch) made no bookmarks yet
+  const [hyperref, setHyperref] = useState(false);
   const fromSource = tab === 'contents' && !!loadedUrl && !outline.length;
 
   useEffect(() => {
     if (!fromSource) return;
     let live = true;
     documentOutline(doc, files, read).then((found) => live && setHeadings(found));
+    scanProject(doc, files, read, false).then(({ scans }) => live && setHyperref(loadedPackages(scans).has('hyperref')));
     return () => {
       live = false;
     };
@@ -116,7 +120,8 @@ export default function PdfSidebar({
             ))}
             {headings && (
               <div className="sidebar-hint">
-                {headings.length ? 'From the source.' : 'No headings yet.'} Add \usepackage{'{hyperref}'} to the preamble for the PDF’s own bookmarks.
+                {headings.length ? 'From the source.' : 'No headings yet.'}{' '}
+                {hyperref ? 'The PDF’s bookmarks appear after the next full compile.' : <>Add \usepackage{'{hyperref}'} to the preamble for the PDF’s own bookmarks.</>}
               </div>
             )}
           </>
@@ -150,6 +155,9 @@ function Thumbnails({ pdf, pages, page, root }: { pdf: RefObject<PdfHandle>; pag
               // scrolled away meanwhile
               if (!canvas || !box.dataset.drawn) return;
               box.replaceChildren(canvas);
+              // drawn at the sidebar's width then, scaled with it as the window or the split narrows
+              canvas.style.width = '100%';
+              canvas.style.height = 'auto';
               if (box.dataset.page === '1') setRatio(canvas.height / canvas.width);
             });
           }

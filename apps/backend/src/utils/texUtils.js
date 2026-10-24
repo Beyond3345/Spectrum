@@ -146,9 +146,10 @@ export function mergeTemplateBody(template, body) {
  * The main file with its \input/\include/\subfile files inlined. Like the compile's
  * TEXINPUTS, a name is looked up from the main file's folder first, then the project root.
  */
-export async function inlineInputs(root, mainFile, { stripComments = false } = {}) {
+export async function inlineInputs(root, mainFile, { stripComments = false, files } = {}) {
   const mainDir = path.dirname(mainFile);
-  const seen = new Set();
+  // files: a Set the caller passes gets the files read, project-relative
+  const seen = files || new Set();
   // null when the file can't be read, so the next place to look gets its turn
   const visit = async (rel, depth) => {
     if (depth > 10 || seen.has(rel)) return '';

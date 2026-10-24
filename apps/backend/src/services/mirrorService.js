@@ -33,6 +33,7 @@ const MIRROR_DIR = path.join(DATA_DIR, 'mirror');
 const ID_RE = /^[A-Za-z0-9_-]+$/;
 const META = '.spectrum/project.json';
 const OBJECTS = '.spectrum/history/objects';
+const MANIFEST = /^\.spectrum\/history\/manifests\/\d+\.json$/;
 const EVERY_MS = 60_000;
 const SAVE_DELAY_MS = 2000;
 const VERSION_EVERY_MS = 10 * 60 * 1000;
@@ -399,7 +400,15 @@ async function mirror(id, record, label, force) {
   // again (a pass between may have held back more)
   const tag = (it) => `${it.action} ${it.key}`;
   const approved = new Set((statuses.get(id)?.deleting || []).filter((d) => force.includes(d)));
-  const count = (action, user) => items.filter((it) => it.action === action && !approved.has(tag(it)) && !(user && inApp(it.key))).length;
+  // Delete automatic checkpoints, on either computer, isn't counted: an unnamed compile checkpoint's manifest, as the
+  // side that still has it says
+  const automatic = new Set();
+  for (const it of items) {
+    if (!MANIFEST.test(it.key) || !['deleteLocal', 'deleteCloud'].includes(it.action)) continue;
+    const data = await readJson(it.action === 'deleteLocal' ? join(localRoot, it.l.rel) : join(cloudRoot, it.c.rel)).catch(() => null);
+    if (data?.reason === 'compile' && !data.label) automatic.add(it.key);
+  }
+  const count = (action, user) => items.filter((it) => it.action === action && !approved.has(tag(it)) && !automatic.has(it.key) && !(user && inApp(it.key))).length;
   const users = (side) => [...side.files.keys()].filter((key) => !inApp(key)).length;
   const brake = [
     [count('deleteLocal'), here.files.size, 'on this computer'],

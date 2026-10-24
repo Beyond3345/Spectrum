@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'child_process';
 import { DATA_DIR, PROJECTS_DIR } from '../config/constants.js';
-import { findExecutable } from '../services/compileService.js';
+import { findExecutable, texPath } from '../services/compileService.js';
 import { resolvePythonExecutable } from '../services/plotService.js';
 import { getProjectRoot } from '../services/projectService.js';
 import { cloudRootOf, readMirror } from '../services/mirrorService.js';
@@ -10,9 +10,11 @@ const TOOLS = ['pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic', 'bibtex
 
 export function registerSystemRoutes(fastify) {
   // What's installed on this machine, so the UI can explain a failing compile or plot.
-  fastify.get('/api/system/check', async () => {
+  // texFolder: Settings › Engines › LaTeX's TeX folder, looked in first as a compile does
+  fastify.get('/api/system/check', async (req) => {
+    const searchPath = await texPath(req.query?.texFolder);
     const tools = {};
-    for (const name of TOOLS) tools[name] = await findExecutable(name);
+    for (const name of TOOLS) tools[name] = await findExecutable(name, searchPath);
     // Being on PATH isn't enough: TeX Live 2026's universal biber unpacks itself with an
     // lipo call that macOS 27 rejects, so actually run the tools that are known to break.
     const problems = {};

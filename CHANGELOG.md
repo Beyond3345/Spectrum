@@ -16,7 +16,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - PDF follows the open file (on by default): opening another document's `.tex` shows that document's PDF, and Compile and auto compile build the document that is showing
 - New choices in the compile menu, each with Use for all projects: the compiler for this project, Auto compile after a pause of 1 to 10 seconds, Try to compile despite errors or Stop on first error, the bibliography tool (Auto, BibTeX or Biber) and Fast draft mode with one pass and images drawn as boxes. The menu also has Stop compilation, Recompile from scratch and Recompile all, which compiles every document with linked documents first
 - Settings › Engines › LaTeX holds the defaults for every project, a TeX folder for a second TeX installation and Open Logs when a compile fails
-- Settings › Checkpoints: Save a checkpoint after each successful compile (on by default), Show a notice when a checkpoint cannot be saved (on by default) and Delete automatic checkpoints older than…, which Tools › Checkpoints also offers
+- Settings › Checkpoints: Save a checkpoint when a compile succeeds (on by default), Warn me when a checkpoint fails to save (on by default) and Delete automatic checkpoints older than…, which Tools › Checkpoints also offers
 - `% !TEX root` in a chapter compiles the document it names and `% !BIB program` chooses the bibliography tool. makeindex and makeglossaries run when a document has an index or glossaries
 
 ### Changed

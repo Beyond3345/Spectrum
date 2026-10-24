@@ -54,7 +54,7 @@ import { IS_DESKTOP } from './desktop';
 import { FILE_MANAGER } from './platform';
 import { BIB_TOOLS, COMPILE_ENGINES, ERROR_HANDLING, autoCompileLabel, effectiveCompile, effectiveEffort, llmConfigFor, updateSettings, useProviders, useSettings } from './settings';
 import { PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
-import { SHORTCUTS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
+import { FIND_NEXT, FIND_PREVIOUS, SHORTCUTS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
 import type { AppCommand } from './shortcuts';
 import { EditorContext } from '../editor/EditorContext';
 import type { CompileError, EditorApi, PendingChange } from '../editor/EditorContext';
@@ -302,6 +302,8 @@ function Editor({ projectId }: { projectId: string }) {
   const [activePath, setActivePath] = useState('');
   const activeRef = useRef('');
   const [tabs, setTabs] = useState<string[]>([]);
+  // the file tabs' strip, scrolled to the open file's tab
+  const stripRef = useRef<HTMLDivElement>(null);
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
   const usedRef = useRef(new Map<string, number>());
@@ -339,6 +341,10 @@ function Editor({ projectId }: { projectId: string }) {
   const compileIdRef = useRef('');
   // auto compile: typed since the last one, the running compile is one, and one is waiting for it to end
   const editedRef = useRef(false);
+  // the document whose PDF shows, as of now (shownDoc is as of the last render)
+  const shownRef = useRef('');
+  // a document's PDF from a compile that couldn't write over the copy on disk, which another program held (Windows)
+  const stalePdf = useRef(new Map<string, Blob>());
   const autoRunningRef = useRef(false);
   const autoWaitingRef = useRef(false);
   // the files a checkpoint after compiling left out that the notice has named
@@ -352,6 +358,8 @@ function Editor({ projectId }: { projectId: string }) {
   const [shownDoc, setShownDoc] = useState('');
   const [compiledDoc, setCompiledDoc] = useState('');
   const [pdfPages, setPdfPages] = useState<number | null>(null);
+  // the page count of the PDF at url, from as soon as it opens (pdfPages waits for its pages to be laid out)
+  const [pagesOf, setPagesOf] = useState({ url: '', pages: 0 });
   const [pdfOutline, setPdfOutline] = useState<PdfOutlineItem[]>([]);
   /** the contents entry being read */
   const [pdfSection, setPdfSection] = useState(-1);
@@ -1230,14 +1238,21 @@ function Editor({ projectId }: { projectId: string }) {
     const old = pdfNow.current;
     setPdf(next);
     setShownDoc(doc);
+    shownRef.current = doc;
     if (old?.blob) window.setTimeout(() => URL.revokeObjectURL(old.url), 10_000);
+  };
+
+  /** A document's PDF from its last compile: the copy on disk, or the compile's own when it couldn't write over that. */
+  const pdfFor = (doc: string) => {
+    const blob = stalePdf.current.get(doc);
+    return blob ? { url: URL.createObjectURL(blob), blob: true } : { url: blobUrl(projectId, pdfOf(doc), Date.now()), blob: false };
   };
 
   /** A document's PDF from its last compile; returns the URL it shows from. */
   const loadPdf = (doc: string) => {
-    const url = blobUrl(projectId, pdfOf(doc), Date.now());
-    showPdf(doc, { url, blob: false });
-    return url;
+    const next = pdfFor(doc);
+    showPdf(doc, next);
+    return next.url;
   };
 
   /** A link in the PDF to another PDF (xr-hyper's links to a linked document): that document's PDF, at the spot. */
@@ -1288,6 +1303,8 @@ function Editor({ projectId }: { projectId: string }) {
       return 'failed';
     }
     compilingRef.current = true;
+    // this compile builds every edit so far; one made from now on is owed another
+    editedRef.current = false;
     autoRunningRef.current = !!opts.auto;
     compileIdRef.current = crypto.randomUUID();
     const used = engine;
@@ -1317,8 +1334,12 @@ function Editor({ projectId }: { projectId: string }) {
       setCompileLog(`Engine: ${engineLabel(actual)}\nDocument: ${built}\n\n${res.log || ''}`.trim());
       if (res.ok && res.pdf) {
         const bytes = Uint8Array.from(atob(res.pdf), (c) => c.charCodeAt(0));
-        const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
         showPdf(built, { url, blob: true });
+        // a copy on disk another program holds (Windows) is older: this one shows when the document's PDF comes back
+        if (res.pdfStale) stalePdf.current.set(built, blob);
+        else stalePdf.current.delete(built);
         setCompileFailure('');
         ended = 'ok';
         if (built === mainFile)
@@ -1358,12 +1379,13 @@ function Editor({ projectId }: { projectId: string }) {
    * waits for it to end, and stops it first when that one was automatic too, since it's now out of date.
    */
   const autoCompile = () => {
-    editedRef.current = false;
     if (compilingRef.current) {
       autoWaitingRef.current = true;
       if (autoRunningRef.current) stopCompile(compileIdRef.current).catch(() => undefined);
       return;
     }
+    // a compile since the edits (Compile pressed during the pause) already built them
+    if (!editedRef.current) return;
     runCompile(compileTarget, { auto: true });
   };
 
@@ -1378,12 +1400,16 @@ function Editor({ projectId }: { projectId: string }) {
     };
     for (const doc of docs) await visit(doc, []);
     const shown = shownDoc;
-    for (const doc of order) {
-      const ended = await runCompile(doc, { fresh: true });
-      if (ended === 'stopped' || ended === 'busy') return;
+    try {
+      for (const doc of order) {
+        const ended = await runCompile(doc, { fresh: true });
+        if (ended === 'stopped' || ended === 'busy') break;
+      }
+    } finally {
+      // each compile that worked showed its own PDF; the one that was showing comes back (a failed compile left it as
+      // it was), so Compile goes on building it
+      if (shown && shownRef.current !== shown && items.some((i) => i.path === pdfOf(shown))) loadPdf(shown);
     }
-    // each compile showed its own PDF; the one that was showing comes back, so Compile goes on building it
-    if (shown && shown !== order[order.length - 1] && items.some((i) => i.path === pdfOf(shown))) loadPdf(shown);
   };
 
   /** A project compile choice (null: back to the app's default), kept in the project's .spectrum/settings.json. */
@@ -1554,23 +1580,29 @@ function Editor({ projectId }: { projectId: string }) {
 
   // ─── PDF notes and to-dos ───
 
+  /** Saves a note, showing it while its document's PDF shows; one that can't be saved can be tried again. */
+  const keepNote = (note: PdfNote) => {
+    if (note.doc === shownRef.current) setNotes((prev) => [...prev.filter((n) => n.id !== note.id), note]);
+    saveNote(projectId, note).catch((err) => {
+      setNotes((prev) => prev.filter((n) => n.id !== note.id));
+      const what = note.text.length > 60 ? `${note.text.slice(0, 59)}…` : note.text;
+      toast(`Couldn’t save the note “${what}”: ${errorText(err)}`, { tone: 'error', action: { label: 'Try again', onClick: () => keepNote(note) } });
+    });
+  };
+
   const addAnnotation = async (at: PdfPoint) => {
     const doc = shownDoc;
     const text = (await promptDialog({ title: 'Add a note', message: `Page ${at.page}`, placeholder: 'Note', confirmLabel: 'Add' }))?.trim();
     if (!text) return;
     const now = new Date().toISOString();
-    const note: PdfNote = { id: crypto.randomUUID(), doc, ...at, text: text.slice(0, 2000), createdAt: now, updatedAt: now };
-    setNotes((prev) => [...prev, note]);
-    saveNote(projectId, note).catch((err) => {
-      setNotes((prev) => prev.filter((n) => n.id !== note.id));
-      notify(`Couldn’t save the note: ${errorText(err)}`, 'error');
-    });
+    keepNote({ id: crypto.randomUUID(), doc, ...at, text: text.slice(0, 2000), createdAt: now, updatedAt: now });
   };
 
   const removeNotes = async (gone: PdfNote[]) => {
     setNotes((prev) => prev.filter((n) => !gone.includes(n)));
     try {
       await Promise.all(gone.map((n) => deleteNote(projectId, n.id)));
+      toast(gone.length === 1 ? 'Deleted the note' : `Deleted ${gone.length} notes`, { action: { label: 'Undo', onClick: () => gone.forEach(keepNote) } });
     } catch (err) {
       notify(`Couldn’t delete ${gone.length === 1 ? 'the note' : 'the notes'}: ${errorText(err)}`, 'error');
       listNotes(projectId, shownDoc)
@@ -1636,8 +1668,8 @@ function Editor({ projectId }: { projectId: string }) {
   const onPdfKey = (e: ReactKeyboardEvent) => {
     if (!(e.target as HTMLElement).closest('.pdf-scroll') || !pdfPages) return;
     const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
-    if (matchesShortcut('Mod-f', e.nativeEvent)) openFind();
-    else if (matchesShortcut('Mod-9', e.nativeEvent)) setZoom('fit');
+    // F3 too, which would otherwise open WebView2's own find over the pages
+    if (matchesShortcut('Mod-f', e.nativeEvent) || matchesShortcut(FIND_NEXT, e.nativeEvent) || matchesShortcut(FIND_PREVIOUS, e.nativeEvent)) openFind();
     else if (plain && e.key === 'PageDown') pdfRef.current?.scrollToPage(Math.min(pdfPages, page + step));
     else if (plain && e.key === 'PageUp') pdfRef.current?.scrollToPage(Math.max(1, page - step));
     else if (plain && e.key === 'Home') pdfRef.current?.scrollToPage(1);
@@ -1673,6 +1705,7 @@ function Editor({ projectId }: { projectId: string }) {
     openSettings: () => {},
     zoomBy: (_steps: number) => {},
     fitWidth: () => {},
+    fitPage: () => {},
     suggest: () => {},
     acceptGhost: (_word: boolean) => {},
     clearGhost: () => false as boolean,
@@ -1695,6 +1728,7 @@ function Editor({ projectId }: { projectId: string }) {
     // not in editor only, where the PDF's hidden
     zoomBy: (steps: number) => pdf && layout.view !== 'editor' && zoomBy(steps),
     fitWidth: () => pdf && layout.view !== 'editor' && setZoom('width'),
+    fitPage: () => pdf && layout.view !== 'editor' && setZoom('fit'),
     suggest: () => suggest(),
     acceptGhost,
     clearGhost,
@@ -1804,7 +1838,8 @@ function Editor({ projectId }: { projectId: string }) {
       viewPdf: () => a().setView('pdf'),
       zoomIn: () => a().zoomBy(1),
       zoomOut: () => a().zoomBy(-1),
-      zoomWidth: () => a().fitWidth()
+      zoomWidth: () => a().fitWidth(),
+      zoomPage: () => a().fitPage()
     };
     // matched by hand rather than with keymap.of, which can't see ⌥ shortcuts on a Mac (⌥/ types "÷")
     const shortcuts = EditorView.domEventHandlers({
@@ -2022,6 +2057,7 @@ function Editor({ projectId }: { projectId: string }) {
       else if (matchesZoomIn(shortcutsRef.current, e)) a.zoomBy(1);
       else if (is('zoomOut')) a.zoomBy(-1);
       else if (is('zoomWidth')) a.fitWidth();
+      else if (is('zoomPage')) a.fitPage();
       else if (matchesShortcut('Mod-,', e)) a.openSettings();
       else return;
       e.preventDefault();
@@ -2034,6 +2070,17 @@ function Editor({ projectId }: { projectId: string }) {
   useEffect(() => {
     if (layout.view !== 'pdf') viewRef.current?.requestMeasure({ read: () => null, write: () => actions.current.placeGhost() });
   }, [layout.view]);
+
+  // the open file's tab scrolls into the strip's view; by hand, as scrollIntoView would slide the editor's column too
+  useEffect(() => {
+    const strip = stripRef.current;
+    const tab = strip?.querySelector<HTMLElement>('.file-tab.active');
+    if (!strip || !tab) return;
+    const s = strip.getBoundingClientRect();
+    const t = tab.getBoundingClientRect();
+    if (t.left < s.left) strip.scrollLeft -= s.left - t.left;
+    else if (t.right > s.right) strip.scrollLeft += Math.min(t.right - s.right, t.left - s.left);
+  }, [activePath, tabs, panel]);
 
   // turning spell checking on or off in Settings applies straight away
   useEffect(() => {
@@ -2055,13 +2102,16 @@ function Editor({ projectId }: { projectId: string }) {
   }, [editorValue, compileOptions.autoCompile]);
 
   // PDF follows the open file: another document's .tex, or a chapter whose % !TEX root names one, shows that
-  // document's PDF; any other file leaves it. A PDF or document picked by hand stays until the next file switch.
+  // document's PDF; any other file leaves it. A subfiles chapter or a standalone figure is part of its document, so it
+  // leaves it too (it can still be picked by hand). A PDF or document picked by hand stays until the next file switch.
   useEffect(() => {
     if (!settings.pdfFollowsFile || !activePath) return;
-    const root = texRoot(activePath, filesRef.current.get(activePath) ?? '');
-    const doc = docs.includes(activePath) ? activePath : docs.includes(root) ? root : '';
+    const text = filesRef.current.get(activePath) ?? '';
+    const root = texRoot(activePath, text);
+    const own = docs.includes(activePath) && !PART_OF_MAIN.test(text);
+    const doc = own ? activePath : docs.includes(root) ? root : '';
     if (!doc || doc === shownDoc) return;
-    showPdf(doc, items.some((i) => i.path === pdfOf(doc)) ? { url: blobUrl(projectId, pdfOf(doc), Date.now()), blob: false } : null);
+    showPdf(doc, items.some((i) => i.path === pdfOf(doc)) || stalePdf.current.has(doc) ? pdfFor(doc) : null);
   }, [activePath]);
 
   // the notes of the document whose PDF shows, from the project
@@ -2093,7 +2143,8 @@ function Editor({ projectId }: { projectId: string }) {
     editorValue,
     compileLog,
     compileErrors,
-    pdfPages,
+    // only for the PDF showing, when it's the document Document insights describes; another's, or none, is '—'
+    pdfPages: pdf && pagesOf.url === pdf.url && shownDoc === compileTarget ? pagesOf.pages : null,
     // a level the main model can't use is sent as its recommended one
     settings: { ...settings, reasoningEffort: effectiveEffort(settings, providers) },
     llm,
@@ -2493,7 +2544,7 @@ function Editor({ projectId }: { projectId: string }) {
               <button className="icon-btn float-button" title="Insert table" aria-label="Insert table" onClick={() => openFloats('table')}>
                 <Icon name="tablecells" />
               </button>
-              <div className="file-tabs" role="tablist" data-tauri-drag-region>
+              <div ref={stripRef} className="file-tabs" role="tablist" data-tauri-drag-region>
                 {tabs.map((path) => (
                   <div
                     key={path}
@@ -2544,7 +2595,14 @@ function Editor({ projectId }: { projectId: string }) {
               >
                 <Icon name="chart.bar.xaxis" />
               </button>
-              <button className={`tools-toggle ${panel === 'tools' ? 'open' : ''}`} aria-pressed={panel === 'tools'} onClick={() => (panel === 'tools' ? setPanel(null) : openTools())}>
+              <button
+                className={`tools-toggle ${panel === 'tools' ? 'open' : ''}`}
+                aria-pressed={panel === 'tools'}
+                // its words go in a narrow editor
+                aria-label={panel === 'tools' ? 'Close Tools' : problems > 0 ? `Tools, ${plural(problems, 'problem')}` : 'Tools'}
+                title={panel === 'tools' ? 'Close Tools' : 'Tools'}
+                onClick={() => (panel === 'tools' ? setPanel(null) : openTools())}
+              >
                 <span>{panel === 'tools' ? 'Close' : 'Tools'}</span>
                 <Icon name={panel === 'tools' ? 'xmark' : 'square.grid.2x2'} />
                 {panel !== 'tools' && problems > 0 && (
@@ -2698,7 +2756,7 @@ function Editor({ projectId }: { projectId: string }) {
                   items={ZOOMS.map(([z, label]) => ({
                     label,
                     checked: zoom === z,
-                    shortcut: z === 'width' ? shortcutOf('zoomWidth') : z === 'fit' ? formatShortcut('Mod-9') : undefined,
+                    shortcut: z === 'width' ? shortcutOf('zoomWidth') : z === 'fit' ? shortcutOf('zoomPage') : undefined,
                     onSelect: () => setZoom(z)
                   }))}
                 />
@@ -2758,6 +2816,7 @@ function Editor({ projectId }: { projectId: string }) {
                       setPdfMenu({ x, y, at, text });
                     }}
                     onFileLink={followFileLink}
+                    onPages={(pages) => setPagesOf({ url: pdf.url, pages })}
                     onLoad={({ pages, outline: toc }) => {
                       setPdfPages(pages);
                       setPdfOutline(toc);

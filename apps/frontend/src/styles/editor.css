@@ -330,23 +330,34 @@
   max-width: 140px;
 }
 
-/* Insert figure and Insert table: a narrow editor leaves them to Insert (+), and the top bar's Compile is its icon */
+/* Insert figure and Insert table: a narrow editor leaves them to Insert (+), and the top bar's Compile and Tools are
+   their icons */
 @container editor (max-width: 560px) {
   .float-button,
-  .editor-topbar .compile-main .btn-label {
+  .editor-topbar .compile-main .btn-label,
+  .tools-toggle > span:not(.tools-badge) {
     display: none;
+  }
+
+  .tools-toggle {
+    padding: 0 9px;
   }
 }
 
-/* the status goes first, as a panel beside the editor on a laptop leaves the file tabs little room; it's still read out */
+/* the status goes first, as a panel beside the editor on a laptop leaves the file tabs little room; it's still read out.
+   Failed — see Logs stays, at its width (the outer status only: the button inside it is a .compile-status too) */
 @container editor (max-width: 760px) {
-  .editor-topbar .compile-status:not(:has(button)) {
+  .editor-topbar > .compile-status:not(:has(button)) {
     position: absolute;
     width: 1px;
     height: 1px;
     overflow: hidden;
     clip-path: inset(50%);
   }
+}
+
+.editor-topbar > .compile-status:has(button) {
+  flex: none;
 }
 
 .file-tabs {
@@ -1198,9 +1209,13 @@ button.compile-status:hover {
   outline: none;
 }
 
-/* the pages take focus (for their keys) without a ring */
+/* the pages take focus (for their keys), with a ring only from the keyboard */
 .pdf-scroll:focus {
   outline: none;
+}
+.pdf-scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 /* the PDF's sidebar (PdfSidebar): docked beside the pages, which narrow to make room */
@@ -1248,11 +1263,12 @@ button.compile-status:hover {
   font-size: 13px;
 }
 
+/* room at the end for the page pill, which a narrow pane puts over the sidebar */
 .pdf-sidebar-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 4px 6px 12px;
+  padding: 4px 6px 64px;
 }
 
 .pdf-contents-item {
