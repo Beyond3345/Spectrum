@@ -688,6 +688,58 @@ export function deleteChat(projectId: string, chatId: string) {
   return request<{ ok: boolean }>(`/api/projects/${projectId}/chats/${chatId}`, { method: 'DELETE' });
 }
 
+// ─── To-dos and PDF notes (one small file each in .spectrum, so two computers' lists merge) ───
+
+/** Where a to-do points: a source line (found again by its text if lines move), a page of a document's PDF, or a reference */
+export type TodoLink = { file: string; line: number; snippet?: string } | { doc: string; page: number } | { key: string };
+
+export interface Todo {
+  id: string;
+  text: string;
+  done: boolean;
+  createdAt: string;
+  updatedAt: string;
+  link?: TodoLink;
+}
+
+export function listTodos(projectId: string) {
+  return request<{ todos: Todo[] }>(`/api/projects/${projectId}/todos`);
+}
+
+export function saveTodo(projectId: string, todo: Todo) {
+  return request<{ todo: Todo }>(`/api/projects/${projectId}/todos/${todo.id}`, json('PUT', todo));
+}
+
+export function deleteTodo(projectId: string, todoId: string) {
+  return request<{ ok: boolean }>(`/api/projects/${projectId}/todos/${todoId}`, { method: 'DELETE' });
+}
+
+/** A note on a page of a document's PDF; x and y are PDF points from the page's top-left, as PdfPoint */
+export interface PdfNote {
+  id: string;
+  /** the document whose PDF it is on (its .tex) */
+  doc: string;
+  page: number;
+  x: number;
+  y: number;
+  text: string;
+  colour?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function listNotes(projectId: string, doc: string) {
+  return request<{ notes: PdfNote[] }>(`/api/projects/${projectId}/notes?doc=${encodeURIComponent(doc)}`);
+}
+
+export function saveNote(projectId: string, note: PdfNote) {
+  return request<{ note: PdfNote }>(`/api/projects/${projectId}/notes/${note.id}`, json('PUT', note));
+}
+
+export function deleteNote(projectId: string, noteId: string) {
+  return request<{ ok: boolean }>(`/api/projects/${projectId}/notes/${noteId}`, { method: 'DELETE' });
+}
+
 // ─── AI ───
 
 export interface AgentPatch {
