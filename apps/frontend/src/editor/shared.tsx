@@ -3,6 +3,7 @@ export { extractJsonBlock } from '../../../backend/src/utils/jsonUtils.js';
 import { withoutComments } from '../../../backend/src/latex/text.js';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { runAgent } from '../api/client';
 import type { AgentPatch } from '../api/client';
 import type { EditorApi, PendingChange } from './EditorContext';
 
@@ -219,4 +220,36 @@ export async function patchesToChanges(api: Pick<EditorApi, 'ensureFileContent'>
       source
     }))
   );
+}
+
+/**
+ * Fix with AI, as the Logs and Review tabs offer it: one tools run asked for a patch, which opens as reviewable changes
+ * named `label`. file: where the problem is (the open file otherwise); withLog: the compile log goes along. Says how it
+ * went itself and returns the AI's reply ('' when the request failed).
+ */
+export async function fixWithAI(api: EditorApi, { task, prompt, selection = '', file, label, withLog = true }: { task: string; prompt: string; selection?: string; file?: string; label: string; withLog?: boolean }) {
+  try {
+    const res = await runAgent({
+      task,
+      prompt,
+      selection,
+      content: '',
+      mode: 'tools',
+      projectId: api.projectId,
+      activePath: file || api.activePath,
+      compileLog: withLog ? api.compileLog : '',
+      llmConfig: api.llm.main,
+      interaction: 'agent',
+      history: [],
+      reasoningEffort: api.settings.reasoningEffort
+    });
+    const changes = await patchesToChanges(api, res.patches || [], label);
+    if (changes.length) api.proposeChanges(changes, { open: true });
+    else if (res.ok) api.notify('No fix was proposed.');
+    else api.notify(res.reply || 'The request failed.', 'error');
+    return res.reply || '';
+  } catch (err) {
+    api.notify(`Couldn’t get a fix: ${errorText(err)}`, 'error');
+    return '';
+  }
 }

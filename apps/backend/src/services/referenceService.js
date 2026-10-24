@@ -471,7 +471,7 @@ function readValue(s, i) {
   return { value: bare, end: i + bare.length };
 }
 
-/** Lenient: [{ type, key, fields: { lowercased name: raw value } }]; skips @string/@comment/@preamble. */
+/** Lenient: [{ type, key, fields: { lowercased name: raw value }, at }]; skips @string/@comment/@preamble. at: where the entry starts. */
 export function parseBibEntries(text) {
   const heads = [...String(text).matchAll(/@([A-Za-z]+)\s*[{(]\s*([^,\s{}()"=]+)\s*,/g)]
     .filter((m) => !/^(comment|string|preamble)$/i.test(m[1]));
@@ -485,7 +485,7 @@ export function parseBibEntries(text) {
       fields[f[1].toLowerCase()] ??= value.replace(/\s+/g, ' ').trim();
       re.lastIndex = Math.max(end, re.lastIndex);
     }
-    return { type: m[1].toLowerCase(), key: m[2], fields };
+    return { type: m[1].toLowerCase(), key: m[2], fields, at: m.index };
   });
 }
 

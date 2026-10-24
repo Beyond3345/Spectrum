@@ -1,6 +1,8 @@
 // Typed client for the local Spectrum backend. Every request is same-origin;
 // the backend only accepts requests from this machine.
 
+import type { BibRecord, Finding } from '../editor/preflight/run';
+
 // ─── Shared types ───
 
 export interface ProjectMeta {
@@ -666,6 +668,45 @@ export function synctexEdit(projectId: string, at: PdfPoint, doc: string) {
 
 export function synctexView(projectId: string, at: { file: string; line: number; column?: number }, doc: string) {
   return request<{ ok: true; page: number; boxes: PdfBox[] } | SynctexFailure>(`/api/projects/${projectId}/synctex/view`, json('POST', { ...at, doc }));
+}
+
+// ─── Review ───
+
+/** When doc's PDF and the newest file it reads were written (ms; null: none), and with bib the project's .bib entries. */
+export function getReviewState(projectId: string, doc: string, bib = false) {
+  const qs = new URLSearchParams({ doc, ...(bib && { bib: '1' }) }).toString();
+  return request<{ ok: true; pdfAt: number | null; sourceAt: number | null; bib?: BibRecord[] }>(`/api/projects/${projectId}/review/state?${qs}`);
+}
+
+/** anchored: the quote is on (or near) line, which points at it; otherwise the place is the model's guess. */
+export interface AiFinding {
+  severity: 'major' | 'minor' | 'note';
+  category: string;
+  file: string;
+  line: number;
+  quote: string;
+  issue: string;
+  suggestion: string;
+  anchored: boolean;
+}
+
+/** score out of 10, confidence out of 5; files: those the model read */
+export interface AiReview {
+  summary: string;
+  strengths: string[];
+  score: number | null;
+  confidence: number | null;
+  findings: AiFinding[];
+  limits: string[];
+  files: string[];
+}
+
+/** The AI review of doc, told what Preflight found. Read-only; aborting signal stops the model call. */
+export function runAiReview(
+  payload: { projectId: string; doc: string; activePath: string; findings: Finding[]; llmConfig?: Partial<LLMConfig>; reasoningEffort?: ReasoningEffort },
+  signal?: AbortSignal
+) {
+  return request<({ ok: true } & AiReview) | { ok: false; error: string; stopped?: boolean }>('/api/review', { ...json('POST', payload), signal });
 }
 
 // ─── Version history ───

@@ -1775,6 +1775,16 @@ function Editor({ projectId }: { projectId: string }) {
     if (doc === shownDoc && pdf) requestAnimationFrame(() => pdfRef.current?.scrollToPage(at));
   };
 
+  /** From a panel: where a source line went in a document's PDF, which comes back in the panel's place lit up there. */
+  const showLineInPdf = async (doc: string, file: string, line: number) => {
+    const res = await synctexView(projectId, { file, line }, doc).catch((err) => ({ ok: false as const, error: errorText(err) }));
+    if (!res.ok) return notify(res.error);
+    // another document's PDF opens at the page; the one showing has its pages laid out to light up
+    if (doc !== shownDoc || !pdf) return showPdfPage(doc, res.page);
+    open(pdfOf(doc));
+    requestAnimationFrame(() => pdfRef.current?.highlight(res.boxes, settings.syncHighlightSeconds));
+  };
+
   /** Where a to-do links to: its line (found again by its text if lines moved), its PDF page, or its reference's definition. */
   const openTodoLink = async (link: TodoLink) => {
     if ('doc' in link) showPdfPage(link.doc, link.page);
@@ -2393,11 +2403,14 @@ function Editor({ projectId }: { projectId: string }) {
     texFiles,
     bibFiles,
     figureFiles,
+    projectFiles: [...fileSet],
     selectionText,
     selectionRange,
     editorValue,
     compileLog,
     compileErrors,
+    compiledDoc,
+    compileFailed: Boolean(compileFailure),
     // only for the PDF showing, when it's the document Document insights describes; another's, or none, is '—'
     pdfPages: pdf && pagesOf.url === pdf.url && shownDoc === compileTarget ? pagesOf.pages : null,
     // a level the main model can't use is sent as its recommended one
@@ -2420,16 +2433,17 @@ function Editor({ projectId }: { projectId: string }) {
     reloadFiles,
     openFile,
     jumpTo,
+    showPdfPage,
+    showLineInPdf,
     proposeChanges,
     applyChanges: acceptChanges,
     prepareAgent: async () => {
       await saveNow();
       if (heldRef.current.size) throw new Error('Resolve the files changed on disk before starting or applying agent work.');
     },
-    // the document whose log the AI read, so a fix loop stays on it
-    compile: async () => {
-      await runCompile(compiledDoc || mainFile);
-    },
+    // by default the document whose log the AI read, so a fix loop stays on it
+    compile: (doc) => runCompile(doc || compiledDoc || mainFile),
+    save: () => saveNow(),
     createVersion
   };
 
@@ -3252,7 +3266,7 @@ function Editor({ projectId }: { projectId: string }) {
 
             {keptPanels.includes('tools') && (
               <div className="tools-column" hidden={panel !== 'tools'}>
-                <ToolsPanel tab={toolsTab} onTabChange={setToolsTab} trailing={panelEnd} />
+                <ToolsPanel tab={toolsTab} onTabChange={setToolsTab} doc={compileTarget} trailing={panelEnd} />
               </div>
             )}
 
