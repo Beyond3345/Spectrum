@@ -1,7 +1,7 @@
 // Self-check for personas: what a chat is told, Reset to defaults, and how they join another computer's. Run (it
 // imports React through settings.ts, so bundle it first):
 // npx esbuild apps/frontend/src/editor/personas.check.ts --bundle --platform=node --log-level=warning | node
-import { DEFAULT_SETTINGS, sharedPart, takeInShared, withShared } from '../app/settings';
+import { DEFAULT_SETTINGS, keysBackFromOlder, sharedPart, takeInShared, withShared } from '../app/settings';
 import type { AppSettings } from '../app/settings';
 import { STARTER_PERSONAS, resetPersonas, resolveInstructions } from './personas';
 import type { Persona } from './personas';
@@ -52,5 +52,27 @@ const shared = JSON.stringify(sharedPart(joined));
 eq(ids(takeInShared(joined, sharedPart(at({ personas: [mine] })), shared).personas), ['thesis'], 'deleted there: deleted here');
 // an older Spectrum's file has no personas: this computer's stay
 eq(ids(takeInShared(at({ personas: [mine] }), { theme: 'dark' }, '').personas), ['thesis'], 'none in theirs');
+
+// two computers upgraded one at a time: A (2.0) shares its personas and default instructions at T1; B, still on 1.10.4,
+// takes them in without those keys and shares its theme at T2, which A takes in. B upgrades, and the newest file from
+// another computer is still A's of T1: B takes A's keys in, and counts them as shared, so it never sends its starters
+const a = at({ personas: [...STARTER_PERSONAS, mine], defaultInstructions: 'Use British spelling.' });
+const fileA = { updatedAt: '2026-10-01T00:00:00.000Z', machineName: 'A', settings: sharedPart(a) };
+const older = (s: AppSettings) => {
+  const { personas, defaultInstructions, ...rest } = sharedPart(s);
+  return rest;
+};
+const b = at({ theme: 'dark' });
+const back = keysBackFromOlder(b, fileA, '2026-10-02T00:00:00.000Z', JSON.stringify(older(b)));
+eq(back && ids(back.settings.personas), [...ids(STARTER_PERSONAS), 'thesis'], 'A’s personas come in');
+eq(back?.settings.defaultInstructions, 'Use British spelling.', 'and its default instructions');
+eq(back?.settings.theme, 'dark', 'B’s own settings stay');
+eq(back && JSON.stringify(sharedPart(back.settings)) === back.sent, true, 'nothing to share back');
+// a value B set itself since (not the default) stays B's
+eq(keysBackFromOlder(at({ defaultInstructions: 'Mine' }), fileA, '2026-10-02T00:00:00.000Z', JSON.stringify(older(b)))?.settings.defaultInstructions, 'Mine', 'B’s own');
+
+// a computer joining for the first time with an empty box takes the others' default instructions, not the other way
+eq(takeInShared(at({}), sharedPart(a), '').defaultInstructions, 'Use British spelling.', 'an empty box never shared');
+eq(takeInShared(at({ defaultInstructions: 'Mine' }), sharedPart(a), '').defaultInstructions, 'Mine', 'written here: changed here');
 
 console.log('personas: all checks passed');

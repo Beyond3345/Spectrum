@@ -459,16 +459,22 @@ export function takeInShared(settings: AppSettings, theirs: Record<string, unkno
     const t = cleanPersonas(theirs.personas);
     kept.personas = [...t, ...settings.personas.filter((p) => !t.some((q) => q.id === p.id) && !isUnchangedStarter(p))];
   }
+  // the user's own text: an empty box here that was never shared doesn't empty theirs
+  if (!('defaultInstructions' in before) && !settings.defaultInstructions) delete kept.defaultInstructions;
   return withShared(withShared(settings, theirs), kept);
 }
 
 /**
- * Back from 1.8.0, which last took in the other computer's file of `at` and kept what this computer had shared without
- * the keys it doesn't know (sent): those keys are that file's, newer than this computer's. The settings with them in
- * and what counts as shared then, or null when nothing is missing or this computer shared since.
+ * Back from an older Spectrum (1.8.0, or 1.10.4 before personas), which last took in another computer's file and kept
+ * what this computer had shared without the keys it doesn't know (sent): those keys come from the newest file (latest).
+ * Its own value for a key, if it took in that file last (`at`), else only while this computer's value is still the
+ * default, as the older Spectrum may have shared since without it (so a tree of its own, say, stays). The settings with
+ * them in and what counts as shared then, or null when nothing is to come in.
+ * ponytail: when the newest file is a third computer's still on the older Spectrum, it has none of the keys either;
+ * the presence service would need to hand over the newest file that has each
  */
 export function keysBackFromOlder(settings: AppSettings, latest: SharedSettings | null, at: string, sent: string) {
-  if (!latest || latest.updatedAt !== at) return null;
+  if (!latest) return null;
   let before: unknown;
   try {
     before = JSON.parse(sent);
@@ -476,7 +482,9 @@ export function keysBackFromOlder(settings: AppSettings, latest: SharedSettings 
     return null;
   }
   if (!before || typeof before !== 'object') return null;
-  const missing = SHARED_KEYS.filter((key) => !(key in before) && key in latest.settings);
+  const missing = SHARED_KEYS.filter(
+    (key) => !(key in before) && key in latest.settings && (latest.updatedAt === at || JSON.stringify(settings[key]) === JSON.stringify(DEFAULT_SETTINGS[key]))
+  );
   if (!missing.length) return null;
   const next = withShared(settings, Object.fromEntries(missing.map((key) => [key, latest.settings[key]])));
   return { settings: next, sent: JSON.stringify({ ...sharedPart(next), ...before }) };
