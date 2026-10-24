@@ -1,6 +1,7 @@
 // Self-check for the circuit mode's export, snapping and junctions. Run:
 // npx esbuild apps/frontend/src/diagram/modes/circuitikz/circuitikz.check.ts --bundle --platform=node --log-level=warning | node
 import { circuitCode, readStyle, symbolOptions } from './code';
+import { attach, detach, moveBy, paste, remove } from './edit';
 import { PT_PER_GRID, findJunctions, locator, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
 import type { CircuitModel, Shape } from './model';
 
@@ -110,5 +111,24 @@ const three: CircuitModel = {
   junctions: []
 };
 eq(findJunctions(three, shapeOf), [{ part: 'u', pin: 'out' }], 'three ends at a node’s pin: the dot is kept as that pin');
+
+// ─── edits ───
+
+const amp: CircuitModel = {
+  elements: [
+    { id: 'u', kind: 'node', type: 'op-amp', at: { x: 0, y: 0 }, name: 'U1' },
+    { id: 'r', kind: 'path', type: 'resistor', a: { x: 4, y: 0 }, b: { x: 12, y: 0 } },
+    { id: 'w', kind: 'wire', points: [{ x: -4, y: 2 }, { x: -8, y: 2 }], routes: ['--'] }
+  ],
+  junctions: []
+};
+const held = attach(amp, new Set(['r', 'w']), shapeOf);
+eq(held.elements.map((el) => (el.kind === 'path' ? el.a : el.kind === 'wire' ? el.points[0] : null)), [null, { part: 'u', pin: 'out' }, { part: 'u', pin: '-' }], 'ends that landed on pins take hold of them');
+const moved = moveBy(held, new Set(['u']), { x: 0, y: 4 });
+eq(locator(moved, shapeOf).pos({ part: 'r', pin: 'a' }), { x: 4, y: 4 }, 'a part’s end follows the pin it holds');
+eq(moveBy(detach(held, new Set(['r']), shapeOf), new Set(['r']), { x: 1, y: 0 }).elements[1], { id: 'r', kind: 'path', type: 'resistor', a: { x: 5, y: 0 }, b: { x: 13, y: 0 } }, 'moving a part on its own lets go of the pin');
+eq((remove(held, new Set(['u']), shapeOf).elements[1] as { points: unknown[] }).points[0], { x: -4, y: 2 }, 'deleting a part leaves what held it where it was');
+const pasted = paste(held, held.elements.filter((el) => el.id !== 'w'), { x: 2, y: -2 });
+eq(pasted.model.elements.slice(3).map((el) => (el.kind === 'node' ? el.name : el.kind === 'path' ? el.a : null)), ['U2', { part: pasted.ids[0], pin: 'out' }], 'a pasted copy gets the next name and keeps hold of its own copies');
 
 console.log('circuitikz.check: ok');

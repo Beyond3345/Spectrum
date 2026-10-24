@@ -102,6 +102,12 @@ export interface CircuitModel {
 
 export const emptyCircuit = (): CircuitModel => ({ elements: [], junctions: [] });
 
+/** A model read back from a file, or an empty one when it isn't a circuit. */
+export const asCircuit = (model: unknown): CircuitModel => {
+  const m = model as Partial<CircuitModel> | null;
+  return m && Array.isArray(m.elements) ? { elements: m.elements, junctions: Array.isArray(m.junctions) ? m.junctions : [] } : emptyCircuit();
+};
+
 export const isPoint = (end: End): end is Pt => 'x' in end;
 export const isPart = (el: Element): el is Part => el.kind !== 'wire';
 
