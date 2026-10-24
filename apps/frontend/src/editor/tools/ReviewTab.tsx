@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { blobUrl, getDiagnostics, getFile, getReviewState, runAiReview } from '../../api/client';
+import { blobUrl, getFile, getReviewState, runAiReview } from '../../api/client';
 import type { AiFinding, AiReview, LLMConfig } from '../../api/client';
 import Icon from '../../app/Icon';
 import Sheet from '../../app/Sheet';
@@ -194,7 +194,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
       const pdf = reviewed.replace(/\.tex$/i, '.pdf');
       const [facts, diagnostics] = await Promise.all([
         compileFailed ? null : pdfFacts(blobUrl(projectId, pdf, Date.now()), abort.signal).catch(() => null),
-        getDiagnostics(projectId).then((d) => (d.available ? d.files : undefined), () => undefined)
+        latest.current.diagnostics().then((d) => (d.available ? d.files : undefined), () => undefined)
       ]);
       abort.signal.throwIfAborted();
       const input = {

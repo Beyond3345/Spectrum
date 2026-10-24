@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { getDiagnostics, getFile, getProjectStats } from '../api/client';
+import { getFile, getProjectStats } from '../api/client';
 import type { ProjectStats } from '../api/client';
 import Icon from '../app/Icon';
 import Tabs from '../app/Tabs';
@@ -76,7 +76,7 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
       const todos = scanTodos(files);
       inReading(doc, files, todos);
       if (live) setScan({ ...scanInsights(files, doc), todos });
-      const found = await getDiagnostics(api.projectId).catch(() => null);
+      const found = await api.diagnostics().catch(() => null);
       if (live) setNotes(found?.available ? texlabNotes(found.files, files) : null);
     }, 300);
     return () => {

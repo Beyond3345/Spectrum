@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { LLMConfig, VersionMeta, VersionReason } from '../api/client';
+import type { LLMConfig, TexlabDiagnostic, VersionMeta, VersionReason } from '../api/client';
 import type { AppSettings } from '../app/settings';
 
 export interface PendingChange {
@@ -75,6 +75,8 @@ export interface EditorApi {
   compile(doc?: string): Promise<'idle' | 'running' | 'ok' | 'failed' | 'stopped' | 'busy'>;
   /** saves the open file */
   save(): Promise<void>;
+  /** TexLab's diagnostics by project file, once it has the open file's latest text; available is false without TexLab */
+  diagnostics(): Promise<{ available: boolean; files: Record<string, TexlabDiagnostic[]> }>;
   prepareAgent(): Promise<void>;
   /** saves the open file first; silent (callers report the outcome). unchanged: nothing new, `version` is the latest one */
   createVersion(reason: VersionReason, label?: string): Promise<{ version: VersionMeta | null; unchanged: boolean }>;

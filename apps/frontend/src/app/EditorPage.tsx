@@ -2430,6 +2430,7 @@ function Editor({ projectId }: { projectId: string }) {
     // by default the document whose log the AI read, so a fix loop stays on it
     compile: (doc) => runCompile(doc || compiledDoc || mainFile),
     save: () => saveNow(),
+    diagnostics: async () => (texlabRef.current?.available ? texlabRef.current.diagnostics() : { available: false, files: {} }),
     createVersion
   };
 
