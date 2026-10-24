@@ -51,7 +51,7 @@ export async function openDiagram(projectId: string, file?: string, lang?: Diagr
   if (!window.open(`/diagram?${query}`, 'spectrum-diagram')) throw new Error('The browser blocked its window. Allow pop-ups for Spectrum and try again.');
 }
 
-/** Brings this window to the front, as the composer's Insert as figure does for the document's. */
+/** Brings this window to the front: the document's, when the composer hands it a diagram to insert. */
 export function focusWindow() {
   if (IS_DESKTOP) invoke('plugin:window|set_focus', { label: WINDOW_LABEL });
   else window.focus();
