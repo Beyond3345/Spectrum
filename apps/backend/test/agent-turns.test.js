@@ -117,6 +117,20 @@ test('a link left in the draft is told to the agent, and the session goes on onc
   assert.equal((await pendingChanges(run))[0].proposed, 'original\nagent line 1\n');
 });
 
+test('requests still open when a turn ends, or when Spectrum closed during it, are answered', { skip, timeout: 120000 }, async () => {
+  const { open, turn, stored, reopen } = await setup();
+  const { run } = await open({ 'main.tex': 'original\n' });
+  await turn(run, 'please-ask');
+  const request = run.events.find((e) => e.type === 'request');
+  assert.ok(request);
+  assert.ok(run.events.some((e) => e.type === 'answered' && e.data.requestId === request.data.requestId), 'answered in the transcript');
+  assert.ok((await stored(run)).events.some((e) => e.type === 'answered'));
+
+  const crashed = await reopen(run, (data) => ({ ...data, status: 'running', events: data.events.filter((e) => e.type !== 'answered') }));
+  assert.equal(crashed.status, 'interrupted');
+  assert.ok(crashed.events.some((e) => e.type === 'answered' && e.data.requestId === request.data.requestId));
+});
+
 test('a 1.10 review session’s applied or rejected file goes back to the user’s, and its text doesn’t return', { skip, timeout: 120000 }, async () => {
   const { open, turn, reopen, pendingChanges } = await setup();
   const { run } = await open({ 'main.tex': 'original\n' });
@@ -137,4 +151,19 @@ test('a direct turn that fails while measuring the project doesn’t fail the tu
   await fs.rm(path.join(root, 'alias.tex'));
   await turn(run, 'hello');
   await turn(run, 'hello');
+});
+
+test('Stop ends the turn as stopped, with its card no longer waiting', { skip, timeout: 120000 }, async () => {
+  const { open, promptAgent, stopAgentRun } = await setup();
+  const { run } = await open({ 'main.tex': 'original\n' });
+  await promptAgent(run, 'please-hang');
+  for (const deadline = Date.now() + 20000; !run.events.some((e) => e.type === 'user');) {
+    if (Date.now() > deadline) throw new Error('The prompt was never sent.');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  await stopAgentRun(run);
+  assert.equal(run.status, 'interrupted');
+  const errors = run.events.filter((e) => e.type === 'state' && e.data.error).map((e) => e.data.error);
+  assert.deepEqual(errors.slice(-1), ['Stopped.']);
+  assert.ok(!errors.some((e) => /disconnected/.test(e)));
 });

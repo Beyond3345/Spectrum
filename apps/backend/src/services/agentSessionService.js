@@ -99,7 +99,12 @@ export async function getAgentRun(id) {
     }
   }
   runs.set(id, r);
-  if (['running', 'starting', 'stopping'].includes(r.status)) state(r, 'interrupted', 'Spectrum closed during the task. The working copy has been preserved.');
+  if (['running', 'starting', 'stopping'].includes(r.status)) {
+    // nothing waits for an answer any more
+    const answered = new Set(r.events.filter((e) => e.type === 'answered').map((e) => e.data.requestId));
+    for (const e of r.events.filter((e) => e.type === 'request' && !answered.has(e.data.requestId))) emit(r, 'answered', { requestId: e.data.requestId });
+    state(r, 'interrupted', 'Spectrum closed during the task. The working copy has been preserved.');
+  }
   return r;
 }
 
@@ -571,9 +576,9 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       r.turnCount++;
       emit(r, 'complete', result);
       outcome = [r.cancelled || result.stopReason === 'cancelled' || ['max_tokens', 'max_turn_requests'].includes(result.stopReason) ? 'interrupted' : result.stopReason === 'end_turn' ? 'completed' : 'failed', result.stopReason === 'refusal' ? 'The agent refused this task.' : undefined];
-    } catch (err) { outcome = [r.cancelled ? 'interrupted' : 'failed', err.message]; disconnect(r); }
+    } catch (err) { outcome = r.cancelled ? ['interrupted', 'Stopped.'] : ['failed', err.message]; disconnect(r); }
     finally {
-      for (const pending of r.pending.values()) pending.reject(new Error('The task ended.'));
+      for (const [id, pending] of r.pending) { pending.reject(new Error('The task ended.')); emit(r, 'answered', { requestId: id }); }
       r.pending.clear();
       disconnect(r);
       try { await r.stopChain; await captureAgentProposal(r); emit(r, 'changes', { changes: await pendingChanges(r) }); }
