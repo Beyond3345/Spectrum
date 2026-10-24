@@ -251,3 +251,16 @@ test('a session Spectrum closed during is loaded once when the history list and 
   assert.equal(await getAgentRun(id), opened);
   assert.equal(opened.events.filter((e) => e.type === 'state' && e.data.status === 'interrupted').length, 1);
 });
+
+test('a direct turn after a first one that failed is measured from the project as it then is, with a checkpoint', { skip, timeout: 120000 }, async () => {
+  const { open, turn, pendingChanges } = await setup();
+  const { listVersions, readVersionFile } = await import('../src/services/versionService.js');
+  const { run, root } = await open({ 'main.tex': 'original\n' }, { mode: 'direct' });
+  await turn(run, 'please-fail', 'failed');
+  await fs.writeFile(path.join(root, 'main.tex'), 'original\nuser paragraph\n');
+  await turn(run, 'draft two');
+  assert.deepEqual((await pendingChanges(run)).map((c) => [c.original, c.proposed]), [['original\nuser paragraph\n', 'original\nuser paragraph\nagent line 1\n']], 'the user’s paragraph isn’t the agent’s');
+  const checkpoints = (await listVersions(root)).filter((v) => v.reason === 'before-ai');
+  assert.equal(checkpoints.length, 2, 'one at the start, one before the turn, none for the failed turn that changed nothing');
+  assert.equal((await readVersionFile(root, checkpoints[0].id, 'main.tex')).content, 'original\nuser paragraph\n', 'the newest holds the user’s paragraph');
+});

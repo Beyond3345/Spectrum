@@ -603,8 +603,9 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       // a first connect that failed was disconnected, so the agent starts again below as it is now set up
       if (r.ready) await r.ready.catch(() => {});
       // a direct session's changes are already the user's: each turn is measured from the project as it then is, with
-      // a checkpoint before it. A review session goes on from its draft.
-      if (r.turnCount && r.mode === 'direct') {
+      // a checkpoint before it, the first too (the user may have worked on since the session began, or since a first
+      // turn that failed). A review session goes on from its draft.
+      if (r.mode === 'direct') {
         await fs.rm(path.join(r.dir, 'baseline'), { recursive: true, force: true });
         await fs.rm(path.join(r.dir, 'proposal'), { recursive: true, force: true });
         await fs.rm(path.join(r.dir, 'proposal.json'), { force: true });
