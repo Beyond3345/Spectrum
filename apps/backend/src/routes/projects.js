@@ -32,7 +32,7 @@ import {
   updateMeta
 } from '../services/projectService.js';
 import { refuseDelete } from './cloud.js';
-import { projectStats } from '../services/statsService.js';
+import { documentLabels, projectStats } from '../services/statsService.js';
 import { readProjectSettings, updateProjectSettings } from '../services/projectSettings.js';
 import { BIB_TOOLS, SUPPORTED_ENGINES } from '../services/compileService.js';
 import { knownMachineNames } from '../services/presenceService.js';
@@ -391,10 +391,11 @@ export function registerProjectRoutes(fastify) {
     return { ok: true };
   });
 
+  // doc: the document (mainFile, as 1.10.4's editor called it); labels: its numbers and pages from the last compile
   fastify.get('/api/projects/:id/stats', async (req) => {
     const root = await getProjectRoot(req.params.id);
-    const mainFile = String(req.query?.mainFile || '') || (await readMeta(root)).mainFile || 'main.tex';
-    return projectStats(root, mainFile);
+    const doc = String(req.query?.doc || req.query?.mainFile || '') || (await readMeta(root)).mainFile || 'main.tex';
+    return { ...(await projectStats(root, doc)), ...(await documentLabels(root, doc)) };
   });
 
   // Tells the open editor when files appear, go or are renamed outside the app (Finder, another editor, a git

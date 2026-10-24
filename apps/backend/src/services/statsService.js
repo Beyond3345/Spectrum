@@ -2,9 +2,12 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { findExecutable } from './compileService.js';
+import { auxStore, findExecutable } from './compileService.js';
+import { cachePath } from './projectService.js';
+import { listFilesRecursive } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { inlineInputs } from '../utils/texUtils.js';
+import { matchBrace } from '../latex/text.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -112,4 +115,52 @@ export async function projectStats(root, mainFile) {
     }
   }
   return estimateStats(await inlineInputs(root, mainFile, { stripComments: true }));
+}
+
+// ─── Numbers and pages from the last compile ───
+
+// a label's number or page as text: \textup {(a)} gives (a)
+const plain = (tex) => tex.replace(/\\[a-zA-Z@]+\s*|[{}]/g, '').trim();
+
+/** The labels an .aux defines, \newlabel{key}{{number}{page}…}: { key: { number, page } }. cleveref's copies are left out. */
+export function parseLabels(aux) {
+  const labels = {};
+  for (const match of aux.matchAll(/\\newlabel(?=\{)/g)) {
+    const keyStart = match.index + match[0].length;
+    const keyEnd = matchBrace(aux, keyStart);
+    // the value's group, then its first two: the number and the page
+    const value = keyEnd + 1;
+    const numberEnd = aux[value] === '{' && aux[value + 1] === '{' ? matchBrace(aux, value + 1) : -1;
+    const pageEnd = numberEnd > 0 && aux[numberEnd + 1] === '{' ? matchBrace(aux, numberEnd + 1) : -1;
+    if (keyEnd < 0 || pageEnd < 0) continue;
+    const key = aux.slice(keyStart + 1, keyEnd);
+    if (key.endsWith('@cref')) continue;
+    labels[key] = { number: plain(aux.slice(value + 2, numberEnd)), page: plain(aux.slice(numberEnd + 2, pageEnd)) };
+  }
+  return labels;
+}
+
+/**
+ * The document's labels from its last good compile's .aux files, an \include'd chapter's too: { labels, auxAt,
+ * stale }. auxAt: when that compile wrote them (ms), or null; stale: it has never compiled, or a .tex or .bib in the
+ * project changed since. ponytail: any .tex or .bib counts, not only the document's own inputs
+ */
+export async function documentLabels(root, doc) {
+  const store = auxStore(await cachePath(root), doc);
+  const labels = {};
+  for (const { path: rel, type } of await listFilesRecursive(store).catch(() => [])) {
+    if (type === 'file' && rel.endsWith('.aux')) Object.assign(labels, parseLabels(await fs.readFile(path.join(store, rel), 'utf8').catch(() => '')));
+  }
+  const aux = await fs.stat(path.join(store, `${path.basename(doc, path.extname(doc))}.aux`)).catch(() => null);
+  const auxAt = aux ? Math.round(aux.mtimeMs) : null;
+  let stale = auxAt === null;
+  for (const { path: rel, type } of stale ? [] : await listFilesRecursive(root)) {
+    if (type !== 'file' || !/\.(tex|bib)$/i.test(rel)) continue;
+    const stat = await fs.stat(path.join(root, rel)).catch(() => null);
+    if (stat && stat.mtimeMs > aux.mtimeMs) {
+      stale = true;
+      break;
+    }
+  }
+  return { labels, auxAt, stale };
 }
