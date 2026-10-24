@@ -2,11 +2,14 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { Readable, Writable } from 'node:stream';
+import os from 'node:os';
 import { createServer } from 'node:net';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { client, ndJsonStream } from '@agentclientprotocol/sdk';
 import { APP_VERSION } from '../config/constants.js';
-import { appPath, getProjectRoot, mutateProjectFiles } from './projectService.js';
+import { appPath, detectMainFile, getProjectRoot, mutateProjectFiles, readMeta } from './projectService.js';
+import { readProjectSettings } from './projectSettings.js';
+import { openTodos, suggestedTodo } from './agentService.js';
 import { AGENT_DIR, profileFor, agentConfigs, agentHome } from './agentProfiles.js';
 import { spawnAgentProcess, killAgentProcess, resolveExecutable, isolationAvailable } from './agentSandbox.js';
 import { initialiseWorkspace, workspaceChanges, applyWorkspaceChanges, captureAgentProposal, readCurrent, rebaseChange } from './agentWorkspace.js';
@@ -188,6 +191,8 @@ async function connect(r) {
     r.processOptions.env.OPENCODE_SERVER_PASSWORD = crypto.randomBytes(32).toString('hex');
   }
   await syncAgentSkills(r).catch((err) => emit(r, 'notice', { message: `The project’s skills weren’t copied for the agent: ${err.message}` }));
+  const tools = await toolsServer(r).catch((err) => { emit(r, 'notice', { message: `Spectrum’s tools aren’t available to the agent this turn: ${err.message}` }); return null; });
+  if (tools) r.processOptions.runtimePaths = [...r.processOptions.runtimePaths, ...tools.reads];
   if (r.cancelled) throw new Error('Task cancelled.');
   r.connectionAbort.signal.throwIfAborted();
   r.child = await spawnAgentProcess(r.processOptions);
@@ -258,7 +263,7 @@ async function connect(r) {
   let session;
   // a persona goes in the agent's own system prompt where it takes one, on every new, loaded or resumed session
   const systemPrompt = r.persona && r.capabilities.sessionCapabilities?.systemPrompt ? { mode: 'append', content: [{ type: 'text', text: personaText(r.persona) }] } : undefined;
-  const spec = { cwd: r.workspace, mcpServers: [], ...(systemPrompt && { systemPrompt }) };
+  const spec = { cwd: r.workspace, mcpServers: tools ? [tools.server] : [], ...(systemPrompt && { systemPrompt }) };
   try {
     if (r.remoteId && !r.forceNew && (r.capabilities.loadSession || r.capabilities.sessionCapabilities?.resume)) {
       const method = r.capabilities.loadSession ? 'session/load' : 'session/resume';
@@ -352,6 +357,43 @@ async function syncAgentSkills(r) {
   child.stdin.on('error', () => {}); child.stdin.end(JSON.stringify({ skills, folders: SKILL_FOLDERS, mark: SKILL_MARK, onlyAdd }));
   try { await timeout(done, 30000, 'Copying the skills took too long.'); }
   finally { killAgentProcess(child); }
+}
+
+// Spectrum's tools server, which the agent starts inside its own isolation (macOS only: on Windows the isolation
+// stalls a Node child's pipes, so agents there get none yet): the one bundled beside the desktop app's server, or the
+// repository's source in development
+const bundledTools = fileURLToPath(new URL('./mcp.mjs', import.meta.url));
+const repository = fileURLToPath(new URL('../../../../', import.meta.url));
+const toolsState = (r) => path.join(r.home, 'spectrum-tools', r.id);
+async function toolsServer(r) {
+  if (process.platform !== 'darwin') return null;
+  const packaged = await fs.stat(bundledTools).then((s) => s.isFile(), () => false);
+  const entry = packaged ? bundledTools : path.join(repository, 'apps/backend/src/mcp/server.js');
+  // what the agent's isolation must also read for it: Node, the server (in development the backend's source, its
+  // packages and the version in the root package.json) and the user's own fonts, for a compile
+  const reads = [nodeRead(), path.dirname(entry), ...(packaged ? [] : [path.join(repository, 'apps/backend'), path.join(repository, 'node_modules'), path.join(repository, 'package.json')]), path.join(os.homedir(), 'Library', 'Fonts')];
+  const state = toolsState(r);
+  const meta = await readMeta(r.root).catch(() => ({}));
+  // written by isolation, as the home is the agent's
+  await agentFile(r, 'write', path.join(state, 'context.json'), JSON.stringify({
+    mainFile: meta.mainFile || await detectMainFile(r.root).catch(() => null),
+    engine: (await readProjectSettings(r.root)).compile?.engine || 'auto',
+    todos: await openTodos(r.root)
+  }));
+  return {
+    reads: (await Promise.all(reads.map(async (p) => (await fs.stat(p).catch(() => null)) && p))).filter(Boolean),
+    server: { name: 'spectrum', command: process.execPath, args: [entry, '--root', r.workspace, '--state', state], env: [{ name: 'HOME', value: r.home }, { name: 'TMPDIR', value: path.join(r.home, 'tmp') }, { name: 'PATH', value: process.env.PATH || '/usr/bin:/bin' }] }
+  };
+}
+
+/** The to-dos the agent suggested through the tools server this turn, taken from its home once the turn is over. */
+async function takeSuggestions(r) {
+  const file = path.join(toolsState(r), 'suggestions.jsonl');
+  if (process.platform !== 'darwin' || !(await fs.lstat(file).catch(() => null))?.isFile()) return [];
+  const text = await agentFile(r, 'read', file);
+  await agentFile(r, 'delete', file);
+  // ponytail: the first 50 a turn; a run's compiled PDFs stay in the agent's home until it is cleared
+  return text.split('\n').slice(0, 50).flatMap((line) => { try { return [suggestedTodo(JSON.parse(line))]; } catch { return []; } });
 }
 
 const TEXT_URI = 'spectrum:';
@@ -449,6 +491,7 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       disconnect(r);
       try { await r.stopChain; await captureAgentProposal(r); emit(r, 'changes', { changes: await pendingChanges(r) }); }
       catch (err) { emit(r, 'notice', { error: err.message }); }
+      for (const todo of await takeSuggestions(r).catch(() => [])) emit(r, 'todo', todo);
       await persist(r);
       r.busy = false;
     }

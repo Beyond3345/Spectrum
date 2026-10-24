@@ -40,9 +40,11 @@ async function bundleBackend() {
   const outDir = path.join(resourcesDir, 'backend');
   fs.rmSync(outDir, { recursive: true, force: true });
   await esbuild.build({
-    // Workers run as threads of their own, from files beside server.mjs.
+    // Workers run as threads of their own, from files beside server.mjs, and mcp.mjs (Spectrum's tools for local
+    // agents) in each agent's isolation, started by the agent.
     entryPoints: {
       server: path.join(root, 'apps/backend/src/index.js'),
+      mcp: path.join(root, 'apps/backend/src/mcp/server.js'),
       spellWorker: path.join(root, 'apps/backend/src/services/spellWorker.mjs'),
       grammarWorker: path.join(root, 'apps/backend/src/services/grammarWorker.mjs'),
       latexTextWorker: path.join(root, 'apps/backend/src/latex/latexTextWorker.mjs')
