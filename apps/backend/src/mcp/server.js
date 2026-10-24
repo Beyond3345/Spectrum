@@ -22,7 +22,9 @@ if (!root || !state) {
 // --compile: one compile of the copy, its answer on stdout, for Spectrum's preview of an agent's draft
 if (process.argv.includes('--compile')) {
   const value = (name) => process.argv[process.argv.indexOf(name) + 1];
-  process.stdout.write(JSON.stringify(await tools.compile(root, state, { main: value('--main'), engine: value('--engine') })));
+  const result = await tools.compile(root, state, { main: value('--main'), engine: value('--engine') });
+  // a pipe on macOS takes its writes later: exit once this one is out
+  await new Promise((resolve) => process.stdout.write(JSON.stringify(result), resolve));
   process.exit(0);
 }
 
