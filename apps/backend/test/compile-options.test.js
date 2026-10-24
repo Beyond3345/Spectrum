@@ -15,7 +15,7 @@ Object.assign(process.env, {
   SPECTRUM_TEMPLATE_SEED_DIR: ''
 });
 const { createProject } = await import('../src/services/projectService.js');
-const { findExecutable, runCompile } = await import('../src/services/compileService.js');
+const { findExecutable, runCompile, stopCompile } = await import('../src/services/compileService.js');
 const { documentLabels } = await import('../src/services/statsService.js');
 const WINDOWS = process.platform === 'win32';
 
@@ -130,6 +130,22 @@ test('a kept file TeX can’t read is cleared, and the document compiles again f
     assert.match(res.log, /compiled again from scratch/);
     assert.doesNotMatch(await fs.readFile(kept(p, file), 'utf8'), /bogusmacro|\{1\n$/);
   }
+  // cut short in the middle of an argument, which TeX blames on the main file
+  const aux = await fs.readFile(kept(p, 'main.aux'), 'utf8');
+  await fs.writeFile(kept(p, 'main.aux'), aux.slice(0, aux.indexOf('\\newlabel') + 20));
+  const cut = await compile(p);
+  assert.equal(cut.status, 0, cut.log);
+  assert.match(cut.log, /compiled again from scratch/);
+});
+
+test('an ordinary error just after hyperref reads its kept file compiles once', { skip: needs('pdflatex') }, async () => {
+  const doc = (body) => `\\documentclass{article}\\usepackage{hyperref}\n\\begin{document}\n${body}\n\\section{S}\\label{s} See \\ref{s}.\n\\end{document}\n`;
+  const p = await newProject({ 'main.tex': doc('Text.') });
+  assert.equal((await compile(p)).status, 0);
+  await fs.writeFile(path.join(p.path, 'main.tex'), doc('Text \\foo.'));
+  const res = await compile(p);
+  assert.notEqual(res.status, 0);
+  assert.doesNotMatch(res.log, /compiled again from scratch/);
 });
 
 test('Stop on first error ends after the first pass; carrying on still makes the PDF, and keeps nothing', { skip: needs('pdflatex') }, async () => {
@@ -237,7 +253,11 @@ test('a chapter naming its document with % !TEX root compiles the document', { s
   const p = await newProject({
     'main.tex': '\\documentclass{article}\\begin{document}\\input{chapters/one}\\end{document}\n',
     'chapters/one.tex': '% !TEX root = ../main.tex\n\\section{One}\\label{sec:one}\n',
-    'chapters/lost.tex': '% !TEX root = ../missing.tex\nText\n'
+    'chapters/lost.tex': '% !TEX root = ../missing.tex\nText\n',
+    // as Windows writes it
+    'chapters/two.tex': '% !TEX root = ..\\main.tex\nText\n',
+    // a document showing the comment
+    'guide.tex': '\\documentclass{article}\\begin{document}\n\\begin{verbatim}\n% !TEX root = ../thesis.tex\n\\end{verbatim}\n\\end{document}\n'
   });
   const res = await runCompile({ projectId: p.id, mainFile: 'chapters/one.tex', engine: 'pdflatex' });
   assert.ok(res.ok, res.error || res.log);
@@ -251,6 +271,10 @@ test('a chapter naming its document with % !TEX root compiles the document', { s
   const lost = await runCompile({ projectId: p.id, mainFile: 'chapters/lost.tex', engine: 'pdflatex' });
   assert.equal(lost.ok, false);
   assert.match(lost.error, /names “\.\.\/missing\.tex”/);
+  assert.equal((await runCompile({ projectId: p.id, mainFile: 'chapters/two.tex', engine: 'pdflatex' })).doc, 'main.tex');
+  const guide = await runCompile({ projectId: p.id, mainFile: 'guide.tex', engine: 'pdflatex' });
+  assert.ok(guide.ok, guide.error || guide.log);
+  assert.equal(guide.doc, 'guide.tex');
 });
 
 test('a TeX folder comes first on the PATH, and one that isn’t a folder is passed by', { skip: WINDOWS ? 'a shell script stands in for TeX' : needs('pdflatex') }, async () => {
@@ -275,6 +299,33 @@ test('latexmk never reads a project’s own latexmkrc', { skip: needs('latexmk',
     assert.ok(res.ok, res.error || res.log);
   }
   assert.ok(!existsSync(path.join(p.path, 'ran.txt')));
+});
+
+test('latexmk carries on past an error unless told to stop, as the other engines do', { skip: needs('latexmk', 'pdflatex', 'bibtex') }, async () => {
+  const p = await newProject({ 'main.tex': paper('\\undefinedthing'), 'refs.bib': refs });
+  const carried = await runCompile({ projectId: p.id, mainFile: 'main.tex', engine: 'latexmk' });
+  assert.ok(carried.ok, carried.error || carried.log);
+  assert.ok(passes(carried.log) >= 2, carried.log);
+  assert.match(carried.log, /This is BibTeX/);
+  const halted = await runCompile({ projectId: p.id, mainFile: 'main.tex', engine: 'latexmk', haltOnError: true });
+  assert.equal(passes(halted.log), 1);
+});
+
+test('Stop during Biber says nothing about Biber failing', { skip: WINDOWS ? 'a shell script stands in for Biber' : needs('pdflatex') }, async () => {
+  const bin = path.join(tmp, 'slow Biber');
+  await fs.mkdir(bin);
+  const started = path.join(bin, 'started');
+  await fs.writeFile(path.join(bin, 'biber'), `#!/bin/sh\ntouch "${started}"\nsleep 30\n`, { mode: 0o755 });
+  const p = await newProject({
+    'main.tex': '\\documentclass{article}\\usepackage{biblatex}\\addbibresource{refs.bib}\\begin{document}\\cite{Knuth1984}\\printbibliography\\end{document}\n',
+    'refs.bib': refs
+  });
+  const run = runCompile({ projectId: p.id, mainFile: 'main.tex', engine: 'pdflatex', compileId: 'stop-biber', texFolder: bin });
+  while (!existsSync(started)) await new Promise((resolve) => setTimeout(resolve, 50));
+  stopCompile('stop-biber');
+  const res = await run;
+  assert.equal(res.stopped, true);
+  assert.doesNotMatch(res.log, /Biber failed/);
 });
 
 test('a checkpoint after a successful compile, when asked for and the source changed', { skip: needs('pdflatex') }, async () => {

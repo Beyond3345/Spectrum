@@ -84,7 +84,7 @@ function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = f
       // images as boxes but still runs as many passes as it wants
       return {
         cmd: 'latexmk',
-        args: ['-norc', '-pdf', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', ...halt, ...(draft ? [`-usepretex=${DRAFT_IMAGES}`] : []), `-outdir=${outDir}`, mainFile]
+        args: ['-norc', '-pdf', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', ...(haltOnError ? halt : ['-f']), ...(draft ? [`-usepretex=${DRAFT_IMAGES}`] : []), `-outdir=${outDir}`, mainFile]
       };
     case 'tectonic':
       // Tectonic keeps its .aux in memory unless told otherwise, and only finds other
@@ -264,8 +264,9 @@ export async function runCompile({ projectId, mainFile, engine = 'pdflatex', com
   } catch {
     return { ok: false, error: `The main file “${mainFile}” doesn’t exist.`, engine };
   }
-  // a chapter that names its document compiles that document (one step: the document's own comment isn't followed)
-  const named = tex.match(TEX_ROOT)?.[1];
+  // a chapter that names its document compiles that document (one step: the document's own comment isn't followed).
+  // Read near the top and before any \documentclass, as the editor reads it, and with '\' as Windows writes a path
+  const named = tex.slice(0, 4096).split('\\documentclass')[0].match(TEX_ROOT)?.[1]?.replace(/\\/g, '/');
   if (named) {
     const target = await projectFile(projectRoot, path.resolve(path.dirname(absMain), named));
     if (!target || path.basename(target).startsWith('-')) {
@@ -393,7 +394,8 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
     BSTINPUTS: searchPath('BSTINPUTS')
   };
   // Recompile from scratch: nothing an earlier compile of the document kept, with any engine
-  if (options.fresh) await fs.rm(path.join(cache, 'build-files', doc), { recursive: true, force: true });
+  // (one a virus scanner still holds is left: none of it is copied in, and keepBuild clears it again)
+  if (options.fresh) await fs.rm(path.join(cache, 'build-files', doc), { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
   // ponytail: only the engines run pass by pass here keep files; latexmk and Tectonic choose their own passes from nothing
   const multiPass = MULTI_PASS_ENGINES.includes(engine);
   const store = keptStore(cache, doc, engine);
@@ -529,7 +531,8 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
   try {
     pdf = await fs.readFile(path.join(outDir, `${base}.pdf`));
   } catch {
-    if (multiPass) await fs.rm(store, { recursive: true, force: true });
+    // a store Windows still holds is only reused, and a kept file TeX can't read compiles again from scratch
+    if (multiPass) await fs.rm(store, { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
     await cleanBuild(buildRoot, outDir);
     return { ok: false, error: 'No PDF was produced.', log, status: code ?? -1 };
   }
@@ -572,6 +575,8 @@ async function runBibliography(outDir, base, tex, bibTool, env, pushLog) {
   if (WINDOWS && bibCmd === 'bibtex' && /[\\/]miktex[\\/]/i.test((await findExecutable('bibtex')) || '')) bibArgs.unshift('--enable-installer');
   try {
     const bibliography = await runSpawn(bibCmd, bibArgs, outDir, pushLog, env);
+    // Stop ended it, or came before it started: Biber didn't fail
+    if (stopped()) return 0;
     if (useBiber && (bibliography.code !== 0 || bibliography.timedOut)) {
       pushLog(Buffer.from('[spectrum] Biber failed. Fix the bibliography errors above and compile again.\n'));
       return bibliography.code || 1;
@@ -606,14 +611,16 @@ async function keptFiles(outDir) {
 
 const sameFiles = (a, b) => a.size === b.size && [...a].every(([rel, bytes]) => b.get(rel)?.equals(bytes));
 
+const KEPT_NAME = /\.(?:aux|bbl|toc|lof|lot|out|ind|gls|nav|snm)\b/i;
 /**
- * An error in a kept file: one that names it (with -file-line-error), or comes just after TeX opened it, as when a
- * file cut short ends in the middle of an argument. ponytail: an error just after \begin{document}, where TeX reads
- * the .aux, counts too, so that one compiles a second time from scratch
+ * An error in a kept file: one that names it (with -file-line-error), or a file cut short ending in the middle of an
+ * argument just after TeX opened it, which TeX puts down to the main file ("./main.tex:1: File ended while scanning
+ * use of \@newl@bel" after "(./main.aux)"). An ordinary error just after hyperref opens main.out isn't one.
  */
 function keptFileFailed(log) {
   const lines = log.split('\n');
-  return lines.some((line, i) => /^!|:\d+: /.test(line) && lines.slice(Math.max(0, i - 3), i + 1).some((l) => /\.(?:aux|bbl|toc|lof|lot|out|ind|gls|nav|snm)\b/i.test(l)));
+  return lines.some((line, i) => /^[^:\n]*\.(?:aux|bbl|toc|lof|lot|out|ind|gls|nav|snm):\d+: /i.test(line)
+    || (/File ended while scanning/.test(line) && lines.slice(Math.max(0, i - 3), i + 1).some((l) => KEPT_NAME.test(l))));
 }
 
 /** Copy the document's kept build files into outDir: false when there are none from a compile that succeeded. */
