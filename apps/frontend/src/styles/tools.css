@@ -1159,83 +1159,140 @@ span.log-location {
    Review
    -------------------------------------------------------------------------- */
 
-.review-actions {
+.review-ticks {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px 16px;
 }
 
-.review-action {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  column-gap: 10px;
-  row-gap: 2px;
-  align-items: center;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  background: transparent;
-  color: var(--text);
-  text-align: left;
+.review-tick {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.review-action:hover:not(:disabled) {
-  background: var(--bg-hover);
+.review-switch {
+  margin-left: 23px;
+  color: var(--text-secondary);
 }
 
-.review-action:disabled {
-  opacity: 0.55;
-}
-
-.review-action-icon {
-  grid-row: span 2;
+.review-status {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: var(--bg-subtle);
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
   color: var(--text-secondary);
+  font-size: 12.5px;
 }
 
-.review-action-label {
-  font-weight: 500;
+.review-counts {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
-.review-action-desc {
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.result-card {
+.review-group,
+.review-part,
+.review-report {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
 }
 
-.result-card-head {
+.review-group {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.review-group-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px 8px;
+  min-height: 28px;
 }
 
-.result-card-title {
-  flex: 1;
-  min-width: 0;
+.review-group-head .disclosure-head h3 {
+  white-space: nowrap;
+}
+
+.review-part h4,
+.review-report h4 {
+  font-size: 13px;
   font-weight: 600;
 }
 
-.result-card-time {
-  color: var(--text-tertiary);
-  font-size: 12px;
+.review-clear {
+  color: var(--text-secondary);
+  font-size: 12.5px;
 }
 
-.result-card.error .md {
-  color: var(--red-text);
+/* info and notes grey, warnings and minor amber, errors and major red */
+.log-card.info .log-icon {
+  color: var(--text-secondary);
+}
+
+.review-row-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.review-category {
+  margin-bottom: 2px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.review-quote,
+.review-suggestion {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.review-quote {
+  font-style: italic;
+}
+
+.review-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+}
+
+.review-score {
+  font-variant-numeric: tabular-nums;
+}
+
+.review-restore {
+  align-self: flex-start;
+}
+
+.reader-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 12px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.reader-text {
+  max-height: 60vh;
+  overflow: auto;
+  padding: 12px;
+  border-radius: var(--radius-card);
+  background: var(--bg-subtle);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* --------------------------------------------------------------------------

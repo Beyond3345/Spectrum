@@ -17,8 +17,8 @@ const LABELS: [ToolsTab, string][] = [
 ];
 
 /** Right column when Tools is open. Tabs stay mounted once visited so results survive switching. */
-/** `trailing` ends the header (Close and the view switcher). */
-export default function ToolsPanel({ tab, onTabChange, trailing }: { tab: ToolsTab; onTabChange: (tab: ToolsTab) => void; trailing?: ReactNode }) {
+/** doc: the document Compile builds, which Review checks. `trailing` ends the header (Close and the view switcher). */
+export default function ToolsPanel({ tab, onTabChange, doc, trailing }: { tab: ToolsTab; onTabChange: (tab: ToolsTab) => void; doc: string; trailing?: ReactNode }) {
   const { compileErrors } = useEditor();
   const visited = useRef(new Set<ToolsTab>());
   visited.current.add(tab);
@@ -37,7 +37,7 @@ export default function ToolsPanel({ tab, onTabChange, trailing }: { tab: ToolsT
       case 'logs':
         return <LogsTab />;
       case 'review':
-        return <ReviewTab />;
+        return <ReviewTab doc={doc} active={active} />;
       case 'research':
         return <ResearchTab />;
     }
