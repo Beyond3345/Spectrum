@@ -27,6 +27,7 @@ eq(
 );
 eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 5, 'no package or library lines when there are none');
 
+// a failure here is an unhandled rejection, which ends node with an error too
 (async () => {
   const text = await diagramFileText(circuit, code);
   const lines = text.trimEnd().split('\n');
@@ -60,7 +61,4 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
   const damaged = await readDiagramFile('x\n% spectrum-diagram v1 bm90IGpzb24= 0123456789abcdef\n');
   eq([damaged.code, damaged.diagram], ['x\n', null], 'a damaged drawing opens as code');
   console.log('fileFormat.check: ok');
-})().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+})();
