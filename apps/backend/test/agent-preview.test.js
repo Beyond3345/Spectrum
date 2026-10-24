@@ -48,6 +48,10 @@ test('the draft’s preview PDF is compiled where TeX reads only the draft, into
     // on Windows nothing but TeX runs, not even restricted shell escape (macOS's isolation contains what it runs)
     if (process.platform === 'win32') assert.doesNotMatch(preview.log, /write18 enabled|WRITE18-RAN\r?\n/);
     assert.deepEqual((await fs.readdir(run.workspace, { recursive: true })).sort(), before, 'nothing was written into the draft');
+    // what the user added to the project since the turn is in the draft compiled
+    await fs.writeFile(path.join(project.path, 'notes.tex'), 'Notes since.\n');
+    assert.equal((await previewDraft(run)).ok, true);
+    assert.equal(await fs.readFile(path.join(run.workspace, 'notes.tex'), 'utf8'), 'Notes since.\n');
     await assert.rejects(previewDraft(run, { mainFile: '../escape.tex' }), /Invalid path/);
     await assert.rejects(previewDraft(run, { engine: 'troff' }), /Unsupported engine/);
 

@@ -485,6 +485,8 @@ export async function previewDraft(r, options = {}) {
   if (options.engine != null && !SUPPORTED_ENGINES.includes(options.engine)) throw Object.assign(new Error('Unsupported engine.'), { statusCode: 400 });
   r.reviewing = true;
   try {
+    // best effort, as before a turn: the user's edits and new files since reach the draft
+    await refreshDraft(r, (rel) => draftWriter(r, rel)).catch(() => {});
     const { main, engine } = await previewTarget(r, options);
     if (!main) return { ok: false, pdf: null, log: 'The draft has no main document to compile.' };
     // a fresh folder for each, and a home kept between them for TeX's own caches
