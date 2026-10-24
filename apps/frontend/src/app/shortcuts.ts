@@ -3,6 +3,7 @@ import {
   crosshairCursor,
   drawSelection,
   dropCursor,
+  EditorView,
   highlightActiveLine,
   highlightActiveLineGutter,
   highlightSpecialChars,
@@ -136,6 +137,8 @@ export const editorBasics = [
   drawSelection(),
   dropCursor(),
   EditorState.allowMultipleSelections.of(true),
+  // ⌥-click adds a cursor (and ⌥-drag a column), as in VS Code: a click with ⌘ (Ctrl) held is TexLab's Go to definition
+  EditorView.clickAddsSelectionRange.of((e) => e.altKey),
   indentOnInput(),
   syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
   bracketMatching(),

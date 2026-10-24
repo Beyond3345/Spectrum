@@ -1,5 +1,7 @@
 // Self-check for shortcut matching: `node apps/frontend/src/app/shortcuts.check.ts` (Node ≥ 23 strips the types).
-import { FIND_NEXT, FIND_PREVIOUS, IS_MAC, SHORTCUTS, canonical, formatShortcut, matchesShortcut, matchesZoomIn, shortcutFromEvent, shortcutKey, shortcutProblem } from './shortcuts.ts';
+import { EditorState } from '@codemirror/state';
+import { EditorView } from '@codemirror/view';
+import { FIND_NEXT, FIND_PREVIOUS, IS_MAC, SHORTCUTS, canonical, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutFromEvent, shortcutKey, shortcutProblem } from './shortcuts.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -57,4 +59,8 @@ const defaults = SHORTCUTS.map((s) => canonical(s.key));
 eq(defaults.filter((k, i) => defaults.indexOf(k) !== i), [], 'default shortcuts are distinct');
 eq(SHORTCUTS.filter((s) => shortcutProblem(s.key)).map((s) => s.id), [], 'default shortcuts are allowed');
 if (!IS_MAC) eq([formatShortcut('Shift-Mod-Enter'), formatShortcut('Alt-ArrowUp')], ['Ctrl+Shift+Enter', 'Alt+↑'], 'key names elsewhere');
+// a click with ⌥ (Alt) held adds a cursor, and one with ⌘ (Ctrl) held is left to Go to definition
+const adds = EditorState.create({ extensions: editorBasics }).facet(EditorView.clickAddsSelectionRange);
+const click = (mods: object) => adds.some((test) => test({ metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...mods } as MouseEvent));
+eq([click({ altKey: true }), click(mod), click({})], [true, false, false], 'which click adds a cursor');
 console.log('shortcuts.check: ok');
