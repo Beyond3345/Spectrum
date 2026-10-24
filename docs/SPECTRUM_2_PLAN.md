@@ -6,7 +6,7 @@ Research behind it: Spectrum 1.10.4's code, Oleafly's source and docs (`CodingPr
 
 ## Ground rules
 
-- **Oleafly is AGPL-3.0, Spectrum is MIT.** Spectrum takes Oleafly's ideas and layouts but copies none of its code, text or rule files. The README now thanks Oleafly and says so (committed on main, not pushed).
+- **Oleafly is AGPL-3.0, Spectrum is MIT.** Spectrum takes Oleafly's ideas and layouts but copies none of its code, text or rule files. The README now thanks Oleafly and says so (committed on main, not pushed). Short labels that match Oleafly's English (the compile menu's, which are Overleaf's own words, Compiler (this project), Compile error handling, No checkpoints yet, Submission metadata and Copy submission metadata) were checked in the phase 1 review and kept on purpose; the full sentences that matched were reworded.
 - **New code dependencies must be MIT/BSD-style or Apache-2.0:** `isomorphic-git` (MIT), `@codemirror/lsp-client` and `@codemirror/lint` (MIT), `@modelcontextprotocol/sdk` (MIT), `codemirror-lang-typst` (Apache-2.0), `@codemirror/lang-markdown` (MIT), `@xyflow/react` (MIT) for the diagram canvas, and `mermaid` 11 (MIT; not 12, which pulls in an EPL-licensed layout library).
 - **TexLab is GPL-3.0-only.** It can only ship as a separate program beside Spectrum, with its licence and a source offer, like the AussieDic dictionary today.
 - **Other bundled programs:** Typst (Apache-2.0) and Tectonic (MIT) ship inside the app; pandoc (GPL-2.0-or-later) is downloaded on first use. All are listed with their licences in the third-party notices, and so, on Windows, is Microsoft's `vcruntime140.dll` under its redistribution terms.
@@ -37,7 +37,7 @@ A new panel next to the AI and grammar buttons, replacing Tools › Project info
 
 - **Tabs with counts:** Overview, Headings, Figures, Tables, Equations, Labels, Citations, To-dos (the source to-dos; the working list is the sidebar's To-dos tab, section 4b). Rows show the number and page from the last compile (read from the kept `.aux` files) and the label, and jump to the source line when clicked.
 - **Overview:** the count cards, plus the current texcount word counts, plus **Submission metadata** (title, authors, keywords, date, abstract) with **Copy submission metadata**.
-- **Footer:** "Numbers and pages are from the last compile", marked stale when the source is newer, and **Refresh**.
+- **Footer:** "Numbers and pages come from the last compile", marked stale when the source is newer, and **Refresh**.
 - Built as one pure scanner (`editor/insights.ts` plus a self-check) over the files the project scan already walks.
 
 ## 4. Review (Preflight and the current Review, combined in Tools)
@@ -112,9 +112,9 @@ Your request, modelled on Oleafly, which has two separate kinds: to-dos found in
 Your request: the offline version history is renamed **Checkpoints** everywhere, so it can't be confused with GitHub. The Tools tab, the Save version button and its shortcut (now Save checkpoint, ⇧⌘S), toasts, Settings and the README all say checkpoint. Automatic ones keep their reasons in the new words ("Before pull from GitHub", "Before AI changes", "Before rename").
 
 - **Settings › Checkpoints**, like Oleafly's:
-  - **Save a checkpoint after each successful compile** (on by default): saved in the background, only when the source changed since the last checkpoint, and at most one every 10 minutes (a newer compile checkpoint replaces the last automatic one inside that window). Manual and "Before…" checkpoints are never replaced.
-  - **Show a notice when a checkpoint cannot be saved** (on by default): says when storage fails or a file couldn't be captured (too large or unreadable), instead of failing silently.
-- **Storage is unchanged** (`.spectrum/history`), so 1.10.4 still lists every checkpoint as a version, and the clean-up rules are as before, plus the 10-minute replacement above and the new delete option. Tools › Checkpoints adds **Delete automatic checkpoints older than…**.
+  - **Save a checkpoint when a compile succeeds** (on by default): saved in the background, only when the source changed since the last checkpoint, and at most one every 10 minutes (a newer compile checkpoint replaces the last automatic one inside that window). Manual and "Before…" checkpoints are never replaced.
+  - **Warn me when a checkpoint fails to save** (on by default): says when storage fails or a file couldn't be captured (too large or unreadable), instead of failing silently.
+- **Storage is unchanged** (`.spectrum/history`), so 1.10.4 still lists every checkpoint as a version, and the clean-up rules are as before, plus the 10-minute replacement above (a replaced compile checkpoint takes the stored files only it used with it) and the new delete option. Tools › Checkpoints adds **Delete automatic checkpoints older than…**.
 - Checkpoints stay on each computer; GitHub's history is what crosses computers.
 
 ## 5. Compile

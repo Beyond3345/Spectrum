@@ -1256,7 +1256,7 @@ function CheckpointsPane() {
       <label className="checkbox-row">
         <input type="checkbox" checked={settings.checkpointOnCompile} onChange={(e) => update({ checkpointOnCompile: e.target.checked })} />
         <span>
-          Save a checkpoint after each successful compile
+          Save a checkpoint when a compile succeeds
           <span className="field-hint">
             Only when the source changed since the last checkpoint, and at most one every 10 minutes: a newer one takes the place of the last automatic one. The
             ones you save and the “Before …” ones are never replaced.
@@ -1266,7 +1266,7 @@ function CheckpointsPane() {
       <label className="checkbox-row">
         <input type="checkbox" checked={settings.checkpointNotice} onChange={(e) => update({ checkpointNotice: e.target.checked })} />
         <span>
-          Show a notice when a checkpoint can’t be saved
+          Warn me when a checkpoint fails to save
           <span className="field-hint">Says when saving fails, or when a file was too large or unreadable to keep, rather than failing quietly.</span>
         </span>
       </label>
