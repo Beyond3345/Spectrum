@@ -734,11 +734,12 @@ test('a "Before sync" checkpoint saved while a compile’s is being saved is kep
   assert.equal((await versions.readVersionFile(p.root, before.id, 'main.tex')).content, 'one\n');
 });
 
-test('PDF notes and to-dos go across, so a rename on the other computer takes them along here', async () => {
+test('PDF notes, to-dos and research sessions go across, so a rename on the other computer takes them along here', async () => {
   const note = (doc) => JSON.stringify({ id: 'n1', doc, page: 1, x: 1, y: 1, text: 'Note', createdAt: '2026-10-24T01:00:00.000Z', updatedAt: '2026-10-24T01:00:00.000Z' });
-  const p = await project('Notes', { 'main.tex': 'main\n', '.spectrum/notes/n1.json': note('main.tex'), '.spectrum/todos/t1.json': '{"id":"t1"}' });
+  const p = await project('Notes', { 'main.tex': 'main\n', '.spectrum/notes/n1.json': note('main.tex'), '.spectrum/todos/t1.json': '{"id":"t1"}', '.spectrum/research/r1.json': '{"id":"r1"}' });
   synced(await syncTo(p));
   assert.ok(existsSync(path.join(p.cloud, '.spectrum', 'todos', 't1.json')));
+  assert.ok(existsSync(path.join(p.cloud, '.spectrum', 'research', 'r1.json')));
   // the other computer renames the document, and its note follows
   await fs.rename(path.join(p.cloud, 'main.tex'), path.join(p.cloud, 'paper.tex'));
   await write(path.join(p.cloud, '.spectrum', 'notes', 'n1.json'), note('paper.tex'));
