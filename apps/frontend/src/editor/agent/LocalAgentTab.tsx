@@ -250,7 +250,7 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
     }
   };
 
-  const tray = useMemo(() => changes.map((c): TrayChange => ({ path: c.path, kind: c.kind, binary: c.binary, original: c.original ?? '', proposed: c.proposed ?? '', size: c.size })), [changes]);
+  const tray = useMemo(() => changes.map((c): TrayChange => ({ path: c.path, kind: c.kind, binary: c.binary, original: c.original ?? '', proposed: c.proposed ?? '', size: c.size, afterHash: c.afterHash })), [changes]);
   const ready = !!current?.installed && !!current.supported;
   const empty = !session || !view.items.length;
   const usable = agents.filter((a) => !a.unavailable);

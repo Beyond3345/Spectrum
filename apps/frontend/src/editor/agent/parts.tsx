@@ -405,8 +405,8 @@ export function PlanStrip({ entries, todos }: { entries: PlanEntry[]; todos: Tod
 
 // ─── Changes ───
 
-/** A file the agent changed, as both tabs' trays hold it */
-export type TrayChange = { path: string; kind: 'created' | 'modified' | 'deleted'; binary: boolean; original: string; proposed: string; size: number };
+/** A file the agent changed, as both tabs' trays hold it; afterHash, a local agent's, tells one version of it from another */
+export type TrayChange = { path: string; kind: 'created' | 'modified' | 'deleted'; binary: boolean; original: string; proposed: string; size: number; afterHash?: string | null };
 
 const countOf = (c: TrayChange) => (c.binary ? { added: 0, removed: 0 } : countChanges(c.original, c.proposed));
 
@@ -504,18 +504,25 @@ export function ReviewView({
 }) {
   const [selected, setSelected] = useState('');
   const [showPdf, setShowPdf] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
   const { each, total } = useCounts(changes);
   const file = changes.find((c) => c.path === selected) || changes[0];
-  // what the preview was compiled from: a change applied or rejected compiles it again
-  const version = changes.map((c) => c.path).join('\n');
+  // what the preview was compiled from: a change applied or rejected, or another turn's draft, compiles it again
+  const version = changes.map((c) => `${c.path}\0${c.afterHash ?? `${c.size}\0${c.proposed}`}`).join('\n');
+  // back to the conversation, with the focus in the message box rather than on a button that went
+  const close = () => {
+    const tab = ref.current?.closest('.agent-tab');
+    onClose();
+    requestAnimationFrame(() => tab?.querySelector<HTMLElement>('.composer-input')?.focus());
+  };
   useEffect(() => {
-    if (!changes.length) onClose();
+    if (!changes.length) close();
   }, [changes.length]);
   if (!file) return null;
   return (
-    <div className="agent-review">
+    <div className="agent-review" ref={ref}>
       <div className="agent-review-bar">
-        <button className="icon-btn" title="Back to the conversation" aria-label="Back" onClick={onClose}>
+        <button className="icon-btn" title="Back to the conversation" aria-label="Back" onClick={close}>
           <Icon name="chevron.left" />
         </button>
         <span className="agent-review-title">
