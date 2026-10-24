@@ -67,7 +67,7 @@ const OPENALEX = {
     {
       id: 'https://openalex.org/W1', doi: 'https://doi.org/10.5555/attn', display_name: 'Attention Is All You Need', publication_year: 2017, type: 'article',
       authorships: [{ author: { display_name: 'Ashish Vaswani' } }], primary_location: { landing_page_url: 'https://doi.org/10.5555/attn', source: { display_name: 'NeurIPS', type: 'conference' } },
-      cited_by_count: 900, open_access: { is_oa: false }
+      cited_by_count: 900, open_access: { is_oa: true, oa_url: 'https://arxiv.org/pdf/1706.03762v7' }
     },
     {
       id: 'https://openalex.org/W2', doi: 'https://doi.org/10.5555/gnn', display_name: 'Graph networks for molecules', publication_year: 2020, type: 'article',
@@ -164,6 +164,12 @@ test('merging: by DOI, then arXiv id, then title; a title alone never joins two 
   ]);
   assert.deepEqual([paper.doi, paper.venue, paper.year, paper.url, paper.preprint, paper.abstract], ['10.1038/s1', 'Nature', '2022', 'https://www.biorxiv.org/1', false, 'The preprint’s longer abstract.']);
   assert.equal(other.doi, '10.1016/other');
+  // a preprint can come out years before the paper; two papers can't
+  assert.equal(mergeResults([], [
+    { title: 'Slow review', arxiv: '2201.00001', year: '2022', preprint: true },
+    { title: 'Slow review', doi: '10.1000/slow', year: '2025', preprint: false },
+    { title: 'Slow review', doi: '10.1000/later', year: '2029', preprint: false }
+  ]).length, 2);
 });
 
 test('Search runs every source at once, merges the paper they share, marks the .bib’s and logs each source', async () => {
@@ -201,7 +207,7 @@ test('Search runs every source at once, merges the paper they share, marks the .
   const attention = session.results.find((r) => /^attention is all you need$/i.test(r.title));
   assert.deepEqual(attention.sources, ['openalex', 'arxiv', 'crossref']);
   assert.equal(attention.doi, '10.5555/attn');
-  assert.equal(attention.arxiv, '1706.03762', 'arXiv joins by title within a year');
+  assert.equal(attention.arxiv, '1706.03762', 'from OpenAlex’s open copy, which arXiv’s joins');
   assert.equal(attention.citations, 950);
   assert.equal(attention.abstract, 'The dominant sequence transduction models.');
   assert.equal(attention.preprint, false, 'arXiv’s copy, but published');
@@ -401,6 +407,8 @@ test('Open note makes research/notes/<key>.md once; Get PDF saves an open-access
   assert.equal(res.json.path, 'research/papers/Turing2019Sorting.pdf', JSON.stringify(res.json));
   assert.match(calls.find((c) => c.url.includes('unpaywall')).url, /email=me%40example\.com/);
 
+  // arXiv's copy, its id from OpenAlex's open link
+  serve([/arxiv\.org\/pdf\/1706\.03762$/, () => new Response(pdf)]);
   res = await api(`${url}/pdf`, 'POST', { resultId: attention.id });
-  assert.equal(res.status, 404, 'no arXiv id, no open copy and no email');
+  assert.equal(res.json.path, 'research/papers/Vaswani2017.pdf', JSON.stringify(res.json));
 });

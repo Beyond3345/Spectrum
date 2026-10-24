@@ -29,6 +29,8 @@ const MAX_PDF = 50 * 1024 * 1024;
 // a block (JATS's <jats:p>, a <br>) parts words, inline markup (<i>, <sup>) doesn't
 const plain = (value) => decodeEntities(String(value ?? '').replace(/<\/?(?:[\w-]+:)?(?:p|sec|title|br|div|list-item)\b[^>]*>/gi, ' ').replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
 const arxivOfDoi = (doi) => String(doi || '').match(/^10\.48550\/arxiv\.(.+)$/i)?.[1] || '';
+// an abs or pdf link's id, without its version
+const arxivOfUrl = (url) => String(url || '').match(/arxiv\.org\/(?:abs|pdf)\/(.+?)(?:v\d+)?(?:\.pdf)?\/?$/i)?.[1] || '';
 const empty = (v) => v == null || v === '' || (Array.isArray(v) && !v.length);
 /** A result without its empty fields. */
 const tidy = (r) => Object.fromEntries(Object.entries(r).filter(([, v]) => !empty(v)));
@@ -54,7 +56,8 @@ function fromRecord({ rec, summary, citations, openAccess, preprint }, source) {
   return tidy({
     ...meta,
     venue,
-    arxiv: rec._arxiv?.id || arxivOfDoi(meta.doi),
+    // a published paper's open copy on arXiv says which preprint it is
+    arxiv: rec._arxiv?.id || arxivOfDoi(meta.doi) || arxivOfUrl(openAccess) || arxivOfUrl(rec.URL),
     url: rec.URL,
     abstract: plain(summary),
     citations: Number.isFinite(citations) ? citations : undefined,
@@ -222,7 +225,8 @@ function sameWork(a, b) {
   // "Deep learning" is a book and a Nature review; a preprint's DOI (arXiv's, bioRxiv's) and a publisher's stand for one paper
   const own = (x) => (x.preprint || arxivOfDoi(x.doi) ? '' : x.doi);
   if (own(a) && own(b) && own(a) !== own(b)) return false;
-  return !a.year || !b.year || Math.abs(a.year - b.year) <= 1;
+  // a preprint can come out years before the paper
+  return !a.year || !b.year || Math.abs(a.year - b.year) <= (a.preprint === b.preprint ? 1 : 3);
 }
 
 const filled = (r) => Object.values(r).filter((v) => !empty(v)).length;
