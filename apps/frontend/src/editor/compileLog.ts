@@ -46,6 +46,13 @@ function earlierPasses(lines: string[]) {
   return early;
 }
 
+/** The log's lines with TeX's wrapping undone, without the passes before the last (Preflight reads what parseCompileLog leaves out). */
+export function lastPass(log: string) {
+  const lines = unwrap(log);
+  const early = earlierPasses(lines);
+  return lines.filter((_, i) => !early.has(i));
+}
+
 /** Project-relative path: drops the project folder, the build folder and "./". */
 function relative(file: string, root: string) {
   let path = file.replace(/^\.\//, '');
