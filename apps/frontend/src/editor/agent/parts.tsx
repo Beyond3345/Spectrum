@@ -628,11 +628,13 @@ export function AgentComposer({
   useEffect(() => {
     if (!draft) return;
     setText(draft.text);
-    setSkill(draft.skill);
+    // a task's skill only while it's on for the project
+    setSkill(draft.skill && skills.some((s) => s.id === draft.skill) ? draft.skill : undefined);
     inputRef.current?.focus();
   }, [draft?.n]);
 
-  const lines = api.selectionText ? api.selectionText.split('\n').length : 0;
+  // a triple click selects the line's break too
+  const lines = api.selectionText ? api.selectionText.replace(/\n$/, '').split('\n').length : 0;
   const available: Record<ContextKind, string | null> = {
     file: api.activePath ? nameOf(api.activePath) : null,
     selection: lines ? `Selection, ${plural(lines, 'line')}` : null,
