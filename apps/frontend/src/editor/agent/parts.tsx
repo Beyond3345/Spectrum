@@ -23,6 +23,23 @@ const MAX_OUTPUT = 20000;
 const clip = (text: string) => (text.length > MAX_OUTPUT ? `${text.slice(0, MAX_OUTPUT)}\n…` : text);
 const shown = (value: unknown) => clip(typeof value === 'string' ? value : JSON.stringify(value, null, 2) ?? '');
 
+/** Per-viewer conveniences in this browser's storage, which may be blocked: only the convenience is lost then. */
+export const readStored = (key: string) => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+export const writeStored = (key: string, value: string | undefined) => {
+  try {
+    if (value) localStorage.setItem(key, value);
+    else localStorage.removeItem(key);
+  } catch {
+    // private window or blocked storage
+  }
+};
+
 // ─── Personas ───
 
 /** The persona a chat uses, which replaces the default instructions while it's chosen. */

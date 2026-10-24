@@ -11,7 +11,7 @@ import type { TodosState } from '../TodosList';
 import { chatMessage, useChatThread } from '../chatThread';
 import { resolveInstructions } from '../personas';
 import { CHATS_CHANGED, buildProjectContext, errorText, patchesToChanges, relativeTime } from '../shared';
-import { AgentComposer, ChangesTray, PersonaPicker, ReviewView, Transcript, Welcome, openTodos, taskPersona, useFollow, useSkills } from './parts';
+import { AgentComposer, ChangesTray, PersonaPicker, ReviewView, Transcript, Welcome, openTodos, readStored, taskPersona, useFollow, useSkills, writeStored } from './parts';
 import type { ContextKind, Draft, TrayChange } from './parts';
 import type { AgentStatus } from './LocalAgentTab';
 import { metaOf, openChanges, stepCall } from './transcript';
@@ -44,10 +44,13 @@ export default function SpectrumAgentTab({
   const latest = useRef(api);
   latest.current = api;
   const [newPersona, setNewPersona] = useState<string | undefined>();
+  // the thread open in each project, reopened with the workspace (a per-viewer convenience)
+  const remember = (id: string | null) => writeStored(`spectrum-agent-thread:${latest.current.projectId}`, id ?? undefined);
   const { thread, threadRef, show, append, update } = useChatThread({
     projectId: api.projectId,
     notify: api.notify,
-    fresh: () => ({ agent: true, ...(newPersona && { persona: newPersona }) })
+    fresh: () => ({ agent: true, ...(newPersona && { persona: newPersona }) }),
+    onCreate: remember
   });
   const [threads, setThreads] = useState<ChatSummary[]>([]);
   const [tray, setTray] = useState<PendingChange[]>([]);
@@ -68,14 +71,9 @@ export default function SpectrumAgentTab({
       (res) => setThreads(res.chats.filter((c) => c.agent)),
       () => undefined
     );
-  useEffect(() => {
-    refresh();
-    window.addEventListener(CHATS_CHANGED, refresh);
-    return () => window.removeEventListener(CHATS_CHANGED, refresh);
-  }, [api.projectId]);
-
   const open = async (id: string | null, adopt = false) => {
     setReviewing(false);
+    remember(id);
     if (!id) {
       show(null);
       setTray([]);
@@ -88,6 +86,14 @@ export default function SpectrumAgentTab({
     if (adopt) update(chat, (c) => c);
     setTray(await openChanges(chat, latest.current.ensureFileContent));
   };
+
+  useEffect(() => {
+    refresh();
+    window.addEventListener(CHATS_CHANGED, refresh);
+    const saved = readStored(`spectrum-agent-thread:${api.projectId}`);
+    if (saved && !openThread) open(saved).catch(() => remember(null));
+    return () => window.removeEventListener(CHATS_CHANGED, refresh);
+  }, [api.projectId]);
 
   useEffect(() => {
     if (openThread) open(openThread.id, true).catch((err) => api.notify(`Couldn’t open the chat: ${errorText(err)}`, 'error'));

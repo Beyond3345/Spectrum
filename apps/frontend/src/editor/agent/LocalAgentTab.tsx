@@ -23,29 +23,12 @@ import { useEditor } from '../EditorContext';
 import type { TodosState } from '../TodosList';
 import { resolveInstructions } from '../personas';
 import { AGENTS_CHANGED, VERSIONS_CHANGED, errorText, relativeTime } from '../shared';
-import { AgentComposer, ChangesTray, PersonaPicker, PlanStrip, ReviewView, Transcript, Welcome, taskPersona, useFollow, useSkills } from './parts';
+import { AgentComposer, ChangesTray, PersonaPicker, PlanStrip, ReviewView, Transcript, Welcome, readStored as read, taskPersona, useFollow, useSkills, writeStored as write } from './parts';
 import type { ContextKind, Draft, TrayChange } from './parts';
 import { RUNNING, addEvent, project } from './transcript';
 import type { Checkpoint } from './transcript';
 
 export type AgentStatus = 'running' | 'waiting' | 'changes' | null;
-
-// per-viewer conveniences: the last agent picked, each project's open session and each session's persona
-const read = (key: string) => {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-};
-const write = (key: string, value: string | undefined) => {
-  try {
-    if (value) localStorage.setItem(key, value);
-    else localStorage.removeItem(key);
-  } catch {
-    // private window or blocked storage: only the convenience is lost
-  }
-};
 
 const monogram = (name: string) => name.replace(/[^A-Za-z0-9]/g, '').slice(0, 2);
 
