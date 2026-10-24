@@ -1,5 +1,5 @@
 import { callOpenAICompatible } from '../services/llmService.js';
-import { runToolAgent, llmErrorMessage } from '../services/agentService.js';
+import { runToolAgent, llmErrorMessage, userInstructions } from '../services/agentService.js';
 
 export function registerAgentRoutes(fastify) {
   fastify.post('/api/agent/run', async (req) => {
@@ -16,19 +16,23 @@ export function registerAgentRoutes(fastify) {
       searchConfig,
       interaction = 'agent',
       history = [],
-      reasoningEffort
+      reasoningEffort,
+      // the persona's or default instructions, and a skill's id for its instructions in whole: never for autocomplete
+      instructions,
+      skill
     } = req.body || {};
+    const extra = task === 'autocomplete' ? '' : await userInstructions({ instructions, skill });
 
     if (interaction === 'chat') {
-      if (searchConfig) return { ...(await runToolAgent({ projectId, activePath, task, prompt, selection, content, compileLog, llmConfig, reasoningEffort, searchConfig, history, readOnly: true })), suggestion: '' };
+      if (searchConfig) return { ...(await runToolAgent({ projectId, activePath, task, prompt, selection, content, compileLog, llmConfig, reasoningEffort, searchConfig, history, readOnly: true, instructions: extra })), suggestion: '' };
       const safeHistory = Array.isArray(history)
         ? history.filter((item) => item && (item.role === 'user' || item.role === 'assistant') && typeof item.content === 'string')
         : [];
-      const system = [
+      const system = [[
         'You are a helpful academic writing assistant.',
         'This is chat-only mode: do not propose edits, patches, or JSON.',
         'Respond concisely and helpfully.'
-      ].join(' ');
+      ].join(' '), extra].filter(Boolean).join('\n\n');
       const user = [
         prompt ? `User Prompt: ${prompt}` : '',
         selection ? `Selection (read-only):\n${selection}` : '',
@@ -56,7 +60,7 @@ export function registerAgentRoutes(fastify) {
     }
 
     if (mode === 'tools') {
-      return runToolAgent({ projectId, activePath, task, prompt, selection, compileLog, llmConfig, reasoningEffort, searchConfig });
+      return runToolAgent({ projectId, activePath, task, prompt, selection, compileLog, llmConfig, reasoningEffort, searchConfig, instructions: extra });
     }
 
     const system =
@@ -67,11 +71,11 @@ export function registerAgentRoutes(fastify) {
             'suggestion must be the continuation text after the cursor.',
             'Do not include explanations or code fences.'
           ].join(' ')
-        : [
+        : [[
             'You are a LaTeX writing assistant for academic papers.',
             'Return a concise response and a suggested rewrite for the selection or full content.',
             'Output in JSON with keys: reply, suggestion.'
-          ].join(' ');
+          ].join(' '), extra].filter(Boolean).join('\n\n');
 
     const user = [
       `Task: ${task}`,

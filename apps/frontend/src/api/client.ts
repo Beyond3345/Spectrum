@@ -881,9 +881,17 @@ export function runAgent(payload: {
   interaction?: 'chat' | 'agent';
   history?: { role: 'user' | 'assistant'; content: string }[];
   reasoningEffort?: ReasoningEffort;
+  /** the persona's or default instructions; never sent for autocomplete */
+  instructions?: string;
+  /** a skill's id, whose instructions go in whole (the composer's /skill-id) */
+  skill?: string;
 }) {
-  return request<{ ok: boolean; reply: string; suggestion: string; patches?: AgentPatch[] }>('/api/agent/run', json('POST', payload));
+  // tools mode: changes lists its patches as local agents' changes tray does, todos the to-dos it suggests
+  return request<{ ok: boolean; reply: string; suggestion: string; patches?: AgentPatch[]; changes?: AgentChange[]; todos?: SuggestedTodo[] }>('/api/agent/run', json('POST', payload));
 }
+
+/** A to-do an agent suggests; the user adds it with Add. */
+export interface SuggestedTodo { text: string; link?: { file: string; line: number } | { doc: string; page: number } | { key: string } }
 
 export function callLLM(payload: {
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[];
