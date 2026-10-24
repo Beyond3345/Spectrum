@@ -37,7 +37,7 @@ import {
   synctexView,
   writeFile
 } from '../api/client';
-import type { CompileEngine, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, VersionMeta, VersionReason } from '../api/client';
+import type { CompileEngine, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
 import { latex } from '../latex/lang';
 import Icon from './Icon';
 import Tabs from './Tabs';
@@ -69,12 +69,14 @@ import SyncBanners from '../editor/SyncBanners';
 import { conflictCopyPath, onDiskChange } from '../editor/heldFiles';
 import FileTree from '../editor/FileTree';
 import type { FileTreeHandle } from '../editor/FileTree';
-import PdfPreview, { MAX_ZOOM, MIN_ZOOM, PageBox, pdfThumbnail } from '../editor/PdfPreview';
+import PdfPreview, { MAX_ZOOM, MIN_ZOOM, PageBox, pdfThumbnail, rememberPage } from '../editor/PdfPreview';
 import type { PdfDest, PdfHandle, PdfOutlineItem, PdfZoom } from '../editor/PdfPreview';
 import PdfSidebar from '../editor/PdfSidebar';
 import type { PdfSidebarTab } from '../editor/PdfSidebar';
 import PdfFindBar from '../editor/PdfFindBar';
 import PdfPresentation from '../editor/PdfPresentation';
+import TodosList, { useTodos } from '../editor/TodosList';
+import { findKey, findLine, snippetOf } from '../editor/todos';
 import { parseCompileLog, projectFile } from '../editor/compileLog';
 import { highlightColour, linger } from '../editor/synctex';
 import {
@@ -363,9 +365,11 @@ function Editor({ projectId }: { projectId: string }) {
   // the grammar check takes the PDF's place while it's open, as Tools does
   const [grammarOpen, setGrammarOpen] = useState(false);
   const [spellMenu, setSpellMenu] = useState<{ x: number; y: number; from: number; to: number; word: string; suggestions: string[] | null } | null>(null);
+  // right-click elsewhere in the editor: pos is where
+  const [lineMenu, setLineMenu] = useState<{ x: number; y: number; pos: number } | null>(null);
   const [toolsMounted, setToolsMounted] = useState(false);
   const [toolsTab, setToolsTab] = useState<ToolsTab>('info');
-  const [sidebarTab, setSidebarTab] = useState<'files' | 'chats'>('files');
+  const [sidebarTab, setSidebarTab] = useState<'files' | 'chats' | 'todos'>('files');
   const [searchOpen, setSearchOpen] = useState(false);
   const [filter, setFilter] = useState('');
   const [composerOpen, setComposerOpen] = useState(false);
@@ -402,6 +406,12 @@ function Editor({ projectId }: { projectId: string }) {
   }, [compileLog, compileFailure, project?.path, items, compiledDoc]);
   const selectionText = selectionRange[0] === selectionRange[1] ? '' : editorValue.slice(selectionRange[0], selectionRange[1]);
   const fileSet = useMemo(() => new Set(items.filter((i) => i.type === 'file').map((i) => i.path)), [items]);
+  // the files to-dos are looked for in, never a sync app's conflict copy
+  const todoSources = useMemo(
+    () => items.filter((i) => i.type === 'file' && /\.(tex|sty|cls|ltx|bib)$/i.test(i.path) && !conflicts[i.path]).map((i) => i.path),
+    [items, conflicts]
+  );
+  const todos = useTodos({ projectId, sources: todoSources, loaded: (path) => filesRef.current.get(path), revision: `${filesVersion} ${dirty}`, notify });
 
   useEffect(() => {
     try {
@@ -1437,7 +1447,7 @@ function Editor({ projectId }: { projectId: string }) {
     window.addEventListener('mouseup', up);
   };
 
-  // ─── PDF notes ───
+  // ─── PDF notes and to-dos ───
 
   const addAnnotation = async (at: PdfPoint) => {
     const doc = shownDoc;
@@ -1462,6 +1472,47 @@ function Editor({ projectId }: { projectId: string }) {
         .then((res) => setNotes(res.notes || []))
         .catch(() => undefined);
     }
+  };
+
+  /** A page of a document's PDF in the pane: another document's opens there, the one showing scrolls to it. */
+  const showPdfPage = (doc: string, at: number) => {
+    if (!items.some((i) => i.path === pdfOf(doc))) {
+      notify(`${nameOf(doc)} has no PDF yet. Compile it first.`);
+      return;
+    }
+    rememberPage(`${projectId}:${doc}`, at);
+    open(pdfOf(doc));
+    if (doc === shownDoc && pdf) requestAnimationFrame(() => pdfRef.current?.scrollToPage(at));
+  };
+
+  /** Where a to-do links to: its line (found again by its text if lines moved), its PDF page, or its reference's definition. */
+  const openTodoLink = async (link: TodoLink) => {
+    if ('doc' in link) showPdfPage(link.doc, link.page);
+    else if ('file' in link) {
+      const text = await readText(link.file).catch(() => null);
+      if (text === null) notify(`${link.file} isn’t one of this project’s files.`);
+      else await jumpTo(link.file, findLine(text, link.line, link.snippet));
+    } else {
+      const files = await Promise.all([...texFiles, ...bibFiles].map(async (path) => ({ path, text: await readText(path).catch(() => '') })));
+      const found = findKey(files, link.key);
+      if (found) await jumpTo(found.file, found.line);
+      else notify(`Couldn’t find ${link.key} in this project.`);
+    }
+  };
+
+  /** Add to-do here: asks what it is, then keeps it with the link. */
+  const addTodo = async (link: TodoLink, where: string) => {
+    const text = (await promptDialog({ title: 'Add a to-do', message: where, placeholder: 'To-do', confirmLabel: 'Add' }))?.trim();
+    if (text && (await todos.add(text.slice(0, 2000), link))) notify(`Added “${text}” to your to-dos`, 'success');
+  };
+
+  /** The line at `pos` in the open file, linked with its text so it's found again once lines move. */
+  const addTodoAtLine = (pos: number) => {
+    const view = viewRef.current;
+    const path = activeRef.current;
+    if (!view || !path) return;
+    const line = view.state.doc.lineAt(Math.min(pos, view.state.doc.length));
+    addTodo({ file: path, line: line.number, snippet: snippetOf(line.text) }, `${nameOf(path)}, line ${line.number}`).catch(() => undefined);
   };
 
   /** A heading the PDF's contents took from the source: where SyncTeX puts it. */
@@ -1731,12 +1782,16 @@ function Editor({ projectId }: { projectId: string }) {
     const view = new EditorView({ state: EditorState.create({ doc: '', extensions: extensionsRef.current }), parent: hostRef.current! });
     viewRef.current = view;
     const onScroll = () => a().placeGhost();
-    // right-click on a misspelt word: suggestions and the word lists instead of the browser menu
+    // right-click: on a misspelt word, suggestions and the word lists; elsewhere the clipboard and Add to-do here
     const onContextMenu = (e: MouseEvent) => {
       const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
-      const hit = pos == null ? null : misspeltAt(view.state, pos);
-      if (!hit) return;
+      if (pos == null || !activeRef.current) return;
       e.preventDefault();
+      const hit = misspeltAt(view.state, pos);
+      if (!hit) {
+        setLineMenu({ x: e.clientX, y: e.clientY, pos });
+        return;
+      }
       setSpellMenu({ x: e.clientX, y: e.clientY, ...hit, suggestions: null });
       spellSuggest(hit.word)
         .then((res) => setSpellMenu((m) => (m && m.from === hit.from ? { ...m, suggestions: res.suggestions } : m)))
@@ -2107,13 +2162,14 @@ function Editor({ projectId }: { projectId: string }) {
                 }}
                 items={[
                   { value: 'files', label: 'Files' },
-                  { value: 'chats', label: 'Chats' }
+                  { value: 'chats', label: 'Chats' },
+                  { value: 'todos', label: 'To-dos', badge: todos.open || undefined }
                 ]}
               />
               <span className="spacer" />
               <button
                 className={`icon-btn small ${searchOpen ? 'active' : ''}`}
-                title={sidebarTab === 'files' ? 'Search files' : 'Search chats'}
+                title={sidebarTab === 'files' ? 'Search files' : sidebarTab === 'chats' ? 'Search chats' : 'Search to-dos'}
                 aria-label="Search"
                 onClick={() => {
                   setSearchOpen((v) => !v);
@@ -2125,9 +2181,11 @@ function Editor({ projectId }: { projectId: string }) {
               {sidebarTab === 'files' ? (
                 <MenuButton icon="plus" className="icon-btn small" title="Add" align="end" items={filesMenu} />
               ) : (
-                <button className="icon-btn small" title="New chat" aria-label="New chat" onClick={() => openChat(null)}>
-                  <Icon name="plus" />
-                </button>
+                sidebarTab === 'chats' && (
+                  <button className="icon-btn small" title="New chat" aria-label="New chat" onClick={() => openChat(null)}>
+                    <Icon name="plus" />
+                  </button>
+                )
               )}
             </div>
 
@@ -2137,7 +2195,7 @@ function Editor({ projectId }: { projectId: string }) {
                 <input
                   autoFocus
                   value={filter}
-                  placeholder={sidebarTab === 'files' ? 'Search files' : 'Search chats'}
+                  placeholder={sidebarTab === 'files' ? 'Search files' : sidebarTab === 'chats' ? 'Search chats' : 'Search to-dos'}
                   aria-label="Search"
                   onChange={(e) => setFilter(e.target.value)}
                   onKeyDown={(e) => {
@@ -2185,6 +2243,11 @@ function Editor({ projectId }: { projectId: string }) {
             {sidebarTab === 'chats' && (
               <div className="sidebar-list">
                 <ChatsList activeChatId={chatId} filter={filter} onOpen={openChat} onNew={() => openChat(null)} refreshSignal={0} />
+              </div>
+            )}
+            {sidebarTab === 'todos' && (
+              <div className="sidebar-list">
+                <TodosList todos={todos} filter={filter} mainFile={mainFile} onOpen={(link) => openTodoLink(link).catch((err) => notify(errorText(err), 'error'))} />
               </div>
             )}
 
@@ -2675,8 +2738,44 @@ function Editor({ projectId }: { projectId: string }) {
                   .catch((err) => notify(`Couldn’t add “${word}”: ${errorText(err)}`, 'error'));
               }
             })),
-            { label: 'Ignore', onSelect: () => viewRef.current?.dispatch({ effects: ignoreSpelling.of(spellMenu.word) }) }
+            { label: 'Ignore', onSelect: () => viewRef.current?.dispatch({ effects: ignoreSpelling.of(spellMenu.word) }) },
+            { separator: true },
+            { label: 'Add to-do here', onSelect: () => addTodoAtLine(spellMenu.from) }
           ]}
+        />
+      )}
+
+      {lineMenu && (
+        <ContextMenu
+          x={lineMenu.x}
+          y={lineMenu.y}
+          onClose={() => setLineMenu(null)}
+          items={(() => {
+            const view = viewRef.current;
+            const { from, to } = view?.state.selection.main ?? { from: 0, to: 0 };
+            const selected = view?.state.sliceDoc(from, to) ?? '';
+            // the menu has focus meanwhile; the edit goes back to the editor
+            const edit = (insert: string, userEvent: string) => {
+              view?.dispatch({ ...view.state.replaceSelection(insert), userEvent, scrollIntoView: true });
+              view?.focus();
+            };
+            const copied = () => navigator.clipboard.writeText(selected);
+            return [
+              { label: 'Cut', shortcut: formatShortcut('Mod-x'), disabled: !selected, onSelect: () => copied().then(() => edit('', 'delete.cut'), () => undefined) },
+              { label: 'Copy', shortcut: formatShortcut('Mod-c'), disabled: !selected, onSelect: () => copied().catch(() => undefined) },
+              {
+                label: 'Paste',
+                shortcut: formatShortcut('Mod-v'),
+                onSelect: () =>
+                  navigator.clipboard.readText().then(
+                    (text) => edit(text, 'input.paste'),
+                    () => notify(`Press ${formatShortcut('Mod-v')} to paste.`)
+                  )
+              },
+              { separator: true },
+              { label: 'Add to-do here', onSelect: () => addTodoAtLine(lineMenu.pos) }
+            ];
+          })()}
         />
       )}
 
@@ -2688,7 +2787,11 @@ function Editor({ projectId }: { projectId: string }) {
           items={[
             !!pdfMenu.text && { label: 'Copy', shortcut: formatShortcut('Mod-c'), onSelect: () => navigator.clipboard.writeText(pdfMenu.text).catch(() => undefined) },
             !!pdfMenu.text && { separator: true },
-            { label: 'Add a note here', onSelect: () => addAnnotation(pdfMenu.at) }
+            { label: 'Add a note here', onSelect: () => addAnnotation(pdfMenu.at) },
+            {
+              label: 'Add to-do here',
+              onSelect: () => addTodo({ doc: shownDoc, page: pdfMenu.at.page }, `${nameOf(pdfOf(shownDoc))}, page ${pdfMenu.at.page}`).catch(() => undefined)
+            }
           ]}
         />
       )}
