@@ -15,7 +15,7 @@ import { readProjectSettings } from './projectSettings.js';
 import { openTodos, suggestedTodo } from './agentService.js';
 import { AGENT_DIR, profileFor, agentConfigs, agentHome } from './agentProfiles.js';
 import { spawnAgentProcess, killAgentProcess, resolveExecutable, isolationAvailable } from './agentSandbox.js';
-import { initialiseWorkspace, workspaceChanges, applyWorkspaceChanges, captureAgentProposal, readCurrent, rebaseChange } from './agentWorkspace.js';
+import { initialiseWorkspace, workspaceChanges, applyWorkspaceChanges, captureAgentProposal, readCurrent, rebaseChange, refreshDraft } from './agentWorkspace.js';
 import { ITEM_ID, readItems } from '../routes/todos.js';
 import { activeSkills, loadSkill, SKILL_ID } from './skillService.js';
 import { safeJoin } from '../utils/pathUtils.js';
@@ -92,7 +92,10 @@ export async function getAgentRun(id) {
     for (const rel of legacy) {
       r.resolved.delete(rel);
       const change = changes.find((c) => c.path === rel);
-      if (change) r.resolved.add(changeKey(change));
+      // a review session's copy still holds what was applied or rejected: it goes back to the user's file, as 1.10's
+      // next prompt would have made it
+      if (change && r.mode === 'review') await readCurrent(r.root, rel).then((bytes) => rebaseChange(r, rel, bytes, draftWriter(r, rel))).catch(() => r.resolved.add(changeKey(change)));
+      else if (change) r.resolved.add(changeKey(change));
     }
   }
   runs.set(id, r);
@@ -307,6 +310,9 @@ async function timeout(promise, ms, message, signal) {
 // What isolation needs to run Spectrum's own Node in the agent's grants, with none of the agent's settings or keys
 const nodeRead = () => process.platform === 'win32' ? process.execPath : path.dirname(process.execPath);
 const isolated = (r, args) => ({ command: process.execPath, args, workspace: r.workspace, home: r.home, runtimePaths: [nodeRead()], forbiddenRoots: r.mode === 'review' ? [r.root] : [] });
+
+/** Writes rel's bytes (null: removes it) in the agent's copy, inside isolation. */
+const draftWriter = (r, rel) => (bytes) => agentFile(r, bytes === null ? 'delete' : 'write', safeJoin(r.workspace, rel), bytes ?? '');
 
 // Keep callbacks inside native isolation: an agent can swap a checked path while the host awaits I/O.
 async function agentFile(r, operation, file, content = '') {
@@ -539,11 +545,14 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       // a direct session's changes are already the user's: each turn is measured from the project as it then is, with
       // a checkpoint before it. A review session goes on from its draft.
       if (r.turnCount && r.mode === 'direct') {
-        await fs.rm(path.join(r.dir, 'baseline'), { recursive: true });
+        await fs.rm(path.join(r.dir, 'baseline'), { recursive: true, force: true });
         await fs.rm(path.join(r.dir, 'proposal'), { recursive: true, force: true });
         await fs.rm(path.join(r.dir, 'proposal.json'), { force: true });
         r.workspace = await initialiseWorkspace(r.root, r.dir, r.mode);
         r.resolved.clear();
+      } else if (r.mode === 'review') {
+        // best effort: a link left in the draft is told of when the turn's changes are taken
+        await refreshDraft(r, (rel) => draftWriter(r, rel)).catch((err) => emit(r, 'notice', { message: `The agent’s copy wasn’t brought up to date with your project: ${err.message}` }));
       }
       if (r.cancelled) throw new Error('Task cancelled.');
       if (r.forceNew) disconnect(r);
@@ -637,7 +646,7 @@ export async function reviewAgentChanges(r, body) {
   try {
     const changes = await pendingChanges(r);
     if (!Array.isArray(body.paths) || !body.paths.length || body.paths.some((rel) => !changes.some((c) => c.path === rel))) throw new Error('Unknown change path.');
-    const draft = (rel) => (bytes) => agentFile(r, bytes === null ? 'delete' : 'write', safeJoin(r.workspace, rel), bytes ?? '');
+    const draft = (rel) => draftWriter(r, rel);
     if (r.mode !== 'review') {
       if (body.action === 'apply') throw new Error('Finish the review run before applying changes.');
       for (const rel of body.paths) r.resolved.add(changeKey(changes.find((c) => c.path === rel)));

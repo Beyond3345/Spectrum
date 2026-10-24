@@ -64,3 +64,42 @@ test('a long streamed message keeps the turn’s start, and a huge one is stored
   for (const e of run.events) assert.ok(JSON.stringify(e).length < 1.2 * 1024 * 1024, `event ${e.id} is under half the cap and a piece`);
   assert.ok((await fs.stat(path.join(run.dir, 'session.json'))).size < 2.2 * 1024 * 1024);
 });
+
+test('a review turn starts from the project as it is, for every file the agent hasn’t changed', { skip, timeout: 120000 }, async () => {
+  const { open, turn, pendingChanges } = await setup();
+  const { run, root } = await open({ 'main.tex': 'original\n', 'other.tex': 'other v1\n', 'gone.tex': 'bye\n' });
+  await turn(run, 'draft one');
+  await fs.writeFile(path.join(root, 'other.tex'), 'other v2\n');
+  await fs.writeFile(path.join(root, 'new.tex'), 'new\n');
+  await fs.rm(path.join(root, 'gone.tex'));
+  await fs.writeFile(path.join(root, 'main.tex'), 'user edit\noriginal\n');
+  await turn(run, 'hello');
+  const draft = (rel) => fs.readFile(path.join(run.workspace, rel), 'utf8');
+  assert.equal(await draft('other.tex'), 'other v2\n');
+  assert.equal(await draft('new.tex'), 'new\n');
+  await assert.rejects(draft('gone.tex'));
+  assert.equal(await draft('main.tex'), 'original\nagent line 1\n', 'the agent’s change stays, to merge on apply');
+  assert.deepEqual((await pendingChanges(run)).map((c) => c.path), ['main.tex']);
+});
+
+test('a 1.10 review session’s applied or rejected file goes back to the user’s, and its text doesn’t return', { skip, timeout: 120000 }, async () => {
+  const { open, turn, reopen, pendingChanges } = await setup();
+  const { run } = await open({ 'main.tex': 'original\n' });
+  await turn(run, 'draft one');
+  const legacy = await reopen(run, (data) => ({ ...data, resolved: ['main.tex'] }));
+  assert.deepEqual(await pendingChanges(legacy), []);
+  assert.equal(await fs.readFile(path.join(legacy.workspace, 'main.tex'), 'utf8'), 'original\n');
+  await turn(legacy, 'draft two');
+  assert.equal((await pendingChanges(legacy))[0].proposed, 'original\nagent line 1\n');
+});
+
+test('a direct turn that fails while measuring the project doesn’t fail the turns after it', { skip, timeout: 120000 }, async () => {
+  const { open, turn } = await setup();
+  const { run, root } = await open({ 'main.tex': 'original\n' }, { mode: 'direct' });
+  await turn(run, 'hello');
+  await fs.symlink('main.tex', path.join(root, 'alias.tex'));
+  await turn(run, 'hello', 'failed');
+  await fs.rm(path.join(root, 'alias.tex'));
+  await turn(run, 'hello');
+  await turn(run, 'hello');
+});

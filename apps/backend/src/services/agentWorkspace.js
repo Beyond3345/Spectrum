@@ -203,6 +203,23 @@ export async function rebaseChange(run, rel, bytes, writeDraft) {
   }
 }
 
+/**
+ * A review session's draft brought up to the project before a turn, for each file the agent hasn't changed: the user's
+ * edits, new files and deletions since reach it, as 1.10's copy made afresh each turn did. A file the agent changed
+ * keeps its change, which merges with the user's on apply. writeDraft(rel) writes rel's bytes (null: none) in the copy.
+ */
+export async function refreshDraft(run, writeDraft) {
+  await captureAgentProposal(run);
+  const manifest = async (name) => Object.assign(Object.create(null), JSON.parse(await fs.readFile(path.join(run.dir, name), 'utf8')));
+  const baseline = await manifest('baseline.json');
+  const proposal = await manifest('proposal.json');
+  const live = await workspaceFiles(run.root);
+  for (const rel of new Set([...Object.keys(live), ...Object.keys(baseline)])) {
+    const before = baseline[rel] ?? null;
+    if (before === (proposal[rel] ?? null) && before !== fileHash(live[rel] ?? null)) await rebaseChange(run, rel, live[rel] ?? null, writeDraft(rel));
+  }
+}
+
 export async function agentRecoveries(run) {
   const found = [];
   for (const id of await fs.readdir(run.dir)) {
