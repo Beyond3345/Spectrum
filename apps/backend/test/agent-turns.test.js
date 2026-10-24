@@ -224,3 +224,18 @@ test('Stop ends the turn as stopped, with its card no longer waiting', { skip, t
   assert.deepEqual(errors.slice(-1), ['Stopped.']);
   assert.ok(!errors.some((e) => /disconnected/.test(e)));
 });
+
+test('quitting stops the sessions with an agent running and leaves the others as they were', { skip, timeout: 120000 }, async () => {
+  const { open, turn, stored, shutdownAgents } = await setup();
+  const { run: done } = await open({ 'main.tex': 'original\n' });
+  await turn(done, 'hello');
+  const before = await stored(done);
+  // connected, and never prompted
+  const { run: live } = await open({ 'main.tex': 'original\n' });
+  assert.ok(live.child);
+  await shutdownAgents();
+  assert.equal(done.status, 'completed');
+  assert.deepEqual(await stored(done), before, 'its status and time stay');
+  assert.equal(live.status, 'interrupted');
+  assert.equal(live.child, null);
+});

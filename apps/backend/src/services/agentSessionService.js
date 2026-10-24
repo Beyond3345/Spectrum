@@ -745,4 +745,5 @@ export async function reviewAgentChanges(r, body) {
 }
 export function runSnapshot(r) { return { ...metadata(r), pending: [...r.pending].map(([requestId, p]) => ({ requestId, kind: p.kind, params: p.params })) }; }
 export function subscribeAgent(r, fn) { r.listeners.add(fn); return () => r.listeners.delete(fn); }
-export async function shutdownAgents() { await Promise.allSettled([...runs.values()].map(stopAgentRun)); }
+/** Stops the sessions with something running (a turn, the agent, a preview), leaving the rest as they were. */
+export async function shutdownAgents() { await Promise.allSettled([...runs.values()].filter((r) => r.busy || r.child || r.fileOperations?.size).map(stopAgentRun)); }
