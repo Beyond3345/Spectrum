@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { runAgent } from '../../api/client';
 import Icon from '../../app/Icon';
 import { useEditor } from '../EditorContext';
 import type { CompileError } from '../EditorContext';
-import { Markdown, errorText, patchesToChanges } from '../shared';
+import { Markdown, fixWithAI } from '../shared';
 
 export default function LogsTab() {
   const api = useEditor();
@@ -21,38 +20,16 @@ export default function LogsTab() {
 
   const fix = async (key: number | 'all', error?: CompileError) => {
     setBusy(key);
-    try {
-      const where = error ? [error.file, error.line && `line ${error.line}`].filter(Boolean).join(', ') : '';
-      // "Fix all" goes after the errors; the warnings only when the build has none
-      const prompt = error
-        ? `Fix this LaTeX ${error.severity}: ${error.message}${where ? ` (${where})` : ''}. Propose a patch that can be applied.`
-        : errorCount
-          ? 'Diagnose the errors in the compile log and fix them. Ignore warnings. Propose patches that can be applied.'
-          : 'Fix the warnings in the compile log (overfull/underfull boxes, undefined references and citations). Propose patches that can be applied.';
-      const res = await runAgent({
-        task: 'debug_compile',
-        prompt,
-        selection: error?.raw || '',
-        content: '',
-        mode: 'tools',
-        projectId: api.projectId,
-        activePath: error?.file || api.activePath,
-        compileLog,
-        llmConfig: api.llm.main,
-        interaction: 'agent',
-        history: [],
-        reasoningEffort: api.settings.reasoningEffort
-      });
-      if (res.reply) setNotes((prev) => ({ ...prev, [key]: res.reply }));
-      const changes = await patchesToChanges(api, res.patches || [], error ? 'Fix with AI' : 'Fix all with AI');
-      if (changes.length) api.proposeChanges(changes, { open: true });
-      else if (res.ok) api.notify('No fix was proposed.');
-      else api.notify(res.reply || 'The request failed.', 'error');
-    } catch (err) {
-      api.notify(`Couldn’t get a fix: ${errorText(err)}`, 'error');
-    } finally {
-      setBusy(null);
-    }
+    const where = error ? [error.file, error.line && `line ${error.line}`].filter(Boolean).join(', ') : '';
+    // "Fix all" goes after the errors; the warnings only when the build has none
+    const prompt = error
+      ? `Fix this LaTeX ${error.severity}: ${error.message}${where ? ` (${where})` : ''}. Propose a patch that can be applied.`
+      : errorCount
+        ? 'Diagnose the errors in the compile log and fix them. Ignore warnings. Propose patches that can be applied.'
+        : 'Fix the warnings in the compile log (overfull/underfull boxes, undefined references and citations). Propose patches that can be applied.';
+    const reply = await fixWithAI(api, { task: 'debug_compile', prompt, selection: error?.raw, file: error?.file, label: error ? 'Fix with AI' : 'Fix all with AI' });
+    if (reply) setNotes((prev) => ({ ...prev, [key]: reply }));
+    setBusy(null);
   };
 
   if (!compileLog) return <div className="tool-empty">Compile the project to see its log here.</div>;
