@@ -310,9 +310,10 @@ async function saveVersion(root, { label = '', reason = 'manual' } = {}) {
   // a file that can't be read now keeps what the latest version had of it, and restoring leaves it as it is
   for (const rel of skipped) if (latest?.files[rel]) files[rel] = latest.files[rel];
   if (latest && sameFiles(latest.files, files)) {
-    // a checkpoint asked for that only matches a compile's, which the next compile would replace: that one becomes it
+    // a checkpoint asked for that only matches a compile's, which the next compile would replace: that one becomes it,
+    // dated now, as what is shown with it (an agent's Restore row) looks for one made from then on. Still the latest
     if (latest.reason === 'compile' && !latest.label && (reason !== 'compile' || label)) {
-      Object.assign(latest, { reason: REASONS.includes(reason) ? reason : 'manual', label: String(label || '').slice(0, 120) });
+      Object.assign(latest, { createdAt: new Date().toISOString(), reason: REASONS.includes(reason) ? reason : 'manual', label: String(label || '').slice(0, 120) });
       await writeJsonAtomic(manifestPath(root, latest.id), { ...(await readJson(manifestPath(root, latest.id))), ...details(latest) });
       latest.manifestLabel = latest.label;
       await writeIndex(root, versions);

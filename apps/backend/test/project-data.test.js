@@ -296,9 +296,12 @@ test('a checkpoint asked for with nothing changed since a compile’s becomes th
   for (const [reason, label] of [['manual', ''], ['before-ai', 'Before applying agent changes'], ['before-restore', '']]) {
     await edit(`saved: ${reason}`);
     await createCompileCheckpoint(p.path);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const asked = new Date().toISOString();
     const { unchanged } = await createVersion(p.path, { reason, label });
     assert.equal(unchanged, true);
     assert.deepEqual((await versions()).slice(0, 1).map((v) => [v.reason, v.label]), [[reason, label]]);
+    assert.ok((await versions())[0].createdAt >= asked, 'dated when it was asked for, not when the compile saved it');
     await edit(`after ${reason}`);
     await createCompileCheckpoint(p.path);
     assert.deepEqual(await holding(`saved: ${reason}`), [reason]);
