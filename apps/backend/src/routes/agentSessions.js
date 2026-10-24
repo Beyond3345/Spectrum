@@ -1,6 +1,6 @@
 import { listAgents, saveAgentConfig, importAgentLogin } from '../services/agentProfiles.js';
-import { getAgentRun, listAgentRuns, newAgentRun, promptAgent, stopAgentRun, answerAgentRequest, setAgentOption, reviewAgentChanges, runSnapshot, subscribeAgent } from '../services/agentSessionService.js';
-import { workspaceChanges, agentRecoveries, recoverAgentApply } from '../services/agentWorkspace.js';
+import { getAgentRun, listAgentRuns, newAgentRun, previewDraft, promptAgent, readContext, stopAgentRun, answerAgentRequest, setAgentOption, reviewAgentChanges, pendingChanges, runSnapshot, subscribeAgent } from '../services/agentSessionService.js';
+import { agentRecoveries, recoverAgentApply } from '../services/agentWorkspace.js';
 import { mutateProjectFiles } from '../services/projectService.js';
 
 export function registerAgentSessionRoutes(fastify) {
@@ -21,15 +21,21 @@ export function registerAgentSessionRoutes(fastify) {
     finally { run.reviewing = false; }
     return { ok: true };
   });
-  fastify.post('/api/agent-sessions/:id/prompt', async (req) => promptAgent(await getAgentRun(req.params.id), req.body?.prompt));
+  // context: the editor's (readContext), sent as ACP resources; persona: { name, prompt } or null, kept for the session
+  fastify.post('/api/agent-sessions/:id/prompt', async (req) => {
+    const run = await getAgentRun(req.params.id);
+    return promptAgent(run, req.body?.prompt, { context: await readContext(run, req.body?.context), persona: req.body?.persona });
+  });
   fastify.post('/api/agent-sessions/:id/stop', async (req) => { await stopAgentRun(await getAgentRun(req.params.id)); return { ok: true }; });
   fastify.post('/api/agent-sessions/:id/answer', async (req) => { answerAgentRequest(await getAgentRun(req.params.id), req.body?.requestId, req.body?.answer); return { ok: true }; });
   fastify.post('/api/agent-sessions/:id/option', async (req) => ({ ok: true, ...(await setAgentOption(await getAgentRun(req.params.id), req.body?.configId, req.body?.value)) }));
   fastify.get('/api/agent-sessions/:id/changes', async (req) => {
     const run = await getAgentRun(req.params.id);
-    return { ok: true, changes: (await workspaceChanges(run)).filter((c) => !run.resolved.has(c.path)) };
+    return { ok: true, changes: await pendingChanges(run) };
   });
   fastify.post('/api/agent-sessions/:id/review', async (req) => ({ ok: true, changes: await reviewAgentChanges(await getAgentRun(req.params.id), req.body || {}) }));
+  // the draft compiled on its own: { ok, pdf (base64, or null), log }; mainFile and engine default to the project's
+  fastify.get('/api/agent-sessions/:id/preview', async (req) => previewDraft(await getAgentRun(req.params.id), { mainFile: req.query.mainFile || undefined, engine: req.query.engine || undefined }));
   fastify.get('/api/agent-sessions/:id/events', async (req, reply) => {
     const run = await getAgentRun(req.params.id);
     reply.hijack();

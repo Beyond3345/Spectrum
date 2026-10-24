@@ -40,9 +40,11 @@ async function bundleBackend() {
   const outDir = path.join(resourcesDir, 'backend');
   fs.rmSync(outDir, { recursive: true, force: true });
   await esbuild.build({
-    // Workers run as threads of their own, from files beside server.mjs.
+    // Workers run as threads of their own, from files beside server.mjs, and mcp.mjs (Spectrum's tools for local
+    // agents) in each agent's isolation, started by the agent.
     entryPoints: {
       server: path.join(root, 'apps/backend/src/index.js'),
+      mcp: path.join(root, 'apps/backend/src/mcp/server.js'),
       spellWorker: path.join(root, 'apps/backend/src/services/spellWorker.mjs'),
       grammarWorker: path.join(root, 'apps/backend/src/services/grammarWorker.mjs'),
       latexTextWorker: path.join(root, 'apps/backend/src/latex/latexTextWorker.mjs')
@@ -157,6 +159,8 @@ async function resources() {
   fs.rmSync(path.join(resourcesDir, 'frontend', win ? 'sf' : 'fluent'), { recursive: true, force: true });
   copyDir(path.join(root, 'templates'), path.join(resourcesDir, 'templates'));
   copyDir(path.join(root, 'dictionaries'), path.join(resourcesDir, 'dictionaries'));
+  // the bundled skills (scripts/sync-skills.mjs), with their licences
+  copyDir(path.join(root, 'skills'), path.join(resourcesDir, 'skills'));
   // the built nodehun and Harper only, not nodehun's sources
   const native = path.join(resourcesDir, 'native');
   fs.rmSync(native, { recursive: true, force: true });
@@ -193,7 +197,7 @@ async function dev() {
   // the debug backend serves apps/frontend/dist from the repo
   run('npm', ['run', 'build']);
   // bundle inputs aren't used in dev, but tauri-build insists they exist
-  for (const dir of ['backend', 'frontend', 'templates', 'native', 'dictionaries']) fs.mkdirSync(path.join(resourcesDir, dir), { recursive: true });
+  for (const dir of ['backend', 'frontend', 'templates', 'native', 'dictionaries', 'skills']) fs.mkdirSync(path.join(resourcesDir, dir), { recursive: true });
   if (!fs.existsSync(path.join(binDir, `node-${TRIPLES[process.arch]}${EXE}`))) await nodeRuntime([process.arch]);
   run('npx', ['tauri', 'dev']);
 }

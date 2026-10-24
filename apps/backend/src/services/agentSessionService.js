@@ -2,28 +2,71 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { Readable, Writable } from 'node:stream';
+import os from 'node:os';
 import { createServer } from 'node:net';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { client, ndJsonStream } from '@agentclientprotocol/sdk';
-import { getProjectRoot, mutateProjectFiles } from './projectService.js';
+import { APP_VERSION } from '../config/constants.js';
+import { appPath, cachePath, detectMainFile, getProjectRoot, mutateProjectFiles, readMeta } from './projectService.js';
+import { compileFolder, findExecutable, SUPPORTED_ENGINES } from './compileService.js';
+import { readProjectSettings } from './projectSettings.js';
+import { openTodos, suggestedTodo } from './agentService.js';
 import { AGENT_DIR, profileFor, agentConfigs, agentHome } from './agentProfiles.js';
 import { spawnAgentProcess, killAgentProcess, resolveExecutable, isolationAvailable } from './agentSandbox.js';
-import { initialiseWorkspace, workspaceChanges, applyWorkspaceChanges, captureAgentProposal } from './agentWorkspace.js';
+import { initialiseWorkspace, workspaceChanges, applyWorkspaceChanges, captureAgentProposal, readCurrent, rebaseChange } from './agentWorkspace.js';
+import { ITEM_ID, readItems } from '../routes/todos.js';
+import { activeSkills } from './skillService.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { writeJsonAtomic } from '../utils/fsUtils.js';
 
+const execFileAsync = promisify(execFile);
 const runs = new Map();
 const ID = /^[a-f0-9-]{36}$/;
 const textLimit = (value, max = 100000) => typeof value === 'string' ? value.slice(0, max) : '';
-const metadata = (r) => ({ id: r.id, projectId: r.projectId, agentId: r.agentId, mode: r.mode, createdAt: r.createdAt, updatedAt: r.updatedAt, status: r.status, events: r.events, remoteId: r.remoteId, resolved: [...r.resolved], turnCount: r.turnCount });
+const metadata = (r) => ({ id: r.id, projectId: r.projectId, agentId: r.agentId, mode: r.mode, createdAt: r.createdAt, updatedAt: r.updatedAt, status: r.status, events: r.events, remoteId: r.remoteId, resolved: [...r.resolved], turnCount: r.turnCount, ...(r.persona && { persona: r.persona }), ...(r.notes?.length && { notes: r.notes }) });
 const persist = (r) => {
   r.saveChain = (r.saveChain || Promise.resolve()).catch(() => {}).then(() => writeJsonAtomic(path.join(r.dir, 'session.json'), metadata(r)));
   return r.saveChain;
 };
+// a direct-mode change the user has seen, until the agent changes that file again
+const changeKey = (c) => `${c.path}\0${c.afterHash}`;
+export const pendingChanges = async (r) => (await workspaceChanges(r)).filter((c) => !r.resolved.has(changeKey(c)));
+
+const MAX_EVENTS = 1000;
+const MAX_EVENT_BYTES = 2 * 1024 * 1024;
+const CHUNKS = ['user_message_chunk', 'agent_message_chunk', 'agent_thought_chunk'];
+// what session/load replays of the conversation, which the transcript already holds; its commands, modes and settings
+// still count
+const HISTORY = [...CHUNKS, 'tool_call', 'tool_call_update', 'plan', 'plan_update', 'plan_removed'];
+const eventBytes = new WeakMap();
+const sizeOf = (event) => eventBytes.get(event) ?? JSON.stringify(event).length;
+/** The next piece of a message streamed into the last one, or the next update of the same tool call: one stored event. */
+function joined(last, type, data) {
+  if (type !== 'update' || last?.type !== 'update' || last.data?.sessionUpdate !== data?.sessionUpdate) return null;
+  if (CHUNKS.includes(data.sessionUpdate)) {
+    if (last.data.content?.type !== 'text' || data.content?.type !== 'text' || (last.data.messageId ?? null) !== (data.messageId ?? null)) return null;
+    return { ...last.data, content: { ...last.data.content, text: last.data.content.text + data.content.text } };
+  }
+  return data.sessionUpdate === 'tool_call_update' && last.data.toolCallId === data.toolCallId ? { ...last.data, ...data } : null;
+}
+// Listeners hear every piece as it comes. The store keeps one event per message, so a long turn keeps its start under
+// the caps: it takes the latest piece's id and names its first in `first`, and a client replaying the store drops the
+// pieces it already had, from first to id.
 const emit = (r, type, data) => {
   r.updatedAt = new Date().toISOString();
   const event = { id: ++r.sequence, type, data, at: r.updatedAt };
-  r.events.push(event);
-  while (r.events.length > 1000 || (r.events.length > 1 && JSON.stringify(r.events).length > 2 * 1024 * 1024)) r.events.shift();
+  const last = r.events.at(-1);
+  const whole = joined(last, type, data);
+  if (whole) {
+    const stored = { ...event, first: last.first ?? last.id, data: whole };
+    eventBytes.set(stored, sizeOf(last) + JSON.stringify(data).length);
+    r.eventBytes -= sizeOf(last);
+    r.events[r.events.length - 1] = stored;
+  } else r.events.push(event);
+  r.eventBytes += sizeOf(r.events.at(-1));
+  while (r.events.length > MAX_EVENTS || (r.events.length > 1 && r.eventBytes > MAX_EVENT_BYTES)) r.eventBytes -= sizeOf(r.events.shift());
   for (const listener of r.listeners) listener(event);
   return event;
 };
@@ -37,7 +80,18 @@ export async function getAgentRun(id) {
   const data = JSON.parse(await fs.readFile(path.join(dir, 'session.json'), 'utf8'));
   profileFor(data.agentId);
   const root = await getProjectRoot(data.projectId);
-  const r = { ...data, id, dir, root, workspace: data.mode === 'direct' ? root : path.join(dir, 'work'), home: await agentHome(data.agentId), resolved: new Set(data.resolved || []), events: data.events || [], sequence: data.events?.at(-1)?.id || 0, listeners: new Set(), pending: new Map(), terminals: new Map(), busy: false, turnCount: data.turnCount || 0 };
+  const r = { ...data, id, dir, root, workspace: data.mode === 'direct' ? root : path.join(dir, 'work'), home: await agentHome(data.agentId), resolved: new Set(data.resolved || []), events: data.events || [], sequence: data.events?.at(-1)?.id || 0, listeners: new Set(), pending: new Map(), terminals: new Map(), busy: false, turnCount: data.turnCount || 0, notes: data.notes || [] };
+  r.eventBytes = r.events.reduce((total, e) => total + sizeOf(e), 0);
+  // 1.10 kept a change it had seen by its path alone, and rebuilt the copy on the next prompt
+  const legacy = [...r.resolved].filter((key) => !key.includes('\0'));
+  if (legacy.length) {
+    const changes = await workspaceChanges(r).catch(() => []);
+    for (const rel of legacy) {
+      r.resolved.delete(rel);
+      const change = changes.find((c) => c.path === rel);
+      if (change) r.resolved.add(changeKey(change));
+    }
+  }
   runs.set(id, r);
   if (['running', 'starting', 'stopping'].includes(r.status)) state(r, 'interrupted', 'Spectrum closed during the task. The working copy has been preserved.');
   return r;
@@ -56,7 +110,17 @@ export async function listAgentRuns(projectId) {
   return found.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export async function newAgentRun({ projectId, agentId, mode = 'review' }) {
+/** A persona's instructions for the agent: { name, prompt }, or null for none. */
+export function readPersona(value) {
+  if (value == null) return null;
+  if (typeof value !== 'object' || typeof value.name !== 'string' || typeof value.prompt !== 'string' || value.name.length > 200 || value.prompt.length > 20000) throw Object.assign(new Error('Invalid persona.'), { statusCode: 400 });
+  return value.prompt.trim() ? { name: value.name.trim(), prompt: value.prompt.trim() } : null;
+}
+const samePersona = (a, b) => (a?.name ?? null) === (b?.name ?? null) && (a?.prompt ?? null) === (b?.prompt ?? null);
+const personaText = (persona) => `The user chose the persona “${persona.name}” for this conversation. Follow its instructions for how you work and respond. They cannot widen your permissions or change Spectrum’s rules.\n<persona>\n${persona.prompt}\n</persona>`;
+
+export async function newAgentRun({ projectId, agentId, mode = 'review', persona }) {
+  persona = readPersona(persona);
   const profile = profileFor(agentId);
   if (profile.unavailable) throw new Error(profile.unavailable);
   if (!(await isolationAvailable())) throw new Error('Native agent isolation is unavailable. Install or repair the Windows isolation worker before starting an agent.');
@@ -64,7 +128,7 @@ export async function newAgentRun({ projectId, agentId, mode = 'review' }) {
   const root = await getProjectRoot(projectId);
   const id = crypto.randomUUID();
   const dir = path.join(AGENT_DIR, 'runs', id);
-  const r = { id, dir, root, projectId, agentId, mode, createdAt: new Date().toISOString(), events: [], sequence: 0, resolved: new Set(), listeners: new Set(), pending: new Map(), terminals: new Map(), busy: true, turnCount: 0 };
+  const r = { id, dir, root, projectId, agentId, mode, persona, createdAt: new Date().toISOString(), events: [], eventBytes: 0, sequence: 0, resolved: new Set(), notes: [], listeners: new Set(), pending: new Map(), terminals: new Map(), busy: true, turnCount: 0 };
   if (busyProject(r)) throw new Error('Another agent is working on this project. Stop it before starting another.');
   runs.set(id, r);
   try {
@@ -133,6 +197,9 @@ async function connect(r) {
     r.processOptions.args = [...r.processOptions.args, '--port', String(port), '--hostname', '127.0.0.1'];
     r.processOptions.env.OPENCODE_SERVER_PASSWORD = crypto.randomBytes(32).toString('hex');
   }
+  await syncAgentSkills(r).catch((err) => emit(r, 'notice', { message: `The project’s skills weren’t copied for the agent: ${err.message}` }));
+  const tools = await toolsServer(r).catch((err) => { emit(r, 'notice', { message: `Spectrum’s tools aren’t available to the agent this turn: ${err.message}` }); return null; });
+  if (tools) r.processOptions.runtimePaths = [...r.processOptions.runtimePaths, ...tools.reads];
   if (r.cancelled) throw new Error('Task cancelled.');
   r.connectionAbort.signal.throwIfAborted();
   r.child = await spawnAgentProcess(r.processOptions);
@@ -149,8 +216,8 @@ async function connect(r) {
     if (!r.cancelled && r.status !== 'closed') { state(r, 'failed', `Agent exited (${signal || code}). ${redact(stderr)}`); }
   });
   const checkSession = (params) => { if (r.remoteId && params.sessionId && params.sessionId !== r.remoteId) throw new Error('Unknown agent session.'); };
-  const app = client({ name: 'spectrum', version: '1.10.0' })
-    .onNotification('session/update', ({ params }) => { checkSession(params); emit(r, 'update', params.update); })
+  const app = client({ name: 'spectrum', version: APP_VERSION })
+    .onNotification('session/update', ({ params }) => { checkSession(params); if (!(r.replaying && HISTORY.includes(params.update?.sessionUpdate))) emit(r, 'update', params.update); })
     .onRequest('session/request_permission', ({ params }) => { checkSession(params); return requestUser(r, 'permission', params); })
     .onRequest('elicitation/create', ({ params }) => requestUser(r, 'question', params))
     .onNotification('elicitation/complete', ({ params }) => emit(r, 'notice', params))
@@ -194,20 +261,28 @@ async function connect(r) {
   for (const method of ['cursor/create_plan', '_cursor/create_plan']) app.onRequest(method, (v) => v, ({ params }) => requestUser(r, 'plan', params));
   r.connection = app.connect(ndJsonStream(Writable.toWeb(r.child.stdin), Readable.toWeb(r.child.stdout)));
   r.peer = r.connection.agent;
-  const initial = await timeout(r.peer.request('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true, elicitation: { form: {}, url: {} } }, clientInfo: { name: 'spectrum', title: 'Spectrum', version: '1.10.0' } }), 30000, 'The agent did not initialize.', r.connectionAbort.signal);
+  const initial = await timeout(r.peer.request('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true, elicitation: { form: {}, url: {} } }, clientInfo: { name: 'spectrum', title: 'Spectrum', version: APP_VERSION } }), 30000, 'The agent did not initialize.', r.connectionAbort.signal);
   if (initial.protocolVersion !== 1) throw new Error('This agent does not support ACP v1.');
   r.capabilities = initial.agentCapabilities || {};
   emit(r, 'initialized', { agentInfo: initial.agentInfo, capabilities: r.capabilities, authMethods: initial.authMethods });
   if (r.agentId === 'cursor') await timeout(r.peer.request('authenticate', { methodId: 'cursor_login' }), 30000, 'Cursor authentication did not finish. Configure its API key in Setup.', r.connectionAbort.signal);
   let session;
-  const spec = { cwd: r.workspace, mcpServers: [] };
+  // a persona goes in the agent's own system prompt where it takes one, on every new, loaded or resumed session
+  const systemPrompt = r.persona && r.capabilities.sessionCapabilities?.systemPrompt ? { mode: 'append', content: [{ type: 'text', text: personaText(r.persona) }] } : undefined;
+  const spec = { cwd: r.workspace, mcpServers: tools ? [tools.server] : [], ...(systemPrompt && { systemPrompt }) };
   try {
-    if (r.remoteId && (r.capabilities.loadSession || r.capabilities.sessionCapabilities?.resume)) {
+    if (r.remoteId && !r.forceNew && (r.capabilities.loadSession || r.capabilities.sessionCapabilities?.resume)) {
       const method = r.capabilities.loadSession ? 'session/load' : 'session/resume';
-      session = await timeout(r.peer.request(method, { ...spec, sessionId: r.remoteId }), 30000, 'The session could not be loaded.', r.connectionAbort.signal);
+      r.replaying = method === 'session/load';
+      try { session = await timeout(r.peer.request(method, { ...spec, sessionId: r.remoteId }), 30000, 'The session could not be loaded.', r.connectionAbort.signal); }
+      finally { r.replaying = false; }
+      r.openedNew = r.freshSession = false;
     } else {
+      // a new session after one the agent can't load (or a changed persona) hears the conversation so far
       r.freshSession = !!r.remoteId;
       session = await timeout(r.peer.request('session/new', spec), 30000, 'The agent did not create a session.', r.connectionAbort.signal);
+      r.openedNew = true;
+      r.forceNew = false;
     }
   } catch (err) { throw new Error(`Agent setup failed: ${err.message}. Configure its API key or import a supported login in Agents.`); }
   if (session.sessionId) r.remoteId = session.sessionId;
@@ -226,12 +301,17 @@ async function timeout(promise, ms, message, signal) {
   } finally { clearTimeout(timer); if (abort) signal?.removeEventListener('abort', abort); }
 }
 
+// What isolation needs to run Spectrum's own Node in the agent's grants, with none of the agent's settings or keys
+const nodeRead = () => process.platform === 'win32' ? process.execPath : path.dirname(process.execPath);
+const isolated = (r, args) => ({ command: process.execPath, args, workspace: r.workspace, home: r.home, runtimePaths: [nodeRead()], forbiddenRoots: r.mode === 'review' ? [r.root] : [] });
+
 // Keep callbacks inside native isolation: an agent can swap a checked path while the host awaits I/O.
 async function agentFile(r, operation, file, content = '') {
   const script = `const fs=require('node:fs'); const [op,file]=process.argv.slice(1);
     if(op==='read') { if(fs.statSync(file).size>1048576) throw Error('File exceeds 1 MB.'); const b=fs.readFileSync(file); if(b.length>1048576||b.includes(0)) throw Error('File is too large or is not text.'); process.stdout.write(JSON.stringify(b.toString('utf8'))); }
+    else if(op==='delete') fs.rmSync(file,{force:true});
     else { const path=require('node:path'); const b=fs.readFileSync(0); if(b.length>52428800) throw Error('File exceeds 50 MB.'); fs.mkdirSync(path.dirname(file),{recursive:true}); const tmp=file+'.spectrum-agent-'+process.pid; try { fs.writeFileSync(tmp,b); fs.renameSync(tmp,file); } finally { fs.rmSync(tmp,{force:true}); } }`;
-  const child = await spawnAgentProcess({ ...r.processOptions, command: process.execPath, args: ['-e', script, operation, file], runtimePaths: [...r.processOptions.runtimePaths, process.platform === 'win32' ? process.execPath : path.dirname(process.execPath)] });
+  const child = await spawnAgentProcess(isolated(r, ['-e', script, operation, file]));
   r.fileOperations ||= new Set(); r.fileOperations.add(child);
   let output = '', error = '';
   child.stdout.on('data', (chunk) => { output += chunk; if (output.length > 8 * 1024 * 1024) killAgentProcess(child); });
@@ -243,21 +323,216 @@ async function agentFile(r, operation, file, content = '') {
   finally { r.fileOperations.delete(child); killAgentProcess(child); }
 }
 
-export async function promptAgent(r, prompt) {
+// The skills on in the project, copied into the agent's private home where agents look for them, each folder marked as
+// Spectrum's so a skill the agent installed itself is never touched. It runs inside isolation, as the agent may have
+// left a link anywhere in its home. While another project's session of the same agent runs, its skills stay: only
+// missing ones are added.
+const SKILL_FOLDERS = ['.agents/skills', '.claude/skills'];
+const SKILL_MARK = '.spectrum-managed';
+const copySkills = `const fs=require('node:fs'), path=require('node:path');
+  const { skills, folders, mark, onlyAdd } = JSON.parse(fs.readFileSync(0, 'utf8'));
+  for (const folder of folders) {
+    const dir = path.join(process.env.HOME, folder);
+    fs.mkdirSync(dir, { recursive: true });
+    const wanted = new Map(skills.map((s) => [s.id, s]));
+    for (const name of fs.readdirSync(dir)) {
+      const entry = path.join(dir, name);
+      if (!fs.lstatSync(entry).isDirectory()) { wanted.delete(name); continue; }
+      let stamp;
+      try { stamp = fs.readFileSync(path.join(entry, mark), 'utf8'); } catch { wanted.delete(name); continue; }
+      if (wanted.get(name)?.stamp === stamp || onlyAdd) { wanted.delete(name); continue; }
+      fs.rmSync(entry, { recursive: true, force: true });
+    }
+    for (const s of wanted.values()) {
+      const staged = path.join(dir, '.' + s.id + '-' + process.pid);
+      fs.rmSync(staged, { recursive: true, force: true });
+      fs.cpSync(s.dir, staged, { recursive: true });
+      fs.writeFileSync(path.join(staged, mark), s.stamp);
+      fs.renameSync(staged, path.join(dir, s.id));
+    }
+  }`;
+async function syncAgentSkills(r) {
+  const skills = await activeSkills(r.root);
+  const onlyAdd = [...runs.values()].some((other) => other !== r && other.agentId === r.agentId && other.projectId !== r.projectId && (other.busy || other.child));
+  const stores = [...new Set(skills.map((s) => path.dirname(s.dir)))];
+  const child = await spawnAgentProcess({ command: process.execPath, args: ['-e', copySkills], workspace: r.home, home: r.home, runtimePaths: [nodeRead(), ...stores] });
+  let error = '';
+  child.stderr.on('data', (chunk) => { error = (error + chunk).slice(-4000); });
+  child.stdout.resume();
+  const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', (code) => code === 0 ? resolve() : reject(new Error(error.trim().split('\n').at(-1) || 'Spectrum couldn’t copy the skills.'))); });
+  child.stdin.on('error', () => {}); child.stdin.end(JSON.stringify({ skills, folders: SKILL_FOLDERS, mark: SKILL_MARK, onlyAdd }));
+  try { await timeout(done, 30000, 'Copying the skills took too long.'); }
+  finally { killAgentProcess(child); }
+}
+
+// Spectrum's tools server, which the agent starts inside its own isolation (macOS only: on Windows the isolation
+// stalls a Node child's pipes, so agents there get none yet): the one bundled beside the desktop app's server, or the
+// repository's source in development
+const bundledTools = fileURLToPath(new URL('./mcp.mjs', import.meta.url));
+const repository = fileURLToPath(new URL('../../../../', import.meta.url));
+const toolsState = (r) => path.join(r.home, 'spectrum-tools', r.id);
+/** The tools server's file, and what isolation must also read to run it. */
+async function toolsLaunch() {
+  const packaged = await fs.stat(bundledTools).then((s) => s.isFile(), () => false);
+  const entry = packaged ? bundledTools : path.join(repository, 'apps/backend/src/mcp/server.js');
+  // Node, the server (in development the backend's source, its packages and the version in the root package.json) and
+  // the user's own fonts, for a compile
+  const reads = [nodeRead(), path.dirname(entry), ...(packaged ? [] : [path.join(repository, 'apps/backend'), path.join(repository, 'node_modules'), path.join(repository, 'package.json')]), path.join(os.homedir(), 'Library', 'Fonts')];
+  return { entry, reads: (await Promise.all(reads.map(async (p) => (await fs.stat(p).catch(() => null)) && p))).filter(Boolean) };
+}
+async function toolsServer(r) {
+  if (process.platform !== 'darwin') return null;
+  const { entry, reads } = await toolsLaunch();
+  const state = toolsState(r);
+  const meta = await readMeta(r.root).catch(() => ({}));
+  // written by isolation, as the home is the agent's
+  await agentFile(r, 'write', path.join(state, 'context.json'), JSON.stringify({
+    mainFile: meta.mainFile || await detectMainFile(r.root).catch(() => null),
+    engine: (await readProjectSettings(r.root)).compile?.engine || 'auto',
+    todos: await openTodos(r.root)
+  }));
+  return {
+    reads,
+    server: { name: 'spectrum', command: process.execPath, args: [entry, '--root', r.workspace, '--state', state], env: [{ name: 'HOME', value: r.home }, { name: 'TMPDIR', value: path.join(r.home, 'tmp') }, { name: 'PATH', value: process.env.PATH || '/usr/bin:/bin' }] }
+  };
+}
+
+/** The to-dos the agent suggested through the tools server this turn, taken from its home once the turn is over. */
+async function takeSuggestions(r) {
+  const file = path.join(toolsState(r), 'suggestions.jsonl');
+  if (process.platform !== 'darwin' || !(await fs.lstat(file).catch(() => null))?.isFile()) return [];
+  const text = await agentFile(r, 'read', file);
+  await agentFile(r, 'delete', file);
+  // ponytail: the first 50 a turn; a run's compiled PDFs stay in the agent's home until it is cleared
+  return text.split('\n').slice(0, 50).flatMap((line) => { try { return [suggestedTodo(JSON.parse(line))]; } catch { return []; } });
+}
+
+// Whether TeX on Windows can be told to read only below the draft, by its --version: MiKTeX through AllowUnsafeInputFiles,
+// TeX Live through openin_any only until 2026, which made that a no-op
+export const confinableTeX = (version) => /MiKTeX/i.test(version) || Number(String(version).match(/TeX Live (\d{4})/)?.[1]) < 2026;
+
+// The document a preview compiles, and with what: the project's main file and engine unless the request names them
+async function previewTarget(r, { mainFile, engine }) {
+  const main = mainFile || (await readMeta(r.root).catch(() => ({}))).mainFile || await detectMainFile(r.workspace).catch(() => null);
+  if (main) safeJoin(r.workspace, main);
+  return { main, engine: engine || (await readProjectSettings(r.root)).compile?.engine || 'auto' };
+}
+
+/**
+ * The agent's draft as a PDF: { ok, pdf (base64, or null), log }. It is compiled where it can read nothing but the draft
+ * and TeX, into this computer's cache, never into the draft. On macOS inside isolation, the draft read-only; on Windows
+ * with TeX told to read only below the draft's folder (MiKTeX's AllowUnsafeInputFiles, TeX Live's openin_any before
+ * 2026), and with no preview where TeX can't be told: Tectonic, and TeX Live 2026 and later.
+ */
+export async function previewDraft(r, options = {}) {
+  if (r.mode !== 'review') throw Object.assign(new Error('A direct session works in the project itself. Compile the project to see it.'), { statusCode: 409 });
+  if (r.busy || r.reviewing || busyProject(r)) throw Object.assign(new Error('Wait for the agent to finish before previewing its draft.'), { statusCode: 409 });
+  if (options.engine != null && !SUPPORTED_ENGINES.includes(options.engine)) throw Object.assign(new Error('Unsupported engine.'), { statusCode: 400 });
+  r.reviewing = true;
+  try {
+    const { main, engine } = await previewTarget(r, options);
+    if (!main) return { ok: false, pdf: null, log: 'The draft has no main document to compile.' };
+    // a fresh folder for each, and a home kept between them for TeX's own caches
+    const out = await cachePath(r.root, 'agent-preview', r.id);
+    const home = await cachePath(r.root, 'agent-preview', 'home');
+    await fs.rm(out, { recursive: true, force: true });
+    await fs.mkdir(out, { recursive: true, mode: 0o700 });
+    await fs.mkdir(path.join(home, 'tmp'), { recursive: true, mode: 0o700 });
+    if (process.platform === 'win32') {
+      if (engine === 'tectonic') return { ok: false, pdf: null, log: 'Preview PDF needs TeX Live or MiKTeX on Windows.' };
+      const tex = await findExecutable('pdflatex');
+      const version = tex ? (await execFileAsync(tex, ['--version'], { timeout: 20000, windowsHide: true }).catch(() => ({ stdout: '' }))).stdout : '';
+      if (!confinableTeX(version)) return { ok: false, pdf: null, log: 'Preview PDF on Windows needs MiKTeX, or TeX Live 2025 or earlier: later TeX Live can’t limit what a compile reads, so the draft isn’t compiled. Review its changes as text.' };
+      // and no shell escape, not even TeX Live's restricted one, for a draft an agent wrote. ponytail: MiKTeX's setting
+      // through its environment is to be confirmed by the Windows build machine's test
+      const result = await compileFolder({ root: r.workspace, mainFile: main, engine, without: ['tectonic'], buildDir: out, env: { openin_any: 'p', shell_escape: 'f', MIKTEX_ALLOWUNSAFEINPUTFILES: '0', MIKTEX_CORE_ALLOWUNSAFEINPUTFILES: '0' } });
+      return { ok: result.ok && result.status === 0, pdf: result.pdf || null, log: result.log || result.error || '' };
+    }
+    const { entry, reads } = await toolsLaunch();
+    const child = await spawnAgentProcess({ command: process.execPath, args: [entry, '--compile', '--root', r.workspace, '--state', out, '--main', main, '--engine', engine], workspace: out, home, cwd: out, runtimePaths: [...reads, r.workspace], forbiddenRoots: [r.root] });
+    // stopped with the session's other processes
+    r.fileOperations ||= new Set(); r.fileOperations.add(child);
+    let output = '', error = '';
+    child.stdout.on('data', (chunk) => { output += chunk; });
+    child.stderr.on('data', (chunk) => { error = (error + chunk).slice(-4000); });
+    const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', resolve); });
+    child.stdin.end();
+    try { await timeout(done, 10 * 60 * 1000, 'The preview took too long and was stopped.'); } finally { r.fileOperations.delete(child); killAgentProcess(child); }
+    let result;
+    try { result = JSON.parse(output); } catch { return { ok: false, pdf: null, log: error.trim() || 'The preview could not be compiled.' }; }
+    const log = await fs.readFile(path.join(out, 'last.log'), 'utf8').catch(() => result.error || '');
+    // written by isolation: only a file of its own, never a link it left
+    const pdf = result.pdf && (await fs.lstat(result.pdf).catch(() => null))?.isFile() && path.dirname(result.pdf) === out ? (await fs.readFile(result.pdf)).toString('base64') : null;
+    return { ok: !!result.ok, pdf, log };
+  } finally { r.reviewing = false; }
+}
+
+const TEXT_URI = 'spectrum:';
+/**
+ * The editor's context for a prompt: activePath (the open file), selection, log (the last compile's), todos (the
+ * project's open to-dos) and research (a research session's id). Read and checked before the turn starts.
+ */
+export async function readContext(r, value) {
+  if (value == null) return {};
+  const bad = () => Object.assign(new Error('Invalid context.'), { statusCode: 400 });
+  if (typeof value !== 'object' || Array.isArray(value)) throw bad();
+  const { activePath, selection, log, todos, research } = value;
+  for (const [text, max] of [[activePath, 1024], [selection, 100000], [log, 200000]]) if (text != null && (typeof text !== 'string' || text.length > max)) throw bad();
+  if ((todos != null && typeof todos !== 'boolean') || (research != null && !ITEM_ID.test(String(research)))) throw bad();
+  const context = {};
+  if (activePath) {
+    sessionPath(r, path.join(r.workspace, activePath));
+    context.activePath = activePath.split(path.sep).join('/');
+  }
+  if (selection?.trim()) context.selection = selection;
+  if (log?.trim()) context.log = log;
+  if (todos) {
+    const open = (await readItems(r.root, 'todos')).filter((t) => !t.done);
+    context.todos = open.map((t) => `- [ ] ${t.text}${t.link?.file ? ` (${t.link.file}:${t.link.line})` : t.link?.doc ? ` (${t.link.doc}, page ${t.link.page})` : t.link?.key ? ` (${t.link.key})` : ''}`).join('\n') || 'No open to-dos.';
+  }
+  if (research) {
+    const text = await fs.readFile(appPath(r.root, 'research', `${research}.json`), 'utf8').catch(() => { throw Object.assign(new Error('That research session wasn’t found.'), { statusCode: 404 }); });
+    context.research = { id: research, text: text.slice(0, 200000) };
+  }
+  return context;
+}
+
+// The context as ACP resources: the agent reads the open file from its own copy through a link, and the rest comes
+// embedded, or as plain text for an agent that can't take embedded resources
+function contextBlocks(r, context) {
+  const fileUri = context.activePath && pathToFileURL(path.join(r.workspace, context.activePath)).href;
+  const blocks = fileUri ? [{ type: 'resource_link', uri: fileUri, name: context.activePath }] : [];
+  const parts = [
+    context.selection && { uri: fileUri ? `${fileUri}#selection` : `${TEXT_URI}selection`, label: `Selected text${context.activePath ? ` in ${context.activePath}` : ''}`, mimeType: 'text/plain', text: context.selection },
+    context.log && { uri: `${TEXT_URI}compile-log`, label: 'The last compile log', mimeType: 'text/plain', text: context.log },
+    context.todos && { uri: `${TEXT_URI}todos`, label: 'The project’s open to-dos', mimeType: 'text/markdown', text: context.todos },
+    context.research && { uri: `${TEXT_URI}research/${context.research.id}`, label: 'The research session', mimeType: 'application/json', text: context.research.text }
+  ].filter(Boolean);
+  for (const { label, ...resource } of parts) {
+    blocks.push(r.capabilities?.promptCapabilities?.embeddedContext ? { type: 'resource', resource } : { type: 'text', text: `${label}:\n${resource.text}` });
+  }
+  return blocks;
+}
+
+/** options: context (readContext's) and persona; a persona other than the session's starts a new agent session. */
+export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
   prompt = textLimit(prompt);
   if (!prompt.trim()) throw new Error('Enter a task for the agent.');
+  if (persona !== undefined) persona = readPersona(persona);
   if (r.busy || r.reviewing || busyProject(r)) throw new Error('An agent is already working on this project.');
   r.busy = true; r.cancelled = false;
-  try {
-    const changes = await workspaceChanges(r);
-    if (r.mode === 'review' && changes.some((c) => !r.resolved.has(c.path))) throw new Error('Apply or reject the pending changes before continuing.');
-  } catch (err) { r.busy = false; throw err; }
+  if (persona !== undefined && !samePersona(persona, r.persona)) {
+    r.persona = persona;
+    r.forceNew = true;
+  }
   state(r, 'running');
+  let outcome;
   const task = (async () => {
     try {
       if (r.ready) await r.ready;
-      if (r.turnCount) {
-        if (r.mode === 'review') await fs.rm(r.workspace, { recursive: true });
+      // a direct session's changes are already the user's: each turn is measured from the project as it then is, with
+      // a checkpoint before it. A review session goes on from its draft.
+      if (r.turnCount && r.mode === 'direct') {
         await fs.rm(path.join(r.dir, 'baseline'), { recursive: true });
         await fs.rm(path.join(r.dir, 'proposal'), { recursive: true, force: true });
         await fs.rm(path.join(r.dir, 'proposal.json'), { force: true });
@@ -265,24 +540,34 @@ export async function promptAgent(r, prompt) {
         r.resolved.clear();
       }
       if (r.cancelled) throw new Error('Task cancelled.');
+      if (r.forceNew) disconnect(r);
       if (!r.connection || r.connection.signal.aborted) await connect(r);
       if (r.cancelled) throw new Error('Task cancelled.');
-      emit(r, 'user', { text: prompt });
-      const context = r.turnCount ? 'The working files now match the user’s project after their review. Re-read them; rejected proposals were discarded.\n\n' : 'You are working in Spectrum. All file and terminal operations are confined to your workspace and private runtime state. Use relative paths. Do not attempt to access the original project or other host services.\n\n';
-      const handoff = r.freshSession ? `Previous conversation (a new agent session was required):\n${r.events.filter((e) => e.type === 'user' || (e.type === 'update' && e.data.sessionUpdate === 'agent_message_chunk')).map((e) => e.data.text || e.data.content?.text || '').join('\n').slice(-12000)}\n\n` : '';
-      const result = await timeout(r.peer.request('session/prompt', { sessionId: r.remoteId, prompt: [{ type: 'text', text: context + handoff + prompt }] }), 30 * 60 * 1000, 'The agent task exceeded 30 minutes.', r.connectionAbort.signal);
+      const earlier = r.freshSession && r.events.filter((e) => e.type === 'user' || (e.type === 'update' && e.data.sessionUpdate === 'agent_message_chunk')).map((e) => e.data.text || e.data.content?.text || '').join('\n').slice(-12000);
+      emit(r, 'user', { text: prompt, ...(Object.keys(context).length && { context: Object.keys(context) }) });
+      const intro = r.openedNew && 'You are working in Spectrum. All file and terminal operations are confined to your workspace and private runtime state. Use relative paths. Do not attempt to access the original project or other host services.';
+      const persona = r.openedNew && r.persona && !r.capabilities.sessionCapabilities?.systemPrompt && personaText(r.persona);
+      const notes = r.notes.length && `Since your last turn:\n${r.notes.map((note) => `- ${note}`).join('\n')}`;
+      const handoff = earlier && `Previous conversation (a new agent session was required):\n${earlier}`;
+      const text = [persona, intro, notes, handoff, prompt].filter(Boolean).join('\n\n');
+      r.notes = [];
+      r.openedNew = false;
+      const result = await timeout(r.peer.request('session/prompt', { sessionId: r.remoteId, prompt: [{ type: 'text', text }, ...contextBlocks(r, context)] }), 30 * 60 * 1000, 'The agent task exceeded 30 minutes.', r.connectionAbort.signal);
       r.turnCount++;
       emit(r, 'complete', result);
-      state(r, r.cancelled || result.stopReason === 'cancelled' || ['max_tokens', 'max_turn_requests'].includes(result.stopReason) ? 'interrupted' : result.stopReason === 'end_turn' ? 'completed' : 'failed', result.stopReason === 'refusal' ? 'The agent refused this task.' : undefined);
-    } catch (err) { state(r, r.cancelled ? 'interrupted' : 'failed', err.message); disconnect(r); }
+      outcome = [r.cancelled || result.stopReason === 'cancelled' || ['max_tokens', 'max_turn_requests'].includes(result.stopReason) ? 'interrupted' : result.stopReason === 'end_turn' ? 'completed' : 'failed', result.stopReason === 'refusal' ? 'The agent refused this task.' : undefined];
+    } catch (err) { outcome = [r.cancelled ? 'interrupted' : 'failed', err.message]; disconnect(r); }
     finally {
       for (const pending of r.pending.values()) pending.reject(new Error('The task ended.'));
       r.pending.clear();
       disconnect(r);
-      try { await r.stopChain; await captureAgentProposal(r); emit(r, 'changes', { changes: (await workspaceChanges(r)).filter((c) => !r.resolved.has(c.path)) }); }
+      try { await r.stopChain; await captureAgentProposal(r); emit(r, 'changes', { changes: await pendingChanges(r) }); }
       catch (err) { emit(r, 'notice', { error: err.message }); }
-      await persist(r);
+      for (const todo of await takeSuggestions(r).catch(() => [])) emit(r, 'todo', todo);
+      // the turn's end is told once its changes are in and the next prompt can be taken
       r.busy = false;
+      state(r, ...outcome);
+      await persist(r);
     }
   })();
   r.task = task;
@@ -334,17 +619,49 @@ export async function setAgentOption(r, configId, value) {
     emit(r, 'session', result); return result;
   } finally { r.busy = false; }
 }
+/**
+ * Apply or reject changes, by path. Review mode: an applied file's new contents become its baseline, and a rejected one
+ * goes back to the user's file in the agent's copy too; the agent hears of both on its next turn. Direct mode's changes
+ * are already in the project, so either only puts them away.
+ */
 export async function reviewAgentChanges(r, body) {
   if (r.busy || r.reviewing || busyProject(r)) throw new Error('Wait for the agent to finish before reviewing changes.');
+  if (!['apply', 'reject'].includes(body.action)) throw new Error('Choose apply or reject.');
   r.reviewing = true;
   try {
-    const changes = await workspaceChanges(r);
-    if (body.action === 'apply') await mutateProjectFiles(() => applyWorkspaceChanges(r, body.paths, body.expected));
-    else if (body.action !== 'reject') throw new Error('Choose apply or reject.');
-    if (!Array.isArray(body.paths) || body.paths.some((rel) => !changes.some((c) => c.path === rel))) throw new Error('Unknown change path.');
-    for (const rel of body.paths) r.resolved.add(rel);
+    const changes = await pendingChanges(r);
+    if (!Array.isArray(body.paths) || !body.paths.length || body.paths.some((rel) => !changes.some((c) => c.path === rel))) throw new Error('Unknown change path.');
+    const draft = (rel) => (bytes) => agentFile(r, bytes === null ? 'delete' : 'write', safeJoin(r.workspace, rel), bytes ?? '');
+    if (r.mode !== 'review') {
+      if (body.action === 'apply') throw new Error('Finish the review run before applying changes.');
+      for (const rel of body.paths) r.resolved.add(changeKey(changes.find((c) => c.path === rel)));
+    } else if (body.action === 'apply') {
+      for (const { path: rel, bytes, merged } of await mutateProjectFiles(() => applyWorkspaceChanges(r, body.paths, body.expected))) {
+        await rebaseChange(r, rel, bytes, draft(rel));
+        if (merged) r.notes.push(`“${rel}” was applied with the user’s own edits to it merged in. Re-read it before changing it again.`);
+      }
+    } else {
+      // every file read before any is reset; the agent hears of those that were, even if a later one fails
+      const reset = [];
+      try {
+        await mutateProjectFiles(async () => {
+          const live = [];
+          for (const rel of body.paths) live.push([rel, await readCurrent(r.root, rel)]);
+          for (const [rel, bytes] of live) {
+            await rebaseChange(r, rel, bytes, draft(rel));
+            reset.push(rel);
+          }
+        });
+      } finally {
+        if (reset.length) {
+          const many = reset.length > 1;
+          r.notes.push(`The user rejected your changes to ${reset.map((rel) => `“${rel}”`).join(', ')}. ${many ? 'They were' : 'It was'} reset to the user’s version. Re-read ${many ? 'them' : 'it'} before changing ${many ? 'them' : 'it'} again.`);
+          emit(r, 'reset', { paths: reset });
+        }
+      }
+    }
     await persist(r);
-    return changes.filter((c) => !r.resolved.has(c.path));
+    return pendingChanges(r);
   } finally { r.reviewing = false; }
 }
 export function runSnapshot(r) { return { ...metadata(r), pending: [...r.pending].map(([requestId, p]) => ({ requestId, kind: p.kind, params: p.params })) }; }

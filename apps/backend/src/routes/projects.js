@@ -36,6 +36,7 @@ import { followRename } from './todos.js';
 import { documentLabels, projectStats } from '../services/statsService.js';
 import { readProjectSettings, updateProjectSettings } from '../services/projectSettings.js';
 import { BIB_TOOLS, SUPPORTED_ENGINES } from '../services/compileService.js';
+import { SKILL_ID } from '../services/skillService.js';
 import { knownMachineNames } from '../services/presenceService.js';
 import { conflictCopies } from '../utils/conflictCopies.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
@@ -371,17 +372,24 @@ export function registerProjectRoutes(fastify) {
 
   fastify.get('/api/projects/:id/settings', async (req) => ({ ok: true, settings: await readProjectSettings(await getProjectRoot(req.params.id)) }));
 
+  // compile: the settings given change (null takes one back to the default); skills: { on, off }, the skills the
+  // project turns on or off whatever this computer has, replaced whole (null: none)
   fastify.patch('/api/projects/:id/settings', async (req) => {
-    const { compile = {}, ...others } = req.body || {};
-    if (Object.keys(others).length || !isObject(compile)) throw httpError('Only compile settings can be changed here.', 400);
+    const { compile = {}, skills, ...others } = req.body || {};
+    if (Object.keys(others).length || !isObject(compile)) throw httpError('Only compile and skill settings can be changed here.', 400);
     for (const [key, value] of Object.entries(compile)) {
       if (!Object.hasOwn(COMPILE_SETTINGS, key) || (value !== null && !COMPILE_SETTINGS[key](value))) throw httpError(`Invalid compile setting: ${key}.`, 400);
     }
+    const ids = (list) => Array.isArray(list) && list.length <= 1000 && list.every((id) => typeof id === 'string' && SKILL_ID.test(id));
+    if (skills !== undefined && skills !== null && (!isObject(skills) || Object.keys(skills).some((key) => !['on', 'off'].includes(key)) || !ids(skills.on ?? []) || !ids(skills.off ?? []) || (skills.on ?? []).some((id) => (skills.off ?? []).includes(id)))) {
+      throw httpError('Invalid skill settings: lists of skill ids to turn on and off, none in both.', 400);
+    }
     const root = await getProjectRoot(req.params.id);
-    const settings = await updateProjectSettings(root, ({ compile: old, ...rest }) => {
+    const settings = await updateProjectSettings(root, ({ compile: old, skills: oldSkills, ...rest }) => {
       const next = { ...(isObject(old) ? old : {}), ...compile };
       for (const key of Object.keys(next)) if (next[key] === null) delete next[key];
-      return Object.keys(next).length ? { ...rest, compile: next } : rest;
+      const choices = skills === undefined ? oldSkills : skills && (skills.on?.length || skills.off?.length) ? { on: [...new Set(skills.on ?? [])], off: [...new Set(skills.off ?? [])] } : undefined;
+      return { ...rest, ...(Object.keys(next).length && { compile: next }), ...(choices !== undefined && { skills: choices }) };
     });
     return { ok: true, settings };
   });

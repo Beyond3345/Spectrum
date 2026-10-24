@@ -55,7 +55,8 @@
       "resources/frontend/": "frontend/",
       "resources/templates/": "templates/",
       "resources/native/": "native/",
-      "resources/dictionaries/": "dictionaries/"
+      "resources/dictionaries/": "dictionaries/",
+      "resources/skills/": "skills/"
     },
     "macOS": {
       "minimumSystemVersion": "13.5",

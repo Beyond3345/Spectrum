@@ -133,12 +133,12 @@ export async function findExecutable(name, searchPath = jobs.getStore()?.searchP
  * documents that need Unicode fonts and pdfLaTeX for everything else, falling back to
  * whatever engine is actually installed.
  */
-async function autoEngineCandidates(absMain) {
+async function autoEngineCandidates(absMain, without = []) {
   const tex = await fs.readFile(absMain, 'utf8').catch(() => '');
   const magic = tex.match(/%\s*!TEX\s+(?:TS-)?program\s*=\s*(\w+)/i)?.[1]?.toLowerCase();
   const needsUnicode = /\\usepackage(\[[^\]]*\])?\{(fontspec|xeCJK|ctex|unicode-math|polyglossia)\}|\\documentclass(\[[^\]]*\])?\{ctex/.test(tex);
   const preferred = [magic, needsUnicode ? 'xelatex' : 'pdflatex', needsUnicode ? 'lualatex' : 'xelatex', 'lualatex', 'tectonic', 'latexmk'];
-  const ordered = [...new Set(preferred.filter((engine) => ENGINES.includes(engine)))];
+  const ordered = [...new Set(preferred.filter((engine) => ENGINES.includes(engine) && !without.includes(engine)))];
   const installed = [];
   for (const engine of ordered) {
     if (await findExecutable(engine)) installed.push(engine);
@@ -320,6 +320,21 @@ async function projectFile(projectRoot, abs) {
 /** A compile of the project is running. */
 export const compiling = (projectId) => [...running.values()].some((job) => job.projectId === projectId);
 
+/**
+ * A compile of a folder that isn't a project (an agent's copy), as the agent's tools and the review's preview run one
+ * inside isolation: built in buildDir (the temp folder's spectrum-build by default), nothing written into the folder,
+ * and no kept files, SyncTeX or checkpoints. env: more for TeX's; without: engines Auto doesn't pick. Resolves as
+ * runCompile does, with the PDF in base64.
+ */
+export async function compileFolder({ root, mainFile, engine = 'auto', texFolder, ...options }) {
+  if (!SUPPORTED_ENGINES.includes(engine) || options.without?.includes(engine)) return { ok: false, error: `Unsupported engine: ${engine}`, engine };
+  const absMain = safeJoin(root, String(mainFile || ''));
+  if (path.basename(absMain).startsWith('-')) return { ok: false, error: 'The main file’s name can’t start with “-”.', engine };
+  if (!(await fs.stat(absMain).catch(() => null))?.isFile()) return { ok: false, error: `The main file “${mainFile}” doesn’t exist.`, engine };
+  const job = { stopped: false, children: new Set(), searchPath: await texPath(texFolder) };
+  return jobs.run(job, () => compileDocument(engine, root, absMain, docPath(root, absMain), { ...options, scratch: true }));
+}
+
 async function compileWithLinks(engine, projectRoot, absMain, mainFile, options) {
   // Documents it cross-references go first when their .aux is missing or old. One level only,
   // so two documents that reference each other don't loop.
@@ -340,7 +355,7 @@ async function compileWithLinks(engine, projectRoot, absMain, mainFile, options)
 
 async function compileDocument(engine, projectRoot, absMain, mainFile, options) {
   if (engine !== 'auto') return { ...(await compileWith(engine, projectRoot, absMain, mainFile, options)), engine };
-  const candidates = await autoEngineCandidates(absMain);
+  const candidates = await autoEngineCandidates(absMain, options.without);
   if (!candidates.length) {
     return { ok: false, error: `No LaTeX engine found. Install ${WINDOWS ? 'MiKTeX' : 'MacTeX'}, TeX Live or Tectonic.`, engine };
   }
@@ -381,9 +396,10 @@ async function staleLinks(projectRoot, absMain) {
  * a sync client would copy anything else to the other computer. Its .aux files and SyncTeX are kept in the cache.
  */
 async function compileWith(engine, projectRoot, absMain, mainFile, options = {}) {
-  const buildRoot = path.join(os.tmpdir(), 'spectrum-build');
+  const buildRoot = options.buildDir || path.join(os.tmpdir(), 'spectrum-build');
   const outDir = path.join(buildRoot, crypto.randomUUID());
-  const cache = await cachePath(projectRoot);
+  // a scratch build (compileFolder's) keeps nothing
+  const cache = options.scratch ? null : await cachePath(projectRoot);
   await ensureDir(outDir);
   // Like TeXShop, LaTeX Workshop and Tectonic, run from the main file's folder so
   // \input paths are relative to the main file. The project root stays on the search
@@ -398,16 +414,17 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
     ...(binPath && { [PATH_KEY]: binPath }),
     TEXINPUTS: searchPath('TEXINPUTS'),
     BIBINPUTS: searchPath('BIBINPUTS'),
-    BSTINPUTS: searchPath('BSTINPUTS')
+    BSTINPUTS: searchPath('BSTINPUTS'),
+    ...options.env
   };
   // Recompile from scratch: nothing an earlier compile of the document kept, with any engine
   // (one a virus scanner still holds is left: none of it is copied in, and keepBuild clears it again)
-  if (options.fresh) await fs.rm(path.join(cache, 'build-files', doc), { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
+  if (options.fresh && cache) await fs.rm(path.join(cache, 'build-files', doc), { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
   // ponytail: only the engines run pass by pass here keep files; latexmk and Tectonic choose their own passes from nothing
   const multiPass = MULTI_PASS_ENGINES.includes(engine);
-  const store = keptStore(cache, doc, engine);
+  const store = cache && keptStore(cache, doc, engine);
   // first, so another document's .aux of the same name doesn't take the place of its own
-  const kept = multiPass && !options.fresh && (await copyKept(store, outDir));
+  const kept = multiPass && store && !options.fresh && (await copyKept(store, outDir));
   // \include{chapters/x} writes chapters/x.aux into the output dir, so mirror the folders
   // as seen from the main file's folder and from the project root.
   // Other documents' kept .aux go in it too, where TeX looks first, for \externaldocument to find.
@@ -420,7 +437,7 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
       continue;
     }
     // its own came from its kept files, if any
-    if (!/\.tex$/i.test(item.path) || item.path === doc) continue;
+    if (!cache || !/\.tex$/i.test(item.path) || item.path === doc) continue;
     // ponytail: a document in a parent folder (\externaldocument{../notes}) isn't reached; a per-run TEXINPUTS folder would reach it
     const at = path.relative(mainDir, path.join(projectRoot, path.dirname(item.path)));
     if (at.startsWith('..')) continue;
@@ -550,9 +567,13 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
     pdf = await fs.readFile(path.join(outDir, `${base}.pdf`));
   } catch {
     // a store Windows still holds is only reused, and a kept file TeX can't read compiles again from scratch
-    if (multiPass) await fs.rm(store, { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
+    if (multiPass && store) await fs.rm(store, { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
     await cleanBuild(buildRoot, outDir);
     return { ok: false, error: 'No PDF was produced.', log, status: code ?? -1 };
+  }
+  if (!cache) {
+    await cleanBuild(buildRoot, outDir);
+    return { ok: true, pdf: pdf.toString('base64'), log, status: code ?? 0 };
   }
   const absPdf = path.join(path.dirname(absMain), `${base}.pdf`);
   // the copy on disk is older than this compile's, so the editor keeps showing the one it was sent

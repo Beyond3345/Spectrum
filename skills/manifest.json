@@ -1,0 +1,97 @@
+{
+  "upstream": "https://github.com/K-Dense-AI/scientific-agent-skills",
+  "commit": "593377bb048752abb0152deab9fbb1083a6087df",
+  "skills": {
+    "citation-management": {
+      "licence": "MIT",
+      "author": "K-Dense Inc.",
+      "version": "2.3",
+      "source": "K-Dense-AI/scientific-agent-skills"
+    },
+    "hypothesis-generation": {
+      "licence": "MIT",
+      "author": "K-Dense Inc.",
+      "version": "2.4",
+      "source": "K-Dense-AI/scientific-agent-skills"
+    },
+    "latex-posters": {
+      "licence": "MIT",
+      "author": "K-Dense Inc.",
+      "version": "1.10",
+      "source": "K-Dense-AI/scientific-agent-skills",
+      "note": "names no licence, so the repository’s MIT licence applies"
+    },
+    "literature-review": {
+      "licence": "MIT",
+      "author": "K-Dense Inc.",
+      "version": "1.11",
+      "source": "K-Dense-AI/scientific-agent-skills"
+    },
+    "markdown-mermaid-writing": {
+      "licence": "Apache-2.0",
+      "author": "Clayton Young / Superior Byte Works, LLC (@borealBytes)",
+      "version": "1.3",
+      "source": "K-Dense-AI/scientific-agent-skills"
+    },
+    "paper-lookup": {
+      "licence": "MIT",
+      "author": "K-Dense Inc.",
+      "version": "2.4",
+      "source": "K-Dense-AI/scientific-agent-skills"
+    },
+    "peer-review": {
+      "licence": "MIT",
+      "author": "K-Dense Inc.",
+      "version": "2.4",
+      "source": "K-Dense-AI/scientific-agent-skills"
+    },
+    "research-grants": {
+      "licence": "MIT",
+      "author": "K-Dense Inc.",
+      "version": "1.5",
+      "source": "K-Dense-AI/scientific-agent-skills"
+    },
+    "scientific-critical-thinking": {
+      "licence": "MIT",
+      "author": "K-Dense Inc.",
+      "version": "1.5",
+      "source": "K-Dense-AI/scientific-agent-skills"
+    },
+    "scientific-slides": {
+      "licence": "MIT",
+      "author": "K-Dense Inc.",
+      "version": "1.12",
+      "source": "K-Dense-AI/scientific-agent-skills"
+    },
+    "scientific-writing": {
+      "licence": "MIT",
+      "author": "K-Dense Inc.",
+      "version": "2.3",
+      "source": "K-Dense-AI/scientific-agent-skills"
+    },
+    "spectrum-latex": {
+      "licence": "MIT",
+      "author": "Spectrum",
+      "version": "1.0",
+      "source": "spectrum"
+    },
+    "spectrum-related-work": {
+      "licence": "MIT",
+      "author": "Spectrum",
+      "version": "1.0",
+      "source": "spectrum"
+    },
+    "spectrum-verify-claims": {
+      "licence": "MIT",
+      "author": "Spectrum",
+      "version": "1.0",
+      "source": "spectrum"
+    },
+    "venue-templates": {
+      "licence": "MIT",
+      "author": "K-Dense Inc.",
+      "version": "1.6",
+      "source": "K-Dense-AI/scientific-agent-skills"
+    }
+  }
+}

@@ -12,7 +12,7 @@ test('ACP lifecycle: permissions, isolated changes, application, resume, cancell
   process.env.SPECTRUM_PROJECTS_DIR = path.join(dir, 'projects');
   const { createProject } = await import('../src/services/projectService.js');
   const { saveAgentConfig } = await import('../src/services/agentProfiles.js');
-  const { newAgentRun, getAgentRun, promptAgent, answerAgentRequest, stopAgentRun, shutdownAgents, reviewAgentChanges } = await import('../src/services/agentSessionService.js');
+  const { newAgentRun, getAgentRun, promptAgent, answerAgentRequest, stopAgentRun, shutdownAgents, reviewAgentChanges, pendingChanges } = await import('../src/services/agentSessionService.js');
   const { workspaceChanges } = await import('../src/services/agentWorkspace.js');
   const fixture = fileURLToPath(new URL('./fixtures/acp-agent.mjs', import.meta.url));
   try {
@@ -59,6 +59,12 @@ test('ACP lifecycle: permissions, isolated changes, application, resume, cancell
     answerAgentRequest(direct, [...direct.pending.keys()][0], { optionId: 'yes' });
     await direct.task;
     assert.equal(direct.status, 'completed', JSON.stringify(direct.events.filter((e) => ['state', 'notice'].includes(e.type))));
+    assert.equal(await fs.readFile(path.join(directProject.path, 'main.tex'), 'utf8'), 'agent draft\n');
+    // a direct change is already the user's: putting it away leaves the file as it is
+    const seen = await pendingChanges(direct);
+    assert.ok(seen.some((c) => c.path === 'main.tex'));
+    await reviewAgentChanges(direct, { action: 'reject', paths: seen.map((c) => c.path) });
+    assert.deepEqual(await pendingChanges(direct), []);
     assert.equal(await fs.readFile(path.join(directProject.path, 'main.tex'), 'utf8'), 'agent draft\n');
   } finally { await shutdownAgents(); await fs.rm(dir, { recursive: true, force: true }); }
 });
