@@ -81,9 +81,15 @@ const firstLine = (text) => {
 const state = (r, status, error) => { r.status = status; emit(r, 'state', { status, ...(error && { error }) }); void persist(r); };
 const busyProject = (r) => [...runs.values()].some((other) => other !== r && other.projectId === r.projectId && (other.busy || other.reviewing));
 
+// a session being loaded, so the history list and the session opened with it get the same one
+const loading = new Map();
 export async function getAgentRun(id) {
   if (!ID.test(id)) throw new Error('Invalid agent session id.');
   if (runs.has(id)) return runs.get(id);
+  if (!loading.has(id)) loading.set(id, loadAgentRun(id).finally(() => loading.delete(id)));
+  return loading.get(id);
+}
+async function loadAgentRun(id) {
   const dir = path.join(AGENT_DIR, 'runs', id);
   const data = JSON.parse(await fs.readFile(path.join(dir, 'session.json'), 'utf8'));
   profileFor(data.agentId);

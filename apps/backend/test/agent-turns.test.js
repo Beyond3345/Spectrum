@@ -36,15 +36,16 @@ const setup = () => (ready ??= (async () => {
   const lastPrompt = async (run) => (await fs.readFile(path.join(run.home, 'acp-log.jsonl'), 'utf8')).trim().split('\n').map((l) => JSON.parse(l)).filter((q) => q.method === 'session/prompt').at(-1).params.prompt[0].text;
   const stored = async (run) => JSON.parse(await fs.readFile(path.join(run.dir, 'session.json'), 'utf8'));
   // another computer's copy of the session as Spectrum finds it on disk: its folder under a new id, changed by edit
-  const reopen = async (run, edit) => {
+  const copy = async (run, edit) => {
     const id = crypto.randomUUID();
     await fs.cp(run.dir, path.join(AGENT_DIR, 'runs', id), { recursive: true });
     const file = path.join(AGENT_DIR, 'runs', id, 'session.json');
     await fs.writeFile(file, JSON.stringify(edit({ ...JSON.parse(await fs.readFile(file, 'utf8')), id })));
-    return s.getAgentRun(id);
+    return id;
   };
+  const reopen = async (run, edit) => s.getAgentRun(await copy(run, edit));
   after(async () => { await s.shutdownAgents(); await fs.rm(dir, { recursive: true, force: true }); });
-  return { ...s, open, turn, lastPrompt, stored, reopen };
+  return { ...s, open, turn, lastPrompt, stored, copy, reopen };
 })());
 
 test('a long streamed message keeps the turn’s start, and a huge one is stored in parts under the caps', { skip, timeout: 120000 }, async () => {
@@ -238,4 +239,15 @@ test('quitting stops the sessions with an agent running and leaves the others as
   assert.deepEqual(await stored(done), before, 'its status and time stay');
   assert.equal(live.status, 'interrupted');
   assert.equal(live.child, null);
+});
+
+test('a session Spectrum closed during is loaded once when the history list and the open session ask for it together', { skip, timeout: 120000 }, async () => {
+  const { open, turn, copy, getAgentRun, listAgentRuns } = await setup();
+  const { run } = await open({ 'main.tex': 'original\n' });
+  await turn(run, 'hello');
+  const id = await copy(run, (data) => ({ ...data, status: 'running' }));
+  const [, opened, again] = await Promise.all([listAgentRuns(run.projectId), getAgentRun(id), getAgentRun(id)]);
+  assert.equal(opened, again, 'one session, whose listeners hear its turns');
+  assert.equal(await getAgentRun(id), opened);
+  assert.equal(opened.events.filter((e) => e.type === 'state' && e.data.status === 'interrupted').length, 1);
 });
