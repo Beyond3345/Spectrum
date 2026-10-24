@@ -4,14 +4,16 @@ import { blobUrl, getFile, getProjectTree, plotFromTable, uploadFiles, visionToL
 import Icon from '../../app/Icon';
 import Select from '../../app/Select';
 import Sheet from '../../app/Sheet';
+import { openDiagram } from '../../app/desktop';
 import { IS_WINDOWS } from '../../app/platform';
+import type { DiagramLanguage } from '../../diagram/types';
 import { useEditor } from '../EditorContext';
 import type { EditorApi } from '../EditorContext';
 import { VISION_HINTS, VISION_MODES, errorText, figureSnippet, isTex } from '../shared';
 import type { VisionMode } from '../shared';
-import { PLACEMENT_LETTERS, blockAt, defaultAlign, extOf, figureKind, figureLabel, figureLatex, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableLabel, tableLatex, uniqueName } from '../floats';
+import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramLatex, extOf, figureKind, figureLabel, figureLatex, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableLabel, tableLatex, uniqueName } from '../floats';
 import type { TableLines, TableModel } from '../floats';
-import { addPackages, projectPackages } from '../preamble';
+import { addLibraries, addPackages, changeBetween, loadedLibraries, projectPackages } from '../preamble';
 
 const IMAGE_EXTS = /\.(png|jpe?g|gif|svg|webp)$/i;
 
@@ -19,6 +21,7 @@ export default function FloatsTab() {
   return (
     <div className="tool-page">
       <InsertFigure />
+      <InsertDiagram />
       <InsertTable />
       <ProjectFigures />
       <TableToChart />
@@ -44,6 +47,16 @@ export function showFigure(item: Handed) {
 export function figureFile(data: DataTransfer | null) {
   const files = [...Array.from(data?.files || []), ...Array.from(data?.items || []).map((item) => (item.kind === 'file' ? item.getAsFile() : null))];
   return files.find((file): file is File => !!file && !!figureKind(file.name, file.type));
+}
+
+/** What the diagram composer's Insert as figure sends (EditorPage passes it on): the diagram's file and what its picture needs. */
+export type HandedDiagram = { path: string; language: DiagramLanguage; packages: string[]; libraries: string[] };
+let handedDiagram: HandedDiagram | null = null;
+
+/** Loads a diagram into the Insert diagram card, as showFigure does an image. */
+export function showDiagram(diagram: HandedDiagram) {
+  handedDiagram = diagram;
+  handedEvents.dispatchEvent(new Event('diagram'));
 }
 
 // ─── shared by Insert figure and Insert table ───
@@ -132,37 +145,48 @@ function Segmented<T extends string>({ label, value, options, onChange }: { labe
   );
 }
 
-/** "\usepackage{a}, \usepackage{b} and \usepackage{c}" */
-const usepackages = (names: string[]) => {
-  const items = names.map((name) => `\\usepackage{${name}}`);
-  return items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
-};
+/** "\usepackage{a}, \usepackage{b} and \usetikzlibrary{c}" */
+const listed = (lines: string[]) => (lines.length < 2 ? lines.join('') : `${lines.slice(0, -1).join(', ')} and ${lines[lines.length - 1]}`);
+const usepackage = (name: string) => `\\usepackage{${name}}`;
+const usetikzlibrary = (names: string[]) => (names.length ? [`\\usetikzlibrary{${names.join(',')}}`] : []);
 
 /**
- * Adds the packages a snippet needs to the main file, unless it or a file it \input's loads them already.
- * Returns what to tell the user ('' when nothing changed), and warn when the user has to add them.
+ * Adds the packages a snippet needs to the main file, unless it or a file it \input's loads them already: first ones
+ * straight after \documentclass, then the rest, then the TikZ libraries. Returns what to tell the user ('' when nothing
+ * changed), and warn when the user has to add them.
  */
-async function ensurePackages(latest: () => EditorApi, wanted: string[]): Promise<{ text: string; warn?: boolean }> {
+async function ensurePackages(latest: () => EditorApi, wanted: string[], { first = [], libraries = [] }: { first?: string[]; libraries?: string[] } = {}): Promise<{ text: string; warn?: boolean }> {
   const { mainFile, projectId, texFiles } = latest();
-  if (!mainFile || !wanted.length) return { text: '' };
+  if (!mainFile || !(wanted.length || first.length || libraries.length)) return { text: '' };
   // the open file as it is in the editor; the rest from disk, so they don't fill the editor's cache
   const read = async (path: string) => {
     const api = latest();
     return path === api.activePath ? api.editorValue : (await getFile(projectId, path)).content;
   };
   try {
-    const loaded = await projectPackages(mainFile, new Set(texFiles), read);
+    const files = new Set(texFiles);
+    const loaded = await projectPackages(mainFile, files, read);
+    const loadedLibs = libraries.length ? await projectPackages(mainFile, files, read, loadedLibraries) : new Set<string>();
+    const missingFirst = first.filter((name) => !loaded.has(name));
     const missing = wanted.filter((name) => !loaded.has(name));
-    if (!missing.length) return { text: '' };
+    const missingLibs = libraries.filter((name) => !loadedLibs.has(name));
+    if (!(missingFirst.length || missing.length || missingLibs.length)) return { text: '' };
     const api = latest();
     const open = api.activePath === mainFile;
-    const edit = addPackages(open ? api.editorValue : await read(mainFile), missing);
-    if (edit.noDocument) return { text: `${mainFile} has no \\begin{document}, so add ${usepackages(missing)} yourself.`, warn: true };
-    if (!edit.added.length) return { text: '' };
-    // the open file changes through the editor, so it can be undone
-    if (open && edit.change) api.editOpenFile(edit.change);
-    else await api.writeProjectFile(mainFile, edit.source);
-    return { text: `Added ${usepackages(edit.added)} to ${mainFile}.` };
+    const before = open ? api.editorValue : await read(mainFile);
+    const early = addPackages(before, missingFirst, { first: true });
+    const packed = addPackages(early.source, missing);
+    const libbed = addLibraries(packed.source, missingLibs);
+    if (early.noDocument || packed.noDocument || libbed.noDocument) {
+      const lines = [...missingFirst, ...missing].map(usepackage).concat(usetikzlibrary(missingLibs));
+      return { text: `${mainFile} has no \\begin{document}, so add ${listed(lines)} yourself.`, warn: true };
+    }
+    const added = [...early.added, ...packed.added].map(usepackage).concat(usetikzlibrary(libbed.added));
+    if (!added.length) return { text: '' };
+    // the open file changes through the editor, in one change, so one undo takes it back
+    if (open) api.editOpenFile(changeBetween(before, libbed.source));
+    else await api.writeProjectFile(mainFile, libbed.source);
+    return { text: `Added ${listed(added)} to ${mainFile}.` };
   } catch (err) {
     return { text: `Couldn’t check the packages in ${mainFile}: ${errorText(err)}`, warn: true };
   }
@@ -514,6 +538,163 @@ function InsertFigure() {
           />
           <button className="btn primary full" onClick={insert} disabled={!!busy || !texOpen}>
             {busy === 'inserting' ? <span className="spinner" /> : <Icon name="plus" />} Insert figure
+          </button>
+          {!texOpen && <div className="field-hint">{NOT_TEX}</div>}
+        </>
+      )}
+    </section>
+  );
+}
+
+// ─── Insert diagram ───
+
+type DiagramWidth = 'natural' | WidthChoice;
+const DIAGRAM_WIDTHS: [DiagramWidth, string, string?][] = [['natural', 'Natural', 'Natural size'], ...WIDTHS];
+
+/** The image a diagram that isn't TikZ goes in as: the PDF or PNG saved beside it (or the image it is), '' when there's none. */
+const imageOf = (path: string, figures: string[]) =>
+  figureKind(path, '') === 'keep' ? path : ['pdf', 'png'].map((ext) => path.replace(/\.[^./]+$/, `.${ext}`)).find((p) => figures.includes(p)) || '';
+
+/**
+ * The diagram the composer's Insert as figure handed over, as a figure: a TikZ diagram through \includestandalone, at
+ * its own size by default, with standalone, its packages and its TikZ libraries added to the preamble; any other
+ * (Mermaid) as its exported image. Without one, it opens the composer.
+ */
+function InsertDiagram() {
+  const api = useEditor();
+  const apiRef = useRef(api);
+  apiRef.current = api;
+  const id = useId();
+  const [diagram, setDiagram] = useState<HandedDiagram | null>(null);
+  const [caption, setCaption] = useState('');
+  /** null: follows the file name */
+  const [label, setLabel] = useState<string | null>(null);
+  // the figure card's placement and custom width, not remembered from here
+  const [prefs, setPrefs] = useState(loadPrefs);
+  const [width, setWidth] = useState<DiagramWidth>('natural');
+  const [busy, setBusy] = useState(false);
+  const cardRef = useRef<HTMLElement>(null);
+  const captionRef = useRef<HTMLTextAreaElement>(null);
+  const texOpen = isTex(api.activePath);
+  const tikz = diagram?.language === 'tikz' && /\.tex$/i.test(diagram.path);
+  const image = diagram && !tikz ? imageOf(diagram.path, api.figureFiles) : '';
+
+  useEffect(() => {
+    const take = () => {
+      const next = handedDiagram;
+      handedDiagram = null;
+      if (!next) return;
+      setDiagram(next);
+      setCaption('');
+      setLabel(null);
+      // an image can't keep a size of its own in the document; a TikZ picture can
+      setWidth(next.language === 'tikz' ? 'natural' : loadPrefs().width);
+    };
+    take();
+    handedEvents.addEventListener('diagram', take);
+    return () => handedEvents.removeEventListener('diagram', take);
+  }, []);
+
+  // a new diagram asks for its caption
+  useEffect(() => {
+    if (!diagram) return;
+    cardRef.current?.scrollIntoView({ block: 'nearest' });
+    captionRef.current?.focus({ preventScroll: true });
+  }, [diagram]);
+
+  const draw = () => openDiagram(api.projectId).catch((err) => api.notify(`Couldn’t open the diagram composer: ${errorText(err)}`, 'error'));
+
+  const insert = async () => {
+    if (!diagram) return;
+    setBusy(true);
+    try {
+      const float = { caption, label: label ?? figureLabel(diagram.path), placement: prefs.placement, span: prefs.span };
+      const fraction = width === 'natural' ? null : widthOf({ ...prefs, width });
+      const exactly = placementOf(prefs.placement, prefs.span) === 'H' ? ['float'] : [];
+      // standalone loads before the rest, and the libraries after the packages that bring TikZ
+      const added = tikz
+        ? await ensurePackages(() => apiRef.current, [...diagram.packages, ...exactly], { first: ['standalone'], libraries: diagram.libraries })
+        : await ensurePackages(() => apiRef.current, ['graphicx', ...exactly]);
+      insertBlock(
+        apiRef.current,
+        tikz ? diagramLatex({ ...float, path: diagram.path, width: fraction }) : figureLatex({ ...float, path: image, width: fraction ?? widthOf(prefs) })
+      );
+      api.notify([`Inserted ${diagram.path} as a figure.`, added.text].filter(Boolean).join(' '), added.warn ? 'error' : 'success');
+      setDiagram(null);
+      setCaption('');
+    } catch (err) {
+      api.notify(`Couldn’t add the diagram: ${errorText(err)}`, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="tool-card" data-card="diagram" ref={cardRef}>
+      <div className="tool-card-title">
+        <Icon name="pencil" /> Insert diagram
+      </div>
+      <div className="tool-card-desc">
+        Diagrams drawn in the composer go in as figures. A TikZ diagram goes in with \includestandalone, so its labels take the document’s fonts, and the packages it needs are added to the preamble.
+      </div>
+      {!diagram ? (
+        <button className="btn full" onClick={draw}>
+          <Icon name="pencil" /> Draw a diagram…
+        </button>
+      ) : (
+        <>
+          <div className="drop-zone has-file">
+            <div className="drop-preview">
+              <Icon name="doc.richtext" size={28} />
+              <span className="drop-name">{diagram.path}</span>
+              <button className="icon-btn" title="Remove diagram" aria-label="Remove diagram" onClick={() => setDiagram(null)}>
+                <Icon name="xmark.circle.fill" />
+              </button>
+            </div>
+          </div>
+          {!tikz && !image && <div className="field-hint error">Export the diagram as a PNG from the composer first, then insert it again.</div>}
+          <div className="field">
+            <label htmlFor={`${id}-caption`}>Caption</label>
+            <textarea
+              ref={captionRef}
+              id={`${id}-caption`}
+              className="input"
+              rows={2}
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              placeholder="Leave empty to write it later"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor={`${id}-label`}>Label</label>
+            <input id={`${id}-label`} className="input" value={label ?? figureLabel(diagram.path)} onChange={(e) => setLabel(e.target.value)} spellCheck={false} />
+          </div>
+          <Segmented label="Width" value={width} options={tikz ? DIAGRAM_WIDTHS : WIDTHS} onChange={setWidth} />
+          {width === 'natural' && <div className="field-hint">At its natural size, its lines and labels keep the sizes they were drawn at.</div>}
+          {width === 'custom' && (
+            <div className="figure-custom-width">
+              <input
+                id={`${id}-custom`}
+                className="input number"
+                type="number"
+                min={1}
+                max={100}
+                value={prefs.custom || ''}
+                onChange={(e) => setPrefs({ ...prefs, custom: Math.min(100, Math.max(0, Math.round(Number(e.target.value) || 0))) })}
+                onBlur={() => !prefs.custom && setPrefs({ ...prefs, custom: DEFAULT_PREFS.custom })}
+              />
+              <label htmlFor={`${id}-custom`}>% of the line width</label>
+            </div>
+          )}
+          <PlacementField
+            kind="figure"
+            value={prefs.placement}
+            onChange={(placement) => setPrefs({ ...prefs, placement })}
+            span={prefs.span}
+            onSpan={(span) => setPrefs({ ...prefs, span })}
+          />
+          <button className="btn primary full" onClick={insert} disabled={busy || !texOpen || (!tikz && !image)}>
+            {busy ? <span className="spinner" /> : <Icon name="plus" />} Insert diagram
           </button>
           {!texOpen && <div className="field-hint">{NOT_TEX}</div>}
         </>
