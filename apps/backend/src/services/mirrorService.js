@@ -401,12 +401,17 @@ async function mirror(id, record, label, force) {
   const tag = (it) => `${it.action} ${it.key}`;
   const approved = new Set((statuses.get(id)?.deleting || []).filter((d) => force.includes(d)));
   // Delete automatic checkpoints, on either computer, isn't counted: an unnamed compile checkpoint's manifest, as the
-  // side that still has it says
+  // side that still has it says. Only while every checkpoint going that way is one: with a named or manual one among
+  // them (the whole history gone from a side) they all count
   const automatic = new Set();
   for (const it of items) {
     if (!MANIFEST.test(it.key) || !['deleteLocal', 'deleteCloud'].includes(it.action)) continue;
     const data = await readJson(it.action === 'deleteLocal' ? join(localRoot, it.l.rel) : join(cloudRoot, it.c.rel)).catch(() => null);
     if (data?.reason === 'compile' && !data.label) automatic.add(it.key);
+  }
+  for (const action of ['deleteLocal', 'deleteCloud']) {
+    const going = items.filter((it) => it.action === action && MANIFEST.test(it.key));
+    if (going.some((it) => !automatic.has(it.key))) for (const it of going) automatic.delete(it.key);
   }
   const count = (action, user) => items.filter((it) => it.action === action && !approved.has(tag(it)) && !automatic.has(it.key) && !(user && inApp(it.key))).length;
   const users = (side) => [...side.files.keys()].filter((key) => !inApp(key)).length;

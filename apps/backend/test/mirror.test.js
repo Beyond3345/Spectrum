@@ -681,6 +681,22 @@ test('Delete automatic checkpoints doesn’t trip the brake on either computer, 
   assert.equal(existsSync(manifest(p.root, 29)), false);
 });
 
+test('a whole history gone from one side trips the brake, however many compile checkpoints are in it', async () => {
+  const files = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`ch${i}.tex`, `chapter ${i}\n`]));
+  const p = await project('Whole history', files);
+  const manifest = (root, i) => path.join(root, '.spectrum', 'history', 'manifests', `${2000 + i}.json`);
+  for (let i = 0; i < 56; i++) {
+    const named = i < 6;
+    await write(manifest(p.root, i), JSON.stringify({ files: {}, createdAt: new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString(), label: named ? `Draft ${i}` : '', reason: named ? 'manual' : 'compile' }));
+  }
+  synced(await syncTo(p));
+  await fs.rm(path.join(p.cloud, '.spectrum', 'history', 'manifests'), { recursive: true });
+  const status = await mirror.syncProject(p.id);
+  assert.equal(status.state, 'attention');
+  assert.match(status.message, /would delete 56 files on this computer/);
+  assert.equal(readdirSync(path.join(p.root, '.spectrum', 'history', 'manifests')).length, 56);
+});
+
 test('a "Before sync" checkpoint saved while a compile’s is being saved is kept', async () => {
   const p = await project('Racing', { 'main.tex': 'one\n' });
   synced(await syncTo(p));
