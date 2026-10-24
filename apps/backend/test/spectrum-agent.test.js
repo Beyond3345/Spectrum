@@ -175,4 +175,13 @@ test('a Spectrum agent thread is a chat marked as one, listed with its mark, and
   const merged = (await put({ ...unmarked, messages: [...thread.messages, { role: 'assistant', content: 'Done', createdAt: '2026-01-02T00:00:00.000Z' }] }, 'older')).json().chat;
   assert.equal(merged.agent, true);
   assert.equal(merged.messages.length, 2);
+
+  // an Apply or Reject marked on an older copy (or on another computer) isn't lost to disk's copy of the message
+  const proposed = { role: 'assistant', content: 'Changed it', createdAt: '2026-01-03T00:00:00.000Z', meta: { changes: [{ filePath: 'a.tex', proposed: 'A' }, { filePath: 'b.tex', proposed: 'B', status: 'rejected' }] } };
+  const withProposal = { ...merged, messages: [...merged.messages, proposed] };
+  await put(withProposal, merged.updatedAt);
+  const checkpoint = { id: 7, number: 3, label: 'Before applying agent changes', createdAt: '2026-01-03T00:01:00.000Z' };
+  const marked = { ...proposed, meta: { changes: [{ ...proposed.meta.changes[0], status: 'applied' }, { ...proposed.meta.changes[1], status: 'applied' }], checkpoints: [checkpoint] } };
+  const again = (await put({ ...withProposal, messages: [...merged.messages, marked], updatedAt: '2026-01-01T00:00:00.000Z' }, 'older')).json().chat;
+  assert.deepEqual(again.messages.at(-1).meta, { changes: [{ filePath: 'a.tex', proposed: 'A', status: 'applied' }, { filePath: 'b.tex', proposed: 'B', status: 'rejected' }], checkpoints: [checkpoint] });
 });
