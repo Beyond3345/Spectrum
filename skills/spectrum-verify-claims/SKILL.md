@@ -1,6 +1,6 @@
 ---
 name: spectrum-verify-claims
-description: Check a section of a manuscript claim by claim against the sources it cites, and report which claims are supported, partly supported, unsupported or not checkable, without changing the author's text. Use when the user asks to verify claims, check citations, find overstated statements or prepare a paper for review.
+description: Compares each factual statement in a passage with the work its citation points to, and grades the support as full, partial, none or not checkable, leaving the author's wording alone. Choose it when a draft's citations need testing against what their sources say, or before a manuscript goes out.
 license: MIT
 compatibility: Works with the Spectrum agent and with local agents. literature_search, fetch_bibtex and bib_entries come from Spectrum's own tools; without them, check against the sources the user provides.
 metadata:

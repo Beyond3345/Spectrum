@@ -1,6 +1,6 @@
 ---
 name: spectrum-related-work
-description: Draft or revise a related work or background section in which every citation resolves to a real entry in the project's bibliography. Use when the user asks for related work, a literature background or a comparison with prior work, or wants a section full of undefined citations repaired.
+description: Writes a background or prior-work section from the project's own .bib entries, adding a missing source only after fetching its BibTeX. Choose it for literature context, for positioning a contribution against earlier studies, or for fixing undefined \cite keys.
 license: MIT
 compatibility: Works with the Spectrum agent and with local agents. literature_search, fetch_bibtex, bib_search and project_map come from Spectrum's own tools; with none of them, work only from the references the user provides.
 metadata:
