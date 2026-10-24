@@ -94,15 +94,16 @@ export const HIDDEN_ENTRIES = new Set([
 
 /**
  * What a cloud project's mirror leaves out, and the editor's folder watch too: anything in HIDDEN_ENTRIES and the app's
- * own save and upload temp files. Of the app's data (.spectrum, in any letter case) only project.json, history and
- * chats go across, never a sync app's conflicted copy of one (nothing reads it, and the mirror merges a chat's and
- * project.json's back); the rest is this computer's.
+ * own save and upload temp files. Of the app's data (.spectrum, in any letter case) only project.json, history, chats,
+ * PDF notes and to-dos go across (the notes and to-dos one file each, so the two computers' lists join, and a rename on
+ * one takes them along on the other), never a sync app's conflicted copy of one (nothing reads it, and the mirror
+ * merges a chat's and project.json's back); the rest is this computer's.
  */
 export function mirrorSkips(rel) {
   if (/\.(tmp|upload)$/i.test(rel)) return true;
   const parts = rel.split('/');
   const app = parts[0].toLowerCase() === '.spectrum';
-  if (app && parts.length > 1 && !(parts.length === 2 && parts[1] === 'project.json') && !['history', 'chats'].includes(parts[1])) return true;
+  if (app && parts.length > 1 && !(parts.length === 2 && parts[1] === 'project.json') && !['history', 'chats', 'notes', 'todos'].includes(parts[1])) return true;
   if (app && looksLikeConflictCopy(parts[parts.length - 1])) return true;
   return parts.slice(app ? 1 : 0).some((part) => HIDDEN_ENTRIES.has(part) || part.toLowerCase() === '.spectrum');
 }
