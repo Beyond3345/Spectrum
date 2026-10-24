@@ -52,7 +52,8 @@ function toSymbol(page: SymbolPage, image: string, type: string): CircuitSymbol 
   const pins = Object.fromEntries(page.pins.map((pin) => [pin.name, { x: pin.x, y: pin.y }]));
   const grid = (p: Pt) => ({ x: p.x / PT_PER_GRID, y: p.y / PT_PER_GRID });
   const base = { image, width: page.width, height: page.height, origin: page.origin };
-  if (part?.kind !== 'path') return { ...base, middle: { x: 0, y: 0 }, shape: { pins: Object.fromEntries(Object.entries(pins).map(([name, p]) => [name, grid(p)])) } };
+  // a pin the generator didn't report keeps its stand-in place, so wires can still reach it by name
+  if (part?.kind !== 'path') return { ...base, middle: { x: 0, y: 0 }, shape: { pins: { ...placeholderShape(type).pins, ...Object.fromEntries(Object.entries(pins).map(([name, p]) => [name, grid(p)])) } } };
   const { left, right } = pins;
   if (!left || !right) return { ...base, middle: { x: page.width / 2 - page.origin.x, y: 0 }, shape: placeholderShape(type) };
   // the symbol is drawn from left to right along x, so its extra pins are already in the part's own frame

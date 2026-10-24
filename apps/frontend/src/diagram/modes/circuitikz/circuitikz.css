@@ -45,6 +45,10 @@
   --ckt-glyph-filter: invert(1);
 }
 
+.ckt-canvas:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent-soft);
+}
+
 .ckt-canvas svg {
   display: block;
 }
