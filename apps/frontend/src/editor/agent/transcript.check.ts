@@ -1,7 +1,7 @@
 // Self-check for the local agent transcript. Run:
 // npx esbuild apps/frontend/src/editor/agent/transcript.check.ts --bundle --platform=node --log-level=warning --outfile=<scratch>/transcript.cjs && node <scratch>/transcript.cjs
 import type { AgentEvent } from '../../api/client';
-import { addEvent, closeChanges, openChanges, project } from './transcript';
+import { addEvent, closeChanges, openChanges, project, storedChanges } from './transcript';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -165,9 +165,19 @@ eq(project([ev('terminal', { terminalId: 'x', command: 'latexmk', args: ['-pdf',
   eq(closeChanges(chat.messages, ['c.tex'], 'applied').messages, chat.messages, 'nothing open: unchanged');
   eq(closeChanges(closed.messages, ['gone.tex'], 'rejected').messages[0].meta, { changes: [{ filePath: 'b.tex', proposed: 'B1' }], closed: [{ filePath: 'a.tex', status: 'superseded' }, { filePath: 'gone.tex', status: 'rejected' }] }, 'closed again');
   const next = { ...chat, messages: [...closed.messages, message([{ filePath: 'a.tex', original: 'A0', proposed: 'A3' }])] };
-  void Promise.all([openChanges(chat, async (p) => (p in disk ? disk[p] : Promise.reject(new Error('missing')))), openChanges(next, async (p) => disk[p] ?? '')]).then(([open, after]) => {
+
+  // a large file's base kept as the patch back to it from the proposal, which takes it back exactly
+  const bib = Array.from({ length: 30000 }, (_, i) => `@article{key${i},\n  title = {Paper ${i}},\n  year = {20${String(i % 100).padStart(2, '0')}}\n}\n`).join('\n');
+  const added = bib.replace('@article{key15000,', '@article{new,\n  title = {New}\n}\n\n@article{key15000,');
+  const [big, small, created] = storedChanges([{ filePath: 'refs.bib', original: bib, proposed: added }, { filePath: 'e.tex', original: 'E0', proposed: 'E1' }, { filePath: 'n.tex', original: '', proposed: 'N' }]);
+  eq([big.original, typeof big.originalPatch, big.proposed === added, big.originalPatch!.length < 1000], [undefined, 'string', true, true], 'a large file keeps a patch');
+  eq([small, created], [{ filePath: 'e.tex', proposed: 'E1', original: 'E0' }, { filePath: 'n.tex', proposed: 'N', original: '' }], 'others their base');
+  const large = { ...chat, messages: [message([big])] };
+
+  void Promise.all([openChanges(chat, async (p) => (p in disk ? disk[p] : Promise.reject(new Error('missing')))), openChanges(next, async (p) => disk[p] ?? ''), openChanges(large, async () => 'the file now')]).then(([open, after, reopened]) => {
     eq(open.map((c) => [c.filePath, c.original, c.proposed]), [['a.tex', 'A0', 'A2'], ['gone.tex', '', 'G'], ['e.tex', 'E0', 'E1']], 'open proposals');
     eq(after.map((c) => [c.filePath, c.original, c.proposed]), [['gone.tex', '', 'G'], ['a.tex', 'A0', 'A3']], 'a superseded one is closed');
+    eq(reopened.map((c) => [c.filePath, c.original === bib, c.proposed === added]), [['refs.bib', true, true]], 'the base back from its patch');
     console.log('transcript: all checks passed');
   });
 }

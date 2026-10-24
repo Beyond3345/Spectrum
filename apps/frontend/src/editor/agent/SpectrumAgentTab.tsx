@@ -14,7 +14,7 @@ import { CHATS_CHANGED, buildProjectContext, errorText, patchesToChanges, relati
 import { AgentComposer, ChangesTray, PersonaPicker, ReviewView, Transcript, Welcome, openTodos, readStored, taskPersona, useFollow, useSkills, writeStored } from './parts';
 import type { ContextKind, Draft, TrayChange } from './parts';
 import type { AgentStatus } from './LocalAgentTab';
-import { closeChanges, metaOf, openChanges, stepCall } from './transcript';
+import { closeChanges, metaOf, openChanges, stepCall, storedChanges } from './transcript';
 import type { Checkpoint, Item, ThreadMeta as Meta } from './transcript';
 
 
@@ -145,7 +145,7 @@ export default function SpectrumAgentTab({
       if (!res.ok) throw new Error(res.reply || 'The AI request failed.');
       const changes = (await patchesToChanges(latest.current, res.patches || [], 'Spectrum agent')).filter((c) => c.original !== c.proposed);
       const meta: Meta = {
-        ...(changes.length && { changes: changes.map(({ filePath, original, proposed }) => ({ filePath, original, proposed })) }),
+        ...(changes.length && { changes: storedChanges(changes) }),
         ...(res.todos?.length && { todos: res.todos }),
         ...(res.steps?.length && { steps: res.steps })
       };

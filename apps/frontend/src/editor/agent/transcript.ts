@@ -1,3 +1,4 @@
+import { applyPatch, createPatch } from 'diff';
 import type { AgentEvent, AgentStep, AgentUserRequest, ChatThread, SuggestedTodo } from '../../api/client';
 
 // A local agent's stored events (agentSessionService.js) as the workspace shows them: messages with their streamed
@@ -159,13 +160,14 @@ export function project(events: AgentEvent[], { pending = [], checkpoints = [] }
 
 /**
  * What a Spectrum agent thread keeps in ChatMessage.meta; changes as the bottom card's Edit chats kept them, now with
- * the file each was proposed against (original), and steps its tool calls. A closed change (applied, rejected, or
- * superseded by a later turn's proposal for its file, made from the same base) moves to closed with only its file and
- * status: a thread on a large file stays under the chat cap, and 1.10.4, which offers to review every change it finds,
- * never meets one without its text. Threads saved by earlier 2.0 builds kept a closed change in changes, with its status.
+ * the file each was proposed against (original, or for a large file originalPatch, which takes proposed back to it),
+ * and steps its tool calls. A closed change (applied, rejected, or superseded by a later turn's proposal for its file,
+ * made from the same base) moves to closed with only its file and status: a thread on a large file stays under the chat
+ * cap, and 1.10.4, which offers to review every change it finds, never meets one without its text. Threads saved by
+ * earlier 2.0 builds kept a closed change in changes, with its status.
  */
 export type ChangeStatus = 'applied' | 'rejected' | 'superseded';
-type StoredChange = { filePath: string; original?: string; proposed?: string; status?: ChangeStatus };
+type StoredChange = { filePath: string; original?: string; originalPatch?: string; proposed?: string; status?: ChangeStatus };
 export type ThreadMeta = {
   changes?: StoredChange[];
   closed?: { filePath: string; status: ChangeStatus }[];
@@ -175,6 +177,13 @@ export type ThreadMeta = {
   error?: boolean;
 };
 export const metaOf = (m: { meta?: Record<string, unknown> }) => (m.meta || {}) as ThreadMeta;
+
+/**
+ * A turn's changes as a thread keeps them: a large file's base as the patch from the proposal back to it, a few bytes
+ * where the base itself would take as much of the chat cap again.
+ */
+export const storedChanges = (changes: { filePath: string; original: string; proposed: string }[]): StoredChange[] =>
+  changes.map(({ filePath, original, proposed }) => ({ filePath, proposed, ...(!original || original.length + proposed.length < 1_000_000 ? { original } : { originalPatch: createPatch(filePath, proposed, original) }) }));
 
 /**
  * Each file's latest proposal not applied or rejected yet, against the file it was proposed against, so applying it
@@ -192,7 +201,10 @@ export async function openChanges(chat: ChatThread, read: (path: string) => Prom
     for (const c of meta.closed || []) proposed.delete(c.filePath);
   }
   const list = await Promise.all(
-    [...proposed].map(async ([filePath, c]) => ({ filePath, original: c.original ?? (await read(filePath).catch(() => '')), proposed: c.proposed ?? '', source: 'Spectrum agent' }))
+    [...proposed].map(async ([filePath, c]) => {
+      const back = c.originalPatch != null && applyPatch(c.proposed ?? '', c.originalPatch);
+      return { filePath, original: typeof back === 'string' ? back : c.original ?? (await read(filePath).catch(() => '')), proposed: c.proposed ?? '', source: 'Spectrum agent' };
+    })
   );
   return list.filter((c) => c.original !== c.proposed);
 }
