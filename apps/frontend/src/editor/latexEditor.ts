@@ -27,8 +27,8 @@ export const stripComment = withoutComments;
 
 export type OutlineItem = { title: string; level: number; pos: number; line: number };
 
-const HEADING = /\\(chapter|section|subsection|subsubsection)\*?\s*(?:\[[^\]]*\])?\s*\{/g;
-const HEADING_LEVEL: Record<string, number> = { chapter: 0, section: 1, subsection: 2, subsubsection: 3 };
+export const HEADING = /\\(chapter|section|subsection|subsubsection)\*?\s*(?:\[[^\]]*\])?\s*\{/g;
+export const HEADING_LEVEL: Record<string, number> = { chapter: 0, section: 1, subsection: 2, subsubsection: 3 };
 
 /** The text from `start` up to the brace that closes the group, so \section{Bib\TeX{} Files} keeps its tail; null if it stays open. */
 function bracedGroup(line: string, start: number) {
