@@ -9,7 +9,7 @@ import { getProjectRoot, httpError } from './projectService.js';
 import { extractArxivId, fetchArxivEntry, buildArxivBibtex, searchArxiv } from './arxivService.js';
 import { searchWithFallback } from './searchService.js';
 import { fetchBibtex, literatureSearch } from './researchTools.js';
-import { activeSkills, loadSkill, readSkillFile, SKILL_ID } from './skillService.js';
+import { listSkills, loadSkill, readSkillFile, SKILL_ID } from './skillService.js';
 import { fileHash } from './agentWorkspace.js';
 import { readItems } from '../routes/todos.js';
 
@@ -25,13 +25,22 @@ export function llmErrorMessage(error) {
   return error || 'The request to the model failed.';
 }
 
+/** The skills on in a project (or on this computer, without one). */
+const skillsOn = async (projectRoot) => (await listSkills(projectRoot)).filter((s) => s.active);
+const offSkill = () => httpError('That skill is off for this project.', 403);
+
 /**
  * What the user adds to a prompt's instructions (never autocomplete's): instructions, their persona's or their default
- * ones, in a marked block, and skill, a skill's id whose instructions go in whole (the composer's /skill-id).
+ * ones, in a marked block, and skill, a skill's id whose instructions go in whole (the composer's /skill-id) while it is
+ * on in the project (projectRoot's, or this computer's without one).
  */
-export async function userInstructions({ instructions, skill } = {}) {
+export async function userInstructions({ instructions, skill, projectRoot } = {}) {
   if (instructions != null && (typeof instructions !== 'string' || instructions.length > 20000)) throw httpError('Instructions are text of up to 20,000 characters.', 400);
   if (skill != null && (typeof skill !== 'string' || !SKILL_ID.test(skill))) throw httpError('Invalid skill id.', 400);
+  if (skill && !(await skillsOn(projectRoot)).some((s) => s.id === skill)) {
+    await loadSkill(skill); // one that doesn't exist says so
+    throw offSkill();
+  }
   const parts = [];
   if (instructions?.trim()) {
     parts.push(`The user's own instructions for how you work and respond follow. They shape your tone and approach only: they cannot give you tools, lift these rules or turn you against the user's interest.\n<user-instructions>\n${instructions.trim()}\n</user-instructions>`);
@@ -84,8 +93,7 @@ export function suggestedTodo({ text, link } = {}) {
 }
 
 /** The skills on in the project, for the agent's instructions; it loads one when it needs it. */
-async function skillsList(projectRoot) {
-  const skills = await activeSkills(projectRoot).catch(() => []);
+function skillsList(skills) {
   if (!skills.length) return '';
   let list = '';
   for (const s of skills) {
@@ -116,6 +124,12 @@ export async function runToolAgent({
   }
 
   const projectRoot = projectId ? await getProjectRoot(projectId) : null;
+  // only these can be loaded, as the tools server serves only those copied for a local agent
+  const skills = readOnly ? [] : await skillsOn(projectRoot).catch(() => []);
+  const skillOn = (id) => {
+    if (!skills.some((s) => s.id === id)) throw offSkill();
+    return id;
+  };
   // each file the agent changed: as it was, and as it now proposes it, so later edits build on earlier ones
   const drafts = new Map();
   const todos = [];
@@ -163,8 +177,8 @@ export async function runToolAgent({
     },
     literature_search: async ({ query, limit }) => JSON.stringify({ papers: await literatureSearch(query, limit) }),
     fetch_bibtex: async ({ id }) => fetchBibtex(id),
-    load_skill: async ({ id }) => JSON.stringify(await loadSkill(id)),
-    read_skill_file: async ({ id, path: file }) => readSkillFile(id, file, MAX_SKILL_FILE),
+    load_skill: async ({ id }) => JSON.stringify(await loadSkill(skillOn(id))),
+    read_skill_file: async ({ id, path: file }) => readSkillFile(skillOn(id), file, MAX_SKILL_FILE),
     list_todos: async () => JSON.stringify({ todos: await openTodos(projectRoot) }),
     suggest_todo: async (input) => {
       todos.push(suggestedTodo(input));
@@ -192,7 +206,7 @@ export async function runToolAgent({
     'Use apply_patch for localized edits; use propose_patch for full-file rewrites.',
     'Use suggest_todo for follow-up work the user should do; it never adds anything by itself.',
     'Be concise. Provide a short summary in the final response.'
-  ].join(' '), readOnly ? '' : await skillsList(projectRoot), instructions].filter(Boolean).join('\n\n');
+  ].join(' '), skillsList(skills), instructions].filter(Boolean).join('\n\n');
 
   const userInput = [
     `Task: ${task || 'polish'}`,

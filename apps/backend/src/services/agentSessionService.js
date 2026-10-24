@@ -17,7 +17,7 @@ import { AGENT_DIR, profileFor, agentConfigs, agentHome } from './agentProfiles.
 import { spawnAgentProcess, killAgentProcess, resolveExecutable, isolationAvailable } from './agentSandbox.js';
 import { initialiseWorkspace, workspaceChanges, applyWorkspaceChanges, captureAgentProposal, readCurrent, rebaseChange, refreshDraft } from './agentWorkspace.js';
 import { ITEM_ID, readItems } from '../routes/todos.js';
-import { activeSkills, loadSkill, SKILL_ID } from './skillService.js';
+import { activeSkills, listSkills, loadSkill, SKILL_ID } from './skillService.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { writeJsonAtomic } from '../utils/fsUtils.js';
 
@@ -541,7 +541,11 @@ export async function readContext(r, value) {
     const text = await fs.readFile(appPath(r.root, 'research', `${research}.json`), 'utf8').catch(() => { throw Object.assign(new Error('That research session wasn’t found.'), { statusCode: 404 }); });
     context.research = { id: research, text: text.slice(0, 200000) };
   }
-  if (skill) context.skill = { id: skill, text: (await loadSkill(skill)).body };
+  if (skill) {
+    const { body } = await loadSkill(skill);
+    if (!(await listSkills(r.root)).some((s) => s.id === skill && s.active)) throw Object.assign(new Error('That skill is off for this project.'), { statusCode: 403 });
+    context.skill = { id: skill, text: body };
+  }
   return context;
 }
 

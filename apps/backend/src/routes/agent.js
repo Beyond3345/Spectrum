@@ -1,5 +1,6 @@
 import { callOpenAICompatible } from '../services/llmService.js';
 import { runToolAgent, llmErrorMessage, userInstructions } from '../services/agentService.js';
+import { getProjectRoot } from '../services/projectService.js';
 
 export function registerAgentRoutes(fastify) {
   fastify.post('/api/agent/run', async (req) => {
@@ -21,7 +22,7 @@ export function registerAgentRoutes(fastify) {
       instructions,
       skill
     } = req.body || {};
-    const extra = task === 'autocomplete' ? '' : await userInstructions({ instructions, skill });
+    const extra = task === 'autocomplete' ? '' : await userInstructions({ instructions, skill, projectRoot: skill && projectId ? await getProjectRoot(projectId) : null });
 
     if (interaction === 'chat') {
       if (searchConfig) return { ...(await runToolAgent({ projectId, activePath, task, prompt, selection, content, compileLog, llmConfig, reasoningEffort, searchConfig, history, readOnly: true, instructions: extra })), suggestion: '' };

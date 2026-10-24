@@ -163,6 +163,10 @@ test('a skill picked in the composer goes to a local agent in whole', async () =
   assert.deepEqual(await readContext({}, { skill: 'beta' }), { skill: { id: 'beta', text: 'Review carefully.' } });
   await assert.rejects(readContext({}, { skill: '../beta' }), /Invalid context/);
   await assert.rejects(readContext({}, { skill: 'gamma' }), /not found/);
+  // a skill switched off can't be sent, from a task button say
+  assert.equal((await api('/api/skills/beta', 'PATCH', { enabled: false })).status, 200);
+  await assert.rejects(readContext({}, { skill: 'beta' }), (err) => err.statusCode === 403 && /off/.test(err.message));
+  assert.equal((await api('/api/skills/beta', 'PATCH', { enabled: true })).status, 200);
 });
 
 test('front matter after a BOM or on the next line, duplicates of long ids and of titled or shipped skills, and the scripts left out', async () => {

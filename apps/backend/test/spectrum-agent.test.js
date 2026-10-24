@@ -48,7 +48,9 @@ const SCRIPT = [
   ['apply_patch', { path: 'main.tex', patch: '--- main.tex\n+++ main.tex\n@@ -1,2 +1,2 @@\n line one\n-line two\n+line 2\n' }],
   ['read_file', { path: './main.tex' }],
   ['apply_patch', { path: 'main.tex', patch: '--- main.tex\n+++ main.tex\n@@ -1,2 +1,3 @@\n line one\n line 2\n+line three\n' }],
-  ['propose_patch', { path: 'sections/new.tex', content: 'New section\n' }]
+  ['propose_patch', { path: 'sections/new.tex', content: 'New section\n' }],
+  ['load_skill', { id: 'beta' }],
+  ['read_skill_file', { id: 'beta', path: 'SKILL.md' }]
 ];
 let mock;
 let base;
@@ -96,12 +98,16 @@ test('the Spectrum agent loads skills, reads and suggests to-dos, and proposes c
   } });
   await updateProjectSettings(p.path, () => ({ skills: { on: [], off: ['beta'] } }));
   calls.length = 0;
-  const { status, json } = await run({ task: 'polish', prompt: 'improve', mode: 'tools', projectId: p.id, activePath: 'main.tex', llmConfig: llmConfig('tools'), instructions: 'Write in Australian English.', skill: 'beta' });
+  const off = await run({ task: 'polish', prompt: 'improve', mode: 'tools', projectId: p.id, llmConfig: llmConfig('tools'), skill: 'beta' });
+  assert.equal(off.status, 403, 'a skill off in the project isn’t sent');
+  assert.equal((await run({ task: 'polish', prompt: 'improve', mode: 'tools', projectId: p.id, llmConfig: llmConfig('tools'), skill: 'gamma' })).status, 404);
+  calls.length = 0;
+  const { status, json } = await run({ task: 'polish', prompt: 'improve', mode: 'tools', projectId: p.id, activePath: 'main.tex', llmConfig: llmConfig('tools'), instructions: 'Write in Australian English.', skill: 'alpha' });
   assert.equal(status, 200, json.error);
   assert.equal(json.reply, 'done');
   const prompt = system(calls[0]);
   assert.match(prompt, /<user-instructions>\nWrite in Australian English\.\n<\/user-instructions>/);
-  assert.match(prompt, /<skill id="beta">\nReview carefully\.\n<\/skill>/, 'a skill asked for goes in whole, even one off in the project');
+  assert.match(prompt, /<skill id="alpha">\nSearch before you write\.\n<\/skill>/, 'a skill asked for goes in whole');
   assert.match(prompt, /<skills>\n- alpha: Finds papers first\n<\/skills>/);
   assert.match(prompt, /can't run here/);
   for (const name of ['load_skill', 'read_skill_file', 'list_todos', 'suggest_todo', 'literature_search', 'fetch_bibtex']) assert.ok(calls[0].tools.some((t) => t.function.name === name), name);
@@ -113,6 +119,7 @@ test('the Spectrum agent loads skills, reads and suggests to-dos, and proposes c
   assert.deepEqual(JSON.parse(outputs[3]), { todos: [{ text: 'Open item' }] });
   assert.match(outputs[5], /^Error: /);
   assert.equal(outputs[7], 'line one\nline 2\n', 'reading a changed file sees the change');
+  assert.deepEqual(outputs.slice(10), ['Error: That skill is off for this project.', 'Error: That skill is off for this project.'], 'nor can it be loaded');
 
   assert.deepEqual(json.todos, [{ text: 'Check the references', link: { file: 'main.tex', line: 2 } }]);
   assert.deepEqual(json.changes, [
