@@ -1937,9 +1937,16 @@ function AgentsPane() {
   const [error, setError] = useState('');
   const current = agents?.find((a) => a.id === agentId) ?? agents?.[0];
 
-  const refresh = () => listLocalAgents().then((res) => setAgents(res.agents));
+  const refresh = () =>
+    listLocalAgents().then((res) => {
+      setAgents(res.agents);
+      return res.agents;
+    });
   useEffect(() => {
-    refresh().catch((err) => setError(errorText(err)));
+    refresh()
+      // a pick that can't run here (OpenCode on Windows) opens at the first agent that can, as the workspace does
+      .then((list) => setAgentId((id) => (list.find((a) => a.id === id && !a.unavailable) ?? list.find((a) => !a.unavailable))?.id ?? id))
+      .catch((err) => setError(errorText(err)));
   }, []);
   // the form shows what's saved for the agent picked, and again after each save
   useEffect(() => {
@@ -1996,7 +2003,7 @@ function AgentsPane() {
   return (
     <>
       <div className="field-hint section-hint">
-        Coding agents installed on this computer, such as OpenCode, Codex and Claude, work on a project from the agent workspace. Each runs isolated with a private
+        Coding agents installed on this computer, such as {IS_WINDOWS ? 'Kimi Code, Hermes, Qoder and Cursor' : 'OpenCode, Codex and Claude'}, work on a project from the agent workspace. Each runs isolated with a private
         home of its own, and in review mode on a copy of the project, so you choose which changes come in.
       </div>
       {IS_WINDOWS && (

@@ -59,7 +59,9 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
   known.current = { session, sessions };
   const skills = useSkills(api.projectId, active);
 
-  const current = agents.find((a) => a.id === agentId);
+  // one that can run here: a pick unavailable on this computer (OpenCode on Windows) falls back to the first that is
+  const current = agents.find((a) => a.id === agentId && !a.unavailable) ?? agents.find((a) => !a.unavailable);
+  const currentId = current?.id ?? agentId;
   const view = useMemo(() => project(events, { pending, checkpoints }), [events, pending, checkpoints]);
   const running = working || RUNNING.includes(session?.status || '');
   const waiting = view.items.some((i) => i.type === 'request' && !i.answered);
@@ -100,6 +102,8 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
     if (r.session.projectId !== latest.current.projectId) throw new Error('This session belongs to another project.');
     setSession(r.session);
     setAgentId(r.session.agentId);
+    // so Settings › Agents opens at the agent shown
+    write('spectrum-agent-pick', r.session.agentId);
     setEvents(r.session.events);
     setPending(r.session.pending || []);
     picked.current = read(`spectrum-agent-persona:${id}`) || undefined;
@@ -192,9 +196,9 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
     setWorking(true);
     try {
       await latest.current.prepareAgent();
-      if (session && session.agentId === agentId) await sendLocalAgentPrompt(session.id, message.text, { persona: message.persona, context: message.context });
+      if (session && session.agentId === currentId) await sendLocalAgentPrompt(session.id, message.text, { persona: message.persona, context: message.context });
       else {
-        const r = await createLocalAgentSession(latest.current.projectId, agentId, mode, message.persona);
+        const r = await createLocalAgentSession(latest.current.projectId, currentId, mode, message.persona);
         queued.current = message;
         write(`spectrum-agent-persona:${r.session.id}`, persona);
         write(`spectrum-agent:${latest.current.projectId}`, r.session.id);
