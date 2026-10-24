@@ -143,7 +143,7 @@ async function readVersion(root, versionId) {
   try {
     data = await readJson(manifestPath(root, id));
   } catch (err) {
-    if (err.code === 'ENOENT' || err instanceof SyntaxError) throw httpError('Version not found.', 404);
+    if (err.code === 'ENOENT' || err instanceof SyntaxError) throw httpError('Checkpoint not found.', 404);
     throw err;
   }
   return { id, files: data.files || {}, skipped: new Set(Array.isArray(data.skipped) ? data.skipped : []) };
@@ -255,14 +255,14 @@ const fromDisk = (root, files) => ({ files, read: (rel) => fs.readFile(path.join
 
 function parseId(versionId) {
   const id = Number(versionId);
-  if (!Number.isSafeInteger(id) || id < 1) throw httpError('Version not found.', 404);
+  if (!Number.isSafeInteger(id) || id < 1) throw httpError('Checkpoint not found.', 404);
   return id;
 }
 
 function findVersion(versions, versionId) {
   const id = parseId(versionId);
   const position = versions.findIndex((v) => v.id === id);
-  if (position === -1) throw httpError('Version not found.', 404);
+  if (position === -1) throw httpError('Checkpoint not found.', 404);
   return { version: versions[position], position };
 }
 
@@ -378,7 +378,7 @@ export async function compareWithCurrent(root, versionId) {
 
 export async function readVersionFile(root, versionId, relPath) {
   const sha = (await readVersion(root, versionId)).files[relPath];
-  if (!sha) return { ok: false, error: 'That file isn’t in this version.' };
+  if (!sha) return { ok: false, error: 'That file isn’t in this checkpoint.' };
   if (!isText(relPath)) return { ok: false, error: 'Binary files can’t be shown.' };
   return { ok: true, content: (await readObject(root, sha)).toString('utf8') };
 }
@@ -388,11 +388,11 @@ export function restoreVersion(root, versionId, relPath) {
   return locked(async () => {
     const { files, skipped } = await readVersion(root, versionId);
     if (relPath) safeJoin(root, relPath);
-    if (relPath && skipped.has(relPath)) throw httpError('That file couldn’t be read when this version was saved, so it isn’t in it.', 400);
+    if (relPath && skipped.has(relPath)) throw httpError('That file couldn’t be read when this checkpoint was saved, so it isn’t in it.', 400);
     // a version from another computer whose stored files haven't all synced yet would only half restore
     for (const sha of new Set(relPath ? [files[relPath]].filter(Boolean) : Object.values(files))) {
       if (!(await exists(objectPath(root, sha)))) {
-        throw httpError('Some of this version’s files haven’t arrived from your other computer yet. Try again once syncing has finished.', 409);
+        throw httpError('Some of this checkpoint’s files haven’t arrived from your other computer yet. Try again once syncing has finished.', 409);
       }
     }
     const { version: safety, unchanged } = await createVersionUnlocked(root, { reason: 'before-restore' });
