@@ -341,7 +341,7 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
           onApply={(list) => resolve('apply', list)}
           onReject={(list) => resolve('reject', list)}
           onClose={() => setReviewing(false)}
-          preview={session?.mode === 'review' ? () => previewLocalAgentDraft(session.id) : undefined}
+          preview={session?.mode === 'review' ? () => latest.current.prepareAgent().then(() => previewLocalAgentDraft(session.id)) : undefined}
         />
       ) : (
         <div className="agent-scroll" ref={scroll.ref} onScroll={scroll.onScroll} role="log">
