@@ -33,6 +33,11 @@ eq(
   eq([call?.kind, call?.status, call?.content.length], ['read', 'completed', 1], 'fields merged, kind kept');
 }
 eq(shape([up({ sessionUpdate: 'tool_call_update', toolCallId: 'late', title: 'Search', status: 'in_progress' })]), [['tool', 'Search:in_progress']], 'an update before its call');
+eq(
+  shape([ev('user', { text: 'One' }), up({ sessionUpdate: 'tool_call', toolCallId: 'call-1', title: 'Edit a.tex', status: 'completed' }), ev('user', { text: 'Two' }), up({ sessionUpdate: 'tool_call', toolCallId: 'call-1', title: 'Edit b.tex', status: 'completed' })]),
+  [['user', 'One'], ['tool', 'Edit a.tex:completed'], ['user', 'Two'], ['tool', 'Edit b.tex:completed']],
+  'a new turn’s call with an id used before is a card of its own'
+);
 
 // a loaded session's replay of the conversation is left out; commands and options from it are kept
 {

@@ -82,7 +82,11 @@ export function project(events: AgentEvent[], { pending = [], checkpoints = [] }
   for (const e of events) {
     placeCheckpoints(e.at);
     const d = e.data || {};
-    if (e.type === 'user') text('user', `user-${e.id}`, String(d.text || ''));
+    if (e.type === 'user') {
+      // a turn's tool calls end with it, and an agent may number them again in a new session
+      tools.clear();
+      text('user', `user-${e.id}`, String(d.text || ''));
+    }
     else if (e.type === 'initialized') loading = true;
     else if (e.type === 'session') {
       loading = false;
@@ -114,7 +118,7 @@ export function project(events: AgentEvent[], { pending = [], checkpoints = [] }
         for (const field of TOOL_FIELDS) if (d[field] !== undefined && d[field] !== null) (call as any)[field] = d[field];
         if (!old) {
           tools.set(d.toolCallId, call);
-          items.push({ type: 'tool', key: `tool-${d.toolCallId}`, call });
+          items.push({ type: 'tool', key: `tool-${e.id}`, call });
         }
       } else if (u === 'plan') out.plan = Array.isArray(d.entries) ? d.entries : [];
       else if (u === 'available_commands_update') out.commands = Array.isArray(d.availableCommands) ? d.availableCommands : [];
