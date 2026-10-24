@@ -1,4 +1,4 @@
-import { runCompile, stopCompile, SUPPORTED_ENGINES } from '../services/compileService.js';
+import { BIB_TOOLS, runCompile, stopCompile, SUPPORTED_ENGINES } from '../services/compileService.js';
 import { getProjectRoot, readMeta } from '../services/projectService.js';
 import { synctexEdit, synctexView } from '../services/synctex.js';
 
@@ -8,15 +8,30 @@ const isDoc = (doc) => doc == null || (typeof doc === 'string' && !!doc);
 const docOrMain = async (root, doc) => doc ?? ((await readMeta(root)).mainFile || 'main.tex');
 
 export function registerCompileRoutes(fastify) {
+  // the options are each optional: an editor from before them compiles as it always did
   fastify.post('/api/compile', async (req) => {
-    const { projectId, mainFile = 'main.tex', engine = 'pdflatex', compileId } = req.body || {};
+    const { projectId, mainFile = 'main.tex', engine = 'pdflatex', compileId, haltOnError, bibTool = 'auto', draft, fresh, texFolder, checkpoint } = req.body || {};
     if (!projectId) {
       return { ok: false, error: 'Missing projectId.' };
     }
     if (!SUPPORTED_ENGINES.includes(engine)) {
       return { ok: false, error: `Unsupported engine: ${engine}. Supported: ${SUPPORTED_ENGINES.join(', ')}` };
     }
-    return runCompile({ projectId, mainFile, engine, compileId: typeof compileId === 'string' && compileId ? compileId : undefined });
+    if (!BIB_TOOLS.includes(bibTool)) {
+      return { ok: false, error: `Unsupported bibliography tool: ${bibTool}. Supported: ${BIB_TOOLS.join(', ')}` };
+    }
+    return runCompile({
+      projectId,
+      mainFile,
+      engine,
+      compileId: typeof compileId === 'string' && compileId ? compileId : undefined,
+      haltOnError: haltOnError === true,
+      bibTool,
+      draft: draft === true,
+      fresh: fresh === true,
+      texFolder: typeof texFolder === 'string' ? texFolder : undefined,
+      checkpoint: checkpoint === true
+    });
   });
 
   // by the id the editor gave the compile: a stop that arrives before its compile still stops it
