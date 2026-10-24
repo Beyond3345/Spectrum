@@ -38,7 +38,7 @@ const savedSources = (): ResearchSource[] => {
     return DEFAULT_SOURCES;
   }
 };
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 
 // the agent tasks: prompts for the workspace, each with a skill (and a persona for the review)
 const deepResearch = (question: string): ResearchTask => ({
@@ -54,7 +54,7 @@ const relatedWork = (session: ResearchSession | null): ResearchTask => ({
 const verifyClaims = (session: ResearchSession | null): ResearchTask => ({
   skill: 'spectrum-verify-claims',
   persona: 'critical-reviewer',
-  prompt: `Check the claims in the open file against the sources they cite${session ? ', using the research session sent with this message for what the papers say' : ''}. For each claim give its file and line, say whether its source supports it fully, partly or not at all, and add a short note on the evidence. Don’t rewrite the text.`
+  prompt: `Check the claims in the open file (when it is the main document, in the files it brings in with \\input or \\include, in reading order) against the sources they cite${session ? ', using the research session sent with this message for what the papers say' : ''}. For each claim give its file and line, say whether its source supports it fully, partly or not at all, and add a short note on the evidence. Don’t rewrite the text.`
 });
 
 /**
@@ -205,10 +205,15 @@ export default function ResearchPanel({ filter, onAgentTask }: { filter: string;
     run(`${r.id}:cite`, async () => {
       const a = latest.current;
       if (!isTex(a.activePath)) throw new Error('Open a .tex file and click where the citation goes, then try again.');
-      const key = r.inBib || (await add([r.id]))[0];
+      // the key the .bib has it under now, which a rename or an edit elsewhere may have changed since the session came
+      const fresh = session ? (await getResearch(projectId, session.id)).session : null;
+      if (fresh) setSession(fresh);
+      const known = (fresh?.results.find((x) => x.id === r.id) ?? r).inBib;
+      const key = known || (await add([r.id]))[0];
       if (!key) return;
-      const line = latest.current.insertAtCursor(await citationText(latest.current, [key]), { afterSelection: true });
-      if (line) setStatus(`Cited ${key} on line ${line}.`);
+      // only where the user has put the cursor, in the document body: a file just opened has it before \documentclass
+      const line = latest.current.insertAtCursor(await citationText(latest.current, [key]), { afterSelection: true, placedOnly: true });
+      setStatus(line ? `Cited ${key} on line ${line}.` : `${known ? '' : `Added ${key} to the .bib. `}Click in the document body where the citation goes, then Cite again.`);
     });
 
   const note = (r: ResearchResult) =>
@@ -346,7 +351,7 @@ export default function ResearchPanel({ filter, onAgentTask }: { filter: string;
           </div>
           <details className="research-log">
             <summary>
-              {plural(session.runs.length, 'search')}, last {relativeTime(session.updatedAt).toLowerCase()}
+              {plural(session.runs.length, 'search', 'searches')}, last {relativeTime(session.updatedAt).toLowerCase()}
             </summary>
             {session.runs.map((r, i) => (
               <div key={i} className="research-log-run">
