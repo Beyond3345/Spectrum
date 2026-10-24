@@ -1252,7 +1252,11 @@ export interface LocalAgent {
   keyEnv: string; keyEnvs: string[];
   url: string; note?: string; unavailable?: string; experimental?: boolean;
 }
-/** first: a stored event that joins streamed pieces names its first piece's id, and replaces the pieces first..id */
+/**
+ * type 'update' carries an ACP session/update; 'todo' a to-do the agent suggested ({ text, link? }); 'reset' the paths a
+ * rejection put back in the draft. first: a stored event that joins streamed pieces names its first piece's id, and
+ * replaces the pieces first..id
+ */
 export interface AgentEvent { id: number; type: string; data: any; at: string; first?: number }
 /** A persona's instructions for a local agent; null clears the session's. */
 export interface AgentPersona { name: string; prompt: string }
@@ -1281,6 +1285,11 @@ export const answerLocalAgent = (id: string, requestId: string, answer: unknown)
 export const setLocalAgentOption = (id: string, configId: string, value: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/option`, json('POST', { configId, value }));
 export const getLocalAgentChanges = (id: string) => request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/changes`);
 export const recoverLocalAgentApply = (id: string, recoveryId: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/recover`, json('POST', { recoveryId }));
+/** The agent's draft compiled on its own (review sessions only); pdf is base64, or null when none was made. */
+export const previewLocalAgentDraft = (id: string, options: { mainFile?: string; engine?: string } = {}) => {
+  const query = new URLSearchParams(Object.entries(options).filter(([, v]) => v) as [string, string][]).toString();
+  return request<{ ok: boolean; pdf: string | null; log: string }>(`/api/agent-sessions/${id}/preview${query ? `?${query}` : ''}`);
+};
 export const reviewLocalAgentChanges = (id: string, action: 'apply' | 'reject', changes: AgentChange[]) => request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/review`, json('POST', { action, paths: changes.map((c) => c.path), expected: Object.fromEntries(changes.map((c) => [c.path, c.afterHash])) }));
 
 // ─── Skills ───

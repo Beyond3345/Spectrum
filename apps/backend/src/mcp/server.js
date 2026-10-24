@@ -16,8 +16,14 @@ const arg = (name) => {
 const root = arg('--root');
 const state = arg('--state');
 if (!root || !state) {
-  console.error('Usage: server.js --root <working copy> --state <run folder>');
+  console.error('Usage: server.js --root <working copy> --state <run folder> [--compile --main <file> --engine <engine>]');
   process.exit(2);
+}
+// --compile: one compile of the copy, its answer on stdout, for Spectrum's preview of an agent's draft
+if (process.argv.includes('--compile')) {
+  const value = (name) => process.argv[process.argv.indexOf(name) + 1];
+  process.stdout.write(JSON.stringify(await tools.compile(root, state, { main: value('--main'), engine: value('--engine') })));
+  process.exit(0);
 }
 
 const server = new McpServer({ name: 'spectrum', version: APP_VERSION });

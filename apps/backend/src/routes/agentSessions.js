@@ -1,5 +1,5 @@
 import { listAgents, saveAgentConfig, importAgentLogin } from '../services/agentProfiles.js';
-import { getAgentRun, listAgentRuns, newAgentRun, promptAgent, readContext, stopAgentRun, answerAgentRequest, setAgentOption, reviewAgentChanges, pendingChanges, runSnapshot, subscribeAgent } from '../services/agentSessionService.js';
+import { getAgentRun, listAgentRuns, newAgentRun, previewDraft, promptAgent, readContext, stopAgentRun, answerAgentRequest, setAgentOption, reviewAgentChanges, pendingChanges, runSnapshot, subscribeAgent } from '../services/agentSessionService.js';
 import { agentRecoveries, recoverAgentApply } from '../services/agentWorkspace.js';
 import { mutateProjectFiles } from '../services/projectService.js';
 
@@ -34,6 +34,8 @@ export function registerAgentSessionRoutes(fastify) {
     return { ok: true, changes: await pendingChanges(run) };
   });
   fastify.post('/api/agent-sessions/:id/review', async (req) => ({ ok: true, changes: await reviewAgentChanges(await getAgentRun(req.params.id), req.body || {}) }));
+  // the draft compiled on its own: { ok, pdf (base64, or null), log }; mainFile and engine default to the project's
+  fastify.get('/api/agent-sessions/:id/preview', async (req) => previewDraft(await getAgentRun(req.params.id), { mainFile: req.query.mainFile || undefined, engine: req.query.engine || undefined }));
   fastify.get('/api/agent-sessions/:id/events', async (req, reply) => {
     const run = await getAgentRun(req.params.id);
     reply.hijack();

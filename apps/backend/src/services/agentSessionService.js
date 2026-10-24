@@ -7,7 +7,8 @@ import { createServer } from 'node:net';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { client, ndJsonStream } from '@agentclientprotocol/sdk';
 import { APP_VERSION } from '../config/constants.js';
-import { appPath, detectMainFile, getProjectRoot, mutateProjectFiles, readMeta } from './projectService.js';
+import { appPath, cachePath, detectMainFile, getProjectRoot, mutateProjectFiles, readMeta } from './projectService.js';
+import { compileFolder, SUPPORTED_ENGINES } from './compileService.js';
 import { readProjectSettings } from './projectSettings.js';
 import { openTodos, suggestedTodo } from './agentService.js';
 import { AGENT_DIR, profileFor, agentConfigs, agentHome } from './agentProfiles.js';
@@ -365,13 +366,18 @@ async function syncAgentSkills(r) {
 const bundledTools = fileURLToPath(new URL('./mcp.mjs', import.meta.url));
 const repository = fileURLToPath(new URL('../../../../', import.meta.url));
 const toolsState = (r) => path.join(r.home, 'spectrum-tools', r.id);
-async function toolsServer(r) {
-  if (process.platform !== 'darwin') return null;
+/** The tools server's file, and what isolation must also read to run it. */
+async function toolsLaunch() {
   const packaged = await fs.stat(bundledTools).then((s) => s.isFile(), () => false);
   const entry = packaged ? bundledTools : path.join(repository, 'apps/backend/src/mcp/server.js');
-  // what the agent's isolation must also read for it: Node, the server (in development the backend's source, its
-  // packages and the version in the root package.json) and the user's own fonts, for a compile
+  // Node, the server (in development the backend's source, its packages and the version in the root package.json) and
+  // the user's own fonts, for a compile
   const reads = [nodeRead(), path.dirname(entry), ...(packaged ? [] : [path.join(repository, 'apps/backend'), path.join(repository, 'node_modules'), path.join(repository, 'package.json')]), path.join(os.homedir(), 'Library', 'Fonts')];
+  return { entry, reads: (await Promise.all(reads.map(async (p) => (await fs.stat(p).catch(() => null)) && p))).filter(Boolean) };
+}
+async function toolsServer(r) {
+  if (process.platform !== 'darwin') return null;
+  const { entry, reads } = await toolsLaunch();
   const state = toolsState(r);
   const meta = await readMeta(r.root).catch(() => ({}));
   // written by isolation, as the home is the agent's
@@ -381,7 +387,7 @@ async function toolsServer(r) {
     todos: await openTodos(r.root)
   }));
   return {
-    reads: (await Promise.all(reads.map(async (p) => (await fs.stat(p).catch(() => null)) && p))).filter(Boolean),
+    reads,
     server: { name: 'spectrum', command: process.execPath, args: [entry, '--root', r.workspace, '--state', state], env: [{ name: 'HOME', value: r.home }, { name: 'TMPDIR', value: path.join(r.home, 'tmp') }, { name: 'PATH', value: process.env.PATH || '/usr/bin:/bin' }] }
   };
 }
@@ -394,6 +400,56 @@ async function takeSuggestions(r) {
   await agentFile(r, 'delete', file);
   // ponytail: the first 50 a turn; a run's compiled PDFs stay in the agent's home until it is cleared
   return text.split('\n').slice(0, 50).flatMap((line) => { try { return [suggestedTodo(JSON.parse(line))]; } catch { return []; } });
+}
+
+// The document a preview compiles, and with what: the project's main file and engine unless the request names them
+async function previewTarget(r, { mainFile, engine }) {
+  const main = mainFile || (await readMeta(r.root).catch(() => ({}))).mainFile || await detectMainFile(r.workspace).catch(() => null);
+  if (main) safeJoin(r.workspace, main);
+  return { main, engine: engine || (await readProjectSettings(r.root)).compile?.engine || 'auto' };
+}
+
+/**
+ * The agent's draft as a PDF: { ok, pdf (base64, or null), log }. It is compiled where it can read nothing but the draft
+ * and TeX, into this computer's cache, never into the draft. On macOS inside isolation, the draft read-only; on Windows
+ * with TeX told to read only below the draft's folder (TeX Live's openin_any, MiKTeX's AllowUnsafeInputFiles), and
+ * never with Tectonic, which can't be told.
+ */
+export async function previewDraft(r, options = {}) {
+  if (r.mode !== 'review') throw Object.assign(new Error('A direct session works in the project itself. Compile the project to see it.'), { statusCode: 409 });
+  if (r.busy || r.reviewing || busyProject(r)) throw Object.assign(new Error('Wait for the agent to finish before previewing its draft.'), { statusCode: 409 });
+  if (options.engine != null && !SUPPORTED_ENGINES.includes(options.engine)) throw Object.assign(new Error('Unsupported engine.'), { statusCode: 400 });
+  r.reviewing = true;
+  try {
+    const { main, engine } = await previewTarget(r, options);
+    if (!main) return { ok: false, pdf: null, log: 'The draft has no main document to compile.' };
+    // a fresh folder for each, and a home kept between them for TeX's own caches
+    const out = await cachePath(r.root, 'agent-preview', r.id);
+    const home = await cachePath(r.root, 'agent-preview', 'home');
+    await fs.rm(out, { recursive: true, force: true });
+    await fs.mkdir(out, { recursive: true, mode: 0o700 });
+    await fs.mkdir(path.join(home, 'tmp'), { recursive: true, mode: 0o700 });
+    if (process.platform === 'win32') {
+      if (engine === 'tectonic') return { ok: false, pdf: null, log: 'Preview PDF needs TeX Live or MiKTeX on Windows.' };
+      // ponytail: MiKTeX's setting through its environment is to be confirmed by the Windows build machine's test
+      const result = await compileFolder({ root: r.workspace, mainFile: main, engine, without: ['tectonic'], buildDir: out, env: { openin_any: 'p', MIKTEX_ALLOWUNSAFEINPUTFILES: '0', MIKTEX_CORE_ALLOWUNSAFEINPUTFILES: '0' } });
+      return { ok: result.ok && result.status === 0, pdf: result.pdf || null, log: result.log || result.error || '' };
+    }
+    const { entry, reads } = await toolsLaunch();
+    const child = await spawnAgentProcess({ command: process.execPath, args: [entry, '--compile', '--root', r.workspace, '--state', out, '--main', main, '--engine', engine], workspace: out, home, cwd: out, runtimePaths: [...reads, r.workspace], forbiddenRoots: [r.root] });
+    let output = '', error = '';
+    child.stdout.on('data', (chunk) => { output += chunk; });
+    child.stderr.on('data', (chunk) => { error = (error + chunk).slice(-4000); });
+    const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', resolve); });
+    child.stdin.end();
+    try { await timeout(done, 10 * 60 * 1000, 'The preview took too long and was stopped.'); } finally { killAgentProcess(child); }
+    let result;
+    try { result = JSON.parse(output); } catch { return { ok: false, pdf: null, log: error.trim() || 'The preview could not be compiled.' }; }
+    const log = await fs.readFile(path.join(out, 'last.log'), 'utf8').catch(() => result.error || '');
+    // written by isolation: only a file of its own, never a link it left
+    const pdf = result.pdf && (await fs.lstat(result.pdf).catch(() => null))?.isFile() && path.dirname(result.pdf) === out ? (await fs.readFile(result.pdf)).toString('base64') : null;
+    return { ok: !!result.ok, pdf, log };
+  } finally { r.reviewing = false; }
 }
 
 const TEXT_URI = 'spectrum:';
