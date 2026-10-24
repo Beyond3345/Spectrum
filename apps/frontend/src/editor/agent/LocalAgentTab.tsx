@@ -3,18 +3,19 @@ import {
   answerLocalAgent,
   createLocalAgentSession,
   getLocalAgentChanges,
-  getLocalAgentPreview,
   getLocalAgentSession,
   listLocalAgentSessions,
   listLocalAgents,
   listVersions,
+  previewLocalAgentDraft,
   recoverLocalAgentApply,
   reviewLocalAgentChanges,
   sendLocalAgentPrompt,
   setLocalAgentOption,
   stopLocalAgentSession
 } from '../../api/client';
-import type { AgentChange, AgentContext, AgentEvent, AgentPersona, AgentUserRequest, LocalAgent, LocalAgentSession } from '../../api/client';
+import type { AgentChange, AgentEvent, AgentPersona, AgentPromptContext, AgentUserRequest, LocalAgent, LocalAgentSession } from '../../api/client';
+import type { Section } from '../../app/SettingsSheet';
 import Icon from '../../app/Icon';
 import Select from '../../app/Select';
 import { MenuButton } from '../../app/Menu';
@@ -22,9 +23,9 @@ import { useEditor } from '../EditorContext';
 import type { TodosState } from '../TodosList';
 import { resolveInstructions } from '../personas';
 import { VERSIONS_CHANGED, errorText, relativeTime } from '../shared';
-import { AgentComposer, ChangesTray, PersonaPicker, PlanStrip, ReviewView, Transcript, Welcome, openTodos, taskPersona, useFollow, useSkills } from './parts';
+import { AgentComposer, ChangesTray, PersonaPicker, PlanStrip, ReviewView, Transcript, Welcome, taskPersona, useFollow, useSkills } from './parts';
 import type { ContextKind, Draft, TrayChange } from './parts';
-import { RUNNING, project } from './transcript';
+import { RUNNING, addEvent, project } from './transcript';
 import type { Checkpoint } from './transcript';
 
 export type AgentStatus = 'running' | 'waiting' | 'changes' | null;
@@ -49,7 +50,7 @@ const write = (key: string, value: string | undefined) => {
 const monogram = (name: string) => name.replace(/[^A-Za-z0-9]/g, '').slice(0, 2);
 
 /** The 1.10 ACP agents (OpenCode, Codex, Claude and the others), each run isolated by agentSessionService.js. */
-export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenSettings }: { hidden: boolean; active: boolean; todos: TodosState; onStatus(status: AgentStatus): void; onOpenSettings(): void }) {
+export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenSettings }: { hidden: boolean; active: boolean; todos: TodosState; onStatus(status: AgentStatus): void; onOpenSettings(section: Section): void }) {
   const api = useEditor();
   const latest = useRef(api);
   latest.current = api;
@@ -68,7 +69,7 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
   const [reviewing, setReviewing] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   // a new session's first message, sent once the agent is connected
-  const queued = useRef<{ text: string; skill?: string; persona?: AgentPersona; context: AgentContext } | null>(null);
+  const queued = useRef<{ text: string; skill?: string; persona: AgentPersona | null; context: AgentPromptContext } | null>(null);
   const known = useRef({ session, sessions });
   known.current = { session, sessions };
   const skills = useSkills(api.projectId, active);
@@ -149,7 +150,7 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
     const source = new EventSource(`/api/agent-sessions/${id}/events?after=${session.events[session.events.length - 1]?.id || 0}`);
     source.onmessage = (message) => {
       const e = JSON.parse(message.data) as AgentEvent;
-      setEvents((old) => (old.some((item) => item.id === e.id) ? old : [...old, e]));
+      setEvents((old) => addEvent(old, e));
       if (e.type === 'state') {
         setSession((old) => (old ? { ...old, status: e.data.status, updatedAt: e.at } : old));
         if (!RUNNING.includes(e.data.status)) {
@@ -177,21 +178,21 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
 
   const scroll = useFollow([view, reviewing, hidden]);
 
-  const personaOf = (id: string | undefined): AgentPersona | undefined => {
+  // null: no instructions, which also takes back a persona the session had
+  const personaOf = (id: string | undefined): AgentPersona | null => {
     const { settings } = latest.current;
     const prompt = resolveInstructions(settings, id);
-    return prompt.trim() ? { name: settings.personas.find((p) => p.id === id)?.name || 'Your instructions', prompt } : undefined;
+    return prompt ? { name: settings.personas.find((p) => p.id === id)?.name || 'Your instructions', prompt } : null;
   };
 
-  const contextOf = (picked: Record<ContextKind, boolean>, skill?: string): AgentContext => {
+  // the backend reads the open to-dos itself and sends each part as an ACP resource
+  const contextOf = (picked: Record<ContextKind, boolean>, skill?: string): AgentPromptContext => {
     const a = latest.current;
-    const start = a.editorValue.slice(0, a.selectionRange[0]).split('\n').length;
-    const list = openTodos(todos);
     return {
       ...(picked.file && a.activePath && { activePath: a.activePath }),
-      ...(picked.selection && a.selectionText && { selection: { path: a.activePath, text: a.selectionText, startLine: start, endLine: start + a.selectionText.split('\n').length - 1 } }),
+      ...(picked.selection && a.selectionText && { selection: a.selectionText }),
       ...(picked.log && a.compileLog && { log: a.compileLog }),
-      ...(picked.todos && list.length && { todos: list }),
+      ...(picked.todos && { todos: true }),
       ...(skill && { skill })
     };
   };
@@ -321,7 +322,7 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
             onChange={(value) => setLocalAgentOption(session.id, '__mode', value).catch(fail)}
           />
         )}
-        <PersonaPicker value={persona} onChange={choosePersona} onManage={onOpenSettings} />
+        <PersonaPicker value={persona} onChange={choosePersona} onManage={() => onOpenSettings('personas')} />
         <span className="grow" />
         {session && RUNNING.includes(session.status) && (
           <button className="btn small" onClick={() => stopLocalAgentSession(session.id).catch(fail)}>
@@ -338,7 +339,7 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
           onApply={(list) => resolve('apply', list)}
           onReject={(list) => resolve('reject', list)}
           onClose={() => setReviewing(false)}
-          preview={session?.mode === 'review' ? () => getLocalAgentPreview(session.id) : undefined}
+          preview={session?.mode === 'review' ? () => previewLocalAgentDraft(session.id) : undefined}
         />
       ) : (
         <div className="agent-scroll" ref={scroll.ref} onScroll={scroll.onScroll} role="log">
@@ -397,7 +398,7 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
           firstTurn={empty}
           commands={view.commands}
           skills={skills}
-          todoCount={openTodos(todos).length}
+          todoCount={(todos.mine || []).filter((t) => !t.done).length}
           draft={draft}
           placeholder="Give the agent a task, or type / for commands and skills"
           onSend={(text, opts) => void send(text, opts)}
@@ -424,7 +425,7 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
                 {current?.experimental && ' · Experimental'}
               </span>
               {current && !ready && (
-                <button className="btn small ghost" onClick={onOpenSettings}>
+                <button className="btn small ghost" onClick={() => onOpenSettings('agents')}>
                   Set up in Settings › Agents
                 </button>
               )}

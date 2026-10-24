@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import Tabs from '../../app/Tabs';
+import type { Section } from '../../app/SettingsSheet';
 import type { TodosState } from '../TodosList';
 import LocalAgentTab from './LocalAgentTab';
 import type { AgentStatus } from './LocalAgentTab';
@@ -33,7 +34,7 @@ export default function AgentWorkspace({
   todos: TodosState;
   openThread: { id: string; n: number } | null;
   onStatus(status: AgentStatus): void;
-  onOpenSettings(): void;
+  onOpenSettings(section: Section): void;
 }) {
   const [tab, setTab] = useState<Tab>(() => {
     try {

@@ -4,6 +4,8 @@ import { listSkills, restoreVersion } from '../../api/client';
 import type { AgentUserRequest, Skill, SuggestedTodo, TodoLink } from '../../api/client';
 import Icon from '../../app/Icon';
 import { MenuButton } from '../../app/Menu';
+import { TAG_COLOURS } from '../../app/appearance';
+import type { TagColour } from '../../app/settings';
 import { confirmDialog } from '../../app/Dialogs';
 import SplitDiffView, { DiffCount, countChanges } from '../SplitDiffView';
 import PdfPreview from '../PdfPreview';
@@ -27,7 +29,7 @@ const shown = (value: unknown) => clip(typeof value === 'string' ? value : JSON.
 export function PersonaPicker({ value, onChange, onManage, disabled }: { value?: string; onChange(id: string | undefined): void; onManage(): void; disabled?: boolean }) {
   const { settings } = useEditor();
   const persona = settings.personas.find((p) => p.id === value);
-  const dot = (colour?: string) => <span className="persona-dot" style={{ background: colour }} />;
+  const dot = (colour?: TagColour) => <span className="persona-dot" style={{ background: colour && TAG_COLOURS[colour]?.[1] }} />;
   return (
     <MenuButton
       className="btn small ghost persona-pick"
@@ -55,7 +57,7 @@ export function useSkills(projectId: string, refresh: unknown) {
   useEffect(() => {
     let live = true;
     listSkills(projectId).then(
-      (res) => live && setSkills(res.skills.filter((s) => (s.project ? s.project === 'on' : s.enabled))),
+      (res) => live && setSkills(res.skills.filter((s) => s.active)),
       // ponytail: without the skills service the menu just has no skills
       () => live && setSkills([])
     );
@@ -107,7 +109,7 @@ export const TASKS: AgentTask[] = [
     label: 'Manuscript review',
     icon: 'graduationcap',
     skill: 'peer-review',
-    persona: 'Critical reviewer',
+    persona: 'critical-reviewer',
     prompt: 'Review this manuscript as a careful referee would. Summarise its contribution, then list major and minor concerns with the file and line of each. Don’t change any files.'
   },
   {
@@ -118,9 +120,8 @@ export const TASKS: AgentTask[] = [
   }
 ];
 
-/** The task's persona among the user's own: the starter by its name, however it's been edited since. */
-export const taskPersona = (personas: { id: string; name: string }[], task: AgentTask) =>
-  task.persona ? personas.find((p) => p.name.toLowerCase() === task.persona!.toLowerCase())?.id : undefined;
+/** The task's persona, a starter's id (Settings › Personas), while the user still has it. */
+export const taskPersona = (personas: { id: string }[], task: AgentTask) => personas.find((p) => p.id === task.persona)?.id;
 
 export function Welcome({ onTask }: { onTask(task: AgentTask): void }) {
   const { projectName } = useEditor();

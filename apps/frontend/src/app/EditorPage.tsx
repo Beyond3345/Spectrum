@@ -45,6 +45,7 @@ import Icon from './Icon';
 import Tabs from './Tabs';
 import Sheet from './Sheet';
 import SettingsSheet from './SettingsSheet';
+import type { Section as SettingsSection } from './SettingsSheet';
 import { ContextMenu, MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
 import { confirmDialog, promptDialog } from './Dialogs';
@@ -414,7 +415,8 @@ function Editor({ projectId }: { projectId: string }) {
   const [focusSignal, setFocusSignal] = useState(0);
   const [pending, setPending] = useState<PendingChange[]>([]);
   const [reviewOpen, setReviewOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // true: Settings at its first section; a section's name: open at that one
+  const [settingsOpen, setSettingsOpen] = useState<boolean | SettingsSection>(false);
   const [preview, setPreview] = useState('');
   const treeRef = useRef<FileTreeHandle>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -2812,7 +2814,7 @@ function Editor({ projectId }: { projectId: string }) {
               onChatIdChange={setChatId}
               focusSignal={focusSignal}
               onContinueInAgent={continueInAgent}
-              onManagePersonas={() => setSettingsOpen(true)}
+              onManagePersonas={() => setSettingsOpen('personas')}
             />
           </section>
 
@@ -3057,7 +3059,7 @@ function Editor({ projectId }: { projectId: string }) {
                   todos={todos}
                   openThread={agentThread}
                   onStatus={setAgentStatus}
-                  onOpenSettings={() => setSettingsOpen(true)}
+                  onOpenSettings={setSettingsOpen}
                   trailing={
                     <>
                       <button className="btn small ghost" title="Show the PDF; the agent carries on" onClick={closePanel}>
@@ -3263,7 +3265,7 @@ function Editor({ projectId }: { projectId: string }) {
         </Sheet>
       )}
 
-      {settingsOpen && <SettingsSheet projectId={projectId} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsSheet projectId={projectId} section={settingsOpen === true ? undefined : settingsOpen} onClose={() => setSettingsOpen(false)} />}
 
       {saveTemplateOpen && project && (
         <SaveTemplateSheet

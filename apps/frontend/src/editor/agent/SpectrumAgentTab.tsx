@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getChat, listChats, runAgent } from '../../api/client';
 import type { ChatSummary, ChatThread } from '../../api/client';
+import type { Section } from '../../app/SettingsSheet';
 import Icon from '../../app/Icon';
 import { MenuButton } from '../../app/Menu';
 import { searchConfigFor } from '../../app/settings';
@@ -37,7 +38,7 @@ export default function SpectrumAgentTab({
   /** a chat to carry on here (an Edit chat from the bottom card) */
   openThread: { id: string; n: number } | null;
   onStatus(status: AgentStatus): void;
-  onOpenSettings(): void;
+  onOpenSettings(section: Section): void;
 }) {
   const api = useEditor();
   const latest = useRef(api);
@@ -234,7 +235,7 @@ export default function SpectrumAgentTab({
         <span className="badge" title="The Spectrum agent proposes changes; nothing reaches your files until you apply it">
           Isolated
         </span>
-        <PersonaPicker value={personaId} onChange={choosePersona} onManage={onOpenSettings} />
+        <PersonaPicker value={personaId} onChange={choosePersona} onManage={() => onOpenSettings('personas')} />
         <span className="grow" />
         {running && (
           <button className="btn small" onClick={stop}>
