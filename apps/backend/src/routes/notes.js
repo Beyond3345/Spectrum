@@ -3,8 +3,8 @@ import { getProjectRoot, httpError } from '../services/projectService.js';
 import { writeJsonAtomic } from '../utils/fsUtils.js';
 import { MAX_TEXT, isText, itemFile, readItems } from './todos.js';
 
-// PDF notes, one file each in .spectrum/notes. doc: the document whose PDF it's on; x and y: where on the page, as
-// fractions of its width and height from the top-left corner, as the editor places them
+// PDF notes, one file each in .spectrum/notes. doc: the document whose PDF it's on; x and y: where on the page, in PDF
+// points from its top-left corner, as the editor places them
 export function registerNoteRoutes(fastify) {
   fastify.get('/api/projects/:id/notes', async (req) => {
     const notes = await readItems(await getProjectRoot(req.params.id), 'notes');
