@@ -82,6 +82,41 @@ test('a review turn starts from the project as it is, for every file the agent h
   assert.deepEqual((await pendingChanges(run)).map((c) => c.path), ['main.tex']);
 });
 
+test('notes, the intro and a persona wait for a prompt that gets through', { skip, timeout: 120000 }, async () => {
+  const { open, turn, lastPrompt, reviewAgentChanges, pendingChanges } = await setup();
+  const { run } = await open({ 'main.tex': 'original\n' });
+  await turn(run, 'draft one');
+  const [change] = await pendingChanges(run);
+  await reviewAgentChanges(run, { action: 'reject', paths: [change.path], expected: { [change.path]: change.afterHash } });
+  await turn(run, 'please-fail', 'failed');
+  assert.equal(run.notes.length, 1, 'kept through the failed prompt');
+  await turn(run, 'hello again');
+  assert.match(await lastPrompt(run), /rejected your changes to “main\.tex”/);
+  assert.deepEqual(run.notes, []);
+
+  // a session whose first prompt failed still gets the persona and the intro (no system prompt option here)
+  const { run: critic } = await open({ 'main.tex': 'plain\n' }, { persona: { name: 'Critic', prompt: 'Be blunt.' } });
+  await turn(critic, 'please-fail', 'failed');
+  await turn(critic, 'second try');
+  assert.match(await lastPrompt(critic), /Be blunt[\s\S]*You are working in Spectrum[\s\S]*second try$/);
+  await turn(critic, 'third');
+  assert.doesNotMatch(await lastPrompt(critic), /Be blunt|You are working in Spectrum/, 'and once it landed, no more');
+});
+
+test('a link left in the draft is told to the agent, and the session goes on once it’s gone', { skip, timeout: 120000 }, async () => {
+  const { open, turn, lastPrompt, pendingChanges } = await setup();
+  const { run } = await open({ 'main.tex': 'original\n' });
+  await turn(run, 'please-link');
+  assert.ok(run.events.some((e) => e.type === 'notice' && /symbolic link/.test(e.data.error || '')));
+  assert.match(run.notes.join('\n'), /couldn’t take your changes for review: “alias\.tex” is a symbolic link/);
+  await turn(run, 'hello');
+  assert.match(await lastPrompt(run), /couldn’t take your changes for review/);
+  // the agent removes it
+  await fs.rm(path.join(run.workspace, 'alias.tex'));
+  await turn(run, 'draft one');
+  assert.equal((await pendingChanges(run))[0].proposed, 'original\nagent line 1\n');
+});
+
 test('a 1.10 review session’s applied or rejected file goes back to the user’s, and its text doesn’t return', { skip, timeout: 120000 }, async () => {
   const { open, turn, reopen, pendingChanges } = await setup();
   const { run } = await open({ 'main.tex': 'original\n' });

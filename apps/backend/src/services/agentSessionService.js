@@ -282,7 +282,6 @@ async function connect(r) {
       r.replaying = method === 'session/load';
       try { session = await timeout(r.peer.request(method, { ...spec, sessionId: r.remoteId }), 30000, 'The session could not be loaded.', r.connectionAbort.signal); }
       finally { r.replaying = false; }
-      r.openedNew = r.freshSession = false;
     } else {
       // a new session after one the agent can't load (or a changed persona) hears the conversation so far
       r.freshSession = !!r.remoteId;
@@ -565,9 +564,10 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       const notes = r.notes.length && `Since your last turn:\n${r.notes.map((note) => `- ${note}`).join('\n')}`;
       const handoff = earlier && `Previous conversation (a new agent session was required):\n${earlier}`;
       const text = [persona, intro, notes, handoff, prompt].filter(Boolean).join('\n\n');
-      r.notes = [];
-      r.openedNew = false;
       const result = await timeout(r.peer.request('session/prompt', { sessionId: r.remoteId, prompt: [{ type: 'text', text }, ...contextBlocks(r, context)] }), 30 * 60 * 1000, 'The agent task exceeded 30 minutes.', r.connectionAbort.signal);
+      // told once the prompt is through: a failed one, or a session whose first prompt never landed, tells them again
+      r.notes = [];
+      r.openedNew = r.freshSession = false;
       r.turnCount++;
       emit(r, 'complete', result);
       outcome = [r.cancelled || result.stopReason === 'cancelled' || ['max_tokens', 'max_turn_requests'].includes(result.stopReason) ? 'interrupted' : result.stopReason === 'end_turn' ? 'completed' : 'failed', result.stopReason === 'refusal' ? 'The agent refused this task.' : undefined];
@@ -577,7 +577,11 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       r.pending.clear();
       disconnect(r);
       try { await r.stopChain; await captureAgentProposal(r); emit(r, 'changes', { changes: await pendingChanges(r) }); }
-      catch (err) { emit(r, 'notice', { error: err.message }); }
+      catch (err) {
+        emit(r, 'notice', { error: err.message });
+        // the user can't reach the draft to put it right, so the agent hears of it
+        if (r.mode === 'review') r.notes.push(`Spectrum couldn’t take your changes for review: ${err.message} Put that right so the user can review your work.`);
+      }
       for (const todo of await takeSuggestions(r).catch(() => [])) emit(r, 'todo', todo);
       // the turn's end is told once its changes are in and the next prompt can be taken
       r.busy = false;
