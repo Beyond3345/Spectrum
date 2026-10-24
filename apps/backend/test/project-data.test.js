@@ -104,7 +104,11 @@ test('to-dos are saved one file each and checked', async () => {
   const line = await api(`${url}/b`, 'PUT', todo('b', { link: { file: 'main.tex', line: 3, snippet: 'x'.repeat(3000) }, junk: 1 }));
   assert.equal(line.status, 200);
   assert.equal(line.json.todo.link.snippet.length, 2000);
-  assert.equal(line.json.todo.junk, undefined);
+  // a field a later version adds, and a kind of link it adds, come through a save here
+  assert.equal(line.json.todo.junk, 1);
+  const later = todo('l', { priority: 'high', link: { url: 'https://example.org', note: 'x' } });
+  assert.deepEqual((await api(`${url}/l`, 'PUT', later)).json.todo, later);
+  assert.equal((await api(`${url}/l`, 'DELETE')).status, 200);
   assert.equal((await api(`${url}/a`, 'PUT', todo('a', { createdAt: '2026-10-23T00:00:00.000Z', link: { doc: 'main.tex', page: 2 } }))).status, 200);
   assert.equal((await api(`${url}/c`, 'PUT', todo('c', { done: true, createdAt: '2026-10-25T00:00:00.000Z', link: { key: 'Knuth1984' } }))).status, 200);
   assert.deepEqual((await api(url)).json.todos.map((t) => t.id), ['a', 'b', 'c']);
@@ -113,10 +117,12 @@ test('to-dos are saved one file each and checked', async () => {
   // a sync app's conflict copy isn't listed twice, nor a half-written file
   await fs.copyFile(path.join(p.path, '.spectrum', 'todos', 'a.json'), path.join(p.path, '.spectrum', 'todos', 'a (conflicted copy).json'));
   await fs.writeFile(path.join(p.path, '.spectrum', 'todos', 'd.json'), '{"id":');
+  // nor one edited by hand into something the editor can't show
+  await fs.writeFile(path.join(p.path, '.spectrum', 'todos', 'f.json'), '{"id":"f","text":5,"createdAt":1}');
   assert.equal((await api(url)).json.todos.length, 3);
 
   for (const [id, body] of [['a', todo('b')], ['bad id', todo('bad id')], ['e', todo('e', { text: 'x'.repeat(2001) })], ['e', todo('e', { done: 'no' })],
-    ['e', todo('e', { link: { file: 'main.tex', line: 0 } })], ['e', todo('e', { link: { page: 2 } })], ['e', { id: 'e' }]]) {
+    ['e', todo('e', { link: { file: 'main.tex', line: 0 } })], ['e', todo('e', { link: { doc: 'main.tex' } })], ['e', todo('e', { link: 'main.tex' })], ['e', { id: 'e' }]]) {
     assert.equal((await api(`${url}/${encodeURIComponent(id)}`, 'PUT', body)).status, 400, JSON.stringify(body));
   }
   assert.equal((await api(`${url}/b`, 'DELETE')).status, 200);
@@ -132,6 +138,8 @@ test('PDF notes are saved one file each and listed per document', async () => {
   assert.deepEqual((await api(`${url}?doc=main.tex`)).json.notes, [note('n1', 'main.tex', { colour: '#ffcc00' })]);
   assert.equal((await api(url)).json.notes.length, 2);
   assert.ok((await fs.stat(path.join(p.path, '.spectrum', 'notes', 'n2.json'))).isFile());
+  // a field a later version adds comes through a save here
+  assert.equal((await api(`${url}/n2`, 'PUT', note('n2', 'chapters/notes.tex', { pinned: true }))).json.note.pinned, true);
   for (const body of [note('n3', ''), note('n3', 'main.tex', { page: 0 }), note('n3', 'main.tex', { x: 'left' }), note('n3', 'main.tex', { text: 'x'.repeat(2001) }), note('n4', 'main.tex')]) {
     assert.equal((await api(`${url}/n3`, 'PUT', body)).status, 400, JSON.stringify(body));
   }

@@ -4,7 +4,7 @@ import type { Todo, TodoLink } from '../api/client';
 import Icon from '../app/Icon';
 import { toast } from '../app/Toast';
 import { errorText } from './shared';
-import { scanTodos } from './todos';
+import { findLine, scanTodos } from './todos';
 import type { SourceTodo } from './todos';
 
 const nameOf = (p: string) => p.slice(p.lastIndexOf('/') + 1);
@@ -81,7 +81,7 @@ export function useTodos({
     return () => window.clearTimeout(timer);
   }, [sources, revision]);
 
-  /** Saves a new or changed to-do, showing it at once; a failed save puts the list back. Resolves to whether it saved. */
+  /** Saves a new or changed to-do, showing it at once; a failed save puts that one back. Resolves to whether it saved. */
   const save = async (todo: Todo) => {
     const before = mine;
     changesRef.current += 1;
@@ -90,7 +90,12 @@ export function useTodos({
       await saveTodo(projectId, todo);
       return true;
     } catch (err) {
-      setMine(before);
+      // only this one: another save since may have gone through
+      setMine((prev) => {
+        const old = before?.find((t) => t.id === todo.id);
+        const rest = (prev || []).filter((t) => t.id !== todo.id);
+        return old ? [...rest, old] : rest;
+      });
       notify(`Couldn’t save the to-do: ${errorText(err)}`, 'error');
       return false;
     }
@@ -114,10 +119,19 @@ export function useTodos({
     return save({ id: crypto.randomUUID(), text, done: false, createdAt: now, updatedAt: now, ...(link && { link }) });
   };
 
+  /** The line a line link is on now, found again by its text as the link itself is when opened. */
+  const lineOf = (link: { file: string; line: number; snippet?: string }) => {
+    const text = latest.current.loaded(link.file) ?? readRef.current.get(link.file);
+    return text === undefined ? link.line : findLine(text, link.line, link.snippet);
+  };
+
   // the open ones: yours not ticked, and every mark still in the source
   const open = (mine || []).filter((t) => !t.done).length + source.length;
-  return { mine, source, open, reload, save, remove, add };
+  return { mine, source, open, reload, save, remove, add, lineOf };
 }
+
+/** A link of a kind this version knows; a later version's other kinds are kept but not shown. */
+const knownLink = (link?: TodoLink): link is TodoLink => !!link && ('file' in link || 'doc' in link || 'key' in link);
 
 type Show = 'open' | 'done' | 'all';
 type Whose = 'all' | 'mine' | 'source';
@@ -143,15 +157,15 @@ export default function TodosList({
   const [show, setShow] = useState<Show>('open');
   const [whose, setWhose] = useState<Whose>('all');
   const [editing, setEditing] = useState<string | null>(null);
-  const { mine, source, reload, save, remove, add } = todos;
+  const { mine, source, reload, save, remove, add, lineOf } = todos;
 
   // opening the tab reads them again
   useEffect(reload, []);
 
   const linkLabel = (link: TodoLink) =>
-    'file' in link ? `${nameOf(link.file)}:${link.line}` : 'doc' in link ? `${link.doc === mainFile ? '' : `${nameOf(link.doc).replace(/\.tex$/i, '')} `}p. ${link.page}` : link.key;
+    'file' in link ? `${nameOf(link.file)}:${lineOf(link)}` : 'doc' in link ? `${link.doc === mainFile ? '' : `${nameOf(link.doc).replace(/\.tex$/i, '')} `}p. ${link.page}` : link.key;
   const linkTitle = (link: TodoLink) =>
-    'file' in link ? `${link.file}, line ${link.line}` : 'doc' in link ? `${link.doc.replace(/\.tex$/i, '.pdf')}, page ${link.page}` : `Go to ${link.key}`;
+    'file' in link ? `${link.file}, line ${lineOf(link)}` : 'doc' in link ? `${link.doc.replace(/\.tex$/i, '.pdf')}, page ${link.page}` : `Go to ${link.key}`;
 
   const needle = filter.trim().toLowerCase();
   const matches = (...texts: string[]) => !needle || texts.some((t) => t.toLowerCase().includes(needle));
@@ -159,7 +173,7 @@ export default function TodosList({
     whose === 'source'
       ? []
       : (mine || [])
-          .filter((t) => (show === 'all' || t.done === (show === 'done')) && matches(t.text, t.link ? linkLabel(t.link) : ''))
+          .filter((t) => (show === 'all' || t.done === (show === 'done')) && matches(t.text, knownLink(t.link) ? linkLabel(t.link) : ''))
           .sort((a, b) => Number(a.done) - Number(b.done) || a.createdAt.localeCompare(b.createdAt));
   const shownSource = whose === 'mine' || show === 'done' ? [] : source.filter((t) => matches(t.text, t.file));
 
@@ -179,9 +193,11 @@ export default function TodosList({
         maxLength={2000}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key !== 'Enter' || !draft.trim()) return;
-          add(draft.trim());
+          const text = draft.trim();
+          if (e.key !== 'Enter' || !text) return;
           setDraft('');
+          // what was typed comes back when it couldn't be saved
+          add(text).then((saved) => saved || setDraft((d) => d || text));
         }}
       />
       <div className="todo-filters">
@@ -219,7 +235,7 @@ export default function TodosList({
                     {todo.text}
                   </span>
                 )}
-                {todo.link && (
+                {knownLink(todo.link) && (
                   <button className="todo-link" title={linkTitle(todo.link)} onClick={() => onOpen(todo.link!)}>
                     <Icon name={'file' in todo.link ? 'doc.text' : 'doc' in todo.link ? 'doc.richtext' : 'tag'} />
                     <span>{linkLabel(todo.link)}</span>

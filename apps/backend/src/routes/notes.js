@@ -14,13 +14,14 @@ export function registerNoteRoutes(fastify) {
 
   fastify.put('/api/projects/:id/notes/:nid', async (req) => {
     const file = await itemFile(req, 'notes', req.params.nid);
-    const { id, doc, page, x, y, text, colour, createdAt, updatedAt } = req.body || {};
+    // the rest: fields a later version adds, which a save here keeps
+    const { id, doc, page, x, y, text, colour, createdAt, updatedAt, ...rest } = req.body || {};
     if (id !== req.params.nid) throw httpError('The note’s id doesn’t match the address.', 400);
     if (!isText(text, MAX_TEXT)) throw httpError(`A note’s text is at most ${MAX_TEXT} characters.`, 400);
     const valid = isText(doc, 1024) && doc && Number.isInteger(page) && page > 0 && Number.isFinite(x) && Number.isFinite(y)
       && (colour == null || isText(colour, 32)) && isText(createdAt, 40) && isText(updatedAt, 40);
     if (!valid) throw httpError('Invalid note.', 400);
-    const note = { id, doc, page, x, y, text, ...(colour != null && { colour }), createdAt, updatedAt };
+    const note = { ...rest, id, doc, page, x, y, text, ...(colour != null && { colour }), createdAt, updatedAt };
     await writeJsonAtomic(file, note);
     return { ok: true, note };
   });
