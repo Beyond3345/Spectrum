@@ -342,11 +342,20 @@ async function agentFile(r, operation, file, content = '') {
 // The skills on in the project, copied into the agent's private home where agents look for them, each folder marked as
 // Spectrum's so a skill the agent installed itself is never touched. It runs inside isolation, as the agent may have
 // left a link anywhere in its home. While another project's session of the same agent runs, its skills stay: only
-// missing ones are added.
-const SKILL_FOLDERS = ['.agents/skills', '.claude/skills'];
+// missing ones are added. Names isolation keeps from agents (.git, .env files, keys) stay behind, as it wouldn't let
+// them be written or read; a folder still held by a virus scanner on Windows is renamed again shortly. Windows has no
+// Claude, so only .agents/skills there.
+const SKILL_FOLDERS = process.platform === 'win32' ? ['.agents/skills'] : ['.agents/skills', '.claude/skills'];
 const SKILL_MARK = '.spectrum-managed';
 const copySkills = `const fs=require('node:fs'), path=require('node:path');
   const { skills, folders, mark, onlyAdd } = JSON.parse(fs.readFileSync(0, 'utf8'));
+  const kept = (src) => !/^(\\.spectrum|\\.git|\\.claude|\\.env(\\..*)?)$|\\.(pem|key)$/i.test(path.basename(src));
+  const rename = (from, to) => {
+    for (let n = 0; ; n++) {
+      try { return fs.renameSync(from, to); }
+      catch (err) { if (n > 4 || !['EPERM', 'EACCES', 'EBUSY'].includes(err.code)) throw err; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100 << n); }
+    }
+  };
   for (const folder of folders) {
     const dir = path.join(process.env.HOME, folder);
     fs.mkdirSync(dir, { recursive: true });
@@ -362,9 +371,9 @@ const copySkills = `const fs=require('node:fs'), path=require('node:path');
     for (const s of wanted.values()) {
       const staged = path.join(dir, '.' + s.id + '-' + process.pid);
       fs.rmSync(staged, { recursive: true, force: true });
-      fs.cpSync(s.dir, staged, { recursive: true });
+      fs.cpSync(s.dir, staged, { recursive: true, filter: kept });
       fs.writeFileSync(path.join(staged, mark), s.stamp);
-      fs.renameSync(staged, path.join(dir, s.id));
+      rename(staged, path.join(dir, s.id));
     }
   }`;
 async function syncAgentSkills(r) {

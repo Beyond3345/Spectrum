@@ -15,6 +15,10 @@ test('the project’s skills are copied into the agent’s home, marked, and onl
   const seed = path.join(dir, 'seed');
   Object.assign(process.env, { SPECTRUM_DATA_DIR: path.join(dir, 'data'), SPECTRUM_PROJECTS_DIR: path.join(dir, 'projects'), SPECTRUM_SKILLS_SEED_DIR: seed });
   for (const id of ['alpha', 'beta', 'gamma']) await write(path.join(seed, id, 'SKILL.md'), skill(id));
+  // what isolation keeps from agents stays behind, rather than stopping every skill after it
+  for (const name of ['.git/config', '.env.example', 'notes/server.key']) await write(path.join(seed, 'alpha', name), 'kept from agents');
+  // Windows has no Claude, and its isolation refuses a home with a link anywhere in it
+  const windows = process.platform === 'win32';
   const { createProject } = await import('../src/services/projectService.js');
   const { saveAgentConfig, agentHome } = await import('../src/services/agentProfiles.js');
   const { updateProjectSettings } = await import('../src/services/projectSettings.js');
@@ -29,27 +33,31 @@ test('the project’s skills are copied into the agent’s home, marked, and onl
     await write(path.join(claude, 'their-own', 'SKILL.md'), 'installed by the agent');
     const outside = path.join(dir, 'outside');
     await fs.mkdir(outside);
-    await fs.symlink(outside, path.join(claude, 'gamma'));
+    if (!windows) await fs.symlink(outside, path.join(claude, 'gamma'));
 
     const project = await createProject({ name: 'Skills at home' });
     await updateProjectSettings(project.path, (s) => ({ ...s, skills: { on: [], off: ['beta'] } }));
     const run = await getAgentRun((await newAgentRun({ projectId: project.id, agentId: 'qoder' })).id);
     await run.ready;
     assert.equal(await fs.readFile(path.join(agents, 'alpha', 'SKILL.md'), 'utf8'), skill('alpha'));
-    assert.ok((await fs.readFile(path.join(claude, 'alpha', '.spectrum-managed'), 'utf8')).length > 10);
-    await assert.rejects(fs.stat(path.join(claude, 'beta')), 'off in this project');
+    assert.deepEqual((await fs.readdir(path.join(agents, 'alpha'), { recursive: true })).sort(), ['.spectrum-managed', 'SKILL.md', 'notes'], 'no .git, .env or key');
     assert.equal(await fs.readFile(path.join(agents, 'beta', 'SKILL.md'), 'utf8'), 'the agent’s own beta');
-    assert.equal(await fs.readFile(path.join(claude, 'their-own', 'SKILL.md'), 'utf8'), 'installed by the agent');
-    assert.ok((await fs.lstat(path.join(claude, 'gamma'))).isSymbolicLink(), 'something else of that name stays');
-    assert.deepEqual(await fs.readdir(outside), [], 'nothing went through the link');
     assert.equal(await fs.readFile(path.join(agents, 'gamma', 'SKILL.md'), 'utf8'), skill('gamma'));
+    if (windows) await assert.rejects(fs.stat(path.join(claude, 'alpha')), 'only .agents/skills on Windows');
+    else {
+      assert.ok((await fs.readFile(path.join(claude, 'alpha', '.spectrum-managed'), 'utf8')).length > 10);
+      await assert.rejects(fs.stat(path.join(claude, 'beta')), 'off in this project');
+      assert.equal(await fs.readFile(path.join(claude, 'their-own', 'SKILL.md'), 'utf8'), 'installed by the agent');
+      assert.ok((await fs.lstat(path.join(claude, 'gamma'))).isSymbolicLink(), 'something else of that name stays');
+      assert.deepEqual(await fs.readdir(outside), [], 'nothing went through the link');
+    }
 
     // a change reaches the agent on its next connection (the first turn has the one made when the session started)
     await turn(run);
     await updateProjectSettings(project.path, (s) => ({ ...s, skills: { on: [], off: [] } }));
     await write(path.join(dir, 'data', 'skills', 'bundled', 'alpha', 'SKILL.md'), skill('alpha') + 'Updated.\n');
     await turn(run);
-    assert.equal(await fs.readFile(path.join(claude, 'beta', 'SKILL.md'), 'utf8'), skill('beta'));
+    if (!windows) assert.equal(await fs.readFile(path.join(claude, 'beta', 'SKILL.md'), 'utf8'), skill('beta'));
     assert.equal(await fs.readFile(path.join(agents, 'beta', 'SKILL.md'), 'utf8'), 'the agent’s own beta');
     assert.match(await fs.readFile(path.join(agents, 'alpha', 'SKILL.md'), 'utf8'), /Updated/);
 
