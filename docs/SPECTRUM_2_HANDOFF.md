@@ -6,9 +6,9 @@ Updated 25 October 2026. Development work only: no installer, tag, push or relea
 
 Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum`. Read [SPECTRUM_2_PLAN.md](SPECTRUM_2_PLAN.md), especially its ground rules and Delivery section, before starting the next phase.
 
-Phase 2 (the agent workspace, personas and skills, with the to-do list's agent parts) was built and integrated on `build/p2-integrate`, branched from `feat/2.0` at `a82ccde`, and is in `feat/2.0` at `25d0b92`. Its first adversarial review round is fixed on **`fix/p2-review`**, branched from `25d0b92` (see Phase 2 review fixes below). Next:
+Phase 2 (the agent workspace, personas and skills, with the to-do list's agent parts) was built and integrated on `build/p2-integrate`, branched from `feat/2.0` at `a82ccde`, and is in `feat/2.0` at `25d0b92`. Its first adversarial review round is fixed in `feat/2.0` at `bde28a4` (see Phase 2 review fixes below), and its second on **`fix/p2-review2`**, branched from `bde28a4` (see Phase 2 second review fixes). Next:
 
-1. Merge `fix/p2-review` into `feat/2.0` (no fast-forward, like the earlier phases), after a second review round if the plan's Delivery section asks for one.
+1. Merge `fix/p2-review2` into `feat/2.0` (no fast-forward, like the earlier phases).
 2. Run the Windows checks listed under Phase 2 limits and open items on the Windows build machine.
 3. Start phase 3 (TexLab, Review and Research) on branches from the new `feat/2.0`.
 
@@ -91,14 +91,43 @@ The review's confirmed findings are fixed on `fix/p2-review`, one commit per fix
 
 The tests ran in a worktree with scratch data, projects and template folders, a scratch home and temp folder, and the ACP fixtures, with no model calls. The 22 skips are the earlier 13 and the 9 native agent turn tests.
 
-Skipped as optional: the same `.git` and `.env` filter when importing a skill (the copy into agent homes already filters), and marking a turn as needing attention when its draft couldn't be taken.
+Skipped as optional: marking a turn as needing attention when its draft couldn't be taken. The `.git` and `.env` filter when importing a skill, skipped here too, came back in the second round.
+
+### Phase 2 second review fixes
+
+The second round's ten confirmed findings are fixed on **`fix/p2-review2`**, branched from `bde28a4`, one commit each with a test or check:
+
+- **Spectrum agent:** `read_file`, `list_files`, `propose_patch` and `apply_patch` refuse `.env` files, keys and git's, Claude's and Spectrum's folders (also through `sub/../`), and `list_files` leaves them out. It is the rule local agents' file requests already used, now `agentHidden` in `utils/pathUtils.js` for both. A closed change in a thread (applied, rejected, or superseded by a later turn's proposal for its file, made from the same base) keeps only its file and status, so a thread on a large file no longer reaches the 5 MB chat cap after a few turns.
+- **Skills:** importing or duplicating a skill leaves its `.git`, `.env` files and keys behind, as the copy into agent homes does. The Spectrum agent reads the store itself, so `read_skill_file` had returned a cloned skill's token URL and its `.env`.
+- **Local agent sessions:**
+  - A turn's `changes` event names the changes without their texts, which the workspace fetches when it comes. Every turn had repeated the whole of every pending file, so a large file shed the transcript from the stored events, and one of about 1 MB shed everything.
+  - The prompt is saved as the turn starts, and reopening a session Spectrum closed during takes the draft's changes in, so the tray shows the crashed turn's edits rather than the version before it.
+  - A session whose first start failed starts the agent again for the next prompt, with its setup as it now is.
+  - Preview PDF brings the draft up to the project first, as a turn does.
+  - Apply takes a change the user also made (a file both deleted, or both created alike) instead of calling it a conflict.
+  - Quitting stops only the sessions with a turn, a connected agent or a preview running, so the history menu keeps each session's status and time.
+- **Settings:** a computer upgraded from 1.10.4 keeps personas and default instructions still at their default out of what it shares, and out of what counts as shared, until a file brings them in. When the newest file was a third computer's still on 1.10.4, it had shared its starters and an empty box over the 2.0 computer's own. The follow's logic is `followStep`, which `personas.check.ts` runs over three computers.
+
+Skipped as optional: trimming a large ACP tool call's diff in the stored events, which can shed them the same way.
+
+| Check | Result |
+| --- | --- |
+| Full backend suite, `node --test "test/*.test.js"` | 391 passed, 26 skipped, 0 failed (417 total) |
+| The same with `SPECTRUM_NATIVE_AGENT_TESTS=1` | 412 passed, 5 skipped (Windows only, the Bin, a live request), 0 failed |
+| Each new backend test, and the personas check, run without its fix | Each fails on the fault it covers |
+| Frontend, `npm run typecheck` | Passed |
+| Frontend production build, `npm run build` | Passed |
+| Every `apps/frontend/src/**/*.check.ts`, bundled with esbuild and run separately | 29 passed |
+| Native Rust unit tests | 7 passed |
+
+The tests ran in a worktree with scratch data, projects and template folders, a scratch home and temp folder, and the ACP fixtures, with no model calls. The 26 skips are the earlier 22 and the four new native agent turn tests.
 
 ### Phase 2 limits and open items
 
 - Windows is untested. On the Windows build machine, run `test/agent-preview.test.js` with `SPECTRUM_NATIVE_AGENT_TESTS=1`, and `test/mcp-tools.test.js`. The checks of what `initexmf --show-config-value` prints for MiKTeX's `[Core]` settings (`false` or `0`, and `Forbidden`) come from reading MiKTeX's source, not from a run. They fail closed: no preview. Check too that MiKTeX's bibtex keeps to those settings. TeX Live 2026 and later ignore `openin_any`, so a Windows preview needs MiKTeX or TeX Live 2025 or earlier and refuses otherwise.
 - On Windows, a reparse point (a link or junction) anywhere in an agent's private home stops that agent from launching, as the isolation worker refuses to grant one.
 - The Spectrum agent's tool cards appear when its run ends; showing them live needs the run to stream.
-- Settings that follow you: a computer upgraded from 1.10.4 still takes nothing in when the newest file is a third computer's, still on 1.10.4. Closing it needs `sharedSettings` to also return, for keys the newest file lacks, the newest file that has them.
+- Settings that follow you: a computer upgraded from 1.10.4 still takes nothing in when the newest file is a third computer's, still on 1.10.4, though it no longer shares its starters over the others'. It takes them in once a 2.0 computer shares again, but personas edited on it before then go across over the others' own. Closing it needs `sharedSettings` to also return, for keys the newest file lacks, the newest file that has them.
 - Local agents on Windows get no Spectrum tools, so there suggested to-dos come only through Save open steps as to-dos.
 - Suggested to-dos reach the workspace when the turn ends (at most 50 a turn), and the tools server's run folders in an agent's home are not cleaned up.
 - The first prompt after a session is created uses the skills copied when it was created.
