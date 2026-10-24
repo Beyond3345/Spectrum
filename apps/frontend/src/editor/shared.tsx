@@ -229,7 +229,8 @@ export async function fixWithAI(api: EditorApi, { task, prompt, selection = '', 
     if (changes.length) api.proposeChanges(changes, { open: true });
     else if (res.ok) api.notify('No fix was proposed.');
     else api.notify(res.reply || 'The request failed.', 'error');
-    return res.reply || '';
+    // a failed request's reply is its error, told above already
+    return res.ok || changes.length ? res.reply || '' : '';
   } catch (err) {
     api.notify(`Couldn’t get a fix: ${errorText(err)}`, 'error');
     return '';
