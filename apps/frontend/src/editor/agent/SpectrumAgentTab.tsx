@@ -149,10 +149,11 @@ export default function SpectrumAgentTab({
         ...(res.todos?.length && { todos: res.todos }),
         ...(res.steps?.length && { steps: res.steps })
       };
-      // each file's new proposal goes on from the thread's open one, from the same base, which it closes
-      const paths = changes.map((c) => c.filePath);
-      const owner = paths.length ? update(base, (chat) => ({ ...chat, messages: closeChanges(chat.messages, paths, 'superseded').messages })) : base;
-      append(owner, chatMessage('assistant', res.reply || (changes.length ? 'The changes are ready to review.' : 'No changes were suggested.'), Object.keys(meta).length ? meta : undefined));
+      // each file's new proposal goes on from the thread's open one, from the same base, which it closes in the same
+      // save as the reply: a reply too large to save leaves the open one as it was
+      const reply = chatMessage('assistant', res.reply || (changes.length ? 'The changes are ready to review.' : 'No changes were suggested.'), Object.keys(meta).length ? meta : undefined);
+      update(base, (chat) => ({ ...chat, messages: [...closeChanges(chat.messages, changes.map((c) => c.filePath), 'superseded').messages, reply] }));
+      if (threadRef.current?.id !== base.id) latest.current.notify(`Reply added to “${base.title}”`);
       if (changes.length && threadRef.current?.id === base.id) setTray((old) => [...old.filter((o) => !changes.some((c) => c.filePath === o.filePath)), ...changes]);
     } catch (err) {
       if (runRef.current === run) append(base, chatMessage('assistant', `Request failed: ${errorText(err)}`, { error: true }));
