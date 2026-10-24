@@ -322,7 +322,12 @@ export interface CompileOptions {
 export interface ProjectSettings {
   compile?: CompileOptions;
   /** skills the project turns on or off, whatever this computer has */
-  skills?: { on: string[]; off: string[] };
+  skills?: ProjectSkills;
+}
+
+export interface ProjectSkills {
+  on: string[];
+  off: string[];
 }
 
 export function getProjectSettings(id: string) {
@@ -330,7 +335,7 @@ export function getProjectSettings(id: string) {
 }
 
 /** A compile key set to null is removed, so the app's default applies again; skills replaces the project's choices (null: none). */
-export function updateProjectSettings(id: string, patch: { compile?: { [K in keyof CompileOptions]?: CompileOptions[K] | null }; skills?: { on?: string[]; off?: string[] } | null }) {
+export function updateProjectSettings(id: string, patch: { compile?: { [K in keyof CompileOptions]?: CompileOptions[K] | null }; skills?: ProjectSkills | null }) {
   return request<{ settings: ProjectSettings }>(`/api/projects/${id}/settings`, json('PATCH', patch));
 }
 
@@ -1305,6 +1310,7 @@ export interface Skill {
   source: 'bundled' | 'own'; files: number; compatibility?: string; enabled: boolean; project?: 'on' | 'off'; active: boolean;
 }
 export interface SkillShareTarget { agent: 'agents' | 'claude'; path: string; exists: boolean; linked: boolean }
+export interface SkillShare { enabled: boolean; targets: SkillShareTarget[] }
 export const listSkills = (projectId?: string) => request<{ ok: boolean; skills: Skill[] }>(`/api/skills${projectId ? `?project=${encodeURIComponent(projectId)}` : ''}`);
 export const setSkillEnabled = (id: string, enabled: boolean) => request<{ ok: boolean }>(`/api/skills/${id}`, json('PATCH', { enabled }));
 /** name: a title for it; the id is its folder's and SKILL.md's name */
@@ -1317,5 +1323,5 @@ export const listSkillFiles = (id: string) => request<{ ok: boolean; files: { pa
 export const readSkillFile = (id: string, file: string) => request<{ ok: boolean; content: string }>(`/api/skills/${id}/file?path=${encodeURIComponent(file)}`);
 /** The user's own skills only. */
 export const writeSkillFile = (id: string, file: string, content: string) => request<{ ok: boolean }>(`/api/skills/${id}/file?path=${encodeURIComponent(file)}`, json('PUT', { content }));
-export const getSkillSharing = () => request<{ ok: boolean; enabled: boolean; targets: SkillShareTarget[] }>('/api/skills/share');
-export const setSkillSharing = (enabled: boolean) => request<{ ok: boolean; enabled: boolean; targets: SkillShareTarget[] }>('/api/skills/share', json('PUT', { enabled }));
+export const getSkillSharing = () => request<SkillShare & { ok: boolean }>('/api/skills/share');
+export const setSkillSharing = (enabled: boolean) => request<SkillShare & { ok: boolean }>('/api/skills/share', json('PUT', { enabled }));

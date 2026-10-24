@@ -18,6 +18,8 @@ import type {
 import { setNativeTheme } from './desktop';
 import { NO_FOLDERS, cleanFolders } from './folders';
 import type { ProjectFolders } from './folders';
+import { STARTER_PERSONAS, isUnchangedStarter } from '../editor/personas';
+import type { Persona } from '../editor/personas';
 
 export { IS_DESKTOP } from './desktop';
 
@@ -127,6 +129,10 @@ export type AppSettings = {
   projectFolders: ProjectFolders;
   /** a colour chosen for a tag; the others get one from their name */
   tagColours: Record<string, TagColour>;
+  /** Settings › Personas, picked per chat; the starters are seeded once */
+  personas: Persona[];
+  /** what the assistant and the Spectrum agent are told while a chat has no persona (never autocomplete) */
+  defaultInstructions: string;
 };
 
 export type CompileDefaults = Required<CompileOptions>;
@@ -200,7 +206,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   syncSettings: true,
   cloudMode: 'mirror',
   projectFolders: NO_FOLDERS,
-  tagColours: {}
+  tagColours: {},
+  personas: STARTER_PERSONAS,
+  defaultInstructions: ''
 };
 
 export const SYNC_HIGHLIGHTS: [SyncHighlight, string][] = [
@@ -232,6 +240,18 @@ export const ERROR_HANDLING: [boolean, string][] = [
   [false, 'Try to compile despite errors'],
   [true, 'Stop on first error']
 ];
+
+/** Personas with a name and an id each, one per id; anything but a list is the starters again. */
+function cleanPersonas(value: unknown): Persona[] {
+  if (!Array.isArray(value)) return STARTER_PERSONAS;
+  const ids = new Set<string>();
+  return value.flatMap((p) => {
+    const { id, name, colour, prompt } = (typeof p === 'object' && p ? p : {}) as Record<string, unknown>;
+    if (typeof id !== 'string' || !id || ids.has(id) || typeof name !== 'string' || !name.trim() || typeof prompt !== 'string') return [];
+    ids.add(id);
+    return [{ id, name, colour: TAG_COLOUR_NAMES.includes(colour as TagColour) ? (colour as TagColour) : 'blue', prompt }];
+  });
+}
 
 export const autoCompileLabel = (seconds: number) => (seconds ? `After a pause of ${seconds} s` : 'Off');
 
@@ -316,6 +336,8 @@ function parse(raw: string | null): AppSettings {
     merged.tagColours = Object.fromEntries(
       Object.entries(typeof merged.tagColours === 'object' && merged.tagColours ? merged.tagColours : {}).filter(([, c]) => TAG_COLOUR_NAMES.includes(c as TagColour))
     ) as AppSettings['tagColours'];
+    merged.personas = cleanPersonas(merged.personas);
+    if (typeof merged.defaultInstructions !== 'string') merged.defaultInstructions = '';
     for (const key of ['editorFont', 'editorFontCustom', 'editorThemeLight', 'editorThemeDark', 'parser', 'parserProtocol'] as const) {
       if (typeof merged[key] !== 'string') merged[key] = DEFAULT_SETTINGS[key];
     }
@@ -403,7 +425,7 @@ export function updateSettings(patch: Partial<AppSettings>) {
 const SHARED_KEYS = [
   'theme', 'accent', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize',
   'autoInsertCite', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
-  'syncHighlightSeconds', 'projectFolders', 'tagColours'
+  'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions'
 ] as const satisfies readonly (keyof AppSettings)[];
 
 export const sharedPart = (settings: AppSettings): Record<string, unknown> => Object.fromEntries(SHARED_KEYS.map((key) => [key, settings[key]]));
@@ -431,6 +453,11 @@ export function takeInShared(settings: AppSettings, theirs: Record<string, unkno
     const t = cleanFolders(theirs.projectFolders);
     const m = settings.projectFolders;
     kept.projectFolders = { folders: [...t.folders, ...m.folders.filter((f) => !t.folders.some((g) => g.id === f.id))], placement: { ...m.placement, ...t.placement } };
+  }
+  // the personas join theirs the same way, less the starters left as they were, so one deleted there stays deleted
+  if (!('personas' in before) && 'personas' in theirs) {
+    const t = cleanPersonas(theirs.personas);
+    kept.personas = [...t, ...settings.personas.filter((p) => !t.some((q) => q.id === p.id) && !isUnchangedStarter(p))];
   }
   return withShared(withShared(settings, theirs), kept);
 }
@@ -496,8 +523,8 @@ export function followSharedSettings() {
     }
     if (latest && latest.updatedAt > at) {
       // first, or this computer's old values of the other settings would go back under a newer date and undo them
-      // there; the folder tree joins the others' all the same
-      settings = takeInShared(settings, latest.settings, theirsFirst ? JSON.stringify({ ...sharedPart(settings), projectFolders: undefined }) : sent);
+      // there; the folder tree and the personas join the others' all the same
+      settings = takeInShared(settings, latest.settings, theirsFirst ? JSON.stringify({ ...sharedPart(settings), projectFolders: undefined, personas: undefined }) : sent);
       at = latest.updatedAt;
       sent = JSON.stringify(sharedPart(withShared(settings, latest.settings)));
       keepSyncState({ at, sent });
