@@ -107,7 +107,7 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'zoomOut', label: 'Zoom out', group: 'PDF', key: 'Mod--' },
   { id: 'zoomWidth', label: 'Fit width', group: 'PDF', key: 'Mod-0' },
   { id: 'save', label: 'Save', group: 'App', key: 'Mod-s' },
-  { id: 'saveVersion', label: 'Save version', group: 'App', key: 'Shift-Mod-s' },
+  { id: 'saveVersion', label: 'Save checkpoint', group: 'App', key: 'Shift-Mod-s' },
   { id: 'compile', label: 'Compile', group: 'App', key: 'Mod-Enter' },
   // the open file when it has a \documentclass of its own, else the main file
   { id: 'compileOpen', label: 'Compile open document', group: 'App', key: 'Shift-Mod-Enter' },

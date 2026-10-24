@@ -1297,7 +1297,7 @@ button.compile-status:hover {
 }
 
 /* --------------------------------------------------------------------------
-   Save version: a neutral pill beside Compile, and the toast's Rename action
+   Save checkpoint: a neutral pill beside Compile, and the toast's Rename action
    -------------------------------------------------------------------------- */
 
 .save-version.btn {
@@ -1318,7 +1318,7 @@ button.compile-status:hover {
 }
 
 /* narrower still, Compile is the last label to go, so the view switcher stays in view; then the zoom menu
-   (the PDF's own − and + zoom too) and Save version (its shortcut, or Tools → Versions) give way */
+   (the PDF's own − and + zoom too) and Save checkpoint (its shortcut, or Tools › Checkpoints) give way */
 @container (max-width: 440px) {
   .compile-main .btn-label {
     display: none;

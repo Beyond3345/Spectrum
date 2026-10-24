@@ -13,7 +13,7 @@ export type ToolsTab = 'info' | 'versions' | 'logs' | 'research' | 'review' | 'f
 
 const LABELS: [ToolsTab, string][] = [
   ['info', 'Project info'],
-  ['versions', 'Versions'],
+  ['versions', 'Checkpoints'],
   ['logs', 'Logs'],
   ['research', 'Research'],
   ['review', 'Review'],

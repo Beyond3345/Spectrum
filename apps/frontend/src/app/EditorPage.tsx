@@ -667,7 +667,7 @@ function Editor({ projectId }: { projectId: string }) {
     try {
       if (held) {
         const res = await saveVersion(projectId, { reason: 'manual', label: `${nameOf(path)} from another computer` });
-        if (!res.ok) throw new Error('The version couldn’t be saved.');
+        if (!res.ok) throw new Error('The checkpoint couldn’t be saved.');
         if (!res.unchanged) window.dispatchEvent(new Event(VERSIONS_CHANGED));
         hashesRef.current.set(path, held.hash);
       }
@@ -1028,22 +1028,22 @@ function Editor({ projectId }: { projectId: string }) {
   const createVersion = async (reason: VersionReason, label?: string) => {
     await saveNow();
     const res = await saveVersion(projectId, { reason, label });
-    if (!res.ok) throw new Error('The version couldn’t be saved.');
+    if (!res.ok) throw new Error('The checkpoint couldn’t be saved.');
     if (!res.unchanged) window.dispatchEvent(new Event(VERSIONS_CHANGED));
     return res;
   };
 
-  // the Save version button and shortcut; the Versions tab has its own, with a label field
+  // the Save checkpoint button and shortcut; Tools › Checkpoints has its own, with a label field
   const saveVersionNow = async () => {
     if (savingVersionRef.current) return;
     savingVersionRef.current = true;
     setSavingVersion(true);
     try {
       const { version, unchanged } = await createVersion('manual');
-      if (unchanged || !version) notify('Nothing has changed since the last version.');
-      else toast(`Saved version v${version.number}`, { tone: 'success', action: { label: 'Rename', onClick: () => renameSavedVersion(version) } });
+      if (unchanged || !version) notify('Nothing has changed since the last checkpoint.');
+      else toast(`Saved checkpoint ${version.number}`, { tone: 'success', action: { label: 'Rename', onClick: () => renameSavedVersion(version) } });
     } catch (err) {
-      notify(`Couldn’t save a version: ${errorText(err)}`, 'error');
+      notify(`Couldn’t save a checkpoint: ${errorText(err)}`, 'error');
     } finally {
       savingVersionRef.current = false;
       setSavingVersion(false);
@@ -1051,14 +1051,14 @@ function Editor({ projectId }: { projectId: string }) {
   };
 
   const renameSavedVersion = async (version: VersionMeta) => {
-    const label = (await promptDialog({ title: `Rename v${version.number}`, placeholder: 'Name, e.g. Submitted draft', confirmLabel: 'Rename' }))?.trim();
+    const label = (await promptDialog({ title: `Rename checkpoint ${version.number}`, placeholder: 'Name, e.g. Submitted draft', confirmLabel: 'Rename' }))?.trim();
     if (!label) return;
     try {
       await renameVersion(projectId, version.id, label);
       window.dispatchEvent(new Event(VERSIONS_CHANGED));
-      notify(`Renamed v${version.number} “${label}”`, 'success');
+      notify(`Renamed checkpoint ${version.number} “${label}”`, 'success');
     } catch (err) {
-      notify(`Couldn’t rename the version: ${errorText(err)}`, 'error');
+      notify(`Couldn’t rename the checkpoint: ${errorText(err)}`, 'error');
     }
   };
 
@@ -2354,11 +2354,11 @@ function Editor({ projectId }: { projectId: string }) {
                   className="btn save-version"
                   onClick={saveVersionNow}
                   disabled={savingVersion}
-                  title={withShortcut(settings.shortcuts, 'Save version', 'saveVersion')}
-                  aria-label="Save version"
+                  title={withShortcut(settings.shortcuts, 'Save checkpoint', 'saveVersion')}
+                  aria-label="Save checkpoint"
                 >
                   {savingVersion ? <span className="spinner" /> : <Icon name="clock.arrow.circlepath" />}
-                  <span className="btn-label">Save version</span>
+                  <span className="btn-label">Save checkpoint</span>
                 </button>
                 {/* always mounted, so screen readers hear each change */}
                 {compileStatus}
