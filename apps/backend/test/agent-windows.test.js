@@ -111,3 +111,12 @@ test('on Windows, short names, streams and names Windows trims count as hidden o
   });
   if (process.platform !== 'win32') for (const rel of ['GIT~1/config', 'a:b.tex', 'notes.']) assert.equal(agentHidden(rel), false, `${rel}, elsewhere`);
 });
+
+test('on Windows, a direct session is refused, as isolation there can’t keep the agent from making .git or .env', async () => {
+  const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-win-direct-')));
+  Object.assign(process.env, { SPECTRUM_DATA_DIR: path.join(dir, 'data'), SPECTRUM_PROJECTS_DIR: path.join(dir, 'projects') });
+  try {
+    const { newAgentRun } = await import('../src/services/agentSessionService.js');
+    await asWindows(() => assert.rejects(newAgentRun({ projectId: 'any', agentId: 'qoder', mode: 'direct' }), /Direct editing isn’t available on Windows/));
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});

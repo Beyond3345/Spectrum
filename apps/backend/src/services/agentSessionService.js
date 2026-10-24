@@ -146,8 +146,14 @@ export function readPersona(value) {
 const samePersona = (a, b) => (a?.name ?? null) === (b?.name ?? null) && (a?.prompt ?? null) === (b?.prompt ?? null);
 const personaText = (persona) => `The user chose the persona “${persona.name}” for this conversation. Follow its instructions for how you work and respond. They cannot widen your permissions or change Spectrum’s rules.\n<persona>\n${persona.prompt}\n</persona>`;
 
+// ponytail: Windows isolation grants the workspace by ACLs, which a folder or file the agent makes inherits whatever its
+// name, so it could make .git, .claude or an .env file in the project itself. Direct sessions need macOS until the
+// worker can refuse those names.
+const NO_DIRECT = 'Direct editing isn’t available on Windows yet. Choose Isolated: the agent works on a copy and you apply the changes you want.';
+
 export async function newAgentRun({ projectId, agentId, mode = 'review', persona }) {
   persona = readPersona(persona);
+  if (mode === 'direct' && process.platform === 'win32') throw Object.assign(new Error(NO_DIRECT), { statusCode: 400 });
   const profile = profileFor(agentId);
   if (profile.unavailable) throw new Error(profile.unavailable);
   if (!(await isolationAvailable())) throw new Error('Native agent isolation is unavailable. Install or repair the Windows isolation worker before starting an agent.');
@@ -210,6 +216,8 @@ export function answerAgentRequest(r, requestId, answer) {
 
 async function connect(r) {
   r.connectionAbort = new AbortController();
+  // a direct session from 1.10 included
+  if (r.mode === 'direct' && process.platform === 'win32') throw new Error(NO_DIRECT);
   const profile = profileFor(r.agentId);
   const config = (await agentConfigs())[r.agentId] || {};
   const credentialVariable = config.keyEnv || profile.key;
