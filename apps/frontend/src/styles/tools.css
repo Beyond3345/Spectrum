@@ -1563,12 +1563,22 @@ textarea.table-latex {
   }
 }
 
+/* a panel's name where it has no tabs (Floats) */
+.panel-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+}
+
 /* --------------------------------------------------------------------------
-   Grammar panel (in place of the PDF while it's open); the other panels' titles
+   Grammar panel (in place of the PDF while it's open)
    -------------------------------------------------------------------------- */
 
-.grammar-title,
-.panel-title {
+.grammar-title {
   flex: 1;
   min-width: 0;
   display: flex;

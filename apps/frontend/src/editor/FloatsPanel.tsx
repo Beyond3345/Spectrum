@@ -11,8 +11,11 @@ export type FloatCard = 'figure' | 'table';
 export default function FloatsPanel({ card, signal, trailing }: { card: FloatCard | null; signal: number; trailing?: ReactNode }) {
   const bodyRef = useRef<HTMLDivElement>(null);
 
+  // only the panel scrolls (scrollIntoView would also slide the columns sideways when a card is wider than the panel)
   useEffect(() => {
-    if (card) bodyRef.current?.querySelector(`[data-card="${card}"]`)?.scrollIntoView({ block: 'start' });
+    const body = bodyRef.current;
+    const target = card && body?.querySelector(`[data-card="${card}"]`);
+    if (body && target) body.scrollTop += target.getBoundingClientRect().top - body.getBoundingClientRect().top;
   }, [card, signal]);
 
   return (

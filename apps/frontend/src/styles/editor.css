@@ -325,10 +325,23 @@
   padding-left: 12px;
 }
 
-/* Insert figure and Insert table: a narrow editor leaves them to Insert (+) */
+/* in the top bar (editor only, or with a panel in the PDF's place) the compile status gives way before the file tabs */
+.editor-topbar .compile-status {
+  max-width: 140px;
+}
+
+/* Insert figure and Insert table: a narrow editor leaves them to Insert (+); the status is still read out */
 @container editor (max-width: 560px) {
   .float-button {
     display: none;
+  }
+
+  .editor-topbar .compile-status:not(:has(button)) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
   }
 }
 
