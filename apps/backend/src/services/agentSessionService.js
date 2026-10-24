@@ -25,7 +25,7 @@ const execFileAsync = promisify(execFile);
 const runs = new Map();
 const ID = /^[a-f0-9-]{36}$/;
 const textLimit = (value, max = 100000) => typeof value === 'string' ? value.slice(0, max) : '';
-const metadata = (r) => ({ id: r.id, projectId: r.projectId, agentId: r.agentId, mode: r.mode, createdAt: r.createdAt, updatedAt: r.updatedAt, status: r.status, events: r.events, remoteId: r.remoteId, resolved: [...r.resolved], turnCount: r.turnCount, ...(r.persona && { persona: r.persona }), ...(r.notes?.length && { notes: r.notes }) });
+const metadata = (r) => ({ id: r.id, projectId: r.projectId, agentId: r.agentId, mode: r.mode, createdAt: r.createdAt, updatedAt: r.updatedAt, status: r.status, events: r.events, remoteId: r.remoteId, resolved: [...r.resolved], turnCount: r.turnCount, ...(r.title && { title: r.title }), ...(r.persona && { persona: r.persona }), ...(r.notes?.length && { notes: r.notes }) });
 const persist = (r) => {
   r.saveChain = (r.saveChain || Promise.resolve()).catch(() => {}).then(() => writeJsonAtomic(path.join(r.dir, 'session.json'), metadata(r)));
   return r.saveChain;
@@ -73,6 +73,11 @@ const emit = (r, type, data) => {
   for (const listener of r.listeners) listener(event);
   return event;
 };
+/** A session's title: its first task's first line, as a chat's is. */
+const firstLine = (text) => {
+  const line = String(text || '').trim().split('\n')[0].trim();
+  return line.length > 60 ? `${line.slice(0, 59)}…` : line;
+};
 const state = (r, status, error) => { r.status = status; emit(r, 'state', { status, ...(error && { error }) }); void persist(r); };
 const busyProject = (r) => [...runs.values()].some((other) => other !== r && other.projectId === r.projectId && (other.busy || other.reviewing));
 
@@ -115,7 +120,9 @@ export async function listAgentRuns(projectId) {
     if (!ID.test(id)) continue;
     try {
       const r = await getAgentRun(id);
-      if (r.projectId === projectId) found.push({ id: r.id, agentId: r.agentId, mode: r.mode, status: r.status, createdAt: r.createdAt, updatedAt: r.updatedAt });
+      // a session from before titles: its first task the store still holds
+      const title = r.title || firstLine(r.events.find((e) => e.type === 'user')?.data.text);
+      if (r.projectId === projectId) found.push({ id: r.id, agentId: r.agentId, mode: r.mode, status: r.status, createdAt: r.createdAt, updatedAt: r.updatedAt, ...(title && { title }) });
     } catch { /* not a readable session for an available project */ }
   }
   return found.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -601,6 +608,7 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       if (r.cancelled) throw new Error('Task cancelled.');
       const earlier = r.freshSession && r.events.filter((e) => e.type === 'user' || (e.type === 'update' && e.data.sessionUpdate === 'agent_message_chunk')).map((e) => e.data.text || e.data.content?.text || '').join('\n').slice(-12000);
       emit(r, 'user', { text: prompt, ...(Object.keys(context).length && { context: Object.keys(context) }) });
+      r.title ||= firstLine(prompt);
       const intro = r.openedNew && 'You are working in Spectrum. All file and terminal operations are confined to your workspace and private runtime state. Use relative paths. Do not attempt to access the original project or other host services.';
       const persona = r.openedNew && r.persona && !r.capabilities.sessionCapabilities?.systemPrompt && personaText(r.persona);
       const notes = r.notes.length && `Since your last turn:\n${r.notes.map((note) => `- ${note}`).join('\n')}`;

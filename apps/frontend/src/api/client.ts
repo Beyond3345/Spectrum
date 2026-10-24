@@ -1290,6 +1290,8 @@ export interface LocalAgentSession {
   id: string; projectId: string; agentId: string; mode: 'review' | 'direct'; status: string;
   createdAt: string; updatedAt: string; events: AgentEvent[]; pending?: AgentUserRequest[];
   recoveries?: { id: string; files: string[] }[]; persona?: AgentPersona;
+  /** the first task's first line */
+  title?: string;
 }
 export const listLocalAgents = () => request<{ ok: boolean; agents: LocalAgent[] }>('/api/agents');
 export const configureLocalAgent = (id: string, value: { command: string; args: string[]; runtimePaths: string[]; apiKey?: string; keyEnv?: string }) => request<{ ok: boolean }>(`/api/agents/${id}`, json('PUT', value));

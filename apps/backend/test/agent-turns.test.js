@@ -48,13 +48,15 @@ const setup = () => (ready ??= (async () => {
 })());
 
 test('a long streamed message keeps the turn’s start, and a huge one is stored in parts under the caps', { skip, timeout: 120000 }, async () => {
-  const { open, turn, stored } = await setup();
+  const { open, turn, stored, listAgentRuns } = await setup();
   const { run } = await open({ 'main.tex': 'original\n' });
-  await turn(run, 'hello');
+  await turn(run, 'hello\nwith more on the next line');
+  assert.equal((await listAgentRuns(run.projectId))[0].title, 'hello', 'named by its first task’s first line');
   await turn(run, 'please-flood');
   const users = (events) => events.filter((e) => e.type === 'user').map((e) => e.data.text);
-  assert.deepEqual(users(run.events), ['hello', 'please-flood'], 'each piece counts only its text');
-  assert.deepEqual(users((await stored(run)).events), ['hello', 'please-flood']);
+  assert.deepEqual(users(run.events), ['hello\nwith more on the next line', 'please-flood'], 'each piece counts only its text');
+  assert.deepEqual(users((await stored(run)).events), ['hello\nwith more on the next line', 'please-flood']);
+  assert.equal((await stored(run)).title, 'hello');
   const message = run.events.findLast((e) => e.data?.sessionUpdate === 'agent_message_chunk');
   assert.equal(message.data.content.text, 'ab '.repeat(30000));
 

@@ -267,8 +267,9 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
             { label: 'New session', icon: 'square.and.pencil', onSelect: () => choose('').catch(fail) },
             sessions.length > 0 && { separator: true },
             ...sessions.map((s) => ({
-              label: `${agentName(s.agentId)} · ${s.mode === 'review' ? 'Isolated' : 'Direct'}`,
-              shortcut: relativeTime(s.updatedAt),
+              // by its first task, which tells two sessions of one agent apart
+              label: s.title || `${agentName(s.agentId)} · ${s.mode === 'review' ? 'Isolated' : 'Direct'}`,
+              shortcut: `${s.title ? `${agentName(s.agentId)} · ${s.mode === 'review' ? 'Isolated' : 'Direct'} · ` : ''}${relativeTime(s.updatedAt)}`,
               checked: s.id === session?.id,
               onSelect: () => choose(s.id).catch(fail)
             }))
