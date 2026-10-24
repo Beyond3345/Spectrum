@@ -237,7 +237,6 @@ const snapshotOf = (diagram: DiagramFile) => JSON.stringify({ style: diagram.sty
 
 function Composer({ projectId, path }: { projectId: string; path: string }) {
   const navigate = useNavigate();
-  const [settings] = useSettings();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [loadError, setLoadError] = useState('');
   const [reloads, setReloads] = useState(0);
@@ -270,14 +269,29 @@ function Composer({ projectId, path }: { projectId: string; path: string }) {
       </div>
     );
   }
-  if (!loaded) return <div className="diagram-app diagram-loading"><span className="spinner" /></div>;
-  return <Editor key={reloads} projectId={projectId} path={path} loaded={loaded} settings={settings} onReload={() => {
-    setLoaded(null);
-    setReloads((n) => n + 1);
-  }} />;
+  if (!loaded) {
+    return (
+      <div className="diagram-app diagram-loading">
+        <span className="spinner" />
+      </div>
+    );
+  }
+  return (
+    <Editor
+      key={reloads}
+      projectId={projectId}
+      path={path}
+      loaded={loaded}
+      onReload={() => {
+        setLoaded(null);
+        setReloads((n) => n + 1);
+      }}
+    />
+  );
 }
 
-function Editor({ projectId, path, loaded, settings, onReload }: { projectId: string; path: string; loaded: Loaded; settings: ReturnType<typeof useSettings>[0]; onReload(): void }) {
+function Editor({ projectId, path, loaded, onReload }: { projectId: string; path: string; loaded: Loaded; onReload(): void }) {
+  const [settings] = useSettings();
   const [doc, setDoc] = useState<Doc>(loaded.doc);
   const mode: DiagramMode<any> | undefined = doc.diagram ? modeFor(doc.diagram.language === 'mermaid' ? 'mermaid' : doc.diagram.pkg) : undefined;
   const language: DiagramLanguage = /\.mmd$/i.test(path) ? 'mermaid' : 'tikz';

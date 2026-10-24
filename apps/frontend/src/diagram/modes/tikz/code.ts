@@ -150,7 +150,8 @@ export function tikzCode(model: TikzModel) {
   const boxes = new Map(model.boxes.map((b) => [b.id, b]));
   const body = ['\\begin{tikzpicture}', ...model.boxes.map(boxLine), ...model.links.map((l) => linkLine(l, boxes)).filter(Boolean), '\\end{tikzpicture}'];
   const texts = [...model.boxes.map((b) => b.text), ...model.links.map((l) => l.label ?? '')];
-  return { body: `${body.join('\n')}\n`, packages: ['tikz', ...mathsPackages(texts)], libraries: ['shapes.geometric', 'arrows.meta'] };
+  // positioning isn't used by the picture itself, but loaded for code added by hand in the TikZ way (right=of n1)
+  return { body: `${body.join('\n')}\n`, packages: ['tikz', ...mathsPackages(texts)], libraries: ['shapes.geometric', 'arrows.meta', 'positioning'] };
 }
 
 // ─── the selection's Copy, Paste and Delete ───

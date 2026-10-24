@@ -18,7 +18,7 @@ const model: TikzModel = { boxes: [start, check, done, sum], links: [down, yes, 
 
 const { body, packages, libraries } = tikzCode(model);
 eq(packages, ['tikz'], 'packages');
-eq(libraries, ['shapes.geometric', 'arrows.meta'], 'libraries');
+eq(libraries, ['shapes.geometric', 'arrows.meta', 'positioning'], 'libraries');
 eq(body.split('\n'), [
   '\\begin{tikzpicture}',
   '\\node[draw, rectangle, rounded corners, minimum width=2cm, minimum height=1cm, align=center] (n1) at (1,-0.5) {Start};',
