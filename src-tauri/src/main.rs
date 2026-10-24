@@ -30,6 +30,7 @@ use tauri::{
 };
 #[cfg(target_os = "macos")]
 use tauri::{LogicalPosition, TitleBarStyle};
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_window_state::StateFlags;
 
@@ -45,14 +46,14 @@ const TRAFFIC_LIGHTS: LogicalPosition<f64> = LogicalPosition { x: 12.0, y: 28.0 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// How long Cmd+Q and the close button wait for the page to save before quitting
-/// anyway, so a hung page can't keep the app open.
+/// How long Cmd+Q waits for a page that never answers. A reported save failure cancels quitting.
 const FLUSH_TIMEOUT: Duration = Duration::from_secs(3);
 /// How long the Dock's Quit gives the page to send unsaved edits before the
 /// backend stops (it can't hear back: the main thread is blocked).
 const FLUSH_GRACE: Duration = Duration::from_millis(500);
 /// Set once quitting starts, so the editor is flushed only once.
 static QUITTING: AtomicBool = AtomicBool::new(false);
+static FLUSH_ID: AtomicUsize = AtomicUsize::new(0);
 /// The diagram composer's window (open_diagram), beside the main one.
 const DIAGRAM: &str = "diagram";
 
@@ -165,46 +166,122 @@ fn main() {
     });
 }
 
-/// Cmd+Q and the close button: quit once every window's page says it has saved, or after
-/// FLUSH_TIMEOUT.
+/// One quit attempt: a failed save cancels its timeout too, without affecting a later retry.
+struct QuitFlush {
+    remaining: usize,
+    active: bool,
+}
+
+impl QuitFlush {
+    fn new(remaining: usize) -> Self {
+        Self {
+            remaining,
+            active: true,
+        }
+    }
+
+    fn completed(&mut self, saved: bool) -> Option<bool> {
+        if !self.active {
+            return None;
+        }
+        if saved {
+            self.remaining = self.remaining.saturating_sub(1);
+        }
+        if !saved || self.remaining == 0 {
+            self.active = false;
+            Some(saved)
+        } else {
+            None
+        }
+    }
+
+    fn timed_out(&mut self) -> bool {
+        std::mem::replace(&mut self.active, false)
+    }
+}
+
+fn flush_event(kind: &str) -> String {
+    format!("{kind}-{}", FLUSH_ID.fetch_add(1, Ordering::SeqCst))
+}
+
+fn save_failed(app: &AppHandle, payload: &serde_json::Value) {
+    let error = payload
+        .get("error")
+        .and_then(|error| error.as_str())
+        .unwrap_or("The page couldn’t save its changes.");
+    app.dialog()
+        .message(format!("{error}\n\nYour work is still open. Try saving again before closing or switching diagrams."))
+        .title("Changes weren’t saved")
+        .kind(MessageDialogKind::Error)
+        .show(|_| {});
+}
+
+/// Cmd+Q and the close button: quit once every window saved, or after FLUSH_TIMEOUT if none reported a failed save.
 fn quit(app: &AppHandle) {
     if QUITTING.swap(true, Ordering::SeqCst) {
         return;
     }
     let windows = app.webview_windows();
-    let left = AtomicUsize::new(windows.len());
+    if windows.is_empty() {
+        app.exit(0);
+        return;
+    }
+    let state = Arc::new(Mutex::new(QuitFlush::new(windows.len())));
+    let event = flush_event("flushed");
     let flushed = app.clone();
-    app.listen("flushed", move |_| {
-        if left.fetch_sub(1, Ordering::SeqCst) == 1 {
-            flushed.exit(0);
+    let answers = state.clone();
+    let listener = app.listen(event.clone(), move |event| {
+        let payload: serde_json::Value = serde_json::from_str(event.payload()).unwrap_or_default();
+        let saved = payload.get("ok").and_then(|ok| ok.as_bool()) == Some(true);
+        let done = answers.lock().unwrap().completed(saved);
+        if let Some(saved) = done {
+            flushed.unlisten(event.id());
+            if saved {
+                flushed.exit(0);
+            } else {
+                QUITTING.store(false, Ordering::SeqCst);
+                save_failed(&flushed, &payload);
+            }
         }
     });
     for window in windows.values() {
-        flush(window, "flushed");
+        if let Err(error) = flush(window, &event) {
+            state.lock().unwrap().completed(false);
+            app.unlisten(listener);
+            QUITTING.store(false, Ordering::SeqCst);
+            save_failed(app, &serde_json::json!({ "error": error.to_string() }));
+            return;
+        }
     }
     let app = app.clone();
     thread::spawn(move || {
         thread::sleep(FLUSH_TIMEOUT);
-        app.exit(0);
+        app.unlisten(listener);
+        if state.lock().unwrap().timed_out() {
+            app.exit(0);
+        }
     });
 }
 
 /// Saves every window's open work now instead of after the autosave delay.
 fn flush_editor(app: &AppHandle) {
     for window in app.webview_windows().values() {
-        flush(window, "flushed");
+        let _ = flush(window, "flushed");
     }
 }
 
-/// Has the window's page save its open work (window.__spectrumFlush), then emit `event`, which
-/// only quitting (`flushed`) or closing the composer (`closable`) listens for.
-fn flush(window: &WebviewWindow, event: &str) {
-    // a flush that throws still answers
-    let _ = window.eval(format!(
-        "Promise.resolve().then(() => window.__spectrumFlush?.()).finally(() => \
-         window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {{ event: {} }}))",
+/// A rejected save answers with a failure instead of authorising close, navigation or quit.
+fn flush_script(event: &str) -> String {
+    format!(
+        "Promise.resolve().then(() => window.__spectrumFlush?.()).then(\
+         () => ({{ ok: true }}), error => ({{ ok: false, error: String(error?.message || error) }}))\
+         .then(payload => window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {{ event: {}, payload }}))",
         serde_json::Value::from(event)
-    ));
+    )
+}
+
+fn flush(window: &WebviewWindow, event: &str) -> tauri::Result<()> {
+    window.eval(flush_script(event))
 }
 
 /// Closes the backend's stdin so it can finish and exit, then kills its process
@@ -328,10 +405,21 @@ async fn open_diagram(
             .map_err(|e| e.to_string());
     };
     if window.url().map_or(true, |at| at != url) {
-        let _ = window.eval(format!(
-            "Promise.resolve().then(() => window.__spectrumFlush?.()).finally(() => location.assign({}))",
-            serde_json::Value::from(url.as_str())
-        ));
+        let event = flush_event("diagram-switch");
+        let target = window.clone();
+        let switching = app.clone();
+        let listener = window.once(event.clone(), move |event| {
+            let payload: serde_json::Value = serde_json::from_str(event.payload()).unwrap_or_default();
+            if payload.get("ok").and_then(|ok| ok.as_bool()) == Some(true) {
+                let _ = target.navigate(url);
+            } else {
+                save_failed(&switching, &payload);
+            }
+        });
+        if let Err(error) = flush(&window, &event) {
+            window.unlisten(listener);
+            return Err(error.to_string());
+        }
     }
     let _ = window.unminimize();
     let _ = window.show();
@@ -635,19 +723,30 @@ fn build_diagram_window(app: &AppHandle, port: u16, url: Url) -> tauri::Result<W
     // desktop.ts paints it for the app's theme once the page loads
     let _ = window.set_background_color(Some(background(window.theme().unwrap_or(Theme::Light))));
     let target = window.clone();
-    let closing = AtomicBool::new(false);
+    let closing = Arc::new(AtomicBool::new(false));
     window.on_window_event(move |event| {
         if let WindowEvent::CloseRequested { api, .. } = event {
-            // a second click closes a page that never answers
+            api.prevent_close();
             if closing.swap(true, Ordering::SeqCst) {
                 return;
             }
-            api.prevent_close();
+            let event = flush_event("closable");
             let closed = target.clone();
-            target.once("closable", move |_| {
-                let _ = closed.destroy();
+            let pending = closing.clone();
+            let listener = target.once(event.clone(), move |event| {
+                let payload: serde_json::Value = serde_json::from_str(event.payload()).unwrap_or_default();
+                if payload.get("ok").and_then(|ok| ok.as_bool()) == Some(true) {
+                    let _ = closed.destroy();
+                } else {
+                    pending.store(false, Ordering::SeqCst);
+                    save_failed(closed.app_handle(), &payload);
+                }
             });
-            flush(&target, "closable");
+            if let Err(error) = flush(&target, &event) {
+                target.unlisten(listener);
+                closing.store(false, Ordering::SeqCst);
+                save_failed(target.app_handle(), &serde_json::json!({ "error": error.to_string() }));
+            }
         }
     });
     window.show()?;
@@ -1002,6 +1101,22 @@ fn health_ok(port: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_failed_save_cancels_only_its_quit_attempt_and_timer() {
+        let mut attempt = QuitFlush::new(2);
+        assert_eq!(attempt.completed(true), None);
+        assert_eq!(attempt.completed(false), Some(false));
+        assert!(!attempt.timed_out());
+        assert_eq!(attempt.completed(true), None);
+        let mut retry = QuitFlush::new(2);
+        assert_eq!(retry.completed(true), None);
+        assert_eq!(retry.completed(true), Some(true));
+        assert!(!retry.timed_out());
+        let mut hung = QuitFlush::new(1);
+        assert!(hung.timed_out());
+        assert_eq!(hung.completed(false), None);
+    }
 
     #[test]
     fn download_names_follow_finder() {

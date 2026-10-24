@@ -8,7 +8,8 @@ import Icon from '../app/Icon';
 
 /** What the frame's canvas controls set; a mode's own React Flow canvas can follow it too. */
 export type CanvasPrefs = { minimap: boolean; dark: boolean };
-export const CanvasPrefsContext = createContext<CanvasPrefs>({ minimap: false, dark: false });
+/** onPrefs: for a canvas of a mode's own that isn't React Flow (the circuit's), which shows its own controls */
+export const CanvasPrefsContext = createContext<CanvasPrefs & { onPrefs?(p: CanvasPrefs): void }>({ minimap: false, dark: false });
 export const useCanvasPrefs = () => useContext(CanvasPrefsContext);
 
 type Size = { width?: number; height?: number };

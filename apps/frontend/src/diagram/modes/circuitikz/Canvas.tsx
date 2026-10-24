@@ -4,9 +4,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import Icon from '../../../app/Icon';
+import { useCanvasPrefs } from '../../FlowCanvas';
 import { readStyle, symbolOptions } from './code';
 import { copy, detach, flip, moveBy, newNodePart, newPathPart, paste, remove, rotate } from './edit';
-import { PARTS, PT_PER_GRID, asCircuit, isPart, isPoint, locator, newId, pathFrame, pinsOfElement, placeNodeOffset, placeholderShape, snapDelta, variantKey, wirePath } from './model';
+import { PARTS, PT_PER_GRID, asCircuit, circuitBounds, isPart, isPoint, locator, newId, pathFrame, pinsOfElement, placeNodeOffset, placeholderShape, snapDelta, variantKey, wirePath } from './model';
 import type { CircuitModel, Element, End, Mark, NodePart, PathPart, Pt, Route, ShapeOf, Wire } from './model';
 import { setCtikz, setSelection, setShapeOf, setTool, tidy, useCircuitUi } from './store';
 import { useSymbols } from './symbols';
@@ -54,6 +55,8 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   const [hover, setHover] = useState<Pt | null>(null);
   const [space, setSpace] = useState(false);
 
+  // the frame's light or dark canvas, which it sets on the stage around this (data-canvas)
+  const prefs = useCanvasPrefs();
   const shown = draft || model;
   const ctikz = symbolOptions(readStyle(style));
   useEffect(() => setCtikz(ctikz), [ctikz]);
@@ -80,18 +83,12 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
 
   const fit = () => {
     if (!size.width || !size.height) return;
-    const points = shown.elements.flatMap((el): Pt[] => {
-      if (el.kind === 'node') return [{ x: el.at.x - 5, y: el.at.y - 5 }, { x: el.at.x + 5, y: el.at.y + 5 }];
-      if (el.kind === 'path') return [pos(el.a), pos(el.b)];
-      return el.points.map((p) => pos(p));
-    });
-    if (!points.length) {
+    const bounds = circuitBounds(shown, shapeOf);
+    if (!bounds) {
       setView({ x: size.width / 2, y: size.height / 2, zoom: 1 });
       return;
     }
-    const xs = points.map((p) => p.x);
-    const ys = points.map((p) => p.y);
-    const [minX, maxX, minY, maxY] = [Math.min(...xs) - 4, Math.max(...xs) + 4, Math.min(...ys) - 4, Math.max(...ys) + 4];
+    const { minX, maxX, minY, maxY } = bounds;
     const zoom = Math.min(MAX_ZOOM / 2, Math.max(MIN_ZOOM, Math.min(size.width / ((maxX - minX) * STEP_PX), size.height / ((maxY - minY) * STEP_PX))));
     const k = STEP_PX * zoom;
     setView({ zoom, x: size.width / 2 - ((minX + maxX) / 2) * k, y: size.height / 2 + ((minY + maxY) / 2) * k });
@@ -343,7 +340,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   // ─── keys ───
 
   const onKeyDown = (e: ReactKeyboardEvent) => {
-    if (readOnly || (e.target as HTMLElement).closest('input, textarea, select')) return;
+    if (readOnly || (e.target as HTMLElement).closest('input, textarea, select, button, a')) return;
     const mod = e.metaKey || e.ctrlKey;
     const ids = new Set(selection);
     const handled = () => {
@@ -560,6 +557,14 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   const gridStep = k < 6 ? 4 : 1;
   const wirePreview = wire && hover ? [...wire.map((p) => pos(p)), hover] : null;
   const cursor = space || drag?.kind === 'pan' ? 'grab' : tool === 'select' ? 'default' : 'crosshair';
+  const bounds = circuitBounds(shown, shapeOf);
+  const viewport = { x: -v.x / k, y: -v.y / k, width: size.width / k, height: size.height / k };
+  const overview = {
+    minX: Math.min(bounds?.minX ?? viewport.x, viewport.x),
+    maxX: Math.max(bounds?.maxX ?? viewport.x + viewport.width, viewport.x + viewport.width),
+    minY: Math.min(bounds ? -bounds.maxY : viewport.y, viewport.y),
+    maxY: Math.max(bounds ? -bounds.minY : viewport.y + viewport.height, viewport.y + viewport.height)
+  };
 
   return (
     <div
@@ -611,6 +616,33 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
           </>
         )}
       </svg>
+      {prefs.minimap && view && size.width > 0 && size.height > 0 && (
+        <button
+          type="button"
+          className="ckt-minimap"
+          aria-label="Circuit overview; click to move the view"
+          title="Click to centre the view here"
+          onClick={(e) => {
+            const svg = e.currentTarget.querySelector('svg');
+            const matrix = svg?.getScreenCTM();
+            if (!svg || !matrix || !e.detail) { fit(); return; }
+            const point = svg.createSVGPoint();
+            point.x = e.clientX;
+            point.y = e.clientY;
+            const at = point.matrixTransform(matrix.inverse());
+            setView({ ...v, x: size.width / 2 - at.x * k, y: size.height / 2 - at.y * k });
+          }}
+        >
+          <svg viewBox={`${overview.minX} ${overview.minY} ${overview.maxX - overview.minX} ${overview.maxY - overview.minY}`} aria-hidden="true">
+            {shown.elements.map((el) => {
+              if (el.kind === 'node') return <rect key={el.id} x={el.at.x - 2} y={-el.at.y - 2} width={4} height={4} className="ckt-minimap-part" />;
+              const path = el.kind === 'path' ? [pos(el.a), pos(el.b)] : wirePath(el.points.map((p) => pos(p)), el.routes);
+              return <polyline key={el.id} points={path.map((p) => `${p.x},${-p.y}`).join(' ')} className="ckt-minimap-wire" />;
+            })}
+            <rect {...viewport} className="ckt-minimap-view" />
+          </svg>
+        </button>
+      )}
       <div className="ckt-zoom">
         <button type="button" className="icon-btn" aria-label="Zoom out" title="Zoom out" onClick={() => zoomAt(1 / 1.25)}>
           <Icon name="minus.magnifyingglass" />
@@ -622,6 +654,29 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
         <button type="button" className="icon-btn" aria-label="Fit the circuit in view" title="Fit the circuit in view" onClick={fit}>
           <Icon name="arrow.up.left.and.arrow.down.right" />
         </button>
+        {prefs.onPrefs && (
+          <button
+            type="button"
+            className={`icon-btn${prefs.minimap ? ' active' : ''}`}
+            aria-label="Minimap"
+            aria-pressed={prefs.minimap}
+            title={prefs.minimap ? 'Hide the minimap' : 'Show the minimap'}
+            onClick={() => prefs.onPrefs?.({ minimap: !prefs.minimap, dark: prefs.dark })}
+          >
+            <Icon name="square.grid.2x2" />
+          </button>
+        )}
+        {prefs.onPrefs && (
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label={prefs.dark ? 'Light canvas' : 'Dark canvas'}
+            title={prefs.dark ? 'Light canvas' : 'Dark canvas'}
+            onClick={() => prefs.onPrefs?.({ minimap: prefs.minimap, dark: !prefs.dark })}
+          >
+            <Icon name={prefs.dark ? 'sun.max' : 'moon'} />
+          </button>
+        )}
       </div>
       {(loading || error) && (
         <div className={`ckt-status ${error ? 'error' : ''}`} role="status">

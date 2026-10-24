@@ -1,8 +1,9 @@
 // Self-check for the circuit mode's export, snapping and junctions. Run:
 // npx esbuild apps/frontend/src/diagram/modes/circuitikz/circuitikz.check.ts --bundle --platform=node --log-level=warning | node
+import { symbolGeometry, symbolRequest } from './symbolGeometry';
 import { circuitCode, readStyle, symbolOptions } from './code';
-import { attach, detach, moveBy, paste, remove } from './edit';
-import { PT_PER_GRID, findJunctions, locator, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
+import { attach, detach, moveBy, newPathPart, paste, remove } from './edit';
+import { PT_PER_GRID, circuitBounds, findJunctions, locator, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
 import type { CircuitModel, Shape } from './model';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -59,6 +60,15 @@ eq(circuitCode(circuit, {}).packages, ['circuitikz'], 'no siunitx when it is off
 eq(circuitCode(circuit, {}).body.includes('a={$4.7<\\kilo\\ohm>$}'), true, 'a value is maths when siunitx is off');
 eq(circuitCode({ elements: [], junctions: [] }, { preset: 'european' }).body, '\\begin{circuitikz}[european]\n\\end{circuitikz}', 'an empty circuit');
 
+const repeatedNames: CircuitModel = {
+  elements: [
+    { id: 'u1', kind: 'node', type: 'op-amp', name: 'U1', at: { x: 0, y: 0 } },
+    { id: 'u2', kind: 'node', type: 'op-amp', name: 'U1', at: { x: 20, y: 0 } },
+    { id: 'w', kind: 'wire', points: [{ part: 'u1', pin: 'out' }, { part: 'u2', pin: '+' }], routes: ['--'] }
+  ], junctions: []
+};
+eq(circuitCode(repeatedNames, {}).body.includes('\\draw (U1.out) -- (U1_2.+);'), true, 'repeated names keep each wire on its own part');
+
 // ─── geometry ───
 
 // measured from circuitikz: op amp's - input at (-33.85857pt, 13.94173pt); with rotate=90, xscale=-1 it lands at (-13.94173pt, 33.85857pt)
@@ -81,6 +91,21 @@ const flipped: CircuitModel = { elements: [{ id: 'p', kind: 'path', type: 'poten
 near(locator(flipped, shapeOf).pos({ part: 'p', pin: 'wiper' }), { x: 4, y: 4 }, 'mirror flips an extra pin across an upright part, size scales it');
 
 eq(wirePath([{ x: 0, y: 0 }, { x: 4, y: 2 }, { x: 6, y: 6 }, { x: 8, y: 6 }], ['-|', '|-', '-|']), [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 2 }, { x: 4, y: 6 }, { x: 6, y: 6 }, { x: 8, y: 6 }], 'bends of -| and |-, none on a straight run');
+
+// The API supplies start/end at the glyph edges, not TikZ's internal left/right anchors.
+eq(symbolRequest({ type: 'resistor', options: [] }).pins, [], 'path endpoints need no extra anchor requests');
+const measured = symbolGeometry({ width: 50, origin: { x: 25, y: 2 }, pins: [{ name: 'start', x: -20, y: 0 }, { name: 'end', x: 20, y: 0 }, { name: 'wiper', x: 0, y: 7 }] }, 'potentiometer');
+near(measured.middle, { x: 0, y: 0 }, 'glyph centred between its actual endpoints');
+eq(measured.shape.length, 40 / PT_PER_GRID, 'actual glyph length, instead of the stand-in');
+near(measured.shape.pins.wiper, { x: 0, y: 7 / PT_PER_GRID }, 'extra pin measured from the glyph centre');
+const missingPin = symbolGeometry({ width: 10, origin: { x: 5, y: 5 }, pins: [{ name: 'out', x: 7, y: 0 }] }, 'op-amp');
+near(missingPin.shape.pins.out, { x: 7 / PT_PER_GRID, y: 0 }, 'reported pin keeps its measured geometry');
+eq(!!missingPin.shape.pins['+'], true, 'a missing reported pin stays reachable until its symbol can be measured');
+
+eq(circuitBounds({ elements: [], junctions: [] }, shapeOf), null, 'an empty overview has no drawing bounds');
+eq(circuitBounds({ elements: [{ id: 'w', kind: 'wire', points: [{ x: -8, y: -2 }, { x: 12, y: 4 }], routes: ['--'] }], junctions: [] }, shapeOf), { minX: -12, maxX: 16, minY: -6, maxY: 8 }, 'overview includes negative coordinates with padding');
+const wide = circuitBounds({ elements: [{ id: 'u', kind: 'node', type: 'op-amp', at: { x: 0, y: 0 } }], junctions: [] }, () => ({ pins: { out: { x: 12, y: 0 } } }));
+eq(wide?.maxX, 16, 'Fit includes a measured pin beyond a stand-in box');
 
 // ─── snapping ───
 
@@ -130,5 +155,11 @@ eq(moveBy(detach(held, new Set(['r']), shapeOf), new Set(['r']), { x: 1, y: 0 })
 eq((remove(held, new Set(['u']), shapeOf).elements[1] as { points: unknown[] }).points[0], { x: -4, y: 2 }, 'deleting a part leaves what held it where it was');
 const pasted = paste(held, held.elements.filter((el) => el.id !== 'w'), { x: 2, y: -2 });
 eq(pasted.model.elements.slice(3).map((el) => (el.kind === 'node' ? el.name : el.kind === 'path' ? el.a : null)), ['U2', { part: pasted.ids[0], pin: 'out' }], 'a pasted copy gets the next name and keeps hold of its own copies');
+
+const deletedLabel: CircuitModel = { elements: [
+  { id: 'r1', kind: 'path', type: 'resistor', a: { x: 0, y: 0 }, b: { x: 8, y: 0 }, label: { text: 'R_1' } },
+  { id: 'r3', kind: 'path', type: 'resistor', a: { x: 0, y: 4 }, b: { x: 8, y: 4 }, label: { text: 'R_3' } }
+], junctions: [] };
+eq(newPathPart(deletedLabel, 'resistor', { x: 0, y: 8 }, { x: 8, y: 8 }).label?.text, 'R_2', 'a replacement gets an unused label after a deletion');
 
 console.log('circuitikz.check: ok');

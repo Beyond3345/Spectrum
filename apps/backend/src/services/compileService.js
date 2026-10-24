@@ -294,7 +294,7 @@ export async function runCompile({ projectId, mainFile, engine = 'pdflatex', com
   try {
     const result = await jobs.run(job, () => compileWithLinks(engine, projectRoot, absMain, mainFile, options));
     // inside the compile, so the project's folder isn't moved from under it either
-    if (checkpoint && result.ok) result.checkpoint = await createCompileCheckpoint(projectRoot);
+    if (checkpoint && result.ok && result.status === 0) result.checkpoint = await createCompileCheckpoint(projectRoot);
     // doc: the document compiled, which a % !TEX root comment may have changed
     return { ...result, doc: mainFile };
   } finally {

@@ -9,7 +9,9 @@ const add = (p: Pt, d: Pt) => ({ x: p.x + d.x, y: p.y + d.y });
 /** A new path part between two ends, labelled with the next number of its letter (R_1, R_2…). */
 export function newPathPart(model: CircuitModel, type: string, a: End, b: End): PathPart {
   const letter = PARTS.get(type)?.defaultLabel;
-  const n = model.elements.filter((el) => el.kind === 'path' && PARTS.get(el.type)?.defaultLabel === letter).length + 1;
+  const labels = new Set(model.elements.flatMap((el) => el.kind === 'path' && el.label ? [el.label.text.replace(/[{}$]/g, '')] : []));
+  let n = 1;
+  while (labels.has(`${letter}_${n}`)) n += 1;
   return { id: newId(model), kind: 'path', type, a, b, ...(letter ? { label: { text: n < 10 ? `${letter}_${n}` : `${letter}_{${n}}` } } : null) };
 }
 

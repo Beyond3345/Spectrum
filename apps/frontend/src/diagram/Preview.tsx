@@ -29,13 +29,13 @@ export async function pdfPageCanvas(pdf: Uint8Array, scaleFor: (width: number, h
   }
 }
 
-export type PreviewState = { state: 'idle' | 'compiling' | 'ok' | 'failed'; pdf?: Uint8Array; errors: CompileError[]; log: string; failure?: string };
+export type PreviewState = { state: 'idle' | 'compiling' | 'ok' | 'failed'; pdf?: Uint8Array; errors: CompileError[]; log: string; failure?: string; source?: string };
 
 /**
  * The compiled diagram at the bottom of the window: the PDF's page fitted to the pane, or why it didn't compile, with
  * Fix with AI. The last good picture stays while a new compile runs.
  */
-export default function Preview({ preview, fixing, onFix, onJump }: { preview: PreviewState; fixing: boolean; onFix(): void; onJump(line: number): void }) {
+export default function Preview({ preview, stale, fixing, onFix, onJump }: { preview: PreviewState; stale: boolean; fixing: boolean; onFix(): void; onJump(line: number): void }) {
   const paneRef = useRef<HTMLDivElement>(null);
   const [image, setImage] = useState<{ url: string; width: number; height: number } | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -79,6 +79,7 @@ export default function Preview({ preview, fixing, onFix, onJump }: { preview: P
             </>
           )}
           {failed ? 'Couldn’t compile' : troubled && `Compiled with ${errors.length === 1 ? 'an error' : `${errors.length} errors`}`}
+          {preview.state === 'ok' && !troubled && stale && 'Source changed'}
         </span>
         <span className="grow" />
         {troubled && (
@@ -113,7 +114,7 @@ export default function Preview({ preview, fixing, onFix, onJump }: { preview: P
         )}
         <div className="diagram-preview-page" ref={paneRef}>
           {image ? (
-            <img src={image.url} alt="The compiled diagram" style={{ width: image.width, height: image.height }} className={preview.state === 'compiling' || failed ? 'stale' : ''} />
+            <img src={image.url} alt="The compiled diagram" style={{ width: image.width, height: image.height }} className={preview.state === 'compiling' || failed || stale ? 'stale' : ''} />
           ) : (
             preview.state !== 'compiling' && !failed && <span className="diagram-hint">The compiled diagram shows here.</span>
           )}

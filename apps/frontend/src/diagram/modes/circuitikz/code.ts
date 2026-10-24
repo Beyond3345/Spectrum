@@ -90,7 +90,17 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
     if (el.kind === 'path') [el.a, el.b].forEach(note);
   }
   model.junctions.forEach(note);
-  const nameOf = (el: Element) => safeName((el.kind !== 'wire' && el.name) || el.id);
+  // Wires bind by element id; repeated or sanitised user names must not redirect them to another part.
+  const names = new Map<string, string>();
+  const takenNames = new Set<string>();
+  for (const el of model.elements.filter((el) => el.kind !== 'wire')) {
+    const base = safeName(el.name || el.id);
+    let name = base;
+    for (let n = 2; takenNames.has(name); n += 1) name = `${base}_${n}`;
+    takenNames.add(name);
+    names.set(el.id, name);
+  }
+  const nameOf = (el: Element) => names.get(el.id) || safeName(el.id);
 
   const at = (end: End, depth = 0): string => {
     if (isPoint(end)) return `(${num(end.x * GRID_CM)},${num(end.y * GRID_CM)})`;

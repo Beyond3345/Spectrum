@@ -4,6 +4,7 @@
 
 .ckt-canvas {
   --ckt-ink: var(--text);
+  --ckt-muted: var(--text-secondary);
   --ckt-paper: var(--bg-editor);
   --ckt-grid: var(--border-strong);
   --ckt-glyph-filter: none;
@@ -31,15 +32,18 @@
   }
 }
 
-[data-canvas='light'] .ckt-canvas {
+/* :root, so the composer's choice outweighs the app's theme above */
+:root [data-canvas='light'] .ckt-canvas {
   --ckt-ink: #111;
+  --ckt-muted: rgba(0, 0, 0, 0.55);
   --ckt-paper: #fff;
   --ckt-grid: rgba(0, 0, 0, 0.18);
   --ckt-glyph-filter: none;
 }
 
-[data-canvas='dark'] .ckt-canvas {
+:root [data-canvas='dark'] .ckt-canvas {
   --ckt-ink: #ececec;
+  --ckt-muted: rgba(255, 255, 255, 0.6);
   --ckt-paper: #1b1b1d;
   --ckt-grid: rgba(255, 255, 255, 0.2);
   --ckt-glyph-filter: invert(1);
@@ -109,7 +113,7 @@
 
 .ckt-outline {
   fill: color-mix(in srgb, var(--ckt-ink) 5%, transparent);
-  stroke: var(--text-tertiary);
+  stroke: var(--ckt-muted);
   stroke-width: 1;
   stroke-dasharray: 3 3;
 }
@@ -122,24 +126,24 @@
 }
 
 .ckt-name {
-  fill: var(--text-tertiary);
+  fill: var(--ckt-muted);
   font-family: var(--font-ui);
   font-style: normal;
   font-size: 10px;
 }
 
 .ckt-sketch line {
-  stroke: var(--text-secondary);
+  stroke: var(--ckt-muted);
   stroke-width: 1;
 }
 
 .ckt-sketch polygon,
 .ckt-arrowhead {
-  fill: var(--text-secondary);
+  fill: var(--ckt-muted);
 }
 
 .ckt-sketch-text {
-  fill: var(--text-secondary);
+  fill: var(--ckt-muted);
 }
 
 .ckt-pole {
@@ -197,6 +201,29 @@
   background: var(--bg-elevated);
   box-shadow: var(--shadow-sm);
 }
+
+.ckt-minimap {
+  position: absolute;
+  right: 10px;
+  bottom: 54px;
+  width: min(180px, 40%);
+  height: 110px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--ckt-paper);
+  box-shadow: var(--shadow-sm);
+  cursor: crosshair;
+}
+
+.ckt-minimap svg {
+  width: 100%;
+  height: 100%;
+}
+
+.ckt-minimap-part { fill: var(--ckt-muted); }
+.ckt-minimap-wire { fill: none; stroke: var(--ckt-ink); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.ckt-minimap-view { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1; vector-effect: non-scaling-stroke; }
 
 .ckt-zoom-level {
   min-width: 42px;

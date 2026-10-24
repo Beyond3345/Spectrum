@@ -17,7 +17,8 @@ export const hasDrawing = (text: string) => new RegExp(MARK_LINE.source, 'm').te
 /** The standalone document a TikZ diagram compiles as, and \includestandalone takes the picture from. */
 export function tikzDocument({ body, packages, libraries }: DiagramCode) {
   return [
-    '\\documentclass[tikz,border=2pt]{standalone}',
+    // Crop the whole picture; the tikz option only captures tikzpicture, missing wrapper environments such as circuitikz.
+    '\\documentclass[border=2pt]{standalone}',
     ...packages.map((name) => `\\usepackage{${name}}`),
     ...(libraries.length ? [`\\usetikzlibrary{${libraries.join(',')}}`] : []),
     '\\begin{document}',
@@ -68,7 +69,8 @@ export async function readDiagramFile(text: string): Promise<{ code: string; dia
   let diagram: DiagramFile | null = null;
   try {
     const parsed = JSON.parse(fromBase64(last[1]));
-    if (parsed && parsed.version === 1 && typeof parsed.language === 'string') diagram = parsed;
+    const object = (value: unknown) => !!value && typeof value === 'object' && !Array.isArray(value);
+    if (parsed && parsed.version === 1 && ['tikz', 'mermaid', 'typst'].includes(parsed.language) && object(parsed.style) && object(parsed.model)) diagram = parsed;
   } catch {
     // a damaged line: the file opens as code
   }

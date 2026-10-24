@@ -29,8 +29,8 @@ export const PARTS = new Map(CATALOGUE.map((part) => [part.id, part]));
 
 /** one grid step, 0.25 cm */
 export const GRID_CM = 0.25;
-/** TeX points in a grid step */
-export const PT_PER_GRID = (GRID_CM / 2.54) * 72.27;
+/** PDF points (72 an inch, as the symbol route and pdf.js measure) in a grid step */
+export const PT_PER_GRID = (GRID_CM / 2.54) * 72;
 
 export interface Pt {
   x: number;
@@ -305,4 +305,14 @@ export function newId(model: CircuitModel) {
   do counter += 1;
   while (ids.has(`e${counter}`));
   return `e${counter}`;
+}
+
+/** The drawing's extent for Fit and the overview, with room for symbols and labels. */
+export function circuitBounds(model: CircuitModel, shapeOf: ShapeOf) {
+  const { pos } = locator(model, shapeOf);
+  const points = model.elements.flatMap((el): Pt[] => el.kind === 'node'
+    ? [{ x: el.at.x - 5, y: el.at.y - 5 }, { x: el.at.x + 5, y: el.at.y + 5 }, ...pinsOfElement(el, shapeOf, pos).map((pin) => pin.at)]
+    : el.kind === 'path' ? [pos(el.a), pos(el.b)] : el.points.map((point) => pos(point)));
+  if (!points.length) return null;
+  return { minX: Math.min(...points.map((p) => p.x)) - 4, maxX: Math.max(...points.map((p) => p.x)) + 4, minY: Math.min(...points.map((p) => p.y)) - 4, maxY: Math.max(...points.map((p) => p.y)) + 4 };
 }

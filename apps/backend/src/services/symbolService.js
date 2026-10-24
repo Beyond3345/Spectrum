@@ -39,7 +39,7 @@ const PREAMBLE = [
   '\\begin{document}'
 ];
 
-const text = (value, max) => typeof value === 'string' && value.length <= max && SAFE.test(value);
+const text = (value, max) => typeof value === 'string' && value.length <= max && SAFE.test(value) && !value.includes('^^');
 const names = (value) => value === undefined || (Array.isArray(value) && value.length <= 50 && value.every((v) => text(v, 200) && v.trim()));
 
 /** Why a symbols request can't be drawn, or '' when it can. */

@@ -4,7 +4,11 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { CATALOGUE, PARTS, PT_PER_GRID, placeholderShape, variantKey } from './model';
+import { diagramSymbols } from '../../../api/client';
+import type { SymbolPage } from '../../../api/client';
+import { loadSettings } from '../../../app/settings';
+import { CATALOGUE, PARTS, variantKey } from './model';
+import { symbolGeometry, symbolRequest } from './symbolGeometry';
 import type { Pt, Shape } from './model';
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -13,53 +17,22 @@ GlobalWorkerOptions.workerSrc = pdfWorker;
 export interface CircuitSymbol {
   /** PNG data URL */
   image: string;
-  /** the page's size, in pt */
+  /** the page's size, in PDF points */
   width: number;
   height: number;
-  /** the reference point on the page, in pt from its top left corner (y down) */
+  /** the reference point on the page, in PDF points from its top left corner (y down) */
   origin: Pt;
-  /** a path part's symbol middle, between its left and right anchors, in pt from the reference point (y up); 0,0 for a node */
+  /** a path part's symbol middle, between its left and right anchors, in PDF points from the reference point (y up); 0,0 for a node */
   middle: Pt;
   shape: Shape;
 }
 
-interface SymbolPage {
-  id: string;
-  page: number;
-  width: number;
-  height: number;
-  origin: Pt;
-  pins: { name: string; x: number; y: number }[];
-}
-
-/** pixels per pt in the stored images: sharp up to about four times zoom */
+/** pixels per PDF point in the stored images: sharp up to about four times zoom */
 const RENDER_SCALE = 6;
 
 export interface Variant {
   type: string;
   options: string[];
-}
-
-/** One request part. `pins` names the anchors to report (an addition to the route's contract: a path part's left and right ends and its extra pins, or a node's pins). */
-function requestPart({ type, options }: Variant) {
-  const part = PARTS.get(type)!;
-  const pins = part.kind === 'path' ? ['left', 'right', ...(part.pins || [])] : part.pins || [];
-  return { id: variantKey(type, options), tikz: part.tikz, kind: part.kind, ...(options.length ? { options: [...options].sort() } : null), pins };
-}
-
-function toSymbol(page: SymbolPage, image: string, type: string): CircuitSymbol {
-  const part = PARTS.get(type);
-  const pins = Object.fromEntries(page.pins.map((pin) => [pin.name, { x: pin.x, y: pin.y }]));
-  const grid = (p: Pt) => ({ x: p.x / PT_PER_GRID, y: p.y / PT_PER_GRID });
-  const base = { image, width: page.width, height: page.height, origin: page.origin };
-  // a pin the generator didn't report keeps its stand-in place, so wires can still reach it by name
-  if (part?.kind !== 'path') return { ...base, middle: { x: 0, y: 0 }, shape: { pins: { ...placeholderShape(type).pins, ...Object.fromEntries(Object.entries(pins).map(([name, p]) => [name, grid(p)])) } } };
-  const { left, right } = pins;
-  if (!left || !right) return { ...base, middle: { x: page.width / 2 - page.origin.x, y: 0 }, shape: placeholderShape(type) };
-  // the symbol is drawn from left to right along x, so its extra pins are already in the part's own frame
-  const middle = { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 };
-  const extras = (part.pins || []).filter((name) => pins[name]).map((name) => [name, grid({ x: pins[name].x - middle.x, y: pins[name].y - middle.y })]);
-  return { ...base, middle, shape: { length: Math.abs(right.x - left.x) / PT_PER_GRID, pins: Object.fromEntries(extras) } };
 }
 
 async function renderPages(pdfBase64: string, pages: SymbolPage[]) {
@@ -150,20 +123,27 @@ async function load(ctikzOptions: string, variants: Variant[]) {
   const keys = variants.map((v) => variantKey(v.type, v.options));
   keys.forEach((k) => entry.loading.add(k));
   changed();
-  const body = { parts: variants.map(requestPart), style: { ctikzOptions } };
+  // the TeX folder chosen in Settings › Engines › LaTeX, as the preview compiles with
+  const body = { parts: variants.map(symbolRequest), style: { ctikzOptions }, texFolder: loadSettings().texFolder || undefined };
   const cacheKey = JSON.stringify(body);
   try {
     let found = await idb<Record<string, CircuitSymbol>>('readonly', (store) => store.get(cacheKey));
     if (!found) {
-      const res = await fetch('/api/diagram/symbols', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: cacheKey });
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; pdf?: string; pages?: SymbolPage[]; error?: string };
-      if (!res.ok || !data.ok || !data.pdf || !data.pages) throw new Error(data.error || 'TeX couldn’t draw the symbols');
+      const data = await diagramSymbols(body);
+      if (!data.ok || !data.pdf || !data.pages) throw new Error(data.error || 'TeX couldn’t draw the symbols');
       const pages = data.pages;
       const images = await renderPages(data.pdf, pages);
       const typeOf = new Map(variants.map((v) => [variantKey(v.type, v.options), v.type]));
-      found = Object.fromEntries(pages.map((page, i) => [page.id, toSymbol(page, images[i], typeOf.get(page.id) || '')]));
+      found = Object.fromEntries(pages.flatMap((page, i) => {
+        if (page.error) { entry.error = page.error; return []; }
+        const geometry = symbolGeometry(page, typeOf.get(page.id) || '');
+        return [[page.id, { image: images[i], width: page.width, height: page.height, origin: page.origin, ...geometry }]];
+      }));
       const toStore = found;
-      void idb('readwrite', (store) => store.put(toStore, cacheKey));
+      if (Object.keys(found).length === keys.length) void idb('readwrite', (store) => store.put(toStore, cacheKey));
+    }
+    for (const k of keys) {
+      if (!(k in found)) { entry.failed.add(k); entry.error ||= 'TeX did not draw every requested symbol.'; }
     }
     for (const [k, symbol] of Object.entries(found)) {
       entry.symbols.set(k, symbol);

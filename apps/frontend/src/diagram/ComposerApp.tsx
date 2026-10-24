@@ -227,9 +227,15 @@ async function openDiagram(projectId: string, path: string): Promise<Loaded> {
   if (/\.mmd$/i.test(path)) {
     // Mermaid's canvas is its code, so what's in the file is the drawing
     const model = { code: diagram ? code : content };
-    return { doc: { diagram: { language: 'mermaid', style: {}, ...diagram, model, version: 1 }, hand: null }, edited: false, hash };
+    return { doc: { diagram: { style: {}, ...diagram, language: 'mermaid', model, version: 1 }, hand: null }, edited: false, hash };
   }
-  if (!diagram || !modeFor(diagram.pkg)) return { doc: { diagram, hand: code, tail: mark ? `${mark}\n` : '' }, edited: false, hash };
+  const mode = diagram?.language === 'tikz' ? modeFor(diagram.pkg) : undefined;
+  try {
+    if (!mode || !diagram) throw new Error('Unsupported drawing');
+    mode.toCode(diagram.model, diagram.style);
+  } catch {
+    return { doc: { diagram: null, hand: code, tail: mark ? `${mark}\n` : '' }, edited: false, hash };
+  }
   return { doc: { diagram, hand: edited ? code : null }, edited, hash };
 }
 
@@ -425,12 +431,14 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
       if (mine === run.current.count) setPreview((p) => ({ ...p, state: p.pdf ? 'ok' : 'idle' }));
       return;
     }
+    if (mine !== run.current.count) return;
+    const source = savedRef.current;
     try {
       const res = await compileProject({ projectId, mainFile: path, engine, compileId, draft: false, fresh: false, texFolder: settings.texFolder || undefined });
       if (mine !== run.current.count || res.stopped) return;
       const log = res.log || '';
       if (res.ok && res.pdf) {
-        setPreview({ state: 'ok', pdf: Uint8Array.from(atob(res.pdf), (c) => c.charCodeAt(0)), errors: parseCompileLog(log), log });
+        setPreview({ state: res.status === 0 ? 'ok' : 'failed', pdf: Uint8Array.from(atob(res.pdf), (c) => c.charCodeAt(0)), errors: parseCompileLog(log), log, source });
       } else {
         setPreview((p) => ({ ...p, state: 'failed', errors: parseCompileLog(log), log, failure: res.error }));
       }
@@ -454,7 +462,7 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
     const hooks = window as Window & { __spectrumFlush?: () => Promise<void> };
     hooks.__spectrumFlush = async () => {
       if (await actions.current.save()) return;
-      await writeFile(projectId, conflictCopyPath(path, '', new Date()), await fileText(), { create: true }).catch(() => undefined);
+      await writeFile(projectId, conflictCopyPath(path, '', new Date()), await fileText(), { create: true });
     };
     // the browser asks before leaving while a save is still to come
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -564,7 +572,7 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
   const exportAs = async (kind: 'pdf' | 'png') => {
     try {
       if (language === 'mermaid') download(await mermaidPng(), `${stemOf(path)}.png`);
-      else if (!preview.pdf) toast('Compile the diagram first.');
+      else if (!preview.pdf || preview.state !== 'ok' || preview.source !== key) toast('Compile the current diagram successfully before exporting.');
       else if (kind === 'pdf') download(new Blob([preview.pdf.slice()], { type: 'application/pdf' }), `${stemOf(path)}.pdf`);
       else {
         // 4 × its size in points: about 290 dpi
@@ -577,6 +585,7 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
   };
 
   const fix = async () => {
+    const source = latest.current.key;
     setFixing(true);
     try {
       const errors = preview.errors.filter((e) => e.severity === 'error').map((e) => `${e.line ? `line ${e.line}: ` : ''}${e.message}`);
@@ -600,6 +609,7 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
       });
       const fixed = (res.suggestion || '').replace(/^\s*```[a-z]*\n|\n```\s*$/g, '');
       if (!res.ok) toast(res.reply || 'The request failed.', { tone: 'error' });
+      else if (latest.current.key !== source) toast('The diagram changed while the fix was being prepared. Your newer edits were kept; request the fix again.');
       else if (!fixed.includes('\\begin{document}')) toast(res.reply || 'No fix was proposed.');
       else {
         setDoc((d) => ({ ...d, hand: fixed }));
@@ -717,8 +727,8 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
             language === 'mermaid'
               ? [{ label: 'PNG image', onSelect: () => exportAs('png') }]
               : [
-                  { label: 'PDF', onSelect: () => exportAs('pdf'), disabled: !preview.pdf },
-                  { label: 'PNG image', onSelect: () => exportAs('png'), disabled: !preview.pdf }
+                  { label: 'PDF', onSelect: () => exportAs('pdf'), disabled: !preview.pdf || preview.state !== 'ok' || preview.source !== key },
+                  { label: 'PNG image', onSelect: () => exportAs('png'), disabled: !preview.pdf || preview.state !== 'ok' || preview.source !== key }
                 ]
           }
         />
@@ -768,10 +778,11 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
           </aside>
         )}
         <div className="diagram-centre">
-          <div className="diagram-stage">
+          {/* the canvas colour, for a canvas that isn't React Flow (circuitikz.css) */}
+          <div className="diagram-stage" data-canvas={prefs.dark ? 'dark' : 'light'}>
             {tab === 'draw' && mode && doc.diagram ? (
               <ReactFlowProvider>
-                <CanvasPrefsContext.Provider value={prefs}>
+                <CanvasPrefsContext.Provider value={{ ...prefs, onPrefs: choosePrefs }}>
                   <mode.Canvas
                     model={doc.diagram.model}
                     onChange={setModel}
@@ -797,9 +808,9 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
               />
             )}
           </div>
-          {language === 'tikz' && <Preview preview={preview} fixing={fixing} onFix={fix} onJump={jumpTo} />}
+          {language === 'tikz' && <Preview preview={preview} stale={preview.source !== key} fixing={fixing} onFix={fix} onJump={jumpTo} />}
         </div>
-        {tab === 'draw' && mode?.Inspector && doc.diagram && (
+        {canEdit && mode?.Inspector && doc.diagram && (
           <aside className="diagram-inspector">
             <mode.Inspector model={doc.diagram.model} onChange={setModel} selection={selection} />
           </aside>

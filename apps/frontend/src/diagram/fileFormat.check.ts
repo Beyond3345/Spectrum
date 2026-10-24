@@ -13,7 +13,7 @@ const code = { body: '\\begin{circuitikz}\n\\draw (0,0) to[R] (2,0);\n\\end{circ
 eq(
   tikzDocument(code),
   [
-    '\\documentclass[tikz,border=2pt]{standalone}',
+    '\\documentclass[border=2pt]{standalone}',
     '\\usepackage{circuitikz}',
     '\\usetikzlibrary{arrows.meta,positioning}',
     '\\begin{document}',
@@ -62,5 +62,12 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
   eq(await readDiagramFile('flowchart LR\n  a --> b\n'), { code: 'flowchart LR\n  a --> b\n', diagram: null, edited: false }, 'no last line');
   const damaged = await readDiagramFile('x\n% spectrum-diagram v1 bm90IGpzb24= 0123456789abcdef\n');
   eq([damaged.code, damaged.diagram, damaged.mark], ['x\n', null, '% spectrum-diagram v1 bm90IGpzb24= 0123456789abcdef'], 'a damaged drawing opens as code, its line kept');
+  for (const invalid of [{ ...circuit, model: null }, { ...circuit, style: [] }, { ...circuit, language: 'unknown' }]) {
+    const file = await diagramFileText(invalid as DiagramFile, code);
+    const opened = await readDiagramFile(file);
+    eq(opened.diagram, null, 'invalid drawing data opens as code');
+    eq(opened.code, tikzDocument(code), 'invalid drawing keeps its source');
+    eq(!!opened.mark, true, 'invalid drawing keeps its marker');
+  }
   console.log('fileFormat.check: ok');
 })();
