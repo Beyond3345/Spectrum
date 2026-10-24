@@ -127,14 +127,13 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
     }
   };
 
-  const flags = [...(notes?.labels.values() ?? [])];
-  const twice = flags.filter((flag) => flag === 'Duplicate').length;
+  const unused = [...(notes?.labels.values() ?? [])].filter((flag) => flag === 'Unused').length;
   const problems = (
     [
       [notes?.unresolved ?? 0, 'reference', 'to no label'],
       [notes?.missing.size ?? 0, 'citation', 'not in the .bib'],
-      [twice, 'label', 'defined twice'],
-      [flags.length - twice, 'label', 'never referred to']
+      [notes?.twice.size ?? 0, 'label', 'defined more than once'],
+      [unused, 'label', 'never referred to']
     ] as [number, string, string][]
   )
     .filter(([n]) => n)

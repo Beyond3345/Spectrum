@@ -253,24 +253,27 @@ export function scanInsights(files: { path: string; text: string }[], doc?: stri
 }
 
 /**
- * What TexLab says of the labels and citations in files: labels never referred to or defined twice (by file:line), the
- * cited keys no .bib has, and how many references name no label.
+ * What TexLab says of the labels and citations in files: labels never referred to or defined twice (by file:line, and
+ * the names defined twice), the cited keys no .bib has, and how many references name no label.
  */
 export function texlabNotes(found: Record<string, TexlabDiagnostic[]>, files: { path: string; text: string }[]) {
   const labels = new Map<string, 'Unused' | 'Duplicate'>();
+  const twice = new Set<string>();
   const missing = new Set<string>();
   let unresolved = 0;
   for (const { path, text } of files) {
     const lines = text.split('\n');
     for (const d of found[path] ?? []) {
+      const token = d.endLine === d.line ? (lines[d.line - 1]?.slice(d.col - 1, d.endCol - 1).trim() ?? '') : '';
       if (d.code === 'unused-label') labels.set(`${path}:${d.line}`, 'Unused');
-      else if (d.code === 'duplicate-label') labels.set(`${path}:${d.line}`, 'Duplicate');
-      else if (d.code === 'undefined-label') unresolved += 1;
-      else if (d.code === 'undefined-citation' && d.endLine === d.line) missing.add(lines[d.line - 1]?.slice(d.col - 1, d.endCol - 1).trim() ?? '');
+      else if (d.code === 'duplicate-label') {
+        labels.set(`${path}:${d.line}`, 'Duplicate');
+        if (token) twice.add(token);
+      } else if (d.code === 'undefined-label') unresolved += 1;
+      else if (d.code === 'undefined-citation' && token) missing.add(token);
     }
   }
-  missing.delete('');
-  return { labels, missing, unresolved };
+  return { labels, twice, missing, unresolved };
 }
 
 const TOC_LEVELS = ['chapter', 'section', 'subsection', 'subsubsection'];

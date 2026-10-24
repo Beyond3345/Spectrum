@@ -165,7 +165,7 @@ eq(headingNumbers(numbered.slice(1), toc).size, 0, 'none when the source and the
 const d = (line: number, col: number, endCol: number, code: string) => ({ line, col, endLine: line, endCol, severity: 'warning' as const, message: '', code, source: 'texlab' as const });
 const notes = texlabNotes(
   {
-    'main.tex': [d(2, 8, 17, 'unused-label'), d(3, 11, 17, 'undefined-citation'), d(3, 21, 27, 'undefined-label'), d(4, 8, 13, 'duplicate-label'), d(5, 8, 13, 'duplicate-label')],
+    'main.tex': [d(2, 8, 17, 'unused-label'), d(3, 11, 17, 'undefined-citation'), d(3, 21, 27, 'undefined-label'), d(4, 8, 12, 'duplicate-label'), d(5, 8, 12, 'duplicate-label')],
     'other.tex': [d(1, 1, 5, 'unused-label')]
   },
   [{ path: 'main.tex', text: String.raw`\section{A}
@@ -177,5 +177,6 @@ See \cite{nobody} and \ref{gone}.
 eq([...notes.labels], [['main.tex:2', 'Unused'], ['main.tex:4', 'Duplicate'], ['main.tex:5', 'Duplicate']], 'labels marked by file and line, only in the files read');
 eq([...notes.missing], ['nobody'], 'the undefined citation’s key, from the text at its range');
 eq(notes.unresolved, 1, 'references to no label counted');
+eq([...notes.twice], ['twin'], 'a label defined twice named once');
 
 console.log('insights: all checks passed');
