@@ -262,9 +262,17 @@ export function mergeResults(results, incoming) {
   const out = results.map((r) => ({ ...r }));
   for (const next of incoming) {
     const id = identity(next);
-    const i = out.findIndex((r) => sameWork(identity(r), id));
-    if (i >= 0) out[i] = combine(out[i], next);
-    else {
+    let i = out.findIndex((r) => sameWork(identity(r), id));
+    if (i >= 0) {
+      out[i] = combine(out[i], next);
+      // a record that links two rows (a preprint's arXiv id and the paper's DOI) makes them one work
+      for (let j = out.length - 1; j >= 0; j -= 1) {
+        if (j === i || !sameWork(identity(out[i]), identity(out[j]))) continue;
+        out[i] = combine(out[i], out[j]);
+        out.splice(j, 1);
+        if (j < i) i -= 1;
+      }
+    } else {
       let rid = resultId(next);
       while (out.some((r) => r.id === rid)) rid = crypto.createHash('sha1').update(rid).digest('hex').slice(0, 12);
       out.push({ id: rid, ...next });
@@ -277,13 +285,14 @@ export function mergeResults(results, incoming) {
 export function markInBib(results, index) {
   for (const r of results) {
     const id = identity(r);
-    const found = findDuplicate(index, {
-      doi: id.doi,
-      arxiv: id.arxiv,
-      title: id.title,
-      year: r.year || '',
-      firstAuthor: normaliseTitle(r.authors?.[0] || '').split(' ').at(-1) || ''
-    });
+    const firstAuthor = normaliseTitle(r.authors?.[0] || '').split(' ').at(-1) || '';
+    const found =
+      findDuplicate(index, { doi: id.doi, arxiv: id.arxiv, title: id.title, year: r.year || '', firstAuthor }) ||
+      // a preprint whose published version the .bib has without a DOI or eprint, a year or more later: the same title
+      // and first author, within the years sameWork allows a preprint
+      (id.title && firstAuthor && id.year
+        ? index.find((e) => e.title === id.title && e.firstAuthor === firstAuthor && e.year && Math.abs(Number(e.year) - id.year) <= 3 && !(e.doi && id.doi && e.doi !== id.doi))
+        : null);
     if (found) r.inBib = found.key;
     else delete r.inBib;
   }

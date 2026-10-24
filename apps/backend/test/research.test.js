@@ -21,7 +21,8 @@ delete process.env.SPECTRUM_LLM_API_KEY;
 const { default: Fastify } = await import('fastify');
 const { registerResearchRoutes } = await import('../src/routes/research.js');
 const { createProject } = await import('../src/services/projectService.js');
-const { keywords, mergeResults, parsePubmed } = await import('../src/services/researchService.js');
+const { keywords, markInBib, mergeResults, parsePubmed } = await import('../src/services/researchService.js');
+const { buildBibIndex } = await import('../src/services/referenceService.js');
 const { searchArxiv } = await import('../src/services/arxivService.js');
 
 const app = Fastify();
@@ -471,4 +472,25 @@ test('papers that share a name get a note and a PDF each, which keep their names
   } finally {
     delete process.env.SPECTRUM_PDF_TIMEOUT_MS;
   }
+});
+
+test('a preprint is In .bib under its published version’s key, and a record linking two rows makes them one', () => {
+  const index = buildBibIndex([{ file: 'refs.bib', text: '@inproceedings{Vaswani2018,\n  title = {Attention Is All You Need},\n  author = {Vaswani, Ashish},\n  year = {2018}\n}\n' }]);
+  const marked = markInBib(
+    [
+      { id: 'pre', title: 'Attention is all you need', authors: ['Ashish Vaswani'], year: '2017', arxiv: '1706.03762', preprint: true },
+      { id: 'other', title: 'Attention is all you need', authors: ['Grace Hopper'], year: '2017' }
+    ],
+    index
+  );
+  assert.deepEqual(marked.map((r) => r.inBib), ['Vaswani2018', undefined]);
+
+  const rows = mergeResults(
+    mergeResults([], [
+      { title: 'Widget scaling laws', arxiv: '2001.00001', year: '2020', preprint: true, sources: ['arxiv'] },
+      { title: 'Widget scaling laws revisited', doi: '10.1000/w', year: '2021', preprint: false, sources: ['crossref'] }
+    ]).map((r, i) => (i === 1 ? { ...r, decision: 'keep' } : r)),
+    [{ title: 'Widget scaling laws', doi: '10.1000/w', arxiv: '2001.00001', year: '2021', sources: ['semanticscholar'] }]
+  );
+  assert.deepEqual(rows.map((r) => [r.doi, r.arxiv, r.decision, r.sources]), [['10.1000/w', '2001.00001', 'keep', ['arxiv', 'semanticscholar', 'crossref']]]);
 });
