@@ -321,14 +321,16 @@ export interface CompileOptions {
 /** .spectrum/settings.json, which travels with the project (1.10.4 ignores it) */
 export interface ProjectSettings {
   compile?: CompileOptions;
+  /** skills the project turns on or off, whatever this computer has */
+  skills?: { on: string[]; off: string[] };
 }
 
 export function getProjectSettings(id: string) {
   return request<{ settings: ProjectSettings }>(`/api/projects/${id}/settings`);
 }
 
-/** A key set to null is removed, so the app's default applies again. */
-export function updateProjectSettings(id: string, patch: { compile?: { [K in keyof CompileOptions]?: CompileOptions[K] | null } }) {
+/** A compile key set to null is removed, so the app's default applies again; skills replaces the project's choices (null: none). */
+export function updateProjectSettings(id: string, patch: { compile?: { [K in keyof CompileOptions]?: CompileOptions[K] | null }; skills?: { on?: string[]; off?: string[] } | null }) {
   return request<{ settings: ProjectSettings }>(`/api/projects/${id}/settings`, json('PATCH', patch));
 }
 
@@ -1272,3 +1274,28 @@ export const setLocalAgentOption = (id: string, configId: string, value: string)
 export const getLocalAgentChanges = (id: string) => request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/changes`);
 export const recoverLocalAgentApply = (id: string, recoveryId: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/recover`, json('POST', { recoveryId }));
 export const reviewLocalAgentChanges = (id: string, action: 'apply' | 'reject', changes: AgentChange[]) => request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/review`, json('POST', { action, paths: changes.map((c) => c.path), expected: Object.fromEntries(changes.map((c) => [c.path, c.afterHash])) }));
+
+// ─── Skills ───
+/**
+ * enabled: on for this computer; project: the project's own choice, when listed for one; active: on in that project.
+ * licence and author come from the skill (the bundled ones' from the shipped list).
+ */
+export interface Skill {
+  id: string; name: string; description: string; author: string; licence: string; version: string;
+  source: 'bundled' | 'own'; files: number; compatibility?: string; enabled: boolean; project?: 'on' | 'off'; active: boolean;
+}
+export interface SkillShareTarget { agent: 'agents' | 'claude'; path: string; exists: boolean; linked: boolean }
+export const listSkills = (projectId?: string) => request<{ ok: boolean; skills: Skill[] }>(`/api/skills${projectId ? `?project=${encodeURIComponent(projectId)}` : ''}`);
+export const setSkillEnabled = (id: string, enabled: boolean) => request<{ ok: boolean }>(`/api/skills/${id}`, json('PATCH', { enabled }));
+/** name: a title for it; the id is its folder's and SKILL.md's name */
+export const createSkill = (skill: { id: string; name?: string; description: string; body?: string }) => request<{ ok: boolean; skill: Skill }>('/api/skills', json('POST', skill));
+/** A copy of a skill's folder (regular files only) as one of the user's own. */
+export const importSkill = (folder: string) => request<{ ok: boolean; skill: Skill }>('/api/skills/import', json('POST', { path: folder }));
+export const duplicateSkill = (id: string) => request<{ ok: boolean; skill: Skill }>(`/api/skills/${id}/duplicate`, json('POST', {}));
+export const deleteSkill = (id: string) => request<{ ok: boolean }>(`/api/skills/${id}`, { method: 'DELETE' });
+export const listSkillFiles = (id: string) => request<{ ok: boolean; files: { path: string; size: number }[] }>(`/api/skills/${id}/files`);
+export const readSkillFile = (id: string, file: string) => request<{ ok: boolean; content: string }>(`/api/skills/${id}/file?path=${encodeURIComponent(file)}`);
+/** The user's own skills only. */
+export const writeSkillFile = (id: string, file: string, content: string) => request<{ ok: boolean }>(`/api/skills/${id}/file?path=${encodeURIComponent(file)}`, json('PUT', { content }));
+export const getSkillSharing = () => request<{ ok: boolean; enabled: boolean; targets: SkillShareTarget[] }>('/api/skills/share');
+export const setSkillSharing = (enabled: boolean) => request<{ ok: boolean; enabled: boolean; targets: SkillShareTarget[] }>('/api/skills/share', json('PUT', { enabled }));
