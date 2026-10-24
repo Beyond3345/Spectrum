@@ -46,6 +46,8 @@ const sizeOf = (event) => eventBytes.get(event) ?? JSON.stringify(event).length;
 function joined(last, type, data) {
   if (type !== 'update' || last?.type !== 'update' || last.data?.sessionUpdate !== data?.sessionUpdate) return null;
   if (CHUNKS.includes(data.sessionUpdate)) {
+    // a message past half the cap goes on in a stored event of its own, which the cap can shed in turn
+    if (sizeOf(last) > MAX_EVENT_BYTES / 2) return null;
     if (last.data.content?.type !== 'text' || data.content?.type !== 'text' || (last.data.messageId ?? null) !== (data.messageId ?? null)) return null;
     return { ...last.data, content: { ...last.data.content, text: last.data.content.text + data.content.text } };
   }
@@ -61,7 +63,8 @@ const emit = (r, type, data) => {
   const whole = joined(last, type, data);
   if (whole) {
     const stored = { ...event, first: last.first ?? last.id, data: whole };
-    eventBytes.set(stored, sizeOf(last) + JSON.stringify(data).length);
+    // a piece adds only its text (as JSON, less the quotes); a tool call's update may replace what it had
+    eventBytes.set(stored, CHUNKS.includes(data.sessionUpdate) ? sizeOf(last) + JSON.stringify(data.content.text).length - 2 : JSON.stringify(stored).length);
     r.eventBytes -= sizeOf(last);
     r.events[r.events.length - 1] = stored;
   } else r.events.push(event);
