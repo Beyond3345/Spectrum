@@ -123,7 +123,7 @@ export async function captureAgentProposal(run) {
   await writeJsonAtomic(path.join(run.dir, 'proposal.json'), Object.fromEntries(Object.entries(files).map(([rel, bytes]) => [rel, fileHash(bytes)])));
 }
 
-async function readCurrent(root, rel) {
+export async function readCurrent(root, rel) {
   const abs = safeJoin(root, rel);
   try {
     const stat = await fs.lstat(abs);
@@ -150,7 +150,7 @@ export async function applyWorkspaceChanges(run, selected, expected) {
       proposed = mergeText(original, current, proposed);
       if (proposed === null) throw new Error(`“${rel}” has overlapping or binary changes. Keep your work and review this conflict separately.`);
     }
-    writes.push({ rel, before: current, after: proposed });
+    writes.push({ rel, before: current, after: proposed, merged: fileHash(proposed) !== change.afterHash });
   }
   // A durable, complete backup is independent of the version service's skipped-file policy.
   const transaction = path.join(run.dir, `apply-${crypto.randomUUID()}`);
@@ -179,7 +179,28 @@ export async function applyWorkspaceChanges(run, selected, expected) {
     await writeJsonAtomic(path.join(transaction, 'journal.json'), journal);
     throw new Error(`${err.message} Recovery copies are saved in ${transaction}.`);
   }
-  return selected;
+  // what each file now holds, which may be the proposal merged with the user's own edits
+  return writes.map(({ rel, after, merged }) => ({ path: rel, bytes: after, merged }));
+}
+
+/**
+ * bytes (null: no file) become rel's baseline and proposal once the user applied or rejected its change, so the change
+ * shows no more and the agent's next one to the file is measured from there. writeDraft puts them in the agent's copy
+ * first, when they differ from what it holds; only isolation may write there.
+ */
+export async function rebaseChange(run, rel, bytes, writeDraft) {
+  const manifest = async (name) => Object.assign(Object.create(null), JSON.parse(await fs.readFile(path.join(run.dir, name), 'utf8')));
+  const proposal = await manifest('proposal.json');
+  if ((proposal[rel] ?? null) !== fileHash(bytes)) await writeDraft(bytes);
+  for (const folder of ['proposal', 'baseline']) {
+    const file = safeJoin(path.join(run.dir, folder), rel);
+    if (bytes === null) await fs.rm(file, { force: true });
+    else await writeFileAtomic(file, bytes);
+    const hashes = await manifest(`${folder}.json`);
+    if (bytes === null) delete hashes[rel];
+    else hashes[rel] = fileHash(bytes);
+    await writeJsonAtomic(path.join(run.dir, `${folder}.json`), hashes);
+  }
 }
 
 export async function agentRecoveries(run) {

@@ -1242,7 +1242,12 @@ export interface LocalAgent {
   keyEnv: string; keyEnvs: string[];
   url: string; note?: string; unavailable?: string; experimental?: boolean;
 }
-export interface AgentEvent { id: number; type: string; data: any; at: string }
+/** first: a stored event that joins streamed pieces names its first piece's id, and replaces the pieces first..id */
+export interface AgentEvent { id: number; type: string; data: any; at: string; first?: number }
+/** A persona's instructions for a local agent; null clears the session's. */
+export interface AgentPersona { name: string; prompt: string }
+/** What the editor sends with a prompt, as ACP resources: todos sends the open to-dos, research a research session's id */
+export interface AgentPromptContext { activePath?: string; selection?: string; log?: string; todos?: boolean; research?: string }
 export interface AgentChange {
   path: string; kind: 'created' | 'modified' | 'deleted'; binary: boolean; beforeHash: string | null;
   afterHash: string | null; size: number; original?: string; proposed?: string;
@@ -1251,15 +1256,16 @@ export interface AgentUserRequest { requestId: string; kind: string; params: any
 export interface LocalAgentSession {
   id: string; projectId: string; agentId: string; mode: 'review' | 'direct'; status: string;
   createdAt: string; updatedAt: string; events: AgentEvent[]; pending?: AgentUserRequest[];
-  recoveries?: { id: string; files: string[] }[];
+  recoveries?: { id: string; files: string[] }[]; persona?: AgentPersona;
 }
 export const listLocalAgents = () => request<{ ok: boolean; agents: LocalAgent[] }>('/api/agents');
 export const configureLocalAgent = (id: string, value: { command: string; args: string[]; runtimePaths: string[]; apiKey?: string; keyEnv?: string }) => request<{ ok: boolean }>(`/api/agents/${id}`, json('PUT', value));
 export const importLocalAgentLogin = (id: string) => request<{ ok: boolean; files: number }>(`/api/agents/${id}/import-login`, json('POST', {}));
 export const listLocalAgentSessions = (projectId: string) => request<{ ok: boolean; sessions: LocalAgentSession[] }>(`/api/agent-sessions?projectId=${encodeURIComponent(projectId)}`);
 export const getLocalAgentSession = (id: string) => request<{ ok: boolean; session: LocalAgentSession }>(`/api/agent-sessions/${id}`);
-export const createLocalAgentSession = (projectId: string, agentId: string, mode: 'review' | 'direct') => request<{ ok: boolean; session: LocalAgentSession }>('/api/agent-sessions', json('POST', { projectId, agentId, mode }));
-export const sendLocalAgentPrompt = (id: string, prompt: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/prompt`, json('POST', { prompt }));
+export const createLocalAgentSession = (projectId: string, agentId: string, mode: 'review' | 'direct', persona?: AgentPersona | null) => request<{ ok: boolean; session: LocalAgentSession }>('/api/agent-sessions', json('POST', { projectId, agentId, mode, persona }));
+/** persona: left out keeps the session's; another one starts a new agent session that hears the conversation so far */
+export const sendLocalAgentPrompt = (id: string, prompt: string, options: { context?: AgentPromptContext; persona?: AgentPersona | null } = {}) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/prompt`, json('POST', { prompt, ...options }));
 export const stopLocalAgentSession = (id: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/stop`, json('POST', {}));
 export const answerLocalAgent = (id: string, requestId: string, answer: unknown) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/answer`, json('POST', { requestId, answer }));
 export const setLocalAgentOption = (id: string, configId: string, value: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/option`, json('POST', { configId, value }));
