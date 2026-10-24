@@ -289,6 +289,14 @@ Your request, modelled on Oleafly's composer but going further: Oleafly only dra
   - **pgfplots:** a plot dialog (functions or data from a file, domain, axes, labels, grid, legend) with a live preview, rather than drawing.
   - **Plain TikZ:** flowcharts and block diagrams: rectangles, rounded boxes, circles, diamonds, text and maths labels, and arrows (straight, right-angled, curved).
   - **tikz-cd:** commutative diagrams on a grid, with objects and labelled arrows.
+- **Circuit logic taken from CircuiTikZ-Designer (rewritten):**
+  - **Catalogue:** each part has options and mutually exclusive option groups. Every option combination is its own variant, with its symbol, reference point, size, pins and label anchor. It starts with about 40 parts and grows through Spectrum's own symbol generator.
+  - **Two-terminal parts** sit between two grid points at any angle. The symbol keeps its size, lead lines fill the gap, and mirror, invert and the size slider are supported.
+  - **Placed parts** turn in 45° and 90° steps and flip.
+  - **Snapping:** every pin of what you drag tests the grid (0.25 cm) and nearby pins, and the nearest wins.
+  - **Export:** one `\draw` or `\node` per element, with the options in circuitikz's order (part, options, mirror, invert, poles, size, name, label, voltage, current).
+  - **Improvements on it:** wires stay attached to pins and follow moved parts, junction dots appear automatically, and nothing loads from the internet, so it works offline.
+  - **Symbols:** Spectrum's own generator compiles each part from your installed circuitikz in your chosen style, then reads back the pin positions. Voltage and current arrows are drawn approximately on the canvas, and the compiled preview shows them exactly.
 - **Style menu:** circuit symbols **American by default (your choice)** or European, with overrides (inductor style, voltage direction convention, siunitx values, diode fill, label placement) and a size slider. The style is kept inside the diagram, so your document's preamble only needs a plain `\usepackage{circuitikz}` and never clashes.
 - **Draw and Code tabs:** the canvas writes clean TikZ (one `\draw` per wire or part, plain coordinates). The Code tab shows it and can be edited; editing the code by hand detaches the drawing ("Redraw from the canvas" replaces your edits; "Keep as code" leaves them). Spectrum doesn't try to read arbitrary hand-written TikZ back into a drawing.
 - **Canvas:** grid snapping, pan and zoom, minimap, undo and redo, copy and paste, rotate and mirror, delete, and a light or dark canvas. Symbols on the canvas are drawn by your own circuitikz in your chosen style (rendered once and cached), so they always match the PDF.
