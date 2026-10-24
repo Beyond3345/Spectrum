@@ -10,7 +10,7 @@ import { appPath, httpError, serialiser } from './projectService.js';
 
 // Content-addressed history in .spectrum/history, which a sync app may share between computers:
 //   objects/<sha[0:2]>/<sha>.gz   gzipped file bytes, shared between versions
-//   manifests/<id>.json           { files: { "<relPath>": "<sha>" }, skipped?, createdAt, label, reason, summary }
+//   manifests/<id>.json           { files: { "<relPath>": "<sha>" }, skipped?, createdAt, label, reason, summary, since? }
 //   index.json                    { nextId, versions: (VersionMeta & { manifestLabel? })[] } (oldest first)
 // Versions are the manifests on disk, whichever computer wrote them. 1.7.0 numbered them from index.json's nextId,
 // so two computers made the same number and overwrote each other's manifests. Ids are now the second and random
@@ -23,8 +23,11 @@ const MAX_TRACKED_BYTES = 50 * 1024 * 1024;
 // 1.7.0's ids count from 1; every id made since is far above
 const LEGACY_IDS = 1e9;
 const EPOCH_2026 = Date.UTC(2026, 0, 1);
-const REASONS = ['manual', 'before-ai', 'before-restore', 'before-transfer'];
+// compile: saved after a successful compile, the one automatic kind; 1.10.4 lists those as manual
+const REASONS = ['manual', 'before-ai', 'before-restore', 'before-transfer', 'compile'];
 const DAY_MS = 24 * 60 * 60 * 1000;
+// a compile's checkpoint takes the place of the last one compiles made within this long of its first
+const COMPILE_WINDOW_MS = 10 * 60 * 1000;
 const TEXT_EXTENSIONS = new Set([
   '.tex', '.bib', '.sty', '.cls', '.bst', '.txt', '.md', '.json', '.yaml', '.yml', '.csv', '.tsv',
   '.bbx', '.cbx', '.lbx', '.cfg', '.def', '.clo', '.ltx'
@@ -117,7 +120,8 @@ async function readVersions(root) {
       reason: REASONS.includes(meta.reason) ? meta.reason : 'manual',
       summary: meta.summary && typeof meta.summary === 'object' ? meta.summary : { kind: 'updated', files: [], added: 0, removed: 0 },
       files: data.files || {},
-      skipped: new Set(Array.isArray(data.skipped) ? data.skipped : [])
+      skipped: new Set(Array.isArray(data.skipped) ? data.skipped : []),
+      since: typeof data.since === 'string' ? data.since : undefined
     });
   }
   versions.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id);
@@ -152,11 +156,11 @@ async function readObject(root, sha) {
 const diskFiles = async (root) => (await listFilesRecursive(root)).filter((item) => item.type === 'file').map((item) => item.path);
 
 /**
- * Files a version captures: the visible tree minus compiled PDFs, anything over 50 MB, and
+ * Files a version captures: the visible tree minus compiled PDFs, anything over 50 MB (those go in `large`), and
  * anything that can't be read (broken or outside links, no permission) rather than failing;
  * those go in `skipped`.
  */
-async function trackedFiles(root, skipped = []) {
+async function trackedFiles(root, skipped = [], large = []) {
   const files = await diskFiles(root);
   const present = new Set(files);
   const tracked = [];
@@ -166,7 +170,7 @@ async function trackedFiles(root, skipped = []) {
       const abs = safeJoin(root, rel);
       const stat = await fs.stat(abs);
       await fs.access(abs, fsConstants.R_OK);
-      if (stat.isFile() && stat.size <= MAX_TRACKED_BYTES) tracked.push(rel);
+      if (stat.isFile()) (stat.size <= MAX_TRACKED_BYTES ? tracked : large).push(rel);
     } catch {
       skipped.push(rel);
     }
@@ -175,9 +179,9 @@ async function trackedFiles(root, skipped = []) {
 }
 
 /** Hash the tracked files; with store=true also save their contents as objects. Unreadable ones go in `skipped`. */
-async function snapshotDisk(root, store, skipped = []) {
+async function snapshotDisk(root, store, skipped = [], large = []) {
   const files = {};
-  for (const rel of await trackedFiles(root, skipped)) {
+  for (const rel of await trackedFiles(root, skipped, large)) {
     let buf;
     try {
       buf = await fs.readFile(path.join(root, rel));
@@ -288,26 +292,33 @@ async function newId(root, versions) {
 
 /**
  * createVersion without the history lock, which is one for every project: for restoreVersion, which holds it, and
- * the mirror, whose one pass at a time mustn't wait behind another project's history.
+ * the mirror, whose one pass at a time mustn't wait behind another project's history. skipped: what it couldn't
+ * capture, unreadable or over 50 MB.
  */
 export async function createVersionUnlocked(root, { label = '', reason = 'manual' } = {}) {
   const { versions } = await readVersions(root);
   const latest = versions.at(-1);
-  const previous = latest ? latest.files : {};
   const skipped = [];
-  const files = await snapshotDisk(root, true, skipped);
+  const large = [];
+  const files = await snapshotDisk(root, true, skipped, large);
   // a file that can't be read now keeps what the latest version had of it, and restoring leaves it as it is
-  for (const rel of skipped) if (previous[rel]) files[rel] = previous[rel];
-  if (latest && sameFiles(previous, files)) return { version: shownVersion(latest), unchanged: true };
+  for (const rel of skipped) if (latest?.files[rel]) files[rel] = latest.files[rel];
+  if (latest && sameFiles(latest.files, files)) return { version: shownVersion(latest), unchanged: true, skipped: [] };
 
-  const changes = await diffManifests(fromHistory(root, previous), fromHistory(root, files));
+  // compiles leave at most one checkpoint every 10 minutes: the latest one in that time takes the place of the others,
+  // unless one was given a name (its stored files go in a later delete's clean-up, as a deleted version's do)
+  const since = latest?.since || latest?.createdAt;
+  const replaceable = reason === 'compile' && latest?.reason === 'compile' && !latest.label && Date.now() - Date.parse(since) < COMPILE_WINDOW_MS;
+  const replaced = replaceable ? versions.pop() : null;
+  const previous = versions.at(-1);
+  const changes = await diffManifests(fromHistory(root, previous?.files || {}), fromHistory(root, files));
   const version = {
     id: await newId(root, versions),
     createdAt: new Date().toISOString(),
     label: String(label || '').slice(0, 120),
     reason: REASONS.includes(reason) ? reason : 'manual',
     summary: {
-      kind: !latest ? 'initial' : changes.length === 1 ? 'edited' : 'updated',
+      kind: !previous ? 'initial' : changes.length === 1 ? 'edited' : 'updated',
       files: changes.map((c) => c.path),
       added: changes.reduce((sum, c) => sum + c.added, 0),
       removed: changes.reduce((sum, c) => sum + c.removed, 0)
@@ -315,14 +326,29 @@ export async function createVersionUnlocked(root, { label = '', reason = 'manual
     number: Math.max(0, ...versions.map((v) => v.number)) + 1
   };
   version.manifestLabel = version.label;
-  await writeJsonAtomic(manifestPath(root, version.id), { files, ...(skipped.length && { skipped }), ...details(version) });
+  await writeJsonAtomic(manifestPath(root, version.id), { files, ...(skipped.length && { skipped }), ...details(version), ...(replaced && { since }) });
+  // before index.json is written, which would otherwise keep an entry for it
+  if (replaced) await fs.rm(manifestPath(root, replaced.id), { force: true });
   await writeIndex(root, [...versions, version]);
-  return { version: shownVersion(version), unchanged: false };
+  return { version: shownVersion(version), unchanged: false, skipped: [...skipped, ...large] };
 }
 
 /** Save a version unless nothing changed since the latest one. */
 export function createVersion(root, options) {
   return locked(() => createVersionUnlocked(root, options));
+}
+
+/**
+ * A checkpoint after a successful compile, unless nothing changed since the latest one: { saved, id?, skipped?, error? }.
+ * skipped: files it couldn't capture; error: it couldn't be saved at all.
+ */
+export async function createCompileCheckpoint(root) {
+  try {
+    const { version, unchanged, skipped } = await createVersion(root, { reason: 'compile' });
+    return unchanged ? { saved: false } : { saved: true, id: version.id, ...(skipped.length && { skipped }) };
+  } catch (err) {
+    return { saved: false, error: err.message };
+  }
 }
 
 /** What a version changed compared with the version before it. */
@@ -417,27 +443,43 @@ export function deleteVersion(root, versionId) {
     const { versions, partial } = await readVersions(root);
     const { position } = findVersion(versions, versionId);
     const [removed] = versions.splice(position, 1);
-    await fs.rm(manifestPath(root, removed.id), { force: true });
-    await writeIndex(root, versions);
-    // a manifest that couldn't be read may use any of them
-    if (partial) return;
-
-    const used = new Set(versions.flatMap((v) => Object.values(v.files)));
-    // ponytail: a stored file goes only when no manifest here uses it and it came more than 90 days ago (as long
-    // as syncService trusts another computer's list), as a version another computer made may still be on its way,
-    // even from a laptop away for weeks; one reused from longer ago isn't kept by this, which only a list of every
-    // computer's versions would fix
-    const cutoff = Date.now() - 90 * DAY_MS;
-    const objectsRoot = historyPath(root, 'objects');
-    for (const shard of await fs.readdir(objectsRoot).catch(() => [])) {
-      const dir = path.join(objectsRoot, shard);
-      for (const name of await fs.readdir(dir).catch(() => [])) {
-        if (used.has(name.replace(/\.gz$/, ''))) continue;
-        const stat = await fs.stat(path.join(dir, name)).catch(() => null);
-        // ctime: when the file came to this disk, which a sync app may leave out of mtime
-        if (stat && Math.max(stat.mtimeMs, stat.ctimeMs) < cutoff) await fs.rm(path.join(dir, name), { force: true });
-      }
-      await fs.rmdir(dir).catch(() => {}); // only when empty
-    }
+    await removeVersions(root, [removed], versions, partial);
   });
+}
+
+/** Delete the automatic checkpoints (compiles', unless given a name) saved more than `days` days ago. Resolves how many went. */
+export function deleteAutomaticVersions(root, days) {
+  return locked(async () => {
+    const { versions, partial } = await readVersions(root);
+    const cutoff = Date.now() - days * DAY_MS;
+    const old = versions.filter((v) => v.reason === 'compile' && !v.label && Date.parse(v.createdAt) < cutoff);
+    if (old.length) await removeVersions(root, old, versions.filter((v) => !old.includes(v)), partial);
+    return old.length;
+  });
+}
+
+/** Remove versions' manifests, then the stored files none of the rest uses. */
+async function removeVersions(root, removed, versions, partial) {
+  for (const v of removed) await fs.rm(manifestPath(root, v.id), { force: true });
+  await writeIndex(root, versions);
+  // a manifest that couldn't be read may use any of them
+  if (partial) return;
+
+  const used = new Set(versions.flatMap((v) => Object.values(v.files)));
+  // ponytail: a stored file goes only when no manifest here uses it and it came more than 90 days ago (as long
+  // as syncService trusts another computer's list), as a version another computer made may still be on its way,
+  // even from a laptop away for weeks; one reused from longer ago isn't kept by this, which only a list of every
+  // computer's versions would fix
+  const cutoff = Date.now() - 90 * DAY_MS;
+  const objectsRoot = historyPath(root, 'objects');
+  for (const shard of await fs.readdir(objectsRoot).catch(() => [])) {
+    const dir = path.join(objectsRoot, shard);
+    for (const name of await fs.readdir(dir).catch(() => [])) {
+      if (used.has(name.replace(/\.gz$/, ''))) continue;
+      const stat = await fs.stat(path.join(dir, name)).catch(() => null);
+      // ctime: when the file came to this disk, which a sync app may leave out of mtime
+      if (stat && Math.max(stat.mtimeMs, stat.ctimeMs) < cutoff) await fs.rm(path.join(dir, name), { force: true });
+    }
+    await fs.rmdir(dir).catch(() => {}); // only when empty
+  }
 }

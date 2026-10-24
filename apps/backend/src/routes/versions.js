@@ -1,4 +1,4 @@
-import { getProjectRoot, touchProject } from '../services/projectService.js';
+import { getProjectRoot, httpError, touchProject } from '../services/projectService.js';
 import {
   listVersions,
   createVersion,
@@ -7,7 +7,8 @@ import {
   readVersionFile,
   restoreVersion,
   renameVersion,
-  deleteVersion
+  deleteVersion,
+  deleteAutomaticVersions
 } from '../services/versionService.js';
 
 export function registerVersionRoutes(fastify) {
@@ -47,6 +48,14 @@ export function registerVersionRoutes(fastify) {
   fastify.patch('/api/projects/:id/versions/:vid', async (req) => {
     const root = await getProjectRoot(req.params.id);
     return { ok: true, version: await renameVersion(root, req.params.vid, req.body?.label) };
+  });
+
+  // only the automatic checkpoints (compiles'), and only by age
+  fastify.delete('/api/projects/:id/versions', async (req) => {
+    const days = Number(req.query?.olderThanDays);
+    if (req.query?.automatic !== '1' || !Number.isInteger(days) || days < 0) throw httpError('Say which automatic checkpoints to delete.', 400);
+    const root = await getProjectRoot(req.params.id);
+    return { ok: true, removed: await deleteAutomaticVersions(root, days) };
   });
 
   fastify.delete('/api/projects/:id/versions/:vid', async (req) => {
