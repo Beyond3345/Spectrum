@@ -11,8 +11,9 @@ const COMMAND = /\\(todo|missingfigure|fixme|fxnote|fxwarning|fxerror|fxfatal)(?
 const DEFINED = /\\(?:(?:re)?newcommand|providecommand|DeclareRobustCommand|(?:New|Renew|Provide|Declare)DocumentCommand|[egx]?def|let)\*?\s*\{?\s*$/;
 // \% isn't a comment; \\% is a line break before one
 const COMMENT = /\\[^]|%[^\r\n]*/g;
-// in a comment, in capitals as a word of its own: "% TODO: cite this", "% FIXME(dan) units", "% XXX"
-const MARKER = /(?<!\w)(TODO|FIXME|XXX)(?!\w)(?:\([^)]*\))?[\s:.\-–—]*(.*)/;
+// in a comment, in capitals as a word of its own: "% TODO: cite this", "% FIXME(dan) units", "% XXX"; not a command's
+// name, as in a commented-out "% \renewcommand{\TODO}[1]{}"
+const MARKER = /(?<![\w\\])(TODO|FIXME|XXX)(?!\w)(?:\([^)]*\))?[\s:.\-–—]*(.*)/;
 
 /** Counts lines up to each offset asked for, which must not go backwards. */
 function lineCounter(text: string) {

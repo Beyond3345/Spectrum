@@ -32,6 +32,7 @@ eq(scan('% FIXME(dan) - units\n%XXX'), [[1, 'FIXME', 'units'], [2, 'XXX', 'XXX']
 eq(scan('50\\% TODO not a comment'), [], 'an escaped percent');
 eq(scan('\\\\% TODO after a line break'), [[1, 'TODO', 'after a line break']], 'a comment after \\\\');
 eq(scan('% todo lower case, TODOS, MYTODO'), [], 'only the capitals, as words');
+eq(scan('% \\renewcommand{\\TODO}[1]{}'), [], 'a command named TODO');
 eq(scan('% first TODO wins TODO'), [[1, 'TODO', 'wins TODO']], 'one per comment');
 
 // ─── order and lines ───
