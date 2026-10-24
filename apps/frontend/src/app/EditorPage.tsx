@@ -397,8 +397,9 @@ function Editor({ projectId }: { projectId: string }) {
   const zoom = layout.pdfZoom;
   const setZoom = (pdfZoom: PdfZoom) => setLayout({ pdfZoom });
   const [panel, setPanel] = useState<Panel | null>(null);
-  // Tools, insights and floats stay mounted once opened, so their results and typing survive closing; the grammar check runs afresh
-  const [keptPanels, setKeptPanels] = useState<Panel[]>([]);
+  // Tools, insights and floats stay mounted once opened, so their results and typing survive closing; the grammar check runs afresh.
+  // The agent workspace is mounted from the start, hidden, so its button's dot shows a run or changes to review at once
+  const [keptPanels, setKeptPanels] = useState<Panel[]>(['agent']);
   // the agent workspace's dot on its button, and a chat it's asked to carry on
   const [agentStatus, setAgentStatus] = useState<AgentStatus>(null);
   const [agentThread, setAgentThread] = useState<{ id: string; n: number } | null>(null);
