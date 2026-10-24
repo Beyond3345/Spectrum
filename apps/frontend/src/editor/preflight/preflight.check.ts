@@ -284,6 +284,24 @@ has(elsewhere(''), 'references', 'error', /^The document cites sources but has n
 has(elsewhere(`${usedLog}LaTeX Warning: Citation \`knuth84' on page 1 undefined on input line 4.\n`), 'references', 'error', /^The document cites sources but has no bibliography/);
 has(elsewhere(`${usedLog}I couldn't open database file central.bib\n`), 'references', 'error', /^The document cites sources but has no bibliography/);
 
+// a venue style's review option hides the authors itself, and an Author field of Anonymous names no one
+const REVIEW = MAIN.replace('\\usepackage{soul}', '\\usepackage[review]{cvpr}');
+const reviewed = runPreflight(input({ files: [{ path: 'main.tex', text: REVIEW }], pdfFacts: { ...FACTS, author: 'Anonymous CVPR submission' }, anonymous: true }));
+none(reviewed, 'privacy', /\\author|\\thanks|Author field/);
+
+// a document with no title (a CV, a letter) needs no abstract; a thesis's \chapter*{Abstract} is one; notes get a note
+const story = (body: string) => runPreflight(input({ files: [{ path: 'main.tex', text: `\\documentclass{report}\n\\begin{document}\n${body}\n\\end{document}\n` }] }));
+none(story('Dear Ada,'), 'submission', /abstract|keywords/);
+none(story('\\maketitle\n\\chapter*{Abstract}\nWe did it.'), 'submission', /abstract/);
+has(story('\\maketitle\nNotes.'), 'submission', 'info', /^The document has no abstract$/);
+
+// a PDF pdf.js couldn't open for its password: its encryption, and nothing read from it as if it had been
+const locked: PdfFacts = { ...shows([]), encrypted: true, title: '', lang: '', tagged: false, outline: false, fonts: null };
+const shut = runPreflight(input({ files: FILES, bib: BIB, pdfFacts: locked }));
+none(shut, 'accessibility', /The PDF/);
+has(shut, 'submission', 'error', /^The PDF is encrypted/);
+eq(preflightGaps({ log: 'x', failed: false, pdfFacts: locked, anonymous: false }), { accessibility: 'The PDF is password-protected, so its accessibility couldn’t be read.' }, 'a locked PDF');
+
 // what can’t be checked yet says so
 eq(
   preflightGaps({ log: '', failed: false, pdfFacts: null, anonymous: true }),

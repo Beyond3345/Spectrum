@@ -168,6 +168,9 @@ const PAPER: [string, number, number][] = [
   ['A3', 842, 1191]
 ];
 
+/** A PDF pdf.js couldn't open for its password: nothing but that it's encrypted was read from it. */
+const unreadable = (pdf: PdfFacts) => pdf.encrypted && !pdf.pages.length;
+
 /** What a group can't check without the PDF or the log: "Compile first", and why. */
 export function preflightGaps(input: Pick<PreflightInput, 'log' | 'failed' | 'pdfFacts' | 'anonymous'>): Partial<Record<PreflightGroup, string>> {
   const gaps: Partial<Record<PreflightGroup, string>> = {};
@@ -179,7 +182,7 @@ export function preflightGaps(input: Pick<PreflightInput, 'log' | 'failed' | 'pd
     gaps.accessibility = `${first}: most of these checks read the PDF.`;
     gaps.submission = `${first}: the PDF’s version, fonts and encryption need a PDF.`;
     if (input.anonymous) gaps.privacy = `${first}: the PDF’s Author field needs a PDF.`;
-  }
+  } else if (unreadable(input.pdfFacts)) gaps.accessibility = 'The PDF is password-protected, so its accessibility couldn’t be read.';
   return gaps;
 }
 
@@ -434,10 +437,12 @@ export function runPreflight(input: PreflightInput): Finding[] {
       for (const m of code.matchAll(/\\hl\s*\{/g)) add({ group, severity: 'warning', message: 'Highlighted text (\\hl) is left in', file: path, line: lineOf(m.index!), fixable: true });
     }
     if (input.anonymous) {
-      // a class's anonymous option leaves the authors out itself
-      const hidden = sources.some(({ text }) => /\\documentclass\s*\[[^\]]*\banonymous\b/.test(withoutComments(text)));
+      // a class's anonymous option leaves the authors out itself, and so does a venue style's review option
+      const hidden = sources.some(({ text }) =>
+        /\\documentclass\s*\[[^\]]*\banonymous\b|\\usepackage\s*\[[^\]]*\breview\b[^\]]*\]\s*\{(?:cvpr|iccv|eccv|acl)\}/.test(withoutComments(text))
+      );
       for (const { path, text } of hidden ? [] : sources) {
-        const code = withoutComments(text);
+        const code = codeOf(text);
         const lineOf = lineFinder(code);
         for (const m of code.matchAll(/\\author\s*(?:\[[^\]]*\]\s*)?\{/g)) {
           const open = m.index! + m[0].length - 1;
@@ -452,14 +457,16 @@ export function runPreflight(input: PreflightInput): Finding[] {
         }
         for (const m of code.matchAll(ACKNOWLEDGEMENTS)) add({ group, severity: 'warning', message: 'The acknowledgements can identify the authors', file: path, line: lineOf(m.index!), fixable: true });
       }
-      if (pdf?.author.trim()) add({ group, severity: 'warning', message: `The PDF’s Author field says ${quoted(pdf.author.trim(), 60)}`, fixable: true });
+      const author = pdf?.author.trim();
+      if (author && !/^anonymous/i.test(author)) add({ group, severity: 'warning', message: `The PDF’s Author field says ${quoted(author, 60)}`, fixable: true });
     }
   }
 
   // ─── Accessibility ───
   {
     const group = 'accessibility';
-    if (pdf) {
+    // a password-protected PDF pdf.js couldn't open has nothing read from it to go on (preflightGaps says so)
+    if (pdf && !unreadable(pdf)) {
       if (!pdf.title.trim()) add({ group, severity: 'warning', message: 'The PDF has no title in its properties, so readers and screen readers show its file name', fixable: true });
       if (!pdf.lang.trim()) add({ group, severity: 'warning', message: 'The PDF doesn’t say what language it’s in, so a screen reader may read it in the wrong one', fixable: true });
       if (!pdf.tagged) add({ group, severity: 'warning', message: 'The PDF isn’t tagged, so screen readers can’t follow its headings, lists and figures', fixable: true });
@@ -520,8 +527,11 @@ export function runPreflight(input: PreflightInput): Finding[] {
     }
     for (const path of new Set([...docFiles, ...used].filter((p) => /[^A-Za-z0-9._/-]/.test(p))))
       add({ group, severity: 'warning', message: `The file name ${path} has spaces or other characters some systems handle badly` });
-    if (![...classes].some((c) => NO_ABSTRACT.has(c))) {
-      if (!insights.metadata.abstract) add({ group, severity: 'warning', message: 'The document has no abstract' });
+    // a paper's: one with a title (a CV or a letter has none), and as notes, reports and theses go without, a note
+    const titled = sources.some(({ text }) => /\\maketitle\b|\\begin\s*\{titlepage\}/.test(codeOf(text)));
+    if (titled && ![...classes].some((c) => NO_ABSTRACT.has(c))) {
+      const abstract = insights.metadata.abstract || sources.some(({ text }) => /\\(?:chapter|section)\*?\s*\{\s*Abstract\s*\}/i.test(codeOf(text)));
+      if (!abstract) add({ group, severity: 'info', message: 'The document has no abstract' });
       if (!insights.metadata.keywords.length) add({ group, severity: 'info', message: 'The document has no keywords' });
     }
   }
