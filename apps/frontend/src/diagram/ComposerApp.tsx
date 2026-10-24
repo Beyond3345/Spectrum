@@ -218,7 +218,7 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
  */
 type Doc = { diagram: DiagramFile | null; hand: string | null; tail?: string };
 
-type Loaded = { doc: Doc; edited: boolean; hash: string };
+type Loaded = { doc: Doc; edited: boolean; hash: string; needsSave?: boolean };
 
 /** A diagram file opened: its drawing, and its code when that isn't the drawing's (edited by hand, or never drawn). */
 async function openDiagram(projectId: string, path: string): Promise<Loaded> {
@@ -230,13 +230,15 @@ async function openDiagram(projectId: string, path: string): Promise<Loaded> {
     return { doc: { diagram: { style: {}, ...diagram, language: 'mermaid', model, version: 1 }, hand: null }, edited: false, hash };
   }
   const mode = diagram?.language === 'tikz' ? modeFor(diagram.pkg) : undefined;
+  let needsSave = false;
   try {
     if (!mode || !diagram) throw new Error('Unsupported drawing');
-    mode.toCode(diagram.model, diagram.style);
+    const generated = mode.toCode(diagram.model, diagram.style);
+    needsSave = !edited && drawnText(diagram, generated) !== code;
   } catch {
     return { doc: { diagram: null, hand: code, tail: mark ? `${mark}\n` : '' }, edited: false, hash };
   }
-  return { doc: { diagram, hand: edited ? code : null }, edited, hash };
+  return { doc: { diagram, hand: edited ? code : null }, edited, hash, needsSave };
 }
 
 const snapshotOf = (diagram: DiagramFile) => JSON.stringify({ style: diagram.style, model: diagram.model });
@@ -312,7 +314,7 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
   const [preview, setPreview] = useState<PreviewState>({ state: 'idle', errors: [], log: '' });
   const [fixing, setFixing] = useState(false);
   const [conflict, setConflict] = useState<'changed' | 'deleted' | null>(null);
-  const [savedKey, setSavedKey] = useState(() => JSON.stringify(loaded.doc));
+  const [savedKey, setSavedKey] = useState(() => loaded.needsSave ? '' : JSON.stringify(loaded.doc));
   const [, historyMoved] = useState(0);
   const codeView = useRef<EditorView | null>(null);
   const name = nameOf(path);
