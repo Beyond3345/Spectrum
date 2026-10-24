@@ -17,7 +17,7 @@ export interface CompileError {
   raw?: string;
 }
 
-/** Everything the editor page shares with the composer, chats list and Tools panel. */
+/** Everything the editor page shares with the composer, the sidebar's panels and Tools. */
 export interface EditorApi {
   projectId: string;
   projectName: string;
@@ -47,7 +47,6 @@ export interface EditorApi {
   ensureFileContent(path: string): Promise<string>;
   /** writes + updates cache + editor if open */
   writeProjectFile(path: string, content: string): Promise<void>;
-  writeBibEntries(entries: string[], bibFile?: string): Promise<{ target: string; keys: string[] }>;
   createBibFile(): Promise<string>;
   refreshTree(): Promise<void>;
   /** after restore: drop caches, reload tree + open file */

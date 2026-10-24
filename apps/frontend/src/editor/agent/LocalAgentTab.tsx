@@ -24,7 +24,7 @@ import type { TodosState } from '../TodosList';
 import { resolveInstructions } from '../personas';
 import { AGENTS_CHANGED, VERSIONS_CHANGED, errorText, relativeTime } from '../shared';
 import { AgentComposer, ChangesTray, PersonaPicker, PlanStrip, ReviewView, Transcript, Welcome, readStored as read, taskPersona, useFollow, useSkills, writeStored as write } from './parts';
-import type { ContextKind, Draft, TrayChange } from './parts';
+import type { ContextKind, Draft, TaskRequest, TrayChange } from './parts';
 import { RUNNING, addEvent, project } from './transcript';
 import type { Checkpoint } from './transcript';
 
@@ -33,7 +33,22 @@ export type AgentStatus = 'running' | 'waiting' | 'changes' | null;
 const monogram = (name: string) => name.replace(/[^A-Za-z0-9]/g, '').slice(0, 2);
 
 /** The 1.10 ACP agents (OpenCode, Codex, Claude and the others), each run isolated by agentSessionService.js. */
-export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenSettings }: { hidden: boolean; active: boolean; todos: TodosState; onStatus(status: AgentStatus): void; onOpenSettings(section: Section): void }) {
+export default function LocalAgentTab({
+  hidden,
+  active,
+  todos,
+  task,
+  onStatus,
+  onOpenSettings
+}: {
+  hidden: boolean;
+  active: boolean;
+  todos: TodosState;
+  /** a task from elsewhere: its prompt and skill go in the message box of a new session */
+  task: TaskRequest | null;
+  onStatus(status: AgentStatus): void;
+  onOpenSettings(section: Section): void;
+}) {
   const api = useEditor();
   const latest = useRef(api);
   latest.current = api;
@@ -54,7 +69,7 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
   const [reviewing, setReviewing] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   // a new session's first message, sent once the agent is connected
-  const queued = useRef<{ text: string; skill?: string; persona: AgentPersona | null; context: AgentPromptContext } | null>(null);
+  const queued = useRef<{ text: string; skill?: string; research?: string; persona: AgentPersona | null; context: AgentPromptContext } | null>(null);
   const known = useRef({ session, sessions });
   known.current = { session, sessions };
   const skills = useSkills(api.projectId, active);
@@ -133,7 +148,7 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
       await sendLocalAgentPrompt(id, message.text, { persona: message.persona, context: message.context });
     } catch (err) {
       fail(err);
-      setDraft({ text: message.text, skill: message.skill, n: Date.now() });
+      setDraft({ text: message.text, skill: message.skill, research: message.research, n: Date.now() });
     }
   };
 
@@ -153,7 +168,7 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
         }
         const first = queued.current;
         if (first && e.data.status === 'ready') void deliver(id, first);
-        else if (first && !RUNNING.includes(e.data.status)) setDraft({ text: first.text, skill: first.skill, n: Date.now() });
+        else if (first && !RUNNING.includes(e.data.status)) setDraft({ text: first.text, skill: first.skill, research: first.research, n: Date.now() });
         if (first && !RUNNING.includes(e.data.status)) queued.current = null;
       }
       if (e.type === 'request') setPending((old) => [...old.filter((p) => p.requestId !== e.data.requestId), e.data]);
@@ -179,19 +194,20 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
   };
 
   // the backend reads the open to-dos itself and sends each part as an ACP resource
-  const contextOf = (picked: Record<ContextKind, boolean>, skill?: string): AgentPromptContext => {
+  const contextOf = (picked: Record<ContextKind, boolean>, skill?: string, research?: string): AgentPromptContext => {
     const a = latest.current;
     return {
       ...(picked.file && a.activePath && { activePath: a.activePath }),
       ...(picked.selection && a.selectionText && { selection: a.selectionText }),
       ...(picked.log && a.compileLog && { log: a.compileLog }),
       ...(picked.todos && { todos: true }),
-      ...(skill && { skill })
+      ...(skill && { skill }),
+      ...(research && { research })
     };
   };
 
-  const send = async (text: string, { skill, context }: { skill?: string; context: Record<ContextKind, boolean> }) => {
-    const message = { text: text || `/${skill}`, skill, persona: personaOf(persona), context: contextOf(context, skill) };
+  const send = async (text: string, { skill, research, context }: { skill?: string; research?: string; context: Record<ContextKind, boolean> }) => {
+    const message = { text: text || `/${skill}`, skill, research, persona: personaOf(persona), context: contextOf(context, skill, research) };
     setError('');
     setWorking(true);
     try {
@@ -211,11 +227,21 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
       }
     } catch (err) {
       fail(err);
-      setDraft({ text, skill, n: Date.now() });
+      setDraft({ text, skill, research, n: Date.now() });
     } finally {
       setWorking(false);
     }
   };
+
+  // a new session for it with its persona, unless one is still going
+  useEffect(() => {
+    if (!task) return;
+    if (!running) {
+      choose('').catch(fail);
+      setPersona(taskPersona(api.settings.personas, task) ?? picked.current);
+    }
+    setDraft({ text: task.prompt, skill: task.skill, research: task.research, n: task.n });
+  }, [task?.n]);
 
   const pickAgent = (id: string) => {
     setAgentId(id);

@@ -60,7 +60,8 @@ import type { AppCommand } from './shortcuts';
 import { EditorContext } from '../editor/EditorContext';
 import type { CompileError, EditorApi, PendingChange } from '../editor/EditorContext';
 import Composer from '../editor/Composer';
-import ChatsList from '../editor/ChatsList';
+import ResearchPanel from '../editor/research/ResearchPanel';
+import type { ResearchTask } from '../editor/research/ResearchPanel';
 import ToolsPanel from '../editor/ToolsPanel';
 import FloatsPanel from '../editor/FloatsPanel';
 import type { FloatCard } from '../editor/FloatsPanel';
@@ -111,7 +112,7 @@ import {
 } from '../editor/latexEditor';
 import { NO_PROJECT, externalDocuments, scanProject, texRoot } from '../editor/latexEnvs';
 import type { Project } from '../editor/latexEnvs';
-import { VERSIONS_CHANGED, errorText, extractBibKey, figureSnippet, bibtexForDocument } from '../editor/shared';
+import { VERSIONS_CHANGED, errorText, figureSnippet } from '../editor/shared';
 
 // ─── helpers ───
 
@@ -403,12 +404,14 @@ function Editor({ projectId }: { projectId: string }) {
   // the agent workspace's dot on its button, and a chat it's asked to carry on
   const [agentStatus, setAgentStatus] = useState<AgentStatus>(null);
   const [agentThread, setAgentThread] = useState<{ id: string; n: number } | null>(null);
+  // a task from Research, for the workspace's message box
+  const [agentTask, setAgentTask] = useState<(ResearchTask & { n: number }) | null>(null);
   const [floatsCard, setFloatsCard] = useState<{ card: FloatCard | null; signal: number }>({ card: null, signal: 0 });
   const [spellMenu, setSpellMenu] = useState<{ x: number; y: number; from: number; to: number; word: string; suggestions: string[] | null } | null>(null);
   // right-click elsewhere in the editor: pos is where
   const [lineMenu, setLineMenu] = useState<{ x: number; y: number; pos: number } | null>(null);
   const [toolsTab, setToolsTab] = useState<ToolsTab>('versions');
-  const [sidebarTab, setSidebarTab] = useState<'files' | 'chats' | 'todos'>('files');
+  const [sidebarTab, setSidebarTab] = useState<'files' | 'research' | 'todos'>('files');
   const [searchOpen, setSearchOpen] = useState(false);
   const [filter, setFilter] = useState('');
   const [composerOpen, setComposerOpen] = useState(false);
@@ -1043,24 +1046,6 @@ function Editor({ projectId }: { projectId: string }) {
     syncNoticeRef.current = notice;
   };
 
-  const writeBibEntries = async (entries: string[], bibFile?: string) => {
-    const target = bibFile || bibFiles[0] || 'references.bib';
-    let content = await ensureFileContent(target).catch(() => '');
-    const source = mainFile ? await ensureFileContent(mainFile).catch(() => '') : '';
-    const keys: string[] = [];
-    for (const raw of entries) {
-      const entry = bibtexForDocument(raw.replace(/\\n/g, '\n').trim(), source);
-      const key = extractBibKey(entry);
-      if (!key) continue;
-      keys.push(key);
-      const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      if (new RegExp(`@\\w+\\s*{\\s*${escaped}\\s*,`, 'i').test(content)) continue;
-      content = `${content.replace(/\s*$/, '')}${content.trim() ? '\n\n' : ''}${entry}\n`;
-    }
-    await writeProjectFile(target, content);
-    return { target, keys };
-  };
-
   const createBibFile = async () => {
     // create-only, so a references.bib the tree hasn't shown yet (or in another letter case) is never replaced
     for (let n = 1; ; n += 1) {
@@ -1536,11 +1521,9 @@ function Editor({ projectId }: { projectId: string }) {
     }
   };
 
-  const openChat = (id: string | null) => {
-    showEditor();
-    setChatId(id);
-    setComposerOpen(true);
-    setFocusSignal((n) => n + 1);
+  const openAgentTask = (task: ResearchTask) => {
+    setAgentTask((was) => ({ ...task, n: (was?.n || 0) + 1 }));
+    openPanel('agent');
   };
 
   // an Edit chat from before 2.0 leaves the bottom card for the Spectrum agent
@@ -2237,7 +2220,6 @@ function Editor({ projectId }: { projectId: string }) {
     editOpenFile: (change) => viewRef.current?.dispatch({ changes: change }),
     ensureFileContent,
     writeProjectFile,
-    writeBibEntries,
     createBibFile,
     refreshTree: async () => {
       await refreshTree();
@@ -2486,14 +2468,14 @@ function Editor({ projectId }: { projectId: string }) {
                 }}
                 items={[
                   { value: 'files', label: 'Files' },
-                  { value: 'chats', label: 'Chats' },
+                  { value: 'research', label: 'Research' },
                   { value: 'todos', label: 'To-dos', badge: todos.open || undefined }
                 ]}
               />
               <span className="spacer" />
               <button
                 className={`icon-btn small ${searchOpen ? 'active' : ''}`}
-                title={sidebarTab === 'files' ? 'Search files' : sidebarTab === 'chats' ? 'Search chats' : 'Search to-dos'}
+                title={sidebarTab === 'files' ? 'Search files' : sidebarTab === 'research' ? 'Search research' : 'Search to-dos'}
                 aria-label="Search"
                 onClick={() => {
                   setSearchOpen((v) => !v);
@@ -2502,15 +2484,7 @@ function Editor({ projectId }: { projectId: string }) {
               >
                 <Icon name="magnifyingglass" />
               </button>
-              {sidebarTab === 'files' ? (
-                <MenuButton icon="plus" className="icon-btn small" title="Add" align="end" items={filesMenu} />
-              ) : (
-                sidebarTab === 'chats' && (
-                  <button className="icon-btn small" title="New chat" aria-label="New chat" onClick={() => openChat(null)}>
-                    <Icon name="plus" />
-                  </button>
-                )
-              )}
+              {sidebarTab === 'files' && <MenuButton icon="plus" className="icon-btn small" title="Add" align="end" items={filesMenu} />}
             </div>
 
             {searchOpen && (
@@ -2519,7 +2493,7 @@ function Editor({ projectId }: { projectId: string }) {
                 <input
                   autoFocus
                   value={filter}
-                  placeholder={sidebarTab === 'files' ? 'Search files' : sidebarTab === 'chats' ? 'Search chats' : 'Search to-dos'}
+                  placeholder={sidebarTab === 'files' ? 'Search files' : sidebarTab === 'research' ? 'Search research' : 'Search to-dos'}
                   aria-label="Search"
                   onChange={(e) => setFilter(e.target.value)}
                   onKeyDown={(e) => {
@@ -2566,11 +2540,10 @@ function Editor({ projectId }: { projectId: string }) {
                 notify={notify}
               />
             </div>
-            {sidebarTab === 'chats' && (
-              <div className="sidebar-list">
-                <ChatsList activeChatId={chatId} filter={filter} onOpen={openChat} onNew={() => openChat(null)} refreshSignal={0} />
-              </div>
-            )}
+            {/* mounted while hidden, so a search running keeps its answer */}
+            <div className="sidebar-list" hidden={sidebarTab !== 'research'}>
+              <ResearchPanel filter={sidebarTab === 'research' ? filter : ''} onAgentTask={openAgentTask} />
+            </div>
             {sidebarTab === 'todos' && (
               <div className="sidebar-list">
                 <TodosList todos={todos} filter={filter} mainFile={mainFile} onOpen={(link) => openTodoLink(link).catch((err) => notify(errorText(err), 'error'))} />
@@ -3059,6 +3032,7 @@ function Editor({ projectId }: { projectId: string }) {
                   active={panel === 'agent'}
                   todos={todos}
                   openThread={agentThread}
+                  task={agentTask}
                   onStatus={setAgentStatus}
                   onOpenSettings={setSettingsOpen}
                   trailing={
