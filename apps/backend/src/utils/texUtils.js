@@ -143,7 +143,7 @@ export function mergeTemplateBody(template, body) {
 }
 
 /**
- * The main file with its \input/\include/\subfile files inlined. Like the compile's
+ * The main file with its \input/\include/\subfile/\import/\subimport files inlined. Like the compile's
  * TEXINPUTS, a name is looked up from the main file's folder first, then the project root.
  */
 export async function inlineInputs(root, mainFile, { stripComments = false, files } = {}) {
@@ -163,10 +163,14 @@ export async function inlineInputs(root, mainFile, { stripComments = false, file
     if (stripComments) tex = withoutComments(tex);
     const parts = [];
     let last = 0;
-    for (const match of tex.matchAll(/\\(?:input|include|subfile)\{([^}]+)\}/g)) {
-      const target = match[1].trim();
+    // \input {x} too, and the import package's \import{folder}{file} and \subimport, whose folder is the file's own
+    for (const match of tex.matchAll(/\\(?:input|include|subfile)\s*\{([^}]+)\}|\\(sub)?import\*?\s*\{([^}]*)\}\s*\{([^}]+)\}/g)) {
+      const target = match[1]?.trim() ?? path.posix.join(match[3].trim(), match[4].trim());
       const name = path.extname(target) ? target : `${target}.tex`;
-      const child = (await visit(path.join(mainDir, name), depth + 1)) ?? (await visit(path.normalize(name), depth + 1));
+      const child =
+        (match[2] ? await visit(path.join(path.dirname(rel), name), depth + 1) : null) ??
+        (await visit(path.join(mainDir, name), depth + 1)) ??
+        (await visit(path.normalize(name), depth + 1));
       parts.push(tex.slice(last, match.index), child ?? '');
       last = match.index + match[0].length;
     }

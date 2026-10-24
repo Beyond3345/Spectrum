@@ -28,6 +28,7 @@ const { default: Fastify } = await import('fastify');
 const { registerReviewRoutes } = await import('../src/routes/review.js');
 const { createProject } = await import('../src/services/projectService.js');
 const { REVIEW_BUDGET, anchor, readReview } = await import('../src/services/reviewService.js');
+const { inlineInputs } = await import('../src/utils/texUtils.js');
 const app = Fastify();
 app.setErrorHandler(async (err, req, reply) => reply.code(err.statusCode || 500).send({ ok: false, error: err.message }));
 registerReviewRoutes(app);
@@ -138,6 +139,23 @@ test('review/state compares the PDF with every file the document reads and lists
 
   const res = await app.inject({ url: `/api/projects/${p.id}/review/state?doc=refs.bib` });
   assert.equal(res.statusCode, 400, 'only a .tex document');
+});
+
+test('the files a document reads include \\import, \\subimport and \\input with a space', async () => {
+  const p = await project('Imports', {
+    'main.tex': '\\documentclass{article}\n\\usepackage{import}\n\\begin{document}\n\\import{sections/}{method}\n\\input {sections/results}\n\\input{chapters/one}\n\\end{document}\n',
+    'sections/method.tex': 'Method.\n',
+    'sections/results.tex': 'Results.\n',
+    'chapters/one.tex': '\\subimport{parts/}{extra}\n',
+    'chapters/parts/extra.tex': 'Extra.\n'
+  });
+  const files = new Set();
+  await inlineInputs(p.path, 'main.tex', { stripComments: true, files });
+  assert.deepEqual([...files].map((f) => f.split(path.sep).join('/')), ['main.tex', 'sections/method.tex', 'sections/results.tex', 'chapters/one.tex', 'chapters/parts/extra.tex']);
+  // so a PDF older than one of them is compiled again before a review
+  const later = new Date(Date.now() + 60_000);
+  await fs.utimes(path.join(p.path, 'chapters/parts/extra.tex'), later, later);
+  assert.equal((await app.inject({ url: `/api/projects/${p.id}/review/state?doc=main.tex` })).json().sourceAt, later.getTime());
 });
 
 test('the AI review reads the document in order, is told what Preflight found and checks each anchor', async () => {

@@ -18,7 +18,7 @@ const SEVERITIES = ['major', 'minor', 'note'];
 const slashed = (p) => p.split(path.sep).join('/');
 const lineOf = (text, index) => text.slice(0, index).split('\n').length;
 
-/** The files a document reads, in the order it first reads them (\input, \include and \subfile, as the compile finds them). */
+/** The files a document reads, in the order it first reads them (\input, \include, \subfile and \import, as the compile finds them). */
 async function documentFiles(root, doc) {
   const files = new Set();
   await inlineInputs(root, doc, { stripComments: true, files });
