@@ -526,6 +526,8 @@ export interface CompileResult {
   linked?: { file: string; ok: boolean }[];
   /** Stop ended it; the last PDF stays */
   stopped?: boolean;
+  /** the document compiled: the one asked for, or the document its % !TEX root names */
+  doc?: string;
   /** the checkpoint asked for: saved or not, why it couldn't be, and files it left out (too large or unreadable) */
   checkpoint?: { saved: boolean; id?: number; error?: string; skipped?: string[] };
 }

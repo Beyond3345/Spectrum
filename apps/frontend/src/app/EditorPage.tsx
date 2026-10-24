@@ -221,11 +221,15 @@ type CompileState = { state: 'idle' | 'running' | 'ok' | 'failed' | 'stopped'; e
 /** what takes the PDF's place, from the top bar */
 type Panel = 'tools' | 'grammar' | 'insights' | 'floats';
 
-/** Why a compile's checkpoint couldn't be saved, or left files out; '' when it was fine. */
-function checkpointProblem(checkpoint: CompileResult['checkpoint']) {
+/**
+ * Why a compile's checkpoint couldn't be saved, or the files it left out that `told` doesn't hold yet (they're added,
+ * so a large file is mentioned once, not after every compile); '' when there's nothing new.
+ */
+function checkpointProblem(checkpoint: CompileResult['checkpoint'], told: Set<string>) {
   if (checkpoint?.error) return `Couldn’t save a checkpoint after compiling: ${checkpoint.error}`;
-  const skipped = checkpoint?.skipped ?? [];
+  const skipped = (checkpoint?.skipped ?? []).filter((file) => !told.has(file));
   if (!skipped.length) return '';
+  for (const file of skipped) told.add(file);
   const names = skipped.length > 3 ? `${skipped.slice(0, 3).join(', ')} and ${skipped.length - 3} more` : skipped.join(', ');
   return `The checkpoint after compiling left out ${names}, which can’t be saved (too large or unreadable).`;
 }
@@ -337,6 +341,8 @@ function Editor({ projectId }: { projectId: string }) {
   const editedRef = useRef(false);
   const autoRunningRef = useRef(false);
   const autoWaitingRef = useRef(false);
+  // the files a checkpoint after compiling left out that the notice has named
+  const skippedToldRef = useRef(new Set<string>());
   const [savingVersion, setSavingVersion] = useState(false);
   const savingVersionRef = useRef(false);
   const [compileLog, setCompileLog] = useState('');
@@ -1286,6 +1292,8 @@ function Editor({ projectId }: { projectId: string }) {
     compileIdRef.current = crypto.randomUUID();
     const used = engine;
     let ended: CompileState['state'] = 'failed';
+    // a chapter's % !TEX root can send the compile to its document
+    let built = doc;
     setCompile({ state: 'running', engine: used });
     try {
       await saveNow();
@@ -1302,17 +1310,18 @@ function Editor({ projectId }: { projectId: string }) {
         checkpoint: settings.checkpointOnCompile
       });
       const actual = res.engine || used;
+      built = res.doc || doc;
       if (res.checkpoint?.saved) window.dispatchEvent(new Event(VERSIONS_CHANGED));
-      const problem = checkpointProblem(res.checkpoint);
+      const problem = checkpointProblem(res.checkpoint, skippedToldRef.current);
       if (problem && settings.checkpointNotice) notify(problem, 'error');
-      setCompileLog(`Engine: ${engineLabel(actual)}\nDocument: ${doc}\n\n${res.log || ''}`.trim());
+      setCompileLog(`Engine: ${engineLabel(actual)}\nDocument: ${built}\n\n${res.log || ''}`.trim());
       if (res.ok && res.pdf) {
         const bytes = Uint8Array.from(atob(res.pdf), (c) => c.charCodeAt(0));
         const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-        showPdf(doc, { url, blob: true });
+        showPdf(built, { url, blob: true });
         setCompileFailure('');
         ended = 'ok';
-        if (doc === mainFile)
+        if (built === mainFile)
           pdfThumbnail(url)
             .then((png) => saveThumbnail(projectId, png))
             .catch(() => undefined);
@@ -1332,7 +1341,7 @@ function Editor({ projectId }: { projectId: string }) {
       setCompile({ state: 'failed', engine: used, at: new Date() });
     } finally {
       compilingRef.current = false;
-      setCompiledDoc(doc);
+      setCompiledDoc(built);
     }
     // not for auto compile, which would open them at every pause in typing
     if (ended === 'failed' && !opts.auto && settings.openLogsOnFail) openTools('logs');
