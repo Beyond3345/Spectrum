@@ -1,4 +1,4 @@
-// LaTeX for the Floats tab's Insert figure and Insert table cards. Pure; checked in floats.check.ts.
+// LaTeX for the Floats panel's Insert figure and Insert table cards. Pure; checked in floats.check.ts.
 
 const KEEP = ['png', 'jpg', 'jpeg', 'pdf', 'eps'];
 const CONVERT = ['gif', 'webp', 'heic', 'heif', 'bmp', 'tif', 'tiff', 'svg'];
