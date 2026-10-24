@@ -1,0 +1,174 @@
+// Self-check for TexLab's editor side: the transport's framing and order, F2's edit planning and the outline from
+// TexLab's symbols. Bundle it first:
+// `npx esbuild apps/frontend/src/editor/lsp/lsp.check.ts --bundle --platform=node --log-level=warning | node`
+import { documentOutline } from '../latexEditor.ts';
+import { symbolHeadings } from './outline.ts';
+import { applyEdits, renameEdits } from './rename.ts';
+import { lspTransport } from './transport.ts';
+
+const eq = (actual: unknown, expected: unknown, what: string) => {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+};
+const throws = (run: () => unknown, pattern: RegExp, what: string) => {
+  try {
+    run();
+  } catch (err) {
+    if (pattern.test(String(err))) return;
+    throw new Error(`${what}: threw ${err}`);
+  }
+  throw new Error(`${what}: didn't throw`);
+};
+const tick = () => new Promise((resolve) => setTimeout(resolve));
+
+// ─── transport ───
+
+async function transport() {
+  const posts: string[] = [];
+  const landing: (() => void)[] = [];
+  const line = lspTransport((body) => {
+    posts.push(body);
+    return new Promise<void>((resolve) => landing.push(resolve));
+  });
+  const msg = (n: number) => JSON.stringify({ jsonrpc: '2.0', method: 'm', params: { n } });
+
+  // sent in one go: one POST, a JSON list in order
+  line.transport.send(msg(1));
+  line.transport.send(msg(2));
+  await tick();
+  eq(posts.map((b) => JSON.parse(b).map((m: { params: { n: number } }) => m.params.n)), [[1, 2]], 'one POST for a batch');
+
+  // the next waits until that one has landed, however many come meanwhile
+  line.transport.send(msg(3));
+  await tick();
+  line.transport.send(msg(4));
+  await tick();
+  eq(posts.length, 1, 'nothing more in flight before the first lands');
+  let settled = false;
+  line.settled().then(() => (settled = true));
+  landing.shift()!();
+  await tick();
+  eq(posts.length, 2, 'the second after the first');
+  eq(JSON.parse(posts[1]).map((m: { params: { n: number } }) => m.params.n), [3], 'in the order sent');
+  landing.shift()!();
+  await tick();
+  eq(settled, false, 'settled waits for the last one sent before it');
+  landing.shift()!();
+  await tick();
+  eq(settled, true, 'settled once all have landed');
+  eq(posts.map((b) => JSON.parse(b)[0].params.n), [1, 3, 4], 'every message, once');
+
+  // a send from a promise callback (as the client's notifications are) still counts for settled
+  let late = false;
+  Promise.resolve().then(() => line.transport.send(msg(5)));
+  line.settled().then(() => (late = true));
+  await tick();
+  await tick();
+  eq(posts.length, 4, 'the callback’s message went');
+  eq(late, false, 'settled waits for it');
+  landing.shift()!();
+  await tick();
+  eq(late, true, 'and is done once it lands');
+
+  // TexLab's messages reach whoever listens, until the line closes; then sending fails at once
+  const heard: string[] = [];
+  const listener = (m: string) => heard.push(m);
+  line.transport.subscribe(listener);
+  line.receive('a');
+  line.transport.unsubscribe(listener);
+  line.receive('b');
+  line.transport.subscribe(listener);
+  line.close();
+  line.receive('c');
+  eq(heard, ['a'], 'subscribers hear TexLab until it closes');
+  throws(() => line.transport.send(msg(6)), /isn’t connected/, 'a closed line refuses to send');
+
+  // a refused POST doesn't stop the ones after it
+  const sent: string[] = [];
+  const flaky = lspTransport(async (body) => {
+    sent.push(body);
+    if (sent.length === 1) throw new Error('404');
+  });
+  flaky.transport.send(msg(1));
+  await flaky.settled();
+  flaky.transport.send(msg(2));
+  await flaky.settled();
+  eq(sent.length, 2, 'goes on after a refusal');
+}
+
+// ─── rename ───
+
+function rename() {
+  const root = 'file:///Users/me/My%20Paper';
+  const pathOf = (uri: string) => (uri.startsWith(`${root}/`) ? decodeURIComponent(uri.slice(root.length + 1)) : null);
+  const range = (line: number, from: number, to: number, endLine = line) => ({ start: { line, character: from }, end: { line: endLine, character: to } });
+
+  const edits = renameEdits(
+    {
+      changes: { [`${root}/main.tex`]: [{ range: range(2, 23, 32), newText: 'sec:start' }], [`${root}/refs.bib`]: [] },
+      documentChanges: [{ textDocument: { uri: `${root}/chapters/one%20two.tex`, version: 1 }, edits: [{ range: range(0, 5, 14), newText: 'sec:start' }] }]
+    },
+    pathOf
+  );
+  eq([...edits.keys()], ['main.tex', 'chapters/one two.tex'], 'files by project path, none for an empty list');
+  throws(() => renameEdits({ changes: { 'file:///usr/share/texmf/x.sty': [{ range: range(0, 0, 1), newText: 'y' }] } }, pathOf), /outside the project/, 'a file outside');
+  throws(() => renameEdits({ documentChanges: [{ kind: 'create', uri: `${root}/new.tex` }] }, pathOf), /make, move or delete/, 'a new file');
+  eq(renameEdits(null, pathOf).size, 0, 'no answer, no edits');
+
+  const text = '\\section{Intro}\\label{sec:intro}\nSee \\ref{sec:intro} and \\ref{sec:intro}.\n';
+  eq(
+    applyEdits(text, [
+      { range: range(1, 29, 38), newText: 'sec:start' },
+      { range: range(0, 22, 31), newText: 'sec:start' },
+      { range: range(1, 9, 18), newText: 'sec:start' }
+    ]),
+    '\\section{Intro}\\label{sec:start}\nSee \\ref{sec:start} and \\ref{sec:start}.\n',
+    'edits in any order, several to a line'
+  );
+  // columns count UTF-16 code units, as JavaScript does: 😀 is two
+  eq(applyEdits('😀 \\cite{knuth}', [{ range: range(0, 9, 14), newText: 'knuth84' }]), '😀 \\cite{knuth84}', 'past a character outside the BMP');
+  eq(applyEdits('a\r\n\\ref{x}\r\n', [{ range: range(1, 5, 6), newText: 'y' }]), 'a\r\n\\ref{y}\r\n', 'Windows line endings');
+  eq(applyEdits('ab\ncd', [{ range: range(0, 1, 1, 1), newText: 'X' }]), 'aXd', 'across lines');
+  eq(applyEdits('ab', [{ range: range(0, 5, 9), newText: '!' }, { range: range(4, 0, 0), newText: '?' }]), 'ab!?', 'past the end of a line or the text');
+  throws(() => applyEdits('abcdef', [{ range: range(0, 0, 3), newText: 'x' }, { range: range(0, 2, 4), newText: 'y' }]), /overlap/, 'overlapping edits');
+}
+
+// ─── outline ───
+
+async function outline() {
+  const tree = new Map([
+    ['main.tex', '\\part{One}\n\\section{Intro}\\label{sec:intro}\n\\input{chapters/one}\n% \\input{chapters/gone}\n\\section*{End}\n'],
+    ['chapters/one.tex', '\\subsection{Methods}\n\\begin{figure}\\caption{A cat}\\label{fig:cat}\\end{figure}\n\\begin{equation}x\\end{equation}\n'],
+    ['chapters/gone.tex', '\\section{Never}\n'],
+    ['refs.bib', '@book{knuth, title={TeX}}\n']
+  ]);
+  const symbols = [
+    { path: 'main.tex', line: 0, character: 0, name: 'One', kind: 2 },
+    { path: 'main.tex', line: 1, character: 0, name: '1 Intro', kind: 2 },
+    { path: 'main.tex', line: 4, character: 0, name: 'End', kind: 2 },
+    { path: 'chapters/one.tex', line: 0, character: 0, name: '1.1 Methods', kind: 2 },
+    { path: 'chapters/one.tex', line: 1, character: 0, name: 'Figure 1: A cat', kind: 6 },
+    { path: 'chapters/one.tex', line: 2, character: 0, name: 'Equation', kind: 14 },
+    { path: 'chapters/gone.tex', line: 0, character: 0, name: '2 Never', kind: 2 },
+    { path: 'refs.bib', line: 0, character: 0, name: 'knuth', kind: 24 }
+  ];
+  const seen = new Set<string>();
+  const items = await documentOutline('main.tex', new Set(tree.keys()), async (p) => tree.get(p) ?? '', symbolHeadings(symbols), seen);
+  eq(
+    items.map((i) => [i.file, i.line, i.level, i.title, i.pos, !!i.float]),
+    [
+      ['main.tex', 1, -1, 'One', 0, false],
+      ['main.tex', 2, 1, '1 Intro', 11, false],
+      ['chapters/one.tex', 1, 2, '1.1 Methods', 0, false],
+      ['chapters/one.tex', 2, 3, 'Figure 1: A cat', 21, true],
+      ['main.tex', 5, 1, 'End', 89, false]
+    ],
+    'sections and floats in reading order, across \\input, levels from the command'
+  );
+  eq([...seen].sort(), ['chapters/one.tex', 'main.tex'], 'the files read, never a commented-out one');
+}
+
+// a failure rejects, which ends Node with an error
+transport()
+  .then(rename)
+  .then(outline)
+  .then(() => console.log('lsp.check: ok'));

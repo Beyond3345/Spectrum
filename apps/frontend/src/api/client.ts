@@ -621,6 +621,25 @@ export function diagramSymbols(payload: { parts: SymbolPart[]; style: { ctikzOpt
   return request<{ ok: boolean; pdf?: string; pages?: SymbolPage[]; log?: string; error?: string }>('/api/diagram/symbols', json('POST', payload));
 }
 
+// ─── TexLab's diagnostics ───
+
+/** One of TexLab's findings in a file: lines and columns from 1, code by name (e.g. 'missing-brace', 'undefined-label'). */
+export interface TexlabDiagnostic {
+  line: number;
+  col: number;
+  endLine: number;
+  endCol: number;
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+  code?: string;
+  source: 'texlab';
+}
+
+/** TexLab's latest diagnostics by project path, once it has caught up with the latest edit; available is false without TexLab. */
+export function getDiagnostics(projectId: string) {
+  return request<{ ok: boolean; available: boolean; files: Record<string, TexlabDiagnostic[]> }>(`/api/projects/${projectId}/diagnostics`);
+}
+
 // ─── SyncTeX: between a spot in the PDF and the source line that made it ───
 
 /** A spot on a page (1-based) in PDF points from its top-left corner, as pdf.js shows the page at scale 1. */
