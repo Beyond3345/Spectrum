@@ -145,12 +145,14 @@ eq(project([ev('terminal', { terminalId: 'x', command: 'latexmk', args: ['-pdf',
     messages: [
       message([{ filePath: 'a.tex', proposed: 'A1' }, { filePath: 'b.tex', proposed: 'B1' }, { filePath: 'gone.tex', proposed: 'G' }]),
       message([{ filePath: 'a.tex', proposed: 'A2' }, { filePath: 'b.tex', proposed: 'B2', status: 'applied' }, { filePath: 'c.tex', proposed: 'C1', status: 'rejected' }]),
-      message([{ filePath: 'd.tex', proposed: 'same' }])
+      message([{ filePath: 'd.tex', proposed: 'same' }]),
+      // proposed against the file as it was then, so Apply merges the edits made since
+      message([{ filePath: 'e.tex', original: 'E0', proposed: 'E1' }])
     ]
   };
-  const disk: Record<string, string> = { 'a.tex': 'A0', 'b.tex': 'B2', 'd.tex': 'same' };
+  const disk: Record<string, string> = { 'a.tex': 'A0', 'b.tex': 'B2', 'd.tex': 'same', 'e.tex': 'user edit\nE0' };
   void openChanges(chat, async (p) => (p in disk ? disk[p] : Promise.reject(new Error('missing')))).then((open) => {
-    eq(open.map((c) => [c.filePath, c.original, c.proposed]), [['a.tex', 'A0', 'A2'], ['gone.tex', '', 'G']], 'open proposals');
+    eq(open.map((c) => [c.filePath, c.original, c.proposed]), [['a.tex', 'A0', 'A2'], ['gone.tex', '', 'G'], ['e.tex', 'E0', 'E1']], 'open proposals');
     console.log('transcript: all checks passed');
   });
 }

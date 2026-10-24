@@ -52,6 +52,11 @@ const SCRIPT = [
   ['load_skill', { id: 'beta' }],
   ['read_skill_file', { id: 'beta', path: 'SKILL.md' }]
 ];
+// "drafts" goes on from a proposal the thread still has open, and leaves another one alone
+const DRAFTS = [
+  ['read_file', { path: 'main.tex' }],
+  ['apply_patch', { path: 'main.tex', patch: '--- main.tex\n+++ main.tex\n@@ -1,2 +1,3 @@\n line one\n line 2\n+line three\n' }]
+];
 let mock;
 let base;
 before(async () => {
@@ -66,8 +71,9 @@ before(async () => {
       const payload = JSON.parse(body);
       calls.push(payload);
       const steps = payload.messages.filter((m) => m.role === 'tool').length;
+      const script = payload.model === 'drafts' ? DRAFTS : SCRIPT;
       const message = payload.model === 'loop' ? call(`c${steps}`, 'list_todos', {})
-        : payload.model === 'tools' && steps < SCRIPT.length ? call(`c${steps}`, ...SCRIPT[steps])
+        : ['tools', 'drafts'].includes(payload.model) && steps < script.length ? call(`c${steps}`, ...script[steps])
           : { role: 'assistant', content: payload.model === 'direct' ? '{"reply":"ok","suggestion":"x"}' : 'done' };
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ choices: [{ message }] }));
@@ -128,6 +134,20 @@ test('the Spectrum agent loads skills, reads and suggests to-dos, and proposes c
   ]);
   assert.deepEqual(json.patches.map((patch) => [patch.path, patch.original, patch.content]), [['main.tex', 'line one\nline two\n', 'line one\nline 2\nline three\n'], ['sections/new.tex', '', 'New section\n']]);
   assert.equal(await fs.readFile(path.join(p.path, 'main.tex'), 'utf8'), 'line one\nline two\n', 'nothing is written');
+  // each tool call, for the transcript's cards
+  assert.deepEqual(json.steps.slice(0, 3), [{ tool: 'load_skill', about: 'alpha', ok: true }, { tool: 'read_skill_file', about: 'references/apis.md', ok: true }, { tool: 'read_skill_file', about: '../../../state.json', ok: false }]);
+  assert.equal(json.steps.length, SCRIPT.length);
+
+  // the next turn goes on from the proposals the thread has open, and proposes only what it changed
+  calls.length = 0;
+  const next = await run({ task: 'polish', prompt: 'more', mode: 'tools', projectId: p.id, llmConfig: llmConfig('drafts'), drafts: [
+    { path: 'main.tex', original: 'line one\nline two\n', proposed: 'line one\nline 2\n' },
+    { path: 'sections/new.tex', original: '', proposed: 'New section\n' },
+    { path: '../outside.tex', original: '', proposed: 'x' }
+  ] });
+  assert.equal(next.status, 200, next.json.error);
+  assert.equal(calls.at(-1).messages.filter((m) => m.role === 'tool')[0].content, 'line one\nline 2\n', 'it reads its earlier proposal');
+  assert.deepEqual(next.json.patches.map((patch) => [patch.path, patch.original, patch.content]), [['main.tex', 'line one\nline two\n', 'line one\nline 2\nline three\n']]);
 });
 
 test('instructions reach Ask, Edit and rewrites but never autocomplete, and the loop stops after 25 steps', async () => {

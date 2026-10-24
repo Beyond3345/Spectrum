@@ -117,10 +117,11 @@ export async function runToolAgent({
   readOnly = false,
   history = [],
   content = '',
-  instructions = ''
+  instructions = '',
+  drafts: open = []
 }) {
   if (!projectId && !readOnly) {
-    return { ok: false, reply: 'Missing projectId, so tools mode is unavailable.', patches: [], changes: [], todos: [] };
+    return { ok: false, reply: 'Missing projectId, so tools mode is unavailable.', patches: [], changes: [], todos: [], steps: [] };
   }
 
   const projectRoot = projectId ? await getProjectRoot(projectId) : null;
@@ -130,10 +131,21 @@ export async function runToolAgent({
     if (!skills.some((s) => s.id === id)) throw offSkill();
     return id;
   };
-  // each file the agent changed: as it was, and as it now proposes it, so later edits build on earlier ones
+  // each file the agent changed: as it was, and as it now proposes it, so later edits build on earlier ones; those this
+  // run changed are its proposals
   const drafts = new Map();
+  const changed = new Set();
   const todos = [];
+  // what each tool call was, for the transcript's cards: { tool, about, ok }
+  const steps = [];
   const projectPath = (filePath) => path.relative(projectRoot, safeJoin(projectRoot, String(filePath || ''))).split(path.sep).join('/');
+  // the thread's proposals not applied or rejected yet ({ path, original, proposed }), which this run goes on from
+  if (!readOnly) {
+    for (const d of Array.isArray(open) ? open.slice(0, 200) : []) {
+      if (typeof d?.path !== 'string' || typeof d.proposed !== 'string' || (d.original != null && typeof d.original !== 'string')) continue;
+      try { drafts.set(projectPath(d.path), { original: d.original ?? null, content: d.proposed }); } catch { /* a path outside the project */ }
+    }
+  }
   const current = async (rel) => drafts.get(rel)?.content ?? fs.readFile(safeJoin(projectRoot, rel), 'utf8');
   const propose = async (rel, next) => {
     if (!rel) throw new Error('Invalid path.');
@@ -142,6 +154,7 @@ export async function runToolAgent({
       drafts.set(rel, { original, content: original ?? '' });
     }
     drafts.get(rel).content = next;
+    changed.add(rel);
   };
 
   const tools = {
@@ -188,7 +201,7 @@ export async function runToolAgent({
 
   const resolved = resolveLLMConfig(llmConfig);
   if (missingKey(resolved)) {
-    return { ok: false, reply: NO_API_KEY, patches: [], changes: [], todos: [] };
+    return { ok: false, reply: NO_API_KEY, patches: [], changes: [], todos: [], steps: [] };
   }
 
   const toolSpecs = TOOL_SPECS.filter((t) => readOnly ? READ_ONLY_TOOLS.includes(t.function.name) : t.function.name !== 'web_search' || searchConfig);
@@ -224,13 +237,14 @@ export async function runToolAgent({
   ];
   // patches: one per file as before; changes: the same, as local agents' changes tray lists them
   const done = (ok, reply) => {
-    const final = [...drafts].filter(([, d]) => d.content !== d.original);
+    const final = [...drafts].filter(([rel, d]) => changed.has(rel) && d.content !== d.original);
     return {
       ok,
       reply,
       patches: final.map(([rel, d]) => ({ path: rel, original: d.original ?? '', content: d.content, diff: createTwoFilesPatch(rel, rel, d.original ?? '', d.content, 'current', 'proposed') })),
       changes: final.map(([rel, d]) => ({ path: rel, kind: d.original === null ? 'created' : 'modified', binary: false, beforeHash: d.original === null ? null : fileHash(Buffer.from(d.original)), afterHash: fileHash(Buffer.from(d.content)), size: Buffer.byteLength(d.content), original: d.original ?? '', proposed: d.content })),
-      todos
+      todos,
+      steps
     };
   };
 
@@ -247,13 +261,17 @@ export async function runToolAgent({
     messages.push({ ...result.message, content: content || null });
     for (const call of toolCalls) {
       let output;
+      let input = {};
       try {
         const handler = toolSpecs.some((t) => t.function.name === call.function?.name) && tools[call.function?.name];
         if (!handler) throw new Error(`Unknown tool ${call.function?.name}`);
-        output = await handler(JSON.parse(call.function.arguments || '{}'));
+        input = JSON.parse(call.function.arguments || '{}');
+        output = await handler(input);
       } catch (err) {
         output = `Error: ${err.message}`;
       }
+      const about = [input?.path, input?.query, input?.id, input?.dir, input?.arxivId, input?.text].find((v) => typeof v === 'string' && v);
+      steps.push({ tool: String(call.function?.name || ''), ...(about && { about: about.slice(0, 200) }), ok: !String(output).startsWith('Error: ') });
       messages.push({ role: 'tool', tool_call_id: call.id, content: String(output) });
     }
   }

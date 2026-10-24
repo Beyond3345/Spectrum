@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentUserRequest, ChatThread, SuggestedTodo } from '../../api/client';
+import type { AgentEvent, AgentStep, AgentUserRequest, ChatThread, SuggestedTodo } from '../../api/client';
 
 // A local agent's stored events (agentSessionService.js) as the workspace shows them: messages with their streamed
 // chunks joined, one card per tool call updated in place, the latest plan, commands and options. And what a Spectrum
@@ -157,23 +157,57 @@ export function project(events: AgentEvent[], { pending = [], checkpoints = [] }
   return out;
 }
 
-/** What a Spectrum agent thread keeps in ChatMessage.meta; changes as the bottom card's Edit chats kept them */
+/**
+ * What a Spectrum agent thread keeps in ChatMessage.meta; changes as the bottom card's Edit chats kept them, now with
+ * the file each was proposed against (original), and steps its tool calls.
+ */
 export type ThreadMeta = {
-  changes?: { filePath: string; proposed: string; status?: 'applied' | 'rejected' }[];
+  changes?: { filePath: string; original?: string; proposed: string; status?: 'applied' | 'rejected' }[];
   todos?: SuggestedTodo[];
   checkpoints?: Checkpoint[];
+  steps?: AgentStep[];
   error?: boolean;
 };
 export const metaOf = (m: { meta?: Record<string, unknown> }) => (m.meta || {}) as ThreadMeta;
 
-/** Each file's latest proposal not applied or rejected yet, against the file as it is now (read). */
+/**
+ * Each file's latest proposal not applied or rejected yet, against the file it was proposed against, so applying it
+ * merges the user's edits since; a proposal from before 2.0's review fixes, which kept no file, against the file as it
+ * is now (read).
+ */
 export async function openChanges(chat: ChatThread, read: (path: string) => Promise<string>) {
-  const proposed = new Map<string, string>();
+  const proposed = new Map<string, { original?: string; proposed: string }>();
   for (const m of chat.messages)
     for (const c of metaOf(m).changes || []) {
       if (c.status) proposed.delete(c.filePath);
-      else proposed.set(c.filePath, c.proposed);
+      else proposed.set(c.filePath, c);
     }
-  const list = await Promise.all([...proposed].map(async ([filePath, text]) => ({ filePath, original: await read(filePath).catch(() => ''), proposed: text, source: 'Spectrum agent' })));
+  const list = await Promise.all(
+    [...proposed].map(async ([filePath, c]) => ({ filePath, original: c.original ?? (await read(filePath).catch(() => '')), proposed: c.proposed, source: 'Spectrum agent' }))
+  );
   return list.filter((c) => c.original !== c.proposed);
+}
+
+// each Spectrum agent tool as a card says it: its kind, and its title alone and with what it was about
+const STEPS: Record<string, [kind: string, alone: string, about?: string]> = {
+  read_file: ['read', 'Read a file', 'Read'],
+  list_files: ['search', 'List the project’s files', 'List the files in'],
+  propose_patch: ['edit', 'Propose a change', 'Propose a change to'],
+  apply_patch: ['edit', 'Propose a change', 'Propose a change to'],
+  get_compile_log: ['read', 'Read the compile log'],
+  web_search: ['search', 'Search the web', 'Search the web for'],
+  arxiv_search: ['search', 'Search arXiv', 'Search arXiv for'],
+  literature_search: ['search', 'Search the literature', 'Search the literature for'],
+  arxiv_bibtex: ['fetch', 'Get BibTeX from arXiv', 'Get BibTeX for'],
+  fetch_bibtex: ['fetch', 'Get BibTeX', 'Get BibTeX for'],
+  load_skill: ['read', 'Load a skill', 'Load the skill'],
+  read_skill_file: ['read', 'Read a skill’s file', 'Read the skill file'],
+  list_todos: ['read', 'List the to-dos'],
+  suggest_todo: ['other', 'Suggest a to-do', 'Suggest the to-do']
+};
+
+/** A Spectrum agent's tool call as a tool card shows it. */
+export function stepCall(step: AgentStep, id: string): ToolCall {
+  const [kind, alone, about] = STEPS[step.tool] || ['other', step.tool];
+  return { toolCallId: id, title: about && step.about ? `${about} “${step.about}”` : alone, kind, status: step.ok ? 'completed' : 'failed', content: [], locations: [] };
 }

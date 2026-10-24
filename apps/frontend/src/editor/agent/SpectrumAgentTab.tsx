@@ -14,7 +14,7 @@ import { CHATS_CHANGED, buildProjectContext, errorText, patchesToChanges, relati
 import { AgentComposer, ChangesTray, PersonaPicker, ReviewView, Transcript, Welcome, openTodos, taskPersona, useFollow, useSkills } from './parts';
 import type { ContextKind, Draft, TrayChange } from './parts';
 import type { AgentStatus } from './LocalAgentTab';
-import { metaOf, openChanges } from './transcript';
+import { metaOf, openChanges, stepCall } from './transcript';
 import type { Checkpoint, Item, ThreadMeta as Meta } from './transcript';
 
 
@@ -126,15 +126,18 @@ export default function SpectrumAgentTab({
         history,
         reasoningEffort: a.settings.reasoningEffort,
         instructions: resolveInstructions(a.settings, base.persona) || undefined,
-        ...(skill && { skill })
+        ...(skill && { skill }),
+        // it goes on from the proposals still open, so a file it changes again keeps the earlier change
+        drafts: threadRef.current?.id === base.id ? tray.map((c) => ({ path: c.filePath, original: c.original, proposed: c.proposed })) : []
       });
       if (runRef.current !== run) return;
       // the backend words AI failures as a reply; shown as errors, kept out of the history
       if (!res.ok) throw new Error(res.reply || 'The AI request failed.');
       const changes = (await patchesToChanges(latest.current, res.patches || [], 'Spectrum agent')).filter((c) => c.original !== c.proposed);
       const meta: Meta = {
-        ...(changes.length && { changes: changes.map(({ filePath, proposed }) => ({ filePath, proposed })) }),
-        ...(res.todos?.length && { todos: res.todos })
+        ...(changes.length && { changes: changes.map(({ filePath, original, proposed }) => ({ filePath, original, proposed })) }),
+        ...(res.todos?.length && { todos: res.todos }),
+        ...(res.steps?.length && { steps: res.steps })
       };
       append(base, chatMessage('assistant', res.reply || (changes.length ? 'The changes are ready to review.' : 'No changes were suggested.'), Object.keys(meta).length ? meta : undefined));
       if (changes.length && threadRef.current?.id === base.id) setTray((old) => [...old.filter((o) => !changes.some((c) => c.filePath === o.filePath)), ...changes]);
@@ -200,6 +203,7 @@ export default function SpectrumAgentTab({
       (thread?.messages || []).flatMap((m, i): Item[] => {
         const meta = metaOf(m);
         return [
+          ...(meta.steps || []).map((step, j): Item => ({ type: 'tool', key: `s${i}-${j}`, call: stepCall(step, `${i}-${j}`) })),
           m.role === 'user' ? { type: 'user', key: `u${i}`, text: m.content } : meta.error ? { type: 'notice', key: `n${i}`, text: m.content, error: true } : { type: 'assistant', key: `a${i}`, text: m.content },
           ...(meta.todos || []).map((todo, j): Item => ({ type: 'todo', key: `t${i}-${j}`, todo })),
           ...(meta.checkpoints || []).map((checkpoint): Item => ({ type: 'checkpoint', key: `c${i}-${checkpoint.id}`, checkpoint }))

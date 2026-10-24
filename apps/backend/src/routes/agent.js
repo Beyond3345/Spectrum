@@ -20,7 +20,9 @@ export function registerAgentRoutes(fastify) {
       reasoningEffort,
       // the persona's or default instructions, and a skill's id for its instructions in whole: never for autocomplete
       instructions,
-      skill
+      skill,
+      // the thread's open proposals, which a tools run goes on from
+      drafts
     } = req.body || {};
     const extra = task === 'autocomplete' ? '' : await userInstructions({ instructions, skill, projectRoot: skill && projectId ? await getProjectRoot(projectId) : null });
 
@@ -61,7 +63,7 @@ export function registerAgentRoutes(fastify) {
     }
 
     if (mode === 'tools') {
-      return runToolAgent({ projectId, activePath, task, prompt, selection, compileLog, llmConfig, reasoningEffort, searchConfig, history, instructions: extra });
+      return runToolAgent({ projectId, activePath, task, prompt, selection, compileLog, llmConfig, reasoningEffort, searchConfig, history, instructions: extra, drafts });
     }
 
     const system =

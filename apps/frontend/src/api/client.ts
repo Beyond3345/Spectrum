@@ -898,10 +898,16 @@ export function runAgent(payload: {
   instructions?: string;
   /** a skill's id, whose instructions go in whole (the composer's /skill-id) */
   skill?: string;
+  /** tools mode: the thread's proposals still open, which the run goes on from */
+  drafts?: { path: string; original: string; proposed: string }[];
 }) {
-  // tools mode: changes lists its patches as local agents' changes tray does, todos the to-dos it suggests
-  return request<{ ok: boolean; reply: string; suggestion: string; patches?: AgentPatch[]; changes?: AgentChange[]; todos?: SuggestedTodo[] }>('/api/agent/run', json('POST', payload));
+  // tools mode: changes lists its patches as local agents' changes tray does, todos the to-dos it suggests and steps
+  // its tool calls
+  return request<{ ok: boolean; reply: string; suggestion: string; patches?: AgentPatch[]; changes?: AgentChange[]; todos?: SuggestedTodo[]; steps?: AgentStep[] }>('/api/agent/run', json('POST', payload));
 }
+
+/** One of the Spectrum agent's tool calls: the tool, what it was about (a path, a query, an id) and whether it worked */
+export type AgentStep = { tool: string; about?: string; ok: boolean };
 
 export function callLLM(payload: {
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[];
