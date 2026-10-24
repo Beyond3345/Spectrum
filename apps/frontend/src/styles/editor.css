@@ -330,9 +330,10 @@
   max-width: 140px;
 }
 
-/* Insert figure and Insert table: a narrow editor leaves them to Insert (+) */
+/* Insert figure and Insert table: a narrow editor leaves them to Insert (+), and the top bar's Compile is its icon */
 @container editor (max-width: 560px) {
-  .float-button {
+  .float-button,
+  .editor-topbar .compile-main .btn-label {
     display: none;
   }
 }
