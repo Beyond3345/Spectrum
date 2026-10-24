@@ -1732,7 +1732,7 @@ function SkillsPane({ projectId }: { projectId?: string }) {
           ))}
         </div>
       ))}
-      <SkillSharing />
+      <SkillSharing refresh={skills} />
     </>
   );
 }
@@ -1878,14 +1878,17 @@ function SkillFiles({ skill, onBack }: { skill: Skill; onBack: () => void }) {
   );
 }
 
-/** The switch that links your skills where agents run outside Spectrum look for them, off by default. */
-function SkillSharing() {
+/**
+ * The switch that links your skills where agents run outside Spectrum look for them, off by default. refresh: the skills
+ * as last listed, whose changes (a switch, a new or deleted skill) add or remove links.
+ */
+function SkillSharing({ refresh }: { refresh: unknown }) {
   const [share, setShare] = useState<SkillShare | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     getSkillSharing().then(setShare, (err) => setError(errorText(err)));
-  }, []);
+  }, [refresh]);
   const turn = async (enabled: boolean) => {
     setBusy(true);
     try {
