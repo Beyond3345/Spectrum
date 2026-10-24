@@ -23,7 +23,7 @@ const { registerVersionRoutes } = await import('../src/routes/versions.js');
 const { registerTodoRoutes } = await import('../src/routes/todos.js');
 const { registerNoteRoutes } = await import('../src/routes/notes.js');
 const { createProject } = await import('../src/services/projectService.js');
-const { createCompileCheckpoint, createVersion } = await import('../src/services/versionService.js');
+const { createCompileCheckpoint, createVersion, listVersions, readVersionFile, restoreVersion } = await import('../src/services/versionService.js');
 const { parseLabels } = await import('../src/services/statsService.js');
 
 const app = Fastify();
@@ -231,3 +231,33 @@ test('compile checkpoints: only when something changed, at most one every 10 min
   assert.equal((await api(`${url}?automatic=1&olderThanDays=0`, 'DELETE')).json.removed, 2);
   assert.deepEqual((await versions()).map((v) => [v.reason, v.label]), [['compile', 'Submitted'], ['manual', '']]);
 });
+
+test('a checkpoint asked for with nothing changed since a compile’s becomes that one, so the next compile keeps it', async () => {
+  const p = await newProject('Promoted');
+  const versions = async () => listVersions(p.path);
+  const edit = (text) => fs.writeFile(path.join(p.path, 'main.tex'), text);
+  const holding = async (text) => {
+    const held = [];
+    for (const v of await versions()) if ((await readVersionFile(p.path, v.id, 'main.tex')).content === text) held.push(v.reason);
+    return held;
+  };
+  for (const [reason, label] of [['manual', ''], ['before-ai', 'Before applying agent changes'], ['before-restore', '']]) {
+    await edit(`saved: ${reason}`);
+    await createCompileCheckpoint(p.path);
+    const { unchanged } = await createVersion(p.path, { reason, label });
+    assert.equal(unchanged, true);
+    assert.deepEqual((await versions()).slice(0, 1).map((v) => [v.reason, v.label]), [[reason, label]]);
+    await edit(`after ${reason}`);
+    await createCompileCheckpoint(p.path);
+    assert.deepEqual(await holding(`saved: ${reason}`), [reason]);
+  }
+  // a restore's safety copy too, which the restore itself makes
+  await edit('before the restore');
+  await createCompileCheckpoint(p.path);
+  const [, older] = await versions();
+  await restoreVersion(p.path, older.id);
+  await edit('after the restore');
+  await createCompileCheckpoint(p.path);
+  assert.deepEqual(await holding('before the restore'), ['before-restore']);
+});
+

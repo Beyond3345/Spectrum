@@ -303,7 +303,16 @@ export async function createVersionUnlocked(root, { label = '', reason = 'manual
   const files = await snapshotDisk(root, true, skipped, large);
   // a file that can't be read now keeps what the latest version had of it, and restoring leaves it as it is
   for (const rel of skipped) if (latest?.files[rel]) files[rel] = latest.files[rel];
-  if (latest && sameFiles(latest.files, files)) return { version: shownVersion(latest), unchanged: true, skipped: [] };
+  if (latest && sameFiles(latest.files, files)) {
+    // a checkpoint asked for that only matches a compile's, which the next compile would replace: that one becomes it
+    if (latest.reason === 'compile' && !latest.label && (reason !== 'compile' || label)) {
+      Object.assign(latest, { reason: REASONS.includes(reason) ? reason : 'manual', label: String(label || '').slice(0, 120) });
+      await writeJsonAtomic(manifestPath(root, latest.id), { ...(await readJson(manifestPath(root, latest.id))), ...details(latest) });
+      latest.manifestLabel = latest.label;
+      await writeIndex(root, versions);
+    }
+    return { version: shownVersion(latest), unchanged: true, skipped: [] };
+  }
 
   // compiles leave at most one checkpoint every 10 minutes: the latest one in that time takes the place of the others,
   // unless one was given a name (its stored files go in a later delete's clean-up, as a deleted version's do)
