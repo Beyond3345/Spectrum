@@ -602,12 +602,13 @@ function lookupError(message, code = 'ERROR') {
 }
 const notFound = (message) => lookupError(message, 'NOT_FOUND');
 
-async function fetchOnce(url, accept, redirect = 'follow') {
+async function fetchOnce(url, accept, redirect = 'follow', timeoutMs = TIMEOUT_MS) {
   try {
     return await fetch(url, {
       headers: { 'User-Agent': 'Spectrum/1.0', Accept: accept },
       redirect,
-      signal: AbortSignal.timeout(TIMEOUT_MS)
+      // the body's reading too
+      signal: AbortSignal.timeout(timeoutMs)
     });
   } catch (err) {
     const host = new URL(url).host;
@@ -679,11 +680,12 @@ async function assertPublicUrl(url) {
 }
 
 /** Fetch a pasted link, following at most 5 redirects, each checked like the link itself. */
-export async function getPage(url, accept) {
+/** timeoutMs: for the request and its body together, as a download can need longer than a lookup's 20 s. */
+export async function getPage(url, accept, { timeoutMs } = {}) {
   let current = url;
   for (let hop = 0; hop <= 5; hop++) {
     await assertPublicUrl(current);
-    const res = await fetchOnce(current, accept, 'manual');
+    const res = await fetchOnce(current, accept, 'manual', timeoutMs);
     const location = res.headers.get('location');
     if (res.status < 300 || res.status >= 400 || !location) return { res, finalUrl: current };
     res.body?.cancel().catch(() => {});

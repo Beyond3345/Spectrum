@@ -421,3 +421,54 @@ test('Open note makes research/notes/<key>.md once; Get PDF saves an open-access
   res = await api(`${url}/pdf`, 'POST', { resultId: attention.id });
   assert.equal(res.json.path, 'research/papers/Vaswani2017.pdf', JSON.stringify(res.json));
 });
+
+test('papers that share a name get a note and a PDF each, which keep their names once in the .bib; a slow download says so', async () => {
+  const p = await newProject('Names', { 'main.tex': MAIN, 'references.bib': '' });
+  serve(...sources());
+  const { session } = (await api('/api/research/search', 'POST', { projectId: p.id, question: 'attention', sources: ['crossref'] })).json;
+  await fs.writeFile(path.join(p.path, '.spectrum', 'research', `${session.id}.json`), JSON.stringify({
+    ...session,
+    results: [
+      { id: 'a', title: 'Deep widgets', authors: ['J. Smith'], year: '2020', arxiv: '2001.00001', sources: ['arxiv'] },
+      { id: 'b', title: 'Deep gadgets', authors: ['K. Smith'], year: '2020', arxiv: '2001.00002', openAccess: 'https://203.0.113.9/b.pdf', sources: ['openalex'] },
+      // CON is a device on Windows
+      { id: 'c', title: 'CON: a study', sources: ['web'] }
+    ]
+  }));
+  const url = `/api/projects/${p.id}/research/${session.id}`;
+  const note = async (resultId) => (await api(`${url}/note`, 'POST', { resultId })).json;
+  assert.deepEqual(await note('a'), { ok: true, path: 'research/notes/Smith2020Deep.md', created: true });
+  assert.deepEqual(await note('b'), { ok: true, path: 'research/notes/Smith2020Deep-2.md', created: true });
+  assert.match(await fs.readFile(path.join(p.path, 'research', 'notes', 'Smith2020Deep-2.md'), 'utf8'), /^# Deep gadgets\n/);
+  assert.deepEqual(await note('b'), { ok: true, path: 'research/notes/Smith2020Deep-2.md', created: false });
+  assert.equal((await note('c')).path, 'research/notes/CON_.md');
+
+  const pdf = Buffer.from('%PDF-1.7\nfake paper\n%%EOF\n');
+  serve([/arxiv\.org\/pdf\/2001\.0000[12]$/, () => new Response(pdf)]);
+  assert.equal((await api(`${url}/pdf`, 'POST', { resultId: 'a' })).json.path, 'research/papers/Smith2020Deep.pdf');
+  assert.equal((await api(`${url}/pdf`, 'POST', { resultId: 'b' })).json.path, 'research/papers/Smith2020Deep-2.pdf');
+
+  // in the .bib now, under a key: the note and the PDF it had
+  await fs.writeFile(path.join(p.path, 'references.bib'), '@article{Smith2020,\n  title = {Deep widgets},\n  author = {Smith, J.},\n  year = {2020},\n  eprint = {2001.00001},\n  archiveprefix = {arXiv}\n}\n');
+  assert.deepEqual(await note('a'), { ok: true, path: 'research/notes/Smith2020Deep.md', created: false });
+  assert.deepEqual((await api(`${url}/pdf`, 'POST', { resultId: 'a' })).json, { ok: true, path: 'research/papers/Smith2020Deep.pdf', existing: true });
+
+  // a copy that comes too slowly for the download's time (shortened here) is told as that, not as a page that isn't a PDF
+  await fs.rm(path.join(p.path, 'research', 'papers', 'Smith2020Deep-2.pdf'));
+  const trickle = (u, init) =>
+    new Response(new ReadableStream({
+      start(c) {
+        c.enqueue(new TextEncoder().encode('%PDF-1.7\n'));
+        init.signal?.addEventListener('abort', () => c.error(init.signal.reason));
+      }
+    }));
+  serve([/arxiv\.org\/pdf\/2001\.00002$/, trickle], [/203\.0\.113\.9\/b\.pdf/, trickle]);
+  process.env.SPECTRUM_PDF_TIMEOUT_MS = '300';
+  try {
+    const res = await api(`${url}/pdf`, 'POST', { resultId: 'b' });
+    assert.equal(res.status, 404);
+    assert.match(res.json.message, /^(?:arxiv\.org|203\.0\.113\.9) took too long to send the PDF\.$/);
+  } finally {
+    delete process.env.SPECTRUM_PDF_TIMEOUT_MS;
+  }
+});
