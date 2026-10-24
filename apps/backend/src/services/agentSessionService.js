@@ -756,5 +756,10 @@ export async function reviewAgentChanges(r, body) {
 }
 export function runSnapshot(r) { return { ...metadata(r), pending: [...r.pending].map(([requestId, p]) => ({ requestId, kind: p.kind, params: p.params })) }; }
 export function subscribeAgent(r, fn) { r.listeners.add(fn); return () => r.listeners.delete(fn); }
-/** Stops the sessions with something running (a turn, the agent, a preview), leaving the rest as they were. */
-export async function shutdownAgents() { await Promise.allSettled([...runs.values()].filter((r) => r.busy || r.child || r.fileOperations?.size).map(stopAgentRun)); }
+/**
+ * Stops the sessions with something running (a turn, a preview, an agent starting or never prompted), leaving the rest
+ * as they were: a finished session's agent, still connected by a model or mode change, is only closed.
+ */
+export async function shutdownAgents() {
+  await Promise.allSettled([...runs.values()].filter((r) => r.busy || r.child || r.fileOperations?.size).map((r) => (r.busy || r.fileOperations?.size || r.status === 'ready' ? stopAgentRun(r) : (disconnect(r), r.stopChain))));
+}

@@ -290,3 +290,17 @@ test('a session its agent can no longer load goes on in a new one, which hears t
   assert.doesNotMatch(await lastPrompt(run), /hello[\s\S]*again[\s\S]*again/, 'the prompt goes once');
   await turn(run, 'third');
 });
+
+test('quitting closes a finished session’s agent left connected by a settings change, and keeps its status and time', { skip, timeout: 120000 }, async () => {
+  const { open, turn, stored, setAgentOption, shutdownAgents } = await setup();
+  const { run } = await open({ 'main.tex': 'original\n' });
+  await turn(run, 'hello');
+  const before = await stored(run);
+  // the fixture has no models to choose, but the agent was started for it
+  await assert.rejects(setAgentOption(run, 'model', 'other'));
+  assert.ok(run.child);
+  await shutdownAgents();
+  assert.equal(run.child, null);
+  assert.equal(run.status, 'completed');
+  assert.deepEqual(await stored(run), before);
+});
