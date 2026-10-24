@@ -1,8 +1,8 @@
 // Self-check for the Floats panel's LaTeX and the preamble helper. Run:
 // npx esbuild apps/frontend/src/editor/floats.check.ts --bundle --platform=node --log-level=warning | node
-import { placementOf, blockAt, escapeCell, figureKind, figureLabel, figureLatex, jpegOrientation, parseDelimited, pasteCells, safeFileName, tableLabel, tableLatex, uniqueName } from './floats';
+import { placementOf, blockAt, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, jpegOrientation, parseDelimited, pasteCells, safeFileName, tableLabel, tableLatex, uniqueName } from './floats';
 import type { TableModel } from './floats';
-import { addPackages, loadedPackages, projectPackages } from './preamble';
+import { addLibraries, addPackages, changeBetween, loadedLibraries, loadedPackages, projectPackages } from './preamble';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -71,6 +71,17 @@ eq(figureLatex({ ...fig, placement: '' }).split('\n')[0], '\\begin{figure}', 'no
 eq(figureLatex({ ...fig, caption: '', label: '' }).split('\n').slice(3), ['    \\caption{}', '\\end{figure}'], 'empty caption kept, empty label left out');
 eq(figureLatex({ ...fig, caption: 'Two\n\nlines' }).split('\n')[3], '    \\caption{Two lines}', 'no paragraph break in a caption');
 eq(figureLatex({ ...fig, caption: 'Growth of 50% in R&D, see Fig.~\\ref{fig:IMG_1234}' }).split('\n')[3], '    \\caption{Growth of 50\\% in R\\&D, see Fig.~\\ref{fig:IMG_1234}}', 'caption escaped, tie and key kept');
+
+// ─── diagrams ───
+
+const amp = { path: 'figures/amp.tex', width: null, caption: 'An amplifier.', label: figureLabel('figures/amp.tex'), placement: 'H' };
+eq(
+  diagramLatex(amp),
+  lines('\\begin{figure}[H]', '    \\centering', '    \\includestandalone{figures/amp}', '    \\caption{An amplifier.}', '    \\label{fig:amp}', '\\end{figure}'),
+  'a diagram at its own size: no width, the path without .tex'
+);
+eq(diagramLatex({ ...amp, width: 0.5 }).split('\n')[2], '    \\includestandalone[width=0.5\\linewidth]{figures/amp}', 'a diagram scaled to half the line');
+eq(diagramLatex({ ...amp, placement: 'tb', span: true }).split('\n')[0], '\\begin{figure*}[t]', 'a diagram across both columns');
 
 // ─── tables ───
 
@@ -235,6 +246,42 @@ eq(oneEdit.change && oneLiner.slice(0, oneEdit.change.from) + oneEdit.change.ins
 const shown = lines('\\documentclass{article}', '\\begin{document}', '\\begin{verbatim}', '\\usepackage{float}', '\\end{verbatim}', '\\end{document}');
 eq(addPackages(shown, ['float']).added, ['float'], 'a \\usepackage in the body (verbatim) loads nothing');
 
+// a diagram's preamble: standalone first, then its packages, then its TikZ libraries after them
+const classy = lines('\\documentclass[11pt,', '  a4paper]{article}', '\\usepackage{amsmath}', '\\usetikzlibrary{calc, arrows.meta}', '% \\usetikzlibrary{positioning}', '', '\\begin{document}', '\\end{document}');
+eq([...loadedLibraries(classy)], ['calc', 'arrows.meta'], 'loaded libraries: comma lists, not commented-out lines');
+const early = addPackages(classy, ['standalone'], { first: true });
+eq(early.source.split('\n').slice(0, 4), ['\\documentclass[11pt,', '  a4paper]{article}', '\\usepackage{standalone}', '\\usepackage{amsmath}'], 'first: straight after \\documentclass, options across lines too');
+eq(early.change && classy.slice(0, early.change.from) + early.change.insert + classy.slice(early.change.from), early.source, 'its change matches');
+eq(addPackages(early.source, ['standalone'], { first: true }), { source: early.source, added: [] }, 'standalone only once');
+eq(addPackages(oneLiner, ['standalone'], { first: true }).source, oneEdit.source.replace('float', 'standalone'), 'first in a one-line preamble: before \\begin{document}');
+const packed = addPackages(early.source, ['circuitikz', 'amsmath']);
+const libbed = addLibraries(packed.source, ['arrows.meta', 'positioning', 'shapes.geometric', 'positioning']);
+eq(libbed.added, ['positioning', 'shapes.geometric'], 'only the libraries not loaded, each once');
+eq(
+  libbed.source,
+  lines(
+    '\\documentclass[11pt,',
+    '  a4paper]{article}',
+    '\\usepackage{standalone}',
+    '\\usepackage{amsmath}',
+    '\\usetikzlibrary{calc, arrows.meta}',
+    '\\usepackage{circuitikz}',
+    '\\usetikzlibrary{positioning,shapes.geometric}',
+    '% \\usetikzlibrary{positioning}',
+    '',
+    '\\begin{document}',
+    '\\end{document}'
+  ),
+  'packages after the last \\usepackage or \\usetikzlibrary line, libraries after them'
+);
+eq(addLibraries(libbed.source, ['calc', 'positioning']), { source: libbed.source, added: [] }, 'no library twice');
+eq(addLibraries(lines('Text'), ['calc']).noDocument, true, 'no \\begin{document}, no libraries');
+const whole = changeBetween(classy, libbed.source);
+eq(classy.slice(0, whole.from) + whole.insert + classy.slice(whole.to), libbed.source, 'one change for the three edits, for one undo step');
+eq(whole.from > classy.indexOf('{article}') && whole.to < classy.indexOf('\\begin{document}'), true, 'the change stays between \\documentclass and \\begin{document}');
+eq(changeBetween('abc', 'abc'), { from: 3, to: 3, insert: '' }, 'no change');
+eq(changeBetween('aXa', 'aXXa'), { from: 2, to: 2, insert: 'X' }, 'a repeated character is inserted once');
+
 const files: Record<string, string> = {
   'paper/main.tex': '\\input{preamble}\n\\include{chapters/one}\n% \\input{old}',
   'paper/preamble.tex': '\\usepackage{float}',
@@ -263,5 +310,8 @@ Promise.all([
   }),
   projectPackages('main.tex', new Set(Object.keys(bodied)), async (p) => bodied[p]).then((names) => {
     eq([...names], ['float'], 'only the main file’s preamble counts: not verbatim, nor a subfile’s own preamble');
+  }),
+  projectPackages('main.tex', new Set(['main.tex', 'preamble.tex']), async (p) => ({ 'main.tex': '\\input{preamble}\n\\usetikzlibrary{calc}\n\\begin{document}\\usetikzlibrary{fit}', 'preamble.tex': '\\usetikzlibrary{arrows.meta}' })[p]!, loadedLibraries).then((names) => {
+    eq([...names].sort(), ['arrows.meta', 'calc'], 'libraries from the preamble and its \\input files');
   })
 ]).then(() => console.log('floats.check: ok'));
