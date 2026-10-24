@@ -6,10 +6,10 @@ Updated 25 October 2026. Development work only: no installer, tag, push or relea
 
 Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum`. Read [SPECTRUM_2_PLAN.md](SPECTRUM_2_PLAN.md), especially its ground rules and Delivery section, before starting the next phase.
 
-Phase 2 (the agent workspace, personas and skills, with the to-do list's agent parts) is built and integrated on **`build/p2-integrate`**, branched from `feat/2.0` at `a82ccde`. It merges `build/p2-backend`, `build/p2-settings` and `build/p2-workspace` in that order, then adds the commits that wire them together, the documentation and the fixes from the live check. It is not merged into `feat/2.0` yet. Next:
+Phase 2 (the agent workspace, personas and skills, with the to-do list's agent parts) was built and integrated on `build/p2-integrate`, branched from `feat/2.0` at `a82ccde`, and is in `feat/2.0` at `25d0b92`. Its first adversarial review round is fixed on **`fix/p2-review`**, branched from `25d0b92` (see Phase 2 review fixes below). Next:
 
-1. Give `build/p2-integrate` its adversarial review rounds, as the plan's Delivery section asks.
-2. Merge it into `feat/2.0` (no fast-forward, like the earlier phases).
+1. Merge `fix/p2-review` into `feat/2.0` (no fast-forward, like the earlier phases), after a second review round if the plan's Delivery section asks for one.
+2. Run the Windows checks listed under Phase 2 limits and open items on the Windows build machine.
 3. Start phase 3 (TexLab, Review and Research) on branches from the new `feat/2.0`.
 
 Phase 1 and phase 1b are in `feat/2.0` as described under Phase 1 and 1b below. Stop any stale paused builder or reviewer tasks rather than resuming their old edits, and do not cherry-pick the old builder branches: their work is already in `feat/2.0` or `build/p2-integrate`.
@@ -53,9 +53,52 @@ In review mode the agent read and edited two files and suggested a to-do through
 
 Three faults found in the live check were fixed: tool cards from a new agent session joined an older card with the same id, the picker did not see a setup saved in Settings and Settings opened at another agent than the one being set up.
 
+### Phase 2 review fixes
+
+The review's confirmed findings are fixed on `fix/p2-review`, one commit per fix or close group, each with a test or check:
+
+- **Local agent sessions** (`agentSessionService.js`, `agentWorkspace.js`):
+  - Stored events count a streamed piece by its text. Each piece had counted its whole JSON, so a long message shed the turn's start, user prompts included. A message past half the 2 MB cap goes on in a stored event of its own.
+  - A review turn first brings the draft up to the project for every file the agent hasn't changed: the user's edits, new files and deletions (`refreshDraft`). A 1.10 session's file applied or rejected by path goes back to the user's file, and a direct turn that failed after clearing its baseline no longer fails every later turn.
+  - Notes, the intro, the persona and the handoff are used up only once a prompt gets through. A draft Spectrum can't take for review (a link left in it, say) is told to the agent.
+  - Requests still open when a turn ends, or when Spectrum closed during it, are marked answered, and the transcript treats any request no longer pending as answered. Stop ends a turn as "Stopped." and fails its tool cards still going.
+  - A new session's updates that come before its id (its commands) are kept.
+  - Sessions are named in the history menu by their first task.
+- **Windows preview** (`previewDraft`, `compileService.js`): it runs no shell escape (`-no-shell-escape` on the command line, as MiKTeX ignores `shell_escape`), Biber, latexmk or glossary tools, all of which ignore TeX's limits. `PREVIEW_TEX_ENV` adds `openout_any` and MiKTeX's output and shell settings, and `initexmf` is asked what MiKTeX will use before compiling, so the preview refuses when MiKTeX's own configuration overrides them. The env is exported for `test/mcp-tools.test.js`, which now runs under any TeX.
+- **Skills:** a skill switched off for the project can't be loaded or sent, by the Spectrum agent or to a local agent. The front matter reads after a BOM and with a description on the next line. Duplicate makes a valid id from a 64-letter one and marks a titled copy, keeping a shipped licence. Skills that run the left-out OpenRouter scripts say so when loaded. A skill's `.git`, `.env` and key files stay out of agent homes rather than stopping the copy, folders still held by a virus scanner are renamed again, and Windows copies only `.agents/skills`. `sync-skills.mjs` changes `skills/` only once every skill is fetched and checked. The related work and verify claims skills' descriptions were written afresh, as they followed Oleafly's AGPL wording.
+- **Spectrum agent:** a run goes on from the thread's open proposals and each proposal keeps the file it was proposed against. A later turn no longer drops an earlier one's change to the same file, and Apply after reopening a thread merges the user's edits. Its tool calls come back as steps and show as cards with the reply. A project's last thread reopens with the workspace, and a merge keeps the Apply and Reject marks made on an older copy.
+- **Workspace:**
+  - Live pieces are joined as they come; 20,000 had taken about six seconds.
+  - The preview PDF recompiles when a turn changes a file it already shows.
+  - A task button goes back to the persona the user picked and takes its skill only while it's on.
+  - The `/` menu lists every skill with its description.
+  - The picker and Settings › Agents fall back to an agent that runs on this computer.
+  - The workspace is mounted from the start, so the Agent button's dot shows.
+  - The tab strip and plan heading work in a narrow column, a triple-clicked line counts as one, and labelled menu buttons, the listbox, the agent picker and the review's focus work with the keyboard and screen readers.
+- **Settings:** persona and instruction fields are limited to what the routes take. The sharing card refreshes. A computer upgraded from 1.10.4 takes the others' personas and default instructions in, rather than sharing its starters over them, and an empty default-instructions box that was never shared never empties the others'.
+- **Checkpoints:** a compile's checkpoint that becomes a "Before AI changes" one is dated then, so the local agent tab shows its Restore row.
+- **Plan:** section 7 now says how a Windows preview limits TeX. Section 10b never claimed `openin_any` restricts TeX Live, so it is unchanged.
+
+| Check | Result |
+| --- | --- |
+| Full backend suite, `node --test "test/*.test.js"` | 389 passed, 22 skipped, 0 failed (411 total) |
+| The same with `SPECTRUM_NATIVE_AGENT_TESTS=1` | 406 passed, 5 skipped (Windows only, the Bin, a live request), 0 failed |
+| New `test/agent-turns.test.js` (9 native tests), also run on `25d0b92` | All 9 fail there, each on the fault it covers |
+| Frontend, `npm run typecheck` | Passed |
+| Frontend production build, `npm run build` | Passed |
+| Every `apps/frontend/src/**/*.check.ts`, bundled with esbuild and run separately | 29 passed |
+| Native Rust unit tests | 7 passed |
+
+The tests ran in a worktree with scratch data, projects and template folders, a scratch home and temp folder, and the ACP fixtures, with no model calls. The 22 skips are the earlier 13 and the 9 native agent turn tests.
+
+Skipped as optional: the same `.git` and `.env` filter when importing a skill (the copy into agent homes already filters), and marking a turn as needing attention when its draft couldn't be taken.
+
 ### Phase 2 limits and open items
 
-- Windows is untested. The MiKTeX setting names for refusing unsafe input files are a best guess, so run `test/agent-preview.test.js` with `SPECTRUM_NATIVE_AGENT_TESTS=1` on the Windows build machine. TeX Live 2026 and later ignore `openin_any`, so a Windows preview needs MiKTeX or TeX Live 2025 or earlier and refuses otherwise. The plan's sections 7 and 10b still say `openin_any=p` restricts TeX Live and should be corrected.
+- Windows is untested. On the Windows build machine, run `test/agent-preview.test.js` with `SPECTRUM_NATIVE_AGENT_TESTS=1`, and `test/mcp-tools.test.js`. The checks of what `initexmf --show-config-value` prints for MiKTeX's `[Core]` settings (`false` or `0`, and `Forbidden`) come from reading MiKTeX's source, not from a run. They fail closed: no preview. Check too that MiKTeX's bibtex keeps to those settings. TeX Live 2026 and later ignore `openin_any`, so a Windows preview needs MiKTeX or TeX Live 2025 or earlier and refuses otherwise.
+- On Windows, a reparse point (a link or junction) anywhere in an agent's private home stops that agent from launching, as the isolation worker refuses to grant one.
+- The Spectrum agent's tool cards appear when its run ends; showing them live needs the run to stream.
+- Settings that follow you: a computer upgraded from 1.10.4 still takes nothing in when the newest file is a third computer's, still on 1.10.4. Closing it needs `sharedSettings` to also return, for keys the newest file lacks, the newest file that has them.
 - Local agents on Windows get no Spectrum tools, so there suggested to-dos come only through Save open steps as to-dos.
 - Suggested to-dos reach the workspace when the turn ends (at most 50 a turn), and the tools server's run folders in an agent's home are not cleaned up.
 - The first prompt after a session is created uses the skills copied when it was created.
