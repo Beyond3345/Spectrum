@@ -316,6 +316,8 @@ export interface CompileOptions {
   haltOnError?: boolean;
   bibTool?: BibTool;
   draft?: boolean;
+  /** TexLab's syntax check before compiling (the editor runs it) */
+  syntaxCheck?: boolean;
 }
 
 /** .spectrum/settings.json, which travels with the project (1.10.4 ignores it) */

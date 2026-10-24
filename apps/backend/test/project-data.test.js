@@ -60,15 +60,15 @@ test('project settings keep only valid compile choices, and null puts one back t
   const url = `/api/projects/${p.id}/settings`;
   assert.deepEqual((await api(url)).json, { ok: true, settings: {} });
 
-  const set = await api(url, 'PATCH', { compile: { engine: 'xelatex', autoCompile: 3, haltOnError: true, bibTool: 'biber', draft: false } });
+  const set = await api(url, 'PATCH', { compile: { engine: 'xelatex', autoCompile: 3, haltOnError: true, bibTool: 'biber', draft: false, syntaxCheck: false } });
   assert.equal(set.status, 200);
-  assert.deepEqual(set.json.settings, { compile: { engine: 'xelatex', autoCompile: 3, haltOnError: true, bibTool: 'biber', draft: false } });
+  assert.deepEqual(set.json.settings, { compile: { engine: 'xelatex', autoCompile: 3, haltOnError: true, bibTool: 'biber', draft: false, syntaxCheck: false } });
   // in its own file, never project.json, which 1.10.4 rewrites through its own list of keys
   assert.deepEqual(await readJson(path.join(p.path, '.spectrum', 'settings.json')), set.json.settings);
   assert.equal((await readJson(path.join(p.path, '.spectrum', 'project.json'))).compile, undefined);
 
-  assert.deepEqual((await api(url, 'PATCH', { compile: { engine: null, autoCompile: 0 } })).json.settings, { compile: { autoCompile: 0, haltOnError: true, bibTool: 'biber', draft: false } });
-  for (const compile of [{ engine: 'word' }, { autoCompile: 11 }, { autoCompile: 1.5 }, { haltOnError: 'yes' }, { bibTool: 'biblatex' }, { draft: 1 }, { shellEscape: true }, { constructor: true }]) {
+  assert.deepEqual((await api(url, 'PATCH', { compile: { engine: null, autoCompile: 0 } })).json.settings, { compile: { autoCompile: 0, haltOnError: true, bibTool: 'biber', draft: false, syntaxCheck: false } });
+  for (const compile of [{ engine: 'word' }, { autoCompile: 11 }, { autoCompile: 1.5 }, { haltOnError: 'yes' }, { bibTool: 'biblatex' }, { draft: 1 }, { syntaxCheck: 'on' }, { shellEscape: true }, { constructor: true }]) {
     assert.equal((await api(url, 'PATCH', { compile })).status, 400, JSON.stringify(compile));
   }
   assert.equal((await api(url, 'PATCH', { zotero: { key: 'x' } })).status, 400);

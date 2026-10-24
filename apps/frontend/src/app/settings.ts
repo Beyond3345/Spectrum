@@ -181,7 +181,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   referencesModel: 'gpt-6-luna',
   autoInsertCite: true,
   // a new setting, so 1.x's saved compiler (compileEngine, left in place for it) doesn't carry over
-  compileDefaults: { engine: 'auto', autoCompile: 0, haltOnError: false, bibTool: 'auto', draft: false },
+  compileDefaults: { engine: 'auto', autoCompile: 0, haltOnError: false, bibTool: 'auto', draft: false, syntaxCheck: true },
   texFolder: '',
   openLogsOnFail: false,
   checkpointOnCompile: true,
@@ -241,6 +241,12 @@ export const ERROR_HANDLING: [boolean, string][] = [
   [true, 'Stop on first error']
 ];
 
+/** syntaxCheck's two choices */
+export const SYNTAX_CHECKS: [boolean, string][] = [
+  [true, 'Check before compiling'],
+  [false, 'Don’t check']
+];
+
 /** Personas with a name and an id each, one per id; anything but a list is the starters again. */
 function cleanPersonas(value: unknown): Persona[] {
   if (!Array.isArray(value)) return STARTER_PERSONAS;
@@ -264,7 +270,8 @@ function cleanCompile(value: unknown, fallback: CompileDefaults): CompileDefault
     autoCompile: Number.isInteger(seconds) && seconds >= 0 && seconds <= 10 ? seconds : fallback.autoCompile,
     haltOnError: typeof v.haltOnError === 'boolean' ? v.haltOnError : fallback.haltOnError,
     bibTool: BIB_TOOLS.find(([tool]) => tool === v.bibTool)?.[0] ?? fallback.bibTool,
-    draft: typeof v.draft === 'boolean' ? v.draft : fallback.draft
+    draft: typeof v.draft === 'boolean' ? v.draft : fallback.draft,
+    syntaxCheck: typeof v.syntaxCheck === 'boolean' ? v.syntaxCheck : fallback.syntaxCheck
   };
 }
 

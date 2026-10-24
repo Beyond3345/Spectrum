@@ -39,7 +39,7 @@ import {
   updateProjectSettings,
   writeFile
 } from '../api/client';
-import type { CompileEngine, CompileOptions, CompileResult, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
+import type { CompileEngine, CompileOptions, CompileResult, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TexlabDiagnostic, TodoLink, VersionMeta, VersionReason } from '../api/client';
 import { latex } from '../latex/lang';
 import Icon from './Icon';
 import Tabs from './Tabs';
@@ -53,7 +53,7 @@ import { SaveTemplateSheet } from './ProjectPage';
 import { toast } from './Toast';
 import { IS_DESKTOP, focusWindow, openDiagram } from './desktop';
 import { FILE_MANAGER } from './platform';
-import { BIB_TOOLS, COMPILE_ENGINES, ERROR_HANDLING, autoCompileLabel, effectiveCompile, effectiveEffort, llmConfigFor, updateSettings, useProviders, useSettings } from './settings';
+import { BIB_TOOLS, COMPILE_ENGINES, ERROR_HANDLING, SYNTAX_CHECKS, autoCompileLabel, effectiveCompile, effectiveEffort, llmConfigFor, updateSettings, useProviders, useSettings } from './settings';
 import { PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
 import { FIND_NEXT, FIND_PREVIOUS, SHORTCUTS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
 import type { AppCommand } from './shortcuts';
@@ -136,6 +136,8 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const MAX_TABS = 6;
 const timeFormat = new Intl.DateTimeFormat('en-AU', { hour: 'numeric', minute: '2-digit' });
 const engineLabel = (engine: string) => COMPILE_ENGINES.find(([value]) => value === engine)?.[1] || engine;
+// the TexLab findings the syntax check before compiling stops for; an undefined reference or citation never does
+const SYNTAX_ERRORS = new Set(['unexpected-brace', 'missing-brace', 'mismatched-environment']);
 
 /** The first text file, or '' when it's 1 MB or more: with no .tex to show, never open a huge log or data file unasked. */
 async function smallTextFile(projectId: string, items: FileItem[]) {
@@ -1399,6 +1401,28 @@ function Editor({ projectId }: { projectId: string }) {
   };
 
   /**
+   * The syntax check before compiling: TexLab's brace and environment errors in the document's files and, if there are
+   * any, whether to compile anyway (No goes to the first). Passes without TexLab, or when TexLab takes too long.
+   */
+  const syntaxCheckPasses = async (doc: string) => {
+    const texlab = texlabRef.current;
+    if (!texlab?.available) return true;
+    const found = await Promise.race([texlab.diagnostics(), new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 5000))]).catch(() => null);
+    if (!found?.available) return true;
+    const { scans } = await scanProject(doc, fileSet, readText, false);
+    const errors = scans.flatMap(({ file = '' }) =>
+      (found.files[file] ?? []).filter((d: TexlabDiagnostic) => d.severity === 'error' && SYNTAX_ERRORS.has(d.code ?? '')).map((d) => ({ ...d, file }))
+    );
+    if (!errors.length) return true;
+    const listed = errors.slice(0, 6).map((e) => `${e.file}, line ${e.line}: ${e.message}`);
+    if (errors.length > 6) listed.push(`and ${errors.length - 6} more`);
+    const message = `TexLab found ${plural(errors.length, 'syntax error')} in ${nameOf(doc)}:\n${listed.join('\n')}`;
+    if (await confirmDialog({ title: 'Compile anyway?', message, confirmLabel: 'Compile anyway' })) return true;
+    await jumpTo(errors[0].file, errors[0].line, errors[0].col);
+    return false;
+  };
+
+  /**
    * The document Compile builds (compileTarget), or another once. fresh: its kept build files are cleared first.
    * auto: auto compile started it. Says how it ended ('busy': another compile was running).
    */
@@ -1407,6 +1431,14 @@ function Editor({ projectId }: { projectId: string }) {
     if (!doc) {
       notify('There’s no .tex file to compile. Add one, or choose “Set as main file” from a file’s menu.');
       return 'failed';
+    }
+    // not for auto compile, which would ask at every pause in typing
+    if (compileOptions.syntaxCheck && !opts.auto) {
+      compilingRef.current = true;
+      const go = await syntaxCheckPasses(doc)
+        .catch(() => true)
+        .finally(() => (compilingRef.current = false));
+      if (!go) return 'stopped';
     }
     compilingRef.current = true;
     // this compile builds every edit so far; one made from now on is owed another
@@ -2489,6 +2521,7 @@ function Editor({ projectId }: { projectId: string }) {
     ...compileChoice('engine', 'Compiler (this project)', COMPILE_ENGINES),
     ...compileChoice('autoCompile', 'Auto compile', pauses.map((n): [number, string] => [n, autoCompileLabel(n)])),
     ...compileChoice('haltOnError', 'Compile error handling', ERROR_HANDLING),
+    ...compileChoice('syntaxCheck', 'Syntax checks', SYNTAX_CHECKS),
     ...compileChoice('bibTool', 'Bibliography tool', BIB_TOOLS),
     ...compileChoice('draft', 'Fast draft mode', [
       [false, 'Off'],

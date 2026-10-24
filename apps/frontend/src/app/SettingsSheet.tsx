@@ -1264,6 +1264,15 @@ function EnginesPane() {
           <span className="field-hint">One pass with images drawn as boxes, for quick previews. Numbers and references can lag behind until a full compile.</span>
         </span>
       </label>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={defaults.syntaxCheck} onChange={(e) => set({ syntaxCheck: e.target.checked })} />
+        <span>
+          Syntax check before compiling
+          <span className="field-hint">
+            With TexLab, a compile you start first looks for unbalanced braces and mismatched environments, and asks before going on. Undefined references and citations never stop it.
+          </span>
+        </span>
+      </label>
 
       <h3 className="form-section-title">TeX installation</h3>
       <div className="field">
