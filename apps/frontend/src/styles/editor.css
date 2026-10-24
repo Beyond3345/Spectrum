@@ -298,6 +298,7 @@
   flex-direction: column;
   background: var(--bg-editor);
   overflow: hidden;
+  container: editor / inline-size;
 }
 
 .editor-topbar {
@@ -322,6 +323,13 @@
 
 .desktop.fullscreen .sidebar-collapsed .editor-topbar {
   padding-left: 12px;
+}
+
+/* Insert figure and Insert table: a narrow editor leaves them to Insert (+) */
+@container editor (max-width: 560px) {
+  .float-button {
+    display: none;
+  }
 }
 
 .file-tabs {
