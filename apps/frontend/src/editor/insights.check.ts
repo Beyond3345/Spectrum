@@ -73,5 +73,6 @@ const ieee = scanInsights([{ path: 'paper.tex', text: String.raw`\author{\IEEEau
 \begin{IEEEkeywords}compilers, COBOL\end{IEEEkeywords}` }]);
 eq([ieee.metadata.authors, ieee.metadata.keywords], [['Grace Hopper'], ['compilers', 'COBOL']], 'IEEE authors and keywords');
 eq(plainText('A {\\bf bold}~move\\\\ on 50\\% of \\$5'), 'A bold move on 50% of $5', 'plain text');
+eq(plainText('The \\LaTeX\\ Author Guidelines'), 'The Author Guidelines', 'a control space is a space');
 
 console.log('insights: all checks passed');

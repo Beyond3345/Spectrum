@@ -30,12 +30,15 @@ const ARG = (name: string) => new RegExp(String.raw`\\${name}\s*(?:\[[^\]]*\]\s*
 // what an \author holds besides the name
 const NOT_NAME = /\\(?:thanks|footnote|inst|orcid|email|affiliation|IEEEauthorblockA|textsuperscript)\s*(?:\[[^\]]*\])?\s*\{(?:[^{}]|\{[^{}]*\})*\}/g;
 
-/** LaTeX made readable for a list: commands dropped (their arguments kept), ties and braces gone, paragraphs kept. */
+/**
+ * LaTeX made readable for a list: commands dropped (their arguments kept), ties, control spaces (`\LaTeX\ Guide`) and
+ * braces gone, paragraphs kept.
+ */
 export function plainText(tex: string) {
   return tex
     .replace(/\\(?:label|index|footnote|thanks)\s*(?:\[[^\]]*\])?\s*\{(?:[^{}]|\{[^{}]*\})*\}/g, '')
     .replace(/\\\\(?:\[[^\]]*\])?/g, ' ')
-    .replace(/\\([&%$#_{}])/g, '$1')
+    .replace(/\\([&%$#_{} ])/g, '$1')
     .replace(/~/g, ' ')
     .replace(/\\[A-Za-z@]+\*?\s*(?:\[[^\]]*\])?/g, '')
     .replace(/[{}]/g, '')
