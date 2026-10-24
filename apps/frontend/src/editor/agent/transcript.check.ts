@@ -154,7 +154,7 @@ eq(project([ev('terminal', { terminalId: 'x', command: 'latexmk', args: ['-pdf',
   // closed (applied, rejected, or superseded by a turn's proposal from the same base), a change keeps no texts
   const closed = closeChanges(chat.messages, ['a.tex', 'e.tex'], 'superseded');
   eq(closed.last, 3, 'the last message closed in');
-  eq(closed.messages.map((m) => m.meta.changes), [
+  eq(closed.messages.map((m) => m.meta?.changes), [
     [{ filePath: 'a.tex', status: 'superseded' }, { filePath: 'b.tex', proposed: 'B1' }, { filePath: 'gone.tex', proposed: 'G' }],
     [{ filePath: 'a.tex', status: 'superseded' }, { filePath: 'b.tex', proposed: 'B2', status: 'applied' }, { filePath: 'c.tex', proposed: 'C1', status: 'rejected' }],
     [{ filePath: 'd.tex', proposed: 'same' }],
