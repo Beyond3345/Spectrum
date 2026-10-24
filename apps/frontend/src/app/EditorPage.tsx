@@ -54,7 +54,7 @@ import { IS_DESKTOP } from './desktop';
 import { FILE_MANAGER } from './platform';
 import { BIB_TOOLS, COMPILE_ENGINES, ERROR_HANDLING, autoCompileLabel, effectiveCompile, effectiveEffort, llmConfigFor, updateSettings, useProviders, useSettings } from './settings';
 import { PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
-import { SHORTCUTS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
+import { FIND_NEXT, FIND_PREVIOUS, SHORTCUTS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
 import type { AppCommand } from './shortcuts';
 import { EditorContext } from '../editor/EditorContext';
 import type { CompileError, EditorApi, PendingChange } from '../editor/EditorContext';
@@ -1636,8 +1636,8 @@ function Editor({ projectId }: { projectId: string }) {
   const onPdfKey = (e: ReactKeyboardEvent) => {
     if (!(e.target as HTMLElement).closest('.pdf-scroll') || !pdfPages) return;
     const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
-    if (matchesShortcut('Mod-f', e.nativeEvent)) openFind();
-    else if (matchesShortcut('Mod-9', e.nativeEvent)) setZoom('fit');
+    // F3 too, which would otherwise open WebView2's own find over the pages
+    if (matchesShortcut('Mod-f', e.nativeEvent) || matchesShortcut(FIND_NEXT, e.nativeEvent) || matchesShortcut(FIND_PREVIOUS, e.nativeEvent)) openFind();
     else if (plain && e.key === 'PageDown') pdfRef.current?.scrollToPage(Math.min(pdfPages, page + step));
     else if (plain && e.key === 'PageUp') pdfRef.current?.scrollToPage(Math.max(1, page - step));
     else if (plain && e.key === 'Home') pdfRef.current?.scrollToPage(1);
@@ -1673,6 +1673,7 @@ function Editor({ projectId }: { projectId: string }) {
     openSettings: () => {},
     zoomBy: (_steps: number) => {},
     fitWidth: () => {},
+    fitPage: () => {},
     suggest: () => {},
     acceptGhost: (_word: boolean) => {},
     clearGhost: () => false as boolean,
@@ -1695,6 +1696,7 @@ function Editor({ projectId }: { projectId: string }) {
     // not in editor only, where the PDF's hidden
     zoomBy: (steps: number) => pdf && layout.view !== 'editor' && zoomBy(steps),
     fitWidth: () => pdf && layout.view !== 'editor' && setZoom('width'),
+    fitPage: () => pdf && layout.view !== 'editor' && setZoom('fit'),
     suggest: () => suggest(),
     acceptGhost,
     clearGhost,
@@ -1804,7 +1806,8 @@ function Editor({ projectId }: { projectId: string }) {
       viewPdf: () => a().setView('pdf'),
       zoomIn: () => a().zoomBy(1),
       zoomOut: () => a().zoomBy(-1),
-      zoomWidth: () => a().fitWidth()
+      zoomWidth: () => a().fitWidth(),
+      zoomPage: () => a().fitPage()
     };
     // matched by hand rather than with keymap.of, which can't see ⌥ shortcuts on a Mac (⌥/ types "÷")
     const shortcuts = EditorView.domEventHandlers({
@@ -2022,6 +2025,7 @@ function Editor({ projectId }: { projectId: string }) {
       else if (matchesZoomIn(shortcutsRef.current, e)) a.zoomBy(1);
       else if (is('zoomOut')) a.zoomBy(-1);
       else if (is('zoomWidth')) a.fitWidth();
+      else if (is('zoomPage')) a.fitPage();
       else if (matchesShortcut('Mod-,', e)) a.openSettings();
       else return;
       e.preventDefault();
@@ -2698,7 +2702,7 @@ function Editor({ projectId }: { projectId: string }) {
                   items={ZOOMS.map(([z, label]) => ({
                     label,
                     checked: zoom === z,
-                    shortcut: z === 'width' ? shortcutOf('zoomWidth') : z === 'fit' ? formatShortcut('Mod-9') : undefined,
+                    shortcut: z === 'width' ? shortcutOf('zoomWidth') : z === 'fit' ? shortcutOf('zoomPage') : undefined,
                     onSelect: () => setZoom(z)
                   }))}
                 />

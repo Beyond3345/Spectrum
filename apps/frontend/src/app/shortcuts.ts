@@ -51,7 +51,8 @@ export type AppCommand =
   | 'viewPdf'
   | 'zoomIn'
   | 'zoomOut'
-  | 'zoomWidth';
+  | 'zoomWidth'
+  | 'zoomPage';
 
 export type Shortcut = {
   id: string;
@@ -106,6 +107,7 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'zoomIn', label: 'Zoom in', group: 'PDF', key: 'Mod-=' },
   { id: 'zoomOut', label: 'Zoom out', group: 'PDF', key: 'Mod--' },
   { id: 'zoomWidth', label: 'Fit width', group: 'PDF', key: 'Mod-0' },
+  { id: 'zoomPage', label: 'Fit page', group: 'PDF', key: 'Mod-9' },
   { id: 'save', label: 'Save', group: 'App', key: 'Mod-s' },
   { id: 'saveVersion', label: 'Save checkpoint', group: 'App', key: 'Shift-Mod-s' },
   { id: 'compile', label: 'Compile', group: 'App', key: 'Mod-Enter' },
@@ -150,12 +152,16 @@ export const editorBasics = [
   )
 ];
 
+// elsewhere Ctrl-G goes to a line, as in Notepad
+export const FIND_NEXT = IS_MAC ? 'Mod-g' : 'F3';
+export const FIND_PREVIOUS = IS_MAC ? 'Shift-Mod-g' : 'Shift-F3';
+
 /** Shortcuts that can't be changed, shown in Settings so new ones don't clash with them. */
 export const FIXED_SHORTCUTS: [string, string][] = [
   ['Find and replace', 'Mod-f'],
-  // elsewhere Ctrl-G goes to a line, as in Notepad, and CodeMirror redoes with Ctrl-Y
-  ['Find next', IS_MAC ? 'Mod-g' : 'F3'],
-  ['Find previous', IS_MAC ? 'Shift-Mod-g' : 'Shift-F3'],
+  // and CodeMirror redoes with Ctrl-Y
+  ['Find next', FIND_NEXT],
+  ['Find previous', FIND_PREVIOUS],
   ['Undo', 'Mod-z'],
   ['Redo', IS_MAC ? 'Shift-Mod-z' : 'Mod-y'],
   ['Settings', 'Mod-,']

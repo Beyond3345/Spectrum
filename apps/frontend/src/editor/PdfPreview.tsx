@@ -818,8 +818,8 @@ const PdfPreview = forwardRef<
         event.preventDefault();
         onPageMenu(at, event.clientX, event.clientY);
       }}
-      // focusable, so the page keys and ⌘F know the PDF has focus
-      tabIndex={-1}
+      // a Tab stop, so the page keys and ⌘F can be reached from the keyboard and know the PDF has focus
+      tabIndex={0}
     >
       <div ref={pagesRef} className="pdf-pages" />
       {error && <div className="pdf-error">Couldn’t show the PDF: {error}</div>}

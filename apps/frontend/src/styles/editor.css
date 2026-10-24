@@ -1198,9 +1198,13 @@ button.compile-status:hover {
   outline: none;
 }
 
-/* the pages take focus (for their keys) without a ring */
+/* the pages take focus (for their keys), with a ring only from the keyboard */
 .pdf-scroll:focus {
   outline: none;
+}
+.pdf-scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 /* the PDF's sidebar (PdfSidebar): docked beside the pages, which narrow to make room */
