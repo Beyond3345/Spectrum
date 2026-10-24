@@ -2250,7 +2250,8 @@ textarea.table-latex {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
+  min-height: 28px;
+  min-width: 0;
   padding: 0;
   border: 0;
   background: transparent;
@@ -2260,8 +2261,17 @@ textarea.table-latex {
 }
 
 .agent-plan-toggle .sf {
+  flex: none;
   width: 13px;
   height: 13px;
+}
+
+/* a narrow column cuts the heading short rather than letting it wrap onto the steps */
+.agent-plan-toggle span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .agent-plan-toggle[aria-expanded='false'] .agent-plan-chevron {

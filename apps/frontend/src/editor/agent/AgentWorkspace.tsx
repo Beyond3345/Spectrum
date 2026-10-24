@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import Tabs from '../../app/Tabs';
 import type { Section } from '../../app/SettingsSheet';
@@ -44,6 +44,11 @@ export default function AgentWorkspace({
     }
   });
   const [status, setStatus] = useState<Record<Tab, AgentStatus>>({ spectrum: null, local: null });
+  const headRef = useRef<HTMLDivElement>(null);
+  // narrow columns scroll the tab strip; keep the chosen tab in view, as Tools does
+  useEffect(() => {
+    headRef.current?.querySelector('.tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [tab]);
   const choose = (next: Tab) => {
     setTab(next);
     try {
@@ -62,7 +67,7 @@ export default function AgentWorkspace({
 
   return (
     <div className="tools-panel agent-workspace">
-      <div className="tools-head">
+      <div className="tools-head" ref={headRef}>
         <Tabs
           className="tools-tabs"
           value={tab}
