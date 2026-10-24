@@ -4,7 +4,7 @@ import os from 'os';
 import crypto from 'crypto';
 import { APP_VERSION, DATA_DIR, SKILLS_SEED_DIR } from '../config/constants.js';
 import { readJson, renameOver, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
-import { safeJoin } from '../utils/pathUtils.js';
+import { agentHidden, safeJoin } from '../utils/pathUtils.js';
 import { httpError, serialiser } from './projectService.js';
 import { readProjectSettings } from './projectSettings.js';
 
@@ -228,11 +228,15 @@ export function createSkill({ id, name = '', description, body = '' } = {}) {
   });
 }
 
-/** Copies only regular files and folders, and refuses a folder with a link, a device or more than the limits in it. */
+/**
+ * Copies only regular files and folders, and refuses a folder with a link, a device or more than the limits in it. What
+ * agents never get (git's folder, .env files, keys) stays behind.
+ */
 async function copySkillFolder(from, to) {
   let count = 0, total = 0;
   const copy = async (rel) => {
     for (const entry of await fs.readdir(path.join(from, rel), { withFileTypes: true })) {
+      if (agentHidden(entry.name)) continue;
       const itemRel = path.join(rel, entry.name);
       const stat = await fs.lstat(path.join(from, itemRel));
       if (stat.isDirectory()) {

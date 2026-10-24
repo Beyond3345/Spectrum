@@ -106,10 +106,17 @@ test('own skills: create, edit, duplicate, import and delete, never touching the
   const folder = path.join(tmp, 'outside', 'folder-name');
   await write(path.join(folder, 'SKILL.md'), '---\nname: imported-one\ndescription: Imported\n---\nBody');
   await write(path.join(folder, 'scripts', 'run.py'), 'print(1)');
+  // a cloned skill's git folder (with a link in it), .env files and keys stay behind, as they do from agents' homes
+  await write(path.join(folder, '.env'), 'SKILL_KEY=sk-skill-secret');
+  await write(path.join(folder, 'scripts', '.ENV.local'), 'x');
+  await write(path.join(folder, 'keys', 'id.pem'), 'private');
+  await write(path.join(folder, '.git', 'config'), 'url = https://ghp_token@github.com/x');
+  await fs.symlink('config', path.join(folder, '.git', 'HEAD'));
   assert.equal((await api('/api/skills/import', 'POST', { path: 'relative/path' })).status, 400);
   const imported = await api('/api/skills/import', 'POST', { path: folder });
   assert.equal(imported.json.skill?.id, 'imported-one', imported.json.error);
   assert.equal(imported.json.skill.files, 2);
+  assert.deepEqual((await api('/api/skills/imported-one/files')).json.files.map((f) => f.path), ['scripts/run.py', 'SKILL.md']);
   assert.equal((await api('/api/skills/import', 'POST', { path: folder })).status, 409);
   const linked = path.join(tmp, 'outside', 'with-link');
   await write(path.join(linked, 'SKILL.md'), '---\nname: with-link\ndescription: Linked\n---\n');
