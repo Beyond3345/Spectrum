@@ -22,6 +22,7 @@ const { default: Fastify } = await import('fastify');
 const { registerResearchRoutes } = await import('../src/routes/research.js');
 const { createProject } = await import('../src/services/projectService.js');
 const { keywords, mergeResults, parsePubmed } = await import('../src/services/researchService.js');
+const { searchArxiv } = await import('../src/services/arxivService.js');
 
 const app = Fastify();
 registerResearchRoutes(app);
@@ -118,6 +119,14 @@ const WEB = { provider: 'brave', connections: [{ provider: 'brave', apiKey: 'bra
 
 test('the question’s words for arXiv and the .bib leave out stop words', () => {
   assert.deepEqual(keywords('What are the effects of Graph Neural Networks on molécules?'), ['effects', 'graph', 'neural', 'networks', 'molecules']);
+});
+
+test('arXiv is asked for every word but the stop words, which would match nothing', async () => {
+  serve([/export\.arxiv\.org/, () => new Response(ARXIV)]);
+  await searchArxiv('Diffusion models for image generation?', 5);
+  assert.match(calls[0].url, /search_query=all:Diffusion\+AND\+all:models\+AND\+all:image\+AND\+all:generation&/);
+  await searchArxiv('the', 5);
+  assert.match(calls[1].url, /search_query=all:the&/, 'a query of stop words alone is asked as it is');
 });
 
 test('PubMed records keep their markup-free title, structured abstract, group authors and PMC copy', () => {

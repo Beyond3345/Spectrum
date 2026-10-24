@@ -9,7 +9,7 @@ import { latexToText } from '../latex/conversion.js';
 import { ITEM_ID } from '../routes/todos.js';
 import { listFilesRecursive, readJson, writeJsonAtomic } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
-import { searchArxiv } from './arxivService.js';
+import { STOPWORDS, searchArxiv } from './arxivService.js';
 import { callOpenAICompatible } from './llmService.js';
 import { appPath, httpError } from './projectService.js';
 import {
@@ -34,9 +34,6 @@ const arxivOfUrl = (url) => String(url || '').match(/arxiv\.org\/(?:abs|pdf)\/(.
 const empty = (v) => v == null || v === '' || (Array.isArray(v) && !v.length);
 /** A result without its empty fields. */
 const tidy = (r) => Object.fromEntries(Object.entries(r).filter(([, v]) => !empty(v)));
-
-const STOPWORDS = new Set(('a an and are as at be by can do does for from has have how in into is it its of on or that the their this to '
-  + 'was what when where which who why with within without using use used based between about over under via vs versus').split(' '));
 
 /** The question's search words, lowercased and folded, without stop words: at most 8. */
 export function keywords(question) {
