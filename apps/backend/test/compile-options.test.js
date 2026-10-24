@@ -280,13 +280,15 @@ test('a chapter naming its document with % !TEX root compiles the document', { s
   assert.equal(guide.doc, 'guide.tex');
 });
 
-test('a TeX folder comes first on the PATH, and one that isn’t a folder is passed by', { skip: WINDOWS ? 'a shell script stands in for TeX' : needs('pdflatex') }, async () => {
+test('a TeX folder comes first on the PATH, and one that isn’t a folder is passed by', { skip: needs('pdflatex') }, async () => {
   const bin = path.join(tmp, 'other TeX');
   await fs.mkdir(bin);
-  await fs.writeFile(path.join(bin, 'pdflatex'), '#!/bin/sh\necho "the other TeX ran"\nexit 1\n', { mode: 0o755 });
+  // a batch file on Windows, which runSpawn runs through cmd.exe
+  const fake = path.join(bin, WINDOWS ? 'pdflatex.cmd' : 'pdflatex');
+  await fs.writeFile(fake, WINDOWS ? '@echo the other TeX ran\r\n@exit /b 1\r\n' : '#!/bin/sh\necho "the other TeX ran"\nexit 1\n', { mode: 0o755 });
   const p = await newProject({ 'main.tex': '\\documentclass{article}\\begin{document}Hi\\end{document}\n' });
   assert.match((await compile(p, { texFolder: bin })).log, /the other TeX ran/);
-  for (const texFolder of [path.join(bin, 'pdflatex'), 'other TeX', path.join(tmp, 'nowhere')]) {
+  for (const texFolder of [fake, 'other TeX', path.join(tmp, 'nowhere')]) {
     const res = await compile(p, { texFolder });
     assert.equal(res.status, 0, res.log);
   }

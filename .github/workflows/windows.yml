@@ -32,6 +32,8 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+          # the whole history, so the rollback test finds 1.10.4's commit rather than skipping
+          fetch-depth: 0
 
       - uses: actions/setup-node@v5
         with:
