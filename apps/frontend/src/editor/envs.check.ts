@@ -6,7 +6,7 @@ import { CompletionContext } from '@codemirror/autocomplete';
 import type { Completion } from '@codemirror/autocomplete';
 import type { EditorView } from '@codemirror/view';
 import { latexCompletionSource } from './latexEditor';
-import { COMMON_ENVS, ENV_SNIPPETS, KERNEL_ENVS, NO_PROJECT, PACKAGE_ENVS, availableEnvs, scanProject, scanTex } from './latexEnvs';
+import { COMMON_ENVS, ENV_SNIPPETS, KERNEL_ENVS, NO_PROJECT, PACKAGE_ENVS, availableEnvs, externalDocuments, scanProject, scanTex, texRoot } from './latexEnvs';
 import type { TexScan } from './latexEnvs';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -105,5 +105,11 @@ const read = async (path: string) => (reads.push(path), tree[path]);
   eq([pick(availableEnvs(linked), 'tikzpicture'), linked.flatMap((s) => s.commands)], [[null], []], 'only labels from the other document');
   const { scans: back } = await scanProject('unit/notes.tex', new Set(Object.keys(docs)), docRead);
   eq(back.flatMap((s) => s.labels).filter((l) => l.startsWith('tut:')), ['tut:q:one'], 'and the other way, without looping');
+  eq(externalDocuments('unit/tutorial.tex', docs['unit/tutorial.tex']), ['unit/notes.tex'], 'the documents a document links');
+
+  // a chapter's % !TEX root, from its own folder
+  eq(texRoot('chapters/one.tex', '% !TEX root = ../thesis.tex\n\\chapter{One}'), 'thesis.tex', '% !TEX root');
+  eq(texRoot('one.tex', '%!TeX root=main.tex'), 'main.tex', 'any letter case, no spaces');
+  eq(texRoot('one.tex', '\\chapter{One} % no root here'), '', 'no root');
   console.log('envs.check: ok');
 })();

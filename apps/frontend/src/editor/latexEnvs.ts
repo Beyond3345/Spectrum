@@ -337,6 +337,18 @@ const normalise = (path: string) =>
     .reduce<string[]>((out, part) => (part === '..' ? out.slice(0, -1) : part && part !== '.' ? [...out, part] : out), [])
     .join('/');
 
+const folderOf = (path: string) => path.slice(0, path.lastIndexOf('/') + 1);
+
+/** The document a `% !TEX root = …` comment near the top of a file names, as a project path; '' without one. */
+export function texRoot(path: string, src: string) {
+  const name = /^[ \t]*%[ \t]*!TEX[ \t]+root[ \t]*=[ \t]*(.+?)[ \t]*$/im.exec(src.slice(0, 4096))?.[1];
+  return name ? normalise(folderOf(path) + name) : '';
+}
+
+/** The documents a document's \externaldocument names, as project paths (xr reads them from its folder). */
+export const externalDocuments = (doc: string, src: string) =>
+  scanTex(src).externals.map(([, name]) => normalise(folderOf(doc) + (/\.tex$/i.test(name) ? name : `${name}.tex`)));
+
 export type BibEntry = { key: string; author: string; year: string; title: string };
 
 // a field's value starts after "name =": in braces, in quotes, or bare (a number or a @string name)
