@@ -55,14 +55,22 @@ jobs:
         continue-on-error: ${{ !inputs.release_tag }}
         run: node scripts/native.mjs nodehun
 
-      # built from its tagged source with the C runtime linked in, which takes a while, so kept between runs
-      - uses: actions/cache@v4
+      # built from its tagged source with the C runtime linked in, which takes a while, so kept between runs: saved as
+      # soon as it's built, as the whole cache action saves only when every later step passes
+      - id: texlab-cache
+        uses: actions/cache/restore@v4
         with:
           path: ~\AppData\Local\spectrum-build\texlab-5.26.0-x64
           key: texlab-5.26.0-x64-crt-static
 
       - name: TexLab
         run: node scripts/desktop.mjs texlab
+
+      - if: steps.texlab-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~\AppData\Local\spectrum-build\texlab-5.26.0-x64
+          key: texlab-5.26.0-x64-crt-static
 
       - name: Installer
         run: node scripts/desktop.mjs build
