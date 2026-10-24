@@ -23,6 +23,7 @@ import { DATA_DIR } from '../config/constants.js';
 import { freePath, mirrorSkips, readJson, readdirTyped, renameOver, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
 import { mergeText } from '../utils/merge3.js';
 import { mergeChat } from '../utils/chatMerge.js';
+import { mergeResults } from './researchService.js';
 import { hashFile } from '../utils/projectCopy.js';
 import { appPath, findSyncedProjects, getProjectRoot, httpError, serialiser, updateMeta } from './projectService.js';
 import { locationLabel, offlineMessage, otherComputersProjects, relFrom, sameFolder, within } from './syncService.js';
@@ -602,11 +603,28 @@ async function bothChats(ctx, it) {
   return { data: Buffer.from(JSON.stringify(merged)), more: merged.messages.length > theirs.messages.length };
 }
 
+const RESEARCH = /^\.spectrum\/research\/[^/]+\.json$/;
+
+/**
+ * A research session with both sides' searches and results, merged as a search merges them: this computer's choices
+ * where it made one, the other's where it didn't, and the results only one side found. null unless both are it.
+ * ponytail: a choice one side cleared comes back from the other's, which loses nothing
+ */
+async function bothSessions(ctx, it) {
+  const [mine, theirs] = await Promise.all([readJson(join(ctx.localRoot, it.l.rel)), readJson(it.fetched)]).catch(() => []);
+  const session = (x) => typeof x?.id === 'string' && Array.isArray(x.results) && Array.isArray(x.runs);
+  if (!session(mine) || !session(theirs) || mine.id !== theirs.id) return null;
+  const runs = [...new Map([...theirs.runs, ...mine.runs].map((r) => [r?.at, r])).values()].sort((a, b) => String(a?.at).localeCompare(String(b?.at)));
+  const updatedAt = [String(mine.updatedAt ?? ''), String(theirs.updatedAt ?? '')].sort().at(-1);
+  return Buffer.from(JSON.stringify({ ...theirs, ...mine, runs, results: mergeResults(mine.results, theirs.results), updatedAt }));
+}
+
 const readBase = (id, hash) => fs.readFile(basePath(id, hash)).then(gunzipAsync).catch(() => null);
 
 /**
  * Changed on both sides. Of the app's files never a conflicted copy, which no one would see: project.json field by
- * field, a chat with every message from both, a version's manifest the newer, index.json and the rest this computer's.
+ * field, a chat with every message from both, a research session with both sides' searches and choices, a version's
+ * manifest the newer, index.json and the rest this computer's.
  * A compiled PDF stays this computer's. Any other text file is merged by lines; one that doesn't merge (or isn't text)
  * stays this computer's, and the cloud's goes beside it as a conflicted copy.
  */
@@ -624,6 +642,11 @@ async function merge(ctx, it) {
     const both = await bothChats(ctx, it);
     if (!both) return;
     it.data = both.data;
+    it.action = 'write';
+  } else if (RESEARCH.test(key)) {
+    const both = await bothSessions(ctx, it);
+    if (!both) return;
+    it.data = both;
     it.action = 'write';
   } else if (key.startsWith('.spectrum/history/manifests/')) {
     if (it.c.mtimeMs > it.l.mtimeMs) it.action = 'toLocal';
