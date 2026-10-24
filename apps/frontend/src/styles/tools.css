@@ -1322,6 +1322,8 @@ a.research-title:hover {
   background: none;
   color: var(--accent-on-soft);
   font: 12px var(--font-mono);
+  /* a button centres its text, so a path that wraps would too */
+  text-align: left;
 }
 
 button.log-location:hover {
@@ -1426,11 +1428,21 @@ span.log-location {
   color: var(--text-secondary);
 }
 
+/* in a narrow panel Fix with AI and Dismiss go under the message rather than squeeze it to a word a line */
+.review-page .log-card-row {
+  flex-wrap: wrap;
+}
+
+.review-page .log-card-body {
+  flex: 1 1 160px;
+}
+
 .review-row-actions {
   flex: none;
   display: flex;
   align-items: center;
   gap: 4px;
+  margin-left: auto;
 }
 
 .review-category {
