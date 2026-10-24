@@ -73,6 +73,7 @@ test('review sessions keep iterating on the draft; apply and reject rebase it; c
     assert.equal(load.params.systemPrompt.mode, 'append');
     assert.match(load.params.systemPrompt.content[0].text, /Be blunt/);
     assert.ok(!run.events.some((e) => e.data?.sessionUpdate === 'user_message_chunk'), 'a load’s replay is not stored again');
+    assert.equal(run.events.filter((e) => e.data?.sessionUpdate === 'available_commands_update').length, 2, 'but its commands are');
     assert.doesNotMatch(log.filter((q) => q.method === 'session/prompt').at(-1).params.prompt[0].text, /You are working in Spectrum/);
     assert.equal(log.find((q) => q.method === 'initialize').params.clientInfo.version, APP_VERSION);
 

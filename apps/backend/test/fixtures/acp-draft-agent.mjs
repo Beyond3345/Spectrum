@@ -17,6 +17,7 @@ lines.on('line', async (line) => {
     workspace = m.params.cwd;
     // a load replays the conversation, which the client already has
     if (m.method === 'session/load') update({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'replayed' } });
+    update({ sessionUpdate: 'available_commands_update', availableCommands: [{ name: 'review', description: 'Review the draft' }] });
     send({ id: m.id, result: { sessionId: 'draft-session' } });
   } else if (m.method === 'session/prompt') {
     const text = m.params.prompt[0].text;

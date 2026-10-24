@@ -37,6 +37,9 @@ export const pendingChanges = async (r) => (await workspaceChanges(r)).filter((c
 const MAX_EVENTS = 1000;
 const MAX_EVENT_BYTES = 2 * 1024 * 1024;
 const CHUNKS = ['user_message_chunk', 'agent_message_chunk', 'agent_thought_chunk'];
+// what session/load replays of the conversation, which the transcript already holds; its commands, modes and settings
+// still count
+const HISTORY = [...CHUNKS, 'tool_call', 'tool_call_update', 'plan', 'plan_update', 'plan_removed'];
 const eventBytes = new WeakMap();
 const sizeOf = (event) => eventBytes.get(event) ?? JSON.stringify(event).length;
 /** The next piece of a message streamed into the last one, or the next update of the same tool call: one stored event. */
@@ -214,8 +217,7 @@ async function connect(r) {
   });
   const checkSession = (params) => { if (r.remoteId && params.sessionId && params.sessionId !== r.remoteId) throw new Error('Unknown agent session.'); };
   const app = client({ name: 'spectrum', version: APP_VERSION })
-    // session/load replays the whole conversation, which the transcript already holds
-    .onNotification('session/update', ({ params }) => { checkSession(params); if (!r.replaying) emit(r, 'update', params.update); })
+    .onNotification('session/update', ({ params }) => { checkSession(params); if (!(r.replaying && HISTORY.includes(params.update?.sessionUpdate))) emit(r, 'update', params.update); })
     .onRequest('session/request_permission', ({ params }) => { checkSession(params); return requestUser(r, 'permission', params); })
     .onRequest('elicitation/create', ({ params }) => requestUser(r, 'question', params))
     .onNotification('elicitation/complete', ({ params }) => emit(r, 'notice', params))
