@@ -477,18 +477,25 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
     retry = keptFailed();
 
     if (multiPass && !options.draft && !retry && carryOn()) {
+      // what BibTeX reads, so a citation only a kept list put there (a caption's, from the .lof) goes again
+      const cites = async () => (await auxWithInputs(outDir, `${base}.aux`)).match(/^\\(?:citation|bibdata|bibstyle)\{.*$/gm)?.join('\n') ?? '';
+      let cited = await cites();
       bibliographyStatus = await runBibliography(outDir, base, tex, options.bibTool, texEnv, pushLog);
       // Pass 2 + 3: resolve citations and cross-references, while the last pass asks for another or changed what
       // TeX reads back
       for (let n = 2; n <= 3 && carryOn(); n += 1) {
+        if (n > 2 && cited !== (cited = await cites())) bibliographyStatus = await runBibliography(outDir, base, tex, options.bibTool, texEnv, pushLog);
         let now = await keptFiles(outDir);
         for (const { input, output, cmd: indexer, fallback, args: indexArgs } of INDEXERS) {
           // every glossary's files (the acronyms' too), or the main glossary's when the .aux names none
           const named = input === 'glo' ? [...(now.get(`${base}.aux`)?.toString() ?? '').matchAll(NEW_GLOSSARY)].map(([, out, from]) => [from, out]) : [];
           const changed = (ext) => !before.get(`${base}.${ext}`)?.equals(now.get(`${base}.${ext}`));
+          // the glossaries' sort order and style, which change the .gls but not the .glo
+          const setup = (files) => (input === 'glo' && files.get(`${base}.aux`)?.toString().match(/^\\@(?:newglossary|glsorder|istfilename|xdylanguage|gls@codepage)\{.*$/gm)?.join('\n')) || '';
+          const redo = setup(before) !== setup(now) || (input === 'glo' && changed('ist'));
           // an empty one may make nothing (makeglossaries-lite's main glossary with no entries)
           const due = (named.length ? named : [[input, output]]).some(([from, out]) => now.get(`${base}.${from}`)
-            && (changed(from) || (!now.has(`${base}.${out}`) && now.get(`${base}.${from}`).length > 0)));
+            && (changed(from) || redo || (!now.has(`${base}.${out}`) && now.get(`${base}.${from}`).length > 0)));
           if (!due) continue;
           let ran = null;
           for (const tool of [indexer, fallback].filter(Boolean)) {

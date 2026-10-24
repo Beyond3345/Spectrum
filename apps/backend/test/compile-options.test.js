@@ -162,6 +162,17 @@ test('a kept file is told by its own name, a Windows drive letter or backslashes
   assert.ok(keptFileFailed('(./main.aux)\n./main.tex:1: File ended while scanning use of \\@newl@bel.', ['main.aux']));
 });
 
+test('a citation only a kept list still had is gone from the bibliography on the same compile', { skip: needs('pdflatex', 'bibtex') }, async () => {
+  const doc = (caption) => `\\documentclass{article}\\begin{document}\\listoffigures\\begin{figure}\\caption{${caption}}\\end{figure}See \\cite{Knuth1984}.\\bibliographystyle{plain}\\bibliography{refs}\\end{document}\n`;
+  const p = await newProject({ 'main.tex': doc('Plan \\cite{Lamport1994}'), 'refs.bib': `${refs}@book{Lamport1994, author = {Lamport, Leslie}, title = {LaTeX}, publisher = {Addison-Wesley}, year = {1994}}\n` });
+  assert.equal((await compile(p)).status, 0);
+  assert.match(await fs.readFile(kept(p, 'main.bbl'), 'utf8'), /Lamport/);
+  await fs.writeFile(path.join(p.path, 'main.tex'), doc('Plan'));
+  const res = await compile(p);
+  assert.equal(res.status, 0, res.log);
+  assert.doesNotMatch(await fs.readFile(kept(p, 'main.bbl'), 'utf8'), /Lamport/);
+});
+
 test('a kept file that breaks a later pass compiles again from scratch: plain to natbib', { skip: needs('pdflatex', 'bibtex') }, async () => {
   const p = await newProject({ 'main.tex': paper(), 'refs.bib': refs });
   const natbib = paper().replace('\\begin{document}', '\\usepackage{natbib}\\begin{document}').replace('{plain}', '{plainnat}').replace('\\cite{', '\\citet{');
@@ -293,6 +304,21 @@ test('after a draft the next full compile makes the index again', { skip: needs(
   assert.ok((await compile(p, { draft: true })).ok);
   assert.equal((await compile(p)).status, 0);
   assert.match(await fs.readFile(kept(p, 'main.ind'), 'utf8'), /beta/);
+  assert.equal(passes((await compile(p)).log), 1);
+});
+
+test('a new glossary sort order runs makeglossaries again', { skip: needs('pdflatex', 'makeglossaries') }, async () => {
+  const doc = (options) => `\\documentclass{article}\\usepackage[${options}]{glossaries}\\makeglossaries\\newglossaryentry{sealion}{name={sea lion},description={a}}\\newglossaryentry{seal}{name={seal},description={b}}\\begin{document}\\gls{sealion} \\gls{seal}\\printglossaries\\end{document}\n`;
+  const order = async () => {
+    const gls = await fs.readFile(kept(p, 'main.gls'), 'utf8');
+    return gls.indexOf('glossentry{seal}') < gls.indexOf('glossentry{sealion}') ? 'seal first' : 'sea lion first';
+  };
+  const p = await newProject({ 'main.tex': doc('') });
+  assert.equal((await compile(p)).status, 0);
+  assert.equal(await order(), 'sea lion first');
+  await fs.writeFile(path.join(p.path, 'main.tex'), doc('order=letter'));
+  assert.equal((await compile(p)).status, 0);
+  assert.equal(await order(), 'seal first');
   assert.equal(passes((await compile(p)).log), 1);
 });
 
