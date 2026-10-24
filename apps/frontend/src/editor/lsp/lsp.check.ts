@@ -5,7 +5,9 @@ import { documentOutline } from '../latexEditor.ts';
 import { symbolHeadings } from './outline.ts';
 import { applyEdits, newName, renameEdits } from './rename.ts';
 import { syntaxErrors } from './syntax.ts';
-import { Texlab } from './texlab.ts';
+import { EditorState } from '@codemirror/state';
+import { diagnosticCount, setDiagnostics } from '@codemirror/lint';
+import { Texlab, clearMarks, texlabSlot } from './texlab.ts';
 import { lspTransport } from './transport.ts';
 import { IS_MAC, IS_WINDOWS } from '../../app/platform.ts';
 
@@ -207,6 +209,19 @@ function paths() {
   eq(pathOf('file:///Users/me/Paper/Chapters/Intro.tex'), IS_MAC || IS_WINDOWS ? 'chapters/intro.tex' : 'Chapters/Intro.tex', 'another spelling of a project file');
 }
 
+// ─── squiggles once TexLab stops ───
+
+function marks() {
+  // the client's squiggles go to @codemirror/lint, which adds its state outside the slot
+  let state = EditorState.create({ doc: 'Text {', extensions: [texlabSlot.of([])] });
+  eq(clearMarks(state), null, 'nothing to clear');
+  state = state.update(setDiagnostics(state, [{ from: 5, to: 6, severity: 'error', message: 'Expecting a curly bracket' }])).state;
+  state = state.update({ effects: texlabSlot.reconfigure([]) }).state;
+  eq(diagnosticCount(state), 1, 'kept when the slot empties');
+  state = state.update(clearMarks(state)!).state;
+  eq(diagnosticCount(state), 0, 'cleared');
+}
+
 // ─── the syntax check before compiling ───
 
 function syntax() {
@@ -246,6 +261,7 @@ function syntax() {
 transport()
   .then(rename)
   .then(paths)
+  .then(marks)
   .then(syntax)
   .then(outline)
   .then(() => console.log('lsp.check: ok'));

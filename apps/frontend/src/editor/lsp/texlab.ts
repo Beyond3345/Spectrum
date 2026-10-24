@@ -1,5 +1,6 @@
 import { Compartment, Prec } from '@codemirror/state';
-import type { Extension } from '@codemirror/state';
+import type { EditorState, Extension } from '@codemirror/state';
+import { diagnosticCount, setDiagnostics } from '@codemirror/lint';
 import { EditorView, keymap } from '@codemirror/view';
 import { LSPClient, LSPPlugin, Workspace, hoverTooltips, jumpToDefinition, serverDiagnostics } from '@codemirror/lsp-client';
 import type { WorkspaceFile } from '@codemirror/lsp-client';
@@ -28,6 +29,12 @@ export type Reference = { path: string; line: number; col: number; text: string 
 
 /** The open file's TexLab extensions go here: none without TexLab, or for a file it doesn't read. */
 export const texlabSlot = new Compartment();
+
+/**
+ * What clears TexLab's squiggles once it has stopped, or null when there are none: they live in @codemirror/lint's
+ * state, which the client adds outside texlabSlot, so emptying the slot leaves the last ones.
+ */
+export const clearMarks = (state: EditorState) => (diagnosticCount(state) ? setDiagnostics(state, []) : null);
 
 const languageOf = (path: string) => (/\.bib$/i.test(path) ? 'bibtex' : /\.(tex|ltx|sty|cls|dtx)$/i.test(path) ? 'latex' : null);
 

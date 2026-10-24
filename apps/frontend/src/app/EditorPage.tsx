@@ -114,7 +114,7 @@ import {
 import { NO_PROJECT, externalDocuments, scanProject, texRoot } from '../editor/latexEnvs';
 import type { Project } from '../editor/latexEnvs';
 import type { OutlineItem } from '../editor/latexEditor';
-import { Texlab, texlabSlot } from '../editor/lsp/texlab';
+import { Texlab, clearMarks, texlabSlot } from '../editor/lsp/texlab';
 import type { Reference } from '../editor/lsp/texlab';
 import { applyEdits, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
@@ -655,7 +655,11 @@ function Editor({ projectId }: { projectId: string }) {
 
   /** TexLab's squiggles, hovers and jumps for the open file, when TexLab is answering and reads that kind of file. */
   const attachTexlab = () => {
-    viewRef.current?.dispatch({ effects: texlabSlot.reconfigure(texlabRef.current?.extensionFor(activeRef.current) ?? []) });
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({ effects: texlabSlot.reconfigure(texlabRef.current?.extensionFor(activeRef.current) ?? []) });
+    const clear = texlabRef.current?.available ? null : clearMarks(view.state);
+    if (clear) view.dispatch(clear);
   };
 
   const openFile = async (path: string) => {
