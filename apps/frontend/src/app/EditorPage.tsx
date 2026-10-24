@@ -39,7 +39,7 @@ import {
   updateProjectSettings,
   writeFile
 } from '../api/client';
-import type { CompileEngine, CompileOptions, CompileResult, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
+import type { CompileEngine, CompileOptions, CompileResult, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TexlabDiagnostic, TodoLink, VersionMeta, VersionReason } from '../api/client';
 import { latex } from '../latex/lang';
 import Icon from './Icon';
 import Tabs from './Tabs';
@@ -53,7 +53,7 @@ import { SaveTemplateSheet } from './ProjectPage';
 import { toast } from './Toast';
 import { IS_DESKTOP, focusWindow, openDiagram } from './desktop';
 import { FILE_MANAGER } from './platform';
-import { BIB_TOOLS, COMPILE_ENGINES, ERROR_HANDLING, autoCompileLabel, effectiveCompile, effectiveEffort, llmConfigFor, updateSettings, useProviders, useSettings } from './settings';
+import { BIB_TOOLS, COMPILE_ENGINES, ERROR_HANDLING, SYNTAX_CHECKS, autoCompileLabel, effectiveCompile, effectiveEffort, llmConfigFor, updateSettings, useProviders, useSettings } from './settings';
 import { PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
 import { FIND_NEXT, FIND_PREVIOUS, SHORTCUTS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
 import type { AppCommand } from './shortcuts';
@@ -92,6 +92,7 @@ import {
   closeEnvironment,
   completeOrAccept,
   currentEnvironment,
+  documentOutline,
   editorTheme,
   ghostField,
   indentation,
@@ -111,6 +112,11 @@ import {
 } from '../editor/latexEditor';
 import { NO_PROJECT, externalDocuments, scanProject, texRoot } from '../editor/latexEnvs';
 import type { Project } from '../editor/latexEnvs';
+import type { OutlineItem } from '../editor/latexEditor';
+import { Texlab, texlabSlot } from '../editor/lsp/texlab';
+import type { Reference } from '../editor/lsp/texlab';
+import { applyEdits, renameEdits } from '../editor/lsp/rename';
+import { symbolHeadings } from '../editor/lsp/outline';
 import { VERSIONS_CHANGED, errorText, extractBibKey, figureSnippet, bibtexForDocument } from '../editor/shared';
 
 // ─── helpers ───
@@ -130,6 +136,8 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const MAX_TABS = 6;
 const timeFormat = new Intl.DateTimeFormat('en-AU', { hour: 'numeric', minute: '2-digit' });
 const engineLabel = (engine: string) => COMPILE_ENGINES.find(([value]) => value === engine)?.[1] || engine;
+// the TexLab findings the syntax check before compiling stops for; an undefined reference or citation never does
+const SYNTAX_ERRORS = new Set(['unexpected-brace', 'missing-brace', 'mismatched-environment']);
 
 /** The first text file, or '' when it's 1 MB or more: with no .tex to show, never open a huge log or data file unasked. */
 async function smallTextFile(projectId: string, items: FileItem[]) {
@@ -419,6 +427,13 @@ function Editor({ projectId }: { projectId: string }) {
   // true: Settings at its first section; a section's name: open at that one
   const [settingsOpen, setSettingsOpen] = useState<boolean | SettingsSection>(false);
   const [preview, setPreview] = useState('');
+  /** the project's TexLab while the editor is open, and whether it's answering (editor/lsp/texlab.ts) */
+  const texlabRef = useRef<Texlab | null>(null);
+  const [texlabOn, setTexlabOn] = useState(false);
+  /** ⇧F12's list: where what's at the cursor is used */
+  const [references, setReferences] = useState<Reference[] | null>(null);
+  /** the outline TexLab gives for a document: its root, the headings and floats, and the files it read */
+  const [symbolOutline, setSymbolOutline] = useState<{ root: string; items: (OutlineItem & { file: string })[]; seen: Set<string> } | null>(null);
   const treeRef = useRef<FileTreeHandle>(null);
   const panelRef = useRef<HTMLElement>(null);
 
@@ -636,6 +651,11 @@ function Editor({ projectId }: { projectId: string }) {
     setSelectionRange([0, 0]);
   };
 
+  /** TexLab's squiggles, hovers and jumps for the open file, when TexLab is answering and reads that kind of file. */
+  const attachTexlab = () => {
+    viewRef.current?.dispatch({ effects: texlabSlot.reconfigure(texlabRef.current?.extensionFor(activeRef.current) ?? []) });
+  };
+
   const openFile = async (path: string) => {
     if (!path) return;
     if (!TEXT_FILE.test(path)) {
@@ -665,6 +685,7 @@ function Editor({ projectId }: { projectId: string }) {
       clearGhost();
       view.setState(saved && saved.doc.toString() === content ? saved : EditorState.create({ doc: content, extensions: extensionsRef.current }));
       activeRef.current = path;
+      attachTexlab();
       cursorPlacedRef.current = false;
       setActivePath(path);
       setEditorValue(content);
@@ -848,6 +869,8 @@ function Editor({ projectId }: { projectId: string }) {
     if (activeRef.current && remap(activeRef.current) !== activeRef.current) {
       activeRef.current = remap(activeRef.current);
       setActivePath(activeRef.current);
+      // TexLab knows it by its new name
+      attachTexlab();
     }
     if (mainFile && remap(mainFile) !== mainFile) chooseMain(remap(mainFile), true);
     setShownDoc(remap);
@@ -1162,6 +1185,66 @@ function Editor({ projectId }: { projectId: string }) {
     return { applied: ready, stale, checkpoint: version };
   };
 
+  /**
+   * F2 on a label, citation key or command: TexLab's edits across the project, the .bib included, listed for a yes, then
+   * written through the save route with each file's change check after a "Before rename" checkpoint, all or none.
+   */
+  const renameSymbol = async () => {
+    const view = viewRef.current;
+    const texlab = texlabRef.current;
+    if (!view || !texlab?.available || !activeRef.current) return;
+    const pos = view.state.selection.main.head;
+    try {
+      const target = await texlab.renameTarget(view, pos);
+      if (!target) {
+        notify('There’s nothing here to rename. Put the cursor on a label, citation key or command.');
+        return;
+      }
+      const name = (await promptDialog({ title: `Rename “${target}”`, message: 'Every use of it in the project changes too.', defaultValue: target, confirmLabel: 'Rename' }))?.trim();
+      if (!name || name === target) return;
+      // TexLab plans against the open file's text and the others' on disk, so the open file goes to disk first
+      await saveNow();
+      const edits = renameEdits(await texlab.renameEdits(view, pos, name), (uri) => texlab.pathOf(uri));
+      if (!edits.size) {
+        notify(`TexLab found nothing to rename for “${target}”.`);
+        return;
+      }
+      const held = [...edits.keys()].find((file) => heldRef.current.has(file));
+      if (held) throw new Error(`${nameOf(held)} is waiting for you to choose which version to keep.`);
+      const plan = await Promise.all(
+        [...edits].map(async ([file, list]) => {
+          const before = file === activeRef.current ? view.state.doc.toString() : await ensureFileContent(file);
+          return { file, before, after: applyEdits(before, list), count: list.length };
+        })
+      );
+      const ok = await confirmDialog({
+        title: `Rename “${target}” to “${name}”?`,
+        message: `${plan.map((p) => `${p.file}: ${plural(p.count, 'change')}`).join('\n')}\n\nA “Before rename” checkpoint is saved first.`,
+        confirmLabel: 'Rename'
+      });
+      if (!ok) return;
+      const { version } = await createVersion('manual', `Before rename of “${target}” to “${name}”`);
+      const written: typeof plan = [];
+      try {
+        for (const p of plan) {
+          // the open file may have been typed in since TexLab's edits were made for it
+          if (p.file === activeRef.current && view.state.doc.toString() !== p.before) throw new Error(`${nameOf(p.file)} changed meanwhile.`);
+          await writeProjectFile(p.file, p.after);
+          written.push(p);
+        }
+      } catch (err) {
+        // all or none: what was written goes back to its text from before, which the checkpoint holds too
+        const stuck: string[] = [];
+        for (const p of written.reverse()) await writeProjectFile(p.file, p.before).catch(() => stuck.push(p.file));
+        const after = stuck.length ? ` ${stuck.join(', ')} couldn’t be put back; checkpoint ${version?.number} has them as they were.` : ' Nothing was renamed.';
+        throw new Error(`${errorText(err)}${after}`);
+      }
+      notify(`Renamed “${target}” to “${name}” in ${plural(plan.length, 'file')}`, 'success');
+    } catch (err) {
+      notify(`Couldn’t rename: ${errorText(err)}`, 'error');
+    }
+  };
+
   // ─── AI autocomplete (ghost text) ───
 
   const placeGhost = (pos: number | null) => {
@@ -1318,6 +1401,28 @@ function Editor({ projectId }: { projectId: string }) {
   };
 
   /**
+   * The syntax check before compiling: TexLab's brace and environment errors in the document's files and, if there are
+   * any, whether to compile anyway (No goes to the first). Passes without TexLab, or when TexLab takes too long.
+   */
+  const syntaxCheckPasses = async (doc: string) => {
+    const texlab = texlabRef.current;
+    if (!texlab?.available) return true;
+    const found = await Promise.race([texlab.diagnostics(), new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 5000))]).catch(() => null);
+    if (!found?.available) return true;
+    const { scans } = await scanProject(doc, fileSet, readText, false);
+    const errors = scans.flatMap(({ file = '' }) =>
+      (found.files[file] ?? []).filter((d: TexlabDiagnostic) => d.severity === 'error' && SYNTAX_ERRORS.has(d.code ?? '')).map((d) => ({ ...d, file }))
+    );
+    if (!errors.length) return true;
+    const listed = errors.slice(0, 6).map((e) => `${e.file}, line ${e.line}: ${e.message}`);
+    if (errors.length > 6) listed.push(`and ${errors.length - 6} more`);
+    const message = `TexLab found ${plural(errors.length, 'syntax error')} in ${nameOf(doc)}:\n${listed.join('\n')}`;
+    if (await confirmDialog({ title: 'Compile anyway?', message, confirmLabel: 'Compile anyway' })) return true;
+    await jumpTo(errors[0].file, errors[0].line, errors[0].col);
+    return false;
+  };
+
+  /**
    * The document Compile builds (compileTarget), or another once. fresh: its kept build files are cleared first.
    * auto: auto compile started it. Says how it ended ('busy': another compile was running).
    */
@@ -1326,6 +1431,14 @@ function Editor({ projectId }: { projectId: string }) {
     if (!doc) {
       notify('There’s no .tex file to compile. Add one, or choose “Set as main file” from a file’s menu.');
       return 'failed';
+    }
+    // not for auto compile, which would ask at every pause in typing
+    if (compileOptions.syntaxCheck && !opts.auto) {
+      compilingRef.current = true;
+      const go = await syntaxCheckPasses(doc)
+        .catch(() => true)
+        .finally(() => (compilingRef.current = false));
+      if (!go) return 'stopped';
     }
     compilingRef.current = true;
     // this compile builds every edit so far; one made from now on is owed another
@@ -1754,7 +1867,10 @@ function Editor({ projectId }: { projectId: string }) {
     recheck: (_paths?: string[]) => {},
     autoCompile: () => {},
     target: () => '' as string,
-    openFloats: (_card: FloatCard) => {}
+    openFloats: (_card: FloatCard) => {},
+    showFile: async (_path: string) => {},
+    readText: async (_path: string) => '' as string,
+    renameSymbol: () => {}
   });
   actions.current = {
     save: () => saveNow(true),
@@ -1780,7 +1896,15 @@ function Editor({ projectId }: { projectId: string }) {
     },
     autoCompile,
     target: () => compileTarget,
-    openFloats
+    openFloats,
+    showFile: async (path: string) => {
+      showEditor();
+      await openFile(path);
+    },
+    readText,
+    renameSymbol: () => {
+      renameSymbol();
+    }
   };
 
   // ─── effects: unsaved edits, CodeMirror, first load, shortcuts ───
@@ -1945,6 +2069,7 @@ function Editor({ projectId }: { projectId: string }) {
         }
       }),
       grammarMarks,
+      texlabSlot.of([]),
       // an image dropped on the editor goes to the Floats panel's Insert figure instead of into the text
       EditorView.domEventHandlers({
         drop(e, view) {
@@ -2047,6 +2172,55 @@ function Editor({ projectId }: { projectId: string }) {
     });
     return () => events.close();
   }, [projectId]);
+
+  // the project's TexLab, while the editor is open: a jump to another file opens it here, and the open file gets its
+  // extensions whenever TexLab starts answering or stops
+  useEffect(() => {
+    const texlab = new Texlab(
+      projectId,
+      {
+        open: async (path) => {
+          await actions.current.showFile(path);
+          return activeRef.current === path ? viewRef.current : null;
+        },
+        read: (path) => actions.current.readText(path),
+        showReferences: setReferences,
+        rename: () => actions.current.renameSymbol()
+      },
+      setTexlabOn
+    );
+    texlabRef.current = texlab;
+    return () => {
+      texlab.close();
+      texlabRef.current = null;
+    };
+  }, [projectId]);
+
+  useEffect(() => attachTexlab(), [texlabOn]);
+
+  // TexLab's outline of the document being edited, a moment after typing stops, a file changes or TexLab starts
+  useEffect(() => {
+    const texlab = texlabRef.current;
+    if (!texlabOn || !texlab || !docRoot) {
+      setSymbolOutline(null);
+      return;
+    }
+    let live = true;
+    const timer = window.setTimeout(async () => {
+      try {
+        const symbols = await texlab.symbols();
+        const seen = new Set<string>();
+        const found = await documentOutline(docRoot, fileSet, readText, symbolHeadings(symbols), seen);
+        if (live) setSymbolOutline({ root: docRoot, items: found, seen });
+      } catch {
+        // the parser's outline shows meanwhile
+      }
+    }, 600);
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [texlabOn, docRoot, editorValue, fileSet, filesVersion]);
 
   // the diagram composer's window (desktop.ts openDiagram): its Insert as figure hands the diagram to the Floats panel's
   // Insert diagram card and brings this window forward, and its saves show without waiting for the folder watch
@@ -2264,9 +2438,13 @@ function Editor({ projectId }: { projectId: string }) {
   const held = heldRef.current.get(activePath);
   const outlineFile = isTex(activePath) ? activePath : mainFile;
   const outlineText = outlineFile === activePath ? editorValue : filesRef.current.get(outlineFile) || '';
-  const outline = useMemo(() => parseOutline(outlineText), [outlineText]);
+  const parsedOutline = useMemo(() => parseOutline(outlineText).map((item) => ({ ...item, file: outlineFile })), [outlineText, outlineFile]);
+  // TexLab's, across the files the document pulls in, once it has one that takes in the open file
+  const projectOutline = symbolOutline?.root === docRoot && symbolOutline.items.length && (!isTex(activePath) || symbolOutline.seen.has(activePath)) ? symbolOutline : null;
+  const outline = projectOutline?.items ?? parsedOutline;
+  const outlineName = projectOutline ? docRoot : outlineFile;
   const outlineBase = Math.min(...outline.map((o) => o.level), 9);
-  const currentHeading = outlineFile === activePath ? outline.filter((o) => o.pos <= selectionRange[0]).pop() : undefined;
+  const currentHeading = outline.filter((o) => o.file === activePath && o.pos <= selectionRange[0]).pop();
 
   const problems = compileErrors.length;
   const errorCount = compileErrors.filter((e) => e.severity === 'error').length;
@@ -2343,6 +2521,7 @@ function Editor({ projectId }: { projectId: string }) {
     ...compileChoice('engine', 'Compiler (this project)', COMPILE_ENGINES),
     ...compileChoice('autoCompile', 'Auto compile', pauses.map((n): [number, string] => [n, autoCompileLabel(n)])),
     ...compileChoice('haltOnError', 'Compile error handling', ERROR_HANDLING),
+    ...compileChoice('syntaxCheck', 'Syntax checks', SYNTAX_CHECKS),
     ...compileChoice('bibTool', 'Bibliography tool', BIB_TOOLS),
     ...compileChoice('draft', 'Fast draft mode', [
       [false, 'Off'],
@@ -2581,7 +2760,7 @@ function Editor({ projectId }: { projectId: string }) {
               <div className={`sidebar-outline ${layout.outlineOpen ? 'open' : ''}`}>
                 <button className="sidebar-section-title" aria-expanded={layout.outlineOpen} onClick={() => setLayout({ outlineOpen: !layout.outlineOpen })}>
                   <span>
-                    Outline{outlineFile && <span className="outline-file"> · {nameOf(outlineFile)}</span>}
+                    Outline{outlineName && <span className="outline-file"> · {nameOf(outlineName)}</span>}
                   </span>
                   <Icon name="chevron.right" className={`disclosure ${layout.outlineOpen ? 'open' : ''}`} />
                 </button>
@@ -2589,11 +2768,11 @@ function Editor({ projectId }: { projectId: string }) {
                   <div className="outline-list">
                     {outline.map((item) => (
                       <button
-                        key={`${item.pos}-${item.title}`}
-                        className={`outline-item ${item === currentHeading ? 'active' : ''}`}
+                        key={`${item.file}-${item.pos}-${item.title}`}
+                        className={`outline-item ${item.float ? 'float' : ''} ${item === currentHeading ? 'active' : ''}`}
                         style={{ paddingLeft: 10 + (item.level - outlineBase) * 14 }}
-                        title={`${item.title} (line ${item.line})`}
-                        onClick={() => select(outlineFile, item.pos)}
+                        title={`${item.title} (${item.file === outlineName ? '' : `${item.file}, `}line ${item.line})`}
+                        onClick={() => select(item.file, item.pos)}
                       >
                         {item.title}
                       </button>
@@ -2804,6 +2983,42 @@ function Editor({ projectId }: { projectId: string }) {
                 </div>
               )}
             </div>
+
+            {references && (
+              <div
+                className="references-panel"
+                role="region"
+                aria-label="References"
+                onKeyDown={(e) => {
+                  if (e.key !== 'Escape') return;
+                  setReferences(null);
+                  viewRef.current?.focus();
+                }}
+              >
+                <div className="references-head">
+                  <span className="grow">{references.length ? plural(references.length, 'reference') : 'No references found'}</span>
+                  <button className="icon-btn" aria-label="Close" onClick={() => setReferences(null)}>
+                    <Icon name="xmark" />
+                  </button>
+                </div>
+                <div className="references-list">
+                  {references.map((r, i) => (
+                    <button
+                      key={`${r.path}:${r.line}:${r.col}`}
+                      className="reference-row"
+                      title={`${r.path}, line ${r.line}`}
+                      autoFocus={i === 0}
+                      onClick={() => jumpTo(r.path, r.line, r.col)}
+                    >
+                      <span className="reference-place">
+                        {nameOf(r.path)}:{r.line}
+                      </span>
+                      <span className="reference-text">{r.text}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <Composer
               open={composerOpen}

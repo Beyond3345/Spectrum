@@ -79,7 +79,9 @@ const COMPILE_SETTINGS = {
   autoCompile: (v) => Number.isInteger(v) && v >= 0 && v <= 10,
   haltOnError: (v) => typeof v === 'boolean',
   bibTool: (v) => BIB_TOOLS.includes(v),
-  draft: (v) => typeof v === 'boolean'
+  draft: (v) => typeof v === 'boolean',
+  // TexLab's syntax check before compiling, which the editor runs
+  syntaxCheck: (v) => typeof v === 'boolean'
 };
 const isObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 

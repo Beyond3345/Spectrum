@@ -55,6 +55,15 @@ jobs:
         continue-on-error: ${{ !inputs.release_tag }}
         run: node scripts/native.mjs nodehun
 
+      # built from its tagged source with the C runtime linked in, which takes a while, so kept between runs
+      - uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\spectrum-build\texlab-5.26.0-x64
+          key: texlab-5.26.0-x64-crt-static
+
+      - name: TexLab
+        run: node scripts/desktop.mjs texlab
+
       - name: Installer
         run: node scripts/desktop.mjs build
 
@@ -124,7 +133,11 @@ jobs:
       - uses: actions/download-artifact@v5
         with:
           name: spectrum-windows-x64
+      # TexLab's source (GPL 3.0), to go with the TexLab both installers carry; the digest is desktop.mjs's
+      - run: |
+          curl -fsSL -o texlab-5.26.0-source.tar.gz https://github.com/latex-lsp/texlab/archive/refs/tags/v5.26.0.tar.gz
+          echo "47af7e71247fe186ddbaa62373ce5fbebc802ab8df9924958ac62788a644f84e  texlab-5.26.0-source.tar.gz" | sha256sum -c
       - env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.release_tag }}
-        run: gh release upload "$TAG" ./*.exe --clobber --repo "$GITHUB_REPOSITORY"
+        run: gh release upload "$TAG" ./*.exe ./texlab-5.26.0-source.tar.gz --clobber --repo "$GITHUB_REPOSITORY"

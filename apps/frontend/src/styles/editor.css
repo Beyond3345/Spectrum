@@ -282,6 +282,12 @@
   font-weight: 500;
 }
 
+/* TexLab's floats among the headings */
+.outline-item.float {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
 /* --------------------------------------------------------------------------
    Main panel: editor column | divider | right column
    -------------------------------------------------------------------------- */
@@ -588,6 +594,61 @@
 
 .editor-host .cm-editor {
   height: 100%;
+}
+
+/* ⇧F12's list of where something is used, under the editor */
+.references-panel {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  max-height: 168px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-editor);
+  font-size: 12.5px;
+}
+
+.references-head {
+  display: flex;
+  align-items: center;
+  padding: 2px 6px 0 12px;
+  color: var(--text-secondary);
+}
+
+.references-list {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 6px 6px;
+}
+
+.reference-row {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.reference-row:hover,
+.reference-row:focus-visible {
+  background: var(--bg-hover);
+}
+
+.reference-place {
+  flex: none;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.reference-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--editor-font);
 }
 
 /* Break points in long formulas (after = + & , and before \cdot, \approx and the like): a zero-width

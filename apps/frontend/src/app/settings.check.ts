@@ -174,6 +174,8 @@ eq(effectiveCompile(undefined, defaults), defaults, 'no project choices: the def
 eq(effectiveCompile({ engine: 'xelatex', draft: true }, defaults), { ...defaults, engine: 'xelatex', draft: true }, 'the project’s own');
 eq(effectiveCompile({ engine: null, autoCompile: 11, bibTool: 'makeindex' } as never, defaults), defaults, 'null and unknown values');
 eq(effectiveCompile({ autoCompile: 0 }, defaults).autoCompile, 0, 'off in the project, on by default');
+eq(DEFAULT_SETTINGS.compileDefaults.syntaxCheck, true, 'the syntax check is on unless turned off');
+eq(effectiveCompile({ syntaxCheck: false }, defaults).syntaxCheck, false, 'a project that doesn’t check');
 
 const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
 try {

@@ -25,7 +25,8 @@ export const stripComment = withoutComments;
 
 // ─── Outline ───
 
-export type OutlineItem = { title: string; level: number; pos: number; line: number };
+/** float: a figure, table or the like (TexLab's outline), shown among the headings */
+export type OutlineItem = { title: string; level: number; pos: number; line: number; float?: boolean };
 
 export const HEADING = /\\(chapter|section|subsection|subsubsection)\*?\s*(?:\[[^\]]*\])?\s*\{/g;
 export const HEADING_LEVEL: Record<string, number> = { chapter: 0, section: 1, subsection: 2, subsubsection: 3 };
@@ -56,17 +57,25 @@ export function parseOutline(text: string): OutlineItem[] {
   return items;
 }
 
-/** A document's headings in reading order, into the files it \input, \include, \subfile or \import (each read once). */
-export async function documentOutline(root: string, files: Set<string>, read: (path: string) => Promise<string>) {
+/**
+ * A document's headings in reading order, into the files it \input, \include, \subfile or \import (each read once).
+ * headingsOf gives a line's headings, each at its column, by default from Spectrum's own parser; seen gets the files read.
+ */
+export async function documentOutline(
+  root: string,
+  files: Set<string>,
+  read: (path: string) => Promise<string>,
+  headingsOf = (_path: string, code: string, _line: number) => parseOutline(code),
+  seen = new Set<string>()
+) {
   const headings: (OutlineItem & { file: string })[] = [];
-  const seen = new Set<string>();
   const walk = async (path: string) => {
     seen.add(path);
     let offset = 0;
     for (const [index, line] of (await read(path).catch(() => '')).split('\n').entries()) {
       const code = stripComment(line);
       const marks = [
-        ...parseOutline(code).map((heading) => ({ at: heading.pos, heading })),
+        ...headingsOf(path, code, index).map((heading) => ({ at: heading.pos, heading })),
         ...[...code.matchAll(INPUT_RE)].map((m) => ({ at: m.index ?? 0, input: includedFile(files, root, inputName(m), '.tex') }))
       ].sort((a, b) => a.at - b.at);
       for (const mark of marks) {

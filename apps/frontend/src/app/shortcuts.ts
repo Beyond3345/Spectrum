@@ -164,7 +164,11 @@ export const FIXED_SHORTCUTS: [string, string][] = [
   ['Find previous', FIND_PREVIOUS],
   ['Undo', 'Mod-z'],
   ['Redo', IS_MAC ? 'Shift-Mod-z' : 'Mod-y'],
-  ['Settings', 'Mod-,']
+  ['Settings', 'Mod-,'],
+  // TexLab's, while it runs (editor/lsp/texlab.ts); go to definition is also ⌘ or Ctrl and a click
+  ['Go to definition', 'F12'],
+  ['Find references', 'Shift-F12'],
+  ['Rename label, citation key or command', 'F2']
 ];
 
 /** Shortcuts the system or the clipboard keep for themselves. */

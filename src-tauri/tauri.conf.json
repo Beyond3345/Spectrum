@@ -48,7 +48,8 @@
       "icons/icon.png"
     ],
     "externalBin": [
-      "binaries/node"
+      "binaries/node",
+      "binaries/texlab"
     ],
     "resources": {
       "resources/backend/": "backend/",
