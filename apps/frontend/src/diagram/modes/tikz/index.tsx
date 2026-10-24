@@ -115,7 +115,8 @@ function BoxView({ data: { box, readOnly }, selected, width = 0, height = 0 }: N
       <svg className="tikz-box-shape" width={width} height={height} overflow="visible">
         {outline(box.shape, width, height, { fill: box.fill ?? 'none', ...strokeOf(box) })}
       </svg>
-      <div className={`tikz-box-text${box.shape === 'maths' ? ' maths' : ''}`} style={plain && box.stroke ? { color: box.stroke } : undefined}>
+      {/* TikZ writes black on a fill, so a dark canvas keeps it black there */}
+      <div className={`tikz-box-text${box.shape === 'maths' ? ' maths' : ''}`} style={{ color: plain ? box.stroke : box.fill && '#000000' }}>
         {box.text}
       </div>
       {(['t', 'r', 'b', 'l'] as Side[]).map((side) => (
