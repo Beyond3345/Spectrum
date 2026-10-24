@@ -1,8 +1,9 @@
 // Self-check for personas: what a chat is told, Reset to defaults, and how they join another computer's. Run (it
 // imports React through settings.ts, so bundle it first):
 // npx esbuild apps/frontend/src/editor/personas.check.ts --bundle --platform=node --log-level=warning | node
-import { DEFAULT_SETTINGS, keysBackFromOlder, sharedPart, takeInShared, withShared } from '../app/settings';
+import { DEFAULT_SETTINGS, followStep, keysBackFromOlder, sharedPart, takeInShared, withShared } from '../app/settings';
 import type { AppSettings } from '../app/settings';
+import type { SharedSettings } from '../api/client';
 import { STARTER_PERSONAS, resetPersonas, resolveInstructions } from './personas';
 import type { Persona } from './personas';
 
@@ -74,5 +75,59 @@ eq(keysBackFromOlder(at({ defaultInstructions: 'Mine' }), fileA, '2026-10-02T00:
 // a computer joining for the first time with an empty box takes the others' default instructions, not the other way
 eq(takeInShared(at({}), sharedPart(a), '').defaultInstructions, 'Use British spelling.', 'an empty box never shared');
 eq(takeInShared(at({ defaultInstructions: 'Mine' }), sharedPart(a), '').defaultInstructions, 'Mine', 'written here: changed here');
+
+// three computers, followed as followSharedSettings does: A (2.0) shared its personas and instructions at T1, then B,
+// still on 1.10.4, shared a theme at T2 without them. C upgrades from 1.10.4 having taken in B's file, or before it
+// had: either way it never shares its starters or an empty box over A's, and takes A's in once A shares again
+{
+  const T = (n: number) => `2026-10-0${n}T00:00:00.000Z`;
+  type Computer = { name: string; settings: AppSettings; at: string; sent: string };
+  const world = () => {
+    const files: Record<string, SharedSettings> = {
+      A: { updatedAt: T(1), machineName: 'A', settings: sharedPart(a) },
+      B: { updatedAt: T(2), machineName: 'B', settings: older(at({ theme: 'dark' })) }
+    };
+    const follow = (c: Computer, now: string) => {
+      const latest = Object.values(files).filter((f) => f.machineName !== c.name).sort((x, y) => y.updatedAt.localeCompare(x.updatedAt))[0] ?? null;
+      const next = followStep(c.settings, latest, c.at, c.sent);
+      Object.assign(c, { settings: next.settings, at: next.at, sent: next.sent });
+      if (next.share) {
+        files[c.name] = { updatedAt: now, machineName: c.name, settings: next.share };
+        Object.assign(c, { at: now, sent: JSON.stringify(next.share) });
+      }
+    };
+    const A: Computer = { name: 'A', settings: a, at: T(1), sent: JSON.stringify(sharedPart(a)) };
+    return { files, follow, A };
+  };
+  const keepsA = (A: Computer, what: string) => {
+    eq(ids(A.settings.personas), [...ids(STARTER_PERSONAS), 'thesis'], `${what}: A keeps its personas`);
+    eq(A.settings.defaultInstructions, 'Use British spelling.', `${what}: and its instructions`);
+  };
+  for (const tookB of [true, false]) {
+    const what = tookB ? 'upgraded after taking B’s file in' : 'upgraded before';
+    const { files, follow, A } = world();
+    const c = at({ theme: tookB ? 'dark' : 'system' });
+    const C: Computer = { name: 'C', settings: c, at: tookB ? T(2) : T(1), sent: JSON.stringify(older(c)) };
+    follow(C, T(3));
+    // a change of any setting on C shares
+    C.settings = { ...C.settings, editorFontSize: 17 };
+    follow(C, T(4));
+    eq(files.C?.settings.editorFontSize, 17, `${what}: C shares`);
+    eq(['personas' in files.C.settings, 'defaultInstructions' in files.C.settings], [false, false], `${what}: but not the keys it never had`);
+    follow(A, T(5));
+    eq(A.settings.editorFontSize, 17, `${what}: A takes C’s file in`);
+    keepsA(A, what);
+    // A shares again, and C takes its personas in, and shares them from then on
+    A.settings = { ...A.settings, theme: 'light' };
+    follow(A, T(6));
+    follow(C, T(7));
+    eq(ids(C.settings.personas), [...ids(STARTER_PERSONAS), 'thesis'], `${what}: C takes A’s personas in`);
+    C.settings = { ...C.settings, editorFontSize: 18 };
+    follow(C, T(8));
+    eq(ids((files.C.settings.personas as Persona[]) || []), [...ids(STARTER_PERSONAS), 'thesis'], `${what}: and shares them`);
+    follow(A, T(9));
+    keepsA(A, `${what}, at the end`);
+  }
+}
 
 console.log('personas: all checks passed');

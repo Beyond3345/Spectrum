@@ -490,6 +490,46 @@ export function keysBackFromOlder(settings: AppSettings, latest: SharedSettings 
   return { settings: next, sent: JSON.stringify({ ...sharedPart(next), ...before }) };
 }
 
+/**
+ * part less 2.0's keys still at their default that neither what counts as shared (sent, as JSON) nor theirs (the file
+ * taken in) has: a computer upgraded from 1.10.4 never sends its starters or an empty box over the others' until a file
+ * brings the keys in.
+ * ponytail: personas edited here before then still go across over the others' own; closing that needs sharedSettings
+ * to hand over the newest file that has each key
+ */
+function ownShared(part: Record<string, unknown>, sent: string, theirs: Record<string, unknown> = {}) {
+  let before: Record<string, unknown> = {};
+  try {
+    before = JSON.parse(sent) || {};
+  } catch {
+    // never shared
+  }
+  const kept = { ...part };
+  for (const key of ['personas', 'defaultInstructions'] as const) {
+    if (!(key in before) && !(key in theirs) && JSON.stringify(part[key]) === JSON.stringify(DEFAULT_SETTINGS[key])) delete kept[key];
+  }
+  return kept;
+}
+
+/**
+ * One follow, without storage or requests: the settings with the newest file another computer shared (latest) taken
+ * in, when this computer last shared or took some in (at) and what counted as shared then (sent) after it, and what to
+ * share (null: nothing). theirsFirst: just turned on, so the other computers' settings win over this one's.
+ */
+export function followStep(settings: AppSettings, latest: SharedSettings | null, at: string, sent: string, theirsFirst = false) {
+  const back = keysBackFromOlder(settings, latest, at, sent);
+  if (back) ({ settings, sent } = back);
+  if (latest && latest.updatedAt > at) {
+    // first, or this computer's old values of the other settings would go back under a newer date and undo them
+    // there; the folder tree and the personas join the others' all the same
+    settings = takeInShared(settings, latest.settings, theirsFirst ? JSON.stringify({ ...sharedPart(settings), projectFolders: undefined, personas: undefined }) : sent);
+    at = latest.updatedAt;
+    sent = JSON.stringify(ownShared(sharedPart(withShared(settings, latest.settings)), sent, latest.settings));
+  }
+  const mine = ownShared(sharedPart(settings), sent);
+  return { settings, at, sent, share: JSON.stringify(mine) === sent ? null : mine };
+}
+
 // when this computer last shared settings or took some in, and what they were (JSON)
 const SYNC_KEY = 'spectrum-settings-sync';
 
@@ -518,31 +558,20 @@ function keepSyncState(state: { at: string; sent: string }) {
 export function followSharedSettings() {
   // theirsFirst: just turned on, so the other computers' settings win over this one's
   const follow = async (theirsFirst = false) => {
-    let settings = loadSettings();
+    const settings = loadSettings();
     if (!settings.syncSettings) return;
     const { shared, latest } = await getSharedSettings();
     if (!shared) return;
-    let { at, sent } = syncState();
-    const back = keysBackFromOlder(settings, latest, at, sent);
-    if (back) {
-      ({ settings, sent } = back);
-      keepSyncState({ at, sent });
-      persistSettings(settings);
+    const { at, sent } = syncState();
+    const next = followStep(settings, latest, at, sent, theirsFirst);
+    if (next.settings !== settings) {
+      keepSyncState({ at: next.at, sent: next.sent });
+      persistSettings(next.settings);
     }
-    if (latest && latest.updatedAt > at) {
-      // first, or this computer's old values of the other settings would go back under a newer date and undo them
-      // there; the folder tree and the personas join the others' all the same
-      settings = takeInShared(settings, latest.settings, theirsFirst ? JSON.stringify({ ...sharedPart(settings), projectFolders: undefined, personas: undefined }) : sent);
-      at = latest.updatedAt;
-      sent = JSON.stringify(sharedPart(withShared(settings, latest.settings)));
-      keepSyncState({ at, sent });
-      persistSettings(settings);
-    }
-    const mine = JSON.stringify(sharedPart(settings));
-    if (mine === sent) return;
-    const res = await shareSettings(sharedPart(settings));
+    if (!next.share) return;
+    const res = await shareSettings(next.share);
     // never before the file just taken in, so one from a computer whose clock is ahead isn't taken in twice
-    if (res.updatedAt) keepSyncState({ at: res.updatedAt > at ? res.updatedAt : at, sent: mine });
+    if (res.updatedAt) keepSyncState({ at: res.updatedAt > next.at ? res.updatedAt : next.at, sent: JSON.stringify(next.share) });
   };
   let on = loadSettings().syncSettings;
   let turnedOn = false;
