@@ -2085,15 +2085,23 @@ function Editor({ projectId }: { projectId: string }) {
     if (layout.view !== 'pdf') viewRef.current?.requestMeasure({ read: () => null, write: () => actions.current.placeGhost() });
   }, [layout.view]);
 
-  // the open file's tab scrolls into the strip's view; by hand, as scrollIntoView would slide the editor's column too
+  // the open file's tab scrolls into the strip's view, and stays there as the strip narrows (the window, the split);
+  // by hand, as scrollIntoView would slide the editor's column too
   useEffect(() => {
     const strip = stripRef.current;
-    const tab = strip?.querySelector<HTMLElement>('.file-tab.active');
-    if (!strip || !tab) return;
-    const s = strip.getBoundingClientRect();
-    const t = tab.getBoundingClientRect();
-    if (t.left < s.left) strip.scrollLeft -= s.left - t.left;
-    else if (t.right > s.right) strip.scrollLeft += Math.min(t.right - s.right, t.left - s.left);
+    if (!strip) return;
+    const show = () => {
+      const tab = strip.querySelector<HTMLElement>('.file-tab.active');
+      if (!tab) return;
+      const s = strip.getBoundingClientRect();
+      const t = tab.getBoundingClientRect();
+      if (t.left < s.left) strip.scrollLeft -= s.left - t.left;
+      else if (t.right > s.right) strip.scrollLeft += Math.min(t.right - s.right, t.left - s.left);
+    };
+    // it also reports the strip's size as soon as it's watched
+    const observer = new ResizeObserver(show);
+    observer.observe(strip);
+    return () => observer.disconnect();
   }, [activePath, tabs, panel]);
 
   // turning spell checking on or off in Settings applies straight away
