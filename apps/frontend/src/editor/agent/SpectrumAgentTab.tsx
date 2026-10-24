@@ -14,7 +14,7 @@ import { CHATS_CHANGED, buildProjectContext, errorText, patchesToChanges, relati
 import { AgentComposer, ChangesTray, PersonaPicker, ReviewView, Transcript, Welcome, openTodos, readStored, taskPersona, useFollow, useSkills, writeStored } from './parts';
 import type { ContextKind, Draft, TrayChange } from './parts';
 import type { AgentStatus } from './LocalAgentTab';
-import { metaOf, openChanges, stepCall } from './transcript';
+import { closeChanges, metaOf, openChanges, stepCall } from './transcript';
 import type { Checkpoint, Item, ThreadMeta as Meta } from './transcript';
 
 
@@ -149,7 +149,10 @@ export default function SpectrumAgentTab({
         ...(res.todos?.length && { todos: res.todos }),
         ...(res.steps?.length && { steps: res.steps })
       };
-      append(base, chatMessage('assistant', res.reply || (changes.length ? 'The changes are ready to review.' : 'No changes were suggested.'), Object.keys(meta).length ? meta : undefined));
+      // each file's new proposal goes on from the thread's open one, from the same base, which it closes
+      const paths = changes.map((c) => c.filePath);
+      const owner = paths.length ? update(base, (chat) => ({ ...chat, messages: closeChanges(chat.messages, paths, 'superseded').messages })) : base;
+      append(owner, chatMessage('assistant', res.reply || (changes.length ? 'The changes are ready to review.' : 'No changes were suggested.'), Object.keys(meta).length ? meta : undefined));
       if (changes.length && threadRef.current?.id === base.id) setTray((old) => [...old.filter((o) => !changes.some((c) => c.filePath === o.filePath)), ...changes]);
     } catch (err) {
       if (runRef.current === run) append(base, chatMessage('assistant', `Request failed: ${errorText(err)}`, { error: true }));
@@ -169,13 +172,7 @@ export default function SpectrumAgentTab({
   /** Marks the open proposals for these files applied or rejected, with the checkpoint saved before applying. */
   const mark = (owner: ChatThread, paths: string[], status: 'applied' | 'rejected', checkpoint?: Checkpoint) =>
     update(owner, (chat) => {
-      let last = -1;
-      const messages = chat.messages.map((m, i) => {
-        const meta = metaOf(m);
-        if (!meta.changes?.some((c) => !c.status && paths.includes(c.filePath))) return m;
-        last = i;
-        return { ...m, meta: { ...meta, changes: meta.changes.map((c) => (!c.status && paths.includes(c.filePath) ? { ...c, status } : c)) } };
-      });
+      const { messages, last } = closeChanges(chat.messages, paths, status);
       if (checkpoint && last >= 0) {
         const meta = metaOf(messages[last]);
         messages[last] = { ...messages[last], meta: { ...meta, checkpoints: [...(meta.checkpoints || []), checkpoint] } };

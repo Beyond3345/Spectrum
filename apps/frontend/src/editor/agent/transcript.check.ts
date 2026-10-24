@@ -1,7 +1,7 @@
 // Self-check for the local agent transcript. Run:
 // npx esbuild apps/frontend/src/editor/agent/transcript.check.ts --bundle --platform=node --log-level=warning --outfile=<scratch>/transcript.cjs && node <scratch>/transcript.cjs
 import type { AgentEvent } from '../../api/client';
-import { addEvent, openChanges, project } from './transcript';
+import { addEvent, closeChanges, openChanges, project } from './transcript';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -151,8 +151,20 @@ eq(project([ev('terminal', { terminalId: 'x', command: 'latexmk', args: ['-pdf',
     ]
   };
   const disk: Record<string, string> = { 'a.tex': 'A0', 'b.tex': 'B2', 'd.tex': 'same', 'e.tex': 'user edit\nE0' };
-  void openChanges(chat, async (p) => (p in disk ? disk[p] : Promise.reject(new Error('missing')))).then((open) => {
+  // closed (applied, rejected, or superseded by a turn's proposal from the same base), a change keeps no texts
+  const closed = closeChanges(chat.messages, ['a.tex', 'e.tex'], 'superseded');
+  eq(closed.last, 3, 'the last message closed in');
+  eq(closed.messages.map((m) => m.meta.changes), [
+    [{ filePath: 'a.tex', status: 'superseded' }, { filePath: 'b.tex', proposed: 'B1' }, { filePath: 'gone.tex', proposed: 'G' }],
+    [{ filePath: 'a.tex', status: 'superseded' }, { filePath: 'b.tex', proposed: 'B2', status: 'applied' }, { filePath: 'c.tex', proposed: 'C1', status: 'rejected' }],
+    [{ filePath: 'd.tex', proposed: 'same' }],
+    [{ filePath: 'e.tex', status: 'superseded' }]
+  ], 'only the open changes to those files, without their texts');
+  eq(closeChanges(chat.messages, ['c.tex'], 'applied').messages, chat.messages, 'nothing open: unchanged');
+  const next = { ...chat, messages: [...closed.messages, message([{ filePath: 'a.tex', original: 'A0', proposed: 'A3' }])] };
+  void Promise.all([openChanges(chat, async (p) => (p in disk ? disk[p] : Promise.reject(new Error('missing')))), openChanges(next, async (p) => disk[p] ?? '')]).then(([open, after]) => {
     eq(open.map((c) => [c.filePath, c.original, c.proposed]), [['a.tex', 'A0', 'A2'], ['gone.tex', '', 'G'], ['e.tex', 'E0', 'E1']], 'open proposals');
+    eq(after.map((c) => [c.filePath, c.original, c.proposed]), [['gone.tex', '', 'G'], ['a.tex', 'A0', 'A3']], 'a superseded one is closed');
     console.log('transcript: all checks passed');
   });
 }

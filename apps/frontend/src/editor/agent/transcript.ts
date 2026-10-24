@@ -159,10 +159,12 @@ export function project(events: AgentEvent[], { pending = [], checkpoints = [] }
 
 /**
  * What a Spectrum agent thread keeps in ChatMessage.meta; changes as the bottom card's Edit chats kept them, now with
- * the file each was proposed against (original), and steps its tool calls.
+ * the file each was proposed against (original), and steps its tool calls. A closed change (applied, rejected, or
+ * superseded by a later turn's proposal for its file, made from the same base) keeps only its file and status.
  */
+export type ChangeStatus = 'applied' | 'rejected' | 'superseded';
 export type ThreadMeta = {
-  changes?: { filePath: string; original?: string; proposed: string; status?: 'applied' | 'rejected' }[];
+  changes?: { filePath: string; original?: string; proposed?: string; status?: ChangeStatus }[];
   todos?: SuggestedTodo[];
   checkpoints?: Checkpoint[];
   steps?: AgentStep[];
@@ -176,16 +178,28 @@ export const metaOf = (m: { meta?: Record<string, unknown> }) => (m.meta || {}) 
  * is now (read).
  */
 export async function openChanges(chat: ChatThread, read: (path: string) => Promise<string>) {
-  const proposed = new Map<string, { original?: string; proposed: string }>();
+  const proposed = new Map<string, { original?: string; proposed?: string }>();
   for (const m of chat.messages)
     for (const c of metaOf(m).changes || []) {
       if (c.status) proposed.delete(c.filePath);
       else proposed.set(c.filePath, c);
     }
   const list = await Promise.all(
-    [...proposed].map(async ([filePath, c]) => ({ filePath, original: c.original ?? (await read(filePath).catch(() => '')), proposed: c.proposed, source: 'Spectrum agent' }))
+    [...proposed].map(async ([filePath, c]) => ({ filePath, original: c.original ?? (await read(filePath).catch(() => '')), proposed: c.proposed ?? '', source: 'Spectrum agent' }))
   );
   return list.filter((c) => c.original !== c.proposed);
+}
+
+/** The thread's open changes to these files closed with status, keeping only the file and status; last: the last message closed in (-1: none). */
+export function closeChanges(messages: ChatThread['messages'], paths: string[], status: ChangeStatus) {
+  let last = -1;
+  const closed = messages.map((m, i) => {
+    const meta = metaOf(m);
+    if (!meta.changes?.some((c) => !c.status && paths.includes(c.filePath))) return m;
+    last = i;
+    return { ...m, meta: { ...meta, changes: meta.changes.map((c) => (!c.status && paths.includes(c.filePath) ? { filePath: c.filePath, status } : c)) } };
+  });
+  return { messages: closed, last };
 }
 
 // each Spectrum agent tool as a card says it: its kind, and its title alone and with what it was about
