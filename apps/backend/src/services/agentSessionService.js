@@ -437,12 +437,14 @@ export async function previewDraft(r, options = {}) {
     }
     const { entry, reads } = await toolsLaunch();
     const child = await spawnAgentProcess({ command: process.execPath, args: [entry, '--compile', '--root', r.workspace, '--state', out, '--main', main, '--engine', engine], workspace: out, home, cwd: out, runtimePaths: [...reads, r.workspace], forbiddenRoots: [r.root] });
+    // stopped with the session's other processes
+    r.fileOperations ||= new Set(); r.fileOperations.add(child);
     let output = '', error = '';
     child.stdout.on('data', (chunk) => { output += chunk; });
     child.stderr.on('data', (chunk) => { error = (error + chunk).slice(-4000); });
     const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', resolve); });
     child.stdin.end();
-    try { await timeout(done, 10 * 60 * 1000, 'The preview took too long and was stopped.'); } finally { killAgentProcess(child); }
+    try { await timeout(done, 10 * 60 * 1000, 'The preview took too long and was stopped.'); } finally { r.fileOperations.delete(child); killAgentProcess(child); }
     let result;
     try { result = JSON.parse(output); } catch { return { ok: false, pdf: null, log: error.trim() || 'The preview could not be compiled.' }; }
     const log = await fs.readFile(path.join(out, 'last.log'), 'utf8').catch(() => result.error || '');
@@ -626,12 +628,24 @@ export async function reviewAgentChanges(r, body) {
         if (merged) r.notes.push(`“${rel}” was applied with the user’s own edits to it merged in. Re-read it before changing it again.`);
       }
     } else {
-      await mutateProjectFiles(async () => {
-        for (const rel of body.paths) await rebaseChange(r, rel, await readCurrent(r.root, rel), draft(rel));
-      });
-      const many = body.paths.length > 1;
-      r.notes.push(`The user rejected your changes to ${body.paths.map((rel) => `“${rel}”`).join(', ')}. ${many ? 'They were' : 'It was'} reset to the user’s version. Re-read ${many ? 'them' : 'it'} before changing ${many ? 'them' : 'it'} again.`);
-      emit(r, 'reset', { paths: body.paths });
+      // every file read before any is reset; the agent hears of those that were, even if a later one fails
+      const reset = [];
+      try {
+        await mutateProjectFiles(async () => {
+          const live = [];
+          for (const rel of body.paths) live.push([rel, await readCurrent(r.root, rel)]);
+          for (const [rel, bytes] of live) {
+            await rebaseChange(r, rel, bytes, draft(rel));
+            reset.push(rel);
+          }
+        });
+      } finally {
+        if (reset.length) {
+          const many = reset.length > 1;
+          r.notes.push(`The user rejected your changes to ${reset.map((rel) => `“${rel}”`).join(', ')}. ${many ? 'They were' : 'It was'} reset to the user’s version. Re-read ${many ? 'them' : 'it'} before changing ${many ? 'them' : 'it'} again.`);
+          emit(r, 'reset', { paths: reset });
+        }
+      }
     }
     await persist(r);
     return pendingChanges(r);
