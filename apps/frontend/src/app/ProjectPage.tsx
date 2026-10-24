@@ -51,6 +51,7 @@ import { addFolder, childFolders, deleteFolder, placeProject, renameFolder } fro
 import type { ProjectFolder, ProjectFolders } from './folders';
 import { BIN, FILE_MANAGER, IS_WINDOWS, tildify } from './platform';
 import { TAG_COLOUR_NAMES, loadSettings, useSettings, type AppSettings, type TagColour } from './settings';
+import { TAG_COLOURS } from './appearance';
 import { formatShortcut, matchesShortcut, shortcutKey, withShortcut } from './shortcuts';
 
 // ─── helpers ───
@@ -145,15 +146,6 @@ function badgeOf(p: Row): { icon?: string; text: [string, string]; warning: bool
 // a project card or row on its way to a folder in the sidebar
 const DRAG_TYPE = 'application/x-spectrum-project';
 
-const TAG_COLOURS: Record<TagColour, [string, string]> = {
-  blue: ['Blue', 'var(--accent)'],
-  green: ['Green', 'var(--green)'],
-  orange: ['Orange', 'var(--orange)'],
-  red: ['Red', 'var(--red)'],
-  yellow: ['Yellow', 'var(--yellow)'],
-  purple: ['Purple', 'color-mix(in srgb, var(--accent) 55%, var(--red))'],
-  teal: ['Teal', 'color-mix(in srgb, var(--green) 55%, var(--accent))']
-};
 /** The colour chosen for the tag, or one picked from its name. */
 const tagColour = (tag: string, chosen: AppSettings['tagColours']) =>
   TAG_COLOURS[chosen[tag] ?? TAG_COLOUR_NAMES[[...tag].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % TAG_COLOUR_NAMES.length]][1];

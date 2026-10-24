@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { IS_DESKTOP, WINDOW_LABEL, setNativeGlass } from './desktop';
 import { IS_WINDOWS, OS_NAME } from './platform';
 import { SETTINGS_CHANGE_EVENT, loadSettings } from './settings';
-import type { Accent, AppSettings, PdfPageDark, PdfPageLight, Theme } from './settings';
+import type { Accent, AppSettings, PdfPageDark, PdfPageLight, TagColour, Theme } from './settings';
 
 /** macOS-like accents that read on light and dark surfaces alike */
 export const ACCENTS: [Accent, string, string][] = [
@@ -17,6 +17,17 @@ export const ACCENTS: [Accent, string, string][] = [
   ['graphite', 'Graphite', '#8c8c8c'],
   ['custom', 'Custom', '']
 ];
+
+/** each tag (and persona) colour's name and CSS colour */
+export const TAG_COLOURS: Record<TagColour, [string, string]> = {
+  blue: ['Blue', 'var(--accent)'],
+  green: ['Green', 'var(--green)'],
+  orange: ['Orange', 'var(--orange)'],
+  red: ['Red', 'var(--red)'],
+  yellow: ['Yellow', 'var(--yellow)'],
+  purple: ['Purple', 'color-mix(in srgb, var(--accent) 55%, var(--red))'],
+  teal: ['Teal', 'color-mix(in srgb, var(--green) 55%, var(--accent))']
+};
 
 export const PDF_PAGES_LIGHT: [PdfPageLight, string][] = [
   ['white', 'White'],
