@@ -280,3 +280,13 @@ test('a prompt is kept from the start of its turn, so Stop before the agent star
   assert.deepEqual(users((await stored(run)).events), ['hello', 'stopped while starting']);
   assert.deepEqual(users((await reopen(run, (data) => data)).events), ['hello', 'stopped while starting']);
 });
+
+test('a session its agent can no longer load goes on in a new one, which hears the conversation so far', { skip, timeout: 120000 }, async () => {
+  const { open, turn, lastPrompt } = await setup();
+  const { run } = await open({ 'main.tex': 'original\n' }, { args: ['--lose-sessions'] });
+  await turn(run, 'hello');
+  await turn(run, 'again');
+  assert.match(await lastPrompt(run), /Previous conversation \(a new agent session was required\):\nhello\n[\s\S]*\n\nagain$/);
+  assert.doesNotMatch(await lastPrompt(run), /hello[\s\S]*again[\s\S]*again/, 'the prompt goes once');
+  await turn(run, 'third');
+});

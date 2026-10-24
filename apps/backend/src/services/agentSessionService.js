@@ -299,13 +299,17 @@ async function connect(r) {
   const systemPrompt = r.persona && r.capabilities.sessionCapabilities?.systemPrompt ? { mode: 'append', content: [{ type: 'text', text: personaText(r.persona) }] } : undefined;
   const spec = { cwd: r.workspace, mcpServers: tools ? [tools.server] : [], ...(systemPrompt && { systemPrompt }) };
   r.opening = true;
+  let loaded = false;
   try {
     if (r.remoteId && !r.forceNew && (r.capabilities.loadSession || r.capabilities.sessionCapabilities?.resume)) {
       const method = r.capabilities.loadSession ? 'session/load' : 'session/resume';
       r.replaying = method === 'session/load';
-      try { session = await timeout(r.peer.request(method, { ...spec, sessionId: r.remoteId }), 30000, 'The session could not be loaded.', r.connectionAbort.signal); }
+      // one the agent no longer has (or can't load) goes on in a new session below
+      try { session = await timeout(r.peer.request(method, { ...spec, sessionId: r.remoteId }), 30000, 'The session could not be loaded.', r.connectionAbort.signal); loaded = true; }
+      catch (err) { if (r.cancelled || r.connectionAbort.signal.aborted) throw err; }
       finally { r.replaying = false; }
-    } else {
+    }
+    if (!loaded) {
       // a new session after one the agent can't load (or a changed persona) hears the conversation so far
       r.freshSession = !!r.remoteId;
       session = await timeout(r.peer.request('session/new', spec), 30000, 'The agent did not create a session.', r.connectionAbort.signal);
