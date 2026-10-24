@@ -3,9 +3,10 @@
 //   node scripts/sync-skills.mjs
 // Each file is checked against the commit's own hash. A skill whose licence is not MIT or Apache-2.0 stops the sync
 // (one that names none falls under the repository's MIT licence). The scripts that spend an OpenRouter key are left
-// out. Spectrum's own skills (spectrum-*) are written in this repository and left alone. Then update
-// THIRD_PARTY_NOTICES.md if the list or a licence changed.
-import { createHash } from 'node:crypto';
+// out. Spectrum's own skills (spectrum-*) are written in this repository and left alone. Every skill is fetched and
+// checked before skills/ changes, so a failed sync leaves it as it was. Then update THIRD_PARTY_NOTICES.md if the list
+// or a licence changed.
+import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,34 +36,38 @@ if (truncated) throw new Error('GitHub cut the file list short; fetch the skills
 const manifestFile = path.join(out, 'manifest.json');
 const previous = fs.existsSync(manifestFile) ? JSON.parse(fs.readFileSync(manifestFile, 'utf8')) : {};
 const skills = Object.fromEntries(Object.entries(previous.skills || {}).filter(([, s]) => s.source !== REPO));
-for (const id of SKILLS) {
-  const files = tree.filter((e) => e.type === 'blob' && e.path.startsWith(`skills/${id}/`) && !LEFT_OUT.test(path.posix.basename(e.path)));
-  if (!files.some((e) => e.path === `skills/${id}/SKILL.md`)) throw new Error(`${id} has no SKILL.md at ${COMMIT}.`);
-  const staged = path.join(out, `.${id}-sync`);
-  fs.rmSync(staged, { recursive: true, force: true });
-  for (const entry of files) {
-    const bytes = Buffer.from(await (await fetchOk(raw(entry.path))).arrayBuffer());
-    if (blobSha(bytes) !== entry.sha) throw new Error(`${entry.path} doesn't match the commit's copy.`);
-    const target = path.join(staged, entry.path.slice(`skills/${id}/`.length));
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, bytes, { mode: entry.mode === '100755' ? 0o755 : 0o644 });
+const stage = path.join(out, `.sync-${randomUUID()}`);
+try {
+  for (const id of SKILLS) {
+    const files = tree.filter((e) => e.type === 'blob' && e.path.startsWith(`skills/${id}/`) && !LEFT_OUT.test(path.posix.basename(e.path)));
+    if (!files.some((e) => e.path === `skills/${id}/SKILL.md`)) throw new Error(`${id} has no SKILL.md at ${COMMIT}.`);
+    const staged = path.join(stage, id);
+    for (const entry of files) {
+      const bytes = Buffer.from(await (await fetchOk(raw(entry.path))).arrayBuffer());
+      if (blobSha(bytes) !== entry.sha) throw new Error(`${entry.path} doesn't match the commit's copy.`);
+      const target = path.join(staged, entry.path.slice(`skills/${id}/`.length));
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, bytes, { mode: entry.mode === '100755' ? 0o755 : 0o644 });
+    }
+    const { data } = readFrontMatter(fs.readFileSync(path.join(staged, 'SKILL.md'), 'utf8'));
+    const named = typeof data.license === 'string' ? data.license.trim() : '';
+    const licence = named ? LICENCES.find(([pattern]) => pattern.test(named))?.[1] : 'MIT';
+    if (!licence) throw new Error(`${id} is under “${named}”, which isn't MIT or Apache-2.0. It was not added.`);
+    const meta = data.metadata || {};
+    skills[id] = { licence, author: meta['skill-author'] || 'K-Dense Inc.', version: meta.version || '', source: REPO, ...(!named && { note: 'names no licence, so the repository’s MIT licence applies' }) };
+    console.log(`${id}: ${files.length} files, ${licence}`);
   }
-  const { data } = readFrontMatter(fs.readFileSync(path.join(staged, 'SKILL.md'), 'utf8'));
-  const named = typeof data.license === 'string' ? data.license.trim() : '';
-  const licence = named ? LICENCES.find(([pattern]) => pattern.test(named))?.[1] : 'MIT';
-  if (!licence) {
-    fs.rmSync(staged, { recursive: true, force: true });
-    throw new Error(`${id} is under “${named}”, which isn't MIT or Apache-2.0. It was not added.`);
-  }
-  const meta = data.metadata || {};
-  skills[id] = { licence, author: meta['skill-author'] || 'K-Dense Inc.', version: meta.version || '', source: REPO, ...(!named && { note: 'names no licence, so the repository’s MIT licence applies' }) };
-  fs.rmSync(path.join(out, id), { recursive: true, force: true });
-  fs.renameSync(staged, path.join(out, id));
-  console.log(`${id}: ${files.length} files, ${licence}`);
-}
+  const kDense = Buffer.from(await (await fetchOk(raw('LICENSE.md'))).arrayBuffer());
+  const apache = Object.values(skills).some((s) => s.licence === 'Apache-2.0') ? await (await fetchOk(APACHE_TEXT)).text() : null;
 
-fs.writeFileSync(path.join(out, 'K-Dense-LICENSE.md'), Buffer.from(await (await fetchOk(raw('LICENSE.md'))).arrayBuffer()));
-if (Object.values(skills).some((s) => s.licence === 'Apache-2.0')) fs.writeFileSync(path.join(out, 'Apache-2.0.txt'), await (await fetchOk(APACHE_TEXT)).text());
-const sorted = Object.fromEntries(Object.entries(skills).sort(([a], [b]) => a.localeCompare(b)));
-fs.writeFileSync(manifestFile, `${JSON.stringify({ upstream: `https://github.com/${REPO}`, commit: COMMIT, skills: sorted }, null, 2)}\n`);
+  // all fetched and checked: only now does skills/ change
+  for (const id of SKILLS) {
+    fs.rmSync(path.join(out, id), { recursive: true, force: true });
+    fs.renameSync(path.join(stage, id), path.join(out, id));
+  }
+  fs.writeFileSync(path.join(out, 'K-Dense-LICENSE.md'), kDense);
+  if (apache) fs.writeFileSync(path.join(out, 'Apache-2.0.txt'), apache);
+  const sorted = Object.fromEntries(Object.entries(skills).sort(([a], [b]) => a.localeCompare(b)));
+  fs.writeFileSync(manifestFile, `${JSON.stringify({ upstream: `https://github.com/${REPO}`, commit: COMMIT, skills: sorted }, null, 2)}\n`);
+} finally { fs.rmSync(stage, { recursive: true, force: true }); }
 console.log(`Skills from ${REPO} at ${COMMIT.slice(0, 7)} → ${path.relative(process.cwd(), out)}`);
