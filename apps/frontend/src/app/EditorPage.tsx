@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { EditorState, Prec } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
-import { EditorView, keymap } from '@codemirror/view';
+import { EditorView, closeHoverTooltips, keymap } from '@codemirror/view';
 import { indentLess } from '@codemirror/commands';
 import { search } from '@codemirror/search';
 import { autocompletion, nextSnippetField, prevSnippetField } from '@codemirror/autocomplete';
@@ -681,8 +681,8 @@ function Editor({ projectId }: { projectId: string }) {
       const content = await ensureFileContent(path);
       // typed into the old file while the new one loaded
       if (dirtyRef.current) await saveNow();
-      // a jump highlight would otherwise come back with the file and never fade
-      view.dispatch({ effects: setJumpHighlight.of(null) });
+      // a jump highlight would otherwise come back with the file and never fade, and a hover with no pointer over it
+      view.dispatch({ effects: [setJumpHighlight.of(null), closeHoverTooltips] });
       if (activeRef.current) statesRef.current.set(activeRef.current, view.state);
       const saved = statesRef.current.get(path);
       clearGhost();
