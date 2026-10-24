@@ -123,7 +123,8 @@ const IMAGE_FILE = /\.(?:pdf|png|jpe?g|mps|eps|ps|jbig2|jb2|svg|gif|tiff?|bmp|we
 const SECRET_FILE = /(?:^|\/)(?:\.env(?:\.[\w-]+)?|id_(?:rsa|dsa|ecdsa|ed25519)|[^/]+\.(?:pem|p12|pfx|jks|keystore)|\.netrc|\.npmrc|\.pypirc|credentials(?:\.json)?|service[-_]account[^/]*\.json)$/i;
 const SECRETS: [RegExp, string][] = [
   [/-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----/, 'a private key'],
-  [/\bAKIA[0-9A-Z]{16}\b/, 'an AWS access key'],
+  // a long-term (AKIA) or temporary (ASIA) key id
+  [/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/, 'an AWS access key'],
   [/\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,})\b/, 'a GitHub token'],
   [/\bglpat-[A-Za-z0-9_-]{20,}\b/, 'a GitLab token'],
   [/\bsk-(?:proj-|ant-)?[A-Za-z0-9_-]{32,}\b/, 'an API key'],
