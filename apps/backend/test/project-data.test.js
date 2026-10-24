@@ -4,6 +4,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { promises as fs, existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -328,4 +329,35 @@ test('a compile’s checkpoint taking another’s place removes the stored files
   await createCompileCheckpoint(p.path);
   assert.deepEqual([stored('saved by hand'), stored('two'), stored('x')], [true, true, true]);
   assert.equal((await listVersions(p.path)).length, 3);
+});
+
+test('a compile’s checkpoint is saved even when what it replaces can’t all be tidied away', { skip: process.platform === 'win32' ? 'POSIX permissions and macOS’s locked flag' : false }, async () => {
+  const p = await newProject('Untidy');
+  const edit = (text) => fs.writeFile(path.join(p.path, 'main.tex'), text);
+  const shard = (text) => path.join(p.path, '.spectrum', 'history', 'objects', crypto.createHash('sha256').update(text).digest('hex').slice(0, 2));
+  // a stored file that can't be removed is left, used by nothing
+  await edit('one');
+  assert.equal((await createCompileCheckpoint(p.path)).saved, true);
+  await fs.chmod(shard('one'), 0o555);
+  try {
+    await edit('two');
+    const res = await createCompileCheckpoint(p.path);
+    assert.equal(res.saved, true, res.error);
+  } finally {
+    await fs.chmod(shard('one'), 0o755);
+  }
+  const [two, ...rest] = await listVersions(p.path);
+  assert.equal(rest.length, 0);
+  // a manifest that can't be removed (macOS's locked flag) stays an ordinary compile checkpoint, its stored files too
+  if (process.platform !== 'darwin') return;
+  const manifest = path.join(p.path, '.spectrum', 'history', 'manifests', `${two.id}.json`);
+  execFileSync('chflags', ['uchg', manifest]);
+  try {
+    await edit('three');
+    assert.equal((await createCompileCheckpoint(p.path)).saved, true);
+  } finally {
+    execFileSync('chflags', ['nouchg', manifest]);
+  }
+  assert.equal((await listVersions(p.path)).length, 2);
+  assert.equal((await readVersionFile(p.path, two.id, 'main.tex')).content, 'two');
 });

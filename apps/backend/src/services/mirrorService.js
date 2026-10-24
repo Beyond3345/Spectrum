@@ -26,7 +26,7 @@ import { mergeChat } from '../utils/chatMerge.js';
 import { hashFile } from '../utils/projectCopy.js';
 import { appPath, findSyncedProjects, getProjectRoot, httpError, serialiser, updateMeta } from './projectService.js';
 import { locationLabel, offlineMessage, otherComputersProjects, relFrom, sameFolder, within } from './syncService.js';
-import { createVersionUnlocked, isText, listVersions } from './versionService.js';
+import { createVersion, isText, listVersions } from './versionService.js';
 import { moveToBin } from '../routes/projects.js';
 
 const MIRROR_DIR = path.join(DATA_DIR, 'mirror');
@@ -643,7 +643,8 @@ async function keepBefore(ctx, replaced, items) {
   if (!always && !(due && replaced.some((it) => files[it.l.rel] !== it.l.hash))) return files;
   // the computer it came from, when only one other mirrors the project
   const others = [...new Set((await otherComputersProjects().catch(() => [])).filter((p) => p.id === ctx.id).map((p) => p.machineName))];
-  const { version } = await createVersionUnlocked(ctx.localRoot, { label: `Before sync from ${others.length === 1 ? others[0] : ctx.label}` });
+  // in the project's history lock, which only this project's checkpoints hold
+  const { version } = await createVersion(ctx.localRoot, { label: `Before sync from ${others.length === 1 ? others[0] : ctx.label}` });
   versionedAt.set(ctx.id, Date.now());
   // the latest, when nothing changed since, which this pass may be deleting: then it holds nothing
   const gone = items.some((it) => it.action === 'deleteLocal' && it.key === keyOf(`.spectrum/history/manifests/${version.id}.json`));
