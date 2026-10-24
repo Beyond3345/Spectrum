@@ -7,7 +7,7 @@ Research behind it: Spectrum 1.10.4's code, Oleafly's source and docs (`CodingPr
 ## Ground rules
 
 - **Oleafly is AGPL-3.0, Spectrum is MIT.** Spectrum takes Oleafly's ideas and layouts but copies none of its code, text or rule files. The README now thanks Oleafly and says so (committed on main, not pushed).
-- **New code dependencies must be MIT/BSD-style or Apache-2.0:** `isomorphic-git` (MIT), `@codemirror/lsp-client` and `@codemirror/lint` (MIT), `@modelcontextprotocol/sdk` (MIT), `codemirror-lang-typst` (Apache-2.0), `@codemirror/lang-markdown` (MIT).
+- **New code dependencies must be MIT/BSD-style or Apache-2.0:** `isomorphic-git` (MIT), `@codemirror/lsp-client` and `@codemirror/lint` (MIT), `@modelcontextprotocol/sdk` (MIT), `codemirror-lang-typst` (Apache-2.0), `@codemirror/lang-markdown` (MIT), `@xyflow/react` (MIT) for the diagram canvas, and `mermaid` 11 (MIT; not 12, which pulls in an EPL-licensed layout library).
 - **TexLab is GPL-3.0-only.** It can only ship as a separate program beside Spectrum, with its licence and a source offer, like the AussieDic dictionary today.
 - **Other bundled programs:** Typst (Apache-2.0) and Tectonic (MIT) ship inside the app; pandoc (GPL-2.0-or-later) is downloaded on first use. All are listed with their licences in the third-party notices, and so, on Windows, is Microsoft's `vcruntime140.dll` under its redistribution terms.
 - **Bundled skills** come from K-Dense's upstream repository at a pinned commit, never from Oleafly's modified copies. Each keeps the licence and author its own front matter names (MIT, or Apache-2.0 for the Mermaid diagrams skill by Clayton Young; a skill that names no licence falls under the repository's MIT licence), all listed in the third-party notices, with the Elsevier `.bst` files listed as LPPL 1.3c. The scripts that spend an OpenRouter key (`generate_schematic*.py` and `generate_slide_image*.py`) are left out.
@@ -277,6 +277,25 @@ Biblatex with Biber isn't covered: Tectonic's packages need Biber 2.17, so with 
 
 **Engines and the agent sandbox:** downloaded engines (pandoc, older Typst versions) go in their own folder, `engines` in Spectrum's data folder, which sandboxed compiles may read and run; nothing else in Spectrum's data folder is opened to them. Sandboxed compiles keep Tectonic's and Typst's package caches in the agent's home, so an agent's first compile may download again; Spectrum never passes its own cache folders into the sandbox.
 
+## 10c. Diagram composer
+
+Your request, modelled on Oleafly's composer but going further: Oleafly only draws boxes and arrows, while you draw circuits.
+
+- **Its own window (your request):** Draw a diagram (top bar and Insert (+)) opens a chooser (TikZ diagram, Typst diagram, Mermaid diagram), then a separate composer window you can put beside the document or on another screen. The main window keeps working, and closing the composer never quits Spectrum.
+- **TikZ package menu (your choice: all four):**
+  - **circuitikz:** about 40 parts in groups (resistors, capacitors, inductors, voltage and current sources including controlled ones, batteries, switches, diodes including LED and Zener, BJTs, MOSFETs, op-amps, logic gates, ground and supply, meters, transformers). Two-terminal parts sit on wires between grid points; op-amps, transistors and gates are placed parts with their named pins, so wires follow them when moved. Junction dots appear where three wires meet. An inspector sets each part's label, value, voltage and current arrows, and pole dots.
+  - **pgfplots:** a plot dialog (functions or data from a file, domain, axes, labels, grid, legend) with a live preview, rather than drawing.
+  - **Plain TikZ:** flowcharts and block diagrams: rectangles, rounded boxes, circles, diamonds, text and maths labels, and arrows (straight, right-angled, curved).
+  - **tikz-cd:** commutative diagrams on a grid, with objects and labelled arrows.
+- **Style menu:** circuit symbols **American by default (your choice)** or European, with overrides (inductor style, voltage direction convention, siunitx values, diode fill, label placement) and a size slider. The style is kept inside the diagram, so your document's preamble only needs a plain `\usepackage{circuitikz}` and never clashes.
+- **Draw and Code tabs:** the canvas writes clean TikZ (one `\draw` per wire or part, plain coordinates). The Code tab shows it and can be edited; editing the code by hand detaches the drawing ("Redraw from the canvas" replaces your edits; "Keep as code" leaves them). Spectrum doesn't try to read arbitrary hand-written TikZ back into a drawing.
+- **Canvas:** grid snapping, pan and zoom, minimap, undo and redo, copy and paste, rotate and mirror, delete, and a light or dark canvas. Symbols on the canvas are drawn by your own circuitikz in your chosen style (rendered once and cached), so they always match the PDF.
+- **Preview:** compiles the diagram on its own about a second after you stop changing it, using your installed TeX (or phase 5's built-in Tectonic), and shows the result; errors appear with "Fix with AI".
+- **Saved file:** one file per diagram, `figures/<name>.tex` (a standalone TikZ document), with the drawing stored in a comment at the end, so checkpoints and GitHub carry it and reopening restores the drawing. Right-click a diagram in the file tree, or its line in the editor, and choose **Edit diagram**.
+- **Into your document (your choice: `\includestandalone`):** **Insert as figure** hands the diagram to the Floats panel's figure card (caption, label, placement, width or natural size), which inserts `\includestandalone{figures/<name>}` in a figure float and adds the `standalone` package and the diagram's packages and TikZ libraries to the preamble if missing. Labels then use your document's fonts and maths.
+- **Mermaid:** flowcharts and other Mermaid diagrams drawn in the window, rendered in the app, saved as `figures/<name>.mmd`; for Markdown documents they go in as an image, for LaTeX as a PDF figure.
+- **Typst (fletcher):** the same canvas writing a fletcher diagram, included with `#figure(include …)`. This mode arrives with phase 5's built-in Typst.
+
 ## 11. Defaults I chose (say if you want any changed)
 
 - PDF sidebar sits beside the pages (they narrow) rather than sliding over them; Contents uses the PDF's bookmarks, falling back to source headings.
@@ -295,6 +314,7 @@ Biblatex with Biber isn't covered: Tectonic's packages need Biber 2.17, so with 
 
 - **Phases,** each built on a branch from main by parallel builders, merged, then given adversarial review rounds until clean, as for 1.9:
   1. Panels, floats, Document insights, the to-do list, compile options and defaults, PDF sidebar, follow-the-file setting, the Checkpoints rename and settings (4c), and the rest of section 6 (Find, page box and keys, presentation mode, PDF notes), and Settings › Engines with its LaTeX tab for section 5's defaults (the syntax-check default arrives in phase 3). Until phase 3 the sidebar is Files | Chats | To-dos.
+  1b. Diagram composer (your choice: straight after phase 1): the window, circuitikz, pgfplots, plain TikZ, tikz-cd and Mermaid. Its Typst mode comes with phase 5.
   2. Agent workspace, personas and skills, plus the to-do list's agent parts (open to-dos sent to agents, `suggest_todo`, Save open steps as to-dos).
   3. TexLab with the syntax check before compiling, then Review (Preflight checks with the AI review), then Research, which replaces the Chats tab; the bottom card's history menu ships with it.
   4. Zotero (with Research's Zotero source chip), GitHub sync with the settings repo, and removing the cloud sync with its migration.
