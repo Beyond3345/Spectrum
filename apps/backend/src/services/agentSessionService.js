@@ -511,6 +511,7 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
     r.forceNew = true;
   }
   state(r, 'running');
+  let outcome;
   const task = (async () => {
     try {
       if (r.ready) await r.ready;
@@ -539,8 +540,8 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       const result = await timeout(r.peer.request('session/prompt', { sessionId: r.remoteId, prompt: [{ type: 'text', text }, ...contextBlocks(r, context)] }), 30 * 60 * 1000, 'The agent task exceeded 30 minutes.', r.connectionAbort.signal);
       r.turnCount++;
       emit(r, 'complete', result);
-      state(r, r.cancelled || result.stopReason === 'cancelled' || ['max_tokens', 'max_turn_requests'].includes(result.stopReason) ? 'interrupted' : result.stopReason === 'end_turn' ? 'completed' : 'failed', result.stopReason === 'refusal' ? 'The agent refused this task.' : undefined);
-    } catch (err) { state(r, r.cancelled ? 'interrupted' : 'failed', err.message); disconnect(r); }
+      outcome = [r.cancelled || result.stopReason === 'cancelled' || ['max_tokens', 'max_turn_requests'].includes(result.stopReason) ? 'interrupted' : result.stopReason === 'end_turn' ? 'completed' : 'failed', result.stopReason === 'refusal' ? 'The agent refused this task.' : undefined];
+    } catch (err) { outcome = [r.cancelled ? 'interrupted' : 'failed', err.message]; disconnect(r); }
     finally {
       for (const pending of r.pending.values()) pending.reject(new Error('The task ended.'));
       r.pending.clear();
@@ -548,8 +549,10 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       try { await r.stopChain; await captureAgentProposal(r); emit(r, 'changes', { changes: await pendingChanges(r) }); }
       catch (err) { emit(r, 'notice', { error: err.message }); }
       for (const todo of await takeSuggestions(r).catch(() => [])) emit(r, 'todo', todo);
-      await persist(r);
+      // the turn's end is told once its changes are in and the next prompt can be taken
       r.busy = false;
+      state(r, ...outcome);
+      await persist(r);
     }
   })();
   r.task = task;
