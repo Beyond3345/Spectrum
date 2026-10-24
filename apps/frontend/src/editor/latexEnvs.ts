@@ -212,7 +212,9 @@ export const ALGORITHM2E_SNIPPET: Snip = ['', ['\\caption{}', '\\KwIn{}', '\\KwO
 // one \s* each side of an optional [...] (here and in def), so a long run of spaces can't make a match quadratic
 const LOAD_RE = /\\(usepackage|RequirePackage|documentclass|LoadClass)(?:WithOptions)?\s*(?:\[[^\]]*\]\s*)?\{([^}]+)\}/g;
 const LIB_RE = /\\(usetikzlibrary|usepgfplotslibrary|tcbuselibrary)\s*\{([^}]+)\}/g;
-const INPUT_RE = /\\(?:input|include|subfile)\s*\{([^}]+)\}|\\import\s*\{([^}]*)\}\s*\{([^}]+)\}/g;
+export const INPUT_RE = /\\(?:input|include|subfile)\s*\{([^}]+)\}|\\import\s*\{([^}]*)\}\s*\{([^}]+)\}/g;
+/** The name an INPUT_RE match pulls in; \import's folder and file joined. */
+export const inputName = (m: RegExpMatchArray) => m[1]?.trim() ?? `${m[2].trim().replace(/\/?$/, '/')}${m[3].trim()}`;
 
 const def = (cmds: string, star = false, prefix = '') => ({ re: new RegExp(String.raw`\\(?:${cmds})\*?\s*(?:\[[^\]]*\]\s*)?\{([^{}]+)\}`, 'g'), star, prefix });
 /** The commands that define environments; the name (or a comma list) is the first argument. star: name* too. */
@@ -266,7 +268,7 @@ export function scanTex(src: string): TexScan {
   const names = (list: string) => list.split(',').map((n) => n.trim()).filter(Boolean);
   for (const m of src.matchAll(LOAD_RE)) (/class/i.test(m[1]) ? scan.classes : scan.packages).push(...names(m[2]));
   for (const m of src.matchAll(LIB_RE)) for (const lib of names(m[2])) scan.libraries.push([LIBRARY_OF[m[1]], lib]);
-  for (const m of src.matchAll(INPUT_RE)) scan.inputs.push(m[1]?.trim() ?? `${m[2].trim().replace(/\/?$/, '/')}${m[3].trim()}`);
+  for (const m of src.matchAll(INPUT_RE)) scan.inputs.push(inputName(m));
   for (const m of src.matchAll(LABEL_RE)) scan.labels.push(m[1].trim());
   for (const m of src.matchAll(BIB_RE)) scan.bibs.push(...names(m[1]));
   for (const m of src.matchAll(EXTERNAL_RE)) scan.externals.push([m[1]?.trim() ?? '', m[2].trim()]);
@@ -337,6 +339,16 @@ const normalise = (path: string) =>
     .reduce<string[]>((out, part) => (part === '..' ? out.slice(0, -1) : part && part !== '.' ? [...out, part] : out), [])
     .join('/');
 
+/**
+ * The project file a name that `mainFile`'s document pulls in means. Like the compile's TEXINPUTS, it is looked up
+ * from the main file's folder first, then the project root. TeX tries name.tex before the name as given; only a
+ * name with the extension is followed as given, so a big \input'd .pgf or .tikz figure is never read.
+ */
+export function includedFile(files: Set<string>, mainFile: string, name: string, ext: string) {
+  const dir = mainFile.slice(0, mainFile.lastIndexOf('/') + 1);
+  return [dir + name + ext, name + ext, ...(name.toLowerCase().endsWith(ext) ? [dir + name, name] : [])].map(normalise).find((p) => files.has(p));
+}
+
 export type BibEntry = { key: string; author: string; year: string; title: string };
 
 // a field's value starts after "name =": in braces, in quotes, or bare (a number or a @string name)
@@ -378,16 +390,13 @@ const bibScanned = new Map<string, [src: string, entries: BibEntry[]]>();
 
 /**
  * Scans the main file and what it pulls in: \input, \include, \subfile and \import, and the project's own
- * .sty and .cls files. Like the compile's TEXINPUTS, a name is looked up from the main file's folder first,
- * then the project root. Then reads the .bib files it names (or, naming none that exist, every .bib).
+ * .sty and .cls files, found as includedFile finds them. Then reads the .bib files it names (or, naming none that
+ * exist, every .bib).
  * With follow, the labels of the documents \externaldocument names come too, with their prefix.
  */
 export async function scanProject(mainFile: string, files: Set<string>, read: (path: string) => Promise<string>, follow = true): Promise<Project> {
   const dir = mainFile.slice(0, mainFile.lastIndexOf('/') + 1);
-  // TeX tries name.tex before the name as given; only a name with the extension is followed as given, so a
-  // big \input'd .pgf or .tikz figure is never read
-  const find = (name: string, ext: string) =>
-    [dir + name + ext, name + ext, ...(name.toLowerCase().endsWith(ext) ? [dir + name, name] : [])].map(normalise).find((p) => files.has(p));
+  const find = (name: string, ext: string) => includedFile(files, mainFile, name, ext);
   const scans: TexScan[] = [];
   const queue = [mainFile];
   const seen = new Set(queue);
