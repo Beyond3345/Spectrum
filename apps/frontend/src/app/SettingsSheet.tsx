@@ -1,21 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { changeSpellWord, getSyncSettings, spellStatus, spellWords, systemCheck, updateSyncSettings } from '../api/client';
-import type { CheckerStatus, CloudMode, SearchProvider, SyncSettings, SystemCheck } from '../api/client';
+import { changeSpellWord, getSyncSettings, listProjects, spellStatus, spellWords, systemCheck, updateSyncSettings } from '../api/client';
+import type { BibTool, CheckerStatus, CloudMode, CompileEngine, SearchProvider, SyncSettings, SystemCheck } from '../api/client';
 import { COLOUR_ROLES, EDITOR_FONTS, EDITOR_THEMES, chosenColours, editorColours, highlightLines, themeFor, wellColour } from '../editor/editorThemes';
 import type { EditorMode } from '../editor/editorThemes';
 import { highlightColour } from '../editor/synctex';
+import { CheckpointCleanup } from '../editor/tools/VersionsTab';
 import Icon from './Icon';
 import Select from './Select';
 import Sheet from './Sheet';
+import Tabs from './Tabs';
 import { ParserFields } from './TransferPanel';
 import { IS_DESKTOP, claimDefaultHandler, pickFolder } from './desktop';
 import { toast } from './Toast';
 import { IS_MAC, IS_WINDOWS, OS_NAME, tildify } from './platform';
 import { ACCENTS, PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
 import {
+  BIB_TOOLS,
   COMPILE_ENGINES,
+  ERROR_HANDLING,
   ROLE_FIELDS,
+  autoCompileLabel,
   SYNC_HIGHLIGHTS,
   effortOptions,
   followsMain,
@@ -38,11 +43,13 @@ import type { ProviderPreset } from '../api/client';
 import { FIXED_SHORTCUTS, SHORTCUTS, canonical, formatShortcut, shortcutFromEvent, shortcutKey, shortcutProblem } from './shortcuts';
 import type { Shortcut } from './shortcuts';
 
-type Section = 'appearance' | 'editor' | 'language' | 'shortcuts' | 'projects' | 'models' | 'search' | 'transfer' | 'system';
+type Section = 'appearance' | 'editor' | 'engines' | 'checkpoints' | 'language' | 'shortcuts' | 'projects' | 'models' | 'search' | 'transfer' | 'system';
 
 const SECTIONS: [Section, string, string][] = [
   ['appearance', 'Appearance', 'circle.lefthalf.filled'],
   ['editor', 'Editor', 'text.cursor'],
+  ['engines', 'Engines', 'hammer'],
+  ['checkpoints', 'Checkpoints', 'clock.arrow.circlepath'],
   ['language', 'Spelling & grammar', 'textformat.abc.dottedunderline'],
   ['shortcuts', 'Shortcuts', 'keyboard'],
   ['projects', 'Projects', 'folder'],
@@ -422,6 +429,10 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
           )}
 
           {section === 'editor' && <EditorPane />}
+
+          {section === 'engines' && <EnginesPane />}
+
+          {section === 'checkpoints' && <CheckpointsPane />}
 
           {section === 'language' && <LanguagePane />}
 
@@ -935,7 +946,7 @@ function EditorPreview({ colours }: { colours: Record<string, string> }) {
 
 const themeKey = (mode: EditorMode) => (mode === 'light' ? 'editorThemeLight' : 'editorThemeDark');
 
-/** The compiler, jumping to the PDF, the font, a theme for each mode and any colour changed from the theme. */
+/** Citing, jumping to the PDF, which PDF shows, the font, a theme for each mode and any colour changed from the theme. */
 function EditorPane() {
   const [settings, update] = useSettings();
   const dark = useDarkMode();
@@ -959,18 +970,6 @@ function EditorPane() {
 
   return (
     <>
-      <div className="field">
-        <label id="settings-compileEngine">Default compiler</label>
-        <Select
-          labelId="settings-compileEngine"
-          value={settings.compileEngine}
-          options={COMPILE_ENGINES.map(([value, label]) => [value, value === 'auto' ? 'Auto (recommended)' : label])}
-          onChange={(value) => update({ compileEngine: value as AppSettings['compileEngine'] })}
-        />
-        <div className="field-hint">
-          Auto reads a <code>% !TEX program</code> comment, uses XeLaTeX when the document needs Unicode fonts, and pdfLaTeX otherwise. The compiler can also be changed per session from the Compile button.
-        </div>
-      </div>
       <label className="checkbox-row">
         <input type="checkbox" checked={settings.autoInsertCite} onChange={(e) => update({ autoInsertCite: e.target.checked })} />
         <span>
@@ -1032,6 +1031,18 @@ function EditorPane() {
           <span aria-hidden="true">10 s</span>
         </div>
       </div>
+
+      <h3 className="form-section-title">PDF</h3>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={settings.pdfFollowsFile} onChange={(e) => update({ pdfFollowsFile: e.target.checked })} />
+        <span>
+          PDF follows the open file
+          <span className="field-hint">
+            Opening another document’s .tex shows its PDF, and Compile builds the document showing. A chapter with a <code>% !TEX root</code> comment shows
+            its root’s PDF, and other files leave the PDF as it is.
+          </span>
+        </span>
+      </label>
 
       <h3 className="form-section-title">Font</h3>
       <div className="editor-theme-columns">
@@ -1133,6 +1144,134 @@ function EditorPane() {
           </label>
         ))}
       </div>
+    </>
+  );
+}
+
+/** Settings › Engines: the LaTeX tab's compile defaults, which a project uses until it makes its own choice. */
+function EnginesPane() {
+  const [settings, update] = useSettings();
+  const defaults = settings.compileDefaults;
+  const set = (patch: Partial<typeof defaults>) => update({ compileDefaults: { ...defaults, ...patch } });
+
+  return (
+    <>
+      <Tabs value="latex" onChange={() => undefined} items={[{ value: 'latex', label: 'LaTeX' }]} />
+      <div className="field-hint section-hint">
+        Every project compiles with these until you change one for that project from the Compile button’s menu. They stay on this computer.
+      </div>
+      <div className="field">
+        <label id="settings-engine">Compiler</label>
+        <Select
+          labelId="settings-engine"
+          value={defaults.engine}
+          options={COMPILE_ENGINES.map(([value, label]) => [value, value === 'auto' ? 'Auto (recommended)' : label])}
+          onChange={(value) => set({ engine: value as CompileEngine })}
+        />
+        <div className="field-hint">
+          Auto reads a <code>% !TEX program</code> comment, uses XeLaTeX when the document needs Unicode fonts, and pdfLaTeX otherwise.
+        </div>
+      </div>
+      <div className="field">
+        <label id="settings-autoCompile">Auto compile</label>
+        <Select
+          labelId="settings-autoCompile"
+          value={String(defaults.autoCompile)}
+          options={Array.from({ length: 11 }, (_, n): [string, string] => [String(n), autoCompileLabel(n)])}
+          onChange={(value) => set({ autoCompile: Number(value) })}
+        />
+        <div className="field-hint">Compiles the document showing once you stop typing for that long. A newer compile takes the place of one that’s out of date.</div>
+      </div>
+      <div className="field">
+        <label id="settings-haltOnError">Compile error handling</label>
+        <Select
+          labelId="settings-haltOnError"
+          value={String(defaults.haltOnError)}
+          options={ERROR_HANDLING.map(([value, label]): [string, string] => [String(value), label])}
+          onChange={(value) => set({ haltOnError: value === 'true' })}
+        />
+        <div className="field-hint">Stop on first error ends the compile there, so the log points at it. Otherwise TeX carries on and makes what PDF it can.</div>
+      </div>
+      <div className="field">
+        <label id="settings-bibTool">Bibliography tool</label>
+        <Select labelId="settings-bibTool" value={defaults.bibTool} options={BIB_TOOLS} onChange={(value) => set({ bibTool: value as BibTool })} />
+        <div className="field-hint">
+          Auto reads a <code>% !BIB program</code> comment, and otherwise runs the tool the document’s bibliography package needs.
+        </div>
+      </div>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={defaults.draft} onChange={(e) => set({ draft: e.target.checked })} />
+        <span>
+          Fast draft mode
+          <span className="field-hint">One pass with images drawn as boxes, for quick previews. Numbers and references can lag behind until a full compile.</span>
+        </span>
+      </label>
+
+      <h3 className="form-section-title">TeX installation</h3>
+      <div className="field">
+        <label id="settings-texFolder">TeX folder</label>
+        <div className="path-row" role="group" aria-labelledby="settings-texFolder">
+          <Icon name="folder" />
+          <span className="path-text" title={settings.texFolder}>
+            {settings.texFolder || 'None: the TeX on your PATH'}
+          </span>
+          <button
+            className="btn small"
+            onClick={async () => {
+              const picked = await pickFolder({ title: 'Choose the folder with the TeX programs', defaultPath: settings.texFolder });
+              if (picked) update({ texFolder: picked });
+            }}
+          >
+            Change…
+          </button>
+          <button className="btn small" disabled={!settings.texFolder} onClick={() => update({ texFolder: '' })}>
+            Reset
+          </button>
+        </div>
+        <div className="field-hint">
+          For a second TeX installation, tried before the one on your PATH, e.g.{' '}
+          <code>{IS_WINDOWS ? 'C:\\texlive\\2026\\bin\\windows' : '/usr/local/texlive/2026/bin/universal-darwin'}</code>.
+        </div>
+      </div>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={settings.openLogsOnFail} onChange={(e) => update({ openLogsOnFail: e.target.checked })} />
+        <span>
+          Open Logs when a compile fails
+          <span className="field-hint">Tools › Logs opens in the PDF’s place. Auto compile leaves it closed.</span>
+        </span>
+      </label>
+    </>
+  );
+}
+
+/** Settings › Checkpoints: the one after each compile, the notice when one can't be saved, and clearing out old ones. */
+function CheckpointsPane() {
+  const [settings, update] = useSettings();
+  return (
+    <>
+      <div className="field-hint section-hint">Checkpoints stay on this computer, in each project’s hidden .spectrum folder. Tools › Checkpoints lists them.</div>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={settings.checkpointOnCompile} onChange={(e) => update({ checkpointOnCompile: e.target.checked })} />
+        <span>
+          Save a checkpoint after each successful compile
+          <span className="field-hint">
+            Only when the source changed since the last checkpoint, and at most one every 10 minutes: a newer one takes the place of the last automatic one. The
+            ones you save and the “Before …” ones are never replaced.
+          </span>
+        </span>
+      </label>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={settings.checkpointNotice} onChange={(e) => update({ checkpointNotice: e.target.checked })} />
+        <span>
+          Show a notice when a checkpoint can’t be saved
+          <span className="field-hint">Says when saving fails, or when a file was too large or unreadable to keep, rather than failing quietly.</span>
+        </span>
+      </label>
+      <h3 className="form-section-title">Clearing out</h3>
+      <div>
+        <CheckpointCleanup projects={async () => (await listProjects()).projects.filter((p) => !p.missing).map((p) => p.id)} />
+      </div>
+      <div className="field-hint">In every project on this computer. Tools › Checkpoints does the same for one project.</div>
     </>
   );
 }

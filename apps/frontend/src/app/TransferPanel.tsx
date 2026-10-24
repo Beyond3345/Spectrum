@@ -39,7 +39,7 @@ export type TransferJob = { jobId: string; status: string; progressLog: string[]
 const MAX_LAYOUT_PAGES = 8;
 
 const MODES: [TransferMode, string, string][] = [
-  ['quick', 'Quick switch', 'Swaps the preamble for the new template and keeps the body. No AI; a version is saved first.'],
+  ['quick', 'Quick switch', 'Swaps the preamble for the new template and keeps the body. No AI; a checkpoint is saved first.'],
   ['classic', 'Classic (LaTeX → LaTeX, AI)', 'The model rewrites the source for the new template into a new project.'],
   ['pdf', 'From the PDF (parser → LaTeX)', 'A parser reads the PDF, then the model rebuilds it in the new template as a new project.']
 ];
@@ -102,7 +102,7 @@ export default function TransferPanel({
   const [sourceFiles, setSourceFiles] = useState<string[]>([]);
   const [sourceMainFile, setSourceMainFile] = useState('');
   const [targetTemplateId, setTargetTemplateId] = useState('');
-  const [engine, setEngine] = useState<CompileEngine>(settings.compileEngine);
+  const [engine, setEngine] = useState<CompileEngine>(settings.compileDefaults.engine);
   const [layoutCheck, setLayoutCheck] = useState(false);
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
   const [status, setStatus] = useState('idle');
@@ -176,7 +176,7 @@ export default function TransferPanel({
     try {
       await createVersion(projectId, { reason: 'before-transfer' });
     } catch (err) {
-      throw new Error(`Couldn’t save a version first, so nothing was changed. ${message(err)}`);
+      throw new Error(`Couldn’t save a checkpoint first, so nothing was changed. ${message(err)}`);
     }
     const res = await convertTemplate(projectId, selectedTemplate.id, sourceMainFile);
     if (!res.ok) throw new Error(res.error || 'Couldn’t switch the template.');
@@ -189,7 +189,7 @@ export default function TransferPanel({
     }
     setChangedFiles(res.changedFiles || []);
     setStatus('success');
-    toast(`Switched to ${selectedTemplate.label}. The previous state is saved in Versions.`, { tone: 'success' });
+    toast(`Switched to ${selectedTemplate.label}. The previous state is saved in Tools › Checkpoints.`, { tone: 'success' });
     onSwitched?.();
   };
 

@@ -2,26 +2,22 @@ import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import Tabs from '../app/Tabs';
 import { useEditor } from './EditorContext';
-import ProjectInfoTab from './tools/ProjectInfoTab';
 import VersionsTab from './tools/VersionsTab';
 import LogsTab from './tools/LogsTab';
 import ResearchTab from './tools/ResearchTab';
 import ReviewTab from './tools/ReviewTab';
-import FloatsTab from './tools/FloatsTab';
 
-export type ToolsTab = 'info' | 'versions' | 'logs' | 'research' | 'review' | 'floats';
+export type ToolsTab = 'versions' | 'logs' | 'review' | 'research';
 
 const LABELS: [ToolsTab, string][] = [
-  ['info', 'Project info'],
-  ['versions', 'Versions'],
+  ['versions', 'Checkpoints'],
   ['logs', 'Logs'],
-  ['research', 'Research'],
   ['review', 'Review'],
-  ['floats', 'Floats']
+  ['research', 'Research']
 ];
 
 /** Right column when Tools is open. Tabs stay mounted once visited so results survive switching. */
-/** Closed with the Close pill in the editor top bar. `trailing` ends the header (the view switcher). */
+/** `trailing` ends the header (Close and the view switcher). */
 export default function ToolsPanel({ tab, onTabChange, trailing }: { tab: ToolsTab; onTabChange: (tab: ToolsTab) => void; trailing?: ReactNode }) {
   const { compileErrors } = useEditor();
   const visited = useRef(new Set<ToolsTab>());
@@ -36,18 +32,14 @@ export default function ToolsPanel({ tab, onTabChange, trailing }: { tab: ToolsT
   const body = (key: ToolsTab) => {
     const active = key === tab;
     switch (key) {
-      case 'info':
-        return <ProjectInfoTab active={active} />;
       case 'versions':
         return <VersionsTab active={active} />;
       case 'logs':
         return <LogsTab />;
-      case 'research':
-        return <ResearchTab />;
       case 'review':
         return <ReviewTab />;
-      case 'floats':
-        return <FloatsTab />;
+      case 'research':
+        return <ResearchTab />;
     }
   };
 

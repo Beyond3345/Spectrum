@@ -20,6 +20,7 @@ import {
   createVersion as saveVersion,
   getFile,
   getFileIfChanged,
+  getProjectSettings,
   getProjectTree,
   getSyncSettings,
   listProjects,
@@ -32,9 +33,10 @@ import {
   spellSuggest,
   synctexEdit,
   synctexView,
+  updateProjectSettings,
   writeFile
 } from '../api/client';
-import type { CompileEngine, FileItem, FileOrderMap, PdfPoint, ProjectMeta, VersionMeta, VersionReason } from '../api/client';
+import type { CompileEngine, CompileOptions, CompileResult, FileItem, FileOrderMap, PdfPoint, ProjectMeta, VersionMeta, VersionReason } from '../api/client';
 import { latex } from '../latex/lang';
 import Icon from './Icon';
 import Tabs from './Tabs';
@@ -47,7 +49,7 @@ import { SaveTemplateSheet } from './ProjectPage';
 import { toast } from './Toast';
 import { IS_DESKTOP } from './desktop';
 import { FILE_MANAGER } from './platform';
-import { COMPILE_ENGINES, effectiveEffort, llmConfigFor, updateSettings, useProviders, useSettings } from './settings';
+import { BIB_TOOLS, COMPILE_ENGINES, ERROR_HANDLING, autoCompileLabel, effectiveCompile, effectiveEffort, llmConfigFor, updateSettings, useProviders, useSettings } from './settings';
 import { PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
 import { SHORTCUTS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
 import type { AppCommand } from './shortcuts';
@@ -56,6 +58,9 @@ import type { CompileError, EditorApi, PendingChange } from '../editor/EditorCon
 import Composer from '../editor/Composer';
 import ChatsList from '../editor/ChatsList';
 import ToolsPanel from '../editor/ToolsPanel';
+import FloatsPanel from '../editor/FloatsPanel';
+import type { FloatCard } from '../editor/FloatsPanel';
+import InsightsPanel from '../editor/InsightsPanel';
 import { figureFile, showFigure } from '../editor/tools/FloatsTab';
 import SplitDiffView from '../editor/SplitDiffView';
 import GrammarPanel, { grammarMarks } from '../editor/GrammarPanel';
@@ -91,7 +96,7 @@ import {
   setJumpHighlight,
   wrapLayout
 } from '../editor/latexEditor';
-import { NO_PROJECT, scanProject } from '../editor/latexEnvs';
+import { NO_PROJECT, externalDocuments, scanProject, texRoot } from '../editor/latexEnvs';
 import type { Project } from '../editor/latexEnvs';
 import { VERSIONS_CHANGED, errorText, extractBibKey, figureSnippet, bibtexForDocument } from '../editor/shared';
 
@@ -119,9 +124,6 @@ async function smallTextFile(projectId: string, items: FileItem[]) {
   const size = head?.ok ? head.headers.get('Content-Length') : null;
   return size !== null && Number(size) < 1024 * 1024 ? path : '';
 }
-
-// the compiler picked in the PDF header lasts for the session, across projects
-let sessionEngine: CompileEngine | null = null;
 
 /** What's on disk now for a file a save was refused for (null: it was deleted); undefined for any other failure. */
 function refusedFor(err: unknown) {
@@ -171,7 +173,8 @@ const ZOOMS: [PdfZoom, string][] = [
 ];
 
 type Snippet = { label: string; icon: string; text: string; select: string; block?: boolean };
-const SNIPPETS: (Snippet | null)[] = [
+/** a snippet, the Floats panel's figure or table card, or a divider */
+const SNIPPETS: (Snippet | FloatCard | null)[] = [
   { label: 'Section', icon: 'number', text: '\\section{Section title}', select: 'Section title', block: true },
   { label: 'Subsection', icon: 'list.bullet.indent', text: '\\subsection{Subsection title}', select: 'Subsection title', block: true },
   { label: 'Subsubsection', icon: 'list.bullet.indent', text: '\\subsubsection{Subsubsection title}', select: 'Subsubsection title', block: true },
@@ -187,20 +190,8 @@ const SNIPPETS: (Snippet | null)[] = [
     block: true
   },
   null,
-  {
-    label: 'Figure',
-    icon: 'photo',
-    text: '\\begin{figure}[t]\n    \\centering\n    \\includegraphics[width=0.9\\linewidth]{figures/example.png}\n    \\caption{Caption.}\n    \\label{fig:name}\n\\end{figure}',
-    select: 'figures/example.png',
-    block: true
-  },
-  {
-    label: 'Table',
-    icon: 'tablecells',
-    text: '\\begin{table}[t]\n    \\centering\n    \\begin{tabular}{lcc}\n        \\toprule\n        Method & A & B \\\\\n        \\midrule\n        Ours & 0.0 & 0.0 \\\\\n        \\bottomrule\n    \\end{tabular}\n    \\caption{Table caption.}\n    \\label{tab:name}\n\\end{table}',
-    select: 'Table caption.',
-    block: true
-  },
+  'figure',
+  'table',
   {
     label: 'Code listing',
     icon: 'chevron.left.forwardslash.chevron.right',
@@ -215,6 +206,18 @@ const SNIPPETS: (Snippet | null)[] = [
 ];
 
 type CompileState = { state: 'idle' | 'running' | 'ok' | 'failed' | 'stopped'; engine: CompileEngine | string; at?: Date; slow?: boolean };
+
+/** what takes the PDF's place, from the top bar */
+type Panel = 'tools' | 'grammar' | 'insights' | 'floats';
+
+/** Why a compile's checkpoint couldn't be saved, or left files out; '' when it was fine. */
+function checkpointProblem(checkpoint: CompileResult['checkpoint']) {
+  if (checkpoint?.error) return `Couldn’t save a checkpoint after compiling: ${checkpoint.error}`;
+  const skipped = checkpoint?.skipped ?? [];
+  if (!skipped.length) return '';
+  const names = skipped.length > 3 ? `${skipped.slice(0, 3).join(', ')} and ${skipped.length - 3} more` : skipped.join(', ');
+  return `The checkpoint after compiling left out ${names}, which can’t be saved (too large or unreadable).`;
+}
 
 export default function EditorPage() {
   const { projectId = '' } = useParams();
@@ -311,11 +314,18 @@ function Editor({ projectId }: { projectId: string }) {
   const ghostRef = useRef<{ text: string; pos: number | null }>({ text: '', pos: null });
   const acceptingRef = useRef(false);
 
-  const [engine, setEngine] = useState<CompileEngine>(() => sessionEngine || settings.compileEngine);
+  /** the project's own compile choices (.spectrum/settings.json); the app's defaults fill in the rest */
+  const [projectCompile, setProjectCompile] = useState<CompileOptions>({});
+  const compileOptions = effectiveCompile(projectCompile, settings.compileDefaults);
+  const engine = compileOptions.engine;
   const [compile, setCompile] = useState<CompileState>({ state: 'idle', engine });
   const compilingRef = useRef(false);
   // the running compile's id, for Stop
   const compileIdRef = useRef('');
+  // auto compile: typed since the last one, the running compile is one, and one is waiting for it to end
+  const editedRef = useRef(false);
+  const autoRunningRef = useRef(false);
+  const autoWaitingRef = useRef(false);
   const [savingVersion, setSavingVersion] = useState(false);
   const savingVersionRef = useRef(false);
   const [compileLog, setCompileLog] = useState('');
@@ -343,12 +353,12 @@ function Editor({ projectId }: { projectId: string }) {
   const setLayout = (patch: Partial<Layout>) => setLayoutState((prev) => ({ ...prev, ...patch }));
   const zoom = layout.pdfZoom;
   const setZoom = (pdfZoom: PdfZoom) => setLayout({ pdfZoom });
-  const [toolsOpen, setToolsOpen] = useState(false);
-  // the grammar check takes the PDF's place while it's open, as Tools does
-  const [grammarOpen, setGrammarOpen] = useState(false);
+  const [panel, setPanel] = useState<Panel | null>(null);
+  // Tools, insights and floats stay mounted once opened, so their results and typing survive closing; the grammar check runs afresh
+  const [keptPanels, setKeptPanels] = useState<Panel[]>([]);
+  const [floatsCard, setFloatsCard] = useState<{ card: FloatCard | null; signal: number }>({ card: null, signal: 0 });
   const [spellMenu, setSpellMenu] = useState<{ x: number; y: number; from: number; to: number; word: string; suggestions: string[] | null } | null>(null);
-  const [toolsMounted, setToolsMounted] = useState(false);
-  const [toolsTab, setToolsTab] = useState<ToolsTab>('info');
+  const [toolsTab, setToolsTab] = useState<ToolsTab>('versions');
   const [sidebarTab, setSidebarTab] = useState<'files' | 'chats'>('files');
   const [searchOpen, setSearchOpen] = useState(false);
   const [filter, setFilter] = useState('');
@@ -379,6 +389,8 @@ function Editor({ projectId }: { projectId: string }) {
   const docs = useMemo(() => [...new Set([mainFile, ...documents])].filter(Boolean), [mainFile, documents]);
   // the open file when it's a document of its own, else the main file: what completion scans and ⇧⌘↩ compiles
   const docRoot = docs.includes(activePath) ? activePath : mainFile;
+  // with PDF follows the open file, Compile and auto compile build the document showing; without, the main file
+  const compileTarget = (settings.pdfFollowsFile && shownDoc) || mainFile;
   const compileErrors = useMemo<CompileError[]>(() => {
     const files = items.map((i) => i.path);
     const parsed = parseCompileLog(compileLog, project?.path).map((e) => (e.file ? { ...e, file: projectFile(e.file, compiledDoc, files) } : e));
@@ -562,8 +574,7 @@ function Editor({ projectId }: { projectId: string }) {
     if (!TEXT_FILE.test(path)) {
       const doc = docs.find((d) => pdfOf(d) === path);
       if (doc) {
-        setToolsOpen(false);
-        setGrammarOpen(false);
+        setPanel(null);
         // from editor only, the PDF comes back beside the editor
         if (layoutRef.current.view === 'editor') setLayout({ view: 'split' });
         if (!pdf || doc !== shownDoc) loadPdf(doc);
@@ -667,7 +678,7 @@ function Editor({ projectId }: { projectId: string }) {
     try {
       if (held) {
         const res = await saveVersion(projectId, { reason: 'manual', label: `${nameOf(path)} from another computer` });
-        if (!res.ok) throw new Error('The version couldn’t be saved.');
+        if (!res.ok) throw new Error('The checkpoint couldn’t be saved.');
         if (!res.unchanged) window.dispatchEvent(new Event(VERSIONS_CHANGED));
         hashesRef.current.set(path, held.hash);
       }
@@ -954,7 +965,7 @@ function Editor({ projectId }: { projectId: string }) {
   const showInPdf = async (pos: number) => {
     const view = viewRef.current;
     const file = activeRef.current;
-    if (!settings.syncDoubleClick || !view || !pdf || !isTex(file) || layout.view !== 'split' || toolsOpen || grammarOpen) return;
+    if (!settings.syncDoubleClick || !view || !pdf || !isTex(file) || layout.view !== 'split' || panel) return;
     const line = view.state.doc.lineAt(pos);
     const res = await synctexView(projectId, { file, line: line.number, column: pos - line.from + 1 }, shownDoc).catch((err) => ({ ok: false as const, error: errorText(err) }));
     const notice = `${pdf.url}\n${file}\n${res.ok ? '' : res.error}`;
@@ -1028,22 +1039,22 @@ function Editor({ projectId }: { projectId: string }) {
   const createVersion = async (reason: VersionReason, label?: string) => {
     await saveNow();
     const res = await saveVersion(projectId, { reason, label });
-    if (!res.ok) throw new Error('The version couldn’t be saved.');
+    if (!res.ok) throw new Error('The checkpoint couldn’t be saved.');
     if (!res.unchanged) window.dispatchEvent(new Event(VERSIONS_CHANGED));
     return res;
   };
 
-  // the Save version button and shortcut; the Versions tab has its own, with a label field
+  // the Save checkpoint button and shortcut; Tools › Checkpoints has its own, with a label field
   const saveVersionNow = async () => {
     if (savingVersionRef.current) return;
     savingVersionRef.current = true;
     setSavingVersion(true);
     try {
       const { version, unchanged } = await createVersion('manual');
-      if (unchanged || !version) notify('Nothing has changed since the last version.');
-      else toast(`Saved version v${version.number}`, { tone: 'success', action: { label: 'Rename', onClick: () => renameSavedVersion(version) } });
+      if (unchanged || !version) notify('Nothing has changed since the last checkpoint.');
+      else toast(`Saved checkpoint ${version.number}`, { tone: 'success', action: { label: 'Rename', onClick: () => renameSavedVersion(version) } });
     } catch (err) {
-      notify(`Couldn’t save a version: ${errorText(err)}`, 'error');
+      notify(`Couldn’t save a checkpoint: ${errorText(err)}`, 'error');
     } finally {
       savingVersionRef.current = false;
       setSavingVersion(false);
@@ -1051,14 +1062,14 @@ function Editor({ projectId }: { projectId: string }) {
   };
 
   const renameSavedVersion = async (version: VersionMeta) => {
-    const label = (await promptDialog({ title: `Rename v${version.number}`, placeholder: 'Name, e.g. Submitted draft', confirmLabel: 'Rename' }))?.trim();
+    const label = (await promptDialog({ title: `Rename checkpoint ${version.number}`, placeholder: 'Name, e.g. Submitted draft', confirmLabel: 'Rename' }))?.trim();
     if (!label) return;
     try {
       await renameVersion(projectId, version.id, label);
       window.dispatchEvent(new Event(VERSIONS_CHANGED));
-      notify(`Renamed v${version.number} “${label}”`, 'success');
+      notify(`Renamed checkpoint ${version.number} “${label}”`, 'success');
     } catch (err) {
-      notify(`Couldn’t rename the version: ${errorText(err)}`, 'error');
+      notify(`Couldn’t rename the checkpoint: ${errorText(err)}`, 'error');
     }
   };
 
@@ -1230,39 +1241,58 @@ function Editor({ projectId }: { projectId: string }) {
     if (name) pdfRef.current?.goTo(dest, url);
   };
 
-  /** The main file, or another document once (the main file stays as it is). */
-  const runCompile = async (doc = mainFile) => {
-    if (compilingRef.current) return;
+  /**
+   * The document Compile builds (compileTarget), or another once. fresh: its kept build files are cleared first.
+   * auto: auto compile started it. Says how it ended ('busy': another compile was running).
+   */
+  const runCompile = async (doc = compileTarget, opts: { fresh?: boolean; auto?: boolean } = {}): Promise<CompileState['state'] | 'busy'> => {
+    if (compilingRef.current) return 'busy';
     if (!doc) {
       notify('There’s no .tex file to compile. Add one, or choose “Set as main file” from a file’s menu.');
-      return;
+      return 'failed';
     }
     compilingRef.current = true;
+    autoRunningRef.current = !!opts.auto;
     compileIdRef.current = crypto.randomUUID();
     const used = engine;
+    let ended: CompileState['state'] = 'failed';
     setCompile({ state: 'running', engine: used });
     try {
       await saveNow();
-      const res = await compileProject({ projectId, mainFile: doc, engine: used, compileId: compileIdRef.current });
+      const res = await compileProject({
+        projectId,
+        mainFile: doc,
+        engine: used,
+        compileId: compileIdRef.current,
+        haltOnError: compileOptions.haltOnError,
+        bibTool: compileOptions.bibTool,
+        draft: compileOptions.draft,
+        fresh: opts.fresh,
+        texFolder: settings.texFolder || undefined,
+        checkpoint: settings.checkpointOnCompile
+      });
       const actual = res.engine || used;
+      if (res.checkpoint?.saved) window.dispatchEvent(new Event(VERSIONS_CHANGED));
+      const problem = checkpointProblem(res.checkpoint);
+      if (problem && settings.checkpointNotice) notify(problem, 'error');
       setCompileLog(`Engine: ${engineLabel(actual)}\nDocument: ${doc}\n\n${res.log || ''}`.trim());
       if (res.ok && res.pdf) {
         const bytes = Uint8Array.from(atob(res.pdf), (c) => c.charCodeAt(0));
         const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
         showPdf(doc, { url, blob: true });
         setCompileFailure('');
-        setCompile({ state: 'ok', engine: actual, at: new Date() });
+        ended = 'ok';
         if (doc === mainFile)
           pdfThumbnail(url)
             .then((png) => saveThumbnail(projectId, png))
             .catch(() => undefined);
       } else if (res.stopped) {
         setCompileFailure('');
-        setCompile({ state: 'stopped', engine: actual, at: new Date() });
+        ended = 'stopped';
       } else {
         setCompileFailure(res.error || 'No PDF was produced.');
-        setCompile({ state: 'failed', engine: actual, at: new Date() });
       }
+      setCompile({ state: ended, engine: actual, at: new Date() });
       // a linked document compiled first writes its PDF too, whether or not this one compiled
       const made = [res.ok ? res.pdfPath : undefined, ...(res.linked ?? []).filter((l) => l.ok).map((l) => pdfOf(l.file))];
       if (made.some((p) => p && !items.some((i) => i.path === p))) refreshTree().catch(() => undefined);
@@ -1274,6 +1304,66 @@ function Editor({ projectId }: { projectId: string }) {
       compilingRef.current = false;
       setCompiledDoc(doc);
     }
+    // not for auto compile, which would open them at every pause in typing
+    if (ended === 'failed' && !opts.auto && settings.openLogsOnFail) openTools('logs');
+    // an automatic compile that came while this one ran goes now
+    if (autoWaitingRef.current) {
+      autoWaitingRef.current = false;
+      window.setTimeout(() => actions.current.autoCompile());
+    }
+    return ended;
+  };
+
+  /**
+   * Auto compile, the chosen pause after the last edit: the edit is saved first. One that comes while a compile runs
+   * waits for it to end, and stops it first when that one was automatic too, since it's now out of date.
+   */
+  const autoCompile = () => {
+    editedRef.current = false;
+    if (compilingRef.current) {
+      autoWaitingRef.current = true;
+      if (autoRunningRef.current) stopCompile(compileIdRef.current).catch(() => undefined);
+      return;
+    }
+    runCompile(compileTarget, { auto: true });
+  };
+
+  /** Every document from scratch, each after the documents it links (xr-hyper reads their .aux); Stop ends the run. */
+  const recompileAll = async () => {
+    const order: string[] = [];
+    const visit = async (doc: string, path: string[]) => {
+      if (order.includes(doc) || path.includes(doc)) return;
+      const text = await ensureFileContent(doc).catch(() => '');
+      for (const linked of externalDocuments(doc, text)) if (docs.includes(linked)) await visit(linked, [...path, doc]);
+      order.push(doc);
+    };
+    for (const doc of docs) await visit(doc, []);
+    for (const doc of order) {
+      const ended = await runCompile(doc, { fresh: true });
+      if (ended === 'stopped' || ended === 'busy') break;
+    }
+  };
+
+  /** A project compile choice (null: back to the app's default), kept in the project's .spectrum/settings.json. */
+  const setCompileOption = <K extends keyof CompileOptions>(key: K, value: CompileOptions[K] | null) => {
+    setProjectCompile((prev) => {
+      const next = { ...prev };
+      if (value === null) delete next[key];
+      else next[key] = value;
+      return next;
+    });
+    updateProjectSettings(projectId, { compile: { [key]: value } })
+      .then((res) => setProjectCompile(res.settings.compile ?? {}))
+      .catch((err) => {
+        notify(`Couldn’t save the project’s compile settings: ${errorText(err)}`, 'error');
+        getProjectSettings(projectId).then((res) => setProjectCompile(res.settings.compile ?? {}), () => undefined);
+      });
+  };
+
+  /** Use for all projects: the project's choice becomes the app's default, and the project follows it. */
+  const useForAllProjects = (key: keyof CompileOptions) => {
+    updateSettings({ compileDefaults: { ...settings.compileDefaults, [key]: compileOptions[key] } });
+    setCompileOption(key, null);
   };
 
   // Tectonic fetches its packages the first time; say so instead of looking stuck
@@ -1283,15 +1373,10 @@ function Editor({ projectId }: { projectId: string }) {
     return () => window.clearTimeout(timer);
   }, [compile.state, compile.engine]);
 
-  const chooseEngine = (value: CompileEngine) => {
-    sessionEngine = value;
-    setEngine(value);
-  };
-
   // ─── view and panels ───
 
-  // Tools and the grammar check take the PDF's place and are closed from the editor's top bar, so they
-  // only show with both columns: picking a view closes them (Editor and PDF shows the PDF), and opening one brings both back
+  // the panels take the PDF's place and are opened from the editor's top bar, so they only show with both
+  // columns: picking a view closes them (Editor and PDF shows the PDF), and opening one brings both back
   const setView = (view: View) => {
     // WebKit can leave focus on an element that's hidden, and typing would go on landing there
     const hidden = view === 'pdf' ? '.editor-column, .tools-column' : view === 'editor' ? '.right-column' : '.tools-column';
@@ -1299,8 +1384,7 @@ function Editor({ projectId }: { projectId: string }) {
     const fromSwitcher = !!active?.closest('.view-switcher');
     if (active instanceof HTMLElement && active.closest(hidden)) active.blur();
     flushSync(() => {
-      setToolsOpen(false);
-      setGrammarOpen(false);
+      setPanel(null);
       setLayout({ view });
     });
     // focus carries on: to the switcher now showing (each header has its own), or back into the editor
@@ -1313,23 +1397,32 @@ function Editor({ projectId }: { projectId: string }) {
     if (layoutRef.current.view === 'pdf') flushSync(() => setLayout({ view: 'split' }));
   };
 
-  const openTools = (tab?: ToolsTab) => {
-    if (tab) setToolsTab(tab);
-    setToolsMounted(true);
-    setToolsOpen(true);
-    setGrammarOpen(false);
+  const openPanel = (next: Panel) => {
+    if (next !== 'grammar') setKeptPanels((list) => (list.includes(next) ? list : [...list, next]));
+    setPanel(next);
     setLayout({ view: 'split' });
   };
 
-  const toggleGrammar = () => {
-    if (grammarOpen) {
-      setGrammarOpen(false);
-      return;
-    }
-    setToolsOpen(false);
-    setGrammarOpen(true);
-    setLayout({ view: 'split' });
+  /** A panel's top-bar button: opens it, or closes it when it's open. */
+  const togglePanel = (next: Panel) => (panel === next ? setPanel(null) : openPanel(next));
+
+  const openTools = (tab?: ToolsTab) => {
+    if (tab) setToolsTab(tab);
+    openPanel('tools');
   };
+
+  /** Floats, at its figure or table card. */
+  const openFloats = (card: FloatCard) => {
+    setFloatsCard((was) => ({ card, signal: was.signal + 1 }));
+    openPanel('floats');
+  };
+
+  const closePanel = () => {
+    setPanel(null);
+    viewRef.current?.focus();
+  };
+
+  const toggleGrammar = () => togglePanel('grammar');
 
   // the assistant sits under the editor, so in PDF only it opens (or shows, if it's open) with both columns
   const toggleComposer = () => {
@@ -1454,7 +1547,9 @@ function Editor({ projectId }: { projectId: string }) {
     clearGhost: () => false as boolean,
     placeGhost: () => {},
     showInPdf: (_pos: number) => {},
-    recheck: (_paths?: string[]) => {}
+    recheck: (_paths?: string[]) => {},
+    autoCompile: () => {},
+    openFloats: (_card: FloatCard) => {}
   });
   actions.current = {
     save: () => saveNow(true),
@@ -1476,7 +1571,9 @@ function Editor({ projectId }: { projectId: string }) {
     showInPdf: (pos: number) => showInPdf(pos),
     recheck: (paths?: string[]) => {
       recheck(paths).catch(() => undefined);
-    }
+    },
+    autoCompile,
+    openFloats
   };
 
   // ─── effects: unsaved edits, CodeMirror, first load, shortcuts ───
@@ -1546,6 +1643,7 @@ function Editor({ projectId }: { projectId: string }) {
         setEditorValue(value);
         if (path && !update.transactions.some((tr) => tr.annotation(programmatic))) {
           dirtyRef.current = true;
+          editedRef.current = true;
           setDirty(true);
         }
       }
@@ -1638,7 +1736,7 @@ function Editor({ projectId }: { projectId: string }) {
         }
       }),
       grammarMarks,
-      // an image dropped on the editor goes to Tools → Floats → Insert figure instead of into the text
+      // an image dropped on the editor goes to the Floats panel's Insert figure instead of into the text
       EditorView.domEventHandlers({
         drop(e, view) {
           const file = figureFile(e.dataTransfer);
@@ -1648,7 +1746,7 @@ function Editor({ projectId }: { projectId: string }) {
           const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
           if (pos != null) view.dispatch({ selection: { anchor: pos }, userEvent: 'select.pointer' });
           showFigure(file);
-          openTools('floats');
+          a().openFloats('figure');
           return true;
         },
         // CodeMirror has already selected the word; the PDF shows where the line went too
@@ -1690,6 +1788,8 @@ function Editor({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     let live = true;
+    // without them (unreadable, or none yet) the app's defaults apply
+    getProjectSettings(projectId).then((res) => live && setProjectCompile(res.settings.compile ?? {}), () => undefined);
     (async () => {
       const [list, tree] = await Promise.all([listProjects(), refreshTree()]);
       if (!live) return;
@@ -1704,17 +1804,18 @@ function Editor({ projectId }: { projectId: string }) {
       const main = tree.mainFile && tex.includes(tree.mainFile) ? tree.mainFile : tex.find((p) => /(^|\/)main\.tex$/i.test(p)) || tex[0] || '';
       setMainFile(main);
       setLoaded(true);
-      // a wanted file opens instead, below
-      const first = tree.items.some((i) => i.path === wanted) ? '' : main || (await smallTextFile(projectId, tree.items));
-      if (first) await openFile(first);
-      // show the PDF from the last compile straight away
+      // show the PDF from the last compile straight away, before the first file opens, so following the open file
+      // finds it showing
       const existing = main.replace(/\.tex$/i, '.pdf');
+      setShownDoc(main);
       if (main && tree.items.some((i) => i.path === existing)) {
         const url = blobUrl(projectId, existing, Date.now());
         setPdf({ url, blob: false });
-        setShownDoc(main);
         if (!current.hasThumbnail) pdfThumbnail(url).then((png) => saveThumbnail(projectId, png)).catch(() => undefined);
       }
+      // a wanted file opens instead, below
+      const first = tree.items.some((i) => i.path === wanted) ? '' : main || (await smallTextFile(projectId, tree.items));
+      if (first) await openFile(first);
     })().catch((err) => notify(`Couldn’t open the project: ${errorText(err)}`, 'error'));
     return () => {
       live = false;
@@ -1811,6 +1912,23 @@ function Editor({ projectId }: { projectId: string }) {
     return () => window.clearTimeout(timer);
   }, [dirty, editorValue]);
 
+  // auto compile, the chosen pause after the last keystroke
+  useEffect(() => {
+    if (!compileOptions.autoCompile || !editedRef.current) return;
+    const timer = window.setTimeout(() => actions.current.autoCompile(), compileOptions.autoCompile * 1000);
+    return () => window.clearTimeout(timer);
+  }, [editorValue, compileOptions.autoCompile]);
+
+  // PDF follows the open file: another document's .tex, or a chapter whose % !TEX root names one, shows that
+  // document's PDF; any other file leaves it. A PDF or document picked by hand stays until the next file switch.
+  useEffect(() => {
+    if (!settings.pdfFollowsFile || !activePath) return;
+    const root = texRoot(activePath, filesRef.current.get(activePath) ?? '');
+    const doc = docs.includes(activePath) ? activePath : docs.includes(root) ? root : '';
+    if (!doc || doc === shownDoc) return;
+    showPdf(doc, items.some((i) => i.path === pdfOf(doc)) ? { url: blobUrl(projectId, pdfOf(doc), Date.now()), blob: false } : null);
+  }, [activePath]);
+
   // the table of contents closes on any click elsewhere
   useEffect(() => {
     if (!tocOpen) return;
@@ -1869,7 +1987,9 @@ function Editor({ projectId }: { projectId: string }) {
       if (heldRef.current.size) throw new Error('Resolve the files changed on disk before starting or applying agent work.');
     },
     // the document whose log the AI read, so a fix loop stays on it
-    compile: () => runCompile(compiledDoc || mainFile),
+    compile: async () => {
+      await runCompile(compiledDoc || mainFile);
+    },
     createVersion
   };
 
@@ -1923,8 +2043,24 @@ function Editor({ projectId }: { projectId: string }) {
     ? PDF_PAGES_DARK.map(([value, label]) => ({ label: `${label} pages`, checked: settings.pdfPageDark === value, onSelect: () => updateSettings({ pdfPageDark: value }) }))
     : PDF_PAGES_LIGHT.map(([value, label]) => ({ label: `${label} pages`, checked: settings.pdfPageLight === value, onSelect: () => updateSettings({ pdfPageLight: value }) }));
 
-  // with other documents, the compile menu lists them above the compilers: picking one compiles it once
+  // with other documents, the compile menu lists them above the compile settings: picking one compiles it once
   const shortcutOf = (id: AppCommand) => formatShortcut(shortcutKey(settings.shortcuts, id));
+  /**
+   * One compile setting: its choices, the one in use ticked. Once the project has its own, it can go back to the
+   * app's default, or make it the default for every project.
+   */
+  const compileChoice = <K extends keyof CompileOptions>(key: K, heading: string, choices: [CompileOptions[K], string][]): MenuItems => {
+    const own = projectCompile[key] != null;
+    const fallback = settings.compileDefaults[key];
+    return [
+      { heading: true, label: heading },
+      ...choices.map(([value, label]) => ({ label, checked: compileOptions[key] === value, onSelect: () => setCompileOption(key, value) })),
+      own && { label: `Use the default (${choices.find(([value]) => value === fallback)?.[1] ?? String(fallback)})`, onSelect: () => setCompileOption(key, null) },
+      own && compileOptions[key] !== fallback && { label: 'Use for all projects', onSelect: () => useForAllProjects(key) },
+      { separator: true }
+    ];
+  };
+  const pauses = [...new Set([0, 1, 2, 3, 5, 10, compileOptions.autoCompile, settings.compileDefaults.autoCompile])].sort((a, b) => a - b);
   const compileItems: MenuItems = [
     ...(docs.length > 1
       ? [
@@ -1932,14 +2068,23 @@ function Editor({ projectId }: { projectId: string }) {
           ...docs.map((doc) => ({
             label: doc,
             disabled: running,
-            shortcut: doc === mainFile ? shortcutOf('compile') : doc === activePath ? shortcutOf('compileOpen') : undefined,
+            shortcut: doc === compileTarget ? shortcutOf('compile') : doc === docRoot ? shortcutOf('compileOpen') : undefined,
             onSelect: () => runCompile(doc)
           })),
-          { separator: true },
-          { heading: true, label: 'Compiler' }
+          { separator: true }
         ]
       : []),
-    ...COMPILE_ENGINES.map(([value, label]) => ({ label, checked: engine === value, onSelect: () => chooseEngine(value) }))
+    ...compileChoice('engine', 'Compiler (this project)', COMPILE_ENGINES),
+    ...compileChoice('autoCompile', 'Auto compile', pauses.map((n): [number, string] => [n, autoCompileLabel(n)])),
+    ...compileChoice('haltOnError', 'Compile error handling', ERROR_HANDLING),
+    ...compileChoice('bibTool', 'Bibliography tool', BIB_TOOLS),
+    ...compileChoice('draft', 'Fast draft mode', [
+      [false, 'Off'],
+      [true, 'On: one pass, images as boxes']
+    ]),
+    { label: 'Stop compilation', disabled: !running, onSelect: () => stopCompile(compileIdRef.current).catch(() => undefined) },
+    { label: 'Recompile from scratch', disabled: running, onSelect: () => runCompile(compileTarget, { fresh: true }) },
+    docs.length > 1 && { label: 'Recompile all', disabled: running, onSelect: () => recompileAll() }
   ];
   // the documents with a PDF to show; the PDF's page bar names the one showing when there's a choice, by the
   // part of its name the others don't share (ELEC2410_Tutorial_Solutions.pdf beside ELEC2410_Lecture_Notes.pdf
@@ -1971,7 +2116,13 @@ function Editor({ projectId }: { projectId: string }) {
     </>
   );
 
-  const insertItems: MenuItems = SNIPPETS.map((s) => (s ? { label: s.label, icon: s.icon, onSelect: () => insertSnippet(s) } : { separator: true }));
+  const insertItems: MenuItems = SNIPPETS.map((s) =>
+    s === 'figure' || s === 'table'
+      ? { label: s === 'figure' ? 'Figure…' : 'Table…', icon: s === 'figure' ? 'photo' : 'tablecells', onSelect: () => openFloats(s) }
+      : s
+        ? { label: s.label, icon: s.icon, onSelect: () => insertSnippet(s) }
+        : { separator: true }
+  );
 
   const zoomLabel = ZOOMS.find(([z]) => z === zoom)?.[1] || `${Math.round(scale * 100)}%`;
   // in two-page view `page` is the left page of a row, so the next row starts two pages on
@@ -2011,6 +2162,32 @@ function Editor({ projectId }: { projectId: string }) {
         status
       )}
     </span>
+  );
+  // in the PDF header, or in the editor's top bar while a panel has the PDF's place
+  const compileSplit = (
+    <div className="compile-split">
+      {/* while it runs, Compile is Stop: a TeX run can only be ended, not paused */}
+      <button
+        className={`compile-main ${running ? 'stop' : ''}`}
+        // the second click of a double-click on Compile would land on Stop
+        onClick={(event) => (running ? event.detail <= 1 && stopCompile(compileIdRef.current).catch(() => undefined) : runCompile())}
+        title={running ? 'Stop compiling' : withShortcut(settings.shortcuts, 'Compile', 'compile')}
+        aria-label={running ? 'Stop compiling' : 'Compile'}
+      >
+        <Icon name={running ? 'stop.fill' : 'play.fill'} />
+        <span className="btn-label">{running ? 'Stop' : 'Compile'}</span>
+      </button>
+      <MenuButton className="compile-engine" icon="chevron.down" chevron={false} title={`Compile options (${engineLabel(engine)})`} items={compileItems} />
+    </div>
+  );
+  // ends each panel's header
+  const panelEnd = (
+    <>
+      <button className="icon-btn" title="Close and show the PDF" aria-label="Close" onClick={closePanel}>
+        <Icon name="xmark" />
+      </button>
+      {viewSwitcher}
+    </>
   );
   const sidebarButton = layout.sidebarCollapsed && (
     <button className="icon-btn" title={withShortcut(settings.shortcuts, 'Show sidebar', 'sidebar')} aria-label="Show sidebar" onClick={() => setLayout({ sidebarCollapsed: false })}>
@@ -2170,6 +2347,13 @@ function Editor({ projectId }: { projectId: string }) {
             <div className="editor-topbar" data-tauri-drag-region>
               {sidebarButton}
               <MenuButton icon="plus.circle" className="icon-btn" title="Insert" items={insertItems} disabled={!activePath} />
+              {/* a narrow editor leaves these to Insert (+) */}
+              <button className="icon-btn float-button" title="Insert figure" aria-label="Insert figure" onClick={() => openFloats('figure')}>
+                <Icon name="photo" />
+              </button>
+              <button className="icon-btn float-button" title="Insert table" aria-label="Insert table" onClick={() => openFloats('table')}>
+                <Icon name="tablecells" />
+              </button>
               <div className="file-tabs" role="tablist" data-tauri-drag-region>
                 {tabs.map((path) => (
                   <div
@@ -2204,25 +2388,36 @@ function Editor({ projectId }: { projectId: string }) {
                 <Icon name="sparkles" />
               </button>
               <button
-                className={`icon-btn ${grammarOpen ? 'active' : ''}`}
+                className={`icon-btn ${panel === 'grammar' ? 'active' : ''}`}
                 title={withShortcut(settings.shortcuts, 'Check grammar', 'grammar')}
                 aria-label="Check grammar"
-                aria-pressed={grammarOpen}
+                aria-pressed={panel === 'grammar'}
                 onClick={toggleGrammar}
               >
                 <Icon name="text.badge.checkmark" />
               </button>
-              <button className={`tools-toggle ${toolsOpen ? 'open' : ''}`} aria-pressed={toolsOpen} onClick={() => (toolsOpen ? setToolsOpen(false) : openTools())}>
-                <span>{toolsOpen ? 'Close' : 'Tools'}</span>
-                <Icon name={toolsOpen ? 'xmark' : 'square.grid.2x2'} />
-                {!toolsOpen && problems > 0 && (
+              <button
+                className={`icon-btn ${panel === 'insights' ? 'active' : ''}`}
+                title="Document insights"
+                aria-label="Document insights"
+                aria-pressed={panel === 'insights'}
+                onClick={() => togglePanel('insights')}
+              >
+                <Icon name="chart.bar.xaxis" />
+              </button>
+              <button className={`tools-toggle ${panel === 'tools' ? 'open' : ''}`} aria-pressed={panel === 'tools'} onClick={() => (panel === 'tools' ? setPanel(null) : openTools())}>
+                <span>{panel === 'tools' ? 'Close' : 'Tools'}</span>
+                <Icon name={panel === 'tools' ? 'xmark' : 'square.grid.2x2'} />
+                {panel !== 'tools' && problems > 0 && (
                   <span className={`tools-badge ${errorCount ? 'error' : ''}`} title={`${plural(errorCount, 'error')}, ${plural(problems - errorCount, 'warning')}`}>
                     {problems}
                   </span>
                 )}
               </button>
-              {/* the PDF header's is hidden in editor only; this one stays from the first compile, so changes are heard */}
-              {layout.view === 'editor' && compile.state !== 'idle' && compileStatus}
+              {/* while a panel has the PDF header's place, compiling stays here */}
+              {panel && compileSplit}
+              {/* the PDF header's is hidden in editor only or behind a panel; this one stays from the first compile, so changes are heard */}
+              {(panel || (layout.view === 'editor' && compile.state !== 'idle')) && compileStatus}
               {layout.view === 'editor' && viewSwitcher}
             </div>
 
@@ -2327,38 +2522,19 @@ function Editor({ projectId }: { projectId: string }) {
 
           {/* hidden in editor only, so the PDF needn't load again */}
           <section className="right-column" hidden={layout.view === 'editor'} style={layout.view === 'split' ? { width: `${layout.split * 100}%` } : undefined}>
-            <div className="pdf-column" hidden={toolsOpen || grammarOpen}>
+            <div className="pdf-column" hidden={!!panel}>
               <div className="pdf-header" data-tauri-drag-region>
                 {layout.view === 'pdf' && sidebarButton}
-                <div className="compile-split">
-                  {/* while it runs, Compile is Stop: a TeX run can only be ended, not paused */}
-                  <button
-                    className={`compile-main ${running ? 'stop' : ''}`}
-                    // the second click of a double-click on Compile would land on Stop
-                    onClick={(event) => (running ? event.detail <= 1 && stopCompile(compileIdRef.current).catch(() => undefined) : runCompile())}
-                    title={running ? 'Stop compiling' : withShortcut(settings.shortcuts, 'Compile', 'compile')}
-                    aria-label={running ? 'Stop compiling' : 'Compile'}
-                  >
-                    <Icon name={running ? 'stop.fill' : 'play.fill'} />
-                    <span className="btn-label">{running ? 'Stop' : 'Compile'}</span>
-                  </button>
-                  <MenuButton
-                    className="compile-engine"
-                    icon="chevron.down"
-                    chevron={false}
-                    title={docs.length > 1 ? `Compile another document, or choose the compiler (${engineLabel(engine)})` : `Compiler (${engineLabel(engine)})`}
-                    items={compileItems}
-                  />
-                </div>
+                {!panel && compileSplit}
                 <button
                   className="btn save-version"
                   onClick={saveVersionNow}
                   disabled={savingVersion}
-                  title={withShortcut(settings.shortcuts, 'Save version', 'saveVersion')}
-                  aria-label="Save version"
+                  title={withShortcut(settings.shortcuts, 'Save checkpoint', 'saveVersion')}
+                  aria-label="Save checkpoint"
                 >
                   {savingVersion ? <span className="spinner" /> : <Icon name="clock.arrow.circlepath" />}
-                  <span className="btn-label">Save version</span>
+                  <span className="btn-label">Save checkpoint</span>
                 </button>
                 {/* always mounted, so screen readers hear each change */}
                 {compileStatus}
@@ -2520,13 +2696,25 @@ function Editor({ projectId }: { projectId: string }) {
               )}
             </div>
 
-            {toolsMounted && (
-              <div className="tools-column" hidden={!toolsOpen}>
-                <ToolsPanel tab={toolsTab} onTabChange={setToolsTab} trailing={viewSwitcher} />
+            {keptPanels.includes('tools') && (
+              <div className="tools-column" hidden={panel !== 'tools'}>
+                <ToolsPanel tab={toolsTab} onTabChange={setToolsTab} trailing={panelEnd} />
               </div>
             )}
 
-            {grammarOpen && (
+            {keptPanels.includes('insights') && (
+              <div className="tools-column" hidden={panel !== 'insights'}>
+                <InsightsPanel doc={compileTarget} active={panel === 'insights'} trailing={panelEnd} />
+              </div>
+            )}
+
+            {keptPanels.includes('floats') && (
+              <div className="tools-column" hidden={panel !== 'floats'}>
+                <FloatsPanel card={floatsCard.card} signal={floatsCard.signal} trailing={panelEnd} />
+              </div>
+            )}
+
+            {panel === 'grammar' && (
               <div className="tools-column">
                 <GrammarPanel
                   view={() => viewRef.current}
@@ -2534,10 +2722,7 @@ function Editor({ projectId }: { projectId: string }) {
                   path={activePath}
                   revision={editorValue}
                   settings={settings}
-                  onClose={() => {
-                    setGrammarOpen(false);
-                    viewRef.current?.focus();
-                  }}
+                  onClose={closePanel}
                   trailing={viewSwitcher}
                 />
               </div>

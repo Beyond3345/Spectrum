@@ -1,6 +1,6 @@
 // Self-check for where model requests and keys go. Run (it imports React, so bundle it first):
 // npx esbuild apps/frontend/src/app/settings.check.ts --bundle --platform=node --log-level=warning | node
-import { DEFAULT_SETTINGS, keysBackFromOlder, llmConfigFor, loadSettings, presetForEndpoint, presetPatch, rolePatch, searchConfigFor, searchProviderPatch, sharedPart, takeInShared, withShared } from './settings';
+import { DEFAULT_SETTINGS, effectiveCompile, keysBackFromOlder, llmConfigFor, loadSettings, presetForEndpoint, presetPatch, rolePatch, searchConfigFor, searchProviderPatch, sharedPart, takeInShared, withShared } from './settings';
 import { NO_FOLDERS } from './folders';
 import type { AppSettings } from './settings';
 import type { ProviderPreset } from '../api/client';
@@ -111,11 +111,12 @@ const mine = at({
   projectsDir: '/Users/me/Spectrum',
   glass: true,
   editorFont: 'menlo',
-  compileEngine: 'tectonic',
+  compileDefaults: { ...DEFAULT_SETTINGS.compileDefaults, engine: 'tectonic' },
+  texFolder: '/Library/TeX/texbin',
   cloudMode: 'move'
 });
 const sent = JSON.stringify(sharedPart(mine));
-for (const secret of ['sk-openai', 'mineru-token', 'v-key', 'q-key', 's-key', 'serp-key', 'exa-key', '/Users/me', DEEPSEEK, 'menlo', 'tectonic', 'glass', 'syncSettings', 'cloudMode']) {
+for (const secret of ['sk-openai', 'mineru-token', 'v-key', 'q-key', 's-key', 'serp-key', 'exa-key', '/Users/me', DEEPSEEK, 'menlo', 'tectonic', 'texbin', 'glass', 'syncSettings', 'cloudMode']) {
   if (sent.includes(secret)) throw new Error(`shared settings hold ${secret}`);
 }
 eq([sharedPart(mine).theme, sharedPart(mine).spellCheck], ['dark', false], 'theme and spelling are shared');
@@ -166,6 +167,13 @@ eq(keysBackFromOlder(at({ projectFolders: pcTree }), macFile, macFile.updatedAt,
 // tag colours follow the user, and only the named ones are kept
 eq(withShared(at({}), { tagColours: { Thesis: 'red', Notes: 'pink' } as never }).tagColours, { Thesis: 'red' }, 'a known tag colour comes in, an unknown one is dropped');
 eq('tagColours' in sharedPart(at({ tagColours: { Thesis: 'teal' } })), true, 'tag colours are shared');
+
+// a project's compile choices win over the app's defaults; a removed (null) or unknown one falls back to the default
+const defaults = { ...DEFAULT_SETTINGS.compileDefaults, autoCompile: 3 };
+eq(effectiveCompile(undefined, defaults), defaults, 'no project choices: the defaults');
+eq(effectiveCompile({ engine: 'xelatex', draft: true }, defaults), { ...defaults, engine: 'xelatex', draft: true }, 'the project’s own');
+eq(effectiveCompile({ engine: null, autoCompile: 11, bibTool: 'makeindex' } as never, defaults), defaults, 'null and unknown values');
+eq(effectiveCompile({ autoCompile: 0 }, defaults).autoCompile, 0, 'off in the project, on by default');
 
 const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
 try {

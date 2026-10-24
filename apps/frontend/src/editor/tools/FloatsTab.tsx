@@ -395,7 +395,7 @@ function InsertFigure() {
   const preview = source?.kind === 'file' ? source.url : source && IMAGE_EXTS.test(source.path) ? blobUrl(api.projectId, source.path) : '';
 
   return (
-    <section className="tool-card" ref={cardRef} onPaste={onPaste}>
+    <section className="tool-card" data-card="figure" ref={cardRef} onPaste={onPaste}>
       <div className="tool-card-title">
         <Icon name="photo.badge.plus" /> Insert figure
       </div>
@@ -616,7 +616,7 @@ function InsertTable() {
   };
 
   return (
-    <section className="tool-card">
+    <section className="tool-card" data-card="table">
       <div className="tool-card-title">
         <Icon name="tablecells" /> Insert table
       </div>

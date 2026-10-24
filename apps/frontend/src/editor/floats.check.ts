@@ -1,4 +1,4 @@
-// Self-check for the Floats tab's LaTeX and the preamble helper. Run:
+// Self-check for the Floats panel's LaTeX and the preamble helper. Run:
 // npx esbuild apps/frontend/src/editor/floats.check.ts --bundle --platform=node --log-level=warning | node
 import { placementOf, blockAt, escapeCell, figureKind, figureLabel, figureLatex, jpegOrientation, parseDelimited, pasteCells, safeFileName, tableLabel, tableLatex, uniqueName } from './floats';
 import type { TableModel } from './floats';

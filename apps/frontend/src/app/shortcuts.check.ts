@@ -39,10 +39,10 @@ eq(shortcutProblem('F5'), '', 'function key alone is fine');
 eq(shortcutProblem('Ctrl-Alt-]'), '', 'free shortcut');
 if (IS_MAC) eq(formatShortcut('Shift-Mod-Enter'), '⇧⌘↩', 'Mac symbols');
 
-// ⇧⌘S saves a version, ⌘S still only saves the file
+// ⇧⌘S saves a checkpoint, ⌘S still only saves the file
 const shiftS = press('S', 'KeyS', { ...mod, shiftKey: true });
-eq(matchesShortcut(shortcutKey({}, 'saveVersion'), shiftS), true, 'save version');
-eq(matchesShortcut(shortcutKey({}, 'save'), shiftS), false, 'save is not save version');
+eq(matchesShortcut(shortcutKey({}, 'saveVersion'), shiftS), true, 'save checkpoint');
+eq(matchesShortcut(shortcutKey({}, 'save'), shiftS), false, 'save is not save checkpoint');
 // ⇧⌘↩ compiles the open document, ⌘↩ the main file
 const enters = (mods: object) => SHORTCUTS.filter((s) => matchesShortcut(shortcutKey({}, s.id), press('Enter', 'Enter', { ...mod, ...mods }))).map((s) => s.id);
 eq([enters({}), enters({ shiftKey: true })], [['compile'], ['compileOpen']], 'compile shortcuts');

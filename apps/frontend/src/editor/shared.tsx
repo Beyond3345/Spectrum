@@ -60,7 +60,7 @@ export function Markdown({ children }: { children: string }) {
 /** Fired after a chat is saved or deleted so the Chats list can refresh. */
 export const CHATS_CHANGED = 'spectrum-chats-changed';
 
-/** Fired after the editor saves a version (e.g. "Before AI changes") so the Versions tab can refresh. */
+/** Fired after the editor saves a checkpoint (e.g. "Before AI changes") so Tools › Checkpoints can refresh. */
 export const VERSIONS_CHANGED = 'spectrum-versions-changed';
 
 export type VisionMode = 'equation' | 'table' | 'figure' | 'algorithm' | 'ocr';

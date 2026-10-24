@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   compareVersionWithCurrent,
+  deleteOldCheckpoints,
   deleteVersion,
   getFile,
   getVersionChanges,
@@ -14,6 +15,7 @@ import Icon from '../../app/Icon';
 import Sheet from '../../app/Sheet';
 import { MenuButton } from '../../app/Menu';
 import { confirmDialog, promptDialog } from '../../app/Dialogs';
+import { toast } from '../../app/Toast';
 import { useEditor } from '../EditorContext';
 import SplitDiffView, { DiffCount } from '../SplitDiffView';
 import { VERSIONS_CHANGED, errorText, formatDate, relativeTime } from '../shared';
@@ -21,11 +23,12 @@ import { VERSIONS_CHANGED, errorText, formatDate, relativeTime } from '../shared
 const REASONS: Partial<Record<VersionReason, string>> = {
   'before-ai': 'Before AI changes',
   'before-restore': 'Before restore',
-  'before-transfer': 'Before template change'
+  'before-transfer': 'Before template change',
+  compile: 'After compile'
 };
 
 function summaryTitle(v: VersionMeta) {
-  if (v.summary.kind === 'initial') return 'Initial version';
+  if (v.summary.kind === 'initial') return 'First checkpoint';
   if (v.summary.kind === 'edited' && v.summary.files[0]) return `Edited ${v.summary.files[0]}`;
   const n = v.summary.files.length;
   return `Updated ${n} ${n === 1 ? 'file' : 'files'}`;
@@ -80,31 +83,31 @@ export default function VersionsTab({ active }: { active: boolean }) {
       const res = await api.createVersion('manual', typed || undefined);
       if (!res.unchanged && res.version) {
         setLabel('');
-        api.notify(`Saved version v${res.version.number}`, 'success');
+        api.notify(`Saved checkpoint ${res.version.number}`, 'success');
         return;
       }
-      // nothing new to save; a typed label can still go on the latest version
+      // nothing new to save; a typed label can still go on the latest checkpoint
       const latest = res.version;
       if (!typed || !latest) {
-        api.notify('Nothing has changed since the last version.');
+        api.notify('Nothing has changed since the last checkpoint.');
         return;
       }
       const ok = await confirmDialog({
-        title: 'Nothing has changed since the last version',
-        message: `Label v${latest.number} “${typed}” instead?`,
+        title: 'Nothing has changed since the last checkpoint',
+        message: `Label checkpoint ${latest.number} “${typed}” instead?`,
         confirmLabel: 'Add label'
       });
       if (!ok) return;
       await renameVersion(projectId, latest.id, typed);
       await load();
       setLabel('');
-      api.notify(`Labelled v${latest.number} “${typed}”`, 'success');
-    }, 'Couldn’t save a version');
+      api.notify(`Labelled checkpoint ${latest.number} “${typed}”`, 'success');
+    }, 'Couldn’t save a checkpoint');
 
   const restore = async (v: VersionMeta) => {
     const ok = await confirmDialog({
-      title: `Restore v${v.number}?`,
-      message: 'Every file goes back to how it was in this version. The current state is saved as a version first, so this can be undone.',
+      title: `Restore checkpoint ${v.number}?`,
+      message: 'Every file goes back to how it was at this checkpoint. A checkpoint of the current state is saved first, so this can be undone.',
       confirmLabel: 'Restore'
     });
     if (!ok) return;
@@ -113,23 +116,23 @@ export default function VersionsTab({ active }: { active: boolean }) {
       if (!res.ok) throw new Error(res.error || 'Restore failed.');
       await api.reloadProject();
       await load();
-      api.notify(`Restored v${v.number}${keptAsideNote(res.keptAside)}`, 'success');
+      api.notify(`Restored checkpoint ${v.number}${keptAsideNote(res.keptAside)}`, 'success');
     }, 'Couldn’t restore');
   };
 
   const rename = async (v: VersionMeta) => {
-    const next = await promptDialog({ title: 'Rename version', placeholder: summaryTitle(v), defaultValue: v.label, confirmLabel: 'Rename' });
+    const next = await promptDialog({ title: 'Rename checkpoint', placeholder: summaryTitle(v), defaultValue: v.label, confirmLabel: 'Rename' });
     if (next === null) return;
     await run(async () => {
       await renameVersion(projectId, v.id, next.trim());
       await load();
-    }, 'Couldn’t rename the version');
+    }, 'Couldn’t rename the checkpoint');
   };
 
   const remove = async (v: VersionMeta) => {
     const ok = await confirmDialog({
-      title: `Delete v${v.number}?`,
-      message: 'This version is removed from the history. Your files are not changed.',
+      title: `Delete checkpoint ${v.number}?`,
+      message: 'This checkpoint is removed from the history. Your files are not changed.',
       confirmLabel: 'Delete',
       destructive: true
     });
@@ -137,7 +140,7 @@ export default function VersionsTab({ active }: { active: boolean }) {
     await run(async () => {
       await deleteVersion(projectId, v.id);
       await load();
-    }, 'Couldn’t delete the version');
+    }, 'Couldn’t delete the checkpoint');
   };
 
   // newest first, grouped under "30 Aug 2026"
@@ -152,7 +155,7 @@ export default function VersionsTab({ active }: { active: boolean }) {
   return (
     <div className="tool-page">
       <div className="tool-page-head">
-        <h2>Versions</h2>
+        <h2>Checkpoints</h2>
       </div>
       <div className="version-save">
         <input
@@ -163,35 +166,35 @@ export default function VersionsTab({ active }: { active: boolean }) {
           onKeyDown={(e) => e.key === 'Enter' && !busy && save()}
         />
         <button className="btn primary" onClick={save} disabled={busy}>
-          {busy ? <span className="spinner" /> : <Icon name="clock.arrow.circlepath" />} Save version
+          {busy ? <span className="spinner" /> : <Icon name="clock.arrow.circlepath" />} Save checkpoint
         </button>
       </div>
       <div className="tool-footnote">
-        Versions are kept in the project’s hidden .spectrum folder. One is also saved automatically before AI changes, restores and template
-        changes.
+        Checkpoints are kept on this computer in the project’s hidden .spectrum folder. One is also saved automatically before AI changes, restores
+        and template changes, and after each successful compile when Settings › Checkpoints says so.
       </div>
       {error && <div className="tool-note error">{error}</div>}
-      {versions && !versions.length && <div className="tool-empty">No versions yet</div>}
+      {versions && !versions.length && <div className="tool-empty">No checkpoints yet</div>}
       {groups.map(([day, list]) => (
         <div key={day} className="version-group">
           <div className="version-day">{day}</div>
           {list.map((v) => (
             <div key={v.id} className="version-card">
               <div className="version-row">
-                <span className="version-badge">v{v.number}</span>
+                <span className="version-badge">#{v.number}</span>
                 <span className="version-title" title={v.summary.files.join('\n')}>
                   {v.label || summaryTitle(v)}
                 </span>
                 <MenuButton
                   icon="ellipsis"
-                  title="Version actions"
+                  title="Checkpoint actions"
                   align="end"
                   disabled={busy}
                   items={[
                     { label: 'Compare with current', icon: 'arrow.left.and.right', onSelect: () => setSheet({ kind: 'compare', version: v }) },
                     { label: 'What changed', icon: 'plus.forwardslash.minus', onSelect: () => setSheet({ kind: 'changes', version: v }) },
                     { separator: true },
-                    { label: 'Restore this version…', icon: 'arrow.uturn.backward', onSelect: () => restore(v) },
+                    { label: 'Restore this checkpoint…', icon: 'arrow.uturn.backward', onSelect: () => restore(v) },
                     { label: 'Rename…', icon: 'pencil', onSelect: () => rename(v) },
                     { label: 'Delete…', icon: 'trash', destructive: true, onSelect: () => remove(v) }
                   ]}
@@ -208,9 +211,14 @@ export default function VersionsTab({ active }: { active: boolean }) {
         </div>
       ))}
       {versions && versions.length > 0 && (
-        <div className="tool-footnote">
-          {versions.length} {versions.length === 1 ? 'version' : 'versions'}
-        </div>
+        <>
+          <div className="tool-footnote">
+            {versions.length} {versions.length === 1 ? 'checkpoint' : 'checkpoints'}
+          </div>
+          <div>
+            <CheckpointCleanup projects={async () => [projectId]} onDone={load} />
+          </div>
+        </>
       )}
       {sheet && (
         <VersionDiffSheet
@@ -225,7 +233,50 @@ export default function VersionsTab({ active }: { active: boolean }) {
   );
 }
 
-/** Restore leaves files versions don't keep beside the restored copy, renamed “… (before restore)”. */
+const AGES: [number, string][] = [
+  [7, 'a week'],
+  [30, 'a month'],
+  [90, 'three months'],
+  [365, 'a year']
+];
+
+/** Deletes the automatic checkpoints older than a chosen age, in this project (Tools) or every project (Settings). */
+export function CheckpointCleanup({ projects, onDone }: { projects: () => Promise<string[]>; onDone?: () => unknown }) {
+  const [busy, setBusy] = useState(false);
+  const run = async (days: number, age: string) => {
+    const ok = await confirmDialog({
+      title: `Delete automatic checkpoints older than ${age}?`,
+      message: 'The checkpoints saved after compiling go. Ones you saved and the “Before …” ones stay, and your files are not changed.',
+      confirmLabel: 'Delete',
+      destructive: true
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      // a project that can't be reached (its folder moved) doesn't stop the others
+      const results = await Promise.allSettled((await projects()).map((id) => deleteOldCheckpoints(id, days)));
+      const removed = results.reduce((n, r) => n + (r.status === 'fulfilled' ? r.value.removed : 0), 0);
+      const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+      if (failed) toast(`Couldn’t delete some checkpoints: ${errorText(failed.reason)}`, { tone: 'error' });
+      else toast(removed ? `Deleted ${removed} automatic ${removed === 1 ? 'checkpoint' : 'checkpoints'}` : `No automatic checkpoints are older than ${age}.`, { tone: removed ? 'success' : 'info' });
+      await onDone?.();
+    } catch (err) {
+      toast(`Couldn’t delete the checkpoints: ${errorText(err)}`, { tone: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <MenuButton
+      className="btn small"
+      label="Delete automatic checkpoints older than…"
+      disabled={busy}
+      items={AGES.map(([days, age]) => ({ label: `Older than ${age}`, onSelect: () => run(days, age) }))}
+    />
+  );
+}
+
+/** Restore leaves files checkpoints don't keep beside the restored copy, renamed “… (before restore)”. */
 const keptAsideNote = (kept?: string[]) => (kept?.length ? `. Kept your current ${kept.join(', ')} beside it.` : '');
 
 /** Changed files of a version (vs the one before it, or vs the files on disk) with a side-by-side diff. */
@@ -302,8 +353,8 @@ function VersionDiffSheet({
   const restoreFile = async () => {
     if (!file) return;
     const ok = await confirmDialog({
-      title: `Restore ${file.path} from v${version.number}?`,
-      message: 'The file goes back to how it was in this version. The current state is saved as a version first.',
+      title: `Restore ${file.path} from checkpoint ${version.number}?`,
+      message: 'The file goes back to how it was at this checkpoint. A checkpoint of the current state is saved first.',
       confirmLabel: 'Restore'
     });
     if (!ok) return;
@@ -323,14 +374,14 @@ function VersionDiffSheet({
     }
   };
 
-  const title = kind === 'compare' ? `v${version.number} compared with the current files` : `What changed in v${version.number}`;
-  const leftLabel = kind === 'compare' ? `v${version.number}` : previous ? `v${previous.number}` : 'Before';
-  const rightLabel = kind === 'compare' ? 'Current' : `v${version.number}`;
+  const title = kind === 'compare' ? `Checkpoint ${version.number} compared with the current files` : `What changed in checkpoint ${version.number}`;
+  const leftLabel = kind === 'compare' ? `#${version.number}` : previous ? `#${previous.number}` : 'Before';
+  const rightLabel = kind === 'compare' ? 'Current' : `#${version.number}`;
 
   return (
     <Sheet title={title} onClose={onClose} width={1080} className="review-sheet">
       {error && <div className="tool-note error">{error}</div>}
-      {files && !files.length && <div className="tool-empty">{kind === 'compare' ? 'No differences — the files match this version.' : 'No file changes.'}</div>}
+      {files && !files.length && <div className="tool-empty">{kind === 'compare' ? 'No differences — the files match this checkpoint.' : 'No file changes.'}</div>}
       {files && files.length > 0 && (
         <div className="review-layout">
           <div className="review-files">
@@ -353,7 +404,7 @@ function VersionDiffSheet({
                 <button
                   className="btn small"
                   disabled={busy || !canRestore}
-                  title={canRestore ? undefined : kind === 'compare' ? `This file isn’t in v${version.number}.` : 'This version removed the file.'}
+                  title={canRestore ? undefined : kind === 'compare' ? `This file isn’t in checkpoint ${version.number}.` : 'This checkpoint removed the file.'}
                   onClick={restoreFile}
                 >
                   {busy ? <span className="spinner" /> : <Icon name="arrow.uturn.backward" />} Restore this file
@@ -361,7 +412,7 @@ function VersionDiffSheet({
               </div>
             )}
             {file?.status === 'untracked' ? (
-              <div className="tool-empty">Versions don’t keep this file (it’s too big or can’t be read), so there’s no preview. Restoring it keeps the current file as “(before restore)”.</div>
+              <div className="tool-empty">Checkpoints don’t keep this file (it’s too big or can’t be read), so there’s no preview. Restoring it keeps the current file as “(before restore)”.</div>
             ) : file?.binary ? (
               <div className="tool-empty">Binary file — no preview.</div>
             ) : texts && texts.path === file?.path ? (

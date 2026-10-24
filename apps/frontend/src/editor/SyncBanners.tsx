@@ -77,7 +77,7 @@ export default function SyncBanners({ conflicts, onDeleted }: { conflicts: Recor
   const takeCopy = async () => {
     const ok = await confirmDialog({
       title: `Use “${nameOf(copy)}”?`,
-      message: `It takes the place of ${original}, and the copy goes. A version is saved first, so this can be undone.`,
+      message: `It takes the place of ${original}, and the copy goes. A checkpoint is saved first, so this can be undone.`,
       confirmLabel: 'Use this copy'
     });
     if (!ok) return;

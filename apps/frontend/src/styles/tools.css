@@ -712,8 +712,94 @@
 }
 
 /* --------------------------------------------------------------------------
-   Project info
+   Document insights (the overview's count cards, the lists, the footer)
    -------------------------------------------------------------------------- */
+
+.tool-page.insight-list {
+  gap: 2px;
+  padding: 12px 10px 24px;
+}
+
+.insight-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+}
+
+.insight-row:hover {
+  background: var(--bg-hover);
+}
+
+.insight-number {
+  flex: none;
+  min-width: 28px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.insight-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insight-text em {
+  color: var(--text-tertiary);
+}
+
+.insight-label {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  font: 11.5px var(--font-mono);
+}
+
+.insight-page {
+  flex: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kv-row > .insight-meta {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--text);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.insight-abstract {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+.insights-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 8px 20px;
+  border-top: 1px solid var(--border);
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
 
 .stat-grid {
   display: grid;
@@ -1475,6 +1561,17 @@ textarea.table-latex {
   .review-files {
     max-height: 140px;
   }
+}
+
+/* a panel's name where it has no tabs (Floats) */
+.panel-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 /* --------------------------------------------------------------------------
