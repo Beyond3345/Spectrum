@@ -142,9 +142,40 @@ export function parseLabels(aux) {
 }
 
 /**
- * The document's labels from its last good compile's .aux files, an \include'd chapter's too: { labels, auxAt,
- * stale }. auxAt: when that compile wrote them (ms), or null; stale: it has never compiled, or a .tex or .bib in the
- * project changed since. ponytail: any .tex or .bib counts, not only the document's own inputs
+ * The numbered headings an .aux lists for the contents, in order, \contentsline{section}{\numberline{1}Title}{page}:
+ * [{ level, number, page }], an unnumbered one with number ''. Written whether or not the document has a contents.
+ */
+export function parseHeadings(aux) {
+  const headings = [];
+  for (const match of aux.matchAll(/\\@writefile\{toc\}\{\\contentsline\s*\{(\w+)\}(?=\{)/g)) {
+    const titleStart = match.index + match[0].length;
+    const titleEnd = matchBrace(aux, titleStart);
+    const pageEnd = titleEnd > 0 && aux[titleEnd + 1] === '{' ? matchBrace(aux, titleEnd + 1) : -1;
+    if (pageEnd < 0) continue;
+    const number = /^\\numberline\s*\{([^{}]*)\}/.exec(aux.slice(titleStart + 1, titleEnd))?.[1];
+    headings.push({ level: match[1], number: number ? plain(number) : '', page: plain(aux.slice(titleEnd + 2, pageEnd)) });
+  }
+  return headings;
+}
+
+/** An .aux with the \include'd chapters' .aux its \@input lines name in their places, as LaTeX reads it back. */
+async function auxInOrder(store, rel, seen = new Set()) {
+  if (seen.has(rel)) return '';
+  seen.add(rel);
+  const text = await fs.readFile(path.join(store, rel), 'utf8').catch(() => '');
+  let out = '';
+  let last = 0;
+  for (const match of text.matchAll(/\\@input\{([^}]+)\}/g)) {
+    out += text.slice(last, match.index) + (await auxInOrder(store, match[1], seen));
+    last = match.index + match[0].length;
+  }
+  return out + text.slice(last);
+}
+
+/**
+ * The document's labels and contents headings from its last good compile's .aux files, an \include'd chapter's too:
+ * { labels, headings, auxAt, stale }. auxAt: when that compile wrote them (ms), or null; stale: it has never compiled,
+ * or a file it reads (its own .tex, its \input and \include files, the project's .bib files) changed since.
  */
 export async function documentLabels(root, doc) {
   const store = auxStore(await cachePath(root), doc);
@@ -152,16 +183,22 @@ export async function documentLabels(root, doc) {
   for (const { path: rel, type } of await listFilesRecursive(store).catch(() => [])) {
     if (type === 'file' && rel.endsWith('.aux')) Object.assign(labels, parseLabels(await fs.readFile(path.join(store, rel), 'utf8').catch(() => '')));
   }
-  const aux = await fs.stat(path.join(store, `${path.basename(doc, path.extname(doc))}.aux`)).catch(() => null);
+  const own = `${path.basename(doc, path.extname(doc))}.aux`;
+  const headings = parseHeadings(await auxInOrder(store, own));
+  const aux = await fs.stat(path.join(store, own)).catch(() => null);
   const auxAt = aux ? Math.round(aux.mtimeMs) : null;
   let stale = auxAt === null;
-  for (const { path: rel, type } of stale ? [] : await listFilesRecursive(root)) {
-    if (type !== 'file' || !/\.(tex|bib)$/i.test(rel)) continue;
-    const stat = await fs.stat(path.join(root, rel)).catch(() => null);
-    if (stat && stat.mtimeMs > aux.mtimeMs) {
-      stale = true;
-      break;
+  if (!stale) {
+    const read = new Set();
+    await inlineInputs(root, doc, { stripComments: true, files: read });
+    const bibs = (await listFilesRecursive(root)).filter((item) => item.type === 'file' && /\.bib$/i.test(item.path)).map((item) => item.path);
+    for (const rel of [...read, ...bibs]) {
+      const stat = await fs.stat(path.join(root, rel)).catch(() => null);
+      if (stat && stat.mtimeMs > aux.mtimeMs) {
+        stale = true;
+        break;
+      }
     }
   }
-  return { labels, auxAt, stale };
+  return { labels, headings, auxAt, stale };
 }

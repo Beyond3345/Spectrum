@@ -186,15 +186,28 @@ test('labels are read from the kept .aux files, with when they were written and 
   // as a compile keeps them: the document's own .aux and its \include'd chapters'
   const store = path.join(dataDir, 'cache', p.id, 'aux-files', 'main.tex');
   await fs.mkdir(path.join(store, 'chapters'), { recursive: true });
-  await fs.writeFile(path.join(store, 'main.aux'), '\\relax\n\\@input{chapters/one.aux}\n\\newlabel{fig:x}{{2}{3}}\n');
-  await fs.writeFile(path.join(store, 'chapters', 'one.aux'), '\\relax\n\\newlabel{sec:one}{{1}{1}{One}{section.1}{}}\n');
+  await fs.writeFile(path.join(store, 'main.aux'), [
+    '\\relax',
+    '\\@writefile{toc}{\\contentsline {section}{Preface}{i}{section*.1}\\protected@file@percent }',
+    '\\@input{chapters/one.aux}',
+    '\\@writefile{toc}{\\contentsline {section}{\\numberline {2}Two}{3}{section.2}\\protected@file@percent }',
+    '\\newlabel{fig:x}{{2}{3}}',
+    ''
+  ].join('\n'));
+  await fs.writeFile(path.join(store, 'chapters', 'one.aux'), '\\relax\n\\@writefile{toc}{\\contentsline {section}{\\numberline {1}One}{1}{section.1}}\n\\newlabel{sec:one}{{1}{1}{One}{section.1}{}}\n');
   const later = new Date(Date.now() + 60_000);
   await fs.utimes(path.join(store, 'main.aux'), later, later);
   const fresh = await stats();
   assert.deepEqual(fresh.labels, { 'fig:x': { number: '2', page: '3' }, 'sec:one': { number: '1', page: '1' } });
+  // every heading's number and page in reading order, a chapter's where it's \include'd
+  assert.deepEqual(fresh.headings, [{ level: 'section', number: '', page: 'i' }, { level: 'section', number: '1', page: '1' }, { level: 'section', number: '2', page: '3' }]);
   // as precise as the disk keeps times
   assert.ok(Math.abs(fresh.auxAt - later.getTime()) < 1000, String(fresh.auxAt));
   assert.equal(fresh.stale, false);
+  // a file the document doesn't read doesn't count
+  await fs.writeFile(path.join(p.path, 'other.tex'), 'Elsewhere\n');
+  await fs.utimes(path.join(p.path, 'other.tex'), new Date(Date.now() + 120_000), new Date(Date.now() + 120_000));
+  assert.equal((await stats()).stale, false);
 
   const newer = new Date(Date.now() + 120_000);
   await fs.utimes(path.join(p.path, 'chapters', 'one.tex'), newer, newer);

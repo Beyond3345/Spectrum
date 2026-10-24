@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { getFile, getProjectStats } from '../api/client';
 import type { ProjectStats } from '../api/client';
 import Icon from '../app/Icon';
 import Tabs from '../app/Tabs';
 import { useEditor } from './EditorContext';
-import { metadataText, scanInsights } from './insights';
+import { headingNumbers, metadataText, scanInsights, withNumbers } from './insights';
 import type { InsightRow, Insights } from './insights';
 import { scanProject } from './latexEnvs';
 import { scanTodos } from './todos';
@@ -67,7 +67,7 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
     const timer = window.setTimeout(async () => {
       const { scans } = await scanProject(doc, new Set(api.texFiles), read, false);
       const files = await Promise.all(scans.map(async (s) => ({ path: s.file!, text: await read(s.file!).catch(() => '') })));
-      if (live) setScan({ ...scanInsights(files), todos: scanTodos(files) });
+      if (live) setScan({ ...scanInsights(files, doc), todos: scanTodos(files) });
     }, 300);
     return () => {
       live = false;
@@ -80,7 +80,7 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
     if (!active || !doc) return;
     let live = true;
     setBusy(true);
-    getProjectStats(api.projectId, doc)
+    getProjectStats(api.projectId, doc, api.settings.texFolder || undefined)
       .then((res) => {
         if (!res.ok) throw new Error(res.error || 'Counting failed.');
         if (live) {
@@ -96,12 +96,21 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
   }, [active, doc, asked, api.compileLog]);
 
   const labels = stats?.labels ?? {};
+  // a heading without a \label of its own gets its number and page from the contents' entries
+  const tocAt = useMemo(() => headingNumbers(scan?.headings ?? [], stats?.headings ?? []), [scan, stats]);
   const count = (key: Exclude<Tab, 'overview'>) => scan?.[key].length ?? 0;
+  const text = (tex: string) => withNumbers(tex, labels);
+
+  // a strip too narrow for all eight scrolls; keep the chosen tab in view, as Tools does
+  const headRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    headRef.current?.querySelector('.tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [tab]);
 
   const copyMetadata = async () => {
     if (!scan) return;
     try {
-      await navigator.clipboard.writeText(metadataText(scan.metadata));
+      await navigator.clipboard.writeText(metadataText(scan.metadata, labels));
       api.notify('Copied the submission metadata.', 'success');
     } catch (err) {
       api.notify(`Couldn’t copy the metadata: ${errorText(err)}`, 'error');
@@ -111,7 +120,7 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
   const minLevel = Math.min(...(scan?.headings.map((h) => h.level ?? 0) ?? []), 9);
   const rows = (list: InsightRow[]) =>
     list.map((row, i) => {
-      const at = row.label ? labels[row.label] : undefined;
+      const at = (row.label ? labels[row.label] : undefined) ?? tocAt.get(row);
       return (
         <button
           key={`${row.file}:${row.line}:${i}`}
@@ -121,7 +130,7 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
           onClick={() => api.jumpTo(row.file, row.line)}
         >
           {at?.number && <span className="insight-number">{at.number}</span>}
-          <span className="insight-text">{row.text || <em>No caption</em>}</span>
+          <span className="insight-text">{text(row.text) || <em>No caption</em>}</span>
           {row.label && tab !== 'labels' && <span className="insight-label">{row.label}</span>}
           {at?.page && <span className="insight-page">p. {at.page}</span>}
         </button>
@@ -151,10 +160,10 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
       ];
       const meta = scan.metadata;
       const details: [string, string][] = [
-        ['Title', meta.title],
-        ['Authors', meta.authors.join('; ')],
-        ['Keywords', meta.keywords.join('; ')],
-        ['Date', meta.date]
+        ['Title', text(meta.title)],
+        ['Authors', text(meta.authors.join('; '))],
+        ['Keywords', text(meta.keywords.join('; '))],
+        ['Date', text(meta.date)]
       ];
       return (
         <>
@@ -195,7 +204,7 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
               </div>
             ))}
           </div>
-          <div className="insight-abstract">{meta.abstract || 'No abstract yet'}</div>
+          <div className="insight-abstract">{text(meta.abstract) || 'No abstract yet'}</div>
         </>
       );
     }
@@ -219,7 +228,7 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
 
   return (
     <div className="tools-panel">
-      <div className="tools-head">
+      <div className="tools-head" ref={headRef}>
         <Tabs
           className="tools-tabs"
           value={tab}
@@ -233,8 +242,8 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
       </div>
       <div className="insights-foot" role="status">
         <span className="grow">
-          {stats?.auxAt === null ? 'Compile to see numbers and pages.' : 'Numbers and pages are from the last compile.'}
-          {stats?.stale && ' The source has changed since.'}
+          {stats?.auxAt === null ? 'Compile to see numbers and pages.' : 'Numbers and pages come from the last compile.'}
+          {stats?.auxAt != null && stats.stale && ' The source has changed since.'}
         </span>
         <button className="btn small" disabled={busy} onClick={() => setAsked((n) => n + 1)}>
           {busy ? <span className="spinner" /> : <Icon name="arrow.clockwise" />} Refresh
