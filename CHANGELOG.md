@@ -31,12 +31,15 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - The Spectrum agent follows the persona and a skill picked with `/`, loads skills itself and reads the to-do list, suggests to-dos and searches the literature, with up to 25 steps
 - On macOS, local agents get Spectrum's tools (compile, the log, the project map, the bibliography, literature search, the to-dos, suggested to-dos and skills) from a small server they start inside their isolation. The skills that are on for the project are copied into each agent's private home
 - To-dos an agent suggests appear as cards with Add, and are only saved once they are added
+- Tools › Review runs Preflight checks and an AI review with one press. It compiles first when the PDF is older than the source, then checks Compile and layout, References and assets, Privacy and blind review (with an Anonymous review switch), Accessibility (with a screen reader view of the PDF's text) and Submission readiness, each with a tick box. Rows jump to their line or PDF page and have Fix with AI and Dismiss, and Copy report copies the results
+- The AI review reads the whole document once in `\input` order without tools. It returns Major, Minor and Note points tied to a line and quote, with a summary, strengths, a score, confidence and the limits of the review. A point whose quote cannot be found near its line shows without a link
 
 ### Changed
 
 - Versions are now called checkpoints. Save version is Save checkpoint (`⇧⌘S`), and the Versions tab in Tools is Checkpoints
 - Tools, Check grammar, Document insights and the Floats panel each take the PDF's place with a header holding Close and the view switcher, and the Compile button stays in the top bar while one is open
 - Tools holds Checkpoints, Logs, Review and Research. Project info moved to Document insights and Floats to its own panel
+- The Review tab's Full review report, Consistency check, Missing citations and Compile log summary buttons are replaced by the one Review, whose AI review covers the first three in about one read of the paper and cannot propose patches
 - A project's compiler is saved with the project in `.spectrum/settings.json`, so it follows the project to your other computer. A project uses the defaults from Settings until one of its compile settings is changed, and the default compiler is Auto
 - Compiles are faster. Each document's `.aux`, `.bbl`, `.toc` and similar files are kept between compiles for each compiler and read back by the next one, so an unchanged document is done in one pass. BibTeX and Biber only run when something is cited, and another pass only runs when the log asks for one or a pass changed what TeX reads back. Files are kept only from a compile without errors, and when TeX cannot read one, Spectrum clears them and compiles once more from scratch
 - Tectonic carries on past errors like the other compilers unless Stop on first error is chosen, and a compile with errors no longer reports a clean status

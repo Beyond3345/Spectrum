@@ -120,6 +120,19 @@ Mermaid diagrams export as PNG or PDF and insert as PDF figures in LaTeX. The PD
 
 Document insights, beside Check grammar in the top bar, takes the PDF's place with tabs for the Overview, Headings, Figures, Tables, Equations, Labels, Citations and To-dos, each with its count. Rows show the label with the number and page it had in the last compile, read from the `.aux` files that compile kept, and clicking one jumps to its line in the source. The To-dos tab lists the to-dos in the source (Section To-do list). The Overview has the counts, the word counts from `texcount` and the submission metadata (title, authors, keywords, date and abstract), with Copy submission metadata for a submission form. The footer says that the numbers and pages are from the last compile, marks them as out of date when the source has changed since and has Refresh.
 
+### Review
+
+Tools › Review checks the document Compile builds before it goes anywhere. One press of Review saves the open file, compiles when the PDF is older than the source (a failed build does not stop the review) and then runs each ticked group of checks:
+
+- **Compile and layout:** a failed build, the log's errors, lines past the margin, citations and references the PDF shows as ??, missing glyphs, a compile that needs another pass, link targets used twice, pages of another size and text past the edge of a page,
+- **References and assets:** citations with no entry, references with no label, labels used twice, keys or works in the bibliography twice, entries missing a field the type needs, DOIs that do not look like one, entries never cited, images that cannot be found and figures or tables the text never refers to, with TexLab's diagnostics when it runs,
+- **Privacy and blind review:** files and lines that look like keys or passwords, `\todo` notes, `TODO` comments and highlighted text. With Anonymous review on, also `\author`, `\thanks`, the acknowledgements and the PDF's Author field,
+- **Accessibility:** the PDF's title, language, tags, bookmarks, small text and pages with no text, alt text for figures, heading levels that skip and vague link text. Screen reader view shows the text a screen reader gets from each page,
+- **Submission readiness:** the PDF version, encryption, fonts that are not embedded and Type 3 fonts, absolute paths, names that match only when letter case is ignored, image formats pdfLaTeX cannot include, awkward file names, the abstract and the keywords,
+- **AI review** (ticked by default when a model is set up): one read of the whole document in `\input` order with numbered lines, told what the checks already found. It returns a summary, strengths, a score and confidence, the limits of the review and points marked Major, Minor or Note, each with a category and the line it is about. It never changes your files.
+
+A group that needs the PDF or the log and has neither says Compile first rather than reporting no problems. Rows jump to their line or to their page in the PDF, and the AI review's rows also have Show in PDF. Fix with AI, on a row or for a whole group, asks the assistant for a fix that opens as changes to review, as in the Logs tab, and Dismiss hides a row. Cancel stops a review. The status line says when it last ran and whether the source has changed since, and Copy report copies the results as Markdown. The latest run is kept for each project until Spectrum quits.
+
 ### To-do list
 
 The To-dos tab in the sidebar, beside Files and Chats, holds a to-do list with a badge counting the open to-dos. It has two groups,
