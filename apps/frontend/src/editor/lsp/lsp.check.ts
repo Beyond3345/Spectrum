@@ -3,7 +3,7 @@
 // `npx esbuild apps/frontend/src/editor/lsp/lsp.check.ts --bundle --platform=node --log-level=warning | node`
 import { documentOutline } from '../latexEditor.ts';
 import { symbolHeadings } from './outline.ts';
-import { applyEdits, renameEdits } from './rename.ts';
+import { applyEdits, newName, renameEdits } from './rename.ts';
 import { lspTransport } from './transport.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -113,23 +113,48 @@ function rename() {
   throws(() => renameEdits({ changes: { 'file:///usr/share/texmf/x.sty': [{ range: range(0, 0, 1), newText: 'y' }] } }, pathOf), /outside the project/, 'a file outside');
   throws(() => renameEdits({ documentChanges: [{ kind: 'create', uri: `${root}/new.tex` }] }, pathOf), /make, move or delete/, 'a new file');
   eq(renameEdits(null, pathOf).size, 0, 'no answer, no edits');
+  const twice = { range: range(0, 7, 12), newText: 'sec:b' };
+  eq(
+    renameEdits({ changes: { [`${root}/Chap.tex`]: [twice], [`${root}/chap.tex`]: [twice, { range: range(2, 0, 5), newText: 'sec:b' }] } }, (uri) => pathOf(uri)?.toLowerCase() ?? null).get('chap.tex')?.length,
+    2,
+    'one file under two spellings: the same edit once'
+  );
 
   const text = '\\section{Intro}\\label{sec:intro}\nSee \\ref{sec:intro} and \\ref{sec:intro}.\n';
   eq(
-    applyEdits(text, [
-      { range: range(1, 29, 38), newText: 'sec:start' },
-      { range: range(0, 22, 31), newText: 'sec:start' },
-      { range: range(1, 9, 18), newText: 'sec:start' }
-    ]),
+    applyEdits(
+      text,
+      [
+        { range: range(1, 29, 38), newText: 'sec:start' },
+        { range: range(0, 22, 31), newText: 'sec:start' },
+        { range: range(1, 9, 18), newText: 'sec:start' }
+      ],
+      'sec:intro'
+    ),
     '\\section{Intro}\\label{sec:start}\nSee \\ref{sec:start} and \\ref{sec:start}.\n',
     'edits in any order, several to a line'
   );
   // columns count UTF-16 code units, as JavaScript does: 😀 is two
-  eq(applyEdits('😀 \\cite{knuth}', [{ range: range(0, 9, 14), newText: 'knuth84' }]), '😀 \\cite{knuth84}', 'past a character outside the BMP');
-  eq(applyEdits('a\r\n\\ref{x}\r\n', [{ range: range(1, 5, 6), newText: 'y' }]), 'a\r\n\\ref{y}\r\n', 'Windows line endings');
-  eq(applyEdits('ab\ncd', [{ range: range(0, 1, 1, 1), newText: 'X' }]), 'aXd', 'across lines');
-  eq(applyEdits('ab', [{ range: range(0, 5, 9), newText: '!' }, { range: range(4, 0, 0), newText: '?' }]), 'ab!?', 'past the end of a line or the text');
-  throws(() => applyEdits('abcdef', [{ range: range(0, 0, 3), newText: 'x' }, { range: range(0, 2, 4), newText: 'y' }]), /overlap/, 'overlapping edits');
+  eq(applyEdits('😀 \\cite{knuth}', [{ range: range(0, 9, 14), newText: 'knuth84' }], 'knuth'), '😀 \\cite{knuth84}', 'past a character outside the BMP');
+  eq(applyEdits('a\r\n\\ref{x}\r\n', [{ range: range(1, 5, 6), newText: 'y' }], 'x'), 'a\r\n\\ref{y}\r\n', 'Windows line endings');
+  eq(applyEdits('ab\ncd', [{ range: range(0, 1, 1, 1), newText: 'X' }], 'b\nc'), 'aXd', 'across lines');
+  throws(() => applyEdits('abcdef', [{ range: range(0, 0, 3), newText: 'x' }, { range: range(0, 2, 4), newText: 'y' }], 'abc'), /overlap/, 'overlapping edits');
+  // TexLab's copy of a file behind the disk's (a reread still to come, or the file under another spelling of its name):
+  // its ranges no longer hold the name, so nothing is written
+  const disk = '% notes\n% more\n\\section{A}\\label{sec:intro}\n';
+  throws(() => applyEdits(disk, [{ range: range(0, 18, 23), newText: 'sec:b' }], 'sec:intro'), /out of date/, 'a range past the end of its line');
+  throws(() => applyEdits(disk, [{ range: range(9, 0, 4), newText: 'sec:b' }], 'sec:intro'), /out of date/, 'a line past the end of the text');
+  throws(() => applyEdits(disk, [{ range: range(2, 9, 18), newText: 'sec:b' }], 'sec:intro'), /out of date/, 'a range over other text');
+  eq(applyEdits(disk, [{ range: range(2, 18, 27), newText: 'sec:b' }], 'sec:intro'), '% notes\n% more\n\\section{A}\\label{sec:b}\n', 'the file as TexLab has it');
+
+  // the new name
+  eq(newName('  fig:b  ', false), 'fig:b', 'trimmed');
+  eq(newName('\\bar', true), 'bar', 'a command’s backslash left out');
+  eq(newName('', false), '', 'nothing typed');
+  throws(() => newName('eq:power} law', false), /can’t hold/, 'a brace or a space');
+  throws(() => newName('smith,jones', false), /can’t hold/, 'a comma');
+  throws(() => newName('a%b', false), /can’t hold/, 'a percent sign');
+  throws(() => newName('my2cmd', true), /only letters/, 'a command with a digit');
 }
 
 // ─── outline ───

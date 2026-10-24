@@ -257,7 +257,10 @@ export class Texlab {
     this.client.sync();
   }
 
-  /** What F2 would rename at pos (a label, citation key or command), as the text shows it; null when there's nothing. */
+  /**
+   * What F2 would rename at pos (a label, citation key or command), as the text shows it, and whether it's a command's
+   * name (TexLab's range leaves its backslash out); null when there's nothing.
+   */
   async renameTarget(view: EditorView, pos: number) {
     const plugin = LSPPlugin.get(view);
     if (!plugin) return null;
@@ -268,10 +271,11 @@ export class Texlab {
     });
     if (!found) return null;
     const { placeholder, range = found as lsp.Range } = found as { placeholder?: string; range?: lsp.Range };
-    if (placeholder !== undefined) return placeholder;
     // { defaultBehavior }: left to the editor, which has nothing to go on
     if (!range.start) return null;
-    return view.state.sliceDoc(plugin.fromPosition(range.start), plugin.fromPosition(range.end));
+    const from = plugin.fromPosition(range.start);
+    const text = placeholder ?? view.state.sliceDoc(from, plugin.fromPosition(range.end));
+    return { text, command: from > 0 && view.state.sliceDoc(from - 1, from) === '\\' };
   }
 
   /** TexLab's edits for renaming what's at pos. */

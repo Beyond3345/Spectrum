@@ -116,7 +116,7 @@ import type { Project } from '../editor/latexEnvs';
 import type { OutlineItem } from '../editor/latexEditor';
 import { Texlab, texlabSlot } from '../editor/lsp/texlab';
 import type { Reference } from '../editor/lsp/texlab';
-import { applyEdits, renameEdits } from '../editor/lsp/rename';
+import { applyEdits, newName, renameEdits } from '../editor/lsp/rename';
 import { symbolHeadings } from '../editor/lsp/outline';
 import { VERSIONS_CHANGED, errorText, figureSnippet } from '../editor/shared';
 
@@ -1180,13 +1180,20 @@ function Editor({ projectId }: { projectId: string }) {
     if (!view || !texlab?.available || !activeRef.current) return;
     const pos = view.state.selection.main.head;
     try {
-      const target = await texlab.renameTarget(view, pos);
-      if (!target) {
+      const found = await texlab.renameTarget(view, pos);
+      if (!found) {
         notify('There’s nothing here to rename. Put the cursor on a label, citation key or command.');
         return;
       }
-      const name = (await promptDialog({ title: `Rename “${target}”`, message: 'Every use of it in the project changes too.', defaultValue: target, confirmLabel: 'Rename' }))?.trim();
+      const target = found.text;
+      const typed = await promptDialog({ title: `Rename “${target}”`, message: 'Every use of it in the project changes too.', defaultValue: target, confirmLabel: 'Rename' });
+      const name = newName(typed ?? '', found.command);
       if (!name || name === target) return;
+      // TexLab doesn't check either: a second \label or .bib entry by that name
+      const scan = projectScanRef.current;
+      if (!found.command && (scan.scans.some((s) => s.labels.includes(name)) || scan.bib.some((b) => b.key === name))) {
+        throw new Error(`“${name}” is already used in this project. Pick another name.`);
+      }
       // TexLab plans against the open file's text and the others' on disk, so the open file goes to disk first
       await saveNow();
       const edits = renameEdits(await texlab.renameEdits(view, pos, name), (uri) => texlab.pathOf(uri));
@@ -1199,7 +1206,12 @@ function Editor({ projectId }: { projectId: string }) {
       const plan = await Promise.all(
         [...edits].map(async ([file, list]) => {
           const before = file === activeRef.current ? view.state.doc.toString() : await ensureFileContent(file);
-          return { file, before, after: applyEdits(before, list), count: list.length };
+          try {
+            // each edit must replace the old name, or TexLab planned it against other text than this
+            return { file, before, after: applyEdits(before, list, target), count: list.length };
+          } catch (err) {
+            throw new Error(`${nameOf(file)}: ${errorText(err)}`);
+          }
         })
       );
       const ok = await confirmDialog({
@@ -1225,6 +1237,8 @@ function Editor({ projectId }: { projectId: string }) {
         throw new Error(`${errorText(err)}${after}`);
       }
       notify(`Renamed “${target}” to “${name}” in ${plural(plan.length, 'file')}`, 'success');
+      // ⇧F12's list shows the old name and lines
+      setReferences(null);
     } catch (err) {
       notify(`Couldn’t rename: ${errorText(err)}`, 'error');
     }
