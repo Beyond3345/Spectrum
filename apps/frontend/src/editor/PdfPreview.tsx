@@ -850,8 +850,8 @@ export function PageBox({ page, pages, onGo }: { page: number; pages: number | n
           if (Number(draft) && pages) onGo(Math.min(pages, Math.max(1, Number(draft))));
         } else if (e.key !== 'Escape') return;
         e.preventDefault();
-        // back to the pages, whose keys go on from there
-        e.currentTarget.closest('.pdf-body')?.querySelector<HTMLElement>('.pdf-scroll')?.focus();
+        // back to the pages, whose keys go on from there; focusing may not scroll, or it stops the scroll to the page
+        e.currentTarget.closest('.pdf-body')?.querySelector<HTMLElement>('.pdf-scroll')?.focus({ preventScroll: true });
       }}
     />
   );

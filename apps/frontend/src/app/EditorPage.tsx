@@ -2790,7 +2790,8 @@ function Editor({ projectId }: { projectId: string }) {
                     focusSignal={findSignal}
                     onClose={() => {
                       setFindOpen(false);
-                      document.querySelector<HTMLElement>('.pdf-scroll')?.focus();
+                      // without scrolling, which would stop the scroll to the last match
+                      document.querySelector<HTMLElement>('.pdf-scroll')?.focus({ preventScroll: true });
                     }}
                   />
                 )}
