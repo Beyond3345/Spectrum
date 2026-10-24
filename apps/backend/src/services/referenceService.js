@@ -553,8 +553,11 @@ function badRequest(message) {
   return err;
 }
 
-/** bibFile param → references.bib → first .bib (shallowest, then by name) → new references.bib. */
-export function pickBibTarget(root, files, requested) {
+/**
+ * bibFile param → a .bib the .tex sources load → references.bib → first .bib → new references.bib, each in the order
+ * references.bib, then shallowest, then by name.
+ */
+export function pickBibTarget(root, files, requested, texSources = []) {
   if (requested) {
     const rel = String(requested).replace(/\\/g, '/').replace(/^(\.\/)+/, '');
     const parts = rel.split('/');
@@ -564,10 +567,10 @@ export function pickBibTarget(root, files, requested) {
     safeJoin(root, rel);
     return rel;
   }
-  const bibs = files.filter((f) => /\.bib$/i.test(f));
-  if (bibs.includes('references.bib')) return 'references.bib';
   const depth = (f) => f.split('/').length;
-  return bibs.sort((a, b) => depth(a) - depth(b) || a.localeCompare(b))[0] || 'references.bib';
+  const bibs = files.filter((f) => /\.bib$/i.test(f)).sort((a, b) => (b === 'references.bib') - (a === 'references.bib') || depth(a) - depth(b) || a.localeCompare(b));
+  // one the document loads, so a \cite of what's added there resolves
+  return bibs.find((bib) => texIncludesBib(texSources, bib)) || bibs[0] || 'references.bib';
 }
 
 /** Whether any .tex loads the target via \bibliography{…} or \addbibresource{…}. */
@@ -1109,8 +1112,8 @@ function withBibLock(fn) {
 export async function resolveItems(projectRoot, items, bibFile, searchConfig) {
   return withBibLock(async () => {
     const files = await projectFiles(projectRoot);
-    const target = pickBibTarget(projectRoot, files, bibFile);
     const sources = await Promise.all(files.filter((f) => /\.tex$/i.test(f)).map((file) => fs.readFile(path.join(projectRoot, file), 'utf8').catch(() => '')));
+    const target = pickBibTarget(projectRoot, files, bibFile, sources);
     const bibliographySources = withoutComments(sources.filter((source) => texIncludesBib([source], target)).join('\n'));
     // Classic BibTeX styles ignore url; modern styles print it, so never emit both fields.
     const legacyUrls = /\\bibliographystyle\s*\{(?:plain|abbrv|alpha|unsrt|acm|apalike|ieeetr)\}/.test(bibliographySources)

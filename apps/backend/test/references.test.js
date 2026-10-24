@@ -444,6 +444,9 @@ test('picks the target .bib', () => {
   assert.equal(pickBibTarget('/p', ['sub/z.bib', 'b.bib', 'a.tex'], ''), 'b.bib');
   assert.equal(pickBibTarget('/p', ['main.tex'], ''), 'references.bib');
   assert.equal(pickBibTarget('/p', [], 'refs/new.bib'), 'refs/new.bib');
+  // the one the document loads, ahead of references.bib and a shallower one
+  assert.equal(pickBibTarget('/p', ['references.bib', 'a.bib', 'chapters/thesis.bib'], '', ['\\bibliography{chapters/thesis}']), 'chapters/thesis.bib');
+  assert.equal(pickBibTarget('/p', ['a.bib', 'references.bib'], '', ['% \\bibliography{a}']), 'references.bib');
   for (const bad of ['../x.bib', '/etc/x.bib', 'x.tex', '.spectrum/x.bib', '.Spectrum/x.bib']) {
     assert.throws(() => pickBibTarget('/p', [], bad), (err) => err.statusCode === 400, bad);
   }
