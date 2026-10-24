@@ -1377,10 +1377,13 @@ function Editor({ projectId }: { projectId: string }) {
       order.push(doc);
     };
     for (const doc of docs) await visit(doc, []);
+    const shown = shownDoc;
     for (const doc of order) {
       const ended = await runCompile(doc, { fresh: true });
-      if (ended === 'stopped' || ended === 'busy') break;
+      if (ended === 'stopped' || ended === 'busy') return;
     }
+    // each compile showed its own PDF; the one that was showing comes back, so Compile goes on building it
+    if (shown && shown !== order[order.length - 1] && items.some((i) => i.path === pdfOf(shown))) loadPdf(shown);
   };
 
   /** A project compile choice (null: back to the app's default), kept in the project's .spectrum/settings.json. */
