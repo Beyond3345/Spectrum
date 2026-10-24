@@ -66,11 +66,20 @@ eq(
   'plan'
 );
 
-// requests: answered in place; one still waiting whose event is gone is added
+// requests: answered in place; one still waiting whose event is gone is added; one its turn left, or Spectrum closing,
+// waits no more
 eq(
-  shape([ev('request', { requestId: 'r1', kind: 'permission', params: {} }), ev('answered', { requestId: 'r1' })], { pending: [{ requestId: 'r2', kind: 'question', params: {} }] }),
+  shape([ev('request', { requestId: 'r1', kind: 'permission', params: {} }), ev('answered', { requestId: 'r1' })], { pending: [{ requestId: 'r1', kind: 'permission', params: {} }, { requestId: 'r2', kind: 'question', params: {} }] }),
   [['request', true], ['request', false]],
   'requests'
+);
+eq(shape([ev('request', { requestId: 'r3', kind: 'permission', params: {} }), ev('state', { status: 'completed' })]), [['request', true]], 'not pending: not waiting');
+
+// a turn stopped mid-call leaves its card failed, not waiting
+eq(
+  shape([ev('user', { text: 'Go' }), up({ sessionUpdate: 'tool_call', toolCallId: 'w', title: 'Write', status: 'pending' }), up({ sessionUpdate: 'tool_call', toolCallId: 'r', title: 'Read', status: 'in_progress' }), up({ sessionUpdate: 'tool_call', toolCallId: 'd', title: 'Done', status: 'completed' }), ev('state', { status: 'interrupted', error: 'Stopped.' })]),
+  [['user', 'Go'], ['tool', 'Write:failed'], ['tool', 'Read:failed'], ['tool', 'Done:completed'], ['notice', 'Stopped.']],
+  'stopped'
 );
 
 // notices and failures
@@ -96,7 +105,26 @@ eq(shape([ev('reset', { paths: ['a.tex'] })]), [['notice', 'Rejected: the agentâ
   const joined = addEvent(held, piece(1002, 'One two three', 1000));
   eq(joined.map((e) => e.id), [held[0].id, 1002], 'pieces replaced');
   eq(addEvent(joined, piece(1002, 'One two three', 1000)), joined, 'a repeat');
-  eq(shape(addEvent(joined, piece(1003, ' four'))), [['user', 'Go'], ['assistant', 'One two three four']], 'a later piece joins on');
+  const later = addEvent(joined, piece(1003, ' four'));
+  eq(shape(later), [['user', 'Go'], ['assistant', 'One two three four']], 'a later piece joins on');
+  eq([later.length, later[later.length - 1].first], [2, 1000], 'held as one event that names its first piece');
+  // a reconnect's stored event over the joined one
+  eq(addEvent(later, piece(1004, 'One two three four five', 1000)).map((e) => e.id), [held[0].id, 1004], 'replayed over');
+  // tool call updates of one call join; another call's don't
+  const call = (n: number, toolCallId: string, status: string): AgentEvent => ({ id: n, type: 'update', data: { sessionUpdate: 'tool_call_update', toolCallId, status }, at: at(n) });
+  eq(addEvent(addEvent([call(1, 'a', 'pending')], call(2, 'a', 'completed')), call(3, 'b', 'pending')).map((e) => [e.id, e.data.status]), [[2, 'completed'], [3, 'pending']], 'tool updates');
+}
+
+// 20,000 live pieces are added and shown in well under a second
+{
+  let events: AgentEvent[] = [ev('user', { text: 'Long' })];
+  const started = Date.now();
+  for (let n = 0; n < 20000; n++) {
+    events = addEvent(events, { id: 5000 + n, type: 'update', data: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'ab ' } }, at: at(1) });
+    if (n % 100 === 0) project(events);
+  }
+  eq([events.length, String(shape(events)[1][1]).length], [2, 60000], 'one message');
+  if (Date.now() - started > 3000) throw new Error(`20,000 pieces took ${Date.now() - started} ms`);
 }
 
 // checkpoints go where they were saved

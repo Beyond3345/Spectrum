@@ -55,12 +55,31 @@ export const RUNNING = ['starting', 'running', 'stopping'];
 const REPLAYED = ['user_message_chunk', 'agent_message_chunk', 'agent_thought_chunk', 'tool_call', 'tool_call_update', 'plan'];
 const TOOL_FIELDS = ['title', 'kind', 'status', 'content', 'locations', 'rawInput', 'rawOutput'] as const;
 
+const CHUNKS = ['user_message_chunk', 'agent_message_chunk', 'agent_thought_chunk'];
+
+/** A live piece joined onto the event held last, as the backend stores them (agentSessionService's joined), or null. */
+function joinPiece(last: AgentEvent | undefined, e: AgentEvent) {
+  const [a, b] = [last?.data, e.data];
+  if (e.type !== 'update' || last?.type !== 'update' || !a || !b || a.sessionUpdate !== b.sessionUpdate) return null;
+  if (CHUNKS.includes(b.sessionUpdate)) {
+    if (a.content?.type !== 'text' || b.content?.type !== 'text' || (a.messageId ?? null) !== (b.messageId ?? null)) return null;
+    return { ...a, content: { ...a.content, text: a.content.text + b.content.text } };
+  }
+  return b.sessionUpdate === 'tool_call_update' && a.toolCallId === b.toolCallId ? { ...a, ...b } : null;
+}
+
 /**
  * A live event added to those held: a stored event that joins streamed pieces (first) takes the place of the pieces
- * from first on, which a reconnect replays it over.
+ * from first on, which a reconnect replays it over. A live piece joins the one held before it the same way, so a long
+ * turn holds one event per message rather than one per piece.
  */
-export const addEvent = (old: AgentEvent[], e: AgentEvent) =>
-  old.some((item) => item.id === e.id) ? old : [...(e.first === undefined ? old : old.filter((item) => item.id < e.first! || item.id > e.id)), e];
+export function addEvent(old: AgentEvent[], e: AgentEvent) {
+  if (old.some((item) => item.id === e.id)) return old;
+  if (e.first !== undefined) return [...old.filter((item) => item.id < e.first! || item.id > e.id), e];
+  const last = old[old.length - 1];
+  const data = joinPiece(last, e);
+  return data ? [...old.slice(0, -1), { ...e, first: last.first ?? last.id, data }] : [...old, e];
+}
 
 export function project(events: AgentEvent[], { pending = [], checkpoints = [] }: { pending?: AgentUserRequest[]; checkpoints?: Checkpoint[] } = {}): Projection {
   const items: Item[] = [];
@@ -88,6 +107,11 @@ export function project(events: AgentEvent[], { pending = [], checkpoints = [] }
       text('user', `user-${e.id}`, String(d.text || ''));
     }
     else if (e.type === 'initialized') loading = true;
+    // a turn that ended (stopped, say) leaves none of its tool calls still going
+    else if (e.type === 'state' && !RUNNING.includes(d.status)) {
+      for (const call of tools.values()) if (call.status === 'pending' || call.status === 'in_progress') call.status = 'failed';
+      if (d.error) items.push({ type: 'notice', key: `notice-${e.id}`, text: String(d.error), error: d.status === 'failed' });
+    }
     else if (e.type === 'session') {
       loading = false;
       if (Array.isArray(d.configOptions)) out.configOptions = d.configOptions;
@@ -97,7 +121,8 @@ export function project(events: AgentEvent[], { pending = [], checkpoints = [] }
     // what the Spectrum tools' suggest_todo put forward, read back when the turn ends
     else if (e.type === 'todo' && typeof d.text === 'string') items.push({ type: 'todo', key: `todo-${e.id}`, todo: { text: d.text, ...(d.link && { link: d.link }) } });
     else if (e.type === 'request') {
-      const item = { type: 'request' as const, key: `request-${d.requestId}`, request: d as AgentUserRequest, answered: false };
+      // answered, or left when its turn ended: only one still pending waits for an answer
+      const item = { type: 'request' as const, key: `request-${d.requestId}`, request: d as AgentUserRequest, answered: !pending.some((p) => p.requestId === d.requestId) };
       requests.set(d.requestId, item);
       items.push(item);
     } else if (e.type === 'answered') {
