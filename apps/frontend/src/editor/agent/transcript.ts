@@ -55,20 +55,12 @@ export const RUNNING = ['starting', 'running', 'stopping'];
 const REPLAYED = ['user_message_chunk', 'agent_message_chunk', 'agent_thought_chunk', 'tool_call', 'tool_call_update', 'plan'];
 const TOOL_FIELDS = ['title', 'kind', 'status', 'content', 'locations', 'rawInput', 'rawOutput'] as const;
 
-/** The to-do a suggest_todo call (the Spectrum MCP server's) puts forward, or null for any other call. */
-export function todoOf(call: ToolCall): SuggestedTodo | null {
-  const input = call.rawInput as { text?: unknown; link?: unknown } | undefined;
-  if (call.status === 'failed' || !/suggest[_ ]?(a )?to-?do/i.test(call.title) || typeof input?.text !== 'string' || !input.text.trim()) return null;
-  return { text: input.text.trim().slice(0, 2000), ...(linkOf(input.link) && { link: linkOf(input.link)! }) };
-}
-
-function linkOf(link: unknown): SuggestedTodo['link'] | undefined {
-  const l = link as Record<string, unknown> | undefined;
-  if (typeof l?.file === 'string' && Number.isInteger(l.line)) return { file: l.file, line: l.line as number, ...(typeof l.snippet === 'string' && { snippet: l.snippet }) };
-  if (typeof l?.doc === 'string' && Number.isInteger(l.page)) return { doc: l.doc, page: l.page as number };
-  if (typeof l?.key === 'string') return { key: l.key };
-  return undefined;
-}
+/**
+ * A live event added to those held: a stored event that joins streamed pieces (first) takes the place of the pieces
+ * from first on, which a reconnect replays it over.
+ */
+export const addEvent = (old: AgentEvent[], e: AgentEvent) =>
+  old.some((item) => item.id === e.id) ? old : [...(e.first === undefined ? old : old.filter((item) => item.id < e.first! || item.id > e.id)), e];
 
 export function project(events: AgentEvent[], { pending = [], checkpoints = [] }: { pending?: AgentUserRequest[]; checkpoints?: Checkpoint[] } = {}): Projection {
   const items: Item[] = [];
@@ -97,6 +89,9 @@ export function project(events: AgentEvent[], { pending = [], checkpoints = [] }
       if (Array.isArray(d.configOptions)) out.configOptions = d.configOptions;
       if (d.modes?.availableModes) out.modes = d.modes;
     } else if (e.type === 'terminal') out.terminals[d.terminalId] = [d.command, ...(d.args || [])].join(' ');
+    else if (e.type === 'reset' && Array.isArray(d.paths)) items.push({ type: 'notice', key: `reset-${e.id}`, text: `Rejected: the agent’s copy of ${d.paths.map((p: string) => `“${p}”`).join(', ')} is back to your version, and the agent is told with its next task.`, error: false });
+    // what the Spectrum tools' suggest_todo put forward, read back when the turn ends
+    else if (e.type === 'todo' && typeof d.text === 'string') items.push({ type: 'todo', key: `todo-${e.id}`, todo: { text: d.text, ...(d.link && { link: d.link }) } });
     else if (e.type === 'request') {
       const item = { type: 'request' as const, key: `request-${d.requestId}`, request: d as AgentUserRequest, answered: false };
       requests.set(d.requestId, item);
@@ -130,10 +125,6 @@ export function project(events: AgentEvent[], { pending = [], checkpoints = [] }
   placeCheckpoints('\uffff');
   // a request whose event has been dropped from a long session's start
   for (const request of pending) if (!requests.has(request.requestId)) items.push({ type: 'request', key: `request-${request.requestId}`, request, answered: false });
-  out.items = items.map((item) => {
-    const todo = item.type === 'tool' ? todoOf(item.call) : null;
-    return todo ? { type: 'todo', key: item.key, todo } : item;
-  });
   return out;
 }
 

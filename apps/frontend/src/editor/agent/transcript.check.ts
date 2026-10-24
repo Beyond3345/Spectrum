@@ -1,7 +1,7 @@
 // Self-check for the local agent transcript. Run:
 // npx esbuild apps/frontend/src/editor/agent/transcript.check.ts --bundle --platform=node --log-level=warning --outfile=<scratch>/transcript.cjs && node <scratch>/transcript.cjs
 import type { AgentEvent } from '../../api/client';
-import { openChanges, project, todoOf } from './transcript';
+import { addEvent, openChanges, project } from './transcript';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -76,11 +76,23 @@ eq(
 );
 
 // suggested to-dos come from the MCP tool, by its name or title
-eq(shape([up({ sessionUpdate: 'tool_call', toolCallId: 's', title: 'mcp__spectrum__suggest_todo', status: 'completed', rawInput: { text: ' Cite Smith ', link: { file: 'a.tex', line: 3 } } })]), [['todo', 'Cite Smith']], 'suggest_todo');
-eq(todoOf({ toolCallId: 'x', title: 'Suggest a to-do', kind: 'other', status: 'pending', content: [], locations: [], rawInput: { text: 'A', link: { doc: 'main.tex', page: 2 } } }), { text: 'A', link: { doc: 'main.tex', page: 2 } }, 'by title, with a page link');
-eq(todoOf({ toolCallId: 'x', title: 'suggest_todo', kind: 'other', status: 'failed', content: [], locations: [], rawInput: { text: 'A' } }), null, 'a failed call');
-eq(todoOf({ toolCallId: 'x', title: 'suggest_todo', kind: 'other', status: 'completed', content: [], locations: [], rawInput: { text: 'A', link: { file: 'a.tex' } } }), { text: 'A' }, 'a broken link is left off');
-eq(todoOf({ toolCallId: 'x', title: 'Edit todo.tex', kind: 'edit', status: 'completed', content: [], locations: [], rawInput: { text: 'A' } }), null, 'another tool');
+eq(
+  shape([up({ sessionUpdate: 'tool_call', toolCallId: 's', title: 'mcp__spectrum__suggest_todo', status: 'completed', rawInput: { text: 'Cite Smith' } }), ev('todo', { text: 'Cite Smith', link: { file: 'a.tex', line: 3 } })]),
+  [['tool', 'mcp__spectrum__suggest_todo:completed'], ['todo', 'Cite Smith']],
+  'suggest_todo: its call is a card, and the suggestion read back at the turn’s end a to-do'
+);
+
+eq(shape([ev('reset', { paths: ['a.tex'] })]), [['notice', 'Rejected: the agent’s copy of “a.tex” is back to your version, and the agent is told with its next task.']], 'a rejection');
+
+// a stored event that joins pieces replaces the ones held from its first on; a live piece is added; a repeat is not
+{
+  const piece = (n: number, text: string, first?: number): AgentEvent => ({ id: n, type: 'update', data: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } }, at: at(n), ...(first && { first }) });
+  const held = [ev('user', { text: 'Go' }), piece(1000, 'One '), piece(1001, 'two ')];
+  const joined = addEvent(held, piece(1002, 'One two three', 1000));
+  eq(joined.map((e) => e.id), [held[0].id, 1002], 'pieces replaced');
+  eq(addEvent(joined, piece(1002, 'One two three', 1000)), joined, 'a repeat');
+  eq(shape(addEvent(joined, piece(1003, ' four'))), [['user', 'Go'], ['assistant', 'One two three four']], 'a later piece joins on');
+}
 
 // checkpoints go where they were saved
 eq(
@@ -96,7 +108,7 @@ eq(project([ev('terminal', { terminalId: 'x', command: 'latexmk', args: ['-pdf',
 {
   const message = (changes: object[]) => ({ role: 'assistant' as const, content: '', createdAt: '', meta: { changes } });
   const chat = {
-    id: 'c', title: '', mode: 'assistant' as const, createdAt: '', updatedAt: '', agent: true,
+    id: 'c', title: '', mode: 'assistant' as const, createdAt: '', updatedAt: '', agent: true as const,
     messages: [
       message([{ filePath: 'a.tex', proposed: 'A1' }, { filePath: 'b.tex', proposed: 'B1' }, { filePath: 'gone.tex', proposed: 'G' }]),
       message([{ filePath: 'a.tex', proposed: 'A2' }, { filePath: 'b.tex', proposed: 'B2', status: 'applied' }, { filePath: 'c.tex', proposed: 'C1', status: 'rejected' }]),
