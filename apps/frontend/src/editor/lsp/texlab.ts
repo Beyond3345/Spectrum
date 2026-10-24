@@ -17,6 +17,8 @@ import { lspTransport } from './transport';
 export type TexlabHost = {
   open: (path: string) => Promise<EditorView | null>;
   read: (path: string) => Promise<string>;
+  /** the project's files, by path */
+  files: () => ReadonlySet<string>;
   showReferences: (references: Reference[]) => void;
   rename: () => void;
 };
@@ -176,7 +178,11 @@ export class Texlab {
     return new URL(`${this.rootUri}/${path.replace(/[%#?]/g, encodeURIComponent)}`).href;
   }
 
-  /** A URI's project path, '/'-separated; null for one outside the project. */
+  /**
+   * A URI's project path, '/'-separated; null for one outside the project. On a Mac or Windows disk, which ignores case,
+   * a name spelt in another case (an \input{Chapters/Intro} of chapters/intro.tex, which TexLab keeps as a file of its
+   * own) is the project file's, so its marks and edits go to that file and its open text.
+   */
   pathOf(uri: string) {
     const decode = (text: string) => {
       try {
@@ -187,9 +193,16 @@ export class Texlab {
     };
     const root = decode(this.rootUri);
     const full = decode(uri);
-    const fold = (text: string) => (IS_WINDOWS ? text.toLowerCase() : text);
+    const folds = IS_MAC || IS_WINDOWS;
+    const fold = (text: string) => (folds ? text.toLowerCase() : text);
     if (!this.rootUri || !fold(full).startsWith(`${fold(root)}/`)) return null;
-    return full.slice(root.length + 1) || null;
+    const path = full.slice(root.length + 1);
+    if (!path) return null;
+    const files = this.host.files();
+    if (!folds || files.has(path)) return path;
+    // ponytail: a walk of the project's files, only for a path not among them as spelt
+    for (const file of files) if (fold(file) === fold(path)) return file;
+    return path;
   }
 
   /** The extensions for a file the editor shows, the same object each time for the same file (none without TexLab). */

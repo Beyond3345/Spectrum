@@ -5,7 +5,9 @@ import { documentOutline } from '../latexEditor.ts';
 import { symbolHeadings } from './outline.ts';
 import { applyEdits, newName, renameEdits } from './rename.ts';
 import { syntaxErrors } from './syntax.ts';
+import { Texlab } from './texlab.ts';
 import { lspTransport } from './transport.ts';
+import { IS_MAC, IS_WINDOWS } from '../../app/platform.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -193,6 +195,18 @@ async function outline() {
   eq([...seen].sort(), ['chapters/one.tex', 'main.tex'], 'the files read, never a commented-out one');
 }
 
+// ─── paths ───
+
+function paths() {
+  const files = new Set(['main.tex', 'chapters/intro.tex']);
+  const pathOf = (uri: string) => Texlab.prototype.pathOf.call({ rootUri: 'file:///Users/me/Paper', host: { files: () => files } } as unknown as Texlab, uri);
+  eq(pathOf('file:///Users/me/Paper/chapters/intro.tex'), 'chapters/intro.tex', 'a project file');
+  eq(pathOf('file:///Users/me/Paper/new.tex'), 'new.tex', 'one the editor doesn’t list yet');
+  eq(pathOf('file:///Users/me/Elsewhere/x.tex'), null, 'outside');
+  // a Mac's or Windows disk ignores case, and TexLab keeps \input{Chapters/Intro} as a file of its own
+  eq(pathOf('file:///Users/me/Paper/Chapters/Intro.tex'), IS_MAC || IS_WINDOWS ? 'chapters/intro.tex' : 'Chapters/Intro.tex', 'another spelling of a project file');
+}
+
 // ─── the syntax check before compiling ───
 
 function syntax() {
@@ -231,6 +245,7 @@ function syntax() {
 // a failure rejects, which ends Node with an error
 transport()
   .then(rename)
+  .then(paths)
   .then(syntax)
   .then(outline)
   .then(() => console.log('lsp.check: ok'));

@@ -1880,6 +1880,7 @@ function Editor({ projectId }: { projectId: string }) {
     openFloats: (_card: FloatCard) => {},
     showFile: async (_path: string) => {},
     readText: async (_path: string) => '' as string,
+    files: (): ReadonlySet<string> => new Set(),
     renameSymbol: () => {}
   });
   actions.current = {
@@ -1912,6 +1913,7 @@ function Editor({ projectId }: { projectId: string }) {
       await openFile(path);
     },
     readText,
+    files: () => fileSet,
     renameSymbol: () => {
       renameSymbol();
     }
@@ -2194,6 +2196,7 @@ function Editor({ projectId }: { projectId: string }) {
           return activeRef.current === path ? viewRef.current : null;
         },
         read: (path) => actions.current.readText(path),
+        files: () => actions.current.files(),
         showReferences: setReferences,
         rename: () => actions.current.renameSymbol()
       },

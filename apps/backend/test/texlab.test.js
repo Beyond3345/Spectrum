@@ -319,5 +319,7 @@ test('the real TexLab takes code in Verbatim and the like as code, and a file’
   }, 'diagnostics');
   assert.deepEqual(errors(found.files, 'code.tex'), [], JSON.stringify(found.files));
   assert.deepEqual(errors(found.files, 'broken.tex'), ['missing-brace']);
+  // a disk that ignores case: \input{Chapters/Intro} is chapters/intro.tex, which TexLab keeps as a file of its own
+  if (WINDOWS || process.platform === 'darwin') assert.ok(!Object.keys(found.files).some((f) => f !== f.toLowerCase()), JSON.stringify(Object.keys(found.files)));
   await stopTexlab();
 });

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
-import { promises as fs, watch } from 'node:fs';
+import { promises as fs, realpathSync, watch } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -204,7 +204,7 @@ async function start(projectId) {
     // project path → its URI, for each file an editor has had open, which TexLab holds as the editor's from then on
     adopted: new Map(),
     versions: 0,
-    // project path → TexLab's latest diagnostics for it
+    // URI → its project path and TexLab's latest diagnostics for it
     diagnostics: new Map(),
     // a change (or the start) TexLab hasn't published diagnostics for yet, and when they'd have come by
     stale: true,
@@ -329,10 +329,28 @@ function answer(session, { method, params }) {
   return { error: { code: -32601, message: `${method} isn’t supported.` } };
 }
 
+const FOLDS_CASE = WINDOWS || process.platform === 'darwin';
+
+/**
+ * A project path as the disk spells it, on a Mac or Windows disk, which ignores case: TexLab keeps the file an
+ * \input{Chapters/Intro} names apart from chapters/intro.tex, and their marks belong to the one file.
+ */
+function spelt(session, rel) {
+  if (!FOLDS_CASE) return rel;
+  try {
+    const real = path.relative(realpathSync.native(session.root), realpathSync.native(path.join(session.root, ...rel.split('/')))).split(path.sep).join('/');
+    // a link elsewhere keeps the name it has
+    return real.toLowerCase() === rel.toLowerCase() ? real : rel;
+  } catch {
+    return rel;
+  }
+}
+
 function keepDiagnostics(session, params) {
   const rel = projectPath(session, params?.uri);
-  if (rel && params.diagnostics?.length) session.diagnostics.set(rel, params.diagnostics);
-  else if (rel) session.diagnostics.delete(rel);
+  // by URI, as TexLab has them: two spellings of one file's name are two files to it
+  if (rel && params.diagnostics?.length) session.diagnostics.set(params.uri, { rel: spelt(session, rel), list: params.diagnostics });
+  else session.diagnostics.delete(params?.uri);
   session.stale = false;
   // TexLab publishes a file at a time; the rest of the round comes within moments
   clearTimeout(session.settling);
@@ -528,17 +546,22 @@ export async function projectDiagnostics(projectId) {
   scheduleIdle(session);
   await settled(session);
   const files = {};
-  for (const [rel, list] of session.diagnostics) {
-    files[rel] = list.map(({ range, severity, message, code }) => ({
-      line: range.start.line + 1,
-      col: range.start.character + 1,
-      endLine: range.end.line + 1,
-      endCol: range.end.character + 1,
-      severity: SEVERITY[severity] ?? 'error',
-      message,
-      ...(code != null && { code: CODES[code] ?? String(code) }),
-      source: 'texlab'
-    }));
+  for (const { rel, list } of session.diagnostics.values()) {
+    const into = (files[rel] ??= []);
+    for (const { range, severity, message, code } of list) {
+      const one = {
+        line: range.start.line + 1,
+        col: range.start.character + 1,
+        endLine: range.end.line + 1,
+        endCol: range.end.character + 1,
+        severity: SEVERITY[severity] ?? 'error',
+        message,
+        ...(code != null && { code: CODES[code] ?? String(code) }),
+        source: 'texlab'
+      };
+      // the same mark from the file under each spelling of its name, once
+      if (!into.some((d) => JSON.stringify(d) === JSON.stringify(one))) into.push(one);
+    }
   }
   return { available: !session.ended, files };
 }
