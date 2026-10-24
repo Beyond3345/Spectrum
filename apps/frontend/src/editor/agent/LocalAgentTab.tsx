@@ -47,6 +47,8 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
   const [changes, setChanges] = useState<AgentChange[]>([]);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [persona, setPersona] = useState<string | undefined>();
+  // the persona the user chose, which a task button's own persona replaces only for that task
+  const picked = useRef<string | undefined>();
   const [error, setError] = useState('');
   const [working, setWorking] = useState(false);
   const [reviewing, setReviewing] = useState(false);
@@ -100,7 +102,8 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
     setAgentId(r.session.agentId);
     setEvents(r.session.events);
     setPending(r.session.pending || []);
-    setPersona(read(`spectrum-agent-persona:${id}`) || undefined);
+    picked.current = read(`spectrum-agent-persona:${id}`) || undefined;
+    setPersona(picked.current);
     setChanges((await getLocalAgentChanges(id)).changes);
     write(`spectrum-agent:${latest.current.projectId}`, id);
     await loadCheckpoints(r.session).catch(() => undefined);
@@ -308,7 +311,14 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
             onChange={(value) => setLocalAgentOption(session.id, '__mode', value).catch(fail)}
           />
         )}
-        <PersonaPicker value={persona} onChange={choosePersona} onManage={() => onOpenSettings('personas')} />
+        <PersonaPicker
+          value={persona}
+          onChange={(id) => {
+            picked.current = id;
+            choosePersona(id);
+          }}
+          onManage={() => onOpenSettings('personas')}
+        />
         <span className="grow" />
         {session && RUNNING.includes(session.status) && (
           <button className="btn small" onClick={() => stopLocalAgentSession(session.id).catch(fail)}>
@@ -334,7 +344,7 @@ export default function LocalAgentTab({ hidden, active, todos, onStatus, onOpenS
             <Welcome
               onTask={(task) => {
                 setDraft({ text: task.prompt, skill: task.skill, n: Date.now() });
-                choosePersona(taskPersona(api.settings.personas, task) ?? persona);
+                choosePersona(taskPersona(api.settings.personas, task) ?? picked.current);
               }}
             />
           )}

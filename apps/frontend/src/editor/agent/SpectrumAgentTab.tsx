@@ -62,6 +62,8 @@ export default function SpectrumAgentTab({
   const [draft, setDraft] = useState<Draft | null>(null);
   const skills = useSkills(api.projectId, active);
   const personaId = thread ? thread.persona : newPersona;
+  // the persona the user chose, which a task button's own persona replaces only for that task
+  const picked = useRef(personaId);
 
   const status: AgentStatus = running ? 'running' : tray.length ? 'changes' : null;
   useEffect(() => onStatus(status), [status]);
@@ -77,12 +79,14 @@ export default function SpectrumAgentTab({
     if (!id) {
       show(null);
       setTray([]);
+      picked.current = newPersona;
       return;
     }
     let { chat } = await getChat(latest.current.projectId, id);
     // an Edit chat carried on here becomes a thread of the workspace's
     if (adopt && !chat.agent) chat = { ...chat, agent: true };
     show(chat);
+    picked.current = chat.persona;
     if (adopt) update(chat, (c) => c);
     setTray(await openChanges(chat, latest.current.ensureFileContent));
   };
@@ -245,7 +249,14 @@ export default function SpectrumAgentTab({
         <span className="badge" title="The Spectrum agent proposes changes; nothing reaches your files until you apply it">
           Isolated
         </span>
-        <PersonaPicker value={personaId} onChange={choosePersona} onManage={() => onOpenSettings('personas')} />
+        <PersonaPicker
+          value={personaId}
+          onChange={(id) => {
+            picked.current = id;
+            choosePersona(id);
+          }}
+          onManage={() => onOpenSettings('personas')}
+        />
         <span className="grow" />
         {running && (
           <button className="btn small" onClick={stop}>
@@ -262,7 +273,7 @@ export default function SpectrumAgentTab({
             <Welcome
               onTask={(task) => {
                 setDraft({ text: task.prompt, skill: task.skill, n: Date.now() });
-                choosePersona(taskPersona(api.settings.personas, task) ?? personaId);
+                choosePersona(taskPersona(api.settings.personas, task) ?? picked.current);
               }}
             />
           )}
