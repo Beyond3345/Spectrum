@@ -71,6 +71,10 @@ export function shown(results: ResearchResult[], show: Show, search: string) {
     .sort((a, b) => (show === 'all' ? Number(a.decision === 'drop') - Number(b.decision === 'drop') : 0));
 }
 
+/** Where a result's title links: its page, DOI or arXiv abstract. Sessions come with the project, so only web addresses. */
+export const linkOf = (r: Pick<ResearchResult, 'url' | 'doi' | 'arxiv'>) =>
+  [r.url, r.doi && `https://doi.org/${r.doi}`, r.arxiv && `https://arxiv.org/abs/${r.arxiv}`].find((u) => u && /^https?:\/\//i.test(u)) || '';
+
 /** What Add kept to .bib sends: kept, and not in the .bib yet. */
 export const keptToAdd = (results: ResearchResult[]) => results.filter((r) => r.decision === 'keep' && !r.inBib);
 

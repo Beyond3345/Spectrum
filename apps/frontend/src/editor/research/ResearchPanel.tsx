@@ -9,7 +9,7 @@ import { useEditor } from '../EditorContext';
 import type { TaskRequest } from '../agent/parts';
 import { citationText, errorText, formatDate, isTex, relativeTime } from '../shared';
 import CitationAssistant, { bibWritten } from './CitationAssistant';
-import { DEFAULT_SOURCES, SOURCES, badges, counts, filtersLine, keptToAdd, metaLine, runLine, shown, yearOf } from './results';
+import { DEFAULT_SOURCES, SOURCES, badges, counts, filtersLine, keptToAdd, linkOf, metaLine, runLine, shown, yearOf } from './results';
 import type { Show } from './results';
 
 export type ResearchTask = Omit<TaskRequest, 'n'>;
@@ -461,7 +461,7 @@ function Result({
   onPdf(): void;
 }) {
   const api = useEditor();
-  const link = r.url || (r.doi ? `https://doi.org/${r.doi}` : r.arxiv ? `https://arxiv.org/abs/${r.arxiv}` : '');
+  const link = linkOf(r);
   const doing = (action: string) => busy === `${r.id}:${action}`;
   const action = (name: string, label: string, icon: string, onClick: () => void, disabled = false) => (
     <button className="icon-btn small" title={label} aria-label={`${label}: ${r.title}`} disabled={!!busy || disabled} onClick={onClick}>

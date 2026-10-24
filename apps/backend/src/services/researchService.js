@@ -535,7 +535,7 @@ function noteText(r, session) {
     '',
     r.doi && `- DOI: [${r.doi}](https://doi.org/${r.doi})`,
     r.arxiv && `- arXiv: [${r.arxiv}](https://arxiv.org/abs/${r.arxiv})`,
-    r.url && !/doi\.org\/|arxiv\.org\/abs\//i.test(r.url) && `- Link: <${r.url}>`,
+    /^https?:\/\/\S+$/i.test(r.url || '') && !/doi\.org\/|arxiv\.org\/abs\//i.test(r.url) && `- Link: <${r.url}>`,
     r.inBib && `- Citation key: \`${r.inBib}\``,
     `- Found through ${(r.sources || []).map((s) => SOURCE_NAMES[s] || s).join(', ')} for “${session.question}”${run ? `, ${dateFormat.format(new Date(run.at))}` : ''}`,
     '',

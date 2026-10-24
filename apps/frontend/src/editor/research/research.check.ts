@@ -3,7 +3,7 @@
 // npx esbuild apps/frontend/src/editor/research/research.check.ts --bundle --platform=node --log-level=warning | node
 import type { ResearchResult, ResearchRun } from '../../api/client';
 import { citationCommand, parseJsonReply } from '../shared';
-import { badges, counts, filtersLine, keptToAdd, metaLine, runLine, shown, yearOf } from './results';
+import { badges, counts, filtersLine, keptToAdd, linkOf, metaLine, runLine, shown, yearOf } from './results';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -57,6 +57,11 @@ eq(shown(results, 'undecided', '').map((r) => r.id), ['open'], 'not decided yet'
 eq(shown(results, 'all', 'SEQUENCE').map((r) => r.id), ['kept', 'open'], 'the search looks in abstracts and themes, in any case');
 eq(shown(results, 'all', 'smith2020').map((r) => r.id), ['cited'], 'and in the .bib key');
 eq(keptToAdd(results).map((r) => r.id), ['kept'], 'Add kept to .bib leaves out what the .bib has');
+
+eq(linkOf({ url: 'https://example.com/p', doi: '10.1/x' }), 'https://example.com/p', 'the page first');
+eq(linkOf({ url: 'javascript:alert(1)', doi: '10.1/x' }), 'https://doi.org/10.1/x', 'never a script, then the DOI');
+eq(linkOf({ arxiv: '1706.03762' }), 'https://arxiv.org/abs/1706.03762', 'or the arXiv abstract');
+eq(linkOf({ url: 'file:///etc/passwd' }), '', 'or nothing');
 
 eq([yearOf('2017'), yearOf(' 1999 '), yearOf('17'), yearOf('20177'), yearOf(''), yearOf('0999')], [2017, 1999, undefined, undefined, undefined, undefined], 'whole years only');
 
