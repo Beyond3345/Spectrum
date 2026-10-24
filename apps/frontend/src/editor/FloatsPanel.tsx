@@ -2,10 +2,10 @@ import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import FloatsTab from './tools/FloatsTab';
 
-export type FloatCard = 'figure' | 'table';
+export type FloatCard = 'figure' | 'table' | 'diagram';
 
 /**
- * Figures and tables, in the PDF's place: Insert figure, Insert table and the other float tools. Each time the
+ * Figures and tables, in the PDF's place: Insert figure, Insert diagram, Insert table and the other float tools. Each time the
  * top bar or Insert (+) asks for a card (signal counts the asks), it scrolls into view.
  */
 export default function FloatsPanel({ card, signal, trailing }: { card: FloatCard | null; signal: number; trailing?: ReactNode }) {

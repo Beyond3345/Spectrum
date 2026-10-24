@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { Suspense, lazy, useEffect, useRef } from 'react';
 import { Navigate, Route, Routes, useNavigate, useSearchParams } from 'react-router-dom';
 import type { NavigateFunction } from 'react-router-dom';
 import { openFile } from '../api/client';
+import type { DiagramLanguage } from '../diagram/types';
 import { errorText } from '../editor/shared';
 import EditorPage from './EditorPage';
 import ProjectPage from './ProjectPage';
@@ -34,6 +35,21 @@ function OpenFile() {
   return null;
 }
 
+// its own chunk, so the canvas and Mermaid only load in the composer's window
+const ComposerApp = lazy(() => import('../diagram/ComposerApp'));
+const LANGUAGES: DiagramLanguage[] = ['tikz', 'typst', 'mermaid'];
+
+/** The diagram composer's window (desktop.ts openDiagram): /diagram?project=…&file=…&lang=… */
+function Diagram() {
+  const [params] = useSearchParams();
+  const lang = LANGUAGES.find((l) => l === params.get('lang'));
+  return (
+    <Suspense fallback={null}>
+      <ComposerApp projectId={params.get('project') || ''} file={params.get('file') || undefined} lang={lang} />
+    </Suspense>
+  );
+}
+
 export default function App() {
   const navigate = useNavigate();
   // the desktop shell (main.rs) calls this when a file is double-clicked while Spectrum is open
@@ -54,6 +70,7 @@ export default function App() {
         {/* the app's own: a web page sending a browser here mustn't make a project of a folder */}
         <Route path="/open" element={IS_DESKTOP ? <OpenFile /> : <Navigate to="/projects" replace />} />
         <Route path="/editor/:projectId" element={<EditorPage />} />
+        <Route path="/diagram" element={<Diagram />} />
         <Route path="*" element={<Navigate to="/projects" replace />} />
       </Routes>
       <ToastHost />

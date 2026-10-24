@@ -1,4 +1,4 @@
-// LaTeX for the Floats panel's Insert figure and Insert table cards. Pure; checked in floats.check.ts.
+// LaTeX for the Floats panel's Insert figure, Insert diagram and Insert table cards. Pure; checked in floats.check.ts.
 
 const KEEP = ['png', 'jpg', 'jpeg', 'pdf', 'eps'];
 const CONVERT = ['gif', 'webp', 'heic', 'heif', 'bmp', 'tif', 'tiff', 'svg'];
@@ -76,17 +76,26 @@ const labelLine = (label: string, indent: string) => (label.trim() ? [`${indent}
 
 export type FigureOptions = { path: string; width: number; caption: string; label: string; placement: string; /** figure* across both columns */ span?: boolean };
 
-export function figureLatex(o: FigureOptions) {
-  return [
+const figureFloat = (o: Omit<FigureOptions, 'width'>, body: string) =>
+  [
     `\\begin{figure${o.span ? '*' : ''}}${placed(placementOf(o.placement, o.span))}`,
     '    \\centering',
-    // a tall image (a phone screenshot) at the chosen width would run off the page, which [H] can't help
-    `    \\includegraphics[width=${widthArg(o.width)},height=0.8\\textheight,keepaspectratio]{${o.path}}`,
+    `    ${body}`,
     `    \\caption{${escapeCell(oneLine(o.caption))}}`,
     ...labelLine(o.label, '    '),
     `\\end{figure${o.span ? '*' : ''}}`
   ].join('\n');
-}
+
+// a tall image (a phone screenshot) at the chosen width would run off the page, which [H] can't help
+export const figureLatex = (o: FigureOptions) =>
+  figureFloat(o, `\\includegraphics[width=${widthArg(o.width)},height=0.8\\textheight,keepaspectratio]{${o.path}}`);
+
+/**
+ * A TikZ diagram (figures/name.tex, a standalone document) through \includestandalone, so its labels take the
+ * document's fonts: at its own size when width is null (scaling a circuit scales its lines and text too).
+ */
+export const diagramLatex = (o: Omit<FigureOptions, 'width'> & { width: number | null }) =>
+  figureFloat(o, `\\includestandalone${o.width === null ? '' : `[width=${widthArg(o.width)}]`}{${o.path.replace(/\.tex$/i, '')}}`);
 
 export type TableLines = 'booktabs' | 'grid' | 'minimal';
 
