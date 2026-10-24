@@ -291,6 +291,9 @@ const PdfPreview = forwardRef<
   keyRef.current = pageKey;
   // the pageKey of the document the pages show, once they're laid out
   const shownKeyRef = useRef('');
+  // the page scrollToPage last went to, and what works out the current page, for a scroll that can't move
+  const askedRef = useRef(0);
+  const updatePageRef = useRef(() => {});
   // Find: what's asked for, and each page's text runs for the PDF they came from
   const findRef = useRef({ query: '', index: 0 });
   const textRef = useRef<{ url: string; pages: Promise<{ runs: TextRun[]; measure: ReturnType<typeof measure> }[]> } | null>(null);
@@ -380,7 +383,11 @@ const PdfPreview = forwardRef<
     scrollToPage(page) {
       const el = pagesRef.current?.querySelector<HTMLElement>(`.pdf-page[data-page-number="${page}"]`);
       const scroller = scrollRef.current;
-      if (el && scroller) scroller.scrollTo({ top: el.offsetTop - PAD, behavior: 'smooth' });
+      if (!el || !scroller) return;
+      askedRef.current = page;
+      scroller.scrollTo({ top: el.offsetTop - PAD, behavior: 'smooth' });
+      // a scroll that can't move (the last pages already in view) sends no scroll event
+      updatePageRef.current();
     },
     highlight(boxes, seconds) {
       const layout = layoutRef.current;
@@ -745,7 +752,9 @@ const PdfPreview = forwardRef<
     }
   }, [annotations, rendered]);
 
-  // current page = the one crossing the upper third of the view
+  // current page = the last one whose top is above the upper third of the view, or above its own middle when it's
+  // shorter than two thirds of the view (slides), so the first page counts at the top and page n after going to it.
+  // A page asked for (End, PgDn) counts while it's all in view, as the end of the document may not scroll to it
   useEffect(() => {
     const scroller = scrollRef.current;
     if (!scroller) return;
@@ -755,19 +764,24 @@ const PdfPreview = forwardRef<
     const update = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        const line = scroller.scrollTop + scroller.clientHeight / 3;
         let current = 1;
         let down = 0;
         let rowTop = -1;
         // in two-page view the left page of a row counts
         scroller.querySelectorAll<HTMLElement>('.pdf-page').forEach((page) => {
           const top = page.offsetTop;
-          if (top <= line && top !== rowTop) {
+          const reach = scroller.scrollTop + Math.min(scroller.clientHeight / 3, page.offsetHeight / 2);
+          if (top <= reach && top !== rowTop) {
             current = Number(page.dataset.pageNumber) || current;
-            down = (line - top) / (page.offsetHeight || 1);
+            down = (reach - top) / (page.offsetHeight || 1);
           }
           rowTop = top;
         });
+        const asked = scroller.querySelector<HTMLElement>(`.pdf-page[data-page-number="${askedRef.current}"]`);
+        if (asked && asked.offsetTop >= scroller.scrollTop && asked.offsetTop + asked.offsetHeight <= scroller.scrollTop + scroller.clientHeight) {
+          current = askedRef.current;
+          down = 0;
+        }
         cb.current.onPage(current);
         let reading = -1;
         outlineRef.current.forEach((item, i) => {
@@ -785,6 +799,7 @@ const PdfPreview = forwardRef<
       });
     };
     update();
+    updatePageRef.current = update;
     scroller.addEventListener('scroll', update, { passive: true });
     return () => {
       scroller.removeEventListener('scroll', update);
