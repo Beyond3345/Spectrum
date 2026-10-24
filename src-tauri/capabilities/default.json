@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "The UI is served by the local backend: it drags and zooms the window, follows the chosen theme, puts glass behind it, notices full screen, picks project folders, says when it has saved before quitting and makes Spectrum the default for .tex and .bib files",
+  "description": "The UI is served by the local backend: it drags and zooms the window, follows the chosen theme, puts glass behind it, notices full screen and goes full screen for presentations, picks project folders, says when it has saved before quitting and makes Spectrum the default for .tex and .bib files",
   "windows": ["main"],
   "remote": { "urls": ["http://127.0.0.1:*/*"] },
   "permissions": [
@@ -9,6 +9,7 @@
     "core:window:allow-internal-toggle-maximize",
     "core:window:allow-set-theme",
     "core:window:allow-is-fullscreen",
+    "core:window:allow-set-fullscreen",
     "core:window:allow-set-background-color",
     "core:window:allow-set-effects",
     "core:webview:allow-set-webview-background-color",
