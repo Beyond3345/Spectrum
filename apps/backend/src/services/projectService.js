@@ -144,9 +144,13 @@ export async function getProjectRoot(id) {
 
 // ─── Metadata ───
 
+const META_KEYS = ['id', 'name', 'createdAt', 'updatedAt', 'tags', 'archived', 'fileOrder', 'mainFile', 'templateDraft', 'templateSavedAt', 'templateHash'];
+
 function normaliseMeta(meta) {
   const now = new Date().toISOString();
   const next = {
+    // a key this version doesn't know (a later one's) stays, so its project.json comes through a save here whole
+    ...Object.fromEntries(Object.entries(meta).filter(([key]) => !META_KEYS.includes(key))),
     id: meta.id,
     name: String(meta.name || 'Untitled'),
     createdAt: meta.createdAt || now,
