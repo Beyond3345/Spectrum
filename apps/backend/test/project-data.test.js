@@ -3,7 +3,8 @@
 // folders and a fake home folder. Run: npm test
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { promises as fs, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import crypto from 'node:crypto';
+import { promises as fs, existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -261,3 +262,23 @@ test('a checkpoint asked for with nothing changed since a compile’s becomes th
   assert.deepEqual(await holding('before the restore'), ['before-restore']);
 });
 
+test('a compile’s checkpoint taking another’s place removes the stored files only that one used', async () => {
+  const p = await newProject('Replaced');
+  const edit = (text) => fs.writeFile(path.join(p.path, 'main.tex'), text);
+  const stored = (text) => {
+    const sha = crypto.createHash('sha256').update(text).digest('hex');
+    return existsSync(path.join(p.path, '.spectrum', 'history', 'objects', sha.slice(0, 2), `${sha}.gz`));
+  };
+  await edit('saved by hand');
+  await createVersion(p.path, { label: '' });
+  await edit('one');
+  await createCompileCheckpoint(p.path);
+  await edit('two');
+  await createCompileCheckpoint(p.path);
+  assert.deepEqual([stored('saved by hand'), stored('one'), stored('two')], [true, false, true]);
+  // one the hand-saved checkpoint still uses stays
+  await edit('saved by hand');
+  await createCompileCheckpoint(p.path);
+  assert.deepEqual([stored('saved by hand'), stored('two')], [true, false]);
+  assert.equal((await listVersions(p.path)).length, 2);
+});
