@@ -330,9 +330,12 @@ async function saveVersion(root, { label = '', reason = 'manual' } = {}) {
   }
 
   // compiles leave at most one checkpoint every 10 minutes: the latest one in that time takes the place of the others,
-  // unless one was given a name
+  // unless one was given a name. Not when the files are an older checkpoint's: a restore 1.10.4 made, which saves no
+  // safety copy when nothing changed since its latest (this compile's, to it a manual one), so that one holds the
+  // only copy of what the restore replaced
   const since = latest?.since || latest?.createdAt;
-  const replaceable = reason === 'compile' && latest?.reason === 'compile' && !latest.label && Date.now() - Date.parse(since) < COMPILE_WINDOW_MS;
+  const restored = versions.some((v) => v !== latest && sameFiles(v.files, files));
+  const replaceable = reason === 'compile' && latest?.reason === 'compile' && !latest.label && !restored && Date.now() - Date.parse(since) < COMPILE_WINDOW_MS;
   const replaced = replaceable ? versions.pop() : null;
   const previous = versions.at(-1);
   const changes = await diffManifests(fromHistory(root, previous?.files || {}), fromHistory(root, files));

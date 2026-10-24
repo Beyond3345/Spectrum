@@ -115,6 +115,7 @@ Your request: the offline version history is renamed **Checkpoints** everywhere,
   - **Save a checkpoint when a compile succeeds** (on by default): saved in the background, only when the source changed since the last checkpoint, and at most one every 10 minutes (a newer compile checkpoint replaces the last automatic one inside that window). Manual and "Before…" checkpoints are never replaced.
   - **Warn me when a checkpoint fails to save** (on by default): says when storage fails or a file couldn't be captured (too large or unreadable), instead of failing silently.
 - **Storage is unchanged** (`.spectrum/history`), so 1.10.4 still lists every checkpoint as a version, and the clean-up rules are as before, plus the 10-minute replacement above (a replaced compile checkpoint takes the stored files only it used with it) and the new delete option. Tools › Checkpoints adds **Delete automatic checkpoints older than…**.
+- **Going back to 1.10.4:** it lists compile checkpoints as its own versions, so a Save version or a restore there with nothing changed since a compile checkpoint saves nothing new and leans on that one. A compile checkpoint isn't replaced when the files match an older checkpoint (a restore made there), but Delete automatic checkpoints can't tell, and removes it.
 - Checkpoints stay on each computer; GitHub's history is what crosses computers.
 
 ## 5. Compile

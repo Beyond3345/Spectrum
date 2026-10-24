@@ -315,9 +315,17 @@ test('a compile’s checkpoint taking another’s place removes the stored files
   await edit('two');
   await createCompileCheckpoint(p.path);
   assert.deepEqual([stored('saved by hand'), stored('one'), stored('two')], [true, false, true]);
-  // one the hand-saved checkpoint still uses stays
+  // back to an older checkpoint's files, as a restore 1.10.4 made leaves them, which saves nothing first when nothing
+  // changed since this compile's checkpoint (to it a manual one): that one, the only copy of 'two', is kept
   await edit('saved by hand');
   await createCompileCheckpoint(p.path);
-  assert.deepEqual([stored('saved by hand'), stored('two')], [true, false]);
-  assert.equal((await listVersions(p.path)).length, 2);
+  assert.deepEqual([stored('saved by hand'), stored('two')], [true, true]);
+  assert.equal((await listVersions(p.path)).length, 3);
+  // one the hand-saved checkpoint still uses stays
+  await fs.writeFile(path.join(p.path, 'extra.txt'), 'x');
+  await createCompileCheckpoint(p.path);
+  await edit('three');
+  await createCompileCheckpoint(p.path);
+  assert.deepEqual([stored('saved by hand'), stored('two'), stored('x')], [true, true, true]);
+  assert.equal((await listVersions(p.path)).length, 3);
 });
