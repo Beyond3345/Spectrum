@@ -106,6 +106,16 @@ The placement of a figure or table is chosen with the letters below, which can b
 
 With no letter, LaTeX uses `tbp`. The letters allow places rather than order them, so `[ht]` means here or else the top of a page.
 
+### Diagram composer
+
+Draw a diagram in the top bar or Insert (+) opens a separate window. Choose a circuit, a TikZ flowchart, a commutative diagram, a plot or a Mermaid diagram. Typst diagrams arrive with the later Typst work.
+
+Circuits have 49 parts, with symbols drawn by your installed circuitikz. Place parts, join their pins with wires, and edit labels, values, arrows and styles. Wires follow their parts. The canvas has snapping, pan and zoom, a minimap, light and dark colours, copy and paste, and undo and redo. Plots use functions or columns from a project data file.
+
+Each drawing is saved in `figures/` with its source, and Edit diagram in the file tree opens it again. The Code tab allows hand edits; Redraw from the canvas replaces those edits only when you choose it. The preview compiles automatically. Export uses the current successful preview, and Insert as figure opens the editor's Floats panel with the diagram ready to place. TikZ figures use `\includestandalone`, so their labels follow your document's fonts and maths.
+
+Mermaid diagrams export as PNG or PDF and insert as PDF figures in LaTeX. The PDF embeds the high-resolution image at its original size.
+
 ### Document insights
 
 Document insights, beside Check grammar in the top bar, takes the PDF's place with tabs for the Overview, Headings, Figures, Tables, Equations, Labels, Citations and To-dos, each with its count. Rows show the label with the number and page it had in the last compile, read from the `.aux` files that compile kept, and clicking one jumps to its line in the source. The To-dos tab lists the to-dos in the source (Section To-do list). The Overview has the counts, the word counts from `texcount` and the submission metadata (title, authors, keywords, date and abstract), with Copy submission metadata for a submission form. The footer says that the numbers and pages are from the last compile, marks them as out of date when the source has changed since and has Refresh.

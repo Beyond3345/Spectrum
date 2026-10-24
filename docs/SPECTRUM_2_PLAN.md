@@ -1,6 +1,6 @@
 # Spectrum 2.0.0 plan
 
-Status: draft for review, 24 October 2026. Nothing here is built or released yet. Version 2.0.0 is not to be released until you say so.
+Status: implementation in progress, 24 October 2026. Phase 1 and the phase 1b diagram composer are merged locally into `feat/2.0`; the continuation and verification notes are in [SPECTRUM_2_HANDOFF.md](SPECTRUM_2_HANDOFF.md). Phases 2–5 remain. Version 2.0.0 is not to be released until you say so.
 
 Research behind it: Spectrum 1.10.4's code, Oleafly's source and docs (`CodingProjects/Oleafly-main`), and the TexLab, Zotero, Better BibTeX, GitHub, pdf.js, Overleaf and LaTeX Workshop documentation.
 
@@ -323,7 +323,7 @@ Your request, modelled on Oleafly's composer but going further: Oleafly only dra
 
 ## 12. Delivery
 
-- **Phases,** each built on a branch from main by parallel builders, merged, then given adversarial review rounds until clean, as for 1.9:
+- **Phases,** each built on branches from the latest `feat/2.0` integration tip by parallel builders, merged there, then given adversarial review rounds until clean, as for 1.9. `main` remains the released version until 2.0 is ready:
   1. Panels, floats, Document insights, the to-do list, compile options and defaults, PDF sidebar, follow-the-file setting, the Checkpoints rename and settings (4c), and the rest of section 6 (Find, page box and keys, presentation mode, PDF notes), and Settings › Engines with its LaTeX tab for section 5's defaults (the syntax-check default arrives in phase 3). Until phase 3 the sidebar is Files | Chats | To-dos.
   1b. Diagram composer (your choice: straight after phase 1): the window, circuitikz, pgfplots, plain TikZ, tikz-cd and Mermaid. Its Typst mode comes with phase 5.
   2. Agent workspace, personas and skills, plus the to-do list's agent parts (open to-dos sent to agents, `suggest_todo`, Save open steps as to-dos).

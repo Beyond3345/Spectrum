@@ -22,7 +22,8 @@ import { ProjectContext } from './controls';
 import { diagramFileText, drawnText, readDiagramFile } from './fileFormat';
 import type { DiagramCode } from './fileFormat';
 import { MODES, modeFor } from './modes';
-import { renderMermaid, svgToPng } from './modes/mermaid/render';
+import { RASTER_SCALE, renderMermaid, svgToPng } from './modes/mermaid/render';
+import { pngToPdf } from './modes/mermaid/pdf';
 import type { DiagramFile, DiagramLanguage, DiagramMode } from './types';
 import './composer.css';
 
@@ -552,15 +553,20 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
     }
   };
 
-  const mermaidPng = async () => svgToPng(await renderMermaid(code?.body ?? text));
+  const mermaidImage = async (kind: 'pdf' | 'png') => {
+    const png = await svgToPng(await renderMermaid(code?.body ?? text));
+    return kind === 'png' ? png : new Blob([await pngToPdf(new Uint8Array(await png.arrayBuffer()), RASTER_SCALE)], { type: 'application/pdf' });
+  };
 
   const insert = async () => {
     if (!(await save())) return;
     try {
       if (language === 'mermaid') {
-        // LaTeX takes the picture as an image beside the .mmd
-        const image = path.replace(/\.mmd$/i, '.png');
-        await uploadFiles(projectId, [new File([await mermaidPng()], nameOf(image), { type: 'image/png' })], folderOf(image));
+        const { mainFile } = await getProjectTree(projectId);
+        const kind = /\.md$/i.test(mainFile || '') ? 'png' : 'pdf';
+        const image = path.replace(/\.mmd$/i, `.${kind}`);
+        const blob = await mermaidImage(kind);
+        await uploadFiles(projectId, [new File([blob], nameOf(image), { type: blob.type })], folderOf(image));
         post({ type: 'insert', projectId, path: image, language, packages: [], libraries: [] });
       } else {
         post({ type: 'insert', projectId, path, language, ...loadsOf(text) });
@@ -573,7 +579,7 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
 
   const exportAs = async (kind: 'pdf' | 'png') => {
     try {
-      if (language === 'mermaid') download(await mermaidPng(), `${stemOf(path)}.png`);
+      if (language === 'mermaid') download(await mermaidImage(kind), `${stemOf(path)}.${kind}`);
       else if (!preview.pdf || preview.state !== 'ok' || preview.source !== key) toast('Compile the current diagram successfully before exporting.');
       else if (kind === 'pdf') download(new Blob([preview.pdf.slice()], { type: 'application/pdf' }), `${stemOf(path)}.pdf`);
       else {
@@ -727,7 +733,7 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
           align="end"
           items={
             language === 'mermaid'
-              ? [{ label: 'PNG image', onSelect: () => exportAs('png') }]
+              ? [{ label: 'PDF', onSelect: () => exportAs('pdf') }, { label: 'PNG image', onSelect: () => exportAs('png') }]
               : [
                   { label: 'PDF', onSelect: () => exportAs('pdf'), disabled: !preview.pdf || preview.state !== 'ok' || preview.source !== key },
                   { label: 'PNG image', onSelect: () => exportAs('png'), disabled: !preview.pdf || preview.state !== 'ok' || preview.source !== key }

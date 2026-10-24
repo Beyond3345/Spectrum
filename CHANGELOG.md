@@ -6,6 +6,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ### Added
 
+- A diagram composer in its own window, with circuits, TikZ flowcharts, commutative diagrams, plots from functions or project data, and Mermaid. It saves editable drawings with their source files, previews them, and hands figures to the editor's Floats panel
+- A circuit catalogue of 49 parts drawn by the installed circuitikz, with attached wires, snapping, style controls, a minimap and copy, paste, undo and redo
 - Document insights, a panel beside Check grammar, with tabs for the Overview, Headings, Figures, Tables, Equations, Labels, Citations and To-dos, each with its count. Rows show the number and page from the last compile and jump to their line in the source. The Overview has the counts, the `texcount` word counts and the submission metadata (title, authors, keywords, date and abstract) with Copy submission metadata. The footer says that the numbers and pages are from the last compile, marks them as out of date when the source has changed since and has Refresh
 - A to-do list in the sidebar, beside Files and Chats, with a badge counting the open items. Mine holds your own to-dos, each with a tick box, an optional link to a source line, a PDF page or a reference, Edit and Delete. In the source lists `\todo`, `\missingfigure`, `\fixme`, the fixme package's notes and `TODO`, `FIXME` and `XXX` in comments, each jumping to its line. To-dos are added in the box at the top of the tab or with Add to-do here in the editor's and the PDF's right-click menus, and filtered by Open, Done or All, by Mine or Source and with the sidebar's search
 - Insert figure and Insert table in the top bar, which open the Floats panel at the figure or table card. At narrow widths they stay in Insert (+), whose Figure… and Table… open the same cards
@@ -31,9 +33,19 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - The More › Table of contents popover is replaced by the PDF sidebar. The sidebar's source Outline stays
 - PDF notes are saved with the project, one file each in `.spectrum/notes`, rather than only while the editor is open
 
+### Fixed
+
+- Document insights follows document reading order, refreshes after compilation and file changes, and handles multi-row equations and publication punctuation
+- Presentation mode keeps a valid page when recompiling a shorter deck
+- Compiles that produce a PDF with errors cannot replace a successful compile checkpoint
+- Circuit previews crop to their drawing, including unchanged diagrams saved by the earlier composer, and use the measured symbol endpoints
+- The composer preserves hand edits and damaged drawing metadata, refuses stale exports, and keeps newer edits when an AI fix arrives late
+- Failed diagram saves block closing, switching or quitting after the failure is reported, so the work stays open for another save attempt
+
 ### Security
 
 - latexmk always runs with `-norc`, so a project's own `latexmkrc` cannot run code
+- Circuit symbol options reject TeX's encoded command escapes as well as literal commands
 
 ### Going back to 1.10.4
 

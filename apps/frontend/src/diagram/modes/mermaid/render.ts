@@ -2,6 +2,7 @@
 
 let library: Promise<typeof import('mermaid').default> | null = null;
 let count = 0;
+export const RASTER_SCALE = 3;
 
 /** The diagram as SVG. strict: Mermaid sanitises labels and runs no script or link; no HTML labels, so it rasterises. */
 export async function renderMermaid(code: string, dark = false) {
@@ -15,7 +16,7 @@ export async function renderMermaid(code: string, dark = false) {
 }
 
 /** A Mermaid SVG drawn at `scale` × its own size, as a PNG on white. */
-export async function svgToPng(svg: string, scale = 3): Promise<Blob> {
+export async function svgToPng(svg: string, scale = RASTER_SCALE): Promise<Blob> {
   const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
   const root = doc.documentElement;
   const [, , width, height] = (root.getAttribute('viewBox') || '0 0 800 600').split(/[\s,]+/).map(Number);
