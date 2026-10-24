@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { getFile, getProjectStats } from '../api/client';
+import { getDiagnostics, getFile, getProjectStats } from '../api/client';
 import type { ProjectStats } from '../api/client';
 import Icon from '../app/Icon';
 import Tabs from '../app/Tabs';
 import { useEditor } from './EditorContext';
-import { headingNumbers, inReading, metadataText, scanInsights, withNumbers } from './insights';
+import { headingNumbers, inReading, metadataText, scanInsights, texlabNotes, withNumbers } from './insights';
 import type { InsightRow, Insights } from './insights';
 import { scanProject } from './latexEnvs';
 import { scanTodos } from './todos';
@@ -13,6 +13,7 @@ import { errorText } from './shared';
 
 type Tab = 'overview' | 'headings' | 'figures' | 'tables' | 'equations' | 'labels' | 'citations' | 'todos';
 type Scan = Insights & { todos: ReturnType<typeof scanTodos> };
+type Notes = ReturnType<typeof texlabNotes>;
 
 const TABS: [Tab, string][] = [
   ['overview', 'Overview'],
@@ -35,6 +36,8 @@ const EMPTY: Record<Exclude<Tab, 'overview'>, string> = {
   todos: 'No to-dos in the source'
 };
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const listed = (items: string[]) => (items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}` : items[0]);
 const num = (n: number | null | undefined) => (typeof n === 'number' ? n.toLocaleString('en-AU') : '—');
 
 /**
@@ -46,6 +49,8 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
   const [tab, setTab] = useState<Tab>('overview');
   const [scan, setScan] = useState<Scan | null>(null);
   const [stats, setStats] = useState<ProjectStats | null>(null);
+  // TexLab's word on the labels and citations, when it runs
+  const [notes, setNotes] = useState<Notes | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   // Refresh asks again
@@ -71,6 +76,8 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
       const todos = scanTodos(files);
       inReading(doc, files, todos);
       if (live) setScan({ ...scanInsights(files, doc), todos });
+      const found = await getDiagnostics(api.projectId).catch(() => null);
+      if (live) setNotes(found?.available ? texlabNotes(found.files, files) : null);
     }, 300);
     return () => {
       live = false;
@@ -120,10 +127,24 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
     }
   };
 
+  const flags = [...(notes?.labels.values() ?? [])];
+  const twice = flags.filter((flag) => flag === 'Duplicate').length;
+  const problems = (
+    [
+      [notes?.unresolved ?? 0, 'reference', 'to no label'],
+      [notes?.missing.size ?? 0, 'citation', 'not in the .bib'],
+      [twice, 'label', 'defined twice'],
+      [flags.length - twice, 'label', 'never referred to']
+    ] as [number, string, string][]
+  )
+    .filter(([n]) => n)
+    .map(([n, word, what]) => `${plural(n, word)} ${what}`);
+
   const minLevel = Math.min(...(scan?.headings.map((h) => h.level ?? 0) ?? []), 9);
   const rows = (list: InsightRow[]) =>
     list.map((row, i) => {
       const at = (row.label ? labels[row.label] : undefined) ?? tocAt.get(row);
+      const flag = tab === 'labels' && notes?.labels.get(`${row.file}:${row.line}`);
       return (
         <button
           key={`${row.file}:${row.line}:${i}`}
@@ -135,6 +156,7 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
           {at?.number && <span className="insight-number">{at.number}</span>}
           <span className="insight-text">{text(row.text) || <em>No caption</em>}</span>
           {row.label && tab !== 'labels' && <span className="insight-label">{row.label}</span>}
+          {flag && <span className="badge warning">{flag}</span>}
           {at?.page && <span className="insight-page">p. {at.page}</span>}
         </button>
       );
@@ -178,6 +200,7 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
               </div>
             ))}
           </div>
+          {problems.length > 0 && <div className="tool-footnote">TexLab finds {listed(problems)}.</div>}
           <h3 className="form-section-title">Words</h3>
           {error && <div className="tool-note error">{error}</div>}
           <div className="stat-grid">
@@ -216,6 +239,7 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
       return scan.citations.map((c) => (
         <button key={c.key} className="insight-row" title={`First cited in ${c.file}, line ${c.line}`} onClick={() => api.jumpTo(c.file, c.line)}>
           <span className="insight-text">{c.key}</span>
+          {notes?.missing.has(c.key) && <span className="badge warning">Not in the .bib</span>}
           <span className="insight-page">{c.count === 1 ? 'once' : `${c.count} times`}</span>
         </button>
       ));

@@ -1,6 +1,6 @@
 // Self-check for the Document insights scanner. It imports latexEditor.ts, which Node can't strip, so bundle it first:
 // `npx esbuild apps/frontend/src/editor/insights.check.ts --bundle --platform=node --log-level=warning --outfile=<file>.js`, then `node <file>.js`
-import { headingNumbers, inReading, metadataText, plainText, scanInsights, withNumbers } from './insights.ts';
+import { headingNumbers, inReading, metadataText, plainText, scanInsights, texlabNotes, withNumbers } from './insights.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -160,5 +160,22 @@ const toc = [
 const numbered = scanInsights([{ path: 'main.tex', text: '\\section{One}\\section{Two}\\subsection{Two point one}\\section*{Aside}\\section{Three}\\section{Four}\\subsubsection{Deep}' }]).headings;
 eq([...headingNumbers(numbered, toc)].map(([row, at]) => `${row.text} ${at.number} p. ${at.page}`), ['One 1 p. 1', 'Two 2 p. 2', 'Two point one 2.1 p. 2', 'Three 3 p. 4', 'Four 4 p. 5'], 'contents numbers by order');
 eq(headingNumbers(numbered.slice(1), toc).size, 0, 'none when the source and the contents disagree');
+
+// TexLab's diagnostics as Document insights marks its labels and citations
+const d = (line: number, col: number, endCol: number, code: string) => ({ line, col, endLine: line, endCol, severity: 'warning' as const, message: '', code, source: 'texlab' as const });
+const notes = texlabNotes(
+  {
+    'main.tex': [d(2, 8, 17, 'unused-label'), d(3, 11, 17, 'undefined-citation'), d(3, 21, 27, 'undefined-label'), d(4, 8, 13, 'duplicate-label'), d(5, 8, 13, 'duplicate-label')],
+    'other.tex': [d(1, 1, 5, 'unused-label')]
+  },
+  [{ path: 'main.tex', text: String.raw`\section{A}
+\label{sec:spare}
+See \cite{nobody} and \ref{gone}.
+\label{twin}
+\label{twin}` }]
+);
+eq([...notes.labels], [['main.tex:2', 'Unused'], ['main.tex:4', 'Duplicate'], ['main.tex:5', 'Duplicate']], 'labels marked by file and line, only in the files read');
+eq([...notes.missing], ['nobody'], 'the undefined citation’s key, from the text at its range');
+eq(notes.unresolved, 1, 'references to no label counted');
 
 console.log('insights: all checks passed');

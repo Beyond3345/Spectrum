@@ -2,6 +2,7 @@ import { matchBrace, withoutComments } from '../../../backend/src/latex/text.js'
 import { CITE_COMMANDS } from './latexContext';
 import { HEADING, HEADING_LEVEL } from './latexEditor';
 import { INPUT_RE, includedFile, inputName } from './latexEnvs';
+import type { TexlabDiagnostic } from '../api/client';
 
 // Document insights: what a document's files hold (headings, floats, equations, labels, citations and the
 // submission details), each with where it is. Numbers and pages come from the last compile's .aux, by label.
@@ -249,6 +250,27 @@ export function scanInsights(files: { path: string; text: string }[], doc?: stri
   }
   out.citations = [...cited.values()];
   return out;
+}
+
+/**
+ * What TexLab says of the labels and citations in files: labels never referred to or defined twice (by file:line), the
+ * cited keys no .bib has, and how many references name no label.
+ */
+export function texlabNotes(found: Record<string, TexlabDiagnostic[]>, files: { path: string; text: string }[]) {
+  const labels = new Map<string, 'Unused' | 'Duplicate'>();
+  const missing = new Set<string>();
+  let unresolved = 0;
+  for (const { path, text } of files) {
+    const lines = text.split('\n');
+    for (const d of found[path] ?? []) {
+      if (d.code === 'unused-label') labels.set(`${path}:${d.line}`, 'Unused');
+      else if (d.code === 'duplicate-label') labels.set(`${path}:${d.line}`, 'Duplicate');
+      else if (d.code === 'undefined-label') unresolved += 1;
+      else if (d.code === 'undefined-citation' && d.endLine === d.line) missing.add(lines[d.line - 1]?.slice(d.col - 1, d.endCol - 1).trim() ?? '');
+    }
+  }
+  missing.delete('');
+  return { labels, missing, unresolved };
 }
 
 const TOC_LEVELS = ['chapter', 'section', 'subsection', 'subsubsection'];
