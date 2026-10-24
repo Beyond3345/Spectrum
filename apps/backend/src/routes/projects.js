@@ -640,10 +640,11 @@ export function registerProjectRoutes(fastify) {
     }
     await ensureDir(path.dirname(absTo));
     await renameOver(absFrom, absTo);
-    // the notes on its PDF and the to-dos linked to it go with it (the file moved whether or not they do)
-    await followRename(root, String(from), String(to)).catch(() => {});
+    // the notes on its PDF and the to-dos linked to it go with it (the file moved whether or not they do); unmoved: how
+    // many couldn't
+    const unmoved = await followRename(root, String(from), String(to)).catch(() => 0);
     await touchProject(root).catch(() => {});
-    return { ok: true };
+    return { ok: true, ...(unmoved && { unmoved }) };
   });
 
   fastify.delete('/api/projects/:id/file', async (req) => {

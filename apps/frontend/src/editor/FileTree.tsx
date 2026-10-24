@@ -142,6 +142,12 @@ const FileTree = forwardRef<
   const run = (task: () => Promise<unknown>, failure: string) =>
     task().catch((err) => notify(`${failure}: ${errorText(err)}`, 'error'));
 
+  /** A rename or move, saying when PDF notes or to-dos stayed on the old name (renaming it back finds them again). */
+  const rename = async (from: string, to: string) => {
+    const { unmoved } = await renamePath(projectId, from, to);
+    if (unmoved) notify(`${unmoved === 1 ? 'A PDF note or to-do' : `${unmoved} PDF notes and to-dos`} couldn’t be moved with “${nameOf(from)}”, so they stay with its old name.`, 'error');
+  };
+
   const isOpen = (path: string, depth: number) => !!term || (openFolders[path] ?? depth < 1);
 
   const targetFolder = (path = selected || activePath) => (full.nodes.get(path)?.type === 'dir' ? path : parentOf(path));
@@ -196,7 +202,7 @@ const FileTree = forwardRef<
         notify(`“${name}” is already in ${folder || 'the project folder'}.`, 'error');
         return;
       }
-      await renamePath(projectId, from, to);
+      await rename(from, to);
       onMoved(from, to);
       const oldParent = parentOf(from);
       if (fileOrder[oldParent]) await updateFileOrder(projectId, oldParent, fileOrder[oldParent].filter((n) => n !== name));
@@ -228,7 +234,7 @@ const FileTree = forwardRef<
     busy.current = true;
     try {
       if (edit.kind === 'rename') {
-        await renamePath(projectId, edit.path, target);
+        await rename(edit.path, target);
         onMoved(edit.path, target);
         const parent = parentOf(edit.path);
         if (fileOrder[parent]) await updateFileOrder(projectId, parent, fileOrder[parent].map((n) => (n === nameOf(edit.path) ? value : n)));

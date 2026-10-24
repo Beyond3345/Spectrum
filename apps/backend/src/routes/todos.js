@@ -30,18 +30,26 @@ export async function readItems(root, folder) {
   return items.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 }
 
-/** PDF notes' documents and to-dos' files and documents follow a rename of `from` (a file, or a folder's files) to `to`. */
+/**
+ * PDF notes' documents and to-dos' files and documents follow a rename of `from` (a file, or a folder's files) to `to`.
+ * Resolves how many couldn't be rewritten, each passed by so the rest still move.
+ */
 export async function followRename(root, from, to) {
   const moved = (p) => (typeof p === 'string' && (p === from || p.startsWith(`${from}/`)) ? to + p.slice(from.length) : null);
+  let unmoved = 0;
+  const write = (file, item) => writeJsonAtomic(file, item).catch(() => {
+    unmoved += 1;
+  });
   for (const note of await readItems(root, 'notes')) {
     const doc = moved(note.doc);
-    if (doc) await writeJsonAtomic(appPath(root, 'notes', `${note.id}.json`), { ...note, doc });
+    if (doc) await write(appPath(root, 'notes', `${note.id}.json`), { ...note, doc });
   }
   for (const todo of await readItems(root, 'todos')) {
     const file = moved(todo.link?.file);
     const doc = moved(todo.link?.doc);
-    if (file || doc) await writeJsonAtomic(appPath(root, 'todos', `${todo.id}.json`), { ...todo, link: { ...todo.link, ...(file && { file }), ...(doc && { doc }) } });
+    if (file || doc) await write(appPath(root, 'todos', `${todo.id}.json`), { ...todo, link: { ...todo.link, ...(file && { file }), ...(doc && { doc }) } });
   }
+  return unmoved;
 }
 
 // where a to-do points: a source line (found again by its text if lines move), a PDF page or a reference. Fields a

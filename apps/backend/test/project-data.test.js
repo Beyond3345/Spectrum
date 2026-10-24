@@ -164,6 +164,17 @@ test('renaming a document or its folder takes its PDF notes and the to-dos linke
     { doc: 'paper.tex', page: 1 },
     { file: 'chapters-old/one.tex', line: 1 }
   ]);
+  // a note that can't be rewritten is passed by, the to-dos still move, and the rename says how many stayed
+  if (process.platform === 'win32') return; // no read-only folders
+  const notes = path.join(p.path, '.spectrum', 'notes');
+  await fs.chmod(notes, 0o555);
+  try {
+    assert.deepEqual((await api(`${url}/rename`, 'POST', { from: 'paper.tex', to: 'thesis.tex' })).json, { ok: true, unmoved: 1 });
+  } finally {
+    await fs.chmod(notes, 0o755);
+  }
+  assert.deepEqual((await api(`${url}/notes?doc=paper.tex`)).json.notes.map((n) => n.id), ['n1']);
+  assert.equal((await api(`${url}/todos`)).json.todos[1].link.doc, 'thesis.tex');
 });
 
 test('labels are read from the kept .aux files, with when they were written and whether the source is newer', async () => {
