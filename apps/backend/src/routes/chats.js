@@ -30,7 +30,9 @@ export function registerChatRoutes(fastify) {
           title: chat.title || 'Untitled chat',
           mode: chat.mode === 'references' ? 'references' : 'assistant',
           updatedAt: chat.updatedAt || chat.createdAt || '',
-          messageCount: Array.isArray(chat.messages) ? chat.messages.length : 0
+          messageCount: Array.isArray(chat.messages) ? chat.messages.length : 0,
+          // a Spectrum agent thread, which the agent workspace lists rather than the bottom card (1.10.4 ignores it)
+          ...(chat.agent === true && { agent: true })
         });
       } catch {
         // half-written or hand-edited file

@@ -775,6 +775,8 @@ export interface ChatThread {
   createdAt: string;
   updatedAt: string;
   messages: ChatMessage[];
+  /** a Spectrum agent thread, listed in the agent workspace rather than the bottom card */
+  agent?: true;
 }
 
 export interface ChatSummary {
@@ -783,6 +785,7 @@ export interface ChatSummary {
   mode: ChatMode;
   updatedAt: string;
   messageCount: number;
+  agent?: true;
 }
 
 export function listChats(projectId: string) {

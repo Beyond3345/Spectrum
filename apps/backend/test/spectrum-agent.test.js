@@ -27,11 +27,13 @@ await write(path.join(seed, 'beta', 'SKILL.md'), '---\nname: beta\ndescription: 
 
 const { default: Fastify } = await import('fastify');
 const { registerAgentRoutes } = await import('../src/routes/agent.js');
+const { registerChatRoutes } = await import('../src/routes/chats.js');
 const { createProject } = await import('../src/services/projectService.js');
 const { updateProjectSettings } = await import('../src/services/projectSettings.js');
 const app = Fastify();
 app.setErrorHandler(async (err, req, reply) => reply.code(err.statusCode || 500).send({ ok: false, error: err.message }));
 registerAgentRoutes(app);
+registerChatRoutes(app);
 
 const calls = [];
 const call = (id, name, args) => ({ role: 'assistant', content: null, tool_calls: [{ id, type: 'function', function: { name, arguments: JSON.stringify(args) } }] });
@@ -149,4 +151,21 @@ test('fetch_bibtex makes BibTeX from a DOI as the references resolver does', asy
   assert.match(bibtex, /title\s+= \{A study of drafts\}/);
   assert.match(bibtex, /doi\s+= \{10\.1234\/drafts\}/);
   await assert.rejects(fetchBibtex(''), /Give a DOI/);
+});
+
+test('a Spectrum agent thread is a chat marked as one, listed with its mark, and keeps it through a merge', async () => {
+  const p = await createProject({ name: 'Threads' });
+  const chats = `/api/projects/${p.id}/chats`;
+  const thread = { id: 'agent_1', title: 'Related work', mode: 'assistant', agent: true, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', messages: [{ role: 'user', content: 'Draft it', createdAt: '2026-01-01T00:00:00.000Z' }] };
+  const put = (chat, base) => app.inject({ url: `${chats}/${chat.id}`, method: 'PUT', payload: { chat, base } });
+  await put(thread);
+  await put({ ...thread, id: 'ask_1', agent: undefined, title: 'Ask' });
+  const list = (await app.inject({ url: chats })).json().chats;
+  assert.deepEqual(list.map((c) => [c.id, c.agent]), [['agent_1', true], ['ask_1', undefined]]);
+  // an older copy without the mark, saved over the thread, merges into it and stays a thread
+  const { agent, ...unmarked } = thread;
+  assert.equal(agent, true);
+  const merged = (await put({ ...unmarked, messages: [...thread.messages, { role: 'assistant', content: 'Done', createdAt: '2026-01-02T00:00:00.000Z' }] }, 'older')).json().chat;
+  assert.equal(merged.agent, true);
+  assert.equal(merged.messages.length, 2);
 });
