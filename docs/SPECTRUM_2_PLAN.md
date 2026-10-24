@@ -1,6 +1,6 @@
 # Spectrum 2.0.0 plan
 
-Status: implementation in progress, 24 October 2026. Phase 1 and the phase 1b diagram composer are merged locally into `feat/2.0`; the continuation and verification notes are in [SPECTRUM_2_HANDOFF.md](SPECTRUM_2_HANDOFF.md). Phases 2–5 remain. Version 2.0.0 is not to be released until you say so.
+Status: implementation in progress, 25 October 2026. Phases 1, 1b and 2 are merged locally into `feat/2.0`, and phase 3 is integrated on `build/p3-integrate`; the continuation and verification notes are in [SPECTRUM_2_HANDOFF.md](SPECTRUM_2_HANDOFF.md). Phases 4 and 5 remain. Version 2.0.0 is not to be released until you say so.
 
 Research behind it: Spectrum 1.10.4's code, Oleafly's source and docs (`CodingProjects/Oleafly-main`), and the TexLab, Zotero, Better BibTeX, GitHub, pdf.js, Overleaf and LaTeX Workshop documentation.
 
@@ -188,7 +188,7 @@ What it adds that Spectrum lacks: diagnostics before compiling (undefined, dupli
 What it duplicates and is left off: completion (Spectrum's is better for maths and snippets), building, forward search, and formatting by default.
 
 - **Bundled (your choice):** TexLab 5.26.0 ships inside the app beside Node, a universal Mac binary (about +31 MB) and a Windows one (about +15 MB), with its GPL licence and source link in the third-party notices.
-- **Build:** the Mac binary is downloaded at build time against a pinned SHA-256 and joined into a universal binary like Node; the Windows one is built on GitHub Actions with the C runtime linked in (no Visual C++ install needed), which also yields the source to attach for the GPL.
+- **Build:** the Mac binary is downloaded at build time against a pinned SHA-256 and joined into a universal binary like Node; the Windows one is built on GitHub Actions with the C runtime linked in (no Visual C++ install needed) from the checked v5.26.0 source tarball, as crates.io has TexLab only up to 4.3.2, and that tarball is the source attached for the GPL.
 - **How:** the backend starts `texlab run` per open project and relays it to the editor through `@codemirror/lsp-client`, with a custom workspace so jumps open files through Spectrum's own file opening; `.bib` files are sent as BibTeX.
 - **Rename is Spectrum's own command (F2):** it asks TexLab for the edits, saves a "Before rename" checkpoint, and writes every affected file through the normal save path with its change checks, all files or none.
 - **Feeds:** squiggles in the editor, the syntax check before compiling, Document insights counts and Review.

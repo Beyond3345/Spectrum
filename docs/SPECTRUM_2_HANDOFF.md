@@ -6,13 +6,78 @@ Updated 25 October 2026. Development work only: no installer, tag, push or relea
 
 Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum`. Read [SPECTRUM_2_PLAN.md](SPECTRUM_2_PLAN.md), especially its ground rules and Delivery section, before starting the next phase.
 
-Phase 2 (the agent workspace, personas and skills, with the to-do list's agent parts) was built and integrated on `build/p2-integrate`, branched from `feat/2.0` at `a82ccde`, and is in `feat/2.0` at `25d0b92`. Its first adversarial review round is fixed in `feat/2.0` at `bde28a4` (see Phase 2 review fixes below), and its second on **`fix/p2-review2`**, branched from `bde28a4` (see Phase 2 second review fixes). Next:
+Phase 3 (TexLab with the syntax check before compiling, Review and Research) was built on `build/p3-texlab`, `build/p3-review` and `build/p3-research`, branched from `feat/2.0` at `49ea758`, and integrated on **`build/p3-integrate`** (see Phase 3 below). Next:
 
-1. Merge `fix/p2-review2` into `feat/2.0` (no fast-forward, like the earlier phases).
-2. Run the Windows checks listed under Phase 2 limits and open items on the Windows build machine.
-3. Start phase 3 (TexLab, Review and Research) on branches from the new `feat/2.0`.
+1. Merge `build/p3-integrate` into `feat/2.0` (no fast-forward, like the earlier phases) and give phase 3 its adversarial review rounds.
+2. Run the Windows checks listed under Phase 3 limits and open items, and phase 2's, on the Windows build machine.
+3. Start phase 4 (Zotero, GitHub sync and the cloud removal) on branches from the new `feat/2.0`.
+
+Phase 2 (the agent workspace, personas and skills, with the to-do list's agent parts) was built and integrated on `build/p2-integrate`, branched from `feat/2.0` at `a82ccde`, and is in `feat/2.0` at `25d0b92`, with its two adversarial review rounds fixed in `feat/2.0` up to `49ea758` (see Phase 2 review fixes and Phase 2 second review fixes below).
 
 Phase 1 and phase 1b are in `feat/2.0` as described under Phase 1 and 1b below. Stop any stale paused builder or reviewer tasks rather than resuming their old edits, and do not cherry-pick the old builder branches: their work is already in `feat/2.0` or `build/p2-integrate`.
+
+## Phase 3
+
+### What was built
+
+- **TexLab** (`services/texlabService.js`, `routes/texlab.js`, `apps/frontend/src/editor/lsp/`):
+  - `scripts/desktop.mjs` downloads TexLab 5.26.0 for both Mac slices against pinned SHA-256s and joins them with lipo into `binaries/texlab-universal-apple-darwin`. On Windows it builds `texlab.exe` from the checked v5.26.0 tag tarball with the C runtime linked in, as crates.io has TexLab only up to 4.3.2, and `windows.yml` runs that as a cached step and uploads the tarball with a release.
+  - `main.rs` passes `SPECTRUM_TEXLAB`, and the backend also looks on the `PATH`. Without TexLab everything works as before.
+  - The backend starts `texlab run` per open project and relays it to the editor (an event stream down, POST up), keeps the latest diagnostics for `GET /api/projects/:id/diagnostics` and stops TexLab ten minutes after its last client. TexLab 5.26 never hands back a file the editor closed, so the bridge sends it the disk's text when the last editor closes a file and whenever the file changes on disk.
+  - The editor (`@codemirror/lsp-client`) has squiggles, plain-text hovers, Go to definition (`F12` or `⌘`-click), Find references (`⇧F12`, in a panel under the editor) and F2's rename, which lists the files and edit counts, saves a Before rename checkpoint and writes every file through the save route with base hashes, putting back those already written if one fails.
+  - The sidebar's Outline comes from TexLab's workspace symbols across `\input` files, with section numbers and floats by caption, and falls back to the parser.
+  - The compile menu's Syntax checks (project `compile.syntaxCheck`, on by default in Settings › Engines › LaTeX) asks "Compile anyway?" before compiling a document with missing braces or mismatched environments. Auto compile skips it.
+- **Review** (`editor/preflight/`, `editor/tools/ReviewTab.tsx`, `services/reviewService.js`, `routes/review.js`): one Review with tick boxes for the five Preflight groups and the AI review, as plan section 4 describes. `GET /api/projects/:id/review/state` says whether the PDF is older than the files the document reads and returns the `.bib` entries with their duplicates. `POST /api/review` makes one tool-free model call over the document in `\input` order and anchors each point to its quote. The Logs tab's Fix with AI is shared as `fixWithAI` in `editor/shared.tsx`.
+- **Research** (`services/researchService.js`, `routes/research.js`, `editor/research/`): the sidebar is Files | Research | To-dos, and the bottom card's History lists the Ask, References and pre-2.0 Edit chats. A search runs every chosen source at once into a session in `.spectrum/research/<id>.json`, merges by DOI, arXiv ID and title and marks what the `.bib` has. Each result has Keep, Drop, Cite, Open note and Get PDF, and Add kept papers to .bib and Find citations for selection add through `resolveItems`. Deep research, Draft related work and Verify claims open the agent workspace. Settings › Search gains the research keys and emails, and the arXiv model search and summaries in the `.tex` are gone.
+
+### Integration notes
+
+The parts were joined where the contract drifted:
+
+- TexLab's diagnostics have one client call, `getDiagnostics` with `TexlabDiagnostic` in `api/client.ts`; Review's copy was dropped. Review and Document insights read them through `EditorApi.diagnostics()`, which first sends TexLab the open file's latest edits. Reading the route directly could return the diagnostics from before the last edit, and nothing asked again, so a fixed problem stayed marked.
+- Document insights marks the labels TexLab finds unused or defined twice and the citations missing from the `.bib`, and its Overview counts them with the references to no label (`texlabNotes` in `insights.ts`, checked in `insights.check.ts`). TexLab marks each definition of a label defined twice, so those are counted by name.
+- Research's Deep research, Draft related work and Verify claims already reached phase 2's workspace with their prompt, skill, persona and the session as context. The live check confirmed it and nothing needed changing.
+- The merges conflicted only in `index.js` (both new route files registered), `ToolsPanel.tsx` (Research leaves Tools, and Review takes `doc` and `active`), `EditorPage.tsx`'s imports and the changelog.
+- The README (a TexLab section, Syntax checks in the compile menu, the fixed shortcuts and the build), the changelog and the third-party notices (the language server client's packages) were brought up to date.
+
+Two faults found in the live check were fixed:
+
+- The outline's numbers did not follow a compile. A compile renames its `.aux` files into the kept folder, which TexLab's own watcher takes for their removal, so TexLab kept the old numbers until the next edit. The compile route now calls `auxKept`, which tells TexLab to read the main document's kept `.aux` files again two seconds later (after its watcher's one-second debounce), and the outline asks again 2.6 seconds after a compile. The real-TexLab test in `test/texlab.test.js` covers it and fails without it.
+- A TexLab hover open when the editor left a file came back with that file and threw a RangeError measuring itself in the next one. It is now closed with the jump highlight before the switch.
+
+### Phase 3 verification
+
+| Check | Result |
+| --- | --- |
+| Full backend suite, `node --test "test/*.test.js"`, with TexLab 5.26.0 on the `PATH` | 410 passed, 26 skipped, 0 failed (436 total) |
+| `test/texlab.test.js`, including the real TexLab | 4 passed |
+| Frontend, `npm run typecheck` | Passed |
+| Frontend production build, `npm run build` | Passed |
+| Every `apps/frontend/src/**/*.check.ts`, bundled with esbuild and run separately | 31 passed |
+| Native Rust unit tests | 7 passed |
+
+The tests ran in the integrator's worktree with a scratch home and temp folder and no model calls. The 26 skips are phase 2's (opt-in native agent and sandbox checks, Windows-only checks, moving a project to the Bin and a live arXiv and DOI request). The real-TexLab test runs only when `texlab` is on the `PATH`, as it was here from a scratch folder.
+
+The live check ran the integrated backend and Vite on scratch data, projects and template folders with a fake home folder, TexLab 5.26.0 from a scratch folder on the backend's `PATH` and a scripted model on 127.0.0.1, so no paid model was called. On a two-file paper it covered:
+
+- **TexLab:** squiggles for an undefined `\ref`, an unused label and an unclosed brace, the hover on a `\cite`, `⌘`-click from a `\ref` to its label in the other file, `⇧F12`'s references panel, F2 renaming a label across both files with its Before rename checkpoint, the syntax check's dialog (Cancel went to the error, and the compile ran once it was fixed) and the project-wide outline with numbers and the figure, which followed a compile after the fix above.
+- **Document insights:** the unused and duplicate label marks and the Overview's TexLab line, cleared once the duplicate was deleted.
+- **Review:** every group found its planted problems, with Anonymous review on. The AI review's request had no tools and listed the findings as already reported, and its points were anchored (two moved to the lines of their quotes and one shown as "Location not found"). Line rows, a page row (which closed the panel), Show in PDF, Copy report (with a stubbed clipboard) and the screen reader view worked.
+- **Research:** a keyless search of OpenAlex, arXiv, Crossref and the `.bib` with the AI sort, Keep with a reason, Drop, Add kept papers to .bib (it added the kept paper the `.bib` lacked and left out the one it had, which the add route reports as a duplicate when asked for it), Cite, the session after a reload and Verify claims opening the workspace with its skill, the Critical reviewer persona and the session, which reached the model.
+- **Bottom card and settings:** History listed the new Ask chat and not the agent thread, and Settings › Search showed the research keys and emails.
+
+### Phase 3 limits and open items
+
+- Windows is untested: the TexLab build from the tag tarball (cargo, the cache in `~\AppData\Local\spectrum-build` and Windows `tar`), matching URIs whatever their letter case, ending TexLab with `taskkill` and Review reading an older PDF another program holds (`pdfStale`).
+- The tarball's pinned SHA-256 is of GitHub's generated archive. If GitHub regenerates it, the Windows build and the release upload stop until the digest is updated.
+- TexLab 5.26 limits worked around: it cannot forget a file an editor has had open, so a deleted one stays with empty text, and files changed on disk are read again two seconds after the last change, so their diagnostics can lag that long. Go to definition on a section's label lands on the `\section`.
+- Outline numbers come from the main document's kept `.aux` only, so another document's outline has none.
+- The syntax check waits for TexLab to catch up with the latest edit, up to five seconds. When Review's compile meets it and the user chooses Cancel, the review stops with "The compile was stopped." Cancel in Review does not stop a compile it started.
+- An overfull box in a paragraph that runs across an `\input` is put at the paragraph's first line in the file TeX reports from, which can be a line of the other file. This is Spectrum's existing `parseCompileLog`, so the Logs tab does the same.
+- Without TexLab the console shows one 503 from the lsp stream. When TexLab's line drops while the editor is sending, the console shows an unhandled “TexLab isn’t connected.”
+- Semantic Scholar often answers 429 without a key, which shows as a failed source. Sessions saved before the preprint merge fixes keep their separate preprint and published copies.
+- Not built: Research's Zotero source (phase 4), splitting a question into several queries with a model and a research MCP tool. Find citations for selection and local agents receiving a research task were not run live.
+- The builders' work-in-progress commits `1c11997`, `f26e0b2` and `46edd4a` keep their placeholder messages, as they are in the merged branches' history.
 
 ## Phase 2
 
