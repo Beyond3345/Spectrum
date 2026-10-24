@@ -1,7 +1,8 @@
-import type { AgentEvent, AgentUserRequest, SuggestedTodo } from '../../api/client';
+import type { AgentEvent, AgentUserRequest, ChatThread, SuggestedTodo } from '../../api/client';
 
 // A local agent's stored events (agentSessionService.js) as the workspace shows them: messages with their streamed
-// chunks joined, one card per tool call updated in place, the latest plan, commands and options.
+// chunks joined, one card per tool call updated in place, the latest plan, commands and options. And what a Spectrum
+// agent thread's messages keep, with the proposals in it still waiting for the tray.
 
 /** What a tool call shows: text, a file's change, or a terminal Spectrum ran for it (ACP ToolCallContent) */
 export type ToolContent =
@@ -134,4 +135,25 @@ export function project(events: AgentEvent[], { pending = [], checkpoints = [] }
     return todo ? { type: 'todo', key: item.key, todo } : item;
   });
   return out;
+}
+
+/** What a Spectrum agent thread keeps in ChatMessage.meta; changes as the bottom card's Edit chats kept them */
+export type ThreadMeta = {
+  changes?: { filePath: string; proposed: string; status?: 'applied' | 'rejected' }[];
+  todos?: SuggestedTodo[];
+  checkpoints?: Checkpoint[];
+  error?: boolean;
+};
+export const metaOf = (m: { meta?: Record<string, unknown> }) => (m.meta || {}) as ThreadMeta;
+
+/** Each file's latest proposal not applied or rejected yet, against the file as it is now (read). */
+export async function openChanges(chat: ChatThread, read: (path: string) => Promise<string>) {
+  const proposed = new Map<string, string>();
+  for (const m of chat.messages)
+    for (const c of metaOf(m).changes || []) {
+      if (c.status) proposed.delete(c.filePath);
+      else proposed.set(c.filePath, c.proposed);
+    }
+  const list = await Promise.all([...proposed].map(async ([filePath, text]) => ({ filePath, original: await read(filePath).catch(() => ''), proposed: text, source: 'Spectrum agent' })));
+  return list.filter((c) => c.original !== c.proposed);
 }

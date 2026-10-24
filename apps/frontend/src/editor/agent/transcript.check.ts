@@ -1,7 +1,7 @@
 // Self-check for the local agent transcript. Run:
 // npx esbuild apps/frontend/src/editor/agent/transcript.check.ts --bundle --platform=node --log-level=warning --outfile=<scratch>/transcript.cjs && node <scratch>/transcript.cjs
 import type { AgentEvent } from '../../api/client';
-import { project, todoOf } from './transcript';
+import { openChanges, project, todoOf } from './transcript';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -92,4 +92,20 @@ eq(
 // terminals
 eq(project([ev('terminal', { terminalId: 'x', command: 'latexmk', args: ['-pdf', 'main.tex'] })]).terminals, { x: 'latexmk -pdf main.tex' }, 'terminal');
 
-console.log('transcript: all checks passed');
+// a Spectrum agent thread's open proposals: each file's latest, until applied or rejected; one already in the file is done
+{
+  const message = (changes: object[]) => ({ role: 'assistant' as const, content: '', createdAt: '', meta: { changes } });
+  const chat = {
+    id: 'c', title: '', mode: 'assistant' as const, createdAt: '', updatedAt: '', agent: true,
+    messages: [
+      message([{ filePath: 'a.tex', proposed: 'A1' }, { filePath: 'b.tex', proposed: 'B1' }, { filePath: 'gone.tex', proposed: 'G' }]),
+      message([{ filePath: 'a.tex', proposed: 'A2' }, { filePath: 'b.tex', proposed: 'B2', status: 'applied' }, { filePath: 'c.tex', proposed: 'C1', status: 'rejected' }]),
+      message([{ filePath: 'd.tex', proposed: 'same' }])
+    ]
+  };
+  const disk: Record<string, string> = { 'a.tex': 'A0', 'b.tex': 'B2', 'd.tex': 'same' };
+  void openChanges(chat, async (p) => (p in disk ? disk[p] : Promise.reject(new Error('missing')))).then((open) => {
+    eq(open.map((c) => [c.filePath, c.original, c.proposed]), [['a.tex', 'A0', 'A2'], ['gone.tex', '', 'G']], 'open proposals');
+    console.log('transcript: all checks passed');
+  });
+}

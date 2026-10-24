@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getChat, listChats, runAgent } from '../../api/client';
-import type { ChatSummary, ChatThread, SuggestedTodo } from '../../api/client';
+import type { ChatSummary, ChatThread } from '../../api/client';
 import Icon from '../../app/Icon';
 import { MenuButton } from '../../app/Menu';
 import { searchConfigFor } from '../../app/settings';
@@ -13,28 +13,9 @@ import { CHATS_CHANGED, buildProjectContext, errorText, patchesToChanges, relati
 import { AgentComposer, ChangesTray, PersonaPicker, ReviewView, Transcript, Welcome, openTodos, taskPersona, useFollow, useSkills } from './parts';
 import type { ContextKind, Draft, TrayChange } from './parts';
 import type { AgentStatus } from './LocalAgentTab';
-import type { Checkpoint, Item } from './transcript';
+import { metaOf, openChanges } from './transcript';
+import type { Checkpoint, Item, ThreadMeta as Meta } from './transcript';
 
-/** What a Spectrum agent thread keeps in ChatMessage.meta; changes as the bottom card's Edit chats kept them */
-type Meta = {
-  changes?: { filePath: string; proposed: string; status?: 'applied' | 'rejected' }[];
-  todos?: SuggestedTodo[];
-  checkpoints?: Checkpoint[];
-  error?: boolean;
-};
-const metaOf = (m: { meta?: Record<string, unknown> }) => (m.meta || {}) as Meta;
-
-/** Each file's latest proposal not applied or rejected yet, against the file as it is now. */
-async function openChanges(chat: ChatThread, read: (path: string) => Promise<string>) {
-  const proposed = new Map<string, string>();
-  for (const m of chat.messages)
-    for (const c of metaOf(m).changes || []) {
-      if (c.status) proposed.delete(c.filePath);
-      else proposed.set(c.filePath, c.proposed);
-    }
-  const list = await Promise.all([...proposed].map(async ([filePath, text]) => ({ filePath, original: await read(filePath).catch(() => ''), proposed: text, source: 'Spectrum agent' })));
-  return list.filter((c) => c.original !== c.proposed);
-}
 
 const trayOf = (c: PendingChange): TrayChange => ({ path: c.filePath, kind: c.original ? 'modified' : 'created', binary: false, original: c.original, proposed: c.proposed, size: c.proposed.length });
 
