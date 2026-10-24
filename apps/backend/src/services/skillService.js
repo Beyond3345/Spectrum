@@ -79,12 +79,15 @@ async function exists(p) {
   return fs.lstat(p).then(() => true, (err) => (err.code === 'ENOENT' ? false : Promise.reject(err)));
 }
 
-/** The regular files of a skill's folder, '/'-separated, with their sizes. */
+/** The regular files of a skill's folder, '/'-separated, with their sizes and times. */
 async function walk(dir, rel = '', out = []) {
   for (const entry of await fs.readdir(path.join(dir, rel), { withFileTypes: true })) {
     const itemRel = rel ? `${rel}/${entry.name}` : entry.name;
     if (entry.isDirectory()) await walk(dir, itemRel, out);
-    else if (entry.isFile()) out.push({ path: itemRel, size: (await fs.stat(path.join(dir, itemRel))).size });
+    else if (entry.isFile()) {
+      const { size, mtimeMs } = await fs.stat(path.join(dir, itemRel));
+      out.push({ path: itemRel, size, mtimeMs });
+    }
   }
   return out;
 }
@@ -178,9 +181,16 @@ export async function listSkills(projectRoot) {
   }));
 }
 
-/** The skills on in a project (or on this computer, without one): { id, dir, description }. */
+/**
+ * The skills on in a project (or on this computer, without one): { id, dir, description, stamp }, stamp telling one
+ * version of its files from another.
+ */
 export async function activeSkills(projectRoot) {
-  return (await listSkills(projectRoot)).filter((s) => s.active).map((s) => ({ id: s.id, description: s.description, dir: path.join(s.source === 'own' ? OWN_DIR : BUNDLED_DIR, s.id) }));
+  return Promise.all((await listSkills(projectRoot)).filter((s) => s.active).map(async (s) => {
+    const dir = path.join(s.source === 'own' ? OWN_DIR : BUNDLED_DIR, s.id);
+    const stamp = crypto.createHash('sha256').update(JSON.stringify((await walk(dir)).sort((a, b) => a.path.localeCompare(b.path)))).digest('hex');
+    return { id: s.id, description: s.description, dir, stamp };
+  }));
 }
 
 export function setSkillEnabled(id, enabled) {
@@ -295,7 +305,7 @@ export function deleteSkill(id) {
 }
 
 export async function skillFiles(id) {
-  return (await walk((await findSkill(id)).dir)).sort((a, b) => a.path.localeCompare(b.path));
+  return (await walk((await findSkill(id)).dir)).map(({ path: rel, size }) => ({ path: rel, size })).sort((a, b) => a.path.localeCompare(b.path));
 }
 
 /** A text file of a skill, up to max bytes. */

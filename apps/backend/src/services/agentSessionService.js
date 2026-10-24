@@ -11,6 +11,7 @@ import { AGENT_DIR, profileFor, agentConfigs, agentHome } from './agentProfiles.
 import { spawnAgentProcess, killAgentProcess, resolveExecutable, isolationAvailable } from './agentSandbox.js';
 import { initialiseWorkspace, workspaceChanges, applyWorkspaceChanges, captureAgentProposal, readCurrent, rebaseChange } from './agentWorkspace.js';
 import { ITEM_ID, readItems } from '../routes/todos.js';
+import { activeSkills } from './skillService.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { writeJsonAtomic } from '../utils/fsUtils.js';
 
@@ -186,6 +187,7 @@ async function connect(r) {
     r.processOptions.args = [...r.processOptions.args, '--port', String(port), '--hostname', '127.0.0.1'];
     r.processOptions.env.OPENCODE_SERVER_PASSWORD = crypto.randomBytes(32).toString('hex');
   }
+  await syncAgentSkills(r).catch((err) => emit(r, 'notice', { message: `The project’s skills weren’t copied for the agent: ${err.message}` }));
   if (r.cancelled) throw new Error('Task cancelled.');
   r.connectionAbort.signal.throwIfAborted();
   r.child = await spawnAgentProcess(r.processOptions);
@@ -308,6 +310,48 @@ async function agentFile(r, operation, file, content = '') {
   try { await timeout(done, 10000, 'The isolated file operation timed out.'); return operation === 'read' ? JSON.parse(output) : ''; }
   catch (err) { emit(r, 'notice', { message: err.message }); throw err; }
   finally { r.fileOperations.delete(child); killAgentProcess(child); }
+}
+
+// The skills on in the project, copied into the agent's private home where agents look for them, each folder marked as
+// Spectrum's so a skill the agent installed itself is never touched. It runs inside isolation, as the agent may have
+// left a link anywhere in its home. While another project's session of the same agent runs, its skills stay: only
+// missing ones are added.
+const SKILL_FOLDERS = ['.agents/skills', '.claude/skills'];
+const SKILL_MARK = '.spectrum-managed';
+const copySkills = `const fs=require('node:fs'), path=require('node:path');
+  const { skills, folders, mark, onlyAdd } = JSON.parse(fs.readFileSync(0, 'utf8'));
+  for (const folder of folders) {
+    const dir = path.join(process.env.HOME, folder);
+    fs.mkdirSync(dir, { recursive: true });
+    const wanted = new Map(skills.map((s) => [s.id, s]));
+    for (const name of fs.readdirSync(dir)) {
+      const entry = path.join(dir, name);
+      if (!fs.lstatSync(entry).isDirectory()) { wanted.delete(name); continue; }
+      let stamp;
+      try { stamp = fs.readFileSync(path.join(entry, mark), 'utf8'); } catch { wanted.delete(name); continue; }
+      if (wanted.get(name)?.stamp === stamp || onlyAdd) { wanted.delete(name); continue; }
+      fs.rmSync(entry, { recursive: true, force: true });
+    }
+    for (const s of wanted.values()) {
+      const staged = path.join(dir, '.' + s.id + '-' + process.pid);
+      fs.rmSync(staged, { recursive: true, force: true });
+      fs.cpSync(s.dir, staged, { recursive: true });
+      fs.writeFileSync(path.join(staged, mark), s.stamp);
+      fs.renameSync(staged, path.join(dir, s.id));
+    }
+  }`;
+async function syncAgentSkills(r) {
+  const skills = await activeSkills(r.root);
+  const onlyAdd = [...runs.values()].some((other) => other !== r && other.agentId === r.agentId && other.projectId !== r.projectId && (other.busy || other.child));
+  const stores = [...new Set(skills.map((s) => path.dirname(s.dir)))];
+  const child = await spawnAgentProcess({ command: process.execPath, args: ['-e', copySkills], workspace: r.home, home: r.home, runtimePaths: [nodeRead(), ...stores] });
+  let error = '';
+  child.stderr.on('data', (chunk) => { error = (error + chunk).slice(-4000); });
+  child.stdout.resume();
+  const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', (code) => code === 0 ? resolve() : reject(new Error(error.trim().split('\n').at(-1) || 'Spectrum couldn’t copy the skills.'))); });
+  child.stdin.on('error', () => {}); child.stdin.end(JSON.stringify({ skills, folders: SKILL_FOLDERS, mark: SKILL_MARK, onlyAdd }));
+  try { await timeout(done, 30000, 'Copying the skills took too long.'); }
+  finally { killAgentProcess(child); }
 }
 
 const TEXT_URI = 'spectrum:';
