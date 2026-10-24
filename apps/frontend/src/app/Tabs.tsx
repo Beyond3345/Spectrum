@@ -3,7 +3,7 @@ import Icon from './Icon';
 
 export type TabItem<T extends string> = { value: T; label: ReactNode; icon?: string; badge?: ReactNode };
 
-/** Underlined text tabs ("Files | Chats", the Tools tabs). */
+/** Underlined text tabs ("Files | Research | To-dos", the Tools tabs). */
 export default function Tabs<T extends string>({
   value,
   onChange,
