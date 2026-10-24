@@ -71,7 +71,7 @@ export const PATH_KEY = Object.keys(process.env).find((key) => key.toUpperCase()
 const exists = (p) => fs.access(p).then(() => true, () => false);
 
 // Every engine writes <main>.synctex.gz too, for jumping between the source and the PDF.
-function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = false } = {}) {
+function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = false, untrusted = false } = {}) {
   const halt = haltOnError ? ['-halt-on-error'] : [];
   switch (engine) {
     case 'pdflatex':
@@ -80,7 +80,8 @@ function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = f
       // draft: images drawn as boxes, which the first line passes to graphicx; the file it inputs still names the job.
       // ponytail: a name TeX would read as code (with %, # or braces) keeps its images
       const input = draft && !/[\\{}%#&~^$]/.test(mainFile) ? `${DRAFT_IMAGES}\\input{${mainFile}}` : mainFile;
-      return { cmd: engine, args: ['-interaction=nonstopmode', '-file-line-error', '-synctex=1', ...halt, `-output-directory=${outDir}`, input] };
+      // untrusted: no shell escape on the command line, which MiKTeX takes as TeX Live does (its own setting may differ)
+      return { cmd: engine, args: ['-interaction=nonstopmode', '-file-line-error', '-synctex=1', ...halt, ...(untrusted ? ['-no-shell-escape'] : []), `-output-directory=${outDir}`, input] };
     }
     case 'latexmk':
       // -norc: a project's own latexmkrc is Perl, which could run anything. ponytail: in draft mode latexmk draws
@@ -323,8 +324,9 @@ export const compiling = (projectId) => [...running.values()].some((job) => job.
 /**
  * A compile of a folder that isn't a project (an agent's copy), as the agent's tools and the review's preview run one
  * inside isolation: built in buildDir (the temp folder's spectrum-build by default), nothing written into the folder,
- * and no kept files, SyncTeX or checkpoints. env: more for TeX's; without: engines Auto doesn't pick. Resolves as
- * runCompile does, with the PDF in base64.
+ * and no kept files, SyncTeX or checkpoints. env: more for TeX's; without: engines Auto doesn't pick; untrusted: no
+ * shell escape, Biber or index and glossary tools, for a draft compiled outside isolation. Resolves as runCompile does,
+ * with the PDF in base64.
  */
 export async function compileFolder({ root, mainFile, engine = 'auto', texFolder, ...options }) {
   if (!SUPPORTED_ENGINES.includes(engine) || options.without?.includes(engine)) return { ok: false, error: `Unsupported engine: ${engine}`, engine };
@@ -497,11 +499,11 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
       // what BibTeX reads, so a citation only a kept list put there (a caption's, from the .lof) goes again
       const cites = async () => (await auxWithInputs(outDir, `${base}.aux`)).match(/^\\(?:citation|bibdata|bibstyle)\{.*$/gm)?.join('\n') ?? '';
       let cited = await cites();
-      bibliographyStatus = await runBibliography(outDir, base, tex, options.bibTool, texEnv, pushLog);
+      bibliographyStatus = await runBibliography(outDir, base, tex, options, texEnv, pushLog);
       // Pass 2 + 3: resolve citations and cross-references, while the last pass asks for another or changed what
       // TeX reads back
       for (let n = 2; n <= 3 && carryOn(); n += 1) {
-        if (n > 2 && cited !== (cited = await cites())) bibliographyStatus = await runBibliography(outDir, base, tex, options.bibTool, texEnv, pushLog);
+        if (n > 2 && cited !== (cited = await cites())) bibliographyStatus = await runBibliography(outDir, base, tex, options, texEnv, pushLog);
         let now = await keptFiles(outDir);
         for (const { input, output, cmd: indexer, fallback, args: indexArgs } of INDEXERS) {
           // every glossary's files (the acronyms' too), or the main glossary's when the .aux names none
@@ -515,7 +517,8 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
             && (changed(from) || redo || (!now.has(`${base}.${out}`) && now.get(`${base}.${from}`).length > 0)));
           if (!due) continue;
           let ran = null;
-          for (const tool of [indexer, fallback].filter(Boolean)) {
+          // an untrusted compile's helpers are Perl and Lua (and MiKTeX's), which TeX's limits don't reach: none run
+          for (const tool of options.untrusted ? [] : [indexer, fallback].filter(Boolean)) {
             ran = await runSpawn(tool, indexArgs(base), outDir, pushLog, texEnv).catch(() => null); // not installed
             if (ran?.code === 0 || stopped()) break;
           }
@@ -599,9 +602,11 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
 
 /**
  * BibTeX or Biber after the first pass, when the .aux cites anything or names a bibliography: the tool chosen, else
- * a `% !BIB program = biber` comment's, else Biber for biblatex. Resolves 1 or Biber's code when Biber failed.
+ * a `% !BIB program = biber` comment's, else Biber for biblatex. Resolves 1 or Biber's code when Biber failed. An
+ * untrusted compile (a Windows preview of an agent's draft) never runs Biber, which is Perl and reads and writes
+ * wherever the document says, whatever openin_any and openout_any say.
  */
-async function runBibliography(outDir, base, tex, bibTool, env, pushLog) {
+async function runBibliography(outDir, base, tex, { bibTool, untrusted } = {}, env, pushLog) {
   // with the \include'd chapters' .aux, where the citations and \bibliography may be
   const aux = await auxWithInputs(outDir, `${base}.aux`);
   // biblatex writes \abx@aux@... commands in .aux; traditional bibtex \citation and \bibdata
@@ -610,6 +615,10 @@ async function runBibliography(outDir, base, tex, bibTool, env, pushLog) {
   const chosen = bibTool && bibTool !== 'auto' ? bibTool : ['bibtex', 'biber'].includes(magic) ? magic : null;
   const useBiber = chosen ? chosen === 'biber' : aux.includes('\\abx@aux@') || /\\usepackage(\[.*?\])?\{biblatex\}/.test(tex);
   const bibCmd = useBiber ? 'biber' : 'bibtex';
+  if (useBiber && untrusted) {
+    pushLog(Buffer.from('[spectrum] Biber doesn’t run for a preview of an agent’s draft, so its citations show as missing.\n'));
+    return 0;
+  }
   // Run bibtex/biber in outDir on the bare base name (openout_any=p blocks absolute
   // paths). Both find the project's .bib files through BIBINPUTS. biber must not get
   // --input-directory=<project>: it looks for the .bcf there and fails.

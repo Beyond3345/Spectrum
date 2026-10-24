@@ -435,6 +435,24 @@ async function takeSuggestions(r) {
 // Whether TeX on Windows can be told to read only below the draft, by its --version: MiKTeX through AllowUnsafeInputFiles,
 // TeX Live through openin_any only until 2026, which made that a no-op
 export const confinableTeX = (version) => /MiKTeX/i.test(version) || Number(String(version).match(/TeX Live (\d{4})/)?.[1]) < 2026;
+/**
+ * What a Windows preview's TeX is told: read and write only below the draft and its build folder, and no shell escape,
+ * not even the restricted kind. TeX Live reads the lower-case names, MiKTeX its [Core] settings by these names (which a
+ * value set in its own configuration overrides, so previewDraft checks what MiKTeX makes of them).
+ */
+export const PREVIEW_TEX_ENV = { openin_any: 'p', openout_any: 'p', shell_escape: 'f', MIKTEX_CORE_ALLOWUNSAFEINPUTFILES: '0', MIKTEX_CORE_ALLOWUNSAFEOUTPUTFILES: '0', MIKTEX_CORE_SHELLCOMMANDMODE: 'Forbidden' };
+const MIKTEX_EXPECTED = { AllowUnsafeInputFiles: /^(false|0)$/i, AllowUnsafeOutputFiles: /^(false|0)$/i, ShellCommandMode: /^forbidden$/i };
+
+/** Whether MiKTeX, with PREVIEW_TEX_ENV, really limits a compile: none of its own settings put back what it takes away. */
+async function mikTeXConfined() {
+  const initexmf = await findExecutable('initexmf');
+  if (!initexmf) return false;
+  for (const [name, expected] of Object.entries(MIKTEX_EXPECTED)) {
+    const { stdout } = await execFileAsync(initexmf, [`--show-config-value=[Core]${name}`], { timeout: 20000, windowsHide: true, env: { ...process.env, ...PREVIEW_TEX_ENV } }).catch(() => ({ stdout: '' }));
+    if (!expected.test(stdout.trim())) return false;
+  }
+  return true;
+}
 
 // The document a preview compiles, and with what: the project's main file and engine unless the request names them
 async function previewTarget(r, { mainFile, engine }) {
@@ -447,7 +465,9 @@ async function previewTarget(r, { mainFile, engine }) {
  * The agent's draft as a PDF: { ok, pdf (base64, or null), log }. It is compiled where it can read nothing but the draft
  * and TeX, into this computer's cache, never into the draft. On macOS inside isolation, the draft read-only; on Windows
  * with TeX told to read only below the draft's folder (MiKTeX's AllowUnsafeInputFiles, TeX Live's openin_any before
- * 2026), and with no preview where TeX can't be told: Tectonic, and TeX Live 2026 and later.
+ * 2026) and run nothing, with none of the Perl and Lua helpers that ignore those limits (Biber, latexmk, the glossary
+ * tools), and with no preview where TeX can't be told: Tectonic, TeX Live 2026 and later, and a MiKTeX whose own
+ * settings win over the preview's.
  */
 export async function previewDraft(r, options = {}) {
   if (r.mode !== 'review') throw Object.assign(new Error('A direct session works in the project itself. Compile the project to see it.'), { statusCode: 409 });
@@ -465,12 +485,13 @@ export async function previewDraft(r, options = {}) {
     await fs.mkdir(path.join(home, 'tmp'), { recursive: true, mode: 0o700 });
     if (process.platform === 'win32') {
       if (engine === 'tectonic') return { ok: false, pdf: null, log: 'Preview PDF needs TeX Live or MiKTeX on Windows.' };
+      if (engine === 'latexmk') return { ok: false, pdf: null, log: 'Preview PDF on Windows doesn’t use latexmk, which runs outside the limits a preview sets. Choose Auto, pdfLaTeX, XeLaTeX or LuaLaTeX for the project, or review the changes as text.' };
       const tex = await findExecutable('pdflatex');
       const version = tex ? (await execFileAsync(tex, ['--version'], { timeout: 20000, windowsHide: true }).catch(() => ({ stdout: '' }))).stdout : '';
       if (!confinableTeX(version)) return { ok: false, pdf: null, log: 'Preview PDF on Windows needs MiKTeX, or TeX Live 2025 or earlier: later TeX Live can’t limit what a compile reads, so the draft isn’t compiled. Review its changes as text.' };
-      // and no shell escape, not even TeX Live's restricted one, for a draft an agent wrote. ponytail: MiKTeX's setting
-      // through its environment is to be confirmed by the Windows build machine's test
-      const result = await compileFolder({ root: r.workspace, mainFile: main, engine, without: ['tectonic'], buildDir: out, env: { openin_any: 'p', shell_escape: 'f', MIKTEX_ALLOWUNSAFEINPUTFILES: '0', MIKTEX_CORE_ALLOWUNSAFEINPUTFILES: '0' } });
+      if (/MiKTeX/i.test(version) && !(await mikTeXConfined())) return { ok: false, pdf: null, log: 'Spectrum couldn’t confirm that MiKTeX will limit what the compile reads, writes and runs (a setting in MiKTeX’s own configuration may take precedence), so the draft isn’t compiled. Review its changes as text.' };
+      // ponytail: whether MiKTeX's bibtex keeps to the [Core] settings is for the Windows build machine's test to show
+      const result = await compileFolder({ root: r.workspace, mainFile: main, engine, without: ['tectonic', 'latexmk'], untrusted: true, buildDir: out, env: PREVIEW_TEX_ENV });
       return { ok: result.ok && result.status === 0, pdf: result.pdf || null, log: result.log || result.error || '' };
     }
     const { entry, reads } = await toolsLaunch();

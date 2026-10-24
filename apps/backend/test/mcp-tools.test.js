@@ -109,22 +109,34 @@ test('the server answers over stdio with every tool', async () => {
   assert.equal(JSON.parse((await fs.readFile(path.join(state, 'suggestions.jsonl'), 'utf8')).trim()).text, 'From the server');
 });
 
-test('a scratch compile takes TeX settings from its environment, as the Windows preview sets them', { skip: !texLive && 'Needs TeX Live.' }, async () => {
+test('a scratch compile takes the Windows preview’s TeX settings from its environment, and runs nothing outside TeX', { skip: !hasTeX && 'Needs TeX.' }, async () => {
   const { compileFolder } = await import('../src/services/compileService.js');
-  const { confinableTeX } = await import('../src/services/agentSessionService.js');
+  const { confinableTeX, PREVIEW_TEX_ENV } = await import('../src/services/agentSessionService.js');
   const secret = path.join(tmp, 'secret.tex').split(path.sep).join('/');
   await write(secret, '\\typeout{SECRET-READ}');
   const draft = path.join(tmp, 'restricted');
-  await write(path.join(draft, 'main.tex'), `\\documentclass{article}\\begin{document}Hi.\\IfFileExists{${secret}}{\\input{${secret}}}{\\typeout{SECRET-HIDDEN}}\\end{document}\n`);
-  const open = await compileFolder({ root: draft, mainFile: 'main.tex', engine: 'pdflatex' });
-  assert.match(open.log, /restricted \\write18 enabled/);
-  const restricted = await compileFolder({ root: draft, mainFile: 'main.tex', engine: 'pdflatex', env: { openin_any: 'p', shell_escape: 'f' } });
+  await write(path.join(draft, 'main.tex'), `\\documentclass{article}\\begin{document}Hi.\\IfFileExists{${secret}}{\\input{${secret}}}{\\typeout{SECRET-HIDDEN}}\\immediate\\write18{echo WRITE18-RAN}\\end{document}\n`);
+  const version = execFileSync('pdflatex', ['--version'], { encoding: 'utf8' });
+  if (texLive) assert.match((await compileFolder({ root: draft, mainFile: 'main.tex', engine: 'pdflatex' })).log, /restricted \\write18 enabled/);
+  const restricted = await compileFolder({ root: draft, mainFile: 'main.tex', engine: 'pdflatex', untrusted: true, env: PREVIEW_TEX_ENV });
   assert.ok(restricted.pdf, restricted.log);
   assert.doesNotMatch(restricted.log, /write18 enabled/, 'no shell escape at all');
-  // TeX Live 2026 made openin_any a no-op, which is why the Windows preview refuses it
-  const version = execFileSync('pdflatex', ['--version'], { encoding: 'utf8' });
+  assert.doesNotMatch(restricted.log, /WRITE18-RAN\n/);
+  // TeX Live 2026 made openin_any a no-op, which is why the Windows preview refuses it. ponytail: MiKTeX's [Core]
+  // settings are checked here by the Windows build machine, the only place with MiKTeX
   assert.match(restricted.log, confinableTeX(version) ? /SECRET-HIDDEN/ : /SECRET-READ/);
   assert.deepEqual(await fs.readdir(draft), ['main.tex'], 'nothing was written beside it');
+});
+
+test('an untrusted compile runs no Biber, which reads and writes wherever the document says', { skip: !hasTeX && 'Needs TeX.' }, async () => {
+  const { compileFolder } = await import('../src/services/compileService.js');
+  const outside = path.join(tmp, 'outside-bib', 'secret.bib').split(path.sep).join('/');
+  await write(outside, '@book{secret, title = {SECRET-BIB}, author = {A}, year = {2020}}\n');
+  const draft = path.join(tmp, 'biber-draft');
+  await write(path.join(draft, 'main.tex'), `\\documentclass{article}\\usepackage[backend=biber]{biblatex}\\addbibresource{${outside}}\\begin{document}\\cite{secret}\\printbibliography\\end{document}\n`);
+  const result = await compileFolder({ root: draft, mainFile: 'main.tex', engine: 'pdflatex', untrusted: true, env: { openin_any: 'p', openout_any: 'p', shell_escape: 'f' } });
+  assert.match(result.log, /Biber doesn’t run for a preview/);
+  assert.doesNotMatch(result.log, /Found BibTeX data source/);
 });
 
 test('the Windows preview compiles only with a TeX that can be told to read only the draft', async () => {
