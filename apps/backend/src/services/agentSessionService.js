@@ -599,6 +599,10 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
   state(r, 'running');
   let outcome;
   const task = (async () => {
+    // kept from the start, should Spectrum close, Stop be pressed or the agent fail to start
+    const asked = emit(r, 'user', { text: prompt, ...(Object.keys(context).length && { context: Object.keys(context) }) });
+    r.title ||= firstLine(prompt);
+    void persist(r);
     try {
       // a first connect that failed was disconnected, so the agent starts again below as it is now set up
       if (r.ready) await r.ready.catch(() => {});
@@ -619,11 +623,7 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       if (r.forceNew) disconnect(r);
       if (!r.connection || r.connection.signal.aborted) await connect(r);
       if (r.cancelled) throw new Error('Task cancelled.');
-      const earlier = r.freshSession && r.events.filter((e) => e.type === 'user' || (e.type === 'update' && e.data.sessionUpdate === 'agent_message_chunk')).map((e) => e.data.text || e.data.content?.text || '').join('\n').slice(-12000);
-      emit(r, 'user', { text: prompt, ...(Object.keys(context).length && { context: Object.keys(context) }) });
-      r.title ||= firstLine(prompt);
-      // kept should Spectrum close during the turn
-      void persist(r);
+      const earlier = r.freshSession && r.events.filter((e) => e.id < asked.id && (e.type === 'user' || (e.type === 'update' && e.data.sessionUpdate === 'agent_message_chunk'))).map((e) => e.data.text || e.data.content?.text || '').join('\n').slice(-12000);
       const intro = r.openedNew && 'You are working in Spectrum. All file and terminal operations are confined to your workspace and private runtime state. Use relative paths. Do not attempt to access the original project or other host services.';
       const persona = r.openedNew && r.persona && !r.capabilities.sessionCapabilities?.systemPrompt && personaText(r.persona);
       const notes = r.notes.length && `Since your last turn:\n${r.notes.map((note) => `- ${note}`).join('\n')}`;
