@@ -66,12 +66,77 @@ The live check ran the integrated backend and Vite on scratch data, projects and
 - **Research:** a keyless search of OpenAlex, arXiv, Crossref and the `.bib` with the AI sort, Keep with a reason, Drop, Add kept papers to .bib (it added the kept paper the `.bib` lacked and left out the one it had, which the add route reports as a duplicate when asked for it), Cite, the session after a reload and Verify claims opening the workspace with its skill, the Critical reviewer persona and the session, which reached the model.
 - **Bottom card and settings:** History listed the new Ask chat and not the agent thread, and Settings › Search showed the research keys and emails.
 
+### Phase 3 review fixes
+
+The first review round's 45 confirmed findings are fixed on **`fix/p3-review`**, branched from `b971b71`, in commits by area, each behaviour fix with a test or check:
+
+- **F2 rename** (`editor/lsp/rename.ts`, `EditorPage.tsx`): every TexLab edit must replace the old name, and one that doesn't, or that falls past the end of its line, stops the rename before the confirm dialog with "TexLab's copy of this file is out of date". It had been clamped and written, so a TexLab copy behind the disk (a reread still to come, another window's edits, a moved folder, a file under another spelling of its name) corrupted the file silently. `newName` drops a command's typed backslash and refuses a space, comma, brace, `%`, `#`, `~` or backslash (a command's name takes letters only), a label or key the project already has is refused, the same edit twice for one file is made once, and `⇧F12`'s list closes after a rename.
+- **TexLab bridge** (`services/texlabService.js`, `routes/projects.js`, `routes/cloud.js`):
+  - TexLab runs in the temporary folder, not the project's, and Move to the Bin, Remove, Relocate and both cloud moves end the project's TexLab with `stopProjectTexlab` and wait for it, as on Windows it held the folder for the ten minutes it idles.
+  - A TexLab whose project's folder has moved since it started is ended at the next ask and started on the new folder.
+  - A project whose path holds `[`, `]` or `^` goes without TexLab, which panics on such a file URI (`ponytail:` to drop when TexLab handles them).
+  - TexLab gets fancyvrb's, comment's, filecontents' and tcblisting's environments as verbatim ones (`experimental.verbatimEnvironments`).
+  - Diagnostics are kept by URI and given under the disk's spelling of the path on a Mac or Windows disk (`realpathSync.native`), one of each, so an `\input{Chapters/Intro}` of `chapters/intro.tex` no longer shows under a third path.
+- **Editor** (`editor/lsp/`, `EditorPage.tsx`, `shortcuts.ts`):
+  - The syntax check (`editor/lsp/syntax.ts`) leaves out the two misreadings of TexLab 5.26's own that stay: a missing brace in a file with `\verb+…+`, `\verb*`, `\lstinline` or `\mintinline` (marked at the file's end), and a lone `}` in verbatim, lstlisting or minted.
+  - `pathOf` maps a TexLab path in another letter case to the project's file on a Mac or Windows, so jumps and edits reach that file and its open text.
+  - A click with `⌥` (Alt) held adds a cursor, as in VS Code, since a click with `⌘` held is Go to definition in TeX files (README and changelog say so).
+  - TexLab's squiggles are cleared when it stops (`clearMarks`), as they live in `@codemirror/lint`'s state outside the slot.
+  - The outline waits until 2.6 s after a compile even when the new PDF reloads the tree, reads the files no editor has open once until the tree or a file changes, and waits 1.5 s after typing.
+- **Preflight** (`editor/preflight/`):
+  - pdf.js 6's MarkInfo is a Map, which read every PDF as untagged; `pdfFacts.check.ts` now runs `pdfFacts` in Node on a tagged PDF it makes. ReviewTab sets pdf.js's worker for it.
+  - Text at TeX's 6pt (5.978 PDF points) isn't small.
+  - Verbatim, listings and `\verb` are blanked before the source is read, and a label, key or image with a `#` (a definition's argument) is skipped. A `label=` in a listing's or box's options counts.
+  - After a compile that made its PDF, an image is missing only when the log says so or never shows it used, and citations only when the log has them undefined or BibTeX couldn't open its database, so the TeX tree's images and a central `.bib` aren't errors.
+  - The ?? warning links to the PDF page whose text shows ?? (the log's page is the printed number), and a citation undefined on a roman-numbered page is read.
+  - CVPR's, ICCV's, ECCV's and ACL's `review` option hides the authors, and an Author field of "Anonymous …" names no one.
+  - "No abstract" needs a `\maketitle` or title page, counts a `\chapter*{Abstract}` and is a note.
+  - A PDF pdf.js couldn't open for its password gets only the encryption error, and Accessibility says it couldn't be read.
+  - The same finding twice on a line is kept once, in `runPreflight` rather than in ReviewTab, so React's keys and Dismiss see one.
+- **Review** (`services/reviewService.js`, `utils/texUtils.js`, `ReviewTab.tsx`):
+  - The AI review's answer is read from its first `{`, past a `<think>`, and failing that with undoubled LaTeX backslashes doubled and trailing commas gone (`replyJSON`). A quote whose `\ref` became a carriage return is anchored again, the prompt asks for doubled backslashes, "Major" and "Minor" count as such and the same point twice is kept once.
+  - `inlineInputs` follows `\import`, `\subimport` (from the importing file's folder) and `\input {x}`, so the AI review, Review's compile-first test and the word counts read those files. The editor's `INPUT_RE` knows `\subimport` too.
+  - On Windows, when another program holds the PDF, Review reads the compile's kept PDF (`EditorApi.keptPdf`) and counts it from when that compile started, rather than compiling every run and checking the older copy on disk.
+  - A failed Fix with AI shows its error once.
+  - In a narrow panel a row's buttons go under its message, and a wrapped `file:line` link stays left-aligned.
+- **Research** (`services/researchService.js`, `services/referenceService.js`, `services/mirrorService.js`, `ResearchPanel.tsx`):
+  - The session keeps each result's note and PDF once made (`note`, `pdf`, kept by `combine`), and a new one takes the first free name with `-2`, `-3` and so on, so two papers with the same AuthorYear and title word get a file each and the name stays when the paper reaches the `.bib`. A device name such as CON gets an underscore.
+  - A PDF download has three minutes for its whole body (`SPECTRUM_PDF_TIMEOUT_MS` shortens it in the test), and one that fails says why rather than "not a PDF".
+  - A preprint is In .bib under its published version's key when the `.bib` has that without a DOI or eprint (same title and first author within three years, unless two DOIs disagree).
+  - A record linking two rows (an arXiv id and a DOI) makes them one.
+  - With no file chosen, references go to a `.bib` the document loads first (`pickBibTarget`), for Research and References alike.
+  - A session changed on both computers is merged as a search merges results (`bothSessions` in the mirror), instead of keeping this computer's.
+  - Cite inserts only where the user put the cursor, in the body, and reads the session again for the key the `.bib` has now.
+  - The log says "2 searches", and Verify claims asks for the claims of the files a main document brings in.
+- **Elsewhere:** the model web search's error says to turn on OpenAlex or another connection in Settings › Search, and `windows.yml` saves the texlab.exe cache right after the build, as `actions/cache` saved only when the whole job passed.
+
+Done differently from the finding's suggestion, or left out:
+
+- Duplicate review rows are dropped where they're made (`runPreflight`, `readReview`), not filtered in ReviewTab.
+- The case mapping in the bridge asks the disk (`realpathSync.native`) rather than a project file list, which it doesn't keep.
+- TexLab's exit code 101 isn't treated as a crash whatever the uptime, as the path guard covers the case found.
+- No automated test covers the UI wiring with no logic of its own to check: ReviewTab's kept PDF, Cite's placed cursor and fresh key, the two Research strings, Fix with AI's return and the CSS. The typecheck and the build cover them.
+
+| Check | Result |
+| --- | --- |
+| Full backend suite, `node --test "test/*.test.js"`, with TexLab 5.26.0 on the `PATH` | 417 passed, 26 skipped, 0 failed (443 total) |
+| `test/texlab.test.js`, including both real-TexLab tests | 6 passed |
+| The new TexLab, pdfFacts, Preflight and mirror tests, run without their fix | Each fails on the fault it covers |
+| Frontend, `npm run typecheck` | Passed |
+| Frontend production build, `npm run build` | Passed |
+| Every `apps/frontend/src/**/*.check.ts`, bundled with esbuild and run separately | 32 passed |
+| Native Rust unit tests | 7 passed |
+
+The tests ran in a worktree with scratch data and projects folders, a scratch home and temp folder and TexLab 5.26.0 from a scratch folder on the `PATH`, with no model or network calls (fetch is mocked in the Research tests). The 26 skips are phase 2's.
+
 ### Phase 3 limits and open items
 
-- Windows is untested: the TexLab build from the tag tarball (cargo, the cache in `~\AppData\Local\spectrum-build` and Windows `tar`), matching URIs whatever their letter case, ending TexLab with `taskkill` and Review reading an older PDF another program holds (`pdfStale`).
+- Windows is untested: the TexLab build from the tag tarball (cargo, the cache in `~\AppData\Local\spectrum-build` and Windows `tar`), matching URIs whatever their letter case, ending TexLab with `taskkill` before a folder is binned or moved, and Review reading the kept PDF when another program holds the one on disk (`pdfStale`).
 - The tarball's pinned SHA-256 is of GitHub's generated archive. If GitHub regenerates it, the Windows build and the release upload stop until the digest is updated.
 - TexLab 5.26 limits worked around: it cannot forget a file an editor has had open, so a deleted one stays with empty text, and files changed on disk are read again two seconds after the last change, so their diagnostics can lag that long. Go to definition on a section's label lands on the `\section`.
 - Outline numbers come from the main document's kept `.aux` only, so another document's outline has none.
+- A folder with `[`, `]` or `^` in its name added inside a project during a session still makes TexLab panic once, and the editor then goes without it until the project is opened again.
+- A research session merged across computers brings back a choice one side cleared, from the other side.
 - The syntax check waits for TexLab to catch up with the latest edit, up to five seconds. When Review's compile meets it and the user chooses Cancel, the review stops with "The compile was stopped." Cancel in Review does not stop a compile it started.
 - An overfull box in a paragraph that runs across an `\input` is put at the paragraph's first line in the file TeX reports from, which can be a line of the other file. This is Spectrum's existing `parseCompileLog`, so the Logs tab does the same.
 - Without TexLab the console shows one 503 from the lsp stream. When TexLab's line drops while the editor is sending, the console shows an unhandled “TexLab isn’t connected.”
