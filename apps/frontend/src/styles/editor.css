@@ -292,8 +292,49 @@
    Main panel: editor column | divider | right column
    -------------------------------------------------------------------------- */
 
+/* the panel: the bar across both columns, then the columns */
 .editor-panel {
-  flex-direction: row;
+  flex-direction: column;
+}
+
+.workspace-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 52px;
+  padding: 0 10px 0 12px;
+  border-bottom: 1px solid var(--border);
+  container: bar / inline-size;
+}
+
+.workspace-bar .spacer {
+  flex: 1;
+  align-self: stretch;
+}
+
+.workspace-bar .compile-status {
+  min-width: 0;
+  max-width: 220px;
+}
+
+.fs-moving .workspace-bar {
+  /* moves along with the window as full screen starts or ends, like .sidebar-top */
+  transition: padding-left 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+.desktop .sidebar-collapsed .workspace-bar {
+  padding-left: 76px;
+}
+
+.desktop.fullscreen .sidebar-collapsed .workspace-bar {
+  padding-left: 12px;
+}
+
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
 }
 
 .editor-column {
@@ -307,40 +348,22 @@
   container: editor / inline-size;
 }
 
+/* the editor's own row: Insert (+), the file tabs and the assistant */
 .editor-topbar {
   flex: none;
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 52px;
+  height: 44px;
   padding: 0 10px 0 12px;
-  /* as the PDF and Tools headers have, so the view switcher sits at the same height in each */
+  /* as the PDF and Tools headers have, so the rows line up */
   border-bottom: 1px solid transparent;
 }
 
-.fs-moving .editor-topbar {
-  /* moves along with the window as full screen starts or ends, like .sidebar-top */
-  transition: padding-left 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
-}
-
-.desktop .sidebar-collapsed .editor-topbar {
-  padding-left: 76px;
-}
-
-.desktop.fullscreen .sidebar-collapsed .editor-topbar {
-  padding-left: 12px;
-}
-
-/* in the top bar (editor only, or with a panel in the PDF's place) the compile status gives way before the file tabs */
-.editor-topbar .compile-status {
-  max-width: 140px;
-}
-
-/* Insert figure and Insert table: a narrow editor leaves them to Insert (+), and the top bar's Compile and Tools are
-   their icons */
-@container editor (max-width: 560px) {
-  .float-button,
-  .editor-topbar .compile-main .btn-label,
+/* a narrow window: Save checkpoint and Tools are their icons, then the status goes (it's still read out). Failed — see
+   Logs stays, at its width (the outer status only: the button inside it is a .compile-status too) */
+@container bar (max-width: 760px) {
+  .workspace-bar .save-version .btn-label,
   .tools-toggle > span:not(.tools-badge):not(.sf) {
     display: none;
   }
@@ -350,19 +373,21 @@
   }
 }
 
-/* the status goes first, as a panel beside the editor on a laptop leaves the file tabs little room; it's still read out.
-   Failed — see Logs stays, at its width (the outer status only: the button inside it is a .compile-status too) */
-@container editor (max-width: 760px) {
-  .editor-topbar > .compile-status:not(:has(button)) {
+@container bar (max-width: 600px) {
+  .workspace-bar > .compile-status:not(:has(button)) {
     position: absolute;
     width: 1px;
     height: 1px;
     overflow: hidden;
     clip-path: inset(50%);
   }
+
+  .workspace-bar .compile-main .btn-label {
+    display: none;
+  }
 }
 
-.editor-topbar > .compile-status:has(button) {
+.workspace-bar > .compile-status:has(button) {
   flex: none;
 }
 
@@ -883,8 +908,9 @@
   flex: none;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
-  height: 52px;
+  height: 44px;
   padding: 0 10px 0 12px;
   border-bottom: 1px solid var(--border);
 }
@@ -894,18 +920,6 @@
   align-self: stretch;
 }
 
-/* PDF only: the header is the panel's first row, so it keeps clear of the traffic lights as the editor's does */
-.fs-moving .pdf-header {
-  transition: padding-left 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
-}
-
-.desktop .sidebar-collapsed .view-pdf .pdf-header {
-  padding-left: 76px;
-}
-
-.desktop.fullscreen .sidebar-collapsed .view-pdf .pdf-header {
-  padding-left: 12px;
-}
 
 .compile-split {
   display: inline-flex;
