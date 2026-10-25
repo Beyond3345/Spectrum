@@ -144,7 +144,9 @@ export function replyJSON(content) {
   const body = String(content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '');
   const from = body.search(/\{\s*"/);
   if (from === -1) return null;
-  const json = body.slice(from);
+  // a \textbf, \ref, \begin or \frac left single is valid JSON, a tab, CR, backspace or form feed and the letters after
+  // it, none of which a review puts straight before a letter; not \n, as \nThe is a line break (\noindent stays so)
+  const json = body.slice(from).replace(/\\(?:\\|([bfrt])(?=[A-Za-z]))/g, (m, c) => (c ? `\\\\${c}` : m));
   return extractJSON(json) ?? extractJSON(json.replace(/\\(["\\/bfnrt]|u[0-9a-fA-F]{4})?/g, (m, escape) => (escape ? m : '\\\\')).replace(/,(\s*[}\]])/g, '$1'));
 }
 

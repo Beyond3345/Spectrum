@@ -308,6 +308,15 @@ test('a model’s answer is read past its thinking, prose, LaTeX it didn’t esc
   assert.equal(review.summary, 'Fine.');
   assert.equal(readReview('No review today.', files), null);
 
+  // \textbf, \ref, \begin and \frac left single are JSON's tab, CR, backspace and form feed: read as the LaTeX
+  const latex = readReview(
+    String.raw`{"summary": "", "findings": [{"severity": "minor", "file": "main.tex", "line": 2, "quote": "\textbf{Our method} beats every baseline", "issue": "Use \textit, see \ref{tab:main}.", "suggestion": "Write \begin{itemize} and \frac{a}{b}; \\textbf is fine.\nThen go on."}]}`,
+    files
+  );
+  assert.deepEqual(
+    [latex.findings[0].quote, latex.findings[0].issue, latex.findings[0].suggestion],
+    ['\\textbf{Our method} beats every baseline', 'Use \\textit, see \\ref{tab:main}.', 'Write \\begin{itemize} and \\frac{a}{b}; \\textbf is fine.\nThen go on.']
+  );
   // braces in prose before the JSON
   assert.equal(readReview(`I reviewed \\section{Intro} and the rest.\n\`\`\`json\n${JSON.stringify({ summary: 'Read.', findings: [] })}\n\`\`\``, files)?.summary, 'Read.');
 });
