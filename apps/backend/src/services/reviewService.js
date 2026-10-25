@@ -67,7 +67,7 @@ export async function reviewState(root, doc, { bib = false } = {}) {
   };
   const times = (await Promise.all([...(await documentFiles(root, doc)), ...bibs].map(mtime))).filter((t) => t !== null);
   return {
-    pdfAt: await mtime(doc.replace(/\.tex$/i, '.pdf')),
+    pdfAt: await mtime(doc.replace(/\.(?:tex|typ|md|markdown)$/i, '.pdf')),
     sourceAt: times.length ? Math.max(...times) : null,
     ...(bib && { bib: await bibRecords(root, bibs) })
   };
