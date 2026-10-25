@@ -282,10 +282,16 @@ export function runPreflight(input: PreflightInput): Finding[] {
   // central .bib through BIBINPUTS): an image it used, and citations it resolved
   const clean = input.log && !input.failed ? lastPass(input.log).join('\n') : '';
   const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const texFound = (image: string) =>
-    !!clean &&
-    !new RegExp(`File \`${escaped(image)}' not found`).test(clean) &&
-    new RegExp(`^File: (?:\\S*/)?${escaped(image.split('/').pop()!)}(?:\\.[A-Za-z0-9]+)? Graphic file`, 'm').test(clean);
+  // the .log's "File: … Graphic file", or the terminal's <…/name.pdf> that pdfTeX and LuaTeX print as they ship a page,
+  // which is what the compile hands Preflight. ponytail: XeTeX's terminal names neither, so its images stay unfound
+  const texFound = (image: string) => {
+    const base = escaped(image.split('/').pop()!);
+    return (
+      !!clean &&
+      !new RegExp(`File \`${escaped(image)}' not found|Unable to load picture or PDF file '${escaped(image)}`).test(clean) &&
+      (new RegExp(`^File: (?:\\S*/)?${base}(?:\\.[A-Za-z0-9]+)? Graphic file`, 'm').test(clean) || new RegExp(`<(?:[^<>]*/)?${base}(?:\\.[A-Za-z0-9]+)?>`).test(clean))
+    );
+  };
   const unresolved = { citations: new Set<string>(), references: new Set<string>() };
   const noDatabase = /I couldn't open database file|ERROR - Cannot find '[^']*'/.test(clean);
 

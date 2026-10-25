@@ -272,7 +272,14 @@ const ELSEWHERE = String.raw`\documentclass{article}
 \bibliography{central}
 \end{document}
 `;
-const usedLog = "File: example-image-golden.pdf Graphic file (type pdf)\n<use example-image-golden.pdf>\n! LaTeX Error: File `gone' not found.\n";
+// the compile hands Preflight the engine's terminal, not the .log: pdfTeX 2026's, wrapped at 79 as it prints it
+const usedLog = String.raw`! LaTeX Error: File ${'`'}gone' not found.
+[1{/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map} </usr/
+local/texlive/2026/texmf-dist/tex/latex/mwe/example-image-golden.pdf> </usr/loc
+al/texlive/2026/texmf-dist/tex/latex/mwe/example-image-a.pdf>] (./main.aux) )</
+usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb>
+Output written on main.pdf (1 page, 45860 bytes).
+`;
 const elsewhere = (log: string, failed = false) => runPreflight(input({ files: [{ path: 'main.tex', text: ELSEWHERE }], log, failed, bib: [] }));
 eq(
   brief(elsewhere(usedLog), 'references'),
