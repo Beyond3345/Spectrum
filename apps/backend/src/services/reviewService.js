@@ -136,13 +136,13 @@ export function anchor(finding, files) {
 const CONTROL = { '\r': 'r', '\t': 't', '\b': 'b', '\f': 'f', '\n': 'n' };
 
 /**
- * The JSON in a model's answer: from its first {, past a reasoning model's <think> and prose before it that could hold a
- * [ or braces of its own, and failing that with the backslashes of LaTeX it didn't double (\cite, \usepackage) doubled
- * and trailing commas gone.
+ * The JSON in a model's answer: from the first { that opens an object, past a reasoning model's <think> and prose
+ * before it that could hold a [ or braces of its own (\section{Intro}), and failing that with the backslashes of LaTeX
+ * it didn't double (\cite, \usepackage) doubled and trailing commas gone.
  */
 export function replyJSON(content) {
   const body = String(content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '');
-  const from = body.indexOf('{');
+  const from = body.search(/\{\s*"/);
   if (from === -1) return null;
   const json = body.slice(from);
   return extractJSON(json) ?? extractJSON(json.replace(/\\(["\\/bfnrt]|u[0-9a-fA-F]{4})?/g, (m, escape) => (escape ? m : '\\\\')).replace(/,(\s*[}\]])/g, '$1'));

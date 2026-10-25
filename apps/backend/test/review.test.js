@@ -307,4 +307,7 @@ test('a model’s answer is read past its thinking, prose, LaTeX it didn’t esc
   );
   assert.equal(review.summary, 'Fine.');
   assert.equal(readReview('No review today.', files), null);
+
+  // braces in prose before the JSON
+  assert.equal(readReview(`I reviewed \\section{Intro} and the rest.\n\`\`\`json\n${JSON.stringify({ summary: 'Read.', findings: [] })}\n\`\`\``, files)?.summary, 'Read.');
 });
