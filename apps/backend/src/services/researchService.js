@@ -281,6 +281,9 @@ export function mergeResults(results, incoming) {
   return out;
 }
 
+// a DOI that names the paper itself: not a preprint's, nor arXiv's, bioRxiv's or medRxiv's (not CSHL journals' 10.1101/gr.…)
+const ownDoi = (doi, preprint) => (preprint || arxivOfDoi(doi) || /^10\.1101\/(?:\d{4}\.\d{2}\.\d{2}\.)?\d+$/.test(doi) ? '' : doi);
+
 /** Marks each result found in the project's .bib with its key, and unmarks the ones taken out since. */
 export function markInBib(results, index) {
   for (const r of results) {
@@ -288,10 +291,10 @@ export function markInBib(results, index) {
     const firstAuthor = normaliseTitle(r.authors?.[0] || '').split(' ').at(-1) || '';
     const found =
       findDuplicate(index, { doi: id.doi, arxiv: id.arxiv, title: id.title, year: r.year || '', firstAuthor }) ||
-      // a preprint whose published version the .bib has without a DOI or eprint, a year or more later: the same title
-      // and first author, within the years sameWork allows a preprint
+      // a preprint whose published version the .bib has without a DOI or eprint, a year or more later, or the other way
+      // round: the same title and first author, within the years sameWork allows a preprint, and no two DOIs of the paper
       (id.title && firstAuthor && id.year
-        ? index.find((e) => e.title === id.title && e.firstAuthor === firstAuthor && e.year && Math.abs(Number(e.year) - id.year) <= 3 && !(e.doi && id.doi && e.doi !== id.doi))
+        ? index.find((e) => e.title === id.title && e.firstAuthor === firstAuthor && e.year && Math.abs(Number(e.year) - id.year) <= 3 && !(ownDoi(e.doi) && ownDoi(id.doi, id.preprint) && ownDoi(e.doi) !== ownDoi(id.doi, id.preprint)))
         : null);
     if (found) r.inBib = found.key;
     else delete r.inBib;

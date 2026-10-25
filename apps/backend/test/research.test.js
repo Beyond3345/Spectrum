@@ -484,6 +484,20 @@ test('a preprint is In .bib under its published version’s key, and a record li
     index
   );
   assert.deepEqual(marked.map((r) => r.inBib), ['Vaswani2018', undefined]);
+  // a preprint DOI disagrees with no publisher's: arXiv's, as OpenAlex gives it, and bioRxiv's in the .bib
+  const published = buildBibIndex([{ file: 'refs.bib', text: '@inproceedings{Doe2022Sparse,\n  title = {Sparse widgets},\n  author = {Doe, Jane},\n  year = {2022},\n  doi = {10.1145/sparse}\n}\n@article{Ruiz2023Mixture,\n  title = {Mixture models of cells},\n  author = {Ruiz, Ana},\n  year = {2023},\n  doi = {10.1101/2023.01.01.000001}\n}\n' }]);
+  const preprints = markInBib(
+    [
+      { id: 'a', title: 'Sparse widgets', authors: ['Jane Doe'], year: '2021', doi: '10.48550/arxiv.2101.00001', preprint: true },
+      { id: 'b', title: 'Sparse widgets', authors: ['Jane Doe'], year: '2021', arxiv: '2101.00001', preprint: true },
+      // its preprint's row merged in, which leaves the journal's DOI
+      { id: 'c', title: 'Mixture models of cells', authors: ['Ana Ruiz'], year: '2024', doi: '10.1016/j.cell.2024.1', preprint: false },
+      // two publishers' DOIs still disagree
+      { id: 'd', title: 'Sparse widgets', authors: ['Jane Doe'], year: '2023', doi: '10.1000/other', preprint: false }
+    ],
+    published
+  );
+  assert.deepEqual(preprints.map((r) => r.inBib), ['Doe2022Sparse', 'Doe2022Sparse', 'Ruiz2023Mixture', undefined]);
 
   const rows = mergeResults(
     mergeResults([], [
