@@ -284,8 +284,8 @@ export function jpegOrientation(bytes: ArrayBuffer) {
 
 // ─── Typst and Markdown figures and tables ───
 
-/** Typst's content text, with ] and \ escaped so they stay text. */
-const typstText = (text: string) => oneLine(text).replace(/\\/g, '\\\\').replace(/\]/g, '\\]');
+/** Typst's content text, with \, [ and ] escaped so they stay text. */
+const typstText = (text: string) => oneLine(text).replace(/[\\[\]]/g, '\\$&');
 
 const typstFloat = (body: string, caption: string, label: string) =>
   '#figure(' + body + (caption.trim() ? ', caption: [' + typstText(caption) + ']' : '') + ')' + (label.trim() ? ' <' + label.trim() + '>' : '');
@@ -307,7 +307,7 @@ export function tableTypst(m: TableModel) {
   if (m.header && m.cells.length) parts.push('table.header(' + row(m.cells[0]) + ')');
   parts.push(...(m.header ? m.cells.slice(1) : m.cells).map(row));
   const table = 'table(' + parts.join(', ') + ')';
-  return m.float ? typstFloat(table, m.caption, m.label) : table;
+  return m.float ? typstFloat(table, m.caption, m.label) : '#' + table;
 }
 
 /** A Markdown image with its label and width: ![caption](path){#label width=80%}. */
