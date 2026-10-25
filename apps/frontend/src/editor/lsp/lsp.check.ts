@@ -7,7 +7,8 @@ import { applyEdits, newName, renameEdits } from './rename.ts';
 import { syntaxErrors } from './syntax.ts';
 import { EditorState } from '@codemirror/state';
 import { diagnosticCount, setDiagnostics } from '@codemirror/lint';
-import { Texlab, clearMarks, texlabSlot } from './texlab.ts';
+import type { LSPClient } from '@codemirror/lsp-client';
+import { ProjectWorkspace, Texlab, clearMarks, texlabSlot } from './texlab.ts';
 import { lspTransport } from './transport.ts';
 import { IS_MAC, IS_WINDOWS } from '../../app/platform.ts';
 
@@ -204,12 +205,24 @@ async function outline() {
 
 function paths() {
   const files = new Set(['main.tex', 'chapters/intro.tex']);
-  const pathOf = (uri: string) => Texlab.prototype.pathOf.call({ rootUri: 'file:///Users/me/Paper', host: { files: () => files } } as unknown as Texlab, uri);
+  const texlab = Object.assign(Object.create(Texlab.prototype), { rootUri: 'file:///Users/me/Paper', host: { files: () => files } }) as Texlab;
+  const pathOf = (uri: string) => texlab.pathOf(uri);
   eq(pathOf('file:///Users/me/Paper/chapters/intro.tex'), 'chapters/intro.tex', 'a project file');
   eq(pathOf('file:///Users/me/Paper/new.tex'), 'new.tex', 'one the editor doesn’t list yet');
   eq(pathOf('file:///Users/me/Elsewhere/x.tex'), null, 'outside');
   // a Mac's or Windows disk ignores case, and TexLab keeps \input{Chapters/Intro} as a file of its own
-  eq(pathOf('file:///Users/me/Paper/Chapters/Intro.tex'), IS_MAC || IS_WINDOWS ? 'chapters/intro.tex' : 'Chapters/Intro.tex', 'another spelling of a project file');
+  const alias = 'file:///Users/me/Paper/Chapters/Intro.tex';
+  eq(pathOf(alias), IS_MAC || IS_WINDOWS ? 'chapters/intro.tex' : 'Chapters/Intro.tex', 'another spelling of a project file');
+  // which F2 refuses, as that copy is TexLab's first read of the file
+  eq(texlab.spelling(alias), 'Chapters/Intro.tex', 'its spelling is its own');
+  eq(texlab.spelling('file:///Users/me/Paper/chapters/intro.tex'), 'chapters/intro.tex', 'and the file’s is the file’s');
+
+  // the open file's squiggles come from TexLab's copy under its own name only
+  const workspace = new ProjectWorkspace({} as LSPClient, texlab);
+  const open = { uri: texlab.uriOf('chapters/intro.tex') } as (typeof workspace.files)[number];
+  workspace.files = [open];
+  eq(workspace.getFile('file:///Users/me/Paper/chapters/intro.tex') === open, true, 'the open file');
+  eq(workspace.getFile(alias), null, 'not the stale copy under another spelling');
 }
 
 // ─── squiggles once TexLab stops ───

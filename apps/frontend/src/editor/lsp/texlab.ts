@@ -61,8 +61,11 @@ class ProjectFile implements WorkspaceFile {
   }
 }
 
-/** The files open in the editor, by URI as TexLab gives it or as Spectrum made it; jumps to another file open it there. */
-class ProjectWorkspace extends Workspace {
+/**
+ * The files open in the editor, by URI as TexLab gives it or as Spectrum made it; jumps to another file open it there.
+ * TexLab's copy of a file under another spelling of its name is a stale one, so its squiggles don't reach the open file.
+ */
+export class ProjectWorkspace extends Workspace {
   files: ProjectFile[] = [];
   private versions = new Map<string, number>();
   constructor(
@@ -77,8 +80,8 @@ class ProjectWorkspace extends Workspace {
     return version;
   }
   getFile(uri: string) {
-    const path = this.texlab.pathOf(uri);
-    return this.files.find((f) => f.uri === uri || (path !== null && this.texlab.pathOf(f.uri) === path)) ?? null;
+    const spelt = this.texlab.spelling(uri);
+    return this.files.find((f) => f.uri === uri || (spelt !== null && this.texlab.spelling(f.uri) === spelt)) ?? null;
   }
   syncFiles() {
     const updates: ReturnType<Workspace['syncFiles']>[number][] = [];
@@ -185,12 +188,8 @@ export class Texlab {
     return new URL(`${this.rootUri}/${path.replace(/[%#?]/g, encodeURIComponent)}`).href;
   }
 
-  /**
-   * A URI's project path, '/'-separated; null for one outside the project. On a Mac or Windows disk, which ignores case,
-   * a name spelt in another case (an \input{Chapters/Intro} of chapters/intro.tex, which TexLab keeps as a file of its
-   * own) is the project file's, so its marks and edits go to that file and its open text.
-   */
-  pathOf(uri: string) {
+  /** A URI's path in the project as the URI spells it, '/'-separated; null for one outside the project. */
+  spelling(uri: string) {
     const decode = (text: string) => {
       try {
         return decodeURIComponent(text);
@@ -200,15 +199,23 @@ export class Texlab {
     };
     const root = decode(this.rootUri);
     const full = decode(uri);
-    const folds = IS_MAC || IS_WINDOWS;
-    const fold = (text: string) => (folds ? text.toLowerCase() : text);
+    const fold = (text: string) => (IS_MAC || IS_WINDOWS ? text.toLowerCase() : text);
     if (!this.rootUri || !fold(full).startsWith(`${fold(root)}/`)) return null;
-    const path = full.slice(root.length + 1);
-    if (!path) return null;
+    return full.slice(root.length + 1) || null;
+  }
+
+  /**
+   * A URI's project path, '/'-separated; null for one outside the project. On a Mac or Windows disk, which ignores case,
+   * a name spelt in another case (an \input{Chapters/Intro} of chapters/intro.tex, which TexLab keeps as a file of its
+   * own, read once) is the project file's, so its marks in Review and its jumps go to that file.
+   */
+  pathOf(uri: string) {
+    const path = this.spelling(uri);
+    if (!path || !(IS_MAC || IS_WINDOWS)) return path;
     const files = this.host.files();
-    if (!folds || files.has(path)) return path;
+    if (files.has(path)) return path;
     // ponytail: a walk of the project's files, only for a path not among them as spelt
-    for (const file of files) if (fold(file) === fold(path)) return file;
+    for (const file of files) if (file.toLowerCase() === path.toLowerCase()) return file;
     return path;
   }
 

@@ -311,7 +311,7 @@ test('the real TexLab takes code in Verbatim and the like as code, and a file’
     'broken.tex': 'Text {unbalanced\n'
   });
   await fs.mkdir(path.join(p.path, 'chapters'));
-  await fs.writeFile(path.join(p.path, 'chapters', 'intro.tex'), '\\section{A}\\label{sec:a}\n');
+  await fs.writeFile(path.join(p.path, 'chapters', 'intro.tex'), '\\section{A}\\label{sec:a}\nText {open\n');
   const errors = (files, name) => (files[name] ?? []).filter((d) => d.severity === 'error').map((d) => d.code);
   const found = await until(async () => {
     const res = await diagnostics(p);
@@ -319,7 +319,13 @@ test('the real TexLab takes code in Verbatim and the like as code, and a file’
   }, 'diagnostics');
   assert.deepEqual(errors(found.files, 'code.tex'), [], JSON.stringify(found.files));
   assert.deepEqual(errors(found.files, 'broken.tex'), ['missing-brace']);
-  // a disk that ignores case: \input{Chapters/Intro} is chapters/intro.tex, which TexLab keeps as a file of its own
-  if (WINDOWS || process.platform === 'darwin') assert.ok(!Object.keys(found.files).some((f) => f !== f.toLowerCase()), JSON.stringify(Object.keys(found.files)));
+  if (WINDOWS || process.platform === 'darwin') {
+    // a disk that ignores case: \input{Chapters/Intro} is chapters/intro.tex, which TexLab keeps as a file of its own,
+    // read once; the marks are the disk's spelling's, and go once the file is fixed
+    assert.ok(!Object.keys(found.files).some((f) => f !== f.toLowerCase()), JSON.stringify(Object.keys(found.files)));
+    await until(async () => errors((await diagnostics(p)).files, 'chapters/intro.tex').includes('missing-brace'), 'the brace left open in chapters/intro.tex');
+    await writeFileAtomic(path.join(p.path, 'chapters', 'intro.tex'), '\\section{A}\\label{sec:a}\nText {closed}\n');
+    await until(async () => !errors((await diagnostics(p)).files, 'chapters/intro.tex').length, 'chapters/intro.tex fixed', 15_000);
+  }
   await stopTexlab();
 });

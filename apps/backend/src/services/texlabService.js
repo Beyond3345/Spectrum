@@ -333,7 +333,7 @@ const FOLDS_CASE = WINDOWS || process.platform === 'darwin';
 
 /**
  * A project path as the disk spells it, on a Mac or Windows disk, which ignores case: TexLab keeps the file an
- * \input{Chapters/Intro} names apart from chapters/intro.tex, and their marks belong to the one file.
+ * \input{Chapters/Intro} names apart from chapters/intro.tex.
  */
 function spelt(session, rel) {
   if (!FOLDS_CASE) return rel;
@@ -348,8 +348,9 @@ function spelt(session, rel) {
 
 function keepDiagnostics(session, params) {
   const rel = projectPath(session, params?.uri);
-  // by URI, as TexLab has them: two spellings of one file's name are two files to it
-  if (rel && params.diagnostics?.length) session.diagnostics.set(params.uri, { rel: spelt(session, rel), list: params.diagnostics });
+  // by URI, as TexLab has them: two spellings of one file's name are two files to it, and the one the disk doesn't
+  // spell it by TexLab read once and never again, so its marks are stale (the disk's spelling has the file's own)
+  if (rel && params.diagnostics?.length && spelt(session, rel) === rel) session.diagnostics.set(params.uri, { rel, list: params.diagnostics });
   else session.diagnostics.delete(params?.uri);
   session.stale = false;
   // TexLab publishes a file at a time; the rest of the round comes within moments
@@ -559,7 +560,7 @@ export async function projectDiagnostics(projectId) {
         ...(code != null && { code: CODES[code] ?? String(code) }),
         source: 'texlab'
       };
-      // the same mark from the file under each spelling of its name, once
+      // the same mark from the file under two URIs, once
       if (!into.some((d) => JSON.stringify(d) === JSON.stringify(one))) into.push(one);
     }
   }

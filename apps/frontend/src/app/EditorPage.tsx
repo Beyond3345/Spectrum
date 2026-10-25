@@ -1200,7 +1200,13 @@ function Editor({ projectId }: { projectId: string }) {
       }
       // TexLab plans against the open file's text and the others' on disk, so the open file goes to disk first
       await saveNow();
-      const edits = renameEdits(await texlab.renameEdits(view, pos, name), (uri) => texlab.pathOf(uri));
+      const edits = renameEdits(await texlab.renameEdits(view, pos, name), (uri) => {
+        // TexLab read a file brought in under another spelling of its name once, and plans that copy's edits from it
+        const file = texlab.pathOf(uri);
+        const spelt = texlab.spelling(uri);
+        if (file && spelt && file !== spelt) throw new Error(`The document brings in ${file} as ${spelt}. Make the \\input match the file’s name, then rename.`);
+        return file;
+      });
       if (!edits.size) {
         notify(`TexLab found nothing to rename for “${target}”.`);
         return;
