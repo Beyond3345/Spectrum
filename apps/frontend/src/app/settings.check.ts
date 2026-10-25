@@ -177,7 +177,7 @@ eq(effectiveCompile({ engine: 'xelatex', draft: true }, defaults), { ...defaults
 eq(effectiveCompile({ engine: null, autoCompile: 11, bibTool: 'makeindex' } as never, defaults), defaults, 'null and unknown values');
 eq(effectiveCompile({ autoCompile: 0 }, defaults).autoCompile, 0, 'off in the project, on by default');
 eq(DEFAULT_SETTINGS.compileDefaults.syntaxCheck, true, 'the syntax check is on unless turned off');
-eq(effectiveCompile({ syntaxCheck: false }, defaults).syntaxCheck, false, 'a project that doesn’t check');
+eq(effectiveCompile({ syntaxCheck: false, haltOnError: true }, defaults), defaults, 'error handling and the syntax check are the app’s, whatever a project kept from before');
 
 const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
 try {

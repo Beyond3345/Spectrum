@@ -284,9 +284,12 @@ function cleanCompile(value: unknown, fallback: CompileDefaults): CompileDefault
   };
 }
 
+// the app's for every project (Settings › Engines › LaTeX); a project's own from before is left in its file, unread
+const APP_WIDE: (keyof CompileOptions)[] = ['haltOnError', 'syntaxCheck'];
+
 /** What a project compiles with: its own choices from .spectrum/settings.json, the app's defaults for the rest. */
 export const effectiveCompile = (project: CompileOptions | undefined, defaults: CompileDefaults) =>
-  cleanCompile(Object.fromEntries(Object.entries(project ?? {}).filter(([, value]) => value != null)), defaults);
+  cleanCompile(Object.fromEntries(Object.entries(project ?? {}).filter(([key, value]) => value != null && !APP_WIDE.includes(key as keyof CompileOptions))), defaults);
 
 export const REASONING_EFFORTS: [ReasoningEffort, string][] = [
   ['default', 'Recommended'],

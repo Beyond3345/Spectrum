@@ -1251,7 +1251,7 @@ function EnginesPane() {
       {tab === 'latex' && (
         <>
       <div className="field-hint section-hint">
-        Every project compiles with these until you change one for that project from the Compile button’s menu. They stay on this computer.
+        Every project compiles with these until you change its compiler, auto compile, bibliography tool or draft mode from the Compile button’s menu. Error handling and the syntax check apply to every project. They stay on this computer.
       </div>
       <div className="field">
         <label id="settings-engine">Compiler</label>
