@@ -1572,7 +1572,9 @@ function Editor({ projectId }: { projectId: string }) {
         draft: compileOptions.draft,
         fresh: opts.fresh,
         texFolder: settings.texFolder || undefined,
-        checkpoint: settings.checkpointOnCompile
+        checkpoint: settings.checkpointOnCompile,
+        typstVersion: compileOptions.typstVersion,
+        markdownEngine: compileOptions.markdownEngine
       });
       const actual = res.engine || used;
       built = res.doc || doc;

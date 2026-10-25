@@ -216,9 +216,12 @@ async function texlabRuntime(arches) {
 // Tectonic (MIT) and Typst (Apache-2.0) ship inside the app as TexLab does. Their versions and digests are in
 // apps/backend/src/data/engines.json, which the backend reads too.
 
+/** An engine's archive for an arch: engines.json keys Windows' as win-x64, the Mac's as arm64 and x64. */
+export const engineAsset = (assets, arch, platform = process.platform) => assets[platform === 'win32' ? 'win-x64' : arch];
+
 /** One release's executable for an arch, verified and kept from an earlier run. */
 async function engineBinary(name, version, assets, arch) {
-  const [file, expected] = assets[arch];
+  const [file, expected] = engineAsset(assets, arch);
   const folder = path.join(cacheDir, `${name}-${version}-${arch}`);
   const out = path.join(folder, `${name}${EXE}`);
   if (fs.existsSync(out)) return out;
@@ -348,14 +351,17 @@ const commands = {
   tectonic: () => tectonicRuntime(Object.keys(TRIPLES)),
   typst: () => typstRuntime(Object.keys(TRIPLES))
 };
-const command = commands[process.argv[2]];
-if (!command) {
-  console.error('Usage: node scripts/desktop.mjs dev|build|resources|texlab|tectonic|typst');
-  process.exit(1);
-}
-try {
-  await command();
-} catch (err) {
-  console.error(`\n${err.message}`);
-  process.exit(1);
+// run, not imported (the backend's tests check engineAsset)
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const command = commands[process.argv[2]];
+  if (!command) {
+    console.error('Usage: node scripts/desktop.mjs dev|build|resources|texlab|tectonic|typst');
+    process.exit(1);
+  }
+  try {
+    await command();
+  } catch (err) {
+    console.error(`\n${err.message}`);
+    process.exit(1);
+  }
 }

@@ -19,7 +19,7 @@ Object.assign(process.env, {
 const { createProject, getProjectRoot } = await import('../src/services/projectService.js');
 const { runCompile, findExecutable } = await import('../src/services/compileService.js');
 const { pandocPath, versionOf } = await import('../src/services/engineService.js');
-const { parseFrontMatter, traceToMarkdown } = await import('../src/services/markdownService.js');
+const { markdownToLatex, parseFrontMatter, traceToMarkdown } = await import('../src/services/markdownService.js');
 
 after(() => {
   process.env.PATH = realPath;
@@ -123,6 +123,23 @@ test('pandoc writes LaTeX, TeX compiles it, and the PDF lands beside the .md', {
   assert.ok(existsSync(generated));
 });
 
+test('the app’s default Markdown PDF engine reaches the compile, after the project’s own', { skip }, async () => {
+  await bin('engine', '3.12.1');
+  const { default: Fastify } = await import('fastify');
+  const { registerCompileRoutes } = await import('../src/routes/compile.js');
+  const { updateProjectSettings } = await import('../src/services/projectSettings.js');
+  const app = Fastify();
+  registerCompileRoutes(app);
+  const compileWith = async (p, markdownEngine) => JSON.parse((await app.inject({ method: 'POST', url: '/api/compile', payload: { projectId: p.id, mainFile: 'main.md', engine: 'auto', markdownEngine } })).payload);
+  const p = await projectWith(MARKDOWN);
+  assert.equal((await compileWith(p, 'typst')).generated, 'typst');
+  assert.equal((await compileWith(p, 'latex')).generated, 'latex');
+  await updateProjectSettings(await getProjectRoot(p.id), (settings) => ({ ...settings, compile: { markdownEngine: 'latex' } }));
+  assert.equal((await compileWith(p, 'typst')).generated, 'latex');
+  assert.equal((await compileWith(p, 'word')).error, 'Invalid markdownEngine.');
+  await app.close();
+});
+
 test('a TeX error names the right line in the .md', { skip }, async () => {
   await bin('error', '3.12.1');
   const p = await projectWith(MARKDOWN);
@@ -169,4 +186,38 @@ test('real pandoc and real TeX compile an article with a citation', { skip: WIND
   assert.equal(result.generated, 'latex');
   const dir = await getProjectRoot(p.id);
   assert.ok(existsSync(path.join(dir, 'main.pdf')));
+});
+
+test('a bibliography the front matter names with a YAML comment still resolves', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
+  process.env.PATH = realPath;
+  if (!(await pandocPath())) return t.skip('needs pandoc');
+  const dir = path.join(tmp, 'yaml-comment');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, 'refs.bib'), '@book{one, title = {The One Book}, author = {Writer, A.}, year = {2026}}\n');
+  await fs.writeFile(path.join(dir, 'other.bib'), '@book{two, title = {Not Named}, author = {Else, B.}, year = {2026}}\n');
+  const absMain = path.join(dir, 'main.md');
+  await fs.writeFile(absMain, '---\ntitle: Test\nbibliography: refs.bib # Sources\n---\n\nCite [@one].\n');
+  const made = await markdownToLatex({ projectRoot: dir, absMain, mainFile: 'main.md', generatedDir: path.join(dir, 'generated') });
+  assert.equal(made.ok, true, made.error || made.log);
+  assert.match(made.text, /The One Book/);
+  assert.deepEqual(parseFrontMatter('---\nbibliography: # none yet\n---\n').meta.bibliography, []);
+});
+
+test('a LaTeX project made from the .md finds the images pandoc extracted', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
+  process.env.PATH = realPath;
+  if (!(await pandocPath())) return t.skip('needs pandoc');
+  const { default: Fastify } = await import('fastify');
+  const { registerProjectRoutes } = await import('../src/routes/projects.js');
+  const app = Fastify();
+  registerProjectRoutes(app);
+  const p = await projectWith('# Images\n\n![A dot](images/dot.png)\n', { 'images/dot.png': 'not really a PNG' });
+  const res = await app.inject({ method: 'POST', url: `/api/projects/${p.id}/export/latex`, payload: { doc: 'main.md' } });
+  await app.close();
+  const made = JSON.parse(res.payload);
+  assert.equal(made.ok, true, res.payload);
+  const dir = await getProjectRoot(made.project.id);
+  const tex = await fs.readFile(path.join(dir, 'main.tex'), 'utf8');
+  const image = tex.match(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/)?.[1];
+  assert.equal(image, 'media/images/dot.png');
+  assert.ok(existsSync(path.join(dir, image)));
 });

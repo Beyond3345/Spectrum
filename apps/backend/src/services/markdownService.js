@@ -43,7 +43,8 @@ export function parseFrontMatter(source) {
     const pair = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/.exec(line);
     if (!pair) continue;
     field = pair[1];
-    const value = pair[2].trim();
+    // a quoted value keeps its '#'; otherwise ' # …' (or a value that is only that) is a comment
+    const value = /^["']/.test(pair[2].trim()) ? pair[2].trim() : pair[2].replace(/(?:^|\s)#.*$/, '').trim();
     if (!value) meta[field] = [];
     else if (value.startsWith('[') && value.endsWith(']')) meta[field] = value.slice(1, -1).split(',').map(unquote).filter(Boolean);
     else meta[field] = unquote(value);
@@ -51,17 +52,14 @@ export function parseFrontMatter(source) {
   return { meta, body: lines.slice(end + 1).join('\n') };
 }
 
-/** pandoc's --bibliography and --csl arguments: what the front matter names, else every .bib in the project. */
-export async function bibliographyArgs(projectRoot, absMain, meta) {
-  const mdDir = path.dirname(absMain);
-  const named = Array.isArray(meta.bibliography) ? meta.bibliography : meta.bibliography ? [meta.bibliography] : [];
-  const files = named.length
-    ? named.map((name) => (path.isAbsolute(name) ? name : path.resolve(mdDir, name)))
-    : (await listFilesRecursive(projectRoot)).filter((item) => item.type === 'file' && /\.bib$/i.test(item.path)).map((item) => path.join(projectRoot, item.path));
-  const args = files.flatMap((file) => ['--bibliography', file]);
-  const csl = Array.isArray(meta.csl) ? meta.csl[0] : meta.csl;
-  if (csl) args.push('--csl', path.isAbsolute(csl) ? csl : path.resolve(mdDir, csl));
-  return args;
+/**
+ * pandoc's --bibliography arguments: none when the front matter names a bibliography, which pandoc reads itself (and
+ * its csl) from the .md's folder, else every .bib in the project.
+ */
+export async function bibliographyArgs(projectRoot, meta) {
+  if ([meta.bibliography].flat().some(Boolean)) return [];
+  const files = (await listFilesRecursive(projectRoot)).filter((item) => item.type === 'file' && /\.bib$/i.test(item.path)).map((item) => path.join(projectRoot, item.path));
+  return files.flatMap((file) => ['--bibliography', file]);
 }
 
 /** pandoc's log, kept to MAX_LOG_BYTES as a compile's is. */
@@ -184,7 +182,7 @@ export async function markdownToLatex({ projectRoot, absMain, mainFile, generate
   await ensureDir(path.dirname(generatedFile));
   const args = [
     absMain, '--from=markdown', '--to=latex', '--standalone', '--citeproc',
-    ...(await bibliographyArgs(projectRoot, absMain, meta)),
+    ...(await bibliographyArgs(projectRoot, meta)),
     '--resource-path=' + [path.dirname(absMain), projectRoot].join(path.delimiter),
     '--extract-media=' + path.join(generatedDir, 'media'),
     '-o', generatedFile
@@ -204,7 +202,7 @@ export async function markdownToTypst({ projectRoot, absMain, mainFile, generate
   await ensureDir(path.dirname(generatedFile));
   const args = [
     absMain, '--from=markdown', '--to=typst', '--standalone', '--citeproc',
-    ...(await bibliographyArgs(projectRoot, absMain, meta)),
+    ...(await bibliographyArgs(projectRoot, meta)),
     '--resource-path=' + [path.dirname(absMain), projectRoot].join(path.delimiter),
     '-o', generatedFile
   ];
@@ -225,10 +223,10 @@ function rootRelativeImages(text, projectRoot, mdDir) {
   });
 }
 
-/** Compiles a .md main file through pandoc and the project's PDF engine ('latex' or 'typst'). */
+/** Compiles a .md main file through pandoc and the project's PDF engine ('latex' or 'typst'), else options.markdownEngine, the app's. */
 export async function compileMarkdown(projectRoot, absMain, mainFile, engine, options = {}) {
   const settings = await readProjectSettings(projectRoot);
-  const kind = settings.compile?.markdownEngine === 'typst' ? 'typst' : 'latex';
+  const kind = (settings.compile?.markdownEngine || options.markdownEngine) === 'typst' ? 'typst' : 'latex';
   const problem = await pandocProblem(kind);
   if (problem) return { ok: false, ...problem, generated: kind };
   const source = await fs.readFile(absMain, 'utf8').catch(() => null);
@@ -263,6 +261,6 @@ export async function compileMarkdown(projectRoot, absMain, mainFile, engine, op
 export async function pandocDocx(projectRoot, absMain, output) {
   const source = await fs.readFile(absMain, 'utf8');
   const { meta } = parseFrontMatter(source);
-  const run = await runPandoc([absMain, '--citeproc', ...(await bibliographyArgs(projectRoot, absMain, meta)), '-o', output], path.dirname(absMain));
+  const run = await runPandoc([absMain, '--citeproc', ...(await bibliographyArgs(projectRoot, meta)), '-o', output], path.dirname(absMain));
   return { ok: run.code === 0 && !run.timedOut && !run.error, log: run.log };
 }

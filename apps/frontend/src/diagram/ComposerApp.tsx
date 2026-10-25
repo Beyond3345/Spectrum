@@ -455,7 +455,9 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
         draft: false,
         fresh: false,
         texFolder: settings.texFolder || undefined,
-        typstInputs: language === 'typst' ? { 'spectrum-diagram': 'standalone' } : undefined
+        typstInputs: language === 'typst' ? { 'spectrum-diagram': 'standalone' } : undefined,
+        // the version its fletcher import line was written for
+        typstVersion
       });
       if (mine !== run.current.count || res.stopped) return;
       const log = res.log || '';

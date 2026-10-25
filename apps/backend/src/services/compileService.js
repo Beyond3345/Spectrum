@@ -670,7 +670,7 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
   // the copy on disk is older than this compile's, so the editor keeps showing the one it was sent
   let pdfStale = false;
   try {
-    const written = await writePdf(absPdf, pdf, log);
+    const written = await writePdf(projectRoot, absPdf, pdf, log);
     log = written.log;
     pdfStale = written.stale;
     // SyncTeX jumps do not point into the .md, so a Markdown compile keeps none
@@ -820,9 +820,15 @@ export async function cleanBuild(buildRoot, outDir) {
 
 /**
  * Writes a compile's PDF beside the source. Windows locks a PDF open in another viewer (Acrobat), where the preview,
- * SyncTeX and .aux still update: the copy on disk then keeps the older one, and the log says so.
+ * SyncTeX and .aux still update: the copy on disk then keeps the older one, and the log says so. So it does when the
+ * PDF there is a link out of the project, or to nothing, which is never written through.
  */
-export async function writePdf(absPdf, pdf, log) {
+export async function writePdf(projectRoot, absPdf, pdf, log) {
+  try {
+    safeJoin(projectRoot, absPdf);
+  } catch (err) {
+    return { stale: true, log: log + `\n[spectrum warning] ${path.basename(absPdf)} wasn’t updated. ${err.message}\n` };
+  }
   try {
     await fs.writeFile(absPdf, pdf);
     return { stale: false, log };

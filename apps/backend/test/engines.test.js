@@ -64,7 +64,8 @@ test('listEngines reports the built-in Typst, the one on the PATH and pandoc', a
   assert.ok(engines.typst.builtIn === null || engines.typst.builtIn === '0.15.1');
   assert.equal(engines.typst.system.version, '0.13.1');
   assert.equal(engines.typst.system.path, path.join(fakeBin, 'typst'));
-  assert.deepEqual(engines.typst.available.map((v) => v.version), engines.typst.builtIn ? versions.slice(1) : versions);
+  // the built-in version is never offered, even in a checkout without its binary: typstFor runs only the built-in copy
+  assert.deepEqual(engines.typst.available.map((v) => v.version), versions.slice(1));
   assert.equal(engines.pandoc.found.version, '3.1.2');
   assert.equal(engines.pandoc.found.fromDownload, false);
   assert.equal(engines.pandoc.downloadable, '3.12.1');
@@ -94,6 +95,16 @@ test('an unknown version and a path are refused', async () => {
   useEngineList(typstList([release('9.9.9', sha)], '9.9.8'));
   await assert.rejects(installTypst('1.2.3'), /isn’t available/);
   await assert.rejects(installTypst('../x'), /Choose a Typst version/);
+});
+
+test('the desktop build takes each platform’s own engine archives', async () => {
+  const { engineAsset } = await import('../../../scripts/desktop.mjs');
+  const { default: list } = await import('../src/data/engines.json', { with: { type: 'json' } });
+  const typst = list.typst.versions.find((v) => v.version === list.typst.builtIn).assets;
+  assert.match(engineAsset(typst, 'x64', 'win32')[0], /windows-msvc\.zip$/);
+  assert.match(engineAsset(list.tectonic.assets, 'x64', 'win32')[0], /windows-msvc\.zip$/);
+  assert.match(engineAsset(typst, 'x64', 'darwin')[0], /^typst-x86_64-apple-darwin/);
+  assert.match(engineAsset(list.tectonic.assets, 'arm64', 'darwin')[0], /aarch64-apple-darwin/);
 });
 
 test('the built-in version cannot be removed', async () => {

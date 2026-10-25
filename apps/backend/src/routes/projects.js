@@ -450,11 +450,15 @@ export function registerProjectRoutes(fastify) {
       const bibs = items.filter((item) => item.type === 'file' && /\.bib$/i.test(item.path)).map((item) => item.path);
       const figures = path.join(root, 'figures');
       const media = made.media;
+      // pandoc names each image it extracted by its path in the temporary folder, which goes; the copy is in media/
+      // ponytail: a Windows pandoc's backslashes after media/ stay as it wrote them
+      let text = made.text;
+      for (const prefix of [media + path.sep, media.split(path.sep).join('/') + '/']) text = text.split(prefix).join('media/');
       const project = await createProject({
         name: meta.name + ' (LaTeX)',
         meta: { mainFile: 'main.tex' },
         populate: async (target) => {
-          await fs.writeFile(path.join(target, 'main.tex'), made.text);
+          await fs.writeFile(path.join(target, 'main.tex'), text);
           for (const bib of bibs) {
             await fs.mkdir(path.dirname(path.join(target, bib)), { recursive: true });
             await fs.copyFile(path.join(root, bib), path.join(target, bib));
