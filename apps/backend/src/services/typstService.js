@@ -192,7 +192,7 @@ export async function compileTypst(projectRoot, absMain, mainFile, options = {})
   const absPdf = path.join(path.dirname(absMain), base + '.pdf');
   let written;
   try {
-    written = await writePdf(absPdf, pdf, log);
+    written = await writePdf(projectRoot, absPdf, pdf, log);
   } finally {
     await cleanBuild(buildRoot, outDir);
   }

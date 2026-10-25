@@ -85,6 +85,26 @@ test('a Typst project compiles and writes its PDF beside the main file', async (
   assert.ok((await fs.stat(path.join(dir, 'main.pdf'))).size > 100);
 });
 
+test('a compile never writes its PDF through a link out of the project', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const outside = path.join(tmp, 'outside.pdf');
+  await fs.writeFile(outside, 'OUTSIDE');
+  const project = await createProject({
+    name: 'typst-link',
+    meta: { mainFile: 'main.typ' },
+    populate: async (dir) => {
+      await fs.writeFile(path.join(dir, 'main.typ'), '= Linked\n');
+      await fs.symlink(outside, path.join(dir, 'main.pdf'));
+    }
+  });
+  const result = await runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto' });
+  assert.equal(result.ok, true, result.error);
+  assert.ok(result.pdf.length > 100);
+  assert.equal(result.pdfStale, true);
+  assert.match(result.log, /main\.pdf wasn’t updated/);
+  assert.equal(await fs.readFile(outside, 'utf8'), 'OUTSIDE');
+});
+
 test('a broken Typst line comes back with its file and line', async (t) => {
   if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
   const project = await projectWith('typst-broken', '= Broken\n\n#foo\n');
