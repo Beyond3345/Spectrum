@@ -24,6 +24,8 @@ import {
   getProjectSettings,
   getProjectTree,
   getSyncSettings,
+  gitHubLeft,
+  gitHubOpened,
   listNotes,
   listProjects,
   renameVersion,
@@ -36,6 +38,8 @@ import {
   spellSuggest,
   synctexEdit,
   synctexView,
+  searchZotero,
+  syncZotero,
   updateProjectSettings,
   writeFile
 } from '../api/client';
@@ -53,7 +57,7 @@ import { SaveTemplateSheet } from './ProjectPage';
 import { toast } from './Toast';
 import { IS_DESKTOP, focusWindow, openDiagram } from './desktop';
 import { FILE_MANAGER } from './platform';
-import { BIB_TOOLS, COMPILE_ENGINES, ERROR_HANDLING, SYNTAX_CHECKS, autoCompileLabel, effectiveCompile, effectiveEffort, llmConfigFor, updateSettings, useProviders, useSettings } from './settings';
+import { BIB_TOOLS, COMPILE_ENGINES, ERROR_HANDLING, SYNTAX_CHECKS, autoCompileLabel, effectiveCompile, effectiveEffort, llmConfigFor, loadSettings, updateSettings, useProviders, useSettings } from './settings';
 import { PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
 import { FIND_NEXT, FIND_PREVIOUS, SHORTCUTS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
 import type { AppCommand } from './shortcuts';
@@ -119,7 +123,9 @@ import type { Reference } from '../editor/lsp/texlab';
 import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
-import { VERSIONS_CHANGED, errorText, figureSnippet } from '../editor/shared';
+import { PROJECT_DATA_CHANGED, VERSIONS_CHANGED, errorText, figureSnippet } from '../editor/shared';
+import { ZOTERO_CITE, zoteroCompletionSource } from '../editor/zotero';
+import { ZoteroCite, addZoteroHit } from '../editor/ZoteroCite';
 
 // ─── helpers ───
 
@@ -311,6 +317,8 @@ function Editor({ projectId }: { projectId: string }) {
   const statesRef = useRef(new Map<string, EditorState>());
   /** what the document being edited and the files it pulls in load and define, its .bib entries and its files, for completion */
   const projectScanRef = useRef<Project>(NO_PROJECT);
+  /** the newest shared API, for CodeMirror's pieces made once (a Zotero item picked from \cite completion) */
+  const apiRef = useRef<EditorApi | null>(null);
   /** .bib files that aren't open, read once per tree or file change rather than after every save */
   const bibRef = useRef(new Map<string, string>());
   // counts writes and reloads, which change filesRef without a render
@@ -2086,7 +2094,18 @@ function Editor({ projectId }: { projectId: string }) {
       jumpHighlight,
       search({ top: true }),
       // picking \ref{}, \cite{} or \input{} opens the list of what goes in the braces
-      autocompletion({ override: [latexCompletionSource(() => projectScanRef.current, () => activeRef.current)], activateOnCompletion: (c) => /\{\}$/.test(c.displayLabel ?? c.label) }),
+      autocompletion({
+        override: [
+          latexCompletionSource(() => projectScanRef.current, () => activeRef.current),
+          zoteroCompletionSource({
+            enabled: () => loadSettings().zoteroCompletion,
+            search: (q, signal) => searchZotero(q, signal).then((res) => res.items),
+            own: () => new Set(projectScanRef.current.bib.map((e) => e.key.toLowerCase())),
+            pick: (hit) => (apiRef.current ? addZoteroHit(apiRef.current, hit) : Promise.resolve(null))
+          })
+        ],
+        activateOnCompletion: (c) => /\{\}$/.test(c.displayLabel ?? c.label)
+      }),
       spellChecker({
         enabled: () => spellOnRef.current,
         path: () => activeRef.current,
@@ -2208,6 +2227,55 @@ function Editor({ projectId }: { projectId: string }) {
     });
     return () => events.close();
   }, [projectId]);
+
+  // a linked project: pulled from GitHub as it opens (the files it changes come through the folder watch, and the panels
+  // that read .spectrum reload), and backed up as the editor leaves it, chats and research sessions too
+  const pulledOnOpen = useRef<Promise<unknown>>(Promise.resolve());
+  useEffect(() => {
+    let live = true;
+    const opened = gitHubOpened(projectId);
+    pulledOnOpen.current = opened.catch(() => undefined);
+    opened.then(
+      (res) => {
+        if (!live || !res.linked) return;
+        if (res.message) notify(res.message);
+        if (res.result?.changedApp) window.dispatchEvent(new Event(PROJECT_DATA_CHANGED));
+        for (const problem of res.result?.problems || []) notify(problem, 'error');
+      },
+      () => undefined
+    );
+    const leave = () => gitHubLeft(projectId);
+    window.addEventListener('pagehide', leave);
+    return () => {
+      live = false;
+      window.removeEventListener('pagehide', leave);
+      leave();
+    };
+  }, [projectId]);
+
+  // the project's Zotero collection, brought up to the .bib on opening and on coming back to the window (adding only:
+  // entries leave it after a .bib save); a wait for Zotero's sync, or a fault, is said once. The first waits for the pull
+  // on opening, which may bring the collection the other computer made, so a second one isn't made here
+  useEffect(() => {
+    let told = false;
+    const sync = () =>
+      syncZotero(projectId).then((res) => {
+        if (told || !res.message || (res.state !== 'waiting' && res.state !== 'error')) return;
+        told = true;
+        notify(res.message, res.state === 'error' ? 'error' : 'info');
+      }, () => undefined);
+    pulledOnOpen.current.then(sync);
+    window.addEventListener('focus', sync);
+    return () => window.removeEventListener('focus', sync);
+  }, []);
+
+  // the PDF notes again after a pull brought other ones
+  const [notesPulled, setNotesPulled] = useState(0);
+  useEffect(() => {
+    const onPull = () => setNotesPulled((n) => n + 1);
+    window.addEventListener(PROJECT_DATA_CHANGED, onPull);
+    return () => window.removeEventListener(PROJECT_DATA_CHANGED, onPull);
+  }, []);
 
   // the project's TexLab, while the editor is open: a jump to another file opens it here, and the open file gets its
   // extensions whenever TexLab starts answering or stops
@@ -2439,7 +2507,7 @@ function Editor({ projectId }: { projectId: string }) {
     return () => {
       live = false;
     };
-  }, [shownDoc]);
+  }, [shownDoc, notesPulled]);
 
   // ─── shared API for the composer, chats and Tools ───
 
@@ -2703,6 +2771,7 @@ function Editor({ projectId }: { projectId: string }) {
       <Icon name="sidebar.left" />
     </button>
   );
+  apiRef.current = api;
 
   return (
     <EditorContext.Provider value={api}>
@@ -3087,6 +3156,7 @@ function Editor({ projectId }: { projectId: string }) {
               onContinueInAgent={continueInAgent}
               onManagePersonas={() => setSettingsOpen('personas')}
             />
+            <ZoteroCite />
           </section>
 
           {layout.view === 'split' && <div className="column-divider" role="separator" aria-orientation="vertical" aria-label="Resize" onMouseDown={startResize} />}
@@ -3307,7 +3377,7 @@ function Editor({ projectId }: { projectId: string }) {
 
             {keptPanels.includes('tools') && (
               <div className="tools-column" hidden={panel !== 'tools'}>
-                <ToolsPanel tab={toolsTab} onTabChange={setToolsTab} doc={compileTarget} trailing={panelEnd} />
+                <ToolsPanel tab={toolsTab} onTabChange={setToolsTab} doc={compileTarget} trailing={panelEnd} onOpenSettings={setSettingsOpen} />
               </div>
             )}
 
@@ -3431,6 +3501,7 @@ function Editor({ projectId }: { projectId: string }) {
               },
               { separator: true },
               !!diagram && { label: 'Edit diagram', onSelect: () => drawDiagram(diagram) },
+              isTex(activePath) && { label: 'Cite from Zotero…', onSelect: () => window.dispatchEvent(new Event(ZOTERO_CITE)) },
               { label: 'Add to-do here', onSelect: () => addTodoAtLine(lineMenu.pos) }
             ];
           })()}

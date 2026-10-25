@@ -7,7 +7,7 @@ import { MenuButton } from '../../app/Menu';
 import { researchKeysFor, searchConfigFor } from '../../app/settings';
 import { useEditor } from '../EditorContext';
 import type { TaskRequest } from '../agent/parts';
-import { citationText, errorText, formatDate, isTex, relativeTime } from '../shared';
+import { PROJECT_DATA_CHANGED, citationText, errorText, formatDate, isTex, relativeTime } from '../shared';
 import CitationAssistant, { bibWritten } from './CitationAssistant';
 import { DEFAULT_SOURCES, SOURCES, badges, counts, filtersLine, keptToAdd, linkOf, metaLine, runLine, searched, shown, yearOf } from './results';
 import type { Show } from './results';
@@ -110,6 +110,17 @@ export default function ResearchPanel({ filter, onAgentTask }: { filter: string;
     refresh();
     const id = read(`spectrum-research-open:${projectId}`);
     if (id) openSession(id).catch(() => write(`spectrum-research-open:${projectId}`, null));
+  }, [projectId]);
+
+  // a pull from GitHub brought sessions in, or changed the open one
+  useEffect(() => {
+    const onPull = () => {
+      refresh();
+      const id = read(`spectrum-research-open:${projectId}`);
+      if (id) openSession(id).catch(() => undefined);
+    };
+    window.addEventListener(PROJECT_DATA_CHANGED, onPull);
+    return () => window.removeEventListener(PROJECT_DATA_CHANGED, onPull);
   }, [projectId]);
 
   const toggleSource = (s: ResearchSource) => {

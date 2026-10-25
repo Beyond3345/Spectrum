@@ -8,15 +8,15 @@ import {
   copyProject,
   createProject,
   deleteTemplate,
-  downloadCloudProject,
+  dismissMigrationNotice,
   editTemplate,
+  getMigrationNotice,
   getProjectTree,
-  getSyncSettings,
-  hideProject,
   importArxivSSE,
   importZip,
   listProjects,
   listTemplates,
+  moveProjectHere,
   openFolder,
   relocateProject,
   removeProject,
@@ -26,22 +26,26 @@ import {
   revealProject,
   saveAsTemplate,
   setProjectMainFile,
-  stopSyncing,
-  syncCloudProject,
-  syncProjectTo,
   systemCheck,
   thumbnailUrl,
   updateProjectTags,
   uploadTemplate,
-  writeFile
+  writeFile,
+  backUpToGitHub,
+  getProjectGitHub,
+  gitHubProblems,
+  syncWithGitHub
 } from '../api/client';
-import type { CloudLocation, CloudOnlyProject, MirrorStatus, SkippedFolder, ProjectCloud, ProjectMeta, SyncPlace, TemplateCategory, TemplateMeta } from '../api/client';
+import type { GitHubProblem, MigrationNotice, ProjectMeta, TemplateCategory, TemplateMeta } from '../api/client';
 import Icon from './Icon';
 import { ContextMenu, MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
 import Select from './Select';
 import Sheet from './Sheet';
 import SettingsSheet from './SettingsSheet';
+import type { Section as SettingsSection } from './SettingsSheet';
+import GitHubView from './GitHubView';
+import { linkWithPreview, offerMove, pullSummary, withDeletionCheck } from './github';
 import TransferPanel, { transferStatusLabel } from './TransferPanel';
 import type { TransferJob } from './TransferPanel';
 import { confirmDialog, promptDialog } from './Dialogs';
@@ -88,60 +92,8 @@ const formatFull = (iso: string) => {
   return Number.isNaN(d.getTime()) ? '' : fullDate.format(d);
 };
 
-/** A listed project, or one only in a cloud location (cloudOnly), shown greyed out */
-type Row = ProjectMeta & { cloudOnly?: CloudOnlyProject };
-
-/**
- * In place of the path once the project is in a sync app's folder: “Synology Drive · Spectrum/Thesis”; one in a cloud
- * location from the location, as the ones only there are: “OneDrive · Thesis”
- */
-const whereText = (p: Row) => {
-  const place = p.cloudOnly || (p.cloud?.mode === 'move' ? p.cloud : p.place);
-  return place ? `${place.label} · ${place.rel}` : tildify(p.path);
-};
-
-// what to check when a sync app's folder isn't on this computer
-const SIGNED_IN: Record<SyncPlace['provider'], string> = {
-  synology: 'is Drive Client installed and signed in?',
-  onedrive: 'is OneDrive installed and signed in?',
-  dropbox: 'is Dropbox installed and signed in?',
-  google: 'is Google Drive installed and signed in?',
-  icloud: 'is iCloud Drive turned on?'
-};
-
-/**
- * Why a project can't open here, for the list and (shorter) for a card. A sync app can't say whether a folder is
- * still on its way or was moved or binned on the other computer, so the words cover both.
- */
-function absence(p: Row): [string, string] {
-  if (p.place?.here) return [`On ${p.place.label} – not on this computer yet`, 'Not on this computer yet'];
-  if (p.place) return [`${p.place.label} folder not found – ${SIGNED_IN[p.place.provider]}`, `${p.place.label} not found`];
-  return ['Folder missing', 'Folder missing'];
-}
-
-// how a mirrored project's syncing stands, for its badge
-const MIRROR_TEXT: Record<MirrorStatus['state'], (label: string) => string> = {
-  synced: () => 'Synced',
-  syncing: () => 'Syncing…',
-  waiting: (label) => `Waiting for ${label}`,
-  attention: () => 'Needs attention',
-  missing: () => 'Folder missing',
-  'not-found': (label) => `Not in ${label}`
-};
-
-/**
- * The badge by a project's name, [long, short] as absence() gives: why it can't open here, or how a cloud project
- * stands. A moved one is the sync app's to keep in step, so its badge only says where it is.
- */
-function badgeOf(p: Row): { icon?: string; text: [string, string]; warning: boolean } | null {
-  if (p.cloudOnly) return { icon: 'arrow.down.circle', text: [`In ${p.cloudOnly.label}, not on this computer`, 'Not on this computer'], warning: false };
-  if (p.missing) return { text: absence(p), warning: true };
-  if (!p.cloud) return null;
-  const state = p.cloud.status?.state;
-  const text = state ? MIRROR_TEXT[state](p.cloud.label) : p.cloud.label;
-  const warning = state === 'attention' || state === 'missing' || state === 'not-found';
-  return { icon: warning ? 'exclamationmark.triangle' : 'cloud', text: [text, text], warning };
-}
+/** The badge by a project's name, [long, short]: its folder can't be found. */
+const badgeOf = (p: ProjectMeta): { text: [string, string]; warning: boolean } | null => (p.missing ? { text: ['Folder missing', 'Folder missing'], warning: true } : null);
 
 // a project card or row on its way to a folder in the sidebar
 const DRAG_TYPE = 'application/x-spectrum-project';
@@ -194,10 +146,9 @@ type SheetState =
   | { kind: 'arxiv' }
   | { kind: 'tags'; id: string }
   | { kind: 'folder'; id: string }
-  | { kind: 'stopSyncing'; id: string }
   | { kind: 'transfer'; id: string }
   | { kind: 'saveTemplate'; id: string }
-  | { kind: 'settings' }
+  | { kind: 'settings'; section?: SettingsSection }
   | null;
 
 type ActiveJob = TransferJob & { sourceName: string };
@@ -208,10 +159,8 @@ export default function ProjectPage() {
   const navigate = useNavigate();
   const [settings, update] = useSettings();
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
-  /** projects in the cloud locations that this computer doesn't have */
-  const [cloudOnly, setCloudOnly] = useState<CloudOnlyProject[]>([]);
-  const [skipped, setSkipped] = useState<SkippedFolder[]>([]);
-  const [locations, setLocations] = useState<CloudLocation[]>([]);
+  /** what the move to 2.0 did with the projects that synced through a cloud location, until dismissed */
+  const [notice, setNotice] = useState<MigrationNotice | null>(null);
   /** the templates with a working copy open, which the gallery offers to go on editing */
   const [drafts, setDrafts] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -219,7 +168,11 @@ export default function ProjectPage() {
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
   const [categories, setCategories] = useState<TemplateCategory[]>([]);
   const [defaultDir, setDefaultDir] = useState('');
-  const [view, setView] = useState('all'); // 'all' | 'cloud' | 'archived' | 'tag:<name>' | 'folder:<id>'
+  const [view, setView] = useState('all'); // 'all' | 'github' | 'archived' | 'tag:<name>' | 'folder:<id>'
+  /** linked projects whose last backup, pull or sync didn't go through, for “Not backed up since …” */
+  const [problems, setProblems] = useState<Record<string, GitHubProblem>>({});
+  // Settings closed: a sign-in or sign-out there shows in the GitHub view and the badges
+  const [settingsClosed, setSettingsClosed] = useState(0);
   const [query, setQuery] = useState('');
   const [prefs, setPrefs] = useState(loadPrefs);
   const [sheet, setSheet] = useState<SheetState>(null);
@@ -242,16 +195,15 @@ export default function ProjectPage() {
       return next;
     });
 
-  const reload = useCallback(async (scan = false) => {
+  const reload = useCallback(async () => {
     try {
-      const res = await listProjects(scan);
+      const res = await listProjects();
       const all = (res.projects || []).map((p) => ({ ...p, tags: p.tags || [] }));
       // working copies of templates open from the template gallery, not the list
       setProjects(all.filter((p) => !p.templateDraft));
       setDrafts(all.flatMap((p) => p.templateDraft || []));
-      setCloudOnly(res.cloudOnly || []);
-      setSkipped(res.skipped || []);
       setLoadError('');
+      gitHubProblems().then((r) => setProblems(r.problems), () => undefined);
     } catch (err) {
       setLoadError(errorText(err));
     } finally {
@@ -265,30 +217,12 @@ export default function ProjectPage() {
     setCategories(res.categories || []);
   }, []);
 
-  // for Sync to
-  const loadLocations = () => getSyncSettings().then((res) => setLocations(res.folders)).catch(() => undefined);
-
   useEffect(() => {
     reload();
     reloadTemplates().catch((err) => toast(`Couldn’t load templates: ${errorText(err)}`, { tone: 'error' }));
     systemCheck().then((res) => setDefaultDir(res.projectsDir || '')).catch(() => undefined);
-    loadLocations();
+    getMigrationNotice().then((res) => setNotice(res.notice)).catch(() => undefined);
   }, [reload, reloadTemplates]);
-
-  // with cloud locations, projects arriving from another computer and how syncing stands show up when the window comes
-  // to the front, and every 30 s; every 3 s while a project is syncing, so Synced shows when it is
-  const synced = locations.length > 0;
-  const syncing = projects.some((p) => p.cloud?.status?.state === 'syncing');
-  useEffect(() => {
-    if (!synced) return;
-    const onFocus = () => reload(true);
-    const timer = window.setInterval(() => document.visibilityState === 'visible' && reload(), syncing ? 3000 : 30_000);
-    window.addEventListener('focus', onFocus);
-    return () => {
-      window.removeEventListener('focus', onFocus);
-      window.clearInterval(timer);
-    };
-  }, [synced, syncing, reload]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -330,8 +264,8 @@ export default function ProjectPage() {
       const f = folders.placement[p.id];
       if (f) inFolder.set(f, (inFolder.get(f) || 0) + 1);
     }
-    return { all: shown.length, cloud: shown.filter((p) => p.cloud).length + cloudOnly.length, archived: projects.length - shown.length, inFolder };
-  }, [projects, cloudOnly, folders]);
+    return { all: shown.length, archived: projects.length - shown.length, inFolder };
+  }, [projects, folders]);
 
   const visible = useMemo(() => {
     // archived projects stay in Archived, whatever folder they're in
@@ -339,7 +273,7 @@ export default function ProjectPage() {
       ? projects.filter((p) => p.tags.includes(activeTag))
       : view === 'archived'
         ? projects.filter((p) => p.archived)
-        : projects.filter((p) => !p.archived && (view === 'cloud' ? p.cloud : !activeFolder || folders.placement[p.id] === activeFolder.id));
+        : projects.filter((p) => !p.archived && (!activeFolder || folders.placement[p.id] === activeFolder.id));
     const q = query.trim().toLowerCase();
     if (q) {
       list = list.filter(
@@ -359,26 +293,13 @@ export default function ProjectPage() {
     );
   }, [projects, view, activeTag, activeFolder, folders, query, prefs.sortKey, prefs.sortDir, prefs.dateField]);
 
-  // greyed out after the rest of Cloud projects
-  const rows = useMemo((): Row[] => {
-    if (view !== 'cloud') return visible;
-    const q = query.trim().toLowerCase();
-    return [
-      ...visible,
-      ...cloudOnly
-        .filter((c) => !q || c.name.toLowerCase().includes(q))
-        .map((c) => ({ id: c.id, name: c.name, path: '', createdAt: '', updatedAt: c.updatedAt || '', tags: [], archived: false, missing: true, hasThumbnail: false, cloudOnly: c }))
-    ];
-  }, [visible, cloudOnly, view, query]);
-
-  const title = activeTag ?? activeFolder?.name ?? (view === 'cloud' ? 'Cloud projects' : view === 'archived' ? 'Archived' : 'All projects');
+  const title = activeTag ?? activeFolder?.name ?? (view === 'github' ? 'GitHub' : view === 'archived' ? 'Archived' : 'All projects');
   const parentDir = settings.projectsDir || undefined;
 
   // ─── actions ───
 
-  const open = (p: Row) => {
-    if (p.cloudOnly) download(p.cloudOnly);
-    else if (p.missing) locate(p);
+  const open = (p: ProjectMeta) => {
+    if (p.missing) locate(p);
     else navigate(`/editor/${p.id}`);
   };
 
@@ -450,25 +371,19 @@ export default function ProjectPage() {
       toast(p.archived ? `“${p.name}” is back in All projects.` : `Archived “${p.name}”.`);
     }, 'Couldn’t change the project');
 
-  const remove = async (p: Row) => {
+  const remove = async (p: ProjectMeta) => {
     const ok = await confirmDialog({
       title: `Remove “${p.name}” from the list?`,
-      message: p.cloudOnly
-        ? `It stays in ${p.cloudOnly.label}. To use it again, open its folder there with Import › Open existing folder…, and Spectrum works on it in ${p.cloudOnly.label} itself.`
-        : p.missing && p.cloud?.mode === 'mirror'
-          ? `Its copy in ${p.cloud.label} stays, and shows in Cloud projects to download again.`
-          : 'The folder stays where it is on disk. Add it again any time with Import › Open existing folder…',
+      message: 'The folder stays where it is on disk. Add it again any time with Import › Open existing folder…',
       confirmLabel: 'Remove'
     });
-    if (ok) await attempt(() => (p.cloudOnly ? hideProject(p.id) : removeProject(p.id)), 'Couldn’t remove the project');
+    if (ok) await attempt(() => removeProject(p.id), 'Couldn’t remove the project');
   };
 
   const moveToBin = async (p: ProjectMeta) => {
     const ok = await confirmDialog({
       title: `Move “${p.name}” to the ${BIN}?`,
-      message: `The project folder and everything in it will be moved to the ${BIN}:\n${tildify(p.path)}${
-        p.cloud?.mode === 'move' ? `\nIt’s in ${p.cloud.label}, so it goes from your other computers too.` : ''
-      }`,
+      message: `The project folder and everything in it will be moved to the ${BIN}:\n${tildify(p.path)}`,
       confirmLabel: `Move to ${BIN}`,
       destructive: true
     });
@@ -479,7 +394,7 @@ export default function ProjectPage() {
     }, `Couldn’t move the project to the ${BIN}`);
   };
 
-  const locate = async (p: Row) => {
+  const locate = async (p: ProjectMeta) => {
     const path = await pickFolder({ title: `Locate the folder for “${p.name}”` });
     if (!path) return;
     await attempt(async () => {
@@ -490,48 +405,64 @@ export default function ProjectPage() {
 
   const reveal = (p: ProjectMeta) => revealProject(p.id).catch((err) => toast(errorText(err), { tone: 'error' }));
 
-  // ─── cloud projects ───
+  // ─── the move to 2.0 ───
 
-  /** A location's name, with its folder's when another in the same sync app has that name too */
-  const locationName = (l: CloudLocation) =>
-    locations.filter((m) => m.label === l.label).length > 1 ? `${l.label} · ${l.path.split(/[\\/]/).pop()}` : l.label || l.path;
-
-  const syncTo = (p: ProjectMeta, l: CloudLocation) => {
-    const name = locationName(l);
-    return attempt(async () => {
-      const move = settings.cloudMode === 'move';
-      toast(`${move ? 'Moving' : 'Syncing'} “${p.name}” to ${name}…`);
-      const { warning } = await syncProjectTo(p.id, { location: l.path, mode: settings.cloudMode });
-      toast(warning || (move ? `Moved “${p.name}” to ${name}.` : `“${p.name}” now syncs with ${name}.`), { tone: warning ? 'error' : 'success' });
-    }, `Couldn’t sync the project to ${name}`);
-  };
-
-  const download = (c: CloudOnlyProject) =>
-    attempt(async () => {
-      toast(settings.cloudMode === 'move' ? `Adding “${c.name}” from ${c.label}…` : `Downloading “${c.name}” from ${c.label}…`);
-      const { project } = await downloadCloudProject({ location: c.location, rel: c.rel, id: c.id, mode: settings.cloudMode, parentDir });
-      // used where it is (Move, or a default folder in a sync app's folder): nothing came down
-      toast(project?.cloud?.mode === 'move' ? `“${c.name}” is in your list, used in ${c.label}.` : `“${c.name}” is on this computer now.`, { tone: 'success' });
-    }, 'Couldn’t download the project');
-
-  const syncNow = (p: ProjectMeta, deleting?: string[]) => {
-    setProjects((prev) => prev.map((q) => (q.id === p.id && q.cloud ? { ...q, cloud: { ...q.cloud, status: { state: 'syncing' } } } : q)));
-    return attempt(() => syncCloudProject(p.id, deleting), 'Couldn’t sync the project');
-  };
-
-  // past the stop for a sync that would delete many files
-  const syncAnyway = async (p: ProjectMeta) => {
+  /** A project 1.10 used in its sync app's folder, copied into the projects folder and listed there. */
+  const moveHere = async (p: { id: string; name: string; label: string }) => {
     const ok = await confirmDialog({
-      title: `Sync “${p.name}” anyway?`,
-      message: p.cloud?.status?.message,
-      confirmLabel: 'Sync anyway',
-      destructive: true
+      title: `Move “${p.name}” to this computer?`,
+      message: `Spectrum copies it into ${tildify(settings.projectsDir || defaultDir) || 'your projects folder'} and works on that copy from then on. Its folder in ${p.label} stays as it is, for a computer still on Spectrum 1.10.`,
+      confirmLabel: 'Move to this computer'
     });
-    // the deletions the dialog showed, not whatever a pass since has held back
-    if (ok) await syncNow(p, p.cloud?.status?.deleting);
+    if (!ok) return;
+    await attempt(async () => {
+      const { project } = await moveProjectHere(p.id, parentDir);
+      toast(`“${project.name}” is on this computer now.`, { tone: 'success' });
+      setNotice((prev) => prev && { ...prev, inPlace: prev.inPlace.filter((q) => q.id !== p.id) });
+    }, 'Couldn’t move the project');
   };
 
-  const revealCloud = (p: ProjectMeta) => revealCloudCopy(p.id).catch((err) => toast(errorText(err), { tone: 'error' }));
+  const dismissNotice = () => {
+    setNotice(null);
+    dismissMigrationNotice().catch(() => undefined);
+  };
+
+  // ─── GitHub ───
+
+  /**
+   * Sync with GitHub: a linked project syncs; one GitHub has from the other computer links, after its preview; any
+   * other is backed up to a new private repository, after a yes. One in a sync app's folder is offered the move first.
+   */
+  const syncGitHub = (p: ProjectMeta) =>
+    attempt(async () => {
+      const s = await getProjectGitHub(p.id);
+      if (!s.signedIn) {
+        setSheet({ kind: 'settings', section: 'github' });
+        return;
+      }
+      if (s.refusal) throw new Error(s.refusal);
+      try {
+        if (s.linked) {
+          const result = await withDeletionCheck((allowDeletions) => syncWithGitHub(p.id, allowDeletions));
+          if (result) toast(`Synced “${p.name}”. ${pullSummary(result)}`, { tone: 'success' });
+        } else if (s.link) {
+          const result = await linkWithPreview(p.id, p.name);
+          if (result) toast(`Linked “${p.name}”. ${pullSummary(result)}`, { tone: 'success' });
+        } else {
+          const ok = await confirmDialog({
+            title: `Back up “${p.name}” to GitHub?`,
+            message: 'Spectrum makes a private repository for it on your GitHub and keeps it up to date from then on, so your other computers can get it.',
+            confirmLabel: 'Back up'
+          });
+          if (!ok) return;
+          const res = await backUpToGitHub(p.id);
+          toast(res.left?.length ? `Backed up “${p.name}”, leaving out ${res.left.join('; ')}.` : `Backed up “${p.name}” to GitHub.`, { tone: res.left?.length ? 'error' : 'success' });
+        }
+      } catch (err) {
+        if (await offerMove(err, p.id, parentDir)) toast(`Moved “${p.name}” to this computer. Choose Sync with GitHub again to back it up.`, { tone: 'success' });
+        else throw err;
+      }
+    }, 'Couldn’t sync with GitHub');
 
   // ─── folders ───
 
@@ -595,62 +526,29 @@ export default function ProjectPage() {
     }
   };
 
-  // Sync to, a heading over the cloud locations as menus here have no submenus; the rest once it's a cloud project
-  const cloudMenu = (p: ProjectMeta): MenuItems => {
-    if (p.cloud) {
-      const mirrored = p.cloud.mode === 'mirror';
-      return [
-        { separator: true },
-        mirrored && { label: 'Sync now', icon: 'arrow.clockwise', onSelect: () => syncNow(p) },
-        p.cloud.status?.brake && { label: 'Sync anyway…', icon: 'exclamationmark.triangle', onSelect: () => syncAnyway(p) },
-        { label: 'Stop syncing…', icon: 'xmark', onSelect: () => setSheet({ kind: 'stopSyncing', id: p.id }) },
-        IS_DESKTOP && mirrored && { label: `Show cloud copy in ${FILE_MANAGER}`, icon: 'cloud', onSelect: () => revealCloud(p) }
-      ];
-    }
-    if (!locations.length) return [];
-    return [
-      { separator: true },
-      { heading: true, label: 'Sync to' },
-      // not a location in the sync app its folder is in already (Documents backed up to OneDrive, say), which syncs it
-      // as it is; another app's is a copy like any other
-      ...locations.map((l) => ({
-        label: locationName(l),
-        icon: 'cloud',
-        disabled: !l.found || (!!p.place && p.place.provider === l.place?.provider),
-        onSelect: () => syncTo(p, l)
-      }))
-    ];
-  };
-
-  const menuFor = (p: Row): MenuItems =>
-    p.cloudOnly
+  const menuFor = (p: ProjectMeta): MenuItems =>
+    p.missing
       ? [
-          { label: 'Download', icon: 'arrow.down.circle', onSelect: () => open(p) },
+          { label: 'Locate…', icon: 'folder.badge.questionmark', onSelect: () => locate(p) },
           { separator: true },
           { label: 'Remove from list', icon: 'minus.circle', onSelect: () => remove(p) }
         ]
-      : p.missing
-        ? [
-            { label: 'Locate…', icon: 'folder.badge.questionmark', onSelect: () => locate(p) },
-            { separator: true },
-            { label: 'Remove from list', icon: 'minus.circle', onSelect: () => remove(p) }
-          ]
-        : [
-            { label: 'Open', icon: 'doc.text', onSelect: () => open(p) },
-            { separator: true },
-            { label: 'Rename…', icon: 'pencil', onSelect: () => rename(p) },
-            { label: 'Duplicate', icon: 'plus.square.on.square', onSelect: () => duplicate(p) },
-            { label: 'Tags…', icon: 'tag', onSelect: () => setSheet({ kind: 'tags', id: p.id }) },
-            { label: 'Move to folder…', icon: 'tray.and.arrow.down', onSelect: () => setSheet({ kind: 'folder', id: p.id }) },
-            { label: 'Change template…', icon: 'arrow.triangle.2.circlepath', onSelect: () => setSheet({ kind: 'transfer', id: p.id }) },
-            { label: 'Save as template…', icon: 'square.and.arrow.down', onSelect: () => setSheet({ kind: 'saveTemplate', id: p.id }) },
-            IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => reveal(p) },
-            ...cloudMenu(p),
-            { separator: true },
-            { label: p.archived ? 'Unarchive' : 'Archive', icon: 'archivebox', onSelect: () => toggleArchive(p) },
-            { label: 'Remove from list', icon: 'minus.circle', onSelect: () => remove(p) },
-            { label: `Move to ${BIN}…`, icon: 'trash', destructive: true, onSelect: () => moveToBin(p) }
-          ];
+      : [
+          { label: 'Open', icon: 'doc.text', onSelect: () => open(p) },
+          { separator: true },
+          { label: 'Rename…', icon: 'pencil', onSelect: () => rename(p) },
+          { label: 'Duplicate', icon: 'plus.square.on.square', onSelect: () => duplicate(p) },
+          { label: 'Tags…', icon: 'tag', onSelect: () => setSheet({ kind: 'tags', id: p.id }) },
+          { label: 'Move to folder…', icon: 'tray.and.arrow.down', onSelect: () => setSheet({ kind: 'folder', id: p.id }) },
+          { label: 'Change template…', icon: 'arrow.triangle.2.circlepath', onSelect: () => setSheet({ kind: 'transfer', id: p.id }) },
+          { label: 'Save as template…', icon: 'square.and.arrow.down', onSelect: () => setSheet({ kind: 'saveTemplate', id: p.id }) },
+          IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => reveal(p) },
+          { label: 'Sync with GitHub', icon: 'arrow.triangle.2.circlepath', onSelect: () => syncGitHub(p) },
+          { separator: true },
+          { label: p.archived ? 'Unarchive' : 'Archive', icon: 'archivebox', onSelect: () => toggleArchive(p) },
+          { label: 'Remove from list', icon: 'minus.circle', onSelect: () => remove(p) },
+          { label: `Move to ${BIN}…`, icon: 'trash', destructive: true, onSelect: () => moveToBin(p) }
+        ];
 
   const folderMenu = (f: ProjectFolder | null): MenuItems => [
     { label: 'New folder…', icon: 'folder.badge.plus', onSelect: () => newFolder(f?.id ?? null) },
@@ -674,10 +572,10 @@ export default function ProjectPage() {
     }
   });
 
-  const rowProps = (p: Row) => ({
+  const rowProps = (p: ProjectMeta) => ({
     tabIndex: 0,
     // onto a folder in the sidebar, as the file tree drags files
-    draggable: !p.cloudOnly,
+    draggable: true,
     onDoubleClick: () => open(p),
     onKeyDown: (e: ReactKeyboardEvent) => {
       if (e.key === 'Enter' && e.target === e.currentTarget) open(p);
@@ -742,34 +640,25 @@ export default function ProjectPage() {
       );
     });
 
-  /** The badge after a project's name (short on a card); one that needs attention says what, with Sync anyway past the brake. */
-  const badge = (p: Row, card = false) => {
-    const b = badgeOf(p);
-    if (!b) return null;
-    const className = `badge ${b.warning ? 'warning' : ''} ${card ? 'card-badge' : ''}`;
-    const content = (
-      <>
-        {b.icon && <Icon name={b.icon} />}
-        {b.text[card ? 1 : 0]}
-      </>
-    );
-    if (p.cloud?.status?.brake && !p.missing) {
+  /** The badge after a project's name (short on a card); a linked one GitHub hasn't had its latest from says since when. */
+  const badge = (p: ProjectMeta, card = false) => {
+    const problem = problems[p.id];
+    if (problem && !p.missing) {
+      const since = problem.lastBackup ? `Not backed up since ${timeAgo(problem.lastBackup).toLowerCase()}` : 'Not backed up yet';
       return (
-        <button
-          className={className}
-          title={p.cloud.status.message}
-          aria-label={`${b.text[0]}: Sync anyway…`}
-          onClick={(e) => {
-            e.stopPropagation();
-            syncAnyway(p);
-          }}
-          onDoubleClick={(e) => e.stopPropagation()}
-        >
-          {content}
-        </button>
+        <span className={`badge ${problem.state === 'attention' ? 'warning' : ''} ${card ? 'card-badge' : ''}`} title={problem.message}>
+          <Icon name={problem.state === 'attention' ? 'exclamationmark.triangle' : 'clock'} />
+          {card ? 'Not backed up' : since}
+        </span>
       );
     }
-    return <span className={className} title={(!p.missing && p.cloud?.status?.message) || (card ? b.text[0] : undefined)}>{content}</span>;
+    const b = badgeOf(p);
+    if (!b) return null;
+    return (
+      <span className={`badge ${b.warning ? 'warning' : ''} ${card ? 'card-badge' : ''}`} title={card ? b.text[0] : undefined}>
+        {b.text[card ? 1 : 0]}
+      </span>
+    );
   };
 
   const tagChips = (p: ProjectMeta) =>
@@ -835,19 +724,6 @@ export default function ProjectPage() {
         </div>
       );
     }
-    if (view === 'cloud') {
-      return (
-        <div className="empty-state">
-          <Icon name="cloud" size={36} />
-          <div className="empty-title">No cloud projects</div>
-          <div className="empty-text">
-            {locations.length
-              ? 'Choose Sync to from a project’s ··· menu to keep it in a cloud location, where your other computers find it.'
-              : 'Add a cloud location in Settings › Projects, then choose Sync to from a project’s ··· menu.'}
-          </div>
-        </div>
-      );
-    }
     if (activeFolder) {
       return (
         <div className="empty-state">
@@ -893,10 +769,9 @@ export default function ProjectPage() {
               <span className="nav-count">{counts.all}</span>
             </button>
             {folderRows(null, 0)}
-            <button className={`nav-row ${view === 'cloud' ? 'active' : ''}`} onClick={() => setView('cloud')}>
-              <Icon name="cloud" />
-              <span className="nav-label">Cloud projects</span>
-              <span className="nav-count">{counts.cloud}</span>
+            <button className={`nav-row ${view === 'github' ? 'active' : ''}`} onClick={() => setView('github')}>
+              <Icon name="arrow.triangle.branch" />
+              <span className="nav-label">GitHub</span>
             </button>
             <button className={`nav-row ${view === 'archived' ? 'active' : ''}`} onClick={() => setView('archived')}>
               <Icon name="archivebox" />
@@ -1013,8 +888,17 @@ export default function ProjectPage() {
         </header>
 
         <div className="panel-body">
-          {view === 'cloud' && skipped.length > 0 && <SkippedNotice skipped={skipped} />}
-          {rows.length === 0 ? (
+          {view === 'all' && notice && <MoveNotice notice={notice} onMove={moveHere} onDismiss={dismissNotice} />}
+          {view === 'github' ? (
+            <GitHubView
+              key={settingsClosed}
+              query={query}
+              parentDir={parentDir}
+              onOpen={(id) => navigate(`/editor/${id}`)}
+              onChanged={() => reload()}
+              onOpenSettings={() => setSheet({ kind: 'settings', section: 'github' })}
+            />
+          ) : visible.length === 0 ? (
             emptyState()
           ) : prefs.layout === 'list' ? (
             <div className="project-list" role="table" aria-label={title}>
@@ -1032,7 +916,7 @@ export default function ProjectPage() {
                 </span>
                 <span className="col-actions" />
               </div>
-              {rows.map((p) => (
+              {visible.map((p) => (
                 <div key={p.id} role="row" className={`project-row ${p.missing ? 'missing' : ''}`} {...rowProps(p)}>
                   <span className="col-thumb"><Thumb project={p} /></span>
                   <span className="col-name">
@@ -1041,7 +925,7 @@ export default function ProjectPage() {
                       {badge(p)}
                       {p.archived && view !== 'archived' && <span className="badge">Archived</span>}
                     </span>
-                    <span className="project-path" title={p.path || undefined}>{p.cloud?.status?.message || whereText(p)}</span>
+                    <span className="project-path" title={p.path}>{tildify(p.path)}</span>
                   </span>
                   <span className="col-tags">{tagChips(p)}</span>
                   <span className="col-date" title={formatFull(p[prefs.dateField])}>{timeAgo(p[prefs.dateField])}</span>
@@ -1053,7 +937,7 @@ export default function ProjectPage() {
             </div>
           ) : (
             <div className="project-grid">
-              {rows.map((p) => (
+              {visible.map((p) => (
                 <div key={p.id} className={`project-card ${p.missing ? 'missing' : ''}`} {...rowProps(p)}>
                   <div className="card-thumb">
                     <Thumb project={p} />
@@ -1064,7 +948,7 @@ export default function ProjectPage() {
                   </div>
                   <div className="card-name" title={p.name}>{p.name}</div>
                   <div className="card-meta" title={formatFull(p[prefs.dateField])}>
-                    {p.cloudOnly ? whereText(p) : `${dateLabel} ${timeAgo(p[prefs.dateField]).replace(/^Just now$/, 'just now')}`}
+                    {`${dateLabel} ${timeAgo(p[prefs.dateField]).replace(/^Just now$/, 'just now')}`}
                   </div>
                   {p.tags.length > 0 && <div className="card-tags">{tagChips(p)}</div>}
                 </div>
@@ -1154,19 +1038,6 @@ export default function ProjectPage() {
         />
       )}
 
-      {sheet?.kind === 'stopSyncing' && sheetProject?.cloud && (
-        <StopSyncingSheet
-          project={sheetProject}
-          cloud={sheetProject.cloud}
-          defaultDir={settings.projectsDir || defaultDir}
-          onClose={() => setSheet(null)}
-          onStopped={() => {
-            setSheet(null);
-            reload();
-          }}
-        />
-      )}
-
       {sheet?.kind === 'transfer' && sheetProject && (
         <Sheet title={`Change template · ${sheetProject.name}`} width={640} onClose={() => setSheet(null)}>
           <TransferPanel
@@ -1184,11 +1055,11 @@ export default function ProjectPage() {
 
       {sheet?.kind === 'settings' && (
         <SettingsSheet
+          section={sheet.section}
           onClose={() => {
             setSheet(null);
-            // the cloud locations may have changed
-            reload(true);
-            loadLocations();
+            setSettingsClosed((n) => n + 1);
+            reload();
           }}
         />
       )}
@@ -1693,23 +1564,51 @@ function ArxivSheet({
   );
 }
 
-/** Folders a sync app brought here without their hidden project file, so they can't be listed. */
-function SkippedNotice({ skipped }: { skipped: SkippedFolder[] }) {
-  const labels = [...new Set(skipped.map((s) => s.label))].join(' and ');
-  const names = skipped.map((s) => `“${s.rel}”`);
-  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
+const listOf = (names: string[]) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0] || '');
+
+/**
+ * Once, after the move to 2.0: the projects that synced through a cloud location are ordinary projects here now, their
+ * copies there left as they are, with what a copy has that this computer never received; the ones used in a sync
+ * app's folder can move to this computer.
+ */
+function MoveNotice({ notice, onMove, onDismiss }: { notice: MigrationNotice; onMove: (p: MigrationNotice['inPlace'][number]) => void; onDismiss: () => void }) {
+  const labels = listOf([...new Set([...notice.mirrored, ...notice.inPlace].map((p) => p.label))]);
+  const names = listOf(notice.mirrored.map((p) => `“${p.name}”`));
+  const reveal = (id: string) => revealCloudCopy(id).catch((err) => toast(errorText(err), { tone: 'error' }));
+  const behind = notice.mirrored.filter((p) => p.missing || p.unchecked || p.changed?.length || p.deleted?.length);
   return (
-    <div className="skipped-notice" role="status">
-      <Icon name="exclamationmark.triangle" />
-      <div>
-        <div className="skipped-title">
-          {skipped.length > 1 ? `${skipped.length} folders` : 'A folder'} in {labels} can’t be shown as {skipped.length > 1 ? 'projects' : 'a project'}
-        </div>
-        <div className="skipped-text">
-          {list} {skipped.length > 1 ? 'have' : 'has'} LaTeX files but no Spectrum project file. {labels} on this computer is probably leaving out
-          folders whose names start with a dot, such as .spectrum. Allow them in the sync task’s rules (in Synology Drive, remove the “.” prefix
-          rule), and the projects will appear here with Download. Don’t open these folders as new projects: they would get a new identity and stop
-          syncing with your other computer.
+    <div className="move-notice" role="status">
+      <Icon name="info.circle" />
+      <div className="move-notice-body">
+        <div className="move-notice-title">Spectrum 2.0 syncs through GitHub instead of {labels}</div>
+        {names && (
+          <div className="move-notice-text">
+            {names} {notice.mirrored.length > 1 ? 'are' : 'is'} now {notice.mirrored.length > 1 ? 'ordinary projects' : 'an ordinary project'} on this computer. {notice.mirrored.length > 1 ? 'Their copies' : 'Its copy'} in {labels} {notice.mirrored.length > 1 ? 'are' : 'is'} left as {notice.mirrored.length > 1 ? 'they are' : 'it is'} and no longer updated. Update your other computer to 2.0 too, as 1.10 there keeps changing its copy. Then use Sync with GitHub here, and Link or Get from GitHub there.
+          </div>
+        )}
+        {behind.map((p) => {
+          const files = [...(p.changed || []), ...(p.deleted || []).map((rel) => `${rel} (deleted there)`)];
+          return (
+            <div key={p.id} className="move-notice-row">
+              <span className="grow">
+                {p.missing
+                  ? `The copy of “${p.name}” isn’t in ${p.label} any more.`
+                  : p.unchecked
+                    ? `Spectrum couldn’t look through the copy of “${p.name}” in ${p.label}, so check it for changes this computer doesn’t have.`
+                    : `The copy of “${p.name}” in ${p.label} has changes this computer never received: ${listOf([...files.slice(0, 5), ...(files.length > 5 ? [`${files.length - 5} more`] : [])])}. Copy over what you need.`}
+              </span>
+              {IS_DESKTOP && !p.missing && <button className="btn small" onClick={() => reveal(p.id)}>Show in {FILE_MANAGER}</button>}
+            </div>
+          );
+        })}
+        {notice.inPlace.map((p) => (
+          <div key={p.id} className="move-notice-row">
+            <span className="grow">“{p.name}” is still used in its {p.label} folder. That works, but a sync app can damage the project’s GitHub history.</span>
+            <button className="btn small" onClick={() => onMove(p)}>Move to this computer…</button>
+          </div>
+        ))}
+        <div>
+          <button className="btn small primary" onClick={onDismiss}>OK</button>
         </div>
       </div>
     </div>
@@ -1831,83 +1730,6 @@ function MoveToFolderSheet({
         {choice(null, 'No folder', 0)}
         {tree(null, 0)}
       </div>
-    </Sheet>
-  );
-}
-
-/** Stop syncing: the project stays on this computer, and the copy in the cloud location stays or is deleted. */
-function StopSyncingSheet({
-  project,
-  cloud,
-  defaultDir,
-  onClose,
-  onStopped
-}: {
-  project: ProjectMeta;
-  cloud: ProjectCloud;
-  /** where a moved project's folder comes back to */
-  defaultDir: string;
-  onClose: () => void;
-  onStopped: () => void;
-}) {
-  // the choice being carried out: whether it deletes the copy
-  const [stopping, setStopping] = useState<boolean | null>(null);
-  // why it couldn't be done (for Delete: another computer has the project open, say), which may clear: tried again
-  const [error, setError] = useState('');
-  // Spectrum can't find its copy there, so there's nothing to keep or delete
-  const gone = cloud.status?.state === 'not-found';
-
-  const stop = async (deleteCloud: boolean) => {
-    setStopping(deleteCloud);
-    setError('');
-    try {
-      const { warning } = await stopSyncing(project.id, deleteCloud, defaultDir || undefined);
-      if (warning) toast(warning, { tone: 'error' });
-      else toast(deleteCloud ? `Deleted “${project.name}” from ${cloud.label}.` : gone ? `“${project.name}” no longer syncs.` : `“${project.name}” no longer syncs. The copy in ${cloud.label} stays.`);
-      onStopped();
-    } catch (err) {
-      setError(errorText(err));
-      setStopping(null);
-    }
-  };
-  const working = (
-    <>
-      <span className="spinner" /> Stopping…
-    </>
-  );
-
-  return (
-    <Sheet
-      title={`Stop syncing “${project.name}”?`}
-      width={520}
-      onClose={onClose}
-      actions={
-        <>
-          <button className="btn" onClick={onClose}>Cancel</button>
-          {!gone && (
-            <button className="btn destructive" disabled={stopping !== null} onClick={() => stop(true)}>
-              {stopping === true ? working : `Delete it from ${cloud.label}`}
-            </button>
-          )}
-          <button className="btn primary" disabled={stopping !== null} onClick={() => stop(false)}>
-            {stopping === false ? working : gone ? 'Stop syncing' : `Keep the copy in ${cloud.label}`}
-          </button>
-        </>
-      }
-    >
-      <div className="field-hint">
-        {gone ? (
-          `Spectrum can’t find its copy in ${cloud.label}. The project stays on this computer as it is.`
-        ) : (
-          <>
-            {cloud.mode === 'move'
-              ? `Spectrum copies it back to ${defaultDir ? tildify(defaultDir) : 'the default projects folder'} on this computer.`
-              : 'It stays on this computer as it is.'}{' '}
-            Keep the copy in {cloud.label} for your other computers, or delete it there.
-          </>
-        )}
-      </div>
-      {error && <div className="field-hint error">{error}</div>}
     </Sheet>
   );
 }

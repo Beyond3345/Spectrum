@@ -39,7 +39,7 @@ async function discardTarget(job) {
   job.discarded = true;
   try {
     const root = await getProjectRoot(id);
-    // moved since (Sync to): not this job's own folder any more
+    // moved since (Move to this computer): not this job's own folder any more
     if (root !== job.root) return;
     await unregister(id);
     await fs.rm(root, { recursive: true, force: true });

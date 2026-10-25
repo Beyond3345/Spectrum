@@ -27,14 +27,17 @@ import { registerSystemRoutes } from './routes/system.js';
 import { registerReferenceRoutes } from './routes/references.js';
 import { registerLanguageRoutes } from './routes/language.js';
 import { registerSyncRoutes } from './routes/sync.js';
-import { registerCloudRoutes } from './routes/cloud.js';
 import { registerPresenceRoutes } from './routes/presence.js';
 import { registerTexlabRoutes } from './routes/texlab.js';
 import { stopTexlab } from './services/texlabService.js';
 import { registerReviewRoutes } from './routes/review.js';
+import { registerGitHubRoutes } from './routes/github.js';
+import { commitWaiting, resumeBackups, startRetries } from './services/githubService.js';
+import { startSettingsRepo } from './services/settingsRepoService.js';
+import { registerZoteroRoutes } from './routes/zotero.js';
 import { seedTemplates, syncTemplates } from './services/templateService.js';
 import { dropOldAuxFolders, migrateLegacyProjects } from './services/projectService.js';
-import { startMirroring, stopMirroring } from './services/mirrorService.js';
+import { migrateToV2 } from './services/mirrorService.js';
 import { killAllChildren } from './services/compileService.js';
 import { offlineMessage } from './services/syncService.js';
 import { isLocalRequest } from './utils/authUtils.js';
@@ -98,10 +101,11 @@ registerSystemRoutes(fastify);
 registerReferenceRoutes(fastify);
 registerLanguageRoutes(fastify);
 registerSyncRoutes(fastify);
-registerCloudRoutes(fastify);
 registerPresenceRoutes(fastify);
 registerTexlabRoutes(fastify);
 registerReviewRoutes(fastify);
+registerGitHubRoutes(fastify);
+registerZoteroRoutes(fastify);
 
 // Serve the built frontend (production and desktop modes)
 if (existsSync(FRONTEND_DIST)) {
@@ -128,8 +132,13 @@ await seedTemplates();
 syncTemplates().catch((err) => fastify.log.error(err));
 await migrateLegacyProjects();
 await dropOldAuxFolders();
-// mirrored projects: a pass for each now, then every minute
-startMirroring();
+// once: what became of the cloud projects 1.10 synced, for the projects page; their copies may be slow to look through
+migrateToV2().catch((err) => fastify.log.error(err));
+// linked projects: what an earlier quit only committed goes to GitHub, and what waits for the connection is retried
+resumeBackups().catch((err) => fastify.log.error(err));
+startRetries();
+// the settings repository, pulled now, then pushed after each change
+startSettingsRepo();
 
 // Stop compiles, plots and TexLab (they run in their own process groups, so nothing else would), let
 // in-flight requests such as a file save finish for up to 2 s, then exit.
@@ -137,7 +146,8 @@ let quitting = false;
 async function quit() {
   if (quitting) return;
   quitting = true;
-  stopMirroring();
+  // the backups still waiting are committed, and pushed at the next start
+  await Promise.race([commitWaiting(), new Promise((resolve) => setTimeout(resolve, 3000))]);
   await shutdownAgents();
   await stopTexlab();
   killAllChildren();

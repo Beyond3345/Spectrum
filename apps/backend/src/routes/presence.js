@@ -1,7 +1,6 @@
 import { promises as fs } from 'fs';
-import { appPath, getProjectRoot, httpError, touchProject } from '../services/projectService.js';
-import { cloudRootOf, readMirror } from '../services/mirrorService.js';
-import { knownMachineNames, markClosed, markOpen, sharedSettings, shareSettings } from '../services/presenceService.js';
+import { getProjectRoot, httpError, touchProject } from '../services/projectService.js';
+import { knownMachineNames, sharedSettings, shareSettings } from '../services/presenceService.js';
 import { listFilesRecursive, renameOver } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { conflictCopies } from '../utils/conflictCopies.js';
@@ -17,26 +16,7 @@ async function conflictCopy(req) {
   return { root, abs: safeJoin(root, copy), original, originalAbs: safeJoin(root, original) };
 }
 
-/**
- * Where the project's presence goes: a mirrored project's into its cloud copy once that's there (the mirror passes
- * .spectrum/open by), where the other computers look, whether they mirror it or work on it in place.
- */
-async function presenceRoot(id) {
-  const mirror = await readMirror(id);
-  const cloud = mirror && cloudRootOf(mirror);
-  if (cloud && (await fs.access(appPath(cloud, 'project.json')).then(() => true, () => false))) return cloud;
-  return getProjectRoot(id);
-}
-
 export function registerPresenceRoutes(fastify) {
-  // the open editor says so every 2 minutes, and hears which other computers have the project open
-  fastify.post('/api/projects/:id/presence', async (req) => ({ ok: true, others: await markOpen(await presenceRoot(req.params.id)) }));
-
-  fastify.delete('/api/projects/:id/presence', async (req) => {
-    await markClosed(await presenceRoot(req.params.id));
-    return { ok: true };
-  });
-
   // the copy takes the original's place (the editor saved a version first)
   fastify.post('/api/projects/:id/conflict-copy/use', async (req) => {
     const { root, abs, original, originalAbs } = await conflictCopy(req);

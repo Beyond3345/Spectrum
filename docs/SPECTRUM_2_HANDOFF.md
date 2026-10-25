@@ -6,15 +6,94 @@ Updated 25 October 2026. Development work only: no installer, tag, push or relea
 
 Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum`. Read [SPECTRUM_2_PLAN.md](SPECTRUM_2_PLAN.md), especially its ground rules and Delivery section, before starting the next phase.
 
-Phase 3 (TexLab with the syntax check before compiling, Review and Research) was built on `build/p3-texlab`, `build/p3-review` and `build/p3-research`, branched from `feat/2.0` at `49ea758`, and integrated on **`build/p3-integrate`** (see Phase 3 below). Next:
+Phase 4 (Zotero, GitHub sync with the settings repository, and the cloud sync's removal with its migration) was built on `build/p4-zotero`, `build/p4-github` and `build/p4-cloud`, branched from `feat/2.0` at `a5a4a08`, and integrated on **`build/p4-integrate`** (see Phase 4 below). Next:
 
-1. Merge `build/p3-integrate` into `feat/2.0` (no fast-forward, like the earlier phases) and give phase 3 its adversarial review rounds.
-2. Run the Windows checks listed under Phase 3 limits and open items, and phase 2's, on the Windows build machine.
-3. Start phase 4 (Zotero, GitHub sync and the cloud removal) on branches from the new `feat/2.0`.
+1. Merge `build/p4-integrate` into `feat/2.0` (no fast-forward, like the earlier phases) and give phase 4 its adversarial review rounds.
+2. Register the Spectrum OAuth app on GitHub (the steps are under Phase 4 below) so the one-click sign-in can be switched on.
+3. Run one check against the real Zotero 10.0.6 with Better BibTeX and against real GitHub, on a test project and a test repository, as listed under Phase 4 limits and open items. Both were only ever run against stand-ins.
+4. Run the Windows checks listed under Phase 4, phase 3 and phase 2 limits and open items on the Windows build machine, including Get from GitHub of a 1 GB repository.
+5. Start phase 5 (Tectonic, Typst and Markdown engines) on branches from the new `feat/2.0`.
 
-Phase 2 (the agent workspace, personas and skills, with the to-do list's agent parts) was built and integrated on `build/p2-integrate`, branched from `feat/2.0` at `a82ccde`, and is in `feat/2.0` at `25d0b92`, with its two adversarial review rounds fixed in `feat/2.0` up to `49ea758` (see Phase 2 review fixes and Phase 2 second review fixes below).
+Phase 3 is in `feat/2.0` up to `a5a4a08`, with its first review round's fixes (see Phase 3 below). Phase 2 is in `feat/2.0` at `25d0b92`, with its review rounds fixed up to `49ea758`. Phase 1 and phase 1b are in `feat/2.0` as described under Phase 1 and 1b below. Stop any stale paused builder or reviewer tasks rather than resuming their old edits, and do not cherry-pick the old builder branches: their work is already in `feat/2.0` or `build/p4-integrate`.
 
-Phase 1 and phase 1b are in `feat/2.0` as described under Phase 1 and 1b below. Stop any stale paused builder or reviewer tasks rather than resuming their old edits, and do not cherry-pick the old builder branches: their work is already in `feat/2.0` or `build/p2-integrate`.
+## Phase 4
+
+### What was built
+
+- **Zotero** (`services/zoteroService.js`, `routes/zotero.js`, `editor/ZoteroCite.tsx`, `editor/zotero.ts`):
+  - Every call goes to Zotero's local API at `http://127.0.0.1:23119` (`SPECTRUM_ZOTERO_BASE` points tests at a mock). Zotero is found through `/connector/ping`, the local API through `/api/` and Better BibTeX through its JSON-RPC `api.ready`.
+  - Allow Spectrum in Zotero… in Settings › Zotero sends `POST /api/local/authorize` with the `Zotero-Server-ID` header, brings Zotero forward and shows Answer in Zotero with Cancel. The key is kept in `DATA_DIR/zotero.json` (mode 0600) and never reaches the window. Zotero 7 to 9 only read.
+  - Cite from Zotero (the editor's right-click menu in `.tex` files and the References card) opens Better BibTeX's picker, or Spectrum's own search of the library without it. Entries come from Better BibTeX's `item.export` or the local API's export, under Zotero's citation key, then Better BibTeX's, then Spectrum's AuthorYear key, and go into the `.bib` through the new `appendEntries` under the bib lock with the same duplicate check as `resolveItems`.
+  - `\cite{` completion lists library items three letters into a key, below the project's own keys (setting `zoteroCompletion`, on by default), and Research has a Zotero source.
+  - `syncCollection` keeps a Spectrum › <project> collection in step with the project's `.bib`: library items found by citation key, DOI, arXiv ID or title and year are added to it, entries Zotero lacks are created in it, and entries leave it only after a `.bib` save through the save route that read every `.bib` whole. It runs after an add, 5 seconds after a `.bib` save, on opening and on window focus. The binding `{ projectId, library: 'users/0', collectionKey }` is in `.spectrum/settings.json`, so a Finder copy gets its own collection and a collection this computer's Zotero has not received yet is waited for.
+- **GitHub** (`services/gitService.js`, `services/githubService.js`, `routes/github.js`, `app/GitHubSettings.tsx`, `app/GitHubView.tsx`, `app/github.ts`, `editor/tools/GitHubTab.tsx`):
+  - isomorphic-git 1.43.3 writes through `writeFileAtomic`. A repository is left alone while `.git/index.lock` exists and refused for Git LFS, submodules, a merge or rebase in progress, a detached HEAD or a `.git` file.
+  - Sign-in is a pasted token checked with `GET /user`, or the device flow when `SPECTRUM_GITHUB_CLIENT_ID` is set. The token is in `DATA_DIR/github.json` (mode 0600) and never reaches the window. Commits are made as `<id>+<login>@users.noreply.github.com`.
+  - `.git/info/exclude` is rewritten before each commit: everything in `.spectrum/` except `project.json`, `settings.json`, `chats/`, `todos/`, `notes/` and `research/`, the hidden names, sync apps' conflicted copies and one line per compiled document's PDF. Secret-looking files and files over 100 MB are left out with a notice.
+  - Back up commits and pushes, making a private repository (`private: true`) the first time and recording `{ owner, repo, projectId }` in `.spectrum/settings.json`. A refused push pulls first. Pull is Spectrum's own: fetch outside the lock, then under `mutateProjectFiles` (which chats, to-dos, notes and research sessions now take too) commit, save a Before pull from GitHub checkpoint and merge each file with build/p4-cloud's `mergeRules.js`, writing each file only while it still holds what was committed, then make the two-parent commit and move `main`.
+  - Linked projects pull on opening, back up a minute after the last change and on leaving, and only commit on quit (the push follows at the next start). Problems show as Not backed up since on the cards and in the tab.
+  - Settings › GitHub, Tools › GitHub, the GitHub view in place of Cloud projects (Get from GitHub, Link…) and Sync with GitHub in each project's menu.
+- **Settings repository** (`services/settingsRepoService.js`): a private `spectrum-settings` repository cloned into `DATA_DIR/settings-repo` and handed to `syncService.useSharedDir`, so the existing shared settings (`settings/<machine id>.json`) and templates (`templates/<id>/`) go through it unchanged. Personas are `personas/<id>.json` and own skills `skills/<id>/`, each taken whole from the newer side. It pulls at start-up, every 5 minutes and when the window asks, and pushes within 30 seconds of a change.
+- **Cloud sync removed and the move to 2.0** (`services/mergeRules.js`, `services/mirrorService.js`, `services/syncService.js`, `routes/sync.js`, `ProjectPage.tsx`):
+  - The mirror engine, cloud locations, Sync to, Download, Stop syncing, Sync now, the Cloud projects scan, presence and its banner and the `.spectrum-shared` machine lists are gone. The changed-on-disk prompt, held files, the conflicted-copy banner, merge3, chatMerge and the machine name stay. The machine name moved to `DATA_DIR/computer.json`, seeded once from `sync.json`.
+  - The mirror's merge rules are in `mergeRules.js` for the GitHub pull. `readMirror`, `listMirrored`, `cloudRootOf`, `cloudCopyOwner` and the new `readMirrorBase` only read 1.10's records.
+  - `migrateToV2` runs at start-up and writes `DATA_DIR/v2-migration.json`. The projects page's notice names the mirrored projects, lists the files a cloud copy has that this computer never received (Show in Finder in the app), and offers Move to this computer… for projects used in a sync app's folder (`POST /api/projects/:id/move-here`).
+
+### Integration notes
+
+The parts were joined where the contract drifted:
+
+- The merges conflicted in `index.js` (the routes and timers of all three), `projectService.js` (`touchProject` now starts a linked project's backup where it ran a mirror pass), `syncService.js` (build/p4-cloud's `sharedDir` and `useSharedDir` kept), `ProjectPage.tsx`, `EditorPage.tsx`'s imports and the changelog. In `ProjectPage.tsx` the cloud badges, menus and sheets stayed removed, and the GitHub view row, Sync with GitHub, the Not backed up badge and Settings opening at a section came in beside the move notice.
+- `githubService.js` used build/p4-github's own `placeOfNew`, which build/p4-cloud replaced with an ungated `placeOf`, and read 1.10's base files itself. It now calls `placeOf` and `readMirrorBase`. The client had two `moveProjectHere` functions, and build/p4-cloud's (with `left`) was kept.
+- The settings repository is the transport for `settings.ts`'s `followSharedSettings`, through `useSharedDir`, so the shared settings, `takeInShared` and the templates logic are unchanged. The Use the same settings on each computer hint in Settings › Projects now says it needs the settings repository switched on in Settings › GitHub.
+- Zotero follows reference adds (`resolveItems` and `appendEntries` call `syncSoon`) and `.bib` saves (the save route). The editor's first Zotero sync on opening now waits for the GitHub pull on opening, which may bring the collection the other computer made. Before, a computer opening a linked project could make a second collection before the pull brought the first one's binding.
+- Two faults found in the live check were fixed: the GitHub view kept saying Sign in to GitHub after a sign-in in Settings until the window lost and regained focus (it now loads again when Settings closes, as do the badges), and Tools › GitHub kept showing commits to back up after the idle backup had pushed them (it now asks again every minute and on focus while it shows).
+- build/p4-cloud's `mergeRules.js` reached build/p4-github before the merge, so it merged without a conflict.
+
+### Registering the GitHub OAuth app
+
+The one-click sign-in needs an OAuth app under your GitHub account. It has no client secret, so its client id can ship in Spectrum.
+
+1. Signed in to GitHub as beyond3345, open Settings › Developer settings › OAuth Apps and choose New OAuth App (`https://github.com/settings/applications/new`).
+2. Enter Spectrum as the name and `https://github.com/Beyond3345/Spectrum` as both the homepage URL and the authorisation callback URL. The device flow does not use the callback.
+3. Choose Register application, then tick Enable Device Flow on the app's page and choose Update application.
+4. Copy the Client ID. Do not generate a client secret, as Spectrum never uses one.
+5. To try it, put `SPECTRUM_GITHUB_CLIENT_ID=<client id>` in the `.env` file (the repository's in development, or the one in the app's data folder for the desktop app) and restart Spectrum. Settings › GitHub then shows Sign in with GitHub…. For the release, make the client id the default of `GITHUB_CLIENT_ID` in `apps/backend/src/config/constants.js`, as the desktop app does not pass the environment to the backend.
+
+### Phase 4 verification
+
+| Check | Result |
+| --- | --- |
+| Full backend suite, `node --test "test/*.test.js"`, with TexLab 5.26.0 on the `PATH` | 390 passed, 31 skipped, 0 failed (421 total) |
+| The new suites: `zotero.test.js` (15), `github-merge.test.js` (7), `github.test.js` (13), `settings-repo.test.js` (5), `github-rollback.test.js` (1), `merge-rules.test.js` and `migration.test.js` | Passed |
+| The 1.10.4 round trips: `rollback.test.js` (1.10.4 from `42ff62f` mirrors again with both computers' edits after 2.0 stopped it) and `github-rollback.test.js` (1.10.4 opens and edits a project on GitHub, and 2.0 backs its edit up) | Passed |
+| Frontend, `npm run typecheck` | Passed |
+| Frontend production build, `npm run build` | Passed |
+| Every `apps/frontend/src/**/*.check.ts`, bundled with esbuild and run separately | 33 passed |
+| Native Rust unit tests | 7 passed |
+
+The tests ran in the integrator's worktree with a scratch home and temp folder. The GitHub tests run against git http-backend over scratch bare repositories and a stand-in REST server, and the Zotero tests against a mock Zotero on 127.0.0.1. No real GitHub, Zotero or user data was touched. The skips are the existing opt-in native agent and sandbox tests, the Windows-only tests, moving a project to the Bin and the live arXiv and DOI request.
+
+The live check ran the integrated backend twice, as two computers on 127.0.0.1, each serving the built frontend with its own fake home, data and projects folders, against the tests' stand-in GitHub and a mock Zotero 10.0.6 with Better BibTeX on port 23998. Computer A's data folder was seeded as 1.10.4 leaves it: `sync.json`, a classic Synology Drive task in the fake home with a cloud location, a mirrored Thesis whose cloud copy had since gained an edit and a chapter, and a Grant used in place. It covered:
+
+- **The move to 2.0:** the notice named Thesis and listed `chapters/intro.tex` and `refs.bib`, Move to this computer… copied Grant into the projects folder and dropped it from the notice, and the mirror record, `sync.json` and the cloud copies were left as they were.
+- **GitHub:** a pasted token in Settings › GitHub (with `github.json` at 0600 and the settings repository made), Initialise only, then Back up to GitHub, which made a private repository with the sources, the `.gitignore` and the project's `project.json` and `settings.json` but not the compiled PDF. Computer B signed in, its GitHub view listed the repository as not on this computer and Get from GitHub cloned it with the project's id. An edit on B was backed up a few seconds after it was saved, and Pull on A merged it with A's own edit in another paragraph into a two-parent commit after a Before pull from GitHub checkpoint. Edits on both computers to the same line kept A's text with GitHub's beside it as `main (GitHub’s conflicted copy …).tex`, committed and shown with the editor's Compare, Delete copy and Use this copy banner. Sync with GitHub in Thesis's menu asked first and backed it up.
+- **Zotero:** Settings › Zotero showed Zotero 10.0.6, the local API and Better BibTeX 7.0.30. Allow Spectrum in Zotero… showed Answer in Zotero with Cancel, and Zotero's answer made the collection Spectrum › Paper with the `.bib`'s one entry found by its DOI, its binding in `settings.json` beside the GitHub link. Cite from Zotero put the picker's `\parencite[p.~4]{…}` at the cursor, added both entries to the `.bib` without their `file` field and added both items to the collection. A `.bib` saved with two hand-typed entries added the library's item found by title and year and created the one Zotero lacked, and saving it without that entry took the item out of the collection and left it in the library. `\cite{Min` listed it again in completion's Zotero section, and picking it put its entry back and its item in the collection.
+- **Settings:** the settings repository received both computers' settings files and the four starter personas, one file each.
+
+### Phase 4 limits and open items
+
+- Real Zotero 10 and Better BibTeX were never contacted. Before relying on collections, check against Zotero 10.0.6 on a test library: the key headers (`Zotero-API-Key` and `Authorization: Bearer` are both sent), the authorise request (`{ name: 'Spectrum' }`) and its reply, the PATCH and POST shapes and when `Zotero-Server-ID` comes. Better BibTeX's export was reported broken on 10.0.3, and a failed export falls back to Zotero's own.
+- Real GitHub was never contacted either. The device flow waits for the OAuth app above.
+- Windows is untested: bringing Zotero forward with PowerShell's AppActivate, isomorphic-git's paths, the settings repository and Get from GitHub of a 1 GB repository.
+- If the user deletes a project's collection in Zotero, the project waits for it for good. Removing `zotero` from `.spectrum/settings.json` starts a new one, and there is no button for that. A collection made on a computer that could not pull (offline) before Zotero sync ran can still be one of two.
+- A collection's first sync runs up to four library searches for each entry it lacks (`ponytail:`). New items come from a small BibTeX field map, and the picker and imports use My Library only.
+- Not built: Link's offer to stop tracking compiled PDFs already in a repository, and SSH remotes (a project whose origin is an SSH address is refused). Ahead and behind come from the last fetch, the GitHub view reads the 100 most recently pushed repositories and a repository whose collaborators cannot be listed counts as shared.
+- A persona or skill changed on both computers goes to whichever synced last. The list and grid switch still shows in the GitHub view, where it does nothing.
+- Locate… on a mirrored project in 2.0 never deletes its mirror record, as nothing may write `DATA_DIR/mirror`, so going back to 1.10.4 after Locate… picked another copy mirrors that copy against the old base, behind 1.10.4's deletion brake (`ponytail:` in the code). The user may decide to allow this one narrow write.
+- The projects page has no per-project Move to this computer. Projects used in place get it from the notice, and Tools › GitHub offers it when Initialise or Link is refused in a sync app's folder.
+- The confirm dialogs fade in, so a screenshot taken straight after opening one can catch it nearly transparent. They worked in the live check.
+- Show in Finder in the notice is desktop only, so the browser check could not use it.
 
 ## Phase 3
 
@@ -430,4 +509,4 @@ Logs from this session are in `/private/tmp/spectrum-2-continuation-backend-all.
 
 ## Standing rules for the next phases
 
-Base new builder branches on the latest `feat/2.0`, not the old `main`. Continue the plan's build and review process, preserving the earlier phases' work and 1.10.4 rollback compatibility. Do not remove cloud sync before its planned migration phase. Do not tag or release 2.0 without the user's explicit instruction.
+Base new builder branches on the latest `feat/2.0`, not the old `main`. Continue the plan's build and review process, preserving the earlier phases' work and 1.10.4 rollback compatibility. The cloud sync is gone since phase 4: keep reading, never writing, 1.10's mirror records, `sync.json` and cloud copies, so going back to 1.10.4 stays safe. Do not tag or release 2.0 without the user's explicit instruction.

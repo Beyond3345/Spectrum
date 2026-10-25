@@ -1,5 +1,5 @@
-// Copying a whole project into or out of a cloud location (Sync to, Download, Move, Stop syncing): checked before
-// anything is written and compared file by file after, so a copy is either whole or not there at all.
+// Copying a whole project out of a sync app's folder (Move to this computer): checked before anything is written and
+// compared file by file after, so a copy is either whole or not there at all.
 import { promises as fs, constants, createReadStream } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -7,7 +7,7 @@ import { httpError } from '../services/projectService.js';
 import { readdirTyped } from './fsUtils.js';
 import { offlineMessage } from '../services/syncService.js';
 
-// this computer's presence in the project, which only it writes
+// 1.10's presence in the project, which each computer writes for itself
 const EXCLUDE = ['.spectrum/open'];
 const META = ['.spectrum', 'project.json'];
 // Explorer, TeX and the Bin's PowerShell call stop at 260 characters, the last one the end of the string

@@ -1,8 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { getSharedSettings, listLiveModels, listProviders, shareSettings } from '../api/client';
+import { getSharedSettings, listLiveModels, listProviders, shareSettings, syncPersonas, syncSettingsRepo } from '../api/client';
 import type {
   BibTool,
-  CloudMode,
   CompileEngine,
   CompileOptions,
   EffortLevel,
@@ -87,6 +86,8 @@ export type AppSettings = {
   referencesApiKey: string;
   referencesModel: string;
   autoInsertCite: boolean;
+  /** \cite{…} completion also lists the Zotero library, after the project's keys (Settings › Zotero; this computer's, as Zotero is) */
+  zoteroCompletion: boolean;
   /** what a project compiles with until it makes its own choice in the compile menu (Settings › Engines › LaTeX) */
   compileDefaults: CompileDefaults;
   /** a second TeX installation's folder, tried first by every compile ('' = none) */
@@ -126,10 +127,8 @@ export type AppSettings = {
   syncHighlightCustom: string;
   /** how long the highlight stays before it fades, 1 to 10 */
   syncHighlightSeconds: number;
-  /** settings follow the user to their other computers through the cloud locations (SHARED_KEYS) */
+  /** settings follow the user to their other computers through the settings repository on GitHub (SHARED_KEYS) */
   syncSettings: boolean;
-  /** what Sync to and Download do on this computer */
-  cloudMode: CloudMode;
   /** the folders on the Projects page (folders.ts) */
   projectFolders: ProjectFolders;
   /** a colour chosen for a tag; the others get one from their name */
@@ -185,6 +184,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   // the OpenAI preset's quick model, to match the default main model
   referencesModel: 'gpt-6-luna',
   autoInsertCite: true,
+  zoteroCompletion: true,
   // a new setting, so 1.x's saved compiler (compileEngine, left in place for it) doesn't carry over
   compileDefaults: { engine: 'auto', autoCompile: 0, haltOnError: false, bibTool: 'auto', draft: false, syntaxCheck: true },
   texFolder: '',
@@ -212,7 +212,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   syncHighlightCustom: '#ffd60a',
   syncHighlightSeconds: 3,
   syncSettings: true,
-  cloudMode: 'mirror',
   projectFolders: NO_FOLDERS,
   tagColours: {},
   personas: STARTER_PERSONAS,
@@ -322,6 +321,7 @@ function parse(raw: string | null): AppSettings {
     merged.checkpointOnCompile = merged.checkpointOnCompile !== false;
     merged.checkpointNotice = merged.checkpointNotice !== false;
     merged.pdfFollowsFile = merged.pdfFollowsFile !== false;
+    merged.zoteroCompletion = merged.zoteroCompletion !== false;
     if (!['system', 'light', 'dark'].includes(merged.theme)) merged.theme = 'system';
     if (!REASONING_EFFORTS.some(([value]) => value === merged.reasoningEffort)) merged.reasoningEffort = 'default';
     if (!Number.isFinite(merged.editorFontSize)) merged.editorFontSize = DEFAULT_SETTINGS.editorFontSize;
@@ -345,8 +345,8 @@ function parse(raw: string | null): AppSettings {
     if (typeof merged.syncHighlightCustom !== 'string' || !HEX.test(merged.syncHighlightCustom)) merged.syncHighlightCustom = DEFAULT_SETTINGS.syncHighlightCustom;
     if (!Number.isFinite(merged.syncHighlightSeconds)) merged.syncHighlightSeconds = DEFAULT_SETTINGS.syncHighlightSeconds;
     merged.syncHighlightSeconds = Math.min(10, Math.max(1, Math.round(merged.syncHighlightSeconds)));
+    // 1.10's cloudMode stays stored as it was, for going back to 1.10.4
     merged.syncSettings = merged.syncSettings !== false;
-    if (merged.cloudMode !== 'move') merged.cloudMode = 'mirror';
     merged.projectFolders = cleanFolders(merged.projectFolders);
     merged.tagColours = Object.fromEntries(
       Object.entries(typeof merged.tagColours === 'object' && merged.tagColours ? merged.tagColours : {}).filter(([, c]) => TAG_COLOUR_NAMES.includes(c as TagColour))
@@ -434,8 +434,7 @@ export function updateSettings(patch: Partial<AppSettings>) {
 
 /**
  * What goes to the user's other computers. Never a key, nor the providers, endpoints and models that go with the
- * keys, a path, the window's see-through look, an editor font or compiler only one computer may have, what Sync to
- * does on this computer, or this switch.
+ * keys, a path, the window's see-through look, an editor font or compiler only one computer may have, or this switch.
  */
 const SHARED_KEYS = [
   'theme', 'accent', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize',
@@ -444,6 +443,9 @@ const SHARED_KEYS = [
 ] as const satisfies readonly (keyof AppSettings)[];
 
 export const sharedPart = (settings: AppSettings): Record<string, unknown> => Object.fromEntries(SHARED_KEYS.map((key) => [key, settings[key]]));
+
+/** Shared settings without the personas, which the settings repository keeps one file each. */
+const withoutPersonas = ({ personas: _personas, ...rest }: Record<string, unknown>) => rest;
 
 /** This computer's settings with another's shared ones in, checked as stored ones are; the rest stay as they are. */
 export const withShared = (settings: AppSettings, shared: Record<string, unknown>) =>
@@ -575,18 +577,30 @@ export function followSharedSettings() {
   const follow = async (theirsFirst = false) => {
     const settings = loadSettings();
     if (!settings.syncSettings) return;
+    // the settings repository on GitHub brought up to date first; a computer whose settings aren't in it yet (a first
+    // sign-in) takes the ones there first
+    const repo = await syncSettingsRepo().catch(() => null);
     const { shared, latest } = await getSharedSettings();
     if (!shared) return;
     const { at, sent } = syncState();
-    const next = followStep(settings, latest, at, sent, theirsFirst);
+    // personas go one file each through the repository (syncPersonas below), never in a computer's settings file
+    const theirs = latest && { ...latest, settings: withoutPersonas(latest.settings) };
+    const next = followStep(settings, theirs, at, sent, theirsFirst || !!repo?.first);
     if (next.settings !== settings) {
       keepSyncState({ at: next.at, sent: next.sent });
       persistSettings(next.settings);
     }
-    if (!next.share) return;
-    const res = await shareSettings(next.share);
-    // never before the file just taken in, so one from a computer whose clock is ahead isn't taken in twice
-    if (res.updatedAt) keepSyncState({ at: res.updatedAt > next.at ? res.updatedAt : next.at, sent: JSON.stringify(next.share) });
+    // a first sign-in shares this computer's settings at once, else the repository's would win again next time
+    const share = next.share ?? (repo?.first ? sharedPart(next.settings) : null);
+    if (share) {
+      const res = await shareSettings(withoutPersonas(share));
+      // never before the file just taken in, so one from a computer whose clock is ahead isn't taken in twice
+      if (res.updatedAt) keepSyncState({ at: res.updatedAt > next.at ? res.updatedAt : next.at, sent: JSON.stringify(share) });
+    }
+    if (repo?.ready) {
+      const joined = await syncPersonas(loadSettings().personas);
+      if (joined.changed) persistSettings({ ...loadSettings(), personas: cleanPersonas(joined.personas) });
+    }
   };
   let on = loadSettings().syncSettings;
   let turnedOn = false;

@@ -112,11 +112,10 @@ const mine = at({
   glass: true,
   editorFont: 'menlo',
   compileDefaults: { ...DEFAULT_SETTINGS.compileDefaults, engine: 'tectonic' },
-  texFolder: '/Library/TeX/texbin',
-  cloudMode: 'move'
+  texFolder: '/Library/TeX/texbin'
 });
 const sent = JSON.stringify(sharedPart(mine));
-for (const secret of ['sk-openai', 'mineru-token', 'v-key', 'q-key', 's-key', 'serp-key', 'exa-key', '/Users/me', DEEPSEEK, 'menlo', 'tectonic', 'texbin', 'glass', 'syncSettings', 'cloudMode']) {
+for (const secret of ['sk-openai', 'mineru-token', 'v-key', 'q-key', 's-key', 'serp-key', 'exa-key', '/Users/me', DEEPSEEK, 'menlo', 'tectonic', 'texbin', 'glass', 'syncSettings']) {
   if (sent.includes(secret)) throw new Error(`shared settings hold ${secret}`);
 }
 eq([sharedPart(mine).theme, sharedPart(mine).spellCheck], ['dark', false], 'theme and spelling are shared');
@@ -128,12 +127,15 @@ eq([merged.llmApiKey, merged.projectsDir, merged.glass, merged.syncSettings], ['
 eq(withShared(theirs, { accent: 'neon' }).accent, 'system', 'shared values are checked like stored ones');
 eq(withShared(theirs, { syncHighlightSeconds: 60 }).syncHighlightSeconds, 10, 'and kept in range');
 
-// the folders on the Projects page follow the user, checked like stored ones; what Sync to does stays on each computer
+// the folders on the Projects page follow the user, checked like stored ones
 const tree = { folders: [{ id: 'f1', name: 'Thesis', parent: null }], placement: { p1: 'f1', p2: 'deleted' } };
-const sorted = withShared(theirs, { projectFolders: tree, cloudMode: 'move' });
+const sorted = withShared(theirs, { projectFolders: tree });
 eq(sorted.projectFolders, { folders: tree.folders, placement: { p1: 'f1' } }, 'the folders come in, checked');
-eq(sorted.cloudMode, 'mirror', 'Sync to’s choice stays');
-eq(withShared(at({ cloudMode: 'sideways' as AppSettings['cloudMode'], projectFolders: 'junk' as never }), {}), at({}), 'an unknown choice is Mirror, and junk no folders');
+eq(withShared(at({ projectFolders: 'junk' as never }), {}), at({}), 'junk is no folders');
+// 1.10's choice for Sync to stays stored, for going back to 1.10.4, and never goes to the other computers
+const stored = withShared({ ...at({}), cloudMode: 'move' } as AppSettings, {}) as AppSettings & { cloudMode?: string };
+eq(stored.cloudMode, 'move', '1.10’s Sync to choice is kept');
+if (JSON.stringify(sharedPart(stored)).includes('cloudMode')) throw new Error('shared settings hold cloudMode');
 
 // the Mac went dark since the PC last shared, then the PC changed its font size: both changes stay, and the PC's
 // old theme doesn't go back to the Mac

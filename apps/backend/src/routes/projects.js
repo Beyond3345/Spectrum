@@ -20,8 +20,8 @@ import {
   getProjectRoot,
   httpError,
   openFile,
+  listProjects,
   openFolder,
-  projectsPage,
   readMeta,
   relocateProject,
   renameProject,
@@ -31,7 +31,6 @@ import {
   unregister,
   updateMeta
 } from '../services/projectService.js';
-import { refuseDelete } from './cloud.js';
 import { followRename } from './todos.js';
 import { documentLabels, projectStats } from '../services/statsService.js';
 import { readProjectSettings, updateProjectSettings } from '../services/projectSettings.js';
@@ -39,6 +38,7 @@ import { BIB_TOOLS, SUPPORTED_ENGINES } from '../services/compileService.js';
 import { SKILL_ID } from '../services/skillService.js';
 import { knownMachineNames } from '../services/presenceService.js';
 import { stopProjectTexlab } from '../services/texlabService.js';
+import { syncSoon } from '../services/zoteroService.js';
 import { conflictCopies } from '../utils/conflictCopies.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
 
@@ -186,8 +186,7 @@ export function registerProjectRoutes(fastify) {
     done();
   });
 
-  // ?scan=1: look in the cloud locations now (the window came to the front), not after the usual 30 s
-  fastify.get('/api/projects', async (req) => projectsPage({ scan: req.query?.scan === '1' }));
+  fastify.get('/api/projects', async () => ({ projects: await listProjects() }));
 
   fastify.post('/api/projects', async (req) => {
     const { name, template, parentDir } = req.body || {};
@@ -335,17 +334,14 @@ export function registerProjectRoutes(fastify) {
   fastify.post('/api/projects/:id/trash', async (req) => {
     if (!['darwin', 'win32'].includes(process.platform)) return { ok: false, error: 'Moving to the Bin is only supported on macOS and Windows.' };
     const root = await getProjectRoot(req.params.id);
-    // used in its cloud location, so it goes from the other computers too: what Stop syncing › Delete checks first
-    const p = await getProject(req.params.id);
-    if (p.cloud?.mode === 'move') await refuseDelete(p.id, p.name, root, p.cloud.label, 'remove it from the list');
     // Windows can't bin a folder its TexLab is watching
-    await stopProjectTexlab(p.id);
+    await stopProjectTexlab(req.params.id);
     try {
       await moveToBin(root);
     } catch (err) {
       return { ok: false, error: err.message };
     }
-    await unregister(req.params.id, { binned: true });
+    await unregister(req.params.id);
     return { ok: true };
   });
 
@@ -606,6 +602,8 @@ export function registerProjectRoutes(fastify) {
       throw err;
     }
     await touchProject(root).catch(() => {});
+    // the project's Zotero collection follows the .bib a little after the saves stop, entries taken out included
+    if (/\.bib$/i.test(filePath)) syncSoon(root, { remove: true, delay: 5000 });
     return { ok: true, hash: sha256(content ?? '') };
   }));
 

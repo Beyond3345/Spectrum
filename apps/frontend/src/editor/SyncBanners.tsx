@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { binConflictCopy, deleteFile, getFile, keepConflictCopy, markClosed, markOpen } from '../api/client';
+import { useState } from 'react';
+import { binConflictCopy, deleteFile, getFile, keepConflictCopy } from '../api/client';
 import Icon from '../app/Icon';
 import Sheet from '../app/Sheet';
 import { confirmDialog } from '../app/Dialogs';
@@ -7,52 +7,22 @@ import { BIN } from '../app/platform';
 import { toast } from '../app/Toast';
 import { useEditor } from './EditorContext';
 import SplitDiffView from './SplitDiffView';
-import { errorText, formatDate } from './shared';
+import { errorText } from './shared';
 
-const timeFormat = new Intl.DateTimeFormat('en-AU', { hour: 'numeric', minute: '2-digit' });
 const nameOf = (p: string) => p.slice(p.lastIndexOf('/') + 1);
 // the files a side-by-side diff can show
 const TEXT_FILE = /\.(tex|bib|sty|cls|bst|bbx|cbx|lbx|cfg|def|clo|ltx|dtx|txt|md|mmd|json|ya?ml|csv|tsv)$/i;
 
-/** 10:42 am today, else with the date */
-function since(iso: string) {
-  const time = timeFormat.format(new Date(iso));
-  return new Date(iso).toDateString() === new Date().toDateString() ? time : `${formatDate(iso)}, ${time}`;
-}
-
 /**
- * For a project the user's computers share through a sync app: a banner while another computer has it open
- * (a warning, never a lock), and one for the conflict copies the sync app made, a copy at a time, with Compare,
- * Use this copy and Delete copy.
+ * A banner for the conflicted copies a GitHub pull or a sync app made of files changed in two places at once, a copy
+ * at a time, with Compare, Use this copy and Delete copy.
  */
 export default function SyncBanners({ conflicts, onDeleted }: { conflicts: Record<string, string>; onDeleted(path: string): void }) {
   const api = useEditor();
   const { projectId } = api;
-  const [others, setOthers] = useState<{ host: string; since: string }[]>([]);
-  const [dismissed, setDismissed] = useState('');
   const [compare, setCompare] = useState<{ left: string; right: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // this computer has the project open, said every 2 minutes; the answer, and the one when the window comes back,
-  // says which others do
-  useEffect(() => {
-    let live = true;
-    const beat = () => markOpen(projectId).then((res) => live && setOthers(res.others || []), () => undefined);
-    const leave = () => markClosed(projectId);
-    beat();
-    const timer = window.setInterval(beat, 2 * 60 * 1000);
-    window.addEventListener('focus', beat);
-    window.addEventListener('pagehide', leave);
-    return () => {
-      live = false;
-      window.clearInterval(timer);
-      window.removeEventListener('focus', beat);
-      window.removeEventListener('pagehide', leave);
-      leave();
-    };
-  }, [projectId]);
-
-  const othersKey = others.map((o) => `${o.host} ${o.since}`).join('\n');
   const copy = Object.keys(conflicts).sort()[0];
   const original = copy ? conflicts[copy] : '';
   const more = Object.keys(conflicts).length - 1;
@@ -127,20 +97,10 @@ export default function SyncBanners({ conflicts, onDeleted }: { conflicts: Recor
 
   return (
     <>
-      {others.length > 0 && dismissed !== othersKey && (
-        <div className="review-banner template-banner" role="status" title="Changes made on both at once can end up as conflict copies.">
-          <Icon name="arrow.triangle.2.circlepath" />
-          <span className="grow">Also open on {others.map((o) => `${o.host} since ${since(o.since)}`).join(' and ')}</span>
-          <button className="btn small ghost" onClick={() => setDismissed(othersKey)}>
-            OK
-          </button>
-        </div>
-      )}
-
       {copy && (
         <div className="review-banner template-banner" role="status">
           <Icon name="doc.on.doc" />
-          <span className="grow truncate" title={`${copy}: your sync app kept this copy when ${original} changed on two computers at once`}>
+          <span className="grow truncate" title={`${copy}: kept when ${original} changed on two computers at once`}>
             Conflict copy of {original}
             {more > 0 && ` (and ${more} more)`}
           </span>

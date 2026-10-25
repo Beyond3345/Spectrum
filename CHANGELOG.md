@@ -41,6 +41,14 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Each result has Keep and Drop with a reason, Cite at the cursor, Open note and Get PDF. Open note makes `research/notes/<key>.md` the first time, Get PDF downloads a free copy from arXiv, Unpaywall or the copy a source named into `research/papers/` and Add kept papers to .bib adds the kept ones the project does not have yet
 - Deep research, Draft related work and Verify claims in Research open the agent workspace with a prepared task, its skill and the research session
 - Settings › Search has the keys and emails Research uses on this computer: the OpenAlex and Semantic Scholar keys, an email for OpenAlex, an NCBI key for PubMed and the email Unpaywall asks for
+- GitHub, the way projects now go between computers, through isomorphic-git with no Git installation needed. Settings › GitHub signs in with a personal access token, or with a code entered at github.com in a build with an OAuth app, and keeps the token in the backend only
+- Sync with GitHub in a project's menu and Tools › GitHub, with Sync, Pull, Back up… and Open on GitHub. The first backup makes a private repository named after the project and records it in `.spectrum/settings.json` with the project's id. Linked projects pull when opened, back up a minute after typing stops and when the project is left, and show Not backed up since when a backup did not go through
+- A pull merges each file changed on both computers (text by lines, the project's details and settings key by key, chats by message, research sessions by search, to-dos and notes field by field) after a Before pull from GitHub checkpoint. A file that does not merge keeps this computer's copy with GitHub's beside it as a conflicted copy, and a pull that would delete many files asks first
+- The GitHub view in the projects page's sidebar, in place of Cloud projects, lists your repositories that are Spectrum projects, with Get from GitHub for one not on this computer and Link for one whose project is already here (after showing how many files would come from GitHub and how many conflicts there would be)
+- Settings, personas, your own skills and templates, project folders and tag colours follow you through a private `spectrum-settings` repository, each persona, skill and template a file or folder of its own. A computer signing in for the first time takes the settings already there
+- Zotero through its local API on this computer. Settings › Zotero shows whether Zotero is open, its version, the local API and Better BibTeX. Cite from Zotero, in the editor's right-click menu and on the References card, opens Zotero's citation picker through Better BibTeX, with Answer in Zotero and Cancel while it waits, or a search of the library in Spectrum without Better BibTeX. Entries go into the `.bib` under their Zotero citation key, through the references chat's duplicate check
+- `\cite` completion lists matching Zotero items below the project's own keys after three letters, and adds the one picked to the `.bib` (on by default in Settings › Zotero). Research has a Zotero source, and Add kept papers to .bib takes its papers from Zotero under their own keys
+- With Zotero 10 and one Always Allow in Zotero, each project gets a Spectrum › <project> collection kept in step with its `.bib`: after an add, after a `.bib` save, on opening and when the window comes forward. Items the library has are added to the collection by citation key, DOI, arXiv ID or title and year, the others are created there, and an entry removed from a `.bib` read in full leaves the collection. Spectrum never deletes a Zotero item or edits the `.bib` from Zotero, and waits rather than making a second collection when the other computer's has not reached this Zotero yet
 
 ### Changed
 
@@ -62,6 +70,14 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Find citations for selection is in Research, and adds papers through the references chat's look-up
 - Research no longer has the arXiv search through an AI model or puts the summaries of web results into a `.tex` file. Abstracts are shown as the sources give them
 - A click with `⌥` held adds a cursor, as in VS Code, as a click with `⌘` held is Go to definition
+- Settings and templates follow you through the `spectrum-settings` repository on GitHub instead of the `.spectrum-shared` folder in a cloud location, and Use the same settings on each computer in Settings › Projects needs Keep my settings in a private repository in Settings › GitHub
+- Move to this computer… now only moves a project out of a sync app's folder into the folder for new projects, and Settings does not accept a folder in a sync app's folder for new projects
+
+### Removed
+
+- Cloud sync through Synology Drive, OneDrive, Dropbox and iCloud Drive: cloud locations in Settings, Sync to, Download, Sync now, Stop syncing, the Cloud projects view and the banner saying a project is also open on another computer. Projects and settings go between computers through GitHub instead
+- On its first start, 2.0 stops mirroring. Mirrored projects become ordinary projects on this computer, and their copies in the cloud location are left as they are. A notice on the projects page names them, lists the files a copy has that this computer never received with Show in Finder and offers Move to this computer… for projects used in a sync app's folder, which keep working where they are. Before updating, open 1.10.4 on each computer and wait until it shows Synced
+- This computer's name is now under Your other computers in Settings › Projects
 
 ### Fixed
 
@@ -87,6 +103,9 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - 1.10.4 opens every project 2.0.0 has used. The new data is in files 1.10.4 does not read: `.spectrum/settings.json` and the `.spectrum/todos`, `.spectrum/notes` and `.spectrum/research` folders, which it leaves as they are. Checkpoints keep their storage in `.spectrum/history`, so 1.10.4 lists every checkpoint as a version, with the compile checkpoints as manual ones
 - Spectrum agent threads are chats in `.spectrum/chats` with an `agent` mark that 1.10.4 ignores, so 1.10.4 lists them with the other chats. A project's skill choices are kept in `.spectrum/settings.json`
 - 1.10.4 rewrites `project.json` through its own list of keys, so nothing new is kept in it. 2.0.0 keeps the keys in `project.json` it does not know, so a file another version wrote comes through a save here whole
+- 2.0.0 only reads 1.10's mirror records, its `sync.json` and the copies in the cloud locations, and never writes or deletes them, so going back to 1.10.4 resumes mirroring from the last state both copies agreed on. Edits made in 2.0.0 go to the cloud copy, edits from a computer still on 1.10.4 come in after a Before sync checkpoint, and a file changed on both is merged. 2.0.0 keeps this computer's name in its own `computer.json`, so a name changed in 2.0.0 is not carried back
+- A project on GitHub has a `.git` folder, which 1.10.4 leaves out of its file list, checkpoints and mirroring, and its GitHub link is in `.spectrum/settings.json`. Spectrum reads 1.10.4's mirror records to Link a mirrored project but never writes them
+- A project's Zotero collection is recorded in `.spectrum/settings.json` too, and Zotero's permission in `zotero.json` in the app's data folder, which 1.10.4 does not read
 
 ## 1.10.4 (22 October 2026)
 

@@ -4,7 +4,7 @@ import { withoutComments } from '../../../backend/src/latex/text.js';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { runAgent } from '../api/client';
-import type { AgentPatch } from '../api/client';
+import type { AgentPatch, ReferenceResult } from '../api/client';
 import type { EditorApi, PendingChange } from './EditorContext';
 
 // Small helpers shared by the composer and the Tools tabs.
@@ -17,9 +17,21 @@ export function citationCommand(source: string) {
   return /\\usepackage(?:\s*\[[^\]]*\])?\s*\{natbib\}/.test(text) ? '\\citep' : '\\cite';
 }
 
-export async function citationText(api: EditorApi, keys: string[]) {
+/** The citation command the main file's packages call for: \parencite, \citep or \cite. */
+export async function mainCitationCommand(api: EditorApi) {
   const source = api.activePath === api.mainFile ? api.editorValue : await api.ensureFileContent(api.mainFile).catch(() => '');
-  return `${citationCommand(source)}{${keys.join(',')}}`;
+  return citationCommand(source);
+}
+
+export async function citationText(api: EditorApi, keys: string[]) {
+  return `${await mainCitationCommand(api)}{${keys.join(',')}}`;
+}
+
+/** After references went into bibFile: the editor reads it again, and the file tree too when the file is new. */
+export async function reloadBib(api: EditorApi, results: ReferenceResult[], bibFile: string) {
+  if (!results.some((r) => r.status === 'added')) return;
+  if (!api.bibFiles.includes(bibFile)) await api.refreshTree();
+  await api.reloadFiles([bibFile]);
 }
 
 const dateFormat = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -66,6 +78,9 @@ export const VERSIONS_CHANGED = 'spectrum-versions-changed';
 
 /** Fired after Settings › Agents saves an agent's setup, so the agent workspace's picker sees it. */
 export const AGENTS_CHANGED = 'spectrum-agents-changed';
+
+/** Fired after a pull from GitHub changed files in .spectrum, so the to-dos, PDF notes and Research reload. */
+export const PROJECT_DATA_CHANGED = 'spectrum-project-data-changed';
 
 export type VisionMode = 'equation' | 'table' | 'figure' | 'algorithm' | 'ocr';
 

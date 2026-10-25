@@ -23,6 +23,8 @@ import { writeJsonAtomic } from '../utils/fsUtils.js';
 
 const execFileAsync = promisify(execFile);
 const runs = new Map();
+/** A direct session's turn is changing the project's own files now, which a GitHub pull waits for. */
+export const directTurn = (projectId) => [...runs.values()].some((r) => r.projectId === projectId && r.mode === 'direct' && r.busy);
 const ID = /^[a-f0-9-]{36}$/;
 const textLimit = (value, max = 100000) => typeof value === 'string' ? value.slice(0, max) : '';
 const metadata = (r) => ({ id: r.id, projectId: r.projectId, agentId: r.agentId, mode: r.mode, createdAt: r.createdAt, updatedAt: r.updatedAt, status: r.status, events: r.events, remoteId: r.remoteId, resolved: [...r.resolved], turnCount: r.turnCount, ...(r.title && { title: r.title }), ...(r.persona && { persona: r.persona }), ...(r.notes?.length && { notes: r.notes }) });

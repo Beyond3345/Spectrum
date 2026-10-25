@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs';
-import { getProjectRoot, httpError } from '../services/projectService.js';
+import { getProjectRoot, httpError, mutateProjectFiles } from '../services/projectService.js';
 import { writeJsonAtomic } from '../utils/fsUtils.js';
 import { MAX_TEXT, isText, itemFile, readItems } from './todos.js';
 
@@ -22,12 +22,14 @@ export function registerNoteRoutes(fastify) {
       && (colour == null || isText(colour, 32)) && isText(createdAt, 40) && isText(updatedAt, 40);
     if (!valid) throw httpError('Invalid note.', 400);
     const note = { ...rest, id, doc, page, x, y, text, ...(colour != null && { colour }), createdAt, updatedAt };
-    await writeJsonAtomic(file, note);
+    // in the project files' lock, which a GitHub pull holds while it merges notes
+    await mutateProjectFiles(() => writeJsonAtomic(file, note));
     return { ok: true, note };
   });
 
   fastify.delete('/api/projects/:id/notes/:nid', async (req) => {
-    await fs.rm(await itemFile(req, 'notes', req.params.nid), { force: true });
+    const file = await itemFile(req, 'notes', req.params.nid);
+    await mutateProjectFiles(() => fs.rm(file, { force: true }));
     return { ok: true };
   });
 }

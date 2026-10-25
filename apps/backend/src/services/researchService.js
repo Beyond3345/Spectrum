@@ -11,16 +11,20 @@ import { listFilesRecursive, readJson, writeJsonAtomic } from '../utils/fsUtils.
 import { safeJoin } from '../utils/pathUtils.js';
 import { STOPWORDS, searchArxiv } from './arxivService.js';
 import { callOpenAICompatible } from './llmService.js';
-import { appPath, httpError } from './projectService.js';
+import { appPath, httpError, mutateProjectFiles } from './projectService.js';
 import {
   baseKey, buildBibIndex, cleanDoi, crossrefBase, decodeEntities, detectInput, findDuplicate, get, getPage, normaliseTitle,
   parseBibEntries, parseName, resolveItems, summaryOf
 } from './referenceService.js';
 import { getJson, searchOpenAlex, searchSemanticScholar, searchWithFallback } from './searchService.js';
 import { extractJSON } from './transferAgent/utils.js';
+import { importRefs, searchLibrary } from './zoteroService.js';
 
-export const RESEARCH_SOURCES = ['openalex', 'semanticscholar', 'arxiv', 'crossref', 'pubmed', 'web', 'bib'];
-export const SOURCE_NAMES = { openalex: 'OpenAlex', semanticscholar: 'Semantic Scholar', arxiv: 'arXiv', crossref: 'Crossref', pubmed: 'PubMed', web: 'the web', bib: 'the project’s .bib' };
+export const RESEARCH_SOURCES = ['openalex', 'semanticscholar', 'arxiv', 'crossref', 'pubmed', 'web', 'zotero', 'bib'];
+export const SOURCE_NAMES = {
+  openalex: 'OpenAlex', semanticscholar: 'Semantic Scholar', arxiv: 'arXiv', crossref: 'Crossref', pubmed: 'PubMed', web: 'the web', zotero: 'your Zotero library',
+  bib: 'the project’s .bib'
+};
 // ponytail: 10 a source keeps one search quick and polite; Search again with other words reaches further
 const PER_SOURCE = 10;
 const TIMEOUT = 30_000;
@@ -197,6 +201,23 @@ export function fromBib(question, bibs) {
     }));
 }
 
+/**
+ * Zotero library items found for at least half the question's words, as fromBib reads the .bib: Zotero's search takes
+ * every word it's given, which a question's rarely all match, so each word is searched for. zotero: the item's key.
+ */
+async function fromZotero(question) {
+  const words = keywords(question);
+  const found = new Map();
+  for (const word of words) {
+    for (const hit of await searchLibrary(word, 25, false)) found.set(hit.itemKey, { hit, n: (found.get(hit.itemKey)?.n || 0) + 1 });
+  }
+  return [...found.values()]
+    .filter(({ n }) => n >= Math.ceil(words.length / 2))
+    .sort((a, b) => b.n - a.n)
+    .slice(0, PER_SOURCE)
+    .map(({ hit: h }) => tidy({ title: h.title, authors: h.authors, year: h.year, venue: h.venue, doi: h.doi, arxiv: h.arxiv, url: h.url, abstract: h.abstract, zotero: h.itemKey, sources: ['zotero'] }));
+}
+
 const SEARCHES = {
   openalex: async (q, o) => (await searchOpenAlex(q, PER_SOURCE, o.keys.openalexKey, true, { mailto: o.keys.openalexEmail, ...o })).map((r) => fromRecord(r, 'openalex')),
   semanticscholar: async (q, o) => (await searchSemanticScholar(q, PER_SOURCE, o.keys.semanticScholarKey, true, o)).map((r) => fromRecord(r, 'semanticscholar')),
@@ -204,6 +225,7 @@ const SEARCHES = {
   crossref: fromCrossref,
   pubmed: fromPubmed,
   web: fromWeb,
+  zotero: fromZotero,
   bib: async (q, o) => fromBib(q, o.bibs)
 };
 
@@ -348,10 +370,11 @@ async function triageResults(question, results, llmConfig) {
 
 // ─── Sessions ───
 
-// ponytail: one lock for every session's read-merge-write (searches and lookups run outside it); per-file if it bites
+// ponytail: one lock for every session's read-merge-write (searches and lookups run outside it); per-file if it bites.
+// Each write also takes the project files' lock, which a GitHub pull holds while it merges sessions
 let lock = Promise.resolve();
 function locked(fn) {
-  const run = lock.then(fn, fn);
+  const run = lock.then(() => mutateProjectFiles(fn), () => mutateProjectFiles(fn));
   lock = run.catch(() => {});
   return run;
 }
@@ -393,7 +416,7 @@ export async function listSessions(root) {
 }
 
 export async function deleteSession(root, id) {
-  await fs.rm(sessionFile(root, id), { force: true });
+  await mutateProjectFiles(() => fs.rm(sessionFile(root, id), { force: true }));
 }
 
 const text = (max) => (v) => typeof v === 'string' && v.length <= max;
@@ -492,18 +515,22 @@ export async function searchResearch({ root, question, sources, yearFrom, yearTo
 
 /**
  * Adds results (by id; the kept ones not yet in the .bib when none are named) through the references resolver, which
- * catches duplicates by DOI, arXiv id or title across every .bib. Each result gets the key it is now under.
+ * catches duplicates by DOI, arXiv id or title across every .bib, or from Zotero under its citation key for a result
+ * the Zotero library gave (looked up like the rest when Zotero can't give it). Each result gets the key it is now under.
  */
 export async function addResults({ root, id, resultIds, bibFile, searchConfig }) {
   const session = await readSession(root, id);
   markInBib(session.results, buildBibIndex(await readBibs(root)));
   const chosen = Array.isArray(resultIds) ? session.results.filter((r) => resultIds.includes(r.id)) : session.results.filter((r) => r.decision === 'keep' && !r.inBib);
-  const ready = chosen.filter((r) => r.doi || r.arxiv || r.url);
-  const lookups = ready.length ? await resolveItems(root, ready.map((r) => detectInput(r.doi || r.arxiv || r.url)), bibFile, searchConfig) : { results: [], bibFile: '', bibIncluded: true };
+  const outcomes = new Map();
+  const inZotero = chosen.filter((r) => r.zotero);
+  const imported = inZotero.length ? await importRefs(root, inZotero.map((r) => ({ itemKey: r.zotero })), bibFile).catch((err) => ({ error: err.message })) : null;
+  inZotero.forEach((r, i) => outcomes.set(r, imported.results?.[i] || { status: 'error', message: imported.error }));
+  const ready = chosen.filter((r) => outcomes.get(r)?.status !== 'added' && outcomes.get(r)?.status !== 'duplicate' && (r.doi || r.arxiv || r.url));
+  const lookups = ready.length ? await resolveItems(root, ready.map((r) => detectInput(r.doi || r.arxiv || r.url)), bibFile, searchConfig) : imported?.results ? imported : { results: [], bibFile: '', bibIncluded: true };
+  ready.forEach((r, i) => outcomes.set(r, lookups.results[i]));
   const results = chosen.map((r) => {
-    const i = ready.indexOf(r);
-    if (i < 0) return { id: r.id, status: 'error', message: 'This result has no DOI, arXiv ID or link to look up.' };
-    const { status, key, message } = lookups.results[i];
+    const { status, key, message } = outcomes.get(r) || { status: 'error', message: 'This result has no DOI, arXiv ID or link to look up.' };
     return tidy({ id: r.id, status, key, message });
   });
   await locked(async () => {

@@ -825,12 +825,6 @@ textarea.input {
   overflow-wrap: anywhere;
 }
 
-/* a cloud location's name, above its path */
-.path-label {
-  display: block;
-  font-weight: 500;
-}
-
 /* --------------------------------------------------------------------------
    Segmented controls, tabs
    -------------------------------------------------------------------------- */
@@ -1251,7 +1245,7 @@ button.chip.active:hover {
 .sheet-actions {
   flex: none;
   display: flex;
-  /* buttons too wide for one line (a long cloud location's name) go onto two, not off the edge */
+  /* buttons too wide for one line (a long project's name) go onto two, not off the edge */
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
@@ -1850,6 +1844,20 @@ textarea.skill-file-text {
 
 .agent-advanced > .field + .field {
   margin-top: 12px;
+}
+
+/* Settings › GitHub: the device sign-in's code, read off the screen into GitHub's page */
+.device-code {
+  margin: 8px 0;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  user-select: all;
+}
+
+.field > .row.spread {
+  align-items: center;
+  justify-content: space-between;
 }
 
 /* --------------------------------------------------------------------------

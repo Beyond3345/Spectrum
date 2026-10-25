@@ -16,3 +16,14 @@ export function matchBrace(text, start) {
   }
   return -1;
 }
+
+// a citation's [options] (a locator, a prefix), which are left alone, or its {key list}
+const CITE_PARTS = /\[[^\]]*\]|\{([^{}]*)\}/g;
+
+/** The keys a citation command's text cites: ['a', 'b'] from \parencite[p.~3]{a,b} or \parencites{a}[4]{b}. */
+export const citeKeys = (text) =>
+  [...String(text).matchAll(CITE_PARTS)].flatMap((m) => (m[1] == null ? [] : m[1].split(',').map((key) => key.trim()).filter(Boolean)));
+
+/** The same text with each key that `keys` names (old → new) swapped for its new one. */
+export const renameCiteKeys = (text, keys) =>
+  String(text).replace(CITE_PARTS, (part, list) => (list == null ? part : `{${list.replace(/[^,\s]+/g, (key) => keys[key] ?? key)}}`));

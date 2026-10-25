@@ -22,10 +22,6 @@ export interface ProjectMeta {
   mainFile?: string;
   /** a working copy of this template, being edited; kept out of the projects list */
   templateDraft?: string;
-  /** where it is in a sync app's folder, once a cloud location is set up */
-  place?: SyncPlace;
-  /** a cloud project: one mirrored into a cloud location, or one in it (moved there, or there since 1.8.0) */
-  cloud?: ProjectCloud;
 }
 
 /** A folder's place in a sync app's folder, the same on every computer */
@@ -35,50 +31,6 @@ export interface SyncPlace {
   label: string;
   /** '/'-separated from the top of the sync app's folder, e.g. 'Spectrum/Thesis' */
   rel: string;
-  /** the sync app's folder is on this computer, so a missing project may still be on its way */
-  here: boolean;
-}
-
-/** What Sync to does, Settings › Projects: keep a local copy and mirror it, or move the folder into the cloud location */
-export type CloudMode = 'mirror' | 'move';
-
-export interface ProjectCloud {
-  mode: CloudMode;
-  /** the cloud location's name, e.g. 'OneDrive' */
-  label: string;
-  /** '/'-separated inside the cloud location */
-  rel: string;
-  /** the cloud location's folder */
-  location: string;
-  /** how a mirrored project's syncing stands */
-  status?: MirrorStatus;
-}
-
-export interface MirrorStatus {
-  /** missing: the folder on this computer has gone; not-found: the copy in the cloud location has */
-  state: 'synced' | 'syncing' | 'waiting' | 'attention' | 'missing' | 'not-found';
-  /** what needs attention, for the user */
-  message?: string;
-  /** the pass stopped short of deleting many files: Sync anyway goes on */
-  brake?: boolean;
-  /** the deletions the brake held back, which Sync anyway sends back to let through */
-  deleting?: string[];
-}
-
-/** A project in a cloud location that this computer doesn't have; Download brings it here */
-/** A folder in a cloud location with LaTeX files but no project file: the sync app left out .spectrum here. */
-export interface SkippedFolder {
-  label: string;
-  rel: string;
-}
-
-export interface CloudOnlyProject {
-  id: string;
-  name: string;
-  label: string;
-  rel: string;
-  location: string;
-  updatedAt?: string;
 }
 
 export interface FileItem {
@@ -184,9 +136,8 @@ const json = (method: string, body: unknown = {}): RequestInit => ({ method, bod
 
 // ─── Projects ───
 
-/** scan: look in the cloud locations now rather than after the usual 30 s. */
-export function listProjects(scan = false) {
-  return request<{ projects: ProjectMeta[]; cloudOnly?: CloudOnlyProject[]; skipped?: SkippedFolder[] }>(`/api/projects${scan ? '?scan=1' : ''}`);
+export function listProjects() {
+  return request<{ projects: ProjectMeta[] }>('/api/projects');
 }
 
 /** parentDir: absolute folder to create the project in; defaults to ~/Documents/Spectrum */
@@ -235,28 +186,12 @@ export function archiveProject(id: string, archived: boolean) {
   return request<{ ok: boolean; project?: ProjectMeta }>(`/api/projects/${id}/archive`, json('PATCH', { archived }));
 }
 
-/** Sync to: mirror the project into a cloud location, or move it there; warning: the moved folder's original couldn't go to the Bin. */
-export function syncProjectTo(id: string, payload: { location: string; mode: CloudMode }) {
-  return request<{ project: ProjectMeta; warning?: string }>(`/api/projects/${id}/cloud`, json('POST', payload));
-}
-
-/** Bring a project that's only in a cloud location to this computer; a mirrored one's copy goes in parentDir, as createProject's. */
-export function downloadCloudProject(payload: { location: string; rel: string; id: string; mode: CloudMode; parentDir?: string }) {
-  return request<{ project: ProjectMeta }>('/api/cloud/download', json('POST', payload));
-}
-
 /**
- * The project stops syncing and stays on this computer (a moved one's folder comes back to parentDir). deleteCloud
- * also deletes the copy in the cloud location, which an ApiError with status 409 refuses, saying why, while another
- * computer needs it there.
+ * Move to this computer: a project used in a sync app's folder copied into parentDir (default: the projects folder)
+ * and listed there; left: the folder it was in, which stays as it is.
  */
-export function stopSyncing(id: string, deleteCloud: boolean, parentDir?: string) {
-  return request<{ project: ProjectMeta; warning?: string }>(`/api/projects/${id}/cloud/stop`, json('POST', { deleteCloud, parentDir }));
-}
-
-/** Sync now; deleting: Sync anyway, past the stop for a sync that would delete many files, for the status's deleting its dialog showed. */
-export function syncCloudProject(id: string, deleting: string[] = []) {
-  return request<{ status: MirrorStatus }>(`/api/projects/${id}/cloud/sync`, json('POST', { deleting }));
+export function moveProjectHere(id: string, parentDir?: string) {
+  return request<{ project: ProjectMeta; left: { label: string; path: string } }>(`/api/projects/${id}/move-here`, json('POST', { parentDir }));
 }
 
 export function setProjectMainFile(id: string, mainFile: string) {
@@ -781,16 +716,6 @@ export function deleteOldCheckpoints(projectId: string, olderThanDays: number) {
 
 // ─── The user's other computers ───
 
-/** This computer has the project open (sent every 2 minutes); the answer lists the other computers that do. */
-export function markOpen(projectId: string) {
-  return request<{ ok: boolean; others: { host: string; since: string }[] }>(`/api/projects/${projectId}/presence`, json('POST'));
-}
-
-/** Leaving the project; keepalive, so it still goes when the page is closing. */
-export function markClosed(projectId: string) {
-  return fetch(`/api/projects/${projectId}/presence`, { method: 'DELETE', keepalive: true }).catch(() => undefined);
-}
-
 /** A sync app's conflict copy takes its original's place. */
 export function keepConflictCopy(projectId: string, path: string) {
   return request<{ ok: boolean; original: string }>(`/api/projects/${projectId}/conflict-copy/use`, json('POST', { path }));
@@ -806,7 +731,7 @@ export interface SharedSettings {
   settings: Record<string, unknown>;
 }
 
-/** The newest settings another computer shared; shared is false without a cloud location. */
+/** The newest settings another computer shared; shared is false until there's somewhere to share them. */
 export function getSharedSettings() {
   return request<{ ok: boolean; shared: boolean; latest: SharedSettings | null }>('/api/shared/settings');
 }
@@ -1058,7 +983,7 @@ export function plotFromTable(payload: {
 
 // ─── Research ───
 
-export type ResearchSource = 'openalex' | 'semanticscholar' | 'arxiv' | 'crossref' | 'pubmed' | 'web' | 'bib';
+export type ResearchSource = 'openalex' | 'semanticscholar' | 'arxiv' | 'crossref' | 'pubmed' | 'web' | 'zotero' | 'bib';
 
 /** One paper in a session, merged across the sources that found it. inBib: its key in the project's .bib. */
 export interface ResearchResult {
@@ -1072,6 +997,8 @@ export interface ResearchResult {
   url?: string;
   abstract?: string;
   sources: ResearchSource[];
+  /** its item key, when the Zotero library gave it: it goes into the .bib from there, under its Zotero key */
+  zotero?: string;
   citations?: number;
   /** a link to an open-access copy */
   openAccess?: string;
@@ -1240,6 +1167,66 @@ export function addReference(payload: { projectId: string; candidateId: string; 
   );
 }
 
+// ─── Zotero (its local API and Better BibTeX, through the backend) ───
+
+export interface ZoteroStatus {
+  running: boolean;
+  version: string;
+  /** 'off': Zotero's "Allow other applications on this computer to communicate with Zotero" isn't ticked */
+  localApi: 'on' | 'off' | 'missing' | null;
+  /** Better BibTeX's version, null when it isn't installed */
+  betterBibtex: string | null;
+  /** Better BibTeX's citation picker answers */
+  cayw: boolean;
+  /** Zotero takes writes (Zotero 10), so each project can have its collection */
+  writes: boolean;
+  /** Zotero allowed Spectrum to write; the permission itself stays in the backend */
+  authorised: boolean;
+  message?: string;
+}
+
+/** A library item, with the key its .bib entry goes in under (Zotero's or Better BibTeX's, else an AuthorYear one). */
+export interface ZoteroHit {
+  itemKey: string;
+  key: string;
+  title: string;
+  authors: string[];
+  year?: string;
+  venue?: string;
+  doi?: string;
+}
+
+/** How the project's Spectrum collection stands after a sync. */
+export interface ZoteroSync {
+  state: 'off' | 'unreachable' | 'readonly' | 'empty' | 'waiting' | 'synced' | 'error';
+  message?: string;
+  /** 'Spectrum › Thesis' */
+  collection?: string;
+  added?: number;
+  created?: number;
+  removed?: number;
+}
+
+type ZoteroAdded = { ok: boolean; results: ReferenceResult[]; bibFile: string; bibIncluded: boolean };
+
+export const zoteroStatus = () => request<{ ok: boolean } & ZoteroStatus>('/api/zotero/status');
+/** Zotero's Allow prompt; it waits until the user answers there, or cancelZotero. */
+export const authoriseZotero = () => request<{ ok: boolean; cancelled?: boolean } & Partial<ZoteroStatus>>('/api/zotero/authorize', json('POST'));
+export const disconnectZotero = () => request<{ ok: boolean } & ZoteroStatus>('/api/zotero/authorize', { method: 'DELETE' });
+/** Stops what waits in Zotero: the Allow prompt or the citation picker. */
+export const cancelZotero = () => request<{ ok: boolean }>('/api/zotero/cancel', json('POST'));
+/** message: why nothing came (Zotero closed, its local API off) */
+export const searchZotero = (q: string, signal?: AbortSignal) =>
+  request<{ ok: boolean; items: ZoteroHit[]; message?: string }>(`/api/zotero/search?q=${encodeURIComponent(q)}`, { signal });
+/** Better BibTeX's picker in Zotero for command (parencite, citep or cite); text: the citation it wrote, under Zotero's keys. */
+export const pickFromZotero = (projectId: string, command: string, bibFile?: string) =>
+  request<Partial<ZoteroAdded> & { ok: boolean; cancelled?: boolean; text?: string }>(`/api/projects/${projectId}/zotero/cite`, json('POST', { command, bibFile }));
+/** Library items (by item key) into the .bib under their Zotero keys. */
+export const addFromZotero = (projectId: string, items: string[], bibFile?: string) =>
+  request<ZoteroAdded>(`/api/projects/${projectId}/zotero/add`, json('POST', { items, bibFile }));
+/** The project's collection brought up to its .bib; entries only ever go in from here. */
+export const syncZotero = (projectId: string) => request<{ ok: boolean } & ZoteroSync>(`/api/projects/${projectId}/zotero/sync`, json('POST'));
+
 // ─── Template transfer ───
 
 export interface TransferStartPayload {
@@ -1358,51 +1345,58 @@ export function systemCheck(texFolder?: string) {
   return request<SystemCheck>(`/api/system/check${texFolder ? `?${new URLSearchParams({ texFolder })}` : ''}`);
 }
 
-// ─── Cloud locations ───
-
-/** A folder a sync app keeps the same on each computer, which projects sync to */
-export interface CloudLocation {
-  path: string;
-  /** e.g. 'OneDrive' */
-  label: string;
-  found: boolean;
-  /** where it is in its sync app's folder */
-  place?: SyncPlace | null;
-  /** the projects mirrored into it; it can't be removed while there are any */
-  mirrored: number;
-}
-
-export interface SyncSettings {
-  /** this computer's name, as the other computers show it */
-  machineName: string;
-  folders: CloudLocation[];
-  /** the sync apps' folders on this computer not in the list; target is the folder adding one adds */
-  suggestions: { path: string; provider: SyncPlace['provider']; label: string; target: string }[];
-  /** the cloud location settings and templates go through, the same on each computer that lists it */
-  sharedFolder: string | null;
-}
+// ─── This computer and the sync apps' folders ───
 
 export function getSyncSettings() {
-  return request<SyncSettings>('/api/sync');
+  return request<{ machineName: string }>('/api/sync');
 }
 
-/** folders: the whole list of cloud locations; projectsDir: the default folder for new projects, which a new one mustn't overlap */
-export function updateSyncSettings(patch: { folders?: string[]; machineName?: string; projectsDir?: string }) {
-  return request<SyncSettings>('/api/sync', json('PATCH', patch));
+/** machineName: what the other computers call this one; '' goes back to the system's name. */
+export function updateSyncSettings(patch: { machineName: string }) {
+  return request<{ machineName: string }>('/api/sync', json('PATCH', patch));
 }
 
-/** Stop listing a project that's only in a cloud location. */
-export function hideProject(id: string) {
-  return request<{ ok: boolean }>('/api/sync/hide', json('POST', { id }));
+/** Where a folder is in a sync app's folder (OneDrive, iCloud Drive…), or null. */
+export function syncPlace(path: string) {
+  return request<{ place: SyncPlace | null }>('/api/sync/place', json('POST', { path }));
+}
+
+/** A project 1.10 mirrored into a cloud location, and what its copy there has that this computer never received. */
+export interface MigratedProject {
+  id: string;
+  name: string;
+  /** the cloud location's sync app, e.g. 'Synology Drive' */
+  label: string;
+  /** '/'-separated, the project's own files */
+  changed?: string[];
+  deleted?: string[];
+  /** the copy isn't there any more */
+  missing?: boolean;
+  /** the copy couldn't be looked through (online-only, out of reach) */
+  unchecked?: boolean;
+}
+
+/** What the move to 2.0 did with the projects that synced through a cloud location: inPlace ones are used there. */
+export interface MigrationNotice {
+  mirrored: MigratedProject[];
+  inPlace: { id: string; name: string; label: string }[];
+}
+
+export function getMigrationNotice() {
+  return request<{ notice: MigrationNotice | null }>('/api/migration');
+}
+
+export function dismissMigrationNotice() {
+  return request<{ ok: boolean }>('/api/migration/dismiss', json('POST'));
 }
 
 export function revealProject(projectId: string, filePath?: string) {
   return request<{ ok: boolean; path?: string }>('/api/system/reveal', json('POST', { projectId, path: filePath }));
 }
 
-/** Show a mirrored project's copy in its cloud location. */
-export function revealCloudCopy(projectId: string) {
-  return request<{ ok: boolean; path?: string }>('/api/system/reveal', json('POST', { projectId, cloud: true }));
+/** Show the copy 1.10 mirrored the project into, or a file in it, in Finder or Explorer. */
+export function revealCloudCopy(projectId: string, filePath?: string) {
+  return request<{ ok: boolean; path?: string }>('/api/system/reveal', json('POST', { projectId, cloud: true, path: filePath }));
 }
 
 // ─── Local ACP agents ───
@@ -1482,3 +1476,102 @@ export const readSkillFile = (id: string, file: string) => request<{ ok: boolean
 export const writeSkillFile = (id: string, file: string, content: string) => request<{ ok: boolean }>(`/api/skills/${id}/file?path=${encodeURIComponent(file)}`, json('PUT', { content }));
 export const getSkillSharing = () => request<SkillShare & { ok: boolean }>('/api/skills/share');
 export const setSkillSharing = (enabled: boolean) => request<SkillShare & { ok: boolean }>('/api/skills/share', json('PUT', { enabled }));
+
+// ─── GitHub (projects and settings between the user's computers; the token stays in the backend) ───
+
+export interface GitHubAuth {
+  signedIn: boolean;
+  login: string;
+  name: string;
+  /** Spectrum has an OAuth app to sign in with the device code; without one, a pasted token */
+  deviceSignIn: boolean;
+  /** the private spectrum-settings repository is on */
+  settingsRepo: boolean;
+}
+
+export interface GitHubProblem {
+  /** waiting: only for the connection (or a file still changing), tried again every 2 minutes */
+  state: 'waiting' | 'attention';
+  message: string;
+  at: string;
+  /** when the last backup reached GitHub, for “Not backed up since …” */
+  lastBackup?: string | null;
+}
+
+export interface GitHubStatus {
+  signedIn: boolean;
+  /** the project's folder is a Git repository */
+  repo: boolean;
+  /** why Spectrum leaves the repository alone (LFS, submodules, mid-merge, another program in it) */
+  refusal: string | null;
+  linked: boolean;
+  link: { owner: string; repo: string; url: string } | null;
+  /** a Finder copy's settings name the original's repository */
+  copyOf: { owner: string; repo: string } | null;
+  ahead: number;
+  behind: number;
+  lastBackup: string | null;
+  /** the sync app whose folder the project is in, which damages repositories */
+  syncFolder: string | null;
+  /** whether a shared repository gets chats, to-dos, PDF notes and research (null: not asked) */
+  personal: boolean | null;
+  askPersonal: boolean;
+  problem: GitHubProblem | null;
+}
+
+/** What a pull (or Link, or Sync) did: confirm, it would delete `deleting` files and waits for allowDeletions. */
+export interface GitHubPull {
+  state: 'current' | 'merged' | 'confirm' | 'preview';
+  fromTheirs: number;
+  conflicts: number;
+  /** a file in .spectrum changed: the to-dos, PDF notes and research panels reload */
+  changedApp: boolean;
+  deleting: number;
+  problems: string[];
+}
+
+export interface GitHubRepoProject {
+  owner: string;
+  repo: string;
+  private: boolean;
+  pushedAt: string;
+  /** the project's id and name, from its project.json */
+  id: string;
+  name: string;
+  /** the project on this computer with that id */
+  local: string | null;
+  /** the repository's page on GitHub */
+  url: string;
+  linked: boolean;
+  ahead: number;
+  behind: number;
+}
+
+export const getGitHub = () => request<GitHubAuth & { ok: boolean }>('/api/github');
+export const signInToGitHub = (token: string) => request<GitHubAuth & { ok: boolean }>('/api/github/token', json('POST', { token }));
+export const signOutOfGitHub = () => request<GitHubAuth & { ok: boolean }>('/api/github', { method: 'DELETE' });
+export const setSettingsRepo = (on: boolean) => request<GitHubAuth & { ok: boolean }>('/api/github/settings-repo', json('PUT', { on }));
+export const startGitHubDevice = () => request<{ ok: boolean; id: string; userCode: string; verificationUri: string; expiresAt: string }>('/api/github/device', json('POST'));
+export const gitHubDeviceState = (id: string) => request<{ ok: boolean; state: 'waiting' | 'done' | 'expired' | 'denied' | 'failed'; error?: string }>(`/api/github/device/${id}`);
+export const cancelGitHubDevice = (id: string) => request<{ ok: boolean }>(`/api/github/device/${id}`, { method: 'DELETE' });
+/** The settings repository brought up to date; first: this computer's settings aren't in it yet. */
+export const syncSettingsRepo = () => request<{ ok: boolean; ready: boolean; first: boolean; error?: string }>('/api/github/settings/sync', json('POST'));
+/** This computer's personas joined with the settings repository's, one file each there. */
+export const syncPersonas = (personas: unknown[]) => request<{ ok: boolean; personas: unknown[]; changed: boolean }>('/api/github/personas', json('POST', { personas }));
+export const listGitHubRepos = () => request<{ ok: boolean; repos: GitHubRepoProject[] }>('/api/github/repos');
+export const gitHubProblems = () => request<{ ok: boolean; problems: Record<string, GitHubProblem> }>('/api/github/problems');
+/** Get from GitHub: cloned into parentDir (default: the projects folder), with the project's own id. */
+export const getFromGitHub = (owner: string, repo: string, parentDir?: string) => request<{ ok: boolean; project: ProjectMeta }>('/api/github/clone', json('POST', { owner, repo, parentDir }));
+export const getProjectGitHub = (id: string) => request<GitHubStatus & { ok: boolean }>(`/api/projects/${id}/github`);
+export const initialiseGit = (id: string) => request<GitHubStatus & { ok: boolean }>(`/api/projects/${id}/github/init`, json('POST'));
+export const backUpToGitHub = (id: string, label?: string) => request<{ ok: boolean; left?: string[]; pulled?: GitHubPull }>(`/api/projects/${id}/github/backup`, json('POST', { label }));
+export const pullFromGitHub = (id: string, allowDeletions = false) => request<{ ok: boolean; result: GitHubPull }>(`/api/projects/${id}/github/pull`, json('POST', { allowDeletions }));
+export const syncWithGitHub = (id: string, allowDeletions = false) => request<{ ok: boolean; result: GitHubPull }>(`/api/projects/${id}/github/sync`, json('POST', { allowDeletions }));
+/** Link to owner/repo (default: the one the project's settings name); preview: what it would do, writing nothing. */
+export const linkGitHub = (id: string, options: { owner?: string; repo?: string; preview?: boolean; allowDeletions?: boolean } = {}) =>
+  request<{ ok: boolean; result: GitHubPull }>(`/api/projects/${id}/github/link`, json('POST', options));
+export const setGitHubPersonal = (id: string, personal: boolean) => request<{ ok: boolean }>(`/api/projects/${id}/github/personal`, json('PUT', { personal }));
+/** The editor opened the project: pulled from GitHub when it's linked; message when that couldn't happen. */
+export const gitHubOpened = (id: string) => request<{ ok: boolean; linked: boolean; result?: GitHubPull; message?: string }>(`/api/projects/${id}/github/opened`, json('POST'));
+/** The editor left the project (sent as the window closes too). */
+export const gitHubLeft = (id: string) => fetch(`/api/projects/${id}/github/left`, { method: 'POST', keepalive: true }).catch(() => undefined);
