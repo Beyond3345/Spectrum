@@ -116,13 +116,20 @@ const server = createServer(async (req, res) => {
   const v10 = parseInt(mock.version, 10) >= 10;
   const extra = v10 ? { 'Zotero-Server-ID': mock.serverId } : {};
   if (p === '/api/') return send(200, 'Nothing to see here.', { 'Zotero-API-Version': '3', ...extra });
+  // as Zotero's local API documentation has it: every write, the Allow prompt's too, names the database it's for
+  // (Zotero-Server-ID, kept in the database), and a key works for the database that gave it
+  const write = req.method !== 'GET';
+  if (write && v10) {
+    if (!req.headers['zotero-server-id']) return send(428, 'Zotero-Server-ID not provided');
+    if (req.headers['zotero-server-id'] !== mock.serverId) return send(412, 'Zotero-Server-ID does not match');
+  }
   if (p === '/api/local/authorize' && req.method === 'POST') {
     if (!v10) return send(404, 'No endpoint found');
-    if (req.headers['zotero-server-id'] !== mock.serverId) return send(400, 'Missing Zotero-Server-ID');
-    return (await mock.allow()) ? send(200, { key: KEY }) : send(403, 'Not allowed');
+    if (typeof body?.appName !== 'string' || !body.appName) return send(400, 'appName not provided');
+    return (await mock.allow()) ? send(200, { key: KEY, remember: true }) : send(403, { denied: true });
   }
-  const write = req.method !== 'GET';
-  if (write && (!v10 || !authorised)) return send(403, 'Forbidden');
+  if (write && !v10) return send(403, 'Forbidden');
+  if (write && !(authorised && mock.serverId === SERVER_ID)) return send(401, 'Invalid key', { 'WWW-Authenticate': 'Zotero-API-Key realm="Zotero Local API"' });
 
   if (p === '/api/users/0/items' && req.method === 'GET') {
     const keys = url.searchParams.get('itemKey')?.split(',');
@@ -371,7 +378,7 @@ test('the Allow prompt waits in Zotero, its key stays in a private file and neve
   assert.equal(json.authorised, true);
   assert.ok(!text.includes(KEY), 'the key never goes to the window');
   assert.deepEqual(JSON.parse(await fs.readFile(keyFile(), 'utf8')), { key: KEY, serverId: SERVER_ID }, 'kept with the server id it was given under');
-  assert.deepEqual(asked.body, { name: 'Spectrum' });
+  assert.deepEqual(asked.body, { appName: 'Spectrum' });
   if (process.platform !== 'win32') assert.equal((await fs.stat(keyFile())).mode & 0o777, 0o600);
   assert.ok(!(await api('/api/zotero/status')).text.includes(KEY));
 
@@ -627,19 +634,25 @@ test('without permission, before Zotero 10 or with a project with no references,
   await assert.rejects(fs.stat(keyFile()));
 });
 
-test('a key given under another server id, or before Zotero restarted, still syncs and is kept', async () => {
-  const project = await newProject('Restarted', { 'main.tex': BIBTEX_MAIN, 'refs.bib': '@article{a2020, title = {Alpha}, year = {2020}}\n' });
+test('every write names the database its key is for, and a key another database gave is asked for again', async () => {
+  const project = await newProject('Restarted', { 'main.tex': BIBTEX_MAIN, 'refs.bib': '@article{a2020, title = {Alpha}, year = {2020}}\n@article{b2021, title = {Beta}, year = {2021}}\n' });
   addItem({ title: 'Alpha', citationKey: 'a2020', date: '2020' });
-  await allowSpectrum('server-other');
-  assert.equal((await syncCollection(project.path)).state, 'synced');
-  assert.equal(JSON.parse(await fs.readFile(keyFile(), 'utf8')).key, KEY, 'a mismatched id drops nothing');
-  // Zotero restarted between two syncs with a new id
-  mock.serverId = 'server-after-restart';
-  const again = await syncCollection(project.path);
-  assert.equal(again.state, 'synced', again.message);
-  assert.equal(JSON.parse(await fs.readFile(keyFile(), 'utf8')).key, KEY);
-  assert.ok(writes().every((r) => r.headers['zotero-api-key'] === KEY && r.headers.authorization === `Bearer ${KEY}`), 'both ways of giving the key');
+  await allowSpectrum();
+  const synced = await syncCollection(project.path, { added: ['b2021'] });
+  assert.equal(synced.state, 'synced', synced.message);
+  assert.deepEqual([synced.added, synced.created], [1, 1]);
+  assert.ok(writes().length >= 4, 'two collections, a membership and an item');
+  assert.ok(writes().every((r) => r.headers['zotero-api-key'] === KEY && r.headers['zotero-server-id'] === SERVER_ID));
   assert.ok(mock.requests.filter((r) => r.method === 'GET').every((r) => !r.headers['zotero-api-key']), 'no key on reads');
+  // another Zotero database (a new profile): nothing is written with the old key, which is dropped
+  mock.requests = [];
+  mock.serverId = 'server-other-database';
+  await fs.writeFile(path.join(project.path, 'refs.bib'), '@article{c2022, title = {Gamma}, year = {2022}}\n');
+  const other = await syncCollection(project.path, { added: ['c2022'] });
+  assert.equal(other.state, 'error');
+  assert.match(other.message, /Allow Spectrum again in Settings › Zotero/);
+  assert.deepEqual(writes(), []);
+  await assert.rejects(fs.stat(keyFile()));
 });
 
 test('half-typed and unfinished entries never become items, and a finished one does once it stays the same', async () => {
