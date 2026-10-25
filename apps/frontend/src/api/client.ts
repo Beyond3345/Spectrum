@@ -457,6 +457,18 @@ export function importArxivSSE(
   });
 }
 
+// ─── Markdown exports ───
+
+/** The Markdown document as a Word document, beside it. */
+export function exportDocx(projectId: string, doc: string) {
+  return request<{ ok: boolean; path: string }>(`/api/projects/${projectId}/export/docx`, json('POST', { doc }));
+}
+
+/** A new LaTeX project made from the Markdown document; this project stays as it is. */
+export function convertToLatex(projectId: string, doc: string) {
+  return request<{ ok: boolean; project: ProjectMeta }>(`/api/projects/${projectId}/export/latex`, json('POST', { doc }));
+}
+
 // ─── Engines ───
 
 /** A program found on this computer. */

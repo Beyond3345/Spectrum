@@ -15,6 +15,8 @@ import {
   blobUrl,
   closeTemplateDraft,
   compileProject,
+  convertToLatex,
+  exportDocx,
   saveTemplateDraft,
   stopCompile,
   createVersion as saveVersion,
@@ -2746,6 +2748,28 @@ function Editor({ projectId }: { projectId: string }) {
           ? 'Stopped'
           : '';
 
+  const exportWord = async () => {
+    if (!mainFile) return;
+    try {
+      const res = await exportDocx(projectId, mainFile);
+      await refreshTree();
+      notify(`Saved ${res.path}.`, 'success');
+    } catch (err) {
+      notify(`Couldn’t export to Word: ${errorText(err)}`, 'error');
+    }
+  };
+  const convertMarkdownToLatex = async () => {
+    if (!mainFile) return;
+    if (!(await confirmDialog({ title: 'Convert to a LaTeX project?', message: 'Spectrum makes a new LaTeX project from this Markdown. This project stays as it is.', confirmLabel: 'Convert' }))) return;
+    try {
+      const res = await convertToLatex(projectId, mainFile);
+      notify(`Made ${res.project.name}.`, 'success');
+      await leave(`/editor/${res.project.id}`);
+    } catch (err) {
+      notify(`Couldn’t make a LaTeX project: ${errorText(err)}`, 'error');
+    }
+  };
+  const markdownMain = docKind(mainFile) === 'markdown';
   const switcherItems: MenuItems = [
     ...projects
       .filter((p) => p.id === projectId || (!p.missing && !p.archived && !p.templateDraft))
@@ -2756,7 +2780,10 @@ function Editor({ projectId }: { projectId: string }) {
     { label: 'All projects', icon: 'square.grid.2x2', onSelect: () => leave('/projects') },
     // a working copy has its own Save as new template… above the editor
     !draft && { label: 'Save as template…', icon: 'square.and.arrow.down', onSelect: openSaveTemplate },
-    IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => revealProject(projectId).catch(() => undefined) }
+    IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => revealProject(projectId).catch(() => undefined) },
+    markdownMain && { separator: true },
+    markdownMain && { label: 'Export to Word', icon: 'doc.richtext', onSelect: exportWord },
+    markdownMain && { label: 'Convert to LaTeX project…', icon: 'doc.text', onSelect: convertMarkdownToLatex }
   ];
 
   const filesMenu: MenuItems = [
