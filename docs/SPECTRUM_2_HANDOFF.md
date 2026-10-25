@@ -129,13 +129,57 @@ Done differently from the finding's suggestion, or left out:
 
 The tests ran in a worktree with scratch data and projects folders, a scratch home and temp folder and TexLab 5.26.0 from a scratch folder on the `PATH`, with no model or network calls (fetch is mocked in the Research tests). The 26 skips are phase 2's.
 
+### Phase 3 second review fixes
+
+The second round's 13 confirmed findings are fixed on **`fix/p3-review2`**, branched from `a5a4a08`, one commit each with a test or check:
+
+- **TexLab** (`editor/lsp/`, `EditorPage.tsx`, `services/texlabService.js`):
+  - TexLab reads a file an `\input` names in another letter case (`\input{Chapters/Intro}` of `chapters/intro.tex`) once, as a file of its own, and never again. Round 1 mapped that copy to the file, so its old marks replaced the open file's squiggles, the syntax check blocked on a brace fixed since, and F2 wrote edits planned from it (they pass the check while the lines haven't moved), leaving a use on the old name. `Texlab.spelling` gives a URI's own path. The open file takes squiggles from its own spelling only, the diagnostics route keeps only the disk's spelling's marks (TexLab reads that copy too, so the file's own errors stay), and F2 refuses with "The document brings in chapters/intro.tex as Chapters/Intro.tex. Make the \input match the file's name, then rename." Jumps and Review still map the other spelling to the file.
+  - The syntax check passes a brace in `\verb+…+`, `\Verb`, `\lstinline` and `\mintinline` with any delimiter or braces, and a lone `}` in `tcblisting`, `filecontents(*)`, `BVerbatim`, `LVerbatim`, `SaveVerbatim`, `VerbatimOut` and the environments the project defines with `\lstnewenvironment`, `\newminted`, `\newtcblisting`, `\DeclareTCBListing` or `\DefineVerbatimEnvironment`. A missing brace is passed only when some inline code opens more braces than it closes, not whenever the file has inline code, so a real unclosed brace beside a `\verb+natbib+` (the arXiv template) blocks again.
+  - A project whose path holds `|` goes without TexLab too, which panics on it as on `[`, `]` and `^`.
+  - F2 on a citation key refuses before asking when a `.bib` names the key in a `crossref`, `xref`, `xdata` or `related` field (`crossReferred` in `rename.ts`), as TexLab renames only the entry and its citations.
+- **Preflight** (`editor/preflight/run.ts`):
+  - After a clean compile a reference or citation is missing only when the log says so, for the scan's "Nothing has the label" and TexLab's undefined label and citation alike, and TexLab's is dropped for a label or key the scan has. The coding report's listings, the ELEC notes' `\newtcbtheorem` labels and a central `.bib`'s keys no longer get false warnings.
+  - The compile hands Preflight the engine's terminal output, which has no "File: … Graphic file" line, so an image is also found by the `<…/name.pdf>` pdfTeX and LuaTeX print as they ship its page, and XeTeX's "Unable to load picture" counts as not found. The check reads a real pdfTeX 2026 terminal sample now. The ACL template's three image errors are gone.
+- **AI review** (`services/reviewService.js`):
+  - Only the document's `.tex` files are sent, and the limits name an `\input` `.pgf` or data file left out, which had put the document over the budget so only `main.tex` was reviewed. The PDF's freshness check still counts them.
+  - The JSON is read from the first `{` followed by a quoted name, so braces in prose before it (`\section{Intro}`) no longer lose the review.
+  - A single backslash before `b`, `f`, `r` or `t` and a letter is doubled before the first parse, so `\textbf`, `\ref`, `\begin` and `\frac` show as LaTeX rather than a tab, CR, backspace or form feed and the rest. `\n` stays a line break.
+- **Research** (`services/researchService.js`, `services/referenceService.js`, `editor/research/`):
+  - Open note and Get PDF take the `research/notes/<key>.md` or `research/papers/<key>.pdf` already there for a paper in the `.bib` (Deep research writes its notes there), unless another result in the session has it, instead of making `<key>-2`.
+  - The In .bib fallback ignores arXiv's, bioRxiv's and medRxiv's DOIs and a preprint's own, as merging does, so a preprint row with an arXiv DOI and a published row whose bioRxiv preprint the `.bib` has are marked. Two publishers' DOIs still keep a row apart.
+  - Deep research gives the agent the question in the box and searches again only for a question the session hasn't searched (`searched` in `results.ts`).
+  - With no `.bib` chosen, the target and the "isn't included" warning come from the main document and what it brings in when the project names one, so a talk's slides loading another `.bib` don't decide it. Every `.tex` counts otherwise, as before.
+
+Changed from the findings' suggestions, or left out:
+
+- The finding's full fix for another spelling, the bridge opening that URI with the real file's text after each change, is left for later; F2 refuses instead, as suggested.
+- The syntax check's inline code is found in the text as it is, comments included: blanking them would cut `\verb|%d|` short, and `withoutComments` shortens the text, which moves TexLab's columns. Such code in a comment can spare a file's missing brace. Code environments' bodies aren't counted for missing braces, as TexLab 5.26 marks none there (checked with the real TexLab).
+- The crossref check's pattern is `[{"](?:[^}"]*[\s,])?key`, as the suggested one needed a character before the key and missed `crossref = {knuth84}`.
+- The figure-code limit says "weren't sent" for more than one file.
+- `referenceService.js` now imports `projectService.js`, which reaches it again through the mirror and Research. Each of the modules on that loop was imported first in a fresh Node and loaded.
+- No automated test drives EditorPage's two F2 refusals or ResearchPanel's Deep research click. The logic under them (`spelling`, `ProjectWorkspace.getFile`, `crossReferred`, `searched`) is in `lsp.check.ts` and `research.check.ts`.
+
+| Check | Result |
+| --- | --- |
+| Full backend suite, `node --test "test/*.test.js"`, with TexLab 5.26.0 on the `PATH` | 422 passed, 31 skipped, 0 failed (453 total) |
+| `test/texlab.test.js`, including both real-TexLab tests | 6 passed |
+| Each new or extended backend test, and the Preflight and syntax checks, run without their fix | Each fails on the fault it covers |
+| Frontend, `npm run typecheck` | Passed |
+| Frontend production build, `npm run build` | Passed |
+| Every `apps/frontend/src/**/*.check.ts`, bundled with esbuild and run separately | 32 passed |
+| Native Rust unit tests | 7 passed |
+
+The tests ran in a worktree with scratch data and projects folders, a scratch home and temp folder and TexLab 5.26.0 from a scratch folder on the `PATH`, with no model or network calls. The 31 skips are phase 2's opt-in native agent and sandbox checks, the Windows-only ones, moving a project to the Bin and the live requests. The syntax check's cases and the image sample came from the real TexLab and pdfTeX 2026 in scratch folders.
+
 ### Phase 3 limits and open items
 
 - Windows is untested: the TexLab build from the tag tarball (cargo, the cache in `~\AppData\Local\spectrum-build` and Windows `tar`), matching URIs whatever their letter case, ending TexLab with `taskkill` before a folder is binned or moved, and Review reading the kept PDF when another program holds the one on disk (`pdfStale`).
 - The tarball's pinned SHA-256 is of GitHub's generated archive. If GitHub regenerates it, the Windows build and the release upload stop until the digest is updated.
 - TexLab 5.26 limits worked around: it cannot forget a file an editor has had open, so a deleted one stays with empty text, and files changed on disk are read again two seconds after the last change, so their diagnostics can lag that long. Go to definition on a section's label lands on the `\section`.
 - Outline numbers come from the main document's kept `.aux` only, so another document's outline has none.
-- A folder with `[`, `]` or `^` in its name added inside a project during a session still makes TexLab panic once, and the editor then goes without it until the project is opened again.
+- A folder with `[`, `]`, `^` or `|` in its name added inside a project during a session still makes TexLab panic once, and the editor then goes without it until the project is opened again.
+- An `\input` spelt in another letter case than its file's name: TexLab's copy under that spelling stays as it first read it, so F2 refuses to rename in it and its marks are left out. Preflight finds an image in the TeX tree from pdfTeX's and LuaTeX's terminal output only, so with XeLaTeX one there is still reported missing.
 - A research session merged across computers brings back a choice one side cleared, from the other side.
 - The syntax check waits for TexLab to catch up with the latest edit, up to five seconds. When Review's compile meets it and the user chooses Cancel, the review stops with "The compile was stopped." Cancel in Review does not stop a compile it started.
 - An overfull box in a paragraph that runs across an `\input` is put at the paragraph's first line in the file TeX reports from, which can be a line of the other file. This is Spectrum's existing `parseCompileLog`, so the Logs tab does the same.
