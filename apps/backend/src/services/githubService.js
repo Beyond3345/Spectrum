@@ -14,6 +14,7 @@ import { getProject, getProjectRoot, httpError, listProjects, makeUniqueFolder, 
 import { readProjectSettings, updateProjectSettings } from './projectSettings.js';
 import { placeOfNew, readSyncConfig } from './syncService.js';
 import { readMirror } from './mirrorService.js';
+import { keyOf } from './mergeRules.js';
 import { compiling } from './compileService.js';
 import { directTurn } from './agentSessionService.js';
 import * as git from './gitService.js';
@@ -408,21 +409,23 @@ function mirrorBase(id) {
   return async (root) => {
     const record = await readMirror(id);
     if (!record) return undefined;
-    const ours = await git.treeFiles(root, await git.headOid(root));
-    const theirs = await git.treeFiles(root, await git.remoteHead(root));
+    // each side's files by key, as the record keeps them
+    const byKey = async (commit) => new Map([...(await git.treeFiles(root, commit))].map(([rel, x]) => [keyOf(rel), x]));
+    const sides = [await byKey(await git.headOid(root)), await byKey(await git.remoteHead(root))];
     const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
     const base = new Map();
     for (const [key, { rel, hash }] of Object.entries(record.files)) {
       if (typeof hash !== 'string' || typeof rel !== 'string') continue;
       let oid = null;
-      for (const [side] of [ours.get(key) || [], theirs.get(key) || []]) {
-        if (!oid && side && sha(await git.readBlobAt(root, side.oid)) === hash) oid = side.oid;
+      for (const side of sides) {
+        const x = side.get(key);
+        if (!oid && x && sha(await git.readBlobAt(root, x.oid)) === hash) oid = x.oid;
       }
       if (!oid) {
         const text = await fs.readFile(path.join(DATA_DIR, 'mirror', id, 'base', `${hash}.gz`)).then(gunzip, () => null);
         if (text) oid = await git.writeBlobAt(root, text);
       }
-      if (oid) base.set(key, [{ rel, oid, mode: '100644' }]);
+      if (oid) base.set(rel, { oid, mode: '100644' });
     }
     return base;
   };

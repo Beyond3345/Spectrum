@@ -6,6 +6,7 @@
 // branch once every file is written.
 import { promises as fs } from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import git from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 import { HIDDEN_ENTRIES, listFilesRecursive, writeFileAtomic } from '../utils/fsUtils.js';
@@ -13,8 +14,7 @@ import { looksLikeConflictCopy } from '../utils/conflictCopies.js';
 import { mergeText } from '../utils/merge3.js';
 import { isDocumentFile } from '../utils/texUtils.js';
 import { isText } from './versionService.js';
-import { mergeResults } from './researchService.js';
-import { deletionBrake, keepBefore, mergeChatFiles, mergeMeta, placeIfUnchanged, respellKeys } from './mergeRules.js';
+import { conflictCopyPath, decide, deletionBrake, keepBefore, keyOf, mergeChatFiles, mergeMeta, mergeSessionFiles, placeIfUnchanged, respellKeys } from './mergeRules.js';
 
 const { readFile, mkdir, rmdir, unlink, stat, lstat, readdir, readlink, symlink, chmod, rm } = fs;
 /** Node's file system for isomorphic-git, with each file written whole through a temp file beside it. */
@@ -64,8 +64,7 @@ _minted-*/
 
 const exists = (p) => fs.lstat(p).then(() => true, () => false);
 const join = (root, rel) => path.join(root, ...rel.split('/'));
-// one key for the names macOS and Windows take for one file
-const fold = (rel) => rel.normalize('NFC').toLowerCase();
+const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 const isObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 
 export const secretLooking = (rel) => SECRET.test(rel.split('/').pop());
@@ -172,12 +171,12 @@ async function writeExcludes(root, pdfs) {
 export async function commitAll(root, { message, author, hold = () => false }) {
   const pdfs = await compiledPdfs(root);
   await writeExcludes(root, pdfs);
-  const compiled = new Set(pdfs.map(fold));
+  const compiled = new Set(pdfs.map(keyOf));
   const cache = {};
   const left = [];
   let changes = 0;
   for (const [rel, head, work, stage] of await git.statusMatrix({ fs: gitFs, dir: root, cache })) {
-    if ((head === 1 && work === 1 && stage === 1) || keptOut(rel) || compiled.has(fold(rel)) || hold(rel)) continue;
+    if ((head === 1 && work === 1 && stage === 1) || keptOut(rel) || compiled.has(keyOf(rel)) || hold(rel)) continue;
     if (work === 0) {
       if (stage) await git.remove({ fs: gitFs, dir: root, filepath: rel, cache });
       if (head) changes++;
@@ -242,7 +241,7 @@ export async function commitTime(root, oid) {
 
 // ─── Pull ───
 
-/** A commit's files by key: Map key → [{ rel, oid, mode }] (two for a key: names that differ only in letter case). */
+/** A commit's files: Map rel → { oid, mode }. */
 export async function treeFiles(root, commit, cache = {}) {
   const files = new Map();
   if (!commit) return files;
@@ -256,25 +255,11 @@ export async function treeFiles(root, commit, cache = {}) {
       const type = await entry.type();
       // a submodule's commit
       if (type === 'commit') return null;
-      if (type === 'blob') files.set(fold(rel), [...(files.get(fold(rel)) || []), { rel, oid: await entry.oid(), mode: (await entry.mode()).toString(8) }]);
+      if (type === 'blob') files.set(rel, { oid: await entry.oid(), mode: (await entry.mode()).toString(8) });
       return true;
     }
   });
   return files;
-}
-
-/** Which side a file takes, from each side's blob against the base's ('merge': changed on both). */
-function choose(b, o, t) {
-  const id = (x) => x?.oid ?? null;
-  if (id(o) === id(t)) return 'ours';
-  // no base (added on both, or nothing in common yet): everything on either side stays
-  if (!b) return !t ? 'ours' : !o ? 'theirs' : 'merge';
-  if (id(t) === id(b)) return 'ours';
-  if (id(o) === id(b)) return 'theirs';
-  // deleted on one side and changed on the other: the changed one stays
-  if (!o) return 'theirs';
-  if (!t) return 'ours';
-  return 'merge';
 }
 
 const json = (buf) => {
@@ -286,66 +271,21 @@ const json = (buf) => {
   }
 };
 
-/** mergeMeta without the id it gives a group of settings that has none. */
-function byKey(base, ours, theirs) {
-  const { id, ...rest } = mergeMeta(base, ours, theirs);
-  return id === undefined ? rest : { ...rest, id };
-}
-
-/** settings.json key by key, and one level deeper where a value is itself a group of settings (the GitHub link, say). */
-function mergeSettings(base, ours, theirs) {
-  const merged = byKey(base, ours, theirs);
-  for (const key of Object.keys(merged)) {
-    if (isObject(ours[key]) && isObject(theirs[key]) && (base[key] === undefined || isObject(base[key]))) merged[key] = byKey(base[key] ?? {}, ours[key], theirs[key]);
-  }
-  return merged;
-}
-
-/**
- * A research session with both sides' searches and results, merged as a search merges them: this computer's choices
- * where it made one, the other's where it didn't. null unless both are that session.
- */
-function mergeSessions(mine, theirs) {
-  const session = (x) => typeof x?.id === 'string' && Array.isArray(x.results) && Array.isArray(x.runs);
-  if (!session(mine) || !session(theirs) || mine.id !== theirs.id) return null;
-  const runs = [...new Map([...theirs.runs, ...mine.runs].map((r) => [r?.at, r])).values()].sort((a, b) => String(a?.at).localeCompare(String(b?.at)));
-  const updatedAt = [String(mine.updatedAt ?? ''), String(theirs.updatedAt ?? '')].sort().at(-1);
-  return { ...theirs, ...mine, runs, results: mergeResults(mine.results, theirs.results), updatedAt };
-}
-
 /**
  * A file of .spectrum changed on both sides, merged, or null to keep this computer's: never a conflicted copy, which no
- * one would see. A chat by message, a research session by search, settings.json key by key (one level deep), and
- * project.json, a to-do, a PDF note or any other of its JSON files field by field against the base.
+ * one would see. A chat by message, a research session by search, and project.json, settings.json, a to-do, a PDF
+ * note or any other of its JSON files key by key (one level deep) against the base.
  */
 function mergeAppFile(key, base, ours, theirs) {
-  if (CHAT.test(key)) {
-    const text = mergeChatFiles(ours.toString('utf8'), theirs.toString('utf8'));
-    return text && Buffer.from(text);
-  }
-  const [b, o, t] = [(base && json(base)) || {}, json(ours), json(theirs)];
-  if (!o || !t) return null;
-  const merged = RESEARCH.test(key) ? mergeSessions(o, t) : key === '.spectrum/settings.json' ? mergeSettings(b, o, t) : byKey(b, o, t);
-  return merged && Buffer.from(JSON.stringify(merged, null, 2));
-}
-
-/**
- * Beside rel, GitHub's copy of a file that didn't merge, named as Dropbox names a conflicted copy
- * (main (GitHub’s conflicted copy 2026-10-25 104233).tex), so the conflicted-copy banner offers it.
- */
-export function conflictCopyPath(rel, at = new Date()) {
-  const slash = rel.lastIndexOf('/') + 1;
-  const name = rel.slice(slash);
-  const dot = name.lastIndexOf('.');
-  const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
-  const two = (n) => String(n).padStart(2, '0');
-  const when = `${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())} ${two(at.getHours())}${two(at.getMinutes())}${two(at.getSeconds())}`;
-  return `${rel.slice(0, slash)}${stem} (${OWN_COPY} ${when})${ext}`;
+  if (CHAT.test(key)) return mergeChatFiles(ours, theirs)?.data ?? null;
+  if (RESEARCH.test(key)) return mergeSessionFiles(ours, theirs);
+  const [o, t] = [json(ours), json(theirs)];
+  return o && t ? Buffer.from(JSON.stringify(mergeMeta((base && json(base)) || undefined, o, t), null, 2)) : null;
 }
 
 /**
  * What merging theirs into ours makes of each file, against base (each treeFiles'), without writing anything:
- * { decisions: [{ key, o, r }] with o this computer's file and r the result (each null for none, r with data when
+ * { decisions: [{ key, o, r }] with o this computer's file and r the result (each null for none; r with data when
  * merged), copies: GitHub's files that didn't merge, problems }. side(rel): 'ours' or 'theirs' to take that side's
  * file whatever changed (the settings repository's newer item), or null. compiled: the keys of compiled PDFs.
  */
@@ -353,37 +293,38 @@ export async function planMerge({ base, ours, theirs, read, compiled = new Set()
   const decisions = [];
   const copies = [];
   const problems = [];
-  for (const key of new Set([...base.keys(), ...ours.keys(), ...theirs.keys()])) {
-    const [b] = base.get(key) || [];
-    const os = ours.get(key) || [];
-    const ts = theirs.get(key) || [];
-    if (os.length > 1 || ts.length > 1) {
-      const [x, y] = os.length > 1 ? os : ts;
-      problems.push(`“${x.rel}” and “${y.rel}” differ only in letter case, which macOS and Windows can’t keep apart. Rename one of them.`);
-      for (const o of os) decisions.push({ key, o, r: o });
-      continue;
-    }
-    const o = os[0] ?? null;
-    const t = ts[0] ?? null;
-    const rel = o && t ? respellKeys(b?.rel, o.rel, t.rel) : (o ?? t ?? b).rel;
-    const pick = side(rel) ?? choose(b, o, t);
-    let r = (pick === 'theirs' ? t : o) && { ...(pick === 'theirs' ? t : o), rel };
+  const { files, clashes } = respellKeys([...base.keys()], [...ours.keys()], [...theirs.keys()]);
+  // two names for one file on one side, which a Mac or Windows disk can't keep apart: this computer's stay as they are
+  const clashed = new Set();
+  for (const [a, b] of clashes) {
+    problems.push(`“${a}” and “${b}” differ only in letter case, which macOS and Windows can’t keep apart. Rename one of them.`);
+    clashed.add(keyOf(a));
+  }
+  for (const key of clashed) for (const [rel, x] of ours) if (keyOf(rel) === key) decisions.push({ key, o: { rel, ...x }, r: { rel, ...x } });
+  const entry = (map, rel) => (rel === undefined ? null : { rel, ...map.get(rel) });
+  for (const [key, f] of files) {
+    if (clashed.has(key)) continue;
+    const [b, o, t] = [entry(base, f.base), entry(ours, f.ours), entry(theirs, f.theirs)];
+    const pick = side(f.rel) ?? decide(b?.oid ?? null, o?.oid ?? null, t?.oid ?? null);
+    const from = pick === 'theirs' ? t : pick === 'drop' ? null : o;
+    let r = from && { ...from, rel: f.rel };
     if (pick === 'merge') {
       const [ob, tb, bb] = await Promise.all([read(o.oid), read(t.oid), b ? read(b.oid) : null]);
+      const app = key.startsWith('.spectrum/');
       // a compiled PDF stays this computer's, with no copy
-      const data = key.startsWith('.spectrum/') ? mergeAppFile(key, bb, ob, tb) : compiled.has(key) ? null : isText(rel) ? mergeText(bb ?? Buffer.alloc(0), ob, tb) : null;
-      if (data) r = { rel, data, mode: o.mode };
-      else if (!key.startsWith('.spectrum/') && !compiled.has(key)) copies.push({ rel: conflictCopyPath(rel), data: tb, mode: t.mode });
+      const data = app ? mergeAppFile(key, bb, ob, tb) : compiled.has(key) ? null : isText(f.rel) ? mergeText(bb ?? Buffer.alloc(0), ob, tb) : null;
+      if (data) r = { rel: f.rel, data, mode: o.mode };
+      else if (!app && !compiled.has(key)) copies.push({ rel: conflictCopyPath(f.rel, 'GitHub'), data: tb, mode: t.mode });
     }
     decisions.push({ key, o, r });
   }
   // a copy's name nothing else has
-  const taken = new Set(decisions.map((d) => d.r && fold(d.r.rel)));
+  const taken = new Set(decisions.map((d) => d.r && keyOf(d.r.rel)));
   for (const c of copies) {
     const dot = c.rel.lastIndexOf('.');
     const [stem, ext] = dot > c.rel.lastIndexOf('/') + 1 ? [c.rel.slice(0, dot), c.rel.slice(dot)] : [c.rel, ''];
-    for (let n = 2; taken.has(fold(c.rel)); n++) c.rel = `${stem}-${n}${ext}`;
-    taken.add(fold(c.rel));
+    for (let n = 2; taken.has(keyOf(c.rel)); n++) c.rel = `${stem}-${n}${ext}`;
+    taken.add(keyOf(c.rel));
   }
   return { decisions, copies, problems };
 }
@@ -409,7 +350,7 @@ async function writeMergedTree(root, decisions, copies) {
   const write = async (dir) => {
     const tree = [];
     for (const [name, entry] of dir) {
-      tree.push(entry instanceof Map ? { mode: '040000', path: name, oid: await write(entry), type: 'tree' } : { mode: entry.mode, path: name, oid: entry.oid, type: entry.mode === '160000' ? 'commit' : 'blob' });
+      tree.push(entry instanceof Map ? { mode: '040000', path: name, oid: await write(entry), type: 'tree' } : { mode: entry.mode, path: name, oid: entry.oid, type: 'blob' });
     }
     return git.writeTree({ fs: gitFs, dir: root, tree });
   };
@@ -441,30 +382,32 @@ async function respell(root, rel, want) {
  * that changed meanwhile, or a write that fails, the files already written are put back and it throws CHANGED.
  */
 async function writeDecisions(root, decisions, copies, read, keep) {
-  const holds = (oid) => async (current) => (oid === null ? current === null : current !== null && (await blobOid(current)) === oid);
   const ops = decisions.filter((d) => !unchanged(d) && !keep(d.r?.rel ?? d.o.rel));
   ops.sort((a, b) => Number(!!b.o && !b.r) - Number(!!a.o && !a.r));
   const done = [];
-  const changed = () => Object.assign(new Error('A file changed while it was being pulled.'), { code: 'CHANGED' });
+  const changed = () => Object.assign(new Error('A file changed while it was being pulled. Spectrum tries again shortly.'), { code: 'CHANGED' });
+  // what was committed of a file, by its SHA-256, as placeIfUnchanged checks it
+  const committed = async (o) => (o ? sha256(await read(o.oid)) : null);
   try {
     for (const d of ops) {
       const { o, r } = d;
-      if (o && !r) {
-        if (!(await placeIfUnchanged(join(root, o.rel), null, holds(o.oid)))) throw changed();
-        await pruneUp(root, join(root, o.rel));
-      } else {
-        if (o && o.rel !== r.rel) {
-          if (!(await holds(o.oid)(await fs.readFile(join(root, o.rel)).catch(() => null)))) throw changed();
-          await respell(root, o.rel, r.rel);
-        }
+      if (o && (!r || o.rel !== r.rel)) {
+        const now = await fs.readFile(join(root, o.rel)).catch(() => null);
+        if (!now || (await blobOid(now)) !== o.oid) throw changed();
+        if (!r) {
+          await fs.rm(join(root, o.rel), { force: true });
+          await pruneUp(root, join(root, o.rel));
+        } else await respell(root, o.rel, r.rel);
+      }
+      if (r) {
         const bytes = r.data ?? (await read(r.oid));
-        if (!(await placeIfUnchanged(join(root, r.rel), bytes, holds(o ? o.oid : null)))) throw changed();
+        if (!(await placeIfUnchanged(root, r.rel, bytes, await committed(o)))) throw changed();
         if (process.platform !== 'win32' && r.mode === '100755') await fs.chmod(join(root, r.rel), 0o755);
       }
       done.push(d);
     }
     for (const c of copies) {
-      if (!(await placeIfUnchanged(join(root, c.rel), c.data, async (current) => current === null))) throw changed();
+      if (!(await placeIfUnchanged(root, c.rel, c.data, null))) throw changed();
       done.push({ o: null, r: c });
     }
   } catch (err) {
@@ -482,9 +425,10 @@ async function writeDecisions(root, decisions, copies, read, keep) {
  * Merge origin's fetched branch into this computer's committed one, under the caller's project lock: a "Before pull
  * from GitHub" checkpoint when files here change, the files written, a two-parent commit (or a fast-forward), and only
  * then the branch moved. Resolves { state, fromTheirs, conflicts, changedApp, deleting, problems }: state 'current'
- * (nothing to take), 'merged', or 'confirm' (it would delete many files at once and allowDeletions wasn't given).
- * base: the files to merge against instead of the commits' own common one (Link from a mirror's last sync), as
- * treeFiles gives them. dryRun: say what it would do and write nothing.
+ * (nothing to take), 'merged', 'confirm' (it would delete many files at once and allowDeletions wasn't given) or
+ * 'preview' (dryRun: what it would do, with nothing written). base: the files to merge against instead of the commits'
+ * own common one (Link from a mirror's last sync), as treeFiles gives them. keep(rel): a file this computer keeps as
+ * it is (what a shared repository leaves out); side: planMerge's.
  */
 export async function mergeOrigin(root, { author, allowDeletions = false, dryRun = false, base: given, keep = () => false, side, message = 'Pull from GitHub' }) {
   const branch = await branchOf(root);
@@ -495,28 +439,27 @@ export async function mergeOrigin(root, { author, allowDeletions = false, dryRun
   const cache = {};
   const [mergeBase] = ours ? await git.findMergeBase({ fs: gitFs, dir: root, oids: [ours, theirs], cache }).catch(() => []) : [];
   const read = async (oid) => Buffer.from((await git.readBlob({ fs: gitFs, dir: root, oid, cache })).blob);
-  const compiled = new Set((await compiledPdfs(root)).map(fold));
+  const compiled = new Set((await compiledPdfs(root)).map(keyOf));
   const [baseFiles, oursFiles, theirsFiles] = await Promise.all([given ?? treeFiles(root, mergeBase, cache), treeFiles(root, ours, cache), treeFiles(root, theirs, cache)]);
   const plan = await planMerge({ base: baseFiles, ours: oursFiles, theirs: theirsFiles, read, compiled, side });
   // a compiled PDF and what this computer doesn't commit stay as they are here
-  const kept = (rel) => compiled.has(fold(rel)) || keptOut(rel) || secretLooking(rel) || keep(rel);
+  const kept = (rel) => compiled.has(keyOf(rel)) || keptOut(rel) || secretLooking(rel) || keep(rel);
   const working = plan.decisions.filter((d) => !unchanged(d) && !kept(d.r?.rel ?? d.o.rel));
-  const deleting = working.filter((d) => d.o && !d.r);
-  const users = (list) => list.filter((d) => !d.key.startsWith('.spectrum/')).length;
+  const deleting = working.filter((d) => d.o && !d.r).map((d) => d.o.rel);
   const summary = {
     fromTheirs: working.length,
     conflicts: plan.copies.length,
-    changedApp: [...working, ...plan.copies.map((c) => ({ key: fold(c.rel) }))].some((d) => d.key.startsWith('.spectrum/')),
+    changedApp: [...working.map((d) => d.key), ...plan.copies.map((c) => keyOf(c.rel))].some((key) => key.startsWith('.spectrum/')),
     deleting: deleting.length,
     problems: plan.problems
   };
   if (dryRun) return { state: 'preview', ...summary };
-  if (!allowDeletions && (deletionBrake(deleting.length, oursFiles.size) || deletionBrake(users(deleting), [...oursFiles.keys()].filter((k) => !k.startsWith('.spectrum/')).length))) return { state: 'confirm', ...summary };
+  if (!allowDeletions && deletionBrake(deleting, [...oursFiles.keys()])) return { state: 'confirm', ...summary };
   if (working.length || plan.copies.length) await keepBefore(root, 'Before pull from GitHub');
   // a file here that a new one from GitHub would land on, which this computer never committed (an ignored one), stays too
   const uncommitted = new Set();
-  for (const d of plan.decisions) if (!d.o && d.r && (await exists(join(root, d.r.rel)))) uncommitted.add(fold(d.r.rel));
-  const ops = await writeDecisions(root, plan.decisions, plan.copies, read, (rel) => kept(rel) || uncommitted.has(fold(rel)));
+  for (const d of plan.decisions) if (!d.o && d.r && (await exists(join(root, d.r.rel)))) uncommitted.add(keyOf(d.r.rel));
+  const ops = await writeDecisions(root, plan.decisions, plan.copies, read, (rel) => kept(rel) || uncommitted.has(keyOf(rel)));
   const tree = await writeMergedTree(root, plan.decisions, plan.copies);
   const theirsTree = (await git.readCommit({ fs: gitFs, dir: root, oid: theirs, cache })).commit.tree;
   const oid = tree === theirsTree && (!ours || mergeBase === ours)
