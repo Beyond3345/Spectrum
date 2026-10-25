@@ -219,11 +219,17 @@ test('a moved project gets a TexLab on its new folder, one can be stopped before
   assert.equal(roots().length, 3);
   await stopProjectTexlab(p.id);
 
-  // TexLab 5.26 panics on a file URI with [, ] or ^ in it
+  // TexLab 5.26 panics on a file URI with [, ], ^ or | in it: a project's name can't hold a |, but a folder opened or
+  // moved to can
   const odd = await createProject({ name: 'Thesis [draft]', populate: (root) => fs.writeFile(path.join(root, 'main.tex'), 'x') });
   assert.match(odd.path, /\[draft\]/);
   assert.deepEqual(await diagnostics(odd), { ok: true, available: false, files: {} });
   assert.equal((await connect(odd)).status, 503);
+  const piped = await newProject({ 'main.tex': 'x' });
+  const there = path.join(tmp, 'projects', 'Draft | final');
+  await fs.rename(piped.path, there);
+  await moveEntry(piped.id, there);
+  assert.deepEqual(await diagnostics(piped), { ok: true, available: false, files: {} });
   assert.equal(roots().length, 3);
   await stopTexlab();
 });

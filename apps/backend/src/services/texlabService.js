@@ -178,9 +178,9 @@ async function start(projectId) {
   const program = await texlabProgram();
   if (!program) return null;
   const root = await getProjectRoot(projectId);
-  // ponytail: TexLab 5.26 panics on a file URI with [, ] or ^ in it (and Spectrum would start it again each minute), so
-  // such a project goes without; drop this when TexLab handles them
-  if (/[[\]^]/.test(root)) return null;
+  // ponytail: TexLab 5.26 panics on a file URI with [, ], ^ or | in it (and Spectrum would start it again each minute),
+  // so such a project goes without; drop this when TexLab handles them
+  if (/[[\]^|]/.test(root)) return null;
   // tests stand a Node script in for it
   const [file, args] = /\.m?js$/i.test(program) ? [process.execPath, [program, 'run']] : [program, ['run']];
   // not the project's folder, which Windows wouldn't then let be moved or binned while TexLab runs (it only runs
