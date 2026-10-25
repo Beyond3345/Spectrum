@@ -515,7 +515,7 @@ export function link(id, { owner, repo, preview = false, allowDeletions = false 
         await updateProjectSettings(root, (s) => {
           const { here: _h, ...was } = isLink(s.github) && s.github.projectId === meta.id ? s.github : kept;
           return { ...s, github: { ...was, owner: target.owner, repo: target.repo, projectId: meta.id } };
-        });
+        }, { held: true });
         noteLeft(id, (await git.commitAll(root, { message: await backupMessage(), author, hold })).left);
         linked = true;
         return merged;

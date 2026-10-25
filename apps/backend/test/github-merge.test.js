@@ -349,6 +349,36 @@ test('Spectrum leaves a repository alone while another program works in it, and 
   assert.match(await g.refusal(A), /middle of a merge/);
 });
 
+test('a settings change under way when a pull comes waits for it, so neither undoes the other', { skip }, async () => {
+  const { updateProjectSettings } = await import('../src/services/projectSettings.js');
+  const { mutateProjectFiles } = await import('../src/services/projectService.js');
+  const { A, B } = await pair({ '.spectrum/settings.json': JSON.stringify({ compile: { engine: 'xelatex' } }) });
+  write(A, '.spectrum/settings.json', JSON.stringify({ compile: { engine: 'lualatex' } }));
+  await sync(A);
+  await g.fetchOrigin(B, token);
+  // a skills choice that has read the settings, paused before it writes them
+  let started;
+  let release;
+  const reading = new Promise((resolve) => (started = resolve));
+  const gate = new Promise((resolve) => (release = resolve));
+  const setting = updateProjectSettings(B, async (s) => {
+    started();
+    await gate;
+    return { ...s, skills: { on: ['my-skill'], off: [] } };
+  });
+  await reading;
+  // as a pull does: commit and merge under the project files' lock
+  const pull = mutateProjectFiles(async () => {
+    await g.commitAll(B, { message: 'Backup', author });
+    return g.mergeOrigin(B, { author, checkpoint: false });
+  });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  release();
+  await setting;
+  assert.equal((await pull).state, 'merged');
+  assert.deepEqual(JSON.parse(read(B, '.spectrum/settings.json')), { compile: { engine: 'lualatex' }, skills: { on: ['my-skill'], off: [] } });
+});
+
 test('Typst source merges by lines, as LaTeX does', { skip }, async () => {
   const lines = (k) => Array.from({ length: 12 }, (_, i) => (i === k ? `changed ${k}` : `line ${i}`)).join('\n');
   const { A, B } = await pair({ 'main.typ': lines(-1) });
