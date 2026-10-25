@@ -36,6 +36,10 @@ export function newName(typed: string, command: boolean) {
   return name;
 }
 
+/** Whether a .bib's text names key in an entry's crossref, xref, xdata or related field, which TexLab doesn't rename. */
+export const crossReferred = (bib: string, key: string) =>
+  new RegExp(String.raw`\b(?:crossref|xref|xdata|related)\s*=\s*[{"](?:[^}"]*[\s,])?${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[\s,}"])`, 'i').test(bib);
+
 /**
  * text with LSP edits made (lines and UTF-16 columns from 0, as JavaScript counts). Each edit replaces expected, the
  * name being renamed: one that doesn't, or that falls past the end of its line, was planned against other text (TexLab

@@ -116,7 +116,7 @@ import type { Project } from '../editor/latexEnvs';
 import type { OutlineItem } from '../editor/latexEditor';
 import { Texlab, clearMarks, texlabSlot } from '../editor/lsp/texlab';
 import type { Reference } from '../editor/lsp/texlab';
-import { applyEdits, newName, renameEdits } from '../editor/lsp/rename';
+import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
 import { VERSIONS_CHANGED, errorText, figureSnippet } from '../editor/shared';
@@ -1197,6 +1197,12 @@ function Editor({ projectId }: { projectId: string }) {
       const scan = projectScanRef.current;
       if (!found.command && (scan.scans.some((s) => s.labels.includes(name)) || scan.bib.some((b) => b.key === name))) {
         throw new Error(`“${name}” is already used in this project. Pick another name.`);
+      }
+      // nor rename a key where another .bib entry inherits from it
+      if (!found.command && scan.bib.some((b) => b.key === target)) {
+        for (const file of [...fileSet].filter((f) => /\.bib$/i.test(f))) {
+          if (crossReferred(await readText(file).catch(() => ''), target)) throw new Error(`“${target}” is named in a crossref, xref, xdata or related field in ${file}. Rename it there too, or rename by hand.`);
+        }
       }
       // TexLab plans against the open file's text and the others' on disk, so the open file goes to disk first
       await saveNow();

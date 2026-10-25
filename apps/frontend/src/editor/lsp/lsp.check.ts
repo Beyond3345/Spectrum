@@ -3,7 +3,7 @@
 // `npx esbuild apps/frontend/src/editor/lsp/lsp.check.ts --bundle --platform=node --log-level=warning | node`
 import { documentOutline } from '../latexEditor.ts';
 import { outlineDelay, symbolHeadings } from './outline.ts';
-import { applyEdits, newName, renameEdits } from './rename.ts';
+import { applyEdits, crossReferred, newName, renameEdits } from './rename.ts';
 import { syntaxErrors } from './syntax.ts';
 import { EditorState } from '@codemirror/state';
 import { diagnosticCount, setDiagnostics } from '@codemirror/lint';
@@ -161,6 +161,10 @@ function rename() {
   throws(() => newName('smith,jones', false), /can’t hold/, 'a comma');
   throws(() => newName('a%b', false), /can’t hold/, 'a percent sign');
   throws(() => newName('my2cmd', true), /only letters/, 'a command with a digit');
+
+  // a key another entry inherits from, which TexLab leaves on the old name
+  const bib = '@book{knuth84, title = {TeX}}\n@inbook{ch1,\n  crossref = {knuth84},\n  related = "a, knuth86 ,b"\n}\n';
+  eq([crossReferred(bib, 'knuth84'), crossReferred(bib, 'knuth86'), crossReferred(bib, 'knuth8'), crossReferred(bib, 'ch1'), crossReferred(bib, 'TeX')], [true, true, false, false, false], 'crossref and related');
 }
 
 // ─── outline ───
