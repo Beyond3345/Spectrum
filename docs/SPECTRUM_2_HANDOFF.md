@@ -32,7 +32,7 @@ Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.
 
 ### Housekeeping
 
-- Old builder and fixer branches and worktrees have been removed; their work is in `feat/2.0`. A scratch worktree for the last test run may remain under the session scratchpad (`final-wt`); it is detached and safe to remove with `git worktree remove --force`.
+- Old builder and fixer branches and worktrees have been removed; their work is in `feat/2.0`. No scratch worktrees remain.
 - Do not cherry-pick old branches. Branch new work from the newest `feat/2.0`.
 
 ## Phase 4
