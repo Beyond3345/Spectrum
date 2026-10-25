@@ -21,6 +21,7 @@ import {
   deleteNote,
   getFile,
   getFileIfChanged,
+  getEngines,
   getProjectSettings,
   getProjectTree,
   getSyncSettings,
@@ -44,7 +45,7 @@ import {
   updateProjectSettings,
   writeFile
 } from '../api/client';
-import type { CompileDiagnostic, CompileEngine, CompileOptions, CompileResult, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
+import type { CompileDiagnostic, CompileEngine, CompileOptions, CompileResult, Engines, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
 import Icon from './Icon';
 import Tabs from './Tabs';
 import Sheet from './Sheet';
@@ -122,7 +123,7 @@ import type { Reference } from '../editor/lsp/texlab';
 import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
-import { PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDocument, type DocKind } from '../editor/shared';
+import { ENGINES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDocument, type DocKind } from '../editor/shared';
 import { languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions } from '../editor/languages';
 import { includedPath, parseMarkdownOutline, parseTypstOutline } from '../editor/outlines';
 import { ZOTERO_CITE, zoteroCompletionSource } from '../editor/zotero';
@@ -410,6 +411,17 @@ function Editor({ projectId }: { projectId: string }) {
   // a Typst compile's own errors and warnings (null: the log is TeX's, for parseCompileLog)
   const [compileDiagnostics, setCompileDiagnostics] = useState<CompileDiagnostic[] | null>(null);
   const [compileFailure, setCompileFailure] = useState('');
+  // why the compile stopped before an engine ran, which Logs offers a download or the default for
+  const [compileNotice, setCompileNotice] = useState<{ code?: string; version?: string } | null>(null);
+  const [compileGenerated, setCompileGenerated] = useState<'latex' | 'typst' | null>(null);
+  // the installed Typst versions and pandoc, for the compile menu
+  const [engines, setEngines] = useState<Engines | null>(null);
+  useEffect(() => {
+    const load = () => getEngines().then(setEngines).catch(() => undefined);
+    load();
+    window.addEventListener(ENGINES_CHANGED, load);
+    return () => window.removeEventListener(ENGINES_CHANGED, load);
+  }, [projectId]);
   const [pdf, setPdf] = useState<{ url: string; blob: boolean } | null>(null);
   /** the document whose PDF the pane shows, and the one compiled last (whose log shows) */
   const [shownDoc, setShownDoc] = useState('');
@@ -1535,6 +1547,10 @@ function Editor({ projectId }: { projectId: string }) {
       if (problem && settings.checkpointNotice) notify(problem, 'error');
       setCompileLog(`Engine: ${engineLabel(actual)}\nDocument: ${built}\n\n${res.log || ''}`.trim());
       setCompileDiagnostics(res.errors ?? null);
+      setCompileNotice(res.code ? { code: res.code, version: res.version } : null);
+      setCompileGenerated(res.generated ?? null);
+      // an install from Logs' notice changes what the compile menu can offer
+      if (res.code) getEngines().then(setEngines).catch(() => undefined);
       if (res.ok && res.pdf) {
         const bytes = Uint8Array.from(atob(res.pdf), (c) => c.charCodeAt(0));
         const blob = new Blob([bytes], { type: 'application/pdf' });
@@ -1565,6 +1581,8 @@ function Editor({ projectId }: { projectId: string }) {
     } catch (err) {
       setCompileLog(`Compile request failed: ${errorText(err)}`);
       setCompileDiagnostics(null);
+      setCompileNotice(null);
+      setCompileGenerated(null);
       setCompileFailure(errorText(err));
       setCompile({ state: 'failed', engine: used, at: new Date() });
     } finally {
@@ -1631,7 +1649,7 @@ function Editor({ projectId }: { projectId: string }) {
       else next[key] = value;
       return next;
     });
-    updateProjectSettings(projectId, { compile: { [key]: value } })
+    return updateProjectSettings(projectId, { compile: { [key]: value } })
       .then((res) => setProjectCompile(res.settings.compile ?? {}))
       .catch((err) => {
         notify(`Couldn’t save the project’s compile settings: ${errorText(err)}`, 'error');
@@ -2579,6 +2597,9 @@ function Editor({ projectId }: { projectId: string }) {
     compileErrors,
     compiledDoc,
     compileFailed: Boolean(compileFailure),
+    compileNotice,
+    compileGenerated,
+    setCompileOption,
     // only for the PDF showing, when it's the document Document insights describes; another's, or none, is '—'
     pdfPages: pdf && pagesOf.url === pdf.url && shownDoc === compileTarget ? pagesOf.pages : null,
     // a level the main model can't use is sent as its recommended one
@@ -2735,6 +2756,18 @@ function Editor({ projectId }: { projectId: string }) {
     ];
   };
   const pauses = [...new Set([0, 1, 2, 3, 5, 10, compileOptions.autoCompile, settings.compileDefaults.autoCompile])].sort((a, b) => a - b);
+  const compileKind = docKind(compileTarget) ?? 'latex';
+  // a Typst project pins a Typst version instead of choosing a TeX engine
+  const typstVersionChoices: MenuItems = [
+    { heading: true, label: 'Typst version (this project)' },
+    { label: `Default${settings.compileDefaults.typstVersion ? ` (${settings.compileDefaults.typstVersion})` : engines?.typst.builtIn ? ` (${engines.typst.builtIn}, built in)` : ''}`, checked: projectCompile.typstVersion == null, onSelect: () => setCompileOption('typstVersion', null) },
+    ...(engines?.typst.builtIn ? [{ label: `Typst ${engines.typst.builtIn} (built in)`, checked: compileOptions.typstVersion === engines.typst.builtIn, onSelect: () => setCompileOption('typstVersion', engines.typst.builtIn) }] : []),
+    ...(engines?.typst.installed ?? []).map((version) => ({ label: `Typst ${version}`, checked: compileOptions.typstVersion === version, onSelect: () => setCompileOption('typstVersion', version) })),
+    ...(compileOptions.typstVersion && compileOptions.typstVersion !== engines?.typst.builtIn && !(engines?.typst.installed ?? []).includes(compileOptions.typstVersion)
+      ? [{ label: `Typst ${compileOptions.typstVersion} (not installed)`, disabled: true }]
+      : []),
+    { separator: true }
+  ];
   const compileItems: MenuItems = [
     ...(docs.length > 1
       ? [
@@ -2748,7 +2781,8 @@ function Editor({ projectId }: { projectId: string }) {
           { separator: true }
         ]
       : []),
-    ...compileChoice('engine', 'Compiler (this project)', COMPILE_ENGINES),
+    ...(compileKind === 'markdown' ? compileChoice('markdownEngine', 'PDF engine (this project)', [['latex', 'LaTeX'], ['typst', 'Typst']]) : []),
+    ...(compileKind === 'typst' ? typstVersionChoices : compileChoice('engine', 'Compiler (this project)', COMPILE_ENGINES)),
     ...compileChoice('autoCompile', 'Auto compile', pauses.map((n): [number, string] => [n, autoCompileLabel(n)])),
     ...compileChoice('haltOnError', 'Compile error handling', ERROR_HANDLING),
     ...compileChoice('syntaxCheck', 'Syntax checks', SYNTAX_CHECKS),

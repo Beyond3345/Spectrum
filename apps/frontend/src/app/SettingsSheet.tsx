@@ -6,8 +6,12 @@ import {
   createSkill,
   deleteSkill,
   duplicateSkill,
+  getEngines,
   getProjectSettings,
   getSkillSharing,
+  installPandoc,
+  installTypst,
+  removeTypst,
   getSyncSettings,
   grammarStatus,
   importLocalAgentLogin,
@@ -27,14 +31,14 @@ import {
   updateSyncSettings,
   writeSkillFile
 } from '../api/client';
-import type { BibTool, CheckerStatus, CompileEngine, LocalAgent, SearchProvider, Skill, SkillShare, SystemCheck } from '../api/client';
+import type { BibTool, CheckerStatus, CompileEngine, Engines, LocalAgent, SearchProvider, Skill, SkillShare, SystemCheck } from '../api/client';
 import { COLOUR_ROLES, EDITOR_FONTS, EDITOR_THEMES, chosenColours, editorColours, highlightLines, themeFor, wellColour } from '../editor/editorThemes';
 import type { EditorMode } from '../editor/editorThemes';
 import { highlightColour } from '../editor/synctex';
 import { CheckpointCleanup } from '../editor/tools/VersionsTab';
 import { resetPersonas } from '../editor/personas';
 import type { Persona } from '../editor/personas';
-import { AGENTS_CHANGED, errorText } from '../editor/shared';
+import { AGENTS_CHANGED, ENGINES_CHANGED, errorText } from '../editor/shared';
 import { ZoteroSettings } from '../editor/ZoteroCite';
 import { confirmDialog } from './Dialogs';
 import Icon from './Icon';
@@ -1161,15 +1165,77 @@ function EditorPane() {
   );
 }
 
-/** Settings › Engines: the LaTeX tab's compile defaults, which a project uses until it makes its own choice. */
+const sizeLabel = (bytes: number) => (bytes ? (bytes / 1_000_000).toFixed(1) + ' MB' : 'size unknown');
+const versionAtLeast = (version: string, minimum: string) => {
+  const left = version.split('.').map(Number);
+  const right = minimum.split('.').map(Number);
+  for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
+    if ((left[i] || 0) !== (right[i] || 0)) return (left[i] || 0) > (right[i] || 0);
+  }
+  return true;
+};
+
+/** Settings › Engines: the LaTeX, Typst and Markdown engines, and the compile defaults a project uses until it chooses its own. */
 function EnginesPane() {
   const [settings, update] = useSettings();
   const defaults = settings.compileDefaults;
   const set = (patch: Partial<typeof defaults>) => update({ compileDefaults: { ...defaults, ...patch } });
+  const [tab, setTab] = useState<'latex' | 'typst' | 'markdown'>('latex');
+  const [engines, setEngines] = useState<Engines | null>(null);
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+  const loadEngines = () => getEngines().then(setEngines).catch((err) => setError(errorText(err)));
+  useEffect(() => {
+    loadEngines();
+  }, []);
+  const install = async (version: string) => {
+    setBusy('typst:' + version);
+    setError('');
+    try {
+      setEngines((await installTypst(version)).engines);
+      window.dispatchEvent(new Event(ENGINES_CHANGED));
+      toast('Installed Typst ' + version + '.', { tone: 'success' });
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy('');
+    }
+  };
+  const remove = async (version: string) => {
+    if (!(await confirmDialog({ title: 'Remove Typst ' + version + '?', message: 'A project that pins this version will ask for it again the next time it compiles.', confirmLabel: 'Remove' }))) return;
+    setBusy('typst:' + version);
+    setError('');
+    try {
+      setEngines((await removeTypst(version)).engines);
+      window.dispatchEvent(new Event(ENGINES_CHANGED));
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy('');
+    }
+  };
+  const downloadPandoc = async () => {
+    setBusy('pandoc');
+    setError('');
+    try {
+      setEngines((await installPandoc()).engines);
+      window.dispatchEvent(new Event(ENGINES_CHANGED));
+      toast('Downloaded pandoc.', { tone: 'success' });
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy('');
+    }
+  };
+  const pandoc = engines?.pandoc.found ?? null;
+  const pandocOld = !!pandoc?.version && engines != null && !versionAtLeast(pandoc.version, engines.pandoc.minimum.latex);
 
   return (
     <>
-      <Tabs value="latex" onChange={() => undefined} items={[{ value: 'latex', label: 'LaTeX' }]} />
+      <Tabs value={tab} onChange={setTab} items={[{ value: 'latex', label: 'LaTeX' }, { value: 'typst', label: 'Typst' }, { value: 'markdown', label: 'Markdown' }]} />
+      {error && <div className="field-hint error">{error}</div>}
+      {tab === 'latex' && (
+        <>
       <div className="field-hint section-hint">
         Every project compiles with these until you change one for that project from the Compile button’s menu. They stay on this computer.
       </div>
@@ -1263,6 +1329,95 @@ function EnginesPane() {
           <span className="field-hint">Tools › Logs opens in the PDF’s place. Auto compile leaves it closed.</span>
         </span>
       </label>
+        </>
+      )}
+
+      {tab === 'typst' && (
+        <>
+          <div className="field-hint section-hint">
+            Typst is built into Spectrum. Older versions install here, and a project pins one from the Compile button’s menu.
+          </div>
+          {!engines ? (
+            <div className="field-hint">Reading the engines…</div>
+          ) : (
+            <>
+              <div className="field">
+                <label>Built in</label>
+                <div className="field-hint">
+                  {engines.typst.builtIn ? `Typst ${engines.typst.builtIn}, built in.` : 'This copy of Spectrum has no built-in Typst.'}
+                  {engines.typst.system && ` Also found: Typst ${engines.typst.system.version || 'an unknown version'} at ${engines.typst.system.path}.`}
+                </div>
+              </div>
+              <h3 className="form-section-title">Versions</h3>
+              {engines.typst.available.map((release) => {
+                const installed = engines.typst.installed.includes(release.version);
+                const working = busy === 'typst:' + release.version;
+                return (
+                  <div className="field" key={release.version}>
+                    <div className="row spread">
+                      <span>Typst {release.version}</span>
+                      <span className="field-hint">{release.released} · {sizeLabel(release.size)}</span>
+                      <button className="btn small" disabled={Boolean(busy)} onClick={() => (installed ? remove(release.version) : install(release.version))}>
+                        {working && !installed ? 'Installing…' : installed ? 'Remove' : 'Install'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="field">
+                <label id="settings-typstVersion">Default version</label>
+                <Select
+                  labelId="settings-typstVersion"
+                  value={defaults.typstVersion}
+                  options={[['', engines.typst.builtIn ? `Built in (${engines.typst.builtIn})` : 'Built in'], ...engines.typst.installed.map((version): [string, string] => [version, 'Typst ' + version])]}
+                  onChange={(value) => set({ typstVersion: value })}
+                />
+                <div className="field-hint">A project that doesn’t pin its own version uses this one.</div>
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {tab === 'markdown' && (
+        <>
+          <div className="field-hint section-hint">
+            Markdown compiles through pandoc, then LaTeX or Typst. Spectrum uses a pandoc on your computer or one you download here.
+          </div>
+          {!engines ? (
+            <div className="field-hint">Reading the engines…</div>
+          ) : (
+            <>
+              <div className="field">
+                <label>pandoc</label>
+                <div className="field-hint">
+                  {pandoc
+                    ? `pandoc ${pandoc.version || 'with an unknown version'}, ${pandoc.fromDownload ? 'downloaded by Spectrum' : 'at ' + pandoc.path}.`
+                    : 'No pandoc was found on this computer.'}
+                  {pandocOld && ` This one is older than pandoc ${engines.pandoc.minimum.typst}, which Typst output needs.`}
+                </div>
+                {(!pandoc || pandocOld) && (
+                  <button className="btn" disabled={busy === 'pandoc'} onClick={downloadPandoc}>
+                    {busy === 'pandoc' ? 'Downloading…' : `Download pandoc ${engines.pandoc.downloadable} (about 42 MB)`}
+                  </button>
+                )}
+              </div>
+              <div className="field">
+                <label id="settings-markdownEngine">PDF engine</label>
+                <Select
+                  labelId="settings-markdownEngine"
+                  value={defaults.markdownEngine}
+                  options={[['latex', 'LaTeX'], ['typst', 'Typst']]}
+                  onChange={(value) => set({ markdownEngine: value as 'latex' | 'typst' })}
+                />
+                <div className="field-hint">
+                  LaTeX writes LaTeX and compiles it with your TeX or the built-in Tectonic. Typst writes Typst, which needs pandoc {engines.pandoc.minimum.typst} or later.
+                </div>
+              </div>
+            </>
+          )}
+        </>
+      )}
     </>
   );
 }

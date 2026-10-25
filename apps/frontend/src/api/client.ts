@@ -457,6 +457,47 @@ export function importArxivSSE(
   });
 }
 
+// ─── Engines ───
+
+/** A program found on this computer. */
+export interface EngineFound {
+  path: string;
+  version: string | null;
+}
+
+/** What Settings › Engines shows: the built-in Typst and Tectonic, a Typst or pandoc on the PATH, and what can be installed. */
+export interface Engines {
+  tectonic: { builtIn: string | null; system: EngineFound | null };
+  typst: {
+    builtIn: string | null;
+    system: EngineFound | null;
+    /** versions installed under Spectrum's data folder */
+    installed: string[];
+    available: { version: string; released: string; size: number }[];
+  };
+  pandoc: {
+    found: (EngineFound & { fromDownload: boolean }) | null;
+    minimum: { latex: string; typst: string };
+    downloadable: string;
+  };
+}
+
+export function getEngines() {
+  return request<Engines>('/api/engines');
+}
+
+export function installTypst(version: string) {
+  return request<{ ok: boolean; engines: Engines }>('/api/engines/typst/install', json('POST', { version }));
+}
+
+export function removeTypst(version: string) {
+  return request<{ ok: boolean; engines: Engines }>(`/api/engines/typst/${encodeURIComponent(version)}`, json('DELETE'));
+}
+
+export function installPandoc() {
+  return request<{ ok: boolean; engines: Engines }>('/api/engines/pandoc/install', json('POST'));
+}
+
 // ─── Compile ───
 
 /** A Typst compile's own diagnostics, in place of the LaTeX log parser. */

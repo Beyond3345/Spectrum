@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import Icon from '../../app/Icon';
+import { getGenerated, installPandoc, installTypst } from '../../api/client';
 import { useEditor } from '../EditorContext';
 import type { CompileError } from '../EditorContext';
-import { Markdown, fixWithAI } from '../shared';
+import { ENGINES_CHANGED, Markdown, docKind, errorText, fixWithAI } from '../shared';
 
 export default function LogsTab() {
   const api = useEditor();
@@ -11,12 +12,62 @@ export default function LogsTab() {
   const [logOpen, setLogOpen] = useState(false);
   const [busy, setBusy] = useState<number | 'all' | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [installing, setInstalling] = useState('');
+  const [generated, setGenerated] = useState<{ ok: boolean; text: string; kind: 'latex' | 'typst' } | null>(null);
+  const [generatedOpen, setGeneratedOpen] = useState(false);
+  const [generatedError, setGeneratedError] = useState('');
+  const markdown = docKind(api.compiledDoc || api.mainFile) === 'markdown';
 
   // replies belong to the log they were asked about
   useEffect(() => setNotes({}), [compileLog]);
 
   const errorCount = compileErrors.filter((e) => e.severity === 'error').length;
   const warningCount = compileErrors.length - errorCount;
+
+  /** Download an engine and compile again, so the notice goes when its engine is there. */
+  const installEngine = async (what: 'typst' | 'pandoc', version?: string) => {
+    setInstalling(what);
+    try {
+      if (what === 'typst' && version) await installTypst(version);
+      else await installPandoc();
+      window.dispatchEvent(new Event(ENGINES_CHANGED));
+      api.notify(what === 'typst' ? `Downloaded Typst ${version}.` : 'Downloaded pandoc.', 'success');
+      await api.compile();
+    } catch (err) {
+      api.notify(errorText(err), 'error');
+    } finally {
+      setInstalling('');
+    }
+  };
+
+  const useDefaultTypst = async () => {
+    setInstalling('default');
+    try {
+      await api.setCompileOption('typstVersion', null);
+      await api.compile();
+    } catch (err) {
+      api.notify(errorText(err), 'error');
+    } finally {
+      setInstalling('');
+    }
+  };
+
+  const showGenerated = async () => {
+    if (generatedOpen) {
+      setGeneratedOpen(false);
+      return;
+    }
+    setGeneratedOpen(true);
+    if (generated) return;
+    setGeneratedError('');
+    try {
+      const res = await getGenerated(api.projectId, api.compiledDoc || api.mainFile);
+      if (res.ok) setGenerated(res);
+      else setGeneratedError('Nothing has been generated for this document yet.');
+    } catch (err) {
+      setGeneratedError(errorText(err));
+    }
+  };
 
   const fix = async (key: number | 'all', error?: CompileError) => {
     setBusy(key);
@@ -52,6 +103,41 @@ export default function LogsTab() {
           </button>
         )}
       </div>
+      {api.compileNotice?.code === 'TYPST_VERSION_MISSING' && (
+        <div className="log-card warning">
+          <div className="log-message">
+            Typst {api.compileNotice.version} isn’t installed. Download it, or use the default version.
+          </div>
+          <div className="row">
+            <button className="btn small" disabled={Boolean(installing)} onClick={() => installEngine('typst', api.compileNotice!.version)}>
+              {installing === 'typst' ? <span className="spinner" /> : <Icon name="arrow.down.circle" />} Download Typst {api.compileNotice.version}
+            </button>
+            <button className="btn small" disabled={Boolean(installing)} onClick={useDefaultTypst}>
+              Use the default
+            </button>
+          </div>
+        </div>
+      )}
+      {(api.compileNotice?.code === 'PANDOC_MISSING' || api.compileNotice?.code === 'PANDOC_OLD') && (
+        <div className="log-card warning">
+          <div className="log-message">{api.compileNotice.code === 'PANDOC_OLD' ? 'This pandoc is too old for Spectrum.' : 'Markdown needs pandoc.'}</div>
+          <div className="row">
+            <button className="btn small" disabled={Boolean(installing)} onClick={() => installEngine('pandoc')}>
+              {installing === 'pandoc' ? <span className="spinner" /> : <Icon name="arrow.down.circle" />} Download pandoc
+            </button>
+          </div>
+        </div>
+      )}
+      {markdown && (
+        <>
+          <button className="disclosure-head" aria-expanded={generatedOpen} onClick={showGenerated}>
+            <h2>Show generated {api.compileGenerated === 'typst' ? 'Typst' : 'LaTeX'}</h2>
+            <Icon name={generatedOpen ? 'chevron.down' : 'chevron.right'} />
+          </button>
+          {generatedOpen && generatedError && <div className="field-hint error">{generatedError}</div>}
+          {generatedOpen && generated && <pre className="log-raw">{generated.text}</pre>}
+        </>
+      )}
       {notes.all && (
         <div className="log-card note">
           <Markdown>{notes.all}</Markdown>

@@ -78,6 +78,8 @@ export const CHATS_CHANGED = 'spectrum-chats-changed';
 
 /** Fired after the editor saves a checkpoint (e.g. "Before AI changes") so Tools › Checkpoints can refresh. */
 export const VERSIONS_CHANGED = 'spectrum-versions-changed';
+/** Fired after Settings › Engines installs or removes an engine, so the compile menu offers it. */
+export const ENGINES_CHANGED = 'spectrum-engines-changed';
 
 /** Fired after Settings › Agents saves an agent's setup, so the agent workspace's picker sees it. */
 export const AGENTS_CHANGED = 'spectrum-agents-changed';
