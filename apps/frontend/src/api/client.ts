@@ -1572,7 +1572,8 @@ export const startGitHubDevice = () => request<{ ok: boolean; id: string; userCo
 export const gitHubDeviceState = (id: string) => request<{ ok: boolean; state: 'waiting' | 'done' | 'expired' | 'denied' | 'failed'; error?: string }>(`/api/github/device/${id}`);
 export const cancelGitHubDevice = (id: string) => request<{ ok: boolean }>(`/api/github/device/${id}`, { method: 'DELETE' });
 /** The settings repository brought up to date; first: this computer's settings aren't in it yet. */
-export const syncSettingsRepo = () => request<{ ok: boolean; ready: boolean; first: boolean; error?: string }>('/api/github/settings/sync', json('POST'));
+/** force: a pull now, however recently the last one was. */
+export const syncSettingsRepo = (force = false) => request<{ ok: boolean; ready: boolean; first: boolean; error?: string }>('/api/github/settings/sync', json('POST', { force }));
 /** This computer's personas joined with the settings repository's, one file each there. */
 export const syncPersonas = (personas: unknown[]) => request<{ ok: boolean; personas: unknown[]; changed: boolean }>('/api/github/personas', json('POST', { personas }));
 export const listGitHubRepos = () => request<{ ok: boolean; repos: GitHubRepoProject[] }>('/api/github/repos');

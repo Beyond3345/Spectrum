@@ -3,6 +3,7 @@ import { cancelGitHubDevice, getGitHub, gitHubDeviceState, setSettingsRepo, sign
 import type { GitHubAuth } from '../api/client';
 import { errorText } from '../editor/shared';
 import { confirmDialog } from './Dialogs';
+import { followSettingsNow } from './settings';
 import { toast } from './Toast';
 
 type Device = { id: string; userCode: string; verificationUri: string };
@@ -39,6 +40,7 @@ export default function GitHubSettings() {
       if (res.state === 'done') {
         setAuth(await getGitHub());
         toast('Signed in to GitHub.', { tone: 'success' });
+        await followSettingsNow().catch(() => undefined);
       } else setError(res.state === 'expired' ? 'The code ran out before it was entered. Try again.' : res.state === 'denied' ? 'GitHub said no to the sign-in.' : res.error || 'The sign-in failed.');
     }, 2000);
     return () => window.clearInterval(timer);
@@ -68,6 +70,8 @@ export default function GitHubSettings() {
       setAuth(await signInToGitHub(token));
       setToken('');
       toast('Signed in to GitHub.', { tone: 'success' });
+      // this computer's settings and personas go in now, before another computer's first share wins over them
+      await followSettingsNow().catch(() => undefined);
     });
 
   const signOut = async () => {
@@ -83,12 +87,16 @@ export default function GitHubSettings() {
     run(async () => {
       setAuth(await setSettingsRepo(on));
       setRepoNote('');
+      if (on) await followSettingsNow().catch(() => undefined);
     });
 
   const syncNow = () =>
     run(async () => {
-      const res = await syncSettingsRepo();
-      setRepoNote(res.error ? `Couldn’t sync: ${res.error}` : res.ready ? 'Up to date.' : '');
+      const res = await syncSettingsRepo(true);
+      await followSettingsNow().catch(() => undefined);
+      // up to date only once this computer's settings are in it too (Use the same settings on each computer may be off)
+      const now = res.error ? res : await syncSettingsRepo();
+      setRepoNote(now.error ? `Couldn’t sync: ${now.error}` : now.ready && !now.first ? 'Up to date.' : now.ready ? 'This computer’s settings aren’t in it: turn on Use the same settings on each computer in Settings › Projects.' : '');
     });
 
   if (!auth) return error ? <div className="field-hint error">{error}</div> : <div className="field-hint"><span className="spinner" /> Loading…</div>;
