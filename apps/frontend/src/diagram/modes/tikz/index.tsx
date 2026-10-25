@@ -345,6 +345,8 @@ function Inspector({ model, onChange, selection = [] }: { model: TikzModel; onCh
   );
 }
 
+export { Canvas, Rail, Inspector };
+
 const tikzMode: DiagramMode<TikzModel> = {
   id: 'tikz',
   label: 'Diagram (TikZ)',

@@ -281,3 +281,53 @@ export function jpegOrientation(bytes: ArrayBuffer) {
   }
   return 1;
 }
+
+// ─── Typst and Markdown figures and tables ───
+
+/** Typst's content text, with \, [ and ] escaped so they stay text. */
+const typstText = (text: string) => oneLine(text).replace(/[\\[\]]/g, '\\$&');
+
+const typstFloat = (body: string, caption: string, label: string) =>
+  '#figure(' + body + (caption.trim() ? ', caption: [' + typstText(caption) + ']' : '') + ')' + (label.trim() ? ' <' + label.trim() + '>' : '');
+
+// a project file's path from Typst's root, the project's folder, so a chapter in a subfolder finds it too
+const typstPath = (path: string) => JSON.stringify('/' + path.replace(/^\/+/, ''));
+
+export type FigureTextOptions = { path: string; width: number; caption: string; label: string };
+
+/** A Typst figure: #figure(image("/path", width: 80%), caption: [caption]) <label>. */
+export const figureTypst = (o: FigureTextOptions) =>
+  typstFloat('image(' + typstPath(o.path) + ', width: ' + Math.round(Math.max(0, Math.min(1, o.width)) * 100) + '%)', o.caption, o.label);
+
+/** A Typst diagram file included as a figure: #figure(include "/figures/x.typ", caption: [caption]) <label>. */
+export const figureTypstInclude = (o: { path: string; caption: string; label: string }) => typstFloat('include ' + typstPath(o.path), o.caption, o.label);
+
+/** A Typst table, its header row as table.header when the model has one. */
+export function tableTypst(m: TableModel) {
+  const cols = Math.max(1, ...m.cells.map((row) => row.length));
+  const row = (cells: string[]) => Array.from({ length: cols }, (_, i) => '[' + typstText(cells[i] ?? '') + ']').join(', ');
+  const parts = ['columns: ' + cols];
+  if (m.header && m.cells.length) parts.push('table.header(' + row(m.cells[0]) + ')');
+  parts.push(...(m.header ? m.cells.slice(1) : m.cells).map(row));
+  const table = 'table(' + parts.join(', ') + ')';
+  return m.float ? typstFloat(table, m.caption, m.label) : '#' + table;
+}
+
+/** A Markdown image with its label and width: ![caption](path){#label width=80%}. */
+export const figureMarkdown = (o: FigureTextOptions) => {
+  const caption = oneLine(o.caption).replace(/[[\]]/g, '\\$&');
+  return '![' + caption + '](' + o.path + '){' + (o.label.trim() ? '#' + o.label.trim() + ' ' : '') + 'width=' + Math.round(Math.max(0, Math.min(1, o.width)) * 100) + '%}';
+};
+
+/** A Markdown pipe table, with Table: caption {#label} under it. */
+export function tableMarkdown(m: TableModel) {
+  const cols = Math.max(1, ...m.cells.map((row) => row.length));
+  const cell = (value?: string) => oneLine(value ?? '').replace(/\|/g, '\\|');
+  const row = (cells: string[]) => '| ' + Array.from({ length: cols }, (_, i) => cell(cells[i])).join(' | ') + ' |';
+  const header = m.header && m.cells.length ? m.cells[0] : Array.from({ length: cols }, () => '');
+  const body = m.header ? m.cells.slice(1) : m.cells;
+  const lines: string[] = [row(header), '| ' + Array.from({ length: cols }, () => '---').join(' | ') + ' |', ...body.map(row)];
+  if (m.float && (m.caption.trim() || m.label.trim())) lines.push('', 'Table: ' + m.caption.trim() + (m.label.trim() ? ' {#' + m.label.trim() + '}' : ''));
+  return lines.join(String.fromCharCode(10));
+}
+

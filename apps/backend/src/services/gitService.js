@@ -11,6 +11,7 @@ import git from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 import { HIDDEN_ENTRIES, listFilesRecursive, writeFileAtomic } from '../utils/fsUtils.js';
 import { looksLikeConflictCopy } from '../utils/conflictCopies.js';
+import { safeJoinLink } from '../utils/pathUtils.js';
 import { mergeText } from '../utils/merge3.js';
 import { isDocumentFile } from '../utils/texUtils.js';
 import { isText } from './versionService.js';
@@ -167,20 +168,24 @@ export async function setRemote(root, url) {
 export const remoteUrl = (root) => git.getConfig({ fs: gitFs, dir: root, path: 'remote.origin.url' }).catch(() => undefined);
 export const deleteRemote = (root) => git.deleteRemote({ fs: gitFs, dir: root, remote: 'origin' });
 
+// a PDF a source includes: LaTeX's \includegraphics or \includepdf, Typst's image("…") and Markdown's ![…](…)
+const INCLUDED = /\\include(?:graphics|pdf)\*?\s*(?:\[[^\]]*\]\s*)?\{([^}]*)\}|\bimage\(\s*"([^"]*)"|!\[[^\]]*\]\(\s*<?([^)\s>]*)/g;
+
 /**
- * Each document's PDF that a compile writes beside it (main.tex's main.pdf), never a PDF a source includes through
- * \includegraphics or \includepdf (by name, wherever it is: one included in any folder is never left out).
+ * Each document's PDF that a compile writes beside it (main.tex's main.pdf, main.typ's or main.md's), never a PDF a
+ * source includes (by name, wherever it is: one included in any folder is never left out). Any .typ or Markdown file
+ * may be compiled on its own, a .tex only with \documentclass.
  */
 export async function compiledPdfs(root) {
-  const files = (await listFilesRecursive(root)).filter((i) => i.type === 'file' && /\.(tex|ltx)$/i.test(i.path)).map((i) => i.path);
+  const files = (await listFilesRecursive(root)).filter((i) => i.type === 'file' && /\.(tex|ltx|typ|md|markdown)$/i.test(i.path)).map((i) => i.path);
   const included = new Set();
   const docs = [];
   for (const rel of files) {
-    if (await isDocumentFile(join(root, rel))) docs.push(rel);
+    if (!/\.(tex|ltx)$/i.test(rel) || (await isDocumentFile(join(root, rel)))) docs.push(rel);
     const text = await fs.readFile(join(root, rel), 'utf8').catch(() => '');
-    for (const m of text.matchAll(/\\include(?:graphics|pdf)\*?\s*(?:\[[^\]]*\]\s*)?\{([^}]*)\}/g)) included.add(path.posix.basename(m[1].trim()).replace(/\.pdf$/i, '').toLowerCase());
+    for (const m of text.matchAll(INCLUDED)) included.add(path.posix.basename(m.slice(1).find((p) => p !== undefined).trim()).replace(/\.pdf$/i, '').toLowerCase());
   }
-  return docs.map((rel) => rel.replace(/\.(tex|ltx)$/i, '.pdf')).filter((pdf) => !included.has(path.posix.basename(pdf).slice(0, -4).toLowerCase()));
+  return docs.map((rel) => rel.replace(/\.(tex|ltx|typ|md|markdown)$/i, '.pdf')).filter((pdf) => !included.has(path.posix.basename(pdf).slice(0, -4).toLowerCase()));
 }
 
 // a path as a pattern that matches only itself, from the top of the project
@@ -232,7 +237,14 @@ export async function commitAll(root, { message, author, hold = () => false, alw
   // the modes committed, where Windows has no execute bit to keep a script's
   const modes = windows() ? await treeFiles(root, await headOid(root)) : new Map();
   for (const [rel, head, work, stage] of rows) {
-    if ((head === 1 && work === 1 && stage === 1) || keptOut(rel) || compiled.has(keyOf(rel)) || hold(rel)) continue;
+    if (head === 1 && work === 1 && stage === 1) continue;
+    // what stays out of this commit goes back to the commit's in the index, which the commit is made from: Git may have
+    // staged it already (git add .)
+    const leave = () => (stage === head ? null : git.resetIndex({ fs: gitFs, dir: root, filepath: rel, cache }));
+    if (keptOut(rel) || compiled.has(keyOf(rel)) || hold(rel)) {
+      await leave();
+      continue;
+    }
     if (committedKeys.get(keyOf(rel)) > 1) {
       if (!named.has(keyOf(rel))) left.push(`“${rel}” and another file differ only in letter case, which macOS and Windows can’t keep apart. Rename one of them`);
       named.add(keyOf(rel));
@@ -247,9 +259,13 @@ export async function commitAll(root, { message, author, hold = () => false, alw
     }
     const info = await fs.lstat(join(root, rel)).catch(() => null);
     if (!info) continue;
-    if (secretLooking(rel) || (await pemKey(join(root, rel)))) left.push(`“${rel}” looks like a password or key file`);
-    else if (info.size > MAX_FILE_BYTES) left.push(`“${rel}” is over GitHub’s 100 MB limit`);
-    else {
+    if (secretLooking(rel) || (await pemKey(join(root, rel)))) {
+      left.push(`“${rel}” looks like a password or key file`);
+      await leave();
+    } else if (info.size > MAX_FILE_BYTES) {
+      left.push(`“${rel}” is over GitHub’s 100 MB limit`);
+      await leave();
+    } else {
       await git.add({ fs: gitFs, dir: root, filepath: rel, cache });
       // a script committed as executable stays so, or the Mac's next pull would take +x away
       if (modes.get(rel)?.mode === '100755') {
@@ -514,6 +530,16 @@ async function writeDecisions(root, decisions, copies, read, keep) {
     return now.equals(blob) || Buffer.from(now.toString('latin1').replace(/\r\n/g, '\n'), 'latin1').equals(blob) ? sha256(now) : 'changed';
   };
   const restore = async (o) => (o.mode === '120000' ? placeLink(root, o.rel, (await read(o.oid)).toString()) : writeFileAtomic(join(root, o.rel), await read(o.oid)));
+  // every file written, deleted or renamed in a folder of the project's own, before any is: a folder here may be a link
+  // to one elsewhere (an ignored assets folder, say), which nothing from GitHub goes through
+  for (const rel of [...ops.flatMap(({ o, r }) => [o?.rel, r?.rel]), ...copies.map((c) => c.rel)]) {
+    if (!rel) continue;
+    try {
+      safeJoinLink(root, rel);
+    } catch {
+      throw Object.assign(new Error(`“${rel}” is in a folder that links outside the project, so Spectrum won’t pull GitHub’s changes into it. Replace the link with a folder, or leave it out on GitHub too.`), { statusCode: 409, code: 'GIT_REFUSED' });
+    }
+  }
   try {
     for (const d of ops) {
       const { o, r } = d;

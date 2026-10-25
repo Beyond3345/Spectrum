@@ -8,9 +8,10 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { client, ndJsonStream } from '@agentclientprotocol/sdk';
-import { APP_VERSION } from '../config/constants.js';
+import { APP_VERSION, DATA_DIR } from '../config/constants.js';
 import { appPath, cachePath, detectMainFile, getProjectRoot, mutateProjectFiles, readMeta } from './projectService.js';
 import { compileFolder, findExecutable, SUPPORTED_ENGINES } from './compileService.js';
+import { builtInTectonic, builtInTypst } from './engineService.js';
 import { readProjectSettings } from './projectSettings.js';
 import { openTodos, suggestedTodo } from './agentService.js';
 import { AGENT_DIR, profileFor, agentConfigs, agentHome } from './agentProfiles.js';
@@ -434,6 +435,12 @@ async function toolsLaunch() {
   // Node, the server (in development the backend's source, its packages and the version in the root package.json) and
   // the user's own fonts, for a compile
   const reads = [nodeRead(), path.dirname(entry), ...(packaged ? [] : [path.join(repository, 'apps/backend'), path.join(repository, 'node_modules'), path.join(repository, 'package.json')]), path.join(os.homedir(), 'Library', 'Fonts')];
+  // the engines Spectrum downloaded (pandoc, older Typst versions), and the built-in programs' own folders
+  reads.push(path.join(DATA_DIR, 'engines'));
+  for (const file of [builtInTectonic(), builtInTypst()]) {
+    const dir = file && path.dirname(file);
+    if (dir && !reads.some((read) => dir === read || dir.startsWith(read + path.sep))) reads.push(dir);
+  }
   return { entry, reads: (await Promise.all(reads.map(async (p) => (await fs.stat(p).catch(() => null)) && p))).filter(Boolean) };
 }
 async function toolsServer(r) {
@@ -449,7 +456,14 @@ async function toolsServer(r) {
   }));
   return {
     reads,
-    server: { name: 'spectrum', command: process.execPath, args: [entry, '--root', r.workspace, '--state', state], env: [{ name: 'HOME', value: r.home }, { name: 'TMPDIR', value: path.join(r.home, 'tmp') }, { name: 'PATH', value: process.env.PATH || '/usr/bin:/bin' }] }
+    // the engines' own paths and Spectrum's data folder, so a compile inside isolation finds the same programs
+    server: { name: 'spectrum', command: process.execPath, args: [entry, '--root', r.workspace, '--state', state], env: [
+      { name: 'HOME', value: r.home },
+      { name: 'TMPDIR', value: path.join(r.home, 'tmp') },
+      { name: 'PATH', value: process.env.PATH || '/usr/bin:/bin' },
+      { name: 'SPECTRUM_DATA_DIR', value: DATA_DIR },
+      ...[['SPECTRUM_TYPST', process.env.SPECTRUM_TYPST], ['SPECTRUM_TECTONIC', process.env.SPECTRUM_TECTONIC]].filter(([, value]) => value).map(([name, value]) => ({ name, value }))
+    ] }
   };
 }
 
@@ -517,6 +531,8 @@ export async function previewDraft(r, options = {}) {
     await fs.mkdir(out, { recursive: true, mode: 0o700 });
     await fs.mkdir(path.join(home, 'tmp'), { recursive: true, mode: 0o700 });
     if (process.platform === 'win32') {
+      // ponytail: Typst's own sandboxing on Windows is unexplored, and Markdown goes through pandoc on either engine
+      if (/\.(typ|md|markdown)$/i.test(main)) return { ok: false, pdf: null, log: 'Preview PDF on Windows supports LaTeX drafts only for now.' };
       if (engine === 'tectonic') return { ok: false, pdf: null, log: 'Preview PDF needs TeX Live or MiKTeX on Windows.' };
       if (engine === 'latexmk') return { ok: false, pdf: null, log: 'Preview PDF on Windows doesn’t use latexmk, which runs outside the limits a preview sets. Choose Auto, pdfLaTeX, XeLaTeX or LuaLaTeX for the project, or review the changes as text.' };
       const tex = await findExecutable('pdflatex');

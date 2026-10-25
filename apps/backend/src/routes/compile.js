@@ -4,6 +4,13 @@ import { synctexEdit, synctexView } from '../services/synctex.js';
 import { auxKept } from '../services/texlabService.js';
 
 const isCount = (n) => Number.isInteger(n) && n > 0;
+// Typst's sys.inputs: a few short names and values, which the composer uses for its standalone flag
+const isTypstInputs = (v) => v == null || (!!v && typeof v === 'object' && !Array.isArray(v)
+  && Object.keys(v).length <= 8
+  && Object.entries(v).every(([key, value]) => /^[a-z][a-z0-9-]{0,31}$/.test(key) && typeof value === 'string' && value.length <= 200 && !/[\r\n]/.test(value)));
+// the app's defaults, for a project without its own: '' is the built-in Typst
+const isTypstVersion = (v) => v == null || v === '' || (typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v));
+const isMarkdownEngine = (v) => v == null || v === 'latex' || v === 'typst';
 // doc is the project-relative .tex whose PDF is showing; without it, the main file's
 const isDoc = (doc) => doc == null || (typeof doc === 'string' && !!doc);
 const docOrMain = async (root, doc) => doc ?? ((await readMeta(root)).mainFile || 'main.tex');
@@ -11,7 +18,7 @@ const docOrMain = async (root, doc) => doc ?? ((await readMeta(root)).mainFile |
 export function registerCompileRoutes(fastify) {
   // the options are each optional: an editor from before them compiles as it always did
   fastify.post('/api/compile', async (req) => {
-    const { projectId, mainFile = 'main.tex', engine = 'pdflatex', compileId, haltOnError, bibTool = 'auto', draft, fresh, texFolder, checkpoint } = req.body || {};
+    const { projectId, mainFile = 'main.tex', engine = 'pdflatex', compileId, haltOnError, bibTool = 'auto', draft, fresh, texFolder, checkpoint, typstInputs, typstVersion, markdownEngine } = req.body || {};
     if (!projectId) {
       return { ok: false, error: 'Missing projectId.' };
     }
@@ -20,6 +27,15 @@ export function registerCompileRoutes(fastify) {
     }
     if (!BIB_TOOLS.includes(bibTool)) {
       return { ok: false, error: `Unsupported bibliography tool: ${bibTool}. Supported: ${BIB_TOOLS.join(', ')}` };
+    }
+    if (!isTypstInputs(typstInputs)) {
+      return { ok: false, error: 'Invalid typstInputs.' };
+    }
+    if (!isTypstVersion(typstVersion)) {
+      return { ok: false, error: 'Invalid typstVersion.' };
+    }
+    if (!isMarkdownEngine(markdownEngine)) {
+      return { ok: false, error: 'Invalid markdownEngine.' };
     }
     const res = await runCompile({
       projectId,
@@ -31,7 +47,10 @@ export function registerCompileRoutes(fastify) {
       draft: draft === true,
       fresh: fresh === true,
       texFolder: typeof texFolder === 'string' ? texFolder : undefined,
-      checkpoint: checkpoint === true
+      checkpoint: checkpoint === true,
+      typstInputs: typstInputs ?? undefined,
+      typstVersion: typstVersion || undefined,
+      markdownEngine: markdownEngine ?? undefined
     });
     if (res.ok) auxKept(projectId);
     return res;

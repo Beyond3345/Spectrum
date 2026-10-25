@@ -1,6 +1,9 @@
 // Self-check for the Document insights scanner. It imports latexEditor.ts, which Node can't strip, so bundle it first:
 // `npx esbuild apps/frontend/src/editor/insights.check.ts --bundle --platform=node --log-level=warning --outfile=<file>.js`, then `node <file>.js`
 import { headingNumbers, inReading, metadataText, plainText, scanInsights, texlabNotes, withNumbers } from './insights.ts';
+import { scanTodos } from './todos.ts';
+
+const NEWLINE = String.fromCharCode(10);
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -178,5 +181,64 @@ eq([...notes.labels], [['main.tex:2', 'Unused'], ['main.tex:4', 'Duplicate'], ['
 eq([...notes.missing], ['nobody'], 'the undefined citation’s key, from the text at its range');
 eq(notes.unresolved, 1, 'references to no label counted');
 eq([...notes.twice], ['twin'], 'a label defined twice named once');
+
+
+// ─── Typst and Markdown ───
+
+const typstDoc = [
+  '#set document(title: "A Typst Paper", author: ("Ada Lovelace", "Charles Babbage"), keywords: ("typst", "typesetting"), date: "2026-10-25")',
+  '= Introduction <sec:intro>',
+  'Some prose citing @knuth84 and #cite(<lamport94>).',
+  '#figure(table(columns: 2, table.header([A], [B]), [1], [2]), caption: [Results shown here.]) <tab:results>',
+  '$ E = m c^2 $',
+  '#figure(image("figures/x.png"), caption: [A diagram of the flow.]) <fig:flow>',
+  '// TODO: add a conclusion',
+  ''
+].join(NEWLINE);
+const typstGot = scanInsights([{ path: 'main.typ', text: typstDoc }], 'main.typ');
+eq(typstGot.headings.map((h) => [h.text, h.level, h.label ?? null, h.line]), [['Introduction', 0, 'sec:intro', 2]], 'Typst headings and labels');
+eq(typstGot.figures.map((f) => [f.text, f.label, f.line]), [['A diagram of the flow.', 'fig:flow', 6]], 'Typst figures');
+eq(typstGot.tables.map((t) => [t.text, t.label, t.line]), [['Results shown here.', 'tab:results', 4]], 'Typst tables');
+eq(typstGot.equations.map((e) => [e.text, e.line]), [['E = m c^2', 5]], 'Typst block equations');
+eq(typstGot.labels.map((l) => l.label), ['sec:intro', 'tab:results', 'fig:flow'], 'Typst labels');
+eq(typstGot.citations.map((c) => [c.key, c.count, c.line]), [['knuth84', 1, 3], ['lamport94', 1, 3]], 'Typst citations');
+eq(typstGot.metadata, { title: 'A Typst Paper', authors: ['Ada Lovelace', 'Charles Babbage'], keywords: ['typst', 'typesetting'], date: '2026-10-25', abstract: '' }, 'Typst metadata');
+
+const markdownDoc = [
+  '---',
+  'title: A Markdown Paper',
+  'author: Ada Lovelace and Charles Babbage',
+  'keywords: markdown, writing',
+  'date: 2026-10-25',
+  'abstract: A short abstract.',
+  '---',
+  '# Introduction {#sec:intro}',
+  '',
+  'Some prose citing [@knuth84] and [see @lamport94].',
+  '',
+  '![A flow diagram](figures/x.png){#fig:flow width=80%}',
+  '',
+  '| A | B |',
+  '|---|---|',
+  '| 1 | 2 |',
+  '',
+  'Table: Results shown here. {#tab:results}',
+  '',
+  '$$',
+  'E = m c^2',
+  '$$',
+  '',
+  '<!-- TODO: add a conclusion -->',
+  ''
+].join(NEWLINE);
+const markdownGot = scanInsights([{ path: 'main.md', text: markdownDoc }], 'main.md');
+eq(markdownGot.headings.map((h) => [h.text, h.level, h.label ?? null, h.line]), [['Introduction', 0, 'sec:intro', 8]], 'Markdown headings and labels');
+eq(markdownGot.figures.map((f) => [f.text, f.label, f.line]), [['A flow diagram', 'fig:flow', 12]], 'Markdown images as figures');
+eq(markdownGot.tables.map((t) => [t.text, t.label, t.line]), [['A · B', 'tab:results', 14]], 'Markdown pipe tables');
+eq(markdownGot.equations.map((e) => [e.text, e.line]), [['E = m c^2', 20]], 'Markdown $$ equations');
+eq(markdownGot.labels.map((l) => l.label), ['sec:intro', 'fig:flow', 'tab:results'], 'Markdown labels');
+eq(markdownGot.citations.map((c) => [c.key, c.count, c.line]), [['knuth84', 1, 10], ['lamport94', 1, 10]], 'Markdown citations');
+eq(markdownGot.metadata, { title: 'A Markdown Paper', authors: ['Ada Lovelace', 'Charles Babbage'], keywords: ['markdown', 'writing'], date: '2026-10-25', abstract: 'A short abstract.' }, 'Markdown metadata');
+eq(scanTodos([{ path: 'main.typ', text: typstDoc }, { path: 'main.md', text: markdownDoc }]).map((t) => [t.file, t.line, t.text]), [['main.typ', 7, 'add a conclusion'], ['main.md', 24, 'add a conclusion']], 'Typst and Markdown to-dos');
 
 console.log('insights: all checks passed');

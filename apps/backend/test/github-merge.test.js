@@ -4,7 +4,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { promises as fs, chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { promises as fs, chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { GOOD_TOKEN, hasGitHttpBackend, startFakeGitHub } from './fixtures/fake-github.mjs';
@@ -347,4 +347,107 @@ test('Spectrum leaves a repository alone while another program works in it, and 
   writeFileSync(path.join(A, '.git', 'HEAD'), 'ref: refs/heads/main\n');
   writeFileSync(path.join(A, '.git', 'MERGE_HEAD'), '');
   assert.match(await g.refusal(A), /middle of a merge/);
+});
+
+test('a settings change under way when a pull comes waits for it, so neither undoes the other', { skip }, async () => {
+  const { updateProjectSettings } = await import('../src/services/projectSettings.js');
+  const { mutateProjectFiles } = await import('../src/services/projectService.js');
+  const { A, B } = await pair({ '.spectrum/settings.json': JSON.stringify({ compile: { engine: 'xelatex' } }) });
+  write(A, '.spectrum/settings.json', JSON.stringify({ compile: { engine: 'lualatex' } }));
+  await sync(A);
+  await g.fetchOrigin(B, token);
+  // a skills choice that has read the settings, paused before it writes them
+  let started;
+  let release;
+  const reading = new Promise((resolve) => (started = resolve));
+  const gate = new Promise((resolve) => (release = resolve));
+  const setting = updateProjectSettings(B, async (s) => {
+    started();
+    await gate;
+    return { ...s, skills: { on: ['my-skill'], off: [] } };
+  });
+  await reading;
+  // as a pull does: commit and merge under the project files' lock
+  const pull = mutateProjectFiles(async () => {
+    await g.commitAll(B, { message: 'Backup', author });
+    return g.mergeOrigin(B, { author, checkpoint: false });
+  });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  release();
+  await setting;
+  assert.equal((await pull).state, 'merged');
+  assert.deepEqual(JSON.parse(read(B, '.spectrum/settings.json')), { compile: { engine: 'lualatex' }, skills: { on: ['my-skill'], off: [] } });
+});
+
+test('Typst source merges by lines, as LaTeX does', { skip }, async () => {
+  const lines = (k) => Array.from({ length: 12 }, (_, i) => (i === k ? `changed ${k}` : `line ${i}`)).join('\n');
+  const { A, B } = await pair({ 'main.typ': lines(-1) });
+  write(A, 'main.typ', lines(1));
+  await sync(A);
+  write(B, 'main.typ', lines(10));
+  const result = await sync(B);
+  assert.equal(result.conflicts, 0);
+  assert.equal(read(B, 'main.typ'), lines(1).replace('line 10', 'changed 10'));
+});
+
+test('a Typst or Markdown document’s compiled PDF stays out, and a PDF either includes goes in', { skip }, async () => {
+  const { A, repo } = await pair({ 'main.typ': '= Paper\n#image("figures/plot.pdf")\n', 'notes.md': '# Notes\n![Chart](chart.pdf)\n', 'report.markdown': '# Report\n' });
+  for (const pdf of ['main.pdf', 'notes.pdf', 'report.pdf', 'figures/plot.pdf', 'chart.pdf']) write(A, pdf, `%PDF ${pdf}`);
+  write(A, 'figures/plot.typ', '= Plot\n');
+  await sync(A);
+  const files = gh.files('octo', repo);
+  for (const out of ['main.pdf', 'notes.pdf', 'report.pdf']) assert.ok(!files.includes(out), out);
+  // figures/plot.typ's own, which main.typ includes
+  for (const kept of ['figures/plot.pdf', 'chart.pdf']) assert.ok(files.includes(kept), kept);
+});
+
+test('a secret staged with Git beforehand never goes in with the next backup', { skip }, async () => {
+  const { A, repo } = await pair({ 'main.tex': 'one\n' });
+  write(A, '.env', 'OPENAI_API_KEY=test-only\n');
+  write(A, 'keys/id_rsa', 'test-only\n');
+  execFileSync('git', ['add', '.env', 'keys/id_rsa'], { cwd: A });
+  write(A, 'main.tex', 'two, a longer line\n');
+  const { committed, left } = await g.commitAll(A, { message: 'Backup', author });
+  assert.equal(committed, true);
+  assert.equal(left.length, 2);
+  const tree = execFileSync('git', ['ls-tree', '-r', '--name-only', 'HEAD'], { cwd: A }).toString().split('\n');
+  assert.ok(!tree.includes('.env') && !tree.includes('keys/id_rsa'), tree.join(', '));
+  assert.ok(tree.includes('main.tex'));
+  assert.equal(read(A, '.env'), 'OPENAI_API_KEY=test-only\n', 'the file itself stays');
+  await g.pushOrigin(A, token);
+  assert.ok(!gh.files('octo', repo).includes('.env'));
+});
+
+test('a pull never writes through a folder that links outside the project', { skip }, async () => {
+  const { A, B } = await pair({ 'main.tex': 'main\n', 'assets/old.txt': 'old\n' });
+  // B's assets folder is now a link to a folder elsewhere holding the same file
+  const outside = path.join(tmp, `outside${n}`);
+  mkdirSync(outside);
+  writeFileSync(path.join(outside, 'old.txt'), 'old\n');
+  rmSync(path.join(B, 'assets'), { recursive: true });
+  symlinkSync(outside, path.join(B, 'assets'));
+  // GitHub deletes one file in it, adds another, and changes one outside it
+  rmSync(path.join(A, 'assets', 'old.txt'));
+  write(A, 'assets/new.txt', 'from GitHub\n');
+  write(A, 'main.tex', 'main, changed\n');
+  await sync(A);
+  await g.fetchOrigin(B, token);
+  const head = await g.headOid(B);
+  await assert.rejects(g.mergeOrigin(B, { author, checkpoint: false }), (err) => err.code === 'GIT_REFUSED' && /assets\//.test(err.message));
+  assert.deepEqual(readdirSync(outside), ['old.txt'], 'nothing written or deleted outside');
+  assert.equal(read(B, 'main.tex'), 'main\n', 'nor anything changed here');
+  assert.equal(await g.headOid(B), head);
+
+  // the same for a link this computer's .gitignore leaves out, which a backup never commits
+  const { A: C, B: D } = await pair({ 'main.tex': 'main\n' });
+  const elsewhere = path.join(tmp, `elsewhere${n}`);
+  mkdirSync(elsewhere);
+  write(D, '.gitignore', 'assets\n');
+  symlinkSync(elsewhere, path.join(D, 'assets'));
+  write(C, 'assets/new.txt', 'from GitHub\n');
+  await sync(C);
+  await g.commitAll(D, { message: 'Backup', author });
+  await g.fetchOrigin(D, token);
+  await assert.rejects(g.mergeOrigin(D, { author, checkpoint: false }), (err) => err.code === 'GIT_REFUSED');
+  assert.deepEqual(readdirSync(elsewhere), []);
 });

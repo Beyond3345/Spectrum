@@ -15,6 +15,8 @@ const COMMENT = /\\[^]|%[^\r\n]*/g;
 // name, as in a commented-out "% \renewcommand{\TODO}[1]{}"
 const MARKER = /(?<![\w\\])(TODO|FIXME|XXX)(?!\w)(?:\([^)]*\))?[\s:.\-–—]*(.*)/;
 
+const collapse = (text: string) => text.replace(/\s+/g, ' ').trim();
+
 /** Counts lines up to each offset asked for, which must not go backwards. */
 function lineCounter(text: string) {
   let at = 0;
@@ -59,10 +61,13 @@ export function scanTodos(files: { path: string; text: string }[]): SourceTodo[]
   const found: SourceTodo[] = [];
   for (const { path, text } of files) {
     const marks: (SourceTodo & { at: number })[] = [];
+    // Typst and Markdown have neither LaTeX's \todo nor its % comments, which a Typst width: 80% would start;
+    // ponytail: Markdown's raw LaTeX goes unread
+    const latex = !/\.(typ|md|markdown)$/i.test(path);
     // comments blanked out, so offsets and lines stay as they were
     const code = text.replace(COMMENT, (token) => (token[0] === '%' ? ' '.repeat(token.length) : token));
     const commandLine = lineCounter(text);
-    for (const m of code.matchAll(COMMAND)) {
+    for (const m of latex ? code.matchAll(COMMAND) : []) {
       const at = m.index ?? 0;
       if (DEFINED.test(code.slice(Math.max(0, at - 40), at))) continue;
       const arg = argument(code, at + m[0].length);
@@ -71,12 +76,23 @@ export function scanTodos(files: { path: string; text: string }[]): SourceTodo[]
       marks.push({ file: path, line: commandLine(at), text: arg.text || `\\${m[1]}`, kind: m[1], at });
     }
     const commentLine = lineCounter(text);
-    for (const m of text.matchAll(COMMENT)) {
+    for (const m of latex ? text.matchAll(COMMENT) : []) {
       if (m[0][0] !== '%') continue;
       const marker = MARKER.exec(m[0]);
       if (!marker) continue;
       const at = (m.index ?? 0) + (marker.index ?? 0);
       marks.push({ file: path, line: commentLine(at), text: marker[2].trim() || marker[1], kind: marker[1], at });
+    }
+    // Typst's // TODO and Markdown's <!-- TODO -->, as the LaTeX source's comments hold them
+    if (/\.typ$/i.test(path)) {
+      for (const m of text.matchAll(/\/\/[ \t]*(TODO|FIXME|XXX)(?:\([^)]*\))?[\s:.\-–—]*(.*)/g)) {
+        marks.push({ file: path, line: commandLine(m.index!), text: collapse(m[2]) || m[1], kind: m[1], at: m.index! });
+      }
+    }
+    if (/\.(md|markdown)$/i.test(path)) {
+      for (const m of text.matchAll(/<!--\s*(TODO|FIXME|XXX)(?:\([^)]*\))?[\s:.\-–—]*([\s\S]*?)-->/g)) {
+        marks.push({ file: path, line: commandLine(m.index!), text: collapse(m[2]) || m[1], kind: m[1], at: m.index! });
+      }
     }
     marks.sort((a, b) => a.at - b.at);
     for (const { at: _at, ...todo } of marks) found.push(todo);

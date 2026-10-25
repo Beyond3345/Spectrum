@@ -7,7 +7,7 @@ import Sheet from '../app/Sheet';
 import { useSettings } from '../app/settings';
 import { useEditor } from './EditorContext';
 import type { EditorApi } from './EditorContext';
-import { citationText, errorText, isTex, mainCitationCommand, reloadBib } from './shared';
+import { citationText, docKind, errorText, isDocument, mainCitationCommand, reloadBib } from './shared';
 import { ZOTERO_CITE, hitDetail } from './zotero';
 
 type Added = { results: ReferenceResult[]; bibFile: string; bibIncluded: boolean };
@@ -25,10 +25,11 @@ function citedMessage(cite: string, { results, bibFile, bibIncluded }: Added) {
     .join(' ');
 }
 
-/** The citation at the cursor of a .tex file; elsewhere (the user moved on while Zotero asked) it's copied instead. */
-function place(api: EditorApi, cite: string) {
-  if (isTex(api.activePath)) {
-    api.insertAtCursor(cite, { afterSelection: true });
+/** The citation at the cursor of a document; elsewhere (the user moved on while Zotero asked) it's copied instead. */
+async function place(api: EditorApi, cite: string, keys: string[]) {
+  if (isDocument(api.activePath)) {
+    // Zotero's picker answers in LaTeX; Typst and Markdown take their own citation
+    api.insertAtCursor(docKind(api.activePath) === 'latex' || !keys.length ? cite : await citationText(api, keys), { afterSelection: true });
     return true;
   }
   navigator.clipboard.writeText(cite).catch(() => undefined);
@@ -75,7 +76,7 @@ export function ZoteroCite() {
         await reloadBib(a, res.results, res.bibFile);
         // a key the .bib gave another work's entry already went in under the next free one
         const cite = renameCiteKeys(res.text, Object.fromEntries(res.results.flatMap((r) => (r.key ? [[r.input, r.key]] : []))));
-        if (place(a, cite)) a.notify(citedMessage(cite, res as Added));
+        if (await place(a, cite, res.results.flatMap((r) => (r.key ? [r.key] : [])))) a.notify(citedMessage(cite, res as Added));
       } catch (err) {
         latest.current.notify(`Couldn’t cite from Zotero: ${errorText(err)}`, 'error');
       } finally {
@@ -84,7 +85,7 @@ export function ZoteroCite() {
     };
     const start = async () => {
       const a = latest.current;
-      if (!isTex(a.activePath)) return a.notify('Open a .tex file to cite from Zotero.');
+      if (!isDocument(a.activePath)) return a.notify('Open a document to cite from Zotero.');
       try {
         const status = await zoteroStatus();
         if (status.cayw) pickInZotero();
@@ -107,7 +108,7 @@ export function ZoteroCite() {
       const keys = res.results.flatMap((r) => (r.key && (r.status === 'added' || r.status === 'duplicate') ? [r.key] : []));
       if (!keys.length) return a.notify(res.results.find((r) => r.message)?.message || 'Nothing could be cited.', 'error');
       const cite = await citationText(a, keys);
-      if (place(a, cite)) a.notify(citedMessage(cite, res));
+      if (await place(a, cite, keys)) a.notify(citedMessage(cite, res));
     } catch (err) {
       latest.current.notify(`Couldn’t cite from Zotero: ${errorText(err)}`, 'error');
     }

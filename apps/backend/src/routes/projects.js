@@ -1,3 +1,4 @@
+import os from 'os';
 import path from 'path';
 import { promises as fs, createWriteStream, watch } from 'fs';
 import { pipeline } from 'stream/promises';
@@ -32,7 +33,7 @@ import {
   updateMeta
 } from '../services/projectService.js';
 import { followRename } from './todos.js';
-import { documentLabels, projectStats } from '../services/statsService.js';
+import { documentLabels, projectStats, typstDocumentLabels } from '../services/statsService.js';
 import { readProjectSettings, updateProjectSettings } from '../services/projectSettings.js';
 import { BIB_TOOLS, SUPPORTED_ENGINES } from '../services/compileService.js';
 import { SKILL_ID } from '../services/skillService.js';
@@ -41,6 +42,8 @@ import { stopProjectTexlab } from '../services/texlabService.js';
 import { syncSoon } from '../services/zoteroService.js';
 import { conflictCopies } from '../utils/conflictCopies.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
+import { markdownToLatex, pandocDocx } from '../services/markdownService.js';
+import { pandocPath } from '../services/engineService.js';
 
 const execFileAsync = promisify(execFile);
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -85,9 +88,30 @@ const COMPILE_SETTINGS = {
   bibTool: (v) => BIB_TOOLS.includes(v),
   draft: (v) => typeof v === 'boolean',
   // TexLab's syntax check before compiling, which the editor runs
-  syntaxCheck: (v) => typeof v === 'boolean'
+  syntaxCheck: (v) => typeof v === 'boolean',
+  // the Typst version a Typst project pins
+  typstVersion: (v) => typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v),
+  // the PDF engine a Markdown project compiles through
+  markdownEngine: (v) => v === 'latex' || v === 'typst'
 };
 const isObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
+
+/** A project-relative Markdown document, as the export and generated routes take it. */
+const markdownDoc = (doc) => {
+  const rel = path.posix.normalize(String(doc || '').replace(/\\/g, '/'));
+  if (!/\.(md|markdown)$/i.test(rel) || rel.startsWith('../') || path.posix.isAbsolute(rel)) throw httpError('Choose a Markdown document.', 400);
+  return rel;
+};
+
+/** A file name nothing holds yet: paper.docx, then paper (2).docx, and so on. */
+async function unusedFile(dir, name) {
+  const ext = path.extname(name);
+  const base = name.slice(0, -ext.length);
+  const free = (file) => fs.access(file).then(() => false, () => true);
+  let file = path.join(dir, name);
+  for (let n = 2; !(await free(file)); n += 1) file = path.join(dir, base + ' (' + n + ')' + ext);
+  return file;
+}
 
 // arXiv e-prints are a gzipped tarball, or for single-file papers a gzipped .tex,
 // or for PDF-only submissions just a PDF.
@@ -123,15 +147,15 @@ async function isDocument(root, relPath) {
   }
 }
 
-// the composer's drawing on a line of its own (% for TikZ, %% for Mermaid): base64 JSON, then the hash of the text the
-// drawing writes. It goes last, but the composer finds it anywhere (diagram/fileFormat.ts), as text added below it is a
-// hand edit there
-const DIAGRAM_MARK = /^%%? spectrum-diagram v1 [A-Za-z0-9+/=]+ [0-9a-f]{16}[ \t]*\r?$/m;
+// the composer's drawing on a line of its own (% for TikZ, // for Typst and %% for Mermaid): base64 JSON, then the
+// hash of the text the drawing writes. It goes last, but the composer finds it anywhere (diagram/fileFormat.ts), as
+// text added below it is a hand edit there
+const DIAGRAM_MARK = /^(?:%%?|\/\/) spectrum-diagram v1 [A-Za-z0-9+/=]+ [0-9a-f]{16}[ \t]*\r?$/m;
 
-/** A file the diagram composer can open (Edit diagram): a .tex in figures/ with its drawing, or any .mmd. */
+/** A file the diagram composer can open (Edit diagram): a .tex or .typ in figures/ with its drawing, or any .mmd. */
 async function isDiagram(root, relPath) {
   if (/\.mmd$/i.test(relPath)) return true;
-  if (!/^figures\/.+\.tex$/i.test(relPath)) return false;
+  if (!/^figures\/.+\.(?:tex|typ)$/i.test(relPath)) return false;
   try {
     return DIAGRAM_MARK.test(await fs.readFile(safeJoin(root, relPath), 'utf8'));
   } catch {
@@ -379,6 +403,76 @@ export function registerProjectRoutes(fastify) {
     return { ok: true, project: await getProject(req.params.id) };
   });
 
+  // the LaTeX or Typst pandoc wrote for a Markdown document, for the Logs tab
+  fastify.get('/api/projects/:id/generated', async (req, reply) => {
+    const root = await getProjectRoot(req.params.id);
+    const doc = markdownDoc(req.query?.doc);
+    const generated = await cachePath(root, 'generated');
+    // a document compiled through both engines keeps both files: show the one the last compile wrote
+    const found = [];
+    for (const [extension, kind] of [['tex', 'latex'], ['typ', 'typst']]) {
+      const file = path.join(generated, doc + '.' + extension);
+      const text = await fs.readFile(file, 'utf8').catch(() => null);
+      if (text !== null) found.push({ text, kind, at: (await fs.stat(file).catch(() => null))?.mtimeMs ?? 0 });
+    }
+    const latest = found.sort((a, b) => b.at - a.at)[0];
+    if (latest) return { ok: true, text: latest.text, kind: latest.kind };
+    return reply.code(404).send({ ok: false, error: 'Nothing has been generated for that document yet.' });
+  });
+
+  // Word, from pandoc: never over a file Spectrum did not write
+  fastify.post('/api/projects/:id/export/docx', async (req) => {
+    const root = await getProjectRoot(req.params.id);
+    const doc = markdownDoc(req.body?.doc);
+    const abs = safeJoin(root, doc);
+    if (!(await fs.stat(abs).catch(() => null))?.isFile()) throw httpError('That Markdown file doesn’t exist.', 404);
+    if (!(await pandocPath())) throw httpError('Markdown needs pandoc. Download it from Settings › Engines › Markdown.', 400);
+    const output = await unusedFile(root, path.basename(doc, path.extname(doc)) + '.docx');
+    const made = await pandocDocx(root, abs, output);
+    if (!made.ok) throw httpError('pandoc couldn’t make a Word document from this Markdown.', 502);
+    return { ok: true, path: path.relative(root, output).split(path.sep).join('/') };
+  });
+
+  // a new LaTeX project from the .md: pandoc's LaTeX, its .bib files, the media it extracted and figures/
+  fastify.post('/api/projects/:id/export/latex', async (req) => {
+    const root = await getProjectRoot(req.params.id);
+    const doc = markdownDoc(req.body?.doc);
+    const abs = safeJoin(root, doc);
+    const meta = await readMeta(root);
+    if (!(await fs.stat(abs).catch(() => null))?.isFile()) throw httpError('That Markdown file doesn’t exist.', 404);
+    if (!(await pandocPath())) throw httpError('Markdown needs pandoc. Download it from Settings › Engines › Markdown.', 400);
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-markdown-latex-'));
+    try {
+      const generatedDir = path.join(tmp, 'generated');
+      const made = await markdownToLatex({ projectRoot: root, absMain: abs, mainFile: doc, generatedDir });
+      if (!made.ok) throw httpError(made.error || 'pandoc couldn’t read this Markdown.', 502);
+      const items = await listFilesRecursive(root);
+      const bibs = items.filter((item) => item.type === 'file' && /\.bib$/i.test(item.path)).map((item) => item.path);
+      const figures = path.join(root, 'figures');
+      const media = made.media;
+      // pandoc names each image it extracted by its path in the temporary folder, which goes; the copy is in media/
+      // ponytail: a Windows pandoc's backslashes after media/ stay as it wrote them
+      let text = made.text;
+      for (const prefix of [media + path.sep, media.split(path.sep).join('/') + '/']) text = text.split(prefix).join('media/');
+      const project = await createProject({
+        name: meta.name + ' (LaTeX)',
+        meta: { mainFile: 'main.tex' },
+        populate: async (target) => {
+          await fs.writeFile(path.join(target, 'main.tex'), text);
+          for (const bib of bibs) {
+            await fs.mkdir(path.dirname(path.join(target, bib)), { recursive: true });
+            await fs.copyFile(path.join(root, bib), path.join(target, bib));
+          }
+          if ((await fs.stat(media).catch(() => null))?.isDirectory()) await copyDir(media, path.join(target, 'media'));
+          if ((await fs.stat(figures).catch(() => null))?.isDirectory()) await copyDir(figures, path.join(target, 'figures'));
+        }
+      });
+      return { ok: true, project };
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
+  });
+
   fastify.get('/api/projects/:id/settings', async (req) => ({ ok: true, settings: await readProjectSettings(await getProjectRoot(req.params.id)) }));
 
   // compile: the settings given change (null takes one back to the default); skills: { on, off }, the skills the
@@ -429,6 +523,8 @@ export function registerProjectRoutes(fastify) {
   fastify.get('/api/projects/:id/stats', async (req) => {
     const root = await getProjectRoot(req.params.id);
     const doc = String(req.query?.doc || req.query?.mainFile || '') || (await readMeta(root)).mainFile || 'main.tex';
+    // Typst has no .aux: its own eval gives the headings and labels with their pages
+    if (/\.typ$/i.test(doc)) return { ok: true, ...(await typstDocumentLabels(root, doc)) };
     return { ...(await projectStats(root, doc, req.query?.texFolder)), ...(await documentLabels(root, doc)) };
   });
 

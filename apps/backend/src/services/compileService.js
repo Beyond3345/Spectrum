@@ -4,12 +4,16 @@ import path from 'path';
 import { promises as fs, constants as fsConstants } from 'fs';
 import { spawn } from 'child_process';
 import { AsyncLocalStorage } from 'async_hooks';
+import { DATA_DIR } from '../config/constants.js';
 import { ensureDir, listFilesRecursive, renameOver } from '../utils/fsUtils.js';
+import { builtInTectonic } from './engineService.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { withoutComments } from '../utils/texUtils.js';
 import { cachePath, getProjectRoot } from './projectService.js';
 import { keepSynctex } from './synctex.js';
 import { createCompileCheckpoint } from './versionService.js';
+import { compileTypst } from './typstService.js';
+import { compileMarkdown } from './markdownService.js';
 
 const ENGINES = ['pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic'];
 export const SUPPORTED_ENGINES = ['auto', ...ENGINES];
@@ -21,7 +25,7 @@ const MULTI_PASS_ENGINES = ['pdflatex', 'xelatex', 'lualatex'];
 // fresh machine) and latexmk runs every pass inside one process, so they get longer limits.
 const PASS_TIMEOUT_MS = { tectonic: 15 * 60 * 1000, latexmk: 10 * 60 * 1000 };
 const DEFAULT_PASS_TIMEOUT_MS = 3 * 60 * 1000;
-const MAX_LOG_BYTES = 200_000;
+export const MAX_LOG_BYTES = 200_000;
 // pdfLaTeX can't load these; Auto then retries with XeLaTeX or LuaLaTeX.
 const NEEDS_UNICODE_ENGINE = /fontspec Error|unicode-math Error|requires either XeTeX or|must use XeTeX/i;
 // \externaldocument and \externalcitedocument (xr, xr-hyper), \zexternaldocument (zref-xr):
@@ -50,6 +54,13 @@ const KEPT_MARKER = '.complete';
 const RERUN = /\brerun\b(?! checks for auxiliary files)/i;
 // a % !TEX root = ../thesis.tex comment on a line of its own
 const TEX_ROOT = /^\s*%\s*!TEX\s+root\s*=\s*(.+?)\s*$/im;
+// biblatex's Biber, which needs a newer Biber than Tectonic ships with; backend=bibtex runs BibTeX instead
+const BIBLATEX = /\\addbibresource\b|\\(?:usepackage|RequirePackage)(?:\s*\[[^\]]*\])?\s*\{biblatex\}/;
+const BIBTEX_BACKEND = /backend\s*=\s*bibtex/;
+// Tectonic's bundle or a package couldn't be fetched (the bundle's own panic says it isn't cached)
+const TECTONIC_DOWNLOAD = /failed to download|failure downloading|couldn't get it from the internet/i;
+const TECTONIC_DOWNLOAD_ERROR = 'Tectonic couldn’t reach its server to download the TeX packages this document needs. Check the internet connection and compile again, or install TeX Live (MacTeX on a Mac, MiKTeX on Windows).';
+const BIBLATEX_NOTE = '\n[spectrum] biblatex with Biber needs TeX Live or MiKTeX (or use backend=bibtex), which the built-in Tectonic can’t run.\n';
 // the index's and the glossaries' programs, each run when a pass changed its input or it made nothing yet.
 // makeglossaries is Perl, which MiKTeX doesn't come with; makeglossaries-lite is Lua
 const INDEXERS = [
@@ -69,6 +80,11 @@ const WINDOWS = process.platform === 'win32';
 // Windows spells it Path
 export const PATH_KEY = Object.keys(process.env).find((key) => key.toUpperCase() === 'PATH') ?? 'PATH';
 const exists = (p) => fs.access(p).then(() => true, () => false);
+
+/** The command an engine runs as: the built-in Tectonic when Spectrum carries one, else its name on the PATH. */
+function engineCommand(engine) {
+  return engine === 'tectonic' ? builtInTectonic() ?? 'tectonic' : engine;
+}
 
 // Every engine writes <main>.synctex.gz too, for jumping between the source and the PDF.
 function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = false, untrusted = false } = {}) {
@@ -96,7 +112,7 @@ function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = f
       // an old notes.aux another editor left there wins over the kept one; warn about such a file if that bites.
       // It stops at the first error unless told to carry on, as the other engines do; draft is one pass
       return {
-        cmd: 'tectonic',
+        cmd: engineCommand('tectonic'),
         args: [...(haltOnError ? [] : ['-Z', 'continue-on-errors']), ...(draft ? ['--reruns', '0'] : []), '-Z', `search-path=${outDir}`, '--synctex', '--keep-intermediates', '--outdir', outDir, mainFile]
       };
     default:
@@ -142,7 +158,14 @@ async function autoEngineCandidates(absMain, without = []) {
   const ordered = [...new Set(preferred.filter((engine) => ENGINES.includes(engine) && !without.includes(engine)))];
   const installed = [];
   for (const engine of ordered) {
-    if (await findExecutable(engine)) installed.push(engine);
+    // the built-in Tectonic is installed even when nothing on the PATH is
+    if (engine === 'tectonic' ? builtInTectonic() : false) installed.push(engine);
+    else if (await findExecutable(engine)) installed.push(engine);
+  }
+  // biblatex with Biber can't run under the built-in Tectonic, which another engine can
+  if (BIBLATEX.test(withoutComments(tex)) && !BIBTEX_BACKEND.test(tex) && installed.some((engine) => engine !== 'tectonic')) {
+    const at = installed.indexOf('tectonic');
+    if (at !== -1) installed.splice(at, 1);
   }
   return installed;
 }
@@ -197,9 +220,10 @@ const cmdEscape = (s) => s.replace(/[()\][%!^"`<>&|;, *?]/g, '^$&');
 /**
  * Run one command in its own process group, so the time limit also stops what it started
  * (latexmk's pdflatex would otherwise keep running and hold the output pipes open).
+ * input, when given, is written to the command's standard input (Typst reads a document from stdin).
  * Resolves { code, timedOut }.
  */
-export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOUT_MS[cmd] || DEFAULT_PASS_TIMEOUT_MS) {
+export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOUT_MS[cmd] || DEFAULT_PASS_TIMEOUT_MS, input = null) {
   let file = cmd;
   let options = { cwd, env: env || process.env, detached: true };
   if (WINDOWS) {
@@ -222,6 +246,11 @@ export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOU
     const child = spawn(file, args, options);
     children.add(child);
     job?.children.add(child);
+    if (input != null) {
+      // a command that never reads it closes the pipe first
+      child.stdin.on('error', () => {});
+      child.stdin.end(input);
+    }
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
@@ -335,10 +364,19 @@ export async function compileFolder({ root, mainFile, engine = 'auto', texFolder
   if (path.basename(absMain).startsWith('-')) return { ok: false, error: 'The main file’s name can’t start with “-”.', engine };
   if (!(await fs.stat(absMain).catch(() => null))?.isFile()) return { ok: false, error: `The main file “${mainFile}” doesn’t exist.`, engine };
   const job = { stopped: false, children: new Set(), searchPath: await texPath(texFolder) };
-  return jobs.run(job, () => compileDocument(engine, root, absMain, docPath(root, absMain), { ...options, scratch: true }));
+  const file = docPath(root, absMain);
+  return jobs.run(job, () => {
+    if (/\.typ$/i.test(absMain)) return compileTypst(root, absMain, file, { ...options, scratch: true });
+    if (/\.(md|markdown)$/i.test(absMain)) return compileMarkdown(root, absMain, file, engine, { ...options, scratch: true });
+    return compileDocument(engine, root, absMain, file, { ...options, scratch: true });
+  });
 }
 
 async function compileWithLinks(engine, projectRoot, absMain, mainFile, options) {
+  // Typst needs no cross-reference passes or secondary programs: one run writes the PDF
+  if (/\.typ$/i.test(absMain)) return compileTypst(projectRoot, absMain, mainFile, options);
+  // Markdown goes through pandoc first
+  if (/\.(md|markdown)$/i.test(absMain)) return compileMarkdown(projectRoot, absMain, mainFile, engine, options);
   // Documents it cross-references go first when their .aux is missing or old. One level only,
   // so two documents that reference each other don't loop.
   const linked = [];
@@ -356,7 +394,7 @@ async function compileWithLinks(engine, projectRoot, absMain, mainFile, options)
   return { ...result, linked, log: [...notes, result.log ?? ''].join('\n') };
 }
 
-async function compileDocument(engine, projectRoot, absMain, mainFile, options) {
+export async function compileDocument(engine, projectRoot, absMain, mainFile, options) {
   if (engine !== 'auto') return { ...(await compileWith(engine, projectRoot, absMain, mainFile, options)), engine };
   const candidates = await autoEngineCandidates(absMain, options.without);
   if (!candidates.length) {
@@ -394,6 +432,36 @@ async function staleLinks(projectRoot, absMain) {
 }
 
 /**
+ * Windows has no font system Tectonic knows, so it is pointed at the Windows and per-user font folders (and a cache of
+ * Spectrum's) by one small fontconfig file, written once. ponytail: a font put in a folder later isn't seen until the
+ * file is written again (delete it to).
+ */
+let fontconfigFile = null;
+async function tectonicFontconfig() {
+  if (!WINDOWS) return null;
+  if (!fontconfigFile) {
+    const file = path.join(DATA_DIR, 'engines', 'fonts.conf');
+    const xml = (value) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    if (!(await exists(file))) {
+      const local = process.env.LOCALAPPDATA;
+      await ensureDir(path.dirname(file));
+      await fs.writeFile(file, [
+        '<?xml version="1.0"?>',
+        '<!DOCTYPE fontconfig SYSTEM "fonts.dtd">',
+        '<fontconfig>',
+        '  <dir>' + xml(path.join(process.env.SystemRoot || 'C:\\Windows', 'Fonts')) + '</dir>',
+        ...(local ? ['  <dir>' + xml(path.join(local, 'Microsoft', 'Windows', 'Fonts')) + '</dir>'] : []),
+        '  <cachedir>' + xml(path.join(DATA_DIR, 'engines', 'fontconfig-cache')) + '</cachedir>',
+        '</fontconfig>',
+        ''
+      ].join('\n')).catch(() => undefined);
+    }
+    fontconfigFile = file;
+  }
+  return fontconfigFile;
+}
+
+/**
  * Build in the temp folder's spectrum-build/<runId> (removed afterwards) and put the PDF next to the
  * main file, e.g. chapters/thesis.tex -> chapters/thesis.pdf, the only file a compile writes in the project:
  * a sync client would copy anything else to the other computer. Its .aux files and SyncTeX are kept in the cache.
@@ -409,8 +477,11 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
   // paths, so paths written relative to the root keep working as well.
   const mainDir = path.dirname(absMain);
   const mainName = path.basename(absMain);
-  const doc = docPath(projectRoot, absMain);
-  const searchPath = (name) => [slashed(mainDir), slashed(projectRoot), process.env[name] ?? ''].join(path.delimiter);
+  // a Markdown document's own folder, which pandoc's generated file may still read images from
+  const mdDir = options.markdownSource ? path.dirname(options.markdownSource) : null;
+  // kept under the .md for a Markdown document, so its next compile reuses them
+  const doc = options.markdownSource ? mainFile : docPath(projectRoot, absMain);
+  const searchPath = (name) => [slashed(mainDir), ...(mdDir && mdDir !== mainDir ? [slashed(mdDir)] : []), slashed(projectRoot), process.env[name] ?? ''].join(path.delimiter);
   const binPath = jobs.getStore()?.searchPath;
   const texEnv = {
     ...process.env,
@@ -420,6 +491,10 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
     BSTINPUTS: searchPath('BSTINPUTS'),
     ...options.env
   };
+  if (engine === 'tectonic') {
+    const fontconfig = await tectonicFontconfig();
+    if (fontconfig) texEnv.FONTCONFIG_FILE = fontconfig;
+  }
   // Recompile from scratch: nothing an earlier compile of the document kept, with any engine
   // (one a virus scanner still holds is left: none of it is copied in, and keepBuild clears it again)
   if (options.fresh && cache) await fs.rm(path.join(cache, 'build-files', doc), { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
@@ -471,15 +546,17 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
   };
 
   const { cmd, args } = buildCommand(engine, slashed(outDir), `./${mainName}`, options);
-  if (engine === 'tectonic' && mainDir !== projectRoot) {
+  if (engine === 'tectonic') {
     // Tectonic ignores TEXINPUTS; its unstable search-path option does the same job
-    args.unshift('-Z', `search-path=${slashed(projectRoot)}`);
+    const paths = [...new Set([projectRoot, ...(mdDir ? [mdDir] : [])].map(slashed))].filter((dir) => dir !== slashed(mainDir));
+    for (const dir of paths) args.unshift('-Z', `search-path=${dir}`);
   }
   // MiKTeX asks before installing a missing package, in a window the hidden engine never shows, so the
   // compile would sit until its time limit; this installs it without asking. ponytail: latexmk's own
   // engine runs still ask; pass -pdflatex="pdflatex --enable-installer %O %S" if that bites
   if (WINDOWS && multiPass && /[\\/]miktex[\\/]/i.test((await findExecutable(cmd)) || '')) args.unshift('--enable-installer');
-  const base = path.basename(mainFile, path.extname(mainFile));
+  // the generated file's base for a Markdown document (main.md.tex), so the engine's log and PDF keep its name
+  const base = path.basename(absMain, path.extname(absMain));
   const tex = await fs.readFile(absMain, 'utf8').catch(() => '');
   // the whole log of the pass just run, which the log sent back may have cut short
   const passLog = async () => unwrap(await fs.readFile(path.join(outDir, `${base}.log`), 'utf8').catch(() => ''));
@@ -566,6 +643,13 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
   if (engine === 'tectonic' && /biblatex control file version/i.test(log)) {
     log += '\n[spectrum] This document uses biblatex, and Tectonic’s bundled biblatex needs a different biber version than the one installed. Compile it with Auto, pdfLaTeX or XeLaTeX instead.\n';
   }
+  // biblatex with Biber needs a real TeX installation, which Auto has already preferred when there is one
+  if (engine === 'tectonic' && BIBLATEX.test(withoutComments(tex)) && !BIBTEX_BACKEND.test(tex)) log += BIBLATEX_NOTE;
+  // the built-in Tectonic fetches its bundle and each package on first use: offline, say what to do about it
+  if (engine === 'tectonic' && code !== 0 && TECTONIC_DOWNLOAD.test(log)) {
+    await cleanBuild(buildRoot, outDir);
+    return { ok: false, error: TECTONIC_DOWNLOAD_ERROR, log, status: code ?? -1 };
+  }
   let pdf;
   try {
     pdf = await fs.readFile(path.join(outDir, `${base}.pdf`));
@@ -579,17 +663,18 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
     await cleanBuild(buildRoot, outDir);
     return { ok: true, pdf: pdf.toString('base64'), log, status: code ?? 0 };
   }
-  const absPdf = path.join(path.dirname(absMain), `${base}.pdf`);
+  // a Markdown document's PDF goes beside the .md (base there is main, not main.md)
+  const absPdf = options.markdownSource
+    ? path.join(path.dirname(options.markdownSource), `${path.basename(options.markdownSource, path.extname(options.markdownSource))}.pdf`)
+    : path.join(path.dirname(absMain), `${base}.pdf`);
   // the copy on disk is older than this compile's, so the editor keeps showing the one it was sent
   let pdfStale = false;
   try {
-    await fs.writeFile(absPdf, pdf).catch((err) => {
-      // Windows locks a PDF open in another viewer (Acrobat); the preview, SyncTeX and .aux still update
-      if (!WINDOWS || !['EBUSY', 'EPERM'].includes(err.code)) throw err;
-      pdfStale = true;
-      log += `\n[spectrum warning] ${path.basename(absPdf)} is open in another program, so the copy next to the source wasn’t updated.\n`;
-    });
-    await keepSynctex(projectRoot, doc, path.join(outDir, `${base}.synctex.gz`), mainDir);
+    const written = await writePdf(projectRoot, absPdf, pdf, log);
+    log = written.log;
+    pdfStale = written.stale;
+    // SyncTeX jumps do not point into the .md, so a Markdown compile keeps none
+    if (!options.markdownSource) await keepSynctex(projectRoot, doc, path.join(outDir, `${base}.synctex.gz`), mainDir);
     // only a build without errors is read back; after one with errors the next compile starts from nothing. A draft
     // leaves the last full compile's: its .idx kept beside the old .ind would keep makeindex from running again
     if (multiPass && !options.draft) await (code === 0 ? keepBuild(outDir, store, others, await passLog()) : fs.rm(store, { recursive: true, force: true })).catch(() => {});
@@ -727,8 +812,28 @@ async function keepAux(outDir, store, others) {
   }
 }
 
-async function cleanBuild(buildRoot, outDir) {
+export async function cleanBuild(buildRoot, outDir) {
   // retried: on Windows a virus scanner can still hold a file the engine just wrote
   await fs.rm(outDir, { recursive: true, force: true, maxRetries: 5 });
   await fs.rmdir(buildRoot).catch(() => {}); // only succeeds once no other run is using it
+}
+
+/**
+ * Writes a compile's PDF beside the source. Windows locks a PDF open in another viewer (Acrobat), where the preview,
+ * SyncTeX and .aux still update: the copy on disk then keeps the older one, and the log says so. So it does when the
+ * PDF there is a link out of the project, or to nothing, which is never written through.
+ */
+export async function writePdf(projectRoot, absPdf, pdf, log) {
+  try {
+    safeJoin(projectRoot, absPdf);
+  } catch (err) {
+    return { stale: true, log: log + `\n[spectrum warning] ${path.basename(absPdf)} wasn’t updated. ${err.message}\n` };
+  }
+  try {
+    await fs.writeFile(absPdf, pdf);
+    return { stale: false, log };
+  } catch (err) {
+    if (!WINDOWS || !['EBUSY', 'EPERM'].includes(err.code)) throw err;
+    return { stale: true, log: log + `\n[spectrum warning] ${path.basename(absPdf)} is open in another program, so the copy next to the source wasn’t updated.\n` };
+  }
 }

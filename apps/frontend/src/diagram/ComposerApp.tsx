@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ReactFlowProvider } from '@xyflow/react';
 import type { EditorView } from '@codemirror/view';
-import { ApiError, compileProject, getFile, getProjectSettings, getProjectTree, runAgent, stopCompile, uploadFiles, writeFile } from '../api/client';
+import { ApiError, compileProject, getEngines, getFile, getProjectSettings, getProjectTree, runAgent, stopCompile, uploadFiles, writeFile } from '../api/client';
 import type { CompileEngine } from '../api/client';
 import Icon from '../app/Icon';
 import { MenuButton } from '../app/Menu';
@@ -28,7 +28,7 @@ import type { DiagramFile, DiagramLanguage, DiagramMode } from './types';
 import './composer.css';
 
 // The diagram composer, in its own window: a chooser for a new diagram, then the canvas (Draw) and the file (Code),
-// the compiled preview below, saved as you go to figures/<name>.tex or .mmd
+// the compiled preview below, saved as you go to figures/<name>.tex, .typ or .mmd
 
 /** Messages to the main window: a diagram to insert as a figure, and a diagram file saved. */
 type DiagramMessage =
@@ -92,20 +92,26 @@ const BLURBS: Record<string, string> = {
   tikz: 'Flowcharts and block diagrams: boxes and arrows',
   'tikz-cd': 'Maths objects on a grid, with labelled arrows'
 };
-const BASE_NAMES: Record<string, string> = { circuitikz: 'circuit', pgfplots: 'plot', tikz: 'diagram', 'tikz-cd': 'square', mermaid: 'mermaid' };
+const BASE_NAMES: Record<string, string> = { circuitikz: 'circuit', pgfplots: 'plot', tikz: 'diagram', 'tikz-cd': 'square', mermaid: 'mermaid', fletcher: 'flow' };
 const NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
 function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguage }) {
   const navigate = useNavigate();
   const tikzModes = MODES.filter((m) => m.language === 'tikz');
-  const [kind, setKind] = useState<'tikz' | 'mermaid'>(lang === 'mermaid' ? 'mermaid' : 'tikz');
+  const [kind, setKind] = useState<'tikz' | 'typst' | 'mermaid'>(lang === 'mermaid' ? 'mermaid' : lang === 'typst' ? 'typst' : 'tikz');
   const [pkg, setPkg] = useState(tikzModes[0]?.id ?? 'tikz');
+  const [typstBuiltIn, setTypstBuiltIn] = useState<boolean | null>(null);
+  const [typstVersion, setTypstVersion] = useState('');
   const [taken, setTaken] = useState<Set<string> | null>(null);
   const [typed, setTyped] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const mode = kind === 'mermaid' ? modeFor('mermaid') : modeFor(pkg);
-  const ext = kind === 'mermaid' ? 'mmd' : 'tex';
+  const mode = kind === 'mermaid' ? modeFor('mermaid') : kind === 'typst' ? modeFor('fletcher') : modeFor(pkg);
+  const ext = kind === 'mermaid' ? 'mmd' : kind === 'typst' ? 'typ' : 'tex';
+  useEffect(() => {
+    getEngines().then((engines) => setTypstBuiltIn(!!engines.typst.builtIn)).catch(() => setTypstBuiltIn(false));
+    getProjectSettings(projectId).then(({ settings }) => setTypstVersion(settings.compile?.typstVersion || '')).catch(() => undefined);
+  }, [projectId]);
   // a free name to start with, until one is typed
   const base = BASE_NAMES[mode?.id ?? ''] ?? 'diagram';
   let free = 1;
@@ -130,7 +136,7 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
     setError('');
     try {
       const diagram: DiagramFile = { language: mode.language, ...(mode.language === 'tikz' && { pkg: mode.id as DiagramFile['pkg'] }), style: {}, model: mode.emptyModel(), version: 1 };
-      await writeFile(projectId, path, await diagramFileText(diagram, mode.toCode(diagram.model, diagram.style)), { create: true, typed: true });
+      await writeFile(projectId, path, await diagramFileText(diagram, mode.toCode(diagram.model, diagram.style, { typstVersion })), { create: true, typed: true });
       post({ type: 'saved', projectId, path });
       navigate(`/diagram?${new URLSearchParams({ project: projectId, file: path, lang: mode.language })}`, { replace: true });
     } catch (err) {
@@ -139,14 +145,14 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
     }
   };
 
-  const card = (value: 'tikz' | 'typst' | 'mermaid', title: string, text: string) => (
+  const card = (value: 'tikz' | 'typst' | 'mermaid', title: string, text: string, disabled = false) => (
     <button
       type="button"
       role="radio"
       aria-checked={kind === value}
-      disabled={value === 'typst'}
+      disabled={disabled}
       className={`chooser-card${kind === value ? ' active' : ''}`}
-      onClick={() => value !== 'typst' && setKind(value)}
+      onClick={() => !disabled && setKind(value)}
     >
       <span className="chooser-card-title">{title}</span>
       <span className="chooser-card-text">{text}</span>
@@ -166,7 +172,7 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
         <h1>Draw a diagram</h1>
         <div className="chooser-cards" role="radiogroup" aria-label="Kind of diagram">
           {card('tikz', 'TikZ diagram', 'Compiled by LaTeX, so its labels use your document’s fonts and maths')}
-          {card('typst', 'Typst diagram', 'Arrives with built-in Typst')}
+          {card('typst', 'Typst diagram', 'Flowcharts and block diagrams drawn with fletcher', typstBuiltIn !== true)}
           {card('mermaid', 'Mermaid diagram', 'Flowcharts, sequence diagrams and Gantt charts, written as text')}
         </div>
         {kind === 'tikz' && (
@@ -230,11 +236,13 @@ async function openDiagram(projectId: string, path: string): Promise<Loaded> {
     const model = { code: diagram ? code : content };
     return { doc: { diagram: { style: {}, ...diagram, language: 'mermaid', model, version: 1 }, hand: null }, edited: false, hash };
   }
-  const mode = diagram?.language === 'tikz' ? modeFor(diagram.pkg) : undefined;
+  const mode = diagram ? modeFor(diagram.language === 'mermaid' ? 'mermaid' : diagram.language === 'typst' ? 'fletcher' : diagram.pkg) : undefined;
   let needsSave = false;
   try {
     if (!mode || !diagram) throw new Error('Unsupported drawing');
-    const generated = mode.toCode(diagram.model, diagram.style);
+    // a fletcher import line follows the project's Typst version
+    const typstVersion = diagram.language === 'typst' ? (await getProjectSettings(projectId).catch(() => null))?.settings.compile?.typstVersion || '' : '';
+    const generated = mode.toCode(diagram.model, diagram.style, { typstVersion });
     needsSave = !edited && drawnText(diagram, generated) !== code;
   } catch {
     return { doc: { diagram: null, hand: code, tail: mark ? `${mark}\n` : '' }, edited: false, hash };
@@ -302,9 +310,10 @@ function Composer({ projectId, path }: { projectId: string; path: string }) {
 function Editor({ projectId, path, loaded, onReload }: { projectId: string; path: string; loaded: Loaded; onReload(): void }) {
   const [settings] = useSettings();
   const [doc, setDoc] = useState<Doc>(loaded.doc);
-  const mode: DiagramMode<any> | undefined = doc.diagram ? modeFor(doc.diagram.language === 'mermaid' ? 'mermaid' : doc.diagram.pkg) : undefined;
-  const language: DiagramLanguage = /\.mmd$/i.test(path) ? 'mermaid' : 'tikz';
-  const drawable = !!mode && language === 'tikz';
+  const mode: DiagramMode<any> | undefined = doc.diagram ? modeFor(doc.diagram.language === 'mermaid' ? 'mermaid' : doc.diagram.language === 'typst' ? 'fletcher' : doc.diagram.pkg) : undefined;
+  const language: DiagramLanguage = /\.mmd$/i.test(path) ? 'mermaid' : /\.typ$/i.test(path) ? 'typst' : 'tikz';
+  const drawable = !!mode && language !== 'mermaid';
+  const [typstVersion, setTypstVersion] = useState('');
   const [tab, setTab] = useState<'draw' | 'code'>(mode && doc.hand === null ? 'draw' : 'code');
   // the hand-edit banner: shown on opening an edited file, and from the first keystroke in the Code tab
   const [editedNote, setEditedNote] = useState(loaded.edited);
@@ -324,11 +333,11 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
   const code = useMemo<DiagramCode | null>(() => {
     if (!mode || !doc.diagram) return null;
     try {
-      return mode.toCode(doc.diagram.model, doc.diagram.style);
+      return mode.toCode(doc.diagram.model, doc.diagram.style, { typstVersion });
     } catch {
       return null;
     }
-  }, [mode, doc.diagram]);
+  }, [mode, doc.diagram, typstVersion]);
   /** what the Code tab shows, and what's compiled: the file above its last line */
   const text = doc.hand ?? (doc.diagram && code ? drawnText(doc.diagram, code) : '');
   const key = JSON.stringify(doc);
@@ -415,16 +424,17 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
   useEffect(() => {
     getProjectSettings(projectId)
       .then(({ settings: project }) => {
-        const chosen = effectiveCompile(project.compile, settings.compileDefaults).engine;
+        const effective = effectiveCompile(project.compile, settings.compileDefaults);
         // latexmk's extra passes buy a picture nothing
-        setEngine(chosen === 'latexmk' ? 'auto' : chosen);
+        setEngine(effective.engine === 'latexmk' ? 'auto' : effective.engine);
+        setTypstVersion(effective.typstVersion || '');
       })
       .catch(() => undefined);
   }, [projectId]);
 
   const run = useRef({ count: 0, id: '' });
   const compile = async () => {
-    if (language !== 'tikz') return;
+    if (language === 'mermaid') return;
     const mine = (run.current.count += 1);
     if (run.current.id) stopCompile(run.current.id).catch(() => undefined);
     const compileId = crypto.randomUUID();
@@ -437,20 +447,33 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
     if (mine !== run.current.count) return;
     const source = savedRef.current;
     try {
-      const res = await compileProject({ projectId, mainFile: path, engine, compileId, draft: false, fresh: false, texFolder: settings.texFolder || undefined });
+      const res = await compileProject({
+        projectId,
+        mainFile: path,
+        engine,
+        compileId,
+        draft: false,
+        fresh: false,
+        texFolder: settings.texFolder || undefined,
+        typstInputs: language === 'typst' ? { 'spectrum-diagram': 'standalone' } : undefined,
+        // the version its fletcher import line was written for
+        typstVersion
+      });
       if (mine !== run.current.count || res.stopped) return;
       const log = res.log || '';
+      // Typst brings its diagnostics with it; TeX's come from the log
+      const errors = language === 'typst' ? (res.errors ?? []).map((e) => ({ severity: e.severity, message: e.message, line: e.line, file: e.file })) : parseCompileLog(log);
       if (res.ok && res.pdf) {
-        setPreview({ state: res.status === 0 ? 'ok' : 'failed', pdf: Uint8Array.from(atob(res.pdf), (c) => c.charCodeAt(0)), errors: parseCompileLog(log), log, source });
+        setPreview({ state: res.status === 0 ? 'ok' : 'failed', pdf: Uint8Array.from(atob(res.pdf), (c) => c.charCodeAt(0)), errors, log, source });
       } else {
-        setPreview((p) => ({ ...p, state: 'failed', errors: parseCompileLog(log), log, failure: res.error }));
+        setPreview((p) => ({ ...p, state: 'failed', errors, log, failure: res.error }));
       }
     } catch (err) {
       if (mine === run.current.count) setPreview((p) => ({ ...p, state: 'failed', errors: [], log: '', failure: errorText(err) }));
     }
   };
   /** Save, and for TikZ compile the preview too (Mermaid draws its own as you type). */
-  const refresh = () => (language === 'tikz' ? compile() : save());
+  const refresh = () => (language === 'mermaid' ? save() : compile());
   const actions = useRef({ compile, save, step, refresh });
   actions.current = { compile, save, step, refresh };
 
@@ -568,6 +591,8 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
         const blob = await mermaidImage(kind);
         await uploadFiles(projectId, [new File([blob], nameOf(image), { type: blob.type })], folderOf(image));
         post({ type: 'insert', projectId, path: image, language, packages: [], libraries: [] });
+      } else if (language === 'typst') {
+        post({ type: 'insert', projectId, path, language, packages: [], libraries: [] });
       } else {
         post({ type: 'insert', projectId, path, language, ...loadsOf(text) });
       }
@@ -600,7 +625,7 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
       const res = await runAgent({
         task: 'fix_diagram',
         prompt: [
-          `This standalone LaTeX file (${mode?.label ?? 'a TikZ figure'}) has errors when it compiles.`,
+          `This standalone ${language === 'typst' ? 'Typst' : 'LaTeX'} file (${mode?.label ?? 'a diagram'}) has errors when it compiles.`,
           errors.length ? `Errors:\n${errors.join('\n')}` : preview.failure || '',
           `End of the log:\n${preview.log.slice(-3000)}`,
           'Fix it and give the whole corrected file as the suggestion, without code fences. Keep the picture as it is apart from the fix.'
@@ -618,7 +643,7 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
       const fixed = (res.suggestion || '').replace(/^\s*```[a-z]*\n|\n```\s*$/g, '');
       if (!res.ok) toast(res.reply || 'The request failed.', { tone: 'error' });
       else if (latest.current.key !== source) toast('The diagram changed while the fix was being prepared. Your newer edits were kept; request the fix again.');
-      else if (!fixed.includes('\\begin{document}')) toast(res.reply || 'No fix was proposed.');
+      else if (language === 'typst' ? !fixed.includes('#diagram(') : !fixed.includes('\\begin{document}')) toast(res.reply || 'No fix was proposed.');
       else {
         setDoc((d) => ({ ...d, hand: fixed }));
         setEditedNote(true);
@@ -650,7 +675,7 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
   };
 
   const h = history.current;
-  const chip = language === 'mermaid' ? 'Mermaid' : mode ? `TikZ · ${mode.label.replace(/\s*\(.*\)$/, '')}` : 'TikZ';
+  const chip = language === 'mermaid' ? 'Mermaid' : language === 'typst' ? 'Typst · fletcher' : mode ? `TikZ · ${mode.label.replace(/\s*\(.*\)$/, '')}` : 'TikZ';
   const StyleMenu = drawable && doc.hand === null ? mode?.StyleMenu : undefined;
 
   return (
@@ -716,7 +741,7 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
             )}
           </div>
         )}
-        {language === 'tikz' && (
+        {drawable && (
           <button className="btn small" title={`Compile (${formatShortcut('Mod-Enter')})`} onClick={() => compile()}>
             <Icon name="play.fill" /> Compile
           </button>
@@ -773,7 +798,7 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
           </button>
         </div>
       )}
-      {!mode && language === 'tikz' && (
+      {!mode && language !== 'mermaid' && (
         <div className="diagram-banner" role="status">
           <span className="grow">This file has no drawing Spectrum can open, so it opens as code.</span>
         </div>
@@ -807,7 +832,7 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
             ) : (
               <CodePane
                 value={text}
-                tex
+                tex={language === 'tikz'}
                 viewRef={codeView}
                 onChange={(typed) => {
                   setDoc((d) => ({ ...d, hand: typed }));
@@ -816,7 +841,7 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
               />
             )}
           </div>
-          {language === 'tikz' && <Preview preview={preview} stale={preview.source !== key} fixing={fixing} onFix={fix} onJump={jumpTo} />}
+          {drawable && <Preview preview={preview} stale={preview.source !== key} fixing={fixing} onFix={fix} onJump={jumpTo} />}
         </div>
         {canEdit && mode?.Inspector && doc.diagram && (
           <aside className="diagram-inspector">

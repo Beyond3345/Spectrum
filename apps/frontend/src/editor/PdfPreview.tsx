@@ -29,6 +29,8 @@ export type PdfHandle = {
    * many there are, at most MAX_MATCHES. The marks follow the PDF through recompiles.
    */
   find(query: string, index: number): Promise<number>;
+  /** The boxes of the first match of `query` in the PDF's text, for a source-to-PDF jump without SyncTeX. */
+  firstMatch(query: string): Promise<PdfBox[]>;
   /** A page drawn to fit `width` × `height` CSS pixels (thumbnails, presentation mode); null until the PDF has loaded. */
   renderPage(page: number, width: number, height: number): Promise<HTMLCanvasElement | null>;
 };
@@ -420,6 +422,29 @@ const PdfPreview = forwardRef<
       const moved = query !== findRef.current.query || index !== findRef.current.index;
       findRef.current = { query, index };
       return markMatches(moved);
+    },
+    async firstMatch(query) {
+      const layout = layoutRef.current;
+      if (!layout || !query.trim()) return [];
+      if (textRef.current?.url !== layout.url) {
+        const pages = Promise.all(
+          layout.pages.map(async (page) => {
+            const content = await page.getTextContent();
+            return { runs: content.items.filter((item) => 'str' in item), measure: measure(content.styles) };
+          })
+        );
+        textRef.current = { url: layout.url, pages };
+      }
+      const texts = await textRef.current.pages.catch(() => []);
+      for (let i = 0; i < texts.length; i += 1) {
+        const { runs, measure } = texts[i];
+        const { text, starts } = pageText(runs);
+        const match = findAll(text, query)[0];
+        if (!match) continue;
+        const view = layout.pages[i].getViewport({ scale: 1 });
+        return matchBoxes(runs, starts, match, i + 1, (x, y) => view.convertToViewportPoint(x, y), measure);
+      }
+      return [];
     },
     async renderPage(number, width, height) {
       const page = layoutRef.current?.pages[number - 1];

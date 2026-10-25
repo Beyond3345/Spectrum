@@ -1,0 +1,60 @@
+{
+  "tectonic": {
+    "version": "0.17.0",
+    "assets": {
+      "arm64": ["tectonic-0.17.0-aarch64-apple-darwin.tar.gz", "a3f1cac7c5678f01661a92212f58480ae3b0634115d880dbc59e2953ded45667"],
+      "x64": ["tectonic-0.17.0-x86_64-apple-darwin.tar.gz", "7c90ef5b6ddb1eb1937e4337add5237b79338e4b9676459fa91187d24d6cdf80"],
+      "win-x64": ["tectonic-0.17.0-x86_64-pc-windows-msvc.zip", "f61ce51f0b0ade1015b7de7ef368541c5424e9756ecbd0d7af97d6d48030845f"]
+    }
+  },
+  "typst": {
+    "builtIn": "0.15.1",
+    "versions": [
+      {
+        "version": "0.15.1",
+        "released": "2026-07-17",
+        "assets": {
+          "arm64": ["typst-aarch64-apple-darwin.tar.xz", "48f62ed034aa3a7978309579ac6ca00045e2ef0da73114e8af27cfd8e74dc05a", 14438168],
+          "x64": ["typst-x86_64-apple-darwin.tar.xz", "7f9fdd9584866245de9a79e0add8f9236fae6f40a8a45e2c4771ccc14db4e0fa", 15635600],
+          "win-x64": ["typst-x86_64-pc-windows-msvc.zip", "19ce3551153c2fe7ee9fa2f95208310c8f4d3209fedb699e0333faf8913f6736", 22463684]
+        }
+      },
+      {
+        "version": "0.14.2",
+        "released": "2025-12-12",
+        "assets": {
+          "arm64": ["typst-aarch64-apple-darwin.tar.xz", "470aa49a2298d20b65c119a10e4ff8808550453e0cb4d85625b89caf0cedf048", 13097856],
+          "x64": ["typst-x86_64-apple-darwin.tar.xz", "4e91d8e1e33ab164f949c5762e01ee3faa585c8615a2a6bd5e3677fa8506b249", 14079728],
+          "win-x64": ["typst-x86_64-pc-windows-msvc.zip", "51353994ac83218c3497052e89b2c432c53b9d4439cdc1b361e2ea4798ebfc13", 20542725]
+        }
+      },
+      {
+        "version": "0.13.1",
+        "released": "2025-03-07",
+        "assets": {
+          "arm64": ["typst-aarch64-apple-darwin.tar.xz", "541e4f9eaca3f34ee865f81fc663e4839cb84d6253f71a372cd855b0a7283213", 11034064],
+          "x64": ["typst-x86_64-apple-darwin.tar.xz", "4dabfe647f7f01ed9cc13ad8196a6c7f5e16f0732821b522d50740d3a9f5207b", 11789644],
+          "win-x64": ["typst-x86_64-pc-windows-msvc.zip", "44170d0632298ba68cbabc43dbfb6908b17ca9236859e0767b0e5d54b2d19f48", 17259573]
+        }
+      },
+      {
+        "version": "0.12.0",
+        "released": "2024-10-18",
+        "assets": {
+          "arm64": ["typst-aarch64-apple-darwin.tar.xz", "0e7e7b370b240dab104654bad1ceffdbbcb17b1c98ee8b7778360ddad479fb5d", 10744600],
+          "x64": ["typst-x86_64-apple-darwin.tar.xz", "cba1b1e43b992603da9cc7777ac1c8af2c413f381453169a22c57d9a9aa02efb", 11419360],
+          "win-x64": ["typst-x86_64-pc-windows-msvc.zip", "07dceb7666b8418d5f7a0b7ebacdf0ca4a4372c0588926374e60976d55b415ff", 16262626]
+        }
+      }
+    ]
+  },
+  "pandoc": {
+    "version": "3.12.1",
+    "minimum": { "latex": "3.1", "typst": "3.8.3" },
+    "assets": {
+      "arm64": ["pandoc-3.12.1-arm64-macOS.zip", "c2146cf33a583f3ac93eccddf1bb662371d5cfcce1aad1c87ad860cca1435d46", 42313957],
+      "x64": ["pandoc-3.12.1-x86_64-macOS.zip", "81ed3e2cfecf096df15d407152f89a684fd65221082b919963f738e977fad3bc", 26487481],
+      "win-x64": ["pandoc-3.12.1-windows-x86_64.zip", "6ef431cb20b2c24a0371fc19200dc49d452be54b1b5c9239f3462841ef53e587", 42154914]
+    }
+  }
+}

@@ -5,11 +5,12 @@ export type DiagramLanguage = 'tikz' | 'typst' | 'mermaid';
 export type TikzPackage = 'tikz' | 'circuitikz' | 'pgfplots' | 'tikz-cd';
 export interface DiagramFile { language: DiagramLanguage; pkg?: TikzPackage; style: Record<string, unknown>; model: unknown; version: 1 }
 export interface DiagramMode<M = unknown> {
-  id: TikzPackage | 'mermaid';
+  id: TikzPackage | 'mermaid' | 'fletcher';
   label: string;                                  // "Circuit (circuitikz)" etc.
   language: DiagramLanguage;
   emptyModel(): M;
-  toCode(model: M, style: Record<string, unknown>): { body: string; packages: string[]; libraries: string[] };  // body = the picture only
+  // body = the picture only. context.typstVersion: the project's Typst version, for a fletcher import line
+  toCode(model: M, style: Record<string, unknown>, context?: { typstVersion?: string }): { body: string; packages: string[]; libraries: string[] };
   // the frame also passes what's selected (ids the mode chooses) and the rail's tool; onTool hands the tool back, as
   // after placing a shape
   Canvas: React.ComponentType<{ model: M; onChange(m: M): void; style: Record<string, unknown>; readOnly?: boolean; selection?: string[]; onSelect?(ids: string[]): void; tool?: string; onTool?(tool: string): void }>;

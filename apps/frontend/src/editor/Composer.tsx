@@ -7,7 +7,7 @@ import { MenuButton } from '../app/Menu';
 import { effortOptions, modelOf, presetOf, searchConfigFor, updateSettings, useLivePreset, useProviders } from '../app/settings';
 import { useEditor } from './EditorContext';
 import type { PendingChange } from './EditorContext';
-import { Markdown, VISION_HINTS, VISION_MODES, buildProjectContext, citationText, errorText, isTex, patchesToChanges, reloadBib } from './shared';
+import { Markdown, VISION_HINTS, VISION_MODES, buildProjectContext, citationText, errorText, isDocument, patchesToChanges, reloadBib } from './shared';
 import { ZOTERO_CITE } from './zotero';
 import type { VisionMode } from './shared';
 import { chatMessage, useChatThread } from './chatThread';
@@ -163,8 +163,8 @@ export default function Composer({
 
   const insertCite = async (key: string) => {
     const a = latest.current;
-    if (!isTex(a.activePath)) {
-      a.notify('Open a .tex file to insert the citation.');
+    if (!isDocument(a.activePath)) {
+      a.notify('Open a document to insert the citation.');
       return;
     }
     a.insertAtCursor(await citationText(a, [key]), { afterSelection: true });
@@ -178,7 +178,7 @@ export default function Composer({
     const a = latest.current;
     if (!a.settings.autoInsertCite || results.length !== 1 || !only.key || (only.status !== 'added' && only.status !== 'duplicate')) return;
     const cite = await citationText(a, [only.key]);
-    const line = isTex(a.activePath) ? a.insertAtCursor(cite, { afterSelection: true, focus: false, placedOnly: true }) : null;
+    const line = isDocument(a.activePath) ? a.insertAtCursor(cite, { afterSelection: true, focus: false, placedOnly: true }) : null;
     a.notify(line ? `Inserted ${cite} in ${a.activePath.split('/').pop()}, line ${line}.` : `Click where ${cite} should go, then choose Insert citation.`);
   };
 

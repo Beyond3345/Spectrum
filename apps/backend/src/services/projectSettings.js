@@ -1,11 +1,9 @@
 import { readJson, writeJsonAtomic } from '../utils/fsUtils.js';
-import { appPath, httpError, serialiser } from './projectService.js';
+import { appPath, httpError, mutateProjectFiles } from './projectService.js';
 
 // A project's own settings (its compiler and the like) in .spectrum/settings.json, which goes with the project to
 // the user's other computer. Not in project.json: 1.10.4 rewrites that through its own list of keys and would drop them.
 const settingsPath = (root) => appPath(root, 'settings.json');
-// ponytail: one lock for every project's settings, as for their metadata
-const settingsLock = serialiser();
 
 const isObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 
@@ -30,9 +28,13 @@ export async function readProjectSettings(root, { strict = false } = {}) {
   });
 }
 
-/** fn receives the current settings and returns the next ones. A file that can't be read is left alone rather than replaced. */
-export function updateProjectSettings(root, fn) {
-  return settingsLock(async () => {
+/**
+ * fn receives the current settings and returns the next ones. A file that can't be read is left alone rather than
+ * replaced. In the project files' lock, which a GitHub pull holds while it merges settings.json, so neither undoes the
+ * other; held: the caller holds it already (a Link's merge), as the lock isn't one to take twice.
+ */
+export function updateProjectSettings(root, fn, { held = false } = {}) {
+  const update = async () => {
     let settings;
     try {
       settings = await readSettingsFile(root);
@@ -42,5 +44,6 @@ export function updateProjectSettings(root, fn) {
     const next = await fn(settings);
     await writeJsonAtomic(settingsPath(root), next);
     return next;
-  });
+  };
+  return held ? update() : mutateProjectFiles(update);
 }

@@ -907,10 +907,18 @@ fn spawn_backend(app: &AppHandle, port: u16, log_path: &Path) -> Result<Child, S
         .stdin(Stdio::piped())
         .stdout(log)
         .stderr(log_err);
-    // TexLab sits beside Spectrum like Node (tauri dev copies it beside the debug build); without it the backend looks
-    // on the PATH, and the editor works as before when there's none
+    // TexLab, Tectonic and Typst sit beside Spectrum like Node (tauri dev copies them beside the debug build); without
+    // them the backend looks on the PATH, and the editor works as before when there's none
     if let Some(dir) = env::current_exe().ok().as_deref().and_then(Path::parent) {
-        cmd.env("SPECTRUM_TEXLAB", dir.join(format!("texlab{}", env::consts::EXE_SUFFIX)));
+        cmd.env("SPECTRUM_TEXLAB", dir.join(format!("texlab{}", env::consts::EXE_SUFFIX)))
+            .env(
+                "SPECTRUM_TECTONIC",
+                dir.join(format!("tectonic{}", env::consts::EXE_SUFFIX)),
+            )
+            .env(
+                "SPECTRUM_TYPST",
+                dir.join(format!("typst{}", env::consts::EXE_SUFFIX)),
+            );
     }
     // its own group, so quitting can stop the compilers it starts too
     #[cfg(unix)]
@@ -944,6 +952,7 @@ fn backend_command(app: &AppHandle, data_dir: &Path, _path_var: &str) -> Result<
         .env("SPECTRUM_TEMPLATE_DIR", data_dir.join("templates"))
         .env("SPECTRUM_TEMPLATE_SEED_DIR", resources.join("templates"))
         .env("SPECTRUM_NATIVE_DIR", resources.join("native"))
+        .env("SPECTRUM_ENGINES_RESOURCE_DIR", resources.join("engines"))
         .env("SPECTRUM_DICT_DIR", resources.join("dictionaries"))
         .env("SPECTRUM_SKILLS_SEED_DIR", resources.join("skills"));
     Ok(cmd)

@@ -1,7 +1,8 @@
 import type { DiagramFile } from './types';
 
-// One file per diagram: figures/<name>.tex, a standalone TikZ document, or figures/<name>.mmd. Its last line keeps the
-// drawing, after a comment mark TeX and Mermaid skip (% and %%), with a hash of the text the drawing writes:
+// One file per diagram: figures/<name>.tex, a standalone TikZ document, figures/<name>.typ, a Typst file, or
+// figures/<name>.mmd. Its last line keeps the drawing, after a comment mark TeX, Typst and Mermaid skip (%, // and %%),
+// with a hash of the text the drawing writes:
 //   % spectrum-diagram v1 <base64 of the DiagramFile as JSON> <sha256 of that text, its first 16 hex digits>
 // The text above that line matching the hash means it's as the drawing left it; otherwise it was edited by hand.
 
@@ -9,7 +10,7 @@ import type { DiagramFile } from './types';
 export type DiagramCode = { body: string; packages: string[]; libraries: string[] };
 
 // found wherever it is, so text added below it (a merge, a hand edit) reads as an edit rather than losing the drawing
-const MARK_LINE = /^%%? spectrum-diagram v1 ([A-Za-z0-9+/=]+) ([0-9a-f]{16})[ \t]*\r?$/gm;
+const MARK_LINE = /^(?:%%?|\/\/) spectrum-diagram v1 ([A-Za-z0-9+/=]+) ([0-9a-f]{16})[ \t]*\r?$/gm;
 
 /** The file has a drawing to open (the file tree's Edit diagram). */
 export const hasDrawing = (text: string) => new RegExp(MARK_LINE.source, 'm').test(text);
@@ -30,7 +31,7 @@ export function tikzDocument({ body, packages, libraries }: DiagramCode) {
 
 /** The text a drawing writes, above the last line. */
 export const drawnText = (diagram: DiagramFile, code: DiagramCode) =>
-  diagram.language === 'mermaid' ? `${code.body.trimEnd()}\n` : tikzDocument(code);
+  diagram.language === 'mermaid' || diagram.language === 'typst' ? `${code.body.trimEnd()}\n` : tikzDocument(code);
 
 async function hashOf(text: string) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
@@ -52,7 +53,7 @@ const fromBase64 = (b64: string) => new TextDecoder().decode(Uint8Array.from(ato
 export async function diagramFileText(diagram: DiagramFile, code: DiagramCode, edited?: string) {
   const drawn = drawnText(diagram, code);
   const above = edited === undefined ? drawn : edited.endsWith('\n') ? edited : `${edited}\n`;
-  const mark = diagram.language === 'mermaid' ? '%%' : '%';
+  const mark = diagram.language === 'mermaid' ? '%%' : diagram.language === 'typst' ? '//' : '%';
   return `${above}${mark} spectrum-diagram v1 ${toBase64(JSON.stringify(diagram))} ${await hashOf(drawn)}\n`;
 }
 

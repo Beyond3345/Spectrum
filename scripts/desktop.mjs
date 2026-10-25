@@ -4,6 +4,8 @@
 //   node scripts/desktop.mjs build      universal Spectrum.app + .dmg on macOS, the x64 installer on Windows
 //   node scripts/desktop.mjs resources  everything `build` bundles, without packaging
 //   node scripts/desktop.mjs texlab     TexLab alone (the Windows workflow builds it as a step of its own)
+//   node scripts/desktop.mjs tectonic   Tectonic alone
+//   node scripts/desktop.mjs typst      Typst alone
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -12,6 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
 import { buildAgentSandbox } from './build-agent-sandbox.mjs';
+import engines from '../apps/backend/src/data/engines.json' with { type: 'json' };
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tauriDir = path.join(root, 'src-tauri');
@@ -210,6 +213,75 @@ async function texlabRuntime(arches) {
   console.log(`TexLab ${TEXLAB.version} (${arches.join(', ')}) → ${path.relative(root, binDir)}`);
 }
 
+// Tectonic (MIT) and Typst (Apache-2.0) ship inside the app as TexLab does. Their versions and digests are in
+// apps/backend/src/data/engines.json, which the backend reads too.
+
+/** An engine's archive for an arch: engines.json keys Windows' as win-x64, the Mac's as arm64 and x64. */
+export const engineAsset = (assets, arch, platform = process.platform) => assets[platform === 'win32' ? 'win-x64' : arch];
+
+/** One release's executable for an arch, verified and kept from an earlier run. */
+async function engineBinary(name, version, assets, arch) {
+  const [file, expected] = engineAsset(assets, arch);
+  const folder = path.join(cacheDir, `${name}-${version}-${arch}`);
+  const out = path.join(folder, `${name}${EXE}`);
+  if (fs.existsSync(out)) return out;
+  const tag = name === 'tectonic' ? `tectonic@${version}` : `v${version}`;
+  const repo = name === 'tectonic' ? 'tectonic-typesetting/tectonic' : 'typst/typst';
+  const archive = await verifiedDownload(`https://github.com/${repo}/releases/download/${tag}/${file}`, path.join(cacheDir, `${name}-${version}-${file}`), expected);
+  fs.mkdirSync(folder, { recursive: true });
+  // Typst's archive holds its executable in a folder named after the asset; Tectonic's holds it at the top
+  const strip = name === 'typst' ? ['--strip-components', '1'] : [];
+  const inside = name === 'typst' ? `${file.replace(/\.(?:tar\.xz|zip)$/, '')}/${name}${EXE}` : `${name}${EXE}`;
+  run(win ? winTar : 'tar', ['-xf', archive, '-C', folder, ...strip, inside]);
+  return out;
+}
+
+async function tectonicBinary(arch) {
+  const { version, assets } = engines.tectonic;
+  return engineBinary('tectonic', version, assets, arch);
+}
+
+async function typstBinary(arch) {
+  const { builtIn, versions } = engines.typst;
+  return engineBinary('typst', builtIn, versions.find((v) => v.version === builtIn).assets, arch);
+}
+
+/** Windows' Visual C++ runtime, which Typst's own builds load, from Microsoft's redistributable. */
+function windowsRuntime() {
+  const cached = path.join(cacheDir, 'vcruntime140.dll');
+  if (fs.existsSync(cached)) return cached;
+  const found = spawnSync('vswhere', ['-latest', '-property', 'installationPath'], { encoding: 'utf8' });
+  const install = found.status === 0 ? found.stdout.trim() : '';
+  if (!install) throw new Error('vswhere didn\'t find Visual Studio, so Typst\'s vcruntime140.dll is missing');
+  const redist = path.join(install, 'VC', 'Redist', 'MSVC');
+  const newest = fs.readdirSync(redist).sort((a, b) => b.localeCompare(a, undefined, { numeric: true })).find((name) => /^\d+\./.test(name));
+  const crt = newest && fs.readdirSync(path.join(redist, newest, 'x64')).sort().reverse().find((name) => /^Microsoft\.VC\d+\.CRT$/.test(name));
+  if (!crt) throw new Error(`vcruntime140.dll isn't in ${redist}`);
+  fs.mkdirSync(cacheDir, { recursive: true });
+  fs.copyFileSync(path.join(redist, newest, 'x64', crt, 'vcruntime140.dll'), cached);
+  return cached;
+}
+
+/** resources/engines, which holds the Windows runtime copy and is bundled so Windows finds it. */
+function prepareEnginesDir() {
+  fs.mkdirSync(path.join(resourcesDir, 'engines'), { recursive: true });
+  if (win) fs.copyFileSync(windowsRuntime(), path.join(resourcesDir, 'engines', 'vcruntime140.dll'));
+}
+
+async function tectonicRuntime(arches) {
+  fs.mkdirSync(cacheDir, { recursive: true });
+  await sidecar('tectonic', arches, (arch) => tectonicBinary(arch));
+  console.log(`Tectonic ${engines.tectonic.version} (${arches.join(', ')}) → ${path.relative(root, binDir)}`);
+}
+
+async function typstRuntime(arches) {
+  fs.mkdirSync(cacheDir, { recursive: true });
+  await sidecar('typst', arches, (arch) => typstBinary(arch));
+  // beside the bundled typst.exe too, as Windows looks there before its own folders
+  if (win) fs.copyFileSync(windowsRuntime(), path.join(binDir, 'vcruntime140.dll'));
+  console.log(`Typst ${engines.typst.builtIn} (${arches.join(', ')}) → ${path.relative(root, binDir)}`);
+}
+
 async function resources() {
   run('npm', ['run', 'build']);
   await bundleBackend();
@@ -231,8 +303,11 @@ async function resources() {
   else fs.copyFileSync(nodehun, path.join(native, 'nodehun.node'));
   const nodehunManifest = path.join(path.dirname(nodehun), 'nodehun.manifest.json');
   if (fs.existsSync(nodehunManifest)) fs.copyFileSync(nodehunManifest, path.join(native, 'nodehun.manifest.json'));
+  prepareEnginesDir();
   await nodeRuntime(Object.keys(TRIPLES));
   await texlabRuntime(Object.keys(TRIPLES));
+  await tectonicRuntime(Object.keys(TRIPLES));
+  await typstRuntime(Object.keys(TRIPLES));
 }
 
 async function build() {
@@ -260,20 +335,33 @@ async function dev() {
   run('npm', ['run', 'build']);
   // bundle inputs aren't used in dev, but tauri-build insists they exist
   for (const dir of ['backend', 'frontend', 'templates', 'native', 'dictionaries', 'skills']) fs.mkdirSync(path.join(resourcesDir, dir), { recursive: true });
+  prepareEnginesDir();
   if (!fs.existsSync(path.join(binDir, `node-${TRIPLES[process.arch]}${EXE}`))) await nodeRuntime([process.arch]);
   if (!fs.existsSync(path.join(binDir, `texlab-${TRIPLES[process.arch]}${EXE}`))) await texlabRuntime([process.arch]);
+  if (!fs.existsSync(path.join(binDir, `tectonic-${TRIPLES[process.arch]}${EXE}`))) await tectonicRuntime([process.arch]);
+  if (!fs.existsSync(path.join(binDir, `typst-${TRIPLES[process.arch]}${EXE}`))) await typstRuntime([process.arch]);
   run('npx', ['tauri', 'dev']);
 }
 
-const commands = { dev, build, resources, texlab: () => texlabRuntime(Object.keys(TRIPLES)) };
-const command = commands[process.argv[2]];
-if (!command) {
-  console.error('Usage: node scripts/desktop.mjs dev|build|resources|texlab');
-  process.exit(1);
-}
-try {
-  await command();
-} catch (err) {
-  console.error(`\n${err.message}`);
-  process.exit(1);
+const commands = {
+  dev,
+  build,
+  resources,
+  texlab: () => texlabRuntime(Object.keys(TRIPLES)),
+  tectonic: () => tectonicRuntime(Object.keys(TRIPLES)),
+  typst: () => typstRuntime(Object.keys(TRIPLES))
+};
+// run, not imported (the backend's tests check engineAsset)
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const command = commands[process.argv[2]];
+  if (!command) {
+    console.error('Usage: node scripts/desktop.mjs dev|build|resources|texlab|tectonic|typst');
+    process.exit(1);
+  }
+  try {
+    await command();
+  } catch (err) {
+    console.error(`\n${err.message}`);
+    process.exit(1);
+  }
 }

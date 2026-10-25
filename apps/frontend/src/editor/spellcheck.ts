@@ -2,14 +2,14 @@ import { RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
 import type { EditorState, Extension } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin } from '@codemirror/view';
 import type { DecorationSet, ViewUpdate } from '@codemirror/view';
-import { maskLatex, proseWords } from '../../../backend/src/latex/mask.js';
+import { maskLatex, maskMarkdown, maskTypst, proseWords } from '../../../backend/src/latex/mask.js';
 import { spellCheck } from '../api/client';
 
 // Spell checking as you type, in Australian English. The text is reduced to its prose (the same
 // stripper the grammar check uses), the words in and near the view are sent to the backend's
 // nodehun checker once each, and the misspelt ones get a red squiggle.
 
-const CHECKABLE = /\.(tex|ltx|md|markdown|txt)$/i;
+const CHECKABLE = /\.(tex|ltx|typ|md|markdown|txt)$/i;
 // checked a little past the edges, so scrolling doesn't show words before they're marked
 const MARGIN = 2000;
 
@@ -47,7 +47,7 @@ export function spellChecker(opts: { enabled(): boolean; path(): string; project
       // word → misspelt, so each word goes to the backend once
       answers = new Map<string, boolean>();
       ignored = new Set<string>();
-      masked: { doc: unknown; tex: boolean; text: string } = { doc: null, tex: false, text: '' };
+      masked: { doc: unknown; kind: string; text: string } = { doc: null, kind: '', text: '' };
       timer = 0;
       run = 0;
       typing = false;
@@ -87,10 +87,11 @@ export function spellChecker(opts: { enabled(): boolean; path(): string; project
           return;
         }
         const doc = view.state.doc;
-        const tex = /\.(tex|ltx)$/i.test(path);
-        if (this.masked.doc !== doc || this.masked.tex !== tex) {
+        const kind = /\.(tex|ltx)$/i.test(path) ? 'latex' : /\.typ$/i.test(path) ? 'typst' : /\.(md|markdown)$/i.test(path) ? 'markdown' : 'text';
+        if (this.masked.doc !== doc || this.masked.kind !== kind) {
           const text = doc.toString();
-          this.masked = { doc, tex, text: tex ? maskLatex(text) : text };
+          const prose = kind === 'latex' ? maskLatex(text) : kind === 'typst' ? maskTypst(text) : kind === 'markdown' ? maskMarkdown(text) : text;
+          this.masked = { doc, kind, text: prose };
         }
         const prose = this.masked.text;
         const found = new Map<number, string>();

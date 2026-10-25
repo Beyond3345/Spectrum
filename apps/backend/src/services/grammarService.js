@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { APP_VERSION, NATIVE_DIR } from '../config/constants.js';
-import { maskLatex } from '../latex/mask.js';
+import { maskLatex, maskTypst } from '../latex/mask.js';
 import { APP_DIR, getProjectRoot } from './projectService.js';
 import { writeFileAtomic } from '../utils/fsUtils.js';
 import { workerClient } from '../utils/workerClient.js';
@@ -43,7 +43,8 @@ export const stopGrammar = () => harper.terminate();
 export async function checkGrammar({ text, file = '', style = false, oxford = 'avoid', ignoredRules = [] }) {
   const source = String(text);
   const tex = /\.(tex|ltx)$/i.test(file);
-  const prose = tex ? maskLatex(source) : source;
+  // Harper reads Markdown itself; Typst's markup is masked away as LaTeX's is
+  const prose = tex ? maskLatex(source) : /\.typ$/i.test(file) ? maskTypst(source) : source;
   const issues = await harper.call({ text: prose, oxford: OXFORD.has(oxford) ? oxford : 'avoid', markdown: /\.(md|markdown)$/i.test(file) });
   const ignored = new Set(ignoredRules);
   return issues

@@ -24,8 +24,8 @@ const { registerProjectRoutes } = await import('../src/routes/projects.js');
 const { registerVersionRoutes } = await import('../src/routes/versions.js');
 const { registerTodoRoutes } = await import('../src/routes/todos.js');
 const { registerNoteRoutes } = await import('../src/routes/notes.js');
-const { createProject } = await import('../src/services/projectService.js');
-const { createCompileCheckpoint, createVersion, listVersions, readVersionFile, restoreVersion } = await import('../src/services/versionService.js');
+const { createProject, detectMainFile } = await import('../src/services/projectService.js');
+const { compareWithCurrent, createCompileCheckpoint, createVersion, listVersions, readVersionFile, restoreVersion } = await import('../src/services/versionService.js');
 const { parseLabels } = await import('../src/services/statsService.js');
 
 const app = Fastify();
@@ -37,6 +37,23 @@ registerNoteRoutes(app);
 after(async () => {
   await app.close();
   rmSync(tmp, { recursive: true, force: true });
+});
+
+test('detectMainFile finds a LaTeX, Typst or Markdown main file, and never another README.md', async () => {
+  const make = async (name, files) => {
+    const dir = path.join(tmp, 'detect', name);
+    for (const [rel, text] of Object.entries(files)) {
+      await fs.mkdir(path.dirname(path.join(dir, rel)), { recursive: true });
+      await fs.writeFile(path.join(dir, rel), text);
+    }
+    return dir;
+  };
+  const tex = '\\documentclass{article}\n\\begin{document}x\\end{document}\n';
+  assert.equal(await detectMainFile(await make('latex', { 'main.tex': tex, 'README.md': '# Read me', 'main.md': '# Markdown' })), 'main.tex');
+  assert.equal(await detectMainFile(await make('typst', { 'notes.typ': '= Notes', 'main.typ': '= Main', 'chapters/one.typ': '= One' })), 'main.typ');
+  assert.equal(await detectMainFile(await make('typst-shallow', { 'notes.typ': '= Notes', 'chapters/two.typ': '= Two' })), 'notes.typ');
+  assert.equal(await detectMainFile(await make('markdown', { 'main.md': '# Main', 'README.md': '# Read me' })), 'main.md');
+  assert.equal(await detectMainFile(await make('readme', { 'README.md': '# Read me' })), undefined);
 });
 
 async function api(url, method = 'GET', body) {
@@ -374,4 +391,48 @@ test('a compile’s checkpoint is saved even when what it replaces can’t all b
   }
   assert.equal((await listVersions(p.path)).length, 2);
   assert.equal((await readVersionFile(p.path, two.id, 'main.tex')).content, 'two');
+});
+
+test('a save made while a checkpoint is restored waits for the restore, so it’s neither undone nor lost', async () => {
+  const p = await newProject('Restoring', { 'main.tex': 'the checkpoint\n' });
+  const file = path.join(p.path, 'main.tex');
+  const { version } = await createVersion(p.path, { label: 'Original' });
+  await fs.writeFile(file, 'before the restore\n');
+  // the restore paused once its safety checkpoint is saved, as it writes main.tex
+  const { realpath } = fs;
+  let paused;
+  let release;
+  const reached = new Promise((resolve) => (paused = resolve));
+  const gate = new Promise((resolve) => (release = resolve));
+  fs.realpath = async function (p, ...rest) {
+    if (String(p) === file && paused) {
+      paused();
+      paused = null;
+      await gate;
+    }
+    return realpath.call(this, p, ...rest);
+  };
+  try {
+    const restoring = api(`/api/projects/${p.id}/versions/${version.id}/restore`, 'POST', {});
+    await reached;
+    const saving = api(`/api/projects/${p.id}/file`, 'PUT', { path: 'main.tex', content: 'saved during the restore\n' });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    release();
+    const [restored, saved] = await Promise.all([restoring, saving]);
+    assert.equal(restored.status, 200);
+    assert.equal(saved.status, 200);
+  } finally {
+    release();
+    fs.realpath = realpath;
+  }
+  assert.equal(await fs.readFile(file, 'utf8'), 'saved during the restore\n');
+});
+
+test('a checkpoint shows and compares Typst and Markdown source as text', async () => {
+  const p = await newProject('Typst source', { 'main.typ': '= Review\nTypst prose.\n', 'notes.markdown': '# Notes\n' });
+  const { version } = await createVersion(p.path, { label: '' });
+  assert.deepEqual(await readVersionFile(p.path, version.id, 'main.typ'), { ok: true, content: '= Review\nTypst prose.\n' });
+  assert.equal((await readVersionFile(p.path, version.id, 'notes.markdown')).content, '# Notes\n');
+  await fs.writeFile(path.join(p.path, 'main.typ'), '= Review\nTypst prose, revised.\n');
+  assert.deepEqual((await compareWithCurrent(p.path, version.id)).find((c) => c.path === 'main.typ'), { path: 'main.typ', status: 'modified', added: 1, removed: 1, binary: false });
 });

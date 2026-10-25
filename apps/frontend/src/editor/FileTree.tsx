@@ -19,7 +19,7 @@ const DRAG_TYPE = 'application/x-spectrum-path';
 export const parentOf = (p: string) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '');
 const nameOf = (p: string) => p.slice(p.lastIndexOf('/') + 1);
 const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
-const isTex = (p: string) => /\.tex$/i.test(p);
+const isDocument = (p: string) => /\.(?:tex|ltx|typ|md|markdown)$/i.test(p);
 
 function fileIcon(path: string) {
   const ext = path.toLowerCase().split('.').pop() || '';
@@ -290,7 +290,7 @@ const FileTree = forwardRef<
       { label: 'Upload folder…', icon: 'tray.and.arrow.down', onSelect: () => pick('folder', folder) },
       { separator: true },
       !!path && props.diagrams.includes(path) && { label: 'Edit diagram', icon: 'square.and.pencil', onSelect: () => props.onEditDiagram(path) },
-      !!path && isTex(path) && { label: 'Set as main file', icon: 'checkmark.seal', disabled: path === mainFile, onSelect: () => props.onSetMain(path) },
+      !!path && isDocument(path) && { label: 'Set as main file', icon: 'checkmark.seal', disabled: path === mainFile, onSelect: () => props.onSetMain(path) },
       !!path && { label: 'Rename…', icon: 'pencil', onSelect: () => setInline({ kind: 'rename', path, value: nameOf(path) }) },
       IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => run(() => revealProject(projectId, path || undefined), `Couldn’t show it in ${FILE_MANAGER}`) },
       !!path && { label: 'Delete…', icon: 'trash', destructive: true, onSelect: () => run(() => remove(path), 'Couldn’t delete') },

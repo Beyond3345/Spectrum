@@ -186,7 +186,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoInsertCite: true,
   zoteroCompletion: true,
   // a new setting, so 1.x's saved compiler (compileEngine, left in place for it) doesn't carry over
-  compileDefaults: { engine: 'auto', autoCompile: 0, haltOnError: false, bibTool: 'auto', draft: false, syntaxCheck: true },
+  compileDefaults: { engine: 'auto', autoCompile: 0, haltOnError: false, bibTool: 'auto', draft: false, syntaxCheck: true, typstVersion: '', markdownEngine: 'latex' },
   texFolder: '',
   openLogsOnFail: false,
   checkpointOnCompile: true,
@@ -233,7 +233,7 @@ export const COMPILE_ENGINES: [CompileEngine, string][] = [
   ['xelatex', 'XeLaTeX'],
   ['lualatex', 'LuaLaTeX'],
   ['latexmk', 'Latexmk'],
-  ['tectonic', 'Tectonic']
+  ['tectonic', 'Tectonic (built in)']
 ];
 
 export const BIB_TOOLS: [BibTool, string][] = [
@@ -278,7 +278,9 @@ function cleanCompile(value: unknown, fallback: CompileDefaults): CompileDefault
     haltOnError: typeof v.haltOnError === 'boolean' ? v.haltOnError : fallback.haltOnError,
     bibTool: BIB_TOOLS.find(([tool]) => tool === v.bibTool)?.[0] ?? fallback.bibTool,
     draft: typeof v.draft === 'boolean' ? v.draft : fallback.draft,
-    syntaxCheck: typeof v.syntaxCheck === 'boolean' ? v.syntaxCheck : fallback.syntaxCheck
+    syntaxCheck: typeof v.syntaxCheck === 'boolean' ? v.syntaxCheck : fallback.syntaxCheck,
+    typstVersion: typeof v.typstVersion === 'string' && /^\d+\.\d+\.\d+$/.test(v.typstVersion) ? v.typstVersion : fallback.typstVersion,
+    markdownEngine: v.markdownEngine === 'latex' || v.markdownEngine === 'typst' ? v.markdownEngine : fallback.markdownEngine
   };
 }
 

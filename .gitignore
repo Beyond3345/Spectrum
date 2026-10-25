@@ -1,5 +1,7 @@
 node_modules/
 data/
+# the engines' versions and checksums, which desktop.mjs and the backend share
+!apps/backend/src/data/
 .env
 .env.local
 .DS_Store

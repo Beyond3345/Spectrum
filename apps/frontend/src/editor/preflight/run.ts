@@ -4,6 +4,7 @@ import { figureKind } from '../floats';
 import { plainText, scanInsights } from '../insights';
 import { CITE_COMMANDS, REF_COMMANDS, VERBATIM_ENVS } from '../latexContext';
 import { INPUT_RE, externalDocuments, includedFile, inputName, scanTex } from '../latexEnvs';
+import { isSource } from '../shared';
 import { scanTodos } from '../todos';
 
 // Preflight: the checks Tools › Review runs over a document before it goes anywhere, from its last compile's log, the
@@ -129,6 +130,9 @@ const ABSOLUTE = /^(?:\/|[A-Za-z]:|~)/;
 const IMAGE_EXTS = ['.pdf', '.png', '.jpg', '.jpeg', '.mps', '.eps', '.jbig2', '.jb2'];
 const IMAGE_FILE = /\.(?:pdf|png|jpe?g|mps|eps|ps|jbig2|jb2|svg|gif|tiff?|bmp|webp|heic|heif)$/i;
 
+/** The files Review reads for the privacy scan: the source, and the other text files a key could be left in. */
+export const isScanned = (path: string) => isSource(path) || /\.(?:txt|json|ya?ml|toml|ini|cfg|conf|py|r|jl|m|sh|js|ts)$/i.test(path);
+
 // what a project shouldn't carry to GitHub or an arXiv upload. Not .key: that's a Keynote deck.
 const SECRET_FILE = /(?:^|\/)(?:\.env(?:\.[\w-]+)?|id_(?:rsa|dsa|ecdsa|ed25519)|[^/]+\.(?:pem|p12|pfx|jks|keystore)|\.netrc|\.npmrc|\.pypirc|credentials(?:\.json)?|service[-_]account[^/]*\.json)$/i;
 const SECRETS: [RegExp, string][] = [
@@ -189,6 +193,8 @@ export function preflightGaps(input: Pick<PreflightInput, 'log' | 'failed' | 'pd
 /** Every check of every group, errors first within each group. */
 export function runPreflight(input: PreflightInput): Finding[] {
   const { doc, pdfFacts: pdf } = input;
+  // Typst's and Markdown's source cannot be read as LaTeX: their review is the compile, the log, the PDF and privacy
+  const latexDoc = /\.(tex|ltx)$/i.test(doc);
   const found: Finding[] = [];
   // a second of the same finding (two \hl on one line, a token twice on one) says nothing more, and would share its
   // row's id in Review, so Dismiss would hide both
@@ -361,7 +367,7 @@ export function runPreflight(input: PreflightInput): Finding[] {
   }
 
   // ─── References and assets ───
-  {
+  if (latexDoc) {
     const group = 'references';
     // the .bib files the document names, or every one when it names none that exist
     const named = new Set(scans.flatMap((s) => s.bibs.map((n) => includedFile(pathSet, doc, n, '.bib'))).filter(Boolean) as string[]);
@@ -430,6 +436,8 @@ export function runPreflight(input: PreflightInput): Finding[] {
         const syntax = kind === 'bib-syntax';
         add({ group, severity: syntax ? 'error' : 'warning', message: `${d.message}${token && !syntax ? `: ${quoted(token)}` : ''} (TexLab)`, file, line: d.line, fixable: true });
       }
+  } else {
+    add({ group: 'references', severity: 'info', message: 'The source checks read LaTeX, so they don’t apply to Typst or Markdown documents.' });
   }
 
   // ─── Privacy and blind review ───
@@ -480,7 +488,7 @@ export function runPreflight(input: PreflightInput): Finding[] {
   }
 
   // ─── Accessibility ───
-  {
+  if (latexDoc) {
     const group = 'accessibility';
     // a password-protected PDF pdf.js couldn't open has nothing read from it to go on (preflightGaps says so)
     if (pdf && !unreadable(pdf)) {
@@ -515,7 +523,7 @@ export function runPreflight(input: PreflightInput): Finding[] {
   }
 
   // ─── Submission readiness ───
-  {
+  if (latexDoc) {
     const group = 'submission';
     if (pdf) {
       if (Number(pdf.version) > 1.7) add({ group, severity: 'info', message: `The PDF is version ${pdf.version}. Some submission systems only take PDF 1.4 to 1.7.` });

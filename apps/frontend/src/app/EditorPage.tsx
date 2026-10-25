@@ -15,12 +15,15 @@ import {
   blobUrl,
   closeTemplateDraft,
   compileProject,
+  convertToLatex,
+  exportDocx,
   saveTemplateDraft,
   stopCompile,
   createVersion as saveVersion,
   deleteNote,
   getFile,
   getFileIfChanged,
+  getEngines,
   getProjectSettings,
   getProjectTree,
   getSyncSettings,
@@ -44,8 +47,7 @@ import {
   updateProjectSettings,
   writeFile
 } from '../api/client';
-import type { CompileEngine, CompileOptions, CompileResult, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
-import { latex } from '../latex/lang';
+import type { CompileDiagnostic, CompileEngine, CompileOptions, CompileResult, Engines, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
 import Icon from './Icon';
 import Tabs from './Tabs';
 import Sheet from './Sheet';
@@ -73,6 +75,7 @@ import FloatsPanel from '../editor/FloatsPanel';
 import type { FloatCard } from '../editor/FloatsPanel';
 import InsightsPanel from '../editor/InsightsPanel';
 import { figureFile, showDiagram, showFigure } from '../editor/tools/FloatsTab';
+import { figureLabel, figureMarkdown, figureTypst } from '../editor/floats';
 import type { DiagramLanguage } from '../diagram/types';
 import SplitDiffView from '../editor/SplitDiffView';
 import GrammarPanel, { grammarMarks } from '../editor/GrammarPanel';
@@ -106,9 +109,6 @@ import {
   insertIndent,
   jumpHighlight,
   latexCompletionSource,
-  latexFoldService,
-  latexHighlight,
-  mathsWrap,
   nearestHeading,
   parseOutline,
   programmatic,
@@ -125,20 +125,31 @@ import type { Reference } from '../editor/lsp/texlab';
 import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
-import { PROJECT_DATA_CHANGED, VERSIONS_CHANGED, errorText, figureSnippet } from '../editor/shared';
+import { ENGINES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDocument, isSource, keptMainFile, type DocKind } from '../editor/shared';
+import { languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions } from '../editor/languages';
+import { includedPath, parseMarkdownOutline, parseTypstOutline } from '../editor/outlines';
 import { ZOTERO_CITE, zoteroCompletionSource } from '../editor/zotero';
 import { ZoteroCite, addZoteroHit } from '../editor/ZoteroCite';
 
 // ─── helpers ───
 
-const TEXT_FILE = /\.(tex|bib|sty|cls|bst|bbx|cbx|lbx|cfg|def|clo|ltx|dtx|txt|md|mmd|json|ya?ml|csv|tsv)$|(^|\/)\.latexmkrc$/i;
+const TEXT_FILE = /\.(tex|typ|bib|sty|cls|bst|bbx|cbx|lbx|cfg|def|clo|ltx|dtx|txt|md|mmd|json|ya?ml|csv|tsv)$|(^|\/)\.latexmkrc$/i;
 // \includestandalone[…]{figures/name}: the diagram its line takes in
 const INCLUDE_STANDALONE = /\\includestandalone\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/;
 const FIGURE_FILE = /\.(png|jpe?g|pdf|svg|eps)$/i;
 const IMAGE_FILE = /\.(png|jpe?g|svg|gif)$/i;
 const isTex = (p: string) => /\.tex$/i.test(p);
 const nameOf = (p: string) => p.slice(p.lastIndexOf('/') + 1);
-const pdfOf = (tex: string) => tex.replace(/\.tex$/i, '.pdf');
+const pdfOf = (tex: string) => tex.replace(/\.(?:tex|ltx|typ|md|markdown)$/i, '.pdf');
+/** A source line's words without markup, for finding the line in the PDF. */
+const lineWords = (text: string) =>
+  text
+    .replace(/\\(?:[a-zA-Z@]+\*?|.)/g, ' ')
+    .replace(/#[A-Za-z][\w-]*(?:\([^)]*\))?/g, ' ')
+    .replace(/[{}[\]$*_<>|]/g, ' ')
+    .split(/\s+/)
+    .map((word) => word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ''))
+    .filter(Boolean);
 const PART_OF_MAIN = /^[^%\n]*\\documentclass\s*(?:\[[^\]]*\]\s*)?\{(?:subfiles|standalone)\}/m;
 // a rough take on the backend's test for a document of its own: an uncommented \documentclass near the top
 const DOCUMENT_CLASS = /^[^%\n]*\\documentclass/m;
@@ -205,22 +216,26 @@ const ZOOMS: [PdfZoom, string][] = [
   [2, '200%']
 ];
 
-type Snippet = { label: string; icon: string; text: string; select: string; block?: boolean };
+type Snippet = { label: string; icon: string; text: string; select: string; block?: boolean; kinds: DocKind[] };
+const LATEX: DocKind[] = ['latex'];
+const TYPST: DocKind[] = ['typst'];
+const MARKDOWN: DocKind[] = ['markdown'];
 /** a snippet, the Floats panel's figure or table card, the diagram composer, or a divider */
 const SNIPPETS: (Snippet | FloatCard | null)[] = [
-  { label: 'Section', icon: 'number', text: '\\section{Section title}', select: 'Section title', block: true },
-  { label: 'Subsection', icon: 'list.bullet.indent', text: '\\subsection{Subsection title}', select: 'Subsection title', block: true },
-  { label: 'Subsubsection', icon: 'list.bullet.indent', text: '\\subsubsection{Subsubsection title}', select: 'Subsubsection title', block: true },
+  { label: 'Section', icon: 'number', text: '\\section{Section title}', select: 'Section title', block: true, kinds: LATEX },
+  { label: 'Subsection', icon: 'list.bullet.indent', text: '\\subsection{Subsection title}', select: 'Subsection title', block: true, kinds: LATEX },
+  { label: 'Subsubsection', icon: 'list.bullet.indent', text: '\\subsubsection{Subsubsection title}', select: 'Subsubsection title', block: true, kinds: LATEX },
   null,
-  { label: 'Itemize', icon: 'list.bullet', text: '\\begin{itemize}\n    \\item First item\n\\end{itemize}', select: 'First item', block: true },
-  { label: 'Enumerate', icon: 'list.number', text: '\\begin{enumerate}\n    \\item First item\n\\end{enumerate}', select: 'First item', block: true },
-  { label: 'Equation', icon: 'function', text: '\\begin{equation}\n    E = mc^2\n    \\label{eq:name}\n\\end{equation}', select: 'E = mc^2', block: true },
+  { label: 'Itemize', icon: 'list.bullet', text: '\\begin{itemize}\n    \\item First item\n\\end{itemize}', select: 'First item', block: true, kinds: LATEX },
+  { label: 'Enumerate', icon: 'list.number', text: '\\begin{enumerate}\n    \\item First item\n\\end{enumerate}', select: 'First item', block: true, kinds: LATEX },
+  { label: 'Equation', icon: 'function', text: '\\begin{equation}\n    E = mc^2\n    \\label{eq:name}\n\\end{equation}', select: 'E = mc^2', block: true, kinds: LATEX },
   {
     label: 'Algorithm',
     icon: 'arrow.triangle.branch',
     text: '\\begin{algorithm}[t]\n    \\caption{Algorithm name}\n    \\label{alg:name}\n    \\begin{algorithmic}[1]\n        \\State Initialise\n    \\end{algorithmic}\n\\end{algorithm}',
     select: 'Algorithm name',
-    block: true
+    block: true,
+    kinds: LATEX
   },
   null,
   'figure',
@@ -231,14 +246,33 @@ const SNIPPETS: (Snippet | FloatCard | null)[] = [
     icon: 'chevron.left.forwardslash.chevron.right',
     text: '\\begin{lstlisting}[language=Python]\n# code here\n\\end{lstlisting}',
     select: '# code here',
-    block: true
+    block: true,
+    kinds: LATEX
   },
   null,
-  { label: 'Citation', icon: 'quote.opening', text: '\\cite{key}', select: 'key' },
-  { label: 'Reference', icon: 'link', text: '\\ref{label}', select: 'label' },
-  { label: 'Label', icon: 'tag', text: '\\label{label}', select: 'label' }
+  { label: 'Citation', icon: 'quote.opening', text: '\\cite{key}', select: 'key', kinds: LATEX },
+  { label: 'Reference', icon: 'link', text: '\\ref{label}', select: 'label', kinds: LATEX },
+  { label: 'Label', icon: 'tag', text: '\\label{label}', select: 'label', kinds: LATEX },
+  // Typst
+  { label: 'Heading', icon: 'number', text: '= Heading', select: 'Heading', block: true, kinds: TYPST },
+  { label: 'Emphasis', icon: 'textformat', text: '_text_', select: 'text', kinds: TYPST },
+  { label: 'Strong', icon: 'text.bubble', text: '*text*', select: 'text', kinds: TYPST },
+  { label: 'List', icon: 'list.bullet', text: '- item', select: 'item', block: true, kinds: TYPST },
+  { label: 'Maths', icon: 'function', text: '$x$', select: 'x', kinds: TYPST },
+  { label: 'Block maths', icon: 'function', text: '$ x $', select: 'x', block: true, kinds: TYPST },
+  { label: 'Citation', icon: 'quote.opening', text: '@key', select: 'key', kinds: TYPST },
+  { label: 'Reference', icon: 'link', text: '@fig:x', select: 'fig:x', kinds: TYPST },
+  { label: 'Comment', icon: 'text.bubble', text: '// comment', select: 'comment', kinds: TYPST },
+  // Markdown
+  { label: 'Heading', icon: 'number', text: '## Heading', select: 'Heading', block: true, kinds: MARKDOWN },
+  { label: 'Emphasis', icon: 'textformat', text: '_text_', select: 'text', kinds: MARKDOWN },
+  { label: 'Strong', icon: 'text.bubble', text: '**text**', select: 'text', kinds: MARKDOWN },
+  { label: 'List', icon: 'list.bullet', text: '- item', select: 'item', block: true, kinds: MARKDOWN },
+  { label: 'Link', icon: 'link', text: '[text](url)', select: 'text', kinds: MARKDOWN },
+  { label: 'Maths', icon: 'function', text: '$x$', select: 'x', kinds: MARKDOWN },
+  { label: 'Citation', icon: 'quote.opening', text: '[@key]', select: 'key', kinds: MARKDOWN },
+  { label: 'Code block', icon: 'chevron.left.forwardslash.chevron.right', text: '```\ncode\n```', select: 'code', block: true, kinds: MARKDOWN }
 ];
-
 type CompileState = { state: 'idle' | 'running' | 'ok' | 'failed' | 'stopped'; engine: CompileEngine | string; at?: Date; slow?: boolean };
 
 /** what takes the PDF's place, from the top bar */
@@ -361,6 +395,9 @@ function Editor({ projectId }: { projectId: string }) {
   /** the project's own compile choices (.spectrum/settings.json); the app's defaults fill in the rest */
   const [projectCompile, setProjectCompile] = useState<CompileOptions>({});
   const compileOptions = effectiveCompile(projectCompile, settings.compileDefaults);
+  // the extension list outlives a render, so the completion source reads this rather than a stale compile setting
+  const compileOptionsRef = useRef(compileOptions);
+  compileOptionsRef.current = compileOptions;
   const engine = compileOptions.engine;
   const [compile, setCompile] = useState<CompileState>({ state: 'idle', engine });
   const compilingRef = useRef(false);
@@ -382,7 +419,20 @@ function Editor({ projectId }: { projectId: string }) {
   const [savingVersion, setSavingVersion] = useState(false);
   const savingVersionRef = useRef(false);
   const [compileLog, setCompileLog] = useState('');
+  // a Typst compile's own errors and warnings (null: the log is TeX's, for parseCompileLog)
+  const [compileDiagnostics, setCompileDiagnostics] = useState<CompileDiagnostic[] | null>(null);
   const [compileFailure, setCompileFailure] = useState('');
+  // why the compile stopped before an engine ran, which Logs offers a download or the default for
+  const [compileNotice, setCompileNotice] = useState<{ code?: string; version?: string } | null>(null);
+  const [compileGenerated, setCompileGenerated] = useState<'latex' | 'typst' | null>(null);
+  // the installed Typst versions and pandoc, for the compile menu
+  const [engines, setEngines] = useState<Engines | null>(null);
+  useEffect(() => {
+    const load = () => getEngines().then(setEngines).catch(() => undefined);
+    load();
+    window.addEventListener(ENGINES_CHANGED, load);
+    return () => window.removeEventListener(ENGINES_CHANGED, load);
+  }, [projectId]);
   const [pdf, setPdf] = useState<{ url: string; blob: boolean } | null>(null);
   /** the document whose PDF the pane shows, and the one compiled last (whose log shows) */
   const [shownDoc, setShownDoc] = useState('');
@@ -471,14 +521,17 @@ function Editor({ projectId }: { projectId: string }) {
   const compileTarget = (settings.pdfFollowsFile && shownDoc) || mainFile;
   const compileErrors = useMemo<CompileError[]>(() => {
     const files = items.map((i) => i.path);
-    const parsed = parseCompileLog(compileLog, project?.path).map((e) => (e.file ? { ...e, file: projectFile(e.file, compiledDoc, files) } : e));
+    // a Typst compile brings its diagnostics with it; an empty list is a Typst compile with nothing to report
+    const parsed = compileDiagnostics !== null
+      ? compileDiagnostics.map((e) => ({ severity: e.severity, message: e.message, line: e.line, file: projectFile(e.file, compiledDoc, files) }))
+      : parseCompileLog(compileLog, project?.path).map((e) => (e.file ? { ...e, file: projectFile(e.file, compiledDoc, files) } : e));
     return compileFailure && !parsed.some((e) => e.severity === 'error') ? [{ severity: 'error', message: compileFailure }, ...parsed] : parsed;
-  }, [compileLog, compileFailure, project?.path, items, compiledDoc]);
+  }, [compileDiagnostics, compileLog, compileFailure, project?.path, items, compiledDoc]);
   const selectionText = selectionRange[0] === selectionRange[1] ? '' : editorValue.slice(selectionRange[0], selectionRange[1]);
   const fileSet = useMemo(() => new Set(items.filter((i) => i.type === 'file').map((i) => i.path)), [items]);
   // the files to-dos are looked for in, never a sync app's conflict copy
   const todoSources = useMemo(
-    () => items.filter((i) => i.type === 'file' && /\.(tex|sty|cls|ltx|bib)$/i.test(i.path) && !conflicts[i.path]).map((i) => i.path),
+    () => items.filter((i) => i.type === 'file' && isSource(i.path) && !conflicts[i.path]).map((i) => i.path),
     [items, conflicts]
   );
   const todos = useTodos({ projectId, sources: todoSources, loaded: (path) => filesRef.current.get(path), revision: `${filesVersion} ${dirty}`, notify });
@@ -503,9 +556,9 @@ function Editor({ projectId }: { projectId: string }) {
     return res;
   };
 
-  /** The diagram composer's window, at its chooser or at a diagram of the project (a figures/*.tex or an .mmd). */
+  /** The diagram composer's window, at its chooser or at a diagram of the project (a figures/*.tex or .typ, or an .mmd). */
   const drawDiagram = (file?: string) =>
-    openDiagram(projectId, file, file ? (/\.mmd$/i.test(file) ? 'mermaid' : 'tikz') : undefined).catch((err) =>
+    openDiagram(projectId, file, file ? (/\.mmd$/i.test(file) ? 'mermaid' : /\.typ$/i.test(file) ? 'typst' : 'tikz') : undefined).catch((err) =>
       notify(`Couldn’t open the diagram composer: ${errorText(err)}`, 'error')
     );
 
@@ -701,6 +754,9 @@ function Editor({ projectId }: { projectId: string }) {
       const saved = statesRef.current.get(path);
       clearGhost();
       view.setState(saved && saved.doc.toString() === content ? saved : EditorState.create({ doc: content, extensions: extensionsRef.current }));
+      // a saved state keeps its own language configuration, so every open says again which file this is
+      view.dispatch({ effects: languageCompartment.reconfigure(languageFor(path)) });
+      if (docKind(path) === 'typst') loadTypst().then((language) => { if (language && activeRef.current === path) viewRef.current?.dispatch({ effects: languageCompartment.reconfigure(language) }); });
       activeRef.current = path;
       attachTexlab();
       cursorPlacedRef.current = false;
@@ -913,14 +969,11 @@ function Editor({ projectId }: { projectId: string }) {
     if (gone(compiledDoc)) setCompiledDoc(mainFile);
   };
 
-  // keep a main file whenever there is a .tex file. Runs when the tree changes, not when the main file
+  // keep a main file whenever there is a document. Runs when the tree changes, not when the main file
   // does: a rename sets the new name before the refreshed tree contains it.
   useEffect(() => {
-    if (!loaded || (mainFile && texFiles.includes(mainFile))) return;
-    // never a sync app's conflict copy
-    const tex = texFiles.filter((p) => !conflicts[p]);
-    setMainFile(tex.find((p) => /(^|\/)main\.tex$/i.test(p)) || tex[0] || '');
-  }, [loaded, texFiles]);
+    if (loaded) setMainFile(keptMainFile(mainFile, [...fileSet], conflicts));
+  }, [loaded, fileSet]);
 
   // a tab whose file went from the tree (deleted or renamed on another computer, in Finder, by git) is marked
   // and not saved back unasked; one marked that's back is checked against the disk
@@ -1028,14 +1081,16 @@ function Editor({ projectId }: { projectId: string }) {
   };
 
   /**
-   * PDF text without SyncTeX: find the line in the open file first, then in the other .tex files.
+   * PDF text without SyncTeX: find the line in the open file first, then in the other documents of its kind.
    * Source line breaks may sit anywhere, a hyphenated last word won't match and macros
    * change the text, so shorter word runs are tried when the whole line isn't found.
    */
   const findInSource = async (text: string) => {
     const words = text.replace(/\S*-$/, '').trim().split(/\s+/).filter(Boolean);
     const runs = [words, words.slice(0, 6), words.slice(0, 4)].filter((run, i, all) => run.join(' ').length >= 4 && all.findIndex((r) => r.length === run.length) === i);
-    const order = [activeRef.current, ...texFiles].filter((p, i, all) => isTex(p) && all.indexOf(p) === i);
+    const kind = docKind(shownDoc);
+    const sameKind = items.filter((i) => i.type === 'file' && docKind(i.path) === kind && !conflicts[i.path]).map((i) => i.path);
+    const order = [activeRef.current, ...sameKind].filter((p, i, all) => docKind(p) === kind && all.indexOf(p) === i);
     for (const run of runs) {
       const pattern = new RegExp(run.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'));
       for (const path of order) {
@@ -1053,12 +1108,18 @@ function Editor({ projectId }: { projectId: string }) {
   /** Double-click on the PDF: the source line SyncTeX gives for that spot, else the text there found in the source. */
   const jumpFromPdf = async (at: PdfPoint, text: string) => {
     if (!settings.syncDoubleClick) return;
-    const res = await synctexEdit(projectId, at, shownDoc).catch(() => null);
+    // Typst and Markdown have no SyncTeX: their PDF text finds the source line
+    const kind = docKind(shownDoc);
     let landed = false;
-    if (res?.ok && items.some((i) => i.path === res.file)) {
-      await jumpTo(res.file, res.line, res.column);
-      landed = activeRef.current === res.file;
-    } else if (text.length >= 3) landed = await findInSource(text);
+    if (kind !== 'latex') {
+      if (text.length >= 3) landed = await findInSource(text);
+    } else {
+      const res = await synctexEdit(projectId, at, shownDoc).catch(() => null);
+      if (res?.ok && items.some((i) => i.path === res.file)) {
+        await jumpTo(res.file, res.line, res.column);
+        landed = activeRef.current === res.file;
+      } else if (text.length >= 3) landed = await findInSource(text);
+    }
     const view = viewRef.current;
     if (!landed || !view) return;
     // the line landed on (or the text found) stays highlighted for as long as Settings → Editor says
@@ -1069,12 +1130,30 @@ function Editor({ projectId }: { projectId: string }) {
     unlingerRef.current = linger(settings.syncHighlightSeconds, () => highlight('fade'), () => highlight(null));
   };
 
-  /** Double-click in a .tex file (CodeMirror selects the word as ever): where that line went, when the PDF shows beside it. */
+  /** Double-click in a document (CodeMirror selects the word as ever): where that line went, when the PDF shows beside it. */
   const showInPdf = async (pos: number) => {
     const view = viewRef.current;
     const file = activeRef.current;
-    if (!settings.syncDoubleClick || !view || !pdf || !isTex(file) || layout.view !== 'split' || panel) return;
+    if (!settings.syncDoubleClick || !view || !pdf || !isDocument(file) || layout.view !== 'split' || panel) return;
     const line = view.state.doc.lineAt(pos);
+    const kind = docKind(file);
+    // Typst and Markdown have no SyncTeX: the line's words find it in the PDF
+    if (kind !== 'latex') {
+      const words = lineWords(line.text);
+      const runs = [words, words.slice(0, 8), words.slice(0, 4)].filter((run, i, all) => run.length >= 2 && all.findIndex((r) => r.join(' ') === run.join(' ')) === i);
+      for (const run of runs) {
+        const boxes = (await pdfRef.current?.firstMatch(run.join(' ')).catch(() => [])) ?? [];
+        if (boxes.length) {
+          pdfRef.current?.highlight(boxes, settings.syncHighlightSeconds);
+          return;
+        }
+      }
+      // a double-click is also how a word is selected, so the same notice doesn't come back every time
+      const notice = `${pdf.url}\n${file}`;
+      if (syncNoticeRef.current !== notice) notify('Couldn’t find this line in the PDF.');
+      syncNoticeRef.current = notice;
+      return;
+    }
     const res = await synctexView(projectId, { file, line: line.number, column: pos - line.from + 1 }, shownDoc).catch((err) => ({ ok: false as const, error: errorText(err) }));
     const notice = `${pdf.url}\n${file}\n${res.ok ? '' : res.error}`;
     if (res.ok) pdfRef.current?.highlight(res.boxes, settings.syncHighlightSeconds);
@@ -1458,11 +1537,12 @@ function Editor({ projectId }: { projectId: string }) {
   const runCompile = async (doc = compileTarget, opts: { fresh?: boolean; auto?: boolean } = {}): Promise<CompileState['state'] | 'busy'> => {
     if (compilingRef.current) return 'busy';
     if (!doc) {
-      notify('There’s no .tex file to compile. Add one, or choose “Set as main file” from a file’s menu.');
+      notify('There’s no document to compile. Add one, or choose “Set as main file” from a file’s menu.');
       return 'failed';
     }
     // not for auto compile, which would ask at every pause in typing
-    if (compileOptions.syntaxCheck && !opts.auto) {
+    // TexLab reads LaTeX only, so its check is for a .tex document
+    if (compileOptions.syntaxCheck && !opts.auto && isTex(doc)) {
       compilingRef.current = true;
       const go = await syntaxCheckPasses(doc)
         .catch(() => true)
@@ -1492,7 +1572,9 @@ function Editor({ projectId }: { projectId: string }) {
         draft: compileOptions.draft,
         fresh: opts.fresh,
         texFolder: settings.texFolder || undefined,
-        checkpoint: settings.checkpointOnCompile
+        checkpoint: settings.checkpointOnCompile,
+        typstVersion: compileOptions.typstVersion,
+        markdownEngine: compileOptions.markdownEngine
       });
       const actual = res.engine || used;
       built = res.doc || doc;
@@ -1500,6 +1582,11 @@ function Editor({ projectId }: { projectId: string }) {
       const problem = checkpointProblem(res.checkpoint, skippedToldRef.current);
       if (problem && settings.checkpointNotice) notify(problem, 'error');
       setCompileLog(`Engine: ${engineLabel(actual)}\nDocument: ${built}\n\n${res.log || ''}`.trim());
+      setCompileDiagnostics(res.errors ?? null);
+      setCompileNotice(res.code ? { code: res.code, version: res.version } : null);
+      setCompileGenerated(res.generated ?? null);
+      // an install from Logs' notice changes what the compile menu can offer
+      if (res.code) getEngines().then(setEngines).catch(() => undefined);
       if (res.ok && res.pdf) {
         const bytes = Uint8Array.from(atob(res.pdf), (c) => c.charCodeAt(0));
         const blob = new Blob([bytes], { type: 'application/pdf' });
@@ -1529,6 +1616,9 @@ function Editor({ projectId }: { projectId: string }) {
       if (made.some((p) => p && !items.some((i) => i.path === p))) refreshTree().catch(() => undefined);
     } catch (err) {
       setCompileLog(`Compile request failed: ${errorText(err)}`);
+      setCompileDiagnostics(null);
+      setCompileNotice(null);
+      setCompileGenerated(null);
       setCompileFailure(errorText(err));
       setCompile({ state: 'failed', engine: used, at: new Date() });
     } finally {
@@ -1595,7 +1685,7 @@ function Editor({ projectId }: { projectId: string }) {
       else next[key] = value;
       return next;
     });
-    updateProjectSettings(projectId, { compile: { [key]: value } })
+    return updateProjectSettings(projectId, { compile: { [key]: value } })
       .then((res) => setProjectCompile(res.settings.compile ?? {}))
       .catch((err) => {
         notify(`Couldn’t save the project’s compile settings: ${errorText(err)}`, 'error');
@@ -2085,10 +2175,7 @@ function Editor({ projectId }: { projectId: string }) {
       editorBasics,
       indentation,
       wrapLayout,
-      mathsWrap,
-      latex(),
-      syntaxHighlighting(latexHighlight),
-      foldService.of(latexFoldService),
+      languageCompartment.of(languageFor('')),
       scopeGutter,
       EditorView.lineWrapping,
       editorTheme,
@@ -2099,6 +2186,8 @@ function Editor({ projectId }: { projectId: string }) {
       autocompletion({
         override: [
           latexCompletionSource(() => projectScanRef.current, () => activeRef.current),
+          typstCompletions({ path: () => activeRef.current, version: () => compileOptionsRef.current.typstVersion ?? '' }),
+          referenceCompletions({ path: () => activeRef.current, keys: () => projectScanRef.current.bib.map((entry) => entry.key), labels: () => typstLabelsRef.current }),
           zoteroCompletionSource({
             enabled: () => loadSettings().zoteroCompletion,
             search: (q, signal) => searchZotero(q, signal).then((res) => res.items),
@@ -2189,13 +2278,12 @@ function Editor({ projectId }: { projectId: string }) {
         navigate('/projects', { replace: true });
         return;
       }
-      const tex = tree.items.filter((i) => i.type === 'file' && isTex(i.path) && !tree.conflicts?.[i.path]).map((i) => i.path);
-      const main = tree.mainFile && tex.includes(tree.mainFile) ? tree.mainFile : tex.find((p) => /(^|\/)main\.tex$/i.test(p)) || tex[0] || '';
+      const main = keptMainFile(tree.mainFile || '', tree.items.filter((i) => i.type === 'file').map((i) => i.path), tree.conflicts);
       setMainFile(main);
       setLoaded(true);
       // show the PDF from the last compile straight away, before the first file opens, so following the open file
       // finds it showing
-      const existing = main.replace(/\.tex$/i, '.pdf');
+      const existing = pdfOf(main);
       setShownDoc(main);
       shownRef.current = main;
       if (main && tree.items.some((i) => i.path === existing)) {
@@ -2544,6 +2632,9 @@ function Editor({ projectId }: { projectId: string }) {
     compileErrors,
     compiledDoc,
     compileFailed: Boolean(compileFailure),
+    compileNotice,
+    compileGenerated,
+    setCompileOption,
     // only for the PDF showing, when it's the document Document insights describes; another's, or none, is '—'
     pdfPages: pdf && pagesOf.url === pdf.url && shownDoc === compileTarget ? pagesOf.pages : null,
     // a level the main model can't use is sent as its recommended one
@@ -2584,9 +2675,56 @@ function Editor({ projectId }: { projectId: string }) {
   // ─── render pieces ───
 
   const held = heldRef.current.get(activePath);
-  const outlineFile = isTex(activePath) ? activePath : mainFile;
+  const outlineFile = isDocument(activePath) ? activePath : mainFile;
   const outlineText = outlineFile === activePath ? editorValue : filesRef.current.get(outlineFile) || '';
-  const parsedOutline = useMemo(() => parseOutline(outlineText).map((item) => ({ ...item, file: outlineFile })), [outlineText, outlineFile]);
+  // Typst's headings, with those in the files it includes one level deep; and the project's labels to complete after @
+  const [typstOutline, setTypstOutline] = useState<(OutlineItem & { file: string })[]>([]);
+  const [typstLabels, setTypstLabels] = useState<string[]>([]);
+  const typstLabelsRef = useRef<string[]>([]);
+  typstLabelsRef.current = typstLabels;
+  const includeFileSet = useMemo(() => new Set(items.filter((i) => i.type === 'file' && /\.typ$/i.test(i.path) && !conflicts[i.path]).map((i) => i.path)), [items, conflicts]);
+  useEffect(() => {
+    if (!includeFileSet.size) {
+      setTypstLabels([]);
+      return;
+    }
+    let live = true;
+    Promise.all([...includeFileSet].map((path) => ensureFileContent(path).catch(() => ''))).then((texts) => {
+      if (!live) return;
+      const labels = new Set<string>();
+      for (const text of texts) for (const m of text.matchAll(/<([A-Za-z0-9_:.-]+)>/g)) labels.add(m[1]);
+      setTypstLabels([...labels]);
+    });
+    return () => {
+      live = false;
+    };
+  }, [includeFileSet]);
+  useEffect(() => {
+    if (docKind(outlineFile) !== 'typst') {
+      setTypstOutline([]);
+      return;
+    }
+    let live = true;
+    const own = parseTypstOutline(outlineText);
+    const includes = [...outlineText.matchAll(/^\s*#include\s+"([^"]+)"/gm)]
+      .map((m) => ({ line: outlineText.slice(0, m.index).split('\n').length, path: includedPath(outlineFile, m[1]) }))
+      .filter(({ path }) => fileSet.has(path));
+    Promise.all(includes.map(async ({ line, path }) => ({ line, path, items: parseTypstOutline(await ensureFileContent(path).catch(() => '')) }))).then((parts) => {
+      if (!live) return;
+      const entries = own.map((item) => ({ key: item.line, item: { ...item, file: outlineFile } }));
+      for (const part of parts) part.items.forEach((item, index) => entries.push({ key: part.line + (index + 1) / (part.items.length + 1), item: { ...item, file: part.path } }));
+      entries.sort((a, b) => a.key - b.key);
+      setTypstOutline(entries.map(({ item }) => item));
+    });
+    return () => {
+      live = false;
+    };
+  }, [outlineFile, outlineText, fileSet]);
+  const parsedOutline = useMemo(() => {
+    if (docKind(outlineFile) === 'typst') return typstOutline;
+    const items = docKind(outlineFile) === 'markdown' ? parseMarkdownOutline(outlineText) : parseOutline(outlineText);
+    return items.map((item) => ({ ...item, file: outlineFile }));
+  }, [outlineText, outlineFile, typstOutline]);
   // TexLab's, across the files the document pulls in, once it has one that takes in the open file
   const projectOutline = symbolOutline?.root === docRoot && symbolOutline.items.length && (!isTex(activePath) || symbolOutline.seen.has(activePath)) ? symbolOutline : null;
   const outline = projectOutline?.items ?? parsedOutline;
@@ -2608,6 +2746,28 @@ function Editor({ projectId }: { projectId: string }) {
           ? 'Stopped'
           : '';
 
+  const exportWord = async () => {
+    if (!mainFile) return;
+    try {
+      const res = await exportDocx(projectId, mainFile);
+      await refreshTree();
+      notify(`Saved ${res.path}.`, 'success');
+    } catch (err) {
+      notify(`Couldn’t export to Word: ${errorText(err)}`, 'error');
+    }
+  };
+  const convertMarkdownToLatex = async () => {
+    if (!mainFile) return;
+    if (!(await confirmDialog({ title: 'Convert to a LaTeX project?', message: 'Spectrum makes a new LaTeX project from this Markdown. This project stays as it is.', confirmLabel: 'Convert' }))) return;
+    try {
+      const res = await convertToLatex(projectId, mainFile);
+      notify(`Made ${res.project.name}.`, 'success');
+      await leave(`/editor/${res.project.id}`);
+    } catch (err) {
+      notify(`Couldn’t make a LaTeX project: ${errorText(err)}`, 'error');
+    }
+  };
+  const markdownMain = docKind(mainFile) === 'markdown';
   const switcherItems: MenuItems = [
     ...projects
       .filter((p) => p.id === projectId || (!p.missing && !p.archived && !p.templateDraft))
@@ -2618,7 +2778,10 @@ function Editor({ projectId }: { projectId: string }) {
     { label: 'All projects', icon: 'square.grid.2x2', onSelect: () => leave('/projects') },
     // a working copy has its own Save as new template… above the editor
     !draft && { label: 'Save as template…', icon: 'square.and.arrow.down', onSelect: openSaveTemplate },
-    IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => revealProject(projectId).catch(() => undefined) }
+    IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => revealProject(projectId).catch(() => undefined) },
+    markdownMain && { separator: true },
+    markdownMain && { label: 'Export to Word', icon: 'doc.richtext', onSelect: exportWord },
+    markdownMain && { label: 'Convert to LaTeX project…', icon: 'doc.text', onSelect: convertMarkdownToLatex }
   ];
 
   const filesMenu: MenuItems = [
@@ -2653,6 +2816,18 @@ function Editor({ projectId }: { projectId: string }) {
     ];
   };
   const pauses = [...new Set([0, 1, 2, 3, 5, 10, compileOptions.autoCompile, settings.compileDefaults.autoCompile])].sort((a, b) => a - b);
+  const compileKind = docKind(compileTarget) ?? 'latex';
+  // a Typst project pins a Typst version instead of choosing a TeX engine
+  const typstVersionChoices: MenuItems = [
+    { heading: true, label: 'Typst version (this project)' },
+    { label: `Default${settings.compileDefaults.typstVersion ? ` (${settings.compileDefaults.typstVersion})` : engines?.typst.builtIn ? ` (${engines.typst.builtIn}, built in)` : ''}`, checked: projectCompile.typstVersion == null, onSelect: () => setCompileOption('typstVersion', null) },
+    ...(engines?.typst.builtIn ? [{ label: `Typst ${engines.typst.builtIn} (built in)`, checked: compileOptions.typstVersion === engines.typst.builtIn, onSelect: () => setCompileOption('typstVersion', engines.typst.builtIn) }] : []),
+    ...(engines?.typst.installed ?? []).map((version) => ({ label: `Typst ${version}`, checked: compileOptions.typstVersion === version, onSelect: () => setCompileOption('typstVersion', version) })),
+    ...(compileOptions.typstVersion && compileOptions.typstVersion !== engines?.typst.builtIn && !(engines?.typst.installed ?? []).includes(compileOptions.typstVersion)
+      ? [{ label: `Typst ${compileOptions.typstVersion} (not installed)`, disabled: true }]
+      : []),
+    { separator: true }
+  ];
   const compileItems: MenuItems = [
     ...(docs.length > 1
       ? [
@@ -2666,7 +2841,8 @@ function Editor({ projectId }: { projectId: string }) {
           { separator: true }
         ]
       : []),
-    ...compileChoice('engine', 'Compiler (this project)', COMPILE_ENGINES),
+    ...(compileKind === 'markdown' ? compileChoice('markdownEngine', 'PDF engine (this project)', [['latex', 'LaTeX'], ['typst', 'Typst']]) : []),
+    ...(compileKind === 'typst' ? typstVersionChoices : compileChoice('engine', 'Compiler (this project)', COMPILE_ENGINES)),
     ...compileChoice('autoCompile', 'Auto compile', pauses.map((n): [number, string] => [n, autoCompileLabel(n)])),
     ...compileChoice('haltOnError', 'Compile error handling', ERROR_HANDLING),
     ...compileChoice('syntaxCheck', 'Syntax checks', SYNTAX_CHECKS),
@@ -2707,7 +2883,8 @@ function Editor({ projectId }: { projectId: string }) {
     </>
   );
 
-  const insertItems: MenuItems = SNIPPETS.map((s) =>
+  const insertKind: DocKind = docKind(activePath) ?? 'latex';
+  const insertItems: MenuItems = SNIPPETS.filter((s) => !s || typeof s === 'string' || !('kinds' in s) || s.kinds.includes(insertKind)).map((s) =>
     s === 'diagram'
       ? { label: 'Draw a diagram…', icon: 'pencil', onSelect: () => drawDiagram() }
       : s === 'figure' || s === 'table'
@@ -3517,7 +3694,7 @@ function Editor({ projectId }: { projectId: string }) {
               },
               { separator: true },
               !!diagram && { label: 'Edit diagram', onSelect: () => drawDiagram(diagram) },
-              isTex(activePath) && { label: 'Cite from Zotero…', onSelect: () => window.dispatchEvent(new Event(ZOTERO_CITE)) },
+              isDocument(activePath) && { label: 'Cite from Zotero…', onSelect: () => window.dispatchEvent(new Event(ZOTERO_CITE)) },
               { label: 'Add to-do here', onSelect: () => addTodoAtLine(lineMenu.pos) }
             ];
           })()}
@@ -3578,10 +3755,12 @@ function Editor({ projectId }: { projectId: string }) {
               {FIGURE_FILE.test(preview) && (
                 <button
                   className="btn primary"
-                  disabled={!isTex(activePath)}
-                  title={isTex(activePath) ? undefined : 'Open a .tex file first'}
+                  disabled={!isDocument(activePath)}
+                  title={isDocument(activePath) ? undefined : 'Open a document first'}
                   onClick={() => {
-                    insertAtCursor(figureSnippet(preview), { block: true });
+                    const kind = docKind(activePath);
+                    const figure = { path: preview, width: 0.9, caption: 'Caption.', label: figureLabel(preview) };
+                    insertAtCursor(kind === 'typst' ? figureTypst(figure) : kind === 'markdown' ? figureMarkdown(figure) : figureSnippet(preview), { block: true });
                     setPreview('');
                   }}
                 >

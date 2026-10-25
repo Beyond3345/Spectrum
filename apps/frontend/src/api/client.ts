@@ -247,6 +247,10 @@ export interface CompileOptions {
   draft?: boolean;
   /** TexLab's syntax check before compiling (the editor runs it) */
   syntaxCheck?: boolean;
+  /** the Typst version a Typst project pins ('' is the built-in one) */
+  typstVersion?: string;
+  /** the PDF engine a Markdown project compiles through */
+  markdownEngine?: 'latex' | 'typst';
 }
 
 /** .spectrum/settings.json, which travels with the project (1.10.4 ignores it) */
@@ -274,7 +278,7 @@ export function updateProjectSettings(id: string, patch: { compile?: { [K in key
 
 /**
  * documents: the .tex files with a \documentclass of their own, so each compiles to a PDF. diagrams: the files the
- * diagram composer can open (a figures/*.tex that ends with its drawing, any .mmd). conflicts: a sync app's conflict
+ * diagram composer can open (a figures/*.tex or .typ that ends with its drawing, any .mmd). conflicts: a sync app's conflict
  * copies, each with its original's path.
  */
 export function getProjectTree(id: string) {
@@ -453,7 +457,69 @@ export function importArxivSSE(
   });
 }
 
+// ─── Markdown exports ───
+
+/** The Markdown document as a Word document, beside it. */
+export function exportDocx(projectId: string, doc: string) {
+  return request<{ ok: boolean; path: string }>(`/api/projects/${projectId}/export/docx`, json('POST', { doc }));
+}
+
+/** A new LaTeX project made from the Markdown document; this project stays as it is. */
+export function convertToLatex(projectId: string, doc: string) {
+  return request<{ ok: boolean; project: ProjectMeta }>(`/api/projects/${projectId}/export/latex`, json('POST', { doc }));
+}
+
+// ─── Engines ───
+
+/** A program found on this computer. */
+export interface EngineFound {
+  path: string;
+  version: string | null;
+}
+
+/** What Settings › Engines shows: the built-in Typst and Tectonic, a Typst or pandoc on the PATH, and what can be installed. */
+export interface Engines {
+  tectonic: { builtIn: string | null; system: EngineFound | null };
+  typst: {
+    builtIn: string | null;
+    system: EngineFound | null;
+    /** versions installed under Spectrum's data folder */
+    installed: string[];
+    available: { version: string; released: string; size: number }[];
+  };
+  pandoc: {
+    found: (EngineFound & { fromDownload: boolean }) | null;
+    minimum: { latex: string; typst: string };
+    downloadable: string;
+  };
+}
+
+export function getEngines() {
+  return request<Engines>('/api/engines');
+}
+
+export function installTypst(version: string) {
+  return request<{ ok: boolean; engines: Engines }>('/api/engines/typst/install', json('POST', { version }));
+}
+
+export function removeTypst(version: string) {
+  return request<{ ok: boolean; engines: Engines }>(`/api/engines/typst/${encodeURIComponent(version)}`, json('DELETE'));
+}
+
+export function installPandoc() {
+  return request<{ ok: boolean; engines: Engines }>('/api/engines/pandoc/install', json('POST'));
+}
+
 // ─── Compile ───
+
+/** A Typst compile's own diagnostics, in place of the LaTeX log parser. */
+export interface CompileDiagnostic {
+  severity: 'error' | 'warning';
+  message: string;
+  file: string;
+  line: number;
+  column: number;
+}
 
 export interface CompileResult {
   ok: boolean;
@@ -465,6 +531,16 @@ export interface CompileResult {
   log?: string;
   status?: number;
   engine?: string;
+  /** why a compile stopped before an engine ran: PANDOC_MISSING, PANDOC_OLD, TYPST_VERSION_MISSING */
+  code?: string;
+  /** the version named by a missing-version result */
+  version?: string;
+  /** what a Markdown compile was generated as */
+  generated?: 'latex' | 'typst';
+  /** the Typst version the compile used */
+  typstVersion?: string;
+  /** Typst's errors and warnings, whose cards point at the source lines */
+  errors?: CompileDiagnostic[];
   error?: string;
   /** documents it links with \externaldocument, compiled first because their .aux was missing or out of date */
   linked?: { file: string; ok: boolean }[];
@@ -482,6 +558,11 @@ export interface CompileResult {
  * texFolder: a TeX installation's folder to try first. checkpoint: save one if the compile succeeds and the source
  * changed since the last.
  */
+/** The LaTeX or Typst pandoc wrote for a Markdown document, for the Logs tab. */
+export function getGenerated(projectId: string, doc: string) {
+  return request<{ ok: boolean; text: string; kind: 'latex' | 'typst' }>(`/api/projects/${projectId}/generated?${new URLSearchParams({ doc })}`);
+}
+
 export function compileProject(payload: {
   projectId: string;
   mainFile: string;
@@ -493,6 +574,10 @@ export function compileProject(payload: {
   fresh?: boolean;
   texFolder?: string;
   checkpoint?: boolean;
+  typstInputs?: Record<string, string>;
+  /** the app's defaults, for a project without its own ('' is the built-in Typst) */
+  typstVersion?: string;
+  markdownEngine?: 'latex' | 'typst';
 }) {
   return request<CompileResult>('/api/compile', json('POST', payload));
 }
@@ -505,7 +590,7 @@ export function stopCompile(compileId: string) {
 // ─── Diagram composer ───
 
 /**
- * A diagram's preview: its figures/<name>.tex compiled as a document of its own, with the files kept from its last
+ * A diagram's preview: its figures/<name>.tex or .typ compiled as a document of its own, with the files kept from its last
  * compile and no checkpoint, which leaves the project's main file and the editor's PDF as they are. Writes
  * figures/<name>.pdf, which the editor's Insert diagram can also use. compileId: for stopCompile, when a newer change
  * makes this preview stale.
