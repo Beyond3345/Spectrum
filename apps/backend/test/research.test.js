@@ -423,6 +423,25 @@ test('Open note makes research/notes/<key>.md once; Get PDF saves an open-access
   assert.equal(res.json.path, 'research/papers/Vaswani2017.pdf', JSON.stringify(res.json));
 });
 
+test('Open note and Get PDF take the note and PDF Deep research left under the paper’s .bib key', async () => {
+  const p = await newProject('Keyed files', { 'main.tex': MAIN, 'references.bib': '@article{Vaswani2017,\n  title = {Attention Is All You Need},\n  doi = {10.5555/attn},\n  year = {2017}\n}\n' });
+  serve(...sources());
+  const { session } = (await api('/api/research/search', 'POST', { projectId: p.id, question: 'attention', sources: ['openalex', 'crossref'] })).json;
+  const attention = session.results.find((r) => r.doi === '10.5555/attn');
+  const url = `/api/projects/${p.id}/research/${session.id}`;
+  const pdf = Buffer.from('%PDF-1.7\nthe agent’s copy\n%%EOF\n');
+  await fs.mkdir(path.join(p.path, 'research', 'notes'), { recursive: true });
+  await fs.mkdir(path.join(p.path, 'research', 'papers'), { recursive: true });
+  await fs.writeFile(path.join(p.path, 'research', 'notes', 'Vaswani2017.md'), 'The agent’s notes');
+  await fs.writeFile(path.join(p.path, 'research', 'papers', 'Vaswani2017.pdf'), pdf);
+  assert.deepEqual((await api(`${url}/note`, 'POST', { resultId: attention.id })).json, { ok: true, path: 'research/notes/Vaswani2017.md', created: false });
+  serve([/arxiv\.org\/pdf\/1706\.03762$/, () => new Response(Buffer.from('%PDF-1.7\nfresh\n%%EOF\n'))]);
+  assert.deepEqual((await api(`${url}/pdf`, 'POST', { resultId: attention.id })).json, { ok: true, path: 'research/papers/Vaswani2017.pdf', existing: true });
+  assert.deepEqual([await fs.readdir(path.join(p.path, 'research', 'notes')), await fs.readdir(path.join(p.path, 'research', 'papers'))], [['Vaswani2017.md'], ['Vaswani2017.pdf']]);
+  assert.equal(await fs.readFile(path.join(p.path, 'research', 'notes', 'Vaswani2017.md'), 'utf8'), 'The agent’s notes');
+  assert.deepEqual(await fs.readFile(path.join(p.path, 'research', 'papers', 'Vaswani2017.pdf')), pdf);
+});
+
 test('papers that share a name get a note and a PDF each, which keep their names once in the .bib; a slow download says so', async () => {
   const p = await newProject('Names', { 'main.tex': MAIN, 'references.bib': '' });
   serve(...sources());

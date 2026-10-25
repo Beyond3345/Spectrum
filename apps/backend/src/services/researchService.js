@@ -540,7 +540,8 @@ const FOLDERS = { note: ['research/notes', '.md'], pdf: ['research/papers', '.pd
  * The result's note or PDF (kind), made with make(rel, result, session) unless it's there: at the path the session
  * keeps for it, or else the first free one from its name (stemOf, then -2, -3, …), which the session then keeps. So two
  * papers with the same AuthorYear and title word get a file each, and the name stays once the paper is in the .bib under
- * a key. make writes with 'wx'; { path, existing: true } when the file is there already.
+ * a key; a paper in the .bib takes the file named by its key that's there already. make writes with 'wx'; { path,
+ * existing: true } when the file is there already.
  */
 function keepFile(root, id, resultId, kind, make) {
   return locked(async () => {
@@ -551,6 +552,14 @@ function keepFile(root, id, resultId, kind, make) {
     const attempt = (rel) => make(rel, r, session).catch((err) => (err.code === 'EEXIST' ? null : Promise.reject(err)));
     if (r[kind]) return (await attempt(r[kind])) ?? { path: r[kind], existing: true };
     const stem = stemOf(r);
+    // the file the paper's .bib key names, which Deep research writes notes to, is the paper's (the .bib's keys are
+    // unique) unless another result here has it
+    const keyed = `${folder}/${stem}${ext}`;
+    if (r.inBib && !session.results.some((x) => x !== r && x[kind] === keyed) && (await fs.stat(safeJoin(root, keyed)).then(() => true, () => false))) {
+      r[kind] = keyed;
+      await writeJsonAtomic(sessionFile(root, id), session);
+      return { path: keyed, existing: true };
+    }
     for (let n = 1; ; n += 1) {
       const rel = `${folder}/${stem}${n > 1 ? `-${n}` : ''}${ext}`;
       const made = (await fs.stat(safeJoin(root, rel)).then(() => true, () => false)) ? null : await attempt(rel);
