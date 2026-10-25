@@ -33,6 +33,12 @@ export const HOST = process.env.SPECTRUM_HOST || '127.0.0.1';
 // Default parent folder for new and imported projects.
 export const PROJECTS_DIR = path.resolve(process.env.SPECTRUM_PROJECTS_DIR || path.join(os.homedir(), 'Documents', 'Spectrum'));
 
+// GitHub: the Spectrum OAuth app's client id for the device sign-in ('' until one is registered: then only a pasted
+// token signs in; there is never a client secret), and where GitHub's API and site are (a test's stand-ins)
+export const GITHUB_CLIENT_ID = process.env.SPECTRUM_GITHUB_CLIENT_ID || '';
+export const GITHUB_API = (process.env.SPECTRUM_GITHUB_API || 'https://api.github.com').replace(/\/$/, '');
+export const GITHUB_WEB = (process.env.SPECTRUM_GITHUB_WEB || 'https://github.com').replace(/\/$/, '');
+
 // PDF parsers for template transfer: how often to ask whether a job is done, and for how long
 export const PARSER_POLL_INTERVAL_MS = 3000;
 export const PARSER_TIMEOUT_MS = 10 * 60 * 1000;
