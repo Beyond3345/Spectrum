@@ -36,15 +36,16 @@ const needsTen = (version) =>
 
 // ─── Requests ───
 
-async function call(route, { method = 'GET', body, headers = {}, signal = AbortSignal.timeout(TIMEOUT_MS), key } = {}) {
+/** auth: a write's { key, serverId }, the database the key is for, which the local API needs on every write. */
+async function call(route, { method = 'GET', body, headers = {}, signal = AbortSignal.timeout(TIMEOUT_MS), auth } = {}) {
   try {
     return await fetch(`${base()}${route}`, {
       method,
       headers: {
         'Zotero-API-Version': '3',
         ...(body !== undefined && { 'Content-Type': 'application/json' }),
-        // ponytail: both ways the Web API takes a key, as the local API's documentation doesn't say which it reads
-        ...(key && { 'Zotero-API-Key': key, Authorization: `Bearer ${key}` }),
+        ...(auth && { 'Zotero-API-Key': auth.key }),
+        ...(auth?.serverId && { 'Zotero-Server-ID': auth.serverId }),
         ...headers
       },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -86,11 +87,11 @@ async function rpc(method, params = []) {
 }
 
 /** A write refused for its key: the key is dropped, as Zotero takes one given without Always Allow only once. */
-async function written(res, key) {
+async function written(res, auth) {
   if (res.ok) return res;
   const detail = (await res.text().catch(() => '')).slice(0, 200);
   if (res.status === 401 || res.status === 403) {
-    await discardKey(key);
+    await discardKey(auth.key);
     throw httpError(KEY_REFUSED, 401, 'ZOTERO_KEY');
   }
   throw httpError(`Zotero refused the change (HTTP ${res.status}${detail ? `: ${detail}` : ''}).`, 502);
@@ -98,12 +99,13 @@ async function written(res, key) {
 
 // ─── Status and permission ───
 
-async function readKey() {
+/** The key Zotero gave and the Zotero-Server-ID of the database that gave it, each '' when there's none. */
+async function readAuth() {
   try {
-    const { key } = JSON.parse(await fs.readFile(keyFile(), 'utf8'));
-    return typeof key === 'string' ? key : '';
+    const { key, serverId } = JSON.parse(await fs.readFile(keyFile(), 'utf8'));
+    return { key: typeof key === 'string' ? key : '', serverId: typeof serverId === 'string' ? serverId : '' };
   } catch {
-    return '';
+    return { key: '', serverId: '' };
   }
 }
 
@@ -111,12 +113,9 @@ const keyLock = serialiser();
 export const forgetKey = () => keyLock(() => fs.rm(keyFile(), { force: true }));
 
 /** The key dropped only while it's still the one refused, so a sync refused meanwhile never drops a newer Allow's. */
-const discardKey = (key) => keyLock(async () => (key && (await readKey()) === key ? fs.rm(keyFile(), { force: true }) : undefined));
+const discardKey = (key) => keyLock(async () => (key && (await readAuth()).key === key ? fs.rm(keyFile(), { force: true }) : undefined));
 
-/**
- * The key, with the Zotero-Server-ID it was given under, readable by this user only from the moment it exists.
- * ponytail: serverId is kept but never acted on, until real Zotero shows whether it names the database or the process
- */
+/** The key, with the Zotero-Server-ID it was given under, readable by this user only from the moment it exists. */
 function saveKey(key, serverId) {
   return keyLock(async () => {
     await fs.mkdir(DATA_DIR, { recursive: true });
@@ -150,7 +149,7 @@ async function probe() {
 
 /** What Settings › Zotero shows; never the key itself. */
 export async function zoteroStatus() {
-  const [{ serverId: _, ...found }, key] = await Promise.all([probe(), readKey()]);
+  const [{ serverId: _, ...found }, { key }] = await Promise.all([probe(), readAuth()]);
   if (!found.running) return { ...found, betterBibtex: null, cayw: false, authorised: !!key, message: NOT_OPEN };
   const bbt = await rpc('api.ready').catch(() => null);
   const cayw = !!bbt && (await call('/better-bibtex/cayw?probe=1').then((r) => r.text()).catch(() => '')).trim() === 'ready';
@@ -218,7 +217,7 @@ export async function authorise() {
   if (!found.running) throw httpError(NOT_OPEN, 503);
   if (found.localApi !== 'on') throw httpError(API_OFF, 503);
   if (!found.writes) throw httpError(needsTen(found.version), 409);
-  const res = await inZotero('/api/local/authorize', { method: 'POST', body: { name: 'Spectrum' }, headers: found.serverId ? { 'Zotero-Server-ID': found.serverId } : {} });
+  const res = await inZotero('/api/local/authorize', { method: 'POST', body: { appName: 'Spectrum' }, headers: found.serverId ? { 'Zotero-Server-ID': found.serverId } : {} });
   const text = await res.text().catch(() => '');
   if (res.status === 403) throw httpError('Zotero didn’t allow Spectrum. Try again, and choose Always Allow.', 403);
   if (!res.ok) throw httpError(`Zotero couldn’t give Spectrum permission (HTTP ${res.status}).`, 502);
@@ -522,8 +521,8 @@ export function parsedWhole(text) {
   return depth === 0 && heads === parseBibEntries(text).length;
 }
 
-async function createCollection(data, key) {
-  const res = await written(await call(`${LIB}/collections`, { method: 'POST', key, body: [data] }), key);
+async function createCollection(data, auth) {
+  const res = await written(await call(`${LIB}/collections`, { method: 'POST', auth, body: [data] }), auth);
   const out = await res.json().catch(() => ({}));
   const made = out.successful?.['0'] || (out.success?.['0'] && { key: out.success['0'], data });
   if (!made?.key) throw httpError(`Zotero didn’t make the collection: ${out.failed?.['0']?.message || 'no reason given'}.`, 502);
@@ -534,18 +533,18 @@ async function createCollection(data, key) {
  * A new collection for the project, inside a top-level Spectrum collection (made the first time): named after the
  * project, or "<project> (2)" and so on when a Spectrum collection already has that name.
  */
-async function newCollection(projectName, key) {
+async function newCollection(projectName, auth) {
   const parents = (await all(`${LIB}/collections/top`)).filter((c) => c.data?.name === 'Spectrum');
   const taken = new Set();
   for (const parent of parents) for (const c of await all(`${LIB}/collections/${parent.key}/collections`)) taken.add(c.data?.name);
-  const parent = parents[0] || (await createCollection({ name: 'Spectrum' }, key));
+  const parent = parents[0] || (await createCollection({ name: 'Spectrum' }, auth));
   let name = projectName;
   for (let n = 2; taken.has(name); n += 1) name = `${projectName} (${n})`;
-  return createCollection({ name, parentCollection: parent.key }, key);
+  return createCollection({ name, parentCollection: parent.key }, auth);
 }
 
 /** An item's collections changed with change(list), against the item's version; another change first (412) is read and tried again. */
-async function changeCollections(item, change, key) {
+async function changeCollections(item, change, auth) {
   let current = item;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const now = current.data.collections || [];
@@ -553,11 +552,11 @@ async function changeCollections(item, change, key) {
     if (next.length === now.length && next.every((c, i) => c === now[i])) return;
     const res = await call(`${LIB}/items/${encodeURIComponent(current.key)}`, {
       method: 'PATCH',
-      key,
+      auth,
       body: { collections: next },
       headers: { 'If-Unmodified-Since-Version': String(current.version ?? current.data.version) }
     });
-    if (res.status !== 412) return written(res, key).then(drain);
+    if (res.status !== 412) return written(res, auth).then(drain);
     await drain(res);
     current = await json(`${LIB}/items/${encodeURIComponent(current.key)}`);
     if (!current) return;
@@ -616,12 +615,18 @@ const ITEM_KEY = /^[A-Z0-9]{8}$/;
  * computer's; a stored one this computer's Zotero doesn't have yet is waited for, never made again. → { state, … }
  */
 async function reconcile(root, remove, added = []) {
-  const key = await readKey();
-  if (!key) return { state: 'off' };
+  const auth = await readAuth();
+  if (!auth.key) return { state: 'off' };
   const found = await probe();
   if (!found.running) return { state: 'unreachable', message: NOT_OPEN };
   if (found.localApi !== 'on') return { state: 'unreachable', message: API_OFF };
   if (!found.writes) return { state: 'readonly', message: needsTen(found.version) };
+  // the key is the database's that gave it (another Zotero profile, say, has its own), and each write names that
+  // database: one Zotero answers for under another id is asked again
+  if (auth.serverId !== found.serverId) {
+    await discardKey(auth.key);
+    throw httpError(KEY_REFUSED, 401, 'ZOTERO_KEY');
+  }
   const meta = await readMeta(root);
   // a template's working copy, whose references are its samples
   if (meta.templateDraft) return { state: 'empty' };
@@ -637,7 +642,7 @@ async function reconcile(root, remove, added = []) {
     if (!collection) return { state: 'waiting', message: WAITING };
   } else {
     if (gitHubPulling(meta.id)) return { state: 'waiting', message: WAITING };
-    collection = await newCollection(meta.name, key);
+    collection = await newCollection(meta.name, auth);
     await updateProjectSettings(root, (settings) => ({ ...settings, zotero: { projectId: meta.id, library: LIBRARY, collectionKey: collection.key } }));
   }
   const ck = collection.key;
@@ -666,7 +671,7 @@ async function reconcile(root, remove, added = []) {
       missing.push(e);
       continue;
     }
-    await changeCollections(item, (list) => (list.includes(ck) ? list : [...list, ck]), key);
+    await changeCollections(item, (list) => (list.includes(ck) ? list : [...list, ck]), auth);
     members.push({ item, id: itemIdentity(item) });
     counts.added += 1;
   }
@@ -692,7 +697,7 @@ async function reconcile(root, remove, added = []) {
   for (let i = 0; i < ready.length; i += 50) {
     const slice = ready.slice(i, i + 50);
     const batch = slice.map(({ entry }) => ({ ...itemFromEntry(entry), collections: [ck] }));
-    const out = await (await written(await call(`${LIB}/items`, { method: 'POST', key, body: batch }), key)).json().catch(() => ({}));
+    const out = await (await written(await call(`${LIB}/items`, { method: 'POST', auth, body: batch }), auth)).json().catch(() => ({}));
     const success = out.successful || out.success || {};
     counts.created += Object.keys(success).length;
     for (const [n, it] of Object.entries(success)) {
@@ -711,7 +716,7 @@ async function reconcile(root, remove, added = []) {
   if (remove && complete) {
     for (const m of members) {
       if (entries.some((e) => isEntryOf(e, m))) continue;
-      await changeCollections(m.item, (list) => list.filter((c) => c !== ck), key);
+      await changeCollections(m.item, (list) => list.filter((c) => c !== ck), auth);
       counts.removed += 1;
     }
   }

@@ -129,3 +129,19 @@ test('a template of the user’s own follows through the repository', { skip }, 
   assert.ok(templates.some((t) => t.id === template.id));
   assert.equal(readFileSync(path.join(tmp, 'templates-Windows', template.id, 'sample.pdf'), 'utf8'), '%PDF-1.5 sample');
 });
+
+test('a settings repository made public on GitHub gets nothing more, its clone here notwithstanding', { skip }, async () => {
+  const repo = gh.state.repos.get('octo/spectrum-settings');
+  repo.private = false;
+  try {
+    ok(await mac.api('/api/github/personas', { method: 'POST', body: { personas: [persona('confidential', 'Reviewer', 'Confidential reviewer notes')] } }));
+    const refused = await sync(mac);
+    assert.match(refused.error, /spectrum-settings repository on GitHub is public/);
+    assert.ok(!gh.files('octo', 'spectrum-settings').includes('personas/confidential.json'));
+    assert.equal(ok(await mac.api('/api/shared/settings')).shared, false, 'settings aren’t shared through it meanwhile');
+  } finally {
+    repo.private = true;
+  }
+  assert.equal((await sync(mac)).error, undefined);
+  assert.ok(gh.files('octo', 'spectrum-settings').includes('personas/confidential.json'), 'private again, it goes up');
+});

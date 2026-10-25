@@ -40,6 +40,24 @@ async function wanted() {
   return status.signedIn && status.settingsRepo;
 }
 
+const PUBLIC = `Your ${REPO} repository on GitHub is public, so Spectrum won’t put your settings, personas and skills in it. Make it private on GitHub, then sync again.`;
+
+/**
+ * The repository on GitHub, made private when there's none, and refused when it's public: a user's or another
+ * program's own, or one made public since. Before every push, as the clone here says nothing of it.
+ */
+async function privateRepo(login) {
+  const repo = await api(`/repos/${login}/${REPO}`).catch(async (err) => {
+    if (err.github !== 404) throw err;
+    // private must be said: GitHub makes a public one otherwise. 422: the other computer made it just now
+    return api('/user/repos', { method: 'POST', body: { name: REPO, private: true, description: 'Spectrum’s settings, personas, skills and templates', auto_init: false } }).catch((made) => {
+      if (made.github !== 422) throw made;
+      return api(`/repos/${login}/${REPO}`);
+    });
+  });
+  if (repo?.private !== true) throw new Error(PUBLIC);
+}
+
 /**
  * The private repository found or made on GitHub, and cloned here (made from nothing when GitHub's is still empty);
  * then the shared folder's place goes to it.
@@ -47,14 +65,13 @@ async function wanted() {
 async function ensureRepo() {
   const { login } = await authStatus();
   const url = repoUrl(login, REPO);
+  try {
+    await privateRepo(login);
+  } catch (err) {
+    if (err.message === PUBLIC) useSharedDir(null);
+    throw err;
+  }
   if (!(await git.isRepo(SETTINGS_REPO_DIR)) || (await git.remoteUrl(SETTINGS_REPO_DIR)) !== url) {
-    await api(`/repos/${login}/${REPO}`).catch(async (err) => {
-      if (err.github !== 404) throw err;
-      // private must be said: GitHub makes a public one otherwise. 422: the other computer made it just now
-      await api('/user/repos', { method: 'POST', body: { name: REPO, private: true, description: 'Spectrum’s settings, personas, skills and templates', auto_init: false } }).catch((made) => {
-        if (made.github !== 422) throw made;
-      });
-    });
     // another account's copy, or one that never got going, starts again
     await fs.rm(SETTINGS_REPO_DIR, { recursive: true, force: true });
     await fs.rm(STATE_FILE, { force: true });
@@ -105,7 +122,10 @@ async function pullAndPush() {
   await git.commitAll(SETTINGS_REPO_DIR, { message, author, compiled: false });
   await git.fetchOrigin(SETTINGS_REPO_DIR, token);
   await git.mergeOrigin(SETTINGS_REPO_DIR, { author, allowDeletions: true, checkpoint: false, side: await newerItems(), message: `Settings merged on ${(await readSyncConfig()).machineName}` });
-  if ((await git.headOid(SETTINGS_REPO_DIR)) && (!(await git.remoteHead(SETTINGS_REPO_DIR)) || (await git.aheadBehind(SETTINGS_REPO_DIR)).ahead)) await git.pushOrigin(SETTINGS_REPO_DIR, token);
+  if ((await git.headOid(SETTINGS_REPO_DIR)) && (!(await git.remoteHead(SETTINGS_REPO_DIR)) || (await git.aheadBehind(SETTINGS_REPO_DIR)).ahead)) {
+    await privateRepo((await authStatus()).login);
+    await git.pushOrigin(SETTINGS_REPO_DIR, token);
+  }
 }
 
 let pulledAt = 0;
