@@ -8,6 +8,7 @@ import { promises as fs, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmS
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import zlib from 'node:zlib';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -166,4 +167,14 @@ test('a cloud copy 1.10 mirrored is never a project of its own, and its record o
   await projects.unregister(gone.id);
   assert.deepEqual(await snapshot(path.join(data, 'mirror')), records);
   assert.ok(await mirror.readMirror(gone.id));
+});
+
+test('the base 1.10 kept of a text file is read back for Link, and nothing else is', async () => {
+  const text = Buffer.from('thesis\n');
+  const hash = crypto.createHash('sha256').update(text).digest('hex');
+  write(path.join(data, 'mirror', thesis.id, 'base', `${hash}.gz`), zlib.gzipSync(text));
+  assert.deepEqual(await mirror.readMirrorBase(thesis.id, hash), text);
+  assert.equal(await mirror.readMirrorBase(thesis.id, sha(path.join(thesis.local, 'refs.bib'))), null);
+  assert.equal(await mirror.readMirrorBase('../x', hash), null);
+  assert.equal(await mirror.readMirrorBase(thesis.id, '../../sync'), null);
 });

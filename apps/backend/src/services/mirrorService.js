@@ -10,6 +10,8 @@
 //   DATA_DIR/v2-migration.json          what the first start of 2.0 found: { ranAt, mirrored, inPlace, dismissedAt? }
 import { promises as fs } from 'fs';
 import path from 'path';
+import { promisify } from 'util';
+import { gunzip } from 'zlib';
 import { DATA_DIR } from '../config/constants.js';
 import { mirrorSkips, readJson, readdirTyped, writeJsonAtomic } from '../utils/fsUtils.js';
 import { hashFile } from '../utils/projectCopy.js';
@@ -45,6 +47,17 @@ export async function listMirrored() {
 }
 
 export const cloudRootOf = (record) => join(record.location, record.rel);
+
+const gunzipAsync = promisify(gunzip);
+
+/**
+ * A file's bytes as both copies last agreed on them, by the SHA-256 in the record's base: kept by 1.10 for text files
+ * and project.json only, so null for the rest (and one 1.10 hadn't stored yet), whose hash is all there is.
+ */
+export async function readMirrorBase(id, hash) {
+  if (!ID_RE.test(String(id || '')) || !/^[0-9a-f]{64}$/.test(String(hash || ''))) return null;
+  return fs.readFile(path.join(MIRROR_DIR, id, 'base', `${hash}.gz`)).then(gunzipAsync).catch(() => null);
+}
 
 /**
  * The mirrored project whose cloud copy p is in, and p's '/'-separated path in it; null outside them all. That copy
