@@ -10,7 +10,8 @@ const coded = (handler) => async (req, reply) => {
     return await handler(req);
   } catch (err) {
     if (!err.code || !/^[A-Z_]+$/.test(err.code) || ['ENOENT', 'EACCES', 'EPERM'].includes(err.code)) throw err;
-    return reply.code(err.statusCode || 500).send({ ok: false, error: err.message, code: err.code });
+    // repo: the repository GITHUB_LINK_FIRST names, which the window links to
+    return reply.code(err.statusCode || 500).send({ ok: false, error: err.message, code: err.code, ...(err.repo && { repo: err.repo }) });
   }
 };
 

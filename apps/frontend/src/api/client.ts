@@ -1503,12 +1503,14 @@ export interface GitHubAuth {
 }
 
 export interface GitHubProblem {
-  /** waiting: only for the connection (or a file still changing), tried again every 2 minutes */
-  state: 'waiting' | 'attention';
+  /** waiting: only for the connection (or a file still changing), tried again every 2 minutes; left: backed up without some files */
+  state: 'waiting' | 'attention' | 'left';
   message: string;
   at: string;
   /** when the last backup reached GitHub, for “Not backed up since …” */
   lastBackup?: string | null;
+  /** the files the last backup left out (key-like, over 100 MB), each with why */
+  left?: string[];
 }
 
 export interface GitHubStatus {
@@ -1530,6 +1532,8 @@ export interface GitHubStatus {
   personal: boolean | null;
   askPersonal: boolean;
   problem: GitHubProblem | null;
+  /** what the last commit left out (key-like, over 100 MB), each with why */
+  left: string[];
 }
 
 /** What a pull (or Link, or Sync) did: confirm, it would delete `deleting` files and waits for allowDeletions. */

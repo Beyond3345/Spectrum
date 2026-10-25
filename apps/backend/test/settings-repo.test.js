@@ -96,11 +96,15 @@ test('the user’s own skills follow, deletions too, and never by line', { skip 
   const skill = path.join(mac.data, 'skills', 'own', 'my-skill');
   mkdirSync(skill, { recursive: true });
   writeFileSync(path.join(skill, 'SKILL.md'), '---\nname: my-skill\ndescription: Mine\n---\nDo it this way.\n');
+  // a file that looks like keys, which the repository never takes: the skill goes across without it
+  writeFileSync(path.join(skill, '.env.example'), 'API_KEY=\n');
   await sync(mac);
   assert.ok(gh.files('octo', 'spectrum-settings').includes('skills/my-skill/files/SKILL.md'));
+  assert.ok(!gh.files('octo', 'spectrum-settings').some((f) => f.endsWith('.env.example')));
   await sync(win);
   const there = path.join(win.data, 'skills', 'own', 'my-skill', 'SKILL.md');
   assert.match(readFileSync(there, 'utf8'), /Do it this way/);
+  assert.ok(existsSync(path.join(skill, '.env.example')), 'still on the Mac');
   rmSync(path.dirname(there), { recursive: true });
   await sync(win);
   await sync(mac);
@@ -110,14 +114,18 @@ test('the user’s own skills follow, deletions too, and never by line', { skip 
 test('a template of the user’s own follows through the repository', { skip }, async () => {
   const project = ok(await mac.api('/api/projects', { method: 'POST', body: { name: 'Lab report' } }));
   writeFileSync(path.join(project.path, 'main.tex'), '\\documentclass{article}\\begin{document}Lab\\end{document}\n');
+  // a sample document with its PDF beside it, which the template keeps (only main.pdf is a compile's)
+  writeFileSync(path.join(project.path, 'sample.tex'), '\\documentclass{article}\\begin{document}Sample\\end{document}\n');
+  writeFileSync(path.join(project.path, 'sample.pdf'), '%PDF-1.5 sample');
   // a shipped template, so the gallery has a section to save into
   mkdirSync(path.join(tmp, 'templates-Mac', 'starter'), { recursive: true });
   writeFileSync(path.join(tmp, 'templates-Mac', 'starter', 'main.tex'), '\\documentclass{article}\\begin{document}\\end{document}\n');
   writeFileSync(path.join(tmp, 'templates-Mac', 'manifest.json'), JSON.stringify({ templates: [{ id: 'starter', label: 'Starter', mainFile: 'main.tex', category: 'reports' }], categories: [{ id: 'reports', label: 'Reports' }] }));
   const { template } = ok(await mac.api('/api/templates', { method: 'POST', body: { projectId: project.id, label: 'Lab report', category: 'reports' } }));
   await sync(mac);
-  assert.ok(gh.files('octo', 'spectrum-settings').some((f) => f.startsWith(`templates/${template.id}/`)));
+  assert.ok(gh.files('octo', 'spectrum-settings').includes(`templates/${template.id}/files/sample.pdf`));
   await sync(win);
   const { templates } = ok(await win.api('/api/templates'));
   assert.ok(templates.some((t) => t.id === template.id));
+  assert.equal(readFileSync(path.join(tmp, 'templates-Windows', template.id, 'sample.pdf'), 'utf8'), '%PDF-1.5 sample');
 });

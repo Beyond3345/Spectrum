@@ -39,8 +39,8 @@ const CHAT = /^\.spectrum\/chats\/[^/]+\.json$/;
 const RESEARCH = /^\.spectrum\/research\/[^/]+\.json$/;
 // the name a pull gives GitHub's text that didn't merge, which unlike a sync app's copy is committed
 const OWN_COPY = 'GitHub’s conflicted copy';
-// a .env file, a private key or a keystore
-const SECRET = /^(?:\.env(?:\..*)?|\.netrc|\.npmrc|\.pypirc|id_(?:rsa|dsa|ecdsa|ed25519)|.+\.(?:pem|key|p12|pfx|keystore|jks|ppk))$/i;
+// a .env file, a private key or a keystore (a .key file only when it holds a PEM key: Keynote's decks are .key too)
+const SECRET = /^(?:\.env(?:\..*)?|\.netrc|\.npmrc|\.pypirc|id_(?:rsa|dsa|ecdsa|ed25519)|.+\.(?:pem|p12|pfx|keystore|jks|ppk))$/i;
 // TeX's build files, for the project's own .gitignore (Spectrum keeps its own outside the project); .bbl stays, as arXiv takes it
 const GITIGNORE = `# TeX's build files
 *.aux
@@ -68,6 +68,19 @@ const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 const isObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 
 export const secretLooking = (rel) => SECRET.test(rel.split('/').pop());
+
+/** A .key file that starts as a PEM private key does. */
+async function pemKey(abs) {
+  if (!/\.key$/i.test(abs)) return false;
+  const fh = await fs.open(abs, 'r').catch(() => null);
+  if (!fh) return false;
+  try {
+    const { bytesRead, buffer } = await fh.read(Buffer.alloc(10), 0, 10, 0);
+    return buffer.subarray(0, bytesRead).toString() === '-----BEGIN';
+  } finally {
+    await fh.close();
+  }
+}
 
 /**
  * What never goes in the repository, whatever it holds: app data outside APP_SHARED, the names HIDDEN_ENTRIES lists,
@@ -124,6 +137,7 @@ export async function setRemote(root, url) {
 }
 
 export const remoteUrl = (root) => git.getConfig({ fs: gitFs, dir: root, path: 'remote.origin.url' }).catch(() => undefined);
+export const deleteRemote = (root) => git.deleteRemote({ fs: gitFs, dir: root, remote: 'origin' });
 
 /**
  * Each document's PDF that a compile writes beside it (main.tex's main.pdf), never a PDF a source includes through
@@ -166,10 +180,12 @@ async function writeExcludes(root, pdfs) {
  * Commit what changed since the last commit, with the excludes rewritten first: { oid, committed, left }. hold(rel): a
  * path whose changes wait for a later commit (chats and research sessions at an idle backup, or what a shared
  * repository leaves out). left: what was refused, a secret-looking file or one over GitHub's limit, for the notice.
+ * always: a commit even with nothing changed (a labelled backup). compiled: false where no PDF is a compile's (the
+ * settings repository's templates keep theirs).
  * ponytail: statusMatrix hashes every file whose time changed, fine for hundreds of files and slow for many thousands
  */
-export async function commitAll(root, { message, author, hold = () => false }) {
-  const pdfs = await compiledPdfs(root);
+export async function commitAll(root, { message, author, hold = () => false, always = false, compiled: pdfsCompiled = true }) {
+  const pdfs = pdfsCompiled ? await compiledPdfs(root) : [];
   await writeExcludes(root, pdfs);
   const compiled = new Set(pdfs.map(keyOf));
   const cache = {};
@@ -184,7 +200,7 @@ export async function commitAll(root, { message, author, hold = () => false }) {
     }
     const info = await fs.lstat(join(root, rel)).catch(() => null);
     if (!info) continue;
-    if (secretLooking(rel)) left.push(`“${rel}” looks like a password or key file`);
+    if (secretLooking(rel) || (await pemKey(join(root, rel)))) left.push(`“${rel}” looks like a password or key file`);
     else if (info.size > MAX_FILE_BYTES) left.push(`“${rel}” is over GitHub’s 100 MB limit`);
     else {
       await git.add({ fs: gitFs, dir: root, filepath: rel, cache });
@@ -192,7 +208,7 @@ export async function commitAll(root, { message, author, hold = () => false }) {
     }
   }
   const head = await headOid(root);
-  if (!changes && head) return { oid: head, committed: false, left };
+  if (!changes && head && !always) return { oid: head, committed: false, left };
   return { oid: await git.commit({ fs: gitFs, dir: root, message, author, cache }), committed: true, left };
 }
 
@@ -434,10 +450,11 @@ async function writeDecisions(root, decisions, copies, read, keep) {
  * then the branch moved. Resolves { state, fromTheirs, conflicts, changedApp, deleting, problems }: state 'current'
  * (nothing to take), 'merged', 'confirm' (it would delete many files at once and allowDeletions wasn't given) or
  * 'preview' (dryRun: what it would do, with nothing written). base: the files to merge against instead of the commits'
- * own common one (Link from a mirror's last sync), as treeFiles gives them. keep(rel): a file this computer keeps as
- * it is (what a shared repository leaves out); side: planMerge's.
+ * own common one (Link from a mirror's last sync), as treeFiles gives them. side: planMerge's. Every file the merged
+ * commit has is written here, those a shared repository holds back from GitHub too, so the next backup never reads
+ * one missing here as deleted.
  */
-export async function mergeOrigin(root, { author, allowDeletions = false, dryRun = false, base: given, keep = () => false, side, message = 'Pull from GitHub', checkpoint = true }) {
+export async function mergeOrigin(root, { author, allowDeletions = false, dryRun = false, base: given, side, message = 'Pull from GitHub', checkpoint = true }) {
   const branch = await branchOf(root);
   const [ours, theirs] = [await headOid(root), await remoteHead(root)];
   const none = { state: 'current', fromTheirs: 0, conflicts: 0, changedApp: false, deleting: 0, problems: [] };
@@ -450,7 +467,7 @@ export async function mergeOrigin(root, { author, allowDeletions = false, dryRun
   const [baseFiles, oursFiles, theirsFiles] = await Promise.all([given ?? treeFiles(root, mergeBase, cache), treeFiles(root, ours, cache), treeFiles(root, theirs, cache)]);
   const plan = await planMerge({ base: baseFiles, ours: oursFiles, theirs: theirsFiles, read, compiled, side });
   // a compiled PDF and what this computer doesn't commit stay as they are here
-  const kept = (rel) => compiled.has(keyOf(rel)) || keptOut(rel) || secretLooking(rel) || keep(rel);
+  const kept = (rel) => compiled.has(keyOf(rel)) || keptOut(rel) || secretLooking(rel);
   const working = plan.decisions.filter((d) => !unchanged(d) && !kept(d.r?.rel ?? d.o.rel));
   const deleting = working.filter((d) => d.o && !d.r).map((d) => d.o.rel);
   const summary = {

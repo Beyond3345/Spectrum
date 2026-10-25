@@ -102,7 +102,7 @@ async function pullAndPush() {
   const token = await tokenOf();
   const author = await authorOf();
   const message = `Settings from ${(await readSyncConfig()).machineName}`;
-  await git.commitAll(SETTINGS_REPO_DIR, { message, author });
+  await git.commitAll(SETTINGS_REPO_DIR, { message, author, compiled: false });
   await git.fetchOrigin(SETTINGS_REPO_DIR, token);
   await git.mergeOrigin(SETTINGS_REPO_DIR, { author, allowDeletions: true, checkpoint: false, side: await newerItems(), message: `Settings merged on ${(await readSyncConfig()).machineName}` });
   if ((await git.headOid(SETTINGS_REPO_DIR)) && (!(await git.remoteHead(SETTINGS_REPO_DIR)) || (await git.aheadBehind(SETTINGS_REPO_DIR)).ahead)) await git.pushOrigin(SETTINGS_REPO_DIR, token);
@@ -130,7 +130,7 @@ export function syncSettingsRepo({ force = false } = {}) {
         await syncSkills();
         await syncTemplates().catch(() => {});
         // what the skills' sync wrote goes up now rather than in 30 s
-        if ((await git.commitAll(SETTINGS_REPO_DIR, { message: `Settings from ${(await readSyncConfig()).machineName}`, author: await authorOf() })).committed) await pullAndPush();
+        if ((await git.commitAll(SETTINGS_REPO_DIR, { message: `Settings from ${(await readSyncConfig()).machineName}`, author: await authorOf(), compiled: false })).committed) await pullAndPush();
       }
       lastError = '';
     } catch (err) {
@@ -149,7 +149,7 @@ export function startSettingsRepo() {
   const pushIfChanged = () =>
     lock(async () => {
       if (!(await wanted()) || !(await git.isRepo(SETTINGS_REPO_DIR))) return;
-      const { committed } = await git.commitAll(SETTINGS_REPO_DIR, { message: `Settings from ${(await readSyncConfig()).machineName}`, author: await authorOf() });
+      const { committed } = await git.commitAll(SETTINGS_REPO_DIR, { message: `Settings from ${(await readSyncConfig()).machineName}`, author: await authorOf(), compiled: false });
       if (committed) await pullAndPush();
     }).catch(() => {});
   timers = [setInterval(pushIfChanged, PUSH_EVERY_MS).unref(), setInterval(() => syncSettingsRepo({ force: true }).catch(() => {}), PULL_EVERY_MS).unref()];
@@ -218,12 +218,15 @@ export function syncPersonas(input) {
   });
 }
 
-/** A folder's files, '/'-separated, with their SHA-1s. */
+/** A file the settings repository never takes (the plan keeps keys out of it), so a skill goes across without it. */
+const stays = async (abs) => git.secretLooking(path.basename(abs)) || (await fs.stat(abs)).size > git.MAX_FILE_BYTES;
+
+/** A folder's files, '/'-separated, with their SHA-1s: those the repository takes. */
 async function filesOf(dir, rel = '', out = {}) {
   for (const entry of await fs.readdir(path.join(dir, rel), { withFileTypes: true }).catch(() => [])) {
     const itemRel = rel ? `${rel}/${entry.name}` : entry.name;
     if (entry.isDirectory()) await filesOf(dir, itemRel, out);
-    else if (entry.isFile()) out[itemRel] = sha1(await fs.readFile(path.join(dir, itemRel)));
+    else if (entry.isFile() && !(await stays(path.join(dir, itemRel)))) out[itemRel] = sha1(await fs.readFile(path.join(dir, itemRel)));
   }
   return out;
 }
@@ -264,7 +267,7 @@ async function syncSkills() {
       const at = new Date().toISOString();
       await fs.rm(path.join(dir, id, 'files'), { recursive: true, force: true });
       if (local.has(id)) {
-        await fs.cp(path.join(OWN_SKILLS, id), path.join(dir, id, 'files'), { recursive: true });
+        await fs.cp(path.join(OWN_SKILLS, id), path.join(dir, id, 'files'), { recursive: true, filter: async (src) => (await fs.stat(src)).isDirectory() || !(await stays(src)) });
         await writeJsonAtomic(path.join(dir, id, 'skill.json'), { id, updatedAt: at, by: machineId, files: local.get(id) });
       } else await writeJsonAtomic(path.join(dir, id, 'skill.json'), { id, updatedAt: at, by: machineId, deleted: true });
     } else if (side === 'theirs') {

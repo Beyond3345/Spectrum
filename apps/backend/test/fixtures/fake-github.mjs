@@ -4,7 +4,7 @@
 // One user, octo (id 7); the token is GOOD_TOKEN unless a test changes it.
 import http from 'node:http';
 import { spawn, execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync } from 'node:fs';
 import path from 'node:path';
 
 /** Whether this computer has git http-backend, without which the tests that push and fetch are skipped. */
@@ -28,17 +28,31 @@ export async function startFakeGitHub(reposDir) {
     requests: [],
     // the device sign-in: what the next access-token poll answers
     device: { pending: 1 },
-    // offline: every connection dropped
-    down: false
+    // offline: every connection dropped; hang: every request taken and never answered; gitError: the status
+    // Git's requests get (GitHub having trouble)
+    down: false,
+    hang: false,
+    gitError: 0,
+    // a renamed repository's old name → its new one, which GitHub keeps answering for
+    renamed: new Map()
   };
+  let nextId = 100;
   const bare = (owner, repo) => path.join(reposDir, owner, `${repo}.git`);
   const create = (owner, repo, { private: priv = true, collaborators = 1 } = {}) => {
     const dir = bare(owner, repo);
     mkdirSync(path.dirname(dir), { recursive: true });
     execFileSync('git', ['init', '--bare', '-q', '-b', 'main', dir]);
     execFileSync('git', ['config', 'http.receivepack', 'true'], { cwd: dir });
-    state.repos.set(`${owner}/${repo}`, { private: priv, collaborators });
+    state.repos.set(`${owner}/${repo}`, { private: priv, collaborators, id: nextId++ });
   };
+  /** The repository renamed on GitHub: its bare repository moves, and the old name still answers. */
+  const rename = (owner, from, to) => {
+    renameSync(bare(owner, from), bare(owner, to));
+    state.repos.set(`${owner}/${to}`, state.repos.get(`${owner}/${from}`));
+    state.repos.delete(`${owner}/${from}`);
+    state.renamed.set(`${owner}/${from}`, `${owner}/${to}`);
+  };
+  const named = (owner, repo) => (state.renamed.get(`${owner}/${repo}`) || `${owner}/${repo}`).split('/');
   const send = (res, status, body) => {
     res.writeHead(status, { 'content-type': 'application/json' });
     res.end(JSON.stringify(body));
@@ -53,13 +67,16 @@ export async function startFakeGitHub(reposDir) {
 
   const server = http.createServer(async (req, res) => {
     if (state.down) return req.socket.destroy();
+    if (state.hang) return;
     const url = new URL(req.url, 'http://x');
     state.requests.push(`${req.method} ${url.pathname}`);
     const body = await readBody(req);
     // Git's smart HTTP for /<owner>/<repo>.git/…
     const gitPath = /^\/([^/]+)\/([^/]+)\.git(\/.*)$/.exec(url.pathname);
     if (gitPath) {
-      const [, owner, repo, rest] = gitPath;
+      const [owner, repo] = named(gitPath[1], gitPath[2]);
+      const rest = gitPath[3];
+      if (state.gitError) return send(res, state.gitError, { message: 'Server Error' });
       if (!state.repos.has(`${owner}/${repo}`)) return send(res, 404, { message: 'Not Found' });
       if (!authorised(req)) {
         res.writeHead(401, { 'www-authenticate': 'Basic realm="GitHub"' });
@@ -116,15 +133,16 @@ export async function startFakeGitHub(reposDir) {
       return send(res, 201, { name, full_name: `octo/${name}`, owner: { login: 'octo' }, private: priv === true, default_branch: 'main' });
     }
     if (route === '/user/repos') {
-      const repos = [...state.repos].map(([full, r]) => ({ name: full.split('/')[1], full_name: full, owner: { login: full.split('/')[0] }, private: r.private, pushed_at: '2026-10-25T00:00:00Z', default_branch: 'main' }));
+      const repos = [...state.repos].map(([full, r]) => ({ id: r.id, name: full.split('/')[1], full_name: full, owner: { login: full.split('/')[0] }, private: r.private, pushed_at: '2026-10-25T00:00:00Z', default_branch: 'main' }));
       return send(res, 200, url.searchParams.get('page') > 1 ? [] : repos);
     }
     const repoRoute = /^\/repos\/([^/]+)\/([^/]+)(\/.*)?$/.exec(route);
     if (repoRoute) {
-      const [, owner, repo, rest = ''] = repoRoute;
+      const [owner, repo] = named(repoRoute[1], repoRoute[2]);
+      const rest = repoRoute[3] || '';
       const r = state.repos.get(`${owner}/${repo}`);
       if (!r) return send(res, 404, { message: 'Not Found' });
-      if (!rest) return send(res, 200, { name: repo, full_name: `${owner}/${repo}`, owner: { login: owner }, private: r.private, default_branch: 'main', permissions: { admin: true, push: true } });
+      if (!rest) return send(res, 200, { id: r.id, name: repo, full_name: `${owner}/${repo}`, owner: { login: owner }, private: r.private, default_branch: 'main', permissions: { admin: true, push: true } });
       if (rest === '/collaborators') return send(res, 200, Array.from({ length: r.collaborators }, (_, i) => ({ login: i ? `friend${i}` : 'octo' })));
       const contents = /^\/contents\/(.+)$/.exec(rest);
       if (contents) {
@@ -146,7 +164,10 @@ export async function startFakeGitHub(reposDir) {
     web,
     api: `${web}/api`,
     create,
+    rename,
     bare,
+    /** the subject of main's newest commit */
+    log: (owner, repo) => execFileSync('git', ['log', '-1', '--format=%s', 'main'], { cwd: bare(owner, repo) }).toString().trim(),
     /** a file on the repository's main branch, or null */
     show: (owner, repo, rel) => {
       try {

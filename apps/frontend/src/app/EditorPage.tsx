@@ -39,6 +39,7 @@ import {
   synctexEdit,
   synctexView,
   searchZotero,
+  syncWithGitHub,
   syncZotero,
   updateProjectSettings,
   writeFile
@@ -54,6 +55,7 @@ import { ContextMenu, MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
 import { confirmDialog, promptDialog } from './Dialogs';
 import { SaveTemplateSheet } from './ProjectPage';
+import { withDeletionCheck } from './github';
 import { toast } from './Toast';
 import { IS_DESKTOP, focusWindow, openDiagram } from './desktop';
 import { FILE_MANAGER } from './platform';
@@ -2236,11 +2238,17 @@ function Editor({ projectId }: { projectId: string }) {
     const opened = gitHubOpened(projectId);
     pulledOnOpen.current = opened.catch(() => undefined);
     opened.then(
-      (res) => {
+      async (res) => {
         if (!live || !res.linked) return;
         if (res.message) notify(res.message);
-        if (res.result?.changedApp) window.dispatchEvent(new Event(PROJECT_DATA_CHANGED));
-        for (const problem of res.result?.problems || []) notify(problem, 'error');
+        // GitHub's changes would delete many files here: asked now, as the backups wait for the answer
+        const result =
+          res.result?.state === 'confirm'
+            ? await withDeletionCheck((allowDeletions) => syncWithGitHub(projectId, allowDeletions)).catch((err) => (notify(errorText(err), 'error'), null))
+            : res.result;
+        if (!live || !result) return;
+        if (result.changedApp) window.dispatchEvent(new Event(PROJECT_DATA_CHANGED));
+        for (const problem of result.problems || []) notify(problem, 'error');
       },
       () => undefined
     );

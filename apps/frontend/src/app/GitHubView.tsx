@@ -10,9 +10,9 @@ import { errorText, relativeTime } from '../editor/shared';
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** How a linked project stands against GitHub, for its row. */
+/** How a linked project stands against GitHub as of its last pull or check (the row doesn't ask GitHub), for its row. */
 const standing = (r: GitHubRepoProject) =>
-  r.ahead || r.behind ? [r.ahead && `${count(r.ahead, 'commit', 'commits')} to back up`, r.behind && `${count(r.behind, 'commit', 'commits')} to pull`].filter(Boolean).join(' · ') : 'Up to date';
+  r.ahead || r.behind ? [r.ahead && `${count(r.ahead, 'commit', 'commits')} to back up`, r.behind && `${count(r.behind, 'commit', 'commits')} to pull`].filter(Boolean).join(' · ') : 'Up to date when last checked';
 
 /**
  * The projects page's GitHub view, where Cloud projects was: the user's repositories that are Spectrum projects (they

@@ -3,7 +3,7 @@ import { backUpToGitHub, getProjectGitHub, initialiseGit, pullFromGitHub, setGit
 import type { GitHubPull, GitHubStatus } from '../../api/client';
 import Icon from '../../app/Icon';
 import { promptDialog } from '../../app/Dialogs';
-import { linkWithPreview, moveOutOfSyncFolder, offerMove, pullSummary, withDeletionCheck } from '../../app/github';
+import { linkInstead, linkWithPreview, moveOutOfSyncFolder, offerMove, pullSummary, withDeletionCheck } from '../../app/github';
 import type { Section as SettingsSection } from '../../app/SettingsSheet';
 import { useEditor } from '../EditorContext';
 import { PROJECT_DATA_CHANGED, errorText, relativeTime } from '../shared';
@@ -93,9 +93,17 @@ export default function GitHubTab({ active, onOpenSettings }: { active: boolean;
 
   const create = () =>
     run('backup', async () => {
-      const res = await backUpToGitHub(projectId);
-      if (res.left?.length) api.notify(`Left out: ${res.left.join('; ')}.`, 'error');
-      return 'Backed up to a private repository on GitHub.';
+      try {
+        const res = await backUpToGitHub(projectId);
+        if (res.left?.length) api.notify(`Left out: ${res.left.join('; ')}.`, 'error');
+        return 'Backed up to a private repository on GitHub.';
+      } catch (err) {
+        // GitHub has it from the other computer: linked to that one instead
+        const linked = await linkInstead(err, projectId, api.projectName);
+        if (linked === undefined) throw err;
+        await pulled(linked);
+        return linked ? `Linked. ${pullSummary(linked)}` : undefined;
+      }
     });
 
   const link = () =>
@@ -180,8 +188,10 @@ export default function GitHubTab({ active, onOpenSettings }: { active: boolean;
           <div className="tool-card-desc">
             {s.ahead || s.behind
               ? [s.ahead && `${plural(s.ahead, 'commit', 'commits')} to back up`, s.behind && `${plural(s.behind, 'commit', 'commits')} to pull`].filter(Boolean).join(' · ')
-              : 'Up to date with GitHub'}
-            {s.lastBackup && <> · Last backup {relativeTime(s.lastBackup).toLowerCase()}</>}
+              : s.left.length
+                ? `Not on GitHub: ${s.left.join('; ')}`
+                : 'Up to date with GitHub'}
+            {s.lastBackup && <> · Last change on GitHub {relativeTime(s.lastBackup).toLowerCase()}</>}
           </div>
           <div className="row wrap">
             <button className="btn small primary" disabled={working} onClick={sync}>

@@ -45,7 +45,7 @@ import Sheet from './Sheet';
 import SettingsSheet from './SettingsSheet';
 import type { Section as SettingsSection } from './SettingsSheet';
 import GitHubView from './GitHubView';
-import { linkWithPreview, offerMove, pullSummary, withDeletionCheck } from './github';
+import { linkInstead, linkWithPreview, offerMove, pullSummary, withDeletionCheck } from './github';
 import TransferPanel, { transferStatusLabel } from './TransferPanel';
 import type { TransferJob } from './TransferPanel';
 import { confirmDialog, promptDialog } from './Dialogs';
@@ -459,7 +459,11 @@ export default function ProjectPage() {
           toast(res.left?.length ? `Backed up “${p.name}”, leaving out ${res.left.join('; ')}.` : `Backed up “${p.name}” to GitHub.`, { tone: res.left?.length ? 'error' : 'success' });
         }
       } catch (err) {
-        if (await offerMove(err, p.id, parentDir)) toast(`Moved “${p.name}” to this computer. Choose Sync with GitHub again to back it up.`, { tone: 'success' });
+        // GitHub has it from the other computer: linked to that one instead
+        const linked = await linkInstead(err, p.id, p.name);
+        if (linked) toast(`Linked “${p.name}”. ${pullSummary(linked)}`, { tone: 'success' });
+        else if (linked === null) return;
+        else if (await offerMove(err, p.id, parentDir)) toast(`Moved “${p.name}” to this computer. Choose Sync with GitHub again to back it up.`, { tone: 'success' });
         else throw err;
       }
     }, 'Couldn’t sync with GitHub');
@@ -643,6 +647,14 @@ export default function ProjectPage() {
   /** The badge after a project's name (short on a card); a linked one GitHub hasn't had its latest from says since when. */
   const badge = (p: ProjectMeta, card = false) => {
     const problem = problems[p.id];
+    if (problem && !p.missing && problem.state === 'left') {
+      return (
+        <span className={`badge warning ${card ? 'card-badge' : ''}`} title={problem.message}>
+          <Icon name="exclamationmark.triangle" />
+          {card ? 'Files left out' : 'Some files aren’t on GitHub'}
+        </span>
+      );
+    }
     if (problem && !p.missing) {
       const since = problem.lastBackup ? `Not backed up since ${timeAgo(problem.lastBackup).toLowerCase()}` : 'Not backed up yet';
       return (
