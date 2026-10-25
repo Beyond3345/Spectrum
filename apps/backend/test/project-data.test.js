@@ -24,7 +24,7 @@ const { registerProjectRoutes } = await import('../src/routes/projects.js');
 const { registerVersionRoutes } = await import('../src/routes/versions.js');
 const { registerTodoRoutes } = await import('../src/routes/todos.js');
 const { registerNoteRoutes } = await import('../src/routes/notes.js');
-const { createProject } = await import('../src/services/projectService.js');
+const { createProject, detectMainFile } = await import('../src/services/projectService.js');
 const { createCompileCheckpoint, createVersion, listVersions, readVersionFile, restoreVersion } = await import('../src/services/versionService.js');
 const { parseLabels } = await import('../src/services/statsService.js');
 
@@ -37,6 +37,23 @@ registerNoteRoutes(app);
 after(async () => {
   await app.close();
   rmSync(tmp, { recursive: true, force: true });
+});
+
+test('detectMainFile finds a LaTeX, Typst or Markdown main file, and never another README.md', async () => {
+  const make = async (name, files) => {
+    const dir = path.join(tmp, 'detect', name);
+    for (const [rel, text] of Object.entries(files)) {
+      await fs.mkdir(path.dirname(path.join(dir, rel)), { recursive: true });
+      await fs.writeFile(path.join(dir, rel), text);
+    }
+    return dir;
+  };
+  const tex = '\\documentclass{article}\n\\begin{document}x\\end{document}\n';
+  assert.equal(await detectMainFile(await make('latex', { 'main.tex': tex, 'README.md': '# Read me', 'main.md': '# Markdown' })), 'main.tex');
+  assert.equal(await detectMainFile(await make('typst', { 'notes.typ': '= Notes', 'main.typ': '= Main', 'chapters/one.typ': '= One' })), 'main.typ');
+  assert.equal(await detectMainFile(await make('typst-shallow', { 'notes.typ': '= Notes', 'chapters/two.typ': '= Two' })), 'notes.typ');
+  assert.equal(await detectMainFile(await make('markdown', { 'main.md': '# Main', 'README.md': '# Read me' })), 'main.md');
+  assert.equal(await detectMainFile(await make('readme', { 'README.md': '# Read me' })), undefined);
 });
 
 async function api(url, method = 'GET', body) {

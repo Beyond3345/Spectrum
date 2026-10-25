@@ -360,7 +360,18 @@ export async function detectMainFile(root) {
     if (/\\documentclass\b/.test(tex) && /\\begin\s*\{document\}/.test(tex)) found.push(item.path.split(path.sep).join('/'));
   }
   found.sort((a, b) => a.split('/').length - b.split('/').length || rank(a) - rank(b) || a.localeCompare(b));
-  return found[0];
+  if (found.length) return found[0];
+  // a Typst project: main.typ, else its shallowest .typ file
+  const typst = items
+    .filter((item) => item.type === 'file' && /\.typ$/i.test(item.path) && !copies[item.path])
+    .map((item) => item.path.split(path.sep).join('/'))
+    .sort((a, b) => Number(/(^|\/)main\.typ$/i.test(b)) - Number(/(^|\/)main\.typ$/i.test(a)) || a.split('/').length - b.split('/').length || a.localeCompare(b));
+  if (typst.length) return typst[0];
+  // a Markdown project only when it is called main.md; another README.md never becomes one
+  return items
+    .filter((item) => item.type === 'file' && /(^|\/)main\.md$/i.test(item.path) && !copies[item.path])
+    .map((item) => item.path.split(path.sep).join('/'))
+    .sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b))[0];
 }
 
 /**

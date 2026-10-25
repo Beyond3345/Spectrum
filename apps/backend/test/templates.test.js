@@ -36,6 +36,8 @@ test('the shipped manifest has a folder and a known category for every template'
 
 test('every shipped template has APA 7 references and a usable bibliography resource', async () => {
   for (const template of shipped.templates) {
+    // the Typst and Markdown starters carry their own bibliography, checked below
+    if (!/\.tex$/i.test(template.mainFile)) continue;
     const dir = path.join(shippedDir, template.id);
     const main = await fs.readFile(path.join(dir, template.mainFile), 'utf8');
     let source = main;
@@ -104,6 +106,23 @@ for (const style of ['apa', 'plainnat', 'plainurl', 'plain']) test(`${style} bib
   } finally {
     await task.destroy();
   }
+});
+
+test('the Typst and Markdown starters are self-contained', async () => {
+  for (const id of ['typst-document', 'typst-report', 'typst-letter', 'typst-cv']) {
+    const main = await fs.readFile(path.join(shippedDir, id, 'main.typ'), 'utf8');
+    assert.match(main, /#set page\(paper: "a4"/, `${id}: A4`);
+    assert.doesNotMatch(main, /@preview|^\s*#import/m, `${id}: no packages`);
+  }
+  const typstDocument = await fs.readFile(path.join(shippedDir, 'typst-document', 'main.typ'), 'utf8');
+  assert.match(typstDocument, /#bibliography\("refs.bib", style: "apa"\)/);
+  assert.ok(existsSync(path.join(shippedDir, 'typst-document', 'refs.bib')));
+  const markdown = await fs.readFile(path.join(shippedDir, 'markdown-article', 'main.md'), 'utf8');
+  assert.match(markdown, /^---\ntitle: /);
+  assert.match(markdown, /bibliography: refs\.bib/);
+  assert.match(markdown, /\[@knuth1984\]/);
+  assert.ok(existsSync(path.join(shippedDir, 'markdown-article', 'figures', 'example.png')));
+  assert.ok(existsSync(path.join(shippedDir, 'markdown-article', 'refs.bib')));
 });
 
 test('seeding an existing install adds new templates, refreshes shipped entries and keeps uploads', async () => {

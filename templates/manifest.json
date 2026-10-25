@@ -113,6 +113,77 @@
       "featured": true
     },
     {
+      "id": "typst-document",
+      "label": "Typst document",
+      "mainFile": "main.typ",
+      "category": "reports",
+      "description": "An 11 pt A4 Typst article with a figure, a reference and APA 7 references",
+      "tags": [
+        "Typst",
+        "Article",
+        "Simple",
+        "APA 7"
+      ],
+      "author": "Spectrum",
+      "featured": true
+    },
+    {
+      "id": "typst-report",
+      "label": "Typst report",
+      "mainFile": "main.typ",
+      "category": "reports",
+      "description": "A Typst report with a title page, contents, numbered headings and a table",
+      "tags": [
+        "Typst",
+        "Report",
+        "Contents"
+      ],
+      "author": "Spectrum",
+      "featured": true
+    },
+    {
+      "id": "typst-letter",
+      "label": "Typst letter",
+      "mainFile": "main.typ",
+      "category": "letters",
+      "description": "A formal letter in Typst: sender, date, recipient, body and sign-off",
+      "tags": [
+        "Typst",
+        "Letter",
+        "Cover letter"
+      ],
+      "author": "Spectrum",
+      "featured": true
+    },
+    {
+      "id": "typst-cv",
+      "label": "Typst CV",
+      "mainFile": "main.typ",
+      "category": "cv",
+      "description": "A one-page Typst CV with dated education, experience and skills",
+      "tags": [
+        "Typst",
+        "CV",
+        "Resume"
+      ],
+      "author": "Spectrum",
+      "featured": true
+    },
+    {
+      "id": "markdown-article",
+      "label": "Markdown article",
+      "mainFile": "main.md",
+      "category": "reports",
+      "description": "A Markdown article for pandoc with a YAML title, a figure, a pipe table and citations",
+      "tags": [
+        "Markdown",
+        "Article",
+        "Citations"
+      ],
+      "author": "Spectrum",
+      "featured": true
+    },
+    {
       "id": "acl",
       "label": "ACL",
       "mainFile": "main.tex",
