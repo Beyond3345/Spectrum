@@ -138,7 +138,7 @@ export default function GitHubTab({ active, onOpenSettings }: { active: boolean;
           <div className="tool-card-desc">
             Sync apps damage Git repositories, so Spectrum won’t back this project up to GitHub from {s.syncFolder}. Move it to this computer first: Spectrum copies it into your projects folder, and the copy in {s.syncFolder} stays as it is.
           </div>
-          <div className="row">
+          <div className="row wrap">
             <button className="btn small" disabled={working} onClick={moveHere}>
               Move to this computer…
             </button>
@@ -151,7 +151,7 @@ export default function GitHubTab({ active, onOpenSettings }: { active: boolean;
           <div className="tool-card-title"><Icon name="exclamationmark.triangle" /> {s.lastBackup ? `Not backed up since ${relativeTime(s.lastBackup).toLowerCase()}` : 'Not backed up yet'}</div>
           <div className="tool-card-desc">{s.problem.message}</div>
           {/sign in/i.test(s.problem.message) && onOpenSettings && (
-            <div className="row"><button className="btn small" onClick={() => onOpenSettings('github')}>Settings › GitHub…</button></div>
+            <div className="row wrap"><button className="btn small" onClick={() => onOpenSettings('github')}>Settings › GitHub…</button></div>
           )}
         </div>
       )}
@@ -161,7 +161,7 @@ export default function GitHubTab({ active, onOpenSettings }: { active: boolean;
           <div className="tool-card-title"><Icon name="arrow.triangle.branch" /> Keep this project on GitHub</div>
           <div className="tool-card-desc">Projects go between your computers through GitHub. Sign in to GitHub first.</div>
           {onOpenSettings && (
-            <div className="row"><button className="btn small" onClick={() => onOpenSettings('github')}>Settings › GitHub…</button></div>
+            <div className="row wrap"><button className="btn small" onClick={() => onOpenSettings('github')}>Settings › GitHub…</button></div>
           )}
         </div>
       )}
@@ -175,7 +175,7 @@ export default function GitHubTab({ active, onOpenSettings }: { active: boolean;
               : 'Up to date with GitHub'}
             {s.lastBackup && <> · Last backup {relativeTime(s.lastBackup).toLowerCase()}</>}
           </div>
-          <div className="row">
+          <div className="row wrap">
             <button className="btn small primary" disabled={working} onClick={sync}>
               {busy === 'sync' ? <span className="spinner" /> : <Icon name="arrow.triangle.2.circlepath" />} Sync
             </button>
@@ -198,7 +198,7 @@ export default function GitHubTab({ active, onOpenSettings }: { active: boolean;
           <div className="tool-card-desc">
             {repoName} is public or has other collaborators, so this project’s chats, to-dos, PDF notes and research sessions stay on your computers. Back them up there too?
           </div>
-          <div className="row">
+          <div className="row wrap">
             <button className="btn small" disabled={working} onClick={() => personal(true)}>Back them up</button>
             <button className="btn small ghost" disabled={working} onClick={() => personal(false)}>Leave them out</button>
           </div>
@@ -211,7 +211,7 @@ export default function GitHubTab({ active, onOpenSettings }: { active: boolean;
           <div className="tool-card-desc">
             This project is on GitHub as {repoName}, from your other computer. Link it to bring the two together: Spectrum shows what would come from GitHub before it writes anything.
           </div>
-          <div className="row">
+          <div className="row wrap">
             <button className="btn small primary" disabled={working} onClick={link}>
               {busy === 'link' ? <span className="spinner" /> : <Icon name="link" />} Link…
             </button>
@@ -227,7 +227,7 @@ export default function GitHubTab({ active, onOpenSettings }: { active: boolean;
             Spectrum makes a private repository for this project on your GitHub and keeps it up to date: it pulls when you open the project and backs up a
             minute after you stop typing.
           </div>
-          <div className="row">
+          <div className="row wrap">
             <button className="btn small primary" disabled={working} onClick={create}>
               {busy === 'backup' ? <span className="spinner" /> : <Icon name="square.and.arrow.up" />} Back up to GitHub
             </button>
