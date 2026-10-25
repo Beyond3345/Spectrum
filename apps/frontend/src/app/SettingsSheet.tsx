@@ -562,7 +562,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                 <span>
                   Use the same settings on each computer
                   <span className="field-hint">
-                    Through GitHub: appearance, editor, spelling, shortcuts, personas and the folders on the Projects page. API keys, models, folders on disk and the window’s look stay on
+                    Through your settings repository, once it’s on in Settings › GitHub: appearance, editor, spelling, shortcuts, personas and the folders on the Projects page. API keys, models, folders on disk and the window’s look stay on
                     each computer.
                   </span>
                 </span>
