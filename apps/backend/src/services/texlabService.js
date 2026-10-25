@@ -356,7 +356,8 @@ function keepDiagnostics(session, params) {
   // Seed the disk's spelling explicitly; otherwise dropping the alias's stale marks can drop every mark for this file.
   if (canonical && canonical !== rel && !session.canonicalized.has(canonical)) {
     session.canonicalized.add(canonical);
-    session.pendingCanonical.add(canonical);
+    // waited for only when the alias has marks: TexLab never publishes a clean file it hadn't published before
+    if (params.diagnostics?.length) session.pendingCanonical.add(canonical);
     changed(session);
     write(session, { jsonrpc: '2.0', method: 'workspace/didChangeWatchedFiles', params: { changes: [{ uri: pathToFileURL(path.join(session.root, ...canonical.split('/'))).href, type: 1 }] } });
   }

@@ -47,7 +47,7 @@ function handle({ id, method, params }) {
     send({ id: 'config-1', method: 'workspace/configuration', params: { items: [{ section: 'texlab' }] } });
     send({ method: 'window/logMessage', params: { type: 3, message: 'started' } });
     // Reproduce TexLab discovering only the spelling used by an \input on a case-insensitive disk.
-    if (process.env.FAKE_TEXLAB_CASE_ALIAS) diagnose(`${root}/Chapters/Intro.tex`, '{');
+    if (process.env.FAKE_TEXLAB_CASE_ALIAS) diagnose(`${root}/Chapters/Intro.tex`, process.env.FAKE_TEXLAB_CASE_ALIAS === 'clean' ? '' : '{');
     send({
       method: 'textDocument/publishDiagnostics',
       params: {
@@ -59,7 +59,7 @@ function handle({ id, method, params }) {
       }
     });
     send({ method: 'textDocument/publishDiagnostics', params: { uri: 'file:///elsewhere/other.tex', diagnostics: [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }, severity: 1, message: 'Not in the project' }] } });
-  } else if (method === 'workspace/didChangeWatchedFiles' && process.env.FAKE_TEXLAB_CASE_ALIAS) {
+  } else if (method === 'workspace/didChangeWatchedFiles' && process.env.FAKE_TEXLAB_CASE_ALIAS === '1') {
     for (const { uri } of params.changes) {
       if (!uri.endsWith('/chapters/intro.tex')) continue;
       setTimeout(() => {

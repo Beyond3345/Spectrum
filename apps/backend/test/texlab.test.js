@@ -256,6 +256,23 @@ test('a differently cased input seeds the disk’s own spelling before diagnosti
   }
 });
 
+test('a differently cased input to a clean file doesn’t wait for marks TexLab never sends', { skip: !WINDOWS && process.platform !== 'darwin' && 'needs a case-insensitive disk' }, async () => {
+  Object.assign(process.env, { SPECTRUM_TEXLAB: fixture, FAKE_TEXLAB_LOG: path.join(tmp, 'case-clean.log'), FAKE_TEXLAB_CASE_ALIAS: 'clean' });
+  const p = await newProject({ 'main.tex': '\\documentclass{article}\n\\input{Chapters/Intro}\n' });
+  await fs.mkdir(path.join(p.path, 'chapters'));
+  await fs.writeFile(path.join(p.path, 'chapters', 'intro.tex'), 'Text {closed}\n');
+  try {
+    // a wait for the clean file's marks lasts the start's 3 s
+    const started = Date.now();
+    const first = await diagnostics(p);
+    assert.ok(!first.files['chapters/intro.tex']);
+    assert.ok(Date.now() - started < 2000, `answered in ${Date.now() - started} ms`);
+  } finally {
+    await stopTexlab();
+    delete process.env.FAKE_TEXLAB_CASE_ALIAS;
+  }
+});
+
 test('the real TexLab finds a project’s errors, follows the editor, renames across files and reads a compile’s .aux', { skip: !realTexlab && 'needs texlab on the PATH', timeout: 60_000 }, async () => {
   process.env.SPECTRUM_TEXLAB = realTexlab;
   const marker = path.join(tmp, 'latexmkrc-ran');
