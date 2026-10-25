@@ -1,12 +1,12 @@
 # Spectrum 2.0 continuation handoff
 
-Updated 25 October 2026 (after phase 4's first review round, the 2.0 test DMG and phase 5's build). Development work only: no tag, push or release was made.
+Updated 25 October 2026 (after phase 5's merge, its small review and the second 2.0 test DMG). Development work only: no tag, push or release was made.
 
 ## Where to resume
 
-Paused by the user on 25 October 2026 to save usage until the week of 1 November. Phase 5 was built on `build/p5` on 25 October 2026 and has not been merged. Nothing is running: no builder, reviewer or scheduled check-in is active.
+Paused by the user on 25 October 2026 to save usage until the week of 1 November. Every phase is built and merged into `feat/2.0`. Nothing is running: no builder, reviewer or scheduled check-in is active.
 
-Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.0`** (`efc81b2` or later; check `git log`) for the merged work, and on **`build/p5`** for phase 5. Read [SPECTRUM_2_PLAN.md](SPECTRUM_2_PLAN.md), especially its ground rules and Delivery section, and [SPECTRUM_2_REVIEW_PLAN.md](SPECTRUM_2_REVIEW_PLAN.md) before continuing. Nothing has been pushed, tagged or released; `main` is still 1.10.4 plus the README credit to Oleafly and CircuiTikZ-Designer, which is also in `feat/2.0`.
+Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.0`** (`e808c4c` or later; check `git log`). Read [SPECTRUM_2_PLAN.md](SPECTRUM_2_PLAN.md), especially its ground rules and Delivery section, and [SPECTRUM_2_REVIEW_PLAN.md](SPECTRUM_2_REVIEW_PLAN.md) before continuing. Nothing has been pushed, tagged or released; `main` is still 1.10.4 plus the README credit to Oleafly and CircuiTikZ-Designer, which is also in `feat/2.0`.
 
 ### Status by phase
 
@@ -16,13 +16,13 @@ Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.
 | 2 | Agent workspace, personas, skills, MCP tools, to-dos for agents | Built, three review rounds (the last found nothing serious), merged |
 | 3 | TexLab, combined Review, Research sidebar, history menu | Built, two review rounds (the second found nothing serious), merged |
 | 4 | Zotero, GitHub sync and the settings repository, cloud sync removed with its migration | Built and merged as `bab0316`. Reviewed once: 47 confirmed findings (8 high), fixed and merged as `efc81b2` (see Phase 4 review fixes). **The second round has not been run** (review 1 of the review plan) |
-| 5 | Built-in Tectonic, Typst and Markdown engines; the composer's Typst mode | Built on `build/p5` as planned in [PHASE5_PLAN.md](PHASE5_PLAN.md), checked with the plan's commands and a browser pass. **Not merged and not reviewed.** See Phase 5 below |
-| Test DMG | `Spectrum_2.0.0_universal.dmg` in `OpenPrism/builds` with phases 1 to 4, for the user to install and try | See "The 2.0 test DMG" below |
+| 5 | Built-in Tectonic, Typst and Markdown engines; the composer's Typst mode | Built as planned in [PHASE5_PLAN.md](PHASE5_PLAN.md). Codex then audited the whole of 2.0 (21 findings, in `handover.md` at the repository root), and a small review reproduced and fixed all of them. Merged as `e808c4c`. **The full review has not been run** (review 2 of the review plan). See Phase 5 below |
+| Test DMG | `Spectrum_2.0.0_universal.dmg` in `OpenPrism/builds` with phases 1 to 5, for the user to install and try | See "The 2.0 test DMG" below |
 
 ### Next steps, in order
 
-1. **The user tries the test DMG** (phases 1 to 4; no Typst or Markdown yet).
-2. **Phase 5 is built** on `build/p5` from `feat/2.0` as [PHASE5_PLAN.md](PHASE5_PLAN.md) sets out. It is not merged. Read "Phase 5" below for the differences from the plan and the limits, then test `build/p5` again and merge it into `feat/2.0` when it is ready.
+1. **The user tries the test DMG** (phases 1 to 5).
+2. Phase 5 is merged; its differences from the plan and its limits are under Phase 5 below, and the small review's fixes under Phase 5 small review.
 3. **Reviews**, the week of 1 November, with ultracode, as set out in [SPECTRUM_2_REVIEW_PLAN.md](SPECTRUM_2_REVIEW_PLAN.md): phase 4's second round, phase 5, the whole of 2.0, then the next test DMG. Give phase 4's second round the first round's findings (Phase 4 review fixes below) and the fixer's diff (`git diff dde8ef5 c070493`). Give phase 5 the differences and limits under Phase 5 below.
 4. **Final verification and the release DMG** after the reviews. Do not push, tag or release; the user tests the DMG first (and the Windows build only happens on GitHub Actions after the user approves a push).
 5. **Things only the user can do** (also listed under each phase):
@@ -93,6 +93,59 @@ Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.
 - Live browser pass on `http://127.0.0.1:5173` with a temporary backend on 8787, the built-in Typst, pandoc 3.12.1 and Typst 0.14.2 and 0.13.1 installed: a Typst document opened with highlighting, outline and PDF, compiled, showed a failed compile's error in Logs as `main.typ:32`, compiled with the pinned 0.14.2 and then the built-in version, and showed its headings, labels, pages and metadata in Document insights. Word export, Convert to LaTeX, `/generated` and compiling the new LaTeX project all worked. A Markdown article compiled to LaTeX and to Typst, its compile menu offered both PDF engines, and its Logs offered Show generated Typst. Settings › Engines installed Typst 0.13.1 from GitHub, and the Typst tab listed the built-in, installed and available versions. The composer's Typst mode created `figures/flow-1.typ`, drew a box, showed fletcher code and a PDF preview with the box, and inserted `#figure(include "figures/flow-1.typ")` into the Typst document through the Floats panel.
 - The browser pass did not drag an arrow between two boxes; the fletcher edge code and its compilation were checked with the code generator and a standalone compile instead.
 - The test DMG remains the phase 1 to 4 build. Phase 5 has no DMG.
+
+### Phase 5 small review
+
+Codex audited the whole of 2.0 at `19455ad` without changing code and left 21 findings in `handover.md` (untracked, at the repository root; its scratch worktrees are removed). Three fixer agents reproduced every one, fixed it at the root and added a test that failed before the fix:
+
+- **Sync, privacy and Zotero (1 to 10):**
+  - a public `spectrum-settings` repository is refused before anything is shared or pushed;
+  - a secret staged with Git is put back out of the index before a backup commits;
+  - a pull that would write through a folder linking outside the project is refused whole;
+  - Zotero's authorise request sends `appName`, and every write carries `Zotero-Server-ID` (a changed database drops the key and asks again; the mock is now strict like the documented API);
+  - Move to this computer waits for saves under way;
+  - project settings changes and checkpoint restores take the project files' lock (always before the history lock);
+  - Typst and Markdown PDFs stay out of backups;
+  - `.typ` and `.markdown` count as text for checkpoints and merges.
+- **Engines (11 to 15 and 21):**
+  - an agent's or Review's Typst compile writes nothing into the draft;
+  - Convert to LaTeX project points images at the copied `media/`;
+  - the Windows build picks the `win-x64` archives (checked statically only);
+  - the shared `writePdf` never writes through a link out of the project;
+  - pandoc reads the bibliography its front matter names;
+  - the app's default Typst version and Markdown PDF engine reach the compile.
+  - `engines.test.js`'s failure on a fresh checkout was the test's: the built-in version is never offered for download.
+- **Editor (16 to 20):**
+  - a Typst or Markdown main file is kept as the tree changes;
+  - Typst and Markdown to-dos reach the scanner, which no longer reads `%` as a comment in them;
+  - Typst captions and cells escape both brackets, and a table outside a figure is `#table`;
+  - figures and included diagrams use root-relative `/figures/…` paths so nested chapters find them;
+  - Review's privacy scan and staleness read Typst and `.markdown` sources.
+- **Also:** Review finds a Typst or Markdown document's PDF when it asks whether the PDF is older than the source.
+
+Checks on the merged result (`fdad5b6`, scratch home and folders, TexLab and the real Typst and Tectonic):
+
+| Check | Result |
+| --- | --- |
+| Backend suite | 469 passed, 0 failed, 32 skipped (501) |
+| `npm run typecheck` and `npm run build` | Passed |
+| Every `*.check.ts` | 36 passed |
+| `npm run checkers:verify` | Exit 0 |
+| Native Rust tests | 7 passed |
+
+The live check ran the backend on scratch folders:
+- all four Typst starters compiled with the built-in Typst 0.15.1;
+- Typst 0.14.2 installed (checksum checked) and a project pinned to it compiled with it;
+- the Markdown article compiled through XeLaTeX, then through Typst after pandoc 3.12.1 was downloaded into the scratch data folder (the computer's pandoc 3.8 is below Typst's minimum);
+- a broken Typst line gave an error at its file, line and column;
+- Export to Word wrote `main.docx`, and Convert to LaTeX project made a project that compiles;
+- in the browser, a Typst document showed highlighting, folding and its outline, and compiled to its PDF.
+
+Left for the full review:
+- `typstElements` (insights' pages) reads only the project's pin, not the app default;
+- when the app default is itself a Typst version not installed, "use the default version" clears the pin and fails again;
+- Move to this computer still races a writer that looked the folder up before the move and takes the lock only afterwards (`ponytail:` in the code);
+- Windows was not run.
 
 ### Phase 5 limits
 

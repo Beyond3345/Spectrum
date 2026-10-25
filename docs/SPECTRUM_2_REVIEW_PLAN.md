@@ -11,7 +11,7 @@ Run them in the order below. After each one, merge the fixer branch into `feat/2
 | Review | Scope | State |
 | --- | --- | --- |
 | 1 | Phase 4, second round | Waiting (the first round's fixes are merged as `efc81b2`) |
-| 2 | Phase 5, first rounds | Waiting for the phase 5 build on `build/p5` |
+| 2 | Phase 5, first rounds | Waiting (merged as `e808c4c` after Codex's audit and a small review; start from the handoff's Phase 5 small review) |
 | 3 | The whole of 2.0 before the test DMG | Waiting for reviews 1 and 2 |
 | 4 | The test DMG itself | Waiting for review 3 and the DMG |
 
@@ -72,7 +72,7 @@ Lenses:
 
 ## Review 2: phase 5
 
-Scope: the phase 5 merge into `feat/2.0` (plan section 10b and the Typst part of 10c), built on `build/p5` from [PHASE5_PLAN.md](PHASE5_PLAN.md), whose steps say what each part should do. The builder's notes are in the handoff's Phase 5 section.
+Scope: the phase 5 merge into `feat/2.0` (plan section 10b and the Typst part of 10c), built on `build/p5` from [PHASE5_PLAN.md](PHASE5_PLAN.md), whose steps say what each part should do. The builder's notes, Codex's 21 audit findings (`handover.md`) and the small review's fixes are in the handoff's Phase 5 sections; give the reviewers those so they look elsewhere and check the fixes.
 
 Lenses:
 
