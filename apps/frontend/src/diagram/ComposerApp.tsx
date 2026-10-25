@@ -172,7 +172,7 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
         <h1>Draw a diagram</h1>
         <div className="chooser-cards" role="radiogroup" aria-label="Kind of diagram">
           {card('tikz', 'TikZ diagram', 'Compiled by LaTeX, so its labels use your document’s fonts and maths')}
-          {card('typst', 'Typst diagram', 'Flowcharts and block diagrams drawn with fletcher', typstBuiltIn === false)}
+          {card('typst', 'Typst diagram', 'Flowcharts and block diagrams drawn with fletcher', typstBuiltIn !== true)}
           {card('mermaid', 'Mermaid diagram', 'Flowcharts, sequence diagrams and Gantt charts, written as text')}
         </div>
         {kind === 'tikz' && (
