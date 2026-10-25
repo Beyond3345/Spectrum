@@ -644,29 +644,44 @@ button.badge {
   }
 }
 
-/* Cloud projects: folders a sync app brought here without their .spectrum */
-.skipped-notice {
+/* the move to 2.0: what became of the projects that synced through a cloud location */
+.move-notice {
   display: flex;
   gap: 10px;
-  margin: 0 0 16px;
+  margin: 12px 20px 8px;
   padding: 12px 14px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--orange) 12%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
   color: var(--text);
   line-height: 1.45;
 }
 
-.skipped-notice > .sf {
+.move-notice > .sf {
   flex: none;
   margin-top: 2px;
-  color: var(--orange);
+  color: var(--accent);
 }
 
-.skipped-title {
+.move-notice-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.move-notice-title {
   font-weight: 600;
 }
 
-.skipped-text {
-  margin-top: 2px;
+.move-notice-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.move-notice-text,
+.move-notice-row {
   color: var(--text-secondary);
 }

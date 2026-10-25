@@ -22,10 +22,6 @@ export interface ProjectMeta {
   mainFile?: string;
   /** a working copy of this template, being edited; kept out of the projects list */
   templateDraft?: string;
-  /** where it is in a sync app's folder, once a cloud location is set up */
-  place?: SyncPlace;
-  /** a cloud project: one mirrored into a cloud location, or one in it (moved there, or there since 1.8.0) */
-  cloud?: ProjectCloud;
 }
 
 /** A folder's place in a sync app's folder, the same on every computer */
@@ -35,50 +31,6 @@ export interface SyncPlace {
   label: string;
   /** '/'-separated from the top of the sync app's folder, e.g. 'Spectrum/Thesis' */
   rel: string;
-  /** the sync app's folder is on this computer, so a missing project may still be on its way */
-  here: boolean;
-}
-
-/** What Sync to does, Settings › Projects: keep a local copy and mirror it, or move the folder into the cloud location */
-export type CloudMode = 'mirror' | 'move';
-
-export interface ProjectCloud {
-  mode: CloudMode;
-  /** the cloud location's name, e.g. 'OneDrive' */
-  label: string;
-  /** '/'-separated inside the cloud location */
-  rel: string;
-  /** the cloud location's folder */
-  location: string;
-  /** how a mirrored project's syncing stands */
-  status?: MirrorStatus;
-}
-
-export interface MirrorStatus {
-  /** missing: the folder on this computer has gone; not-found: the copy in the cloud location has */
-  state: 'synced' | 'syncing' | 'waiting' | 'attention' | 'missing' | 'not-found';
-  /** what needs attention, for the user */
-  message?: string;
-  /** the pass stopped short of deleting many files: Sync anyway goes on */
-  brake?: boolean;
-  /** the deletions the brake held back, which Sync anyway sends back to let through */
-  deleting?: string[];
-}
-
-/** A project in a cloud location that this computer doesn't have; Download brings it here */
-/** A folder in a cloud location with LaTeX files but no project file: the sync app left out .spectrum here. */
-export interface SkippedFolder {
-  label: string;
-  rel: string;
-}
-
-export interface CloudOnlyProject {
-  id: string;
-  name: string;
-  label: string;
-  rel: string;
-  location: string;
-  updatedAt?: string;
 }
 
 export interface FileItem {
@@ -184,9 +136,8 @@ const json = (method: string, body: unknown = {}): RequestInit => ({ method, bod
 
 // ─── Projects ───
 
-/** scan: look in the cloud locations now rather than after the usual 30 s. */
-export function listProjects(scan = false) {
-  return request<{ projects: ProjectMeta[]; cloudOnly?: CloudOnlyProject[]; skipped?: SkippedFolder[] }>(`/api/projects${scan ? '?scan=1' : ''}`);
+export function listProjects() {
+  return request<{ projects: ProjectMeta[] }>('/api/projects');
 }
 
 /** parentDir: absolute folder to create the project in; defaults to ~/Documents/Spectrum */
@@ -235,28 +186,12 @@ export function archiveProject(id: string, archived: boolean) {
   return request<{ ok: boolean; project?: ProjectMeta }>(`/api/projects/${id}/archive`, json('PATCH', { archived }));
 }
 
-/** Sync to: mirror the project into a cloud location, or move it there; warning: the moved folder's original couldn't go to the Bin. */
-export function syncProjectTo(id: string, payload: { location: string; mode: CloudMode }) {
-  return request<{ project: ProjectMeta; warning?: string }>(`/api/projects/${id}/cloud`, json('POST', payload));
-}
-
-/** Bring a project that's only in a cloud location to this computer; a mirrored one's copy goes in parentDir, as createProject's. */
-export function downloadCloudProject(payload: { location: string; rel: string; id: string; mode: CloudMode; parentDir?: string }) {
-  return request<{ project: ProjectMeta }>('/api/cloud/download', json('POST', payload));
-}
-
 /**
- * The project stops syncing and stays on this computer (a moved one's folder comes back to parentDir). deleteCloud
- * also deletes the copy in the cloud location, which an ApiError with status 409 refuses, saying why, while another
- * computer needs it there.
+ * Move to this computer: a project used in a sync app's folder copied into parentDir (default: the projects folder)
+ * and listed there; left: the folder it was in, which stays as it is.
  */
-export function stopSyncing(id: string, deleteCloud: boolean, parentDir?: string) {
-  return request<{ project: ProjectMeta; warning?: string }>(`/api/projects/${id}/cloud/stop`, json('POST', { deleteCloud, parentDir }));
-}
-
-/** Sync now; deleting: Sync anyway, past the stop for a sync that would delete many files, for the status's deleting its dialog showed. */
-export function syncCloudProject(id: string, deleting: string[] = []) {
-  return request<{ status: MirrorStatus }>(`/api/projects/${id}/cloud/sync`, json('POST', { deleting }));
+export function moveProjectHere(id: string, parentDir?: string) {
+  return request<{ project: ProjectMeta; left: { label: string; path: string } }>(`/api/projects/${id}/move-here`, json('POST', { parentDir }));
 }
 
 export function setProjectMainFile(id: string, mainFile: string) {
@@ -781,16 +716,6 @@ export function deleteOldCheckpoints(projectId: string, olderThanDays: number) {
 
 // ─── The user's other computers ───
 
-/** This computer has the project open (sent every 2 minutes); the answer lists the other computers that do. */
-export function markOpen(projectId: string) {
-  return request<{ ok: boolean; others: { host: string; since: string }[] }>(`/api/projects/${projectId}/presence`, json('POST'));
-}
-
-/** Leaving the project; keepalive, so it still goes when the page is closing. */
-export function markClosed(projectId: string) {
-  return fetch(`/api/projects/${projectId}/presence`, { method: 'DELETE', keepalive: true }).catch(() => undefined);
-}
-
 /** A sync app's conflict copy takes its original's place. */
 export function keepConflictCopy(projectId: string, path: string) {
   return request<{ ok: boolean; original: string }>(`/api/projects/${projectId}/conflict-copy/use`, json('POST', { path }));
@@ -806,7 +731,7 @@ export interface SharedSettings {
   settings: Record<string, unknown>;
 }
 
-/** The newest settings another computer shared; shared is false without a cloud location. */
+/** The newest settings another computer shared; shared is false until there's somewhere to share them. */
 export function getSharedSettings() {
   return request<{ ok: boolean; shared: boolean; latest: SharedSettings | null }>('/api/shared/settings');
 }
@@ -1358,51 +1283,58 @@ export function systemCheck(texFolder?: string) {
   return request<SystemCheck>(`/api/system/check${texFolder ? `?${new URLSearchParams({ texFolder })}` : ''}`);
 }
 
-// ─── Cloud locations ───
-
-/** A folder a sync app keeps the same on each computer, which projects sync to */
-export interface CloudLocation {
-  path: string;
-  /** e.g. 'OneDrive' */
-  label: string;
-  found: boolean;
-  /** where it is in its sync app's folder */
-  place?: SyncPlace | null;
-  /** the projects mirrored into it; it can't be removed while there are any */
-  mirrored: number;
-}
-
-export interface SyncSettings {
-  /** this computer's name, as the other computers show it */
-  machineName: string;
-  folders: CloudLocation[];
-  /** the sync apps' folders on this computer not in the list; target is the folder adding one adds */
-  suggestions: { path: string; provider: SyncPlace['provider']; label: string; target: string }[];
-  /** the cloud location settings and templates go through, the same on each computer that lists it */
-  sharedFolder: string | null;
-}
+// ─── This computer and the sync apps' folders ───
 
 export function getSyncSettings() {
-  return request<SyncSettings>('/api/sync');
+  return request<{ machineName: string }>('/api/sync');
 }
 
-/** folders: the whole list of cloud locations; projectsDir: the default folder for new projects, which a new one mustn't overlap */
-export function updateSyncSettings(patch: { folders?: string[]; machineName?: string; projectsDir?: string }) {
-  return request<SyncSettings>('/api/sync', json('PATCH', patch));
+/** machineName: what the other computers call this one; '' goes back to the system's name. */
+export function updateSyncSettings(patch: { machineName: string }) {
+  return request<{ machineName: string }>('/api/sync', json('PATCH', patch));
 }
 
-/** Stop listing a project that's only in a cloud location. */
-export function hideProject(id: string) {
-  return request<{ ok: boolean }>('/api/sync/hide', json('POST', { id }));
+/** Where a folder is in a sync app's folder (OneDrive, iCloud Drive…), or null. */
+export function syncPlace(path: string) {
+  return request<{ place: SyncPlace | null }>('/api/sync/place', json('POST', { path }));
+}
+
+/** A project 1.10 mirrored into a cloud location, and what its copy there has that this computer never received. */
+export interface MigratedProject {
+  id: string;
+  name: string;
+  /** the cloud location's sync app, e.g. 'Synology Drive' */
+  label: string;
+  /** '/'-separated, the project's own files */
+  changed?: string[];
+  deleted?: string[];
+  /** the copy isn't there any more */
+  missing?: boolean;
+  /** the copy couldn't be looked through (online-only, out of reach) */
+  unchecked?: boolean;
+}
+
+/** What the move to 2.0 did with the projects that synced through a cloud location: inPlace ones are used there. */
+export interface MigrationNotice {
+  mirrored: MigratedProject[];
+  inPlace: { id: string; name: string; label: string }[];
+}
+
+export function getMigrationNotice() {
+  return request<{ notice: MigrationNotice | null }>('/api/migration');
+}
+
+export function dismissMigrationNotice() {
+  return request<{ ok: boolean }>('/api/migration/dismiss', json('POST'));
 }
 
 export function revealProject(projectId: string, filePath?: string) {
   return request<{ ok: boolean; path?: string }>('/api/system/reveal', json('POST', { projectId, path: filePath }));
 }
 
-/** Show a mirrored project's copy in its cloud location. */
-export function revealCloudCopy(projectId: string) {
-  return request<{ ok: boolean; path?: string }>('/api/system/reveal', json('POST', { projectId, cloud: true }));
+/** Show the copy 1.10 mirrored the project into, or a file in it, in Finder or Explorer. */
+export function revealCloudCopy(projectId: string, filePath?: string) {
+  return request<{ ok: boolean; path?: string }>('/api/system/reveal', json('POST', { projectId, cloud: true, path: filePath }));
 }
 
 // ─── Local ACP agents ───

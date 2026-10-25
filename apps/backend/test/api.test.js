@@ -29,6 +29,7 @@ const zip = (cwd, zipPath, ...entries) => (WINDOWS
   ? execFileSync(path.join(process.env.SystemRoot, 'System32', 'tar.exe'), ['-a', '-cf', zipPath, ...entries], { cwd })
   : execFileSync('zip', ['-qr', zipPath, ...entries], { cwd }));
 const dataDir = path.join(tmp, 'data');
+mkdirSync(path.join(tmp, 'home'));
 const projectsDir = path.join(tmp, 'projects');
 // uploads write templates, so never into the repo's own folder, which is only read, as the app's shipped copy
 const templateDir = path.join(tmp, 'templates');
@@ -125,6 +126,9 @@ async function startServer() {
   server = spawn(process.execPath, [path.join(here, '..', 'src', 'index.js')], {
     env: {
       ...process.env,
+      // a home folder of its own, so looking for the sync apps' folders never looks at the real ones
+      HOME: path.join(tmp, 'home'),
+      USERPROFILE: path.join(tmp, 'home'),
       PORT: String(port),
       SPECTRUM_HOST: '127.0.0.1',
       SPECTRUM_DATA_DIR: dataDir,
@@ -695,11 +699,10 @@ test('conflict copies: marked in the tree, never documents, and one can take the
   const copy = 'thesis_DESKTOP-AB12CD_Oct-17-1042-2026_Conflict.tex';
   await writeFile(p.id, 'thesis.tex', doc.replace('%s', 'mine'));
   await writeFile(p.id, copy, doc.replace('%s', 'theirs'));
-  // OneDrive's kind, once Spectrum knows the computer's system name from its presence file
+  // OneDrive's kind, once Spectrum knows the computer's system name from the presence file 1.10 left there
   await writeFile(p.id, 'thesis-DESKTOP-AB12CD.tex', doc.replace('%s', 'onedrive'));
-  assert.deepEqual((await api(`/api/projects/${p.id}/presence`, { method: 'POST' })).json, { ok: true, others: [] });
+  await fs.mkdir(path.join(p.path, '.spectrum', 'open'), { recursive: true });
   await fs.writeFile(path.join(p.path, '.spectrum', 'open', `${crypto.randomUUID()}.json`), JSON.stringify({ host: 'DESKTOP-AB12CD', systemNames: ['DESKTOP-AB12CD'], since: new Date().toISOString(), at: new Date().toISOString() }));
-  assert.deepEqual((await api(`/api/projects/${p.id}/presence`, { method: 'POST' })).json.others.map((o) => o.host), ['DESKTOP-AB12CD']);
 
   const tree = (await api(`/api/projects/${p.id}/tree`)).json;
   assert.deepEqual(tree.conflicts, { [copy]: 'thesis.tex', 'thesis-DESKTOP-AB12CD.tex': 'thesis.tex' });
@@ -708,7 +711,6 @@ test('conflict copies: marked in the tree, never documents, and one can take the
   assert.deepEqual((await api(`/api/projects/${p.id}/conflict-copy/use`, { method: 'POST', body: { path: copy } })).json, { ok: true, original: 'thesis.tex' });
   assert.equal(await readFile(p.id, 'thesis.tex'), doc.replace('%s', 'theirs'));
   assert.ok(!existsSync(path.join(p.path, copy)));
-  assert.ok((await api(`/api/projects/${p.id}/presence`, { method: 'DELETE' })).json.ok);
 });
 
 test('imports a zip, unwrapping a single top-level folder', async (t) => {

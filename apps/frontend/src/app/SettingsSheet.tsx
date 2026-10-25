@@ -20,12 +20,13 @@ import {
   setSkillSharing,
   spellStatus,
   spellWords,
+  syncPlace,
   systemCheck,
   updateProjectSettings,
   updateSyncSettings,
   writeSkillFile
 } from '../api/client';
-import type { BibTool, CheckerStatus, CloudMode, CompileEngine, LocalAgent, SearchProvider, Skill, SkillShare, SyncSettings, SystemCheck } from '../api/client';
+import type { BibTool, CheckerStatus, CompileEngine, LocalAgent, SearchProvider, Skill, SkillShare, SystemCheck } from '../api/client';
 import { COLOUR_ROLES, EDITOR_FONTS, EDITOR_THEMES, chosenColours, editorColours, highlightLines, themeFor, wellColour } from '../editor/editorThemes';
 import type { EditorMode } from '../editor/editorThemes';
 import { highlightColour } from '../editor/synctex';
@@ -125,10 +126,6 @@ const SEARCH_NOTES: Record<SearchProvider, string> = {
   brave: 'Reference searches favour citable sources; chat uses ordinary web results. Needs a Brave Search API key.',
   ddgs: 'Google, Bing, Brave, DuckDuckGo and others through the ddgs Python library. No key needed, but it needs Python with ddgs installed.'
 };
-
-const SEP = IS_WINDOWS ? '\\' : '/';
-/** p is root or inside it, in any letter case. */
-const under = (p: string, root: string) => `${p.toLowerCase()}${SEP}`.startsWith(`${root.toLowerCase()}${SEP}`);
 
 const TEX = IS_WINDOWS ? 'Install TeX Live or MiKTeX' : 'brew install --cask mactex-no-gui';
 const INSTALL_HINTS: Record<string, string> = {
@@ -510,10 +507,9 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                     onClick={async () => {
                       const picked = await pickFolder({ title: 'Choose the default folder for new projects', defaultPath: settings.projectsDir || check?.projectsDir });
                       if (!picked) return;
-                      // never in a cloud location, or holding one: every new project would be a cloud project there
-                      const folders = (await getSyncSettings().catch(() => null))?.folders || [];
-                      const inside = folders.find((f) => under(picked, f.path) || under(f.path, picked));
-                      if (inside) toast(`That folder ${under(picked, inside.path) ? 'is in' : 'holds'} ${inside.label}, a cloud location. Choose a folder on this computer.`, { tone: 'error' });
+                      // never in a sync app's folder, which corrupts the repositories GitHub sync keeps in each project
+                      const place = (await syncPlace(picked).catch(() => null))?.place;
+                      if (place) toast(`That folder is in ${place.label}, which can damage a project’s GitHub history. Choose a folder that isn’t synced.`, { tone: 'error' });
                       else update({ projectsDir: picked });
                     }}
                   >
@@ -525,7 +521,6 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                   New, imported and arXiv projects are created here unless another location is chosen. Existing projects stay where they are.
                 </div>
               </div>
-              <CloudLocations />
               {IS_DESKTOP && (
                 <>
                   <h3 className="form-section-title">Opening files</h3>
@@ -559,11 +554,12 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                 <span>
                   Use the same settings on each computer
                   <span className="field-hint">
-                    Through your cloud locations: appearance, editor, spelling, shortcuts, personas and the folders on the Projects page. API keys, models, folders on disk, what Sync to does and
-                    the window’s look stay on each computer.
+                    Through GitHub: appearance, editor, spelling, shortcuts, personas and the folders on the Projects page. API keys, models, folders on disk and the window’s look stay on
+                    each computer.
                   </span>
                 </span>
               </label>
+              <ComputerName />
             </>
           )}
 
@@ -775,107 +771,36 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
   );
 }
 
-/** Settings › Projects: the cloud locations, folders a sync app keeps the same on each computer, which projects sync to. */
-function CloudLocations() {
-  const [settings, update] = useSettings();
-  const [sync, setSync] = useState<SyncSettings | null>(null);
+/** Settings › Projects: what the other computers call this one, e.g. in “Backup from <computer>”. */
+function ComputerName() {
+  const [saved, setSaved] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [error, setError] = useState('');
-
-  const show = (next: SyncSettings) => {
-    setSync(next);
-    setName(next.machineName);
+  const show = ({ machineName }: { machineName: string }) => {
+    setSaved(machineName);
+    setName(machineName);
+    setError('');
   };
   useEffect(() => {
-    getSyncSettings().then(show, (err) => setError(err instanceof Error ? err.message : String(err)));
+    getSyncSettings().then(show, (err) => setError(errorText(err)));
   }, []);
 
-  const save = async (patch: Parameters<typeof updateSyncSettings>[0]) => {
-    try {
-      show(await updateSyncSettings(patch));
-      setError('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-  const paths = sync?.folders.map((f) => f.path) || [];
-  const add = async (path?: string) => {
-    const picked = path || (await pickFolder({ title: 'Choose a folder your sync app keeps on each computer' }));
-    if (picked) await save({ folders: [...paths, picked], projectsDir: settings.projectsDir || undefined });
-  };
-
   return (
-    <>
-      <h3 className="form-section-title">Cloud locations</h3>
-      <div className="field-hint section-hint">
-        Folders that OneDrive, Dropbox, Synology Drive or iCloud Drive keep the same on your other computers, or any folder that syncs. Choose Sync to from a
-        project’s ··· menu to keep it in one, and add the same locations on each computer to find it there.
-      </div>
-      {sync?.folders.map((f) => (
-        <div key={f.path} className="path-row">
-          <Icon name="cloud" />
-          <span className="path-text">
-            <span className="path-label">{f.label}</span>
-            {tildify(f.path)}
-          </span>
-          {!f.found && <span className="badge warning">Not found</span>}
-          <button className="btn small" onClick={() => save({ folders: paths.filter((p) => p !== f.path) })}>Remove</button>
-        </div>
-      ))}
-      {sync?.suggestions.map((s) => {
-        // the app's own folder can't be added when it holds the default folder chosen here: its Spectrum folder then
-        const target = settings.projectsDir && under(settings.projectsDir, s.target) ? `${s.path}${SEP}Spectrum` : s.target;
-        return (
-          <div key={target} className="path-row">
-            <Icon name="folder.badge.plus" />
-            <span className="path-text">
-              <span className="path-label">{s.label}</span>
-              {tildify(target)}
-            </span>
-            <button className="btn small" onClick={() => add(target)}>Add</button>
-          </div>
-        );
-      })}
-      <div>
-        <button className="btn small" disabled={!sync} onClick={() => add()}>Add…</button>
-      </div>
-      {sync && sync.folders.length > 1 && sync.sharedFolder && (
-        <div className="field-hint">Settings and templates go between your computers through {tildify(sync.sharedFolder)}, so add it on each one.</div>
-      )}
+    <div className="field">
+      <label htmlFor="settings-machineName">This computer’s name</label>
+      <input
+        id="settings-machineName"
+        className="input"
+        value={name}
+        disabled={saved === null}
+        spellCheck={false}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={() => saved !== null && name.trim() !== saved && updateSyncSettings({ machineName: name }).then(show, (err) => setError(errorText(err)))}
+        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+      />
+      <div className="field-hint">Your other computers show it, e.g. for a backup made on this one.</div>
       {error && <div className="field-hint error">{error}</div>}
-      <div className="field">
-        <label id="settings-cloudMode">When a project syncs</label>
-        <Select
-          labelId="settings-cloudMode"
-          value={settings.cloudMode}
-          options={[
-            ['mirror', 'Keep a local copy and mirror it'],
-            ['move', 'Move it into the cloud location']
-          ]}
-          onChange={(value) => update({ cloudMode: value as CloudMode })}
-        />
-        <div className="field-hint">
-          {settings.cloudMode === 'mirror'
-            ? 'The project stays in its folder here, and Spectrum keeps a copy in the cloud location in step with it.'
-            : 'The project’s folder moves into the cloud location, and the sync app keeps it the same on each computer.'}{' '}
-          On this computer, for the next Sync to or Download; projects syncing now stay as they are.
-        </div>
-      </div>
-      <div className="field">
-        <label htmlFor="settings-machineName">This computer’s name</label>
-        <input
-          id="settings-machineName"
-          className="input"
-          value={name}
-          disabled={!sync}
-          spellCheck={false}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={() => sync && name.trim() !== sync.machineName && save({ machineName: name })}
-          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-        />
-        <div className="field-hint">Your other computers show it, e.g. for a project open on this one.</div>
-      </div>
-    </>
+    </div>
   );
 }
 
