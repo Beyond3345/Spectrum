@@ -34,6 +34,7 @@ import { CheckpointCleanup } from '../editor/tools/VersionsTab';
 import { resetPersonas } from '../editor/personas';
 import type { Persona } from '../editor/personas';
 import { AGENTS_CHANGED, errorText } from '../editor/shared';
+import { ZoteroSettings } from '../editor/ZoteroCite';
 import { confirmDialog } from './Dialogs';
 import Icon from './Icon';
 import Select from './Select';
@@ -92,6 +93,7 @@ export type Section =
   | 'skills'
   | 'agents'
   | 'search'
+  | 'zotero'
   | 'transfer'
   | 'system';
 
@@ -109,6 +111,7 @@ const SECTIONS: [Section, string, string][] = [
   ['skills', 'Skills', 'graduationcap'],
   ['agents', 'Agents', 'terminal'],
   ['search', 'Search', 'magnifyingglass'],
+  ['zotero', 'Zotero', 'books.vertical'],
   ['transfer', 'Template transfer', 'arrow.triangle.2.circlepath'],
   ['system', 'System', 'stethoscope']
 ];
@@ -718,6 +721,8 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
               {text('API key', 'searchApiKey', { name: 'Search model API key', placeholder: 'sk-…', secret: true })}
             </>
           )}
+
+          {section === 'zotero' && <ZoteroSettings projectId={projectId} />}
 
           {section === 'transfer' && (
             <>

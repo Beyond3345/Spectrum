@@ -983,7 +983,7 @@ export function plotFromTable(payload: {
 
 // ─── Research ───
 
-export type ResearchSource = 'openalex' | 'semanticscholar' | 'arxiv' | 'crossref' | 'pubmed' | 'web' | 'bib';
+export type ResearchSource = 'openalex' | 'semanticscholar' | 'arxiv' | 'crossref' | 'pubmed' | 'web' | 'zotero' | 'bib';
 
 /** One paper in a session, merged across the sources that found it. inBib: its key in the project's .bib. */
 export interface ResearchResult {
@@ -997,6 +997,8 @@ export interface ResearchResult {
   url?: string;
   abstract?: string;
   sources: ResearchSource[];
+  /** its item key, when the Zotero library gave it: it goes into the .bib from there, under its Zotero key */
+  zotero?: string;
   citations?: number;
   /** a link to an open-access copy */
   openAccess?: string;
@@ -1164,6 +1166,66 @@ export function addReference(payload: { projectId: string; candidateId: string; 
     json('POST', payload)
   );
 }
+
+// ─── Zotero (its local API and Better BibTeX, through the backend) ───
+
+export interface ZoteroStatus {
+  running: boolean;
+  version: string;
+  /** 'off': Zotero's "Allow other applications on this computer to communicate with Zotero" isn't ticked */
+  localApi: 'on' | 'off' | 'missing' | null;
+  /** Better BibTeX's version, null when it isn't installed */
+  betterBibtex: string | null;
+  /** Better BibTeX's citation picker answers */
+  cayw: boolean;
+  /** Zotero takes writes (Zotero 10), so each project can have its collection */
+  writes: boolean;
+  /** Zotero allowed Spectrum to write; the permission itself stays in the backend */
+  authorised: boolean;
+  message?: string;
+}
+
+/** A library item, with the key its .bib entry goes in under (Zotero's or Better BibTeX's, else an AuthorYear one). */
+export interface ZoteroHit {
+  itemKey: string;
+  key: string;
+  title: string;
+  authors: string[];
+  year?: string;
+  venue?: string;
+  doi?: string;
+}
+
+/** How the project's Spectrum collection stands after a sync. */
+export interface ZoteroSync {
+  state: 'off' | 'unreachable' | 'readonly' | 'empty' | 'waiting' | 'synced' | 'error';
+  message?: string;
+  /** 'Spectrum › Thesis' */
+  collection?: string;
+  added?: number;
+  created?: number;
+  removed?: number;
+}
+
+type ZoteroAdded = { ok: boolean; results: ReferenceResult[]; bibFile: string; bibIncluded: boolean };
+
+export const zoteroStatus = () => request<{ ok: boolean } & ZoteroStatus>('/api/zotero/status');
+/** Zotero's Allow prompt; it waits until the user answers there, or cancelZotero. */
+export const authoriseZotero = () => request<{ ok: boolean; cancelled?: boolean } & Partial<ZoteroStatus>>('/api/zotero/authorize', json('POST'));
+export const disconnectZotero = () => request<{ ok: boolean } & ZoteroStatus>('/api/zotero/authorize', { method: 'DELETE' });
+/** Stops what waits in Zotero: the Allow prompt or the citation picker. */
+export const cancelZotero = () => request<{ ok: boolean }>('/api/zotero/cancel', json('POST'));
+/** message: why nothing came (Zotero closed, its local API off) */
+export const searchZotero = (q: string, signal?: AbortSignal) =>
+  request<{ ok: boolean; items: ZoteroHit[]; message?: string }>(`/api/zotero/search?q=${encodeURIComponent(q)}`, { signal });
+/** Better BibTeX's picker in Zotero for command (parencite, citep or cite); text: the citation it wrote, under Zotero's keys. */
+export const pickFromZotero = (projectId: string, command: string, bibFile?: string) =>
+  request<Partial<ZoteroAdded> & { ok: boolean; cancelled?: boolean; text?: string }>(`/api/projects/${projectId}/zotero/cite`, json('POST', { command, bibFile }));
+/** Library items (by item key) into the .bib under their Zotero keys. */
+export const addFromZotero = (projectId: string, items: string[], bibFile?: string) =>
+  request<ZoteroAdded>(`/api/projects/${projectId}/zotero/add`, json('POST', { items, bibFile }));
+/** The project's collection brought up to its .bib; entries only ever go in from here. */
+export const syncZotero = (projectId: string) => request<{ ok: boolean } & ZoteroSync>(`/api/projects/${projectId}/zotero/sync`, json('POST'));
 
 // ─── Template transfer ───
 

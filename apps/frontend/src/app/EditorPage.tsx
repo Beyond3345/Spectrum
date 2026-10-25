@@ -38,6 +38,8 @@ import {
   spellSuggest,
   synctexEdit,
   synctexView,
+  searchZotero,
+  syncZotero,
   updateProjectSettings,
   writeFile
 } from '../api/client';
@@ -55,7 +57,7 @@ import { SaveTemplateSheet } from './ProjectPage';
 import { toast } from './Toast';
 import { IS_DESKTOP, focusWindow, openDiagram } from './desktop';
 import { FILE_MANAGER } from './platform';
-import { BIB_TOOLS, COMPILE_ENGINES, ERROR_HANDLING, SYNTAX_CHECKS, autoCompileLabel, effectiveCompile, effectiveEffort, llmConfigFor, updateSettings, useProviders, useSettings } from './settings';
+import { BIB_TOOLS, COMPILE_ENGINES, ERROR_HANDLING, SYNTAX_CHECKS, autoCompileLabel, effectiveCompile, effectiveEffort, llmConfigFor, loadSettings, updateSettings, useProviders, useSettings } from './settings';
 import { PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
 import { FIND_NEXT, FIND_PREVIOUS, SHORTCUTS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
 import type { AppCommand } from './shortcuts';
@@ -122,6 +124,8 @@ import { applyEdits, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
 import { PROJECT_DATA_CHANGED, VERSIONS_CHANGED, errorText, figureSnippet } from '../editor/shared';
+import { ZOTERO_CITE, zoteroCompletionSource } from '../editor/zotero';
+import { ZoteroCite, addZoteroHit } from '../editor/ZoteroCite';
 
 // ─── helpers ───
 
@@ -313,6 +317,8 @@ function Editor({ projectId }: { projectId: string }) {
   const statesRef = useRef(new Map<string, EditorState>());
   /** what the document being edited and the files it pulls in load and define, its .bib entries and its files, for completion */
   const projectScanRef = useRef<Project>(NO_PROJECT);
+  /** the newest shared API, for CodeMirror's pieces made once (a Zotero item picked from \cite completion) */
+  const apiRef = useRef<EditorApi | null>(null);
   /** .bib files that aren't open, read once per tree or file change rather than after every save */
   const bibRef = useRef(new Map<string, string>());
   // counts writes and reloads, which change filesRef without a render
@@ -1984,6 +1990,21 @@ function Editor({ projectId }: { projectId: string }) {
     };
   }, []);
 
+  // the project's Zotero collection, brought up to the .bib on opening and on coming back to the window (adding only:
+  // entries leave it after a .bib save); a wait for Zotero's sync, or a fault, is said once
+  useEffect(() => {
+    let told = false;
+    const sync = () =>
+      syncZotero(projectId).then((res) => {
+        if (told || !res.message || (res.state !== 'waiting' && res.state !== 'error')) return;
+        told = true;
+        notify(res.message, res.state === 'error' ? 'error' : 'info');
+      }, () => undefined);
+    sync();
+    window.addEventListener('focus', sync);
+    return () => window.removeEventListener('focus', sync);
+  }, []);
+
   useEffect(() => {
     const a = () => actions.current;
     const listener = EditorView.updateListener.of((update) => {
@@ -2076,7 +2097,18 @@ function Editor({ projectId }: { projectId: string }) {
       jumpHighlight,
       search({ top: true }),
       // picking \ref{}, \cite{} or \input{} opens the list of what goes in the braces
-      autocompletion({ override: [latexCompletionSource(() => projectScanRef.current, () => activeRef.current)], activateOnCompletion: (c) => /\{\}$/.test(c.displayLabel ?? c.label) }),
+      autocompletion({
+        override: [
+          latexCompletionSource(() => projectScanRef.current, () => activeRef.current),
+          zoteroCompletionSource({
+            enabled: () => loadSettings().zoteroCompletion,
+            search: (q, signal) => searchZotero(q, signal).then((res) => res.items),
+            own: () => new Set(projectScanRef.current.bib.map((e) => e.key.toLowerCase())),
+            pick: (hit) => (apiRef.current ? addZoteroHit(apiRef.current, hit) : Promise.resolve(null))
+          })
+        ],
+        activateOnCompletion: (c) => /\{\}$/.test(c.displayLabel ?? c.label)
+      }),
       spellChecker({
         enabled: () => spellOnRef.current,
         path: () => activeRef.current,
@@ -2723,6 +2755,7 @@ function Editor({ projectId }: { projectId: string }) {
       <Icon name="sidebar.left" />
     </button>
   );
+  apiRef.current = api;
 
   return (
     <EditorContext.Provider value={api}>
@@ -3107,6 +3140,7 @@ function Editor({ projectId }: { projectId: string }) {
               onContinueInAgent={continueInAgent}
               onManagePersonas={() => setSettingsOpen('personas')}
             />
+            <ZoteroCite />
           </section>
 
           {layout.view === 'split' && <div className="column-divider" role="separator" aria-orientation="vertical" aria-label="Resize" onMouseDown={startResize} />}
@@ -3451,6 +3485,7 @@ function Editor({ projectId }: { projectId: string }) {
               },
               { separator: true },
               !!diagram && { label: 'Edit diagram', onSelect: () => drawDiagram(diagram) },
+              isTex(activePath) && { label: 'Cite from Zotero…', onSelect: () => window.dispatchEvent(new Event(ZOTERO_CITE)) },
               { label: 'Add to-do here', onSelect: () => addTodoAtLine(lineMenu.pos) }
             ];
           })()}

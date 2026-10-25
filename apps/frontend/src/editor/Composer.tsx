@@ -7,7 +7,8 @@ import { MenuButton } from '../app/Menu';
 import { effortOptions, modelOf, presetOf, searchConfigFor, updateSettings, useLivePreset, useProviders } from '../app/settings';
 import { useEditor } from './EditorContext';
 import type { PendingChange } from './EditorContext';
-import { Markdown, VISION_HINTS, VISION_MODES, buildProjectContext, citationText, errorText, isTex, patchesToChanges } from './shared';
+import { Markdown, VISION_HINTS, VISION_MODES, buildProjectContext, citationText, errorText, isTex, patchesToChanges, reloadBib } from './shared';
+import { ZOTERO_CITE } from './zotero';
 import type { VisionMode } from './shared';
 import { chatMessage, useChatThread } from './chatThread';
 import { resolveInstructions } from './personas';
@@ -169,12 +170,7 @@ export default function Composer({
     a.insertAtCursor(await citationText(a, [key]), { afterSelection: true });
   };
 
-  const afterReferences = async (results: ReferenceResult[], bibFile: string) => {
-    const a = latest.current;
-    if (!results.some((r) => r.status === 'added')) return;
-    if (!a.bibFiles.includes(bibFile)) await a.refreshTree();
-    await a.reloadFiles([bibFile]);
-  };
+  const afterReferences = (results: ReferenceResult[], bibFile: string) => reloadBib(latest.current, results, bibFile);
 
   /** Cites a single looked-up reference at the cursor, but only where the user has put it (and without taking focus from here). */
   const autoCite = async (results: ReferenceResult[]) => {
@@ -612,6 +608,11 @@ export default function Composer({
               )}
               <PersonaPicker value={personaId} onChange={choosePersona} onManage={onManagePersonas} />
             </>
+          )}
+          {mode === 'references' && (
+            <button className="chip" title="Pick references from your Zotero library and cite them at the cursor" onClick={() => window.dispatchEvent(new Event(ZOTERO_CITE))}>
+              <Icon name="quote.opening" /> Cite from Zotero
+            </button>
           )}
           <span className="grow" />
           {mode === 'assistant' && (

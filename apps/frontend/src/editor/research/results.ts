@@ -7,6 +7,7 @@ export const SOURCES: [ResearchSource, string][] = [
   ['crossref', 'Crossref'],
   ['pubmed', 'PubMed'],
   ['web', 'Web'],
+  ['zotero', 'Zotero'],
   ['bib', '.bib']
 ];
 export const SOURCE_LABELS = Object.fromEntries(SOURCES) as Record<ResearchSource, string>;

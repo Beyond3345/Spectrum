@@ -489,7 +489,7 @@ export function parseBibEntries(text) {
   });
 }
 
-function bibIdentity(entry, file) {
+export function bibIdentity(entry, file) {
   const f = entry.fields;
   const doiMatch = (f.doi || '').match(DOI_RE) || (f.url || '').match(DOI_RE);
   const doi = doiMatch ? cleanDoi(doiMatch[1]).toLowerCase() : '';
@@ -1110,18 +1110,40 @@ function withBibLock(fn) {
   return run;
 }
 
+/**
+ * What an add to the project's .bib starts from: the target file (pickBibTarget), whether the document it serves uses
+ * biblatex, whether its style is a classic BibTeX one, and every .bib's entries with their keys.
+ */
+async function bibContext(projectRoot, bibFile) {
+  const files = await projectFiles(projectRoot);
+  const sources = await Promise.all(files.filter((f) => /\.tex$/i.test(f)).map((file) => fs.readFile(path.join(projectRoot, file), 'utf8').catch(() => '')));
+  const target = pickBibTarget(projectRoot, files, bibFile, sources);
+  const bibliographySources = withoutComments(sources.filter((source) => texIncludesBib([source], target)).join('\n'));
+  const BIBLATEX = /\\addbibresource\b|\{biblatex\}/;
+  // Classic BibTeX styles ignore url; modern styles print it, so never emit both fields.
+  const legacyUrls = /\\bibliographystyle\s*\{(?:plain|abbrv|alpha|unsrt|acm|apalike|ieeetr)\}/.test(bibliographySources) && !BIBLATEX.test(bibliographySources);
+  const index = await loadBibIndex(projectRoot, files);
+  return {
+    sources,
+    target,
+    // a .bib no document loads yet goes with what the documents use
+    biblatex: BIBLATEX.test(bibliographySources || withoutComments(sources.join('\n'))),
+    legacyUrls,
+    index,
+    taken: new Set(index.map((e) => e.key.toLowerCase()))
+  };
+}
+
+// the project's Zotero collection follows what was added (zoteroService imports this module, so it's loaded by then)
+function afterAdd(projectRoot, out) {
+  if (out.results.some((r) => r.status === 'added')) import('./zoteroService.js').then((z) => z.syncSoon(projectRoot)).catch(() => {});
+  return out;
+}
+
 /** items: detectInput's { kind, … }. Looks each up and appends the new ones to the target .bib, duplicates caught. */
 export async function resolveItems(projectRoot, items, bibFile, searchConfig) {
-  return withBibLock(async () => {
-    const files = await projectFiles(projectRoot);
-    const sources = await Promise.all(files.filter((f) => /\.tex$/i.test(f)).map((file) => fs.readFile(path.join(projectRoot, file), 'utf8').catch(() => '')));
-    const target = pickBibTarget(projectRoot, files, bibFile, sources);
-    const bibliographySources = withoutComments(sources.filter((source) => texIncludesBib([source], target)).join('\n'));
-    // Classic BibTeX styles ignore url; modern styles print it, so never emit both fields.
-    const legacyUrls = /\\bibliographystyle\s*\{(?:plain|abbrv|alpha|unsrt|acm|apalike|ieeetr)\}/.test(bibliographySources)
-      && !/\\addbibresource\b|\{biblatex\}/.test(bibliographySources);
-    const index = await loadBibIndex(projectRoot, files);
-    const taken = new Set(index.map((e) => e.key.toLowerCase()));
+  return afterAdd(projectRoot, await withBibLock(async () => {
+    const { sources, target, legacyUrls, index, taken } = await bibContext(projectRoot, bibFile);
     const outcomes = await mapPool(items, 4, (item) => lookup(item, index, searchConfig));
 
     const results = [];
@@ -1150,7 +1172,48 @@ export async function resolveItems(projectRoot, items, bibFile, searchConfig) {
       results.push({ input, status: 'added', key, bibtex, bibFile: target, ...summaryOf(record) });
     }
     return { results, bibFile: target, bibIncluded: texIncludesBib(sources, target) };
-  });
+  }));
+}
+
+// what a key may hold: not what ends one in an entry's head (parseBibEntries), nor TeX's specials
+const VALID_KEY = /^[^,\s{}()"=#%~\\]+$/;
+
+/**
+ * Ready-made entries (Zotero's) appended to the target .bib as resolveItems appends its own, under the same lock and
+ * duplicate checks. make(context) gives [{ input, bibtex, key }] or [{ input, error }], key the one the entry should
+ * go in under: it does, unless the .bib has that key for another work, when the first free one after it is used.
+ */
+export async function appendEntries(projectRoot, bibFile, make) {
+  return afterAdd(projectRoot, await withBibLock(async () => {
+    const context = await bibContext(projectRoot, bibFile);
+    const { sources, target, index, taken } = context;
+    const results = [];
+    for (const { input, bibtex, key: wanted, error } of await make(context)) {
+      const [entry] = error ? [] : parseBibEntries(bibtex);
+      if (!entry) {
+        results.push({ input, status: 'error', message: error || 'That entry couldn’t be read.' });
+        continue;
+      }
+      const id = bibIdentity(entry, target);
+      const existing = findDuplicate(index, id);
+      if (existing) {
+        results.push(duplicateResult(input, existing));
+        continue;
+      }
+      const key = uniqueKey([wanted, entry.key].find((k) => VALID_KEY.test(k || '')) || 'Ref', taken);
+      const text = bibtex.trim().replace(/^(@[A-Za-z]+\s*[{(]\s*)[^,\s{}()"=]+/, (_, head) => head + key);
+      try {
+        await appendEntry(safeJoin(projectRoot, target), text);
+      } catch (err) {
+        results.push({ input, status: 'error', message: `Couldn’t write to ${target}: ${err.message}` });
+        continue;
+      }
+      taken.add(key.toLowerCase());
+      index.push({ ...id, key });
+      results.push({ input, status: 'added', key, bibtex: text, bibFile: target, title: id.displayTitle || undefined, year: id.year || undefined, doi: id.doi || undefined });
+    }
+    return { results, bibFile: target, bibIncluded: texIncludesBib(sources, target) };
+  }));
 }
 
 export async function resolveReferences({ projectRoot, input, bibFile, llmConfig, searchConfig }) {

@@ -34,6 +34,7 @@ import { registerReviewRoutes } from './routes/review.js';
 import { registerGitHubRoutes } from './routes/github.js';
 import { commitWaiting, resumeBackups, startRetries } from './services/githubService.js';
 import { startSettingsRepo } from './services/settingsRepoService.js';
+import { registerZoteroRoutes } from './routes/zotero.js';
 import { seedTemplates, syncTemplates } from './services/templateService.js';
 import { dropOldAuxFolders, migrateLegacyProjects } from './services/projectService.js';
 import { migrateToV2 } from './services/mirrorService.js';
@@ -104,6 +105,7 @@ registerPresenceRoutes(fastify);
 registerTexlabRoutes(fastify);
 registerReviewRoutes(fastify);
 registerGitHubRoutes(fastify);
+registerZoteroRoutes(fastify);
 
 // Serve the built frontend (production and desktop modes)
 if (existsSync(FRONTEND_DIST)) {

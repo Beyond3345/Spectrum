@@ -38,6 +38,7 @@ import { BIB_TOOLS, SUPPORTED_ENGINES } from '../services/compileService.js';
 import { SKILL_ID } from '../services/skillService.js';
 import { knownMachineNames } from '../services/presenceService.js';
 import { stopProjectTexlab } from '../services/texlabService.js';
+import { syncSoon } from '../services/zoteroService.js';
 import { conflictCopies } from '../utils/conflictCopies.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
 
@@ -601,6 +602,8 @@ export function registerProjectRoutes(fastify) {
       throw err;
     }
     await touchProject(root).catch(() => {});
+    // the project's Zotero collection follows the .bib a little after the saves stop, entries taken out included
+    if (/\.bib$/i.test(filePath)) syncSoon(root, { remove: true, delay: 5000 });
     return { ok: true, hash: sha256(content ?? '') };
   }));
 
