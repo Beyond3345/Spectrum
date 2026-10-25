@@ -39,6 +39,7 @@ import Select from './Select';
 import Sheet from './Sheet';
 import Tabs from './Tabs';
 import { ParserFields } from './TransferPanel';
+import GitHubSettings from './GitHubSettings';
 import { IS_DESKTOP, claimDefaultHandler, pickFolder } from './desktop';
 import { toast } from './Toast';
 import { IS_MAC, IS_WINDOWS, OS_NAME, tildify } from './platform';
@@ -84,6 +85,7 @@ export type Section =
   | 'language'
   | 'shortcuts'
   | 'projects'
+  | 'github'
   | 'models'
   | 'personas'
   | 'skills'
@@ -100,6 +102,7 @@ const SECTIONS: [Section, string, string][] = [
   ['language', 'Spelling & grammar', 'textformat.abc.dottedunderline'],
   ['shortcuts', 'Shortcuts', 'keyboard'],
   ['projects', 'Projects', 'folder'],
+  ['github', 'GitHub', 'arrow.triangle.branch'],
   ['models', 'Models', 'sparkles'],
   ['personas', 'Personas', 'brain.head.profile'],
   ['skills', 'Skills', 'graduationcap'],
@@ -497,6 +500,8 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
           {section === 'skills' && <SkillsPane projectId={projectId} />}
 
           {section === 'agents' && <AgentsPane />}
+
+          {section === 'github' && <GitHubSettings />}
 
           {section === 'projects' && (
             <>

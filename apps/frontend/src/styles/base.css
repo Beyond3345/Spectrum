@@ -1852,6 +1852,20 @@ textarea.skill-file-text {
   margin-top: 12px;
 }
 
+/* Settings › GitHub: the device sign-in's code, read off the screen into GitHub's page */
+.device-code {
+  margin: 8px 0;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  user-select: all;
+}
+
+.field > .row.spread {
+  align-items: center;
+  justify-content: space-between;
+}
+
 /* --------------------------------------------------------------------------
    Motion
    -------------------------------------------------------------------------- */
