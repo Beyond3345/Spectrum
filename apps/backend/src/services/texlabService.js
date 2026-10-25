@@ -157,7 +157,7 @@ const failed = new Map();
 export async function texlabSession(projectId) {
   const entry = sessions.get(projectId);
   const current = await entry;
-  // its folder has moved (Relocate, Sync to): a TexLab on the old one has old text, and F2 would plan against it
+  // its folder has moved (Relocate, Move to this computer): a TexLab on the old one has old text, and F2 would plan against it
   if (current && !current.ended && sessions.get(projectId) === entry) {
     const root = await getProjectRoot(projectId).catch(() => current.root);
     if (root !== current.root && sessions.get(projectId) === entry) await stopProjectTexlab(projectId);

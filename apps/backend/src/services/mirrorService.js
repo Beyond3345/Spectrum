@@ -1,106 +1,39 @@
-// Cloud projects kept as a mirror: the project stays in its folder on this computer, and its copy in a cloud location
-// (OneDrive, Dropbox, iCloud Drive, a NAS…) is kept in step file by file, the way git merges: a file changed on one
-// side goes across, one changed on both is merged by lines, or this computer's is kept and the other text put beside
-// it as a conflicted copy. Deletions go across too, but only ever from a whole view of both sides.
-// This computer's own records, never synced (1.7.0 and 1.8.0 never look):
-//   DATA_DIR/mirror/<id>.json           { location, rel, files, folder }: the copy at <location>/<rel>, and the base,
-//                                       each file as both sides last agreed on it, keyed by its path in NFC and lower
-//                                       case (APFS and NTFS ignore case): { rel, hash, l: { size, mtimeMs }, c: { size,
-//                                       mtimeMs }, by }, with each side's own stat then and which side wrote it ('here',
-//                                       'there'), and for a project.json this computer wrote to the cloud copy, prev:
-//                                       the hash of the one it was written on; and the copy's folder's identity then,
-//                                       which a rename keeps
-//   DATA_DIR/mirror/<id>/base/<sha>.gz  the base's text of the files a merge needs (text files and project.json)
-//   DATA_DIR/mirror/<id>/incoming/      the cloud's files read during a pass, where nothing else looks
-import { promises as fs, constants } from 'fs';
+// What's left of 1.10's cloud mirror, which kept a project here in step with a copy in a cloud location (Synology
+// Drive, OneDrive, Dropbox, iCloud Drive) until 2.0 moved syncing to GitHub: its records, read and never written, so
+// that going back to 1.10.4 resumes mirroring from the last state both copies agreed on, and the move to 2.0.
+//   DATA_DIR/mirror/<id>.json           1.10's record of a mirrored project: { location, rel, files, folder }, the copy
+//                                       at <location>/<rel>, and the base, each file as both sides last agreed on it,
+//                                       keyed by its path in NFC and lower case: { rel, hash, l, c, by }, with l and c
+//                                       each side's { size, mtimeMs } then (c missing where the last pass wrote the
+//                                       cloud's and left it to hash again)
+//   DATA_DIR/mirror/<id>/base/          the base's text, which 1.10.4 merges against
+//   DATA_DIR/v2-migration.json          what the first start of 2.0 found: { ranAt, mirrored, inPlace, dismissedAt? }
+import { promises as fs } from 'fs';
 import path from 'path';
-import os from 'os';
-import crypto from 'crypto';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-import { gzip, gunzip } from 'zlib';
 import { DATA_DIR } from '../config/constants.js';
-import { freePath, mirrorSkips, readJson, readdirTyped, renameOver, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
-import { mergeText } from '../utils/merge3.js';
-import { conflictCopyPath, decide as decideFile, keyOf, mergeChatFiles, mergeMeta, mergeSessionFiles } from './mergeRules.js';
+import { mirrorSkips, readJson, readdirTyped, writeJsonAtomic } from '../utils/fsUtils.js';
 import { hashFile } from '../utils/projectCopy.js';
-import { appPath, findSyncedProjects, getProjectRoot, httpError, serialiser, updateMeta } from './projectService.js';
-import { locationLabel, offlineMessage, otherComputersProjects, relFrom, sameFolder, within } from './syncService.js';
-import { createVersion, isText, listVersions } from './versionService.js';
-import { moveToBin } from '../routes/projects.js';
+import { keyOf } from './mergeRules.js';
+import { listProjects } from './projectService.js';
+import { placeOf, within } from './syncService.js';
 
 const MIRROR_DIR = path.join(DATA_DIR, 'mirror');
+const MIGRATION_PATH = path.join(DATA_DIR, 'v2-migration.json');
 const ID_RE = /^[A-Za-z0-9_-]+$/;
-const META = '.spectrum/project.json';
-const OBJECTS = '.spectrum/history/objects';
-const MANIFEST = /^\.spectrum\/history\/manifests\/\d+\.json$/;
-const EVERY_MS = 60_000;
-const SAVE_DELAY_MS = 2000;
-const VERSION_EVERY_MS = 10 * 60 * 1000;
-// ponytail: a bigger text file isn't merged, only kept here with a conflicted copy; raise it if that bites
-const MERGE_MAX_BYTES = 10 * 1024 * 1024;
+// ponytail: a cloud copy that takes longer than this to look through (online-only, a NAS out of reach) isn't checked
+const CHECK_MS = 20_000;
 
-const execFileAsync = promisify(execFile);
-const gzipAsync = promisify(gzip);
-const gunzipAsync = promisify(gunzip);
-const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
-const exists = (p) => fs.access(p).then(() => true, () => false);
-
-const recordPath = (id) => path.join(MIRROR_DIR, `${id}.json`);
-const workDir = (id, ...parts) => path.join(MIRROR_DIR, id, ...parts);
-const basePath = (id, hash) => workDir(id, 'base', `${hash}.gz`);
-const inApp = (key) => key.startsWith('.spectrum/');
 const join = (root, rel) => path.join(root, ...rel.split('/').filter(Boolean));
-const stat = (s) => s && { size: s.size, mtimeMs: s.mtimeMs };
-const sameStat = (a, b) => (!a && !b) || (!!a && !!b && a.size === b.size && a.mtimeMs === b.mtimeMs);
-const entry = (rel, hash, l, c, by) => ({ rel, hash, l: stat(l), c: stat(c), by });
-// not there (a missing folder on the way included) is null; anything else is an error
-const absent = async (err) => {
-  if (['ENOENT', 'ENOTDIR'].includes(err.code)) return null;
-  throw err;
-};
-const statOf = (abs) => fs.lstat(abs).then(stat, absent);
-const hashOf = (abs) => hashFile(abs).catch(absent);
-const attention = (message) => ({ state: 'attention', message });
 
-const defaults = {
-  rootOf: getProjectRoot,
-  // a deletion there reaches here only when a pass this long after the first that saw it still does
-  confirmMs: EVERY_MS / 2,
-  // never through Finder, which on a volume without a Bin (a NAS) asks before deleting for good: macOS 15's trash
-  // command fails there instead (not with the tests' stand-in for the Bin, which moveToBin uses)
-  toBin: async (abs) => {
-    if (process.platform !== 'darwin' || process.env.SPECTRUM_TEST_BIN_DIR) return moveToBin(abs);
-    try {
-      await execFileAsync('/usr/bin/trash', [abs]);
-    } catch (err) {
-      // macOS 13 and 14 have no trash command: Finder's Bin then, but only on the home folder's volume, which has one
-      if (err.code !== 'ENOENT' || (await fs.stat(abs)).dev !== (await fs.stat(os.homedir())).dev) throw err;
-      await moveToBin(abs);
-    }
-  }
-};
-let hooks = defaults;
-
-/** For tests: where a project's folder is, without the registry, and a Bin of their own. */
-export function mirrorHooks(next = {}) {
-  hooks = { ...defaults, ...next };
-}
-
-/** A cloud copy, or a file in one, to the Bin as the mirror sends one: through Finder only on the home folder's volume. */
-export const cloudToBin = (abs) => hooks.toBin(abs);
-
-// ─── Records ───
-
-/** The project's mirror record, { location, rel, files, folder }, or null when it isn't mirrored. */
+/** The project's mirror record, { location, rel, files, folder }, or null when 1.10 didn't mirror it. */
 export async function readMirror(id) {
   if (!ID_RE.test(String(id || ''))) return null;
-  const data = await readJson(recordPath(id)).catch(() => null);
+  const data = await readJson(path.join(MIRROR_DIR, `${id}.json`)).catch(() => null);
   if (typeof data?.location !== 'string' || !path.isAbsolute(data.location) || typeof data.rel !== 'string' || data.rel.split('/').includes('..')) return null;
   return { location: data.location, rel: data.rel, files: data.files && typeof data.files === 'object' ? data.files : {}, folder: data.folder };
 }
 
-/** Every mirrored project: [{ id, location, rel }]. */
+/** Every project 1.10 mirrored: [{ id, location, rel }]. */
 export async function listMirrored() {
   const found = [];
   for (const name of await fs.readdir(MIRROR_DIR).catch(() => [])) {
@@ -114,43 +47,9 @@ export async function listMirrored() {
 export const cloudRootOf = (record) => join(record.location, record.rel);
 
 /**
- * Mirror the project into <location>/<rel>, rel '/'-separated. files: the copy's files as copyProject gives them,
- * which both sides then have as they are; none (Download, or a copy that was already there) and the first pass keeps
- * everything on either side and deletes nothing.
+ * The mirrored project whose cloud copy p is in, and p's '/'-separated path in it; null outside them all. That copy
+ * keeps the project's id, so it never becomes a project of its own, which 1.10.4 would then find holding another one.
  */
-export function linkMirror(id, { location, rel, files = {} }) {
-  if (!ID_RE.test(String(id || ''))) throw httpError('Project not found.', 404);
-  return lockOf(id)(async () => {
-    const base = {};
-    for (const [fileRel, { hash }] of Object.entries(files)) {
-      if (!mirrorSkips(fileRel) && !keyOf(fileRel).startsWith(`${OBJECTS}/`)) base[keyOf(fileRel)] = { rel: fileRel, hash, by: 'here' };
-    }
-    await fs.rm(workDir(id), { recursive: true, force: true });
-    await writeJsonAtomic(recordPath(id), { location, rel, files: base });
-    statuses.delete(id);
-    unreadFor.delete(id);
-    deletedThere.delete(id);
-    metaGone.delete(id);
-  });
-}
-
-/** Stop mirroring the project; both copies stay as they are. */
-export function unlinkMirror(id) {
-  if (!ID_RE.test(String(id || ''))) throw httpError('Project not found.', 404);
-  return lockOf(id)(() => forget(id));
-}
-
-async function forget(id) {
-  await fs.rm(recordPath(id), { force: true });
-  await fs.rm(workDir(id), { recursive: true, force: true });
-  statuses.delete(id);
-  unreadFor.delete(id);
-  versionedAt.delete(id);
-  deletedThere.delete(id);
-  metaGone.delete(id);
-}
-
-/** The mirrored project whose cloud copy p is in, and p's '/'-separated path in it; null outside them all. */
 export async function cloudCopyOwner(p) {
   for (const m of await listMirrored()) {
     const root = cloudRootOf(m);
@@ -159,668 +58,105 @@ export async function cloudCopyOwner(p) {
   return null;
 }
 
-// ─── Passes ───
+// ─── The move to 2.0 ───
 
-// one pass at a time across every project, so at most one waits on a sync app that's downloading or out of reach
-const queue = serialiser();
-const waiting = new Map();
-// and per project, so linking and unlinking never land in the middle of a pass
-const locks = new Map();
-const lockOf = (id) => locks.get(id) || locks.set(id, serialiser()).get(id);
-const statuses = new Map();
-// the files a pass couldn't read, by project: key → passes in a row
-const unreadFor = new Map();
-// when each project last had a "Before sync" version
-const versionedAt = new Map();
-// the deletions there a pass hasn't made here yet, by project: key → when a pass first saw it
-const deletedThere = new Map();
-// when a pass first found the cloud copy's .spectrum without its project.json, by project
-const metaGone = new Map();
-const WAIT_META_MS = 10 * 60 * 1000;
+const tooLong = () => Object.assign(new Error('Took too long.'), { code: 'ETIMEDOUT' });
+const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(tooLong()), Math.max(0, ms)).unref());
 
 /**
- * How the project's mirror is: { state: 'synced'|'syncing'|'waiting'|'attention'|'missing'|'not-found', message?, at? },
- * 'syncing' until its first pass is done.
+ * What the cloud copy has that this computer never received, from each of its files' size and time against the
+ * base's (or, for one the last pass wrote there, its hash): { changed, deleted }, '/'-separated, the project's own
+ * files only (not .spectrum). Only stats are read, and files whose stat changed are hashed only where the base
+ * has no stat; nothing is written or merged.
  */
-export function mirrorStatus(id) {
-  return statuses.get(id) || { state: 'syncing' };
-}
-
-/**
- * Bring the project and its cloud copy into step after any pass before it, whichever project's; resolves to the
- * status, or null when it isn't mirrored. A project already waiting for its turn goes once. force: Sync anyway, past
- * the brake on deleting many files for the deletions the dialog showed (the status's deleting) that it still holds back.
- */
-export function syncProject(id, { force = [] } = {}) {
-  let next = waiting.get(id);
-  if (!next) {
-    next = { force: [] };
-    next.done = queue(() => {
-      waiting.delete(id);
-      return lockOf(id)(() => pass(id, next.force));
-    });
-    waiting.set(id, next);
-  }
-  next.force.push(...force);
-  return next.done;
-}
-
-const saveTimers = new Map();
-
-/** A file of the project was saved: a pass 2 s after the last save, if it's mirrored. */
-export function afterSave(id) {
-  clearTimeout(saveTimers.get(id));
-  const timer = setTimeout(async () => {
-    saveTimers.delete(id);
-    if (await readMirror(id)) syncProject(id);
-  }, SAVE_DELAY_MS);
-  saveTimers.set(id, timer.unref());
-}
-
-let ticker = null;
-
-/** A pass for every mirrored project now, then every minute. */
-export function startMirroring() {
-  stopMirroring();
-  const all = async () => {
-    for (const { id } of await listMirrored()) syncProject(id);
-  };
-  all();
-  ticker = setInterval(all, EVERY_MS).unref();
-}
-
-export function stopMirroring() {
-  clearInterval(ticker);
-  ticker = null;
-  for (const timer of saveTimers.values()) clearTimeout(timer);
-  saveTimers.clear();
-}
-
-async function pass(id, force) {
-  const record = await readMirror(id);
-  if (!record) return null;
-  const label = await locationLabel(record.location).catch(() => path.basename(record.location));
-  let status;
-  try {
-    status = await mirror(id, record, label, force);
-  } catch (err) {
-    const offline = await offlineMessage(err).catch(() => null);
-    if (offline) status = { state: 'waiting', message: offline };
-    else status = attention(['EPERM', 'EACCES'].includes(err.code) ? `Spectrum needs access to ${label}.` : err.message);
-  } finally {
-    await fs.rm(workDir(id, 'incoming'), { recursive: true, force: true }).catch(() => {});
-  }
-  if (status) statuses.set(id, status);
-  return status;
-}
-
-/** The project's folder somewhere else in the location (moved or renamed there), up to 3 levels down: its rel, or null unless just one. */
-async function findCopy(location, id) {
-  const found = (await findSyncedProjects(location, Date.now() + 20_000)).filter((f) => f.id === id);
-  return found.length === 1 ? relFrom(location, found[0].root) : null;
-}
-
-// a folder's identity on its volume, which a rename keeps and a copy doesn't (APFS's inode, NTFS's file id), or null
-const folderOf = (root) => fs.stat(root, { bigint: true }).then((s) => (s.ino ? `${s.dev}:${s.ino}` : null), () => null);
-
-/** One pass: the guards, both walks, what each file needs, a version before anything here is replaced, then doing it. */
-async function mirror(id, record, label, force) {
-  // both sides there, and both this project, else a missing or emptied one would read as everything deleted
-  let localRoot;
-  try {
-    localRoot = await hooks.rootOf(id);
-  } catch (err) {
-    // not in the list any more: removed or binned by 1.8.0 or 1.7.0, which don't know about mirrors
-    if (err.code === 'PROJECT_NOT_FOUND') return forget(id).then(() => null);
-    return { state: 'missing', message: 'Folder missing' };
-  }
-  // the folder is in the location itself (moved there, or Locate… chose the cloud copy): a project used in place
-  if (within(localRoot, record.location)) {
-    await forget(id);
-    return null;
-  }
-  if ((await readJson(join(localRoot, META)).catch(() => null))?.id !== id) return attention('This project’s folder holds another project now.');
-  try {
-    await fs.stat(record.location);
-  } catch (err) {
-    await absent(err);
-    return { state: 'waiting', message: `Waiting for ${label}` };
-  }
-  let cloudRoot = cloudRootOf(record);
-  const cloudMeta = await readJson(join(cloudRoot, META)).catch((err) => (err instanceof SyntaxError ? {} : absent(err)));
-  if (!cloudMeta) {
-    // only project.json gone (a sync app replacing it, iCloud Drive's stand-in for it, asked for back): the copy is
-    // still there, and another folder with its id may be a Finder duplicate. One a move left empty has no .spectrum.
-    // Only while the folder there is still the copy (not one a sync app made again at the old path for a file it
-    // brought after a rename), and for 10 minutes at most but for iCloud Drive's stand-in (a copy removed a file at a
-    // time can leave a .spectrum of history a pass put back as it went)
-    const since = metaGone.get(id) ?? metaGone.set(id, Date.now()).get(id);
-    const copy = (await exists(join(cloudRoot, '.spectrum'))) && (!record.folder || (await folderOf(cloudRoot)) === record.folder);
-    if (copy && (Date.now() - since < WAIT_META_MS || (await exists(join(cloudRoot, '.spectrum/.project.json.icloud'))))) {
-      if (process.platform === 'darwin') execFile('/usr/bin/brctl', ['download', join(cloudRoot, META)], () => {});
-      return { state: 'waiting', message: `Waiting for ${label}` };
-    }
-    // moved or renamed in the location: followed there, never unlinked by itself (the sync app may be bringing it
-    // back). The same folder under a new name keeps its base; another copy (a Finder duplicate made weeks ago) starts
-    // with none, so the first pass there is a union, which deletes and overwrites nothing
-    const rel = await findCopy(record.location, id);
-    if (rel === null) return { state: 'not-found', message: `Not in ${label}` };
-    metaGone.delete(id);
-    record.rel = rel;
-    cloudRoot = cloudRootOf(record);
-    if (!record.folder || (await folderOf(cloudRoot)) !== record.folder) record.files = {};
-    await writeJsonAtomic(recordPath(id), record);
-  } else if (cloudMeta.id !== id) return attention(`The copy in ${label} holds another project now.`);
-  else metaGone.delete(id);
-
-  // the copy's identity now, before anything can move it: a rename during the pass keeps it, and the path then has none
-  const folder = await folderOf(cloudRoot);
-  const here = await walk(localRoot);
-  const there = await walk(cloudRoot);
-  // project.json gone from a walk: that side is going, or can't be seen into, so nothing is decided from it. Read again
-  // after both walks too: readdir lists .spectrum first, so a side moved away whole (to the Bin, say) during its walk
-  // would otherwise read as emptied
-  const still = async (root) => (await readJson(join(root, META)).catch(() => null))?.id === id;
-  if (!here.files.has(META) || !there.files.has(META) || !(await still(localRoot)) || !(await still(cloudRoot))) return { state: 'waiting', message: `Waiting for ${label}` };
-  const ctx = { id, label, record, localRoot, cloudRoot, here, incoming: workDir(id, 'incoming'), fetched: 0, made: new Set() };
-  await fs.rm(ctx.incoming, { recursive: true, force: true });
-  await fs.mkdir(ctx.incoming, { recursive: true });
-  const next = {};
-  const problems = [];
-  const unread = new Map();
-  const items = [];
-  for (const key of new Set([...here.files.keys(), ...there.files.keys(), ...Object.keys(record.files)])) {
-    const base = record.files[key];
-    const [l, ...moreHere] = here.files.get(key) || [];
-    const [c, ...moreThere] = there.files.get(key) || [];
-    // left as they are, with their base: two names for one key, a link, or a file that can't be read now
-    const keep = () => base && (next[key] = base);
-    if (moreHere.length || moreThere.length) {
-      const [a, b] = moreHere.length ? [l, moreHere[0]] : [c, moreThere[0]];
-      problems.push(`“${a.rel}” and “${b.rel}” differ only in letter case, which macOS and Windows can’t keep apart. Rename one of them.`);
-      keep();
-      continue;
-    }
-    // or a file in a folder a side has as a link, which the walk never goes into: its files there would read as deleted
-    const linked = (side) => key.split('/').slice(0, -1).some((_, i, parts) => side.files.get(parts.slice(0, i + 1).join('/'))?.[0]?.link);
-    if (l?.link || c?.link || linked(here) || linked(there)) {
-      keep();
-      continue;
-    }
-    const stub = l?.stub || c?.stub;
-    if (stub) {
-      // iCloud Drive moved it off this Mac: asked for it back, for a later pass
-      if (process.platform === 'darwin') execFile('/usr/bin/brctl', ['download', stub], () => {});
-      unread.set(key, Object.assign(new Error('Not downloaded.'), { code: 'ETIMEDOUT', syscall: 'open', path: stub }));
-      keep();
-      continue;
-    }
-    const it = { key, base, l, c };
-    try {
-      if (l && c && l.rel.normalize('NFC') !== c.rel.normalize('NFC')) await respell(ctx, it);
-      if (l) l.hash = sameStat(l, base?.l) ? base.hash : await hashFile(join(localRoot, l.rel));
-      if (c) c.hash = sameStat(c, base?.c) ? base.hash : await fetchCloud(ctx, it);
-      // this computer's project.json set aside by a sync app for another computer's: merged against what it was written on
-      if (key === META && base?.prev) it.setAside = await ownCopy(ctx, base);
-      if (it.setAside) it.base = { ...base, hash: base.prev };
-      it.action = decide(it);
-      if (it.action === 'merge') await merge(ctx, it);
-      // a chat only gains messages: the cloud's lacking some this computer's has lost them to a sync app's conflicted copy
-      if (it.action === 'toLocal' && l && CHAT.test(key)) {
-        const both = await bothChats(ctx, it);
-        if (both?.more) Object.assign(it, { data: both.data, action: 'write' });
-      }
-      if (it.action === 'toLocal' && key === META) {
-        it.meta = JSON.parse(await fs.readFile(it.fetched, 'utf8'));
-        it.action = 'meta';
-      }
-    } catch (err) {
-      // gone or still changing since the walk: the next pass sees it as it is then
-      if (!['ENOENT', 'CHANGED'].includes(err.code)) unread.set(key, err);
-      keep();
-      continue;
-    }
-    items.push(it);
-  }
-
-  // a copy a sync app is removing a file at a time (another computer's Stop syncing › Delete) still has its
-  // project.json for a moment: by a later pass it hasn't, and what went first isn't deleted here. ponytail: a sync app
-  // that keeps project.json longer than confirmMs mid-delete still lets the deletions before it through
-  const seen = deletedThere.get(id) || new Map();
-  const due = new Map(items.filter((it) => it.action === 'deleteLocal').map((it) => [it.key, seen.get(it.key) ?? Date.now()]));
-  deletedThere.set(id, due);
-  const deferred = items.filter((it) => it.action === 'deleteLocal' && Date.now() - due.get(it.key) < hooks.confirmMs);
-  for (const it of deferred) it.action = 'keep';
-
-  // a pass that would delete a good part of a side is more likely a sync app halfway through than the user; of all its
-  // files, and of the user's alone, which a long history would otherwise hide. Sync anyway lets through the deletions
-  // its dialog showed that the brake still holds back, each the way it showed, and only those: any others are counted
-  // again (a pass between may have held back more)
-  const tag = (it) => `${it.action} ${it.key}`;
-  const approved = new Set((statuses.get(id)?.deleting || []).filter((d) => force.includes(d)));
-  // Delete automatic checkpoints, on either computer, isn't counted: an unnamed compile checkpoint's manifest, as the
-  // side that still has it says. Only while every checkpoint going that way is one: with a named or manual one among
-  // them (the whole history gone from a side) they all count
-  const automatic = new Set();
-  for (const it of items) {
-    if (!MANIFEST.test(it.key) || !['deleteLocal', 'deleteCloud'].includes(it.action)) continue;
-    const data = await readJson(it.action === 'deleteLocal' ? join(localRoot, it.l.rel) : join(cloudRoot, it.c.rel)).catch(() => null);
-    if (data?.reason === 'compile' && !data.label) automatic.add(it.key);
-  }
-  for (const action of ['deleteLocal', 'deleteCloud']) {
-    const going = items.filter((it) => it.action === action && MANIFEST.test(it.key));
-    if (going.some((it) => !automatic.has(it.key))) for (const it of going) automatic.delete(it.key);
-  }
-  const count = (action, user) => items.filter((it) => it.action === action && !approved.has(tag(it)) && !automatic.has(it.key) && !(user && inApp(it.key))).length;
-  const users = (side) => [...side.files.keys()].filter((key) => !inApp(key)).length;
-  const brake = [
-    [count('deleteLocal'), here.files.size, 'on this computer'],
-    [count('deleteCloud'), there.files.size, `in ${label}`],
-    [count('deleteLocal', true), users(here), 'on this computer'],
-    [count('deleteCloud', true), users(there), `in ${label}`]
-  ].find(([n, of]) => n > 5 && n > of / 4);
-  const braked = brake ? items.filter((it) => it.action.startsWith('delete') && !approved.has(tag(it))) : [];
-  const more = brake && items.some((it) => it.action.startsWith('delete') && approved.has(tag(it)));
-  if (brake) problems.unshift(`Syncing would delete ${brake[0]} ${more ? 'more ' : ''}files ${brake[2]}, so ${more ? 'those haven’t' : 'nothing has'} been deleted. Check the project, then choose Sync anyway if that’s right.`);
-  const deleting = braked.map(tag);
-  for (const it of braked) it.action = 'keep';
-  // history objects are named by their content: whichever side lacks one gets it, and none is ever deleted (so a
-  // clean-up on one computer, 1.7.0's or 1.8.0's, doesn't spread)
-  let history = false;
-  for (const [name, rel] of here.objects) if (!there.objects.has(name)) await place(ctx, cloudRoot, join(localRoot, rel), join(cloudRoot, rel)).catch(() => {});
-  for (const [name, rel] of there.objects) {
-    if (here.objects.has(name)) continue;
-    const got = await place(ctx, localRoot, join(cloudRoot, rel), join(localRoot, rel)).then(
-      () => true,
-      (err) => {
-        unread.set(`${OBJECTS}/${name}`, err);
-        return false;
-      }
-    );
-    history ||= got;
-  }
-  // after the objects, as the version reads the newest manifest's files, and another computer's can come before them
-  const replaced = items.filter((it) => it.l && !inApp(it.key) && ['toLocal', 'write', 'deleteLocal'].includes(it.action));
-  const held = replaced.length ? await keepBefore(ctx, replaced, items) : {};
-  // deletions first, so a file can become a folder of the same name
-  items.sort((a, b) => Number(b.action.startsWith('delete')) - Number(a.action.startsWith('delete')));
-  for (const it of items) {
-    try {
-      const done = await apply(ctx, it, held);
-      if (done) next[it.key] = done;
-      if (it.key.startsWith('.spectrum/history/') && ['toLocal', 'deleteLocal'].includes(it.action)) history = true;
-    } catch (err) {
-      unread.set(it.key, err);
-      if (it.base) next[it.key] = it.base;
-    }
-  }
-  // 1.7.0 lists the versions in index.json, which this computer's copy (kept on a conflict) may lack
-  if (history) await listVersions(localRoot).catch(() => {});
-  await writeJsonAtomic(recordPath(id), { ...record, files: next, folder });
-  await storeBases(ctx, next);
-
-  // a file that couldn't be read 3 passes running (OneDrive's download notice turned off, say) needs the user
-  const before = unreadFor.get(id) || new Map();
-  const runs = new Map([...unread.keys()].map((key) => [key, (before.get(key) || 0) + 1]));
-  unreadFor.set(id, runs);
-  const stuck = [...runs].find(([, n]) => n >= 3)?.[0];
-  if (stuck) {
-    const err = unread.get(stuck);
-    problems.push((await offlineMessage(err).catch(() => null)) || `“${path.basename(stuck)}” hasn’t synced: ${err.message}`);
-  }
-  // brake: what Sync anyway is for, which nothing else needing attention is
-  if (problems.length) return { ...attention(problems[0]), ...(brake && { brake: true, deleting }) };
-  // files not synced yet, either way: not in step, which Stop syncing › Delete needs. confirming: only deletions there
-  // still to be made here, which a copy here kept whole loses nothing by
-  const behind = unread.size + deferred.length;
-  if (behind) return { state: 'syncing', message: `${behind} file${behind > 1 ? 's' : ''} not synced yet`, ...(!unread.size && { confirming: true }) };
-  return { state: 'synced', at: new Date().toISOString() };
-}
-
-/**
- * A side's files by key, each [{ rel, size, mtimeMs }] (two for one key: names that differ only in case, on a
- * volume that tells them apart); { rel, link } for a link or anything else that isn't a plain file, never followed,
- * copied or replaced; { rel, stub } for the file behind iCloud Drive's stand-in for one it moved off this Mac. History
- * objects go by name only. A folder that can't be read stops the walk, so part of a side is never taken for all of it.
- */
-async function walk(root) {
-  const files = new Map();
-  const objects = new Map();
-  const add = (rel, item) => files.set(keyOf(rel), [...(files.get(keyOf(rel)) || []), { rel, ...item }]);
-  // a folder gone since the one around it was listed was moved or deleted: not there
-  const list = (rel) => readdirTyped(join(root, rel)).catch((err) => (rel ? absent(err).then(() => []) : Promise.reject(err)));
+async function cloudChanges(record, deadline) {
+  const root = cloudRootOf(record);
+  const changed = [];
+  const seen = new Set();
   const into = async (rel) => {
-    for (const entry of await list(rel)) {
+    for (const entry of await readdirTyped(join(root, rel))) {
+      if (Date.now() > deadline) throw tooLong();
       const itemRel = rel ? `${rel}/${entry.name}` : entry.name;
-      if (mirrorSkips(itemRel)) continue;
-      if (entry.isDirectory() && keyOf(itemRel) === OBJECTS) {
-        for (const shard of await list(itemRel)) {
-          for (const object of shard.isDirectory() ? await list(`${itemRel}/${shard.name}`) : []) {
-            const objectRel = `${itemRel}/${shard.name}/${object.name}`;
-            if (!mirrorSkips(objectRel)) objects.set(`${shard.name}/${object.name}`, objectRel);
-          }
-        }
-      } else if (entry.isDirectory()) await into(itemRel);
-      else if (/^\..+\.icloud$/.test(entry.name)) {
-        const real = `${rel ? `${rel}/` : ''}${entry.name.slice(1, -'.icloud'.length)}`;
-        if (!mirrorSkips(real)) add(real, { stub: join(root, real) });
-      } else if (!entry.isFile()) add(itemRel, { link: true });
-      else {
-        const found = await statOf(join(root, itemRel));
-        if (found) add(itemRel, found);
+      if (keyOf(itemRel) === '.spectrum' || mirrorSkips(itemRel)) continue;
+      // iCloud Drive's stand-in for a file it moved off this Mac, which can't be compared without downloading it
+      const stub = /^\.(.+)\.icloud$/.exec(entry.name);
+      if (stub) seen.add(keyOf(rel ? `${rel}/${stub[1]}` : stub[1]));
+      else if (entry.isDirectory()) await into(itemRel);
+      else if (entry.isFile()) {
+        const key = keyOf(itemRel);
+        seen.add(key);
+        const base = record.files[key];
+        const now = await fs.lstat(join(root, itemRel));
+        if (base?.c ? base.c.size === now.size && base.c.mtimeMs === now.mtimeMs : base && (await Promise.race([hashFile(join(root, itemRel)), timeout(deadline - Date.now())])) === base.hash) continue;
+        changed.push(itemRel);
       }
     }
   };
   await into('');
-  return { files, objects };
+  const deleted = Object.entries(record.files)
+    .filter(([key, base]) => !key.startsWith('.spectrum/') && !seen.has(key) && typeof base?.rel === 'string')
+    .map(([, base]) => base.rel);
+  return { changed: changed.sort(), deleted: deleted.sort() };
 }
 
+/** 1.10.4 has mirrored since at (gone back to after 2.0's first start): it rewrites a record on every pass. */
+async function mirroredSince(at) {
+  for (const name of await fs.readdir(MIRROR_DIR).catch(() => [])) {
+    if (name.endsWith('.json') && (await fs.stat(path.join(MIRROR_DIR, name)).then((s) => s.mtimeMs > at, () => false))) return true;
+  }
+  return false;
+}
+
+let migrating = null;
+
 /**
- * The same file spelt in other letter case on each side (not only another Unicode form, which the systems treat as one
- * name): renamed on the side that still has the base's spelling, as the other side made the change; this computer's
- * spelling with no base yet.
+ * Once, on the first start of 2.0, which stops mirroring, and again after going back to 1.10.4 mirrored since: what became of each cloud project, for the projects page's
+ * notice. A mirrored one is an ordinary project here now, and its copy in the cloud location is left as it is:
+ * { id, name, label, changed, deleted } with what that copy has that this computer never received, or missing: the
+ * copy isn't there, or unchecked: it couldn't be looked through. One used in place, in a cloud location, keeps
+ * working there: { id, name, label }. Nothing is written into DATA_DIR/mirror, sync.json or a cloud copy.
  */
-async function respell(ctx, { base, l, c }) {
-  const same = (a, b) => a.normalize('NFC') === b.normalize('NFC');
-  const [from, to, root] = !base || same(base.rel, c.rel) ? [c, l, ctx.cloudRoot] : same(base.rel, l.rel) ? [l, c, ctx.localRoot] : [];
-  if (!from) return;
-  const parts = from.rel.split('/');
-  const want = to.rel.split('/');
-  let at = root;
-  for (let i = 0; i < parts.length; i++) {
-    if (!same(parts[i], want[i])) {
-      // a folder another file in it already renamed is no longer there by its old name on a case-sensitive volume
-      await fs.rename(path.join(at, parts[i]), path.join(at, want[i])).catch(absent);
-      parts[i] = want[i];
+export function migrateToV2() {
+  migrating ||= (async () => {
+    const done = await readJson(MIGRATION_PATH).catch(() => null);
+    if (done && !(await mirroredSince(Date.parse(done.ranAt)))) return done;
+    const projects = await listProjects();
+    const deadline = Date.now() + CHECK_MS;
+    const labelOf = async (folder) => (await placeOf(folder).catch(() => null))?.label || path.basename(folder);
+    const mirrored = [];
+    for (const { id } of await listMirrored()) {
+      const project = projects.find((p) => p.id === id && !p.templateDraft);
+      const record = project && (await readMirror(id));
+      if (!record) continue;
+      const found = await cloudChanges(record, deadline).catch((err) => (['ENOENT', 'ENOTDIR'].includes(err.code) ? { missing: true } : { unchecked: true }));
+      mirrored.push({ id, name: project.name, label: await labelOf(record.location), ...found });
     }
-    at = path.join(at, parts[i]);
-  }
-  from.rel = parts.join('/');
-}
-
-/** The cloud's file read into this pass's incoming folder; its hash. */
-async function fetchCloud(ctx, it) {
-  const tmp = path.join(ctx.incoming, String(ctx.fetched++));
-  const abs = join(ctx.cloudRoot, it.c.rel);
-  await fs.copyFile(abs, tmp);
-  // the sync app was still writing it
-  if (!sameStat(await statOf(abs), it.c)) throw Object.assign(new Error('Changed while it was read.'), { code: 'CHANGED' });
-  it.fetched = tmp;
-  return hashFile(tmp);
-}
-
-/** What a file needs, from each side's hash against the base's (mergeRules' decide, in the mirror's own actions). */
-function decide({ base, l, c }) {
-  const action = decideFile(base?.hash ?? null, l?.hash ?? null, c?.hash ?? null);
-  if (action === 'ours') return l ? 'toCloud' : 'deleteCloud';
-  if (action === 'theirs') return c ? 'toLocal' : 'deleteLocal';
-  return action;
-}
-
-/**
- * This computer's last project.json, as a sync app set it aside beside another computer's (named its own way:
- * project (Mac's conflicted copy 2026-10-18).json, project-DESKTOP-AB12CD.json), so known by its bytes; null when
- * there's none, or the one it was written on isn't kept to merge against.
- */
-async function ownCopy(ctx, base) {
-  if (!(await exists(basePath(ctx.id, base.prev)))) return null;
-  const dir = path.join(ctx.cloudRoot, '.spectrum');
-  for (const e of await readdirTyped(dir).catch(() => [])) {
-    const abs = path.join(dir, e.name);
-    if (e.isFile() && /^project.+\.json$/i.test(e.name) && (await hashOf(abs)) === base.hash) return abs;
-  }
-  return null;
-}
-
-const CHAT = /^\.spectrum\/chats\/[^/]+\.json$/;
-
-/** A chat with both sides' messages, the cloud's first, and whether this computer's had any it lacked; null unless both are it. */
-async function bothChats(ctx, it) {
-  const [mine, theirs] = await Promise.all([fs.readFile(join(ctx.localRoot, it.l.rel)), fs.readFile(it.fetched)]).catch(() => []);
-  return mine && mergeChatFiles(mine, theirs);
-}
-
-const RESEARCH = /^\.spectrum\/research\/[^/]+\.json$/;
-
-/** A research session with both sides' searches and results, merged as a search merges them; null unless both are it. */
-async function bothSessions(ctx, it) {
-  const [mine, theirs] = await Promise.all([fs.readFile(join(ctx.localRoot, it.l.rel)), fs.readFile(it.fetched)]).catch(() => []);
-  return mine && mergeSessionFiles(mine, theirs);
-}
-
-const readBase = (id, hash) => fs.readFile(basePath(id, hash)).then(gunzipAsync).catch(() => null);
-
-/**
- * Changed on both sides. Of the app's files never a conflicted copy, which no one would see: project.json field by
- * field, a chat with every message from both, a research session with both sides' searches and choices, a version's
- * manifest the newer, index.json and the rest this computer's.
- * A compiled PDF stays this computer's. Any other text file is merged by lines; one that doesn't merge (or isn't text)
- * stays this computer's, and the cloud's goes beside it as a conflicted copy.
- */
-async function merge(ctx, it) {
-  const { key } = it;
-  const local = join(ctx.localRoot, it.l.rel);
-  it.action = 'toCloud';
-  if (key === META) {
-    const base = it.base && (await readBase(ctx.id, it.base.hash));
-    if (!base) return;
-    // ponytail: a tag change made on both computers between passes keeps this computer's tags, the other's lost
-    it.meta = mergeMeta(JSON.parse(base), await readJson(local), await readJson(it.fetched));
-    it.action = 'meta';
-  } else if (CHAT.test(key)) {
-    const both = await bothChats(ctx, it);
-    if (!both) return;
-    it.data = both.data;
-    it.action = 'write';
-  } else if (RESEARCH.test(key)) {
-    const both = await bothSessions(ctx, it);
-    if (!both) return;
-    it.data = both;
-    it.action = 'write';
-  } else if (key.startsWith('.spectrum/history/manifests/')) {
-    if (it.c.mtimeMs > it.l.mtimeMs) it.action = 'toLocal';
-  } else if (!inApp(key) && !(key.endsWith('.pdf') && ctx.here.files.has(`${key.slice(0, -4)}.tex`))) {
-    const base = it.base && isText(it.l.rel) && (await readBase(ctx.id, it.base.hash));
-    it.data = base && mergeText(base, await fs.readFile(local), await fs.readFile(it.fetched));
-    it.action = it.data ? 'write' : 'conflict';
-  }
-}
-
-/**
- * "Before sync from <computer>": a version before this pass replaces or deletes files here (none when nothing changed
- * since the latest). Always for a merge, a deletion or what this computer wrote; for files just as they came from the
- * cloud only when the latest version lacks one and at most every 10 minutes, or each pass would add one while another
- * computer is typing. Returns the files of the version that holds them.
- */
-async function keepBefore(ctx, replaced, items) {
-  const [latest] = await listVersions(ctx.localRoot);
-  const files = latest ? await versionFiles(ctx.localRoot, latest.id) : {};
-  const due = Date.now() - (versionedAt.get(ctx.id) || 0) >= VERSION_EVERY_MS;
-  const always = replaced.some((it) => it.action !== 'toLocal' || it.base?.by !== 'there');
-  if (!always && !(due && replaced.some((it) => files[it.l.rel] !== it.l.hash))) return files;
-  // the computer it came from, when only one other mirrors the project
-  const others = [...new Set((await otherComputersProjects().catch(() => [])).filter((p) => p.id === ctx.id).map((p) => p.machineName))];
-  // in the project's history lock, which only this project's checkpoints hold
-  const { version } = await createVersion(ctx.localRoot, { label: `Before sync from ${others.length === 1 ? others[0] : ctx.label}` });
-  versionedAt.set(ctx.id, Date.now());
-  // the latest, when nothing changed since, which this pass may be deleting: then it holds nothing
-  const gone = items.some((it) => it.action === 'deleteLocal' && it.key === keyOf(`.spectrum/history/manifests/${version.id}.json`));
-  return gone ? {} : versionFiles(ctx.localRoot, version.id);
-}
-
-const versionFiles = async (root, id) => (await readJson(appPath(root, 'history', 'manifests', `${id}.json`)).catch(() => null))?.files || {};
-
-/** The folder dir in root, made as needed but never root itself, so a cloud copy gone during the pass isn't made again. */
-async function folderIn(ctx, root, dir) {
-  if (ctx.made.has(dir)) return;
-  let at = root;
-  for (const part of path.relative(root, dir).split(path.sep).filter(Boolean)) {
-    at = path.join(at, part);
-    await fs.mkdir(at).catch((err) => {
-      if (err.code !== 'EEXIST') throw err;
-    });
-  }
-  ctx.made.add(dir);
-}
-
-/**
- * src's bytes at dest in root, through a temp file beside it, so neither a reader nor a sync app sees half a file.
- * Returns the stat of what was written, which a rename keeps, whatever lands at dest after it. expect: dest's stat at
- * the check (null: none), checked again once the copy is made; when something else landed there meanwhile, nothing
- * is written and null returned, for the next pass.
- */
-async function place(ctx, root, src, dest, expect) {
-  await folderIn(ctx, root, path.dirname(dest));
-  const tmp = `${dest}.${crypto.randomUUID()}.tmp`;
-  try {
-    await fs.copyFile(src, tmp);
-    const written = await fs.lstat(tmp);
-    if (expect !== undefined && !sameStat(await statOf(dest), expect)) {
-      await fs.rm(tmp, { force: true });
-      return null;
+    // 1.10's cloud locations, read for this alone
+    const { folders = [] } = (await readJson(path.join(DATA_DIR, 'sync.json')).catch(() => null)) || {};
+    const locations = (Array.isArray(folders) ? folders : []).map((f) => f?.path).filter((p) => typeof p === 'string' && path.isAbsolute(p));
+    const inPlace = [];
+    for (const p of projects) {
+      const location = locations.find((l) => within(p.path, l));
+      if (location && !p.templateDraft && !mirrored.some((m) => m.id === p.id)) inPlace.push({ id: p.id, name: p.name, label: await labelOf(p.path) });
     }
-    await renameOver(tmp, dest);
-    return written;
-  } catch (err) {
-    await fs.rm(tmp, { force: true });
+    const result = { ranAt: new Date().toISOString(), mirrored, inPlace };
+    await writeJsonAtomic(MIGRATION_PATH, result);
+    return result;
+  })().catch((err) => {
+    migrating = null;
     throw err;
-  }
+  });
+  return migrating;
 }
 
-/**
- * Do what the file needs; returns its base entry now, or null when it's gone from both sides. Just before a file is
- * replaced or deleted, the one here must still have the bytes the walk hashed and the cloud one the stat it had,
- * else it's left for the next pass. ponytail: a change in the moment between that check and the write is still
- * written over, as with the save route's own check
- */
-async function apply(ctx, it, held) {
-  const { base, l, c } = it;
-  if (it.action === 'drop') return null;
-  const local = join(ctx.localRoot, l?.rel ?? c.rel);
-  const cloud = join(ctx.cloudRoot, c?.rel ?? l.rel);
-  const unchanged = async (sides) =>
-    (!sides.includes('l') || (await hashOf(local)) === (l?.hash ?? null)) && (!sides.includes('c') || sameStat(await statOf(cloud), c));
-  // left for the next pass, which hashes the file here again: an edit that kept its size and time would pass for none
-  const later = () => base && { ...base, l: undefined };
-  // through place, which never makes the copy's own folder again when it has gone since the check, nor writes over
-  // what a sync app brought meanwhile (then null)
-  const toCloud = async (bytes) => {
-    const tmp = path.join(ctx.incoming, String(ctx.fetched++));
-    await fs.writeFile(tmp, bytes);
-    return place(ctx, ctx.cloudRoot, tmp, cloud, c ?? null);
-  };
-  switch (it.action) {
-    case 'keep':
-      return base;
-    case 'equal':
-      return { ...entry(l.rel, l.hash, l, c, base?.by || 'there'), ...(base?.prev && base.hash === l.hash && { prev: base.prev }) };
-    case 'toCloud':
-    case 'conflict': {
-      if (!(await unchanged(it.action === 'conflict' ? 'lc' : 'c'))) return later();
-      // copied and checked before anything reaches the cloud, where the next pass would take half a file for its edit
-      const copy = path.join(ctx.incoming, String(ctx.fetched++));
-      await fs.copyFile(local, copy);
-      // changed while it was copied: the next pass copies it again
-      if (!sameStat(await statOf(local), l)) return later();
-      if (it.action === 'conflict') await fs.copyFile(it.fetched, await freePath(join(ctx.localRoot, conflictCopyPath(l.rel, ctx.label))), constants.COPYFILE_EXCL);
-      const written = await place(ctx, ctx.cloudRoot, copy, cloud, c ?? null);
-      if (!written) return later();
-      // project.json: what this computer's writes since it last took the cloud's were made on, to merge against
-      return { ...entry(l.rel, l.hash, l, written, 'here'), ...(it.key === META && base && { prev: base.prev ?? base.hash }) };
-    }
-    case 'toLocal': {
-      if (!(await unchanged('l'))) return later();
-      await folderIn(ctx, ctx.localRoot, path.dirname(local));
-      // the stat of what was written, which a rename keeps: a save landing just after it is then an edit here
-      const written = await fs.lstat(it.fetched);
-      await renameOver(it.fetched, local);
-      return entry(c.rel, c.hash, written, c, 'there');
-    }
-    case 'meta': {
-      if (!(await unchanged('lc'))) return later();
-      // through updateMeta, so the list's copy of the name and tags follows (and the id stays); the cloud gets its bytes
-      await updateMeta(ctx.localRoot, () => it.meta);
-      const bytes = await fs.readFile(local);
-      const changed = sha256(bytes) !== c.hash;
-      if (changed && !(await toCloud(bytes))) return later();
-      if (it.setAside) await fs.rm(it.setAside, { force: true });
-      // what the cloud had, which this was written on, kept to merge against if a sync app sets this aside too
-      if (changed && it.fetched) await writeFileAtomic(basePath(ctx.id, c.hash), await gzipAsync(await fs.readFile(it.fetched)));
-      // a side written is hashed again next pass: a save landing just after the write would pass for it
-      return { ...entry(l.rel, sha256(bytes), undefined, changed ? undefined : c, 'there'), ...(changed && { prev: c.hash }) };
-    }
-    case 'write': {
-      if (!(await unchanged('lc'))) return later();
-      await writeFileAtomic(local, it.data);
-      if (!(await toCloud(it.data))) return later();
-      return entry(l.rel, sha256(it.data), undefined, undefined, 'here');
-    }
-    case 'deleteCloud': {
-      if (!(await unchanged('c'))) return later();
-      await removeCloud(ctx, it, cloud);
-      await pruneUp(ctx.cloudRoot, cloud);
-      return null;
-    }
-    case 'deleteLocal': {
-      if (!(await unchanged('l'))) return later();
-      // for good when the version just made holds it, and the app's files but a chat, which nothing else keeps; else the Bin
-      if ((inApp(it.key) && !it.key.startsWith('.spectrum/chats/')) || held[l.rel] === l.hash) await fs.rm(local, { force: true });
-      else {
-        await hooks.toBin(local).catch(async () => {
-          // no Bin on that drive (a network share, a USB disk): into the project's app data, which the mirror passes by
-          const aside = await freePath(appPath(ctx.localRoot, 'deleted', new Date().toISOString().slice(0, 10), ...l.rel.split('/')));
-          await fs.mkdir(path.dirname(aside), { recursive: true });
-          await renameOver(local, aside);
-        });
-      }
-      await pruneUp(ctx.localRoot, local);
-      return null;
-    }
-  }
-  throw new Error(`Unknown action ${it.action}.`);
+/** The move to 2.0's notice, until it's dismissed: null when there was nothing to say. */
+export async function migrationNotice() {
+  const data = await migrateToV2();
+  return !data.dismissedAt && (data.mirrored?.length || data.inPlace?.length) ? { mirrored: data.mirrored || [], inPlace: data.inPlace || [] } : null;
 }
 
-/**
- * Deleted here, so from the cloud copy too: for good when this computer's history holds it (and the app's files),
- * else to the Bin, or with no Bin on that volume into the location's .spectrum-bin.
- */
-async function removeCloud(ctx, it, abs) {
-  const { hash } = it.c;
-  if (inApp(it.key) || (await exists(appPath(ctx.localRoot, 'history', 'objects', hash.slice(0, 2), `${hash}.gz`)))) return fs.rm(abs, { force: true });
-  try {
-    await hooks.toBin(abs);
-  } catch {
-    // ponytail: never emptied; clear out days older than a month if it grows
-    const aside = await freePath(join(ctx.record.location, ['.spectrum-bin', new Date().toISOString().slice(0, 10), ctx.record.rel, it.c.rel].filter(Boolean).join('/')));
-    await fs.mkdir(path.dirname(aside), { recursive: true });
-    await renameOver(abs, aside);
-  }
-}
-
-/** Folders a deletion left empty go too, up to the project's own. */
-async function pruneUp(root, abs) {
-  for (let dir = path.dirname(abs); within(dir, root) && !sameFolder(dir, root); dir = path.dirname(dir)) {
-    if (!(await fs.rmdir(dir).then(() => true, () => false))) return;
-  }
-}
-
-/** The base's text for the files a merge may need, kept until the base moves on from it. */
-async function storeBases(ctx, files) {
-  const dir = workDir(ctx.id, 'base');
-  await fs.mkdir(dir, { recursive: true });
-  const stored = new Set(await fs.readdir(dir));
-  const wanted = new Set();
-  for (const [key, f] of Object.entries(files)) {
-    if (!(key === META || (!inApp(key) && isText(f.rel))) || f.l?.size > MERGE_MAX_BYTES) continue;
-    if (f.prev) wanted.add(`${f.prev}.gz`);
-    const name = `${f.hash}.gz`;
-    if (!stored.has(name)) {
-      const bytes = await fs.readFile(join(ctx.localRoot, f.rel)).catch(() => null);
-      // changed here since: a merge before the next pass has none, and keeps this computer's with a conflicted copy
-      if (!bytes || sha256(bytes) !== f.hash) continue;
-      await writeFileAtomic(path.join(dir, name), await gzipAsync(bytes));
-    }
-    wanted.add(name);
-  }
-  for (const name of stored) if (!wanted.has(name)) await fs.rm(path.join(dir, name), { force: true });
+export async function dismissMigrationNotice() {
+  const data = await migrateToV2();
+  migrating = Promise.resolve({ ...data, dismissedAt: new Date().toISOString() });
+  await writeJsonAtomic(MIGRATION_PATH, await migrating);
 }

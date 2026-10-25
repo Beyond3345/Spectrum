@@ -43,7 +43,7 @@ export function registerSystemRoutes(fastify) {
 
   // Show the project folder, or a file inside it, in Finder or File Explorer.
   fastify.post('/api/system/reveal', async (req) => {
-    // cloud: a mirrored project's copy in its cloud location
+    // cloud: the copy 1.10 mirrored the project into, for the move to 2.0's notice
     const mirror = req.body?.cloud ? await readMirror(req.body.projectId) : null;
     const root = mirror ? cloudRootOf(mirror) : await getProjectRoot(req.body?.projectId);
     const target = req.body?.path ? safeJoin(root, String(req.body.path)) : root;
