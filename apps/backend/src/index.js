@@ -32,6 +32,7 @@ import { registerPresenceRoutes } from './routes/presence.js';
 import { registerTexlabRoutes } from './routes/texlab.js';
 import { stopTexlab } from './services/texlabService.js';
 import { registerReviewRoutes } from './routes/review.js';
+import { registerZoteroRoutes } from './routes/zotero.js';
 import { seedTemplates, syncTemplates } from './services/templateService.js';
 import { dropOldAuxFolders, migrateLegacyProjects } from './services/projectService.js';
 import { startMirroring, stopMirroring } from './services/mirrorService.js';
@@ -102,6 +103,7 @@ registerCloudRoutes(fastify);
 registerPresenceRoutes(fastify);
 registerTexlabRoutes(fastify);
 registerReviewRoutes(fastify);
+registerZoteroRoutes(fastify);
 
 // Serve the built frontend (production and desktop modes)
 if (existsSync(FRONTEND_DIST)) {
