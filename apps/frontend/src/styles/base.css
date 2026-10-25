@@ -1543,6 +1543,23 @@ button.chip.active:hover {
   font-size: 13px;
 }
 
+.settings-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.settings-nav-group + .settings-nav-group {
+  margin-top: 12px;
+}
+
+.settings-nav-heading {
+  padding: 4px 10px 2px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .settings-pane {
   display: flex;
   flex-direction: column;
@@ -1921,5 +1938,18 @@ textarea.skill-file-text {
 
   .settings-nav .nav-row {
     width: auto;
+  }
+
+  .settings-nav-group {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .settings-nav-group + .settings-nav-group {
+    margin-top: 0;
+  }
+
+  .settings-nav-heading {
+    display: none;
   }
 }

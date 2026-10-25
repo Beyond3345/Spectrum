@@ -61,7 +61,7 @@ import { withDeletionCheck } from './github';
 import { toast } from './Toast';
 import { IS_DESKTOP, focusWindow, openDiagram } from './desktop';
 import { FILE_MANAGER } from './platform';
-import { BIB_TOOLS, COMPILE_ENGINES, ERROR_HANDLING, SYNTAX_CHECKS, autoCompileLabel, effectiveCompile, effectiveEffort, llmConfigFor, loadSettings, updateSettings, useProviders, useSettings } from './settings';
+import { BIB_TOOLS, COMPILE_ENGINES, ERROR_HANDLING, SYNTAX_CHECKS, effectiveCompile, effectiveEffort, llmConfigFor, loadSettings, updateSettings, useProviders, useSettings } from './settings';
 import { PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
 import { FIND_NEXT, FIND_PREVIOUS, SHORTCUTS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
 import type { AppCommand } from './shortcuts';
@@ -2804,18 +2804,19 @@ function Editor({ projectId }: { projectId: string }) {
    * One compile setting: its choices, the one in use ticked. Once the project has its own, it can go back to the
    * app's default, or make it the default for every project.
    */
-  const compileChoice = <K extends keyof CompileOptions>(key: K, heading: string, choices: [CompileOptions[K], string][]): MenuItems => {
+  const compileChoice = <K extends keyof CompileOptions>(key: K, heading: string, choices: [CompileOptions[K], string][], nameOf = (value: CompileOptions[K]) => choices.find(([v]) => v === value)?.[1] ?? String(value)): MenuItems => {
     const own = projectCompile[key] != null;
     const fallback = settings.compileDefaults[key];
     return [
       { heading: true, label: heading },
       ...choices.map(([value, label]) => ({ label, checked: compileOptions[key] === value, onSelect: () => setCompileOption(key, value) })),
-      own && { label: `Use the default (${choices.find(([value]) => value === fallback)?.[1] ?? String(fallback)})`, onSelect: () => setCompileOption(key, null) },
+      own && { label: `Use the default (${nameOf(fallback as CompileOptions[K])})`, onSelect: () => setCompileOption(key, null) },
       own && compileOptions[key] !== fallback && { label: 'Use for all projects', onSelect: () => useForAllProjects(key) },
       { separator: true }
     ];
   };
-  const pauses = [...new Set([0, 1, 2, 3, 5, 10, compileOptions.autoCompile, settings.compileDefaults.autoCompile])].sort((a, b) => a - b);
+  // On keeps the project's pause, else the app's (Settings › Engines › LaTeX sets its length), else 2 s
+  const autoPause = compileOptions.autoCompile || settings.compileDefaults.autoCompile || 2;
   const compileKind = docKind(compileTarget) ?? 'latex';
   // a Typst project pins a Typst version instead of choosing a TeX engine
   const typstVersionChoices: MenuItems = [
@@ -2843,7 +2844,7 @@ function Editor({ projectId }: { projectId: string }) {
       : []),
     ...(compileKind === 'markdown' ? compileChoice('markdownEngine', 'PDF engine (this project)', [['latex', 'LaTeX'], ['typst', 'Typst']]) : []),
     ...(compileKind === 'typst' ? typstVersionChoices : compileChoice('engine', 'Compiler (this project)', COMPILE_ENGINES)),
-    ...compileChoice('autoCompile', 'Auto compile', pauses.map((n): [number, string] => [n, autoCompileLabel(n)])),
+    ...compileChoice('autoCompile', 'Auto compile', [[0, 'Off'], [autoPause, 'On']], (n) => (n ? 'On' : 'Off')),
     ...compileChoice('haltOnError', 'Compile error handling', ERROR_HANDLING),
     ...compileChoice('syntaxCheck', 'Syntax checks', SYNTAX_CHECKS),
     ...compileChoice('bibTool', 'Bibliography tool', BIB_TOOLS),

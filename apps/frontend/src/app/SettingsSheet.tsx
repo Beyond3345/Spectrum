@@ -102,23 +102,32 @@ export type Section =
   | 'transfer'
   | 'system';
 
-const SECTIONS: [Section, string, string][] = [
-  ['appearance', 'Appearance', 'circle.lefthalf.filled'],
-  ['editor', 'Editor', 'text.cursor'],
-  ['engines', 'Engines', 'hammer'],
-  ['checkpoints', 'Checkpoints', 'clock.arrow.circlepath'],
-  ['language', 'Spelling & grammar', 'textformat.abc.dottedunderline'],
-  ['shortcuts', 'Shortcuts', 'keyboard'],
-  ['projects', 'Projects', 'folder'],
-  ['github', 'GitHub', 'arrow.triangle.branch'],
-  ['models', 'Models', 'sparkles'],
-  ['personas', 'Personas', 'brain.head.profile'],
-  ['skills', 'Skills', 'graduationcap'],
-  ['agents', 'Agents', 'terminal'],
-  ['search', 'Search', 'magnifyingglass'],
-  ['zotero', 'Zotero', 'books.vertical'],
-  ['transfer', 'Template transfer', 'arrow.triangle.2.circlepath'],
-  ['system', 'System', 'stethoscope']
+// grouped under headings, so the list reads at a glance
+const SECTION_GROUPS: [string, [Section, string, string][]][] = [
+  ['General', [
+    ['appearance', 'Appearance', 'circle.lefthalf.filled'],
+    ['editor', 'Editor', 'text.cursor'],
+    ['shortcuts', 'Shortcuts', 'keyboard'],
+    ['system', 'System', 'stethoscope']
+  ]],
+  ['Writing', [
+    ['engines', 'Engines', 'hammer'],
+    ['language', 'Spelling & grammar', 'textformat.abc.dottedunderline'],
+    ['checkpoints', 'Checkpoints', 'clock.arrow.circlepath']
+  ]],
+  ['Projects', [
+    ['projects', 'Projects', 'folder'],
+    ['github', 'GitHub', 'arrow.triangle.branch'],
+    ['zotero', 'Zotero', 'books.vertical'],
+    ['transfer', 'Template transfer', 'arrow.triangle.2.circlepath']
+  ]],
+  ['AI', [
+    ['models', 'Models', 'sparkles'],
+    ['personas', 'Personas', 'brain.head.profile'],
+    ['skills', 'Skills', 'graduationcap'],
+    ['agents', 'Agents', 'terminal'],
+    ['search', 'Search', 'magnifyingglass']
+  ]]
 ];
 
 const THEMES: [Theme, string, string][] = [
@@ -379,11 +388,16 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
     <Sheet title="Settings" onClose={onClose} width={780} className="settings-sheet">
       <div className="settings-layout">
         <nav className="settings-nav">
-          {SECTIONS.map(([value, label, icon]) => (
-            <button key={value} className={`nav-row ${section === value ? 'active' : ''}`} onClick={() => setSection(value)}>
-              <Icon name={icon} />
-              <span>{label}</span>
-            </button>
+          {SECTION_GROUPS.map(([heading, sections]) => (
+            <div key={heading} className="settings-nav-group" role="group" aria-label={heading}>
+              <div className="settings-nav-heading">{heading}</div>
+              {sections.map(([value, label, icon]) => (
+                <button key={value} className={`nav-row ${section === value ? 'active' : ''}`} onClick={() => setSection(value)}>
+                  <Icon name={icon} />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
 
@@ -1260,7 +1274,7 @@ function EnginesPane() {
           options={Array.from({ length: 11 }, (_, n): [string, string] => [String(n), autoCompileLabel(n)])}
           onChange={(value) => set({ autoCompile: Number(value) })}
         />
-        <div className="field-hint">Compiles the document showing once you stop typing for that long. A newer compile takes the place of one that’s out of date.</div>
+        <div className="field-hint">Compiles the document showing once you stop typing for that long. A newer compile takes the place of one that’s out of date. The Compile button’s menu turns it on or off for each project, with this pause.</div>
       </div>
       <div className="field">
         <label id="settings-haltOnError">Compile error handling</label>
