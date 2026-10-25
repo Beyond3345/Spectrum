@@ -147,15 +147,15 @@ async function isDocument(root, relPath) {
   }
 }
 
-// the composer's drawing on a line of its own (% for TikZ, %% for Mermaid): base64 JSON, then the hash of the text the
-// drawing writes. It goes last, but the composer finds it anywhere (diagram/fileFormat.ts), as text added below it is a
-// hand edit there
-const DIAGRAM_MARK = /^%%? spectrum-diagram v1 [A-Za-z0-9+/=]+ [0-9a-f]{16}[ \t]*\r?$/m;
+// the composer's drawing on a line of its own (% for TikZ, // for Typst and %% for Mermaid): base64 JSON, then the
+// hash of the text the drawing writes. It goes last, but the composer finds it anywhere (diagram/fileFormat.ts), as
+// text added below it is a hand edit there
+const DIAGRAM_MARK = /^(?:%%?|\/\/) spectrum-diagram v1 [A-Za-z0-9+/=]+ [0-9a-f]{16}[ \t]*\r?$/m;
 
-/** A file the diagram composer can open (Edit diagram): a .tex in figures/ with its drawing, or any .mmd. */
+/** A file the diagram composer can open (Edit diagram): a .tex or .typ in figures/ with its drawing, or any .mmd. */
 async function isDiagram(root, relPath) {
   if (/\.mmd$/i.test(relPath)) return true;
-  if (!/^figures\/.+\.tex$/i.test(relPath)) return false;
+  if (!/^figures\/.+\.(?:tex|typ)$/i.test(relPath)) return false;
   try {
     return DIAGRAM_MARK.test(await fs.readFile(safeJoin(root, relPath), 'utf8'));
   } catch {

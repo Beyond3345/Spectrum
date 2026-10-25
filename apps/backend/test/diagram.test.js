@@ -219,8 +219,10 @@ test('the tree lists the composer’s files: figures with their drawing, and Mer
     // text added below the drawing's line is a hand edit, still opened by the composer
     'figures/below.tex': `${AMP}% a note added by hand\n`,
     'chapters/amp.tex': AMP,
-    'figures/flow.mmd': 'flowchart LR\n  A --> B\n%% spectrum-diagram v1 e30= fedcba9876543210\n'
+    'figures/flow.mmd': 'flowchart LR\n  A --> B\n%% spectrum-diagram v1 e30= fedcba9876543210\n',
+    'figures/flow.typ': '#diagram(\n  node((0cm, 0cm), [Start], shape: fletcher.shapes.rect),\n)\n// spectrum-diagram v1 e30= fedcba9876543210\n',
+    'figures/plain.typ': '#set document(title: "Hand written")\n'
   });
   const res = await app.inject({ method: 'GET', url: `/api/projects/${p.id}/tree` });
-  assert.deepEqual(res.json().diagrams.sort(), ['figures/amp.tex', 'figures/below.tex', 'figures/flow.mmd']);
+  assert.deepEqual(res.json().diagrams.sort(), ['figures/amp.tex', 'figures/below.tex', 'figures/flow.mmd', 'figures/flow.typ']);
 });

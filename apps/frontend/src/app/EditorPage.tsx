@@ -556,9 +556,9 @@ function Editor({ projectId }: { projectId: string }) {
     return res;
   };
 
-  /** The diagram composer's window, at its chooser or at a diagram of the project (a figures/*.tex or an .mmd). */
+  /** The diagram composer's window, at its chooser or at a diagram of the project (a figures/*.tex or .typ, or an .mmd). */
   const drawDiagram = (file?: string) =>
-    openDiagram(projectId, file, file ? (/\.mmd$/i.test(file) ? 'mermaid' : 'tikz') : undefined).catch((err) =>
+    openDiagram(projectId, file, file ? (/\.mmd$/i.test(file) ? 'mermaid' : /\.typ$/i.test(file) ? 'typst' : 'tikz') : undefined).catch((err) =>
       notify(`Couldn’t open the diagram composer: ${errorText(err)}`, 'error')
     );
 

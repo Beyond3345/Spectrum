@@ -28,7 +28,7 @@ import type { DiagramFile, DiagramLanguage, DiagramMode } from './types';
 import './composer.css';
 
 // The diagram composer, in its own window: a chooser for a new diagram, then the canvas (Draw) and the file (Code),
-// the compiled preview below, saved as you go to figures/<name>.tex or .mmd
+// the compiled preview below, saved as you go to figures/<name>.tex, .typ or .mmd
 
 /** Messages to the main window: a diagram to insert as a figure, and a diagram file saved. */
 type DiagramMessage =

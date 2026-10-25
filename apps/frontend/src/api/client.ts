@@ -278,7 +278,7 @@ export function updateProjectSettings(id: string, patch: { compile?: { [K in key
 
 /**
  * documents: the .tex files with a \documentclass of their own, so each compiles to a PDF. diagrams: the files the
- * diagram composer can open (a figures/*.tex that ends with its drawing, any .mmd). conflicts: a sync app's conflict
+ * diagram composer can open (a figures/*.tex or .typ that ends with its drawing, any .mmd). conflicts: a sync app's conflict
  * copies, each with its original's path.
  */
 export function getProjectTree(id: string) {
@@ -587,7 +587,7 @@ export function stopCompile(compileId: string) {
 // ─── Diagram composer ───
 
 /**
- * A diagram's preview: its figures/<name>.tex compiled as a document of its own, with the files kept from its last
+ * A diagram's preview: its figures/<name>.tex or .typ compiled as a document of its own, with the files kept from its last
  * compile and no checkpoint, which leaves the project's main file and the editor's PDF as they are. Writes
  * figures/<name>.pdf, which the editor's Insert diagram can also use. compileId: for stopCompile, when a newer change
  * makes this preview stale.
