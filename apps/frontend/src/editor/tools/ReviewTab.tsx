@@ -8,9 +8,9 @@ import Icon from '../../app/Icon';
 import Sheet from '../../app/Sheet';
 import { useEditor } from '../EditorContext';
 import { pdfFacts } from '../preflight/pdfFacts';
-import { GROUPS, preflightGaps, runPreflight } from '../preflight/run';
+import { GROUPS, isScanned, preflightGaps, runPreflight } from '../preflight/run';
 import type { Finding, PdfPage, PreflightGroup } from '../preflight/run';
-import { Markdown, errorText, fixWithAI, relativeTime } from '../shared';
+import { Markdown, errorText, fixWithAI, isSource, relativeTime } from '../shared';
 
 // Tools › Review: one press compiles when the PDF is older than the source, runs the Preflight checks that are ticked
 // and, when ticked, the AI review (one read-only model call). The latest run is kept per project while Spectrum runs.
@@ -50,8 +50,6 @@ const AI_PARTS: [AiFinding['severity'], string][] = [
   ['note', 'Notes']
 ];
 // the files read for the privacy scan besides the document's own; ponytail: the first 400, sources first
-const SCANNED = /\.(?:tex|ltx|sty|cls|bib|txt|md|json|ya?ml|toml|ini|cfg|conf|py|r|jl|m|sh|js|ts)$/i;
-const SOURCE = /\.(?:tex|ltx|sty|cls|bib)$/i;
 const MAX_SCANNED = 400;
 // WebKit's switch look for a tick box; elsewhere it stays a tick box
 const SWITCH = { switch: '' } as object;
@@ -192,7 +190,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
       setStep('Checking…');
       const { compileLog, compileFailed, activePath, editorValue, projectFiles } = latest.current;
       const texts = new Map<string, string>();
-      const scanned = projectFiles.filter((p) => SCANNED.test(p)).sort((a, b) => Number(SOURCE.test(b)) - Number(SOURCE.test(a)));
+      const scanned = projectFiles.filter(isScanned).sort((a, b) => Number(isSource(b)) - Number(isSource(a)));
       await Promise.all(
         scanned.slice(0, MAX_SCANNED).map(async (path) => {
           const text = path === activePath ? editorValue : await getFile(projectId, path).then((f) => f.content, () => null);
@@ -228,7 +226,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
           at: new Date().toISOString(),
           doc: reviewed,
           sourceAt: status.sourceAt,
-          texts: Object.fromEntries([...texts].filter(([path]) => SOURCE.test(path))),
+          texts: Object.fromEntries([...texts].filter(([path]) => isSource(path))),
           groups,
           findings,
           gaps: preflightGaps(input),

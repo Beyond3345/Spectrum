@@ -1,6 +1,7 @@
 // Self-check for Preflight. It imports latexEditor.ts, which Node can't strip, so bundle it first:
 // `npx esbuild apps/frontend/src/editor/preflight/preflight.check.ts --bundle --platform=node --log-level=warning --outfile=<file>.js`, then `node <file>.js`
-import { pageList, preflightGaps, runPreflight } from './run.ts';
+import { isSource } from '../shared';
+import { isScanned, pageList, preflightGaps, runPreflight } from './run.ts';
 import type { BibRecord, Finding, PdfFacts, PreflightInput } from './run.ts';
 import { PDFLATEX_DESTINATIONS, PDFLATEX_TWO_PASSES, XELATEX_GLYPH } from './sampleLogs.ts';
 
@@ -343,6 +344,17 @@ eq(brief(twice, 'privacy'), [['warning', 'Highlighted text (\\hl) is left in', '
 const REVIEW = MAIN.replace('\\usepackage{soul}', '\\usepackage[review]{cvpr}');
 const reviewed = runPreflight(input({ files: [{ path: 'main.tex', text: REVIEW }], pdfFacts: { ...FACTS, author: 'Anonymous CVPR submission' }, anonymous: true }));
 none(reviewed, 'privacy', /\\author|\\thanks|Author field/);
+
+// a Typst document's source and a .markdown note are read for keys, as Review picks the files it reads
+const typstProject = [
+  { path: 'main.typ', text: `= Intro\n// TODO: thank the lab\nKey: ${TOKEN}` },
+  { path: 'notes.markdown', text: `A key: ${TOKEN}` },
+  { path: 'figures/a.png', text: 'not text' }
+];
+const typstFound = runPreflight(input({ doc: 'main.typ', log: 'Engine: Typst\nFinished', files: typstProject.map((f) => ({ path: f.path, text: isScanned(f.path) ? f.text : undefined })) }));
+has(typstFound, 'privacy', 'error', /^This line holds what looks like a GitHub token$/, 'main.typ:3');
+has(typstFound, 'privacy', 'error', /^This line holds what looks like a GitHub token$/, 'notes.markdown:1');
+eq(['main.typ', 'notes.markdown', 'refs.bib', 'style.sty', 'figures/a.png'].map(isSource), [true, true, true, true, false], 'the source, which Review reads first and watches for edits');
 
 // a document with no title (a CV, a letter) needs no abstract; a thesis's \chapter*{Abstract} is one; notes get a note
 const story = (body: string) => runPreflight(input({ files: [{ path: 'main.tex', text: `\\documentclass{report}\n\\begin{document}\n${body}\n\\end{document}\n` }] }));

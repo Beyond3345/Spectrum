@@ -4,6 +4,7 @@ import { figureKind } from '../floats';
 import { plainText, scanInsights } from '../insights';
 import { CITE_COMMANDS, REF_COMMANDS, VERBATIM_ENVS } from '../latexContext';
 import { INPUT_RE, externalDocuments, includedFile, inputName, scanTex } from '../latexEnvs';
+import { isSource } from '../shared';
 import { scanTodos } from '../todos';
 
 // Preflight: the checks Tools › Review runs over a document before it goes anywhere, from its last compile's log, the
@@ -128,6 +129,9 @@ const ABSOLUTE = /^(?:\/|[A-Za-z]:|~)/;
 // the image types graphicx tries for a name without one, and those it reads as they are
 const IMAGE_EXTS = ['.pdf', '.png', '.jpg', '.jpeg', '.mps', '.eps', '.jbig2', '.jb2'];
 const IMAGE_FILE = /\.(?:pdf|png|jpe?g|mps|eps|ps|jbig2|jb2|svg|gif|tiff?|bmp|webp|heic|heif)$/i;
+
+/** The files Review reads for the privacy scan: the source, and the other text files a key could be left in. */
+export const isScanned = (path: string) => isSource(path) || /\.(?:txt|json|ya?ml|toml|ini|cfg|conf|py|r|jl|m|sh|js|ts)$/i.test(path);
 
 // what a project shouldn't carry to GitHub or an arXiv upload. Not .key: that's a Keynote deck.
 const SECRET_FILE = /(?:^|\/)(?:\.env(?:\.[\w-]+)?|id_(?:rsa|dsa|ecdsa|ed25519)|[^/]+\.(?:pem|p12|pfx|jks|keystore)|\.netrc|\.npmrc|\.pypirc|credentials(?:\.json)?|service[-_]account[^/]*\.json)$/i;
