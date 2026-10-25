@@ -92,6 +92,18 @@
       "author": "K-Dense Inc.",
       "version": "1.6",
       "source": "K-Dense-AI/scientific-agent-skills"
+    },
+    "spectrum-typst": {
+      "licence": "MIT",
+      "author": "Spectrum",
+      "version": "1.0",
+      "source": "spectrum"
+    },
+    "spectrum-markdown": {
+      "licence": "MIT",
+      "author": "Spectrum",
+      "version": "1.0",
+      "source": "spectrum"
     }
   }
 }

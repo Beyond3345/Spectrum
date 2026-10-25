@@ -13,7 +13,7 @@ test('every bundled skill is in the manifest with its licence and reads as an Ag
   const manifest = JSON.parse(await fs.readFile(path.join(pack, 'manifest.json'), 'utf8'));
   const folders = (await fs.readdir(pack, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name).sort();
   assert.deepEqual(folders, Object.keys(manifest.skills).sort());
-  assert.equal(folders.length, 15);
+  assert.equal(folders.length, 17);
   assert.match(manifest.commit, /^[0-9a-f]{40}$/);
   for (const id of folders) {
     assert.match(id, SKILL_ID);

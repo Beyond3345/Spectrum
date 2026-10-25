@@ -70,7 +70,7 @@ The skills in `skills/` come from [K-Dense-AI/scientific-agent-skills](https://g
 
 In venue-templates, `assets/journals/elsarticle-*.bst` and `assets/journals/elsarticle-template-*.tex` are © Elsevier Ltd under the LaTeX Project Public License 1.3c, as their headers say.
 
-Spectrum's own skills (`spectrum-latex`, `spectrum-related-work` and `spectrum-verify-claims`) are part of Spectrum and under its MIT Licence.
+Spectrum's own skills (`spectrum-latex`, `spectrum-markdown`, `spectrum-related-work`, `spectrum-typst` and `spectrum-verify-claims`) are part of Spectrum and under its MIT Licence.
 
 If the application is given to anyone else, this file and the licence files it points to must go with it.
 
