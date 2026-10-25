@@ -7,7 +7,7 @@ import { MenuButton } from '../../app/Menu';
 import { researchKeysFor, searchConfigFor } from '../../app/settings';
 import { useEditor } from '../EditorContext';
 import type { TaskRequest } from '../agent/parts';
-import { PROJECT_DATA_CHANGED, citationText, errorText, formatDate, isTex, relativeTime } from '../shared';
+import { PROJECT_DATA_CHANGED, citationText, errorText, formatDate, isDocument, relativeTime } from '../shared';
 import CitationAssistant, { bibWritten } from './CitationAssistant';
 import { DEFAULT_SOURCES, SOURCES, badges, counts, filtersLine, keptToAdd, linkOf, metaLine, runLine, searched, shown, yearOf } from './results';
 import type { Show } from './results';
@@ -215,7 +215,7 @@ export default function ResearchPanel({ filter, onAgentTask }: { filter: string;
   const cite = (r: ResearchResult) =>
     run(`${r.id}:cite`, async () => {
       const a = latest.current;
-      if (!isTex(a.activePath)) throw new Error('Open a .tex file and click where the citation goes, then try again.');
+      if (!isDocument(a.activePath)) throw new Error('Open a document and click where the citation goes, then try again.');
       // the key the .bib has it under now, which a rename or an edit elsewhere may have changed since the session came
       const fresh = session ? (await getResearch(projectId, session.id)).session : null;
       if (fresh) setSession(fresh);
@@ -535,7 +535,7 @@ function Result({
           <Icon name="minus.circle" /> Drop
         </button>
         <span className="grow" />
-        {action('cite', r.inBib ? `Cite ${r.inBib} at the cursor` : 'Add to .bib and cite at the cursor', 'quote.opening', onCite, !isTex(api.activePath))}
+        {action('cite', r.inBib ? `Cite ${r.inBib} at the cursor` : 'Add to .bib and cite at the cursor', 'quote.opening', onCite, !isDocument(api.activePath))}
         {action('note', 'Open note', 'note.text', onNote)}
         {action('pdf', 'Get PDF', 'arrow.down.doc', onPdf)}
       </div>

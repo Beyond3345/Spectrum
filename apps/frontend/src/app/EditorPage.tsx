@@ -45,7 +45,6 @@ import {
   writeFile
 } from '../api/client';
 import type { CompileDiagnostic, CompileEngine, CompileOptions, CompileResult, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
-import { latex } from '../latex/lang';
 import Icon from './Icon';
 import Tabs from './Tabs';
 import Sheet from './Sheet';
@@ -106,9 +105,6 @@ import {
   insertIndent,
   jumpHighlight,
   latexCompletionSource,
-  latexFoldService,
-  latexHighlight,
-  mathsWrap,
   nearestHeading,
   parseOutline,
   programmatic,
@@ -125,20 +121,22 @@ import type { Reference } from '../editor/lsp/texlab';
 import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
-import { PROJECT_DATA_CHANGED, VERSIONS_CHANGED, errorText, figureSnippet } from '../editor/shared';
+import { PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDocument } from '../editor/shared';
+import { languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions } from '../editor/languages';
+import { includedPath, parseMarkdownOutline, parseTypstOutline } from '../editor/outlines';
 import { ZOTERO_CITE, zoteroCompletionSource } from '../editor/zotero';
 import { ZoteroCite, addZoteroHit } from '../editor/ZoteroCite';
 
 // ─── helpers ───
 
-const TEXT_FILE = /\.(tex|bib|sty|cls|bst|bbx|cbx|lbx|cfg|def|clo|ltx|dtx|txt|md|mmd|json|ya?ml|csv|tsv)$|(^|\/)\.latexmkrc$/i;
+const TEXT_FILE = /\.(tex|typ|bib|sty|cls|bst|bbx|cbx|lbx|cfg|def|clo|ltx|dtx|txt|md|mmd|json|ya?ml|csv|tsv)$|(^|\/)\.latexmkrc$/i;
 // \includestandalone[…]{figures/name}: the diagram its line takes in
 const INCLUDE_STANDALONE = /\\includestandalone\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/;
 const FIGURE_FILE = /\.(png|jpe?g|pdf|svg|eps)$/i;
 const IMAGE_FILE = /\.(png|jpe?g|svg|gif)$/i;
 const isTex = (p: string) => /\.tex$/i.test(p);
 const nameOf = (p: string) => p.slice(p.lastIndexOf('/') + 1);
-const pdfOf = (tex: string) => tex.replace(/\.tex$/i, '.pdf');
+const pdfOf = (tex: string) => tex.replace(/\.(?:tex|ltx|typ|md|markdown)$/i, '.pdf');
 const PART_OF_MAIN = /^[^%\n]*\\documentclass\s*(?:\[[^\]]*\]\s*)?\{(?:subfiles|standalone)\}/m;
 // a rough take on the backend's test for a document of its own: an uncommented \documentclass near the top
 const DOCUMENT_CLASS = /^[^%\n]*\\documentclass/m;
@@ -361,6 +359,9 @@ function Editor({ projectId }: { projectId: string }) {
   /** the project's own compile choices (.spectrum/settings.json); the app's defaults fill in the rest */
   const [projectCompile, setProjectCompile] = useState<CompileOptions>({});
   const compileOptions = effectiveCompile(projectCompile, settings.compileDefaults);
+  // the extension list outlives a render, so the completion source reads this rather than a stale compile setting
+  const compileOptionsRef = useRef(compileOptions);
+  compileOptionsRef.current = compileOptions;
   const engine = compileOptions.engine;
   const [compile, setCompile] = useState<CompileState>({ state: 'idle', engine });
   const compilingRef = useRef(false);
@@ -706,6 +707,9 @@ function Editor({ projectId }: { projectId: string }) {
       const saved = statesRef.current.get(path);
       clearGhost();
       view.setState(saved && saved.doc.toString() === content ? saved : EditorState.create({ doc: content, extensions: extensionsRef.current }));
+      // a saved state keeps its own language configuration, so every open says again which file this is
+      view.dispatch({ effects: languageCompartment.reconfigure(languageFor(path)) });
+      if (docKind(path) === 'typst') loadTypst().then((language) => { if (language && activeRef.current === path) viewRef.current?.dispatch({ effects: languageCompartment.reconfigure(language) }); });
       activeRef.current = path;
       attachTexlab();
       cursorPlacedRef.current = false;
@@ -1463,11 +1467,12 @@ function Editor({ projectId }: { projectId: string }) {
   const runCompile = async (doc = compileTarget, opts: { fresh?: boolean; auto?: boolean } = {}): Promise<CompileState['state'] | 'busy'> => {
     if (compilingRef.current) return 'busy';
     if (!doc) {
-      notify('There’s no .tex file to compile. Add one, or choose “Set as main file” from a file’s menu.');
+      notify('There’s no document to compile. Add one, or choose “Set as main file” from a file’s menu.');
       return 'failed';
     }
     // not for auto compile, which would ask at every pause in typing
-    if (compileOptions.syntaxCheck && !opts.auto) {
+    // TexLab reads LaTeX only, so its check is for a .tex document
+    if (compileOptions.syntaxCheck && !opts.auto && isTex(doc)) {
       compilingRef.current = true;
       const go = await syntaxCheckPasses(doc)
         .catch(() => true)
@@ -2092,10 +2097,7 @@ function Editor({ projectId }: { projectId: string }) {
       editorBasics,
       indentation,
       wrapLayout,
-      mathsWrap,
-      latex(),
-      syntaxHighlighting(latexHighlight),
-      foldService.of(latexFoldService),
+      languageCompartment.of(languageFor('')),
       scopeGutter,
       EditorView.lineWrapping,
       editorTheme,
@@ -2106,6 +2108,8 @@ function Editor({ projectId }: { projectId: string }) {
       autocompletion({
         override: [
           latexCompletionSource(() => projectScanRef.current, () => activeRef.current),
+          typstCompletions({ path: () => activeRef.current, version: () => compileOptionsRef.current.typstVersion ?? '' }),
+          referenceCompletions({ path: () => activeRef.current, keys: () => projectScanRef.current.bib.map((entry) => entry.key), labels: () => typstLabelsRef.current }),
           zoteroCompletionSource({
             enabled: () => loadSettings().zoteroCompletion,
             search: (q, signal) => searchZotero(q, signal).then((res) => res.items),
@@ -2196,13 +2200,13 @@ function Editor({ projectId }: { projectId: string }) {
         navigate('/projects', { replace: true });
         return;
       }
-      const tex = tree.items.filter((i) => i.type === 'file' && isTex(i.path) && !tree.conflicts?.[i.path]).map((i) => i.path);
-      const main = tree.mainFile && tex.includes(tree.mainFile) ? tree.mainFile : tex.find((p) => /(^|\/)main\.tex$/i.test(p)) || tex[0] || '';
+      const docsInTree = tree.items.filter((i) => i.type === 'file' && isDocument(i.path) && !tree.conflicts?.[i.path]).map((i) => i.path);
+      const main = tree.mainFile && docsInTree.includes(tree.mainFile) ? tree.mainFile : docsInTree.find((p) => /(^|\/)main\.(?:tex|typ|md|markdown)$/i.test(p)) || docsInTree[0] || '';
       setMainFile(main);
       setLoaded(true);
       // show the PDF from the last compile straight away, before the first file opens, so following the open file
       // finds it showing
-      const existing = main.replace(/\.tex$/i, '.pdf');
+      const existing = pdfOf(main);
       setShownDoc(main);
       shownRef.current = main;
       if (main && tree.items.some((i) => i.path === existing)) {
@@ -2591,9 +2595,56 @@ function Editor({ projectId }: { projectId: string }) {
   // ─── render pieces ───
 
   const held = heldRef.current.get(activePath);
-  const outlineFile = isTex(activePath) ? activePath : mainFile;
+  const outlineFile = isDocument(activePath) ? activePath : mainFile;
   const outlineText = outlineFile === activePath ? editorValue : filesRef.current.get(outlineFile) || '';
-  const parsedOutline = useMemo(() => parseOutline(outlineText).map((item) => ({ ...item, file: outlineFile })), [outlineText, outlineFile]);
+  // Typst's headings, with those in the files it includes one level deep; and the project's labels to complete after @
+  const [typstOutline, setTypstOutline] = useState<(OutlineItem & { file: string })[]>([]);
+  const [typstLabels, setTypstLabels] = useState<string[]>([]);
+  const typstLabelsRef = useRef<string[]>([]);
+  typstLabelsRef.current = typstLabels;
+  const includeFileSet = useMemo(() => new Set(items.filter((i) => i.type === 'file' && /\.typ$/i.test(i.path) && !conflicts[i.path]).map((i) => i.path)), [items, conflicts]);
+  useEffect(() => {
+    if (!includeFileSet.size) {
+      setTypstLabels([]);
+      return;
+    }
+    let live = true;
+    Promise.all([...includeFileSet].map((path) => ensureFileContent(path).catch(() => ''))).then((texts) => {
+      if (!live) return;
+      const labels = new Set<string>();
+      for (const text of texts) for (const m of text.matchAll(/<([A-Za-z0-9_:.-]+)>/g)) labels.add(m[1]);
+      setTypstLabels([...labels]);
+    });
+    return () => {
+      live = false;
+    };
+  }, [includeFileSet]);
+  useEffect(() => {
+    if (docKind(outlineFile) !== 'typst') {
+      setTypstOutline([]);
+      return;
+    }
+    let live = true;
+    const own = parseTypstOutline(outlineText);
+    const includes = [...outlineText.matchAll(/^\s*#include\s+"([^"]+)"/gm)]
+      .map((m) => ({ line: outlineText.slice(0, m.index).split('\n').length, path: includedPath(outlineFile, m[1]) }))
+      .filter(({ path }) => fileSet.has(path));
+    Promise.all(includes.map(async ({ line, path }) => ({ line, path, items: parseTypstOutline(await ensureFileContent(path).catch(() => '')) }))).then((parts) => {
+      if (!live) return;
+      const entries = own.map((item) => ({ key: item.line, item: { ...item, file: outlineFile } }));
+      for (const part of parts) part.items.forEach((item, index) => entries.push({ key: part.line + (index + 1) / (part.items.length + 1), item: { ...item, file: part.path } }));
+      entries.sort((a, b) => a.key - b.key);
+      setTypstOutline(entries.map(({ item }) => item));
+    });
+    return () => {
+      live = false;
+    };
+  }, [outlineFile, outlineText, fileSet]);
+  const parsedOutline = useMemo(() => {
+    if (docKind(outlineFile) === 'typst') return typstOutline;
+    const items = docKind(outlineFile) === 'markdown' ? parseMarkdownOutline(outlineText) : parseOutline(outlineText);
+    return items.map((item) => ({ ...item, file: outlineFile }));
+  }, [outlineText, outlineFile, typstOutline]);
   // TexLab's, across the files the document pulls in, once it has one that takes in the open file
   const projectOutline = symbolOutline?.root === docRoot && symbolOutline.items.length && (!isTex(activePath) || symbolOutline.seen.has(activePath)) ? symbolOutline : null;
   const outline = projectOutline?.items ?? parsedOutline;
@@ -3524,7 +3575,7 @@ function Editor({ projectId }: { projectId: string }) {
               },
               { separator: true },
               !!diagram && { label: 'Edit diagram', onSelect: () => drawDiagram(diagram) },
-              isTex(activePath) && { label: 'Cite from Zotero…', onSelect: () => window.dispatchEvent(new Event(ZOTERO_CITE)) },
+              isDocument(activePath) && { label: 'Cite from Zotero…', onSelect: () => window.dispatchEvent(new Event(ZOTERO_CITE)) },
               { label: 'Add to-do here', onSelect: () => addTodoAtLine(lineMenu.pos) }
             ];
           })()}
@@ -3585,8 +3636,8 @@ function Editor({ projectId }: { projectId: string }) {
               {FIGURE_FILE.test(preview) && (
                 <button
                   className="btn primary"
-                  disabled={!isTex(activePath)}
-                  title={isTex(activePath) ? undefined : 'Open a .tex file first'}
+                  disabled={!isDocument(activePath)}
+                  title={isDocument(activePath) ? undefined : 'Open a document first'}
                   onClick={() => {
                     insertAtCursor(figureSnippet(preview), { block: true });
                     setPreview('');

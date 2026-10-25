@@ -9,7 +9,7 @@ import { IS_WINDOWS } from '../../app/platform';
 import type { DiagramLanguage } from '../../diagram/types';
 import { useEditor } from '../EditorContext';
 import type { EditorApi } from '../EditorContext';
-import { VISION_HINTS, VISION_MODES, errorText, figureSnippet, isTex } from '../shared';
+import { VISION_HINTS, VISION_MODES, errorText, figureSnippet, isDocument } from '../shared';
 import type { VisionMode } from '../shared';
 import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramLatex, extOf, figureKind, figureLabel, figureLatex, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableLabel, tableLatex, uniqueName } from '../floats';
 import type { TableLines, TableModel } from '../floats';
@@ -198,7 +198,7 @@ function insertBlock(api: EditorApi, text: string) {
   return api.insertAtCursor(blockAt(api.editorValue, from, to, text));
 }
 
-const NOT_TEX = 'Open a .tex file in the editor to insert into it.';
+const NOT_TEX = 'Open a document in the editor to insert into it.';
 
 // ─── Insert figure ───
 
@@ -279,7 +279,7 @@ function InsertFigure() {
   const dropRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLElement>(null);
   const captionRef = useRef<HTMLTextAreaElement>(null);
-  const texOpen = isTex(api.activePath);
+  const docOpen = isDocument(api.activePath);
   const fileName = source?.kind === 'file' ? safeFileName(name, source.ext) : '';
   const path = source?.kind === 'project' ? source.path : `images/${fileName}`;
 
@@ -536,10 +536,10 @@ function InsertFigure() {
             span={prefs.span}
             onSpan={(span) => setPrefs({ ...prefs, span })}
           />
-          <button className="btn primary full" onClick={insert} disabled={!!busy || !texOpen}>
+          <button className="btn primary full" onClick={insert} disabled={!!busy || !docOpen}>
             {busy === 'inserting' ? <span className="spinner" /> : <Icon name="plus" />} Insert figure
           </button>
-          {!texOpen && <div className="field-hint">{NOT_TEX}</div>}
+          {!docOpen && <div className="field-hint">{NOT_TEX}</div>}
         </>
       )}
     </section>
@@ -575,7 +575,7 @@ function InsertDiagram() {
   const [busy, setBusy] = useState(false);
   const cardRef = useRef<HTMLElement>(null);
   const captionRef = useRef<HTMLTextAreaElement>(null);
-  const texOpen = isTex(api.activePath);
+  const docOpen = isDocument(api.activePath);
   const tikz = diagram?.language === 'tikz' && /\.tex$/i.test(diagram.path);
   const image = diagram && !tikz ? imageOf(diagram.path, api.figureFiles) : '';
 
@@ -693,10 +693,10 @@ function InsertDiagram() {
             span={prefs.span}
             onSpan={(span) => setPrefs({ ...prefs, span })}
           />
-          <button className="btn primary full" onClick={insert} disabled={busy || !texOpen || (!tikz && !image)}>
+          <button className="btn primary full" onClick={insert} disabled={busy || !docOpen || (!tikz && !image)}>
             {busy ? <span className="spinner" /> : <Icon name="plus" />} Insert diagram
           </button>
-          {!texOpen && <div className="field-hint">{NOT_TEX}</div>}
+          {!docOpen && <div className="field-hint">{NOT_TEX}</div>}
         </>
       )}
     </section>
@@ -744,7 +744,7 @@ function InsertTable() {
   const cols = cells[0].length;
   const align = Array.from({ length: cols }, (_, c) => chosen[c] ?? defaultAlign(env, c));
   const latex = tableLatex({ cells, env, align, lines, header, float, placement, span, caption, label: label ?? tableLabel(caption), escape });
-  const texOpen = isTex(api.activePath);
+  const docOpen = isDocument(api.activePath);
 
   const focusCell = (r: number, c: number) => gridRef.current?.querySelector<HTMLInputElement>(`[data-cell="${r}-${c}"]`)?.focus();
 
@@ -931,11 +931,11 @@ function InsertTable() {
         <button className="btn" onClick={copy}>
           <Icon name="doc.on.doc" /> Copy
         </button>
-        <button className="btn primary grow" onClick={insert} disabled={busy || !texOpen}>
+        <button className="btn primary grow" onClick={insert} disabled={busy || !docOpen}>
           {busy ? <span className="spinner" /> : <Icon name="plus" />} Insert table
         </button>
       </div>
-      {!texOpen && <div className="field-hint">{NOT_TEX}</div>}
+      {!docOpen && <div className="field-hint">{NOT_TEX}</div>}
     </section>
   );
 }

@@ -5,7 +5,7 @@ import Icon from '../../app/Icon';
 import { searchConfigFor } from '../../app/settings';
 import { useEditor } from '../EditorContext';
 import type { EditorApi } from '../EditorContext';
-import { citationText, errorText, isTex } from '../shared';
+import { citationText, errorText, isDocument } from '../shared';
 import { metaLine } from './results';
 
 /** After the backend wrote to a .bib: the tree learns of a new one, and the editor rereads it. */
@@ -77,8 +77,8 @@ export default function CitationAssistant() {
       if (added) await bibWritten(api, bibFile);
       const notes = [keys.length ? `Cited ${keys.join(', ')} from ${bibFile}.` : 'Nothing was added.'];
       if (keys.length) {
-        if (isTex(api.activePath)) api.insertAtCursor('~' + (await citationText(api, keys)), { afterSelection: true });
-        else notes[0] = `Added ${keys.join(', ')} to ${bibFile}. Open a .tex file to cite them.`;
+        if (isDocument(api.activePath)) api.insertAtCursor('~' + (await citationText(api, keys)), { afterSelection: true });
+        else notes[0] = `Added ${keys.join(', ')} to ${bibFile}. Open a document to cite them.`;
         if (!bibIncluded) notes.push(`${bibFile} isn’t included in ${api.mainFile || 'the main file'} yet.`);
       }
       if (failed.length) notes.push(`Couldn’t add ${failed.join('; ')}.`);

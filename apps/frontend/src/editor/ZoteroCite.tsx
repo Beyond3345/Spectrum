@@ -7,7 +7,7 @@ import Sheet from '../app/Sheet';
 import { useSettings } from '../app/settings';
 import { useEditor } from './EditorContext';
 import type { EditorApi } from './EditorContext';
-import { citationText, errorText, isTex, mainCitationCommand, reloadBib } from './shared';
+import { citationText, errorText, isDocument, mainCitationCommand, reloadBib } from './shared';
 import { ZOTERO_CITE, hitDetail } from './zotero';
 
 type Added = { results: ReferenceResult[]; bibFile: string; bibIncluded: boolean };
@@ -25,9 +25,9 @@ function citedMessage(cite: string, { results, bibFile, bibIncluded }: Added) {
     .join(' ');
 }
 
-/** The citation at the cursor of a .tex file; elsewhere (the user moved on while Zotero asked) it's copied instead. */
+/** The citation at the cursor of a document; elsewhere (the user moved on while Zotero asked) it's copied instead. */
 function place(api: EditorApi, cite: string) {
-  if (isTex(api.activePath)) {
+  if (isDocument(api.activePath)) {
     api.insertAtCursor(cite, { afterSelection: true });
     return true;
   }
@@ -84,7 +84,7 @@ export function ZoteroCite() {
     };
     const start = async () => {
       const a = latest.current;
-      if (!isTex(a.activePath)) return a.notify('Open a .tex file to cite from Zotero.');
+      if (!isDocument(a.activePath)) return a.notify('Open a document to cite from Zotero.');
       try {
         const status = await zoteroStatus();
         if (status.cayw) pickInZotero();

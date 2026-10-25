@@ -152,6 +152,12 @@ export const parseJsonReply = <T,>(text: string) => {
 
 export const isTex = (path: string) => path.toLowerCase().endsWith('.tex');
 
+export type DocKind = 'latex' | 'typst' | 'markdown';
+/** The kind of document a file is, by its extension; null for anything else (.bib, images). */
+export const docKind = (path: string): DocKind | null =>
+  /\.(tex|ltx)$/i.test(path) ? 'latex' : /\.typ$/i.test(path) ? 'typst' : /\.(md|markdown)$/i.test(path) ? 'markdown' : null;
+export const isDocument = (path: string) => docKind(path) !== null;
+
 export function figureSnippet(filePath: string) {
   return [
     '\\begin{figure}[t]',
