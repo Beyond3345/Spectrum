@@ -119,7 +119,7 @@ export async function typstElements(projectRoot, doc) {
 }
 
 /**
- * Compiles a .typ main file in outDir and writes its PDF beside it. options.typstVersion wins over the project's
+ * Compiles a .typ main file in outDir and writes its PDF beside it (a scratch build only returns it). options.typstVersion wins over the project's
  * setting; typstInputs become the document's sys.inputs; scratch keeps the package cache in the agent's home.
  * source, when given, is compiled from standard input in place of absMain (a Markdown document's generated Typst).
  */
@@ -188,6 +188,11 @@ export async function compileTypst(projectRoot, absMain, mainFile, options = {})
   } catch {
     await cleanBuild(buildRoot, outDir);
     return typed({ ok: false, error: 'No PDF was produced.', status: result.code ?? -1 });
+  }
+  // a scratch build (compileFolder's) writes nothing into the folder it compiled
+  if (options.scratch) {
+    await cleanBuild(buildRoot, outDir);
+    return typed({ ok: true, pdf: pdf.toString('base64'), status: result.code ?? 0 });
   }
   const absPdf = path.join(path.dirname(absMain), base + '.pdf');
   let written;

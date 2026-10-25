@@ -17,7 +17,7 @@ delete process.env.SPECTRUM_TYPST;
 
 const { builtInTypst } = await import('../src/services/engineService.js');
 const { parseTypstDiagnostics } = await import('../src/services/typstService.js');
-const { runCompile } = await import('../src/services/compileService.js');
+const { compileFolder, runCompile } = await import('../src/services/compileService.js');
 const { createProject, getProjectRoot } = await import('../src/services/projectService.js');
 const { updateProjectSettings } = await import('../src/services/projectSettings.js');
 const { typstDocumentLabels } = await import('../src/services/statsService.js');
@@ -83,6 +83,19 @@ test('a Typst project compiles and writes its PDF beside the main file', async (
   assert.deepEqual(result.errors, []);
   const dir = await getProjectRoot(project.id);
   assert.ok((await fs.stat(path.join(dir, 'main.pdf'))).size > 100);
+});
+
+test('a folder compile of a Typst draft leaves its PDF alone', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const draft = path.join(tmp, 'draft');
+  await fs.mkdir(draft, { recursive: true });
+  await fs.writeFile(path.join(draft, 'main.typ'), '= Draft\n');
+  await fs.writeFile(path.join(draft, 'main.pdf'), 'THE DRAFT’S OWN PDF');
+  const result = await compileFolder({ root: draft, mainFile: 'main.typ', buildDir: path.join(tmp, 'build') });
+  assert.equal(result.ok, true, result.error);
+  assert.ok(result.pdf.length > 100);
+  assert.equal(result.pdfPath, undefined);
+  assert.equal(await fs.readFile(path.join(draft, 'main.pdf'), 'utf8'), 'THE DRAFT’S OWN PDF');
 });
 
 test('a compile never writes its PDF through a link out of the project', async (t) => {
