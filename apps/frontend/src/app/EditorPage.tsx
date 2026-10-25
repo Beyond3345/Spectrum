@@ -3115,19 +3115,9 @@ function Editor({ projectId }: { projectId: string }) {
         >
           {/* hidden in PDF only rather than unmounted, so its files, undo history and scroll stay as they were */}
           <section className="editor-column" hidden={layout.view === 'pdf'}>
+            {/* the file tabs, level with the PDF's header (Compile and the view) */}
             <div className="editor-topbar" data-tauri-drag-region>
               {sidebarButton}
-              <MenuButton icon="plus.circle" className="icon-btn" title="Insert" items={insertItems} disabled={!activePath} />
-              {/* a narrow editor leaves these to Insert (+) */}
-              <button className="icon-btn float-button" title="Insert figure" aria-label="Insert figure" onClick={() => openFloats('figure')}>
-                <Icon name="photo" />
-              </button>
-              <button className="icon-btn float-button" title="Insert table" aria-label="Insert table" onClick={() => openFloats('table')}>
-                <Icon name="tablecells" />
-              </button>
-              <button className="icon-btn float-button" title="Draw a diagram" aria-label="Draw a diagram" onClick={() => drawDiagram()}>
-                <Icon name="pencil" />
-              </button>
               <div ref={stripRef} className="file-tabs" role="tablist" data-tauri-drag-region>
                 {tabs.map((path) => (
                   <div
@@ -3158,6 +3148,26 @@ function Editor({ projectId }: { projectId: string }) {
                   </div>
                 ))}
               </div>
+              {/* while a panel has the PDF header's place, compiling stays here */}
+              {panel && compileSplit}
+              {/* the PDF header's is hidden in editor only or behind a panel; this one stays from the first compile, so changes are heard */}
+              {(panel || (layout.view === 'editor' && compile.state !== 'idle')) && compileStatus}
+              {layout.view === 'editor' && viewSwitcher}
+            </div>
+            {/* the editor's tools, under the tabs */}
+            <div className="editor-toolbar">
+              <MenuButton icon="plus.circle" className="icon-btn" title="Insert" items={insertItems} disabled={!activePath} />
+              {/* a narrow editor leaves these to Insert (+) */}
+              <button className="icon-btn float-button" title="Insert figure" aria-label="Insert figure" onClick={() => openFloats('figure')}>
+                <Icon name="photo" />
+              </button>
+              <button className="icon-btn float-button" title="Insert table" aria-label="Insert table" onClick={() => openFloats('table')}>
+                <Icon name="tablecells" />
+              </button>
+              <button className="icon-btn float-button" title="Draw a diagram" aria-label="Draw a diagram" onClick={() => drawDiagram()}>
+                <Icon name="pencil" />
+              </button>
+              <span className="spacer" />
               <button className={`icon-btn ${composerOpen ? 'active' : ''}`} title={withShortcut(settings.shortcuts, 'Assistant', 'assistant')} aria-label="Assistant" aria-pressed={composerOpen} onClick={toggleComposer}>
                 <Icon name="sparkles" />
               </button>
@@ -3205,11 +3215,6 @@ function Editor({ projectId }: { projectId: string }) {
                 <Icon name="wand.and.stars" />
                 {agentStatus && <span className={`agent-dot ${agentStatus}`} />}
               </button>
-              {/* while a panel has the PDF header's place, compiling stays here */}
-              {panel && compileSplit}
-              {/* the PDF header's is hidden in editor only or behind a panel; this one stays from the first compile, so changes are heard */}
-              {(panel || (layout.view === 'editor' && compile.state !== 'idle')) && compileStatus}
-              {layout.view === 'editor' && viewSwitcher}
             </div>
 
             <SyncBanners conflicts={conflicts} onDeleted={onDeleted} />

@@ -318,6 +318,21 @@
   border-bottom: 1px solid transparent;
 }
 
+/* under the tabs: Insert (+) and the floats, then the assistant and the panels that take the PDF's place */
+.editor-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 10px 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.editor-toolbar .spacer {
+  flex: 1;
+}
+
 .fs-moving .editor-topbar {
   /* moves along with the window as full screen starts or ends, like .sidebar-top */
   transition: padding-left 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
