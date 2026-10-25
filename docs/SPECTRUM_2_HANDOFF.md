@@ -101,7 +101,7 @@ Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.
 
 ### Phase 5 small review
 
-Codex audited the whole of 2.0 at `19455ad` without changing code and left 21 findings in `handover.md` (untracked, at the repository root; its scratch worktrees are removed). Three fixer agents reproduced every one, fixed it at the root and added a test that failed before the fix:
+Codex audited the whole of 2.0 at `19455ad` without changing code and left 21 findings in [CODEX_AUDIT_2_0.md](CODEX_AUDIT_2_0.md) (its scratch paths and worktrees are gone). Three fixer agents reproduced every one, fixed it at the root and added a test that failed before the fix:
 
 - **Sync, privacy and Zotero (1 to 10):**
   - a public `spectrum-settings` repository is refused before anything is shared or pushed;

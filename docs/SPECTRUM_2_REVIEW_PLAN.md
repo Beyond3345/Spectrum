@@ -72,7 +72,7 @@ Lenses:
 
 ## Review 2: phase 5
 
-Scope: the phase 5 merge into `feat/2.0` (plan section 10b and the Typst part of 10c), built on `build/p5` from [PHASE5_PLAN.md](PHASE5_PLAN.md), whose steps say what each part should do. The builder's notes, Codex's 21 audit findings (`handover.md`) and the small review's fixes are in the handoff's Phase 5 sections; give the reviewers those so they look elsewhere and check the fixes.
+Scope: the phase 5 merge into `feat/2.0` (plan section 10b and the Typst part of 10c), built on `build/p5` from [PHASE5_PLAN.md](PHASE5_PLAN.md), whose steps say what each part should do. The builder's notes, Codex's 21 audit findings ([CODEX_AUDIT_2_0.md](CODEX_AUDIT_2_0.md)) and the small review's fixes are in the handoff's Phase 5 sections; give the reviewers those so they look elsewhere and check the fixes.
 
 Lenses:
 
