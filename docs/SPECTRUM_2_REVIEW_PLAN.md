@@ -1,6 +1,6 @@
 # Spectrum 2.0 review plan
 
-Written 25 October 2026. These are the heavier reviews to run once there is usage to spare (the week of 1 November 2026). Until then reviews are paused: the first phase 4 review is the last one run this week, and phase 5 is built without a review round.
+Written 25 October 2026. These are the heavier reviews to run once there is usage to spare (the week of 1 November 2026). Until then reviews are paused. Phase 4's first round was run and its fixes merged (`efc81b2`), a test DMG with phases 1 to 4 was built for the user, and phase 5 is to be built by another agent from [PHASE5_PLAN.md](PHASE5_PLAN.md) without a review round.
 
 Each review below is a multi-agent workflow. Start Claude Code in `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` (worktree isolation needs the repository as the working folder) on `feat/2.0` and say, for example:
 
@@ -10,8 +10,8 @@ Run them in the order below. After each one, merge the fixer branch into `feat/2
 
 | Review | Scope | State |
 | --- | --- | --- |
-| 1 | Phase 4, second round | Waiting |
-| 2 | Phase 5, first rounds | Waiting for the phase 5 build |
+| 1 | Phase 4, second round | Waiting (the first round's fixes are merged as `efc81b2`) |
+| 2 | Phase 5, first rounds | Waiting for the phase 5 build on `build/p5` |
 | 3 | The whole of 2.0 before the test DMG | Waiting for reviews 1 and 2 |
 | 4 | The test DMG itself | Waiting for review 3 and the DMG |
 
@@ -60,7 +60,7 @@ A heavier variant for reviews 3 and 4: three independent verifiers per finding, 
 
 ## Review 1: phase 4, second round
 
-Scope: phase 4 (`2af6877..bab0316`), Codex's checker versions (`094b13c`, `d9cfcda`) and the first round's fixes (the `fix/p4-review` merge into `feat/2.0`). Give the reviewers the first round's confirmed findings, listed under Phase 4 review fixes in the handoff.
+Scope: phase 4 (`2af6877..bab0316`), Codex's checker versions (`094b13c`, `d9cfcda`) and the first round's fixes (`git diff dde8ef5 c070493`, merged as `efc81b2`). Give the reviewers the first round's confirmed findings, listed under Phase 4 review fixes in the handoff.
 
 Lenses:
 
@@ -72,7 +72,7 @@ Lenses:
 
 ## Review 2: phase 5
 
-Scope: the phase 5 merge into `feat/2.0` (plan section 10b and the Typst part of 10c). The builders' contract is described in the handoff's Phase 5 section.
+Scope: the phase 5 merge into `feat/2.0` (plan section 10b and the Typst part of 10c), built on `build/p5` from [PHASE5_PLAN.md](PHASE5_PLAN.md), whose steps say what each part should do. The builder's notes are in the handoff's Phase 5 section.
 
 Lenses:
 

@@ -1,12 +1,12 @@
 # Spectrum 2.0 continuation handoff
 
-Updated 25 October 2026 (after phase 4's first review round). Development work only: no installer, tag, push or release was made.
+Updated 25 October 2026 (after phase 4's first review round and the 2.0 test DMG). Development work only: no tag, push or release was made.
 
 ## Where to resume
 
-Paused by the user on 25 October 2026 after the phase 4 build, to be continued later. Nothing is running: no builder, reviewer or scheduled check-in is active, and the hourly check-in job was cancelled.
+Paused by the user on 25 October 2026 to save usage until the week of 1 November. Nothing is running: no builder, reviewer or scheduled check-in is active.
 
-Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.0`** (`bab0316` or later; check `git log`). Phase 4's first review round is fixed on **`fix/p4-review`**, branched from `feat/2.0` at `dde8ef5` and not merged yet (see Phase 4 review fixes). Read [SPECTRUM_2_PLAN.md](SPECTRUM_2_PLAN.md), especially its ground rules and Delivery section, and [SPECTRUM_2_REVIEW_PLAN.md](SPECTRUM_2_REVIEW_PLAN.md) before continuing. Nothing has been pushed, tagged or released; `main` is still 1.10.4 plus the README credit to Oleafly and CircuiTikZ-Designer, which is also in `feat/2.0`.
+Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.0`** (`efc81b2` or later; check `git log`). Read [SPECTRUM_2_PLAN.md](SPECTRUM_2_PLAN.md), especially its ground rules and Delivery section, and [SPECTRUM_2_REVIEW_PLAN.md](SPECTRUM_2_REVIEW_PLAN.md) before continuing. Nothing has been pushed, tagged or released; `main` is still 1.10.4 plus the README credit to Oleafly and CircuiTikZ-Designer, which is also in `feat/2.0`.
 
 ### Status by phase
 
@@ -15,27 +15,42 @@ Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.
 | 1 and 1b | Panels, floats, Document insights, to-dos, compile options and defaults, PDF sidebar and follow-the-file, Checkpoints; diagram composer (circuitikz, pgfplots, TikZ, tikz-cd, Mermaid) | Built, two review rounds, merged |
 | 2 | Agent workspace, personas, skills, MCP tools, to-dos for agents | Built, three review rounds (the last found nothing serious), merged |
 | 3 | TexLab, combined Review, Research sidebar, history menu | Built, two review rounds (the second found nothing serious), merged |
-| 4 | Zotero, GitHub sync and the settings repository, cloud sync removed with its migration | Built and merged as `bab0316`. **Reviewed once: 47 findings, fixed on `fix/p4-review`, which waits to be merged.** The second round is review 1 of the review plan |
-| 5 | Built-in Tectonic, Typst and Markdown engines; the composer's Typst mode | Not started |
-| Final | Whole-app verification and a local test DMG in `OpenPrism/builds` | Not started |
+| 4 | Zotero, GitHub sync and the settings repository, cloud sync removed with its migration | Built and merged as `bab0316`. Reviewed once: 47 confirmed findings (8 high), fixed and merged as `efc81b2` (see Phase 4 review fixes). **The second round has not been run** (review 1 of the review plan) |
+| 5 | Built-in Tectonic, Typst and Markdown engines; the composer's Typst mode | Not started. Planned step by step in [PHASE5_PLAN.md](PHASE5_PLAN.md) for another agent to build on `build/p5` |
+| Test DMG | `Spectrum_2.0.0_universal.dmg` in `OpenPrism/builds` with phases 1 to 4, for the user to install and try | See "The 2.0 test DMG" below |
 
 ### Next steps, in order
 
-1. **Merge `fix/p4-review` into `feat/2.0`** (`git merge --no-ff fix/p4-review`), then run phase 4's second review round (review 1 in [SPECTRUM_2_REVIEW_PLAN.md](SPECTRUM_2_REVIEW_PLAN.md)), giving the reviewers this round's findings and the fixer's diff. Its lenses were GitHub, Zotero, going back to 1.10.4, the checkers with the TexLab test, a live check with two computers and Windows. Phase 4's own open items are under Phase 4 limits and open items below.
-2. **The intermittent TexLab test is fixed** by Codex's `fix/p4-texlab-flake`, merged into `fix/p4-review` with one correction: `test/texlab.test.js` passed 10 of 10 runs with the real TexLab 5.26.0.
-3. **Phase 5** (plan section 10b and the composer's Typst mode in 10c) on branches from the newest `feat/2.0`: write a contract like the earlier phases' (the research is in the plan and its notes), build, integrate, review.
-4. **Final verification and a test DMG**: the whole backend and frontend suites, the native tests, a live pass through every feature, then `npm run desktop:build` and copy the DMG into `OpenPrism/builds` beside the 1.10.4 one. Do not push, tag or release; the user tests the DMG first (and the Windows build only happens on GitHub Actions after the user approves a push).
+1. **The user tries the test DMG** (phases 1 to 4; no Typst or Markdown yet).
+2. **Phase 5** is built by another agent following [PHASE5_PLAN.md](PHASE5_PLAN.md) on a branch `build/p5` from `feat/2.0`, in the main checkout. It does not merge. Afterwards Claude tests `build/p5` (the plan's checks, then a live pass in the browser pane) and merges it into `feat/2.0`.
+3. **Reviews**, the week of 1 November, with ultracode, as set out in [SPECTRUM_2_REVIEW_PLAN.md](SPECTRUM_2_REVIEW_PLAN.md): phase 4's second round, phase 5, the whole of 2.0, then the next test DMG. Give phase 4's second round the first round's findings (Phase 4 review fixes below) and the fixer's diff (`git diff dde8ef5 c070493`).
+4. **Final verification and the release DMG** after the reviews. Do not push, tag or release; the user tests the DMG first (and the Windows build only happens on GitHub Actions after the user approves a push).
 5. **Things only the user can do** (also listed under each phase):
    - Register the Spectrum OAuth app on GitHub (steps under Phase 4 below) so one-click sign-in can be switched on; until then Settings › GitHub uses a pasted token.
    - Try Zotero 10 with Better BibTeX and a real GitHub test repository once, since both were only tested against stand-ins.
    - Run the Windows checks listed under each phase on the Windows computer.
-   - Delete the four untracked files a Harper build left in the main checkout's `native/harper` (`.gitignore`, `README.md`, `harper_wasm.d.ts` and `harper_wasm_bg.wasm.d.ts`); the `.gitignore` there hides any new file in that folder from git.
+   - Delete the four untracked files a Harper build left in the main checkout's `native/harper` (`.gitignore`, `README.md`, `harper_wasm.d.ts` and `harper_wasm_bg.wasm.d.ts`); the `.gitignore` there hides any new file in that folder from git. Until then the app bundles them too (a few kilobytes, harmless).
    - Empty one scratch file from the macOS Bin if you like: `main (GitHub’s conflicted copy 2026-10-25 155756).tex`, about 400 bytes of test LaTeX that a reviewer's live check put there.
    - Decide whether Locate… and Get from GitHub may write the one thing 2.0 never writes, moving a 1.10 mirror record aside (see Phase 4 limits).
 
+### The 2.0 test DMG
+
+- **File:** `OpenPrism/builds/Spectrum_2.0.0_universal.dmg` (123.5 MB; the 1.10.4 DMG stays beside it for going back). SHA-256 `1830a154bbfe93315c0b1d6f07800cea018af5760e2cdcf49ff914d3f430e860`, also in `Spectrum_2.0.0_universal.dmg.sha256`.
+- **Built** on 25 October 2026 from `feat/2.0` at `efc81b2` with `npm run desktop:build`: phases 1 to 4 with phase 4's first review fixes. Phase 5 (Tectonic and Typst built in, Typst and Markdown projects, the composer's Typst mode) is not in it.
+- **Signed** ad hoc and not notarised, as the earlier local builds were, so the first open needs Open from the app's right-click menu (or Open Anyway in System Settings › Privacy & Security).
+- **Checked without opening the app:**
+  - `hdiutil verify` passed;
+  - `spectrum`, `node` and `texlab` are universal (arm64 and x86_64);
+  - the version is 2.0.0 and the app is 321.5 MB installed;
+  - TexLab 5.26.0 answers `--version`;
+  - the bundled backend, started on its own against scratch folders, served the window, seeded the 13 templates and reported Hunspell 1.3.3 and Harper 2.12.0 with every file verified.
+- **What installing it does:**
+  - The first start of 2.0 runs the move to 2.0 on the real data folder: 1.10's cloud sync stops, mirrored projects become local projects and the projects page shows the notice.
+  - 1.10's mirror records, `sync.json` and the cloud copies are left as they were, so 1.10.4 from its DMG still opens and syncs them if the user goes back.
+
 ### Housekeeping
 
-- Old builder and fixer branches and worktrees have been removed; their work is in `feat/2.0`. `fix/p4-review` holds phase 4's first review fixes. Codex's `fix/p4-texlab-flake` is merged into it, and its `fix/p4-zotero-review` was not merged (what was kept of it is in `fix/p4-review`), so both can be deleted once `fix/p4-review` is merged.
+- Every builder, fixer and Codex branch and worktree has been merged and removed (`fix/p4-review`, `fix/p4-texlab-flake` and `fix/p4-zotero-review` included; what was kept of the last one is in `fix/p4-review`'s commits).
 - Do not cherry-pick old branches. Branch new work from the newest `feat/2.0`.
 
 ## Phase 4
