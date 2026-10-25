@@ -2255,18 +2255,26 @@ function Editor({ projectId }: { projectId: string }) {
 
   // the project's Zotero collection, brought up to the .bib on opening and on coming back to the window (adding only:
   // entries leave it after a .bib save); a wait for Zotero's sync, or a fault, is said once. The first waits for the pull
-  // on opening, which may bring the collection the other computer made, so a second one isn't made here
+  // on opening, which may bring the collection the other computer made, so a second one isn't made here; so do the
+  // syncs on focus, which start only once it's done
   useEffect(() => {
     let told = false;
+    let live = true;
     const sync = () =>
       syncZotero(projectId).then((res) => {
         if (told || !res.message || (res.state !== 'waiting' && res.state !== 'error')) return;
         told = true;
         notify(res.message, res.state === 'error' ? 'error' : 'info');
       }, () => undefined);
-    pulledOnOpen.current.then(sync);
-    window.addEventListener('focus', sync);
-    return () => window.removeEventListener('focus', sync);
+    pulledOnOpen.current.then(() => {
+      if (!live) return;
+      sync();
+      window.addEventListener('focus', sync);
+    });
+    return () => {
+      live = false;
+      window.removeEventListener('focus', sync);
+    };
   }, []);
 
   // the PDF notes again after a pull brought other ones

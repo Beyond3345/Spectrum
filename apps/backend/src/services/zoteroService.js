@@ -7,13 +7,14 @@ import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { DATA_DIR } from '../config/constants.js';
+import { DATA_DIR, REPO_ROOT, TEMPLATE_SEED_DIR } from '../config/constants.js';
 import { latexToText } from '../latex/conversion.js';
 import { citeKeys, matchBrace } from '../latex/text.js';
 import { listFilesRecursive, renameOver } from '../utils/fsUtils.js';
 import { httpError, readMeta, serialiser } from './projectService.js';
 import { readProjectSettings, updateProjectSettings } from './projectSettings.js';
 import { appendEntries, baseKey, bibIdentity, cleanDoi, normaliseTitle, parseBibEntries, parseName } from './referenceService.js';
+import { gitHubPulling } from './githubService.js';
 
 // tests point it at a mock Zotero
 const base = () => (process.env.SPECTRUM_ZOTERO_BASE || 'http://127.0.0.1:23119').replace(/\/+$/, '');
@@ -255,12 +256,18 @@ export function itemIdentity(item) {
   };
 }
 
-/** The same reference: one citation key, DOI or arXiv id, or the same title and year where no two DOIs disagree. */
+/** One citation key, where no two DOIs or arXiv ids disagree. */
+const sameKey = (a, b) => !!a.key && !!b.key && a.key.toLowerCase() === b.key.toLowerCase() && !(a.doi && b.doi && a.doi !== b.doi) && !(a.arxiv && b.arxiv && a.arxiv !== b.arxiv);
+
+/** The same reference: one citation key, DOI or arXiv id, or the same title and year, where no two DOIs disagree. */
 export function sameRef(a, b) {
-  if (a.key && b.key && a.key.toLowerCase() === b.key.toLowerCase()) return true;
+  if (sameKey(a, b)) return true;
   if ((a.doi && a.doi === b.doi) || (a.arxiv && a.arxiv === b.arxiv)) return true;
   return Boolean(a.title && a.title === b.title && a.year === b.year && !(a.doi && b.doi && a.doi !== b.doi));
 }
+
+/** The same work by DOI, arXiv id, or title and year, whatever the keys (one Spectrum renamed taken2020a, say). */
+const sameWork = (a, b) => sameRef({ ...a, key: '' }, { ...b, key: '' });
 
 /** Library items matching q in any field, attachments and notes left out. */
 async function findItems(q, limit = 25) {
@@ -558,56 +565,103 @@ async function changeCollections(item, change, key) {
   throw httpError('Zotero kept changing an item while Spectrum added it to the collection. It’s tried again next time.', 409);
 }
 
-/** A library item that is this .bib entry: by citation key, then DOI, then arXiv id, then title and year. */
-async function findInLibrary(id) {
-  const tries = [[id.key, 'key'], [id.doi, 'doi'], [id.arxiv, 'arxiv'], [id.displayTitle.replace(/[{}]/g, ''), 'title']];
+/**
+ * A library item that is this .bib entry: by DOI, then arXiv id, then title and year, then citation key, the last only
+ * for an item that no other of the project's entries (ids) is the work of.
+ */
+async function findInLibrary(id, ids) {
+  const tries = [[id.doi, 'doi'], [id.arxiv, 'arxiv'], [id.displayTitle.replace(/[{}]/g, ''), 'title'], [id.key, 'key']];
   for (const [q, by] of tries) {
     if (!q) continue;
     const hit = (await findItems(q)).find((it) => {
       const other = itemIdentity(it);
-      return by === 'title' ? sameRef({ ...id, key: '' }, { ...other, key: '' }) : by === 'key' ? other.key.toLowerCase() === id.key.toLowerCase() : other[by] === id[by];
+      if (by === 'title') return sameWork(id, other);
+      if (by === 'key') return sameKey(id, other) && !ids.some((x) => x !== id && sameWork(x, other));
+      return other[by] === id[by];
     });
     if (hit) return hit;
   }
   return null;
 }
 
+// the bundled templates' sample entries ("key\ntitle"), which a project made from one carries and Zotero never gets
+let samples = null;
+function sampleEntries() {
+  samples ||= (async () => {
+    const dir = TEMPLATE_SEED_DIR || path.join(REPO_ROOT, 'templates');
+    const out = new Set();
+    for (const it of await listFilesRecursive(dir).catch(() => [])) {
+      if (it.type !== 'file' || !/\.bib$/i.test(it.path)) continue;
+      for (const entry of parseBibEntries(await fs.readFile(path.join(dir, it.path), 'utf8').catch(() => ''))) out.add(`${entry.key.toLowerCase()}\n${normaliseTitle(entry.fields.title || '')}`);
+    }
+    return out;
+  })();
+  return samples;
+}
+
+// each project's .bib entries as its last sync read them: an entry becomes an item only once it has stayed the same
+// from one sync to the next, as autosave writes one being typed and each half of it would otherwise stay in Zotero
+const lastRead = new Map();
+const fingerprint = ({ entry }) => JSON.stringify([entry.type, entry.key, entry.fields]);
+const ITEM_KEY = /^[A-Z0-9]{8}$/;
+
 /**
- * The project's Spectrum collection made to match its .bib entries: each entry Zotero has (by citation key, DOI, arXiv
- * id, or title and year) goes into the collection, and an entry Zotero lacks becomes a new item there. remove: entries
- * taken out of the .bib come out of the collection, only when every .bib was read whole; their items stay in the
- * library. The collection is made when none is stored for this project (by its id, so a Finder copy gets its own); a
- * stored one this computer's Zotero doesn't have yet is waited for, never made again. → { state, message?, … }
+ * The project's Spectrum collection made to match its .bib entries: each entry Zotero has (by DOI, arXiv id, title and
+ * year, or citation key) goes into the collection, and an entry Zotero lacks becomes a new item there once every .bib
+ * was read whole, the entry has a title and it hasn't changed since the last sync (or Spectrum wrote it: added holds
+ * its keys). A bundled template's sample entry never becomes one, and one the other computer made (created, in the
+ * binding) waits for Zotero's sync to bring it. remove: entries taken out of the .bib come out of the collection, only
+ * when every .bib was read whole; their items stay in the library. The collection is made when none is stored for
+ * this project (by its id, so a Finder copy gets its own) and no GitHub pull is under way that may bring the other
+ * computer's; a stored one this computer's Zotero doesn't have yet is waited for, never made again. → { state, … }
  */
-async function reconcile(root, remove) {
+async function reconcile(root, remove, added = []) {
   const key = await readKey();
   if (!key) return { state: 'off' };
   const found = await probe();
   if (!found.running) return { state: 'unreachable', message: NOT_OPEN };
   if (found.localApi !== 'on') return { state: 'unreachable', message: API_OFF };
   if (!found.writes) return { state: 'readonly', message: needsTen(found.version) };
-  const { entries, complete } = await readBibs(root);
   const meta = await readMeta(root);
-  const stored = (await readProjectSettings(root)).zotero;
+  // a template's working copy, whose references are its samples
+  if (meta.templateDraft) return { state: 'empty' };
+  const { entries, complete } = await readBibs(root);
+  // strictly: a settings.json that can't be read would otherwise have a new collection made on every sync
+  const stored = (await readProjectSettings(root, { strict: true })).zotero;
   // settings.json comes from GitHub too: only a collection key Zotero could have made is asked for
-  const bound = stored?.projectId === meta.id && stored.library === LIBRARY && /^[A-Z0-9]{8}$/.test(stored.collectionKey || '');
+  const bound = stored?.projectId === meta.id && stored.library === LIBRARY && ITEM_KEY.test(stored.collectionKey || '');
   if (!bound && !entries.length) return { state: 'empty' };
   let collection;
   if (bound) {
     collection = await json(`${LIB}/collections/${encodeURIComponent(stored.collectionKey)}`);
     if (!collection) return { state: 'waiting', message: WAITING };
   } else {
+    if (gitHubPulling(meta.id)) return { state: 'waiting', message: WAITING };
     collection = await newCollection(meta.name, key);
     await updateProjectSettings(root, (settings) => ({ ...settings, zotero: { projectId: meta.id, library: LIBRARY, collectionKey: collection.key } }));
   }
   const ck = collection.key;
   const members = visible(await all(`${LIB}/collections/${encodeURIComponent(ck)}/items`)).map((item) => ({ item, id: itemIdentity(item) }));
-  const counts = { added: 0, created: 0, removed: 0, failed: 0 };
+  const ids = entries.map((e) => e.id);
+  // an entry's member: the same work, else the same key while the entry has no member of its own work and no other
+  // entry is the member's work (an entry Spectrum renamed taken2020a for a library item under taken2020)
+  const isEntryOf = (e, m) => sameWork(e.id, m.id) || (sameKey(e.id, m.id) && !members.some((x) => sameWork(e.id, x.id)) && !ids.some((x) => x !== e.id && sameWork(x, m.id)));
+  const made = bound && stored.created && typeof stored.created === 'object' ? stored.created : {};
+  const counts = { added: 0, created: 0, removed: 0, failed: 0, held: 0 };
   const missing = [];
   // ponytail: a search or four per entry the collection lacks; a whole-library index if large .bibs make it slow
   for (const e of entries) {
-    if (members.some((m) => sameRef(e.id, m.id)) || missing.some((m) => sameRef(e.id, m.id))) continue;
-    const item = await findInLibrary(e.id);
+    if (members.some((m) => isEntryOf(e, m)) || missing.some((m) => sameRef(e.id, m.id))) continue;
+    const itemKey = made[e.entry.key];
+    let item = null;
+    if (typeof itemKey === 'string' && ITEM_KEY.test(itemKey)) {
+      // made on another computer: that item, once Zotero's sync has brought it here
+      [item] = await getItems([itemKey]);
+      if (!item) {
+        counts.held += 1;
+        continue;
+      }
+    } else item = await findInLibrary(e.id, ids);
     if (!item) {
       missing.push(e);
       continue;
@@ -616,18 +670,47 @@ async function reconcile(root, remove) {
     members.push({ item, id: itemIdentity(item) });
     counts.added += 1;
   }
+  const before = lastRead.get(root);
+  lastRead.set(root, new Set(entries.map(fingerprint)));
+  const trusted = new Set(added.map((k) => String(k).toLowerCase()));
+  const sample = await sampleEntries();
+  const ready = [];
+  let unsteady = false;
+  for (const e of missing) {
+    if (sample.has(`${e.entry.key.toLowerCase()}\n${e.id.title}`)) continue;
+    const steady = before?.has(fingerprint(e)) || trusted.has(e.entry.key.toLowerCase());
+    if (complete && e.id.title && steady) ready.push(e);
+    else {
+      counts.held += 1;
+      unsteady ||= complete && !!e.id.title;
+    }
+  }
+  // looked at again once typing has had a minute to stop (a save before then syncs sooner)
+  if (unsteady && !soon.has(root)) syncSoon(root, { delay: 60_000 });
   let failure = '';
-  for (let i = 0; i < missing.length; i += 50) {
-    const batch = missing.slice(i, i + 50).map(({ entry }) => ({ ...itemFromEntry(entry), collections: [ck] }));
+  const createdNow = {};
+  for (let i = 0; i < ready.length; i += 50) {
+    const slice = ready.slice(i, i + 50);
+    const batch = slice.map(({ entry }) => ({ ...itemFromEntry(entry), collections: [ck] }));
     const out = await (await written(await call(`${LIB}/items`, { method: 'POST', key, body: batch }), key)).json().catch(() => ({}));
-    counts.created += Object.keys(out.successful || out.success || {}).length;
+    const success = out.successful || out.success || {};
+    counts.created += Object.keys(success).length;
+    for (const [n, it] of Object.entries(success)) {
+      const itemKey = typeof it === 'string' ? it : it?.key;
+      if (slice[n] && ITEM_KEY.test(itemKey || '')) createdNow[slice[n].entry.key] = itemKey;
+    }
     const failed = Object.values(out.failed || {});
     counts.failed += failed.length;
     failure ||= failed[0]?.message || '';
   }
+  // what Spectrum made, by citation key, so another computer waits for these items rather than making them again
+  // ponytail: changed on both computers, the settings merge keeps this computer's list; an item lost so may be made twice
+  if (Object.keys(createdNow).length) {
+    await updateProjectSettings(root, (s) => (s.zotero?.collectionKey === ck ? { ...s, zotero: { ...s.zotero, created: { ...(s.zotero.created || {}), ...createdNow } } } : s));
+  }
   if (remove && complete) {
     for (const m of members) {
-      if (entries.some((e) => sameRef(e.id, m.id))) continue;
+      if (entries.some((e) => isEntryOf(e, m))) continue;
       await changeCollections(m.item, (list) => list.filter((c) => c !== ck), key);
       counts.removed += 1;
     }
@@ -643,20 +726,21 @@ async function reconcile(root, remove) {
 // ponytail: one sync at a time across projects; per-project locks if several windows sync at once and it drags
 const syncLock = serialiser();
 
-export function syncCollection(root, { remove = false } = {}) {
-  return syncLock(() => reconcile(root, remove).catch((err) => ({ state: 'error', message: err.message })));
+/** added: the keys of entries Spectrum just wrote into the .bib, which become items at once when Zotero lacks them. */
+export function syncCollection(root, { remove = false, added = [] } = {}) {
+  return syncLock(() => reconcile(root, remove, added).catch((err) => ({ state: 'error', message: err.message })));
 }
 
 const soon = new Map();
 
-/** A sync shortly: after an add (remove false) or a .bib save (remove true, debounced); one waiting per project. */
-export function syncSoon(root, { remove = false, delay = 1000 } = {}) {
+/** A sync shortly: after an add (remove false, added its keys) or a .bib save (remove true, debounced); one waiting per project. */
+export function syncSoon(root, { remove = false, delay = 1000, added = [] } = {}) {
   const pending = soon.get(root);
   clearTimeout(pending?.timer);
-  const next = { remove: remove || !!pending?.remove };
+  const next = { remove: remove || !!pending?.remove, added: [...(pending?.added || []), ...added] };
   next.timer = setTimeout(() => {
     soon.delete(root);
-    syncCollection(root, { remove: next.remove });
+    syncCollection(root, { remove: next.remove, added: next.added });
   }, delay);
   next.timer.unref?.();
   soon.set(root, next);

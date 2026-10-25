@@ -187,6 +187,17 @@ const server = createServer(async (req, res) => {
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 reset();
 
+// a GitHub that holds every request until the test lets it answer (404), so a Link stays under way
+let releaseGitHub = () => {};
+let gitHubHeld = Promise.resolve();
+const holdGitHub = () => (gitHubHeld = new Promise((resolve) => (releaseGitHub = resolve)));
+const slowGitHub = createServer(async (req, res) => {
+  await gitHubHeld;
+  res.writeHead(404, { 'Content-Type': 'application/json' });
+  res.end('{"message":"Not Found"}');
+});
+await new Promise((resolve) => slowGitHub.listen(0, '127.0.0.1', resolve));
+
 const tmp = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'spectrum-zotero-')));
 Object.assign(process.env, {
   HOME: path.join(tmp, 'home'),
@@ -195,13 +206,16 @@ Object.assign(process.env, {
   SPECTRUM_PROJECTS_DIR: path.join(tmp, 'projects'),
   SPECTRUM_TEMPLATE_DIR: path.join(tmp, 'templates'),
   SPECTRUM_TEMPLATE_SEED_DIR: '',
-  SPECTRUM_ZOTERO_BASE: `http://127.0.0.1:${server.address().port}`
+  SPECTRUM_ZOTERO_BASE: `http://127.0.0.1:${server.address().port}`,
+  SPECTRUM_GITHUB_API: `http://127.0.0.1:${slowGitHub.address().port}/api`,
+  SPECTRUM_GITHUB_WEB: `http://127.0.0.1:${slowGitHub.address().port}`
 });
 delete process.env.SPECTRUM_LLM_API_KEY;
 const { default: Fastify } = await import('fastify');
 const { registerZoteroRoutes } = await import('../src/routes/zotero.js');
 const { registerResearchRoutes } = await import('../src/routes/research.js');
-const { createProject } = await import('../src/services/projectService.js');
+const { createProject, updateMeta } = await import('../src/services/projectService.js');
+const github = await import('../src/services/githubService.js');
 const { cleanEntry, itemFromEntry, parsedWhole, sameRef, syncCollection, syncSoon } = await import('../src/services/zoteroService.js');
 const { parseBibEntries } = await import('../src/services/referenceService.js');
 const { citeKeys, renameCiteKeys } = await import('../src/latex/text.js');
@@ -213,6 +227,8 @@ registerResearchRoutes(app);
 after(async () => {
   await app.close();
   server.close();
+  releaseGitHub();
+  slowGitHub.close();
   rmSync(tmp, { recursive: true, force: true });
 });
 beforeEach(() => reset());
@@ -233,7 +249,10 @@ const newProject = (name, files) => createProject({
 });
 
 const keyFile = () => path.join(tmp, 'data', 'zotero.json');
-const allowSpectrum = (serverId = SERVER_ID) => fs.writeFile(keyFile(), JSON.stringify({ key: KEY, serverId }));
+const allowSpectrum = async (serverId = SERVER_ID) => {
+  await fs.mkdir(path.dirname(keyFile()), { recursive: true });
+  await fs.writeFile(keyFile(), JSON.stringify({ key: KEY, serverId }));
+};
 const waitFor = async (check) => {
   for (let i = 0; i < 200 && !check(); i += 1) await new Promise((r) => setTimeout(r, 10));
   assert.ok(check(), 'timed out');
@@ -492,10 +511,13 @@ test('a sync makes Spectrum › <project>, files the items Zotero has by key, DO
   const { json } = await api(`/api/projects/${project.id}/zotero/sync`, 'POST', {});
   assert.equal(json.state, 'synced', json.message);
   assert.equal(json.collection, 'Spectrum › Thesis (2)');
-  assert.deepEqual([json.added, json.created, json.removed], [4, 1, 0]);
+  assert.deepEqual([json.added, json.created, json.removed, json.held], [4, 0, 0, 1], 'an entry Zotero lacks waits for the next sync to read it the same');
+  const second = (await api(`/api/projects/${project.id}/zotero/sync`, 'POST', {})).json;
+  assert.deepEqual([second.added, second.created, second.held], [0, 1, 0]);
   const binding = (await settingsOf(project.path)).zotero;
-  assert.deepEqual(Object.keys(binding).sort(), ['collectionKey', 'library', 'projectId']);
+  assert.deepEqual(Object.keys(binding).sort(), ['collectionKey', 'created', 'library', 'projectId']);
   assert.deepEqual([binding.projectId, binding.library], [project.id, 'users/0']);
+  assert.deepEqual(Object.keys(binding.created), ['fresh2024'], 'what Spectrum made, for the other computer');
   assert.equal(mock.collections.get(binding.collectionKey).data.parentCollection, parent.key);
   assert.equal(await fs.readFile(path.join(project.path, '.spectrum', 'project.json'), 'utf8'), projectJson, 'project.json is left alone');
   const members = inCollection(binding.collectionKey);
@@ -529,6 +551,7 @@ test('entries leave the collection only after a .bib save read whole, and Zotero
     'main.tex': BIBTEX_MAIN,
     'refs.bib': '@article{a2020, title = {Alpha}, year = {2020}}\n@article{b2021, title = {Beta}, year = {2021}}\n'
   });
+  await syncCollection(project.path);
   await syncCollection(project.path);
   const { collectionKey } = (await settingsOf(project.path)).zotero;
   assert.equal(inCollection(collectionKey).length, 2);
@@ -617,6 +640,120 @@ test('a key given under another server id, or before Zotero restarted, still syn
   assert.equal(JSON.parse(await fs.readFile(keyFile(), 'utf8')).key, KEY);
   assert.ok(writes().every((r) => r.headers['zotero-api-key'] === KEY && r.headers.authorization === `Bearer ${KEY}`), 'both ways of giving the key');
   assert.ok(mock.requests.filter((r) => r.method === 'GET').every((r) => !r.headers['zotero-api-key']), 'no key on reads');
+});
+
+test('half-typed and unfinished entries never become items, and a finished one does once it stays the same', async () => {
+  await allowSpectrum();
+  const bib = (text) => fs.writeFile(path.join(project.path, 'refs.bib'), text);
+  const titles = () => [...mock.items.values()].map((it) => it.data.title).sort();
+  const project = await newProject('Typing', { 'main.tex': BIBTEX_MAIN, 'refs.bib': '@article{a2020, title = {Alpha}, year = {2020}}\n' });
+  // cut off mid-entry: nothing is made, however often it syncs
+  await bib('@article{a2020, title = {Alpha}, year = {2020}}\n@article{c2022, title = {Gam');
+  for (let i = 0; i < 3; i += 1) assert.equal((await syncCollection(project.path)).created, 0);
+  assert.deepEqual(titles(), []);
+  // an entry with an empty title
+  await bib('@article{a2020, title = {Alpha}, year = {2020}}\n@article{Smith2020,\n  title = {}\n}\n');
+  for (let i = 0; i < 2; i += 1) await syncCollection(project.path);
+  assert.deepEqual(titles(), ['Alpha']);
+  // typed in steps, each autosaved and synced once, then finished
+  await bib('@article{a2020, title = {Alpha}, year = {2020}}\n@article{Smi, title = {Deep Le}}\n');
+  await syncCollection(project.path);
+  await bib('@article{a2020, title = {Alpha}, year = {2020}}\n@article{Smith2015, author = {Smith, Ann}, title = {Deep learning}, journal = {Nature}, year = {2015}}\n');
+  assert.equal((await syncCollection(project.path)).created, 0);
+  assert.equal((await syncCollection(project.path)).created, 1);
+  assert.deepEqual(titles(), ['Alpha', 'Deep learning']);
+  const made = [...mock.items.values()].find((it) => it.data.citationKey === 'Smith2015');
+  assert.deepEqual([made.data.publicationTitle, made.data.creators[0].lastName], ['Nature', 'Smith']);
+});
+
+test('an entry Spectrum just added is made an item at once when Zotero lacks it', async () => {
+  await allowSpectrum();
+  const project = await newProject('Added', { 'main.tex': BIBTEX_MAIN, 'refs.bib': '@article{doi2021, title = {From a DOI}, year = {2021}}\n' });
+  syncSoon(project.path, { added: ['doi2021'], delay: 10 });
+  await waitFor(() => [...mock.items.values()].some((it) => it.data.citationKey === 'doi2021'));
+});
+
+test('a settings.json that can’t be read stops the sync before a collection is made', async () => {
+  await allowSpectrum();
+  const project = await newProject('Unreadable', { 'main.tex': BIBTEX_MAIN, 'refs.bib': '@article{a2020, title = {Alpha}, year = {2020}}\n' });
+  await syncCollection(project.path);
+  const before = mock.collections.size;
+  const file = path.join(project.path, '.spectrum', 'settings.json');
+  await fs.writeFile(file, (await fs.readFile(file, 'utf8')).slice(0, 20));
+  for (let i = 0; i < 2; i += 1) {
+    const out = await syncCollection(project.path);
+    assert.equal(out.state, 'error');
+    assert.match(out.message, /settings file .* can’t be read/);
+  }
+  assert.equal(mock.collections.size, before, 'no collection made');
+  assert.equal((await fs.readFile(file, 'utf8')).length, 20, 'left as it was');
+});
+
+test('a shared citation key isn’t the same work when DOIs disagree, nor when another entry is the item’s work', async () => {
+  await allowSpectrum();
+  // (a) one key, two DOIs
+  const galaxies = addItem({ title: 'Galaxies are old', citationKey: 'smith2020', DOI: '10.1234/bbb', date: '2020' });
+  const a = await newProject('Keys', { 'main.tex': BIBTEX_MAIN, 'refs.bib': '@article{Smith2020, title = {Proteins fold fast}, doi = {10.1234/aaa}, year = {2020}}\n' });
+  await syncCollection(a.path);
+  const second = await syncCollection(a.path);
+  assert.deepEqual([second.created], [1]);
+  const { collectionKey } = (await settingsOf(a.path)).zotero;
+  assert.ok(!galaxies.data.collections.includes(collectionKey), 'the other work isn’t filed');
+  assert.deepEqual(inCollection(collectionKey).map((it) => it.data.title), ['Proteins fold fast']);
+
+  // (b) Spectrum's taken-key rename: taken2020a is the library's taken2020
+  const different = addItem({ title: 'A different work', citationKey: 'taken2020', date: '2020' });
+  const b = await newProject('Taken', {
+    'main.tex': BIBTEX_MAIN,
+    'refs.bib': '@article{taken2020,\n  title = {Another work},\n  year = {2020}\n}\n\n@article{taken2020a,\n  title = {A different work},\n  year = {2020}\n}\n'
+  });
+  await syncCollection(b.path);
+  await syncCollection(b.path);
+  const ck = (await settingsOf(b.path)).zotero.collectionKey;
+  assert.deepEqual(inCollection(ck).map((it) => it.data.title).sort(), ['A different work', 'Another work']);
+  await fs.writeFile(path.join(b.path, 'refs.bib'), '@article{taken2020,\n  title = {Another work},\n  year = {2020}\n}\n');
+  assert.equal((await syncCollection(b.path, { remove: true })).removed, 1);
+  assert.ok(!different.data.collections.includes(ck));
+  assert.deepEqual(inCollection(ck).map((it) => it.data.title), ['Another work']);
+});
+
+test('a bundled template’s sample references, and a template’s working copy, never become items', async () => {
+  await allowSpectrum();
+  const sample = await fs.readFile(path.join(import.meta.dirname, '..', '..', '..', 'templates', 'cvpr', 'main.bib'), 'utf8');
+  const project = await newProject('From CVPR', { 'main.tex': BIBTEX_MAIN, 'refs.bib': `${sample}\n@article{mine2024, title = {My own work}, year = {2024}}\n` });
+  await syncCollection(project.path);
+  await syncCollection(project.path);
+  assert.deepEqual([...mock.items.values()].map((it) => it.data.title), ['My own work']);
+  const draft = await newProject('Draft', { 'main.tex': BIBTEX_MAIN, 'refs.bib': '@article{x2020, title = {Sample}, year = {2020}}\n' });
+  await updateMeta(draft.path, (m) => ({ ...m, templateDraft: 'cvpr' }));
+  assert.equal((await syncCollection(draft.path)).state, 'empty');
+  assert.equal(mock.collections.size, 2, 'no collection for the draft');
+});
+
+test('an item the other computer made waits for Zotero’s sync, and no collection is made while a GitHub pull may bring one', async () => {
+  await allowSpectrum();
+  const project = await newProject('Second', { 'main.tex': BIBTEX_MAIN, 'refs.bib': '@article{x2020, title = {Made elsewhere}, year = {2020}}\n' });
+  // Link waits on GitHub meanwhile
+  await fs.writeFile(path.join(tmp, 'data', 'github.json'), JSON.stringify({ token: 'ghp_0123456789abcdefghijklmnopqrstuvwxyzAB', user: { login: 'octo', id: 7 } }));
+  holdGitHub();
+  const linking = github.link(project.id, { owner: 'octo', repo: 'Second', preview: true }).catch(() => null);
+  assert.equal((await syncCollection(project.path)).state, 'waiting');
+  assert.equal(mock.collections.size, 0);
+  releaseGitHub();
+  await linking;
+  await fs.rm(path.join(tmp, 'data', 'github.json'));
+  // the binding as it came from the other computer, whose Zotero made x2020
+  const parent = addCollection('Spectrum');
+  const collection = addCollection('Second', parent.key);
+  await fs.writeFile(path.join(project.path, '.spectrum', 'settings.json'), JSON.stringify({ zotero: { projectId: project.id, library: 'users/0', collectionKey: collection.key, created: { x2020: 'ITEMZZZZ' } } }));
+  for (let i = 0; i < 2; i += 1) assert.deepEqual([(await syncCollection(project.path)).created], [0]);
+  assert.equal(mock.items.size, 0, 'not made again');
+  // Zotero's sync brings it, under the key it had there
+  const item = addItem({ title: 'Made elsewhere', citationKey: 'x2020', date: '2020', collections: [collection.key] });
+  mock.items.delete(item.key);
+  mock.items.set('ITEMZZZZ', { ...item, key: 'ITEMZZZZ', data: { ...item.data, key: 'ITEMZZZZ', collections: [] } });
+  assert.equal((await syncCollection(project.path)).added, 1);
+  assert.deepEqual(inCollection(collection.key).map((it) => it.key), ['ITEMZZZZ']);
 });
 
 // ─── Research ───

@@ -1142,7 +1142,8 @@ async function bibContext(projectRoot, bibFile) {
 
 // the project's Zotero collection follows what was added (zoteroService imports this module, so it's loaded by then)
 function afterAdd(projectRoot, out) {
-  if (out.results.some((r) => r.status === 'added')) import('./zoteroService.js').then((z) => z.syncSoon(projectRoot)).catch(() => {});
+  const added = out.results.filter((r) => r.status === 'added').map((r) => r.key);
+  if (added.length) import('./zoteroService.js').then((z) => z.syncSoon(projectRoot, { added })).catch(() => {});
   return out;
 }
 

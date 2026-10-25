@@ -264,13 +264,20 @@ function problemOf(err, link) {
 const queues = new Map();
 const queueOf = (id) => queues.get(id) || queues.set(id, serialiser()).get(id);
 const statuses = new Map();
+// the projects a pull, Sync or Link is waiting for or running on, which may bring the other computer's files
+const pulling = new Map();
+
+/** Whether a pull, Sync or Link of the project is under way (Zotero waits for it before making a collection). */
+export const gitHubPulling = (id) => (pulling.get(id) || 0) > 0;
 
 /**
  * fn, after any other GitHub task of the project's; a backup's, pull's or sync's failure is kept for the GitHub tab and
  * the card (one that waits, retried every 2 minutes), and thrown as the user should see it.
  */
 function task(id, kind, fn) {
-  return queueOf(id)(async () => {
+  const pulls = ['pull', 'sync', 'link'].includes(kind);
+  if (pulls) pulling.set(id, (pulling.get(id) || 0) + 1);
+  const run = queueOf(id)(async () => {
     const kept = ['backup', 'pull', 'sync'].includes(kind);
     try {
       const result = await fn();
@@ -284,6 +291,8 @@ function task(id, kind, fn) {
       throw Object.assign(err, { statusCode: err.statusCode || (problem.state === 'waiting' ? 503 : 409), message: problem.message });
     }
   });
+  if (pulls) run.finally(() => pulling.set(id, pulling.get(id) - 1)).catch(() => {});
+  return run;
 }
 
 /** A pull waits while a compile or a direct agent turn is changing the project's files, for 2 minutes at most. */
