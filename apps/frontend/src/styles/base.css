@@ -825,12 +825,6 @@ textarea.input {
   overflow-wrap: anywhere;
 }
 
-/* a cloud location's name, above its path */
-.path-label {
-  display: block;
-  font-weight: 500;
-}
-
 /* --------------------------------------------------------------------------
    Segmented controls, tabs
    -------------------------------------------------------------------------- */
@@ -1251,7 +1245,7 @@ button.chip.active:hover {
 .sheet-actions {
   flex: none;
   display: flex;
-  /* buttons too wide for one line (a long cloud location's name) go onto two, not off the edge */
+  /* buttons too wide for one line (a long project's name) go onto two, not off the edge */
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;

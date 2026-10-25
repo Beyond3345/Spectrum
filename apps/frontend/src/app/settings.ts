@@ -2,7 +2,6 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { getSharedSettings, listLiveModels, listProviders, shareSettings } from '../api/client';
 import type {
   BibTool,
-  CloudMode,
   CompileEngine,
   CompileOptions,
   EffortLevel,
@@ -126,10 +125,8 @@ export type AppSettings = {
   syncHighlightCustom: string;
   /** how long the highlight stays before it fades, 1 to 10 */
   syncHighlightSeconds: number;
-  /** settings follow the user to their other computers through the cloud locations (SHARED_KEYS) */
+  /** settings follow the user to their other computers through the settings repository on GitHub (SHARED_KEYS) */
   syncSettings: boolean;
-  /** what Sync to and Download do on this computer */
-  cloudMode: CloudMode;
   /** the folders on the Projects page (folders.ts) */
   projectFolders: ProjectFolders;
   /** a colour chosen for a tag; the others get one from their name */
@@ -212,7 +209,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   syncHighlightCustom: '#ffd60a',
   syncHighlightSeconds: 3,
   syncSettings: true,
-  cloudMode: 'mirror',
   projectFolders: NO_FOLDERS,
   tagColours: {},
   personas: STARTER_PERSONAS,
@@ -345,8 +341,8 @@ function parse(raw: string | null): AppSettings {
     if (typeof merged.syncHighlightCustom !== 'string' || !HEX.test(merged.syncHighlightCustom)) merged.syncHighlightCustom = DEFAULT_SETTINGS.syncHighlightCustom;
     if (!Number.isFinite(merged.syncHighlightSeconds)) merged.syncHighlightSeconds = DEFAULT_SETTINGS.syncHighlightSeconds;
     merged.syncHighlightSeconds = Math.min(10, Math.max(1, Math.round(merged.syncHighlightSeconds)));
+    // 1.10's cloudMode stays stored as it was, for going back to 1.10.4
     merged.syncSettings = merged.syncSettings !== false;
-    if (merged.cloudMode !== 'move') merged.cloudMode = 'mirror';
     merged.projectFolders = cleanFolders(merged.projectFolders);
     merged.tagColours = Object.fromEntries(
       Object.entries(typeof merged.tagColours === 'object' && merged.tagColours ? merged.tagColours : {}).filter(([, c]) => TAG_COLOUR_NAMES.includes(c as TagColour))
@@ -434,8 +430,7 @@ export function updateSettings(patch: Partial<AppSettings>) {
 
 /**
  * What goes to the user's other computers. Never a key, nor the providers, endpoints and models that go with the
- * keys, a path, the window's see-through look, an editor font or compiler only one computer may have, what Sync to
- * does on this computer, or this switch.
+ * keys, a path, the window's see-through look, an editor font or compiler only one computer may have, or this switch.
  */
 const SHARED_KEYS = [
   'theme', 'accent', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize',
