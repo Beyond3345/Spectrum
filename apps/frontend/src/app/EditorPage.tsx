@@ -72,6 +72,7 @@ import FloatsPanel from '../editor/FloatsPanel';
 import type { FloatCard } from '../editor/FloatsPanel';
 import InsightsPanel from '../editor/InsightsPanel';
 import { figureFile, showDiagram, showFigure } from '../editor/tools/FloatsTab';
+import { figureLabel, figureMarkdown, figureTypst } from '../editor/floats';
 import type { DiagramLanguage } from '../diagram/types';
 import SplitDiffView from '../editor/SplitDiffView';
 import GrammarPanel, { grammarMarks } from '../editor/GrammarPanel';
@@ -121,7 +122,7 @@ import type { Reference } from '../editor/lsp/texlab';
 import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
-import { PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDocument } from '../editor/shared';
+import { PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDocument, type DocKind } from '../editor/shared';
 import { languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions } from '../editor/languages';
 import { includedPath, parseMarkdownOutline, parseTypstOutline } from '../editor/outlines';
 import { ZOTERO_CITE, zoteroCompletionSource } from '../editor/zotero';
@@ -203,22 +204,26 @@ const ZOOMS: [PdfZoom, string][] = [
   [2, '200%']
 ];
 
-type Snippet = { label: string; icon: string; text: string; select: string; block?: boolean };
+type Snippet = { label: string; icon: string; text: string; select: string; block?: boolean; kinds: DocKind[] };
+const LATEX: DocKind[] = ['latex'];
+const TYPST: DocKind[] = ['typst'];
+const MARKDOWN: DocKind[] = ['markdown'];
 /** a snippet, the Floats panel's figure or table card, the diagram composer, or a divider */
 const SNIPPETS: (Snippet | FloatCard | null)[] = [
-  { label: 'Section', icon: 'number', text: '\\section{Section title}', select: 'Section title', block: true },
-  { label: 'Subsection', icon: 'list.bullet.indent', text: '\\subsection{Subsection title}', select: 'Subsection title', block: true },
-  { label: 'Subsubsection', icon: 'list.bullet.indent', text: '\\subsubsection{Subsubsection title}', select: 'Subsubsection title', block: true },
+  { label: 'Section', icon: 'number', text: '\\section{Section title}', select: 'Section title', block: true, kinds: LATEX },
+  { label: 'Subsection', icon: 'list.bullet.indent', text: '\\subsection{Subsection title}', select: 'Subsection title', block: true, kinds: LATEX },
+  { label: 'Subsubsection', icon: 'list.bullet.indent', text: '\\subsubsection{Subsubsection title}', select: 'Subsubsection title', block: true, kinds: LATEX },
   null,
-  { label: 'Itemize', icon: 'list.bullet', text: '\\begin{itemize}\n    \\item First item\n\\end{itemize}', select: 'First item', block: true },
-  { label: 'Enumerate', icon: 'list.number', text: '\\begin{enumerate}\n    \\item First item\n\\end{enumerate}', select: 'First item', block: true },
-  { label: 'Equation', icon: 'function', text: '\\begin{equation}\n    E = mc^2\n    \\label{eq:name}\n\\end{equation}', select: 'E = mc^2', block: true },
+  { label: 'Itemize', icon: 'list.bullet', text: '\\begin{itemize}\n    \\item First item\n\\end{itemize}', select: 'First item', block: true, kinds: LATEX },
+  { label: 'Enumerate', icon: 'list.number', text: '\\begin{enumerate}\n    \\item First item\n\\end{enumerate}', select: 'First item', block: true, kinds: LATEX },
+  { label: 'Equation', icon: 'function', text: '\\begin{equation}\n    E = mc^2\n    \\label{eq:name}\n\\end{equation}', select: 'E = mc^2', block: true, kinds: LATEX },
   {
     label: 'Algorithm',
     icon: 'arrow.triangle.branch',
     text: '\\begin{algorithm}[t]\n    \\caption{Algorithm name}\n    \\label{alg:name}\n    \\begin{algorithmic}[1]\n        \\State Initialise\n    \\end{algorithmic}\n\\end{algorithm}',
     select: 'Algorithm name',
-    block: true
+    block: true,
+    kinds: LATEX
   },
   null,
   'figure',
@@ -229,14 +234,33 @@ const SNIPPETS: (Snippet | FloatCard | null)[] = [
     icon: 'chevron.left.forwardslash.chevron.right',
     text: '\\begin{lstlisting}[language=Python]\n# code here\n\\end{lstlisting}',
     select: '# code here',
-    block: true
+    block: true,
+    kinds: LATEX
   },
   null,
-  { label: 'Citation', icon: 'quote.opening', text: '\\cite{key}', select: 'key' },
-  { label: 'Reference', icon: 'link', text: '\\ref{label}', select: 'label' },
-  { label: 'Label', icon: 'tag', text: '\\label{label}', select: 'label' }
+  { label: 'Citation', icon: 'quote.opening', text: '\\cite{key}', select: 'key', kinds: LATEX },
+  { label: 'Reference', icon: 'link', text: '\\ref{label}', select: 'label', kinds: LATEX },
+  { label: 'Label', icon: 'tag', text: '\\label{label}', select: 'label', kinds: LATEX },
+  // Typst
+  { label: 'Heading', icon: 'number', text: '= Heading', select: 'Heading', block: true, kinds: TYPST },
+  { label: 'Emphasis', icon: 'textformat', text: '_text_', select: 'text', kinds: TYPST },
+  { label: 'Strong', icon: 'text.bubble', text: '*text*', select: 'text', kinds: TYPST },
+  { label: 'List', icon: 'list.bullet', text: '- item', select: 'item', block: true, kinds: TYPST },
+  { label: 'Maths', icon: 'function', text: '$x$', select: 'x', kinds: TYPST },
+  { label: 'Block maths', icon: 'function', text: '$ x $', select: 'x', block: true, kinds: TYPST },
+  { label: 'Citation', icon: 'quote.opening', text: '@key', select: 'key', kinds: TYPST },
+  { label: 'Reference', icon: 'link', text: '@fig:x', select: 'fig:x', kinds: TYPST },
+  { label: 'Comment', icon: 'text.bubble', text: '// comment', select: 'comment', kinds: TYPST },
+  // Markdown
+  { label: 'Heading', icon: 'number', text: '## Heading', select: 'Heading', block: true, kinds: MARKDOWN },
+  { label: 'Emphasis', icon: 'textformat', text: '_text_', select: 'text', kinds: MARKDOWN },
+  { label: 'Strong', icon: 'text.bubble', text: '**text**', select: 'text', kinds: MARKDOWN },
+  { label: 'List', icon: 'list.bullet', text: '- item', select: 'item', block: true, kinds: MARKDOWN },
+  { label: 'Link', icon: 'link', text: '[text](url)', select: 'text', kinds: MARKDOWN },
+  { label: 'Maths', icon: 'function', text: '$x$', select: 'x', kinds: MARKDOWN },
+  { label: 'Citation', icon: 'quote.opening', text: '[@key]', select: 'key', kinds: MARKDOWN },
+  { label: 'Code block', icon: 'chevron.left.forwardslash.chevron.right', text: '```\ncode\n```', select: 'code', block: true, kinds: MARKDOWN }
 ];
-
 type CompileState = { state: 'idle' | 'running' | 'ok' | 'failed' | 'stopped'; engine: CompileEngine | string; at?: Date; slow?: boolean };
 
 /** what takes the PDF's place, from the top bar */
@@ -2765,7 +2789,8 @@ function Editor({ projectId }: { projectId: string }) {
     </>
   );
 
-  const insertItems: MenuItems = SNIPPETS.map((s) =>
+  const insertKind: DocKind = docKind(activePath) ?? 'latex';
+  const insertItems: MenuItems = SNIPPETS.filter((s) => !s || typeof s === 'string' || !('kinds' in s) || s.kinds.includes(insertKind)).map((s) =>
     s === 'diagram'
       ? { label: 'Draw a diagram…', icon: 'pencil', onSelect: () => drawDiagram() }
       : s === 'figure' || s === 'table'
@@ -3639,7 +3664,9 @@ function Editor({ projectId }: { projectId: string }) {
                   disabled={!isDocument(activePath)}
                   title={isDocument(activePath) ? undefined : 'Open a document first'}
                   onClick={() => {
-                    insertAtCursor(figureSnippet(preview), { block: true });
+                    const kind = docKind(activePath);
+                    const figure = { path: preview, width: 0.9, caption: 'Caption.', label: figureLabel(preview) };
+                    insertAtCursor(kind === 'typst' ? figureTypst(figure) : kind === 'markdown' ? figureMarkdown(figure) : figureSnippet(preview), { block: true });
                     setPreview('');
                   }}
                 >

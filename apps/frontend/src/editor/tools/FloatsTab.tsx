@@ -9,9 +9,9 @@ import { IS_WINDOWS } from '../../app/platform';
 import type { DiagramLanguage } from '../../diagram/types';
 import { useEditor } from '../EditorContext';
 import type { EditorApi } from '../EditorContext';
-import { VISION_HINTS, VISION_MODES, errorText, figureSnippet, isDocument } from '../shared';
+import { VISION_HINTS, VISION_MODES, docKind, errorText, figureSnippet, isDocument } from '../shared';
 import type { VisionMode } from '../shared';
-import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramLatex, extOf, figureKind, figureLabel, figureLatex, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableLabel, tableLatex, uniqueName } from '../floats';
+import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableLabel, tableLatex, tableMarkdown, tableTypst, uniqueName } from '../floats';
 import type { TableLines, TableModel } from '../floats';
 import { addLibraries, addPackages, changeBetween, loadedLibraries, projectPackages } from '../preamble';
 
@@ -402,9 +402,18 @@ function InsertFigure() {
         const res = await uploadFiles(api.projectId, [new File([source.blob], unique, { type: source.blob.type })], 'images');
         saved = res.files?.[0] || `images/${unique}`;
       }
-      const added = await ensurePackages(() => apiRef.current, ['graphicx', ...(placementOf(prefs.placement, prefs.span) === 'H' ? ['float'] : [])]);
+      const kind = docKind(apiRef.current.activePath);
+      const added = kind === 'latex' ? await ensurePackages(() => apiRef.current, ['graphicx', ...(placementOf(prefs.placement, prefs.span) === 'H' ? ['float'] : [])]) : { text: '', warn: false };
       // an automatic label follows the name the file was saved under
-      insertBlock(apiRef.current, figureLatex({ path: saved, width: widthOf(prefs), caption, label: label ?? figureLabel(saved), placement: prefs.placement, span: prefs.span }));
+      const figure = { path: saved, width: widthOf(prefs), caption, label: label ?? figureLabel(saved) };
+      insertBlock(
+        apiRef.current,
+        kind === 'typst'
+          ? figureTypst(figure)
+          : kind === 'markdown'
+            ? figureMarkdown(figure)
+            : figureLatex({ ...figure, placement: prefs.placement, span: prefs.span })
+      );
       if (source.kind === 'file') await api.refreshTree();
       api.notify([source.kind === 'file' ? `Saved ${saved} and inserted the figure.` : `Inserted ${saved} as a figure.`, added.text].filter(Boolean).join(' '), added.warn ? 'error' : 'success');
       clear();
@@ -743,7 +752,9 @@ function InsertTable() {
   const focusAfter = useRef<[number, number] | null>(null);
   const cols = cells[0].length;
   const align = Array.from({ length: cols }, (_, c) => chosen[c] ?? defaultAlign(env, c));
-  const latex = tableLatex({ cells, env, align, lines, header, float, placement, span, caption, label: label ?? tableLabel(caption), escape });
+  const kind = docKind(api.activePath);
+  const model = { cells, env, align, lines, header, float, placement, span, caption, label: label ?? tableLabel(caption), escape };
+  const text = kind === 'typst' ? tableTypst(model) : kind === 'markdown' ? tableMarkdown(model) : tableLatex(model);
   const docOpen = isDocument(api.activePath);
 
   const focusCell = (r: number, c: number) => gridRef.current?.querySelector<HTMLInputElement>(`[data-cell="${r}-${c}"]`)?.focus();
@@ -780,8 +791,8 @@ function InsertTable() {
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(latex);
-      api.notify('Copied the table’s LaTeX.', 'success');
+      await navigator.clipboard.writeText(text);
+      api.notify('Copied the table.', 'success');
     } catch (err) {
       api.notify(`Couldn’t copy the table: ${errorText(err)}`, 'error');
     }
@@ -790,8 +801,8 @@ function InsertTable() {
   const insert = async () => {
     setBusy(true);
     const wanted = [...(lines === 'booktabs' ? ['booktabs'] : []), ...(env === 'tabularx' ? ['tabularx'] : []), ...(float && placementOf(placement, span) === 'H' ? ['float'] : [])];
-    const added = await ensurePackages(() => apiRef.current, wanted);
-    insertBlock(apiRef.current, latex);
+    const added = kind === 'latex' ? await ensurePackages(() => apiRef.current, wanted) : { text: '', warn: false };
+    insertBlock(apiRef.current, text);
     api.notify(['Inserted the table.', added.text].filter(Boolean).join(' '), added.warn ? 'error' : 'success');
     setBusy(false);
   };
@@ -924,8 +935,8 @@ function InsertTable() {
         </>
       )}
       <div className="field">
-        <label htmlFor={`${id}-latex`}>LaTeX</label>
-        <textarea id={`${id}-latex`} className="input mono table-latex" readOnly wrap="off" rows={Math.min(16, latex.split('\n').length)} value={latex} />
+        <label htmlFor={`${id}-latex`}>Source</label>
+        <textarea id={`${id}-latex`} className="input mono table-latex" readOnly wrap="off" rows={Math.min(16, text.split('\n').length)} value={text} />
       </div>
       <div className="row">
         <button className="btn" onClick={copy}>

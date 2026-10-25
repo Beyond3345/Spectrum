@@ -1,6 +1,6 @@
 // Self-check for the Floats panel's LaTeX and the preamble helper. Run:
 // npx esbuild apps/frontend/src/editor/floats.check.ts --bundle --platform=node --log-level=warning | node
-import { placementOf, blockAt, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, jpegOrientation, parseDelimited, pasteCells, safeFileName, tableLabel, tableLatex, uniqueName } from './floats';
+import { placementOf, blockAt, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, jpegOrientation, parseDelimited, pasteCells, safeFileName, tableLabel, tableLatex, tableMarkdown, tableTypst, uniqueName } from './floats';
 import type { TableModel } from './floats';
 import { addLibraries, addPackages, changeBetween, loadedLibraries, loadedPackages, projectPackages } from './preamble';
 
@@ -303,6 +303,29 @@ eq(figureLatex({ ...fig, placement: 'tb!', span: true }).split('\n')[0], '\\begi
 eq(figureLatex({ ...fig, span: true }).split('\n').pop(), '\\end{figure*}', 'figure* closes as figure*');
 eq(tableLatex({ ...model, placement: 'ht', span: true }).split('\n')[0], '\\begin{table*}[t]', 'table* with its usable letters');
 eq(tableLatex({ ...model, placement: 'ht', span: true }).split('\n').pop(), '\\end{table*}', 'table* closes as table*');
+
+// ─── Typst and Markdown ───
+
+eq(
+  figureTypst({ path: 'images/cat.png', width: 0.8, caption: 'A cat, [x]', label: 'fig:cat' }),
+  '#figure(image("images/cat.png", width: 80%), caption: [A cat, [x\\]]) <fig:cat>',
+  'a Typst figure with its width, caption and label'
+);
+eq(figureTypst({ path: 'images/a"b.png', width: 1, caption: '', label: '' }), '#figure(image("images/a\\"b.png", width: 100%))', 'a Typst figure without a caption or label, its path quoted');
+eq(figureMarkdown({ path: 'images/cat.png', width: 0.75, caption: 'A cat, [x]', label: 'fig:cat' }), '![A cat, \\[x\\]](images/cat.png){#fig:cat width=75%}', 'a Markdown image with its label and width');
+eq(figureMarkdown({ path: 'images/cat.png', width: 0.5, caption: 'A cat', label: '' }), '![A cat](images/cat.png){width=50%}', 'a Markdown image without a label');
+eq(
+  tableTypst(model),
+  '#figure(table(columns: 3, table.header([Method], [a_b], [Score]), [Ours], [$x_1$], [50%]), caption: [Results.]) <tab:results>',
+  'a Typst table in a float, its header kept'
+);
+eq(tableTypst({ ...model, float: false, header: false }), 'table(columns: 3, [Method], [a_b], [Score], [Ours], [$x_1$], [50%])', 'a Typst table without its float or header');
+eq(
+  tableMarkdown(model),
+  lines('| Method | a_b | Score |', '| --- | --- | --- |', '| Ours | $x_1$ | 50% |', '', 'Table: Results. {#tab:results}'),
+  'a Markdown pipe table with its caption under it'
+);
+eq(tableMarkdown({ ...model, cells: [['a|b', 'c']], header: true, float: false }), lines('| a\\|b | c |', '| --- | --- |'), 'a pipe table escapes a pipe and has no caption');
 
 Promise.all([
   projectPackages('paper/main.tex', new Set(Object.keys(files)), async (p) => files[p]).then((names) => {

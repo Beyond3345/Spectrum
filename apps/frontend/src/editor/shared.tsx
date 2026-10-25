@@ -24,6 +24,9 @@ export async function mainCitationCommand(api: EditorApi) {
 }
 
 export async function citationText(api: EditorApi, keys: string[]) {
+  const kind = docKind(api.activePath);
+  if (kind === 'typst') return keys.map((key) => (/^[A-Za-z0-9_:.-]+$/.test(key) ? `@${key}` : `#cite(label(${JSON.stringify(key)}))`)).join(' ');
+  if (kind === 'markdown') return `[${keys.map((key) => `@${key}`).join('; ')}]`;
   return `${await mainCitationCommand(api)}{${keys.join(',')}}`;
 }
 
