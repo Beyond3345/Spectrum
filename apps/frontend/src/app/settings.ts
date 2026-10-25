@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { getSharedSettings, listLiveModels, listProviders, shareSettings } from '../api/client';
+import { getSharedSettings, listLiveModels, listProviders, shareSettings, syncPersonas, syncSettingsRepo } from '../api/client';
 import type {
   BibTool,
   CloudMode,
@@ -445,6 +445,9 @@ const SHARED_KEYS = [
 
 export const sharedPart = (settings: AppSettings): Record<string, unknown> => Object.fromEntries(SHARED_KEYS.map((key) => [key, settings[key]]));
 
+/** Shared settings without the personas, which the settings repository keeps one file each. */
+const withoutPersonas = ({ personas: _personas, ...rest }: Record<string, unknown>) => rest;
+
 /** This computer's settings with another's shared ones in, checked as stored ones are; the rest stay as they are. */
 export const withShared = (settings: AppSettings, shared: Record<string, unknown>) =>
   parse(JSON.stringify({ ...settings, ...Object.fromEntries(SHARED_KEYS.filter((key) => key in shared).map((key) => [key, shared[key]])) }));
@@ -575,18 +578,30 @@ export function followSharedSettings() {
   const follow = async (theirsFirst = false) => {
     const settings = loadSettings();
     if (!settings.syncSettings) return;
+    // the settings repository on GitHub brought up to date first; a computer whose settings aren't in it yet (a first
+    // sign-in) takes the ones there first
+    const repo = await syncSettingsRepo().catch(() => null);
     const { shared, latest } = await getSharedSettings();
     if (!shared) return;
     const { at, sent } = syncState();
-    const next = followStep(settings, latest, at, sent, theirsFirst);
+    // personas go one file each through the repository (syncPersonas below), never in a computer's settings file
+    const theirs = latest && { ...latest, settings: withoutPersonas(latest.settings) };
+    const next = followStep(settings, theirs, at, sent, theirsFirst || !!repo?.first);
     if (next.settings !== settings) {
       keepSyncState({ at: next.at, sent: next.sent });
       persistSettings(next.settings);
     }
-    if (!next.share) return;
-    const res = await shareSettings(next.share);
-    // never before the file just taken in, so one from a computer whose clock is ahead isn't taken in twice
-    if (res.updatedAt) keepSyncState({ at: res.updatedAt > next.at ? res.updatedAt : next.at, sent: JSON.stringify(next.share) });
+    // a first sign-in shares this computer's settings at once, else the repository's would win again next time
+    const share = next.share ?? (repo?.first ? sharedPart(next.settings) : null);
+    if (share) {
+      const res = await shareSettings(withoutPersonas(share));
+      // never before the file just taken in, so one from a computer whose clock is ahead isn't taken in twice
+      if (res.updatedAt) keepSyncState({ at: res.updatedAt > next.at ? res.updatedAt : next.at, sent: JSON.stringify(share) });
+    }
+    if (repo?.ready) {
+      const joined = await syncPersonas(loadSettings().personas);
+      if (joined.changed) persistSettings({ ...loadSettings(), personas: cleanPersonas(joined.personas) });
+    }
   };
   let on = loadSettings().syncSettings;
   let turnedOn = false;
