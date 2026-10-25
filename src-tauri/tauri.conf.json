@@ -49,7 +49,9 @@
     ],
     "externalBin": [
       "binaries/node",
-      "binaries/texlab"
+      "binaries/texlab",
+      "binaries/tectonic",
+      "binaries/typst"
     ],
     "resources": {
       "resources/backend/": "backend/",
@@ -57,7 +59,8 @@
       "resources/templates/": "templates/",
       "resources/native/": "native/",
       "resources/dictionaries/": "dictionaries/",
-      "resources/skills/": "skills/"
+      "resources/skills/": "skills/",
+      "resources/engines/": "engines/"
     },
     "macOS": {
       "minimumSystemVersion": "13.5",
