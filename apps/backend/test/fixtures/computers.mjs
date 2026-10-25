@@ -8,15 +8,15 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-/** A computer called name under tmp: { name, data, projects, server, api, stop }. */
-export async function startComputer(name, { tmp, home, gh, env = {} }) {
+/** A computer called name under tmp: { name, data, projects, server, api, stop }. entry: another version's server. */
+export async function startComputer(name, { tmp, home, gh, env = {}, entry = path.join(here, '..', '..', 'src', 'index.js') }) {
   const data = path.join(tmp, `data-${name}`);
   const projects = path.join(tmp, `projects-${name}`);
   mkdirSync(data, { recursive: true });
   mkdirSync(projects, { recursive: true });
   if (!existsSync(path.join(data, 'sync.json'))) writeFileSync(path.join(data, 'sync.json'), JSON.stringify({ machineId: crypto.randomUUID(), machineName: name, folders: [], hidden: [] }));
   const port = 20000 + Math.floor(Math.random() * 20000);
-  const server = spawn(process.execPath, [path.join(here, '..', '..', 'src', 'index.js')], {
+  const server = spawn(process.execPath, [entry], {
     env: {
       ...process.env,
       HOME: home,
