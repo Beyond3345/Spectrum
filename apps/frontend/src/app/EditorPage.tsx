@@ -2951,9 +2951,12 @@ function Editor({ projectId }: { projectId: string }) {
   );
   // ends each panel's header
   const panelEnd = (
-    <button className="icon-btn" title="Close and show the PDF" aria-label="Close" onClick={closePanel}>
-      <Icon name="xmark" />
-    </button>
+    <>
+      <button className="icon-btn" title="Close and show the PDF" aria-label="Close" onClick={closePanel}>
+        <Icon name="xmark" />
+      </button>
+      {viewSwitcher}
+    </>
   );
   const sidebarButton = layout.sidebarCollapsed && (
     <button className="icon-btn" title={withShortcut(settings.shortcuts, 'Show sidebar', 'sidebar')} aria-label="Show sidebar" onClick={() => setLayout({ sidebarCollapsed: false })}>
@@ -3110,500 +3113,513 @@ function Editor({ projectId }: { projectId: string }) {
           ref={panelRef}
           style={{ '--sync-highlight': highlightColour(settings, dark) } as CSSProperties}
         >
-          {/* the whole panel's: compiling, the panels that take the PDF's place and the view; each column's own row is below */}
-          <div className="workspace-bar" data-tauri-drag-region>
-            {sidebarButton}
-            {compileSplit}
-            <button
-              className="btn save-version"
-              onClick={saveVersionNow}
-              disabled={savingVersion}
-              title={withShortcut(settings.shortcuts, 'Save checkpoint', 'saveVersion')}
-              aria-label="Save checkpoint"
-            >
-              {savingVersion ? <span className="spinner" /> : <Icon name="clock.arrow.circlepath" />}
-              <span className="btn-label">Save checkpoint</span>
-            </button>
-            {/* always mounted, so screen readers hear each change */}
-            {compileStatus}
-            <span className="spacer" data-tauri-drag-region />
-            <button
-              className={`icon-btn ${panel === 'grammar' ? 'active' : ''}`}
-              title={withShortcut(settings.shortcuts, 'Check grammar', 'grammar')}
-              aria-label="Check grammar"
-              aria-pressed={panel === 'grammar'}
-              onClick={toggleGrammar}
-            >
-              <Icon name="text.badge.checkmark" />
-            </button>
-            <button
-              className={`icon-btn ${panel === 'insights' ? 'active' : ''}`}
-              title="Document insights"
-              aria-label="Document insights"
-              aria-pressed={panel === 'insights'}
-              onClick={() => togglePanel('insights')}
-            >
-              <Icon name="chart.bar.xaxis" />
-            </button>
-            <button
-              className={`tools-toggle ${panel === 'tools' ? 'open' : ''}`}
-              aria-pressed={panel === 'tools'}
-              // its words go in a narrow editor
-              aria-label={panel === 'tools' ? 'Close Tools' : problems > 0 ? `Tools, ${plural(problems, 'problem')}` : 'Tools'}
-              title={panel === 'tools' ? 'Close Tools' : 'Tools'}
-              onClick={() => (panel === 'tools' ? setPanel(null) : openTools())}
-            >
-              <span>{panel === 'tools' ? 'Close' : 'Tools'}</span>
-              <Icon name={panel === 'tools' ? 'xmark' : 'square.grid.2x2'} />
-              {panel !== 'tools' && problems > 0 && (
-                <span className={`tools-badge ${errorCount ? 'error' : ''}`} title={`${plural(errorCount, 'error')}, ${plural(problems - errorCount, 'warning')}`}>
-                  {problems}
-                </span>
-              )}
-            </button>
-            <button
-              className={`icon-btn agent-toggle ${panel === 'agent' ? 'active' : ''}`}
-              title={agentStatus ? `Agent · ${STATUS_TEXT[agentStatus]}` : 'Agent'}
-              aria-label={agentStatus ? `Agent, ${STATUS_TEXT[agentStatus].toLowerCase()}` : 'Agent'}
-              aria-pressed={panel === 'agent'}
-              onClick={() => togglePanel('agent')}
-            >
-              <Icon name="wand.and.stars" />
-              {agentStatus && <span className={`agent-dot ${agentStatus}`} />}
-            </button>
-            {viewSwitcher}
-          </div>
-
-          <div className="workspace">
-            {/* hidden in PDF only rather than unmounted, so its files, undo history and scroll stay as they were */}
-            <section className="editor-column" hidden={layout.view === 'pdf'}>
-              <div className="editor-topbar">
-                {/* figures, tables and diagrams are in Insert (+) */}
-                <MenuButton icon="plus.circle" className="icon-btn" title="Insert" items={insertItems} disabled={!activePath} />
-                <div ref={stripRef} className="file-tabs" role="tablist" data-tauri-drag-region>
-                  {tabs.map((path) => (
-                    <div
-                      key={path}
-                      role="tab"
-                      tabIndex={0}
-                      aria-selected={path === activePath}
-                      className={`file-tab ${path === activePath ? 'active' : ''} ${heldRef.current.has(path) ? 'held' : ''} ${heldRef.current.get(path) === null ? 'gone' : ''}`}
-                      title={heldRef.current.get(path) === null ? `${path} · Deleted on disk` : heldRef.current.get(path) ? `${path} · Changed on another computer` : path}
-                      onClick={() => open(path)}
-                      onKeyDown={(e) => e.key === 'Enter' && open(path)}
-                      onAuxClick={(e) => e.button === 1 && closeTab(path).catch(() => undefined)}
+          {/* hidden in PDF only rather than unmounted, so its files, undo history and scroll stay as they were */}
+          <section className="editor-column" hidden={layout.view === 'pdf'}>
+            <div className="editor-topbar" data-tauri-drag-region>
+              {sidebarButton}
+              <MenuButton icon="plus.circle" className="icon-btn" title="Insert" items={insertItems} disabled={!activePath} />
+              {/* a narrow editor leaves these to Insert (+) */}
+              <button className="icon-btn float-button" title="Insert figure" aria-label="Insert figure" onClick={() => openFloats('figure')}>
+                <Icon name="photo" />
+              </button>
+              <button className="icon-btn float-button" title="Insert table" aria-label="Insert table" onClick={() => openFloats('table')}>
+                <Icon name="tablecells" />
+              </button>
+              <button className="icon-btn float-button" title="Draw a diagram" aria-label="Draw a diagram" onClick={() => drawDiagram()}>
+                <Icon name="pencil" />
+              </button>
+              <div ref={stripRef} className="file-tabs" role="tablist" data-tauri-drag-region>
+                {tabs.map((path) => (
+                  <div
+                    key={path}
+                    role="tab"
+                    tabIndex={0}
+                    aria-selected={path === activePath}
+                    className={`file-tab ${path === activePath ? 'active' : ''} ${heldRef.current.has(path) ? 'held' : ''} ${heldRef.current.get(path) === null ? 'gone' : ''}`}
+                    title={heldRef.current.get(path) === null ? `${path} · Deleted on disk` : heldRef.current.get(path) ? `${path} · Changed on another computer` : path}
+                    onClick={() => open(path)}
+                    onKeyDown={(e) => e.key === 'Enter' && open(path)}
+                    onAuxClick={(e) => e.button === 1 && closeTab(path).catch(() => undefined)}
+                  >
+                    <Icon name={heldRef.current.has(path) ? 'exclamationmark.triangle' : /\.bib$/i.test(path) ? 'books.vertical' : 'doc.text'} className="file-tab-icon" />
+                    <span className="file-tab-name">{nameOf(path)}</span>
+                    {path === activePath && dirty && <span className="file-tab-dot" title="Unsaved changes" />}
+                    <button
+                      className="file-tab-close"
+                      title="Close"
+                      aria-label={`Close ${nameOf(path)}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeTab(path).catch((err) => notify(errorText(err), 'error'));
+                      }}
                     >
-                      <Icon name={heldRef.current.has(path) ? 'exclamationmark.triangle' : /\.bib$/i.test(path) ? 'books.vertical' : 'doc.text'} className="file-tab-icon" />
-                      <span className="file-tab-name">{nameOf(path)}</span>
-                      {path === activePath && dirty && <span className="file-tab-dot" title="Unsaved changes" />}
+                      <Icon name="xmark" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button className={`icon-btn ${composerOpen ? 'active' : ''}`} title={withShortcut(settings.shortcuts, 'Assistant', 'assistant')} aria-label="Assistant" aria-pressed={composerOpen} onClick={toggleComposer}>
+                <Icon name="sparkles" />
+              </button>
+              <button
+                className={`icon-btn ${panel === 'grammar' ? 'active' : ''}`}
+                title={withShortcut(settings.shortcuts, 'Check grammar', 'grammar')}
+                aria-label="Check grammar"
+                aria-pressed={panel === 'grammar'}
+                onClick={toggleGrammar}
+              >
+                <Icon name="text.badge.checkmark" />
+              </button>
+              <button
+                className={`icon-btn ${panel === 'insights' ? 'active' : ''}`}
+                title="Document insights"
+                aria-label="Document insights"
+                aria-pressed={panel === 'insights'}
+                onClick={() => togglePanel('insights')}
+              >
+                <Icon name="chart.bar.xaxis" />
+              </button>
+              <button
+                className={`tools-toggle ${panel === 'tools' ? 'open' : ''}`}
+                aria-pressed={panel === 'tools'}
+                // its words go in a narrow editor
+                aria-label={panel === 'tools' ? 'Close Tools' : problems > 0 ? `Tools, ${plural(problems, 'problem')}` : 'Tools'}
+                title={panel === 'tools' ? 'Close Tools' : 'Tools'}
+                onClick={() => (panel === 'tools' ? setPanel(null) : openTools())}
+              >
+                <span>{panel === 'tools' ? 'Close' : 'Tools'}</span>
+                <Icon name={panel === 'tools' ? 'xmark' : 'square.grid.2x2'} />
+                {panel !== 'tools' && problems > 0 && (
+                  <span className={`tools-badge ${errorCount ? 'error' : ''}`} title={`${plural(errorCount, 'error')}, ${plural(problems - errorCount, 'warning')}`}>
+                    {problems}
+                  </span>
+                )}
+              </button>
+              <button
+                className={`icon-btn agent-toggle ${panel === 'agent' ? 'active' : ''}`}
+                title={agentStatus ? `Agent · ${STATUS_TEXT[agentStatus]}` : 'Agent'}
+                aria-label={agentStatus ? `Agent, ${STATUS_TEXT[agentStatus].toLowerCase()}` : 'Agent'}
+                aria-pressed={panel === 'agent'}
+                onClick={() => togglePanel('agent')}
+              >
+                <Icon name="wand.and.stars" />
+                {agentStatus && <span className={`agent-dot ${agentStatus}`} />}
+              </button>
+              {/* while a panel has the PDF header's place, compiling stays here */}
+              {panel && compileSplit}
+              {/* the PDF header's is hidden in editor only or behind a panel; this one stays from the first compile, so changes are heard */}
+              {(panel || (layout.view === 'editor' && compile.state !== 'idle')) && compileStatus}
+              {layout.view === 'editor' && viewSwitcher}
+            </div>
+
+            <SyncBanners conflicts={conflicts} onDeleted={onDeleted} />
+
+            {draft && (
+              <div className="review-banner template-banner" role="status">
+                <Icon name="square.and.pencil" />
+                <span className="grow truncate">Editing the “{project?.name}” template</span>
+                <button className="btn small ghost" onClick={closeTemplate}>Done</button>
+                <button className="btn small ghost" onClick={openSaveTemplate}>Save as new template…</button>
+                <button className="btn small primary" disabled={savingTemplate} onClick={saveTemplate}>
+                  Save template
+                </button>
+              </div>
+            )}
+
+            {held === null && (
+              <div className="review-banner template-banner" role="status">
+                <Icon name="exclamationmark.triangle" />
+                <span className="grow truncate">{nameOf(activePath)} was deleted on disk</span>
+                <button className="btn small ghost" onClick={() => closeGone(activePath).catch((err) => notify(errorText(err), 'error'))}>
+                  Close
+                </button>
+                <button className="btn small primary" onClick={() => keepMine(activePath)}>
+                  Restore
+                </button>
+              </div>
+            )}
+
+            {held && (
+              <div className="review-banner template-banner" role="status">
+                <Icon name="exclamationmark.triangle" />
+                <span className="grow truncate">{nameOf(activePath)} was changed on another computer</span>
+                <button className="btn small ghost" onClick={() => setComparing(true)}>
+                  Compare
+                </button>
+                <button className="btn small ghost" onClick={() => takeTheirs(activePath)}>
+                  Use theirs
+                </button>
+                <button className="btn small primary" onClick={() => keepMine(activePath)}>
+                  Keep mine
+                </button>
+              </div>
+            )}
+
+            {pending.length > 0 && (
+              <div className="review-banner" role="status">
+                <Icon name="plus.forwardslash.minus" />
+                <span className="grow">Suggested changes to {plural(pending.length, 'file')}</span>
+                <button className="btn small ghost" onClick={() => setPending([])}>
+                  Discard
+                </button>
+                <button className="btn small primary" onClick={() => openReview(pending).catch(() => setReviewOpen(true))}>
+                  Review
+                </button>
+              </div>
+            )}
+
+            <div className="editor-area" ref={areaRef}>
+              <div className="editor-host" ref={hostRef} style={{ '--editor-font-size': `${settings.editorFontSize}px` } as CSSProperties} />
+              {!activePath && loaded && (
+                <div className="editor-empty">
+                  <Icon name="doc.text" size={34} />
+                  <div className="empty-title">No file open</div>
+                  <div className="empty-text">Choose a file in the sidebar, or create one with + above the file list.</div>
+                </div>
+              )}
+              {ghostPos && (suggesting || ghostText) && (
+                <div className="ghost-hint" style={{ left: ghostPos.left, top: ghostPos.top }}>
+                  {ghostText ? (
+                    <>
+                      <button className="ghost-action" onMouseDown={(e) => e.preventDefault()} onClick={() => acceptGhost()}>
+                        Accept <kbd>Tab</kbd>
+                      </button>
+                      <button className="ghost-action" onMouseDown={(e) => e.preventDefault()} onClick={() => acceptGhost(true)}>
+                        Word <kbd>→</kbd>
+                      </button>
+                      <button className="ghost-action" onMouseDown={(e) => e.preventDefault()} onClick={() => clearGhost()}>
+                        Dismiss <kbd>Esc</kbd>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="spinner" /> Writing a suggestion…
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {references && (
+              <div
+                className="references-panel"
+                role="region"
+                aria-label="References"
+                onKeyDown={(e) => {
+                  if (e.key !== 'Escape') return;
+                  setReferences(null);
+                  viewRef.current?.focus();
+                }}
+              >
+                <div className="references-head">
+                  <span className="grow">{references.length ? plural(references.length, 'reference') : 'No references found'}</span>
+                  <button className="icon-btn" aria-label="Close" onClick={() => setReferences(null)}>
+                    <Icon name="xmark" />
+                  </button>
+                </div>
+                <div className="references-list">
+                  {references.map((r, i) => (
+                    <button
+                      key={`${r.path}:${r.line}:${r.col}`}
+                      className="reference-row"
+                      title={`${r.path}, line ${r.line}`}
+                      autoFocus={i === 0}
+                      onClick={() => jumpTo(r.path, r.line, r.col)}
+                    >
+                      <span className="reference-place">
+                        {nameOf(r.path)}:{r.line}
+                      </span>
+                      <span className="reference-text">{r.text}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <Composer
+              open={composerOpen}
+              onOpenChange={(open) => {
+                setComposerOpen(open);
+                if (!open) viewRef.current?.focus();
+              }}
+              chatId={chatId}
+              onChatIdChange={setChatId}
+              focusSignal={focusSignal}
+              onContinueInAgent={continueInAgent}
+              onManagePersonas={() => setSettingsOpen('personas')}
+            />
+            <ZoteroCite />
+          </section>
+
+          {layout.view === 'split' && <div className="column-divider" role="separator" aria-orientation="vertical" aria-label="Resize" onMouseDown={startResize} />}
+
+          {/* hidden in editor only, so the PDF needn't load again */}
+          <section className="right-column" hidden={layout.view === 'editor'} style={layout.view === 'split' ? { width: `${layout.split * 100}%` } : undefined}>
+            <div className="pdf-column" hidden={!!panel}>
+              <div className="pdf-header" data-tauri-drag-region>
+                {layout.view === 'pdf' && sidebarButton}
+                {!panel && compileSplit}
+                <button
+                  className="btn save-version"
+                  onClick={saveVersionNow}
+                  disabled={savingVersion}
+                  title={withShortcut(settings.shortcuts, 'Save checkpoint', 'saveVersion')}
+                  aria-label="Save checkpoint"
+                >
+                  {savingVersion ? <span className="spinner" /> : <Icon name="clock.arrow.circlepath" />}
+                  <span className="btn-label">Save checkpoint</span>
+                </button>
+                {/* always mounted, so screen readers hear each change */}
+                {compileStatus}
+                <span className="spacer" data-tauri-drag-region />
+                <button
+                  className={`icon-btn ${layout.pdfSidebarOpen ? 'active' : ''}`}
+                  title="Document outline"
+                  aria-label="Document outline"
+                  aria-pressed={layout.pdfSidebarOpen}
+                  disabled={!pdf}
+                  onClick={() => setLayout({ pdfSidebarOpen: !layout.pdfSidebarOpen })}
+                >
+                  <Icon name="sidebar.left" />
+                </button>
+                <MenuButton
+                  className="btn ghost small zoom-button"
+                  icon="plus.magnifyingglass"
+                  title={`Zoom: ${zoomLabel}`}
+                  label={zoomLabel}
+                  disabled={!pdf}
+                  align="end"
+                  items={ZOOMS.map(([z, label]) => ({
+                    label,
+                    checked: zoom === z,
+                    shortcut: z === 'width' ? shortcutOf('zoomWidth') : z === 'fit' ? shortcutOf('zoomPage') : undefined,
+                    onSelect: () => setZoom(z)
+                  }))}
+                />
+                <button className="icon-btn" title="Download PDF" aria-label="Download PDF" disabled={!pdf} onClick={downloadPdf}>
+                  <Icon name="arrow.down.to.line" />
+                </button>
+                <MenuButton
+                  icon="ellipsis"
+                  title="More"
+                  align="end"
+                  items={[
+                    { label: 'Two-page view', icon: 'book.pages', checked: spread, disabled: !pdf, onSelect: () => setSpread((v) => !v) },
+                    { label: 'Annotate', icon: 'note.text.badge.plus', checked: annotate, disabled: !pdf, onSelect: () => setAnnotate((v) => !v) },
+                    { label: 'Find in PDF', icon: 'magnifyingglass', shortcut: formatShortcut('Mod-f'), disabled: !pdf, onSelect: openFind },
+                    { label: 'Presentation mode', icon: 'play.fill', disabled: !pdf || !pdfPages, onSelect: () => setPresenting(true) },
+                    { separator: true },
+                    ...pageItems,
+                    { separator: true },
+                    { label: 'Show logs', icon: 'terminal', checked: false, onSelect: () => openTools('logs') }
+                  ]}
+                />
+                {viewSwitcher}
+              </div>
+
+              <div className={`pdf-body ${pdf && layout.pdfSidebarOpen ? 'with-sidebar' : ''}`} onKeyDown={onPdfKey}>
+                {pdf && layout.pdfSidebarOpen && (
+                  <PdfSidebar
+                    tab={layout.pdfSidebarTab}
+                    onTabChange={(pdfSidebarTab) => setLayout({ pdfSidebarTab })}
+                    pdf={pdfRef}
+                    loadedUrl={loadedUrl === pdf.url ? loadedUrl : ''}
+                    pages={pdfPages ?? 0}
+                    page={page}
+                    outline={pdfOutline}
+                    section={pdfSection}
+                    doc={shownDoc}
+                    files={fileSet}
+                    read={readText}
+                    revision={`${filesVersion} ${dirty}`}
+                    onHeading={(file, line) => showHeading(file, line).catch(() => undefined)}
+                  />
+                )}
+                {pdf ? (
+                  <PdfPreview
+                    ref={pdfRef}
+                    url={pdf.url}
+                    pageKey={`${projectId}:${shownDoc}`}
+                    zoom={zoom}
+                    spread={spread}
+                    annotateMode={annotate}
+                    annotations={notes}
+                    onAddAnnotation={addAnnotation}
+                    onDoubleClick={(at, text) => jumpFromPdf(at, text).catch((err) => notify(`Couldn’t jump to the source: ${errorText(err)}`, 'error'))}
+                    onPageMenu={(at, x, y) => {
+                      const selection = window.getSelection();
+                      const text = selection?.anchorNode?.parentElement?.closest('.pdf-scroll') ? selection.toString() : '';
+                      setPdfMenu({ x, y, at, text });
+                    }}
+                    onFileLink={followFileLink}
+                    onPages={(pages) => setPagesOf({ url: pdf.url, pages })}
+                    onLoad={({ pages, outline: toc }) => {
+                      setPdfPages(pages);
+                      setPdfOutline(toc);
+                      setLoadedUrl(pdf.url);
+                    }}
+                    onScale={setScale}
+                    onZoom={setZoom}
+                    onPage={setPage}
+                    onSection={setPdfSection}
+                  />
+                ) : (
+                  <div className="empty-state">
+                    <Icon name="doc.richtext" size={40} />
+                    <div className="empty-title">No PDF yet</div>
+                    <div className="empty-text">Compile the project to see it here.</div>
+                    <div className="empty-actions">
+                      <button className="btn primary" onClick={() => runCompile()} disabled={running || !mainFile}>
+                        {running ? <span className="spinner" /> : <Icon name="play.fill" />} Compile
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {pdf && annotate && <div className="pdf-annotate-hint">Click the page to add a note</div>}
+
+                {pdf && findOpen && (
+                  <PdfFindBar
+                    pdf={pdfRef}
+                    loadedUrl={loadedUrl}
+                    focusSignal={findSignal}
+                    onClose={() => {
+                      setFindOpen(false);
+                      // without scrolling, which would stop the scroll to the last match
+                      document.querySelector<HTMLElement>('.pdf-scroll')?.focus({ preventScroll: true });
+                    }}
+                  />
+                )}
+
+                {pdf && (
+                  <div className="pdf-pill">
+                    {pdfSwitcher}
+                    <button
+                      className="icon-btn small"
+                      title="Previous page"
+                      aria-label="Previous page"
+                      disabled={page <= 1}
+                      onClick={() => pdfRef.current?.scrollToPage(Math.max(1, page - step))}
+                    >
+                      <Icon name="chevron.left" />
+                    </button>
+                    <span className="pdf-pill-label">
+                      <PageBox page={page} pages={pdfPages} onGo={(at) => pdfRef.current?.scrollToPage(at)} /> / {pdfPages ?? '–'}
+                    </span>
+                    <button
+                      className="icon-btn small"
+                      title="Next page"
+                      aria-label="Next page"
+                      disabled={!pdfPages || page + step > pdfPages}
+                      onClick={() => pdfRef.current?.scrollToPage(Math.min(pdfPages!, page + step))}
+                    >
+                      <Icon name="chevron.right" />
+                    </button>
+                    <span className="pdf-pill-sep" />
+                    <button className="icon-btn small" title="Zoom out" aria-label="Zoom out" onClick={() => zoomBy(-1)}>
+                      <Icon name="minus" />
+                    </button>
+                    <span className="pdf-pill-label">{Math.round(scale * 100)}%</span>
+                    <button className="icon-btn small" title="Zoom in" aria-label="Zoom in" onClick={() => zoomBy(1)}>
+                      <Icon name="plus" />
+                    </button>
+                  </div>
+                )}
+
+              </div>
+
+              {notes.length > 0 && (
+                <div className="pdf-notes">
+                  <div className="pdf-notes-head">
+                    <span>Notes</span>
+                    <button
+                      className="btn small ghost"
+                      onClick={async () => {
+                        const sure = await confirmDialog({
+                          title: `Delete the ${plural(notes.length, 'note')} on this PDF?`,
+                          message: 'They’re removed from the project.',
+                          confirmLabel: 'Delete',
+                          destructive: true
+                        });
+                        if (sure) removeNotes(notes);
+                      }}
+                    >
+                      Clear all
+                    </button>
+                  </div>
+                  {notes.map((note) => (
+                    <div key={note.id} className="pdf-note">
+                      <button className="pdf-note-page" onClick={() => pdfRef.current?.scrollToPage(note.page)}>
+                        p. {note.page}
+                      </button>
+                      <span className="pdf-note-text">{note.text}</span>
                       <button
-                        className="file-tab-close"
-                        title="Close"
-                        aria-label={`Close ${nameOf(path)}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          closeTab(path).catch((err) => notify(errorText(err), 'error'));
-                        }}
+                        className="icon-btn small"
+                        title="Remove note"
+                        aria-label="Remove note"
+                        onClick={() => removeNotes([note])}
                       >
                         <Icon name="xmark" />
                       </button>
                     </div>
                   ))}
                 </div>
-                <button className={`icon-btn ${composerOpen ? 'active' : ''}`} title={withShortcut(settings.shortcuts, 'Assistant', 'assistant')} aria-label="Assistant" aria-pressed={composerOpen} onClick={toggleComposer}>
-                  <Icon name="sparkles" />
-                </button>
+              )}
+            </div>
+
+            {keptPanels.includes('tools') && (
+              <div className="tools-column" hidden={panel !== 'tools'}>
+                <ToolsPanel tab={toolsTab} onTabChange={setToolsTab} doc={compileTarget} trailing={panelEnd} onOpenSettings={setSettingsOpen} />
               </div>
+            )}
 
-              <SyncBanners conflicts={conflicts} onDeleted={onDeleted} />
-
-              {draft && (
-                <div className="review-banner template-banner" role="status">
-                  <Icon name="square.and.pencil" />
-                  <span className="grow truncate">Editing the “{project?.name}” template</span>
-                  <button className="btn small ghost" onClick={closeTemplate}>Done</button>
-                  <button className="btn small ghost" onClick={openSaveTemplate}>Save as new template…</button>
-                  <button className="btn small primary" disabled={savingTemplate} onClick={saveTemplate}>
-                    Save template
-                  </button>
-                </div>
-              )}
-
-              {held === null && (
-                <div className="review-banner template-banner" role="status">
-                  <Icon name="exclamationmark.triangle" />
-                  <span className="grow truncate">{nameOf(activePath)} was deleted on disk</span>
-                  <button className="btn small ghost" onClick={() => closeGone(activePath).catch((err) => notify(errorText(err), 'error'))}>
-                    Close
-                  </button>
-                  <button className="btn small primary" onClick={() => keepMine(activePath)}>
-                    Restore
-                  </button>
-                </div>
-              )}
-
-              {held && (
-                <div className="review-banner template-banner" role="status">
-                  <Icon name="exclamationmark.triangle" />
-                  <span className="grow truncate">{nameOf(activePath)} was changed on another computer</span>
-                  <button className="btn small ghost" onClick={() => setComparing(true)}>
-                    Compare
-                  </button>
-                  <button className="btn small ghost" onClick={() => takeTheirs(activePath)}>
-                    Use theirs
-                  </button>
-                  <button className="btn small primary" onClick={() => keepMine(activePath)}>
-                    Keep mine
-                  </button>
-                </div>
-              )}
-
-              {pending.length > 0 && (
-                <div className="review-banner" role="status">
-                  <Icon name="plus.forwardslash.minus" />
-                  <span className="grow">Suggested changes to {plural(pending.length, 'file')}</span>
-                  <button className="btn small ghost" onClick={() => setPending([])}>
-                    Discard
-                  </button>
-                  <button className="btn small primary" onClick={() => openReview(pending).catch(() => setReviewOpen(true))}>
-                    Review
-                  </button>
-                </div>
-              )}
-
-              <div className="editor-area" ref={areaRef}>
-                <div className="editor-host" ref={hostRef} style={{ '--editor-font-size': `${settings.editorFontSize}px` } as CSSProperties} />
-                {!activePath && loaded && (
-                  <div className="editor-empty">
-                    <Icon name="doc.text" size={34} />
-                    <div className="empty-title">No file open</div>
-                    <div className="empty-text">Choose a file in the sidebar, or create one with + above the file list.</div>
-                  </div>
-                )}
-                {ghostPos && (suggesting || ghostText) && (
-                  <div className="ghost-hint" style={{ left: ghostPos.left, top: ghostPos.top }}>
-                    {ghostText ? (
-                      <>
-                        <button className="ghost-action" onMouseDown={(e) => e.preventDefault()} onClick={() => acceptGhost()}>
-                          Accept <kbd>Tab</kbd>
-                        </button>
-                        <button className="ghost-action" onMouseDown={(e) => e.preventDefault()} onClick={() => acceptGhost(true)}>
-                          Word <kbd>→</kbd>
-                        </button>
-                        <button className="ghost-action" onMouseDown={(e) => e.preventDefault()} onClick={() => clearGhost()}>
-                          Dismiss <kbd>Esc</kbd>
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <span className="spinner" /> Writing a suggestion…
-                      </>
-                    )}
-                  </div>
-                )}
+            {keptPanels.includes('insights') && (
+              <div className="tools-column" hidden={panel !== 'insights'}>
+                <InsightsPanel doc={compileTarget} active={panel === 'insights'} trailing={panelEnd} />
               </div>
+            )}
 
-              {references && (
-                <div
-                  className="references-panel"
-                  role="region"
-                  aria-label="References"
-                  onKeyDown={(e) => {
-                    if (e.key !== 'Escape') return;
-                    setReferences(null);
-                    viewRef.current?.focus();
-                  }}
-                >
-                  <div className="references-head">
-                    <span className="grow">{references.length ? plural(references.length, 'reference') : 'No references found'}</span>
-                    <button className="icon-btn" aria-label="Close" onClick={() => setReferences(null)}>
-                      <Icon name="xmark" />
-                    </button>
-                  </div>
-                  <div className="references-list">
-                    {references.map((r, i) => (
-                      <button
-                        key={`${r.path}:${r.line}:${r.col}`}
-                        className="reference-row"
-                        title={`${r.path}, line ${r.line}`}
-                        autoFocus={i === 0}
-                        onClick={() => jumpTo(r.path, r.line, r.col)}
-                      >
-                        <span className="reference-place">
-                          {nameOf(r.path)}:{r.line}
-                        </span>
-                        <span className="reference-text">{r.text}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <Composer
-                open={composerOpen}
-                onOpenChange={(open) => {
-                  setComposerOpen(open);
-                  if (!open) viewRef.current?.focus();
-                }}
-                chatId={chatId}
-                onChatIdChange={setChatId}
-                focusSignal={focusSignal}
-                onContinueInAgent={continueInAgent}
-                onManagePersonas={() => setSettingsOpen('personas')}
-              />
-              <ZoteroCite />
-            </section>
-
-            {layout.view === 'split' && <div className="column-divider" role="separator" aria-orientation="vertical" aria-label="Resize" onMouseDown={startResize} />}
-
-            {/* hidden in editor only, so the PDF needn't load again */}
-            <section className="right-column" hidden={layout.view === 'editor'} style={layout.view === 'split' ? { width: `${layout.split * 100}%` } : undefined}>
-              <div className="pdf-column" hidden={!!panel}>
-                <div className="pdf-header">
-                  <button
-                    className={`icon-btn ${layout.pdfSidebarOpen ? 'active' : ''}`}
-                    title="Document outline"
-                    aria-label="Document outline"
-                    aria-pressed={layout.pdfSidebarOpen}
-                    disabled={!pdf}
-                    onClick={() => setLayout({ pdfSidebarOpen: !layout.pdfSidebarOpen })}
-                  >
-                    <Icon name="sidebar.left" />
-                  </button>
-                  <MenuButton
-                    className="btn ghost small zoom-button"
-                    icon="plus.magnifyingglass"
-                    title={`Zoom: ${zoomLabel}`}
-                    label={zoomLabel}
-                    disabled={!pdf}
-                    align="end"
-                    items={ZOOMS.map(([z, label]) => ({
-                      label,
-                      checked: zoom === z,
-                      shortcut: z === 'width' ? shortcutOf('zoomWidth') : z === 'fit' ? shortcutOf('zoomPage') : undefined,
-                      onSelect: () => setZoom(z)
-                    }))}
-                  />
-                  <button className="icon-btn" title="Download PDF" aria-label="Download PDF" disabled={!pdf} onClick={downloadPdf}>
-                    <Icon name="arrow.down.to.line" />
-                  </button>
-                  <MenuButton
-                    icon="ellipsis"
-                    title="More"
-                    align="end"
-                    items={[
-                      { label: 'Two-page view', icon: 'book.pages', checked: spread, disabled: !pdf, onSelect: () => setSpread((v) => !v) },
-                      { label: 'Annotate', icon: 'note.text.badge.plus', checked: annotate, disabled: !pdf, onSelect: () => setAnnotate((v) => !v) },
-                      { label: 'Find in PDF', icon: 'magnifyingglass', shortcut: formatShortcut('Mod-f'), disabled: !pdf, onSelect: openFind },
-                      { label: 'Presentation mode', icon: 'play.fill', disabled: !pdf || !pdfPages, onSelect: () => setPresenting(true) },
-                      { separator: true },
-                      ...pageItems,
-                      { separator: true },
-                      { label: 'Show logs', icon: 'terminal', checked: false, onSelect: () => openTools('logs') }
-                    ]}
-                  />
-                </div>
-
-                <div className={`pdf-body ${pdf && layout.pdfSidebarOpen ? 'with-sidebar' : ''}`} onKeyDown={onPdfKey}>
-                  {pdf && layout.pdfSidebarOpen && (
-                    <PdfSidebar
-                      tab={layout.pdfSidebarTab}
-                      onTabChange={(pdfSidebarTab) => setLayout({ pdfSidebarTab })}
-                      pdf={pdfRef}
-                      loadedUrl={loadedUrl === pdf.url ? loadedUrl : ''}
-                      pages={pdfPages ?? 0}
-                      page={page}
-                      outline={pdfOutline}
-                      section={pdfSection}
-                      doc={shownDoc}
-                      files={fileSet}
-                      read={readText}
-                      revision={`${filesVersion} ${dirty}`}
-                      onHeading={(file, line) => showHeading(file, line).catch(() => undefined)}
-                    />
-                  )}
-                  {pdf ? (
-                    <PdfPreview
-                      ref={pdfRef}
-                      url={pdf.url}
-                      pageKey={`${projectId}:${shownDoc}`}
-                      zoom={zoom}
-                      spread={spread}
-                      annotateMode={annotate}
-                      annotations={notes}
-                      onAddAnnotation={addAnnotation}
-                      onDoubleClick={(at, text) => jumpFromPdf(at, text).catch((err) => notify(`Couldn’t jump to the source: ${errorText(err)}`, 'error'))}
-                      onPageMenu={(at, x, y) => {
-                        const selection = window.getSelection();
-                        const text = selection?.anchorNode?.parentElement?.closest('.pdf-scroll') ? selection.toString() : '';
-                        setPdfMenu({ x, y, at, text });
-                      }}
-                      onFileLink={followFileLink}
-                      onPages={(pages) => setPagesOf({ url: pdf.url, pages })}
-                      onLoad={({ pages, outline: toc }) => {
-                        setPdfPages(pages);
-                        setPdfOutline(toc);
-                        setLoadedUrl(pdf.url);
-                      }}
-                      onScale={setScale}
-                      onZoom={setZoom}
-                      onPage={setPage}
-                      onSection={setPdfSection}
-                    />
-                  ) : (
-                    <div className="empty-state">
-                      <Icon name="doc.richtext" size={40} />
-                      <div className="empty-title">No PDF yet</div>
-                      <div className="empty-text">Compile the project to see it here.</div>
-                      <div className="empty-actions">
-                        <button className="btn primary" onClick={() => runCompile()} disabled={running || !mainFile}>
-                          {running ? <span className="spinner" /> : <Icon name="play.fill" />} Compile
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {pdf && annotate && <div className="pdf-annotate-hint">Click the page to add a note</div>}
-
-                  {pdf && findOpen && (
-                    <PdfFindBar
-                      pdf={pdfRef}
-                      loadedUrl={loadedUrl}
-                      focusSignal={findSignal}
-                      onClose={() => {
-                        setFindOpen(false);
-                        // without scrolling, which would stop the scroll to the last match
-                        document.querySelector<HTMLElement>('.pdf-scroll')?.focus({ preventScroll: true });
-                      }}
-                    />
-                  )}
-
-                  {pdf && (
-                    <div className="pdf-pill">
-                      {pdfSwitcher}
-                      <button
-                        className="icon-btn small"
-                        title="Previous page"
-                        aria-label="Previous page"
-                        disabled={page <= 1}
-                        onClick={() => pdfRef.current?.scrollToPage(Math.max(1, page - step))}
-                      >
-                        <Icon name="chevron.left" />
-                      </button>
-                      <span className="pdf-pill-label">
-                        <PageBox page={page} pages={pdfPages} onGo={(at) => pdfRef.current?.scrollToPage(at)} /> / {pdfPages ?? '–'}
-                      </span>
-                      <button
-                        className="icon-btn small"
-                        title="Next page"
-                        aria-label="Next page"
-                        disabled={!pdfPages || page + step > pdfPages}
-                        onClick={() => pdfRef.current?.scrollToPage(Math.min(pdfPages!, page + step))}
-                      >
-                        <Icon name="chevron.right" />
-                      </button>
-                      <span className="pdf-pill-sep" />
-                      <button className="icon-btn small" title="Zoom out" aria-label="Zoom out" onClick={() => zoomBy(-1)}>
-                        <Icon name="minus" />
-                      </button>
-                      <span className="pdf-pill-label">{Math.round(scale * 100)}%</span>
-                      <button className="icon-btn small" title="Zoom in" aria-label="Zoom in" onClick={() => zoomBy(1)}>
-                        <Icon name="plus" />
-                      </button>
-                    </div>
-                  )}
-
-                </div>
-
-                {notes.length > 0 && (
-                  <div className="pdf-notes">
-                    <div className="pdf-notes-head">
-                      <span>Notes</span>
-                      <button
-                        className="btn small ghost"
-                        onClick={async () => {
-                          const sure = await confirmDialog({
-                            title: `Delete the ${plural(notes.length, 'note')} on this PDF?`,
-                            message: 'They’re removed from the project.',
-                            confirmLabel: 'Delete',
-                            destructive: true
-                          });
-                          if (sure) removeNotes(notes);
-                        }}
-                      >
-                        Clear all
-                      </button>
-                    </div>
-                    {notes.map((note) => (
-                      <div key={note.id} className="pdf-note">
-                        <button className="pdf-note-page" onClick={() => pdfRef.current?.scrollToPage(note.page)}>
-                          p. {note.page}
-                        </button>
-                        <span className="pdf-note-text">{note.text}</span>
-                        <button
-                          className="icon-btn small"
-                          title="Remove note"
-                          aria-label="Remove note"
-                          onClick={() => removeNotes([note])}
-                        >
-                          <Icon name="xmark" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+            {keptPanels.includes('floats') && (
+              <div className="tools-column" hidden={panel !== 'floats'}>
+                <FloatsPanel card={floatsCard.card} signal={floatsCard.signal} trailing={panelEnd} />
               </div>
+            )}
 
-              {keptPanels.includes('tools') && (
-                <div className="tools-column" hidden={panel !== 'tools'}>
-                  <ToolsPanel tab={toolsTab} onTabChange={setToolsTab} doc={compileTarget} trailing={panelEnd} onOpenSettings={setSettingsOpen} />
-                </div>
-              )}
-
-              {keptPanels.includes('insights') && (
-                <div className="tools-column" hidden={panel !== 'insights'}>
-                  <InsightsPanel doc={compileTarget} active={panel === 'insights'} trailing={panelEnd} />
-                </div>
-              )}
-
-              {keptPanels.includes('floats') && (
-                <div className="tools-column" hidden={panel !== 'floats'}>
-                  <FloatsPanel card={floatsCard.card} signal={floatsCard.signal} trailing={panelEnd} />
-                </div>
-              )}
-
-              {keptPanels.includes('agent') && (
-                <div className="tools-column" hidden={panel !== 'agent'}>
-                  <AgentWorkspace
-                    active={panel === 'agent'}
-                    todos={todos}
-                    openThread={agentThread}
-                    task={agentTask}
-                    onStatus={setAgentStatus}
-                    onOpenSettings={setSettingsOpen}
-                    trailing={
+            {keptPanels.includes('agent') && (
+              <div className="tools-column" hidden={panel !== 'agent'}>
+                <AgentWorkspace
+                  active={panel === 'agent'}
+                  todos={todos}
+                  openThread={agentThread}
+                  task={agentTask}
+                  onStatus={setAgentStatus}
+                  onOpenSettings={setSettingsOpen}
+                  trailing={
+                    <>
                       <button className="btn small ghost" title="Show the PDF; the agent carries on" onClick={closePanel}>
                         <Icon name="doc.richtext" /> PDF
                       </button>
-                    }
-                  />
-                </div>
-              )}
+                      {viewSwitcher}
+                    </>
+                  }
+                />
+              </div>
+            )}
 
-              {panel === 'grammar' && (
-                <div className="tools-column">
-                  <GrammarPanel
-                    view={() => viewRef.current}
-                    projectId={projectId}
-                    path={activePath}
-                    revision={editorValue}
-                    settings={settings}
-                    onClose={closePanel}
-                  />
-                </div>
-              )}
-            </section>
-          </div>
+            {panel === 'grammar' && (
+              <div className="tools-column">
+                <GrammarPanel
+                  view={() => viewRef.current}
+                  projectId={projectId}
+                  path={activePath}
+                  revision={editorValue}
+                  settings={settings}
+                  onClose={closePanel}
+                  trailing={viewSwitcher}
+                />
+              </div>
+            )}
+          </section>
         </main>
       </div>
 

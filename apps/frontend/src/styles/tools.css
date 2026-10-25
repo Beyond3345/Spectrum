@@ -890,8 +890,8 @@ a.research-title:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  /* a second row under the panel's bar, as the PDF's header is */
-  height: 44px;
+  height: 52px;
+  /* ends with the view switcher, which sits where it does in the PDF's header */
   padding: 0 10px 0 20px;
   border-bottom: 1px solid var(--border);
 }
