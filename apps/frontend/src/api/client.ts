@@ -1058,7 +1058,7 @@ export function plotFromTable(payload: {
 
 // ─── Research ───
 
-export type ResearchSource = 'openalex' | 'semanticscholar' | 'arxiv' | 'crossref' | 'pubmed' | 'web' | 'bib';
+export type ResearchSource = 'openalex' | 'semanticscholar' | 'arxiv' | 'crossref' | 'pubmed' | 'web' | 'zotero' | 'bib';
 
 /** One paper in a session, merged across the sources that found it. inBib: its key in the project's .bib. */
 export interface ResearchResult {
@@ -1072,6 +1072,8 @@ export interface ResearchResult {
   url?: string;
   abstract?: string;
   sources: ResearchSource[];
+  /** its item key, when the Zotero library gave it: it goes into the .bib from there, under its Zotero key */
+  zotero?: string;
   citations?: number;
   /** a link to an open-access copy */
   openAccess?: string;
