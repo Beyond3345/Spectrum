@@ -35,8 +35,13 @@ Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.
 
 ### The 2.0 test DMG
 
-- **File:** `OpenPrism/builds/Spectrum_2.0.0_universal.dmg` (210 MB, 516 MB installed). SHA-256 `ee3182d623198e41e41300a56597dd0e46881a5dc167694480bb7f35a1aa8076`, also in `Spectrum_2.0.0_universal.dmg.sha256`. The 1.10.4 DMG stays beside it for going back, and the earlier phases 1 to 4 test build is kept as `Spectrum_2.0.0-phases1-4_universal.dmg`.
-- **Built** on 25 October 2026 from `feat/2.0` at `bd22d41` with `npm run desktop:build`: every phase, with phase 4's first review fixes, phase 5's small review fixes and the two Typst and Markdown skills phase 5's build had left out.
+- **File:** `OpenPrism/builds/Spectrum_2.0.0_universal.dmg` (210 MB, 516 MB installed). SHA-256 `5858f6730f67291adea115b14b0ccbbe8e03de65727e0ec788723243960d9092`, also in `Spectrum_2.0.0_universal.dmg.sha256`. The 1.10.4 DMG stays beside it for going back, and the earlier phases 1 to 4 test build is kept as `Spectrum_2.0.0-phases1-4_universal.dmg`.
+- **Built** on 25 October 2026 from `feat/2.0` at `31c4f0b` with `npm run desktop:build`: every phase, with phase 4's first review fixes, phase 5's small review fixes, the two Typst and Markdown skills phase 5's build had left out and the user's interface changes after trying the first build:
+  - the Compile menu offers auto compile as Off or On (Settings › Engines › LaTeX sets the pause);
+  - compile error handling and the syntax check are app-wide settings, no longer in the Compile menu (a project's own value from before is left in its file and not read);
+  - Settings' sections are grouped under General, Writing, Projects and AI;
+  - the editor's header has two rows: the file tabs level with the PDF's header (Compile, Save checkpoint and the view stay above the PDF), then Insert (+), the floats, the assistant and the panels under them;
+  - Insert figure, Insert table and an inserted diagram each open a panel with only their own cards (Figures, Tables, Diagrams).
 - **Signed** ad hoc and not notarised, as the earlier local builds were, so the first open needs Open from the app's right-click menu (or Open Anyway in System Settings › Privacy & Security).
 - **Checked without opening the app:**
   - `hdiutil verify` passed;
