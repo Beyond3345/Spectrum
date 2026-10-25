@@ -140,7 +140,7 @@ async function defaultFolder(parentDir) {
 }
 
 /** The project's folder copied (and checked) into `parent`, then listed there: its own cache's SyncTeX holds the old path. */
-async function moveProject(id, root, parent) {
+export async function moveProject(id, root, parent) {
   await fs.mkdir(parent, { recursive: true });
   const target = await freeFolder(await fs.realpath(parent), root);
   await copyChecked(root, target);

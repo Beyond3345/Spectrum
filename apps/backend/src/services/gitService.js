@@ -109,12 +109,15 @@ export const headOid = (root) => resolve(root, 'HEAD');
 export const remoteHead = async (root) => resolve(root, `refs/remotes/origin/${await branchOf(root)}`);
 export const blobOid = async (bytes) => (await git.hashBlob({ object: bytes })).oid;
 
-/** git init on main, with TeX's build files in a .gitignore when the project has none. */
-export async function initRepo(root, branch = 'main') {
+/** git init on main, with TeX's build files in a .gitignore when the project has none (and gitignore isn't false: Link takes GitHub's). */
+export async function initRepo(root, branch = 'main', { gitignore = true } = {}) {
   await git.init({ fs: gitFs, dir: root, defaultBranch: branch });
   const ignore = path.join(root, '.gitignore');
-  if (!(await exists(ignore))) await writeFileAtomic(ignore, GITIGNORE);
+  if (gitignore && !(await exists(ignore))) await writeFileAtomic(ignore, GITIGNORE);
 }
+
+export const readBlobAt = async (root, oid) => Buffer.from((await git.readBlob({ fs: gitFs, dir: root, oid })).blob);
+export const writeBlobAt = (root, blob) => git.writeBlob({ fs: gitFs, dir: root, blob });
 
 export async function setRemote(root, url) {
   await git.setConfig({ fs: gitFs, dir: root, path: 'remote.origin.url', value: url });

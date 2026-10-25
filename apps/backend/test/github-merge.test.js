@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { promises as fs, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { hasGitHttpBackend, startFakeGitHub } from './fixtures/fake-github.mjs';
+import { GOOD_TOKEN, hasGitHttpBackend, startFakeGitHub } from './fixtures/fake-github.mjs';
 
 const tmp = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'spectrum-git-merge-')));
 const home = path.join(tmp, 'home');
@@ -17,7 +17,7 @@ const skip = !hasGitHttpBackend() && 'needs git http-backend';
 let gh;
 let g;
 const author = { name: 'Octo Cat', email: '7+octo@users.noreply.github.com' };
-const token = 'good-token';
+const token = GOOD_TOKEN;
 
 before(async () => {
   if (skip) return;

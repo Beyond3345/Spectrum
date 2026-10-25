@@ -1,13 +1,15 @@
 // A stand-in for GitHub for the GitHub tests, on 127.0.0.1: the REST calls Spectrum makes under /api (the signed-in
 // user, creating and reading repositories, their collaborators and contents), the device sign-in under /login, and the
 // repositories themselves over Git's smart HTTP, served from bare repositories in a scratch folder by git http-backend.
-// One user, octo (id 7); the token is "good-token" unless a test changes it.
+// One user, octo (id 7); the token is GOOD_TOKEN unless a test changes it.
 import http from 'node:http';
 import { spawn, execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 /** Whether this computer has git http-backend, without which the tests that push and fetch are skipped. */
+export const GOOD_TOKEN = 'ghp_0123456789abcdefghijklmnopqrstuvwxyzAB';
+
 export function hasGitHttpBackend() {
   try {
     execFileSync('git', ['--exec-path'], { stdio: 'ignore' });
@@ -19,13 +21,15 @@ export function hasGitHttpBackend() {
 
 export async function startFakeGitHub(reposDir) {
   const state = {
-    token: 'good-token',
+    token: GOOD_TOKEN,
     user: { login: 'octo', id: 7, name: 'Octo Cat' },
     // owner/repo → { private, collaborators }
     repos: new Map(),
     requests: [],
     // the device sign-in: what the next access-token poll answers
-    device: { pending: 1 }
+    device: { pending: 1 },
+    // offline: every connection dropped
+    down: false
   };
   const bare = (owner, repo) => path.join(reposDir, owner, `${repo}.git`);
   const create = (owner, repo, { private: priv = true, collaborators = 1 } = {}) => {
@@ -48,6 +52,7 @@ export async function startFakeGitHub(reposDir) {
   const authorised = (req) => req.headers.authorization === `Bearer ${state.token}` || req.headers.authorization === `Basic ${Buffer.from(`x-access-token:${state.token}`).toString('base64')}`;
 
   const server = http.createServer(async (req, res) => {
+    if (state.down) return req.socket.destroy();
     const url = new URL(req.url, 'http://x');
     state.requests.push(`${req.method} ${url.pathname}`);
     const body = await readBody(req);
