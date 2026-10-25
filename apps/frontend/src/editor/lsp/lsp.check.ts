@@ -250,10 +250,17 @@ function syntax() {
     ['c.tex', '\\begin{minted}{c}\n}\n\\end{minted}\n'],
     ['d.tex', 'A \\verb+{+ b\n'],
     ['e.tex', '\\lstinline|{| and \\verb*|{|\n'],
+    // a lone } in inline code it doesn't know, and in the verbatim-like environments it doesn't, the project's own too
+    ['i.tex', 'A \\verb+}+ and \\mintinline{c}|}|\n'],
+    ['j.tex', '\\lstnewenvironment{pycode}{}{}\n\\begin{tcblisting}{}\n}\n\\end{tcblisting}\n\\begin{pycode}\n}\n\\end{pycode}\n'],
+    ['k.tex', '\\newminted{c}{}\n\\begin{ccode}\n}\n\\end{ccode}\n\\begin{SaveVerbatim}{x}\n}\n\\end{SaveVerbatim}\n'],
     // and real ones
     ['f.tex', 'Text {unbalanced\n'],
     ['g.tex', 'Text }\n\\begin{itemize}\n\\end{enumerate}\n'],
-    ['h.tex', '\\verb|x| {open\n']
+    ['h.tex', '\\verb|x| {open\n'],
+    // inline code that opens nothing spares no missing brace, and a brace after it is the document's
+    ['l.tex', 'A \\verb+natbib+ then \\textbf{open\n'],
+    ['m.tex', '\\verb+x+ }\n']
   ]);
   const found = {
     'a.tex': [mark(2, 1, 'unexpected-brace')],
@@ -264,11 +271,16 @@ function syntax() {
     'f.tex': [mark(2, 1, 'missing-brace'), mark(1, 1, 'undefined-label'), mark(1, 1, 'missing-brace', 'warning')],
     'g.tex': [mark(1, 6, 'unexpected-brace'), mark(2, 1, 'mismatched-environment')],
     'h.tex': [mark(2, 1, 'missing-brace')],
+    'i.tex': [mark(1, 9, 'unexpected-brace'), mark(1, 31, 'unexpected-brace')],
+    'j.tex': [mark(3, 1, 'unexpected-brace'), mark(6, 1, 'unexpected-brace')],
+    'k.tex': [mark(3, 1, 'unexpected-brace'), mark(6, 1, 'unexpected-brace')],
+    'l.tex': [mark(2, 1, 'missing-brace')],
+    'm.tex': [mark(1, 10, 'unexpected-brace')],
     'other.tex': [mark(1, 1, 'missing-brace')]
   };
   eq(
     syntaxErrors([...texts.keys()], found, texts).map((e) => `${e.file} ${e.line}:${e.col} ${e.code}`),
-    ['f.tex 2:1 missing-brace', 'g.tex 1:6 unexpected-brace', 'g.tex 2:1 mismatched-environment', 'h.tex 2:1 missing-brace'],
+    ['f.tex 2:1 missing-brace', 'g.tex 1:6 unexpected-brace', 'g.tex 2:1 mismatched-environment', 'h.tex 2:1 missing-brace', 'l.tex 2:1 missing-brace', 'm.tex 1:10 unexpected-brace'],
     'brace and environment errors in the document’s files, not those code makes'
   );
 }
