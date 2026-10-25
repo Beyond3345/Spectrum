@@ -4,7 +4,7 @@ import type { ChatSummary } from '../api/client';
 import Icon from '../app/Icon';
 import { confirmDialog } from '../app/Dialogs';
 import { useEditor } from './EditorContext';
-import { CHATS_CHANGED, errorText, relativeTime } from './shared';
+import { CHATS_CHANGED, PROJECT_DATA_CHANGED, errorText, relativeTime } from './shared';
 
 /** Saved conversations of this project, in the bottom card's history menu; agent threads are the workspace's. */
 export default function ChatsList({
@@ -36,15 +36,20 @@ export default function ChatsList({
 
   useEffect(refresh, [refresh, refreshSignal]);
 
+  // and after a pull from GitHub brought chats in
   useEffect(() => {
     window.addEventListener(CHATS_CHANGED, refresh);
-    return () => window.removeEventListener(CHATS_CHANGED, refresh);
+    window.addEventListener(PROJECT_DATA_CHANGED, refresh);
+    return () => {
+      window.removeEventListener(CHATS_CHANGED, refresh);
+      window.removeEventListener(PROJECT_DATA_CHANGED, refresh);
+    };
   }, [refresh]);
 
   const remove = async (chat: ChatSummary) => {
     const ok = await confirmDialog({
       title: `Delete “${chat.title || 'Untitled chat'}”?`,
-      message: 'The conversation is removed from this project.',
+      message: 'The conversation is removed from this project. When the project is on GitHub, its history there keeps the earlier copies.',
       confirmLabel: 'Delete',
       destructive: true
     });
