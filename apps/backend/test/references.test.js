@@ -827,6 +827,17 @@ test('creates the target .bib, reports bibIncluded and honours bibFile', async (
   await assert.rejects(resolveReferences({ projectRoot: root, input: '10.1234/journal.1', bibFile: '../escape.bib' }), (err) => err.statusCode === 400);
 });
 
+test('with no .bib chosen, the target is one the main document loads, not another document’s', async (t) => {
+  const files = { 'main.tex': '\\input{body}\n', 'body.tex': '\\bibliography{refs}\n', 'talk/slides.tex': '\\bibliography{../references}\n', 'refs.bib': '', 'references.bib': '' };
+  const root = tempProject({ ...files, '.spectrum/project.json': JSON.stringify({ id: 'p', name: 'Two documents', mainFile: 'main.tex' }) });
+  const unnamed = tempProject(files);
+  t.after(() => [root, unnamed].forEach((dir) => rmSync(dir, { recursive: true, force: true })));
+  const out = await resolveReferences({ projectRoot: root, input: '10.1234/journal.5' });
+  assert.deepEqual([out.bibFile, out.bibIncluded, out.results[0].status], ['refs.bib', true, 'added']);
+  // no main file named: every .tex, as before
+  assert.equal((await resolveReferences({ projectRoot: unnamed, input: '10.1234/journal.5' })).bibFile, 'references.bib');
+});
+
 test('an LLM splits free text when configured', async (t) => {
   const root = tempProject({ 'main.tex': '' });
   t.after(() => rmSync(root, { recursive: true, force: true }));

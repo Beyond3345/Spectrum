@@ -9,7 +9,9 @@ import { latexToText, unicodeToLatex } from '../latex/conversion.js';
 import { escapeTexText, matchBrace, withoutComments } from '../latex/text.js';
 import { listFilesRecursive } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
+import { inlineInputs } from '../utils/texUtils.js';
 import { callOpenAICompatible, missingKey, resolveLLMConfig } from './llmService.js';
+import { readMeta } from './projectService.js';
 import { extractJSON } from './transferAgent/utils.js';
 
 const TIMEOUT_MS = 20_000;
@@ -1114,7 +1116,11 @@ function withBibLock(fn) {
 export async function resolveItems(projectRoot, items, bibFile, searchConfig) {
   return withBibLock(async () => {
     const files = await projectFiles(projectRoot);
-    const sources = await Promise.all(files.filter((f) => /\.tex$/i.test(f)).map((file) => fs.readFile(path.join(projectRoot, file), 'utf8').catch(() => '')));
+    // the main document and what it brings in, so a .bib only another document (a talk's slides) loads isn't taken;
+    // every .tex when the project names no main file
+    const { mainFile } = await readMeta(projectRoot).catch(() => ({}));
+    const main = mainFile ? await inlineInputs(projectRoot, mainFile).catch(() => '') : '';
+    const sources = main ? [main] : await Promise.all(files.filter((f) => /\.tex$/i.test(f)).map((file) => fs.readFile(path.join(projectRoot, file), 'utf8').catch(() => '')));
     const target = pickBibTarget(projectRoot, files, bibFile, sources);
     const bibliographySources = withoutComments(sources.filter((source) => texIncludesBib([source], target)).join('\n'));
     // Classic BibTeX styles ignore url; modern styles print it, so never emit both fields.
