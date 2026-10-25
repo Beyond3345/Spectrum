@@ -257,3 +257,398 @@ export function proseWords(masked, from = 0, to = masked.length) {
   for (let m = re.exec(masked); m && m.index < to; m = re.exec(masked)) words.push([m[0], m.index]);
   return words;
 }
+
+
+// ─── Typst and Markdown ───
+
+/** The length of the run of backticks at i. */
+const ticks = (s, i) => {
+  let n = 0;
+  while (s[i + n] === '`') n += 1;
+  return n;
+};
+
+/** Index just past the string starting at i, or the end of the range. */
+const stringStop = (s, i, end) => {
+  let j = i + 1;
+  while (j < end && s[j] !== '"') j += s[j] === '\\' ? 2 : 1;
+  return Math.min(end, j + 1);
+};
+
+/** Index just past the raw text (or fenced block) whose backticks start at i. */
+const rawStop = (s, i, end) => {
+  const run = '`'.repeat(ticks(s, i));
+  const close = s.indexOf(run, i + run.length);
+  return close < 0 ? end : Math.min(end, close + run.length);
+};
+
+/** Index of the closer of the balanced ( { [ group at i, skipping escapes, strings, raw and content blocks. */
+const groupClose = (s, i, open, close, end) => {
+  let depth = 0;
+  for (let j = i; j < end; j += 1) {
+    const ch = s[j];
+    if (ch === '\\') {
+      j += 1;
+      continue;
+    }
+    if (open === '(' && ch === '"') {
+      j = stringStop(s, j, end) - 1;
+      continue;
+    }
+    if (open === '(' && ch === '`') {
+      j = rawStop(s, j, end) - 1;
+      continue;
+    }
+    if (ch === open) depth += 1;
+    else if (ch === close) {
+      depth -= 1;
+      if (depth === 0) return j;
+    } else if (open === '(' && ch === '[') {
+      const inner = groupClose(s, j, '[', ']', end);
+      if (inner < 0) return -1;
+      j = inner;
+    }
+  }
+  return -1;
+};
+
+const lineEnd = (s, i) => {
+  const at = s.indexOf('\n', i);
+  return at < 0 ? s.length : at;
+};
+
+/**
+ * Typst to prose: comments, raw text and blocks, maths, calls and their arguments (but not the content in
+ * […]), labels, references and URLs become spaces of the same length. Headings keep their text, without =.
+ */
+export function maskTypst(source) {
+  const s = String(source);
+  const n = s.length;
+  const out = s.split('');
+  const blank = (from, to) => {
+    for (let k = Math.max(0, from); k < Math.min(to, n); k += 1) if (out[k] !== '\n') out[k] = ' ';
+  };
+
+  /** Blanks a call's (…) group but keeps content blocks in it, masking their prose in turn. */
+  const maskArgs = (open, to) => {
+    const close = groupClose(s, open, '(', ')', to);
+    const stop = close < 0 ? to : Math.min(to, close + 1);
+    let j = open + 1;
+    while (j < stop) {
+      const ch = s[j];
+      if (ch === '"') {
+        const next = Math.min(stop, stringStop(s, j, stop));
+        blank(j, next);
+        j = next;
+        continue;
+      }
+      if (ch === '`') {
+        const next = Math.min(stop, rawStop(s, j, stop));
+        blank(j, next);
+        j = next;
+        continue;
+      }
+      if (ch === '[') {
+        const inner = groupClose(s, j, '[', ']', stop);
+        if (inner > j) {
+          blank(j, j + 1);
+          maskContent(j + 1, inner);
+          blank(inner, inner + 1);
+          j = inner + 1;
+          continue;
+        }
+      }
+      if (ch === '#' ) {
+        j = maskCall(j, stop);
+        continue;
+      }
+      if (ch !== '\n') blank(j, j + 1);
+      j += 1;
+    }
+    blank(open, open + 1);
+    if (close >= 0) blank(close, close + 1);
+    return stop;
+  };
+
+  /** Blanks #name and its arguments; the content blocks after or inside it stay prose. */
+  const maskCall = (i, to) => {
+    let j = i + 1;
+    while (j < to && /[A-Za-z0-9_.-]/.test(s[j])) j += 1;
+    blank(i, j);
+    let k = j;
+    const spaces = () => {
+      while (k < to && (s[k] === ' ' || s[k] === '\t')) k += 1;
+    };
+    spaces();
+    let handled = false;
+    if (s[k] === '(') {
+      handled = true;
+      k = maskArgs(k, to);
+    }
+    for (;;) {
+      spaces();
+      if (s[k] !== '[') break;
+      const inner = groupClose(s, k, '[', ']', to);
+      if (inner < 0) break;
+      handled = true;
+      blank(k, k + 1);
+      maskContent(k + 1, inner);
+      blank(inner, inner + 1);
+      k = inner + 1;
+    }
+    if (!handled) {
+      const stop = Math.min(to, lineEnd(s, j));
+      blank(j, stop);
+      return stop;
+    }
+    return k;
+  };
+
+  const maskContent = (from, to) => {
+    let i = from;
+    while (i < to) {
+      const ch = s[i];
+      const before = s.slice(s.lastIndexOf('\n', i - 1) + 1, i);
+      if (ch === '/' && s[i + 1] === '/') {
+        const stop = Math.min(to, lineEnd(s, i));
+        blank(i, stop);
+        i = stop;
+        continue;
+      }
+      if (ch === '/' && s[i + 1] === '*') {
+        const close = s.indexOf('*/', i + 2);
+        const stop = close < 0 ? to : Math.min(to, close + 2);
+        blank(i, stop);
+        i = stop;
+        continue;
+      }
+      if (ch === '`') {
+        const stop = Math.min(to, rawStop(s, i, to));
+        blank(i, stop);
+        i = stop;
+        continue;
+      }
+      if (ch === '$') {
+        const display = s[i + 1] === '$';
+        const delim = display ? '$$' : '$';
+        let j = i + delim.length;
+        while (j < to && !(s.startsWith(delim, j) && s[j - 1] !== '\\')) j += 1;
+        const stop = Math.min(to, j + delim.length);
+        blank(i, stop);
+        i = stop;
+        continue;
+      }
+      if (ch === '<') {
+        const close = s.indexOf('>', i);
+        if (close > i && close < to && /^[A-Za-z0-9_:.-]+$/.test(s.slice(i + 1, close))) {
+          blank(i, close + 1);
+          i = close + 1;
+          continue;
+        }
+      }
+      if (ch === '@' && (i === from || !/[A-Za-z0-9]/.test(s[i - 1]))) {
+        let j = i + 1;
+        while (j < to && /[A-Za-z0-9_:.-]/.test(s[j])) j += 1;
+        if (j > i + 1) {
+          blank(i, j);
+          i = j;
+          continue;
+        }
+      }
+      if (ch === 'h' && /^https?:\/\//.test(s.slice(i, i + 8))) {
+        let j = i;
+        while (j < to && !/[\s)\]>]/.test(s[j])) j += 1;
+        blank(i, j);
+        i = j;
+        continue;
+      }
+      if (ch === '=' && /^[ \t]*$/.test(before)) {
+        let j = i;
+        while (j < to && s[j] === '=') j += 1;
+        blank(i, j);
+        i = j;
+        continue;
+      }
+      if (ch === '#') {
+        i = maskCall(i, to);
+        continue;
+      }
+      if (ch === '\\') {
+        blank(i, i + 1);
+        i += s[i + 1] === '\n' ? 1 : 2;
+        continue;
+      }
+      i += 1;
+    }
+  };
+
+  maskContent(0, n);
+  return out.join('');
+}
+
+/** Index just past a Markdown link's (…) target, balanced for parentheses in a URL. */
+const parenStop = (s, open, end) => {
+  let depth = 0;
+  for (let j = open; j < end; j += 1) {
+    if (s[j] === '\\') {
+      j += 1;
+      continue;
+    }
+    if (s[j] === '(') depth += 1;
+    else if (s[j] === ')') {
+      depth -= 1;
+      if (depth === 0) return j + 1;
+    }
+  }
+  return end;
+};
+
+/**
+ * Markdown to prose: front matter, fenced and indented code, inline code, HTML, maths, URLs and link targets,
+ * images, citations and {#attributes} become spaces of the same length; link text and prose stay.
+ */
+export function maskMarkdown(source) {
+  const s = String(source);
+  const n = s.length;
+  const out = s.split('');
+  const blank = (from, to) => {
+    for (let k = Math.max(0, from); k < Math.min(to, n); k += 1) if (out[k] !== '\n') out[k] = ' ';
+  };
+
+  let i = 0;
+  const front = /^---[ \t]*\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)[ \t]*(?=\r?\n|$)/.exec(s);
+  if (front) {
+    blank(0, front[0].length);
+    i = front[0].length;
+  }
+  while (i < n) {
+    const lineBegin = s.lastIndexOf('\n', i - 1) + 1;
+    const atLineStart = /^[ \t]*$/.test(s.slice(lineBegin, i));
+    if (atLineStart) {
+      const rest = s.slice(i);
+      const fence = /^[ \t]{0,3}(`{3,}|~{3,})/.exec(rest);
+      if (fence) {
+        const mark = fence[1][0];
+        const size = fence[1].length;
+        const close = new RegExp('^[ \\t]{0,3}' + mark + '{' + size + ',}[ \\t]*$', 'gm');
+        close.lastIndex = i + fence[0].length;
+        const found = close.exec(s);
+        const stop = found ? found.index + found[0].length : n;
+        blank(i, stop);
+        i = stop;
+        continue;
+      }
+      if (/^[ \t]{4}/.test(rest)) {
+        const stop = lineEnd(s, i);
+        blank(i, stop);
+        i = stop;
+        continue;
+      }
+      const heading = /^(#{1,6})([ \t]+)/.exec(rest);
+      if (heading) {
+        blank(i, i + heading[0].length);
+        i += heading[0].length;
+        continue;
+      }
+      const quote = /^[ \t]{0,3}>[ \t]?/.exec(rest);
+      if (quote) {
+        blank(i, i + quote[0].length);
+        i += quote[0].length;
+        continue;
+      }
+      const item = /^[ \t]{0,3}(?:[-*+]|\d+\.)[ \t]+/.exec(rest);
+      if (item) {
+        blank(i, i + item[0].length);
+        i += item[0].length;
+        continue;
+      }
+    }
+    const ch = s[i];
+    if (ch === '`') {
+      const stop = rawStop(s, i, n);
+      blank(i, stop);
+      i = stop;
+      continue;
+    }
+    if (ch === '$') {
+      const display = s[i + 1] === '$';
+      const delim = display ? '$$' : '$';
+      let j = i + delim.length;
+      while (j < n && !(s.startsWith(delim, j) && s[j - 1] !== '\\')) j += 1;
+      const stop = Math.min(n, j + delim.length);
+      blank(i, stop);
+      i = stop;
+      continue;
+    }
+    if (s.startsWith('<!--', i)) {
+      const close = s.indexOf('-->', i + 4);
+      const stop = close < 0 ? n : close + 3;
+      blank(i, stop);
+      i = stop;
+      continue;
+    }
+    if (ch === '<' && /^<\/?[A-Za-z][^>]*>/.test(s.slice(i))) {
+      const stop = s.indexOf('>', i) + 1;
+      blank(i, stop);
+      i = stop;
+      continue;
+    }
+    if (s.startsWith('![', i)) {
+      const altEnd = s.indexOf(']', i + 2);
+      if (altEnd > 0 && s[altEnd + 1] === '(') {
+        const stop = parenStop(s, altEnd + 1, n);
+        blank(i, stop);
+        i = stop;
+        continue;
+      }
+    }
+    if (ch === '[') {
+      if (/^\[[^\]]*@[^\]]*\]/.test(s.slice(i))) {
+        const stop = s.indexOf(']', i) + 1;
+        blank(i, stop);
+        i = stop;
+        continue;
+      }
+      const textEnd = s.indexOf(']', i + 1);
+      if (textEnd > 0 && s[textEnd + 1] === '(') {
+        const stop = parenStop(s, textEnd + 1, n);
+        blank(i, i + 1);
+        blank(textEnd, stop);
+        i = stop;
+        continue;
+      }
+      if (textEnd > 0 && s[textEnd + 1] === '[') {
+        const refEnd = s.indexOf(']', textEnd + 2);
+        blank(i, i + 1);
+        if (refEnd > 0) {
+          blank(textEnd, refEnd + 1);
+          i = refEnd + 1;
+        } else i = textEnd + 1;
+        continue;
+      }
+      i += 1;
+      continue;
+    }
+    if (ch === '{' && /^\{#[^}]*\}/.test(s.slice(i))) {
+      const stop = s.indexOf('}', i) + 1;
+      blank(i, stop);
+      i = stop;
+      continue;
+    }
+    if (ch === 'h' && /^https?:\/\//.test(s.slice(i, i + 8))) {
+      let j = i;
+      while (j < n && !/[\s)\]>]/.test(s[j])) j += 1;
+      blank(i, j);
+      i = j;
+      continue;
+    }
+    if (ch === '\\') {
+      blank(i, i + 1);
+      i += s[i + 1] === '\n' ? 1 : 2;
+      continue;
+    }
+    i += 1;
+  }
+  return out.join('');
+}
+
