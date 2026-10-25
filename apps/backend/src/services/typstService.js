@@ -99,11 +99,13 @@ export async function typstElements(projectRoot, doc) {
   const executable = typstFor(settings.compile?.typstVersion || '');
   if (!executable) return null;
   const absMain = path.join(projectRoot, doc);
-  const names = (await labelNames(projectRoot, absMain)).map((name) => JSON.stringify(name)).join(', ');
+  // a lone name in (…) is a grouping, not an array: the trailing comma keeps it one
+  const names = (await labelNames(projectRoot, absMain)).map((name) => JSON.stringify(name));
+  const namesArg = names.length ? names.join(', ') + ',' : '';
   const fontFolder = path.join(projectRoot, 'fonts');
   const fonts = (await fs.stat(fontFolder).catch(() => null))?.isDirectory() ? ['--font-path', fontFolder] : [];
   try {
-    const { stdout } = await execFileAsync(executable, ['eval', '--in', absMain, '--root', projectRoot, '--format', 'json', ...fonts, ELEMENTS.replace('NAMES', names)], {
+    const { stdout } = await execFileAsync(executable, ['eval', '--in', absMain, '--root', projectRoot, '--format', 'json', ...fonts, ELEMENTS.replace('NAMES', namesArg)], {
       cwd: projectRoot,
       timeout: 30_000,
       maxBuffer: 10 * 1024 * 1024,

@@ -219,20 +219,26 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
             ))}
           </div>
           {problems.length > 0 && <div className="tool-footnote">TexLab finds {listed(problems)}.</div>}
-          <h3 className="form-section-title">Words</h3>
-          {error && <div className="tool-note error">{error}</div>}
-          <div className="stat-grid">
-            {words.map(([label, value]) => (
-              <div key={label} className="stat-card">
-                <div className="stat-label">{label}</div>
-                <div className="stat-value">{busy && !stats ? '…' : num(value)}</div>
+          {/\.tex$/i.test(doc) ? (
+            <>
+              <h3 className="form-section-title">Words</h3>
+              {error && <div className="tool-note error">{error}</div>}
+              <div className="stat-grid">
+                {words.map(([label, value]) => (
+                  <div key={label} className="stat-card">
+                    <div className="stat-label">{label}</div>
+                    <div className="stat-value">{busy && !stats ? '…' : num(value)}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          {stats && (
-            <div className="tool-footnote">
-              {stats.source === 'texcount' ? `Counted with texcount from ${doc}.` : 'Estimated — install MacTeX for exact counts with texcount.'}
-            </div>
+              {stats && (
+                <div className="tool-footnote">
+                  {stats.source === 'texcount' ? `Counted with texcount from ${doc}.` : 'Estimated — install MacTeX for exact counts with texcount.'}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="tool-footnote">Word counts come from texcount, so they are for LaTeX documents.</div>
           )}
           <div className="tool-page-head">
             <h3 className="form-section-title">Submission metadata</h3>

@@ -408,10 +408,15 @@ export function registerProjectRoutes(fastify) {
     const root = await getProjectRoot(req.params.id);
     const doc = markdownDoc(req.query?.doc);
     const generated = await cachePath(root, 'generated');
+    // a document compiled through both engines keeps both files: show the one the last compile wrote
+    const found = [];
     for (const [extension, kind] of [['tex', 'latex'], ['typ', 'typst']]) {
-      const text = await fs.readFile(path.join(generated, doc + '.' + extension), 'utf8').catch(() => null);
-      if (text !== null) return { ok: true, text, kind };
+      const file = path.join(generated, doc + '.' + extension);
+      const text = await fs.readFile(file, 'utf8').catch(() => null);
+      if (text !== null) found.push({ text, kind, at: (await fs.stat(file).catch(() => null))?.mtimeMs ?? 0 });
     }
+    const latest = found.sort((a, b) => b.at - a.at)[0];
+    if (latest) return { ok: true, text: latest.text, kind: latest.kind };
     return reply.code(404).send({ ok: false, error: 'Nothing has been generated for that document yet.' });
   });
 
@@ -515,7 +520,7 @@ export function registerProjectRoutes(fastify) {
     const root = await getProjectRoot(req.params.id);
     const doc = String(req.query?.doc || req.query?.mainFile || '') || (await readMeta(root)).mainFile || 'main.tex';
     // Typst has no .aux: its own eval gives the headings and labels with their pages
-    if (/\.typ$/i.test(doc)) return typstDocumentLabels(root, doc);
+    if (/\.typ$/i.test(doc)) return { ok: true, ...(await typstDocumentLabels(root, doc)) };
     return { ...(await projectStats(root, doc, req.query?.texFolder)), ...(await documentLabels(root, doc)) };
   });
 

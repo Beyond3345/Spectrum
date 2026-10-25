@@ -117,6 +117,17 @@ test('typstInputs reach the document and leave it compiling without them', async
   assert.equal(without.ok, true, without.error);
 });
 
+test('a Typst document with one label still reads its numbers and pages', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const project = await projectWith('typst-one-label', '#set heading(numbering: "1.")\n= One <sec:one>\nText.\n');
+  const result = await runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto' });
+  assert.equal(result.ok, true, result.error);
+  const dir = await getProjectRoot(project.id);
+  const { labels, headings } = await typstDocumentLabels(dir, 'main.typ');
+  assert.deepEqual(labels['sec:one'], { number: '1', page: '1' });
+  assert.equal(headings.length, 1);
+});
+
 test('a Typst document’s headings and labels come with their pages', async (t) => {
   if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
   const source = [

@@ -24,13 +24,14 @@ test('Typst keeps prose, captions and heading text, and drops markup, maths, raw
     fence + 'raw words' + fence,
     'A \\# hashtag and https://example.com',
     'Text with #emph[emphasis] and #text(fill: red)[coloured words].',
+    '#datetime.today().display("[day] [month repr:long] [year]")',
     ''
   ].join(NEWLINE);
   const masked = maskTypst(source);
   sameShape(source, masked);
   const kept = words(masked);
   for (const word of ['Heading', 'prose', 'caption', 'café', 'hashtag', 'emphasis', 'coloured', 'words']) assert.ok(kept.includes(word), word + ' survives');
-  for (const word of ['comment', 'secret', 'hidden', 'fig', 'label', 'cite', 'raw', 'example']) assert.ok(!kept.includes(word), word + ' is masked');
+  for (const word of ['comment', 'secret', 'hidden', 'fig', 'label', 'cite', 'raw', 'example', 'display', 'month', 'repr']) assert.ok(!kept.includes(word), word + ' is masked');
 });
 
 test('Markdown keeps prose and link text, and drops front matter, code, maths, URLs and citations', () => {

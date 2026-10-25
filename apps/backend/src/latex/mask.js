@@ -385,6 +385,20 @@ export function maskTypst(source) {
       handled = true;
       k = maskArgs(k, to);
     }
+    // a chained field or method, as in #datetime.today().display(…)
+    for (;;) {
+      if (s[k] !== '.') break;
+      let next = k + 1;
+      while (next < to && /[A-Za-z0-9_-]/.test(s[next])) next += 1;
+      if (next === k + 1) break;
+      blank(k, next);
+      k = next;
+      spaces();
+      if (s[k] === '(') {
+        handled = true;
+        k = maskArgs(k, to);
+      }
+    }
     for (;;) {
       spaces();
       if (s[k] !== '[') break;

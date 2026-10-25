@@ -1,6 +1,6 @@
 // Self-check for the Floats panel's LaTeX and the preamble helper. Run:
 // npx esbuild apps/frontend/src/editor/floats.check.ts --bundle --platform=node --log-level=warning | node
-import { placementOf, blockAt, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, jpegOrientation, parseDelimited, pasteCells, safeFileName, tableLabel, tableLatex, tableMarkdown, tableTypst, uniqueName } from './floats';
+import { placementOf, blockAt, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, safeFileName, tableLabel, tableLatex, tableMarkdown, tableTypst, uniqueName } from './floats';
 import type { TableModel } from './floats';
 import { addLibraries, addPackages, changeBetween, loadedLibraries, loadedPackages, projectPackages } from './preamble';
 
@@ -312,6 +312,7 @@ eq(
   'a Typst figure with its width, caption and label'
 );
 eq(figureTypst({ path: 'images/a"b.png', width: 1, caption: '', label: '' }), '#figure(image("images/a\\"b.png", width: 100%))', 'a Typst figure without a caption or label, its path quoted');
+eq(figureTypstInclude({ path: 'figures/flow.typ', caption: 'A flow', label: 'fig:flow' }), '#figure(include "figures/flow.typ", caption: [A flow]) <fig:flow>', 'a Typst diagram included as a figure');
 eq(figureMarkdown({ path: 'images/cat.png', width: 0.75, caption: 'A cat, [x]', label: 'fig:cat' }), '![A cat, \\[x\\]](images/cat.png){#fig:cat width=75%}', 'a Markdown image with its label and width');
 eq(figureMarkdown({ path: 'images/cat.png', width: 0.5, caption: 'A cat', label: '' }), '![A cat](images/cat.png){width=50%}', 'a Markdown image without a label');
 eq(
