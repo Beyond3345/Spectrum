@@ -44,7 +44,7 @@ import {
   updateProjectSettings,
   writeFile
 } from '../api/client';
-import type { CompileEngine, CompileOptions, CompileResult, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
+import type { CompileDiagnostic, CompileEngine, CompileOptions, CompileResult, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
 import { latex } from '../latex/lang';
 import Icon from './Icon';
 import Tabs from './Tabs';
@@ -382,6 +382,8 @@ function Editor({ projectId }: { projectId: string }) {
   const [savingVersion, setSavingVersion] = useState(false);
   const savingVersionRef = useRef(false);
   const [compileLog, setCompileLog] = useState('');
+  // a Typst compile's own errors and warnings (null: the log is TeX's, for parseCompileLog)
+  const [compileDiagnostics, setCompileDiagnostics] = useState<CompileDiagnostic[] | null>(null);
   const [compileFailure, setCompileFailure] = useState('');
   const [pdf, setPdf] = useState<{ url: string; blob: boolean } | null>(null);
   /** the document whose PDF the pane shows, and the one compiled last (whose log shows) */
@@ -471,9 +473,12 @@ function Editor({ projectId }: { projectId: string }) {
   const compileTarget = (settings.pdfFollowsFile && shownDoc) || mainFile;
   const compileErrors = useMemo<CompileError[]>(() => {
     const files = items.map((i) => i.path);
-    const parsed = parseCompileLog(compileLog, project?.path).map((e) => (e.file ? { ...e, file: projectFile(e.file, compiledDoc, files) } : e));
+    // a Typst compile brings its diagnostics with it; an empty list is a Typst compile with nothing to report
+    const parsed = compileDiagnostics !== null
+      ? compileDiagnostics.map((e) => ({ severity: e.severity, message: e.message, line: e.line, file: projectFile(e.file, compiledDoc, files) }))
+      : parseCompileLog(compileLog, project?.path).map((e) => (e.file ? { ...e, file: projectFile(e.file, compiledDoc, files) } : e));
     return compileFailure && !parsed.some((e) => e.severity === 'error') ? [{ severity: 'error', message: compileFailure }, ...parsed] : parsed;
-  }, [compileLog, compileFailure, project?.path, items, compiledDoc]);
+  }, [compileDiagnostics, compileLog, compileFailure, project?.path, items, compiledDoc]);
   const selectionText = selectionRange[0] === selectionRange[1] ? '' : editorValue.slice(selectionRange[0], selectionRange[1]);
   const fileSet = useMemo(() => new Set(items.filter((i) => i.type === 'file').map((i) => i.path)), [items]);
   // the files to-dos are looked for in, never a sync app's conflict copy
@@ -1500,6 +1505,7 @@ function Editor({ projectId }: { projectId: string }) {
       const problem = checkpointProblem(res.checkpoint, skippedToldRef.current);
       if (problem && settings.checkpointNotice) notify(problem, 'error');
       setCompileLog(`Engine: ${engineLabel(actual)}\nDocument: ${built}\n\n${res.log || ''}`.trim());
+      setCompileDiagnostics(res.errors ?? null);
       if (res.ok && res.pdf) {
         const bytes = Uint8Array.from(atob(res.pdf), (c) => c.charCodeAt(0));
         const blob = new Blob([bytes], { type: 'application/pdf' });
@@ -1529,6 +1535,7 @@ function Editor({ projectId }: { projectId: string }) {
       if (made.some((p) => p && !items.some((i) => i.path === p))) refreshTree().catch(() => undefined);
     } catch (err) {
       setCompileLog(`Compile request failed: ${errorText(err)}`);
+      setCompileDiagnostics(null);
       setCompileFailure(errorText(err));
       setCompile({ state: 'failed', engine: used, at: new Date() });
     } finally {

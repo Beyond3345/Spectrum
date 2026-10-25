@@ -247,6 +247,10 @@ export interface CompileOptions {
   draft?: boolean;
   /** TexLab's syntax check before compiling (the editor runs it) */
   syntaxCheck?: boolean;
+  /** the Typst version a Typst project pins ('' is the built-in one) */
+  typstVersion?: string;
+  /** the PDF engine a Markdown project compiles through */
+  markdownEngine?: 'latex' | 'typst';
 }
 
 /** .spectrum/settings.json, which travels with the project (1.10.4 ignores it) */
@@ -455,6 +459,15 @@ export function importArxivSSE(
 
 // ─── Compile ───
 
+/** A Typst compile's own diagnostics, in place of the LaTeX log parser. */
+export interface CompileDiagnostic {
+  severity: 'error' | 'warning';
+  message: string;
+  file: string;
+  line: number;
+  column: number;
+}
+
 export interface CompileResult {
   ok: boolean;
   pdf?: string;
@@ -465,6 +478,10 @@ export interface CompileResult {
   log?: string;
   status?: number;
   engine?: string;
+  /** the Typst version the compile used */
+  typstVersion?: string;
+  /** Typst's errors and warnings, whose cards point at the source lines */
+  errors?: CompileDiagnostic[];
   error?: string;
   /** documents it links with \externaldocument, compiled first because their .aux was missing or out of date */
   linked?: { file: string; ok: boolean }[];
@@ -493,6 +510,7 @@ export function compileProject(payload: {
   fresh?: boolean;
   texFolder?: string;
   checkpoint?: boolean;
+  typstInputs?: Record<string, string>;
 }) {
   return request<CompileResult>('/api/compile', json('POST', payload));
 }

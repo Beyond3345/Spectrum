@@ -1,0 +1,121 @@
+// Typst: its short-format diagnostics, and, with the built-in Typst, a project that compiles and one that doesn't,
+// a pinned version that isn't installed, sys.inputs, and the route's refusal of bad inputs. Throwaway folders only.
+// Run: node --test apps/backend/test/typst.test.js
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import Fastify from 'fastify';
+import { promises as fs, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+const tmp = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'spectrum-typst-')));
+process.env.HOME = path.join(tmp, 'home');
+process.env.SPECTRUM_DATA_DIR = path.join(tmp, 'data');
+process.env.SPECTRUM_PROJECTS_DIR = path.join(tmp, 'projects');
+process.env.SPECTRUM_TEMPLATE_DIR = path.join(tmp, 'templates');
+delete process.env.SPECTRUM_TYPST;
+
+const { builtInTypst } = await import('../src/services/engineService.js');
+const { parseTypstDiagnostics } = await import('../src/services/typstService.js');
+const { runCompile } = await import('../src/services/compileService.js');
+const { createProject, getProjectRoot } = await import('../src/services/projectService.js');
+const { updateProjectSettings } = await import('../src/services/projectSettings.js');
+const { registerCompileRoutes } = await import('../src/routes/compile.js');
+
+const root = path.join(tmp, 'project');
+const projectWith = async (name, source) => createProject({
+  name,
+  meta: { mainFile: 'main.typ' },
+  populate: async (dir) => {
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'main.typ'), source);
+  }
+});
+
+test('short-format diagnostics become errors and warnings with project paths', () => {
+  const log = [
+    'main.typ:5:1: error: unknown variable: foo',
+    'chapters/one.typ:3:1: error: unknown variable: bar',
+    'main.typ:3:16: warning: unknown font family: no such font'
+  ].join('\n');
+  assert.deepEqual(parseTypstDiagnostics(log, root), [
+    { severity: 'error', message: 'unknown variable: foo', file: 'main.typ', line: 5, column: 1 },
+    { severity: 'error', message: 'unknown variable: bar', file: 'chapters/one.typ', line: 3, column: 1 },
+    { severity: 'warning', message: 'unknown font family: no such font', file: 'main.typ', line: 3, column: 16 }
+  ]);
+});
+
+test('a hint joins the diagnostic before it, and absolute paths lose the project root', () => {
+  const log = [
+    path.join(root, 'chapters', 'two.typ') + ':2:3: error: unexpected argument: capton',
+    '  hint: did you mean caption?',
+    'main.typ:1:1: error: unclosed delimiter'
+  ].join('\n');
+  const diagnostics = parseTypstDiagnostics(log, root);
+  assert.equal(diagnostics[0].file, 'chapters/two.typ');
+  assert.equal(diagnostics[0].message, 'unexpected argument: capton\nHint: did you mean caption?');
+  assert.equal(diagnostics[1].message, 'unclosed delimiter');
+});
+
+test('the route refuses bad typstInputs', async () => {
+  const app = Fastify();
+  registerCompileRoutes(app);
+  const refuse = async (typstInputs) => {
+    const res = await app.inject({ method: 'POST', url: '/api/compile', payload: { projectId: 'x', typstInputs } });
+    return JSON.parse(res.payload);
+  };
+  assert.equal((await refuse({ 'bad key': 'x' })).error, 'Invalid typstInputs.');
+  assert.equal((await refuse({ x: 'line\nbreak' })).error, 'Invalid typstInputs.');
+  assert.equal((await refuse(Object.fromEntries(Array.from({ length: 9 }, (_, i) => ['k' + i, 'v'])))).error, 'Invalid typstInputs.');
+  await app.close();
+});
+
+test('a Typst project compiles and writes its PDF beside the main file', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const project = await projectWith('typst-good', '= Hello\n\nText with #emph[emphasis].\n');
+  const result = await runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto' });
+  assert.equal(result.ok, true, result.error);
+  assert.equal(result.engine, 'typst');
+  assert.match(result.typstVersion, /^\d+\.\d+\.\d+$/);
+  assert.equal(result.pdfPath, 'main.pdf');
+  assert.ok(result.pdf.length > 100);
+  assert.deepEqual(result.errors, []);
+  const dir = await getProjectRoot(project.id);
+  assert.ok((await fs.stat(path.join(dir, 'main.pdf'))).size > 100);
+});
+
+test('a broken Typst line comes back with its file and line', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const project = await projectWith('typst-broken', '= Broken\n\n#foo\n');
+  const result = await runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto' });
+  const error = (result.errors || []).find((e) => e.severity === 'error');
+  assert.ok(error, 'a diagnostic is returned');
+  assert.equal(error.file, 'main.typ');
+  assert.equal(error.line, 3);
+  assert.match(error.message, /unknown variable: foo/);
+});
+
+test('a pinned Typst version that is not installed says so', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const project = await projectWith('typst-pinned', '= Pinned\n');
+  const dir = await getProjectRoot(project.id);
+  await updateProjectSettings(dir, (settings) => ({ ...settings, compile: { ...settings.compile, typstVersion: '9.9.9' } }));
+  const result = await runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto' });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'TYPST_VERSION_MISSING');
+  assert.equal(result.version, '9.9.9');
+  assert.match(result.error, /Typst 9\.9\.9 isn’t installed/);
+});
+
+test('typstInputs reach the document and leave it compiling without them', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const project = await projectWith('typst-inputs', '#sys.inputs.at("x", default: "none")\n');
+  const withInput = await runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto', typstInputs: { x: 'hello' } });
+  assert.equal(withInput.ok, true, withInput.error);
+  const without = await runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto' });
+  assert.equal(without.ok, true, without.error);
+});
+
+test.after(async () => {
+  rmSync(tmp, { recursive: true, force: true });
+});

@@ -21,6 +21,8 @@ const TYPST_DIR = path.join(ENGINES_DIR, 'typst');
 const PANDOC_PATH = path.join(ENGINES_DIR, 'pandoc', 'pandoc' + EXE);
 const DOWNLOAD_FAILED = 'Check the internet connection and try again.';
 const CHECKSUM_FAILED = 'The download didn’t match its checksum, so it wasn’t installed.';
+/** The Typst version inside Spectrum, for a compile's result or a diagram's import line. */
+export const BUILT_IN_TYPST_VERSION = engineList.typst.builtIn;
 
 // Tests point the list at an engine they build and serve themselves
 let list = engineList;

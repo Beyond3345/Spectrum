@@ -85,7 +85,11 @@ const COMPILE_SETTINGS = {
   bibTool: (v) => BIB_TOOLS.includes(v),
   draft: (v) => typeof v === 'boolean',
   // TexLab's syntax check before compiling, which the editor runs
-  syntaxCheck: (v) => typeof v === 'boolean'
+  syntaxCheck: (v) => typeof v === 'boolean',
+  // the Typst version a Typst project pins
+  typstVersion: (v) => typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v),
+  // the PDF engine a Markdown project compiles through
+  markdownEngine: (v) => v === 'latex' || v === 'typst'
 };
 const isObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 
