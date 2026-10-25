@@ -8,6 +8,7 @@ import { listFilesRecursive } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { inlineInputs } from '../utils/texUtils.js';
 import { matchBrace } from '../latex/text.js';
+import { typstElements } from './typstService.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -201,4 +202,36 @@ export async function documentLabels(root, doc) {
     }
   }
   return { labels, headings, auxAt, stale };
+}
+
+// ─── A Typst document's own numbers and pages ───
+
+const TOC_LEVELS = ['chapter', 'section', 'subsection', 'subsubsection'];
+// Typst's eval runs once for each PDF; a new compile's PDF has a new time
+const typstCache = new Map();
+
+/**
+ * A Typst document's labels and headings, from Typst's own eval of its last compile's PDF: { labels, headings, auxAt,
+ * stale }, shaped as documentLabels' are. auxAt is the PDF's time; with no PDF there is nothing to read yet.
+ */
+export async function typstDocumentLabels(root, doc) {
+  const abs = safeJoin(root, doc);
+  const absPdf = path.join(path.dirname(abs), path.basename(abs, path.extname(abs)) + '.pdf');
+  const at = await fs.stat(absPdf).catch(() => null);
+  if (!at) return { labels: {}, headings: [], auxAt: null, stale: true };
+  const key = path.relative(root, abs).split(path.sep).join('/');
+  const cached = typstCache.get(key);
+  if (cached && cached.at === at.mtimeMs) return cached.value;
+  const elements = await typstElements(root, key).catch(() => null);
+  const labels = {};
+  for (const item of elements?.labelled ?? []) labels[item.label] = { number: String(item.number ?? ''), page: String(item.page ?? '') };
+  const headings = (elements?.headings ?? []).map((heading) => ({
+    level: TOC_LEVELS[Math.min(Math.max(Number(heading.level) || 1, 1), TOC_LEVELS.length) - 1],
+    number: String(heading.number ?? ''),
+    page: String(heading.page ?? '')
+  }));
+  const source = await fs.stat(abs).catch(() => null);
+  const value = { labels, headings, auxAt: Math.round(at.mtimeMs), stale: !!source && source.mtimeMs > at.mtimeMs };
+  typstCache.set(key, { at: at.mtimeMs, value });
+  return value;
 }

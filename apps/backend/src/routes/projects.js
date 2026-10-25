@@ -33,7 +33,7 @@ import {
   updateMeta
 } from '../services/projectService.js';
 import { followRename } from './todos.js';
-import { documentLabels, projectStats } from '../services/statsService.js';
+import { documentLabels, projectStats, typstDocumentLabels } from '../services/statsService.js';
 import { readProjectSettings, updateProjectSettings } from '../services/projectSettings.js';
 import { BIB_TOOLS, SUPPORTED_ENGINES } from '../services/compileService.js';
 import { SKILL_ID } from '../services/skillService.js';
@@ -514,6 +514,8 @@ export function registerProjectRoutes(fastify) {
   fastify.get('/api/projects/:id/stats', async (req) => {
     const root = await getProjectRoot(req.params.id);
     const doc = String(req.query?.doc || req.query?.mainFile || '') || (await readMeta(root)).mainFile || 'main.tex';
+    // Typst has no .aux: its own eval gives the headings and labels with their pages
+    if (/\.typ$/i.test(doc)) return typstDocumentLabels(root, doc);
     return { ...(await projectStats(root, doc, req.query?.texFolder)), ...(await documentLabels(root, doc)) };
   });
 

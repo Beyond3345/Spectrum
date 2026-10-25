@@ -20,6 +20,7 @@ const { parseTypstDiagnostics } = await import('../src/services/typstService.js'
 const { runCompile } = await import('../src/services/compileService.js');
 const { createProject, getProjectRoot } = await import('../src/services/projectService.js');
 const { updateProjectSettings } = await import('../src/services/projectSettings.js');
+const { typstDocumentLabels } = await import('../src/services/statsService.js');
 const { registerCompileRoutes } = await import('../src/routes/compile.js');
 
 const root = path.join(tmp, 'project');
@@ -114,6 +115,32 @@ test('typstInputs reach the document and leave it compiling without them', async
   assert.equal(withInput.ok, true, withInput.error);
   const without = await runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto' });
   assert.equal(without.ok, true, without.error);
+});
+
+test('a Typst document’s headings and labels come with their pages', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const source = [
+    '#set page(paper: "a4", margin: 25mm)',
+    '#set heading(numbering: "1.1")',
+    '= One <sec:one>',
+    'Text.',
+    '#pagebreak()',
+    '= Two <sec:two>',
+    '#figure(rect(width: 1cm, height: 1cm), caption: [A figure]) <fig:one>',
+    ''
+  ].join('\n');
+  const project = await projectWith('typst-stats', source);
+  const result = await runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto' });
+  assert.equal(result.ok, true, result.error);
+  const dir = await getProjectRoot(project.id);
+  const { labels, headings, auxAt, stale } = await typstDocumentLabels(dir, 'main.typ');
+  assert.equal(headings.length, 2);
+  assert.equal(headings[1].level, 'chapter');
+  assert.equal(headings[1].page, '2');
+  assert.deepEqual(labels['fig:one'], { number: '1', page: '2' });
+  assert.deepEqual(labels['sec:two'], { number: '2', page: '2' });
+  assert.ok(auxAt);
+  assert.equal(stale, false);
 });
 
 test.after(async () => {
