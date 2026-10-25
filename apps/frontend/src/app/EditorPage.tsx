@@ -1990,21 +1990,6 @@ function Editor({ projectId }: { projectId: string }) {
     };
   }, []);
 
-  // the project's Zotero collection, brought up to the .bib on opening and on coming back to the window (adding only:
-  // entries leave it after a .bib save); a wait for Zotero's sync, or a fault, is said once
-  useEffect(() => {
-    let told = false;
-    const sync = () =>
-      syncZotero(projectId).then((res) => {
-        if (told || !res.message || (res.state !== 'waiting' && res.state !== 'error')) return;
-        told = true;
-        notify(res.message, res.state === 'error' ? 'error' : 'info');
-      }, () => undefined);
-    sync();
-    window.addEventListener('focus', sync);
-    return () => window.removeEventListener('focus', sync);
-  }, []);
-
   useEffect(() => {
     const a = () => actions.current;
     const listener = EditorView.updateListener.of((update) => {
@@ -2233,9 +2218,12 @@ function Editor({ projectId }: { projectId: string }) {
 
   // a linked project: pulled from GitHub as it opens (the files it changes come through the folder watch, and the panels
   // that read .spectrum reload), and backed up as the editor leaves it, chats and research sessions too
+  const pulledOnOpen = useRef<Promise<unknown>>(Promise.resolve());
   useEffect(() => {
     let live = true;
-    gitHubOpened(projectId).then(
+    const opened = gitHubOpened(projectId);
+    pulledOnOpen.current = opened.catch(() => undefined);
+    opened.then(
       (res) => {
         if (!live || !res.linked) return;
         if (res.message) notify(res.message);
@@ -2252,6 +2240,22 @@ function Editor({ projectId }: { projectId: string }) {
       leave();
     };
   }, [projectId]);
+
+  // the project's Zotero collection, brought up to the .bib on opening and on coming back to the window (adding only:
+  // entries leave it after a .bib save); a wait for Zotero's sync, or a fault, is said once. The first waits for the pull
+  // on opening, which may bring the collection the other computer made, so a second one isn't made here
+  useEffect(() => {
+    let told = false;
+    const sync = () =>
+      syncZotero(projectId).then((res) => {
+        if (told || !res.message || (res.state !== 'waiting' && res.state !== 'error')) return;
+        told = true;
+        notify(res.message, res.state === 'error' ? 'error' : 'info');
+      }, () => undefined);
+    pulledOnOpen.current.then(sync);
+    window.addEventListener('focus', sync);
+    return () => window.removeEventListener('focus', sync);
+  }, []);
 
   // the PDF notes again after a pull brought other ones
   const [notesPulled, setNotesPulled] = useState(0);
