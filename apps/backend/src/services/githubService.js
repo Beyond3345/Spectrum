@@ -711,6 +711,9 @@ export async function getFromGitHub({ owner, repo, parentDir }) {
     await register(cloned.id, target, cloned);
   } catch (err) {
     await fs.rm(target, { recursive: true, force: true });
+    // a file this computer can't write (a name Windows can't have, or a link it can't make): named, to rename there
+    const failed = (err?.data?.errors || []).map((e) => typeof e?.path === 'string' && path.relative(target, e.path).replace(/\.[0-9a-f-]{36}\.tmp$/, '')).find((rel) => rel && !rel.startsWith('..'));
+    if (failed) throw httpError(`Couldn’t write “${failed.split(path.sep).join('/')}” on this computer. Rename it on your other computer, back it up, then try again.`, 409);
     const problem = problemOf(err, { owner, repo });
     throw httpError(problem.message, problem.state === 'waiting' ? 503 : 409);
   }

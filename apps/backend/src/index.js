@@ -2,8 +2,10 @@ import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import { existsSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { ensureDir } from './utils/fsUtils.js';
-import { DATA_DIR, FRONTEND_DIST, HOST, PORT } from './config/constants.js';
+import { DATA_DIR, FRONTEND_DIST, HOST, PORT, PROJECTS_DIR, setProjectsDir } from './config/constants.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerArxivRoutes } from './routes/arxiv.js';
 import { registerProjectRoutes } from './routes/projects.js';
@@ -39,7 +41,7 @@ import { seedTemplates, syncTemplates } from './services/templateService.js';
 import { dropOldAuxFolders, migrateLegacyProjects } from './services/projectService.js';
 import { migrateToV2 } from './services/mirrorService.js';
 import { killAllChildren } from './services/compileService.js';
-import { offlineMessage } from './services/syncService.js';
+import { offlineMessage, placeOf } from './services/syncService.js';
 import { isLocalRequest } from './utils/authUtils.js';
 
 const fastify = Fastify({ logger: true, bodyLimit: 50 * 1024 * 1024 });
@@ -127,6 +129,9 @@ if (existsSync(FRONTEND_DIST)) {
 }
 
 await ensureDir(DATA_DIR);
+// Documents may be in OneDrive (its folder backup) or iCloud Drive, where GitHub can't keep projects: new ones go in
+// the home folder's Spectrum then, and those already in the old one are offered Move to this computer
+if (await placeOf(PROJECTS_DIR).catch(() => null)) setProjectsDir(path.join(os.homedir(), 'Spectrum'));
 await seedTemplates();
 // the shared folder may be slow to answer, so the server doesn't wait for it
 syncTemplates().catch((err) => fastify.log.error(err));

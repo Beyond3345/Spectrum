@@ -14,19 +14,47 @@ import { looksLikeConflictCopy } from '../utils/conflictCopies.js';
 import { mergeText } from '../utils/merge3.js';
 import { isDocumentFile } from '../utils/texUtils.js';
 import { isText } from './versionService.js';
-import { conflictCopyPath, decide, deletionBrake, keepBefore, keyOf, mergeChatFiles, mergeMeta, mergeSessionFiles, placeIfUnchanged, respellKeys } from './mergeRules.js';
+import { conflictCopyPath, decide, deletionBrake, keepBefore, keyOf, mergeBibFiles, mergeChatFiles, mergeMeta, mergeSessionFiles, placeIfUnchanged, respellKeys } from './mergeRules.js';
 
 const { readFile, mkdir, rmdir, unlink, stat, lstat, readdir, readlink, symlink, chmod, rm } = fs;
-/** Node's file system for isomorphic-git, with each file written whole through a temp file beside it. */
+const windows = () => process.platform === 'win32';
+/**
+ * Node's file system for isomorphic-git, with each file written whole through a temp file beside it, a Mac's names
+ * composed (NFC) as git's core.precomposeunicode has them, since NTFS keeps a decomposed name apart from the one typed,
+ * and a link Windows won't make (without Developer Mode) written as a file holding its target, as Git for Windows does.
+ */
 export const gitFs = {
   promises: {
-    readFile, mkdir, rmdir, unlink, stat, lstat, readdir, readlink, symlink, chmod, rm,
+    readFile, mkdir, rmdir, unlink, stat, lstat, readlink, chmod, rm,
+    readdir: process.platform === 'darwin' ? async (...args) => (await readdir(...args)).map((n) => (typeof n === 'string' ? n.normalize('NFC') : n)) : readdir,
+    async symlink(target, file) {
+      try {
+        await symlink(target, file);
+      } catch (err) {
+        if (!windows() || err.code !== 'EPERM') throw err;
+        await writeFileAtomic(file, target);
+      }
+    },
     async writeFile(file, data, options) {
       await writeFileAtomic(file, data);
-      if (options?.mode) await chmod(file, options.mode);
+      // isomorphic-git asks 0o777 for an executable and leaves the umask to narrow it
+      if (options?.mode) await chmod(file, options.mode & 0o755);
     }
   }
 };
+
+/** A name Windows can't give a file: <>:"|?*\, a control character, a trailing dot or space, or a device's (CON, NUL…). */
+const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
+export const unfitOnWindows = (rel) => rel.split('/').some((p) => /[<>:"|?*\\\u0000-\u001f]/.test(p) || /[. ]$/.test(p) || RESERVED.test(p));
+
+/** Text as isomorphic-git reads it with core.autocrlf true: CRLF as LF, in UTF-8 only. */
+function lf(bytes) {
+  try {
+    return Buffer.from(new TextDecoder('utf8', { fatal: true }).decode(bytes).replace(/\r\n/g, '\n'));
+  } catch {
+    return bytes;
+  }
+}
 
 // GitHub refuses a file over 100 MiB
 export const MAX_FILE_BYTES = 100 * 1024 * 1024;
@@ -185,14 +213,33 @@ async function writeExcludes(root, pdfs) {
  * ponytail: statusMatrix hashes every file whose time changed, fine for hundreds of files and slow for many thousands
  */
 export async function commitAll(root, { message, author, hold = () => false, always = false, compiled: pdfsCompiled = true }) {
+  // Git for Windows checks out with CRLF line ends and reads them as LF through its system config's core.autocrlf,
+  // which isomorphic-git never reads: the repository's own says it, so a file isn't taken as changed in every line
+  const autocrlf = windows() ? await git.getConfig({ fs: gitFs, dir: root, path: 'core.autocrlf' }) : undefined;
+  if (windows() && autocrlf === undefined) await git.setConfig({ fs: gitFs, dir: root, path: 'core.autocrlf', value: 'true' });
   const pdfs = pdfsCompiled ? await compiledPdfs(root) : [];
   await writeExcludes(root, pdfs);
   const compiled = new Set(pdfs.map(keyOf));
   const cache = {};
   const left = [];
   let changes = 0;
-  for (const [rel, head, work, stage] of await git.statusMatrix({ fs: gitFs, dir: root, cache })) {
+  const rows = await git.statusMatrix({ fs: gitFs, dir: root, cache });
+  // two committed names for one file, which a Mac's or Windows' disk keeps as one: left as committed, as the disk
+  // can't say which it holds, and named for a rename
+  const committedKeys = new Map();
+  for (const [rel, head] of rows) if (head) committedKeys.set(keyOf(rel), (committedKeys.get(keyOf(rel)) || 0) + 1);
+  const named = new Set();
+  // the modes committed, where Windows has no execute bit to keep a script's
+  const modes = windows() ? await treeFiles(root, await headOid(root)) : new Map();
+  for (const [rel, head, work, stage] of rows) {
     if ((head === 1 && work === 1 && stage === 1) || keptOut(rel) || compiled.has(keyOf(rel)) || hold(rel)) continue;
+    if (committedKeys.get(keyOf(rel)) > 1) {
+      if (!named.has(keyOf(rel))) left.push(`“${rel}” and another file differ only in letter case, which macOS and Windows can’t keep apart. Rename one of them`);
+      named.add(keyOf(rel));
+      continue;
+    }
+    // a committed name Windows can't have (the Mac's Why?.tex) is never here, and never deleted for that
+    if (head && windows() && unfitOnWindows(rel)) continue;
     if (work === 0) {
       if (stage) await git.remove({ fs: gitFs, dir: root, filepath: rel, cache });
       if (head) changes++;
@@ -204,6 +251,12 @@ export async function commitAll(root, { message, author, hold = () => false, alw
     else if (info.size > MAX_FILE_BYTES) left.push(`“${rel}” is over GitHub’s 100 MB limit`);
     else {
       await git.add({ fs: gitFs, dir: root, filepath: rel, cache });
+      // a script committed as executable stays so, or the Mac's next pull would take +x away
+      if (modes.get(rel)?.mode === '100755') {
+        const bytes = await fs.readFile(join(root, rel));
+        const { oid } = await git.hashBlob({ object: (autocrlf ?? 'true') === 'true' ? lf(bytes) : bytes });
+        await git.updateIndex({ fs: gitFs, dir: root, filepath: rel, oid, mode: 0o100755 });
+      }
       if (work === 2) changes++;
     }
   }
@@ -317,13 +370,28 @@ export async function planMerge({ base, ours, theirs, read, compiled = new Set()
   const copies = [];
   const problems = [];
   const { files, clashes } = respellKeys([...base.keys()], [...ours.keys()], [...theirs.keys()]);
-  // two names for one file on one side, which a Mac or Windows disk can't keep apart: this computer's stay as they are
+  // two names for one file on one side, which a Mac or Windows disk can't keep apart, and on Windows a name it can't
+  // have: each kept in the commit only (treeOnly), never written here, so neither computer deletes it from GitHub
   const clashed = new Set();
   for (const [a, b] of clashes) {
     problems.push(`“${a}” and “${b}” differ only in letter case, which macOS and Windows can’t keep apart. Rename one of them.`);
     clashed.add(keyOf(a));
   }
-  for (const key of clashed) for (const [rel, x] of ours) if (keyOf(rel) === key) decisions.push({ key, o: { rel, ...x }, r: { rel, ...x } });
+  if (windows()) {
+    for (const rel of new Set([...ours.keys(), ...theirs.keys()])) {
+      if (!unfitOnWindows(rel) || clashed.has(keyOf(rel))) continue;
+      problems.push(`“${rel}” can’t be a file name on Windows. Rename it on your other computer.`);
+      clashed.add(keyOf(rel));
+    }
+  }
+  // each exact path as GitHub has it, unless this computer changed that path since the base
+  for (const key of clashed) {
+    for (const rel of new Set([...base.keys(), ...ours.keys(), ...theirs.keys()].filter((p) => keyOf(p) === key))) {
+      const [b, o, t] = [base.get(rel), ours.get(rel), theirs.get(rel)];
+      const r = o?.oid === b?.oid ? t : o;
+      if (o || r) decisions.push({ key, o: o && { rel, ...o }, r: r && { rel, ...r }, treeOnly: true });
+    }
+  }
   const entry = (map, rel) => (rel === undefined ? null : { rel, ...map.get(rel) });
   for (const [key, f] of files) {
     if (clashed.has(key)) continue;
@@ -335,7 +403,9 @@ export async function planMerge({ base, ours, theirs, read, compiled = new Set()
       const [ob, tb, bb] = await Promise.all([read(o.oid), read(t.oid), b ? read(b.oid) : null]);
       const app = key.startsWith('.spectrum/');
       // a compiled PDF stays this computer's, with no copy
-      const data = app ? mergeAppFile(key, bb, ob, tb) : compiled.has(key) ? null : isText(f.rel) ? mergeText(bb ?? Buffer.alloc(0), ob, tb) : null;
+      // a .bib both sides added entries to at its end merges entry by entry
+      const text = () => mergeText(bb ?? Buffer.alloc(0), ob, tb) ?? (/\.bib$/i.test(f.rel) ? mergeBibFiles(bb ?? Buffer.alloc(0), ob, tb) : null);
+      const data = app ? mergeAppFile(key, bb, ob, tb) : compiled.has(key) ? null : isText(f.rel) ? text() : null;
       if (data) r = { rel: f.rel, data, mode: o.mode };
       else if (!app && !compiled.has(key)) copies.push({ rel: conflictCopyPath(f.rel, 'GitHub'), data: tb, mode: t.mode });
     }
@@ -352,8 +422,8 @@ export async function planMerge({ base, ours, theirs, read, compiled = new Set()
   return { decisions, copies, problems };
 }
 
-/** Whether a decision leaves this computer's file as it is. */
-const unchanged = ({ o, r }) => (!o && !r) || (o && r && o.rel === r.rel && !r.data && o.oid === r.oid);
+/** Whether a decision leaves this computer's file as it is: the same, or only in the commit (treeOnly). */
+const unchanged = ({ o, r, treeOnly }) => treeOnly || (!o && !r) || (o && r && o.rel === r.rel && !r.data && o.oid === r.oid);
 
 /** The commit's tree for the decisions' results and the copies. */
 async function writeMergedTree(root, decisions, copies) {
@@ -400,6 +470,28 @@ async function respell(root, rel, want) {
 }
 
 /**
+ * A symbolic link at rel to target, in place of what's there; where links can't be made (Windows without the right
+ * to), its target in a plain file, as Git for Windows writes one with core.symlinks false.
+ */
+async function placeLink(root, rel, target) {
+  const dest = join(root, rel);
+  await fs.mkdir(path.dirname(dest), { recursive: true });
+  if (!windows()) {
+    const tmp = `${dest}.${crypto.randomUUID()}.tmp`;
+    try {
+      await fs.symlink(target, tmp);
+      await fs.rename(tmp, dest);
+      return;
+    } catch (err) {
+      await fs.rm(tmp, { force: true });
+      if (err.code !== 'EPERM') throw err;
+    }
+  }
+  await fs.rm(dest, { force: true });
+  await writeFileAtomic(dest, target);
+}
+
+/**
  * Write what the merge decided, deletions first: each file only while it still holds this computer's committed bytes
  * (or isn't there, for a new one). keep(rel): a file left as it is here (a compiled PDF, one not committed). On a file
  * that changed meanwhile, or a write that fails, the files already written are put back and it throws CHANGED.
@@ -409,14 +501,25 @@ async function writeDecisions(root, decisions, copies, read, keep) {
   ops.sort((a, b) => Number(!!b.o && !b.r) - Number(!!a.o && !a.r));
   const done = [];
   const changed = () => Object.assign(new Error('A file changed while it was being pulled. Spectrum tries again shortly.'), { code: 'CHANGED' });
-  // what was committed of a file, by its SHA-256, as placeIfUnchanged checks it
-  const committed = async (o) => (o ? sha256(await read(o.oid)) : null);
+  // what's here of a committed file, as placeIfUnchanged checks it (its SHA-256), while it still holds what was
+  // committed: as committed, with CRLF line ends (a Git for Windows checkout), or as the link committed ('link'; its
+  // target in a plain file where links can't be made); else 'changed', which nothing matches
+  const committed = async (o) => {
+    if (!o) return null;
+    const abs = join(root, o.rel);
+    const blob = await read(o.oid);
+    if (o.mode === '120000' && (await fs.readlink(abs).then((to) => to === blob.toString(), () => false))) return 'link';
+    const now = await fs.readFile(abs).catch(() => null);
+    if (!now) return 'changed';
+    return now.equals(blob) || Buffer.from(now.toString('latin1').replace(/\r\n/g, '\n'), 'latin1').equals(blob) ? sha256(now) : 'changed';
+  };
+  const restore = async (o) => (o.mode === '120000' ? placeLink(root, o.rel, (await read(o.oid)).toString()) : writeFileAtomic(join(root, o.rel), await read(o.oid)));
   try {
     for (const d of ops) {
       const { o, r } = d;
+      let expect = await committed(o);
+      if (expect === 'changed') throw changed();
       if (o && (!r || o.rel !== r.rel)) {
-        const now = await fs.readFile(join(root, o.rel)).catch(() => null);
-        if (!now || (await blobOid(now)) !== o.oid) throw changed();
         if (!r) {
           await fs.rm(join(root, o.rel), { force: true });
           await pruneUp(root, join(root, o.rel));
@@ -424,8 +527,18 @@ async function writeDecisions(root, decisions, copies, read, keep) {
       }
       if (r) {
         const bytes = r.data ?? (await read(r.oid));
-        if (!(await placeIfUnchanged(root, r.rel, bytes, await committed(o)))) throw changed();
-        if (process.platform !== 'win32' && r.mode === '100755') await fs.chmod(join(root, r.rel), 0o755);
+        // a link goes before what replaces it, so nothing is written through it to its target
+        if (expect === 'link') {
+          await fs.rm(join(root, r.rel), { force: true });
+          expect = null;
+        }
+        if (r.mode === '120000') {
+          if (expect === null && (await exists(join(root, r.rel)))) throw changed();
+          await placeLink(root, r.rel, bytes.toString());
+        } else {
+          if (!(await placeIfUnchanged(root, r.rel, bytes, expect))) throw changed();
+          if (!windows() && r.mode === '100755') await fs.chmod(join(root, r.rel), 0o755);
+        }
       }
       done.push(d);
     }
@@ -437,7 +550,7 @@ async function writeDecisions(root, decisions, copies, read, keep) {
     // this computer's files as they were committed
     for (const { o, r } of done.reverse()) {
       if (r && (!o || o.rel !== r.rel)) await fs.rm(join(root, r.rel), { force: true }).catch(() => {});
-      if (o) await writeFileAtomic(join(root, o.rel), await read(o.oid)).catch(() => {});
+      if (o) await restore(o).catch(() => {});
     }
     throw err;
   }
@@ -490,8 +603,9 @@ export async function mergeOrigin(root, { author, allowDeletions = false, dryRun
     ? theirs
     : await git.commit({ fs: gitFs, dir: root, message, author, tree, parent: ours ? [ours, theirs] : [theirs], noUpdateBranch: true, cache });
   await git.writeRef({ fs: gitFs, dir: root, ref: `refs/heads/${branch}`, value: oid, force: true });
-  // the index to the new commit for each file that changed in it, so the next backup sees only what changes after
-  const touched = new Set([...plan.decisions.filter((d) => !unchanged(d)).flatMap((d) => [d.o?.rel, d.r?.rel]), ...plan.copies.map((c) => c.rel)].filter(Boolean));
+  // the index to the new commit for each file that changed in it, so the next backup sees only what changes after;
+  // one kept in the commit only goes in the index too, which the next commit's tree is made from
+  const touched = new Set([...plan.decisions.filter((d) => !unchanged(d) || d.treeOnly).flatMap((d) => [d.o?.rel, d.r?.rel]), ...plan.copies.map((c) => c.rel)].filter(Boolean));
   for (const filepath of touched) await git.resetIndex({ fs: gitFs, dir: root, filepath, cache }).catch(() => {});
   return { state: 'merged', ...summary, fromTheirs: ops.length };
 }

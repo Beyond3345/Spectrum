@@ -479,6 +479,17 @@ test('GitHub having trouble, or a request that times out, waits for the connecti
   ok(await mac.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' }));
 });
 
+test('a default projects folder in OneDrive (Documents backed up there) moves to the home folder, where GitHub takes projects', { skip }, async () => {
+  const docs = path.join(home, 'Library', 'CloudStorage', 'OneDrive-Personal', 'Documents');
+  mkdirSync(docs, { recursive: true });
+  const laptop = await startComputer('Laptop', { tmp, home, gh, env: { SPECTRUM_PROJECTS_DIR: path.join(docs, 'Spectrum'), OneDrive: path.join(home, 'OneDrive') } });
+  computers.Laptop = laptop;
+  ok(await laptop.api('/api/github/token', { method: 'POST', body: { token: GOOD_TOKEN } }));
+  const project = ok(await laptop.api('/api/projects', { method: 'POST', body: { name: 'In OneDrive' } }));
+  assert.equal(path.dirname(project.path), path.join(home, 'Spectrum'));
+  ok(await laptop.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' }));
+});
+
 test('a repository of the user’s own keeps its GitHub origin, and one sending elsewhere is left alone', { skip }, async () => {
   const mac = computers.Mac;
   const project = ok(await mac.api('/api/projects', { method: 'POST', body: { name: 'Own repo' } }));
