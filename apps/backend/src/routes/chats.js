@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { appPath, getProjectRoot, httpError } from '../services/projectService.js';
+import { appPath, getProjectRoot, httpError, mutateProjectFiles } from '../services/projectService.js';
 import { readJson, writeFileAtomic } from '../utils/fsUtils.js';
 import { mergeChat } from '../utils/chatMerge.js';
 
@@ -60,18 +60,22 @@ export function registerChatRoutes(fastify) {
     if (!chat || typeof chat !== 'object' || chat.id !== req.params.cid) {
       throw httpError('The chat’s id doesn’t match the address.', 400);
     }
+    // in the project files' lock, which a GitHub pull holds while it merges chats.
     // ponytail: a copy that can't be read (online-only and offline) is replaced, as before
-    const disk = await readJson(file).catch(() => null);
-    const merged = disk?.id === chat.id && Array.isArray(disk.messages) && disk.updatedAt !== req.body.base;
-    if (merged) chat = mergeChat(disk, chat);
-    const data = JSON.stringify(chat);
-    if (Buffer.byteLength(data) > MAX_CHAT_BYTES) throw httpError('This chat is too large to save (over 5 MB).', 413);
-    await writeFileAtomic(file, data);
-    return { ok: true, ...(merged && { chat }) };
+    return mutateProjectFiles(async () => {
+      const disk = await readJson(file).catch(() => null);
+      const merged = disk?.id === chat.id && Array.isArray(disk.messages) && disk.updatedAt !== req.body.base;
+      if (merged) chat = mergeChat(disk, chat);
+      const data = JSON.stringify(chat);
+      if (Buffer.byteLength(data) > MAX_CHAT_BYTES) throw httpError('This chat is too large to save (over 5 MB).', 413);
+      await writeFileAtomic(file, data);
+      return { ok: true, ...(merged && { chat }) };
+    });
   });
 
   fastify.delete('/api/projects/:id/chats/:cid', async (req) => {
-    await fs.rm(await chatFile(req), { force: true });
+    const file = await chatFile(req);
+    await mutateProjectFiles(() => fs.rm(file, { force: true }));
     return { ok: true };
   });
 }
