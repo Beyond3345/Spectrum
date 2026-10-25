@@ -4,7 +4,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { promises as fs, chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { promises as fs, chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { GOOD_TOKEN, hasGitHttpBackend, startFakeGitHub } from './fixtures/fake-github.mjs';
@@ -347,4 +347,15 @@ test('Spectrum leaves a repository alone while another program works in it, and 
   writeFileSync(path.join(A, '.git', 'HEAD'), 'ref: refs/heads/main\n');
   writeFileSync(path.join(A, '.git', 'MERGE_HEAD'), '');
   assert.match(await g.refusal(A), /middle of a merge/);
+});
+
+test('Typst source merges by lines, as LaTeX does', { skip }, async () => {
+  const lines = (k) => Array.from({ length: 12 }, (_, i) => (i === k ? `changed ${k}` : `line ${i}`)).join('\n');
+  const { A, B } = await pair({ 'main.typ': lines(-1) });
+  write(A, 'main.typ', lines(1));
+  await sync(A);
+  write(B, 'main.typ', lines(10));
+  const result = await sync(B);
+  assert.equal(result.conflicts, 0);
+  assert.equal(read(B, 'main.typ'), lines(1).replace('line 10', 'changed 10'));
 });

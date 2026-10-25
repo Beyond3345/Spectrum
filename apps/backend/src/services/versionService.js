@@ -30,7 +30,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const COMPILE_WINDOW_MS = 10 * 60 * 1000;
 const TEXT_EXTENSIONS = new Set([
   '.tex', '.bib', '.sty', '.cls', '.bst', '.txt', '.md', '.json', '.yaml', '.yml', '.csv', '.tsv',
-  '.bbx', '.cbx', '.lbx', '.cfg', '.def', '.clo', '.ltx', '.mmd'
+  '.bbx', '.cbx', '.lbx', '.cfg', '.def', '.clo', '.ltx', '.mmd', '.typ', '.markdown'
 ]);
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);

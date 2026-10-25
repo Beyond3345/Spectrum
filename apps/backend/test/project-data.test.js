@@ -25,7 +25,7 @@ const { registerVersionRoutes } = await import('../src/routes/versions.js');
 const { registerTodoRoutes } = await import('../src/routes/todos.js');
 const { registerNoteRoutes } = await import('../src/routes/notes.js');
 const { createProject, detectMainFile } = await import('../src/services/projectService.js');
-const { createCompileCheckpoint, createVersion, listVersions, readVersionFile, restoreVersion } = await import('../src/services/versionService.js');
+const { compareWithCurrent, createCompileCheckpoint, createVersion, listVersions, readVersionFile, restoreVersion } = await import('../src/services/versionService.js');
 const { parseLabels } = await import('../src/services/statsService.js');
 
 const app = Fastify();
@@ -391,4 +391,13 @@ test('a compile’s checkpoint is saved even when what it replaces can’t all b
   }
   assert.equal((await listVersions(p.path)).length, 2);
   assert.equal((await readVersionFile(p.path, two.id, 'main.tex')).content, 'two');
+});
+
+test('a checkpoint shows and compares Typst and Markdown source as text', async () => {
+  const p = await newProject('Typst source', { 'main.typ': '= Review\nTypst prose.\n', 'notes.markdown': '# Notes\n' });
+  const { version } = await createVersion(p.path, { label: '' });
+  assert.deepEqual(await readVersionFile(p.path, version.id, 'main.typ'), { ok: true, content: '= Review\nTypst prose.\n' });
+  assert.equal((await readVersionFile(p.path, version.id, 'notes.markdown')).content, '# Notes\n');
+  await fs.writeFile(path.join(p.path, 'main.typ'), '= Review\nTypst prose, revised.\n');
+  assert.deepEqual((await compareWithCurrent(p.path, version.id)).find((c) => c.path === 'main.typ'), { path: 'main.typ', status: 'modified', added: 1, removed: 1, binary: false });
 });
