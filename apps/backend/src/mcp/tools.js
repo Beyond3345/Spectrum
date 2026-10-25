@@ -117,6 +117,8 @@ export function logErrors(log) {
   for (let i = 0; i < lines.length && errors.length < 50; i++) {
     const line = lines[i];
     if (/^(?:\.\/)?[^\s:]+\.(?:tex|sty|cls|bib|bbl):\d+: /.test(line)) errors.push(line.replace(/^\.\//, ''));
+    // Typst's short-format diagnostics: main.typ:3:1: error: unknown variable: foo (or <stdin> for Markdown's)
+    else if (/^(?:\S*\.typ|<stdin>):\d+:\d+: error: /.test(line)) errors.push(line.trim());
     else if (/^! /.test(line)) errors.push([line, lines[i + 1]?.startsWith('l.') ? lines[i + 1] : ''].filter(Boolean).join(' '));
     else if (/^error: /.test(line)) errors.push(line);
   }

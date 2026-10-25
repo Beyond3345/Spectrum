@@ -62,8 +62,8 @@ test('the bibliography tools, the log reader, to-dos and skills', async () => {
   assert.equal((await tools.searchBibEntries(root, state, 'jones 1999')).length, 0);
   await assert.rejects(tools.searchBibEntries(root, state, ' '), /words/);
 
-  const log = ['(./main.tex', './main.tex:12: Undefined control sequence.', 'l.12 \\foo', 'LaTeX Warning: Citation `x\' on page 1 undefined on input line 4.', '! Missing $ inserted.', 'l.20 a_b', ''].join('\n');
-  assert.deepEqual(tools.logErrors(log), { errors: ['main.tex:12: Undefined control sequence.', '! Missing $ inserted. l.20 a_b'], warnings: 1, undefined: ['LaTeX Warning: Citation `x\' on page 1 undefined on input line 4.'] });
+  const log = ['(./main.tex', './main.tex:12: Undefined control sequence.', 'l.12 \\foo', 'LaTeX Warning: Citation `x\' on page 1 undefined on input line 4.', '! Missing $ inserted.', 'l.20 a_b', 'main.typ:3:1: error: unknown variable: foo', ''].join('\n');
+  assert.deepEqual(tools.logErrors(log), { errors: ['main.tex:12: Undefined control sequence.', '! Missing $ inserted. l.20 a_b', 'main.typ:3:1: error: unknown variable: foo'], warnings: 1, undefined: ['LaTeX Warning: Citation `x\' on page 1 undefined on input line 4.'] });
   assert.match((await tools.getLog(path.join(tmp, 'state-without-context'))).note, /compile first/);
 
   assert.deepEqual(await tools.listTodos(state), [{ text: 'Check the method', link: { file: 'paper/sections/method.tex', line: 1 } }]);
