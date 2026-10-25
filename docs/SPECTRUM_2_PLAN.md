@@ -1,6 +1,6 @@
 # Spectrum 2.0.0 plan
 
-Status: implementation in progress, 25 October 2026. Phases 1, 1b and 2 are merged locally into `feat/2.0`, and phase 3 is integrated on `build/p3-integrate`; the continuation and verification notes are in [SPECTRUM_2_HANDOFF.md](SPECTRUM_2_HANDOFF.md). Phases 4 and 5 remain. Version 2.0.0 is not to be released until you say so.
+Status: implementation in progress, 25 October 2026. Phases 1, 1b, 2 and 3 are merged into `feat/2.0`, and phase 4 is integrated on `build/p4-integrate`; the continuation and verification notes are in [SPECTRUM_2_HANDOFF.md](SPECTRUM_2_HANDOFF.md). Phase 5 remains. Version 2.0.0 is not to be released until you say so.
 
 Research behind it: Spectrum 1.10.4's code, Oleafly's source and docs (`CodingProjects/Oleafly-main`), and the TexLab, Zotero, Better BibTeX, GitHub, pdf.js, Overleaf and LaTeX Workshop documentation.
 
