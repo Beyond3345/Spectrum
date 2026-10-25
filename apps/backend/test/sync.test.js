@@ -182,6 +182,42 @@ test('while a project is being moved, its folder isn’t handed to a save, and e
   assert.equal((await api(`/api/projects/${id}/file`, { method: 'PUT', body: { path: 'main.tex', content: 'after' } })).status, 200);
 });
 
+test('Move to this computer waits for a save already under way, which the copy then holds', async () => {
+  const dir = path.join(drive, 'Spectrum', 'Racing');
+  const id = project(dir);
+  await openFolder(dir);
+  const file = path.join(dir, 'main.tex');
+  const before = readFileSync(file, 'utf8');
+  // the save holds the folder Move is about to copy, paused just after it checked the file
+  const { readFile } = fs;
+  let paused;
+  let release;
+  const reached = new Promise((resolve) => (paused = resolve));
+  const gate = new Promise((resolve) => (release = resolve));
+  fs.readFile = async function (p, ...rest) {
+    if (p === file && paused) {
+      paused();
+      paused = null;
+      await gate;
+    }
+    return readFile.call(this, p, ...rest);
+  };
+  try {
+    const save = api(`/api/projects/${id}/file`, { method: 'PUT', body: { path: 'main.tex', content: 'saved during the move', base: crypto.createHash('sha256').update(before).digest('hex') } });
+    await reached;
+    const move = api(`/api/projects/${id}/move-here`, { method: 'POST', body: {} });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    release();
+    const [saved, moved] = await Promise.all([save, move]);
+    assert.equal(saved.status, 200, saved.json.message);
+    assert.equal(moved.status, 200, moved.json.message);
+    assert.equal(readFileSync(path.join(moved.json.project.path, 'main.tex'), 'utf8'), 'saved during the move');
+  } finally {
+    release();
+    fs.readFile = readFile;
+  }
+});
+
 test('a project 1.10 used in place in a NAS share is named for the share, and Move to this computer takes it', async () => {
   const { migrateToV2 } = await import('../src/services/mirrorService.js');
   const dir = path.join(nas, 'Lab');
