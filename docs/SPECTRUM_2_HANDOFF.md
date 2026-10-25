@@ -16,7 +16,7 @@ Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.
 | 2 | Agent workspace, personas, skills, MCP tools, to-dos for agents | Built, three review rounds (the last found nothing serious), merged |
 | 3 | TexLab, combined Review, Research sidebar, history menu | Built, two review rounds (the second found nothing serious), merged |
 | 4 | Zotero, GitHub sync and the settings repository, cloud sync removed with its migration | Built and merged as `bab0316`. Reviewed once: 47 confirmed findings (8 high), fixed and merged as `efc81b2` (see Phase 4 review fixes). **The second round has not been run** (review 1 of the review plan) |
-| 5 | Built-in Tectonic, Typst and Markdown engines; the composer's Typst mode | Built as planned in [PHASE5_PLAN.md](PHASE5_PLAN.md). Codex then audited the whole of 2.0 (21 findings, in `handover.md` at the repository root), and a small review reproduced and fixed all of them. Merged as `e808c4c`. **The full review has not been run** (review 2 of the review plan). See Phase 5 below |
+| 5 | Built-in Tectonic, Typst and Markdown engines; the composer's Typst mode | Built as planned in [PHASE5_PLAN.md](PHASE5_PLAN.md). Codex then audited the whole of 2.0 (21 findings, in [CODEX_AUDIT_2_0.md](CODEX_AUDIT_2_0.md)), and a small review reproduced and fixed all of them. Merged as `e808c4c`. **The full review has not been run** (review 2 of the review plan). See Phase 5 below |
 | Test DMG | `Spectrum_2.0.0_universal.dmg` in `OpenPrism/builds` with phases 1 to 5, for the user to install and try | See "The 2.0 test DMG" below |
 
 ### Next steps, in order
