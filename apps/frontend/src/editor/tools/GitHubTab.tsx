@@ -30,8 +30,16 @@ export default function GitHubTab({ active, onOpenSettings }: { active: boolean;
     }
   }, [projectId]);
 
+  // the backup a minute after typing stops happens without the tab, so it asks again now and then while showing
   useEffect(() => {
-    if (active) load();
+    if (!active) return;
+    load();
+    const timer = window.setInterval(load, 60_000);
+    window.addEventListener('focus', load);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', load);
+    };
   }, [active, load]);
 
   /** After a pull: the panels that read .spectrum reload, and the file tree follows. */

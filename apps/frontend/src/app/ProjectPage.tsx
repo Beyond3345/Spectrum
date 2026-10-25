@@ -171,6 +171,8 @@ export default function ProjectPage() {
   const [view, setView] = useState('all'); // 'all' | 'github' | 'archived' | 'tag:<name>' | 'folder:<id>'
   /** linked projects whose last backup, pull or sync didn't go through, for “Not backed up since …” */
   const [problems, setProblems] = useState<Record<string, GitHubProblem>>({});
+  // Settings closed: a sign-in or sign-out there shows in the GitHub view and the badges
+  const [settingsClosed, setSettingsClosed] = useState(0);
   const [query, setQuery] = useState('');
   const [prefs, setPrefs] = useState(loadPrefs);
   const [sheet, setSheet] = useState<SheetState>(null);
@@ -889,6 +891,7 @@ export default function ProjectPage() {
           {view === 'all' && notice && <MoveNotice notice={notice} onMove={moveHere} onDismiss={dismissNotice} />}
           {view === 'github' ? (
             <GitHubView
+              key={settingsClosed}
               query={query}
               parentDir={parentDir}
               onOpen={(id) => navigate(`/editor/${id}`)}
@@ -1051,7 +1054,14 @@ export default function ProjectPage() {
       )}
 
       {sheet?.kind === 'settings' && (
-        <SettingsSheet section={sheet.section} onClose={() => setSheet(null)} />
+        <SettingsSheet
+          section={sheet.section}
+          onClose={() => {
+            setSheet(null);
+            setSettingsClosed((n) => n + 1);
+            reload();
+          }}
+        />
       )}
 
       {job && sheet?.kind !== 'transfer' && (
