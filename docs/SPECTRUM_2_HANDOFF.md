@@ -35,15 +35,15 @@ Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.
 
 ### The 2.0 test DMG
 
-- **File:** `OpenPrism/builds/Spectrum_2.0.0_universal.dmg` (123.5 MB; the 1.10.4 DMG stays beside it for going back). SHA-256 `1830a154bbfe93315c0b1d6f07800cea018af5760e2cdcf49ff914d3f430e860`, also in `Spectrum_2.0.0_universal.dmg.sha256`.
-- **Built** on 25 October 2026 from `feat/2.0` at `efc81b2` with `npm run desktop:build`: phases 1 to 4 with phase 4's first review fixes. Phase 5 (Tectonic and Typst built in, Typst and Markdown projects, the composer's Typst mode) is not in it.
+- **File:** `OpenPrism/builds/Spectrum_2.0.0_universal.dmg` (210 MB, 516 MB installed). SHA-256 `ee3182d623198e41e41300a56597dd0e46881a5dc167694480bb7f35a1aa8076`, also in `Spectrum_2.0.0_universal.dmg.sha256`. The 1.10.4 DMG stays beside it for going back, and the earlier phases 1 to 4 test build is kept as `Spectrum_2.0.0-phases1-4_universal.dmg`.
+- **Built** on 25 October 2026 from `feat/2.0` at `bd22d41` with `npm run desktop:build`: every phase, with phase 4's first review fixes, phase 5's small review fixes and the two Typst and Markdown skills phase 5's build had left out.
 - **Signed** ad hoc and not notarised, as the earlier local builds were, so the first open needs Open from the app's right-click menu (or Open Anyway in System Settings › Privacy & Security).
 - **Checked without opening the app:**
   - `hdiutil verify` passed;
-  - `spectrum`, `node` and `texlab` are universal (arm64 and x86_64);
-  - the version is 2.0.0 and the app is 321.5 MB installed;
-  - TexLab 5.26.0 answers `--version`;
-  - the bundled backend, started on its own against scratch folders, served the window, seeded the 13 templates and reported Hunspell 1.3.3 and Harper 2.12.0 with every file verified.
+  - `spectrum`, `node`, `texlab`, `typst` and `tectonic` are universal (arm64 and x86_64);
+  - Typst 0.15.1 and Tectonic 0.17.0 answer `--version`;
+  - the bundle has the five Typst and Markdown templates and Spectrum's five own skills;
+  - the bundled backend, started on its own against scratch folders, listed the built-in Typst and Tectonic and compiled the Typst CV template.
 - **What installing it does:**
   - The first start of 2.0 runs the move to 2.0 on the real data folder: 1.10's cloud sync stops, mirrored projects become local projects and the projects page shows the notice.
   - 1.10's mirror records, `sync.json` and the cloud copies are left as they were, so 1.10.4 from its DMG still opens and syncs them if the user goes back.
