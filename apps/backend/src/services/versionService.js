@@ -6,7 +6,7 @@ import { gzip, gunzip } from 'zlib';
 import { diffLines } from 'diff';
 import { ensureDir, freePath, listFilesRecursive, readJson, renameOver, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
-import { appPath, httpError, serialiser } from './projectService.js';
+import { appPath, httpError, mutateProjectFiles, serialiser } from './projectService.js';
 
 // Content-addressed history in .spectrum/history, which a sync app may share between computers:
 //   objects/<sha[0:2]>/<sha>.gz   gzipped file bytes, shared between versions
@@ -415,9 +415,13 @@ export async function readVersionFile(root, versionId, relPath) {
   return { ok: true, content: (await readObject(root, sha)).toString('utf8') };
 }
 
-/** Restore the whole project, or one file, after saving a safety version of the current state. */
+/**
+ * Restore the whole project, or one file, after saving a safety version of the current state. In the project files'
+ * lock, as a save, an agent's changes and a pull are, so none lands between the safety version and the restore's
+ * writes; then the history's (the order a pull takes them in too).
+ */
 export function restoreVersion(root, versionId, relPath) {
-  return lockFor(root)(async () => {
+  return mutateProjectFiles(() => lockFor(root)(async () => {
     const { files, skipped } = await readVersion(root, versionId);
     if (relPath) safeJoin(root, relPath);
     if (relPath && skipped.has(relPath)) throw httpError('That file couldn’t be read when this checkpoint was saved, so it isn’t in it.', 400);
@@ -452,7 +456,7 @@ export function restoreVersion(root, versionId, relPath) {
       }
     }
     return { safety: unchanged ? null : safety, keptAside };
-  });
+  }));
 }
 
 export function renameVersion(root, versionId, label) {

@@ -393,6 +393,41 @@ test('a compile’s checkpoint is saved even when what it replaces can’t all b
   assert.equal((await readVersionFile(p.path, two.id, 'main.tex')).content, 'two');
 });
 
+test('a save made while a checkpoint is restored waits for the restore, so it’s neither undone nor lost', async () => {
+  const p = await newProject('Restoring', { 'main.tex': 'the checkpoint\n' });
+  const file = path.join(p.path, 'main.tex');
+  const { version } = await createVersion(p.path, { label: 'Original' });
+  await fs.writeFile(file, 'before the restore\n');
+  // the restore paused once its safety checkpoint is saved, as it writes main.tex
+  const { realpath } = fs;
+  let paused;
+  let release;
+  const reached = new Promise((resolve) => (paused = resolve));
+  const gate = new Promise((resolve) => (release = resolve));
+  fs.realpath = async function (p, ...rest) {
+    if (String(p) === file && paused) {
+      paused();
+      paused = null;
+      await gate;
+    }
+    return realpath.call(this, p, ...rest);
+  };
+  try {
+    const restoring = api(`/api/projects/${p.id}/versions/${version.id}/restore`, 'POST', {});
+    await reached;
+    const saving = api(`/api/projects/${p.id}/file`, 'PUT', { path: 'main.tex', content: 'saved during the restore\n' });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    release();
+    const [restored, saved] = await Promise.all([restoring, saving]);
+    assert.equal(restored.status, 200);
+    assert.equal(saved.status, 200);
+  } finally {
+    release();
+    fs.realpath = realpath;
+  }
+  assert.equal(await fs.readFile(file, 'utf8'), 'saved during the restore\n');
+});
+
 test('a checkpoint shows and compares Typst and Markdown source as text', async () => {
   const p = await newProject('Typst source', { 'main.typ': '= Review\nTypst prose.\n', 'notes.markdown': '# Notes\n' });
   const { version } = await createVersion(p.path, { label: '' });
