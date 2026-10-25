@@ -284,6 +284,50 @@ has(elsewhere(''), 'references', 'error', /^The document cites sources but has n
 has(elsewhere(`${usedLog}LaTeX Warning: Citation \`knuth84' on page 1 undefined on input line 4.\n`), 'references', 'error', /^The document cites sources but has no bibliography/);
 has(elsewhere(`${usedLog}I couldn't open database file central.bib\n`), 'references', 'error', /^The document cites sources but has no bibliography/);
 
+// after a clean compile a reference or citation is missing only if the log says so, from the scan or TexLab: a
+// \newtcbtheorem's label the scan doesn't see, a listing's label= TexLab doesn't read, a key in a central .bib
+const RESOLVED = String.raw`\documentclass{article}
+\usepackage{listings}
+\begin{document}
+\begin{lstlisting}[label={lst:python}]
+x
+\end{lstlisting}
+See Listing~\ref{lst:python}.
+And \ref{lem:ohm}.
+As \cite{knuth84} shows.
+\bibliography{central}
+\end{document}
+`;
+const resolved = (log: string) =>
+  runPreflight(
+    input({
+      files: [{ path: 'main.tex', text: RESOLVED }],
+      log,
+      bib: [],
+      diagnostics: {
+        'main.tex': [
+          over(RESOLVED, 7, 'lst:python', 'Undefined reference', 'undefined-label'),
+          over(RESOLVED, 8, 'lem:ohm', 'Undefined reference', 'undefined-label'),
+          over(RESOLVED, 9, 'knuth84', 'Undefined citation', 'undefined-citation')
+        ]
+      }
+    })
+  );
+eq(brief(resolved('Output written on main.pdf (1 page).\n'), 'references'), [], 'what a clean compile resolved');
+eq(
+  brief(resolved("LaTeX Warning: Reference `lem:ohm' on page 1 undefined on input line 8.\nLaTeX Warning: Citation `knuth84' on page 1 undefined on input line 9.\n"), 'references'),
+  [
+    ['error', 'The document cites sources but has no bibliography: no .bib file and no thebibliography', 'main.tex:9'],
+    ['warning', 'Nothing has the label “lem:ohm”', 'main.tex:8']
+  ],
+  'what the log says it didn’t'
+);
+eq(
+  brief(resolved(''), 'references').map(([, m]) => m),
+  ['The document cites sources but has no bibliography: no .bib file and no thebibliography', 'Nothing has the label “lem:ohm”'],
+  'without a compile, and never a listing’s label'
+);
+
 // the same finding twice on a line is one, which Review's Dismiss and its row keys need
 const twice = runPreflight(input({ files: [{ path: 'main.tex', text: '\\documentclass{article}\n\\begin{document}\n\\hl{a} and \\hl{b}\n\\end{document}\n' }] }));
 eq(brief(twice, 'privacy'), [['warning', 'Highlighted text (\\hl) is left in', 'main.tex:3']], 'once');

@@ -374,8 +374,9 @@ export function runPreflight(input: PreflightInput): Finding[] {
         }
     }
     const seenRefs = new Set<string>();
+    // a label the scan doesn't see (\newtcbtheorem's, thmtools' label=) is missing after a clean compile only if the log says so
     for (const r of refs)
-      if (!labels.has(r.key) && !seenRefs.has(r.key)) {
+      if (!labels.has(r.key) && !seenRefs.has(r.key) && (!clean || unresolved.references.has(r.key))) {
         seenRefs.add(r.key);
         add({ group, severity: 'warning', message: `Nothing has the label ${quoted(r.key)}`, file: r.file, line: r.line, fixable: true });
       }
@@ -416,6 +417,9 @@ export function runPreflight(input: PreflightInput): Finding[] {
         if (kind ? !/^(?:undefined|duplicate)-|^bib-syntax$/.test(kind) : !/undefined|duplicate/i.test(d.message)) continue;
         // what the diagnostic is about, such as the key
         const token = d.endLine === d.line ? texts.get(file)?.split('\n')[d.line - 1]?.slice(d.col - 1, d.endCol - 1).trim() : '';
+        // by the same rule as the scan's: TexLab reads no lstlisting label= and no central .bib
+        if (kind === 'undefined-label' && (labels.has(token ?? '') || (clean && !unresolved.references.has(token ?? '')))) continue;
+        if (kind === 'undefined-citation' && (keys.has(token ?? '') || (clean && !noDatabase && !unresolved.citations.has(token ?? '')))) continue;
         if (found.some((f) => f.group === group && ((f.file === file && f.line === d.line) || (token && f.message.includes(quoted(token)))))) continue;
         const syntax = kind === 'bib-syntax';
         add({ group, severity: syntax ? 'error' : 'warning', message: `${d.message}${token && !syntax ? `: ${quoted(token)}` : ''} (TexLab)`, file, line: d.line, fixable: true });
