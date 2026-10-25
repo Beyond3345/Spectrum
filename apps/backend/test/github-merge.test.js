@@ -359,3 +359,14 @@ test('Typst source merges by lines, as LaTeX does', { skip }, async () => {
   assert.equal(result.conflicts, 0);
   assert.equal(read(B, 'main.typ'), lines(1).replace('line 10', 'changed 10'));
 });
+
+test('a Typst or Markdown document’s compiled PDF stays out, and a PDF either includes goes in', { skip }, async () => {
+  const { A, repo } = await pair({ 'main.typ': '= Paper\n#image("figures/plot.pdf")\n', 'notes.md': '# Notes\n![Chart](chart.pdf)\n', 'report.markdown': '# Report\n' });
+  for (const pdf of ['main.pdf', 'notes.pdf', 'report.pdf', 'figures/plot.pdf', 'chart.pdf']) write(A, pdf, `%PDF ${pdf}`);
+  write(A, 'figures/plot.typ', '= Plot\n');
+  await sync(A);
+  const files = gh.files('octo', repo);
+  for (const out of ['main.pdf', 'notes.pdf', 'report.pdf']) assert.ok(!files.includes(out), out);
+  // figures/plot.typ's own, which main.typ includes
+  for (const kept of ['figures/plot.pdf', 'chart.pdf']) assert.ok(files.includes(kept), kept);
+});

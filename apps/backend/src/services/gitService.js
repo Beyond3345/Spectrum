@@ -167,20 +167,24 @@ export async function setRemote(root, url) {
 export const remoteUrl = (root) => git.getConfig({ fs: gitFs, dir: root, path: 'remote.origin.url' }).catch(() => undefined);
 export const deleteRemote = (root) => git.deleteRemote({ fs: gitFs, dir: root, remote: 'origin' });
 
+// a PDF a source includes: LaTeX's \includegraphics or \includepdf, Typst's image("…") and Markdown's ![…](…)
+const INCLUDED = /\\include(?:graphics|pdf)\*?\s*(?:\[[^\]]*\]\s*)?\{([^}]*)\}|\bimage\(\s*"([^"]*)"|!\[[^\]]*\]\(\s*<?([^)\s>]*)/g;
+
 /**
- * Each document's PDF that a compile writes beside it (main.tex's main.pdf), never a PDF a source includes through
- * \includegraphics or \includepdf (by name, wherever it is: one included in any folder is never left out).
+ * Each document's PDF that a compile writes beside it (main.tex's main.pdf, main.typ's or main.md's), never a PDF a
+ * source includes (by name, wherever it is: one included in any folder is never left out). Any .typ or Markdown file
+ * may be compiled on its own, a .tex only with \documentclass.
  */
 export async function compiledPdfs(root) {
-  const files = (await listFilesRecursive(root)).filter((i) => i.type === 'file' && /\.(tex|ltx)$/i.test(i.path)).map((i) => i.path);
+  const files = (await listFilesRecursive(root)).filter((i) => i.type === 'file' && /\.(tex|ltx|typ|md|markdown)$/i.test(i.path)).map((i) => i.path);
   const included = new Set();
   const docs = [];
   for (const rel of files) {
-    if (await isDocumentFile(join(root, rel))) docs.push(rel);
+    if (!/\.(tex|ltx)$/i.test(rel) || (await isDocumentFile(join(root, rel)))) docs.push(rel);
     const text = await fs.readFile(join(root, rel), 'utf8').catch(() => '');
-    for (const m of text.matchAll(/\\include(?:graphics|pdf)\*?\s*(?:\[[^\]]*\]\s*)?\{([^}]*)\}/g)) included.add(path.posix.basename(m[1].trim()).replace(/\.pdf$/i, '').toLowerCase());
+    for (const m of text.matchAll(INCLUDED)) included.add(path.posix.basename(m.slice(1).find((p) => p !== undefined).trim()).replace(/\.pdf$/i, '').toLowerCase());
   }
-  return docs.map((rel) => rel.replace(/\.(tex|ltx)$/i, '.pdf')).filter((pdf) => !included.has(path.posix.basename(pdf).slice(0, -4).toLowerCase()));
+  return docs.map((rel) => rel.replace(/\.(tex|ltx|typ|md|markdown)$/i, '.pdf')).filter((pdf) => !included.has(path.posix.basename(pdf).slice(0, -4).toLowerCase()));
 }
 
 // a path as a pattern that matches only itself, from the top of the project
