@@ -1,5 +1,6 @@
 // Self-check for the to-do scanner and link finding. Run:
 // npx esbuild apps/frontend/src/editor/todos.check.ts --bundle --platform=node --log-level=warning --outfile=<scratch>/todos.cjs && node <scratch>/todos.cjs
+import { isSource } from './shared';
 import { findKey, findLine, scanTodos, snippetOf } from './todos';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -69,5 +70,20 @@ const files = [
 eq(findKey(files, 'sec:intro'), { file: 'main.tex', line: 2 }, 'label');
 eq(findKey(files, 'smith2020'), { file: 'refs.bib', line: 2 }, 'bib entry, not the mention');
 eq(findKey(files, 'nope'), null, 'missing key');
+
+// ─── Typst and Markdown ───
+
+// the files the editor looks for to-dos in, as it picks them from the tree
+const project = [
+  { path: 'main.typ', text: '#image("a.png", width: 80%) // TODO: a sharper photo\n\\todo{not Typst}' },
+  { path: 'notes.md', text: 'Up 50%, TODO the source.\n<!-- FIXME check\n the numbers -->' },
+  { path: 'main.tex', text: '% TODO: cite' },
+  { path: 'figures/a.png', text: '' }
+];
+eq(
+  scanTodos(project.filter((f) => isSource(f.path))).map((t) => [t.file, t.line, t.kind, t.text]),
+  [['main.typ', 1, 'TODO', 'a sharper photo'], ['notes.md', 2, 'FIXME', 'check the numbers'], ['main.tex', 1, 'TODO', 'cite']],
+  'Typst and Markdown sources, once each, without LaTeX’s % comments or \\todo'
+);
 
 console.log('todos: all checks passed');

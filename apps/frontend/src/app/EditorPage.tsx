@@ -125,7 +125,7 @@ import type { Reference } from '../editor/lsp/texlab';
 import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
-import { ENGINES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDocument, keptMainFile, type DocKind } from '../editor/shared';
+import { ENGINES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDocument, isSource, keptMainFile, type DocKind } from '../editor/shared';
 import { languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions } from '../editor/languages';
 import { includedPath, parseMarkdownOutline, parseTypstOutline } from '../editor/outlines';
 import { ZOTERO_CITE, zoteroCompletionSource } from '../editor/zotero';
@@ -531,7 +531,7 @@ function Editor({ projectId }: { projectId: string }) {
   const fileSet = useMemo(() => new Set(items.filter((i) => i.type === 'file').map((i) => i.path)), [items]);
   // the files to-dos are looked for in, never a sync app's conflict copy
   const todoSources = useMemo(
-    () => items.filter((i) => i.type === 'file' && /\.(tex|sty|cls|ltx|bib)$/i.test(i.path) && !conflicts[i.path]).map((i) => i.path),
+    () => items.filter((i) => i.type === 'file' && isSource(i.path) && !conflicts[i.path]).map((i) => i.path),
     [items, conflicts]
   );
   const todos = useTodos({ projectId, sources: todoSources, loaded: (path) => filesRef.current.get(path), revision: `${filesVersion} ${dirty}`, notify });
