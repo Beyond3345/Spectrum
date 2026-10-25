@@ -96,6 +96,16 @@ test('an unknown version and a path are refused', async () => {
   await assert.rejects(installTypst('../x'), /Choose a Typst version/);
 });
 
+test('the desktop build takes each platform’s own engine archives', async () => {
+  const { engineAsset } = await import('../../../scripts/desktop.mjs');
+  const { default: list } = await import('../src/data/engines.json', { with: { type: 'json' } });
+  const typst = list.typst.versions.find((v) => v.version === list.typst.builtIn).assets;
+  assert.match(engineAsset(typst, 'x64', 'win32')[0], /windows-msvc\.zip$/);
+  assert.match(engineAsset(list.tectonic.assets, 'x64', 'win32')[0], /windows-msvc\.zip$/);
+  assert.match(engineAsset(typst, 'x64', 'darwin')[0], /^typst-x86_64-apple-darwin/);
+  assert.match(engineAsset(list.tectonic.assets, 'arm64', 'darwin')[0], /aarch64-apple-darwin/);
+});
+
 test('the built-in version cannot be removed', async () => {
   useEngineList(typstList([release('9.9.9', sha)], '9.9.9'));
   await assert.rejects(removeTypst('9.9.9'), /built-in Typst can’t be removed/);
