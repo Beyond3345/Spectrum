@@ -87,6 +87,8 @@ export type AppSettings = {
   referencesApiKey: string;
   referencesModel: string;
   autoInsertCite: boolean;
+  /** \cite{…} completion also lists the Zotero library, after the project's keys (Settings › Zotero; this computer's, as Zotero is) */
+  zoteroCompletion: boolean;
   /** what a project compiles with until it makes its own choice in the compile menu (Settings › Engines › LaTeX) */
   compileDefaults: CompileDefaults;
   /** a second TeX installation's folder, tried first by every compile ('' = none) */
@@ -185,6 +187,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   // the OpenAI preset's quick model, to match the default main model
   referencesModel: 'gpt-6-luna',
   autoInsertCite: true,
+  zoteroCompletion: true,
   // a new setting, so 1.x's saved compiler (compileEngine, left in place for it) doesn't carry over
   compileDefaults: { engine: 'auto', autoCompile: 0, haltOnError: false, bibTool: 'auto', draft: false, syntaxCheck: true },
   texFolder: '',
@@ -322,6 +325,7 @@ function parse(raw: string | null): AppSettings {
     merged.checkpointOnCompile = merged.checkpointOnCompile !== false;
     merged.checkpointNotice = merged.checkpointNotice !== false;
     merged.pdfFollowsFile = merged.pdfFollowsFile !== false;
+    merged.zoteroCompletion = merged.zoteroCompletion !== false;
     if (!['system', 'light', 'dark'].includes(merged.theme)) merged.theme = 'system';
     if (!REASONING_EFFORTS.some(([value]) => value === merged.reasoningEffort)) merged.reasoningEffort = 'default';
     if (!Number.isFinite(merged.editorFontSize)) merged.editorFontSize = DEFAULT_SETTINGS.editorFontSize;
