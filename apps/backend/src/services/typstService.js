@@ -49,6 +49,7 @@ export function parseTypstDiagnostics(log, projectRoot, cwd = projectRoot) {
 /**
  * Compiles a .typ main file in outDir and writes its PDF beside it. options.typstVersion wins over the project's
  * setting; typstInputs become the document's sys.inputs; scratch keeps the package cache in the agent's home.
+ * source, when given, is compiled from standard input in place of absMain (a Markdown document's generated Typst).
  */
 export async function compileTypst(projectRoot, absMain, mainFile, options = {}) {
   const settings = await readProjectSettings(projectRoot);
@@ -86,10 +87,12 @@ export async function compileTypst(projectRoot, absMain, mainFile, options = {})
   try {
     result = await runSpawn(
       executable,
-      ['compile', '--root', projectRoot, '--diagnostic-format', 'short', ...fonts, ...inputs, absMain, path.join(outDir, base + '.pdf')],
+      ['compile', '--root', projectRoot, '--diagnostic-format', 'short', ...fonts, ...inputs, options.source == null ? absMain : '-', path.join(outDir, base + '.pdf')],
       path.dirname(absMain),
       pushLog,
-      env
+      env,
+      undefined,
+      options.source ?? null
     );
   } catch (err) {
     await cleanBuild(buildRoot, outDir);

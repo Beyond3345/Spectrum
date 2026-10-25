@@ -478,6 +478,12 @@ export interface CompileResult {
   log?: string;
   status?: number;
   engine?: string;
+  /** why a compile stopped before an engine ran: PANDOC_MISSING, PANDOC_OLD, TYPST_VERSION_MISSING */
+  code?: string;
+  /** the version named by a missing-version result */
+  version?: string;
+  /** what a Markdown compile was generated as */
+  generated?: 'latex' | 'typst';
   /** the Typst version the compile used */
   typstVersion?: string;
   /** Typst's errors and warnings, whose cards point at the source lines */
@@ -499,6 +505,11 @@ export interface CompileResult {
  * texFolder: a TeX installation's folder to try first. checkpoint: save one if the compile succeeds and the source
  * changed since the last.
  */
+/** The LaTeX or Typst pandoc wrote for a Markdown document, for the Logs tab. */
+export function getGenerated(projectId: string, doc: string) {
+  return request<{ ok: boolean; text: string; kind: 'latex' | 'typst' }>(`/api/projects/${projectId}/generated?${new URLSearchParams({ doc })}`);
+}
+
 export function compileProject(payload: {
   projectId: string;
   mainFile: string;

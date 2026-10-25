@@ -1,3 +1,4 @@
+import os from 'os';
 import path from 'path';
 import { promises as fs, createWriteStream, watch } from 'fs';
 import { pipeline } from 'stream/promises';
@@ -41,6 +42,8 @@ import { stopProjectTexlab } from '../services/texlabService.js';
 import { syncSoon } from '../services/zoteroService.js';
 import { conflictCopies } from '../utils/conflictCopies.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
+import { markdownToLatex, pandocDocx } from '../services/markdownService.js';
+import { pandocPath } from '../services/engineService.js';
 
 const execFileAsync = promisify(execFile);
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -92,6 +95,23 @@ const COMPILE_SETTINGS = {
   markdownEngine: (v) => v === 'latex' || v === 'typst'
 };
 const isObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
+
+/** A project-relative Markdown document, as the export and generated routes take it. */
+const markdownDoc = (doc) => {
+  const rel = path.posix.normalize(String(doc || '').replace(/\\/g, '/'));
+  if (!/\.(md|markdown)$/i.test(rel) || rel.startsWith('../') || path.posix.isAbsolute(rel)) throw httpError('Choose a Markdown document.', 400);
+  return rel;
+};
+
+/** A file name nothing holds yet: paper.docx, then paper (2).docx, and so on. */
+async function unusedFile(dir, name) {
+  const ext = path.extname(name);
+  const base = name.slice(0, -ext.length);
+  const free = (file) => fs.access(file).then(() => false, () => true);
+  let file = path.join(dir, name);
+  for (let n = 2; !(await free(file)); n += 1) file = path.join(dir, base + ' (' + n + ')' + ext);
+  return file;
+}
 
 // arXiv e-prints are a gzipped tarball, or for single-file papers a gzipped .tex,
 // or for PDF-only submissions just a PDF.
@@ -381,6 +401,67 @@ export function registerProjectRoutes(fastify) {
     if (path.basename(mainFile).startsWith('-')) throw httpError('The main file’s name can’t start with “-”.', 400);
     await updateMeta(root, (meta) => ({ ...meta, mainFile }));
     return { ok: true, project: await getProject(req.params.id) };
+  });
+
+  // the LaTeX or Typst pandoc wrote for a Markdown document, for the Logs tab
+  fastify.get('/api/projects/:id/generated', async (req, reply) => {
+    const root = await getProjectRoot(req.params.id);
+    const doc = markdownDoc(req.query?.doc);
+    const generated = await cachePath(root, 'generated');
+    for (const [extension, kind] of [['tex', 'latex'], ['typ', 'typst']]) {
+      const text = await fs.readFile(path.join(generated, doc + '.' + extension), 'utf8').catch(() => null);
+      if (text !== null) return { ok: true, text, kind };
+    }
+    return reply.code(404).send({ ok: false, error: 'Nothing has been generated for that document yet.' });
+  });
+
+  // Word, from pandoc: never over a file Spectrum did not write
+  fastify.post('/api/projects/:id/export/docx', async (req) => {
+    const root = await getProjectRoot(req.params.id);
+    const doc = markdownDoc(req.body?.doc);
+    const abs = safeJoin(root, doc);
+    if (!(await fs.stat(abs).catch(() => null))?.isFile()) throw httpError('That Markdown file doesn’t exist.', 404);
+    if (!(await pandocPath())) throw httpError('Markdown needs pandoc. Download it from Settings › Engines › Markdown.', 400);
+    const output = await unusedFile(root, path.basename(doc, path.extname(doc)) + '.docx');
+    const made = await pandocDocx(root, abs, output);
+    if (!made.ok) throw httpError('pandoc couldn’t make a Word document from this Markdown.', 502);
+    return { ok: true, path: path.relative(root, output).split(path.sep).join('/') };
+  });
+
+  // a new LaTeX project from the .md: pandoc's LaTeX, its .bib files, the media it extracted and figures/
+  fastify.post('/api/projects/:id/export/latex', async (req) => {
+    const root = await getProjectRoot(req.params.id);
+    const doc = markdownDoc(req.body?.doc);
+    const abs = safeJoin(root, doc);
+    const meta = await readMeta(root);
+    if (!(await fs.stat(abs).catch(() => null))?.isFile()) throw httpError('That Markdown file doesn’t exist.', 404);
+    if (!(await pandocPath())) throw httpError('Markdown needs pandoc. Download it from Settings › Engines › Markdown.', 400);
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-markdown-latex-'));
+    try {
+      const generatedDir = path.join(tmp, 'generated');
+      const made = await markdownToLatex({ projectRoot: root, absMain: abs, mainFile: doc, generatedDir });
+      if (!made.ok) throw httpError(made.error || 'pandoc couldn’t read this Markdown.', 502);
+      const items = await listFilesRecursive(root);
+      const bibs = items.filter((item) => item.type === 'file' && /\.bib$/i.test(item.path)).map((item) => item.path);
+      const figures = path.join(root, 'figures');
+      const media = made.media;
+      const project = await createProject({
+        name: meta.name + ' (LaTeX)',
+        meta: { mainFile: 'main.tex' },
+        populate: async (target) => {
+          await fs.writeFile(path.join(target, 'main.tex'), made.text);
+          for (const bib of bibs) {
+            await fs.mkdir(path.dirname(path.join(target, bib)), { recursive: true });
+            await fs.copyFile(path.join(root, bib), path.join(target, bib));
+          }
+          if ((await fs.stat(media).catch(() => null))?.isDirectory()) await copyDir(media, path.join(target, 'media'));
+          if ((await fs.stat(figures).catch(() => null))?.isDirectory()) await copyDir(figures, path.join(target, 'figures'));
+        }
+      });
+      return { ok: true, project };
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
   });
 
   fastify.get('/api/projects/:id/settings', async (req) => ({ ok: true, settings: await readProjectSettings(await getProjectRoot(req.params.id)) }));

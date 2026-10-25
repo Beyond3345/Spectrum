@@ -13,6 +13,7 @@ import { cachePath, getProjectRoot } from './projectService.js';
 import { keepSynctex } from './synctex.js';
 import { createCompileCheckpoint } from './versionService.js';
 import { compileTypst } from './typstService.js';
+import { compileMarkdown } from './markdownService.js';
 
 const ENGINES = ['pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic'];
 export const SUPPORTED_ENGINES = ['auto', ...ENGINES];
@@ -219,9 +220,10 @@ const cmdEscape = (s) => s.replace(/[()\][%!^"`<>&|;, *?]/g, '^$&');
 /**
  * Run one command in its own process group, so the time limit also stops what it started
  * (latexmk's pdflatex would otherwise keep running and hold the output pipes open).
+ * input, when given, is written to the command's standard input (Typst reads a document from stdin).
  * Resolves { code, timedOut }.
  */
-export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOUT_MS[cmd] || DEFAULT_PASS_TIMEOUT_MS) {
+export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOUT_MS[cmd] || DEFAULT_PASS_TIMEOUT_MS, input = null) {
   let file = cmd;
   let options = { cwd, env: env || process.env, detached: true };
   if (WINDOWS) {
@@ -244,6 +246,11 @@ export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOU
     const child = spawn(file, args, options);
     children.add(child);
     job?.children.add(child);
+    if (input != null) {
+      // a command that never reads it closes the pipe first
+      child.stdin.on('error', () => {});
+      child.stdin.end(input);
+    }
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
@@ -358,14 +365,18 @@ export async function compileFolder({ root, mainFile, engine = 'auto', texFolder
   if (!(await fs.stat(absMain).catch(() => null))?.isFile()) return { ok: false, error: `The main file “${mainFile}” doesn’t exist.`, engine };
   const job = { stopped: false, children: new Set(), searchPath: await texPath(texFolder) };
   const file = docPath(root, absMain);
-  return jobs.run(job, () => (/\.typ$/i.test(absMain)
-    ? compileTypst(root, absMain, file, { ...options, scratch: true })
-    : compileDocument(engine, root, absMain, file, { ...options, scratch: true })));
+  return jobs.run(job, () => {
+    if (/\.typ$/i.test(absMain)) return compileTypst(root, absMain, file, { ...options, scratch: true });
+    if (/\.(md|markdown)$/i.test(absMain)) return compileMarkdown(root, absMain, file, engine, { ...options, scratch: true });
+    return compileDocument(engine, root, absMain, file, { ...options, scratch: true });
+  });
 }
 
 async function compileWithLinks(engine, projectRoot, absMain, mainFile, options) {
   // Typst needs no cross-reference passes or secondary programs: one run writes the PDF
   if (/\.typ$/i.test(absMain)) return compileTypst(projectRoot, absMain, mainFile, options);
+  // Markdown goes through pandoc first
+  if (/\.(md|markdown)$/i.test(absMain)) return compileMarkdown(projectRoot, absMain, mainFile, engine, options);
   // Documents it cross-references go first when their .aux is missing or old. One level only,
   // so two documents that reference each other don't loop.
   const linked = [];
@@ -383,7 +394,7 @@ async function compileWithLinks(engine, projectRoot, absMain, mainFile, options)
   return { ...result, linked, log: [...notes, result.log ?? ''].join('\n') };
 }
 
-async function compileDocument(engine, projectRoot, absMain, mainFile, options) {
+export async function compileDocument(engine, projectRoot, absMain, mainFile, options) {
   if (engine !== 'auto') return { ...(await compileWith(engine, projectRoot, absMain, mainFile, options)), engine };
   const candidates = await autoEngineCandidates(absMain, options.without);
   if (!candidates.length) {
@@ -466,8 +477,11 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
   // paths, so paths written relative to the root keep working as well.
   const mainDir = path.dirname(absMain);
   const mainName = path.basename(absMain);
-  const doc = docPath(projectRoot, absMain);
-  const searchPath = (name) => [slashed(mainDir), slashed(projectRoot), process.env[name] ?? ''].join(path.delimiter);
+  // a Markdown document's own folder, which pandoc's generated file may still read images from
+  const mdDir = options.markdownSource ? path.dirname(options.markdownSource) : null;
+  // kept under the .md for a Markdown document, so its next compile reuses them
+  const doc = options.markdownSource ? mainFile : docPath(projectRoot, absMain);
+  const searchPath = (name) => [slashed(mainDir), ...(mdDir && mdDir !== mainDir ? [slashed(mdDir)] : []), slashed(projectRoot), process.env[name] ?? ''].join(path.delimiter);
   const binPath = jobs.getStore()?.searchPath;
   const texEnv = {
     ...process.env,
@@ -532,15 +546,17 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
   };
 
   const { cmd, args } = buildCommand(engine, slashed(outDir), `./${mainName}`, options);
-  if (engine === 'tectonic' && mainDir !== projectRoot) {
+  if (engine === 'tectonic') {
     // Tectonic ignores TEXINPUTS; its unstable search-path option does the same job
-    args.unshift('-Z', `search-path=${slashed(projectRoot)}`);
+    const paths = [...new Set([projectRoot, ...(mdDir ? [mdDir] : [])].map(slashed))].filter((dir) => dir !== slashed(mainDir));
+    for (const dir of paths) args.unshift('-Z', `search-path=${dir}`);
   }
   // MiKTeX asks before installing a missing package, in a window the hidden engine never shows, so the
   // compile would sit until its time limit; this installs it without asking. ponytail: latexmk's own
   // engine runs still ask; pass -pdflatex="pdflatex --enable-installer %O %S" if that bites
   if (WINDOWS && multiPass && /[\\/]miktex[\\/]/i.test((await findExecutable(cmd)) || '')) args.unshift('--enable-installer');
-  const base = path.basename(mainFile, path.extname(mainFile));
+  // the generated file's base for a Markdown document (main.md.tex), so the engine's log and PDF keep its name
+  const base = path.basename(absMain, path.extname(absMain));
   const tex = await fs.readFile(absMain, 'utf8').catch(() => '');
   // the whole log of the pass just run, which the log sent back may have cut short
   const passLog = async () => unwrap(await fs.readFile(path.join(outDir, `${base}.log`), 'utf8').catch(() => ''));
@@ -647,14 +663,18 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
     await cleanBuild(buildRoot, outDir);
     return { ok: true, pdf: pdf.toString('base64'), log, status: code ?? 0 };
   }
-  const absPdf = path.join(path.dirname(absMain), `${base}.pdf`);
+  // a Markdown document's PDF goes beside the .md (base there is main, not main.md)
+  const absPdf = options.markdownSource
+    ? path.join(path.dirname(options.markdownSource), `${path.basename(options.markdownSource, path.extname(options.markdownSource))}.pdf`)
+    : path.join(path.dirname(absMain), `${base}.pdf`);
   // the copy on disk is older than this compile's, so the editor keeps showing the one it was sent
   let pdfStale = false;
   try {
     const written = await writePdf(absPdf, pdf, log);
     log = written.log;
     pdfStale = written.stale;
-    await keepSynctex(projectRoot, doc, path.join(outDir, `${base}.synctex.gz`), mainDir);
+    // SyncTeX jumps do not point into the .md, so a Markdown compile keeps none
+    if (!options.markdownSource) await keepSynctex(projectRoot, doc, path.join(outDir, `${base}.synctex.gz`), mainDir);
     // only a build without errors is read back; after one with errors the next compile starts from nothing. A draft
     // leaves the last full compile's: its .idx kept beside the old .ind would keep makeindex from running again
     if (multiPass && !options.draft) await (code === 0 ? keepBuild(outDir, store, others, await passLog()) : fs.rm(store, { recursive: true, force: true })).catch(() => {});

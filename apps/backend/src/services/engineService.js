@@ -23,6 +23,9 @@ const DOWNLOAD_FAILED = 'Check the internet connection and try again.';
 const CHECKSUM_FAILED = 'The download didn’t match its checksum, so it wasn’t installed.';
 /** The Typst version inside Spectrum, for a compile's result or a diagram's import line. */
 export const BUILT_IN_TYPST_VERSION = engineList.typst.builtIn;
+/** What pandoc must be for each kind of output, and the version Settings offers. */
+export const PANDOC_MINIMUM = engineList.pandoc.minimum;
+export const PANDOC_DOWNLOADABLE = engineList.pandoc.version;
 
 // Tests point the list at an engine they build and serve themselves
 let list = engineList;
