@@ -236,7 +236,14 @@ export async function commitAll(root, { message, author, hold = () => false, alw
   // the modes committed, where Windows has no execute bit to keep a script's
   const modes = windows() ? await treeFiles(root, await headOid(root)) : new Map();
   for (const [rel, head, work, stage] of rows) {
-    if ((head === 1 && work === 1 && stage === 1) || keptOut(rel) || compiled.has(keyOf(rel)) || hold(rel)) continue;
+    if (head === 1 && work === 1 && stage === 1) continue;
+    // what stays out of this commit goes back to the commit's in the index, which the commit is made from: Git may have
+    // staged it already (git add .)
+    const leave = () => (stage === head ? null : git.resetIndex({ fs: gitFs, dir: root, filepath: rel, cache }));
+    if (keptOut(rel) || compiled.has(keyOf(rel)) || hold(rel)) {
+      await leave();
+      continue;
+    }
     if (committedKeys.get(keyOf(rel)) > 1) {
       if (!named.has(keyOf(rel))) left.push(`“${rel}” and another file differ only in letter case, which macOS and Windows can’t keep apart. Rename one of them`);
       named.add(keyOf(rel));
@@ -251,9 +258,13 @@ export async function commitAll(root, { message, author, hold = () => false, alw
     }
     const info = await fs.lstat(join(root, rel)).catch(() => null);
     if (!info) continue;
-    if (secretLooking(rel) || (await pemKey(join(root, rel)))) left.push(`“${rel}” looks like a password or key file`);
-    else if (info.size > MAX_FILE_BYTES) left.push(`“${rel}” is over GitHub’s 100 MB limit`);
-    else {
+    if (secretLooking(rel) || (await pemKey(join(root, rel)))) {
+      left.push(`“${rel}” looks like a password or key file`);
+      await leave();
+    } else if (info.size > MAX_FILE_BYTES) {
+      left.push(`“${rel}” is over GitHub’s 100 MB limit`);
+      await leave();
+    } else {
       await git.add({ fs: gitFs, dir: root, filepath: rel, cache });
       // a script committed as executable stays so, or the Mac's next pull would take +x away
       if (modes.get(rel)?.mode === '100755') {

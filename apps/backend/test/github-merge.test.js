@@ -370,3 +370,20 @@ test('a Typst or Markdown document’s compiled PDF stays out, and a PDF either 
   // figures/plot.typ's own, which main.typ includes
   for (const kept of ['figures/plot.pdf', 'chart.pdf']) assert.ok(files.includes(kept), kept);
 });
+
+test('a secret staged with Git beforehand never goes in with the next backup', { skip }, async () => {
+  const { A, repo } = await pair({ 'main.tex': 'one\n' });
+  write(A, '.env', 'OPENAI_API_KEY=test-only\n');
+  write(A, 'keys/id_rsa', 'test-only\n');
+  execFileSync('git', ['add', '.env', 'keys/id_rsa'], { cwd: A });
+  write(A, 'main.tex', 'two, a longer line\n');
+  const { committed, left } = await g.commitAll(A, { message: 'Backup', author });
+  assert.equal(committed, true);
+  assert.equal(left.length, 2);
+  const tree = execFileSync('git', ['ls-tree', '-r', '--name-only', 'HEAD'], { cwd: A }).toString().split('\n');
+  assert.ok(!tree.includes('.env') && !tree.includes('keys/id_rsa'), tree.join(', '));
+  assert.ok(tree.includes('main.tex'));
+  assert.equal(read(A, '.env'), 'OPENAI_API_KEY=test-only\n', 'the file itself stays');
+  await g.pushOrigin(A, token);
+  assert.ok(!gh.files('octo', repo).includes('.env'));
+});
