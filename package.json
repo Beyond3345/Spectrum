@@ -20,6 +20,8 @@
     "desktop:dev": "node scripts/desktop.mjs dev",
     "desktop:build": "node scripts/desktop.mjs build",
     "native:build": "node scripts/native.mjs",
+    "checkers:update": "node scripts/native.mjs all --update",
+    "checkers:verify": "node scripts/native.mjs verify",
     "test:agents": "node scripts/check-agents.mjs"
   },
   "devDependencies": {

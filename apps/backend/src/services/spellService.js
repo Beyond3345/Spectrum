@@ -1,9 +1,11 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { DATA_DIR, DICT_DIR, NATIVE_DIR } from '../config/constants.js';
+import { APP_VERSION, DATA_DIR, DICT_DIR, NATIVE_DIR } from '../config/constants.js';
 import { APP_DIR, getProjectRoot } from './projectService.js';
 import { writeFileAtomic } from '../utils/fsUtils.js';
 import { workerClient } from '../utils/workerClient.js';
+import { existsSync } from 'node:fs';
+import { DICTIONARY_FILES, inspectCheckerAssets } from '../utils/checkerMetadata.js';
 
 // Australian English spelling through nodehun, on a thread of its own (spellWorker.mjs). If it
 // can't start, spelling reports itself unavailable and the rest of Spectrum carries on.
@@ -13,7 +15,14 @@ const speller = workerClient(new URL('./spellWorker.mjs', import.meta.url), { na
 });
 
 export async function spellStatus() {
-  return { ...(await speller.status()), language: 'en-AU' };
+  const platformDir = path.join(NATIVE_DIR, `${process.platform}-${process.arch}`);
+  const dir = existsSync(path.join(platformDir, 'nodehun.node')) ? platformDir : NATIVE_DIR;
+  const [status, assets, dictionaries] = await Promise.all([
+    speller.status(), inspectCheckerAssets(dir, 'nodehun.manifest.json', ['nodehun.node']),
+    inspectCheckerAssets(DICT_DIR, 'manifest.json', DICTIONARY_FILES)
+  ]);
+  return { ...status, language: 'en-AU', engine: 'Hunspell', version: assets.version,
+    diagnostics: { appVersion: APP_VERSION, node: process.version, platform: process.platform, arch: process.arch, assets, dictionaries } };
 }
 
 export const stopSpeller = () => speller.terminate();

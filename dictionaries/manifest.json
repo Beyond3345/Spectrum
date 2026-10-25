@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "version": "SCOWL 2026.02.25 / AussieDic 3.1.0",
+  "components": [
+    {
+      "name": "SCOWL en_AU-large",
+      "version": "2026.02.25",
+      "source": "https://github.com/wooorm/dictionaries"
+    },
+    {
+      "name": "SCOWL en_US-large",
+      "version": "2026.02.25",
+      "source": "https://github.com/wooorm/dictionaries"
+    },
+    {
+      "name": "AussieDic",
+      "version": "3.1.0",
+      "source": "https://github.com/Caskexe/Australian-English-Dictionary"
+    },
+    {
+      "name": "Spectrum supplement",
+      "version": "content checksum",
+      "source": "dictionaries/spectrum-extra.dic"
+    }
+  ],
+  "files": {
+    "en_AU/en_AU.aff": "ab172051a8976efc05ad1e9ee857a1d44b00026231d6ff7462ead1447f2dd293",
+    "en_AU/en_AU.dic": "3b385f88c1a486e9e18887d0842105f7e3fee21fd023834a98b5df2ccab74874",
+    "en_AU/LICENSE": "97adebda97b79ba55eb1938f68d9874fdf8132635acf21d2a544dd93fd98a9ac",
+    "en_US/en_US.aff": "ff5b03cd32cf33cd2eaee7bf2b7ff24c94cabe34f52c35aadb234f77eaf4f072",
+    "en_US/en_US.dic": "8d5fd1db30c47ed7a58430a2aaefb1f30ca840f6d6c199ef94bcdb85022e412b",
+    "en_US/LICENSE": "51ec50b15b207ab357879f8b4d96e8325f4384bf9afc9ccc95ef1979e344f232",
+    "aussiedic/AussieDic.aff": "b8ff750a7e04f1a08cf1288127e37fb9f5b93c79daf6b5efa2e340a8ec2aa14d",
+    "aussiedic/AussieDic.dic": "de0113ade41d20c5a5d4c5eb6673c30e4991a52358f21b980372973eda9e6ff8",
+    "aussiedic/LICENSE": "230184f60bae2feaf244f10a8bac053c8ff33a183bcc365b4d8b876d2b7f4809",
+    "spectrum-extra.dic": "e66ad8c4e03ba09b8b018c11c19c2a1aa3a995d9d82d22b603daa1d21357b9e6"
+  }
+}

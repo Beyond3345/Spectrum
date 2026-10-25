@@ -229,6 +229,8 @@ async function resources() {
   // the backend carries on without the spell checker, and says why
   if (win && !fs.existsSync(nodehun)) console.warn(`\nWARNING: no ${path.relative(root, nodehun)} (node scripts/native.mjs nodehun builds it), so this build has no spell checker.\n`);
   else fs.copyFileSync(nodehun, path.join(native, 'nodehun.node'));
+  const nodehunManifest = path.join(path.dirname(nodehun), 'nodehun.manifest.json');
+  if (fs.existsSync(nodehunManifest)) fs.copyFileSync(nodehunManifest, path.join(native, 'nodehun.manifest.json'));
   await nodeRuntime(Object.keys(TRIPLES));
   await texlabRuntime(Object.keys(TRIPLES));
 }

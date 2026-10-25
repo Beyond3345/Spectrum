@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "engine": "Harper",
+  "version": "2.12.0",
+  "source": {
+    "version": "2.12.0",
+    "commit": "b0ab21f5500da525c76553c56ca1b6b7669c6a78",
+    "url": "https://codeload.github.com/Automattic/harper/tar.gz/b0ab21f5500da525c76553c56ca1b6b7669c6a78",
+    "sha256": "d936a3c0b8a229c1bd817361447e321e9ff655a9a6bd5d4403af5097e0a8c1e5"
+  },
+  "build": {
+    "rust": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "wasmPack": "wasm-pack 0.15.0",
+    "target": "wasm32-unknown-unknown",
+    "features": [],
+    "defaultFeatures": false,
+    "selfTest": "passed"
+  },
+  "files": {
+    "harper_wasm.js": "a7e68660e56075d886720dfaa176c315958df805f6a2adfbf9808f6a56eaa399",
+    "harper_wasm_bg.wasm": "78385096e55e8c84e7389fd6a85b9425e77d63eaf491a07773854d116c75b882",
+    "LICENSE": "fbc8f1bffe04ab962340fabb1324d57d8b875070f67759d606516144ee53ac19"
+  }
+}

@@ -9,6 +9,7 @@ import {
   getProjectSettings,
   getSkillSharing,
   getSyncSettings,
+  grammarStatus,
   importLocalAgentLogin,
   importSkill,
   listLocalAgents,
@@ -1301,12 +1302,25 @@ function CheckpointsPane() {
 function LanguagePane() {
   const [settings, update] = useSettings();
   const [status, setStatus] = useState<CheckerStatus | null>(null);
+  const [grammar, setGrammar] = useState<CheckerStatus | null>(null);
+  const [refresh, setRefresh] = useState(0);
   const [words, setWords] = useState<string[] | null>(null);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
-    spellStatus().then(setStatus).catch((err) => setStatus({ available: false, language: 'en-AU', error: err instanceof Error ? err.message : String(err) }));
+    let active = true;
+    setStatus(null);
+    setGrammar(null);
+    const load = (name: string, get: () => Promise<CheckerStatus>, set: (value: CheckerStatus) => void) => {
+      get().catch((err) => ({ available: false, language: 'en-AU', engine: name, version: null, error: errorText(err) })).then((value) => { if (active) set(value); });
+    };
+    load('Hunspell', spellStatus, setStatus);
+    load('Harper', grammarStatus, setGrammar);
+    return () => { active = false; };
+  }, [refresh]);
+
+  useEffect(() => {
     spellWords().then((lists) => setWords(lists.global)).catch(() => setWords([]));
   }, []);
 
@@ -1334,9 +1348,10 @@ function LanguagePane() {
           <span className="field-hint">Misspelt words in .tex, .md and .txt files get a red underline. Right-click one for suggestions.</span>
         </span>
       </label>
-      {status && !status.available && <div className="field-hint error">{status.error || 'The spell checker couldn’t start.'}</div>}
+      <CheckerDetails name="Hunspell" status={status} />
 
       <h3 className="form-section-title">Grammar</h3>
+      <CheckerDetails name="Harper" status={grammar} />
       <label className="checkbox-row">
         <input type="checkbox" checked={settings.grammarStyle} onChange={(e) => update({ grammarStyle: e.target.checked })} />
         <span>
@@ -1357,6 +1372,17 @@ function LanguagePane() {
           onChange={(value) => update({ oxfordComma: value as AppSettings['oxfordComma'] })}
         />
         <div className="field-hint">Check grammar from the button beside the assistant, or with {formatShortcut(shortcutKey(settings.shortcuts, 'grammar')) || 'its shortcut'}.</div>
+      </div>
+
+      <div className="field-hint section-hint">Both checkers run on this computer. Engine and dictionary updates come with Spectrum updates.</div>
+      <div className="path-row">
+        <button className="btn small" disabled={!status || !grammar} onClick={() => setRefresh((value) => value + 1)}>Refresh diagnostics</button>
+        <button className="btn small" disabled={!status || !grammar} onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(JSON.stringify({ spelling: status, grammar }, null, 2));
+            toast('Copied checker diagnostics.');
+          } catch { toast('Couldn’t copy diagnostics. You can select them under Diagnostic details.'); }
+        }}>Copy diagnostics</button>
       </div>
 
       <h3 className="form-section-title">Your dictionary</h3>
@@ -1394,6 +1420,23 @@ function LanguagePane() {
       )}
     </>
   );
+}
+
+function CheckerDetails({ name, status }: { name: string; status: CheckerStatus | null }) {
+  return <div className="field-hint section-hint" aria-live="polite">
+    {!status ? `Checking ${name}…` : <>
+      <div>{name} {status.version || 'version unavailable'} · {status.available ? 'Ready' : 'Unavailable'} · Australian English</div>
+      {status.diagnostics?.assets.manifest?.binding && <div>nodehun {status.diagnostics.assets.manifest.binding.version}</div>}
+      {status.error && <div className="error">{status.error}</div>}
+      {status.diagnostics?.assets.warnings.map((warning) => <div className="error" key={warning}>{warning}</div>)}
+      {status.diagnostics?.dictionaries?.manifest?.components?.map((item) => <div key={item.name}>{item.name} {item.version}</div>)}
+      {status.diagnostics?.dictionaries?.warnings.map((warning) => <div className="error" key={warning}>{warning}</div>)}
+      <details>
+        <summary>Diagnostic details</summary>
+        <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(status, null, 2)}</pre>
+      </details>
+    </>}
+  </div>;
 }
 
 // what the agent routes take: a persona's name, and instructions (a persona's or the default ones)

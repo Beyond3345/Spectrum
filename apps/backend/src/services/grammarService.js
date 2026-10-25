@@ -1,10 +1,11 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { NATIVE_DIR } from '../config/constants.js';
+import { APP_VERSION, NATIVE_DIR } from '../config/constants.js';
 import { maskLatex } from '../latex/mask.js';
 import { APP_DIR, getProjectRoot } from './projectService.js';
 import { writeFileAtomic } from '../utils/fsUtils.js';
 import { workerClient } from '../utils/workerClient.js';
+import { HARPER_FILES, inspectCheckerAssets } from '../utils/checkerMetadata.js';
 
 // Grammar through Harper (Australian dialect) on its own thread (grammarWorker.mjs). LaTeX is
 // reduced to its prose first, so Harper reads sentences, not markup, at the same positions.
@@ -22,7 +23,9 @@ const ALWAYS = new Set(['OxfordComma', 'NoOxfordComma']);
 const OXFORD = new Set(['avoid', 'require', 'off']);
 
 export async function grammarStatus() {
-  return { ...(await harper.status()), language: 'en-AU' };
+  const [status, assets] = await Promise.all([harper.status(), inspectCheckerAssets(path.join(NATIVE_DIR, 'harper'), 'manifest.json', HARPER_FILES)]);
+  return { ...status, language: 'en-AU', engine: 'Harper', version: assets.version,
+    diagnostics: { appVersion: APP_VERSION, node: process.version, platform: process.platform, arch: process.arch, assets } };
 }
 
 export const stopGrammar = () => harper.terminate();

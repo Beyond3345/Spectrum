@@ -900,7 +900,16 @@ export function callLLM(payload: {
 
 // ─── spelling (nodehun, Australian English) and grammar (Harper) ───
 
-export type CheckerStatus = { available: boolean; language: string; error?: string };
+export type CheckerAssets = {
+  version: string | null;
+  integrity: 'verified' | 'mismatch' | 'unknown';
+  warnings: string[];
+  manifest: { version: string; binding?: { version: string }; components?: { name: string; version: string }[]; [key: string]: unknown } | null;
+};
+export type CheckerStatus = {
+  available: boolean; language: string; error?: string; engine: string; version: string | null;
+  diagnostics?: { appVersion: string; node: string; platform: string; arch: string; assets: CheckerAssets; dictionaries?: CheckerAssets };
+};
 export type SpellWordLists = { global: string[]; project: string[] };
 export type GrammarSuggestion = { kind: 'replace' | 'remove' | 'insertAfter'; text: string };
 export type GrammarIssue = {
@@ -917,6 +926,10 @@ export type OxfordComma = 'avoid' | 'require' | 'off';
 
 export function spellStatus() {
   return request<CheckerStatus>('/api/spell/status');
+}
+
+export function grammarStatus() {
+  return request<CheckerStatus>('/api/grammar/status');
 }
 
 export function spellCheck(words: string[], projectId?: string) {
