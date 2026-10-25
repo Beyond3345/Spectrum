@@ -89,11 +89,19 @@ export async function machineId() {
 const isDir = (p) => fs.stat(p).then((s) => s.isDirectory(), () => false);
 const exists = (p) => fs.access(p).then(() => true, () => false);
 
+// the settings repository's copy, which takes the shared folder's place once it's ready (settingsRepoService.js)
+let repoDir = null;
+export function useSharedDir(dir) {
+  repoDir = dir;
+}
+
 /**
- * The shared folder, in the synced folder here that comes first by its place in its sync app's folder, which is the
- * same on each computer whatever order the folders were added in (else the first in the list); null with none here.
+ * The shared folder: the settings repository's copy when GitHub is set up, else the one in the synced folder here
+ * that comes first by its place in its sync app's folder, which is the same on each computer whatever order the
+ * folders were added in (else the first in the list); null with none here.
  */
 export async function sharedDir() {
+  if (repoDir) return repoDir;
   const here = [];
   for (const f of (await readSyncConfig()).folders) if (await isDir(f.path)) here.push(f);
   const key = (f) => (f.place ? `${f.place.provider}/${f.place.rel}`.toLowerCase() : '\uffff');

@@ -3,16 +3,14 @@
 // repositories over Git's smart HTTP. No real GitHub. Run: npm test
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
 import { promises as fs, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { gzipSync } from 'node:zlib';
-import { fileURLToPath } from 'node:url';
 import { GOOD_TOKEN, hasGitHttpBackend, startFakeGitHub } from './fixtures/fake-github.mjs';
+import { startComputer } from './fixtures/computers.mjs';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
 const tmp = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'spectrum-github-')));
 const home = path.join(tmp, 'home');
 mkdirSync(home);
@@ -20,55 +18,11 @@ const skip = !hasGitHttpBackend() && 'needs git http-backend';
 let gh;
 const computers = {};
 
-/** A computer: its own server process, data folder (with its name in sync.json) and projects folder. */
-async function startComputer(name, env = {}) {
-  const data = path.join(tmp, `data-${name}`);
-  const projects = path.join(tmp, `projects-${name}`);
-  mkdirSync(data, { recursive: true });
-  mkdirSync(projects, { recursive: true });
-  if (!existsSync(path.join(data, 'sync.json'))) writeFileSync(path.join(data, 'sync.json'), JSON.stringify({ machineId: crypto.randomUUID(), machineName: name, folders: [], hidden: [] }));
-  const port = 20000 + Math.floor(Math.random() * 20000);
-  const server = spawn(process.execPath, [path.join(here, '..', 'src', 'index.js')], {
-    env: {
-      ...process.env,
-      HOME: home,
-      USERPROFILE: home,
-      PORT: String(port),
-      SPECTRUM_HOST: '127.0.0.1',
-      SPECTRUM_DATA_DIR: data,
-      SPECTRUM_PROJECTS_DIR: projects,
-      SPECTRUM_TEMPLATE_DIR: path.join(tmp, `templates-${name}`),
-      SPECTRUM_GITHUB_API: gh.api,
-      SPECTRUM_GITHUB_WEB: gh.web,
-      SPECTRUM_GITHUB_IDLE_MS: '1500',
-      ...env
-    },
-    stdio: 'ignore'
-  });
-  const base = `http://127.0.0.1:${port}`;
-  for (let i = 0; i < 100; i += 1) {
-    if (await fetch(`${base}/api/health`).then((r) => r.ok, () => false)) break;
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  const api = async (url, { method = 'GET', body } = {}) => {
-    const res = await fetch(`${base}${url}`, { method, headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
-    return { status: res.status, json: await res.json().catch(() => null) };
-  };
-  computers[name] = { name, data, projects, server, api };
-  return computers[name];
-}
-
-async function stopComputer(c) {
-  const exited = new Promise((resolve) => c.server.once('exit', resolve));
-  c.server.kill();
-  await exited;
-}
-
 before(async () => {
   if (skip) return;
   gh = await startFakeGitHub(path.join(tmp, 'repos'));
-  await startComputer('Mac');
-  await startComputer('Windows', { SPECTRUM_GITHUB_CLIENT_ID: 'test-client' });
+  computers.Mac = await startComputer('Mac', { tmp, home, gh });
+  computers.Windows = await startComputer('Windows', { tmp, home, gh, env: { SPECTRUM_GITHUB_CLIENT_ID: 'test-client' } });
 });
 after(async () => {
   for (const c of Object.values(computers)) c.server.kill();
@@ -275,7 +229,7 @@ test('Link from a 1.10.4 mirror record’s base conflicts only on files changed 
   assert.equal(readFileSync(path.join(win.data, 'mirror', `${project.id}.json`), 'utf8'), record, 'the record is left as it was');
 });
 
-test('a project in a sync app’s folder isn’t made a repository, and can be moved out first', { skip }, async () => {
+test('a project in a sync app’s folder isn’t made a repository', { skip }, async () => {
   const mac = computers.Mac;
   const synced = path.join(home, 'SynologyDrive');
   mkdirSync(path.join(synced, '.SynologyWorkingDirectory'), { recursive: true });
@@ -288,11 +242,8 @@ test('a project in a sync app’s folder isn’t made a repository, and can be m
     assert.match(res.json.error, /Synology Drive/);
   }
   assert.ok(!existsSync(path.join(synced, 'Paper', '.git')));
+  // the GitHub tab offers build/p4-cloud's Move to this computer (/api/projects/:id/move-here)
   assert.equal(ok(await mac.api(`/api/projects/${project.id}/github`)).syncFolder, 'Synology Drive');
-  const moved = ok(await mac.api(`/api/projects/${project.id}/move-here`, { method: 'POST' })).project;
-  assert.ok(moved.path.startsWith(computers.Mac.projects));
-  ok(await mac.api(`/api/projects/${project.id}/github/init`, { method: 'POST' }));
-  assert.ok(existsSync(path.join(moved.path, '.git')));
 });
 
 test('GitHub’s refusals say what to do, and a network failure only waits', { skip }, async () => {

@@ -1,15 +1,8 @@
 // GitHub: signing in (a pasted token, or the device code when Spectrum has an OAuth app), the GitHub view's
 // repositories and Get from GitHub, and each project's GitHub tab (Initialise, Link, Back up, Pull, Sync) with the
 // editor's calls when a project is opened and left. The token never leaves the backend.
-import path from 'path';
-import { PROJECTS_DIR } from '../config/constants.js';
-import { getProject, getProjectRoot, httpError } from '../services/projectService.js';
-import { placeOfNew } from '../services/syncService.js';
-import { compiling } from '../services/compileService.js';
-import { stopProjectTexlab } from '../services/texlabService.js';
 import * as github from '../services/githubService.js';
-import { moveProject } from './cloud.js';
-import { transferring } from './transfer.js';
+import { syncPersonas, syncSettingsRepo } from '../services/settingsRepoService.js';
 
 /** The handler, with the error's code in the answer (IN_SYNC_FOLDER, GITHUB_SIGN_IN…) for the window to act on. */
 const coded = (handler) => async (req, reply) => {
@@ -38,6 +31,12 @@ export function registerGitHubRoutes(fastify) {
     github.cancelDeviceSignIn(req.params.id);
     return { ok: true };
   });
+
+  // the settings repository brought up to date (the window does this as it comes forward): { ready, first, error? }
+  fastify.post('/api/github/settings/sync', async (req) => ({ ok: true, ...(await syncSettingsRepo({ force: req.body?.force === true })) }));
+
+  // this computer's personas joined with the settings repository's, one file each: { personas, changed }
+  fastify.post('/api/github/personas', async (req) => ({ ok: true, ...(await syncPersonas(req.body?.personas)) }));
 
   fastify.get('/api/github/repos', coded(async () => ({ ok: true, repos: await github.listRepoProjects() })));
 
@@ -75,18 +74,4 @@ export function registerGitHubRoutes(fastify) {
     await github.left(req.params.id);
     return { ok: true };
   });
-
-  // a project in a sync app's folder copied into the projects folder (or parentDir), where a repository is safe
-  fastify.post('/api/projects/:id/move-here', coded(async (req) => {
-    const { id } = req.params;
-    const root = await getProjectRoot(id);
-    const parentDir = req.body?.parentDir;
-    const parent = typeof parentDir === 'string' && path.isAbsolute(parentDir) ? parentDir : PROJECTS_DIR;
-    const place = await placeOfNew(parent);
-    if (place) throw httpError(`The folder new projects go in is in ${place.label}. Choose another one in Settings › Projects first.`, 409, 'IN_SYNC_FOLDER');
-    if (compiling(id) || transferring(id)) throw httpError('This project is compiling or being converted. Try again once that’s finished.', 409);
-    await moveProject(id, root, parent);
-    await stopProjectTexlab(id);
-    return { ok: true, project: await getProject(id) };
-  }));
 }

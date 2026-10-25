@@ -34,6 +34,7 @@ import { stopTexlab } from './services/texlabService.js';
 import { registerReviewRoutes } from './routes/review.js';
 import { registerGitHubRoutes } from './routes/github.js';
 import { commitWaiting, resumeBackups, startRetries } from './services/githubService.js';
+import { startSettingsRepo } from './services/settingsRepoService.js';
 import { seedTemplates, syncTemplates } from './services/templateService.js';
 import { dropOldAuxFolders, migrateLegacyProjects } from './services/projectService.js';
 import { startMirroring, stopMirroring } from './services/mirrorService.js';
@@ -136,6 +137,8 @@ startMirroring();
 // linked projects: what an earlier quit only committed goes to GitHub, and what waits for the connection is retried
 resumeBackups().catch((err) => fastify.log.error(err));
 startRetries();
+// the settings repository, pulled now, then pushed after each change
+startSettingsRepo();
 
 // Stop compiles, plots and TexLab (they run in their own process groups, so nothing else would), let
 // in-flight requests such as a file save finish for up to 2 s, then exit.

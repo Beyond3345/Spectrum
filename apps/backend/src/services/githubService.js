@@ -45,7 +45,7 @@ async function writeAuth(data) {
 }
 
 /** The token, or why there's none. */
-async function tokenOf() {
+export async function tokenOf() {
   const { token } = await readAuth();
   if (!token) throw httpError('Sign in to GitHub in Settings › GitHub first.', 401, 'GITHUB_SIGN_IN');
   return token;
@@ -58,7 +58,7 @@ export async function authStatus() {
 }
 
 /** The commit author GitHub links to the account without showing its email address. */
-async function authorOf() {
+export async function authorOf() {
   const { user } = await readAuth();
   const { machineName } = await readSyncConfig();
   return user ? { name: user.name || user.login, email: `${user.id}+${user.login}@users.noreply.github.com` } : { name: machineName, email: 'spectrum@localhost' };
@@ -102,25 +102,26 @@ export async function signInWithToken(input) {
   });
   const auth = await readAuth();
   await writeAuth({ ...auth, token, user: { login: user.login, id: user.id, name: user.name || '' } });
-  signedInHooks.forEach((fn) => fn());
+  authHooks.forEach((fn) => fn());
   return authStatus();
 }
 
 export async function signOut() {
   const { settingsRepo } = await readAuth();
   await writeAuth(settingsRepo === false ? { settingsRepo } : {});
+  authHooks.forEach((fn) => fn());
   return authStatus();
 }
 
 export async function setSettingsRepo(on) {
   await writeAuth({ ...(await readAuth()), settingsRepo: !!on });
-  if (on) signedInHooks.forEach((fn) => fn());
+  authHooks.forEach((fn) => fn());
   return authStatus();
 }
 
-// what runs once a token is stored (the settings repository's first pull)
-const signedInHooks = new Set();
-export const onSignedIn = (fn) => signedInHooks.add(fn);
+// what runs when the sign-in or the settings repository's switch changes (the settings repository's first pull)
+const authHooks = new Set();
+export const onAuthChange = (fn) => authHooks.add(fn);
 
 // the device sign-in: Spectrum shows GitHub's code, and polls here until the user has entered it at github.com
 const flows = new Map();

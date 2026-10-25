@@ -241,6 +241,13 @@ export async function commitTime(root, oid) {
 
 // ─── Pull ───
 
+/** The files of this computer's commit, origin's and their common one (none in common: empty), each as treeFiles gives them. */
+export async function mergeSides(root) {
+  const [ours, theirs] = [await headOid(root), await remoteHead(root)];
+  const [base] = ours && theirs ? await git.findMergeBase({ fs: gitFs, dir: root, oids: [ours, theirs] }).catch(() => []) : [];
+  return { base: await treeFiles(root, base), ours: await treeFiles(root, ours), theirs: await treeFiles(root, theirs) };
+}
+
 /** A commit's files: Map rel → { oid, mode }. */
 export async function treeFiles(root, commit, cache = {}) {
   const files = new Map();
@@ -430,7 +437,7 @@ async function writeDecisions(root, decisions, copies, read, keep) {
  * own common one (Link from a mirror's last sync), as treeFiles gives them. keep(rel): a file this computer keeps as
  * it is (what a shared repository leaves out); side: planMerge's.
  */
-export async function mergeOrigin(root, { author, allowDeletions = false, dryRun = false, base: given, keep = () => false, side, message = 'Pull from GitHub' }) {
+export async function mergeOrigin(root, { author, allowDeletions = false, dryRun = false, base: given, keep = () => false, side, message = 'Pull from GitHub', checkpoint = true }) {
   const branch = await branchOf(root);
   const [ours, theirs] = [await headOid(root), await remoteHead(root)];
   const none = { state: 'current', fromTheirs: 0, conflicts: 0, changedApp: false, deleting: 0, problems: [] };
@@ -455,7 +462,7 @@ export async function mergeOrigin(root, { author, allowDeletions = false, dryRun
   };
   if (dryRun) return { state: 'preview', ...summary };
   if (!allowDeletions && deletionBrake(deleting, [...oursFiles.keys()])) return { state: 'confirm', ...summary };
-  if (working.length || plan.copies.length) await keepBefore(root, 'Before pull from GitHub');
+  if (checkpoint && (working.length || plan.copies.length)) await keepBefore(root, 'Before pull from GitHub');
   // a file here that a new one from GitHub would land on, which this computer never committed (an ignored one), stays too
   const uncommitted = new Set();
   for (const d of plan.decisions) if (!d.o && d.r && (await exists(join(root, d.r.rel)))) uncommitted.add(keyOf(d.r.rel));
