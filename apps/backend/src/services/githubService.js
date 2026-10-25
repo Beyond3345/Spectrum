@@ -613,7 +613,7 @@ export async function listRepoProjects() {
       }
       if (!known.project) return;
       const here = local.get(known.project.id);
-      const entry = { owner: r.owner.login, repo: r.name, private: !!r.private, pushedAt: r.pushed_at, ...known.project, local: here?.id || null, linked: false, ahead: 0, behind: 0 };
+      const entry = { owner: r.owner.login, repo: r.name, url: `${GITHUB_WEB}/${r.owner.login}/${r.name}`, private: !!r.private, pushedAt: r.pushed_at, ...known.project, local: here?.id || null, linked: false, ahead: 0, behind: 0 };
       if (here) {
         const { root, link } = await projectOf(here.id).catch(() => ({}));
         if (root && link?.owner === entry.owner && link?.repo === entry.repo && (await linkedHere(root, link))) Object.assign(entry, { linked: true }, await git.aheadBehind(root));
