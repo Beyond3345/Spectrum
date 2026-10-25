@@ -6,10 +6,11 @@
 import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { DATA_DIR } from '../config/constants.js';
 import { latexToText } from '../latex/conversion.js';
 import { citeKeys, matchBrace } from '../latex/text.js';
-import { listFilesRecursive, writeJsonAtomic } from '../utils/fsUtils.js';
+import { listFilesRecursive, renameOver } from '../utils/fsUtils.js';
 import { httpError, readMeta, serialiser } from './projectService.js';
 import { readProjectSettings, updateProjectSettings } from './projectSettings.js';
 import { appendEntries, baseKey, bibIdentity, cleanDoi, normaliseTitle, parseBibEntries, parseName } from './referenceService.js';
@@ -84,11 +85,11 @@ async function rpc(method, params = []) {
 }
 
 /** A write refused for its key: the key is dropped, as Zotero takes one given without Always Allow only once. */
-async function written(res) {
+async function written(res, key) {
   if (res.ok) return res;
   const detail = (await res.text().catch(() => '')).slice(0, 200);
   if (res.status === 401 || res.status === 403) {
-    await forgetKey();
+    await discardKey(key);
     throw httpError(KEY_REFUSED, 401, 'ZOTERO_KEY');
   }
   throw httpError(`Zotero refused the change (HTTP ${res.status}${detail ? `: ${detail}` : ''}).`, 502);
@@ -105,7 +106,28 @@ async function readKey() {
   }
 }
 
-export const forgetKey = () => fs.rm(keyFile(), { force: true });
+const keyLock = serialiser();
+export const forgetKey = () => keyLock(() => fs.rm(keyFile(), { force: true }));
+
+/** The key dropped only while it's still the one refused, so a sync refused meanwhile never drops a newer Allow's. */
+const discardKey = (key) => keyLock(async () => (key && (await readKey()) === key ? fs.rm(keyFile(), { force: true }) : undefined));
+
+/**
+ * The key, with the Zotero-Server-ID it was given under, readable by this user only from the moment it exists.
+ * ponytail: serverId is kept but never acted on, until real Zotero shows whether it names the database or the process
+ */
+function saveKey(key, serverId) {
+  return keyLock(async () => {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    const tmp = `${keyFile()}.${crypto.randomUUID()}.tmp`;
+    try {
+      await fs.writeFile(tmp, JSON.stringify({ key, serverId }), { mode: 0o600 });
+      await renameOver(tmp, keyFile());
+    } finally {
+      await fs.rm(tmp, { force: true });
+    }
+  });
+}
 
 /** Whether Zotero runs, its version, whether its local API is on and whether it takes writes (Zotero 10). */
 async function probe() {
@@ -207,8 +229,7 @@ export async function authorise() {
     // a bare key
   }
   if (!/^[\w-]{8,200}$/.test(String(key))) throw httpError('Zotero’s answer had no permission in it.', 502);
-  await writeJsonAtomic(keyFile(), { key });
-  await fs.chmod(keyFile(), 0o600);
+  await saveKey(key, found.serverId);
   return zoteroStatus();
 }
 
@@ -495,7 +516,7 @@ export function parsedWhole(text) {
 }
 
 async function createCollection(data, key) {
-  const res = await written(await call(`${LIB}/collections`, { method: 'POST', key, body: [data] }));
+  const res = await written(await call(`${LIB}/collections`, { method: 'POST', key, body: [data] }), key);
   const out = await res.json().catch(() => ({}));
   const made = out.successful?.['0'] || (out.success?.['0'] && { key: out.success['0'], data });
   if (!made?.key) throw httpError(`Zotero didn’t make the collection: ${out.failed?.['0']?.message || 'no reason given'}.`, 502);
@@ -529,7 +550,7 @@ async function changeCollections(item, change, key) {
       body: { collections: next },
       headers: { 'If-Unmodified-Since-Version': String(current.version ?? current.data.version) }
     });
-    if (res.status !== 412) return written(res).then(drain);
+    if (res.status !== 412) return written(res, key).then(drain);
     await drain(res);
     current = await json(`${LIB}/items/${encodeURIComponent(current.key)}`);
     if (!current) return;
@@ -598,7 +619,7 @@ async function reconcile(root, remove) {
   let failure = '';
   for (let i = 0; i < missing.length; i += 50) {
     const batch = missing.slice(i, i + 50).map(({ entry }) => ({ ...itemFromEntry(entry), collections: [ck] }));
-    const out = await (await written(await call(`${LIB}/items`, { method: 'POST', key, body: batch }))).json().catch(() => ({}));
+    const out = await (await written(await call(`${LIB}/items`, { method: 'POST', key, body: batch }), key)).json().catch(() => ({}));
     counts.created += Object.keys(out.successful || out.success || {}).length;
     const failed = Object.values(out.failed || {});
     counts.failed += failed.length;

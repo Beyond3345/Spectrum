@@ -21,6 +21,7 @@ let collectionCount = 0;
 function reset(over = {}) {
   Object.assign(mock, {
     version: '10.0.6',
+    serverId: SERVER_ID,
     localApi: true,
     bbt: true,
     // what the Allow prompt answers: a promise, so a test can hold it
@@ -113,11 +114,11 @@ const server = createServer(async (req, res) => {
   if (!p.startsWith('/api/')) return send(404, 'No endpoint found');
   if (!mock.localApi) return send(403, 'Local API is not enabled');
   const v10 = parseInt(mock.version, 10) >= 10;
-  const extra = v10 ? { 'Zotero-Server-ID': SERVER_ID } : {};
+  const extra = v10 ? { 'Zotero-Server-ID': mock.serverId } : {};
   if (p === '/api/') return send(200, 'Nothing to see here.', { 'Zotero-API-Version': '3', ...extra });
   if (p === '/api/local/authorize' && req.method === 'POST') {
     if (!v10) return send(404, 'No endpoint found');
-    if (req.headers['zotero-server-id'] !== SERVER_ID) return send(400, 'Missing Zotero-Server-ID');
+    if (req.headers['zotero-server-id'] !== mock.serverId) return send(400, 'Missing Zotero-Server-ID');
     return (await mock.allow()) ? send(200, { key: KEY }) : send(403, 'Not allowed');
   }
   const write = req.method !== 'GET';
@@ -232,7 +233,7 @@ const newProject = (name, files) => createProject({
 });
 
 const keyFile = () => path.join(tmp, 'data', 'zotero.json');
-const allowSpectrum = () => fs.writeFile(keyFile(), JSON.stringify({ key: KEY }));
+const allowSpectrum = (serverId = SERVER_ID) => fs.writeFile(keyFile(), JSON.stringify({ key: KEY, serverId }));
 const waitFor = async (check) => {
   for (let i = 0; i < 200 && !check(); i += 1) await new Promise((r) => setTimeout(r, 10));
   assert.ok(check(), 'timed out');
@@ -350,7 +351,8 @@ test('the Allow prompt waits in Zotero, its key stays in a private file and neve
   assert.equal(status, 200);
   assert.equal(json.authorised, true);
   assert.ok(!text.includes(KEY), 'the key never goes to the window');
-  assert.equal(JSON.parse(await fs.readFile(keyFile(), 'utf8')).key, KEY);
+  assert.deepEqual(JSON.parse(await fs.readFile(keyFile(), 'utf8')), { key: KEY, serverId: SERVER_ID }, 'kept with the server id it was given under');
+  assert.deepEqual(asked.body, { name: 'Spectrum' });
   if (process.platform !== 'win32') assert.equal((await fs.stat(keyFile())).mode & 0o777, 0o600);
   assert.ok(!(await api('/api/zotero/status')).text.includes(KEY));
 
@@ -600,6 +602,21 @@ test('without permission, before Zotero 10 or with a project with no references,
   assert.equal(refused.state, 'error');
   assert.match(refused.message, /Allow Spectrum again in Settings › Zotero/);
   await assert.rejects(fs.stat(keyFile()));
+});
+
+test('a key given under another server id, or before Zotero restarted, still syncs and is kept', async () => {
+  const project = await newProject('Restarted', { 'main.tex': BIBTEX_MAIN, 'refs.bib': '@article{a2020, title = {Alpha}, year = {2020}}\n' });
+  addItem({ title: 'Alpha', citationKey: 'a2020', date: '2020' });
+  await allowSpectrum('server-other');
+  assert.equal((await syncCollection(project.path)).state, 'synced');
+  assert.equal(JSON.parse(await fs.readFile(keyFile(), 'utf8')).key, KEY, 'a mismatched id drops nothing');
+  // Zotero restarted between two syncs with a new id
+  mock.serverId = 'server-after-restart';
+  const again = await syncCollection(project.path);
+  assert.equal(again.state, 'synced', again.message);
+  assert.equal(JSON.parse(await fs.readFile(keyFile(), 'utf8')).key, KEY);
+  assert.ok(writes().every((r) => r.headers['zotero-api-key'] === KEY && r.headers.authorization === `Bearer ${KEY}`), 'both ways of giving the key');
+  assert.ok(mock.requests.filter((r) => r.method === 'GET').every((r) => !r.headers['zotero-api-key']), 'no key on reads');
 });
 
 // ─── Research ───
