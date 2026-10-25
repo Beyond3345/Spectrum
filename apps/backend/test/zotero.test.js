@@ -585,3 +585,27 @@ test('without permission, before Zotero 10 or with a project with no references,
   assert.match(refused.message, /Allow Spectrum again in Settings › Zotero/);
   await assert.rejects(fs.stat(keyFile()));
 });
+
+// ─── Research ───
+
+test('Research’s Zotero source searches the library, and its results go into the .bib from Zotero under their keys', async () => {
+  const project = await newProject('Research', { 'main.tex': BIBLATEX_MAIN, 'refs.bib': '' });
+  const paper = addItem({ title: 'Attention Is All You Need', abstractNote: 'Transformers replace recurrence.', citationKey: 'vaswani2017', creators: [{ creatorType: 'author', firstName: 'Ashish', lastName: 'Vaswani' }], date: '2017', DOI: '10.5555/att' });
+  addItem({ title: 'Unrelated', date: '2001' });
+  // one of the question's three words isn't enough; the paper has two (its abstract has "transformers")
+  addItem({ title: 'Attention spans', date: '2010' });
+  const search = await api('/api/research/search', 'POST', { projectId: project.id, question: 'attention in transformers for proteins', sources: ['zotero'] });
+  assert.equal(search.status, 200, search.text);
+  const { session } = search.json;
+  assert.deepEqual(session.results.map((r) => [r.title, r.sources, r.zotero, r.abstract]), [['Attention Is All You Need', ['zotero'], paper.key, 'Transformers replace recurrence.']]);
+  assert.deepEqual(session.runs[0].perSource, { zotero: { count: 1 } });
+  const added = await api(`/api/projects/${project.id}/research/${session.id}/add`, 'POST', { resultIds: [session.results[0].id] });
+  assert.deepEqual(added.json.results.map((r) => [r.status, r.key]), [['added', 'vaswani2017']]);
+  assert.match(await fs.readFile(path.join(project.path, 'refs.bib'), 'utf8'), /@article\{vaswani2017,/);
+  assert.equal(added.json.session.results[0].inBib, 'vaswani2017');
+
+  // Zotero closed: the source says so, the others carry on
+  reset({ localApi: false });
+  const closed = await api('/api/research/search', 'POST', { projectId: project.id, question: 'attention', sources: ['zotero', 'bib'] });
+  assert.match(closed.json.session.runs[0].perSource.zotero.error, /local API is off/);
+});
