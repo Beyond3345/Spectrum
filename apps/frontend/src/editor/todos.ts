@@ -61,10 +61,13 @@ export function scanTodos(files: { path: string; text: string }[]): SourceTodo[]
   const found: SourceTodo[] = [];
   for (const { path, text } of files) {
     const marks: (SourceTodo & { at: number })[] = [];
+    // Typst and Markdown have neither LaTeX's \todo nor its % comments, which a Typst width: 80% would start;
+    // ponytail: Markdown's raw LaTeX goes unread
+    const latex = !/\.(typ|md|markdown)$/i.test(path);
     // comments blanked out, so offsets and lines stay as they were
     const code = text.replace(COMMENT, (token) => (token[0] === '%' ? ' '.repeat(token.length) : token));
     const commandLine = lineCounter(text);
-    for (const m of code.matchAll(COMMAND)) {
+    for (const m of latex ? code.matchAll(COMMAND) : []) {
       const at = m.index ?? 0;
       if (DEFINED.test(code.slice(Math.max(0, at - 40), at))) continue;
       const arg = argument(code, at + m[0].length);
@@ -73,7 +76,7 @@ export function scanTodos(files: { path: string; text: string }[]): SourceTodo[]
       marks.push({ file: path, line: commandLine(at), text: arg.text || `\\${m[1]}`, kind: m[1], at });
     }
     const commentLine = lineCounter(text);
-    for (const m of text.matchAll(COMMENT)) {
+    for (const m of latex ? text.matchAll(COMMENT) : []) {
       if (m[0][0] !== '%') continue;
       const marker = MARKER.exec(m[0]);
       if (!marker) continue;

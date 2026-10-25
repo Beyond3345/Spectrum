@@ -162,6 +162,19 @@ export type DocKind = 'latex' | 'typst' | 'markdown';
 export const docKind = (path: string): DocKind | null =>
   /\.(tex|ltx)$/i.test(path) ? 'latex' : /\.typ$/i.test(path) ? 'typst' : /\.(md|markdown)$/i.test(path) ? 'markdown' : null;
 export const isDocument = (path: string) => docKind(path) !== null;
+/** A file of a document's own source: a document, or a LaTeX package, class or .bib file it reads. */
+export const isSource = (path: string) => isDocument(path) || /\.(sty|cls|bib)$/i.test(path);
+
+/**
+ * The main file as the tree changes: the current one while it's still a document there, else a main.tex, .typ or .md,
+ * else the first document; never a sync app's conflict copy.
+ */
+export function keptMainFile(current: string, files: string[], conflicts: Record<string, string> = {}) {
+  const docs = files.filter(isDocument);
+  if (current && docs.includes(current)) return current;
+  const usable = docs.filter((p) => !conflicts[p]);
+  return usable.find((p) => /(^|\/)main\.(?:tex|typ|md|markdown)$/i.test(p)) || usable[0] || '';
+}
 
 export function figureSnippet(filePath: string) {
   return [

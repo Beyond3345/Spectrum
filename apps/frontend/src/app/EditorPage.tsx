@@ -125,7 +125,7 @@ import type { Reference } from '../editor/lsp/texlab';
 import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
-import { ENGINES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDocument, type DocKind } from '../editor/shared';
+import { ENGINES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDocument, isSource, keptMainFile, type DocKind } from '../editor/shared';
 import { languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions } from '../editor/languages';
 import { includedPath, parseMarkdownOutline, parseTypstOutline } from '../editor/outlines';
 import { ZOTERO_CITE, zoteroCompletionSource } from '../editor/zotero';
@@ -531,7 +531,7 @@ function Editor({ projectId }: { projectId: string }) {
   const fileSet = useMemo(() => new Set(items.filter((i) => i.type === 'file').map((i) => i.path)), [items]);
   // the files to-dos are looked for in, never a sync app's conflict copy
   const todoSources = useMemo(
-    () => items.filter((i) => i.type === 'file' && /\.(tex|sty|cls|ltx|bib)$/i.test(i.path) && !conflicts[i.path]).map((i) => i.path),
+    () => items.filter((i) => i.type === 'file' && isSource(i.path) && !conflicts[i.path]).map((i) => i.path),
     [items, conflicts]
   );
   const todos = useTodos({ projectId, sources: todoSources, loaded: (path) => filesRef.current.get(path), revision: `${filesVersion} ${dirty}`, notify });
@@ -969,14 +969,11 @@ function Editor({ projectId }: { projectId: string }) {
     if (gone(compiledDoc)) setCompiledDoc(mainFile);
   };
 
-  // keep a main file whenever there is a .tex file. Runs when the tree changes, not when the main file
+  // keep a main file whenever there is a document. Runs when the tree changes, not when the main file
   // does: a rename sets the new name before the refreshed tree contains it.
   useEffect(() => {
-    if (!loaded || (mainFile && texFiles.includes(mainFile))) return;
-    // never a sync app's conflict copy
-    const tex = texFiles.filter((p) => !conflicts[p]);
-    setMainFile(tex.find((p) => /(^|\/)main\.tex$/i.test(p)) || tex[0] || '');
-  }, [loaded, texFiles]);
+    if (loaded) setMainFile(keptMainFile(mainFile, [...fileSet], conflicts));
+  }, [loaded, fileSet]);
 
   // a tab whose file went from the tree (deleted or renamed on another computer, in Finder, by git) is marked
   // and not saved back unasked; one marked that's back is checked against the disk
@@ -2279,8 +2276,7 @@ function Editor({ projectId }: { projectId: string }) {
         navigate('/projects', { replace: true });
         return;
       }
-      const docsInTree = tree.items.filter((i) => i.type === 'file' && isDocument(i.path) && !tree.conflicts?.[i.path]).map((i) => i.path);
-      const main = tree.mainFile && docsInTree.includes(tree.mainFile) ? tree.mainFile : docsInTree.find((p) => /(^|\/)main\.(?:tex|typ|md|markdown)$/i.test(p)) || docsInTree[0] || '';
+      const main = keptMainFile(tree.mainFile || '', tree.items.filter((i) => i.type === 'file').map((i) => i.path), tree.conflicts);
       setMainFile(main);
       setLoaded(true);
       // show the PDF from the last compile straight away, before the first file opens, so following the open file

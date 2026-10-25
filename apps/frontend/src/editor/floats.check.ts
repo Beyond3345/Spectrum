@@ -308,11 +308,11 @@ eq(tableLatex({ ...model, placement: 'ht', span: true }).split('\n').pop(), '\\e
 
 eq(
   figureTypst({ path: 'images/cat.png', width: 0.8, caption: 'A cat, [x]', label: 'fig:cat' }),
-  '#figure(image("images/cat.png", width: 80%), caption: [A cat, [x\\]]) <fig:cat>',
+  '#figure(image("/images/cat.png", width: 80%), caption: [A cat, \\[x\\]]) <fig:cat>',
   'a Typst figure with its width, caption and label'
 );
-eq(figureTypst({ path: 'images/a"b.png', width: 1, caption: '', label: '' }), '#figure(image("images/a\\"b.png", width: 100%))', 'a Typst figure without a caption or label, its path quoted');
-eq(figureTypstInclude({ path: 'figures/flow.typ', caption: 'A flow', label: 'fig:flow' }), '#figure(include "figures/flow.typ", caption: [A flow]) <fig:flow>', 'a Typst diagram included as a figure');
+eq(figureTypst({ path: 'images/a"b.png', width: 1, caption: '', label: '' }), '#figure(image("/images/a\\"b.png", width: 100%))', 'a Typst figure without a caption or label, its path quoted');
+eq(figureTypstInclude({ path: 'figures/flow.typ', caption: 'A flow', label: 'fig:flow' }), '#figure(include "/figures/flow.typ", caption: [A flow]) <fig:flow>', 'a Typst diagram included as a figure');
 eq(figureMarkdown({ path: 'images/cat.png', width: 0.75, caption: 'A cat, [x]', label: 'fig:cat' }), '![A cat, \\[x\\]](images/cat.png){#fig:cat width=75%}', 'a Markdown image with its label and width');
 eq(figureMarkdown({ path: 'images/cat.png', width: 0.5, caption: 'A cat', label: '' }), '![A cat](images/cat.png){width=50%}', 'a Markdown image without a label');
 eq(
@@ -320,7 +320,8 @@ eq(
   '#figure(table(columns: 3, table.header([Method], [a_b], [Score]), [Ours], [$x_1$], [50%]), caption: [Results.]) <tab:results>',
   'a Typst table in a float, its header kept'
 );
-eq(tableTypst({ ...model, float: false, header: false }), 'table(columns: 3, [Method], [a_b], [Score], [Ours], [$x_1$], [50%])', 'a Typst table without its float or header');
+eq(tableTypst({ ...model, float: false, header: false }), '#table(columns: 3, [Method], [a_b], [Score], [Ours], [$x_1$], [50%])', 'a Typst table without its float or header');
+eq(tableTypst({ ...model, cells: [['a[1]', 'b\\c]']], header: false, float: false }), '#table(columns: 2, [a\\[1\\]], [b\\\\c\\]])', 'Typst cells keep brackets and backslashes as text');
 eq(
   tableMarkdown(model),
   lines('| Method | a_b | Score |', '| --- | --- | --- |', '| Ours | $x_1$ | 50% |', '', 'Table: Results. {#tab:results}'),
