@@ -59,7 +59,7 @@ async function sourceArchive(pin, work, archive) {
     if (!res.ok) throw new Error(`${pin.url}: HTTP ${res.status}`);
     return res.arrayBuffer();
   })());
-  if (sha256(bytes) !== pin.sha256) throw new Error('Source archive checksum mismatch. Nothing was installed.');
+  if (sha256(bytes) !== pin.sha256) throw new Error(`Source archive checksum mismatch (got ${sha256(bytes)}). Nothing was installed.`);
   const packed = join(work, 'source.tgz');
   writeFileSync(packed, bytes);
   const dir = join(work, 'source');
@@ -93,7 +93,8 @@ async function buildNodehun(work, update, archive) {
   mkdirSync(dir);
   for (const file of ['src', 'binding.gyp', 'package.json', 'package-lock.json', 'LICENSE.md']) cpSync(join(original, file), join(dir, file), { recursive: true });
   const source = update ? join(await sourceArchive(lock.hunspell, work, archive), 'hunspell') : join(original, 'hunspell');
-  if (sourceHash(source, CORE_INPUTS) !== lock.hunspell.sourceHash) throw new Error('Hunspell source differs from its pin. Use --update, or review and repin the new source.');
+  const hash = sourceHash(source, CORE_INPUTS);
+  if (hash !== lock.hunspell.sourceHash) throw new Error(`Hunspell source differs from its pin (got ${hash}). Use --update, or review and repin the new source.`);
   cpSync(source, join(dir, 'hunspell'), { recursive: true });
   if (!existsSync(join(original, 'node_modules', 'node-addon-api'))) run('npm', ['ci', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: original });
   cpSync(join(original, 'node_modules', 'node-addon-api'), join(dir, 'node_modules', 'node-addon-api'), { recursive: true });
@@ -136,6 +137,9 @@ async function buildHarper(work, archive) {
   copyFileSync(join(harper, 'LICENSE'), join(out, 'LICENSE'));
   writeFileSync(join(out, 'package.json'), '{ "type": "module" }\n');
   await smoke('grammarWorker.mjs', { nativeDir: work }, { text: 'This is a apple.', oxford: 'avoid', markdown: false }, (issues) => issues.some((i) => i.rule === 'AnA' && i.suggestions.some((s) => s.text === 'an')));
+  // wasm-pack's extras, its '*' .gitignore among them, which would hide native/harper from git (a deny-list, as the
+  // self-test above ran from out with whatever else Harper needs)
+  for (const extra of ['.gitignore', 'README.md', 'harper_wasm.d.ts', 'harper_wasm_bg.wasm.d.ts']) rmSync(join(out, extra), { force: true });
   json(join(out, 'manifest.json'), { schema: 1, engine: 'Harper', version, source: local ? { kind: 'local override', sourceHash: sourceHash(harper) } : lock.harper,
     build: { rust: versionOf('rustc'), wasmPack: versionOf(wasmPack), target: 'wasm32-unknown-unknown', features: [], defaultFeatures: false, selfTest: 'passed' }, files: digestFiles(out, HARPER_FILES) });
   // Swap the matching JS/WASM pair as a directory; restore the old one if publication fails.
@@ -171,12 +175,18 @@ async function main() {
   if (which === 'verify') {
     const spell = await import('../apps/backend/src/services/spellService.js');
     const grammar = await import('../apps/backend/src/services/grammarService.js');
+    // the checkers' worker threads don't hold the process open (unref), so this does until both have answered
+    const hold = setInterval(() => {}, 60_000);
     try {
-      for (const status of await Promise.all([spell.spellStatus(), grammar.grammarStatus()])) {
+      for (const status of await Promise.all([spell.spellStatus(), grammar.grammarStatus({ start: true })])) {
         console.log(JSON.stringify(status, null, 2));
         if (!status.available || status.diagnostics.assets.integrity !== 'verified' || (status.diagnostics.dictionaries && status.diagnostics.dictionaries.integrity !== 'verified')) process.exitCode = 1;
       }
-    } finally { await spell.stopSpeller(); await grammar.stopGrammar(); }
+    } finally {
+      clearInterval(hold);
+      await spell.stopSpeller();
+      await grammar.stopGrammar();
+    }
     return;
   }
   if (which === 'dictionaries') return dictionaries();

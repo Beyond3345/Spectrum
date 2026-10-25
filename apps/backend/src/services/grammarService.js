@@ -22,8 +22,13 @@ const STYLE_KINDS = new Set(['Style', 'Readability', 'Enhancement', 'Redundancy'
 const ALWAYS = new Set(['OxfordComma', 'NoOxfordComma']);
 const OXFORD = new Set(['avoid', 'require', 'off']);
 
-export async function grammarStatus() {
-  const [status, assets] = await Promise.all([harper.status(), inspectCheckerAssets(path.join(NATIVE_DIR, 'harper'), 'manifest.json', HARPER_FILES)]);
+/**
+ * Harper's engine, version and files. It's started only by the first check, or start (checkers:verify): Settings
+ * asking keeps it from holding some 200 MB for the rest of the session; started: false until then.
+ */
+export async function grammarStatus({ start = false } = {}) {
+  const assets = await inspectCheckerAssets(path.join(NATIVE_DIR, 'harper'), 'manifest.json', HARPER_FILES);
+  const status = start || harper.running() ? await harper.status() : { available: assets.integrity === 'verified', started: false };
   return { ...status, language: 'en-AU', engine: 'Harper', version: assets.version,
     diagnostics: { appVersion: APP_VERSION, node: process.version, platform: process.platform, arch: process.arch, assets } };
 }

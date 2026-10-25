@@ -907,7 +907,8 @@ export type CheckerAssets = {
   manifest: { version: string; binding?: { version: string }; components?: { name: string; version: string }[]; [key: string]: unknown } | null;
 };
 export type CheckerStatus = {
-  available: boolean; language: string; error?: string; engine: string; version: string | null;
+  /** started: false while Harper waits for its first check, which starts it */
+  available: boolean; started?: boolean; language: string; error?: string; engine: string; version: string | null;
   diagnostics?: { appVersion: string; node: string; platform: string; arch: string; assets: CheckerAssets; dictionaries?: CheckerAssets };
 };
 export type SpellWordLists = { global: string[]; project: string[] };

@@ -1,6 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { maskLatex, proseWords } from '../src/latex/mask.js';
@@ -86,6 +87,29 @@ test('a word added to the list is accepted, and removed again', async () => {
   await spell.changeWord({ word: 'Spectrumish', remove: true });
   assert.deepEqual(await spell.checkWords(['Spectrumish'], undefined), ['Spectrumish']);
   await assert.rejects(() => spell.changeWord({ word: 'two words' }), /single word/);
+});
+
+test('asking for Harper’s status doesn’t start it; the first check does', async () => {
+  await grammar.stopGrammar();
+  const status = await grammar.grammarStatus();
+  assert.deepEqual([status.available, status.started, status.engine, status.diagnostics.assets.integrity], [true, false, 'Harper', 'verified']);
+  await grammar.checkGrammar({ text: 'This is a apple.' });
+  assert.equal((await grammar.grammarStatus()).started, undefined, 'running now');
+});
+
+test('checkers:verify checks both engines and their files, and fails on a file that differs', { timeout: 120_000 }, () => {
+  const repo = path.join(import.meta.dirname, '..', '..', '..');
+  const verify = (env = {}) => spawnSync(process.execPath, [path.join(repo, 'scripts', 'native.mjs'), 'verify'], { env: { ...process.env, ...env }, encoding: 'utf8', timeout: 100_000 });
+  const ok = verify();
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.match(ok.stdout, /"engine": "Hunspell"/);
+  assert.match(ok.stdout, /"engine": "Harper"/);
+  const native = path.join(dataDir, 'native-copy');
+  cpSync(path.join(repo, 'native'), native, { recursive: true, filter: (src) => !src.includes(`${path.sep}node_modules`) });
+  writeFileSync(path.join(native, 'harper', 'LICENSE'), 'changed');
+  const bad = verify({ SPECTRUM_NATIVE_DIR: native });
+  assert.equal(bad.status, 1);
+  assert.match(bad.stdout, /LICENSE does not match its build information/);
 });
 
 test('grammar: Australian dialect, no Oxford comma, positions in the source', async () => {
