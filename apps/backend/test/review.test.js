@@ -243,6 +243,24 @@ test('a document over the budget is reviewed a file at a time, and the limits sa
   assert.ok(calls[1].messages[1].content.length < REVIEW_BUDGET + 10_000);
 });
 
+test('a .pgf figure the document \\inputs isn’t sent, so it can’t push the rest over the budget', async () => {
+  const pgf = '\\begin{pgfpicture}\n' + '\\pgfpathlineto{\\pgfqpoint{1.0in}{2.0in}}%\n'.repeat(Math.ceil(REVIEW_BUDGET / 40)) + '\\end{pgfpicture}\n';
+  const p = await project('Figure review', {
+    'main.tex': '\\documentclass{article}\n\\begin{document}\n\\input{figures/bode.pgf}\n\\input{discussion}\n\\end{document}\n',
+    'figures/bode.pgf': pgf,
+    'discussion.tex': '\\section{Discussion}\nThe gain falls off.\n'
+  });
+  answer = JSON.stringify({ summary: 'ok', findings: [] });
+  calls.length = 0;
+  const { json } = await review({ projectId: p.id, doc: 'main.tex', activePath: 'main.tex' });
+  assert.equal(json.ok, true, json.error);
+  assert.deepEqual(json.files, ['main.tex', 'discussion.tex']);
+  assert.deepEqual(json.limits, ['figures/bode.pgf is figure or data code and wasn’t sent.']);
+  const user = calls[0].messages[1].content;
+  assert.match(user, /The gain falls off/);
+  assert.doesNotMatch(user, /pgfpathlineto|=== figures/);
+});
+
 test('closing the request stops the model call', async () => {
   const p = await project('Cancel review', { 'main.tex': MAIN, 'sections/intro.tex': INTRO });
   await app.listen({ port: 0, host: '127.0.0.1' });

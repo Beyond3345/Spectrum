@@ -180,9 +180,9 @@ export function readReview(content, files) {
 const numbered = (file) => [`=== ${file.path} ===`, ...file.lines.map((line, i) => `${i + 1}| ${line}`)].join('\n');
 
 /**
- * The AI review of doc: its files in reading order with numbered lines, the .bib keys and what Preflight already
+ * The AI review of doc: its .tex files in reading order with numbered lines, the .bib keys and what Preflight already
  * reported, in one model call with no tools. Over REVIEW_BUDGET only activePath (or doc) is sent, cut short if need be,
- * and the limits say so. Aborting signal stops the call.
+ * and the limits say so, as they do for an \input .pgf or data file left out. Aborting signal stops the call.
  */
 export async function aiReview({ root, doc, activePath, findings = [], llmConfig, reasoningEffort, signal }) {
   const order = await documentFiles(root, doc);
@@ -192,8 +192,12 @@ export async function aiReview({ root, doc, activePath, findings = [], llmConfig
     const source = await fs.readFile(safeJoin(root, rel), 'utf8').catch(() => null);
     if (source !== null) files.push({ path: rel, lines: source.replace(/\r\n?/g, '\n').split('\n') });
   }
+  // a matplotlib .pgf or a table's data the document \inputs can run to megabytes: code, not the paper's text
+  const figures = files.filter((f) => !/\.(?:tex|ltx)$/i.test(f.path));
+  files = files.filter((f) => !figures.includes(f));
   const size = (list) => list.reduce((n, f) => n + numbered(f).length, 0);
   const limits = [];
+  if (figures.length) limits.push(`${figures.map((f) => f.path).join(', ')} ${figures.length === 1 ? 'is figure or data code and wasn’t' : 'are figure or data code and weren’t'} sent.`);
   if (size(files) > REVIEW_BUDGET) {
     const open = files.find((f) => f.path === activePath) ?? files[0];
     let lines = open.lines;
