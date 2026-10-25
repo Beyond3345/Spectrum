@@ -139,6 +139,15 @@ const IMAGE_FILE = /\.(png|jpe?g|svg|gif)$/i;
 const isTex = (p: string) => /\.tex$/i.test(p);
 const nameOf = (p: string) => p.slice(p.lastIndexOf('/') + 1);
 const pdfOf = (tex: string) => tex.replace(/\.(?:tex|ltx|typ|md|markdown)$/i, '.pdf');
+/** A source line's words without markup, for finding the line in the PDF. */
+const lineWords = (text: string) =>
+  text
+    .replace(/\\(?:[a-zA-Z@]+\*?|.)/g, ' ')
+    .replace(/#[A-Za-z][\w-]*(?:\([^)]*\))?/g, ' ')
+    .replace(/[{}[\]$*_<>|]/g, ' ')
+    .split(/\s+/)
+    .map((word) => word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ''))
+    .filter(Boolean);
 const PART_OF_MAIN = /^[^%\n]*\\documentclass\s*(?:\[[^\]]*\]\s*)?\{(?:subfiles|standalone)\}/m;
 // a rough take on the backend's test for a document of its own: an uncommented \documentclass near the top
 const DOCUMENT_CLASS = /^[^%\n]*\\documentclass/m;
@@ -1073,14 +1082,16 @@ function Editor({ projectId }: { projectId: string }) {
   };
 
   /**
-   * PDF text without SyncTeX: find the line in the open file first, then in the other .tex files.
+   * PDF text without SyncTeX: find the line in the open file first, then in the other documents of its kind.
    * Source line breaks may sit anywhere, a hyphenated last word won't match and macros
    * change the text, so shorter word runs are tried when the whole line isn't found.
    */
   const findInSource = async (text: string) => {
     const words = text.replace(/\S*-$/, '').trim().split(/\s+/).filter(Boolean);
     const runs = [words, words.slice(0, 6), words.slice(0, 4)].filter((run, i, all) => run.join(' ').length >= 4 && all.findIndex((r) => r.length === run.length) === i);
-    const order = [activeRef.current, ...texFiles].filter((p, i, all) => isTex(p) && all.indexOf(p) === i);
+    const kind = docKind(shownDoc);
+    const sameKind = items.filter((i) => i.type === 'file' && docKind(i.path) === kind && !conflicts[i.path]).map((i) => i.path);
+    const order = [activeRef.current, ...sameKind].filter((p, i, all) => docKind(p) === kind && all.indexOf(p) === i);
     for (const run of runs) {
       const pattern = new RegExp(run.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'));
       for (const path of order) {
@@ -1098,12 +1109,18 @@ function Editor({ projectId }: { projectId: string }) {
   /** Double-click on the PDF: the source line SyncTeX gives for that spot, else the text there found in the source. */
   const jumpFromPdf = async (at: PdfPoint, text: string) => {
     if (!settings.syncDoubleClick) return;
-    const res = await synctexEdit(projectId, at, shownDoc).catch(() => null);
+    // Typst and Markdown have no SyncTeX: their PDF text finds the source line
+    const kind = docKind(shownDoc);
     let landed = false;
-    if (res?.ok && items.some((i) => i.path === res.file)) {
-      await jumpTo(res.file, res.line, res.column);
-      landed = activeRef.current === res.file;
-    } else if (text.length >= 3) landed = await findInSource(text);
+    if (kind !== 'latex') {
+      if (text.length >= 3) landed = await findInSource(text);
+    } else {
+      const res = await synctexEdit(projectId, at, shownDoc).catch(() => null);
+      if (res?.ok && items.some((i) => i.path === res.file)) {
+        await jumpTo(res.file, res.line, res.column);
+        landed = activeRef.current === res.file;
+      } else if (text.length >= 3) landed = await findInSource(text);
+    }
     const view = viewRef.current;
     if (!landed || !view) return;
     // the line landed on (or the text found) stays highlighted for as long as Settings → Editor says
@@ -1114,12 +1131,30 @@ function Editor({ projectId }: { projectId: string }) {
     unlingerRef.current = linger(settings.syncHighlightSeconds, () => highlight('fade'), () => highlight(null));
   };
 
-  /** Double-click in a .tex file (CodeMirror selects the word as ever): where that line went, when the PDF shows beside it. */
+  /** Double-click in a document (CodeMirror selects the word as ever): where that line went, when the PDF shows beside it. */
   const showInPdf = async (pos: number) => {
     const view = viewRef.current;
     const file = activeRef.current;
-    if (!settings.syncDoubleClick || !view || !pdf || !isTex(file) || layout.view !== 'split' || panel) return;
+    if (!settings.syncDoubleClick || !view || !pdf || !isDocument(file) || layout.view !== 'split' || panel) return;
     const line = view.state.doc.lineAt(pos);
+    const kind = docKind(file);
+    // Typst and Markdown have no SyncTeX: the line's words find it in the PDF
+    if (kind !== 'latex') {
+      const words = lineWords(line.text);
+      const runs = [words, words.slice(0, 8), words.slice(0, 4)].filter((run, i, all) => run.length >= 2 && all.findIndex((r) => r.join(' ') === run.join(' ')) === i);
+      for (const run of runs) {
+        const boxes = (await pdfRef.current?.firstMatch(run.join(' ')).catch(() => [])) ?? [];
+        if (boxes.length) {
+          pdfRef.current?.highlight(boxes, settings.syncHighlightSeconds);
+          return;
+        }
+      }
+      // a double-click is also how a word is selected, so the same notice doesn't come back every time
+      const notice = `${pdf.url}\n${file}`;
+      if (syncNoticeRef.current !== notice) notify('Couldn’t find this line in the PDF.');
+      syncNoticeRef.current = notice;
+      return;
+    }
     const res = await synctexView(projectId, { file, line: line.number, column: pos - line.from + 1 }, shownDoc).catch((err) => ({ ok: false as const, error: errorText(err) }));
     const notice = `${pdf.url}\n${file}\n${res.ok ? '' : res.error}`;
     if (res.ok) pdfRef.current?.highlight(res.boxes, settings.syncHighlightSeconds);
