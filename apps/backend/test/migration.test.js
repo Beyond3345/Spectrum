@@ -115,7 +115,7 @@ test('the first start lists what each cloud copy has that this computer never go
     { id: paper.id, name: 'Paper', label: 'Synology Drive', changed: [], deleted: [] },
     { id: thesis.id, name: 'Thesis', label: 'Synology Drive', changed: ['chapters/intro.tex', 'refs.bib'], deleted: ['figs/a.png'] }
   ]);
-  assert.deepEqual(result.inPlace, [{ id: grantId, name: 'Grant', label: 'Synology Drive' }]);
+  assert.deepEqual(result.inPlace, [{ id: grantId, name: 'Grant', label: 'Synology Drive', path: grant }]);
   assert.deepEqual({ mirror: await snapshot(path.join(data, 'mirror')), sync: readFileSync(path.join(data, 'sync.json'), 'utf8'), loc: await snapshot(loc) }, before);
 
   // the projects page lists the projects here, never the ones only in the location
@@ -129,6 +129,10 @@ test('the notice shows until it’s dismissed, and the move runs once unless 1.1
   const notice = await mirror.migrationNotice();
   assert.deepEqual(notice.inPlace.map((p) => p.name), ['Grant']);
   assert.equal(notice.mirrored.length, 3);
+  // moved to this computer since: no longer used in place
+  await projects.moveEntry(grantId, path.join(tmp, 'projects', 'Grant'));
+  assert.deepEqual((await mirror.migrationNotice()).inPlace, []);
+  await projects.moveEntry(grantId, grant);
   await mirror.dismissMigrationNotice();
   assert.equal(await mirror.migrationNotice(), null);
   const saved = JSON.parse(readFileSync(path.join(data, 'v2-migration.json'), 'utf8'));

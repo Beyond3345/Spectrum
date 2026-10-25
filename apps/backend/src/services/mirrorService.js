@@ -14,7 +14,7 @@ import { DATA_DIR } from '../config/constants.js';
 import { mirrorSkips, readJson, readdirTyped, writeJsonAtomic } from '../utils/fsUtils.js';
 import { hashFile } from '../utils/projectCopy.js';
 import { keyOf } from './mergeRules.js';
-import { listProjects } from './projectService.js';
+import { getProject, listProjects } from './projectService.js';
 import { placeOf, within } from './syncService.js';
 
 const MIRROR_DIR = path.join(DATA_DIR, 'mirror');
@@ -114,7 +114,7 @@ let migrating = null;
  * notice. A mirrored one is an ordinary project here now, and its copy in the cloud location is left as it is:
  * { id, name, label, changed, deleted } with what that copy has that this computer never received, or missing: the
  * copy isn't there, or unchecked: it couldn't be looked through. One used in place, in a cloud location, keeps
- * working there: { id, name, label }. Nothing is written into DATA_DIR/mirror, sync.json or a cloud copy.
+ * working there: { id, name, label, path }. Nothing is written into DATA_DIR/mirror, sync.json or a cloud copy.
  */
 export function migrateToV2() {
   migrating ||= (async () => {
@@ -137,7 +137,7 @@ export function migrateToV2() {
     const inPlace = [];
     for (const p of projects) {
       const location = locations.find((l) => within(p.path, l));
-      if (location && !p.templateDraft && !mirrored.some((m) => m.id === p.id)) inPlace.push({ id: p.id, name: p.name, label: await labelOf(p.path) });
+      if (location && !p.templateDraft && !mirrored.some((m) => m.id === p.id)) inPlace.push({ id: p.id, name: p.name, label: await labelOf(p.path), path: p.path });
     }
     const result = { ranAt: new Date().toISOString(), mirrored, inPlace };
     await writeJsonAtomic(MIGRATION_PATH, result);
@@ -149,10 +149,14 @@ export function migrateToV2() {
   return migrating;
 }
 
-/** The move to 2.0's notice, until it's dismissed: null when there was nothing to say. */
+/** The move to 2.0's notice, until it's dismissed, without the projects moved to this computer since: null when there's nothing to say. */
 export async function migrationNotice() {
   const data = await migrateToV2();
-  return !data.dismissedAt && (data.mirrored?.length || data.inPlace?.length) ? { mirrored: data.mirrored || [], inPlace: data.inPlace || [] } : null;
+  if (data.dismissedAt) return null;
+  const inPlace = [];
+  for (const p of data.inPlace || []) if ((await getProject(p.id).catch(() => null))?.path === p.path) inPlace.push(p);
+  const mirrored = data.mirrored || [];
+  return mirrored.length || inPlace.length ? { mirrored, inPlace } : null;
 }
 
 export async function dismissMigrationNotice() {
