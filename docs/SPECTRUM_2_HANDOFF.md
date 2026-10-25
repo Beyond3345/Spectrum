@@ -1,12 +1,12 @@
 # Spectrum 2.0 continuation handoff
 
-Updated 25 October 2026 (after phase 4's first review round and the 2.0 test DMG). Development work only: no tag, push or release was made.
+Updated 25 October 2026 (after phase 4's first review round, the 2.0 test DMG and phase 5's build). Development work only: no tag, push or release was made.
 
 ## Where to resume
 
-Paused by the user on 25 October 2026 to save usage until the week of 1 November. Nothing is running: no builder, reviewer or scheduled check-in is active.
+Paused by the user on 25 October 2026 to save usage until the week of 1 November. Phase 5 was built on `build/p5` on 25 October 2026 and has not been merged. Nothing is running: no builder, reviewer or scheduled check-in is active.
 
-Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.0`** (`efc81b2` or later; check `git log`). Read [SPECTRUM_2_PLAN.md](SPECTRUM_2_PLAN.md), especially its ground rules and Delivery section, and [SPECTRUM_2_REVIEW_PLAN.md](SPECTRUM_2_REVIEW_PLAN.md) before continuing. Nothing has been pushed, tagged or released; `main` is still 1.10.4 plus the README credit to Oleafly and CircuiTikZ-Designer, which is also in `feat/2.0`.
+Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.0`** (`efc81b2` or later; check `git log`) for the merged work, and on **`build/p5`** for phase 5. Read [SPECTRUM_2_PLAN.md](SPECTRUM_2_PLAN.md), especially its ground rules and Delivery section, and [SPECTRUM_2_REVIEW_PLAN.md](SPECTRUM_2_REVIEW_PLAN.md) before continuing. Nothing has been pushed, tagged or released; `main` is still 1.10.4 plus the README credit to Oleafly and CircuiTikZ-Designer, which is also in `feat/2.0`.
 
 ### Status by phase
 
@@ -16,14 +16,14 @@ Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.
 | 2 | Agent workspace, personas, skills, MCP tools, to-dos for agents | Built, three review rounds (the last found nothing serious), merged |
 | 3 | TexLab, combined Review, Research sidebar, history menu | Built, two review rounds (the second found nothing serious), merged |
 | 4 | Zotero, GitHub sync and the settings repository, cloud sync removed with its migration | Built and merged as `bab0316`. Reviewed once: 47 confirmed findings (8 high), fixed and merged as `efc81b2` (see Phase 4 review fixes). **The second round has not been run** (review 1 of the review plan) |
-| 5 | Built-in Tectonic, Typst and Markdown engines; the composer's Typst mode | Not started. Planned step by step in [PHASE5_PLAN.md](PHASE5_PLAN.md) for another agent to build on `build/p5` |
+| 5 | Built-in Tectonic, Typst and Markdown engines; the composer's Typst mode | Built on `build/p5` as planned in [PHASE5_PLAN.md](PHASE5_PLAN.md), checked with the plan's commands and a browser pass. **Not merged and not reviewed.** See Phase 5 below |
 | Test DMG | `Spectrum_2.0.0_universal.dmg` in `OpenPrism/builds` with phases 1 to 4, for the user to install and try | See "The 2.0 test DMG" below |
 
 ### Next steps, in order
 
 1. **The user tries the test DMG** (phases 1 to 4; no Typst or Markdown yet).
-2. **Phase 5** is built by another agent following [PHASE5_PLAN.md](PHASE5_PLAN.md) on a branch `build/p5` from `feat/2.0`, in the main checkout. It does not merge. Afterwards Claude tests `build/p5` (the plan's checks, then a live pass in the browser pane) and merges it into `feat/2.0`.
-3. **Reviews**, the week of 1 November, with ultracode, as set out in [SPECTRUM_2_REVIEW_PLAN.md](SPECTRUM_2_REVIEW_PLAN.md): phase 4's second round, phase 5, the whole of 2.0, then the next test DMG. Give phase 4's second round the first round's findings (Phase 4 review fixes below) and the fixer's diff (`git diff dde8ef5 c070493`).
+2. **Phase 5 is built** on `build/p5` from `feat/2.0` as [PHASE5_PLAN.md](PHASE5_PLAN.md) sets out. It is not merged. Read "Phase 5" below for the differences from the plan and the limits, then test `build/p5` again and merge it into `feat/2.0` when it is ready.
+3. **Reviews**, the week of 1 November, with ultracode, as set out in [SPECTRUM_2_REVIEW_PLAN.md](SPECTRUM_2_REVIEW_PLAN.md): phase 4's second round, phase 5, the whole of 2.0, then the next test DMG. Give phase 4's second round the first round's findings (Phase 4 review fixes below) and the fixer's diff (`git diff dde8ef5 c070493`). Give phase 5 the differences and limits under Phase 5 below.
 4. **Final verification and the release DMG** after the reviews. Do not push, tag or release; the user tests the DMG first (and the Windows build only happens on GitHub Actions after the user approves a push).
 5. **Things only the user can do** (also listed under each phase):
    - Register the Spectrum OAuth app on GitHub (steps under Phase 4 below) so one-click sign-in can be switched on; until then Settings › GitHub uses a pasted token.
@@ -52,6 +52,58 @@ Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.
 
 - Every builder, fixer and Codex branch and worktree has been merged and removed (`fix/p4-review`, `fix/p4-texlab-flake` and `fix/p4-zotero-review` included; what was kept of the last one is in `fix/p4-review`'s commits).
 - Do not cherry-pick old branches. Branch new work from the newest `feat/2.0`.
+
+## Phase 5
+
+### What was built
+
+- **Engines.** `apps/backend/src/data/engines.json` is one list of Typst 0.15.1, Tectonic 0.17.0, the Typst versions that can be installed and pandoc 3.12.1, with each download's address, size and SHA-256. `scripts/desktop.mjs` fetches Typst and Tectonic for both Mac architectures, checks them and joins each pair into one universal sidecar; `src-tauri/tauri.conf.json` and `src-tauri/src/main.rs` put them beside the app and pass `SPECTRUM_TYPST` and `SPECTRUM_TECTONIC`. On Windows the Visual C++ runtime is copied beside `typst.exe`. `services/engineService.js` and `routes/engines.js` list the engines and install or remove Typst 0.14.2, 0.13.1 and 0.12.0 and pandoc 3.12.1, refusing a download whose digest differs.
+- **Typst projects.** A `.typ` file is a document in the file tree and can be the main file; `main.typ` is found before `main.md`. The built-in Typst or the project's pinned version compiles it, with the project's `fonts` folder, a package cache in the app's data folder and `--input` values for the composer. Diagnostics come from `--diagnostic-format short` and open as cards in Logs, with Download and Use the default when a pinned version is missing. The editor loads `typst_lezer` on first use, follows `#include` one level in the outline, completes `@keys` and labels, masks `//` and block comments, raw text, maths and calls for spelling and grammar, reads `// TODO` and jumps from a PDF line to its words.
+- **Markdown projects.** A `.md` main file compiles through pandoc into LaTeX or Typst. YAML front matter supplies the title, authors, keywords, date, abstract, bibliography and CSL file; without one, every `.bib` in the project is passed. Errors in the generated LaTeX or Typst are traced to the `.md` line by word runs. Word export and Convert to LaTeX project are in the project menu. The editor has Markdown highlighting, headings in the outline, `[@key]` completion, Markdown figures and pipe tables, and a mask for the checkers.
+- **Tectonic.** Auto uses the built-in Tectonic when no TeX is installed and still prefers an installed TeX. A biblatex document with Biber drops Tectonic when another engine is installed and otherwise compiles with a note. A bundle download that fails says which server to reach. The Windows workflow no longer downloads Tectonic.
+- **Insights and Review.** Typst headings and labels get their number and page from `typst eval`; Markdown has headings and source items but no numbers, pages or word counts. Review runs only Compile and layout, References and assets, and Privacy and blind review for a Typst or Markdown main file, with a note that the source checks read LaTeX. Word counts stay LaTeX only, since `texcount` reads LaTeX.
+- **The composer's Typst mode.** `diagram/modes/fletcher` puts fletcher flowcharts and block diagrams on the TikZ canvas. Its code follows the project's Typst version (fletcher 0.5.8 for Typst 0.13 and later, 0.5.5 for 0.12), is saved as `figures/<name>.typ` with a `//` marker, compiles in the preview with `spectrum-diagram=standalone` and inserts as `#figure(include "figures/<name>.typ")`. TikZ and Mermaid diagrams insert as images into Typst and Markdown, and PDF images are refused below Typst 0.14.
+- **Templates and docs.** Four Typst starters (document, report, letter and CV) and a Markdown article join the gallery. README, CHANGELOG and THIRD_PARTY_NOTICES cover the engines, the licences and the limits.
+
+### Phase 5 notes
+
+- The plan names `scripts/build-windows.mjs`; that file does not exist. The build helper is `scripts/desktop.mjs` and the engines were added there.
+- `engines.json` sits in `apps/backend/src/data`, where the repository's `data/` ignore rule hid it. `.gitignore` now unignores that folder.
+- Fetching the sidecars during development first ran with a temporary `HOME` because the build sandbox cannot write `~/Library/Caches/spectrum-build`. A normal build uses the real cache. The workflow's downloads were not run here.
+- Pandoc writes the generated file with `-o` rather than to standard output: `runSpawn` merges standard output and standard error, and pandoc warnings would join the document. A Markdown document's generated text is saved under the app's `cache/<project>/generated` folder and Typst compiles it from standard input, so this works with Typst 0.12 too.
+- fletcher exports its shapes as `fletcher.shapes.rect` and so on; `shape: rect` is Typst's own drawing function and fails. Nodes therefore use `fletcher.shapes.*`, `node-stroke: 0.4pt` and positions in centimetres rather than `cell-size` and grid cells, so the picture matches the canvas. `[` is escaped as well as `]`, since an unescaped opening bracket starts another content block.
+- `typst eval` exists only in Typst 0.15. Typst 0.14.2, 0.13.1 and 0.12.0 return "unrecognized subcommand 'eval'", so a project pinned to any of them has no insight numbers or pages. The built-in 0.15.1 does.
+- A lone label in `typst eval` was passed as `("name")`, a grouping rather than an array, so a document with exactly one label returned nothing. The call now adds the trailing comma that keeps it an array, and a test covers one label.
+- The `/stats` route originally returned Typst data without `ok`, which the Insights panel read as a failed word count. It now returns `ok: true`, and the panel shows the numbers and pages.
+- The `/generated` route preferred `.tex` over `.typ` even when the last compile was Typst. It now returns the file written most recently, so Show generated Typst follows the last compile.
+- Typst calls can be chained, as in `#datetime.today().display(...)`. `maskTypst` blanked only the first call; it now blanks the chained fields and methods too.
+- Word export never overwrites an existing file, even one Spectrum made earlier: it uses a numbered name whenever the plain name is taken. The plan allowed overwriting a previous export; the safer rule is followed.
+- The composer's fletcher version table was checked by compiling the same diagram with Typst 0.15.1, 0.14.2 and 0.13.1 through fletcher 0.5.8 and with Typst 0.12.0 through fletcher 0.5.5. Every pair compiled.
+- The Windows changes were not built or run on Windows. The workflow copies `typst.exe` beside the runtime and runs `typst --version`, but the installed app and the vcruntime copy inside a release remain unverified. The engine install test for a Windows `typst.exe` beside its runtime was not added, because this environment is macOS.
+- The local agent sandbox tests could not run here because `sandbox-exec` is unavailable; the code that adds the engines to the tools server and its environment was read through instead.
+- Typst, Tectonic, fletcher and pandoc downloads need the internet. fletcher is fetched from Typst Universe the first time a Typst diagram compiles, so a copy of `figures/<name>.typ` is not self-contained until that cache exists.
+
+### Phase 5 verification
+
+- `cd apps/backend && node --test "test/*.test.js"`: 485 tests, 447 passed, 5 failed, 33 skipped in about 3 minutes. The five failures are the baseline environment failures: three tests whose temporary workspace or snapshot needs `sandbox-exec`, which this machine does not allow, and two `lualatex` SyncTeX tests. No Typst or Markdown test failed.
+- `npm run typecheck` and `npm run build` passed.
+- `cd src-tauri && cargo test`: 7 passed. The checkout has no `src-tauri/resources/engines` until a build makes it, so `mkdir -p src-tauri/resources/engines` came first.
+- Every frontend check passed: `appearance.check`, `desktop.check`, `folders.check`, `parsers.check`, `settings.check`, `shortcuts.check`, `skills.check`, `diagram/fileFormat.check`, `diagram/modes/check`, `diagram/modes/fletcher/fletcher.check`, `editor/floats.check`, `editor/insights.check`, `editor/outlines.check`, `editor/preflight.check` and the other `*.check.ts` files.
+- Engine pairs: fletcher 0.5.8 compiled with Typst 0.15.1, 0.14.2 and 0.13.1; fletcher 0.5.5 compiled with Typst 0.12.0.
+- Live browser pass on `http://127.0.0.1:5173` with a temporary backend on 8787, the built-in Typst, pandoc 3.12.1 and Typst 0.14.2 and 0.13.1 installed: a Typst document opened with highlighting, outline and PDF, compiled, showed a failed compile's error in Logs as `main.typ:32`, compiled with the pinned 0.14.2 and then the built-in version, and showed its headings, labels, pages and metadata in Document insights. Word export, Convert to LaTeX, `/generated` and compiling the new LaTeX project all worked. A Markdown article compiled to LaTeX and to Typst, its compile menu offered both PDF engines, and its Logs offered Show generated Typst. Settings › Engines installed Typst 0.13.1 from GitHub, and the Typst tab listed the built-in, installed and available versions. The composer's Typst mode created `figures/flow-1.typ`, drew a box, showed fletcher code and a PDF preview with the box, and inserted `#figure(include "figures/flow-1.typ")` into the Typst document through the Floats panel.
+- The browser pass did not drag an arrow between two boxes; the fletcher edge code and its compilation were checked with the code generator and a standalone compile instead.
+- The test DMG remains the phase 1 to 4 build. Phase 5 has no DMG.
+
+### Phase 5 limits
+
+- Typst insight numbers and pages need Typst 0.15. A project pinned to 0.14.2 or earlier shows the headings and labels from the source but no numbers or pages.
+- Markdown has no numbers, pages or word counts, and its Review groups stop at Compile and layout, References and assets and Privacy and blind review. The generated LaTeX or Typst is not the document.
+- Typst word counts are not calculated; the panel says that word counts are for LaTeX. Adding `texcount`'s equivalent for Typst is future work.
+- The fletcher import needs Typst Universe once per version and machine; without the internet the first compile of a Typst diagram fails with Typst's package error.
+- PDF images require Typst 0.14 or later. A TikZ diagram into an older pinned Typst is refused with the compile menu's version instruction.
+- The Windows build, the vcruntime copy and the installed app are unverified in this environment.
+- The composer's canvas does not yet let a mode hide the TikZ style menu; the Typst mode has no StyleMenu, so nothing is shown. The fletcher mode shares the TikZ model and inspector, and it receives positions, sizes, fills and strokes.
+- The fletcher escape set is the plan's (`]`, `#`, `\\` and `$`) plus `[`. Other Typst markup in a label, such as `@`, `_` and `*`, is left as typed.
 
 ## Phase 4
 
