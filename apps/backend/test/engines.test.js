@@ -64,7 +64,8 @@ test('listEngines reports the built-in Typst, the one on the PATH and pandoc', a
   assert.ok(engines.typst.builtIn === null || engines.typst.builtIn === '0.15.1');
   assert.equal(engines.typst.system.version, '0.13.1');
   assert.equal(engines.typst.system.path, path.join(fakeBin, 'typst'));
-  assert.deepEqual(engines.typst.available.map((v) => v.version), engines.typst.builtIn ? versions.slice(1) : versions);
+  // the built-in version is never offered, even in a checkout without its binary: typstFor runs only the built-in copy
+  assert.deepEqual(engines.typst.available.map((v) => v.version), versions.slice(1));
   assert.equal(engines.pandoc.found.version, '3.1.2');
   assert.equal(engines.pandoc.found.fromDownload, false);
   assert.equal(engines.pandoc.downloadable, '3.12.1');
