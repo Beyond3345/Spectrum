@@ -19,7 +19,7 @@ Object.assign(process.env, {
 const { createProject, getProjectRoot } = await import('../src/services/projectService.js');
 const { runCompile, findExecutable } = await import('../src/services/compileService.js');
 const { pandocPath, versionOf } = await import('../src/services/engineService.js');
-const { parseFrontMatter, traceToMarkdown } = await import('../src/services/markdownService.js');
+const { markdownToLatex, parseFrontMatter, traceToMarkdown } = await import('../src/services/markdownService.js');
 
 after(() => {
   process.env.PATH = realPath;
@@ -169,6 +169,21 @@ test('real pandoc and real TeX compile an article with a citation', { skip: WIND
   assert.equal(result.generated, 'latex');
   const dir = await getProjectRoot(p.id);
   assert.ok(existsSync(path.join(dir, 'main.pdf')));
+});
+
+test('a bibliography the front matter names with a YAML comment still resolves', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
+  process.env.PATH = realPath;
+  if (!(await pandocPath())) return t.skip('needs pandoc');
+  const dir = path.join(tmp, 'yaml-comment');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, 'refs.bib'), '@book{one, title = {The One Book}, author = {Writer, A.}, year = {2026}}\n');
+  await fs.writeFile(path.join(dir, 'other.bib'), '@book{two, title = {Not Named}, author = {Else, B.}, year = {2026}}\n');
+  const absMain = path.join(dir, 'main.md');
+  await fs.writeFile(absMain, '---\ntitle: Test\nbibliography: refs.bib # Sources\n---\n\nCite [@one].\n');
+  const made = await markdownToLatex({ projectRoot: dir, absMain, mainFile: 'main.md', generatedDir: path.join(dir, 'generated') });
+  assert.equal(made.ok, true, made.error || made.log);
+  assert.match(made.text, /The One Book/);
+  assert.deepEqual(parseFrontMatter('---\nbibliography: # none yet\n---\n').meta.bibliography, []);
 });
 
 test('a LaTeX project made from the .md finds the images pandoc extracted', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
