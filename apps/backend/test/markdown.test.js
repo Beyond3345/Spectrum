@@ -170,3 +170,22 @@ test('real pandoc and real TeX compile an article with a citation', { skip: WIND
   const dir = await getProjectRoot(p.id);
   assert.ok(existsSync(path.join(dir, 'main.pdf')));
 });
+
+test('a LaTeX project made from the .md finds the images pandoc extracted', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
+  process.env.PATH = realPath;
+  if (!(await pandocPath())) return t.skip('needs pandoc');
+  const { default: Fastify } = await import('fastify');
+  const { registerProjectRoutes } = await import('../src/routes/projects.js');
+  const app = Fastify();
+  registerProjectRoutes(app);
+  const p = await projectWith('# Images\n\n![A dot](images/dot.png)\n', { 'images/dot.png': 'not really a PNG' });
+  const res = await app.inject({ method: 'POST', url: `/api/projects/${p.id}/export/latex`, payload: { doc: 'main.md' } });
+  await app.close();
+  const made = JSON.parse(res.payload);
+  assert.equal(made.ok, true, res.payload);
+  const dir = await getProjectRoot(made.project.id);
+  const tex = await fs.readFile(path.join(dir, 'main.tex'), 'utf8');
+  const image = tex.match(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/)?.[1];
+  assert.equal(image, 'media/images/dot.png');
+  assert.ok(existsSync(path.join(dir, image)));
+});
