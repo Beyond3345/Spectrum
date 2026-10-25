@@ -284,7 +284,7 @@ export function ZoteroSettings({ projectId }: { projectId?: string }) {
       {status?.message && <div className={`field-hint ${status.running ? 'error' : ''}`}>{status.message}</div>}
       <div className="field-hint">
         Cite from Zotero, in the editor’s right-click menu and the References card, opens Zotero’s own citation picker when Better BibTeX is installed, and
-        otherwise searches your library here. Each entry goes into the .bib under its Zotero citation key.
+        otherwise searches your library here. Each entry goes into the .bib under its Zotero citation key, or an author and year key when it has none.
       </div>
       <div className="row">
         <button className="btn small" onClick={check}>
