@@ -1,12 +1,12 @@
 # Spectrum 2.0 continuation handoff
 
-Updated 25 October 2026 (paused after the phase 4 build). Development work only: no installer, tag, push or release was made.
+Updated 25 October 2026 (after phase 4's first review round). Development work only: no installer, tag, push or release was made.
 
 ## Where to resume
 
 Paused by the user on 25 October 2026 after the phase 4 build, to be continued later. Nothing is running: no builder, reviewer or scheduled check-in is active, and the hourly check-in job was cancelled.
 
-Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.0`** (`bab0316` or later; check `git log`). Read [SPECTRUM_2_PLAN.md](SPECTRUM_2_PLAN.md), especially its ground rules and Delivery section, before continuing. Nothing has been pushed, tagged or released; `main` is still 1.10.4 plus the README credit to Oleafly and CircuiTikZ-Designer, which is also in `feat/2.0`.
+Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.0`** (`bab0316` or later; check `git log`). Phase 4's first review round is fixed on **`fix/p4-review`**, branched from `feat/2.0` at `dde8ef5` and not merged yet (see Phase 4 review fixes). Read [SPECTRUM_2_PLAN.md](SPECTRUM_2_PLAN.md), especially its ground rules and Delivery section, and [SPECTRUM_2_REVIEW_PLAN.md](SPECTRUM_2_REVIEW_PLAN.md) before continuing. Nothing has been pushed, tagged or released; `main` is still 1.10.4 plus the README credit to Oleafly and CircuiTikZ-Designer, which is also in `feat/2.0`.
 
 ### Status by phase
 
@@ -15,24 +15,27 @@ Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.
 | 1 and 1b | Panels, floats, Document insights, to-dos, compile options and defaults, PDF sidebar and follow-the-file, Checkpoints; diagram composer (circuitikz, pgfplots, TikZ, tikz-cd, Mermaid) | Built, two review rounds, merged |
 | 2 | Agent workspace, personas, skills, MCP tools, to-dos for agents | Built, three review rounds (the last found nothing serious), merged |
 | 3 | TexLab, combined Review, Research sidebar, history menu | Built, two review rounds (the second found nothing serious), merged |
-| 4 | Zotero, GitHub sync and the settings repository, cloud sync removed with its migration | **Built and integrated, merged into `feat/2.0` as `bab0316`. Not reviewed yet** |
+| 4 | Zotero, GitHub sync and the settings repository, cloud sync removed with its migration | Built and merged as `bab0316`. **Reviewed once: 47 findings, fixed on `fix/p4-review`, which waits to be merged.** The second round is review 1 of the review plan |
 | 5 | Built-in Tectonic, Typst and Markdown engines; the composer's Typst mode | Not started |
 | Final | Whole-app verification and a local test DMG in `OpenPrism/builds` | Not started |
 
 ### Next steps, in order
 
-1. **Review phase 4** with adversarial review rounds until a round finds nothing serious, as for the earlier phases (lenses used so far: correctness of each part, data safety and rollback to 1.10.4, a live check in the browser pane, Windows). Phase 4's own open items are listed under Phase 4 limits and open items below.
-2. **Fix the intermittent TexLab test** `test/texlab.test.js` "the real TexLab takes code in Verbatim and the like as code, and a file’s marks come under its own name" (added in phase 3's second review). On the merged branch it failed 2 of 3 runs on its own ("never the brace left open in chapters/intro.tex") and passed the third; phase 4 changed only a comment in texlabService.js, so it is a timing problem in the test or the bridge, not a phase 4 regression. The rest of the backend suite passed on the merged branch: 392 passed, 1 failed (this test), 31 skipped of 424. Typecheck and the frontend build passed.
+1. **Merge `fix/p4-review` into `feat/2.0`** (`git merge --no-ff fix/p4-review`), then run phase 4's second review round (review 1 in [SPECTRUM_2_REVIEW_PLAN.md](SPECTRUM_2_REVIEW_PLAN.md)), giving the reviewers this round's findings and the fixer's diff. Its lenses were GitHub, Zotero, going back to 1.10.4, the checkers with the TexLab test, a live check with two computers and Windows. Phase 4's own open items are under Phase 4 limits and open items below.
+2. **The intermittent TexLab test is fixed** by Codex's `fix/p4-texlab-flake`, merged into `fix/p4-review` with one correction: `test/texlab.test.js` passed 10 of 10 runs with the real TexLab 5.26.0.
 3. **Phase 5** (plan section 10b and the composer's Typst mode in 10c) on branches from the newest `feat/2.0`: write a contract like the earlier phases' (the research is in the plan and its notes), build, integrate, review.
 4. **Final verification and a test DMG**: the whole backend and frontend suites, the native tests, a live pass through every feature, then `npm run desktop:build` and copy the DMG into `OpenPrism/builds` beside the 1.10.4 one. Do not push, tag or release; the user tests the DMG first (and the Windows build only happens on GitHub Actions after the user approves a push).
 5. **Things only the user can do** (also listed under each phase):
    - Register the Spectrum OAuth app on GitHub (steps under Phase 4 below) so one-click sign-in can be switched on; until then Settings › GitHub uses a pasted token.
    - Try Zotero 10 with Better BibTeX and a real GitHub test repository once, since both were only tested against stand-ins.
    - Run the Windows checks listed under each phase on the Windows computer.
+   - Delete the four untracked files a Harper build left in the main checkout's `native/harper` (`.gitignore`, `README.md`, `harper_wasm.d.ts` and `harper_wasm_bg.wasm.d.ts`); the `.gitignore` there hides any new file in that folder from git.
+   - Empty one scratch file from the macOS Bin if you like: `main (GitHub’s conflicted copy 2026-10-25 155756).tex`, about 400 bytes of test LaTeX that a reviewer's live check put there.
+   - Decide whether Locate… and Get from GitHub may write the one thing 2.0 never writes, moving a 1.10 mirror record aside (see Phase 4 limits).
 
 ### Housekeeping
 
-- Old builder and fixer branches and worktrees have been removed; their work is in `feat/2.0`. No scratch worktrees remain.
+- Old builder and fixer branches and worktrees have been removed; their work is in `feat/2.0`. `fix/p4-review` holds phase 4's first review fixes. Codex's `fix/p4-texlab-flake` is merged into it, and its `fix/p4-zotero-review` was not merged (what was kept of it is in `fix/p4-review`), so both can be deleted once `fix/p4-review` is merged.
 - Do not cherry-pick old branches. Branch new work from the newest `feat/2.0`.
 
 ## Phase 4
@@ -100,16 +103,95 @@ The live check ran the integrated backend twice, as two computers on 127.0.0.1, 
 - **Zotero:** Settings › Zotero showed Zotero 10.0.6, the local API and Better BibTeX 7.0.30. Allow Spectrum in Zotero… showed Answer in Zotero with Cancel, and Zotero's answer made the collection Spectrum › Paper with the `.bib`'s one entry found by its DOI, its binding in `settings.json` beside the GitHub link. Cite from Zotero put the picker's `\parencite[p.~4]{…}` at the cursor, added both entries to the `.bib` without their `file` field and added both items to the collection. A `.bib` saved with two hand-typed entries added the library's item found by title and year and created the one Zotero lacked, and saving it without that entry took the item out of the collection and left it in the library. `\cite{Min` listed it again in completion's Zotero section, and picking it put its entry back and its item in the collection.
 - **Settings:** the settings repository received both computers' settings files and the four starter personas, one file each.
 
+### Phase 4 review fixes
+
+The first review round had six lenses: GitHub, Zotero, going back to 1.10.4 with the move to 2.0, the checkers with the intermittent TexLab test, a live check with two computers and Windows. It confirmed 47 findings (8 high, 15 medium, 24 low), all fixed on `fix/p4-review` with a test for each change in behaviour, except as noted at the end.
+
+**Codex's two branches**
+
+- `fix/p4-texlab-flake` (`b86cc9b`) is merged. It seeds TexLab with the disk's spelling of a file TexLab found under another letter case, which was the flake. One correction: the bridge waits for that file's marks only when the other spelling had marks, as TexLab never publishes a clean file it had not published before, so a clean file made every first request wait 3 seconds.
+- `fix/p4-zotero-review` (`542e6ed`) is not merged: five Zotero tests failed on it, and it changed request shapes nobody has checked on real Zotero. Taken from it by hand: the key file is written at 0600 through a temp file, and a refused write drops the key only while it is still the one refused. The key is kept with the `Zotero-Server-ID` it was given under, but a different id drops nothing until real Zotero shows whether the id names the database or the running process. Both key headers are still sent on writes and none on reads, and the authorise body is still `{ name: 'Spectrum' }`. Its global lock around Move to this computer is replaced by a guard in `getProjectRoot`: while a project is moved, anything asking for its folder gets a 409, and other projects do not wait.
+
+**GitHub**
+
+- A copy of a linked project (in the app, or in Finder with its `.git`) gets a repository of its own instead of pushing into the original's: the app's copy leaves `.git` behind, and Back up keeps an existing origin only when the project has no link.
+- A pull writes every file the merged commit has, including those a shared repository holds back from GitHub, so the next backup no longer deletes the other computer's chats and to-dos (`mergeOrigin`'s `keep` option is gone).
+- Link's preview, a Link that waits for the yes to its deletions and a failed Link leave the project unlinked with its origin as it was. The link is written once the merge has gone through, without its `here`.
+- Back up on the other computer's copy of a project GitHub already has (1.10.4's, with no link) answers `GITHUB_LINK_FIRST` with the repository, and Tools › GitHub and Sync with GitHub link to it, after the preview, instead of making a second repository.
+- A repository renamed on GitHub is linked under its new name from either name (both names answer with one repository id).
+- A backup that GitHub's changes would make delete many files stops with `GITHUB_CONFIRM`, which shows on the card and in the tab, and opening the project asks the deletion question.
+- A labelled backup is a commit of its own even with nothing new. What a backup leaves out (key-like files, files over 100 MB) is shown in the tab ("Not on GitHub: …") and on the card ("Files left out"). A Keynote `.key` deck goes up, and only a `.key` holding a PEM key stays out.
+- The tab's status fetches before it counts commits to pull, and says Last change on GitHub; the GitHub view's rows say Up to date when last checked. A 5xx from GitHub's Git side or a timed-out request now waits for the connection and is retried.
+- Link from a 1.10.4 mirror record merges against the record only where GitHub's copy still has what the record agreed on. GitHub's copy may come from a computer whose last sync was older, and against this computer's record its older files read as edits made there, which reverted and deleted this computer's newer work. The cost: an edit made only on GitHub since the mirror's last sync comes as a conflicted copy instead of being taken. `readMirrorBase` went with it.
+- Entries both computers add to the end of a `.bib` are both kept (`mergeBibFiles` in `mergeRules.js`); one entry changed on both sides still gets its conflicted copy.
+
+**Windows and macOS disks**
+
+- A file with CRLF line ends from a Git for Windows checkout counts as unchanged when a pull writes over it, and on Windows a repository whose own config has no `core.autocrlf` gets `true`, as Git for Windows' system config (which isomorphic-git never reads) has it.
+- Two committed names for one file (`Plot.pdf` and `plot.pdf`), and on Windows a name Windows cannot have (`Why?.tex`), are kept in the commit only: never written to the disk, never deleted from GitHub by the pull or the backups after it, and named as problems for a rename.
+- A link comes through a pull as a link (its target in a plain file where Windows cannot make one), and a clone on Windows without Developer Mode no longer fails on one.
+- A Mac's decomposed (NFD) file names are committed composed (NFC), as git's `core.precomposeunicode` does, and a pull renames an old decomposed name.
+- A script committed as executable stays so when Windows commits it, and a clone's executables get 0755 instead of 0777.
+- The default projects folder moves to the home folder's `Spectrum` at start-up when Documents is in OneDrive or iCloud Drive, where GitHub refuses projects.
+- Get from GitHub names a file this computer could not write.
+
+**Zotero**
+
+- An entry Zotero lacks becomes an item only when every `.bib` reads whole, the entry has a title and it reads the same at two syncs in a row (a sync a minute later looks again). Autosave's half-typed entries used to stay in the library for good. Entries Spectrum itself adds (a DOI, Research or Cite from Zotero) are made at once.
+- The bundled templates' sample references, and a template's working copy, never become items.
+- A shared citation key counts only where DOIs and arXiv ids agree, and entries are matched to items by DOI, arXiv id and title and year before key, so an entry Spectrum renamed `taken2020a` is the library's `taken2020` and the entry still under that key gets its own item.
+- `settings.json` is read strictly, so one that cannot be read stops the sync with an error instead of making a collection each time.
+- No collection is made while a GitHub pull, Sync or Link of the project is under way, and the editor's syncs on focus start only after the pull on opening.
+- What Spectrum makes is kept by citation key in the binding (`created`), so the other computer waits for Zotero's sync to bring those items instead of making them again.
+
+**Going back to 1.10.4 and the move to 2.0**
+
+- A cloud copy is claimed by its 1.10 record only while its project is listed with a folder of its own elsewhere, as 1.10.4 forgets such records, so after Remove, the Bin or a lost folder the copy opens again, and a project can be pointed at its own cloud copy. The notice leaves out projects no longer listed.
+- Opening a file in a cloud copy opens the project's file only when the two hold the same bytes; otherwise it says 2.0 no longer keeps the copies in step and to copy the file over.
+- Get from GitHub refuses a project 1.10 mirrored on this computer, since 1.10.4 would mirror the clone against the old record and take its missing checkpoints and PDFs for deletions in the cloud copy.
+- The notice names a project used in place in a NAS share after the share, and Move to this computer takes such a project.
+- A cloud copy that was missing or could not be looked through at the first start is looked at again at each start until a look succeeds or the notice is dismissed, each copy with its own time limit.
+- Move to Bin warns again that a project in a sync app's folder goes from the other computers too.
+
+**Settings and the checkers**
+
+- Signing in, the device sign-in finishing, switching the settings repository on and Sync settings now share this computer's settings and personas at once (`followSettingsNow`), so a second computer signing in first no longer wins over them. Sync settings now pulls whatever the time since the last, and says Up to date only once this computer's settings are in the repository.
+- The settings repository keeps a template's PDF beside its `.tex` (`commitAll`'s `compiled: false`), and a skill goes across without its key-like files.
+- `npm run checkers:verify` holds the process open until both engines answer, so it prints their status and fails on a file that differs; it used to exit 0 having checked nothing.
+- A `.gitattributes` keeps `native/`, `dictionaries/` and `templates/` out of `core.autocrlf`, so a Git for Windows checkout builds nodehun and its manifests match.
+- Settings › Language no longer starts Harper to show its version (about 220 MB for the rest of the session); it says Starts with the first check. The binding's and dictionaries' versions show only when their files match, and the supplement's version is its checksum's first 12 characters.
+- The Harper build leaves wasm-pack's extras out of `native/harper`, the README describes the lock file and how to move to a newer Harper or Hunspell, and the build's checksum errors print the value they found.
+
+**Not changed in code, and not tested**
+
+- The reviewer's live check put one scratch file in the real macOS Bin (listed under Things only the user can do), because one backend was started without `SPECTRUM_TEST_BIN_DIR`. Every live check must set it for every backend.
+- The four untracked files in the main checkout's `native/harper` are outside the fixer's worktree, so they are left for the user.
+- Optional parts not built: refusing in `mergeOrigin` a `project.json` whose id differs from this computer's (the copy fixes make it unneeded), refusing the Bin while 1.10.4 on another computer has the project open and running `checkers:verify` in `windows.yml`.
+- Without a test: the Move to Bin warning (a dialog's text), each cloud copy's own time limit, the Settings › Language wording and Get from GitHub naming a file Windows could not write (a clone cannot fail that way on a Mac). The Windows-only paths were tested on the Mac with `process.platform` set to `win32` around the call.
+
+| Check | Result |
+| --- | --- |
+| Full backend suite, `node --test "test/*.test.js"`, with TexLab 5.26.0 on the `PATH` | 423 passed, 31 skipped, 0 failed (454). An earlier run cancelled the Tectonic SyncTeX test at its 180 s limit while Tectonic downloaded its bundle into the scratch home; with the bundle there it passed |
+| `test/texlab.test.js` run 10 times | 10 of 10 passed (8 tests each, none skipped) |
+| Frontend `npm run typecheck` and `npm run build` | Passed |
+| Every `apps/frontend/src/**/*.check.ts`, bundled with esbuild and run separately | 33 passed |
+| Native Rust unit tests (`cargo test` with `TAURI_CONFIG='{"bundle":{"externalBin":[],"resources":null}}'`) | 7 passed |
+| `npm run checkers:verify` | Hunspell 1.3.3 and Harper 2.12.0, every file verified, exit 0 |
+| The 1.10.4 round trips, `rollback.test.js` and `github-rollback.test.js` | Passed |
+
+The tests ran in the fixer's worktree with a scratch home, data, projects, template and temp folder, the stand-in GitHub and the mock Zotero. No real GitHub, Zotero or user data was touched.
+
 ### Phase 4 limits and open items
 
-- Real Zotero 10 and Better BibTeX were never contacted. Before relying on collections, check against Zotero 10.0.6 on a test library: the key headers (`Zotero-API-Key` and `Authorization: Bearer` are both sent), the authorise request (`{ name: 'Spectrum' }`) and its reply, the PATCH and POST shapes and when `Zotero-Server-ID` comes. Better BibTeX's export was reported broken on 10.0.3, and a failed export falls back to Zotero's own.
+- Real Zotero 10 and Better BibTeX were never contacted. Before relying on collections, check against Zotero 10.0.6 on a test library: the key headers (`Zotero-API-Key` and `Authorization: Bearer` are both sent on writes, none on reads), the authorise request (`{ name: 'Spectrum' }`) and its reply, the PATCH and POST shapes, when `Zotero-Server-ID` comes and whether it changes when Zotero restarts (Codex's branch would drop the key on any change). Better BibTeX's export was reported broken on 10.0.3, and a failed export falls back to Zotero's own.
 - Real GitHub was never contacted either. The device flow waits for the OAuth app above.
 - Windows is untested: bringing Zotero forward with PowerShell's AppActivate, isomorphic-git's paths, the settings repository and Get from GitHub of a 1 GB repository.
-- If the user deletes a project's collection in Zotero, the project waits for it for good. Removing `zotero` from `.spectrum/settings.json` starts a new one, and there is no button for that. A collection made on a computer that could not pull (offline) before Zotero sync ran can still be one of two.
+- If the user deletes a project's collection in Zotero, the project waits for it for good. Removing `zotero` from `.spectrum/settings.json` starts a new one, and there is no button for that. A collection made on a computer that could not pull (offline) before Zotero sync ran can still be one of two. An item Spectrum made whose record (`created`) changed on both computers keeps this computer's list, so one of the other's may be made twice (`ponytail:`), and an item deleted in Zotero that Spectrum recorded is never made again.
 - A collection's first sync runs up to four library searches for each entry it lacks (`ponytail:`). New items come from a small BibTeX field map, and the picker and imports use My Library only.
-- Not built: Link's offer to stop tracking compiled PDFs already in a repository, and SSH remotes (a project whose origin is an SSH address is refused). Ahead and behind come from the last fetch, the GitHub view reads the 100 most recently pushed repositories and a repository whose collaborators cannot be listed counts as shared.
+- Not built: Link's offer to stop tracking compiled PDFs already in a repository, and SSH remotes (a project whose origin is an SSH address is refused). The GitHub view's ahead and behind come from the last fetch (the tab fetches first), it reads the 100 most recently pushed repositories, and a repository whose collaborators cannot be listed counts as shared.
+- A file held back from a shared repository whose copy here differs from the last commit, and which GitHub then changes, stops the pull with "A file changed while it was being pulled" until it is committed: this happens only when a repository becomes shared after its personal files were backed up.
 - A persona or skill changed on both computers goes to whichever synced last. The list and grid switch still shows in the GitHub view, where it does nothing.
-- Locate… on a mirrored project in 2.0 never deletes its mirror record, as nothing may write `DATA_DIR/mirror`, so going back to 1.10.4 after Locate… picked another copy mirrors that copy against the old base, behind 1.10.4's deletion brake (`ponytail:` in the code). The user may decide to allow this one narrow write.
+- Locate… on a mirrored project in 2.0 never deletes its mirror record, as nothing may write `DATA_DIR/mirror`, so going back to 1.10.4 after Locate… picked another copy mirrors that copy against the old base, behind 1.10.4's deletion brake (`ponytail:` in the code). Get from GitHub reaches the same hazard another way, so it refuses a project with a mirror record. The user may decide to allow this one narrow write: moving the record aside when Locate… or Get from GitHub gives the id another folder, as 1.10.4 itself forgets a record when its project leaves the list.
 - The projects page has no per-project Move to this computer. Projects used in place get it from the notice, and Tools › GitHub offers it when Initialise or Link is refused in a sync app's folder.
 - The confirm dialogs fade in, so a screenshot taken straight after opening one can catch it nearly transparent. They worked in the live check.
 - Show in Finder in the notice is desktop only, so the browser check could not use it.
