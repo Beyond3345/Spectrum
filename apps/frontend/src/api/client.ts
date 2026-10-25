@@ -575,6 +575,9 @@ export function compileProject(payload: {
   texFolder?: string;
   checkpoint?: boolean;
   typstInputs?: Record<string, string>;
+  /** the app's defaults, for a project without its own ('' is the built-in Typst) */
+  typstVersion?: string;
+  markdownEngine?: 'latex' | 'typst';
 }) {
   return request<CompileResult>('/api/compile', json('POST', payload));
 }

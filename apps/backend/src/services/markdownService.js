@@ -223,10 +223,10 @@ function rootRelativeImages(text, projectRoot, mdDir) {
   });
 }
 
-/** Compiles a .md main file through pandoc and the project's PDF engine ('latex' or 'typst'). */
+/** Compiles a .md main file through pandoc and the project's PDF engine ('latex' or 'typst'), else options.markdownEngine, the app's. */
 export async function compileMarkdown(projectRoot, absMain, mainFile, engine, options = {}) {
   const settings = await readProjectSettings(projectRoot);
-  const kind = settings.compile?.markdownEngine === 'typst' ? 'typst' : 'latex';
+  const kind = (settings.compile?.markdownEngine || options.markdownEngine) === 'typst' ? 'typst' : 'latex';
   const problem = await pandocProblem(kind);
   if (problem) return { ok: false, ...problem, generated: kind };
   const source = await fs.readFile(absMain, 'utf8').catch(() => null);

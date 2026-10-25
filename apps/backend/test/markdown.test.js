@@ -123,6 +123,23 @@ test('pandoc writes LaTeX, TeX compiles it, and the PDF lands beside the .md', {
   assert.ok(existsSync(generated));
 });
 
+test('the app’s default Markdown PDF engine reaches the compile, after the project’s own', { skip }, async () => {
+  await bin('engine', '3.12.1');
+  const { default: Fastify } = await import('fastify');
+  const { registerCompileRoutes } = await import('../src/routes/compile.js');
+  const { updateProjectSettings } = await import('../src/services/projectSettings.js');
+  const app = Fastify();
+  registerCompileRoutes(app);
+  const compileWith = async (p, markdownEngine) => JSON.parse((await app.inject({ method: 'POST', url: '/api/compile', payload: { projectId: p.id, mainFile: 'main.md', engine: 'auto', markdownEngine } })).payload);
+  const p = await projectWith(MARKDOWN);
+  assert.equal((await compileWith(p, 'typst')).generated, 'typst');
+  assert.equal((await compileWith(p, 'latex')).generated, 'latex');
+  await updateProjectSettings(await getProjectRoot(p.id), (settings) => ({ ...settings, compile: { markdownEngine: 'latex' } }));
+  assert.equal((await compileWith(p, 'typst')).generated, 'latex');
+  assert.equal((await compileWith(p, 'word')).error, 'Invalid markdownEngine.');
+  await app.close();
+});
+
 test('a TeX error names the right line in the .md', { skip }, async () => {
   await bin('error', '3.12.1');
   const p = await projectWith(MARKDOWN);

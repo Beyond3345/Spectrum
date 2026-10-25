@@ -15,7 +15,7 @@ process.env.SPECTRUM_PROJECTS_DIR = path.join(tmp, 'projects');
 process.env.SPECTRUM_TEMPLATE_DIR = path.join(tmp, 'templates');
 delete process.env.SPECTRUM_TYPST;
 
-const { builtInTypst } = await import('../src/services/engineService.js');
+const { BUILT_IN_TYPST_VERSION, builtInTypst } = await import('../src/services/engineService.js');
 const { parseTypstDiagnostics } = await import('../src/services/typstService.js');
 const { compileFolder, runCompile } = await import('../src/services/compileService.js');
 const { createProject, getProjectRoot } = await import('../src/services/projectService.js');
@@ -139,6 +139,23 @@ test('a pinned Typst version that is not installed says so', async (t) => {
   assert.equal(result.code, 'TYPST_VERSION_MISSING');
   assert.equal(result.version, '9.9.9');
   assert.match(result.error, /Typst 9\.9\.9 isn’t installed/);
+});
+
+test('the app’s default Typst version reaches the compile, after the project’s own', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const app = Fastify();
+  registerCompileRoutes(app);
+  const compile = async (projectId, typstVersion) => JSON.parse((await app.inject({ method: 'POST', url: '/api/compile', payload: { projectId, mainFile: 'main.typ', engine: 'auto', typstVersion } })).payload);
+  const unpinned = await projectWith('typst-default', '= Default\n');
+  assert.equal((await compile(unpinned.id, '9.9.9')).code, 'TYPST_VERSION_MISSING');
+  assert.equal((await compile(unpinned.id, '')).ok, true);
+  const pinned = await projectWith('typst-own', '= Own\n');
+  await updateProjectSettings(await getProjectRoot(pinned.id), (settings) => ({ ...settings, compile: { typstVersion: BUILT_IN_TYPST_VERSION } }));
+  const own = await compile(pinned.id, '9.9.9');
+  assert.equal(own.ok, true, own.error);
+  assert.equal(own.typstVersion, BUILT_IN_TYPST_VERSION);
+  assert.equal((await compile(unpinned.id, '../9')).error, 'Invalid typstVersion.');
+  await app.close();
 });
 
 test('typstInputs reach the document and leave it compiling without them', async (t) => {
