@@ -63,6 +63,12 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Research no longer has the arXiv search through an AI model or puts the summaries of web results into a `.tex` file. Abstracts are shown as the sources give them
 - A click with `⌥` held adds a cursor, as in VS Code, as a click with `⌘` held is Go to definition
 
+### Removed
+
+- Cloud sync through Synology Drive, OneDrive, Dropbox and iCloud Drive: cloud locations in Settings, Sync to, Download, Sync now, Stop syncing, the Cloud projects view and the banner saying a project is also open on another computer. Projects and settings go between computers through GitHub instead
+- On its first start, 2.0 stops mirroring. Mirrored projects become ordinary projects on this computer, and their copies in the cloud location are left as they are. A notice on the projects page names them, lists the files a copy has that this computer never received with Show in Finder and offers Move to this computer… for projects used in a sync app's folder, which keep working where they are. Before updating, open 1.10.4 on each computer and wait until it shows Synced
+- This computer's name is now under Your other computers in Settings › Projects
+
 ### Fixed
 
 - Web search and Find citations for selection could add a paper the project already had under a second key, and wrote the whole `.bib` again while a references chat could be adding to it. Every add now goes through the references chat's look-up, which finds a paper already in any `.bib` by its DOI, arXiv ID or title
@@ -87,6 +93,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - 1.10.4 opens every project 2.0.0 has used. The new data is in files 1.10.4 does not read: `.spectrum/settings.json` and the `.spectrum/todos`, `.spectrum/notes` and `.spectrum/research` folders, which it leaves as they are. Checkpoints keep their storage in `.spectrum/history`, so 1.10.4 lists every checkpoint as a version, with the compile checkpoints as manual ones
 - Spectrum agent threads are chats in `.spectrum/chats` with an `agent` mark that 1.10.4 ignores, so 1.10.4 lists them with the other chats. A project's skill choices are kept in `.spectrum/settings.json`
 - 1.10.4 rewrites `project.json` through its own list of keys, so nothing new is kept in it. 2.0.0 keeps the keys in `project.json` it does not know, so a file another version wrote comes through a save here whole
+- 2.0.0 only reads 1.10's mirror records, its `sync.json` and the copies in the cloud locations, and never writes or deletes them, so going back to 1.10.4 resumes mirroring from the last state both copies agreed on. Edits made in 2.0.0 go to the cloud copy, edits from a computer still on 1.10.4 come in after a Before sync checkpoint, and a file changed on both is merged. 2.0.0 keeps this computer's name in its own `computer.json`, so a name changed in 2.0.0 is not carried back
 
 ## 1.10.4 (22 October 2026)
 
