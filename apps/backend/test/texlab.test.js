@@ -234,6 +234,28 @@ test('a moved project gets a TexLab on its new folder, one can be stopped before
   await stopTexlab();
 });
 
+test('a differently cased input seeds the disk’s own spelling before diagnostics are ready', { skip: !WINDOWS && process.platform !== 'darwin' && 'needs a case-insensitive disk' }, async () => {
+  const logFile = path.join(tmp, 'case-alias.log');
+  Object.assign(process.env, { SPECTRUM_TEXLAB: fixture, FAKE_TEXLAB_LOG: logFile, FAKE_TEXLAB_CASE_ALIAS: '1' });
+  const p = await newProject({ 'main.tex': '\\documentclass{article}\n\\input{Chapters/Intro}\n' });
+  await fs.mkdir(path.join(p.path, 'chapters'));
+  const file = path.join(p.path, 'chapters', 'intro.tex');
+  await fs.writeFile(file, 'Text {open\n');
+  try {
+    const first = await diagnostics(p);
+    assert.deepEqual(first.files['chapters/intro.tex']?.map((d) => d.code), ['missing-brace']);
+    assert.ok(!Object.keys(first.files).some((name) => /Chapters|Intro/.test(name)));
+    await writeFileAtomic(file, 'Text {closed}\n');
+    await until(async () => !(await diagnostics(p)).files['chapters/intro.tex'], 'the canonical file fixed', 15_000);
+    const log = readFileSync(logFile, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+    const seeds = log.filter((m) => m.method === 'workspace/didChangeWatchedFiles').flatMap((m) => m.params.changes).filter((change) => change.type === 1 && change.uri.endsWith('/chapters/intro.tex'));
+    assert.equal(seeds.length, 1, 'the stale alias never starts a reseed loop');
+  } finally {
+    await stopTexlab();
+    delete process.env.FAKE_TEXLAB_CASE_ALIAS;
+  }
+});
+
 test('the real TexLab finds a project’s errors, follows the editor, renames across files and reads a compile’s .aux', { skip: !realTexlab && 'needs texlab on the PATH', timeout: 60_000 }, async () => {
   process.env.SPECTRUM_TEXLAB = realTexlab;
   const marker = path.join(tmp, 'latexmkrc-ran');
