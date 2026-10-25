@@ -928,6 +928,15 @@ a.research-title:hover {
   padding: 20px 20px 32px;
 }
 
+/* Floats' cards for one kind, laid out as the page's own */
+.float-group {
+  display: contents;
+}
+
+.float-group[hidden] {
+  display: none;
+}
+
 .tool-page-head {
   display: flex;
   align-items: center;

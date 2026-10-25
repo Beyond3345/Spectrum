@@ -17,15 +17,22 @@ import { addLibraries, addPackages, changeBetween, loadedLibraries, projectPacka
 
 const IMAGE_EXTS = /\.(png|jpe?g|gif|svg|webp)$/i;
 
-export default function FloatsTab() {
+/** The cards for one kind of float; the others stay mounted but hidden, so what was typed in them stays. */
+export default function FloatsTab({ show }: { show: 'figure' | 'table' | 'diagram' }) {
   return (
     <div className="tool-page">
-      <InsertFigure />
-      <InsertDiagram />
-      <InsertTable />
-      <ProjectFigures />
-      <TableToChart />
-      <ImageToLatex />
+      <div className="float-group" hidden={show !== 'figure'}>
+        <InsertFigure />
+        <ProjectFigures />
+        <ImageToLatex />
+      </div>
+      <div className="float-group" hidden={show !== 'diagram'}>
+        <InsertDiagram />
+      </div>
+      <div className="float-group" hidden={show !== 'table'}>
+        <InsertTable />
+        <TableToChart />
+      </div>
     </div>
   );
 }
