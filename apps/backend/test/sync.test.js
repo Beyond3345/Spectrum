@@ -24,7 +24,10 @@ mkdirSync(path.dirname(dropboxInfo), { recursive: true });
 writeFileSync(dropboxInfo, JSON.stringify({ personal: { path: dropbox } }));
 // 1.10's settings for this computer, with a cloud location
 const machineId = crypto.randomUUID();
-const legacy = JSON.stringify({ machineId, machineName: 'MacBook', folders: [{ path: drive }], hidden: [] });
+// and a NAS share 1.10 synced through, which no sync app's folder holds
+const nas = path.join(tmp, 'Volumes', 'NAS');
+mkdirSync(nas, { recursive: true });
+const legacy = JSON.stringify({ machineId, machineName: 'MacBook', folders: [{ path: drive }, { path: nas }], hidden: [] });
 mkdirSync(path.join(tmp, 'data'));
 writeFileSync(path.join(tmp, 'data', 'sync.json'), legacy);
 // before the app's modules load
@@ -177,6 +180,18 @@ test('while a project is being moved, its folder isn’t handed to a save, and e
   release();
   await move;
   assert.equal((await api(`/api/projects/${id}/file`, { method: 'PUT', body: { path: 'main.tex', content: 'after' } })).status, 200);
+});
+
+test('a project 1.10 used in place in a NAS share is named for the share, and Move to this computer takes it', async () => {
+  const { migrateToV2 } = await import('../src/services/mirrorService.js');
+  const dir = path.join(nas, 'Lab');
+  const id = project(dir);
+  await openFolder(dir);
+  assert.deepEqual((await migrateToV2()).inPlace.find((p) => p.id === id), { id, name: 'Lab', label: 'NAS', path: dir });
+  const { status, json } = await api(`/api/projects/${id}/move-here`, { method: 'POST', body: {} });
+  assert.equal(status, 200, json.message);
+  assert.equal(json.project.path, path.join(tmp, 'projects', 'Lab'));
+  assert.deepEqual(json.left, { label: 'NAS', path: dir });
 });
 
 test('hides sync apps’ and the NAS’s own files from the file tree', async () => {

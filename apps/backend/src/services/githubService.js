@@ -701,6 +701,9 @@ export async function getFromGitHub({ owner, repo, parentDir }) {
   const meta = JSON.parse((await repoFile(owner, repo, '.spectrum/project.json')) || 'null');
   if (!meta?.id) throw httpError(`${owner}/${repo} isn’t a Spectrum project.`, 400);
   if (await getProjectRoot(meta.id).catch(() => null)) throw httpError(`“${meta.name || repo}” is already on this computer. Link it from its GitHub tab instead.`, 409);
+  // 1.10.4, gone back to, would mirror the clone against that project's last sync and take what the clone lacks
+  // (its checkpoints, its PDFs) for deletions in its cloud copy
+  if (await readMirror(meta.id)) throw httpError(`Spectrum 1.10 kept “${meta.name || repo}” in step with a cloud copy on this computer. Locate its folder in the projects list (or Import › Open existing folder), then Link it from its GitHub tab.`, 409);
   const parent = typeof parentDir === 'string' && path.isAbsolute(parentDir) ? parentDir : PROJECTS_DIR;
   await fs.mkdir(parent, { recursive: true });
   await refuseSyncFolder(parent);

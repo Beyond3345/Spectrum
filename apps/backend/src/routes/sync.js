@@ -4,7 +4,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { PROJECTS_DIR } from '../config/constants.js';
 import { cachePath, getProject, httpError, makeUniqueFolder, moveEntry, sanitiseFolderName, whileMoving } from '../services/projectService.js';
-import { dismissMigrationNotice, migrationNotice } from '../services/mirrorService.js';
+import { dismissMigrationNotice, legacyLocationOf, migrationNotice } from '../services/mirrorService.js';
 import { offlineMessage, placeOf, readSyncConfig, setMachineName } from '../services/syncService.js';
 import { compiling } from '../services/compileService.js';
 import { stopProjectTexlab } from '../services/texlabService.js';
@@ -17,7 +17,8 @@ import { transferring } from './transfer.js';
  */
 async function moveHere(id, root, parentDir) {
   const project = await getProject(id);
-  const place = await placeOf(root);
+  // a sync app's folder, or one 1.10 synced through (a NAS share, say)
+  const place = (await placeOf(root)) || (await legacyLocationOf(root));
   if (!place) throw httpError(`“${project.name}” is already on this computer.`, 400);
   if (compiling(id) || transferring(id)) throw httpError(`“${project.name}” is compiling or being converted. Try again once that’s finished.`, 409);
   const dir = typeof parentDir === 'string' && parentDir.trim() ? parentDir.trim() : PROJECTS_DIR;

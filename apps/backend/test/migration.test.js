@@ -8,7 +8,6 @@ import { promises as fs, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmS
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import zlib from 'node:zlib';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -119,6 +118,15 @@ test('the first start lists what each cloud copy has that this computer never go
   assert.deepEqual(result.inPlace, [{ id: grantId, name: 'Grant', label: 'Synology Drive', path: grant }]);
   assert.deepEqual({ mirror: await snapshot(path.join(data, 'mirror')), sync: readFileSync(path.join(data, 'sync.json'), 'utf8'), loc: await snapshot(loc) }, before);
 
+  // a copy that isn't there now is looked at again at the next start, until a look succeeds or the notice is dismissed
+  const saved = readFileSync(path.join(data, 'v2-migration.json'), 'utf8');
+  write(path.join(gone.cloud, '.spectrum', 'project.json'), JSON.stringify({ id: gone.id, name: 'Gone' }));
+  write(path.join(gone.cloud, 'main.tex'), 'gone, edited there\n');
+  const next = await import(`${pathToFileURL(path.join(here, '..', 'src', 'services', 'mirrorService.js')).href}?recheck`);
+  assert.deepEqual((await next.migrateToV2()).mirrored.find((m) => m.id === gone.id), { id: gone.id, name: 'Gone', label: 'Synology Drive', changed: ['main.tex'], deleted: [] });
+  rmSync(gone.cloud, { recursive: true });
+  writeFileSync(path.join(data, 'v2-migration.json'), saved);
+
   // the projects page lists the projects here, never the ones only in the location
   const listed = await projects.listProjects();
   assert.deepEqual(listed.map((p) => p.name).sort(), ['Gone', 'Grant', 'Paper', 'Thesis']);
@@ -157,7 +165,12 @@ test('a cloud copy 1.10 mirrored is never a project of its own, and its record o
   const folder = await projects.openFolder(thesis.cloud).catch((err) => err);
   assert.equal(folder.statusCode, 409);
   assert.match(folder.message, /^This is the cloud copy of “Thesis” that Spectrum 1\.10 kept in step/);
-  assert.deepEqual(await projects.openFile(path.join(thesis.cloud, 'main.tex')), { projectId: thesis.id, file: 'main.tex' });
+  // a file the same in both opens in the project here; one that differs isn't shown as this computer's
+  assert.deepEqual(await projects.openFile(path.join(paper.cloud, 'main.tex')), { projectId: paper.id, file: 'main.tex' });
+  const differs = await projects.openFile(path.join(thesis.cloud, 'main.tex')).catch((err) => err);
+  assert.equal(differs.statusCode, 409);
+  assert.match(differs.message, /in the copy Spectrum 1\.10 kept in Synology Drive, which 2\.0 no longer keeps in step/);
+  assert.equal((await projects.openFile(path.join(thesis.cloud, 'chapters', 'intro.tex')).catch((err) => err)).statusCode, 409, 'nor one only there');
   assert.equal((await projects.relocateProject(paper.id, thesis.cloud).catch((err) => err)).statusCode, 409);
   assert.equal(JSON.parse(readFileSync(path.join(thesis.cloud, '.spectrum', 'project.json'), 'utf8')).id, thesis.id);
 
@@ -169,12 +182,20 @@ test('a cloud copy 1.10 mirrored is never a project of its own, and its record o
   assert.ok(await mirror.readMirror(gone.id));
 });
 
-test('the base 1.10 kept of a text file is read back for Link, and nothing else is', async () => {
-  const text = Buffer.from('thesis\n');
-  const hash = crypto.createHash('sha256').update(text).digest('hex');
-  write(path.join(data, 'mirror', thesis.id, 'base', `${hash}.gz`), zlib.gzipSync(text));
-  assert.deepEqual(await mirror.readMirrorBase(thesis.id, hash), text);
-  assert.equal(await mirror.readMirrorBase(thesis.id, sha(path.join(thesis.local, 'refs.bib'))), null);
-  assert.equal(await mirror.readMirrorBase('../x', hash), null);
-  assert.equal(await mirror.readMirrorBase(thesis.id, '../../sync'), null);
+test('a cloud copy whose project left the list, lost its folder or moved into it is the user’s again, as 1.10.4 has it', async () => {
+  // Removed (taken out of the list before the first start) opens where it is, and leaves the notice
+  const removedThere = await projects.openFolder(removed.cloud);
+  assert.equal(removedThere.path, removed.cloud);
+  // and the notice leaves out a project taken out of the list since (Gone, above)
+  const entry = (p) => ({ id: p.id, name: p.name, label: 'Synology Drive', changed: [], deleted: [] });
+  writeFileSync(path.join(data, 'v2-migration.json'), JSON.stringify({ ranAt: new Date(Date.now() + 60_000).toISOString(), mirrored: [entry({ ...gone, name: 'Gone' }), entry({ ...thesis, name: 'Thesis' })], inPlace: [] }));
+  const fresh = await import(`${pathToFileURL(path.join(here, '..', 'src', 'services', 'mirrorService.js')).href}?listed`);
+  assert.deepEqual((await fresh.migrationNotice()).mirrored.map((m) => m.name), ['Thesis']);
+  // a project whose folder here is lost can be pointed at its cloud copy, and the copy's files open in it
+  const lost = await both('Lost', { 'main.tex': 'lost\n' });
+  await record(lost);
+  rmSync(lost.local, { recursive: true });
+  assert.equal((await projects.relocateProject(lost.id, lost.cloud)).path, lost.cloud);
+  assert.deepEqual(await projects.openFile(path.join(lost.cloud, 'main.tex')), { projectId: lost.id, file: 'main.tex' });
+  assert.ok(await mirror.readMirror(lost.id), 'the record is left for 1.10.4 to forget');
 });

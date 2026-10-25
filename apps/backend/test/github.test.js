@@ -260,6 +260,19 @@ test('Link from a 1.10.4 mirror record never takes an older copy on GitHub for t
   assert.equal(gh.show('octo', 'Newer-here', 'main.tex'), v2['main.tex']);
 });
 
+test('Get from GitHub leaves alone a project 1.10 mirrored on this computer, whose record would turn the clone into deletions', { skip }, async () => {
+  const mac = computers.Mac;
+  const win = computers.Windows;
+  const project = ok(await mac.api('/api/projects', { method: 'POST', body: { name: 'Once mirrored' } }));
+  ok(await mac.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' }));
+  mkdirSync(path.join(win.data, 'mirror'), { recursive: true });
+  writeFileSync(path.join(win.data, 'mirror', `${project.id}.json`), JSON.stringify({ location: path.join(tmp, 'loc'), rel: 'Once mirrored', files: {} }));
+  const res = await win.api('/api/github/clone', { method: 'POST', body: { owner: 'octo', repo: 'Once-mirrored' } });
+  assert.equal(res.status, 409);
+  assert.match(res.json.error, /Spectrum 1\.10 kept “Once mirrored” in step with a cloud copy/);
+  assert.ok(!existsSync(path.join(win.projects, 'Once mirrored')));
+});
+
 test('a project in a sync app’s folder isn’t made a repository', { skip }, async () => {
   const mac = computers.Mac;
   const synced = path.join(home, 'SynologyDrive');

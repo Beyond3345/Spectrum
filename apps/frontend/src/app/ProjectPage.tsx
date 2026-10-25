@@ -34,6 +34,7 @@ import {
   backUpToGitHub,
   getProjectGitHub,
   gitHubProblems,
+  syncPlace,
   syncWithGitHub
 } from '../api/client';
 import type { GitHubProblem, MigrationNotice, ProjectMeta, TemplateCategory, TemplateMeta } from '../api/client';
@@ -381,9 +382,11 @@ export default function ProjectPage() {
   };
 
   const moveToBin = async (p: ProjectMeta) => {
+    // one in a sync app's folder (as 1.10 used some) goes from the user's other computers too
+    const place = await syncPlace(p.path).then((r) => r.place, () => null);
     const ok = await confirmDialog({
       title: `Move “${p.name}” to the ${BIN}?`,
-      message: `The project folder and everything in it will be moved to the ${BIN}:\n${tildify(p.path)}`,
+      message: `The project folder and everything in it will be moved to the ${BIN}:\n${tildify(p.path)}${place ? `\nIt’s in ${place.label}, so it goes from your other computers too.` : ''}`,
       confirmLabel: `Move to ${BIN}`,
       destructive: true
     });
