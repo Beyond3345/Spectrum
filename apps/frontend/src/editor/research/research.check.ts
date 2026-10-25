@@ -3,7 +3,7 @@
 // npx esbuild apps/frontend/src/editor/research/research.check.ts --bundle --platform=node --log-level=warning | node
 import type { ResearchResult, ResearchRun } from '../../api/client';
 import { citationCommand, parseJsonReply } from '../shared';
-import { badges, counts, filtersLine, keptToAdd, linkOf, metaLine, runLine, shown, yearOf } from './results';
+import { badges, counts, filtersLine, keptToAdd, linkOf, metaLine, runLine, searched, shown, yearOf } from './results';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -64,5 +64,9 @@ eq(linkOf({ arxiv: '1706.03762' }), 'https://arxiv.org/abs/1706.03762', 'or the 
 eq(linkOf({ url: 'file:///etc/passwd' }), '', 'or nothing');
 
 eq([yearOf('2017'), yearOf(' 1999 '), yearOf('17'), yearOf('20177'), yearOf(''), yearOf('0999')], [2017, 1999, undefined, undefined, undefined, undefined], 'whole years only');
+
+// Deep research searches again only for a question the session hasn't searched
+const asked = { question: 'graph networks', runs: [{ at: '', queries: ['graph networks'], perSource: {} }, { at: '', queries: ['message passing'], perSource: {} }] };
+eq([searched(asked, 'graph networks'), searched(asked, 'message passing'), searched(asked, 'transformers')], [true, true, false], 'searched');
 
 console.log('research.check: ok');

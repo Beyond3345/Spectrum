@@ -1,4 +1,4 @@
-import type { ResearchResult, ResearchRun, ResearchSource } from '../../api/client';
+import type { ResearchResult, ResearchRun, ResearchSession, ResearchSource } from '../../api/client';
 
 export const SOURCES: [ResearchSource, string][] = [
   ['openalex', 'OpenAlex'],
@@ -74,6 +74,9 @@ export function shown(results: ResearchResult[], show: Show, search: string) {
 /** Where a result's title links: its page, DOI or arXiv abstract. Sessions come with the project, so only web addresses. */
 export const linkOf = (r: Pick<ResearchResult, 'url' | 'doi' | 'arxiv'>) =>
   [r.url, r.doi && `https://doi.org/${r.doi}`, r.arxiv && `https://arxiv.org/abs/${r.arxiv}`].find((u) => u && /^https?:\/\//i.test(u)) || '';
+
+/** Whether the session has searched q already, as its question or a later search's (Deep research then doesn't again). */
+export const searched = (session: Pick<ResearchSession, 'question' | 'runs'>, q: string) => q === session.question || session.runs.some((r) => r.queries.includes(q));
 
 /** What Add kept to .bib sends: kept, and not in the .bib yet. */
 export const keptToAdd = (results: ResearchResult[]) => results.filter((r) => r.decision === 'keep' && !r.inBib);

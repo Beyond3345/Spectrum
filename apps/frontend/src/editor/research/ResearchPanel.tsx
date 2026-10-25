@@ -9,7 +9,7 @@ import { useEditor } from '../EditorContext';
 import type { TaskRequest } from '../agent/parts';
 import { citationText, errorText, formatDate, isTex, relativeTime } from '../shared';
 import CitationAssistant, { bibWritten } from './CitationAssistant';
-import { DEFAULT_SOURCES, SOURCES, badges, counts, filtersLine, keptToAdd, linkOf, metaLine, runLine, shown, yearOf } from './results';
+import { DEFAULT_SOURCES, SOURCES, badges, counts, filtersLine, keptToAdd, linkOf, metaLine, runLine, searched, shown, yearOf } from './results';
 import type { Show } from './results';
 
 export type ResearchTask = Omit<TaskRequest, 'n'>;
@@ -244,9 +244,11 @@ export default function ResearchPanel({ filter, onAgentTask }: { filter: string;
     }
   };
 
+  // on the question asked, which a search into the open session doesn't make the session's own
   const deep = async () => {
-    const s = session && question.trim() === session.question ? session : await search();
-    if (s) onAgentTask({ ...deepResearch(s.question), research: s.id });
+    const q = question.trim();
+    const s = session && searched(session, q) ? session : await search();
+    if (s) onAgentTask({ ...deepResearch(q), research: s.id });
   };
   const task = (t: ResearchTask) => onAgentTask(session ? { ...t, research: session.id } : t);
 
