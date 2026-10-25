@@ -296,6 +296,9 @@ export type FigureTextOptions = { path: string; width: number; caption: string; 
 export const figureTypst = (o: FigureTextOptions) =>
   typstFloat('image(' + JSON.stringify(o.path) + ', width: ' + Math.round(Math.max(0, Math.min(1, o.width)) * 100) + '%)', o.caption, o.label);
 
+/** A Typst diagram file included as a figure: #figure(include "figures/x.typ", caption: [caption]) <label>. */
+export const figureTypstInclude = (o: { path: string; caption: string; label: string }) => typstFloat('include ' + JSON.stringify(o.path), o.caption, o.label);
+
 /** A Typst table, its header row as table.header when the model has one. */
 export function tableTypst(m: TableModel) {
   const cols = Math.max(1, ...m.cells.map((row) => row.length));

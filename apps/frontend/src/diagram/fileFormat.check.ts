@@ -69,5 +69,15 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
     eq(opened.code, tikzDocument(code), 'invalid drawing keeps its source');
     eq(!!opened.mark, true, 'invalid drawing keeps its marker');
   }
+  const typst: DiagramFile = { language: 'typst', style: {}, model: { boxes: [], links: [] }, version: 1 };
+  const typstCode = { body: '#import "@preview/fletcher:0.5.8" as fletcher: diagram\n#diagram()\n', packages: [], libraries: [] };
+  const typstFile = await diagramFileText(typst, typstCode);
+  const typstLines = typstFile.trimEnd().split('\n');
+  eq(typstLines[typstLines.length - 1].startsWith('// spectrum-diagram v1 '), true, 'Typst’s own comment mark');
+  const typstBack = await readDiagramFile(typstFile);
+  eq(typstBack.diagram, typst, 'the Typst drawing reads back');
+  eq(typstBack.code, typstCode.body, 'a Typst diagram keeps its plain code');
+  eq(typstBack.edited, false, 'Typst as drawn');
+
   console.log('fileFormat.check: ok');
 })();

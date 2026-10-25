@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ClipboardEvent, DragEvent, KeyboardEvent } from 'react';
-import { blobUrl, getFile, getProjectTree, plotFromTable, uploadFiles, visionToLatex } from '../../api/client';
+import { blobUrl, getFile, getProjectSettings, getProjectTree, plotFromTable, uploadFiles, visionToLatex } from '../../api/client';
 import Icon from '../../app/Icon';
 import Select from '../../app/Select';
 import Sheet from '../../app/Sheet';
@@ -11,7 +11,7 @@ import { useEditor } from '../EditorContext';
 import type { EditorApi } from '../EditorContext';
 import { VISION_HINTS, VISION_MODES, docKind, errorText, figureSnippet, isDocument } from '../shared';
 import type { VisionMode } from '../shared';
-import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableLabel, tableLatex, tableMarkdown, tableTypst, uniqueName } from '../floats';
+import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableLabel, tableLatex, tableMarkdown, tableTypst, uniqueName } from '../floats';
 import type { TableLines, TableModel } from '../floats';
 import { addLibraries, addPackages, changeBetween, loadedLibraries, projectPackages } from '../preamble';
 
@@ -564,6 +564,16 @@ const DIAGRAM_WIDTHS: [DiagramWidth, string, string?][] = [['natural', 'Natural'
 const imageOf = (path: string, figures: string[]) =>
   figureKind(path, '') === 'keep' ? path : ['pdf', 'png'].map((ext) => path.replace(/\.[^./]+$/, `.${ext}`)).find((p) => figures.includes(p)) || '';
 
+/** Whether a Typst version can show PDF images (0.14 and later). */
+const atLeastVersion = (version: string, minimum: string) => {
+  const left = version.split('.').map(Number);
+  const right = minimum.split('.').map(Number);
+  for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
+    if ((left[i] || 0) !== (right[i] || 0)) return (left[i] || 0) > (right[i] || 0);
+  }
+  return true;
+};
+
 /**
  * The diagram the composer's Insert as figure handed over, as a figure: a TikZ diagram through \includestandalone, at
  * its own size by default, with standalone, its packages and its TikZ libraries added to the preamble; any other
@@ -585,8 +595,12 @@ function InsertDiagram() {
   const cardRef = useRef<HTMLElement>(null);
   const captionRef = useRef<HTMLTextAreaElement>(null);
   const docOpen = isDocument(api.activePath);
-  const tikz = diagram?.language === 'tikz' && /\.tex$/i.test(diagram.path);
-  const image = diagram && !tikz ? imageOf(diagram.path, api.figureFiles) : '';
+  const kind = docKind(api.activePath);
+  const typst = diagram?.language === 'typst' || /\.typ$/i.test(diagram?.path ?? '');
+  const tikz = diagram?.language === 'tikz' && !typst;
+  const image = diagram && !tikz && !typst ? imageOf(diagram.path, api.figureFiles) : '';
+  const canInsert = !!diagram && (typst ? kind === 'typst' : kind === 'typst' ? true : kind === 'markdown' ? !!image : tikz || !!image);
+  const showWidth = !!diagram && !typst;
 
   useEffect(() => {
     const take = () => {
@@ -615,24 +629,69 @@ function InsertDiagram() {
 
   const insert = async () => {
     if (!diagram) return;
+    const a = apiRef.current;
+    const target = docKind(a.activePath);
+    const captionLabel = label ?? figureLabel(diagram.path);
+    const fraction = width === 'natural' ? null : widthOf({ ...prefs, width });
     setBusy(true);
     try {
-      const float = { caption, label: label ?? figureLabel(diagram.path), placement: prefs.placement, span: prefs.span };
-      const fraction = width === 'natural' ? null : widthOf({ ...prefs, width });
-      const exactly = placementOf(prefs.placement, prefs.span) === 'H' ? ['float'] : [];
-      // standalone loads before the rest, and the libraries after the packages that bring TikZ
-      const added = tikz
-        ? await ensurePackages(() => apiRef.current, [...diagram.packages, ...exactly], { first: ['standalone'], libraries: diagram.libraries })
-        : await ensurePackages(() => apiRef.current, ['graphicx', ...exactly]);
-      insertBlock(
-        apiRef.current,
-        tikz ? diagramLatex({ ...float, path: diagram.path, width: fraction }) : figureLatex({ ...float, path: image, width: fraction ?? widthOf(prefs) })
-      );
-      api.notify([`Inserted ${diagram.path} as a figure.`, added.text].filter(Boolean).join(' '), added.warn ? 'error' : 'success');
+      if (typst) {
+        if (target !== 'typst') {
+          a.notify('A Typst diagram goes into Typst documents only.', 'error');
+          return;
+        }
+        insertBlock(a, figureTypstInclude({ path: diagram.path, caption, label: captionLabel }));
+        a.notify(`Inserted ${diagram.path} as a figure.`, 'success');
+      } else if (target === 'typst') {
+        if (!tikz) {
+          // a Mermaid diagram goes in as its exported image
+          const source = imageOf(diagram.path, a.figureFiles);
+          if (!source) {
+            a.notify('Export the diagram as a PDF or PNG in the composer first.', 'error');
+            return;
+          }
+          insertBlock(a, figureTypst({ path: source, width: fraction ?? widthOf(prefs), caption, label: captionLabel }));
+          a.notify(`Inserted ${source} as a figure.`, 'success');
+        } else {
+          // a TikZ picture goes in as the PDF the composer's preview made, from Typst 0.14
+          const version = (await getProjectSettings(a.projectId).catch(() => null))?.settings.compile?.typstVersion || '';
+          if (version && !atLeastVersion(version, '0.14')) {
+            a.notify(`Typst ${version} can’t show PDF images. Choose Typst 0.14 or later in the compile menu.`, 'error');
+            return;
+          }
+          const pdf = diagram.path.replace(/\.tex$/i, '.pdf');
+          if (!a.projectFiles.includes(pdf)) {
+            a.notify('Compile the diagram in the composer first, so its PDF is there.', 'error');
+            return;
+          }
+          insertBlock(a, figureTypst({ path: pdf, width: fraction ?? widthOf(prefs), caption, label: captionLabel }));
+          a.notify(`Inserted ${pdf} as a figure.`, 'success');
+        }
+      } else if (target === 'markdown') {
+        const source = imageOf(diagram.path, a.figureFiles);
+        if (!source) {
+          a.notify('Export the diagram as a PDF or PNG in the composer first.', 'error');
+          return;
+        }
+        insertBlock(a, figureMarkdown({ path: source, width: fraction ?? widthOf(prefs), caption, label: captionLabel }));
+        a.notify(`Inserted ${source} as a figure.`, 'success');
+      } else {
+        const float = { caption, label: captionLabel, placement: prefs.placement, span: prefs.span };
+        const exactly = placementOf(prefs.placement, prefs.span) === 'H' ? ['float'] : [];
+        // standalone loads before the rest, and the libraries after the packages that bring TikZ
+        const added = tikz
+          ? await ensurePackages(() => apiRef.current, [...diagram.packages, ...exactly], { first: ['standalone'], libraries: diagram.libraries })
+          : await ensurePackages(() => apiRef.current, ['graphicx', ...exactly]);
+        insertBlock(
+          apiRef.current,
+          tikz ? diagramLatex({ ...float, path: diagram.path, width: fraction }) : figureLatex({ ...float, path: image, width: fraction ?? widthOf(prefs) })
+        );
+        a.notify([`Inserted ${diagram.path} as a figure.`, added.text].filter(Boolean).join(' '), added.warn ? 'error' : 'success');
+      }
       setDiagram(null);
       setCaption('');
     } catch (err) {
-      api.notify(`Couldn’t add the diagram: ${errorText(err)}`, 'error');
+      a.notify(`Couldn’t add the diagram: ${errorText(err)}`, 'error');
     } finally {
       setBusy(false);
     }
@@ -661,7 +720,8 @@ function InsertDiagram() {
               </button>
             </div>
           </div>
-          {!tikz && !image && <div className="field-hint error">Export the diagram as a PNG from the composer first, then insert it again.</div>}
+          {!tikz && !typst && !image && <div className="field-hint error">Export the diagram as a PNG from the composer first, then insert it again.</div>}
+          {typst && kind !== 'typst' && <div className="field-hint error">A Typst diagram goes into Typst documents only.</div>}
           <div className="field">
             <label htmlFor={`${id}-caption`}>Caption</label>
             <textarea
@@ -678,9 +738,9 @@ function InsertDiagram() {
             <label htmlFor={`${id}-label`}>Label</label>
             <input id={`${id}-label`} className="input" value={label ?? figureLabel(diagram.path)} onChange={(e) => setLabel(e.target.value)} spellCheck={false} />
           </div>
-          <Segmented label="Width" value={width} options={tikz ? DIAGRAM_WIDTHS : WIDTHS} onChange={setWidth} />
-          {width === 'natural' && <div className="field-hint">At its natural size, its lines and labels keep the sizes they were drawn at.</div>}
-          {width === 'custom' && (
+          {showWidth && <Segmented label="Width" value={width} options={tikz ? DIAGRAM_WIDTHS : WIDTHS} onChange={setWidth} />}
+          {showWidth && width === 'natural' && <div className="field-hint">At its natural size, its lines and labels keep the sizes they were drawn at.</div>}
+          {showWidth && width === 'custom' && (
             <div className="figure-custom-width">
               <input
                 id={`${id}-custom`}
@@ -695,14 +755,16 @@ function InsertDiagram() {
               <label htmlFor={`${id}-custom`}>% of the line width</label>
             </div>
           )}
-          <PlacementField
-            kind="figure"
-            value={prefs.placement}
-            onChange={(placement) => setPrefs({ ...prefs, placement })}
-            span={prefs.span}
-            onSpan={(span) => setPrefs({ ...prefs, span })}
-          />
-          <button className="btn primary full" onClick={insert} disabled={busy || !docOpen || (!tikz && !image)}>
+          {!typst && (
+            <PlacementField
+              kind="figure"
+              value={prefs.placement}
+              onChange={(placement) => setPrefs({ ...prefs, placement })}
+              span={prefs.span}
+              onSpan={(span) => setPrefs({ ...prefs, span })}
+            />
+          )}
+          <button className="btn primary full" onClick={insert} disabled={busy || !docOpen || !canInsert}>
             {busy ? <span className="spinner" /> : <Icon name="plus" />} Insert diagram
           </button>
           {!docOpen && <div className="field-hint">{NOT_TEX}</div>}
