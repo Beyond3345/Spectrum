@@ -568,7 +568,8 @@ async function reconcile(root, remove) {
   const { entries, complete } = await readBibs(root);
   const meta = await readMeta(root);
   const stored = (await readProjectSettings(root)).zotero;
-  const bound = stored?.projectId === meta.id && stored.library === LIBRARY && typeof stored.collectionKey === 'string';
+  // settings.json comes from GitHub too: only a collection key Zotero could have made is asked for
+  const bound = stored?.projectId === meta.id && stored.library === LIBRARY && /^[A-Z0-9]{8}$/.test(stored.collectionKey || '');
   if (!bound && !entries.length) return { state: 'empty' };
   let collection;
   if (bound) {

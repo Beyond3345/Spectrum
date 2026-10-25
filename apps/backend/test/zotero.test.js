@@ -512,6 +512,15 @@ test('a sync makes Spectrum › <project>, files the items Zotero has by key, DO
   assert.equal([...mock.collections.values()].filter((c) => c.data.parentCollection).length, 2);
 });
 
+test('syncs at once (opening, focus and a save together) make one collection', async () => {
+  await allowSpectrum();
+  const project = await newProject('Busy', { 'main.tex': BIBTEX_MAIN, 'refs.bib': '@article{a2020, title = {Alpha}, year = {2020}}\n' });
+  const states = await Promise.all([syncCollection(project.path), syncCollection(project.path), syncCollection(project.path, { remove: true })]);
+  assert.deepEqual(states.map((s) => s.state), ['synced', 'synced', 'synced']);
+  assert.equal([...mock.collections.values()].filter((c) => c.data.name === 'Busy').length, 1);
+  assert.equal([...mock.items.values()].filter((it) => it.data.citationKey === 'a2020').length, 1);
+});
+
 test('entries leave the collection only after a .bib save read whole, and Zotero’s items are never deleted', async () => {
   await allowSpectrum();
   const project = await newProject('Paper', {
@@ -558,6 +567,13 @@ test('a stored collection this computer’s Zotero lacks is waited for, and a Fi
   assert.equal(next.zotero.projectId, project.id);
   assert.notEqual(next.zotero.collectionKey, 'COLLZZZZ');
   assert.deepEqual(next.compile, { engine: 'xelatex' }, 'the other settings stay');
+
+  // a key no Zotero makes (settings.json comes from GitHub too) is never asked for
+  mock.requests = [];
+  await fs.writeFile(settings, JSON.stringify({ zotero: { projectId: project.id, library: 'users/0', collectionKey: '../items' } }));
+  assert.equal((await syncCollection(project.path)).state, 'synced');
+  assert.ok(!mock.requests.some((r) => r.path.includes('..') || r.path.endsWith('/items/')));
+  assert.match((await settingsOf(project.path)).zotero.collectionKey, /^COLL\d{4}$/);
 });
 
 test('without permission, before Zotero 10 or with a project with no references, nothing is written', async () => {
