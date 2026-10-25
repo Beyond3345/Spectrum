@@ -3,25 +3,22 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { PROJECTS_DIR } from '../config/constants.js';
-import { cachePath, getProject, getProjectRoot, httpError, makeUniqueFolder, moveEntry, sanitiseFolderName } from '../services/projectService.js';
-import { dismissMigrationNotice, migrationNotice } from '../services/mirrorService.js';
+import { cachePath, getProject, httpError, makeUniqueFolder, moveEntry, sanitiseFolderName, whileMoving } from '../services/projectService.js';
+import { dismissMigrationNotice, legacyLocationOf, migrationNotice } from '../services/mirrorService.js';
 import { offlineMessage, placeOf, readSyncConfig, setMachineName } from '../services/syncService.js';
 import { compiling } from '../services/compileService.js';
 import { stopProjectTexlab } from '../services/texlabService.js';
 import { copyProject, preflight } from '../utils/projectCopy.js';
 import { transferring } from './transfer.js';
 
-// the projects being moved, so two Moves at once can't each make a copy with its id
-const moving = new Set();
-
 /**
  * The project's folder copied into parent and checked file by file, then listed there; the folder in the sync app's
  * folder stays as it is, as another computer may still use it there. Nothing is left in parent when it fails.
  */
-async function moveHere(id, parentDir) {
+async function moveHere(id, root, parentDir) {
   const project = await getProject(id);
-  const root = await getProjectRoot(id);
-  const place = await placeOf(root);
+  // a sync app's folder, or one 1.10 synced through (a NAS share, say)
+  const place = (await placeOf(root)) || (await legacyLocationOf(root));
   if (!place) throw httpError(`“${project.name}” is already on this computer.`, 400);
   if (compiling(id) || transferring(id)) throw httpError(`“${project.name}” is compiling or being converted. Try again once that’s finished.`, 409);
   const dir = typeof parentDir === 'string' && parentDir.trim() ? parentDir.trim() : PROJECTS_DIR;
@@ -62,17 +59,9 @@ export function registerSyncRoutes(fastify) {
     return { place: await placeOf(await fs.realpath(input).catch(() => input)) };
   });
 
-  // Move to this computer: a project used in a sync app's folder, copied into parentDir (default: the projects folder)
-  fastify.post('/api/projects/:id/move-here', async (req) => {
-    const { id } = req.params;
-    if (moving.has(id)) throw httpError('That project is already being moved. Try again once that’s finished.', 409);
-    moving.add(id);
-    try {
-      return await moveHere(id, req.body?.parentDir);
-    } finally {
-      moving.delete(id);
-    }
-  });
+  // Move to this computer: a project used in a sync app's folder, copied into parentDir (default: the projects folder);
+  // its folder isn't handed to anything else meanwhile, so two Moves can't each make a copy and no save lands behind
+  fastify.post('/api/projects/:id/move-here', async (req) => whileMoving(req.params.id, (root) => moveHere(req.params.id, root, req.body?.parentDir)));
 
   // what the move to 2.0 did with the projects that synced through a cloud location, until dismissed
   fastify.get('/api/migration', async () => ({ notice: await migrationNotice() }));

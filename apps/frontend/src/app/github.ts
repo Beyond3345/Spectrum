@@ -59,6 +59,15 @@ export async function moveOutOfSyncFolder(projectId: string, why: string, parent
   return true;
 }
 
+/**
+ * A Back up refused because GitHub already has this project from the other computer: Link to it instead, after its
+ * preview. Resolves what Link did (null: the user said no), or undefined for any other error.
+ */
+export function linkInstead(err: unknown, projectId: string, name: string) {
+  if (!(err instanceof ApiError) || err.data.code !== 'GITHUB_LINK_FIRST' || !err.data.repo) return Promise.resolve(undefined);
+  return linkWithPreview(projectId, name, err.data.repo as { owner: string; repo: string });
+}
+
 /** A refusal because the project is in a sync app's folder, answered with the offer to move it; false for any other error. */
 export const offerMove = (err: unknown, projectId: string, parentDir?: string) =>
   err instanceof ApiError && err.data.code === 'IN_SYNC_FOLDER' ? moveOutOfSyncFolder(projectId, err.message, parentDir) : Promise.resolve(false);

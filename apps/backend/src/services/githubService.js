@@ -11,7 +11,7 @@ import { readJson, renameOver } from '../utils/fsUtils.js';
 import { getProject, getProjectRoot, httpError, listProjects, makeUniqueFolder, mutateProjectFiles, readMeta, register, sanitiseFolderName, serialiser } from './projectService.js';
 import { readProjectSettings, updateProjectSettings } from './projectSettings.js';
 import { placeOf, readSyncConfig } from './syncService.js';
-import { readMirror, readMirrorBase } from './mirrorService.js';
+import { readMirror } from './mirrorService.js';
 import { keyOf } from './mergeRules.js';
 import { compiling } from './compileService.js';
 import { directTurn } from './agentSessionService.js';
@@ -61,8 +61,9 @@ export async function authorOf() {
   return user ? { name: user.name || user.login, email: `${user.id}+${user.login}@users.noreply.github.com` } : { name: machineName, email: 'spectrum@localhost' };
 }
 
+// a Git request that timed out comes from isomorphic-git's HTTP as a plain Error, "Request timed out"
 const offline = (err) =>
-  err?.name === 'TimeoutError' || ['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENETUNREACH', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET'].includes(err?.code || err?.cause?.code);
+  err?.name === 'TimeoutError' || /timed out/i.test(err?.message || '') || ['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENETUNREACH', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET'].includes(err?.code || err?.cause?.code);
 const OFFLINE = 'Couldn’t reach GitHub. Spectrum tries again when the connection is back.';
 
 /** A call to GitHub's REST API, with GitHub's own message when it refuses. */
@@ -250,7 +251,8 @@ async function personalHold(link) {
 /** A failure as the user should see it, and whether it only waits for the connection. */
 function problemOf(err, link) {
   const status = err?.data?.statusCode ?? err?.github;
-  if (offline(err) || err?.code === 'GITHUB_OFFLINE') return { state: 'waiting', message: OFFLINE };
+  // GitHub's own trouble (a 5xx from its Git side) passes like the connection's
+  if (offline(err) || err?.code === 'GITHUB_OFFLINE' || (err?.code === 'HttpError' && status >= 500)) return { state: 'waiting', message: OFFLINE };
   if (status === 401 || err?.code === 'GITHUB_SIGN_IN') return { state: 'attention', message: 'Sign in to GitHub again.' };
   if ((status === 403 || status === 404) && link) return { state: 'attention', message: `No access to ${link.owner}/${link.repo}.` };
   if (err?.code === 'GitPushError') return { state: 'attention', message: `GitHub refused the push: ${err.data?.prettyDetails?.trim() || err.message}` };
@@ -264,13 +266,23 @@ function problemOf(err, link) {
 const queues = new Map();
 const queueOf = (id) => queues.get(id) || queues.set(id, serialiser()).get(id);
 const statuses = new Map();
+// what the project's last commit left out (a key-like file, one over 100 MB), for the GitHub tab and the card
+const leftOut = new Map();
+const noteLeft = (id, left) => (left?.length ? leftOut.set(id, left) : leftOut.delete(id));
+// the projects a pull, Sync or Link is waiting for or running on, which may bring the other computer's files
+const pulling = new Map();
+
+/** Whether a pull, Sync or Link of the project is under way (Zotero waits for it before making a collection). */
+export const gitHubPulling = (id) => (pulling.get(id) || 0) > 0;
 
 /**
  * fn, after any other GitHub task of the project's; a backup's, pull's or sync's failure is kept for the GitHub tab and
  * the card (one that waits, retried every 2 minutes), and thrown as the user should see it.
  */
 function task(id, kind, fn) {
-  return queueOf(id)(async () => {
+  const pulls = ['pull', 'sync', 'link'].includes(kind);
+  if (pulls) pulling.set(id, (pulling.get(id) || 0) + 1);
+  const run = queueOf(id)(async () => {
     const kept = ['backup', 'pull', 'sync'].includes(kind);
     try {
       const result = await fn();
@@ -284,6 +296,8 @@ function task(id, kind, fn) {
       throw Object.assign(err, { statusCode: err.statusCode || (problem.state === 'waiting' ? 503 : 409), message: problem.message });
     }
   });
+  if (pulls) run.finally(() => pulling.set(id, pulling.get(id) - 1)).catch(() => {});
+  return run;
 }
 
 /** A pull waits while a compile or a direct agent turn is changing the project's files, for 2 minutes at most. */
@@ -307,13 +321,14 @@ async function pullNow(id, { allowDeletions = false, base } = {}) {
   await refuseRepo(root);
   const token = await tokenOf();
   const author = await authorOf();
+  // what this computer holds back from GitHub; what GitHub has of them still comes in, as the merge's tree has it
   const hold = await personalHold(link);
   await git.fetchOrigin(root, token);
   await waitIdle(id);
   const machine = (await readSyncConfig()).machineName;
   const result = await mutateProjectFiles(async () => {
-    await git.commitAll(root, { message: await backupMessage(), author, hold });
-    return git.mergeOrigin(root, { author, allowDeletions, keep: hold, base: base && (await base(root)), message: `Pull from GitHub on ${machine}` });
+    noteLeft(id, (await git.commitAll(root, { message: await backupMessage(), author, hold })).left);
+    return git.mergeOrigin(root, { author, allowDeletions, base: base && (await base(root)), message: `Pull from GitHub on ${machine}` });
   });
   return result;
 }
@@ -343,13 +358,14 @@ export function backUp(id, { label, idle = false, quitting = false } = {}) {
     const { root, meta, link } = await projectOf(id);
     const author = await authorOf();
     let here = await linkedHere(root, link);
-    if (!here && link?.here) throw httpError(`This project is on GitHub as ${link.owner}/${link.repo}. Link it here first.`, 409, 'GITHUB_LINK_FIRST');
+    if (!here && link?.here) throw Object.assign(httpError(`This project is on GitHub as ${link.owner}/${link.repo}. Link it here first.`, 409, 'GITHUB_LINK_FIRST'), { repo: { owner: link.owner, repo: link.repo } });
     if (!here) {
       await refuseSyncFolder(root);
       if (await git.isRepo(root)) await refuseRepo(root);
       else await git.initRepo(root);
-      // a repository of the user's own that already has its GitHub repository keeps it
-      const created = (await originRepo(root)) || (await createRepo(meta.name));
+      // a repository of the user's own that already has its GitHub repository keeps it; a copy (its settings name the
+      // original's repository) carries the original's origin, and gets one of its own
+      const created = (!link && (await originRepo(root))) || (await sameProjectOnGitHub(meta.id)) || (await createRepo(meta.name));
       await updateProjectSettings(root, (s) => ({ ...s, github: { owner: created.owner, repo: created.repo, projectId: meta.id } }));
       await git.setRemote(root, repoUrl(created.owner, created.repo));
       here = true;
@@ -358,11 +374,26 @@ export function backUp(id, { label, idle = false, quitting = false } = {}) {
     const fresh = (await projectOf(id)).link;
     const personal = await personalHold(fresh);
     const hold = idle ? (rel) => personal(rel) || /^\.spectrum\/(?:chats|research)\//i.test(rel) : personal;
-    const { left } = await git.commitAll(root, { message: await backupMessage(label), author, hold });
+    // a label goes up as a commit of its own even when nothing changed since the last
+    const { left } = await git.commitAll(root, { message: await backupMessage(label), author, hold, always: !!String(label || '').trim() });
+    noteLeft(id, left);
     if (quitting) return { left };
     const pulled = await pushNow(id);
+    if (pulled?.state === 'confirm') {
+      throw httpError(`GitHub’s changes would delete ${pulled.deleting} ${pulled.deleting === 1 ? 'file' : 'files'} here, so nothing was backed up. Choose Sync to look at them first.`, 409, 'GITHUB_CONFIRM');
+    }
     return { left, ...(pulled && { pulled }) };
   });
+}
+
+/**
+ * The other computer's copy of this project already on GitHub (1.10.4's had no link): refused, naming it, so the
+ * window links to it rather than making a second repository. Null when GitHub has none.
+ */
+async function sameProjectOnGitHub(projectId) {
+  const existing = (await listRepoProjects()).find((r) => r.id === projectId && !r.linked);
+  if (existing) throw Object.assign(httpError(`This project is on GitHub as ${existing.owner}/${existing.repo}, from your other computer. Link it here first.`, 409, 'GITHUB_LINK_FIRST'), { repo: { owner: existing.owner, repo: existing.repo } });
+  return null;
 }
 
 /** A private repository for the project, named after it (paper-2 when paper is taken): { owner, repo }. */
@@ -416,69 +447,84 @@ export function initialise(id) {
 
 /**
  * The files a mirrored project's last sync agreed on, as the merge's base: from the mirror's record (read, never
- * written), each file as this computer's or GitHub's copy that still has it, or the base text the mirror kept.
+ * written), only where GitHub's copy still has what the record agreed on. GitHub's copy may come from a computer whose
+ * last sync was older than this one's, and against this computer's record its older files would read as changes
+ * made there. So a file GitHub changed or lacks merges with no base: this computer's copy stays, GitHub's goes beside
+ * it, and nothing is deleted (an edit made only on GitHub then comes as a conflicted copy rather than taken).
  */
 function mirrorBase(id) {
   return async (root) => {
     const record = await readMirror(id);
     if (!record) return undefined;
-    // each side's files by key, as the record keeps them
-    const byKey = async (commit) => new Map([...(await git.treeFiles(root, commit))].map(([rel, x]) => [keyOf(rel), x]));
-    const sides = [await byKey(await git.headOid(root)), await byKey(await git.remoteHead(root))];
+    const theirs = new Map([...(await git.treeFiles(root, await git.remoteHead(root)))].map(([rel, x]) => [keyOf(rel), x]));
     const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
     const base = new Map();
-    for (const [key, { rel, hash }] of Object.entries(record.files)) {
-      if (typeof hash !== 'string' || typeof rel !== 'string') continue;
-      let oid = null;
-      for (const side of sides) {
-        const x = side.get(key);
-        if (!oid && x && sha(await git.readBlobAt(root, x.oid)) === hash) oid = x.oid;
-      }
-      if (!oid) {
-        const text = await readMirrorBase(id, hash);
-        if (text) oid = await git.writeBlobAt(root, text);
-      }
-      if (oid) base.set(rel, { oid, mode: '100644' });
+    for (const [key, f] of Object.entries(record.files)) {
+      const x = theirs.get(key);
+      if (typeof f?.hash === 'string' && typeof f.rel === 'string' && x && sha(await git.readBlobAt(root, x.oid)) === f.hash) base.set(f.rel, x);
     }
     return base;
   };
 }
 
+const sameName = (a, b) => a.owner.toLowerCase() === b.owner.toLowerCase() && a.repo.toLowerCase() === b.repo.toLowerCase();
+
 /**
  * Link the project to a repository on GitHub that holds it (named in its settings.json, or found by its id in the
  * GitHub view): git init when there's none, then the same merge as a pull from nothing in common, or from the files
  * a 1.10.4 mirror last agreed on. preview: { fromTheirs, conflicts } without writing anything to the project's files.
+ * The link is written, and the origin kept, only once the merge has gone through: a preview, a merge that waits for
+ * the user's yes to its deletions or a failure leaves the project unlinked, its origin as it was, so nothing backs it
+ * up or pulls it meanwhile.
  */
 export function link(id, { owner, repo, preview = false, allowDeletions = false } = {}) {
   return task(id, 'link', async () => {
     const { root, meta, link: current } = await projectOf(id);
-    const target = owner && repo ? { owner, repo } : current;
+    let target = owner && repo ? { owner, repo } : current;
     if (!isLink(target)) throw httpError('Choose a repository to link.', 400);
     await refuseSyncFolder(root);
     if (await git.isRepo(root)) await refuseRepo(root);
     else await git.initRepo(root, 'main', { gitignore: false });
     const origin = await originRepo(root);
-    if (origin && (origin.owner.toLowerCase() !== target.owner.toLowerCase() || origin.repo.toLowerCase() !== target.repo.toLowerCase())) {
-      throw httpError(`This project’s repository already sends its commits to ${origin.owner}/${origin.repo}.`, 409, 'GIT_REFUSED');
+    if (origin && !sameName(origin, target)) {
+      // one repository under two names, as GitHub keeps answering for the old one after a rename: its name now
+      const [was, now] = await Promise.all([origin, target].map((r) => api(`/repos/${r.owner}/${r.repo}`).catch(() => null)));
+      const [o, r] = String(now?.full_name || '').split('/');
+      if (!was || !now || !(was.id ? was.id === now.id : was.full_name === now.full_name) || !isLink({ owner: o, repo: r })) {
+        throw httpError(`This project’s repository already sends its commits to ${origin.owner}/${origin.repo}.`, 409, 'GIT_REFUSED');
+      }
+      target = { owner: o, repo: r };
     }
+    const before = await git.remoteUrl(root);
     await git.setRemote(root, repoUrl(target.owner, target.repo));
-    if (!current?.here || current.owner !== target.owner || current.repo !== target.repo) {
-      await updateProjectSettings(root, (s) => ({ ...s, github: { ...(current?.here ? current : {}), owner: target.owner, repo: target.repo, projectId: meta.id } }));
-    }
-    const token = await tokenOf();
-    const author = await authorOf();
-    const hold = await personalHold((await projectOf(id)).link);
-    await git.commitAll(root, { message: await backupMessage(), author, hold });
-    await git.fetchOrigin(root, token);
-    const base = await mirrorBase(id)(root);
-    if (preview) return git.mergeOrigin(root, { author, dryRun: true, keep: hold, base });
-    await waitIdle(id);
-    const result = await mutateProjectFiles(async () => {
+    let linked = false;
+    try {
+      const { here: _here, ...kept } = current?.here ? current : {};
+      const token = await tokenOf();
+      const author = await authorOf();
+      const hold = await personalHold({ ...kept, ...target });
       await git.commitAll(root, { message: await backupMessage(), author, hold });
-      return git.mergeOrigin(root, { author, allowDeletions, keep: hold, base: await mirrorBase(id)(root), message: 'Link with GitHub' });
-    });
-    if (result.state !== 'confirm') await pushNow(id);
-    return result;
+      await git.fetchOrigin(root, token);
+      if (preview) return await git.mergeOrigin(root, { author, dryRun: true, base: await mirrorBase(id)(root) });
+      await waitIdle(id);
+      const result = await mutateProjectFiles(async () => {
+        await git.commitAll(root, { message: await backupMessage(), author, hold });
+        const merged = await git.mergeOrigin(root, { author, allowDeletions, base: await mirrorBase(id)(root), message: 'Link with GitHub' });
+        if (merged.state === 'confirm') return merged;
+        // the link as the merge left settings.json (GitHub's may carry the personal answer), for this project and repository
+        await updateProjectSettings(root, (s) => {
+          const { here: _h, ...was } = isLink(s.github) && s.github.projectId === meta.id ? s.github : kept;
+          return { ...s, github: { ...was, owner: target.owner, repo: target.repo, projectId: meta.id } };
+        });
+        noteLeft(id, (await git.commitAll(root, { message: await backupMessage(), author, hold })).left);
+        linked = true;
+        return merged;
+      });
+      if (result.state !== 'confirm') await pushNow(id);
+      return result;
+    } finally {
+      if (!linked) await (before ? git.setRemote(root, before) : git.deleteRemote(root)).catch(() => {});
+    }
   });
 }
 
@@ -496,6 +542,8 @@ export async function projectStatus(id) {
   const repo = await git.isRepo(root);
   const refusal = repo ? await git.refusal(root) : null;
   const linked = !refusal && (await linkedHere(root, link));
+  // ahead and behind against GitHub as it is now rather than at the last pull, after any task under way
+  if (linked && auth.signedIn) await task(id, 'status', async () => git.fetchOrigin(root, await tokenOf())).catch(() => {});
   const place = await placeOf(root).catch(() => null);
   const counts = linked ? await git.aheadBehind(root) : { ahead: 0, behind: 0 };
   const shared = linked && auth.signedIn && link.personal === undefined ? await repoShared(link.owner, link.repo).catch(() => false) : false;
@@ -512,16 +560,22 @@ export async function projectStatus(id) {
     syncFolder: place?.label || null,
     personal: link?.personal ?? null,
     askPersonal: shared,
-    problem: statuses.get(id) || null
+    problem: statuses.get(id) || null,
+    left: leftOut.get(id) || []
   };
 }
 
-/** Every linked project's problem, for the projects page: { [id]: { state, message, at, lastBackup } }. */
+/**
+ * Every linked project's problem, for the projects page: { [id]: { state, message, at, lastBackup, left } }, state
+ * 'left' for one whose backups go through without some of its files.
+ */
 export async function problems() {
   const out = {};
-  for (const [id, problem] of statuses) {
+  for (const id of new Set([...statuses.keys(), ...leftOut.keys()])) {
     const root = await getProjectRoot(id).catch(() => null);
-    out[id] = { ...problem, lastBackup: root && (await git.commitTime(root, await git.remoteHead(root)).catch(() => null)) };
+    const left = leftOut.get(id) || [];
+    const problem = statuses.get(id) || { state: 'left', message: `Not on GitHub: ${left.join('; ')}.`, at: new Date().toISOString() };
+    out[id] = { ...problem, left, lastBackup: root && (await git.commitTime(root, await git.remoteHead(root)).catch(() => null)) };
   }
   return out;
 }
@@ -647,6 +701,9 @@ export async function getFromGitHub({ owner, repo, parentDir }) {
   const meta = JSON.parse((await repoFile(owner, repo, '.spectrum/project.json')) || 'null');
   if (!meta?.id) throw httpError(`${owner}/${repo} isn’t a Spectrum project.`, 400);
   if (await getProjectRoot(meta.id).catch(() => null)) throw httpError(`“${meta.name || repo}” is already on this computer. Link it from its GitHub tab instead.`, 409);
+  // 1.10.4, gone back to, would mirror the clone against that project's last sync and take what the clone lacks
+  // (its checkpoints, its PDFs) for deletions in its cloud copy
+  if (await readMirror(meta.id)) throw httpError(`Spectrum 1.10 kept “${meta.name || repo}” in step with a cloud copy on this computer. Locate its folder in the projects list (or Import › Open existing folder), then Link it from its GitHub tab.`, 409);
   const parent = typeof parentDir === 'string' && path.isAbsolute(parentDir) ? parentDir : PROJECTS_DIR;
   await fs.mkdir(parent, { recursive: true });
   await refuseSyncFolder(parent);
@@ -657,6 +714,9 @@ export async function getFromGitHub({ owner, repo, parentDir }) {
     await register(cloned.id, target, cloned);
   } catch (err) {
     await fs.rm(target, { recursive: true, force: true });
+    // a file this computer can't write (a name Windows can't have, or a link it can't make): named, to rename there
+    const failed = (err?.data?.errors || []).map((e) => typeof e?.path === 'string' && path.relative(target, e.path).replace(/\.[0-9a-f-]{36}\.tmp$/, '')).find((rel) => rel && !rel.startsWith('..'));
+    if (failed) throw httpError(`Couldn’t write “${failed.split(path.sep).join('/')}” on this computer. Rename it on your other computer, back it up, then try again.`, 409);
     const problem = problemOf(err, { owner, repo });
     throw httpError(problem.message, problem.state === 'waiting' ? 503 : 409);
   }

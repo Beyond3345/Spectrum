@@ -907,7 +907,8 @@ export type CheckerAssets = {
   manifest: { version: string; binding?: { version: string }; components?: { name: string; version: string }[]; [key: string]: unknown } | null;
 };
 export type CheckerStatus = {
-  available: boolean; language: string; error?: string; engine: string; version: string | null;
+  /** started: false while Harper waits for its first check, which starts it */
+  available: boolean; started?: boolean; language: string; error?: string; engine: string; version: string | null;
   diagnostics?: { appVersion: string; node: string; platform: string; arch: string; assets: CheckerAssets; dictionaries?: CheckerAssets };
 };
 export type SpellWordLists = { global: string[]; project: string[] };
@@ -1503,12 +1504,14 @@ export interface GitHubAuth {
 }
 
 export interface GitHubProblem {
-  /** waiting: only for the connection (or a file still changing), tried again every 2 minutes */
-  state: 'waiting' | 'attention';
+  /** waiting: only for the connection (or a file still changing), tried again every 2 minutes; left: backed up without some files */
+  state: 'waiting' | 'attention' | 'left';
   message: string;
   at: string;
   /** when the last backup reached GitHub, for “Not backed up since …” */
   lastBackup?: string | null;
+  /** the files the last backup left out (key-like, over 100 MB), each with why */
+  left?: string[];
 }
 
 export interface GitHubStatus {
@@ -1530,6 +1533,8 @@ export interface GitHubStatus {
   personal: boolean | null;
   askPersonal: boolean;
   problem: GitHubProblem | null;
+  /** what the last commit left out (key-like, over 100 MB), each with why */
+  left: string[];
 }
 
 /** What a pull (or Link, or Sync) did: confirm, it would delete `deleting` files and waits for allowDeletions. */
@@ -1568,7 +1573,8 @@ export const startGitHubDevice = () => request<{ ok: boolean; id: string; userCo
 export const gitHubDeviceState = (id: string) => request<{ ok: boolean; state: 'waiting' | 'done' | 'expired' | 'denied' | 'failed'; error?: string }>(`/api/github/device/${id}`);
 export const cancelGitHubDevice = (id: string) => request<{ ok: boolean }>(`/api/github/device/${id}`, { method: 'DELETE' });
 /** The settings repository brought up to date; first: this computer's settings aren't in it yet. */
-export const syncSettingsRepo = () => request<{ ok: boolean; ready: boolean; first: boolean; error?: string }>('/api/github/settings/sync', json('POST'));
+/** force: a pull now, however recently the last one was. */
+export const syncSettingsRepo = (force = false) => request<{ ok: boolean; ready: boolean; first: boolean; error?: string }>('/api/github/settings/sync', json('POST', { force }));
 /** This computer's personas joined with the settings repository's, one file each there. */
 export const syncPersonas = (personas: unknown[]) => request<{ ok: boolean; personas: unknown[]; changed: boolean }>('/api/github/personas', json('POST', { personas }));
 export const listGitHubRepos = () => request<{ ok: boolean; repos: GitHubRepoProject[] }>('/api/github/repos');

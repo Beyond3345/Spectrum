@@ -3,7 +3,8 @@
 // as a Back up, Pull or Sync does. In scratch folders with a fake home folder. Run: npm test
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { promises as fs, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { promises as fs, chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { GOOD_TOKEN, hasGitHttpBackend, startFakeGitHub } from './fixtures/fake-github.mjs';
@@ -53,6 +54,27 @@ function write(root, rel, text) {
   writeFileSync(path.join(root, rel), text);
 }
 const read = (root, rel) => (existsSync(path.join(root, rel)) ? readFileSync(path.join(root, rel), 'utf8') : null);
+
+/** fn as the Windows computer would run it: process.platform says win32 meanwhile. */
+async function asWindows(fn) {
+  const real = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { ...real, value: 'win32' });
+  try {
+    return await fn();
+  } finally {
+    Object.defineProperty(process, 'platform', real);
+  }
+}
+
+/** A commit on GitHub's main with files by their exact names, made in the bare repository, as no Mac disk keeps both of two spellings. */
+function commitOnGitHub(repo, files) {
+  const dir = gh.bare('octo', repo);
+  const env = { ...process.env, GIT_INDEX_FILE: path.join(tmp, `index-${repo}`), GIT_AUTHOR_NAME: 'Other', GIT_AUTHOR_EMAIL: 'o@x', GIT_COMMITTER_NAME: 'Other', GIT_COMMITTER_EMAIL: 'o@x' };
+  const run = (args, input) => execFileSync('git', ['-c', 'core.ignorecase=false', ...args], { cwd: dir, env, input }).toString().trim();
+  run(['read-tree', 'main']);
+  for (const [rel, text] of Object.entries(files)) run(['update-index', '--add', '--cacheinfo', `100644,${run(['hash-object', '-w', '--stdin'], text)},${rel}`]);
+  run(['update-ref', 'refs/heads/main', run(['commit-tree', run(['write-tree']), '-p', 'main', '-m', 'From another computer'])]);
+}
 
 /** What Sync does on one computer: commit, fetch, merge, push. */
 async function sync(root, options = {}) {
@@ -199,6 +221,113 @@ test('secrets, files over 100 MB, compiled PDFs and Spectrum’s own files stay 
   for (const kept of ['plot.pdf', '.spectrum/todos/t.json', '.spectrum/project.json', 'main.tex', '.gitignore']) assert.ok(files.includes(kept), kept);
   assert.equal(left.length, 3);
   assert.ok(readFileSync(path.join(A, '.git/info/exclude'), 'utf8').includes('/main.pdf'));
+});
+
+test('two names for one file from GitHub are kept there by the pull and the next backups, and after a clone', { skip }, async () => {
+  const { A, B, repo } = await pair({ 'main.tex': 'x\n' });
+  commitOnGitHub(repo, { 'figures/Plot.pdf': 'PDF upper', 'figures/plot.pdf': 'PDF lower' });
+  const result = await sync(B);
+  assert.ok(result.problems.some((p) => /differ only in letter case/.test(p)));
+  write(B, 'main.tex', 'x, edited on B\n');
+  await sync(B);
+  for (const f of ['figures/Plot.pdf', 'figures/plot.pdf']) assert.ok(gh.files('octo', repo).includes(f), f);
+  // a clone, whose disk keeps one of the two
+  const C = path.join(tmp, `C${n}`);
+  mkdirSync(C);
+  await g.cloneInto(C, `${gh.web}/octo/${repo}.git`, token);
+  write(C, 'main.tex', 'x, edited on C\n');
+  const { left } = await g.commitAll(C, { message: 'Backup', author });
+  assert.ok(left.some((l) => /differ only in letter case/.test(l)), 'named for a rename');
+  await g.pushOrigin(C, token);
+  for (const f of ['figures/Plot.pdf', 'figures/plot.pdf']) assert.ok(gh.files('octo', repo).includes(f), f);
+  assert.equal(read(A, 'main.tex'), 'x\n');
+});
+
+test('on Windows, a name it can’t have is left on GitHub and named, and the pull’s other changes come in', { skip }, async () => {
+  const { A, B, repo } = await pair({ 'main.tex': 'one\n', 'other.tex': 'other\n' });
+  write(A, 'Why?.tex', 'why\n');
+  write(A, 'main.tex', 'one, from the Mac\n');
+  await sync(A);
+  const result = await asWindows(() => sync(B));
+  assert.ok(result.problems.some((p) => /“Why\?\.tex” can’t be a file name on Windows/.test(p)));
+  assert.equal(read(B, 'main.tex'), 'one, from the Mac\n');
+  assert.equal(read(B, 'Why?.tex'), null, 'never written here');
+  write(B, 'other.tex', 'other, from Windows\n');
+  await asWindows(() => sync(B));
+  assert.ok(gh.files('octo', repo).includes('Why?.tex'), 'not deleted from GitHub');
+  assert.equal(gh.show('octo', repo, 'other.tex'), 'other, from Windows\n');
+});
+
+test('CRLF line ends from a Git for Windows checkout neither block a pull nor go up', { skip }, async () => {
+  const { A, B, repo } = await pair({ 'refs.bib': 'a\nb\n' });
+  // Git for Windows' checkout, which its own config reads as LF
+  execFileSync('git', ['config', 'core.autocrlf', 'true'], { cwd: B });
+  write(B, 'refs.bib', 'a\r\nb\r\n');
+  assert.equal((await g.commitAll(B, { message: 'Backup', author })).committed, false);
+  write(A, 'refs.bib', 'a\nb\nc\n');
+  await sync(A);
+  const result = await sync(B);
+  assert.equal(result.state, 'merged');
+  assert.equal(read(B, 'refs.bib'), 'a\nb\nc\n');
+  // Windows' own repository gets that setting, so a CRLF-only change commits nothing and an edit goes up as LF
+  const C = path.join(tmp, `W${n}`);
+  mkdirSync(C);
+  await g.cloneInto(C, `${gh.web}/octo/${repo}.git`, token);
+  write(C, 'refs.bib', 'a\r\nb\r\nc\r\n');
+  await asWindows(async () => {
+    assert.equal((await g.commitAll(C, { message: 'Backup', author })).committed, false);
+    write(C, 'refs.bib', 'a\r\nb\r\nc\r\nd\r\n');
+    assert.equal((await g.commitAll(C, { message: 'Backup', author })).committed, true);
+  });
+  assert.equal(execFileSync('git', ['config', 'core.autocrlf'], { cwd: C }).toString().trim(), 'true');
+  await g.pushOrigin(C, token);
+  assert.equal(gh.show('octo', repo, 'refs.bib'), 'a\nb\nc\nd\n');
+});
+
+test('a link comes through as a link, a script keeps its execute bit from Windows, and a clone’s scripts follow the umask', { skip }, async () => {
+  const { A, B, repo } = await pair({ 'main.tex': 'x\n' });
+  symlinkSync('../shared/library.bib', path.join(A, 'refs.bib'));
+  write(A, 'run.sh', '#!/bin/sh\necho 1\n');
+  chmodSync(path.join(A, 'run.sh'), 0o755);
+  await sync(A);
+  await sync(B);
+  assert.ok(lstatSync(path.join(B, 'refs.bib')).isSymbolicLink());
+  assert.equal(readlinkSync(path.join(B, 'refs.bib')), '../shared/library.bib');
+  rmSync(path.join(A, 'refs.bib'));
+  symlinkSync('../shared/other.bib', path.join(A, 'refs.bib'));
+  await sync(A);
+  assert.equal((await sync(B)).state, 'merged', 'a changed link pulls');
+  assert.equal(readlinkSync(path.join(B, 'refs.bib')), '../shared/other.bib');
+  // Windows: no execute bit on disk
+  chmodSync(path.join(B, 'run.sh'), 0o644);
+  write(B, 'run.sh', '#!/bin/sh\necho 2\n');
+  await asWindows(() => g.commitAll(B, { message: 'Backup', author }));
+  assert.equal((await g.treeFiles(B, await g.headOid(B))).get('run.sh').mode, '100755');
+  const C = path.join(tmp, `X${n}`);
+  mkdirSync(C);
+  await g.cloneInto(C, `${gh.web}/octo/${repo}.git`, token);
+  assert.equal(statSync(path.join(C, 'run.sh')).mode & 0o777, 0o755);
+});
+
+test('a decomposed name from a Mac’s disk is committed composed', { skip }, async () => {
+  const { A } = await pair({ 'main.tex': 'x\n' });
+  write(A, 'figures/cafe\u0301.png', 'PNG');
+  await g.commitAll(A, { message: 'Backup', author });
+  assert.ok((await g.treeFiles(A, await g.headOid(A))).has('figures/caf\u00e9.png'));
+  assert.equal((await g.commitAll(A, { message: 'Backup', author })).committed, false);
+});
+
+test('entries both computers added to the end of a .bib are both kept', { skip }, async () => {
+  const entry = (key, title) => `@article{${key},\n  title = {${title}},\n  year = {2015}\n}\n`;
+  const { A, B } = await pair({ 'refs.bib': entry('base2010', 'Base') });
+  write(A, 'refs.bib', `${entry('base2010', 'Base')}\n${entry('minsky1961steps', 'Steps')}`);
+  await sync(A);
+  write(B, 'refs.bib', `${entry('base2010', 'Base')}\n${entry('lecun2015deep', 'Deep learning')}`);
+  const result = await sync(B);
+  assert.equal(result.conflicts, 0);
+  for (const key of ['base2010', 'minsky1961steps', 'lecun2015deep']) assert.match(read(B, 'refs.bib'), new RegExp(`@article\\{${key},`));
+  await sync(A);
+  assert.equal(read(A, 'refs.bib'), read(B, 'refs.bib'));
 });
 
 test('Spectrum leaves a repository alone while another program works in it, and refuses LFS, submodules and a detached HEAD', { skip }, async () => {

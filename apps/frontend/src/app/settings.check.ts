@@ -1,6 +1,6 @@
 // Self-check for where model requests and keys go. Run (it imports React, so bundle it first):
 // npx esbuild apps/frontend/src/app/settings.check.ts --bundle --platform=node --log-level=warning | node
-import { DEFAULT_SETTINGS, effectiveCompile, keysBackFromOlder, llmConfigFor, loadSettings, presetForEndpoint, presetPatch, rolePatch, searchConfigFor, searchProviderPatch, sharedPart, takeInShared, withShared } from './settings';
+import { DEFAULT_SETTINGS, effectiveCompile, followSettingsNow, followSharedSettings, keysBackFromOlder, llmConfigFor, loadSettings, presetForEndpoint, presetPatch, rolePatch, searchConfigFor, searchProviderPatch, sharedPart, takeInShared, withShared } from './settings';
 import { NO_FOLDERS } from './folders';
 import type { AppSettings } from './settings';
 import type { ProviderPreset } from '../api/client';
@@ -191,4 +191,40 @@ try {
   else Reflect.deleteProperty(globalThis, 'window');
 }
 
-console.log('settings.check: ok');
+// a sign-in follows at once: this computer's settings and personas go into the settings repository it just made
+(async () => {
+  const sent: string[] = [];
+  const realFetch = globalThis.fetch;
+  const store = new Map([['spectrum-settings', JSON.stringify({ syncSettings: true })]]);
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: {
+    localStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) },
+    addEventListener: () => undefined,
+    dispatchEvent: () => true,
+    setTimeout,
+    clearTimeout
+  } });
+  const answers: Record<string, unknown> = {
+    'POST /api/github/settings/sync': { ok: true, ready: true, first: true },
+    'GET /api/shared/settings': { ok: true, shared: true, latest: null },
+    'PUT /api/shared/settings': { ok: true, shared: true, updatedAt: '2026-10-25T00:00:00.000Z' },
+    'POST /api/github/personas': { ok: true, personas: [], changed: false }
+  };
+  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    const key = `${init?.method || 'GET'} ${url}`;
+    sent.push(key);
+    return new Response(JSON.stringify(answers[key] ?? {}), { status: 200 });
+  }) as typeof fetch;
+  try {
+    await followSettingsNow();
+    eq(sent, [], 'nothing before the follow is set up');
+    followSharedSettings();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    sent.length = 0;
+    await followSettingsNow();
+    eq(sent.filter((k) => k !== 'GET /api/shared/settings'), ['POST /api/github/settings/sync', 'PUT /api/shared/settings', 'POST /api/github/personas'], 'a follow now shares this computer’s settings and personas');
+  } finally {
+    globalThis.fetch = realFetch;
+    Reflect.deleteProperty(globalThis, 'window');
+  }
+  console.log('settings.check: ok');
+})();

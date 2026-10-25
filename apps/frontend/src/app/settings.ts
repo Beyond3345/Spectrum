@@ -566,11 +566,16 @@ function keepSyncState(state: { at: string; sent: string }) {
   }
 }
 
+// the follow below, once it runs, for a sign-in to start at once (no setting changes, and the window may keep its focus)
+let followNow: (theirsFirst?: boolean) => Promise<void> = async () => undefined;
+/** A follow now: after signing in to GitHub, so this computer's settings and personas join the settings repository first. */
+export const followSettingsNow = (theirsFirst = false) => followNow(theirsFirst);
+
 /**
- * On start, whenever the window comes to the front and 2 s after the last change here: takes in the newest settings
- * another computer shared since this one last shared or took some (under the ones changed here since), then shares
- * this computer's if they differ. Off in Settings › Projects. ponytail: newest by each computer's clock, which is fine
- * while both keep the right time.
+ * On start, whenever the window comes to the front, 2 s after the last change here and after a sign-in: takes in the
+ * newest settings another computer shared since this one last shared or took some (under the ones changed here
+ * since), then shares this computer's if they differ. Off in Settings › Projects. ponytail: newest by each computer's
+ * clock, which is fine while both keep the right time.
  */
 export function followSharedSettings() {
   // theirsFirst: just turned on, so the other computers' settings win over this one's
@@ -616,6 +621,7 @@ export function followSharedSettings() {
     }, 2000);
   });
   window.addEventListener('focus', () => follow().catch(() => undefined));
+  followNow = follow;
   follow().catch(() => undefined);
 }
 

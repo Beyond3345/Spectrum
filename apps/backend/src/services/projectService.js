@@ -109,8 +109,26 @@ async function findEntry(id) {
   return entry;
 }
 
+// the projects being moved (Move to this computer): their folder isn't handed out until the move is done, so nothing
+// writes into the folder left behind while it's copied
+const moving = new Set();
+const MOVING = 'This project is being moved to this computer. Try again once that’s finished.';
+
+/** fn(root) while the project is being moved, one move at a time for each project. */
+export async function whileMoving(id, fn) {
+  const root = await getProjectRoot(id);
+  if (moving.has(id)) throw httpError(MOVING, 409, 'PROJECT_MOVING');
+  moving.add(id);
+  try {
+    return await fn(root);
+  } finally {
+    moving.delete(id);
+  }
+}
+
 export async function getProjectRoot(id) {
   const entry = await findEntry(id);
+  if (moving.has(id)) throw httpError(MOVING, 409, 'PROJECT_MOVING');
   if (!(await exists(metaPath(entry.path)))) {
     throw httpError(`The folder for “${entry.name}” is missing. It may have been moved, renamed or deleted.`, 404, 'PROJECT_MISSING');
   }
@@ -385,9 +403,10 @@ async function readMetaId(root) {
  * A cloud copy 1.10 mirrored is never a project of its own: it would get a second id, and 1.10.4, gone back to, would
  * find it holding another project. Nor is a folder in a sync app's folder that holds projects, which it would hide.
  */
-async function refuseCloudCopy(root) {
+async function refuseCloudCopy(root, own) {
   const owner = await cloudCopyOwner(root);
-  if (owner) {
+  // a project may be pointed at its own cloud copy, as 1.10.4 allows, forgetting the record
+  if (owner && owner.id !== own) {
     const name = (await readRegistry()).projects.find((p) => p.id === owner.id)?.name || 'a project';
     throw httpError(`This is the cloud copy of “${name}” that Spectrum 1.10 kept in step with the project on this computer. Open “${name}” from the projects list instead.`, 409);
   }
@@ -434,10 +453,15 @@ export async function openFile(input) {
   if (!/\.(tex|ltx|bib)$/i.test(file) || !(await fs.stat(file)).isFile()) throw httpError('Spectrum opens .tex, .ltx and .bib files.', 400);
   const inside = (root) => caseless(file).startsWith(caseless(root) + path.sep);
   const relative = (root) => file.slice(root.length + 1).split(path.sep).join('/');
-  // in a mirrored project's cloud copy: the same file in the project here, while it has its folder
+  // in a mirrored project's cloud copy: the same file in the project here, while it holds the same; 2.0 no longer keeps
+  // the two in step, so one that differs isn't shown as this computer's
   const mirrored = await cloudCopyOwner(file);
   if (mirrored) {
-    if (!(await getProjectRoot(mirrored.id).catch(() => null))) await refuseCloudCopy(file);
+    const here = await fs.readFile(safeJoin(await getProjectRoot(mirrored.id), mirrored.rel)).catch(() => null);
+    if (!here?.equals(await fs.readFile(file))) {
+      const label = (await placeOf(file).catch(() => null))?.label || path.dirname(file);
+      throw httpError(`This file is in the copy Spectrum 1.10 kept in ${label}, which 2.0 no longer keeps in step with the project on this computer. Copy it into the project in ${process.platform === 'win32' ? 'File Explorer' : 'Finder'} to use it.`, 409);
+    }
     return { projectId: mirrored.id, file: mirrored.rel };
   }
   const { projects } = await readRegistry();
@@ -487,7 +511,7 @@ async function anyDocument(dir, names) {
 export async function relocateProject(id, input) {
   const entry = await findEntry(id);
   const root = await resolveExistingFolder(input);
-  await refuseCloudCopy(root);
+  await refuseCloudCopy(root, id);
   const { meta, id: folderId } = await readMetaId(root);
   const { projects } = await readRegistry();
   if (projects.some((p) => p.id !== id && (p.id === folderId || p.path === root))) {

@@ -223,11 +223,54 @@ test('Link from a 1.10.4 mirror record’s base conflicts only on files changed 
   writeFileSync(path.join(win.data, 'mirror', project.id, 'base', `${sha(base['c.tex'])}.gz`), gzipSync(base['c.tex']));
   const record = readFileSync(path.join(win.data, 'mirror', `${project.id}.json`), 'utf8');
   const { result } = ok(await win.api(`/api/projects/${project.id}/github/link`, { method: 'POST', body: { owner: 'octo', repo: 'Mirrored' } }));
-  assert.equal(result.conflicts, 1, 'c.tex only');
-  assert.equal(read(copy, 'a.tex'), 'a changed on the Mac\n');
+  // the base is only where GitHub still has what the record agreed on (b.tex): a.tex, changed only on GitHub, is
+  // a conflicted copy rather than taken, as GitHub's copy can be older than this computer's last sync
+  assert.equal(result.conflicts, 2, 'a.tex and c.tex');
+  assert.equal(result.deleting, 0);
+  assert.equal(read(copy, 'a.tex'), 'a base\n');
   assert.equal(read(copy, 'b.tex'), 'b changed on Windows\n');
   assert.equal(read(copy, 'c.tex'), 'c changed on Windows\n');
+  assert.ok((await fs.readdir(copy)).some((f) => f.startsWith('a (GitHub’s conflicted copy')));
   assert.equal(readFileSync(path.join(win.data, 'mirror', `${project.id}.json`), 'utf8'), record, 'the record is left as it was');
+});
+
+test('Link from a 1.10.4 mirror record never takes an older copy on GitHub for this computer’s newer work', { skip }, async () => {
+  const mac = computers.Mac;
+  const win = computers.Windows;
+  // the Mac last synced at v1; Windows synced v2 and a new chapter after it, which the record holds
+  const v1 = { 'main.tex': 'Intro v1\n\nBody v1\n' };
+  const v2 = { 'main.tex': 'Intro v2\n\nBody v2\n', 'chapters/intro.tex': 'Chapter\n' };
+  const project = ok(await mac.api('/api/projects', { method: 'POST', body: { name: 'Newer here' } }));
+  for (const [rel, text] of Object.entries(v1)) write(project.path, rel, text);
+  ok(await mac.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' }));
+  const copy = path.join(win.projects, 'Newer here');
+  await fs.cp(project.path, copy, { recursive: true, filter: (src) => !src.includes(`${path.sep}.git`) && !src.endsWith('settings.json') });
+  for (const [rel, text] of Object.entries(v2)) write(copy, rel, text);
+  ok(await win.api('/api/projects/open-folder', { method: 'POST', body: { path: copy } }));
+  const sha = (text) => crypto.createHash('sha256').update(text).digest('hex');
+  const files = Object.fromEntries(Object.entries(v2).map(([rel, text]) => [rel, { rel, hash: sha(text), by: 'here' }]));
+  mkdirSync(path.join(win.data, 'mirror'), { recursive: true });
+  writeFileSync(path.join(win.data, 'mirror', `${project.id}.json`), JSON.stringify({ location: path.join(tmp, 'loc'), rel: 'Newer here', files }));
+  const { result: preview } = ok(await win.api(`/api/projects/${project.id}/github/link`, { method: 'POST', body: { owner: 'octo', repo: 'Newer-here', preview: true } }));
+  assert.deepEqual([preview.conflicts, preview.deleting], [1, 0]);
+  ok(await win.api(`/api/projects/${project.id}/github/link`, { method: 'POST', body: { owner: 'octo', repo: 'Newer-here' } }));
+  assert.equal(read(copy, 'main.tex'), v2['main.tex']);
+  assert.equal(read(copy, 'chapters/intro.tex'), 'Chapter\n', 'not deleted');
+  assert.ok(gh.files('octo', 'Newer-here').includes('chapters/intro.tex'));
+  assert.equal(gh.show('octo', 'Newer-here', 'main.tex'), v2['main.tex']);
+});
+
+test('Get from GitHub leaves alone a project 1.10 mirrored on this computer, whose record would turn the clone into deletions', { skip }, async () => {
+  const mac = computers.Mac;
+  const win = computers.Windows;
+  const project = ok(await mac.api('/api/projects', { method: 'POST', body: { name: 'Once mirrored' } }));
+  ok(await mac.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' }));
+  mkdirSync(path.join(win.data, 'mirror'), { recursive: true });
+  writeFileSync(path.join(win.data, 'mirror', `${project.id}.json`), JSON.stringify({ location: path.join(tmp, 'loc'), rel: 'Once mirrored', files: {} }));
+  const res = await win.api('/api/github/clone', { method: 'POST', body: { owner: 'octo', repo: 'Once-mirrored' } });
+  assert.equal(res.status, 409);
+  assert.match(res.json.error, /Spectrum 1\.10 kept “Once mirrored” in step with a cloud copy/);
+  assert.ok(!existsSync(path.join(win.projects, 'Once mirrored')));
 });
 
 test('a project in a sync app’s folder isn’t made a repository', { skip }, async () => {
@@ -287,6 +330,177 @@ test('Initialise makes a repository on main with a first commit and TeX’s .git
   assert.equal(read(project.path, '.git/HEAD').trim(), 'ref: refs/heads/main');
   assert.match(read(project.path, '.gitignore'), /\*\.aux/);
   assert.equal((await mac.api(`/api/projects/${project.id}/github/init`, { method: 'POST' })).status, 409);
+});
+
+test('a copy of a linked project gets a repository of its own, and the original’s stays its own', { skip }, async () => {
+  const mac = computers.Mac;
+  const project = ok(await mac.api('/api/projects', { method: 'POST', body: { name: 'Original' } }));
+  write(project.path, 'main.tex', 'the original\n');
+  ok(await mac.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' }));
+  const { project: copy } = ok(await mac.api(`/api/projects/${project.id}/copy`, { method: 'POST', body: { name: 'Original variant' } }));
+  assert.ok(!existsSync(path.join(copy.path, '.git')), 'the repository stays with the original');
+  write(copy.path, 'main.tex', 'the variant rewrites everything\n');
+  ok(await mac.api(`/api/projects/${copy.id}/github/backup`, { method: 'POST' }));
+  assert.equal(JSON.parse(read(copy.path, '.spectrum/settings.json')).github.repo, 'Original-variant');
+  // a Finder copy, which carries the original's .git and its settings' link
+  const finder = path.join(mac.projects, 'Original Finder copy');
+  await fs.cp(project.path, finder, { recursive: true });
+  write(finder, 'main.tex', 'the Finder copy\n');
+  const opened = ok(await mac.api('/api/projects/open-folder', { method: 'POST', body: { path: finder } }));
+  assert.notEqual(opened.id, project.id);
+  assert.ok(ok(await mac.api(`/api/projects/${opened.id}/github`)).copyOf);
+  ok(await mac.api(`/api/projects/${opened.id}/github/backup`, { method: 'POST' }));
+  assert.notEqual(JSON.parse(read(finder, '.spectrum/settings.json')).github.repo, 'Original');
+  assert.equal(gh.show('octo', 'Original', 'main.tex'), 'the original\n');
+  const { result } = ok(await mac.api(`/api/projects/${project.id}/github/sync`, { method: 'POST' }));
+  assert.equal(result.state, 'current');
+  assert.equal(JSON.parse(read(project.path, '.spectrum/project.json')).id, project.id);
+});
+
+test('a pull brings what a shared repository holds back here, so the next backup deletes none of it', { skip }, async () => {
+  const mac = computers.Mac;
+  const win = computers.Windows;
+  gh.create('octo', 'team-paper', { collaborators: 3 });
+  const project = ok(await mac.api('/api/projects', { method: 'POST', body: { name: 'Team paper' } }));
+  write(project.path, 'main.tex', 'team\n');
+  ok(await mac.api(`/api/projects/${project.id}/github/link`, { method: 'POST', body: { owner: 'octo', repo: 'team-paper' } }));
+  const { project: there } = ok(await win.api('/api/github/clone', { method: 'POST', body: { owner: 'octo', repo: 'team-paper' } }));
+  write(project.path, '.spectrum/todos/t1.json', JSON.stringify({ id: 't1', text: 'Mine', done: false, createdAt: '1', updatedAt: '1' }));
+  write(project.path, '.spectrum/chats/c1.json', JSON.stringify({ id: 'c1', title: 'Chat', messages: [] }));
+  ok(await mac.api(`/api/projects/${project.id}/github/personal`, { method: 'PUT', body: { personal: true } }));
+  ok(await mac.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' }));
+  assert.ok(gh.files('octo', 'team-paper').includes('.spectrum/todos/t1.json'));
+  // Windows hasn't the answer yet, so holds them back; its pull still writes them here
+  ok(await win.api(`/api/projects/${there.id}/github/sync`, { method: 'POST' }));
+  assert.ok(read(there.path, '.spectrum/todos/t1.json'));
+  assert.ok(read(there.path, '.spectrum/chats/c1.json'));
+  write(there.path, 'main.tex', 'team, from Windows\n');
+  ok(await win.api(`/api/projects/${there.id}/github/backup`, { method: 'POST' }));
+  for (const f of ['.spectrum/todos/t1.json', '.spectrum/chats/c1.json']) assert.ok(gh.files('octo', 'team-paper').includes(f), f);
+  ok(await mac.api(`/api/projects/${project.id}/github/sync`, { method: 'POST' }));
+  assert.ok(read(project.path, '.spectrum/todos/t1.json') && read(project.path, '.spectrum/chats/c1.json'));
+});
+
+test('a cancelled Link leaves the project as it was, unlinked, and Back up offers that repository rather than making one', { skip }, async () => {
+  const mac = computers.Mac;
+  const win = computers.Windows;
+  const project = ok(await mac.api('/api/projects', { method: 'POST', body: { name: 'Cancelled' } }));
+  write(project.path, 'a.tex', 'a\n');
+  ok(await mac.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' }));
+  // 1.10.4's copy on Windows: the same id, its settings without the link
+  const copy = path.join(win.projects, 'Cancelled');
+  await fs.cp(project.path, copy, { recursive: true, filter: (src) => !src.includes(`${path.sep}.git`) && !src.endsWith('settings.json') });
+  write(copy, 'a.tex', 'a, Windows\n');
+  ok(await win.api('/api/projects/open-folder', { method: 'POST', body: { path: copy } }));
+  ok(await win.api(`/api/projects/${project.id}/github/link`, { method: 'POST', body: { owner: 'octo', repo: 'Cancelled', preview: true } }));
+  assert.equal(ok(await win.api(`/api/projects/${project.id}/github`)).linked, false, 'the preview links nothing');
+  assert.equal(read(copy, '.spectrum/settings.json'), null);
+  assert.equal(execFileSync('git', ['remote'], { cwd: copy }).toString().trim(), '', 'its origin as it was: none');
+  const res = await win.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' });
+  assert.deepEqual([res.status, res.json.code, res.json.repo], [409, 'GITHUB_LINK_FIRST', { owner: 'octo', repo: 'Cancelled' }]);
+  assert.ok(![...gh.state.repos.keys()].some((k) => k.startsWith('octo/Cancelled-')), 'no second repository');
+});
+
+test('GitHub’s changes that would delete many files stop the backups with a problem shown, until Sync asks', { skip }, async () => {
+  const mac = computers.Mac;
+  const win = computers.Windows;
+  const project = ok(await mac.api('/api/projects', { method: 'POST', body: { name: 'Many' } }));
+  for (let i = 0; i < 10; i++) write(project.path, `ch${i}.tex`, `chapter ${i}\n`);
+  ok(await mac.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' }));
+  const { project: there } = ok(await win.api('/api/github/clone', { method: 'POST', body: { owner: 'octo', repo: 'Many' } }));
+  for (let i = 0; i < 8; i++) rmSync(path.join(project.path, `ch${i}.tex`));
+  ok(await mac.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' }));
+  write(there.path, 'ch9.tex', 'chapter 9, edited\n');
+  const res = await win.api(`/api/projects/${there.id}/github/backup`, { method: 'POST' });
+  assert.deepEqual([res.status, res.json.code], [409, 'GITHUB_CONFIRM']);
+  assert.match(res.json.error, /would delete 8 files here, so nothing was backed up/);
+  assert.equal(ok(await win.api(`/api/projects/${there.id}/github`)).problem.state, 'attention');
+  assert.equal(ok(await win.api('/api/github/problems')).problems[there.id].state, 'attention');
+  const opened = ok(await win.api(`/api/projects/${there.id}/github/opened`, { method: 'POST' }));
+  assert.equal(opened.result.state, 'confirm', 'for the editor to ask');
+  ok(await win.api(`/api/projects/${there.id}/github/sync`, { method: 'POST', body: { allowDeletions: true } }));
+  assert.equal(gh.show('octo', 'Many', 'ch9.tex'), 'chapter 9, edited\n');
+});
+
+test('a repository renamed on GitHub is linked under its new name on both computers', { skip }, async () => {
+  const mac = computers.Mac;
+  const win = computers.Windows;
+  const project = ok(await mac.api('/api/projects', { method: 'POST', body: { name: 'Paper renamed' } }));
+  write(project.path, 'main.tex', 'paper\n');
+  ok(await mac.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' }));
+  gh.rename('octo', 'Paper-renamed', 'phd-paper');
+  const { project: there } = ok(await win.api('/api/github/clone', { method: 'POST', body: { owner: 'octo', repo: 'phd-paper' } }));
+  assert.equal(ok(await win.api(`/api/projects/${there.id}/github`)).linked, false, 'its settings name the old one');
+  ok(await win.api(`/api/projects/${there.id}/github/link`, { method: 'POST', body: {} }));
+  assert.deepEqual(JSON.parse(read(there.path, '.spectrum/settings.json')).github, { owner: 'octo', repo: 'phd-paper', projectId: project.id });
+  write(there.path, 'main.tex', 'paper, Windows\n');
+  ok(await win.api(`/api/projects/${there.id}/github/backup`, { method: 'POST' }));
+  // the Mac, whose origin is the old name, pulls the new link and is offered Link, which takes the new name
+  ok(await mac.api(`/api/projects/${project.id}/github/pull`, { method: 'POST' }));
+  assert.equal(ok(await mac.api(`/api/projects/${project.id}/github`)).linked, false);
+  ok(await mac.api(`/api/projects/${project.id}/github/link`, { method: 'POST', body: {} }));
+  const status = ok(await mac.api(`/api/projects/${project.id}/github`));
+  assert.equal(status.linked, true);
+  assert.equal(status.link.repo, 'phd-paper');
+  assert.equal(read(project.path, 'main.tex'), 'paper, Windows\n');
+});
+
+test('a backup’s label is a commit of its own, files left out are reported, and the status checks GitHub', { skip }, async () => {
+  const mac = computers.Mac;
+  const win = computers.Windows;
+  const project = ok(await mac.api('/api/projects', { method: 'POST', body: { name: 'Labelled' } }));
+  write(project.path, 'main.tex', 'x\n');
+  ok(await mac.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' }));
+  ok(await mac.api(`/api/projects/${project.id}/github/backup`, { method: 'POST', body: { label: 'Sent to my supervisor' } }));
+  assert.equal(gh.log('octo', 'Labelled'), 'Sent to my supervisor');
+  // a Keynote deck goes up; a PEM key and a .env stay here, and the tab and the card say so after an idle backup
+  write(project.path, 'talk.key', 'PK\u0003\u0004 Keynote');
+  write(project.path, 'server.key', '-----BEGIN PRIVATE KEY-----\nabc\n');
+  write(project.path, '.env', 'TOKEN=1');
+  ok(await mac.api(`/api/projects/${project.id}/file`, { method: 'PUT', body: { path: 'main.tex', content: 'x, edited\n' } }));
+  for (let i = 0; i < 50 && !gh.files('octo', 'Labelled').includes('talk.key'); i++) await new Promise((r) => setTimeout(r, 200));
+  assert.ok(gh.files('octo', 'Labelled').includes('talk.key'));
+  assert.ok(!gh.files('octo', 'Labelled').includes('server.key'));
+  const status = ok(await mac.api(`/api/projects/${project.id}/github`));
+  assert.deepEqual(status.left.map((l) => l.split('”')[0].slice(1)).sort(), ['.env', 'server.key']);
+  assert.equal(ok(await mac.api('/api/github/problems')).problems[project.id].state, 'left');
+  // the other computer's push shows as commits to pull without a pull here
+  const { project: there } = ok(await win.api('/api/github/clone', { method: 'POST', body: { owner: 'octo', repo: 'Labelled' } }));
+  write(there.path, 'other.tex', 'from Windows\n');
+  ok(await win.api(`/api/projects/${there.id}/github/backup`, { method: 'POST' }));
+  assert.equal(ok(await mac.api(`/api/projects/${project.id}/github`)).behind, 1);
+});
+
+test('GitHub having trouble, or a request that times out, waits for the connection rather than asking for attention', { skip, timeout: 60_000 }, async () => {
+  const mac = computers.Mac;
+  const project = ok(await mac.api('/api/projects', { method: 'POST', body: { name: 'Trouble' } }));
+  ok(await mac.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' }));
+  write(project.path, 'a.tex', 'a');
+  gh.state.gitError = 502;
+  let res = await mac.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' });
+  assert.equal(res.status, 503);
+  assert.equal(ok(await mac.api('/api/github/problems')).problems[project.id].state, 'waiting');
+  gh.state.gitError = 0;
+  gh.state.hang = true;
+  try {
+    res = await mac.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' });
+  } finally {
+    gh.state.hang = false;
+  }
+  assert.equal(res.status, 503, res.json?.error);
+  assert.equal(ok(await mac.api('/api/github/problems')).problems[project.id].state, 'waiting');
+  ok(await mac.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' }));
+});
+
+test('a default projects folder in OneDrive (Documents backed up there) moves to the home folder, where GitHub takes projects', { skip }, async () => {
+  const docs = path.join(home, 'Library', 'CloudStorage', 'OneDrive-Personal', 'Documents');
+  mkdirSync(docs, { recursive: true });
+  const laptop = await startComputer('Laptop', { tmp, home, gh, env: { SPECTRUM_PROJECTS_DIR: path.join(docs, 'Spectrum'), OneDrive: path.join(home, 'OneDrive') } });
+  computers.Laptop = laptop;
+  ok(await laptop.api('/api/github/token', { method: 'POST', body: { token: GOOD_TOKEN } }));
+  const project = ok(await laptop.api('/api/projects', { method: 'POST', body: { name: 'In OneDrive' } }));
+  assert.equal(path.dirname(project.path), path.join(home, 'Spectrum'));
+  ok(await laptop.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' }));
 });
 
 test('a repository of the user’s own keeps its GitHub origin, and one sending elsewhere is left alone', { skip }, async () => {

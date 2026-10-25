@@ -9,6 +9,8 @@ import path from 'path';
 import crypto from 'crypto';
 import { renameOver } from '../utils/fsUtils.js';
 import { mergeChat } from '../utils/chatMerge.js';
+import { mergeText } from '../utils/merge3.js';
+import { parseBibEntries } from './referenceService.js';
 import { mergeResults } from './researchService.js';
 import { appPath } from './projectService.js';
 import { createVersion } from './versionService.js';
@@ -24,7 +26,10 @@ const parse = (bytes) => {
   }
 };
 
-/** A path folded as APFS and NTFS fold names: one key for every spelling of one file there. */
+/**
+ * A path folded as APFS folds names, in letter case and Unicode form: one key for every spelling of one file there.
+ * NTFS folds letter case only, so names are kept composed (NFC), as gitFs reads a Mac's.
+ */
 export const keyOf = (rel) => rel.normalize('NFC').toLowerCase();
 
 /**
@@ -109,8 +114,9 @@ export function conflictCopyPath(rel, label, at = new Date()) {
 
 /**
  * Every file once by its key, with the spelling to keep: where only one side spelt it differently from the base (in
- * letter case; another Unicode form is the same name on a Mac or Windows disk), that side made the change and its
- * spelling stays; else ours. A delete and an add that differ only so are then one file, renamed. base, ours and
+ * letter case), that side made the change and its spelling stays; else ours. Of spellings in another Unicode form,
+ * the composed one (NFC), which NTFS doesn't take for the decomposed one. A delete and an add that differ only so are
+ * then one file, renamed. base, ours and
  * theirs: each side's paths. Returns { files: Map(key → { rel, base?, ours?, theirs? }), clashes: [[a, b]] }, clashes
  * being two paths of one side that differ only in letter case, which a Mac or Windows disk can't keep apart.
  */
@@ -126,9 +132,37 @@ export function respellKeys(base, ours, theirs) {
   }
   for (const entry of files.values()) {
     const { base: was, ours: mine, theirs: other } = entry;
-    entry.rel = mine && other && !same(mine, other) && was && !same(was, other) && same(was, mine) ? other : mine ?? other ?? was;
+    const pick = mine && other && !same(mine, other) && was && !same(was, other) && same(was, mine) ? other : mine ?? other ?? was;
+    entry.rel = [mine, other, was].find((rel) => rel && same(rel, pick) && rel === rel.normalize('NFC')) ?? pick;
   }
   return { files, clashes };
+}
+
+/**
+ * A .bib both computers added entries to, which a line merge calls a conflict when both appended them at its end:
+ * each entry only theirs has (by key, in neither the base nor ours) cut out of theirs and put after the rest once the
+ * rest merges. Null when theirs added none, or the rest still conflicts (one entry changed on both sides still gets
+ * its conflicted copy). From and to bytes, as mergeText.
+ */
+export function mergeBibFiles(base, ours, theirs) {
+  const [b, o, t] = [base, ours, theirs].map((buf) => buf.toString('latin1'));
+  const known = new Set([...parseBibEntries(b), ...parseBibEntries(o)].map((e) => e.key.toLowerCase()));
+  const entries = parseBibEntries(t);
+  const added = entries.map((e, i) => ({ e, end: entries[i + 1]?.at ?? t.length })).filter(({ e }) => !known.has(e.key.toLowerCase()));
+  if (!added.length) return null;
+  let rest = t;
+  const cut = [];
+  for (const { e, end } of added.reverse()) {
+    const text = t.slice(e.at, end).trimEnd();
+    let start = e.at;
+    while (start > 0 && /\s/.test(rest[start - 1])) start -= 1;
+    cut.unshift(text);
+    rest = rest.slice(0, start) + rest.slice(e.at + text.length);
+  }
+  const merged = mergeText(base, ours, Buffer.from(rest, 'latin1'));
+  if (!merged) return null;
+  const nl = o.includes('\r\n') ? '\r\n' : '\n';
+  return Buffer.from(`${merged.toString('latin1').trimEnd()}${nl}${nl}${cut.join(`${nl}${nl}`)}${nl}`, 'latin1');
 }
 
 const inApp = (rel) => keyOf(rel).startsWith('.spectrum/');

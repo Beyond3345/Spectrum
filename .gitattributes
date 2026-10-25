@@ -1,0 +1,5 @@
+# The checkers, their dictionaries and the templates ship byte for byte as committed (their manifests hash them),
+# whatever a checkout's core.autocrlf says
+native/** -text
+dictionaries/** -text
+templates/** -text

@@ -1,6 +1,7 @@
 // A stand-in for TexLab for test/texlab.test.js: the LSP's framing on stdin and stdout, a line of JSON in
 // FAKE_TEXLAB_LOG for each message it gets, and just enough answers to show the bridge passes them on.
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const log = (entry) => appendFileSync(process.env.FAKE_TEXLAB_LOG, `${JSON.stringify(entry)}\n`);
 const send = (message) => {
@@ -45,6 +46,8 @@ function handle({ id, method, params }) {
     // a request of its own, a log line the editor never sees, and the project's diagnostics
     send({ id: 'config-1', method: 'workspace/configuration', params: { items: [{ section: 'texlab' }] } });
     send({ method: 'window/logMessage', params: { type: 3, message: 'started' } });
+    // Reproduce TexLab discovering only the spelling used by an \input on a case-insensitive disk.
+    if (process.env.FAKE_TEXLAB_CASE_ALIAS) diagnose(`${root}/Chapters/Intro.tex`, process.env.FAKE_TEXLAB_CASE_ALIAS === 'clean' ? '' : '{');
     send({
       method: 'textDocument/publishDiagnostics',
       params: {
@@ -56,6 +59,15 @@ function handle({ id, method, params }) {
       }
     });
     send({ method: 'textDocument/publishDiagnostics', params: { uri: 'file:///elsewhere/other.tex', diagnostics: [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }, severity: 1, message: 'Not in the project' }] } });
+  } else if (method === 'workspace/didChangeWatchedFiles' && process.env.FAKE_TEXLAB_CASE_ALIAS === '1') {
+    for (const { uri } of params.changes) {
+      if (!uri.endsWith('/chapters/intro.tex')) continue;
+      setTimeout(() => {
+        diagnose(uri, readFileSync(fileURLToPath(uri), 'utf8'));
+        // This entry is never reread by TexLab; it keeps publishing its original text's marks.
+        diagnose(`${root}/Chapters/Intro.tex`, '{');
+      }, 100);
+    }
   } else if (method === 'textDocument/didOpen') diagnose(params.textDocument.uri, params.textDocument.text);
   else if (method === 'textDocument/didChange') diagnose(params.textDocument.uri, params.contentChanges.at(-1).text);
   else if (method === 'textDocument/hover') send({ id, result: { contents: { kind: 'plaintext', value: `Hover at ${params.position.line}:${params.position.character}` } } });

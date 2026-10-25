@@ -311,6 +311,7 @@ export function registerProjectRoutes(fastify) {
     const srcRoot = await getProjectRoot(req.params.id);
     const src = await readMeta(srcRoot);
     const appDir = appPath(srcRoot);
+    const gitDir = path.join(srcRoot, '.git');
     const project = await createProject({
       name: String(req.body?.name || '').trim() || `${src.name} copy`,
       parentDir: siblingParent(srcRoot),
@@ -319,7 +320,8 @@ export function registerProjectRoutes(fastify) {
         recursive: true,
         // keep relative links relative, so the copy's links don't point into the original
         verbatimSymlinks: true,
-        filter: (p) => p !== appDir && !p.startsWith(appDir + path.sep)
+        // nor its repository, whose origin is the original's on GitHub
+        filter: (p) => ![appDir, gitDir].some((dir) => p === dir || p.startsWith(dir + path.sep))
       })
     });
     return { ok: true, project };

@@ -30,8 +30,9 @@ export const DICT_DIR = process.env.SPECTRUM_DICT_DIR || path.join(REPO_ROOT, 'd
 export const FRONTEND_DIST = process.env.SPECTRUM_FRONTEND_DIST || path.join(REPO_ROOT, 'apps', 'frontend', 'dist');
 export const PORT = Number(process.env.PORT || 8787);
 export const HOST = process.env.SPECTRUM_HOST || '127.0.0.1';
-// Default parent folder for new and imported projects.
-export const PROJECTS_DIR = path.resolve(process.env.SPECTRUM_PROJECTS_DIR || path.join(os.homedir(), 'Documents', 'Spectrum'));
+// Default parent folder for new and imported projects; index.js moves it out of a sync app's folder at start
+export let PROJECTS_DIR = path.resolve(process.env.SPECTRUM_PROJECTS_DIR || path.join(os.homedir(), 'Documents', 'Spectrum'));
+export const setProjectsDir = (dir) => (PROJECTS_DIR = path.resolve(dir));
 
 // GitHub: the Spectrum OAuth app's client id for the device sign-in ('' until one is registered: then only a pasted
 // token signs in; there is never a client secret), and where GitHub's API and site are (a test's stand-ins)

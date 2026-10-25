@@ -8,15 +8,14 @@
 //                                       cloud's and left it to hash again)
 //   DATA_DIR/mirror/<id>/base/          the base's text, which 1.10.4 merges against
 //   DATA_DIR/v2-migration.json          what the first start of 2.0 found: { ranAt, mirrored, inPlace, dismissedAt? }
+// 1.10.4 forgets a record once its project leaves the list, or is used in its cloud location; 2.0 reads them so too.
 import { promises as fs } from 'fs';
 import path from 'path';
-import { promisify } from 'util';
-import { gunzip } from 'zlib';
 import { DATA_DIR } from '../config/constants.js';
 import { mirrorSkips, readJson, readdirTyped, writeJsonAtomic } from '../utils/fsUtils.js';
 import { hashFile } from '../utils/projectCopy.js';
 import { keyOf } from './mergeRules.js';
-import { getProject, listProjects } from './projectService.js';
+import { getProject, getProjectRoot, listProjects } from './projectService.js';
 import { placeOf, within } from './syncService.js';
 
 const MIRROR_DIR = path.join(DATA_DIR, 'mirror');
@@ -48,27 +47,28 @@ export async function listMirrored() {
 
 export const cloudRootOf = (record) => join(record.location, record.rel);
 
-const gunzipAsync = promisify(gunzip);
-
-/**
- * A file's bytes as both copies last agreed on them, by the SHA-256 in the record's base: kept by 1.10 for text files
- * and project.json only, so null for the rest (and one 1.10 hadn't stored yet), whose hash is all there is.
- */
-export async function readMirrorBase(id, hash) {
-  if (!ID_RE.test(String(id || '')) || !/^[0-9a-f]{64}$/.test(String(hash || ''))) return null;
-  return fs.readFile(path.join(MIRROR_DIR, id, 'base', `${hash}.gz`)).then(gunzipAsync).catch(() => null);
-}
-
 /**
  * The mirrored project whose cloud copy p is in, and p's '/'-separated path in it; null outside them all. That copy
- * keeps the project's id, so it never becomes a project of its own, which 1.10.4 would then find holding another one.
+ * keeps the project's id, so it never becomes a project of its own, which 1.10.4 would then find holding another one;
+ * but only while the project is listed here with a folder of its own elsewhere, as 1.10.4 forgets the record of one
+ * that left the list (Remove, the Bin) or lost its folder, and of one used in its cloud location.
  */
 export async function cloudCopyOwner(p) {
   for (const m of await listMirrored()) {
     const root = cloudRootOf(m);
-    if (within(p, root)) return { id: m.id, rel: p.slice(root.length + 1).split(path.sep).join('/') };
+    if (within(p, root) && (await getProjectRoot(m.id).then((own) => !within(own, root), () => false))) return { id: m.id, rel: p.slice(root.length + 1).split(path.sep).join('/') };
   }
   return null;
+}
+
+/**
+ * 1.10's cloud location p is in, from its sync.json (read only), with its label: the sync app's, or else its own
+ * folder's (a NAS share, say), as 1.10.4 named one. Null outside them.
+ */
+export async function legacyLocationOf(p) {
+  const { folders = [] } = (await readJson(path.join(DATA_DIR, 'sync.json')).catch(() => null)) || {};
+  const location = (Array.isArray(folders) ? folders : []).map((f) => f?.path).find((l) => typeof l === 'string' && path.isAbsolute(l) && within(p, l));
+  return location ? { path: location, label: (await placeOf(location).catch(() => null))?.label || path.basename(location) } : null;
 }
 
 // ─── The move to 2.0 ───
@@ -122,27 +122,40 @@ async function mirroredSince(at) {
 
 let migrating = null;
 
+/** What a mirrored project's cloud copy has that this computer never received, looked through for CHECK_MS at most. */
+const looked = (record) => cloudChanges(record, Date.now() + CHECK_MS).catch((err) => (['ENOENT', 'ENOTDIR'].includes(err.code) ? { missing: true } : { unchecked: true }));
+
 /**
- * Once, on the first start of 2.0, which stops mirroring, and again after going back to 1.10.4 mirrored since: what became of each cloud project, for the projects page's
- * notice. A mirrored one is an ordinary project here now, and its copy in the cloud location is left as it is:
- * { id, name, label, changed, deleted } with what that copy has that this computer never received, or missing: the
- * copy isn't there, or unchecked: it couldn't be looked through. One used in place, in a cloud location, keeps
- * working there: { id, name, label, path }. Nothing is written into DATA_DIR/mirror, sync.json or a cloud copy.
+ * Once, on the first start of 2.0, which stops mirroring, and again after going back to 1.10.4 mirrored since: what
+ * became of each cloud project, for the projects page's notice. A mirrored one is an ordinary project here now, and
+ * its copy in the cloud location is left as it is: { id, name, label, changed, deleted } with what that copy has that
+ * this computer never received, or missing: the copy isn't there, or unchecked: it couldn't be looked through (each
+ * looked at again at the next start, until a look succeeds or the notice is dismissed). One used in place, in a cloud
+ * location, keeps working there: { id, name, label, path }. Nothing is written into DATA_DIR/mirror, sync.json or a
+ * cloud copy.
  */
 export function migrateToV2() {
   migrating ||= (async () => {
     const done = await readJson(MIGRATION_PATH).catch(() => null);
-    if (done && !(await mirroredSince(Date.parse(done.ranAt)))) return done;
+    if (done && !(await mirroredSince(Date.parse(done.ranAt)))) {
+      if (done.dismissedAt || !done.mirrored?.some((m) => m.missing || m.unchecked)) return done;
+      const mirrored = [];
+      for (const m of done.mirrored) {
+        const record = (m.missing || m.unchecked) && (await readMirror(m.id));
+        mirrored.push(record ? { id: m.id, name: m.name, label: m.label, ...(await looked(record)) } : m);
+      }
+      const again = { ...done, mirrored };
+      await writeJsonAtomic(MIGRATION_PATH, again);
+      return again;
+    }
     const projects = await listProjects();
-    const deadline = Date.now() + CHECK_MS;
     const labelOf = async (folder) => (await placeOf(folder).catch(() => null))?.label || path.basename(folder);
     const mirrored = [];
     for (const { id } of await listMirrored()) {
       const project = projects.find((p) => p.id === id && !p.templateDraft);
       const record = project && (await readMirror(id));
       if (!record) continue;
-      const found = await cloudChanges(record, deadline).catch((err) => (['ENOENT', 'ENOTDIR'].includes(err.code) ? { missing: true } : { unchecked: true }));
-      mirrored.push({ id, name: project.name, label: await labelOf(record.location), ...found });
+      mirrored.push({ id, name: project.name, label: await labelOf(record.location), ...(await looked(record)) });
     }
     // 1.10's cloud locations, read for this alone
     const { folders = [] } = (await readJson(path.join(DATA_DIR, 'sync.json')).catch(() => null)) || {};
@@ -150,7 +163,7 @@ export function migrateToV2() {
     const inPlace = [];
     for (const p of projects) {
       const location = locations.find((l) => within(p.path, l));
-      if (location && !p.templateDraft && !mirrored.some((m) => m.id === p.id)) inPlace.push({ id: p.id, name: p.name, label: await labelOf(p.path), path: p.path });
+      if (location && !p.templateDraft && !mirrored.some((m) => m.id === p.id)) inPlace.push({ id: p.id, name: p.name, label: await labelOf(location), path: p.path });
     }
     const result = { ranAt: new Date().toISOString(), mirrored, inPlace };
     await writeJsonAtomic(MIGRATION_PATH, result);
@@ -168,7 +181,9 @@ export async function migrationNotice() {
   if (data.dismissedAt) return null;
   const inPlace = [];
   for (const p of data.inPlace || []) if ((await getProject(p.id).catch(() => null))?.path === p.path) inPlace.push(p);
-  const mirrored = data.mirrored || [];
+  // not one removed from the list since
+  const listed = new Set((await listProjects()).map((p) => p.id));
+  const mirrored = (data.mirrored || []).filter((m) => listed.has(m.id));
   return mirrored.length || inPlace.length ? { mirrored, inPlace } : null;
 }
 

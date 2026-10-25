@@ -20,9 +20,14 @@ async function readSettingsFile(root) {
   }
 }
 
-/** The project's settings, {} when it has none or they can't be read. */
-export async function readProjectSettings(root) {
-  return readSettingsFile(root).catch(() => ({}));
+const UNREADABLE = 'This project’s settings file (.spectrum/settings.json) can’t be read, so it wasn’t changed.';
+
+/** The project's settings, {} when it has none or (unless strict, which throws) they can't be read. */
+export async function readProjectSettings(root, { strict = false } = {}) {
+  return readSettingsFile(root).catch((err) => {
+    if (strict) throw httpError(UNREADABLE, 409);
+    return {};
+  });
 }
 
 /** fn receives the current settings and returns the next ones. A file that can't be read is left alone rather than replaced. */
@@ -32,7 +37,7 @@ export function updateProjectSettings(root, fn) {
     try {
       settings = await readSettingsFile(root);
     } catch {
-      throw httpError('This project’s settings file (.spectrum/settings.json) can’t be read, so it wasn’t changed.', 409);
+      throw httpError(UNREADABLE, 409);
     }
     const next = await fn(settings);
     await writeJsonAtomic(settingsPath(root), next);

@@ -74,6 +74,8 @@ export function workerClient(url, workerData, { unavailable, timeoutMs = 30_000 
         worker.postMessage({ id, ...request });
       });
     },
+    /** Whether it has been started (and not stopped since), without starting it. */
+    running: () => worker !== null,
     async status() {
       try {
         await start();

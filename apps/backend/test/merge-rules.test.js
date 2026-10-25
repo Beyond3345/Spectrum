@@ -78,13 +78,24 @@ test('a path spelt in other letter case on one side is one file, with that side�
   assert.equal(files.get('intro.tex').rel, 'intro.tex');
   assert.equal(files.get('fig/a.pdf').rel, 'Fig/A.pdf');
   assert.deepEqual(files.get('intro.tex'), { base: 'Intro.tex', ours: 'Intro.tex', theirs: 'intro.tex', rel: 'intro.tex' });
-  // only one side: as it is; another Unicode form is the same name
+  // only one side: as it is; another Unicode form is the same name, spelt composed (NFC), which NTFS needs
   assert.equal(files.get('café.tex').rel, 'Café.tex');
-  assert.equal(rules.respellKeys([], ['Café.tex'], ['Café.tex']).files.get('café.tex').rel, 'Café.tex');
+  assert.equal(rules.respellKeys([], ['Café.tex'], ['Café.tex']).files.get('café.tex').rel, 'Café.tex');
+  assert.equal(rules.respellKeys(['Café.tex'], ['Café.tex'], ['Café.tex']).files.get('café.tex').rel, 'Café.tex', 'a Windows pull renames the Mac’s old decomposed name');
   // no base, both spelt it: ours
   assert.equal(rules.respellKeys([], ['A.tex'], ['a.tex']).files.get('a.tex').rel, 'A.tex');
   assert.deepEqual(clashes, []);
   assert.deepEqual(rules.respellKeys([], ['a.tex', 'A.tex'], []).clashes, [['a.tex', 'A.tex']]);
+});
+
+test('a .bib both sides added entries to keeps both, and one entry changed on both sides still conflicts', () => {
+  const b = Buffer.from('@article{a,\n  title = {A}\n}\n');
+  const ours = Buffer.from(`${b}\n@article{mine,\n  title = {Mine}\n}\n`);
+  const theirs = Buffer.from(`${b}\n@article{new1,\n  title = {New 1}\n}\n\n@article{new2,\n  title = {New 2}\n}\n`);
+  assert.equal(rules.mergeBibFiles(b, ours, theirs).toString(), `${ours}\n@article{new1,\n  title = {New 1}\n}\n\n@article{new2,\n  title = {New 2}\n}\n`);
+  // nothing only theirs has, or the same entry changed on both sides
+  assert.equal(rules.mergeBibFiles(b, ours, ours), null);
+  assert.equal(rules.mergeBibFiles(b, Buffer.from('@article{a,\n  title = {A, ours}\n}\n'), Buffer.from('@article{a,\n  title = {A, theirs}\n}\n@article{n,\n  title = {N}\n}\n')), null);
 });
 
 test('deleting many files at once needs asking, counted over all and over the user’s own', () => {

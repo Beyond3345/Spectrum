@@ -206,6 +206,9 @@ async function start(projectId) {
     versions: 0,
     // URI → its project path and TexLab's latest diagnostics for it
     diagnostics: new Map(),
+    // canonical files explicitly seeded after TexLab discovered them under another letter case
+    canonicalized: new Set(),
+    pendingCanonical: new Set(),
     // a change (or the start) TexLab hasn't published diagnostics for yet, and when they'd have come by
     stale: true,
     settleBy: Date.now() + 5000,
@@ -348,13 +351,25 @@ function spelt(session, rel) {
 
 function keepDiagnostics(session, params) {
   const rel = projectPath(session, params?.uri);
+  const canonical = rel && spelt(session, rel);
+  // TexLab's directory scan may discover only Chapters/intro.tex after an \input{Chapters/Intro}.
+  // Seed the disk's spelling explicitly; otherwise dropping the alias's stale marks can drop every mark for this file.
+  if (canonical && canonical !== rel && !session.canonicalized.has(canonical)) {
+    session.canonicalized.add(canonical);
+    // waited for only when the alias has marks: TexLab never publishes a clean file it hadn't published before
+    if (params.diagnostics?.length) session.pendingCanonical.add(canonical);
+    changed(session);
+    write(session, { jsonrpc: '2.0', method: 'workspace/didChangeWatchedFiles', params: { changes: [{ uri: pathToFileURL(path.join(session.root, ...canonical.split('/'))).href, type: 1 }] } });
+  }
   // by URI, as TexLab has them: two spellings of one file's name are two files to it, and the one the disk doesn't
   // spell it by TexLab read once and never again, so its marks are stale (the disk's spelling has the file's own)
-  if (rel && params.diagnostics?.length && spelt(session, rel) === rel) session.diagnostics.set(params.uri, { rel, list: params.diagnostics });
+  if (rel && params.diagnostics?.length && canonical === rel) session.diagnostics.set(params.uri, { rel, list: params.diagnostics });
   else session.diagnostics.delete(params?.uri);
+  if (canonical === rel) session.pendingCanonical.delete(rel);
+  clearTimeout(session.settling);
+  if (session.pendingCanonical.size) return;
   session.stale = false;
   // TexLab publishes a file at a time; the rest of the round comes within moments
-  clearTimeout(session.settling);
   session.settling = setTimeout(() => {
     for (const resolve of session.waiters.splice(0)) resolve();
   }, 50);
