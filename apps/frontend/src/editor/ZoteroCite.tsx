@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { renameCiteKeys } from '../../../backend/src/latex/text.js';
-import { addFromZotero, cancelZotero, pickFromZotero, searchZotero, zoteroStatus } from '../api/client';
-import type { ReferenceResult, ZoteroHit } from '../api/client';
+import { addFromZotero, authoriseZotero, cancelZotero, disconnectZotero, pickFromZotero, searchZotero, syncZotero, zoteroStatus } from '../api/client';
+import type { ReferenceResult, ZoteroHit, ZoteroStatus, ZoteroSync } from '../api/client';
 import Icon from '../app/Icon';
 import Sheet from '../app/Sheet';
+import { useSettings } from '../app/settings';
 import { useEditor } from './EditorContext';
 import type { EditorApi } from './EditorContext';
 import { citationText, errorText, isTex, mainCitationCommand, reloadBib } from './shared';
@@ -212,5 +213,125 @@ function ZoteroSearch({ onClose, onCite }: { onClose: () => void; onCite: (hits:
         note && <div className="field-hint">{note}</div>
       )}
     </Sheet>
+  );
+}
+
+/** "This project’s collection: Spectrum › Thesis", or why there's none (yet). */
+function collectionLine(sync: ZoteroSync) {
+  if (sync.state === 'synced') return { text: `This project’s collection: ${sync.collection}.${sync.message ? ` ${sync.message}` : ''}`, error: !!sync.message };
+  if (sync.state === 'empty') return { text: 'This project has no references yet, so it has no collection.', error: false };
+  if (sync.state === 'waiting' || sync.state === 'error') return { text: sync.message || '', error: sync.state === 'error' };
+  return null;
+}
+
+/** Settings › Zotero: whether Zotero and Better BibTeX answer, the permission for project collections, and completion. */
+export function ZoteroSettings({ projectId }: { projectId?: string }) {
+  const [settings, update] = useSettings();
+  const [status, setStatus] = useState<ZoteroStatus | null>(null);
+  const [error, setError] = useState('');
+  const [asking, setAsking] = useState(false);
+  const [sync, setSync] = useState<ZoteroSync | null>(null);
+  const askingRef = useRef(false);
+  askingRef.current = asking;
+
+  const check = () => {
+    setError('');
+    zoteroStatus().then(setStatus, (err) => setError(errorText(err)));
+  };
+  useEffect(check, []);
+  // closing Settings while Zotero asks takes the question back
+  useEffect(() => () => void (askingRef.current && cancelZotero().catch(() => undefined)), []);
+  useEffect(() => {
+    setSync(null);
+    if (!projectId || !status?.authorised || !status.writes) return;
+    let live = true;
+    syncZotero(projectId).then((res) => live && setSync(res), () => undefined);
+    return () => {
+      live = false;
+    };
+  }, [projectId, status?.authorised, status?.writes]);
+
+  const allow = async () => {
+    setAsking(true);
+    setError('');
+    try {
+      const res = await authoriseZotero();
+      if (!res.cancelled) check();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setAsking(false);
+    }
+  };
+  const disconnect = () => disconnectZotero().then(setStatus, (err) => setError(errorText(err)));
+  const line = sync && collectionLine(sync);
+  const unknown = !status?.running ? '—' : '';
+
+  return (
+    <>
+      <h3 className="form-section-title">Zotero on this computer</h3>
+      <div className="kv-list">
+        <div className="kv-row">
+          Zotero<span>{!status ? 'Checking…' : status.running ? status.version || 'Open' : 'Not open'}</span>
+        </div>
+        <div className="kv-row">
+          Local API<span>{unknown || (status?.localApi === 'on' ? 'On' : 'Off')}</span>
+        </div>
+        <div className="kv-row">
+          Better BibTeX<span>{unknown || status?.betterBibtex || 'Not installed'}</span>
+        </div>
+      </div>
+      {status?.message && <div className={`field-hint ${status.running ? 'error' : ''}`}>{status.message}</div>}
+      <div className="field-hint">
+        Cite from Zotero, in the editor’s right-click menu and the References card, opens Zotero’s own citation picker when Better BibTeX is installed, and
+        otherwise searches your library here. Each entry goes into the .bib under its Zotero citation key.
+      </div>
+      <div className="row">
+        <button className="btn small" onClick={check}>
+          <Icon name="arrow.clockwise" /> Check again
+        </button>
+      </div>
+
+      <h3 className="form-section-title">Project collections</h3>
+      <div className="field-hint section-hint">
+        Each project gets a collection in your library, Spectrum › its name, kept in step with the project’s .bib: entries Zotero has go into it, and
+        the others are added to your library. An entry taken out of the .bib leaves the collection but stays in your library, and nothing in Zotero ever
+        changes the .bib.
+      </div>
+      {asking ? (
+        <div className="row zotero-waiting">
+          <span className="spinner" />
+          <span className="grow">Answer in Zotero</span>
+          <button className="btn small" onClick={() => cancelZotero().catch(() => undefined)}>Cancel</button>
+        </div>
+      ) : status?.authorised ? (
+        <div className="row">
+          <span className="grow">Zotero lets Spectrum keep your projects’ collections.</span>
+          <button className="btn small" onClick={disconnect}>Disconnect</button>
+        </div>
+      ) : (
+        status?.writes && (
+          <>
+            <div className="row">
+              <button className="btn" onClick={allow}>Allow Spectrum in Zotero…</button>
+            </div>
+            <div className="field-hint">Zotero asks once. Choose Always Allow.</div>
+          </>
+        )
+      )}
+      {line && <div className={`field-hint ${line.error ? 'error' : ''}`}>{line.text}</div>}
+
+      <h3 className="form-section-title">Citing</h3>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={settings.zoteroCompletion} onChange={(e) => update({ zoteroCompletion: e.target.checked })} />
+        <span>
+          <span>
+            Suggest items from your Zotero library in <code>\cite</code> completion
+          </span>
+          <span className="field-hint">Three letters into a key, below the project’s own keys. Picking one adds its entry to the .bib.</span>
+        </span>
+      </label>
+      {error && <div className="field-hint error">{error}</div>}
+    </>
   );
 }
