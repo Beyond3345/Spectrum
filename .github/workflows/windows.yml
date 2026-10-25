@@ -91,22 +91,19 @@ jobs:
           & "$bin\initexmf.exe" --set-config-value='[MPM]AutoInstall=1'
           Add-Content $env:GITHUB_PATH $bin
 
-      # Chocolatey's tectonic is 0.3.2 (2020), without the options Spectrum passes; take the current release
-      - name: Tectonic
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
+      # the installer build put Typst beside the other sidecars, with vcruntime140.dll next to it: a copy named
+      # typst.exe finds it as the app will
+      - name: Typst
         run: |
-          $dir = "$env:RUNNER_TEMP\tectonic"
-          gh release download 'tectonic@0.17.0' --repo tectonic-typesetting/tectonic --pattern '*x86_64-pc-windows-msvc.zip' --dir $dir
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          Expand-Archive -LiteralPath (Get-ChildItem "$dir\*.zip").FullName -DestinationPath "$dir\bin"
-          Add-Content $env:GITHUB_PATH "$dir\bin"
+          $bin = "$env:GITHUB_WORKSPACE\src-tauri\binaries"
+          Copy-Item "$bin\typst-x86_64-pc-windows-msvc.exe" "$bin\typst.exe" -Force
+          Add-Content $env:GITHUB_PATH $bin
+          typst --version
 
       # latexmk needs Perl (Strawberry Perl comes with the runner)
       - name: TeX tools
         run: |
-          Get-Command pdflatex, latexmk, biber, tectonic -ErrorAction SilentlyContinue | Format-Table Name, Source
+          Get-Command pdflatex, latexmk, biber, typst -ErrorAction SilentlyContinue | Format-Table Name, Source
           perl -v
 
       - name: Backend tests
