@@ -993,6 +993,12 @@ a.research-title:hover {
   flex: 1;
 }
 
+/* buttons that go onto a second line in a narrow column (Tools › GitHub) */
+.tool-card .row.wrap {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 .tool-page .row.spread {
   align-items: center;
   justify-content: space-between;

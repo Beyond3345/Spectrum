@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { appPath, getProjectRoot, httpError } from '../services/projectService.js';
+import { appPath, getProjectRoot, httpError, mutateProjectFiles } from '../services/projectService.js';
 import { readJson, writeJsonAtomic } from '../utils/fsUtils.js';
 
 // One file per item, .spectrum/todos/<id>.json (and notes/<id>.json, routes/notes.js), so two computers' lists join
@@ -80,12 +80,14 @@ export function registerTodoRoutes(fastify) {
     if (!isText(text, MAX_TEXT)) throw httpError(`A to-do’s text is at most ${MAX_TEXT} characters.`, 400);
     if (typeof done !== 'boolean' || !isText(createdAt, 40) || !isText(updatedAt, 40)) throw httpError('Invalid to-do.', 400);
     const todo = { ...rest, id, text, done, createdAt, updatedAt, ...(link != null && { link: todoLink(link) }) };
-    await writeJsonAtomic(file, todo);
+    // in the project files' lock, which a GitHub pull holds while it merges to-dos
+    await mutateProjectFiles(() => writeJsonAtomic(file, todo));
     return { ok: true, todo };
   });
 
   fastify.delete('/api/projects/:id/todos/:tid', async (req) => {
-    await fs.rm(await itemFile(req, 'todos', req.params.tid), { force: true });
+    const file = await itemFile(req, 'todos', req.params.tid);
+    await mutateProjectFiles(() => fs.rm(file, { force: true }));
     return { ok: true };
   });
 }

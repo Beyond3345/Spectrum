@@ -24,6 +24,8 @@ import {
   getProjectSettings,
   getProjectTree,
   getSyncSettings,
+  gitHubLeft,
+  gitHubOpened,
   listNotes,
   listProjects,
   renameVersion,
@@ -119,7 +121,7 @@ import type { Reference } from '../editor/lsp/texlab';
 import { applyEdits, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
-import { VERSIONS_CHANGED, errorText, figureSnippet } from '../editor/shared';
+import { PROJECT_DATA_CHANGED, VERSIONS_CHANGED, errorText, figureSnippet } from '../editor/shared';
 
 // ─── helpers ───
 
@@ -2197,6 +2199,36 @@ function Editor({ projectId }: { projectId: string }) {
     return () => events.close();
   }, [projectId]);
 
+  // a linked project: pulled from GitHub as it opens (the files it changes come through the folder watch, and the panels
+  // that read .spectrum reload), and backed up as the editor leaves it, chats and research sessions too
+  useEffect(() => {
+    let live = true;
+    gitHubOpened(projectId).then(
+      (res) => {
+        if (!live || !res.linked) return;
+        if (res.message) notify(res.message);
+        if (res.result?.changedApp) window.dispatchEvent(new Event(PROJECT_DATA_CHANGED));
+        for (const problem of res.result?.problems || []) notify(problem, 'error');
+      },
+      () => undefined
+    );
+    const leave = () => gitHubLeft(projectId);
+    window.addEventListener('pagehide', leave);
+    return () => {
+      live = false;
+      window.removeEventListener('pagehide', leave);
+      leave();
+    };
+  }, [projectId]);
+
+  // the PDF notes again after a pull brought other ones
+  const [notesPulled, setNotesPulled] = useState(0);
+  useEffect(() => {
+    const onPull = () => setNotesPulled((n) => n + 1);
+    window.addEventListener(PROJECT_DATA_CHANGED, onPull);
+    return () => window.removeEventListener(PROJECT_DATA_CHANGED, onPull);
+  }, []);
+
   // the project's TexLab, while the editor is open: a jump to another file opens it here, and the open file gets its
   // extensions whenever TexLab starts answering or stops
   useEffect(() => {
@@ -2427,7 +2459,7 @@ function Editor({ projectId }: { projectId: string }) {
     return () => {
       live = false;
     };
-  }, [shownDoc]);
+  }, [shownDoc, notesPulled]);
 
   // ─── shared API for the composer, chats and Tools ───
 
@@ -3295,7 +3327,7 @@ function Editor({ projectId }: { projectId: string }) {
 
             {keptPanels.includes('tools') && (
               <div className="tools-column" hidden={panel !== 'tools'}>
-                <ToolsPanel tab={toolsTab} onTabChange={setToolsTab} doc={compileTarget} trailing={panelEnd} />
+                <ToolsPanel tab={toolsTab} onTabChange={setToolsTab} doc={compileTarget} trailing={panelEnd} onOpenSettings={setSettingsOpen} />
               </div>
             )}
 

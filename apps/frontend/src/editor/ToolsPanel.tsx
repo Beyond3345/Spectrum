@@ -5,18 +5,24 @@ import { useEditor } from './EditorContext';
 import VersionsTab from './tools/VersionsTab';
 import LogsTab from './tools/LogsTab';
 import ReviewTab from './tools/ReviewTab';
+import GitHubTab from './tools/GitHubTab';
+import type { Section as SettingsSection } from '../app/SettingsSheet';
 
-export type ToolsTab = 'versions' | 'logs' | 'review';
+export type ToolsTab = 'versions' | 'logs' | 'review' | 'github';
 
 const LABELS: [ToolsTab, string][] = [
   ['versions', 'Checkpoints'],
   ['logs', 'Logs'],
-  ['review', 'Review']
+  ['review', 'Review'],
+  ['github', 'GitHub']
 ];
 
 /** Right column when Tools is open. Tabs stay mounted once visited so results survive switching. */
-/** doc: the document Compile builds, which Review checks. `trailing` ends the header (Close and the view switcher). */
-export default function ToolsPanel({ tab, onTabChange, doc, trailing }: { tab: ToolsTab; onTabChange: (tab: ToolsTab) => void; doc: string; trailing?: ReactNode }) {
+/**
+ * doc: the document Compile builds, which Review checks. `trailing` ends the header (Close and the view switcher).
+ * onOpenSettings: Settings at a section, for the GitHub tab's sign-in.
+ */
+export default function ToolsPanel({ tab, onTabChange, doc, trailing, onOpenSettings }: { tab: ToolsTab; onTabChange: (tab: ToolsTab) => void; doc: string; trailing?: ReactNode; onOpenSettings?: (section: SettingsSection) => void }) {
   const { compileErrors } = useEditor();
   const visited = useRef(new Set<ToolsTab>());
   visited.current.add(tab);
@@ -36,6 +42,8 @@ export default function ToolsPanel({ tab, onTabChange, doc, trailing }: { tab: T
         return <LogsTab />;
       case 'review':
         return <ReviewTab doc={doc} active={active} />;
+      case 'github':
+        return <GitHubTab active={active} onOpenSettings={onOpenSettings} />;
     }
   };
 

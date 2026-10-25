@@ -11,7 +11,7 @@ import { listFilesRecursive, readJson, writeJsonAtomic } from '../utils/fsUtils.
 import { safeJoin } from '../utils/pathUtils.js';
 import { STOPWORDS, searchArxiv } from './arxivService.js';
 import { callOpenAICompatible } from './llmService.js';
-import { appPath, httpError } from './projectService.js';
+import { appPath, httpError, mutateProjectFiles } from './projectService.js';
 import {
   baseKey, buildBibIndex, cleanDoi, crossrefBase, decodeEntities, detectInput, findDuplicate, get, getPage, normaliseTitle,
   parseBibEntries, parseName, resolveItems, summaryOf
@@ -345,10 +345,11 @@ async function triageResults(question, results, llmConfig) {
 
 // ─── Sessions ───
 
-// ponytail: one lock for every session's read-merge-write (searches and lookups run outside it); per-file if it bites
+// ponytail: one lock for every session's read-merge-write (searches and lookups run outside it); per-file if it bites.
+// Each write also takes the project files' lock, which a GitHub pull holds while it merges sessions
 let lock = Promise.resolve();
 function locked(fn) {
-  const run = lock.then(fn, fn);
+  const run = lock.then(() => mutateProjectFiles(fn), () => mutateProjectFiles(fn));
   lock = run.catch(() => {});
   return run;
 }
@@ -390,7 +391,7 @@ export async function listSessions(root) {
 }
 
 export async function deleteSession(root, id) {
-  await fs.rm(sessionFile(root, id), { force: true });
+  await mutateProjectFiles(() => fs.rm(sessionFile(root, id), { force: true }));
 }
 
 const text = (max) => (v) => typeof v === 'string' && v.length <= max;

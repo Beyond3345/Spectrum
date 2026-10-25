@@ -1414,3 +1414,102 @@ export const readSkillFile = (id: string, file: string) => request<{ ok: boolean
 export const writeSkillFile = (id: string, file: string, content: string) => request<{ ok: boolean }>(`/api/skills/${id}/file?path=${encodeURIComponent(file)}`, json('PUT', { content }));
 export const getSkillSharing = () => request<SkillShare & { ok: boolean }>('/api/skills/share');
 export const setSkillSharing = (enabled: boolean) => request<SkillShare & { ok: boolean }>('/api/skills/share', json('PUT', { enabled }));
+
+// ─── GitHub (projects and settings between the user's computers; the token stays in the backend) ───
+
+export interface GitHubAuth {
+  signedIn: boolean;
+  login: string;
+  name: string;
+  /** Spectrum has an OAuth app to sign in with the device code; without one, a pasted token */
+  deviceSignIn: boolean;
+  /** the private spectrum-settings repository is on */
+  settingsRepo: boolean;
+}
+
+export interface GitHubProblem {
+  /** waiting: only for the connection (or a file still changing), tried again every 2 minutes */
+  state: 'waiting' | 'attention';
+  message: string;
+  at: string;
+  /** when the last backup reached GitHub, for “Not backed up since …” */
+  lastBackup?: string | null;
+}
+
+export interface GitHubStatus {
+  signedIn: boolean;
+  /** the project's folder is a Git repository */
+  repo: boolean;
+  /** why Spectrum leaves the repository alone (LFS, submodules, mid-merge, another program in it) */
+  refusal: string | null;
+  linked: boolean;
+  link: { owner: string; repo: string; url: string } | null;
+  /** a Finder copy's settings name the original's repository */
+  copyOf: { owner: string; repo: string } | null;
+  ahead: number;
+  behind: number;
+  lastBackup: string | null;
+  /** the sync app whose folder the project is in, which damages repositories */
+  syncFolder: string | null;
+  /** whether a shared repository gets chats, to-dos, PDF notes and research (null: not asked) */
+  personal: boolean | null;
+  askPersonal: boolean;
+  problem: GitHubProblem | null;
+}
+
+/** What a pull (or Link, or Sync) did: confirm, it would delete `deleting` files and waits for allowDeletions. */
+export interface GitHubPull {
+  state: 'current' | 'merged' | 'confirm' | 'preview';
+  fromTheirs: number;
+  conflicts: number;
+  /** a file in .spectrum changed: the to-dos, PDF notes and research panels reload */
+  changedApp: boolean;
+  deleting: number;
+  problems: string[];
+}
+
+export interface GitHubRepoProject {
+  owner: string;
+  repo: string;
+  private: boolean;
+  pushedAt: string;
+  /** the project's id and name, from its project.json */
+  id: string;
+  name: string;
+  /** the project on this computer with that id */
+  local: string | null;
+  /** the repository's page on GitHub */
+  url: string;
+  linked: boolean;
+  ahead: number;
+  behind: number;
+}
+
+export const getGitHub = () => request<GitHubAuth & { ok: boolean }>('/api/github');
+export const signInToGitHub = (token: string) => request<GitHubAuth & { ok: boolean }>('/api/github/token', json('POST', { token }));
+export const signOutOfGitHub = () => request<GitHubAuth & { ok: boolean }>('/api/github', { method: 'DELETE' });
+export const setSettingsRepo = (on: boolean) => request<GitHubAuth & { ok: boolean }>('/api/github/settings-repo', json('PUT', { on }));
+export const startGitHubDevice = () => request<{ ok: boolean; id: string; userCode: string; verificationUri: string; expiresAt: string }>('/api/github/device', json('POST'));
+export const gitHubDeviceState = (id: string) => request<{ ok: boolean; state: 'waiting' | 'done' | 'expired' | 'denied' | 'failed'; error?: string }>(`/api/github/device/${id}`);
+export const cancelGitHubDevice = (id: string) => request<{ ok: boolean }>(`/api/github/device/${id}`, { method: 'DELETE' });
+/** The settings repository brought up to date; first: this computer's settings aren't in it yet. */
+export const syncSettingsRepo = () => request<{ ok: boolean; ready: boolean; first: boolean; error?: string }>('/api/github/settings/sync', json('POST'));
+/** This computer's personas joined with the settings repository's, one file each there. */
+export const syncPersonas = (personas: unknown[]) => request<{ ok: boolean; personas: unknown[]; changed: boolean }>('/api/github/personas', json('POST', { personas }));
+export const listGitHubRepos = () => request<{ ok: boolean; repos: GitHubRepoProject[] }>('/api/github/repos');
+export const gitHubProblems = () => request<{ ok: boolean; problems: Record<string, GitHubProblem> }>('/api/github/problems');
+/** Get from GitHub: cloned into parentDir (default: the projects folder), with the project's own id. */
+export const getFromGitHub = (owner: string, repo: string, parentDir?: string) => request<{ ok: boolean; project: ProjectMeta }>('/api/github/clone', json('POST', { owner, repo, parentDir }));
+export const getProjectGitHub = (id: string) => request<GitHubStatus & { ok: boolean }>(`/api/projects/${id}/github`);
+export const initialiseGit = (id: string) => request<GitHubStatus & { ok: boolean }>(`/api/projects/${id}/github/init`, json('POST'));
+export const backUpToGitHub = (id: string, label?: string) => request<{ ok: boolean; left?: string[]; pulled?: GitHubPull }>(`/api/projects/${id}/github/backup`, json('POST', { label }));
+export const pullFromGitHub = (id: string, allowDeletions = false) => request<{ ok: boolean; result: GitHubPull }>(`/api/projects/${id}/github/pull`, json('POST', { allowDeletions }));
+export const syncWithGitHub = (id: string, allowDeletions = false) => request<{ ok: boolean; result: GitHubPull }>(`/api/projects/${id}/github/sync`, json('POST', { allowDeletions }));
+/** Link to owner/repo (default: the one the project's settings name); preview: what it would do, writing nothing. */
+export const linkGitHub = (id: string, options: { owner?: string; repo?: string; preview?: boolean; allowDeletions?: boolean } = {}) =>
+  request<{ ok: boolean; result: GitHubPull }>(`/api/projects/${id}/github/link`, json('POST', options));
+export const setGitHubPersonal = (id: string, personal: boolean) => request<{ ok: boolean }>(`/api/projects/${id}/github/personal`, json('PUT', { personal }));
+/** The editor opened the project: pulled from GitHub when it's linked; message when that couldn't happen. */
+export const gitHubOpened = (id: string) => request<{ ok: boolean; linked: boolean; result?: GitHubPull; message?: string }>(`/api/projects/${id}/github/opened`, json('POST'));
+/** The editor left the project (sent as the window closes too). */
+export const gitHubLeft = (id: string) => fetch(`/api/projects/${id}/github/left`, { method: 'POST', keepalive: true }).catch(() => undefined);

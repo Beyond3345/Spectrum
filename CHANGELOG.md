@@ -41,6 +41,11 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Each result has Keep and Drop with a reason, Cite at the cursor, Open note and Get PDF. Open note makes `research/notes/<key>.md` the first time, Get PDF downloads a free copy from arXiv, Unpaywall or the copy a source named into `research/papers/` and Add kept papers to .bib adds the kept ones the project does not have yet
 - Deep research, Draft related work and Verify claims in Research open the agent workspace with a prepared task, its skill and the research session
 - Settings › Search has the keys and emails Research uses on this computer: the OpenAlex and Semantic Scholar keys, an email for OpenAlex, an NCBI key for PubMed and the email Unpaywall asks for
+- GitHub, the way projects now go between computers, through isomorphic-git with no Git installation needed. Settings › GitHub signs in with a personal access token, or with a code entered at github.com in a build with an OAuth app, and keeps the token in the backend only
+- Sync with GitHub in a project's menu and Tools › GitHub, with Sync, Pull, Back up… and Open on GitHub. The first backup makes a private repository named after the project and records it in `.spectrum/settings.json` with the project's id. Linked projects pull when opened, back up a minute after typing stops and when the project is left, and show Not backed up since when a backup did not go through
+- A pull merges each file changed on both computers (text by lines, the project's details and settings key by key, chats by message, research sessions by search, to-dos and notes field by field) after a Before pull from GitHub checkpoint. A file that does not merge keeps this computer's copy with GitHub's beside it as a conflicted copy, and a pull that would delete many files asks first
+- The GitHub view in the projects page's sidebar, in place of Cloud projects, lists your repositories that are Spectrum projects, with Get from GitHub for one not on this computer and Link for one whose project is already here (after showing how many files would come from GitHub and how many conflicts there would be)
+- Settings, personas, your own skills and templates, project folders and tag colours follow you through a private `spectrum-settings` repository, each persona, skill and template a file or folder of its own. A computer signing in for the first time takes the settings already there
 
 ### Changed
 
@@ -94,6 +99,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Spectrum agent threads are chats in `.spectrum/chats` with an `agent` mark that 1.10.4 ignores, so 1.10.4 lists them with the other chats. A project's skill choices are kept in `.spectrum/settings.json`
 - 1.10.4 rewrites `project.json` through its own list of keys, so nothing new is kept in it. 2.0.0 keeps the keys in `project.json` it does not know, so a file another version wrote comes through a save here whole
 - 2.0.0 only reads 1.10's mirror records, its `sync.json` and the copies in the cloud locations, and never writes or deletes them, so going back to 1.10.4 resumes mirroring from the last state both copies agreed on. Edits made in 2.0.0 go to the cloud copy, edits from a computer still on 1.10.4 come in after a Before sync checkpoint, and a file changed on both is merged. 2.0.0 keeps this computer's name in its own `computer.json`, so a name changed in 2.0.0 is not carried back
+- A project on GitHub has a `.git` folder, which 1.10.4 leaves out of its file list, checkpoints and mirroring, and its GitHub link is in `.spectrum/settings.json`. Spectrum reads 1.10.4's mirror records to Link a mirrored project but never writes them
 
 ## 1.10.4 (22 October 2026)
 

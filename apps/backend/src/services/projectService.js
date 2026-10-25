@@ -10,6 +10,7 @@ import { caseless, isConflictCopy, placeOf, syncRoots } from './syncService.js';
 import { cloudCopyOwner } from './mirrorService.js';
 import { conflictCopies } from '../utils/conflictCopies.js';
 import { knownMachineNames } from './presenceService.js';
+import { backupSoon } from './githubService.js';
 
 // Projects are ordinary folders anywhere on disk. DATA_DIR/registry.json lists them;
 // each folder keeps its own metadata, history and chats in a hidden .spectrum/ folder.
@@ -157,9 +158,10 @@ export function updateMeta(root, fn) {
 // computers have the project open, so Modified moves on at most every 10 minutes
 const TOUCH_EVERY_MS = 10 * 60 * 1000;
 
-/** A file of the project changed: Modified moves on. */
+/** A file of the project changed: Modified moves on, and a linked project's backup follows. */
 export async function touchProject(root) {
   const meta = await readMeta(root);
+  backupSoon(meta.id);
   if (Date.now() - Date.parse(meta.updatedAt) < TOUCH_EVERY_MS) return;
   await updateMeta(root, (meta) => ({ ...meta, updatedAt: new Date().toISOString() }));
 }

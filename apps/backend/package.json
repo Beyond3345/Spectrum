@@ -17,6 +17,7 @@
     "diff": "^9.0.0",
     "fast-xml-parser": "^5.11.2",
     "fastify": "^5.12.5",
+    "isomorphic-git": "1.43.3",
     "parse-entities": "4.0.2",
     "tar": "^7.5.22",
     "unzipper": "^0.12.5",

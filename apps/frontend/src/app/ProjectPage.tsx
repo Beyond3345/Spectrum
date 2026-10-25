@@ -30,15 +30,22 @@ import {
   thumbnailUrl,
   updateProjectTags,
   uploadTemplate,
-  writeFile
+  writeFile,
+  backUpToGitHub,
+  getProjectGitHub,
+  gitHubProblems,
+  syncWithGitHub
 } from '../api/client';
-import type { MigrationNotice, ProjectMeta, TemplateCategory, TemplateMeta } from '../api/client';
+import type { GitHubProblem, MigrationNotice, ProjectMeta, TemplateCategory, TemplateMeta } from '../api/client';
 import Icon from './Icon';
 import { ContextMenu, MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
 import Select from './Select';
 import Sheet from './Sheet';
 import SettingsSheet from './SettingsSheet';
+import type { Section as SettingsSection } from './SettingsSheet';
+import GitHubView from './GitHubView';
+import { linkWithPreview, offerMove, pullSummary, withDeletionCheck } from './github';
 import TransferPanel, { transferStatusLabel } from './TransferPanel';
 import type { TransferJob } from './TransferPanel';
 import { confirmDialog, promptDialog } from './Dialogs';
@@ -141,7 +148,7 @@ type SheetState =
   | { kind: 'folder'; id: string }
   | { kind: 'transfer'; id: string }
   | { kind: 'saveTemplate'; id: string }
-  | { kind: 'settings' }
+  | { kind: 'settings'; section?: SettingsSection }
   | null;
 
 type ActiveJob = TransferJob & { sourceName: string };
@@ -161,7 +168,9 @@ export default function ProjectPage() {
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
   const [categories, setCategories] = useState<TemplateCategory[]>([]);
   const [defaultDir, setDefaultDir] = useState('');
-  const [view, setView] = useState('all'); // 'all' | 'archived' | 'tag:<name>' | 'folder:<id>'
+  const [view, setView] = useState('all'); // 'all' | 'github' | 'archived' | 'tag:<name>' | 'folder:<id>'
+  /** linked projects whose last backup, pull or sync didn't go through, for “Not backed up since …” */
+  const [problems, setProblems] = useState<Record<string, GitHubProblem>>({});
   const [query, setQuery] = useState('');
   const [prefs, setPrefs] = useState(loadPrefs);
   const [sheet, setSheet] = useState<SheetState>(null);
@@ -192,6 +201,7 @@ export default function ProjectPage() {
       setProjects(all.filter((p) => !p.templateDraft));
       setDrafts(all.flatMap((p) => p.templateDraft || []));
       setLoadError('');
+      gitHubProblems().then((r) => setProblems(r.problems), () => undefined);
     } catch (err) {
       setLoadError(errorText(err));
     } finally {
@@ -281,7 +291,7 @@ export default function ProjectPage() {
     );
   }, [projects, view, activeTag, activeFolder, folders, query, prefs.sortKey, prefs.sortDir, prefs.dateField]);
 
-  const title = activeTag ?? activeFolder?.name ?? (view === 'archived' ? 'Archived' : 'All projects');
+  const title = activeTag ?? activeFolder?.name ?? (view === 'github' ? 'GitHub' : view === 'archived' ? 'Archived' : 'All projects');
   const parentDir = settings.projectsDir || undefined;
 
   // ─── actions ───
@@ -415,6 +425,43 @@ export default function ProjectPage() {
     dismissMigrationNotice().catch(() => undefined);
   };
 
+  // ─── GitHub ───
+
+  /**
+   * Sync with GitHub: a linked project syncs; one GitHub has from the other computer links, after its preview; any
+   * other is backed up to a new private repository, after a yes. One in a sync app's folder is offered the move first.
+   */
+  const syncGitHub = (p: ProjectMeta) =>
+    attempt(async () => {
+      const s = await getProjectGitHub(p.id);
+      if (!s.signedIn) {
+        setSheet({ kind: 'settings', section: 'github' });
+        return;
+      }
+      if (s.refusal) throw new Error(s.refusal);
+      try {
+        if (s.linked) {
+          const result = await withDeletionCheck((allowDeletions) => syncWithGitHub(p.id, allowDeletions));
+          if (result) toast(`Synced “${p.name}”. ${pullSummary(result)}`, { tone: 'success' });
+        } else if (s.link) {
+          const result = await linkWithPreview(p.id, p.name);
+          if (result) toast(`Linked “${p.name}”. ${pullSummary(result)}`, { tone: 'success' });
+        } else {
+          const ok = await confirmDialog({
+            title: `Back up “${p.name}” to GitHub?`,
+            message: 'Spectrum makes a private repository for it on your GitHub and keeps it up to date from then on, so your other computers can get it.',
+            confirmLabel: 'Back up'
+          });
+          if (!ok) return;
+          const res = await backUpToGitHub(p.id);
+          toast(res.left?.length ? `Backed up “${p.name}”, leaving out ${res.left.join('; ')}.` : `Backed up “${p.name}” to GitHub.`, { tone: res.left?.length ? 'error' : 'success' });
+        }
+      } catch (err) {
+        if (await offerMove(err, p.id, parentDir)) toast(`Moved “${p.name}” to this computer. Choose Sync with GitHub again to back it up.`, { tone: 'success' });
+        else throw err;
+      }
+    }, 'Couldn’t sync with GitHub');
+
   // ─── folders ───
 
   /** Changes the folders as they are now: another computer's may have come in since this render. */
@@ -494,6 +541,7 @@ export default function ProjectPage() {
           { label: 'Change template…', icon: 'arrow.triangle.2.circlepath', onSelect: () => setSheet({ kind: 'transfer', id: p.id }) },
           { label: 'Save as template…', icon: 'square.and.arrow.down', onSelect: () => setSheet({ kind: 'saveTemplate', id: p.id }) },
           IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => reveal(p) },
+          { label: 'Sync with GitHub', icon: 'arrow.triangle.2.circlepath', onSelect: () => syncGitHub(p) },
           { separator: true },
           { label: p.archived ? 'Unarchive' : 'Archive', icon: 'archivebox', onSelect: () => toggleArchive(p) },
           { label: 'Remove from list', icon: 'minus.circle', onSelect: () => remove(p) },
@@ -590,8 +638,18 @@ export default function ProjectPage() {
       );
     });
 
-  /** The badge after a project's name (short on a card). */
+  /** The badge after a project's name (short on a card); a linked one GitHub hasn't had its latest from says since when. */
   const badge = (p: ProjectMeta, card = false) => {
+    const problem = problems[p.id];
+    if (problem && !p.missing) {
+      const since = problem.lastBackup ? `Not backed up since ${timeAgo(problem.lastBackup).toLowerCase()}` : 'Not backed up yet';
+      return (
+        <span className={`badge ${problem.state === 'attention' ? 'warning' : ''} ${card ? 'card-badge' : ''}`} title={problem.message}>
+          <Icon name={problem.state === 'attention' ? 'exclamationmark.triangle' : 'clock'} />
+          {card ? 'Not backed up' : since}
+        </span>
+      );
+    }
     const b = badgeOf(p);
     if (!b) return null;
     return (
@@ -709,6 +767,10 @@ export default function ProjectPage() {
               <span className="nav-count">{counts.all}</span>
             </button>
             {folderRows(null, 0)}
+            <button className={`nav-row ${view === 'github' ? 'active' : ''}`} onClick={() => setView('github')}>
+              <Icon name="arrow.triangle.branch" />
+              <span className="nav-label">GitHub</span>
+            </button>
             <button className={`nav-row ${view === 'archived' ? 'active' : ''}`} onClick={() => setView('archived')}>
               <Icon name="archivebox" />
               <span className="nav-label">Archived</span>
@@ -825,7 +887,15 @@ export default function ProjectPage() {
 
         <div className="panel-body">
           {view === 'all' && notice && <MoveNotice notice={notice} onMove={moveHere} onDismiss={dismissNotice} />}
-          {visible.length === 0 ? (
+          {view === 'github' ? (
+            <GitHubView
+              query={query}
+              parentDir={parentDir}
+              onOpen={(id) => navigate(`/editor/${id}`)}
+              onChanged={() => reload()}
+              onOpenSettings={() => setSheet({ kind: 'settings', section: 'github' })}
+            />
+          ) : visible.length === 0 ? (
             emptyState()
           ) : prefs.layout === 'list' ? (
             <div className="project-list" role="table" aria-label={title}>
@@ -981,7 +1051,7 @@ export default function ProjectPage() {
       )}
 
       {sheet?.kind === 'settings' && (
-        <SettingsSheet onClose={() => setSheet(null)} />
+        <SettingsSheet section={sheet.section} onClose={() => setSheet(null)} />
       )}
 
       {job && sheet?.kind !== 'transfer' && (

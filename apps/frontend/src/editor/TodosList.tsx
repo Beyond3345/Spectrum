@@ -3,7 +3,7 @@ import { deleteTodo, getFile, listTodos, saveTodo } from '../api/client';
 import type { Todo, TodoLink } from '../api/client';
 import Icon from '../app/Icon';
 import { toast } from '../app/Toast';
-import { errorText } from './shared';
+import { PROJECT_DATA_CHANGED, errorText } from './shared';
 import { findLine, scanTodos } from './todos';
 import type { SourceTodo } from './todos';
 
@@ -72,8 +72,13 @@ export function useTodos({
 
   useEffect(() => {
     reload();
+    // and after a pull from GitHub brought other ones
     window.addEventListener('focus', reload);
-    return () => window.removeEventListener('focus', reload);
+    window.addEventListener(PROJECT_DATA_CHANGED, reload);
+    return () => {
+      window.removeEventListener('focus', reload);
+      window.removeEventListener(PROJECT_DATA_CHANGED, reload);
+    };
   }, [projectId]);
 
   useEffect(() => {
