@@ -387,3 +387,37 @@ test('a secret staged with Git beforehand never goes in with the next backup', {
   await g.pushOrigin(A, token);
   assert.ok(!gh.files('octo', repo).includes('.env'));
 });
+
+test('a pull never writes through a folder that links outside the project', { skip }, async () => {
+  const { A, B } = await pair({ 'main.tex': 'main\n', 'assets/old.txt': 'old\n' });
+  // B's assets folder is now a link to a folder elsewhere holding the same file
+  const outside = path.join(tmp, `outside${n}`);
+  mkdirSync(outside);
+  writeFileSync(path.join(outside, 'old.txt'), 'old\n');
+  rmSync(path.join(B, 'assets'), { recursive: true });
+  symlinkSync(outside, path.join(B, 'assets'));
+  // GitHub deletes one file in it, adds another, and changes one outside it
+  rmSync(path.join(A, 'assets', 'old.txt'));
+  write(A, 'assets/new.txt', 'from GitHub\n');
+  write(A, 'main.tex', 'main, changed\n');
+  await sync(A);
+  await g.fetchOrigin(B, token);
+  const head = await g.headOid(B);
+  await assert.rejects(g.mergeOrigin(B, { author, checkpoint: false }), (err) => err.code === 'GIT_REFUSED' && /assets\//.test(err.message));
+  assert.deepEqual(readdirSync(outside), ['old.txt'], 'nothing written or deleted outside');
+  assert.equal(read(B, 'main.tex'), 'main\n', 'nor anything changed here');
+  assert.equal(await g.headOid(B), head);
+
+  // the same for a link this computer's .gitignore leaves out, which a backup never commits
+  const { A: C, B: D } = await pair({ 'main.tex': 'main\n' });
+  const elsewhere = path.join(tmp, `elsewhere${n}`);
+  mkdirSync(elsewhere);
+  write(D, '.gitignore', 'assets\n');
+  symlinkSync(elsewhere, path.join(D, 'assets'));
+  write(C, 'assets/new.txt', 'from GitHub\n');
+  await sync(C);
+  await g.commitAll(D, { message: 'Backup', author });
+  await g.fetchOrigin(D, token);
+  await assert.rejects(g.mergeOrigin(D, { author, checkpoint: false }), (err) => err.code === 'GIT_REFUSED');
+  assert.deepEqual(readdirSync(elsewhere), []);
+});

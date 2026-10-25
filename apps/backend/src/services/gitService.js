@@ -11,6 +11,7 @@ import git from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 import { HIDDEN_ENTRIES, listFilesRecursive, writeFileAtomic } from '../utils/fsUtils.js';
 import { looksLikeConflictCopy } from '../utils/conflictCopies.js';
+import { safeJoinLink } from '../utils/pathUtils.js';
 import { mergeText } from '../utils/merge3.js';
 import { isDocumentFile } from '../utils/texUtils.js';
 import { isText } from './versionService.js';
@@ -529,6 +530,16 @@ async function writeDecisions(root, decisions, copies, read, keep) {
     return now.equals(blob) || Buffer.from(now.toString('latin1').replace(/\r\n/g, '\n'), 'latin1').equals(blob) ? sha256(now) : 'changed';
   };
   const restore = async (o) => (o.mode === '120000' ? placeLink(root, o.rel, (await read(o.oid)).toString()) : writeFileAtomic(join(root, o.rel), await read(o.oid)));
+  // every file written, deleted or renamed in a folder of the project's own, before any is: a folder here may be a link
+  // to one elsewhere (an ignored assets folder, say), which nothing from GitHub goes through
+  for (const rel of [...ops.flatMap(({ o, r }) => [o?.rel, r?.rel]), ...copies.map((c) => c.rel)]) {
+    if (!rel) continue;
+    try {
+      safeJoinLink(root, rel);
+    } catch {
+      throw Object.assign(new Error(`“${rel}” is in a folder that links outside the project, so Spectrum won’t pull GitHub’s changes into it. Replace the link with a folder, or leave it out on GitHub too.`), { statusCode: 409, code: 'GIT_REFUSED' });
+    }
+  }
   try {
     for (const d of ops) {
       const { o, r } = d;
