@@ -308,11 +308,11 @@ eq(tableLatex({ ...model, placement: 'ht', span: true }).split('\n').pop(), '\\e
 
 eq(
   figureTypst({ path: 'images/cat.png', width: 0.8, caption: 'A cat, [x]', label: 'fig:cat' }),
-  '#figure(image("images/cat.png", width: 80%), caption: [A cat, \\[x\\]]) <fig:cat>',
+  '#figure(image("/images/cat.png", width: 80%), caption: [A cat, \\[x\\]]) <fig:cat>',
   'a Typst figure with its width, caption and label'
 );
-eq(figureTypst({ path: 'images/a"b.png', width: 1, caption: '', label: '' }), '#figure(image("images/a\\"b.png", width: 100%))', 'a Typst figure without a caption or label, its path quoted');
-eq(figureTypstInclude({ path: 'figures/flow.typ', caption: 'A flow', label: 'fig:flow' }), '#figure(include "figures/flow.typ", caption: [A flow]) <fig:flow>', 'a Typst diagram included as a figure');
+eq(figureTypst({ path: 'images/a"b.png', width: 1, caption: '', label: '' }), '#figure(image("/images/a\\"b.png", width: 100%))', 'a Typst figure without a caption or label, its path quoted');
+eq(figureTypstInclude({ path: 'figures/flow.typ', caption: 'A flow', label: 'fig:flow' }), '#figure(include "/figures/flow.typ", caption: [A flow]) <fig:flow>', 'a Typst diagram included as a figure');
 eq(figureMarkdown({ path: 'images/cat.png', width: 0.75, caption: 'A cat, [x]', label: 'fig:cat' }), '![A cat, \\[x\\]](images/cat.png){#fig:cat width=75%}', 'a Markdown image with its label and width');
 eq(figureMarkdown({ path: 'images/cat.png', width: 0.5, caption: 'A cat', label: '' }), '![A cat](images/cat.png){width=50%}', 'a Markdown image without a label');
 eq(

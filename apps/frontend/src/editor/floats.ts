@@ -290,14 +290,17 @@ const typstText = (text: string) => oneLine(text).replace(/[\\[\]]/g, '\\$&');
 const typstFloat = (body: string, caption: string, label: string) =>
   '#figure(' + body + (caption.trim() ? ', caption: [' + typstText(caption) + ']' : '') + ')' + (label.trim() ? ' <' + label.trim() + '>' : '');
 
+// a project file's path from Typst's root, the project's folder, so a chapter in a subfolder finds it too
+const typstPath = (path: string) => JSON.stringify('/' + path.replace(/^\/+/, ''));
+
 export type FigureTextOptions = { path: string; width: number; caption: string; label: string };
 
-/** A Typst figure: #figure(image("path", width: 80%), caption: [caption]) <label>. */
+/** A Typst figure: #figure(image("/path", width: 80%), caption: [caption]) <label>. */
 export const figureTypst = (o: FigureTextOptions) =>
-  typstFloat('image(' + JSON.stringify(o.path) + ', width: ' + Math.round(Math.max(0, Math.min(1, o.width)) * 100) + '%)', o.caption, o.label);
+  typstFloat('image(' + typstPath(o.path) + ', width: ' + Math.round(Math.max(0, Math.min(1, o.width)) * 100) + '%)', o.caption, o.label);
 
-/** A Typst diagram file included as a figure: #figure(include "figures/x.typ", caption: [caption]) <label>. */
-export const figureTypstInclude = (o: { path: string; caption: string; label: string }) => typstFloat('include ' + JSON.stringify(o.path), o.caption, o.label);
+/** A Typst diagram file included as a figure: #figure(include "/figures/x.typ", caption: [caption]) <label>. */
+export const figureTypstInclude = (o: { path: string; caption: string; label: string }) => typstFloat('include ' + typstPath(o.path), o.caption, o.label);
 
 /** A Typst table, its header row as table.header when the model has one. */
 export function tableTypst(m: TableModel) {
