@@ -22,8 +22,7 @@ import { gzip, gunzip } from 'zlib';
 import { DATA_DIR } from '../config/constants.js';
 import { freePath, mirrorSkips, readJson, readdirTyped, renameOver, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
 import { mergeText } from '../utils/merge3.js';
-import { mergeChat } from '../utils/chatMerge.js';
-import { mergeResults } from './researchService.js';
+import { conflictCopyPath, decide as decideFile, keyOf, mergeChatFiles, mergeMeta, mergeSessionFiles } from './mergeRules.js';
 import { hashFile } from '../utils/projectCopy.js';
 import { appPath, findSyncedProjects, getProjectRoot, httpError, serialiser, updateMeta } from './projectService.js';
 import { locationLabel, offlineMessage, otherComputersProjects, relFrom, sameFolder, within } from './syncService.js';
@@ -50,8 +49,6 @@ const exists = (p) => fs.access(p).then(() => true, () => false);
 const recordPath = (id) => path.join(MIRROR_DIR, `${id}.json`);
 const workDir = (id, ...parts) => path.join(MIRROR_DIR, id, ...parts);
 const basePath = (id, hash) => workDir(id, 'base', `${hash}.gz`);
-// folded on every system, as the two copies meet on APFS and NTFS
-const keyOf = (rel) => rel.normalize('NFC').toLowerCase();
 const inApp = (key) => key.startsWith('.spectrum/');
 const join = (root, rel) => path.join(root, ...rel.split('/').filter(Boolean));
 const stat = (s) => s && { size: s.size, mtimeMs: s.mtimeMs };
@@ -552,29 +549,12 @@ async function fetchCloud(ctx, it) {
   return hashFile(tmp);
 }
 
-/** What a file needs, from each side's hash against the base's. */
+/** What a file needs, from each side's hash against the base's (mergeRules' decide, in the mirror's own actions). */
 function decide({ base, l, c }) {
-  if (!l && !c) return 'drop';
-  if (l && c && l.hash === c.hash) return 'equal';
-  // no base (just linked, or new on both sides): everything on either side stays, and nothing is deleted
-  if (!base) return !c ? 'toCloud' : !l ? 'toLocal' : 'merge';
-  const changedHere = l && l.hash !== base.hash;
-  const changedThere = c && c.hash !== base.hash;
-  // deleted on one side and changed on the other: the changed one stays
-  if (!l) return changedThere ? 'toLocal' : 'deleteCloud';
-  if (!c) return changedHere ? 'toCloud' : 'deleteLocal';
-  return !changedThere ? 'toCloud' : !changedHere ? 'toLocal' : 'merge';
-}
-
-/** Each field from the side that changed it, this computer's where both did; never the id. */
-function mergeMeta(base, local, cloud) {
-  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  const merged = {};
-  for (const key of new Set([...Object.keys(local), ...Object.keys(cloud)])) {
-    const value = same(local[key], base[key]) ? cloud[key] : local[key];
-    if (value !== undefined) merged[key] = value;
-  }
-  return { ...merged, id: local.id };
+  const action = decideFile(base?.hash ?? null, l?.hash ?? null, c?.hash ?? null);
+  if (action === 'ours') return l ? 'toCloud' : 'deleteCloud';
+  if (action === 'theirs') return c ? 'toLocal' : 'deleteLocal';
+  return action;
 }
 
 /**
@@ -596,27 +576,16 @@ const CHAT = /^\.spectrum\/chats\/[^/]+\.json$/;
 
 /** A chat with both sides' messages, the cloud's first, and whether this computer's had any it lacked; null unless both are it. */
 async function bothChats(ctx, it) {
-  const [mine, theirs] = await Promise.all([readJson(join(ctx.localRoot, it.l.rel)), readJson(it.fetched)]).catch(() => []);
-  const chat = (x) => typeof x?.id === 'string' && Array.isArray(x.messages);
-  if (!chat(mine) || !chat(theirs) || mine.id !== theirs.id) return null;
-  const merged = mergeChat(theirs, mine);
-  return { data: Buffer.from(JSON.stringify(merged)), more: merged.messages.length > theirs.messages.length };
+  const [mine, theirs] = await Promise.all([fs.readFile(join(ctx.localRoot, it.l.rel)), fs.readFile(it.fetched)]).catch(() => []);
+  return mine && mergeChatFiles(mine, theirs);
 }
 
 const RESEARCH = /^\.spectrum\/research\/[^/]+\.json$/;
 
-/**
- * A research session with both sides' searches and results, merged as a search merges them: this computer's choices
- * where it made one, the other's where it didn't, and the results only one side found. null unless both are it.
- * ponytail: a choice one side cleared comes back from the other's, which loses nothing
- */
+/** A research session with both sides' searches and results, merged as a search merges them; null unless both are it. */
 async function bothSessions(ctx, it) {
-  const [mine, theirs] = await Promise.all([readJson(join(ctx.localRoot, it.l.rel)), readJson(it.fetched)]).catch(() => []);
-  const session = (x) => typeof x?.id === 'string' && Array.isArray(x.results) && Array.isArray(x.runs);
-  if (!session(mine) || !session(theirs) || mine.id !== theirs.id) return null;
-  const runs = [...new Map([...theirs.runs, ...mine.runs].map((r) => [r?.at, r])).values()].sort((a, b) => String(a?.at).localeCompare(String(b?.at)));
-  const updatedAt = [String(mine.updatedAt ?? ''), String(theirs.updatedAt ?? '')].sort().at(-1);
-  return Buffer.from(JSON.stringify({ ...theirs, ...mine, runs, results: mergeResults(mine.results, theirs.results), updatedAt }));
+  const [mine, theirs] = await Promise.all([fs.readFile(join(ctx.localRoot, it.l.rel)), fs.readFile(it.fetched)]).catch(() => []);
+  return mine && mergeSessionFiles(mine, theirs);
 }
 
 const readBase = (id, hash) => fs.readFile(basePath(id, hash)).then(gunzipAsync).catch(() => null);
@@ -716,22 +685,6 @@ async function place(ctx, root, src, dest, expect) {
     await fs.rm(tmp, { force: true });
     throw err;
   }
-}
-
-/**
- * Beside rel, the cloud's text that didn't merge, named as Dropbox names a conflicted copy
- * (main (OneDrive’s conflicted copy 2026-10-18 104233).tex), so the conflict-copy banner offers it.
- * The editor's conflictCopyPath, with the location's name for the computer's.
- */
-function conflictCopyPath(rel, label, at = new Date()) {
-  const slash = rel.lastIndexOf('/') + 1;
-  const name = rel.slice(slash);
-  const dot = name.lastIndexOf('.');
-  const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
-  const who = label.replace(/[().<>:"/\\|?*\u0000-\u001f]/g, '').trim();
-  const two = (n) => String(n).padStart(2, '0');
-  const when = `${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())} ${two(at.getHours())}${two(at.getMinutes())}${two(at.getSeconds())}`;
-  return `${rel.slice(0, slash)}${stem} (${who ? `${who}’s ` : ''}conflicted copy ${when})${ext}`;
 }
 
 /**
