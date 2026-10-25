@@ -204,6 +204,20 @@ async function linkedHere(root, link) {
   return !!link?.here && (await git.isRepo(root)) && (await git.remoteUrl(root)) === repoUrl(link.owner, link.repo);
 }
 
+/**
+ * The GitHub repository a project's own repository already sends to (origin), { owner, repo }, or null with none.
+ * One Spectrum can't use is left alone rather than changed: another host, or GitHub over SSH, which isomorphic-git
+ * doesn't speak. ponytail: an SSH origin could be fetched over HTTPS without changing it, if someone needs that
+ */
+async function originRepo(root) {
+  const url = (await git.isRepo(root)) && (await git.remoteUrl(root));
+  if (!url) return null;
+  const web = GITHUB_WEB.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const m = new RegExp(`^${web}/([^/]+)/([^/]+?)(?:\\.git)?/?$`, 'i').exec(url);
+  if (!m || !NAME.test(m[1]) || !NAME.test(m[2])) throw httpError('This project’s repository already has an origin Spectrum can’t use (an SSH address or another server), so Spectrum leaves it alone.', 409, 'GIT_REFUSED');
+  return { owner: m[1], repo: m[2] };
+}
+
 /** A folder in a sync app's folder (Synology Drive, Dropbox, Google Drive, OneDrive, iCloud), which corrupts repositories. */
 async function refuseSyncFolder(folder) {
   const place = await placeOfNew(folder).catch(() => null);
@@ -337,7 +351,8 @@ export function backUp(id, { label, idle = false, quitting = false } = {}) {
       await refuseSyncFolder(root);
       if (await git.isRepo(root)) await refuseRepo(root);
       else await git.initRepo(root);
-      const created = await createRepo(meta.name);
+      // a repository of the user's own that already has its GitHub repository keeps it
+      const created = (await originRepo(root)) || (await createRepo(meta.name));
       await updateProjectSettings(root, (s) => ({ ...s, github: { owner: created.owner, repo: created.repo, projectId: meta.id } }));
       await git.setRemote(root, repoUrl(created.owner, created.repo));
       here = true;
@@ -445,6 +460,10 @@ export function link(id, { owner, repo, preview = false, allowDeletions = false 
     await refuseSyncFolder(root);
     if (await git.isRepo(root)) await refuseRepo(root);
     else await git.initRepo(root, 'main', { gitignore: false });
+    const origin = await originRepo(root);
+    if (origin && (origin.owner.toLowerCase() !== target.owner.toLowerCase() || origin.repo.toLowerCase() !== target.repo.toLowerCase())) {
+      throw httpError(`This project’s repository already sends its commits to ${origin.owner}/${origin.repo}.`, 409, 'GIT_REFUSED');
+    }
     await git.setRemote(root, repoUrl(target.owner, target.repo));
     if (!current?.here || current.owner !== target.owner || current.repo !== target.repo) {
       await updateProjectSettings(root, (s) => ({ ...s, github: { ...(current?.here ? current : {}), owner: target.owner, repo: target.repo, projectId: meta.id } }));

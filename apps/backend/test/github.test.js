@@ -3,6 +3,7 @@
 // repositories over Git's smart HTTP. No real GitHub. Run: npm test
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { promises as fs, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -286,4 +287,23 @@ test('Initialise makes a repository on main with a first commit and TeX’s .git
   assert.equal(read(project.path, '.git/HEAD').trim(), 'ref: refs/heads/main');
   assert.match(read(project.path, '.gitignore'), /\*\.aux/);
   assert.equal((await mac.api(`/api/projects/${project.id}/github/init`, { method: 'POST' })).status, 409);
+});
+
+test('a repository of the user’s own keeps its GitHub origin, and one sending elsewhere is left alone', { skip }, async () => {
+  const mac = computers.Mac;
+  const project = ok(await mac.api('/api/projects', { method: 'POST', body: { name: 'Own repo' } }));
+  gh.create('octo', 'my-own');
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: project.path });
+  execFileSync('git', ['remote', 'add', 'origin', `${gh.web}/octo/my-own`], { cwd: project.path });
+  ok(await mac.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' }));
+  assert.equal(JSON.parse(read(project.path, '.spectrum/settings.json')).github.repo, 'my-own');
+  assert.ok(gh.files('octo', 'my-own').includes('.spectrum/project.json'));
+  assert.ok(!gh.state.repos.has('octo/Own-repo'), 'no second repository');
+  const other = ok(await mac.api('/api/projects', { method: 'POST', body: { name: 'Elsewhere' } }));
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: other.path });
+  execFileSync('git', ['remote', 'add', 'origin', 'git@example.com:me/elsewhere.git'], { cwd: other.path });
+  const res = await mac.api(`/api/projects/${other.id}/github/backup`, { method: 'POST' });
+  assert.equal(res.json.code, 'GIT_REFUSED');
+  assert.equal(execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: other.path }).toString().trim(), 'git@example.com:me/elsewhere.git', 'its origin is left as it was');
+  assert.ok(!gh.state.repos.has('octo/Elsewhere'));
 });
