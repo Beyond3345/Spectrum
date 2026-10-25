@@ -1,20 +1,39 @@
 # Spectrum 2.0 continuation handoff
 
-Updated 25 October 2026. Development work only: no installer, tag, push or release was made.
+Updated 25 October 2026 (paused after the phase 4 build). Development work only: no installer, tag, push or release was made.
 
 ## Where to resume
 
-Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum`. Read [SPECTRUM_2_PLAN.md](SPECTRUM_2_PLAN.md), especially its ground rules and Delivery section, before starting the next phase.
+Paused by the user on 25 October 2026 after the phase 4 build, to be continued later. Nothing is running: no builder, reviewer or scheduled check-in is active, and the hourly check-in job was cancelled.
 
-Phase 4 (Zotero, GitHub sync with the settings repository, and the cloud sync's removal with its migration) was built on `build/p4-zotero`, `build/p4-github` and `build/p4-cloud`, branched from `feat/2.0` at `a5a4a08`, and integrated on **`build/p4-integrate`** (see Phase 4 below). Next:
+Use `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` on **`feat/2.0`** (`bab0316` or later; check `git log`). Read [SPECTRUM_2_PLAN.md](SPECTRUM_2_PLAN.md), especially its ground rules and Delivery section, before continuing. Nothing has been pushed, tagged or released; `main` is still 1.10.4 plus the README credit to Oleafly and CircuiTikZ-Designer, which is also in `feat/2.0`.
 
-1. Merge `build/p4-integrate` into `feat/2.0` (no fast-forward, like the earlier phases) and give phase 4 its adversarial review rounds.
-2. Register the Spectrum OAuth app on GitHub (the steps are under Phase 4 below) so the one-click sign-in can be switched on.
-3. Run one check against the real Zotero 10.0.6 with Better BibTeX and against real GitHub, on a test project and a test repository, as listed under Phase 4 limits and open items. Both were only ever run against stand-ins.
-4. Run the Windows checks listed under Phase 4, phase 3 and phase 2 limits and open items on the Windows build machine, including Get from GitHub of a 1 GB repository.
-5. Start phase 5 (Tectonic, Typst and Markdown engines) on branches from the new `feat/2.0`.
+### Status by phase
 
-Phase 3 is in `feat/2.0` up to `a5a4a08`, with its first review round's fixes (see Phase 3 below). Phase 2 is in `feat/2.0` at `25d0b92`, with its review rounds fixed up to `49ea758`. Phase 1 and phase 1b are in `feat/2.0` as described under Phase 1 and 1b below. Stop any stale paused builder or reviewer tasks rather than resuming their old edits, and do not cherry-pick the old builder branches: their work is already in `feat/2.0` or `build/p4-integrate`.
+| Phase | What | State |
+| --- | --- | --- |
+| 1 and 1b | Panels, floats, Document insights, to-dos, compile options and defaults, PDF sidebar and follow-the-file, Checkpoints; diagram composer (circuitikz, pgfplots, TikZ, tikz-cd, Mermaid) | Built, two review rounds, merged |
+| 2 | Agent workspace, personas, skills, MCP tools, to-dos for agents | Built, three review rounds (the last found nothing serious), merged |
+| 3 | TexLab, combined Review, Research sidebar, history menu | Built, two review rounds (the second found nothing serious), merged |
+| 4 | Zotero, GitHub sync and the settings repository, cloud sync removed with its migration | **Built and integrated, merged into `feat/2.0` as `bab0316`. Not reviewed yet** |
+| 5 | Built-in Tectonic, Typst and Markdown engines; the composer's Typst mode | Not started |
+| Final | Whole-app verification and a local test DMG in `OpenPrism/builds` | Not started |
+
+### Next steps, in order
+
+1. **Review phase 4** with adversarial review rounds until a round finds nothing serious, as for the earlier phases (lenses used so far: correctness of each part, data safety and rollback to 1.10.4, a live check in the browser pane, Windows). Phase 4's own open items are listed under Phase 4 limits and open items below.
+2. **Fix the intermittent TexLab test** `test/texlab.test.js` "the real TexLab takes code in Verbatim and the like as code, and a file’s marks come under its own name" (added in phase 3's second review). On the merged branch it failed 2 of 3 runs on its own ("never the brace left open in chapters/intro.tex") and passed the third; phase 4 changed only a comment in texlabService.js, so it is a timing problem in the test or the bridge, not a phase 4 regression. The rest of the backend suite passed on the merged branch: 392 passed, 1 failed (this test), 31 skipped of 424. Typecheck and the frontend build passed.
+3. **Phase 5** (plan section 10b and the composer's Typst mode in 10c) on branches from the newest `feat/2.0`: write a contract like the earlier phases' (the research is in the plan and its notes), build, integrate, review.
+4. **Final verification and a test DMG**: the whole backend and frontend suites, the native tests, a live pass through every feature, then `npm run desktop:build` and copy the DMG into `OpenPrism/builds` beside the 1.10.4 one. Do not push, tag or release; the user tests the DMG first (and the Windows build only happens on GitHub Actions after the user approves a push).
+5. **Things only the user can do** (also listed under each phase):
+   - Register the Spectrum OAuth app on GitHub (steps under Phase 4 below) so one-click sign-in can be switched on; until then Settings › GitHub uses a pasted token.
+   - Try Zotero 10 with Better BibTeX and a real GitHub test repository once, since both were only tested against stand-ins.
+   - Run the Windows checks listed under each phase on the Windows computer.
+
+### Housekeeping
+
+- Old builder and fixer branches and worktrees have been removed; their work is in `feat/2.0`. A scratch worktree for the last test run may remain under the session scratchpad (`final-wt`); it is detached and safe to remove with `git worktree remove --force`.
+- Do not cherry-pick old branches. Branch new work from the newest `feat/2.0`.
 
 ## Phase 4
 
