@@ -69,7 +69,20 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
       disk.current.set(path, text);
       return text;
     };
+    const typst = /\.typ$/i.test(doc);
+    const markdown = /\.(md|markdown)$/i.test(doc);
     const timer = window.setTimeout(async () => {
+      // Typst's #include chain and Markdown's one file: no LaTeX scan, and TexLab has nothing to say about either
+      if (typst || markdown) {
+        const paths = typst ? api.projectFiles.filter((path) => /\.typ$/i.test(path)) : [doc];
+        const files = await Promise.all(paths.map(async (path) => ({ path, text: await read(path).catch(() => '') })));
+        const todos = scanTodos(files);
+        if (live) {
+          setScan({ ...scanInsights(files, doc), todos });
+          setNotes(null);
+        }
+        return;
+      }
       const { scans } = await scanProject(doc, new Set(api.texFiles), read, false);
       const files = await Promise.all(scans.map(async (s) => ({ path: s.file!, text: await read(s.file!).catch(() => '') })));
       // in reading order, as the other lists are
@@ -88,6 +101,12 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
   // word counts, numbers and pages: again after each compile
   useEffect(() => {
     if (!active || !doc) return;
+    // ponytail: Markdown gets no word counts or page numbers, since pandoc's generated LaTeX is not the document
+    if (/\.(md|markdown)$/i.test(doc)) {
+      setStats(null);
+      setBusy(false);
+      return;
+    }
     let live = true;
     setBusy(true);
     getProjectStats(api.projectId, doc, api.settings.texFolder || undefined)

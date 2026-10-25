@@ -117,6 +117,9 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
       }
   );
   const { run, ticks } = state;
+  // a Typst or Markdown document runs the compile, references notice and privacy checks only
+  const latexDoc = /\.(tex|ltx)$/i.test(doc);
+  const groupsForDoc = GROUPS.map(([group]) => group).filter((group) => latexDoc || group === 'compile' || group === 'references' || group === 'privacy');
   const set = (patch: Partial<Kept> | ((was: Kept) => Partial<Kept>)) => setState((was) => ({ ...was, ...(typeof patch === 'function' ? patch(was) : patch) }));
   const setRun = (next: (was: Run) => Run) => set((was) => (was.run ? { run: next(was.run) } : {}));
   useEffect(() => void kept.set(projectId, state), [projectId, state]);
@@ -198,7 +201,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
       );
       // the build's PDF, the compile's own when the copy on disk is an older one; a failed build's would be older too
       const kept = latest.current.keptPdf(reviewed);
-      const pdf = kept ? URL.createObjectURL(kept.blob) : blobUrl(projectId, reviewed.replace(/\.tex$/i, '.pdf'), Date.now());
+      const pdf = kept ? URL.createObjectURL(kept.blob) : blobUrl(projectId, reviewed.replace(/\.(?:tex|ltx|typ|md|markdown)$/i, '.pdf'), Date.now());
       const [facts, diagnostics] = await Promise.all([
         compileFailed ? null : pdfFacts(pdf, abort.signal).catch(() => null),
         latest.current.diagnostics().then((d) => (d.available ? d.files : undefined), () => undefined)
@@ -215,7 +218,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
         diagnostics,
         anonymous
       };
-      const groups = GROUPS.map(([g]) => g).filter((g) => ticks[g]);
+      const groups = groupsForDoc.filter((g) => ticks[g]);
       const findings = runPreflight(input)
         .filter((f) => ticks[f.group])
         .map((f) => ({ ...f, id: [f.group, f.severity, f.message, f.file, f.line, f.page].join('|') }));
@@ -351,7 +354,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
         Checks {doc || 'the document'} before it goes anywhere, compiling it first when the PDF is older than the source. The AI review reads it without changing it.
       </div>
       <div className="review-ticks">
-        {GROUPS.map(([group, label]) => (
+        {GROUPS.filter(([group]) => groupsForDoc.includes(group)).map(([group, label]) => (
           <div key={group} className="review-tick">
             <label className="checkbox-row">
               <input type="checkbox" checked={ticks[group]} disabled={busy} onChange={(e) => set({ ticks: { ...ticks, [group]: e.target.checked } })} />

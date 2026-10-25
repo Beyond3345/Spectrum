@@ -2,6 +2,7 @@ import { matchBrace, withoutComments } from '../../../backend/src/latex/text.js'
 import { CITE_COMMANDS } from './latexContext';
 import { HEADING, HEADING_LEVEL } from './latexEditor';
 import { INPUT_RE, includedFile, inputName } from './latexEnvs';
+import { parseMarkdownOutline, parseTypstOutline } from './outlines';
 import type { TexlabDiagnostic } from '../api/client';
 
 // Document insights: what a document's files hold (headings, floats, equations, labels, citations and the
@@ -130,6 +131,8 @@ export function inReading(doc: string, files: { path: string; text: string }[], 
 
 /** What `files` hold; with `doc`, the document they're read in, each list in reading order. */
 export function scanInsights(files: { path: string; text: string }[], doc?: string): Insights {
+  if (doc && /\.typ$/i.test(doc)) return scanTypst(files, doc);
+  if (doc && /\.(md|markdown)$/i.test(doc)) return scanMarkdown(files, doc);
   const out: Insights = {
     headings: [],
     figures: [],
@@ -247,6 +250,232 @@ export function scanInsights(files: { path: string; text: string }[], doc?: stri
     const known = cited.get(citation.key);
     if (known) known.count += 1;
     else cited.set(citation.key, citation);
+  }
+  out.citations = [...cited.values()];
+  return out;
+}
+
+
+// ─── Typst and Markdown ───
+
+const emptyInsights = (): Insights => ({
+  headings: [],
+  figures: [],
+  tables: [],
+  equations: [],
+  labels: [],
+  citations: [],
+  metadata: { title: '', authors: [], keywords: [], date: '', abstract: '' }
+});
+
+const lineAt = (text: string, index: number) => text.slice(0, index).split('\n').length;
+const collapse = (text: string) => text.replace(/\s+/g, ' ').trim();
+const shortened = (text: string, max = 90) => (text.length > max ? text.slice(0, max - 1) + '…' : text);
+/** Typst content as prose: calls, labels and markup go. */
+const typstProse = (text: string) => collapse(text.replace(/#[A-Za-z][\w-]*(?:\([^)]*\))?/g, ' ').replace(/<[^>]*>/g, ' ').replace(/[*_`$]/g, ' '));
+/** A Typst source with its comments and raw text blanked, line breaks and offsets kept. */
+const typstCode = (text: string) =>
+  text
+    .replace(/\/\/[^\n]*/g, (m) => ' '.repeat(m.length))
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/(`+)[\s\S]*?\1/g, (m) => m.replace(/[^\n]/g, ' '));
+/** The closer of the balanced ( ) or [ ] at open, skipping strings, escapes and content blocks. */
+function typstClose(text: string, open: number, openChar: string, closeChar: string): number {
+  let depth = 0;
+  for (let i = open; i < text.length; i += 1) {
+    if (text[i] === '\\') {
+      i += 1;
+      continue;
+    }
+    if (text[i] === '"') {
+      const end = text.indexOf('"', i + 1);
+      i = end < 0 ? text.length : end;
+      continue;
+    }
+    if (text[i] === openChar) depth += 1;
+    else if (text[i] === closeChar) {
+      depth -= 1;
+      if (depth === 0) return i;
+    } else if (openChar === '(' && text[i] === '[') {
+      const end = typstClose(text, i, '[', ']');
+      if (end < 0) return -1;
+      i = end;
+    }
+  }
+  return -1;
+}
+
+const normalisePath = (from: string, target: string) => {
+  const out: string[] = [];
+  for (const part of [...from.split('/').slice(0, -1), ...target.split('/')]) {
+    if (!part || part === '.') continue;
+    if (part === '..') out.pop();
+    else out.push(part);
+  }
+  return out.join('/');
+};
+
+/** The document and what its #include lines pull in, each once, in the order they are read. */
+function typstChain(texts: Map<string, string>, doc: string) {
+  const chain: string[] = [];
+  const seen = new Set<string>();
+  const visit = (path: string) => {
+    if (seen.has(path) || !texts.has(path)) return;
+    seen.add(path);
+    chain.push(path);
+    for (const m of texts.get(path)!.matchAll(/^\s*#include\s+"([^"]+)"/gm)) visit(normalisePath(path, m[1]));
+  };
+  visit(doc);
+  return chain;
+}
+
+/** A Typst document's headings, figures, tables, equations, labels, citations and #set document metadata. */
+function scanTypst(files: { path: string; text: string }[], doc: string): Insights {
+  const out = emptyInsights();
+  const texts = new Map(files.map((file) => [file.path, file.text]));
+  const chain = typstChain(texts, doc);
+  const labels = new Map<string, { file: string; line: number }>();
+  for (const path of chain) {
+    const source = texts.get(path) ?? '';
+    const code = typstCode(source);
+    for (const item of parseTypstOutline(source)) {
+      const line = source.split('\n')[item.line - 1] ?? '';
+      const label = /<\s*([A-Za-z0-9_:.-]+)\s*>\s*$/.exec(line)?.[1];
+      out.headings.push({ file: path, line: item.line, text: item.title, level: item.level, ...(label && { label }) });
+      if (label) labels.set(label, { file: path, line: item.line });
+    }
+    for (const m of code.matchAll(/#figure\s*\(/g)) {
+      const open = m.index! + m[0].length - 1;
+      const close = typstClose(code, open, '(', ')');
+      if (close < 0) continue;
+      const body = code.slice(open + 1, close);
+      let text = '';
+      const caption = /caption\s*:\s*\[/.exec(body);
+      if (caption) {
+        const at = caption.index! + caption[0].length - 1;
+        const end = typstClose(body, at, '[', ']');
+        if (end > at) text = typstProse(body.slice(at + 1, end));
+      }
+      const label = /^\s*<([^>]+)>/.exec(code.slice(close + 1))?.[1];
+      const table = /#?table\s*\(/.test(body);
+      (table ? out.tables : out.figures).push({ file: path, line: lineAt(code, m.index!), text: shortened(text) || (table ? '(table)' : '(figure)'), ...(label && { label }) });
+    }
+    for (const m of code.matchAll(/\$\s[^$]*?\s\$/g)) out.equations.push({ file: path, line: lineAt(code, m.index!), text: shortened(collapse(m[0].slice(1, -1))) });
+    // a citation's <key> is a key, not a label
+    const labelCode = code.replace(/#cite\s*\([^)]*\)/g, (m) => m.replace(/[^\n]/g, ' '));
+    for (const m of labelCode.matchAll(/<([A-Za-z0-9_:.-]+)>/g)) if (!labels.has(m[1])) labels.set(m[1], { file: path, line: lineAt(code, m.index!) });
+    const document = /#set\s+document\s*\(/.exec(code);
+    if (document) {
+      const open = document.index + document[0].length - 1;
+      const close = typstClose(code, open, '(', ')');
+      const args = code.slice(open + 1, close < 0 ? code.length : close);
+      const one = (name: string) => new RegExp(name + '\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"').exec(args)?.[1]?.replace(/\\"/g, '"') ?? '';
+      const list = (name: string) => {
+        const hit = new RegExp(name + '\\s*:\\s*(?:"([^"]*)"|\\(([^)]*)\\))').exec(args);
+        if (!hit) return [];
+        return hit[1] ? [hit[1]] : [...hit[2].matchAll(/"([^"]*)"/g)].map((x) => x[1]);
+      };
+      out.metadata.title ||= one('title');
+      if (!out.metadata.authors.length) out.metadata.authors = list('author').flatMap((author) => author.split(/\s+and\s+|;\s*/)).filter(Boolean);
+      if (!out.metadata.keywords.length) out.metadata.keywords = list('keywords').flatMap((word) => word.split(/[,;]/)).map((word) => word.trim()).filter(Boolean);
+      out.metadata.date ||= one('date');
+    }
+  }
+  for (const [label, place] of labels) out.labels.push({ file: place.file, line: place.line, text: label, label });
+  const cited = new Map<string, Citation>();
+  const cite = (key: string, file: string, line: number) => {
+    const known = cited.get(key);
+    if (known) known.count += 1;
+    else cited.set(key, { key, count: 1, file, line });
+  };
+  for (const path of chain) {
+    const code = typstCode(texts.get(path) ?? '');
+    // both forms in the order they appear: #cite(<key>) and @key (unless that is a label's reference)
+    for (const m of code.matchAll(/#cite\s*\(\s*<([^>]+)>|(?<![A-Za-z0-9])@([A-Za-z0-9_:.-]+)/g)) {
+      const key = m[1] ?? m[2];
+      if (m[2] && labels.has(m[2])) continue;
+      cite(key, path, lineAt(code, m.index!));
+    }
+  }
+  out.citations = [...cited.values()];
+  return out;
+}
+
+const yamlValue = (value: string) => {
+  const text = value.trim();
+  return text.length > 1 && ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) ? text.slice(1, -1) : text;
+};
+
+/** A Markdown document's front matter, as submission metadata. */
+function markdownMetadata(text: string): Metadata {
+  const meta: Metadata = { title: '', authors: [], keywords: [], date: '', abstract: '' };
+  const lines = text.split('\n');
+  if (lines[0]?.trim() !== '---') return meta;
+  const end = lines.findIndex((line, index) => index > 0 && /^(?:---|\.\.\.)\s*$/.test(line));
+  if (end < 0) return meta;
+  const fields: Record<string, string | string[]> = {};
+  let key = '';
+  for (const line of lines.slice(1, end)) {
+    const item = /^\s*-\s+(.*)$/.exec(line);
+    if (item && key) {
+      if (!Array.isArray(fields[key])) fields[key] = fields[key] ? [fields[key] as string] : [];
+      (fields[key] as string[]).push(yamlValue(item[1]));
+      continue;
+    }
+    const pair = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/.exec(line);
+    if (!pair) continue;
+    key = pair[1];
+    const value = pair[2].trim();
+    fields[key] = !value ? [] : value.startsWith('[') && value.endsWith(']') ? value.slice(1, -1).split(',').map(yamlValue) : yamlValue(value);
+  }
+  const one = (name: string) => (Array.isArray(fields[name]) ? (fields[name] as string[])[0] ?? '' : (fields[name] as string) ?? '');
+  const many = (name: string) => (Array.isArray(fields[name]) ? (fields[name] as string[]) : fields[name] ? [fields[name] as string] : []);
+  meta.title = one('title');
+  meta.authors = many('author').flatMap((author) => author.split(/\s+and\s+|;\s*/)).filter(Boolean);
+  meta.keywords = many('keywords').flatMap((word) => word.split(/[,;]/)).map((word) => word.trim()).filter(Boolean);
+  meta.date = one('date');
+  meta.abstract = one('abstract');
+  return meta;
+}
+
+/** A Markdown document's headings, images, pipe tables, $$ equations, citations, labels and front matter. */
+function scanMarkdown(files: { path: string; text: string }[], doc: string): Insights {
+  const out = emptyInsights();
+  const text = files.find((file) => file.path === doc)?.text ?? files[0]?.text ?? '';
+  const lines = text.split('\n');
+  out.metadata = markdownMetadata(text);
+  for (const item of parseMarkdownOutline(text)) {
+    const line = lines[item.line - 1] ?? '';
+    const label = /\{#([A-Za-z0-9_:.-]+)/.exec(line)?.[1];
+    out.headings.push({ file: doc, line: item.line, text: item.title, level: item.level, ...(label && { label }) });
+    if (label) out.labels.push({ file: doc, line: item.line, text: label, label });
+  }
+  for (const m of text.matchAll(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)(?:\{([^}]*)\})?/g)) {
+    const label = /#([A-Za-z0-9_:.-]+)/.exec(m[3] ?? '')?.[1];
+    out.figures.push({ file: doc, line: lineAt(text, m.index!), text: m[1].trim() || '(untitled)', ...(label && { label }) });
+    if (label) out.labels.push({ file: doc, line: lineAt(text, m.index!), text: label, label });
+  }
+  for (let i = 0; i + 1 < lines.length; i += 1) {
+    if (!/^\s*\|/.test(lines[i]) || !/^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(lines[i + 1])) continue;
+    const header = lines[i].split('|').map((cell) => cell.trim()).filter(Boolean).join(' · ');
+    let j = i + 1;
+    while (j + 1 < lines.length && /^\s*\|/.test(lines[j + 1])) j += 1;
+    let captionAt = j + 1;
+    while (captionAt < lines.length && !lines[captionAt].trim()) captionAt += 1;
+    const caption = /^Table:\s*(.*?)(?:\s*\{#([A-Za-z0-9_:.-]+)\})?\s*$/.exec(lines[captionAt] ?? '');
+    const label = caption?.[2];
+    out.tables.push({ file: doc, line: i + 1, text: header, ...(label && { label }) });
+    if (label) out.labels.push({ file: doc, line: captionAt + 1, text: label, label });
+    i = j;
+  }
+  for (const m of text.matchAll(/\$\$([\s\S]*?)\$\$/g)) out.equations.push({ file: doc, line: lineAt(text, m.index!), text: shortened(collapse(m[1])) });
+  const cited = new Map<string, Citation>();
+  for (const m of text.matchAll(/\[[^\]]*@[^\]]*\]/g)) {
+    for (const key of m[0].matchAll(/@([A-Za-z0-9_:.-]+)/g)) {
+      const known = cited.get(key[1]);
+      if (known) known.count += 1;
+      else cited.set(key[1], { key: key[1], count: 1, file: doc, line: lineAt(text, m.index!) });
+    }
   }
   out.citations = [...cited.values()];
   return out;

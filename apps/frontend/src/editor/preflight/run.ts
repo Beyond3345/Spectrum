@@ -189,6 +189,8 @@ export function preflightGaps(input: Pick<PreflightInput, 'log' | 'failed' | 'pd
 /** Every check of every group, errors first within each group. */
 export function runPreflight(input: PreflightInput): Finding[] {
   const { doc, pdfFacts: pdf } = input;
+  // Typst's and Markdown's source cannot be read as LaTeX: their review is the compile, the log, the PDF and privacy
+  const latexDoc = /\.(tex|ltx)$/i.test(doc);
   const found: Finding[] = [];
   // a second of the same finding (two \hl on one line, a token twice on one) says nothing more, and would share its
   // row's id in Review, so Dismiss would hide both
@@ -361,7 +363,7 @@ export function runPreflight(input: PreflightInput): Finding[] {
   }
 
   // ─── References and assets ───
-  {
+  if (latexDoc) {
     const group = 'references';
     // the .bib files the document names, or every one when it names none that exist
     const named = new Set(scans.flatMap((s) => s.bibs.map((n) => includedFile(pathSet, doc, n, '.bib'))).filter(Boolean) as string[]);
@@ -430,6 +432,8 @@ export function runPreflight(input: PreflightInput): Finding[] {
         const syntax = kind === 'bib-syntax';
         add({ group, severity: syntax ? 'error' : 'warning', message: `${d.message}${token && !syntax ? `: ${quoted(token)}` : ''} (TexLab)`, file, line: d.line, fixable: true });
       }
+  } else {
+    add({ group: 'references', severity: 'info', message: 'The source checks read LaTeX, so they don’t apply to Typst or Markdown documents.' });
   }
 
   // ─── Privacy and blind review ───
@@ -480,7 +484,7 @@ export function runPreflight(input: PreflightInput): Finding[] {
   }
 
   // ─── Accessibility ───
-  {
+  if (latexDoc) {
     const group = 'accessibility';
     // a password-protected PDF pdf.js couldn't open has nothing read from it to go on (preflightGaps says so)
     if (pdf && !unreadable(pdf)) {
@@ -515,7 +519,7 @@ export function runPreflight(input: PreflightInput): Finding[] {
   }
 
   // ─── Submission readiness ───
-  {
+  if (latexDoc) {
     const group = 'submission';
     if (pdf) {
       if (Number(pdf.version) > 1.7) add({ group, severity: 'info', message: `The PDF is version ${pdf.version}. Some submission systems only take PDF 1.4 to 1.7.` });
