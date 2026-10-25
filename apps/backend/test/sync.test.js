@@ -159,6 +159,26 @@ test('Move to this computer copies a project out of its sync app’s folder and 
   assert.equal((await api(`/api/projects/${id}/move-here`, { method: 'POST', body: {} })).status, 400);
 });
 
+test('while a project is being moved, its folder isn’t handed to a save, and every other project carries on', async () => {
+  const { whileMoving } = await import('../src/services/projectService.js');
+  const dir = path.join(drive, 'Spectrum', 'Busy');
+  const id = project(dir);
+  await openFolder(dir);
+  const other = project(path.join(tmp, 'projects', 'Elsewhere'));
+  await openFolder(path.join(tmp, 'projects', 'Elsewhere'));
+  let release;
+  const move = whileMoving(id, () => new Promise((resolve) => (release = resolve)));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const save = await api(`/api/projects/${id}/file`, { method: 'PUT', body: { path: 'main.tex', content: 'typed during the move' } });
+  assert.deepEqual([save.status, save.json.message], [409, 'This project is being moved to this computer. Try again once that’s finished.']);
+  assert.notEqual(readFileSync(path.join(dir, 'main.tex'), 'utf8'), 'typed during the move');
+  assert.equal((await api(`/api/projects/${id}/move-here`, { method: 'POST', body: {} })).status, 409, 'one move at a time');
+  assert.equal((await api(`/api/projects/${other}/file`, { method: 'PUT', body: { path: 'main.tex', content: 'other' } })).status, 200, 'no wait for another project');
+  release();
+  await move;
+  assert.equal((await api(`/api/projects/${id}/file`, { method: 'PUT', body: { path: 'main.tex', content: 'after' } })).status, 200);
+});
+
 test('hides sync apps’ and the NAS’s own files from the file tree', async () => {
   const dir = path.join(drive, 'Spectrum', 'Tidy');
   const id = project(dir);

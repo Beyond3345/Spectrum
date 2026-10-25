@@ -109,8 +109,26 @@ async function findEntry(id) {
   return entry;
 }
 
+// the projects being moved (Move to this computer): their folder isn't handed out until the move is done, so nothing
+// writes into the folder left behind while it's copied
+const moving = new Set();
+const MOVING = 'This project is being moved to this computer. Try again once that’s finished.';
+
+/** fn(root) while the project is being moved, one move at a time for each project. */
+export async function whileMoving(id, fn) {
+  const root = await getProjectRoot(id);
+  if (moving.has(id)) throw httpError(MOVING, 409, 'PROJECT_MOVING');
+  moving.add(id);
+  try {
+    return await fn(root);
+  } finally {
+    moving.delete(id);
+  }
+}
+
 export async function getProjectRoot(id) {
   const entry = await findEntry(id);
+  if (moving.has(id)) throw httpError(MOVING, 409, 'PROJECT_MOVING');
   if (!(await exists(metaPath(entry.path)))) {
     throw httpError(`The folder for “${entry.name}” is missing. It may have been moved, renamed or deleted.`, 404, 'PROJECT_MISSING');
   }
