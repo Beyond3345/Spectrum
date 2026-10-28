@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Rebuild the bundled checkers. Sources and tools are pinned in native/checkers.lock.json.
 //   node scripts/native.mjs [hunspell|harper|dictionaries|catalogue|all|verify] [--update] [--archive file.tgz] [--check]
+//   node scripts/native.mjs languagetool <jars folder>
 // catalogue writes the language list with its pinned dictionaries; catalogue --check downloads them again and compares.
+// languagetool pins LanguageTool's jars and Temurin's Java runtimes in apps/backend/src/data/engines.json (see below).
 // --update refreshes the vendored Hunspell core (native/hunspell/core) from the pinned archive; Spectrum's binding stays.
 // --archive supplies an offline archive for one engine; its pinned SHA-256 is still checked.
 import { spawnSync } from 'node:child_process';
@@ -307,9 +309,48 @@ async function catalogue(check) {
   if (refused.length) console.log(`Refused:\n  ${refused.join('\n  ')}`);
 }
 
+// LanguageTool, run on this computer only when the user downloads it: the server and every language module, as Maven
+// Central has them, and a Temurin Java runtime for each of Spectrum's platforms
+const LANGUAGETOOL = '6.8';
+const JAVA = 21;
+const MAVEN = 'https://repo1.maven.org/maven2/';
+
+/**
+ * Pins LanguageTool's jars from a folder Maven resolved them into (a pom depending on languagetool-server and
+ * language-all at LANGUAGETOOL, then mvn dependency:copy-dependencies -Dmdep.useRepositoryLayout=true
+ * -DincludeScope=runtime), each checked against Maven Central's own SHA-1, and Temurin's newest Java runtimes with
+ * Adoptium's SHA-256.
+ */
+async function pinLanguageTool(folder) {
+  if (!folder || !existsSync(folder)) throw new Error('Give the folder Maven copied LanguageTool’s jars into.');
+  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : e.name.endsWith('.jar') ? [join(dir, e.name)] : []));
+  const jars = [];
+  for (const file of walk(folder).sort()) {
+    const rel = file.slice(folder.length + 1).split(/[\\/]/).join('/');
+    const bytes = readFileSync(file);
+    const sha1 = (await download(`${MAVEN}${rel}.sha1`)).toString('utf8').trim().split(/\s/)[0];
+    if (createHash('sha1').update(bytes).digest('hex') !== sha1) throw new Error(`${rel} doesn’t match Maven Central’s SHA-1`);
+    jars.push([rel, sha256(bytes), bytes.length]);
+  }
+  if (!jars.some(([rel]) => rel.includes(`/languagetool-server/${LANGUAGETOOL}/`))) throw new Error(`The folder doesn’t hold languagetool-server ${LANGUAGETOOL}.`);
+  const java = {};
+  for (const [arch, os, cpu] of [['arm64', 'mac', 'aarch64'], ['x64', 'mac', 'x64'], ['win-x64', 'windows', 'x64']]) {
+    const [asset] = JSON.parse((await download(`https://api.adoptium.net/v3/assets/latest/${JAVA}/hotspot?architecture=${cpu}&image_type=jre&os=${os}&vendor=eclipse`)).toString('utf8'));
+    const { link, checksum, size } = asset.binary.package;
+    java[arch] = [link, checksum, size, asset.version.openjdk_version];
+  }
+  const file = join(ROOT, 'apps', 'backend', 'src', 'data', 'engines.json');
+  const engines = JSON.parse(readFileSync(file, 'utf8'));
+  engines.languagetool = { version: LANGUAGETOOL, base: MAVEN, jars, java };
+  json(file, engines);
+  const total = jars.reduce((sum, [, , bytes]) => sum + bytes, 0);
+  console.log(`Pinned LanguageTool ${LANGUAGETOOL}: ${jars.length} jars, ${(total / 1e6).toFixed(1)} MB; Java ${Object.entries(java).map(([arch, [, , size, version]]) => `${arch} ${version} ${(size / 1e6).toFixed(1)} MB`).join(', ')}.`);
+}
+
 async function main() {
   const [which = 'all', ...args] = process.argv.slice(2);
-  if (!['hunspell', 'harper', 'dictionaries', 'catalogue', 'all', 'verify'].includes(which)) throw new Error('Choose hunspell, harper, dictionaries, catalogue, all or verify.');
+  if (which === 'languagetool') return pinLanguageTool(args[0] && resolve(args[0]));
+  if (!['hunspell', 'harper', 'dictionaries', 'catalogue', 'all', 'verify'].includes(which)) throw new Error('Choose hunspell, harper, dictionaries, catalogue, languagetool, all or verify.');
   if (which === 'catalogue') return catalogue(args.includes('--check'));
   let update = false, archive;
   while (args.length) {

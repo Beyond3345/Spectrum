@@ -1,15 +1,21 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { APP_VERSION, DICT_DIR, NATIVE_DIR } from '../config/constants.js';
-import { maskLatex, maskTypst } from '../latex/mask.js';
+import { maskLatex, maskMarkdown, maskTypst } from '../latex/mask.js';
 import { APP_DIR, getProjectRoot } from './projectService.js';
 import { writeFileAtomic } from '../utils/fsUtils.js';
 import { workerClient } from '../utils/workerClient.js';
 import { HARPER_FILES, inspectCheckerAssets } from '../utils/checkerMetadata.js';
-import { ownWords } from './spellService.js';
+import { languagesOf, ownWords } from './spellService.js';
+import { languageMarkup, prosePieces } from '../language/markup.js';
+import { languageEntry } from '../language/detect.js';
+import { checkWithLanguageTool, ensureServer, readConnection } from './languageToolService.js';
+import { readProjectSettings, updateProjectSettings } from './projectSettings.js';
 
-// Grammar through Harper on its own thread (grammarWorker.mjs), in the English dialect asked for. LaTeX is
-// reduced to its prose first, so Harper reads sentences, not markup, at the same positions.
+// Grammar by paragraph, each in the listed language detection gives it: English through Harper on its own thread
+// (grammarWorker.mjs) in its dialect, or through LanguageTool if the user chose that; other languages through
+// LanguageTool when it's on this computer. LaTeX and Typst are reduced to their prose first, so the checkers read
+// sentences, not markup, at the same positions.
 const harper = workerClient(new URL('./grammarWorker.mjs', import.meta.url), { nativeDir: NATIVE_DIR, dictDir: DICT_DIR }, {
   unavailable: 'Grammar check isn’t available',
   timeoutMs: 60_000
@@ -38,25 +44,120 @@ export async function grammarStatus({ start = false } = {}) {
 
 export const stopGrammar = () => harper.terminate();
 
+/** Harper's issues for one dialect, in text with everything but that dialect's runs blanked. */
+async function harperIssues({ base, runs, markdown, oxford, dialect, words }) {
+  const keep = new Uint8Array(base.length);
+  for (const [from, to] of runs) keep.fill(1, from, to);
+  // only its runs, and in them no letters of another script (a Chinese term in English prose is blanked)
+  let text = '';
+  for (let i = 0; i < base.length; i += 1) {
+    const ch = base[i];
+    text += ch === '\n' || (keep[i] && !OTHER_SCRIPT.test(ch)) ? ch : ' ';
+  }
+  return harper.call({ text, oxford: OXFORD.has(oxford) ? oxford : 'avoid', markdown, dialect: HARPER_DIALECTS[dialect], words });
+}
+// a letter (or half of one) that isn't Latin
+const OTHER_SCRIPT = /(?=[\p{L}\p{M}])\P{Script=Latin}|[\uD800-\uDFFF]/u;
+
 /**
- * Issues in `text` as { rule, kind, from, to, message, suggestions, fixable }, with from/to as
- * UTF-16 offsets into `text`. fixable is false when the span runs into markup, where a suggestion
- * written for the prose would break the LaTeX.
+ * Issues in `text` as { rule, kind, from, to, message, suggestions, fixable, engine, lang }, with from/to as UTF-16
+ * offsets into `text`, and coverage: for each listed language found, { lang, engine, pieces, chars, parts, done,
+ * state, message }, state being checked, none (no grammar checker), off or not-downloaded (LanguageTool isn't on or
+ * isn't here), failed or cancelled. fixable is false when the span runs into markup, where a suggestion written for
+ * the prose would break the LaTeX. languages is the list in effect (language, one tag, for older callers); signal
+ * stops LanguageTool between parts.
  */
-export async function checkGrammar({ text, file = '', style = false, oxford = 'avoid', ignoredRules = [], language = 'en-AU', projectId }) {
+export async function checkGrammar({ text, file = '', style = false, oxford = 'avoid', ignoredRules = [], languageToolIgnored = {}, languages, language, englishGrammar = 'harper', projectId, signal }) {
   const source = String(text);
-  const tex = /\.(tex|ltx)$/i.test(file);
-  // Harper reads Markdown itself; Typst's markup is masked away as LaTeX's is
-  const prose = tex ? maskLatex(source) : /\.typ$/i.test(file) ? maskTypst(source) : source;
-  const issues = await harper.call({ text: prose, oxford: OXFORD.has(oxford) ? oxford : 'avoid', markdown: /\.(md|markdown)$/i.test(file),
-    dialect: HARPER_DIALECTS[language] || 'Australian', words: await ownWords(projectId) });
+  const kind = /\.(tex|ltx)$/i.test(file) ? 'latex' : /\.typ$/i.test(file) ? 'typst' : /\.(md|markdown)$/i.test(file) ? 'markdown' : 'text';
+  const prose = kind === 'latex' ? maskLatex(source) : kind === 'typst' ? maskTypst(source) : kind === 'markdown' ? maskMarkdown(source) : source;
+  // Harper reads Markdown itself
+  const base = kind === 'markdown' ? source : prose;
+  const { main, ranges } = languageMarkup(source, kind);
+  const cut = prosePieces(prose, ranges);
+  const { langs } = await languagesOf({ languages: languages ?? (language ? [language] : undefined), main, pieces: cut.map((p) => ({ text: prose.slice(p.from, p.to), lang: p.lang })) });
+  const byLang = new Map();
+  cut.forEach((piece, i) => {
+    if (!langs[i]) return;
+    if (!byLang.has(langs[i])) byLang.set(langs[i], []);
+    byLang.get(langs[i]).push([piece.from, piece.to]);
+  });
+
+  const words = await ownWords(projectId);
+  const { mode } = await readConnection();
+  let server = null;
+  const raw = [];
+  const coverage = [];
+  for (const [lang, runs] of byLang) {
+    const entry = languageEntry(lang);
+    const about = { lang, pieces: runs.length, chars: runs.reduce((sum, [from, to]) => sum + to - from, 0) };
+    const english = Object.hasOwn(HARPER_DIALECTS, lang);
+    let fallback = null;
+    if (entry?.languageTool && (!english || englishGrammar === 'languagetool')) {
+      let checked;
+      if (mode !== 'local') checked = { state: 'off', parts: 0, done: 0, issues: [] };
+      else {
+        try {
+          server ||= await ensureServer();
+          checked = await checkWithLanguageTool({ server, source, prose, runs, code: entry.languageTool, lang, ignored: languageToolIgnored[lang] || [],
+            spelt: !!entry.spelling, style, signal });
+        } catch (err) {
+          checked = { state: err.code === 'not-downloaded' ? 'not-downloaded' : 'failed', message: err.message, parts: 0, done: 0, issues: [] };
+        }
+      }
+      raw.push(...checked.issues);
+      if (checked.state === 'checked' || checked.state === 'cancelled' || !english) {
+        coverage.push({ ...about, engine: 'languagetool', parts: checked.parts, done: checked.done, state: checked.state, message: checked.message || '' });
+        continue;
+      }
+      // English that LanguageTool couldn't check goes to Harper, and the summary says so
+      fallback = { state: checked.state, message: checked.message || '' };
+    }
+    if (english) {
+      const found = await harperIssues({ base, runs, markdown: kind === 'markdown', oxford, dialect: lang, words });
+      raw.push(...found.map((issue) => ({ ...issue, engine: 'harper', lang })));
+      coverage.push({ ...about, engine: 'harper', parts: 1, done: 1, state: 'checked', message: '', ...(fallback && { fallback }) });
+    } else {
+      coverage.push({ ...about, engine: null, parts: 0, done: 0, state: 'none', message: '' });
+    }
+  }
+
   const ignored = new Set(ignoredRules);
-  return issues
-    .filter((issue) => !ignored.has(issue.rule))
+  const issues = raw
+    .filter((issue) => issue.engine !== 'harper' || !ignored.has(issue.rule))
     .filter((issue) => ALWAYS.has(issue.rule) || style || !STYLE_KINDS.has(issue.kind))
-    // Harper sometimes reacts to the blanks left where markup was
-    .filter((issue) => issue.to === issue.from || prose.slice(issue.from, issue.to).trim())
-    .map((issue) => ({ ...issue, fixable: source.slice(issue.from, issue.to) === prose.slice(issue.from, issue.to) }));
+    // the checkers sometimes react to the blanks left where markup was
+    .filter((issue) => issue.to === issue.from || base.slice(issue.from, issue.to).trim())
+    .map((issue) => ({ ...issue, fixable: source.slice(issue.from, issue.to) === base.slice(issue.from, issue.to) }))
+    .sort((a, b) => a.from - b.from);
+  return { issues, coverage };
+}
+
+// ─── LanguageTool's ignored rules, in .spectrum/settings.json as languageToolIgnored: { "de:RULE_ID": true } ───
+// One key per rule, so two computers ignoring different rules merge rule by rule (mergeMeta), and the list travels
+// with the project. Harper's stay in grammar.json, on each computer, as before.
+
+/** LanguageTool's ignored rules by language: { de: ['RULE_ID'] }. */
+export async function readLanguageToolIgnored(projectId) {
+  const { languageToolIgnored } = await readProjectSettings(await getProjectRoot(projectId));
+  const out = {};
+  for (const [key, on] of Object.entries(languageToolIgnored && typeof languageToolIgnored === 'object' ? languageToolIgnored : {})) {
+    const at = key.indexOf(':');
+    if (on !== true || at < 1) continue;
+    (out[key.slice(0, at)] ||= []).push(key.slice(at + 1));
+  }
+  return out;
+}
+
+export async function changeLanguageToolIgnored(projectId, lang, rule, remove = false) {
+  const key = `${String(lang).slice(0, 20)}:${String(rule).slice(0, 200)}`;
+  await updateProjectSettings(await getProjectRoot(projectId), ({ languageToolIgnored, ...rest }) => {
+    const next = { ...(languageToolIgnored && typeof languageToolIgnored === 'object' && !Array.isArray(languageToolIgnored) ? languageToolIgnored : {}) };
+    if (remove) delete next[key];
+    else next[key] = true;
+    return { ...rest, ...(Object.keys(next).length && { languageToolIgnored: next }) };
+  });
+  return readLanguageToolIgnored(projectId);
 }
 
 // ─── rules the user turned off for a project (.spectrum/grammar.json) ───

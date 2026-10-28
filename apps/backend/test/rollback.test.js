@@ -93,7 +93,12 @@ test('1.10.4 opens a project 2.0 wrote, and 2.0 finds its own data there again',
   assert.ok(project.id);
   assert.ok((await api(`/api/projects/${project.id}/file`, 'PUT', { path: 'main.tex', content: '\\documentclass{article}\\begin{document}Hi\\end{document}\n' })).json.ok);
   assert.ok((await api(`/api/projects/${project.id}/tags`, 'PATCH', { tags: ['thesis'] })).json.ok);
-  const { settings } = (await api(`/api/projects/${project.id}/settings`, 'PATCH', { compile: { engine: 'xelatex', autoCompile: 2 } })).json;
+  await api(`/api/projects/${project.id}/settings`, 'PATCH', { compile: { engine: 'xelatex', autoCompile: 2 } });
+  // the project's own language list, and a LanguageTool rule it ignores, in settings.json
+  assert.equal((await api(`/api/projects/${project.id}/settings`, 'PATCH', { language: { languages: ['en-AU', 'zh-TW'] } })).status, 200);
+  assert.deepEqual((await api('/api/grammar/ignored', 'POST', { projectId: project.id, rule: 'DE_AGREEMENT', engine: 'languagetool', lang: 'de' })).json.languageToolIgnored, { de: ['DE_AGREEMENT'] });
+  const { settings } = (await api(`/api/projects/${project.id}/settings`)).json;
+  assert.deepEqual([settings.language, settings.languageToolIgnored], [{ languages: ['en-AU', 'zh-TW'] }, { 'de:DE_AGREEMENT': true }]);
   const { todo } = (await api(`/api/projects/${project.id}/todos/t1`, 'PUT', { id: 't1', text: 'Cite Knuth', done: false, createdAt: '2026-10-24T00:00:00.000Z', updatedAt: '2026-10-24T00:00:00.000Z', link: { file: 'main.tex', line: 1 } })).json;
   const { note } = (await api(`/api/projects/${project.id}/notes/n1`, 'PUT', { id: 'n1', doc: 'main.tex', page: 1, x: 0.1, y: 0.2, text: 'Tighten', createdAt: '2026-10-24T00:00:00.000Z', updatedAt: '2026-10-24T00:00:00.000Z' })).json;
   assert.equal((await api(`/api/projects/${project.id}/versions`, 'POST', { reason: 'compile' })).json.version.reason, 'compile');
@@ -112,6 +117,8 @@ test('1.10.4 opens a project 2.0 wrote, and 2.0 finds its own data there again',
   assert.deepEqual((await api(`/api/projects/${project.id}/versions`)).json.versions.map((v) => v.reason), ['manual']);
   // it rewrites project.json through its own list of keys
   assert.ok((await api(`/api/projects/${project.id}/tags`, 'PATCH', { tags: ['thesis', 'draft'] })).json.ok);
+  // and ignores a Harper rule in grammar.json, leaving settings.json alone
+  assert.equal((await api('/api/grammar/ignored', 'POST', { projectId: project.id, rule: 'AnA' })).status, 200);
   await stop();
 
   assert.deepEqual(await Promise.all(files.map((f) => fs.readFile(path.join(app, f), 'utf8'))), before);
@@ -120,6 +127,7 @@ test('1.10.4 opens a project 2.0 wrote, and 2.0 finds its own data there again',
 
   api = await start(current);
   assert.deepEqual((await api(`/api/projects/${project.id}/settings`)).json.settings, settings);
+  assert.deepEqual((await api(`/api/grammar/ignored?projectId=${project.id}`)).json.ignoredRules, ['AnA']);
   assert.deepEqual((await api(`/api/projects/${project.id}/todos`)).json.todos, [todo]);
   assert.deepEqual((await api(`/api/projects/${project.id}/notes?doc=main.tex`)).json.notes, [note]);
   assert.deepEqual((await api(`/api/projects/${project.id}/versions`)).json.versions.map((v) => v.reason), ['compile']);

@@ -1,5 +1,6 @@
 import { MAX_PIECES, MAX_PIECE_CHARS, changeWord, checkPieces, checkWords, installDictionary, listLanguages, listWords, pruneDictionaries, spellStatus, suggestWord } from '../services/spellService.js';
-import { MAX_GRAMMAR_CHARS, changeIgnoredRule, checkGrammar, grammarStatus, readIgnoredRules } from '../services/grammarService.js';
+import { MAX_GRAMMAR_CHARS, changeIgnoredRule, changeLanguageToolIgnored, checkGrammar, grammarStatus, readIgnoredRules, readLanguageToolIgnored } from '../services/grammarService.js';
+import { installLanguageTool, languageToolStatus, removeLanguageTool, saveConnection } from '../services/languageToolService.js';
 
 /** A checker that couldn't start answers 503 with its reason, so the editor can say so and carry on. */
 const unavailable = (reply, err) => reply.code(503).send({ error: err instanceof Error ? err.message : String(err) });
@@ -65,13 +66,23 @@ export function registerLanguageRoutes(fastify) {
 
   fastify.get('/api/grammar/status', async () => grammarStatus());
 
+  // the open file, each paragraph in its listed language; LanguageTool stops between parts when the panel cancels
+  // (the request closes)
   fastify.post('/api/grammar/check', async (req, reply) => {
-    const { text, file, projectId, style, oxford, language } = req.body || {};
+    const { text, file, projectId, style, oxford, language, languages, englishGrammar } = req.body || {};
     if (typeof text !== 'string') return reply.code(400).send({ error: 'Send the text to check.' });
     if (text.length > MAX_GRAMMAR_CHARS) return reply.code(413).send({ error: 'That file is too long to check in one go.' });
+    if (languages !== undefined && (!Array.isArray(languages) || languages.some((tag) => typeof tag !== 'string'))) return reply.code(400).send({ error: 'Send the languages as a list.' });
     const ignoredRules = projectId ? await readIgnoredRules(projectId) : [];
+    const languageToolIgnored = projectId ? await readLanguageToolIgnored(projectId) : {};
+    const controller = new AbortController();
+    reply.raw.on('close', () => {
+      if (!reply.raw.writableFinished) controller.abort();
+    });
     try {
-      return { issues: await checkGrammar({ text, file, style: !!style, oxford, ignoredRules, language, projectId }), ignoredRules };
+      const result = await checkGrammar({ text, file, style: !!style, oxford, ignoredRules, languageToolIgnored, language, languages,
+        englishGrammar: englishGrammar === 'languagetool' ? 'languagetool' : 'harper', projectId, signal: controller.signal });
+      return { ...result, ignoredRules, languageToolIgnored };
     } catch (err) {
       return unavailable(reply, err);
     }
@@ -83,9 +94,20 @@ export function registerLanguageRoutes(fastify) {
     return { ignoredRules: await readIgnoredRules(projectId) };
   });
 
+  // Harper's rules go to .spectrum/grammar.json as before; LanguageTool's, by language, to .spectrum/settings.json
   fastify.post('/api/grammar/ignored', async (req, reply) => {
-    const { projectId, rule, remove } = req.body || {};
+    const { projectId, rule, remove, engine, lang } = req.body || {};
     if (!projectId || typeof rule !== 'string' || !rule) return reply.code(400).send({ error: 'Choose a project and a rule.' });
+    if (engine === 'languagetool') {
+      if (typeof lang !== 'string' || !/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(lang)) return reply.code(400).send({ error: 'Choose the rule’s language.' });
+      return { languageToolIgnored: await changeLanguageToolIgnored(projectId, lang, rule, !!remove) };
+    }
     return { ignoredRules: await changeIgnoredRule(projectId, rule, !!remove) };
   });
+
+  // LanguageTool on this computer: Off or On, its download (only when asked) and removal
+  fastify.get('/api/languagetool', async () => languageToolStatus());
+  fastify.put('/api/languagetool', async (req) => saveConnection(req.body || {}));
+  fastify.post('/api/languagetool/install', async () => installLanguageTool());
+  fastify.delete('/api/languagetool/install', async () => removeLanguageTool());
 }

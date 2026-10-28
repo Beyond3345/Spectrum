@@ -137,6 +137,15 @@ async function vote(words, candidates) {
   return { ...await speller.call({ op: 'vote', words, candidates: present }), missing };
 }
 
+/** The list as kept, and the listed language each piece ({ text, lang? }) resolves to, in order ('' for none). */
+export async function languagesOf({ languages, main = null, pieces }) {
+  const list = listedLanguages(languages);
+  const mainTag = typeof main === 'string' && main ? main : null;
+  const verdicts = [];
+  for (const piece of pieces) verdicts.push(await verdict(piece.text, { languages: list, main: mainTag, explicit: piece.lang || undefined, vote }));
+  return { list, langs: resolve(verdicts, fallbackOf(list, mainTag)) };
+}
+
 /**
  * Spelling for pieces of prose in document order ([{ text, lang? }], lang being the language markup gave it), each
  * checked in the listed language it resolves to. Answers { pieces: [{ lang, misspelt: [[from, to]] }], pending }:
@@ -144,11 +153,7 @@ async function vote(words, candidates) {
  * whose pieces wait unmarked. Words in another script than their piece's go to the first listed language of theirs.
  */
 export async function checkPieces({ languages, main = null, pieces, projectId }) {
-  const list = listedLanguages(languages);
-  const mainTag = typeof main === 'string' && main ? main : null;
-  const verdicts = [];
-  for (const piece of pieces) verdicts.push(await verdict(piece.text, { languages: list, main: mainTag, explicit: piece.lang || undefined, vote }));
-  const langs = resolve(verdicts, fallbackOf(list, mainTag));
+  const { list, langs } = await languagesOf({ languages, main, pieces });
   const states = new Map(await Promise.all(list.map(async (tag) => [tag, await dictionaryState(tag)])));
   const pending = new Set();
   const out = langs.map((lang) => ({ lang, misspelt: [] }));
