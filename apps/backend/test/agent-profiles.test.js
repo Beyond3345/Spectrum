@@ -114,6 +114,7 @@ test('each state a card shows, and which are set up', () => {
     [{ found: true, test: { ok: false, code: 'sign-in' }, configured: true }, 'sign-in', false],
     [{ found: true, test: { ok: false, code: 'timeout' }, configured: true }, 'failed', true],
     [{ found: true, test: { ok: false, code: 'error' } }, 'failed', false],
+    [{ found: true, test: { ok: false, code: 'not-acp' }, configured: true }, 'failed', false],
     [{ found: true, configured: true }, 'untested', true],
     [{ found: true }, 'sign-in', false]
   ];

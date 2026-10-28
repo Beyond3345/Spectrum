@@ -205,7 +205,7 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
  * Where an agent stands, in this order: planned, unavailable, missing (its program, or one it needs), adapter (an
  * adapter is needed), the stored result for the program found now (ready, sign-in or failed), untested when
  * configured in Spectrum, else sign-in. Set up: ready, untested, or failed while configured, so a Test that timed out
- * never hides an agent the user set up.
+ * never hides an agent the user set up; a program that isn't an ACP agent never is.
  */
 export function agentState({ planned, unavailable, found, needsMissing, adapter, test, configured }) {
   const state = planned ? 'planned'
@@ -214,7 +214,7 @@ export function agentState({ planned, unavailable, found, needsMissing, adapter,
         : !found ? 'adapter'
           : test ? (test.ok ? 'ready' : test.code === 'sign-in' ? 'sign-in' : 'failed')
             : configured ? 'untested' : 'sign-in';
-  return { state, setUp: state === 'ready' || state === 'untested' || (state === 'failed' && !!configured) };
+  return { state, setUp: state === 'ready' || state === 'untested' || (state === 'failed' && !!configured && test.code !== 'not-acp') };
 }
 
 const anyFile = async (root, files) => (await Promise.all(files.map((rel) => isFile(path.join(root, rel))))).some(Boolean);
