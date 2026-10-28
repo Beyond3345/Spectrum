@@ -6,7 +6,7 @@ import Icon from '../../../app/Icon';
 import Select from '../../../app/Select';
 import { VIEWS, formatValue, readStyle } from './draw';
 import type { StructStyle } from './draw';
-import { UNITS, asStructure, frameOf, memberName, removeIds } from './model';
+import { UNITS, asStructure, fitLoads, frameOf, memberName, removeIds } from './model';
 import type { AngleArc, Cut, Dimension, Dist, Force, Member, Moment, Note, Part, SNode, StructureModel, Support, SupportType, Units } from './model';
 import { solve } from './solve';
 import { useShown } from './store';
@@ -136,7 +136,7 @@ function Field({ label, children, hint }: { label: string; children: (id: string
 }
 
 /** A number typed freely, kept once it's a number (and positive, when it must be). */
-function NumberInput({ id, value, onChange, positive, unit }: { id?: string; value: number; onChange(v: number): void; positive?: boolean; unit?: string }) {
+function NumberInput({ id, value, onChange, onDone, positive, unit }: { id?: string; value: number; onChange(v: number): void; onDone?(): void; positive?: boolean; unit?: string }) {
   const [text, setText] = useState(String(value));
   useEffect(() => {
     if (Number(text) !== value) setText(String(value));
@@ -156,7 +156,10 @@ function NumberInput({ id, value, onChange, positive, unit }: { id?: string; val
           const next = Number(e.target.value);
           if (e.target.value.trim() && Number.isFinite(next) && (!positive || next > 0)) onChange(next);
         }}
-        onBlur={() => setText(String(value))}
+        onBlur={() => {
+          setText(String(value));
+          onDone?.();
+        }}
       />
       {unit && <span className="muted">{unit}</span>}
     </span>
@@ -261,6 +264,11 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
   if (!('kind' in item)) {
     const node = item as SNode;
     const updateNode = (next: SNode) => onChange({ ...model, nodes: model.nodes.map((n) => (n.id === next.id ? next : n)) });
+    // once the position is typed, not at each keystroke on the way: loads along its members stay within them
+    const fit = () => {
+      const fitted = fitLoads(model);
+      if (fitted !== model) onChange(fitted);
+    };
     title = `Joint ${node.name ?? ''}`.trim();
     fields = (
       <>
@@ -268,8 +276,8 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
         <Field label="Position">
           {() => (
             <div className="ckt-row">
-              <NumberInput value={node.x} onChange={(x) => updateNode({ ...node, x })} unit="x" />
-              <NumberInput value={node.y} onChange={(y) => updateNode({ ...node, y })} unit="y" />
+              <NumberInput value={node.x} onChange={(x) => updateNode({ ...node, x })} onDone={fit} unit="x" />
+              <NumberInput value={node.y} onChange={(y) => updateNode({ ...node, y })} onDone={fit} unit="y" />
             </div>
           )}
         </Field>

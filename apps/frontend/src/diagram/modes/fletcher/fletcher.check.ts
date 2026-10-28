@@ -43,6 +43,11 @@ has(body, 'edge(<n1>, <n2>, "->", label: [yes]),', 'a straight arrow with a labe
 has(body, 'edge(<n1>, <n2>, "<->", bend: 30deg),', 'a curved two-headed arrow');
 has(body, 'edge(<n2>, <n3>, "<--", corner: right),', 'a dashed arrow that starts, at a corner');
 has(body, 'edge(<n3>, <n4>, "..", label: [no]),', 'a dotted line with no heads');
+// an angled link between boxes in line has no corner to turn (fletcher: “Adjacent vertices must be distinct”)
+const inLine = (to: Partial<Box>) => fletcherCode({ boxes: [box({ id: 'a' }), box({ id: 'b', ...to })], links: [link({ id: 'e', from: 'a', to: 'b', route: 'angled' })] }, '').body;
+has(inLine({ y: 12 }), 'edge(<a>, <b>, "->"),', 'one under the other: straight');
+has(inLine({ x: 16 }), 'edge(<a>, <b>, "->"),', 'side by side: straight');
+has(inLine({ x: 16, y: 12 }), 'edge(<a>, <b>, "->", corner: right),', 'offset both ways: a corner');
 // a box lower on the canvas is lower on the page: fletcher's lengths, like TikZ's, go up
 has(body, 'node((0.75cm, -2.75cm), [c]', 'the second row below the first');
 eq(fletcherCode(model, '0.12.0').body.startsWith('#import "@preview/fletcher:0.5.5"'), true, 'an older Typst gets an older fletcher');
