@@ -9,7 +9,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { client, ndJsonStream } from '@agentclientprotocol/sdk';
 import { APP_VERSION, DATA_DIR } from '../config/constants.js';
-import { appPath, cachePath, detectMainFile, getProjectRoot, mutateProjectFiles, readMeta } from './projectService.js';
+import { appPath, cachePath, detectMainFile, getProjectRoot, mutateProjectRoot, readMeta } from './projectService.js';
 import { compileFolder, findExecutable, SUPPORTED_ENGINES } from './compileService.js';
 import { builtInTectonic, builtInTypst } from './engineService.js';
 import { readProjectSettings } from './projectSettings.js';
@@ -83,6 +83,24 @@ const firstLine = (text) => {
 };
 const state = (r, status, error) => { r.status = status; emit(r, 'state', { status, ...(error && { error }) }); void persist(r); };
 const busyProject = (r) => [...runs.values()].some((other) => other !== r && other.projectId === r.projectId && (other.busy || other.reviewing));
+/** A session of the project has a turn, a preview or a review under way (Move to this computer and Locate… wait). */
+export const agentAtWork = (projectId) => [...runs.values()].some((r) => r.projectId === projectId && (r.busy || r.reviewing));
+
+const MOVED = 'This project moved to another folder. Start a new session to go on.';
+/**
+ * The project's folder is root now (Move to this computer, Locate…). A review session takes its draft, previews and
+ * Apply from there, and its agent starts again for the next turn, so its isolation names the new folder, going on with
+ * the same conversation where the agent can load one. A direct session works in the old folder itself, so it refuses
+ * its next turn.
+ */
+export function rehomeAgentRuns(projectId, root) {
+  for (const r of runs.values()) {
+    if (r.projectId !== projectId || r.root === root) continue;
+    r.root = root;
+    if (r.mode === 'direct') r.moved = true;
+    disconnect(r);
+  }
+}
 
 // a session being loaded, so the history list and the session opened with it get the same one
 const loading = new Map();
@@ -621,6 +639,9 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
   prompt = textLimit(prompt);
   if (!prompt.trim()) throw new Error('Enter a task for the agent.');
   if (persona !== undefined) persona = readPersona(persona);
+  if (r.moved) throw Object.assign(new Error(MOVED), { statusCode: 409 });
+  // refused while the project is being moved
+  await getProjectRoot(r.projectId);
   if (r.busy || r.reviewing || busyProject(r)) throw new Error('An agent is already working on this project.');
   r.busy = true; r.cancelled = false;
   if (persona !== undefined && !samePersona(persona, r.persona)) {
@@ -725,6 +746,7 @@ export async function stopAgentRun(r) {
   await persist(r);
 }
 export async function setAgentOption(r, configId, value) {
+  if (r.moved) throw Object.assign(new Error(MOVED), { statusCode: 409 });
   if (r.busy || r.reviewing || busyProject(r)) throw new Error('Wait for the task to finish before changing its settings.');
   r.busy = true; r.cancelled = false;
   try {
@@ -753,7 +775,7 @@ export async function reviewAgentChanges(r, body) {
       if (body.action === 'apply') throw new Error('Finish the review run before applying changes.');
       for (const rel of body.paths) r.resolved.add(changeKey(changes.find((c) => c.path === rel)));
     } else if (body.action === 'apply') {
-      for (const { path: rel, bytes, merged } of await mutateProjectFiles(() => applyWorkspaceChanges(r, body.paths, body.expected))) {
+      for (const { path: rel, bytes, merged } of await mutateProjectRoot(r.root, () => applyWorkspaceChanges(r, body.paths, body.expected))) {
         await rebaseChange(r, rel, bytes, draft(rel));
         if (merged) r.notes.push(`“${rel}” was applied with the user’s own edits to it merged in. Re-read it before changing it again.`);
       }
@@ -761,7 +783,7 @@ export async function reviewAgentChanges(r, body) {
       // every file read before any is reset; the agent hears of those that were, even if a later one fails
       const reset = [];
       try {
-        await mutateProjectFiles(async () => {
+        await mutateProjectRoot(r.root, async () => {
           const live = [];
           for (const rel of body.paths) live.push([rel, await readCurrent(r.root, rel)]);
           for (const [rel, bytes] of live) {

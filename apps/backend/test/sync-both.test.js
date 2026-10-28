@@ -36,6 +36,7 @@ Object.assign(process.env, {
 const { conflictCopies } = await import('../src/utils/conflictCopies.js');
 const presence = await import('../src/services/presenceService.js');
 const versions = await import('../src/services/versionService.js');
+const { register } = await import('../src/services/projectService.js');
 const templates = await import('../src/services/templateService.js');
 const { systemNames, useSharedDir } = await import('../src/services/syncService.js');
 useSharedDir(shared);
@@ -47,9 +48,12 @@ const write = async (file, data) => {
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, typeof data === 'string' || Buffer.isBuffer(data) ? data : JSON.stringify(data));
 };
+// listed here, as a restore only writes into a listed project's folder
 const project = async (name) => {
   const root = path.join(synced, name);
-  await write(path.join(root, '.spectrum', 'project.json'), { id: crypto.randomUUID(), name });
+  const id = crypto.randomUUID();
+  await write(path.join(root, '.spectrum', 'project.json'), { id, name });
+  await register(id, root, { name });
   return root;
 };
 /** What a sync app does, roughly: each side's files go across, and of a file both changed (index.json) a's wins. */

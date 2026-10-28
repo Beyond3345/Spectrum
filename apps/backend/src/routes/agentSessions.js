@@ -1,7 +1,7 @@
 import { listAgents, saveAgentConfig, importAgentLogin } from '../services/agentProfiles.js';
 import { getAgentRun, listAgentRuns, newAgentRun, previewDraft, promptAgent, readContext, stopAgentRun, answerAgentRequest, setAgentOption, reviewAgentChanges, pendingChanges, runSnapshot, subscribeAgent } from '../services/agentSessionService.js';
 import { agentRecoveries, recoverAgentApply } from '../services/agentWorkspace.js';
-import { mutateProjectFiles } from '../services/projectService.js';
+import { mutateProjectRoot } from '../services/projectService.js';
 
 export function registerAgentSessionRoutes(fastify) {
   fastify.get('/api/agents', async () => ({ ok: true, agents: await listAgents() }));
@@ -17,7 +17,7 @@ export function registerAgentSessionRoutes(fastify) {
     const run = await getAgentRun(req.params.id);
     if (run.busy || run.reviewing) throw new Error('Stop the agent before recovering files.');
     run.reviewing = true;
-    try { await mutateProjectFiles(() => recoverAgentApply(run, req.body?.recoveryId)); }
+    try { await mutateProjectRoot(run.root, () => recoverAgentApply(run, req.body?.recoveryId)); }
     finally { run.reviewing = false; }
     return { ok: true };
   });

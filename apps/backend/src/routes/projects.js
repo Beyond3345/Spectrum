@@ -39,6 +39,8 @@ import { BIB_TOOLS, SUPPORTED_ENGINES } from '../services/compileService.js';
 import { SKILL_ID } from '../services/skillService.js';
 import { knownMachineNames } from '../services/presenceService.js';
 import { stopProjectTexlab } from '../services/texlabService.js';
+import { rehomeAgentRuns } from '../services/agentSessionService.js';
+import { refuseBusy } from './sync.js';
 import { syncSoon } from '../services/zoteroService.js';
 import { conflictCopies } from '../utils/conflictCopies.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
@@ -372,7 +374,9 @@ export function registerProjectRoutes(fastify) {
   });
 
   fastify.post('/api/projects/:id/relocate', async (req) => {
+    refuseBusy(req.params.id, (await getProject(req.params.id)).name);
     const project = await relocateProject(req.params.id, req.body?.path);
+    rehomeAgentRuns(req.params.id, project.path);
     // a TexLab on the old folder has its old text
     await stopProjectTexlab(req.params.id);
     return { ok: true, project };

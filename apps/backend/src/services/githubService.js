@@ -8,7 +8,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { DATA_DIR, GITHUB_API, GITHUB_CLIENT_ID, GITHUB_WEB, PROJECTS_DIR } from '../config/constants.js';
 import { readJson, renameOver } from '../utils/fsUtils.js';
-import { getProject, getProjectRoot, httpError, listProjects, makeUniqueFolder, mutateProjectFiles, readMeta, register, sanitiseFolderName, serialiser } from './projectService.js';
+import { getProject, getProjectRoot, httpError, listProjects, makeUniqueFolder, mutateProjectRoot, readMeta, register, sanitiseFolderName, serialiser } from './projectService.js';
 import { readProjectSettings, updateProjectSettings } from './projectSettings.js';
 import { placeOf, readSyncConfig } from './syncService.js';
 import { readMirror } from './mirrorService.js';
@@ -326,7 +326,7 @@ async function pullNow(id, { allowDeletions = false, base } = {}) {
   await git.fetchOrigin(root, token);
   await waitIdle(id);
   const machine = (await readSyncConfig()).machineName;
-  const result = await mutateProjectFiles(async () => {
+  const result = await mutateProjectRoot(root, async () => {
     noteLeft(id, (await git.commitAll(root, { message: await backupMessage(), author, hold })).left);
     return git.mergeOrigin(root, { author, allowDeletions, base: base && (await base(root)), message: `Pull from GitHub on ${machine}` });
   });
@@ -507,7 +507,7 @@ export function link(id, { owner, repo, preview = false, allowDeletions = false 
       await git.fetchOrigin(root, token);
       if (preview) return await git.mergeOrigin(root, { author, dryRun: true, base: await mirrorBase(id)(root) });
       await waitIdle(id);
-      const result = await mutateProjectFiles(async () => {
+      const result = await mutateProjectRoot(root, async () => {
         await git.commitAll(root, { message: await backupMessage(), author, hold });
         const merged = await git.mergeOrigin(root, { author, allowDeletions, base: await mirrorBase(id)(root), message: 'Link with GitHub' });
         if (merged.state === 'confirm') return merged;

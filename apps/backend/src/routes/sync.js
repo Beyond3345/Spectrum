@@ -10,6 +10,12 @@ import { compiling } from '../services/compileService.js';
 import { stopProjectTexlab } from '../services/texlabService.js';
 import { copyProject, preflight } from '../utils/projectCopy.js';
 import { transferring } from './transfer.js';
+import { agentAtWork, rehomeAgentRuns } from '../services/agentSessionService.js';
+
+/** Move to this computer and Locate… wait for a compile, a conversion or an agent at work, which have the folder. */
+export function refuseBusy(id, name) {
+  if (compiling(id) || transferring(id) || agentAtWork(id)) throw httpError(`“${name}” is compiling, being converted or has an agent at work. Try again once that’s finished.`, 409);
+}
 
 /**
  * The project's folder copied into parent and checked file by file, then listed there; the folder in the sync app's
@@ -20,7 +26,7 @@ async function moveHere(id, root, parentDir) {
   // a sync app's folder, or one 1.10 synced through (a NAS share, say)
   const place = (await placeOf(root)) || (await legacyLocationOf(root));
   if (!place) throw httpError(`“${project.name}” is already on this computer.`, 400);
-  if (compiling(id) || transferring(id)) throw httpError(`“${project.name}” is compiling or being converted. Try again once that’s finished.`, 409);
+  refuseBusy(id, project.name);
   const dir = typeof parentDir === 'string' && parentDir.trim() ? parentDir.trim() : PROJECTS_DIR;
   if (!path.isAbsolute(dir)) throw httpError('The location must be a full folder path.', 400);
   await fs.mkdir(dir, { recursive: true });
@@ -36,6 +42,7 @@ async function moveHere(id, root, parentDir) {
     throw httpError((await offlineMessage(err).catch(() => null)) || err.message, err.statusCode || 409);
   }
   await moveEntry(id, target);
+  rehomeAgentRuns(id, target);
   // its own cache's SyncTeX holds the old path, and its TexLab the old folder
   await fs.rm(await cachePath(target, 'synctex'), { recursive: true, force: true });
   await stopProjectTexlab(id);
