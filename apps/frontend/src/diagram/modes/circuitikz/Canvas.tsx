@@ -37,7 +37,17 @@ type Drag =
 /** clipboard for copy and paste, shared by every circuit in this window */
 let clipboard: Element[] = [];
 
-const plain = (text: string) => text.replace(/\$/g, '');
+/** TeX as the canvas sketches it: the common maths and units read as text, font sizes and the rest of the markup dropped. */
+const SYMBOLS: Record<string, string> = { Omega: 'Ω', mu: 'µ', pi: 'π', int: '∫', approx: '≈', cdot: '·', times: '×', '%': '%' };
+const plain = (text: string) =>
+  text
+    .replace(/\$/g, '')
+    .replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, '($1)/($2)')
+    .replace(/\\[,;!]/g, ' ')
+    .replace(/\\(tiny|scriptsize|footnotesize|small|normalsize|large|Large)\s*/g, '')
+    .replace(/\\(Omega|mu|pi|int|approx|cdot|times|%)/g, (_, name: string) => SYMBOLS[name])
+    .replace(/\\[A-Za-z]+/g, '')
+    .replace(/[{}]/g, '');
 const autoRoute = (from: Pt, to: Pt): Route => (Math.abs(from.x - to.x) < 1e-6 || Math.abs(from.y - to.y) < 1e-6 ? '--' : '-|');
 
 export default function CircuitCanvas({ model: raw, onChange, style, readOnly }: { model: CircuitModel; onChange(m: CircuitModel): void; style: Record<string, unknown>; readOnly?: boolean }) {
