@@ -112,9 +112,27 @@ jobs:
           SPECTRUM_NATIVE_DIR: ${{ github.workspace }}\src-tauri\resources\native
         run: npm test
 
-      - run: npm run typecheck
+      # the steps below run after a failed one too, so one run reports everything (the attach job still needs them all)
+      # the LPAC tests, which the suite skips without this; they have only been run by hand, so they may fail
+      - name: Native agent tests
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        working-directory: apps/backend
+        env:
+          SPECTRUM_NATIVE_AGENT_TESTS: '1'
+        run: node --test test/agent-windows.test.js test/agent-preview.test.js test/mcp-tools.test.js
+
+      - name: Spelling and grammar checkers
+        if: ${{ !cancelled() }}
+        env:
+          SPECTRUM_NATIVE_DIR: ${{ github.workspace }}\src-tauri\resources\native
+        run: npm run checkers:verify
+
+      - if: ${{ !cancelled() }}
+        run: npm run typecheck
 
       - name: Frontend checks
+        if: ${{ !cancelled() }}
         run: |
           $out = "$env:RUNNER_TEMP\check.cjs"
           foreach ($check in Get-ChildItem apps/frontend/src -Recurse -Filter *.check.ts) {
@@ -125,6 +143,7 @@ jobs:
           }
 
       - name: Shell tests
+        if: ${{ !cancelled() }}
         working-directory: src-tauri
         run: cargo test
 
