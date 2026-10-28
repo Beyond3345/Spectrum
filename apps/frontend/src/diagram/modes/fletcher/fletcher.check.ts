@@ -47,5 +47,9 @@ has(body, 'edge(<n3>, <n4>, "..", label: [no]),', 'a dotted line with no heads')
 has(body, 'node((0.75cm, -2.75cm), [c]', 'the second row below the first');
 eq(fletcherCode(model, '0.12.0').body.startsWith('#import "@preview/fletcher:0.5.5"'), true, 'an older Typst gets an older fletcher');
 eq(fletcherCode({ boxes: [], links: [] }, '').body.includes('  node-stroke: 0.4pt,'), true, 'no boxes still makes a diagram');
+// a // would comment out the rest of the line, and @, <, ` and a leading * start a reference, label, raw text or bold
+const marked = fletcherCode({ boxes: [box({ id: 'm1', text: '*Total @ref <x> `y` a/b' }), box({ id: 'm2' })], links: [link({ id: 'm', from: 'm1', to: 'm2', label: 'yes // no' })] }, '').body;
+has(marked, '[\\*Total \\@ref \\<x> \\`y\\` a\\/b]', 'a box’s markup escaped');
+has(marked, 'label: [yes \\/\\/ no]', 'a label’s // escaped');
 
 console.log('fletcher.check: ok');

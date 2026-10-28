@@ -2,6 +2,8 @@ import type { DiagramCode } from '../../fileFormat';
 import type { Box, Heads, Link, Shape, TikzModel } from '../tikz/code';
 import { CM_PER_UNIT } from '../tikz/code';
 import { num } from '../shared';
+// Typst content text: markup escaped, on one line
+import { typstMarkup as content } from '../../../editor/floats';
 
 // Fletcher (a Typst package): the plain TikZ mode's boxes and arrows, written for Typst. Its canvas, rail and
 // inspector are the TikZ mode's, so only the code is its own.
@@ -27,8 +29,6 @@ export function fletcherFor(typstVersion: string) {
   return FLETCHER.find(([minimum]) => atLeast(typstVersion, minimum))?.[1] ?? FLETCHER[FLETCHER.length - 1][1];
 }
 
-/** Typst content: ] # \ and $ escaped, and a line break made a space. */
-const content = (text: string) => text.replace(/\s*\n\s*/g, ' ').replace(/\\|\[|\]|#|\$/g, (m) => '\\' + m);
 
 const SHAPE: Record<Shape, string> = {
   rectangle: 'rect',

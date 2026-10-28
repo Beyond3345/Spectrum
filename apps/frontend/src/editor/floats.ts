@@ -310,8 +310,29 @@ export function jpegOrientation(bytes: ArrayBuffer) {
 
 // ─── Typst and Markdown figures and tables ───
 
-/** Typst's content text, with \, [ and ] escaped so they stay text. */
-const typstText = (text: string) => oneLine(text).replace(/[\\[\]]/g, '\\$&');
+const TYPST_MARKUP = /[\\[\]#$@<`/]|(?<![A-Za-z0-9])[*_]|[*_](?![A-Za-z0-9])/g;
+// a list or heading marker at the start: - + = or 1.
+const TYPST_MARKER = /^([-+=]|\d+\.)(?=\s|$)/;
+const escapeMarker = (text: string) => text.replace(TYPST_MARKER, (m) => m.slice(0, -1) + '\\' + m.slice(-1));
+
+/**
+ * Typst's content text on one line, each character that would start markup escaped so it stays text: \ [ ] # $ @ <
+ * ` and / (// starts a comment), * and _ unless inside a word (snake_case is text, *Total bold), and a list or
+ * heading marker at the start.
+ */
+export const typstMarkup = (text: string) => escapeMarker(oneLine(text).replace(TYPST_MARKUP, '\\$&'));
+
+// $…$ or $$…$$ maths, by pandoc's rule as escapeCell's: no space just inside either $ and no digit after ($5 and $6)
+const MATHS = /(\$\$\S(?:[^$]*?\S)?\$\$(?!\d)|\$[^\s$](?:[^$]*?[^\s$])?\$(?!\d))/;
+
+/** A caption's or cell's Typst text: typstMarkup, but its maths kept as maths, with only \ [ and ] escaped there. */
+const typstText = (text: string) =>
+  escapeMarker(
+    oneLine(text)
+      .split(MATHS)
+      .map((part, i) => (i % 2 ? part.replace(/[\\[\]]/g, '\\$&') : part.replace(TYPST_MARKUP, '\\$&')))
+      .join('')
+  );
 
 const typstFloat = (body: string, caption: string, label: string) =>
   '#figure(' + body + (caption.trim() ? ', caption: [' + typstText(caption) + ']' : '') + ')' + (label.trim() ? ' <' + label.trim() + '>' : '');
