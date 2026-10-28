@@ -10,6 +10,12 @@ const eq = (actual: unknown, expected: unknown, what: string) => {
 
 // pdf.js runs its worker in this thread when it finds it here
 (globalThis as { pdfjsWorker?: unknown }).pdfjsWorker = worker;
+// pdf.js calls Uint8Array's toHex and Map's getOrInsertComputed, which the WebView has and Node 24 lacks
+(Uint8Array.prototype as { toHex?: () => string }).toHex ??= function (this: Uint8Array) { return Array.from(this, (byte) => byte.toString(16).padStart(2, '0')).join(''); };
+(Map.prototype as { getOrInsertComputed?: unknown }).getOrInsertComputed ??= function <K, V>(this: Map<K, V>, key: K, make: (key: K) => V) {
+  if (!this.has(key)) this.set(key, make(key));
+  return this.get(key);
+};
 
 /** A one-page PDF: its catalog's extra entries, and text at 10pt, at TeX's 6pt (5.978) and at 5pt. */
 function pdf(catalog: string) {

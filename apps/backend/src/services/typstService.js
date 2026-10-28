@@ -92,11 +92,12 @@ async function labelNames(projectRoot, absMain) {
 
 /**
  * What Typst itself knows about a compiled document: every heading with its number and page, and every label with its
- * page and number. One eval run, in the document's context; null when this Typst is too old (before 0.13) to have it.
+ * page and number. One eval run, in the document's context, with the Typst compileTypst picks (the project's pin, else
+ * fallback, the app's default); null when that Typst isn't installed or is too old (before 0.13) to have it.
  */
-export async function typstElements(projectRoot, doc) {
+export async function typstElements(projectRoot, doc, fallback = '') {
   const settings = await readProjectSettings(projectRoot);
-  const executable = typstFor(settings.compile?.typstVersion || '');
+  const executable = typstFor(settings.compile?.typstVersion || fallback);
   if (!executable) return null;
   const absMain = path.join(projectRoot, doc);
   // a lone name in (…) is a grouping, not an array: the trailing comma keeps it one
@@ -130,7 +131,11 @@ export async function compileTypst(projectRoot, absMain, mainFile, options = {})
   const executable = typstFor(pinned);
   if (!executable) {
     if (pinned) {
-      return { ok: false, code: 'TYPST_VERSION_MISSING', version: pinned, error: 'Typst ' + pinned + ' isn’t installed on this computer. Download it, or use the default version.' };
+      // from: the project's pin or the app's default, which Logs' card offers different ways out of
+      if (settings.compile?.typstVersion) {
+        return { ok: false, code: 'TYPST_VERSION_MISSING', version: pinned, from: 'project', error: 'Typst ' + pinned + ' isn’t installed on this computer. Download it, or use the default version.' };
+      }
+      return { ok: false, code: 'TYPST_VERSION_MISSING', version: pinned, from: 'default', builtIn: BUILT_IN_TYPST_VERSION, error: 'Typst ' + pinned + ' is the default version in Settings › Engines, and it isn’t installed on this computer. Download it, or use the built-in version.' };
     }
     return { ok: false, error: 'Typst isn’t available in this copy of Spectrum.' };
   }

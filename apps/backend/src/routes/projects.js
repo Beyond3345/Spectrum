@@ -524,7 +524,11 @@ export function registerProjectRoutes(fastify) {
     const root = await getProjectRoot(req.params.id);
     const doc = String(req.query?.doc || req.query?.mainFile || '') || (await readMeta(root)).mainFile || 'main.tex';
     // Typst has no .aux: its own eval gives the headings and labels with their pages
-    if (/\.typ$/i.test(doc)) return { ok: true, ...(await typstDocumentLabels(root, doc)) };
+    // typstVersion: the app's default, which a project that pins none compiles with
+    if (/\.typ$/i.test(doc)) {
+      const typstVersion = COMPILE_SETTINGS.typstVersion(req.query?.typstVersion) ? req.query.typstVersion : '';
+      return { ok: true, ...(await typstDocumentLabels(root, doc, typstVersion)) };
+    }
     return { ...(await projectStats(root, doc, req.query?.texFolder)), ...(await documentLabels(root, doc)) };
   });
 

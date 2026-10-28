@@ -207,22 +207,25 @@ export async function documentLabels(root, doc) {
 // ─── A Typst document's own numbers and pages ───
 
 const TOC_LEVELS = ['chapter', 'section', 'subsection', 'subsubsection'];
-// Typst's eval runs once for each PDF; a new compile's PDF has a new time
+// Typst's eval runs once for each PDF and version; a new compile's PDF has a new time
 const typstCache = new Map();
 
 /**
  * A Typst document's labels and headings, from Typst's own eval of its last compile's PDF: { labels, headings, auxAt,
- * stale }, shaped as documentLabels' are. auxAt is the PDF's time; with no PDF there is nothing to read yet.
+ * stale }, shaped as documentLabels' are. auxAt is the PDF's time; with no PDF there is nothing to read yet. fallback:
+ * the app's default Typst version, for a project that pins none.
  */
-export async function typstDocumentLabels(root, doc) {
+export async function typstDocumentLabels(root, doc, fallback = '') {
   const abs = safeJoin(root, doc);
   const absPdf = path.join(path.dirname(abs), path.basename(abs, path.extname(abs)) + '.pdf');
   const at = await fs.stat(absPdf).catch(() => null);
   if (!at) return { labels: {}, headings: [], auxAt: null, stale: true };
-  const key = path.relative(root, abs).split(path.sep).join('/');
+  const rel = path.relative(root, abs).split(path.sep).join('/');
+  // ponytail: keyed by the fallback, not the pin it may stand behind; a new pin comes with a new compile's PDF anyway
+  const key = JSON.stringify([root, rel, fallback]);
   const cached = typstCache.get(key);
   if (cached && cached.at === at.mtimeMs) return cached.value;
-  const elements = await typstElements(root, key).catch(() => null);
+  const elements = await typstElements(root, rel, fallback).catch(() => null);
   const labels = {};
   for (const item of elements?.labelled ?? []) labels[item.label] = { number: String(item.number ?? ''), page: String(item.page ?? '') };
   const headings = (elements?.headings ?? []).map((heading) => ({

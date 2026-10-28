@@ -16,7 +16,7 @@ process.env.SPECTRUM_TEMPLATE_DIR = path.join(tmp, 'templates');
 delete process.env.SPECTRUM_TYPST;
 
 const { BUILT_IN_TYPST_VERSION, builtInTypst } = await import('../src/services/engineService.js');
-const { parseTypstDiagnostics } = await import('../src/services/typstService.js');
+const { parseTypstDiagnostics, typstElements } = await import('../src/services/typstService.js');
 const { compileFolder, runCompile } = await import('../src/services/compileService.js');
 const { createProject, getProjectRoot } = await import('../src/services/projectService.js');
 const { updateProjectSettings } = await import('../src/services/projectSettings.js');
@@ -138,7 +138,21 @@ test('a pinned Typst version that is not installed says so', async (t) => {
   assert.equal(result.ok, false);
   assert.equal(result.code, 'TYPST_VERSION_MISSING');
   assert.equal(result.version, '9.9.9');
+  assert.equal(result.from, 'project');
   assert.match(result.error, /Typst 9\.9\.9 isn’t installed/);
+  // the pin wins over a missing default, and says so
+  assert.equal((await runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto', typstVersion: '8.8.8' })).from, 'project');
+});
+
+test('a default Typst version that is not installed says it is the default', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const project = await projectWith('typst-missing-default', '= Default\n');
+  const result = await runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto', typstVersion: '9.9.9' });
+  assert.equal(result.code, 'TYPST_VERSION_MISSING');
+  assert.equal(result.version, '9.9.9');
+  assert.equal(result.from, 'default');
+  assert.equal(result.builtIn, BUILT_IN_TYPST_VERSION);
+  assert.equal(result.error, 'Typst 9.9.9 is the default version in Settings › Engines, and it isn’t installed on this computer. Download it, or use the built-in version.');
 });
 
 test('the app’s default Typst version reaches the compile, after the project’s own', async (t) => {
@@ -202,6 +216,28 @@ test('a Typst document’s headings and labels come with their pages', async (t)
   assert.deepEqual(labels['sec:two'], { number: '2', page: '2' });
   assert.ok(auxAt);
   assert.equal(stale, false);
+});
+
+test('an unpinned Typst document reads its numbers with the app’s default version', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const project = await projectWith('typst-fallback', '#set heading(numbering: "1.")\n= One <sec:one>\n');
+  const result = await runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto' });
+  assert.equal(result.ok, true, result.error);
+  const dir = await getProjectRoot(project.id);
+  // a default that isn't installed has nothing to say, as the compile with it would fail
+  assert.equal(await typstElements(dir, 'main.typ', '9.9.9'), null);
+  assert.equal((await typstElements(dir, 'main.typ')).headings.length, 1);
+  // each version has its own cached answer
+  assert.deepEqual((await typstDocumentLabels(dir, 'main.typ', '9.9.9')).headings, []);
+  assert.deepEqual((await typstDocumentLabels(dir, 'main.typ')).labels['sec:one'], { number: '1', page: '1' });
+  // the route takes the version, and leaves out one that isn't a version
+  const app = Fastify();
+  const { registerProjectRoutes } = await import('../src/routes/projects.js');
+  registerProjectRoutes(app);
+  const stats = async (query) => JSON.parse((await app.inject({ method: 'GET', url: `/api/projects/${project.id}/stats?doc=main.typ${query}` })).payload);
+  assert.deepEqual((await stats('&typstVersion=9.9.9')).headings, []);
+  assert.equal((await stats('&typstVersion=../9')).headings.length, 1);
+  await app.close();
 });
 
 test.after(async () => {

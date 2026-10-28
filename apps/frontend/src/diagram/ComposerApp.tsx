@@ -8,7 +8,7 @@ import Icon from '../app/Icon';
 import { MenuButton } from '../app/Menu';
 import Tabs from '../app/Tabs';
 import { toast } from '../app/Toast';
-import { effectiveCompile, llmConfigFor, useSettings } from '../app/settings';
+import { effectiveCompile, llmConfigFor, loadSettings, useSettings } from '../app/settings';
 import { formatShortcut, matchesShortcut } from '../app/shortcuts';
 import { parseCompileLog } from '../editor/compileLog';
 import { conflictCopyPath } from '../editor/heldFiles';
@@ -110,7 +110,8 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
   const ext = kind === 'mermaid' ? 'mmd' : kind === 'typst' ? 'typ' : 'tex';
   useEffect(() => {
     getEngines().then((engines) => setTypstBuiltIn(!!engines.typst.builtIn)).catch(() => setTypstBuiltIn(false));
-    getProjectSettings(projectId).then(({ settings }) => setTypstVersion(settings.compile?.typstVersion || '')).catch(() => undefined);
+    // the version the editor compiles with: the project's pin, else the app's default
+    getProjectSettings(projectId).then(({ settings }) => setTypstVersion(effectiveCompile(settings.compile, loadSettings().compileDefaults).typstVersion || '')).catch(() => undefined);
   }, [projectId]);
   // a free name to start with, until one is typed
   const base = BASE_NAMES[mode?.id ?? ''] ?? 'diagram';
@@ -240,8 +241,9 @@ async function openDiagram(projectId: string, path: string): Promise<Loaded> {
   let needsSave = false;
   try {
     if (!mode || !diagram) throw new Error('Unsupported drawing');
-    // a fletcher import line follows the project's Typst version
-    const typstVersion = diagram.language === 'typst' ? (await getProjectSettings(projectId).catch(() => null))?.settings.compile?.typstVersion || '' : '';
+    // a fletcher import line follows the Typst version the editor compiles with, as the Editor's does
+    const project = diagram.language === 'typst' ? (await getProjectSettings(projectId).catch(() => null))?.settings : undefined;
+    const typstVersion = project ? effectiveCompile(project.compile, loadSettings().compileDefaults).typstVersion || '' : '';
     const generated = mode.toCode(diagram.model, diagram.style, { typstVersion });
     needsSave = !edited && drawnText(diagram, generated) !== code;
   } catch {

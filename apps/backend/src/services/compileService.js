@@ -546,6 +546,8 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
   };
 
   const { cmd, args } = buildCommand(engine, slashed(outDir), `./${mainName}`, options);
+  // by the engine, as cmd is the built-in Tectonic's path when Spectrum carries one
+  const limit = PASS_TIMEOUT_MS[engine] || DEFAULT_PASS_TIMEOUT_MS;
   if (engine === 'tectonic') {
     // Tectonic ignores TEXINPUTS; its unstable search-path option does the same job
     const paths = [...new Set([projectRoot, ...(mdDir ? [mdDir] : [])].map(slashed))].filter((dir) => dir !== slashed(mainDir));
@@ -567,7 +569,7 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
   try {
     let before = await keptFiles(outDir);
     // Pass 1: generate .aux with \citation{} entries
-    pass = await runSpawn(cmd, args, mainDir, pushLog, texEnv);
+    pass = await runSpawn(cmd, args, mainDir, pushLog, texEnv, limit);
     let log = await passLog();
     const carryOn = () => !pass.timedOut && !stopped() && !(options.haltOnError && pass.code !== 0);
     const keptFailed = () => kept && pass.code !== 0 && !pass.timedOut && !stopped() && keptFileFailed(log, kept);
@@ -607,7 +609,7 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
         }
         if (!RERUN.test(log) && sameFiles(before, now)) break;
         before = now;
-        pass = await runSpawn(cmd, args, mainDir, pushLog, texEnv);
+        pass = await runSpawn(cmd, args, mainDir, pushLog, texEnv, limit);
         log = await passLog();
         // a kept file can break a later pass too: natbib's on the .aux pass 1 wrote from a kept plain .bbl
         retry = keptFailed();

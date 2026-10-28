@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import Icon from '../../app/Icon';
 import { getGenerated, installPandoc, installTypst } from '../../api/client';
+import { loadSettings, updateSettings } from '../../app/settings';
 import { useEditor } from '../EditorContext';
 import type { CompileError } from '../EditorContext';
 import { ENGINES_CHANGED, Markdown, docKind, errorText, fixWithAI } from '../shared';
@@ -40,10 +41,12 @@ export default function LogsTab() {
     }
   };
 
+  /** A missing pin goes back to the app's default; a missing default goes back to the built-in Typst. */
   const useDefaultTypst = async () => {
     setInstalling('default');
     try {
-      await api.setCompileOption('typstVersion', null);
+      if (api.compileNotice?.from === 'default') updateSettings({ compileDefaults: { ...loadSettings().compileDefaults, typstVersion: '' } });
+      else await api.setCompileOption('typstVersion', null);
       await api.compile();
     } catch (err) {
       api.notify(errorText(err), 'error');
@@ -106,14 +109,16 @@ export default function LogsTab() {
       {api.compileNotice?.code === 'TYPST_VERSION_MISSING' && (
         <div className="log-card warning">
           <div className="log-message">
-            Typst {api.compileNotice.version} isn’t installed. Download it, or use the default version.
+            {api.compileNotice.from === 'default'
+              ? `Typst ${api.compileNotice.version} is the default version in Settings › Engines, and it isn’t installed on this computer. Download it, or use the built-in version.`
+              : `Typst ${api.compileNotice.version} isn’t installed. Download it, or use the default version.`}
           </div>
           <div className="row">
             <button className="btn small" disabled={Boolean(installing)} onClick={() => installEngine('typst', api.compileNotice!.version)}>
               {installing === 'typst' ? <span className="spinner" /> : <Icon name="arrow.down.circle" />} Download Typst {api.compileNotice.version}
             </button>
             <button className="btn small" disabled={Boolean(installing)} onClick={useDefaultTypst}>
-              Use the default
+              {api.compileNotice.from === 'default' ? `Use the built-in Typst ${api.compileNotice.builtIn}` : 'Use the default'}
             </button>
           </div>
         </div>

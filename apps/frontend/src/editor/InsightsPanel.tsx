@@ -109,7 +109,7 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
     }
     let live = true;
     setBusy(true);
-    getProjectStats(api.projectId, doc, api.settings.texFolder || undefined)
+    getProjectStats(api.projectId, doc, api.settings.texFolder || undefined, api.settings.compileDefaults.typstVersion || undefined)
       .then((res) => {
         if (!res.ok) throw new Error(res.error || 'Counting failed.');
         if (live) {
@@ -122,7 +122,7 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
     return () => {
       live = false;
     };
-  }, [active, doc, asked, api.projectId, api.compileLog, api.settings.texFolder]);
+  }, [active, doc, asked, api.projectId, api.compileLog, api.settings.texFolder, api.settings.compileDefaults.typstVersion]);
 
   const labels = stats?.labels ?? {};
   // a heading without a \label of its own gets its number and page from the contents' entries
