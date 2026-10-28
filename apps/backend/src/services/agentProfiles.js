@@ -234,7 +234,8 @@ export async function agentEntry(id, config, isolated) {
   const found = p.planned ? null : await findProgram(p, saved);
   const managed = await adapterFound(p);
   const chosen = chosenCommand(p, saved);
-  const loginCopied = await anyFile(path.join(AGENT_DIR, 'homes', id), p.login);
+  // the files alone could be ones the agent wrote itself during a Test
+  const loginCopied = !!saved.loginCopied && await anyFile(path.join(AGENT_DIR, 'homes', id), p.login);
   const configured = !!saved.apiKey || loginCopied || path.isAbsolute(chosen) || found?.source === 'spectrum';
   const test = found && saved.test?.program === found.program ? withoutProgram(saved.test) : undefined;
   const keyEnv = saved.keyEnv || p.key;
@@ -274,7 +275,7 @@ export async function saveAgentConfig(id, value) {
     if (keyEnv && !PROVIDER_KEYS.includes(keyEnv)) throw new Error('Choose a supported provider credential variable.');
     if (apiKey.length > 8192 || /[\r\n\0]/.test(apiKey)) throw new Error('Invalid API key.');
     // the profile's own arguments aren't saved, so a later Spectrum's take their place
-    const next = { command, ...(args && !same(args, profile.args) && { args }), runtimePaths, apiKey, keyEnv };
+    const next = { command, ...(args && !same(args, profile.args) && { args }), runtimePaths, apiKey, keyEnv, ...(old.loginCopied && { loginCopied: old.loginCopied }) };
     // a Test's result no longer holds once any of these changes
     const unchanged = command === chosenCommand(profile, old) && same(args ?? profile.args, old.args ?? profile.args) && same(runtimePaths, old.runtimePaths ?? []) && apiKey === (old.apiKey || '') && keyEnv === (old.keyEnv || profile.key);
     return unchanged && old.test ? { ...next, test: old.test } : next;
@@ -304,7 +305,7 @@ export async function importAgentLogin(id) {
     count++;
   }
   if (!count) throw new Error('No supported login/configuration files were found. Sign in with the agent first, or use an API key.');
-  await updateConfig(id, withoutTest);
+  await updateConfig(id, (entry) => ({ ...withoutTest(entry), loginCopied: new Date().toISOString() }));
   return count;
 }
 

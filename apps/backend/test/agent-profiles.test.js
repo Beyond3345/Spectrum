@@ -12,7 +12,7 @@ const home = path.join(dir, 'home');
 process.env.SPECTRUM_DATA_DIR = path.join(dir, 'data');
 process.env.HOME = home;
 process.env.PATH = '/usr/bin:/bin';
-const { PROFILES, profileFor, saveAgentConfig, agentConfigs, listAgents, agentEntry, agentState, launchOptions, installAdapter, removeAdapter, recordTest, AGENT_DIR } = await import('../src/services/agentProfiles.js');
+const { PROFILES, profileFor, saveAgentConfig, agentConfigs, listAgents, agentEntry, agentState, launchOptions, installAdapter, removeAdapter, recordTest, importAgentLogin, AGENT_DIR } = await import('../src/services/agentProfiles.js');
 after(() => fs.rm(dir, { recursive: true, force: true }));
 
 /** An executable at rel under the fake home; its first line is shebang. */
@@ -149,6 +149,19 @@ test('a Test always refreshes its time, a session only when it says something ne
   await saveAgentConfig('copilot', { apiKey: 'changed' });
   await recordTest('copilot', { ok: false, code: 'timeout', program: '/x' }, { setup });
   assert.equal((await agentConfigs()).copilot.test, undefined, 'a result from the old setup is dropped');
+});
+
+test('a login counts as copied only when Spectrum copied it, not when the agent wrote one itself', async () => {
+  const own = path.join(AGENT_DIR, 'homes', 'gemini', '.gemini', 'oauth_creds.json');
+  await fs.mkdir(path.dirname(own), { recursive: true });
+  await fs.writeFile(own, '{}');
+  assert.equal((await listed('gemini')).loginCopied, false);
+  await fs.mkdir(path.join(home, '.gemini'), { recursive: true });
+  await fs.writeFile(path.join(home, '.gemini', 'settings.json'), '{}');
+  await importAgentLogin('gemini');
+  assert.equal((await listed('gemini')).loginCopied, true);
+  await saveAgentConfig('gemini', { apiKey: 'k' });
+  assert.equal((await listed('gemini')).loginCopied, true, 'a save keeps it');
 });
 
 test('provider changes clear old credentials', async () => {
