@@ -1,3 +1,4 @@
+import { usesNewerParts } from './modes/circuitikz/model';
 import type { DiagramFile } from './types';
 
 // One file per diagram: figures/<name>.tex, a standalone TikZ document, figures/<name>.typ, a Typst file, or
@@ -5,8 +6,8 @@ import type { DiagramFile } from './types';
 // with a hash of the text the drawing writes:
 //   % spectrum-diagram v1 <base64 of the DiagramFile as JSON> <sha256 of that text, its first 16 hex digits>
 // The text above that line matching the hash means it's as the drawing left it; otherwise it was edited by hand.
-// The line's own v1 never changes; the DiagramFile's version is 2 when the drawing has symbol sets, which builds from
-// before sets don't read (they open such a file as code).
+// The line's own v1 never changes; the DiagramFile's version is 2 when the drawing has symbol sets or circuit parts
+// added since, which builds from before them don't read (they open such a file as code).
 
 /** What a mode's toCode gives: the picture, and what the document around it has to load. */
 export type DiagramCode = { body: string; packages: string[]; libraries: string[] };
@@ -56,9 +57,10 @@ export async function diagramFileText(diagram: DiagramFile, code: DiagramCode, e
   const drawn = drawnText(diagram, code);
   const above = edited === undefined ? drawn : edited.endsWith('\n') ? edited : `${edited}\n`;
   const mark = diagram.language === 'mermaid' ? '%%' : diagram.language === 'typst' ? '//' : '%';
-  // no sets: no sets key and version 1, as before sets
+  // no sets: no sets key and version 1, as before sets, unless a circuit has parts the first builds didn't know
   const { sets, ...rest } = diagram;
-  const kept: DiagramFile = sets?.length ? { ...rest, sets, version: 2 } : { ...rest, version: 1 };
+  const newer = diagram.pkg === 'circuitikz' && usesNewerParts(diagram.model);
+  const kept: DiagramFile = sets?.length ? { ...rest, sets, version: 2 } : { ...rest, version: newer ? 2 : 1 };
   return `${above}${mark} spectrum-diagram v1 ${toBase64(JSON.stringify(kept))} ${await hashOf(drawn)}\n`;
 }
 
