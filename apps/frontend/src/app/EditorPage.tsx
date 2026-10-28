@@ -2822,12 +2822,14 @@ function Editor({ projectId }: { projectId: string }) {
   // On keeps the project's pause, else the app's (Settings › Engines › LaTeX sets its length), else 2 s
   const autoPause = compileOptions.autoCompile || settings.compileDefaults.autoCompile || 2;
   const compileKind = docKind(compileTarget) ?? 'latex';
+  // TeX compiles a LaTeX document and Markdown through LaTeX; Typst has no bibliography tool or draft mode
+  const usesTeX = compileKind === 'latex' || (compileKind === 'markdown' && compileOptions.markdownEngine !== 'typst');
   // a Typst project pins a Typst version instead of choosing a TeX engine
   const typstVersionChoices: MenuItems = [
     { heading: true, label: 'Typst version (this project)' },
     { label: `Default${settings.compileDefaults.typstVersion ? ` (${settings.compileDefaults.typstVersion})` : engines?.typst.builtIn ? ` (${engines.typst.builtIn}, built in)` : ''}`, checked: projectCompile.typstVersion == null, onSelect: () => setCompileOption('typstVersion', null) },
-    ...(engines?.typst.builtIn ? [{ label: `Typst ${engines.typst.builtIn} (built in)`, checked: compileOptions.typstVersion === engines.typst.builtIn, onSelect: () => setCompileOption('typstVersion', engines.typst.builtIn) }] : []),
-    ...(engines?.typst.installed ?? []).map((version) => ({ label: `Typst ${version}`, checked: compileOptions.typstVersion === version, onSelect: () => setCompileOption('typstVersion', version) })),
+    ...(engines?.typst.builtIn ? [{ label: `Typst ${engines.typst.builtIn} (built in)`, checked: projectCompile.typstVersion === engines.typst.builtIn, onSelect: () => setCompileOption('typstVersion', engines.typst.builtIn) }] : []),
+    ...(engines?.typst.installed ?? []).map((version) => ({ label: `Typst ${version}`, checked: projectCompile.typstVersion === version, onSelect: () => setCompileOption('typstVersion', version) })),
     ...(compileOptions.typstVersion && compileOptions.typstVersion !== engines?.typst.builtIn && !(engines?.typst.installed ?? []).includes(compileOptions.typstVersion)
       ? [{ label: `Typst ${compileOptions.typstVersion} (not installed)`, disabled: true }]
       : []),
@@ -2849,11 +2851,13 @@ function Editor({ projectId }: { projectId: string }) {
     ...(compileKind === 'markdown' ? compileChoice('markdownEngine', 'PDF engine (this project)', [['latex', 'LaTeX'], ['typst', 'Typst']]) : []),
     ...(compileKind === 'typst' ? typstVersionChoices : compileChoice('engine', 'Compiler (this project)', COMPILE_ENGINES)),
     ...compileChoice('autoCompile', 'Auto compile', [[0, 'Off'], [autoPause, 'On']], (n) => (n ? 'On' : 'Off')),
-    ...compileChoice('bibTool', 'Bibliography tool', BIB_TOOLS),
-    ...compileChoice('draft', 'Fast draft mode', [
-      [false, 'Off'],
-      [true, 'On: one pass, images as boxes']
-    ]),
+    ...(usesTeX ? compileChoice('bibTool', 'Bibliography tool', BIB_TOOLS) : []),
+    ...(usesTeX
+      ? compileChoice('draft', 'Fast draft mode', [
+          [false, 'Off'],
+          [true, 'On: one pass, images as boxes']
+        ])
+      : []),
     { label: 'Stop compilation', disabled: !running, onSelect: () => stopCompile(compileIdRef.current).catch(() => undefined) },
     { label: 'Recompile from scratch', disabled: running, onSelect: () => runCompile(compileTarget, { fresh: true }) },
     docs.length > 1 && { label: 'Recompile all', disabled: running, onSelect: () => recompileAll() }
@@ -2950,7 +2954,7 @@ function Editor({ projectId }: { projectId: string }) {
         <Icon name={running ? 'stop.fill' : 'play.fill'} />
         <span className="btn-label">{running ? 'Stop' : 'Compile'}</span>
       </button>
-      <MenuButton className="compile-engine" icon="chevron.down" chevron={false} title={`Compile options (${engineLabel(engine)})`} items={compileItems} />
+      <MenuButton className="compile-engine" icon="chevron.down" chevron={false} title={`Compile options (${usesTeX ? engineLabel(engine) : 'Typst'})`} items={compileItems} />
     </div>
   );
   // ends each panel's header
