@@ -1,5 +1,5 @@
 import { listAgents, saveAgentConfig, importAgentLogin } from '../services/agentProfiles.js';
-import { getAgentRun, listAgentRuns, newAgentRun, previewDraft, promptAgent, readContext, stopAgentRun, answerAgentRequest, setAgentOption, reviewAgentChanges, pendingChanges, runSnapshot, subscribeAgent } from '../services/agentSessionService.js';
+import { changeAdapter, testAgent, getAgentRun, listAgentRuns, newAgentRun, previewDraft, promptAgent, readContext, stopAgentRun, answerAgentRequest, setAgentOption, reviewAgentChanges, pendingChanges, runSnapshot, subscribeAgent } from '../services/agentSessionService.js';
 import { agentRecoveries, recoverAgentApply } from '../services/agentWorkspace.js';
 import { mutateProjectFiles } from '../services/projectService.js';
 
@@ -7,6 +7,11 @@ export function registerAgentSessionRoutes(fastify) {
   fastify.get('/api/agents', async () => ({ ok: true, agents: await listAgents() }));
   fastify.put('/api/agents/:id', async (req) => { await saveAgentConfig(req.params.id, req.body); return { ok: true }; });
   fastify.post('/api/agents/:id/import-login', async (req) => ({ ok: true, files: await importAgentLogin(req.params.id) }));
+  // starts the agent in isolation without a prompt, and stores what happened
+  fastify.post('/api/agents/:id/test', async (req) => ({ ok: true, agent: await testAgent(req.params.id) }));
+  // the profile's pinned adapter: the request names no package or version
+  fastify.post('/api/agents/:id/adapter', async (req) => ({ ok: true, agent: await changeAdapter(req.params.id, 'install') }));
+  fastify.delete('/api/agents/:id/adapter', async (req) => ({ ok: true, agent: await changeAdapter(req.params.id, 'remove') }));
   fastify.get('/api/agent-sessions', async (req) => ({ ok: true, sessions: await listAgentRuns(String(req.query.projectId || '')) }));
   fastify.post('/api/agent-sessions', async (req) => ({ ok: true, session: await newAgentRun(req.body || {}) }));
   fastify.get('/api/agent-sessions/:id', async (req) => {

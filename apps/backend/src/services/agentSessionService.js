@@ -15,8 +15,8 @@ import { compileFolder, findExecutable, SUPPORTED_ENGINES } from './compileServi
 import { builtInTectonic, builtInTypst } from './engineService.js';
 import { readProjectSettings } from './projectSettings.js';
 import { openTodos, suggestedTodo } from './agentService.js';
-import { AGENT_DIR, profileFor, agentConfigs, agentHome } from './agentProfiles.js';
-import { spawnAgentProcess, killAgentProcess, resolveExecutable, isolationAvailable } from './agentSandbox.js';
+import { AGENT_DIR, profileFor, agentHome, agentEntry, launchOptions, recordTest, installing, installAdapter, removeAdapter } from './agentProfiles.js';
+import { spawnAgentProcess, killAgentProcess, isolationAvailable } from './agentSandbox.js';
 import { initialiseWorkspace, workspaceChanges, applyWorkspaceChanges, captureAgentProposal, readCurrent, rebaseChange, refreshDraft } from './agentWorkspace.js';
 import { ITEM_ID, readItems } from '../routes/todos.js';
 import { activeSkills, listSkills, loadSkill, SKILL_ID } from './skillService.js';
@@ -223,19 +223,12 @@ async function connect(r) {
   // a direct session from 1.10 included
   if (r.mode === 'direct' && process.platform === 'win32') throw new Error(NO_DIRECT);
   const profile = profileFor(r.agentId);
-  const config = (await agentConfigs())[r.agentId] || {};
-  const credentialVariable = config.keyEnv || profile.key;
-  r.processOptions = { command: config.command || profile.command, args: config.args || profile.args, workspace: r.workspace, home: r.home, runtimePaths: config.runtimePaths || [], forbiddenRoots: r.mode === 'review' ? [r.root] : [], env: { ...(config.apiKey && credentialVariable && { [credentialVariable]: config.apiKey }), ...(r.agentId === 'zcode' && { ZCODE_ACP_MODE: 'build' }) } };
-  r.processOptions.runtimeExecutable = await resolveExecutable(r.processOptions.command);
-  if (r.agentId === 'opencode') {
-    const server = createServer();
-    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
-    const port = server.address().port;
-    await new Promise((resolve) => server.close(resolve));
-    r.processOptions.internalPort = port;
-    r.processOptions.args = [...r.processOptions.args, '--port', String(port), '--hostname', '127.0.0.1'];
-    r.processOptions.env.OPENCODE_SERVER_PASSWORD = crypto.randomBytes(32).toString('hex');
-  }
+  // an old session can't start an agent its card calls unavailable
+  if (profile.unavailable) throw new Error(profile.unavailable);
+  // they share the private home: a turn waits for that agent's Test, which is short
+  await tests.get(r.agentId)?.catch(() => {});
+  if (installing.has(r.agentId)) throw new Error(`${profile.name}’s adapter is being changed. Try again when it finishes.`);
+  r.processOptions = await launchOptions(r.agentId, { workspace: r.workspace, home: r.home, forbiddenRoots: r.mode === 'review' ? [r.root] : [] });
   await syncAgentSkills(r).catch((err) => emit(r, 'notice', { message: `The project’s skills weren’t copied for the agent: ${err.message}` }));
   const tools = await toolsServer(r).catch((err) => { emit(r, 'notice', { message: `Spectrum’s tools aren’t available to the agent this turn: ${err.message}` }); return null; });
   if (tools) r.processOptions.runtimePaths = [...r.processOptions.runtimePaths, ...tools.reads];
@@ -244,7 +237,7 @@ async function connect(r) {
   r.child = await spawnAgentProcess(r.processOptions);
   if (r.cancelled || r.connectionAbort.signal.aborted) { killAgentProcess(r.child); throw new Error('Task cancelled.'); }
   let stderr = '';
-  const redact = (text) => [config.apiKey, r.processOptions.env.OPENCODE_SERVER_PASSWORD].filter(Boolean).reduce((value, key) => value.replaceAll(key, '[hidden]'), text);
+  const redact = (text) => hide(text, r.processOptions.secrets);
   r.child.stderr.on('data', (chunk) => { stderr = (stderr + chunk.toString()).slice(-12000); r.diagnostic = redact(stderr); });
   r.child.on('error', (err) => { if (!r.cancelled) state(r, 'failed', err.message); });
   const ownedChild = r.child;
@@ -305,7 +298,6 @@ async function connect(r) {
   if (initial.protocolVersion !== 1) throw new Error('This agent does not support ACP v1.');
   r.capabilities = initial.agentCapabilities || {};
   emit(r, 'initialized', { agentInfo: initial.agentInfo, capabilities: r.capabilities, authMethods: initial.authMethods });
-  if (r.agentId === 'cursor') await timeout(r.peer.request('authenticate', { methodId: 'cursor_login' }), 30000, 'Cursor authentication did not finish. Configure its API key in Setup.', r.connectionAbort.signal);
   let session;
   // a persona goes in the agent's own system prompt where it takes one, on every new, loaded or resumed session
   const systemPrompt = r.persona && r.capabilities.sessionCapabilities?.systemPrompt ? { mode: 'append', content: [{ type: 'text', text: personaText(r.persona) }] } : undefined;
@@ -313,6 +305,7 @@ async function connect(r) {
   r.opening = true;
   let loaded = false;
   try {
+    if (r.agentId === 'cursor') await timeout(r.peer.request('authenticate', { methodId: 'cursor_login' }), 30000, 'Cursor authentication did not finish. Configure its API key in Setup.', r.connectionAbort.signal);
     if (r.remoteId && !r.forceNew && (r.capabilities.loadSession || r.capabilities.sessionCapabilities?.resume)) {
       const method = r.capabilities.loadSession ? 'session/load' : 'session/resume';
       r.replaying = method === 'session/load';
@@ -328,10 +321,15 @@ async function connect(r) {
       r.openedNew = true;
       r.forceNew = false;
     }
-  } catch (err) { throw new Error(`Agent setup failed: ${err.message}. Configure its API key or import a supported login in Agents.`); }
+  } catch (err) {
+    // the agent asked for authentication: its card says Sign-in needed
+    if (err.code === -32000) await recordTest(r.agentId, { ok: false, code: 'sign-in', program: r.processOptions.program, ...(initial.agentInfo?.version && { version: String(initial.agentInfo.version) }) }).catch(() => {});
+    throw new Error(`Agent setup failed: ${err.message}. Configure its API key or import a supported login in Agents.`);
+  }
   finally { r.opening = false; }
   if (session.sessionId) r.remoteId = session.sessionId;
   if (!r.remoteId) throw new Error('The agent did not return a session id.');
+  await recordTest(r.agentId, { ok: true, code: 'ready', program: r.processOptions.program, ...(initial.agentInfo?.version && { version: String(initial.agentInfo.version) }) }).catch(() => {});
   emit(r, 'session', { modes: session.modes, configOptions: session.configOptions });
 }
 
@@ -344,6 +342,89 @@ async function timeout(promise, ms, message, signal) {
       if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, { once: true });
     })]);
   } finally { clearTimeout(timer); if (abort) signal?.removeEventListener('abort', abort); }
+}
+
+const hide = (text, secrets = []) => secrets.reduce((value, key) => value.replaceAll(key, '[hidden]'), text);
+
+// Tests now, by agent; they run one at a time across all agents
+const tests = new Map();
+let testQueue = Promise.resolve();
+const turnRunning = (id) => [...runs.values()].some((r) => r.agentId === id && (r.busy || r.child));
+const inUse = (id) => {
+  if (tests.has(id) || installing.has(id) || turnRunning(id)) throw Object.assign(new Error(`${profileFor(id).name} is in use. Try again when it finishes.`), { statusCode: 409 });
+};
+
+/**
+ * Starts the agent exactly as a session would, inside isolation, in an empty folder of its private home, and asks for
+ * a session without sending a prompt, so no model is called. Stores what happened for the program found now: ready,
+ * sign-in, error, timeout, exited or not-acp. Resolves to the agent's listing.
+ */
+export function testAgent(id, { limit = 30000 } = {}) {
+  const profile = profileFor(id);
+  if (profile.unavailable) throw Object.assign(new Error(profile.unavailable), { statusCode: 400 });
+  inUse(id);
+  const run = testQueue.then(() => runTest(profile, limit));
+  testQueue = run.catch(() => {});
+  const done = run.finally(() => tests.delete(id));
+  tests.set(id, done);
+  return done.then(() => agentEntry(id));
+}
+
+const tagged = (test) => Object.assign(new Error(test), { test });
+
+async function runTest(profile, limit) {
+  if (!(await isolationAvailable())) throw new Error('Native agent isolation is unavailable. Install or repair the Windows isolation worker before starting an agent.');
+  const home = await agentHome(profile.id);
+  const workspace = await fs.mkdtemp(path.join(home, 'tmp', 'spectrum-test-'));
+  let child, connection, initial, output = '', exited = false;
+  try {
+    const options = await launchOptions(profile.id, { workspace, home });
+    const stopped = new AbortController();
+    child = await spawnAgentProcess(options);
+    const ended = new Promise((resolve) => { child.once('exit', resolve); child.once('error', resolve); });
+    void ended.then(() => { exited = true; stopped.abort(tagged('exited')); });
+    child.stderr.on('data', (chunk) => { output = (output + chunk.toString()).slice(-12000); });
+    // no prompt is sent, so the agent should ask for no files, terminals or permissions; any it asks for are refused
+    connection = client({ name: 'spectrum', version: APP_VERSION }).connect(ndJsonStream(Writable.toWeb(child.stdin), Readable.toWeb(child.stdout)));
+    const ask = (method, params) => timeout(connection.agent.request(method, params), limit, 'timeout', stopped.signal).catch((err) => {
+      throw err.test || err.code !== undefined || err.message !== 'timeout' ? err : tagged('timeout');
+    });
+    let result;
+    try {
+      initial = await ask('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true, elicitation: { form: {}, url: {} } }, clientInfo: { name: 'spectrum', title: 'Spectrum', version: APP_VERSION } });
+      if (initial?.protocolVersion !== 1) result = { code: 'not-acp' };
+      else {
+        if (profile.id === 'cursor') await ask('authenticate', { methodId: 'cursor_login' });
+        const session = await ask('session/new', { cwd: workspace, mcpServers: [] });
+        result = session?.sessionId ? { ok: true, code: 'ready' } : { code: 'not-acp' };
+      }
+    } catch (err) {
+      // a connection that broke as the agent stopped is its stopping
+      if (!err.test && typeof err.code !== 'number') await Promise.race([ended, new Promise((resolve) => setTimeout(resolve, 500))]);
+      result = err.test === 'exited' || (exited && err.test !== 'timeout') ? { code: 'exited', detail: hide(output, options.secrets).slice(-2000) }
+        : err.test === 'timeout' ? { code: 'timeout' }
+          : err.code === -32000 ? { code: 'sign-in', ...(initial?.authMethods?.length && { methods: initial.authMethods.map((m) => m.name || m.id).filter(Boolean) }) }
+            : typeof err.code === 'number' ? { code: 'error', detail: hide(err.message, options.secrets).slice(0, 2000) }
+              : { code: 'not-acp' };
+    }
+    const version = initial?.agentInfo?.version;
+    await recordTest(profile.id, { ok: false, ...result, ...(version && { version: String(version) }), program: options.program });
+  } finally {
+    connection?.close();
+    if (child?.pid && child.exitCode === null && child.signalCode === null) {
+      const closed = new Promise((resolve) => child.once('close', resolve));
+      killAgentProcess(child);
+      await timeout(closed, 10000, 'The isolated process tree did not stop.').catch(() => {});
+    }
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+}
+
+/** Installs or removes an agent's adapter, never while a Test or session of that agent runs. */
+export async function changeAdapter(id, action, options) {
+  inUse(id);
+  await (action === 'remove' ? removeAdapter(id) : installAdapter(id, options));
+  return agentEntry(id);
 }
 
 // What isolation needs to run Spectrum's own Node in the agent's grants, with none of the agent's settings or keys
