@@ -1014,6 +1014,35 @@ export type GrammarIssue = {
   suggestions: GrammarSuggestion[];
   /** false when the span runs into LaTeX markup, so a suggestion can't be applied as it is */
   fixable: boolean;
+  engine?: 'harper' | 'languagetool';
+  /** the listed language its paragraph is in */
+  lang?: string;
+};
+/** How one listed language found in the file was checked. */
+export type GrammarCoverage = {
+  lang: string;
+  engine: 'harper' | 'languagetool' | null;
+  pieces: number;
+  chars: number;
+  parts: number;
+  done: number;
+  state: 'checked' | 'none' | 'off' | 'not-downloaded' | 'failed' | 'cancelled';
+  message: string;
+  /** English that LanguageTool should have checked and Harper did, and why */
+  fallback?: { state: string; message: string };
+};
+export type LanguageToolStatus = {
+  mode: 'off' | 'local';
+  version: string;
+  java: string | null;
+  /** the whole download, and the Java runtime's part of it */
+  bytes: number;
+  javaBytes: number;
+  installed: boolean;
+  downloading: { done: number; total: number } | null;
+  error: string | null;
+  running: boolean;
+  stopped: { message: string; details: string } | null;
 };
 export type OxfordComma = 'avoid' | 'require' | 'off';
 
@@ -1067,12 +1096,32 @@ export function changeSpellWord(payload: { word: string; scope: 'global' | 'proj
   return request<SpellWordLists>('/api/spell/words', json('POST', payload));
 }
 
-export function grammarCheck(payload: { text: string; file: string; projectId?: string; style: boolean; oxford: OxfordComma }) {
-  return request<{ issues: GrammarIssue[]; ignoredRules: string[] }>('/api/grammar/check', json('POST', payload));
+export function grammarCheck(
+  payload: { text: string; file: string; projectId?: string; style: boolean; oxford: OxfordComma; languages: string[]; englishGrammar: 'harper' | 'languagetool' },
+  signal?: AbortSignal
+) {
+  return request<{ issues: GrammarIssue[]; coverage: GrammarCoverage[]; ignoredRules: string[] }>('/api/grammar/check', { ...json('POST', payload), signal });
 }
 
-export function changeIgnoredGrammarRule(projectId: string, rule: string, remove = false) {
-  return request<{ ignoredRules: string[] }>('/api/grammar/ignored', json('POST', { projectId, rule, remove }));
+/** Ignores a rule in the project: Harper's in grammar.json, LanguageTool's by language in settings.json. */
+export function changeIgnoredGrammarRule(projectId: string, rule: string, remove = false, engine: 'harper' | 'languagetool' = 'harper', lang?: string) {
+  return request<{ ignoredRules?: string[] }>('/api/grammar/ignored', json('POST', { projectId, rule, remove, engine, lang }));
+}
+
+export function languageToolStatus() {
+  return request<LanguageToolStatus>('/api/languagetool');
+}
+
+export function setLanguageToolMode(mode: 'off' | 'local') {
+  return request<LanguageToolStatus>('/api/languagetool', json('PUT', { mode }));
+}
+
+export function installLanguageTool() {
+  return request<LanguageToolStatus>('/api/languagetool/install', json('POST'));
+}
+
+export function removeLanguageTool() {
+  return request<LanguageToolStatus>('/api/languagetool/install', { method: 'DELETE' });
 }
 
 export function listProviders() {

@@ -3,6 +3,13 @@ import type { CSSProperties, ReactNode } from 'react';
 import {
   changeSpellWord,
   createSkill,
+  downloadDictionary,
+  installLanguageTool,
+  languageToolStatus,
+  listLanguages,
+  pruneDictionaries,
+  removeLanguageTool,
+  setLanguageToolMode,
   deleteSkill,
   duplicateSkill,
   getEngines,
@@ -28,14 +35,14 @@ import {
   updateSyncSettings,
   writeSkillFile
 } from '../api/client';
-import type { BibTool, CheckerStatus, CompileEngine, Engines, SearchProvider, Skill, SkillShare, SystemCheck } from '../api/client';
+import type { BibTool, CheckerStatus, CompileEngine, Engines, LanguageInfo, LanguageToolStatus, SearchProvider, Skill, SkillShare, SystemCheck } from '../api/client';
 import { COLOUR_ROLES, EDITOR_FONTS, EDITOR_THEMES, chosenColours, editorColours, highlightLines, themeFor, wellColour } from '../editor/editorThemes';
 import type { EditorMode } from '../editor/editorThemes';
 import { highlightColour } from '../editor/synctex';
 import { CheckpointCleanup } from '../editor/tools/VersionsTab';
 import { resetPersonas, unsavedPersona } from '../editor/personas';
 import type { Persona } from '../editor/personas';
-import { ENGINES_CHANGED, errorText } from '../editor/shared';
+import { ENGINES_CHANGED, LANGUAGES_CHANGED, errorText } from '../editor/shared';
 import { ZoteroSettings } from '../editor/ZoteroCite';
 import { confirmDialog } from './Dialogs';
 import Icon from './Icon';
@@ -72,6 +79,7 @@ import {
   searchProviderPatch,
   SEARCH_PROVIDERS,
   TAG_COLOUR_NAMES,
+  languageName,
   loadSettings,
   useLivePreset,
   useProviders,
@@ -515,7 +523,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
 
           {section === 'checkpoints' && <CheckpointsPane />}
 
-          {section === 'language' && <LanguagePane />}
+          {section === 'language' && <LanguagePane projectId={projectId} />}
 
           {section === 'shortcuts' && <ShortcutsPane />}
 
@@ -1479,8 +1487,29 @@ function CheckpointsPane() {
   );
 }
 
-/** Spelling and grammar in Australian English: the switches, the serial comma and the personal word list. */
-function LanguagePane() {
+/** What checks a language's spelling, and whether its dictionary is here. */
+function spellingLabel(info: LanguageInfo | undefined) {
+  if (!info) return 'No spelling dictionary';
+  switch (info.state) {
+    case 'bundled': return 'Spelling: built in';
+    case 'downloaded': return 'Spelling: downloaded';
+    case 'downloading': return 'Spelling: downloading…';
+    case 'failed': return 'Spelling: download failed';
+    case 'available': return 'Spelling: not downloaded';
+    default: return info.tag === 'zh-TW' ? 'Marks Simplified characters' : 'No spelling dictionary';
+  }
+}
+
+/** What checks a language's grammar, given the English choice and LanguageTool's state. */
+function grammarLabel(info: LanguageInfo | undefined, englishGrammar: AppSettings['englishGrammar'], lt: LanguageToolStatus | null) {
+  const ready = lt?.mode === 'local' && lt.installed;
+  if (info?.harper && (englishGrammar === 'harper' || !ready)) return 'Grammar: Harper';
+  if (info?.languageTool) return ready ? 'Grammar: LanguageTool' : 'Grammar: needs LanguageTool';
+  return 'No grammar checker';
+}
+
+/** Spelling and grammar: the languages listed (the user's or the project's own), the checkers, LanguageTool and the word list. */
+function LanguagePane({ projectId }: { projectId?: string }) {
   const [settings, update] = useSettings();
   const [status, setStatus] = useState<CheckerStatus | null>(null);
   const [grammar, setGrammar] = useState<CheckerStatus | null>(null);
@@ -1488,22 +1517,46 @@ function LanguagePane() {
   const [words, setWords] = useState<string[] | null>(null);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
+  const [catalogue, setCatalogue] = useState<LanguageInfo[] | null>(null);
+  const [lt, setLt] = useState<LanguageToolStatus | null>(null);
+  const [scope, setScope] = useState<'all' | 'project'>('all');
+  // the project's own list; null while it uses the user's, undefined until read
+  const [projectList, setProjectList] = useState<string[] | null | undefined>(undefined);
+  const [adding, setAdding] = useState(false);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     let active = true;
     setStatus(null);
     setGrammar(null);
     const load = (name: string, get: () => Promise<CheckerStatus>, set: (value: CheckerStatus) => void) => {
-      get().catch((err) => ({ available: false, language: 'en-AU', engine: name, version: null, error: errorText(err) })).then((value) => { if (active) set(value); });
+      get().catch((err) => ({ available: false, engine: name, version: null, error: errorText(err) })).then((value) => { if (active) set(value); });
     };
     load('Hunspell', spellStatus, setStatus);
     load('Harper', grammarStatus, setGrammar);
     return () => { active = false; };
   }, [refresh]);
 
+  const loadCatalogue = () => listLanguages().then((res) => setCatalogue(res.languages), (err) => setError(errorText(err)));
   useEffect(() => {
     spellWords().then((lists) => setWords(lists.global)).catch(() => setWords([]));
+    void loadCatalogue();
+    languageToolStatus().then(setLt, () => undefined);
   }, []);
+  useEffect(() => {
+    if (!projectId) return;
+    getProjectSettings(projectId).then((res) => {
+      setProjectList(res.settings.language?.languages ?? null);
+      // a project with its own list shows that one first
+      if (res.settings.language?.languages) setScope('project');
+    }, () => setProjectList(null));
+  }, [projectId]);
+  // LanguageTool's download is followed while it runs
+  useEffect(() => {
+    if (!lt?.downloading) return;
+    const timer = window.setTimeout(() => languageToolStatus().then(setLt, () => undefined), 1000);
+    return () => window.clearTimeout(timer);
+  }, [lt]);
 
   const change = (word: string, remove = false) => {
     setError('');
@@ -1515,24 +1568,159 @@ function LanguagePane() {
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   };
 
+  const inProject = !!projectId && scope === 'project';
+  const ownList = inProject && Array.isArray(projectList);
+  const list = ownList ? projectList : settings.languages;
+  const info = (tag: string) => catalogue?.find((entry) => entry.tag === tag);
+
+  const saveProject = (next: string[] | null) =>
+    updateProjectSettings(projectId!, { language: { languages: next } })
+      .then((res) => {
+        setProjectList(res.settings.language?.languages ?? null);
+        window.dispatchEvent(new Event(LANGUAGES_CHANGED));
+      })
+      .catch((err) => setError(errorText(err)));
+  const setList = (next: string[]) => (ownList ? void saveProject(next) : update({ languages: next }));
+  const move = (index: number, by: number) => {
+    const next = [...list];
+    [next[index], next[index + by]] = [next[index + by], next[index]];
+    setList(next);
+  };
+
+  const download = (tag: string) => {
+    setCatalogue((prev) => prev && prev.map((entry) => (entry.tag === tag ? { ...entry, state: 'downloading' } : entry)));
+    downloadDictionary(tag)
+      .catch((err) => toast(errorText(err), { tone: 'error' }))
+      .finally(() => void loadCatalogue());
+  };
+
+  // dictionaries on this computer that neither the user's list nor this project's uses
+  const keep = new Set([...settings.languages, ...(projectList || [])]);
+  const unused = (catalogue || []).filter((entry) => entry.state === 'downloaded' && !keep.has(entry.tag));
+  const unusedBytes = unused.reduce((sum, entry) => sum + (entry.bytes || 0), 0);
+  const prune = () => pruneDictionaries([...keep]).then(() => loadCatalogue(), (err) => setError(errorText(err)));
+
+  const query = search.trim().toLowerCase();
+  const choices = (catalogue || [])
+    .filter((entry) => !list.includes(entry.tag))
+    .map((entry) => ({ ...entry, name: languageName(entry.tag) }))
+    .filter((entry) => !query || entry.name.toLowerCase().includes(query) || entry.tag.toLowerCase().startsWith(query))
+    .sort((a, b) => a.name.localeCompare(b.name, 'en-AU'));
+
+  const ltReady = lt?.mode === 'local' && lt.installed;
+  const mb = (bytes: number) => `${Math.round(bytes / 1_000_000)} MB`;
+
   return (
     <>
+      <h3 className="form-section-title">Languages</h3>
       <div className="field-hint section-hint">
-        Spectrum checks writing in Australian English. Spelling uses SCOWL’s en_AU dictionary with Australian words from AussieDic, and grammar uses Harper.
+        Spectrum checks each paragraph in one of these languages, and only these. It works out which one from the text. When a paragraph could be more than one, it uses the one higher in the list.
       </div>
+      {projectId && (
+        <div className="segmented small" role="radiogroup" aria-label="The list for">
+          {(['all', 'project'] as const).map((value) => (
+            <button key={value} className={`segment ${scope === value ? 'active' : ''}`} role="radio" aria-checked={scope === value} onClick={() => setScope(value)}>
+              {value === 'all' ? 'All projects' : 'This project'}
+            </button>
+          ))}
+        </div>
+      )}
+      {inProject && !ownList ? (
+        <div className="path-row">
+          <span className="field-hint">This project uses your list.</span>
+          <button className="btn small" disabled={projectList === undefined} onClick={() => void saveProject(settings.languages)}>Give this project its own list</button>
+        </div>
+      ) : (
+        <>
+          <div className="kv-list language-list">
+            {list.map((tag, index) => {
+              const entry = info(tag);
+              return (
+                <div key={tag} className="kv-row">
+                  <span className="grow">
+                    {languageName(tag)}
+                    <span className="field-hint">
+                      {' '}{spellingLabel(entry)} · {grammarLabel(entry, settings.englishGrammar, lt)}
+                    </span>
+                  </span>
+                  {entry && (entry.state === 'available' || entry.state === 'failed') && (
+                    <button className="btn small" title={entry.error} onClick={() => download(tag)}>
+                      {entry.state === 'failed' ? 'Try again' : `Download (${sizeLabel(entry.bytes || 0)}, ${entry.licence})`}
+                    </button>
+                  )}
+                  <button className="icon-btn small" title="Move up" aria-label={`Move ${languageName(tag)} up`} disabled={index === 0} onClick={() => move(index, -1)}>
+                    <Icon name="chevron.up" />
+                  </button>
+                  <button className="icon-btn small" title="Move down" aria-label={`Move ${languageName(tag)} down`} disabled={index === list.length - 1} onClick={() => move(index, 1)}>
+                    <Icon name="chevron.down" />
+                  </button>
+                  <button className="icon-btn small" title={`Remove ${languageName(tag)}`} aria-label={`Remove ${languageName(tag)}`} disabled={list.length === 1} onClick={() => setList(list.filter((t) => t !== tag))}>
+                    <Icon name="xmark" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <div className="path-row">
+            <button className="btn small" disabled={!catalogue || list.length >= 20} onClick={() => setAdding((value) => !value)}>
+              <Icon name="plus" /> Add a language…
+            </button>
+            {ownList && <button className="btn small ghost" onClick={() => void saveProject(null)}>Use my list</button>}
+          </div>
+          {adding && (
+            <div className="language-picker">
+              <label className="search-field">
+                <Icon name="magnifyingglass" />
+                <input value={search} placeholder="Search" aria-label="Search languages" spellCheck={false} autoFocus onChange={(e) => setSearch(e.target.value)} />
+              </label>
+              <div className="kv-list" style={{ maxHeight: 240, overflowY: 'auto' }}>
+                {choices.map((entry) => (
+                  <button key={entry.tag} className="kv-row" onClick={() => { setList([...list, entry.tag]); setAdding(false); setSearch(''); }}>
+                    <span className="grow">{entry.name}</span>
+                    <span className="field-hint">{spellingLabel(entry).replace('Spelling: not downloaded', `Spelling: ${sizeLabel(entry.bytes || 0)} download`)}</span>
+                  </button>
+                ))}
+                {!choices.length && <div className="kv-row"><span>No language matches.</span></div>}
+              </div>
+            </div>
+          )}
+          {inProject && <div className="field-hint">This project’s list travels with the project and replaces yours for it.</div>}
+        </>
+      )}
+      <div className="field-hint">A language’s dictionary downloads from GitHub when you ask. Most are under 6 MB.</div>
+      {unusedBytes > 0 && (
+        <div className="path-row">
+          <button className="btn small" onClick={() => void prune()}>Remove unused dictionaries ({sizeLabel(unusedBytes)})</button>
+        </div>
+      )}
 
       <h3 className="form-section-title">Spelling</h3>
       <label className="checkbox-row">
         <input type="checkbox" role="switch" checked={settings.spellCheck} onChange={(e) => update({ spellCheck: e.target.checked })} />
         <span>
           Check spelling as you type
-          <span className="field-hint">Misspelt words in .tex, .md and .txt files get a red underline. Right-click one for suggestions.</span>
+          <span className="field-hint">Misspelt words in .tex, .typ, .md and .txt files get a red underline. Right-click one for suggestions.</span>
         </span>
       </label>
       <CheckerDetails name="Hunspell" status={status} />
+      {(catalogue || []).filter((entry) => entry.state === 'downloaded').map((entry) => (
+        <div key={entry.tag} className="field-hint">{languageName(entry.tag)}: {entry.source}, {entry.licence}</div>
+      ))}
 
       <h3 className="form-section-title">Grammar</h3>
-      <CheckerDetails name="Harper" status={grammar} />
+      <div className="field">
+        <label id="settings-englishGrammar">English grammar</label>
+        <Select
+          labelId="settings-englishGrammar"
+          value={settings.englishGrammar}
+          options={[
+            ['harper', 'Harper (on this computer)'],
+            ['languagetool', 'LanguageTool']
+          ]}
+          onChange={(value) => update({ englishGrammar: value as AppSettings['englishGrammar'] })}
+        />
+        <div className="field-hint">Harper checks English only. Other languages use LanguageTool.</div>
+      </div>
       <label className="checkbox-row">
         <input type="checkbox" role="switch" checked={settings.grammarStyle} onChange={(e) => update({ grammarStyle: e.target.checked })} />
         <span>
@@ -1552,19 +1740,67 @@ function LanguagePane() {
           ]}
           onChange={(value) => update({ oxfordComma: value as AppSettings['oxfordComma'] })}
         />
-        <div className="field-hint">Check grammar from the button beside the assistant, or with {formatShortcut(shortcutKey(settings.shortcuts, 'grammar')) || 'its shortcut'}.</div>
+        <div className="field-hint">Harper only. Check grammar from the button beside the assistant, or with {formatShortcut(shortcutKey(settings.shortcuts, 'grammar')) || 'its shortcut'}.</div>
       </div>
+      <CheckerDetails name="Harper" status={grammar} />
 
-      <div className="field-hint section-hint">Both checkers run on this computer. Engine and dictionary updates come with Spectrum updates.</div>
+      <h3 className="form-section-title">LanguageTool</h3>
+      <div className="field">
+        <label id="settings-languageTool">Connection</label>
+        <Select
+          labelId="settings-languageTool"
+          value={lt?.mode || 'off'}
+          options={[
+            ['off', 'Off'],
+            ['local', 'On this computer']
+          ]}
+          onChange={(value) => setLanguageToolMode(value as 'off' | 'local').then(setLt, (err) => setError(errorText(err)))}
+        />
+        <div className="field-hint">
+          {lt?.mode !== 'local'
+            ? 'Without LanguageTool, Spectrum checks grammar in English only.'
+            : `Spectrum downloads LanguageTool ${lt.version} (${mb(lt.bytes - lt.javaBytes)}) and a Java runtime (${mb(lt.javaBytes)}) into its data folder when you ask, and runs them only while you check grammar. Nothing you check leaves this computer.`}
+        </div>
+      </div>
+      {lt?.mode === 'local' && (
+        <div className="field-hint section-hint" aria-live="polite">
+          {lt.downloading ? (
+            <div>Downloading LanguageTool: {Math.round(lt.downloading.done / 1_000_000)} of {mb(lt.downloading.total)}</div>
+          ) : lt.installed ? (
+            <div className="path-row">
+              <span>LanguageTool {lt.version} · Java {lt.java?.replace(/\+.*$/, '')} · {lt.running ? 'Running' : 'Starts with the first check'}</span>
+              <button className="btn small ghost" onClick={() => removeLanguageTool().then(setLt, (err) => setError(errorText(err)))}>Remove</button>
+            </div>
+          ) : (
+            <div className="path-row">
+              <span>LanguageTool is not downloaded yet.</span>
+              <button className="btn small" onClick={() => installLanguageTool().then(setLt, (err) => setError(errorText(err)))}>Download</button>
+            </div>
+          )}
+          {lt.error && <div className="error">{lt.error}</div>}
+          {lt.stopped && ltReady && (
+            <div className="error">
+              {lt.stopped.message}
+              <details>
+                <summary>Diagnostic details</summary>
+                <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{lt.stopped.details}</pre>
+              </details>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="field-hint section-hint">Every checker runs on this computer. Engine and dictionary updates come with Spectrum updates.</div>
       <div className="path-row">
         <button className="btn small" disabled={!status || !grammar} onClick={() => setRefresh((value) => value + 1)}>Refresh diagnostics</button>
         <button className="btn small" disabled={!status || !grammar} onClick={async () => {
           try {
-            await navigator.clipboard.writeText(JSON.stringify({ spelling: status, grammar }, null, 2));
+            await navigator.clipboard.writeText(JSON.stringify({ spelling: status, grammar, languageTool: lt }, null, 2));
             toast('Copied checker diagnostics.');
           } catch { toast('Couldn’t copy diagnostics. You can select them under Diagnostic details.'); }
         }}>Copy diagnostics</button>
       </div>
+      {error && <div className="field-hint error">{error}</div>}
 
       <h3 className="form-section-title">Your dictionary</h3>
       <div className="field-hint section-hint">Words added here are accepted in every project. Words added to a project’s dictionary from the right-click menu stay with that project.</div>
@@ -1580,7 +1816,6 @@ function LanguagePane() {
           Add
         </button>
       </form>
-      {error && <div className="field-hint error">{error}</div>}
       {words && (
         <div className="kv-list">
           {words.length ? (
@@ -1606,7 +1841,7 @@ function LanguagePane() {
 function CheckerDetails({ name, status }: { name: string; status: CheckerStatus | null }) {
   return <div className="field-hint section-hint" aria-live="polite">
     {!status ? `Checking ${name}…` : <>
-      <div>{name} {status.version || 'version unavailable'} · {!status.available ? 'Unavailable' : status.started === false ? 'Starts with the first check' : 'Ready'} · Australian English</div>
+      <div>{name} {status.version || 'version unavailable'} · {!status.available ? 'Unavailable' : status.started === false ? 'Starts with the first check' : 'Ready'}{status.languages ? ' · Australian, American, British, Canadian and Indian English' : ''}</div>
       {/* versions only for files that match their build information */}
       {status.diagnostics?.assets.integrity === 'verified' && status.diagnostics.assets.manifest?.binding && <div>Spectrum’s Hunspell binding {status.diagnostics.assets.manifest.binding.version}</div>}
       {status.error && <div className="error">{status.error}</div>}

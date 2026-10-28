@@ -3672,7 +3672,9 @@ function Editor({ projectId }: { projectId: string }) {
                   path={activePath}
                   revision={editorValue}
                   settings={settings}
+                  languages={languages}
                   onClose={closePanel}
+                  onOpenSettings={() => setSettingsOpen('language')}
                   trailing={viewSwitcher}
                 />
               </div>

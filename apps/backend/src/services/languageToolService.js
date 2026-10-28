@@ -278,6 +278,7 @@ export async function languageToolStatus() {
     version: pins.version,
     java: java?.[3] || null,
     bytes: downloadBytes(),
+    javaBytes: java?.[2] || 0,
     installed: !!(await installedJava()),
     downloading: download && { ...download },
     error: failure,
