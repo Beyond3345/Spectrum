@@ -179,7 +179,7 @@ export default function GitHubSettings() {
 
       <h3 className="form-section-title">Your settings on GitHub</h3>
       <label className="checkbox-row">
-        <input type="checkbox" checked={auth.settingsRepo} disabled={busy} onChange={(e) => switchRepo(e.target.checked)} />
+        <input type="checkbox" role="switch" checked={auth.settingsRepo} disabled={busy} onChange={(e) => switchRepo(e.target.checked)} />
         <span>
           Keep my settings in a private repository (spectrum-settings)
           <span className="field-hint">

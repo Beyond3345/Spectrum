@@ -83,6 +83,9 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A click with `⌥` held adds a cursor, as in VS Code, as a click with `⌘` held is Go to definition
 - Settings and templates follow you through the `spectrum-settings` repository on GitHub instead of the `.spectrum-shared` folder in a cloud location, and Use the same settings on each computer in Settings › Projects needs Keep my settings in a private repository in Settings › GitHub
 - Move to this computer… now only moves a project out of a sync app's folder into the folder for new projects, and Settings does not accept a folder in a sync app's folder for new projects
+- Every on/off choice in Settings and Review's Anonymous review is a switch that Spectrum draws itself, 36 by 20 px with a mid-grey off track, so it looks the same on macOS and Windows. A clicked skill switch moves at once, and buttons and switches dim only once a save takes more than a moment
+- Closing Settings or leaving its page with an unsaved skill file, new skill or persona asks first, with Discard and Keep editing
+- The GitHub view no longer shows the list and grid switch, which did nothing there
 
 ### Removed
 

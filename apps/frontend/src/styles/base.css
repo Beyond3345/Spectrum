@@ -11,6 +11,8 @@
   /* the raised segment of a segmented control: white in light, lifted grey in dark */
   --segment-active: var(--bg-panel-solid);
   --control-height: 34px;
+  /* a switch's track when off: darker than macOS's pale grey so it meets 3:1 against the panel and its thumb */
+  --switch-off: color-mix(in srgb, var(--text-tertiary) 75%, var(--bg-panel-solid));
 }
 
 :root[data-theme='dark'] {
@@ -133,6 +135,81 @@ input[type='radio'] {
   height: 14px;
   margin: 0;
   flex: none;
+}
+
+/* the on/off switch, drawn here so it looks the same in WebKit and WebView2 */
+input[type='checkbox'][role='switch'] {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: var(--radius-pill);
+  background: var(--switch-off);
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+/* dims only once a save takes more than a moment, and comes back at once */
+input[type='checkbox'][role='switch']:disabled {
+  opacity: 0.45;
+  transition: background-color 0.15s ease, opacity 0.15s ease 0.2s;
+}
+
+input[type='checkbox'][role='switch']::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease;
+}
+
+input[type='checkbox'][role='switch']:checked {
+  background: var(--accent);
+}
+
+input[type='checkbox'][role='switch']:checked::before {
+  transform: translateX(16px);
+}
+
+/* Windows contrast themes: an outlined track, so the switch never disappears */
+@media (forced-colors: active) {
+  input[type='checkbox'][role='switch'],
+  input[type='checkbox'][role='switch']::before {
+    forced-color-adjust: none;
+    box-shadow: none;
+  }
+  input[type='checkbox'][role='switch'] {
+    border: 1px solid CanvasText;
+    background: Canvas;
+  }
+  input[type='checkbox'][role='switch']::before {
+    top: 1px;
+    left: 1px;
+    background: CanvasText;
+  }
+  input[type='checkbox'][role='switch']:checked {
+    border-color: Highlight;
+    background: Highlight;
+  }
+  input[type='checkbox'][role='switch']:checked::before {
+    background: HighlightText;
+  }
+  input[type='checkbox'][role='switch']:focus-visible {
+    outline-color: Highlight;
+  }
+  input[type='checkbox'][role='switch']:disabled {
+    opacity: 1;
+    border-color: GrayText;
+    background: Canvas;
+  }
+  input[type='checkbox'][role='switch']:disabled::before {
+    background: GrayText;
+  }
 }
 
 /* SF Symbol masks (see Icon.tsx) */
@@ -463,6 +540,8 @@ input[type='radio'] {
 
 .btn:disabled {
   opacity: 0.45;
+  /* dims only once a save takes more than a moment, and comes back at once */
+  transition: background-color 0.12s ease, opacity 0.12s ease 0.2s, box-shadow 0.12s ease;
 }
 
 .btn .sf {
@@ -759,6 +838,11 @@ textarea.input {
 .checkbox-row input,
 .check-row input {
   margin-top: 2px;
+}
+
+/* centred on the label's first line */
+.checkbox-row input[role='switch'] {
+  margin-top: -1px;
 }
 
 .checkbox-row > span,

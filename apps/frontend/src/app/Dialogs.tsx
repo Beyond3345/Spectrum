@@ -10,6 +10,7 @@ type Request = {
   title: string;
   message?: string;
   confirmLabel?: string;
+  cancelLabel?: string;
   destructive?: boolean;
   placeholder?: string;
   defaultValue?: string;
@@ -27,7 +28,7 @@ function open<T>(request: Omit<Request, 'resolve'>) {
   });
 }
 
-export const confirmDialog = (opts: { title: string; message?: string; confirmLabel?: string; destructive?: boolean }) =>
+export const confirmDialog = (opts: { title: string; message?: string; confirmLabel?: string; cancelLabel?: string; destructive?: boolean }) =>
   open<boolean>({ kind: 'confirm', ...opts });
 
 export const promptDialog = (opts: { title: string; message?: string; placeholder?: string; defaultValue?: string; confirmLabel?: string }) =>
@@ -113,7 +114,7 @@ export function DialogHost() {
         )}
         <div className="alert-actions">
           {current.kind !== 'alert' && (
-            <button ref={cancelRef} className="btn" onClick={() => finish(false)}>Cancel</button>
+            <button ref={cancelRef} className="btn" onClick={() => finish(false)}>{current.cancelLabel || 'Cancel'}</button>
           )}
           <button
             ref={confirmRef}

@@ -51,8 +51,6 @@ const AI_PARTS: [AiFinding['severity'], string][] = [
 ];
 // the files read for the privacy scan besides the document's own; ponytail: the first 400, sources first
 const MAX_SCANNED = 400;
-// WebKit's switch look for a tick box; elsewhere it stays a tick box
-const SWITCH = { switch: '' } as object;
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const counted = (n: number, word: string) => (n ? [plural(n, word)] : []);
@@ -360,7 +358,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
             </label>
             {group === 'privacy' && (
               <label className="checkbox-row review-switch">
-                <input type="checkbox" role="switch" {...SWITCH} checked={state.anonymous} disabled={busy || !ticks.privacy} onChange={(e) => set({ anonymous: e.target.checked })} />
+                <input type="checkbox" role="switch" checked={state.anonymous} disabled={busy || !ticks.privacy} onChange={(e) => set({ anonymous: e.target.checked })} />
                 <span>Anonymous review</span>
               </label>
             )}

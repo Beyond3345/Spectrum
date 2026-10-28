@@ -324,7 +324,7 @@ export function ZoteroSettings({ projectId }: { projectId?: string }) {
 
       <h3 className="form-section-title">Citing</h3>
       <label className="checkbox-row">
-        <input type="checkbox" checked={settings.zoteroCompletion} onChange={(e) => update({ zoteroCompletion: e.target.checked })} />
+        <input type="checkbox" role="switch" checked={settings.zoteroCompletion} onChange={(e) => update({ zoteroCompletion: e.target.checked })} />
         <span>
           <span>
             Suggest items from your Zotero library in <code>\cite</code> completion
