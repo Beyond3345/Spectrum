@@ -11,7 +11,7 @@
 export const SYMBOL_SETS = {
   circuitikz: { version: 1, packages: ['circuitikz'], libraries: [], pics: {} },
   'spx-mech': {
-    version: 1,
+    version: 2,
     packages: [],
     libraries: [],
     pics: {
@@ -26,7 +26,22 @@ export const SYMBOL_SETS = {
         + '\\draw[line width=0.8pt] (-0.4,-0.4) -- (0.4,-0.4);'
         + '\\draw (-0.2,-0.4) -- ++(-0.15,-0.15) (0,-0.4) -- ++(-0.15,-0.15) (0.2,-0.4) -- ++(-0.15,-0.15) (0.4,-0.4) -- ++(-0.15,-0.15);'
         + '\\draw[fill=white] (0,0) circle (0.05);'
-        + '\\coordinate (-p) at (0,0);'
+        + '\\coordinate (-p) at (0,0);',
+      // a hatched wall, 1.2 cm high, the hatching on its left and its pin in the middle of its face
+      'spx/mech/wall':
+        '\\draw[line width=0.8pt] (0,-0.6) -- (0,0.6);'
+        + '\\draw (0,-0.4) -- ++(-0.2,-0.2) (0,-0.2) -- ++(-0.2,-0.2) (0,0) -- ++(-0.2,-0.2) (0,0.2) -- ++(-0.2,-0.2) (0,0.4) -- ++(-0.2,-0.2) (0,0.6) -- ++(-0.2,-0.2);'
+        + '\\coordinate (-p) at (0,0);',
+      // a hatched ceiling, 1.2 cm wide, the hatching above and its pin in the middle of its face
+      'spx/mech/ceiling':
+        '\\draw[line width=0.8pt] (-0.6,0) -- (0.6,0);'
+        + '\\draw (-0.6,0) -- ++(0.2,0.2) (-0.4,0) -- ++(0.2,0.2) (-0.2,0) -- ++(0.2,0.2) (0,0) -- ++(0.2,0.2) (0.2,0) -- ++(0.2,0.2) (0.4,0) -- ++(0.2,0.2);'
+        + '\\coordinate (-p) at (0,0);',
+      // a cart: a 1.2 by 0.6 cm body on two wheels, pins in the middle of each side and where the wheels stand
+      'spx/mech/cart':
+        '\\draw (-0.6,0.2) rectangle (0.6,0.8);'
+        + '\\draw (-0.35,0.1) circle (0.1) (0.35,0.1) circle (0.1);'
+        + '\\coordinate (-left) at (-0.6,0.5);\\coordinate (-right) at (0.6,0.5);\\coordinate (-top) at (0,0.8);\\coordinate (-bottom) at (0,0);'
     }
   }
 };

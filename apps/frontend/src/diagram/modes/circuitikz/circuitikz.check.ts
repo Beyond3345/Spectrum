@@ -3,7 +3,7 @@
 import { symbolGeometry, symbolRequest } from './symbolGeometry';
 import { circuitCode, readStyle, symbolOptions } from './code';
 import { attach, detach, moveBy, newPathPart, paste, remove } from './edit';
-import { PT_PER_GRID, circuitBounds, findJunctions, locator, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
+import { CATALOGUE, PT_PER_GRID, circuitBounds, findJunctions, locator, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
 import type { CircuitModel, Shape } from './model';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -39,8 +39,8 @@ const circuit: CircuitModel = {
 eq(
   circuitCode(circuit, { voltageDir: 'RP', siunitx: true, labels: 'straight', length: 1.2 }).body.split('\n'),
   [
-    '\\begin{circuitikz}[american, voltage dir=RP]',
-    '\\ctikzset{label/align=straight, bipoles/length=1.2cm}',
+    '\\begin{circuitikz}[american, american inductors, american resistors, american voltages, voltage dir=RP]',
+    '\\ctikzset{label/align=straight, diode=empty, bipoles/length=1.2cm}',
     '\\node[op amp, noinv input up, rotate=90, xscale=-1] (U1) at (2,1) {};',
     '\\node[ground] (e7) at (0,-0.5) {};',
     '\\draw (0,0) to[R, mirror, invert, *-o, bipoles/length=1.8cm, name=Rin, l={$R_1$}, a={\\SI{4.7}{\\kilo\\ohm}}, v_<={$v_1$}, i>={$i$}] (2,0);',
@@ -58,7 +58,45 @@ eq(
 eq(circuitCode(circuit, { voltageDir: 'RP', siunitx: true }).packages, ['circuitikz', 'siunitx'], 'siunitx when a value used it');
 eq(circuitCode(circuit, {}).packages, ['circuitikz'], 'no siunitx when it is off');
 eq(circuitCode(circuit, {}).body.includes('a={$4.7<\\kilo\\ohm>$}'), true, 'a value is maths when siunitx is off');
-eq(circuitCode({ elements: [], junctions: [] }, { preset: 'european' }).body, '\\begin{circuitikz}[european]\n\\end{circuitikz}', 'an empty circuit');
+eq(circuitCode({ elements: [], junctions: [] }, { preset: 'european' }).body, '\\begin{circuitikz}[european, european inductors, european resistors, european voltages, voltage dir=noold]\n\\ctikzset{label/align=smart, diode=empty, bipoles/length=1.4cm}\n\\end{circuitikz}', 'an empty circuit: every style key written, defaults too');
+
+// resistor and voltage styles: kept only when they differ from the preset, written as picture keys
+eq(readStyle({ preset: 'european', resistors: 'european', voltages: 'raised' }), { preset: 'european', voltages: 'raised' }, 'the preset’s own resistors are dropped');
+eq(readStyle({ resistors: 'british', voltages: 'curly' }), { preset: 'american' }, 'unknown resistor and voltage styles dropped');
+eq(circuitCode({ elements: [], junctions: [] }, { preset: 'american', resistors: 'european', voltages: 'straight', inductors: 'cute' }).body.split('\n')[0], '\\begin{circuitikz}[american, cute inductors, european resistors, straight voltages, voltage dir=noold]', 'overrides after the preset');
+eq(symbolOptions(readStyle({ resistors: 'european', voltages: 'raised' })), 'american, european resistors', 'resistors change the symbols, voltages don’t');
+
+// text inside a part, flow arrows, Text on its own, and arrowheads on wires
+const blocks: CircuitModel = {
+  elements: [
+    { id: 'g', kind: 'path', type: 'block', a: { x: 0, y: 0 }, b: { x: 8, y: 0 }, text: '$G(s)$', flow: { text: 'P', side: '_', dir: '<' } },
+    { id: 'f', kind: 'path', type: 'lowpass', a: { x: 8, y: 0 }, b: { x: 16, y: 0 }, text: 'ignored' },
+    { id: 'u', kind: 'node', type: 'chip-8', at: { x: 0, y: 12 }, name: 'U1', text: '555' },
+    { id: 't', kind: 'node', type: 'text', at: { x: 4, y: -4 }, text: '$A_v = -10$' },
+    { id: 'r', kind: 'node', type: 'text', at: { x: 4, y: -8 }, rotate: 90, text: 'up' },
+    { id: 's', kind: 'node', type: 'adder', at: { x: 20, y: 0 }, text: 'no' },
+    { id: 'w1', kind: 'wire', points: [{ x: 16, y: 0 }, { part: 's', pin: 'west' }], routes: ['--'], arrows: '->' },
+    { id: 'w2', kind: 'wire', points: [{ part: 'u', pin: 'pin 3' }, { x: -8, y: 0 }], routes: ['-|'], arrows: '<->' }
+  ],
+  junctions: []
+};
+eq(circuitCode(blocks, {}).body.split('\n').slice(2), [
+  '\\node[dipchip, num pins=8] (U1) at (0,3) {555};',
+  '\\node at (1,-1) {$A_v = -10$};',
+  '\\node[rotate=90] at (1,-2) {up};',
+  '\\node[adder] (s) at (5,0) {};',
+  '\\draw (0,0) to[twoport, t={$G(s)$}, f_<={$P$}] (2,0);',
+  '\\draw (2,0) to[lowpass] (4,0);',
+  '\\draw[-latex] (4,0) -- (s.west);',
+  '\\draw[latex-latex] (U1.pin 3) -| (-2,0);',
+  '\\end{circuitikz}'
+], 'text only where a part takes it, Text as a plain node, arrowheads from the core arrows');
+
+// every catalogue part writes a key TeX knows, or is Text; a part's pins are its own
+for (const part of CATALOGUE) {
+  eq(part.tikz ? !/[{}\\;]/.test(part.tikz) : part.id === 'text', true, `${part.id}: a plain circuitikz key or pic`);
+  eq(new Set(part.pins ?? []).size, (part.pins ?? []).length, `${part.id}: its pins are named once`);
+}
 
 const repeatedNames: CircuitModel = {
   elements: [

@@ -7,7 +7,7 @@ import Icon from '../../../app/Icon';
 import { useCanvasPrefs } from '../../FlowCanvas';
 import { readStyle, symbolOptions } from './code';
 import { copy, detach, flip, moveBy, newNodePart, newPathPart, paste, remove, rotate } from './edit';
-import { PARTS, PT_PER_GRID, asCircuit, circuitBounds, isPart, isPoint, locator, newId, pathFrame, pinsOfElement, placeNodeOffset, placeholderShape, snapDelta, variantKey, wirePath } from './model';
+import { PARTS, PT_PER_GRID, asCircuit, drawsSymbol,circuitBounds, isPart, isPoint, locator, newId, pathFrame, pinsOfElement, placeNodeOffset, placeholderShape, snapDelta, variantKey, wirePath } from './model';
 import type { CircuitModel, Element, End, Mark, NodePart, PathPart, Pt, Route, ShapeOf, Wire } from './model';
 import { setCtikz, setSelection, setShapeOf, setTool, tidy, useCircuitUi } from './store';
 import { useSymbols } from './symbols';
@@ -411,22 +411,23 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
     );
   };
 
-  /** a voltage or current sketched beside a path part */
-  const markSketch = (m: Mark | undefined, kind: 'v' | 'i', f: ReturnType<typeof pathFrame>, glyph: number) => {
+  /** a voltage, current or flow sketched beside a path part */
+  const markSketch = (m: Mark | undefined, kind: 'v' | 'i' | 'f', f: ReturnType<typeof pathFrame>, glyph: number) => {
     if (!m?.text.trim()) return null;
     const n = { x: -f.u.y, y: f.u.x };
     const side = m.side === '^' ? 1 : m.side === '_' ? -1 : kind === 'v' ? -1 : 1;
     const way = m.dir === '<' ? -1 : 1;
     const off = (p: Pt, d: number) => ({ x: p.x + n.x * d * side, y: p.y + n.y * d * side });
     const along = (d: number) => ({ x: f.mid.x + f.u.x * d, y: f.mid.y + f.u.y * d });
-    if (kind === 'v') {
+    if (kind !== 'i') {
       const half = Math.max(glyph / 2, 1.5);
-      const from = off(along(-half * way), 3);
-      const to = off(along(half * way), 3);
+      const gap = kind === 'v' ? 3 : 2.2;
+      const from = off(along(-half * way), gap);
+      const to = off(along(half * way), gap);
       return (
         <g className="ckt-sketch">
           {line(from, to, { markerEnd: 'url(#ckt-arrow)' })}
-          {text(off(f.mid, 3.9), plain(m.text), 'ckt-text ckt-sketch-text')}
+          {text(off(f.mid, gap + 0.9), plain(m.text), 'ckt-text ckt-sketch-text')}
         </g>
       );
     }
@@ -483,6 +484,8 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
         {el.value?.trim() && text(besides(-labelSide), plain(el.value))}
         {markSketch(el.voltage, 'v', f, glyph)}
         {markSketch(el.current, 'i', f, glyph)}
+        {markSketch(el.flow, 'f', f, glyph)}
+        {PARTS.get(el.type)?.text && el.text?.trim() && text(f.mid, plain(el.text))}
         {[poleA, poleB].map((pole, i) =>
           pole ? <circle key={i} className={`ckt-pole ${pole === 'o' ? 'open' : ''}`} cx={toScreen(i ? b : a).x} cy={toScreen(i ? b : a).y} r={Math.max(2.5, k * 0.22)} /> : null
         )}
@@ -493,6 +496,17 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   const drawNode = (el: NodePart, ghost = false) => {
     const sym = symbolOf(el.type, el.options);
     const p = toScreen(el.at);
+    const content = PARTS.get(el.type)?.text ? plain(el.text || '') : '';
+    if (!drawsSymbol(el.type)) {
+      // Text: its words, or a box to find it by while it has none
+      const half = Math.max(1.5, content.length * 0.45);
+      return (
+        <g key={el.id} data-id={ghost ? undefined : el.id} className={`ckt-part ${ghost ? 'ghost' : ''} ${selected.has(el.id) ? 'selected' : ''}`}>
+          <rect className={selected.has(el.id) ? 'ckt-halo-box' : content ? 'ckt-hit-box' : 'ckt-outline'} x={p.x - half * k} y={p.y - 1.2 * k} width={2 * half * k} height={2.4 * k} />
+          {text(el.at, content || 'Text', content ? 'ckt-text' : 'ckt-text ckt-sketch-text')}
+        </g>
+      );
+    }
     const rotation = el.rotate || 0;
     const turn = `rotate(${-rotation}) scale(${el.flipX ? -1 : 1},${el.flipY ? -1 : 1})`;
     const pins = Object.values(placeholderShape(el.type).pins);
@@ -513,6 +527,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
             <rect className={`ckt-outline ${selected.has(el.id) ? 'ckt-halo-box' : ''}`} x={box.minX} y={box.minY} width={box.maxX - box.minX} height={box.maxY - box.minY} vectorEffect="non-scaling-stroke" />
           </g>
         )}
+        {content.trim() && text(el.at, content)}
         {el.name && !ghost && text({ x: el.at.x + nameAt.x, y: el.at.y + nameAt.y }, el.name, 'ckt-text ckt-name')}
       </g>
     );
@@ -525,7 +540,12 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
       <g key={el.id} data-id={el.id} className={`ckt-part ${selected.has(el.id) ? 'selected' : ''}`}>
         {selected.has(el.id) && <polyline className="ckt-halo" points={points} />}
         <polyline className="ckt-hit" points={points} />
-        <polyline className="ckt-wire" points={points} />
+        <polyline
+          className="ckt-wire"
+          points={points}
+          markerEnd={el.arrows === '->' || el.arrows === '<->' ? 'url(#ckt-arrow)' : undefined}
+          markerStart={el.arrows === '<-' || el.arrows === '<->' ? 'url(#ckt-arrow)' : undefined}
+        />
       </g>
     );
   };

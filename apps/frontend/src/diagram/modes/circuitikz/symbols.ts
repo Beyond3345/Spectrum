@@ -8,7 +8,7 @@ import { diagramSymbols } from '../../../api/client';
 import type { SymbolPage } from '../../../api/client';
 import { SYMBOL_SETS } from '../../../../../backend/src/data/symbolSets.js';
 import { loadSettings } from '../../../app/settings';
-import { CATALOGUE, PARTS, variantKey } from './model';
+import { CATALOGUE, PARTS, drawsSymbol, variantKey } from './model';
 import { symbolGeometry, symbolRequest } from './symbolGeometry';
 import type { Pt, Shape } from './model';
 
@@ -163,7 +163,7 @@ async function load(ctikzOptions: string, variants: Variant[]) {
 }
 
 /** A set's catalogue parts with no options: one request per set and style, so the backend's cache serves it again. */
-const baseOf = (set: string): Variant[] => CATALOGUE.filter((part) => (part.set || 'circuitikz') === set).map((part) => ({ type: part.id, options: [] }));
+const baseOf = (set: string): Variant[] => CATALOGUE.filter((part) => part.tikz && (part.set || 'circuitikz') === set).map((part) => ({ type: part.id, options: [] }));
 
 /**
  * The symbols for a style, loading what's missing: circuitikz's whole catalogue first, with each other set the
@@ -184,7 +184,7 @@ export function useSymbols(ctikzOptions: string, used: Variant[], sets: string[]
   useEffect(() => {
     const wanted = (v: Variant) => {
       const k = variantKey(v.type, v.options);
-      return PARTS.has(v.type) && !entry.symbols.has(k) && !entry.loading.has(k) && !entry.failed.has(k);
+      return drawsSymbol(v.type) && !entry.symbols.has(k) && !entry.loading.has(k) && !entry.failed.has(k);
     };
     for (const set of setsKey.split('\n')) {
       const base = baseOf(set);

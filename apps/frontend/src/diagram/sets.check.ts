@@ -43,15 +43,15 @@ const mixed: CircuitModel = {
 };
 const code = circuitCode(mixed, {});
 const lines = code.body.split('\n');
-eq(lines[0], '\\begin{circuitikz}[american]', 'the picture');
+eq(lines.slice(0, 2), ['\\begin{circuitikz}[american, american inductors, american resistors, american voltages, voltage dir=noold]', '\\ctikzset{label/align=smart, diode=empty, bipoles/length=1.4cm}'], 'the picture, every style key written');
 // rule 2: definitions inside the picture, once each, only for the pictures used, in the catalogue's order
-eq(lines.slice(1, 3).map((l) => l.split('={')[0]), ['\\tikzset{spx/mech/ground/.pic', '\\tikzset{spx/mech/pin/.pic'], 'each picture used is defined inside the picture');
-eq(lines[1], `\\tikzset{spx/mech/ground/.pic={${SYMBOL_SETS['spx-mech'].pics['spx/mech/ground']}}}`, 'as the symbol service draws it');
+eq(lines.slice(2, 4).map((l) => l.split('={')[0]), ['\\tikzset{spx/mech/ground/.pic', '\\tikzset{spx/mech/pin/.pic'], 'each picture used is defined inside the picture');
+eq(lines[2], `\\tikzset{spx/mech/ground/.pic={${SYMBOL_SETS['spx-mech'].pics['spx/mech/ground']}}}`, 'as the symbol service draws it');
 eq(lines.filter((l) => l.startsWith('\\tikzset')).length, 2, 'each defined once');
-eq(lines.slice(3, 6), ['\\pic (G) at (0,0) {spx/mech/ground};', '\\pic[rotate=90, xscale=-1] (e2) at (2,0) {spx/mech/pin};', '\\pic at (0,-2) {spx/mech/ground};'], 'a pic, turned and named when wired to');
-eq(lines[6], '\\draw (G-p) to[R] (e2-p);', 'wires reach a pic’s pins as <name>-<pin>');
+eq(lines.slice(4, 7), ['\\pic (G) at (0,0) {spx/mech/ground};', '\\pic[rotate=90, xscale=-1] (e2) at (2,0) {spx/mech/pin};', '\\pic at (0,-2) {spx/mech/ground};'], 'a pic, turned and named when wired to');
+eq(lines[7], '\\draw (G-p) to[R] (e2-p);', 'wires reach a pic’s pins as <name>-<pin>');
 eq([code.packages, code.libraries], [['circuitikz'], []], 'spx-mech is TikZ only');
-eq(circuitCode({ elements: [mixed.elements[2]], junctions: [] }, {}).body.includes('tikzset'), false, 'no definitions when no picture is used');
+eq(circuitCode({ elements: [mixed.elements[2]], junctions: [] }, {}).body.includes('\\tikzset'), false, 'no definitions when no picture is used');
 
 // ─── rule 4: merged without duplicates; rule 5: babel; rule 8: never written ───
 
