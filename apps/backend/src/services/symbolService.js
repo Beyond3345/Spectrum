@@ -9,6 +9,9 @@ import { DATA_DIR } from '../config/constants.js';
 import { readJson, writeJsonAtomic } from '../utils/fsUtils.js';
 import { PATH_KEY, findExecutable, runSpawn, texPath, unwrap } from './compileService.js';
 
+// a -file-line-error line (./main.tex:12: …, main.tex:12: …, C:/…/main.tex:12: …) or a plain TeX error (! …)
+const FILE_LINE_ERROR = /^(?:(?:[A-Za-z]:)?[^:\n]*\.(?:tex|sty|cls|def|cfg):\d+: |! )/;
+
 const TIME_LIMIT_MS = 60_000;
 const MAX_PARTS = 300;
 // the TeX gets these as they are: key names and values, option lists and anchor names, never anything TeX would read
@@ -96,7 +99,8 @@ function readPages(parts, log) {
     else if (kind === 'half') page.half = dims[0];
     else if (kind === 'pin') page.pins.push({ name: rest.split(' ').slice(2).join(' '), x: points(dims[0]), y: points(dims[1]) });
     else if (kind === 'box') page.box = dims;
-    else if (!page.error && /^(?:\.\/[^:\n]*:\d+: |! )/.test(line)) page.error = line.replace(/^(?:\.\/[^:\n]*:\d+: |! )/, '').trim();
+    // MiKTeX names the file without TeX Live's ./, and may give a drive letter
+    else if (!page.error && FILE_LINE_ERROR.test(line)) page.error = line.replace(FILE_LINE_ERROR, '').trim();
   }
   return pages.map(({ half, box, error, ...page }, i) => {
     if (!box || box.some((d) => !Number.isFinite(d))) return { ...page, error: error || 'pdfLaTeX didn’t draw this part.' };
