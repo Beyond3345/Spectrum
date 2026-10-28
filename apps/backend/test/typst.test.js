@@ -58,6 +58,16 @@ test('a hint joins the diagnostic before it, and absolute paths lose the project
   assert.equal(diagnostics[1].message, 'unclosed delimiter');
 });
 
+test('on Windows, Typst’s \\\\?\\ paths lose the project root too', () => {
+  const log = [
+    '\\\\?\\C:\\Users\\Ann\\Spectrum\\Paper\\main.typ:3:2: error: unknown variable: foo',
+    '\\\\?\\UNC\\server\\share\\Paper\\chapters\\one.typ:1:1: warning: unknown font family: x',
+    '\\\\?\\C:\\elsewhere\\lib.typ:1:1: error: outside'
+  ].join('\n');
+  assert.deepEqual(parseTypstDiagnostics(log, 'C:\\Users\\Ann\\Spectrum\\Paper', undefined, path.win32).map((d) => [d.file, d.line]), [['main.typ', 3], ['//server/share/Paper/chapters/one.typ', 1], ['C:/elsewhere/lib.typ', 1]]);
+  assert.equal(parseTypstDiagnostics(log.split('\n')[1], '\\\\server\\share\\Paper', undefined, path.win32)[0].file, 'chapters/one.typ');
+});
+
 test('the route refuses bad typstInputs', async () => {
   const app = Fastify();
   registerCompileRoutes(app);
