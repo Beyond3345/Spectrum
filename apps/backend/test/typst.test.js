@@ -230,6 +230,11 @@ test('an unpinned Typst document reads its numbers with the app’s default vers
   // each version has its own cached answer
   assert.deepEqual((await typstDocumentLabels(dir, 'main.typ', '9.9.9')).headings, []);
   assert.deepEqual((await typstDocumentLabels(dir, 'main.typ')).labels['sec:one'], { number: '1', page: '1' });
+  // an older Typst, without eval, reads them with the built-in one
+  const older = path.join(process.env.SPECTRUM_DATA_DIR, 'engines', 'typst', '0.14.2');
+  await fs.mkdir(older, { recursive: true });
+  await fs.writeFile(path.join(older, process.platform === 'win32' ? 'typst.exe' : 'typst'), '#!/bin/sh\necho "error: unrecognized subcommand eval" >&2\nexit 2\n', { mode: 0o755 });
+  if (process.platform !== 'win32') assert.equal((await typstElements(dir, 'main.typ', '0.14.2')).headings.length, 1);
   // the route takes the version, and leaves out one that isn't a version
   const app = Fastify();
   const { registerProjectRoutes } = await import('../src/routes/projects.js');
