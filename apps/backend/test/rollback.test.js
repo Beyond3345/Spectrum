@@ -53,6 +53,8 @@ after(() => {
 
 /** Start the server at entry; resolves an api(url, method, body) for it. */
 async function start(entry) {
+  // a test that failed before stop() leaves its server running, which would keep this file from ever ending
+  server?.kill();
   const port = 20000 + Math.floor(Math.random() * 20000);
   server = spawn(process.execPath, [entry], { env: { ...env, PORT: String(port) }, stdio: 'ignore' });
   const api = async (url, method = 'GET', body) => {
@@ -226,7 +228,8 @@ test('1.10.4 reads and saves the agents’ setup 2.0 wrote, and 2.0 finds its Te
   const now = (await api('/api/agents')).json.agents;
   const byId = Object.fromEntries(now.map((a) => [a.id, a]));
   assert.deepEqual([byId.codex.hasKey, byId.opencode.hasKey, byId.opencode.command, byId.opencode.configured], [true, true, '', true]);
-  assert.deepEqual([byId.claude.source, byId.claude.adapter.installed], ['spectrum', '0.98.0']);
+  // Windows can't start Node adapters, so it finds none there
+  assert.deepEqual([byId.claude.source, byId.claude.adapter.installed], process.platform === 'win32' ? [undefined, undefined] : ['spectrum', '0.98.0']);
   assert.equal(JSON.parse(readFileSync(path.join(agents, 'config.json'), 'utf8')).codex.test.code, 'sign-in', 'the Test 1.10.4 didn’t touch stays');
   assert.doesNotMatch(JSON.stringify(now), /codex-private|opencode-private/);
   await stop();
