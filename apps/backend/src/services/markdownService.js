@@ -1,7 +1,8 @@
 import os from 'os';
 import path from 'path';
-import { promises as fs } from 'fs';
+import { existsSync, promises as fs } from 'fs';
 import { ensureDir, listFilesRecursive } from '../utils/fsUtils.js';
+import { safeJoin } from '../utils/pathUtils.js';
 import { cachePath } from './projectService.js';
 import { readProjectSettings } from './projectSettings.js';
 import { PANDOC_DOWNLOADABLE, PANDOC_MINIMUM, pandocPath, versionOf } from './engineService.js';
@@ -13,9 +14,9 @@ import { compileTypst } from './typstService.js';
 
 const PANDOC_MISSING = 'Markdown needs pandoc. Download it from Settings › Engines › Markdown.';
 const PANDOC_UNREADABLE = 'pandoc couldn’t read this Markdown.';
-const SVG_NOTE = '\n[spectrum] SVG images need rsvg-convert (brew install librsvg), so they were left out.\n';
+const SVG_NOTE = '\n[spectrum] SVG images need rsvg-convert (brew install librsvg) to become PDFs LaTeX can include.\n';
 // a TeX error naming the generated file and its line, as -file-line-error writes it
-const LOCATED_TEX = /^(?:\.\/)?([^\s:]+\.(?:tex|sty|cls|bbl)):(\d+):\s*(.*)$/;
+const LOCATED_TEX = /^(?:\.\/)?(.+?\.(?:tex|sty|cls|bbl)):(\d+):\s*(.*)$/;
 const SVG = /(?:!\[[^\]]*\]\([^)]*?\.svg|src=["'][^"']+?\.svg)/i;
 
 const lineOf = (text, index) => text.slice(0, index).split('\n').length;
@@ -77,11 +78,14 @@ function collector() {
   };
 }
 
-/** pandoc's own errors at a line and column in the .md. */
+/**
+ * pandoc's own errors at a line and column in the .md: at "file" (line N, column M), not the YAML parser's line that
+ * may follow, which counts from the front matter.
+ */
 export function pandocErrors(log, mainFile) {
   const errors = [];
   for (const line of String(log || '').split(/\r?\n/)) {
-    const match = /line\s+(\d+),?\s+column\s+(\d+)/i.exec(line);
+    const match = /at\s+"[^"]*"\s+\(line\s+(\d+),?\s+column\s+(\d+)\)/i.exec(line);
     if (match) errors.push({ severity: 'error', message: line.trim(), file: mainFile, line: Number(match[1]), column: Number(match[2]) });
   }
   return errors;
@@ -121,7 +125,7 @@ export function traceToMarkdown(diagnostics, generated, source, mainFile) {
 }
 
 /** The TeX errors that name the generated file with a line. */
-function latexDiagnostics(log, generatedName) {
+export function latexDiagnostics(log, generatedName) {
   const diagnostics = [];
   for (const line of String(log || '').split(/\r?\n/)) {
     const match = LOCATED_TEX.exec(line);
@@ -173,8 +177,12 @@ const pandocFailure = (run, mainFile) => ({
   errors: pandocErrors(run.log, mainFile)
 });
 
-/** pandoc's LaTeX for the .md, into generatedDir. media is the folder --extract-media filled. */
-export async function markdownToLatex({ projectRoot, absMain, mainFile, generatedDir }) {
+/**
+ * pandoc's LaTeX for the .md, into generatedDir: for a compile, its images copied into generatedDir/media, each SVG
+ * there made a PDF where rsvg-convert is; sandboxed (a new project from it), no file read but the .md and the .bib
+ * files, and each image named as the .md names it, for projectImages.
+ */
+export async function markdownToLatex({ projectRoot, absMain, mainFile, generatedDir, sandboxed = false }) {
   const source = await fs.readFile(absMain, 'utf8');
   const { meta } = parseFrontMatter(source);
   await ensureDir(generatedDir);
@@ -184,13 +192,59 @@ export async function markdownToLatex({ projectRoot, absMain, mainFile, generate
     absMain, '--from=markdown', '--to=latex', '--standalone', '--citeproc',
     ...(await bibliographyArgs(projectRoot, meta)),
     '--resource-path=' + [path.dirname(absMain), projectRoot].join(path.delimiter),
-    '--extract-media=' + path.join(generatedDir, 'media'),
+    sandboxed ? '--sandbox' : '--extract-media=' + path.join(generatedDir, 'media'),
     '-o', generatedFile
   ];
   const run = await runPandoc(args, path.dirname(absMain));
-  const text = await fs.readFile(generatedFile, 'utf8').catch(() => null);
+  let text = await fs.readFile(generatedFile, 'utf8').catch(() => null);
   if (run.code !== 0 || text === null) return { ...pandocFailure(run, mainFile), ...(text === null && !run.error && !run.timedOut && { error: PANDOC_UNREADABLE }) };
-  return { ok: true, text, log: run.log, file: generatedFile, media: path.join(generatedDir, 'media') };
+  if (!sandboxed) {
+    text = await svgsAsPdf(text, generatedDir);
+    await fs.writeFile(generatedFile, text);
+  }
+  return { ok: true, text, log: run.log, file: generatedFile };
+}
+
+/**
+ * Each \includesvg in pandoc's LaTeX an \includegraphics of the PDF rsvg-convert makes beside the SVG (a relative
+ * path from dir), as the svg package would need Inkscape for; the text as it was without rsvg-convert.
+ */
+export async function svgsAsPdf(text, dir) {
+  const rsvg = /\\includesvg/.test(text) && (await findExecutable('rsvg-convert'));
+  if (!rsvg) return text;
+  let out = text;
+  for (const [whole, options = '', file] of text.matchAll(/\\includesvg(\[[^\]]*\])?\{([^}]+)\}/g)) {
+    const pdf = file.replace(/\.svg$/i, '') + '.pdf';
+    const svg = path.resolve(dir, /\.svg$/i.test(file) ? file : file + '.svg');
+    const run = await runSpawn(rsvg, ['-f', 'pdf', '-o', path.resolve(dir, pdf), svg], dir, () => {}, process.env).catch(() => null);
+    if (run?.code === 0) out = out.replace(whole, () => '\\includegraphics' + options + '{' + pdf + '}');
+  }
+  return /\\includesvg/.test(out) ? out : out.replace(/^\\usepackage\{svg\}\r?\n/m, '');
+}
+
+/**
+ * The images pandoc's sandboxed LaTeX includes that are in the project, each found as pandoc looks (from the .md's
+ * folder, then the project's) and named by its path in the project: { text, images (those paths) }. One elsewhere on
+ * this computer, or a link out of the project, keeps its name and isn't listed, so nothing outside is copied.
+ */
+export function projectImages(text, projectRoot, mdDir) {
+  const images = new Set();
+  const named = text.replace(/(\\include(?:graphics|svg)(?:\[[^\]]*\])?\{)([^}]+)(\})/g, (whole, before, file, after) => {
+    for (const from of [mdDir, projectRoot]) {
+      const rel = path.relative(projectRoot, path.resolve(from, file));
+      if (!rel || rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) continue;
+      try {
+        if (!existsSync(safeJoin(projectRoot, rel))) continue;
+      } catch {
+        continue;
+      }
+      const name = rel.split(path.sep).join('/');
+      images.add(name);
+      return before + name + after;
+    }
+    return whole;
+  });
+  return { text: named, images: [...images] };
 }
 
 /** Pandoc's Typst for the .md, its images made project-root relative, into generatedDir. */
@@ -214,11 +268,15 @@ export async function markdownToTypst({ projectRoot, absMain, mainFile, generate
   return { ok: true, text, log: run.log, file: generatedFile };
 }
 
-/** Every relative image("…") in a Typst document made root relative, which is how Typst reads it from stdin. */
-function rootRelativeImages(text, projectRoot, mdDir) {
+/**
+ * Every relative image("…") in a Typst document made root relative, which is how Typst reads it from stdin: from the
+ * .md's folder, else (as pandoc's --resource-path finds it for LaTeX) from the project's.
+ */
+export function rootRelativeImages(text, projectRoot, mdDir) {
   const folder = path.relative(projectRoot, mdDir).split(path.sep).join('/');
   return text.replace(/(image\(\s*")([^"]+)(")/g, (whole, before, source, after) => {
     if (/^[a-z][a-z0-9+.-]*:/i.test(source) || source.startsWith('/') || source.startsWith('#')) return whole;
+    if (!existsSync(path.join(mdDir, source)) && existsSync(path.join(projectRoot, source))) return before + '/' + path.posix.normalize(source) + after;
     return before + '/' + path.posix.normalize(path.posix.join(folder || '.', source)) + after;
   });
 }
@@ -261,6 +319,7 @@ export async function compileMarkdown(projectRoot, absMain, mainFile, engine, op
 export async function pandocDocx(projectRoot, absMain, output) {
   const source = await fs.readFile(absMain, 'utf8');
   const { meta } = parseFrontMatter(source);
-  const run = await runPandoc([absMain, '--citeproc', ...(await bibliographyArgs(projectRoot, meta)), '-o', output], path.dirname(absMain));
+  const resources = '--resource-path=' + [path.dirname(absMain), projectRoot].join(path.delimiter);
+  const run = await runPandoc([absMain, '--citeproc', ...(await bibliographyArgs(projectRoot, meta)), resources, '-o', output], path.dirname(absMain));
   return { ok: run.code === 0 && !run.timedOut && !run.error, log: run.log };
 }

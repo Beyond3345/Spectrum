@@ -2,7 +2,7 @@
 // refusals. The fake pandoc and TeX are scripts in a throwaway folder. Run: node --test apps/backend/test/markdown.test.js
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { promises as fs, mkdtempSync, realpathSync, rmSync, existsSync } from 'node:fs';
+import { promises as fs, mkdirSync, mkdtempSync, realpathSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -19,7 +19,7 @@ Object.assign(process.env, {
 const { createProject, getProjectRoot } = await import('../src/services/projectService.js');
 const { runCompile, findExecutable } = await import('../src/services/compileService.js');
 const { pandocPath, versionOf } = await import('../src/services/engineService.js');
-const { markdownToLatex, parseFrontMatter, traceToMarkdown } = await import('../src/services/markdownService.js');
+const { latexDiagnostics, markdownToLatex, pandocDocx, pandocErrors, parseFrontMatter, rootRelativeImages, svgsAsPdf, traceToMarkdown } = await import('../src/services/markdownService.js');
 
 after(() => {
   process.env.PATH = realPath;
@@ -203,14 +203,20 @@ test('a bibliography the front matter names with a YAML comment still resolves',
   assert.deepEqual(parseFrontMatter('---\nbibliography: # none yet\n---\n').meta.bibliography, []);
 });
 
-test('a LaTeX project made from the .md finds the images pandoc extracted', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
+test('a LaTeX project made from the .md finds the images it includes from the project, and only those', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
   process.env.PATH = realPath;
   if (!(await pandocPath())) return t.skip('needs pandoc');
   const { default: Fastify } = await import('fastify');
   const { registerProjectRoutes } = await import('../src/routes/projects.js');
   const app = Fastify();
   registerProjectRoutes(app);
-  const p = await projectWith('# Images\n\n![A dot](images/dot.png)\n', { 'images/dot.png': 'not really a PNG' });
+  const p = await projectWith('', { 'images/dot.png': 'not really a PNG' });
+  // and an image elsewhere on this computer stays there
+  const outside = path.join(tmp, 'outside');
+  mkdirSync(outside);
+  writeFileSync(path.join(outside, 'id_rsa.png'), 'a secret');
+  const root = await getProjectRoot(p.id);
+  writeFileSync(path.join(root, 'main.md'), '# Images\n\n![A dot](images/dot.png)\n\n![A secret](' + path.relative(root, outside) + '/id_rsa.png)\n');
   const res = await app.inject({ method: 'POST', url: `/api/projects/${p.id}/export/latex`, payload: { doc: 'main.md' } });
   await app.close();
   const made = JSON.parse(res.payload);
@@ -218,6 +224,54 @@ test('a LaTeX project made from the .md finds the images pandoc extracted', { sk
   const dir = await getProjectRoot(made.project.id);
   const tex = await fs.readFile(path.join(dir, 'main.tex'), 'utf8');
   const image = tex.match(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/)?.[1];
-  assert.equal(image, 'media/images/dot.png');
+  assert.equal(image, 'images/dot.png');
   assert.ok(existsSync(path.join(dir, image)));
+  const files = await fs.readdir(dir, { recursive: true });
+  assert.ok(!files.some((f) => f.includes('id_rsa')), files.join(', '));
+});
+
+test('a Markdown image named from the project’s folder is found by Typst too', () => {
+  const root = path.join(tmp, 'typst-images');
+  for (const dir of ['figures', 'docs/figures2']) mkdirSync(path.join(root, dir), { recursive: true });
+  writeFileSync(path.join(root, 'figures', 'dot.png'), 'x');
+  writeFileSync(path.join(root, 'docs', 'figures2', 'near.png'), 'x');
+  const text = '#image("figures/dot.png")\n#image("figures2/near.png")\n#image("missing.png")\n#image("https://x/y.png")\n';
+  assert.equal(rootRelativeImages(text, root, path.join(root, 'docs')), '#image("/figures/dot.png")\n#image("/docs/figures2/near.png")\n#image("/docs/missing.png")\n#image("https://x/y.png")\n');
+});
+
+test('an SVG in pandoc’s LaTeX becomes a PDF rsvg-convert makes, and stays without it', { skip }, async () => {
+  const dir = path.join(tmp, 'svg');
+  mkdirSync(path.join(dir, 'media'), { recursive: true });
+  writeFileSync(path.join(dir, 'media', 'pic.svg'), '<svg/>');
+  const text = '\\usepackage{svg}\n\\includesvg[keepaspectratio]{media/pic.svg}\n';
+  process.env.PATH = path.join(tmp, 'empty');
+  assert.equal(await svgsAsPdf(text, dir), text);
+  const bin = path.join(tmp, 'bin-rsvg');
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(path.join(bin, 'rsvg-convert'), `#!${process.execPath}\nconst a = process.argv.slice(2);\nrequire('fs').writeFileSync(a[a.indexOf('-o') + 1], '%PDF-1.4');\n`, { mode: 0o755 });
+  process.env.PATH = bin;
+  assert.equal(await svgsAsPdf(text, dir), '\\includegraphics[keepaspectratio]{media/pic.pdf}\n');
+  assert.ok(existsSync(path.join(dir, 'media', 'pic.pdf')));
+});
+
+test('a Word document from a .md in a folder finds images named from the project’s folder', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
+  process.env.PATH = realPath;
+  if (!(await pandocPath())) return t.skip('needs pandoc');
+  const root = path.join(tmp, 'docx');
+  mkdirSync(path.join(root, 'figures'), { recursive: true });
+  mkdirSync(path.join(root, 'docs'), { recursive: true });
+  writeFileSync(path.join(root, 'figures', 'dot.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
+  writeFileSync(path.join(root, 'docs', 'a.md'), '# Word\n\n![A dot](figures/dot.png)\n');
+  const output = path.join(root, 'docs', 'a.docx');
+  assert.equal((await pandocDocx(root, path.join(root, 'docs', 'a.md'), output)).ok, true);
+  assert.match((await fs.readFile(output)).toString('latin1'), /word\/media\//);
+});
+
+test('a TeX error in a generated file whose name has a space is still placed', () => {
+  assert.deepEqual(latexDiagnostics('./my notes.md.tex:5: Undefined control sequence.\n', 'my notes.md.tex'), [{ severity: 'error', message: 'Undefined control sequence.', file: 'my notes.md.tex', line: 5 }]);
+});
+
+test('a YAML error is placed once, at the line pandoc gives in the .md', () => {
+  const log = 'Error parsing YAML metadata at "main.md" (line 5, column 1):\nYAML parse exception at line 2, column 6,\nwhile parsing a flow sequence:\n';
+  assert.deepEqual(pandocErrors(log, 'main.md').map((e) => [e.line, e.column]), [[5, 1]]);
 });
