@@ -4,7 +4,7 @@
 // fake home folder and scratch folders. Run: npm test
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { promises as fs, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { promises as fs, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -161,7 +161,7 @@ test('the notice shows until it’s dismissed, and the move runs once unless 1.1
   assert.deepEqual((await third.migrationNotice()).mirrored.find((m) => m.id === paper.id).changed, ['late.tex']);
 });
 
-test('a cloud copy 1.10 mirrored is never a project of its own, and its record outlasts Remove and Locate…', async () => {
+test('a cloud copy 1.10 mirrored is never a project of its own, and its record outlasts Remove and goes aside on Locate…', async () => {
   const folder = await projects.openFolder(thesis.cloud).catch((err) => err);
   assert.equal(folder.statusCode, 409);
   assert.match(folder.message, /^This is the cloud copy of “Thesis” that Spectrum 1\.10 kept in step/);
@@ -175,10 +175,16 @@ test('a cloud copy 1.10 mirrored is never a project of its own, and its record o
   assert.equal(JSON.parse(readFileSync(path.join(thesis.cloud, '.spectrum', 'project.json'), 'utf8')).id, thesis.id);
 
   const records = await snapshot(path.join(data, 'mirror'));
+  // Locate… to the same folder keeps it; to another copy puts it aside as it was, never deleted
+  await projects.relocateProject(paper.id, paper.local);
+  assert.deepEqual(await snapshot(path.join(data, 'mirror')), records);
   await fs.cp(paper.local, path.join(tmp, 'Paper copy'), { recursive: true });
   await projects.relocateProject(paper.id, path.join(tmp, 'Paper copy'));
   await projects.unregister(gone.id);
-  assert.deepEqual(await snapshot(path.join(data, 'mirror')), records);
+  const { [`${paper.id}.json`]: aside, ...kept } = records;
+  assert.deepEqual(await snapshot(path.join(data, 'mirror')), kept);
+  assert.deepEqual(await snapshot(path.join(data, 'mirror-aside')), { [`${paper.id}.json`]: aside });
+  assert.equal(await mirror.readMirror(paper.id), null);
   assert.ok(await mirror.readMirror(gone.id));
 });
 
@@ -197,5 +203,6 @@ test('a cloud copy whose project left the list, lost its folder or moved into it
   rmSync(lost.local, { recursive: true });
   assert.equal((await projects.relocateProject(lost.id, lost.cloud)).path, lost.cloud);
   assert.deepEqual(await projects.openFile(path.join(lost.cloud, 'main.tex')), { projectId: lost.id, file: 'main.tex' });
-  assert.ok(await mirror.readMirror(lost.id), 'the record is left for 1.10.4 to forget');
+  assert.equal(await mirror.readMirror(lost.id), null, 'the record is put aside, as 1.10.4 would forget it');
+  assert.ok(existsSync(path.join(data, 'mirror-aside', `${lost.id}.json`)));
 });

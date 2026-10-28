@@ -198,3 +198,48 @@ test('going back to 1.10.4 resumes mirroring where 2.0 stopped it, with both com
   assert.ok((await api(`/api/projects/${mirrored.id}/versions`)).json.versions.some((v) => v.label.startsWith('Before sync from')));
   await stop();
 });
+
+test('after Locate… picks another copy of a project 1.10.4 mirrored, 1.10.4 lists it as local and mirrors nothing', { skip: !hasRelease && `git doesn’t have ${RELEASE}` }, async () => {
+  const oldEntry = await release();
+  const loc = path.join(drive, 'Located');
+  mkdirSync(loc);
+  const data = env.SPECTRUM_DATA_DIR;
+
+  let api = await start(oldEntry);
+  // beside a location the test before left in use
+  const folders = ((await api('/api/sync')).json.folders || []).map((f) => f.path ?? f);
+  const patched = await api('/api/sync', 'PATCH', { folders: [...folders, loc] });
+  assert.equal(patched.status, 200, JSON.stringify(patched.json));
+  const { json: project } = await api('/api/projects', 'POST', { name: 'Located' });
+  await api(`/api/projects/${project.id}/file`, 'PUT', { path: 'main.tex', content: 'One.\n' });
+  assert.equal((await api(`/api/projects/${project.id}/cloud`, 'POST', { location: loc, mode: 'mirror' })).json.project.cloud.status.state, 'synced');
+  await stop();
+  const mine = (snap) => Object.fromEntries(Object.entries(snap).filter(([rel]) => rel.startsWith(project.id)));
+  const record = mine(await snapshot(path.join(data, 'mirror')));
+  assert.ok(record[`${project.id}.json`]);
+
+  // on 2.0: Locate… picks a copy elsewhere, which then differs from the cloud copy's last sync
+  const other = path.join(tmp, 'elsewhere', 'Located');
+  await fs.cp(project.path, other, { recursive: true });
+  api = await start(current);
+  assert.equal((await api(`/api/projects/${project.id}/relocate`, 'POST', { path: other })).json.project.path, other);
+  await stop();
+  writeFileSync(path.join(other, 'main.tex'), 'One, edited after Locate….\n');
+  // the cloud copy (1.10.4 also keeps a file of its own about this computer beside it)
+  const copy = path.join(loc, 'Located');
+  const cloud = await snapshot(copy);
+  const aside = await snapshot(path.join(data, 'mirror-aside'));
+  assert.deepEqual(aside, record, 'the record and its base, as they were');
+
+  // back on 1.10.4: an ordinary local project, and nothing goes to or comes from the cloud copy
+  api = await start(oldEntry);
+  const listed = (await api('/api/projects')).json.projects.find((p) => p.id === project.id);
+  assert.equal(listed.path, other);
+  assert.equal(listed.cloud, undefined);
+  await new Promise((r) => setTimeout(r, 3000));
+  await stop();
+  assert.deepEqual(await snapshot(copy), cloud);
+  assert.equal(readFileSync(path.join(other, 'main.tex'), 'utf8'), 'One, edited after Locate….\n');
+  assert.deepEqual(mine(await snapshot(path.join(data, 'mirror'))), {});
+  assert.deepEqual(await snapshot(path.join(data, 'mirror-aside')), aside, 'and the record stays aside');
+});

@@ -7,7 +7,7 @@ import { HIDDEN_ENTRIES, ensureDir, listFilesRecursive, readJson, readdirTyped, 
 import { safeJoin } from '../utils/pathUtils.js';
 import { isDocumentFile } from '../utils/texUtils.js';
 import { caseless, isConflictCopy, placeOf, syncRoots } from './syncService.js';
-import { cloudCopyOwner } from './mirrorService.js';
+import { cloudCopyOwner, setMirrorAside } from './mirrorService.js';
 import { conflictCopies } from '../utils/conflictCopies.js';
 import { knownMachineNames } from './presenceService.js';
 import { backupSoon } from './githubService.js';
@@ -548,8 +548,9 @@ export async function relocateProject(id, input) {
   await refuseNested(root, projects.filter((p) => p.id !== id));
   const own = folderId === id ? meta : null;
   const next = normaliseMeta({ ...(own || { createdAt: entry.addedAt }), id, name: own?.name || entry.name });
-  // ponytail: a 1.10 mirror record stays as it was (2.0 never writes them), so going back to 1.10.4 after choosing
-  // another copy here mirrors that copy against the old folder's base, its differences taken for edits made here
+  // going back to 1.10.4 would mirror another copy against the old folder's base, its differences taken for edits
+  // made here: the project is an ordinary local one to it instead
+  if (root !== entry.path) await setMirrorAside(id);
   await writeMetaIfChanged(root, meta, next);
   // in the project files' lock, so a writer that has the old folder finishes first or finds it gone
   await mutateProjectFiles(() => register(id, root, next));
