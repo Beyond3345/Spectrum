@@ -368,8 +368,15 @@ export function copyIds(model: StructureModel, ids: string[]): StructureModel {
   const needed = new Set([...ids, ...parts.flatMap((p) => (p.kind === 'member' ? [p.a, p.b] : []))]);
   // loads and supports on what's copied come along
   const extras = model.parts.filter((p) => !picked.has(p.id) && ((p.kind === 'support' && needed.has(p.node)) || (p.kind === 'dist' && memberIds.has(p.member)) || ((p.kind === 'force' || p.kind === 'moment') && ('node' in p.on ? needed.has(p.on.node) : memberIds.has(p.on.member)))));
-  const all = [...parts, ...extras].filter((p) => p.kind !== 'support' || needed.has(p.node));
-  return { nodes: model.nodes.filter((n) => needed.has(n.id)), parts: all.filter((p) => p.kind !== 'member' || (needed.has(p.a) && needed.has(p.b))) };
+  // anything whose nodes or member stay behind stays too: pasted, it would land on the original
+  const all = [...parts, ...extras].filter((p) =>
+    p.kind === 'member' || p.kind === 'dim' ? needed.has(p.a) && needed.has(p.b)
+    : p.kind === 'support' || p.kind === 'angle' ? needed.has(p.node)
+    : p.kind === 'dist' ? memberIds.has(p.member)
+    : p.kind === 'force' || p.kind === 'moment' ? ('node' in p.on ? needed.has(p.on.node) : memberIds.has(p.on.member))
+    : true
+  );
+  return { nodes: model.nodes.filter((n) => needed.has(n.id)), parts: all };
 }
 
 /** Pastes copied nodes and parts, moved by an offset, with fresh ids and letters; returns their ids. */

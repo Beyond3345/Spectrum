@@ -249,6 +249,7 @@ function maxMoment(s: Solution, member: string) {
   const pasted = pasteInto(beamModel, copyIds(beamModel, ['m1']), { x: 0, y: -3 });
   eq(pasted.model.nodes.map((n) => n.name), ['A', 'B', 'C', 'D'], 'pasted joints get the next letters');
   eq(pasted.model.parts.length, beamModel.parts.length * 2 - 1, 'the member, its supports and its load (not the dimension)');
+  eq(pasteInto(beamModel, copyIds(beamModel, ['p3', 'p4']), { x: 0, y: -3 }).model, beamModel, 'a load or dimension copied alone isn’t pasted onto the original');
   eq(new Set([...pasted.model.nodes.map((n) => n.id), ...pasted.model.parts.map((p) => p.id)]).size, pasted.model.nodes.length + pasted.model.parts.length, 'ids stay unique');
 }
 
