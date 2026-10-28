@@ -2191,7 +2191,7 @@ function Editor({ projectId }: { projectId: string }) {
         override: [
           latexCompletionSource(() => projectScanRef.current, () => activeRef.current),
           typstCompletions({ path: () => activeRef.current, version: () => compileOptionsRef.current.typstVersion ?? '' }),
-          referenceCompletions({ path: () => activeRef.current, keys: () => projectScanRef.current.bib.map((entry) => entry.key), labels: () => typstLabelsRef.current }),
+          referenceCompletions({ path: () => activeRef.current, keys: () => projectScanRef.current.bib.map((entry) => entry.key), labels: () => typstLabelsRef.current, version: () => compileOptionsRef.current.typstVersion ?? '' }),
           zoteroCompletionSource({
             enabled: () => loadSettings().zoteroCompletion,
             search: (q, signal) => searchZotero(q, signal).then((res) => res.items),
