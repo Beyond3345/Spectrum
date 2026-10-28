@@ -17,7 +17,7 @@ eq(valuesOf(test, { radius: 0.5 }), { ...test.values, radius: 0.5 }, 'missing va
 eq(formCode({ preset: 'test' } as never, {}).packages, ['tikz'], 'no values at all');
 let threw = false;
 try {
-  formCode({ preset: 'mohr', values: {} }, {});
+  formCode({ preset: 'no-such-form', values: {} }, {});
 } catch {
   threw = true;
 }

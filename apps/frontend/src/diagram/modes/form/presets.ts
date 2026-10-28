@@ -4,6 +4,7 @@
 import type { DiagramCode } from '../../fileFormat';
 import type { ComposerDefaults } from '../../types';
 import { num } from '../shared';
+import { MOHR } from './mohr';
 import { venn } from './venn';
 
 export type FormValue = string | number | boolean;
@@ -58,7 +59,7 @@ const test: FormPreset = {
   }
 };
 
-export const PRESETS: FormPreset[] = [test, venn];
+export const PRESETS: FormPreset[] = [test, MOHR, venn];
 
 export const presetFor = (id: string) => PRESETS.find((preset) => preset.id === id);
 
