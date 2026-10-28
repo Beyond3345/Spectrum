@@ -7,7 +7,7 @@ import { promisify } from 'util';
 import { DATA_DIR } from '../config/constants.js';
 import { ensureDir } from '../utils/fsUtils.js';
 import { readProjectSettings } from './projectSettings.js';
-import { BUILT_IN_TYPST_VERSION, typstFor } from './engineService.js';
+import { BUILT_IN_TYPST_VERSION, builtInTypst, typstFor } from './engineService.js';
 import { MAX_LOG_BYTES, cleanBuild, runSpawn, writePdf } from './compileService.js';
 
 const execFileAsync = promisify(execFile);
@@ -93,7 +93,8 @@ async function labelNames(projectRoot, absMain) {
 /**
  * What Typst itself knows about a compiled document: every heading with its number and page, and every label with its
  * page and number. One eval run, in the document's context, with the Typst compileTypst picks (the project's pin, else
- * fallback, the app's default); null when that Typst isn't installed or is too old (before 0.13) to have it.
+ * fallback, the app's default), else the built-in one, as typst eval came in 0.15; null when the Typst picked isn't
+ * installed, or neither can eval the document.
  */
 export async function typstElements(projectRoot, doc, fallback = '') {
   const settings = await readProjectSettings(projectRoot);
@@ -105,18 +106,21 @@ export async function typstElements(projectRoot, doc, fallback = '') {
   const namesArg = names.length ? names.join(', ') + ',' : '';
   const fontFolder = path.join(projectRoot, 'fonts');
   const fonts = (await fs.stat(fontFolder).catch(() => null))?.isDirectory() ? ['--font-path', fontFolder] : [];
-  try {
-    const { stdout } = await execFileAsync(executable, ['eval', '--in', absMain, '--root', projectRoot, '--format', 'json', ...fonts, ELEMENTS.replace('NAMES', namesArg)], {
-      cwd: projectRoot,
-      timeout: 30_000,
-      maxBuffer: 10 * 1024 * 1024,
-      windowsHide: true,
-      env: { ...process.env, TYPST_PACKAGE_CACHE_PATH: path.join(DATA_DIR, 'typst', 'packages') }
-    });
-    return JSON.parse(stdout);
-  } catch {
-    return null;
+  for (const typst of new Set([executable, builtInTypst()].filter(Boolean))) {
+    try {
+      const { stdout } = await execFileAsync(typst, ['eval', '--in', absMain, '--root', projectRoot, '--format', 'json', ...fonts, ELEMENTS.replace('NAMES', namesArg)], {
+        cwd: projectRoot,
+        timeout: 30_000,
+        maxBuffer: 10 * 1024 * 1024,
+        windowsHide: true,
+        env: { ...process.env, TYPST_PACKAGE_CACHE_PATH: path.join(DATA_DIR, 'typst', 'packages') }
+      });
+      return JSON.parse(stdout);
+    } catch {
+      // the next Typst
+    }
   }
+  return null;
 }
 
 /**

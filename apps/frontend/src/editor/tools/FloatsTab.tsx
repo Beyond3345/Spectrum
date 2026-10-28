@@ -633,7 +633,7 @@ function InsertDiagram() {
     captionRef.current?.focus({ preventScroll: true });
   }, [diagram]);
 
-  const draw = () => openDiagram(api.projectId).catch((err) => api.notify(`Couldn’t open the diagram composer: ${errorText(err)}`, 'error'));
+  const draw = () => openDiagram(api.projectId, undefined, docKind(api.activePath) === 'typst' ? 'typst' : undefined).catch((err) => api.notify(`Couldn’t open the diagram composer: ${errorText(err)}`, 'error'));
 
   const insert = async () => {
     if (!diagram) return;

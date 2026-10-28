@@ -32,7 +32,7 @@ const model: TikzModel = {
 const body = fletcherCode(model, '0.15.1').body;
 has(body, '#import "@preview/fletcher:0.5.8" as fletcher: diagram, node, edge', 'the import line');
 has(body, '#set page(width: auto, height: auto, margin: 4pt) if sys.inputs.at("spectrum-diagram", default: "") == "standalone"', 'the standalone page');
-has(body, 'node((1cm, 0.5cm), [Start here], shape: fletcher.shapes.rect, width: 2cm, height: 1cm, name: <n1>),', 'a rectangle at its centre');
+has(body, 'node((1cm, -0.5cm), [Start here], shape: fletcher.shapes.rect, width: 2cm, height: 1cm, name: <n1>),', 'a rectangle at its centre');
 has(body, '[A \\[bracket\\] \\#tag \\\\ \\$x\\$], shape: fletcher.shapes.rect, corner-radius: 4pt, width: 2cm, height: 1cm, fill: rgb("#eeeeee")', 'a rounded, filled box with its text escaped');
 has(body, 'shape: fletcher.shapes.circle, width: 1.5cm, height: 1.5cm', 'a circle is as wide as it is tall');
 has(body, 'shape: fletcher.shapes.diamond, width: 2.5cm, height: 1.5cm', 'a diamond');
@@ -43,6 +43,8 @@ has(body, 'edge(<n1>, <n2>, "->", label: [yes]),', 'a straight arrow with a labe
 has(body, 'edge(<n1>, <n2>, "<->", bend: 30deg),', 'a curved two-headed arrow');
 has(body, 'edge(<n2>, <n3>, "<--", corner: right),', 'a dashed arrow that starts, at a corner');
 has(body, 'edge(<n3>, <n4>, "..", label: [no]),', 'a dotted line with no heads');
+// a box lower on the canvas is lower on the page: fletcher's lengths, like TikZ's, go up
+has(body, 'node((0.75cm, -2.75cm), [c]', 'the second row below the first');
 eq(fletcherCode(model, '0.12.0').body.startsWith('#import "@preview/fletcher:0.5.5"'), true, 'an older Typst gets an older fletcher');
 eq(fletcherCode({ boxes: [], links: [] }, '').body.includes('  node-stroke: 0.4pt,'), true, 'no boxes still makes a diagram');
 

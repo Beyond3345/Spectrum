@@ -41,7 +41,7 @@ const SHAPE: Record<Shape, string> = {
   maths: 'rect'
 };
 
-/** The node for a box: its centre in cm, its text or maths, and its shape and size. */
+/** The node for a box: its centre in cm (y up, as in TikZ: the canvas's y goes down), its text or maths, and its shape and size. */
 function nodeCode(box: Box) {
   const plain = box.shape === 'text' || box.shape === 'maths';
   const size = box.shape === 'circle' ? Math.min(box.w, box.h) : 0;
@@ -59,7 +59,7 @@ function nodeCode(box: Box) {
     'name: <' + box.id + '>'
   ].filter(Boolean);
   const label = box.shape === 'maths' ? (box.text.trim() ? '[$' + box.text.trim() + '$]' : '[]') : '[' + content(box.text) + ']';
-  return 'node((' + num((box.x + box.w / 2) * CM_PER_UNIT) + 'cm, ' + num((box.y + box.h / 2) * CM_PER_UNIT) + 'cm), ' + label + ', ' + options.join(', ') + ')';
+  return 'node((' + num((box.x + box.w / 2) * CM_PER_UNIT) + 'cm, ' + num(-(box.y + box.h / 2) * CM_PER_UNIT) + 'cm), ' + label + ', ' + options.join(', ') + ')';
 }
 
 const HEADS: Record<Heads, string> = { none: '', end: '>', start: '<', both: '<>' };

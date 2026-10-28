@@ -29,7 +29,7 @@ const runs = new Map();
 export const directTurn = (projectId) => [...runs.values()].some((r) => r.projectId === projectId && r.mode === 'direct' && r.busy);
 const ID = /^[a-f0-9-]{36}$/;
 const textLimit = (value, max = 100000) => typeof value === 'string' ? value.slice(0, max) : '';
-const metadata = (r) => ({ id: r.id, projectId: r.projectId, agentId: r.agentId, mode: r.mode, createdAt: r.createdAt, updatedAt: r.updatedAt, status: r.status, events: r.events, remoteId: r.remoteId, resolved: [...r.resolved], turnCount: r.turnCount, ...(r.title && { title: r.title }), ...(r.persona && { persona: r.persona }), ...(r.notes?.length && { notes: r.notes }) });
+const metadata = (r) => ({ id: r.id, projectId: r.projectId, agentId: r.agentId, mode: r.mode, createdAt: r.createdAt, updatedAt: r.updatedAt, status: r.status, events: r.events, remoteId: r.remoteId, resolved: [...r.resolved], turnCount: r.turnCount, ...(r.title && { title: r.title }), ...(r.persona && { persona: r.persona }), ...(r.compile && { compile: r.compile }), ...(r.notes?.length && { notes: r.notes }) });
 const persist = (r) => {
   r.saveChain = (r.saveChain || Promise.resolve()).catch(() => {}).then(() => writeJsonAtomic(path.join(r.dir, 'session.json'), metadata(r)));
   return r.saveChain;
@@ -173,7 +173,22 @@ const personaText = (persona) => `The user chose the persona “${persona.name}�
 // worker can refuse those names.
 const NO_DIRECT = 'Direct editing isn’t available on Windows yet. Choose Isolated: the agent works on a copy and you apply the changes you want.';
 
-export async function newAgentRun({ projectId, agentId, mode = 'review', persona }) {
+/**
+ * The app's default Typst version and Markdown PDF engine, as the editor sends them with a new session, for the agent's
+ * compiles of a project that chooses neither; anything else left out.
+ */
+const appCompile = (value) => ({
+  ...(/^\d+\.\d+\.\d+$/.test(value?.typstVersion ?? '') && { typstVersion: value.typstVersion }),
+  ...(['latex', 'typst'].includes(value?.markdownEngine) && { markdownEngine: value.markdownEngine })
+});
+
+/** What an agent's compile and its draft's preview use: the project's compile settings, else the app's defaults. */
+async function compileChoices(r) {
+  const own = (await readProjectSettings(r.root)).compile || {};
+  return { engine: own.engine || 'auto', typstVersion: own.typstVersion || r.compile?.typstVersion, markdownEngine: own.markdownEngine || r.compile?.markdownEngine };
+}
+
+export async function newAgentRun({ projectId, agentId, mode = 'review', persona, compile }) {
   persona = readPersona(persona);
   if (mode === 'direct' && process.platform === 'win32') throw Object.assign(new Error(NO_DIRECT), { statusCode: 400 });
   const profile = profileFor(agentId);
@@ -183,7 +198,7 @@ export async function newAgentRun({ projectId, agentId, mode = 'review', persona
   const root = await getProjectRoot(projectId);
   const id = crypto.randomUUID();
   const dir = path.join(AGENT_DIR, 'runs', id);
-  const r = { id, dir, root, projectId, agentId, mode, persona, createdAt: new Date().toISOString(), events: [], eventBytes: 0, sequence: 0, resolved: new Set(), notes: [], listeners: new Set(), pending: new Map(), terminals: new Map(), busy: true, turnCount: 0 };
+  const r = { id, dir, root, projectId, agentId, mode, persona, compile: appCompile(compile), createdAt: new Date().toISOString(), events: [], eventBytes: 0, sequence: 0, resolved: new Set(), notes: [], listeners: new Set(), pending: new Map(), terminals: new Map(), busy: true, turnCount: 0 };
   if (busyProject(r)) throw new Error('Another agent is working on this project. Stop it before starting another.');
   runs.set(id, r);
   try {
@@ -528,8 +543,8 @@ async function syncAgentSkills(r) {
 const bundledTools = fileURLToPath(new URL('./mcp.mjs', import.meta.url));
 const repository = fileURLToPath(new URL('../../../../', import.meta.url));
 const toolsState = (r) => path.join(r.home, 'spectrum-tools', r.id);
-/** The tools server's file, and what isolation must also read to run it. */
-async function toolsLaunch() {
+/** The tools server's file, its environment, and what isolation must also read to run it. */
+export async function toolsLaunch() {
   const packaged = await fs.stat(bundledTools).then((s) => s.isFile(), () => false);
   const entry = packaged ? bundledTools : path.join(repository, 'apps/backend/src/mcp/server.js');
   // Node, the server (in development the backend's source, its packages and the version in the root package.json) and
@@ -541,28 +556,28 @@ async function toolsLaunch() {
     const dir = file && path.dirname(file);
     if (dir && !reads.some((read) => dir === read || dir.startsWith(read + path.sep))) reads.push(dir);
   }
-  return { entry, reads: (await Promise.all(reads.map(async (p) => (await fs.stat(p).catch(() => null)) && p))).filter(Boolean) };
+  // the engines' own paths and Spectrum's data folder, so a compile inside isolation finds the same programs
+  const env = { SPECTRUM_DATA_DIR: DATA_DIR, ...Object.fromEntries([['SPECTRUM_TYPST', process.env.SPECTRUM_TYPST], ['SPECTRUM_TECTONIC', process.env.SPECTRUM_TECTONIC]].filter(([, value]) => value)) };
+  return { entry, env, reads: (await Promise.all(reads.map(async (p) => (await fs.stat(p).catch(() => null)) && p))).filter(Boolean) };
 }
 async function toolsServer(r) {
   if (process.platform !== 'darwin') return null;
-  const { entry, reads } = await toolsLaunch();
+  const { entry, env, reads } = await toolsLaunch();
   const state = toolsState(r);
   const meta = await readMeta(r.root).catch(() => ({}));
   // written by isolation, as the home is the agent's
   await agentFile(r, 'write', path.join(state, 'context.json'), JSON.stringify({
     mainFile: meta.mainFile || await detectMainFile(r.root).catch(() => null),
-    engine: (await readProjectSettings(r.root)).compile?.engine || 'auto',
+    ...(await compileChoices(r)),
     todos: await openTodos(r.root)
   }));
   return {
     reads,
-    // the engines' own paths and Spectrum's data folder, so a compile inside isolation finds the same programs
     server: { name: 'spectrum', command: process.execPath, args: [entry, '--root', r.workspace, '--state', state], env: [
       { name: 'HOME', value: r.home },
       { name: 'TMPDIR', value: path.join(r.home, 'tmp') },
       { name: 'PATH', value: process.env.PATH || '/usr/bin:/bin' },
-      { name: 'SPECTRUM_DATA_DIR', value: DATA_DIR },
-      ...[['SPECTRUM_TYPST', process.env.SPECTRUM_TYPST], ['SPECTRUM_TECTONIC', process.env.SPECTRUM_TECTONIC]].filter(([, value]) => value).map(([name, value]) => ({ name, value }))
+      ...Object.entries(env).map(([name, value]) => ({ name, value }))
     ] }
   };
 }
@@ -603,7 +618,7 @@ async function mikTeXConfined() {
 async function previewTarget(r, { mainFile, engine }) {
   const main = mainFile || (await readMeta(r.root).catch(() => ({}))).mainFile || await detectMainFile(r.workspace).catch(() => null);
   if (main) safeJoin(r.workspace, main);
-  return { main, engine: engine || (await readProjectSettings(r.root)).compile?.engine || 'auto' };
+  return { main, engine: engine || (await compileChoices(r)).engine };
 }
 
 /**
@@ -643,8 +658,10 @@ export async function previewDraft(r, options = {}) {
       const result = await compileFolder({ root: r.workspace, mainFile: main, engine, without: ['tectonic', 'latexmk'], untrusted: true, buildDir: out, env: PREVIEW_TEX_ENV });
       return { ok: result.ok && result.status === 0, pdf: result.pdf || null, log: result.log || result.error || '' };
     }
-    const { entry, reads } = await toolsLaunch();
-    const child = await spawnAgentProcess({ command: process.execPath, args: [entry, '--compile', '--root', r.workspace, '--state', out, '--main', main, '--engine', engine], workspace: out, home, cwd: out, runtimePaths: [...reads, r.workspace], forbiddenRoots: [r.root] });
+    const { entry, env, reads } = await toolsLaunch();
+    // the Typst version and Markdown engine the compile reads where the tools server reads its context
+    await fs.writeFile(path.join(out, 'context.json'), JSON.stringify(await compileChoices(r)));
+    const child = await spawnAgentProcess({ command: process.execPath, args: [entry, '--compile', '--root', r.workspace, '--state', out, '--main', main, '--engine', engine], workspace: out, home, cwd: out, runtimePaths: [...reads, r.workspace], forbiddenRoots: [r.root], env });
     // stopped with the session's other processes
     r.fileOperations ||= new Set(); r.fileOperations.add(child);
     let output = '', error = '';

@@ -23,20 +23,25 @@ export function loadTypst(): Promise<Extension | null> {
   return loading;
 }
 
+/** Whether Typst's own completions run for a project's Typst version: the built-in one's, 0.15 ('' for it). */
+const ownCompletions = (version: string) => !version || version.startsWith('0.15');
+
 /** Typst's own completions (0.15's built-ins), only in a .typ file whose project uses the built-in version. */
 export function typstCompletions({ path, version }: { path: () => string; version: () => string }) {
   return async (context: CompletionContext): Promise<CompletionResult | null> => {
     if (docKind(path()) !== 'typst') return null;
-    const pinned = version();
-    if (pinned && !pinned.startsWith('0.15')) return null;
+    if (!ownCompletions(version())) return null;
     if (!(await loadTypst())) return null;
     const { typstCompletionSource } = await import('codemirror-lang-typst/lezer');
     return typstCompletionSource(context);
   };
 }
 
-/** After @ in Typst (keys and labels) and [@ or ; @ in Markdown (keys): the project's bibliography and labels. */
-export function referenceCompletions({ path, keys, labels }: { path: () => string; keys: () => string[]; labels: () => string[] }) {
+/**
+ * After @ in Typst (keys and labels) and [@ or ; @ in Markdown (keys): the project's bibliography and labels. Typst's
+ * labels only where its own completions, which list them, don't run (version: the project's Typst version).
+ */
+export function referenceCompletions({ path, keys, labels, version }: { path: () => string; keys: () => string[]; labels: () => string[]; version: () => string }) {
   return (context: CompletionContext): CompletionResult | null => {
     const kind = docKind(path());
     if (kind !== 'typst' && kind !== 'markdown') return null;
@@ -58,7 +63,7 @@ export function referenceCompletions({ path, keys, labels }: { path: () => strin
       seen.add(key);
       options.push({ label: key, type: 'keyword' });
     }
-    if (kind === 'typst') {
+    if (kind === 'typst' && !ownCompletions(version())) {
       for (const label of labels()) {
         const name = label.replace(/^<|>$/g, '');
         if (!name || seen.has(name)) continue;

@@ -79,7 +79,9 @@ test('Windows cancellation kills background descendants and preserves ordinary p
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-win-cancel-'));
   const workspace = path.join(root, 'work'), home = path.join(root, 'home');
   await fs.mkdir(workspace); await fs.mkdir(home); await fs.mkdir(path.join(home, 'tmp'));
-  const script = `const {spawn}=require('child_process');const child=spawn(process.execPath,['-e',"setInterval(()=>require('fs').appendFileSync('heartbeat','x'),20)"],{detached:true,stdio:'ignore'});child.unref();console.log('ready');setInterval(()=>{},1000);`;
+  // the descendant is an ordinary child left running, not a detached one: isolation refuses a detached child (spawn
+  // EPERM, as it may not make a process group of its own), and the job object holds the ordinary one all the same
+  const script = `const {spawn}=require('child_process');const child=spawn(process.execPath,['-e',"setInterval(()=>require('fs').appendFileSync('heartbeat','x'),20)"],{stdio:'ignore'});child.unref();console.log('ready');setInterval(()=>{},1000);`;
   try {
     const child = await spawnAgentProcess({ command: process.execPath, args: ['-e', script], workspace, home });
     const done = completion(child);

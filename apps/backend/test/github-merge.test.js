@@ -66,13 +66,19 @@ async function asWindows(fn) {
   }
 }
 
-/** A commit on GitHub's main with files by their exact names, made in the bare repository, as no Mac disk keeps both of two spellings. */
+/**
+ * A commit on GitHub's main with files by their exact names, made in the bare repository, as no Mac disk keeps both of
+ * two spellings. A file given as { link } is a symbolic link to it.
+ */
 function commitOnGitHub(repo, files) {
   const dir = gh.bare('octo', repo);
   const env = { ...process.env, GIT_INDEX_FILE: path.join(tmp, `index-${repo}`), GIT_AUTHOR_NAME: 'Other', GIT_AUTHOR_EMAIL: 'o@x', GIT_COMMITTER_NAME: 'Other', GIT_COMMITTER_EMAIL: 'o@x' };
   const run = (args, input) => execFileSync('git', ['-c', 'core.ignorecase=false', ...args], { cwd: dir, env, input }).toString().trim();
   run(['read-tree', 'main']);
-  for (const [rel, text] of Object.entries(files)) run(['update-index', '--add', '--cacheinfo', `100644,${run(['hash-object', '-w', '--stdin'], text)},${rel}`]);
+  for (const [rel, text] of Object.entries(files)) {
+    const link = typeof text === 'object' && text.link;
+    run(['update-index', '--add', '--cacheinfo', `${link ? '120000' : '100644'},${run(['hash-object', '-w', '--stdin'], link || text)},${rel}`]);
+  }
   run(['update-ref', 'refs/heads/main', run(['commit-tree', run(['write-tree']), '-p', 'main', '-m', 'From another computer'])]);
 }
 
@@ -452,4 +458,16 @@ test('a pull never writes through a folder that links outside the project', { sk
   await g.fetchOrigin(D, token);
   await assert.rejects(g.mergeOrigin(D, { author, checkpoint: false }), (err) => err.code === 'GIT_REFUSED');
   assert.deepEqual(readdirSync(elsewhere), []);
+});
+
+test('a pull never writes through a link it brings that differs only in letter case from a folder it fills', { skip }, async () => {
+  const { B, repo } = await pair({ 'main.tex': 'main\n' });
+  const outside = path.join(tmp, `outside-case${n}`);
+  mkdirSync(outside);
+  commitOnGitHub(repo, { Assets: { link: outside }, 'assets/pwn.txt': 'from GitHub\n' });
+  await g.fetchOrigin(B, token);
+  const head = await g.headOid(B);
+  await assert.rejects(g.mergeOrigin(B, { author, checkpoint: false }), (err) => err.code === 'GIT_REFUSED');
+  assert.deepEqual(readdirSync(outside), [], 'nothing written outside');
+  assert.equal(await g.headOid(B), head);
 });

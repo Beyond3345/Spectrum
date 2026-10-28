@@ -44,7 +44,7 @@ import { refuseBusy } from './sync.js';
 import { syncSoon } from '../services/zoteroService.js';
 import { conflictCopies } from '../utils/conflictCopies.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
-import { markdownToLatex, pandocDocx } from '../services/markdownService.js';
+import { markdownToLatex, pandocDocx, projectImages, svgsAsPdf } from '../services/markdownService.js';
 import { pandocPath } from '../services/engineService.js';
 
 const execFileAsync = promisify(execFile);
@@ -437,7 +437,7 @@ export function registerProjectRoutes(fastify) {
     return { ok: true, path: path.relative(root, output).split(path.sep).join('/') };
   });
 
-  // a new LaTeX project from the .md: pandoc's LaTeX, its .bib files, the media it extracted and figures/
+  // a new LaTeX project from the .md: pandoc's LaTeX, its .bib files, the images it includes from this project and figures/
   fastify.post('/api/projects/:id/export/latex', async (req) => {
     const root = await getProjectRoot(req.params.id);
     const doc = markdownDoc(req.body?.doc);
@@ -448,27 +448,23 @@ export function registerProjectRoutes(fastify) {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-markdown-latex-'));
     try {
       const generatedDir = path.join(tmp, 'generated');
-      const made = await markdownToLatex({ projectRoot: root, absMain: abs, mainFile: doc, generatedDir });
+      // sandboxed, so pandoc reads no image, and only those in this project are copied
+      const made = await markdownToLatex({ projectRoot: root, absMain: abs, mainFile: doc, generatedDir, sandboxed: true });
       if (!made.ok) throw httpError(made.error || 'pandoc couldn’t read this Markdown.', 502);
       const items = await listFilesRecursive(root);
       const bibs = items.filter((item) => item.type === 'file' && /\.bib$/i.test(item.path)).map((item) => item.path);
       const figures = path.join(root, 'figures');
-      const media = made.media;
-      // pandoc names each image it extracted by its path in the temporary folder, which goes; the copy is in media/
-      // ponytail: a Windows pandoc's backslashes after media/ stay as it wrote them
-      let text = made.text;
-      for (const prefix of [media + path.sep, media.split(path.sep).join('/') + '/']) text = text.split(prefix).join('media/');
+      const { text, images } = projectImages(made.text, root, path.dirname(abs));
       const project = await createProject({
         name: meta.name + ' (LaTeX)',
         meta: { mainFile: 'main.tex' },
         populate: async (target) => {
-          await fs.writeFile(path.join(target, 'main.tex'), text);
-          for (const bib of bibs) {
-            await fs.mkdir(path.dirname(path.join(target, bib)), { recursive: true });
-            await fs.copyFile(path.join(root, bib), path.join(target, bib));
+          for (const file of [...bibs, ...images]) {
+            await fs.mkdir(path.dirname(path.join(target, file)), { recursive: true });
+            await fs.copyFile(path.join(root, file), path.join(target, file));
           }
-          if ((await fs.stat(media).catch(() => null))?.isDirectory()) await copyDir(media, path.join(target, 'media'));
           if ((await fs.stat(figures).catch(() => null))?.isDirectory()) await copyDir(figures, path.join(target, 'figures'));
+          await fs.writeFile(path.join(target, 'main.tex'), await svgsAsPdf(text, target));
         }
       });
       return { ok: true, project };

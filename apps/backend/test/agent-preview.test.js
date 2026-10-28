@@ -55,9 +55,29 @@ test('the draft’s preview PDF is compiled where TeX reads only the draft, into
     await assert.rejects(previewDraft(run, { mainFile: '../escape.tex' }), /Invalid path/);
     await assert.rejects(previewDraft(run, { engine: 'troff' }), /Unsupported engine/);
 
-    // a direct session's draft is the project itself
-    const direct = await getAgentRun((await newAgentRun({ projectId: (await createProject({ name: 'Direct preview' })).id, agentId: 'qoder', mode: 'direct' })).id);
-    await direct.ready;
-    await assert.rejects(previewDraft(direct), { statusCode: 409 });
+    // a direct session's draft is the project itself; Windows has no direct sessions at all
+    const directRun = newAgentRun({ projectId: (await createProject({ name: 'Direct preview' })).id, agentId: 'qoder', mode: 'direct' });
+    if (process.platform === 'win32') await assert.rejects(directRun, { statusCode: 400 });
+    else {
+      const direct = await getAgentRun((await directRun).id);
+      await direct.ready;
+      await assert.rejects(previewDraft(direct), { statusCode: 409 });
+    }
   } finally { await shutdownAgents(); await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test('the tools server and the draft’s preview get the engines’ paths and Spectrum’s data folder', async () => {
+  const { DATA_DIR } = await import('../src/config/constants.js');
+  const { toolsLaunch } = await import('../src/services/agentSessionService.js');
+  const typst = process.env.SPECTRUM_TYPST;
+  process.env.SPECTRUM_TYPST = path.join(os.tmpdir(), 'no-typst-here');
+  try {
+    const { env } = await toolsLaunch();
+    assert.equal(env.SPECTRUM_DATA_DIR, DATA_DIR);
+    assert.equal(env.SPECTRUM_TYPST, process.env.SPECTRUM_TYPST);
+    assert.equal(env.SPECTRUM_TECTONIC, process.env.SPECTRUM_TECTONIC);
+  } finally {
+    if (typst === undefined) delete process.env.SPECTRUM_TYPST;
+    else process.env.SPECTRUM_TYPST = typst;
+  }
 });

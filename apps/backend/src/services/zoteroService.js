@@ -750,3 +750,9 @@ export function syncSoon(root, { remove = false, delay = 1000, added = [] } = {}
   next.timer.unref?.();
   soon.set(root, next);
 }
+
+/** Drops every sync waiting to run (tests, so one case's add never syncs during the next). */
+export function cancelSyncSoon() {
+  for (const { timer } of soon.values()) clearTimeout(timer);
+  soon.clear();
+}

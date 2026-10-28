@@ -91,22 +91,26 @@ jobs:
           & "$bin\initexmf.exe" --set-config-value='[MPM]AutoInstall=1'
           Add-Content $env:GITHUB_PATH $bin
 
-      # the installer build put Typst beside the other sidecars, with vcruntime140.dll next to it: a copy named
-      # typst.exe finds it as the app will
+      # the installer build put Typst beside the other sidecars: a copy named typst.exe, with the vcruntime140.dll the
+      # installer puts beside the app's, runs as the app's will (GITHUB_PATH reaches the next steps, not this one)
       - name: Typst
         run: |
           $bin = "$env:GITHUB_WORKSPACE\src-tauri\binaries"
           Copy-Item "$bin\typst-x86_64-pc-windows-msvc.exe" "$bin\typst.exe" -Force
+          Copy-Item "$env:GITHUB_WORKSPACE\src-tauri\resources\engines\vcruntime140.dll" $bin -Force
           Add-Content $env:GITHUB_PATH $bin
-          typst --version
+          & "$bin\typst.exe" --version
 
+      # these two run after a failed set-up step too, so the tests still report
       # latexmk needs Perl (Strawberry Perl comes with the runner)
       - name: TeX tools
+        if: ${{ !cancelled() }}
         run: |
           Get-Command pdflatex, latexmk, biber, typst -ErrorAction SilentlyContinue | Format-Table Name, Source
           perl -v
 
       - name: Backend tests
+        if: ${{ !cancelled() }}
         env:
           # nodehun and Harper as the installer has them
           SPECTRUM_NATIVE_DIR: ${{ github.workspace }}\src-tauri\resources\native

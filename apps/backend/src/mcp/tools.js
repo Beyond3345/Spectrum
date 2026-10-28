@@ -125,11 +125,15 @@ export function logErrors(log) {
   return { errors, warnings: lines.filter((l) => /Warning:/.test(l)).length, undefined: lines.filter((l) => /(?:Citation|Reference) .* undefined/.test(l)).map((l) => l.trim()).slice(0, 50) };
 }
 
-/** Compiles the working copy into the run's folder; its log is kept for get_log, and nothing is written into the copy. */
+/**
+ * Compiles the working copy into the run's folder, with the Typst version and Markdown PDF engine Spectrum chose; its
+ * log is kept for get_log, and nothing is written into the copy.
+ */
 export async function compile(root, state, { main, engine } = {}) {
   const file = main || await mainFile(root, state);
   if (!file) return { ok: false, error: 'This project has no .tex file.' };
-  const result = await compileFolder({ root, mainFile: file, engine: engine || (await context(state)).engine || 'auto', buildDir: path.join(state, 'build') });
+  const { typstVersion, markdownEngine, ...chosen } = await context(state);
+  const result = await compileFolder({ root, mainFile: file, engine: engine || chosen.engine || 'auto', typstVersion, markdownEngine, buildDir: path.join(state, 'build') });
   const log = result.log || result.error || '';
   await fs.writeFile(path.join(state, 'last.log'), log);
   let pdf;
