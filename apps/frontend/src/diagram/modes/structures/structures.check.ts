@@ -188,6 +188,21 @@ function maxMoment(s: Solution, member: string) {
   eq(solve({ nodes: [], parts: [] }).status.kind, 'empty', 'nothing drawn');
 }
 
+{
+  // a load right beside a member's end: still stable; within a thousandth of the member it acts at the end
+  const cantilever = (at: number): StructureModel => ({ nodes: [node('A', 0, 0), node('B', 6, 0)], parts: [beam('m', 'A', 'B'), support('a', 'A', 'fixed', -90), down('P', 'm', at, 10)] });
+  for (const [at, moment] of [[5.99, 59.9], [5.98, 59.8], [5.9999, 60], [1e-4, 0], [0.01, 0.1]]) {
+    const s = solve(cantilever(at));
+    eq(s.status.kind, 'ok', `cantilever, 10 kN at ${at} m: stable`);
+    close(reaction(s, 'a').moment, moment, `cantilever, 10 kN at ${at} m: fixed end moment`);
+  }
+  const partial = solve({ nodes: [node('A', 0, 0), node('B', 6, 0)], parts: [beam('m', 'A', 'B'), support('a', 'A', 'fixed', -90), udl('w', 'm', 0, 5.99, 10)] });
+  close(reaction(partial, 'a').force.y, 59.9, 'cantilever, 10 kN/m to 5.99 m');
+  const mm = solve({ nodes: [node('A', 0, 0), node('B', 6000, 0)], parts: [beam('m', 'A', 'B'), support('a', 'A', 'pin'), support('b', 'B', 'roller'), down('P', 'm', 5999.9, 10)] });
+  eq(mm.status.kind, 'ok', 'mm beam, a load 0.1 mm from its end: stable');
+  close(reaction(mm, 'b').force.y, 10, 'mm beam: at B');
+}
+
 // ─── edits ───
 
 {

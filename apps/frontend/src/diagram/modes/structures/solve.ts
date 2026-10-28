@@ -237,13 +237,14 @@ export function solve(model: StructureModel): Solution {
   for (const m of all) {
     const f = frameOf(model, m);
     const L = f.length;
-    const tol = L * 1e-9;
+    // loads closer than this to a joint or each other act there: a piece much shorter swamps the solve
+    const tol = L * 1e-3;
     const stops = [0, L];
     for (const p of loads) {
       if (p.kind === 'dist' && p.member === m.id) stops.push(Math.max(0, Math.min(L, p.from)), Math.max(0, Math.min(L, p.to)));
       else if (p.kind !== 'dist' && 'member' in p.on && p.on.member === m.id) stops.push(Math.max(0, Math.min(L, p.on.at)));
     }
-    const sorted = [...new Set(stops)].sort((x, y) => x - y).filter((s, i, list) => i === 0 || s - list[i - 1] > tol);
+    const sorted = stops.sort((x, y) => x - y).reduce<number[]>((kept, s) => (kept.length && s - kept[kept.length - 1] <= tol ? kept : [...kept, s]), []);
     if (sorted[sorted.length - 1] < L) sorted[sorted.length - 1] = L;
     const onBar = m.bar && (sorted.length > 2 || loads.some((p) => p.kind === 'dist' && p.member === m.id));
     if (onBar) return result({ kind: 'error', text: `Truss bar ${memberName(model, m)} carries loads at its ends only. Make it a beam member, or put the load on a joint.` });
@@ -287,12 +288,9 @@ export function solve(model: StructureModel): Solution {
       elements.push(e);
     }
   }
-  const pointAt = (place: { node: string } | { member: string; at: number }) => {
-    if ('node' in place) return index.get(place.node);
-    const cuts = cutsOf.get(place.member);
-    if (!cuts) return undefined;
-    return cuts.reduce((best, c) => (Math.abs(c.s - place.at) < Math.abs(best.s - place.at) ? c : best)).point;
-  };
+  /** the cut nearest a distance along a member: where the solve puts a load there */
+  const cutAt = (member: string, at: number) => cutsOf.get(member)?.reduce((best, c) => (Math.abs(c.s - at) < Math.abs(best.s - at) ? c : best));
+  const pointAt = (place: { node: string } | { member: string; at: number }) => ('node' in place ? index.get(place.node) : cutAt(place.member, place.at)?.point);
 
   // ─── freedoms ───
   const sups = supports(model).filter((s) => index.has(s.node));
@@ -386,8 +384,10 @@ export function solve(model: StructureModel): Solution {
 
   // ─── solve the free freedoms ───
   const free = [...Array(count).keys()].filter((d) => !held.has(d));
-  const biggest = Math.max(1e-300, ...free.map((d) => Math.abs(K[d][d])));
-  const solved = gauss(free.map((r) => free.map((c) => K[r][c])), free.map((r) => F[r]), biggest * 1e-9);
+  // scaled by the diagonal first, so a short piece beside a load (very stiff) doesn't swamp the tolerance
+  const sc = free.map((d) => (K[d][d] ? 1 / Math.sqrt(Math.abs(K[d][d])) : 1));
+  const solved = gauss(free.map((r, i) => free.map((c, j) => K[r][c] * sc[i] * sc[j])), free.map((r, i) => F[r] * sc[i]), 1e-9);
+  if ('x' in solved) solved.x = solved.x.map((v, i) => v * sc[i]);
   if ('singular' in solved) {
     const dof = free[solved.singular];
     const at = dofs.findIndex((row) => row.includes(dof));
@@ -463,18 +463,22 @@ export function solve(model: StructureModel): Solution {
       const m = all.find((x) => x.id === p.member);
       if (!m) continue;
       const f = frameOf(model, m);
+      // the load as the solve carries it: its ends at their cuts (within the member), its values there
+      const [from, to] = [cutAt(m.id, p.from)!.s, cutAt(m.id, p.to)!.s];
+      const at = (s: number) => (p.to === p.from ? p.w1 : p.w1 + ((p.w2 - p.w1) * (s - p.from)) / (p.to - p.from));
+      const [w1, w2] = [at(from), at(to)];
       const d = loadDirection(p, f.u);
-      const span = p.to - p.from;
-      const W = ((p.w1 + p.w2) / 2) * span;
-      const centre = p.w1 + p.w2 ? p.from + (span * (p.w1 + 2 * p.w2)) / (3 * (p.w1 + p.w2)) : p.from + span / 2;
+      const span = to - from;
+      const W = ((w1 + w2) / 2) * span;
+      const centre = w1 + w2 ? from + (span * (w1 + 2 * w2)) / (3 * (w1 + w2)) : from + span / 2;
       // a load whose ends have opposite signs: its two triangles
-      const parts = Math.sign(p.w1) * Math.sign(p.w2) < 0 ? [[p.w1, 0, p.from, p.from + (span * p.w1) / (p.w1 - p.w2)], [0, p.w2, p.from + (span * p.w1) / (p.w1 - p.w2), p.to]] : [[p.w1, p.w2, p.from, p.to]];
+      const parts = Math.sign(w1) * Math.sign(w2) < 0 ? [[w1, 0, from, from + (span * w1) / (w1 - w2)], [0, w2, from + (span * w1) / (w1 - w2), to]] : [[w1, w2, from, to]];
       if (parts.length === 1) add({ x: f.a.x + f.u.x * centre, y: f.a.y + f.u.y * centre }, { x: d.x * W, y: d.y * W });
       else
-        for (const [w1, w2, from, to] of parts) {
-          const s = to - from;
-          const c = from + (s * (w1 + 2 * w2)) / (3 * (w1 + w2));
-          const w = ((w1 + w2) / 2) * s;
+        for (const [v1, v2, start, end] of parts) {
+          const s = end - start;
+          const c = start + (s * (v1 + 2 * v2)) / (3 * (v1 + v2));
+          const w = ((v1 + v2) / 2) * s;
           add({ x: f.a.x + f.u.x * c, y: f.a.y + f.u.y * c }, { x: d.x * w, y: d.y * w });
         }
     } else {
