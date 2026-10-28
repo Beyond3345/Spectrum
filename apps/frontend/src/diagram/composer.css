@@ -720,10 +720,21 @@
   justify-content: flex-end;
 }
 
+/* the Symbol sets… button stays below the palette, which scrolls on its own */
+.diagram-rail:has(> .diagram-sets) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.diagram-rail:has(> .diagram-sets) > :first-child {
+  flex: 1;
+  min-height: 0;
+}
+
 .diagram-sets {
-  display: block;
-  width: 100%;
-  margin-top: 8px;
+  flex: none;
+  margin: 8px 10px 0;
 }
 
 @media (max-width: 720px) {
