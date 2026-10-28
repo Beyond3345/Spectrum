@@ -129,7 +129,7 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
   const create = async () => {
     if (!mode) return;
     if (!NAME.test(name)) {
-      setError('Use letters, digits, - and _ only, starting with a letter or digit, so LaTeX can find the file.');
+      setError('Use letters, digits, - and _ only, starting with a letter or digit, so your document can find the file.');
       return;
     }
     const path = `figures/${name}.${ext}`;
