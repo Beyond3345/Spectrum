@@ -135,7 +135,8 @@ test('the bridge does the handshake, relays an editor’s messages and keeps the
   assert.equal(start.path, WINDOWS ? `${process.env.SystemRoot}\\System32;${process.env.SystemRoot}` : '/usr/bin:/bin');
   assert.deepEqual(start.args, ['run']);
   // not in the project's folder, which Windows then couldn't move or bin while it runs
-  assert.equal(start.cwd.toLowerCase(), realpathSync.native(tmpdir()).toLowerCase());
+  // (the same folder by its long name: a Windows runner's TEMP can be a short 8.3 one, such as RUNNER~1)
+  assert.equal(realpathSync.native(start.cwd).toLowerCase(), realpathSync.native(tmpdir()).toLowerCase());
   assert.equal(initialize.method, 'initialize');
   assert.equal(initialize.params.rootUri, rootUri);
   assert.deepEqual(initialize.params.workspaceFolders, [{ uri: rootUri, name: path.basename(p.path) }]);
@@ -220,13 +221,13 @@ test('a moved project gets a TexLab on its new folder, one can be stopped before
   await stopProjectTexlab(p.id);
 
   // TexLab 5.26 panics on a file URI with [, ], ^ or | in it: a project's name can't hold a |, but a folder opened or
-  // moved to can
+  // moved to can (on a Mac; Windows has no | in a name, so a ^ there)
   const odd = await createProject({ name: 'Thesis [draft]', populate: (root) => fs.writeFile(path.join(root, 'main.tex'), 'x') });
   assert.match(odd.path, /\[draft\]/);
   assert.deepEqual(await diagnostics(odd), { ok: true, available: false, files: {} });
   assert.equal((await connect(odd)).status, 503);
   const piped = await newProject({ 'main.tex': 'x' });
-  const there = path.join(tmp, 'projects', 'Draft | final');
+  const there = path.join(tmp, 'projects', WINDOWS ? 'Draft ^ final' : 'Draft | final');
   await fs.rename(piped.path, there);
   await moveEntry(piped.id, there);
   assert.deepEqual(await diagnostics(piped), { ok: true, available: false, files: {} });

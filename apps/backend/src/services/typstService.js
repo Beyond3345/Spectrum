@@ -43,16 +43,19 @@ const ELEMENTS = [
   '}'
 ].join('\n');
 
-/** A diagnostic's file as the project sees it, with forward slashes: Typst prints it from the folder it ran in. */
-function projectPath(file, projectRoot, cwd) {
-  const raw = String(file).trim();
-  const abs = path.isAbsolute(raw) ? raw : path.resolve(cwd, raw);
-  const rel = path.relative(projectRoot, abs);
-  return rel.startsWith('..') || path.isAbsolute(rel) ? raw.split(path.sep).join('/') : rel.split(path.sep).join('/');
+/**
+ * A diagnostic's file as the project sees it, with forward slashes: Typst prints it from the folder it ran in, and on
+ * Windows as a \\?\ path, which shares no root with the project's until that prefix goes.
+ */
+function projectPath(file, projectRoot, cwd, p) {
+  const raw = String(file).trim().replace(/^\\\\\?\\(UNC\\)?/, (_, unc) => (unc ? '\\\\' : ''));
+  const abs = p.isAbsolute(raw) ? raw : p.resolve(cwd, raw);
+  const rel = p.relative(projectRoot, abs);
+  return rel.startsWith('..') || p.isAbsolute(rel) ? raw.split(p.sep).join('/') : rel.split(p.sep).join('/');
 }
 
 /** Typst's errors and warnings from a short-format log, each hint added to the message of the diagnostic before it. */
-export function parseTypstDiagnostics(log, projectRoot, cwd = projectRoot) {
+export function parseTypstDiagnostics(log, projectRoot, cwd = projectRoot, p = path) {
   const diagnostics = [];
   let last = null;
   for (const line of String(log || '').split(/\r?\n/)) {
@@ -61,7 +64,7 @@ export function parseTypstDiagnostics(log, projectRoot, cwd = projectRoot) {
       last = {
         severity: match[4],
         message: match[5].trim(),
-        file: projectPath(match[1], projectRoot, cwd),
+        file: projectPath(match[1], projectRoot, cwd, p),
         line: Number(match[2]),
         column: Number(match[3])
       };

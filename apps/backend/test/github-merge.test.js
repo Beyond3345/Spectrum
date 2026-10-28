@@ -73,7 +73,8 @@ async function asWindows(fn) {
 function commitOnGitHub(repo, files) {
   const dir = gh.bare('octo', repo);
   const env = { ...process.env, GIT_INDEX_FILE: path.join(tmp, `index-${repo}`), GIT_AUTHOR_NAME: 'Other', GIT_AUTHOR_EMAIL: 'o@x', GIT_COMMITTER_NAME: 'Other', GIT_COMMITTER_EMAIL: 'o@x' };
-  const run = (args, input) => execFileSync('git', ['-c', 'core.ignorecase=false', ...args], { cwd: dir, env, input }).toString().trim();
+  // Git for Windows refuses a name Windows can't hold (core.protectNTFS) even in a bare repository's index
+  const run = (args, input) => execFileSync('git', ['-c', 'core.ignorecase=false', '-c', 'core.protectNTFS=false', ...args], { cwd: dir, env, input }).toString().trim();
   run(['read-tree', 'main']);
   for (const [rel, text] of Object.entries(files)) {
     const link = typeof text === 'object' && text.link;

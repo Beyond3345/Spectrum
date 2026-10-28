@@ -10,7 +10,7 @@ import os from 'node:os';
 const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'spectrum-agent-profiles-')));
 const home = path.join(dir, 'home');
 process.env.SPECTRUM_DATA_DIR = path.join(dir, 'data');
-process.env.HOME = home;
+process.env.HOME = process.env.USERPROFILE = home;
 process.env.PATH = '/usr/bin:/bin';
 const { PROFILES, profileFor, saveAgentConfig, agentConfigs, listAgents, agentEntry, agentState, launchOptions, installAdapter, removeAdapter, recordTest, importAgentLogin, AGENT_DIR } = await import('../src/services/agentProfiles.js');
 after(() => fs.rm(dir, { recursive: true, force: true }));

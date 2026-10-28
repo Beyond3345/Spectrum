@@ -85,7 +85,7 @@ test('the binding is Hunspell 1.7.6, opens a folder whose name is not ASCII, and
   assert.ok(latin.suggest('cafe').includes('café'));
   writeFileSync(path.join(dir, 'k.aff'), 'SET KOI8-R\n');
   writeFileSync(path.join(dir, 'k.dic'), '1\nx\n');
-  assert.throws(() => new Speller(path.join(dir, 'k.aff'), path.join(dir, 'k.dic')), /Unsupported dictionary encoding KOI8-R/);
+  assert.throws(() => new Speller(hunPath(path.join(dir, 'k.aff')), hunPath(path.join(dir, 'k.dic'))), /Unsupported dictionary encoding KOI8-R/);
 });
 
 test('a Windows path to Hunspell takes the \\\\?\\ form', () => {
