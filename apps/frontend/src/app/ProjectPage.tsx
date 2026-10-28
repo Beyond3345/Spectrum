@@ -856,26 +856,29 @@ export default function ProjectPage() {
                 </button>
               )}
             </label>
-            <div className="segmented icon-segmented" role="radiogroup" aria-label="View">
-              <button
-                className={`segment ${prefs.layout === 'list' ? 'active' : ''}`}
-                role="radio"
-                aria-checked={prefs.layout === 'list'}
-                title="List"
-                onClick={() => updatePrefs({ layout: 'list' })}
-              >
-                <Icon name="list.bullet" />
-              </button>
-              <button
-                className={`segment ${prefs.layout === 'grid' ? 'active' : ''}`}
-                role="radio"
-                aria-checked={prefs.layout === 'grid'}
-                title="Grid"
-                onClick={() => updatePrefs({ layout: 'grid' })}
-              >
-                <Icon name="square.grid.2x2" />
-              </button>
-            </div>
+            {/* the GitHub view is one list of repositories */}
+            {view !== 'github' && (
+              <div className="segmented icon-segmented" role="radiogroup" aria-label="View">
+                <button
+                  className={`segment ${prefs.layout === 'list' ? 'active' : ''}`}
+                  role="radio"
+                  aria-checked={prefs.layout === 'list'}
+                  title="List"
+                  onClick={() => updatePrefs({ layout: 'list' })}
+                >
+                  <Icon name="list.bullet" />
+                </button>
+                <button
+                  className={`segment ${prefs.layout === 'grid' ? 'active' : ''}`}
+                  role="radio"
+                  aria-checked={prefs.layout === 'grid'}
+                  title="Grid"
+                  onClick={() => updatePrefs({ layout: 'grid' })}
+                >
+                  <Icon name="square.grid.2x2" />
+                </button>
+              </div>
+            )}
             <MenuButton
               label="Import"
               disabled={busy}
