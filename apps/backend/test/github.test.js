@@ -496,7 +496,8 @@ test('GitHub having trouble, or a request that times out, waits for the connecti
 });
 
 test('a default projects folder in OneDrive (Documents backed up there) moves to the home folder, where GitHub takes projects', { skip }, async () => {
-  const docs = path.join(home, 'Library', 'CloudStorage', 'OneDrive-Personal', 'Documents');
+  // where the Mac's OneDrive and Windows' (the OneDrive variable's folder) keep Documents
+  const docs = process.platform === 'win32' ? path.join(home, 'OneDrive', 'Documents') : path.join(home, 'Library', 'CloudStorage', 'OneDrive-Personal', 'Documents');
   mkdirSync(docs, { recursive: true });
   const laptop = await startComputer('Laptop', { tmp, home, gh, env: { SPECTRUM_PROJECTS_DIR: path.join(docs, 'Spectrum'), OneDrive: path.join(home, 'OneDrive') } });
   computers.Laptop = laptop;

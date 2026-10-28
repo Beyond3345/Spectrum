@@ -14,7 +14,8 @@ const tmp = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'spectrum-engine
 const fakeBin = path.join(tmp, 'bin');
 const dataDir = path.join(tmp, 'data');
 const archive = path.join(tmp, 'release.tar.gz');
-const ARCH = process.platform === 'win32' ? 'win-x64' : process.arch === 'arm64' ? 'arm64' : 'x64';
+const WINDOWS = process.platform === 'win32';
+const ARCH = WINDOWS ? 'win-x64' : process.arch === 'arm64' ? 'arm64' : 'x64';
 
 process.env.HOME = path.join(tmp, 'home');
 process.env.SPECTRUM_DATA_DIR = dataDir;
@@ -24,17 +25,20 @@ process.env.PATH = [fakeBin, process.env.PATH].join(path.delimiter);
 delete process.env.SPECTRUM_TYPST;
 delete process.env.SPECTRUM_TECTONIC;
 
+// Windows can't run a #!/bin/sh script, so there it is a .cmd, which findExecutable finds by its name
 const fakeScript = async (name, output) => {
   await fs.mkdir(fakeBin, { recursive: true });
-  const file = path.join(fakeBin, name);
-  await fs.writeFile(file, '#!/bin/sh\necho ' + JSON.stringify(output) + '\n', { mode: 0o755 });
+  const file = path.join(fakeBin, name + (WINDOWS ? '.cmd' : ''));
+  await fs.writeFile(file, WINDOWS ? '@echo off\r\n' + output.split('\n').map((line) => 'echo ' + line + '\r\n').join('') : '#!/bin/sh\necho ' + JSON.stringify(output) + '\n', { mode: 0o755 });
   chmodSync(file, 0o755);
 };
 await fakeScript('typst', 'typst 0.13.1 (abc123)');
 await fakeScript('pandoc', 'pandoc 3.1.2\nCompiled with texmath 0.12');
 await fs.mkdir(path.join(tmp, 'release'), { recursive: true });
-await fs.writeFile(path.join(tmp, 'release', 'typst'), '#!/bin/sh\necho typst 9.9.9\n', { mode: 0o755 });
-execFileSync('tar', ['-czf', archive, '-C', path.join(tmp, 'release'), 'typst']);
+// the release holds typst.exe on Windows; nothing runs it
+const releaseTypst = WINDOWS ? 'typst.exe' : 'typst';
+await fs.writeFile(path.join(tmp, 'release', releaseTypst), '#!/bin/sh\necho typst 9.9.9\n', { mode: 0o755 });
+execFileSync('tar', ['-czf', archive, '-C', path.join(tmp, 'release'), releaseTypst]);
 const bytes = (await fs.stat(archive)).size;
 const sha = createHash('sha256').update(await fs.readFile(archive)).digest('hex');
 
@@ -66,11 +70,12 @@ test('listEngines reports the built-in Typst, the one on the PATH and pandoc', a
   const engines = await listEngines();
   const versions = ['0.15.1', '0.14.2', '0.13.1', '0.12.0'];
   assert.ok(engines.typst.builtIn === null || engines.typst.builtIn === '0.15.1');
-  assert.equal(engines.typst.system.version, '0.13.1');
-  assert.equal(engines.typst.system.path, path.join(fakeBin, 'typst'));
+  // Node runs a .cmd only through a shell, which versionOf doesn't use, so on Windows the fakes' versions are unknown
+  assert.equal(engines.typst.system.version, WINDOWS ? null : '0.13.1');
+  assert.equal(engines.typst.system.path, path.join(fakeBin, WINDOWS ? 'typst.cmd' : 'typst'));
   // the built-in version is never offered, even in a checkout without its binary: typstFor runs only the built-in copy
   assert.deepEqual(engines.typst.available.map((v) => v.version), versions.slice(1));
-  assert.equal(engines.pandoc.found.version, '3.1.2');
+  assert.equal(engines.pandoc.found.version, WINDOWS ? null : '3.1.2');
   assert.equal(engines.pandoc.found.fromDownload, false);
   assert.equal(engines.pandoc.downloadable, '3.12.1');
   assert.deepEqual(engines.pandoc.minimum, { latex: '3.1', typst: '3.8.3' });
@@ -80,7 +85,7 @@ test('listEngines reports the built-in Typst, the one on the PATH and pandoc', a
 test('a Typst version installs from its verified release and can be removed', async () => {
   useEngineList(typstList([release('9.9.9', sha)], '9.9.8'));
   const installed = await installTypst('9.9.9');
-  assert.equal(installed, path.join(dataDir, 'engines', 'typst', '9.9.9', process.platform === 'win32' ? 'typst.exe' : 'typst'));
+  assert.equal(installed, path.join(dataDir, 'engines', 'typst', '9.9.9', releaseTypst));
   assert.match(await fs.readFile(installed, 'utf8'), /typst 9\.9\.9/);
   assert.equal(typstFor('9.9.9'), installed);
   assert.deepEqual((await listEngines()).typst.installed, ['9.9.9']);

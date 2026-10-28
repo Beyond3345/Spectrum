@@ -159,10 +159,26 @@ async function spellerFor(lang) {
 }
 
 async function fetchFile(url) {
-  // a download that stalls (no data for a while) is stopped
-  const res = await fetch(url, { signal: AbortSignal.timeout(Number(process.env.SPECTRUM_DOWNLOAD_IDLE_MS) || 120_000) });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return Buffer.from(await res.arrayBuffer());
+  // a download that stalls (no data for a while) is stopped, however long a slow but steady one takes
+  const controller = new AbortController();
+  let idle;
+  const stall = () => {
+    clearTimeout(idle);
+    idle = setTimeout(() => controller.abort(), Number(process.env.SPECTRUM_DOWNLOAD_IDLE_MS) || 120_000);
+  };
+  try {
+    stall();
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+    const chunks = [];
+    for await (const chunk of res.body) {
+      stall();
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+  } finally {
+    clearTimeout(idle);
+  }
 }
 
 /**
