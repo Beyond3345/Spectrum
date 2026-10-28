@@ -1863,6 +1863,108 @@ textarea.skill-file-text {
   margin-top: 12px;
 }
 
+/* Settings › Agents: a card for each agent, its header one button */
+.agent-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.agent-group-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.agent-card {
+  padding: 0;
+  gap: 0;
+}
+
+.agent-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-card-title {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.agent-card-title .badge {
+  margin-left: 6px;
+}
+
+.agent-card-status {
+  margin: 0;
+}
+
+.agent-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 12px 12px 48px;
+}
+
+.agent-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+
+.agent-section > h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.agent-code {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+}
+
+.agent-code > code {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.agent-details {
+  max-height: 160px;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  white-space: pre-wrap;
+}
+
+.agent-reason {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
 /* Settings › GitHub: the device sign-in's code, read off the screen into GitHub's page */
 .device-code {
   margin: 8px 0;

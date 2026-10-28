@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import {
   changeSpellWord,
-  configureLocalAgent,
   createSkill,
   deleteSkill,
   duplicateSkill,
@@ -14,9 +13,7 @@ import {
   removeTypst,
   getSyncSettings,
   grammarStatus,
-  importLocalAgentLogin,
   importSkill,
-  listLocalAgents,
   listProjects,
   listSkillFiles,
   listSkills,
@@ -31,14 +28,14 @@ import {
   updateSyncSettings,
   writeSkillFile
 } from '../api/client';
-import type { BibTool, CheckerStatus, CompileEngine, Engines, LocalAgent, SearchProvider, Skill, SkillShare, SystemCheck } from '../api/client';
+import type { BibTool, CheckerStatus, CompileEngine, Engines, SearchProvider, Skill, SkillShare, SystemCheck } from '../api/client';
 import { COLOUR_ROLES, EDITOR_FONTS, EDITOR_THEMES, chosenColours, editorColours, highlightLines, themeFor, wellColour } from '../editor/editorThemes';
 import type { EditorMode } from '../editor/editorThemes';
 import { highlightColour } from '../editor/synctex';
 import { CheckpointCleanup } from '../editor/tools/VersionsTab';
 import { resetPersonas } from '../editor/personas';
 import type { Persona } from '../editor/personas';
-import { AGENTS_CHANGED, ENGINES_CHANGED, errorText } from '../editor/shared';
+import { ENGINES_CHANGED, errorText } from '../editor/shared';
 import { ZoteroSettings } from '../editor/ZoteroCite';
 import { confirmDialog } from './Dialogs';
 import Icon from './Icon';
@@ -47,6 +44,7 @@ import Sheet from './Sheet';
 import Tabs from './Tabs';
 import { ParserFields } from './TransferPanel';
 import GitHubSettings from './GitHubSettings';
+import AgentsPane from './AgentSettings';
 import { IS_DESKTOP, claimDefaultHandler, pickFolder } from './desktop';
 import { toast } from './Toast';
 import { IS_MAC, IS_WINDOWS, OS_NAME, tildify } from './platform';
@@ -2104,217 +2102,6 @@ function SkillSharing({ refresh }: { refresh: unknown }) {
           <span className={`badge ${target.linked ? 'success' : ''}`}>{target.linked ? 'Linked' : target.exists ? 'Not linked' : 'Not on this computer'}</span>
         </div>
       ))}
-      {error && <div className="field-hint error">{error}</div>}
-    </>
-  );
-}
-
-/** Settings › Agents: each local agent's program, key, launcher arguments and runtime folders, and copying its login in. */
-function AgentsPane() {
-  const [agents, setAgents] = useState<LocalAgent[] | null>(null);
-  // the agent last picked in the agent workspace, which its "Set up in Settings › Agents" opens
-  const [agentId, setAgentId] = useState(() => {
-    try {
-      return localStorage.getItem('spectrum-agent-pick') || 'opencode';
-    } catch {
-      return 'opencode';
-    }
-  });
-  const [command, setCommand] = useState('');
-  const [args, setArgs] = useState('[]');
-  const [runtimePaths, setRuntimePaths] = useState('');
-  const [key, setKey] = useState('');
-  const [keyEnv, setKeyEnv] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const current = agents?.find((a) => a.id === agentId) ?? agents?.[0];
-
-  const refresh = () =>
-    listLocalAgents().then((res) => {
-      setAgents(res.agents);
-      return res.agents;
-    });
-  useEffect(() => {
-    refresh()
-      // a pick that can't run here (OpenCode on Windows) opens at the first agent that can, as the workspace does
-      .then((list) => setAgentId((id) => (list.find((a) => a.id === id && !a.unavailable) ?? list.find((a) => !a.unavailable))?.id ?? id))
-      .catch((err) => setError(errorText(err)));
-  }, []);
-  // the form shows what's saved for the agent picked, and again after each save
-  useEffect(() => {
-    if (!current) return;
-    setCommand(current.command);
-    setArgs(JSON.stringify(current.args));
-    setRuntimePaths(current.runtimePaths.join('\n'));
-    setKey('');
-    setKeyEnv(current.keyEnv);
-  }, [current?.id, current?.command, current?.keyEnv, JSON.stringify(current?.args), JSON.stringify(current?.runtimePaths)]);
-
-  const run = async (work: () => Promise<unknown>) => {
-    setBusy(true);
-    setError('');
-    try {
-      await work();
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-  const launcherArgs = () => {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(args);
-    } catch {
-      // the message below
-    }
-    if (!Array.isArray(parsed) || !parsed.every((a) => typeof a === 'string')) throw new Error('Launcher arguments must be a JSON list of strings, e.g. ["acp"].');
-    return parsed as string[];
-  };
-  const save = (agent: LocalAgent) =>
-    run(async () => {
-      const paths = runtimePaths.split('\n').map((p) => p.trim()).filter(Boolean);
-      await configureLocalAgent(agent.id, { command, args: launcherArgs(), runtimePaths: paths, keyEnv, ...(key && { apiKey: key }) });
-      setKey('');
-      await refresh();
-      window.dispatchEvent(new Event(AGENTS_CHANGED));
-    });
-  const copyLogin = (agent: LocalAgent) =>
-    run(async () => {
-      const res = await importLocalAgentLogin(agent.id);
-      toast(`Copied ${res.files} login and configuration ${res.files === 1 ? 'file' : 'files'} into ${agent.name}’s private home.`, { tone: 'success' });
-    });
-  // with what's saved rather than the form, so unsaved edits stay unsaved
-  const removeKey = (agent: LocalAgent) =>
-    run(async () => {
-      await configureLocalAgent(agent.id, { command: agent.command, args: agent.args, runtimePaths: agent.runtimePaths, apiKey: '' });
-      await refresh();
-      window.dispatchEvent(new Event(AGENTS_CHANGED));
-    });
-
-  return (
-    <>
-      <div className="field-hint section-hint">
-        Coding agents installed on this computer, such as {IS_WINDOWS ? 'Kimi Code, Hermes, Qoder and Cursor' : 'OpenCode, Codex and Claude'}, work on a project from the agent workspace. Each runs isolated with a private
-        home of its own, and in review mode on a copy of the project, so you choose which changes come in.
-      </div>
-      {IS_WINDOWS && (
-        <div className="field-hint">
-          On Windows, local agents get no Spectrum tools yet, such as compiling or searching the literature. Skills and the workspace’s task buttons work all the
-          same.
-        </div>
-      )}
-      {!agents && !error && (
-        <div className="field-hint">
-          <span className="spinner" /> Loading…
-        </div>
-      )}
-      {current && (
-        <>
-          <div className="field">
-            <label id="settings-agent">Agent</label>
-            <Select
-              labelId="settings-agent"
-              value={current.id}
-              disabled={busy}
-              options={agents!.map((a): [string, string] => [
-                a.id,
-                `${a.name}${a.experimental ? ' · Experimental' : ''}${a.unavailable ? (a.id === 'workbuddy' ? ' · Planned' : ' · Unavailable') : ''}`
-              ])}
-              onChange={(id) => {
-                setAgentId(id);
-                setError('');
-              }}
-            />
-            <div className="field-hint">
-              {current.unavailable || current.note}{' '}
-              <a href={current.url} target="_blank" rel="noreferrer">
-                Setup guide
-              </a>
-            </div>
-            {!current.unavailable && !current.installed && <div className="field-hint error">Not found. Install it, or choose its executable below.</div>}
-            {!current.unavailable && !current.supported && (
-              <div className="field-hint error">Agent isolation isn’t available on this computer. Repair or reinstall Spectrum before starting an agent.</div>
-            )}
-          </div>
-          {!current.unavailable && (
-            <>
-              <div className="field">
-                <label htmlFor="settings-agentCommand">Executable</label>
-                <input
-                  id="settings-agentCommand"
-                  className="input"
-                  value={command}
-                  placeholder={current.command}
-                  spellCheck={false}
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  autoComplete="off"
-                  onChange={(e) => setCommand(e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label id="settings-agentKeyEnv">Provider credential</label>
-                <Select
-                  labelId="settings-agentKeyEnv"
-                  value={keyEnv}
-                  options={current.keyEnvs.map((name): [string, string] => [name, name.replace(/_(API_KEY|PERSONAL_ACCESS_TOKEN)$/, '').replace(/_/g, ' ')])}
-                  onChange={setKeyEnv}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="settings-agentKey">API key or access token</label>
-                <input
-                  id="settings-agentKey"
-                  className="input"
-                  type="password"
-                  autoComplete="off"
-                  value={key}
-                  placeholder={current.hasKey && keyEnv === current.keyEnv ? 'Saved on this computer; leave blank to keep it' : 'Optional when a copied login is there'}
-                  onChange={(e) => setKey(e.target.value)}
-                />
-                {current.hasKey && keyEnv !== current.keyEnv && (
-                  <div className="field-hint">Saving another provider removes the saved key, so enter that provider’s key here.</div>
-                )}
-              </div>
-              <details className="agent-advanced">
-                <summary>Advanced</summary>
-                <div className="field">
-                  <label htmlFor="settings-agentArgs">Launcher arguments (a JSON list)</label>
-                  <input id="settings-agentArgs" className="input mono" value={args} spellCheck={false} onChange={(e) => setArgs(e.target.value)} />
-                </div>
-                <div className="field">
-                  <label htmlFor="settings-agentRuntime">Runtime folders, one a line</label>
-                  <textarea id="settings-agentRuntime" className="input mono" rows={3} value={runtimePaths} spellCheck={false} onChange={(e) => setRuntimePaths(e.target.value)} />
-                  <div className="field-hint">
-                    Folders the agent may read its installed libraries from, such as a Python 3.11 or later for skills’ scripts. Choose specific folders: your
-                    home folder and the live project are never opened to it.
-                  </div>
-                </div>
-              </details>
-              <div className="row">
-                <button className="btn small primary" disabled={busy} onClick={() => save(current)}>
-                  Save setup
-                </button>
-                {current.canImport && (
-                  <button className="btn small" disabled={busy} onClick={() => copyLogin(current)}>
-                    Copy existing login
-                  </button>
-                )}
-                {current.hasKey && (
-                  <button className="btn small" disabled={busy} onClick={() => removeKey(current)}>
-                    Remove saved key
-                  </button>
-                )}
-              </div>
-              <div className="field-hint">
-                Keys and copied logins stay in Spectrum’s private data on this computer. The agent’s tools and commands stay isolated, and MCP servers set up for it
-                outside Spectrum get no access to this computer.
-              </div>
-            </>
-          )}
-        </>
-      )}
       {error && <div className="field-hint error">{error}</div>}
     </>
   );

@@ -2791,21 +2791,41 @@ textarea.table-latex {
   gap: 4px;
 }
 
+/* every agent's logo on the same white tile, in its own colours, in light and dark mode alike */
 .agent-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
   width: 26px;
   height: 26px;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--bg-subtle);
-  color: var(--text);
+  background: #fff;
+  color: #1d1d1f;
   font-size: 11px;
   font-weight: 600;
 }
 
+.agent-logo {
+  width: 16px;
+  height: 16px;
+}
+
 .agent-icon.missing {
-  color: var(--text-tertiary);
+  color: #86868b;
   border-style: dashed;
+}
+
+.agent-icon.missing .agent-logo {
+  opacity: 0.5;
+}
+
+/* Set up another agent */
+.agent-icon.agent-add {
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
 }
 
 .agent-icon.active {

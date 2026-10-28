@@ -27,11 +27,21 @@ import { AGENTS_CHANGED, VERSIONS_CHANGED, errorText, relativeTime } from '../sh
 import { AgentComposer, ChangesTray, PersonaPicker, PlanStrip, ReviewView, Transcript, Welcome, readStored as read, taskPersona, useFollow, useSkills, writeStored as write } from './parts';
 import type { ContextKind, Draft, TaskRequest, TrayChange } from './parts';
 import { RUNNING, addEvent, project } from './transcript';
+import AgentLogo from './AgentLogo';
+import { chosenAgent, shownAgents } from './agents';
+import { AGENT_CARD_KEY } from '../../app/AgentSettings';
 import type { Checkpoint } from './transcript';
 
 export type AgentStatus = 'running' | 'waiting' | 'changes' | null;
 
-const monogram = (name: string) => name.replace(/[^A-Za-z0-9]/g, '').slice(0, 2);
+// Settings › Agents opens at this agent's card when it isn't ready (AgentSettings.tsx)
+const openCard = (id: string) => {
+  try {
+    sessionStorage.setItem(AGENT_CARD_KEY, id);
+  } catch {
+    // Settings opens with no card open
+  }
+};
 
 /** The 1.10 ACP agents (OpenCode, Codex, Claude and the others), each run isolated by agentSessionService.js. */
 export default function LocalAgentTab({
@@ -76,7 +86,8 @@ export default function LocalAgentTab({
   const skills = useSkills(api.projectId, active);
 
   // one that can run here: a pick unavailable on this computer (OpenCode on Windows) falls back to the first that is
-  const current = agents.find((a) => a.id === agentId && !a.unavailable) ?? agents.find((a) => !a.unavailable);
+  // the open session's agent, else the remembered pick when it's set up, else the first set up
+  const current = chosenAgent(agents, session?.agentId, agentId);
   const currentId = current?.id ?? agentId;
   const view = useMemo(() => project(events, { pending, checkpoints }), [events, pending, checkpoints]);
   const running = working || RUNNING.includes(session?.status || '');
@@ -279,9 +290,9 @@ export default function LocalAgentTab({
   };
 
   const tray = useMemo(() => changes.map((c): TrayChange => ({ path: c.path, kind: c.kind, binary: c.binary, original: c.original ?? '', proposed: c.proposed ?? '', size: c.size, afterHash: c.afterHash })), [changes]);
-  const ready = !!current?.installed && !!current.supported;
+  const ready = !!current?.setUp && current.supported;
   const empty = !session || !view.items.length;
-  const usable = agents.filter((a) => !a.unavailable);
+  const usable = shownAgents(agents, session?.agentId);
   const agentName = (id: string) => agents.find((a) => a.id === id)?.name || id;
   const modes = view.modes && !view.configOptions.some((o) => o.category === 'mode') ? view.modes : null;
 
@@ -431,45 +442,79 @@ export default function LocalAgentTab({
           onSend={(text, opts) => void send(text, opts)}
           picker={
             <div className="agent-picker">
-              <div
-                className="agent-picker-icons"
-                role="radiogroup"
-                aria-label="Agent"
-                // one tab stop, the arrow keys moving the choice
-                onKeyDown={(e) => {
-                  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) || !usable.length) return;
-                  e.preventDefault();
-                  const at = usable.findIndex((a) => a.id === currentId);
-                  const next = usable[(at + (e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? usable.length - 1 : 1)) % usable.length];
-                  pickAgent(next.id);
-                  e.currentTarget.querySelector<HTMLElement>(`[data-agent="${next.id}"]`)?.focus();
-                }}
-              >
-                {usable.map((a) => (
+              {agents.length > 0 && !usable.length ? (
+                <>
+                  <span className="field-hint">No agents are set up yet.</span>
                   <button
-                    key={a.id}
-                    data-agent={a.id}
-                    role="radio"
-                    aria-checked={a.id === currentId}
-                    tabIndex={a.id === currentId ? 0 : -1}
-                    className={`agent-icon ${a.id === currentId ? 'active' : ''} ${a.installed && a.supported ? '' : 'missing'}`}
-                    title={a.installed && a.supported ? a.name : `${a.name} · Not set up`}
-                    aria-label={a.name}
-                    disabled={running}
-                    onClick={() => pickAgent(a.id)}
+                    className="btn small"
+                    onClick={() => {
+                      openCard(agentId);
+                      onOpenSettings('agents');
+                    }}
                   >
-                    {monogram(a.name)}
+                    Set up an agent
                   </button>
-                ))}
-              </div>
-              <span className="agent-picker-name">
-                {current?.name}
-                {current?.experimental && ' · Experimental'}
-              </span>
-              {current && !ready && (
-                <button className="btn small ghost" onClick={() => onOpenSettings('agents')}>
-                  Set up in Settings › Agents
-                </button>
+                </>
+              ) : (
+                <>
+                  <div
+                    className="agent-picker-icons"
+                    role="radiogroup"
+                    aria-label="Agent"
+                    // one tab stop, the arrow keys moving the choice
+                    onKeyDown={(e) => {
+                      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) || !usable.length) return;
+                      e.preventDefault();
+                      const at = usable.findIndex((a) => a.id === currentId);
+                      const next = usable[(at + (e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? usable.length - 1 : 1)) % usable.length];
+                      pickAgent(next.id);
+                      e.currentTarget.querySelector<HTMLElement>(`[data-agent="${next.id}"]`)?.focus();
+                    }}
+                  >
+                    {usable.map((a) => (
+                      <button
+                        key={a.id}
+                        data-agent={a.id}
+                        role="radio"
+                        aria-checked={a.id === currentId}
+                        tabIndex={a.id === currentId ? 0 : -1}
+                        className={`agent-icon ${a.id === currentId ? 'active' : ''} ${a.setUp && a.supported ? '' : 'missing'}`}
+                        title={!a.setUp || !a.supported ? `${a.name} · Not set up` : a.state === 'failed' ? `${a.name} · Test failed` : a.name}
+                        aria-label={a.name}
+                        disabled={running}
+                        onClick={() => pickAgent(a.id)}
+                      >
+                        <AgentLogo agent={a} />
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    className="agent-icon agent-add"
+                    title="Set up another agent"
+                    aria-label="Set up another agent"
+                    onClick={() => {
+                      openCard('');
+                      onOpenSettings('agents');
+                    }}
+                  >
+                    <Icon name="plus" />
+                  </button>
+                  <span className="agent-picker-name">
+                    {current?.name}
+                    {current?.experimental && ' · Experimental'}
+                  </span>
+                  {current && !ready && (
+                    <button
+                      className="btn small ghost"
+                      onClick={() => {
+                        openCard(current.id);
+                        onOpenSettings('agents');
+                      }}
+                    >
+                      Set up in Settings › Agents
+                    </button>
+                  )}
+                </>
               )}
             </div>
           }
