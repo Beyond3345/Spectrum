@@ -7,7 +7,8 @@ import { createServer } from 'node:net';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { client, ndJsonStream } from '@agentclientprotocol/sdk';
+// unstable: plan_update, plan_removed and the systemPrompt session capability, which the stable entry lacks
+import { client, ndJsonStream } from '@agentclientprotocol/sdk/unstable';
 import { APP_VERSION, DATA_DIR } from '../config/constants.js';
 import { appPath, cachePath, detectMainFile, getProjectRoot, mutateProjectFiles, readMeta } from './projectService.js';
 import { compileFolder, findExecutable, SUPPORTED_ENGINES } from './compileService.js';
