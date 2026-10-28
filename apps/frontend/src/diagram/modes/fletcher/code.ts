@@ -125,11 +125,14 @@ function edgeCode(link: Link, boxes: Map<string, Box>) {
   const to = boxes.get(link.to);
   if (!from || !to) return '';
   const loop = from === to;
+  // a corner between boxes in line would sit on one of them, which fletcher refuses: straight there
+  const centre = (box: Box) => [cm(box.x + box.w / 2), cm(box.y + box.h / 2)];
+  const inLine = centre(from).some((v, i) => v === centre(to)[i]);
   const options = [
     !loop && link.route === 'curved' && 'bend: 30deg',
     // to the same side as TikZ's bend left, with lengths that go up
     !loop && link.route === 'bend' && 'bend: ' + BEND + 'deg',
-    !loop && link.route === 'angled' && 'corner: right',
+    !loop && !inLine && link.route === 'angled' && 'corner: right',
     loop && 'bend: 130deg, loop-angle: ' + LOOP_ANGLE[link.fromSide] + 'deg',
     link.label?.trim() && 'label: [' + content(link.label.trim()) + ']',
     strokeOf(link, false)
