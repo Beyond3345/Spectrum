@@ -15,7 +15,7 @@ const fletcher: DiagramMode<TikzModel> = {
   toCode: (model, _style, context) => fletcherCode(model, context?.typstVersion ?? ''),
   Canvas,
   Rail,
-  Inspector,
+  Inspector: (props) => <Inspector {...props} typst />,
   copy: copyTikz,
   paste: pasteTikz,
   remove: removeTikz

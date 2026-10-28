@@ -258,7 +258,9 @@ function Rail({ tool, onPick }: { tool: string; onPick(tool: string): void }) {
 /** The value the selected items share, or undefined when they differ. */
 const shared = <T,>(values: T[]) => (values.every((v) => v === values[0]) ? values[0] : undefined);
 
-function Inspector({ model, onChange, selection = [] }: { model: TikzModel; onChange(m: TikzModel): void; selection?: string[] }) {
+/** typst: the fletcher mode's, whose text and maths go into Typst. */
+function Inspector({ model, onChange, selection = [], typst = false }: { model: TikzModel; onChange(m: TikzModel): void; selection?: string[]; typst?: boolean }) {
+  const language = typst ? 'Typst' : 'LaTeX';
   const boxes = model.boxes.filter((b) => selection.includes(b.id));
   const links = model.links.filter((l) => selection.includes(l.id));
   if (!boxes.length && !links.length) {
@@ -285,7 +287,7 @@ function Inspector({ model, onChange, selection = [] }: { model: TikzModel; onCh
     <div className="diagram-inspector-fields">
       {box && (
         <>
-          <Row label={box.shape === 'maths' ? 'Maths (LaTeX, without $)' : 'Text (LaTeX)'}>
+          <Row label={box.shape === 'maths' ? `Maths (${language}, without $)` : `Text (${language})`}>
             <textarea id="diagram-text" className="input diagram-textarea" rows={3} spellCheck={false} value={box.text} onChange={(e) => patchBoxes({ text: e.target.value })} />
           </Row>
           <Row label="Shape">
