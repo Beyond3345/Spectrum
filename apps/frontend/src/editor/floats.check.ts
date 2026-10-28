@@ -1,6 +1,6 @@
 // Self-check for the Floats panel's LaTeX and the preamble helper. Run:
 // npx esbuild apps/frontend/src/editor/floats.check.ts --bundle --platform=node --log-level=warning | node
-import { placementOf, blockAt, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableRules, tableTypst, uniqueName } from './floats';
+import { placementOf, blockAt, diagramImageLatex, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableRules, tableTypst, uniqueName } from './floats';
 import type { TableModel } from './floats';
 import { addLibraries, addPackages, changeBetween, loadedLibraries, loadedPackages, projectPackages } from './preamble';
 
@@ -82,6 +82,8 @@ eq(
 );
 eq(diagramLatex({ ...amp, width: 0.5 }).split('\n')[2], '    \\includestandalone[width=0.5\\linewidth]{figures/amp}', 'a diagram scaled to half the line');
 eq(diagramLatex({ ...amp, placement: 'tb', span: true }).split('\n')[0], '\\begin{figure*}[t]', 'a diagram across both columns');
+eq(diagramImageLatex({ ...amp, path: 'figures/amp.pdf' }).split('\n')[2], '    \\includegraphics{figures/amp.pdf}', 'a diagram inserted as its PDF, at its own size');
+eq(diagramImageLatex({ ...amp, path: 'figures/amp.pdf', width: 0.5 }).split('\n')[2], '    \\includegraphics[width=0.5\\linewidth]{figures/amp.pdf}', 'or scaled');
 
 // ─── tables ───
 

@@ -7,12 +7,14 @@ import Select from '../../app/Select';
 import Sheet from '../../app/Sheet';
 import { openDiagram } from '../../app/desktop';
 import { IS_WINDOWS } from '../../app/platform';
+import { clashesWith } from '../../diagram/sets';
+import type { Clash } from '../../diagram/sets';
 import type { DiagramLanguage } from '../../diagram/types';
 import { useEditor } from '../EditorContext';
 import type { EditorApi } from '../EditorContext';
 import { VISION_HINTS, VISION_MODES, docKind, errorText, figureSnippet, isDocument } from '../shared';
 import type { VisionMode } from '../shared';
-import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableRules, tableTypst, uniqueName } from '../floats';
+import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableRules, tableTypst, uniqueName } from '../floats';
 import type { TableLines, TableModel } from '../floats';
 import { addLibraries, addPackages, changeBetween, loadedLibraries, projectPackages } from '../preamble';
 
@@ -583,10 +585,25 @@ const atLeastVersion = (version: string, minimum: string) => {
   return true;
 };
 
+/** What the project's preamble loads that clashes with a TikZ diagram's packages (sets.ts); none when it can't tell. */
+async function diagramClashes(api: EditorApi, diagram: HandedDiagram): Promise<Clash[]> {
+  if (!api.mainFile) return [];
+  const read = async (path: string) => (path === api.activePath ? api.editorValue : (await getFile(api.projectId, path)).content);
+  try {
+    const files = new Set(api.texFiles);
+    const packages = await projectPackages(api.mainFile, files, read);
+    const libraries = await projectPackages(api.mainFile, files, read, loadedLibraries);
+    return clashesWith(diagram, { packages, libraries });
+  } catch {
+    return [];
+  }
+}
+
 /**
  * The diagram the composer's Insert as figure handed over, as a figure: a TikZ diagram through \includestandalone, at
- * its own size by default, with standalone, its packages and its TikZ libraries added to the preamble; any other
- * (Mermaid) as its exported image. Without one, it opens the composer.
+ * its own size by default, with standalone, its packages and its TikZ libraries added to the preamble, or as the PDF
+ * its preview compiled when its packages clash with the document's (Insert as image); any other (Mermaid) as its
+ * exported image. Without one, it opens the composer.
  */
 function InsertDiagram() {
   const api = useEditor();
@@ -601,6 +618,9 @@ function InsertDiagram() {
   const [prefs, setPrefs] = useState(loadPrefs);
   const [width, setWidth] = useState<DiagramWidth>('natural');
   const [busy, setBusy] = useState(false);
+  /** a TikZ diagram's clashes with the preamble, and whether it goes in as its PDF */
+  const [clashes, setClashes] = useState<Clash[]>([]);
+  const [asImage, setAsImage] = useState(false);
   const cardRef = useRef<HTMLElement>(null);
   const captionRef = useRef<HTMLTextAreaElement>(null);
   const docOpen = isDocument(api.activePath);
@@ -633,6 +653,22 @@ function InsertDiagram() {
     cardRef.current?.scrollIntoView({ block: 'nearest' });
     captionRef.current?.focus({ preventScroll: true });
   }, [diagram]);
+
+  // a TikZ diagram whose packages clash with the preamble's goes in as an image unless you choose otherwise
+  useEffect(() => {
+    setClashes([]);
+    setAsImage(false);
+    if (!diagram || diagram.language !== 'tikz' || kind !== 'latex') return;
+    let live = true;
+    diagramClashes(apiRef.current, diagram).then((found) => {
+      if (!live) return;
+      setClashes(found);
+      setAsImage(found.length > 0);
+    });
+    return () => {
+      live = false;
+    };
+  }, [diagram, kind]);
 
   const draw = () => openDiagram(api.projectId, undefined, docKind(api.activePath) === 'typst' ? 'typst' : undefined).catch((err) => api.notify(`Couldn’t open the diagram composer: ${errorText(err)}`, 'error'));
 
@@ -689,6 +725,19 @@ function InsertDiagram() {
       } else {
         const float = { caption, label: captionLabel, placement: prefs.placement, span: prefs.span };
         const exactly = placementOf(prefs.placement, prefs.span) === 'H' ? ['float'] : [];
+        if (tikz && asImage) {
+          const pdf = diagram.path.replace(/\.tex$/i, '.pdf');
+          if (!a.projectFiles.includes(pdf)) {
+            a.notify('Compile the diagram in the composer first, so its PDF is there.', 'error');
+            return;
+          }
+          const added = await ensurePackages(() => apiRef.current, ['graphicx', ...exactly]);
+          insertBlock(apiRef.current, diagramImageLatex({ ...float, path: pdf, width: fraction }));
+          a.notify([`Inserted ${pdf} as a figure.`, added.text].filter(Boolean).join(' '), added.warn ? 'error' : 'success');
+          setDiagram(null);
+          setCaption('');
+          return;
+        }
         // standalone loads before the rest, and the libraries after the packages that bring TikZ
         const added = tikz
           ? await ensurePackages(() => apiRef.current, [...diagram.packages, ...exactly], { first: ['standalone'], libraries: diagram.libraries })
@@ -733,6 +782,20 @@ function InsertDiagram() {
           </div>
           {!tikz && !typst && !image && <div className="field-hint error">Export the diagram as a PNG from the composer first, then insert it again.</div>}
           {typst && kind !== 'typst' && <div className="field-hint error">A Typst diagram goes into Typst documents only.</div>}
+          {clashes.map((clash) => (
+            <div key={clash.with} className="field-hint error">
+              {clash.message}
+            </div>
+          ))}
+          {tikz && kind === 'latex' && (
+            <label className="checkbox-row">
+              <input type="checkbox" role="switch" checked={asImage} onChange={(e) => setAsImage(e.target.checked)} />
+              <span>
+                Insert as image
+                <span className="field-hint">As the PDF the composer compiled, so none of its packages reach your document. It keeps its own fonts.</span>
+              </span>
+            </label>
+          )}
           <div className="field">
             <label htmlFor={`${id}-caption`}>Caption</label>
             <textarea
