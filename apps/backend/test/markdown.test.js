@@ -2,7 +2,7 @@
 // refusals. The fake pandoc and TeX are scripts in a throwaway folder. Run: node --test apps/backend/test/markdown.test.js
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { promises as fs, mkdirSync, mkdtempSync, realpathSync, rmSync, existsSync, writeFileSync } from 'node:fs';
+import { promises as fs, mkdirSync, mkdtempSync, realpathSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -252,6 +252,14 @@ test('an SVG in pandoc’s LaTeX becomes a PDF rsvg-convert makes, and stays wit
   process.env.PATH = bin;
   assert.equal(await svgsAsPdf(text, dir), '\\includegraphics[keepaspectratio]{media/pic.pdf}\n');
   assert.ok(existsSync(path.join(dir, 'media', 'pic.pdf')));
+  // one outside the folder (an absolute path, another project's) keeps its \includesvg, and nothing is written beside it
+  const other = path.join(tmp, 'svg-other');
+  mkdirSync(other, { recursive: true });
+  writeFileSync(path.join(other, 'pic.svg'), '<svg/>');
+  writeFileSync(path.join(other, 'pic.pdf'), 'theirs');
+  const outside = `\\includesvg{${path.join(other, 'pic.svg')}}\n\\includesvg{../svg-other/pic.svg}\n`;
+  assert.equal(await svgsAsPdf(outside, dir), outside);
+  assert.equal(readFileSync(path.join(other, 'pic.pdf'), 'utf8'), 'theirs');
 });
 
 test('a Word document from a .md in a folder finds images named from the project’s folder', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {

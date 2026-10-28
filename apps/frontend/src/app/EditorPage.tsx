@@ -2827,7 +2827,7 @@ function Editor({ projectId }: { projectId: string }) {
   const compileKind = docKind(compileTarget) ?? 'latex';
   // TeX compiles a LaTeX document and Markdown through LaTeX; Typst has no bibliography tool or draft mode
   const usesTeX = compileKind === 'latex' || (compileKind === 'markdown' && compileOptions.markdownEngine !== 'typst');
-  // a Typst project pins a Typst version instead of choosing a TeX engine
+  // a Typst document, or Markdown through Typst, pins a Typst version instead of choosing a TeX engine
   const typstVersionChoices: MenuItems = [
     { heading: true, label: 'Typst version (this project)' },
     { label: `Default${settings.compileDefaults.typstVersion ? ` (${settings.compileDefaults.typstVersion})` : engines?.typst.builtIn ? ` (${engines.typst.builtIn}, built in)` : ''}`, checked: projectCompile.typstVersion == null, onSelect: () => setCompileOption('typstVersion', null) },
@@ -2852,7 +2852,7 @@ function Editor({ projectId }: { projectId: string }) {
         ]
       : []),
     ...(compileKind === 'markdown' ? compileChoice('markdownEngine', 'PDF engine (this project)', [['latex', 'LaTeX'], ['typst', 'Typst']]) : []),
-    ...(compileKind === 'typst' ? typstVersionChoices : compileChoice('engine', 'Compiler (this project)', COMPILE_ENGINES)),
+    ...(usesTeX ? compileChoice('engine', 'Compiler (this project)', COMPILE_ENGINES) : typstVersionChoices),
     ...compileChoice('autoCompile', 'Auto compile', [[0, 'Off'], [autoPause, 'On']], (n) => (n ? 'On' : 'Off')),
     ...(usesTeX ? compileChoice('bibTool', 'Bibliography tool', BIB_TOOLS) : []),
     ...(usesTeX

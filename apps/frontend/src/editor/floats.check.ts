@@ -1,6 +1,6 @@
 // Self-check for the Floats panel's LaTeX and the preamble helper. Run:
 // npx esbuild apps/frontend/src/editor/floats.check.ts --bundle --platform=node --log-level=warning | node
-import { placementOf, blockAt, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableRules, tableTypst, uniqueName } from './floats';
+import { placementOf, blockAt, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableRules, tableTypst, typstMarkup, uniqueName } from './floats';
 import type { TableModel } from './floats';
 import { addLibraries, addPackages, changeBetween, loadedLibraries, loadedPackages, projectPackages } from './preamble';
 
@@ -329,6 +329,18 @@ eq(
   tableTypst({ ...model, cells: [['a[1]', 'b\\c]']], header: false, float: false }),
   '#table(columns: 2, align: (left, center), stroke: none, table.hline(y: 0, stroke: 0.08em), table.hline(y: 1, stroke: 0.08em), [a\\[1\\]], [b\\\\c\\]])',
   'Typst cells keep brackets and backslashes as text'
+);
+// each compiles to its own text with Typst 0.15.1
+eq(typstMarkup('*Total'), '\\*Total', 'a star that would open bold');
+eq(typstMarkup('snake_case a*b f(*x) a_ b'), 'snake_case a*b f(\\*x) a\\_ b', 'a star or underscore inside a word stays as it is');
+eq(typstMarkup('and/or // not a comment /* nor this'), 'and\\/or \\/\\/ not a comment \\/\\* nor this', 'slashes');
+eq(typstMarkup('see @fig <x> `code` $x$ #tag'), 'see \\@fig \\<x> \\`code\\` \\$x\\$ \\#tag', 'a reference, label, raw text, dollars and code');
+eq([typstMarkup('- 5'), typstMarkup('+ x'), typstMarkup('= Results'), typstMarkup('1. first'), typstMarkup('-1'), typstMarkup('12.5')], ['\\- 5', '\\+ x', '\\= Results', '1\\. first', '-1', '12.5'], 'a list or heading marker at the start');
+eq(figureTypst({ path: 'a.png', width: 1, caption: 'Mean // SD of *all* @runs', label: '' }), '#figure(image("/a.png", width: 100%), caption: [Mean \\/\\/ SD of \\*all\\* \\@runs])', 'a caption’s markup');
+eq(
+  tableTypst({ ...model, cells: [['*Total', '$x_1 [a]$ costs $5 and $6', '$$y$$ a_b']], header: false, float: false }).split('table.hline(y: 1, stroke: 0.08em), ')[1],
+  '[\\*Total], [$x_1 \\[a\\]$ costs \\$5 and \\$6], [$$y$$ a_b])',
+  'a cell’s maths stays maths, and its other markup text'
 );
 eq(
   tableMarkdown(model),

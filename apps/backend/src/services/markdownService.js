@@ -215,8 +215,16 @@ export async function svgsAsPdf(text, dir) {
   let out = text;
   for (const [whole, options = '', file] of text.matchAll(/\\includesvg(\[[^\]]*\])?\{([^}]+)\}/g)) {
     const pdf = file.replace(/\.svg$/i, '') + '.pdf';
-    const svg = path.resolve(dir, /\.svg$/i.test(file) ? file : file + '.svg');
-    const run = await runSpawn(rsvg, ['-f', 'pdf', '-o', path.resolve(dir, pdf), svg], dir, () => {}, process.env).catch(() => null);
+    // one outside dir (an absolute path, another project's) keeps its \includesvg, so nothing is written beside it
+    let svg;
+    let target;
+    try {
+      svg = safeJoin(dir, /\.svg$/i.test(file) ? file : file + '.svg');
+      target = safeJoin(dir, pdf);
+    } catch {
+      continue;
+    }
+    const run = await runSpawn(rsvg, ['-f', 'pdf', '-o', target, svg], dir, () => {}, process.env).catch(() => null);
     if (run?.code === 0) out = out.replace(whole, () => '\\includegraphics' + options + '{' + pdf + '}');
   }
   return /\\includesvg/.test(out) ? out : out.replace(/^\\usepackage\{svg\}\r?\n/m, '');

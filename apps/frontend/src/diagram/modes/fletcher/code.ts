@@ -1,7 +1,9 @@
 import type { DiagramCode } from '../../fileFormat';
-import type { Box, Heads, Link, Shape, TikzModel } from '../tikz/code';
+import type { Box, Heads, Line, Link, Shape, TikzModel } from '../tikz/code';
 import { CM_PER_UNIT } from '../tikz/code';
 import { num } from '../shared';
+// Typst content text: markup escaped, on one line
+import { typstMarkup as content } from '../../../editor/floats';
 
 // Fletcher (a Typst package): the plain TikZ mode's boxes and arrows, written for Typst. Its canvas, rail and
 // inspector are the TikZ mode's, so only the code is its own.
@@ -27,8 +29,6 @@ export function fletcherFor(typstVersion: string) {
   return FLETCHER.find(([minimum]) => atLeast(typstVersion, minimum))?.[1] ?? FLETCHER[FLETCHER.length - 1][1];
 }
 
-/** Typst content: ] # \ and $ escaped, and a line break made a space. */
-const content = (text: string) => text.replace(/\s*\n\s*/g, ' ').replace(/\\|\[|\]|#|\$/g, (m) => '\\' + m);
 
 const SHAPE: Record<Shape, string> = {
   rectangle: 'rect',
@@ -40,6 +40,16 @@ const SHAPE: Record<Shape, string> = {
   text: 'rect',
   maths: 'rect'
 };
+
+/** A line's colour, thickness and dash (an edge's is in its marks) as a stroke, which fletcher lays over its default. */
+function strokeOf(line: Line, dash = true) {
+  const parts = [
+    line.stroke && 'paint: rgb("' + line.stroke + '")',
+    line.width && 'thickness: ' + num(line.width) + 'pt',
+    dash && line.dash && line.dash !== 'solid' && 'dash: "' + line.dash + '"'
+  ].filter(Boolean);
+  return parts.length > 0 && 'stroke: (' + parts.join(', ') + ')';
+}
 
 /** The node for a box: its centre in cm (y up, as in TikZ: the canvas's y goes down), its text or maths, and its shape and size. */
 function nodeCode(box: Box) {
@@ -54,11 +64,13 @@ function nodeCode(box: Box) {
     'height: ' + num(height * CM_PER_UNIT) + 'cm',
     plain && 'stroke: none',
     plain && 'fill: none',
-    !plain && box.stroke && 'stroke: rgb("' + box.stroke + '")',
+    !plain && strokeOf(box),
     !plain && box.fill && 'fill: rgb("' + box.fill + '")',
     'name: <' + box.id + '>'
   ].filter(Boolean);
-  const label = box.shape === 'maths' ? (box.text.trim() ? '[$' + box.text.trim() + '$]' : '[]') : '[' + content(box.text) + ']';
+  const text = box.shape === 'maths' ? (box.text.trim() ? '[$' + box.text.trim() + '$]' : '[]') : '[' + content(box.text) + ']';
+  // a label's colour is its text's; a box's is its border's
+  const label = plain && box.stroke ? 'text(fill: rgb("' + box.stroke + '"))' + text : text;
   return 'node((' + num((box.x + box.w / 2) * CM_PER_UNIT) + 'cm, ' + num(-(box.y + box.h / 2) * CM_PER_UNIT) + 'cm), ' + label + ', ' + options.join(', ') + ')';
 }
 
@@ -80,7 +92,7 @@ function edgeCode(link: Link, boxes: Map<string, Box>) {
     link.route === 'curved' && 'bend: 30deg',
     link.route === 'angled' && 'corner: right',
     link.label?.trim() && 'label: [' + content(link.label.trim()) + ']',
-    link.stroke && 'stroke: rgb("' + link.stroke + '")'
+    strokeOf(link, false)
   ].filter(Boolean);
   return 'edge(<' + from.id + '>, <' + to.id + '>, "' + marksOf(link) + '"' + (options.length ? ', ' + options.join(', ') : '') + ')';
 }

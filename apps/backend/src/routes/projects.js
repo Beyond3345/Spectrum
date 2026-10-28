@@ -14,6 +14,7 @@ import { readTemplateManifest, copyTemplateIntoProject, templatePath } from '../
 import {
   APP_DIR,
   mutateProjectFiles,
+  mutateProjectRoot,
   appPath,
   cachePath,
   createProject,
@@ -610,7 +611,7 @@ export function registerProjectRoutes(fastify) {
       return { ok: false, error: 'Missing order.' };
     }
     const root = await getProjectRoot(req.params.id);
-    await updateMeta(root, (meta) => ({ ...meta, fileOrder: { ...meta.fileOrder, [folder]: order } }));
+    await mutateProjectRoot(root, () => updateMeta(root, (meta) => ({ ...meta, fileOrder: { ...meta.fileOrder, [folder]: order } })));
     return { ok: true };
   });
 
@@ -658,7 +659,8 @@ export function registerProjectRoutes(fastify) {
       try {
         await pipeline(part.file, createWriteStream(tmp));
         if (part.file.truncated) throw httpError(`${relPath} is larger than 200 MB.`, 413);
-        await renameOver(tmp, abs);
+        // the folder may have moved while it streamed: then it isn't left in the one behind
+        await mutateProjectRoot(root, () => renameOver(tmp, abs));
       } catch (err) {
         await fs.rm(tmp, { force: true });
         throw err;
@@ -717,35 +719,37 @@ export function registerProjectRoutes(fastify) {
     if (!template) return { ok: false, error: 'Unknown template.' };
 
     const root = await getProjectRoot(req.params.id);
-    try {
-      const currentMainPath = safeJoin(root, mainFile);
-      const templateRoot = templatePath(template.id);
-      const templateMain = template.mainFile || 'main.tex';
-
-      let currentTex = '';
+    return mutateProjectRoot(root, async () => {
       try {
-        currentTex = await fs.readFile(currentMainPath, 'utf8');
-      } catch {
-        currentTex = '';
-      }
+        const currentMainPath = safeJoin(root, mainFile);
+        const templateRoot = templatePath(template.id);
+        const templateMain = template.mainFile || 'main.tex';
 
-      const templateTex = await fs.readFile(path.join(templateRoot, templateMain), 'utf8');
-      const merged = preserveDocumentMetadata(withBiblatexResources(mergeTemplateBody(templateTex, extractDocumentBody(currentTex)), bibliographyFiles(currentTex)), currentTex);
-      // The merged document goes back into the project's own main file, whatever the template calls its main file.
-      const changedFiles = await copyTemplateIntoProject(templateRoot, root, templateMain);
-      await fs.writeFile(currentMainPath, merged, 'utf8');
-      await touchProject(root).catch(() => {});
-      return { ok: true, mainFile, changedFiles: [...new Set([...changedFiles, mainFile])] };
-    } catch (err) {
-      return { ok: false, error: `Couldn’t switch the template: ${err.message}` };
-    }
+        let currentTex = '';
+        try {
+          currentTex = await fs.readFile(currentMainPath, 'utf8');
+        } catch {
+          currentTex = '';
+        }
+
+        const templateTex = await fs.readFile(path.join(templateRoot, templateMain), 'utf8');
+        const merged = preserveDocumentMetadata(withBiblatexResources(mergeTemplateBody(templateTex, extractDocumentBody(currentTex)), bibliographyFiles(currentTex)), currentTex);
+        // The merged document goes back into the project's own main file, whatever the template calls its main file.
+        const changedFiles = await copyTemplateIntoProject(templateRoot, root, templateMain);
+        await fs.writeFile(currentMainPath, merged, 'utf8');
+        await touchProject(root).catch(() => {});
+        return { ok: true, mainFile, changedFiles: [...new Set([...changedFiles, mainFile])] };
+      } catch (err) {
+        return { ok: false, error: `Couldn’t switch the template: ${err.message}` };
+      }
+    });
   });
 
   fastify.post('/api/projects/:id/template', async (req) => {
     const { template } = req.body || {};
     const root = await getProjectRoot(req.params.id);
     if (!template) return { ok: false };
-    await copyDir(templatePath(template), root);
+    await mutateProjectRoot(root, () => copyDir(templatePath(template), root));
     return { ok: true };
   });
 
@@ -754,7 +758,7 @@ export function registerProjectRoutes(fastify) {
     if (!folderPath) return { ok: false };
     if (unfit(folderPath)) throw httpError(UNFIT, 400);
     const root = await getProjectRoot(req.params.id);
-    await ensureDir(editablePath(root, folderPath));
+    await mutateProjectRoot(root, () => ensureDir(editablePath(root, folderPath)));
     await touchProject(root).catch(() => {});
     return { ok: true };
   });
@@ -765,39 +769,43 @@ export function registerProjectRoutes(fastify) {
     // a new name only: one already there can still move into another folder
     if (String(to).split('/').pop() !== String(from).split('/').pop() && unfit(to)) throw httpError(UNFIT, 400);
     const root = await getProjectRoot(req.params.id);
-    const absFrom = editablePath(root, from, safeJoinLink);
-    const absTo = editablePath(root, to, safeJoinLink);
-    // fs.rename would replace the destination. The same inode is a case-only rename on APFS and NTFS.
-    // bigint: NTFS file ids are 64-bit, and two rounded to the same number would let a rename replace a file
-    const target = await fs.lstat(absTo, { bigint: true }).catch(() => null);
-    if (target) {
-      const source = await fs.lstat(absFrom, { bigint: true });
-      if (target.dev !== source.dev || target.ino !== source.ino) {
-        return reply.code(409).send({ ok: false, error: 'A file with that name already exists.' });
+    return mutateProjectRoot(root, async () => {
+      const absFrom = editablePath(root, from, safeJoinLink);
+      const absTo = editablePath(root, to, safeJoinLink);
+      // fs.rename would replace the destination. The same inode is a case-only rename on APFS and NTFS.
+      // bigint: NTFS file ids are 64-bit, and two rounded to the same number would let a rename replace a file
+      const target = await fs.lstat(absTo, { bigint: true }).catch(() => null);
+      if (target) {
+        const source = await fs.lstat(absFrom, { bigint: true });
+        if (target.dev !== source.dev || target.ino !== source.ino) {
+          return reply.code(409).send({ ok: false, error: 'A file with that name already exists.' });
+        }
       }
-    }
-    await ensureDir(path.dirname(absTo));
-    await renameOver(absFrom, absTo);
-    // the notes on its PDF and the to-dos linked to it go with it (the file moved whether or not they do); unmoved: how
-    // many couldn't
-    const unmoved = await followRename(root, String(from), String(to)).catch(() => 0);
-    await touchProject(root).catch(() => {});
-    return { ok: true, ...(unmoved && { unmoved }) };
+      await ensureDir(path.dirname(absTo));
+      await renameOver(absFrom, absTo);
+      // the notes on its PDF and the to-dos linked to it go with it (the file moved whether or not they do); unmoved: how
+      // many couldn't
+      const unmoved = await followRename(root, String(from), String(to)).catch(() => 0);
+      await touchProject(root).catch(() => {});
+      return { ok: true, ...(unmoved && { unmoved }) };
+    });
   });
 
   fastify.delete('/api/projects/:id/file', async (req) => {
     const { path: filePath } = req.query || {};
     if (!filePath) return { ok: false, error: 'Missing file path.' };
     const root = await getProjectRoot(req.params.id);
-    const abs = editablePath(root, filePath, safeJoinLink);
-    try {
-      await fs.lstat(abs);
-    } catch (err) {
-      if (err.code === 'ENOENT') return { ok: false, error: 'File not found.' };
-      throw err;
-    }
-    await fs.rm(abs, { recursive: true, force: true });
-    await touchProject(root).catch(() => {});
-    return { ok: true };
+    return mutateProjectRoot(root, async () => {
+      const abs = editablePath(root, filePath, safeJoinLink);
+      try {
+        await fs.lstat(abs);
+      } catch (err) {
+        if (err.code === 'ENOENT') return { ok: false, error: 'File not found.' };
+        throw err;
+      }
+      await fs.rm(abs, { recursive: true, force: true });
+      await touchProject(root).catch(() => {});
+      return { ok: true };
+    });
   });
 }
