@@ -161,6 +161,25 @@ async function nodeRuntime(arches) {
   const version = await latestNode24();
   await sidecar('node', arches, (arch) => nodeBinary(version, arch));
   console.log(`Node.js ${version} (${arches.join(', ')}) → ${path.relative(root, binDir)}`);
+  return version;
+}
+
+/**
+ * The npm of the same verified Node archive (JavaScript, so either Mac's), beside the bundled backend, which installs
+ * the agents' ACP adapters with it (agentProfiles.js). Its own licence files come with it.
+ */
+async function bundledNpm(version) {
+  const name = `node-${version}-darwin-arm64`;
+  const outDir = path.join(cacheDir, `npm-${version}`);
+  if (!fs.existsSync(path.join(outDir, 'bin', 'npm-cli.js'))) {
+    const file = `${name}.tar.gz`;
+    const archive = await verifiedDownload(`https://nodejs.org/dist/${version}/${file}`, path.join(cacheDir, file), await expectedSha(version, file));
+    fs.rmSync(outDir, { recursive: true, force: true });
+    fs.mkdirSync(outDir, { recursive: true });
+    run('tar', ['-xzf', archive, '-C', outDir, '--strip-components', '4', `${name}/lib/node_modules/npm`]);
+  }
+  copyDir(outDir, path.join(resourcesDir, 'backend', 'npm'));
+  console.log(`npm from Node.js ${version} → ${path.relative(root, path.join(resourcesDir, 'backend', 'npm'))}`);
 }
 
 // TexLab (GPL-3.0-only) ships beside Spectrum as a program of its own; THIRD_PARTY_NOTICES.md gives its licence and
@@ -304,7 +323,9 @@ async function resources() {
   const nodehunManifest = path.join(path.dirname(nodehun), 'nodehun.manifest.json');
   if (fs.existsSync(nodehunManifest)) fs.copyFileSync(nodehunManifest, path.join(native, 'nodehun.manifest.json'));
   prepareEnginesDir();
-  await nodeRuntime(Object.keys(TRIPLES));
+  const nodeVersion = await nodeRuntime(Object.keys(TRIPLES));
+  // adapters are installed on a Mac only: the ones Spectrum installs don't run in Windows isolation
+  if (!win) await bundledNpm(nodeVersion);
   await texlabRuntime(Object.keys(TRIPLES));
   await tectonicRuntime(Object.keys(TRIPLES));
   await typstRuntime(Object.keys(TRIPLES));

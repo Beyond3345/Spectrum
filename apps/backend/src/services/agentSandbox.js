@@ -9,7 +9,7 @@ export async function isolationAvailable() {
   return false;
 }
 
-const SYSTEM_READS = ['/System', '/usr', '/bin', '/sbin', '/Library', '/opt/homebrew', '/usr/local', '/private/etc', '/private/var/db', '/Applications'];
+export const SYSTEM_READS = ['/System', '/usr', '/bin', '/sbin', '/Library', '/opt/homebrew', '/usr/local', '/private/etc', '/private/var/db', '/Applications'];
 const q = (value) => JSON.stringify(value);
 
 export function sandboxProfile({ workspace, home, executable, runtimeExecutable = executable, runtimePaths = [], forbiddenRoots = [], internalPort }) {

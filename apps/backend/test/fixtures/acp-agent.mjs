@@ -13,9 +13,19 @@ async function finish() {
   send({ method: 'session/update', params: { sessionId: 'test-session', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Finished the project edits.' } } } });
   send({ id: promptId, result: { stopReason: 'end_turn' } });
 }
+// --exit prints its keys to stderr and stops; --silent never answers; --auth-required and --error refuse session/new,
+// as an agent wanting a sign-in or with an invalid key does
+const flag = (name) => process.argv.includes(name);
+if (flag('--exit')) {
+  process.stderr.write(`starting with ${Object.entries(process.env).filter(([k]) => /_(KEY|TOKEN)$/.test(k)).map(([k, v]) => `${k}=${v}`).join(' ')}\n`);
+  process.exit(3);
+}
 lines.on('line', async (line) => {
   const m = JSON.parse(line);
-  if (m.method === 'initialize') send({ id: m.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true }, agentInfo: { name: 'Spectrum fixture', version: '1' }, authMethods: [] } });
+  if (flag('--silent')) return;
+  if (m.method === 'session/new' && flag('--auth-required')) send({ id: m.id, error: { code: -32000, message: 'Authentication required' } });
+  else if (m.method === 'session/new' && flag('--error')) send({ id: m.id, error: { code: -32603, message: 'Invalid API key' } });
+  else if (m.method === 'initialize') send({ id: m.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true }, agentInfo: { name: 'Spectrum fixture', version: '1' }, authMethods: [] } });
   else if (m.method === 'session/new' || m.method === 'session/load') { workspace = m.params.cwd; send({ id: m.id, result: { sessionId: 'test-session' } }); }
   else if (m.method === 'session/prompt') {
     promptId = m.id;

@@ -33,6 +33,24 @@ export async function pickFolder(opts: { title?: string; defaultPath?: string } 
   return typed?.trim() || null;
 }
 
+/** Native file picker in the app (programs only on Windows: .exe); in a browser, ask for an absolute path instead. */
+export async function pickFile(opts: { title?: string; defaultPath?: string } = {}): Promise<string | null> {
+  if (IS_DESKTOP) {
+    const picked = await tauri().invoke('plugin:dialog|open', {
+      options: { multiple: false, title: opts.title, defaultPath: opts.defaultPath || undefined, ...(IS_WINDOWS && { filters: [{ name: 'Programs', extensions: ['exe'] }] }) }
+    });
+    return typeof picked === 'string' ? picked : null;
+  }
+  const typed = await promptDialog({
+    title: opts.title || 'Choose a file',
+    message: `Enter the full path of a file on this ${IS_WINDOWS ? 'PC' : 'Mac'}.`,
+    placeholder: IS_WINDOWS ? 'C:\\Users\\…\\agent.exe' : '/Users/…/.local/bin/agent',
+    defaultValue: opts.defaultPath,
+    confirmLabel: 'Choose'
+  });
+  return typed?.trim() || null;
+}
+
 const invoke = (cmd: string, args: Record<string, unknown>) => tauri().invoke(cmd, args).catch(() => undefined);
 
 /** macOS app: makes Spectrum the default for .tex, .ltx and .bib files (main.rs). Rejects with macOS's reason. */

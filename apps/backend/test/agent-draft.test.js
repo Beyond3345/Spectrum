@@ -77,6 +77,11 @@ test('review sessions keep iterating on the draft; apply and reject rebase it; c
     assert.doesNotMatch(log.filter((q) => q.method === 'session/prompt').at(-1).params.prompt[0].text, /You are working in Spectrum/);
     assert.equal(log.find((q) => q.method === 'initialize').params.clientInfo.version, APP_VERSION);
 
+    // ACP's unstable schema: a plan_update and an elicitation/create question reach the run
+    await turn(run, 'please-plan');
+    assert.ok(run.events.some((e) => e.type === 'update' && e.data.sessionUpdate === 'plan_update' && e.data.plan.planId === 'plan-1'), 'the plan_update is kept');
+    assert.ok(run.events.some((e) => e.type === 'request' && e.data.kind === 'question' && e.data.params.message === 'Which section?'), 'the question is asked');
+
     // applying makes the applied text the file's baseline
     await apply(run, await pendingChanges(run));
     assert.equal(await fs.readFile(path.join(root, 'main.tex'), 'utf8'), 'original\nagent line 1\nagent line 2\n');

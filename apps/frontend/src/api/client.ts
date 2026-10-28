@@ -1504,11 +1504,29 @@ export function revealCloudCopy(projectId: string, filePath?: string) {
 }
 
 // ─── Local ACP agents ───
+/** Where an agent stands (agentState() in the backend). Set up, which the workspace lists: ready, untested, or failed while configured. */
+export type AgentState = 'planned' | 'unavailable' | 'missing' | 'adapter' | 'ready' | 'sign-in' | 'failed' | 'untested';
+/** What a Test (or a session) found: ready, sign-in, error, timeout, exited or not-acp. */
+export interface AgentTest { ok: boolean; code: string; version?: string; detail?: string; methods?: string[]; at: string }
+/**
+ * command: the program the user chose, '' for none; keyEnvs: the agent's own key variables plus one saved outside them;
+ * experimental, planned and unavailable: the reasons; source: where its program was found; reads: the folders of its
+ * own installation isolation can read too; needs: a program its adapter starts; signIn and then: the command that
+ * signs in and what to do in it; install: the command that installs it, to copy
+ */
 export interface LocalAgent {
   id: string; name: string; command: string; args: string[]; runtimePaths: string[];
   installed: boolean; supported: boolean; hasKey: boolean; canImport: boolean;
   keyEnv: string; keyEnvs: string[];
-  url: string; note?: string; unavailable?: string; experimental?: boolean;
+  url: string; unavailable?: string; experimental?: string; planned?: string;
+  program?: string; source?: 'chosen' | 'spectrum' | 'found'; reads?: string[];
+  needs?: { name: string; found: boolean; install: string; path?: string };
+  signIn?: string; then?: string; appSignIn?: boolean; install?: string;
+  loginFound: boolean; loginCopied: boolean; configured: boolean;
+  /** official: from the ACP project; installed: the version Spectrum installed, when one is there */
+  adapter?: { package: string; version: string; official: boolean; publisher: string; size: string; folder: string; platform: string; installed?: string };
+  test?: AgentTest;
+  state: AgentState; setUp: boolean;
 }
 /**
  * type 'update' carries an ACP session/update; 'todo' a to-do the agent suggested ({ text, link? }); 'reset' the paths a
@@ -1536,8 +1554,14 @@ export interface LocalAgentSession {
   title?: string;
 }
 export const listLocalAgents = () => request<{ ok: boolean; agents: LocalAgent[] }>('/api/agents');
-export const configureLocalAgent = (id: string, value: { command: string; args: string[]; runtimePaths: string[]; apiKey?: string; keyEnv?: string }) => request<{ ok: boolean }>(`/api/agents/${id}`, json('PUT', value));
+/** Only what changed: command '' finds the program automatically again; apiKey '' removes the saved key. */
+export const configureLocalAgent = (id: string, value: { command?: string; args?: string[]; runtimePaths?: string[]; apiKey?: string; keyEnv?: string }) => request<{ ok: boolean }>(`/api/agents/${id}`, json('PUT', value));
 export const importLocalAgentLogin = (id: string) => request<{ ok: boolean; files: number }>(`/api/agents/${id}/import-login`, json('POST', {}));
+/** Starts the agent in isolation without a prompt; resolves to its listing with the result. */
+export const testLocalAgent = (id: string) => request<{ ok: boolean; agent: LocalAgent }>(`/api/agents/${id}/test`, json('POST', {}));
+/** The adapter pinned in Spectrum, from the npm registry */
+export const installLocalAgentAdapter = (id: string) => request<{ ok: boolean; agent: LocalAgent }>(`/api/agents/${id}/adapter`, json('POST', {}));
+export const removeLocalAgentAdapter = (id: string) => request<{ ok: boolean; agent: LocalAgent }>(`/api/agents/${id}/adapter`, { method: 'DELETE' });
 export const listLocalAgentSessions = (projectId: string) => request<{ ok: boolean; sessions: LocalAgentSession[] }>(`/api/agent-sessions?projectId=${encodeURIComponent(projectId)}`);
 export const getLocalAgentSession = (id: string) => request<{ ok: boolean; session: LocalAgentSession }>(`/api/agent-sessions/${id}`);
 export const createLocalAgentSession = (projectId: string, agentId: string, mode: 'review' | 'direct', persona?: AgentPersona | null) => request<{ ok: boolean; session: LocalAgentSession }>('/api/agent-sessions', json('POST', { projectId, agentId, mode, persona }));

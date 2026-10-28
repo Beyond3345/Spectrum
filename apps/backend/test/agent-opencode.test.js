@@ -10,7 +10,7 @@ test('installed OpenCode initializes in the native sandbox without a model call'
   const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-opencode-smoke-')));
   process.env.SPECTRUM_DATA_DIR = path.join(dir, 'data'); process.env.SPECTRUM_PROJECTS_DIR = path.join(dir, 'projects');
   const { createProject } = await import('../src/services/projectService.js');
-  const { newAgentRun, getAgentRun, shutdownAgents } = await import('../src/services/agentSessionService.js');
+  const { newAgentRun, getAgentRun, shutdownAgents, testAgent } = await import('../src/services/agentSessionService.js');
   const { profileFor } = await import('../src/services/agentProfiles.js');
   if (profileFor('opencode').unavailable) { t.skip(profileFor('opencode').unavailable); return; }
   try {
@@ -20,5 +20,8 @@ test('installed OpenCode initializes in the native sandbox without a model call'
     try { await run.ready; } catch (err) { throw new Error(`${err.message}\n${JSON.stringify(run.events.filter((e) => e.type === 'state'))}`); }
     assert.equal(run.status, 'ready');
     assert.ok(run.remoteId);
+    // Settings › Agents' Test: without a login or key OpenCode may ask for one
+    await shutdownAgents();
+    assert.ok(['ready', 'sign-in'].includes((await testAgent('opencode')).test?.code));
   } finally { await shutdownAgents(); await fs.rm(dir, { recursive: true, force: true }); }
 });

@@ -2,7 +2,8 @@
 // pieces. --embedded and --system-prompt turn those capabilities on, and --fresh-ids gives each new session an id of
 // its own, and --lose-sessions loads none (an agent that no longer has the session). A prompt ending in please-fail fails, please-ask asks for permission and ends the turn without waiting,
 // please-hang never answers, please-link leaves a link in the workspace, and please-flood and please-huge stream a
-// long message (30,000 short pieces, or 40 of 64 KB). Every request it gets goes to $HOME/acp-log.jsonl.
+// long message (30,000 short pieces, or 40 of 64 KB), and please-plan sends a plan_update and asks an elicitation/create
+// question without waiting (both only in ACP's unstable schema). Every request it gets goes to $HOME/acp-log.jsonl.
 import readline from 'node:readline';
 import { appendFileSync, promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -34,6 +35,10 @@ lines.on('line', async (line) => {
     if (asked.endsWith('please-fail')) return send({ id: m.id, error: { code: -32603, message: 'The fixture failed on purpose.' } });
     if (asked.endsWith('please-hang')) return;
     if (asked.endsWith('please-ask')) send({ id: 700, method: 'session/request_permission', params: { sessionId, toolCall: { toolCallId: 'edit', title: 'Edit project files', status: 'pending' }, options: [{ optionId: 'yes', name: 'Allow once', kind: 'allow_once' }] } });
+    if (asked.endsWith('please-plan')) {
+      update({ sessionUpdate: 'plan_update', plan: { type: 'items', planId: 'plan-1', entries: [{ content: 'Outline the section', priority: 'medium', status: 'pending' }] } });
+      send({ id: 800, method: 'elicitation/create', params: { sessionId, mode: 'form', message: 'Which section?', requestedSchema: { type: 'object', properties: { section: { type: 'string' } } } } });
+    }
     if (asked.endsWith('please-link')) await fs.symlink('main.tex', path.join(workspace, 'alias.tex'));
     if (text.includes('draft')) {
       const file = path.join(workspace, 'main.tex');
