@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createServer } from 'node:net';
 import { execFileSync } from 'node:child_process';
-import { spawnAgentProcess, killAgentProcess } from '../src/services/agentSandbox.js';
+import { spawnAgentProcess, killAgentProcess, resolveExecutable } from '../src/services/agentSandbox.js';
 
 const native = process.platform === 'win32' && process.env.SPECTRUM_NATIVE_AGENT_TESTS === '1';
 function completion(child) {
@@ -110,6 +110,14 @@ test('on Windows, short names, streams and names Windows trims count as hidden o
     for (const rel of shown) assert.equal(agentHidden(rel), false, rel);
   });
   if (process.platform !== 'win32') for (const rel of ['GIT~1/config', 'a:b.tex', 'notes.']) assert.equal(agentHidden(rel), false, `${rel}, elsewhere`);
+});
+
+test('on Windows, a name finds npm’s .cmd shim, never the extensionless one beside it', async () => {
+  const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-win-shim-')));
+  try {
+    for (const name of ['gemini', 'gemini.cmd']) await fs.writeFile(path.join(dir, name), '', { mode: 0o755 });
+    assert.equal(await asWindows(() => resolveExecutable('gemini', dir)), path.join(dir, 'gemini.cmd'));
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
 
 test('on Windows, a direct session is refused, as isolation there can’t keep the agent from making .git or .env', async () => {

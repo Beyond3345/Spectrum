@@ -46,7 +46,8 @@ ${Number.isInteger(internalPort) && internalPort > 0 && internalPort < 65536 ? `
 }
 
 export async function resolveExecutable(command, envPath = process.env.PATH || '') {
-  const suffixes = process.platform === 'win32' && !path.extname(command) ? ['', '.exe', '.cmd', '.bat'] : [''];
+  // never npm's extensionless shell shim, which Windows can't start
+  const suffixes = process.platform === 'win32' && !path.extname(command) ? ['.exe', '.cmd', '.bat'] : [''];
   const candidates = (path.isAbsolute(command) ? [command] : envPath.split(path.delimiter).filter(Boolean).map((dir) => path.join(dir, command))).flatMap((file) => suffixes.map((suffix) => file + suffix));
   for (const candidate of candidates) {
     try {
