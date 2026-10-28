@@ -200,6 +200,8 @@ export async function removeLanguageTool() {
 
 let server = null;
 let stopped = null;
+// a start under way, so a second check while it finds Java and a port waits for it rather than starting another
+let starting = null;
 
 const freePort = () => new Promise((resolve, reject) => {
   const probe = net.createServer().on('error', reject);
@@ -210,11 +212,16 @@ const freePort = () => new Promise((resolve, reject) => {
 });
 
 /** The server's address once it answers, starting it if it isn't running. */
-export async function ensureServer() {
+export function ensureServer() {
   if (server) {
     touch();
     return server.ready;
   }
+  starting ||= start().finally(() => { starting = null; });
+  return starting;
+}
+
+async function start() {
   const java = await installedJava();
   if (!java) throw httpError('LanguageTool is not downloaded yet.', 409, 'not-downloaded');
   const port = await freePort();

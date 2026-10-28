@@ -120,11 +120,12 @@ test('cancelling stops between parts; failures say what happened and keep the pa
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const unix = process.platform !== 'win32';
 
-/** A "Java runtime" archive whose bin/java runs the fake LanguageTool with Node. */
+/** A "Java runtime" archive whose bin/java runs the fake LanguageTool with Node, noting its process id in `pidFile`. */
+const pidFile = path.join(tmp, 'java-started');
 function fakeJava() {
   const dir = path.join(tmp, 'jre', 'jdk-fake', 'Contents', 'Home', 'bin');
   mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, 'java'), `#!/bin/sh\nexec "${process.execPath}" "${path.join(import.meta.dirname, 'fixtures', 'fake-languagetool.mjs')}" "$@"\n`);
+  writeFileSync(path.join(dir, 'java'), `#!/bin/sh\necho $$ >> "${pidFile}"\nexec "${process.execPath}" "${path.join(import.meta.dirname, 'fixtures', 'fake-languagetool.mjs')}" "$@"\n`);
   chmodSync(path.join(dir, 'java'), 0o755);
   const archive = path.join(tmp, 'jre.tar.gz');
   execFileSync('tar', ['-czf', archive, '-C', path.join(tmp, 'jre'), 'jdk-fake']);
@@ -189,6 +190,15 @@ test('LanguageTool downloads only when asked, checks every file, and runs only w
   assert.equal((await lt.languageToolStatus()).running, true);
   await lt.stopLanguageTool();
   assert.equal((await lt.languageToolStatus()).running, false);
+
+  // two checks at once start one server, and stopping it leaves no process behind
+  rmSync(pidFile, { force: true });
+  const [one, two] = await Promise.all([lt.ensureServer(), lt.ensureServer()]);
+  assert.equal(one, two);
+  await lt.stopLanguageTool();
+  const pids = readFileSync(pidFile, 'utf8').trim().split('\n').map(Number);
+  assert.equal(pids.length, 1, 'one server started');
+  assert.throws(() => process.kill(pids[0], 0), { code: 'ESRCH' }, 'and it has stopped');
 
   // an ignored LanguageTool rule goes to the project's settings.json by language, merged rule by rule
   const project = await createProject({ name: 'Sprachen', populate: async () => {} });
