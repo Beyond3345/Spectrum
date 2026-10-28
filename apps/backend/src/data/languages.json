@@ -1,0 +1,3102 @@
+{
+  "schema": 1,
+  "sources": {
+    "wooorm": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+    "libreoffice": "4f1df64b2e8e14751aa7c2205d170ca016071315"
+  },
+  "languages": [
+    {
+      "tag": "af",
+      "babel": [
+        "afrikaans"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "-",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/af_ZA/af_ZA.aff",
+            "fdfcdd04d700fc4ac94be63930167fa942ee5ffb471b52a6f4e0c68362dd63d2",
+            4969
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/af_ZA/af_ZA.dic",
+            "8d806f90146059ea18b49c2352d188bd27dcc571a06815794facaa176aa5a5de",
+            1214886
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/af_ZA/README_af_ZA.txt",
+            "e00c86cb0a1c0499380770750f545b5d0308d6cb35d25014cef6891c2fe5f255",
+            31492
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "LGPL-2.1",
+        "selfTest": [
+          "gehoorde",
+          "mannetjiesvoël",
+          "skryfmetode"
+        ]
+      }
+    },
+    {
+      "tag": "an",
+      "babel": [],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/an_ES/an_ES.aff",
+            "c8c3a0b227b3085a8a7a7c6abc3d4c1075a3dd78b0d795635096d45c3bb7319b",
+            34137
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/an_ES/an_ES.dic",
+            "75f3db6e45eb156adb0ee2ac44a9c9b85c94b4282b41db565db3b8ecc57305a9",
+            246615
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/an_ES/LICENSES-en.txt",
+            "f378d9ef938ec0aa3b2926705f3b9fd34489fe70031b352d423b68f96e638a45",
+            1320
+          ]
+        },
+        "encoding": "ISO8859-1",
+        "licence": "MPL-1.1 OR GPL-3.0-or-later OR LGPL-3.0-or-later",
+        "selfTest": [
+          "unifamiliarment",
+          "diverso",
+          "Bunny"
+        ]
+      }
+    },
+    {
+      "tag": "ar",
+      "babel": [
+        "arabic"
+      ],
+      "harper": null,
+      "languageTool": "ar",
+      "script": "Arabic",
+      "wordChars": "",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/ar/ar.aff",
+            "cec30b8621001e49618feb05aec1984c5fcfbf7d2ec309901d5cbf66585217a3",
+            86949
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/ar/ar.dic",
+            "2a3e5367f61c1583734db9d66734f5603e6be5c2d227cf5c5cd7e4ca586e34fe",
+            7217161
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/ar/COPYING.txt",
+            "73480d918cd78d655508e80aa88c022cbd53634524a0f714b5f2519f2cf19124",
+            532
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0-or-later OR LGPL-2.1-or-later OR MPL-1.1",
+        "selfTest": [
+          "يضرجون",
+          "تنقذن",
+          "يتأكلون"
+        ]
+      }
+    },
+    {
+      "tag": "as",
+      "babel": [
+        "assamese"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Bengali",
+      "wordChars": "",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/as_IN/as_IN.aff",
+            "f2670a0dc8f24b2da8f89f71914f820e7bed1dfd7dc3ec1a5e7a14d371eb1ee5",
+            271
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/as_IN/as_IN.dic",
+            "38d4ca36134a63b57766febc15f12e257eb5c0c33fbaac68e9c3312f8bf843fd",
+            1912331
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/as_IN/README_as_IN.txt",
+            "83fa6ab492ce8e1bdecfdc6e058fbef16db8f88b7f93b73cea7047093c98fa93",
+            338
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-3.0",
+        "selfTest": [
+          "গাখীৰৰ",
+          "নামাতিবচোন",
+          "মঙ্গলবাৰে"
+        ]
+      }
+    },
+    {
+      "tag": "ast",
+      "babel": [
+        "asturian"
+      ],
+      "harper": null,
+      "languageTool": "ast-ES",
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": null
+    },
+    {
+      "tag": "be",
+      "babel": [
+        "belarusian"
+      ],
+      "harper": null,
+      "languageTool": "be-BY",
+      "script": "Cyrillic",
+      "wordChars": "'",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/be_BY/be-official.aff",
+            "0a7f8246a352e7eea61f88d44a200a277a8a5dd5b06f1d7725f16138d1b751c1",
+            184150
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/be_BY/be-official.dic",
+            "86237db80ddf5dc68d4319abed4de709a2096835042b332cf323207c13e869cd",
+            10607006
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/be_BY/README_be_BY.txt",
+            "8e11338bf07f3fc3eea1add0a091c3da4e1e0504a63f909790dabeef27de1ec3",
+            654
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "CC-BY-SA-4.0 OR LGPL-3.0",
+        "selfTest": [
+          "дэкальтуй",
+          "нацалаваў",
+          "расцалую"
+        ]
+      }
+    },
+    {
+      "tag": "bg",
+      "babel": [
+        "bulgarian"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Cyrillic",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/bg/index.aff",
+            "cb6bfc56d6b1e70c812061086d7ec5ad6aaf6d35acd927a035f1cee0188ea477",
+            58189
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/bg/index.dic",
+            "44408b1ee50301e8f9a133b0ec92565bb8be49818c444d91821876d447f58906",
+            1566242
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/bg/license",
+            "04f8571e50b57ddcd93e74416e1949325c899b902af36e83fa669b6205f56b2e",
+            3516
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0 OR LGPL-2.1 OR MPL-1.1",
+        "selfTest": [
+          "забременея",
+          "незамесен",
+          "примрях"
+        ]
+      }
+    },
+    {
+      "tag": "bn",
+      "babel": [
+        "bengali"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Bengali",
+      "wordChars": "",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/bn_BD/bn_BD.aff",
+            "6beeacefab0f691cb415c9ab8de227091a3be65510c3d8c0479513b261e61b97",
+            125422
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/bn_BD/bn_BD.dic",
+            "cfc78b361861a726d22f0654d7c4e0b47f843c4a9e8b605c4c99e91ea683e116",
+            2237684
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/bn_BD/COPYING",
+            "204d8eff92f95aac4df6c8122bc1505f468f3a901e5a4cc08940e0ede1938994",
+            18009
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0",
+        "selfTest": [
+          "ক্ষুরধার",
+          "নিয়মভঙ্গ",
+          "মায়ূর"
+        ]
+      }
+    },
+    {
+      "tag": "br",
+      "babel": [
+        "breton"
+      ],
+      "harper": null,
+      "languageTool": "br-FR",
+      "script": "Latin",
+      "wordChars": "'",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/br/index.aff",
+            "8c05d6c1e2a9279f67407018145cf7f0b8b6da4f3a8ed83939a55f8e32af27cd",
+            13888
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/br/index.dic",
+            "235241afc01c0726d32427e1411f96bee1a5f536bd1bdb7f083a311e6f0d780b",
+            3967626
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/br/license",
+            "3fbedfd3144eaff8eddd3eeb4f06009f6fc6925b180d0bddb6eeba5c7403e4db",
+            1547
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0 OR LGPL-2.1 OR MPL-1.1",
+        "selfTest": [
+          "felldedioùigoù",
+          "kreoñioù",
+          "tarzhigelledigoù"
+        ]
+      }
+    },
+    {
+      "tag": "ca",
+      "babel": [
+        "catalan"
+      ],
+      "harper": null,
+      "languageTool": "ca-ES",
+      "script": "Latin",
+      "wordChars": "·-'",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ca/index.aff",
+            "bfc7d8412c9450ec63e00d13f2153191a11d04868b14d51cf6c50eace71efdb2",
+            49922
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ca/index.dic",
+            "e272aeff4b2d1a92b428a22b52c685292d04936e34dfe7786e27539175cbef2e",
+            2876608
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ca/license",
+            "0287b97b6dc8932f58d8d91dc8364aa0be78d6800517875a76624af7cc92782b",
+            219
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0 OR LGPL-2.1",
+        "selfTest": [
+          "brunet",
+          "etnocultural",
+          "penedirà"
+        ]
+      }
+    },
+    {
+      "tag": "ckb",
+      "babel": [
+        "kurdish"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Arabic",
+      "wordChars": "،.-[]|/؛\"٪",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/ckb/dictionaries/ckb.aff",
+            "31cabc5b61b79b29847b05c13fb929d2677173eaec41abb94c3d1b6b5928eca9",
+            125024
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/ckb/dictionaries/ckb.dic",
+            "74c1ae8253874861d78d68f4a2ce187cac1c6f7c6d14e5345df7eda419af5c8c",
+            713467
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/ckb/LICENSES-en.txt",
+            "f9f1687c5b84c636e3a9e55edee5131a772ef0de4f1ed6d7826f5a6e6adc6793",
+            14678
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "CC-BY-SA-4.0",
+        "selfTest": [
+          "خووسێنرا",
+          "قۆپەن",
+          "پلانت"
+        ]
+      }
+    },
+    {
+      "tag": "crh",
+      "babel": [],
+      "harper": null,
+      "languageTool": "crh-UA",
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": null
+    },
+    {
+      "tag": "cs",
+      "babel": [
+        "czech"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/cs/index.aff",
+            "175e02acb4786042a9c87e3cb6d3746e3a5b3079752118c2d4f0bb2c756ce72b",
+            112714
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/cs/index.dic",
+            "bbc0a495671c29337279182799e171c173a21ae8968c89dd0fb7c713b40c7832",
+            3648134
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/cs/license",
+            "1bd9054040365c2c749565d791dc8fb1659a2566996c57b1f85031f6489c4b84",
+            48038
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0",
+        "selfTest": [
+          "Pačovský",
+          "jalovina",
+          "rolnictvo"
+        ]
+      }
+    },
+    {
+      "tag": "cy",
+      "babel": [
+        "welsh"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/cy/index.aff",
+            "757c350b84889c4d0711c93760509fe532863079262695c069550f9a9c1c5222",
+            7489
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/cy/index.dic",
+            "ef8f01db311cf17c617377d22b11f6752b01c65f5457820cc04d877bba6b92ff",
+            888651
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/cy/license",
+            "a36169950f39f4286fc7f941f48518ffba734b3e95de78356833c7ccd58ea2b2",
+            1439
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "LGPL-3.0",
+        "selfTest": [
+          "cornelo",
+          "glinia",
+          "peilli"
+        ]
+      }
+    },
+    {
+      "tag": "da",
+      "babel": [
+        "danish"
+      ],
+      "harper": null,
+      "languageTool": "da-DK",
+      "script": "Latin",
+      "wordChars": "-.",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/da/index.aff",
+            "cb5ef704de0ab8575c883c97981d5d242260c7ebe47b28c15c205443aca15976",
+            81584
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/da/index.dic",
+            "9a12345e1881c96f18cc460dbd062e47509571d5f2a2a9bf041da169856dc19e",
+            3719300
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/da/license",
+            "ef2785b76dbcb1d0b620435158624a9002b995ee4521cf5d41b055e29eb9d1af",
+            787
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0 OR LGPL-2.1 OR MPL-1.1",
+        "selfTest": [
+          "forårsblomstrende",
+          "Leptinotarsa",
+          "Sarcolaenaceae"
+        ]
+      }
+    },
+    {
+      "tag": "de",
+      "babel": [
+        "ngerman",
+        "german"
+      ],
+      "harper": null,
+      "languageTool": "de-DE",
+      "script": "Latin",
+      "wordChars": "-.",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/de/index.aff",
+            "57fdd1b16aac2131003c91e0cf2a488becb970382a402a9ce089307301cb3ef0",
+            19199
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/de/index.dic",
+            "b5c781a0cf6f285fb6b9b8ab02fbea104b987104a1efdda8a835837e89e3ec77",
+            1118194
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/de/license",
+            "03abf202c6e207d41f054083cafccbb174a30f6b330ea8dba3aeef0a279cb83e",
+            760
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0 OR GPL-3.0",
+        "selfTest": [
+          "Schnabeltier",
+          "einsatzbereit",
+          "offenherzig"
+        ]
+      }
+    },
+    {
+      "tag": "el",
+      "babel": [
+        "greek"
+      ],
+      "harper": null,
+      "languageTool": "el-GR",
+      "script": "Greek",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/el/index.aff",
+            "5d2e3580af6d3523ac4470335a4b05968e59dddc58e1a7f2b260c81342e80063",
+            20058
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/el/index.dic",
+            "f08daefb302600beb1b345e4fd77f4ecf6617aa080a72efe6ae7eec0ad5b2ac7",
+            19421967
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/el/license",
+            "53970cbce0276c3cc4ba4fff842789e95fb167458d257568faa0ff5f68ffe61a",
+            2238
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0 OR LGPL-2.1 OR MPL-1.1",
+        "selfTest": [
+          "δημευτικώς",
+          "κριματίζονται",
+          "προθυμοποιήσουν"
+        ]
+      }
+    },
+    {
+      "tag": "en-AU",
+      "babel": [
+        "australian"
+      ],
+      "harper": "Australian",
+      "languageTool": "en-AU",
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "bundled": "en_AU"
+      }
+    },
+    {
+      "tag": "en-CA",
+      "babel": [
+        "canadian"
+      ],
+      "harper": "Canadian",
+      "languageTool": "en-CA",
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "bundled": "en_CA"
+      }
+    },
+    {
+      "tag": "en-GB",
+      "babel": [
+        "british",
+        "UKenglish"
+      ],
+      "harper": "British",
+      "languageTool": "en-GB",
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "bundled": "en_GB"
+      }
+    },
+    {
+      "tag": "en-IN",
+      "babel": [],
+      "harper": "Indian",
+      "languageTool": "en-GB",
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "bundled": "en_GB"
+      }
+    },
+    {
+      "tag": "en-US",
+      "babel": [
+        "american",
+        "english",
+        "USenglish"
+      ],
+      "harper": "American",
+      "languageTool": "en-US",
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "bundled": "en_US"
+      }
+    },
+    {
+      "tag": "eo",
+      "babel": [
+        "esperanto"
+      ],
+      "harper": null,
+      "languageTool": "eo",
+      "script": "Latin",
+      "wordChars": "'-",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/eo/index.aff",
+            "a668bb25baccb39a758692a94325c47195a70fe723fe9875d1b3a3b4545412a5",
+            16322
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/eo/index.dic",
+            "75b09812254cd6b49c2849ed3b92f1c252117906f5a2ce281d25e1798c437ac1",
+            382137
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/eo/license",
+            "e6d6a009505e345fe949e1310334fcb0747f28dae2856759de102ab66b722cb4",
+            18011
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0",
+        "selfTest": [
+          "kraboj",
+          "postven",
+          "maloft"
+        ]
+      }
+    },
+    {
+      "tag": "es",
+      "babel": [
+        "spanish"
+      ],
+      "harper": null,
+      "languageTool": "es",
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/es/index.aff",
+            "892039d59db11d747061b81c3a92a52d48ba0e055b5835af1943cbd3c2fba85b",
+            167135
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/es/index.dic",
+            "907f786a8ceb3456722b20ad91dd4dbe99c5c16e45015ea63155e36f26b06d2c",
+            706202
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/es/license",
+            "a21581497f07b5e550e438d26890ea2b1704492357de67740613bd589b1c652a",
+            2596
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-3.0 OR LGPL-3.0 OR MPL-1.1",
+        "selfTest": [
+          "conflictividad",
+          "guamo",
+          "plebeyez"
+        ]
+      }
+    },
+    {
+      "tag": "et",
+      "babel": [
+        "estonian"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/et/index.aff",
+            "f568a1003d9d49d377e87e35a4b712a243b4490ef0647992c85169d46ed948e3",
+            240016
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/et/index.dic",
+            "237ff31093ec03c7f992919b8e7c9a4d3df90cdef9859edab571ebff42c9f5e8",
+            4457441
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/et/readme.md",
+            "4a0065d329249b2172c4cb35a3ed9b04fe903639b6b231f7b54615366846bef9",
+            2894
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "LGPL-2.1",
+        "selfTest": [
+          "kiiksutan",
+          "mullastiku",
+          "sisima"
+        ]
+      }
+    },
+    {
+      "tag": "eu",
+      "babel": [
+        "basque"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": ".-",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/eu/index.aff",
+            "ba68948c642828c80e5b5fc7ea19876bd38ce6f874f4453c662395adca8fef2a",
+            2729393
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/eu/index.dic",
+            "2f046ed070c11f9dc6f502577462bdc11a0966be50e0d9750823922a22d9e948",
+            2303418
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/eu/readme.md",
+            "f2fb6de196e25ae7ce894d8d989263dae3718e9736c7ebd165cea5c4f7b7d762",
+            2885
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0",
+        "selfTest": [
+          "buruzapal",
+          "iboi",
+          "orokorpen"
+        ]
+      }
+    },
+    {
+      "tag": "fa",
+      "babel": [
+        "persian",
+        "farsi"
+      ],
+      "harper": null,
+      "languageTool": "fa",
+      "script": "Arabic",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/fa/index.aff",
+            "dba0980816354ad969aa46dda0c040eeebda4a9381be331e17eae8647a2a1e1c",
+            5440
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/fa/index.dic",
+            "314f31e059994f26e8016c834b14dfd10f74834b3f623a6040265b8f2a9dddab",
+            2575990
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/fa/license",
+            "7429736f069a84049bcfbee436e5cea3a3fd9b98348d880d9e43ebcf39721989",
+            582
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "Apache-2.0",
+        "selfTest": [
+          "تابدار",
+          "شهباز",
+          "نروفته"
+        ]
+      }
+    },
+    {
+      "tag": "fo",
+      "babel": [
+        "faroese"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/fo/index.aff",
+            "6e459e5a3346ee0b7ad3ddc98dd0a412226060c6e7be6e096cfdf039f877b491",
+            170213
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/fo/index.dic",
+            "3b62983af6b5c093e2ec020ff35869cc3068167e7cc7f8cc9585456a6b1368db",
+            1716099
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/fo/license",
+            "8caace3ffac21939846af661b8955dea3419749ff45b9f7c9a80690cf6d6c49f",
+            265
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0 OR LGPL-2.1 OR MPL-1.1",
+        "selfTest": [
+          "øðis",
+          "endurskoðaðar",
+          "nautiskir"
+        ]
+      }
+    },
+    {
+      "tag": "fr",
+      "babel": [
+        "french",
+        "francais"
+      ],
+      "harper": null,
+      "languageTool": "fr",
+      "script": "Latin",
+      "wordChars": "-’'.",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/fr/index.aff",
+            "05a735d34c912e4e381ff08ee7c747923ccf5cf9dca81d8467982fa1ca51c2b7",
+            199870
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/fr/index.dic",
+            "984e933237bc1224a48f42828233be9b03228260ef67aa8e2bdddcd03a26230d",
+            1229133
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/fr/license",
+            "0c785aebc7aae8aa00b8163e9b3219a8785a9900b71e85475204e48a5651ced4",
+            2758
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "MPL-2.0",
+        "selfTest": [
+          "centime",
+          "grenatite",
+          "pitchpin"
+        ]
+      }
+    },
+    {
+      "tag": "fur",
+      "babel": [
+        "friulan"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/fur/index.aff",
+            "9b59cc525dec3a8580259e94493fd450a409835a0c35a19ac64b86fe9b750ec9",
+            17832
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/fur/index.dic",
+            "f1ac6d1029915bc749c8b4f4d454a28c977992328c541bd362266b6fc630988f",
+            384726
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/fur/license",
+            "95b65c7414e646b1a41f2ed230a358299cb4b1c06ae3952ffa380d4b54b289df",
+            15245
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0",
+        "selfTest": [
+          "denotatîf",
+          "liberânus",
+          "rôl"
+        ]
+      }
+    },
+    {
+      "tag": "fy",
+      "babel": [],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "'-.",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/fy/index.aff",
+            "10264e8cf0a21a448da15840422382c44c6f7592070a1cb8c103cf4f19ed03fd",
+            7020461
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/fy/index.dic",
+            "529dd768a52b833fd3be90074dfeaaace18a785bd881e3d92ec1691312b901b1",
+            3612120
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/fy/license",
+            "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+            35149
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-3.0",
+        "selfTest": [
+          "foarmoanne",
+          "mjukserijen",
+          "smoeske"
+        ]
+      }
+    },
+    {
+      "tag": "ga",
+      "babel": [
+        "irish"
+      ],
+      "harper": null,
+      "languageTool": "ga-IE",
+      "script": "Latin",
+      "wordChars": "-'",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ga/index.aff",
+            "1c48edbeb0e4225e612bb92d21f819fec58c9121b236db5ac0bba458982623b7",
+            20537
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ga/index.dic",
+            "3ca59ca30da8875020f83697d9f817d44b4efa02d78fe9fb52a2c5a86527349d",
+            1582329
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ga/license",
+            "37b50f1f97cae81339300b3d69f412f4ebb952b9f5ff09c66a3bccbd0ad57e36",
+            19096
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0",
+        "selfTest": [
+          "cábán",
+          "ilghnéithigh",
+          "riospráidte"
+        ]
+      }
+    },
+    {
+      "tag": "gd",
+      "babel": [
+        "scottish"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "-'’⁊",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/gd/index.aff",
+            "88bbdc85cc1826fe91a2001dc1b48c96bce9a5e4a8c0c63169dc64c65a87cee9",
+            11019
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/gd/index.dic",
+            "1769eb3317c90b9aa9e34b9ec95292d1ddde47115ed57c804a01eb03d9a0d83c",
+            2361638
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/gd/license",
+            "1e24c0289727648357cf17a65988acaa79bbe784b7a7d56f41d4a0b7c86cd9ab",
+            36041
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-3.0",
+        "selfTest": [
+          "cabhal",
+          "fhial",
+          "postachdan"
+        ]
+      }
+    },
+    {
+      "tag": "gl",
+      "babel": [
+        "galician"
+      ],
+      "harper": null,
+      "languageTool": "gl-ES",
+      "script": "Latin",
+      "wordChars": "-'’.,‰%",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/gl/index.aff",
+            "e2abc4122548c5f9e914fbbbcbebad3486b1492ac352fef72b95be93e32a0617",
+            1159910
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/gl/index.dic",
+            "ca5f8d735a13225c1dabab042ddac8c58fd5e820ffba807ba8024d0fa0a68170",
+            8636406
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/gl/license",
+            "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+            35147
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-3.0",
+        "selfTest": [
+          "defendíbel",
+          "Justiniano",
+          "prudentemente"
+        ]
+      }
+    },
+    {
+      "tag": "gu",
+      "babel": [],
+      "harper": null,
+      "languageTool": null,
+      "script": "Gujarati",
+      "wordChars": "",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/gu_IN/gu_IN.aff",
+            "79e7588cd644906e55b5cff8b78a47f285d94091f8d7d0e2855678caee4fdb26",
+            174
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/gu_IN/gu_IN.dic",
+            "6039093a92e927a1ff08b756bd5cb5a8ad50700254f6d07bb81d7f2ac50ac364",
+            3792870
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/gu_IN/README_gu_IN.txt",
+            "fac24561a04d8ac5d1d4d9646de5988d2ce3993f77f9ff06bcbf85659d62b9d6",
+            258
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL",
+        "selfTest": [
+          "કિતવ",
+          "તીરખી",
+          "મોરગ"
+        ]
+      }
+    },
+    {
+      "tag": "he",
+      "babel": [
+        "hebrew"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Hebrew",
+      "wordChars": "'\"",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/he/index.aff",
+            "e115a0a5014d17a8e904f9d4a67d7992039b396c5fa031eb036a13bf63dfb037",
+            78883
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/he/index.dic",
+            "9bd95042a927e13ab422231e355caa8a7018456e7c49b889f2e6c62ddb5a0552",
+            5688111
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/he/license",
+            "bb0a75c473e49224e0428b95c17ad90f1774a7f6cb97be921f9d6a93a3af80d7",
+            461
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "AGPL-3.0",
+        "selfTest": [
+          "הצטוותות",
+          "מהגרות",
+          "פורום"
+        ]
+      }
+    },
+    {
+      "tag": "hi",
+      "babel": [
+        "hindi"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Devanagari",
+      "wordChars": "।-.,॥‰§%°–'",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/hi_IN/hi_IN.aff",
+            "3ab96772dc3d1cdbec4141798efb8b7a091b92c9acbeb5dfd3c4998a5c508302",
+            12671
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/hi_IN/hi_IN.dic",
+            "1e01f962a02638ef73e3f8de3c44bfd854f7059d31c9fa96cff0b73a2840f9d9",
+            5004835
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/hi_IN/Copyright",
+            "67e86e61e452247c2c491b63629799dec1d6dd4cf4aae47548f5141cf3707098",
+            834
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0-or-later",
+        "selfTest": [
+          "अजमोदिका",
+          "हठत",
+          "आत्ममोहग्रस्त"
+        ]
+      }
+    },
+    {
+      "tag": "hr",
+      "babel": [
+        "croatian"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "-'",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/hr/index.aff",
+            "230a7f0ca65159ecf8f3eea4afd79f7436415e83129b1d6b2424892074d8194d",
+            96099
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/hr/index.dic",
+            "fb436f3a758cd4faf9ef4cd5c2e6e2a1e3abe535ee183095a2f59fd18dad0731",
+            732589
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/hr/license",
+            "4edabc6989973eea67423ff9dedd133b33d032a09d821c70acaa43f49184e96c",
+            153
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "LGPL-2.1 OR SISSL",
+        "selfTest": [
+          "izdajnik",
+          "odgojitelj",
+          "runolist"
+        ]
+      }
+    },
+    {
+      "tag": "hu",
+      "babel": [
+        "magyar",
+        "hungarian"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "-.&;%'",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/hu/index.aff",
+            "da5cecde3c1afb67990030f1ffe8fb9859983c9305fc207abeb5475f8f002237",
+            807888
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/hu/index.dic",
+            "3ac7aa0a100cabadddb4ace6c72ea3dcd6a5535aef63c8bf94f14073a71decd5",
+            3153800
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/hu/license",
+            "28df62764d790d0b4dd322a517f5a468f952ba03b9ea6ff5c18a45d0f2faf2d9",
+            6919
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0 OR LGPL-2.1 OR MPL-1.1",
+        "selfTest": [
+          "manipuláció",
+          "bogarász",
+          "polimorf"
+        ]
+      }
+    },
+    {
+      "tag": "hy",
+      "babel": [
+        "armenian"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Armenian",
+      "wordChars": "'՛՜՞",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/hy/index.aff",
+            "aa8b49f32350a0136d112f62ee697c87cdc452256d12a70ef1fea2e7a13b32fb",
+            25543
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/hy/index.dic",
+            "53530792b4937e4b8cd387e28ff45884e42742c8218d8ba4510804efcfb81084",
+            2210856
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/hy/license",
+            "4471b1cc5e45985780f3c044dcfc3725b7845f3108309aa2a7be2df5c0510d32",
+            353
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0 OR LGPL-2.1 OR MPL-1.1",
+        "selfTest": [
+          "դրեցինք",
+          "հակադրելի",
+          "ուրախ"
+        ]
+      }
+    },
+    {
+      "tag": "hyw",
+      "babel": [],
+      "harper": null,
+      "languageTool": null,
+      "script": "Armenian",
+      "wordChars": "'՛՜՞",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/hyw/index.aff",
+            "4223fd49fb82891911f65270982beb5b929e44763476895706567596819dcd3e",
+            96878
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/hyw/index.dic",
+            "ecfbc8af694532bfb2a40654608d8e0d6cad0b55520543d84c97d2ae8b710694",
+            2068288
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/hyw/license",
+            "4471b1cc5e45985780f3c044dcfc3725b7845f3108309aa2a7be2df5c0510d32",
+            353
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0 OR LGPL-2.1 OR MPL-1.1",
+        "selfTest": [
+          "դրսեւորուիլ",
+          "կուսակցական",
+          "ուլունք"
+        ]
+      }
+    },
+    {
+      "tag": "ia",
+      "babel": [
+        "interlingua"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "-’'",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ia/index.aff",
+            "08fa657fc641f6b2db0e9179d4219a14a0e7091a23471b794a5c5e9805283d18",
+            34025
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ia/index.dic",
+            "22ee44726f058c904541b83db9bc3f4652e51186188fadd475619e3a596ada47",
+            713481
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ia/license",
+            "6aa5a02caa670f3073868d681dd9626ab69c21a3f54426d317c97be677a2295f",
+            10496
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-3.0",
+        "selfTest": [
+          "cossa",
+          "isoosmotic",
+          "protistos"
+        ]
+      }
+    },
+    {
+      "tag": "id",
+      "babel": [
+        "indonesian",
+        "bahasai"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "-",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/id/id_ID.aff",
+            "c625d5b237a489c452cf1f9c666600103e8093667dff89e7030a24217995dc79",
+            15274
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/id/id_ID.dic",
+            "775ff17a52801f3d2ee80120952fb44cc9bac6c3cf61740de775e439851a5803",
+            453700
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/id/LICENSE-dict",
+            "97628afebc60f026f5c2b25d7491c46a5c4ee61f693e7cfa07fbd2c03605979b",
+            7652
+          ]
+        },
+        "encoding": "ISO8859-1",
+        "licence": "LGPL-3.0",
+        "selfTest": [
+          "devitrifikasi",
+          "koe",
+          "promotor"
+        ]
+      }
+    },
+    {
+      "tag": "ie",
+      "babel": [],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "-",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ie/index.aff",
+            "7dea5efa7b33134d370e64cf7b4c57b0cf19045d1bb155b36b7d16e2ff0f289d",
+            5686
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ie/index.dic",
+            "f44d9fad8b6a206f2d517624e70dc60426747d118f6674bd16a71cfedb8a6e6d",
+            252917
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ie/license",
+            "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08",
+            11358
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "Apache-2.0",
+        "selfTest": [
+          "decargar",
+          "Iowa",
+          "punte"
+        ]
+      }
+    },
+    {
+      "tag": "is",
+      "babel": [
+        "icelandic"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "\"-./=",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/is/index.aff",
+            "0168050c64a369c55b5aeb61f9dfe484d2aa7512d78bb3fa36779ea24b467c50",
+            309734
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/is/index.dic",
+            "8447594fd7eb1d6d43725c4ca49b00d3f00c4c4f3ac2f2b6dfe3f56eb211d280",
+            2454138
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/is/license",
+            "a953a7bd6a7e45caf78dfff9ccce6a9f1e3ea2c2808ad88af28cce3890fad875",
+            34801
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "CC-BY-SA-3.0",
+        "selfTest": [
+          "geggjun",
+          "lífsnauðsynlegt",
+          "strikið"
+        ]
+      }
+    },
+    {
+      "tag": "it",
+      "babel": [
+        "italian"
+      ],
+      "harper": null,
+      "languageTool": "it",
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/it/index.aff",
+            "5770cd3e16d494c045b4a9a4a9fcd7962577e642d0384a7129c020a12cdd2c79",
+            70020
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/it/index.dic",
+            "b1348fbdb6f441ea9dd7e33b2cfcb96ead39ccd5e48bf894972774cd5aa86abb",
+            1295754
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/it/license",
+            "e48a7f7b3ec37ebb2c0d625528a7a677818de039bbae43e8f2c1dce6fd2a13e6",
+            38596
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-3.0",
+        "selfTest": [
+          "decontaminato",
+          "leggio",
+          "riguardando"
+        ]
+      }
+    },
+    {
+      "tag": "ja",
+      "babel": [
+        "japanese"
+      ],
+      "harper": null,
+      "languageTool": "ja-JP",
+      "script": "Han",
+      "wordChars": "",
+      "spelling": null
+    },
+    {
+      "tag": "ka",
+      "babel": [
+        "georgian"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Georgian",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ka/index.aff",
+            "f5c39986659f13d703d0bae0ac8856d58768ce2b8d1f5ab6fb1ca3487c5ede5a",
+            63577
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ka/index.dic",
+            "5963f268e996f1e27e17163873b4d32f41fae2a1e5bef0117126caefe62f5857",
+            3884579
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ka/license",
+            "583322a252b4aef50d55c3300e42391697c406be5a732530428b2af3f0fa79ed",
+            1036
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "MIT",
+        "selfTest": [
+          "დავიდევ",
+          "მელირება",
+          "სტროფებით"
+        ]
+      }
+    },
+    {
+      "tag": "km",
+      "babel": [
+        "khmer"
+      ],
+      "harper": null,
+      "languageTool": "km-KH",
+      "script": "Khmer",
+      "wordChars": "",
+      "spelling": null
+    },
+    {
+      "tag": "kmr",
+      "babel": [
+        "kurmanji"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/kmr_Latn/kmr_Latn.aff",
+            "b44ac28cf8d347dd1c4969f6960a1238782f7450ea8a8987c1c1d2ffad363f4b",
+            5500
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/kmr_Latn/kmr_Latn.dic",
+            "320690aec9deacca4f2cbb00ab661aebb1b188d3d1613f32aaca68b0dc23af91",
+            41578
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/kmr_Latn/license.txt",
+            "617d51d905257dedf97d6d54dea8d5133c726c2c5e912bc69e1b17b3087fd70c",
+            215
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-3.0 OR LGPL-2.1 OR MPL-1.1",
+        "selfTest": [
+          "dijwarî",
+          "kultur",
+          "reşandin"
+        ]
+      }
+    },
+    {
+      "tag": "kn",
+      "babel": [
+        "kannada"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Kannada",
+      "wordChars": "",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/kn_IN/kn_IN.aff",
+            "fb798ef1d1a23718694c03793fd5b74cfc41c2009f242f0394d8764501d0935a",
+            9374
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/kn_IN/kn_IN.dic",
+            "9c02e401a4aa26bec76bca045af4a58d322c371a4267e8f1b062450001b29f51",
+            94099
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/kn_IN/README-kn_IN.txt",
+            "78be476566faa3d07e62335fd4ea23a6f1a1146d4aa98137de690fce96a9b471",
+            1052
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0-or-later",
+        "selfTest": [
+          "ಕಂಚುಕ",
+          "ಪರಿಚಿತ",
+          "ಲಭ್ಯ"
+        ]
+      }
+    },
+    {
+      "tag": "ko",
+      "babel": [
+        "korean"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Hangul",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ko/index.aff",
+            "7b8930ce1357691591a3c38afc9cba787ec6dce0e30d0438bd156c4b4c94dbdf",
+            11094418
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ko/index.dic",
+            "ea275b5fe256925a95f9192a173f7c3d3c2480fa748371c64b89d7e0cc531b1d",
+            2864525
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ko/license",
+            "3e81dd90f6d8877ccb2ed2b262ce72ee8a6ccf3a21179a8949abf0d85ac7fda0",
+            2598
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0 OR LGPL-2.1 OR MPL-1.1",
+        "selfTest": [
+          "두리번두리번하다",
+          "송별회",
+          "조사하다"
+        ]
+      }
+    },
+    {
+      "tag": "la",
+      "babel": [
+        "latin"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/la/index.aff",
+            "6d78952f21ddd6158227544d573958a3d05b759c6219a2e1ac924daf24210e71",
+            441477
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/la/index.dic",
+            "8e0910e623800110cf9cc70b6adaea813857d02916b7c9a7dd9d9e9dd72a98ef",
+            1710586
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/la/license",
+            "2a1c6cdc97e95d92c8c9efee32d4e08224bc87549abb52f1eeec66684ecd4f72",
+            22076
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0",
+        "selfTest": [
+          "foemineus",
+          "repertio",
+          "fvcationis"
+        ]
+      }
+    },
+    {
+      "tag": "lb",
+      "babel": [
+        "luxembourgish"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/lb/index.aff",
+            "0f32ab1e7e9e3a0e6f8ddf2d062897291587d8db60f6b04d0bfbcac14965a643",
+            79066
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/lb/index.dic",
+            "fdcfb369bf6d4f38ad0ae3d831e40b55e9c0a97680f2f339e5bed9eecccd96fc",
+            3704091
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/lb/license",
+            "86c11627556279536de1f4b440d4934fff9b17527072dda560d256eca016a8b5",
+            13593
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "EUPL-1.1",
+        "selfTest": [
+          "express",
+          "Kribbeleges",
+          "Rubbarbsaroma"
+        ]
+      }
+    },
+    {
+      "tag": "lij",
+      "babel": [],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "'’-°",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/lij_IT/lij_IT.aff",
+            "8b8c82ec1b5eb8d09354e64c7bc1865ed4ede38424dea05772f1d01942164e80",
+            29638
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/lij_IT/lij_IT.dic",
+            "0d8e013aa472f8baa591e7746517c7753ba0758ffaa67d166eecfac6b8900c6b",
+            535959
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/lij_IT/LICENSE_lij_IT.txt",
+            "00a9f772dae26967a310b37ef54e15aceee5f8cdce2d614ca16bae564ca23f73",
+            1075
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "MIT",
+        "selfTest": [
+          "colliddemmo",
+          "inquixitoe",
+          "retençion"
+        ]
+      }
+    },
+    {
+      "tag": "lt",
+      "babel": [
+        "lithuanian"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/lt/index.aff",
+            "79c6f8304490d1c8b27ec93e509b2f635d9bb21d45a2d41c15162b18c8ff897c",
+            99714
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/lt/index.dic",
+            "a751750b040623cf408cf1a3b6f6336141b55ac9519e54068dbeaa52eb395ccd",
+            1181184
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/lt/license",
+            "c5c73b4e3743ed2b959c70e886c4acee20d8654002ccdabac0a51af977ee2a17",
+            1520
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "BSD-3-Clause",
+        "selfTest": [
+          "Gružtai",
+          "nebesibroliauja",
+          "solfedžiavo"
+        ]
+      }
+    },
+    {
+      "tag": "ltg",
+      "babel": [],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ltg/index.aff",
+            "ffe84b7e9fca7157d4f423f246ac3f4da42a78e41d21c64886f9632df00b35ff",
+            210162
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ltg/index.dic",
+            "0f99a93abe86adfe8304967e9e3e8af45dc0d39ba734b42dd49243acf6f8e7fd",
+            134293
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ltg/license",
+            "7537d31ea8c4c4ba2878dc3df3bd59c8a98ef1cf9e817b83fcd9ce884d87d633",
+            2315
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "LGPL-2.1",
+        "selfTest": [
+          "diatermeja",
+          "lykumeigs",
+          "puorbrist"
+        ]
+      }
+    },
+    {
+      "tag": "lv",
+      "babel": [
+        "latvian"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/lv/index.aff",
+            "a11f646c6905d6c96f3218ada4a6cf84129c9e6169720ac1a17f1707940a2890",
+            130475
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/lv/index.dic",
+            "bf7d054e28bc5e44df19410f3ed9d5fd8d6a4d8c051676650388c4e8d65c3148",
+            1844831
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/lv/license",
+            "9bfd51d5240995d95fe159be73bd34369dd9b97efc501118fd675e46c6089bdb",
+            4887
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "LGPL-2.1",
+        "selfTest": [
+          "franks",
+          "mikrobs",
+          "refleksoloģija"
+        ]
+      }
+    },
+    {
+      "tag": "mk",
+      "babel": [
+        "macedonian"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Cyrillic",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/mk/index.aff",
+            "4774871b7cafa2d59bd2f539be7a2293f4aa2b2e2a331f1d11f8bcb849b4105e",
+            181552
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/mk/index.dic",
+            "5008053d3b4e4be163c32b23a9d0551ae7aefceaa7d0760c07f2ebc10af7afb5",
+            2279845
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/mk/license",
+            "1b8e0dea2caf07ba90b923725e06f9a50f2de9ead6667421f67c16a296abf967",
+            36073
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-3.0",
+        "selfTest": [
+          "крадци",
+          "оглушете",
+          "заклокотат"
+        ]
+      }
+    },
+    {
+      "tag": "mn",
+      "babel": [
+        "mongolian"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Cyrillic",
+      "wordChars": "-%.",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/mn/index.aff",
+            "a9cca137eecec85b99894abdbe1935ebf9bccae5767f9736538741c72818a5a5",
+            490281
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/mn/index.dic",
+            "0fe948e7d1824596fd9e6b4f7ee319c4fc2d8cc3e7fb7fea4961bf33e82adfd3",
+            17417591
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/mn/license",
+            "c3ca161e7ae7b0f987d36d9f9f53fe285af52ca97dd397ce0eabf25ab56095bf",
+            1640
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "LPPL-1.3c",
+        "selfTest": [
+          "дугтуйлалцчих",
+          "өөхшүүлэгдэцгээчих",
+          "хетероцист"
+        ]
+      }
+    },
+    {
+      "tag": "mr",
+      "babel": [
+        "marathi"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Devanagari",
+      "wordChars": "",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/mr_IN/mr_IN.aff",
+            "f870dde7dc0e50b15467b159c3c4c893c339936f1aa3642a4ab3303a13510ed9",
+            30158
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/mr_IN/mr_IN.dic",
+            "fe1112d88208b928dc2cca76f18bc3161b99c67b483778ed67fe5877461eb25a",
+            1036511
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/mr_IN/COPYING",
+            "204d8eff92f95aac4df6c8122bc1505f468f3a901e5a4cc08940e0ede1938994",
+            18009
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0",
+        "selfTest": [
+          "गोमूत्र",
+          "नोकरशहा",
+          "राजवंश"
+        ]
+      }
+    },
+    {
+      "tag": "nb",
+      "babel": [
+        "norsk",
+        "norwegian",
+        "bokmal"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/nb/index.aff",
+            "515a1e5f32ffa555d253c827830420dc5bb1d9a59ea9f720729acb0874c6a8c3",
+            17381
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/nb/index.dic",
+            "e97fdf7f441b3c46e1d0761a8ad25fa1883d0977d70ea8cb04751cb1c47fa10e",
+            5349724
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/nb/license",
+            "583b1f60fd05cd7dec21293ebfb1f9f1d5b50d217521ef4f76287b50f2824770",
+            284
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0",
+        "selfTest": [
+          "forretningsforhold",
+          "lausdriftsfjøs",
+          "siltene"
+        ]
+      }
+    },
+    {
+      "tag": "nds",
+      "babel": [],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/nds/index.aff",
+            "3bede75cd7db3b8262778e6a5cc673bfee37cb703702e412682d806429ae1073",
+            12733
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/nds/index.dic",
+            "d8c380bed2182b1ac36bcef33a9391d9d77232045aaf43b59fe1cb492f378a95",
+            103126
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/nds/license",
+            "72fb471f7d12cb48e8c4e2a2418fa5c86fa82ee97e55ad393427157f80574cda",
+            1072
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-3.0",
+        "selfTest": [
+          "fiefuntachentig",
+          "luern",
+          "sünst"
+        ]
+      }
+    },
+    {
+      "tag": "ne",
+      "babel": [
+        "nepali"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Devanagari",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ne/index.aff",
+            "0e07d48fbebb6cb7f40d686a9eb9540a949922360d71c6d423a0384ee65f3fc2",
+            69405
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ne/index.dic",
+            "dfc130b2ccbaeee54a859bdc512c27107eb6efa6ae5167615a65df83377ba427",
+            876717
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ne/license",
+            "c79e6ed649e5a3d465f3d76c71046bdd01c44b0c7ca3ff1c7c1a0e57fe24ee0e",
+            749
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "LGPL-2.1",
+        "selfTest": [
+          "घुक्याउ",
+          "पन्जा",
+          "लाग"
+        ]
+      }
+    },
+    {
+      "tag": "nl",
+      "babel": [
+        "dutch"
+      ],
+      "harper": null,
+      "languageTool": "nl",
+      "script": "Latin",
+      "wordChars": "'’.-\\/+€@",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/nl/index.aff",
+            "b430d9cf5f4170d9e5072397927e1402b34aa877d1f4c8fbc00dab6370d87312",
+            46732
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/nl/index.dic",
+            "be192fdc36efd39dde0fb9a5a113143e0a906782e81ed68a74a710edced378d0",
+            2489166
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/nl/license",
+            "fd9e95c360245eab3c388885062820754785faa4123964994cfdecb950b71948",
+            25817
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "BSD-3-Clause OR CC-BY-3.0",
+        "selfTest": [
+          "franciscaner",
+          "lotsverbonden",
+          "semiwetenschappelĳk"
+        ]
+      }
+    },
+    {
+      "tag": "nn",
+      "babel": [
+        "nynorsk"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/nn/index.aff",
+            "e50821655063f5680a3e4cf775b0a69c87de74bd6d2bbbb5da14ff8de4633beb",
+            13615
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/nn/index.dic",
+            "eaf1dc7ee7c848358df9aa231640b054ca4e388f2a870185528e4b229626faa6",
+            3338635
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/nn/license",
+            "85fbc8cb7925ce44e34d5c6a96abf2a8a45c4a66ab542044a6c827a44af9c526",
+            284
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0",
+        "selfTest": [
+          "fondslov",
+          "lakk",
+          "skanningi"
+        ]
+      }
+    },
+    {
+      "tag": "oc",
+      "babel": [
+        "occitan"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/oc/index.aff",
+            "aad666af536d132640941b2231287600dd226fcd432f6ca5c96281ac4bfbe13f",
+            19560
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/oc/index.dic",
+            "986e7947c13682f4a56ac46737480475ec599b51e99a146e07d66f5ed2417b7f",
+            2767078
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/oc/license",
+            "92580a2a92179284e7effe4be36aad1ec6fa8fcf9ee0716945048a4554d5932e",
+            980
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0",
+        "selfTest": [
+          "cogorlièr",
+          "farda",
+          "peresina"
+        ]
+      }
+    },
+    {
+      "tag": "pl",
+      "babel": [
+        "polish"
+      ],
+      "harper": null,
+      "languageTool": "pl-PL",
+      "script": "Latin",
+      "wordChars": "-",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/pl/index.aff",
+            "de7b54a8fa37562d58b481cf3d87a63e3dcc2d74021f6403eb0e4f5df9ecc225",
+            268824
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/pl/index.dic",
+            "74b6155391025419967c26913541b55b36d58e80b1028037d4a0b8ddcb18d0b7",
+            4683579
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/pl/license",
+            "8bb92c291eb431ffe32f7c42a719a0b54acf2851690fe12ca292e248a12a37e6",
+            2138
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-3.0 OR LGPL-3.0 OR MPL-2.0",
+        "selfTest": [
+          "ekranizator",
+          "niepodrzucanie",
+          "przybiegł"
+        ]
+      }
+    },
+    {
+      "tag": "pt-BR",
+      "babel": [
+        "brazilian",
+        "brazil"
+      ],
+      "harper": null,
+      "languageTool": "pt-BR",
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/pt/index.aff",
+            "a9f3621b94eb4d6838474bf9982027758e77dcb248815f49409b1a4a477dbd27",
+            979789
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/pt/index.dic",
+            "32e2edd83541d58613bcc83ef731a79aadf85ed57e977a16c6b5f711a7a36cee",
+            4477692
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/pt/license",
+            "bb064f3db7ba5f5536da7d079773f692c5f928822e8aebc3d78259ff6cceb9e5",
+            1461
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "LGPL-3.0 OR MPL-2.0",
+        "selfTest": [
+          "corpico",
+          "holetro",
+          "pelve"
+        ]
+      }
+    },
+    {
+      "tag": "pt-PT",
+      "babel": [
+        "portuguese",
+        "portuges"
+      ],
+      "harper": null,
+      "languageTool": "pt-PT",
+      "script": "Latin",
+      "wordChars": "-",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/pt-PT/index.aff",
+            "975a209fcc892cb382fa5f34a28c391a39668661ce373ae071287809c5fcae24",
+            95089
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/pt-PT/index.dic",
+            "fcac21564163586df74ba88cde362bb75560548b35bcaa780558c8f97f43de04",
+            1475328
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/pt-PT/license",
+            "a5d807381c41a7186b235f17cdf472f53d83831cb05a2bae3c44581cc818570c",
+            1148
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0 OR LGPL-2.1 OR MPL-1.1",
+        "selfTest": [
+          "desencabelar",
+          "medir",
+          "trabalhoso"
+        ]
+      }
+    },
+    {
+      "tag": "ro",
+      "babel": [
+        "romanian"
+      ],
+      "harper": null,
+      "languageTool": "ro-RO",
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ro/index.aff",
+            "3ee127a667bdec829faee546ae32033e8f10f7c63117f9b572ef03ad9df2b76b",
+            55040
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ro/index.dic",
+            "c26a9356f598a0ae89e7be650f6bdd9ba70acce66b41d7ab14c0c68639b6ed33",
+            2202394
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ro/license",
+            "854c3b7e6575da37d066d5a09945af336a8ecc62c5e3c1049e97504dc67cbd81",
+            1633
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0 OR LGPL-2.1 OR MPL-1.1",
+        "selfTest": [
+          "decibeli",
+          "neîndemânare",
+          "scurmase"
+        ]
+      }
+    },
+    {
+      "tag": "ru",
+      "babel": [
+        "russian"
+      ],
+      "harper": null,
+      "languageTool": "ru-RU",
+      "script": "Cyrillic",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ru/index.aff",
+            "38ce7d4af78e211e9bafe4bf7e3d6a2c420591136cb738ec6648f8fdf6524cd7",
+            71236
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ru/index.dic",
+            "f6047416a0204adbecf3a451b874ec8a97ee37e2cbc714466ef04d8dbcc0d6fc",
+            3473191
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/ru/license",
+            "262af2f6ad70a61e5ee1332ff44fa8ee50edca819cf33207d8ad6ba6a0c9be52",
+            1886
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "BSD-3-Clause",
+        "selfTest": [
+          "таборит",
+          "полиомиелитный",
+          "мариноваться"
+        ]
+      }
+    },
+    {
+      "tag": "si",
+      "babel": [
+        "sinhala"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Sinhala",
+      "wordChars": "",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/si_LK/si_LK.aff",
+            "d188ccc49f06ce50ccb80ab9f3d08808dfb5caeb039c09cde55c8664ca6d8643",
+            197175
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/si_LK/si_LK.dic",
+            "d6ce8cef2bbf184459bb3073d2ddc246afa914efaf8fc438b32e8d7724abfcfd",
+            851377
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/si_LK/LICENSES-en.txt",
+            "d02c1a39754df712b0cc07a34bf83a035951519d3ca262d20cc64032f5d5084a",
+            759
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-3.0-or-later",
+        "selfTest": [
+          "කොමික්",
+          "පනන්",
+          "ලංකෙරුවනං"
+        ]
+      }
+    },
+    {
+      "tag": "sk",
+      "babel": [
+        "slovak"
+      ],
+      "harper": null,
+      "languageTool": "sk-SK",
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/sk/index.aff",
+            "a79dc992b849aa2355db38eea9c4722239993639d77bc81c9c1aa79f213e723c",
+            99298
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/sk/index.dic",
+            "b6cdb6fb512c44881cc91329aea0b179840f5f9a3e6cb024c2ab8547f96f5d94",
+            3502147
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/sk/license",
+            "04903300e57a64a9967f85cdc65038470165b56bd34843e161f89d1fb9bcc0cd",
+            822
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0 OR LGPL-2.1 OR MPL-1.1",
+        "selfTest": [
+          "migrénach",
+          "nesnor",
+          "semenník"
+        ]
+      }
+    },
+    {
+      "tag": "sl",
+      "babel": [
+        "slovene",
+        "slovenian"
+      ],
+      "harper": null,
+      "languageTool": "sl-SI",
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/sl/index.aff",
+            "511043a4f9c64a966599e3d53fa1f4e9a172a87de4a7a0c2cf327098a3a605d1",
+            15054
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/sl/index.dic",
+            "5bac615dbd301ddbefbdaafdae242a89e46605916d77958df22778e770a95b9e",
+            3084448
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/sl/license",
+            "80e3fb8a78bf7c3cf1c76679ff1f11d4cb100440c9362553636b02edca005eb8",
+            2076
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-3.0 OR LGPL-2.1",
+        "selfTest": [
+          "Jerami",
+          "sov",
+          "zadnjicama"
+        ]
+      }
+    },
+    {
+      "tag": "sq",
+      "babel": [
+        "albanian"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/sq_AL/sq_AL.aff",
+            "d20b6a23431d28fe6d4e6327eedf846dbed1c3ffbb9574fdcfed4ec308422010",
+            7764
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/sq_AL/sq_AL.dic",
+            "8fba63fcf7320910803739cc2f0475224a7e8f38f696963d0968e6122a7c0343",
+            2726785
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/sq_AL/README.txt",
+            "b56a3cbe5b5fd6a95a159f6d7da35c28541473808ddeec24fde863aec59cb91f",
+            303
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0-or-later",
+        "selfTest": [
+          "gjegjet",
+          "monopolizohet",
+          "rrudhure"
+        ]
+      }
+    },
+    {
+      "tag": "sr-Cyrl",
+      "babel": [
+        "serbianc"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Cyrillic",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/sr/index.aff",
+            "10e11edbd55742975f0720b26a2b6669187e9b91fabc5063ee81f0db2f73279f",
+            1296
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/sr/index.dic",
+            "8bdbbe464f20a5a600ccad1ff0257883c42bb6170a55440d45b4b39e002f433a",
+            4447970
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/sr/license",
+            "272cfe7e4b339cbad1750806139576f062f9dbb8a966a55acd3d8700c51daeca",
+            1412
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0 OR LGPL-2.1 OR MPL-1.1 OR CC-BY-SA-3.0",
+        "selfTest": [
+          "излиј",
+          "обријте",
+          "рефата"
+        ]
+      }
+    },
+    {
+      "tag": "sr-Latn",
+      "babel": [
+        "serbian"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/sr-Latn/index.aff",
+            "9112fdbd53c8a20ac06397e736884450d61df0c6c5be6f5512210ed58229f939",
+            704
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/sr-Latn/index.dic",
+            "a41302b3e707c7a344560bc7df6db739db254f87be0442108a68f4ed2a34782d",
+            2489827
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/sr-Latn/license",
+            "8f0c179268ac54bdbd9d2096eacde31aaf74383c02b50b3a99e71b4ebfc2611f",
+            888
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0 OR LGPL-2.1 OR MPL-1.1 OR CC-BY-SA-3.0",
+        "selfTest": [
+          "izlije",
+          "obriješ",
+          "refakciju"
+        ]
+      }
+    },
+    {
+      "tag": "sv",
+      "babel": [
+        "swedish"
+      ],
+      "harper": null,
+      "languageTool": "sv",
+      "script": "Latin",
+      "wordChars": "-.:",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/sv/index.aff",
+            "ff8ddb979daa9f128e7489ece5edd666ada7af787933221543b7cecb2b3ed478",
+            18581
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/sv/index.dic",
+            "540ff8d0d9b05aae66dd919625d3a0bd25026d1e157027e6602e5dd11a07b645",
+            2344199
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/sv/license",
+            "1314b6004bff32053ca25aca5fc419e905d75a6d49f9f9825baf4f02298af6d9",
+            378
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "LGPL-3.0",
+        "selfTest": [
+          "föryngringsyta",
+          "malmhamn",
+          "skuldbelopp"
+        ]
+      }
+    },
+    {
+      "tag": "sw",
+      "babel": [
+        "swahili"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/sw_TZ/sw_TZ.aff",
+            "1626aaf2b428ebcc6112abe742e95d4ebcc6576af65fad3ba2d32ddb403f3049",
+            974
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/sw_TZ/sw_TZ.dic",
+            "e17d7c89fc5479198692d73aef8c23edd20d441347311a79befd67f79be62c28",
+            630844
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/sw_TZ/README_sw_TZ.txt",
+            "dd221d7bf8ad2ea58b701b1c1f6bb2216fe6235a3d452914cc03294e31473e28",
+            2408
+          ]
+        },
+        "encoding": "ISO8859-1",
+        "licence": "LGPL",
+        "selfTest": [
+          "hasiwa",
+          "linalosumbu",
+          "tarjumi"
+        ]
+      }
+    },
+    {
+      "tag": "ta",
+      "babel": [
+        "tamil"
+      ],
+      "harper": null,
+      "languageTool": "ta-IN",
+      "script": "Tamil",
+      "wordChars": "",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/ta_IN/ta_IN.aff",
+            "e05c53e643a141efc1e9c00c5f6532a6fd8ac547b998e1347aa8aea5817f2e15",
+            12114
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/ta_IN/ta_IN.dic",
+            "4c079bde24d3232d4195e78bd33bbe5fcb887ceb6363065574cec048d04bc756",
+            2422307
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/ta_IN/COPYING",
+            "9fec7edfc79e99b210d43413ac1f309654c8c4c622ee8f51a24a3eb693f92a4e",
+            25754
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "MPL-1.1",
+        "selfTest": [
+          "கருகாமல்",
+          "தாங்கிப்",
+          "பொறாமைப்"
+        ]
+      }
+    },
+    {
+      "tag": "te",
+      "babel": [
+        "telugu"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Telugu",
+      "wordChars": "",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/te_IN/te_IN.aff",
+            "24883e46a03ebb381f40ce2c0ae59c30c6e3e14808de224c0005935bf3565b1e",
+            160
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/te_IN/te_IN.dic",
+            "d8f2eb5301199b1e8874545c9ffc5058fc1d2cc76ea1fdf0765338501906b719",
+            3402272
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/te_IN/README_te_IN.txt",
+            "453104723d3b16c749737c504644d44765c3d6cb5a9a01596dda317737e979d3",
+            979
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0-or-later",
+        "selfTest": [
+          "గుర్తొచ్చు",
+          "పంప్",
+          "యుద్ధపఠము"
+        ]
+      }
+    },
+    {
+      "tag": "th",
+      "babel": [
+        "thai"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Thai",
+      "wordChars": "",
+      "spelling": {
+        "source": "LibreOffice/dictionaries",
+        "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/th_TH/th_TH.aff",
+            "a99ba46a0899a9155cd0d4f7f823ef9f5686281220ae2eb355c8b576d166e243",
+            1555
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/th_TH/th_TH.dic",
+            "42e9f145eb6744a3a24c498e143229a7ce7fb2cb67c8e8e94b42fde808dbf28f",
+            1239954
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/th_TH/README_th_TH.txt",
+            "87049058b4b6e4f22cf01720bcbb416dfe14bc7ca5f6ae7927821a231d559e10",
+            321
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "LGPL",
+        "selfTest": [
+          "ตถตา",
+          "มะเมีย",
+          "อาหารกระป๋อง"
+        ]
+      }
+    },
+    {
+      "tag": "tk",
+      "babel": [
+        "turkmen"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "-",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/tk/index.aff",
+            "c55a9e98cab463d6095920bc2f8f682837beb971c21a8ea37d8ef60d80133755",
+            369118
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/tk/index.dic",
+            "4c75d6e1c9f4e4780bd1a00828b37b8826232db4b204a96b30b841f94d2a0b81",
+            784836
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/tk/license",
+            "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+            11357
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "Apache-2.0",
+        "selfTest": [
+          "gazlaşdyryş",
+          "küýkeriliber",
+          "tegele"
+        ]
+      }
+    },
+    {
+      "tag": "tl",
+      "babel": [],
+      "harper": null,
+      "languageTool": "tl-PH",
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": null
+    },
+    {
+      "tag": "tr",
+      "babel": [
+        "turkish"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/tr/index.aff",
+            "6a390c79b054ad427cf9a6bf6de43463953cc1918e7f727e9dd4ebd4f9702f42",
+            240814
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/tr/index.dic",
+            "dc1d8f7724f4aefd117274678de431e4ea1765f2e02e6983b6ca48cbf5a7fc7c",
+            9117192
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/tr/license",
+            "c18fd6425a62f50a0f1d4ec1dd45611e2051a66c56c44349a5f9045325549c0c",
+            1086
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "MIT",
+        "selfTest": [
+          "dönümcük",
+          "kaynak",
+          "seviştirme"
+        ]
+      }
+    },
+    {
+      "tag": "uk",
+      "babel": [
+        "ukrainian"
+      ],
+      "harper": null,
+      "languageTool": "uk-UA",
+      "script": "Cyrillic",
+      "wordChars": "-'`",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/uk/index.aff",
+            "4243327a3aa19c6db5a4fb2e0c4e3eba6ad26e7ccb8a3f4e634c28d9a2d18956",
+            203292
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/uk/index.dic",
+            "48cbe32567a2c3c98f83d437bcd84ad3c11310e9df4d6c15d888b1e67654be31",
+            8493094
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/uk/license",
+            "d62f065830aa3739cc031156b9690805c7b2e811b4a178c8b4acd8725d561c94",
+            35142
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-3.0",
+        "selfTest": [
+          "етносоціологічний",
+          "невирівняність",
+          "розсобачитися"
+        ]
+      }
+    },
+    {
+      "tag": "vi",
+      "babel": [
+        "vietnamese"
+      ],
+      "harper": null,
+      "languageTool": null,
+      "script": "Latin",
+      "wordChars": "",
+      "spelling": {
+        "source": "wooorm/dictionaries",
+        "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+        "files": {
+          "aff": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/vi/index.aff",
+            "0d836ebf1d4f1e9964d931fbb76464b24037b71995c73784166a07c43e2a7ae5",
+            1081
+          ],
+          "dic": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/vi/index.dic",
+            "9c56725b43e66de33d28aac8e58124e38247c8b2be34a8469b3113169110256c",
+            39858
+          ],
+          "licence": [
+            "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/vi/license",
+            "4765f3b113b57fec3fff1d790128b4dca78069bebb156bf0e241a29cf4fe3984",
+            456
+          ]
+        },
+        "encoding": "UTF-8",
+        "licence": "GPL-2.0",
+        "selfTest": [
+          "hoẻn",
+          "nhiệt",
+          "thược"
+        ]
+      }
+    },
+    {
+      "tag": "zh-CN",
+      "babel": [],
+      "harper": null,
+      "languageTool": "zh-CN",
+      "script": "Han",
+      "wordChars": "",
+      "spelling": null
+    },
+    {
+      "tag": "zh-TW",
+      "babel": [],
+      "harper": null,
+      "languageTool": null,
+      "script": "Han",
+      "wordChars": "",
+      "spelling": null
+    }
+  ]
+}

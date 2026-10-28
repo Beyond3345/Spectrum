@@ -152,6 +152,7 @@ test('spelling in each bundled English: its own words, and the supplement in all
   assert.deepEqual((await spell.checkWords(words, undefined, 'en-IN')).sort(), ['Centrelink', 'color', 'defense', 'recieve']);
   assert.deepEqual((await spell.checkWords(words, undefined, 'en-CA')).sort(), ['Centrelink', 'organise', 'recieve']);
   assert.ok((await spell.suggestWord('colur', 'en-US')).includes('color'));
+  await assert.rejects(() => spell.checkWords(['x'], undefined, 'xx-YY'), /no spelling dictionary/);
 });
 
 test('runs of Chinese, Japanese and Thai make no words; Korean splits at spaces; word characters join only between letters', () => {

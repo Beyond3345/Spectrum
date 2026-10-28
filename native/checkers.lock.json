@@ -56,5 +56,191 @@
         "source": "dictionaries/spectrum-extra-au.dic"
       }
     ]
+  },
+  "dictionarySources": {
+    "wooorm": {
+      "commit": "8cfea406b505e4d7df52d5a19bce525df98c54ab",
+      "base": "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/",
+      "layout": "Each tag names a folder with index.aff, index.dic and license (or, where it has none, its readme.md, which names the licence); the licence id is its package.json license",
+      "tags": {
+        "bg": "bg",
+        "br": "br",
+        "ca": "ca",
+        "cs": "cs",
+        "cy": "cy",
+        "da": "da",
+        "de": "de",
+        "el": "el",
+        "eo": "eo",
+        "es": "es",
+        "et": {
+          "dir": "et",
+          "licence": "readme.md"
+        },
+        "eu": {
+          "dir": "eu",
+          "licence": "readme.md"
+        },
+        "fa": "fa",
+        "fo": "fo",
+        "fr": "fr",
+        "fur": "fur",
+        "fy": "fy",
+        "ga": "ga",
+        "gd": "gd",
+        "gl": "gl",
+        "he": "he",
+        "hr": "hr",
+        "hu": "hu",
+        "hy": "hy",
+        "hyw": "hyw",
+        "ia": "ia",
+        "ie": "ie",
+        "is": "is",
+        "it": "it",
+        "ka": "ka",
+        "ko": "ko",
+        "la": "la",
+        "lb": "lb",
+        "lt": "lt",
+        "ltg": "ltg",
+        "lv": "lv",
+        "mk": "mk",
+        "mn": "mn",
+        "nb": "nb",
+        "nds": "nds",
+        "ne": "ne",
+        "nl": "nl",
+        "nn": "nn",
+        "oc": "oc",
+        "pl": "pl",
+        "pt-BR": "pt",
+        "pt-PT": "pt-PT",
+        "ro": "ro",
+        "ru": "ru",
+        "rw": "rw",
+        "sk": "sk",
+        "sl": "sl",
+        "sr-Cyrl": "sr",
+        "sr-Latn": "sr-Latn",
+        "sv": "sv",
+        "tk": "tk",
+        "tr": "tr",
+        "uk": "uk",
+        "vi": "vi"
+      }
+    },
+    "libreoffice": {
+      "commit": "4f1df64b2e8e14751aa7c2205d170ca016071315",
+      "base": "https://raw.githubusercontent.com/LibreOffice/dictionaries/4f1df64b2e8e14751aa7c2205d170ca016071315/",
+      "layout": "Each tag gives the dictionary path without .aff or .dic, the file with its licence and the licence id read from it",
+      "tags": {
+        "af": {
+          "dictionary": "af_ZA/af_ZA",
+          "licence": "af_ZA/README_af_ZA.txt",
+          "spdx": "LGPL-2.1"
+        },
+        "an": {
+          "dictionary": "an_ES/an_ES",
+          "licence": "an_ES/LICENSES-en.txt",
+          "spdx": "MPL-1.1 OR GPL-3.0-or-later OR LGPL-3.0-or-later"
+        },
+        "ar": {
+          "dictionary": "ar/ar",
+          "licence": "ar/COPYING.txt",
+          "spdx": "GPL-2.0-or-later OR LGPL-2.1-or-later OR MPL-1.1"
+        },
+        "as": {
+          "dictionary": "as_IN/as_IN",
+          "licence": "as_IN/README_as_IN.txt",
+          "spdx": "GPL-3.0"
+        },
+        "be": {
+          "dictionary": "be_BY/be-official",
+          "licence": "be_BY/README_be_BY.txt",
+          "spdx": "CC-BY-SA-4.0 OR LGPL-3.0"
+        },
+        "bn": {
+          "dictionary": "bn_BD/bn_BD",
+          "licence": "bn_BD/COPYING",
+          "spdx": "GPL-2.0"
+        },
+        "bs": {
+          "dictionary": "bs_BA/bs_BA",
+          "licence": "bs_BA/README.txt",
+          "spdx": "GPL-2.0-or-later OR LGPL-2.1-or-later OR MPL-1.1"
+        },
+        "ckb": {
+          "dictionary": "ckb/dictionaries/ckb",
+          "licence": "ckb/LICENSES-en.txt",
+          "spdx": "CC-BY-SA-4.0"
+        },
+        "gu": {
+          "dictionary": "gu_IN/gu_IN",
+          "licence": "gu_IN/README_gu_IN.txt",
+          "spdx": "GPL"
+        },
+        "hi": {
+          "dictionary": "hi_IN/hi_IN",
+          "licence": "hi_IN/Copyright",
+          "spdx": "GPL-2.0-or-later"
+        },
+        "id": {
+          "dictionary": "id/id_ID",
+          "licence": "id/LICENSE-dict",
+          "spdx": "LGPL-3.0"
+        },
+        "kmr": {
+          "dictionary": "kmr_Latn/kmr_Latn",
+          "licence": "kmr_Latn/license.txt",
+          "spdx": "GPL-3.0 OR LGPL-2.1 OR MPL-1.1"
+        },
+        "kn": {
+          "dictionary": "kn_IN/kn_IN",
+          "licence": "kn_IN/README-kn_IN.txt",
+          "spdx": "GPL-2.0-or-later"
+        },
+        "lij": {
+          "dictionary": "lij_IT/lij_IT",
+          "licence": "lij_IT/LICENSE_lij_IT.txt",
+          "spdx": "MIT"
+        },
+        "mr": {
+          "dictionary": "mr_IN/mr_IN",
+          "licence": "mr_IN/COPYING",
+          "spdx": "GPL-2.0"
+        },
+        "si": {
+          "dictionary": "si_LK/si_LK",
+          "licence": "si_LK/LICENSES-en.txt",
+          "spdx": "GPL-3.0-or-later"
+        },
+        "sq": {
+          "dictionary": "sq_AL/sq_AL",
+          "licence": "sq_AL/README.txt",
+          "spdx": "GPL-2.0-or-later"
+        },
+        "sw": {
+          "dictionary": "sw_TZ/sw_TZ",
+          "licence": "sw_TZ/README_sw_TZ.txt",
+          "spdx": "LGPL"
+        },
+        "ta": {
+          "dictionary": "ta_IN/ta_IN",
+          "licence": "ta_IN/COPYING",
+          "spdx": "MPL-1.1"
+        },
+        "te": {
+          "dictionary": "te_IN/te_IN",
+          "licence": "te_IN/README_te_IN.txt",
+          "spdx": "GPL-2.0-or-later"
+        },
+        "th": {
+          "dictionary": "th_TH/th_TH",
+          "licence": "th_TH/README_th_TH.txt",
+          "spdx": "LGPL"
+        }
+      }
+    }
   }
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Rebuild the bundled checkers. Sources and tools are pinned in native/checkers.lock.json.
-//   node scripts/native.mjs [hunspell|harper|dictionaries|all|verify] [--update] [--archive file.tgz]
+//   node scripts/native.mjs [hunspell|harper|dictionaries|catalogue|all|verify] [--update] [--archive file.tgz] [--check]
+// catalogue writes the language list with its pinned dictionaries; catalogue --check downloads them again and compares.
 // --update refreshes the vendored Hunspell core (native/hunspell/core) from the pinned archive; Spectrum's binding stays.
 // --archive supplies an offline archive for one engine; its pinned SHA-256 is still checked.
 import { spawnSync } from 'node:child_process';
@@ -175,9 +176,141 @@ async function dictionaries() {
   console.log('Dictionary versions and checksums recorded; Australian spelling self-test passed.');
 }
 
+// ─── the language catalogue (apps/backend/src/data/languages.json) ───
+
+// Each language's babel and polyglossia names and its LanguageTool code, where it has them. The dictionary sources
+// and their pins are in checkers.lock.json's dictionarySources; a language here with no dictionary is offered for
+// LanguageTool's grammar only (or, Traditional Chinese, for marks of its own).
+const LANGUAGES = {
+  'en-AU': [['australian'], 'en-AU'], 'en-US': [['american', 'english', 'USenglish'], 'en-US'], 'en-GB': [['british', 'UKenglish'], 'en-GB'],
+  'en-CA': [['canadian'], 'en-CA'], 'en-IN': [[], 'en-GB'],
+  af: [['afrikaans']], an: [[]], ar: [['arabic'], 'ar'], as: [['assamese']], ast: [['asturian'], 'ast-ES'], be: [['belarusian'], 'be-BY'],
+  bg: [['bulgarian']], bn: [['bengali']], br: [['breton'], 'br-FR'], bs: [['bosnian']], ca: [['catalan'], 'ca-ES'], ckb: [['kurdish']],
+  crh: [[], 'crh-UA'], cs: [['czech']], cy: [['welsh']], da: [['danish'], 'da-DK'], de: [['ngerman', 'german'], 'de-DE'], el: [['greek'], 'el-GR'],
+  eo: [['esperanto'], 'eo'], es: [['spanish'], 'es'], et: [['estonian']], eu: [['basque']], fa: [['persian', 'farsi'], 'fa'], fo: [['faroese']],
+  fr: [['french', 'francais'], 'fr'], fur: [['friulan']], fy: [[]], ga: [['irish'], 'ga-IE'], gd: [['scottish']], gl: [['galician'], 'gl-ES'],
+  gu: [[]], he: [['hebrew']], hi: [['hindi']], hr: [['croatian']], hu: [['magyar', 'hungarian']], hy: [['armenian']], hyw: [[]],
+  ia: [['interlingua']], id: [['indonesian', 'bahasai']], ie: [[]], is: [['icelandic']], it: [['italian'], 'it'], ja: [['japanese'], 'ja-JP'],
+  ka: [['georgian']], km: [['khmer'], 'km-KH'], kmr: [['kurmanji']], kn: [['kannada']], ko: [['korean']], la: [['latin']], lb: [['luxembourgish']],
+  lij: [[]], lt: [['lithuanian']], ltg: [[]], lv: [['latvian']], mk: [['macedonian']], mn: [['mongolian']], mr: [['marathi']],
+  nb: [['norsk', 'norwegian', 'bokmal']], nds: [[]], ne: [['nepali']], nl: [['dutch'], 'nl'], nn: [['nynorsk']], oc: [['occitan']],
+  pl: [['polish'], 'pl-PL'], 'pt-BR': [['brazilian', 'brazil'], 'pt-BR'], 'pt-PT': [['portuguese', 'portuges'], 'pt-PT'], ro: [['romanian'], 'ro-RO'],
+  ru: [['russian'], 'ru-RU'], rw: [[]], si: [['sinhala']], sk: [['slovak'], 'sk-SK'], sl: [['slovene', 'slovenian'], 'sl-SI'], sq: [['albanian']],
+  'sr-Cyrl': [['serbianc']], 'sr-Latn': [['serbian']], sv: [['swedish'], 'sv'], sw: [['swahili']], ta: [['tamil'], 'ta-IN'], te: [['telugu']],
+  th: [['thai']], tk: [['turkmen']], tl: [[], 'tl-PH'], tr: [['turkish']], uk: [['ukrainian'], 'uk-UA'], vi: [['vietnamese']],
+  'zh-CN': [[], 'zh-CN'], 'zh-TW': [[]]
+};
+const ENGLISH = { 'en-AU': ['Australian', 'en_AU'], 'en-US': ['American', 'en_US'], 'en-GB': ['British', 'en_GB'], 'en-CA': ['Canadian', 'en_CA'], 'en-IN': ['Indian', 'en_GB'] };
+// the script of a language with no dictionary to read it from (Japanese is Han with kana; detection knows)
+const SCRIPTS = { ast: 'Latin', crh: 'Latin', ja: 'Han', km: 'Khmer', tl: 'Latin', 'zh-CN': 'Han', 'zh-TW': 'Han' };
+const CANDIDATE_SCRIPTS = ['Latin', 'Cyrillic', 'Greek', 'Arabic', 'Hebrew', 'Armenian', 'Georgian', 'Devanagari', 'Bengali', 'Gujarati', 'Kannada', 'Tamil', 'Telugu', 'Sinhala', 'Thai', 'Lao', 'Khmer', 'Hangul', 'Han'];
+
+async function download(url) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(300_000) });
+  if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+/** Where each catalogued dictionary's three files come from, by tag. */
+function dictionaryFiles() {
+  const out = {};
+  const { wooorm, libreoffice } = lock.dictionarySources;
+  for (const [tag, pin] of Object.entries(wooorm.tags)) {
+    const { dir, licence = 'license' } = typeof pin === 'string' ? { dir: pin } : pin;
+    out[tag] = { source: 'wooorm/dictionaries', commit: wooorm.commit, aff: `${wooorm.base}${dir}/index.aff`, dic: `${wooorm.base}${dir}/index.dic`, licence: `${wooorm.base}${dir}/${licence}`, spdx: `${wooorm.base}${dir}/package.json` };
+  }
+  for (const [tag, { dictionary, licence, spdx }] of Object.entries(libreoffice.tags)) {
+    out[tag] = { source: 'LibreOffice/dictionaries', commit: libreoffice.commit, aff: `${libreoffice.base}${dictionary}.aff`, dic: `${libreoffice.base}${dictionary}.dic`, licence: `${libreoffice.base}${licence}`, spdx };
+  }
+  return out;
+}
+
+const affLine = (aff, key) => aff.match(new RegExp(`^${key}[ \\t]+([^ \\t\\r\\n]+)`, 'm'))?.[1];
+
+/** One dictionary checked through the binding: its encoding, script, word characters and three self-test words. */
+function inspectDictionary(Speller, dir, affBytes, dicBytes) {
+  const affText = affBytes.toString('latin1').replace(/^\xEF\xBB\xBF/, '');
+  const set = affLine(affText, 'SET') || 'ISO8859-1';
+  if (set !== 'UTF-8' && set !== 'ISO8859-1') throw new Error(`its encoding is ${set}`);
+  const decode = (bytes) => bytes.toString(set === 'UTF-8' ? 'utf8' : 'latin1');
+  writeFileSync(join(dir, 'dictionary.aff'), affBytes);
+  writeFileSync(join(dir, 'dictionary.dic'), dicBytes);
+  const speller = new Speller(hunPath(join(dir, 'dictionary.aff')), hunPath(join(dir, 'dictionary.dic')));
+  const words = decode(dicBytes).split('\n').slice(1).map((line) => line.split(/[/\t ]/)[0].trim()).filter((w) => /^[\p{L}\p{M}]{3,}$/u.test(w));
+  const counts = Object.fromEntries(CANDIDATE_SCRIPTS.map((s) => [s, 0]));
+  for (const word of words.slice(0, 5000)) for (const s of CANDIDATE_SCRIPTS) if (new RegExp(`\\p{Script=${s}}`, 'u').test(word)) counts[s]++;
+  const script = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  if (!script[1]) throw new Error('its words are in no script Spectrum knows');
+  // three words from across the list that the dictionary itself accepts; a broken or half-read copy will not
+  const selfTest = [];
+  for (const at of [0.25, 0.5, 0.75]) {
+    const start = Math.floor(words.length * at);
+    const pick = words.slice(start, start + 200).find((w) => !selfTest.includes(w) && speller.spell([w])[0]);
+    if (pick) selfTest.push(pick);
+  }
+  if (selfTest.length < 3) throw new Error('it did not accept three of its own words');
+  const wordChars = [...new Set(decode(Buffer.from(affLine(affText, 'WORDCHARS') || '', 'latin1')))].filter((c) => !/[\p{L}\p{M}\p{N}]/u.test(c)).join('');
+  return { encoding: set, script: script[0], wordChars, selfTest };
+}
+
+async function catalogue(check) {
+  const file = join(ROOT, 'apps', 'backend', 'src', 'data', 'languages.json');
+  if (check) {
+    const failed = [];
+    for (const entry of JSON.parse(readFileSync(file, 'utf8')).languages) {
+      for (const [name, [url, hash]] of Object.entries(entry.spelling?.files || {})) {
+        const bytes = await download(url).catch(() => null);
+        if (!bytes || sha256(bytes) !== hash) failed.push(`${entry.tag} ${name}`);
+      }
+    }
+    if (failed.length) throw new Error(`These files no longer match the catalogue: ${failed.join(', ')}`);
+    console.log('Every catalogued dictionary file still matches its checksum.');
+    return;
+  }
+  const { Speller } = createRequire(import.meta.url)(existsSync(join(NATIVE, `${process.platform}-${process.arch}`, 'hunspell.node')) ? join(NATIVE, `${process.platform}-${process.arch}`, 'hunspell.node') : join(NATIVE, 'hunspell.node'));
+  const sources = dictionaryFiles();
+  const work = mkdtempSync(join(tmpdir(), 'spectrum-catalogue-'));
+  const languages = [], refused = [];
+  try {
+    for (const tag of Object.keys(LANGUAGES).sort()) {
+      const [babel, languageTool = null] = LANGUAGES[tag];
+      const base = { tag, babel, harper: ENGLISH[tag]?.[0] || null, languageTool };
+      if (ENGLISH[tag]) {
+        languages.push({ ...base, script: 'Latin', wordChars: '', spelling: { bundled: ENGLISH[tag][1] } });
+        continue;
+      }
+      const from = sources[tag];
+      if (!from) {
+        if (languageTool || tag === 'zh-TW') languages.push({ ...base, script: SCRIPTS[tag], wordChars: '', spelling: null });
+        else refused.push(`${tag}: no dictionary and no grammar checker`);
+        continue;
+      }
+      try {
+        const [aff, dic, licence] = await Promise.all([download(from.aff), download(from.dic), download(from.licence)]);
+        if (!licence.length) throw new Error('its licence file is empty');
+        const spdx = from.spdx.startsWith('https:') ? JSON.parse((await download(from.spdx)).toString('utf8')).license?.replace(/^\((.*)\)$/, '$1') : from.spdx;
+        if (!spdx) throw new Error('it names no licence');
+        const dir = join(work, tag);
+        mkdirSync(dir);
+        const { encoding, script, wordChars, selfTest } = inspectDictionary(Speller, dir, aff, dic);
+        const pin = (url, bytes) => [url, sha256(bytes), bytes.length];
+        languages.push({ ...base, script, wordChars, spelling: { source: from.source, commit: from.commit, files: { aff: pin(from.aff, aff), dic: pin(from.dic, dic), licence: pin(from.licence, licence) }, encoding, licence: spdx, selfTest } });
+        console.log(`kept ${tag}: ${script}, ${encoding}, ${spdx}, ${((aff.length + dic.length) / 1e6).toFixed(1)} MB, self-test ${selfTest.join(' ')}`);
+      } catch (err) {
+        if (languageTool) languages.push({ ...base, script: SCRIPTS[tag] || null, wordChars: '', spelling: null });
+        refused.push(`${tag}: ${err.message}${languageTool ? ' (kept for LanguageTool’s grammar)' : ''}`);
+      }
+    }
+  } finally { rmSync(work, { recursive: true, force: true }); }
+  json(file, { schema: 1, sources: Object.fromEntries(Object.entries(lock.dictionarySources).map(([name, { commit }]) => [name, commit])), languages });
+  console.log(`\n${languages.length} languages kept (${languages.filter((l) => l.spelling?.files).length} with a downloadable dictionary).`);
+  if (refused.length) console.log(`Refused:\n  ${refused.join('\n  ')}`);
+}
+
 async function main() {
   const [which = 'all', ...args] = process.argv.slice(2);
-  if (!['hunspell', 'harper', 'dictionaries', 'all', 'verify'].includes(which)) throw new Error('Choose hunspell, harper, dictionaries, all or verify.');
+  if (!['hunspell', 'harper', 'dictionaries', 'catalogue', 'all', 'verify'].includes(which)) throw new Error('Choose hunspell, harper, dictionaries, catalogue, all or verify.');
+  if (which === 'catalogue') return catalogue(args.includes('--check'));
   let update = false, archive;
   while (args.length) {
     const arg = args.shift();

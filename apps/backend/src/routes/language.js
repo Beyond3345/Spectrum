@@ -1,4 +1,4 @@
-import { changeWord, checkWords, listWords, spellStatus, suggestWord } from '../services/spellService.js';
+import { changeWord, checkWords, installDictionary, listLanguages, listWords, pruneDictionaries, spellStatus, suggestWord } from '../services/spellService.js';
 import { MAX_GRAMMAR_CHARS, changeIgnoredRule, checkGrammar, grammarStatus, readIgnoredRules } from '../services/grammarService.js';
 
 /** A checker that couldn't start answers 503 with its reason, so the editor can say so and carry on. */
@@ -29,6 +29,27 @@ export function registerLanguageRoutes(fastify) {
   });
 
   fastify.get('/api/spell/words', async (req) => listWords(req.query?.projectId));
+
+  // the catalogue's languages and their dictionaries on this computer; a dictionary downloads only when asked
+  fastify.get('/api/languages', async () => ({ languages: await listLanguages() }));
+
+  fastify.post('/api/languages/:tag/dictionary', async (req) => installDictionary(req.params.tag));
+
+  fastify.post('/api/languages/prune', async (req, reply) => {
+    const { keep } = req.body || {};
+    if (!Array.isArray(keep) || keep.some((tag) => typeof tag !== 'string')) return reply.code(400).send({ error: 'Send the languages to keep.' });
+    return pruneDictionaries(keep);
+  });
+
+  fastify.post('/api/spell/words', async (req, reply) => {
+    const { word, scope, projectId, remove } = req.body || {};
+    try {
+      return await changeWord({ word, scope: scope === 'project' ? 'project' : 'global', projectId, remove: !!remove });
+    } catch (err) {
+      if (err?.statusCode) throw err;
+      return reply.code(400).send({ error: err.message });
+    }
+  });
 
   fastify.get('/api/grammar/status', async () => grammarStatus());
 
