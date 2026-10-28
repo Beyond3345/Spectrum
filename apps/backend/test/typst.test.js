@@ -138,7 +138,21 @@ test('a pinned Typst version that is not installed says so', async (t) => {
   assert.equal(result.ok, false);
   assert.equal(result.code, 'TYPST_VERSION_MISSING');
   assert.equal(result.version, '9.9.9');
+  assert.equal(result.from, 'project');
   assert.match(result.error, /Typst 9\.9\.9 isn’t installed/);
+  // the pin wins over a missing default, and says so
+  assert.equal((await runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto', typstVersion: '8.8.8' })).from, 'project');
+});
+
+test('a default Typst version that is not installed says it is the default', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const project = await projectWith('typst-missing-default', '= Default\n');
+  const result = await runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto', typstVersion: '9.9.9' });
+  assert.equal(result.code, 'TYPST_VERSION_MISSING');
+  assert.equal(result.version, '9.9.9');
+  assert.equal(result.from, 'default');
+  assert.equal(result.builtIn, BUILT_IN_TYPST_VERSION);
+  assert.equal(result.error, 'Typst 9.9.9 is the default version in Settings › Engines, and it isn’t installed on this computer. Download it, or use the built-in version.');
 });
 
 test('the app’s default Typst version reaches the compile, after the project’s own', async (t) => {

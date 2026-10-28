@@ -1216,11 +1216,17 @@ function EnginesPane() {
     }
   };
   const remove = async (version: string) => {
-    if (!(await confirmDialog({ title: 'Remove Typst ' + version + '?', message: 'A project that pins this version will ask for it again the next time it compiles.', confirmLabel: 'Remove' }))) return;
+    const isDefault = version === defaults.typstVersion;
+    const builtIn = engines?.typst.builtIn ? 'the built-in Typst ' + engines.typst.builtIn : 'the built-in Typst';
+    const message = (isDefault ? 'It’s the default version, so projects that don’t pin their own will use ' + builtIn + '. ' : '')
+      + 'A project that pins this version will ask for it again the next time it compiles.';
+    if (!(await confirmDialog({ title: 'Remove Typst ' + version + '?', message, confirmLabel: 'Remove' }))) return;
     setBusy('typst:' + version);
     setError('');
     try {
       setEngines((await removeTypst(version)).engines);
+      // Default version would otherwise name a version this computer no longer has
+      if (loadSettings().compileDefaults.typstVersion === version) update({ compileDefaults: { ...loadSettings().compileDefaults, typstVersion: '' } });
       window.dispatchEvent(new Event(ENGINES_CHANGED));
     } catch (err) {
       setError(errorText(err));

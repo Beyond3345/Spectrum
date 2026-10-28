@@ -535,6 +535,10 @@ export interface CompileResult {
   code?: string;
   /** the version named by a missing-version result */
   version?: string;
+  /** where a missing Typst version came from: the project's pin or the app's default */
+  from?: 'project' | 'default';
+  /** the built-in Typst's version, offered in place of a missing default */
+  builtIn?: string;
   /** what a Markdown compile was generated as */
   generated?: 'latex' | 'typst';
   /** the Typst version the compile used */

@@ -423,7 +423,7 @@ function Editor({ projectId }: { projectId: string }) {
   const [compileDiagnostics, setCompileDiagnostics] = useState<CompileDiagnostic[] | null>(null);
   const [compileFailure, setCompileFailure] = useState('');
   // why the compile stopped before an engine ran, which Logs offers a download or the default for
-  const [compileNotice, setCompileNotice] = useState<{ code?: string; version?: string } | null>(null);
+  const [compileNotice, setCompileNotice] = useState<Pick<CompileResult, 'code' | 'version' | 'from' | 'builtIn'> | null>(null);
   const [compileGenerated, setCompileGenerated] = useState<'latex' | 'typst' | null>(null);
   // the installed Typst versions and pandoc, for the compile menu
   const [engines, setEngines] = useState<Engines | null>(null);
@@ -1540,9 +1540,11 @@ function Editor({ projectId }: { projectId: string }) {
       notify('There’s no document to compile. Add one, or choose “Set as main file” from a file’s menu.');
       return 'failed';
     }
+    // this compile's choices, not those of the render that drew a button calling it (Logs' “Use the default”)
+    const options = compileOptionsRef.current;
     // not for auto compile, which would ask at every pause in typing
     // TexLab reads LaTeX only, so its check is for a .tex document
-    if (compileOptions.syntaxCheck && !opts.auto && isTex(doc)) {
+    if (options.syntaxCheck && !opts.auto && isTex(doc)) {
       compilingRef.current = true;
       const go = await syntaxCheckPasses(doc)
         .catch(() => true)
@@ -1554,7 +1556,7 @@ function Editor({ projectId }: { projectId: string }) {
     editedRef.current = false;
     autoRunningRef.current = !!opts.auto;
     compileIdRef.current = crypto.randomUUID();
-    const used = engine;
+    const used = options.engine;
     let ended: CompileState['state'] = 'failed';
     // a chapter's % !TEX root can send the compile to its document
     let built = doc;
@@ -1567,14 +1569,16 @@ function Editor({ projectId }: { projectId: string }) {
         mainFile: doc,
         engine: used,
         compileId: compileIdRef.current,
-        haltOnError: compileOptions.haltOnError,
-        bibTool: compileOptions.bibTool,
-        draft: compileOptions.draft,
+        haltOnError: options.haltOnError,
+        bibTool: options.bibTool,
+        draft: options.draft,
         fresh: opts.fresh,
         texFolder: settings.texFolder || undefined,
         checkpoint: settings.checkpointOnCompile,
-        typstVersion: compileOptions.typstVersion,
-        markdownEngine: compileOptions.markdownEngine
+        // the app's default only, read now: the backend takes the project's pin from its settings file first, so a
+        // pin cleared a moment ago can't come back from this render
+        typstVersion: loadSettings().compileDefaults.typstVersion || undefined,
+        markdownEngine: options.markdownEngine
       });
       const actual = res.engine || used;
       built = res.doc || doc;
@@ -1583,7 +1587,7 @@ function Editor({ projectId }: { projectId: string }) {
       if (problem && settings.checkpointNotice) notify(problem, 'error');
       setCompileLog(`Engine: ${engineLabel(actual)}\nDocument: ${built}\n\n${res.log || ''}`.trim());
       setCompileDiagnostics(res.errors ?? null);
-      setCompileNotice(res.code ? { code: res.code, version: res.version } : null);
+      setCompileNotice(res.code ? { code: res.code, version: res.version, from: res.from, builtIn: res.builtIn } : null);
       setCompileGenerated(res.generated ?? null);
       // an install from Logs' notice changes what the compile menu can offer
       if (res.code) getEngines().then(setEngines).catch(() => undefined);

@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { CompileOptions, LLMConfig, TexlabDiagnostic, VersionMeta, VersionReason } from '../api/client';
+import type { CompileOptions, CompileResult, LLMConfig, TexlabDiagnostic, VersionMeta, VersionReason } from '../api/client';
 import type { AppSettings } from '../app/settings';
 
 export interface PendingChange {
@@ -38,7 +38,7 @@ export interface EditorApi {
   compiledDoc: string;
   compileFailed: boolean;
   /** why the last compile stopped before an engine ran (PANDOC_MISSING, PANDOC_OLD, TYPST_VERSION_MISSING), for Logs’ buttons */
-  compileNotice: { code?: string; version?: string } | null;
+  compileNotice: Pick<CompileResult, 'code' | 'version' | 'from' | 'builtIn'> | null;
   /** what a Markdown compile generated for its last run, for Logs’ Show generated button */
   compileGenerated: 'latex' | 'typst' | null;
   /** a project compile choice (null: back to the app’s default), saved before it resolves */
