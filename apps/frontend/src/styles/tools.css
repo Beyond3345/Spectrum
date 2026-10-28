@@ -1716,16 +1716,10 @@ span.log-location {
   overflow-x: auto;
 }
 
-/* the spacing leaves room for the focus ring, which the scroller would clip */
+/* cells with a 10 px gap around each for the table's lines; the gaps also leave room for the focus ring, which the scroller would clip */
 .table-grid {
-  border-collapse: separate;
-  border-spacing: 4px;
-}
-
-.table-grid th,
-.table-grid td {
-  min-width: 80px;
-  padding: 0;
+  display: grid;
+  width: 100%;
 }
 
 .table-grid .popup-button {
@@ -1739,11 +1733,73 @@ span.log-location {
 .table-grid .input {
   height: 30px;
   padding: 0 8px;
+  border-color: transparent;
+  background: var(--fill);
+}
+
+.table-grid .input:focus {
+  border-color: var(--accent);
 }
 
 /* the header gets a rule in the LaTeX, not bold text */
 .table-grid .input.head {
-  border-bottom: 2px solid var(--text-tertiary);
+  background: var(--bg-selected);
+}
+
+/* a gap that takes a line: the line runs from the middle of one outer gap to the other, so corners meet */
+.table-line {
+  position: relative;
+  cursor: pointer;
+}
+
+.table-line::before {
+  content: '';
+  position: absolute;
+  border: 0 solid transparent;
+  pointer-events: none;
+}
+
+.table-line.h::before {
+  top: 50%;
+  right: 5px;
+  left: 5px;
+  border-top-width: 1px;
+  transform: translateY(-50%);
+}
+
+.table-line.v::before {
+  top: 5px;
+  bottom: 5px;
+  left: 50%;
+  border-left-width: 1px;
+  transform: translateX(-50%);
+}
+
+.table-line.on::before {
+  border-color: var(--text);
+}
+
+/* booktabs' top and bottom rules */
+.table-line.h.heavy::before {
+  border-top-width: 2px;
+}
+
+.table-line.h.double::before {
+  border-top-width: 3px;
+  border-top-style: double;
+}
+
+.table-line:hover::before {
+  border-style: dashed;
+  border-color: var(--accent);
+}
+
+.table-line.on:hover::before {
+  border-style: solid;
+}
+
+.table-line.double:hover::before {
+  border-style: double;
 }
 
 .table-grid-actions {
