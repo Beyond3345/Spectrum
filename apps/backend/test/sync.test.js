@@ -3,10 +3,11 @@
 // fake home folder, never the real sync folders. Run: npm test
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { promises as fs, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { promises as fs, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { PassThrough } from 'node:stream';
 
 const WINDOWS = process.platform === 'win32';
 // native: Windows' temp folder can have an 8.3 name in it (RUNNER~1), which the app's realpath spells out
@@ -50,8 +51,10 @@ const { registerTodoRoutes } = await import('../src/routes/todos.js');
 const { registerNoteRoutes } = await import('../src/routes/notes.js');
 const { detectSyncRoots, isConflictCopy, offlineMessage } = await import('../src/services/syncService.js');
 const { default: Fastify } = await import('fastify');
+const { default: multipart } = await import('@fastify/multipart');
 
 const app = Fastify();
+await app.register(multipart, { preservePath: true });
 registerProjectRoutes(app);
 registerSyncRoutes(app);
 registerSystemRoutes(app);
@@ -193,6 +196,27 @@ test('while a project is being moved, its folder isn’t handed to a save, and e
   release();
   await move;
   assert.equal((await api(`/api/projects/${id}/file`, { method: 'PUT', body: { path: 'main.tex', content: 'after' } })).status, 200);
+});
+
+test('an upload that began before a move isn’t left in the folder the move leaves behind', async () => {
+  const { whileMoving } = await import('../src/services/projectService.js');
+  const dir = path.join(drive, 'Spectrum', 'Uploading');
+  const id = project(dir);
+  await openFolder(dir);
+  // the upload has the folder and is streaming when the move starts
+  const body = new PassThrough();
+  const upload = app.inject({ method: 'POST', url: `/api/projects/${id}/upload`, headers: { 'content-type': 'multipart/form-data; boundary=b' }, payload: body });
+  body.write('--b\r\nContent-Disposition: form-data; name="files"; filename="figure.png"\r\nContent-Type: image/png\r\n\r\npart');
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  let release;
+  const move = whileMoving(id, () => new Promise((resolve) => (release = resolve)));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  body.end(' and the rest\r\n--b--\r\n');
+  const res = await upload;
+  assert.equal(res.statusCode, 409, res.body);
+  assert.deepEqual(readdirSync(dir).filter((n) => n.startsWith('figure.png')), []);
+  release();
+  await move;
 });
 
 test('Move to this computer waits for a save already under way, which the copy then holds', async () => {
