@@ -12,7 +12,7 @@ import { useEditor } from '../EditorContext';
 import type { EditorApi } from '../EditorContext';
 import { VISION_HINTS, VISION_MODES, docKind, errorText, figureSnippet, isDocument } from '../shared';
 import type { VisionMode } from '../shared';
-import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableLabel, tableLatex, tableMarkdown, tableTypst, uniqueName } from '../floats';
+import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableRules, tableTypst, uniqueName } from '../floats';
 import type { TableLines, TableModel } from '../floats';
 import { addLibraries, addPackages, changeBetween, loadedLibraries, projectPackages } from '../preamble';
 
@@ -127,7 +127,8 @@ function PlacementField({ value, onChange, span, onSpan, kind }: { value: string
   );
 }
 
-function Segmented<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: [T, string, string?][]; onChange: (value: T) => void }) {
+/** value null lights no segment */
+function Segmented<T extends string>({ label, value, options, onChange }: { label: string; value: T | null; options: [T, string, string?][]; onChange: (value: T) => void }) {
   const id = useId();
   return (
     <div className="field">
@@ -796,7 +797,8 @@ const ALIGN_X: [string, string][] = [...ALIGN, ['X', 'Fill (X)']];
 const LINES: [TableLines, string][] = [
   ['booktabs', 'Booktabs'],
   ['grid', 'Grid'],
-  ['minimal', 'Minimal']
+  ['minimal', 'Minimal'],
+  ['none', 'None']
 ];
 
 const blankGrid = (rows: number, cols: number) => Array.from({ length: rows }, () => Array<string>(cols).fill(''));
@@ -811,6 +813,10 @@ function InsertTable() {
   /** chosen alignments; a column without one gets the environment's default */
   const [chosen, setChosen] = useState<string[]>([]);
   const [lines, setLines] = useState<TableLines>('booktabs');
+  /** edges whose line was turned on or off by hand, against the preset */
+  const [toggled, setToggled] = useState<string[]>([]);
+  /** the cell that last had focus, whose lines “Lines at row and column” changes */
+  const [at, setAt] = useState<[number, number]>([0, 0]);
   const [header, setHeader] = useState(true);
   const [float, setFloat] = useState(true);
   const [placement, setPlacement] = useState('H');
@@ -820,12 +826,21 @@ function InsertTable() {
   const [label, setLabel] = useState<string | null>(null);
   const [escape, setEscape] = useState(true);
   const [busy, setBusy] = useState(false);
-  const gridRef = useRef<HTMLTableElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
   const focusAfter = useRef<[number, number] | null>(null);
   const cols = cells[0].length;
-  const align = Array.from({ length: cols }, (_, c) => chosen[c] ?? defaultAlign(env, c));
   const kind = docKind(api.activePath);
-  const model = { cells, env, align, lines, header, float, placement, span, caption, label: label ?? tableLabel(caption), escape };
+  /** a LaTeX document, or none open; Typst and Markdown have no tabularx, so its X columns fall back to the tabular defaults there */
+  const latex = kind !== 'typst' && kind !== 'markdown';
+  const tableEnv = latex ? env : 'tabular';
+  const align = Array.from({ length: cols }, (_, c) => (chosen[c] === 'X' && tableEnv !== 'tabularx' ? undefined : chosen[c]) ?? defaultAlign(tableEnv, c));
+  const model = { cells, env: tableEnv, align, lines, toggled, header, float, placement, span, caption, label: label ?? tableLabel(caption), escape };
+  const edges = tableEdges(cells.length, cols, header);
+  const rules = tableRules(model, cols);
+  // a name left over from a removed row or column changes nothing
+  const changed = toggled.some((edge) => edges.h.includes(edge) || edges.v.includes(edge));
+  const [atRow, atCol] = [Math.min(at[0], cells.length - 1), Math.min(at[1], cols - 1)];
+  const flip = (edge: string) => setToggled((prev) => (prev.includes(edge) ? prev.filter((e) => e !== edge) : [...prev, edge]));
   const text = kind === 'typst' ? tableTypst(model) : kind === 'markdown' ? tableMarkdown(model) : tableLatex(model);
   const docOpen = isDocument(api.activePath);
 
@@ -885,44 +900,68 @@ function InsertTable() {
         <Icon name="tablecells" /> Insert table
       </div>
       <div className="table-grid-scroll">
-        <table className="table-grid" ref={gridRef}>
-          <thead>
-            <tr>
-              {align.map((value, c) => (
-                <th key={c}>
-                  <span id={`${id}-align-${c}`} hidden>
-                    Column {c + 1} alignment
-                  </span>
-                  <Select
-                    labelId={`${id}-align-${c}`}
-                    value={value}
-                    options={env === 'tabularx' ? ALIGN_X : ALIGN}
-                    onChange={(next) => setChosen((prev) => Object.assign([...prev], { [c]: next }))}
-                  />
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {cells.map((row, r) => (
-              <tr key={r}>
-                {row.map((cell, c) => (
-                  <td key={c}>
-                    <input
-                      className={`input ${header && r === 0 ? 'head' : ''}`}
-                      data-cell={`${r}-${c}`}
-                      aria-label={`Row ${r + 1}, column ${c + 1}`}
-                      value={cell}
-                      onChange={(e) => setCell(r, c, e.target.value)}
-                      onKeyDown={(e) => onCellKey(e, r, c)}
-                      onPaste={(e) => onCellPaste(e, r, c)}
-                    />
-                  </td>
-                ))}
-              </tr>
+        {/* cells sit at even grid lines, with a 10 px gap row or column around each for the lines */}
+        <div
+          className="table-grid"
+          ref={gridRef}
+          style={{ gridTemplateColumns: `10px repeat(${cols}, minmax(80px, 1fr) 10px)`, gridTemplateRows: `auto 10px repeat(${cells.length}, 30px 10px)` }}
+        >
+          {align.map((value, c) => (
+            <div key={`align-${c}`} style={{ gridRow: 1, gridColumn: 2 * c + 2 }}>
+              <span id={`${id}-align-${c}`} hidden>
+                Column {c + 1} alignment
+              </span>
+              <Select
+                labelId={`${id}-align-${c}`}
+                value={value}
+                options={tableEnv === 'tabularx' ? ALIGN_X : ALIGN}
+                onChange={(next) => setChosen((prev) => Object.assign([...prev], { [c]: next }))}
+              />
+            </div>
+          ))}
+          {cells.map((row, r) =>
+            row.map((cell, c) => (
+              <input
+                key={`${r}-${c}`}
+                className={`input ${header && r === 0 ? 'head' : ''}`}
+                style={{ gridRow: 2 * r + 3, gridColumn: 2 * c + 2 }}
+                data-cell={`${r}-${c}`}
+                aria-label={`Row ${r + 1}, column ${c + 1}`}
+                value={cell}
+                onChange={(e) => setCell(r, c, e.target.value)}
+                onFocus={() => setAt([r, c])}
+                onKeyDown={(e) => onCellKey(e, r, c)}
+                onPaste={(e) => onCellPaste(e, r, c)}
+              />
+            ))
+          )}
+          {/* mouse targets only: the “Lines at …” buttons below are the way in for the keyboard and screen readers */}
+          {kind !== 'markdown' &&
+            edges.h.map((edge, i) => (
+              <div
+                key={edge}
+                className={`table-line h ${rules.h[i] ? 'on' : ''} ${rules.h[i] === 2 ? 'double' : ''} ${lines === 'booktabs' && (i === 0 || i === cells.length) ? 'heavy' : ''}`}
+                style={{ gridRow: 2 * i + 2, gridColumn: '1 / -1' }}
+                aria-hidden
+                title={rules.h[i] ? 'Remove the line' : 'Add a line'}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => flip(edge)}
+              />
             ))}
-          </tbody>
-        </table>
+          {kind !== 'markdown' &&
+            lines !== 'booktabs' &&
+            edges.v.map((edge, j) => (
+              <div
+                key={edge}
+                className={`table-line v ${rules.v[j] ? 'on' : ''}`}
+                style={{ gridRow: '2 / -1', gridColumn: 2 * j + 1 }}
+                aria-hidden
+                title={rules.v[j] ? 'Remove the line' : 'Add a line'}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => flip(edge)}
+              />
+            ))}
+        </div>
       </div>
       <div className="table-grid-actions">
         <button className="btn small" aria-label="Add a row" title="Add a row" onClick={addRow}>
@@ -948,6 +987,7 @@ function InsertTable() {
           onClick={() => {
             setCells(blankGrid(3, 3));
             setChosen([]);
+            setToggled([]);
             setCaption('');
             setLabel(null);
           }}
@@ -959,43 +999,105 @@ function InsertTable() {
         </span>
       </div>
       <div className="field-hint">
-        Tab moves to the next cell and {IS_WINDOWS ? 'Enter' : 'Return'} moves down. Paste rows from {IS_WINDOWS ? '' : 'Numbers, '}Excel or a CSV file to fill the grid.
+        Tab moves to the next cell and {IS_WINDOWS ? 'Enter' : 'Return'} moves down. Paste rows from {IS_WINDOWS ? '' : 'Numbers, '}Excel or a CSV file to fill the grid.{' '}
+        {kind === 'markdown'
+          ? 'Markdown tables have no lines of their own: pandoc draws its usual rules when the document compiles.'
+          : 'Click between two rows or two columns, or along an edge, to add or remove a line across the table.'}
       </div>
-      <Segmented
-        label="Environment"
-        value={env}
-        options={[
-          ['tabular', 'tabular'],
-          ['tabularx', 'tabularx']
-        ]}
-        onChange={(next) => {
-          setEnv(next);
-          setChosen([]);
-        }}
-      />
-      {env === 'tabularx' && !align.includes('X') && <div className="field-hint">tabularx needs an X column, so the last column fills the width.</div>}
-      <Segmented label="Lines" value={lines} options={LINES} onChange={setLines} />
+      {kind !== 'markdown' && (
+        <>
+          <Segmented
+            label="Lines"
+            value={changed ? null : lines}
+            options={LINES}
+            onChange={(next) => {
+              setLines(next);
+              setToggled([]);
+            }}
+          />
+          {changed ? (
+            <div className="field-hint">Changed by hand from {LINES.find(([preset]) => preset === lines)?.[1]}. Choose a preset to start again.</div>
+          ) : (
+            lines === 'booktabs' && (
+              <div className="field-hint">
+                Booktabs rules are heavier at the top and bottom and take no vertical lines.{kind === 'typst' ? '' : ' Insert table adds the booktabs package.'}
+              </div>
+            )
+          )}
+          <div className="field">
+            <span className="field-label" id={`${id}-lines-at`}>
+              Lines at row {atRow + 1} and column {atCol + 1}
+            </span>
+            <div className="chip-row" role="group" aria-labelledby={`${id}-lines-at`}>
+              {(
+                [
+                  [`Above row ${atRow + 1}`, 'h', atRow],
+                  [`Below row ${atRow + 1}`, 'h', atRow + 1],
+                  [`Before column ${atCol + 1}`, 'v', atCol],
+                  [`After column ${atCol + 1}`, 'v', atCol + 1]
+                ] as const
+              ).map(([name, way, i], k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={`chip ${rules[way][i] ? 'active' : ''}`}
+                  aria-pressed={!!rules[way][i]}
+                  disabled={way === 'v' && lines === 'booktabs'}
+                  onClick={() => flip(edges[way][i])}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+      {latex && (
+        <>
+          <Segmented
+            label="Environment"
+            value={env}
+            options={[
+              ['tabular', 'tabular'],
+              ['tabularx', 'tabularx']
+            ]}
+            onChange={(next) => {
+              setEnv(next);
+              setChosen([]);
+            }}
+          />
+          {tableEnv === 'tabularx' && !align.includes('X') && <div className="field-hint">tabularx needs an X column, so the last column fills the width.</div>}
+        </>
+      )}
       <label className="checkbox-row">
         <input type="checkbox" checked={header} onChange={(e) => setHeader(e.target.checked)} />
         Header row
       </label>
-      <label className="checkbox-row">
-        <input type="checkbox" checked={escape} onChange={(e) => setEscape(e.target.checked)} />
-        <span>
-          Escape special characters
-          <span className="field-hint">&amp; % # _ ~ ^ &lt; &gt; | and a price’s $ print as themselves outside maths, in cells and the caption. Commands like \textbf{'{…}'} and \ref{'{…}'} still work.</span>
-        </span>
-      </label>
+      {latex && (
+        <label className="checkbox-row">
+          <input type="checkbox" checked={escape} onChange={(e) => setEscape(e.target.checked)} />
+          <span>
+            Escape special characters
+            <span className="field-hint">&amp; % # _ ~ ^ &lt; &gt; | and a price’s $ print as themselves outside maths, in cells and the caption. Commands like \textbf{'{…}'} and \ref{'{…}'} still work.</span>
+          </span>
+        </label>
+      )}
       <label className="checkbox-row">
         <input type="checkbox" checked={float} onChange={(e) => setFloat(e.target.checked)} />
         <span>
           Float
-          <span className="field-hint">Wraps it in a table environment with a caption and a label.</span>
+          <span className="field-hint">
+            {kind === 'typst'
+              ? 'Wraps it in #figure with a caption and a label.'
+              : kind === 'markdown'
+                ? 'Adds the caption and label on a Table: line under it.'
+                : 'Wraps it in a table environment with a caption and a label.'}
+          </span>
         </span>
       </label>
       {float && (
         <>
-          <PlacementField kind="table" value={placement} onChange={setPlacement} span={span} onSpan={setSpan} />
+          {latex && <PlacementField kind="table" value={placement} onChange={setPlacement} span={span} onSpan={setSpan} />}
           <div className="field">
             <label htmlFor={`${id}-caption`}>Caption</label>
             <textarea id={`${id}-caption`} className="input" rows={2} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Leave empty to write it later" />

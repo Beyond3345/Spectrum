@@ -97,7 +97,7 @@ export const figureLatex = (o: FigureOptions) =>
 export const diagramLatex = (o: Omit<FigureOptions, 'width'> & { width: number | null }) =>
   figureFloat(o, `\\includestandalone${o.width === null ? '' : `[width=${widthArg(o.width)}]`}{${o.path.replace(/\.tex$/i, '')}}`);
 
-export type TableLines = 'booktabs' | 'grid' | 'minimal';
+export type TableLines = 'booktabs' | 'grid' | 'minimal' | 'none';
 
 export type TableModel = {
   cells: string[][];
@@ -105,6 +105,8 @@ export type TableModel = {
   /** l, c or r per column, and X in tabularx */
   align: string[];
   lines: TableLines;
+  /** edges (tableEdges' names) whose line was turned on or off by hand, against what the preset draws there */
+  toggled?: string[];
   header: boolean;
   /** wrap in a table environment with \centering, a caption and a label */
   float: boolean;
@@ -171,27 +173,51 @@ export function escapeCell(text: string) {
   return out;
 }
 
-// grid has a rule under every row, so its header gets a double one
-const RULES: Record<TableLines, [top: string, header: string, bottom: string]> = {
-  booktabs: ['\\toprule', '\\midrule', '\\bottomrule'],
-  grid: ['\\hline', '\\hline\\hline', '\\hline'],
-  minimal: ['\\hline', '\\hline', '\\hline']
+/**
+ * Where a line can go, by name: the horizontal edges top to bottom ('top', 'head' under a header row, 'under-2' under
+ * the second row, 'bottom') and the vertical ones left to right ('left', 'after-1' after the first column, 'right').
+ */
+export function tableEdges(rows: number, cols: number, header: boolean) {
+  return {
+    h: Array.from({ length: rows + 1 }, (_, i) => (i === 0 ? 'top' : i === rows ? 'bottom' : header && i === 1 ? 'head' : `under-${i}`)),
+    v: Array.from({ length: cols + 1 }, (_, j) => (j === 0 ? 'left' : j === cols ? 'right' : `after-${j}`))
+  };
+}
+
+const OUTSIDE_AND_HEAD = ['top', 'head', 'bottom'];
+/** The line each preset draws at an edge: 0 none, 1 single, 2 double. */
+const PRESETS: Record<TableLines, (edge: string) => number> = {
+  booktabs: (edge) => +OUTSIDE_AND_HEAD.includes(edge),
+  minimal: (edge) => +OUTSIDE_AND_HEAD.includes(edge),
+  // a line under every row, so the header's is double
+  grid: (edge) => (edge === 'head' ? 2 : 1),
+  none: () => 0
 };
+
+/** Each edge's line, 0 none, 1 single or 2 double: the preset's, unless turned on or off by hand. Booktabs rules take no vertical lines. */
+export function tableRules(m: Pick<TableModel, 'cells' | 'header' | 'lines' | 'toggled'>, cols = Math.max(1, ...m.cells.map((row) => row.length))) {
+  const edges = tableEdges(m.cells.length, cols, m.header);
+  const line = (edge: string) => {
+    const preset = PRESETS[m.lines](edge);
+    return m.toggled?.includes(edge) ? +!preset : preset;
+  };
+  return { h: edges.h.map(line), v: edges.v.map((edge) => (m.lines === 'booktabs' ? 0 : line(edge))) };
+}
 
 export function tableLatex(m: TableModel) {
   const align = m.align.slice();
   // tabularx needs a column that takes up the rest of the width
   if (m.env === 'tabularx' && !align.includes('X')) align[align.length - 1] = 'X';
-  const spec = m.lines === 'grid' ? `|${align.join('|')}|` : align.join('');
-  const [top, header, bottom] = RULES[m.lines];
-  const rows: string[] = [top];
+  const { h, v } = tableRules(m, align.length);
+  const spec = align.map((a, j) => (v[j] ? '|' : '') + a).join('') + (v[align.length] ? '|' : '');
+  const last = m.cells.length;
+  // booktabs' rules are heavier at the top and bottom; a double line is \hline twice
+  const rule = (i: number) => (!h[i] ? [] : m.lines !== 'booktabs' ? ['\\hline'.repeat(h[i])] : [i === 0 ? '\\toprule' : i === last ? '\\bottomrule' : '\\midrule']);
+  const rows: string[] = rule(0);
   m.cells.forEach((row, i) => {
     const line = row.map((cell) => (m.escape ? escapeCell(oneLine(cell)) : oneLine(cell))).join(' & ');
     // \\ (and \toprule, \midrule) would take a leading [1] as its optional argument, and a * as its star
-    rows.push(`${/^[[*]/.test(line) ? '{}' : ''}${line} \\\\`);
-    if (i === m.cells.length - 1) rows.push(bottom);
-    else if (m.header && i === 0) rows.push(header);
-    else if (m.lines === 'grid') rows.push(top);
+    rows.push(`${/^[[*]/.test(line) ? '{}' : ''}${line} \\\\`, ...rule(i + 1));
   });
   const tabular = [
     m.env === 'tabularx' ? `\\begin{tabularx}{\\linewidth}{${spec}}` : `\\begin{tabular}{${spec}}`,
@@ -302,11 +328,23 @@ export const figureTypst = (o: FigureTextOptions) =>
 /** A Typst diagram file included as a figure: #figure(include "/figures/x.typ", caption: [caption]) <label>. */
 export const figureTypstInclude = (o: { path: string; caption: string; label: string }) => typstFloat('include ' + typstPath(o.path), o.caption, o.label);
 
-/** A Typst table, its header row as table.header when the model has one. */
+const TYPST_ALIGN: Record<string, string> = { l: 'left', c: 'center', r: 'right' };
+
+/**
+ * A Typst table, its header row as table.header when the model has one. Typst draws every line unless told otherwise,
+ * so any other set is stroke: none and a table.hline or table.vline per line, booktabs' heavier at the top and bottom.
+ */
 export function tableTypst(m: TableModel) {
   const cols = Math.max(1, ...m.cells.map((row) => row.length));
   const row = (cells: string[]) => Array.from({ length: cols }, (_, i) => '[' + typstText(cells[i] ?? '') + ']').join(', ');
   const parts = ['columns: ' + cols];
+  const align = Array.from({ length: cols }, (_, i) => TYPST_ALIGN[m.align[i]] ?? 'left');
+  if (align.some((a) => a !== 'left')) parts.push('align: (' + align.join(', ') + ')');
+  const { h, v } = tableRules(m, cols);
+  if (m.lines === 'booktabs' || !h.every(Boolean) || !v.every(Boolean)) {
+    const weight = (y: number) => (m.lines !== 'booktabs' ? '' : ', stroke: ' + (y === 0 || y === m.cells.length ? '0.08em' : '0.05em'));
+    parts.push('stroke: none', ...h.flatMap((n, y) => (n ? ['table.hline(y: ' + y + weight(y) + ')'] : [])), ...v.flatMap((n, x) => (n ? ['table.vline(x: ' + x + ')'] : [])));
+  }
   if (m.header && m.cells.length) parts.push('table.header(' + row(m.cells[0]) + ')');
   parts.push(...(m.header ? m.cells.slice(1) : m.cells).map(row));
   const table = 'table(' + parts.join(', ') + ')';
@@ -326,7 +364,8 @@ export function tableMarkdown(m: TableModel) {
   const row = (cells: string[]) => '| ' + Array.from({ length: cols }, (_, i) => cell(cells[i])).join(' | ') + ' |';
   const header = m.header && m.cells.length ? m.cells[0] : Array.from({ length: cols }, () => '');
   const body = m.header ? m.cells.slice(1) : m.cells;
-  const lines: string[] = [row(header), '| ' + Array.from({ length: cols }, () => '---').join(' | ') + ' |', ...body.map(row)];
+  const rule = (i: number) => ({ l: ':---', c: ':---:', r: '---:' })[m.align[i]] ?? '---';
+  const lines: string[] = [row(header), '| ' + Array.from({ length: cols }, (_, i) => rule(i)).join(' | ') + ' |', ...body.map(row)];
   if (m.float && (m.caption.trim() || m.label.trim())) lines.push('', 'Table: ' + m.caption.trim() + (m.label.trim() ? ' {#' + m.label.trim() + '}' : ''));
   return lines.join(String.fromCharCode(10));
 }
