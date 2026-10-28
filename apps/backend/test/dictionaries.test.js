@@ -33,11 +33,18 @@ const LATIN = {
   licence: Buffer.from('Free to use.\n')
 };
 
-// the stand-in server: /<name> answers files[name], or a 404
+// the stand-in server: /<name> answers files[name], or a 404; serving 'trickle' sends it in four pieces 100 ms apart,
+// 'stall' a byte of it and then nothing
 const files = {};
+let serving = 'whole';
 const server = createServer((req, res) => {
   const body = files[req.url.slice(1)];
-  res.writeHead(body ? 200 : 404).end(body);
+  if (!body || serving === 'whole') return res.writeHead(body ? 200 : 404).end(body);
+  res.writeHead(200);
+  if (serving === 'stall') return res.write(body.subarray(0, 1));
+  const step = Math.ceil(body.length / 4);
+  const send = (at) => (at >= body.length ? res.end() : (res.write(body.subarray(at, at + step)), setTimeout(send, 100, at + step)));
+  send(0);
 });
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const base = `http://127.0.0.1:${server.address().port}`;
@@ -152,6 +159,22 @@ test('unused dictionaries can be removed', async () => {
   mkdirSync(path.join(downloads(), 'qq.part-stale'));
   assert.deepEqual(await spell.pruneDictionaries(['en-AU']), { removed: ['xx'] });
   assert.deepEqual(readdirSync(downloads()), []);
+});
+
+test('a slow but steady download finishes, and one that stalls is stopped', async () => {
+  catalogueFor('ss', 'slow');
+  // each file takes about 400 ms, longer than the idle time, with data every 100 ms
+  process.env.SPECTRUM_DOWNLOAD_IDLE_MS = '250';
+  try {
+    serving = 'trickle';
+    assert.deepEqual(await spell.installDictionary('ss'), { tag: 'ss', state: 'downloaded' });
+    serving = 'stall';
+    await assert.rejects(() => spell.installDictionary('ss'), /Couldn’t download the ss dictionary/);
+  } finally {
+    serving = 'whole';
+    delete process.env.SPECTRUM_DOWNLOAD_IDLE_MS;
+  }
+  assert.deepEqual(leftovers(), []);
 });
 
 test('an ignored rule Harper has since renamed hides the new name too, and grammar.json is not rewritten', async () => {
