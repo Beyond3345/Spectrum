@@ -92,11 +92,12 @@ async function labelNames(projectRoot, absMain) {
 
 /**
  * What Typst itself knows about a compiled document: every heading with its number and page, and every label with its
- * page and number. One eval run, in the document's context; null when this Typst is too old (before 0.13) to have it.
+ * page and number. One eval run, in the document's context, with the Typst compileTypst picks (the project's pin, else
+ * fallback, the app's default); null when that Typst isn't installed or is too old (before 0.13) to have it.
  */
-export async function typstElements(projectRoot, doc) {
+export async function typstElements(projectRoot, doc, fallback = '') {
   const settings = await readProjectSettings(projectRoot);
-  const executable = typstFor(settings.compile?.typstVersion || '');
+  const executable = typstFor(settings.compile?.typstVersion || fallback);
   if (!executable) return null;
   const absMain = path.join(projectRoot, doc);
   // a lone name in (…) is a grouping, not an array: the trailing comma keeps it one

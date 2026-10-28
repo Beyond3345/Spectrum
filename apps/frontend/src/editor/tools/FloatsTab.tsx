@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { ClipboardEvent, DragEvent, KeyboardEvent } from 'react';
 import { blobUrl, getFile, getProjectSettings, getProjectTree, plotFromTable, uploadFiles, visionToLatex } from '../../api/client';
 import Icon from '../../app/Icon';
+import { effectiveCompile, loadSettings } from '../../app/settings';
 import Select from '../../app/Select';
 import Sheet from '../../app/Sheet';
 import { openDiagram } from '../../app/desktop';
@@ -660,8 +661,10 @@ function InsertDiagram() {
           insertBlock(a, figureTypst({ path: source, width: fraction ?? widthOf(prefs), caption, label: captionLabel }));
           a.notify(`Inserted ${source} as a figure.`, 'success');
         } else {
-          // a TikZ picture goes in as the PDF the composer's preview made, from Typst 0.14
-          const version = (await getProjectSettings(a.projectId).catch(() => null))?.settings.compile?.typstVersion || '';
+          // a TikZ picture goes in as the PDF the composer's preview made, from Typst 0.14 (the project's pin, else the
+          // app's default)
+          const project = (await getProjectSettings(a.projectId).catch(() => null))?.settings;
+          const version = (project && effectiveCompile(project.compile, loadSettings().compileDefaults).typstVersion) || '';
           if (version && !atLeastVersion(version, '0.14')) {
             a.notify(`Typst ${version} can’t show PDF images. Choose Typst 0.14 or later in the compile menu.`, 'error');
             return;

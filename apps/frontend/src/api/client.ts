@@ -230,8 +230,9 @@ export interface ProjectStats {
 }
 
 /** doc: the project-relative document; sent as mainFile too, which texcount counts from (looked for in texFolder first) */
-export function getProjectStats(id: string, doc: string, texFolder?: string) {
-  const qs = new URLSearchParams({ mainFile: doc, doc, ...(texFolder && { texFolder }) }).toString();
+/** typstVersion: the app's default, which a Typst document that pins no version is read with */
+export function getProjectStats(id: string, doc: string, texFolder?: string, typstVersion?: string) {
+  const qs = new URLSearchParams({ mainFile: doc, doc, ...(texFolder && { texFolder }), ...(typstVersion && { typstVersion }) }).toString();
   return request<ProjectStats>(`/api/projects/${id}/stats?${qs}`);
 }
 
