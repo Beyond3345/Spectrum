@@ -530,19 +530,27 @@ async function writeDecisions(root, decisions, copies, read, keep) {
     return now.equals(blob) || Buffer.from(now.toString('latin1').replace(/\r\n/g, '\n'), 'latin1').equals(blob) ? sha256(now) : 'changed';
   };
   const restore = async (o) => (o.mode === '120000' ? placeLink(root, o.rel, (await read(o.oid)).toString()) : writeFileAtomic(join(root, o.rel), await read(o.oid)));
-  // every file written, deleted or renamed in a folder of the project's own, before any is: a folder here may be a link
-  // to one elsewhere (an ignored assets folder, say), which nothing from GitHub goes through
-  for (const rel of [...ops.flatMap(({ o, r }) => [o?.rel, r?.rel]), ...copies.map((c) => c.rel)]) {
-    if (!rel) continue;
+  // every file written, deleted or renamed in a folder of the project's own, before any is and again as each is: a
+  // folder here may be a link to one elsewhere (an ignored assets folder, say), or become one as a link GitHub has is
+  // placed (Assets beside assets/x, on a disk that ignores case), which nothing from GitHub goes through
+  const refused = (rel) => Object.assign(new Error(`“${rel}” is in a folder that links outside the project, so Spectrum won’t pull GitHub’s changes into it. Replace the link with a folder, or leave it out on GitHub too.`), { statusCode: 409, code: 'GIT_REFUSED' });
+  const guard = (rel) => {
     try {
       safeJoinLink(root, rel);
     } catch {
-      throw Object.assign(new Error(`“${rel}” is in a folder that links outside the project, so Spectrum won’t pull GitHub’s changes into it. Replace the link with a folder, or leave it out on GitHub too.`), { statusCode: 409, code: 'GIT_REFUSED' });
+      throw refused(rel);
     }
+  };
+  const links = ops.filter(({ r }) => r?.mode === '120000').map(({ r }) => `${keyOf(r.rel)}/`);
+  for (const rel of [...ops.flatMap(({ o, r }) => [o?.rel, r?.rel]), ...copies.map((c) => c.rel)]) {
+    if (!rel) continue;
+    guard(rel);
+    if (links.some((link) => keyOf(rel).startsWith(link))) throw refused(rel);
   }
   try {
     for (const d of ops) {
       const { o, r } = d;
+      for (const rel of [o?.rel, r?.rel]) if (rel) guard(rel);
       let expect = await committed(o);
       if (expect === 'changed') throw changed();
       if (o && (!r || o.rel !== r.rel)) {
@@ -569,6 +577,7 @@ async function writeDecisions(root, decisions, copies, read, keep) {
       done.push(d);
     }
     for (const c of copies) {
+      guard(c.rel);
       if (!(await placeIfUnchanged(root, c.rel, c.data, null))) throw changed();
       done.push({ o: null, r: c });
     }
