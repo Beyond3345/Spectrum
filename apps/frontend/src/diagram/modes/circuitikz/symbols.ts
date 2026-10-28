@@ -1,11 +1,12 @@
-// Circuit symbols drawn by the user's own circuitikz in the diagram's style. The backend compiles one
-// page per part and reads each pin back (/api/diagram/symbols); pdf.js turns the pages into images.
-// Kept in memory per style, and in IndexedDB so the next window opens with them.
+// Circuit symbols drawn by the user's own circuitikz in the diagram's style, and other sets' symbols beside them. The
+// backend compiles one page per part and reads each pin back (/api/diagram/symbols); pdf.js turns the pages into
+// images. Kept in memory per style, and in IndexedDB so the next window opens with them.
 import { useEffect, useSyncExternalStore } from 'react';
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { diagramSymbols } from '../../../api/client';
 import type { SymbolPage } from '../../../api/client';
+import { SYMBOL_SETS } from '../../../../../backend/src/data/symbolSets.js';
 import { loadSettings } from '../../../app/settings';
 import { CATALOGUE, PARTS, variantKey } from './model';
 import { symbolGeometry, symbolRequest } from './symbolGeometry';
@@ -125,7 +126,10 @@ async function load(ctikzOptions: string, variants: Variant[]) {
   changed();
   // the TeX folder chosen in Settings › Engines › LaTeX, as the preview compiles with
   const body = { parts: variants.map(symbolRequest), style: { ctikzOptions }, texFolder: loadSettings().texFolder || undefined };
-  const cacheKey = JSON.stringify(body);
+  // a set's version too, so a changed set draws afresh. ponytail: a TeX update isn't seen here, only in the backend's
+  // cache; key this by circuitikz's date as well if that bites
+  const versions = Object.fromEntries([...new Set(variants.map((v) => PARTS.get(v.type)?.set || 'circuitikz'))].map((set) => [set, SYMBOL_SETS[set]?.version]));
+  const cacheKey = JSON.stringify({ ...body, versions });
   try {
     let found = await idb<Record<string, CircuitSymbol>>('readonly', (store) => store.get(cacheKey));
     if (!found) {
@@ -158,14 +162,15 @@ async function load(ctikzOptions: string, variants: Variant[]) {
   }
 }
 
-/** Every catalogue part with no options: one request per style, so the backend's cache serves it again. */
-const BASE: Variant[] = CATALOGUE.map((part) => ({ type: part.id, options: [] }));
+/** A set's catalogue parts with no options: one request per set and style, so the backend's cache serves it again. */
+const baseOf = (set: string): Variant[] => CATALOGUE.filter((part) => (part.set || 'circuitikz') === set).map((part) => ({ type: part.id, options: [] }));
 
 /**
- * The symbols for a style, loading what's missing: the whole catalogue first, then any option variants the
- * drawing uses. Whatever fails stays an outline until the style changes or the window reopens.
+ * The symbols for a style, loading what's missing: circuitikz's whole catalogue first, with each other set the
+ * drawing has (sets) or uses, then any option variants the drawing uses. Whatever fails stays an outline until the
+ * style changes or the window reopens.
  */
-export function useSymbols(ctikzOptions: string, used: Variant[]) {
+export function useSymbols(ctikzOptions: string, used: Variant[], sets: string[] = []) {
   useSyncExternalStore(
     (fn) => {
       listeners.add(fn);
@@ -175,15 +180,19 @@ export function useSymbols(ctikzOptions: string, used: Variant[]) {
   );
   const entry = forStyle(ctikzOptions);
   const usedKey = used.map((v) => variantKey(v.type, v.options)).sort().join('\n');
+  const setsKey = [...new Set(['circuitikz', ...sets, ...used.map((v) => PARTS.get(v.type)?.set || 'circuitikz')])].join('\n');
   useEffect(() => {
     const wanted = (v: Variant) => {
       const k = variantKey(v.type, v.options);
       return PARTS.has(v.type) && !entry.symbols.has(k) && !entry.loading.has(k) && !entry.failed.has(k);
     };
-    if (BASE.some(wanted)) void load(ctikzOptions, BASE.filter(wanted));
+    for (const set of setsKey.split('\n')) {
+      const base = baseOf(set);
+      if (base.some(wanted)) void load(ctikzOptions, base.filter(wanted));
+    }
     const extra = new Map(used.filter((v) => v.options.length && wanted(v)).map((v) => [variantKey(v.type, v.options), v]));
     if (extra.size) void load(ctikzOptions, [...extra.values()].sort((a, b) => variantKey(a.type, a.options).localeCompare(variantKey(b.type, b.options))));
-    // usedKey stands for used
-  }, [ctikzOptions, usedKey, entry]);
+    // usedKey stands for used, setsKey for sets
+  }, [ctikzOptions, usedKey, setsKey, entry]);
   return { symbol: (key: string) => entry.symbols.get(key) || latest.get(key), loading: entry.loading.size > 0, error: entry.failed.size ? entry.error : '' };
 }

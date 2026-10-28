@@ -97,6 +97,13 @@ export const figureLatex = (o: FigureOptions) =>
 export const diagramLatex = (o: Omit<FigureOptions, 'width'> & { width: number | null }) =>
   figureFloat(o, `\\includestandalone${o.width === null ? '' : `[width=${widthArg(o.width)}]`}{${o.path.replace(/\.tex$/i, '')}}`);
 
+/**
+ * A TikZ diagram as the PDF its preview compiled (figures/name.pdf), for one whose packages clash with the document's:
+ * it compiled with its own preamble, so none of its packages reach the document. At its own size when width is null.
+ */
+export const diagramImageLatex = (o: Omit<FigureOptions, 'width'> & { width: number | null }) =>
+  figureFloat(o, `\\includegraphics${o.width === null ? '' : `[width=${widthArg(o.width)}]`}{${o.path}}`);
+
 export type TableLines = 'booktabs' | 'grid' | 'minimal' | 'none';
 
 export type TableModel = {

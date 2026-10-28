@@ -132,6 +132,12 @@ eq(withShared(theirs, { englishGrammar: 'languagetool' }).englishGrammar, 'langu
 eq(withShared(theirs, { languages: ['fr', 'fr', 'not a tag', 3, ...Array.from({ length: 30 }, (_, i) => String.fromCharCode(97 + Math.floor(i / 26), 97 + (i % 26)))] as never }).languages.length, 20, 'at most 20, once each');
 eq(withShared(theirs, { languages: [] as never, englishGrammar: 'nope' as never }), { ...theirs, languages: ['en-AU'], englishGrammar: 'harper' }, 'nothing usable is Australian English and Harper');
 
+// the composer's switch and conventions follow the user, checked; its Recently used stays on this computer
+eq([DEFAULT_SETTINGS.composerMixSets, DEFAULT_SETTINGS.composerMoments, DEFAULT_SETTINGS.composerMohrShear], [false, 'tension', 'down'], 'composer defaults: no mixing, tension side, τ downward');
+const composer = withShared(theirs, { ...sharedPart(at({ composerMixSets: true, composerMoments: 'positive', composerMohrShear: 'clockwise-above', composerRecent: ['circuit'] })) });
+eq([composer.composerMixSets, composer.composerMoments, composer.composerMohrShear, composer.composerRecent], [true, 'positive', 'clockwise-above', []], 'the composer’s settings come in, not Recently used');
+eq([withShared(theirs, { composerMoments: 'sideways', composerMohrShear: 'left', composerMixSets: 'yes' })].map((s) => [s.composerMoments, s.composerMohrShear, s.composerMixSets])[0], ['tension', 'down', false], 'and are checked');
+
 // the folders on the Projects page follow the user, checked like stored ones
 const tree = { folders: [{ id: 'f1', name: 'Thesis', parent: null }], placement: { p1: 'f1', p2: 'deleted' } };
 const sorted = withShared(theirs, { projectFolders: tree });

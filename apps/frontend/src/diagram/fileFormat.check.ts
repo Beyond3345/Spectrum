@@ -79,5 +79,17 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
   eq(typstBack.code, typstCode.body, 'a Typst diagram keeps its plain code');
   eq(typstBack.edited, false, 'Typst as drawn');
 
+  // a drawing with symbol sets is version 2, which a build from before sets opens as code; without, version 1 as ever
+  const json = async (d: DiagramFile) => (await readDiagramFile(await diagramFileText(d, code))).diagram;
+  eq(await json({ ...circuit, sets: ['spx-mech'] }), { ...circuit, sets: ['spx-mech'], version: 2 }, 'sets make version 2');
+  eq(await json({ ...circuit, sets: [], version: 2 }), circuit, 'no sets: no sets key, version 1');
+  eq(Object.keys((await json({ ...circuit, sets: ['spx-mech'] }))!), ['language', 'pkg', 'style', 'model', 'version', 'sets'], 'the keys keep their order');
+  const v2 = await readDiagramFile(await diagramFileText({ ...circuit, sets: ['spx-mech'] }, code));
+  eq([v2.diagram?.version, v2.diagram?.sets, v2.edited], [2, ['spx-mech'], false], 'version 2 reads back');
+  for (const bad of [{ ...circuit, sets: 'spx-mech' }, { ...circuit, sets: [1] }, { ...circuit, version: 3 }]) {
+    const text = `${tikzDocument(code)}% spectrum-diagram v1 ${btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(bad))))} 0123456789abcdef\n`;
+    eq((await readDiagramFile(text)).diagram, null, `opens as code: ${JSON.stringify(bad).slice(-30)}`);
+  }
+
   console.log('fileFormat.check: ok');
 })();

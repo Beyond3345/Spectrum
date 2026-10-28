@@ -39,13 +39,13 @@ function OpenFile() {
 const ComposerApp = lazy(() => import('../diagram/ComposerApp'));
 const LANGUAGES: DiagramLanguage[] = ['tikz', 'typst', 'mermaid'];
 
-/** The diagram composer's window (desktop.ts openDiagram): /diagram?project=…&file=…&lang=… */
+/** The diagram composer's window (desktop.ts openDiagram): /diagram?project=…&file=…&lang=…, and &tool=… from the chooser */
 function Diagram() {
   const [params] = useSearchParams();
   const lang = LANGUAGES.find((l) => l === params.get('lang'));
   return (
     <Suspense fallback={null}>
-      <ComposerApp projectId={params.get('project') || ''} file={params.get('file') || undefined} lang={lang} />
+      <ComposerApp projectId={params.get('project') || ''} file={params.get('file') || undefined} lang={lang} tool={params.get('tool') || undefined} />
     </Suspense>
   );
 }

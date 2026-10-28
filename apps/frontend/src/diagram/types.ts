@@ -2,19 +2,38 @@
 import type * as React from 'react';
 
 export type DiagramLanguage = 'tikz' | 'typst' | 'mermaid';
-export type TikzPackage = 'tikz' | 'circuitikz' | 'pgfplots' | 'tikz-cd';
-export interface DiagramFile { language: DiagramLanguage; pkg?: TikzPackage; style: Record<string, unknown>; model: unknown; version: 1 }
+/** form: the Form mode, whose drawing is a preset's fields (modes/form) */
+export type TikzPackage = 'tikz' | 'circuitikz' | 'pgfplots' | 'tikz-cd' | 'form';
+/**
+ * sets: the symbol sets the drawing has besides its mode's own (sets.ts), in the order they were added. A drawing
+ * with sets is version 2, so a build from before sets opens it as code instead of saving it with its parts missing.
+ */
+export interface DiagramFile { language: DiagramLanguage; pkg?: TikzPackage; style: Record<string, unknown>; model: unknown; sets?: string[]; version: 1 | 2 }
+/** The defaults in Settings › Composer that a new drawing copies into its style, so changing one never redraws a figure. */
+export interface ComposerDefaults {
+  /** bending moment diagrams on the tension side (sagging below) or positive up */
+  moments: 'tension' | 'positive';
+  /** Mohr's circle: τ positive downward, clockwise shear plotted above, or τ positive upward */
+  mohrShear: 'down' | 'clockwise-above' | 'up';
+}
 export interface DiagramMode<M = unknown> {
   id: TikzPackage | 'mermaid' | 'fletcher';
   label: string;                                  // "Circuit (circuitikz)" etc.
   language: DiagramLanguage;
   emptyModel(): M;
+  /** a new drawing's style, from the Settings › Composer defaults it uses; none: {} */
+  newStyle?(defaults: ComposerDefaults, model: M): Record<string, unknown>;
+  /** the symbol sets of its own, always on, when it draws symbols (the Symbol sets dialog adds others) */
+  sets?: string[];
+  /** the other sets the model has parts from, which the dialog can't take away */
+  setsInUse?(model: M): string[];
   // body = the picture only. context.typstVersion: the project's Typst version, for a fletcher import line
   toCode(model: M, style: Record<string, unknown>, context?: { typstVersion?: string }): { body: string; packages: string[]; libraries: string[] };
   // the frame also passes what's selected (ids the mode chooses) and the rail's tool; onTool hands the tool back, as
   // after placing a shape
   Canvas: React.ComponentType<{ model: M; onChange(m: M): void; style: Record<string, unknown>; readOnly?: boolean; selection?: string[]; onSelect?(ids: string[]): void; tool?: string; onTool?(tool: string): void }>;
-  Rail?: React.ComponentType<{ onPick(tool: string): void; tool: string }>;
+  /** sets: the drawing's other symbol sets, shown after the mode's own */
+  Rail?: React.ComponentType<{ onPick(tool: string): void; tool: string; sets?: string[] }>;
   Inspector?: React.ComponentType<{ model: M; onChange(m: M): void; selection?: string[] }>;
   StyleMenu?: React.ComponentType<{ style: Record<string, unknown>; onChange(s: Record<string, unknown>): void }>;
   // Copy, Paste, Duplicate and Delete of the selection, through the frame's keys and buttons; a mode without them

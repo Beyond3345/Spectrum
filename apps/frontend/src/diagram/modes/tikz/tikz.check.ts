@@ -1,6 +1,7 @@
 // Self-check for the plain TikZ mode's code. Run:
 // npx esbuild apps/frontend/src/diagram/modes/tikz/tikz.check.ts --bundle --platform=node --log-level=warning | node
-import { copyTikz, corners, middleOf, nextId, pasteTikz, removeTikz, tikzCode } from './code';
+import { fletcherCode } from '../fletcher/code';
+import { FLETCHER_SHAPES, copyTikz, corners, middleOf, nextId, pasteTikz, removeTikz, tikzCode } from './code';
 import type { Box, Link, TikzModel } from './code';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -56,5 +57,11 @@ eq([pasted.model.boxes[4].x, pasted.model.boxes[4].y], [4, 12], 'pasted 1 cm dow
 eq(pasteTikz(model, null).ids, [], 'nothing to paste');
 const left = removeTikz(model, ['n2', 'e3']);
 eq([left.boxes.map((b) => b.id), left.links.map((l) => l.id)], [['n1', 'n3', 'n4'], []], 'deleting a box takes its arrows');
+
+// the Typst canvas offers only what fletcher writes: each such shape becomes a node of one of fletcher's shapes
+for (const shape of FLETCHER_SHAPES) {
+  const body = fletcherCode({ boxes: [{ ...start, shape }], links: [] }).body;
+  eq(/node\(\(.*shape: fletcher\.shapes\.(rect|circle|ellipse|diamond|parallelogram),/.test(body), true, `fletcher writes a ${shape}`);
+}
 
 console.log('tikz.check: ok');

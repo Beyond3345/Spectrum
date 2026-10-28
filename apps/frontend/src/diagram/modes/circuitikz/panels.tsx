@@ -10,23 +10,25 @@ import { flip, remove, rotate } from './edit';
 import { CATALOGUE, PARTS, asCircuit, variantKey } from './model';
 import type { CircuitModel, Element, Mark, NodePart, PathPart, Pole, Route, Wire } from './model';
 import { setSelection, setTool, shapeOfNow, tidy, useCircuitUi } from './store';
+import { setFor } from '../../sets';
 import { useSymbols } from './symbols';
 
 const GROUPS = [...new Set(CATALOGUE.map((part) => part.group))];
 
 // ─── rail ───
 
-export function CircuitRail({ onPick, tool }: { onPick(tool: string): void; tool: string }) {
+/** sets: the other symbol sets the drawing has, each shown as its own groups after circuitikz's */
+export function CircuitRail({ onPick, tool, sets = [] }: { onPick(tool: string): void; tool: string; sets?: string[] }) {
   const ui = useCircuitUi();
   const [filter, setFilter] = useState('');
-  const { symbol: symbolFor } = useSymbols(ui.ctikz, []);
+  const { symbol: symbolFor } = useSymbols(ui.ctikz, [], sets);
   // the frame's choice wins when it changes; the canvas can also go back to Select on Escape
   useEffect(() => setTool(tool), [tool]);
   const pick = (next: string) => {
     setTool(next);
     onPick(next);
   };
-  const shown = CATALOGUE.filter((part) => part.label.toLowerCase().includes(filter.trim().toLowerCase()));
+  const shown = CATALOGUE.filter((part) => (!part.set || sets.includes(part.set)) && part.label.toLowerCase().includes(filter.trim().toLowerCase()));
   return (
     <div className="ckt-rail">
       <div className="segmented small ckt-rail-tools" role="radiogroup" aria-label="Tool">
@@ -46,7 +48,10 @@ export function CircuitRail({ onPick, tool }: { onPick(tool: string): void; tool
           if (!parts.length) return null;
           return (
             <section key={group} className="ckt-rail-group">
-              <h3>{group}</h3>
+              <h3>
+                {group}
+                {parts[0].set && <span className="ckt-rail-set"> · {setFor(parts[0].set)?.label ?? parts[0].set}</span>}
+              </h3>
               <div className="ckt-rail-parts">
                 {parts.map((part) => {
                   const symbol = symbolFor(variantKey(part.id, []));

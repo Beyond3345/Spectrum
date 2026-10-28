@@ -100,6 +100,66 @@ test('symbols: a part TeX can’t draw carries its error, and the others still d
   assert.match(body.log, /no such part/);
 });
 
+test('symbols: a set’s pictures draw beside circuitikz’s parts, their pins read from their coordinates', { skip: needsTex }, async () => {
+  const { body } = await symbols([
+    { id: 'ground', tikz: 'spx/mech/ground', kind: 'pic', pins: ['p', 'no such pin'] },
+    { id: 'pin', tikz: 'spx/mech/pin', kind: 'pic', options: ['rotate=90'], pins: ['p'] },
+    { id: 'resistor', tikz: 'R', kind: 'path' }
+  ]);
+  assert.ok(body.ok, body.error || body.log);
+  assert.equal(body.engine, 'pdfLaTeX');
+  assert.equal(body.log, undefined, 'every part drew');
+  const [ground, pinned, resistor] = body.pages;
+  assert.deepEqual(ground.pins, [{ name: 'p', x: 0, y: 0 }]);
+  assert.deepEqual(pinned.pins, [{ name: 'p', x: 0, y: 0 }]);
+  // 1.2 cm wide plus the border, 0.2 cm hatching below the surface
+  assert.ok(Math.abs(ground.width - (1.2 / 2.54) * 72 - 2) < 1.5, `ground is ${ground.width} pt wide`);
+  assert.ok(ground.origin.y < ground.height / 2, 'the surface is near the top of its picture');
+  // turned a quarter anticlockwise, the support's base is to the right of its pin
+  assert.ok(pinned.origin.x < pinned.width / 2 && pinned.height > pinned.width);
+  assert.ok(pin(resistor, 'end').x > 0);
+
+  // a set alone draws in plain TikZ, without circuitikz's options
+  const alone = await symbols([{ id: 'ground', tikz: 'spx/mech/ground', kind: 'pic', pins: ['p'] }], 'not a circuitikz key');
+  assert.ok(alone.body.ok && !alone.body.log, alone.body.error || alone.body.log);
+});
+
+test('symbols: the cache key holds the engine, the sets’ versions and circuitikz’s date, never just the request', { skip: needsTex }, async () => {
+  const { SYMBOL_SETS } = await import('../src/data/symbolSets.js');
+  const cache = path.join(dataDir, 'cache', 'symbols');
+  const part = [{ id: 'ground', tikz: 'spx/mech/ground', kind: 'pic', pins: ['p'] }];
+  await symbols(part);
+  const before = new Set(await fs.readdir(cache));
+  SYMBOL_SETS['spx-mech'].version += 1;
+  try {
+    assert.ok((await symbols(part)).body.ok);
+    assert.equal((await fs.readdir(cache)).filter((name) => !before.has(name)).length, 1, 'a new version draws afresh');
+  } finally {
+    SYMBOL_SETS['spx-mech'].version -= 1;
+  }
+});
+
+const tectonic = process.env.SPECTRUM_TECTONIC && existsSync(process.env.SPECTRUM_TECTONIC) ? process.env.SPECTRUM_TECTONIC : null;
+test('symbols: without pdfLaTeX the built-in Tectonic draws them', { skip: !tectonic && 'needs SPECTRUM_TECTONIC' }, async () => {
+  const PATH = process.env.PATH;
+  // a PATH without TeX: only the built-in Tectonic is left
+  process.env.PATH = '/usr/bin:/bin';
+  try {
+    const { body } = await symbols([
+      { id: 'resistor', tikz: 'R', kind: 'path' },
+      { id: 'ground', tikz: 'spx/mech/ground', kind: 'pic', pins: ['p'] },
+      { id: 'typo', tikz: 'no such part', kind: 'path' }
+    ], 'european');
+    assert.ok(body.ok, body.error || body.log);
+    assert.equal(body.engine, 'Tectonic');
+    assert.ok(pin(body.pages[0], 'end').x > 10);
+    assert.deepEqual(body.pages[1].pins, [{ name: 'p', x: 0, y: 0 }]);
+    assert.ok(body.pages[2].error, 'a part it can’t draw carries an error, the others still draw');
+  } finally {
+    process.env.PATH = PATH;
+  }
+});
+
 test('symbols: a request that would put TeX code in the document is refused', async () => {
   const part = { id: 'r', tikz: 'R', kind: 'path' };
   for (const parts of [
@@ -111,6 +171,9 @@ test('symbols: a request that would put TeX code in the document is refused', as
     [{ ...part, options: ['^^5crelax'] }],
     [{ ...part, pins: ['out^^5crelax'] }],
     [{ ...part, kind: 'wire' }],
+    // a picture only from a symbol set's own
+    [{ ...part, kind: 'pic', tikz: 'spx/mech/nothing' }],
+    [{ ...part, kind: 'pic', tikz: 'R' }],
     [{ ...part, id: '' }]
   ]) {
     const { status, body } = await post('/api/diagram/symbols', { parts, style: { ctikzOptions: 'american' } });

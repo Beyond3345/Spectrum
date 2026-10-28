@@ -297,6 +297,11 @@
   margin-top: 2px;
 }
 
+.ckt-rail-set {
+  font-weight: 400;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
 .ckt-rail-parts {
   display: grid;
   grid-template-columns: 1fr 1fr;

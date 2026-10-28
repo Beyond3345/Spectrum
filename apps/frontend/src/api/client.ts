@@ -614,7 +614,8 @@ export function compileDiagram(payload: { projectId: string; file: string; engin
 export interface SymbolPart {
   id: string;
   tikz: string;
-  kind: 'path' | 'node';
+  /** pic: a symbol set's \pic, its pins the coordinates it names */
+  kind: 'path' | 'node' | 'pic';
   options?: string[];
   pins?: string[];
 }
@@ -641,7 +642,7 @@ export interface SymbolPage {
  * data folder's cache by the request, so asking again is quick.
  */
 export function diagramSymbols(payload: { parts: SymbolPart[]; style: { ctikzOptions: string }; texFolder?: string }) {
-  return request<{ ok: boolean; pdf?: string; pages?: SymbolPage[]; log?: string; error?: string }>('/api/diagram/symbols', json('POST', payload));
+  return request<{ ok: boolean; engine?: string; pdf?: string; pages?: SymbolPage[]; log?: string; error?: string }>('/api/diagram/symbols', json('POST', payload));
 }
 
 // ─── TexLab's diagnostics ───

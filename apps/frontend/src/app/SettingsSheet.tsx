@@ -95,6 +95,7 @@ export type Section =
   | 'editor'
   | 'engines'
   | 'checkpoints'
+  | 'composer'
   | 'language'
   | 'shortcuts'
   | 'projects'
@@ -119,6 +120,7 @@ const SECTION_GROUPS: [string, [Section, string, string][]][] = [
   ['Writing', [
     ['engines', 'Engines', 'hammer'],
     ['language', 'Spelling & grammar', 'textformat.abc.dottedunderline'],
+    ['composer', 'Composer', 'pencil'],
     ['checkpoints', 'Checkpoints', 'clock.arrow.circlepath']
   ]],
   ['Projects', [
@@ -522,6 +524,8 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
           {section === 'engines' && <EnginesPane />}
 
           {section === 'checkpoints' && <CheckpointsPane />}
+
+          {section === 'composer' && <ComposerPane />}
 
           {section === 'language' && <LanguagePane projectId={projectId} />}
 
@@ -1483,6 +1487,52 @@ function CheckpointsPane() {
         <CheckpointCleanup projects={async () => (await listProjects()).projects.filter((p) => !p.missing).map((p) => p.id)} />
       </div>
       <div className="field-hint">In every project on this computer. Tools › Checkpoints does the same for one project.</div>
+    </>
+  );
+}
+
+/** The diagram composer: mixing symbol sets, and the conventions a new drawing starts with. */
+function ComposerPane() {
+  const [settings, update] = useSettings();
+  return (
+    <>
+      <div className="field-hint section-hint">These follow you to your other computers when settings sync is on. A drawing keeps the conventions it was made with; change one in the drawing’s Style menu.</div>
+      <label className="checkbox-row">
+        <input type="checkbox" role="switch" checked={settings.composerMixSets} onChange={(e) => update({ composerMixSets: e.target.checked })} />
+        <span>
+          Symbols from other packages
+          <span className="field-hint">
+            Adds a Symbol sets… button below a drawing’s symbols, for adding another package’s symbols to it, such as mechanical supports in a circuit. A
+            diagram’s own symbols are always there.
+          </span>
+        </span>
+      </label>
+      <div className="field">
+        <label id="settings-composerMoments">Bending moment diagrams</label>
+        <Select
+          labelId="settings-composerMoments"
+          value={settings.composerMoments}
+          options={[
+            ['tension', 'Tension side (sagging below)'],
+            ['positive', 'Positive up']
+          ]}
+          onChange={(value) => update({ composerMoments: value as AppSettings['composerMoments'] })}
+        />
+      </div>
+      <div className="field">
+        <label id="settings-composerMohrShear">Mohr’s circle shear axis</label>
+        <Select
+          labelId="settings-composerMohrShear"
+          value={settings.composerMohrShear}
+          options={[
+            ['down', 'τ positive downward'],
+            ['clockwise-above', 'Clockwise shear plotted above'],
+            ['up', 'τ positive upward']
+          ]}
+          onChange={(value) => update({ composerMohrShear: value as AppSettings['composerMohrShear'] })}
+        />
+        <div className="field-hint">With τ positive downward, 2θ on the circle turns the same way as θ on the element.</div>
+      </div>
     </>
   );
 }
