@@ -2,6 +2,7 @@
 // nothing reaches the document's preamble but tikz and two libraries), and a comment heading each part so the Code
 // tab is easy to edit. Nothing in it is newer than PGF 3.0 or uses calc.
 import type { DiagramCode } from '../../fileFormat';
+import type { ComposerDefaults } from '../../types';
 import { mathsPackages, num } from '../shared';
 import { VIEWS, buildScene, readStyle } from './draw';
 import type { Fill, Ink, Item, Scene } from './draw';
@@ -87,3 +88,6 @@ export function structureCode(raw: unknown, rawStyle: Record<string, unknown>): 
   const { body, texts } = sceneTikz(scene, `Structure, ${view.toLowerCase()}${status}`);
   return { body, packages: ['tikz', ...mathsPackages(texts)], libraries: ['arrows.meta', 'babel'] };
 }
+
+/** A new drawing's style: the bending moment convention from Settings › Composer, kept with the drawing. */
+export const structureStyle = (defaults: ComposerDefaults): Record<string, unknown> => ({ view: 'diagrams', moments: defaults.moments });

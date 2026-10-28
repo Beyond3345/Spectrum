@@ -2,8 +2,8 @@
 import type * as React from 'react';
 
 export type DiagramLanguage = 'tikz' | 'typst' | 'mermaid';
-/** form: the Form mode, whose drawing is a preset's fields (modes/form) */
-export type TikzPackage = 'tikz' | 'circuitikz' | 'pgfplots' | 'tikz-cd' | 'form';
+/** form: the Form mode, whose drawing is a preset's fields (modes/form); structures: beams, trusses and frames, solved */
+export type TikzPackage = 'tikz' | 'circuitikz' | 'pgfplots' | 'tikz-cd' | 'form' | 'structures';
 /**
  * sets: the symbol sets the drawing has besides its mode's own (sets.ts), in the order they were added. A drawing
  * with sets is version 2, so a build from before sets opens it as code instead of saving it with its parts missing.

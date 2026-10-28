@@ -4,6 +4,7 @@ import * as circuitTemplates from './modes/circuitikz/templates';
 import { TEMPLATES } from './modes/mermaid/templates';
 import { newFormModel, presetFor } from './modes/form/presets';
 import { signalSketch, slopeField } from './modes/pgfplots/code';
+import { sampleBeam } from './modes/structures/model';
 import { modelArchitecture, stateMachine } from './modes/tikz/examples';
 import { SETS } from './sets';
 import type { SetSymbol } from './sets';
@@ -68,7 +69,7 @@ export const CATEGORIES: { id: CategoryId; label: string; groups: [string, strin
   }
 ];
 
-export type StarterMode = 'circuitikz' | 'pgfplots' | 'tikz' | 'tikz-cd' | 'mermaid' | 'fletcher' | 'form';
+export type StarterMode = 'circuitikz' | 'pgfplots' | 'tikz' | 'tikz-cd' | 'mermaid' | 'fletcher' | 'form' | 'structures';
 
 export interface Starter {
   id: string;
@@ -100,7 +101,8 @@ export const MODE_FACTS: Record<StarterMode, { language: DiagramLanguage; packag
   'tikz-cd': { language: 'tikz', packages: ['tikz-cd'] },
   mermaid: { language: 'mermaid', packages: ['Mermaid'] },
   fletcher: { language: 'typst', packages: ['fletcher'] },
-  form: { language: 'tikz', packages: ['TikZ'] }
+  form: { language: 'tikz', packages: ['TikZ'] },
+  structures: { language: 'tikz', packages: ['TikZ'] }
 };
 
 const mermaid = (id: string) => () => ({ code: TEMPLATES.find(([t]) => t === id)?.[2] ?? TEMPLATES[0][2] });
@@ -287,6 +289,28 @@ export const STARTERS: Starter[] = [
     aliases: ['neural network', 'transformer', 'machine learning', 'deep learning', 'encoder', 'layers'],
     file: 'model',
     model: modelArchitecture
+  },
+  {
+    id: 'structure',
+    mode: 'structures',
+    title: 'Structure (beams, trusses, frames)',
+    blurb: 'Supports and loads on beams, trusses and frames, solved: reactions, shear force and bending moment diagrams',
+    home: 'engineering/mechanical',
+    also: ['physics/mechanics'],
+    aliases: ['beam', 'truss', 'frame', 'SFD', 'BMD', 'shear', 'moment', 'free-body diagram', 'FBD', 'reactions', 'method of joints', 'method of sections', 'statics'],
+    file: 'structure',
+    model: sampleBeam
+  },
+  {
+    id: 'mohr',
+    mode: 'form',
+    title: presetFor('mohr')!.label,
+    blurb: 'Principal stresses and maximum shear from σx, σy and τxy, with stress elements',
+    home: 'engineering/mechanical',
+    also: ['physics/mechanics'],
+    aliases: ['Mohr', 'stress', 'principal stress', 'shear', 'stress transformation', 'stress element'],
+    file: 'mohr',
+    model: () => newFormModel('mohr')
   },
   // the Form frame's test preset, which the chooser lists in development builds only
   {

@@ -7,8 +7,9 @@ import { connect, copyIds, nodeAt, pasteInto, placeTool, removeIds, sampleBeam, 
 import type { Part, SNode, StructureModel, SupportType } from './model';
 import { buildScene, cutSection, formatValue, readStyle } from './draw';
 import type { Item } from './draw';
-import { structureCode } from './code';
-
+import { structureCode, structureStyle } from './code';
+import { diagramFileText, readDiagramFile } from '../../fileFormat';
+import type { DiagramFile } from '../../types';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -316,4 +317,15 @@ const texts = (list: Item[]) => list.flatMap((i) => (i.t === 'text' ? [i.tex] : 
   eq(structureCode({ nodes: 'x' }, {}).packages, ['tikz'], 'a damaged model');
 }
 
-console.log('structures.check: ok');
+// ─── the file: a drawing round-trips through the diagram file (last: it waits for the hash) ───
+
+(async () => {
+  const diagram: DiagramFile = { language: 'tikz', pkg: 'structures', style: structureStyle({ moments: 'positive', mohrShear: 'down' }), model: sampleBeam(), version: 1 };
+  eq(diagram.style, { view: 'diagrams', moments: 'positive' }, 'a new drawing copies the bending moment convention');
+  const code = structureCode(diagram.model, diagram.style);
+  const back = await readDiagramFile(await diagramFileText(diagram, code));
+  eq(back.diagram, diagram, 'the drawing comes back');
+  eq(back.edited, false, 'not edited');
+  eq(structureCode(back.diagram!.model, back.diagram!.style), code, 'and writes the same code');
+  console.log('structures.check: ok');
+})();
