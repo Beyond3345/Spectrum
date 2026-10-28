@@ -2,6 +2,8 @@
 
 Updated 29 October 2026. `feat/2.0` was pushed to GitHub on 25 October at the user's request; no tag or release was made.
 
+**Progress, 29 October 2026 (part 2 under way):** Phase 0 done (OAuth client id). Phase A merged: A1 (Move race, mirror record aside), A2 (known phase 5 fixes), A3 (agents: logos, set-up list, Settings cards, Test, pinned adapters, Gemini and Copilot) with its review fixes, A4 (switches, unsaved Settings prompt). Review 2 round 1 (24 findings) fixed and merged; round 2 found 6 small items (security R1 and R2 medium, editor R3 to R6 low; list in the session scratchpad review2-round2.md, summarised: svgsAsPdf writing outside the new project on Convert to LaTeX, uploads and other file routes during Move, fletcher styles and escaping, Markdown-with-Typst compile menu, Typst cell escaping of * and _); its engines and Windows reviewer was stopped by the usage limit and needs rerunning. Phase B: B3 (table lines) and B2a (Harper 3.0.0, Hunspell 1.7.6 binding, English dictionaries, 90-language catalogue) merged. Next: a fixer for round 2's items, rerun the engines and Windows reviewer, Windows CI run 2 (40750865946) result, B2b (language list, detection, Settings UI, LanguageTool 6.8), B1 composer (higher effort), test DMG 3 and 4, review 3, release.
+
 **Next: [SPECTRUM_2_PART_2_PLAN.md](SPECTRUM_2_PART_2_PLAN.md)** (29 October 2026) plans the rest of 2.0: last week's open work, the agents, interface fixes, the composer and languages, with the user's decisions and the order of work. It replaces the next steps below once approved.
 
 ## Where to resume
