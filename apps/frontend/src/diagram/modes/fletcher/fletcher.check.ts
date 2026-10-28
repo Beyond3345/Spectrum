@@ -47,6 +47,22 @@ has(body, 'edge(<n3>, <n4>, "..", label: [no]),', 'a dotted line with no heads')
 has(body, 'node((0.75cm, -2.75cm), [c]', 'the second row below the first');
 eq(fletcherCode(model, '0.12.0').body.startsWith('#import "@preview/fletcher:0.5.5"'), true, 'an older Typst gets an older fletcher');
 eq(fletcherCode({ boxes: [], links: [] }, '').body.includes('  node-stroke: 0.4pt,'), true, 'no boxes still makes a diagram');
+// the Inspector's line colour, thickness and dash, and a label's text colour
+const styled = fletcherCode({
+  boxes: [
+    box({ id: 's1', stroke: '#cc0000', width: 1.2, dash: 'dashed', text: 'a' }),
+    box({ id: 's2', dash: 'dotted', text: 'b' }),
+    box({ id: 's3', shape: 'text', stroke: '#0000cc', text: 'blue' }),
+    box({ id: 's4', shape: 'maths', stroke: '#0000cc', text: 'x' })
+  ],
+  links: [link({ id: 's', from: 's1', to: 's2', stroke: '#00aa00', width: 2, dash: 'dashed' }), link({ id: 't', from: 's2', to: 's1', width: 0.8 })]
+}, '').body;
+has(styled, 'stroke: (paint: rgb("#cc0000"), thickness: 1.2pt, dash: "dashed"), name: <s1>', 'a coloured, thicker, dashed box');
+has(styled, 'stroke: (dash: "dotted"), name: <s2>', 'a dotted box at the default colour and thickness');
+has(styled, 'node((1cm, -0.5cm), text(fill: rgb("#0000cc"))[blue], shape: fletcher.shapes.rect, width: 2cm, height: 1cm, stroke: none', 'a label’s text colour');
+has(styled, 'text(fill: rgb("#0000cc"))[$x$]', 'maths in a colour');
+has(styled, 'edge(<s1>, <s2>, "-->", stroke: (paint: rgb("#00aa00"), thickness: 2pt)),', 'a coloured, thicker dashed edge, its dash in the marks');
+has(styled, 'edge(<s2>, <s1>, "->", stroke: (thickness: 0.8pt)),', 'a thinner edge');
 // a // would comment out the rest of the line, and @, <, ` and a leading * start a reference, label, raw text or bold
 const marked = fletcherCode({ boxes: [box({ id: 'm1', text: '*Total @ref <x> `y` a/b' }), box({ id: 'm2' })], links: [link({ id: 'm', from: 'm1', to: 'm2', label: 'yes // no' })] }, '').body;
 has(marked, '[\\*Total \\@ref \\<x> \\`y\\` a\\/b]', 'a box’s markup escaped');
