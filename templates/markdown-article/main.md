@@ -17,7 +17,7 @@ The image above shows a first figure. Replace it with your own image or a diagra
 
 The first measurements are below.
 
-Table: First measurements. {#tab:results}
+Table: First measurements.
 
 | Measure | Before | After |
 | --- | --- | --- |
