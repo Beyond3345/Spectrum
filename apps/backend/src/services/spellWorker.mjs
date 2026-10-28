@@ -71,9 +71,10 @@ const ENGLISH = {
   'en-IN': { open: () => scowl('en_GB'), selfTest: [['colour', true], ['color', false], ['defence', true], ['defense', false]] }
 };
 
-// ponytail: a speller not asked for in 30 minutes is dropped, except Australian English; the language list can
-// name the one to keep once the editor sends it
+// a speller not asked for in 30 minutes is dropped, except the first listed language's (Australian English until a
+// list says otherwise)
 const IDLE_MS = 30 * 60_000;
+let keep = 'en-AU';
 const spellers = new Map();
 
 /** A speller that answers its self-test as it should, or an error naming the words it got wrong. */
@@ -91,7 +92,7 @@ const openDownloaded = (lang, { dir, selfTest = [] }) =>
 /** The speller for `lang`, opened on first use, and again when a downloaded dictionary's version changes. */
 function spellerFor(lang = 'en-AU', dictionary) {
   const now = Date.now();
-  for (const [tag, entry] of spellers) if (tag !== 'en-AU' && now - entry.used > IDLE_MS) spellers.delete(tag);
+  for (const [tag, entry] of spellers) if (tag !== keep && now - entry.used > IDLE_MS) spellers.delete(tag);
   let entry = spellers.get(lang);
   if (!entry || entry.version !== dictionary?.version) {
     let speller;
@@ -112,9 +113,17 @@ const clean = (raw) => String(raw).replace(/’/g, "'").replace(/^'+|'+$/g, '');
 // Australian English is what everyone has, so it is opened (and tested) before saying ready
 spellerFor('en-AU');
 
-parentPort.on('message', ({ id, op, words, word, lang, dictionary }) => {
+parentPort.on('message', ({ id, op, words, word, lang, dictionary, candidates, first }) => {
   try {
+    if (first) keep = first;
     let result;
+    // how many of a piece's words each candidate language accepts, for detection
+    if (op === 'vote') {
+      const wanted = words.map(clean).filter((w) => !skip(w));
+      const accepted = Object.fromEntries(candidates.map((c) => [c.lang, spellerFor(c.lang, c.dictionary).spell(wanted).filter(Boolean).length]));
+      parentPort.postMessage({ id, result: { words: wanted.length, accepted } });
+      return;
+    }
     // a download is opened and tested before it is put in place, and not kept
     if (op === 'test') {
       parentPort.postMessage({ id, result: openDownloaded(lang, dictionary).encoding() });

@@ -8,6 +8,8 @@ import { workerClient } from '../utils/workerClient.js';
 import { existsSync } from 'node:fs';
 import { DICTIONARY_FILES, inspectCheckerAssets, sha256 } from '../utils/checkerMetadata.js';
 import languageList from '../data/languages.json' with { type: 'json' };
+import { fallbackOf, languageEntry, listedLanguages, resolve, scriptOf, straySimplified, traditionalOf, verdict } from '../language/detect.js';
+import { proseWords } from '../latex/mask.js';
 
 // Spelling through Spectrum's Hunspell binding, on a thread of its own (spellWorker.mjs), Australian English unless
 // asked for another language. If it can't start, spelling reports itself unavailable and the rest of Spectrum carries on.
@@ -82,17 +84,101 @@ export async function ownWords(projectId) {
   return [...new Set([...(await readList(GLOBAL_FILE())), ...(projectId ? await readList(await projectFile(projectId)) : [])])];
 }
 
-/** The words `lang` doesn't know (Australian English by default), leaving out the ones on the user's lists. */
-export async function checkWords(words, projectId, lang = 'en-AU') {
+/**
+ * The words `lang` doesn't know (Australian English by default), leaving out the ones on the user's lists. first is
+ * the first listed language, whose speller stays loaded.
+ */
+export async function checkWords(words, projectId, lang = 'en-AU', first) {
   const unique = [...new Set(words.map(String).filter((w) => w && w.length <= 100))].slice(0, 5000);
   const own = new Set(await ownWords(projectId));
   const wanted = unique.filter((w) => !own.has(key(w)) && !own.has(key(w).toLowerCase()));
   if (!wanted.length) return [];
-  return speller.call({ op: 'check', words: wanted, ...await spellerFor(lang) });
+  return speller.call({ op: 'check', words: wanted, first, ...await spellerFor(lang) });
 }
 
+// a suggestion that takes longer than this (Hunspell can, on a long word in a big dictionary) answers none
+const SUGGEST_MS = 3000;
+
 export async function suggestWord(word, lang = 'en-AU') {
-  return speller.call({ op: 'suggest', word: String(word).slice(0, 100), ...await spellerFor(lang) });
+  // Traditional Chinese has no dictionary; a stray Simplified character's suggestions are its Traditional forms
+  if (lang === 'zh-TW') return traditionalOf(String(word));
+  const asked = speller.call({ op: 'suggest', word: String(word).slice(0, 100), ...await spellerFor(lang) });
+  let timer;
+  const late = new Promise((done) => { timer = setTimeout(() => done([]), SUGGEST_MS); });
+  try {
+    return await Promise.race([asked, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ─── spelling by paragraph, each in the language detection gives it ───
+
+export const MAX_PIECES = 200;
+export const MAX_PIECE_CHARS = 200_000;
+const WAITING = new Set(['available', 'downloading', 'failed']);
+
+/** The words of a piece in `lang`: Thai through the system's word breaker, others by letters and the dictionary's WORDCHARS. */
+function wordsOf(text, entry) {
+  if (entry?.script !== 'Thai') return proseWords(text, 0, text.length, { wordChars: entry?.wordChars || '' });
+  return [...new Intl.Segmenter('th', { granularity: 'word' }).segment(text)]
+    .filter((s) => s.isWordLike && /\p{Script=Thai}/u.test(s.segment)).map((s) => [s.segment, s.index]);
+}
+
+/** Detection's vote: how many of the words each candidate's dictionary accepts. Missing dictionaries don't vote. */
+async function vote(words, candidates) {
+  const present = [], missing = [];
+  for (const tag of candidates) {
+    const state = await dictionaryState(tag);
+    if (WAITING.has(state)) missing.push(tag);
+    else if (state !== 'none') present.push({ lang: tag, dictionary: (await spellerFor(tag)).dictionary });
+  }
+  if (!present.length) return { words: words.length, accepted: {}, missing };
+  return { ...await speller.call({ op: 'vote', words, candidates: present }), missing };
+}
+
+/**
+ * Spelling for pieces of prose in document order ([{ text, lang? }], lang being the language markup gave it), each
+ * checked in the listed language it resolves to. Answers { pieces: [{ lang, misspelt: [[from, to]] }], pending }:
+ * lang '' is a piece in no listed language, left alone; pending the listed languages whose dictionary isn't here yet,
+ * whose pieces wait unmarked. Words in another script than their piece's go to the first listed language of theirs.
+ */
+export async function checkPieces({ languages, main = null, pieces, projectId }) {
+  const list = listedLanguages(languages);
+  const mainTag = typeof main === 'string' && main ? main : null;
+  const verdicts = [];
+  for (const piece of pieces) verdicts.push(await verdict(piece.text, { languages: list, main: mainTag, explicit: piece.lang || undefined, vote }));
+  const langs = resolve(verdicts, fallbackOf(list, mainTag));
+  const states = new Map(await Promise.all(list.map(async (tag) => [tag, await dictionaryState(tag)])));
+  const pending = new Set();
+  const out = langs.map((lang) => ({ lang, misspelt: [] }));
+  const byLang = new Map();
+  pieces.forEach((piece, i) => {
+    const lang = langs[i];
+    if (!lang) return;
+    if (lang === 'zh-TW') out[i].misspelt.push(...straySimplified(piece.text));
+    const entry = languageEntry(lang);
+    for (const [word, at] of wordsOf(piece.text, entry)) {
+      const script = scriptOf(word);
+      const target = script === entry.script ? lang : list.find((tag) => languageEntry(tag).script === script);
+      if (!target || states.get(target) === 'none') continue;
+      if (WAITING.has(states.get(target))) {
+        pending.add(target);
+        continue;
+      }
+      if (!byLang.has(target)) byLang.set(target, new Map());
+      const words = byLang.get(target);
+      if (!words.has(word)) words.set(word, []);
+      words.get(word).push([i, at, at + word.length]);
+    }
+  });
+  for (const [lang, words] of byLang) {
+    for (const word of await checkWords([...words.keys()], projectId, lang, list[0])) {
+      for (const [i, from, to] of words.get(word) || []) out[i].misspelt.push([from, to]);
+    }
+  }
+  for (const piece of out) piece.misspelt.sort((a, b) => a[0] - b[0]);
+  return { pieces: out, pending: [...pending] };
 }
 
 // ─── dictionaries downloaded when asked (DATA_DIR/dictionaries/<tag>/), from the catalogue's pinned files ───

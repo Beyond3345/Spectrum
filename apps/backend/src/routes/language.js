@@ -1,4 +1,4 @@
-import { changeWord, checkWords, installDictionary, listLanguages, listWords, pruneDictionaries, spellStatus, suggestWord } from '../services/spellService.js';
+import { MAX_PIECES, MAX_PIECE_CHARS, changeWord, checkPieces, checkWords, installDictionary, listLanguages, listWords, pruneDictionaries, spellStatus, suggestWord } from '../services/spellService.js';
 import { MAX_GRAMMAR_CHARS, changeIgnoredRule, checkGrammar, grammarStatus, readIgnoredRules } from '../services/grammarService.js';
 
 /** A checker that couldn't start answers 503 with its reason, so the editor can say so and carry on. */
@@ -7,8 +7,20 @@ const unavailable = (reply, err) => reply.code(503).send({ error: err instanceof
 export function registerLanguageRoutes(fastify) {
   fastify.get('/api/spell/status', async () => spellStatus());
 
+  // pieces of prose in document order, each checked in the listed language detection gives it; or words in one language
   fastify.post('/api/spell/check', async (req, reply) => {
-    const { words, projectId, lang } = req.body || {};
+    const { words, projectId, lang, pieces, languages, main } = req.body || {};
+    if (Array.isArray(pieces)) {
+      const valid = pieces.every((p) => p && typeof p.text === 'string' && (p.lang === undefined || typeof p.lang === 'string'));
+      if (!valid || pieces.length > MAX_PIECES) return reply.code(400).send({ error: 'Send at most 200 pieces of text to check.' });
+      if (pieces.reduce((sum, p) => sum + p.text.length, 0) > MAX_PIECE_CHARS) return reply.code(413).send({ error: 'That’s too much text to check in one go.' });
+      try {
+        return await checkPieces({ languages, main, pieces, projectId });
+      } catch (err) {
+        if (err?.statusCode) throw err;
+        return unavailable(reply, err);
+      }
+    }
     if (!Array.isArray(words)) return reply.code(400).send({ error: 'Send the words to check.' });
     try {
       return { misspelt: await checkWords(words, projectId, lang) };
