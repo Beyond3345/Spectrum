@@ -95,7 +95,9 @@ function mohrCode(values: FormValues, style: Record<string, unknown>): DiagramCo
   const bottom = P(m.C, -m.R * sign);
   lines.push('% Principal stresses and maximum shear', dot(s1), dot(s2), dot(top), dot(bottom));
   if (!m.threeD) lines.push(node(s1, `$\\sigma_1 = ${fmt(m.sigma1)}$`, 'south west'), node(s2, `$\\sigma_2 = ${fmt(m.sigma2)}$`, 'south east'));
-  lines.push(node(top, `$\\tau_{\\max} = ${fmt(m.tauMax)}$`, 'south'));
+  // σz between σ1 and σ2: the in-plane circle is the largest, its top the absolute maximum too
+  const same = !!m.threeD && Math.abs(m.threeD.tauMax - m.tauMax) <= 1e-9 * Math.max(1, m.tauMax);
+  lines.push(node(top, `$\\tau_{\\max} = ${same ? '\\tau_{\\mathrm{abs}} = ' : ''}${fmt(m.tauMax)}$`, 'south'));
   // 2θp from CX to σ1, the way the circle turns for this convention
   if (m.R > 0 && Math.abs(txy) > 1e-12 * m.R) {
     const fromAngle = (Math.atan2(X.y - C.y, X.x - C.x) * 180) / Math.PI;
@@ -114,7 +116,7 @@ function mohrCode(values: FormValues, style: Record<string, unknown>): DiagramCo
   if (m.threeD) {
     const [a, b, c] = m.threeD.sigma;
     const peak = P((a + c) / 2, ((a - c) / 2) * sign);
-    lines.push('% Three-dimensional state', dot(peak), node(peak, `$\\tau_{\\mathrm{abs}} = ${fmt(m.threeD.tauMax)}$`, 'south west'));
+    lines.push('% Three-dimensional state', ...(same ? [] : [dot(peak), node(peak, `$\\tau_{\\mathrm{abs}} = ${fmt(m.threeD.tauMax)}$`, 'south west')]));
     // the principal stresses named in order, σ1 ≥ σ2 ≥ σ3
     lines.push(...[a, b, c].flatMap((v, i) => [dot(P(v, 0)), node(P(v, 0), `$\\sigma_${i + 1} = ${fmt(v)}$`, i === 2 ? 'south east' : 'south west')]));
   }

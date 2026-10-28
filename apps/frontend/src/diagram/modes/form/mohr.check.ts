@@ -76,6 +76,11 @@ eq(count(code({}, { elements: 'rotated' }).body), 1, 'no rotation, no rotated el
 eq(count(code({}, { elements: 'all', theta: 30 }).body), 4, 'all four');
 eq(code({}, { theta: 30 }).body.includes("$X'("), true, 'the rotated state');
 eq(code({}, { threeD: true, sigmaZ: 0 }).body.includes('\\tau_{\\mathrm{abs}}'), true, 'the 3D state');
+// σz between σ1 and σ2: the in-plane circle is the largest, so its top is both; one label there
+const between = code({}, { threeD: true, sigmaZ: 0 }).body;
+eq([between.includes('$\\tau_{\\max} = \\tau_{\\mathrm{abs}} = 65$'), (between.match(/\\tau_\{\\m/g) ?? []).length], [true, 2], 'σz between: one label for both');
+const outside = code({}, { threeD: true, sigmaZ: 100 }).body;
+eq([outside.includes('$\\tau_{\\max} = 65$'), outside.includes('$\\tau_{\\mathrm{abs}} = 72.5$')], [true, true], 'σz outside: a label each');
 eq((code({}, { threeD: true, sigmaZ: 0 }).body.match(/\\draw\[line width=[^\]]*\] \([^)]*\) circle/g) ?? []).length, 3, 'three circles');
 // a pure hydrostatic state: a point, nothing to divide by zero
 eq(/NaN|Infinity/.test(code({}, { sigmaX: 10, sigmaY: 10, tauXY: 0, elements: 'all' }).body), false, 'a point circle');
