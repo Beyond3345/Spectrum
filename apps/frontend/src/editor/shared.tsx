@@ -84,6 +84,9 @@ export const ENGINES_CHANGED = 'spectrum-engines-changed';
 /** Fired after Settings › Agents saves an agent's setup, so the agent workspace's picker sees it. */
 export const AGENTS_CHANGED = 'spectrum-agents-changed';
 
+/** Fired after Settings changes a project's own language list, so its editor checks in the languages now listed. */
+export const LANGUAGES_CHANGED = 'spectrum-languages-changed';
+
 /** Fired after a pull from GitHub changed files in .spectrum, so the to-dos, PDF notes and Research reload. */
 export const PROJECT_DATA_CHANGED = 'spectrum-project-data-changed';
 

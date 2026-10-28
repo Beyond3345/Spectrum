@@ -114,7 +114,7 @@ test('checkers:verify checks both engines and their files, and fails on a file t
 
 test('grammar: Australian dialect, no Oxford comma, positions in the source', async () => {
   const tex = '\\begin{document}\nThis is a apple. I bought milk, eggs, and bread \\cite{key}. It are \\emph{the the} best.\n\\end{document}';
-  const issues = await grammar.checkGrammar({ text: tex, file: 'main.tex' });
+  const { issues } = await grammar.checkGrammar({ text: tex, file: 'main.tex' });
   const byRule = Object.fromEntries(issues.map((i) => [i.rule, i]));
   assert.equal(tex.slice(byRule.AnA.from, byRule.AnA.to), 'a');
   assert.deepEqual(byRule.AnA.suggestions[0], { kind: 'replace', text: 'an' });
@@ -124,13 +124,13 @@ test('grammar: Australian dialect, no Oxford comma, positions in the source', as
   assert.ok(byRule.RepeatedWords, 'the the inside \\emph');
   assert.ok(!issues.some((i) => i.kind === 'Spelling' && i.rule === 'SpellCheck'), 'spelling is left to Hunspell');
 
-  const allowed = await grammar.checkGrammar({ text: tex, file: 'main.tex', oxford: 'off', ignoredRules: ['AnA'] });
+  const { issues: allowed } = await grammar.checkGrammar({ text: tex, file: 'main.tex', oxford: 'off', ignoredRules: ['AnA'] });
   assert.ok(!allowed.some((i) => i.rule === 'NoOxfordComma' || i.rule === 'AnA'));
 });
 
 test('grammar in each English dialect, Australian by default, the serial comma in each', async () => {
   const text = 'Grab the flashlight and change the diaper. Fill the petrol tank. I bought milk, eggs, and bread.';
-  const flagged = async (language, oxford) => (await grammar.checkGrammar({ text, language, oxford, style: true })).map((i) => `${i.rule}:${text.slice(i.from, i.to)}`);
+  const flagged = async (language, oxford) => (await grammar.checkGrammar({ text, language, oxford, style: true })).issues.map((i) => `${i.rule}:${text.slice(i.from, i.to)}`);
   const au = await flagged(undefined);
   assert.deepEqual(au, await flagged('en-AU'));
   assert.ok(au.includes('Regionalisms:flashlight') && au.includes('Regionalisms:diaper') && !au.includes('Regionalisms:petrol'));

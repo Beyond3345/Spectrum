@@ -75,6 +75,11 @@ test('bundled skills list with their author, licence, version and files, and swi
   assert.deepEqual((await activeSkills(p.path)).map((s) => s.id), ['alpha']);
   assert.deepEqual((await activeSkills()).map((s) => s.id), ['beta']);
   assert.deepEqual((await api(url, 'PATCH', { skills: null })).json.settings, {});
+  // the project's own language list replaces the user's; null gives the user's back
+  for (const bad of [{ languages: [] }, { languages: ['en AU'] }, { languages: 'en-AU' }, { other: 1 }]) assert.equal((await api(url, 'PATCH', { language: bad })).status, 400, JSON.stringify(bad));
+  assert.deepEqual((await api(url, 'PATCH', { language: { languages: ['en-AU', 'zh-TW', 'en-AU'] } })).json.settings, { language: { languages: ['en-AU', 'zh-TW'] } });
+  assert.deepEqual((await api(url, 'PATCH', { compile: { draft: true } })).json.settings.language, { languages: ['en-AU', 'zh-TW'] }, 'other changes keep it');
+  assert.deepEqual((await api(url, 'PATCH', { compile: { draft: null }, language: { languages: null } })).json.settings, {});
   assert.equal((await api('/api/skills/alpha', 'PATCH', { enabled: true })).status, 200);
 });
 

@@ -37,6 +37,26 @@ export type SyncHighlight = 'accent' | 'yellow' | 'green' | 'pink' | 'blue' | 'c
 const ACCENTS: Accent[] = ['system', 'blue', 'purple', 'pink', 'red', 'orange', 'yellow', 'green', 'graphite', 'custom'];
 const HEX = /^#[0-9a-f]{6}$/i;
 
+/** A language list as kept: well-formed tags once each, at most 20, else Australian English alone. */
+export function languageList(value: unknown): string[] {
+  const tags = Array.isArray(value) ? [...new Set(value.filter((tag): tag is string => typeof tag === 'string' && /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(tag)))].slice(0, 20) : [];
+  return tags.length ? tags : ['en-AU'];
+}
+
+const languageNames = new Intl.DisplayNames('en-AU', { type: 'language' });
+// the system names Chinese by region (Chinese (Taiwan)); by script is what the check means
+const DISPLAY_AS: Record<string, string> = { 'zh-TW': 'zh-Hant', 'zh-CN': 'zh-Hans' };
+const NAMED: Record<string, string> = { hyw: 'Western Armenian' };
+
+/** A language's name in Australian English, from the system: Australian English, Traditional Chinese. */
+export function languageName(tag: string) {
+  try {
+    return NAMED[tag] || languageNames.of(DISPLAY_AS[tag] || tag) || tag;
+  } catch {
+    return tag;
+  }
+}
+
 export type AppSettings = {
   theme: Theme;
   accent: Accent;
@@ -114,8 +134,12 @@ export type AppSettings = {
   unpaywallEmail: string;
   /** shortcut id → key, only for the ones changed in Settings ('' = removed) */
   shortcuts: Record<string, string>;
-  /** spell checking as you type, in Australian English */
+  /** spell checking as you type, in the languages listed */
   spellCheck: boolean;
+  /** the languages the user writes in, as BCP 47 tags from the catalogue; the first is the fallback */
+  languages: string[];
+  /** what checks English grammar: Harper on this computer, or LanguageTool */
+  englishGrammar: 'harper' | 'languagetool';
   /** Harper's style suggestions (long sentences, wordiness, readability) besides grammar */
   grammarStyle: boolean;
   /** the serial comma: flag it (Australian Government style), require it, or leave it */
@@ -207,6 +231,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   spellCheck: true,
   grammarStyle: false,
   oxfordComma: 'avoid',
+  languages: ['en-AU'],
+  englishGrammar: 'harper',
   syncDoubleClick: true,
   syncHighlightColour: 'yellow',
   syncHighlightCustom: '#ffd60a',
@@ -338,6 +364,8 @@ function parse(raw: string | null): AppSettings {
     if (typeof merged.searchProviderKeys !== 'object' || !merged.searchProviderKeys) merged.searchProviderKeys = {};
     if (!Array.isArray(parsed.searchConnections)) merged.searchConnections = [...new Set([merged.searchProvider, ...Object.keys(merged.searchProviderKeys).filter((p) => merged.searchProviderKeys[p as SearchProvider]) as SearchProvider[]])];
     if (!['avoid', 'require', 'off'].includes(merged.oxfordComma)) merged.oxfordComma = 'avoid';
+    merged.languages = languageList(merged.languages);
+    if (merged.englishGrammar !== 'languagetool') merged.englishGrammar = 'harper';
     if (!ACCENTS.includes(merged.accent)) merged.accent = 'system';
     if (typeof merged.accentCustom !== 'string' || !HEX.test(merged.accentCustom)) merged.accentCustom = DEFAULT_SETTINGS.accentCustom;
     merged.glass = merged.glass === true;
@@ -443,7 +471,7 @@ export function updateSettings(patch: Partial<AppSettings>) {
  */
 const SHARED_KEYS = [
   'theme', 'accent', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize',
-  'autoInsertCite', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
+  'autoInsertCite', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'languages', 'englishGrammar', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
   'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions'
 ] as const satisfies readonly (keyof AppSettings)[];
 
@@ -527,7 +555,7 @@ function ownShared(part: Record<string, unknown>, sent: string, theirs: Record<s
     // never shared
   }
   const kept = { ...part };
-  for (const key of ['personas', 'defaultInstructions'] as const) {
+  for (const key of ['personas', 'defaultInstructions', 'languages'] as const) {
     if (!(key in before) && !(key in theirs) && JSON.stringify(part[key]) === JSON.stringify(DEFAULT_SETTINGS[key])) delete kept[key];
   }
   return kept;

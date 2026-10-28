@@ -477,10 +477,15 @@ export function registerProjectRoutes(fastify) {
   fastify.get('/api/projects/:id/settings', async (req) => ({ ok: true, settings: await readProjectSettings(await getProjectRoot(req.params.id)) }));
 
   // compile: the settings given change (null takes one back to the default); skills: { on, off }, the skills the
-  // project turns on or off whatever this computer has, replaced whole (null: none)
+  // project turns on or off whatever this computer has, replaced whole (null: none); language: { languages }, the
+  // project's own language list in place of the user's (null: the user's)
   fastify.patch('/api/projects/:id/settings', async (req) => {
-    const { compile = {}, skills, ...others } = req.body || {};
-    if (Object.keys(others).length || !isObject(compile)) throw httpError('Only compile and skill settings can be changed here.', 400);
+    const { compile = {}, skills, language, ...others } = req.body || {};
+    if (Object.keys(others).length || !isObject(compile)) throw httpError('Only compile, skill and language settings can be changed here.', 400);
+    const tags = (list) => Array.isArray(list) && list.length >= 1 && list.length <= 20 && list.every((tag) => typeof tag === 'string' && /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(tag));
+    if (language !== undefined && (!isObject(language) || Object.keys(language).some((key) => key !== 'languages') || (language.languages !== null && !tags(language.languages)))) {
+      throw httpError('Invalid language settings: a list of up to 20 language tags, or null for the user’s own.', 400);
+    }
     for (const [key, value] of Object.entries(compile)) {
       if (!Object.hasOwn(COMPILE_SETTINGS, key) || (value !== null && !COMPILE_SETTINGS[key](value))) throw httpError(`Invalid compile setting: ${key}.`, 400);
     }
@@ -489,11 +494,15 @@ export function registerProjectRoutes(fastify) {
       throw httpError('Invalid skill settings: lists of skill ids to turn on and off, none in both.', 400);
     }
     const root = await getProjectRoot(req.params.id);
-    const settings = await updateProjectSettings(root, ({ compile: old, skills: oldSkills, ...rest }) => {
+    const settings = await updateProjectSettings(root, ({ compile: old, skills: oldSkills, language: oldLanguage, ...rest }) => {
       const next = { ...(isObject(old) ? old : {}), ...compile };
       for (const key of Object.keys(next)) if (next[key] === null) delete next[key];
       const choices = skills === undefined ? oldSkills : skills && (skills.on?.length || skills.off?.length) ? { on: [...new Set(skills.on ?? [])], off: [...new Set(skills.off ?? [])] } : undefined;
-      return { ...rest, ...(Object.keys(next).length && { compile: next }), ...(choices !== undefined && { skills: choices }) };
+      // keys a newer Spectrum keeps under language stay
+      const { languages: _old, ...otherLanguage } = isObject(oldLanguage) ? oldLanguage : {};
+      const lang = language === undefined ? oldLanguage : { ...otherLanguage, ...(language.languages && { languages: [...new Set(language.languages)] }) };
+      const keepLanguage = lang !== undefined && (!isObject(lang) || Object.keys(lang).length);
+      return { ...rest, ...(Object.keys(next).length && { compile: next }), ...(choices !== undefined && { skills: choices }), ...(keepLanguage && { language: lang }) };
     });
     return { ok: true, settings };
   });

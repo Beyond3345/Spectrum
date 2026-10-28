@@ -1,18 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { StateEffect, StateField } from '@codemirror/state';
+import { ChangeSet, StateEffect, StateField } from '@codemirror/state';
 import type { EditorState } from '@codemirror/state';
 import { Decoration, EditorView } from '@codemirror/view';
 import type { DecorationSet } from '@codemirror/view';
-import { changeIgnoredGrammarRule, grammarCheck } from '../api/client';
-import type { GrammarIssue, GrammarSuggestion } from '../api/client';
+import { changeIgnoredGrammarRule, grammarCheck, installLanguageTool, listLanguages } from '../api/client';
+import type { GrammarCoverage, GrammarIssue, GrammarSuggestion, LanguageInfo } from '../api/client';
 import Icon from '../app/Icon';
 import Select from '../app/Select';
-import { updateSettings } from '../app/settings';
+import { languageName, updateSettings } from '../app/settings';
 import type { AppSettings } from '../app/settings';
+import { toast } from '../app/Toast';
 
-// The grammar check: Harper (Australian English) over the open file, its issues listed here and
-// underlined in the editor. The underlines move with edits, so the list stays right while you fix.
+// The grammar check over the open file, each paragraph in its listed language: English through Harper (or
+// LanguageTool, if chosen), other languages through LanguageTool when it's on this computer. Its issues are listed
+// here and underlined in the editor. The underlines move with edits, so the list stays right while you fix.
 
 type Mark = { id: string; from: number; to: number };
 const setGrammarMarks = StateEffect.define<Mark[]>();
@@ -51,8 +53,18 @@ const grammarField = StateField.define<{ marks: DecorationSet; active: string | 
   provide: (field) => EditorView.decorations.from(field, (value) => value.marks)
 });
 
+// the edits made since a check started, so a LanguageTool check's late results land on the text as it is now
+const recordChanges = StateEffect.define<boolean>();
+const changesField = StateField.define<ChangeSet | null>({
+  create: () => null,
+  update(value, tr) {
+    for (const effect of tr.effects) if (effect.is(recordChanges)) value = effect.value ? ChangeSet.empty(tr.state.doc.length) : null;
+    return value && tr.docChanged ? value.compose(tr.changes) : value;
+  }
+});
+
 /** The editor half of the grammar check (the underlines). */
-export const grammarMarks = grammarField;
+export const grammarMarks = [grammarField, changesField];
 
 /** Where each underlined issue is now, after any edits. */
 function markedRanges(state: EditorState) {
@@ -99,13 +111,26 @@ const suggestionLabel = (s: GrammarSuggestion) =>
 type Issue = GrammarIssue & { id: string };
 const CHECKABLE = /\.(tex|ltx|typ|md|markdown|txt)$/i;
 
+/** Australian English and Traditional Chinese; A, B and C. */
+const names = (tags: string[]) => {
+  const all = [...new Set(tags)].map(languageName);
+  return all.length > 1 ? `${all.slice(0, -1).join(', ')} and ${all[all.length - 1]}` : all[0] || '';
+};
+// the catalogue, read once, to know which listed languages LanguageTool would check
+let catalogue: Promise<LanguageInfo[]> | null = null;
+const loadCatalogue = () => (catalogue ||= listLanguages().then((res) => res.languages, () => ((catalogue = null), [])));
+
+const paragraphs = (n: number) => `${n} ${n === 1 ? 'paragraph' : 'paragraphs'}`;
+
 export default function GrammarPanel({
   view,
   projectId,
   path,
   revision,
   settings,
+  languages,
   onClose,
+  onOpenSettings,
   trailing
 }: {
   view: () => EditorView | null;
@@ -114,22 +139,42 @@ export default function GrammarPanel({
   /** changes whenever the document does, so the list follows edits */
   revision: unknown;
   settings: AppSettings;
+  /** the language list in effect: the project's own, else the user's */
+  languages: string[];
   onClose(): void;
+  /** Settings › Spelling & grammar */
+  onOpenSettings(): void;
   /** ends the header (the view switcher) */
   trailing?: ReactNode;
 }) {
   const [issues, setIssues] = useState<Issue[]>([]);
-  const [state, setState] = useState<'checking' | 'done' | 'error' | 'unsupported'>('checking');
+  const [state, setState] = useState<'checking' | 'done' | 'error' | 'unsupported' | 'cancelled'>('checking');
   const [error, setError] = useState('');
   const [checkedPath, setCheckedPath] = useState('');
+  const [coverage, setCoverage] = useState<GrammarCoverage[]>([]);
+  // edited during a LanguageTool check, whose results were mapped onto the text as it now is
+  const [changed, setChanged] = useState(false);
+  const [known, setKnown] = useState<LanguageInfo[]>([]);
   const runRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   const clearMarks = () => view()?.dispatch({ effects: setGrammarMarks.of([]) });
+  useEffect(() => {
+    void loadCatalogue().then(setKnown);
+  }, []);
+  // LanguageTool may check something: a listed language it checks that Harper doesn't, or English if chosen
+  const usesLanguageTool = languages.some((tag) => {
+    const entry = known.find((e) => e.tag === tag);
+    return !!entry?.languageTool && (!entry.harper || settings.englishGrammar === 'languagetool');
+  });
 
   const run = async () => {
     const v = view();
     const id = ++runRef.current;
+    abortRef.current?.abort();
     setIssues([]);
+    setCoverage([]);
+    setChanged(false);
     clearMarks();
     setCheckedPath(path);
     if (!v || !CHECKABLE.test(path)) {
@@ -138,32 +183,52 @@ export default function GrammarPanel({
     }
     setState('checking');
     setError('');
+    const controller = new AbortController();
+    abortRef.current = controller;
+    v.dispatch({ effects: recordChanges.of(true) });
     const doc = v.state.doc;
     try {
-      const res = await grammarCheck({ text: doc.toString(), file: path, projectId, style: settings.grammarStyle, oxford: settings.oxfordComma });
-      if (id !== runRef.current) return;
-      // edited while Harper read it: the positions are for older text, so read it again
-      if (view()?.state.doc !== doc) return void run();
-      const list = res.issues.map((issue, i) => ({ ...issue, id: `${id}-${i}` }));
-      v.dispatch({ effects: setGrammarMarks.of(list) });
+      const res = await grammarCheck({ text: doc.toString(), file: path, projectId, style: settings.grammarStyle, oxford: settings.oxfordComma,
+        languages, englishGrammar: settings.englishGrammar }, controller.signal);
+      const editor = view();
+      if (id !== runRef.current || !editor) return;
+      let found: GrammarIssue[] = res.issues;
+      if (editor.state.doc !== doc) {
+        // edited while Harper read it: it's quick, so read it again; a LanguageTool check isn't started again, its
+        // results are mapped through the edits made since
+        if (!res.coverage.some((c) => c.engine === 'languagetool' && c.done > 0)) return void run();
+        const changes = editor.state.field(changesField, false);
+        if (changes) found = found.map((issue) => ({ ...issue, from: changes.mapPos(issue.from, 1), to: changes.mapPos(issue.to, -1) })).filter((issue) => issue.to >= issue.from);
+        setChanged(true);
+      }
+      const list = found.map((issue, i) => ({ ...issue, id: `${id}-${i}` }));
+      editor.dispatch({ effects: [setGrammarMarks.of(list), recordChanges.of(false)] });
       setIssues(list);
+      setCoverage(res.coverage);
       setState('done');
     } catch (err) {
       if (id !== runRef.current) return;
+      view()?.dispatch({ effects: recordChanges.of(false) });
+      if (controller.signal.aborted) return void setState('cancelled');
       setError(err instanceof Error ? err.message : String(err));
       setState('error');
     }
   };
 
-  // a check when the panel opens, the file changes or the rule settings do
+  const cancel = () => {
+    abortRef.current?.abort();
+  };
+
+  // a check when the panel opens, the file changes or the rule or language settings do
   useEffect(() => {
     void run();
-  }, [path, settings.grammarStyle, settings.oxfordComma]);
+  }, [path, settings.grammarStyle, settings.oxfordComma, settings.englishGrammar, languages.join()]);
 
-  // the underlines go when the panel closes
+  // the underlines go when the panel closes, and a check still running stops
   useEffect(
     () => () => {
       runRef.current += 1;
+      abortRef.current?.abort();
       clearMarks();
     },
     []
@@ -197,10 +262,31 @@ export default function GrammarPanel({
     drop([issue.id]);
   };
 
-  const ignoreRule = async (rule: string) => {
-    drop(issues.filter((i) => i.rule === rule).map((i) => i.id));
-    await changeIgnoredGrammarRule(projectId, rule).catch(() => undefined);
+  const ignoreRule = async (issue: Issue) => {
+    const engine = issue.engine || 'harper';
+    // LanguageTool's rules are ignored for their language only
+    drop(issues.filter((i) => i.rule === issue.rule && (i.engine || 'harper') === engine && (engine === 'harper' || i.lang === issue.lang)).map((i) => i.id));
+    await changeIgnoredGrammarRule(projectId, issue.rule, false, engine, issue.lang).catch(() => undefined);
   };
+
+  const download = () => {
+    installLanguageTool()
+      .then(() => toast('Downloading LanguageTool. Settings › Spelling & grammar shows how far it has got.'))
+      .catch((err) => toast(err instanceof Error ? err.message : String(err), { tone: 'error' }));
+  };
+
+  // what wasn't checked and why; a check that couldn't run never says no issues were found
+  const notes: { key: string; text: string; action?: { label: string; onClick(): void }; details?: string }[] = [];
+  for (const c of coverage) {
+    const name = languageName(c.lang);
+    if (c.state === 'none') notes.push({ key: c.lang, text: `Not checked: ${paragraphs(c.pieces)} of ${name}, which has no grammar checker.` });
+    else if (c.state === 'off') notes.push({ key: c.lang, text: `${name} needs LanguageTool. Turn it on in Settings › Spelling & grammar.`, action: { label: 'Open Settings', onClick: onOpenSettings } });
+    else if (c.state === 'not-downloaded' && !notes.some((n) => n.key === 'download')) notes.push({ key: 'download', text: 'LanguageTool is not downloaded yet.', action: { label: 'Download (about 300 MB)', onClick: download } });
+    else if (c.state === 'failed' || c.state === 'cancelled') notes.push({ key: c.lang, text: `${name}: ${c.message || 'LanguageTool stopped before it finished.'}${c.parts > 1 && c.state === 'failed' ? ` ${c.done} of ${c.parts} parts checked.` : ''}` });
+    if (c.fallback) notes.push({ key: `${c.lang}-harper`, text: `LanguageTool couldn’t check ${name}, so Harper did${c.fallback.state === 'off' ? ' (LanguageTool is off)' : c.fallback.state === 'not-downloaded' ? ' (LanguageTool is not downloaded yet)' : ''}.`, details: c.fallback.message });
+  }
+  const checked = coverage.filter((c) => c.state === 'checked');
+  const manyLanguages = new Set(checked.map((c) => c.lang)).size > 1;
 
   const excerpt = (at: { from: number; to: number }) => {
     const editor = view();
@@ -228,7 +314,7 @@ export default function GrammarPanel({
       <div className="tools-head">
         <div className="grammar-title">
           <span>Grammar</span>
-          <span className="grammar-sub">Australian English · {file}</span>
+          <span className="grammar-sub">{names(coverage.length ? coverage.map((c) => c.lang) : languages)} · {file}</span>
         </div>
         <button className="icon-btn" title="Check again" aria-label="Check again" onClick={() => void run()} disabled={state === 'checking'}>
           <Icon name="arrow.clockwise" />
@@ -242,12 +328,23 @@ export default function GrammarPanel({
         <div className="tool-page grammar-list" role="status">
           {state === 'checking' && (
             <div className="grammar-empty">
-              <span className="spinner" /> Checking {file}…
+              <span className="spinner" /> {usesLanguageTool ? 'Checking with LanguageTool… A long file can take a minute.' : `Checking ${file}…`}
+              {usesLanguageTool && <button className="btn small ghost" onClick={cancel}>Cancel</button>}
+            </div>
+          )}
+          {state === 'cancelled' && (
+            <div className="grammar-empty">
+              Cancelled. <button className="btn small ghost" onClick={() => void run()}>Check again</button>
             </div>
           )}
           {state === 'unsupported' && <div className="grammar-empty">Grammar checking works on LaTeX, Typst, Markdown and .txt files. Open one to check it.</div>}
           {state === 'error' && <div className="grammar-empty error">{error}</div>}
-          {state === 'done' && !shown.length && (
+          {state === 'done' && changed && (
+            <div className="grammar-empty">
+              The file changed during the check. <button className="btn small ghost" onClick={() => void run()}>Check again</button>
+            </div>
+          )}
+          {state === 'done' && !shown.length && checked.length > 0 && (
             <div className="grammar-empty">
               <Icon name="checkmark.circle" /> No grammar issues found in {file}.
             </div>
@@ -261,7 +358,10 @@ export default function GrammarPanel({
             shown.map(({ issue, at }) => (
               <div key={issue.id} className={`grammar-issue ${active === issue.id ? 'active' : ''}`}>
                 <button className="grammar-issue-main" onClick={() => select(issue, at)} aria-label={`${issue.message} Show in the editor.`}>
-                  <span className="grammar-kind">{KIND_LABELS[issue.kind] || issue.kind}</span>
+                  <span className="grammar-kind">
+                    {KIND_LABELS[issue.kind] || issue.kind}
+                    {manyLanguages && issue.lang && ` · ${languageName(issue.lang)}`}
+                  </span>
                   <span className="grammar-message">{issue.message}</span>
                   <span className="grammar-excerpt">{excerpt(at)}</span>
                 </button>
@@ -277,10 +377,23 @@ export default function GrammarPanel({
                   <button className="btn small ghost" onClick={() => drop([issue.id])}>
                     Ignore
                   </button>
-                  <button className="btn small ghost" title={`Stop flagging “${ruleLabel(issue.rule)}” in this project`} onClick={() => void ignoreRule(issue.rule)}>
+                  <button className="btn small ghost" title={`Stop flagging “${ruleLabel(issue.rule)}” in this project`} onClick={() => void ignoreRule(issue)}>
                     Ignore rule
                   </button>
                 </div>
+              </div>
+            ))}
+          {state === 'done' &&
+            notes.map((note) => (
+              <div key={note.key} className="grammar-empty grammar-note">
+                {note.text}
+                {note.action && <button className="btn small ghost" onClick={note.action.onClick}>{note.action.label}</button>}
+                {note.details && (
+                  <details>
+                    <summary>Diagnostic details</summary>
+                    <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{note.details}</pre>
+                  </details>
+                )}
               </div>
             ))}
         </div>

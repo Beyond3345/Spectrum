@@ -1543,6 +1543,34 @@ button.chip.active:hover {
   color: var(--text-secondary);
 }
 
+/* Settings › Spelling & grammar: each language with what checks it, and the picker that adds one */
+.language-list .kv-row > span:first-child,
+.language-picker .kv-row > span:first-child {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+}
+
+.language-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.language-picker button.kv-row {
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.language-picker button.kv-row:hover {
+  background: var(--bg-hover);
+}
+
 .shortcut-row > span:first-child {
   flex: 1;
   min-width: 0;

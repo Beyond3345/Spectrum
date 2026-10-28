@@ -32,6 +32,7 @@ import { registerSyncRoutes } from './routes/sync.js';
 import { registerPresenceRoutes } from './routes/presence.js';
 import { registerTexlabRoutes } from './routes/texlab.js';
 import { stopTexlab } from './services/texlabService.js';
+import { stopLanguageTool } from './services/languageToolService.js';
 import { registerReviewRoutes } from './routes/review.js';
 import { registerGitHubRoutes } from './routes/github.js';
 import { commitWaiting, resumeBackups, startRetries } from './services/githubService.js';
@@ -147,7 +148,7 @@ startRetries();
 // the settings repository, pulled now, then pushed after each change
 startSettingsRepo();
 
-// Stop compiles, plots and TexLab (they run in their own process groups, so nothing else would), let
+// Stop compiles, plots, TexLab and LanguageTool (they run in their own process groups, so nothing else would), let
 // in-flight requests such as a file save finish for up to 2 s, then exit.
 let quitting = false;
 async function quit() {
@@ -157,6 +158,7 @@ async function quit() {
   await Promise.race([commitWaiting(), new Promise((resolve) => setTimeout(resolve, 3000))]);
   await shutdownAgents();
   await stopTexlab();
+  await stopLanguageTool();
   killAllChildren();
   await Promise.race([fastify.close(), new Promise((resolve) => setTimeout(resolve, 2000))]);
   killAllChildren(); // a compile's next pass may have started meanwhile

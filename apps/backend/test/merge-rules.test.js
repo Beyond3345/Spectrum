@@ -45,6 +45,14 @@ test('project.json and settings.json merge key by key, one level into a group, a
   assert.deepEqual(rules.mergeMeta({}, { skills: { on: ['x'] } }, { skills: { on: ['y'], off: ['z'] } }), { skills: { on: ['x'], off: ['z'] } });
   // only one level: deeper groups go whole
   assert.deepEqual(rules.mergeMeta({ a: { b: { c: 1, d: 1 } } }, { a: { b: { c: 2, d: 1 } } }, { a: { b: { c: 1, d: 2 } } }), { a: { b: { c: 2, d: 1 } } });
+  // LanguageTool's ignored rules, one key each: two computers ignoring different German rules keep both, and one
+  // taking a rule back while the other left it takes it back
+  const ignoredBase = { languageToolIgnored: { 'de:A': true } };
+  assert.deepEqual(rules.mergeMeta(ignoredBase, { languageToolIgnored: { 'de:A': true, 'de:B': true } }, { languageToolIgnored: { 'de:A': true, 'de:C': true } }),
+    { languageToolIgnored: { 'de:A': true, 'de:B': true, 'de:C': true } });
+  assert.deepEqual(rules.mergeMeta(ignoredBase, { languageToolIgnored: {} }, ignoredBase), { languageToolIgnored: {} });
+  // a project's language list changed on both sides keeps this computer's
+  assert.deepEqual(rules.mergeMeta({}, { language: { languages: ['en-AU', 'zh-TW'] } }, { language: { languages: ['en-GB'] } }), { language: { languages: ['en-AU', 'zh-TW'] } });
 });
 
 test('a chat keeps every message from both sides, and a session every search', () => {

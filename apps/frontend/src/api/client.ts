@@ -259,6 +259,8 @@ export interface ProjectSettings {
   compile?: CompileOptions;
   /** skills the project turns on or off, whatever this computer has */
   skills?: ProjectSkills;
+  /** the project's own language list, in place of the user's */
+  language?: { languages?: string[] };
 }
 
 export interface ProjectSkills {
@@ -271,7 +273,7 @@ export function getProjectSettings(id: string) {
 }
 
 /** A compile key set to null is removed, so the app's default applies again; skills replaces the project's choices (null: none). */
-export function updateProjectSettings(id: string, patch: { compile?: { [K in keyof CompileOptions]?: CompileOptions[K] | null }; skills?: ProjectSkills | null }) {
+export function updateProjectSettings(id: string, patch: { compile?: { [K in keyof CompileOptions]?: CompileOptions[K] | null }; skills?: ProjectSkills | null; language?: { languages: string[] | null } }) {
   return request<{ settings: ProjectSettings }>(`/api/projects/${id}/settings`, json('PATCH', patch));
 }
 
@@ -1012,6 +1014,35 @@ export type GrammarIssue = {
   suggestions: GrammarSuggestion[];
   /** false when the span runs into LaTeX markup, so a suggestion can't be applied as it is */
   fixable: boolean;
+  engine?: 'harper' | 'languagetool';
+  /** the listed language its paragraph is in */
+  lang?: string;
+};
+/** How one listed language found in the file was checked. */
+export type GrammarCoverage = {
+  lang: string;
+  engine: 'harper' | 'languagetool' | null;
+  pieces: number;
+  chars: number;
+  parts: number;
+  done: number;
+  state: 'checked' | 'none' | 'off' | 'not-downloaded' | 'failed' | 'cancelled';
+  message: string;
+  /** English that LanguageTool should have checked and Harper did, and why */
+  fallback?: { state: string; message: string };
+};
+export type LanguageToolStatus = {
+  mode: 'off' | 'local';
+  version: string;
+  java: string | null;
+  /** the whole download, and the Java runtime's part of it */
+  bytes: number;
+  javaBytes: number;
+  installed: boolean;
+  downloading: { done: number; total: number } | null;
+  error: string | null;
+  running: boolean;
+  stopped: { message: string; details: string } | null;
 };
 export type OxfordComma = 'avoid' | 'require' | 'off';
 
@@ -1023,12 +1054,38 @@ export function grammarStatus() {
   return request<CheckerStatus>('/api/grammar/status');
 }
 
-export function spellCheck(words: string[], projectId?: string) {
-  return request<{ misspelt: string[] }>('/api/spell/check', json('POST', { words, projectId }));
+/** Pieces of prose in document order, each spelt in the listed language it is in ('' when none: not checked). */
+export function spellCheck(payload: { pieces: { text: string; lang?: string }[]; languages: string[]; main: string | null; projectId?: string }) {
+  return request<{ pieces: { lang: string; misspelt: [number, number][] }[]; pending: string[] }>('/api/spell/check', json('POST', payload));
 }
 
-export function spellSuggest(word: string) {
-  return request<{ suggestions: string[] }>('/api/spell/suggest', json('POST', { word }));
+export function spellSuggest(word: string, lang?: string) {
+  return request<{ suggestions: string[] }>('/api/spell/suggest', json('POST', { word, lang }));
+}
+
+/** A catalogued language and its dictionary on this computer. */
+export type LanguageInfo = {
+  tag: string;
+  script: string;
+  harper: string | null;
+  languageTool: string | null;
+  state: 'bundled' | 'downloaded' | 'downloading' | 'failed' | 'available' | 'none';
+  bytes?: number;
+  licence?: string;
+  source?: string;
+  error?: string;
+};
+
+export function listLanguages() {
+  return request<{ languages: LanguageInfo[] }>('/api/languages');
+}
+
+export function downloadDictionary(tag: string) {
+  return request<{ tag: string; state: string }>(`/api/languages/${encodeURIComponent(tag)}/dictionary`, json('POST'));
+}
+
+export function pruneDictionaries(keep: string[]) {
+  return request<{ removed: string[] }>('/api/languages/prune', json('POST', { keep }));
 }
 
 export function spellWords(projectId?: string) {
@@ -1039,12 +1096,32 @@ export function changeSpellWord(payload: { word: string; scope: 'global' | 'proj
   return request<SpellWordLists>('/api/spell/words', json('POST', payload));
 }
 
-export function grammarCheck(payload: { text: string; file: string; projectId?: string; style: boolean; oxford: OxfordComma }) {
-  return request<{ issues: GrammarIssue[]; ignoredRules: string[] }>('/api/grammar/check', json('POST', payload));
+export function grammarCheck(
+  payload: { text: string; file: string; projectId?: string; style: boolean; oxford: OxfordComma; languages: string[]; englishGrammar: 'harper' | 'languagetool' },
+  signal?: AbortSignal
+) {
+  return request<{ issues: GrammarIssue[]; coverage: GrammarCoverage[]; ignoredRules: string[] }>('/api/grammar/check', { ...json('POST', payload), signal });
 }
 
-export function changeIgnoredGrammarRule(projectId: string, rule: string, remove = false) {
-  return request<{ ignoredRules: string[] }>('/api/grammar/ignored', json('POST', { projectId, rule, remove }));
+/** Ignores a rule in the project: Harper's in grammar.json, LanguageTool's by language in settings.json. */
+export function changeIgnoredGrammarRule(projectId: string, rule: string, remove = false, engine: 'harper' | 'languagetool' = 'harper', lang?: string) {
+  return request<{ ignoredRules?: string[] }>('/api/grammar/ignored', json('POST', { projectId, rule, remove, engine, lang }));
+}
+
+export function languageToolStatus() {
+  return request<LanguageToolStatus>('/api/languagetool');
+}
+
+export function setLanguageToolMode(mode: 'off' | 'local') {
+  return request<LanguageToolStatus>('/api/languagetool', json('PUT', { mode }));
+}
+
+export function installLanguageTool() {
+  return request<LanguageToolStatus>('/api/languagetool/install', json('POST'));
+}
+
+export function removeLanguageTool() {
+  return request<LanguageToolStatus>('/api/languagetool/install', { method: 'DELETE' });
 }
 
 export function listProviders() {
