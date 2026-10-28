@@ -397,7 +397,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
             <div key={heading} className="settings-nav-group" role="group" aria-label={heading}>
               <div className="settings-nav-heading">{heading}</div>
               {sections.map(([value, label, icon]) => (
-                <button key={value} className={`nav-row ${section === value ? 'active' : ''}`} onClick={() => leave(() => setSection(value))}>
+                <button key={value} className={`nav-row ${section === value ? 'active' : ''}`} onClick={() => value !== section && leave(() => setSection(value))}>
                   <Icon name={icon} />
                   <span>{label}</span>
                 </button>
@@ -1629,12 +1629,14 @@ const INSTRUCTIONS_MAX = 20000;
 const discardDialog = (name: string) =>
   confirmDialog({ title: `Discard your changes to “${name}”?`, confirmLabel: 'Discard', cancelLabel: 'Keep editing', destructive: true });
 
-/** Tells the sheet, while this pane shows, which skill or persona has unsaved edits ('' for none). */
-const useUnsaved = (report: (name: string) => void, name: string) =>
-  useEffect(() => {
-    report(name);
-    return () => report('');
-  }, [name]);
+/**
+ * Tells the sheet, while this pane shows, which skill or persona has unsaved edits ('' for none): after every render,
+ * so a guard a Discard cleared while the pane stayed is armed again by the next keystroke.
+ */
+const useUnsaved = (report: (name: string) => void, name: string) => {
+  useEffect(() => report(name));
+  useEffect(() => () => report(''), []);
+};
 
 /** A count once text nears its limit. */
 function CharactersLeft({ text, max }: { text: string; max: number }) {
@@ -2058,7 +2060,7 @@ function SkillFiles({ skill, onUnsaved, onBack }: { skill: Skill; onUnsaved: (na
       <div className="skill-files">
         <div className="skill-file-list" role="listbox" aria-label="Files">
           {(files.length ? files : ['SKILL.md']).map((file) => (
-            <button key={file} className={`nav-row ${file === path ? 'active' : ''}`} role="option" aria-selected={file === path} onClick={() => leave(() => setPath(file))}>
+            <button key={file} className={`nav-row ${file === path ? 'active' : ''}`} role="option" aria-selected={file === path} onClick={() => file !== path && leave(() => setPath(file))}>
               <Icon name="doc.text" />
               <span className="truncate">{file}</span>
             </button>
