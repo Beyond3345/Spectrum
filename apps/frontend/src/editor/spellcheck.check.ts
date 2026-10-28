@@ -21,4 +21,9 @@ eq([near[0].from, near[near.length - 1].from, near.length], [30 * 5000, 50 * 500
 eq(piecesNear(many, [{ from: 0, to: 10 }]).length, 1, 'none before the first');
 eq(piecesNear([], [{ from: 0, to: 10 }]), [], 'no pieces');
 
+// a paragraph too long to send: skipped before the view, cut to the stretch around the view when it's in sight
+const long = [{ from: 0, to: 250_000 }, { from: 260_000, to: 260_100 }, { from: 260_102, to: 700_000, lang: 'de' }];
+eq(piecesNear(long, [{ from: 260_050, to: 260_060 }]), [{ from: 260_000, to: 260_100 }, { from: 260_102, to: 262_060, lang: 'de' }], 'long ones skipped or cut');
+eq(piecesNear(long, [{ from: 500_000, to: 501_000 }]), [{ from: 260_000, to: 260_100 }, { from: 498_000, to: 503_000, lang: 'de' }], 'cut around the view');
+
 console.log('spellcheck.check: ok');

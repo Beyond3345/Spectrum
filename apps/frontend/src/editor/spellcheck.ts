@@ -61,9 +61,17 @@ export function piecesNear(pieces: Piece[], ranges: readonly { from: number; to:
   if (first < 0) return [];
   let last = first;
   while (last + 1 < pieces.length && near(pieces[last + 1])) last += 1;
+  const lo = Math.min(...ranges.map((r) => r.from)) - MARGIN;
+  const hi = Math.max(...ranges.map((r) => r.to)) + MARGIN;
   const out: Piece[] = [];
   let chars = 0;
-  for (const piece of pieces.slice(Math.max(0, first - LOOKBACK), last + 1)) {
+  for (let piece of pieces.slice(Math.max(0, first - LOOKBACK), last + 1)) {
+    // a paragraph too long to send whole: the stretch of it around the view, or nothing of one before it.
+    // ponytail: a word cut at the stretch's edges may be marked, out of sight until the view moves and it's checked again
+    if (piece.to - piece.from > MAX_CHARS) {
+      if (!near(piece)) continue;
+      piece = { ...piece, from: Math.max(piece.from, lo), to: Math.min(piece.to, hi) };
+    }
     if (out.length >= MAX_PIECES || chars + piece.to - piece.from > MAX_CHARS) break;
     out.push(piece);
     chars += piece.to - piece.from;
