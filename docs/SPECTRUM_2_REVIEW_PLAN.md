@@ -2,6 +2,8 @@
 
 Written 25 October 2026. These are the heavier reviews to run once there is usage to spare (the week of 1 November 2026). Until then reviews are paused. Phase 4's first round was run and its fixes merged (`efc81b2`), a test DMG with phases 1 to 4 was built for the user, and phase 5 is to be built by another agent from [PHASE5_PLAN.md](PHASE5_PLAN.md) without a review round.
 
+**29 October 2026:** the user chose to run review 2 now and fold review 1 into review 3, with one focused round for each new track. See [SPECTRUM_2_PART_2_PLAN.md](SPECTRUM_2_PART_2_PLAN.md) and its [carryover section](plan-2-part-2/carryover.md) for the order and the widened scopes.
+
 Each review below is a multi-agent workflow. Start Claude Code in `/Users/beyond555/Documents/CodingProjects/OpenPrism/spectrum` (worktree isolation needs the repository as the working folder) on `feat/2.0` and say, for example:
 
 > ultracode: run review 2 from docs/SPECTRUM_2_REVIEW_PLAN.md, then merge its fixer branch into feat/2.0 and repeat the round until two rounds in a row find nothing high or medium.

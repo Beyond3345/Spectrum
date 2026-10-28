@@ -1,6 +1,8 @@
 # Spectrum 2.0 continuation handoff
 
-Updated 25 October 2026 (after phase 5's merge, its small review and the second 2.0 test DMG). Development work only: no tag, push or release was made.
+Updated 29 October 2026. `feat/2.0` was pushed to GitHub on 25 October at the user's request; no tag or release was made.
+
+**Next: [SPECTRUM_2_PART_2_PLAN.md](SPECTRUM_2_PART_2_PLAN.md)** (29 October 2026) plans the rest of 2.0: last week's open work, the agents, interface fixes, the composer and languages, with the user's decisions and the order of work. It replaces the next steps below once approved.
 
 ## Where to resume
 
