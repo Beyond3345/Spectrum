@@ -94,7 +94,7 @@ export function spellChecker(opts: {
       ignored = new Set<string>();
       masked: { doc: unknown; kind: string; text: string; pieces: Piece[]; main: string | null } = { doc: null, kind: '', text: '', pieces: [], main: null };
       // what was last sent and its answer, so an unchanged view isn't sent again
-      last: { key: string; pieces: Piece[]; answers: Answer[] } = { key: '', pieces: [], answers: [] };
+      last: { key: string; answers: Answer[] } = { key: '', answers: [] };
       timer = 0;
       run = 0;
       typing = false;
@@ -149,7 +149,7 @@ export function spellChecker(opts: {
           try {
             const res = await spellCheck({ pieces: sent, languages, main, projectId: opts.projectId() });
             if (res.pending.length) opts.onPending?.(res.pending);
-            this.last = { key, pieces, answers: res.pieces };
+            this.last = { key, answers: res.pieces };
           } catch (err) {
             opts.onError(err instanceof Error ? err.message : String(err));
             return;
@@ -159,7 +159,8 @@ export function spellChecker(opts: {
         if (run !== this.run || view.state.doc !== doc) return;
         const head = view.state.selection.main.head;
         const builder = new RangeSetBuilder<Decoration>();
-        this.last.pieces.forEach((piece, i) => {
+        // an unchanged key can still have moved: the answers go on the pieces where they are now
+        pieces.forEach((piece, i) => {
           const answer = this.last.answers[i];
           for (const [from, to] of answer?.misspelt || []) {
             const [at, end] = [piece.from + from, piece.from + to];
