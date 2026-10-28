@@ -198,3 +198,36 @@ test('going back to 1.10.4 resumes mirroring where 2.0 stopped it, with both com
   assert.ok((await api(`/api/projects/${mirrored.id}/versions`)).json.versions.some((v) => v.label.startsWith('Before sync from')));
   await stop();
 });
+
+test('1.10.4 reads and saves the agents’ setup 2.0 wrote, and 2.0 finds its Tests and adapters again', { skip: !hasRelease && `git doesn’t have ${RELEASE}` }, async () => {
+  const oldEntry = await release();
+  const agents = path.join(env.SPECTRUM_DATA_DIR, 'agents');
+  let api = await start(current);
+  assert.ok((await api('/api/agents/codex', 'PUT', { apiKey: 'codex-private' })).json.ok);
+  await stop();
+  // what a Test stores, and an adapter Spectrum installed, which config.json doesn't record
+  const config = JSON.parse(readFileSync(path.join(agents, 'config.json'), 'utf8'));
+  config.codex.test = { ok: false, code: 'sign-in', at: '2026-10-29T00:00:00.000Z', program: '/x/codex-acp' };
+  writeFileSync(path.join(agents, 'config.json'), JSON.stringify(config));
+  const adapter = path.join(agents, 'adapters', 'claude', '0.98.0', 'node_modules', '@agentclientprotocol', 'claude-agent-acp');
+  mkdirSync(path.join(adapter, 'dist'), { recursive: true });
+  writeFileSync(path.join(adapter, 'package.json'), JSON.stringify({ version: '0.98.0' }));
+  writeFileSync(path.join(adapter, 'dist', 'index.js'), '');
+
+  api = await start(oldEntry);
+  const old = (await api('/api/agents')).json.agents;
+  assert.equal(old.find((a) => a.id === 'codex').hasKey, true);
+  assert.equal(old.find((a) => a.id === 'codex').command, 'codex-acp', 'an empty command is its default to 1.10.4');
+  // its own form sends the listed command and arguments back
+  assert.ok((await api('/api/agents/opencode', 'PUT', { command: 'opencode', args: ['acp'], runtimePaths: [], apiKey: 'opencode-private', keyEnv: 'OPENAI_API_KEY' })).json.ok);
+  await stop();
+
+  api = await start(current);
+  const now = (await api('/api/agents')).json.agents;
+  const byId = Object.fromEntries(now.map((a) => [a.id, a]));
+  assert.deepEqual([byId.codex.hasKey, byId.opencode.hasKey, byId.opencode.command, byId.opencode.configured], [true, true, '', true]);
+  assert.deepEqual([byId.claude.source, byId.claude.adapter.installed], ['spectrum', '0.98.0']);
+  assert.equal(JSON.parse(readFileSync(path.join(agents, 'config.json'), 'utf8')).codex.test.code, 'sign-in', 'the Test 1.10.4 didn’t touch stays');
+  assert.doesNotMatch(JSON.stringify(now), /codex-private|opencode-private/);
+  await stop();
+});
