@@ -351,8 +351,10 @@ test('Spectrum leaves a repository alone while another program works in it, and 
 
 test('a settings change under way when a pull comes waits for it, so neither undoes the other', { skip }, async () => {
   const { updateProjectSettings } = await import('../src/services/projectSettings.js');
-  const { mutateProjectFiles } = await import('../src/services/projectService.js');
+  const { mutateProjectFiles, register } = await import('../src/services/projectService.js');
   const { A, B } = await pair({ '.spectrum/settings.json': JSON.stringify({ compile: { engine: 'xelatex' } }) });
+  // listed on computer B, as a settings change only goes into a listed project's folder
+  await register(JSON.parse(read(B, '.spectrum/project.json')).id, B, { name: 'Paper' });
   write(A, '.spectrum/settings.json', JSON.stringify({ compile: { engine: 'lualatex' } }));
   await sync(A);
   await g.fetchOrigin(B, token);

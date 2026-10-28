@@ -7,7 +7,7 @@ import { HIDDEN_ENTRIES, ensureDir, listFilesRecursive, readJson, readdirTyped, 
 import { safeJoin } from '../utils/pathUtils.js';
 import { isDocumentFile } from '../utils/texUtils.js';
 import { caseless, isConflictCopy, placeOf, syncRoots } from './syncService.js';
-import { cloudCopyOwner } from './mirrorService.js';
+import { cloudCopyOwner, setMirrorAside } from './mirrorService.js';
 import { conflictCopies } from '../utils/conflictCopies.js';
 import { knownMachineNames } from './presenceService.js';
 import { backupSoon } from './githubService.js';
@@ -116,9 +116,8 @@ const MOVING = 'This project is being moved to this computer. Try again once tha
 
 /**
  * fn(root) while the project is being moved, one move at a time for each project, once every change already in the
- * project files' lock (a save that has the folder) has finished; those after it can't have the folder.
- * ponytail: a writer that took the folder before the move and the lock only after (a chat's save) still writes in the
- * old folder; looking the folder up inside the lock, as the editor's save does, is what makes one wait
+ * project files' lock (a save that has the folder) has finished; those after it can't have the folder, and one that
+ * looked it up before checks it again in the lock (mutateProjectRoot).
  */
 export async function whileMoving(id, fn) {
   const root = await getProjectRoot(id);
@@ -130,6 +129,18 @@ export async function whileMoving(id, fn) {
   } finally {
     moving.delete(id);
   }
+}
+
+/**
+ * fn() in the project files' lock, once root, looked up before it, is still where its project is listed: a writer that
+ * took the folder before a Move to this computer or a Locate… is refused rather than writing in the folder left behind.
+ */
+export function mutateProjectRoot(root, fn) {
+  return mutateProjectFiles(async () => {
+    const { id } = await readMetaId(root);
+    if (!id || (await getProjectRoot(id)) !== root) throw httpError(MOVING, 409, 'PROJECT_MOVING');
+    return fn();
+  });
 }
 
 export async function getProjectRoot(id) {
@@ -537,10 +548,12 @@ export async function relocateProject(id, input) {
   await refuseNested(root, projects.filter((p) => p.id !== id));
   const own = folderId === id ? meta : null;
   const next = normaliseMeta({ ...(own || { createdAt: entry.addedAt }), id, name: own?.name || entry.name });
-  // ponytail: a 1.10 mirror record stays as it was (2.0 never writes them), so going back to 1.10.4 after choosing
-  // another copy here mirrors that copy against the old folder's base, its differences taken for edits made here
+  // going back to 1.10.4 would mirror another copy against the old folder's base, its differences taken for edits
+  // made here: the project is an ordinary local one to it instead
+  if (root !== entry.path) await setMirrorAside(id);
   await writeMetaIfChanged(root, meta, next);
-  await register(id, root, next);
+  // in the project files' lock, so a writer that has the old folder finishes first or finds it gone
+  await mutateProjectFiles(() => register(id, root, next));
   return getProject(id);
 }
 

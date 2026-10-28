@@ -55,8 +55,17 @@ const setup = () => (ready ??= (async () => {
     return id;
   };
   const reopen = async (run, edit) => s.getAgentRun(await copy(run, edit));
+  // Locate…, through its route
+  const { default: Fastify } = await import('fastify');
+  const { registerProjectRoutes } = await import('../src/routes/projects.js');
+  const app = Fastify();
+  registerProjectRoutes(app);
+  const relocate = async (projectId, folder) => {
+    const res = await app.inject({ method: 'POST', url: `/api/projects/${projectId}/relocate`, payload: { path: folder } });
+    return { status: res.statusCode, json: res.json() };
+  };
   after(async () => { await s.shutdownAgents(); await fs.rm(dir, { recursive: true, force: true }); });
-  return { ...s, open, turn, lastPrompt, sending, stored, copy, reopen };
+  return { ...s, open, turn, lastPrompt, sending, stored, copy, reopen, relocate };
 })());
 
 test('a long streamed message keeps the turn’s start, and a huge one is stored in parts under the caps', { skip, timeout: 120000 }, async () => {
@@ -303,4 +312,38 @@ test('quitting closes a finished session’s agent left connected by a settings 
   assert.equal(run.child, null);
   assert.equal(run.status, 'completed');
   assert.deepEqual(await stored(run), before);
+});
+
+test('after Locate…, a review session’s turns and Apply use the new folder only, and Locate… waits for an agent at work', { skip, timeout: 120000 }, async () => {
+  const { open, turn, sending, stopAgentRun, pendingChanges, reviewAgentChanges, relocate } = await setup();
+  const { run, root } = await open({ 'main.tex': 'original\n', 'other.tex': 'other\n' });
+  const { name } = JSON.parse(await fs.readFile(path.join(root, '.spectrum', 'project.json'), 'utf8'));
+  const moved = `${root} moved`;
+  await fs.cp(root, moved, { recursive: true });
+  await sending(run, 'please-hang');
+  const busy = await relocate(run.projectId, moved);
+  assert.deepEqual([busy.status, busy.json.message], [409, `“${name}” is compiling, being converted or has an agent at work. Try again once that’s finished.`]);
+  await stopAgentRun(run);
+  await turn(run, 'draft one');
+  assert.equal((await relocate(run.projectId, moved)).status, 200);
+  await fs.writeFile(path.join(root, 'other.tex'), 'left behind\n');
+  await fs.writeFile(path.join(moved, 'other.tex'), 'moved\n');
+  await turn(run, 'hello');
+  assert.equal(await fs.readFile(path.join(run.workspace, 'other.tex'), 'utf8'), 'moved\n', 'the draft is refreshed from the new folder');
+  assert.deepEqual(run.processOptions.forbiddenRoots, [moved], 'the agent started again, isolated from the new folder');
+  assert.equal(run.remoteId, 'draft-session', 'and went on with the same conversation');
+  const [change] = await pendingChanges(run);
+  await reviewAgentChanges(run, { action: 'apply', paths: [change.path], expected: { [change.path]: change.afterHash } });
+  assert.equal(await fs.readFile(path.join(moved, 'main.tex'), 'utf8'), 'original\nagent line 1\n');
+  assert.equal(await fs.readFile(path.join(root, 'main.tex'), 'utf8'), 'original\n', 'nothing applied in the folder left behind');
+});
+
+test('after Locate…, a direct session refuses its next turn', { skip, timeout: 120000 }, async () => {
+  const { open, turn, promptAgent, relocate } = await setup();
+  const { run, root } = await open({ 'main.tex': 'original\n' }, { mode: 'direct' });
+  await turn(run, 'hello');
+  await fs.cp(root, `${root} moved`, { recursive: true });
+  assert.equal((await relocate(run.projectId, `${root} moved`)).status, 200);
+  await assert.rejects(promptAgent(run, 'again'), { message: 'This project moved to another folder. Start a new session to go on.' });
+  assert.equal(run.status, 'completed');
 });

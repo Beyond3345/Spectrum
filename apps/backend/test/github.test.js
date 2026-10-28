@@ -260,17 +260,20 @@ test('Link from a 1.10.4 mirror record never takes an older copy on GitHub for t
   assert.equal(gh.show('octo', 'Newer-here', 'main.tex'), v2['main.tex']);
 });
 
-test('Get from GitHub leaves alone a project 1.10 mirrored on this computer, whose record would turn the clone into deletions', { skip }, async () => {
+test('Get from GitHub takes a project 1.10 mirrored on this computer, its record put aside so it can’t turn the clone into deletions', { skip }, async () => {
   const mac = computers.Mac;
   const win = computers.Windows;
   const project = ok(await mac.api('/api/projects', { method: 'POST', body: { name: 'Once mirrored' } }));
   ok(await mac.api(`/api/projects/${project.id}/github/backup`, { method: 'POST' }));
-  mkdirSync(path.join(win.data, 'mirror'), { recursive: true });
-  writeFileSync(path.join(win.data, 'mirror', `${project.id}.json`), JSON.stringify({ location: path.join(tmp, 'loc'), rel: 'Once mirrored', files: {} }));
-  const res = await win.api('/api/github/clone', { method: 'POST', body: { owner: 'octo', repo: 'Once-mirrored' } });
-  assert.equal(res.status, 409);
-  assert.match(res.json.error, /Spectrum 1\.10 kept “Once mirrored” in step with a cloud copy/);
-  assert.ok(!existsSync(path.join(win.projects, 'Once mirrored')));
+  mkdirSync(path.join(win.data, 'mirror', project.id, 'base'), { recursive: true });
+  const record = JSON.stringify({ location: path.join(tmp, 'loc'), rel: 'Once mirrored', files: {} });
+  writeFileSync(path.join(win.data, 'mirror', `${project.id}.json`), record);
+  writeFileSync(path.join(win.data, 'mirror', project.id, 'base', 'a.gz'), 'base');
+  const { project: there } = ok(await win.api('/api/github/clone', { method: 'POST', body: { owner: 'octo', repo: 'Once-mirrored' } }));
+  assert.equal(there.id, project.id);
+  assert.ok(!existsSync(path.join(win.data, 'mirror', `${project.id}.json`)) && !existsSync(path.join(win.data, 'mirror', project.id)));
+  assert.equal(readFileSync(path.join(win.data, 'mirror-aside', `${project.id}.json`), 'utf8'), record, 'never deleted');
+  assert.equal(readFileSync(path.join(win.data, 'mirror-aside', project.id, 'base', 'a.gz'), 'utf8'), 'base');
 });
 
 test('a project in a sync app’s folder isn’t made a repository', { skip }, async () => {

@@ -1,12 +1,14 @@
 // What's left of 1.10's cloud mirror, which kept a project here in step with a copy in a cloud location (Synology
 // Drive, OneDrive, Dropbox, iCloud Drive) until 2.0 moved syncing to GitHub: its records, read and never written, so
-// that going back to 1.10.4 resumes mirroring from the last state both copies agreed on, and the move to 2.0.
+// that going back to 1.10.4 resumes mirroring from the last state both copies agreed on, and the move to 2.0. Only a
+// record whose project gets another folder here (Locate…, Get from GitHub) is moved, aside, and never deleted.
 //   DATA_DIR/mirror/<id>.json           1.10's record of a mirrored project: { location, rel, files, folder }, the copy
 //                                       at <location>/<rel>, and the base, each file as both sides last agreed on it,
 //                                       keyed by its path in NFC and lower case: { rel, hash, l, c, by }, with l and c
 //                                       each side's { size, mtimeMs } then (c missing where the last pass wrote the
 //                                       cloud's and left it to hash again)
 //   DATA_DIR/mirror/<id>/base/          the base's text, which 1.10.4 merges against
+//   DATA_DIR/mirror-aside/             records put aside, <id>.json and <id>/ as they were, which nothing reads
 //   DATA_DIR/v2-migration.json          what the first start of 2.0 found: { ranAt, mirrored, inPlace, dismissedAt? }
 // 1.10.4 forgets a record once its project leaves the list, or is used in its cloud location; 2.0 reads them so too.
 import { promises as fs } from 'fs';
@@ -19,6 +21,7 @@ import { getProject, getProjectRoot, listProjects } from './projectService.js';
 import { placeOf, within } from './syncService.js';
 
 const MIRROR_DIR = path.join(DATA_DIR, 'mirror');
+const ASIDE_DIR = path.join(DATA_DIR, 'mirror-aside');
 const MIGRATION_PATH = path.join(DATA_DIR, 'v2-migration.json');
 const ID_RE = /^[A-Za-z0-9_-]+$/;
 // ponytail: a cloud copy that takes longer than this to look through (online-only, a NAS out of reach) isn't checked
@@ -43,6 +46,23 @@ export async function listMirrored() {
     if (record) found.push({ id, location: record.location, rel: record.rel });
   }
   return found;
+}
+
+/**
+ * The project has another folder here: 1.10's record of it, if any, goes into mirror-aside, so 1.10.4, gone back to,
+ * lists it as an ordinary local project rather than mirroring that folder against the old one's base. Its cloud copy
+ * stays as it was. A record put aside before keeps its place, and this one goes beside it under a name of its own.
+ */
+export async function setMirrorAside(id) {
+  if (!(await readMirror(id))) return;
+  await fs.mkdir(ASIDE_DIR, { recursive: true });
+  const taken = (await Promise.all([`${id}.json`, id].map((name) => fs.access(path.join(ASIDE_DIR, name)).then(() => true, () => false)))).some(Boolean);
+  const name = taken ? `${id}-${Date.now()}` : id;
+  // the record first: without it 1.10.4 has nothing to mirror, whatever becomes of its base
+  await fs.rename(path.join(MIRROR_DIR, `${id}.json`), path.join(ASIDE_DIR, `${name}.json`));
+  await fs.rename(path.join(MIRROR_DIR, id), path.join(ASIDE_DIR, name)).catch((err) => {
+    if (err.code !== 'ENOENT') throw err;
+  });
 }
 
 export const cloudRootOf = (record) => join(record.location, record.rel);

@@ -6,7 +6,7 @@ import { gzip, gunzip } from 'zlib';
 import { diffLines } from 'diff';
 import { ensureDir, freePath, listFilesRecursive, readJson, renameOver, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
-import { appPath, httpError, mutateProjectFiles, serialiser } from './projectService.js';
+import { appPath, httpError, mutateProjectRoot, serialiser } from './projectService.js';
 
 // Content-addressed history in .spectrum/history, which a sync app may share between computers:
 //   objects/<sha[0:2]>/<sha>.gz   gzipped file bytes, shared between versions
@@ -421,7 +421,7 @@ export async function readVersionFile(root, versionId, relPath) {
  * writes; then the history's (the order a pull takes them in too).
  */
 export function restoreVersion(root, versionId, relPath) {
-  return mutateProjectFiles(() => lockFor(root)(async () => {
+  return mutateProjectRoot(root, () => lockFor(root)(async () => {
     const { files, skipped } = await readVersion(root, versionId);
     if (relPath) safeJoin(root, relPath);
     if (relPath && skipped.has(relPath)) throw httpError('That file couldn’t be read when this checkpoint was saved, so it isn’t in it.', 400);

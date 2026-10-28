@@ -13,7 +13,6 @@ export function registerNoteRoutes(fastify) {
   });
 
   fastify.put('/api/projects/:id/notes/:nid', async (req) => {
-    const file = await itemFile(req, 'notes', req.params.nid);
     // the rest: fields a later version adds, which a save here keeps
     const { id, doc, page, x, y, text, colour, createdAt, updatedAt, ...rest } = req.body || {};
     if (id !== req.params.nid) throw httpError('The note’s id doesn’t match the address.', 400);
@@ -22,14 +21,13 @@ export function registerNoteRoutes(fastify) {
       && (colour == null || isText(colour, 32)) && isText(createdAt, 40) && isText(updatedAt, 40);
     if (!valid) throw httpError('Invalid note.', 400);
     const note = { ...rest, id, doc, page, x, y, text, ...(colour != null && { colour }), createdAt, updatedAt };
-    // in the project files' lock, which a GitHub pull holds while it merges notes
-    await mutateProjectFiles(() => writeJsonAtomic(file, note));
+    // in the project files' lock, which a GitHub pull holds while it merges notes, with the folder looked up there
+    await mutateProjectFiles(async () => writeJsonAtomic(await itemFile(req, 'notes', req.params.nid), note));
     return { ok: true, note };
   });
 
   fastify.delete('/api/projects/:id/notes/:nid', async (req) => {
-    const file = await itemFile(req, 'notes', req.params.nid);
-    await mutateProjectFiles(() => fs.rm(file, { force: true }));
+    await mutateProjectFiles(async () => fs.rm(await itemFile(req, 'notes', req.params.nid), { force: true }));
     return { ok: true };
   });
 }

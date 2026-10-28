@@ -11,7 +11,7 @@ import { listFilesRecursive, readJson, writeJsonAtomic } from '../utils/fsUtils.
 import { safeJoin } from '../utils/pathUtils.js';
 import { STOPWORDS, searchArxiv } from './arxivService.js';
 import { callOpenAICompatible } from './llmService.js';
-import { appPath, httpError, mutateProjectFiles } from './projectService.js';
+import { appPath, httpError, mutateProjectRoot } from './projectService.js';
 import {
   baseKey, buildBibIndex, cleanDoi, crossrefBase, decodeEntities, detectInput, findDuplicate, get, getPage, normaliseTitle,
   parseBibEntries, parseName, resolveItems, summaryOf
@@ -371,10 +371,11 @@ async function triageResults(question, results, llmConfig) {
 // ─── Sessions ───
 
 // ponytail: one lock for every session's read-merge-write (searches and lookups run outside it); per-file if it bites.
-// Each write also takes the project files' lock, which a GitHub pull holds while it merges sessions
+// Each write also takes the project files' lock, which a GitHub pull holds while it merges sessions, once root is
+// still the project's folder
 let lock = Promise.resolve();
-function locked(fn) {
-  const run = lock.then(() => mutateProjectFiles(fn), () => mutateProjectFiles(fn));
+function locked(root, fn) {
+  const run = lock.then(() => mutateProjectRoot(root, fn), () => mutateProjectRoot(root, fn));
   lock = run.catch(() => {});
   return run;
 }
@@ -416,7 +417,7 @@ export async function listSessions(root) {
 }
 
 export async function deleteSession(root, id) {
-  await mutateProjectFiles(() => fs.rm(sessionFile(root, id), { force: true }));
+  await mutateProjectRoot(root, () => fs.rm(sessionFile(root, id), { force: true }));
 }
 
 const text = (max) => (v) => typeof v === 'string' && v.length <= max;
@@ -440,7 +441,7 @@ export async function updateSession(root, id, change) {
     }
   }
   const file = sessionFile(root, id);
-  await locked(async () => {
+  await locked(root, async () => {
     const session = await readSession(root, id);
     if (question != null) session.question = question.trim();
     for (const { id: rid, ...fields } of results) {
@@ -495,7 +496,7 @@ export async function searchResearch({ root, question, sources, yearFrom, yearTo
     }
   }
 
-  const session = await locked(async () => {
+  const session = await locked(root, async () => {
     const now = new Date().toISOString();
     const s = sessionId
       ? await readSession(root, sessionId)
@@ -533,7 +534,7 @@ export async function addResults({ root, id, resultIds, bibFile, searchConfig })
     const { status, key, message } = outcomes.get(r) || { status: 'error', message: 'This result has no DOI, arXiv ID or link to look up.' };
     return tidy({ id: r.id, status, key, message });
   });
-  await locked(async () => {
+  await locked(root, async () => {
     const s = await readSession(root, id);
     for (const done of results) {
       const r = s.results.find((x) => x.id === done.id);
@@ -571,7 +572,7 @@ const FOLDERS = { note: ['research/notes', '.md'], pdf: ['research/papers', '.pd
  * existing: true } when the file is there already.
  */
 function keepFile(root, id, resultId, kind, make) {
-  return locked(async () => {
+  return locked(root, async () => {
     const session = await getSession(root, id);
     const r = findResult(session, resultId);
     const [folder, ext] = FOLDERS[kind];

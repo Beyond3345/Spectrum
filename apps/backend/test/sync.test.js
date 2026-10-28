@@ -45,6 +45,9 @@ delete process.env.OneDriveConsumer;
 const { registerProjectRoutes } = await import('../src/routes/projects.js');
 const { registerSyncRoutes } = await import('../src/routes/sync.js');
 const { registerSystemRoutes } = await import('../src/routes/system.js');
+const { registerChatRoutes } = await import('../src/routes/chats.js');
+const { registerTodoRoutes } = await import('../src/routes/todos.js');
+const { registerNoteRoutes } = await import('../src/routes/notes.js');
 const { detectSyncRoots, isConflictCopy, offlineMessage } = await import('../src/services/syncService.js');
 const { default: Fastify } = await import('fastify');
 
@@ -52,6 +55,9 @@ const app = Fastify();
 registerProjectRoutes(app);
 registerSyncRoutes(app);
 registerSystemRoutes(app);
+registerChatRoutes(app);
+registerTodoRoutes(app);
+registerNoteRoutes(app);
 await app.ready();
 after(async () => {
   await app.close();
@@ -64,6 +70,13 @@ async function api(url, { method = 'GET', body } = {}) {
 }
 const listed = async (id) => (await api('/api/projects')).json.projects.find((p) => p.id === id);
 const openFolder = (dir) => api('/api/projects/open-folder', { method: 'POST', body: { path: dir } }).then((r) => r.json);
+
+/** Every file under dir with its bytes, to show nothing there changed. */
+async function snapshot(dir) {
+  const out = {};
+  for (const rel of (await fs.readdir(dir, { recursive: true })).sort()) out[rel] = (await fs.lstat(path.join(dir, rel))).isFile() ? readFileSync(path.join(dir, rel), 'base64') : 'dir';
+  return out;
+}
 
 /** A project made on another computer, as the sync app brings it: only its own files. */
 function project(dir, id = crypto.randomUUID()) {
@@ -216,6 +229,40 @@ test('Move to this computer waits for a save already under way, which the copy t
     release();
     fs.readFile = readFile;
   }
+});
+
+test('a chat, to-do, note or setting that looked the folder up before a Move lands in the moved project or is refused', async () => {
+  const { mutateProjectFiles } = await import('../src/services/projectService.js');
+  const dir = path.join(drive, 'Spectrum', 'Chatty');
+  const id = project(dir);
+  await openFolder(dir);
+  const before = await snapshot(dir);
+  const at = '2026-10-29T00:00:00.000Z';
+  const saves = [
+    [`/api/projects/${id}/chats/c1`, 'PUT', { chat: { id: 'c1', title: 'Late', messages: [] } }],
+    [`/api/projects/${id}/todos/t1`, 'PUT', { id: 't1', text: 'Late', done: false, createdAt: at, updatedAt: at }],
+    [`/api/projects/${id}/notes/n1`, 'PUT', { id: 'n1', doc: 'main.tex', page: 1, x: 1, y: 1, text: 'Late', createdAt: at, updatedAt: at }],
+    [`/api/projects/${id}/settings`, 'PATCH', { compile: { engine: 'xelatex' } }]
+  ];
+  // each save has looked up the folder and waits for the project files' lock, which the move then waits behind
+  let release;
+  const held = mutateProjectFiles(() => new Promise((resolve) => (release = resolve)));
+  const pending = saves.map(([url, method, body]) => api(url, { method, body }));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const move = api(`/api/projects/${id}/move-here`, { method: 'POST', body: {} });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  release();
+  await held;
+  const results = await Promise.all(pending);
+  const moved = await move;
+  assert.equal(moved.status, 200, moved.json.message);
+  for (const { status, json } of results) assert.deepEqual([status, json.message], [409, 'This project is being moved to this computer. Try again once that’s finished.']);
+  assert.deepEqual(await snapshot(dir), before, 'nothing was written in the folder left behind');
+  // tried again, each lands in the moved project
+  for (const [url, method, body] of saves) assert.equal((await api(url, { method, body })).status, 200);
+  const target = moved.json.project.path;
+  for (const rel of ['chats/c1.json', 'todos/t1.json', 'notes/n1.json', 'settings.json']) assert.ok(existsSync(path.join(target, '.spectrum', rel)), rel);
+  assert.deepEqual(await snapshot(dir), before);
 });
 
 test('a project 1.10 used in place in a NAS share is named for the share, and Move to this computer takes it', async () => {

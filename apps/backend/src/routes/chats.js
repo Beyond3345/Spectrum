@@ -55,14 +55,15 @@ export function registerChatRoutes(fastify) {
   // messages there stay and this copy's new ones go after them, as chats only ever gain messages; the
   // answer then has the chat as saved.
   fastify.put('/api/projects/:id/chats/:cid', async (req) => {
-    const file = await chatFile(req);
     let chat = req.body?.chat;
     if (!chat || typeof chat !== 'object' || chat.id !== req.params.cid) {
       throw httpError('The chat’s id doesn’t match the address.', 400);
     }
-    // in the project files' lock, which a GitHub pull holds while it merges chats.
+    // in the project files' lock, which a GitHub pull holds while it merges chats, with the folder looked up there so
+    // a Move to this computer can't leave the save behind.
     // ponytail: a copy that can't be read (online-only and offline) is replaced, as before
     return mutateProjectFiles(async () => {
+      const file = await chatFile(req);
       const disk = await readJson(file).catch(() => null);
       const merged = disk?.id === chat.id && Array.isArray(disk.messages) && disk.updatedAt !== req.body.base;
       if (merged) chat = mergeChat(disk, chat);
@@ -74,8 +75,7 @@ export function registerChatRoutes(fastify) {
   });
 
   fastify.delete('/api/projects/:id/chats/:cid', async (req) => {
-    const file = await chatFile(req);
-    await mutateProjectFiles(() => fs.rm(file, { force: true }));
+    await mutateProjectFiles(async () => fs.rm(await chatFile(req), { force: true }));
     return { ok: true };
   });
 }

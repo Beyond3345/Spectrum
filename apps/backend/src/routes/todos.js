@@ -73,21 +73,19 @@ export function registerTodoRoutes(fastify) {
   fastify.get('/api/projects/:id/todos', async (req) => ({ ok: true, todos: await readItems(await getProjectRoot(req.params.id), 'todos') }));
 
   fastify.put('/api/projects/:id/todos/:tid', async (req) => {
-    const file = await itemFile(req, 'todos', req.params.tid);
     // the rest: fields a later version adds, which a save here keeps
     const { id, text, done, createdAt, updatedAt, link, ...rest } = req.body || {};
     if (id !== req.params.tid) throw httpError('The to-do’s id doesn’t match the address.', 400);
     if (!isText(text, MAX_TEXT)) throw httpError(`A to-do’s text is at most ${MAX_TEXT} characters.`, 400);
     if (typeof done !== 'boolean' || !isText(createdAt, 40) || !isText(updatedAt, 40)) throw httpError('Invalid to-do.', 400);
     const todo = { ...rest, id, text, done, createdAt, updatedAt, ...(link != null && { link: todoLink(link) }) };
-    // in the project files' lock, which a GitHub pull holds while it merges to-dos
-    await mutateProjectFiles(() => writeJsonAtomic(file, todo));
+    // in the project files' lock, which a GitHub pull holds while it merges to-dos, with the folder looked up there
+    await mutateProjectFiles(async () => writeJsonAtomic(await itemFile(req, 'todos', req.params.tid), todo));
     return { ok: true, todo };
   });
 
   fastify.delete('/api/projects/:id/todos/:tid', async (req) => {
-    const file = await itemFile(req, 'todos', req.params.tid);
-    await mutateProjectFiles(() => fs.rm(file, { force: true }));
+    await mutateProjectFiles(async () => fs.rm(await itemFile(req, 'todos', req.params.tid), { force: true }));
     return { ok: true };
   });
 }

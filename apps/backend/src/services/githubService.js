@@ -8,10 +8,10 @@ import path from 'path';
 import crypto from 'crypto';
 import { DATA_DIR, GITHUB_API, GITHUB_CLIENT_ID, GITHUB_WEB, PROJECTS_DIR } from '../config/constants.js';
 import { readJson, renameOver } from '../utils/fsUtils.js';
-import { getProject, getProjectRoot, httpError, listProjects, makeUniqueFolder, mutateProjectFiles, readMeta, register, sanitiseFolderName, serialiser } from './projectService.js';
+import { getProject, getProjectRoot, httpError, listProjects, makeUniqueFolder, mutateProjectRoot, readMeta, register, sanitiseFolderName, serialiser } from './projectService.js';
 import { readProjectSettings, updateProjectSettings } from './projectSettings.js';
 import { placeOf, readSyncConfig } from './syncService.js';
-import { readMirror } from './mirrorService.js';
+import { readMirror, setMirrorAside } from './mirrorService.js';
 import { keyOf } from './mergeRules.js';
 import { compiling } from './compileService.js';
 import { directTurn } from './agentSessionService.js';
@@ -326,7 +326,7 @@ async function pullNow(id, { allowDeletions = false, base } = {}) {
   await git.fetchOrigin(root, token);
   await waitIdle(id);
   const machine = (await readSyncConfig()).machineName;
-  const result = await mutateProjectFiles(async () => {
+  const result = await mutateProjectRoot(root, async () => {
     noteLeft(id, (await git.commitAll(root, { message: await backupMessage(), author, hold })).left);
     return git.mergeOrigin(root, { author, allowDeletions, base: base && (await base(root)), message: `Pull from GitHub on ${machine}` });
   });
@@ -507,7 +507,7 @@ export function link(id, { owner, repo, preview = false, allowDeletions = false 
       await git.fetchOrigin(root, token);
       if (preview) return await git.mergeOrigin(root, { author, dryRun: true, base: await mirrorBase(id)(root) });
       await waitIdle(id);
-      const result = await mutateProjectFiles(async () => {
+      const result = await mutateProjectRoot(root, async () => {
         await git.commitAll(root, { message: await backupMessage(), author, hold });
         const merged = await git.mergeOrigin(root, { author, allowDeletions, base: await mirrorBase(id)(root), message: 'Link with GitHub' });
         if (merged.state === 'confirm') return merged;
@@ -701,9 +701,6 @@ export async function getFromGitHub({ owner, repo, parentDir }) {
   const meta = JSON.parse((await repoFile(owner, repo, '.spectrum/project.json')) || 'null');
   if (!meta?.id) throw httpError(`${owner}/${repo} isn’t a Spectrum project.`, 400);
   if (await getProjectRoot(meta.id).catch(() => null)) throw httpError(`“${meta.name || repo}” is already on this computer. Link it from its GitHub tab instead.`, 409);
-  // 1.10.4, gone back to, would mirror the clone against that project's last sync and take what the clone lacks
-  // (its checkpoints, its PDFs) for deletions in its cloud copy
-  if (await readMirror(meta.id)) throw httpError(`Spectrum 1.10 kept “${meta.name || repo}” in step with a cloud copy on this computer. Locate its folder in the projects list (or Import › Open existing folder), then Link it from its GitHub tab.`, 409);
   const parent = typeof parentDir === 'string' && path.isAbsolute(parentDir) ? parentDir : PROJECTS_DIR;
   await fs.mkdir(parent, { recursive: true });
   await refuseSyncFolder(parent);
@@ -711,6 +708,9 @@ export async function getFromGitHub({ owner, repo, parentDir }) {
   try {
     await git.cloneInto(target, repoUrl(owner, repo), token);
     const cloned = await readMeta(target);
+    // 1.10.4, gone back to, would mirror the clone against that project's last sync and take what the clone lacks
+    // (its checkpoints, its PDFs) for deletions in its cloud copy: it lists the clone as a local project instead
+    await setMirrorAside(cloned.id);
     await register(cloned.id, target, cloned);
   } catch (err) {
     await fs.rm(target, { recursive: true, force: true });
