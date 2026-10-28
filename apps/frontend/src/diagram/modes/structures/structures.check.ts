@@ -3,7 +3,7 @@
 // npx esbuild apps/frontend/src/diagram/modes/structures/structures.check.ts --bundle --platform=node --log-level=warning | node
 import { axialForce, extremesInside, evalPoly, forcesAt, indeterminacy, solve } from './solve';
 import type { Solution } from './solve';
-import { connect, copyIds, nodeAt, pasteInto, placeTool, removeIds, sampleBeam, settleNode, splitMember } from './model';
+import { connect, copyIds, fitLoads, nodeAt, pasteInto, placeTool, removeIds, sampleBeam, settleNode, splitMember } from './model';
 import type { Part, SNode, StructureModel, SupportType } from './model';
 import { buildScene, cutSection, formatValue, readStyle } from './draw';
 import type { Item } from './draw';
@@ -232,6 +232,15 @@ function maxMoment(s: Solution, member: string) {
   const free = nodeAt(beamModel, { x: 2, y: 2 }, 0.05);
   const dropped = settleNode({ ...free.model, nodes: free.model.nodes.map((n) => (n.id === free.node ? { ...n, y: 0 } : n)) }, free.node, 0.05);
   eq(dropped.parts.filter((p) => p.kind === 'member').length, 2, 'dropped on the beam, splitting it');
+  // a joint moved in to shorten its member takes the loads along with it
+  const moveB = (m: StructureModel, x: number) => ({ ...m, nodes: m.nodes.map((n) => (n.id === 'n2' ? { ...n, x } : n)) });
+  const shorter = settleNode(moveB(beamModel, 4), 'n2', 0.05);
+  eq(shorter.parts.filter((p) => p.kind === 'dist').map((p) => p.kind === 'dist' && [p.from, p.to, p.w1, p.w2]), [[0, 4, 10, 10]], 'the UDL fits the shorter beam');
+  close(reaction(solve(shorter), 'p2').force.y, 20, 'and solves: 20 kN each');
+  eq(solve(moveB(beamModel, 4)).status.kind, 'ok', 'a load past the end balances (cut off at the end)');
+  const sloped: StructureModel = { ...beamModel, parts: [...beamModel.parts.filter((p) => p.kind !== 'dist'), udl('t', 'm1', 0, 6, 0, 12), down('P', 'm1', 5, 10)] };
+  eq(fitLoads(moveB(sloped, 3)).parts.flatMap((p): (number | number[])[] => (p.kind === 'dist' ? [[p.from, p.to, p.w1, p.w2]] : p.kind === 'force' && 'member' in p.on ? [p.on.at] : [])), [[0, 3, 0, 6], 3], 'a triangle cut off part way; a point load to the end');
+  eq(fitLoads(beamModel), beamModel, 'loads that fit stay as they are');
   // removing a member takes its loads and its free ends; removing a node takes what hangs on it
   eq(removeIds(beamModel, ['m1']).parts.map((p) => p.id), ['p1', 'p2', 'p4'], 'a member takes its load; the joints keep their supports');
   eq(removeIds({ nodes: beamModel.nodes, parts: [beamModel.parts[0]] }, ['m1']), { nodes: [], parts: [] }, 'and its bare joints go with it');

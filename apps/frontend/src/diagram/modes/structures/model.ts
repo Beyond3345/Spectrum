@@ -307,13 +307,36 @@ export function removeIds(model: StructureModel, ids: string[]): StructureModel 
   return { nodes: model.nodes.filter((n) => !gone.has(n.id) && !(loose.has(n.id) && !used.has(n.id))), parts };
 }
 
+/** Loads along members kept within them, after a joint moved: a distributed load cut off at the end, a point load moved to it. */
+export function fitLoads(model: StructureModel): StructureModel {
+  const lengths = new Map(members(model).map((m) => [m.id, frameOf(model, m).length]));
+  const within = (member: string, s: number) => Math.max(0, Math.min(lengths.get(member) ?? s, s));
+  let changed = false;
+  const parts = model.parts.map((p): Part => {
+    if (p.kind === 'dist') {
+      const [from, to] = [within(p.member, p.from), within(p.member, p.to)];
+      if (from === p.from && to === p.to) return p;
+      changed = true;
+      const w = (s: number) => (p.to === p.from ? p.w1 : p.w1 + ((p.w2 - p.w1) * (s - p.from)) / (p.to - p.from));
+      return { ...p, from, to, w1: w(from), w2: w(to) };
+    }
+    if ((p.kind === 'force' || p.kind === 'moment') && 'member' in p.on && within(p.on.member, p.on.at) !== p.on.at) {
+      changed = true;
+      return { ...p, on: { member: p.on.member, at: within(p.on.member, p.on.at) } };
+    }
+    return p;
+  });
+  return changed ? { ...model, parts } : model;
+}
+
 /**
  * After a node moved: one dropped on another merges into it (parts on it move across, a member between them goes),
- * and one dropped on a member splits it.
+ * one dropped on a member splits it, and loads along its members stay within them.
  */
 export function settleNode(model: StructureModel, id: string, tolerance: number): StructureModel {
   const node = model.nodes.find((n) => n.id === id);
   if (!node) return model;
+  model = fitLoads(model);
   const other = model.nodes.find((n) => n.id !== id && near(n, node, tolerance));
   if (other) {
     const swap = (n: string) => (n === id ? other.id : n);
