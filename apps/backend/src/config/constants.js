@@ -36,7 +36,8 @@ export const setProjectsDir = (dir) => (PROJECTS_DIR = path.resolve(dir));
 
 // GitHub: the Spectrum OAuth app's client id for the device sign-in ('' until one is registered: then only a pasted
 // token signs in; there is never a client secret), and where GitHub's API and site are (a test's stand-ins)
-export const GITHUB_CLIENT_ID = process.env.SPECTRUM_GITHUB_CLIENT_ID || '';
+// Spectrum's GitHub OAuth app (device flow, no secret); an empty SPECTRUM_GITHUB_CLIENT_ID turns one-click sign-in off
+export const GITHUB_CLIENT_ID = process.env.SPECTRUM_GITHUB_CLIENT_ID ?? 'Ov23lictk8ESvCDcCwyF';
 export const GITHUB_API = (process.env.SPECTRUM_GITHUB_API || 'https://api.github.com').replace(/\/$/, '');
 export const GITHUB_WEB = (process.env.SPECTRUM_GITHUB_WEB || 'https://github.com').replace(/\/$/, '');
 

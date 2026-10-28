@@ -22,7 +22,7 @@ const computers = {};
 before(async () => {
   if (skip) return;
   gh = await startFakeGitHub(path.join(tmp, 'repos'));
-  computers.Mac = await startComputer('Mac', { tmp, home, gh });
+  computers.Mac = await startComputer('Mac', { tmp, home, gh, env: { SPECTRUM_GITHUB_CLIENT_ID: '' } });
   computers.Windows = await startComputer('Windows', { tmp, home, gh, env: { SPECTRUM_GITHUB_CLIENT_ID: 'test-client' } });
 });
 after(async () => {
