@@ -4,11 +4,13 @@
 import type { DiagramCode } from '../../fileFormat';
 import type { ComposerDefaults } from '../../types';
 import { num } from '../shared';
+import { venn } from './venn';
 
 export type FormValue = string | number | boolean;
 export type FormValues = Record<string, FormValue>;
 
-type FieldBase = { key: string; label: string; hint?: string };
+/** shown: whether the frame shows the field for these values (a third set's fields with three sets); none: always */
+type FieldBase = { key: string; label: string; hint?: string; shown?(values: FormValues): boolean };
 export type FormField =
   | (FieldBase & { kind: 'number'; unit?: string; min?: number; max?: number; step?: number })
   | (FieldBase & { kind: 'text' })
@@ -56,7 +58,7 @@ const test: FormPreset = {
   }
 };
 
-export const PRESETS: FormPreset[] = [test];
+export const PRESETS: FormPreset[] = [test, venn];
 
 export const presetFor = (id: string) => PRESETS.find((preset) => preset.id === id);
 

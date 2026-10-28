@@ -68,4 +68,41 @@ const marked = fletcherCode({ boxes: [box({ id: 'm1', text: '*Total @ref <x> `y`
 has(marked, '[\\*Total \\@ref \\<x> \\`y\\` a\\/b]', 'a box’s markup escaped');
 has(marked, 'label: [yes \\/\\/ no]', 'a label’s // escaped');
 
+// the automata, flowchart and model architecture shapes fletcher has, loops and a bent pair
+const shapes = fletcherCode({
+  boxes: [
+    box({ id: 'q0', shape: 'state', w: 5, h: 5, text: 'q_0', initial: 'l' }),
+    box({ id: 'q1', shape: 'accepting', x: 14, w: 5, h: 5, text: 'q_1', initial: 't' }),
+    box({ id: 'd1', shape: 'cylinder', x: 26, w: 6, h: 6, text: 'Data' }),
+    box({ id: 'd2', shape: 'trapezium', x: 0, y: 10, text: 'Manual', wrap: true }),
+    box({ id: 'o1', shape: 'operator', x: 12, y: 10, w: 3, h: 3, text: 'times.o' }),
+    box({ id: 'c1', shape: 'container', x: -2, y: 8, w: 22, h: 12, text: 'Block', repeat: 'N' })
+  ],
+  links: [
+    link({ id: 'e1', from: 'q0', to: 'q1', route: 'bend', label: 'a' }),
+    link({ id: 'e2', from: 'q1', to: 'q0', route: 'bend' }),
+    link({ id: 'e3', from: 'q0', to: 'q0', fromSide: 't', toSide: 't' }),
+    link({ id: 'e4', from: 'q1', to: 'q1', fromSide: 'b', toSide: 'b', route: 'curved' }),
+    link({ id: 'e5', from: 'q1', to: 'gone' })
+  ]
+}, '').body;
+const lines = shapes.split('\n');
+// the container first, under the rest, its title in its top-left corner and its ×N beside it
+eq(lines[4], '  node((2.25cm, -3.5cm), box(width: 5.5cm, height: 3cm, inset: 4pt, align(top + left)[Block]), shape: fletcher.shapes.rect, corner-radius: 4pt, width: 5.5cm, height: 3cm, inset: 0pt, layer: -1, name: <c1>),', 'a container');
+eq(lines[5], '  node((5.5cm, -3.5cm), [$times N$], stroke: none, fill: none),', 'its ×N');
+has(shapes, 'node((0.625cm, -0.625cm), [$q_0$], shape: fletcher.shapes.circle, width: 1.25cm, height: 1.25cm, name: <q0>),', 'a state, its text maths');
+has(shapes, 'edge((-0.75cm, -0.625cm), <q0>, "->"),', 'a start arrow from the left');
+has(shapes, 'shape: fletcher.shapes.circle, width: 1.25cm, height: 1.25cm, extrude: (-2.5, 0), name: <q1>),', 'an accepting state, a double circle');
+has(shapes, 'edge((4.125cm, 0.75cm), <q1>, "->"),', 'a start arrow from above');
+has(shapes, '[Data], shape: fletcher.shapes.cylinder, width: 1.5cm, height: 1.5cm', 'a cylinder');
+has(shapes, 'box(width: 1.75cm)[Manual], shape: fletcher.shapes.trapezium, width: 2cm, height: 1cm', 'a trapezium, its text wrapped');
+has(shapes, '[$times.o$], shape: fletcher.shapes.circle, width: 0.75cm, height: 0.75cm', 'an operator circle');
+has(shapes, 'edge(<q0>, <q1>, "->", bend: 20deg, label: [a]),', 'a bent arrow');
+has(shapes, 'edge(<q1>, <q0>, "->", bend: 20deg),', 'and the one back, to its own left');
+has(shapes, 'edge(<q0>, <q0>, "->", bend: 130deg, loop-angle: 90deg),', 'a loop above');
+has(shapes, 'edge(<q1>, <q1>, "->", bend: 130deg, loop-angle: -90deg),', 'a loop below, whatever its route says');
+has(fletcherCode({ boxes: [box({ id: 'd1', shape: 'cylinder' })], links: [] }, '0.12.0').body, '[], shape: fletcher.shapes.rect,', 'fletcher 0.5.5 has no cylinder: a box');
+eq(shapes.includes('gone'), false, 'an edge to a missing node is left out');
+eq(lines.filter((l) => l.trim() === ',').length, 0, 'without an empty line in its place');
+
 console.log('fletcher.check: ok');

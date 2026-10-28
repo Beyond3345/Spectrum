@@ -79,7 +79,7 @@ function Canvas({ model, onChange, readOnly }: CanvasProps) {
     <div className="form-frame">
       <h2>{preset.label}</h2>
       <div className="diagram-inspector-fields">
-        {preset.fields.map((field) => (
+        {preset.fields.filter((field) => field.shown?.(values) ?? true).map((field) => (
           <FieldRow
             key={field.key}
             field={field}

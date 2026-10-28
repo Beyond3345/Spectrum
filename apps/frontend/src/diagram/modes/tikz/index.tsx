@@ -6,7 +6,28 @@ import { FlowCanvas } from '../../FlowCanvas';
 import { ColourField, Row, ToolRail, railIcon } from '../../controls';
 import type { Tool } from '../../controls';
 import type { DiagramMode } from '../../types';
-import { FLETCHER_SHAPES, anchorOf, copyTikz, curveControls, emptyTikz, middleOf, nextId, pasteTikz, pathPoints, removeTikz, tikzCode } from './code';
+import {
+  BEND,
+  FLETCHER_SHAPES,
+  MATHS_SHAPES,
+  ROUND_SHAPES,
+  anchorOf,
+  connect,
+  copyTikz,
+  curveControls,
+  dividersOf,
+  drawingOrder,
+  emptyTikz,
+  middleOf,
+  moveBoxes,
+  nextId,
+  pasteTikz,
+  pathPoints,
+  plainShape,
+  removeTikz,
+  stateShape,
+  tikzCode
+} from './code';
 import type { Box, Dash, Heads, Line, Link, Route, Shape, Side, TikzModel } from './code';
 
 // Plain TikZ: flowcharts and block diagrams on the canvas
@@ -25,7 +46,15 @@ const TOOLS: Tool[] = [
   { id: 'diamond', label: 'Diamond', icon: railIcon(<path d="M8 2 14 8 8 14 2 8z" />) },
   { id: 'parallelogram', label: 'Parallelogram', icon: railIcon(<path d="M5 4h9l-3 8H2z" />) },
   { id: 'text', label: 'Text', icon: railIcon(<path d="M3.5 4h9M8 4v9" />) },
-  { id: 'maths', label: 'Maths label', icon: railIcon(<path d="M12 3.5H4l4.5 4.5L4 12.5h8" strokeLinejoin="round" />) }
+  { id: 'maths', label: 'Maths label', icon: railIcon(<path d="M12 3.5H4l4.5 4.5L4 12.5h8" strokeLinejoin="round" />) },
+  { id: 'state', label: 'State', icon: railIcon(<><circle cx="9.5" cy="8" r="4.5" /><path d="M1 8h3.5M3 6.5 4.5 8 3 9.5" /></>) },
+  { id: 'accepting', label: 'Accepting state', icon: railIcon(<><circle cx="8" cy="8" r="5.5" /><circle cx="8" cy="8" r="3.5" /></>) },
+  { id: 'cylinder', label: 'Cylinder (data store)', icon: railIcon(<><ellipse cx="8" cy="4" rx="5" ry="1.8" /><path d="M3 4v8c0 1 2.2 1.8 5 1.8s5-.8 5-1.8V4" /></>) },
+  { id: 'document', label: 'Document', icon: railIcon(<path d="M2.5 3h11v9c-2.5-1.8-3.5 1.5-5.5 1.2S5 11.6 2.5 12.5z" strokeLinejoin="round" />) },
+  { id: 'trapezium', label: 'Trapezium (manual step)', icon: railIcon(<path d="M4.5 4h7l2.5 8H2z" />) },
+  { id: 'operator', label: 'Operator circle', icon: railIcon(<><circle cx="8" cy="8" r="5.5" /><path d="M8 5v6M5 8h6" /></>) },
+  { id: 'stack', label: 'Vector stack', icon: railIcon(<><rect x="5" y="2" width="6" height="12" /><path d="M5 5h6M5 8h6M5 11h6" /></>) },
+  { id: 'container', label: 'Container', icon: railIcon(<><rect x="1.5" y="2.5" width="13" height="11" rx="2" /><path d="M3.5 5h5" /></>) }
 ];
 
 const SHAPES: [Shape, string][] = [
@@ -36,7 +65,15 @@ const SHAPES: [Shape, string][] = [
   ['diamond', 'Diamond'],
   ['parallelogram', 'Parallelogram'],
   ['text', 'Text'],
-  ['maths', 'Maths label']
+  ['maths', 'Maths label'],
+  ['state', 'State'],
+  ['accepting', 'Accepting state'],
+  ['cylinder', 'Cylinder'],
+  ['document', 'Document'],
+  ['trapezium', 'Trapezium'],
+  ['operator', 'Operator circle'],
+  ['stack', 'Vector stack'],
+  ['container', 'Container']
 ];
 
 /** a new shape's size in grid units, and its text */
@@ -48,8 +85,30 @@ const NEW: Record<Shape, [number, number, string]> = {
   diamond: [8, 6, 'Text'],
   parallelogram: [8, 4, 'Text'],
   text: [6, 2, 'Text'],
-  maths: [6, 2, 'x^2']
+  maths: [6, 2, 'x^2'],
+  state: [5, 5, 'q_0'],
+  accepting: [5, 5, 'q_1'],
+  cylinder: [6, 6, 'Data'],
+  document: [8, 5, 'Report'],
+  trapezium: [8, 4, 'Text'],
+  operator: [3, 3, '+'],
+  stack: [3, 8, ''],
+  container: [20, 14, 'Block']
 };
+
+const LOOP_SIDES: [Side, string][] = [
+  ['t', 'Above'],
+  ['r', 'On the right'],
+  ['b', 'Below'],
+  ['l', 'On the left']
+];
+const STARTS: [string, string][] = [
+  ['', 'None'],
+  ['l', 'From the left'],
+  ['t', 'From above'],
+  ['r', 'From the right'],
+  ['b', 'From below']
+];
 
 const DASHES: [Dash, string][] = [
   ['solid', 'Solid'],
@@ -64,7 +123,8 @@ const WIDTHS: [string, string][] = [
 const ROUTES: [Route, string][] = [
   ['straight', 'Straight'],
   ['angled', 'Right-angled'],
-  ['curved', 'Curved']
+  ['curved', 'Curved'],
+  ['bend', 'Bent to one side']
 ];
 const HEADS: [Heads, string][] = [
   ['end', 'At the end'],
@@ -81,16 +141,56 @@ const strokeOf = (line: Line) => ({
   strokeLinecap: line.dash === 'dotted' ? ('round' as const) : undefined
 });
 
-/** The outline of a shape w × h px, as TikZ draws it. */
-function outline(shape: Shape, w: number, h: number, style: CSSProperties) {
-  switch (shape) {
+/** The outline of a box w × h px, as TikZ draws it. */
+function outline(box: Box, w: number, h: number, style: CSSProperties) {
+  const r = Math.min(w, h) / 2;
+  switch (box.shape) {
     case 'rectangle':
       return <rect width={w} height={h} style={style} />;
     case 'rounded':
+    case 'container':
       // TikZ's rounded corners: 4 pt
       return <rect width={w} height={h} rx={4 * PT} style={style} />;
     case 'circle':
-      return <circle cx={w / 2} cy={h / 2} r={Math.min(w, h) / 2} style={style} />;
+    case 'state':
+    case 'operator':
+      return <circle cx={w / 2} cy={h / 2} r={r} style={style} />;
+    case 'accepting':
+      return (
+        <>
+          <circle cx={w / 2} cy={h / 2} r={r} style={style} />
+          <circle cx={w / 2} cy={h / 2} r={Math.max(1, r - 3 * PT)} style={{ ...style, fill: 'none' }} />
+        </>
+      );
+    case 'cylinder': {
+      // aspect 0.25: the ends' height a quarter of the width, half of it each side of the top and bottom lines
+      const ry = w / 8;
+      return (
+        <>
+          <path d={`M0 ${ry}V${h - ry}A${w / 2} ${ry} 0 0 0 ${w} ${h - ry}V${ry}A${w / 2} ${ry} 0 0 0 0 ${ry}Z`} style={style} />
+          <path d={`M0 ${ry}A${w / 2} ${ry} 0 0 0 ${w} ${ry}`} style={{ ...style, fill: 'none' }} />
+        </>
+      );
+    }
+    case 'document': {
+      // a straight top and a bottom that waves in and out
+      const wave = h / 10;
+      return <path d={`M0 0H${w}V${h - wave}C${w * 0.75} ${h - 3 * wave} ${w * 0.6} ${h - 2 * wave} ${w / 2} ${h - wave}S${w * 0.25} ${h + wave} 0 ${h - wave}Z`} style={style} />;
+    }
+    case 'trapezium': {
+      // trapezium left and right angle=70: the top is the shorter side
+      const slant = h / Math.tan((70 * Math.PI) / 180);
+      return <path d={`M${slant} 0H${w - slant}L${w} ${h}H0Z`} style={style} />;
+    }
+    case 'stack':
+      return (
+        <>
+          <rect width={w} height={h} style={style} />
+          {dividersOf({ ...box, y: 0, h: h / UNIT }).map((y) => (
+            <line key={y} x1={0} x2={w} y1={y * UNIT} y2={y * UNIT} style={style} />
+          ))}
+        </>
+      );
     case 'ellipse':
       return <ellipse cx={w / 2} cy={h / 2} rx={w / 2} ry={h / 2} style={style} />;
     case 'diamond':
@@ -107,18 +207,40 @@ function outline(shape: Shape, w: number, h: number, style: CSSProperties) {
 
 type BoxNode = Node<{ box: Box; readOnly: boolean }, 'box'>;
 
+const OUT: Record<Side, [number, number]> = { l: [-1, 0], r: [1, 0], t: [0, -1], b: [0, 1] };
+
+/** A state's start arrow, 0.75 cm long, into its circle on that side, with its head. */
+function startArrow(side: Side, w: number, h: number) {
+  const r = Math.min(w, h) / 2;
+  const [dx, dy] = OUT[side];
+  const [x, y] = [w / 2 + dx * r, h / 2 + dy * r];
+  const [len, head] = [0.75 * 64, 6];
+  return `M${x + dx * len} ${y + dy * len}L${x} ${y}M${x + dx * head - dy * head} ${y + dy * head - dx * head}L${x} ${y}L${x + dx * head + dy * head} ${y + dy * head + dx * head}`;
+}
+
 function BoxView({ data: { box, readOnly }, selected, width = 0, height = 0 }: NodeProps<BoxNode>) {
-  const plain = box.shape === 'text' || box.shape === 'maths';
+  const plain = plainShape(box.shape);
+  const container = box.shape === 'container';
   return (
     <div className={`tikz-box${plain ? ' plain' : ''}`}>
       <NodeResizer isVisible={selected && !readOnly} minWidth={UNIT * 2} minHeight={UNIT * 2} />
       <svg className="tikz-box-shape" width={width} height={height} overflow="visible">
-        {outline(box.shape, width, height, { fill: box.fill ?? 'none', ...strokeOf(box) })}
+        {outline(box, width, height, { fill: box.fill ?? 'none', ...strokeOf(box) })}
+        {stateShape(box.shape) && box.initial && <path d={startArrow(box.initial, width, height)} style={{ ...strokeOf(box), fill: 'none' }} />}
+        {/* a container is picked up by its edge, so clicks inside it reach the boxes in it and the canvas */}
+        {container && <rect className="tikz-container-hit" width={width} height={height} rx={4 * PT} />}
       </svg>
       {/* TikZ writes black on a fill, so a dark canvas keeps it black there */}
-      <div className={`tikz-box-text${box.shape === 'maths' ? ' maths' : ''}`} style={{ color: plain ? box.stroke : box.fill && '#000000' }}>
-        {box.text}
-      </div>
+      {container || box.shape === 'stack' ? (
+        <div className={`tikz-box-caption ${container ? 'title' : 'below'}`} style={{ color: box.stroke }}>
+          {box.text}
+        </div>
+      ) : (
+        <div className={`tikz-box-text${MATHS_SHAPES.includes(box.shape) ? ' maths' : ''}`} style={{ color: plain ? box.stroke : box.fill && '#000000' }}>
+          {box.text}
+        </div>
+      )}
+      {container && box.repeat?.trim() && <div className="tikz-box-caption repeat">× {box.repeat.trim()}</div>}
       {(['t', 'r', 'b', 'l'] as Side[]).map((side) => (
         <Handle key={side} id={side} type="source" position={{ t: Position.Top, r: Position.Right, b: Position.Bottom, l: Position.Left }[side]} />
       ))}
@@ -154,6 +276,38 @@ const edgeTypes = { link: LinkView };
 /** The SVG path of a link in px, and where its label goes, matching what tikzCode writes. */
 function linkPath(link: Link, from: Box, to: Box) {
   const px = ([x, y]: [number, number]) => [x * UNIT, y * UNIT];
+  const cubic = (a: number[], c1: number[], c2: number[], b: number[]) => {
+    const mid = [0, 1].map((i) => (a[i] + 3 * c1[i] + 3 * c2[i] + b[i]) / 8);
+    return { d: `M${a}C${c1} ${c2} ${b}`, labelX: mid[0], labelY: mid[1] };
+  };
+  if (from === to) {
+    // a loop out of its side and back, its ends a little apart
+    const [dx, dy] = OUT[link.fromSide];
+    const [x, y] = px(anchorOf(from, link.fromSide));
+    const [gap, reach] = [0.6 * UNIT, 2.5 * UNIT];
+    const [a, b] = [1, -1].map((s) => [x - dy * gap * s, y + dx * gap * s]);
+    return cubic(a, [a[0] + dx * reach - dy * reach * 0.6, a[1] + dy * reach + dx * reach * 0.6], [b[0] + dx * reach + dy * reach * 0.6, b[1] + dy * reach - dx * reach * 0.6], b);
+  }
+  if (link.route === 'bend') {
+    // TikZ's bend left from the centres: leaving turned 20° to the left of the straight line, and arriving the same
+    const centre = (box: Box) => [(box.x + box.w / 2) * UNIT, (box.y + box.h / 2) * UNIT];
+    const [p, q] = [centre(from), centre(to)];
+    const d = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1;
+    const [ux, uy] = [(q[0] - p[0]) / d, (q[1] - p[1]) / d];
+    const [cos, sin] = [Math.cos((BEND * Math.PI) / 180), Math.sin((BEND * Math.PI) / 180)];
+    // left of the way it goes, on a canvas whose y goes down
+    const out = [cos * ux + sin * uy, cos * uy - sin * ux];
+    const back = [-cos * ux + sin * uy, -cos * uy - sin * ux];
+    const edge = (box: Box, [vx, vy]: number[]) => {
+      const [hw, hh] = [(box.w * UNIT) / 2, (box.h * UNIT) / 2];
+      return ROUND_SHAPES.includes(box.shape) ? Math.min(hw, hh) : Math.min(vx ? hw / Math.abs(vx) : Infinity, vy ? hh / Math.abs(vy) : Infinity);
+    };
+    const [ra, rb] = [edge(from, out), edge(to, back)];
+    const a = [p[0] + out[0] * ra, p[1] + out[1] * ra];
+    const b = [q[0] + back[0] * rb, q[1] + back[1] * rb];
+    const reach = 0.3915 * Math.hypot(b[0] - a[0], b[1] - a[1]);
+    return cubic(a, [a[0] + out[0] * reach, a[1] + out[1] * reach], [b[0] + back[0] * reach, b[1] + back[1] * reach], b);
+  }
   if (link.route === 'curved') {
     const [a, b] = [anchorOf(from, link.fromSide), anchorOf(to, link.toSide)].map(px);
     const [c1, c2] = curveControls(link, from, to).map(px);
@@ -171,12 +325,14 @@ type CanvasProps = ComponentProps<DiagramMode<TikzModel>['Canvas']>;
 
 function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 'select', onTool }: CanvasProps) {
   const boxes = new Map(model.boxes.map((b) => [b.id, b]));
-  const nodes: BoxNode[] = model.boxes.map((box) => ({
+  // containers first, under the boxes in them
+  const nodes: BoxNode[] = drawingOrder(model.boxes).map((box) => ({
     id: box.id,
     type: 'box',
     position: { x: box.x * UNIT, y: box.y * UNIT },
     width: box.w * UNIT,
     height: box.h * UNIT,
+    className: box.shape === 'container' ? 'tikz-container' : undefined,
     data: { box, readOnly: !!readOnly }
   }));
   const edges: LinkEdge[] = model.links.flatMap((link) => {
@@ -223,23 +379,15 @@ function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 's
         readOnly={readOnly}
         selection={selection}
         onSelect={onSelect}
-        onMove={(moves) =>
-          onChange({
-            ...model,
-            boxes: model.boxes.map((b) => {
-              const m = moves.find((move) => move.id === b.id);
-              return m ? { ...b, x: Math.round(m.x / UNIT), y: Math.round(m.y / UNIT) } : b;
-            })
-          })
-        }
+        onMove={(moves) => onChange({ ...model, boxes: moveBoxes(model.boxes, moves.map((m) => ({ id: m.id, x: Math.round(m.x / UNIT), y: Math.round(m.y / UNIT) }))) })}
         onResize={(id, width, height) =>
           onChange({ ...model, boxes: model.boxes.map((b) => (b.id === id ? { ...b, w: Math.max(2, Math.round(width / UNIT)), h: Math.max(2, Math.round(height / UNIT)) } : b)) })
         }
+        loops
         onConnect={(c) => {
-          const id = nextId('e', model.links.map((l) => l.id));
-          const link: Link = { id, from: c.source, to: c.target, fromSide: (c.sourceHandle || 'r') as Side, toSide: (c.targetHandle || 'l') as Side, route: 'straight', heads: 'end' };
-          onChange({ ...model, links: [...model.links, link] });
-          onSelect?.([id]);
+          const next = connect(model, c.source, c.target, (c.sourceHandle || 'r') as Side, (c.targetHandle || 'l') as Side);
+          onChange(next);
+          onSelect?.([next.links[next.links.length - 1].id]);
         }}
         onPlace={place}
         onNodeDoubleClick={(id) => {
@@ -268,7 +416,7 @@ function Inspector({ model, onChange, selection = [], typst = false }: { model: 
     return (
       <div className="diagram-hint">
         Pick a shape on the left, then click the canvas to place it. Drag from a dot on a shape’s edge to another shape to join
-        them with an arrow. Select something to change it here.
+        them with an arrow, or to another dot on the same shape for a loop. Select something to change it here.
       </div>
     );
   }
@@ -282,18 +430,41 @@ function Inspector({ model, onChange, selection = [], typst = false }: { model: 
     });
   const box = boxes.length === 1 && !links.length ? boxes[0] : null;
   const link = links.length === 1 && !boxes.length ? links[0] : null;
-  const allPlain = boxes.length > 0 && !links.length && boxes.every((b) => b.shape === 'text' || b.shape === 'maths');
+  const allPlain = boxes.length > 0 && !links.length && boxes.every((b) => plainShape(b.shape));
+  const textLabel = (shape: Shape) =>
+    MATHS_SHAPES.includes(shape) ? `Maths (${language}, without $)` : shape === 'container' ? `Title (${language})` : shape === 'stack' ? `Caption (${language})` : `Text (${language})`;
 
   return (
     <div className="diagram-inspector-fields">
       {box && (
         <>
-          <Row label={box.shape === 'maths' ? `Maths (${language}, without $)` : `Text (${language})`}>
+          <Row label={textLabel(box.shape)}>
             <textarea id="diagram-text" className="input diagram-textarea" rows={3} spellCheck={false} value={box.text} onChange={(e) => patchBoxes({ text: e.target.value })} />
           </Row>
           <Row label="Shape">
             <Select value={box.shape} options={typst ? SHAPES.filter(([s]) => FLETCHER_SHAPES.includes(s)) : SHAPES} onChange={(shape) => patchBoxes({ shape: shape as Shape })} />
           </Row>
+          {stateShape(box.shape) && (
+            <Row label="Start arrow">
+              <Select value={box.initial ?? ''} options={STARTS} onChange={(side) => patchBoxes({ initial: (side || undefined) as Side | undefined })} />
+            </Row>
+          )}
+          {box.shape === 'container' && (
+            <Row label={`Repeated × (${language} maths, without $)`}>
+              <input className="input" placeholder="N" spellCheck={false} value={box.repeat ?? ''} onChange={(e) => patchBoxes({ repeat: e.target.value || undefined })} />
+            </Row>
+          )}
+          {box.shape === 'stack' && (
+            <Row label="Cells">
+              <input type="number" className="input" min={1} max={20} value={box.cells ?? 4} onChange={(e) => Number(e.target.value) >= 1 && Number(e.target.value) <= 20 && patchBoxes({ cells: Math.round(Number(e.target.value)) })} />
+            </Row>
+          )}
+          {!plainShape(box.shape) && !MATHS_SHAPES.includes(box.shape) && box.shape !== 'container' && box.shape !== 'stack' && (
+            <label className="checkbox-row">
+              <input type="checkbox" role="switch" checked={!!box.wrap} onChange={(e) => patchBoxes({ wrap: e.target.checked || undefined })} />
+              <span>Wrap the text to the box’s width</span>
+            </label>
+          )}
           <div className="diagram-row">
             <span>Size (cm)</span>
             <span className="diagram-pair">
@@ -318,9 +489,15 @@ function Inspector({ model, onChange, selection = [], typst = false }: { model: 
           <Row label="Label">
             <input className="input" value={link.label ?? ''} spellCheck={false} onChange={(e) => patchLinks({ label: e.target.value })} />
           </Row>
-          <Row label="Line">
-            <Select value={link.route} options={ROUTES} onChange={(route) => patchLinks({ route: route as Route })} />
-          </Row>
+          {link.from === link.to ? (
+            <Row label="Loop">
+              <Select value={link.fromSide} options={LOOP_SIDES} onChange={(side) => patchLinks({ fromSide: side as Side, toSide: side as Side })} />
+            </Row>
+          ) : (
+            <Row label="Line">
+              <Select value={link.route} options={ROUTES} onChange={(route) => patchLinks({ route: route as Route })} />
+            </Row>
+          )}
           <Row label="Arrowheads">
             <Select value={link.heads} options={HEADS} onChange={(heads) => patchLinks({ heads: heads as Heads })} />
           </Row>
