@@ -14,6 +14,8 @@ process.env.HOME = home;
 process.env.PATH = '/usr/bin:/bin';
 const { PROFILES, profileFor, saveAgentConfig, agentConfigs, listAgents, agentEntry, agentState, launchOptions, installAdapter, removeAdapter, recordTest, importAgentLogin, AGENT_DIR } = await import('../src/services/agentProfiles.js');
 after(() => fs.rm(dir, { recursive: true, force: true }));
+const knownFolders = process.platform !== 'darwin' && 'only a Mac looks in the vendors’ folders, such as ~/.local/bin';
+const nodeAdapters = process.platform === 'win32' && 'Node adapters are unavailable on Windows, where they stall inside isolation';
 
 /** An executable at rel under the fake home; its first line is shebang. */
 async function program(rel, shebang = '#!/bin/sh') {
@@ -45,7 +47,7 @@ test('the agent list: names, reasons, adapters and Windows', async () => {
   } finally { Object.defineProperty(process, 'platform', platform); }
 });
 
-test('entries saved by 1.10.4 and 2.0: default commands are no choice, and a key sets an agent up', async () => {
+test('entries saved by 1.10.4 and 2.0: default commands are no choice, and a key sets an agent up', { skip: nodeAdapters || knownFolders }, async () => {
   await program('.local/bin/codex-acp');
   await writeConfig({
     codex: { command: 'codex-acp', args: [], runtimePaths: [], apiKey: '', keyEnv: 'OPENAI_API_KEY' },
@@ -66,7 +68,7 @@ test('entries saved by 1.10.4 and 2.0: default commands are no choice, and a key
   assert.doesNotMatch(JSON.stringify(await listAgents()), /openai-private|zai-private/, 'keys never leave the backend');
 });
 
-test('finding programs in the known folders, other names and a chosen program', async () => {
+test('finding programs in the known folders, other names and a chosen program', { skip: knownFolders }, async () => {
   await program('.local/bin/cursor-agent');
   assert.deepEqual([(await listed('cursor')).source, (await listed('cursor')).program], ['found', path.join(home, '.local/bin/cursor-agent')]);
   await program('.npm-global/bin/qodercli');
@@ -79,7 +81,7 @@ test('finding programs in the known folders, other names and a chosen program', 
   assert.equal((await listed('gemini')).state, 'missing');
 });
 
-test('Claude Agent always starts with the claude.ai sign-in hidden', async () => {
+test('Claude Agent always starts with the claude.ai sign-in hidden', { skip: nodeAdapters || knownFolders }, async () => {
   await program('.local/bin/claude-agent-acp');
   // what 1.10.4 saved
   await saveAgentConfig('claude', { command: 'claude-agent-acp', args: [] });
@@ -87,7 +89,7 @@ test('Claude Agent always starts with the claude.ai sign-in hidden', async () =>
   assert.ok(options.args.includes('--hide-claude-auth'));
 });
 
-test('Pi: the adapter is told where Pi is, with its package readable and never the home folder', async () => {
+test('Pi: the adapter is told where Pi is, with its package readable and never the home folder', { skip: nodeAdapters || knownFolders }, async () => {
   await program('.local/bin/pi-acp');
   assert.equal((await listed('pi')).state, 'missing', 'pi-acp alone is not enough');
   // Pi in a package under the home folder, run by an interpreter installed in the home folder itself
@@ -124,16 +126,18 @@ test('each state a card shows, and which are set up', () => {
 test('saves at once all land, and a change forgets the last Test', async () => {
   const program = (await listed('codex')).program;
   await recordTest('codex', { ok: true, code: 'ready', version: '2.3.0', program });
-  assert.equal((await listed('codex')).state, 'ready');
+  // Codex's adapter is Node's, which Windows can't start
+  const windows = process.platform === 'win32';
+  assert.equal((await listed('codex')).state, windows ? 'unavailable' : 'ready');
   await Promise.all([saveAgentConfig('hermes', { apiKey: 'one' }), saveAgentConfig('kimi', { apiKey: 'two' }), recordTest('opencode', { ok: false, code: 'timeout', program: '/x' })]);
   const config = await agentConfigs();
   assert.deepEqual([config.hermes.apiKey, config.kimi.apiKey, config.opencode.test.code], ['one', 'two', 'timeout']);
   await saveAgentConfig('codex', { runtimePaths: ['/opt/codex'] });
   assert.equal((await agentConfigs()).codex.test, undefined);
-  assert.equal((await listed('codex')).state, 'untested');
+  assert.equal((await listed('codex')).state, windows ? 'unavailable' : 'untested');
 });
 
-test('a Test always refreshes its time, a session only when it says something new, and neither outlives a changed setup', async () => {
+test('a Test always refreshes its time, a session only when it says something new, and neither outlives a changed setup', { skip: knownFolders }, async () => {
   const at = async () => (await agentConfigs()).copilot?.test?.at;
   await recordTest('copilot', { ok: true, code: 'ready', program: '/x' });
   const first = await at();
@@ -174,7 +178,7 @@ test('provider changes clear old credentials', async () => {
   await assert.rejects(saveAgentConfig('opencode', { keyEnv: 'NODE_OPTIONS' }), /supported provider/);
 });
 
-test('adapter installs: pinned, checked, in their own folder and with none of the user’s npm settings', async () => {
+test('adapter installs: pinned, checked, in their own folder and with none of the user’s npm settings', { skip: nodeAdapters }, async () => {
   const npmDir = path.join(dir, 'npm');
   await fs.mkdir(npmDir);
   const fake = path.join(npmDir, 'npm-cli.mjs');
