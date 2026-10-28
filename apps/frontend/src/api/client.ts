@@ -988,7 +988,7 @@ export function callLLM(payload: {
   return request<{ ok: boolean; content?: string; error?: string }>('/api/llm', json('POST', payload));
 }
 
-// ─── spelling (nodehun, Australian English) and grammar (Harper) ───
+// ─── spelling (Hunspell) and grammar (Harper) ───
 
 export type CheckerAssets = {
   version: string | null;
@@ -998,7 +998,7 @@ export type CheckerAssets = {
 };
 export type CheckerStatus = {
   /** started: false while Harper waits for its first check, which starts it */
-  available: boolean; started?: boolean; language: string; error?: string; engine: string; version: string | null;
+  available: boolean; started?: boolean; language?: string; languages?: string[]; error?: string; engine: string; version: string | null;
   diagnostics?: { appVersion: string; node: string; platform: string; arch: string; assets: CheckerAssets; dictionaries?: CheckerAssets };
 };
 export type SpellWordLists = { global: string[]; project: string[] };

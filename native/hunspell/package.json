@@ -1,0 +1,11 @@
+{
+  "name": "spectrum-hunspell",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Spectrum's Hunspell binding (binding.cc, MIT) over Hunspell 1.7.6 (core/, unmodified). Built by scripts/native.mjs.",
+  "license": "MIT",
+  "gypfile": true,
+  "dependencies": {
+    "node-addon-api": "8.5.0"
+  }
+}

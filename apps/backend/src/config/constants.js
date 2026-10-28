@@ -24,7 +24,7 @@ export const TEMPLATE_MANIFEST = path.join(TEMPLATE_DIR, 'manifest.json');
 // Read-only skills shipped with the app (the repo's skills/ folder, the desktop app's resources), copied into the
 // data folder when the app's version changes
 export const SKILLS_SEED_DIR = process.env.SPECTRUM_SKILLS_SEED_DIR || path.join(REPO_ROOT, 'skills');
-// nodehun and Harper's engine (built by scripts/native.mjs), and the spell-check dictionaries
+// the Hunspell binding and Harper's engine (built by scripts/native.mjs), and the spell-check dictionaries
 export const NATIVE_DIR = process.env.SPECTRUM_NATIVE_DIR || path.join(REPO_ROOT, 'native');
 export const DICT_DIR = process.env.SPECTRUM_DICT_DIR || path.join(REPO_ROOT, 'dictionaries');
 export const FRONTEND_DIST = process.env.SPECTRUM_FRONTEND_DIST || path.join(REPO_ROOT, 'apps', 'frontend', 'dist');

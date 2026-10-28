@@ -77,7 +77,7 @@ const KIND_LABELS: Record<string, string> = {
   Punctuation: 'Punctuation',
   Readability: 'Readability',
   Redundancy: 'Redundancy',
-  Regionalism: 'Australian English',
+  Regionalism: 'Regional word',
   Repetition: 'Repetition',
   Spelling: 'Spelling',
   Style: 'Style',
@@ -97,7 +97,7 @@ const suggestionLabel = (s: GrammarSuggestion) =>
   s.kind === 'remove' ? 'Remove' : s.kind === 'insertAfter' ? `Add “${s.text}”` : s.text.trim() ? `“${s.text}”` : 'Remove';
 
 type Issue = GrammarIssue & { id: string };
-const CHECKABLE = /\.(tex|ltx|md|markdown|txt)$/i;
+const CHECKABLE = /\.(tex|ltx|typ|md|markdown|txt)$/i;
 
 export default function GrammarPanel({
   view,
@@ -245,7 +245,7 @@ export default function GrammarPanel({
               <span className="spinner" /> Checking {file}…
             </div>
           )}
-          {state === 'unsupported' && <div className="grammar-empty">Grammar checking works on .tex, .md and .txt files. Open one to check it.</div>}
+          {state === 'unsupported' && <div className="grammar-empty">Grammar checking works on LaTeX, Typst, Markdown and .txt files. Open one to check it.</div>}
           {state === 'error' && <div className="grammar-empty error">{error}</div>}
           {state === 'done' && !shown.length && (
             <div className="grammar-empty">

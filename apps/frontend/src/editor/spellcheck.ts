@@ -7,7 +7,7 @@ import { spellCheck } from '../api/client';
 
 // Spell checking as you type, in Australian English. The text is reduced to its prose (the same
 // stripper the grammar check uses), the words in and near the view are sent to the backend's
-// nodehun checker once each, and the misspelt ones get a red squiggle.
+// Hunspell checker once each, and the misspelt ones get a red squiggle.
 
 const CHECKABLE = /\.(tex|ltx|typ|md|markdown|txt)$/i;
 // checked a little past the edges, so scrolling doesn't show words before they're marked

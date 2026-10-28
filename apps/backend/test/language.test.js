@@ -122,8 +122,44 @@ test('grammar: Australian dialect, no Oxford comma, positions in the source', as
   assert.ok(byRule.NoOxfordComma, 'serial comma flagged');
   assert.ok(byRule.PronounInflectionBe, 'It are');
   assert.ok(byRule.RepeatedWords, 'the the inside \\emph');
-  assert.ok(!issues.some((i) => i.kind === 'Spelling' && i.rule === 'SpellCheck'), 'spelling is left to nodehun');
+  assert.ok(!issues.some((i) => i.kind === 'Spelling' && i.rule === 'SpellCheck'), 'spelling is left to Hunspell');
 
   const allowed = await grammar.checkGrammar({ text: tex, file: 'main.tex', oxford: 'off', ignoredRules: ['AnA'] });
   assert.ok(!allowed.some((i) => i.rule === 'NoOxfordComma' || i.rule === 'AnA'));
+});
+
+test('grammar in each English dialect, Australian by default, the serial comma in each', async () => {
+  const text = 'Grab the flashlight and change the diaper. Fill the petrol tank. I bought milk, eggs, and bread.';
+  const flagged = async (language, oxford) => (await grammar.checkGrammar({ text, language, oxford, style: true })).map((i) => `${i.rule}:${text.slice(i.from, i.to)}`);
+  const au = await flagged(undefined);
+  assert.deepEqual(au, await flagged('en-AU'));
+  assert.ok(au.includes('Regionalisms:flashlight') && au.includes('Regionalisms:diaper') && !au.includes('Regionalisms:petrol'));
+  const us = await flagged('en-US');
+  assert.ok(us.includes('Regionalisms:petrol') && !us.includes('Regionalisms:flashlight'));
+  assert.ok((await flagged('en-GB')).includes('Regionalisms:flashlight'));
+  assert.ok((await flagged('en-CA')).includes('Regionalisms:petrol'));
+  for (const language of ['en-AU', 'en-US', 'en-GB', 'en-CA', 'en-IN']) {
+    assert.ok((await flagged(language)).includes('NoOxfordComma:,'), language);
+    assert.ok(!(await flagged(language, 'off')).some((i) => i.startsWith('NoOxfordComma')), language);
+  }
+  assert.deepEqual((await grammar.grammarStatus()).languages, ['en-AU', 'en-US', 'en-GB', 'en-CA', 'en-IN']);
+});
+
+test('spelling in each bundled English: its own words, and the supplement in all of them', async () => {
+  const words = ['colour', 'color', 'organise', 'organize', 'defence', 'defense', 'LaTeX', 'arXiv', 'Centrelink', 'recieve'];
+  assert.deepEqual((await spell.checkWords(words, undefined, 'en-US')).sort(), ['Centrelink', 'colour', 'defence', 'organise', 'recieve']);
+  assert.deepEqual((await spell.checkWords(words, undefined, 'en-GB')).sort(), ['Centrelink', 'color', 'defense', 'recieve']);
+  assert.deepEqual((await spell.checkWords(words, undefined, 'en-IN')).sort(), ['Centrelink', 'color', 'defense', 'recieve']);
+  assert.deepEqual((await spell.checkWords(words, undefined, 'en-CA')).sort(), ['Centrelink', 'organise', 'recieve']);
+  assert.ok((await spell.suggestWord('colur', 'en-US')).includes('color'));
+  await assert.rejects(() => spell.checkWords(['x'], undefined, 'xx-YY'), /no spelling dictionary/);
+});
+
+test('runs of Chinese, Japanese and Thai make no words; Korean splits at spaces; word characters join only between letters', () => {
+  const text = '我们研究了这个问题的历史与发展。We tested it. 日本語の文章です。ภาษาไทยไม่มีช่องว่าง 한국어 문장 😀 don’t';
+  assert.deepEqual(proseWords(text).map(([w]) => w), ['We', 'tested', 'it', '한국어', '문장', 'don’t']);
+  for (const [word, at] of proseWords(text)) assert.equal(text.slice(at, at + word.length), word, 'UTF-16 positions, after an emoji too');
+  assert.deepEqual(words('\\begin{document}\n研究結果顯示 the colour\\end{document}'), ['the', 'colour']);
+  assert.deepEqual(proseWords('col·legi ·a b· x-y', 0, 100, { wordChars: '·-' }).map(([w]) => w), ['col·legi', 'a', 'b', 'x-y']);
+  assert.deepEqual(proseWords('col·legi').map(([w]) => w), ['col', 'legi'], 'English keeps today’s pattern');
 });

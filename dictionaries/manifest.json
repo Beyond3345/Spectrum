@@ -13,14 +13,31 @@
       "source": "https://github.com/wooorm/dictionaries"
     },
     {
+      "name": "SCOWL en_GB-large",
+      "version": "2026.02.25",
+      "source": "https://github.com/en-wl/wordlist/releases/download/rel-2026.02.25/hunspell-en_GB-large-2026.02.25.zip",
+      "sha256": "704a49438a3a9d4f11cd76db433a6b230b9ce8770ee13fa28700052c4517ddc1"
+    },
+    {
+      "name": "SCOWL en_CA-large",
+      "version": "2026.02.25",
+      "source": "https://github.com/en-wl/wordlist/releases/download/rel-2026.02.25/hunspell-en_CA-large-2026.02.25.zip",
+      "sha256": "b4b7bf4a7885de1c35fa1b3aa68317209afa58f04d60e8a07e124693485c59e3"
+    },
+    {
       "name": "AussieDic",
       "version": "3.1.0",
       "source": "https://github.com/Caskexe/Australian-English-Dictionary"
     },
     {
       "name": "Spectrum supplement",
-      "version": "e66ad8c4e03b",
+      "version": "ad945f50dbd7",
       "source": "dictionaries/spectrum-extra.dic"
+    },
+    {
+      "name": "Spectrum Australian supplement",
+      "version": "45d13f089623",
+      "source": "dictionaries/spectrum-extra-au.dic"
     }
   ],
   "files": {
@@ -30,9 +47,16 @@
     "en_US/en_US.aff": "ff5b03cd32cf33cd2eaee7bf2b7ff24c94cabe34f52c35aadb234f77eaf4f072",
     "en_US/en_US.dic": "8d5fd1db30c47ed7a58430a2aaefb1f30ca840f6d6c199ef94bcdb85022e412b",
     "en_US/LICENSE": "51ec50b15b207ab357879f8b4d96e8325f4384bf9afc9ccc95ef1979e344f232",
+    "en_GB/en_GB.aff": "b9fb2eef4b64cf39243565579dcedb84747d7986be0a8048f428f60db1fa0f2e",
+    "en_GB/en_GB.dic": "4a174235eb36947496f495815b2a04019fd45818b035b84a2368bedc45bacf5d",
+    "en_GB/LICENSE": "dd2f9d4e0e2d7b20cdb4b3e8c8f6dfb2268e459a0d063e951e95b4b1986ca185",
+    "en_CA/en_CA.aff": "66432b978c590816807bd327f81b8dfec0e3a806729a8816a68ba2762c26e272",
+    "en_CA/en_CA.dic": "391562793be03a1afa0c006a97880e620c366804f1fc96a9738331e8f2490349",
+    "en_CA/LICENSE": "b1c65b19ec6bd7bd1b9b59f75de1ad8df287ba86bd6be2a51745f2cd7c310bde",
     "aussiedic/AussieDic.aff": "b8ff750a7e04f1a08cf1288127e37fb9f5b93c79daf6b5efa2e340a8ec2aa14d",
     "aussiedic/AussieDic.dic": "de0113ade41d20c5a5d4c5eb6673c30e4991a52358f21b980372973eda9e6ff8",
     "aussiedic/LICENSE": "230184f60bae2feaf244f10a8bac053c8ff33a183bcc365b4d8b876d2b7f4809",
-    "spectrum-extra.dic": "e66ad8c4e03ba09b8b018c11c19c2a1aa3a995d9d82d22b603daa1d21357b9e6"
+    "spectrum-extra.dic": "ad945f50dbd7b76f40b55c7b129a65a0ae2ed4e91dde7bcf908cfc50cad1ed98",
+    "spectrum-extra-au.dic": "45d13f08962364f591f038f998ebc6ce1eb2e14988839c0ebf2ebcca7b62f3ce"
   }
 }
