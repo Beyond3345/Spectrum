@@ -1,10 +1,11 @@
 # Spectrum agent integrations
 
-Research date: 18 October 2026 (Asia/Taipei).
+Research date: 18 October 2026 (Asia/Taipei). Versions checked again on 28 and 29 October 2026 for Spectrum 2.0.
 Status: macOS local preview implemented for Spectrum 1.10.0. The compatibility and remote phases below remain a rollout plan, not completed certification.
 
 ## Implementation record
 
+- Spectrum 2.0 (29 October 2026): the ACP client moved to `@agentclientprotocol/sdk` 2.0.2, imported from its `/unstable` entry, which keeps plan updates, elicitation questions and the system prompt session capability. Gemini CLI (`gemini --acp`) and GitHub Copilot CLI (`copilot --acp`) were added; OpenClaw was not, as its ACP mode forwards to a local gateway that isolation blocks. Settings › Agents became a card for each agent with a Test that starts it in isolation without a prompt, and the agent workspace lists only agents that are set up. Spectrum can install the pinned Codex, Claude Agent, Pi and ZCode adapters into its data folder after the user confirms, with the npm bundled beside its own Node.js, install scripts off and the checksum checked.
 - Added an ACP v1 client using `@agentclientprotocol/sdk` 1.9.0, launcher/setup profiles for ten local agents, local session history, streaming, permissions/questions, agent-provided settings, cancellation and resume/handoff. WorkBuddy stays visibly planned, using official interfaces in the remote phase.
 - Added isolated review by default and explicit direct editing. Review snapshots are captured by a fixed sandboxed reader, stored outside the agent's grants, hash-checked, and applied with concurrent-edit checks and recovery journals. Delegated file operations and terminal commands run inside the same policy. Editor saves share the application file-write queue.
 - The macOS feasibility result uses `/usr/bin/sandbox-exec` with a per-process Seatbelt policy rather than a separately signed App Sandbox helper. Agent descendants inherit the policy. It grants the staging project/private agent state, selected runtime reads, public HTTPS/DNS, and one authenticated loopback port for OpenCode's internal server. Other local endpoints, Unix sockets, host automation, live-project access in review, and Spectrum metadata/secrets are denied. Missing isolation fails closed. This depends on the system tool remaining available; it does not establish compatibility with every macOS release or installed runtime.
@@ -15,13 +16,13 @@ Status: macOS local preview implemented for Spectrum 1.10.0. The compatibility a
 
 ## Confirmed requirements
 
-- Support Codex, OpenCode, Claude Code, Qoder, Cursor, Kimi Code, ZCode, DeepSeek Harness, WorkBuddy, Hermes, and Pi.
+- Support Codex, OpenCode, Claude Agent, Qoder, Cursor, Kimi Code, ZCode, DeepSeek Harness, WorkBuddy, Hermes, and Pi.
 - Start with local execution; add remote agents later.
 - Offer review and direct editing. Review is the default and must enforce filesystem isolation before release.
 - Use native isolation on macOS and Windows; do not require Docker or another container runtime.
 - Reuse agents' own login/configuration where officially supported, with API-key setup as another option where supported.
 - Use official WorkBuddy interfaces only, even if its integration ships later.
-- Claude Code remains an integration target. Its configuration for developing Spectrum is separate: the only project `.claude` directory found contained an empty `worktrees` folder; both were removed. No global agent configuration or Anthropic model support was removed.
+- Claude Agent remains an integration target, always under that name and with an Anthropic API key only (the adapter starts with `--hide-claude-auth`). Its configuration for developing Spectrum is separate: the only project `.claude` directory found contained an empty `worktrees` folder; both were removed. No global agent configuration or Anthropic model support was removed.
 
 ## Recommendation
 
@@ -39,7 +40,7 @@ These are documentation/source findings, not compatibility certifications. Check
 | --- | --- | --- |
 | Codex | ACP-maintained `@agentclientprotocol/codex-acp`; executable `codex-acp` | Adapter runs Codex App Server. Begin with this shared ACP route; use a dedicated App Server implementation only if a required capability cannot pass through it. [Adapter](https://github.com/agentclientprotocol/codex-acp), [OpenAI documentation](https://learn.chatgpt.com/docs/app-server). |
 | OpenCode | Native `opencode acp` over stdio | Good initial integration candidate; use its own configuration and advertised options. [Official ACP guide](https://opencode.ai/docs/acp/). |
-| Claude Code | `@agentclientprotocol/claude-agent-acp`, backed by the Claude Agent SDK | Preserve as a target; label the integration “Claude Agent” where required by vendor branding. Authentication is a separate release gate: do not assume a Claude subscription can be reused in a third-party product. [Adapter](https://github.com/agentclientprotocol/claude-agent-acp), [vendor SDK guidance](https://code.claude.com/docs/en/agent-sdk/overview). |
+| Claude Agent | `@agentclientprotocol/claude-agent-acp`, backed by the Claude Agent SDK | Preserve as a target; label the integration “Claude Agent” where required by vendor branding. Authentication is a separate release gate: do not assume a Claude subscription can be reused in a third-party product. [Adapter](https://github.com/agentclientprotocol/claude-agent-acp), [vendor SDK guidance](https://code.claude.com/docs/en/agent-sdk/overview). |
 | Qoder | Native `qoder --acp` | Documents CLI-login reuse, personal access tokens, host filesystem/terminal delegation, and platform limits. Use normal permissions, never its bypass mode by default. [Official guide](https://docs.qoder.com/cli/acp). |
 | Cursor | Native `agent acp` | Standard sessions plus vendor blocking question/plan requests. Implement those requests or return a clear supported failure; otherwise a turn may hang. [Official guide](https://cursor.com/docs/cli/acp). |
 | Kimi Code | Native `kimi acp` | Documents sessions, config options, editor file/terminal delegation, and user questions. Negotiate the installed version; do not assume all documented extensions are present. [Official reference](https://www.kimi.com/code/docs/en/kimi-code-cli/reference/kimi-acp.html). |
@@ -51,7 +52,7 @@ These are documentation/source findings, not compatibility certifications. Check
 
 For optional later compatibility, Tencent separately documents `codebuddy --acp`. This is evidence for CodeBuddy, not proof that the WorkBuddy desktop product is interchangeable. [CodeBuddy documentation](https://www.codebuddy.ai/docs/cli/acp).
 
-The ACP registry provides distribution metadata, not proof of safety or feature completeness. As research anchors, its source entries listed Codex adapter 2.2.2, Claude adapter 0.93.0, OpenCode 1.19.3, Qoder 0.2.14, Kimi CLI 1.52.0, and Pi adapter 0.0.34. These are not a tested compatibility set. Record resolved versions and hashes when implementing. [Registry source](https://github.com/agentclientprotocol/registry).
+The ACP registry provides distribution metadata, not proof of safety or feature completeness. As research anchors on 18 October, its source entries listed Codex adapter 2.2.2, Claude adapter 0.93.0, OpenCode 1.19.3, Qoder 0.2.14, Kimi CLI 1.52.0 and Pi adapter 0.0.34. On 28 and 29 October: Codex adapter 2.3.0 (pinned, with Codex 0.164), Claude Agent adapter 0.98.0 (pinned, with the Claude Agent SDK 0.3.310; 0.99.0 was a day old), Pi adapter 0.0.34 (pinned; Pi itself is now `@earendil-works/pi-coding-agent`), ZCode adapter `zcode-acp-server` 0.76.3 (pinned; 0.77 to 0.79 were a day old), OpenCode 2.2.0 (`@opencode/cli`) beside 1.19.5, Kimi Code 2.3.3 (`@moonshot-ai/kimi-code`; the Python Kimi CLI is archived), Gemini CLI 0.66.0, GitHub Copilot CLI 1.0.105, Qoder CLI 1.1.80 (paused in the registry) and DeepSeek Harness 0.2.1-rc.4 (`@deepseek-ai/dsh`, pre-release only). The pins and their sha512 checksums live in `apps/backend/src/services/agentProfiles.js`. These are not a tested compatibility set. Record resolved versions and hashes when implementing. [Registry source](https://github.com/agentclientprotocol/registry).
 
 ## Isolation: a release gate
 
@@ -132,7 +133,7 @@ Compile review-mode files inside the boundary. Do not register the temporary cop
 3. **Qoder, Cursor, Kimi, Hermes and Claude Agent.** Add launch profiles and supported extensions; certify each tested OS/version/mode/auth combination. Resolve Claude authentication/branding with vendor guidance before enabling an account flow.
 4. **Pi, DeepSeek Harness and ZCode.** Validate adapters and published releases, package their runtime requirements, and document capability gaps. Experimental status is visible. A listed profile is not a completed integration.
 5. **WorkBuddy and remote execution.** Use official application registration and authorized APIs. Validate `.ai`/`.cn` account eligibility; agree a server-side secret/token design, workspace transfer, artifact retrieval and conflict review. WorkBuddy's Open API requires an application secret which must not be embedded in a distributed desktop app. Do not implement private gateway discovery as a shortcut. Other remote ACP agents can share lifecycle/UI but need their actual supported transports and authentication.
-6. **Setup convenience.** Start with installed runtimes and explicit setup instructions. Add pinned managed installs/updates only after integration behavior is stable; verify artifacts and preserve user installations. No automatic `npx latest` execution on each chat.
+6. **Setup convenience.** Start with installed runtimes and explicit setup instructions. Add pinned managed installs/updates only after integration behavior is stable; verify artifacts and preserve user installations. No automatic `npx latest` execution on each chat. Done in 2.0 for the Codex, Claude Agent, Pi and ZCode adapters, at the user's request: pinned versions and checksums, each install only after the user confirms, into Spectrum's data folder and never system-wide. Vendor programs stay manual.
 
 ## Acceptance checks
 
