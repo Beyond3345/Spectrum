@@ -84,14 +84,18 @@ export async function ownWords(projectId) {
   return [...new Set([...(await readList(GLOBAL_FILE())), ...(projectId ? await readList(await projectFile(projectId)) : [])])];
 }
 
+/** A word as written, without the full stop it may come with. */
+const bare = (word) => word.replace(/\.$/, '');
+
 /**
  * The words `lang` doesn't know (Australian English by default), leaving out the ones on the user's lists. first is
- * the first listed language, whose speller stays loaded.
+ * the first listed language, whose speller stays loaded. A word
+ * ending in a full stop is the word before one, right as itself or as an abbreviation with the stop.
  */
 export async function checkWords(words, projectId, lang = 'en-AU', first) {
   const unique = [...new Set(words.map(String).filter((w) => w && w.length <= 100))].slice(0, 5000);
   const own = new Set(await ownWords(projectId));
-  const wanted = unique.filter((w) => !own.has(key(w)) && !own.has(key(w).toLowerCase()));
+  const wanted = unique.filter((w) => !own.has(key(bare(w))) && !own.has(key(bare(w)).toLowerCase()));
   if (!wanted.length) return [];
   return speller.call({ op: 'check', words: wanted, first, ...await spellerFor(lang) });
 }
@@ -173,8 +177,10 @@ export async function checkPieces({ languages, main = null, pieces, projectId })
       }
       if (!byLang.has(target)) byLang.set(target, new Map());
       const words = byLang.get(target);
-      if (!words.has(word)) words.set(word, []);
-      words.get(word).push([i, at, at + word.length]);
+      // a word before a full stop goes with it, for the abbreviations a dictionary keeps with theirs (usw., ca.)
+      const sent = piece.text[at + word.length] === '.' ? `${word}.` : word;
+      if (!words.has(sent)) words.set(sent, []);
+      words.get(sent).push([i, at, at + word.length]);
     }
   });
   for (const [lang, words] of byLang) {

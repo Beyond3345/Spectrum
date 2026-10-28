@@ -131,9 +131,14 @@ parentPort.on('message', ({ id, op, words, word, lang, dictionary, candidates, f
     }
     const speller = spellerFor(lang, dictionary);
     if (op === 'check') {
-      const wanted = words.filter((raw) => !skip(clean(raw)));
-      const ok = speller.spell(wanted.map(clean));
-      result = wanted.filter((_, i) => !ok[i]);
+      // a word sent with the full stop after it ("usw.") is right as itself or, failing that, with the stop
+      const bare = (raw) => clean(String(raw).replace(/\.$/, ''));
+      const wanted = words.filter((raw) => !skip(bare(raw)));
+      const ok = speller.spell(wanted.map(bare));
+      const dotted = wanted.filter((raw, i) => !ok[i] && raw.endsWith('.'));
+      const abbreviations = speller.spell(dotted.map((raw) => `${bare(raw)}.`));
+      const accepted = new Set(dotted.filter((_, i) => abbreviations[i]));
+      result = wanted.filter((raw, i) => !ok[i] && !accepted.has(raw));
     } else if (op === 'suggest') {
       const w = String(word).replace(/’/g, "'");
       const all = [...new Set(speller.suggest(w))];
