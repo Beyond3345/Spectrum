@@ -251,9 +251,10 @@ test('two names for one file from GitHub are kept there by the pull and the next
 
 test('on Windows, a name it can’t have is left on GitHub and named, and the pull’s other changes come in', { skip }, async () => {
   const { A, B, repo } = await pair({ 'main.tex': 'one\n', 'other.tex': 'other\n' });
-  write(A, 'Why?.tex', 'why\n');
   write(A, 'main.tex', 'one, from the Mac\n');
   await sync(A);
+  // on GitHub itself, as a Windows disk (the CI's own) can't hold it
+  commitOnGitHub(repo, { 'Why?.tex': 'why\n' });
   const result = await asWindows(() => sync(B));
   assert.ok(result.problems.some((p) => /“Why\?\.tex” can’t be a file name on Windows/.test(p)));
   assert.equal(read(B, 'main.tex'), 'one, from the Mac\n');
@@ -290,7 +291,7 @@ test('CRLF line ends from a Git for Windows checkout neither block a pull nor go
   assert.equal(gh.show('octo', repo, 'refs.bib'), 'a\nb\nc\nd\n');
 });
 
-test('a link comes through as a link, a script keeps its execute bit from Windows, and a clone’s scripts follow the umask', { skip }, async () => {
+test('a link comes through as a link, a script keeps its execute bit from Windows, and a clone’s scripts follow the umask', { skip: skip || (process.platform === 'win32' && 'links need Developer Mode, and Windows keeps no execute bit or umask (its side runs as Windows here)') }, async () => {
   const { A, B, repo } = await pair({ 'main.tex': 'x\n' });
   symlinkSync('../shared/library.bib', path.join(A, 'refs.bib'));
   write(A, 'run.sh', '#!/bin/sh\necho 1\n');
@@ -315,7 +316,7 @@ test('a link comes through as a link, a script keeps its execute bit from Window
   assert.equal(statSync(path.join(C, 'run.sh')).mode & 0o777, 0o755);
 });
 
-test('a decomposed name from a Mac’s disk is committed composed', { skip }, async () => {
+test('a decomposed name from a Mac’s disk is committed composed', { skip: skip || (process.platform !== 'darwin' && 'only a Mac’s names are composed: NTFS keeps a decomposed name apart') }, async () => {
   const { A } = await pair({ 'main.tex': 'x\n' });
   write(A, 'figures/cafe\u0301.png', 'PNG');
   await g.commitAll(A, { message: 'Backup', author });
