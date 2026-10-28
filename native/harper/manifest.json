@@ -1,12 +1,12 @@
 {
   "schema": 1,
   "engine": "Harper",
-  "version": "2.12.0",
+  "version": "3.0.0",
   "source": {
-    "version": "2.12.0",
-    "commit": "b0ab21f5500da525c76553c56ca1b6b7669c6a78",
-    "url": "https://codeload.github.com/Automattic/harper/tar.gz/b0ab21f5500da525c76553c56ca1b6b7669c6a78",
-    "sha256": "d936a3c0b8a229c1bd817361447e321e9ff655a9a6bd5d4403af5097e0a8c1e5"
+    "version": "3.0.0",
+    "commit": "dd536c3009d8f4f8e8e28841fe3115dc944d67bb",
+    "url": "https://codeload.github.com/Automattic/harper/tar.gz/dd536c3009d8f4f8e8e28841fe3115dc944d67bb",
+    "sha256": "e46bd0e3d7481c19e6b98d4be2947d755f8e50e0336036fb657f394eac28f837"
   },
   "build": {
     "rust": "rustc 1.99.0 (b940084d7 2026-09-28)",
@@ -17,8 +17,8 @@
     "selfTest": "passed"
   },
   "files": {
-    "harper_wasm.js": "a7e68660e56075d886720dfaa176c315958df805f6a2adfbf9808f6a56eaa399",
-    "harper_wasm_bg.wasm": "78385096e55e8c84e7389fd6a85b9425e77d63eaf491a07773854d116c75b882",
+    "harper_wasm.js": "6d25d45967a8b5bef7e1982423d281c1e27d7cd188ecfb79e054c1d76b94ab56",
+    "harper_wasm_bg.wasm": "6ece025ff1dea04410d0be4c7b7072c60d36d06fd31f154e410556ffcbbe87ad",
     "LICENSE": "fbc8f1bffe04ab962340fabb1324d57d8b875070f67759d606516144ee53ac19"
   }
 }

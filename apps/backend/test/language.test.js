@@ -128,6 +128,23 @@ test('grammar: Australian dialect, no Oxford comma, positions in the source', as
   assert.ok(!allowed.some((i) => i.rule === 'NoOxfordComma' || i.rule === 'AnA'));
 });
 
+test('grammar in each English dialect, Australian by default, the serial comma in each', async () => {
+  const text = 'Grab the flashlight and change the diaper. Fill the petrol tank. I bought milk, eggs, and bread.';
+  const flagged = async (language, oxford) => (await grammar.checkGrammar({ text, language, oxford, style: true })).map((i) => `${i.rule}:${text.slice(i.from, i.to)}`);
+  const au = await flagged(undefined);
+  assert.deepEqual(au, await flagged('en-AU'));
+  assert.ok(au.includes('Regionalisms:flashlight') && au.includes('Regionalisms:diaper') && !au.includes('Regionalisms:petrol'));
+  const us = await flagged('en-US');
+  assert.ok(us.includes('Regionalisms:petrol') && !us.includes('Regionalisms:flashlight'));
+  assert.ok((await flagged('en-GB')).includes('Regionalisms:flashlight'));
+  assert.ok((await flagged('en-CA')).includes('Regionalisms:petrol'));
+  for (const language of ['en-AU', 'en-US', 'en-GB', 'en-CA', 'en-IN']) {
+    assert.ok((await flagged(language)).includes('NoOxfordComma:,'), language);
+    assert.ok(!(await flagged(language, 'off')).some((i) => i.startsWith('NoOxfordComma')), language);
+  }
+  assert.deepEqual((await grammar.grammarStatus()).languages, ['en-AU', 'en-US', 'en-GB', 'en-CA', 'en-IN']);
+});
+
 test('runs of Chinese, Japanese and Thai make no words; Korean splits at spaces; word characters join only between letters', () => {
   const text = '我们研究了这个问题的历史与发展。We tested it. 日本語の文章です。ภาษาไทยไม่มีช่องว่าง 한국어 문장 😀 don’t';
   assert.deepEqual(proseWords(text).map(([w]) => w), ['We', 'tested', 'it', '한국어', '문장', 'don’t']);

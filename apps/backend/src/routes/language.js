@@ -43,12 +43,12 @@ export function registerLanguageRoutes(fastify) {
   fastify.get('/api/grammar/status', async () => grammarStatus());
 
   fastify.post('/api/grammar/check', async (req, reply) => {
-    const { text, file, projectId, style, oxford } = req.body || {};
+    const { text, file, projectId, style, oxford, language } = req.body || {};
     if (typeof text !== 'string') return reply.code(400).send({ error: 'Send the text to check.' });
     if (text.length > MAX_GRAMMAR_CHARS) return reply.code(413).send({ error: 'That file is too long to check in one go.' });
     const ignoredRules = projectId ? await readIgnoredRules(projectId) : [];
     try {
-      return { issues: await checkGrammar({ text, file, style: !!style, oxford, ignoredRules }), ignoredRules };
+      return { issues: await checkGrammar({ text, file, style: !!style, oxford, ignoredRules, language, projectId }), ignoredRules };
     } catch (err) {
       return unavailable(reply, err);
     }

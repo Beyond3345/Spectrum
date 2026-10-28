@@ -75,10 +75,15 @@ export async function changeWord({ word, scope = 'global', projectId, remove = f
   return listWords(projectId);
 }
 
+/** The user's words and the project's, as written (Harper matches by case). */
+export async function ownWords(projectId) {
+  return [...new Set([...(await readList(GLOBAL_FILE())), ...(projectId ? await readList(await projectFile(projectId)) : [])])];
+}
+
 /** The words that aren't Australian English, leaving out the ones on the user's lists. */
 export async function checkWords(words, projectId) {
   const unique = [...new Set(words.map(String).filter((w) => w && w.length <= 100))].slice(0, 5000);
-  const own = new Set([...(await readList(GLOBAL_FILE())), ...(projectId ? await readList(await projectFile(projectId)) : [])]);
+  const own = new Set(await ownWords(projectId));
   const wanted = unique.filter((w) => !own.has(key(w)) && !own.has(key(w).toLowerCase()));
   if (!wanted.length) return [];
   return speller.call({ op: 'check', words: wanted });
