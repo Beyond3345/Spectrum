@@ -44,3 +44,11 @@ export const resetPersonas = (personas: Persona[]) => [...STARTER_PERSONAS, ...p
 
 /** A starter as Spectrum wrote it, which a computer joining the others' settings doesn't bring back to them. */
 export const isUnchangedStarter = (p: Persona) => STARTER_PERSONAS.some((s) => s.id === p.id && s.name === p.name && s.colour === p.colour && s.prompt === p.prompt);
+
+/** The name Settings asks about before it drops the persona being edited, or '' when nothing typed would be lost. */
+export const unsavedPersona = (editing: Persona | null, personas: Persona[]) => {
+  if (!editing) return '';
+  const saved = personas.find((p) => p.id === editing.id);
+  if (saved) return saved.name === editing.name && saved.colour === editing.colour && saved.prompt === editing.prompt ? '' : saved.name;
+  return editing.name.trim() || editing.prompt.trim() ? editing.name.trim() || 'New persona' : '';
+};

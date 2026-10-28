@@ -4,7 +4,7 @@
 import { DEFAULT_SETTINGS, followStep, keysBackFromOlder, sharedPart, takeInShared, withShared } from '../app/settings';
 import type { AppSettings } from '../app/settings';
 import type { SharedSettings } from '../api/client';
-import { STARTER_PERSONAS, resetPersonas, resolveInstructions } from './personas';
+import { STARTER_PERSONAS, resetPersonas, resolveInstructions, unsavedPersona } from './personas';
 import type { Persona } from './personas';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -129,5 +129,14 @@ eq(takeInShared(at({ defaultInstructions: 'Mine' }), sharedPart(a), '').defaultI
     keepsA(A, `${what}, at the end`);
   }
 }
+
+// closing Settings asks only when an edit would be lost, by the name the list shows
+eq(unsavedPersona(null, [mine]), '', 'not editing');
+eq(unsavedPersona({ ...mine }, [mine]), '', 'opened but unchanged');
+eq(unsavedPersona({ ...mine, prompt: 'Changed', name: 'Renamed' }, [mine]), 'Thesis voice', 'changed: its saved name');
+eq(unsavedPersona({ ...mine, colour: 'red' }, [mine]), 'Thesis voice', 'a new colour counts');
+eq(unsavedPersona({ id: 'new', name: ' ', colour: 'blue', prompt: '' }, [mine]), '', 'a blank new one');
+eq(unsavedPersona({ id: 'new', name: 'Lab notes', colour: 'blue', prompt: '' }, [mine]), 'Lab notes', 'a new one with a name');
+eq(unsavedPersona({ id: 'new', name: '', colour: 'blue', prompt: 'Be brief.' }, [mine]), 'New persona', 'a new one with only instructions');
 
 console.log('personas: all checks passed');

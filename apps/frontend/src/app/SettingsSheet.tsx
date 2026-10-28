@@ -36,7 +36,7 @@ import { COLOUR_ROLES, EDITOR_FONTS, EDITOR_THEMES, chosenColours, editorColours
 import type { EditorMode } from '../editor/editorThemes';
 import { highlightColour } from '../editor/synctex';
 import { CheckpointCleanup } from '../editor/tools/VersionsTab';
-import { resetPersonas } from '../editor/personas';
+import { resetPersonas, unsavedPersona } from '../editor/personas';
 import type { Persona } from '../editor/personas';
 import { AGENTS_CHANGED, ENGINES_CHANGED, errorText } from '../editor/shared';
 import { ZoteroSettings } from '../editor/ZoteroCite';
@@ -163,6 +163,13 @@ const INSTALL_HINTS: Record<string, string> = {
 export default function SettingsSheet({ onClose, projectId, section: start = 'appearance' }: { onClose: () => void; projectId?: string; section?: Section }) {
   const [settings, update] = useSettings();
   const [section, setSection] = useState<Section>(start);
+  // the skill or persona with unsaved edits, so closing Settings or leaving its page asks first
+  const [unsaved, setUnsaved] = useState('');
+  const leave = async (then: () => void) => {
+    if (unsaved && !(await discardDialog(unsaved))) return;
+    setUnsaved('');
+    then();
+  };
   const [check, setCheck] = useState<SystemCheck | null>(null);
   const [checkError, setCheckError] = useState('');
   const providers = useProviders();
@@ -385,14 +392,14 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
       : '';
 
   return (
-    <Sheet title="Settings" onClose={onClose} width={780} className="settings-sheet">
+    <Sheet title="Settings" onClose={() => leave(onClose)} width={780} className="settings-sheet">
       <div className="settings-layout">
         <nav className="settings-nav">
           {SECTION_GROUPS.map(([heading, sections]) => (
             <div key={heading} className="settings-nav-group" role="group" aria-label={heading}>
               <div className="settings-nav-heading">{heading}</div>
               {sections.map(([value, label, icon]) => (
-                <button key={value} className={`nav-row ${section === value ? 'active' : ''}`} onClick={() => setSection(value)}>
+                <button key={value} className={`nav-row ${section === value ? 'active' : ''}`} onClick={() => leave(() => setSection(value))}>
                   <Icon name={icon} />
                   <span>{label}</span>
                 </button>
@@ -454,7 +461,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                 <>
                   <h3 className="form-section-title">Window</h3>
                   <label className="checkbox-row">
-                    <input type="checkbox" checked={settings.glass} onChange={(e) => update({ glass: e.target.checked })} />
+                    <input type="checkbox" role="switch" checked={settings.glass} onChange={(e) => update({ glass: e.target.checked })} />
                     <span>
                       See-through window
                       <span className="field-hint">Liquid Glass on macOS 26 and later, a frosted blur on earlier versions.</span>
@@ -514,9 +521,9 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
 
           {section === 'shortcuts' && <ShortcutsPane />}
 
-          {section === 'personas' && <PersonasPane />}
+          {section === 'personas' && <PersonasPane onUnsaved={setUnsaved} />}
 
-          {section === 'skills' && <SkillsPane projectId={projectId} />}
+          {section === 'skills' && <SkillsPane projectId={projectId} onUnsaved={setUnsaved} />}
 
           {section === 'agents' && <AgentsPane />}
 
@@ -577,7 +584,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
               )}
               <h3 className="form-section-title">Your other computers</h3>
               <label className="checkbox-row">
-                <input type="checkbox" checked={settings.syncSettings} onChange={(e) => update({ syncSettings: e.target.checked })} />
+                <input type="checkbox" role="switch" checked={settings.syncSettings} onChange={(e) => update({ syncSettings: e.target.checked })} />
                 <span>
                   Use the same settings on each computer
                   <span className="field-hint">
@@ -690,7 +697,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                 const optional = ['openalex', 'semanticscholar'].includes(provider);
                 return <div className="field" key={provider}>
                   <label className="checkbox-row">
-                    <input type="checkbox" checked={enabled} disabled={provider === settings.searchProvider}
+                    <input type="checkbox" role="switch" checked={enabled} disabled={provider === settings.searchProvider}
                       onChange={(e) => update({ searchConnections: e.target.checked
                         ? [...new Set([...settings.searchConnections, provider])]
                         : settings.searchConnections.filter((p) => p !== provider) })} />
@@ -1002,7 +1009,7 @@ function EditorPane() {
   return (
     <>
       <label className="checkbox-row">
-        <input type="checkbox" checked={settings.autoInsertCite} onChange={(e) => update({ autoInsertCite: e.target.checked })} />
+        <input type="checkbox" role="switch" checked={settings.autoInsertCite} onChange={(e) => update({ autoInsertCite: e.target.checked })} />
         <span>
           <span>
             Insert <code>\cite</code> at the cursor after adding a reference
@@ -1013,7 +1020,7 @@ function EditorPane() {
 
       <h3 className="form-section-title">Jump between source and PDF</h3>
       <label className="checkbox-row">
-        <input type="checkbox" checked={settings.syncDoubleClick} onChange={(e) => update({ syncDoubleClick: e.target.checked })} />
+        <input type="checkbox" role="switch" checked={settings.syncDoubleClick} onChange={(e) => update({ syncDoubleClick: e.target.checked })} />
         <span>
           Double-click jumps between the source and the PDF
           <span className="field-hint">Double-click the PDF to find that spot in the source, or a line in a .tex file to find it in the PDF beside it.</span>
@@ -1065,7 +1072,7 @@ function EditorPane() {
 
       <h3 className="form-section-title">PDF</h3>
       <label className="checkbox-row">
-        <input type="checkbox" checked={settings.pdfFollowsFile} onChange={(e) => update({ pdfFollowsFile: e.target.checked })} />
+        <input type="checkbox" role="switch" checked={settings.pdfFollowsFile} onChange={(e) => update({ pdfFollowsFile: e.target.checked })} />
         <span>
           PDF follows the open file
           <span className="field-hint">
@@ -1294,14 +1301,14 @@ function EnginesPane() {
         </div>
       </div>
       <label className="checkbox-row">
-        <input type="checkbox" checked={defaults.draft} onChange={(e) => set({ draft: e.target.checked })} />
+        <input type="checkbox" role="switch" checked={defaults.draft} onChange={(e) => set({ draft: e.target.checked })} />
         <span>
           Fast draft mode
           <span className="field-hint">One pass with images drawn as boxes, for quick previews. Numbers and references can lag behind until a full compile.</span>
         </span>
       </label>
       <label className="checkbox-row">
-        <input type="checkbox" checked={defaults.syntaxCheck} onChange={(e) => set({ syntaxCheck: e.target.checked })} />
+        <input type="checkbox" role="switch" checked={defaults.syntaxCheck} onChange={(e) => set({ syntaxCheck: e.target.checked })} />
         <span>
           Syntax check before compiling
           <span className="field-hint">
@@ -1337,7 +1344,7 @@ function EnginesPane() {
         </div>
       </div>
       <label className="checkbox-row">
-        <input type="checkbox" checked={settings.openLogsOnFail} onChange={(e) => update({ openLogsOnFail: e.target.checked })} />
+        <input type="checkbox" role="switch" checked={settings.openLogsOnFail} onChange={(e) => update({ openLogsOnFail: e.target.checked })} />
         <span>
           Open Logs when a compile fails
           <span className="field-hint">Tools › Logs opens in the PDF’s place. Auto compile leaves it closed.</span>
@@ -1443,7 +1450,7 @@ function CheckpointsPane() {
     <>
       <div className="field-hint section-hint">Checkpoints stay on this computer, in each project’s hidden .spectrum folder. Tools › Checkpoints lists them.</div>
       <label className="checkbox-row">
-        <input type="checkbox" checked={settings.checkpointOnCompile} onChange={(e) => update({ checkpointOnCompile: e.target.checked })} />
+        <input type="checkbox" role="switch" checked={settings.checkpointOnCompile} onChange={(e) => update({ checkpointOnCompile: e.target.checked })} />
         <span>
           Save a checkpoint when a compile succeeds
           <span className="field-hint">
@@ -1453,7 +1460,7 @@ function CheckpointsPane() {
         </span>
       </label>
       <label className="checkbox-row">
-        <input type="checkbox" checked={settings.checkpointNotice} onChange={(e) => update({ checkpointNotice: e.target.checked })} />
+        <input type="checkbox" role="switch" checked={settings.checkpointNotice} onChange={(e) => update({ checkpointNotice: e.target.checked })} />
         <span>
           Warn me when a checkpoint fails to save
           <span className="field-hint">Says when saving fails, or when a file was too large or unreadable to keep, rather than failing quietly.</span>
@@ -1512,7 +1519,7 @@ function LanguagePane() {
 
       <h3 className="form-section-title">Spelling</h3>
       <label className="checkbox-row">
-        <input type="checkbox" checked={settings.spellCheck} onChange={(e) => update({ spellCheck: e.target.checked })} />
+        <input type="checkbox" role="switch" checked={settings.spellCheck} onChange={(e) => update({ spellCheck: e.target.checked })} />
         <span>
           Check spelling as you type
           <span className="field-hint">Misspelt words in .tex, .md and .txt files get a red underline. Right-click one for suggestions.</span>
@@ -1523,7 +1530,7 @@ function LanguagePane() {
       <h3 className="form-section-title">Grammar</h3>
       <CheckerDetails name="Harper" status={grammar} />
       <label className="checkbox-row">
-        <input type="checkbox" checked={settings.grammarStyle} onChange={(e) => update({ grammarStyle: e.target.checked })} />
+        <input type="checkbox" role="switch" checked={settings.grammarStyle} onChange={(e) => update({ grammarStyle: e.target.checked })} />
         <span>
           Include style suggestions
           <span className="field-hint">Long sentences, wordiness, redundancy and readability, as well as grammar.</span>
@@ -1614,17 +1621,29 @@ function CheckerDetails({ name, status }: { name: string; status: CheckerStatus 
 const PERSONA_NAME_MAX = 200;
 const INSTRUCTIONS_MAX = 20000;
 
+/** Asks before unsaved edits to name are dropped; true to let them go. */
+const discardDialog = (name: string) =>
+  confirmDialog({ title: `Discard your changes to “${name}”?`, confirmLabel: 'Discard', cancelLabel: 'Keep editing', destructive: true });
+
+/** Tells the sheet, while this pane shows, which skill or persona has unsaved edits ('' for none). */
+const useUnsaved = (report: (name: string) => void, name: string) =>
+  useEffect(() => {
+    report(name);
+    return () => report('');
+  }, [name]);
+
 /** A count once text nears its limit. */
 function CharactersLeft({ text, max }: { text: string; max: number }) {
   return text.length > max * 0.9 ? <div className="field-hint">{`${text.length.toLocaleString('en-AU')} of ${max.toLocaleString('en-AU')} characters`}</div> : null;
 }
 
 /** Settings › Personas: the default instructions, and the personas picked in chat that take their place. */
-function PersonasPane() {
+function PersonasPane({ onUnsaved }: { onUnsaved: (name: string) => void }) {
   const [settings, update] = useSettings();
   // a copy of the one being edited or created, kept only with Save
   const [editing, setEditing] = useState<Persona | null>(null);
   const creating = !!editing && !settings.personas.some((p) => p.id === editing.id);
+  useUnsaved(onUnsaved, unsavedPersona(editing, settings.personas));
 
   const save = () => {
     if (!editing) return;
@@ -1750,14 +1769,13 @@ function PersonasPane() {
   );
 }
 
-// the native switch look where the web view has one (Safari 17.4 and later); elsewhere a tick box
-const SWITCH = { switch: '' } as object;
-
 /** Settings › Skills: every skill in its group with a switch for all projects or this one, your own skills' files, and sharing. */
-function SkillsPane({ projectId }: { projectId?: string }) {
+function SkillsPane({ projectId, onUnsaved }: { projectId?: string; onUnsaved: (name: string) => void }) {
   const [skills, setSkills] = useState<Skill[] | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  /** the switch just clicked, shown in its new place while the save runs */
+  const [pending, setPending] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState('');
   const [scope, setScope] = useState<'all' | 'project'>('all');
   const [view, setView] = useState<'create' | Skill | null>(null);
@@ -1796,7 +1814,12 @@ function SkillsPane({ projectId }: { projectId?: string }) {
       const { settings } = await getProjectSettings(projectId!);
       await updateProjectSettings(projectId!, { skills: projectSkills(settings.skills, skill.id, on) });
     });
-  const toggle = (skill: Skill, on: boolean) => (inProject ? setForProject(skill, on === skill.enabled ? null : on) : run(() => setSkillEnabled(skill.id, on)));
+  // run never throws, so a failed save clears pending and the switch goes back to the saved state
+  const toggle = async (skill: Skill, on: boolean) => {
+    setPending({ [skill.id]: on });
+    await (inProject ? setForProject(skill, on === skill.enabled ? null : on) : run(() => setSkillEnabled(skill.id, on)));
+    setPending({});
+  };
   const addFolder = async () => {
     const picked = await pickFolder({ title: 'Choose a skill’s folder, the one with its SKILL.md' });
     if (picked) run(() => importSkill(picked));
@@ -1811,8 +1834,9 @@ function SkillsPane({ projectId }: { projectId?: string }) {
     if (ok) run(() => deleteSkill(skill.id));
   };
 
-  if (view === 'create') return <CreateSkill busy={busy} error={error} onCancel={() => setView(null)} onCreate={async (skill) => (await run(() => createSkill(skill))) && setView(null)} />;
-  if (view) return <SkillFiles skill={view} onBack={() => (setView(null), load())} />;
+  if (view === 'create')
+    return <CreateSkill busy={busy} error={error} onUnsaved={onUnsaved} onCancel={() => setView(null)} onCreate={async (skill) => (await run(() => createSkill(skill))) && setView(null)} />;
+  if (view) return <SkillFiles skill={view} onUnsaved={onUnsaved} onBack={() => (setView(null), load())} />;
 
   const groups = skills ? groupSkills(skills, query) : [];
   return (
@@ -1880,8 +1904,7 @@ function SkillsPane({ projectId }: { projectId?: string }) {
                 <input
                   type="checkbox"
                   role="switch"
-                  {...SWITCH}
-                  checked={skillOn(skill, inProject)}
+                  checked={pending[skill.id] ?? skillOn(skill, inProject)}
                   disabled={busy}
                   aria-label={`Use ${skill.name} ${inProject ? 'in this project' : 'in every project'}`}
                   onChange={(e) => toggle(skill, e.target.checked)}
@@ -1918,11 +1941,13 @@ function SkillsPane({ projectId }: { projectId?: string }) {
 function CreateSkill({
   busy,
   error,
+  onUnsaved,
   onCancel,
   onCreate
 }: {
   busy: boolean;
   error: string;
+  onUnsaved: (name: string) => void;
   onCancel: () => void;
   onCreate: (skill: { id: string; name: string; description: string; body: string }) => void;
 }) {
@@ -1930,6 +1955,7 @@ function CreateSkill({
   const [description, setDescription] = useState('');
   const [body, setBody] = useState('');
   const id = skillId(name);
+  useUnsaved(onUnsaved, name.trim() || description.trim() || body.trim() ? name.trim() || 'New skill' : '');
   return (
     <>
       <div className="row">
@@ -1970,7 +1996,7 @@ function CreateSkill({
 }
 
 /** A skill's files, read-only for a built-in one; your own skill's are edited here. */
-function SkillFiles({ skill, onBack }: { skill: Skill; onBack: () => void }) {
+function SkillFiles({ skill, onUnsaved, onBack }: { skill: Skill; onUnsaved: (name: string) => void; onBack: () => void }) {
   const own = skill.source === 'own';
   const [files, setFiles] = useState<string[]>([]);
   const [path, setPath] = useState('SKILL.md');
@@ -1979,6 +2005,7 @@ function SkillFiles({ skill, onBack }: { skill: Skill; onBack: () => void }) {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const changed = text !== null && text !== saved;
+  useUnsaved(onUnsaved, changed ? skill.name : '');
 
   useEffect(() => {
     listSkillFiles(skill.id).then((res) => setFiles(res.files.map((f) => f.path)), (err) => setError(errorText(err)));
@@ -1996,9 +2023,9 @@ function SkillFiles({ skill, onBack }: { skill: Skill; onBack: () => void }) {
     );
   }, [skill.id, path]);
 
-  /** Leaves this file only once unsaved changes are let go. ponytail: closing Settings itself doesn't ask; a guard on the sheet if that loses work */
+  /** Leaves this file only once unsaved changes are let go. */
   const leave = async (then: () => void) => {
-    if (changed && !(await confirmDialog({ title: `Discard your changes to ${path}?`, confirmLabel: 'Discard', destructive: true }))) return;
+    if (changed && !(await discardDialog(path))) return;
     then();
   };
   const save = async () => {
@@ -2085,7 +2112,7 @@ function SkillSharing({ refresh }: { refresh: unknown }) {
         {share && <span className="badge">{linked} of {share.targets.length} linked</span>}
       </h3>
       <label className="checkbox-row">
-        <input type="checkbox" role="switch" {...SWITCH} checked={!!share?.enabled} disabled={!share || busy} onChange={(e) => turn(e.target.checked)} />
+        <input type="checkbox" role="switch" checked={!!share?.enabled} disabled={!share || busy} onChange={(e) => turn(e.target.checked)} />
         <span>
           Link your skills for agents you run yourself
           <span className="field-hint">
