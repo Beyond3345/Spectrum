@@ -54,7 +54,14 @@ function loadsOf(text: string) {
     // fletcher drawings written before review 2's fix dropped dashes, thicknesses and colours, so one with any of those is
     // saved once more on opening, with the styles it was drawn with; the rest come back word for word
     const restyled = diagram.language === 'typst' && /"(?:dash|width|stroke)"/.test(JSON.stringify(diagram.model));
-    if (!restyled) {
+    // circuits now write every style key, defaults too, so one is saved once more on opening: only its picture's
+    // options and \ctikzset line change, and the preset stays first
+    if (diagram.pkg === 'circuitikz') {
+      const styleOut = (t: string) => t.replace(/\\begin\{circuitikz\}\[[^\]\n]*\]\n(?:\\ctikzset\{[^\n]*\}\n)?/, '');
+      eq(styleOut(drawnText(diagram, generated)), styleOut(code), `${path}: its mode writes the same circuit, every style key written`);
+      const preset = (t: string) => /\\begin\{circuitikz\}\[(\w+)/.exec(t)?.[1];
+      eq(preset(generated.body), preset(code), `${path}: the same preset first`);
+    } else if (!restyled) {
       eq(drawnText(diagram, generated), code, `${path}: its mode writes the same text`);
       eq(await diagramFileText(diagram, generated), text, `${path}: and the same file, last line and all`);
     }

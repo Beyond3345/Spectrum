@@ -140,6 +140,38 @@ test('symbols: the cache key holds the engine, the sets’ versions and circuiti
 });
 
 const tectonic = process.env.SPECTRUM_TECTONIC && existsSync(process.env.SPECTRUM_TECTONIC) ? process.env.SPECTRUM_TECTONIC : null;
+
+// the reference figure: every part in the circuit catalogue, each with every pin it offers wires
+const catalogue = JSON.parse(await fs.readFile(new URL('../../frontend/src/diagram/modes/circuitikz/catalogue.json', import.meta.url), 'utf8'))
+  .filter((part) => part.tikz)
+  .map((part) => ({ id: part.id, tikz: part.tikz, kind: part.set ? 'pic' : part.kind, pins: part.pins || [] }));
+const drawsEveryPart = (body) => {
+  assert.ok(body.ok, body.error || body.log);
+  assert.equal(body.log, undefined, 'no part failed');
+  for (const [i, page] of body.pages.entries()) {
+    const part = catalogue[i];
+    assert.equal(page.id, part.id);
+    for (const name of [...(part.kind === 'path' ? ['start', 'end'] : []), ...part.pins]) assert.ok(page.pins.some((p) => p.name === name), `${part.id} has its pin ${name}`);
+  }
+};
+
+test('symbols: every catalogue part draws with all its pins', { skip: needsTex }, async () => {
+  const { body } = await symbols(catalogue);
+  assert.equal(body.engine, 'pdfLaTeX');
+  drawsEveryPart(body);
+});
+
+test('symbols: every catalogue part draws with all its pins in the built-in Tectonic, European', { skip: !tectonic && 'needs SPECTRUM_TECTONIC' }, async () => {
+  const PATH = process.env.PATH;
+  process.env.PATH = '/usr/bin:/bin';
+  try {
+    const { body } = await symbols(catalogue, 'european');
+    assert.equal(body.engine, 'Tectonic');
+    drawsEveryPart(body);
+  } finally {
+    process.env.PATH = PATH;
+  }
+});
 test('symbols: without pdfLaTeX the built-in Tectonic draws them', { skip: !tectonic && 'needs SPECTRUM_TECTONIC' }, async () => {
   const PATH = process.env.PATH;
   // a PATH without TeX: only the built-in Tectonic is left

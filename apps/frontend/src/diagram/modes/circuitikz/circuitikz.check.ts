@@ -3,8 +3,9 @@
 import { symbolGeometry, symbolRequest } from './symbolGeometry';
 import { circuitCode, readStyle, symbolOptions } from './code';
 import { attach, detach, moveBy, newPathPart, paste, remove } from './edit';
-import { PT_PER_GRID, circuitBounds, findJunctions, locator, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
+import { CATALOGUE, PARTS, PT_PER_GRID, circuitBounds, findJunctions, locator, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
 import type { CircuitModel, Shape } from './model';
+import { astable, astable555, bridgeRectifier, centreTapRectifier, commonEmitterStage, conversionRatio, converter, differenceAmplifier, differenceGain, differentiator, feedbackLoop, figure, halfWaveRectifier, hybridPi, integrator, invertingAmplifier, invertingGain, massSpringDamper, monostable, monostable555, nonInvertingAmplifier, nonInvertingGain, rcLadder, summingAmplifier, voltageFollower } from './templates';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -39,8 +40,8 @@ const circuit: CircuitModel = {
 eq(
   circuitCode(circuit, { voltageDir: 'RP', siunitx: true, labels: 'straight', length: 1.2 }).body.split('\n'),
   [
-    '\\begin{circuitikz}[american, voltage dir=RP]',
-    '\\ctikzset{label/align=straight, bipoles/length=1.2cm}',
+    '\\begin{circuitikz}[american, american inductors, american resistors, american voltages, voltage dir=RP]',
+    '\\ctikzset{label/align=straight, diode=empty, bipoles/length=1.2cm}',
     '\\node[op amp, noinv input up, rotate=90, xscale=-1] (U1) at (2,1) {};',
     '\\node[ground] (e7) at (0,-0.5) {};',
     '\\draw (0,0) to[R, mirror, invert, *-o, bipoles/length=1.8cm, name=Rin, l={$R_1$}, a={\\SI{4.7}{\\kilo\\ohm}}, v_<={$v_1$}, i>={$i$}] (2,0);',
@@ -58,7 +59,45 @@ eq(
 eq(circuitCode(circuit, { voltageDir: 'RP', siunitx: true }).packages, ['circuitikz', 'siunitx'], 'siunitx when a value used it');
 eq(circuitCode(circuit, {}).packages, ['circuitikz'], 'no siunitx when it is off');
 eq(circuitCode(circuit, {}).body.includes('a={$4.7<\\kilo\\ohm>$}'), true, 'a value is maths when siunitx is off');
-eq(circuitCode({ elements: [], junctions: [] }, { preset: 'european' }).body, '\\begin{circuitikz}[european]\n\\end{circuitikz}', 'an empty circuit');
+eq(circuitCode({ elements: [], junctions: [] }, { preset: 'european' }).body, '\\begin{circuitikz}[european, european inductors, european resistors, european voltages, voltage dir=noold]\n\\ctikzset{label/align=smart, diode=empty, bipoles/length=1.4cm}\n\\end{circuitikz}', 'an empty circuit: every style key written, defaults too');
+
+// resistor and voltage styles: kept only when they differ from the preset, written as picture keys
+eq(readStyle({ preset: 'european', resistors: 'european', voltages: 'raised' }), { preset: 'european', voltages: 'raised' }, 'the preset’s own resistors are dropped');
+eq(readStyle({ resistors: 'british', voltages: 'curly' }), { preset: 'american' }, 'unknown resistor and voltage styles dropped');
+eq(circuitCode({ elements: [], junctions: [] }, { preset: 'american', resistors: 'european', voltages: 'straight', inductors: 'cute' }).body.split('\n')[0], '\\begin{circuitikz}[american, cute inductors, european resistors, straight voltages, voltage dir=noold]', 'overrides after the preset');
+eq(symbolOptions(readStyle({ resistors: 'european', voltages: 'raised' })), 'american, european resistors', 'resistors change the symbols, voltages don’t');
+
+// text inside a part, flow arrows, Text on its own, and arrowheads on wires
+const blocks: CircuitModel = {
+  elements: [
+    { id: 'g', kind: 'path', type: 'block', a: { x: 0, y: 0 }, b: { x: 8, y: 0 }, text: '$G(s)$', flow: { text: 'P', side: '_', dir: '<' } },
+    { id: 'f', kind: 'path', type: 'lowpass', a: { x: 8, y: 0 }, b: { x: 16, y: 0 }, text: 'ignored' },
+    { id: 'u', kind: 'node', type: 'chip-8', at: { x: 0, y: 12 }, name: 'U1', text: '555' },
+    { id: 't', kind: 'node', type: 'text', at: { x: 4, y: -4 }, text: '$A_v = -10$' },
+    { id: 'r', kind: 'node', type: 'text', at: { x: 4, y: -8 }, rotate: 90, text: 'up' },
+    { id: 's', kind: 'node', type: 'adder', at: { x: 20, y: 0 }, text: 'no' },
+    { id: 'w1', kind: 'wire', points: [{ x: 16, y: 0 }, { part: 's', pin: 'west' }], routes: ['--'], arrows: '->' },
+    { id: 'w2', kind: 'wire', points: [{ part: 'u', pin: 'pin 3' }, { x: -8, y: 0 }], routes: ['-|'], arrows: '<->' }
+  ],
+  junctions: []
+};
+eq(circuitCode(blocks, {}).body.split('\n').slice(2), [
+  '\\node[dipchip, num pins=8] (U1) at (0,3) {555};',
+  '\\node at (1,-1) {$A_v = -10$};',
+  '\\node[rotate=90] at (1,-2) {up};',
+  '\\node[adder] (s) at (5,0) {};',
+  '\\draw (0,0) to[twoport, t={$G(s)$}, f_<={$P$}] (2,0);',
+  '\\draw (2,0) to[lowpass] (4,0);',
+  '\\draw[-latex] (4,0) -- (s.west);',
+  '\\draw[latex-latex] (U1.pin 3) -| (-2,0);',
+  '\\end{circuitikz}'
+], 'text only where a part takes it, Text as a plain node, arrowheads from the core arrows');
+
+// every catalogue part writes a key TeX knows, or is Text; a part's pins are its own
+for (const part of CATALOGUE) {
+  eq(part.tikz ? !/[{}\\;]/.test(part.tikz) : part.id === 'text', true, `${part.id}: a plain circuitikz key or pic`);
+  eq(new Set(part.pins ?? []).size, (part.pins ?? []).length, `${part.id}: its pins are named once`);
+}
 
 const repeatedNames: CircuitModel = {
   elements: [
@@ -161,5 +200,73 @@ const deletedLabel: CircuitModel = { elements: [
   { id: 'r3', kind: 'path', type: 'resistor', a: { x: 0, y: 4 }, b: { x: 8, y: 4 }, label: { text: 'R_3' } }
 ], junctions: [] };
 eq(newPathPart(deletedLabel, 'resistor', { x: 0, y: 8 }, { x: 8, y: 8 }).label?.text, 'R_2', 'a replacement gets an unused label after a deletion');
+
+// ─── templates ───
+
+// the computed labels, against textbook values
+eq([conversionRatio('buck', 0.5), conversionRatio('boost', 0.5), conversionRatio('buck-boost', 0.5)], [0.5, 2, -1], 'M(D) at D = 0.5');
+eq([invertingGain(10e3, 100e3), nonInvertingGain(10e3, 100e3), differenceGain(10e3, 100e3)], [-10, 11, 10], 'op-amp gains');
+eq([figure(astable555(1e3, 10e3, 1e-6).frequency), figure(astable555(1e3, 10e3, 1e-6).duty), figure(monostable555(100e3, 10e-6))], ['68.6', '0.524', '1.1'], '555 frequency, duty and pulse');
+eq([figure(-1), figure(2 / 3), figure(1234.5)], ['-1', '0.667', '1230'], 'three significant figures');
+
+// pins as TeX Live and Tectonic measure them (American), so the dots a template writes are where the canvas puts them
+const measuredPins: Record<string, Record<string, [number, number]>> = {
+  'op-amp': { '-': [-4.76, 1.96], '+': [-4.76, -1.96], out: [4.76, 0] },
+  'op-amp|noinv input up': { '-': [-4.76, -1.96], '+': [-4.76, 1.96], out: [4.76, 0] },
+  npn: { B: [-3.36, 0], C: [0, 3.08], E: [0, -3.08] },
+  'chip-8': Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8].map((n) => [`pin ${n}`, [n <= 4 ? -6.16 : 6.16, [3.36, 1.12, -1.12, -3.36][n <= 4 ? n - 1 : 8 - n]]])),
+  'jump-crossing': { west: [-0.56, 0], east: [0.56, 0], north: [0, 0.56], south: [0, -0.56] },
+  adder: { west: [-1.96, 0], north: [0, 1.96], east: [1.96, 0], south: [0, -1.96] },
+  ground: { center: [0, 0] },
+  'supply-up': { center: [0, 0] },
+  terminal: { center: [0, 0] },
+  'mech-wall': { p: [0, 0] }
+};
+const measuredShape = (type: string, options: string[]): Shape => {
+  const pins = measuredPins[options.includes('noinv input up') ? `${type}|noinv input up` : type];
+  return pins ? { pins: Object.fromEntries(Object.entries(pins).map(([name, [x, y]]) => [name, { x, y }])) } : placeholderShape(type);
+};
+const templates: Record<string, CircuitModel> = {
+  invertingAmplifier: invertingAmplifier(),
+  nonInvertingAmplifier: nonInvertingAmplifier(),
+  voltageFollower: voltageFollower(),
+  summingAmplifier: summingAmplifier(),
+  integrator: integrator(),
+  differentiator: differentiator(),
+  differenceAmplifier: differenceAmplifier(),
+  halfWaveRectifier: halfWaveRectifier(),
+  centreTapRectifier: centreTapRectifier(),
+  bridgeRectifier: bridgeRectifier(),
+  commonEmitterStage: commonEmitterStage(),
+  hybridPi: hybridPi(),
+  astable: astable(),
+  monostable: monostable(),
+  buck: converter('buck'),
+  boost: converter('boost'),
+  buckBoost: converter('buck-boost'),
+  rcLadder: rcLadder(4),
+  feedbackLoop: feedbackLoop(),
+  massSpringDamper: massSpringDamper()
+};
+const spot = (p: { x: number; y: number }) => `${Math.round(p.x * 100) / 100},${Math.round(p.y * 100) / 100}`;
+for (const [name, model] of Object.entries(templates)) {
+  const ids = model.elements.map((el) => el.id);
+  eq(new Set(ids).size, ids.length, `${name}: ids are unique`);
+  for (const el of model.elements) {
+    if (el.kind !== 'wire') eq(PARTS.has(el.type), true, `${name}: ${el.type} is in the catalogue`);
+    const ends = el.kind === 'wire' ? el.points : el.kind === 'path' ? [el.a, el.b] : [];
+    for (const end of ends) {
+      if ('x' in end) continue;
+      const to = model.elements.find((x) => x.id === end.part);
+      eq(!!to && to.kind !== 'wire' && (to.kind === 'path' ? ['a', 'b', ...(PARTS.get(to.type)?.pins ?? [])] : PARTS.get(to.type)?.pins ?? []).includes(end.pin), true, `${name}: ${end.part}.${end.pin} is a pin`);
+    }
+  }
+  const { pos } = locator(model, measuredShape);
+  eq(model.junctions.map((j) => spot(pos(j))).sort(), findJunctions(model, measuredShape).map((j) => spot(pos(j))).sort(), `${name}: its dots are where three or more ends meet`);
+  const lines = circuitCode(model, {}).body.split('\n');
+  eq(lines.length, model.elements.length + model.junctions.length + 3 + lines.filter((l) => l.startsWith('\\tikzset')).length, `${name}: a line for each element and dot`);
+}
+eq(rcLadder(5).elements.filter((el) => el.kind === 'path' && el.type === 'capacitor').length, 5, 'an RC ladder has n stages');
+eq(massSpringDamper().elements.some((el) => el.kind === 'node' && PARTS.get(el.type)?.set === 'spx-mech'), true, 'the mass, spring and damper stands on a supports wall');
 
 console.log('circuitikz.check: ok');

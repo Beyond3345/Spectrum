@@ -8,8 +8,10 @@
   { "id": "capacitor", "label": "Capacitor", "group": "Capacitors and inductors", "kind": "path", "tikz": "C", "defaultLabel": "C" },
   { "id": "polarised-capacitor", "label": "Polarised capacitor", "group": "Capacitors and inductors", "kind": "path", "tikz": "eC", "defaultLabel": "C" },
   { "id": "variable-capacitor", "label": "Variable capacitor", "group": "Capacitors and inductors", "kind": "path", "tikz": "vC", "defaultLabel": "C" },
+  { "id": "curved-capacitor", "label": "Capacitor (curved plate)", "group": "Capacitors and inductors", "kind": "path", "tikz": "cC", "defaultLabel": "C" },
   { "id": "inductor", "label": "Inductor", "group": "Capacitors and inductors", "kind": "path", "tikz": "L", "defaultLabel": "L" },
   { "id": "variable-inductor", "label": "Variable inductor", "group": "Capacitors and inductors", "kind": "path", "tikz": "vL", "defaultLabel": "L" },
+  { "id": "tapped-inductor", "label": "Centre-tapped inductor", "group": "Capacitors and inductors", "kind": "path", "tikz": "L", "pins": ["midtap"], "defaultLabel": "L" },
 
   { "id": "voltage-source", "label": "Voltage source", "group": "Sources", "kind": "path", "tikz": "V", "defaultLabel": "V" },
   { "id": "current-source", "label": "Current source", "group": "Sources", "kind": "path", "tikz": "I", "defaultLabel": "I" },
@@ -18,17 +20,25 @@
   { "id": "controlled-current-source", "label": "Controlled current source", "group": "Sources", "kind": "path", "tikz": "cI", "defaultLabel": "I" },
   { "id": "battery", "label": "Battery", "group": "Sources", "kind": "path", "tikz": "battery", "defaultLabel": "V" },
   { "id": "cell", "label": "Cell", "group": "Sources", "kind": "path", "tikz": "battery1", "defaultLabel": "V" },
+  { "id": "pv-source", "label": "Photovoltaic source", "group": "Sources", "kind": "path", "tikz": "pvsource", "defaultLabel": "V" },
+  { "id": "pv-module", "label": "Photovoltaic module", "group": "Sources", "kind": "path", "tikz": "pvmodule", "defaultLabel": "PV" },
+  { "id": "dc-dc", "label": "DC–DC converter", "group": "Sources", "kind": "path", "tikz": "sdcdc" },
+  { "id": "dc-ac", "label": "Inverter (DC–AC)", "group": "Sources", "kind": "path", "tikz": "sdcac" },
 
   { "id": "switch-open", "label": "Switch (normally open)", "group": "Switches", "kind": "path", "tikz": "nos", "defaultLabel": "S" },
   { "id": "switch-closed", "label": "Switch (normally closed)", "group": "Switches", "kind": "path", "tikz": "ncs", "defaultLabel": "S" },
   { "id": "push-button", "label": "Push button", "group": "Switches", "kind": "path", "tikz": "push button", "defaultLabel": "S" },
+  { "id": "switch-closing", "label": "Switch (closing)", "group": "Switches", "kind": "path", "tikz": "cspst", "defaultLabel": "S" },
+  { "id": "switch-opening", "label": "Switch (opening)", "group": "Switches", "kind": "path", "tikz": "ospst", "defaultLabel": "S" },
   { "id": "changeover-switch", "label": "Changeover switch", "group": "Switches", "kind": "node", "tikz": "spdt", "pins": ["in", "out 1", "out 2"], "defaultLabel": "S" },
 
-  { "id": "diode", "label": "Diode", "group": "Diodes", "kind": "path", "tikz": "D", "defaultLabel": "D" },
-  { "id": "led", "label": "LED", "group": "Diodes", "kind": "path", "tikz": "leD", "defaultLabel": "D" },
-  { "id": "zener", "label": "Zener diode", "group": "Diodes", "kind": "path", "tikz": "zD", "defaultLabel": "D" },
-  { "id": "schottky", "label": "Schottky diode", "group": "Diodes", "kind": "path", "tikz": "sD", "defaultLabel": "D" },
-  { "id": "photodiode", "label": "Photodiode", "group": "Diodes", "kind": "path", "tikz": "pD", "defaultLabel": "D" },
+  { "id": "diode", "label": "Diode", "group": "Diodes and thyristors", "kind": "path", "tikz": "D", "defaultLabel": "D" },
+  { "id": "led", "label": "LED", "group": "Diodes and thyristors", "kind": "path", "tikz": "leD", "defaultLabel": "D" },
+  { "id": "zener", "label": "Zener diode", "group": "Diodes and thyristors", "kind": "path", "tikz": "zD", "defaultLabel": "D" },
+  { "id": "schottky", "label": "Schottky diode", "group": "Diodes and thyristors", "kind": "path", "tikz": "sD", "defaultLabel": "D" },
+  { "id": "photodiode", "label": "Photodiode", "group": "Diodes and thyristors", "kind": "path", "tikz": "pD", "defaultLabel": "D" },
+  { "id": "thyristor", "label": "Thyristor", "group": "Diodes and thyristors", "kind": "path", "tikz": "thyristor", "pins": ["gate"], "defaultLabel": "T" },
+  { "id": "triac", "label": "Triac", "group": "Diodes and thyristors", "kind": "path", "tikz": "triac", "pins": ["gate"], "defaultLabel": "T" },
 
   {
     "id": "npn", "label": "NPN transistor", "group": "Transistors", "kind": "node", "tikz": "npn", "pins": ["B", "C", "E"], "defaultLabel": "Q",
@@ -48,13 +58,18 @@
     "options": [{ "name": "bodydiode", "label": "Body diode" }],
     "enumOptions": [{ "label": "Arrow", "values": [{ "name": "arrowmos", "label": "Shown" }, { "name": "noarrowmos", "label": "Hidden" }] }]
   },
+  { "id": "njfet", "label": "N-channel JFET", "group": "Transistors", "kind": "node", "tikz": "njfet", "pins": ["G", "D", "S"], "defaultLabel": "J" },
+  { "id": "pjfet", "label": "P-channel JFET", "group": "Transistors", "kind": "node", "tikz": "pjfet", "pins": ["G", "D", "S"], "defaultLabel": "J" },
+  { "id": "nigbt", "label": "N-channel IGBT", "group": "Transistors", "kind": "node", "tikz": "nigbt", "pins": ["G", "C", "E"], "defaultLabel": "Q" },
+  { "id": "pigbt", "label": "P-channel IGBT", "group": "Transistors", "kind": "node", "tikz": "pigbt", "pins": ["G", "C", "E"], "defaultLabel": "Q" },
 
   {
-    "id": "op-amp", "label": "Op amp", "group": "Amplifiers", "kind": "node", "tikz": "op amp", "pins": ["-", "+", "out", "up", "down"], "defaultLabel": "U",
+    "id": "op-amp", "label": "Op amp", "group": "Amplifiers and chips", "kind": "node", "tikz": "op amp", "pins": ["-", "+", "out", "up", "down"], "defaultLabel": "U",
     "enumOptions": [{ "label": "Inputs", "values": [{ "name": "noinv input down", "label": "Inverting on top" }, { "name": "noinv input up", "label": "Non-inverting on top" }] }]
   },
-  { "id": "amplifier", "label": "Amplifier", "group": "Amplifiers", "kind": "node", "tikz": "plain mono amp", "pins": ["in", "out"], "defaultLabel": "A" },
-  { "id": "buffer", "label": "Buffer", "group": "Amplifiers", "kind": "node", "tikz": "buffer", "pins": ["in", "out"], "defaultLabel": "U" },
+  { "id": "amplifier", "label": "Amplifier", "group": "Amplifiers and chips", "kind": "node", "tikz": "plain mono amp", "pins": ["in", "out"], "defaultLabel": "A" },
+  { "id": "buffer", "label": "Buffer", "group": "Amplifiers and chips", "kind": "node", "tikz": "buffer", "pins": ["in", "out"], "defaultLabel": "U" },
+  { "id": "chip-8", "label": "Chip (8 pins)", "group": "Amplifiers and chips", "kind": "node", "tikz": "dipchip, num pins=8", "pins": ["pin 1", "pin 2", "pin 3", "pin 4", "pin 5", "pin 6", "pin 7", "pin 8"], "text": true, "defaultLabel": "U" },
 
   { "id": "and", "label": "AND gate", "group": "Logic", "kind": "node", "tikz": "and port", "pins": ["in 1", "in 2", "out"], "defaultLabel": "U" },
   { "id": "or", "label": "OR gate", "group": "Logic", "kind": "node", "tikz": "or port", "pins": ["in 1", "in 2", "out"], "defaultLabel": "U" },
@@ -62,20 +77,53 @@
   { "id": "nand", "label": "NAND gate", "group": "Logic", "kind": "node", "tikz": "nand port", "pins": ["in 1", "in 2", "out"], "defaultLabel": "U" },
   { "id": "nor", "label": "NOR gate", "group": "Logic", "kind": "node", "tikz": "nor port", "pins": ["in 1", "in 2", "out"], "defaultLabel": "U" },
   { "id": "xor", "label": "XOR gate", "group": "Logic", "kind": "node", "tikz": "xor port", "pins": ["in 1", "in 2", "out"], "defaultLabel": "U" },
+  { "id": "xnor", "label": "XNOR gate", "group": "Logic", "kind": "node", "tikz": "xnor port", "pins": ["in 1", "in 2", "out"], "defaultLabel": "U" },
 
   { "id": "ammeter", "label": "Ammeter", "group": "Meters and lamps", "kind": "path", "tikz": "ammeter" },
   { "id": "voltmeter", "label": "Voltmeter", "group": "Meters and lamps", "kind": "path", "tikz": "voltmeter" },
   { "id": "lamp", "label": "Lamp", "group": "Meters and lamps", "kind": "path", "tikz": "lamp", "defaultLabel": "L" },
+  { "id": "round-meter", "label": "Meter", "group": "Meters and lamps", "kind": "path", "tikz": "rmeter", "text": true },
+  { "id": "round-meter-arrow", "label": "Meter with an arrow", "group": "Meters and lamps", "kind": "path", "tikz": "rmeterwa", "text": true },
+  { "id": "oscilloscope", "label": "Oscilloscope", "group": "Meters and lamps", "kind": "path", "tikz": "oscope" },
 
-  { "id": "ground", "label": "Ground", "group": "Ground and supply", "kind": "node", "tikz": "ground", "pins": ["center"] },
-  { "id": "reference-ground", "label": "Reference ground", "group": "Ground and supply", "kind": "node", "tikz": "rground", "pins": ["center"] },
-  { "id": "signal-ground", "label": "Signal ground", "group": "Ground and supply", "kind": "node", "tikz": "sground", "pins": ["center"] },
-  { "id": "supply-up", "label": "Supply (positive)", "group": "Ground and supply", "kind": "node", "tikz": "vcc", "pins": ["center"] },
-  { "id": "supply-down", "label": "Supply (negative)", "group": "Ground and supply", "kind": "node", "tikz": "vee", "pins": ["center"] },
+  { "id": "ground", "label": "Ground", "group": "Ground, supply and terminals", "kind": "node", "tikz": "ground", "pins": ["center"] },
+  { "id": "reference-ground", "label": "Reference ground", "group": "Ground, supply and terminals", "kind": "node", "tikz": "rground", "pins": ["center"] },
+  { "id": "signal-ground", "label": "Signal ground", "group": "Ground, supply and terminals", "kind": "node", "tikz": "sground", "pins": ["center"] },
+  { "id": "supply-up", "label": "Supply (positive)", "group": "Ground, supply and terminals", "kind": "node", "tikz": "vcc", "pins": ["center"] },
+  { "id": "supply-down", "label": "Supply (negative)", "group": "Ground, supply and terminals", "kind": "node", "tikz": "vee", "pins": ["center"] },
+  { "id": "terminal", "label": "Terminal", "group": "Ground, supply and terminals", "kind": "node", "tikz": "ocirc", "pins": ["center"] },
+  { "id": "jump-crossing", "label": "Crossing (jump)", "group": "Ground, supply and terminals", "kind": "node", "tikz": "jump crossing", "pins": ["west", "east", "north", "south"] },
+  { "id": "plain-crossing", "label": "Crossing (plain)", "group": "Ground, supply and terminals", "kind": "node", "tikz": "plain crossing", "pins": ["west", "east", "north", "south"] },
 
   { "id": "transformer", "label": "Transformer", "group": "Transformers", "kind": "node", "tikz": "transformer", "pins": ["A1", "A2", "B1", "B2"], "defaultLabel": "T" },
   { "id": "transformer-core", "label": "Transformer with core", "group": "Transformers", "kind": "node", "tikz": "transformer core", "pins": ["A1", "A2", "B1", "B2"], "defaultLabel": "T" },
 
+  { "id": "spring", "label": "Spring", "group": "Mechanical", "kind": "path", "tikz": "spring", "defaultLabel": "k" },
+  { "id": "damper", "label": "Damper", "group": "Mechanical", "kind": "path", "tikz": "damper", "defaultLabel": "c" },
+  { "id": "mass", "label": "Mass", "group": "Mechanical", "kind": "path", "tikz": "mass", "defaultLabel": "m" },
+  { "id": "inerter", "label": "Inerter", "group": "Mechanical", "kind": "path", "tikz": "inerter", "defaultLabel": "b" },
+  { "id": "viscoelastic", "label": "Viscoelastic element", "group": "Mechanical", "kind": "path", "tikz": "viscoe", "defaultLabel": "c" },
+  { "id": "motor", "label": "Motor or generator", "group": "Mechanical", "kind": "node", "tikz": "elmech", "pins": ["left", "right", "top"], "defaultLabel": "M" },
+
   { "id": "mech-ground", "label": "Ground (hatched)", "group": "Supports", "kind": "node", "set": "spx-mech", "tikz": "spx/mech/ground", "pins": ["p"] },
-  { "id": "mech-pin", "label": "Pinned support", "group": "Supports", "kind": "node", "set": "spx-mech", "tikz": "spx/mech/pin", "pins": ["p"] }
+  { "id": "mech-pin", "label": "Pinned support", "group": "Supports", "kind": "node", "set": "spx-mech", "tikz": "spx/mech/pin", "pins": ["p"] },
+  { "id": "mech-wall", "label": "Wall (hatched)", "group": "Supports", "kind": "node", "set": "spx-mech", "tikz": "spx/mech/wall", "pins": ["p"] },
+  { "id": "mech-ceiling", "label": "Ceiling (hatched)", "group": "Supports", "kind": "node", "set": "spx-mech", "tikz": "spx/mech/ceiling", "pins": ["p"] },
+  { "id": "mech-cart", "label": "Cart on wheels", "group": "Supports", "kind": "node", "set": "spx-mech", "tikz": "spx/mech/cart", "pins": ["left", "right", "top", "bottom"] },
+
+  { "id": "block", "label": "Block", "group": "Blocks", "kind": "path", "tikz": "twoport", "text": true },
+  { "id": "gain", "label": "Gain", "group": "Blocks", "kind": "path", "tikz": "amp", "text": true },
+  { "id": "lowpass", "label": "Low-pass filter", "group": "Blocks", "kind": "path", "tikz": "lowpass" },
+  { "id": "highpass", "label": "High-pass filter", "group": "Blocks", "kind": "path", "tikz": "highpass" },
+  { "id": "bandpass", "label": "Band-pass filter", "group": "Blocks", "kind": "path", "tikz": "bandpass" },
+  { "id": "adc", "label": "Analogue-to-digital converter", "group": "Blocks", "kind": "path", "tikz": "adc" },
+  { "id": "dsp", "label": "Digital signal processor", "group": "Blocks", "kind": "path", "tikz": "dsp" },
+  { "id": "adder", "label": "Adder", "group": "Blocks", "kind": "node", "tikz": "adder", "pins": ["west", "north", "east", "south"] },
+  { "id": "mixer", "label": "Mixer", "group": "Blocks", "kind": "node", "tikz": "mixer", "pins": ["west", "north", "east", "south"] },
+  { "id": "oscillator", "label": "Oscillator", "group": "Blocks", "kind": "node", "tikz": "oscillator", "pins": ["west", "north", "east", "south"] },
+  { "id": "antenna", "label": "Antenna", "group": "Blocks", "kind": "node", "tikz": "antenna", "pins": ["center"] },
+  { "id": "rx-antenna", "label": "Receiving antenna", "group": "Blocks", "kind": "node", "tikz": "rxantenna", "pins": ["center"] },
+  { "id": "tx-antenna", "label": "Transmitting antenna", "group": "Blocks", "kind": "node", "tikz": "txantenna", "pins": ["center"] },
+
+  { "id": "text", "label": "Text", "group": "Text", "kind": "node", "tikz": "", "text": true }
 ]

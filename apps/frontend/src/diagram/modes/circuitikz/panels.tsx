@@ -114,6 +114,12 @@ const ROUTES: [Route, string][] = [
   ['-|', 'Across, then up or down'],
   ['|-', 'Up or down, then across']
 ];
+const ARROWS: [string, string][] = [
+  ['', 'None'],
+  ['->', 'At the end'],
+  ['<-', 'At the start'],
+  ['<->', 'At both ends']
+];
 
 /** TikZ node names: letters, digits, - and _ */
 const cleanName = (text: string) => text.replace(/[^A-Za-z0-9_-]/g, '');
@@ -229,6 +235,11 @@ export function CircuitInspector({ model: raw, onChange }: { model: CircuitModel
   return (
     <div className="ckt-inspector">
       <div className="ckt-inspector-title">{part?.label || el.type}</div>
+      {part?.text && (
+        <Field label="Text" hint={el.kind === 'path' ? 'Written inside the symbol. Type $…$ for maths.' : 'TeX, as typed: $…$ for maths.'}>
+          {(id) => <input id={id} className="input mono" value={el.text || ''} onChange={(e) => update({ ...el, text: e.target.value || undefined })} spellCheck={false} />}
+        </Field>
+      )}
       {el.kind === 'path' ? (
         <>
           <Field label="Label" hint="Maths unless you type your own $…$.">
@@ -252,6 +263,7 @@ export function CircuitInspector({ model: raw, onChange }: { model: CircuitModel
           </Field>
           <MarkFields label="Voltage" mark={el.voltage} onChange={(voltage) => update({ ...el, voltage })} />
           <MarkFields label="Current" mark={el.current} onChange={(current) => update({ ...el, current })} />
+          <MarkFields label="Flow" mark={el.flow} onChange={(flow) => update({ ...el, flow })} hint="An arrow beside the part, for power or heat flow." />
           <Field label="Poles">
             {() => (
               <div className="ckt-row">
@@ -328,6 +340,9 @@ function WireInspector({ el, update, actions }: { el: Wire; update: (el: Element
           {() => <Select value={route} options={ROUTES} onChange={(value) => update({ ...el, routes: el.routes.map((r, j) => (j === i ? (value as Route) : r)) })} />}
         </Field>
       ))}
+      <Field label="Arrowheads">
+        {() => <Select value={el.arrows || ''} options={ARROWS} onChange={(value) => update({ ...el, arrows: (value || undefined) as Wire['arrows'] })} />}
+      </Field>
       {actions}
     </div>
   );
@@ -367,6 +382,34 @@ export function CircuitStyleMenu({ style: raw, onChange }: { style: Record<strin
               ['european', 'European (filled box)']
             ]}
             onChange={(inductors) => set({ inductors: inductors || undefined })}
+          />
+        )}
+      </Field>
+      <Field label="Resistors">
+        {() => (
+          <Select
+            value={style.resistors || ''}
+            options={[
+              ['', 'As the symbols'],
+              ['american', 'American (zigzag)'],
+              ['european', 'European (box)']
+            ]}
+            onChange={(resistors) => set({ resistors: resistors || undefined })}
+          />
+        )}
+      </Field>
+      <Field label="Voltages">
+        {() => (
+          <Select
+            value={style.voltages || ''}
+            options={[
+              ['', 'As the symbols'],
+              ['american', '+ and − (American)'],
+              ['european', 'Curved arrow (European)'],
+              ['straight', 'Straight arrow'],
+              ['raised', '+ and −, raised']
+            ]}
+            onChange={(voltages) => set({ voltages: voltages || undefined })}
           />
         )}
       </Field>

@@ -24,10 +24,18 @@ export interface CataloguePart {
   pins?: string[];
   /** the letter new parts are numbered with: R gives R_1, R_2 */
   defaultLabel?: string;
+  /** takes text inside: a node's content, a path part's t=…; with no tikz key, a node that is only its text */
+  text?: boolean;
 }
 
 export const CATALOGUE = catalogueData as CataloguePart[];
 export const PARTS = new Map(CATALOGUE.map((part) => [part.id, part]));
+/** The catalogue as the first 2.0 builds knew it: a drawing with any other part is a version 2 file, which they open as code. */
+const FIRST_PARTS = new Set(['resistor', 'variable-resistor', 'potentiometer', 'impedance', 'fuse', 'capacitor', 'polarised-capacitor', 'variable-capacitor', 'inductor', 'variable-inductor', 'voltage-source', 'current-source', 'ac-source', 'controlled-voltage-source', 'controlled-current-source', 'battery', 'cell', 'switch-open', 'switch-closed', 'push-button', 'changeover-switch', 'diode', 'led', 'zener', 'schottky', 'photodiode', 'npn', 'pnp', 'nmos', 'pmos', 'op-amp', 'amplifier', 'buffer', 'and', 'or', 'not', 'nand', 'nor', 'xor', 'ammeter', 'voltmeter', 'lamp', 'ground', 'reference-ground', 'signal-ground', 'supply-up', 'supply-down', 'transformer', 'transformer-core', 'mech-ground', 'mech-pin']);
+export const usesNewerParts = (model: unknown) => asCircuit(model).elements.some((el) => el.kind !== 'wire' && !FIRST_PARTS.has(el.type));
+
+/** A part TeX draws a symbol for: all but Text, which the canvas writes itself. */
+export const drawsSymbol = (type: string) => !!PARTS.get(type)?.tikz;
 
 /** one grid step, 0.25 cm */
 export const GRID_CM = 0.25;
@@ -69,6 +77,10 @@ export interface PathPart {
   value?: string;
   voltage?: Mark;
   current?: Mark;
+  /** a flow arrow, circuitikz's f= */
+  flow?: Mark;
+  /** written inside the symbol, for a part that takes text */
+  text?: string;
 }
 
 export interface NodePart {
@@ -82,6 +94,8 @@ export interface NodePart {
   flipY?: boolean;
   name?: string;
   options?: string[];
+  /** the node's content, for a part that takes text: TeX as typed */
+  text?: string;
 }
 
 export interface Wire {
@@ -91,6 +105,8 @@ export interface Wire {
   points: End[];
   /** one per segment */
   routes: Route[];
+  /** arrowheads, for signal flow in block diagrams */
+  arrows?: '->' | '<-' | '<->';
 }
 
 export type Element = PathPart | NodePart | Wire;

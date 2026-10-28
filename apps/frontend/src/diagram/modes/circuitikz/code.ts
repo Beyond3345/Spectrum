@@ -10,6 +10,11 @@ export interface CircuitStyle {
   preset: 'american' | 'european';
   /** left out: the preset's own */
   inductors?: 'cute' | 'american' | 'european';
+  /** left out: the preset's own */
+  resistors?: 'american' | 'european';
+  /** how a voltage is marked: + and − (american), an arrow (european), a straight arrow, or + and − raised off the
+   * part; left out: the preset's own */
+  voltages?: 'american' | 'european' | 'straight' | 'raised';
   /** left out: circuitikz's default, noold */
   voltageDir?: 'noold' | 'RP' | 'EF';
   /** values typed as 4.7<\kilo\ohm> are written with siunitx's \SI */
@@ -31,6 +36,8 @@ const oneOf = <T extends string>(value: unknown, allowed: readonly T[]): T | und
 export function readStyle(raw: Record<string, unknown>): CircuitStyle {
   const preset = raw.preset === 'european' ? 'european' : 'american';
   const inductors = oneOf(raw.inductors, ['cute', 'american', 'european'] as const);
+  const resistors = oneOf(raw.resistors, ['american', 'european'] as const);
+  const voltages = oneOf(raw.voltages, ['american', 'european', 'straight', 'raised'] as const);
   const voltageDir = oneOf(raw.voltageDir, ['RP', 'EF'] as const);
   const diodes = oneOf(raw.diodes, ['full', 'stroke'] as const);
   const labels = oneOf(raw.labels, ['straight', 'rotate'] as const);
@@ -38,6 +45,8 @@ export function readStyle(raw: Record<string, unknown>): CircuitStyle {
   return {
     preset,
     ...(inductors && inductors !== preset ? { inductors } : null),
+    ...(resistors && resistors !== preset ? { resistors } : null),
+    ...(voltages && voltages !== preset ? { voltages } : null),
     ...(voltageDir ? { voltageDir } : null),
     ...(raw.siunitx === true ? { siunitx: true } : null),
     ...(diodes ? { diodes } : null),
@@ -56,6 +65,7 @@ export function symbolOptions(style: CircuitStyle) {
   return [
     style.preset,
     style.inductors && `${style.inductors} inductors`,
+    style.resistors && `${style.resistors} resistors`,
     style.diodes && `diode=${style.diodes}`,
     style.length && `bipoles/length=${num(style.length)}cm`
   ]
@@ -63,11 +73,20 @@ export function symbolOptions(style: CircuitStyle) {
     .join(', ');
 }
 
-/** TikZ-level keys go on the picture; circuitikz's own go in \ctikzset at its start. */
+/**
+ * TikZ-level keys go on the picture; circuitikz's own go in \ctikzset at its start. Every key is written, defaults
+ * too, so a document's own circuitikz options or \ctikzset can't make the PDF differ from the preview.
+ */
 function styleCode(style: CircuitStyle) {
-  const picture = [style.preset, style.inductors && `${style.inductors} inductors`, style.voltageDir && `voltage dir=${style.voltageDir}`].filter(Boolean);
-  const ctikz = [style.labels && `label/align=${style.labels}`, style.diodes && `diode=${style.diodes}`, style.length && `bipoles/length=${num(style.length)}cm`].filter(Boolean);
-  return { picture: picture.join(', '), ctikz: ctikz.length ? `\\ctikzset{${ctikz.join(', ')}}` : '' };
+  const picture = [
+    style.preset,
+    `${style.inductors || style.preset} inductors`,
+    `${style.resistors || style.preset} resistors`,
+    `${style.voltages || style.preset} voltages`,
+    `voltage dir=${style.voltageDir || 'noold'}`
+  ];
+  const ctikz = [`label/align=${style.labels || 'smart'}`, `diode=${style.diodes || 'empty'}`, `bipoles/length=${num(style.length || DEFAULT_LENGTH)}cm`];
+  return { picture: picture.join(', '), ctikz: `\\ctikzset{${ctikz.join(', ')}}` };
 }
 
 /** Text the user typed is maths unless it brings its own $…$. */
@@ -122,7 +141,8 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
   };
   const mark = (letter: string, m: Mark | undefined) => (m?.text.trim() ? `${letter}${m.side || ''}${m.dir || ''}={${value(m.text)}}` : '');
 
-  // the order circuitikz reads them in: part, options, mirror, invert, poles, size, name, label, voltage, current
+  // the order circuitikz reads them in: part, options, mirror, invert, poles, size, name, text, label, voltage,
+  // current, flow
   const pathCode = (el: PathPart) => {
     const part = PARTS.get(el.type);
     const [from, to] = el.poles || ['', ''];
@@ -135,10 +155,12 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
       (from || to) && `${from}-${to}`,
       size,
       (el.name || named.has(el.id)) && `name=${nameOf(el)}`,
+      part?.text && el.text?.trim() && `t={${el.text}}`,
       el.label?.text.trim() && `l${el.label.side === '_' ? '_' : ''}={${maths(el.label.text)}}`,
       el.value?.trim() && `a={${value(el.value)}}`,
       mark('v', el.voltage),
-      mark('i', el.current)
+      mark('i', el.current),
+      mark('f', el.flow)
     ].filter(Boolean);
     return `\\draw ${at(el.a)} to[${keys.join(', ')}] ${at(el.b)};`;
   };
@@ -149,9 +171,11 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
     const turns = [rotate && `rotate=${rotate}`, el.flipX && 'xscale=-1', el.flipY && 'yscale=-1'].filter(Boolean);
     const name = el.name || named.has(el.id) ? ` (${nameOf(el)})` : '';
     if (part?.set) return `\\pic${turns.length ? `[${turns.join(', ')}]` : ''}${name} at ${at(el.at)} {${part.tikz}};`;
-    const keys = [part?.tikz || 'circ', ...(el.options || []), ...turns];
-    return `\\node[${keys.join(', ')}]${name} at ${at(el.at)} {};`;
+    // Text is a plain node: its keys are only the turns
+    const keys = [...(part && !part.tikz ? [] : [part?.tikz || 'circ']), ...(el.options || []), ...turns];
+    return `\\node${keys.length ? `[${keys.join(', ')}]` : ''}${name} at ${at(el.at)} {${part?.text ? el.text || '' : ''}};`;
   };
+  const arrowKey = { '->': '-latex', '<-': 'latex-', '<->': 'latex-latex' };
 
   const { picture, ctikz } = styleCode(style);
   // the other sets' pictures this drawing uses, in the catalogue's order
@@ -165,10 +189,10 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
     ...model.elements.filter((el): el is PathPart => el.kind === 'path').map(pathCode),
     ...model.elements
       .filter((el): el is Wire => el.kind === 'wire' && el.points.length > 1)
-      .map((el) => `\\draw ${el.points.map((p, i) => (i ? `${el.routes[i - 1] || '--'} ${at(p)}` : at(p))).join(' ')};`),
+      .map((el) => `\\draw${el.arrows ? `[${arrowKey[el.arrows]}]` : ''} ${el.points.map((p, i) => (i ? `${el.routes[i - 1] || '--'} ${at(p)}` : at(p))).join(' ')};`),
     ...model.junctions.map((j) => `\\node[circ] at ${at(j)} {};`)
   ];
-  const body = [`\\begin{circuitikz}[${picture}]`, ...(ctikz ? [ctikz] : []), ...definitions, ...lines, '\\end{circuitikz}'].join('\n');
+  const body = [`\\begin{circuitikz}[${picture}]`, ctikz, ...definitions, ...lines, '\\end{circuitikz}'].join('\n');
   const packages = [...new Set(['circuitikz', ...sets.flatMap((set) => set.packages), ...(siunitxUsed ? ['siunitx'] : [])])];
   return { body, packages, libraries: [...new Set(sets.flatMap((set) => set.libraries))] };
 }
