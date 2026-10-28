@@ -8,10 +8,12 @@ import Icon from '../app/Icon';
 import { MenuButton } from '../app/Menu';
 import Tabs from '../app/Tabs';
 import { toast } from '../app/Toast';
-import { effectiveCompile, llmConfigFor, loadSettings, useSettings } from '../app/settings';
+import Sheet from '../app/Sheet';
+import { composerDefaults, effectiveCompile, llmConfigFor, loadSettings, useSettings } from '../app/settings';
 import { formatShortcut, matchesShortcut } from '../app/shortcuts';
 import { parseCompileLog } from '../editor/compileLog';
 import { conflictCopyPath } from '../editor/heldFiles';
+import { loadedLibraries, projectPackages } from '../editor/preamble';
 import { errorText } from '../editor/shared';
 import CodePane from './CodePane';
 import { CanvasControls, CanvasPrefsContext } from './FlowCanvas';
@@ -24,11 +26,14 @@ import type { DiagramCode } from './fileFormat';
 import { MODES, modeFor } from './modes';
 import { RASTER_SCALE, renderMermaid, svgToPng } from './modes/mermaid/render';
 import { pngToPdf } from './modes/mermaid/pdf';
+import { SETS, clashesWith, documentLoads, setLoads } from './sets';
+import { CATEGORIES, MODE_FACTS, STARTERS, search, sectionsFor, starterFor, usedNow } from './starters';
+import type { CategoryId, Section, Starter } from './starters';
 import type { DiagramFile, DiagramLanguage, DiagramMode } from './types';
 import './composer.css';
 
-// The diagram composer, in its own window: a chooser for a new diagram, then the canvas (Draw) and the file (Code),
-// the compiled preview below, saved as you go to figures/<name>.tex, .typ or .mmd
+// The diagram composer, in its own window: a chooser for a new diagram (a gallery of starters by category), then the
+// canvas (Draw) and the file (Code), the compiled preview below, saved as you go to figures/<name>.tex, .typ or .mmd
 
 /** Messages to the main window: a diagram to insert as a figure, and a diagram file saved. */
 type DiagramMessage =
@@ -75,49 +80,53 @@ function loadPrefs(): CanvasPrefs {
   }
 }
 
-export default function ComposerApp({ projectId, file, lang }: { projectId: string; file?: string; lang?: DiagramLanguage }) {
+/** tool: the rail's tool a new drawing opens with, when the chooser found it through one of its symbols */
+export default function ComposerApp({ projectId, file, lang, tool }: { projectId: string; file?: string; lang?: DiagramLanguage; tool?: string }) {
   // another file, or a new diagram, starts afresh
   return (
     <ProjectContext.Provider value={projectId}>
-      {file ? <Composer key={`${projectId}\n${file}`} projectId={projectId} path={file} /> : <Chooser key={projectId} projectId={projectId} lang={lang} />}
+      {file ? <Composer key={`${projectId}\n${file}`} projectId={projectId} path={file} tool={tool} /> : <Chooser key={projectId} projectId={projectId} lang={lang} />}
     </ProjectContext.Provider>
   );
 }
 
 // ─── the chooser ───
 
-const BLURBS: Record<string, string> = {
-  circuitikz: 'Resistors, sources, switches, transistors and gates, wired on a grid',
-  pgfplots: 'Functions and data from the project, on axes',
-  tikz: 'Flowcharts and block diagrams: boxes and arrows',
-  'tikz-cd': 'Maths objects on a grid, with labelled arrows'
-};
-const BASE_NAMES: Record<string, string> = { circuitikz: 'circuit', pgfplots: 'plot', tikz: 'diagram', 'tikz-cd': 'square', mermaid: 'mermaid', fletcher: 'flow' };
+const LANGUAGE_BADGE: Record<DiagramLanguage, string> = { tikz: 'TikZ', typst: 'Typst', mermaid: 'Mermaid' };
+const EXTENSION: Record<DiagramLanguage, string> = { tikz: 'tex', typst: 'typ', mermaid: 'mmd' };
 const NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+
+type View = 'recent' | 'all' | CategoryId;
+/** a starter, and the tool its drawing opens with when it was chosen through one of its symbols */
+type Choice = { starter: Starter; tool?: string };
+const sameChoice = (a: Choice | null, b: Choice | null) => !!a && !!b && a.starter.id === b.starter.id && a.tool === b.tool;
+
+/** The starters this build lists: the Form frame's test only in development. */
+const LISTED = STARTERS.filter((s) => !s.dev || import.meta.env.DEV);
 
 function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguage }) {
   const navigate = useNavigate();
-  const tikzModes = MODES.filter((m) => m.language === 'tikz');
-  const [kind, setKind] = useState<'tikz' | 'typst' | 'mermaid'>(lang === 'mermaid' ? 'mermaid' : lang === 'typst' ? 'typst' : 'tikz');
-  const [pkg, setPkg] = useState(tikzModes[0]?.id ?? 'tikz');
+  const [settings, updateSettings] = useSettings();
+  const recent = settings.composerRecent.flatMap((id) => LISTED.filter((s) => s.id === id));
+  const [view, setView] = useState<View>(recent.length ? 'recent' : 'all');
+  const [query, setQuery] = useState('');
+  const [choice, setChoice] = useState<Choice | null>(() => {
+    const first = lang === 'typst' ? starterFor('flowchart-typst') : recent[0] ?? starterFor('circuit');
+    return first ? { starter: first } : null;
+  });
   const [typstBuiltIn, setTypstBuiltIn] = useState<boolean | null>(null);
   const [typstVersion, setTypstVersion] = useState('');
   const [taken, setTaken] = useState<Set<string> | null>(null);
   const [typed, setTyped] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const mode = kind === 'mermaid' ? modeFor('mermaid') : kind === 'typst' ? modeFor('fletcher') : modeFor(pkg);
-  const ext = kind === 'mermaid' ? 'mmd' : kind === 'typst' ? 'typ' : 'tex';
+  const searchRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     getEngines().then((engines) => setTypstBuiltIn(!!engines.typst.builtIn)).catch(() => setTypstBuiltIn(false));
     // the version the editor compiles with: the project's pin, else the app's default
     getProjectSettings(projectId).then(({ settings }) => setTypstVersion(effectiveCompile(settings.compile, loadSettings().compileDefaults).typstVersion || '')).catch(() => undefined);
   }, [projectId]);
-  // a free name to start with, until one is typed
-  const base = BASE_NAMES[mode?.id ?? ''] ?? 'diagram';
-  let free = 1;
-  while (taken?.has(`${base}-${free}`)) free += 1;
-  const name = typed ?? (taken ? `${base}-${free}` : '');
 
   useEffect(() => {
     document.title = 'Draw a diagram';
@@ -126,39 +135,104 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
       .catch(() => setTaken(new Set()));
   }, [projectId]);
 
-  const create = async () => {
-    if (!mode) return;
+  const languageOf = (s: Starter) => MODE_FACTS[s.mode].language;
+  // what the open document can take comes first: a Typst document's own diagrams, otherwise the rest
+  const fits = (s: Starter) => (lang === 'typst') === (languageOf(s) === 'typst');
+  const fitFirst = (list: Starter[]) => [...list].sort((a, b) => Number(fits(b)) - Number(fits(a)));
+  const unavailable = (s: Starter) => (languageOf(s) === 'typst' && typstBuiltIn !== true ? 'Needs Spectrum’s built-in Typst' : '');
+
+  const found = query.trim() ? search(query, LISTED) : null;
+  const sections: Section[] = found
+    ? found.starters.length
+      ? [{ id: 'found', label: 'Diagrams', starters: fitFirst(found.starters) }]
+      : []
+    : view === 'recent'
+      ? [{ id: 'recent', label: 'Recently used', starters: recent }]
+      : sectionsFor(view, LISTED).map((section) => ({ ...section, starters: fitFirst(section.starters) }));
+  // every card and symbol in the order shown, for the arrow keys
+  const choices: Choice[] = [
+    ...sections.flatMap((section) => section.starters.map((starter) => ({ starter }))),
+    ...(found?.symbols ?? []).map(({ starter, symbol }) => ({ starter, tool: `part:${symbol.id}` }))
+  ].filter((c) => !unavailable(c.starter));
+  // the choice stays while it's shown; a search picks its first match
+  const chosen = choices.find((c) => sameChoice(c, choice)) ?? (found ? choices[0] : null) ?? null;
+  const mode = chosen ? modeFor(chosen.starter.mode) : undefined;
+  const ext = EXTENSION[mode?.language ?? 'tikz'];
+
+  // a free name to start with, until one is typed
+  const base = chosen?.starter.file ?? 'diagram';
+  let free = 1;
+  while (taken?.has(`${base}-${free}`)) free += 1;
+  const name = typed ?? (taken ? `${base}-${free}` : '');
+
+  const create = async (pick = chosen) => {
+    const m = pick && modeFor(pick.starter.mode);
+    if (!pick || !m) return;
     if (!NAME.test(name)) {
       setError('Use letters, digits, - and _ only, starting with a letter or digit, so your document can find the file.');
       return;
     }
-    const path = `figures/${name}.${ext}`;
+    const path = `figures/${name}.${EXTENSION[m.language]}`;
     setBusy(true);
     setError('');
     try {
-      const diagram: DiagramFile = { language: mode.language, ...(mode.language === 'tikz' && { pkg: mode.id as DiagramFile['pkg'] }), style: {}, model: mode.emptyModel(), version: 1 };
-      await writeFile(projectId, path, await diagramFileText(diagram, mode.toCode(diagram.model, diagram.style, { typstVersion })), { create: true, typed: true });
+      const model = pick.starter.model?.() ?? m.emptyModel();
+      const diagram: DiagramFile = {
+        language: m.language,
+        ...(m.language === 'tikz' && { pkg: m.id as DiagramFile['pkg'] }),
+        // the conventions it uses, as Settings › Composer has them now, so changing them there never redraws it
+        style: m.newStyle?.(composerDefaults(settings), model) ?? {},
+        model,
+        ...(pick.starter.sets?.length && { sets: pick.starter.sets }),
+        version: 1
+      };
+      await writeFile(projectId, path, await diagramFileText(diagram, m.toCode(diagram.model, diagram.style, { typstVersion })), { create: true, typed: true });
+      updateSettings({ composerRecent: usedNow(settings.composerRecent, pick.starter.id) });
       post({ type: 'saved', projectId, path });
-      navigate(`/diagram?${new URLSearchParams({ project: projectId, file: path, lang: mode.language })}`, { replace: true });
+      navigate(`/diagram?${new URLSearchParams({ project: projectId, file: path, lang: m.language, ...(pick.tool && { tool: pick.tool }) })}`, { replace: true });
     } catch (err) {
-      setError(err instanceof ApiError && err.status === 409 ? `There’s already a figures/${name}.${ext}. Choose another name.` : errorText(err));
+      setError(err instanceof ApiError && err.status === 409 ? `There’s already a ${path}. Choose another name.` : errorText(err));
       setBusy(false);
     }
   };
 
-  const card = (value: 'tikz' | 'typst' | 'mermaid', title: string, text: string, disabled = false) => (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={kind === value}
-      disabled={disabled}
-      className={`chooser-card${kind === value ? ' active' : ''}`}
-      onClick={() => !disabled && setKind(value)}
-    >
-      <span className="chooser-card-title">{title}</span>
-      <span className="chooser-card-text">{text}</span>
-    </button>
-  );
+  const choose = (next: Choice) => {
+    setChoice(next);
+    setError('');
+  };
+  /** the arrow keys move through the cards and symbols, from the search field too */
+  const step = (by: number) => {
+    if (!choices.length) return;
+    const at = choices.findIndex((c) => sameChoice(c, chosen));
+    choose(choices[Math.min(choices.length - 1, Math.max(0, at + by))]);
+    window.setTimeout(() => galleryRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }));
+  };
+
+  const card = (starter: Starter) => {
+    const reason = unavailable(starter);
+    const selected = sameChoice(chosen, { starter });
+    return (
+      <button
+        key={starter.id}
+        type="button"
+        role="option"
+        aria-selected={selected}
+        disabled={!!reason}
+        className={`chooser-card${selected ? ' active' : ''}`}
+        onClick={() => choose({ starter })}
+        onDoubleClick={() => create({ starter })}
+      >
+        <span className="chooser-card-top">
+          <span className="chooser-card-title">{starter.title}</span>
+          <span className="chip">{LANGUAGE_BADGE[languageOf(starter)]}</span>
+        </span>
+        <span className="chooser-card-text">{reason || starter.blurb}</span>
+        <span className="chooser-card-packages">{MODE_FACTS[starter.mode].packages.join(', ')}</span>
+      </button>
+    );
+  };
+
+  const views: [View, string][] = [...(recent.length ? [['recent', 'Recently used'] as [View, string]] : []), ['all', 'All'], ...CATEGORIES.map((c): [View, string] => [c.id, c.label])];
 
   return (
     <div className="diagram-app">
@@ -169,26 +243,76 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
           e.preventDefault();
           create();
         }}
+        onKeyDown={(e) => {
+          const target = e.target as HTMLElement;
+          const field = !!target.closest('input, textarea');
+          const name = field && target !== searchRef.current;
+          if (!name && (e.key === 'ArrowDown' || e.key === 'ArrowRight')) step(1);
+          else if (!name && (e.key === 'ArrowUp' || e.key === 'ArrowLeft')) step(-1);
+          // typing goes to search
+          else if (!field && e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            searchRef.current?.focus();
+            return;
+          } else return;
+          e.preventDefault();
+        }}
       >
         <h1>Draw a diagram</h1>
-        <div className="chooser-cards" role="radiogroup" aria-label="Kind of diagram">
-          {card('tikz', 'TikZ diagram', 'Compiled by LaTeX, so its labels use your document’s fonts and maths')}
-          {card('typst', 'Typst diagram', 'Flowcharts and block diagrams drawn with fletcher', typstBuiltIn !== true)}
-          {card('mermaid', 'Mermaid diagram', 'Flowcharts, sequence diagrams and Gantt charts, written as text')}
-        </div>
-        {kind === 'tikz' && (
-          <div className="chooser-packages" role="radiogroup" aria-label="TikZ package">
-            {tikzModes.map((m) => (
-              <label key={m.id} className={`chooser-package${pkg === m.id ? ' active' : ''}`}>
-                <input type="radio" name="package" checked={pkg === m.id} onChange={() => setPkg(m.id)} />
-                <span>
-                  <span className="chooser-package-title">{m.label}</span>
-                  {BLURBS[m.id] && <span className="chooser-card-text">{BLURBS[m.id]}</span>}
-                </span>
-              </label>
+        <input
+          ref={searchRef}
+          className="input chooser-search"
+          type="search"
+          placeholder="Search diagrams and symbols"
+          aria-label="Search diagrams and symbols"
+          value={query}
+          spellCheck={false}
+          autoFocus
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <div className="chooser-body">
+          {!found && (
+            <nav className="chooser-views" aria-label="Diagrams by category">
+              {views.map(([value, label]) => (
+                <button key={value} type="button" className={`chooser-view${view === value ? ' active' : ''}`} aria-pressed={view === value} onClick={() => setView(value)}>
+                  {label}
+                </button>
+              ))}
+            </nav>
+          )}
+          <div className="chooser-gallery" ref={galleryRef} role="listbox" aria-label="Kind of diagram">
+            {sections.map((section) => (
+              <section key={section.id} className="chooser-section">
+                <h3>{section.label}</h3>
+                <div className="chooser-cards">{section.starters.map(card)}</div>
+              </section>
             ))}
+            {!!found?.symbols.length && (
+              <section className="chooser-section">
+                <h3>Symbols</h3>
+                <div className="chooser-symbols">
+                  {found.symbols.map(({ starter, symbol }) => {
+                    const c = { starter, tool: `part:${symbol.id}` };
+                    const selected = sameChoice(chosen, c);
+                    return (
+                      <button
+                        key={`${starter.id} ${symbol.id}`}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        className={`chooser-symbol${selected ? ' active' : ''}`}
+                        onClick={() => choose(c)}
+                        onDoubleClick={() => create(c)}
+                      >
+                        {symbol.label}, in {starter.title}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+            {found && !choices.length && <div className="diagram-hint">No diagram or symbol matches ‘{query.trim()}’</div>}
           </div>
-        )}
+        </div>
         <div className="field">
           <label htmlFor="diagram-name">Name</label>
           <div className="chooser-name">
@@ -198,7 +322,6 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
               className="input"
               value={name}
               spellCheck={false}
-              autoFocus
               onChange={(e) => {
                 setTyped(e.target.value.trim());
                 setError('');
@@ -254,7 +377,7 @@ async function openDiagram(projectId: string, path: string): Promise<Loaded> {
 
 const snapshotOf = (diagram: DiagramFile) => JSON.stringify({ style: diagram.style, model: diagram.model });
 
-function Composer({ projectId, path }: { projectId: string; path: string }) {
+function Composer({ projectId, path, tool }: { projectId: string; path: string; tool?: string }) {
   const navigate = useNavigate();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [loadError, setLoadError] = useState('');
@@ -301,6 +424,7 @@ function Composer({ projectId, path }: { projectId: string; path: string }) {
       projectId={projectId}
       path={path}
       loaded={loaded}
+      initialTool={tool}
       onReload={() => {
         setLoaded(null);
         setReloads((n) => n + 1);
@@ -309,7 +433,7 @@ function Composer({ projectId, path }: { projectId: string; path: string }) {
   );
 }
 
-function Editor({ projectId, path, loaded, onReload }: { projectId: string; path: string; loaded: Loaded; onReload(): void }) {
+function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId: string; path: string; loaded: Loaded; initialTool?: string; onReload(): void }) {
   const [settings] = useSettings();
   const [doc, setDoc] = useState<Doc>(loaded.doc);
   const mode: DiagramMode<any> | undefined = doc.diagram ? modeFor(doc.diagram.language === 'mermaid' ? 'mermaid' : doc.diagram.language === 'typst' ? 'fletcher' : doc.diagram.pkg) : undefined;
@@ -320,7 +444,8 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
   // the hand-edit banner: shown on opening an edited file, and from the first keystroke in the Code tab
   const [editedNote, setEditedNote] = useState(loaded.edited);
   const [selection, setSelection] = useState<string[]>([]);
-  const [tool, setTool] = useState('select');
+  const [tool, setTool] = useState(initialTool || 'select');
+  const [setsOpen, setSetsOpen] = useState(false);
   const [prefs, setPrefs] = useState(loadPrefs);
   const [styleOpen, setStyleOpen] = useState(false);
   const [preview, setPreview] = useState<PreviewState>({ state: 'idle', errors: [], log: '' });
@@ -596,7 +721,10 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
       } else if (language === 'typst') {
         post({ type: 'insert', projectId, path, language, packages: [], libraries: [] });
       } else {
-        post({ type: 'insert', projectId, path, language, ...loadsOf(text) });
+        // its packages and libraries merged, TikZ's babel library added and what Spectrum never writes left out
+        const { refused, ...loads } = documentLoads('tikz', loadsOf(text));
+        if (refused.length) toast(`${name} loads ${refused.join(', ')}, which Spectrum leaves out of your document’s preamble.`);
+        post({ type: 'insert', projectId, path, language, ...loads });
       }
       toast('The figure is ready to insert in the editor’s Floats panel.', { tone: 'success' });
     } catch (err) {
@@ -809,8 +937,26 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
       <div className="diagram-main">
         {tab === 'draw' && mode?.Rail && (
           <aside className="diagram-rail">
-            <mode.Rail tool={tool} onPick={setTool} />
+            <mode.Rail tool={tool} onPick={setTool} sets={doc.diagram?.sets} />
+            {canEdit && mode.sets && settings.composerMixSets && (
+              <button className="btn small diagram-sets" onClick={() => setSetsOpen(true)}>
+                Symbol sets…
+              </button>
+            )}
           </aside>
+        )}
+        {setsOpen && mode && doc.diagram && (
+          <SetsDialog
+            projectId={projectId}
+            own={mode.sets ?? []}
+            chosen={doc.diagram.sets ?? []}
+            inUse={mode.setsInUse?.(doc.diagram.model) ?? []}
+            onClose={() => setSetsOpen(false)}
+            onUse={(sets) => {
+              setDoc((d) => (d.diagram ? { ...d, diagram: { ...d.diagram, sets: sets.length ? sets : undefined } } : d));
+              setSetsOpen(false);
+            }}
+          />
         )}
         <div className="diagram-centre">
           {/* the canvas colour, for a canvas that isn't React Flow (circuitikz.css) */}
@@ -852,5 +998,84 @@ function Editor({ projectId, path, loaded, onReload }: { projectId: string; path
         )}
       </div>
     </div>
+  );
+}
+
+// ─── symbol sets ───
+
+type ProjectLoads = { packages: Set<string>; libraries: Set<string> };
+
+/** The packages and TikZ libraries the project's main file loads, with the .tex files its preamble pulls in. */
+async function projectLoads(projectId: string): Promise<ProjectLoads> {
+  const { items, mainFile } = await getProjectTree(projectId);
+  if (!mainFile || !/\.tex$/i.test(mainFile)) return { packages: new Set(), libraries: new Set() };
+  const texFiles = new Set(items.filter((i) => /\.tex$/i.test(i.path)).map((i) => i.path));
+  const read = async (path: string) => (await getFile(projectId, path)).content;
+  return { packages: await projectPackages(mainFile, texFiles, read), libraries: await projectPackages(mainFile, texFiles, read, loadedLibraries) };
+}
+
+/**
+ * The drawing's other symbol sets (Settings › Composer › Symbols from other packages), by category, each with what
+ * it adds to the document and whether that clashes with the project's preamble. A set the drawing has parts from
+ * stays.
+ */
+function SetsDialog({ projectId, own, chosen, inUse, onUse, onClose }: { projectId: string; own: string[]; chosen: string[]; inUse: string[]; onUse(sets: string[]): void; onClose(): void }) {
+  const [ticked, setTicked] = useState(() => new Set([...chosen, ...inUse]));
+  const [project, setProject] = useState<ProjectLoads | null>(null);
+  useEffect(() => {
+    projectLoads(projectId).then(setProject, () => setProject({ packages: new Set(), libraries: new Set() }));
+  }, [projectId]);
+  const offered = SETS.filter((set) => !own.includes(set.id));
+  const groups = CATEGORIES.map((category) => [category.label, offered.filter((set) => (set.categories[0] ?? 'others').startsWith(`${category.id}/`))] as const).filter(([, sets]) => sets.length);
+  return (
+    <Sheet
+      title="Symbol sets"
+      onClose={onClose}
+      actions={
+        <>
+          <button className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn primary" onClick={() => onUse([...chosen.filter((id) => ticked.has(id)), ...[...ticked].filter((id) => !chosen.includes(id))])}>
+            Use these sets
+          </button>
+        </>
+      }
+    >
+      <div className="field-hint">The drawing’s own symbols are always there. Each set you add shows in the palette, and its packages go into your document when you insert the figure.</div>
+      {!groups.length && <div className="diagram-hint">There are no other symbol sets yet.</div>}
+      {groups.map(([label, sets]) => (
+        <section key={label} className="sets-group">
+          <h3 className="form-section-title">{label}</h3>
+          {sets.map((set) => {
+            const clash = project && clashesWith(set, project)[0];
+            const status = inUse.includes(set.id) ? 'In use in this drawing' : !project ? 'Checking your preamble…' : clash ? `Clashes with ${clash.with} in your preamble` : 'Ready';
+            return (
+              <label key={set.id} className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={ticked.has(set.id)}
+                  disabled={inUse.includes(set.id)}
+                  onChange={(e) =>
+                    setTicked((now) => {
+                      const next = new Set(now);
+                      if (e.target.checked) next.add(set.id);
+                      else next.delete(set.id);
+                      return next;
+                    })
+                  }
+                />
+                <span>
+                  {set.label}
+                  <span className={`field-hint${clash ? ' error' : ''}`} title={clash ? clash.message : undefined}>
+                    {setLoads(set)} · {status}
+                  </span>
+                </span>
+              </label>
+            );
+          })}
+        </section>
+      ))}
+    </Sheet>
   );
 }
