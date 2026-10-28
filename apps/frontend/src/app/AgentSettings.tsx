@@ -52,6 +52,7 @@ function statusLine(a: LocalAgent) {
   if (a.planned) return firstSentence(a.planned.replace(/^Planned\.\s*/, '')) || 'Planned.';
   if (a.unavailable) return firstSentence(a.unavailable);
   if (!a.supported) return 'Agent isolation is not available on this computer.';
+  if (a.command && !a.program) return 'The program you chose was not found.';
   if (a.state === 'missing') return a.needs && !a.needs.found ? `Needs ${a.needs.name}, which was not found.` : 'Not found on this computer.';
   if (a.state === 'adapter') return `Install the ACP adapter to use ${a.name} here.`;
   const tested = `tested ${relativeTime(a.test?.at || '').toLowerCase()}`;
@@ -69,6 +70,8 @@ function nextStep(a: LocalAgent): Step | null {
   // Windows isolation starts native programs only
   if (IS_WINDOWS && a.program && /\.(cmd|bat)$/i.test(a.program)) return { text: 'Windows isolation starts only native .exe programs. Choose the agent’s .exe, or install it with its Windows installer.', action: 'choose' };
   const command = (text?: string) => (text && /^(npm|brew|curl|winget) /.test(text) ? text : undefined);
+  // an upgrade can move it; installing again wouldn't help
+  if (a.command && !a.program) return { text: `${tildify(a.command)} was not found. Choose ${a.name}’s program again, or press Find automatically.`, action: 'choose' };
   switch (a.state) {
     case 'missing':
       if (a.needs && !a.needs.found) return { text: `Install ${a.needs.name} first${a.adapter ? ', then install the adapter' : ''}.${command(a.needs.install) ? '' : ` ${a.needs.install}`}`, code: command(a.needs.install) };
@@ -380,7 +383,7 @@ function AgentCard({
                         Test
                       </button>
                     )}
-                    {a.source === 'chosen' && (
+                    {!!a.command && (
                       <button className="btn small ghost" disabled={!!busy} onClick={() => act('Saving…', () => configureLocalAgent(a.id, { command: '' }))}>
                         Find automatically
                       </button>
