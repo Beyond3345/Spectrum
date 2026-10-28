@@ -147,15 +147,26 @@ async function install(name, version, entry, destination, executable, repository
   const id = crypto.randomUUID();
   const part = path.join(tmpRoot, id + '.part');
   const folder = path.join(tmpRoot, id);
+  // a download that stalls (no data for a while) is stopped, and one that stops or drops is a failed download
+  const controller = new AbortController();
+  let idle;
+  const stall = () => {
+    clearTimeout(idle);
+    idle = setTimeout(() => controller.abort(), Number(process.env.SPECTRUM_DOWNLOAD_IDLE_MS) || 60_000);
+  };
   try {
-    let res;
     try {
-      res = await fetch(url);
+      stall();
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
+      const body = Readable.fromWeb(res.body);
+      body.on('data', stall);
+      await pipeline(body, createWriteStream(part));
     } catch {
       throw httpError('Couldn’t download ' + name + ' ' + version + '. ' + DOWNLOAD_FAILED, 502);
+    } finally {
+      clearTimeout(idle);
     }
-    if (!res.ok || !res.body) throw httpError('Couldn’t download ' + name + ' ' + version + '. ' + DOWNLOAD_FAILED, 502);
-    await pipeline(Readable.fromWeb(res.body), createWriteStream(part));
     const digest = crypto.createHash('sha256').update(await fs.readFile(part)).digest('hex');
     if (digest !== expected) throw httpError(CHECKSUM_FAILED, 502);
     await ensureDir(folder);

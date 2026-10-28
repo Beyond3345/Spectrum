@@ -40,9 +40,13 @@ const sha = createHash('sha256').update(await fs.readFile(archive)).digest('hex'
 
 const { installTypst, listEngines, removeTypst, typstFor, useEngineList } = await import('../src/services/engineService.js');
 
+// serving: 'stall' sends a little and then nothing, 'drop' a little and then closes the connection
+let serving = 'archive';
 const server = createServer(async (req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/gzip' });
-  res.end(await fs.readFile(archive));
+  if (serving === 'archive') return res.end(await fs.readFile(archive));
+  res.write(Buffer.alloc(16));
+  if (serving === 'drop') setTimeout(() => res.socket.destroy(), 50);
 });
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 process.env.SPECTRUM_ENGINE_DOWNLOAD_BASE = 'http://127.0.0.1:' + server.address().port;
@@ -89,6 +93,22 @@ test('a download that does not match its checksum leaves nothing behind', async 
   await assert.rejects(installTypst('9.9.10'), /didn’t match its checksum/);
   await assert.rejects(fs.access(path.join(dataDir, 'engines', 'typst', '9.9.10')));
   assert.deepEqual(await fs.readdir(path.join(dataDir, 'engines', 'tmp')).catch(() => []), []);
+});
+
+test('a download that stalls or drops is a failed download, and leaves nothing behind', async () => {
+  useEngineList(typstList([release('9.9.11', sha)], '9.9.8'));
+  process.env.SPECTRUM_DOWNLOAD_IDLE_MS = '300';
+  try {
+    for (serving of ['stall', 'drop']) {
+      await assert.rejects(installTypst('9.9.11'), (err) => err.statusCode === 502 && /Couldn’t download Typst 9\.9\.11/.test(err.message), serving);
+      assert.deepEqual(await fs.readdir(path.join(dataDir, 'engines', 'tmp')).catch(() => []), []);
+    }
+  } finally {
+    serving = 'archive';
+    delete process.env.SPECTRUM_DOWNLOAD_IDLE_MS;
+  }
+  // and the next one installs
+  assert.ok(await installTypst('9.9.11'));
 });
 
 test('an unknown version and a path are refused', async () => {
