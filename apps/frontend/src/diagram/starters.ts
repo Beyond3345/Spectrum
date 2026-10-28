@@ -2,6 +2,8 @@
 // categories classify starters, not modes: a starter sits under its home group and is cross-listed under others.
 import { TEMPLATES } from './modes/mermaid/templates';
 import { newFormModel, presetFor } from './modes/form/presets';
+import { signalSketch, slopeField } from './modes/pgfplots/code';
+import { modelArchitecture, stateMachine } from './modes/tikz/examples';
 import { SETS } from './sets';
 import type { SetSymbol } from './sets';
 import type { DiagramLanguage } from './types';
@@ -188,6 +190,71 @@ export const STARTERS: Starter[] = [
     aliases: ['Gantt', 'timeline', 'schedule', 'project plan'],
     file: 'gantt',
     model: mermaid('gantt')
+  },
+  // plots, automata, model architectures and Venn diagrams
+  {
+    id: 'signal-sketch',
+    mode: 'pgfplots',
+    title: 'Signal sketch',
+    blurb: 'Square, triangle, sawtooth, pulse and other waveforms on sketched axes',
+    home: 'engineering/signals',
+    also: ['physics/waves'],
+    aliases: ['waveform', 'square wave', 'sawtooth', 'pulse train', 'step', 'timing', 'signal'],
+    file: 'signal',
+    model: signalSketch
+  },
+  {
+    id: 'slope-field',
+    mode: 'pgfplots',
+    title: 'Vector and slope field',
+    blurb: 'Arrows on a grid from two expressions in x and y',
+    home: 'mathematics/plots',
+    aliases: ['direction field', 'quiver', 'differential equation', 'ODE', 'vector field'],
+    file: 'field',
+    model: slopeField
+  },
+  {
+    id: 'venn',
+    mode: 'form',
+    title: presetFor('venn')!.label,
+    blurb: 'Two or three sets, with regions shaded and counted',
+    home: 'mathematics/statistics',
+    also: ['others/charts'],
+    aliases: ['sets', 'union', 'intersection', 'complement', 'probability'],
+    file: 'venn',
+    model: () => newFormModel('venn')
+  },
+  {
+    id: 'state-machine',
+    mode: 'tikz',
+    title: 'State machine',
+    blurb: 'States, accepting states, a start arrow and labelled transitions',
+    home: 'computing/software',
+    also: ['engineering/digital'],
+    aliases: ['automaton', 'automata', 'DFA', 'NFA', 'finite state machine', 'FSM', 'transition'],
+    file: 'automaton',
+    model: stateMachine
+  },
+  {
+    id: 'state-machine-typst',
+    mode: 'fletcher',
+    title: 'State machine in Typst',
+    blurb: 'States and transitions for a Typst document',
+    home: 'computing/software',
+    also: ['engineering/digital'],
+    aliases: ['automaton', 'automata', 'DFA', 'NFA', 'finite state machine', 'FSM', 'Typst'],
+    file: 'automaton',
+    model: stateMachine
+  },
+  {
+    id: 'model-architecture',
+    mode: 'tikz',
+    title: 'Model architecture',
+    blurb: 'Layers, operators and vectors, with blocks repeated ×N',
+    home: 'computing/learning',
+    aliases: ['neural network', 'transformer', 'machine learning', 'deep learning', 'encoder', 'layers'],
+    file: 'model',
+    model: modelArchitecture
   },
   // the Form frame's test preset, which the chooser lists in development builds only
   {

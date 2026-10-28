@@ -1,5 +1,11 @@
 // Self-check for the chooser's data: the categories, the starters, the gallery's sections and search. Run:
 // npx esbuild apps/frontend/src/diagram/starters.check.ts --bundle --platform=node --log-level=warning | node
+import { fletcherCode } from './modes/fletcher/code';
+import { presetFor } from './modes/form/presets';
+import { plotCode } from './modes/pgfplots/code';
+import type { PlotModel } from './modes/pgfplots/code';
+import { FLETCHER_SHAPES, tikzCode } from './modes/tikz/code';
+import type { TikzModel } from './modes/tikz/code';
 import { CATEGORIES, MODE_FACTS, STARTERS, search, sectionsFor, starterFor, usedNow } from './starters';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -37,7 +43,7 @@ const physics = sectionsFor('physics');
 eq(physics.find((s) => s.id === 'physics/electromagnetism')?.starters.map((s) => s.id), ['circuit'], 'Circuit is cross-listed under Physics › Electromagnetism');
 eq(physics.find((s) => s.id === 'physics/electromagnetism')?.label, 'Electromagnetism', 'a category’s view heads by group alone');
 eq(sectionsFor('physics').every((s) => s.starters.length > 0), true, 'no empty groups');
-eq(sectionsFor('mathematics').find((s) => s.id === 'mathematics/statistics')?.starters.map((s) => s.id), ['plot'], 'Plot under Statistics too');
+eq(sectionsFor('mathematics').find((s) => s.id === 'mathematics/statistics')?.starters.map((s) => s.id), ['plot', 'venn'], 'Plot under Statistics too, beside Venn diagram');
 
 // search: titles, aliases, groups, categories, packages; symbols with the starter they open in
 const ids = (q: string) => search(q).starters.map((s) => s.id);
@@ -55,5 +61,25 @@ eq(search('   ').starters, [], 'blank finds nothing');
 
 eq(usedNow(['a', 'b', 'c'], 'b'), ['b', 'a', 'c'], 'Recently used puts it first');
 eq(usedNow(['1', '2', '3', '4', '5', '6', '7', '8'], '9').length, 8, 'at most eight');
+
+// the plot, automata, model architecture and Venn starters: their homes and cross-listings, and what they open with
+eq(['signal-sketch', 'slope-field', 'venn', 'state-machine', 'state-machine-typst', 'model-architecture'].map((id) => [starterFor(id)?.home, starterFor(id)?.also ?? []]), [
+  ['engineering/signals', ['physics/waves']],
+  ['mathematics/plots', []],
+  ['mathematics/statistics', ['others/charts']],
+  ['computing/software', ['engineering/digital']],
+  ['computing/software', ['engineering/digital']],
+  ['computing/learning', []]
+], 'their homes and cross-listings');
+eq(ids('DFA'), ['state-machine', 'state-machine-typst'], 'DFA finds both state machines');
+eq(ids('slope field'), ['slope-field'], 'a title');
+eq(ids('transformer'), ['model-architecture'], 'an alias');
+eq(sectionsFor('others').find((s) => s.id === 'others/charts')?.starters.map((s) => s.id).includes('venn'), true, 'Venn under Others › Charts');
+eq(starterFor('venn')?.model?.(), { preset: 'venn', values: presetFor('venn')!.values }, 'Venn opens the Form preset');
+// the Typst state machine has only shapes fletcher writes, and every new starter's drawing writes code
+eq((starterFor('state-machine-typst')!.model!() as TikzModel).boxes.every((b) => FLETCHER_SHAPES.includes(b.shape)), true, 'fletcher shapes only');
+eq(fletcherCode(starterFor('state-machine-typst')!.model!() as TikzModel).body.includes('loop-angle'), true, 'its loops in fletcher');
+eq(tikzCode(starterFor('model-architecture')!.model!() as TikzModel).body.includes('$\\times N$'), true, 'a block ×N');
+eq(plotCode(starterFor('signal-sketch')!.model!() as PlotModel).body.includes('xtick=\\empty'), true, 'a sketch');
 
 console.log('starters.check: ok');
