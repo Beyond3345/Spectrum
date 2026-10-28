@@ -55,10 +55,14 @@ test('the draft’s preview PDF is compiled where TeX reads only the draft, into
     await assert.rejects(previewDraft(run, { mainFile: '../escape.tex' }), /Invalid path/);
     await assert.rejects(previewDraft(run, { engine: 'troff' }), /Unsupported engine/);
 
-    // a direct session's draft is the project itself
-    const direct = await getAgentRun((await newAgentRun({ projectId: (await createProject({ name: 'Direct preview' })).id, agentId: 'qoder', mode: 'direct' })).id);
-    await direct.ready;
-    await assert.rejects(previewDraft(direct), { statusCode: 409 });
+    // a direct session's draft is the project itself; Windows has no direct sessions at all
+    const directRun = newAgentRun({ projectId: (await createProject({ name: 'Direct preview' })).id, agentId: 'qoder', mode: 'direct' });
+    if (process.platform === 'win32') await assert.rejects(directRun, { statusCode: 400 });
+    else {
+      const direct = await getAgentRun((await directRun).id);
+      await direct.ready;
+      await assert.rejects(previewDraft(direct), { statusCode: 409 });
+    }
   } finally { await shutdownAgents(); await fs.rm(dir, { recursive: true, force: true }); }
 });
 
