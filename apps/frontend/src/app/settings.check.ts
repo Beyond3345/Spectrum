@@ -127,6 +127,12 @@ eq([merged.llmApiKey, merged.projectsDir, merged.glass, merged.syncSettings], ['
 eq(withShared(theirs, { accent: 'neon' }).accent, 'system', 'shared values are checked like stored ones');
 eq(withShared(theirs, { syncHighlightSeconds: 60 }).syncHighlightSeconds, 10, 'and kept in range');
 
+// the composer's switch and conventions follow the user, checked; its Recently used stays on this computer
+eq([DEFAULT_SETTINGS.composerMixSets, DEFAULT_SETTINGS.composerMoments, DEFAULT_SETTINGS.composerMohrShear], [false, 'tension', 'down'], 'composer defaults: no mixing, tension side, τ downward');
+const composer = withShared(theirs, { ...sharedPart(at({ composerMixSets: true, composerMoments: 'positive', composerMohrShear: 'clockwise-above', composerRecent: ['circuit'] })) });
+eq([composer.composerMixSets, composer.composerMoments, composer.composerMohrShear, composer.composerRecent], [true, 'positive', 'clockwise-above', []], 'the composer’s settings come in, not Recently used');
+eq([withShared(theirs, { composerMoments: 'sideways', composerMohrShear: 'left', composerMixSets: 'yes' })].map((s) => [s.composerMoments, s.composerMohrShear, s.composerMixSets])[0], ['tension', 'down', false], 'and are checked');
+
 // the folders on the Projects page follow the user, checked like stored ones
 const tree = { folders: [{ id: 'f1', name: 'Thesis', parent: null }], placement: { p1: 'f1', p2: 'deleted' } };
 const sorted = withShared(theirs, { projectFolders: tree });

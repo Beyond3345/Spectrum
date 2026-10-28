@@ -15,6 +15,7 @@ import type {
   SearchProvider,
   SharedSettings
 } from '../api/client';
+import type { ComposerDefaults } from '../diagram/types';
 import { setNativeTheme } from './desktop';
 import { NO_FOLDERS, cleanFolders } from './folders';
 import type { ProjectFolders } from './folders';
@@ -137,6 +138,13 @@ export type AppSettings = {
   personas: Persona[];
   /** what the assistant and the Spectrum agent are told while a chat has no persona (never autocomplete) */
   defaultInstructions: string;
+  /** Settings › Composer: the Symbol sets… button for adding other packages' symbols to a drawing */
+  composerMixSets: boolean;
+  /** the conventions a new drawing copies into its style (ComposerDefaults) */
+  composerMoments: ComposerDefaults['moments'];
+  composerMohrShear: ComposerDefaults['mohrShear'];
+  /** the chooser's Recently used: starter ids, newest first, at most eight (this computer's) */
+  composerRecent: string[];
 };
 
 export type CompileDefaults = Required<CompileOptions>;
@@ -215,7 +223,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   projectFolders: NO_FOLDERS,
   tagColours: {},
   personas: STARTER_PERSONAS,
-  defaultInstructions: ''
+  defaultInstructions: '',
+  composerMixSets: false,
+  composerMoments: 'tension',
+  composerMohrShear: 'down',
+  composerRecent: []
 };
 
 export const SYNC_HIGHLIGHTS: [SyncHighlight, string][] = [
@@ -358,6 +370,10 @@ function parse(raw: string | null): AppSettings {
     ) as AppSettings['tagColours'];
     merged.personas = cleanPersonas(merged.personas);
     if (typeof merged.defaultInstructions !== 'string') merged.defaultInstructions = '';
+    merged.composerMixSets = merged.composerMixSets === true;
+    if (!['tension', 'positive'].includes(merged.composerMoments)) merged.composerMoments = 'tension';
+    if (!['down', 'clockwise-above', 'up'].includes(merged.composerMohrShear)) merged.composerMohrShear = 'down';
+    merged.composerRecent = Array.isArray(merged.composerRecent) ? merged.composerRecent.filter((id) => typeof id === 'string').slice(0, 8) : [];
     for (const key of ['editorFont', 'editorFontCustom', 'editorThemeLight', 'editorThemeDark', 'parser', 'parserProtocol', 'openalexEmail', 'ncbiKey', 'unpaywallEmail'] as const) {
       if (typeof merged[key] !== 'string') merged[key] = DEFAULT_SETTINGS[key];
     }
@@ -435,6 +451,9 @@ export function updateSettings(patch: Partial<AppSettings>) {
   persistSettings({ ...loadSettings(), ...patch });
 }
 
+/** The Settings › Composer defaults a new drawing copies into its style. */
+export const composerDefaults = (settings: AppSettings): ComposerDefaults => ({ moments: settings.composerMoments, mohrShear: settings.composerMohrShear });
+
 // ─── Settings that follow the user ───
 
 /**
@@ -444,7 +463,7 @@ export function updateSettings(patch: Partial<AppSettings>) {
 const SHARED_KEYS = [
   'theme', 'accent', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize',
   'autoInsertCite', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
-  'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions'
+  'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions', 'composerMixSets', 'composerMoments', 'composerMohrShear'
 ] as const satisfies readonly (keyof AppSettings)[];
 
 export const sharedPart = (settings: AppSettings): Record<string, unknown> => Object.fromEntries(SHARED_KEYS.map((key) => [key, settings[key]]));
