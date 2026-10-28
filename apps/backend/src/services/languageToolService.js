@@ -92,8 +92,8 @@ async function installedJava() {
   }
 }
 
-/** Fetches url into file, hashing as it goes; a download that stalls is stopped. Answers the SHA-256. */
-async function fetchInto(url, file, onBytes) {
+/** Fetches url into file, hashing as it goes; a download that stalls, or whose signal aborts, is stopped. Answers the SHA-256. */
+async function fetchInto(url, file, onBytes, signal) {
   const controller = new AbortController();
   let idle;
   const stall = () => {
@@ -103,7 +103,7 @@ async function fetchInto(url, file, onBytes) {
   const hash = crypto.createHash('sha256');
   try {
     stall();
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, { signal: signal ? AbortSignal.any([controller.signal, signal]) : controller.signal });
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
     const body = Readable.fromWeb(res.body);
     body.on('data', (chunk) => {
@@ -127,18 +127,28 @@ async function install() {
   await fs.mkdir(root(), { recursive: true });
   const part = path.join(root(), `${pins.version}.part-${crypto.randomUUID()}`);
   const old = path.join(root(), `${pins.version}.old-${crypto.randomUUID()}`);
-  const progress = (n) => { download.done += n; };
+  const progress = (n) => { if (download) download.done += n; };
   try {
     await fs.mkdir(path.join(part, 'jars'), { recursive: true });
     const queue = [...pins.jars];
-    // a few at a time: 172 small files one after another would take a while
+    // a few at a time: 172 small files one after another would take a while. The first that fails stops the others,
+    // and every one has stopped before the .part folder goes
+    const stop = new AbortController();
+    let failed = null;
     await Promise.all(Array.from({ length: 6 }, async () => {
-      for (let jar = queue.shift(); jar; jar = queue.shift()) {
-        const [rel, expected] = jar;
-        const digest = await fetchInto(new URL(rel, pins.base).href, path.join(part, 'jars', path.posix.basename(rel)), progress);
-        if (digest !== expected) throw httpError(CHECKSUM_FAILED, 502);
+      try {
+        for (let jar = queue.shift(); jar; jar = queue.shift()) {
+          const [rel, expected] = jar;
+          const digest = await fetchInto(new URL(rel, pins.base).href, path.join(part, 'jars', path.posix.basename(rel)), progress, stop.signal);
+          if (digest !== expected) throw httpError(CHECKSUM_FAILED, 502);
+        }
+      } catch (err) {
+        failed ??= err;
+        queue.length = 0;
+        stop.abort();
       }
     }));
+    if (failed) throw failed;
     const [url, expected] = java;
     const archive = path.join(part, `java${url.endsWith('.zip') ? '.zip' : '.tar.gz'}`);
     if (await fetchInto(url, archive, progress) !== expected) throw httpError(CHECKSUM_FAILED, 502);
@@ -190,6 +200,8 @@ export async function removeLanguageTool() {
 
 let server = null;
 let stopped = null;
+// a start under way, so a second check while it finds Java and a port waits for it rather than starting another
+let starting = null;
 
 const freePort = () => new Promise((resolve, reject) => {
   const probe = net.createServer().on('error', reject);
@@ -200,11 +212,16 @@ const freePort = () => new Promise((resolve, reject) => {
 });
 
 /** The server's address once it answers, starting it if it isn't running. */
-export async function ensureServer() {
+export function ensureServer() {
   if (server) {
     touch();
     return server.ready;
   }
+  starting ||= start().finally(() => { starting = null; });
+  return starting;
+}
+
+async function start() {
   const java = await installedJava();
   if (!java) throw httpError('LanguageTool is not downloaded yet.', 409, 'not-downloaded');
   const port = await freePort();

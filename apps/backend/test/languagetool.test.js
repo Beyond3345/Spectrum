@@ -120,11 +120,12 @@ test('cancelling stops between parts; failures say what happened and keep the pa
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const unix = process.platform !== 'win32';
 
-/** A "Java runtime" archive whose bin/java runs the fake LanguageTool with Node. */
+/** A "Java runtime" archive whose bin/java runs the fake LanguageTool with Node, noting its process id in `pidFile`. */
+const pidFile = path.join(tmp, 'java-started');
 function fakeJava() {
   const dir = path.join(tmp, 'jre', 'jdk-fake', 'Contents', 'Home', 'bin');
   mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, 'java'), `#!/bin/sh\nexec "${process.execPath}" "${path.join(import.meta.dirname, 'fixtures', 'fake-languagetool.mjs')}" "$@"\n`);
+  writeFileSync(path.join(dir, 'java'), `#!/bin/sh\necho $$ >> "${pidFile}"\nexec "${process.execPath}" "${path.join(import.meta.dirname, 'fixtures', 'fake-languagetool.mjs')}" "$@"\n`);
   chmodSync(path.join(dir, 'java'), 0o755);
   const archive = path.join(tmp, 'jre.tar.gz');
   execFileSync('tar', ['-czf', archive, '-C', path.join(tmp, 'jre'), 'jdk-fake']);
@@ -190,6 +191,15 @@ test('LanguageTool downloads only when asked, checks every file, and runs only w
   await lt.stopLanguageTool();
   assert.equal((await lt.languageToolStatus()).running, false);
 
+  // two checks at once start one server, and stopping it leaves no process behind
+  rmSync(pidFile, { force: true });
+  const [one, two] = await Promise.all([lt.ensureServer(), lt.ensureServer()]);
+  assert.equal(one, two);
+  await lt.stopLanguageTool();
+  const pids = readFileSync(pidFile, 'utf8').trim().split('\n').map(Number);
+  assert.equal(pids.length, 1, 'one server started');
+  assert.throws(() => process.kill(pids[0], 0), { code: 'ESRCH' }, 'and it has stopped');
+
   // an ignored LanguageTool rule goes to the project's settings.json by language, merged rule by rule
   const project = await createProject({ name: 'Sprachen', populate: async () => {} });
   assert.deepEqual(await grammar.changeLanguageToolIgnored(project.id, 'de', 'DOPPELTES_WORT'), { de: ['DOPPELTES_WORT'] });
@@ -205,4 +215,40 @@ test('LanguageTool downloads only when asked, checks every file, and runs only w
   assert.equal((await lt.removeLanguageTool()).installed, false);
   assert.ok(!existsSync(path.join(tmp, 'data', 'engines', 'languagetool')));
   delete process.env.FAKE_LT_LOG;
+});
+
+test('a jar that fails stops the other downloads, and nothing is left behind', async () => {
+  const jar = Buffer.from('not really a jar');
+  const names = ['slow-1', 'slow-2', 'bad', ...Array.from({ length: 20 }, (_, i) => `ok-${i}`)].map((name) => `${name}.jar`);
+  const asked = [];
+  let cut = 0;
+  const base = await serve((req, res) => {
+    const name = req.url.slice(1);
+    asked.push(name);
+    if (name === 'bad.jar') return void res.writeHead(200).end('not the jar');
+    if (!name.startsWith('slow')) return void setTimeout(() => res.writeHead(200).end(jar), 50);
+    // a byte every 50 ms for a second, stopping early only if Spectrum hangs up
+    res.writeHead(200);
+    let sent = 0;
+    const timer = setInterval(() => (++sent < 20 ? res.write('x') : res.end()), 50);
+    res.on('close', () => {
+      clearInterval(timer);
+      if (sent < 20) cut += 1;
+    });
+  });
+  const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+  lt.useLanguageToolPins({ version: '6.8', base: `${base}/`, jars: names.map((name) => [name, sha(jar), jar.length]),
+    java: { [arch]: [`${base}/jre.tar.gz`, '0'.repeat(64), 1, '21.0.13+9-LTS'] } });
+  await lt.installLanguageTool();
+  let status = await lt.languageToolStatus();
+  while (status.downloading) {
+    await new Promise((r) => setTimeout(r, 20));
+    status = await lt.languageToolStatus();
+  }
+  assert.equal(status.error, 'The download did not match its checksum, so it was not installed.');
+  // past the time the slow jars would have kept sending
+  await new Promise((r) => setTimeout(r, 1200));
+  assert.equal(cut, 2, 'both slow jars were stopped');
+  assert.ok(asked.length < names.length, `${asked.length} of ${names.length} jars asked for`);
+  assert.deepEqual(readdirSync(path.join(tmp, 'data', 'engines', 'languagetool')), []);
 });

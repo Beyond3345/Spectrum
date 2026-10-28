@@ -112,6 +112,16 @@ test('a dictionary downloads only when asked, is checked and installed with its 
   assert.deepEqual(leftovers(), []);
 });
 
+test('an abbreviation the dictionary keeps with its full stop passes before one, and only there', async () => {
+  const words = Buffer.from('5\nBrot\nund\nusw.\nca.\nNr.\n');
+  catalogueFor('de', 'abbreviations', { ...LATIN, aff: Buffer.from('SET UTF-8\n'), dic: words }, { selfTest: ['Brot'] });
+  await spell.installDictionary('de');
+  const text = 'Brot usw. und ca. Nr. 5, Brot usw und Brot.';
+  const { pieces: [piece] } = await spell.checkPieces({ languages: ['de'], main: 'de', pieces: [{ text }] });
+  assert.deepEqual(piece.misspelt.map(([from, to]) => text.slice(from, to)), ['usw']);
+  assert.deepEqual(await spell.pruneDictionaries(['en-AU', 'xx']), { removed: ['de'] });
+});
+
 test('a repinned dictionary counts as not downloaded, and downloading it replaces the old folder', async () => {
   const newer = { ...LATIN, dic: Buffer.from('5\ncafé\nnaïve\nfaçade\ndevant\nchâteau\n', 'latin1') };
   catalogueFor('xx', 'two', newer);
