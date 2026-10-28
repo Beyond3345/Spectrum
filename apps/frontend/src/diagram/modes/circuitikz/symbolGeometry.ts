@@ -6,7 +6,7 @@ import type { Pt, Shape } from './model';
 export function symbolRequest({ type, options }: { type: string; options: string[] }) {
   const part = PARTS.get(type)!;
   // Path glyph endpoints are always returned as start/end by the backend; only request additional anchors.
-  return { id: variantKey(type, options), tikz: part.tikz, kind: part.kind, ...(options.length ? { options: [...options].sort() } : null), pins: part.pins || [] };
+  return { id: variantKey(type, options), tikz: part.tikz, kind: part.set ? ('pic' as const) : part.kind, ...(options.length ? { options: [...options].sort() } : null), pins: part.pins || [] };
 }
 
 export function symbolGeometry(page: Pick<SymbolPage, 'pins' | 'width' | 'origin'>, type: string): { middle: Pt; shape: Shape } {

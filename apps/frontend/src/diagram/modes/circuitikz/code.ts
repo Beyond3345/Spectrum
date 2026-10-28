@@ -1,6 +1,9 @@
 // The circuit as circuitikz code: one \draw or \node per element with plain coordinates in cm, and the
-// style as picture options and \ctikzset, so the document's preamble needs only \usepackage{circuitikz}.
-import { GRID_CM, PARTS, isPoint } from './model';
+// style as picture options and \ctikzset, so the document's preamble needs only \usepackage{circuitikz}. A part from
+// another symbol set is a \pic, defined inside the picture (only the ones used), its set's packages and libraries
+// added to what the document loads.
+import { SYMBOL_SETS, picDefinition } from '../../../../../backend/src/data/symbolSets.js';
+import { CATALOGUE, GRID_CM, PARTS, isPoint } from './model';
 import type { CircuitModel, Element, End, Mark, NodePart, PathPart, Wire } from './model';
 
 export interface CircuitStyle {
@@ -107,7 +110,8 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
     const el = byId.get(end.part);
     if (!el || el.kind === 'wire' || depth > 4) return '(0,0)';
     if (el.kind === 'path' && (end.pin === 'a' || end.pin === 'b')) return at(el[end.pin], depth + 1);
-    return `(${nameOf(el)}.${end.pin})`;
+    // a pic names its pins' coordinates <pic>-<pin>
+    return PARTS.get(el.type)?.set ? `(${nameOf(el)}-${end.pin})` : `(${nameOf(el)}.${end.pin})`;
   };
 
   const value = (text: string) => {
@@ -140,13 +144,21 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
   };
 
   const nodeCode = (el: NodePart) => {
+    const part = PARTS.get(el.type);
     const rotate = (((el.rotate || 0) % 360) + 360) % 360;
-    const keys = [PARTS.get(el.type)?.tikz || 'circ', ...(el.options || []), rotate && `rotate=${rotate}`, el.flipX && 'xscale=-1', el.flipY && 'yscale=-1'].filter(Boolean);
+    const turns = [rotate && `rotate=${rotate}`, el.flipX && 'xscale=-1', el.flipY && 'yscale=-1'].filter(Boolean);
     const name = el.name || named.has(el.id) ? ` (${nameOf(el)})` : '';
+    if (part?.set) return `\\pic${turns.length ? `[${turns.join(', ')}]` : ''}${name} at ${at(el.at)} {${part.tikz}};`;
+    const keys = [part?.tikz || 'circ', ...(el.options || []), ...turns];
     return `\\node[${keys.join(', ')}]${name} at ${at(el.at)} {};`;
   };
 
   const { picture, ctikz } = styleCode(style);
+  // the other sets' pictures this drawing uses, in the catalogue's order
+  const usedTypes = new Set(model.elements.map((el) => el.kind === 'node' && el.type));
+  const pics = CATALOGUE.filter((part) => part.set && usedTypes.has(part.id) && SYMBOL_SETS[part.set]?.pics[part.tikz]);
+  const sets = [...new Set(pics.map((part) => SYMBOL_SETS[part.set!]))];
+  const definitions = pics.map((part) => picDefinition(part.tikz, SYMBOL_SETS[part.set!].pics[part.tikz]));
   const lines = [
     // nodes first, so wires and parts can reach their anchors
     ...model.elements.filter((el): el is NodePart => el.kind === 'node').map(nodeCode),
@@ -156,6 +168,7 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
       .map((el) => `\\draw ${el.points.map((p, i) => (i ? `${el.routes[i - 1] || '--'} ${at(p)}` : at(p))).join(' ')};`),
     ...model.junctions.map((j) => `\\node[circ] at ${at(j)} {};`)
   ];
-  const body = [`\\begin{circuitikz}[${picture}]`, ...(ctikz ? [ctikz] : []), ...lines, '\\end{circuitikz}'].join('\n');
-  return { body, packages: siunitxUsed ? ['circuitikz', 'siunitx'] : ['circuitikz'], libraries: [] };
+  const body = [`\\begin{circuitikz}[${picture}]`, ...(ctikz ? [ctikz] : []), ...definitions, ...lines, '\\end{circuitikz}'].join('\n');
+  const packages = [...new Set(['circuitikz', ...sets.flatMap((set) => set.packages), ...(siunitxUsed ? ['siunitx'] : [])])];
+  return { body, packages, libraries: [...new Set(sets.flatMap((set) => set.libraries))] };
 }

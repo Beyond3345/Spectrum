@@ -3,7 +3,7 @@
 import type { DiagramMode } from '../../types';
 import Canvas from './Canvas';
 import { circuitCode } from './code';
-import { asCircuit, emptyCircuit } from './model';
+import { PARTS, asCircuit, emptyCircuit } from './model';
 import type { CircuitModel } from './model';
 import { CircuitInspector, CircuitRail, CircuitStyleMenu } from './panels';
 import './circuitikz.css';
@@ -14,6 +14,8 @@ const circuitikz: DiagramMode<CircuitModel> = {
   language: 'tikz',
   emptyModel: emptyCircuit,
   toCode: (model, style) => circuitCode(asCircuit(model), style),
+  sets: ['circuitikz'],
+  setsInUse: (model) => [...new Set(asCircuit(model).elements.flatMap((el) => (el.kind === 'node' && PARTS.get(el.type)?.set ? [PARTS.get(el.type)!.set!] : [])))],
   Canvas,
   Rail: CircuitRail,
   Inspector: CircuitInspector,

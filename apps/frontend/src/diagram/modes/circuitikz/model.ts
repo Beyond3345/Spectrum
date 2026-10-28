@@ -13,8 +13,10 @@ export interface CataloguePart {
   group: string;
   /** path: sits on a wire between two points; node: placed, with named pins */
   kind: 'path' | 'node';
-  /** the circuitikz key */
+  /** the circuitikz key, or a symbol set's pic (spx/mech/ground) */
   tikz: string;
+  /** the symbol set it's from (apps/backend/src/data/symbolSets.js), when not circuitikz: a node placed as a \pic */
+  set?: string;
   options?: CatalogueOption[];
   /** choices that exclude each other; none chosen leaves circuitikz's default */
   enumOptions?: { label: string; values: CatalogueOption[] }[];

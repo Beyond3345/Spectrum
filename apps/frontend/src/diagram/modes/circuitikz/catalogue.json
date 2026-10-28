@@ -74,5 +74,8 @@
   { "id": "supply-down", "label": "Supply (negative)", "group": "Ground and supply", "kind": "node", "tikz": "vee", "pins": ["center"] },
 
   { "id": "transformer", "label": "Transformer", "group": "Transformers", "kind": "node", "tikz": "transformer", "pins": ["A1", "A2", "B1", "B2"], "defaultLabel": "T" },
-  { "id": "transformer-core", "label": "Transformer with core", "group": "Transformers", "kind": "node", "tikz": "transformer core", "pins": ["A1", "A2", "B1", "B2"], "defaultLabel": "T" }
+  { "id": "transformer-core", "label": "Transformer with core", "group": "Transformers", "kind": "node", "tikz": "transformer core", "pins": ["A1", "A2", "B1", "B2"], "defaultLabel": "T" },
+
+  { "id": "mech-ground", "label": "Ground (hatched)", "group": "Mechanical supports", "kind": "node", "set": "spx-mech", "tikz": "spx/mech/ground", "pins": ["p"] },
+  { "id": "mech-pin", "label": "Pinned support", "group": "Mechanical supports", "kind": "node", "set": "spx-mech", "tikz": "spx/mech/pin", "pins": ["p"] }
 ]
