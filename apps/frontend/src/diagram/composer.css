@@ -323,6 +323,50 @@
   font-style: italic;
 }
 
+/* a container's title inside its top-left corner and its ×N on the right; a stack's caption below it */
+.tikz-box-caption {
+  position: absolute;
+  color: var(--diagram-ink);
+  font: 20px/1.15 var(--font-serif);
+  white-space: pre;
+  pointer-events: none;
+}
+
+.tikz-box-caption.title {
+  top: 4px;
+  left: 8px;
+}
+
+.tikz-box-caption.below {
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tikz-box-caption.repeat {
+  top: 50%;
+  left: calc(100% + 8px);
+  transform: translateY(-50%);
+  font-style: italic;
+}
+
+/* a container is picked up by its edge, so clicks inside reach the boxes in it and the canvas */
+.diagram-flow .react-flow__node.tikz-container,
+.diagram-flow .react-flow__node.tikz-container.draggable {
+  pointer-events: none;
+}
+
+.diagram-flow .react-flow__node.tikz-container .react-flow__resize-control {
+  pointer-events: all;
+}
+
+.tikz-container-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 12px;
+  pointer-events: stroke;
+}
+
 .cd-cell {
   display: flex;
   align-items: center;

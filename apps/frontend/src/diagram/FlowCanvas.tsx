@@ -32,7 +32,8 @@ export function FlowCanvas({
   onResize,
   onConnect,
   onPlace,
-  onNodeDoubleClick
+  onNodeDoubleClick,
+  loops
 }: {
   nodes: Node[];
   edges: Edge[];
@@ -51,6 +52,8 @@ export function FlowCanvas({
   /** a click on the empty canvas, where it is in px: for placing the rail's tool */
   onPlace?(at: { x: number; y: number }): void;
   onNodeDoubleClick?(id: string): void;
+  /** an edge may go from a node back to itself (a state's loop) */
+  loops?: boolean;
 }) {
   const prefs = useCanvasPrefs();
   const { screenToFlowPosition } = useReactFlow();
@@ -100,7 +103,7 @@ export function FlowCanvas({
       onNodesChange={onNodesChange}
       onEdgesChange={select}
       onConnect={onConnect}
-      isValidConnection={(c) => c.source !== c.target}
+      isValidConnection={(c) => loops || c.source !== c.target}
       connectionMode={ConnectionMode.Loose}
       onPaneClick={(e) => {
         const at = screenToFlowPosition({ x: e.clientX, y: e.clientY });

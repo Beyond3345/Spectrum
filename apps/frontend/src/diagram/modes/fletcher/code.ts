@@ -1,6 +1,6 @@
 import type { DiagramCode } from '../../fileFormat';
-import type { Box, Heads, Line, Link, Shape, TikzModel } from '../tikz/code';
-import { CM_PER_UNIT } from '../tikz/code';
+import type { Box, Heads, Line, Link, Shape, Side, TikzModel } from '../tikz/code';
+import { BEND, CM_PER_UNIT, MATHS_SHAPES, ROUND_SHAPES, drawingOrder, plainShape, stateShape } from '../tikz/code';
 import { num } from '../shared';
 // Typst content text: markup escaped, on one line
 import { typstMarkup as content } from '../../../editor/floats';
@@ -38,8 +38,22 @@ const SHAPE: Record<Shape, string> = {
   diamond: 'diamond',
   parallelogram: 'parallelogram',
   text: 'rect',
-  maths: 'rect'
+  maths: 'rect',
+  state: 'circle',
+  accepting: 'circle',
+  cylinder: 'cylinder',
+  trapezium: 'trapezium',
+  operator: 'circle',
+  container: 'rect',
+  // not in FLETCHER_SHAPES, so the Typst canvas never offers them: a plain box should one get here
+  document: 'rect',
+  stack: 'rect'
 };
+
+/** Which way a loop on each side sticks out (fletcher's lengths go up, as TikZ's do). */
+const LOOP_ANGLE: Record<Side, number> = { t: 90, r: 0, b: -90, l: 180 };
+const OUTWARD: Record<Side, [number, number]> = { t: [0, 1], r: [1, 0], b: [0, -1], l: [-1, 0] };
+const cm = (value: number) => num(value * CM_PER_UNIT) + 'cm';
 
 /** A line's colour, thickness and dash (an edge's is in its marks) as a stroke, which fletcher lays over its default. */
 function strokeOf(line: Line, dash = true) {
@@ -51,27 +65,49 @@ function strokeOf(line: Line, dash = true) {
   return parts.length > 0 && 'stroke: (' + parts.join(', ') + ')';
 }
 
-/** The node for a box: its centre in cm (y up, as in TikZ: the canvas's y goes down), its text or maths, and its shape and size. */
-function nodeCode(box: Box) {
-  const plain = box.shape === 'text' || box.shape === 'maths';
-  const size = box.shape === 'circle' ? Math.min(box.w, box.h) : 0;
+/**
+ * The node for a box: its centre in cm (y up, as in TikZ: the canvas's y goes down), its text or maths, and its shape
+ * and size; then a container's ×N and a state's start arrow. version: the fletcher the import line loads, whose 0.5.5
+ * (for Typst 0.12) has no cylinder, so one is a plain box there.
+ */
+function nodeCode(box: Box, version: string) {
+  const plain = plainShape(box.shape);
+  const size = ROUND_SHAPES.includes(box.shape) ? Math.min(box.w, box.h) : 0;
   const width = size || box.w;
   const height = size || box.h;
+  const container = box.shape === 'container';
   const options = [
-    'shape: fletcher.shapes.' + SHAPE[box.shape],
-    box.shape === 'rounded' && 'corner-radius: 4pt',
-    'width: ' + num(width * CM_PER_UNIT) + 'cm',
-    'height: ' + num(height * CM_PER_UNIT) + 'cm',
+    'shape: fletcher.shapes.' + (box.shape === 'cylinder' && !atLeast(version, '0.5.8') ? 'rect' : SHAPE[box.shape]),
+    (box.shape === 'rounded' || container) && 'corner-radius: 4pt',
+    'width: ' + cm(width),
+    'height: ' + cm(height),
+    // a double circle, as TikZ's accepting state
+    box.shape === 'accepting' && 'extrude: (-2.5, 0)',
+    // its title fills it from the top-left corner, under the other nodes and the edges
+    container && 'inset: 0pt',
+    container && 'layer: -1',
     plain && 'stroke: none',
     plain && 'fill: none',
     !plain && strokeOf(box),
     !plain && box.fill && 'fill: rgb("' + box.fill + '")',
     'name: <' + box.id + '>'
   ].filter(Boolean);
-  const text = box.shape === 'maths' ? (box.text.trim() ? '[$' + box.text.trim() + '$]' : '[]') : '[' + content(box.text) + ']';
+  const maths = MATHS_SHAPES.includes(box.shape);
+  let text = maths ? (box.text.trim() ? '[$' + box.text.trim() + '$]' : '[]') : '[' + content(box.text) + ']';
+  if (container) text = 'box(width: ' + cm(box.w) + ', height: ' + cm(box.h) + ', inset: 4pt, align(top + left)' + text + ')';
+  else if (box.wrap && !plain) text = 'box(width: ' + cm(Math.max(1, box.w - 1)) + ')' + text;
   // a label's colour is its text's; a box's is its border's
   const label = plain && box.stroke ? 'text(fill: rgb("' + box.stroke + '"))' + text : text;
-  return 'node((' + num((box.x + box.w / 2) * CM_PER_UNIT) + 'cm, ' + num(-(box.y + box.h / 2) * CM_PER_UNIT) + 'cm), ' + label + ', ' + options.join(', ') + ')';
+  const [x, y] = [box.x + box.w / 2, -(box.y + box.h / 2)];
+  const lines = ['node((' + cm(x) + ', ' + cm(y) + '), ' + label + ', ' + options.join(', ') + ')'];
+  // a container's ×N, outside on the right
+  if (container && box.repeat?.trim()) lines.push('node((' + cm(x + box.w / 2 + 2) + ', ' + cm(y) + '), [$times ' + box.repeat.trim() + '$], stroke: none, fill: none)');
+  // a start arrow, from a little way out on its side
+  if (stateShape(box.shape) && box.initial) {
+    const [dx, dy] = OUTWARD[box.initial];
+    lines.push('edge((' + cm(x + dx * (width / 2 + 3)) + ', ' + cm(y + dy * (height / 2 + 3)) + '), <' + box.id + '>, "->")');
+  }
+  return lines;
 }
 
 const HEADS: Record<Heads, string> = { none: '', end: '>', start: '<', both: '<>' };
@@ -88,9 +124,13 @@ function edgeCode(link: Link, boxes: Map<string, Box>) {
   const from = boxes.get(link.from);
   const to = boxes.get(link.to);
   if (!from || !to) return '';
+  const loop = from === to;
   const options = [
-    link.route === 'curved' && 'bend: 30deg',
-    link.route === 'angled' && 'corner: right',
+    !loop && link.route === 'curved' && 'bend: 30deg',
+    // to the same side as TikZ's bend left, with lengths that go up
+    !loop && link.route === 'bend' && 'bend: ' + BEND + 'deg',
+    !loop && link.route === 'angled' && 'corner: right',
+    loop && 'bend: 130deg, loop-angle: ' + LOOP_ANGLE[link.fromSide] + 'deg',
     link.label?.trim() && 'label: [' + content(link.label.trim()) + ']',
     strokeOf(link, false)
   ].filter(Boolean);
@@ -100,13 +140,14 @@ function edgeCode(link: Link, boxes: Map<string, Box>) {
 /** A fletcher diagram as the Typst file a document includes. style.typstVersion picks the import line. */
 export function fletcherCode(model: TikzModel, typstVersion = ''): DiagramCode {
   const boxes = new Map(model.boxes.map((box) => [box.id, box]));
+  const version = fletcherFor(typstVersion);
   const lines = [
-    '#import "@preview/fletcher:' + fletcherFor(typstVersion) + '" as fletcher: diagram, node, edge',
+    '#import "@preview/fletcher:' + version + '" as fletcher: diagram, node, edge',
     '#set page(width: auto, height: auto, margin: 4pt) if sys.inputs.at("spectrum-diagram", default: "") == "standalone"',
     '#diagram(',
     '  node-stroke: 0.4pt,',
-    ...model.boxes.map((box) => '  ' + nodeCode(box) + ','),
-    ...model.links.map((link) => '  ' + edgeCode(link, boxes)).filter((line) => line.trim() !== '  ').map((line) => line + ','),
+    ...drawingOrder(model.boxes).flatMap((box) => nodeCode(box, version)).map((line) => '  ' + line + ','),
+    ...model.links.map((link) => edgeCode(link, boxes)).filter(Boolean).map((line) => '  ' + line + ','),
     ')',
     ''
   ];

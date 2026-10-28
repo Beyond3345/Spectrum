@@ -3,24 +3,66 @@ import { latexColour, mathsPackages, num } from '../shared';
 // Plain TikZ: boxes and the arrows between them, written as absolute coordinates. One grid unit is 0.25 cm, y down on
 // the canvas and up in TikZ.
 
-export type Shape = 'rectangle' | 'rounded' | 'circle' | 'ellipse' | 'diamond' | 'parallelogram' | 'text' | 'maths';
+export type Shape =
+  | 'rectangle'
+  | 'rounded'
+  | 'circle'
+  | 'ellipse'
+  | 'diamond'
+  | 'parallelogram'
+  | 'text'
+  | 'maths'
+  // automata
+  | 'state'
+  | 'accepting'
+  // flowcharts
+  | 'cylinder'
+  | 'document'
+  | 'trapezium'
+  // model architectures: a circle round an operator, a vector of cells, and a titled box round a block repeated ×N
+  | 'operator'
+  | 'stack'
+  | 'container';
 /** the side of a box an arrow leaves or reaches: north, east, south or west */
 export type Side = 't' | 'r' | 'b' | 'l';
 export type Dash = 'solid' | 'dashed' | 'dotted';
 /** stroke: '#rrggbb', none for black; width in pt, none for TikZ's own 0.4 pt */
 export type Line = { stroke?: string; dash?: Dash; width?: number };
-/** x and y: the top-left corner, w and h: the size, all in grid units */
-export type Box = Line & { id: string; shape: Shape; x: number; y: number; w: number; h: number; text: string; fill?: string };
-export type Route = 'straight' | 'angled' | 'curved';
+/**
+ * x and y: the top-left corner, w and h: the size, all in grid units. text: a container's title, a stack's caption.
+ * initial: the side a state's start arrow comes in from; wrap: text wrapped to the box's width; cells: a stack's (4 when
+ * none); repeat: a container's ×N, maths without $.
+ */
+export type Box = Line & { id: string; shape: Shape; x: number; y: number; w: number; h: number; text: string; fill?: string; initial?: Side; wrap?: boolean; cells?: number; repeat?: string };
+/** bend: curved to one side, as the two arrows between a pair of boxes are, so they don't lie on each other */
+export type Route = 'straight' | 'angled' | 'curved' | 'bend';
 export type Heads = 'none' | 'end' | 'start' | 'both';
+/** from and to the same box: a loop on its fromSide */
 export type Link = Line & { id: string; from: string; to: string; fromSide: Side; toSide: Side; route: Route; heads: Heads; label?: string };
 export type TikzModel = { boxes: Box[]; links: Link[] };
 
 /**
  * The shapes fletcher/code.ts writes, which the Typst canvas offers (its rail and its inspector's Shape): a shape fletcher
- * has no equivalent for stays TikZ only, hidden in Typst drawings. Every shape so far has one.
+ * has no equivalent for (the document and the stack) stays TikZ only, hidden in Typst drawings.
  */
-export const FLETCHER_SHAPES: Shape[] = ['rectangle', 'rounded', 'circle', 'ellipse', 'diamond', 'parallelogram', 'text', 'maths'];
+export const FLETCHER_SHAPES: Shape[] = ['rectangle', 'rounded', 'circle', 'ellipse', 'diamond', 'parallelogram', 'text', 'maths', 'state', 'accepting', 'cylinder', 'trapezium', 'operator', 'container'];
+
+/** Shapes whose text is maths, written without $. */
+export const MATHS_SHAPES: Shape[] = ['maths', 'state', 'accepting', 'operator'];
+/** Shapes drawn as their text alone, without a box. */
+export const plainShape = (shape: Shape) => shape === 'text' || shape === 'maths';
+/** Shapes that can have a start arrow. */
+export const stateShape = (shape: Shape) => shape === 'state' || shape === 'accepting';
+
+/** The shapes there were before the automata, flowchart and model architecture ones. */
+const FIRST_SHAPES: Shape[] = ['rectangle', 'rounded', 'circle', 'ellipse', 'diamond', 'parallelogram', 'text', 'maths'];
+/**
+ * The drawing uses something a build from before these shapes doesn't know and would write without: its file is then
+ * version 2, which such a build opens as code instead of saving it with parts missing.
+ */
+export const tikzIsNewer = (model: TikzModel) =>
+  model.boxes.some((b) => !FIRST_SHAPES.includes(b.shape) || b.initial || b.wrap || b.cells || b.repeat) ||
+  model.links.some((l) => l.route === 'bend' || l.from === l.to);
 
 export const CM_PER_UNIT = 0.25;
 const ANCHOR: Record<Side, string> = { t: 'north', r: 'east', b: 'south', l: 'west' };
@@ -107,14 +149,39 @@ const SHAPE: Record<Shape, string> = {
   diamond: 'diamond',
   parallelogram: 'trapezium, trapezium left angle=70, trapezium right angle=110, trapezium stretches=true',
   text: '',
-  maths: ''
+  maths: '',
+  state: 'state',
+  accepting: 'state, accepting',
+  cylinder: 'cylinder, shape border rotate=90, aspect=0.25',
+  document: 'tape, tape bend top=none',
+  trapezium: 'trapezium, trapezium left angle=70, trapezium right angle=70, trapezium stretches=true',
+  operator: 'circle, inner sep=0pt',
+  stack: 'rectangle',
+  container: 'rectangle, rounded corners'
 };
 
-function boxLine(box: Box) {
-  const plain = box.shape === 'text' || box.shape === 'maths';
-  const size = box.shape === 'circle'
+/** Shapes as wide as they are tall. */
+export const ROUND_SHAPES: Shape[] = ['circle', 'state', 'accepting', 'operator'];
+const COMPASS: Record<Side, string> = { t: 'above', r: 'right', b: 'below', l: 'left' };
+
+/** The angles a loop on each side leaves and comes back at, as TikZ's loop above and the like have them. */
+export const LOOP: Record<Side, [out: number, back: number]> = { t: [105, 75], r: [15, -15], b: [285, 255], l: [195, 165] };
+/** How far a bent arrow turns from the straight line, in degrees. */
+export const BEND = 20;
+/** Where a stack's lines between cells are, as y in grid units. */
+export function dividersOf(box: Box) {
+  const cells = Math.max(1, Math.round(box.cells ?? 4));
+  return Array.from({ length: cells - 1 }, (_, i) => box.y + (box.h * (i + 1)) / cells);
+}
+/** Containers first, so the boxes in them are drawn over them. */
+export const drawingOrder = (boxes: Box[]) => [...boxes.filter((b) => b.shape === 'container'), ...boxes.filter((b) => b.shape !== 'container')];
+
+function boxLines(box: Box) {
+  const plain = plainShape(box.shape);
+  const size = ROUND_SHAPES.includes(box.shape)
     ? [`minimum size=${num(Math.min(box.w, box.h) * CM_PER_UNIT)}cm`]
     : plain ? [] : [`minimum width=${num(box.w * CM_PER_UNIT)}cm`, `minimum height=${num(box.h * CM_PER_UNIT)}cm`];
+  const title = box.text.trim();
   const options = [
     // a label's colour is its text's; a box's is its border's
     ...(plain ? [] : [box.stroke ? `draw=${latexColour(box.stroke)}` : 'draw']),
@@ -123,11 +190,20 @@ function boxLine(box: Box) {
     box.fill && `fill=${latexColour(box.fill)}`,
     ...(plain ? lineOptions({ stroke: box.stroke }, 'text') : lineOptions({ dash: box.dash, width: box.width })),
     ...size,
+    stateShape(box.shape) && box.initial && `initial, initial where=${COMPASS[box.initial]}, initial text=`,
+    // a container's title sits inside its top-left corner and its ×N outside on the right; a stack's caption below it
+    box.shape === 'container' && title && `label={[anchor=north west]north west:{${title}}}`,
+    box.shape === 'container' && box.repeat?.trim() && `label={east:{$\\times ${box.repeat.trim()}$}}`,
+    box.shape === 'stack' && title && `label={below:{${title}}}`,
+    box.wrap && !plain && `text width=${num(Math.max(0.25, box.w * CM_PER_UNIT - 0.25))}cm`,
     'align=center'
   ].filter(Boolean);
   const lines = box.text.split('\n').map((l) => l.trim());
-  const text = box.shape === 'maths' ? (box.text.trim() ? `$${box.text.trim()}$` : '') : lines.join(' \\\\ ').trim();
-  return `\\node[${options.join(', ')}] (${box.id}) at ${at(box.x + box.w / 2, box.y + box.h / 2)} {${text}};`;
+  const text = box.shape === 'container' || box.shape === 'stack' ? '' : MATHS_SHAPES.includes(box.shape) ? (title ? `$${title}$` : '') : lines.join(' \\\\ ').trim();
+  const node = `\\node[${options.join(', ')}] (${box.id}) at ${at(box.x + box.w / 2, box.y + box.h / 2)} {${text}};`;
+  if (box.shape !== 'stack') return [node];
+  const line = lineOptions(box);
+  return [node, ...dividersOf(box).map((y) => `\\draw${line.length ? `[${line.join(', ')}]` : ''} ${at(box.x, y)} -- ${at(box.x + box.w, y)};`)];
 }
 
 const HEADS: Record<Heads, string> = { none: '', end: '-{Stealth}', start: '{Stealth}-', both: '{Stealth}-{Stealth}' };
@@ -141,7 +217,14 @@ function linkLine(link: Link, boxes: Map<string, Box>) {
   const end = `(${to.id}.${ANCHOR[link.toSide]})`;
   const label = (pos: string) => (link.label?.trim() ? ` node[${pos}, fill=white, inner sep=2pt] {${link.label.trim()}}` : '');
   let path: string;
-  if (link.route === 'curved') {
+  if (from === to) {
+    // out and back on its side as TikZ's loop above and the like do, without their every loop arrow
+    const [out, back] = LOOP[link.fromSide];
+    path = `(${from.id}) to[out=${out}, in=${back}, looseness=8, min distance=5mm]${label('midway')} (${to.id})`;
+  } else if (link.route === 'bend') {
+    // from the centres, so the two arrows of a pair meet their boxes apart
+    path = `(${from.id}) to[bend left=${BEND}]${label('midway')} (${to.id})`;
+  } else if (link.route === 'curved') {
     path = `${start} to[out=${ANGLE[link.fromSide]}, in=${ANGLE[link.toSide]}]${label('midway')} ${end}`;
   } else {
     const points = pathPoints(link, from, to);
@@ -154,10 +237,13 @@ function linkLine(link: Link, boxes: Map<string, Box>) {
 
 export function tikzCode(model: TikzModel) {
   const boxes = new Map(model.boxes.map((b) => [b.id, b]));
-  const body = ['\\begin{tikzpicture}', ...model.boxes.map(boxLine), ...model.links.map((l) => linkLine(l, boxes)).filter(Boolean), '\\end{tikzpicture}'];
-  const texts = [...model.boxes.map((b) => b.text), ...model.links.map((l) => l.label ?? '')];
-  // positioning isn't used by the picture itself, but loaded for code added by hand in the TikZ way (right=of n1)
-  return { body: `${body.join('\n')}\n`, packages: ['tikz', ...mathsPackages(texts)], libraries: ['shapes.geometric', 'arrows.meta', 'positioning'] };
+  const body = ['\\begin{tikzpicture}', ...drawingOrder(model.boxes).flatMap(boxLines), ...model.links.map((l) => linkLine(l, boxes)).filter(Boolean), '\\end{tikzpicture}'];
+  const texts = [...model.boxes.flatMap((b) => [b.text, b.repeat ?? '']), ...model.links.map((l) => l.label ?? '')];
+  const uses = (...shapes: Shape[]) => model.boxes.some((b) => shapes.includes(b.shape));
+  // positioning isn't used by the picture itself, but loaded for code added by hand in the TikZ way (right=of n1); the
+  // others only when a shape needs them, so a drawing without those shapes asks the document for nothing new
+  const libraries = ['shapes.geometric', 'arrows.meta', 'positioning', ...(uses('state', 'accepting') ? ['automata'] : []), ...(uses('document') ? ['shapes.symbols'] : [])];
+  return { body: `${body.join('\n')}\n`, packages: ['tikz', ...mathsPackages(texts)], libraries };
 }
 
 // ─── the selection's Copy, Paste and Delete ───
@@ -170,6 +256,37 @@ export function nextId(prefix: string, taken: Iterable<string>) {
     if (m) n = Math.max(n, Number(m[1]));
   }
   return `${prefix}${n + 1}`;
+}
+
+/**
+ * A new arrow: a loop on its side when both ends are one box; bent to one side, as the straight arrow already going the
+ * other way becomes, when it makes a pair with one.
+ */
+export function connect(model: TikzModel, from: string, to: string, fromSide: Side, toSide: Side): TikzModel {
+  const id = nextId('e', model.links.map((l) => l.id));
+  const back = (l: Link) => from !== to && l.from === to && l.to === from;
+  const pair = model.links.some(back);
+  const links = model.links.map((l) => (back(l) && l.route === 'straight' ? { ...l, route: 'bend' as const } : l));
+  return { ...model, links: [...links, { id, from, to, fromSide, toSide: from === to ? fromSide : toSide, route: pair ? 'bend' : 'straight', heads: 'end' }] };
+}
+
+/** Boxes moved to these top-left corners, in grid units. A container moved takes the boxes whose centres are in it along. */
+export function moveBoxes(boxes: Box[], moves: { id: string; x: number; y: number }[]): Box[] {
+  const moved = new Map(moves.map((m) => [m.id, m]));
+  const along = new Map<string, [number, number]>();
+  for (const box of boxes) {
+    const m = moved.get(box.id);
+    if (!m || box.shape !== 'container' || (m.x === box.x && m.y === box.y)) continue;
+    for (const b of boxes) {
+      const [cx, cy] = [b.x + b.w / 2, b.y + b.h / 2];
+      if (b !== box && !moved.has(b.id) && cx > box.x && cx < box.x + box.w && cy > box.y && cy < box.y + box.h) along.set(b.id, [m.x - box.x, m.y - box.y]);
+    }
+  }
+  return boxes.map((b) => {
+    const m = moved.get(b.id);
+    const by = along.get(b.id);
+    return m ? { ...b, x: m.x, y: m.y } : by ? { ...b, x: b.x + by[0], y: b.y + by[1] } : b;
+  });
 }
 
 /** The selected boxes, and the arrows between them or selected with both their ends. */
