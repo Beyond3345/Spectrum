@@ -510,8 +510,8 @@ async function syncAgentSkills(r) {
 const bundledTools = fileURLToPath(new URL('./mcp.mjs', import.meta.url));
 const repository = fileURLToPath(new URL('../../../../', import.meta.url));
 const toolsState = (r) => path.join(r.home, 'spectrum-tools', r.id);
-/** The tools server's file, and what isolation must also read to run it. */
-async function toolsLaunch() {
+/** The tools server's file, its environment, and what isolation must also read to run it. */
+export async function toolsLaunch() {
   const packaged = await fs.stat(bundledTools).then((s) => s.isFile(), () => false);
   const entry = packaged ? bundledTools : path.join(repository, 'apps/backend/src/mcp/server.js');
   // Node, the server (in development the backend's source, its packages and the version in the root package.json) and
@@ -523,11 +523,13 @@ async function toolsLaunch() {
     const dir = file && path.dirname(file);
     if (dir && !reads.some((read) => dir === read || dir.startsWith(read + path.sep))) reads.push(dir);
   }
-  return { entry, reads: (await Promise.all(reads.map(async (p) => (await fs.stat(p).catch(() => null)) && p))).filter(Boolean) };
+  // the engines' own paths and Spectrum's data folder, so a compile inside isolation finds the same programs
+  const env = { SPECTRUM_DATA_DIR: DATA_DIR, ...Object.fromEntries([['SPECTRUM_TYPST', process.env.SPECTRUM_TYPST], ['SPECTRUM_TECTONIC', process.env.SPECTRUM_TECTONIC]].filter(([, value]) => value)) };
+  return { entry, env, reads: (await Promise.all(reads.map(async (p) => (await fs.stat(p).catch(() => null)) && p))).filter(Boolean) };
 }
 async function toolsServer(r) {
   if (process.platform !== 'darwin') return null;
-  const { entry, reads } = await toolsLaunch();
+  const { entry, env, reads } = await toolsLaunch();
   const state = toolsState(r);
   const meta = await readMeta(r.root).catch(() => ({}));
   // written by isolation, as the home is the agent's
@@ -538,13 +540,11 @@ async function toolsServer(r) {
   }));
   return {
     reads,
-    // the engines' own paths and Spectrum's data folder, so a compile inside isolation finds the same programs
     server: { name: 'spectrum', command: process.execPath, args: [entry, '--root', r.workspace, '--state', state], env: [
       { name: 'HOME', value: r.home },
       { name: 'TMPDIR', value: path.join(r.home, 'tmp') },
       { name: 'PATH', value: process.env.PATH || '/usr/bin:/bin' },
-      { name: 'SPECTRUM_DATA_DIR', value: DATA_DIR },
-      ...[['SPECTRUM_TYPST', process.env.SPECTRUM_TYPST], ['SPECTRUM_TECTONIC', process.env.SPECTRUM_TECTONIC]].filter(([, value]) => value).map(([name, value]) => ({ name, value }))
+      ...Object.entries(env).map(([name, value]) => ({ name, value }))
     ] }
   };
 }
@@ -625,8 +625,8 @@ export async function previewDraft(r, options = {}) {
       const result = await compileFolder({ root: r.workspace, mainFile: main, engine, without: ['tectonic', 'latexmk'], untrusted: true, buildDir: out, env: PREVIEW_TEX_ENV });
       return { ok: result.ok && result.status === 0, pdf: result.pdf || null, log: result.log || result.error || '' };
     }
-    const { entry, reads } = await toolsLaunch();
-    const child = await spawnAgentProcess({ command: process.execPath, args: [entry, '--compile', '--root', r.workspace, '--state', out, '--main', main, '--engine', engine], workspace: out, home, cwd: out, runtimePaths: [...reads, r.workspace], forbiddenRoots: [r.root] });
+    const { entry, env, reads } = await toolsLaunch();
+    const child = await spawnAgentProcess({ command: process.execPath, args: [entry, '--compile', '--root', r.workspace, '--state', out, '--main', main, '--engine', engine], workspace: out, home, cwd: out, runtimePaths: [...reads, r.workspace], forbiddenRoots: [r.root], env });
     // stopped with the session's other processes
     r.fileOperations ||= new Set(); r.fileOperations.add(child);
     let output = '', error = '';
