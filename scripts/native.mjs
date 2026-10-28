@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rebuild the bundled checkers. Sources and tools are pinned in native/checkers.lock.json.
-//   node scripts/native.mjs [nodehun|harper|dictionaries|all|verify] [--update] [--archive file.tgz]
-// --update refreshes the vendored Hunspell core, preserving Spectrum's patched Node binding.
+//   node scripts/native.mjs [hunspell|harper|dictionaries|all|verify] [--update] [--archive file.tgz]
+// --update refreshes the vendored Hunspell core (native/hunspell/core) from the pinned archive; Spectrum's binding stays.
 // --archive supplies an offline archive for one engine; its pinned SHA-256 is still checked.
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -10,7 +10,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { x as extract } from 'tar';
-import { DICTIONARY_FILES, HARPER_FILES, sha256 } from '../apps/backend/src/utils/checkerMetadata.js';
+import { createRequire } from 'node:module';
+import { DICTIONARY_FILES, HARPER_FILES, hunPath, sha256 } from '../apps/backend/src/utils/checkerMetadata.js';
 import { workerClient } from '../apps/backend/src/utils/workerClient.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -51,7 +52,8 @@ export function sourceHash(dir, roots = ['.']) {
   }
   return hash.digest('hex');
 }
-const CORE_INPUTS = ['src', 'binding.gyp', 'COPYING', 'COPYING.LGPL', 'COPYING.MPL'];
+const CORE_INPUTS = ['src/hunspell', 'COPYING', 'COPYING.LESSER', 'COPYING.MPL', 'license.hunspell', 'license.myspell', 'AUTHORS'];
+const BINDING_INPUTS = ['binding.cc', 'binding.gyp', 'package.json', 'package-lock.json'];
 
 async function sourceArchive(pin, work, archive) {
   const bytes = archive ? readFileSync(resolve(archive)) : Buffer.from(await (async () => {
@@ -87,42 +89,54 @@ function installFile(from, to) {
   renameSync(staged, to);
 }
 
-async function buildNodehun(work, update, archive) {
-  const original = join(NATIVE, 'nodehun');
-  const dir = join(work, 'nodehun');
+// the English answers every build must give: en-AU's own words, American spellings and a misspelling flagged
+const AU_CHECK = { op: 'check', words: ['colour', 'color', 'organise', 'recieve', 'defence'] };
+const AU_ANSWER = (words) => words.join(',') === 'color,recieve';
+
+async function buildHunspell(work, update, archive) {
+  const original = join(NATIVE, 'hunspell');
+  const dir = join(work, 'hunspell');
   mkdirSync(dir);
-  for (const file of ['src', 'binding.gyp', 'package.json', 'package-lock.json', 'LICENSE.md']) cpSync(join(original, file), join(dir, file), { recursive: true });
-  const source = update ? join(await sourceArchive(lock.hunspell, work, archive), 'hunspell') : join(original, 'hunspell');
-  const hash = sourceHash(source, CORE_INPUTS);
+  for (const file of BINDING_INPUTS) cpSync(join(original, file), join(dir, file));
+  const core = update ? await sourceArchive(lock.hunspell, work, archive) : join(original, 'core');
+  const hash = sourceHash(core, CORE_INPUTS);
   if (hash !== lock.hunspell.sourceHash) throw new Error(`Hunspell source differs from its pin (got ${hash}). Use --update, or review and repin the new source.`);
-  cpSync(source, join(dir, 'hunspell'), { recursive: true });
+  for (const file of CORE_INPUTS) cpSync(join(core, file), join(dir, 'core', file), { recursive: true });
   if (!existsSync(join(original, 'node_modules', 'node-addon-api'))) run('npm', ['ci', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: original });
   cpSync(join(original, 'node_modules', 'node-addon-api'), join(dir, 'node_modules', 'node-addon-api'), { recursive: true });
   const slices = [];
   for (const arch of win ? ['x64'] : ['arm64', 'x64']) {
     run('npx', ['--yes', `node-gyp@${lock.tools.nodeGyp}`, 'rebuild', `--arch=${arch}`, '-j', '8'], { cwd: dir });
-    const slice = join(work, `nodehun-${arch}.node`);
-    copyFileSync(join(dir, 'build', 'Release', 'Nodehun.node'), slice);
+    const slice = join(work, `hunspell-${arch}.node`);
+    copyFileSync(join(dir, 'build', 'Release', 'hunspell.node'), slice);
     slices.push(slice);
   }
-  const staged = join(work, 'nodehun.node');
+  const staged = join(work, 'hunspell.node');
   if (win) copyFileSync(slices[0], staged);
   else {
     run('/usr/bin/lipo', ['-create', ...slices, '-output', staged]);
     run('/usr/bin/codesign', ['--force', '--sign', '-', staged]);
   }
-  await smoke('spellWorker.mjs', { nativeDir: work, dictDir: join(ROOT, 'dictionaries') }, { op: 'check', words: ['colour', 'color', 'organise', 'recieve', 'defence'] }, (words) => words.join(',') === 'color,recieve');
-  const manifest = join(work, 'nodehun.manifest.json');
-  json(manifest, { schema: 1, engine: 'Hunspell', version: lock.hunspell.version, binding: { name: 'nodehun', version: JSON.parse(readFileSync(join(dir, 'package.json'))).version, sourceHash: sourceHash(dir, ['src', 'binding.gyp', 'package.json', 'package-lock.json']) }, source: lock.hunspell,
-    build: { node: process.version, nodeGyp: lock.tools.nodeGyp, nodeAddonApi: JSON.parse(readFileSync(join(dir, 'node_modules/node-addon-api/package.json'))).version, platform: process.platform, architectures: win ? ['x64'] : ['arm64', 'x64'], selfTest: 'passed' }, files: digestFiles(work, ['nodehun.node']) });
-  // Refresh only the core; buffer-safety fixes in Spectrum's binding must survive updates.
+  // the library's own version, and en_AU opened from a folder whose name is not ASCII (on Windows, the \\?\ path)
+  const { Speller } = createRequire(import.meta.url)(staged);
+  if (Speller.version() !== lock.hunspell.version) throw new Error(`The binding reports Hunspell ${Speller.version()}, not ${lock.hunspell.version}. Nothing was installed.`);
+  const unicode = join(work, 'spectrum-拼写-é');
+  mkdirSync(unicode);
+  for (const file of ['en_AU.aff', 'en_AU.dic']) copyFileSync(join(ROOT, 'dictionaries', 'en_AU', file), join(unicode, file));
+  const au = new Speller(hunPath(join(unicode, 'en_AU.aff')), hunPath(join(unicode, 'en_AU.dic')));
+  if (au.encoding() !== 'UTF-8' || au.spell(['colour', 'color', 'naïve']).join() !== 'true,false,true') throw new Error('en_AU did not open from a folder with letters outside ASCII. Nothing was installed.');
+  await smoke('spellWorker.mjs', { nativeDir: work, dictDir: join(ROOT, 'dictionaries') }, AU_CHECK, AU_ANSWER);
+  const manifest = join(work, 'hunspell.manifest.json');
+  const { version: bindingVersion } = JSON.parse(readFileSync(join(dir, 'package.json')));
+  json(manifest, { schema: 1, engine: 'Hunspell', version: lock.hunspell.version, binding: { name: 'spectrum-hunspell', version: bindingVersion, sourceHash: sourceHash(dir, BINDING_INPUTS) }, source: lock.hunspell,
+    build: { node: process.version, nodeGyp: lock.tools.nodeGyp, nodeAddonApi: JSON.parse(readFileSync(join(dir, 'node_modules/node-addon-api/package.json'))).version, platform: process.platform, architectures: win ? ['x64'] : ['arm64', 'x64'], selfTest: 'passed' }, files: digestFiles(work, ['hunspell.node']) });
   if (update) {
-    rmSync(join(original, 'hunspell'), { recursive: true, force: true });
-    cpSync(source, join(original, 'hunspell'), { recursive: true });
+    rmSync(join(original, 'core'), { recursive: true, force: true });
+    for (const file of CORE_INPUTS) cpSync(join(core, file), join(original, 'core', file), { recursive: true });
   }
   const dest = win ? join(NATIVE, 'win32-x64') : NATIVE;
-  installFile(staged, join(dest, 'nodehun.node'));
-  installFile(manifest, join(dest, 'nodehun.manifest.json'));
+  installFile(staged, join(dest, 'hunspell.node'));
+  installFile(manifest, join(dest, 'hunspell.manifest.json'));
   console.log(`Hunspell ${lock.hunspell.version}: built, self-tested and installed.`);
 }
 
@@ -154,14 +168,16 @@ async function buildHarper(work, archive) {
 }
 
 async function dictionaries() {
-  await smoke('spellWorker.mjs', { nativeDir: NATIVE, dictDir: join(ROOT, 'dictionaries') }, { op: 'check', words: ['colour', 'color', 'organise', 'recieve', 'defence'] }, (words) => words.join(',') === 'color,recieve');
+  await smoke('spellWorker.mjs', { nativeDir: NATIVE, dictDir: join(ROOT, 'dictionaries') }, AU_CHECK, AU_ANSWER);
+  // each English variant opens and passes its own self-test (spellWorker.mjs ENGLISH)
+  for (const lang of ['en-US', 'en-GB', 'en-CA', 'en-IN']) await smoke('spellWorker.mjs', { nativeDir: NATIVE, dictDir: join(ROOT, 'dictionaries') }, { op: 'check', lang, words: [] }, (words) => Array.isArray(words));
   json(join(ROOT, 'dictionaries', 'manifest.json'), { schema: 1, version: lock.dictionaries.version, components: lock.dictionaries.components, files: digestFiles(join(ROOT, 'dictionaries'), DICTIONARY_FILES) });
   console.log('Dictionary versions and checksums recorded; Australian spelling self-test passed.');
 }
 
 async function main() {
   const [which = 'all', ...args] = process.argv.slice(2);
-  if (!['nodehun', 'harper', 'dictionaries', 'all', 'verify'].includes(which)) throw new Error('Choose nodehun, harper, dictionaries, all or verify.');
+  if (!['hunspell', 'harper', 'dictionaries', 'all', 'verify'].includes(which)) throw new Error('Choose hunspell, harper, dictionaries, all or verify.');
   let update = false, archive;
   while (args.length) {
     const arg = args.shift();
@@ -169,8 +185,8 @@ async function main() {
     else if (arg === '--archive' && args[0]) archive = args.shift();
     else throw new Error(`Unknown or incomplete option: ${arg}`);
   }
-  if (archive && !['nodehun', 'harper'].includes(which)) throw new Error('--archive requires one engine.');
-  if (which === 'nodehun' && archive && !update) throw new Error('Use --update with a Hunspell source archive.');
+  if (archive && !['hunspell', 'harper'].includes(which)) throw new Error('--archive requires one engine.');
+  if (which === 'hunspell' && archive && !update) throw new Error('Use --update with a Hunspell source archive.');
   if (which === 'harper' && archive && process.env.HARPER_DIR) throw new Error('Choose --archive or HARPER_DIR, not both.');
   if (which === 'verify') {
     const spell = await import('../apps/backend/src/services/spellService.js');
@@ -192,9 +208,9 @@ async function main() {
   if (which === 'dictionaries') return dictionaries();
   const work = mkdtempSync(join(tmpdir(), 'spectrum-native-'));
   try {
-    if (which === 'nodehun' || which === 'all') { const dir = join(work, 'spell'); mkdirSync(dir); await buildNodehun(dir, update, archive); }
+    if (which === 'hunspell' || which === 'all') { const dir = join(work, 'spell'); mkdirSync(dir); await buildHunspell(dir, update, archive); }
     if (which === 'harper' || which === 'all') { const dir = join(work, 'grammar'); mkdirSync(dir); await buildHarper(dir, archive); }
-    if (which === 'all' || which === 'nodehun') await dictionaries();
+    if (which === 'all' || which === 'hunspell') await dictionaries();
   } finally { rmSync(work, { recursive: true, force: true }); }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((err) => { console.error(err.message); process.exitCode = 1; });

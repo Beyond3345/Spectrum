@@ -1608,7 +1608,7 @@ function CheckerDetails({ name, status }: { name: string; status: CheckerStatus 
     {!status ? `Checking ${name}…` : <>
       <div>{name} {status.version || 'version unavailable'} · {!status.available ? 'Unavailable' : status.started === false ? 'Starts with the first check' : 'Ready'} · Australian English</div>
       {/* versions only for files that match their build information */}
-      {status.diagnostics?.assets.integrity === 'verified' && status.diagnostics.assets.manifest?.binding && <div>nodehun {status.diagnostics.assets.manifest.binding.version}</div>}
+      {status.diagnostics?.assets.integrity === 'verified' && status.diagnostics.assets.manifest?.binding && <div>Spectrum’s Hunspell binding {status.diagnostics.assets.manifest.binding.version}</div>}
       {status.error && <div className="error">{status.error}</div>}
       {status.diagnostics?.assets.warnings.map((warning) => <div className="error" key={warning}>{warning}</div>)}
       {status.diagnostics?.dictionaries?.integrity === 'verified' && status.diagnostics.dictionaries.manifest?.components?.map((item) => <div key={item.name}>{[item.name, item.version].filter(Boolean).join(' ')}</div>)}

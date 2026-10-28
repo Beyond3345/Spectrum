@@ -7,8 +7,8 @@ import { workerClient } from '../utils/workerClient.js';
 import { existsSync } from 'node:fs';
 import { DICTIONARY_FILES, inspectCheckerAssets } from '../utils/checkerMetadata.js';
 
-// Australian English spelling through nodehun, on a thread of its own (spellWorker.mjs). If it
-// can't start, spelling reports itself unavailable and the rest of Spectrum carries on.
+// Spelling through Spectrum's Hunspell binding, on a thread of its own (spellWorker.mjs), Australian English unless
+// asked for another language. If it can't start, spelling reports itself unavailable and the rest of Spectrum carries on.
 const speller = workerClient(new URL('./spellWorker.mjs', import.meta.url), { nativeDir: NATIVE_DIR, dictDir: DICT_DIR }, {
   unavailable: 'Spell check isn’t available',
   timeoutMs: 20_000
@@ -16,9 +16,9 @@ const speller = workerClient(new URL('./spellWorker.mjs', import.meta.url), { na
 
 export async function spellStatus() {
   const platformDir = path.join(NATIVE_DIR, `${process.platform}-${process.arch}`);
-  const dir = existsSync(path.join(platformDir, 'nodehun.node')) ? platformDir : NATIVE_DIR;
+  const dir = existsSync(path.join(platformDir, 'hunspell.node')) ? platformDir : NATIVE_DIR;
   const [status, assets, dictionaries] = await Promise.all([
-    speller.status(), inspectCheckerAssets(dir, 'nodehun.manifest.json', ['nodehun.node']),
+    speller.status(), inspectCheckerAssets(dir, 'hunspell.manifest.json', ['hunspell.node']),
     inspectCheckerAssets(DICT_DIR, 'manifest.json', DICTIONARY_FILES)
   ]);
   return { ...status, language: 'en-AU', engine: 'Hunspell', version: assets.version,
@@ -80,15 +80,16 @@ export async function ownWords(projectId) {
   return [...new Set([...(await readList(GLOBAL_FILE())), ...(projectId ? await readList(await projectFile(projectId)) : [])])];
 }
 
-/** The words that aren't Australian English, leaving out the ones on the user's lists. */
-export async function checkWords(words, projectId) {
+/** The words `lang` doesn't know (Australian English by default), leaving out the ones on the user's lists. */
+export async function checkWords(words, projectId, lang = 'en-AU') {
   const unique = [...new Set(words.map(String).filter((w) => w && w.length <= 100))].slice(0, 5000);
   const own = new Set(await ownWords(projectId));
   const wanted = unique.filter((w) => !own.has(key(w)) && !own.has(key(w).toLowerCase()));
   if (!wanted.length) return [];
-  return speller.call({ op: 'check', words: wanted });
+  return speller.call({ op: 'check', words: wanted, lang });
 }
 
-export async function suggestWord(word) {
-  return speller.call({ op: 'suggest', word: String(word).slice(0, 100) });
+export async function suggestWord(word, lang = 'en-AU') {
+  return speller.call({ op: 'suggest', word: String(word).slice(0, 100), lang });
 }
+

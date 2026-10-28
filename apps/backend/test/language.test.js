@@ -122,7 +122,7 @@ test('grammar: Australian dialect, no Oxford comma, positions in the source', as
   assert.ok(byRule.NoOxfordComma, 'serial comma flagged');
   assert.ok(byRule.PronounInflectionBe, 'It are');
   assert.ok(byRule.RepeatedWords, 'the the inside \\emph');
-  assert.ok(!issues.some((i) => i.kind === 'Spelling' && i.rule === 'SpellCheck'), 'spelling is left to nodehun');
+  assert.ok(!issues.some((i) => i.kind === 'Spelling' && i.rule === 'SpellCheck'), 'spelling is left to Hunspell');
 
   const allowed = await grammar.checkGrammar({ text: tex, file: 'main.tex', oxford: 'off', ignoredRules: ['AnA'] });
   assert.ok(!allowed.some((i) => i.rule === 'NoOxfordComma' || i.rule === 'AnA'));
@@ -143,6 +143,15 @@ test('grammar in each English dialect, Australian by default, the serial comma i
     assert.ok(!(await flagged(language, 'off')).some((i) => i.startsWith('NoOxfordComma')), language);
   }
   assert.deepEqual((await grammar.grammarStatus()).languages, ['en-AU', 'en-US', 'en-GB', 'en-CA', 'en-IN']);
+});
+
+test('spelling in each bundled English: its own words, and the supplement in all of them', async () => {
+  const words = ['colour', 'color', 'organise', 'organize', 'defence', 'defense', 'LaTeX', 'arXiv', 'Centrelink', 'recieve'];
+  assert.deepEqual((await spell.checkWords(words, undefined, 'en-US')).sort(), ['Centrelink', 'colour', 'defence', 'organise', 'recieve']);
+  assert.deepEqual((await spell.checkWords(words, undefined, 'en-GB')).sort(), ['Centrelink', 'color', 'defense', 'recieve']);
+  assert.deepEqual((await spell.checkWords(words, undefined, 'en-IN')).sort(), ['Centrelink', 'color', 'defense', 'recieve']);
+  assert.deepEqual((await spell.checkWords(words, undefined, 'en-CA')).sort(), ['Centrelink', 'organise', 'recieve']);
+  assert.ok((await spell.suggestWord('colur', 'en-US')).includes('color'));
 });
 
 test('runs of Chinese, Japanese and Thai make no words; Korean splits at spaces; word characters join only between letters', () => {

@@ -49,11 +49,11 @@ jobs:
 
       - run: npm ci
 
-      # Visual Studio's C++ tools and Python come with the runner. Without nodehun the
+      # Visual Studio's C++ tools and Python come with the runner. Without the Hunspell binding the
       # installer still builds (no spell checker), but a release run fails instead of attaching it.
-      - name: Spell checker (nodehun)
+      - name: Spell checker (Hunspell)
         continue-on-error: ${{ !inputs.release_tag }}
-        run: node scripts/native.mjs nodehun
+        run: node scripts/native.mjs hunspell
 
       # built from its tagged source with the C runtime linked in, which takes a while, so kept between runs: saved as
       # soon as it's built, as the whole cache action saves only when every later step passes
@@ -112,7 +112,7 @@ jobs:
       - name: Backend tests
         if: ${{ !cancelled() }}
         env:
-          # nodehun and Harper as the installer has them
+          # Hunspell and Harper as the installer has them
           SPECTRUM_NATIVE_DIR: ${{ github.workspace }}\src-tauri\resources\native
         run: npm test
 

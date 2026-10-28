@@ -8,10 +8,10 @@ export function registerLanguageRoutes(fastify) {
   fastify.get('/api/spell/status', async () => spellStatus());
 
   fastify.post('/api/spell/check', async (req, reply) => {
-    const { words, projectId } = req.body || {};
+    const { words, projectId, lang } = req.body || {};
     if (!Array.isArray(words)) return reply.code(400).send({ error: 'Send the words to check.' });
     try {
-      return { misspelt: await checkWords(words, projectId) };
+      return { misspelt: await checkWords(words, projectId, lang) };
     } catch (err) {
       if (err?.statusCode) throw err;
       return unavailable(reply, err);
@@ -19,26 +19,16 @@ export function registerLanguageRoutes(fastify) {
   });
 
   fastify.post('/api/spell/suggest', async (req, reply) => {
-    const { word } = req.body || {};
+    const { word, lang } = req.body || {};
     if (typeof word !== 'string' || !word.trim()) return reply.code(400).send({ error: 'Send a word.' });
     try {
-      return { suggestions: await suggestWord(word) };
+      return { suggestions: await suggestWord(word, lang) };
     } catch (err) {
       return unavailable(reply, err);
     }
   });
 
   fastify.get('/api/spell/words', async (req) => listWords(req.query?.projectId));
-
-  fastify.post('/api/spell/words', async (req, reply) => {
-    const { word, scope, projectId, remove } = req.body || {};
-    try {
-      return await changeWord({ word, scope: scope === 'project' ? 'project' : 'global', projectId, remove: !!remove });
-    } catch (err) {
-      if (err?.statusCode) throw err;
-      return reply.code(400).send({ error: err.message });
-    }
-  });
 
   fastify.get('/api/grammar/status', async () => grammarStatus());
 

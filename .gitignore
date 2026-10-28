@@ -19,5 +19,5 @@ native/win32-x64/
 
 .build-tools/
 native/agent-sandbox/bin/
-native/nodehun/build/
+native/hunspell/build/
 windows-delivery/

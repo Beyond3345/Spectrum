@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "engine": "Hunspell",
+  "version": "1.7.6",
+  "binding": {
+    "name": "spectrum-hunspell",
+    "version": "1.0.0",
+    "sourceHash": "46155f167283c043f2de37b98ce995a968396870e3131ac25fca94b61523c3cb"
+  },
+  "source": {
+    "version": "1.7.6",
+    "commit": "15faca15532b34db3106d50f162e5edc2503d6d6",
+    "url": "https://codeload.github.com/hunspell/hunspell/tar.gz/15faca15532b34db3106d50f162e5edc2503d6d6",
+    "sha256": "58eb4c2933c2c4c20952c3022fcbf99c0f1d95eaaeda35ad32ac1706b34194d6",
+    "sourceHash": "7d3ed9461ad537e9b431ae5b147dbf1105f8b0da31a7585b6a82c9e57dde3f74"
+  },
+  "build": {
+    "node": "v26.10.0",
+    "nodeGyp": "12.4.0",
+    "nodeAddonApi": "8.5.0",
+    "platform": "darwin",
+    "architectures": [
+      "arm64",
+      "x64"
+    ],
+    "selfTest": "passed"
+  },
+  "files": {
+    "hunspell.node": "d90d3bf27d0c060a7cbd4262cda1db4c09205f1218b7cefc6589f00eb86a5863"
+  }
+}

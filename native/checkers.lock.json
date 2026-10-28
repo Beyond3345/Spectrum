@@ -6,12 +6,11 @@
     "sha256": "e46bd0e3d7481c19e6b98d4be2947d755f8e50e0336036fb657f394eac28f837"
   },
   "hunspell": {
-    "version": "1.3.3",
-    "variant": "hunspell-distributed (buffer-based fork bundled by nodehun)",
-    "providerVersion": "3.0.2",
-    "url": "https://registry.npmjs.org/nodehun/-/nodehun-3.0.2.tgz",
-    "sha256": "0a4a541c8ae00916c9ef852c2b4cccd27ee70cf72ae14f7b348ae0049c15e21e",
-    "sourceHash": "4d7c3af7b79814578310806078c7dc7f001fa663419a61b165b06356ff3e964e"
+    "version": "1.7.6",
+    "commit": "15faca15532b34db3106d50f162e5edc2503d6d6",
+    "url": "https://codeload.github.com/hunspell/hunspell/tar.gz/15faca15532b34db3106d50f162e5edc2503d6d6",
+    "sha256": "58eb4c2933c2c4c20952c3022fcbf99c0f1d95eaaeda35ad32ac1706b34194d6",
+    "sourceHash": "7d3ed9461ad537e9b431ae5b147dbf1105f8b0da31a7585b6a82c9e57dde3f74"
   },
   "tools": {
     "nodeGyp": "12.4.0"
@@ -30,14 +29,31 @@
         "source": "https://github.com/wooorm/dictionaries"
       },
       {
+        "name": "SCOWL en_GB-large",
+        "version": "2026.02.25",
+        "source": "https://github.com/en-wl/wordlist/releases/download/rel-2026.02.25/hunspell-en_GB-large-2026.02.25.zip",
+        "sha256": "704a49438a3a9d4f11cd76db433a6b230b9ce8770ee13fa28700052c4517ddc1"
+      },
+      {
+        "name": "SCOWL en_CA-large",
+        "version": "2026.02.25",
+        "source": "https://github.com/en-wl/wordlist/releases/download/rel-2026.02.25/hunspell-en_CA-large-2026.02.25.zip",
+        "sha256": "b4b7bf4a7885de1c35fa1b3aa68317209afa58f04d60e8a07e124693485c59e3"
+      },
+      {
         "name": "AussieDic",
         "version": "3.1.0",
         "source": "https://github.com/Caskexe/Australian-English-Dictionary"
       },
       {
         "name": "Spectrum supplement",
-        "version": "e66ad8c4e03b",
+        "version": "ad945f50dbd7",
         "source": "dictionaries/spectrum-extra.dic"
+      },
+      {
+        "name": "Spectrum Australian supplement",
+        "version": "45d13f089623",
+        "source": "dictionaries/spectrum-extra-au.dic"
       }
     ]
   }

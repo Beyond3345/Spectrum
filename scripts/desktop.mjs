@@ -317,17 +317,17 @@ async function resources() {
   copyDir(path.join(root, 'dictionaries'), path.join(resourcesDir, 'dictionaries'));
   // the bundled skills (scripts/sync-skills.mjs), with their licences
   copyDir(path.join(root, 'skills'), path.join(resourcesDir, 'skills'));
-  // the built nodehun and Harper only, not nodehun's sources
+  // the built Hunspell binding and Harper only, not their sources
   const native = path.join(resourcesDir, 'native');
   fs.rmSync(native, { recursive: true, force: true });
   fs.mkdirSync(native, { recursive: true });
   copyDir(path.join(root, 'native/harper'), path.join(native, 'harper'));
-  const nodehun = path.join(root, win ? 'native/win32-x64/nodehun.node' : 'native/nodehun.node');
+  const hunspell = path.join(root, win ? 'native/win32-x64/hunspell.node' : 'native/hunspell.node');
   // the backend carries on without the spell checker, and says why
-  if (win && !fs.existsSync(nodehun)) console.warn(`\nWARNING: no ${path.relative(root, nodehun)} (node scripts/native.mjs nodehun builds it), so this build has no spell checker.\n`);
-  else fs.copyFileSync(nodehun, path.join(native, 'nodehun.node'));
-  const nodehunManifest = path.join(path.dirname(nodehun), 'nodehun.manifest.json');
-  if (fs.existsSync(nodehunManifest)) fs.copyFileSync(nodehunManifest, path.join(native, 'nodehun.manifest.json'));
+  if (win && !fs.existsSync(hunspell)) console.warn(`\nWARNING: no ${path.relative(root, hunspell)} (node scripts/native.mjs hunspell builds it), so this build has no spell checker.\n`);
+  else fs.copyFileSync(hunspell, path.join(native, 'hunspell.node'));
+  const hunspellManifest = path.join(path.dirname(hunspell), 'hunspell.manifest.json');
+  if (fs.existsSync(hunspellManifest)) fs.copyFileSync(hunspellManifest, path.join(native, 'hunspell.manifest.json'));
   prepareEnginesDir();
   const nodeVersion = await nodeRuntime(Object.keys(TRIPLES));
   // adapters are installed on a Mac only: the ones Spectrum installs don't run in Windows isolation
