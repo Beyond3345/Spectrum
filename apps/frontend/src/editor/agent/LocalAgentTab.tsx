@@ -19,6 +19,7 @@ import type { Section } from '../../app/SettingsSheet';
 import Icon from '../../app/Icon';
 import Select from '../../app/Select';
 import { IS_WINDOWS } from '../../app/platform';
+import { loadSettings } from '../../app/settings';
 import { MenuButton } from '../../app/Menu';
 import { useEditor } from '../EditorContext';
 import type { TodosState } from '../TodosList';
@@ -227,7 +228,8 @@ export default function LocalAgentTab({
       await latest.current.prepareAgent();
       if (session && session.agentId === currentId) await sendLocalAgentPrompt(session.id, message.text, { persona: message.persona, context: message.context });
       else {
-        const r = await createLocalAgentSession(latest.current.projectId, currentId, mode, message.persona);
+        const { typstVersion, markdownEngine } = loadSettings().compileDefaults;
+        const r = await createLocalAgentSession(latest.current.projectId, currentId, mode, message.persona, { typstVersion, markdownEngine });
         queued.current = message;
         write(`spectrum-agent-persona:${r.session.id}`, persona);
         write(`spectrum-agent:${latest.current.projectId}`, r.session.id);

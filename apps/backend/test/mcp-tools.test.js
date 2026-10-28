@@ -91,6 +91,15 @@ test('compile builds the copy into the run’s folder and writes nothing into th
   assert.ok((await tools.getLog(state)).tail.length > 100);
 });
 
+test('compile takes the Typst version Spectrum chose for the session', async () => {
+  const typstState = path.join(home, 'spectrum-tools', 'typst-run');
+  await write(path.join(root, 'typst', 'main.typ'), '= One\n');
+  await write(path.join(typstState, 'context.json'), JSON.stringify({ engine: 'auto', typstVersion: '9.9.9' }));
+  const result = await tools.compile(root, typstState, { main: 'typst/main.typ' });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /Typst 9\.9\.9/);
+});
+
 test('the server answers over stdio with every tool', async () => {
   const server = fileURLToPath(new URL('../src/mcp/server.js', import.meta.url));
   const client = new Client({ name: 'test', version: '1' });

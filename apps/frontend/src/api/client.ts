@@ -1564,7 +1564,8 @@ export const installLocalAgentAdapter = (id: string) => request<{ ok: boolean; a
 export const removeLocalAgentAdapter = (id: string) => request<{ ok: boolean; agent: LocalAgent }>(`/api/agents/${id}/adapter`, { method: 'DELETE' });
 export const listLocalAgentSessions = (projectId: string) => request<{ ok: boolean; sessions: LocalAgentSession[] }>(`/api/agent-sessions?projectId=${encodeURIComponent(projectId)}`);
 export const getLocalAgentSession = (id: string) => request<{ ok: boolean; session: LocalAgentSession }>(`/api/agent-sessions/${id}`);
-export const createLocalAgentSession = (projectId: string, agentId: string, mode: 'review' | 'direct', persona?: AgentPersona | null) => request<{ ok: boolean; session: LocalAgentSession }>('/api/agent-sessions', json('POST', { projectId, agentId, mode, persona }));
+/** compile: the app's default Typst version and Markdown PDF engine, for the agent's compiles of a project that chooses neither */
+export const createLocalAgentSession = (projectId: string, agentId: string, mode: 'review' | 'direct', persona?: AgentPersona | null, compile?: { typstVersion: string; markdownEngine: string }) => request<{ ok: boolean; session: LocalAgentSession }>('/api/agent-sessions', json('POST', { projectId, agentId, mode, persona, compile }));
 /** persona: left out keeps the session's; another one starts a new agent session that hears the conversation so far */
 export const sendLocalAgentPrompt = (id: string, prompt: string, options: { context?: AgentPromptContext; persona?: AgentPersona | null } = {}) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/prompt`, json('POST', { prompt, ...options }));
 export const stopLocalAgentSession = (id: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/stop`, json('POST', {}));
