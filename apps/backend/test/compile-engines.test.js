@@ -1,6 +1,6 @@
 // The built-in Tectonic in Auto's choices, the biblatex guard and Tectonic's download failure, with Node scripts
 // standing in for the engines in a throwaway data folder. Run: node --test apps/backend/test/compile-engines.test.js
-import { test, after } from 'node:test';
+import { test, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { promises as fs, mkdtempSync, realpathSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -123,4 +123,26 @@ test('the built-in Tectonic writes its PDF beside the source', { skip }, async (
   const p = await projectWith(plain);
   assert.equal((await compile(p)).pdfPath, 'main.pdf');
   assert.ok(existsSync(path.join(p.path, 'main.pdf')));
+});
+
+test('a pass of the built-in Tectonic gets 15 minutes, not the 3-minute default', { skip }, async () => {
+  await binWith('limit');
+  const started = path.join(tmp, 'limit-started');
+  // it says it has started, then takes a moment of real time while the test moves the clock on
+  const slow = ENGINE('TECTONIC RAN').replace("let out = '';", `require('fs').writeFileSync(${JSON.stringify(started)}, ''); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500); let out = '';`);
+  const file = path.join(tmp, 'tectonic-limit');
+  await fs.writeFile(file, slow, { mode: 0o755 });
+  process.env.SPECTRUM_TECTONIC = file;
+  const p = await projectWith(plain);
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const result = compile(p);
+    while (!existsSync(started)) await new Promise((resolve) => setImmediate(resolve));
+    mock.timers.tick(4 * 60 * 1000);
+    const { log } = await result;
+    assert.doesNotMatch(log, /was stopped after/);
+    assert.match(log, /TECTONIC RAN/);
+  } finally {
+    mock.timers.reset();
+  }
 });
