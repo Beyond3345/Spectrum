@@ -1,5 +1,6 @@
 // The chooser's starters: a card each, naming the mode it opens, what it starts with, and where it's listed. The
 // categories classify starters, not modes: a starter sits under its home group and is cross-listed under others.
+import * as circuitTemplates from './modes/circuitikz/templates';
 import { TEMPLATES } from './modes/mermaid/templates';
 import { newFormModel, presetFor } from './modes/form/presets';
 import { SETS } from './sets';
@@ -102,6 +103,36 @@ export const MODE_FACTS: Record<StarterMode, { language: DiagramLanguage; packag
 
 const mermaid = (id: string) => () => ({ code: TEMPLATES.find(([t]) => t === id)?.[2] ?? TEMPLATES[0][2] });
 
+/** Circuits that open pre-drawn (modes/circuitikz/templates), with what they compute written beside them. */
+const circuit = (id: string, title: string, blurb: string, model: () => unknown, aliases: string[], home = 'engineering/electrical'): Starter =>
+  ({ id, mode: 'circuitikz', title, blurb, home, aliases, file: id, model });
+const CIRCUIT_TEMPLATES: Starter[] = [
+  circuit('inverting-amplifier', 'Inverting amplifier', 'An op amp with its gain, −Rf/R1, written beside it', circuitTemplates.invertingAmplifier, ['op amp', 'opamp', 'gain', 'template']),
+  circuit('non-inverting-amplifier', 'Non-inverting amplifier', 'An op amp with its gain, 1 + Rf/R1, written beside it', circuitTemplates.nonInvertingAmplifier, ['op amp', 'opamp', 'gain', 'template']),
+  circuit('voltage-follower', 'Voltage follower', 'An op amp buffer with a gain of 1', circuitTemplates.voltageFollower, ['op amp', 'opamp', 'buffer', 'unity gain', 'template']),
+  circuit('summing-amplifier', 'Summing amplifier', 'An op amp adding two inputs', circuitTemplates.summingAmplifier, ['op amp', 'opamp', 'adder', 'mixer', 'template']),
+  circuit('integrator', 'Integrator', 'An op amp with a capacitor in its feedback', circuitTemplates.integrator, ['op amp', 'opamp', 'integrating', 'template']),
+  circuit('differentiator', 'Differentiator', 'An op amp with a capacitor at its input', circuitTemplates.differentiator, ['op amp', 'opamp', 'differentiating', 'template']),
+  circuit('difference-amplifier', 'Difference amplifier', 'An op amp giving (R2/R1)(v2 − v1)', circuitTemplates.differenceAmplifier, ['op amp', 'opamp', 'differential', 'subtractor', 'template']),
+  circuit('half-wave-rectifier', 'Half-wave rectifier', 'A diode, a smoothing capacitor and a load', circuitTemplates.halfWaveRectifier, ['rectifier', 'diode', 'power supply', 'AC to DC', 'template']),
+  circuit('centre-tap-rectifier', 'Centre-tap rectifier', 'Two diodes on a centre-tapped secondary, smoothed', circuitTemplates.centreTapRectifier, ['rectifier', 'full-wave', 'center tap', 'transformer', 'power supply', 'template']),
+  circuit('bridge-rectifier', 'Bridge rectifier', 'Four diodes in a bridge, smoothed', circuitTemplates.bridgeRectifier, ['rectifier', 'full-wave', 'diode bridge', 'power supply', 'template']),
+  circuit('common-emitter', 'Transistor amplifier stage', 'A common-emitter stage biased by a divider', circuitTemplates.commonEmitterStage, ['BJT', 'common emitter', 'NPN', 'bias', 'template']),
+  circuit('hybrid-pi', 'Small-signal model', 'The hybrid-π model of a transistor', circuitTemplates.hybridPi, ['hybrid-pi', 'hybrid pi', 'BJT', 'small signal', 'transconductance', 'template']),
+  circuit('astable-555', '555 astable', 'A 555 oscillating, with its frequency written beside it', circuitTemplates.astable, ['555', 'timer', 'oscillator', 'multivibrator', 'template']),
+  circuit('monostable-555', '555 monostable', 'A 555 one-shot, with its pulse length written beside it', circuitTemplates.monostable, ['555', 'timer', 'one-shot', 'multivibrator', 'template']),
+  circuit('buck-converter', 'Buck converter', 'A step-down converter, with M(D) written beside it', () => circuitTemplates.converter('buck'), ['buck', 'DC-DC', 'SMPS', 'step-down', 'power electronics', 'template']),
+  circuit('boost-converter', 'Boost converter', 'A step-up converter, with M(D) written beside it', () => circuitTemplates.converter('boost'), ['boost', 'DC-DC', 'SMPS', 'step-up', 'power electronics', 'template']),
+  circuit('buck-boost-converter', 'Buck-boost converter', 'An inverting converter, with M(D) written beside it', () => circuitTemplates.converter('buck-boost'), ['buck-boost', 'DC-DC', 'SMPS', 'inverting', 'power electronics', 'template']),
+  circuit('rc-ladder', 'RC ladder', 'Three RC low-pass stages in a row', () => circuitTemplates.rcLadder(3), ['RC filter', 'low-pass', 'ladder network', 'template']),
+  circuit('block-diagram', 'Block diagram', 'Blocks, adders and signals on wires with arrowheads', circuitTemplates.feedbackLoop, ['control', 'feedback', 'transfer function', 'signal flow', 'adder'], 'engineering/signals'),
+  {
+    ...circuit('mass-spring-damper', 'Mass, spring and damper', 'Springs, dampers and masses from a wall', circuitTemplates.massSpringDamper, ['vibration', 'oscillator', 'mechanical', 'dashpot', 'spring'], 'engineering/mechanical'),
+    also: ['physics/mechanics'],
+    sets: ['spx-mech']
+  }
+];
+
 export const STARTERS: Starter[] = [
   {
     id: 'circuit',
@@ -122,6 +153,7 @@ export const STARTERS: Starter[] = [
     aliases: ['gates', 'digital', 'boolean', 'NAND', 'XOR'],
     file: 'logic'
   },
+  ...CIRCUIT_TEMPLATES,
   {
     id: 'plot',
     mode: 'pgfplots',

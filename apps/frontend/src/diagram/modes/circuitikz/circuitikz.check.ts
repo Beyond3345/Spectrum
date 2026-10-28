@@ -3,8 +3,9 @@
 import { symbolGeometry, symbolRequest } from './symbolGeometry';
 import { circuitCode, readStyle, symbolOptions } from './code';
 import { attach, detach, moveBy, newPathPart, paste, remove } from './edit';
-import { CATALOGUE, PT_PER_GRID, circuitBounds, findJunctions, locator, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
+import { CATALOGUE, PARTS, PT_PER_GRID, circuitBounds, findJunctions, locator, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
 import type { CircuitModel, Shape } from './model';
+import { astable, astable555, bridgeRectifier, centreTapRectifier, commonEmitterStage, conversionRatio, converter, differenceAmplifier, differenceGain, differentiator, feedbackLoop, figure, halfWaveRectifier, hybridPi, integrator, invertingAmplifier, invertingGain, massSpringDamper, monostable, monostable555, nonInvertingAmplifier, nonInvertingGain, rcLadder, summingAmplifier, voltageFollower } from './templates';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -199,5 +200,73 @@ const deletedLabel: CircuitModel = { elements: [
   { id: 'r3', kind: 'path', type: 'resistor', a: { x: 0, y: 4 }, b: { x: 8, y: 4 }, label: { text: 'R_3' } }
 ], junctions: [] };
 eq(newPathPart(deletedLabel, 'resistor', { x: 0, y: 8 }, { x: 8, y: 8 }).label?.text, 'R_2', 'a replacement gets an unused label after a deletion');
+
+// ─── templates ───
+
+// the computed labels, against textbook values
+eq([conversionRatio('buck', 0.5), conversionRatio('boost', 0.5), conversionRatio('buck-boost', 0.5)], [0.5, 2, -1], 'M(D) at D = 0.5');
+eq([invertingGain(10e3, 100e3), nonInvertingGain(10e3, 100e3), differenceGain(10e3, 100e3)], [-10, 11, 10], 'op-amp gains');
+eq([figure(astable555(1e3, 10e3, 1e-6).frequency), figure(astable555(1e3, 10e3, 1e-6).duty), figure(monostable555(100e3, 10e-6))], ['68.6', '0.524', '1.1'], '555 frequency, duty and pulse');
+eq([figure(-1), figure(2 / 3), figure(1234.5)], ['-1', '0.667', '1230'], 'three significant figures');
+
+// pins as TeX Live and Tectonic measure them (American), so the dots a template writes are where the canvas puts them
+const measuredPins: Record<string, Record<string, [number, number]>> = {
+  'op-amp': { '-': [-4.76, 1.96], '+': [-4.76, -1.96], out: [4.76, 0] },
+  'op-amp|noinv input up': { '-': [-4.76, -1.96], '+': [-4.76, 1.96], out: [4.76, 0] },
+  npn: { B: [-3.36, 0], C: [0, 3.08], E: [0, -3.08] },
+  'chip-8': Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8].map((n) => [`pin ${n}`, [n <= 4 ? -6.16 : 6.16, [3.36, 1.12, -1.12, -3.36][n <= 4 ? n - 1 : 8 - n]]])),
+  'jump-crossing': { west: [-0.56, 0], east: [0.56, 0], north: [0, 0.56], south: [0, -0.56] },
+  adder: { west: [-1.96, 0], north: [0, 1.96], east: [1.96, 0], south: [0, -1.96] },
+  ground: { center: [0, 0] },
+  'supply-up': { center: [0, 0] },
+  terminal: { center: [0, 0] },
+  'mech-wall': { p: [0, 0] }
+};
+const measuredShape = (type: string, options: string[]): Shape => {
+  const pins = measuredPins[options.includes('noinv input up') ? `${type}|noinv input up` : type];
+  return pins ? { pins: Object.fromEntries(Object.entries(pins).map(([name, [x, y]]) => [name, { x, y }])) } : placeholderShape(type);
+};
+const templates: Record<string, CircuitModel> = {
+  invertingAmplifier: invertingAmplifier(),
+  nonInvertingAmplifier: nonInvertingAmplifier(),
+  voltageFollower: voltageFollower(),
+  summingAmplifier: summingAmplifier(),
+  integrator: integrator(),
+  differentiator: differentiator(),
+  differenceAmplifier: differenceAmplifier(),
+  halfWaveRectifier: halfWaveRectifier(),
+  centreTapRectifier: centreTapRectifier(),
+  bridgeRectifier: bridgeRectifier(),
+  commonEmitterStage: commonEmitterStage(),
+  hybridPi: hybridPi(),
+  astable: astable(),
+  monostable: monostable(),
+  buck: converter('buck'),
+  boost: converter('boost'),
+  buckBoost: converter('buck-boost'),
+  rcLadder: rcLadder(4),
+  feedbackLoop: feedbackLoop(),
+  massSpringDamper: massSpringDamper()
+};
+const spot = (p: { x: number; y: number }) => `${Math.round(p.x * 100) / 100},${Math.round(p.y * 100) / 100}`;
+for (const [name, model] of Object.entries(templates)) {
+  const ids = model.elements.map((el) => el.id);
+  eq(new Set(ids).size, ids.length, `${name}: ids are unique`);
+  for (const el of model.elements) {
+    if (el.kind !== 'wire') eq(PARTS.has(el.type), true, `${name}: ${el.type} is in the catalogue`);
+    const ends = el.kind === 'wire' ? el.points : el.kind === 'path' ? [el.a, el.b] : [];
+    for (const end of ends) {
+      if ('x' in end) continue;
+      const to = model.elements.find((x) => x.id === end.part);
+      eq(!!to && to.kind !== 'wire' && (to.kind === 'path' ? ['a', 'b', ...(PARTS.get(to.type)?.pins ?? [])] : PARTS.get(to.type)?.pins ?? []).includes(end.pin), true, `${name}: ${end.part}.${end.pin} is a pin`);
+    }
+  }
+  const { pos } = locator(model, measuredShape);
+  eq(model.junctions.map((j) => spot(pos(j))).sort(), findJunctions(model, measuredShape).map((j) => spot(pos(j))).sort(), `${name}: its dots are where three or more ends meet`);
+  const lines = circuitCode(model, {}).body.split('\n');
+  eq(lines.length, model.elements.length + model.junctions.length + 3 + lines.filter((l) => l.startsWith('\\tikzset')).length, `${name}: a line for each element and dot`);
+}
+eq(rcLadder(5).elements.filter((el) => el.kind === 'path' && el.type === 'capacitor').length, 5, 'an RC ladder has n stages');
+eq(massSpringDamper().elements.some((el) => el.kind === 'node' && PARTS.get(el.type)?.set === 'spx-mech'), true, 'the mass, spring and damper stands on a supports wall');
 
 console.log('circuitikz.check: ok');
