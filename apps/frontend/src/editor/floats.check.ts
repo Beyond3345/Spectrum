@@ -1,6 +1,6 @@
 // Self-check for the Floats panel's LaTeX and the preamble helper. Run:
 // npx esbuild apps/frontend/src/editor/floats.check.ts --bundle --platform=node --log-level=warning | node
-import { placementOf, blockAt, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, safeFileName, tableLabel, tableLatex, tableMarkdown, tableTypst, uniqueName } from './floats';
+import { placementOf, blockAt, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableRules, tableTypst, uniqueName } from './floats';
 import type { TableModel } from './floats';
 import { addLibraries, addPackages, changeBetween, loadedLibraries, loadedPackages, projectPackages } from './preamble';
 
@@ -317,17 +317,52 @@ eq(figureMarkdown({ path: 'images/cat.png', width: 0.75, caption: 'A cat, [x]', 
 eq(figureMarkdown({ path: 'images/cat.png', width: 0.5, caption: 'A cat', label: '' }), '![A cat](images/cat.png){width=50%}', 'a Markdown image without a label');
 eq(
   tableTypst(model),
-  '#figure(table(columns: 3, table.header([Method], [a_b], [Score]), [Ours], [$x_1$], [50%]), caption: [Results.]) <tab:results>',
-  'a Typst table in a float, its header kept'
+  '#figure(table(columns: 3, align: (left, center, center), stroke: none, table.hline(y: 0, stroke: 0.08em), table.hline(y: 1, stroke: 0.05em), table.hline(y: 2, stroke: 0.08em), table.header([Method], [a_b], [Score]), [Ours], [$x_1$], [50%]), caption: [Results.]) <tab:results>',
+  'a Typst table in a float, its header kept, booktabs as heavier top and bottom lines'
 );
-eq(tableTypst({ ...model, float: false, header: false }), '#table(columns: 3, [Method], [a_b], [Score], [Ours], [$x_1$], [50%])', 'a Typst table without its float or header');
-eq(tableTypst({ ...model, cells: [['a[1]', 'b\\c]']], header: false, float: false }), '#table(columns: 2, [a\\[1\\]], [b\\\\c\\]])', 'Typst cells keep brackets and backslashes as text');
+eq(
+  tableTypst({ ...model, float: false, header: false }),
+  '#table(columns: 3, align: (left, center, center), stroke: none, table.hline(y: 0, stroke: 0.08em), table.hline(y: 2, stroke: 0.08em), [Method], [a_b], [Score], [Ours], [$x_1$], [50%])',
+  'a Typst table without its float or header'
+);
+eq(
+  tableTypst({ ...model, cells: [['a[1]', 'b\\c]']], header: false, float: false }),
+  '#table(columns: 2, align: (left, center), stroke: none, table.hline(y: 0, stroke: 0.08em), table.hline(y: 1, stroke: 0.08em), [a\\[1\\]], [b\\\\c\\]])',
+  'Typst cells keep brackets and backslashes as text'
+);
 eq(
   tableMarkdown(model),
-  lines('| Method | a_b | Score |', '| --- | --- | --- |', '| Ours | $x_1$ | 50% |', '', 'Table: Results. {#tab:results}'),
+  lines('| Method | a_b | Score |', '| :--- | :---: | :---: |', '| Ours | $x_1$ | 50% |', '', 'Table: Results. {#tab:results}'),
   'a Markdown pipe table with its caption under it'
 );
-eq(tableMarkdown({ ...model, cells: [['a|b', 'c']], header: true, float: false }), lines('| a\\|b | c |', '| --- | --- |'), 'a pipe table escapes a pipe and has no caption');
+eq(tableMarkdown({ ...model, cells: [['a|b', 'c']], header: true, float: false }), lines('| a\\|b | c |', '| :--- | :---: |'), 'a pipe table escapes a pipe and has no caption');
+eq(tableMarkdown({ ...model, cells: [['a', 'b']], header: true, float: false, align: ['r', 'X'] }), lines('| a | b |', '| ---: | --- |'), 'a pipe table aligns right');
+
+// ─── lines between cells ───
+
+eq(tableEdges(3, 2, true), { h: ['top', 'head', 'under-2', 'bottom'], v: ['left', 'after-1', 'right'] }, 'edge names, with a header row');
+eq(tableEdges(3, 2, false).h, ['top', 'under-1', 'under-2', 'bottom'], 'edge names without one');
+eq(tableEdges(1, 1, true), { h: ['top', 'bottom'], v: ['left', 'right'] }, 'one cell: its header row has no line of its own');
+eq(tableRules({ ...model, lines: 'grid' }), { h: [1, 2, 1], v: [1, 1, 1, 1] }, 'grid: every line, the header’s double');
+eq(tableRules({ ...model, lines: 'none' }), { h: [0, 0, 0], v: [0, 0, 0, 0] }, 'none');
+eq(tableRules({ ...model, lines: 'booktabs', toggled: ['left', 'head'] }), { h: [1, 0, 1], v: [0, 0, 0, 0] }, 'booktabs: a toggled header line goes, vertical lines never come');
+eq(tableRules({ ...model, lines: 'grid', toggled: ['head'] }).h, [1, 0, 1], 'a double line toggled goes altogether');
+const three = { ...bare, lines: 'minimal' as const, cells: [['A', 'B', 'C'], ['1', '2', '3'], ['Total', '3', '5']], toggled: ['after-1', 'under-2'] };
+eq(
+  inner(three),
+  ['\\begin{tabular}{l|cc}', '    \\hline', '    A & B & C \\\\', '    \\hline', '    1 & 2 & 3 \\\\', '    \\hline', '    Total & 3 & 5 \\\\', '    \\hline', '\\end{tabular}'],
+  'minimal with a line after the first column and one above the total'
+);
+eq(inner({ ...three, lines: 'booktabs' }).slice(0, 7), ['\\begin{tabular}{lcc}', '    \\toprule', '    A & B & C \\\\', '    \\midrule', '    1 & 2 & 3 \\\\', '    \\midrule', '    Total & 3 & 5 \\\\'], 'booktabs: \\midrule between body rows, no | in the spec');
+eq(inner({ ...three, lines: 'none', toggled: [] }), ['\\begin{tabular}{lcc}', '    A & B & C \\\\', '    1 & 2 & 3 \\\\', '    Total & 3 & 5 \\\\', '\\end{tabular}'], 'no lines');
+eq(inner({ ...three, lines: 'none', toggled: ['left', 'right', 'top', 'bottom'] })[0], '\\begin{tabular}{|lcc|}', 'a box');
+eq(inner({ ...three, lines: 'none', toggled: [], cells: [['[a]', 'b', 'c'], ['[1]', '2', '3'], ['*', '', '']] }).slice(1, 4), ['    {}[a] & b & c \\\\', '    {}[1] & 2 & 3 \\\\', '    {}* &  &  \\\\'], 'with no rule between rows, [ and * still are no argument of \\\\');
+eq(
+  tableTypst({ ...three, float: false, header: true }),
+  '#table(columns: 3, align: (left, center, center), stroke: none, table.hline(y: 0), table.hline(y: 1), table.hline(y: 2), table.hline(y: 3), table.vline(x: 1), table.header([A], [B], [C]), [1], [2], [3], [Total], [3], [5])',
+  'Typst: stroke: none and a line each'
+);
+eq(tableTypst({ ...three, lines: 'grid', toggled: [], float: false }).startsWith('#table(columns: 3, align: (left, center, center), table.header('), true, 'Typst grid: Typst’s own lines, its double line single');
 
 Promise.all([
   projectPackages('paper/main.tex', new Set(Object.keys(files)), async (p) => files[p]).then((names) => {
