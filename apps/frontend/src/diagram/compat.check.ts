@@ -51,8 +51,13 @@ function loadsOf(text: string) {
     eq([diagram.version, 'sets' in diagram, edited], [1, false, false], `${path} reads as drawn, version 1`);
     const generated = codeOf(diagram, path.endsWith('-old.typ') ? '0.12.0' : '');
     // the composer saves a file again on opening when this differs (openDiagram's needsSave)
-    eq(drawnText(diagram, generated), code, `${path}: its mode writes the same text`);
-    eq(await diagramFileText(diagram, generated), text, `${path}: and the same file, last line and all`);
+    // fletcher drawings written before review 2's fix dropped dashes, thicknesses and colours, so one with any of those is
+    // saved once more on opening, with the styles it was drawn with; the rest come back word for word
+    const restyled = diagram.language === 'typst' && /"(?:dash|width|stroke)"/.test(JSON.stringify(diagram.model));
+    if (!restyled) {
+      eq(drawnText(diagram, generated), code, `${path}: its mode writes the same text`);
+      eq(await diagramFileText(diagram, generated), text, `${path}: and the same file, last line and all`);
+    }
     if (diagram.language === 'tikz') {
       const before = loadsOf(code);
       const now = documentLoads('tikz', before);
