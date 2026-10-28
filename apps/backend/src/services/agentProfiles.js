@@ -59,11 +59,17 @@ export function updateConfig(id, change) {
 }
 const withoutTest = ({ test, ...entry }) => entry;
 const withoutProgram = ({ program, ...test }) => test;
-/** A Test's result, or a session's (`ready`, or `sign-in` when the agent asked for authentication). Kept only when it says something new. */
-export function recordTest(id, result) {
+/** An entry's setup, which launchOptions() hands on so a result is recorded only against the setup it started with. */
+const setupOf = (entry) => { const setup = withoutTest(entry); return JSON.stringify(setup, Object.keys(setup).sort()); };
+/**
+ * A Test's result, or a session's (`ready`, or `sign-in` when the agent asked for authentication). Dropped when the
+ * setup changed since launch; a session's is kept only when it says something new, so its Test's time stays.
+ */
+export function recordTest(id, result, { setup, fromSession } = {}) {
   return updateConfig(id, (entry) => {
+    if (setup !== undefined && setupOf(entry) !== setup) return entry;
     const old = entry.test;
-    if (old && old.code === result.code && old.program === result.program && old.version === result.version && !result.detail) return entry;
+    if (fromSession && old && old.code === result.code && old.program === result.program && old.version === result.version && !result.detail) return entry;
     return { ...entry, test: { ...result, at: new Date().toISOString() } };
   });
 }
@@ -186,7 +192,7 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
   const options = {
     command: found.command, args, workspace, home: agentHomeDir, runtimeExecutable: found.command,
     runtimePaths: [...new Set([...(saved.runtimePaths || []), ...found.reads, ...found.needs?.reads || []])], forbiddenRoots, env,
-    program: found.program, secrets: [saved.apiKey].filter(Boolean)
+    program: found.program, secrets: [saved.apiKey].filter(Boolean), setup: setupOf(saved)
   };
   if (id === 'opencode') {
     const server = createServer();

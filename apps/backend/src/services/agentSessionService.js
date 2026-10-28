@@ -341,13 +341,13 @@ async function connect(r) {
     }
   } catch (err) {
     // the agent asked for authentication: its card says Sign-in needed
-    if (err.code === -32000) await recordTest(r.agentId, { ok: false, code: 'sign-in', program: r.processOptions.program, ...(initial.agentInfo?.version && { version: String(initial.agentInfo.version) }) }).catch(() => {});
+    if (err.code === -32000) await recordTest(r.agentId, { ok: false, code: 'sign-in', program: r.processOptions.program, ...(initial.agentInfo?.version && { version: String(initial.agentInfo.version) }) }, { setup: r.processOptions.setup, fromSession: true }).catch(() => {});
     throw new Error(`Agent setup failed: ${err.message}. Configure its API key or import a supported login in Agents.`);
   }
   finally { r.opening = false; }
   if (session.sessionId) r.remoteId = session.sessionId;
   if (!r.remoteId) throw new Error('The agent did not return a session id.');
-  await recordTest(r.agentId, { ok: true, code: 'ready', program: r.processOptions.program, ...(initial.agentInfo?.version && { version: String(initial.agentInfo.version) }) }).catch(() => {});
+  await recordTest(r.agentId, { ok: true, code: 'ready', program: r.processOptions.program, ...(initial.agentInfo?.version && { version: String(initial.agentInfo.version) }) }, { setup: r.processOptions.setup, fromSession: true }).catch(() => {});
   emit(r, 'session', { modes: session.modes, configOptions: session.configOptions });
 }
 
@@ -426,7 +426,7 @@ async function runTest(profile, limit) {
               : { code: 'not-acp' };
     }
     const version = initial?.agentInfo?.version;
-    await recordTest(profile.id, { ok: false, ...result, ...(version && { version: String(version) }), program: options.program });
+    await recordTest(profile.id, { ok: false, ...result, ...(version && { version: String(version) }), program: options.program }, { setup: options.setup });
   } finally {
     connection?.close();
     if (child?.pid && child.exitCode === null && child.signalCode === null) {

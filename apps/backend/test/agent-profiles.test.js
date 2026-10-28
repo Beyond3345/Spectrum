@@ -133,6 +133,24 @@ test('saves at once all land, and a change forgets the last Test', async () => {
   assert.equal((await listed('codex')).state, 'untested');
 });
 
+test('a Test always refreshes its time, a session only when it says something new, and neither outlives a changed setup', async () => {
+  const at = async () => (await agentConfigs()).copilot?.test?.at;
+  await recordTest('copilot', { ok: true, code: 'ready', program: '/x' });
+  const first = await at();
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await recordTest('copilot', { ok: true, code: 'ready', program: '/x' }, { fromSession: true });
+  assert.equal(await at(), first);
+  await recordTest('copilot', { ok: true, code: 'ready', program: '/x' });
+  assert.notEqual(await at(), first);
+  await program('.local/bin/copilot');
+  const { setup } = await launchOptions('copilot', { workspace: dir, home: dir });
+  await recordTest('copilot', { ok: false, code: 'timeout', program: '/x' }, { setup });
+  assert.equal((await agentConfigs()).copilot.test.code, 'timeout', 'a result from the same setup is kept');
+  await saveAgentConfig('copilot', { apiKey: 'changed' });
+  await recordTest('copilot', { ok: false, code: 'timeout', program: '/x' }, { setup });
+  assert.equal((await agentConfigs()).copilot.test, undefined, 'a result from the old setup is dropped');
+});
+
 test('provider changes clear old credentials', async () => {
   await saveAgentConfig('opencode', { apiKey: 'private-test-key' });
   assert.equal((await agentConfigs()).opencode.keyEnv, 'OPENAI_API_KEY');
