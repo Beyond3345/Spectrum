@@ -223,7 +223,7 @@ const { registerZoteroRoutes } = await import('../src/routes/zotero.js');
 const { registerResearchRoutes } = await import('../src/routes/research.js');
 const { createProject, updateMeta } = await import('../src/services/projectService.js');
 const github = await import('../src/services/githubService.js');
-const { cleanEntry, itemFromEntry, parsedWhole, sameRef, syncCollection, syncSoon } = await import('../src/services/zoteroService.js');
+const { cancelSyncSoon, cleanEntry, itemFromEntry, parsedWhole, sameRef, syncCollection, syncSoon } = await import('../src/services/zoteroService.js');
 const { parseBibEntries } = await import('../src/services/referenceService.js');
 const { citeKeys, renameCiteKeys } = await import('../src/latex/text.js');
 
@@ -238,7 +238,11 @@ after(async () => {
   slowGitHub.close();
   rmSync(tmp, { recursive: true, force: true });
 });
-beforeEach(() => reset());
+// an add's sync a second later (afterAdd) would otherwise run in a later case, against its Zotero, under load
+beforeEach(() => {
+  cancelSyncSoon();
+  reset();
+});
 
 async function api(url, method = 'GET', body) {
   const res = await app.inject({ url, method, ...(body !== undefined && { payload: body }) });
