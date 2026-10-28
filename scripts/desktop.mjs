@@ -269,10 +269,15 @@ async function typstBinary(arch) {
 function windowsRuntime() {
   const cached = path.join(cacheDir, 'vcruntime140.dll');
   if (fs.existsSync(cached)) return cached;
-  const found = spawnSync('vswhere', ['-latest', '-property', 'installationPath'], { encoding: 'utf8' });
+  // a Visual Studio or its Build Tools with the C++ tools, whose Redist folder holds the runtime; vswhere from the PATH,
+  // else where Visual Studio's installer always puts it
+  const args = ['-latest', '-products', '*', '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'];
+  let found = spawnSync('vswhere', args, { encoding: 'utf8' });
+  if (found.error) found = spawnSync(path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft Visual Studio', 'Installer', 'vswhere.exe'), args, { encoding: 'utf8' });
   const install = found.status === 0 ? found.stdout.trim() : '';
-  if (!install) throw new Error('vswhere didn\'t find Visual Studio, so Typst\'s vcruntime140.dll is missing');
+  if (!install) throw new Error('vswhere didn\'t find Visual Studio with the C++ build tools, so Typst\'s vcruntime140.dll is missing');
   const redist = path.join(install, 'VC', 'Redist', 'MSVC');
+  if (!fs.existsSync(redist)) throw new Error(`${install} has no VC\\Redist\\MSVC, so Typst's vcruntime140.dll is missing. Add the C++ build tools in the Visual Studio Installer`);
   const newest = fs.readdirSync(redist).sort((a, b) => b.localeCompare(a, undefined, { numeric: true })).find((name) => /^\d+\./.test(name));
   const crt = newest && fs.readdirSync(path.join(redist, newest, 'x64')).sort().reverse().find((name) => /^Microsoft\.VC\d+\.CRT$/.test(name));
   if (!crt) throw new Error(`vcruntime140.dll isn't in ${redist}`);
@@ -281,7 +286,10 @@ function windowsRuntime() {
   return cached;
 }
 
-/** resources/engines, which holds the Windows runtime copy and is bundled so Windows finds it. */
+/**
+ * resources/engines, which holds the Windows runtime copy: bundled into engines (for the Typst versions Spectrum
+ * downloads) and, by tauri.windows.conf.json, beside the app's own typst.exe, in a build and in tauri dev.
+ */
 function prepareEnginesDir() {
   fs.mkdirSync(path.join(resourcesDir, 'engines'), { recursive: true });
   if (win) fs.copyFileSync(windowsRuntime(), path.join(resourcesDir, 'engines', 'vcruntime140.dll'));
@@ -296,8 +304,6 @@ async function tectonicRuntime(arches) {
 async function typstRuntime(arches) {
   fs.mkdirSync(cacheDir, { recursive: true });
   await sidecar('typst', arches, (arch) => typstBinary(arch));
-  // beside the bundled typst.exe too, as Windows looks there before its own folders
-  if (win) fs.copyFileSync(windowsRuntime(), path.join(binDir, 'vcruntime140.dll'));
   console.log(`Typst ${engines.typst.builtIn} (${arches.join(', ')}) → ${path.relative(root, binDir)}`);
 }
 
@@ -372,8 +378,8 @@ const commands = {
   tectonic: () => tectonicRuntime(Object.keys(TRIPLES)),
   typst: () => typstRuntime(Object.keys(TRIPLES))
 };
-// run, not imported (the backend's tests check engineAsset)
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// run, not imported (the backend's tests check engineAsset), also through a link to this file
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const command = commands[process.argv[2]];
   if (!command) {
     console.error('Usage: node scripts/desktop.mjs dev|build|resources|texlab|tectonic|typst');

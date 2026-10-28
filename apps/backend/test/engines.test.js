@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs, mkdtempSync, realpathSync, rmSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -125,6 +125,33 @@ test('the desktop build takes each platform’s own engine archives', async () =
   assert.match(engineAsset(list.tectonic.assets, 'x64', 'win32')[0], /windows-msvc\.zip$/);
   assert.match(engineAsset(typst, 'x64', 'darwin')[0], /^typst-x86_64-apple-darwin/);
   assert.match(engineAsset(list.tectonic.assets, 'arm64', 'darwin')[0], /aarch64-apple-darwin/);
+});
+
+const repo = (rel) => fs.readFile(path.join(import.meta.dirname, '..', '..', '..', rel), 'utf8');
+
+test('the Windows app carries vcruntime140.dll beside its typst.exe, found with any Visual Studio that has it', async () => {
+  // tauri.windows.conf.json's resources merge with the base map, and put the copy beside the app (and in tauri dev)
+  const config = JSON.parse(await repo('src-tauri/tauri.windows.conf.json'));
+  assert.equal(config.bundle.resources['resources/engines/vcruntime140.dll'], 'vcruntime140.dll');
+  const script = await repo('scripts/desktop.mjs');
+  assert.doesNotMatch(script, /copyFileSync\(windowsRuntime\(\), path\.join\(binDir/, 'nothing copied where the installer never looks');
+  assert.match(script, /'-requires', 'Microsoft\.VisualStudio\.Component\.VC\.Tools\.x86\.x64'/);
+  assert.match(script, /'Microsoft Visual Studio', 'Installer', 'vswhere\.exe'/);
+});
+
+test('the Windows workflow runs typst.exe by its path, and its tests after a failed set-up step', async () => {
+  const workflow = await repo('.github/workflows/windows.yml');
+  // GITHUB_PATH reaches only the steps after the one that writes it
+  assert.match(workflow, /Add-Content \$env:GITHUB_PATH \$bin\n\s+& "\$bin\\typst\.exe" --version/);
+  for (const step of ['TeX tools', 'Backend tests']) assert.match(workflow, new RegExp(`- name: ${step}\\n\\s+if: \\$\\{\\{ !cancelled\\(\\) \\}\\}`), step);
+});
+
+test('the desktop script runs through a link to it', { skip: process.platform === 'win32' && 'links need Developer Mode' }, async () => {
+  const link = path.join(tmp, 'desktop-link.mjs');
+  await fs.symlink(path.join(import.meta.dirname, '..', '..', '..', 'scripts', 'desktop.mjs'), link);
+  const run = spawnSync(process.execPath, [link], { encoding: 'utf8' });
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /Usage: node scripts\/desktop\.mjs/);
 });
 
 test('the built-in version cannot be removed', async () => {
