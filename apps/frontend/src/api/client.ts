@@ -259,6 +259,8 @@ export interface ProjectSettings {
   compile?: CompileOptions;
   /** skills the project turns on or off, whatever this computer has */
   skills?: ProjectSkills;
+  /** the project's own language list, in place of the user's */
+  language?: { languages?: string[] };
 }
 
 export interface ProjectSkills {
@@ -271,7 +273,7 @@ export function getProjectSettings(id: string) {
 }
 
 /** A compile key set to null is removed, so the app's default applies again; skills replaces the project's choices (null: none). */
-export function updateProjectSettings(id: string, patch: { compile?: { [K in keyof CompileOptions]?: CompileOptions[K] | null }; skills?: ProjectSkills | null }) {
+export function updateProjectSettings(id: string, patch: { compile?: { [K in keyof CompileOptions]?: CompileOptions[K] | null }; skills?: ProjectSkills | null; language?: { languages: string[] | null } }) {
   return request<{ settings: ProjectSettings }>(`/api/projects/${id}/settings`, json('PATCH', patch));
 }
 
@@ -1023,12 +1025,38 @@ export function grammarStatus() {
   return request<CheckerStatus>('/api/grammar/status');
 }
 
-export function spellCheck(words: string[], projectId?: string) {
-  return request<{ misspelt: string[] }>('/api/spell/check', json('POST', { words, projectId }));
+/** Pieces of prose in document order, each spelt in the listed language it is in ('' when none: not checked). */
+export function spellCheck(payload: { pieces: { text: string; lang?: string }[]; languages: string[]; main: string | null; projectId?: string }) {
+  return request<{ pieces: { lang: string; misspelt: [number, number][] }[]; pending: string[] }>('/api/spell/check', json('POST', payload));
 }
 
-export function spellSuggest(word: string) {
-  return request<{ suggestions: string[] }>('/api/spell/suggest', json('POST', { word }));
+export function spellSuggest(word: string, lang?: string) {
+  return request<{ suggestions: string[] }>('/api/spell/suggest', json('POST', { word, lang }));
+}
+
+/** A catalogued language and its dictionary on this computer. */
+export type LanguageInfo = {
+  tag: string;
+  script: string;
+  harper: string | null;
+  languageTool: string | null;
+  state: 'bundled' | 'downloaded' | 'downloading' | 'failed' | 'available' | 'none';
+  bytes?: number;
+  licence?: string;
+  source?: string;
+  error?: string;
+};
+
+export function listLanguages() {
+  return request<{ languages: LanguageInfo[] }>('/api/languages');
+}
+
+export function downloadDictionary(tag: string) {
+  return request<{ tag: string; state: string }>(`/api/languages/${encodeURIComponent(tag)}/dictionary`, json('POST'));
+}
+
+export function pruneDictionaries(keep: string[]) {
+  return request<{ removed: string[] }>('/api/languages/prune', json('POST', { keep }));
 }
 
 export function spellWords(projectId?: string) {

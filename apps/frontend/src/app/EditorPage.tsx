@@ -39,6 +39,7 @@ import {
   setProjectMainFile,
   changeSpellWord,
   spellSuggest,
+  downloadDictionary,
   synctexEdit,
   synctexView,
   searchZotero,
@@ -61,7 +62,7 @@ import { withDeletionCheck } from './github';
 import { toast } from './Toast';
 import { IS_DESKTOP, focusWindow, openDiagram } from './desktop';
 import { FILE_MANAGER } from './platform';
-import { BIB_TOOLS, COMPILE_ENGINES, effectiveCompile, effectiveEffort, llmConfigFor, loadSettings, updateSettings, useProviders, useSettings } from './settings';
+import { BIB_TOOLS, COMPILE_ENGINES, effectiveCompile, effectiveEffort, languageName, llmConfigFor, loadSettings, updateSettings, useProviders, useSettings } from './settings';
 import { PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
 import { FIND_NEXT, FIND_PREVIOUS, SHORTCUTS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
 import type { AppCommand } from './shortcuts';
@@ -125,7 +126,7 @@ import type { Reference } from '../editor/lsp/texlab';
 import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
-import { ENGINES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDocument, isSource, keptMainFile, type DocKind } from '../editor/shared';
+import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDocument, isSource, keptMainFile, type DocKind } from '../editor/shared';
 import { languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions } from '../editor/languages';
 import { includedPath, parseMarkdownOutline, parseTypstOutline } from '../editor/outlines';
 import { ZOTERO_CITE, zoteroCompletionSource } from '../editor/zotero';
@@ -307,6 +308,13 @@ function Editor({ projectId }: { projectId: string }) {
   const spellOnRef = useRef(settings.spellCheck);
   spellOnRef.current = settings.spellCheck;
   const spellFailedRef = useRef(false);
+  // the project's own language list, else the user's
+  const [projectLanguages, setProjectLanguages] = useState<string[] | null>(null);
+  const languages = projectLanguages ?? settings.languages;
+  const languagesRef = useRef(languages);
+  languagesRef.current = languages;
+  // a listed language's dictionary is offered for download once a session
+  const offeredRef = useRef(new Set<string>());
   const llm = useMemo(
     () => ({
       main: llmConfigFor(settings, 'main'),
@@ -2208,11 +2216,30 @@ function Editor({ projectId }: { projectId: string }) {
         enabled: () => spellOnRef.current,
         path: () => activeRef.current,
         projectId: () => projectId,
+        languages: () => languagesRef.current,
         onError: (message) => {
           // once a session is enough; the editor works on without it
           if (spellFailedRef.current) return;
           spellFailedRef.current = true;
           notify(message, 'error');
+        },
+        // nothing downloads without asking: the first time a listed language needs its dictionary, offer it
+        onPending: (tags) => {
+          for (const tag of tags) {
+            if (offeredRef.current.has(tag)) continue;
+            offeredRef.current.add(tag);
+            toast(`Spelling in ${languageName(tag)} needs its dictionary, which downloads from GitHub.`, {
+              duration: 12_000,
+              action: {
+                label: 'Download',
+                onClick: () => {
+                  downloadDictionary(tag)
+                    .then(() => viewRef.current?.dispatch({ effects: recheckSpelling.of(null) }))
+                    .catch((err) => notify(errorText(err), 'error'));
+                }
+              }
+            });
+          }
         }
       }),
       grammarMarks,
@@ -2253,7 +2280,7 @@ function Editor({ projectId }: { projectId: string }) {
         return;
       }
       setSpellMenu({ x: e.clientX, y: e.clientY, ...hit, suggestions: null });
-      spellSuggest(hit.word)
+      spellSuggest(hit.word, hit.lang)
         .then((res) => setSpellMenu((m) => (m && m.from === hit.from ? { ...m, suggestions: res.suggestions } : m)))
         .catch(() => setSpellMenu((m) => (m && m.from === hit.from ? { ...m, suggestions: [] } : m)));
     };
@@ -2274,7 +2301,11 @@ function Editor({ projectId }: { projectId: string }) {
   useEffect(() => {
     let live = true;
     // without them (unreadable, or none yet) the app's defaults apply
-    getProjectSettings(projectId).then((res) => live && setProjectCompile(res.settings.compile ?? {}), () => undefined);
+    getProjectSettings(projectId).then((res) => {
+      if (!live) return;
+      setProjectCompile(res.settings.compile ?? {});
+      setProjectLanguages(res.settings.language?.languages ?? null);
+    }, () => undefined);
     (async () => {
       const [list, tree] = await Promise.all([listProjects(), refreshTree()]);
       if (!live) return;
@@ -2575,10 +2606,21 @@ function Editor({ projectId }: { projectId: string }) {
     return () => observer.disconnect();
   }, [activePath, tabs, panel]);
 
-  // turning spell checking on or off in Settings applies straight away
+  // turning spell checking on or off, or changing the languages, in Settings applies straight away
   useEffect(() => {
     viewRef.current?.dispatch({ effects: recheckSpelling.of(null) });
-  }, [settings.spellCheck]);
+  }, [settings.spellCheck, languages.join()]);
+
+  // Settings gave this project its own language list or took it away, or a pull brought another
+  useEffect(() => {
+    const reload = () => getProjectSettings(projectId).then((res) => setProjectLanguages(res.settings.language?.languages ?? null), () => undefined);
+    window.addEventListener(LANGUAGES_CHANGED, reload);
+    window.addEventListener(PROJECT_DATA_CHANGED, reload);
+    return () => {
+      window.removeEventListener(LANGUAGES_CHANGED, reload);
+      window.removeEventListener(PROJECT_DATA_CHANGED, reload);
+    };
+  }, [projectId]);
 
   // autosave 1.5 s after the last keystroke
   useEffect(() => {

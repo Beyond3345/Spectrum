@@ -126,6 +126,11 @@ eq([merged.theme, merged.spellCheck, merged.editorFontSize], ['dark', false, 99]
 eq([merged.llmApiKey, merged.projectsDir, merged.glass, merged.syncSettings], ['sk-windows', theirs.projectsDir, false, false], 'this computer’s own stay');
 eq(withShared(theirs, { accent: 'neon' }).accent, 'system', 'shared values are checked like stored ones');
 eq(withShared(theirs, { syncHighlightSeconds: 60 }).syncHighlightSeconds, 10, 'and kept in range');
+// the language list and the English grammar engine follow the user, checked like stored ones
+eq(withShared(theirs, { languages: ['en-AU', 'zh-TW'], englishGrammar: 'languagetool' }).languages, ['en-AU', 'zh-TW'], 'the language list comes in');
+eq(withShared(theirs, { englishGrammar: 'languagetool' }).englishGrammar, 'languagetool', 'and the English grammar engine');
+eq(withShared(theirs, { languages: ['fr', 'fr', 'not a tag', 3, ...Array.from({ length: 30 }, (_, i) => String.fromCharCode(97 + Math.floor(i / 26), 97 + (i % 26)))] as never }).languages.length, 20, 'at most 20, once each');
+eq(withShared(theirs, { languages: [] as never, englishGrammar: 'nope' as never }), { ...theirs, languages: ['en-AU'], englishGrammar: 'harper' }, 'nothing usable is Australian English and Harper');
 
 // the folders on the Projects page follow the user, checked like stored ones
 const tree = { folders: [{ id: 'f1', name: 'Thesis', parent: null }], placement: { p1: 'f1', p2: 'deleted' } };
