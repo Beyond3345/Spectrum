@@ -249,10 +249,22 @@ export function maskLatex(source) {
   return out.join('');
 }
 
-/** Words for the spell checker: [word, from] pairs from the prose of a masked text. */
-export function proseWords(masked, from = 0, to = masked.length) {
+// Letters of the scripts written without spaces between words (Chinese, Japanese, Thai, Lao, Khmer, Burmese) make
+// no words: a run of them is a sentence, not a word Hunspell could check
+const LETTER = String.raw`(?:(?![\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}])[\p{L}\p{M}])+`;
+const wordPatterns = new Map();
+
+/**
+ * Words for the spell checker: [word, from] pairs from the prose of a masked text. wordChars (a dictionary's WORDCHARS
+ * punctuation, such as Catalan's ·) joins letters as an apostrophe does, only between letters.
+ */
+export function proseWords(masked, from = 0, to = masked.length, { wordChars = '' } = {}) {
   const words = [];
-  const re = /[\p{L}\p{M}]+(?:['’][\p{L}\p{M}]+)*/gu;
+  if (!wordPatterns.has(wordChars)) {
+    const joiners = `'’${wordChars}`.replace(/[\\\]^-]/g, '\\$&');
+    wordPatterns.set(wordChars, new RegExp(`${LETTER}(?:[${joiners}]${LETTER})*`, 'gu'));
+  }
+  const re = wordPatterns.get(wordChars);
   re.lastIndex = from;
   for (let m = re.exec(masked); m && m.index < to; m = re.exec(masked)) words.push([m[0], m.index]);
   return words;

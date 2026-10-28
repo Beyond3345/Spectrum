@@ -127,3 +127,12 @@ test('grammar: Australian dialect, no Oxford comma, positions in the source', as
   const allowed = await grammar.checkGrammar({ text: tex, file: 'main.tex', oxford: 'off', ignoredRules: ['AnA'] });
   assert.ok(!allowed.some((i) => i.rule === 'NoOxfordComma' || i.rule === 'AnA'));
 });
+
+test('runs of Chinese, Japanese and Thai make no words; Korean splits at spaces; word characters join only between letters', () => {
+  const text = '我们研究了这个问题的历史与发展。We tested it. 日本語の文章です。ภาษาไทยไม่มีช่องว่าง 한국어 문장 😀 don’t';
+  assert.deepEqual(proseWords(text).map(([w]) => w), ['We', 'tested', 'it', '한국어', '문장', 'don’t']);
+  for (const [word, at] of proseWords(text)) assert.equal(text.slice(at, at + word.length), word, 'UTF-16 positions, after an emoji too');
+  assert.deepEqual(words('\\begin{document}\n研究結果顯示 the colour\\end{document}'), ['the', 'colour']);
+  assert.deepEqual(proseWords('col·legi ·a b· x-y', 0, 100, { wordChars: '·-' }).map(([w]) => w), ['col·legi', 'a', 'b', 'x-y']);
+  assert.deepEqual(proseWords('col·legi').map(([w]) => w), ['col', 'legi'], 'English keeps today’s pattern');
+});
