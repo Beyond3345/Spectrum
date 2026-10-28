@@ -94,6 +94,9 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
   eq((await json({ ...state, language: 'typst', pkg: undefined }))?.version, 2, 'in Typst too');
   eq((await json({ ...flow, model: { boxes: [], links: [{ id: 'e1', from: 'n1', to: 'n1' }] } }))?.version, 2, 'a loop makes version 2');
   eq((await json({ ...flow, model: 'damaged' as never }))?.version, undefined, 'a damaged model doesn’t throw here');
+  const plot: DiagramFile = { language: 'tikz', pkg: 'pgfplots', style: {}, model: { series: [{ id: 's1', source: 'function' }] }, version: 1 };
+  eq((await json(plot))?.version, 1, 'a plot of functions is version 1');
+  eq((await json({ ...plot, model: { series: [], axes: 'sketch' } }))?.version, 2, 'sketch axes make version 2');
   for (const bad of [{ ...circuit, sets: 'spx-mech' }, { ...circuit, sets: [1] }, { ...circuit, version: 3 }]) {
     const text = `${tikzDocument(code)}% spectrum-diagram v1 ${btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(bad))))} 0123456789abcdef\n`;
     eq((await readDiagramFile(text)).diagram, null, `opens as code: ${JSON.stringify(bad).slice(-30)}`);

@@ -1,3 +1,5 @@
+import { plotIsNewer } from './modes/pgfplots/code';
+import type { PlotModel } from './modes/pgfplots/code';
 import { tikzIsNewer } from './modes/tikz/code';
 import type { TikzModel } from './modes/tikz/code';
 import type { DiagramFile } from './types';
@@ -15,6 +17,7 @@ import type { DiagramFile } from './types';
 function newerParts(diagram: DiagramFile) {
   try {
     if (diagram.language === 'typst' || diagram.pkg === 'tikz') return tikzIsNewer(diagram.model as TikzModel);
+    if (diagram.pkg === 'pgfplots') return plotIsNewer(diagram.model as PlotModel);
   } catch {
     // a model of the wrong shape: its mode refuses it anyway
   }
