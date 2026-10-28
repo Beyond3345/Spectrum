@@ -16,6 +16,12 @@ export type Heads = 'none' | 'end' | 'start' | 'both';
 export type Link = Line & { id: string; from: string; to: string; fromSide: Side; toSide: Side; route: Route; heads: Heads; label?: string };
 export type TikzModel = { boxes: Box[]; links: Link[] };
 
+/**
+ * The shapes fletcher/code.ts writes, which the Typst canvas offers (its rail and its inspector's Shape): a shape fletcher
+ * has no equivalent for stays TikZ only, hidden in Typst drawings. Every shape so far has one.
+ */
+export const FLETCHER_SHAPES: Shape[] = ['rectangle', 'rounded', 'circle', 'ellipse', 'diamond', 'parallelogram', 'text', 'maths'];
+
 export const CM_PER_UNIT = 0.25;
 const ANCHOR: Record<Side, string> = { t: 'north', r: 'east', b: 'south', l: 'west' };
 const ANGLE: Record<Side, number> = { r: 0, t: 90, l: 180, b: 270 };

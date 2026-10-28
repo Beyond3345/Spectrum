@@ -6,7 +6,7 @@ import { FlowCanvas } from '../../FlowCanvas';
 import { ColourField, Row, ToolRail, railIcon } from '../../controls';
 import type { Tool } from '../../controls';
 import type { DiagramMode } from '../../types';
-import { anchorOf, copyTikz, curveControls, emptyTikz, middleOf, nextId, pasteTikz, pathPoints, removeTikz, tikzCode } from './code';
+import { FLETCHER_SHAPES, anchorOf, copyTikz, curveControls, emptyTikz, middleOf, nextId, pasteTikz, pathPoints, removeTikz, tikzCode } from './code';
 import type { Box, Dash, Heads, Line, Link, Route, Shape, Side, TikzModel } from './code';
 
 // Plain TikZ: flowcharts and block diagrams on the canvas
@@ -251,8 +251,9 @@ function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 's
   );
 }
 
-function Rail({ tool, onPick }: { tool: string; onPick(tool: string): void }) {
-  return <ToolRail tools={TOOLS} tool={tool} onPick={onPick} />;
+/** shapes: the ones this mode can write (fletcher's fewer); Select always */
+function Rail({ tool, onPick, shapes }: { tool: string; onPick(tool: string): void; shapes?: Shape[] }) {
+  return <ToolRail tools={shapes ? TOOLS.filter((t) => t.id === 'select' || shapes.includes(t.id as Shape)) : TOOLS} tool={tool} onPick={onPick} />;
 }
 
 /** The value the selected items share, or undefined when they differ. */
@@ -291,7 +292,7 @@ function Inspector({ model, onChange, selection = [], typst = false }: { model: 
             <textarea id="diagram-text" className="input diagram-textarea" rows={3} spellCheck={false} value={box.text} onChange={(e) => patchBoxes({ text: e.target.value })} />
           </Row>
           <Row label="Shape">
-            <Select value={box.shape} options={SHAPES} onChange={(shape) => patchBoxes({ shape: shape as Shape })} />
+            <Select value={box.shape} options={typst ? SHAPES.filter(([s]) => FLETCHER_SHAPES.includes(s)) : SHAPES} onChange={(shape) => patchBoxes({ shape: shape as Shape })} />
           </Row>
           <div className="diagram-row">
             <span>Size (cm)</span>
