@@ -59,11 +59,17 @@ export function updateConfig(id, change) {
 }
 const withoutTest = ({ test, ...entry }) => entry;
 const withoutProgram = ({ program, ...test }) => test;
-/** A Test's result, or a session's (`ready`, or `sign-in` when the agent asked for authentication). Kept only when it says something new. */
-export function recordTest(id, result) {
+/** An entry's setup, which launchOptions() hands on so a result is recorded only against the setup it started with. */
+const setupOf = (entry) => { const setup = withoutTest(entry); return JSON.stringify(setup, Object.keys(setup).sort()); };
+/**
+ * A Test's result, or a session's (`ready`, or `sign-in` when the agent asked for authentication). Dropped when the
+ * setup changed since launch; a session's is kept only when it says something new, so its Test's time stays.
+ */
+export function recordTest(id, result, { setup, fromSession } = {}) {
   return updateConfig(id, (entry) => {
+    if (setup !== undefined && setupOf(entry) !== setup) return entry;
     const old = entry.test;
-    if (old && old.code === result.code && old.program === result.program && old.version === result.version && !result.detail) return entry;
+    if (fromSession && old && old.code === result.code && old.program === result.program && old.version === result.version && !result.detail) return entry;
     return { ...entry, test: { ...result, at: new Date().toISOString() } };
   });
 }
@@ -186,7 +192,7 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
   const options = {
     command: found.command, args, workspace, home: agentHomeDir, runtimeExecutable: found.command,
     runtimePaths: [...new Set([...(saved.runtimePaths || []), ...found.reads, ...found.needs?.reads || []])], forbiddenRoots, env,
-    program: found.program, secrets: [saved.apiKey].filter(Boolean)
+    program: found.program, secrets: [saved.apiKey].filter(Boolean), setup: setupOf(saved)
   };
   if (id === 'opencode') {
     const server = createServer();
@@ -205,7 +211,7 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
  * Where an agent stands, in this order: planned, unavailable, missing (its program, or one it needs), adapter (an
  * adapter is needed), the stored result for the program found now (ready, sign-in or failed), untested when
  * configured in Spectrum, else sign-in. Set up: ready, untested, or failed while configured, so a Test that timed out
- * never hides an agent the user set up.
+ * never hides an agent the user set up; a program that isn't an ACP agent never is.
  */
 export function agentState({ planned, unavailable, found, needsMissing, adapter, test, configured }) {
   const state = planned ? 'planned'
@@ -214,7 +220,7 @@ export function agentState({ planned, unavailable, found, needsMissing, adapter,
         : !found ? 'adapter'
           : test ? (test.ok ? 'ready' : test.code === 'sign-in' ? 'sign-in' : 'failed')
             : configured ? 'untested' : 'sign-in';
-  return { state, setUp: state === 'ready' || state === 'untested' || (state === 'failed' && !!configured) };
+  return { state, setUp: state === 'ready' || state === 'untested' || (state === 'failed' && !!configured && test.code !== 'not-acp') };
 }
 
 const anyFile = async (root, files) => (await Promise.all(files.map((rel) => isFile(path.join(root, rel))))).some(Boolean);
@@ -228,7 +234,8 @@ export async function agentEntry(id, config, isolated) {
   const found = p.planned ? null : await findProgram(p, saved);
   const managed = await adapterFound(p);
   const chosen = chosenCommand(p, saved);
-  const loginCopied = await anyFile(path.join(AGENT_DIR, 'homes', id), p.login);
+  // the files alone could be ones the agent wrote itself during a Test
+  const loginCopied = !!saved.loginCopied && await anyFile(path.join(AGENT_DIR, 'homes', id), p.login);
   const configured = !!saved.apiKey || loginCopied || path.isAbsolute(chosen) || found?.source === 'spectrum';
   const test = found && saved.test?.program === found.program ? withoutProgram(saved.test) : undefined;
   const keyEnv = saved.keyEnv || p.key;
@@ -268,7 +275,7 @@ export async function saveAgentConfig(id, value) {
     if (keyEnv && !PROVIDER_KEYS.includes(keyEnv)) throw new Error('Choose a supported provider credential variable.');
     if (apiKey.length > 8192 || /[\r\n\0]/.test(apiKey)) throw new Error('Invalid API key.');
     // the profile's own arguments aren't saved, so a later Spectrum's take their place
-    const next = { command, ...(args && !same(args, profile.args) && { args }), runtimePaths, apiKey, keyEnv };
+    const next = { command, ...(args && !same(args, profile.args) && { args }), runtimePaths, apiKey, keyEnv, ...(old.loginCopied && { loginCopied: old.loginCopied }) };
     // a Test's result no longer holds once any of these changes
     const unchanged = command === chosenCommand(profile, old) && same(args ?? profile.args, old.args ?? profile.args) && same(runtimePaths, old.runtimePaths ?? []) && apiKey === (old.apiKey || '') && keyEnv === (old.keyEnv || profile.key);
     return unchanged && old.test ? { ...next, test: old.test } : next;
@@ -298,7 +305,7 @@ export async function importAgentLogin(id) {
     count++;
   }
   if (!count) throw new Error('No supported login/configuration files were found. Sign in with the agent first, or use an API key.');
-  await updateConfig(id, withoutTest);
+  await updateConfig(id, (entry) => ({ ...withoutTest(entry), loginCopied: new Date().toISOString() }));
   return count;
 }
 

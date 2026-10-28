@@ -12,7 +12,7 @@ const home = path.join(dir, 'home');
 process.env.SPECTRUM_DATA_DIR = path.join(dir, 'data');
 process.env.HOME = home;
 process.env.PATH = '/usr/bin:/bin';
-const { PROFILES, profileFor, saveAgentConfig, agentConfigs, listAgents, agentEntry, agentState, launchOptions, installAdapter, removeAdapter, recordTest, AGENT_DIR } = await import('../src/services/agentProfiles.js');
+const { PROFILES, profileFor, saveAgentConfig, agentConfigs, listAgents, agentEntry, agentState, launchOptions, installAdapter, removeAdapter, recordTest, importAgentLogin, AGENT_DIR } = await import('../src/services/agentProfiles.js');
 after(() => fs.rm(dir, { recursive: true, force: true }));
 
 /** An executable at rel under the fake home; its first line is shebang. */
@@ -114,6 +114,7 @@ test('each state a card shows, and which are set up', () => {
     [{ found: true, test: { ok: false, code: 'sign-in' }, configured: true }, 'sign-in', false],
     [{ found: true, test: { ok: false, code: 'timeout' }, configured: true }, 'failed', true],
     [{ found: true, test: { ok: false, code: 'error' } }, 'failed', false],
+    [{ found: true, test: { ok: false, code: 'not-acp' }, configured: true }, 'failed', false],
     [{ found: true, configured: true }, 'untested', true],
     [{ found: true }, 'sign-in', false]
   ];
@@ -130,6 +131,37 @@ test('saves at once all land, and a change forgets the last Test', async () => {
   await saveAgentConfig('codex', { runtimePaths: ['/opt/codex'] });
   assert.equal((await agentConfigs()).codex.test, undefined);
   assert.equal((await listed('codex')).state, 'untested');
+});
+
+test('a Test always refreshes its time, a session only when it says something new, and neither outlives a changed setup', async () => {
+  const at = async () => (await agentConfigs()).copilot?.test?.at;
+  await recordTest('copilot', { ok: true, code: 'ready', program: '/x' });
+  const first = await at();
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await recordTest('copilot', { ok: true, code: 'ready', program: '/x' }, { fromSession: true });
+  assert.equal(await at(), first);
+  await recordTest('copilot', { ok: true, code: 'ready', program: '/x' });
+  assert.notEqual(await at(), first);
+  await program('.local/bin/copilot');
+  const { setup } = await launchOptions('copilot', { workspace: dir, home: dir });
+  await recordTest('copilot', { ok: false, code: 'timeout', program: '/x' }, { setup });
+  assert.equal((await agentConfigs()).copilot.test.code, 'timeout', 'a result from the same setup is kept');
+  await saveAgentConfig('copilot', { apiKey: 'changed' });
+  await recordTest('copilot', { ok: false, code: 'timeout', program: '/x' }, { setup });
+  assert.equal((await agentConfigs()).copilot.test, undefined, 'a result from the old setup is dropped');
+});
+
+test('a login counts as copied only when Spectrum copied it, not when the agent wrote one itself', async () => {
+  const own = path.join(AGENT_DIR, 'homes', 'gemini', '.gemini', 'oauth_creds.json');
+  await fs.mkdir(path.dirname(own), { recursive: true });
+  await fs.writeFile(own, '{}');
+  assert.equal((await listed('gemini')).loginCopied, false);
+  await fs.mkdir(path.join(home, '.gemini'), { recursive: true });
+  await fs.writeFile(path.join(home, '.gemini', 'settings.json'), '{}');
+  await importAgentLogin('gemini');
+  assert.equal((await listed('gemini')).loginCopied, true);
+  await saveAgentConfig('gemini', { apiKey: 'k' });
+  assert.equal((await listed('gemini')).loginCopied, true, 'a save keeps it');
 });
 
 test('provider changes clear old credentials', async () => {
