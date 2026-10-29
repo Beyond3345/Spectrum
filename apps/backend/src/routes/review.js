@@ -1,10 +1,10 @@
 import { aiReview, reviewState } from '../services/reviewService.js';
 import { getProjectRoot, httpError, readMeta } from '../services/projectService.js';
 
-/** The document a request names, a .tex file, or the project's main file. */
+/** The document a request names, a LaTeX, Typst or Markdown file, or the project's main file. */
 async function documentOf(root, doc) {
   const named = String(doc || '') || (await readMeta(root)).mainFile || 'main.tex';
-  if (!/\.tex$/i.test(named)) throw httpError('Choose a .tex document to review.', 400);
+  if (!/\.(?:tex|typ|md|markdown)$/i.test(named)) throw httpError('Choose a LaTeX, Typst or Markdown document to review.', 400);
   return named;
 }
 

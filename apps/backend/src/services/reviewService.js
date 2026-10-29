@@ -18,8 +18,31 @@ const SEVERITIES = ['major', 'minor', 'note'];
 const slashed = (p) => p.split(path.sep).join('/');
 const lineOf = (text, index) => text.slice(0, index).split('\n').length;
 
-/** The files a document reads, in the order it first reads them (\input, \include, \subfile and \import, as the compile finds them). */
+/**
+ * The files a document reads, in the order it first reads them: a LaTeX document's \input, \include, \subfile and
+ * \import, as the compile finds them, a Typst document's #include, and a Markdown document alone.
+ */
 async function documentFiles(root, doc) {
+  if (/\.typ$/i.test(doc)) {
+    const order = [];
+    const visit = async (rel, depth) => {
+      if (depth > 10 || order.includes(rel)) return;
+      let text;
+      try {
+        text = await fs.readFile(safeJoin(root, rel), 'utf8');
+      } catch {
+        return;
+      }
+      order.push(rel);
+      // from the including file's folder, or the project's with a leading /, as Typst finds it
+      for (const [, target] of text.replace(/\/\/.*$/gm, '').matchAll(/#include\s+"([^"]+)"/g)) {
+        await visit(target.startsWith('/') ? path.posix.normalize(target.slice(1)) : path.posix.join(path.posix.dirname(rel), target), depth + 1);
+      }
+    };
+    await visit(slashed(path.normalize(doc)), 0);
+    return order;
+  }
+  if (!/\.(?:tex|ltx)$/i.test(doc)) return (await fs.stat(safeJoin(root, doc)).catch(() => null))?.isFile() ? [slashed(path.normalize(doc))] : [];
   const files = new Set();
   await inlineInputs(root, doc, { stripComments: true, files });
   return [...files].map(slashed);
@@ -73,7 +96,7 @@ export async function reviewState(root, doc, { bib = false } = {}) {
   };
 }
 
-const SYSTEM = `You are reviewing an academic manuscript written in LaTeX, as a demanding but fair referee would. You read the whole document once and report what you find. You never edit files and never write LaTeX patches.
+const SYSTEM = `You are reviewing an academic manuscript written in LaTeX, Typst or Markdown, as a demanding but fair referee would. You read the whole document once and report what you find. You never edit files and never write patches.
 
 Cover these:
 - The paper as a whole: what it claims, its strengths and weaknesses, questions for the authors, experiments, analyses or baselines that are missing, how clear the writing and structure are, and concrete suggestions.
@@ -182,7 +205,7 @@ export function readReview(content, files) {
 const numbered = (file) => [`=== ${file.path} ===`, ...file.lines.map((line, i) => `${i + 1}| ${line}`)].join('\n');
 
 /**
- * The AI review of doc: its .tex files in reading order with numbered lines, the .bib keys and what Preflight already
+ * The AI review of doc: its source files in reading order with numbered lines, the .bib keys and what Preflight already
  * reported, in one model call with no tools. Over REVIEW_BUDGET only activePath (or doc) is sent, cut short if need be,
  * and the limits say so, as they do for an \input .pgf or data file left out. Aborting signal stops the call.
  */
@@ -195,7 +218,7 @@ export async function aiReview({ root, doc, activePath, findings = [], llmConfig
     if (source !== null) files.push({ path: rel, lines: source.replace(/\r\n?/g, '\n').split('\n') });
   }
   // a matplotlib .pgf or a table's data the document \inputs can run to megabytes: code, not the paper's text
-  const figures = files.filter((f) => !/\.(?:tex|ltx)$/i.test(f.path));
+  const figures = files.filter((f) => !/\.(?:tex|ltx|typ|md|markdown)$/i.test(f.path));
   files = files.filter((f) => !figures.includes(f));
   const size = (list) => list.reduce((n, f) => n + numbered(f).length, 0);
   const limits = [];
