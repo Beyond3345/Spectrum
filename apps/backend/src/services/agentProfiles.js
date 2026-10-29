@@ -26,7 +26,9 @@ const ACP_PROJECT = 'the Agent Client Protocol project';
  * In picker order. alt: other names of the program; signIn: the command that signs in, then: what to do in it;
  * install: the command that installs it, which Spectrum only shows; adapter: the ACP adapter Spectrum can install,
  * pinned to its version and npm checksum, with its size for each Mac; needs: a program the adapter starts, passed to it
- * in env; experimental, windows and planned: why the agent is experimental, off on Windows or not yet startable.
+ * in env, or the app it drives; app: the agent's desktop app, by name, and bin: the agent program inside the Mac app,
+ * when it carries one; experimental, windows and planned: why the agent is experimental, off on Windows or not yet
+ * startable.
  */
 export const PROFILES = [
   { id: 'opencode', name: 'OpenCode', command: 'opencode', args: ['acp'], url: 'https://opencode.ai/docs/acp/', keys: ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'DEEPSEEK_API_KEY'], login: ['.local/share/opencode/auth.json', '.config/opencode/opencode.json'], signIn: 'opencode auth login', then: 'In OpenCode 2, type /connect inside opencode instead.', install: 'brew install anomalyco/tap/opencode-v2', windows: 'OpenCode does not run inside Windows isolation yet. Its runtime needs to read the top of drive C:, and its internal server has not passed Spectrum’s Windows checks. Spectrum never runs an agent outside isolation.' },
@@ -36,13 +38,13 @@ export const PROFILES = [
   { id: 'gemini', name: 'Gemini CLI', command: 'gemini', args: ['--acp'], url: 'https://github.com/google-gemini/gemini-cli', keys: ['GEMINI_API_KEY'], login: ['.gemini/settings.json', '.gemini/oauth_creds.json', '.gemini/google_accounts.json'], signIn: 'gemini', then: 'Choose Sign in with Google.', install: 'npm install -g @google/gemini-cli' },
   { id: 'copilot', name: 'GitHub Copilot CLI', command: 'copilot', args: ['--acp'], url: 'https://github.com/github/copilot-cli', keys: ['GH_TOKEN'], login: [], install: 'npm install -g @github/copilot' },
   { id: 'cursor', name: 'Cursor', command: 'cursor-agent', alt: ['agent'], args: ['acp'], url: 'https://cursor.com/docs/cli/acp', keys: ['CURSOR_API_KEY'], login: [], install: 'curl https://cursor.com/install -fsS | bash' },
-  { id: 'kimi', name: 'Kimi Code', command: 'kimi', args: ['acp'], url: 'https://www.kimi.com/code/docs/en/kimi-code-cli/reference/kimi-acp.html', keys: ['KIMI_API_KEY'], login: ['.kimi-code/config.toml', '.kimi-code/credentials.json', '.kimi/config.toml', '.kimi/credentials.json'], signIn: 'kimi', then: 'Type /login.', install: 'npm install -g @moonshot-ai/kimi-code' },
+  { id: 'kimi', name: 'Kimi Code', command: 'kimi', args: ['acp'], url: 'https://www.kimi.com/code/docs/en/kimi-code-cli/reference/kimi-acp.html', keys: ['KIMI_API_KEY'], login: ['.kimi-code/config.toml', '.kimi-code/credentials.json', '.kimi/config.toml', '.kimi/credentials.json'], signIn: 'kimi', then: 'Type /login.', install: 'npm install -g @moonshot-ai/kimi-code', app: { name: 'Kimi Code' } },
   { id: 'hermes', name: 'Hermes', command: 'hermes', args: ['acp'], url: 'https://hermes-agent.nousresearch.com/docs/user-guide/features/acp', keys: ['OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY'], login: ['.hermes/config.yaml', '.hermes/auth.json', '.hermes/.env'], signIn: 'hermes model', install: 'curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash' },
-  { id: 'qoder', name: 'Qoder', command: 'qoder', alt: ['qodercli'], args: ['--acp'], url: 'https://docs.qoder.com/cli/acp', keys: ['QODER_PERSONAL_ACCESS_TOKEN'], login: [], install: 'npm install -g @qoder-ai/qodercli', experimental: 'The ACP registry has paused Qoder because its ACP start failed in some releases. Test checks the version you have.' },
+  { id: 'qoder', name: 'Qoder', command: 'qoder', alt: ['qodercli'], args: ['--acp'], url: 'https://docs.qoder.com/cli/acp', keys: ['QODER_PERSONAL_ACCESS_TOKEN'], login: [], install: 'npm install -g @qoder-ai/qodercli', app: { name: 'Qoder' }, experimental: 'The ACP registry has paused Qoder because its ACP start failed in some releases. Test checks the version you have.' },
   { id: 'pi', name: 'Pi', command: 'pi-acp', args: [], url: 'https://github.com/svkozak/pi-acp', keys: ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY'], login: ['.pi/agent/auth.json', '.pi/agent/models.json', '.pi/agent/settings.json'], signIn: 'pi', then: 'Type /login.', adapter: { package: 'pi-acp', version: '0.0.34', bin: 'dist/index.js', integrity: 'sha512-MrCp37UbpUzkTkzTIMJQf1RYrT+kr4fgGDGFoLmBN26UupuCZp0XxVIY+7XYsMo3yDnzDeZUJ0jPyM3Si6Bkkg==', official: false, publisher: 'svkozak', size: { arm64: '7 MB', x64: '7 MB' } }, needs: { name: 'Pi', command: 'pi', install: 'npm install -g @earendil-works/pi-coding-agent', env: 'PI_ACP_PI_COMMAND' }, experimental: 'Uses a community adapter. Pi edits files and runs commands itself, so Spectrum does not show them as they happen, and Spectrum’s tools do not reach it.', windows: NODE_ON_WINDOWS },
-  { id: 'deepseek', name: 'DeepSeek Harness', command: 'dsh', args: ['--profile', 'acp'], url: 'https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/acp', keys: ['DEEPSEEK_API_KEY'], login: [], install: 'npm install -g @deepseek-ai/dsh@next', experimental: 'A pre-release on npm. Its ACP mode is built for automation, so the workspace shows no plans, questions or terminals for it.' },
+  { id: 'deepseek', name: 'DeepSeek Harness', command: 'dsh', args: ['--profile', 'acp'], url: 'https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/acp', keys: ['DEEPSEEK_API_KEY'], login: [], install: 'npm install -g @deepseek-ai/dsh@next', app: { name: 'DeepSeek Harness', bin: 'Contents/Resources/runtime/cli/bin/dsh' }, experimental: 'A pre-release on npm. Its ACP mode is built for automation, so the workspace shows no plans, questions or terminals for it.' },
   // the adapter's own default lets ZCode act without asking, so it always starts in build mode
-  { id: 'zcode', name: 'ZCode', command: 'zcode-acp-server', args: [], url: 'https://github.com/william0wang/zcode-acp', keys: [], login: ['.zcode/v2/config.json', '.zcode/v2/credentials.json'], appSignIn: true, adapter: { package: 'zcode-acp-server', version: '0.76.3', bin: 'dist/cli.js', integrity: 'sha512-ClEiDU4z+TQLGM0RselWe7qw7m5WuRQoapoKng/L1Bkpbdkn/k5k5/BCU4INVHSyvF374Wvyny10GX56axuctQ==', official: false, publisher: 'william0wang', size: { arm64: '330 MB', x64: '330 MB' } }, needs: { name: 'ZCode', command: 'zcode', app: '/Applications/ZCode.app', install: 'Install the ZCode app from Z.ai.', env: 'ZCODE_BIN' }, experimental: 'Uses a community adapter that drives ZCode’s internal app server. The adapter also installs about 330 MB of packages from other publishers, including a community DeepSeek harness. Spectrum always starts it in build mode, as its own default lets it act without asking.', windows: NODE_ON_WINDOWS },
+  { id: 'zcode', name: 'ZCode', command: 'zcode-acp-server', args: [], url: 'https://github.com/william0wang/zcode-acp', keys: [], login: ['.zcode/v2/config.json', '.zcode/v2/credentials.json'], appSignIn: true, adapter: { package: 'zcode-acp-server', version: '0.76.3', bin: 'dist/cli.js', integrity: 'sha512-ClEiDU4z+TQLGM0RselWe7qw7m5WuRQoapoKng/L1Bkpbdkn/k5k5/BCU4INVHSyvF374Wvyny10GX56axuctQ==', official: false, publisher: 'william0wang', size: { arm64: '330 MB', x64: '330 MB' } }, needs: { name: 'ZCode', command: 'zcode', app: 'ZCode', install: 'Install the ZCode app from Z.ai.', env: 'ZCODE_BIN' }, experimental: 'Uses a community adapter that drives ZCode’s internal app server. The adapter also installs about 330 MB of packages from other publishers, including a community DeepSeek harness. Spectrum always starts it in build mode, as its own default lets it act without asking.', windows: NODE_ON_WINDOWS },
   { id: 'workbuddy', name: 'WorkBuddy', command: '', args: [], url: 'https://open.workbuddy.cn/en/docs/openapi', keys: [], login: [], planned: 'Planned. WorkBuddy needs a registered application secret that cannot live in a desktop app, so it will connect through its official platform with remote support in a later release.' }
 ];
 
@@ -99,14 +101,49 @@ export function chosenCommand(profile, saved) {
 }
 
 const home = () => os.homedir();
-// where the vendors' install scripts put the programs, which the backend's PATH may lack (Homebrew's is on it already)
-const knownDirs = () => process.platform === 'darwin' ? ['.opencode/bin', '.local/bin', '.kimi-code/bin', '.pi/agent/bin', '.npm-global/bin', '.bun/bin'].map((d) => path.join(home(), d)) : [];
+// where /Applications and Homebrew are; a scratch folder in tests
+const systemRoot = () => process.env.SPECTRUM_SYSTEM_ROOT || '/';
+/**
+ * Where the vendors' install scripts, the package managers and Homebrew put programs, as an app started from the
+ * Finder has a short PATH. .qoder/local is where the Qoder app's SDK looks for qodercli.
+ */
+const knownDirs = () => process.platform === 'darwin' ? [
+  ...['.opencode/bin', '.local/bin', '.kimi-code/bin', '.qoder/local', '.pi/agent/bin', '.npm-global/bin', '.bun/bin', 'Library/pnpm', '.yarn/bin', '.cargo/bin'].map((d) => path.join(home(), d)),
+  ...[process.env.npm_config_prefix, process.env.NPM_CONFIG_PREFIX].filter(Boolean).map((d) => path.join(d, 'bin')),
+  process.env.PNPM_HOME,
+  ...['opt/homebrew/bin', 'usr/local/bin'].map((d) => path.join(systemRoot(), d))
+].filter(Boolean) : [];
 const searchPath = () => [process.env.PATH || '', ...knownDirs()].join(path.delimiter);
+// where desktop apps are installed, for everyone and then for this user
+const appDirs = () => process.platform === 'win32'
+  ? [process.env.ProgramFiles, process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Programs')].filter(Boolean)
+  : [path.join(systemRoot(), 'Applications'), path.join(home(), 'Applications')];
 const exists = (file) => fs.access(file).then(() => true, () => false);
 const isFile = (file) => fs.stat(file).then((s) => s.isFile(), () => false);
 const systemFolder = (dir) => SYSTEM_READS.some((root) => dir === root || dir.startsWith(root + path.sep));
 // isolation refuses a home folder or a system root, so neither is ever derived
 const readable = (dir) => dir !== path.parse(dir).root && dir !== '/Users' && dir !== home() && dir !== path.dirname(home()) && !(home().startsWith(dir + path.sep)) && !systemFolder(dir);
+
+/** Where the desktop app called name is installed, or null. */
+export async function appFound(name) {
+  for (const dir of appDirs()) {
+    const app = path.join(dir, process.platform === 'win32' ? name : `${name}.app`);
+    if (await exists(app)) return app;
+  }
+  return null;
+}
+
+/** The first of names on the PATH or in the known folders: { real, dir }, dir being the folder it was found in. */
+async function findOnPath(names) {
+  const dirs = searchPath().split(path.delimiter).filter(Boolean);
+  for (const name of names) {
+    for (const dir of dirs) {
+      const real = await resolveExecutable(name, dir).catch(() => null);
+      if (real) return { real, dir };
+    }
+  }
+  return null;
+}
 
 /**
  * The folders an agent installed under the home folder needs besides its program's own: its package (the nearest
@@ -114,7 +151,8 @@ const readable = (dir) => dir !== path.parse(dir).root && dir !== '/Users' && di
  */
 export async function programReads(real) {
   if (process.platform === 'win32') return [];
-  const reads = [];
+  // a program inside an app reads the rest of its bundle, and nothing else of the user's
+  const reads = [real.match(/^(.*?\.app)\//)?.[1]].filter(Boolean);
   for (let dir = path.dirname(real); dir !== path.dirname(dir); dir = path.dirname(dir)) {
     if (await exists(path.join(dir, 'pyvenv.cfg'))) { reads.push(dir); break; }
     const parent = path.dirname(dir);
@@ -153,30 +191,32 @@ export async function adapterFound(profile) {
 async function findNeeded(needs) {
   const found = await resolveExecutable(needs.command, searchPath()).catch(() => null);
   if (found) return { name: needs.name, found: true, path: found, install: needs.install, env: needs.env, reads: [path.dirname(found), ...await programReads(found)] };
-  const app = needs.app && await exists(needs.app);
-  return { name: needs.name, found: !!app, ...(app && { path: needs.app }), install: needs.install, reads: [] };
+  const app = needs.app && await appFound(needs.app);
+  return { name: needs.name, found: !!app, ...(app && { path: app }), install: needs.install, reads: app ? [app].filter(readable) : [] };
 }
 
 /**
- * The program an agent starts with, first match wins: the one the user chose, the adapter Spectrum installed, then
- * the profile's command and its other names on the PATH and in the known folders. { program, source, command, args,
- * reads, needs } or null; command and args prefix what the profile adds.
+ * The program an agent starts with, first match wins: the one the user chose (a program, or the agent's Mac app), the
+ * adapter Spectrum installed, the program inside the agent's app, then the profile's command and its other names on
+ * the PATH and in the known folders. { program, source, where, command, args, reads, needs } or null; where: the app or
+ * folder it was found in; command and args prefix what the profile adds.
  */
 export async function findProgram(profile, saved = {}) {
   const needs = profile.needs && await findNeeded(profile.needs);
   const chosen = chosenCommand(profile, saved);
-  const result = async (real, source) => ({ program: real, source, command: real, args: [], reads: await programReads(real), needs });
+  const bin = process.platform === 'darwin' && profile.app?.bin;
+  const result = async (real, source, where) => ({ program: real, source, ...(where && { where }), command: real, args: [], reads: await programReads(real), needs });
   if (chosen) {
-    const real = await resolveExecutable(chosen, searchPath()).catch(() => null);
+    const real = await resolveExecutable(bin && /\.app\/?$/.test(chosen) ? path.join(chosen, bin) : chosen, searchPath()).catch(() => null);
     return real && result(real, 'chosen');
   }
   const managed = await adapterFound(profile);
   if (managed?.current) return { program: managed.bin, source: 'spectrum', command: process.execPath, args: [managed.bin], reads: [managed.folder], needs };
-  for (const name of [profile.command, ...profile.alt || []].filter(Boolean)) {
-    const real = await resolveExecutable(name, searchPath()).catch(() => null);
-    if (real) return result(real, 'found');
-  }
-  return null;
+  const app = bin && await appFound(profile.app.name);
+  const inApp = app && await resolveExecutable(path.join(app, bin)).catch(() => null);
+  if (inApp) return result(inApp, 'app', app);
+  const found = await findOnPath([profile.command, ...profile.alt || []].filter(Boolean));
+  return found && result(found.real, 'found', found.dir);
 }
 
 /** Everything a session or a Test starts the agent with, through spawnAgentProcess(): its program, arguments, key and folders. */
@@ -185,7 +225,10 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
   if (profile.unavailable) throw new Error(profile.unavailable);
   const saved = (await agentConfigs())[id] || {};
   const found = await findProgram(profile, saved);
-  if (!found) throw new Error(`${profile.name} was not found. Install it, or choose its program in Settings › Agents.`);
+  if (!found) {
+    const app = profile.app && await appFound(profile.app.name);
+    throw new Error(app ? `${profile.app.name} is installed, but its agent mode needs the ${profile.name} CLI. Install it, then try again.` : `${profile.name} was not found. Install it, or choose its program in Settings › Agents.`);
+  }
   if (found.needs && !found.needs.found) throw new Error(`${profile.name} needs ${found.needs.name}, which was not found. Install it, then try again.`);
   const keyEnv = saved.keyEnv || profile.key;
   const args = [...found.args, ...(saved.args || profile.args)];
@@ -247,13 +290,15 @@ export async function agentEntry(id, config, isolated) {
   const test = found && saved.test?.program === found.program ? withoutProgram(saved.test) : undefined;
   const keyEnv = saved.keyEnv || p.key;
   const needs = p.needs && (found?.needs || await findNeeded(p.needs));
+  const app = p.app && await appFound(p.app.name);
   const { state, setUp } = agentState({ planned: !!p.planned, unavailable: !!p.unavailable || !isolated, found: !!found, needsMissing: !!needs && !needs.found, adapter: !!p.adapter, test, configured });
   return {
     id, name: p.name, url: p.url, experimental: p.experimental, planned: p.planned, unavailable: p.unavailable,
     command: chosen, args: saved.args || p.args, runtimePaths: saved.runtimePaths || [], keyEnv,
     keyEnvs: [...p.keys, ...(keyEnv && !p.keys.includes(keyEnv) ? [keyEnv] : [])], hasKey: !!saved.apiKey,
     canImport: !!p.login.length, installed: !!found, supported: isolated && !p.unavailable,
-    ...(found && { program: found.program, source: found.source, reads: found.reads }),
+    ...(found && { program: found.program, source: found.source, where: found.where, reads: found.reads }),
+    ...(app && { app: { name: p.app.name, path: app } }),
     ...(needs && { needs: { name: needs.name, found: needs.found, install: needs.install, ...(needs.path && { path: needs.path }) } }),
     signIn: p.signIn, then: p.then, appSignIn: p.appSignIn, install: p.install,
     loginFound: await anyFile(home(), p.login), loginCopied, configured,

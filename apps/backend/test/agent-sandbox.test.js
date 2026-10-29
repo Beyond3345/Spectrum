@@ -54,3 +54,25 @@ test('native agent sandbox contains files, descendants, and local services', { s
     assert.equal(await fs.readFile(path.join(workspace, 'allowed.txt'), 'utf8'), 'yes');
   } finally { await new Promise((resolve) => server.close(resolve)); await fs.rm(root, { recursive: true, force: true }); }
 });
+
+test('an agent started from an app reads and runs that bundle, not another app beside it', { skip: !native && 'Run with SPECTRUM_NATIVE_AGENT_TESTS=1 outside an existing sandbox.' }, async () => {
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-agent-app-')));
+  const workspace = path.join(root, 'work'), home = path.join(root, 'home');
+  // a fake ~/Applications: the agent's app, whose launcher runs the app's own program, and another app
+  const app = path.join(root, 'Applications/Agent.app'), other = path.join(root, 'Applications/Other.app');
+  const launcher = path.join(app, 'Contents/Resources/cli/bin/agent');
+  try {
+    for (const folder of [workspace, path.join(home, 'tmp'), path.dirname(launcher), path.join(app, 'Contents/MacOS'), path.join(other, 'Contents')]) await fs.mkdir(folder, { recursive: true });
+    await fs.writeFile(path.join(app, 'Contents/MacOS/Agent'), '#!/bin/sh\ncat "$1"\n', { mode: 0o755 });
+    await fs.writeFile(path.join(app, 'Contents/Info.plist'), 'own bundle');
+    await fs.writeFile(path.join(other, 'Contents/Info.plist'), 'other app');
+    await fs.writeFile(launcher, `#!/bin/sh\n"${app}/Contents/MacOS/Agent" "${app}/Contents/Info.plist" || exit 2\ncat "${other}/Contents/Info.plist" 2>/dev/null && exit 3\nexit 0\n`, { mode: 0o755 });
+    const child = await spawnAgentProcess({ command: launcher, runtimeExecutable: launcher, runtimePaths: [app], workspace, home });
+    let out = '';
+    child.stdout.on('data', (d) => { out += d; });
+    const code = await new Promise((resolve) => child.on('close', resolve));
+    assert.deepEqual([code, out], [0, 'own bundle']);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

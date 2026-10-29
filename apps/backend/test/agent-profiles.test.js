@@ -12,6 +12,10 @@ const home = path.join(dir, 'home');
 process.env.SPECTRUM_DATA_DIR = path.join(dir, 'data');
 process.env.HOME = process.env.USERPROFILE = home;
 process.env.PATH = '/usr/bin:/bin';
+// /Applications and Homebrew's folders, scratch too
+const root = path.join(dir, 'root');
+process.env.SPECTRUM_SYSTEM_ROOT = root;
+for (const name of ['npm_config_prefix', 'NPM_CONFIG_PREFIX', 'PNPM_HOME']) delete process.env[name];
 const { PROFILES, profileFor, saveAgentConfig, agentConfigs, listAgents, agentEntry, agentState, launchOptions, installAdapter, removeAdapter, recordTest, importAgentLogin, AGENT_DIR, ADAPTER_LOCKS } = await import('../src/services/agentProfiles.js');
 after(() => fs.rm(dir, { recursive: true, force: true }));
 const knownFolders = process.platform !== 'darwin' && 'only a Mac looks in the vendors’ folders, such as ~/.local/bin';
@@ -79,6 +83,50 @@ test('finding programs in the known folders, other names and a chosen program', 
   assert.deepEqual([gemini.source, gemini.command, gemini.configured, gemini.state], ['chosen', chosen, true, 'untested']);
   await saveAgentConfig('gemini', { command: '' });
   assert.equal((await listed('gemini')).state, 'missing');
+});
+
+test('desktop apps: the agent inside the app, an app without one, and only that bundle readable', { skip: knownFolders }, async () => {
+  // DeepSeek Harness carries its CLI; in ~/Applications, which isolation can't read unless the bundle is added
+  const bundle = path.join(home, 'Applications/DeepSeek Harness.app');
+  const dsh = await program('Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh');
+  await program('.local/bin/dsh');
+  let deepseek = await listed('deepseek');
+  assert.deepEqual([deepseek.source, deepseek.program, deepseek.where, deepseek.app.path], ['app', dsh, bundle, bundle], 'the app before the known folders');
+  assert.deepEqual(deepseek.reads, [bundle], 'the bundle only, never ~/Applications or the home folder');
+  const options = await launchOptions('deepseek', { workspace: dir, home: dir });
+  assert.deepEqual([options.command, options.args], [dsh, ['--profile', 'acp']]);
+  assert.deepEqual(options.runtimePaths, [bundle]);
+  // one in /Applications comes first
+  const shared = path.join(root, 'Applications/DeepSeek Harness.app');
+  await fs.mkdir(path.join(shared, 'Contents/Resources/runtime/cli/bin'), { recursive: true });
+  await fs.copyFile(dsh, path.join(shared, 'Contents/Resources/runtime/cli/bin/dsh'));
+  assert.equal((await listed('deepseek')).where, shared);
+  await fs.rm(shared, { recursive: true });
+  // choosing the app is choosing the program inside it
+  await saveAgentConfig('deepseek', { command: bundle });
+  deepseek = await listed('deepseek');
+  assert.deepEqual([deepseek.source, deepseek.program, deepseek.reads], ['chosen', dsh, [bundle]]);
+  await saveAgentConfig('deepseek', { command: '' });
+
+  // Kimi Code's app has no agent mode: installed, still missing, with the CLI's install line
+  await fs.mkdir(path.join(root, 'Applications/Kimi Code.app/Contents'), { recursive: true });
+  const kimi = await listed('kimi');
+  assert.deepEqual([kimi.state, kimi.installed, kimi.app.name, kimi.install], ['missing', false, 'Kimi Code', 'npm install -g @moonshot-ai/kimi-code']);
+  await assert.rejects(launchOptions('kimi', { workspace: dir, home: dir }), /Kimi Code is installed, but its agent mode needs the Kimi Code CLI/);
+  await saveAgentConfig('kimi', { command: path.join(root, 'Applications/Kimi Code.app') });
+  assert.equal((await listed('kimi')).program, undefined, 'an app without an agent inside is no program');
+  await saveAgentConfig('kimi', { command: '' });
+  await program('.kimi-code/bin/kimi');
+  assert.deepEqual([(await listed('kimi')).source, (await listed('kimi')).where], ['found', path.join(home, '.kimi-code/bin')]);
+
+  // Qoder: the folder its app's SDK looks in, and Homebrew's, which a Finder PATH lacks
+  await fs.mkdir(path.join(root, 'Applications/Qoder.app'), { recursive: true });
+  await program('.qoder/local/qodercli');
+  assert.equal((await listed('qoder')).where, path.join(home, '.qoder/local'));
+  await fs.mkdir(path.join(root, 'opt/homebrew/bin'), { recursive: true });
+  await fs.copyFile(dsh, path.join(root, 'opt/homebrew/bin/hermes'));
+  await fs.chmod(path.join(root, 'opt/homebrew/bin/hermes'), 0o755);
+  assert.deepEqual([(await listed('hermes')).source, (await listed('hermes')).where], ['found', path.join(root, 'opt/homebrew/bin')]);
 });
 
 test('Claude Agent always starts with the claude.ai sign-in hidden', { skip: nodeAdapters || knownFolders }, async () => {
