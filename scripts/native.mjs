@@ -385,6 +385,12 @@ async function main() {
     if (which === 'hunspell' || which === 'all') { const dir = join(work, 'spell'); mkdirSync(dir); await buildHunspell(dir, update, archive); }
     if (which === 'harper' || which === 'all') { const dir = join(work, 'grammar'); mkdirSync(dir); await buildHarper(dir, archive); }
     if (which === 'all' || which === 'hunspell') await dictionaries();
-  } finally { rmSync(work, { recursive: true, force: true }); }
+  } finally {
+    // the self-tests load the staged hunspell.node into this process, and Windows keeps a loaded DLL locked until it exits
+    try { rmSync(work, { recursive: true, force: true }); } catch (err) {
+      if (!win || !['EPERM', 'EBUSY'].includes(err.code)) throw err;
+      console.warn(`Left the build folder ${work} behind (${err.code}); it can be deleted once this run has ended.`);
+    }
+  }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((err) => { console.error(err.message); process.exitCode = 1; });

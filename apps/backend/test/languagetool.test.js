@@ -119,6 +119,8 @@ test('cancelling stops between parts; failures say what happened and keep the pa
 
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const unix = process.platform !== 'win32';
+// the Java runtime pinned for this computer, under the service's key for it
+const arch = unix ? (process.arch === 'arm64' ? 'arm64' : 'x64') : 'win-x64';
 
 /** A "Java runtime" archive whose bin/java runs the fake LanguageTool with Node, noting its process id in `pidFile`. */
 const pidFile = path.join(tmp, 'java-started');
@@ -140,7 +142,6 @@ test('LanguageTool downloads only when asked, checks every file, and runs only w
     const body = files[req.url.slice(1)];
     res.writeHead(body ? 200 : 404).end(body);
   });
-  const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
   const pin = (javaSha = sha(java)) => lt.useLanguageToolPins({ version: '6.8', base: `${base}/`,
     jars: [['org/languagetool/languagetool-server/6.8/languagetool-server-6.8.jar', sha(jar), jar.length]],
     java: { [arch]: [`${base}/jre.tar.gz`, javaSha, java.length, '21.0.13+9-LTS'] } });
@@ -236,7 +237,6 @@ test('a jar that fails stops the other downloads, and nothing is left behind', a
       if (sent < 20) cut += 1;
     });
   });
-  const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
   lt.useLanguageToolPins({ version: '6.8', base: `${base}/`, jars: names.map((name) => [name, sha(jar), jar.length]),
     java: { [arch]: [`${base}/jre.tar.gz`, '0'.repeat(64), 1, '21.0.13+9-LTS'] } });
   await lt.installLanguageTool();

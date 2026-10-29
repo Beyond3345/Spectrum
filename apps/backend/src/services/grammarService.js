@@ -44,17 +44,49 @@ export async function grammarStatus({ start = false } = {}) {
 
 export const stopGrammar = () => harper.terminate();
 
-/** Harper's issues for one dialect, in text with everything but that dialect's runs blanked. */
-async function harperIssues({ base, runs, markdown, oxford, dialect, words }) {
-  const keep = new Uint8Array(base.length);
-  for (const [from, to] of runs) keep.fill(1, from, to);
-  // only its runs, and in them no letters of another script (a Chinese term in English prose is blanked)
-  let text = '';
-  for (let i = 0; i < base.length; i += 1) {
-    const ch = base[i];
-    text += ch === '\n' || (keep[i] && !OTHER_SCRIPT.test(ch)) ? ch : ' ';
+// Harper reads a long file in parts of about this many characters of its runs, so a check stops between parts when
+// cancelled and other checks don't wait behind a whole thesis
+export const HARPER_PART_CHARS = 50_000;
+
+/**
+ * Harper's issues for one dialect, part by part, each part's text with everything but that dialect's runs blanked.
+ * Stops between parts when signal aborts; answers { issues, parts, done }.
+ */
+async function harperIssues({ base, runs, markdown, oxford, dialect, words, signal }) {
+  const parts = [];
+  let size = Infinity;
+  for (const run of runs) {
+    if (size >= HARPER_PART_CHARS) {
+      parts.push([]);
+      size = 0;
+    }
+    parts.at(-1).push(run);
+    size += run[1] - run[0];
   }
-  return harper.call({ text, oxford: OXFORD.has(oxford) ? oxford : 'avoid', markdown, dialect: HARPER_DIALECTS[dialect], words });
+  const issues = [];
+  let done = 0;
+  for (const part of parts) {
+    if (signal?.aborted) break;
+    // only its runs, and in them no letters of another script (a Chinese term in English prose is blanked)
+    const at = part[0][0];
+    let text = '';
+    let end = at;
+    for (const [from, to] of part) {
+      text += base.slice(end, from).replace(/[^\n]/g, ' ');
+      for (let i = from; i < to; i += 1) text += base[i] === '\n' || !OTHER_SCRIPT.test(base[i]) ? base[i] : ' ';
+      end = to;
+    }
+    let found;
+    try {
+      found = await harper.call({ text, oxford: OXFORD.has(oxford) ? oxford : 'avoid', markdown, dialect: HARPER_DIALECTS[dialect], words }, signal);
+    } catch (err) {
+      if (signal?.aborted) break;
+      throw err;
+    }
+    for (const issue of found) issues.push({ ...issue, from: issue.from + at, to: issue.to + at });
+    done += 1;
+  }
+  return { issues, parts: parts.length, done };
 }
 // a letter (or half of one) that isn't Latin
 const OTHER_SCRIPT = /(?=[\p{L}\p{M}])\P{Script=Latin}|[\uD800-\uDFFF]/u;
@@ -65,7 +97,7 @@ const OTHER_SCRIPT = /(?=[\p{L}\p{M}])\P{Script=Latin}|[\uD800-\uDFFF]/u;
  * state, message }, state being checked, none (no grammar checker), off or not-downloaded (LanguageTool isn't on or
  * isn't here), failed or cancelled. fixable is false when the span runs into markup, where a suggestion written for
  * the prose would break the LaTeX. languages is the list in effect (language, one tag, for older callers); signal
- * stops LanguageTool between parts.
+ * stops Harper and LanguageTool between parts.
  */
 export async function checkGrammar({ text, file = '', style = false, oxford = 'avoid', ignoredRules = [], languageToolIgnored = {}, languages, language, englishGrammar = 'harper', projectId, signal }) {
   const source = String(text);
@@ -114,9 +146,10 @@ export async function checkGrammar({ text, file = '', style = false, oxford = 'a
       fallback = { state: checked.state, message: checked.message || '' };
     }
     if (english) {
-      const found = await harperIssues({ base, runs, markdown: kind === 'markdown', oxford, dialect: lang, words });
+      const { issues: found, parts, done } = await harperIssues({ base, runs, markdown: kind === 'markdown', oxford, dialect: lang, words, signal });
       raw.push(...found.map((issue) => ({ ...issue, engine: 'harper', lang })));
-      coverage.push({ ...about, engine: 'harper', parts: 1, done: 1, state: 'checked', message: '', ...(fallback && { fallback }) });
+      const state = done < parts ? 'cancelled' : 'checked';
+      coverage.push({ ...about, engine: 'harper', parts, done, state, message: state === 'cancelled' ? `Cancelled: ${done} of ${parts} parts checked.` : '', ...(fallback && { fallback }) });
     } else {
       coverage.push({ ...about, engine: null, parts: 0, done: 0, state: 'none', message: '' });
     }

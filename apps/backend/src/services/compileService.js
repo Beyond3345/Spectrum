@@ -437,8 +437,8 @@ async function staleLinks(projectRoot, absMain) {
  * file is written again (delete it to).
  */
 let fontconfigFile = null;
-async function tectonicFontconfig() {
-  if (!WINDOWS) return null;
+export async function tectonicFontconfig() {
+  if (process.platform !== 'win32') return null;
   if (!fontconfigFile) {
     const file = path.join(DATA_DIR, 'engines', 'fonts.conf');
     const xml = (value) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

@@ -17,7 +17,7 @@ Object.assign(process.env, {
   SPECTRUM_TEMPLATE_SEED_DIR: ''
 });
 const { createProject } = await import('../src/services/projectService.js');
-const { runCompile } = await import('../src/services/compileService.js');
+const { runCompile, tectonicFontconfig } = await import('../src/services/compileService.js');
 
 after(() => {
   process.env.PATH = realPath;
@@ -144,5 +144,29 @@ test('a pass of the built-in Tectonic gets 15 minutes, not the 3-minute default'
     assert.match(log, /TECTONIC RAN/);
   } finally {
     mock.timers.reset();
+  }
+});
+
+test('on Windows, Tectonic is given a fonts.conf in the data folder listing the Windows and per-user font folders', async () => {
+  assert.equal(await tectonicFontconfig(), null, 'elsewhere it has its own font system');
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+  const env = { SystemRoot: process.env.SystemRoot, LOCALAPPDATA: process.env.LOCALAPPDATA };
+  Object.defineProperty(process, 'platform', { ...platform, value: 'win32' });
+  Object.assign(process.env, { SystemRoot: 'C:\\Windows', LOCALAPPDATA: 'C:\\Users\\Kim & Lee\\AppData\\Local' });
+  try {
+    const file = await tectonicFontconfig();
+    const engines = path.join(tmp, 'data', 'engines');
+    assert.equal(file, path.join(engines, 'fonts.conf'));
+    const conf = await fs.readFile(file, 'utf8');
+    assert.ok(conf.includes(`<dir>${path.join('C:\\Windows', 'Fonts')}</dir>`), conf);
+    assert.ok(conf.includes(`<dir>${path.join('C:\\Users\\Kim &amp; Lee\\AppData\\Local', 'Microsoft', 'Windows', 'Fonts')}</dir>`), conf);
+    assert.ok(conf.includes(`<cachedir>${path.join(engines, 'fontconfig-cache')}</cachedir>`), conf);
+    // written once: a file the user changed stays
+    await fs.writeFile(file, 'mine');
+    assert.equal(await tectonicFontconfig(), file);
+    assert.equal(await fs.readFile(file, 'utf8'), 'mine');
+  } finally {
+    Object.defineProperty(process, 'platform', platform);
+    for (const [key, value] of Object.entries(env)) if (value === undefined) delete process.env[key]; else process.env[key] = value;
   }
 });
