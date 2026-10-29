@@ -202,7 +202,7 @@ eq(readStyle({ width: 'huge', vectorWidth: 1.5, colour: ' ', tips: 'none' }), { 
   eq(one(link({ kind: 'highlight' }), styled)[0], ['\\draw[line width=2.5pt, blue!50] (A) -- (B);'], 'a highlight keeps its look');
   eq(one(link({ kind: 'highlight', width: 4, colour: 'orange', opacity: 0.5 }))[0], ['\\draw[line width=4pt, orange, opacity=0.5] (A) -- (B);'], 'a highlight of its own');
   const C: VPoint = { id: 'C', name: 'C', x: 0, y: 2, panel: 'g1' };
-  eq(one({ id: 'p', kind: 'polygon', points: ['A', 'B', 'C'], fill: 'blue!10', fillOpacity: 0.5, colour: 'blue', width: 'thick', opacity: 0.8 }, {}, [C])[0], ['\\draw[fill=blue!10, fill opacity=0.5, thick, blue, draw opacity=0.8] (A) -- (B) -- (C) -- cycle;'], 'a polygon’s fill and line');
+  eq(one({ id: 'p', kind: 'polygon', points: ['A', 'B', 'C'], fill: 'blue!10', fillOpacity: 0.5, colour: 'blue', width: 'thick', opacity: 0.8 }, {}, [C])[0], ['\\draw[fill=blue!10, fill opacity=0.5, thick, draw=blue, draw opacity=0.8] (A) -- (B) -- (C) -- cycle;'], 'a polygon’s fill and line, the line’s colour as draw= so it fills blue!10');
   eq(one({ id: 'p', kind: 'polygon', points: ['A', 'B', 'C'], fill: '#000080' }, {}, [C])[0], ['\\draw[fill={rgb,255:red,0;green,0;blue,128}] (A) -- (B) -- (C) -- cycle;'], 'a picked fill');
   eq(one({ id: 'd', kind: 'drop', from: 'B', axis: 'x', dash: 'dotted', colour: 'gray' })[0], ['\\draw[dotted, gray] (B) -- (B |- 0,0);'], 'a dotted grey drop');
   eq(one({ id: 'd', kind: 'drop', from: 'B', axis: 'x', dash: 'solid' })[0], ['\\draw (B) -- (B |- 0,0);'], 'a solid drop');
@@ -219,8 +219,8 @@ eq(readStyle({ width: 'huge', vectorWidth: 1.5, colour: ' ', tips: 'none' }), { 
       .slice(2, -2)
       .map((l) => l.trim());
   eq(dots({}), ['\\fill (P) circle (2pt) node[above] {$P$};'], 'a dot as before');
-  eq(dots({}, { pointSize: 3, colour: 'blue' }), ['\\fill[blue] (P) circle (3pt) node[above] {$P$};'], 'the Style’s size and colour');
-  eq(dots({ size: 1.5, shape: 'open', colour: 'red' }), ['\\draw[red, fill=white] (P) circle (1.5pt) node[above] {$P$};'], 'an open dot');
+  eq(dots({}, { pointSize: 3, colour: 'blue' }), ['\\fill[blue] (P) circle (3pt);', '\\node[above] at (P) {$P$};'], 'the Style’s size and colour, the label a node of its own so it stays black');
+  eq(dots({ size: 1.5, shape: 'open', colour: 'red' }), ['\\draw[red, fill=white] (P) circle (1.5pt);', '\\node[above] at (P) {$P$};'], 'an open dot');
   eq(dots({ shape: 'cross', label: { text: '$P$', side: 'above', size: 'small', colour: 'teal' } }), ['\\draw (P) ++(-2pt,-2pt) -- ++(4pt,4pt) ++(-4pt,0) -- ++(4pt,-4pt);', '\\node[above, font=\\small, teal] at (P) {$P$};'], 'a cross, its label beside it');
 }
 {

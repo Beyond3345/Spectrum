@@ -80,4 +80,8 @@ eq(clashesWith({ packages: ['tikz-cd', 'amssymb'], libraries: [] }, project(['qu
 eq(clashesWith({ packages: ['circuitikz', 'siunitx'], libraries: [] }, project(['chronology'])).length, 1, 'chronology meets siunitx');
 eq(clashesWith({ packages: ['circuitikz'], libraries: [] }, project(['chronology'])).length, 0, 'but not without siunitx');
 
+// physics's own \qty: Insert writes \SI, so the figure needn't go in as an image
+eq(clashesWith({ packages: ['tikz', 'siunitx'], libraries: [] }, project(['physics'])), [{ with: 'physics', message: 'physics has its own \\qty, so Insert writes the figure’s values with siunitx’s \\SI instead.', fixed: true }], 'physics meets siunitx');
+eq(clashesWith({ packages: ['circuitikz', 'siunitx'], libraries: [] }, project(['chronology']))[0].fixed, undefined, 'chronology isn’t put right');
+
 console.log('sets.check: ok');

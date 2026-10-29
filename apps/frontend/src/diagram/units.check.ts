@@ -69,9 +69,25 @@ eq(on.title('Load (kN)'), 'Load (\\unit{\\kilo\\newton})', 'an axis title’s un
 eq(on.title('$\\sigma$ [MPa]'), '$\\sigma$ [\\unit{\\mega\\pascal}]', 'in square brackets');
 eq(on.title('Case (a)'), 'Case (a)', 'brackets that aren’t a unit');
 
+// in a document that loads physics: \SI, siunitx 3's older name for \qty
+const physics = unitWriter(true, true);
+eq([physics.qty('10', 'kN'), physics.typed('4.7 µF'), physics.unit('kN'), physics.num('2')], ['\\SI{10}{\\kilo\\newton}', '\\SI{4.7}{\\micro\\farad}', '\\unit{\\kilo\\newton}', '\\num{2}'], 'physics: \\SI');
+
+// a thousands comma, which siunitx would read as a decimal one
+eq([on.typed('2,200 µF'), on.typed('1,000,000 Ω'), on.typed('4,7 µF'), on.typed('2,20 µF')], ['\\qty{2200}{\\micro\\farad}', null, '\\qty{4,7}{\\micro\\farad}', '\\qty{2,20}{\\micro\\farad}'], 'commas');
+// a bracket straight after a name is maths, not a unit
+eq([on.title('G(s)'), on.title('Gain G(s) (V)'), on.title('(kN)')], ['G(s)', 'Gain G(s) (\\unit{\\volt})', '(\\unit{\\kilo\\newton})'], 'G(s)');
+// % as siunitx's \percent, never a TeX comment
+eq([on.typed('50 %'), on.typed('50%'), on.unit('%')], ['\\qty{50}{\\percent}', '\\qty{50}{\\percent}', '\\unit{\\percent}'], 'percent');
+
 const off = unitWriter(false);
 eq([off.qty('10', 'kN'), off.equals('R_{Ay}', '13.4', 'kN'), off.unit('kN\\,m'), off.num('-24.1'), off.typed('10 kΩ'), off.title('Load (kN)')], ['$10$\\,kN', '$R_{Ay} = 13.4$\\,kN', 'kN\\,m', '$-24.1$', null, 'Load (kN)'], 'off: as before');
 eq(off.used, false, 'off never writes siunitx');
 
-eq(unitsAsText('\\qty{10}{\\kilo\\newton\\per\\metre}'), '10 kN/m', 'shown as its text');
+// as siunitx prints it, a negative power after \per
+eq(
+  ['\\qty{10}{\\kilo\\newton\\per\\metre}', '\\unit{\\kilo\\newton\\metre}', '\\SI{5}{\\newton\\per\\milli\\metre\\squared}', '\\qty{3}{kip/ft}', '\\num{-24.1}', '\\qty{2}{\\degreeCelsius}'].map(unitsAsText),
+  ['10 kN m⁻¹', 'kN m', '5 N mm⁻²', '3 kip/ft', '-24.1', '2 °C'],
+  'shown as its text'
+);
 console.log('units.check: ok');

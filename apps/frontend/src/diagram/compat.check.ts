@@ -50,7 +50,7 @@ function loadsOf(text: string) {
 }
 
 (async () => {
-  eq(Object.keys(FIXTURES).length, 10, 'a file for each mode');
+  eq(Object.keys(FIXTURES).length, 11, 'a file for each mode');
   for (const [path, text] of Object.entries(FIXTURES)) {
     const { code, diagram, edited } = await readDiagramFile(text);
     if (!diagram) throw new Error(`${path}: no drawing`);
@@ -67,9 +67,19 @@ function loadsOf(text: string) {
       eq(styleOut(drawnText(diagram, generated)), styleOut(code), `${path}: its mode writes the same circuit, every style key written`);
       const preset = (t: string) => /\\begin\{circuitikz\}\[(\w+)/.exec(t)?.[1];
       eq(preset(generated.body), preset(code), `${path}: the same preset first`);
+    } else if (path === 'figures/structure-rc.tex') {
+      // labels now kept clear of members, loads and supports: only where its \node lines are changes
+      const drawn = drawnText(diagram, generated).split('\n'), before = code.split('\n');
+      eq(drawn.length, before.length, `${path}: as many lines`);
+      const changed = drawn.filter((line, i) => line !== before[i]);
+      eq(changed.every((line) => line.trimStart().startsWith('\\node')), true, `${path}: only \\node lines change`);
+      eq((await readDiagramFile(await diagramFileText(diagram, generated))).diagram?.version, 1, `${path}: still version 1`);
     } else if (!restyled) {
       eq(drawnText(diagram, generated), code, `${path}: its mode writes the same text`);
-      eq(await diagramFileText(diagram, generated), text, `${path}: and the same file, last line and all`);
+      const again = await diagramFileText(diagram, generated);
+      // siunitx is phase E's, so a drawing with it is saved as version 3, which the release candidate opens as code
+      if (diagram.style.siUnits === true) eq([again.startsWith(code), (await readDiagramFile(again)).diagram?.version], [true, 3], `${path}: the same text, as version 3`);
+      else eq(again, text, `${path}: and the same file, last line and all`);
     }
     if (diagram.language === 'tikz') {
       const before = loadsOf(code);

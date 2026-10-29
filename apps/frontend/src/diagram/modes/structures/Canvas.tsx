@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import Icon from '../../../app/Icon';
 import { useCanvasPrefs } from '../../FlowCanvas';
+import { unitsAsText } from '../../units';
 import { colourCss } from '../shared';
 import { buildScene, extentOf, readStyle } from './draw';
 import type { Anchor, Item } from './draw';
@@ -396,7 +397,7 @@ export default function StructureCanvas({
         const [anchor, baseline] = TEXT_ANCHOR[item.anchor];
         return (
           <text key={key} {...hit} x={p.x} y={p.y} className={`st-text ${on ? 'selected' : ''}`} fontSize={fontSize} textAnchor={anchor} dominantBaseline={baseline}>
-            {plain(item.tex)}
+            {plain(unitsAsText(item.tex))}
           </text>
         );
       }

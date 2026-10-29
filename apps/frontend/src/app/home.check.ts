@@ -1,6 +1,6 @@
 // Self-check for what Home does with the folders. Run:
 // npx esbuild apps/frontend/src/app/home.check.ts --bundle --platform=node --log-level=warning | node
-import { NO_FOLDERS, addFolder, cleanFolders, colourFolder, deleteFolder, folderPath, isWithin, moveItems, placeProject, projectCounts } from './folders';
+import { NO_FOLDERS, addFolder, cameFrom, cleanFolders, colourFolder, deleteFolder, folderPath, isWithin, moveItems, placeProject, projectCounts, sharedPlace } from './folders';
 import { DEFAULT_SETTINGS, sharedPart, takeInShared } from './settings';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -18,6 +18,12 @@ eq(folderPath(t, null), [], 'the top has no path');
 eq(folderPath(t, 'gone'), [], 'nor a folder that has gone');
 eq([isWithin(t, 'engg', 'uni'), isWithin(t, 'uni', 'uni'), isWithin(t, 'uni', 'engg')], [true, true, false], 'inside');
 eq(Object.fromEntries(projectCounts(t, ['lab', 'essay', 'loose'])), { uni: 2, engg: 1 }, 'a folder counts the projects in the folders inside it');
+
+// going up, the focus goes to the folder come from, or the one holding it
+eq([cameFrom(t, 'engg', 'uni'), cameFrom(t, 'engg', null), cameFrom(t, 'uni', 'engg'), cameFrom(t, null, null)], ['engg', 'uni', null, null], 'came from');
+
+// Move to folder… starts on the folder the items share
+eq([sharedPlace(t, ['p:lab']), sharedPlace(t, ['f:engg', 'p:essay']), sharedPlace(t, ['p:loose', 'f:work']), sharedPlace(t, ['p:lab', 'p:essay'])], ['engg', 'uni', null, undefined], 'where they are');
 
 // moving: projects and folders together, into a folder or to the top
 const moved = moveItems(t, ['p:loose', 'f:work'], 'engg');

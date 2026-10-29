@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ClipboardEvent, DragEvent, KeyboardEvent } from 'react';
-import { blobUrl, getFile, getProjectSettings, getProjectTree, plotFromTable, uploadFiles, visionToLatex } from '../../api/client';
+import { blobUrl, getFile, getProjectSettings, getProjectTree, plotFromTable, uploadFiles, visionToLatex, writeFile } from '../../api/client';
 import Choice from '../../app/Segmented';
 import Icon from '../../app/Icon';
 import { effectiveCompile, loadSettings } from '../../app/settings';
@@ -8,6 +8,7 @@ import Select from '../../app/Select';
 import Sheet from '../../app/Sheet';
 import { openDiagram } from '../../app/desktop';
 import { IS_WINDOWS } from '../../app/platform';
+import { forPhysics } from '../../diagram/fileFormat';
 import { clashesWith } from '../../diagram/sets';
 import type { Clash } from '../../diagram/sets';
 import type { DiagramLanguage } from '../../diagram/types';
@@ -650,7 +651,7 @@ function InsertDiagram() {
     diagramClashes(apiRef.current, diagram).then((found) => {
       if (!live) return;
       setClashes(found);
-      setAsImage(found.length > 0);
+      setAsImage(found.some((clash) => !clash.fixed));
     });
     return () => {
       live = false;
@@ -727,6 +728,16 @@ function InsertDiagram() {
           setCaption('');
           return;
         }
+        // physics's \qty would take the figure's values: they become \SI, in the file and its drawing
+        let note = '';
+        if (tikz && clashes.some((clash) => clash.with === 'physics')) {
+          const { content, hash } = await getFile(a.projectId, diagram.path);
+          const fixed = await forPhysics(content);
+          if (fixed) {
+            await writeFile(a.projectId, diagram.path, fixed, { base: hash });
+            note = 'Its values are written with \\SI, as physics has its own \\qty.';
+          }
+        }
         // standalone loads before the rest, and the libraries after the packages that bring TikZ
         const added = tikz
           ? await ensurePackages(() => apiRef.current, [...diagram.packages, ...exactly], { first: ['standalone'], libraries: diagram.libraries })
@@ -735,7 +746,7 @@ function InsertDiagram() {
           apiRef.current,
           tikz ? diagramLatex({ ...float, path: diagram.path, width: fraction }) : figureLatex({ ...float, path: image, width: fraction ?? widthOf(prefs) })
         );
-        a.notify([`Inserted ${diagram.path} as a figure.`, added.text].filter(Boolean).join(' '), added.warn ? 'error' : 'success');
+        a.notify([`Inserted ${diagram.path} as a figure.`, note, added.text].filter(Boolean).join(' '), added.warn ? 'error' : 'success');
       }
       setDiagram(null);
       setCaption('');
@@ -772,7 +783,7 @@ function InsertDiagram() {
           {!tikz && !typst && !image && <div className="field-hint error">Export the diagram as a PNG from the composer first, then insert it again.</div>}
           {typst && kind !== 'typst' && <div className="field-hint error">A Typst diagram goes into Typst documents only.</div>}
           {clashes.map((clash) => (
-            <div key={clash.with} className="field-hint error">
+            <div key={clash.with} className={`field-hint ${clash.fixed ? '' : 'error'}`}>
               {clash.message}
             </div>
           ))}

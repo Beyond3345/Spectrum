@@ -101,8 +101,8 @@ export function chosenCommand(profile, saved) {
 }
 
 const home = () => os.homedir();
-// where /Applications and Homebrew are; a scratch folder in tests
-const systemRoot = () => process.env.SPECTRUM_SYSTEM_ROOT || '/';
+// where /Applications and Homebrew are; a scratch folder in tests, never in a release
+const systemRoot = () => (process.env.NODE_ENV !== 'production' && process.env.SPECTRUM_SYSTEM_ROOT) || '/';
 /**
  * Where the vendors' install scripts, the package managers and Homebrew put programs, as an app started from the
  * Finder has a short PATH. .qoder/local is where the Qoder app's SDK looks for qodercli.
@@ -123,6 +123,9 @@ const isFile = (file) => fs.stat(file).then((s) => s.isFile(), () => false);
 const systemFolder = (dir) => SYSTEM_READS.some((root) => dir === root || dir.startsWith(root + path.sep));
 // isolation refuses a home folder or a system root, so neither is ever derived
 const readable = (dir) => dir !== path.parse(dir).root && dir !== '/Users' && dir !== home() && dir !== path.dirname(home()) && !(home().startsWith(dir + path.sep)) && !systemFolder(dir);
+
+/** The agent's desktop app, where installed; an app carrying the agent only on a Mac, where its layout is known. */
+const agentApp = (profile) => profile.app && (process.platform === 'darwin' || !profile.app.bin) ? appFound(profile.app.name) : null;
 
 /** Where the desktop app called name is installed, or null. */
 export async function appFound(name) {
@@ -226,7 +229,7 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
   const saved = (await agentConfigs())[id] || {};
   const found = await findProgram(profile, saved);
   if (!found) {
-    const app = profile.app && await appFound(profile.app.name);
+    const app = await agentApp(profile);
     throw new Error(app ? `${profile.app.name} is installed, but its agent mode needs the ${profile.name} CLI. Install it, then try again.` : `${profile.name} was not found. Install it, or choose its program in Settings › Agents.`);
   }
   if (found.needs && !found.needs.found) throw new Error(`${profile.name} needs ${found.needs.name}, which was not found. Install it, then try again.`);
@@ -290,7 +293,7 @@ export async function agentEntry(id, config, isolated) {
   const test = found && saved.test?.program === found.program ? withoutProgram(saved.test) : undefined;
   const keyEnv = saved.keyEnv || p.key;
   const needs = p.needs && (found?.needs || await findNeeded(p.needs));
-  const app = p.app && await appFound(p.app.name);
+  const app = await agentApp(p);
   const { state, setUp } = agentState({ planned: !!p.planned, unavailable: !!p.unavailable || !isolated, found: !!found, needsMissing: !!needs && !needs.found, adapter: !!p.adapter, test, configured });
   return {
     id, name: p.name, url: p.url, experimental: p.experimental, planned: p.planned, unavailable: p.unavailable,
@@ -321,6 +324,8 @@ export async function saveAgentConfig(id, value) {
     const args = value.args ?? old.args;
     const runtimePaths = value.runtimePaths ?? old.runtimePaths ?? [];
     if (command.includes('\0') || command.length > 4096 || (args && (!Array.isArray(args) || args.length > 40 || args.some((a) => typeof a !== 'string' || a.includes('\0') || a.length > 4096)))) throw new Error('Invalid executable or arguments.');
+    // an app with no agent inside would hide the CLI found now
+    if (/\.app\/?$/.test(command) && !(process.platform === 'darwin' && profile.app?.bin)) throw new Error(`${path.basename(command.replace(/\/$/, ''))} has no ${profile.name} agent inside it. Choose the ${profile.name} CLI (${profile.command}) instead.`);
     if (!Array.isArray(runtimePaths) || runtimePaths.length > 20 || runtimePaths.some((p) => typeof p !== 'string' || !path.isAbsolute(p))) throw new Error('Runtime folders must be absolute paths.');
     const keyEnv = value.keyEnv || old.keyEnv || profile.key;
     const apiKey = value.apiKey === undefined ? (keyEnv === (old.keyEnv || profile.key) ? old.apiKey || '' : '') : String(value.apiKey);

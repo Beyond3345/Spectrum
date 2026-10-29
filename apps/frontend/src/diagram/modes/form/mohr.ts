@@ -51,7 +51,7 @@ function mohrCode(values: FormValues, style: Record<string, unknown>): DiagramCo
   const convention = (Object.keys(SHEAR_AXIS).includes(String(style.mohrShear)) ? style.mohrShear : 'down') as ComposerDefaults['mohrShear'];
   const m = mohr({ sigmaX: sx, sigmaY: sy, tauXY: txy, theta, ...(threeD && { sigmaZ: sz }) });
   const fmt = (v: number) => formatValue(v, 3);
-  const si = unitWriter(style.siUnits === true);
+  const si = unitWriter(style.siUnits === true, style.physics === true);
   const withUnit = (v: number) => (unitTex ? si.qty(fmt(v), unitTex) : `$${fmt(v)}$`);
 
   // drawn τ: down for τ positive downward and for clockwise shear above (X, whose positive τxy turns its element

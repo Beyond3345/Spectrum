@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, HTMLAttributes, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import type { ProjectMeta } from '../api/client';
-import { childFolders, folderPath, projectCounts } from './folders';
+import { cameFrom, childFolders, folderPath, projectCounts } from './folders';
 import type { FolderColour, ProjectFolder, ProjectFolders } from './folders';
 import { MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
@@ -88,6 +88,7 @@ export default function Home({
   onOpen,
   onSort,
   onMenu,
+  onMove,
   folderMenu,
   projectMenu,
   dropProps,
@@ -110,8 +111,11 @@ export default function Home({
   onOpen: (p: ProjectMeta) => void;
   onSort: (sort: HomeSort) => void;
   onMenu: (x: number, y: number, items: MenuItems) => void;
-  folderMenu: (f: ProjectFolder) => MenuItems;
-  projectMenu: (p: ProjectMeta) => MenuItems;
+  /** Move to folder…, for items ('p:<id>' and 'f:<id>') */
+  onMove: (items: string[]) => void;
+  /** move: what their Move to folder… does */
+  folderMenu: (f: ProjectFolder, move: () => void) => MenuItems;
+  projectMenu: (p: ProjectMeta, move: () => void) => MenuItems;
   /** a folder things can be dropped into; key tells it from the same folder elsewhere on the page */
   dropProps: (folderId: string, key: string) => HTMLAttributes<HTMLElement>;
   card: (p: ProjectMeta, home: HomeItem) => ReactNode;
@@ -122,13 +126,19 @@ export default function Home({
   const listRef = useRef<HTMLDivElement>(null);
   /** a folder opened from the keyboard: the focus goes to the first thing in it */
   const focusFirst = useRef(false);
+  /** the folder open before, whose tile takes the focus on the way up */
+  const before = useRef(at);
   const searching = found !== null;
   const date = view.sort === 'createdAt' ? 'createdAt' : 'updatedAt';
 
   useEffect(() => {
     setSelected(new Set());
     anchor.current = null;
+    const from = cameFrom(tree, before.current, at);
+    before.current = at;
     if (focusFirst.current) listRef.current?.querySelector<HTMLElement>('[data-item]')?.focus();
+    // gone with the folder left, or the path's part clicked
+    else if (from && (!document.activeElement || document.activeElement === document.body)) listRef.current?.querySelector<HTMLElement>(`[data-item="f:${from}"]`)?.focus();
     focusFirst.current = false;
   }, [at, searching]);
 
@@ -169,7 +179,8 @@ export default function Home({
   const click = (e: ReactMouseEvent, item: Item) => {
     // not the ··· button, a tag, or a menu portalled out of the card
     if (!e.currentTarget.contains(e.target as Node) || (e.target as Element).closest('button')) return;
-    if (e.metaKey || e.ctrlKey) toggle(item.key);
+    // ⇧ with nothing to start from selects like ⌘
+    if (e.metaKey || e.ctrlKey || (e.shiftKey && !anchor.current)) toggle(item.key);
     else if (e.shiftKey && anchor.current) {
       const keys = items.map((i) => i.key);
       const [a, b] = [keys.indexOf(anchor.current), keys.indexOf(item.key)].sort((x, y) => x - y);
@@ -180,7 +191,11 @@ export default function Home({
     }
   };
 
-  const menuOf = (item: Item) => (item.folder ? folderMenu(item.folder) : projectMenu(item.project!));
+  // Move to folder… takes the selection along, as dragging does
+  const menuOf = (item: Item) => {
+    const move = () => onMove(selected.has(item.key) ? items.filter((i) => selected.has(i.key)).map((i) => i.key) : [item.key]);
+    return item.folder ? folderMenu(item.folder, move) : projectMenu(item.project!, move);
+  };
 
   const onKeyDown = (e: ReactKeyboardEvent) => {
     const el = e.target as HTMLElement;
@@ -266,7 +281,7 @@ export default function Home({
                 <FolderShape colour={f.colour} />
                 <span className="folder-count" aria-hidden="true">{counts.get(f.id) || 0}</span>
                 <span className="card-menu">
-                  <MenuButton icon="ellipsis" title="More" className="icon-btn small" align="end" items={folderMenu(f)} />
+                  <MenuButton icon="ellipsis" title="More" className="icon-btn small" align="end" items={menuOf(item)} />
                 </span>
               </div>
               <div className="card-name" title={f.name}>{f.name}</div>
@@ -326,7 +341,7 @@ export default function Home({
               <span className="col-count">{counts.get(f.id) || 0}</span>
               <span className="col-date" title={changed && formatFull(changed)}>{changed ? timeAgo(changed) : '—'}</span>
               <span className="col-actions">
-                <MenuButton icon="ellipsis" title="More" align="end" items={folderMenu(f)} />
+                <MenuButton icon="ellipsis" title="More" align="end" items={menuOf(item)} />
               </span>
             </div>
           );

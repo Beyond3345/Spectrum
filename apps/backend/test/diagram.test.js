@@ -88,6 +88,13 @@ test('symbols: a page per part, a path part between its glyph’s ends, a node p
   assert.notEqual(european.body.pdf, body.pdf);
 });
 
+test('symbols: the canvas’s style options draw, \\ctikzset keys under circuitikz/', { skip: needsTex }, async () => {
+  // as symbolOptions writes them (apps/frontend/src/diagram/modes/circuitikz/circuitikz.check.ts)
+  const { body } = await symbols([{ id: 'not', tikz: 'not port', kind: 'node' }, { id: 'R', tikz: 'R', kind: 'path' }], 'european, circuitikz/tripoles/european not symbol=circle, circuitikz/diode=full, circuitikz/bipoles/length=1.2cm');
+  assert.ok(body.ok, body.log);
+  assert.deepEqual(body.pages.map((p) => p.error), [undefined, undefined]);
+});
+
 test('symbols: a part TeX can’t draw carries its error, and the others still draw', { skip: needsTex }, async () => {
   const { body } = await symbols([
     { id: 'typo', tikz: 'no such part', kind: 'path' },

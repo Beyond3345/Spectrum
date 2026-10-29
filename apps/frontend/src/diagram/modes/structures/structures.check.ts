@@ -9,7 +9,8 @@ import { buildScene, cutSection, extentOf, formatValue, readStyle } from './draw
 import type { Item } from './draw';
 import { structureCode, structureStyle } from './code';
 import { DIAGRAM_LOOKS, changedLooks, readLooks } from './looks';
-import { colourCss } from '../shared';
+import { unitsAsText } from '../../units';
+import { colourCss, isColour } from '../shared';
 import { INNER_SEP, clashes, shapesOf, textBox } from './labels';
 import { diagramFileText, readDiagramFile } from '../../fileFormat';
 import type { DiagramFile } from '../../types';
@@ -273,7 +274,7 @@ const texts = (list: Item[]) => list.flatMap((i) => (i.t === 'text' ? [i.tex] : 
 {
   const model = sampleBeam();
   const s = solve(model);
-  eq(readStyle({}), { view: 'diagrams', moments: 'tension', units: 'kN-m', figures: 3, siUnits: false, names: true, width: 8, grid: 1, diagrams: DIAGRAM_LOOKS }, 'the style’s defaults');
+  eq(readStyle({}), { view: 'diagrams', moments: 'tension', units: 'kN-m', figures: 3, siUnits: false, physics: false, names: true, width: 8, grid: 1, diagrams: DIAGRAM_LOOKS }, 'the style’s defaults');
   eq(readStyle({ view: 'nope', figures: 9, width: -1 }).view, 'diagrams', 'anything unknown takes its default');
   // loading: supports drawn, no reactions; free-body: reactions instead of supports
   const loading = items(buildScene(model, s, readStyle({ view: 'loading' })));
@@ -365,7 +366,8 @@ const texts = (list: Item[]) => list.flatMap((i) => (i.t === 'text' ? [i.tex] : 
   eq(structureCode(sampleBeam(), { view: 'loading', siUnits: true }).body.includes('\\qty{10}{\\kilo\\newton\\per\\metre}'), true, 'a distributed load');
   eq(/\$\d|\\,kN/.test(on.body), false, 'no value written the old way');
   const canvas = texts(items(buildScene(sampleBeam(), solve(sampleBeam()), readStyle({ view: 'loading', siUnits: true }), true)));
-  eq(canvas.includes('$10$\\,kN/m'), true, 'the canvas shows plain text');
+  // the canvas places the export's text, and shows it as siunitx prints it
+  eq([canvas.includes('\\qty{10}{\\kilo\\newton\\per\\metre}'), canvas.map(unitsAsText).includes('10 kN m⁻¹')], [true, true], 'the canvas measures what the export sets');
 }
 
 {
@@ -395,7 +397,8 @@ const texts = (list: Item[]) => list.flatMap((i) => (i.t === 'text' ? [i.tex] : 
   // a new drawing copies Settings › Composer's diagrams, only where they differ
   eq(structureStyle({ moments: 'tension', mohrShear: 'down', siUnits: true, diagrams: DIAGRAM_LOOKS }), { view: 'diagrams', moments: 'tension', siUnits: true }, 'the defaults: nothing kept');
   eq(structureStyle({ moments: 'tension', mohrShear: 'down', siUnits: true, diagrams: readLooks({ axial: { on: false } }) }).diagrams, { axial: { on: false } }, 'axial force off');
-  eq([colourCss('blue!12'), colourCss('red!30!yellow'), colourCss('#336699'), colourCss('RoyalBlue!50')], ['color-mix(in srgb, rgb(0, 0, 255) 12%, transparent)', 'rgb(255, 179, 0)', '#336699', 'color-mix(in srgb, rgb(128, 128, 128) 50%, transparent)'], 'the canvas’s colours');
+  eq([colourCss('blue!12'), colourCss('red!30!yellow'), colourCss('#336699'), colourCss('RoyalBlue!50')], ['rgb(224, 224, 255)', 'rgb(255, 179, 0)', '#336699', 'rgb(191, 191, 191)'], 'the canvas’s colours, mixed with white as xcolor does');
+  eq(['blue!15', 'red!30!yellow', 'black!50!white', '#336699', 'RoyalBlue', 'thick', 'blue!50!thick', 'Blue', 'constructor'].map(isColour), [true, true, true, true, false, false, false, false, false], 'xcolor’s own names only');
 }
 
 {
@@ -436,7 +439,10 @@ const texts = (list: Item[]) => list.flatMap((i) => (i.t === 'text' ? [i.tex] : 
   eq(diagram.style, { view: 'diagrams', moments: 'positive', siUnits: true }, 'a new drawing copies the bending moment convention and siunitx');
   const code = structureCode(diagram.model, diagram.style);
   const back = await readDiagramFile(await diagramFileText(diagram, code));
-  eq(back.diagram, diagram, 'the drawing comes back');
+  eq(back.diagram, { ...diagram, version: 3 }, 'the drawing comes back, as version 3 for its siunitx');
+  // as Insert left it for a document that loads physics: the mode writes \SI where it wrote \qty, so it opens as drawn
+  const physics = structureCode(diagram.model, { ...diagram.style, physics: true }).body;
+  eq([physics, physics.includes('\\SI{')], [code.body.replace(/\\qty(?=\{)/g, '\\SI'), true], 'physics: \\SI');
   eq(back.edited, false, 'not edited');
   eq(structureCode(back.diagram!.model, back.diagram!.style), code, 'and writes the same code');
   console.log('structures.check: ok');
