@@ -97,7 +97,16 @@ const projectRelative = (root, file) => path.relative(root, safeJoin(root, file)
 /** An input as a project-relative path; TeX names them absolute or from where it ran, often with ./ */
 function projectPath(where, name) {
   if (!name) return null;
-  const rel = path.relative(canonical(where.root), canonical(path.resolve(where.cwd, name))).split(path.sep).join('/');
+  let input = path.resolve(where.cwd, name);
+  if (process.platform === 'win32' && input.includes('?')) {
+    // Some Windows TeX engines replace characters outside the ANSI code page with '?'.
+    // Only repair this known project's root prefix, never guess a source filename.
+    const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const root = path.resolve(where.root);
+    const prefix = root.split('').map((c) => c.charCodeAt(0) > 127 ? `(?:${escape(c)}|\\?)` : escape(c)).join('');
+    input = input.replace(new RegExp(`^${prefix}(?=\\\\|$)`, 'i'), () => root);
+  }
+  const rel = path.relative(canonical(where.root), canonical(input)).split(path.sep).join('/');
   const first = rel.split('/')[0];
   return !rel || first === '..' || first.toLowerCase() === APP_DIR ? null : rel;
 }

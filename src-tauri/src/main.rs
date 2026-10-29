@@ -983,8 +983,22 @@ fn backend_command(_app: &AppHandle, _data_dir: &Path, path_var: &str) -> Result
 fn search_path() -> String {
     let local = env::var_os("LOCALAPPDATA").map(PathBuf::from);
     let program_files = env::var_os("ProgramFiles").map(PathBuf::from);
+    search_path_from(
+        &env::var("PATH").unwrap_or_default(),
+        local.as_deref(),
+        program_files.as_deref(),
+        Path::new(r"C:\texlive"),
+    )
+}
+
+#[cfg(windows)]
+fn search_path_from(
+    path: &str,
+    local: Option<&Path>,
+    program_files: Option<&Path>,
+    texlive: &Path,
+) -> String {
     // C:\texlive\<year>\bin\windows, the newest year
-    let texlive = Path::new(r"C:\texlive");
     let newest = fs::read_dir(texlive).ok().and_then(|years| {
         years
             .flatten()
@@ -997,7 +1011,6 @@ fn search_path() -> String {
         program_files.map(|dir| dir.join(r"MiKTeX\miktex\bin\x64")),
         newest.map(|year| texlive.join(year).join(r"bin\windows")),
     ];
-    let path = env::var("PATH").unwrap_or_default();
     let mut dirs: Vec<String> = path
         .split(';')
         .filter(|dir| !dir.is_empty())
@@ -1280,14 +1293,25 @@ mod tests {
         let local = env::temp_dir().join(format!("spectrum-local-{}", std::process::id()));
         let miktex = local.join(r"Programs\MiKTeX\miktex\bin\x64");
         fs::create_dir_all(&miktex).unwrap();
-        env::set_var("LOCALAPPDATA", &local);
-        env::set_var("ProgramFiles", &local);
-        env::set_var("PATH", r"C:\Windows;");
-        let path = search_path();
+        let texlive = local.join("texlive");
+        let path = search_path_from(r"C:\Windows;", Some(&local), Some(&local), &texlive);
         assert_eq!(path, format!(r"C:\Windows;{}", miktex.display()));
         // already there, in any case
-        env::set_var("PATH", path.to_uppercase());
-        assert_eq!(search_path(), path.to_uppercase());
+        assert_eq!(
+            search_path_from(&path.to_uppercase(), Some(&local), Some(&local), &texlive),
+            path.to_uppercase()
+        );
+        // TeX Live is discovered as well, using the newest year, with neither directory duplicated.
+        for year in ["2024", "2025"] {
+            fs::create_dir_all(texlive.join(year).join(r"bin\windows")).unwrap();
+        }
+        fs::create_dir_all(texlive.join("not-a-year").join(r"bin\windows")).unwrap();
+        let expected = format!(r"{};{}", path, texlive.join("2025").join(r"bin\windows").display());
+        assert_eq!(search_path_from(&path, Some(&local), Some(&local), &texlive), expected);
+        assert_eq!(
+            search_path_from(&expected.to_uppercase(), Some(&local), Some(&local), &texlive),
+            expected.to_uppercase()
+        );
         fs::remove_dir_all(&local).unwrap();
     }
 }

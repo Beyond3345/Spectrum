@@ -232,6 +232,8 @@ export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOU
     if (!file) throw Object.assign(new Error(`spawn ${cmd} ENOENT`), { code: 'ENOENT' });
     // detached gives it no console, so every program it runs would open a console window of its own
     options = { ...options, detached: false, windowsHide: true };
+    // CreateProcess needs the extended-length form for a working directory beyond MAX_PATH.
+    if (cwd.length >= 248) options.cwd = path.toNamespacedPath(path.resolve(cwd));
     if (/\.(bat|cmd)$/i.test(file)) {
       // ponytail: a batch file that turns on delayed expansion still expands !name! in its arguments
       args = ['/d', '/s', '/c', `"${[cmdEscape(file), ...args.map((a) => cmdEscape(`"${a}"`))].join(' ')}"`];
@@ -246,6 +248,7 @@ export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOU
     const child = spawn(file, args, options);
     children.add(child);
     job?.children.add(child);
+    if (WINDOWS) child.stdin.on('error', () => {});
     if (input != null) {
       // a command that never reads it closes the pipe first
       child.stdin.on('error', () => {});
@@ -258,12 +261,18 @@ export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOU
     }, limit);
     child.stdout.on('data', pushLog);
     child.stderr.on('data', pushLog);
-    child.on('error', (err) => {
+    const failed = (err) => {
       clearTimeout(timer);
+      if (WINDOWS && child.pid) killGroup(child);
       children.delete(child);
       job?.children.delete(child);
       reject(err);
-    });
+    };
+    child.on('error', failed);
+    if (WINDOWS) {
+      child.stdout.on('error', failed);
+      child.stderr.on('error', failed);
+    }
     child.on('exit', () => {
       clearTimeout(timer);
       // leftovers would keep 'close' from ever firing; the pipes still drain into the log
