@@ -16,7 +16,7 @@ process.env.PATH = '/usr/bin:/bin';
 const root = path.join(dir, 'root');
 process.env.SPECTRUM_SYSTEM_ROOT = root;
 for (const name of ['npm_config_prefix', 'NPM_CONFIG_PREFIX', 'PNPM_HOME']) delete process.env[name];
-const { PROFILES, profileFor, saveAgentConfig, agentConfigs, listAgents, agentEntry, agentState, launchOptions, installAdapter, removeAdapter, recordTest, importAgentLogin, programReads, AGENT_DIR, ADAPTER_LOCKS } = await import('../src/services/agentProfiles.js');
+const { PROFILES, profileFor, saveAgentConfig, agentConfigs, listAgents, agentEntry, agentState, launchOptions, installAdapter, removeAdapter, recordTest, importAgentLogin, programReads, appFound, AGENT_DIR, ADAPTER_LOCKS } = await import('../src/services/agentProfiles.js');
 after(() => fs.rm(dir, { recursive: true, force: true }));
 const knownFolders = process.platform !== 'darwin' && 'only a Mac looks in the vendors’ folders, such as ~/.local/bin';
 const nodeAdapters = process.platform === 'win32' && 'Node adapters are unavailable on Windows, where they stall inside isolation';
@@ -104,6 +104,11 @@ test('desktop apps: the agent inside the app, an app without one, and only that 
   await fs.copyFile(dsh, path.join(shared, 'Contents/Resources/runtime/cli/bin/dsh'));
   assert.equal((await listed('deepseek')).where, shared);
   await fs.rm(shared, { recursive: true });
+  // a release ignores the scratch stand-in for /
+  await fs.mkdir(path.join(root, 'Applications/Spectrum Test Only.app'));
+  assert.equal(await appFound('Spectrum Test Only'), path.join(root, 'Applications/Spectrum Test Only.app'));
+  process.env.NODE_ENV = 'production';
+  try { assert.equal(await appFound('Spectrum Test Only'), null); } finally { delete process.env.NODE_ENV; }
   // on Windows the app's layout is unchecked, so no app line
   const platform = Object.getOwnPropertyDescriptor(process, 'platform');
   const programFiles = process.env.ProgramFiles;

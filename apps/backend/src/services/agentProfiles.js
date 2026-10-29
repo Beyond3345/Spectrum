@@ -101,8 +101,8 @@ export function chosenCommand(profile, saved) {
 }
 
 const home = () => os.homedir();
-// where /Applications and Homebrew are; a scratch folder in tests
-const systemRoot = () => process.env.SPECTRUM_SYSTEM_ROOT || '/';
+// where /Applications and Homebrew are; a scratch folder in tests, never in a release
+const systemRoot = () => (process.env.NODE_ENV !== 'production' && process.env.SPECTRUM_SYSTEM_ROOT) || '/';
 /**
  * Where the vendors' install scripts, the package managers and Homebrew put programs, as an app started from the
  * Finder has a short PATH. .qoder/local is where the Qoder app's SDK looks for qodercli.

@@ -900,6 +900,8 @@ fn spawn_backend(app: &AppHandle, port: u16, log_path: &Path) -> Result<Child, S
         .env("SPECTRUM_DATA_DIR", &data_dir)
         .env("SPECTRUM_EXIT_WITH_STDIN", "1")
         .env("NODE_ENV", "production")
+        // the test suite's stand-in for / (agent detection), never a release's
+        .env_remove("SPECTRUM_SYSTEM_ROOT")
         .env("PATH", &path_var)
         // file reads waiting on a cloud provider (an online-only file downloading) hold a thread each; Node's
         // default four would leave saves queued behind them
