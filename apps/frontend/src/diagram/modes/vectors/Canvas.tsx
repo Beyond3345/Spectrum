@@ -221,7 +221,8 @@ export default function VectorCanvas({
     const shift = shiftOf.get(panel) ?? 0;
     const at = { x: w.x - shift, y: w.y };
     let next = model;
-    let id = pointNear(model, panel, at, tolerance, places);
+    // the point within reach, or the one on the grid point the click snaps to (clicking where one was made)
+    let id = pointNear(model, panel, at, tolerance, places) ?? pointNear(model, panel, snapToGrid(at), 1e-9, places);
     if (!id) {
       const added = addPoint(model, panel, snapToGrid(at));
       next = added.model;
