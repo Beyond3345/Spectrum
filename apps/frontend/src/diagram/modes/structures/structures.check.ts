@@ -75,6 +75,16 @@ function maxMoment(s: Solution, member: string) {
 }
 
 {
+  // simply supported 6 m, 10 kN at 3 m pointing 30° below the horizontal, to the right: 8.66 kN along, 5 kN down;
+  // 2.5 kN up at each end, the pin takes the 8.66 kN; 7.5 kN·m at mid-span
+  const s = solve({ nodes: [node('A', 0, 0), node('B', 6, 0)], parts: [beam('m', 'A', 'B'), support('a', 'A', 'pin'), support('b', 'B', 'roller'), { id: 'P', kind: 'force', on: { member: 'm', at: 3 }, value: 10, angle: -30 }] });
+  close(reaction(s, 'a').force.y, 2.5, 'angled: A up');
+  close(reaction(s, 'b').force.y, 2.5, 'angled: B up');
+  close(reaction(s, 'a').force.x, -5 * Math.sqrt(3), 'angled: A takes the push along');
+  close(maxMoment(s, 'm').M, 7.5, 'angled: M at mid-span');
+}
+
+{
   // simply supported 6 m, triangular 0 to 9 kN/m: 9 and 18 kN; Mmax 20.78 kN·m at 3.464 m
   const s = solve({ nodes: [node('A', 0, 0), node('B', 6, 0)], parts: [beam('m', 'A', 'B'), support('a', 'A', 'pin'), support('b', 'B', 'roller'), udl('w', 'm', 0, 6, 0, 9)] });
   close(reaction(s, 'a').force.y, 9, 'triangle: A');

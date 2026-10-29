@@ -184,7 +184,9 @@ const ANGLES: Record<string, number> = { down: -90, up: 90, left: 180, right: 0 
 const directionOf = (load: { angle: number; perp?: boolean }) => (load.perp ? 'perp' : (Object.entries(ANGLES).find(([, a]) => a === load.angle)?.[0] ?? 'angle'));
 
 function DirectionFields({ load, onMember, update }: { load: Force | Dist; onMember: boolean; update(patch: { angle?: number; perp?: boolean }): void }) {
-  const direction = directionOf(load);
+  // the load chosen to be "At an angle": it stays so while its angle passes through −90°, 0°, 90° or 180°
+  const [angled, setAngled] = useState<string>();
+  const direction = angled === load.id && !load.perp ? 'angle' : directionOf(load);
   return (
     <>
       <Field label="Direction">
@@ -192,7 +194,10 @@ function DirectionFields({ load, onMember, update }: { load: Force | Dist; onMem
           <Select
             value={direction}
             options={DIRECTIONS.filter(([value]) => onMember || value !== 'perp')}
-            onChange={(value) => update(value === 'perp' ? { perp: true } : value === 'angle' ? { perp: undefined, angle: load.perp ? -90 : load.angle } : { perp: undefined, angle: ANGLES[value] })}
+            onChange={(value) => {
+              setAngled(value === 'angle' ? load.id : undefined);
+              update(value === 'perp' ? { perp: true } : value === 'angle' ? { perp: undefined, angle: load.perp ? -90 : load.angle } : { perp: undefined, angle: ANGLES[value] });
+            }}
           />
         )}
       </Field>
