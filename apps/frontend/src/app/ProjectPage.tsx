@@ -53,7 +53,7 @@ import type { TransferJob } from './TransferPanel';
 import { confirmDialog, promptDialog } from './Dialogs';
 import { toast } from './Toast';
 import { IS_DESKTOP, pickFolder } from './desktop';
-import { FOLDER_COLOURS, addFolder, childFolders, colourFolder, deleteFolder, folderPath, isWithin, moveItems, placeProject, renameFolder } from './folders';
+import { FOLDER_COLOURS, addFolder, childFolders, colourFolder, deleteFolder, folderPath, isWithin, moveItems, placeProject, renameFolder, sharedPlace } from './folders';
 import type { ProjectFolder, ProjectFolders } from './folders';
 import Home, { DRAG_TYPE, FOLDER_TINTS, HOME_SORTS, HOME_VIEW, formatFull, timeAgo } from './Home';
 import type { HomeItem, HomeView } from './Home';
@@ -125,7 +125,8 @@ type SheetState =
   | { kind: 'gallery'; folder?: string | null }
   | { kind: 'arxiv' }
   | { kind: 'tags'; id: string }
-  | { kind: 'folder'; id: string }
+  // items: projects ('p:<id>') and folders ('f:<id>')
+  | { kind: 'move'; items: string[] }
   | { kind: 'transfer'; id: string }
   | { kind: 'saveTemplate'; id: string }
   | { kind: 'settings'; section?: SettingsSection }
@@ -520,7 +521,10 @@ export default function ProjectPage() {
       confirmLabel: 'Delete',
       destructive: true
     });
-    if (ok) changeFolders((tree) => deleteFolder(tree, f.id));
+    if (!ok) return;
+    // the folder open on Home: its parent opens instead
+    if (homeAt === f.id) setHomeAt(f.parent);
+    changeFolders((tree) => deleteFolder(tree, f.id));
   };
 
   const toggleFolder = (id: string) =>
@@ -552,7 +556,8 @@ export default function ProjectPage() {
     }
   };
 
-  const menuFor = (p: ProjectMeta): MenuItems =>
+  /** move: what Move to folder… does instead, as on Home with several selected */
+  const menuFor = (p: ProjectMeta, move?: () => void): MenuItems =>
     p.missing
       ? [
           { label: 'Locate…', icon: 'folder.badge.questionmark', onSelect: () => locate(p) },
@@ -565,7 +570,7 @@ export default function ProjectPage() {
           { label: 'Rename…', icon: 'pencil', onSelect: () => rename(p) },
           { label: 'Duplicate', icon: 'plus.square.on.square', onSelect: () => duplicate(p) },
           { label: 'Tags…', icon: 'tag', onSelect: () => setSheet({ kind: 'tags', id: p.id }) },
-          { label: 'Move to folder…', icon: 'tray.and.arrow.down', onSelect: () => setSheet({ kind: 'folder', id: p.id }) },
+          { label: 'Move to folder…', icon: 'tray.and.arrow.down', onSelect: move ?? (() => setSheet({ kind: 'move', items: [`p:${p.id}`] })) },
           { label: 'Change template…', icon: 'arrow.triangle.2.circlepath', onSelect: () => setSheet({ kind: 'transfer', id: p.id }) },
           { label: 'Save as template…', icon: 'square.and.arrow.down', onSelect: () => setSheet({ kind: 'saveTemplate', id: p.id }) },
           IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => reveal(p) },
@@ -576,10 +581,11 @@ export default function ProjectPage() {
           { label: `Move to ${BIN}…`, icon: 'trash', destructive: true, onSelect: () => moveToBin(p) }
         ];
 
-  const folderMenu = (f: ProjectFolder | null): MenuItems => [
+  const folderMenu = (f: ProjectFolder | null, move?: () => void): MenuItems => [
     f && { label: 'Open', icon: 'folder', onSelect: () => goHome(f.id) },
     { label: 'New folder…', icon: 'folder.badge.plus', onSelect: () => newFolder(f?.id ?? null) },
     f && { label: 'Rename…', icon: 'pencil', onSelect: () => editFolderName(f) },
+    f && { label: 'Move to folder…', icon: 'tray.and.arrow.down', onSelect: move ?? (() => setSheet({ kind: 'move', items: [`f:${f.id}`] })) },
     f && { separator: true },
     f && { label: 'Colour', heading: true },
     ...(f
@@ -1064,6 +1070,7 @@ export default function ProjectPage() {
               onOpen={open}
               onSort={(sort) => setHomeView({ sort })}
               onMenu={(x, y, items) => setCtx({ x, y, items })}
+              onMove={(items) => setSheet({ kind: 'move', items })}
               folderMenu={folderMenu}
               projectMenu={menuFor}
               dropProps={dropProps}
@@ -1161,18 +1168,19 @@ export default function ProjectPage() {
         />
       )}
 
-      {sheet?.kind === 'folder' && sheetProject && (
+      {sheet?.kind === 'move' && (
         <MoveToFolderSheet
-          project={sheetProject}
+          items={sheet.items}
+          projects={projects}
           folders={folders}
           onMove={(folderId) => {
-            moveToFolder(sheetProject.id, folderId);
+            moveInto(sheet.items, folderId);
             setSheet(null);
           }}
           onNewFolder={async () => {
             const id = await newFolder(null);
             if (!id) return;
-            moveToFolder(sheetProject.id, id);
+            moveInto(sheet.items, id);
             setSheet(null);
           }}
           onClose={() => setSheet(null)}
@@ -1826,19 +1834,22 @@ function TagsSheet({
 
 /** The one folder a project is in, or none; choosing one moves it there. */
 function MoveToFolderSheet({
-  project,
+  items,
+  projects,
   folders,
   onMove,
   onNewFolder,
   onClose
 }: {
-  project: ProjectMeta;
+  items: string[];
+  projects: ProjectMeta[];
   folders: ProjectFolders;
   onMove: (folderId: string | null) => void;
   onNewFolder: () => void;
   onClose: () => void;
 }) {
-  const current = folders.placement[project.id] ?? null;
+  const current = sharedPlace(folders, items);
+  const name = items.length > 1 ? `${items.length} items` : items[0].startsWith('p:') ? projects.find((p) => `p:${p.id}` === items[0])?.name : folders.folders.find((f) => `f:${f.id}` === items[0])?.name;
   const choice = (id: string | null, name: string, depth: number) => (
     <button
       key={id ?? ''}
@@ -1846,7 +1857,7 @@ function MoveToFolderSheet({
       style={{ paddingLeft: 10 + depth * 14 }}
       role="radio"
       aria-checked={current === id}
-      tabIndex={current === id ? 0 : -1}
+      tabIndex={(current === undefined ? id === null : current === id) ? 0 : -1}
       onClick={() => onMove(id)}
     >
       <Icon name={id ? 'folder' : 'tray.full'} />
@@ -1858,7 +1869,7 @@ function MoveToFolderSheet({
 
   return (
     <Sheet
-      title={`Move to folder · ${project.name}`}
+      title={`Move to folder · ${name ?? ''}`}
       width={420}
       onClose={onClose}
       actions={

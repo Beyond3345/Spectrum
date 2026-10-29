@@ -78,6 +78,15 @@ export function folderPath(tree: ProjectFolders, id: string | null): ProjectFold
   return path;
 }
 
+/** Going up from folder from to at (null: the top): the folder in at that from is in or is, or null. */
+export const cameFrom = (tree: ProjectFolders, from: string | null, at: string | null) => folderPath(tree, from).find((f) => f.parent === at && f.id !== at)?.id ?? null;
+
+/** Where projects ('p:<id>') and folders ('f:<id>') all are (null: the top), or undefined when they differ. */
+export function sharedPlace(tree: ProjectFolders, items: string[]): string | null | undefined {
+  const places = items.map((item) => (item.startsWith('p:') ? (tree.placement[item.slice(2)] ?? null) : (tree.folders.find((f) => f.id === item.slice(2))?.parent ?? null)));
+  return places.every((place) => place === places[0]) ? places[0] : undefined;
+}
+
 /** id is the folder ancestor or somewhere inside it. */
 export const isWithin = (tree: ProjectFolders, id: string, ancestor: string) => folderPath(tree, id).some((f) => f.id === ancestor);
 
