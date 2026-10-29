@@ -54,6 +54,7 @@ import Tabs from './Tabs';
 import { ParserFields } from './TransferPanel';
 import GitHubSettings from './GitHubSettings';
 import AgentsPane from './AgentSettings';
+import DiagramFields from '../diagram/modes/structures/DiagramFields';
 import { IS_DESKTOP, claimDefaultHandler, pickFolder } from './desktop';
 import { toast } from './Toast';
 import { IS_MAC, IS_WINDOWS, OS_NAME, tildify } from './platform';
@@ -1575,6 +1576,11 @@ function ComposerPane() {
           onChange={(value) => update({ composerMohrShear: value as AppSettings['composerMohrShear'] })}
         />
         <div className="field-hint">With τ positive downward, 2θ on the circle turns the same way as θ on the element.</div>
+      </div>
+      <div className="field">
+        <label>Structure diagrams</label>
+        <div className="field-hint">Which force diagrams a new structure draws, and their fills: any xcolor name or mix, such as blue!15.</div>
+        <DiagramFields looks={settings.composerDiagrams} onChange={(composerDiagrams) => update({ composerDiagrams })} />
       </div>
       <label className="checkbox-row">
         <input type="checkbox" role="switch" checked={settings.composerSiUnits} onChange={(e) => update({ composerSiUnits: e.target.checked })} />

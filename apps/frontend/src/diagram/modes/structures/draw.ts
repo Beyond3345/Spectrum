@@ -7,6 +7,8 @@ import { UNITS, frameOf, loadDirection, memberName, members, nodeMap, placeAt, s
 import type { Cut, Load, Member, Pt, StructureModel, Support, Units } from './model';
 import { evalPoly, extremesInside, forcesAt } from './solve';
 import type { Piece, Solution } from './solve';
+import { readLooks } from './looks';
+import type { DiagramLooks } from '../../types';
 
 // ─── style ───
 
@@ -36,6 +38,8 @@ export interface StructStyle {
   width: number;
   /** the canvas grid, an index into the unit's steps */
   grid: number;
+  /** the force diagrams drawn, and their fills (left out of the file while they're the defaults) */
+  diagrams: DiagramLooks;
   /** the joint or cut the joint and section views show */
   joint?: string;
   cut?: string;
@@ -55,6 +59,7 @@ export function readStyle(raw: Record<string, unknown>): StructStyle {
     names: raw.names !== false,
     width: n(raw.width, 3, 20, 8),
     grid: Math.round(n(raw.grid, 0, 3, 1)),
+    diagrams: readLooks(raw.diagrams),
     ...(typeof raw.joint === 'string' && { joint: raw.joint }),
     ...(typeof raw.cut === 'string' && { cut: raw.cut })
   };
@@ -456,7 +461,9 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
 
   const maxOf = (c: 'N' | 'V' | 'M', list: Member[]) => Math.max(0, ...list.flatMap((m) => sampleMember(m, c).map((x) => Math.abs(x.v))));
   const UNIT_OF = { N: F, V: F, M: momentUnit };
-  const FILL_OF: Record<'N' | 'V' | 'M', Fill> = { N: 'axial', V: 'shear', M: 'moment' };
+  const FILL_OF: Record<'N' | 'V' | 'M', keyof DiagramLooks> = { N: 'axial', V: 'shear', M: 'moment' };
+  /** the diagrams the style draws, in order: one left out leaves no gap, as the rest close up */
+  const shown = (list: ('N' | 'V' | 'M')[]) => list.filter((c) => style.diagrams[FILL_OF[c]].on);
 
   /**
    * One member's diagram polygon and its labels, drawn from base points `base(s)` (cm) with `h` cm a unit. A frame's
@@ -489,7 +496,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
     const [minX, maxX] = [Math.min(...xs), Math.max(...xs)];
     let cursor = extentOf(above).minY - 0.3;
     const blocks: Block[] = [];
-    const wanted: ('N' | 'V' | 'M')[] = maxOf('N', all) > solution.tiny ? ['N', 'V', 'M'] : ['V', 'M'];
+    const wanted = shown(maxOf('N', all) > solution.tiny ? ['N', 'V', 'M'] : ['V', 'M']);
     for (const c of wanted) {
       const max = maxOf(c, all);
       const h = max > 0 ? 1 / max : 0;
@@ -507,7 +514,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
 
   /** a frame's (or truss's) diagrams, each on a copy of it, in a grid beside the free-body diagram */
   const frameDiagrams = (fbd: Item[]): Block[] => {
-    const wanted: ('N' | 'V' | 'M')[] = all.every((m) => m.bar) ? ['N'] : ['N', 'V', 'M'];
+    const wanted = shown(all.every((m) => m.bar) ? ['N'] : ['N', 'V', 'M']);
     const pts = model.nodes.filter((n) => all.some((m) => m.a === n.id || m.b === n.id)).map(P);
     const box = { minX: Math.min(...pts.map((p) => p.x)), maxX: Math.max(...pts.map((p) => p.x)), minY: Math.min(...pts.map((p) => p.y)), maxY: Math.max(...pts.map((p) => p.y)) };
     const size = Math.max(box.maxX - box.minX, box.maxY - box.minY, 1);

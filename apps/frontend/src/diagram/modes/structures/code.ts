@@ -2,9 +2,10 @@
 // nothing reaches the document's preamble but tikz and two libraries), and a comment heading each part so the Code
 // tab is easy to edit. Nothing in it is newer than PGF 3.0 or uses calc.
 import type { DiagramCode } from '../../fileFormat';
-import type { ComposerDefaults } from '../../types';
-import { mathsPackages, num } from '../shared';
+import type { ComposerDefaults, DiagramLooks } from '../../types';
+import { mathsPackages, num, tikzColour } from '../shared';
 import { VIEWS, buildScene, readStyle } from './draw';
+import { DIAGRAM_LOOKS, changedLooks } from './looks';
 import type { Fill, Ink, Item, Scene } from './draw';
 import { asStructure } from './model';
 import { solve } from './solve';
@@ -24,12 +25,12 @@ const INKS: Record<Ink, string> = {
   axis: 'line width=0.4pt'
 };
 
-const FILLS: Record<Fill, string> = {
-  shear: 'fill=blue!12',
-  moment: 'fill=red!12',
-  axial: 'fill=green!15',
-  load: 'fill=black!6'
-};
+/** a fill's options: a force diagram's from the style, its opacity written only when it's less than 1 */
+function fillOptions(fill: Fill, looks: DiagramLooks) {
+  if (fill === 'load') return 'fill=black!6';
+  const { fill: colour, opacity } = looks[fill];
+  return `fill=${tikzColour(colour)}${opacity < 1 ? `, fill opacity=${num(opacity)}` : ''}`;
+}
 
 const at = (p: { x: number; y: number }) => `(${num(p.x)},${num(p.y)})`;
 
@@ -54,7 +55,7 @@ function itemTikz(item: Item): string {
 }
 
 /** A scene as a tikzpicture: the styles and the pics it uses in the options, then each block under its comment. */
-export function sceneTikz(scene: Scene, heading: string) {
+export function sceneTikz(scene: Scene, heading: string, looks: DiagramLooks = DIAGRAM_LOOKS) {
   const items = scene.blocks.flatMap((b) => b.items);
   const inks = [...new Set(items.flatMap((i) => (i.t === 'line' || i.t === 'arc' ? [i.ink] : [])))];
   const fills = [...new Set(items.flatMap((i) => (i.t === 'line' && i.fill ? [i.fill] : [])))];
@@ -63,7 +64,7 @@ export function sceneTikz(scene: Scene, heading: string) {
     '>={Stealth[length=1.8mm]}',
     'font=\\footnotesize',
     ...inks.map((ink) => `struct ${ink}/.style={${INKS[ink]}}`),
-    ...fills.map((fill) => `struct ${fill} fill/.style={${FILLS[fill]}}`),
+    ...fills.map((fill) => `struct ${fill} fill/.style={${fillOptions(fill, looks)}}`),
     ...pics.map(picDefinition)
   ];
   const lines = [`% ${heading}`, '\\begin{tikzpicture}[', ...options.map((o, i) => `  ${o}${i < options.length - 1 ? ',' : ''}`), ']'];
@@ -85,9 +86,15 @@ export function structureCode(raw: unknown, rawStyle: Record<string, unknown>): 
   const scene = buildScene(model, solution, style);
   const view = VIEWS.find(([v]) => v === style.view)![1];
   const status = solution.status.kind === 'empty' ? '' : `: ${solution.status.text}`;
-  const { body, texts } = sceneTikz(scene, `Structure, ${view.toLowerCase()}${status}`);
+  const { body, texts } = sceneTikz(scene, `Structure, ${view.toLowerCase()}${status}`, style.diagrams);
   return { body, packages: ['tikz', ...mathsPackages(texts), ...(scene.siunitx ? ['siunitx'] : [])], libraries: ['arrows.meta', 'babel'] };
 }
 
-/** A new drawing's style: the bending moment convention and siunitx from Settings › Composer, kept with the drawing. */
-export const structureStyle = (defaults: ComposerDefaults): Record<string, unknown> => ({ view: 'diagrams', moments: defaults.moments, siUnits: defaults.siUnits });
+/**
+ * A new drawing's style: the bending moment convention, siunitx and the force diagrams from Settings › Composer, kept
+ * with the drawing. The diagrams are kept only where they differ from the defaults.
+ */
+export function structureStyle(defaults: ComposerDefaults): Record<string, unknown> {
+  const diagrams = changedLooks(defaults.diagrams ?? DIAGRAM_LOOKS);
+  return { view: 'diagrams', moments: defaults.moments, siUnits: defaults.siUnits, ...(Object.keys(diagrams).length && { diagrams }) };
+}

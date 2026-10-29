@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import Icon from '../../../app/Icon';
 import { useCanvasPrefs } from '../../FlowCanvas';
+import { colourCss } from '../shared';
 import { buildScene, extentOf, readStyle } from './draw';
 import type { Anchor, Item } from './draw';
 import { UNITS, asStructure, connect, dist, frameOf, memberNear, placeTool, settleNode } from './model';
@@ -348,7 +349,7 @@ export default function StructureCanvas({
           <g key={key} {...hit} className={`st-item ${on ? 'selected' : ''}`}>
             {on && <Tag points={pts} className="st-halo" />}
             {id && <Tag points={pts} className="st-hit" />}
-            <Tag points={pts} className={`st-ink st-${item.ink} ${item.fill ? `st-fill-${item.fill}` : ''}`} markerEnd={item.arrow ? 'url(#st-arrow)' : undefined} markerStart={item.arrow === '<->' ? 'url(#st-arrow-start)' : undefined} />
+            <Tag points={pts} className={`st-ink st-${item.ink} ${item.fill === 'load' ? 'st-fill-load' : ''}`} style={item.fill && item.fill !== 'load' ? { fill: colourCss(style.diagrams[item.fill].fill), fillOpacity: style.diagrams[item.fill].opacity } : undefined} markerEnd={item.arrow ? 'url(#st-arrow)' : undefined} markerStart={item.arrow === '<->' ? 'url(#st-arrow-start)' : undefined} />
           </g>
         );
       }

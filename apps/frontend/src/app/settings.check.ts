@@ -137,6 +137,10 @@ eq([DEFAULT_SETTINGS.composerMixSets, DEFAULT_SETTINGS.composerMoments, DEFAULT_
 const composer = withShared(theirs, { ...sharedPart(at({ composerMixSets: true, composerMoments: 'positive', composerMohrShear: 'clockwise-above', composerRecent: ['circuit'] })) });
 eq([composer.composerMixSets, composer.composerMoments, composer.composerMohrShear, composer.composerRecent], [true, 'positive', 'clockwise-above', []], 'the composer’s settings come in, not Recently used');
 eq([withShared(theirs, { composerMoments: 'sideways', composerMohrShear: 'left', composerMixSets: 'yes' })].map((s) => [s.composerMoments, s.composerMohrShear, s.composerMixSets])[0], ['tension', 'down', false], 'and are checked');
+// a new structure's force diagrams follow the user too, each part checked and anything unusable its default
+eq(DEFAULT_SETTINGS.composerDiagrams.shear, { on: true, fill: 'blue!12', opacity: 1 }, 'all three diagrams in today’s fills');
+const diagrams = withShared(theirs, { composerDiagrams: { axial: { on: false, fill: 'teal!20', opacity: 0.6 }, shear: { fill: '}\\evil', opacity: 7 } } as never }).composerDiagrams;
+eq([diagrams.axial, diagrams.shear, diagrams.moment], [{ on: false, fill: 'teal!20', opacity: 0.6 }, DEFAULT_SETTINGS.composerDiagrams.shear, DEFAULT_SETTINGS.composerDiagrams.moment], 'the diagrams come in, checked');
 
 // the folders on the Projects page follow the user, checked like stored ones
 const tree = { folders: [{ id: 'f1', name: 'Thesis', parent: null }], placement: { p1: 'f1', p2: 'deleted' } };

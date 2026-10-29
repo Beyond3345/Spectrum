@@ -15,7 +15,8 @@ import type {
   SearchProvider,
   SharedSettings
 } from '../api/client';
-import type { ComposerDefaults } from '../diagram/types';
+import { DIAGRAM_LOOKS, readLooks } from '../diagram/modes/structures/looks';
+import type { ComposerDefaults, DiagramLooks } from '../diagram/types';
 import { setNativeTheme } from './desktop';
 import { NO_FOLDERS, cleanFolders } from './folders';
 import type { ProjectFolders } from './folders';
@@ -171,6 +172,8 @@ export type AppSettings = {
   composerMohrShear: ComposerDefaults['mohrShear'];
   /** Write units with siunitx: a new drawing's values as \qty, its units as \unit */
   composerSiUnits: boolean;
+  /** a new structure's force diagrams: which are drawn, their fills and opacities */
+  composerDiagrams: DiagramLooks;
   /** the chooser's Recently used: starter ids, newest first, at most eight (this computer's) */
   composerRecent: string[];
 };
@@ -259,6 +262,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   composerMoments: 'tension',
   composerMohrShear: 'down',
   composerSiUnits: true,
+  composerDiagrams: DIAGRAM_LOOKS,
   composerRecent: []
 };
 
@@ -409,6 +413,7 @@ function parse(raw: string | null): AppSettings {
     if (!['tension', 'positive'].includes(merged.composerMoments)) merged.composerMoments = 'tension';
     if (!['down', 'clockwise-above', 'up'].includes(merged.composerMohrShear)) merged.composerMohrShear = 'down';
     merged.composerSiUnits = merged.composerSiUnits !== false;
+    merged.composerDiagrams = readLooks(merged.composerDiagrams);
     merged.composerRecent = Array.isArray(merged.composerRecent) ? merged.composerRecent.filter((id) => typeof id === 'string').slice(0, 8) : [];
     for (const key of ['editorFont', 'editorFontCustom', 'editorThemeLight', 'editorThemeDark', 'parser', 'parserProtocol', 'openalexEmail', 'ncbiKey', 'unpaywallEmail'] as const) {
       if (typeof merged[key] !== 'string') merged[key] = DEFAULT_SETTINGS[key];
@@ -491,7 +496,8 @@ export function updateSettings(patch: Partial<AppSettings>) {
 export const composerDefaults = (settings: AppSettings): ComposerDefaults => ({
   moments: settings.composerMoments,
   mohrShear: settings.composerMohrShear,
-  siUnits: settings.composerSiUnits
+  siUnits: settings.composerSiUnits,
+  diagrams: settings.composerDiagrams
 });
 
 // ─── Settings that follow the user ───
@@ -504,7 +510,7 @@ const SHARED_KEYS = [
   'theme', 'accent', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize',
   'autoInsertCite', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'languages', 'englishGrammar', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
   'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions', 'composerMixSets', 'composerMoments', 'composerMohrShear',
-  'composerSiUnits'
+  'composerSiUnits', 'composerDiagrams'
 ] as const satisfies readonly (keyof AppSettings)[];
 
 export const sharedPart = (settings: AppSettings): Record<string, unknown> => Object.fromEntries(SHARED_KEYS.map((key) => [key, settings[key]]));

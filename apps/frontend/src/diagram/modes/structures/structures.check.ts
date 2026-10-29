@@ -5,9 +5,11 @@ import { axialForce, extremesInside, evalPoly, forcesAt, indeterminacy, solve } 
 import type { Solution } from './solve';
 import { connect, copyIds, fitLoads, nodeAt, pasteInto, placeTool, removeIds, sampleBeam, settleNode, splitMember } from './model';
 import type { Part, SNode, StructureModel, SupportType } from './model';
-import { buildScene, cutSection, formatValue, readStyle } from './draw';
+import { buildScene, cutSection, extentOf, formatValue, readStyle } from './draw';
 import type { Item } from './draw';
 import { structureCode, structureStyle } from './code';
+import { DIAGRAM_LOOKS, changedLooks, readLooks } from './looks';
+import { colourCss } from '../shared';
 import { diagramFileText, readDiagramFile } from '../../fileFormat';
 import type { DiagramFile } from '../../types';
 
@@ -270,7 +272,7 @@ const texts = (list: Item[]) => list.flatMap((i) => (i.t === 'text' ? [i.tex] : 
 {
   const model = sampleBeam();
   const s = solve(model);
-  eq(readStyle({}), { view: 'diagrams', moments: 'tension', units: 'kN-m', figures: 3, siUnits: false, names: true, width: 8, grid: 1 }, 'the style’s defaults');
+  eq(readStyle({}), { view: 'diagrams', moments: 'tension', units: 'kN-m', figures: 3, siUnits: false, names: true, width: 8, grid: 1, diagrams: DIAGRAM_LOOKS }, 'the style’s defaults');
   eq(readStyle({ view: 'nope', figures: 9, width: -1 }).view, 'diagrams', 'anything unknown takes its default');
   // loading: supports drawn, no reactions; free-body: reactions instead of supports
   const loading = items(buildScene(model, s, readStyle({ view: 'loading' })));
@@ -363,6 +365,36 @@ const texts = (list: Item[]) => list.flatMap((i) => (i.t === 'text' ? [i.tex] : 
   eq(/\$\d|\\,kN/.test(on.body), false, 'no value written the old way');
   const canvas = texts(items(buildScene(sampleBeam(), solve(sampleBeam()), readStyle({ view: 'loading', siUnits: true }), true)));
   eq(canvas.includes('$10$\\,kN/m'), true, 'the canvas shows plain text');
+}
+
+{
+  // the force diagrams: each can be left out, the rest closing up, and each has its fill and opacity
+  const model = sampleBeam();
+  const s = solve(model);
+  // each diagram's title and the top of what it draws
+  const tops = (style: Record<string, unknown>) =>
+    buildScene(model, s, readStyle({ view: 'diagrams', ...style })).blocks.filter((b) => b.shift).map((b) => [b.title, Number((b.shift!.y + Math.max(extentOf(b.items).maxY, 0.35)).toFixed(6))]);
+  const both = tops({});
+  eq(both.map(([title]) => title), ['Shear force', 'Bending moment'], 'a beam: shear and moment');
+  eq(tops({ diagrams: { shear: { on: false } } }), [['Bending moment', both[0][1]]], 'without shear the moment takes its place');
+  eq(tops({ diagrams: { shear: { on: false }, moment: { on: false } } }), [], 'neither: the free-body diagram alone');
+  const portal: StructureModel = {
+    nodes: [node('A', 0, 0), node('B', 0, 4), node('C', 6, 4), node('D', 6, 0)],
+    parts: [beam('m1', 'A', 'B'), beam('m2', 'B', 'C'), beam('m3', 'C', 'D'), support('a', 'A', 'pin'), support('d', 'D', 'roller'), udl('w', 'm2', 0, 6, 10)]
+  };
+  const frame = (style: Record<string, unknown>) => buildScene(portal, solve(portal), readStyle({ view: 'diagrams', ...style })).blocks.filter((b) => b.shift);
+  const spots = frame({}).map((b) => b.shift);
+  eq(frame({ diagrams: { axial: { on: false } } }).map((b) => [b.title, b.shift]), [['Shear force', spots[0]], ['Bending moment', spots[1]]], 'a frame without axial force: the others move up the grid');
+  // fills: today's by default, any xcolor mix or picked colour, an opacity under 1 written
+  const fills = (style: Record<string, unknown>) => structureCode(model, { view: 'diagrams', ...style }).body.split('\n').filter((l) => /(shear|moment) fill\/\.style/.test(l)).map((l) => l.trim().replace(/,$/, ''));
+  eq(fills({}), ['struct shear fill/.style={fill=blue!12}', 'struct moment fill/.style={fill=red!12}'], 'today’s fills');
+  eq(fills({ diagrams: { shear: { fill: 'orange!30!yellow', opacity: 0.5 }, moment: { fill: '#336699' } } }), ['struct shear fill/.style={fill=orange!30!yellow, fill opacity=0.5}', 'struct moment fill/.style={fill={rgb,255:red,51;green,102;blue,153}}'], 'a mix with an opacity, and a picked colour');
+  eq(readLooks({ shear: { fill: 'red]{\\x', opacity: 3, on: 'no' } }).shear, DIAGRAM_LOOKS.shear, 'anything else is the default');
+  eq(changedLooks(readLooks({ moment: { fill: 'red!12', on: false } })), { moment: { on: false } }, 'a file keeps only what differs');
+  // a new drawing copies Settings › Composer's diagrams, only where they differ
+  eq(structureStyle({ moments: 'tension', mohrShear: 'down', siUnits: true, diagrams: DIAGRAM_LOOKS }), { view: 'diagrams', moments: 'tension', siUnits: true }, 'the defaults: nothing kept');
+  eq(structureStyle({ moments: 'tension', mohrShear: 'down', siUnits: true, diagrams: readLooks({ axial: { on: false } }) }).diagrams, { axial: { on: false } }, 'axial force off');
+  eq([colourCss('blue!12'), colourCss('red!30!yellow'), colourCss('#336699'), colourCss('RoyalBlue!50')], ['color-mix(in srgb, rgb(0, 0, 255) 12%, transparent)', 'rgb(255, 179, 0)', '#336699', 'color-mix(in srgb, rgb(128, 128, 128) 50%, transparent)'], 'the canvas’s colours');
 }
 
 // ─── the file: a drawing round-trips through the diagram file (last: it waits for the hash) ───
