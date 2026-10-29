@@ -26,15 +26,19 @@ const XCOLORS: Record<string, [number, number, number]> = {
 
 const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
 
-/** A colour the code can write as it is: '#rrggbb', or an xcolor name with its mixes (blue!15, red!30!yellow, RoyalBlue). */
-export const isColour = (value: string) => HEX_COLOUR.test(value) || /^[a-z]+(?:![0-9]{1,3}(?:\.[0-9]+)?(?:![a-z]+)?)*$/i.test(value);
+/**
+ * A colour the code can write as it is: '#rrggbb', or xcolor's own names with their mixes (blue!15, red!30!yellow);
+ * never a name xcolor alone doesn't have (RoyalBlue needs dvipsnames) or a word that's no colour (thick).
+ */
+export const isColour = (value: string) =>
+  HEX_COLOUR.test(value) || (/^[a-z]+(?:![0-9]{1,3}(?:\.[0-9]+)?(?:![a-z]+)?)*$/.test(value) && value.split('!').every((part, i) => i % 2 === 1 || Object.keys(XCOLORS).includes(part)));
 
 /** A colour for a TikZ option: an xcolor expression as typed, '#rrggbb' written in place. */
 export const tikzColour = (value: string) => (HEX_COLOUR.test(value) ? latexColour(value) : value);
 
 /**
- * A colour as CSS for the canvas. A mix with white (blue!15) is the colour at that strength over the paper, so it reads
- * in the dark theme too; a mix of two colours is worked out as xcolor does. A name xcolor alone doesn't know is grey.
+ * A colour as CSS for the canvas and the swatches, worked out as xcolor does: a mix with white (blue!15) is that much
+ * of the colour in white, so it shows as it prints in the dark theme too. A name xcolor alone doesn't know is grey.
  */
 export function colourCss(value: string) {
   if (HEX_COLOUR.test(value)) return value;
@@ -52,6 +56,6 @@ export function colourCss(value: string) {
       strength = 1;
     }
   }
-  const [r, g, b] = rgb.map((c) => Math.round(c * 255));
-  return strength >= 1 ? `rgb(${r}, ${g}, ${b})` : `color-mix(in srgb, rgb(${r}, ${g}, ${b}) ${num(strength * 100)}%, transparent)`;
+  const [r, g, b] = rgb.map((c) => Math.round((c * strength + 1 - strength) * 255));
+  return `rgb(${r}, ${g}, ${b})`;
 }
