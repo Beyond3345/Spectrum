@@ -19,6 +19,7 @@ Native tests verify outside/live-project reads and writes, existing secrets/iden
 - `.cmd`/`.bat` launchers are refused. An explicit native interpreter plus script arguments is required. Other vendor launchers, credentials, MCP servers, system tools, compilation inside the boundary and public Internet workflows are not certified by the fixture tests.
 - Windows validation is on this x64 build only, not every supported Windows release. A forced worker termination can leave inactive unique-SID ACL entries/profile storage; profile identities are never reused. No crash-cleanup certification is claimed.
 - WorkBuddy remains official-only and planned for remote support.
+- DeepSeek Harness carries its CLI inside the Mac app (`Contents/Resources/runtime/cli/bin/dsh`). The layout of the Windows app is not checked, so on Windows its card shows no app line and Spectrum looks only for `dsh` on the `PATH`. For the Windows tester: install the app, find the CLI inside its folder (if it has one) and record that path and how it starts, so the card can find it as it does on a Mac.
 
 ## Build and unrelated Windows fixes
 

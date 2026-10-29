@@ -104,6 +104,15 @@ test('desktop apps: the agent inside the app, an app without one, and only that 
   await fs.copyFile(dsh, path.join(shared, 'Contents/Resources/runtime/cli/bin/dsh'));
   assert.equal((await listed('deepseek')).where, shared);
   await fs.rm(shared, { recursive: true });
+  // on Windows the app's layout is unchecked, so no app line
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+  const programFiles = process.env.ProgramFiles;
+  await fs.mkdir(path.join(root, 'Programs/DeepSeek Harness'), { recursive: true });
+  process.env.ProgramFiles = path.join(root, 'Programs');
+  Object.defineProperty(process, 'platform', { value: 'win32' });
+  try {
+    assert.equal((await agentEntry('deepseek', {}, true)).app, undefined);
+  } finally { Object.defineProperty(process, 'platform', platform); process.env.ProgramFiles = programFiles; if (programFiles === undefined) delete process.env.ProgramFiles; }
   // choosing the app is choosing the program inside it
   await saveAgentConfig('deepseek', { command: bundle });
   deepseek = await listed('deepseek');

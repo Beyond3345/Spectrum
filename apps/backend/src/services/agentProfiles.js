@@ -124,6 +124,9 @@ const systemFolder = (dir) => SYSTEM_READS.some((root) => dir === root || dir.st
 // isolation refuses a home folder or a system root, so neither is ever derived
 const readable = (dir) => dir !== path.parse(dir).root && dir !== '/Users' && dir !== home() && dir !== path.dirname(home()) && !(home().startsWith(dir + path.sep)) && !systemFolder(dir);
 
+/** The agent's desktop app, where installed; an app carrying the agent only on a Mac, where its layout is known. */
+const agentApp = (profile) => profile.app && (process.platform === 'darwin' || !profile.app.bin) ? appFound(profile.app.name) : null;
+
 /** Where the desktop app called name is installed, or null. */
 export async function appFound(name) {
   for (const dir of appDirs()) {
@@ -226,7 +229,7 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
   const saved = (await agentConfigs())[id] || {};
   const found = await findProgram(profile, saved);
   if (!found) {
-    const app = profile.app && await appFound(profile.app.name);
+    const app = await agentApp(profile);
     throw new Error(app ? `${profile.app.name} is installed, but its agent mode needs the ${profile.name} CLI. Install it, then try again.` : `${profile.name} was not found. Install it, or choose its program in Settings › Agents.`);
   }
   if (found.needs && !found.needs.found) throw new Error(`${profile.name} needs ${found.needs.name}, which was not found. Install it, then try again.`);
@@ -290,7 +293,7 @@ export async function agentEntry(id, config, isolated) {
   const test = found && saved.test?.program === found.program ? withoutProgram(saved.test) : undefined;
   const keyEnv = saved.keyEnv || p.key;
   const needs = p.needs && (found?.needs || await findNeeded(p.needs));
-  const app = p.app && await appFound(p.app.name);
+  const app = await agentApp(p);
   const { state, setUp } = agentState({ planned: !!p.planned, unavailable: !!p.unavailable || !isolated, found: !!found, needsMissing: !!needs && !needs.found, adapter: !!p.adapter, test, configured });
   return {
     id, name: p.name, url: p.url, experimental: p.experimental, planned: p.planned, unavailable: p.unavailable,
