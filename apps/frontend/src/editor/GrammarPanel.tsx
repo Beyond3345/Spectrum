@@ -120,6 +120,10 @@ const names = (tags: string[]) => {
 let catalogue: Promise<LanguageInfo[]> | null = null;
 const loadCatalogue = () => (catalogue ||= listLanguages().then((res) => res.languages, () => ((catalogue = null), [])));
 
+// a file edited during a check is read again only up to this size (Harper takes about a second); a longer one keeps
+// its results, mapped through the edits, and offers Check again
+const RECHECK_CHARS = 200_000;
+
 const paragraphs = (n: number) => `${n} ${n === 1 ? 'paragraph' : 'paragraphs'}`;
 
 export default function GrammarPanel({
@@ -152,7 +156,7 @@ export default function GrammarPanel({
   const [error, setError] = useState('');
   const [checkedPath, setCheckedPath] = useState('');
   const [coverage, setCoverage] = useState<GrammarCoverage[]>([]);
-  // edited during a LanguageTool check, whose results were mapped onto the text as it now is
+  // edited during a long or LanguageTool check, whose results were mapped onto the text as it now is
   const [changed, setChanged] = useState(false);
   const [known, setKnown] = useState<LanguageInfo[]>([]);
   const runRef = useRef(0);
@@ -194,9 +198,9 @@ export default function GrammarPanel({
       if (id !== runRef.current || !editor) return;
       let found: GrammarIssue[] = res.issues;
       if (editor.state.doc !== doc) {
-        // edited while Harper read it: it's quick, so read it again; a LanguageTool check isn't started again, its
-        // results are mapped through the edits made since
-        if (!res.coverage.some((c) => c.engine === 'languagetool' && c.done > 0)) return void run();
+        // edited while Harper read it: a short file is quick, so read it again; a long file or a LanguageTool check
+        // isn't started again, its results are mapped through the edits made since
+        if (doc.length <= RECHECK_CHARS && !res.coverage.some((c) => c.engine === 'languagetool' && c.done > 0)) return void run();
         const changes = editor.state.field(changesField, false);
         if (changes) found = found.map((issue) => ({ ...issue, from: changes.mapPos(issue.from, 1), to: changes.mapPos(issue.to, -1) })).filter((issue) => issue.to >= issue.from);
         setChanged(true);
