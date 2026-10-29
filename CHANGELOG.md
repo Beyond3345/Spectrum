@@ -2,7 +2,7 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
-## 2.0.0 (unreleased)
+## 2.0.0 (29 October 2026)
 
 ### Added
 
@@ -65,6 +65,13 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Typst and Markdown in the editor's Insert list, `@key` and `[@key]` citation completion, figures and tables in each document's own syntax, and to-dos in `// TODO` and `<!-- TODO -->` comments
 - Typst, Tectonic and pandoc in local agents' isolation, and Typst errors in the get_log tool's list
 - The Windows workflow bundles Typst and Tectonic beside the app and checks that Typst starts with its Visual C++ runtime
+- A Home page of folders, where Spectrum now opens, above All projects in the projects page's sidebar. Folders show as large coloured tiles or as a list, open in place with a path back up (and `⌘↑`), and each keeps its own layout and sort. Projects and folders are dragged onto a folder, a sidebar folder or the path, several are selected with `⌘` and `⇧` and moved together, and a folder's menu has Move to folder…, Rename, a colour and Delete, which moves what it held up a level. Search on Home looks through every folder. Settings › Projects chooses whether Spectrum opens on Home or All projects
+- Units written with siunitx in circuits, structures, Mohr's circle and plot axis titles, on by default for new drawings (Settings › Composer › Write units with siunitx, and each drawing's Style): `\qty{10}{\kilo\newton}` and `\unit{\kilo\newton\metre}`. Insert adds the package, and writes `\SI` instead in a document that loads `physics`, which redefines `\qty`
+- Logic gates in the American, European (IEC) or IEEE style, and for European gates a triangle or a circle on the inverted output
+- Circuit labels placed clear of each symbol's drawn outline on both sides and in every direction, with `_` and `^` shown as subscripts and superscripts on the canvas
+- Structures: a switch for each of the axial force, shear force and bending moment diagrams, and a fill colour and opacity for each, in Style with their defaults in Settings › Composer. Labels move clear of members, load arrows, supports and diagram outlines
+- A Vector diagrams composer under Mathematics › Geometry and vectors and Physics › Mechanics: points, vectors, segments, polygons, lines through two points, axes with ticks, right-angle marks, drops to an axis and highlighted segments, with midpoints, points dividing a segment in a ratio, projections and vector sums kept exact as points move, panels side by side with (a), (b) and (c) under them, and four starters. Every line, arrow tip, colour, point, fill, label and axis can be styled, with the drawing's defaults in Style
+- General drawing under Others: the circuit canvas with every symbol set switched on, including new flowchart shapes and points, marks and axes
 
 ### Changed
 

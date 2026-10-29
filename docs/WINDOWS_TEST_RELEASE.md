@@ -1,6 +1,6 @@
 # Windows test, build and release of Spectrum 2.0.0
 
-Written 29 October 2026 for an AI agent working on the user's Windows computer. It is self-contained: read it to the end before running anything. The Mac build is finished and tested on the Mac; nothing in this file has yet run on Windows. Windows CI was deliberately not run for the last changes, so this computer is the first to build and test them.
+Written 29 October 2026 for an AI agent working on the user's Windows computer. It is self-contained: read it to the end before running anything. The Mac version was tested by the user and released on 29 October 2026 as `v2.0.0`; nothing in this file has yet run on Windows. Windows CI was deliberately not run for the last changes, so this computer is the first to build and test them.
 
 ## The ground rules
 
@@ -39,12 +39,12 @@ Then:
 ```
 git clone https://github.com/Beyond3345/Spectrum.git
 cd Spectrum
-git switch feat/2.0
+git switch --detach v2.0.0
 git log --oneline -1
 npm ci
 ```
 
-Tell the user which commit `git log` shows; it should be the one the Mac's test DMG 5 was built from (the user can read it from the Mac session's report).
+Tell the user which commit `git log` shows: the `v2.0.0` tag, the code the Mac release was built from.
 
 ## 2. Build the installer
 
@@ -173,13 +173,13 @@ Each was found on the Mac or in CI and is untested on a real Windows desktop. Re
 
 ## 6. Fixing what fails
 
-- **Small, clear fixes:** if a failure has a clear cause in Spectrum's code, fix it on a branch from `feat/2.0` named `fix/windows-<what>`. Add a test where one can run on Windows, run every check in step 3 again and commit in small commits.
+- **Small, clear fixes:** if a failure has a clear cause in Spectrum's code, fix it on a branch from `main` named `fix/windows-<what>`. Add a test where one can run on Windows, run every check in step 3 again and commit in small commits.
 - **Pushing:** push the branch only after the user agrees, and never push to `main`.
 - **Larger problems:** if the fix is not small or touches the Mac's behaviour, stop and report it to the user instead.
 
 ## 7. Release (only on the user's word)
 
-The Mac side publishes the release first: `feat/2.0` merged into `main`, the `v2.0.0` tag and a GitHub release carrying `Spectrum_2.0.0_universal.dmg` and `SHA256SUMS.txt`. Check it exists:
+The Mac release is published: `main`, the `v2.0.0` tag and a GitHub release carrying `Spectrum_2.0.0_universal.dmg` and `SHA256SUMS.txt`. Check it exists:
 
 ```
 gh release view v2.0.0 --repo Beyond3345/Spectrum
