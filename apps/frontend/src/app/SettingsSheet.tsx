@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import {
   changeSpellWord,
@@ -57,6 +57,9 @@ import { toast } from './Toast';
 import { IS_MAC, IS_WINDOWS, OS_NAME, tildify } from './platform';
 import { ACCENTS, PDF_PAGES_DARK, PDF_PAGES_LIGHT, TAG_COLOURS, useDarkMode } from './appearance';
 import { groupSkills, projectSkills, skillId, skillOn } from './skills';
+
+// the notices are long, so they load only when asked for
+const Licences = lazy(() => import('./Licences'));
 import {
   BIB_TOOLS,
   COMPILE_ENGINES,
@@ -180,6 +183,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
   };
   const [check, setCheck] = useState<SystemCheck | null>(null);
   const [checkError, setCheckError] = useState('');
+  const [licences, setLicences] = useState(false);
   const providers = useProviders();
   // Ollama's models come from Ollama itself
   const live = {
@@ -407,7 +411,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
             <div key={heading} className="settings-nav-group" role="group" aria-label={heading}>
               <div className="settings-nav-heading">{heading}</div>
               {sections.map(([value, label, icon]) => (
-                <button key={value} className={`nav-row ${section === value ? 'active' : ''}`} onClick={() => value !== section && leave(() => setSection(value))}>
+                <button key={value} className={`nav-row ${section === value ? 'active' : ''}`} onClick={() => value !== section && leave(() => (setSection(value), setLicences(false)))}>
                   <Icon name={icon} />
                   <span>{label}</span>
                 </button>
@@ -769,7 +773,13 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
             </>
           )}
 
-          {section === 'system' && (
+          {section === 'system' && licences && (
+            <Suspense fallback={<div className="field-hint"><span className="spinner" /> Loading…</div>}>
+              <Licences onBack={() => setLicences(false)} />
+            </Suspense>
+          )}
+
+          {section === 'system' && !licences && (
             <>
               <h3 className="form-section-title">Tools</h3>
               {checkError && <div className="field-hint error">{checkError}</div>}
@@ -807,6 +817,15 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
               <div>
                 <button className="btn small" onClick={recheck} disabled={!check && !checkError}>
                   <Icon name="arrow.clockwise" /> Check again
+                </button>
+              </div>
+              <h3 className="form-section-title">About</h3>
+              <div className="field-hint section-hint">
+                Spectrum {__APP_VERSION__} is under the MIT Licence. It includes software, fonts and word lists under their own licences.
+              </div>
+              <div>
+                <button className="btn small" onClick={() => setLicences(true)}>
+                  <Icon name="doc.text" /> Licences
                 </button>
               </div>
             </>
