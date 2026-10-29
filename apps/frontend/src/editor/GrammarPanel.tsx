@@ -400,8 +400,8 @@ export default function GrammarPanel({
       </div>
       <div className="grammar-foot">
         <label className="checkbox-row">
-          <input type="checkbox" checked={settings.grammarStyle} onChange={(e) => updateSettings({ grammarStyle: e.target.checked })} />
-          <span>Style suggestions</span>
+          <input type="checkbox" role="switch" checked={settings.grammarStyle} onChange={(e) => updateSettings({ grammarStyle: e.target.checked })} />
+          <span>Include style suggestions</span>
         </label>
         <span className="grammar-oxford">
           <span id="grammar-oxford-label">Serial comma</span>

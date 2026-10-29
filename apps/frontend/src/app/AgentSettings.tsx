@@ -323,7 +323,7 @@ function AgentCard({
         id={`agent-head-${a.id}`}
         className="agent-card-head"
         aria-expanded={open}
-        aria-controls={id}
+        aria-controls={open ? id : undefined}
         aria-label={a.name}
         aria-describedby={`${id}-status ${id}-chip`}
         onClick={onToggle}

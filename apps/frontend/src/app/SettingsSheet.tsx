@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import {
   changeSpellWord,
@@ -1662,11 +1662,25 @@ function LanguagePane({ projectId }: { projectId?: string }) {
       })
       .catch((err) => setError(errorText(err)));
   const setList = (next: string[]) => (ownList ? void saveProject(next) : update({ languages: next }));
+  /** what the last Move did, for screen readers */
+  const [moved, setMoved] = useState('');
   const move = (index: number, by: number) => {
     const next = [...list];
     [next[index], next[index + by]] = [next[index + by], next[index]];
     setList(next);
+    const tag = list[index];
+    setMoved(`Moved ${languageName(tag)} to position ${index + by + 1} of ${list.length}`);
+    refocus.current = tag;
   };
+  // a language moved to the top or bottom has that Move button disabled, so the focus goes to its other one
+  const refocus = useRef<string | null>(null);
+  useEffect(() => {
+    const tag = refocus.current;
+    refocus.current = null;
+    const active = document.activeElement as HTMLButtonElement | null;
+    if (!tag || (active && active !== document.body && !active.disabled)) return;
+    document.querySelector<HTMLElement>(`[data-move="${tag}"]:not(:disabled)`)?.focus();
+  }, [list]);
 
   const download = (tag: string) => {
     setCatalogue((prev) => prev && prev.map((entry) => (entry.tag === tag ? { ...entry, state: 'downloading' } : entry)));
@@ -1723,10 +1737,10 @@ function LanguagePane({ projectId }: { projectId?: string }) {
                       {entry.state === 'failed' ? 'Try again' : `Download (${sizeLabel(entry.bytes || 0)}, ${entry.licence})`}
                     </button>
                   )}
-                  <button className="icon-btn small" title="Move up" aria-label={`Move ${languageName(tag)} up`} disabled={index === 0} onClick={() => move(index, -1)}>
+                  <button className="icon-btn small" title="Move up" aria-label={`Move ${languageName(tag)} up`} data-move={tag} disabled={index === 0} onClick={() => move(index, -1)}>
                     <Icon name="chevron.up" />
                   </button>
-                  <button className="icon-btn small" title="Move down" aria-label={`Move ${languageName(tag)} down`} disabled={index === list.length - 1} onClick={() => move(index, 1)}>
+                  <button className="icon-btn small" title="Move down" aria-label={`Move ${languageName(tag)} down`} data-move={tag} disabled={index === list.length - 1} onClick={() => move(index, 1)}>
                     <Icon name="chevron.down" />
                   </button>
                   <button className="icon-btn small" title={`Remove ${languageName(tag)}`} aria-label={`Remove ${languageName(tag)}`} disabled={list.length === 1} onClick={() => setList(list.filter((t) => t !== tag))}>
@@ -1735,6 +1749,9 @@ function LanguagePane({ projectId }: { projectId?: string }) {
                 </div>
               );
             })}
+          </div>
+          <div className="sr-only" role="status">
+            {moved}
           </div>
           <div className="path-row">
             <button className="btn small" disabled={!catalogue || list.length >= 20} onClick={() => setAdding((value) => !value)}>

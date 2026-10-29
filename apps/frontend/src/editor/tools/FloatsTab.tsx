@@ -1096,6 +1096,7 @@ function InsertTable() {
                   onClick={() => flip(edges[way][i])}
                 >
                   {name}
+                  {rules[way][i] === 2 && ' (double)'}
                 </button>
               ))}
             </div>

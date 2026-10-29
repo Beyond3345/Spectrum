@@ -253,6 +253,16 @@ input[type='checkbox'][role='switch']:checked::before {
   min-width: 0;
 }
 
+/* read by screen readers, not shown */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .row {
   display: flex;
   align-items: flex-end;
