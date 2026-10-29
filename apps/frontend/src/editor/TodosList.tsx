@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { deleteTodo, getFile, listTodos, saveTodo } from '../api/client';
 import type { Todo, TodoLink } from '../api/client';
 import Icon from '../app/Icon';
+import Segmented from '../app/Segmented';
 import { toast } from '../app/Toast';
 import { PROJECT_DATA_CHANGED, errorText } from './shared';
 import { findLine, scanTodos } from './todos';
@@ -290,13 +291,5 @@ export default function TodosList({
 }
 
 function Segments<T extends string>({ label, value, onChange, items }: { label: string; value: T; onChange(value: T): void; items: [T, string][] }) {
-  return (
-    <div className="segmented small" role="radiogroup" aria-label={label}>
-      {items.map(([v, text]) => (
-        <button key={v} className={`segment ${v === value ? 'active' : ''}`} role="radio" aria-checked={v === value} onClick={() => onChange(v)}>
-          {text}
-        </button>
-      ))}
-    </div>
-  );
+  return <Segmented label={label} value={value} options={items} onChange={onChange} />;
 }

@@ -46,6 +46,8 @@ import { ENGINES_CHANGED, LANGUAGES_CHANGED, errorText } from '../editor/shared'
 import { ZoteroSettings } from '../editor/ZoteroCite';
 import { confirmDialog } from './Dialogs';
 import Icon from './Icon';
+import Segmented from './Segmented';
+import { radioKeys, radioTab } from './Segmented';
 import Select from './Select';
 import Sheet from './Sheet';
 import Tabs from './Tabs';
@@ -113,6 +115,12 @@ export type Section =
   | 'system';
 
 // grouped under headings, so the list reads at a glance
+/** Where a list or a switch applies, in Settings › Spelling & grammar and Settings › Skills. */
+const SCOPES = [
+  ['all', 'All projects'],
+  ['project', 'This project']
+] as const;
+
 const SECTION_GROUPS: [string, [Section, string, string][]][] = [
   ['General', [
     ['appearance', 'Appearance', 'circle.lefthalf.filled'],
@@ -441,14 +449,15 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
 
               <h3 id="settings-accent" className="form-section-title">Accent colour</h3>
               <div className="row">
-                <div className="accent-picker" role="radiogroup" aria-labelledby="settings-accent">
-                  {ACCENTS.map(([value, label, colour]) => (
+                <div className="accent-picker" role="radiogroup" aria-labelledby="settings-accent" onKeyDown={radioKeys}>
+                  {ACCENTS.map(([value, label, colour], i) => (
                     <button
                       key={value}
                       className={`accent-swatch ${value}`}
                       style={{ '--swatch': value === 'custom' ? settings.accentCustom : colour } as CSSProperties}
                       role="radio"
                       aria-checked={settings.accent === value}
+                      tabIndex={radioTab(settings.accent === value, i, ACCENTS.some(([v]) => v === settings.accent))}
                       aria-label={label}
                       title={label}
                       onClick={() => update({ accent: value })}
@@ -1058,14 +1067,15 @@ function EditorPane() {
       <div className="field">
         <label id="settings-syncHighlight">Highlight colour</label>
         <div className="row">
-          <div className="accent-picker" role="radiogroup" aria-labelledby="settings-syncHighlight">
-            {SYNC_HIGHLIGHTS.map(([value, label]) => (
+          <div className="accent-picker" role="radiogroup" aria-labelledby="settings-syncHighlight" onKeyDown={radioKeys}>
+            {SYNC_HIGHLIGHTS.map(([value, label], i) => (
               <button
                 key={value}
                 className={`accent-swatch ${value}`}
                 style={{ '--swatch': highlightColour({ ...settings, syncHighlightColour: value }, dark) } as CSSProperties}
                 role="radio"
                 aria-checked={settings.syncHighlightColour === value}
+                tabIndex={radioTab(settings.syncHighlightColour === value, i, SYNC_HIGHLIGHTS.some(([v]) => v === settings.syncHighlightColour))}
                 aria-label={label}
                 title={label}
                 onClick={() => update({ syncHighlightColour: value })}
@@ -1187,13 +1197,15 @@ function EditorPane() {
         Changes go on top of {themeFor(settings[themeKey(mode)], mode).label} and stay when you choose another theme.
       </div>
       <div className="colours-bar">
-        <div className="segmented small" role="radiogroup" aria-label="Colours for">
-          {(['light', 'dark'] as const).map((m) => (
-            <button key={m} className={`segment ${mode === m ? 'active' : ''}`} role="radio" aria-checked={mode === m} onClick={() => setMode(m)}>
-              {m === 'light' ? 'Light' : 'Dark'}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label="Colours for"
+          value={mode}
+          options={[
+            ['light', 'Light'],
+            ['dark', 'Dark']
+          ]}
+          onChange={setMode}
+        />
         <button className="btn small" disabled={!Object.keys(changed).length} onClick={() => update({ editorColours: { ...settings.editorColours, [mode]: {} } })}>
           Reset to theme
         </button>
@@ -1686,13 +1698,7 @@ function LanguagePane({ projectId }: { projectId?: string }) {
         Spectrum checks each paragraph in one of these languages, and only these. It works out which one from the text. When a paragraph could be more than one, it uses the one higher in the list.
       </div>
       {projectId && (
-        <div className="segmented small" role="radiogroup" aria-label="The list for">
-          {(['all', 'project'] as const).map((value) => (
-            <button key={value} className={`segment ${scope === value ? 'active' : ''}`} role="radio" aria-checked={scope === value} onClick={() => setScope(value)}>
-              {value === 'all' ? 'All projects' : 'This project'}
-            </button>
-          ))}
-        </div>
+        <Segmented label="The list for" value={scope} options={SCOPES} onChange={setScope} />
       )}
       {inProject && !ownList ? (
         <div className="path-row">
@@ -1988,14 +1994,15 @@ function PersonasPane({ onUnsaved }: { onUnsaved: (name: string) => void }) {
       </div>
       <div className="field">
         <label id="persona-colour">Colour</label>
-        <div className="accent-picker" role="radiogroup" aria-labelledby="persona-colour">
-          {TAG_COLOUR_NAMES.map((colour) => (
+        <div className="accent-picker" role="radiogroup" aria-labelledby="persona-colour" onKeyDown={radioKeys}>
+          {TAG_COLOUR_NAMES.map((colour, i) => (
             <button
               key={colour}
               className="accent-swatch"
               style={{ '--swatch': TAG_COLOURS[colour][1] } as CSSProperties}
               role="radio"
               aria-checked={editing.colour === colour}
+              tabIndex={radioTab(editing.colour === colour, i, TAG_COLOUR_NAMES.includes(editing.colour))}
               aria-label={TAG_COLOURS[colour][0]}
               title={TAG_COLOURS[colour][0]}
               onClick={() => setEditing({ ...editing, colour })}
@@ -2166,13 +2173,7 @@ function SkillsPane({ projectId, onUnsaved }: { projectId?: string; onUnsaved: (
           )}
         </label>
         {projectId && (
-          <div className="segmented small" role="radiogroup" aria-label="Switches apply to">
-            {(['all', 'project'] as const).map((value) => (
-              <button key={value} className={`segment ${scope === value ? 'active' : ''}`} role="radio" aria-checked={scope === value} onClick={() => setScope(value)}>
-                {value === 'all' ? 'All projects' : 'This project'}
-              </button>
-            ))}
-          </div>
+          <Segmented label="Switches apply to" value={scope} options={SCOPES} onChange={setScope} />
         )}
       </div>
       <div className="field-hint">

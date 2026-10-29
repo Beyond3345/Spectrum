@@ -50,6 +50,7 @@ import {
 } from '../api/client';
 import type { CompileDiagnostic, CompileEngine, CompileOptions, CompileResult, Engines, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
 import Icon from './Icon';
+import { radioKeys, radioTab } from './Segmented';
 import Tabs from './Tabs';
 import Sheet from './Sheet';
 import SettingsSheet from './SettingsSheet';
@@ -2958,13 +2959,14 @@ function Editor({ projectId }: { projectId: string }) {
 
   // at the top right of the window, in the rightmost header showing: the editor's in editor only, else the right column's
   const viewSwitcher = (
-    <div className="segmented view-switcher" role="radiogroup" aria-label="View">
-      {VIEWS.map(([value, label, icon, command]) => (
+    <div className="segmented view-switcher" role="radiogroup" aria-label="View" onKeyDown={radioKeys}>
+      {VIEWS.map(([value, label, icon, command], i) => (
         <button
           key={value}
           className={`segment ${layout.view === value ? 'active' : ''}`}
           role="radio"
           aria-checked={layout.view === value}
+          tabIndex={radioTab(layout.view === value, i, VIEWS.some(([v]) => v === layout.view))}
           title={withShortcut(settings.shortcuts, label, command)}
           aria-label={label}
           onClick={() => setView(value)}

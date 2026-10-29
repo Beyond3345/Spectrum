@@ -3,6 +3,7 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import Icon from '../../../app/Icon';
+import Segmented from '../../../app/Segmented';
 import Select from '../../../app/Select';
 import { VIEWS, formatValue, readStyle } from './draw';
 import type { StructStyle } from './draw';
@@ -82,11 +83,7 @@ export function StructureRail({ onPick, tool }: { onPick(tool: string): void; to
   const words = filter.trim().toLowerCase();
   return (
     <div className="ckt-rail st-rail">
-      <div className="segmented small ckt-rail-tools" role="radiogroup" aria-label="Tool">
-        <button type="button" role="radio" aria-checked={tool === 'select'} className={`segment ${tool === 'select' ? 'active' : ''}`} onClick={() => onPick('select')}>
-          Select
-        </button>
-      </div>
+      <Segmented label="Tool" className="ckt-rail-tools" value={tool} options={[['select', 'Select']]} onChange={onPick} />
       <input className="input ckt-rail-filter" type="search" placeholder="Find a part" aria-label="Find a part" value={filter} onChange={(e) => setFilter(e.target.value)} spellCheck={false} />
       <div className="ckt-rail-groups">
         {GROUPS.map(([group, tools]) => {

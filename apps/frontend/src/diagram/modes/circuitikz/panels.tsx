@@ -2,6 +2,7 @@
 import { useEffect, useId, useState } from 'react';
 import type { ReactNode } from 'react';
 import Icon from '../../../app/Icon';
+import Segmented from '../../../app/Segmented';
 import Select from '../../../app/Select';
 import { IS_WINDOWS } from '../../../app/platform';
 import { DEFAULT_LENGTH, readStyle } from './code';
@@ -31,16 +32,16 @@ export function CircuitRail({ onPick, tool, sets = [] }: { onPick(tool: string):
   const shown = CATALOGUE.filter((part) => (!part.set || sets.includes(part.set)) && part.label.toLowerCase().includes(filter.trim().toLowerCase()));
   return (
     <div className="ckt-rail">
-      <div className="segmented small ckt-rail-tools" role="radiogroup" aria-label="Tool">
-        {[
+      <Segmented
+        label="Tool"
+        className="ckt-rail-tools"
+        value={ui.tool}
+        options={[
           ['select', 'Select'],
           ['wire', 'Wire']
-        ].map(([value, label]) => (
-          <button key={value} type="button" role="radio" aria-checked={ui.tool === value} className={`segment ${ui.tool === value ? 'active' : ''}`} onClick={() => pick(value)}>
-            {label}
-          </button>
-        ))}
-      </div>
+        ]}
+        onChange={pick}
+      />
       <input className="input ckt-rail-filter" type="search" placeholder="Find a part" aria-label="Find a part" value={filter} onChange={(e) => setFilter(e.target.value)} spellCheck={false} />
       <div className="ckt-rail-groups">
         {GROUPS.map((group) => {
@@ -357,18 +358,15 @@ export function CircuitStyleMenu({ style: raw, onChange }: { style: Record<strin
     <div className="ckt-style">
       <Field label="Symbols">
         {() => (
-          <div className="segmented small" role="radiogroup" aria-label="Symbols">
-            {(
-              [
-                ['american', 'American'],
-                ['european', 'European']
-              ] as const
-            ).map(([value, label]) => (
-              <button key={value} type="button" role="radio" aria-checked={style.preset === value} className={`segment ${style.preset === value ? 'active' : ''}`} onClick={() => set({ preset: value })}>
-                {label}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            label="Symbols"
+            value={style.preset}
+            options={[
+              ['american', 'American'],
+              ['european', 'European']
+            ]}
+            onChange={(preset) => set({ preset })}
+          />
         )}
       </Field>
       <Field label="Inductors">

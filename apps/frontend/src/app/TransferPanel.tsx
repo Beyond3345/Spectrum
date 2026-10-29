@@ -15,6 +15,7 @@ import {
 } from '../api/client';
 import type { CompileEngine, PageImage, TemplateMeta } from '../api/client';
 import Icon from './Icon';
+import { radioKeys, radioTab } from './Segmented';
 import Select from './Select';
 import { toast } from './Toast';
 import { COMPILE_ENGINES, llmConfigFor, useSettings } from './settings';
@@ -273,12 +274,13 @@ export default function TransferPanel({
 
   return (
     <div className="transfer-panel">
-      <div className="mode-cards" role="radiogroup" aria-label="Method">
-        {MODES.map(([value, label, desc]) => (
+      <div className="mode-cards" role="radiogroup" aria-label="Method" onKeyDown={radioKeys}>
+        {MODES.map(([value, label, desc], i) => (
           <button
             key={value}
             role="radio"
             aria-checked={mode === value}
+            tabIndex={radioTab(mode === value, i, MODES.some(([v]) => v === mode))}
             className={`mode-card ${mode === value ? 'active' : ''}`}
             disabled={running}
             onClick={() => setMode(value)}

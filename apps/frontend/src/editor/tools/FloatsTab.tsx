@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ClipboardEvent, DragEvent, KeyboardEvent } from 'react';
 import { blobUrl, getFile, getProjectSettings, getProjectTree, plotFromTable, uploadFiles, visionToLatex } from '../../api/client';
+import Choice from '../../app/Segmented';
 import Icon from '../../app/Icon';
 import { effectiveCompile, loadSettings } from '../../app/settings';
 import Select from '../../app/Select';
@@ -137,21 +138,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: { labe
       <span className="field-label" id={id}>
         {label}
       </span>
-      <div className="segmented small" role="radiogroup" aria-labelledby={id}>
-        {options.map(([option, text, spoken]) => (
-          <button
-            key={option}
-            type="button"
-            role="radio"
-            aria-checked={value === option}
-            aria-label={spoken}
-            className={`segment ${value === option ? 'active' : ''}`}
-            onClick={() => onChange(option)}
-          >
-            {text}
-          </button>
-        ))}
-      </div>
+      <Choice labelledBy={id} value={value} options={options} onChange={onChange} />
     </div>
   );
 }
