@@ -37,6 +37,8 @@ export interface StructStyle {
   figures: number;
   /** values as \\qty and units as \\unit (units.ts); off in a drawing from before the switch */
   siUnits: boolean;
+  /** values as \\SI, as the document the drawing went in loads physics (units.ts) */
+  physics: boolean;
   /** node letters shown */
   names: boolean;
   /** the structure's larger side, in cm */
@@ -61,6 +63,7 @@ export function readStyle(raw: Record<string, unknown>): StructStyle {
     units: oneOf(raw.units, Object.keys(UNITS) as Units[], 'kN-m'),
     figures: Math.round(n(raw.figures, 2, 5, 3)),
     siUnits: raw.siUnits === true,
+    physics: raw.physics === true,
     names: raw.names !== false,
     width: n(raw.width, 3, 20, 8),
     grid: Math.round(n(raw.grid, 0, 3, 1)),
@@ -181,7 +184,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
   const P = (p: Pt) => ({ x: p.x * scale, y: p.y * scale });
   const fmt = (v: number) => formatValue(v, style.figures);
   // the canvas shows values as text either way
-  const si = unitWriter(style.siUnits && !canvas);
+  const si = unitWriter(style.siUnits && !canvas, style.physics);
   const value = (v: number, u: string) => si.qty(fmt(v), u);
   const solved = solution.status.kind === 'ok';
   const nameOf = (id: string) => nodes.get(id)?.name;

@@ -273,7 +273,7 @@ const texts = (list: Item[]) => list.flatMap((i) => (i.t === 'text' ? [i.tex] : 
 {
   const model = sampleBeam();
   const s = solve(model);
-  eq(readStyle({}), { view: 'diagrams', moments: 'tension', units: 'kN-m', figures: 3, siUnits: false, names: true, width: 8, grid: 1, diagrams: DIAGRAM_LOOKS }, 'the style’s defaults');
+  eq(readStyle({}), { view: 'diagrams', moments: 'tension', units: 'kN-m', figures: 3, siUnits: false, physics: false, names: true, width: 8, grid: 1, diagrams: DIAGRAM_LOOKS }, 'the style’s defaults');
   eq(readStyle({ view: 'nope', figures: 9, width: -1 }).view, 'diagrams', 'anything unknown takes its default');
   // loading: supports drawn, no reactions; free-body: reactions instead of supports
   const loading = items(buildScene(model, s, readStyle({ view: 'loading' })));

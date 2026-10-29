@@ -1,12 +1,15 @@
 // Units as siunitx 3 writes them, for the modes that write values: a unit typed the way people type it (kN/m, kN·m,
 // N/mm², kΩ, µF) read into siunitx's macros, a value with its unit written as \qty{10}{\kilo\newton} and a unit alone
 // as \unit{\kilo\newton\metre}. A unit it doesn't know is written literally, which siunitx 3 accepts (\qty{3}{kip/ft}).
-// With the drawing's “Write units with siunitx” off, each writes the text as the modes wrote it before.
+// With the drawing's “Write units with siunitx” off, each writes the text as the modes wrote it before. In a drawing
+// inserted in a document that loads physics, whose \qty is its own, values are written with siunitx's \SI instead.
 
 const PREFIXES: Record<string, string> = { G: 'giga', M: 'mega', k: 'kilo', c: 'centi', m: 'milli', u: 'micro', 'µ': 'micro', 'μ': 'micro', n: 'nano', p: 'pico' };
 const BASES: Record<string, string> = {
   N: 'newton', Pa: 'pascal', 'Ω': 'ohm', ohm: 'ohm', F: 'farad', H: 'henry', V: 'volt', A: 'ampere', Hz: 'hertz', m: 'metre', s: 'second',
-  W: 'watt', J: 'joule', g: 'gram', '°': 'degree', '°C': 'degreeCelsius', K: 'kelvin', C: 'coulomb', rad: 'radian', S: 'siemens', T: 'tesla'
+  W: 'watt', J: 'joule', g: 'gram', '°': 'degree', '°C': 'degreeCelsius', K: 'kelvin', C: 'coulomb', rad: 'radian', S: 'siemens', T: 'tesla',
+  // never literally: TeX reads % as a comment
+  '%': 'percent'
 };
 const POWERS: Record<string, string> = { '2': '\\squared', '3': '\\cubed' };
 
@@ -49,7 +52,7 @@ export function siUnit(typed: string): string | null {
 /** A unit siunitx can take literally: plain letters, digits and / . ^, the TeX spacing written as siunitx's product. */
 const literal = (typed: string) => {
   const text = typed.replace(/\$/g, '').replace(/\\[,;]|\s+/g, '.').trim();
-  return /^[A-Za-z%][A-Za-z0-9%/.^{}-]*$/.test(text) ? text : null;
+  return /^[A-Za-z][A-Za-z0-9/.^{}-]*$/.test(text) ? text : null;
 };
 
 /** A number as typed, with a typographic minus made plain. */
@@ -60,7 +63,8 @@ const NUMBER = /^\s*([-+−]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][-+−]?\d+)?)\s*
  * its packages (Insert adds it to the document through documentLoads, like any other package). Off, every method
  * writes what the modes wrote before siunitx, so a drawing without the switch exports exactly as it did.
  */
-export function unitWriter(on: boolean) {
+export function unitWriter(on: boolean, physics = false) {
+  const qty = physics ? '\\SI' : '\\qty';
   const writer = {
     on,
     used: false,
@@ -68,7 +72,7 @@ export function unitWriter(on: boolean) {
     qty(value: string, unit: string) {
       if (!on) return `$${value}$\\,${unit}`;
       writer.used = true;
-      return `\\qty{${value}}{${siUnit(unit) ?? literal(unit) ?? unit}}`;
+      return `${qty}{${value}}{${siUnit(unit) ?? literal(unit) ?? unit}}`;
     },
     /** maths, then a value: $R_{Ay} = \qty{10}{\kilo\newton}$; off, $R_{Ay} = 10$\,kN */
     equals(maths: string, value: string, unit: string) {
@@ -100,16 +104,18 @@ export function unitWriter(on: boolean) {
       const macros = unit && (siUnit(unit) ?? literal(unit));
       if (!macros) return null;
       writer.used = true;
-      return `\\qty{${number[1].replace(/−/g, '-')}}{${macros}}`;
+      // 2,200: a thousands comma, which siunitx would read as a decimal one
+      return `${qty}{${number[1].replace(/−/g, '-').replace(/^([-+]?\d{1,3}),(\d{3})$/, '$1$2')}}{${macros}}`;
     },
     /** An axis title ending in a unit in brackets, Load (kN) or σ [MPa], with the unit as \unit when it's a known one. */
     title(text: string) {
       if (!on) return text;
-      return text.replace(/([([])\s*([^()[\]]+?)\s*([)\]])\s*$/, (whole, open: string, unit: string, close: string) => {
+      // after a space (or nothing), so G(s) stays maths
+      return text.replace(/(^|\s)([([])\s*([^()[\]]+?)\s*([)\]])\s*$/, (whole, space: string, open: string, unit: string, close: string) => {
         const macros = siUnit(unit);
         if (!macros) return whole;
         writer.used = true;
-        return `${open}\\unit{${macros}}${close}`;
+        return `${space}${open}\\unit{${macros}}${close}`;
       });
     }
   };

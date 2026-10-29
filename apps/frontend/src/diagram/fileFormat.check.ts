@@ -1,6 +1,6 @@
 // Self-check for the diagram file format. Run:
 // npx esbuild apps/frontend/src/diagram/fileFormat.check.ts --bundle --platform=node --log-level=warning | node
-import { diagramFileText, hasDrawing, readDiagramFile, tikzDocument } from './fileFormat';
+import { diagramFileText, forPhysics, hasDrawing, readDiagramFile, tikzDocument } from './fileFormat';
 import type { DiagramFile } from './types';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -122,6 +122,15 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
   );
   const v3 = await readDiagramFile(await diagramFileText({ ...circuit, style: { siUnits: true } }, code));
   eq([v3.diagram?.version, v3.edited], [3, false], 'version 3 reads back');
+  // for a document that loads physics: \qty becomes \SI, in the text and in the drawing, which still reads as drawn
+  const si = { body: '\\begin{tikzpicture}\n\\node {\\qty{10}{\\kilo\\newton}};\n\\end{tikzpicture}\n', packages: ['tikz', 'siunitx'], libraries: [] };
+  const siFile = await diagramFileText({ ...structure, style: { siUnits: true } }, si);
+  const forDoc = await readDiagramFile((await forPhysics(siFile))!);
+  eq([forDoc.code.includes('\\node {\\SI{10}{\\kilo\\newton}};'), forDoc.code.includes('\\qty'), forDoc.edited, forDoc.diagram?.style, forDoc.diagram?.version], [true, false, false, { siUnits: true, physics: true }, 3], 'physics: \\SI, as drawn');
+  const byHand = await diagramFileText(structure, si, `${tikzDocument(si)}% mine\n`);
+  eq([(await forPhysics(byHand))?.includes('\\qty'), (await readDiagramFile((await forPhysics(byHand))!)).edited], [false, true], 'edited by hand: the text only, still edited');
+  eq(await forPhysics(await diagramFileText(circuit, code)), null, 'nothing to change');
+
   for (const bad of [{ ...circuit, sets: 'spx-mech' }, { ...circuit, sets: [1] }, { ...circuit, version: 4 }]) {
     const text = `${tikzDocument(code)}% spectrum-diagram v1 ${btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(bad))))} 0123456789abcdef\n`;
     eq((await readDiagramFile(text)).diagram, null, `opens as code: ${JSON.stringify(bad).slice(-30)}`);

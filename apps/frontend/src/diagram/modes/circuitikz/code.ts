@@ -22,6 +22,8 @@ export interface CircuitStyle {
   siunitx?: boolean;
   /** values that read as a number and a unit (10 kΩ, 4.7 µF) are written with siunitx's \qty (units.ts) */
   siUnits?: boolean;
+  /** with siUnits, values as \SI, as the document the drawing went in loads physics (units.ts) */
+  physics?: boolean;
   /** logic gates: left out, as the symbols; ieee needs circuitikz 1.1 (2020) */
   logic?: 'american' | 'european' | 'ieee';
   /** a European gate's inverted output: left out, circuitikz's triangle */
@@ -58,6 +60,7 @@ export function readStyle(raw: Record<string, unknown>): CircuitStyle {
     ...(voltageDir ? { voltageDir } : null),
     ...(raw.siunitx === true ? { siunitx: true } : null),
     ...(raw.siUnits === true ? { siUnits: true } : null),
+    ...(raw.physics === true ? { physics: true } : null),
     ...(logic && logic !== preset ? { logic } : null),
     ...(raw.notSymbol === 'circle' ? { notSymbol: 'circle' as const } : null),
     ...(diodes ? { diodes } : null),
@@ -155,7 +158,7 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
     return PARTS.get(el.type)?.set ? `(${nameOf(el)}-${end.pin})` : `(${nameOf(el)}.${end.pin})`;
   };
 
-  const units = unitWriter(!!style.siUnits);
+  const units = unitWriter(!!style.siUnits, !!style.physics);
   const value = (text: string) => {
     if (style.siUnits) return units.typed(text) ?? maths(text);
     const si = style.siunitx && /^\s*([^<>]*)<([^<>]+)>\s*$/.exec(text);

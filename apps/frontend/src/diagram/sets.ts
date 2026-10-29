@@ -89,20 +89,24 @@ export function documentLoads(language: string, loads: Loads): Loads & { refused
  * (checked by compile tests in TeX Live 2026). Only those: a clash between two of the user's own packages shows in
  * their own compile.
  */
-const CLASHES: { loads: string; library?: true; writes: string; message: string }[] = [
+const CLASHES: { loads: string; library?: true; writes: string; message: string; fixed?: true }[] = [
   { loads: 'stanli', writes: 'circuitikz', message: 'Springs draw wrongly when stanli is loaded.' },
   { loads: 'kinematikz', writes: 'circuitikz', message: 'kinematikz changes circuitikz’s ground symbol.' },
   { loads: 'circuits.ee.IEC', library: true, writes: 'circuitikz', message: 'The circuits.ee.IEC library changes circuitikz’s parts. Load it before circuitikz, or insert the figure as an image.' },
   { loads: 'quantikz', writes: 'tikz-cd', message: 'quantikz restyles every tikz-cd diagram, this one included.' },
-  { loads: 'chronology', writes: 'siunitx', message: 'chronology and siunitx cannot load together. Write the value without a unit, or insert the figure as an image.' }
+  { loads: 'chronology', writes: 'siunitx', message: 'chronology and siunitx cannot load together. Write the value without a unit, or insert the figure as an image.' },
+  // physics's \qty takes the place of siunitx's, in either order (“Missing $ inserted”); Insert writes \SI (forPhysics)
+  { loads: 'physics', writes: 'siunitx', message: 'physics has its own \\qty, so Insert writes the figure’s values with siunitx’s \\SI instead.', fixed: true }
 ];
 
-export type Clash = { with: string; message: string };
+/** fixed: Insert puts it right itself, so the figure needn't go in as an image */
+export type Clash = { with: string; message: string; fixed?: true };
 
 /** The clashes between what a figure writes and what the project's preamble loads (its packages and TikZ libraries). */
 export function clashesWith(figure: Loads, project: { packages: Set<string>; libraries: Set<string> }): Clash[] {
   return CLASHES.filter((row) => figure.packages.includes(row.writes) && (row.library ? project.libraries : project.packages).has(row.loads)).map((row) => ({
     with: row.library ? `the ${row.loads} library` : row.loads,
-    message: row.message
+    message: row.message,
+    ...(row.fixed && { fixed: row.fixed })
   }));
 }

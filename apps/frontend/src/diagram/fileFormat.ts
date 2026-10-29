@@ -35,7 +35,7 @@ function phaseE(diagram: DiagramFile) {
   const style = diagram.style;
   if (style.siUnits === true || style.physics === true || diagram.sets?.some((set) => NEWER_SETS.includes(set))) return true;
   try {
-    if (diagram.pkg === 'circuitikz') return !!(style.logic || style.notSymbol) || asCircuit(diagram.model).elements.some((el) => NEWER_SETS.includes(PARTS.get(el.type)?.set ?? ''));
+    if (diagram.pkg === 'circuitikz') return !!(style.logic || style.notSymbol) || asCircuit(diagram.model).elements.some((el) => el.kind !== 'wire' && NEWER_SETS.includes(PARTS.get(el.type)?.set ?? ''));
     if (diagram.pkg === 'structures') return style.diagrams !== undefined;
   } catch {
     // a model of the wrong shape: its mode refuses it anyway
@@ -89,13 +89,31 @@ const fromBase64 = (b64: string) => new TextDecoder().decode(Uint8Array.from(ato
  */
 export async function diagramFileText(diagram: DiagramFile, code: DiagramCode, edited?: string) {
   const drawn = drawnText(diagram, code);
-  const above = edited === undefined ? drawn : edited.endsWith('\n') ? edited : `${edited}\n`;
-  const mark = diagram.language === 'mermaid' ? '%%' : diagram.language === 'typst' ? '//' : '%';
+  return withLastLine(diagram, edited === undefined ? drawn : edited.endsWith('\n') ? edited : `${edited}\n`, drawn);
+}
+
+/** The text above, then the drawing's last line with the hash of the text it draws. */
+async function withLastLine(diagram: DiagramFile, above: string, drawn: string) {
+  const mark =diagram.language === 'mermaid' ? '%%' : diagram.language === 'typst' ? '//' : '%';
   // no sets: no sets key and version 1, as before sets, unless the drawing has parts a build from before doesn't know
   const { sets, ...rest } = diagram;
   const version = phaseE(diagram) ? 3 : sets?.length || newerParts(diagram) ? 2 : 1;
   const kept: DiagramFile = sets?.length ? { ...rest, sets, version } : { ...rest, version };
   return `${above}${mark} spectrum-diagram v1 ${toBase64(JSON.stringify(kept))} ${await hashOf(drawn)}\n`;
+}
+
+/**
+ * A TikZ diagram file for a document that loads physics, whose \qty takes the place of siunitx's: its values as
+ * siunitx's \SI, and its drawing told so (style.physics), so the composer goes on writing \SI. Null when it has no \qty.
+ */
+export async function forPhysics(text: string): Promise<string | null> {
+  const qty = /\\qty(?=\{)/g;
+  if (!text.match(qty)) return null;
+  const { code, diagram, edited } = await readDiagramFile(text);
+  // code, or edited by hand: only the text changes (the last line has no backslash)
+  if (!diagram || edited) return text.replace(qty, '\\SI');
+  const drawn = code.replace(qty, '\\SI');
+  return withLastLine({ ...diagram, style: { ...diagram.style, physics: true } }, drawn, drawn);
 }
 
 /**
