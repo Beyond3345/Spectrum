@@ -24,12 +24,12 @@ try {
 eq(threw, true, 'a preset this build doesn’t have throws, so the file opens as code');
 
 // a preset's conventions are copied from Settings › Composer into a new drawing's style; others aren't
-const defaults = { moments: 'positive', mohrShear: 'up' } as const;
+const defaults = { moments: 'positive', mohrShear: 'up', siUnits: true } as const;
 eq(formStyle(defaults, newFormModel('test')), {}, 'the test preset uses none');
 const conventions: FormPreset = { ...test, id: 'conventions', conventions: ['mohrShear'] };
 PRESETS.push(conventions);
 eq(formStyle(defaults, newFormModel('conventions')), { mohrShear: 'up' }, 'a preset’s own conventions only');
-eq(formStyle({ moments: 'tension', mohrShear: 'down' }, newFormModel('conventions')), { mohrShear: 'down' }, 'as the settings have them now');
+eq(formStyle({ moments: 'tension', mohrShear: 'down', siUnits: false }, newFormModel('conventions')), { mohrShear: 'down' }, 'as the settings have them now');
 PRESETS.pop();
 
 console.log('form.check: ok');

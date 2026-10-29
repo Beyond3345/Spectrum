@@ -1564,6 +1564,16 @@ function ComposerPane() {
         />
         <div className="field-hint">With τ positive downward, 2θ on the circle turns the same way as θ on the element.</div>
       </div>
+      <label className="checkbox-row">
+        <input type="checkbox" role="switch" checked={settings.composerSiUnits} onChange={(e) => update({ composerSiUnits: e.target.checked })} />
+        <span>
+          Write units with siunitx
+          <span className="field-hint">
+            A value such as 10 kN is written as {'\\qty{10}{\\kilo\\newton}'} and a unit alone as {'\\unit{\\kilo\\newton\\metre}'}, and Insert adds siunitx to the
+            document. Not in Typst or Mermaid drawings.
+          </span>
+        </span>
+      </label>
     </>
   );
 }

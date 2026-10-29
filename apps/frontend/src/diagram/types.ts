@@ -15,6 +15,8 @@ export interface ComposerDefaults {
   moments: 'tension' | 'positive';
   /** Mohr's circle: τ positive downward, clockwise shear plotted above, or τ positive upward */
   mohrShear: 'down' | 'clockwise-above' | 'up';
+  /** values as siunitx's \qty and units as \unit (units.ts), in the modes that write them */
+  siUnits: boolean;
 }
 export interface DiagramMode<M = unknown> {
   id: TikzPackage | 'mermaid' | 'fletcher';
@@ -35,7 +37,7 @@ export interface DiagramMode<M = unknown> {
   /** sets: the drawing's other symbol sets, shown after the mode's own */
   Rail?: React.ComponentType<{ onPick(tool: string): void; tool: string; sets?: string[] }>;
   Inspector?: React.ComponentType<{ model: M; onChange(m: M): void; selection?: string[] }>;
-  StyleMenu?: React.ComponentType<{ style: Record<string, unknown>; onChange(s: Record<string, unknown>): void }>;
+  StyleMenu?: React.ComponentType<{ style: Record<string, unknown>; onChange(s: Record<string, unknown>): void; model?: M }>;
   // Copy, Paste, Duplicate and Delete of the selection, through the frame's keys and buttons; a mode without them
   // handles its own
   /** what Copy keeps of these items (JSON) */

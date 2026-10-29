@@ -51,8 +51,8 @@ const close = (actual: number, expected: number, what: string, tolerance = 1e-9)
 
 // the preset: a new drawing takes the shear axis from Settings › Composer
 eq(presetFor('mohr'), MOHR, 'the preset is listed');
-eq(formStyle({ moments: 'tension', mohrShear: 'down' }, newFormModel('mohr')), { mohrShear: 'down' }, 'τ positive downward by default');
-eq(formStyle({ moments: 'tension', mohrShear: 'up' }, newFormModel('mohr')), { mohrShear: 'up' }, 'or as the settings say');
+eq(formStyle({ moments: 'tension', mohrShear: 'down', siUnits: true }, newFormModel('mohr')), { mohrShear: 'down', siUnits: true }, 'τ positive downward and siunitx by default');
+eq(formStyle({ moments: 'tension', mohrShear: 'up', siUnits: false }, newFormModel('mohr')), { mohrShear: 'up', siUnits: false }, 'or as the settings say');
 
 // the code: X drawn below the σ axis for τ positive downward and clockwise shear above, above it for τ positive upward
 const code = (style: Record<string, unknown>, values = {}) => formCode({ preset: 'mohr', values: { ...MOHR.values, ...values } }, style);
@@ -82,6 +82,12 @@ eq([between.includes('$\\tau_{\\max} = \\tau_{\\mathrm{abs}} = 65$'), (between.m
 const outside = code({}, { threeD: true, sigmaZ: 100 }).body;
 eq([outside.includes('$\\tau_{\\max} = 65$'), outside.includes('$\\tau_{\\mathrm{abs}} = 72.5$')], [true, true], 'σz outside: a label each');
 eq((code({}, { threeD: true, sigmaZ: 0 }).body.match(/\\draw\[line width=[^\]]*\] \([^)]*\) circle/g) ?? []).length, 3, 'three circles');
+// siunitx: the element's stresses as \qty, the axis's unit as \unit; a drawing from before the switch as it was
+const si = code({ siUnits: true });
+eq(si.packages, ['tikz', 'siunitx'], 'siunitx loaded');
+eq([si.body.includes('{\\qty{80}{\\mega\\pascal}}'), si.body.includes('{(\\unit{\\mega\\pascal})}')], [true, true], 'stresses and the unit');
+eq(down.body.includes('{$80$\\,MPa}') && down.body.includes('{(MPa)}'), true, 'off: as typed');
+eq(code({ siUnits: true }, { unit: 'ksi' }).body.includes('\\qty{80}{ksi}'), true, 'an unknown unit literally');
 // a pure hydrostatic state: a point, nothing to divide by zero
 eq(/NaN|Infinity/.test(code({}, { sigmaX: 10, sigmaY: 10, tauXY: 0, elements: 'all' }).body), false, 'a point circle');
 

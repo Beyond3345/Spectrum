@@ -17,6 +17,14 @@ eq(plotCode(emptyPlot()).body.split('\n'), [
   ''
 ], 'a new plot');
 eq(plotCode(emptyPlot()).packages, ['pgfplots'], 'packages');
+{
+  // siunitx: an axis title's unit in brackets as \unit, when the drawing has the switch on
+  const loaded = { ...emptyPlot(), xlabel: 'Displacement (mm)', ylabel: 'Load [kN]' };
+  const on = plotCode(loaded, { siUnits: true });
+  eq([on.body.includes('xlabel={Displacement (\\unit{\\milli\\metre})}'), on.body.includes('ylabel={Load [\\unit{\\kilo\\newton}]}'), on.packages], [true, true, ['pgfplots', 'siunitx']], 'axis units with siunitx');
+  eq(plotCode(loaded).body.includes('xlabel={Displacement (mm)}'), true, 'off: as typed');
+  eq(plotCode(emptyPlot(), { siUnits: true }).packages, ['pgfplots'], 'no unit, no siunitx');
+}
 
 const model: PlotModel = {
   ...emptyPlot(),

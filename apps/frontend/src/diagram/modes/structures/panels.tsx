@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import Icon from '../../../app/Icon';
 import Segmented from '../../../app/Segmented';
 import Select from '../../../app/Select';
+import { UnitsSwitch } from '../../controls';
 import { VIEWS, formatValue, readStyle } from './draw';
 import type { StructStyle } from './draw';
 import { UNITS, asStructure, fitLoads, frameOf, memberName, removeIds } from './model';
@@ -542,6 +543,7 @@ export function StructureStyleMenu({ style: raw, onChange }: { style: Record<str
         <input type="checkbox" role="switch" checked={style.names} onChange={(e) => set({ names: e.target.checked })} />
         <span>Joint letters</span>
       </label>
+      <UnitsSwitch checked={style.siUnits} onChange={(siUnits) => set({ siUnits })} />
       <Field label={`Size: ${style.width} cm across`}>
         {(id) => <input id={id} type="range" min={4} max={16} step={0.5} value={style.width} onChange={(e) => set({ width: Number(e.target.value) })} />}
       </Field>

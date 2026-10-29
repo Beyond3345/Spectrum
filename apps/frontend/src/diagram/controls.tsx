@@ -60,3 +60,19 @@ export function ColourField({ label, value, fallback, onChange }: { label: strin
     </div>
   );
 }
+
+/**
+ * Style › Write units with siunitx, in the modes that write values and units (never Typst or Mermaid). A drawing
+ * starts with Settings › Composer's choice; one made before the switch has it off, so it exports as it did.
+ */
+export function UnitsSwitch({ checked, onChange, hint }: { checked: boolean; onChange(on: boolean): void; hint?: string }) {
+  return (
+    <label className="checkbox-row">
+      <input type="checkbox" role="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span>
+        Write units with siunitx
+        <span className="field-hint">{hint ?? 'A value such as 10 kN is written as \\qty{10}{\\kilo\\newton}, and the document loads siunitx.'}</span>
+      </span>
+    </label>
+  );
+}
