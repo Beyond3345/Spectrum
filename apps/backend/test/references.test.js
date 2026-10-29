@@ -444,6 +444,23 @@ test('detects whether the .bib is loaded by a .tex file', () => {
   assert.equal(texIncludesBib(['\\bibliography{other}'], 'refs/references.bib'), false);
 });
 
+test('a Typst #bibliography and a Markdown front matter’s bibliography load the .bib too', async (t) => {
+  assert.equal(texIncludesBib(['#bibliography("refs/references.bib")'], 'references.bib'), true);
+  assert.equal(texIncludesBib(['#bibliography(("a.bib", "references.bib"), style: "apa")'], 'references.bib'), true);
+  assert.equal(texIncludesBib(['// #bibliography("references.bib")'], 'references.bib'), false);
+  assert.equal(texIncludesBib(['---\ntitle: T\nbibliography: references.bib\n---\n'], 'references.bib'), true);
+  assert.equal(texIncludesBib(['---\nbibliography:\n  - a.bib\n  - "refs/references.bib"\n---\n'], 'references.bib'), true);
+  assert.equal(texIncludesBib(['---\nbibliography: a.bib\n---\n'], 'references.bib'), false);
+  // and an add goes to the one the document loads
+  for (const main of [{ 'main.typ': '= Intro\n#bibliography("refs.bib")\n' }, { 'main.md': '---\nbibliography: refs.bib\n---\n# Intro\n' }]) {
+    const [file] = Object.keys(main);
+    const root = await tempProject({ ...main, 'refs.bib': '', 'references.bib': '', '.spectrum/project.json': JSON.stringify({ id: `bib-${file.replace(".", "-")}`, name: 'P', mainFile: file }) });
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const out = await resolveReferences({ projectRoot: root, input: '10.1234/journal.5' });
+    assert.deepEqual([out.bibFile, out.bibIncluded], ['refs.bib', true], file);
+  }
+});
+
 test('picks the target .bib', () => {
   assert.equal(pickBibTarget('/p', ['a.bib', 'references.bib'], ''), 'references.bib');
   assert.equal(pickBibTarget('/p', ['sub/z.bib', 'b.bib', 'a.tex'], ''), 'b.bib');
