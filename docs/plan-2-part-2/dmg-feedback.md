@@ -158,7 +158,7 @@ Agents at medium effort; the vector composer at high effort, as the composer was
    - A focused round on lanes 2 to 4 together (lenses: code and file compatibility, canvas, live use in the browser pane).
    - A small round on lane 1 (lenses: detection, sandbox).
    - A small round on lane 5 (lenses: folder data and sync between computers, keyboard and screen reader, live use).
-6. **Builds:** Windows run, then test DMG 5. The user tries it, then phase D's release continues.
+6. **Builds:** test DMG 5, with no Windows CI run (the user's word, 29 October 2026). After the build `feat/2.0` is pushed to GitHub and `docs/WINDOWS_TEST_RELEASE.md` is written, which the user gives to an agent on the Windows computer to test, build and release the Windows version.
 
 ## Decisions (approved by the user on 29 October 2026, as proposed)
 
