@@ -94,6 +94,7 @@ const FLUENT = {
   graduationcap: 'hat_graduation',
   hammer: 'wrench',
   highlighter: 'highlight',
+  house: 'home',
   'info.circle': 'info',
   keyboard: 'keyboard',
   lightbulb: 'lightbulb',
