@@ -3,7 +3,7 @@
 // npx esbuild apps/frontend/src/diagram/modes/vectors/vectors.check.ts --bundle --platform=node --log-level=warning | node
 import { vectorCode, readStyle } from './code';
 import { addPanel, applyTool, clipLine, copyIds, dividingSegment, lineThroughPoints, newAxes, pasteInto, projections, removeIds, resolve, rightCorners, triangleMidpoints } from './model';
-import type { VectorModel } from './model';
+import type { Item, Link, VPoint, VectorModel } from './model';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -91,7 +91,9 @@ eq(rightCorners({ x: 0, y: 0 }, { x: 4, y: 0 }, true)[1], { x: 0.35, y: -0.35 },
   closePt(resolve(m).get(copyOfM.id), 5, 1 / 3, 'and sits a step away');
   // tools
   const vec = applyTool(m, 'vector', ['O', 'B'])!;
-  eq(vec.model.items.find((i) => i.id === vec.id), { id: vec.id, kind: 'vector', a: 'O', b: 'B', width: 'very thick' }, 'a vector');
+  eq(vec.model.items.find((i) => i.id === vec.id), { id: vec.id, kind: 'vector', a: 'O', b: 'B' }, 'a vector, its look left to the Style');
+  const old = applyTool(m, 'vector', ['O', 'B'], false)!;
+  eq(old.model.items.find((i) => i.id === old.id), { id: old.id, kind: 'vector', a: 'O', b: 'B', width: 'very thick' }, 'very thick where the Style has no vector thickness');
   eq(applyTool(m, 'vector', ['O', 'O']), null, 'not to itself');
   eq(applyTool(m, 'polygon', ['O', 'A']), null, 'a polygon needs three');
   const axes = newAxes(m, 'g1');
@@ -103,7 +105,8 @@ eq(rightCorners({ x: 0, y: 0 }, { x: 4, y: 0 }, true)[1], { x: 0.35, y: -0.35 },
 // ─── the code ───
 
 const code = (m: VectorModel, style: Record<string, unknown> = {}) => vectorCode(m, style);
-eq(readStyle({}), { scale: 1, grid: 0.5, tips: 'stealth' }, 'default style');
+eq(readStyle({}), { scale: 1, grid: 0.5, tips: 'stealth', tipSize: 1, pointSize: 2 }, 'default style');
+eq(readStyle({ width: 'huge', vectorWidth: 1.5, colour: ' ', tips: 'none' }), { scale: 1, grid: 0.5, tips: 'stealth', tipSize: 1, pointSize: 2, vectorWidth: 1.5 }, 'a style read back keeps what it can');
 
 {
   const { body, packages, libraries } = code(dividingSegment(), { scale: 1.1 });
@@ -160,6 +163,91 @@ eq(readStyle({}), { scale: 1, grid: 0.5, tips: 'stealth' }, 'default style');
   eq(code(dropped).body.includes('\\draw[dashed] (U) -- (U |- 0,0);'), true, 'a dashed drop to the axis');
   const twice = { ...m, points: [...m.points, { ...m.points[1], id: 'U2' }] };
   eq(code(twice).body.includes('\\coordinate (U2) at (2,5);'), true, 'a second U in a panel is renamed');
+}
+
+// ─── every look its own ───
+
+{
+  // one line for an item, and the libraries the drawing needs
+  const one = (item: Item, style: Record<string, unknown> = {}, extra: VPoint[] = []) => {
+    const m: VectorModel = { panels: [{ id: 'g1', shift: 0 }], points: [{ id: 'A', name: 'A', x: 0, y: 0, panel: 'g1' }, { id: 'B', name: 'B', x: 2, y: 1, panel: 'g1' }, ...extra], items: [item] };
+    const { body, libraries } = code(m, style);
+    return [body.split('\n').filter((l) => l.trim() && !l.includes('\\coordinate') && !l.includes('tikzpicture')).map((l) => l.trim()), libraries, body.split('\n')[0]];
+  };
+  const link = (patch: Partial<Link> = {}): Link => ({ id: 'l', kind: 'vector', a: 'A', b: 'B', ...patch });
+  eq(one(link()), [['\\draw[->] (A) -- (B);'], [], '\\begin{tikzpicture}[>=stealth]'], 'a plain vector, the Style’s tip');
+  // thickness by name or in pt, dashes, opacity and colour (a mix, or one picked)
+  eq(one(link({ width: 'semithick' }))[0], ['\\draw[->, semithick] (A) -- (B);'], 'a named thickness');
+  eq(one(link({ width: 0.7 }))[0], ['\\draw[->, line width=0.7pt] (A) -- (B);'], 'a thickness in pt');
+  eq(one(link({ kind: 'segment', dash: 'dotted' }))[0], ['\\draw[dotted] (A) -- (B);'], 'dotted');
+  eq(one(link({ kind: 'segment', dash: 'dash dot' }))[0], ['\\draw[dash dot] (A) -- (B);'], 'dash dot');
+  eq(one(link({ kind: 'segment', dash: [4, 1.5] }))[0], ['\\draw[dash pattern=on 4pt off 1.5pt] (A) -- (B);'], 'a custom dash');
+  eq(one(link({ kind: 'segment', dashed: true, dash: 'solid' }))[0], ['\\draw (A) -- (B);'], 'a dash set takes over from 2.0’s dashed');
+  eq(one(link({ kind: 'segment', opacity: 0.4, colour: 'green!60!black' }))[0], ['\\draw[green!60!black, opacity=0.4] (A) -- (B);'], 'opacity and a mix');
+  eq(one(link({ kind: 'segment', colour: '#ff8000' }))[0], ['\\draw[color={rgb,255:red,255;green,128;blue,0}] (A) -- (B);'], 'a picked colour');
+  // tips at each end, their size, double-headed, and one halfway
+  eq(one(link({ end: 'latex' })), [['\\draw[-{Latex}] (A) -- (B);'], ['arrows.meta'], '\\begin{tikzpicture}[>=stealth]'], 'its own tip, from arrows.meta');
+  eq(one(link({ start: 'bar', end: 'open triangle', tipSize: 1.5 }))[0], ['\\draw[{Bar[scale=1.5]}-{Triangle[open, scale=1.5]}] (A) -- (B);'], 'a tip at each end, larger');
+  eq(one(link({ start: 'stealth' }))[0], ['\\draw[{Stealth}-{Stealth}] (A) -- (B);'], 'double-headed');
+  eq(one(link({ end: 'none' }))[0], ['\\draw (A) -- (B);'], 'a vector with no tip');
+  eq(one(link({ kind: 'segment', end: 'to' }))[0], ['\\draw[-{To}] (A) -- (B);'], 'a segment with a tip');
+  eq(one(link({ kind: 'segment', middle: true })).slice(0, 2), [['\\draw[postaction={decorate, decoration={markings, mark=at position 0.5 with {\\arrow{Stealth}}}}] (A) -- (B);'], ['arrows.meta', 'decorations.markings']], 'an arrow at the middle, markings only when used');
+  // the Style's defaults, for what has none of its own; an item's own wins
+  const styled = { tips: 'triangle', tipSize: 2, width: 'thick', vectorWidth: 1.4, colour: 'teal', pointSize: 3 };
+  eq(one(link(), styled), [['\\draw[->, line width=1.4pt, teal] (A) -- (B);'], ['arrows.meta'], '\\begin{tikzpicture}[>={Triangle[scale=2]}]'], 'a vector takes the Style');
+  eq(one(link({ width: 'thin', colour: 'black' }), styled)[0], ['\\draw[->, thin] (A) -- (B);'], 'its own thickness and colour win');
+  eq(one(link({ kind: 'segment' }), styled)[0], ['\\draw[thick, teal] (A) -- (B);'], 'a segment takes the line thickness');
+  eq(one(link(), { tips: 'latex' })[2], '\\begin{tikzpicture}[>=latex]', 'TikZ’s own latex needs no library');
+  // highlights, polygons, marks and drops
+  eq(one(link({ kind: 'highlight' }), styled)[0], ['\\draw[line width=2.5pt, blue!50] (A) -- (B);'], 'a highlight keeps its look');
+  eq(one(link({ kind: 'highlight', width: 4, colour: 'orange', opacity: 0.5 }))[0], ['\\draw[line width=4pt, orange, opacity=0.5] (A) -- (B);'], 'a highlight of its own');
+  const C: VPoint = { id: 'C', name: 'C', x: 0, y: 2, panel: 'g1' };
+  eq(one({ id: 'p', kind: 'polygon', points: ['A', 'B', 'C'], fill: 'blue!10', fillOpacity: 0.5, colour: 'blue', width: 'thick', opacity: 0.8 }, {}, [C])[0], ['\\draw[fill=blue!10, fill opacity=0.5, thick, blue, draw opacity=0.8] (A) -- (B) -- (C) -- cycle;'], 'a polygon’s fill and line');
+  eq(one({ id: 'p', kind: 'polygon', points: ['A', 'B', 'C'], fill: '#000080' }, {}, [C])[0], ['\\draw[fill={rgb,255:red,0;green,0;blue,128}] (A) -- (B) -- (C) -- cycle;'], 'a picked fill');
+  eq(one({ id: 'd', kind: 'drop', from: 'B', axis: 'x', dash: 'dotted', colour: 'gray' })[0], ['\\draw[dotted, gray] (B) -- (B |- 0,0);'], 'a dotted grey drop');
+  eq(one({ id: 'd', kind: 'drop', from: 'B', axis: 'x', dash: 'solid' })[0], ['\\draw (B) -- (B |- 0,0);'], 'a solid drop');
+  eq(one({ id: 'r', kind: 'right', at: 'A', toward: 'B', width: 'thick', colour: 'red' })[0][0].startsWith('\\draw[thick, red] '), true, 'a right-angle mark’s look');
+  // labels' size and colour
+  eq(one(link({ label: { text: '$\\mathbf{a}$', size: 'footnotesize', colour: 'red' } }))[0], ['\\draw[->] (A) -- (B) node[midway, above, font=\\footnotesize, red] {$\\mathbf{a}$};'], 'a vector’s label');
+  eq(one({ id: 't', kind: 'text', panel: 'g1', x: 1, y: 1, text: 'Hi', size: 'Large', colour: '#00ff00' })[0], ['\\node[font=\\Large, color={rgb,255:red,0;green,255;blue,0}] at (1,1) {Hi};'], 'a note’s');
+}
+{
+  // points: size, shape and colour, with the label's
+  const dots = (patch: Partial<VPoint>, style: Record<string, unknown> = {}) =>
+    vectorCode({ panels: [{ id: 'g1', shift: 0 }], points: [{ id: 'P', name: 'P', x: 1, y: 1, panel: 'g1', dot: true, label: { text: '$P$', side: 'above' }, ...patch }], items: [] }, style)
+      .body.split('\n')
+      .slice(2, -2)
+      .map((l) => l.trim());
+  eq(dots({}), ['\\fill (P) circle (2pt) node[above] {$P$};'], 'a dot as before');
+  eq(dots({}, { pointSize: 3, colour: 'blue' }), ['\\fill[blue] (P) circle (3pt) node[above] {$P$};'], 'the Style’s size and colour');
+  eq(dots({ size: 1.5, shape: 'open', colour: 'red' }), ['\\draw[red, fill=white] (P) circle (1.5pt) node[above] {$P$};'], 'an open dot');
+  eq(dots({ shape: 'cross', label: { text: '$P$', side: 'above', size: 'small', colour: 'teal' } }), ['\\draw (P) ++(-2pt,-2pt) -- ++(4pt,4pt) ++(-4pt,0) -- ++(4pt,-4pt);', '\\node[above, font=\\small, teal] at (P) {$P$};'], 'a cross, its label beside it');
+}
+{
+  // axes: colour, thickness, tips, ticks' length and step, the numbers' size and a grid
+  const lines = vectorCode(
+    {
+      panels: [{ id: 'g1', shift: 0 }],
+      points: [],
+      items: [{ id: 'ax', kind: 'axes', panel: 'g1', x: [-1, 2], y: [-1, 1.5], ticks: true, colour: 'gray', width: 'thick', tip: 'latex', tick: 0.1, step: 0.5, numbers: 'tiny', grid: true, gridColour: 'blue!20', gridWidth: 0.2 }]
+    },
+    {}
+  ).body.split('\n');
+  eq(lines.slice(1, 6).map((l) => l.trim()), [
+    '\\draw[line width=0.2pt, blue!20, step=0.5] (-1,-1) grid (2,1.5);',
+    '\\draw[-{Latex}, gray, thick] (-1,0) -- (2,0) node[right] {$x$};',
+    '\\draw[-{Latex}, gray, thick] (0,-1) -- (0,1.5) node[above] {$y$};',
+    '\\foreach \\t in {-0.5,0.5,1,1.5} \\draw[gray, thick] (\\t,0.1) -- (\\t,-0.1) node[below] {\\tiny $\\t$};',
+    '\\foreach \\t in {-0.5,0.5,1} \\draw[gray, thick] (0.1,\\t) -- (-0.1,\\t) node[left] {\\tiny $\\t$};'
+  ], 'axes of their own');
+  const bare = vectorCode({ panels: [{ id: 'g1', shift: 0 }], points: [], items: [{ id: 'ax', kind: 'axes', panel: 'g1', x: [-1, 2], y: [-1, 1], tip: 'none', grid: true }] }, {}).body.split('\n');
+  eq(bare.slice(1, 4).map((l) => l.trim()), ['\\draw[very thin, gray!30] (-1,-1) grid (2,1);', '\\draw (-1,0) -- (2,0) node[right] {$x$};', '\\draw (0,-1) -- (0,1) node[above] {$y$};'], 'no tips, a grey grid');
+}
+{
+  // old models keep their code: 2.0's width and dashed, and no new keys, write what they did
+  const old = { ...dividingSegment(), items: [...dividingSegment().items, { id: 'dd', kind: 'segment' as const, a: 'O', b: 'B', dashed: true, width: 'ultra thick' as const }] };
+  eq(code(old).body.includes('  \\draw[ultra thick, dashed] (O) -- (B);'), true, '2.0’s dashed and width');
+  for (const starter of [lineThroughPoints, dividingSegment, triangleMidpoints, projections]) eq(code(starter()).libraries.filter((l) => l !== 'calc'), [], `${starter.name} needs no new library`);
 }
 
 console.log('vectors.check: ok');
