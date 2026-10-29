@@ -309,8 +309,9 @@ async function typstRuntime(arches) {
 
 /**
  * THIRD_PARTY_NOTICES.md and the licence files it links to go with the app, in frontend/licences at their repository
- * paths, where Settings › System › Licences links to them. The interface's own (apps/frontend/public/licences) are
- * there already.
+ * paths, where Settings › System › Licences links to them (apps/frontend/src/app/Licences.tsx). One without .txt
+ * (LICENSE, COPYING.MPL, a .md) gets .txt, so the browser shows it rather than downloading it. The interface's own
+ * (apps/frontend/public/licences) are there already.
  */
 function licences() {
   const dir = path.join(resourcesDir, 'frontend', 'licences');
@@ -319,8 +320,9 @@ function licences() {
   const links = [...notices.matchAll(/\]\(([^):#]+)\)/g)].map((m) => m[1]).filter((link) => !link.startsWith('apps/frontend/public/'));
   for (const link of new Set(['THIRD_PARTY_NOTICES.md', ...links])) {
     if (!fs.statSync(path.join(root, link)).isFile()) throw new Error(`THIRD_PARTY_NOTICES.md links to ${link}, which isn't a file`);
-    fs.mkdirSync(path.dirname(path.join(dir, link)), { recursive: true });
-    fs.copyFileSync(path.join(root, link), path.join(dir, link));
+    const dest = path.join(dir, /\.txt$/i.test(link) ? link : `${link}.txt`);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(path.join(root, link), dest);
   }
 }
 

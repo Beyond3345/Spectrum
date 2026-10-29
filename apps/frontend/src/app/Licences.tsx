@@ -5,10 +5,14 @@ import Icon from './Icon';
 
 /**
  * Where the app serves a file THIRD_PARTY_NOTICES.md links to: the interface's own licences from public/licences, the
- * rest at their repository paths beside them (scripts/desktop.mjs copies them). Web addresses stay as they are.
+ * rest at their repository paths beside them, with .txt added to a name without it (scripts/desktop.mjs
+ * copies them). Web addresses stay as they are.
  */
-export const licenceUrl = (url: string) =>
-  /^[a-z][a-z0-9+.-]*:|^#/i.test(url) ? url : `/licences/${url.replace(/^apps\/frontend\/public\/licences\//, '')}`;
+export function licenceUrl(url: string) {
+  if (/^[a-z][a-z0-9+.-]*:|^#/i.test(url)) return url;
+  if (url.startsWith('apps/frontend/public/licences/')) return `/licences/${url.slice('apps/frontend/public/licences/'.length)}`;
+  return `/licences/${url}${/\.txt$/i.test(url) ? '' : '.txt'}`;
+}
 
 /** Settings › System › Licences: the third-party notices, each licence a link that opens in the browser. */
 export default function Licences({ onBack }: { onBack: () => void }) {
