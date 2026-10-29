@@ -11,6 +11,7 @@ Written 29 October 2026 after the user tried the release-candidate DMG (`e1b425c
 5. Structures: a switch for each of the axial force, shear force and bending moment diagrams, and a choice of their fill colours.
 6. A new composer for vector diagrams, like the four figures the user pasted (axes with ticks, position vectors, a line through two points, points dividing a segment, midpoints, projections, panels (a), (b) and (c)).
 7. A general composer where the symbols and lines of every package are on by default, for anyone unsure where to start. Plotters (signals, functions) stay out.
+8. The app opens on All projects, a long list of every project, which is messy as a starting page. A separate home page that works like the Finder or Goodnotes: folders shown as icons or as a list, opened by clicking into them, so projects stay organised. All projects stays as it is.
 
 ## What was found
 
@@ -116,17 +117,48 @@ A composer under Others called “General drawing”: the TikZ canvas with every
 - Mixing's clash warnings and “Insert as image” work as they do now.
 - Search finds any symbol in it. The chooser's search also offers it whenever a symbol's own composer is not obvious.
 
+### Projects page
+
+- **Folders:** the page already has folders. They nest, live in the settings (`app/folders.ts`, `projectFolders`) and follow the user to their other computers. A project is in at most one folder, and nothing moves on disk.
+- **Showing them:** folders appear only in the sidebar, and the page opens on All projects. The list and grid layouts, sorting, tags, thumbnails and dragging a project onto a sidebar folder exist already.
+
+### E8. A home page of folders
+
+A new page, Home, at the top of the projects sidebar above All projects. Spectrum opens on it.
+
+- **What it shows:**
+  - The top-level folders first, then the projects in no folder.
+  - Clicking a folder opens it in place, showing its folders and then its projects.
+  - A path at the top (Home › Uni › ENGG1001) goes back up, as do Back and ⌘↑.
+- **Icons or a list:** the same switch as now, remembered for each folder.
+  - **Icons:** large folder tiles and project thumbnails, as in Goodnotes, each with its name and date. A folder tile shows how many projects it holds.
+  - **List:** rows with a kind, a date and a count, opening on a click like the Finder's list.
+- **Organising:**
+  - A New menu: New project here, New folder here.
+  - Drag a project or a folder onto a folder tile, a sidebar folder or a part of the path above.
+  - Right-click a folder to rename it, choose its colour or delete it. Deleting a folder keeps its projects; they move up a level.
+  - Select several with ⌘ and ⇧, then move them together.
+  - Each folder sorts by name, date changed or date created.
+- **Folder colours:** a small set of colours (blue, purple, red, orange, green, grey), kept with the folder. A folder with no colour is blue. Older builds of 2.0 ignore the colour.
+- **Search:** searching on Home looks through every folder and shows each result with its folder's path.
+- **All projects:** stays as it is, and a project's tags, archive and GitHub views are unchanged.
+- **Settings:** Settings › General gets “Open Spectrum on”: Home or All projects. Home is the default.
+- **Accessibility:** keyboard use throughout: arrows move the focus, Return opens and Space selects. Screen reader names for tiles and rows.
+- **Not included:** starring, as in Goodnotes, unless the user asks.
+
 ## Order and lanes
 
 Agents at medium effort; the vector composer at high effort, as the composer was before.
 
 1. **Lane 1 (E1, agents)** and **lane 2 (E2 siunitx, E3 logic styles, E4 labels)** start together.
 2. **Lane 3 (E6 and E7, vectors and general drawing)** also starts at once. It writes no units, and E7 only gathers sets that exist already.
-3. **Lane 4 (E5, structures)** starts when lane 2 merges, since it uses lane 2's unit writer.
-4. **Reviews:**
+3. **Lane 5 (E8, Home)** starts at once. It is frontend only and touches the projects page and the folder settings, which no other lane does.
+4. **Lane 4 (E5, structures)** starts when lane 2 merges, since it uses lane 2's unit writer.
+5. **Reviews:**
    - A focused round on lanes 2 to 4 together (lenses: code and file compatibility, canvas, live use in the browser pane).
    - A small round on lane 1 (lenses: detection, sandbox).
-5. **Builds:** Windows run, then test DMG 5. The user tries it, then phase D's release continues.
+   - A small round on lane 5 (lenses: folder data and sync between computers, keyboard and screen reader, live use).
+6. **Builds:** Windows run, then test DMG 5. The user tries it, then phase D's release continues.
 
 ## Decisions to confirm
 
@@ -138,3 +170,5 @@ Agents at medium effort; the vector composer at high effort, as the composer was
 | E-d | Logic gates default to “As the symbols” (American unless the drawing is European). |
 | E-e | Vector diagrams are TikZ only this round; 3D and Typst later. |
 | E-f | The general composer is named “General drawing” and lives under Others. |
+| E-g | Spectrum opens on Home by default, with a Settings choice to open on All projects instead. |
+| E-h | Folders get a colour; starring is left out unless wanted. |

@@ -12,7 +12,7 @@ The detailed sections, written against the code at `50bedf6` and each checked by
 | Diagram composer: categories, new composers and mixing symbol sets | [composer-categories.md](plan-2-part-2/composer-categories.md) |
 | Diagram composer: Structures and Mohr's circle | [structures.md](plan-2-part-2/structures.md) |
 | Spelling and grammar: Harper, Hunspell, languages, detection and LanguageTool | [languages.md](plan-2-part-2/languages.md) |
-| Feedback from the release-candidate DMG: agents found in their apps, siunitx, logic styles, labels, structure diagrams, vector diagrams and a general drawing composer (phase E) | [dmg-feedback.md](plan-2-part-2/dmg-feedback.md) |
+| Feedback from the release-candidate DMG: agents found in their apps, siunitx, logic styles, labels, structure diagrams, vector diagrams, a general drawing composer and a home page of folders (phase E) | [dmg-feedback.md](plan-2-part-2/dmg-feedback.md) |
 
 ## What was asked
 
@@ -65,7 +65,7 @@ Taken from [carryover.md](plan-2-part-2/carryover.md), with the decisions applie
 | A. Phase 5's review and the work that does not build on it | **A1** phase 4 fixes (the Move to this computer race, the mirror record). **A2** the phase 5 review, whose fixer first lands the known items (the Typst default version in four places, the “Use the default” loop, the Tectonic time limit, `pdfFacts` on Node 24, the Windows workflow changes); then Windows run 1. **A3** the agents track. **A4** switches everywhere, asking before closing Settings with unsaved skill or persona edits, and hiding the GitHub view's unused layout switch. All four lanes run at once. | Review 2 clean twice; A3's focused round; **test DMG 3** with the OAuth client id; the user's real Zotero and GitHub tests |
 | B. Features that build on phase 5 | **B1** the composer: foundations (chooser, symbol sets, flowchart canvas), then Structures and Mohr's circle, then the catalogue, plot, Venn, flowchart and template work. **B2** languages. **B3** lines between table cells. All three in parallel after A2 merges; B2 merges last. Each gets a focused round. | **Test DMG 4**; Windows run 2 |
 | C. Review of the whole of 2.0 | The heavier review with phase 4's second-round lenses folded in | Two rounds in a row with nothing high or medium |
-| E. Feedback from the release-candidate DMG | Lanes for agents found in their apps; siunitx, logic styles and labels; vector diagrams and General drawing; then structure diagrams. A focused round on each | **Test DMG 5**; a Windows run |
+| E. Feedback from the release-candidate DMG | Lanes for agents found in their apps; siunitx, logic styles and labels; vector diagrams and General drawing; a home page of folders; then structure diagrams. A focused round on each | **Test DMG 5**; a Windows run |
 | D. Release | Final verification, the release DMG, Windows run 3 and its installer, the DMG review; the user tests the DMG and runs the Windows checklist | The user's word, then `main`, the `v2.0.0` tag and the Mac and Windows release |
 
 The composer track is the largest piece: the research estimates its v1 list at 14 to 18 weeks for one developer, before Structures. It is split into sub-tracks that builders can run in parallel (foundations first, then Structures and Mohr's circle, the circuit work and the plot, Venn and flowchart work), and each merges when its focused round is clean. If the composer is not ready when the other tracks are, the user decides whether to wait or move the unfinished composer items to 2.1, as for languages.
