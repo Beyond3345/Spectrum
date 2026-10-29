@@ -615,7 +615,7 @@ function InsertDiagram() {
   const typst = diagram?.language === 'typst' || /\.typ$/i.test(diagram?.path ?? '');
   const tikz = diagram?.language === 'tikz' && !typst;
   const image = diagram && !tikz && !typst ? imageOf(diagram.path, api.figureFiles) : '';
-  const canInsert = !!diagram && (typst ? kind === 'typst' : kind === 'typst' ? true : kind === 'markdown' ? !!image : tikz || !!image);
+  const canInsert = !!diagram && (typst ? kind === 'typst' : kind === 'typst' || tikz || !!image);
   const showWidth = !!diagram && !typst;
 
   useEffect(() => {
@@ -702,9 +702,11 @@ function InsertDiagram() {
           a.notify(`Inserted ${pdf} as a figure.`, 'success');
         }
       } else if (target === 'markdown') {
-        const source = imageOf(diagram.path, a.figureFiles);
+        // a TikZ picture goes in as the PDF the composer's preview made, which isn't among the figures (it's x.tex's)
+        const pdf = tikz ? diagram.path.replace(/\.tex$/i, '.pdf') : '';
+        const source = tikz ? (a.projectFiles.includes(pdf) ? pdf : '') : imageOf(diagram.path, a.figureFiles);
         if (!source) {
-          a.notify('Export the diagram as a PDF or PNG in the composer first.', 'error');
+          a.notify(tikz ? 'Compile the diagram in the composer first, so its PDF is there.' : 'Export the diagram as a PDF or PNG in the composer first.', 'error');
           return;
         }
         insertBlock(a, figureMarkdown({ path: source, width: fraction ?? widthOf(prefs), caption, label: captionLabel }));
