@@ -7,9 +7,11 @@ import Icon from '../../../app/Icon';
 import { useCanvasPrefs } from '../../FlowCanvas';
 import { readStyle, symbolOptions } from './code';
 import { copy, detach, flip, moveBy, newNodePart, newPathPart, paste, remove, rotate } from './edit';
-import { PARTS, PT_PER_GRID, asCircuit, drawsSymbol,circuitBounds, isPart, isPoint, locator, newId, pathFrame, pinsOfElement, placeNodeOffset, placeholderShape, snapDelta, variantKey, wirePath } from './model';
+import { PARTS, PT_PER_GRID, asCircuit, drawsSymbol,circuitBounds, isPart, isPoint, locator, newId, pathFrame, pinsOfElement, placeholderShape, snapDelta, variantKey, wirePath } from './model';
 import type { CircuitModel, Element, End, Mark, NodePart, PathPart, Pt, Route, ShapeOf, Wire } from './model';
+import { labelSize, nodeNameAt, pathLabelAt, plain, scriptRuns } from './labels';
 import { setCtikz, setSelection, setShapeOf, setTool, tidy, useCircuitUi } from './store';
+import { symbolOutline } from './symbolGeometry';
 import { useSymbols } from './symbols';
 import type { CircuitSymbol } from './symbols';
 
@@ -37,17 +39,6 @@ type Drag =
 /** clipboard for copy and paste, shared by every circuit in this window */
 let clipboard: Element[] = [];
 
-/** TeX as the canvas sketches it: the common maths and units read as text, font sizes and the rest of the markup dropped. */
-const SYMBOLS: Record<string, string> = { Omega: 'Ω', mu: 'µ', pi: 'π', int: '∫', approx: '≈', cdot: '·', times: '×', '%': '%' };
-const plain = (text: string) =>
-  text
-    .replace(/\$/g, '')
-    .replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, '($1)/($2)')
-    .replace(/\\[,;!]/g, ' ')
-    .replace(/\\(tiny|scriptsize|footnotesize|small|normalsize|large|Large)\s*/g, '')
-    .replace(/\\(Omega|mu|pi|int|approx|cdot|times|%)/g, (_, name: string) => SYMBOLS[name])
-    .replace(/\\[A-Za-z]+/g, '')
-    .replace(/[{}]/g, '');
 const autoRoute = (from: Pt, to: Pt): Route => (Math.abs(from.x - to.x) < 1e-6 || Math.abs(from.y - to.y) < 1e-6 ? '--' : '-|');
 
 export default function CircuitCanvas({ model: raw, onChange, style, readOnly }: { model: CircuitModel; onChange(m: CircuitModel): void; style: Record<string, unknown>; readOnly?: boolean }) {
@@ -412,14 +403,25 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   const poly = (points: Pt[]) => points.map((p) => toScreen(p)).map((p) => `${p.x},${p.y}`).join(' ');
   const fontSize = Math.max(9, k * 1.1);
 
-  const text = (at: Pt, content: string, className = 'ckt-text') => {
+  /** TeX sketched as text, its subscripts and superscripts set as the preview sets them */
+  const text = (at: Pt, tex: string, className = 'ckt-text') => {
     const s = toScreen(at);
     return (
       <text x={s.x} y={s.y} className={className} fontSize={fontSize} textAnchor="middle" dominantBaseline="middle">
-        {content}
+        {scriptRuns(tex).map((run, i) =>
+          run.shift ? (
+            <tspan key={i} baselineShift={run.shift} fontSize="70%">
+              {run.text}
+            </tspan>
+          ) : (
+            run.text
+          )
+        )}
       </text>
     );
   };
+  /** a label's size in grid steps, as text() draws it */
+  const sizeOf = (tex: string) => labelSize(scriptRuns(tex), fontSize / k);
 
   /** a voltage, current or flow sketched beside a path part */
   const markSketch = (m: Mark | undefined, kind: 'v' | 'i' | 'f', f: ReturnType<typeof pathFrame>, glyph: number) => {
@@ -437,7 +439,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
       return (
         <g className="ckt-sketch">
           {line(from, to, { markerEnd: 'url(#ckt-arrow)' })}
-          {text(off(f.mid, gap + 0.9), plain(m.text), 'ckt-text ckt-sketch-text')}
+          {text(off(f.mid, gap + 0.9), m.text, 'ckt-text ckt-sketch-text')}
         </g>
       );
     }
@@ -447,7 +449,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
     return (
       <g className="ckt-sketch">
         <polygon points={poly([tip, { x: back.x + n.x * 0.45, y: back.y + n.y * 0.45 }, { x: back.x - n.x * 0.45, y: back.y - n.y * 0.45 }])} />
-        {text(off(at, 1.5), plain(m.text), 'ckt-text ckt-sketch-text')}
+        {text(off(at, 1.5), m.text, 'ckt-text ckt-sketch-text')}
       </g>
     );
   };
@@ -462,8 +464,10 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
     const angle = (Math.atan2(f.u.y, f.u.x) * 180) / Math.PI;
     const m = toScreen(f.mid);
     const n = { x: -f.u.y, y: f.u.x };
-    const labelSide = el.label?.side === '_' ? -1 : 1;
-    const besides = (side: number) => ({ x: f.mid.x + n.x * 1.9 * side, y: f.mid.y + n.y * 1.9 * side });
+    const labelSide: 1 | -1 = el.label?.side === '_' ? -1 : 1;
+    // the drawn symbol's outline, or the outline drawn in its place until it comes
+    const outline = sym ? symbolOutline(sym) : { minX: -glyph / 2 / s, maxX: glyph / 2 / s, minY: -0.8 / s, maxY: 0.8 / s };
+    const besides = (side: 1 | -1, tex: string) => pathLabelAt(el, f, outline, side, sizeOf(tex));
     const halfSpanPt = ((f.length / 2) * PT_PER_GRID) / s;
     const [start, end] = [
       { x: f.mid.x - (f.u.x * glyph) / 2, y: f.mid.y - (f.u.y * glyph) / 2 },
@@ -490,12 +494,12 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
         ) : (
           <polygon className="ckt-outline" points={poly([start, end].flatMap((p, i) => (i ? [{ x: p.x + n.x * 0.8, y: p.y + n.y * 0.8 }, { x: p.x - n.x * 0.8, y: p.y - n.y * 0.8 }] : [{ x: p.x - n.x * 0.8, y: p.y - n.y * 0.8 }, { x: p.x + n.x * 0.8, y: p.y + n.y * 0.8 }])))} />
         )}
-        {el.label?.text.trim() && text(besides(labelSide), plain(el.label.text))}
-        {el.value?.trim() && text(besides(-labelSide), plain(el.value))}
+        {el.label?.text.trim() && text(besides(labelSide, el.label.text), el.label.text)}
+        {el.value?.trim() && text(besides(labelSide > 0 ? -1 : 1, el.value), el.value)}
         {markSketch(el.voltage, 'v', f, glyph)}
         {markSketch(el.current, 'i', f, glyph)}
         {markSketch(el.flow, 'f', f, glyph)}
-        {PARTS.get(el.type)?.text && el.text?.trim() && text(f.mid, plain(el.text))}
+        {PARTS.get(el.type)?.text && el.text?.trim() && text(f.mid, el.text)}
         {[poleA, poleB].map((pole, i) =>
           pole ? <circle key={i} className={`ckt-pole ${pole === 'o' ? 'open' : ''}`} cx={toScreen(i ? b : a).x} cy={toScreen(i ? b : a).y} r={Math.max(2.5, k * 0.22)} /> : null
         )}
@@ -513,7 +517,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
       return (
         <g key={el.id} data-id={ghost ? undefined : el.id} className={`ckt-part ${ghost ? 'ghost' : ''} ${selected.has(el.id) ? 'selected' : ''}`}>
           <rect className={selected.has(el.id) ? 'ckt-halo-box' : content ? 'ckt-hit-box' : 'ckt-outline'} x={p.x - half * k} y={p.y - 1.2 * k} width={2 * half * k} height={2.4 * k} />
-          {text(el.at, content || 'Text', content ? 'ckt-text' : 'ckt-text ckt-sketch-text')}
+          {text(el.at, content ? el.text! : 'Text', content ? 'ckt-text' : 'ckt-text ckt-sketch-text')}
         </g>
       );
     }
@@ -523,8 +527,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
     const box = pins.length
       ? { minX: Math.min(...pins.map((q) => q.x)) + 0.5, maxX: Math.max(...pins.map((q) => q.x)) - 0.5, minY: Math.min(...pins.map((q) => q.y)) - 1.5, maxY: Math.max(...pins.map((q) => q.y)) + 1.5 }
       : { minX: -1.5, maxX: 1.5, minY: -1.5, maxY: 1.5 };
-    const top = sym ? { x: 0, y: (sym.origin.y / PT_PER_GRID) + 0.8 } : { x: 0, y: box.maxY + 0.8 };
-    const nameAt = placeNodeOffset(el, top);
+    const nameAt = el.name ? nodeNameAt(el, sym ? symbolOutline(sym) : box, sizeOf(el.name)) : el.at;
     return (
       <g key={el.id} data-id={ghost ? undefined : el.id} className={`ckt-part ${ghost ? 'ghost' : ''} ${selected.has(el.id) ? 'selected' : ''}`}>
         {sym ? (
@@ -537,8 +540,8 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
             <rect className={`ckt-outline ${selected.has(el.id) ? 'ckt-halo-box' : ''}`} x={box.minX} y={box.minY} width={box.maxX - box.minX} height={box.maxY - box.minY} vectorEffect="non-scaling-stroke" />
           </g>
         )}
-        {content.trim() && text(el.at, content)}
-        {el.name && !ghost && text({ x: el.at.x + nameAt.x, y: el.at.y + nameAt.y }, el.name, 'ckt-text ckt-name')}
+        {content.trim() && text(el.at, el.text || '')}
+        {el.name && !ghost && text(nameAt, el.name, 'ckt-text ckt-name')}
       </g>
     );
   };
