@@ -438,6 +438,9 @@ const texts = (list: Item[]) => list.flatMap((i) => (i.t === 'text' ? [i.tex] : 
   const code = structureCode(diagram.model, diagram.style);
   const back = await readDiagramFile(await diagramFileText(diagram, code));
   eq(back.diagram, { ...diagram, version: 3 }, 'the drawing comes back, as version 3 for its siunitx');
+  // as Insert left it for a document that loads physics: the mode writes \SI where it wrote \qty, so it opens as drawn
+  const physics = structureCode(diagram.model, { ...diagram.style, physics: true }).body;
+  eq([physics, physics.includes('\\SI{')], [code.body.replace(/\\qty(?=\{)/g, '\\SI'), true], 'physics: \\SI');
   eq(back.edited, false, 'not edited');
   eq(structureCode(back.diagram!.model, back.diagram!.style), code, 'and writes the same code');
   console.log('structures.check: ok');
