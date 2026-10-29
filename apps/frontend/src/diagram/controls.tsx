@@ -1,5 +1,6 @@
-import { createContext } from 'react';
+import { createContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
+import { colourCss, isColour } from './modes/shared';
 
 // The pieces the drawing modes' rails and inspectors share.
 
@@ -46,18 +47,53 @@ export function Row({ label, children }: { label: string; children: ReactNode })
   );
 }
 
-/** A colour, or none (`fallback` says what none means: no fill, or black). */
-export function ColourField({ label, value, fallback, onChange }: { label: string; value?: string; fallback: string; onChange(value?: string): void }) {
+/**
+ * A colour, or none (`fallback` says what none means: no fill, black, the default). With `swatches` (xcolor names) it
+ * also takes any xcolor name or mix typed in, such as blue!15, so its value is xcolor's as well as '#rrggbb'.
+ */
+export function ColourField({ label, value, fallback, onChange, swatches }: { label: string; value?: string; fallback: string; onChange(value?: string): void; swatches?: string[] }) {
   return (
     <div className="diagram-row">
       <span>{label}</span>
+      {swatches && (
+        <span className="diagram-swatches">
+          {swatches.map((s) => (
+            <button key={s} type="button" className={`diagram-swatch${s === value ? ' active' : ''}`} style={{ background: colourCss(s) }} title={s} aria-label={`${label}: ${s}`} aria-pressed={s === value} onClick={() => onChange(s)} />
+          ))}
+        </span>
+      )}
       <span className="diagram-colour">
-        <input type="color" className="colour-well" aria-label={label} value={value ?? '#000000'} onChange={(e) => onChange(e.target.value)} />
+        <input type="color" className="colour-well" aria-label={label} value={value && /^#/.test(value) ? value : '#000000'} onChange={(e) => onChange(e.target.value)} />
+        {swatches && <XcolorInput label={label} value={value} onChange={onChange} />}
         <button type="button" className={`btn small${value ? '' : ' active'}`} aria-pressed={!value} onClick={() => onChange(undefined)}>
           {fallback}
         </button>
       </span>
     </div>
+  );
+}
+
+/** An xcolor name or mix typed in, taken when it's one the code can write. */
+function XcolorInput({ label, value, onChange }: { label: string; value?: string; onChange(value?: string): void }) {
+  const [draft, setDraft] = useState(value ?? '');
+  useEffect(() => setDraft(value ?? ''), [value]);
+  const take = () => {
+    const text = draft.trim();
+    if (!text) onChange(undefined);
+    else if (isColour(text)) onChange(text);
+  };
+  return (
+    <input
+      className="input mono diagram-xcolor"
+      aria-label={`${label} (an xcolor name or mix, such as blue!15)`}
+      placeholder="blue!15"
+      value={draft}
+      spellCheck={false}
+      aria-invalid={!!draft.trim() && !isColour(draft.trim())}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={take}
+      onKeyDown={(e) => e.key === 'Enter' && take()}
+    />
   );
 }
 
