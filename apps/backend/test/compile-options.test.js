@@ -425,7 +425,7 @@ test('latexmk never reads a project’s own latexmkrc', { skip: needs('latexmk',
   });
   for (const draft of [false, true]) {
     const res = await runCompile({ projectId: p.id, mainFile: 'main.tex', engine: 'latexmk', draft });
-    assert.ok(res.ok, res.error || res.log);
+    assert.ok(res.ok, `${res.error}\n${res.log}`);
   }
   assert.ok(!existsSync(path.join(p.path, 'ran.txt')));
 });

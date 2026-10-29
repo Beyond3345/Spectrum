@@ -81,7 +81,9 @@ jobs:
           path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
           if-no-files-found: error
 
-      # a TeX for the backend's compile tests, installing packages as they're asked for
+      # a TeX for the backend's compile tests. The packages the tests use are installed first: installed as they're
+      # asked for, two test files compiling at once could each find one half installed and make no PDF. Anything
+      # else is still installed when asked for.
       - name: MiKTeX
         run: |
           choco install miktex --no-progress -y
@@ -89,6 +91,12 @@ jobs:
           $bin = "$env:ProgramFiles\MiKTeX\miktex\bin\x64"
           & "$bin\initexmf.exe" --admin --set-config-value='[MPM]AutoInstall=1'
           & "$bin\initexmf.exe" --set-config-value='[MPM]AutoInstall=1'
+          $packages = 'latexmk', 'standalone', 'xkeyval', 'currfile', 'filemod', 'gincltex', 'adjustbox', 'collectbox',
+            'pgf', 'pgfplots', 'circuitikz', 'float', 'natbib', 'biblatex', 'glossaries', 'import', 'etoolbox'
+          & "$bin\mpm.exe" --admin --update-db
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & "$bin\mpm.exe" --admin @($packages | ForEach-Object { "--install=$_" })
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           Add-Content $env:GITHUB_PATH $bin
 
       # the installer build put Typst beside the other sidecars: a copy named typst.exe, with the vcruntime140.dll the

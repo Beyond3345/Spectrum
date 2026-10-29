@@ -266,7 +266,7 @@ test('a diagram previews through /api/compile as a document of its own, leaving 
   const p = await newProject({ 'main.tex': MAIN, 'figures/amp.tex': AMP });
   const meta = await fs.readFile(path.join(p.path, '.spectrum', 'project.json'), 'utf8').catch(() => null);
   const preview = await post('/api/compile', { projectId: p.id, mainFile: 'figures/amp.tex', engine: 'pdflatex', draft: false, fresh: false });
-  assert.ok(preview.body.ok, preview.body.error || preview.body.log);
+  assert.ok(preview.body.ok, `${preview.body.error}\n${preview.body.log}`);
   assert.equal(preview.body.doc, 'figures/amp.tex');
   assert.equal(preview.body.pdfPath, 'figures/amp.pdf');
   assert.ok(existsSync(path.join(p.path, 'figures', 'amp.pdf')));
@@ -288,7 +288,7 @@ test('a diagram previews through /api/compile as a document of its own, leaving 
 
   // and the document takes it in with \includestandalone, at a width and at its own size
   const doc = await post('/api/compile', { projectId: p.id, mainFile: 'main.tex', engine: 'pdflatex' });
-  assert.ok(doc.body.ok, doc.body.error || doc.body.log);
+  assert.ok(doc.body.ok, `${doc.body.error}\n${doc.body.log}`);
   assert.equal(doc.body.status, 0, doc.body.log);
 });
 
