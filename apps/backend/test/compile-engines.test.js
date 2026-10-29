@@ -148,8 +148,13 @@ test('a pass of the built-in Tectonic gets 15 minutes, not the 3-minute default'
 });
 
 test('on Windows, Tectonic is given a fonts.conf in the data folder listing the Windows and per-user font folders', async () => {
-  assert.equal(await tectonicFontconfig(), null, 'elsewhere it has its own font system');
   const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { ...platform, value: 'darwin' });
+  try {
+    assert.equal(await tectonicFontconfig(), null, 'elsewhere it has its own font system');
+  } finally {
+    Object.defineProperty(process, 'platform', platform);
+  }
   const env = { SystemRoot: process.env.SystemRoot, LOCALAPPDATA: process.env.LOCALAPPDATA };
   Object.defineProperty(process, 'platform', { ...platform, value: 'win32' });
   Object.assign(process.env, { SystemRoot: 'C:\\Windows', LOCALAPPDATA: 'C:\\Users\\Kim & Lee\\AppData\\Local' });
