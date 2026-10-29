@@ -13,6 +13,8 @@ const vectors: DiagramMode<VectorModel> = {
   label: 'Vector diagram (TikZ)',
   language: 'tikz',
   emptyModel: emptyVectors,
+  // a new drawing's vectors are very thick, as the user's figures draw them, until Style says otherwise
+  newStyle: () => ({ vectorWidth: 'very thick' }),
   toCode: (model, style) => vectorCode(model, style),
   Canvas,
   Rail: VectorRail,
