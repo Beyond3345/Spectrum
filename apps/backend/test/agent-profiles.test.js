@@ -16,7 +16,7 @@ process.env.PATH = '/usr/bin:/bin';
 const root = path.join(dir, 'root');
 process.env.SPECTRUM_SYSTEM_ROOT = root;
 for (const name of ['npm_config_prefix', 'NPM_CONFIG_PREFIX', 'PNPM_HOME']) delete process.env[name];
-const { PROFILES, profileFor, saveAgentConfig, agentConfigs, listAgents, agentEntry, agentState, launchOptions, installAdapter, removeAdapter, recordTest, importAgentLogin, AGENT_DIR, ADAPTER_LOCKS } = await import('../src/services/agentProfiles.js');
+const { PROFILES, profileFor, saveAgentConfig, agentConfigs, listAgents, agentEntry, agentState, launchOptions, installAdapter, removeAdapter, recordTest, importAgentLogin, programReads, AGENT_DIR, ADAPTER_LOCKS } = await import('../src/services/agentProfiles.js');
 after(() => fs.rm(dir, { recursive: true, force: true }));
 const knownFolders = process.platform !== 'darwin' && 'only a Mac looks in the vendors’ folders, such as ~/.local/bin';
 const nodeAdapters = process.platform === 'win32' && 'Node adapters are unavailable on Windows, where they stall inside isolation';
@@ -93,6 +93,8 @@ test('desktop apps: the agent inside the app, an app without one, and only that 
   let deepseek = await listed('deepseek');
   assert.deepEqual([deepseek.source, deepseek.program, deepseek.where, deepseek.app.path], ['app', dsh, bundle, bundle], 'the app before the known folders');
   assert.deepEqual(deepseek.reads, [bundle], 'the bundle only, never ~/Applications or the home folder');
+  // in /Applications too, which isolation no longer reads as a whole
+  assert.deepEqual(await programReads('/Applications/No Such Agent.app/Contents/MacOS/agent'), ['/Applications/No Such Agent.app']);
   const options = await launchOptions('deepseek', { workspace: dir, home: dir });
   assert.deepEqual([options.command, options.args], [dsh, ['--profile', 'acp']]);
   assert.deepEqual(options.runtimePaths, [bundle]);
@@ -110,17 +112,18 @@ test('desktop apps: the agent inside the app, an app without one, and only that 
 
   // Kimi Code's app has no agent mode: installed, still missing, with the CLI's install line
   await fs.mkdir(path.join(root, 'Applications/Kimi Code.app/Contents'), { recursive: true });
+  await fs.mkdir(path.join(root, 'Applications/Qoder.app'), { recursive: true });
   const kimi = await listed('kimi');
   assert.deepEqual([kimi.state, kimi.installed, kimi.app.name, kimi.install], ['missing', false, 'Kimi Code', 'npm install -g @moonshot-ai/kimi-code']);
   await assert.rejects(launchOptions('kimi', { workspace: dir, home: dir }), /Kimi Code is installed, but its agent mode needs the Kimi Code CLI/);
-  await saveAgentConfig('kimi', { command: path.join(root, 'Applications/Kimi Code.app') });
-  assert.equal((await listed('kimi')).program, undefined, 'an app without an agent inside is no program');
-  await saveAgentConfig('kimi', { command: '' });
   await program('.kimi-code/bin/kimi');
   assert.deepEqual([(await listed('kimi')).source, (await listed('kimi')).where], ['found', path.join(home, '.kimi-code/bin')]);
+  // choosing an app without an agent inside is refused, so the CLI found stays
+  await assert.rejects(saveAgentConfig('kimi', { command: path.join(root, 'Applications/Kimi Code.app') }), /Kimi Code\.app has no Kimi Code agent inside it\. Choose the Kimi Code CLI \(kimi\) instead/);
+  await assert.rejects(saveAgentConfig('qoder', { command: path.join(root, 'Applications/Qoder.app/') }), /Qoder\.app has no Qoder agent/);
+  assert.equal((await listed('kimi')).source, 'found');
 
   // Qoder: the folder its app's SDK looks in, and Homebrew's, which a Finder PATH lacks
-  await fs.mkdir(path.join(root, 'Applications/Qoder.app'), { recursive: true });
   await program('.qoder/local/qodercli');
   assert.equal((await listed('qoder')).where, path.join(home, '.qoder/local'));
   await fs.mkdir(path.join(root, 'opt/homebrew/bin'), { recursive: true });

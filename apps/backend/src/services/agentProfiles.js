@@ -321,6 +321,8 @@ export async function saveAgentConfig(id, value) {
     const args = value.args ?? old.args;
     const runtimePaths = value.runtimePaths ?? old.runtimePaths ?? [];
     if (command.includes('\0') || command.length > 4096 || (args && (!Array.isArray(args) || args.length > 40 || args.some((a) => typeof a !== 'string' || a.includes('\0') || a.length > 4096)))) throw new Error('Invalid executable or arguments.');
+    // an app with no agent inside would hide the CLI found now
+    if (/\.app\/?$/.test(command) && !(process.platform === 'darwin' && profile.app?.bin)) throw new Error(`${path.basename(command.replace(/\/$/, ''))} has no ${profile.name} agent inside it. Choose the ${profile.name} CLI (${profile.command}) instead.`);
     if (!Array.isArray(runtimePaths) || runtimePaths.length > 20 || runtimePaths.some((p) => typeof p !== 'string' || !path.isAbsolute(p))) throw new Error('Runtime folders must be absolute paths.');
     const keyEnv = value.keyEnv || old.keyEnv || profile.key;
     const apiKey = value.apiKey === undefined ? (keyEnv === (old.keyEnv || profile.key) ? old.apiKey || '' : '') : String(value.apiKey);
