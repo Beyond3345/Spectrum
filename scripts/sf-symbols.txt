@@ -71,6 +71,7 @@ globe
 graduationcap
 hammer
 highlighter
+house
 info.circle
 keyboard
 lightbulb
