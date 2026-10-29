@@ -230,6 +230,25 @@ test('secrets, files over 100 MB, compiled PDFs and Spectrum’s own files stay 
   assert.ok(readFileSync(path.join(A, '.git/info/exclude'), 'utf8').includes('/main.pdf'));
 });
 
+test('the user’s own lines in .git/info/exclude stay, and what they leave out is never backed up', { skip }, async () => {
+  const { A, repo } = await pair({ 'main.tex': 'x\n' });
+  const exclude = path.join(A, '.git/info/exclude');
+  // a file written before Spectrum's section had markers is all the user's
+  write(A, '.git/info/exclude', '# mine\nprivate-notes.txt\n');
+  write(A, 'private-notes.txt', 'not for GitHub');
+  write(A, 'main.tex', 'y\n');
+  await g.commitAll(A, { message: 'Backup', author });
+  write(A, '.git/info/exclude', `${readFileSync(exclude, 'utf8')}drafts/\n`);
+  write(A, 'drafts/d.tex', 'draft');
+  await g.commitAll(A, { message: 'Backup', author, always: true });
+  await g.pushOrigin(A, token);
+  for (const out of ['private-notes.txt', 'drafts/d.tex']) assert.ok(!gh.files('octo', repo).includes(out), out);
+  const text = readFileSync(exclude, 'utf8');
+  assert.ok(text.startsWith('# mine\nprivate-notes.txt\n'), text);
+  assert.ok(text.includes('drafts/\n'), text);
+  assert.equal(text.match(/# >>> Spectrum/g).length, 1, 'one section, rewritten in place');
+});
+
 test('two names for one file from GitHub are kept there by the pull and the next backups, and after a clone', { skip }, async () => {
   const { A, B, repo } = await pair({ 'main.tex': 'x\n' });
   commitOnGitHub(repo, { 'figures/Plot.pdf': 'PDF upper', 'figures/plot.pdf': 'PDF lower' });

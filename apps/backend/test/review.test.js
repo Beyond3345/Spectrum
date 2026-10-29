@@ -138,7 +138,7 @@ test('review/state compares the PDF with every file the document reads and lists
   assert.equal(bib[0].title, 'Fast Models');
 
   const res = await app.inject({ url: `/api/projects/${p.id}/review/state?doc=refs.bib` });
-  assert.equal(res.statusCode, 400, 'only a .tex document');
+  assert.equal(res.statusCode, 400, 'only a LaTeX, Typst or Markdown document');
 });
 
 test('the files a document reads include \\import, \\subimport and \\input with a space', async () => {
@@ -224,6 +224,35 @@ test('the AI review reads the document in order, is told what Preflight found an
   assert.match(noKey.json.error, /No AI model is set up/);
 
   assert.equal((await review({ projectId: p.id, doc: 'missing.tex' })).json.ok, false);
+});
+
+test('a Typst document and its #includes, and a Markdown document, are reviewed as a LaTeX one is', async () => {
+  const p = await project('Typst and Markdown review', {
+    'main.typ': '= Introduction\nWe train a model.\n// #include "old.typ"\n#include "chapters/one.typ"\n',
+    'chapters/one.typ': '= Method\n#include "/chapters/two.typ"\n',
+    'chapters/two.typ': 'It reaches 93.2% accuracy.\n',
+    'old.typ': 'Not read.\n',
+    'notes.md': '# Notes\n\nOur method is faster than every earlier one.\n'
+  });
+  const later = new Date(Date.now() + 60_000);
+  await fs.utimes(path.join(p.path, 'chapters/two.typ'), later, later);
+  const state = (await app.inject({ url: `/api/projects/${p.id}/review/state?doc=main.typ` })).json();
+  assert.equal(state.ok, true, state.error);
+  assert.equal(state.sourceAt, later.getTime(), 'a file two #includes down counts');
+  assert.equal((await app.inject({ url: `/api/projects/${p.id}/review/state?doc=notes.md` })).statusCode, 200);
+
+  answer = JSON.stringify({ summary: 'S', strengths: [], score: 5, confidence: 3, findings: [{ severity: 'minor', category: 'Data', file: 'chapters/two.typ', line: 1, quote: 'It reaches 93.2% accuracy', issue: 'Unsupported.', suggestion: '' }], limits: [] });
+  calls.length = 0;
+  const typst = await review({ projectId: p.id, doc: 'main.typ' });
+  assert.equal(typst.json.ok, true, typst.json.error);
+  assert.deepEqual(typst.json.files, ['main.typ', 'chapters/one.typ', 'chapters/two.typ']);
+  assert.equal(typst.json.findings[0].anchored, true);
+  assert.doesNotMatch(calls[0].messages[1].content, /=== old\.typ/);
+
+  const markdown = await review({ projectId: p.id, doc: 'notes.md' });
+  assert.equal(markdown.json.ok, true, markdown.json.error);
+  assert.deepEqual(markdown.json.files, ['notes.md']);
+  assert.match(calls[1].messages[1].content, /^3\| Our method is faster/m);
 });
 
 test('a document over the budget is reviewed a file at a time, and the limits say so', async () => {

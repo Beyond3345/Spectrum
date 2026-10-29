@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { compileFolder, unwrap } from '../services/compileService.js';
-import { parseBibEntries } from '../services/referenceService.js';
+import { parseBibEntries, texIncludesBib } from '../services/referenceService.js';
 import { fetchBibtex, literatureSearch } from '../services/researchTools.js';
 import { SKILL_ID, readFrontMatter, skillBody } from '../services/skillService.js';
 import { suggestedTodo } from '../services/agentService.js';
@@ -36,15 +36,44 @@ const REF = /\\(?:ref|eqref|autoref|cref|Cref|pageref|nameref|vref|labelcref)\*?
 const CITE = /\\(?:no)?(?:cite|citep|citet|citealp|citealt|citeauthor|citeyear|parencite|textcite|autocite|footcite|smartcite|supercite)\*?\s*(?:\[[^\]]*\]\s*){0,2}\{([^}]+)\}/g;
 const BIBLIOGRAPHY = /\\(?:bibliography|addbibresource|addglobalbib)\s*(?:\[[^\]]*\])?\{([^}]+)\}/g;
 
+// Typst: = headings, <label> (not #cite(<key>)), #include "…" from the file's folder (or the project's with a leading /)
+const TYPST_HEADING = /^(=+)\s+(.*?)\s*$/gm;
+const TYPST_LABEL = /(?<![(\w])<([A-Za-z_][\w:.-]*)>/g;
+const TYPST_INCLUDE = /#include\s+"([^"]+)"/g;
+// Markdown: # headings, {#id} on a heading or figure. Both: @key, a label's or else a citation's, and Typst's #cite(<key>)
+const MARKDOWN_HEADING = /^(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/gm;
+const MARKDOWN_LABEL = /\{[^}\n]*#([A-Za-z_][\w:.-]*)[^}\n]*\}/g;
+const AT_KEY = /(?<![\w.@])@([A-Za-z_][\w:.\-/]*[\w])|#cite\(\s*<([^>]+)>/g;
+const kindOf = (file) => (/\.typ$/i.test(file) ? 'typst' : /\.(?:md|markdown)$/i.test(file) ? 'markdown' : 'latex');
+// what isn't the document's text, each line kept so line numbers hold: Typst's // comments, Markdown's code blocks
+const blank = (s) => s.replace(/[^\n]/g, '');
+const withoutTypstComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/(^|[^:])\/\/.*$/gm, '$1');
+const withoutCode = (text) => text.replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, blank).replace(/<!--[\s\S]*?-->/g, blank);
+
 /** The document's files from its main file, each with its text without comments. */
 async function documentFiles(root, main) {
   const files = [];
   const seen = new Set();
   const visit = async (rel, from, depth) => {
     if (depth > 20 || seen.has(rel)) return;
-    const text = await fs.readFile(safeJoin(root, rel), 'utf8').catch(() => null);
-    if (text === null) return false;
+    let text;
+    try {
+      text = await fs.readFile(safeJoin(root, rel), 'utf8');
+    } catch {
+      return false;
+    }
     seen.add(rel);
+    const kind = kindOf(rel);
+    if (kind === 'markdown') {
+      files.push({ file: rel, from, text: withoutCode(text) });
+      return;
+    }
+    if (kind === 'typst') {
+      const clean = withoutTypstComments(text);
+      files.push({ file: rel, from, text: clean });
+      for (const [, target] of clean.matchAll(TYPST_INCLUDE)) await visit(target.startsWith('/') ? slashed(path.normalize(target.slice(1))) : slashed(path.join(path.dirname(rel), target)), rel, depth + 1);
+      return;
+    }
     const clean = withoutComments(text);
     files.push({ file: rel, from, text: clean });
     for (const match of clean.matchAll(INPUT)) {
@@ -61,7 +90,10 @@ async function documentFiles(root, main) {
 async function bibEntries(root, files) {
   const named = files.flatMap(({ text }) => [...text.matchAll(BIBLIOGRAPHY)].flatMap((m) => m[1].split(',').map((n) => n.trim()).filter(Boolean)).map((n) => (n.endsWith('.bib') ? n : `${n}.bib`)));
   const all = (await listFilesRecursive(root)).filter((f) => f.type === 'file' && /\.bib$/i.test(f.path)).map((f) => f.path);
-  const bibs = named.length ? all.filter((f) => named.some((n) => f === slashed(path.normalize(n)) || f.endsWith(`/${path.posix.basename(n)}`))) : all;
+  // Typst's #bibliography and a Markdown front matter's bibliography, as an add to the .bib finds them
+  const others = files.filter(({ file }) => kindOf(file) !== 'latex').map(({ text }) => text);
+  const loaded = (f) => named.some((n) => f === slashed(path.normalize(n)) || f.endsWith(`/${path.posix.basename(n)}`)) || texIncludesBib(others, f);
+  const bibs = named.length || all.some(loaded) ? all.filter(loaded) : all;
   const entries = [];
   for (const file of bibs) {
     for (const entry of parseBibEntries(await fs.readFile(path.join(root, file), 'utf8').catch(() => ''))) entries.push({ ...entry, file });
@@ -75,15 +107,26 @@ export async function projectMap(root, state) {
   if (!main) return { mainFile: null, note: 'This project has no .tex file.' };
   const files = await documentFiles(root, main);
   const { bibs, entries } = await bibEntries(root, files);
-  const outline = [], labels = [], refs = [], cites = [];
+  const outline = [], labels = [], refs = [], cites = [], atKeys = [];
   for (const { file, text } of files) {
-    for (const m of text.matchAll(HEADING)) outline.push({ level: m[1], title: m[2].trim(), file, line: lineOf(text, m.index) });
-    for (const m of text.matchAll(LABEL)) labels.push({ label: m[1].trim(), file, line: lineOf(text, m.index) });
-    for (const m of text.matchAll(REF)) for (const key of m[1].split(',')) refs.push({ key: key.trim(), file, line: lineOf(text, m.index) });
-    for (const m of text.matchAll(CITE)) for (const key of m[1].split(',')) cites.push({ key: key.trim(), file, line: lineOf(text, m.index) });
+    const at = (m) => ({ file, line: lineOf(text, m.index) });
+    const kind = kindOf(file);
+    if (kind === 'latex') {
+      for (const m of text.matchAll(HEADING)) outline.push({ level: m[1], title: m[2].trim(), ...at(m) });
+      for (const m of text.matchAll(LABEL)) labels.push({ label: m[1].trim(), ...at(m) });
+      for (const m of text.matchAll(REF)) for (const key of m[1].split(',')) refs.push({ key: key.trim(), ...at(m) });
+      for (const m of text.matchAll(CITE)) for (const key of m[1].split(',')) cites.push({ key: key.trim(), ...at(m) });
+      continue;
+    }
+    // a heading's level as its depth: = or # is 1
+    for (const m of text.matchAll(kind === 'typst' ? TYPST_HEADING : MARKDOWN_HEADING)) outline.push({ level: m[1].length, title: m[2].replace(/\s*(?:<[^>]*>|\{[^}]*\})\s*$/, '').trim(), ...at(m) });
+    for (const m of text.matchAll(kind === 'typst' ? TYPST_LABEL : MARKDOWN_LABEL)) labels.push({ label: m[1], ...at(m) });
+    for (const m of text.matchAll(AT_KEY)) atKeys.push({ key: m[1] ?? m[2].trim(), cite: !m[1], ...at(m) });
   }
   const known = new Set(labels.map((l) => l.label));
   const keys = new Set(entries.map((e) => e.key));
+  // Typst's and pandoc's @key is a reference to a label it names, else a citation
+  for (const { cite, ...ref } of atKeys) (!cite && known.has(ref.key) ? refs : cites).push(ref);
   return {
     mainFile: main,
     engine: (await context(state)).engine || 'auto',

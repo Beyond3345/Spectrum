@@ -11,7 +11,8 @@ import { listFilesRecursive } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { inlineInputs } from '../utils/texUtils.js';
 import { callOpenAICompatible, missingKey, resolveLLMConfig } from './llmService.js';
-import { readMeta } from './projectService.js';
+import { parseFrontMatter } from './markdownService.js';
+import { mutateProjectRoot, readMeta } from './projectService.js';
 import { extractJSON } from './transferAgent/utils.js';
 
 const TIMEOUT_MS = 20_000;
@@ -575,14 +576,19 @@ export function pickBibTarget(root, files, requested, texSources = []) {
   return bibs.find((bib) => texIncludesBib(texSources, bib)) || bibs[0] || 'references.bib';
 }
 
-/** Whether any .tex loads the target via \bibliography{…} or \addbibresource{…}. */
+/**
+ * Whether any source loads the target: LaTeX's \bibliography{…} or \addbibresource{…}, Typst's #bibliography("…") or
+ * #bibliography(("…", "…")), or a Markdown front matter's bibliography.
+ */
 export function texIncludesBib(texSources, bibFile) {
   const name = path.posix.basename(bibFile).replace(/\.bib$/i, '').toLowerCase();
+  const named = (p) => path.posix.basename(p.trim().replace(/\\/g, '/')).replace(/\.bib$/i, '').toLowerCase() === name;
   return texSources.some((source) => {
+    const front = [parseFrontMatter(source).meta.bibliography].flat().filter((p) => typeof p === 'string');
     const text = withoutComments(source);
-    return [...text.matchAll(/\\(?:bibliography|addbibresource)\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}/g)].some((m) =>
-      m[1].split(',').some((p) => path.posix.basename(p.trim()).replace(/\.bib$/i, '').toLowerCase() === name)
-    );
+    const latex = [...text.matchAll(/\\(?:bibliography|addbibresource)\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}/g)].flatMap((m) => m[1].split(','));
+    const typst = [...source.replace(/\/\/.*$/gm, '').matchAll(/#bibliography\(\s*(\([^)]*\)|"[^"]*")/g)].flatMap((m) => [...m[1].matchAll(/"([^"]*)"/g)].map((s) => s[1]));
+    return [...front, ...latex, ...typst].some(named);
   });
 }
 
@@ -594,6 +600,12 @@ async function appendEntry(file, entry) {
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.appendFile(file, sep + entry.replace(/\n/g, eol) + eol, 'utf8');
 }
+
+/**
+ * appendEntry into the project's .bib in the project files' lock (the lookups before it run outside), refused once a
+ * Move or Locate… has taken the project from root, which a route looked up before a long wait.
+ */
+const appendInProject = (projectRoot, target, entry) => mutateProjectRoot(projectRoot, () => appendEntry(safeJoin(projectRoot, target), entry));
 
 // ─── Remote lookups ───
 
@@ -1119,10 +1131,10 @@ function withBibLock(fn) {
 async function bibContext(projectRoot, bibFile) {
   const files = await projectFiles(projectRoot);
   // the main document and what it brings in, so a .bib only another document (a talk's slides) loads isn't taken;
-  // every .tex when the project names no main file
+  // every .tex, .typ and .md when the project names no main file
   const { mainFile } = await readMeta(projectRoot).catch(() => ({}));
   const main = mainFile ? await inlineInputs(projectRoot, mainFile).catch(() => '') : '';
-  const sources = main ? [main] : await Promise.all(files.filter((f) => /\.tex$/i.test(f)).map((file) => fs.readFile(path.join(projectRoot, file), 'utf8').catch(() => '')));
+  const sources = main ? [main] : await Promise.all(files.filter((f) => /\.(?:tex|typ|md|markdown)$/i.test(f)).map((file) => fs.readFile(path.join(projectRoot, file), 'utf8').catch(() => '')));
   const target = pickBibTarget(projectRoot, files, bibFile, sources);
   const bibliographySources = withoutComments(sources.filter((source) => texIncludesBib([source], target)).join('\n'));
   const BIBLATEX = /\\addbibresource\b|\{biblatex\}/;
@@ -1169,8 +1181,9 @@ export async function resolveItems(projectRoot, items, bibFile, searchConfig) {
       const key = uniqueKey(baseKey(record), taken);
       const bibtex = toBibtex(record, key, legacyUrls);
       try {
-        await appendEntry(safeJoin(projectRoot, target), bibtex);
+        await appendInProject(projectRoot, target, bibtex);
       } catch (err) {
+        if (err.code === 'PROJECT_MOVING') throw err;
         results.push({ input, status: 'error', message: `Couldn’t write to ${target}: ${err.message}` });
         continue;
       }
@@ -1210,8 +1223,9 @@ export async function appendEntries(projectRoot, bibFile, make) {
       const key = uniqueKey([wanted, entry.key].find((k) => VALID_KEY.test(k || '')) || 'Ref', taken);
       const text = bibtex.trim().replace(/^(@[A-Za-z]+\s*[{(]\s*)[^,\s{}()"=]+/, (_, head) => head + key);
       try {
-        await appendEntry(safeJoin(projectRoot, target), text);
+        await appendInProject(projectRoot, target, text);
       } catch (err) {
+        if (err.code === 'PROJECT_MOVING') throw err;
         results.push({ input, status: 'error', message: `Couldn’t write to ${target}: ${err.message}` });
         continue;
       }

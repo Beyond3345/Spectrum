@@ -56,6 +56,49 @@ test('project_map follows the inputs and finds what does not resolve', async () 
   assert.equal((await tools.projectMap(root, elsewhere)).mainFile, 'paper/main.tex');
 });
 
+test('project_map reads a Typst and a Markdown document too', async () => {
+  const work = path.join(tmp, 'typst-work');
+  const run = path.join(tmp, 'typst-run');
+  await write(path.join(work, 'main.typ'), [
+    '= Introduction <sec:intro>',
+    'See @sec:intro and @sec:missing, after @known and @unknown. // @commented',
+    'Mail a@b.com, or https://example.com.',
+    '#include "chapters/method.typ"',
+    '#bibliography("refs.bib")',
+    ''
+  ].join('\n'));
+  await write(path.join(work, 'chapters', 'method.typ'), '== Method\nAs in #cite(<known>).\n');
+  await write(path.join(work, 'refs.bib'), '@article{known, title = {A Known Paper}}\n');
+  await write(path.join(work, 'other.bib'), '@misc{unknown, title = {Not loaded}}\n');
+  await write(path.join(run, 'context.json'), JSON.stringify({ mainFile: 'main.typ' }));
+  const typst = await tools.projectMap(work, run);
+  assert.deepEqual(typst.files, [{ file: 'main.typ' }, { file: 'chapters/method.typ', includedFrom: 'main.typ' }]);
+  assert.deepEqual(typst.outline, [{ level: 1, title: 'Introduction', file: 'main.typ', line: 1 }, { level: 2, title: 'Method', file: 'chapters/method.typ', line: 1 }]);
+  assert.deepEqual(typst.labels.map((l) => l.label), ['sec:intro']);
+  assert.deepEqual(typst.bibFiles, ['refs.bib']);
+  assert.deepEqual(typst.unresolvedRefs, []);
+  assert.deepEqual(typst.unresolvedCites.map((c) => [c.key, c.line]), [['sec:missing', 2], ['unknown', 2]]);
+
+  await write(path.join(work, 'notes.md'), [
+    '---',
+    'bibliography: refs.bib',
+    '---',
+    '# Results {#sec:results}',
+    'As @sec:results shows [@known; @nobody].',
+    '```bash',
+    '# not a heading, @not-a-cite',
+    '```',
+    '## Discussion ##',
+    ''
+  ].join('\n'));
+  await write(path.join(run, 'context.json'), JSON.stringify({ mainFile: 'notes.md' }));
+  const markdown = await tools.projectMap(work, run);
+  assert.deepEqual(markdown.outline.map((h) => [h.level, h.title, h.line]), [[1, 'Results', 4], [2, 'Discussion', 9]]);
+  assert.deepEqual(markdown.labels.map((l) => l.label), ['sec:results']);
+  assert.deepEqual(markdown.bibFiles, ['refs.bib']);
+  assert.deepEqual(markdown.unresolvedCites.map((c) => c.key), ['nobody']);
+});
+
 test('the bibliography tools, the log reader, to-dos and skills', async () => {
   assert.deepEqual(await tools.listBibEntries(root, state), [{ key: 'known', type: 'article', title: 'A Known Paper', author: 'Smith, Ann and Jones, Bo', year: '2024', doi: '10.1/known', file: 'paper/refs.bib' }]);
   assert.equal((await tools.searchBibEntries(root, state, 'jones 2024')).length, 1);

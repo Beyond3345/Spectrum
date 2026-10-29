@@ -12,7 +12,7 @@ const home = path.join(dir, 'home');
 process.env.SPECTRUM_DATA_DIR = path.join(dir, 'data');
 process.env.HOME = process.env.USERPROFILE = home;
 process.env.PATH = '/usr/bin:/bin';
-const { PROFILES, profileFor, saveAgentConfig, agentConfigs, listAgents, agentEntry, agentState, launchOptions, installAdapter, removeAdapter, recordTest, importAgentLogin, AGENT_DIR } = await import('../src/services/agentProfiles.js');
+const { PROFILES, profileFor, saveAgentConfig, agentConfigs, listAgents, agentEntry, agentState, launchOptions, installAdapter, removeAdapter, recordTest, importAgentLogin, AGENT_DIR, ADAPTER_LOCKS } = await import('../src/services/agentProfiles.js');
 after(() => fs.rm(dir, { recursive: true, force: true }));
 const knownFolders = process.platform !== 'darwin' && 'only a Mac looks in the vendors’ folders, such as ~/.local/bin';
 const nodeAdapters = process.platform === 'win32' && 'Node adapters are unavailable on Windows, where they stall inside isolation';
@@ -182,30 +182,38 @@ test('adapter installs: pinned, checked, in their own folder and with none of th
   const npmDir = path.join(dir, 'npm');
   await fs.mkdir(npmDir);
   const fake = path.join(npmDir, 'npm-cli.mjs');
-  // records its arguments and environment, then installs as told by mode.json
+  // records its arguments and environment, then installs the package-lock.json it finds as npm ci would, changed as
+  // mode.json says: a package's checksum (tamper), or a package the lock doesn't have (extra)
   await fs.writeFile(fake, `import fs from 'node:fs'; import path from 'node:path';
 const here = path.dirname(new URL(import.meta.url).pathname);
-const { version, integrity, fail } = JSON.parse(fs.readFileSync(path.join(here, 'mode.json'), 'utf8'));
+const { tamper, extra, fail } = JSON.parse(fs.readFileSync(path.join(here, 'mode.json'), 'utf8'));
 fs.appendFileSync(path.join(here, 'calls.jsonl'), JSON.stringify({ args: process.argv.slice(2), env: process.env }) + '\\n');
 if (fail) { console.error('network down'); process.exit(1); }
 const prefix = process.argv[process.argv.indexOf('--prefix') + 1];
-const spec = process.argv.at(-1), name = spec.slice(0, spec.lastIndexOf('@'));
-const pkg = path.join(prefix, 'node_modules', name);
-fs.mkdirSync(path.join(pkg, 'dist'), { recursive: true });
-fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name, version }));
-fs.writeFileSync(path.join(pkg, 'dist', 'index.js'), '');
-fs.writeFileSync(path.join(prefix, 'package-lock.json'), JSON.stringify({ packages: { ['node_modules/' + name]: { version, integrity } } }));
+const lock = JSON.parse(fs.readFileSync(path.join(prefix, 'package-lock.json'), 'utf8'));
+const packages = Object.fromEntries(Object.entries(lock.packages).filter(([rel]) => rel));
+if (tamper) packages[tamper] = { ...packages[tamper], integrity: 'sha512-tampered' };
+if (extra) packages['node_modules/extra'] = { version: '1.0.0', integrity: 'sha512-extra' };
+for (const [rel, { version }] of Object.entries(packages)) {
+  fs.mkdirSync(path.join(prefix, rel, 'dist'), { recursive: true });
+  fs.writeFileSync(path.join(prefix, rel, 'package.json'), JSON.stringify({ version }));
+  fs.writeFileSync(path.join(prefix, rel, 'dist', 'index.js'), '');
+}
+fs.writeFileSync(path.join(prefix, 'node_modules', '.package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages }));
 `);
   const mode = (m) => fs.writeFile(path.join(npmDir, 'mode.json'), JSON.stringify(m));
   const { adapter } = profileFor('codex');
   const base = path.join(AGENT_DIR, 'adapters', 'codex');
   process.env.npm_config__authToken = 'npm-private';
   process.env.NPM_CONFIG_REGISTRY = 'http://127.0.0.1:9/';
+  const transitive = Object.keys(ADAPTER_LOCKS.codex.packages).find((rel) => rel && rel !== `node_modules/${adapter.package}`);
   try {
-    await mode({ version: adapter.version, integrity: 'sha512-wrong' });
+    await mode({ tamper: `node_modules/${adapter.package}` });
     await assert.rejects(installAdapter('codex', { npm: fake }), /checksum/);
-    await mode({ version: '2.2.0', integrity: adapter.integrity });
-    await assert.rejects(installAdapter('codex', { npm: fake }), /checksum/);
+    await mode({ tamper: transitive });
+    await assert.rejects(installAdapter('codex', { npm: fake }), /checksum/, 'a dependency’s checksum is checked too');
+    await mode({ extra: true });
+    await assert.rejects(installAdapter('codex', { npm: fake }), /checksum/, 'and nothing the lock doesn’t have');
     await mode({ fail: true });
     await assert.rejects(installAdapter('codex', { npm: fake }), /network down/);
     assert.deepEqual(await fs.readdir(base), [], 'a failed install leaves nothing behind');
@@ -213,10 +221,10 @@ fs.writeFileSync(path.join(prefix, 'package-lock.json'), JSON.stringify({ packag
     // a leftover target folder is replaced
     await fs.mkdir(path.join(base, adapter.version, 'junk'), { recursive: true });
     await fs.mkdir(path.join(base, '2.2.0'));
-    await mode({ version: adapter.version, integrity: adapter.integrity });
+    await mode({});
     await installAdapter('codex', { npm: fake });
     assert.deepEqual(await fs.readdir(base), [adapter.version], 'older versions go');
-    assert.deepEqual((await fs.readdir(path.join(base, adapter.version))).sort(), ['node_modules', 'package-lock.json']);
+    assert.deepEqual((await fs.readdir(path.join(base, adapter.version))).sort(), ['node_modules', 'package-lock.json', 'package.json']);
     const codex = await agentEntry('codex');
     assert.deepEqual([codex.source, codex.adapter.installed, codex.configured, codex.state], ['spectrum', adapter.version, true, 'untested']);
     const options = await launchOptions('codex', { workspace: dir, home: dir });
@@ -225,9 +233,11 @@ fs.writeFileSync(path.join(prefix, 'package-lock.json'), JSON.stringify({ packag
 
     const calls = (await fs.readFile(path.join(npmDir, 'calls.jsonl'), 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
     for (const { args, env } of calls) {
-      for (const flag of ['--ignore-scripts', '--save-exact', '--registry=https://registry.npmjs.org/', '--no-audit']) assert.ok(args.includes(flag), flag);
-      assert.equal(args.at(-1), `${adapter.package}@${adapter.version}`);
+      assert.equal(args[0], 'ci');
+      for (const flag of ['--ignore-scripts', '--registry=https://registry.npmjs.org/', '--no-audit']) assert.ok(args.includes(flag), flag);
       assert.ok(env.HOME.startsWith(base) && env.npm_config_userconfig.startsWith(base) && env.npm_config_globalconfig.startsWith(base));
+      // npm stops when one file is both
+      assert.notEqual(env.npm_config_userconfig, env.npm_config_globalconfig);
       assert.doesNotMatch(JSON.stringify(env), /npm-private|127\.0\.0\.1:9/, 'the user’s npm settings and tokens are never passed');
     }
     await assert.rejects(installAdapter('opencode', { npm: fake }), /installs only/);
@@ -241,5 +251,18 @@ fs.writeFileSync(path.join(prefix, 'package-lock.json'), JSON.stringify({ packag
   } finally {
     delete process.env.npm_config__authToken;
     delete process.env.NPM_CONFIG_REGISTRY;
+  }
+});
+
+test('each adapter’s lock pins its whole tree from the npm registry, the adapter at the version and checksum it names', () => {
+  for (const { id, adapter } of PROFILES.filter((p) => p.adapter)) {
+    const { packages } = ADAPTER_LOCKS[id];
+    assert.deepEqual(packages[''].dependencies, { [adapter.package]: adapter.version }, id);
+    assert.deepEqual([packages[`node_modules/${adapter.package}`].version, packages[`node_modules/${adapter.package}`].integrity], [adapter.version, adapter.integrity], id);
+    for (const [rel, entry] of Object.entries(packages)) {
+      if (!rel || entry.inBundle) continue;
+      assert.match(entry.integrity || '', /^sha512-/, `${id}: ${rel}`);
+      assert.ok(entry.resolved?.startsWith('https://registry.npmjs.org/'), `${id}: ${rel}`);
+    }
   }
 });
