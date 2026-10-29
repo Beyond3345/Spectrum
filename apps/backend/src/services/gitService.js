@@ -236,6 +236,9 @@ export async function commitAll(root, { message, author, hold = () => false, alw
   const named = new Set();
   // the modes committed, where Windows has no execute bit to keep a script's
   const modes = windows() ? await treeFiles(root, await headOid(root)) : new Map();
+  // added and removed together after the loop: each add or remove writes the whole index again
+  const adds = [];
+  const removes = [];
   for (const [rel, head, work, stage] of rows) {
     if (head === 1 && work === 1 && stage === 1) continue;
     // what stays out of this commit goes back to the commit's in the index, which the commit is made from: Git may have
@@ -253,7 +256,7 @@ export async function commitAll(root, { message, author, hold = () => false, alw
     // a committed name Windows can't have (the Mac's Why?.tex) is never here, and never deleted for that
     if (head && windows() && unfitOnWindows(rel)) continue;
     if (work === 0) {
-      if (stage) await git.remove({ fs: gitFs, dir: root, filepath: rel, cache });
+      if (stage) removes.push(rel);
       if (head) changes++;
       continue;
     }
@@ -266,15 +269,19 @@ export async function commitAll(root, { message, author, hold = () => false, alw
       left.push(`“${rel}” is over GitHub’s 100 MB limit`);
       await leave();
     } else {
-      await git.add({ fs: gitFs, dir: root, filepath: rel, cache });
-      // a script committed as executable stays so, or the Mac's next pull would take +x away
-      if (modes.get(rel)?.mode === '100755') {
-        const bytes = await fs.readFile(join(root, rel));
-        const { oid } = await git.hashBlob({ object: (autocrlf ?? 'true') === 'true' ? lf(bytes) : bytes });
-        await git.updateIndex({ fs: gitFs, dir: root, filepath: rel, oid, mode: 0o100755 });
-      }
+      adds.push(rel);
       if (work === 2) changes++;
     }
+  }
+  if (removes.length) await git.remove({ fs: gitFs, dir: root, filepath: removes, cache });
+  // in groups, as git.add opens every file it's given at the same time
+  for (let i = 0; i < adds.length; i += 500) await git.add({ fs: gitFs, dir: root, filepath: adds.slice(i, i + 500), cache });
+  // a script committed as executable stays so, or the Mac's next pull would take +x away
+  for (const rel of adds) {
+    if (modes.get(rel)?.mode !== '100755') continue;
+    const bytes = await fs.readFile(join(root, rel));
+    const { oid } = await git.hashBlob({ object: (autocrlf ?? 'true') === 'true' ? lf(bytes) : bytes });
+    await git.updateIndex({ fs: gitFs, dir: root, filepath: rel, oid, mode: 0o100755 });
   }
   const head = await headOid(root);
   if (!changes && head && !always) return { oid: head, committed: false, left };
