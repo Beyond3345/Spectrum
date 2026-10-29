@@ -457,22 +457,13 @@ export default function VectorCanvas({
     return <line x1={p.x} y1={p.y} x2={q.x} y2={q.y} className={className} {...extra} />;
   };
 
-  /** the arrow tips drawn, one marker for each shape and size */
-  const markers = new Map<string, ReactNode>();
-  const marker = (tip: Exclude<Tip, 'none'> | undefined, size: number) => {
-    if (!tip) return undefined;
-    const px = Math.round(size * 2) / 2;
-    const id = `vec-tip-${tip.replace(' ', '-')}-${px}`;
-    if (!markers.has(id)) {
-      const [d, className] = TIP_SHAPES[tip];
-      markers.set(
-        id,
-        <marker key={id} id={id} viewBox="0 0 10 10" refX="9" refY="5" markerWidth={px} markerHeight={px} orient="auto-start-reverse" markerUnits="userSpaceOnUse">
-          <path d={d} className={className} />
-        </marker>
-      );
-    }
-    return `url(#${id})`;
+  /** an arrow tip at a place on the canvas, pointing away from another, size px long, in a colour */
+  const tipPath = (tip: Exclude<Tip, 'none'> | undefined, at: Pt, from: Pt, size: number, colour: string, key: string) => {
+    if (!tip) return null;
+    const [p, q] = [S(at), S(from)];
+    const [d, className] = TIP_SHAPES[tip];
+    const angle = (Math.atan2(p.y - q.y, p.x - q.x) * 180) / Math.PI;
+    return <path key={key} d={d} className={className} transform={`translate(${p.x},${p.y}) rotate(${angle}) scale(${size / 10}) translate(-9,-5)`} style={className === 'st-arrowhead' ? { fill: colour } : { stroke: colour }} />;
   };
   /** a line's look on screen: its own, else the Style's (or the width, dash and colour it has when it has none) */
   const strokeLook = (s: Stroke & { dashed?: boolean }, width = style.width, dash?: Dash, colour = style.colour) => {
@@ -480,11 +471,19 @@ export default function VectorCanvas({
     const stroke = colourCss(s.colour ?? colour);
     return { stroke, strokeWidth: w, strokeDasharray: dashArray(s.dash ?? (s.dashed ? 'dashed' : dash), w), opacity: s.opacity, color: stroke };
   };
-  /** a line's tips as markers, as the code writes them: a vector's end is the Style's tip when it has none */
-  const tipMarkers = (t: Tips, styleEnd: boolean, strokeWidth: number) => {
+  /** a line's tips from a to b, as the code writes them: a vector's end is the Style's tip when it has none */
+  const tips = (t: Tips, styleEnd: boolean, look: { strokeWidth: number; stroke: string; opacity?: number }, a: Pt, b: Pt) => {
     const end = t.end ? (t.end === 'none' ? undefined : t.end) : styleEnd ? style.tips : undefined;
-    const size = (5 + 1.2 * strokeWidth) * (t.tipSize ?? style.tipSize);
-    return { markerStart: marker(t.start && t.start !== 'none' ? t.start : undefined, size), markerEnd: marker(end, size), markerMid: t.middle ? marker(end ?? style.tips, size) : undefined };
+    const size = (5 + 1.2 * look.strokeWidth) * (t.tipSize ?? style.tipSize);
+    const start = t.start && t.start !== 'none' ? t.start : undefined;
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    return (
+      <g style={{ opacity: look.opacity }}>
+        {tipPath(start, a, b, size, look.stroke, 'start')}
+        {tipPath(end, b, a, size, look.stroke, 'end')}
+        {t.middle && tipPath(end ?? style.tips, mid, a, size, look.stroke, 'middle')}
+      </g>
+    );
   };
 
   const drawItem = (item: Item): ReactNode => {
@@ -507,17 +506,15 @@ export default function VectorCanvas({
       }
       const highlight = item.kind === 'highlight';
       const look = highlight ? strokeLook(item, 2.5, undefined, 'blue!50') : strokeLook(item, item.kind === 'vector' ? style.vectorWidth : style.width);
-      const tips = highlight ? {} : tipMarkers(item, item.kind === 'vector', look.strokeWidth);
       const pos = item.label?.pos ?? 0.5;
       const at = { x: a.x + (b.x - a.x) * pos, y: a.y + (b.y - a.y) * pos };
-      // through its middle, for an arrow there
-      const [p, m, q] = [a, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, b].map(S);
       const names = { vector: 'Vector', segment: 'Segment', line: 'Line', highlight: 'Highlight' };
       return group(
         <>
           {on && line(a, b, 'st-halo')}
           {line(a, b, 'st-hit')}
-          <polyline points={`${p.x},${p.y} ${m.x},${m.y} ${q.x},${q.y}`} className="vec-stroke" style={look} {...tips} />
+          {line(a, b, 'vec-stroke', { style: look })}
+          {!highlight && tips(item, item.kind === 'vector', look, a, b)}
           {item.label?.text.trim() && label(at, item.label.text, item.label.side ?? 'above', `${item.id}-label`, 0, item.label)}
         </>,
         `${names[item.kind]} ${nameOf(item.a)}${nameOf(item.b)}${item.label?.text ? `, ${plain(item.label.text)}` : ''}`
@@ -561,7 +558,6 @@ export default function VectorCanvas({
         };
         const tick = item.tick ?? 0.08;
         const look = strokeLook({ colour: item.colour ?? 'black', width: item.width ?? 'thin' });
-        const tips = tipMarkers({ end: item.tip }, true, look.strokeWidth);
         const numbers = { colour: item.colour, size: item.numbers ?? ('small' as FontSize) };
         const gridLook = strokeLook({ colour: item.gridColour ?? 'gray!30', width: item.gridWidth ?? 'very thin' });
         const [x0, x1] = [Math.min(...item.x), Math.max(...item.x)];
@@ -584,8 +580,10 @@ export default function VectorCanvas({
             {on && line(W({ x: 0, y: item.y[0] }), W({ x: 0, y: item.y[1] }), 'st-halo')}
             {line(W({ x: item.x[0], y: 0 }), W({ x: item.x[1], y: 0 }), 'st-hit')}
             {line(W({ x: 0, y: item.y[0] }), W({ x: 0, y: item.y[1] }), 'st-hit')}
-            {line(W({ x: item.x[0], y: 0 }), W({ x: item.x[1], y: 0 }), 'vec-stroke', { style: look, ...tips })}
-            {line(W({ x: 0, y: item.y[0] }), W({ x: 0, y: item.y[1] }), 'vec-stroke', { style: look, ...tips })}
+            {line(W({ x: item.x[0], y: 0 }), W({ x: item.x[1], y: 0 }), 'vec-stroke', { style: look })}
+            {tips({ end: item.tip }, true, look, W({ x: item.x[0], y: 0 }), W({ x: item.x[1], y: 0 }))}
+            {line(W({ x: 0, y: item.y[0] }), W({ x: 0, y: item.y[1] }), 'vec-stroke', { style: look })}
+            {tips({ end: item.tip }, true, look, W({ x: 0, y: item.y[0] }), W({ x: 0, y: item.y[1] }))}
             {label(W({ x: item.x[1], y: 0 }), xName, 'right', 'xn', 0, { colour: item.colour })}
             {label(W({ x: 0, y: item.y[1] }), yName, 'above', 'yn', 0, { colour: item.colour })}
             {item.ticks &&
@@ -700,7 +698,6 @@ export default function VectorCanvas({
               return label({ x: (f.minX + f.maxX) / 2 + p.shift, y: f.minY - (axes ? 0.6 : 0) }, p.caption, undefined, `${p.id}-caption`);
             })}
             {ghost && line(ghost[0], ghost[1], 'st-ghost')}
-            <defs>{[...markers.values()]}</defs>
             {hover && tool !== 'select' && (() => {
               const p = S(hover);
               return <circle className="ckt-target" cx={p.x} cy={p.y} r={5} />;
