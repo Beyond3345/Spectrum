@@ -105,6 +105,16 @@ test('the user’s own skills follow, deletions too, and never by line', { skip 
   const there = path.join(win.data, 'skills', 'own', 'my-skill', 'SKILL.md');
   assert.match(readFileSync(there, 'utf8'), /Do it this way/);
   assert.ok(existsSync(path.join(skill, '.env.example')), 'still on the Mac');
+  // Windows' own keys in the skill stay when the Mac's change comes in
+  mkdirSync(path.join(path.dirname(there), 'keys'));
+  writeFileSync(path.join(path.dirname(there), '.env'), 'KEY=windows\n');
+  writeFileSync(path.join(path.dirname(there), 'keys', 'id_rsa'), 'windows key');
+  writeFileSync(path.join(skill, 'SKILL.md'), '---\nname: my-skill\ndescription: Mine\n---\nDo it that way.\n');
+  await sync(mac);
+  await sync(win);
+  assert.match(readFileSync(there, 'utf8'), /Do it that way/);
+  assert.equal(readFileSync(path.join(path.dirname(there), '.env'), 'utf8'), 'KEY=windows\n');
+  assert.equal(readFileSync(path.join(path.dirname(there), 'keys', 'id_rsa'), 'utf8'), 'windows key');
   rmSync(path.dirname(there), { recursive: true });
   await sync(win);
   await sync(mac);

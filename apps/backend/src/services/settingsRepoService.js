@@ -252,10 +252,18 @@ async function filesOf(dir, rel = '', out = {}) {
 }
 const hashOfFiles = (files) => (files ? sha1(JSON.stringify(Object.entries(files).sort())) : null);
 
-/** dir's files replaced by src's, through a folder beside it, so the skill is the old copy or the new one, never part of each. */
+/**
+ * dir's files replaced by src's, through a folder beside it, so the skill is the old copy or the new one, never part of
+ * each. The files of dir's the repository never takes (stays) are this computer's alone, and go across into the new one.
+ */
 async function replaceFolder(src, dir) {
   const staged = `${dir}.${crypto.randomUUID()}`;
   await fs.cp(src, staged, { recursive: true });
+  for (const entry of await fs.readdir(dir, { recursive: true, withFileTypes: true }).catch(() => [])) {
+    const abs = path.join(entry.parentPath, entry.name);
+    if (!entry.isFile() || !(await stays(abs))) continue;
+    await fs.cp(abs, path.join(staged, path.relative(dir, abs)), { errorOnExist: false, force: false });
+  }
   const old = `${staged}-old`;
   if (await exists(dir)) await renameOver(dir, old);
   await renameOver(staged, dir);
