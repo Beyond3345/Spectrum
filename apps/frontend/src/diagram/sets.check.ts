@@ -52,6 +52,10 @@ eq(lines.slice(4, 7), ['\\pic (G) at (0,0) {spx/mech/ground};', '\\pic[rotate=90
 eq(lines[7], '\\draw (G-p) to[R] (e2-p);', 'wires reach a pic’s pins as <name>-<pin>');
 eq([code.packages, code.libraries], [['circuitikz'], []], 'spx-mech is TikZ only');
 eq(circuitCode({ elements: [mixed.elements[2]], junctions: [] }, {}).body.includes('\\tikzset'), false, 'no definitions when no picture is used');
+// a flowchart shape takes its text as the pic's text; a point or mark takes none
+const flow = circuitCode({ elements: [{ id: 'e1', kind: 'node', type: 'flow-decision', at: { x: 0, y: 0 }, text: 'Ready?' }, { id: 'e2', kind: 'node', type: 'geom-point', at: { x: 8, y: 0 }, text: 'ignored' }, { id: 'e3', kind: 'wire', points: [{ part: 'e1', pin: 'east' }, { part: 'e2', pin: 'p' }], routes: ['--'], arrows: '->' }], junctions: [] }, {});
+eq(flow.body.split('\n').slice(4, 7), ['\\pic[pic text={Ready?}] (e1) at (0,0) {spx/flow/decision};', '\\pic (e2) at (2,0) {spx/geom/point};', '\\draw[-latex] (e1-east) -- (e2-p);'], 'a decision with its text, wired to a point');
+eq([flow.packages, flow.libraries], [['circuitikz'], []], 'shapes and marks are TikZ only');
 
 // ─── rule 4: merged without duplicates; rule 5: babel; rule 8: never written ───
 

@@ -61,6 +61,7 @@ export const CATEGORIES: { id: CategoryId; label: string; groups: [string, strin
     id: 'others',
     label: 'Others',
     groups: [
+      ['general', 'General drawing'],
       ['flowcharts', 'Flowcharts and block diagrams'],
       ['planning', 'Planning'],
       ['charts', 'Charts'],
@@ -149,6 +150,17 @@ export const STARTERS: Starter[] = [
     also: ['physics/electromagnetism'],
     aliases: ['schematic', 'electric', 'electronics', 'MOSFET', 'transistor', 'op amp', 'resistor'],
     file: 'circuit'
+  },
+  {
+    // every symbol set on, for anyone unsure where a drawing belongs; plotters stay in their own composers
+    id: 'general-drawing',
+    mode: 'circuitikz',
+    title: 'General drawing',
+    blurb: 'Every symbol on one canvas: circuits, logic, supports, flowchart shapes, points and marks, lines and arrows',
+    home: 'others/general',
+    aliases: ['general', 'drawing', 'sketch', 'symbols', 'mixed', 'anything', 'blank', 'shapes', 'lines', 'arrows'],
+    file: 'drawing',
+    sets: SETS.filter((set) => set.id !== 'circuitikz').map((set) => set.id)
   },
   {
     id: 'logic',
@@ -380,9 +392,12 @@ const matches = (query: string, haystack: string[]) => {
   return words.length > 0 && words.every((word) => text.includes(word));
 };
 
-/** The starter whose drawing a set's symbol is placed in: the first that opens the set. */
-const starterOfSet = (set: string, starters: Starter[]) =>
-  starters.find((s) => (set === 'circuitikz' ? s.mode === 'circuitikz' : s.sets?.includes(set)));
+/** A starter's drawings have a set's symbols: circuitikz's are in every circuit, another set's where the starter opens it. */
+const holds = (s: Starter, set: string) => s.mode === 'circuitikz' && (set === 'circuitikz' || !!s.sets?.includes(set));
+
+/** The starters a set's symbol is placed in: the first that opens the set, and General drawing, which has them all. */
+const startersOfSet = (set: string, starters: Starter[]) =>
+  [...new Set([starters.find((s) => s.id !== 'general-drawing' && holds(s, set)), starters.find((s) => s.id === 'general-drawing')])].filter((s): s is Starter => !!s && holds(s, set));
 
 /**
  * The starters and symbols matching a search: a starter by its title, aliases, groups, categories and packages; a
@@ -392,11 +407,9 @@ export function search(query: string, starters: Starter[] = STARTERS): { starter
   const found = starters.filter((s) =>
     matches(query, [s.title, s.blurb, ...(s.aliases ?? []), ...[s.home, ...(s.also ?? [])].flatMap((g) => [groupLabel(g), categoryLabel(g)]), ...MODE_FACTS[s.mode].packages, s.mode])
   );
-  const symbols = SETS.flatMap((set) => {
-    const starter = starterOfSet(set.id, starters);
-    if (!starter) return [];
-    return set.symbols.filter((symbol) => matches(query, [symbol.label, ...(symbol.aliases ?? [])])).map((symbol) => ({ starter, symbol }));
-  });
+  const symbols = SETS.flatMap((set) =>
+    set.symbols.filter((symbol) => matches(query, [symbol.label, ...(symbol.aliases ?? [])])).flatMap((symbol) => startersOfSet(set.id, starters).map((starter) => ({ starter, symbol })))
+  );
   return { starters: found, symbols };
 }
 

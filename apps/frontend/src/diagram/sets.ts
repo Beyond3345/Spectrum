@@ -28,7 +28,9 @@ export interface SymbolSet {
 
 const META: Record<string, Pick<SymbolSet, 'label' | 'categories'>> = {
   circuitikz: { label: 'Circuit symbols', categories: ['engineering/electrical', 'physics/electromagnetism'] },
-  'spx-mech': { label: 'Mechanical supports (Spectrum)', categories: ['engineering/mechanical', 'physics/mechanics'] }
+  'spx-mech': { label: 'Mechanical supports (Spectrum)', categories: ['engineering/mechanical', 'physics/mechanics'] },
+  'spx-flow': { label: 'Flowchart shapes (Spectrum)', categories: ['others/flowcharts', 'computing/software'] },
+  'spx-geom': { label: 'Points and marks (Spectrum)', categories: ['mathematics/geometry', 'physics/mechanics'] }
 };
 
 /** Every set, circuitikz's first: the circuit canvas's palette is its catalogue, a part's set its `set` (none: circuitikz). */

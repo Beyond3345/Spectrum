@@ -170,7 +170,9 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
     const rotate = (((el.rotate || 0) % 360) + 360) % 360;
     const turns = [rotate && `rotate=${rotate}`, el.flipX && 'xscale=-1', el.flipY && 'yscale=-1'].filter(Boolean);
     const name = el.name || named.has(el.id) ? ` (${nameOf(el)})` : '';
-    if (part?.set) return `\\pic${turns.length ? `[${turns.join(', ')}]` : ''}${name} at ${at(el.at)} {${part.tikz}};`;
+    // a set's shape that takes text gets it as the pic's text, which its pic sets in a node (\\tikzpictext)
+    const picKeys = [...turns, ...(part?.text && el.text?.trim() ? [`pic text={${el.text}}`] : [])];
+    if (part?.set) return `\\pic${picKeys.length ? `[${picKeys.join(', ')}]` : ''}${name} at ${at(el.at)} {${part.tikz}};`;
     // Text is a plain node: its keys are only the turns
     const keys = [...(part && !part.tikz ? [] : [part?.tikz || 'circ']), ...(el.options || []), ...turns];
     return `\\node${keys.length ? `[${keys.join(', ')}]` : ''}${name} at ${at(el.at)} {${part?.text ? el.text || '' : ''}};`;
