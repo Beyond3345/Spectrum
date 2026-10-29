@@ -513,14 +513,11 @@ function Editor({ projectId }: { projectId: string }) {
 
   const texFiles = useMemo(() => items.filter((i) => i.type === 'file' && isTex(i.path)).map((i) => i.path), [items]);
   const bibFiles = useMemo(() => items.filter((i) => i.type === 'file' && /\.bib$/i.test(i.path)).map((i) => i.path), [items]);
-  // compiled PDFs (x.pdf next to x.tex) aren't figures
-  const figureFiles = useMemo(
-    () =>
-      items
-        .filter((i) => i.type === 'file' && FIGURE_FILE.test(i.path) && !(/\.pdf$/i.test(i.path) && texFiles.includes(i.path.replace(/\.pdf$/i, '.tex'))))
-        .map((i) => i.path),
-    [items, texFiles]
-  );
+  // compiled PDFs (x.pdf next to x.tex, x.typ or x.md, as gitService's compiledPdfs has them) aren't figures
+  const figureFiles = useMemo(() => {
+    const sources = new Set(items.filter((i) => i.type === 'file' && /\.(tex|ltx|typ|md|markdown)$/i.test(i.path)).map((i) => i.path.replace(/\.[^./]+$/, '.pdf')));
+    return items.filter((i) => i.type === 'file' && FIGURE_FILE.test(i.path) && !sources.has(i.path)).map((i) => i.path);
+  }, [items]);
   const mainPdf = pdfOf(mainFile);
   // the main file first, even before the tree counts it
   const docs = useMemo(() => [...new Set([mainFile, ...documents])].filter(Boolean), [mainFile, documents]);
