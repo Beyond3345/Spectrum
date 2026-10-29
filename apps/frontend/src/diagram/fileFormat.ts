@@ -1,4 +1,4 @@
-import { usesNewerParts } from './modes/circuitikz/model';
+import { PARTS, asCircuit, usesNewerParts } from './modes/circuitikz/model';
 import { plotIsNewer } from './modes/pgfplots/code';
 import type { PlotModel } from './modes/pgfplots/code';
 import { tikzIsNewer } from './modes/tikz/code';
@@ -12,7 +12,8 @@ import type { DiagramFile } from './types';
 // The text above that line matching the hash means it's as the drawing left it; otherwise it was edited by hand.
 // The line's own v1 never changes; the DiagramFile's version is 2 when the drawing has symbol sets, or parts its mode
 // didn't have before them (circuit parts, and the flowchart and plot additions), which builds from before don't read (they open such a
-// file as code).
+// file as code). It is 3 when the drawing has what the 2.0 release candidate's builds would save without: siunitx,
+// logic gate styles, the flowchart and point sets, or a structure's chosen force diagrams. Those builds read 1 and 2.
 
 /** The drawing has parts a build from before sets would write without, rather than refuse. */
 function newerParts(diagram: DiagramFile) {
@@ -20,6 +21,22 @@ function newerParts(diagram: DiagramFile) {
     if (diagram.pkg === 'circuitikz') return usesNewerParts(diagram.model);
     if (diagram.language === 'typst' || diagram.pkg === 'tikz') return tikzIsNewer(diagram.model as TikzModel);
     if (diagram.pkg === 'pgfplots') return plotIsNewer(diagram.model as PlotModel);
+  } catch {
+    // a model of the wrong shape: its mode refuses it anyway
+  }
+  return false;
+}
+
+/** Sets added after the release candidate, whose parts its builds don't have. */
+const NEWER_SETS = ['spx-flow', 'spx-geom'];
+
+/** The drawing has something from phase E, which a release candidate build would save without, rather than refuse. */
+function phaseE(diagram: DiagramFile) {
+  const style = diagram.style;
+  if (style.siUnits === true || style.physics === true || diagram.sets?.some((set) => NEWER_SETS.includes(set))) return true;
+  try {
+    if (diagram.pkg === 'circuitikz') return !!(style.logic || style.notSymbol) || asCircuit(diagram.model).elements.some((el) => NEWER_SETS.includes(PARTS.get(el.type)?.set ?? ''));
+    if (diagram.pkg === 'structures') return style.diagrams !== undefined;
   } catch {
     // a model of the wrong shape: its mode refuses it anyway
   }
@@ -76,7 +93,8 @@ export async function diagramFileText(diagram: DiagramFile, code: DiagramCode, e
   const mark = diagram.language === 'mermaid' ? '%%' : diagram.language === 'typst' ? '//' : '%';
   // no sets: no sets key and version 1, as before sets, unless the drawing has parts a build from before doesn't know
   const { sets, ...rest } = diagram;
-  const kept: DiagramFile = sets?.length ? { ...rest, sets, version: 2 } : { ...rest, version: newerParts(diagram) ? 2 : 1 };
+  const version = phaseE(diagram) ? 3 : sets?.length || newerParts(diagram) ? 2 : 1;
+  const kept: DiagramFile = sets?.length ? { ...rest, sets, version } : { ...rest, version };
   return `${above}${mark} spectrum-diagram v1 ${toBase64(JSON.stringify(kept))} ${await hashOf(drawn)}\n`;
 }
 
@@ -95,7 +113,7 @@ export async function readDiagramFile(text: string): Promise<{ code: string; dia
     const parsed = JSON.parse(fromBase64(last[1]));
     const object = (value: unknown) => !!value && typeof value === 'object' && !Array.isArray(value);
     const sets = parsed?.sets === undefined || (Array.isArray(parsed.sets) && parsed.sets.every((s: unknown) => typeof s === 'string'));
-    if (parsed && (parsed.version === 1 || parsed.version === 2) && sets && ['tikz', 'mermaid', 'typst'].includes(parsed.language) && object(parsed.style) && object(parsed.model)) diagram = parsed;
+    if (parsed && [1, 2, 3].includes(parsed.version) && sets && ['tikz', 'mermaid', 'typst'].includes(parsed.language) && object(parsed.style) && object(parsed.model)) diagram = parsed;
   } catch {
     // a damaged line: the file opens as code
   }

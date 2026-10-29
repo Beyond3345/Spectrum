@@ -8,7 +8,7 @@ export type TikzPackage = 'tikz' | 'circuitikz' | 'pgfplots' | 'tikz-cd' | 'form
  * sets: the symbol sets the drawing has besides its mode's own (sets.ts), in the order they were added. A drawing
  * with sets is version 2, so a build from before sets opens it as code instead of saving it with its parts missing.
  */
-export interface DiagramFile { language: DiagramLanguage; pkg?: TikzPackage; style: Record<string, unknown>; model: unknown; sets?: string[]; version: 1 | 2 }
+export interface DiagramFile { language: DiagramLanguage; pkg?: TikzPackage; style: Record<string, unknown>; model: unknown; sets?: string[]; version: 1 | 2 | 3 }
 /** The defaults in Settings › Composer that a new drawing copies into its style, so changing one never redraws a figure. */
 export interface ComposerDefaults {
   /** bending moment diagrams on the tension side (sagging below) or positive up */

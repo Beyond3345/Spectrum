@@ -100,7 +100,29 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
   const plot: DiagramFile = { language: 'tikz', pkg: 'pgfplots', style: {}, model: { series: [{ id: 's1', source: 'function' }] }, version: 1 };
   eq((await json(plot))?.version, 1, 'a plot of functions is version 1');
   eq((await json({ ...plot, model: { series: [], axes: 'sketch' } }))?.version, 2, 'sketch axes make version 2');
-  for (const bad of [{ ...circuit, sets: 'spx-mech' }, { ...circuit, sets: [1] }, { ...circuit, version: 3 }]) {
+  // phase E's additions make version 3, which the release candidate's builds open as code rather than save without
+  // them; drawings without them keep 1 or 2
+  const structure: DiagramFile = { language: 'tikz', pkg: 'structures', style: { view: 'diagrams', moments: 'tension' }, model: {}, version: 1 };
+  const hidden = { axial: { on: false, fill: 'green!15', opacity: 1 } };
+  eq(
+    [
+      (await json({ ...circuit, style: { preset: 'american', siUnits: true } }))?.version,
+      (await json({ ...circuit, style: { preset: 'american', siUnits: false } }))?.version,
+      (await json({ ...circuit, style: { preset: 'american', logic: 'ieee' } }))?.version,
+      (await json({ ...circuit, style: { preset: 'european', notSymbol: 'circle' } }))?.version,
+      (await json(part('flow-process')))?.version,
+      (await json({ ...circuit, sets: ['spx-geom'] }))?.version,
+      (await json(structure))?.version,
+      (await json({ ...structure, style: { ...structure.style, diagrams: hidden } }))?.version,
+      (await json({ ...plot, style: { siUnits: true } }))?.version,
+      (await json({ ...structure, style: { ...structure.style, physics: true } }))?.version
+    ],
+    [3, 1, 3, 3, 3, 3, 1, 3, 3, 3],
+    'phase E makes version 3'
+  );
+  const v3 = await readDiagramFile(await diagramFileText({ ...circuit, style: { siUnits: true } }, code));
+  eq([v3.diagram?.version, v3.edited], [3, false], 'version 3 reads back');
+  for (const bad of [{ ...circuit, sets: 'spx-mech' }, { ...circuit, sets: [1] }, { ...circuit, version: 4 }]) {
     const text = `${tikzDocument(code)}% spectrum-diagram v1 ${btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(bad))))} 0123456789abcdef\n`;
     eq((await readDiagramFile(text)).diagram, null, `opens as code: ${JSON.stringify(bad).slice(-30)}`);
   }

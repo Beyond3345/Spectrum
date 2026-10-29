@@ -436,7 +436,7 @@ const texts = (list: Item[]) => list.flatMap((i) => (i.t === 'text' ? [i.tex] : 
   eq(diagram.style, { view: 'diagrams', moments: 'positive', siUnits: true }, 'a new drawing copies the bending moment convention and siunitx');
   const code = structureCode(diagram.model, diagram.style);
   const back = await readDiagramFile(await diagramFileText(diagram, code));
-  eq(back.diagram, diagram, 'the drawing comes back');
+  eq(back.diagram, { ...diagram, version: 3 }, 'the drawing comes back, as version 3 for its siunitx');
   eq(back.edited, false, 'not edited');
   eq(structureCode(back.diagram!.model, back.diagram!.style), code, 'and writes the same code');
   console.log('structures.check: ok');
