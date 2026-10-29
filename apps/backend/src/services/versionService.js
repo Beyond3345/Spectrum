@@ -7,6 +7,7 @@ import { diffLines } from 'diff';
 import { ensureDir, freePath, listFilesRecursive, readJson, renameOver, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { appPath, httpError, mutateProjectRoot, serialiser } from './projectService.js';
+import { compiledPdfs } from './gitService.js';
 
 // Content-addressed history in .spectrum/history, which a sync app may share between computers:
 //   objects/<sha[0:2]>/<sha>.gz   gzipped file bytes, shared between versions
@@ -164,16 +165,16 @@ async function readObject(root, sha) {
 const diskFiles = async (root) => (await listFilesRecursive(root)).filter((item) => item.type === 'file').map((item) => item.path);
 
 /**
- * Files a version captures: the visible tree minus compiled PDFs, anything over 50 MB (those go in `large`), and
- * anything that can't be read (broken or outside links, no permission) rather than failing;
- * those go in `skipped`.
+ * Files a version captures: the visible tree minus each document's compiled PDF (gitService's compiledPdfs, never a
+ * PDF a document includes), anything over 50 MB (those go in `large`), and anything that can't be read (broken or
+ * outside links, no permission) rather than failing; those go in `skipped`.
  */
 async function trackedFiles(root, skipped = [], large = []) {
   const files = await diskFiles(root);
-  const present = new Set(files);
+  const compiled = new Set((await compiledPdfs(root)).map((rel) => rel.toLowerCase()));
   const tracked = [];
   for (const rel of files) {
-    if (path.extname(rel).toLowerCase() === '.pdf' && present.has(`${rel.slice(0, -4)}.tex`)) continue;
+    if (compiled.has(rel.toLowerCase())) continue;
     try {
       const abs = safeJoin(root, rel);
       const stat = await fs.stat(abs);

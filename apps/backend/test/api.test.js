@@ -555,6 +555,17 @@ test('parses texcount output and estimates without it', async () => {
   });
 });
 
+test('a checkpoint leaves out a Typst or Markdown document’s compiled PDF and keeps a diagram PDF it includes', async () => {
+  const p = await newProject('Typst history');
+  await writeFile(p.id, 'main.typ', '= Results\n#image("figures/plot.pdf")\n');
+  await writeFile(p.id, 'notes.md', '# Notes\n\n![Flow](figures/flow.pdf)\n');
+  await writeFile(p.id, 'figures/plot.tex', '\\documentclass{standalone}\\begin{document}x\\end{document}');
+  await writeFile(p.id, 'figures/flow.tex', '\\documentclass{standalone}\\begin{document}y\\end{document}');
+  for (const pdf of ['main.pdf', 'notes.pdf', 'figures/plot.pdf', 'figures/flow.pdf']) await fs.writeFile(path.join(p.path, pdf), `%PDF-1.5 ${pdf}`);
+  const { version } = (await api(`/api/projects/${p.id}/versions`, { method: 'POST', body: {} })).json;
+  assert.deepEqual(version.summary.files, ['figures/flow.pdf', 'figures/flow.tex', 'figures/plot.pdf', 'figures/plot.tex', 'main.typ', 'notes.md']);
+});
+
 test('version history: save, compare, restore, rename, delete', async () => {
   const p = await newProject('History');
   const versions = `/api/projects/${p.id}/versions`;
