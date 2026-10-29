@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createServer } from 'node:http';
-import { spawnAgentProcess } from '../src/services/agentSandbox.js';
+import { spawnAgentProcess, developerReads } from '../src/services/agentSandbox.js';
 
 const native = process.platform === 'darwin' && process.env.SPECTRUM_NATIVE_AGENT_TESTS === '1';
 
@@ -72,6 +72,31 @@ test('an agent started from an app reads and runs that bundle, not another app b
     child.stdout.on('data', (d) => { out += d; });
     const code = await new Promise((resolve) => child.on('close', resolve));
     assert.deepEqual([code, out], [0, 'own bundle']);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('an agent runs git through the developer folder, but reads no other app in /Applications', { skip: !native && 'Run with SPECTRUM_NATIVE_AGENT_TESTS=1 outside an existing sandbox.' }, async () => {
+  const [developer] = developerReads();
+  // an installed app other than the developer tools', only checked to exist here
+  let plist;
+  for (const name of (await fs.readdir('/Applications')).filter((n) => n.endsWith('.app'))) {
+    const file = path.join('/Applications', name, 'Contents/Info.plist');
+    if (path.join('/Applications', name) !== developer && await fs.access(file).then(() => true, () => false)) { plist = file; break; }
+  }
+  assert.ok(plist, 'needs an app in /Applications');
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-agent-git-')));
+  const workspace = path.join(root, 'work'), home = path.join(root, 'home');
+  try {
+    await fs.mkdir(workspace); await fs.mkdir(path.join(home, 'tmp'), { recursive: true });
+    const script = `/usr/bin/git --version || exit 2\ncat ${JSON.stringify(plist)} >/dev/null 2>&1 && exit 3\nexit 0`;
+    const child = await spawnAgentProcess({ command: '/bin/sh', args: ['-c', script], runtimeExecutable: '/bin/sh', workspace, home });
+    let out = '', errors = '';
+    child.stdout.on('data', (d) => { out += d; }); child.stderr.on('data', (d) => { errors += d; });
+    const code = await new Promise((resolve) => child.on('close', resolve));
+    assert.equal(code, 0, errors);
+    assert.match(out, /git version/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

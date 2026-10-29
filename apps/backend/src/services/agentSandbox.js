@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { spawnWindowsAgent, windowsWorker } from './agentSandboxWindows.js';
 
 export async function isolationAvailable() {
@@ -9,11 +9,24 @@ export async function isolationAvailable() {
   return false;
 }
 
-export const SYSTEM_READS = ['/System', '/usr', '/bin', '/sbin', '/Library', '/opt/homebrew', '/usr/local', '/private/etc', '/private/var/db', '/Applications'];
+export const SYSTEM_READS = ['/System', '/usr', '/bin', '/sbin', '/Library', '/opt/homebrew', '/usr/local', '/private/etc', '/private/var/db'];
+let developer;
+/**
+ * The active developer folder's app (xcode-select -p), which /usr/bin/git and the other shims run from, or none when
+ * it is under /Library already. Never the rest of /Applications.
+ */
+export function developerReads() {
+  if (developer === undefined) {
+    let dir = '';
+    try { dir = process.platform === 'darwin' ? execFileSync('/usr/bin/xcode-select', ['-p'], { encoding: 'utf8' }).trim() : ''; } catch { /* no developer tools */ }
+    developer = dir.startsWith('/Applications/') ? [dir.match(/^\/Applications\/[^/]+\.app(?=\/|$)/)?.[0] || dir] : [];
+  }
+  return developer;
+}
 const q = (value) => JSON.stringify(value);
 
 export function sandboxProfile({ workspace, home, executable, runtimeExecutable = executable, runtimePaths = [], forbiddenRoots = [], internalPort }) {
-  const reads = [...new Set([...SYSTEM_READS, path.dirname(runtimeExecutable), ...runtimePaths])];
+  const reads = [...new Set([...SYSTEM_READS, ...developerReads(), path.dirname(runtimeExecutable), ...runtimePaths])];
   return `(version 1)
 (deny default)
 (allow process-exec process-fork sysctl-read file-map-executable)
@@ -68,7 +81,7 @@ export async function spawnAgentProcess({ command, args = [], workspace, home, r
     if (root === '/' || root === '/Users' || root === process.env.HOME || root === path.dirname(process.env.HOME || '/Users/unknown')) throw new Error('Choose a specific runtime folder, not a home folder or system root.');
   }
   const workRoot = await fs.realpath(workspace), homeRoot = await fs.realpath(home);
-  const reads = [...SYSTEM_READS, workRoot, homeRoot, ...roots, path.dirname(runtimeExecutable || executable)];
+  const reads = [...SYSTEM_READS, ...developerReads(), workRoot, homeRoot, ...roots, path.dirname(runtimeExecutable || executable)];
   if (!reads.some((root) => executable === root || executable.startsWith(root + path.sep))) throw new Error('This command is outside the approved runtime folders. Add its specific runtime folder in Setup.');
   const profile = sandboxProfile({ workspace: workRoot, home: homeRoot, executable, runtimeExecutable, runtimePaths: roots, forbiddenRoots, internalPort });
   const child = spawn('/usr/bin/sandbox-exec', ['-p', profile, executable, ...args], {
