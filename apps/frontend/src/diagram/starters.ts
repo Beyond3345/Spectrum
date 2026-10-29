@@ -5,6 +5,7 @@ import { TEMPLATES } from './modes/mermaid/templates';
 import { newFormModel, presetFor } from './modes/form/presets';
 import { signalSketch, slopeField } from './modes/pgfplots/code';
 import { sampleBeam } from './modes/structures/model';
+import { dividingSegment, lineThroughPoints, projections, triangleMidpoints } from './modes/vectors/model';
 import { modelArchitecture, stateMachine } from './modes/tikz/examples';
 import { SETS } from './sets';
 import type { SetSymbol } from './sets';
@@ -43,7 +44,7 @@ export const CATEGORIES: { id: CategoryId; label: string; groups: [string, strin
     groups: [
       ['plots', 'Plots and analysis'],
       ['statistics', 'Statistics and probability'],
-      ['geometry', 'Geometry'],
+      ['geometry', 'Geometry and vectors'],
       ['algebra', 'Algebra and category theory'],
       ['discrete', 'Discrete maths']
     ]
@@ -69,7 +70,7 @@ export const CATEGORIES: { id: CategoryId; label: string; groups: [string, strin
   }
 ];
 
-export type StarterMode = 'circuitikz' | 'pgfplots' | 'tikz' | 'tikz-cd' | 'mermaid' | 'fletcher' | 'form' | 'structures';
+export type StarterMode = 'circuitikz' | 'pgfplots' | 'tikz' | 'tikz-cd' | 'mermaid' | 'fletcher' | 'form' | 'structures' | 'vectors';
 
 export interface Starter {
   id: string;
@@ -102,7 +103,8 @@ export const MODE_FACTS: Record<StarterMode, { language: DiagramLanguage; packag
   mermaid: { language: 'mermaid', packages: ['Mermaid'] },
   fletcher: { language: 'typst', packages: ['fletcher'] },
   form: { language: 'tikz', packages: ['TikZ'] },
-  structures: { language: 'tikz', packages: ['TikZ'] }
+  structures: { language: 'tikz', packages: ['TikZ'] },
+  vectors: { language: 'tikz', packages: ['TikZ'] }
 };
 
 const mermaid = (id: string) => () => ({ code: TEMPLATES.find(([t]) => t === id)?.[2] ?? TEMPLATES[0][2] });
@@ -312,6 +314,24 @@ export const STARTERS: Starter[] = [
     file: 'mohr',
     model: () => newFormModel('mohr')
   },
+  // vector diagrams, from the user's own figures
+  ...([
+    ['vectors', 'Vector diagram', 'Points, vectors, midpoints and projections on axes, kept exact as points move', undefined],
+    ['vector-line', 'Line through two points', 'A line through U and V with position vectors u and v and direction d = v − u', lineThroughPoints],
+    ['vector-ratio', 'Dividing a segment in a ratio', 'M on AB with AM : MB = 1 : 2, and the vectors a, b and m from O', dividingSegment],
+    ['vector-midpoints', 'Midpoints of a triangle', 'PQ joins the midpoints of OA and OB, parallel to AB and half as long', triangleMidpoints],
+    ['vector-projections', 'Projections', 'The projection of b onto a in three panels: acute, right and obtuse', projections]
+  ] as const).map(([id, title, blurb, model]): Starter => ({
+    id,
+    mode: 'vectors',
+    title,
+    blurb,
+    home: 'mathematics/geometry',
+    also: ['physics/mechanics'],
+    aliases: ['vector', 'vectors', 'position vector', 'geometry', 'midpoint', 'ratio', 'projection', 'foot', 'axes', 'coordinates', 'parallelogram'],
+    file: id === 'vectors' ? 'vectors' : id,
+    ...(model && { model })
+  })),
   // the Form frame's test preset, which the chooser lists in development builds only
   {
     id: 'form-test',

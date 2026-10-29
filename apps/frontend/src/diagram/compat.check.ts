@@ -11,6 +11,7 @@ import { fletcherCode } from './modes/fletcher/code';
 import { plotCode } from './modes/pgfplots/code';
 import { tikzCode } from './modes/tikz/code';
 import { cdCode } from './modes/tikzcd/code';
+import { vectorCode } from './modes/vectors/code';
 import { documentLoads } from './sets';
 import type { DiagramFile } from './types';
 
@@ -32,6 +33,8 @@ function codeOf(diagram: DiagramFile, typstVersion: string): DiagramCode {
       return cdCode(model);
     case 'tikz':
       return tikzCode(model);
+    case 'vectors':
+      return vectorCode(model, diagram.style);
     default:
       throw new Error(`no mode for ${diagram.pkg}`);
   }
@@ -44,7 +47,7 @@ function loadsOf(text: string) {
 }
 
 (async () => {
-  eq(Object.keys(FIXTURES).length, 8, 'a file for each mode');
+  eq(Object.keys(FIXTURES).length, 9, 'a file for each mode');
   for (const [path, text] of Object.entries(FIXTURES)) {
     const { code, diagram, edited } = await readDiagramFile(text);
     if (!diagram) throw new Error(`${path}: no drawing`);

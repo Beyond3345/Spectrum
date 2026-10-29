@@ -6,6 +6,7 @@ import { plotCode } from './modes/pgfplots/code';
 import type { PlotModel } from './modes/pgfplots/code';
 import { FLETCHER_SHAPES, tikzCode } from './modes/tikz/code';
 import type { TikzModel } from './modes/tikz/code';
+import { vectorCode } from './modes/vectors/code';
 import { CATEGORIES, MODE_FACTS, STARTERS, search, sectionsFor, starterFor, usedNow } from './starters';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -98,5 +99,13 @@ eq((starterFor('state-machine-typst')!.model!() as TikzModel).boxes.every((b) =>
 eq(fletcherCode(starterFor('state-machine-typst')!.model!() as TikzModel).body.includes('loop-angle'), true, 'its loops in fletcher');
 eq(tikzCode(starterFor('model-architecture')!.model!() as TikzModel).body.includes('$\\times N$'), true, 'a block ×N');
 eq(plotCode(starterFor('signal-sketch')!.model!() as PlotModel).body.includes('xtick=\\empty'), true, 'a sketch');
+
+// vector diagrams: under Mathematics › Geometry and vectors, cross-listed under Physics › Mechanics and fluids
+const vectorStarters = STARTERS.filter((s) => s.mode === 'vectors');
+eq(vectorStarters.map((s) => s.id), ['vectors', 'vector-line', 'vector-ratio', 'vector-midpoints', 'vector-projections'], 'the vector composer and its four figures');
+eq(sectionsFor('mathematics').find((s) => s.id === 'mathematics/geometry')?.label, 'Geometry and vectors', 'the group');
+eq(vectorStarters.every((s) => s.home === 'mathematics/geometry' && sectionsFor('physics').find((x) => x.id === 'physics/mechanics')!.starters.includes(s)), true, 'each under Mechanics and fluids too');
+for (const q of ['vector', 'midpoint', 'projection', 'position vector']) eq(ids(q).includes('vectors'), true, `${q} finds the vector composer`);
+eq(vectorStarters.filter((s) => s.model).every((s) => vectorCode(s.model!(), {}).body.includes('\\coordinate (O) at (0,0);')), true, 'each figure writes code');
 
 console.log('starters.check: ok');
