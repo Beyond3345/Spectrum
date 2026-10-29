@@ -109,6 +109,20 @@ A new composer under Mathematics › Geometry and vectors, also listed under Phy
   - projections in three panels.
 - **Not included:** 3D vectors and a Typst (CeTZ) version.
 
+### E6b. Every vector diagram style customisable
+
+Added 29 October 2026 at the user's request: the figures they gave are starting points, not fixed styles. Every item's look can be set on its own, with the drawing's defaults in Style.
+
+- **Lines:** any thickness (the TikZ names and a value in points), any dash pattern (solid, dashed, dotted, dash dot, or a custom on and off length) and opacity.
+- **Arrows:** the tip at each end chosen separately (none, Stealth, Latex, To, Triangle, open or filled, and a bar), with its size; double-headed vectors; an arrow at the middle of a line.
+- **Colours:** any colour for a line, a point, a label or a fill, from the shared colour field (swatches, any xcolor name or mix such as `blue!50`, or a picked colour).
+- **Points:** size and shape (filled, open, cross), and their colour.
+- **Fills:** polygons and highlights take a fill colour and opacity.
+- **Labels:** size (from `\tiny` to `\Large`) and colour, beside the side and distance there now.
+- **Axes, ticks and the grid:** their colour, thickness, arrow tips, tick length and step, and number size.
+- **Drawing defaults:** Style sets the default line thickness, arrow tip, colour and point size for new items; an item changed by hand keeps its own.
+- **File:** old vector files open and write the same code, since each new key is left out when it holds the default.
+
 ### E7. General drawing
 
 A composer under Others called “General drawing”: the TikZ canvas with every symbol set switched on. That covers circuits, logic, supports and mechanical parts, flowchart shapes, the vector tools and plain lines, arrows and shapes.
