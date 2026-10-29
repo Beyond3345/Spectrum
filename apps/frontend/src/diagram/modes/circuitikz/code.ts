@@ -3,6 +3,7 @@
 // another symbol set is a \pic, defined inside the picture (only the ones used), its set's packages and libraries
 // added to what the document loads.
 import { SYMBOL_SETS, picDefinition } from '../../../../../backend/src/data/symbolSets.js';
+import { unitWriter } from '../../units';
 import { CATALOGUE, GRID_CM, PARTS, isPoint } from './model';
 import type { CircuitModel, Element, End, Mark, NodePart, PathPart, Wire } from './model';
 
@@ -17,8 +18,14 @@ export interface CircuitStyle {
   voltages?: 'american' | 'european' | 'straight' | 'raised';
   /** left out: circuitikz's default, noold */
   voltageDir?: 'noold' | 'RP' | 'EF';
-  /** values typed as 4.7<\kilo\ohm> are written with siunitx's \SI */
+  /** before siUnits: values typed as 4.7<\kilo\ohm> are written with siunitx's \SI (a drawing that has it keeps it) */
   siunitx?: boolean;
+  /** values that read as a number and a unit (10 kΩ, 4.7 µF) are written with siunitx's \qty (units.ts) */
+  siUnits?: boolean;
+  /** logic gates: left out, as the symbols; ieee needs circuitikz 1.1 (2020) */
+  logic?: 'american' | 'european' | 'ieee';
+  /** a European gate's inverted output: left out, circuitikz's triangle */
+  notSymbol?: 'circle';
   /** left out: circuitikz's default, empty */
   diodes?: 'full' | 'empty' | 'stroke';
   /** left out: circuitikz's default, smart */
@@ -41,6 +48,7 @@ export function readStyle(raw: Record<string, unknown>): CircuitStyle {
   const voltageDir = oneOf(raw.voltageDir, ['RP', 'EF'] as const);
   const diodes = oneOf(raw.diodes, ['full', 'stroke'] as const);
   const labels = oneOf(raw.labels, ['straight', 'rotate'] as const);
+  const logic = oneOf(raw.logic, ['american', 'european', 'ieee'] as const);
   const length = typeof raw.length === 'number' && raw.length >= 0.5 && raw.length <= 4 && raw.length !== DEFAULT_LENGTH ? raw.length : undefined;
   return {
     preset,
@@ -49,6 +57,9 @@ export function readStyle(raw: Record<string, unknown>): CircuitStyle {
     ...(voltages && voltages !== preset ? { voltages } : null),
     ...(voltageDir ? { voltageDir } : null),
     ...(raw.siunitx === true ? { siunitx: true } : null),
+    ...(raw.siUnits === true ? { siUnits: true } : null),
+    ...(logic && logic !== preset ? { logic } : null),
+    ...(raw.notSymbol === 'circle' ? { notSymbol: 'circle' as const } : null),
     ...(diodes ? { diodes } : null),
     ...(labels ? { labels } : null),
     ...(length ? { length } : null)
@@ -60,10 +71,17 @@ const num = (v: number) => {
   return String(Object.is(rounded, -0) ? 0 : rounded);
 };
 
+/** The logic gates' own keys, when they differ from the preset's: the ports, and a European gate's NOT symbol. */
+function logicKeys(style: CircuitStyle) {
+  const ports = style.logic || style.preset;
+  return [style.logic && `${style.logic} ports`, ports === 'european' && style.notSymbol && `tripoles/european not symbol=${style.notSymbol}`].filter(Boolean) as string[];
+}
+
 /** The keys that change how symbols look, valid inside \ctikzset{…}: what the symbol generator is given. */
 export function symbolOptions(style: CircuitStyle) {
   return [
     style.preset,
+    ...logicKeys(style),
     style.inductors && `${style.inductors} inductors`,
     style.resistors && `${style.resistors} resistors`,
     style.diodes && `diode=${style.diodes}`,
@@ -83,9 +101,13 @@ function styleCode(style: CircuitStyle) {
     `${style.inductors || style.preset} inductors`,
     `${style.resistors || style.preset} resistors`,
     `${style.voltages || style.preset} voltages`,
-    `voltage dir=${style.voltageDir || 'noold'}`
+    `voltage dir=${style.voltageDir || 'noold'}`,
+    // only when chosen, so a drawing from before the choice writes what it did
+    ...logicKeys(style).filter((key) => key.endsWith(' ports'))
   ];
-  const ctikz = [`label/align=${style.labels || 'smart'}`, `diode=${style.diodes || 'empty'}`, `bipoles/length=${num(style.length || DEFAULT_LENGTH)}cm`];
+  const ctikz = [
+    ...logicKeys(style).filter((key) => !key.endsWith(' ports')),
+    `label/align=${style.labels || 'smart'}`, `diode=${style.diodes || 'empty'}`, `bipoles/length=${num(style.length || DEFAULT_LENGTH)}cm`];
   return { picture: picture.join(', '), ctikz: `\\ctikzset{${ctikz.join(', ')}}` };
 }
 
@@ -133,7 +155,9 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
     return PARTS.get(el.type)?.set ? `(${nameOf(el)}-${end.pin})` : `(${nameOf(el)}.${end.pin})`;
   };
 
+  const units = unitWriter(!!style.siUnits);
   const value = (text: string) => {
+    if (style.siUnits) return units.typed(text) ?? maths(text);
     const si = style.siunitx && /^\s*([^<>]*)<([^<>]+)>\s*$/.exec(text);
     if (!si) return maths(text);
     siunitxUsed = true;
@@ -193,6 +217,6 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
     ...model.junctions.map((j) => `\\node[circ] at ${at(j)} {};`)
   ];
   const body = [`\\begin{circuitikz}[${picture}]`, ctikz, ...definitions, ...lines, '\\end{circuitikz}'].join('\n');
-  const packages = [...new Set(['circuitikz', ...sets.flatMap((set) => set.packages), ...(siunitxUsed ? ['siunitx'] : [])])];
+  const packages = [...new Set(['circuitikz', ...sets.flatMap((set) => set.packages), ...(siunitxUsed || units.used ? ['siunitx'] : [])])];
   return { body, packages, libraries: [...new Set(sets.flatMap((set) => set.libraries))] };
 }

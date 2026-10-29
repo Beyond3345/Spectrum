@@ -759,6 +759,8 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
         // its packages and libraries merged, TikZ's babel library added and what Spectrum never writes left out
         const { refused, ...loads } = documentLoads('tikz', loadsOf(text));
         if (refused.length) toast(`${name} loads ${refused.join(', ')}, which Spectrum leaves out of your document’s preamble.`);
+        // the document may be compiled elsewhere, by a TeX older than this computer's
+        if (/\bieee ports\b/.test(text)) toast(`${name} has IEEE logic gates, which need circuitikz 1.1 or later (TeX Live 2020 or newer). An older circuitikz stops with an error.`);
         post({ type: 'insert', projectId, path, language, ...loads });
       }
       toast('The figure is ready to insert in the editor’s Floats panel.', { tone: 'success' });
@@ -900,7 +902,7 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
               <>
                 <div className="diagram-style-scrim" onMouseDown={() => setStyleOpen(false)} />
                 <div className="diagram-style-panel" onKeyDown={(e) => e.key === 'Escape' && setStyleOpen(false)}>
-                  <StyleMenu style={doc.diagram!.style} onChange={setStyle} />
+                  <StyleMenu style={doc.diagram!.style} onChange={setStyle} model={doc.diagram!.model} />
                 </div>
               </>
             )}

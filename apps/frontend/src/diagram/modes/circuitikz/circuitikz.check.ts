@@ -61,6 +61,27 @@ eq(circuitCode(circuit, {}).packages, ['circuitikz'], 'no siunitx when it is off
 eq(circuitCode(circuit, {}).body.includes('a={$4.7<\\kilo\\ohm>$}'), true, 'a value is maths when siunitx is off');
 eq(circuitCode({ elements: [], junctions: [] }, { preset: 'european' }).body, '\\begin{circuitikz}[european, european inductors, european resistors, european voltages, voltage dir=noold]\n\\ctikzset{label/align=smart, diode=empty, bipoles/length=1.4cm}\n\\end{circuitikz}', 'an empty circuit: every style key written, defaults too');
 
+// siunitx (Write units with siunitx): a value that reads as a number and a unit as \qty, the rest as maths
+{
+  const on = circuitCode(circuit, { siUnits: true });
+  eq(on.body.includes('a={\\qty{4.7}{\\kilo\\ohm}}'), true, 'circuitikz’s own <…> as \\qty');
+  eq(on.packages, ['circuitikz', 'siunitx'], 'siunitx loaded');
+  const typed: CircuitModel = { elements: [{ id: 'c', kind: 'path', type: 'capacitor', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, value: '4.7 µF', voltage: { text: '5 V' }, current: { text: 'i_1' } }], junctions: [] };
+  const line = circuitCode(typed, { siUnits: true }).body.split('\n')[2];
+  eq(line, '\\draw (0,0) to[C, a={\\qty{4.7}{\\micro\\farad}}, v={\\qty{5}{\\volt}}, i={$i_1$}] (1,0);', 'values, voltages and currents');
+  eq(circuitCode(typed, {}).packages, ['circuitikz'], 'off: no siunitx');
+  eq(readStyle({ siUnits: true, siunitx: true }), { preset: 'american', siunitx: true, siUnits: true }, 'both kept: siUnits wins');
+}
+
+// logic gates: only when chosen, after the preset; the NOT symbol only for European gates
+eq(readStyle({ preset: 'european', logic: 'european', notSymbol: 'circle' }), { preset: 'european', notSymbol: 'circle' }, 'the preset’s own gates dropped');
+eq(readStyle({ logic: 'british' }), { preset: 'american' }, 'unknown gates dropped');
+eq(circuitCode({ elements: [], junctions: [] }, { preset: 'european', logic: 'ieee' }).body.split('\n')[0], '\\begin{circuitikz}[european, european inductors, european resistors, european voltages, voltage dir=noold, ieee ports]', 'IEEE gates');
+eq(circuitCode({ elements: [], junctions: [] }, { logic: 'european', notSymbol: 'circle' }).body.split('\n').slice(0, 2), ['\\begin{circuitikz}[american, american inductors, american resistors, american voltages, voltage dir=noold, european ports]', '\\ctikzset{tripoles/european not symbol=circle, label/align=smart, diode=empty, bipoles/length=1.4cm}'], 'European gates in an American drawing, circled');
+eq(circuitCode({ elements: [], junctions: [] }, { logic: 'ieee', notSymbol: 'circle' }).body.includes('not symbol'), false, 'no NOT symbol for IEEE gates');
+eq(symbolOptions(readStyle({ preset: 'european', notSymbol: 'circle' })), 'european, tripoles/european not symbol=circle', 'the canvas draws the chosen gates');
+eq(symbolOptions(readStyle({ logic: 'ieee' })), 'american, ieee ports', 'and IEEE ones');
+
 // resistor and voltage styles: kept only when they differ from the preset, written as picture keys
 eq(readStyle({ preset: 'european', resistors: 'european', voltages: 'raised' }), { preset: 'european', voltages: 'raised' }, 'the preset’s own resistors are dropped');
 eq(readStyle({ resistors: 'british', voltages: 'curly' }), { preset: 'american' }, 'unknown resistor and voltage styles dropped');
