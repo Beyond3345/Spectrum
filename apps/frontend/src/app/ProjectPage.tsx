@@ -53,8 +53,10 @@ import type { TransferJob } from './TransferPanel';
 import { confirmDialog, promptDialog } from './Dialogs';
 import { toast } from './Toast';
 import { IS_DESKTOP, pickFolder } from './desktop';
-import { addFolder, childFolders, deleteFolder, placeProject, renameFolder } from './folders';
+import { FOLDER_COLOURS, addFolder, childFolders, colourFolder, deleteFolder, folderPath, isWithin, moveItems, placeProject, renameFolder } from './folders';
 import type { ProjectFolder, ProjectFolders } from './folders';
+import Home, { DRAG_TYPE, FOLDER_TINTS, HOME_SORTS, HOME_VIEW, formatFull, timeAgo } from './Home';
+import type { HomeItem, HomeView } from './Home';
 import { BIN, FILE_MANAGER, IS_WINDOWS, tildify } from './platform';
 import { TAG_COLOUR_NAMES, loadSettings, useSettings, type AppSettings, type TagColour } from './settings';
 import { TAG_COLOURS } from './appearance';
@@ -70,35 +72,8 @@ function ensureOk<T extends { ok?: boolean; error?: string }>(res: T, fallback: 
   return res;
 }
 
-const relative = new Intl.RelativeTimeFormat('en-AU', { numeric: 'always' });
-const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
-  ['minute', 60],
-  ['hour', 3600],
-  ['day', 86400],
-  ['week', 604800],
-  ['month', 2629800],
-  ['year', 31557600]
-];
-
-function timeAgo(iso: string) {
-  const secs = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (!Number.isFinite(secs)) return '';
-  if (secs < 60) return 'Just now';
-  const [unit, size] = UNITS.filter(([, s]) => secs >= s).pop()!;
-  return relative.format(-Math.floor(secs / size), unit);
-}
-
-const fullDate = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-const formatFull = (iso: string) => {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : fullDate.format(d);
-};
-
 /** The badge by a project's name, [long, short]: its folder can't be found. */
 const badgeOf = (p: ProjectMeta): { text: [string, string]; warning: boolean } | null => (p.missing ? { text: ['Folder missing', 'Folder missing'], warning: true } : null);
-
-// a project card or row on its way to a folder in the sidebar
-const DRAG_TYPE = 'application/x-spectrum-project';
 
 /** The colour chosen for the tag, or one picked from its name. */
 const tagColour = (tag: string, chosen: AppSettings['tagColours']) =>
@@ -130,9 +105,11 @@ type Prefs = {
   tagsOpen: boolean;
   /** folders in the sidebar showing without the folders inside them */
   closedFolders: string[];
+  /** each folder's icons or list and its sort on Home, by its id ('' is Home itself) */
+  home: Record<string, Partial<HomeView>>;
 };
 const PREFS_KEY = 'spectrum-projects-view';
-const DEFAULT_PREFS: Prefs = { layout: 'list', sortKey: 'date', dateField: 'updatedAt', sortDir: 'desc', sidebarCollapsed: false, tagsOpen: true, closedFolders: [] };
+const DEFAULT_PREFS: Prefs = { layout: 'list', sortKey: 'date', dateField: 'updatedAt', sortDir: 'desc', sidebarCollapsed: false, tagsOpen: true, closedFolders: [], home: {} };
 
 function loadPrefs(): Prefs {
   try {
@@ -143,8 +120,9 @@ function loadPrefs(): Prefs {
 }
 
 type SheetState =
-  | { kind: 'new'; template: string }
-  | { kind: 'gallery' }
+  // folder: the one a new project goes in
+  | { kind: 'new'; template: string; folder?: string | null }
+  | { kind: 'gallery'; folder?: string | null }
   | { kind: 'arxiv' }
   | { kind: 'tags'; id: string }
   | { kind: 'folder'; id: string }
@@ -154,6 +132,9 @@ type SheetState =
   | null;
 
 type ActiveJob = TransferJob & { sourceName: string };
+
+/** Where the page was, for coming back from a project; Spectrum opens on Settings › Projects › Open Spectrum on. */
+let place: { view: string; home: string | null } | null = null;
 
 // ─── page ───
 
@@ -170,7 +151,10 @@ export default function ProjectPage() {
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
   const [categories, setCategories] = useState<TemplateCategory[]>([]);
   const [defaultDir, setDefaultDir] = useState('');
-  const [view, setView] = useState('all'); // 'all' | 'github' | 'archived' | 'tag:<name>' | 'folder:<id>'
+  // 'home' | 'all' | 'github' | 'archived' | 'tag:<name>' | 'folder:<id>'
+  const [view, setView] = useState(() => place?.view ?? (settings.openOn === 'all' ? 'all' : 'home'));
+  /** the folder open on Home (null: Home itself) */
+  const [homeAt, setHomeAt] = useState<string | null>(place?.home ?? null);
   /** linked projects whose last backup, pull or sync didn't go through, for “Not backed up since …” */
   const [problems, setProblems] = useState<Record<string, GitHubProblem>>({});
   // Settings closed: a sign-in or sign-out there shows in the GitHub view and the badges
@@ -179,7 +163,7 @@ export default function ProjectPage() {
   const [prefs, setPrefs] = useState(loadPrefs);
   const [sheet, setSheet] = useState<SheetState>(null);
   const [ctx, setCtx] = useState<{ x: number; y: number; items: MenuItems } | null>(null);
-  /** the sidebar row a dragged project would drop into: a folder's id, or '' for All projects */
+  /** where a dragged project would drop: a sidebar folder's id, '' for All projects, 'home', or Home's 'tile:<id>' and 'path:<id>' */
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [job, setJob] = useState<ActiveJob | null>(null);
   const [busy, setBusy] = useState(false);
@@ -237,12 +221,15 @@ export default function ProjectPage() {
       } else if (matchesShortcut('Mod-f', e) && !sheet) {
         e.preventDefault();
         searchRef.current?.focus();
+      } else if (matchesShortcut('Mod-ArrowUp', e) && !sheet && view === 'home' && homeAt && !(e.target instanceof HTMLInputElement)) {
+        e.preventDefault();
+        goHome(loadSettings().projectFolders.folders.find((f) => f.id === homeAt)?.parent ?? null);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // updatePrefs only uses the functional setState form, so a stale copy is fine
-  }, [sheet, settings.shortcuts]);
+  }, [sheet, settings.shortcuts, view, homeAt]);
 
   const allTags = useMemo(() => {
     const counts = new Map<string, number>();
@@ -254,10 +241,27 @@ export default function ProjectPage() {
   const folders = settings.projectFolders;
   const activeFolder = view.startsWith('folder:') ? folders.folders.find((f) => f.id === view.slice(7)) : undefined;
 
-  // a tag view whose last project lost the tag, or a deleted folder's view, falls back to All projects
+  const homeFolder = folders.folders.find((f) => f.id === homeAt);
+  const homeView: HomeView = { ...HOME_VIEW, ...prefs.home[homeAt ?? ''] };
+  const setHomeView = (patch: Partial<HomeView>) => updatePrefs((prev) => ({ home: { ...prev.home, [homeAt ?? '']: { ...prev.home[homeAt ?? ''], ...patch } } }));
+
+  /** Opens a folder on Home (null: Home itself). */
+  const goHome = (id: string | null) => {
+    setView('home');
+    setHomeAt(id);
+    setQuery('');
+  };
+
+  useEffect(() => {
+    place = { view, home: homeAt };
+  }, [view, homeAt]);
+
+  // a tag view whose last project lost the tag, or a deleted folder's view, falls back to All projects; a deleted
+  // folder open on Home, to Home
   useEffect(() => {
     if ((activeTag && loaded && !allTags.some(([tag]) => tag === activeTag)) || (view.startsWith('folder:') && !activeFolder)) setView('all');
-  }, [activeTag, allTags, loaded, view, activeFolder]);
+    if (homeAt && !homeFolder) setHomeAt(null);
+  }, [activeTag, allTags, loaded, view, activeFolder, homeAt, homeFolder]);
 
   const counts = useMemo(() => {
     const shown = projects.filter((p) => !p.archived);
@@ -295,7 +299,10 @@ export default function ProjectPage() {
     );
   }, [projects, view, activeTag, activeFolder, folders, query, prefs.sortKey, prefs.sortDir, prefs.dateField]);
 
-  const title = activeTag ?? activeFolder?.name ?? (view === 'github' ? 'GitHub' : view === 'archived' ? 'Archived' : 'All projects');
+  const title =
+    activeTag ?? activeFolder?.name ?? (view === 'home' ? (homeFolder?.name ?? 'Home') : view === 'github' ? 'GitHub' : view === 'archived' ? 'Archived' : 'All projects');
+  /** the folder New puts things in: the one open on Home or in the sidebar */
+  const here = view === 'home' ? homeAt : (activeFolder?.id ?? null);
   const parentDir = settings.projectsDir || undefined;
 
   // ─── actions ───
@@ -479,6 +486,17 @@ export default function ProjectPage() {
 
   const moveToFolder = (projectId: string, folderId: string | null) => changeFolders((tree) => placeProject(tree, projectId, folderId));
 
+  /** Projects ('p:<id>') and folders ('f:<id>') into a folder, or to the top (null); never a folder into itself. */
+  const moveInto = (items: string[], folderId: string | null) => {
+    // dropped back on itself: nothing to say
+    const moving = items.filter((item) => item !== `f:${folderId}`);
+    const tree = loadSettings().projectFolders;
+    if (folderId && moving.some((item) => item.startsWith('f:') && isWithin(tree, folderId, item.slice(2)))) {
+      toast('A folder can’t go inside itself or a folder in it.', { tone: 'error' });
+    }
+    changeFolders((t) => moveItems(t, moving, folderId));
+  };
+
   /** Inside parent (null: at the top); the new folder's id, or null if cancelled. */
   const newFolder = async (parent: string | null) => {
     const name = (await promptDialog({ title: 'New folder', placeholder: 'Folder name', confirmLabel: 'Create' }))?.trim();
@@ -559,8 +577,22 @@ export default function ProjectPage() {
         ];
 
   const folderMenu = (f: ProjectFolder | null): MenuItems => [
+    f && { label: 'Open', icon: 'folder', onSelect: () => goHome(f.id) },
     { label: 'New folder…', icon: 'folder.badge.plus', onSelect: () => newFolder(f?.id ?? null) },
     f && { label: 'Rename…', icon: 'pencil', onSelect: () => editFolderName(f) },
+    f && { separator: true },
+    f && { label: 'Colour', heading: true },
+    ...(f
+      ? FOLDER_COLOURS.map((c) => ({
+          label: (
+            <>
+              <span className={`tag-dot folder-dot folder-colour ${c}`} /> {FOLDER_TINTS[c]}
+            </>
+          ),
+          checked: (f.colour ?? 'blue') === c,
+          onSelect: () => changeFolders((tree) => colourFolder(tree, f.id, c))
+        }))
+      : []),
     f && { separator: true },
     f && { label: 'Delete…', icon: 'trash', destructive: true, onSelect: () => removeFolder(f) }
   ];
@@ -593,18 +625,18 @@ export default function ProjectPage() {
       setCtx({ x: e.clientX, y: e.clientY, items: menuFor(p) });
     },
     onDragStart: (e: ReactDragEvent) => {
-      e.dataTransfer.setData(DRAG_TYPE, p.id);
+      e.dataTransfer.setData(DRAG_TYPE, `p:${p.id}`);
       e.dataTransfer.effectAllowed = 'move';
     },
     onDragEnd: () => setDropTarget(null)
   });
 
-  /** A sidebar row a project can be dropped on: into a folder, or out of any (null, All projects). */
-  const dropProps = (folderId: string | null) => ({
+  /** Somewhere projects and folders can be dropped: into a folder, or out of any (null, All projects and Home). */
+  const dropProps = (folderId: string | null, key = folderId ?? '') => ({
     onDragOver: (e: ReactDragEvent) => {
       if (!e.dataTransfer.types.includes(DRAG_TYPE)) return;
       e.preventDefault();
-      if (dropTarget !== (folderId ?? '')) setDropTarget(folderId ?? '');
+      if (dropTarget !== key) setDropTarget(key);
     },
     onDragLeave: (e: ReactDragEvent) => {
       if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropTarget(null);
@@ -612,8 +644,8 @@ export default function ProjectPage() {
     onDrop: (e: ReactDragEvent) => {
       e.preventDefault();
       setDropTarget(null);
-      const id = e.dataTransfer.getData(DRAG_TYPE);
-      if (id) moveToFolder(id, folderId);
+      const items = e.dataTransfer.getData(DRAG_TYPE).split('\n').filter(Boolean);
+      if (items.length) moveInto(items, folderId);
     }
   });
 
@@ -638,7 +670,7 @@ export default function ProjectPage() {
               {...menuProps(() => folderMenu(f))}
               {...dropProps(f.id)}
             >
-              <Icon name="folder" />
+              <Icon name="folder" className={f.colour ? `folder-icon folder-colour ${f.colour}` : ''} />
               <span className="nav-label">{f.name}</span>
               <span className="nav-count">{counts.inFolder.get(f.id) || 0}</span>
             </button>
@@ -708,6 +740,62 @@ export default function ProjectPage() {
 
   const sheetProject = sheet && 'id' in sheet ? projects.find((p) => p.id === sheet.id) : undefined;
 
+  const shownProjects = useMemo(() => projects.filter((p) => !p.archived), [projects]);
+  const layout = view === 'home' ? homeView.layout : prefs.layout;
+  const setLayout = (next: Prefs['layout']) => (view === 'home' ? setHomeView({ layout: next }) : updatePrefs({ layout: next }));
+
+  /** A project in the list; on Home, with Home's handlers, its kind and, while searching, its folder's path. */
+  const projectRow = (p: ProjectMeta, home?: HomeItem) => {
+    const field = home?.date ?? prefs.dateField;
+    return (
+      <div key={p.id} role="row" className={`project-row ${p.missing ? 'missing' : ''} ${home?.selected ? 'selected' : ''}`} {...rowProps(p)} {...home?.props}>
+        <span className="col-thumb"><Thumb project={p} /></span>
+        <span className="col-name">
+          <span className="project-name-line">
+            <span className="project-name">{p.name}</span>
+            {badge(p)}
+            {p.archived && view !== 'archived' && <span className="badge">Archived</span>}
+          </span>
+          {home?.where ? <span className="project-path">{home.where}</span> : <span className="project-path" title={p.path}>{tildify(p.path)}</span>}
+        </span>
+        {home ? (
+          <>
+            <span className="col-kind">Project</span>
+            <span className="col-count" />
+          </>
+        ) : (
+          <span className="col-tags">{tagChips(p)}</span>
+        )}
+        <span className="col-date" title={formatFull(p[field])}>{timeAgo(p[field])}</span>
+        <span className="col-actions">
+          <MenuButton icon="ellipsis" title="More" align="end" items={menuFor(p)} />
+        </span>
+      </div>
+    );
+  };
+
+  /** A project in the grid; on Home, as projectRow. */
+  const projectCard = (p: ProjectMeta, home?: HomeItem) => {
+    const field = home?.date ?? prefs.dateField;
+    return (
+      <div key={p.id} className={`project-card ${p.missing ? 'missing' : ''} ${home?.selected ? 'selected' : ''}`} {...rowProps(p)} {...home?.props}>
+        <div className="card-thumb">
+          <Thumb project={p} />
+          {badge(p, true)}
+          <span className="card-menu">
+            <MenuButton icon="ellipsis" title="More" className="icon-btn small" align="end" items={menuFor(p)} />
+          </span>
+        </div>
+        <div className="card-name" title={p.name}>{p.name}</div>
+        <div className="card-meta" title={formatFull(p[field])}>
+          {`${field === 'updatedAt' ? 'Modified' : 'Created'} ${timeAgo(p[field]).replace(/^Just now$/, 'just now')}`}
+        </div>
+        {home?.where && <div className="card-meta">{home.where}</div>}
+        {p.tags.length > 0 && <div className="card-tags">{tagChips(p)}</div>}
+      </div>
+    );
+  };
+
   // ─── render ───
 
   const emptyState = () => {
@@ -737,6 +825,15 @@ export default function ProjectPage() {
           <Icon name="archivebox" size={36} />
           <div className="empty-title">No archived projects</div>
           <div className="empty-text">Archive a project from its ··· menu to tidy it away without deleting anything.</div>
+        </div>
+      );
+    }
+    if (view === 'home' && homeFolder) {
+      return (
+        <div className="empty-state">
+          <Icon name="folder" size={36} />
+          <div className="empty-title">Nothing in “{homeFolder.name}”</div>
+          <div className="empty-text">Drag projects or folders onto it, or make one here from New.</div>
         </div>
       );
     }
@@ -774,6 +871,10 @@ export default function ProjectPage() {
           </div>
 
           <nav className="sidebar-scroll">
+            <button className={`nav-row ${view === 'home' ? 'active' : ''} ${dropTarget === 'home' ? 'drop-into' : ''}`} onClick={() => goHome(null)} {...dropProps(null, 'home')}>
+              <Icon name="house" />
+              <span className="nav-label">Home</span>
+            </button>
             <button
               className={`nav-row ${view === 'all' ? 'active' : ''} ${dropTarget === '' ? 'drop-into' : ''}`}
               onClick={() => setView('all')}
@@ -835,10 +936,33 @@ export default function ProjectPage() {
               <Icon name="sidebar.left" />
             </button>
           )}
-          <h1 className="panel-title" data-tauri-drag-region>
-            {activeTag && <span className="tag-dot large" style={{ background: tagColour(activeTag, settings.tagColours) }} />}
-            {title}
-          </h1>
+          {view === 'home' ? (
+            <nav className="panel-title home-path" aria-label="Folder path" data-tauri-drag-region>
+              <button className="icon-btn" disabled={!homeFolder} title={`Back (${formatShortcut('Mod-ArrowUp')})`} aria-label="Back" onClick={() => goHome(homeFolder?.parent ?? null)}>
+                <Icon name="chevron.left" />
+              </button>
+              <h1 className="home-path-parts">
+                {[null, ...folderPath(folders, homeAt)].map((f, i, all) => (
+                  <Fragment key={f?.id ?? ''}>
+                    {i > 0 && <Icon name="chevron.right" className="home-path-sep" />}
+                    <button
+                      className={`home-path-part ${dropTarget === `path:${f?.id ?? ''}` ? 'drop-into' : ''}`}
+                      aria-current={i === all.length - 1 ? 'page' : undefined}
+                      onClick={() => goHome(f?.id ?? null)}
+                      {...dropProps(f?.id ?? null, `path:${f?.id ?? ''}`)}
+                    >
+                      {f?.name ?? 'Home'}
+                    </button>
+                  </Fragment>
+                ))}
+              </h1>
+            </nav>
+          ) : (
+            <h1 className="panel-title" data-tauri-drag-region>
+              {activeTag && <span className="tag-dot large" style={{ background: tagColour(activeTag, settings.tagColours) }} />}
+              {title}
+            </h1>
+          )}
           <div className="panel-header-tools">
             <label className="search-field">
               <Icon name="magnifyingglass" />
@@ -858,25 +982,31 @@ export default function ProjectPage() {
               )}
             </label>
             {/* the GitHub view is one list of repositories */}
+            {view === 'home' && (
+              <MenuButton
+                label="Sort"
+                items={HOME_SORTS.map(([sort, label]) => ({ label, checked: homeView.sort === sort, onSelect: () => setHomeView({ sort }) }))}
+              />
+            )}
             {view !== 'github' && (
               <div className="segmented icon-segmented" role="radiogroup" aria-label="View" onKeyDown={radioKeys}>
                 <button
-                  className={`segment ${prefs.layout === 'list' ? 'active' : ''}`}
+                  className={`segment ${layout === 'list' ? 'active' : ''}`}
                   role="radio"
-                  aria-checked={prefs.layout === 'list'}
-                  tabIndex={radioTab(prefs.layout === 'list', 0, prefs.layout === 'grid')}
+                  aria-checked={layout === 'list'}
+                  tabIndex={radioTab(layout === 'list', 0, layout === 'grid')}
                   title="List"
-                  onClick={() => updatePrefs({ layout: 'list' })}
+                  onClick={() => setLayout('list')}
                 >
                   <Icon name="list.bullet" />
                 </button>
                 <button
-                  className={`segment ${prefs.layout === 'grid' ? 'active' : ''}`}
+                  className={`segment ${layout === 'grid' ? 'active' : ''}`}
                   role="radio"
-                  aria-checked={prefs.layout === 'grid'}
-                  tabIndex={radioTab(prefs.layout === 'grid', 1, true)}
-                  title="Grid"
-                  onClick={() => updatePrefs({ layout: 'grid' })}
+                  aria-checked={layout === 'grid'}
+                  tabIndex={radioTab(layout === 'grid', 1, true)}
+                  title={view === 'home' ? 'Icons' : 'Grid'}
+                  onClick={() => setLayout('grid')}
                 >
                   <Icon name="square.grid.2x2" />
                 </button>
@@ -897,12 +1027,12 @@ export default function ProjectPage() {
               icon="plus"
               className="btn inverse"
               align="end"
+              // inside the folder showing, as in Finder
               items={[
-                { label: 'Blank project…', icon: 'doc.badge.plus', onSelect: () => setSheet({ kind: 'new', template: '' }) },
-                { label: 'From template…', icon: 'square.grid.2x2', onSelect: () => setSheet({ kind: 'gallery' }) },
+                { label: here ? 'Blank project here…' : 'Blank project…', icon: 'doc.badge.plus', onSelect: () => setSheet({ kind: 'new', template: '', folder: here }) },
+                { label: here ? 'From template here…' : 'From template…', icon: 'square.grid.2x2', onSelect: () => setSheet({ kind: 'gallery', folder: here }) },
                 { separator: true },
-                // inside the folder showing, as in Finder
-                { label: 'Folder…', icon: 'folder.badge.plus', onSelect: () => newFolder(activeFolder?.id ?? null) }
+                { label: here ? 'Folder here…' : 'Folder…', icon: 'folder.badge.plus', onSelect: () => newFolder(here) }
               ]}
             />
           </div>
@@ -918,6 +1048,27 @@ export default function ProjectPage() {
               onOpen={(id) => navigate(`/editor/${id}`)}
               onChanged={() => reload()}
               onOpenSettings={() => setSheet({ kind: 'settings', section: 'github' })}
+            />
+          ) : view === 'home' ? (
+            <Home
+              projects={shownProjects}
+              found={query.trim() ? visible : null}
+              query={query}
+              tree={folders}
+              at={homeAt}
+              view={homeView}
+              title={title}
+              empty={emptyState()}
+              dropTarget={dropTarget}
+              onGo={goHome}
+              onOpen={open}
+              onSort={(sort) => setHomeView({ sort })}
+              onMenu={(x, y, items) => setCtx({ x, y, items })}
+              folderMenu={folderMenu}
+              projectMenu={menuFor}
+              dropProps={dropProps}
+              card={projectCard}
+              row={projectRow}
             />
           ) : visible.length === 0 ? (
             emptyState()
@@ -937,44 +1088,10 @@ export default function ProjectPage() {
                 </span>
                 <span className="col-actions" />
               </div>
-              {visible.map((p) => (
-                <div key={p.id} role="row" className={`project-row ${p.missing ? 'missing' : ''}`} {...rowProps(p)}>
-                  <span className="col-thumb"><Thumb project={p} /></span>
-                  <span className="col-name">
-                    <span className="project-name-line">
-                      <span className="project-name">{p.name}</span>
-                      {badge(p)}
-                      {p.archived && view !== 'archived' && <span className="badge">Archived</span>}
-                    </span>
-                    <span className="project-path" title={p.path}>{tildify(p.path)}</span>
-                  </span>
-                  <span className="col-tags">{tagChips(p)}</span>
-                  <span className="col-date" title={formatFull(p[prefs.dateField])}>{timeAgo(p[prefs.dateField])}</span>
-                  <span className="col-actions">
-                    <MenuButton icon="ellipsis" title="More" align="end" items={menuFor(p)} />
-                  </span>
-                </div>
-              ))}
+              {visible.map((p) => projectRow(p))}
             </div>
           ) : (
-            <div className="project-grid">
-              {visible.map((p) => (
-                <div key={p.id} className={`project-card ${p.missing ? 'missing' : ''}`} {...rowProps(p)}>
-                  <div className="card-thumb">
-                    <Thumb project={p} />
-                    {badge(p, true)}
-                    <span className="card-menu">
-                      <MenuButton icon="ellipsis" title="More" className="icon-btn small" align="end" items={menuFor(p)} />
-                    </span>
-                  </div>
-                  <div className="card-name" title={p.name}>{p.name}</div>
-                  <div className="card-meta" title={formatFull(p[prefs.dateField])}>
-                    {`${dateLabel} ${timeAgo(p[prefs.dateField]).replace(/^Just now$/, 'just now')}`}
-                  </div>
-                  {p.tags.length > 0 && <div className="card-tags">{tagChips(p)}</div>}
-                </div>
-              ))}
-            </div>
+            <div className="project-grid">{visible.map((p) => projectCard(p))}</div>
           )}
         </div>
       </main>
@@ -999,8 +1116,11 @@ export default function ProjectPage() {
           initialTemplate={sheet.template}
           defaultDir={settings.projectsDir || defaultDir}
           onClose={() => setSheet(null)}
-          onBrowse={() => setSheet({ kind: 'gallery' })}
-          onCreated={(id) => navigate(`/editor/${id}`)}
+          onBrowse={() => setSheet({ kind: 'gallery', folder: sheet.folder })}
+          onCreated={(id) => {
+            if (sheet.folder) moveToFolder(id, sheet.folder);
+            navigate(`/editor/${id}`);
+          }}
         />
       )}
 
@@ -1010,7 +1130,7 @@ export default function ProjectPage() {
           categories={categories}
           drafts={drafts}
           onClose={() => setSheet(null)}
-          onPick={(id) => setSheet({ kind: 'new', template: id })}
+          onPick={(id) => setSheet({ kind: 'new', template: id, folder: sheet.folder })}
           onEdit={(projectId) => navigate(`/editor/${projectId}`)}
           onChanged={reloadTemplates}
         />
