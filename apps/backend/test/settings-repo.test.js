@@ -27,7 +27,8 @@ after(async () => {
   await mac?.stop();
   await win?.stop();
   await gh?.close();
-  rmSync(tmp, { recursive: true, force: true });
+  // a stopped server can still be finishing a write into its data folder
+  rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 const ok = (res) => {
