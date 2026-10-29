@@ -84,5 +84,10 @@ const off = unitWriter(false);
 eq([off.qty('10', 'kN'), off.equals('R_{Ay}', '13.4', 'kN'), off.unit('kN\\,m'), off.num('-24.1'), off.typed('10 kΩ'), off.title('Load (kN)')], ['$10$\\,kN', '$R_{Ay} = 13.4$\\,kN', 'kN\\,m', '$-24.1$', null, 'Load (kN)'], 'off: as before');
 eq(off.used, false, 'off never writes siunitx');
 
-eq(unitsAsText('\\qty{10}{\\kilo\\newton\\per\\metre}'), '10 kN/m', 'shown as its text');
+// as siunitx prints it, a negative power after \per
+eq(
+  ['\\qty{10}{\\kilo\\newton\\per\\metre}', '\\unit{\\kilo\\newton\\metre}', '\\SI{5}{\\newton\\per\\milli\\metre\\squared}', '\\qty{3}{kip/ft}', '\\num{-24.1}', '\\qty{2}{\\degreeCelsius}'].map(unitsAsText),
+  ['10 kN m⁻¹', 'kN m', '5 N mm⁻²', '3 kip/ft', '-24.1', '2 °C'],
+  'shown as its text'
+);
 console.log('units.check: ok');

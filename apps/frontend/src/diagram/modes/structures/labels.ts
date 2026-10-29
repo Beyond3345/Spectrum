@@ -35,13 +35,13 @@ export const INNER_SEP = 0.094;
 const TEXT_HEIGHT = 0.25;
 const CLEARANCE = 0.04;
 
-/** The width of a label's text in cm: about 1.5 mm a letter or digit at \footnotesize, more for a minus or an equals sign. */
+/** The width of a label's text in cm: about 1.7 mm a letter or digit at \footnotesize, more for a minus or an equals sign. */
 function textWidth(tex: string) {
   const text = unitsAsText(tex).replace(/\\,/g, ' ');
   const visible = text.replace(/[$\\{}^]|_(?=\{?.)/g, '');
   const wide = (visible.match(/[-=−]/g) ?? []).length;
   const thin = (visible.match(/[\s.,()]/g) ?? []).length;
-  return (visible.length - wide - thin) * 0.15 + wide * 0.3 + thin * 0.08;
+  return (visible.length - wide - thin) * 0.17 + wide * 0.3 + thin * 0.08;
 }
 
 /** A label's text as set: the box of its letters, inside the node anchored at its point. */

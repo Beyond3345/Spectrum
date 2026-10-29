@@ -124,17 +124,32 @@ export function unitWriter(on: boolean, physics = false) {
 
 export type UnitWriter = ReturnType<typeof unitWriter>;
 
+const SHOWN_PREFIXES = Object.entries(PREFIXES).filter(([k]) => k !== 'u' && k !== 'μ');
+const SHOWN_BASES = Object.entries(BASES).filter(([k]) => k !== 'ohm');
+/** each macro's name as printed: kilo → k, newton → N */
+const SHOWN = new Map([...SHOWN_PREFIXES, ...SHOWN_BASES].map(([k, v]) => [v, k]));
+const either = (entries: [string, string][]) => entries.map(([, v]) => v).sort((a, b) => b.length - a.length).join('|');
+/** one unit as the writer gives it: \per, a prefix, its name and its power */
+const UNIT_MACROS = new RegExp(`(\\\\per)?(?:\\\\(${either(SHOWN_PREFIXES)}))?\\\\(${either(SHOWN_BASES)})(?![a-zA-Z])(\\\\squared|\\\\cubed)?`, 'g');
+const POWERS_SHOWN = ['', '', '²', '³'];
+
+/** A unit's macros as siunitx prints them: kN m, after \per a negative power (kN m⁻¹); null when one is unknown. */
+function unitText(macros: string) {
+  const shown: string[] = [];
+  const rest = macros.replace(UNIT_MACROS, (_, per: string | undefined, prefix: string | undefined, base: string, power: string | undefined) => {
+    const n = power === '\\cubed' ? 3 : power === '\\squared' ? 2 : 1;
+    shown.push(`${prefix ? SHOWN.get(prefix) : ''}${SHOWN.get(base)}${per ? `⁻${n === 1 ? '¹' : POWERS_SHOWN[n]}` : POWERS_SHOWN[n]}`);
+    return '';
+  });
+  return rest.trim() ? null : shown.join(' ');
+}
+
 /** The siunitx macros above as the text they print, so a label's width is guessed from what it shows. */
 export function unitsAsText(tex: string) {
-  const names = new Map<string, string>([
-    ...Object.entries(PREFIXES).filter(([k]) => k !== 'u' && k !== 'μ').map(([k, v]) => [v, k] as [string, string]),
-    ...Object.entries(BASES).filter(([k]) => k !== 'ohm').map(([k, v]) => [v, k] as [string, string]),
-    ['per', '/'],
-    ['squared', '²'],
-    ['cubed', '³']
-  ]);
+  const names = new Map<string, string>([...SHOWN, ['per', '/'], ['squared', '²'], ['cubed', '³']]);
   return tex
-    .replace(/\\(?:qty|SI)\{([^{}]*)\}\{([^{}]*)\}/g, '$1 $2')
-    .replace(/\\(?:unit|si|num)\{([^{}]*)\}/g, '$1')
+    .replace(/\\(?:qty|SI)\{([^{}]*)\}\{([^{}]*)\}/g, (_, value: string, unit: string) => `${value} ${unitText(unit) ?? unit}`)
+    .replace(/\\(?:unit|si)\{([^{}]*)\}/g, (_, unit: string) => unitText(unit) ?? unit)
+    .replace(/\\num\{([^{}]*)\}/g, '$1')
     .replace(/\\([a-zA-Z]+)/g, (whole, name: string) => names.get(name) ?? whole);
 }

@@ -183,8 +183,8 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
   const scale = canvas ? units.canvasCm : fitScale(model, style.width);
   const P = (p: Pt) => ({ x: p.x * scale, y: p.y * scale });
   const fmt = (v: number) => formatValue(v, style.figures);
-  // the canvas shows values as text either way
-  const si = unitWriter(style.siUnits && !canvas, style.physics);
+  // the canvas shows these as text (unitsAsText), and places them by the export's own
+  const si = unitWriter(style.siUnits, style.physics);
   const value = (v: number, u: string) => si.qty(fmt(v), u);
   const solved = solution.status.kind === 'ok';
   const nameOf = (id: string) => nodes.get(id)?.name;

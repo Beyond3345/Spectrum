@@ -9,6 +9,7 @@ import { buildScene, cutSection, extentOf, formatValue, readStyle } from './draw
 import type { Item } from './draw';
 import { structureCode, structureStyle } from './code';
 import { DIAGRAM_LOOKS, changedLooks, readLooks } from './looks';
+import { unitsAsText } from '../../units';
 import { colourCss, isColour } from '../shared';
 import { INNER_SEP, clashes, shapesOf, textBox } from './labels';
 import { diagramFileText, readDiagramFile } from '../../fileFormat';
@@ -365,7 +366,8 @@ const texts = (list: Item[]) => list.flatMap((i) => (i.t === 'text' ? [i.tex] : 
   eq(structureCode(sampleBeam(), { view: 'loading', siUnits: true }).body.includes('\\qty{10}{\\kilo\\newton\\per\\metre}'), true, 'a distributed load');
   eq(/\$\d|\\,kN/.test(on.body), false, 'no value written the old way');
   const canvas = texts(items(buildScene(sampleBeam(), solve(sampleBeam()), readStyle({ view: 'loading', siUnits: true }), true)));
-  eq(canvas.includes('$10$\\,kN/m'), true, 'the canvas shows plain text');
+  // the canvas places the export's text, and shows it as siunitx prints it
+  eq([canvas.includes('\\qty{10}{\\kilo\\newton\\per\\metre}'), canvas.map(unitsAsText).includes('10 kN m⁻¹')], [true, true], 'the canvas measures what the export sets');
 }
 
 {
