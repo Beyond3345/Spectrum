@@ -206,13 +206,17 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
     if (!choices.length) return;
     const at = choices.findIndex((c) => sameChoice(c, chosen));
     choose(choices[Math.min(choices.length - 1, Math.max(0, at + by))]);
-    window.setTimeout(() => {
-      const option = galleryRef.current?.querySelector<HTMLElement>('[aria-selected="true"]');
-      option?.scrollIntoView({ block: 'nearest' });
-      // a card clicked keeps the focus, which follows the choice then
-      if (galleryRef.current?.contains(document.activeElement)) option?.focus();
-    });
+    stepped.current = true;
   };
+  // once the step is drawn: the choice scrolls into view, and a clicked card's focus follows it
+  const stepped = useRef(false);
+  useEffect(() => {
+    if (!stepped.current) return;
+    stepped.current = false;
+    const option = galleryRef.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+    option?.scrollIntoView({ block: 'nearest' });
+    if (galleryRef.current?.contains(document.activeElement)) option?.focus();
+  }, [choice]);
 
   // the options' ids, for the search field's aria-activedescendant: a starter listed twice is chosen at its first
   const optionId = (section: string, c: Choice) => `${id}-${section}-${c.starter.id}${c.tool ? `-${c.tool}` : ''}`;
