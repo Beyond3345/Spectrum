@@ -8,6 +8,7 @@ import { useCanvasPrefs } from '../../FlowCanvas';
 import { colourCss } from '../shared';
 import { buildScene, extentOf, readStyle } from './draw';
 import type { Anchor, Item } from './draw';
+import { INNER_SEP } from './labels';
 import { UNITS, asStructure, connect, dist, frameOf, memberNear, placeTool, settleNode } from './model';
 import type { Part, Pt, StructureModel } from './model';
 import { solve } from './solve';
@@ -388,7 +389,10 @@ export default function StructureCanvas({
         );
       }
       case 'text': {
-        const p = T(item.at);
+        // set inside TikZ's inner sep from its anchor, as the export's node is, so the canvas keeps the same clearance
+        const at = T(item.at);
+        const sep = INNER_SEP * k;
+        const p = { x: at.x + (item.anchor.includes('west') ? sep : item.anchor.includes('east') ? -sep : 0), y: at.y + (item.anchor.includes('south') ? -sep - 0.2 * fontSize : item.anchor.includes('north') ? sep : 0) };
         const [anchor, baseline] = TEXT_ANCHOR[item.anchor];
         return (
           <text key={key} {...hit} x={p.x} y={p.y} className={`st-text ${on ? 'selected' : ''}`} fontSize={fontSize} textAnchor={anchor} dominantBaseline={baseline}>

@@ -10,6 +10,7 @@ import type { Item } from './draw';
 import { structureCode, structureStyle } from './code';
 import { DIAGRAM_LOOKS, changedLooks, readLooks } from './looks';
 import { colourCss } from '../shared';
+import { INNER_SEP, clashes, shapesOf, textBox } from './labels';
 import { diagramFileText, readDiagramFile } from '../../fileFormat';
 import type { DiagramFile } from '../../types';
 
@@ -395,6 +396,37 @@ const texts = (list: Item[]) => list.flatMap((i) => (i.t === 'text' ? [i.tex] : 
   eq(structureStyle({ moments: 'tension', mohrShear: 'down', siUnits: true, diagrams: DIAGRAM_LOOKS }), { view: 'diagrams', moments: 'tension', siUnits: true }, 'the defaults: nothing kept');
   eq(structureStyle({ moments: 'tension', mohrShear: 'down', siUnits: true, diagrams: readLooks({ axial: { on: false } }) }).diagrams, { axial: { on: false } }, 'axial force off');
   eq([colourCss('blue!12'), colourCss('red!30!yellow'), colourCss('#336699'), colourCss('RoyalBlue!50')], ['color-mix(in srgb, rgb(0, 0, 255) 12%, transparent)', 'rgb(255, 179, 0)', '#336699', 'color-mix(in srgb, rgb(128, 128, 128) 50%, transparent)'], 'the canvas’s colours');
+}
+
+{
+  // labels clear of the drawing: on a portal frame with a point load and a UDL, and a beam with a varying load and a
+  // point load, every label's box (as TikZ sets it at \footnotesize) misses the members, arrows, supports, diagram
+  // outlines and the other labels, in the export and on the canvas
+  const portal: StructureModel = {
+    nodes: [node('A', 0, 0), node('B', 0, 4), node('C', 6, 4), node('D', 6, 0)],
+    parts: [beam('m1', 'A', 'B'), beam('m2', 'B', 'C'), beam('m3', 'C', 'D'), support('a', 'A', 'pin'), support('d', 'D', 'roller'), udl('w', 'm2', 0, 6, 10), { id: 'P', kind: 'force', on: { node: 'B' }, value: 15, angle: 0 }, down('Q', 'm2', 2, 12), { id: 'dim', kind: 'dim', a: 'A', b: 'D', dir: 'h', offset: -1.6 }]
+  };
+  const varying: StructureModel = {
+    nodes: [node('A', 0, 0), node('B', 8, 0), node('C', 10, 0)],
+    parts: [beam('m1', 'A', 'B'), beam('m2', 'B', 'C'), support('a', 'A', 'pin'), support('b', 'B', 'roller'), udl('w', 'm1', 0, 8, 0, 12), { id: 'P', kind: 'force', on: { node: 'C' }, value: 20, angle: -90 }, { id: 'dim', kind: 'dim', a: 'A', b: 'C', dir: 'h', offset: -1.6 }]
+  };
+  const measured = (scene: ReturnType<typeof buildScene>) => {
+    const at = (b: (typeof scene.blocks)[number]) => b.shift ?? { x: 0, y: 0 };
+    const shapes = shapesOf(scene.blocks.flatMap((b) => b.items.flatMap((item) => (item.t === 'text' ? [] : [{ item, shift: at(b) }]))));
+    return clashes(scene.blocks.flatMap((b) => b.items.flatMap((item) => (item.t === 'text' ? [{ label: item, shift: at(b) }] : []))), shapes);
+  };
+  for (const [name, model] of [['portal', portal], ['beam', varying]] as const) {
+    for (const view of ['loading', 'fbd', 'diagrams'] as const) {
+      for (const canvas of [false, true]) eq(measured(buildScene(model, solve(model), readStyle({ view, siUnits: true }), canvas)), [], `${name}, ${view}${canvas ? ' on the canvas' : ''}: labels clear`);
+    }
+  }
+  // what moved: B off the varying load's arrows, A and D off their columns; the moment's values all still there
+  const label = (model: StructureModel, tex: string) => items(buildScene(model, solve(model), readStyle({ view: 'diagrams' }))).find((i) => i.t === 'text' && i.tex === tex) as Extract<Item, { t: 'text' }>;
+  eq(label(varying, '$B$').anchor !== 'south', true, 'B beside the load, not under its arrows');
+  eq([label(portal, '$A$').anchor, label(portal, '$D$').anchor].every((a) => a !== 'south'), true, 'A and D beside their columns');
+  eq(texts(buildScene(varying, solve(varying), readStyle({ view: 'diagrams' })).blocks.find((b) => b.title === 'Bending moment')!.items).filter((t) => /^\$-?\d/.test(t)), ['$28.1$', '$-40$'], 'the moment’s values');
+  // a label set inside TikZ's inner sep from its anchor: the box starts that far in
+  eq(textBox({ at: { x: 0, y: 0 }, tex: '$A$', anchor: 'south west' }).x0, INNER_SEP, 'the inner sep');
 }
 
 // ─── the file: a drawing round-trips through the diagram file (last: it waits for the hash) ───
