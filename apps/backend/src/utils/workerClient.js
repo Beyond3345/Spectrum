@@ -3,24 +3,47 @@ import { Worker } from 'worker_threads';
 /**
  * A worker thread started on first use that answers { id, ...request } with { id, result | error },
  * after posting { ready: true } once it has loaded. If it fails to start or dies, every waiting call
- * fails with `unavailable` and the next call tries again.
+ * fails with `unavailable` and the next call tries again. Requests go to it one at a time: a call's
+ * timeout counts from when the worker starts on it (and replaces a worker that runs over), and a call
+ * whose signal aborts while it waits is dropped.
  */
 export function workerClient(url, workerData, { unavailable, timeoutMs = 30_000 }) {
   let worker = null;
   let ready = null;
   let failure = '';
   let seq = 0;
-  const pending = new Map();
+  const queue = [];
+  // the call the worker is on
+  let current = null;
 
   const stop = (reason) => {
     failure = reason;
-    for (const { reject, timer } of pending.values()) {
-      clearTimeout(timer);
-      reject(new Error(reason));
+    for (const call of [current, ...queue]) {
+      if (!call) continue;
+      clearTimeout(call.timer);
+      call.reject(new Error(reason));
     }
-    pending.clear();
+    current = null;
+    queue.length = 0;
     worker = null;
     ready = null;
+  };
+
+  const next = () => {
+    if (current || !worker || !queue.length) return;
+    current = queue.shift();
+    const { id, request, reject } = current;
+    current.timer = setTimeout(() => {
+      // a worker stuck on one call is replaced, so the calls waiting behind it still run
+      const w = worker;
+      worker = null;
+      ready = null;
+      current = null;
+      reject(new Error(`${unavailable}: it took too long to answer.`));
+      void w.terminate();
+      if (queue.length) start().then(next, () => undefined);
+    }, timeoutMs);
+    worker.postMessage({ id, ...request });
   };
 
   const start = () => {
@@ -39,12 +62,13 @@ export function workerClient(url, workerData, { unavailable, timeoutMs = 30_000 
           failure = '';
           return resolve();
         }
-        const call = pending.get(msg.id);
-        if (!call) return;
-        pending.delete(msg.id);
+        const call = current;
+        if (call?.id !== msg.id) return;
+        current = null;
         clearTimeout(call.timer);
         if (msg.error) call.reject(new Error(msg.error));
         else call.resolve(msg.result);
+        next();
       });
       w.on('error', (err) => {
         stop(`${unavailable}: ${err.message}`);
@@ -62,16 +86,20 @@ export function workerClient(url, workerData, { unavailable, timeoutMs = 30_000 
   };
 
   return {
-    async call(request) {
+    async call(request, signal) {
+      signal?.throwIfAborted();
       await start();
+      signal?.throwIfAborted();
       return new Promise((resolve, reject) => {
-        const id = ++seq;
-        const timer = setTimeout(() => {
-          pending.delete(id);
-          reject(new Error(`${unavailable}: it took too long to answer.`));
-        }, timeoutMs);
-        pending.set(id, { resolve, reject, timer });
-        worker.postMessage({ id, ...request });
+        const call = { id: ++seq, request, resolve, reject, timer: null };
+        signal?.addEventListener('abort', () => {
+          const at = queue.indexOf(call);
+          if (at < 0) return;
+          queue.splice(at, 1);
+          reject(signal.reason);
+        }, { once: true });
+        queue.push(call);
+        next();
       });
     },
     /** Whether it has been started (and not stopped since), without starting it. */

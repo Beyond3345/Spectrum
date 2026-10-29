@@ -145,6 +145,42 @@ test('grammar in each English dialect, Australian by default, the serial comma i
   assert.deepEqual((await grammar.grammarStatus()).languages, ['en-AU', 'en-US', 'en-GB', 'en-CA', 'en-IN']);
 });
 
+test('Harper reads a long file in parts: a cancelled check stops between them, and the next check isn’t kept waiting', { timeout: 120_000 }, async () => {
+  const paragraph = 'This is a apple that the team have measured. We analysed the results, and they was consistent with the model. ';
+  const text = Array.from({ length: 2400 }, () => paragraph.repeat(2)).join('\n\n');
+  const whole = await grammar.checkGrammar({ text, languages: ['en-AU'] });
+  const [covered] = whole.coverage;
+  assert.ok(covered.parts > 10 && covered.done === covered.parts && covered.state === 'checked', JSON.stringify(covered));
+  // positions are the file's in every part, the last one too
+  const last = whole.issues.at(-1);
+  assert.equal(last.rule, 'AnA');
+  assert.equal(text.slice(last.from, last.to + 6), 'a apple');
+  assert.ok(last.from > text.length - paragraph.length * 2);
+  assert.equal(whole.issues.filter((i) => i.rule === 'AnA').length, 4800);
+
+  const cancel = new AbortController();
+  const started = Date.now();
+  const cancelled = grammar.checkGrammar({ text, languages: ['en-AU'], signal: cancel.signal });
+  // a second check takes turns with it part by part, and its parts still waiting are dropped when its request closes
+  const dropped = new AbortController();
+  const queued = grammar.checkGrammar({ text, languages: ['en-AU'], signal: dropped.signal });
+  setTimeout(() => {
+    cancel.abort();
+    dropped.abort();
+  }, 200);
+  const [a, b] = await Promise.all([cancelled, queued]);
+  assert.equal(a.coverage[0].state, 'cancelled');
+  assert.ok(a.coverage[0].done < covered.parts, JSON.stringify(a.coverage));
+  assert.match(a.coverage[0].message, /^Cancelled: \d+ of \d+ parts checked\.$/);
+  assert.equal(b.coverage[0].state, 'cancelled');
+  assert.ok(b.coverage[0].done < covered.parts, JSON.stringify(b.coverage));
+  assert.ok(Date.now() - started < 5000, `stopped after ${Date.now() - started} ms`);
+  const asked = Date.now();
+  const next = await grammar.checkGrammar({ text: 'This is a apple.', languages: ['en-AU'] });
+  assert.deepEqual(next.issues.map((i) => i.rule), ['AnA']);
+  assert.ok(Date.now() - asked < 2000, `answered after ${Date.now() - asked} ms`);
+});
+
 test('spelling in each bundled English: its own words, and the supplement in all of them', async () => {
   const words = ['colour', 'color', 'organise', 'organize', 'defence', 'defense', 'LaTeX', 'arXiv', 'Centrelink', 'recieve'];
   assert.deepEqual((await spell.checkWords(words, undefined, 'en-US')).sort(), ['Centrelink', 'colour', 'defence', 'organise', 'recieve']);
