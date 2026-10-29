@@ -1820,6 +1820,67 @@ button.chip.active:hover {
   border-radius: 4px;
 }
 
+/* the shared colour field (diagram/controls.tsx ColourField), in the composer and Settings › Composer */
+.diagram-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.diagram-row > span:first-child {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.diagram-colour {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diagram-colour .btn.active {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.diagram-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.diagram-swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.diagram-swatch.active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.diagram-xcolor {
+  flex: 1;
+  min-width: 0;
+}
+
+.diagram-xcolor[aria-invalid='true'] {
+  border-color: var(--red);
+}
+
+/* a structure's force diagrams, each a switch with its fill and opacity under it (structures/DiagramFields.tsx) */
+.diagram-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 /* a slider with what each end means beside it */
 .range-row {
   display: flex;

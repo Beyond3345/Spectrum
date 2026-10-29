@@ -1,12 +1,19 @@
 // What a structure drawing shows in each view, as a list of lines, arcs, symbols and labels in centimetres. The export
 // writes it as TikZ (code.ts) and the canvas draws the same list as SVG, so the live overlays are the export's own
 // polylines.
-import { unitWriter, unitsAsText } from '../../units';
+import { unitWriter } from '../../units';
+import { anchorFor, overlap, placeLabels, shapesOf, textBox } from './labels';
+import type { Anchor, Box } from './labels';
 import { SUPPORT_DEPTH } from './symbols';
 import { UNITS, frameOf, loadDirection, memberName, members, nodeMap, placeAt, supports } from './model';
 import type { Cut, Load, Member, Pt, StructureModel, Support, Units } from './model';
 import { evalPoly, extremesInside, forcesAt } from './solve';
 import type { Piece, Solution } from './solve';
+import { readLooks } from './looks';
+import type { DiagramLooks } from '../../types';
+
+export { anchorFor };
+export type { Anchor };
 
 // ─── style ───
 
@@ -36,6 +43,8 @@ export interface StructStyle {
   width: number;
   /** the canvas grid, an index into the unit's steps */
   grid: number;
+  /** the force diagrams drawn, and their fills (left out of the file while they're the defaults) */
+  diagrams: DiagramLooks;
   /** the joint or cut the joint and section views show */
   joint?: string;
   cut?: string;
@@ -55,6 +64,7 @@ export function readStyle(raw: Record<string, unknown>): StructStyle {
     names: raw.names !== false,
     width: n(raw.width, 3, 20, 8),
     grid: Math.round(n(raw.grid, 0, 3, 1)),
+    diagrams: readLooks(raw.diagrams),
     ...(typeof raw.joint === 'string' && { joint: raw.joint }),
     ...(typeof raw.cut === 'string' && { cut: raw.cut })
   };
@@ -62,7 +72,6 @@ export function readStyle(raw: Record<string, unknown>): StructStyle {
 
 // ─── the display list ───
 
-export type Anchor = 'center' | 'north' | 'south' | 'east' | 'west' | 'north east' | 'north west' | 'south east' | 'south west';
 export type Ink = 'member' | 'bar' | 'zero' | 'line' | 'load' | 'reaction' | 'force' | 'dimension' | 'cut' | 'faint' | 'axis';
 export type Fill = 'shear' | 'moment' | 'axial' | 'load';
 
@@ -71,7 +80,8 @@ export type Item =
   /** an arc with an arrowhead at its `to` end; angles in degrees */
   | { t: 'arc'; c: Pt; r: number; from: number; to: number; ink: Ink; id?: string }
   | { t: 'pic'; name: string; at: Pt; rotate: number; id?: string; faint?: boolean }
-  | { t: 'text'; at: Pt; tex: string; anchor: Anchor; id?: string }
+  /** a label; one with `around` may move around that point to keep clear of the drawing (labels.ts) */
+  | { t: 'text'; at: Pt; tex: string; anchor: Anchor; id?: string; around?: Pt; optional?: boolean }
   | { t: 'dot'; at: Pt; r: number; open: boolean };
 
 /** A part of the picture: a comment heads it in the export, and a shift puts it in a scope. */
@@ -99,14 +109,6 @@ const unit = (p: Pt) => {
   const l = Math.hypot(p.x, p.y);
   return l ? { x: p.x / l, y: p.y / l } : { x: 0, y: 0 };
 };
-
-/** The anchor that puts a label beyond a point in direction d. */
-export function anchorFor(d: Pt): Anchor {
-  if (!d.x && !d.y) return 'center';
-  const sector = Math.round(Math.atan2(d.y, d.x) / (Math.PI / 4));
-  const names: Anchor[] = ['west', 'south west', 'south', 'south east', 'east', 'north east', 'north', 'north west'];
-  return names[(sector + 8) % 8];
-}
 
 /** A value in the style's significant figures, without trailing zeros: 6.67, 45, -31.3. */
 export function formatValue(value: number, figures: number) {
@@ -147,18 +149,7 @@ export function extentOf(items: Item[]) {
   return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
 }
 
-type Box = { x0: number; x1: number; y0: number; y1: number };
-
-/** A label's rough box in cm: its visible letters at 1.5 mm each, 3 mm high, placed by its anchor. */
-function boxOf(item: Extract<Item, { t: 'text' }>): Box {
-  const w = unitsAsText(item.tex).replace(/\\,/g, ' ').replace(/[$\\{}_^]/g, '').length * 0.15;
-  const h = 0.3;
-  const x0 = item.anchor.includes('west') ? item.at.x : item.anchor.includes('east') ? item.at.x - w : item.at.x - w / 2;
-  const y0 = item.anchor.includes('south') ? item.at.y : item.anchor.includes('north') ? item.at.y - h : item.at.y - h / 2;
-  return { x0, x1: x0 + w, y0, y1: y0 + h };
-}
-
-const overlap = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+const boxOf = textBox;
 
 /** Labels that would overlap one before them moved down until they don't (a few steps at most): for forces, which all matter. */
 function nudge(items: Item[]): Item[] {
@@ -247,7 +238,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
       if (!d.x && !d.y) d = unit({ x: -1, y: 1 });
       // up and to one side reads best beside a horizontal member
       if (Math.abs(d.y) < 0.3) d = unit({ x: d.x, y: 0.8 });
-      return [{ t: 'text', at: add(P(n), times(d, 0.18)), tex: `$${n.name}$`, anchor: anchorFor(d), id: n.id } as Item];
+      return [{ t: 'text', at: add(P(n), times(d, 0.18)), tex: `$${n.name}$`, anchor: anchorFor(d), id: n.id, around: P(n) } as Item];
     });
   };
 
@@ -262,14 +253,14 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
     const tail = add(tip, times(d, -length));
     return [
       { t: 'line', pts: [tail, tip], ink, arrow: '->', id },
-      { t: 'text', at: add(tail, times(d, -0.05)), tex, anchor: anchorFor(times(d, -1)), id }
+      { t: 'text', at: add(tail, times(d, -0.05)), tex, anchor: anchorFor(times(d, -1)), id, around: tail }
     ];
   };
 
   /** a moment arc around a point, anticlockwise when ccw, with its label above */
   const momentAt = (at: Pt, ccw: boolean, tex: string, ink: Ink, id?: string, r = 0.35, label: Pt = { x: 0, y: 1 }): Item[] => [
     { t: 'arc', c: at, r, from: ccw ? -60 : 210, to: ccw ? 210 : -60, ink, id },
-    { t: 'text', at: add(at, times(label, r + 0.08)), tex, anchor: anchorFor(label), id }
+    { t: 'text', at: add(at, times(label, r + 0.08)), tex, anchor: anchorFor(label), id, around: at }
   ];
 
   /** loads, those on clipped members only between lo and hi */
@@ -298,7 +289,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
         out.push({ t: 'line', pts: [base(from), base(to), top(to), top(from)], ink: 'line', closed: true, fill: 'load', id: p.id });
         for (const s of stops) if (Math.abs(w(s)) > 1e-9 * wMax) out.push({ t: 'line', pts: [top(s), base(s)], ink: 'load', arrow: '->', id: p.id });
         const unitTex = `${F}/${L}`;
-        const label = (s: number, tex: string) => out.push({ t: 'text', at: add(top(s), times(e, -0.05)), tex, anchor: anchorFor(times(e, -1)), id: p.id });
+        const label = (s: number, tex: string) => out.push({ t: 'text', at: add(top(s), times(e, -0.05)), tex, anchor: anchorFor(times(e, -1)), id: p.id, around: top(s) });
         if (p.label) label((from + to) / 2, p.label);
         else if (Math.abs(w(from) - w(to)) < 1e-9 * wMax) label((from + to) / 2, value(Math.abs(w(from)), unitTex));
         else {
@@ -369,7 +360,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
         // short extension lines, which never cross the supports or reaction arrows above them
         for (const end of [s, t]) out.push({ t: 'line', pts: [add(end, times(n, -0.35)), add(end, times(n, 0.1))], ink: 'dimension', id: p.id });
         out.push({ t: 'line', pts: [s, t], ink: 'dimension', arrow: '<->', id: p.id });
-        out.push({ t: 'text', at: add(times(add(s, t), 0.5), times(n, 0.06)), tex: p.label || value(length, L), anchor: anchorFor(n), id: p.id });
+        out.push({ t: 'text', at: add(times(add(s, t), 0.5), times(n, 0.06)), tex: p.label || value(length, L), anchor: anchorFor(n), id: p.id, around: times(add(s, t), 0.5) });
       } else if (p.kind === 'label') {
         out.push({ t: 'text', at: P(p.at), tex: p.text, anchor: 'center', id: p.id });
       } else if (p.kind === 'angle') {
@@ -380,7 +371,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
         out.push({ t: 'arc', c, r: 0.7, from: p.from, to, ink: 'dimension', id: p.id });
         const mid = (((p.from + to) / 2) * Math.PI) / 180;
         const d = { x: Math.cos(mid), y: Math.sin(mid) };
-        if (p.label) out.push({ t: 'text', at: add(c, times(d, 0.78)), tex: p.label, anchor: anchorFor(d), id: p.id });
+        if (p.label) out.push({ t: 'text', at: add(c, times(d, 0.78)), tex: p.label, anchor: anchorFor(d), id: p.id, around: c });
       } else if (p.kind === 'axes') {
         const at = P(p.at);
         out.push({ t: 'line', pts: [at, add(at, { x: 0.9, y: 0 })], ink: 'axis', arrow: '->', id: p.id });
@@ -456,7 +447,9 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
 
   const maxOf = (c: 'N' | 'V' | 'M', list: Member[]) => Math.max(0, ...list.flatMap((m) => sampleMember(m, c).map((x) => Math.abs(x.v))));
   const UNIT_OF = { N: F, V: F, M: momentUnit };
-  const FILL_OF: Record<'N' | 'V' | 'M', Fill> = { N: 'axial', V: 'shear', M: 'moment' };
+  const FILL_OF: Record<'N' | 'V' | 'M', keyof DiagramLooks> = { N: 'axial', V: 'shear', M: 'moment' };
+  /** the diagrams the style draws, in order: one left out leaves no gap, as the rest close up */
+  const shown = (list: ('N' | 'V' | 'M')[]) => list.filter((c) => style.diagrams[FILL_OF[c]].on);
 
   /**
    * One member's diagram polygon and its labels, drawn from base points `base(s)` (cm) with `h` cm a unit. A frame's
@@ -470,7 +463,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
     const shape: Item[] = [{ t: 'line', pts: [base(0), ...samples.map((x) => at(x.s, x.v)), base(f.length)], ink: 'line', closed: true, fill: FILL_OF[c] }];
     const labels = labelsOf(m, c, tolerance).map((label): Item => {
       const d = unit(add(times(unit(offsetOf(m, c, label.v)), 1), times(f.u, label.lean * 0.9)));
-      return { t: 'text', at: add(at(label.s, label.v), times(d, 0.08)), tex: si.num(fmt(sizes ? Math.abs(label.v) : label.v)), anchor: anchorFor(d) };
+      return { t: 'text', at: add(at(label.s, label.v), times(d, 0.08)), tex: si.num(fmt(sizes ? Math.abs(label.v) : label.v)), anchor: anchorFor(d), around: at(label.s, label.v), optional: true };
     });
     return { shape, labels };
   };
@@ -489,7 +482,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
     const [minX, maxX] = [Math.min(...xs), Math.max(...xs)];
     let cursor = extentOf(above).minY - 0.3;
     const blocks: Block[] = [];
-    const wanted: ('N' | 'V' | 'M')[] = maxOf('N', all) > solution.tiny ? ['N', 'V', 'M'] : ['V', 'M'];
+    const wanted = shown(maxOf('N', all) > solution.tiny ? ['N', 'V', 'M'] : ['V', 'M']);
     for (const c of wanted) {
       const max = maxOf(c, all);
       const h = max > 0 ? 1 / max : 0;
@@ -507,7 +500,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
 
   /** a frame's (or truss's) diagrams, each on a copy of it, in a grid beside the free-body diagram */
   const frameDiagrams = (fbd: Item[]): Block[] => {
-    const wanted: ('N' | 'V' | 'M')[] = all.every((m) => m.bar) ? ['N'] : ['N', 'V', 'M'];
+    const wanted = shown(all.every((m) => m.bar) ? ['N'] : ['N', 'V', 'M']);
     const pts = model.nodes.filter((n) => all.some((m) => m.a === n.id || m.b === n.id)).map(P);
     const box = { minX: Math.min(...pts.map((p) => p.x)), maxX: Math.max(...pts.map((p) => p.x)), minY: Math.min(...pts.map((p) => p.y)), maxY: Math.max(...pts.map((p) => p.y)) };
     const size = Math.max(box.maxX - box.minX, box.maxY - box.minY, 1);
@@ -542,7 +535,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
       const f = frameOf(model, m);
       const { plot } = sideOf(m);
       const mid = P(add(f.a, times(f.u, f.length / 2)));
-      return { t: 'text', at: add(mid, times(plot, 0.1)), tex: forceText(axialOf(m)), anchor: anchorFor(plot), id: m.id } as Item;
+      return { t: 'text', at: add(mid, times(plot, 0.1)), tex: forceText(axialOf(m)), anchor: anchorFor(plot), id: m.id, around: mid } as Item;
     });
 
   // ─── the whole structure, as most views draw it ───
@@ -561,7 +554,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
   const flat = (blocks: Block[]) => blocks.flatMap((b) => b.items);
 
   const view = canvas && (style.view === 'joint' || style.view === 'section') ? 'fbd' : style.view;
-  const scene = (blocks: Block[], message?: string): Scene => ({ blocks: blocks.filter((b) => b.items.length), message, scale, ...(si.used && { siunitx: true }) });
+  const scene = (blocks: Block[], message?: string): Scene => ({ blocks: clearLabels(blocks).filter((b) => b.items.length), message, scale, ...(si.used && { siunitx: true }) });
 
   if (view === 'loading') return scene(whole(false));
   if (view === 'fbd') {
@@ -706,6 +699,22 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
       message
     );
   }
+}
+
+// ─── labels clear of the drawing ───
+
+/**
+ * A scene's labels moved off its members, arrows, supports and diagram outlines (labels.ts). The last block's are placed
+ * first and the structure's own (the node letters) last, so the values sit by what they belong to and a letter goes
+ * where there's room.
+ */
+export function clearLabels(blocks: Block[]): Block[] {
+  const at = (b: Block) => b.shift ?? { x: 0, y: 0 };
+  const shapes = shapesOf(blocks.flatMap((b) => b.items.flatMap((item) => (item.t === 'text' ? [] : [{ item, shift: at(b) }]))));
+  const labels = blocks.map((b, i) => ({ b, i })).reverse().flatMap(({ b, i }) => b.items.flatMap((item, j) => (item.t === 'text' ? [{ label: item, shift: at(b), key: `${i}:${j}` }] : [])));
+  const placed = placeLabels(labels, shapes);
+  const moved = new Map(labels.map((l, k) => [l.key, placed[k]]));
+  return blocks.map((b, i) => ({ ...b, items: b.items.flatMap((item, j): Item[] => (item.t !== 'text' ? [item] : moved.get(`${i}:${j}`) ? [moved.get(`${i}:${j}`)!] : [])) }));
 }
 
 // ─── sections ───

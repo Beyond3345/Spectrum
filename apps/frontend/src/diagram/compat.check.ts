@@ -11,6 +11,7 @@ import { fletcherCode } from './modes/fletcher/code';
 import { plotCode } from './modes/pgfplots/code';
 import { tikzCode } from './modes/tikz/code';
 import { cdCode } from './modes/tikzcd/code';
+import { structureCode } from './modes/structures/code';
 import { vectorCode } from './modes/vectors/code';
 import { documentLoads } from './sets';
 import type { DiagramFile } from './types';
@@ -35,6 +36,8 @@ function codeOf(diagram: DiagramFile, typstVersion: string): DiagramCode {
       return tikzCode(model);
     case 'vectors':
       return vectorCode(model, diagram.style);
+    case 'structures':
+      return structureCode(model, diagram.style);
     default:
       throw new Error(`no mode for ${diagram.pkg}`);
   }
@@ -47,7 +50,7 @@ function loadsOf(text: string) {
 }
 
 (async () => {
-  eq(Object.keys(FIXTURES).length, 9, 'a file for each mode');
+  eq(Object.keys(FIXTURES).length, 10, 'a file for each mode');
   for (const [path, text] of Object.entries(FIXTURES)) {
     const { code, diagram, edited } = await readDiagramFile(text);
     if (!diagram) throw new Error(`${path}: no drawing`);
@@ -71,7 +74,7 @@ function loadsOf(text: string) {
     if (diagram.language === 'tikz') {
       const before = loadsOf(code);
       const now = documentLoads('tikz', before);
-      eq([now.packages, now.libraries.filter((l) => l !== 'babel'), now.refused], [before.packages, before.libraries, []], `${path}: Insert adds the same loads`);
+      eq([now.packages, now.libraries.filter((l) => l !== 'babel'), now.refused], [before.packages, before.libraries.filter((l) => l !== 'babel'), []], `${path}: Insert adds the same loads`);
       eq(now.libraries.includes('babel'), true, `${path}: with the babel library`);
     }
   }

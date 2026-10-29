@@ -6,8 +6,10 @@ import Icon from '../../../app/Icon';
 import Segmented from '../../../app/Segmented';
 import Select from '../../../app/Select';
 import { UnitsSwitch } from '../../controls';
+import DiagramFields from './DiagramFields';
 import { VIEWS, formatValue, readStyle } from './draw';
 import type { StructStyle } from './draw';
+import { changedLooks } from './looks';
 import { UNITS, asStructure, fitLoads, frameOf, memberName, removeIds } from './model';
 import type { AngleArc, Cut, Dimension, Dist, Force, Member, Moment, Note, Part, SNode, StructureModel, Support, SupportType, Units } from './model';
 import { solve } from './solve';
@@ -522,6 +524,17 @@ export function StructureStyleMenu({ style: raw, onChange }: { style: Record<str
         <Field label="Section cut" hint={cuts.length ? undefined : 'Draw one with Section cut on the left.'}>
           {() => <Select value={style.cut && cuts.some((c) => c.id === style.cut) ? style.cut : cuts[0]?.id ?? ''} options={cuts.map((c, i): [string, string] => [c.id, `Cut ${i + 1}`])} onChange={(cut) => set({ cut })} />}
         </Field>
+      )}
+      {style.view === 'diagrams' && (
+        <DiagramFields
+          looks={style.diagrams}
+          onChange={(looks) => {
+            // kept only where they differ from the defaults, so a drawing set back to them writes its file as before
+            const { diagrams: _, ...rest } = raw;
+            const diagrams = changedLooks(looks);
+            onChange(Object.keys(diagrams).length ? { ...rest, diagrams } : rest);
+          }}
+        />
       )}
       <Field label="Bending moment diagrams" hint="The default for new drawings is in Settings › Composer.">
         {() => (

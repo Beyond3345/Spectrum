@@ -17,7 +17,12 @@ export interface ComposerDefaults {
   mohrShear: 'down' | 'clockwise-above' | 'up';
   /** values as siunitx's \qty and units as \unit (units.ts), in the modes that write them */
   siUnits: boolean;
+  /** structures: which of the axial force, shear force and bending moment diagrams are drawn, and their fills */
+  diagrams?: DiagramLooks;
 }
+/** A structure's force diagram: drawn or not, its fill (an xcolor name or mix, or '#rrggbb') and the fill's opacity. */
+export interface DiagramLook { on: boolean; fill: string; opacity: number }
+export type DiagramLooks = Record<'axial' | 'shear' | 'moment', DiagramLook>;
 export interface DiagramMode<M = unknown> {
   id: TikzPackage | 'mermaid' | 'fletcher';
   label: string;                                  // "Circuit (circuitikz)" etc.

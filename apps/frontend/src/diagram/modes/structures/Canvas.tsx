@@ -5,8 +5,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import Icon from '../../../app/Icon';
 import { useCanvasPrefs } from '../../FlowCanvas';
+import { colourCss } from '../shared';
 import { buildScene, extentOf, readStyle } from './draw';
 import type { Anchor, Item } from './draw';
+import { INNER_SEP } from './labels';
 import { UNITS, asStructure, connect, dist, frameOf, memberNear, placeTool, settleNode } from './model';
 import type { Part, Pt, StructureModel } from './model';
 import { solve } from './solve';
@@ -348,7 +350,7 @@ export default function StructureCanvas({
           <g key={key} {...hit} className={`st-item ${on ? 'selected' : ''}`}>
             {on && <Tag points={pts} className="st-halo" />}
             {id && <Tag points={pts} className="st-hit" />}
-            <Tag points={pts} className={`st-ink st-${item.ink} ${item.fill ? `st-fill-${item.fill}` : ''}`} markerEnd={item.arrow ? 'url(#st-arrow)' : undefined} markerStart={item.arrow === '<->' ? 'url(#st-arrow-start)' : undefined} />
+            <Tag points={pts} className={`st-ink st-${item.ink} ${item.fill === 'load' ? 'st-fill-load' : ''}`} style={item.fill && item.fill !== 'load' ? { fill: colourCss(style.diagrams[item.fill].fill), fillOpacity: style.diagrams[item.fill].opacity } : undefined} markerEnd={item.arrow ? 'url(#st-arrow)' : undefined} markerStart={item.arrow === '<->' ? 'url(#st-arrow-start)' : undefined} />
           </g>
         );
       }
@@ -387,7 +389,10 @@ export default function StructureCanvas({
         );
       }
       case 'text': {
-        const p = T(item.at);
+        // set inside TikZ's inner sep from its anchor, as the export's node is, so the canvas keeps the same clearance
+        const at = T(item.at);
+        const sep = INNER_SEP * k;
+        const p = { x: at.x + (item.anchor.includes('west') ? sep : item.anchor.includes('east') ? -sep : 0), y: at.y + (item.anchor.includes('south') ? -sep - 0.2 * fontSize : item.anchor.includes('north') ? sep : 0) };
         const [anchor, baseline] = TEXT_ANCHOR[item.anchor];
         return (
           <text key={key} {...hit} x={p.x} y={p.y} className={`st-text ${on ? 'selected' : ''}`} fontSize={fontSize} textAnchor={anchor} dominantBaseline={baseline}>

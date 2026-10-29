@@ -20,9 +20,6 @@
 .st-axis { stroke-width: 1; }
 
 .st-fill-load { fill: color-mix(in srgb, var(--ckt-ink) 7%, transparent); }
-.st-fill-shear { fill: color-mix(in srgb, #3b6fd8 22%, transparent); }
-.st-fill-moment { fill: color-mix(in srgb, #d84b3b 22%, transparent); }
-.st-fill-axial { fill: color-mix(in srgb, #2f9e55 22%, transparent); }
 
 .st-arrowhead { fill: context-stroke; }
 

@@ -156,19 +156,6 @@
   gap: 12px;
 }
 
-.diagram-row {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-}
-
-.diagram-row > span:first-child {
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-}
-
 .diagram-pair {
   display: flex;
   align-items: center;
@@ -178,17 +165,6 @@
 .diagram-pair > * {
   flex: 1;
   min-width: 0;
-}
-
-.diagram-colour {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.diagram-colour .btn.active {
-  background: var(--accent-soft);
-  color: var(--accent-ink);
 }
 
 .diagram-textarea {
