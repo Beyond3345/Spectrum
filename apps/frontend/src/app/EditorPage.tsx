@@ -50,6 +50,7 @@ import {
 } from '../api/client';
 import type { CompileDiagnostic, CompileEngine, CompileOptions, CompileResult, Engines, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
 import Icon from './Icon';
+import { radioKeys, radioTab } from './Segmented';
 import Tabs from './Tabs';
 import Sheet from './Sheet';
 import SettingsSheet from './SettingsSheet';
@@ -512,14 +513,11 @@ function Editor({ projectId }: { projectId: string }) {
 
   const texFiles = useMemo(() => items.filter((i) => i.type === 'file' && isTex(i.path)).map((i) => i.path), [items]);
   const bibFiles = useMemo(() => items.filter((i) => i.type === 'file' && /\.bib$/i.test(i.path)).map((i) => i.path), [items]);
-  // compiled PDFs (x.pdf next to x.tex) aren't figures
-  const figureFiles = useMemo(
-    () =>
-      items
-        .filter((i) => i.type === 'file' && FIGURE_FILE.test(i.path) && !(/\.pdf$/i.test(i.path) && texFiles.includes(i.path.replace(/\.pdf$/i, '.tex'))))
-        .map((i) => i.path),
-    [items, texFiles]
-  );
+  // compiled PDFs (x.pdf next to x.tex, x.typ or x.md, as gitService's compiledPdfs has them) aren't figures
+  const figureFiles = useMemo(() => {
+    const sources = new Set(items.filter((i) => i.type === 'file' && /\.(tex|ltx|typ|md|markdown)$/i.test(i.path)).map((i) => i.path.replace(/\.[^./]+$/, '.pdf')));
+    return items.filter((i) => i.type === 'file' && FIGURE_FILE.test(i.path) && !sources.has(i.path)).map((i) => i.path);
+  }, [items]);
   const mainPdf = pdfOf(mainFile);
   // the main file first, even before the tree counts it
   const docs = useMemo(() => [...new Set([mainFile, ...documents])].filter(Boolean), [mainFile, documents]);
@@ -2958,13 +2956,14 @@ function Editor({ projectId }: { projectId: string }) {
 
   // at the top right of the window, in the rightmost header showing: the editor's in editor only, else the right column's
   const viewSwitcher = (
-    <div className="segmented view-switcher" role="radiogroup" aria-label="View">
-      {VIEWS.map(([value, label, icon, command]) => (
+    <div className="segmented view-switcher" role="radiogroup" aria-label="View" onKeyDown={radioKeys}>
+      {VIEWS.map(([value, label, icon, command], i) => (
         <button
           key={value}
           className={`segment ${layout.view === value ? 'active' : ''}`}
           role="radio"
           aria-checked={layout.view === value}
+          tabIndex={radioTab(layout.view === value, i, VIEWS.some(([v]) => v === layout.view))}
           title={withShortcut(settings.shortcuts, label, command)}
           aria-label={label}
           onClick={() => setView(value)}

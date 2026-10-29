@@ -4,6 +4,7 @@ import type { ResearchChange, ResearchResult, ResearchSession, ResearchSource, R
 import { confirmDialog } from '../../app/Dialogs';
 import Icon from '../../app/Icon';
 import { MenuButton } from '../../app/Menu';
+import Segmented from '../../app/Segmented';
 import { researchKeysFor, searchConfigFor } from '../../app/settings';
 import { useEditor } from '../EditorContext';
 import type { TaskRequest } from '../agent/parts';
@@ -375,20 +376,19 @@ export default function ResearchPanel({ filter, onAgentTask }: { filter: string;
               </div>
             ))}
           </details>
-          <div className="segmented small" role="radiogroup" aria-label="Show">
-            {(
+          <Segmented
+            label="Show"
+            value={show}
+            options={(
               [
                 ['all', 'All'],
                 ['keep', 'Kept'],
                 ['drop', 'Dropped'],
                 ['undecided', 'To decide']
               ] as [Show, string][]
-            ).map(([v, label]) => (
-              <button key={v} type="button" role="radio" aria-checked={show === v} className={`segment ${show === v ? 'active' : ''}`} onClick={() => setShow(v)}>
-                {label} {tally[v]}
-              </button>
-            ))}
-          </div>
+            ).map(([v, label]) => [v, `${label} ${tally[v]}`] as const)}
+            onChange={setShow}
+          />
           {toAdd.length > 0 && (
             <button className="btn small full" disabled={!!busy} onClick={() => void run('add', () => add())}>
               {busy === 'add' ? <span className="spinner" /> : <Icon name="text.badge.plus" />} Add {plural(toAdd.length, 'kept paper')} to .bib

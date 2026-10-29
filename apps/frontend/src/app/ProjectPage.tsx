@@ -39,6 +39,7 @@ import {
 } from '../api/client';
 import type { GitHubProblem, MigrationNotice, ProjectMeta, TemplateCategory, TemplateMeta } from '../api/client';
 import Icon from './Icon';
+import { radioKeys, radioTab } from './Segmented';
 import { ContextMenu, MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
 import Select from './Select';
@@ -858,11 +859,12 @@ export default function ProjectPage() {
             </label>
             {/* the GitHub view is one list of repositories */}
             {view !== 'github' && (
-              <div className="segmented icon-segmented" role="radiogroup" aria-label="View">
+              <div className="segmented icon-segmented" role="radiogroup" aria-label="View" onKeyDown={radioKeys}>
                 <button
                   className={`segment ${prefs.layout === 'list' ? 'active' : ''}`}
                   role="radio"
                   aria-checked={prefs.layout === 'list'}
+                  tabIndex={radioTab(prefs.layout === 'list', 0, prefs.layout === 'grid')}
                   title="List"
                   onClick={() => updatePrefs({ layout: 'list' })}
                 >
@@ -872,6 +874,7 @@ export default function ProjectPage() {
                   className={`segment ${prefs.layout === 'grid' ? 'active' : ''}`}
                   role="radio"
                   aria-checked={prefs.layout === 'grid'}
+                  tabIndex={radioTab(prefs.layout === 'grid', 1, true)}
                   title="Grid"
                   onClick={() => updatePrefs({ layout: 'grid' })}
                 >
@@ -1723,6 +1726,7 @@ function MoveToFolderSheet({
       style={{ paddingLeft: 10 + depth * 14 }}
       role="radio"
       aria-checked={current === id}
+      tabIndex={current === id ? 0 : -1}
       onClick={() => onMove(id)}
     >
       <Icon name={id ? 'folder' : 'tray.full'} />
@@ -1744,7 +1748,7 @@ function MoveToFolderSheet({
         </>
       }
     >
-      <div role="radiogroup" aria-label="Folder">
+      <div role="radiogroup" aria-label="Folder" onKeyDown={radioKeys}>
         {choice(null, 'No folder', 0)}
         {tree(null, 0)}
       </div>

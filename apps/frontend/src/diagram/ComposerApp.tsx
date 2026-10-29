@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ReactFlowProvider } from '@xyflow/react';
 import type { EditorView } from '@codemirror/view';
@@ -122,6 +122,7 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
   const [busy, setBusy] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLDivElement>(null);
+  const id = useId();
   useEffect(() => {
     getEngines().then((engines) => setTypstBuiltIn(!!engines.typst.builtIn)).catch(() => setTypstBuiltIn(false));
     // the version the editor compiles with: the project's pin, else the app's default
@@ -205,17 +206,39 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
     if (!choices.length) return;
     const at = choices.findIndex((c) => sameChoice(c, chosen));
     choose(choices[Math.min(choices.length - 1, Math.max(0, at + by))]);
-    window.setTimeout(() => galleryRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }));
+    stepped.current = true;
   };
+  // once the step is drawn: the choice scrolls into view, and a clicked card's focus follows it
+  const stepped = useRef(false);
+  useEffect(() => {
+    if (!stepped.current) return;
+    stepped.current = false;
+    const option = galleryRef.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+    option?.scrollIntoView({ block: 'nearest' });
+    if (galleryRef.current?.contains(document.activeElement)) option?.focus();
+  }, [choice]);
 
-  const card = (starter: Starter) => {
+  // the options' ids, for the search field's aria-activedescendant: a starter listed twice is chosen at its first
+  const optionId = (section: string, c: Choice) => `${id}-${section}-${c.starter.id}${c.tool ? `-${c.tool}` : ''}`;
+  const activeId = chosen
+    ? chosen.tool
+      ? optionId('symbols', chosen)
+      : (() => {
+          const section = sections.find((s) => s.starters.some((starter) => starter.id === chosen.starter.id));
+          return section && optionId(section.id, chosen);
+        })()
+    : undefined;
+
+  const card = (section: string) => (starter: Starter) => {
     const reason = unavailable(starter);
     const selected = sameChoice(chosen, { starter });
     return (
       <button
         key={starter.id}
+        id={optionId(section, { starter })}
         type="button"
         role="option"
+        tabIndex={-1}
         aria-selected={selected}
         disabled={!!reason}
         className={`chooser-card${selected ? ' active' : ''}`}
@@ -262,6 +285,10 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
           ref={searchRef}
           className="input chooser-search"
           type="search"
+          role="combobox"
+          aria-expanded
+          aria-controls={`${id}-gallery`}
+          aria-activedescendant={activeId}
           placeholder="Search diagrams and symbols"
           aria-label="Search diagrams and symbols"
           value={query}
@@ -279,16 +306,16 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
               ))}
             </nav>
           )}
-          <div className="chooser-gallery" ref={galleryRef} role="listbox" aria-label="Kind of diagram">
+          <div className="chooser-gallery" ref={galleryRef} id={`${id}-gallery`} role="listbox" aria-label="Kind of diagram">
             {sections.map((section) => (
-              <section key={section.id} className="chooser-section">
-                <h3>{section.label}</h3>
-                <div className="chooser-cards">{section.starters.map(card)}</div>
+              <section key={section.id} className="chooser-section" role="group" aria-labelledby={`${id}-${section.id}`}>
+                <h3 id={`${id}-${section.id}`}>{section.label}</h3>
+                <div className="chooser-cards">{section.starters.map(card(section.id))}</div>
               </section>
             ))}
             {!!found?.symbols.length && (
-              <section className="chooser-section">
-                <h3>Symbols</h3>
+              <section className="chooser-section" role="group" aria-labelledby={`${id}-symbols`}>
+                <h3 id={`${id}-symbols`}>Symbols</h3>
                 <div className="chooser-symbols">
                   {found.symbols.map(({ starter, symbol }) => {
                     const c = { starter, tool: `part:${symbol.id}` };
@@ -296,8 +323,10 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
                     return (
                       <button
                         key={`${starter.id} ${symbol.id}`}
+                        id={optionId('symbols', c)}
                         type="button"
                         role="option"
+                        tabIndex={-1}
                         aria-selected={selected}
                         className={`chooser-symbol${selected ? ' active' : ''}`}
                         onClick={() => choose(c)}
@@ -310,7 +339,7 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
                 </div>
               </section>
             )}
-            {found && !choices.length && <div className="diagram-hint">No diagram or symbol matches ‘{query.trim()}’</div>}
+            {found && !choices.length && <div className="diagram-hint">No diagram or symbol matches “{query.trim()}”</div>}
           </div>
         </div>
         <div className="field">
@@ -320,6 +349,8 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
             <input
               id="diagram-name"
               className="input"
+              aria-invalid={!!error && !NAME.test(name)}
+              aria-describedby={error ? `${id}-name-error` : undefined}
               value={name}
               spellCheck={false}
               onChange={(e) => {
@@ -329,7 +360,11 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
             />
             <span className="muted">.{ext}</span>
           </div>
-          {error && <div className="field-hint error">{error}</div>}
+          {error && (
+            <div className="field-hint error" id={`${id}-name-error`}>
+              {error}
+            </div>
+          )}
         </div>
         <div className="chooser-actions">
           <button type="submit" className="btn primary" disabled={busy || !mode || !name}>

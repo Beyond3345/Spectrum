@@ -307,12 +307,32 @@ async function typstRuntime(arches) {
   console.log(`Typst ${engines.typst.builtIn} (${arches.join(', ')}) → ${path.relative(root, binDir)}`);
 }
 
+/**
+ * THIRD_PARTY_NOTICES.md and the licence files it links to go with the app, in frontend/licences at their repository
+ * paths, where Settings › System › Licences links to them (apps/frontend/src/app/Licences.tsx). One without .txt
+ * (LICENSE, COPYING.MPL, a .md) gets .txt, so the browser shows it rather than downloading it. The interface's own
+ * (apps/frontend/public/licences) are there already.
+ */
+function licences() {
+  const dir = path.join(resourcesDir, 'frontend', 'licences');
+  const notices = fs.readFileSync(path.join(root, 'THIRD_PARTY_NOTICES.md'), 'utf8');
+  // relative links only: web addresses have a scheme
+  const links = [...notices.matchAll(/\]\(([^):#]+)\)/g)].map((m) => m[1]).filter((link) => !link.startsWith('apps/frontend/public/'));
+  for (const link of new Set(['THIRD_PARTY_NOTICES.md', ...links])) {
+    if (!fs.statSync(path.join(root, link)).isFile()) throw new Error(`THIRD_PARTY_NOTICES.md links to ${link}, which isn't a file`);
+    const dest = path.join(dir, /\.txt$/i.test(link) ? link : `${link}.txt`);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(path.join(root, link), dest);
+  }
+}
+
 async function resources() {
   run('npm', ['run', 'build']);
   await bundleBackend();
   copyDir(path.join(root, 'apps/frontend/dist'), path.join(resourcesDir, 'frontend'));
   // each platform its own icons: SF Symbols may only ship in apps for Apple platforms
   fs.rmSync(path.join(resourcesDir, 'frontend', win ? 'sf' : 'fluent'), { recursive: true, force: true });
+  licences();
   copyDir(path.join(root, 'templates'), path.join(resourcesDir, 'templates'));
   copyDir(path.join(root, 'dictionaries'), path.join(resourcesDir, 'dictionaries'));
   // the bundled skills (scripts/sync-skills.mjs), with their licences

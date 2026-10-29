@@ -1,4 +1,4 @@
-52
+55
 LaTeX
 BibTeX
 TeX
@@ -6,6 +6,9 @@ XeLaTeX
 LuaLaTeX
 pdfLaTeX
 Overleaf
+Typst
+pandoc
+fletcher
 arXiv
 biblatex
 biber

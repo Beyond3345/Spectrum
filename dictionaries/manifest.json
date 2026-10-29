@@ -31,7 +31,7 @@
     },
     {
       "name": "Spectrum supplement",
-      "version": "ad945f50dbd7",
+      "version": "74150ebdbf3e",
       "source": "dictionaries/spectrum-extra.dic"
     },
     {
@@ -56,7 +56,7 @@
     "aussiedic/AussieDic.aff": "b8ff750a7e04f1a08cf1288127e37fb9f5b93c79daf6b5efa2e340a8ec2aa14d",
     "aussiedic/AussieDic.dic": "de0113ade41d20c5a5d4c5eb6673c30e4991a52358f21b980372973eda9e6ff8",
     "aussiedic/LICENSE": "230184f60bae2feaf244f10a8bac053c8ff33a183bcc365b4d8b876d2b7f4809",
-    "spectrum-extra.dic": "ad945f50dbd7b76f40b55c7b129a65a0ae2ed4e91dde7bcf908cfc50cad1ed98",
+    "spectrum-extra.dic": "74150ebdbf3e637b4254e7975a1ae2d61b681830f0d9f6f1aa698a41455edf2c",
     "spectrum-extra-au.dic": "45d13f08962364f591f038f998ebc6ce1eb2e14988839c0ebf2ebcca7b62f3ce"
   }
 }

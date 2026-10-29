@@ -1,6 +1,7 @@
 import type { ComponentProps } from 'react';
 import { BaseEdge, Handle, Position } from '@xyflow/react';
 import type { Edge, EdgeProps, Node, NodeProps } from '@xyflow/react';
+import Segmented from '../../../app/Segmented';
 import { FlowCanvas } from '../../FlowCanvas';
 import { Row, ToolRail, railIcon } from '../../controls';
 import type { Tool } from '../../controls';
@@ -174,13 +175,15 @@ function Inspector({ model, onChange, selection = [] }: { model: CdModel; onChan
         </Row>
         <div className="diagram-row">
           <span>Label side</span>
-          <div className="segmented small" role="radiogroup" aria-label="Label side">
-            {([false, true] as const).map((swap) => (
-              <button key={String(swap)} type="button" role="radio" aria-checked={!!arrow.swap === swap} className={`segment${!!arrow.swap === swap ? ' active' : ''}`} onClick={() => patchArrow({ swap: swap || undefined })}>
-                {swap ? 'Below' : 'Above'}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            label="Label side"
+            value={arrow.swap ? 'below' : 'above'}
+            options={[
+              ['above', 'Above'],
+              ['below', 'Below']
+            ]}
+            onChange={(side) => patchArrow({ swap: side === 'below' || undefined })}
+          />
         </div>
         {(
           [
