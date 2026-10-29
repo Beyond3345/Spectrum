@@ -47,13 +47,16 @@ function testSentence(a: LocalAgent) {
   return when + (found[t.code] || 'it failed.');
 }
 
+// an app with no agent mode inside, such as Kimi Code's
+const appWithoutAgent = (a: LocalAgent) => `${a.app!.name} is installed, but its agent mode needs the ${a.name} CLI.`;
+
 /** The closed card's one line. */
 function statusLine(a: LocalAgent) {
   if (a.planned) return firstSentence(a.planned.replace(/^Planned\.\s*/, '')) || 'Planned.';
   if (a.unavailable) return firstSentence(a.unavailable);
   if (!a.supported) return 'Agent isolation is not available on this computer.';
   if (a.command && !a.program) return 'The program you chose was not found.';
-  if (a.state === 'missing') return a.needs && !a.needs.found ? `Needs ${a.needs.name}, which was not found.` : 'Not found on this computer.';
+  if (a.state === 'missing') return a.needs && !a.needs.found ? `Needs ${a.needs.name}, which was not found.` : a.app && !a.program ? appWithoutAgent(a) : 'Not found on this computer.';
   if (a.state === 'adapter') return `Install the ACP adapter to use ${a.name} here.`;
   const tested = `tested ${relativeTime(a.test?.at || '').toLowerCase()}`;
   if (a.state === 'ready') return a.test?.version ? `Version ${a.test.version}, ${tested}` : capital(tested);
@@ -75,6 +78,7 @@ function nextStep(a: LocalAgent): Step | null {
   switch (a.state) {
     case 'missing':
       if (a.needs && !a.needs.found) return { text: `Install ${a.needs.name} first${a.adapter ? ', then install the adapter' : ''}.${command(a.needs.install) ? '' : ` ${a.needs.install}`}`, code: command(a.needs.install) };
+      if (a.app && !a.program) return { text: `${appWithoutAgent(a)} Install it, then press Check again.`, code: a.install };
       return { text: `Install ${a.name}, then press Check again.`, code: a.install };
     case 'adapter':
       return { text: `Install the ACP adapter to use ${a.name} here.`, action: 'install' };
@@ -311,10 +315,19 @@ function AgentCard({
       </button>
     ) : action === 'choose' ? (
       <button className="btn small" disabled={!!busy} onClick={choose}>
-        Choose…
+        Choose the program…
       </button>
     ) : null;
-  const sourceText = a.source === 'chosen' ? 'Chosen by you' : a.source === 'spectrum' ? 'Installed by Spectrum' : 'Found automatically';
+  const sourceText =
+    a.source === 'chosen'
+      ? 'Chosen by you'
+      : a.source === 'spectrum'
+        ? 'Installed by Spectrum'
+        : a.source === 'app'
+          ? `Found in the ${a.app?.name || a.name} app`
+          : a.where
+            ? `Found in ${tildify(a.where)}`
+            : 'Found automatically';
   const keyLabel = capital(tokenWord(a));
 
   return (
@@ -376,7 +389,7 @@ function AgentCard({
                   )}
                   <div className="row">
                     <button className="btn small" disabled={!!busy} onClick={choose}>
-                      Choose…
+                      Choose the program…
                     </button>
                     {a.installed && (
                       <button className="btn small" disabled={!!busy || (!!a.needs && !a.needs.found)} onClick={() => act('', test, false)}>

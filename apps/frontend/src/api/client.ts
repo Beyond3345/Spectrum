@@ -1597,7 +1597,9 @@ export interface LocalAgent {
   installed: boolean; supported: boolean; hasKey: boolean; canImport: boolean;
   keyEnv: string; keyEnvs: string[];
   url: string; unavailable?: string; experimental?: string; planned?: string;
-  program?: string; source?: 'chosen' | 'spectrum' | 'found'; reads?: string[];
+  /** where: the app or folder the program was found in; app: the agent's desktop app, when it is installed */
+  program?: string; source?: 'chosen' | 'spectrum' | 'app' | 'found'; where?: string; reads?: string[];
+  app?: { name: string; path: string };
   needs?: { name: string; found: boolean; install: string; path?: string };
   signIn?: string; then?: string; appSignIn?: boolean; install?: string;
   loginFound: boolean; loginCopied: boolean; configured: boolean;
