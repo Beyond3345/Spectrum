@@ -51,6 +51,7 @@ const PANDOC = (version) => [
   'const out = args[at + 1];',
   'const bs = String.fromCharCode(92);',
   'fs.mkdirSync(path.dirname(out), { recursive: true });',
+  "if (args.includes('--to=json')) { fs.writeFileSync(out, JSON.stringify({ 'pandoc-api-version': [1, 23, 1], meta: {}, blocks: [] })); process.exit(0); }",
   "fs.writeFileSync(out, ['', bs + 'documentclass{article}', bs + 'begin{document}', bs + 'section{Title}', 'The line that fails here.', bs + 'end{document}', ''].join(String.fromCharCode(10)));",
   ''
 ].join('\n');
@@ -273,6 +274,33 @@ test('a Word document from a .md in a folder finds images named from the project
   const output = path.join(root, 'docs', 'a.docx');
   assert.equal((await pandocDocx(root, path.join(root, 'docs', 'a.md'), output)).ok, true);
   assert.match((await fs.readFile(output)).toString('latin1'), /word\/media\//);
+});
+
+test('Word and the LaTeX compile take only the project’s images, never a file elsewhere or a URL', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
+  process.env.PATH = realPath;
+  if (!(await pandocPath())) return t.skip('needs pandoc');
+  const root = path.join(tmp, 'vetted');
+  const outside = path.join(tmp, 'vetted-outside');
+  for (const dir of [path.join(root, 'figures'), outside]) mkdirSync(dir, { recursive: true });
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+  writeFileSync(path.join(root, 'figures', 'dot.png'), png);
+  // a key file that is a valid PNG, so pandoc would gladly embed it
+  writeFileSync(path.join(outside, 'id_rsa.png'), Buffer.concat([png, Buffer.from('SECRET-KEY-BYTES')]));
+  writeFileSync(path.join(root, 'main.md'), `# Images\n\n![A dot](figures/dot.png)\n\n![Key](../vetted-outside/id_rsa.png)\n\n![Absolute](${path.join(outside, 'id_rsa.png')})\n\n![Remote](http://127.0.0.1:9/x.png)\n`);
+  const output = path.join(root, 'main.docx');
+  const made = await pandocDocx(root, path.join(root, 'main.md'), output);
+  assert.equal(made.ok, true, made.log);
+  const { default: unzipper } = await import('unzipper');
+  const media = (await unzipper.Open.file(output)).files.filter((f) => f.path.startsWith('word/media/'));
+  assert.equal(media.length, 1, media.map((f) => f.path).join(', '));
+  assert.ok(!(await media[0].buffer()).includes('SECRET-KEY-BYTES'));
+  const generatedDir = path.join(tmp, 'vetted-generated');
+  const latex = await markdownToLatex({ projectRoot: root, absMain: path.join(root, 'main.md'), mainFile: 'main.md', generatedDir });
+  assert.equal(latex.ok, true, latex.error || latex.log);
+  assert.equal(latex.text.match(/\\includegraphics/g)?.length, 1, latex.text);
+  assert.ok(!latex.text.includes('id_rsa') && !latex.text.includes('127.0.0.1'), latex.text);
+  const copied = await fs.readdir(generatedDir, { recursive: true });
+  assert.ok(!copied.some((f) => f.includes('id_rsa')), copied.join(', '));
 });
 
 test('a TeX error in a generated file whose name has a space is still placed', () => {

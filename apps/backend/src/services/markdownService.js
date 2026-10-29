@@ -178,9 +178,9 @@ const pandocFailure = (run, mainFile) => ({
 });
 
 /**
- * pandoc's LaTeX for the .md, into generatedDir: for a compile, its images copied into generatedDir/media, each SVG
- * there made a PDF where rsvg-convert is; sandboxed (a new project from it), no file read but the .md and the .bib
- * files, and each image named as the .md names it, for projectImages.
+ * pandoc's LaTeX for the .md, into generatedDir: for a compile, its images in the project (vettedMarkdown) copied into
+ * generatedDir/media, each SVG there made a PDF where rsvg-convert is; sandboxed (a new project from it), no file read
+ * but the .md and the .bib files, and each image named as the .md names it, for projectImages.
  */
 export async function markdownToLatex({ projectRoot, absMain, mainFile, generatedDir, sandboxed = false }) {
   const source = await fs.readFile(absMain, 'utf8');
@@ -188,14 +188,19 @@ export async function markdownToLatex({ projectRoot, absMain, mainFile, generate
   await ensureDir(generatedDir);
   const generatedFile = path.join(generatedDir, mainFile + '.tex');
   await ensureDir(path.dirname(generatedFile));
+  // a compile's images go through vettedMarkdown, so --extract-media copies none from outside the project
+  const vetted = !sandboxed && (await vettedMarkdown(projectRoot, absMain, generatedFile + '.json'));
+  if (vetted && !vetted.ok) return { ...pandocFailure(vetted, mainFile), ...(vetted.code === 0 && { error: PANDOC_UNREADABLE }) };
   const args = [
-    absMain, '--from=markdown', '--to=latex', '--standalone', '--citeproc',
+    ...(sandboxed ? [absMain, '--from=markdown'] : [generatedFile + '.json', '--from=json']),
+    '--to=latex', '--standalone', '--citeproc',
     ...(await bibliographyArgs(projectRoot, meta)),
     '--resource-path=' + [path.dirname(absMain), projectRoot].join(path.delimiter),
     sandboxed ? '--sandbox' : '--extract-media=' + path.join(generatedDir, 'media'),
     '-o', generatedFile
   ];
   const run = await runPandoc(args, path.dirname(absMain));
+  if (vetted) run.log = vetted.log + run.log;
   let text = await fs.readFile(generatedFile, 'utf8').catch(() => null);
   if (run.code !== 0 || text === null) return { ...pandocFailure(run, mainFile), ...(text === null && !run.error && !run.timedOut && { error: PANDOC_UNREADABLE }) };
   if (!sandboxed) {
@@ -238,21 +243,66 @@ export async function svgsAsPdf(text, dir) {
 export function projectImages(text, projectRoot, mdDir) {
   const images = new Set();
   const named = text.replace(/(\\include(?:graphics|svg)(?:\[[^\]]*\])?\{)([^}]+)(\})/g, (whole, before, file, after) => {
-    for (const from of [mdDir, projectRoot]) {
-      const rel = path.relative(projectRoot, path.resolve(from, file));
-      if (!rel || rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) continue;
-      try {
-        if (!existsSync(safeJoin(projectRoot, rel))) continue;
-      } catch {
-        continue;
-      }
-      const name = rel.split(path.sep).join('/');
-      images.add(name);
-      return before + name + after;
-    }
-    return whole;
+    const name = projectImage(file, projectRoot, mdDir);
+    if (!name) return whole;
+    images.add(name);
+    return before + name + after;
   });
   return { text: named, images: [...images] };
+}
+
+/** An image found as pandoc looks (from the .md's folder, then the project's): its '/'-separated path in the project, or null. */
+function projectImage(file, projectRoot, mdDir) {
+  for (const from of [mdDir, projectRoot]) {
+    const rel = path.relative(projectRoot, path.resolve(from, file));
+    if (!rel || rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) continue;
+    try {
+      if (!existsSync(safeJoin(projectRoot, rel))) continue;
+    } catch {
+      continue;
+    }
+    return rel.split(path.sep).join('/');
+  }
+  return null;
+}
+
+/**
+ * The .md as pandoc's JSON in jsonFile, read in pandoc's sandbox, with each image in the project (projectImage) named by
+ * its full path and every other one (a URL, a file elsewhere on this computer, a link out of the project) left as its
+ * description: pandoc's writer then reads no file outside the project and fetches nothing. { ok, log }, or a failed run.
+ */
+async function vettedMarkdown(projectRoot, absMain, jsonFile) {
+  const mdDir = path.dirname(absMain);
+  const run = await runPandoc([absMain, '--from=markdown', '--to=json', '--sandbox', '-o', jsonFile], mdDir);
+  const text = await fs.readFile(jsonFile, 'utf8').catch(() => null);
+  let doc = null;
+  try {
+    doc = JSON.parse(text);
+  } catch {
+    // not pandoc's JSON
+  }
+  if (run.code !== 0 || !doc) return { ...run, ok: false };
+  const decoded = (src) => {
+    try {
+      return decodeURIComponent(src);
+    } catch {
+      return src;
+    }
+  };
+  const vet = (node) => {
+    if (Array.isArray(node)) return node.map(vet);
+    if (!node || typeof node !== 'object') return node;
+    if (node.t === 'Image') {
+      const [attr, alt, [src, title]] = node.c;
+      // data: holds the image itself; any other scheme (or a Windows drive) isn't a file in the project
+      if (/^data:/i.test(src)) return node;
+      const name = !/^[a-z][a-z0-9+.-]*:/i.test(src) && (projectImage(src, projectRoot, mdDir) || projectImage(decoded(src), projectRoot, mdDir));
+      return name ? { t: 'Image', c: [attr, vet(alt), [path.join(projectRoot, ...name.split('/')), title]] } : { t: 'Span', c: [attr, vet(alt)] };
+    }
+    return Object.fromEntries(Object.entries(node).map(([key, value]) => [key, vet(value)]));
+  };
+  await fs.writeFile(jsonFile, JSON.stringify(vet(doc)));
+  return { ok: true, log: run.log };
 }
 
 /** Pandoc's Typst for the .md, its images made project-root relative, into generatedDir. */
@@ -323,11 +373,19 @@ export async function compileMarkdown(projectRoot, absMain, mainFile, engine, op
   };
 }
 
-/** The .md as a Word document. */
+/** The .md as a Word document, with only the project's images in it (vettedMarkdown). */
 export async function pandocDocx(projectRoot, absMain, output) {
   const source = await fs.readFile(absMain, 'utf8');
   const { meta } = parseFrontMatter(source);
-  const resources = '--resource-path=' + [path.dirname(absMain), projectRoot].join(path.delimiter);
-  const run = await runPandoc([absMain, '--citeproc', ...(await bibliographyArgs(projectRoot, meta)), resources, '-o', output], path.dirname(absMain));
-  return { ok: run.code === 0 && !run.timedOut && !run.error, log: run.log };
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-docx-'));
+  try {
+    const json = path.join(tmp, 'document.json');
+    const vetted = await vettedMarkdown(projectRoot, absMain, json);
+    if (!vetted.ok) return { ok: false, log: vetted.log };
+    const resources = '--resource-path=' + [path.dirname(absMain), projectRoot].join(path.delimiter);
+    const run = await runPandoc([json, '--from=json', '--citeproc', ...(await bibliographyArgs(projectRoot, meta)), resources, '-o', output], path.dirname(absMain));
+    return { ok: run.code === 0 && !run.timedOut && !run.error, log: vetted.log + run.log };
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
 }
