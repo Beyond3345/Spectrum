@@ -5,6 +5,7 @@ import { TEMPLATES } from './modes/mermaid/templates';
 import { newFormModel, presetFor } from './modes/form/presets';
 import { signalSketch, slopeField } from './modes/pgfplots/code';
 import { sampleBeam } from './modes/structures/model';
+import { dividingSegment, lineThroughPoints, projections, triangleMidpoints } from './modes/vectors/model';
 import { modelArchitecture, stateMachine } from './modes/tikz/examples';
 import { SETS } from './sets';
 import type { SetSymbol } from './sets';
@@ -43,7 +44,7 @@ export const CATEGORIES: { id: CategoryId; label: string; groups: [string, strin
     groups: [
       ['plots', 'Plots and analysis'],
       ['statistics', 'Statistics and probability'],
-      ['geometry', 'Geometry'],
+      ['geometry', 'Geometry and vectors'],
       ['algebra', 'Algebra and category theory'],
       ['discrete', 'Discrete maths']
     ]
@@ -60,6 +61,7 @@ export const CATEGORIES: { id: CategoryId; label: string; groups: [string, strin
     id: 'others',
     label: 'Others',
     groups: [
+      ['general', 'General drawing'],
       ['flowcharts', 'Flowcharts and block diagrams'],
       ['planning', 'Planning'],
       ['charts', 'Charts'],
@@ -69,7 +71,7 @@ export const CATEGORIES: { id: CategoryId; label: string; groups: [string, strin
   }
 ];
 
-export type StarterMode = 'circuitikz' | 'pgfplots' | 'tikz' | 'tikz-cd' | 'mermaid' | 'fletcher' | 'form' | 'structures';
+export type StarterMode = 'circuitikz' | 'pgfplots' | 'tikz' | 'tikz-cd' | 'mermaid' | 'fletcher' | 'form' | 'structures' | 'vectors';
 
 export interface Starter {
   id: string;
@@ -102,7 +104,8 @@ export const MODE_FACTS: Record<StarterMode, { language: DiagramLanguage; packag
   mermaid: { language: 'mermaid', packages: ['Mermaid'] },
   fletcher: { language: 'typst', packages: ['fletcher'] },
   form: { language: 'tikz', packages: ['TikZ'] },
-  structures: { language: 'tikz', packages: ['TikZ'] }
+  structures: { language: 'tikz', packages: ['TikZ'] },
+  vectors: { language: 'tikz', packages: ['TikZ'] }
 };
 
 const mermaid = (id: string) => () => ({ code: TEMPLATES.find(([t]) => t === id)?.[2] ?? TEMPLATES[0][2] });
@@ -147,6 +150,17 @@ export const STARTERS: Starter[] = [
     also: ['physics/electromagnetism'],
     aliases: ['schematic', 'electric', 'electronics', 'MOSFET', 'transistor', 'op amp', 'resistor'],
     file: 'circuit'
+  },
+  {
+    // every symbol set on, for anyone unsure where a drawing belongs; plotters stay in their own composers
+    id: 'general-drawing',
+    mode: 'circuitikz',
+    title: 'General drawing',
+    blurb: 'Every symbol on one canvas: circuits, logic, supports, flowchart shapes, points and marks, lines and arrows',
+    home: 'others/general',
+    aliases: ['general', 'drawing', 'sketch', 'symbols', 'mixed', 'anything', 'blank', 'shapes', 'lines', 'arrows'],
+    file: 'drawing',
+    sets: SETS.filter((set) => set.id !== 'circuitikz').map((set) => set.id)
   },
   {
     id: 'logic',
@@ -312,6 +326,24 @@ export const STARTERS: Starter[] = [
     file: 'mohr',
     model: () => newFormModel('mohr')
   },
+  // vector diagrams, from the user's own figures
+  ...([
+    ['vectors', 'Vector diagram', 'Points, vectors, midpoints and projections on axes, kept exact as points move', undefined],
+    ['vector-line', 'Line through two points', 'A line through U and V with position vectors u and v and direction d = v − u', lineThroughPoints],
+    ['vector-ratio', 'Dividing a segment in a ratio', 'M on AB with AM : MB = 1 : 2, and the vectors a, b and m from O', dividingSegment],
+    ['vector-midpoints', 'Midpoints of a triangle', 'PQ joins the midpoints of OA and OB, parallel to AB and half as long', triangleMidpoints],
+    ['vector-projections', 'Projections', 'The projection of b onto a in three panels: acute, right and obtuse', projections]
+  ] as const).map(([id, title, blurb, model]): Starter => ({
+    id,
+    mode: 'vectors',
+    title,
+    blurb,
+    home: 'mathematics/geometry',
+    also: ['physics/mechanics'],
+    aliases: ['vector', 'vectors', 'position vector', 'geometry', 'midpoint', 'ratio', 'projection', 'foot', 'axes', 'coordinates', 'parallelogram'],
+    file: id === 'vectors' ? 'vectors' : id,
+    ...(model && { model })
+  })),
   // the Form frame's test preset, which the chooser lists in development builds only
   {
     id: 'form-test',
@@ -360,9 +392,12 @@ const matches = (query: string, haystack: string[]) => {
   return words.length > 0 && words.every((word) => text.includes(word));
 };
 
-/** The starter whose drawing a set's symbol is placed in: the first that opens the set. */
-const starterOfSet = (set: string, starters: Starter[]) =>
-  starters.find((s) => (set === 'circuitikz' ? s.mode === 'circuitikz' : s.sets?.includes(set)));
+/** A starter's drawings have a set's symbols: circuitikz's are in every circuit, another set's where the starter opens it. */
+const holds = (s: Starter, set: string) => s.mode === 'circuitikz' && (set === 'circuitikz' || !!s.sets?.includes(set));
+
+/** The starters a set's symbol is placed in: the first that opens the set, and General drawing, which has them all. */
+const startersOfSet = (set: string, starters: Starter[]) =>
+  [...new Set([starters.find((s) => s.id !== 'general-drawing' && holds(s, set)), starters.find((s) => s.id === 'general-drawing')])].filter((s): s is Starter => !!s && holds(s, set));
 
 /**
  * The starters and symbols matching a search: a starter by its title, aliases, groups, categories and packages; a
@@ -372,11 +407,9 @@ export function search(query: string, starters: Starter[] = STARTERS): { starter
   const found = starters.filter((s) =>
     matches(query, [s.title, s.blurb, ...(s.aliases ?? []), ...[s.home, ...(s.also ?? [])].flatMap((g) => [groupLabel(g), categoryLabel(g)]), ...MODE_FACTS[s.mode].packages, s.mode])
   );
-  const symbols = SETS.flatMap((set) => {
-    const starter = starterOfSet(set.id, starters);
-    if (!starter) return [];
-    return set.symbols.filter((symbol) => matches(query, [symbol.label, ...(symbol.aliases ?? [])])).map((symbol) => ({ starter, symbol }));
-  });
+  const symbols = SETS.flatMap((set) =>
+    set.symbols.filter((symbol) => matches(query, [symbol.label, ...(symbol.aliases ?? [])])).flatMap((symbol) => startersOfSet(set.id, starters).map((starter) => ({ starter, symbol })))
+  );
   return { starters: found, symbols };
 }
 

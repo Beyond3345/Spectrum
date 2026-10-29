@@ -6,6 +6,8 @@ import { plotCode } from './modes/pgfplots/code';
 import type { PlotModel } from './modes/pgfplots/code';
 import { FLETCHER_SHAPES, tikzCode } from './modes/tikz/code';
 import type { TikzModel } from './modes/tikz/code';
+import { vectorCode } from './modes/vectors/code';
+import { SETS } from './sets';
 import { CATEGORIES, MODE_FACTS, STARTERS, search, sectionsFor, starterFor, usedNow } from './starters';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -49,15 +51,15 @@ eq(sectionsFor('mathematics').find((s) => s.id === 'mathematics/statistics')?.st
 const ids = (q: string) => search(q).starters.map((s) => s.id);
 eq(ids('MOSFET'), ['circuit'], 'an alias');
 eq(ids('gantt'), ['gantt'], 'a title, any case');
-eq(ids('circuitikz').slice(0, 2), ['circuit', 'logic'], 'a package name');
+eq(ids('circuitikz').slice(0, 3), ['circuit', 'general-drawing', 'logic'], 'a package name');
 eq(ids('circuitikz').length, STARTERS.filter((s) => s.mode === 'circuitikz').length, 'every circuitikz starter');
 eq(ids('category theory'), ['commutative'], 'two words');
 eq(ids('electromagnetism'), ['circuit'], 'a group it is cross-listed in');
 eq(ids('fletcher').includes('flowchart-typst'), true, 'fletcher');
 eq(ids('Zwölf'), [], 'nothing matches');
 const resistor = search('resistor');
-eq(resistor.symbols.map(({ starter, symbol }) => `${symbol.label}, in ${starter.title}`), ['Resistor, in Circuit', 'Variable resistor, in Circuit'], 'symbols, each in the starter it opens in');
-eq(search('pinned support').symbols.map(({ starter, symbol }) => `${symbol.label}, in ${starter.title}`), ['Pinned support, in Mass, spring and damper'], 'a set’s symbol, in the starter that opens the set');
+eq(resistor.symbols.map(({ starter, symbol }) => `${symbol.label}, in ${starter.title}`), ['Resistor, in Circuit', 'Resistor, in General drawing', 'Variable resistor, in Circuit', 'Variable resistor, in General drawing'], 'symbols, each in the starter it opens in and in General drawing');
+eq(search('pinned support').symbols.map(({ starter, symbol }) => `${symbol.label}, in ${starter.title}`), ['Pinned support, in Mass, spring and damper', 'Pinned support, in General drawing'], 'a set’s symbol, in the starter that opens the set');
 // the circuit templates: each opens the circuit canvas pre-drawn, the mass, spring and damper with its supports set
 const templates = STARTERS.filter((s) => s.mode === 'circuitikz' && s.model);
 eq(templates.length, 20, 'twenty circuit templates');
@@ -98,5 +100,25 @@ eq((starterFor('state-machine-typst')!.model!() as TikzModel).boxes.every((b) =>
 eq(fletcherCode(starterFor('state-machine-typst')!.model!() as TikzModel).body.includes('loop-angle'), true, 'its loops in fletcher');
 eq(tikzCode(starterFor('model-architecture')!.model!() as TikzModel).body.includes('$\\times N$'), true, 'a block ×N');
 eq(plotCode(starterFor('signal-sketch')!.model!() as PlotModel).body.includes('xtick=\\empty'), true, 'a sketch');
+
+// vector diagrams: under Mathematics › Geometry and vectors, cross-listed under Physics › Mechanics and fluids
+const vectorStarters = STARTERS.filter((s) => s.mode === 'vectors');
+eq(vectorStarters.map((s) => s.id), ['vectors', 'vector-line', 'vector-ratio', 'vector-midpoints', 'vector-projections'], 'the vector composer and its four figures');
+eq(sectionsFor('mathematics').find((s) => s.id === 'mathematics/geometry')?.label, 'Geometry and vectors', 'the group');
+eq(vectorStarters.every((s) => s.home === 'mathematics/geometry' && sectionsFor('physics').find((x) => x.id === 'physics/mechanics')!.starters.includes(s)), true, 'each under Mechanics and fluids too');
+for (const q of ['vector', 'midpoint', 'projection', 'position vector']) eq(ids(q).includes('vectors'), true, `${q} finds the vector composer`);
+eq(vectorStarters.filter((s) => s.model).every((s) => vectorCode(s.model!(), {}).body.includes('\\coordinate (O) at (0,0);')), true, 'each figure writes code');
+
+// General drawing: under Others, with every symbol set on and no plotters
+const general = starterFor('general-drawing')!;
+eq([general.home, general.mode, general.sets], ['others/general', 'circuitikz', SETS.filter((s) => s.id !== 'circuitikz').map((s) => s.id)], 'every set on');
+eq(sectionsFor('others')[0].starters.map((s) => s.id), ['general-drawing'], 'first under Others');
+eq(['circuitikz', 'spx-mech', 'spx-flow', 'spx-geom'].every((id) => SETS.some((s) => s.id === id)), true, 'circuits, supports, flowchart shapes, points and marks');
+// search finds every symbol in it, and offers General drawing for each
+for (const set of SETS) {
+  for (const symbol of set.symbols) eq(search(symbol.label).symbols.some((x) => x.starter.id === 'general-drawing' && x.symbol.id === symbol.id), true, `${symbol.label} is in General drawing`);
+}
+eq(search('decision').symbols.map(({ starter, symbol }) => `${symbol.label}, in ${starter.title}`), ['Decision, in General drawing'], 'a flowchart shape, in General drawing');
+eq(search('sawtooth').starters.some((s) => s.id === 'general-drawing'), false, 'no plotters');
 
 console.log('starters.check: ok');
