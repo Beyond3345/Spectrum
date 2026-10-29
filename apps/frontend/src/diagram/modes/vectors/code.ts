@@ -217,13 +217,15 @@ export function vectorCode(raw: unknown, rawStyle: Record<string, unknown>): Dia
     if (!p.dot) return options ? [node()] : [];
     const r = `${num(p.size ?? style.pointSize)}pt`;
     const colour = colourOption(p.colour ?? style.colour);
-    const label = options ? ` node[${options}] {${p.label!.text}}` : '';
-    if (p.shape === 'open') return [`\\draw${bracket([colour, 'fill=white'])} ${ref(p.id)} circle (${r})${label};`];
+    // a node on a coloured dot's path would take its colour, so its label is a node of its own
+    const label = options && !colour ? ` node[${options}] {${p.label!.text}}` : '';
+    const own = options && colour ? [node()] : [];
+    if (p.shape === 'open') return [`\\draw${bracket([colour, 'fill=white'])} ${ref(p.id)} circle (${r})${label};`, ...own];
     if (p.shape === 'cross') {
       const d = `${num(2 * (p.size ?? style.pointSize))}pt`;
       return [`\\draw${bracket([colour])} ${ref(p.id)} ++(-${r},-${r}) -- ++(${d},${d}) ++(-${d},0) -- ++(${d},-${d});`, ...(options ? [node()] : [])];
     }
-    return [`\\fill${bracket([colour])} ${ref(p.id)} circle (${r})${label};`];
+    return [`\\fill${bracket([colour])} ${ref(p.id)} circle (${r})${label};`, ...own];
   };
 
   /** the order things are drawn in, bottom first: highlights under the lines, dots and labels on top */
@@ -239,7 +241,9 @@ export function vectorCode(raw: unknown, rawStyle: Record<string, unknown>): Dia
         if (isLink(item)) lines.push(linkCode(item, panel));
         else if (item.kind === 'polygon') {
           const fill = item.fill ? [colourOption(item.fill, 'fill') || 'fill=black', opacityOption(item.fillOpacity, 'fill opacity')] : [];
-          const [width, dash, colour] = strokeOptions(item);
+          const [width, dash] = strokeOptions(item);
+          // draw=: a bare colour would fill it too
+          const colour = colourOption(item.colour ?? style.colour, 'draw');
           lines.push(`\\draw${bracket([...fill, width, dash, colour, opacityOption(item.opacity, 'draw opacity')])} ${item.points.map(ref).join(' -- ')} -- cycle;`);
         } else if (item.kind === 'drop') lines.push(`\\draw${bracket(strokeOptions(item, style.width, 'dashed'))} ${ref(item.from)} -- (${plain(item.from)} ${item.axis === 'x' ? '|-' : '-|'} 0,0);`);
         else if (item.kind === 'right') lines.push(`\\draw${bracket(strokeOptions(item))} ${rightCorners(places.get(item.at)!, places.get(item.toward)!, !!item.flip).map(at).join(' -- ')};`);
