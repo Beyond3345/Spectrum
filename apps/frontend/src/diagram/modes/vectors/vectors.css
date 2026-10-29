@@ -1,0 +1,31 @@
+/* The vector diagrams mode: its drawing on the circuit canvas's paper (circuitikz.css), with the structures mode's
+   text, halos and arrowheads (structures.css). */
+
+.vec-stroke {
+  fill: none;
+  stroke: var(--ckt-ink);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.vec-panel {
+  fill: none;
+  stroke: var(--ckt-grid);
+  stroke-dasharray: 4 4;
+}
+
+.vec-point { cursor: move; }
+.vec-point.built { cursor: pointer; }
+.vec-handle {
+  fill: transparent;
+  stroke: var(--ckt-muted);
+  stroke-width: 1.2;
+}
+.vec-point.built .vec-handle { stroke-dasharray: 2 2; }
+.vec-point.selected .vec-handle { stroke: var(--accent); stroke-width: 2; }
+
+.vec-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.vec-table th { text-align: left; font-weight: 500; color: var(--text-secondary); padding: 2px 4px; }
+.vec-table td { padding: 2px 4px; }
+.vec-table .input { width: 100%; min-width: 0; }
