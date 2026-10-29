@@ -55,6 +55,7 @@
     ],
     "resources": {
       "resources/backend/": "backend/",
+      "resources/data/": "data/",
       "resources/frontend/": "frontend/",
       "resources/templates/": "templates/",
       "resources/native/": "native/",

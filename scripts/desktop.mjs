@@ -72,6 +72,8 @@ async function bundleBackend() {
     },
   });
   copyDir(path.join(root, 'apps/backend/src/latex/pylatexenc'), path.join(outDir, 'pylatexenc'));
+  // detection reads OpenCC's tables beside the bundle, at ../data/opencc as in the source
+  copyDir(path.join(root, 'apps/backend/src/data/opencc'), path.join(resourcesDir, 'data/opencc'));
   if (win) fs.copyFileSync(buildAgentSandbox(), path.join(outDir, 'Spectrum.AgentWorker.exe'));
   console.log(`Bundled backend → ${path.relative(root, path.join(outDir, 'server.mjs'))}`);
 }
