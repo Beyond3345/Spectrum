@@ -20,7 +20,7 @@ eq(readStyle({}), { preset: 'american' }, 'American by default');
 eq(readStyle({ preset: 'european', inductors: 'european', voltageDir: 'noold', diodes: 'empty', labels: 'smart', length: 1.4 }), { preset: 'european' }, 'defaults are dropped');
 eq(readStyle({ inductors: 'cute', voltageDir: 'RP', siunitx: true, diodes: 'full', labels: 'straight', length: 1.2 }), { preset: 'american', inductors: 'cute', voltageDir: 'RP', siunitx: true, diodes: 'full', labels: 'straight', length: 1.2 }, 'overrides kept');
 eq(readStyle({ preset: 'british', length: 99, voltageDir: 'up' }), { preset: 'american' }, 'nonsense dropped');
-eq(symbolOptions(readStyle({ inductors: 'cute', voltageDir: 'RP', diodes: 'full', length: 1.2 })), 'american, cute inductors, diode=full, bipoles/length=1.2cm', 'only what changes the symbols goes to the generator');
+eq(symbolOptions(readStyle({ inductors: 'cute', voltageDir: 'RP', diodes: 'full', length: 1.2 })), 'american, cute inductors, circuitikz/diode=full, circuitikz/bipoles/length=1.2cm', 'only what changes the symbols goes to the generator');
 
 // ─── export ───
 
@@ -79,8 +79,10 @@ eq(readStyle({ logic: 'british' }), { preset: 'american' }, 'unknown gates dropp
 eq(circuitCode({ elements: [], junctions: [] }, { preset: 'european', logic: 'ieee' }).body.split('\n')[0], '\\begin{circuitikz}[european, european inductors, european resistors, european voltages, voltage dir=noold, ieee ports]', 'IEEE gates');
 eq(circuitCode({ elements: [], junctions: [] }, { logic: 'european', notSymbol: 'circle' }).body.split('\n').slice(0, 2), ['\\begin{circuitikz}[american, american inductors, american resistors, american voltages, voltage dir=noold, european ports]', '\\ctikzset{tripoles/european not symbol=circle, label/align=smart, diode=empty, bipoles/length=1.4cm}'], 'European gates in an American drawing, circled');
 eq(circuitCode({ elements: [], junctions: [] }, { logic: 'ieee', notSymbol: 'circle' }).body.includes('not symbol'), false, 'no NOT symbol for IEEE gates');
-eq(symbolOptions(readStyle({ preset: 'european', notSymbol: 'circle' })), 'european, tripoles/european not symbol=circle', 'the canvas draws the chosen gates');
+eq(symbolOptions(readStyle({ preset: 'european', notSymbol: 'circle' })), 'european, circuitikz/tripoles/european not symbol=circle', 'the canvas draws the chosen gates');
 eq(symbolOptions(readStyle({ logic: 'ieee' })), 'american, ieee ports', 'and IEEE ones');
+// what apps/backend/test/diagram.test.js draws, all of it valid on the generator's circuitikz picture
+eq(symbolOptions(readStyle({ preset: 'european', notSymbol: 'circle', diodes: 'full', length: 1.2 })), 'european, circuitikz/tripoles/european not symbol=circle, circuitikz/diode=full, circuitikz/bipoles/length=1.2cm', 'the picture’s options');
 
 // resistor and voltage styles: kept only when they differ from the preset, written as picture keys
 eq(readStyle({ preset: 'european', resistors: 'european', voltages: 'raised' }), { preset: 'european', voltages: 'raised' }, 'the preset’s own resistors are dropped');

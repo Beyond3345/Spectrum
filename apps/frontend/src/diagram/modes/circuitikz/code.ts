@@ -80,15 +80,19 @@ function logicKeys(style: CircuitStyle) {
   return [style.logic && `${style.logic} ports`, ports === 'european' && style.notSymbol && `tripoles/european not symbol=${style.notSymbol}`].filter(Boolean) as string[];
 }
 
-/** The keys that change how symbols look, valid inside \ctikzset{…}: what the symbol generator is given. */
+/**
+ * The keys that change how symbols look, as picture options: what the symbol generator puts on its circuitikz picture.
+ * \ctikzset's own keys go under circuitikz/, which TikZ needs for them (and bare diode= leaves the keys after it
+ * looked for there twice).
+ */
 export function symbolOptions(style: CircuitStyle) {
+  const logic = logicKeys(style);
   return [
     style.preset,
-    ...logicKeys(style),
+    ...logic.filter((key) => key.endsWith(' ports')),
     style.inductors && `${style.inductors} inductors`,
     style.resistors && `${style.resistors} resistors`,
-    style.diodes && `diode=${style.diodes}`,
-    style.length && `bipoles/length=${num(style.length)}cm`
+    ...[...logic.filter((key) => !key.endsWith(' ports')), style.diodes && `diode=${style.diodes}`, style.length && `bipoles/length=${num(style.length)}cm`].filter(Boolean).map((key) => `circuitikz/${key}`)
   ]
     .filter(Boolean)
     .join(', ');
