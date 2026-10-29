@@ -10,7 +10,17 @@ export type { Pt };
 export type Side = 'above' | 'below' | 'left' | 'right' | 'above left' | 'above right' | 'below left' | 'below right';
 export const SIDES: Side[] = ['above', 'above right', 'right', 'below right', 'below', 'below left', 'left', 'above left'];
 
-export interface Label {
+/** LaTeX's sizes, \tiny to \Large, as a label's font */
+export type FontSize = 'tiny' | 'scriptsize' | 'footnotesize' | 'small' | 'normalsize' | 'large' | 'Large';
+export const FONT_SIZES: FontSize[] = ['tiny', 'scriptsize', 'footnotesize', 'small', 'normalsize', 'large', 'Large'];
+
+/** A label's look; each left out is the document's own (black, normal size). */
+export interface TextStyle {
+  size?: FontSize;
+  colour?: string;
+}
+
+export interface Label extends TextStyle {
   /** TeX, as in the document: $A$, $U(2,5)$ */
   text: string;
   side?: Side;
@@ -38,18 +48,56 @@ export interface VPoint {
   y: number;
   of?: Construction;
   panel: string;
-  /** drawn as a filled dot */
+  /** drawn as a dot */
   dot?: boolean;
+  /** the dot's radius in pt; the Style's point size when left out */
+  size?: number;
+  /** filled when left out */
+  shape?: PointShape;
+  colour?: string;
   label?: Label;
 }
 
-export type Width = 'thin' | 'thick' | 'very thick' | 'ultra thick';
-export const WIDTHS: Width[] = ['thin', 'thick', 'very thick', 'ultra thick'];
+export type PointShape = 'filled' | 'open' | 'cross';
+
+/** TikZ's line widths by name, thinnest first */
+export type Width = 'ultra thin' | 'very thin' | 'thin' | 'semithick' | 'thick' | 'very thick' | 'ultra thick';
+export const WIDTHS: Width[] = ['ultra thin', 'very thin', 'thin', 'semithick', 'thick', 'very thick', 'ultra thick'];
+/** each name's width in pt */
+export const WIDTH_PT: Record<Width, number> = { 'ultra thin': 0.1, 'very thin': 0.2, thin: 0.4, semithick: 0.6, thick: 0.8, 'very thick': 1.2, 'ultra thick': 1.6 };
+/** a TikZ name, or a width in pt */
+export type Thickness = Width | number;
+
+/** a TikZ dash name, or a custom pattern: on and off lengths in pt */
+export type Dash = 'solid' | 'dashed' | 'dotted' | 'dash dot' | [number, number];
+
+/** An arrow tip, as arrows.meta names them (stealth, latex and to are also TikZ's own, for >=). */
+export type Tip = 'none' | 'stealth' | 'latex' | 'to' | 'triangle' | 'open triangle' | 'bar';
+export const TIPS: Tip[] = ['none', 'stealth', 'latex', 'to', 'triangle', 'open triangle', 'bar'];
+
+/** How a line is drawn; what's left out is the Style's default, or TikZ's. */
+export interface Stroke {
+  colour?: string;
+  width?: Thickness;
+  dash?: Dash;
+  /** 0 to 1 */
+  opacity?: number;
+}
+
+/** The tips at a line's ends and middle; a vector's end is the Style's tip when left out. */
+export interface Tips {
+  start?: Tip;
+  end?: Tip;
+  /** 1 is the usual size */
+  tipSize?: number;
+  /** an arrow halfway along */
+  middle?: boolean;
+}
 
 /** xcolor names, as the code writes them; blue!50 is half blue */
 export const COLOURS = ['black', 'blue', 'red', 'teal', 'orange', 'violet', 'gray', 'blue!50', 'red!50'];
 
-export interface EdgeLabel {
+export interface EdgeLabel extends TextStyle {
   text: string;
   /** 0 at the start to 1 at the end; 0.5 when left out */
   pos?: number;
@@ -59,26 +107,26 @@ export interface EdgeLabel {
 /** vector: an arrow; line: through a and b, out to the panel's frame; highlight: thick and light, for a projection */
 export type LinkKind = 'vector' | 'segment' | 'line' | 'highlight';
 
-export interface Link {
+export interface Link extends Stroke, Tips {
   id: string;
   kind: LinkKind;
   a: string;
   b: string;
-  colour?: string;
-  width?: Width;
+  /** as 2.0 first wrote a dashed line; dash takes over once it's set */
   dashed?: boolean;
   label?: EdgeLabel;
 }
 
-export interface Polygon {
+export interface Polygon extends Stroke {
   id: string;
   kind: 'polygon';
   points: string[];
-  colour?: string;
   fill?: string;
+  /** 0 to 1 */
+  fillOpacity?: number;
 }
 
-export interface Note {
+export interface Note extends TextStyle {
   id: string;
   kind: 'text';
   panel: string;
@@ -99,10 +147,26 @@ export interface Axes {
   ticks?: boolean;
   /** O at the origin */
   origin?: boolean;
+  /** the axes' and ticks' colour and width */
+  colour?: string;
+  width?: Thickness;
+  /** the tip at each axis's end; the Style's when left out */
+  tip?: Tip;
+  /** how far each tick reaches either side of its axis, in cm; 0.08 when left out */
+  tick?: number;
+  /** the gap between ticks; 1 when left out */
+  step?: number;
+  /** the numbers' size; \small when left out */
+  numbers?: FontSize;
+  /** a grid behind, a line at each tick */
+  grid?: boolean;
+  /** the grid's colour and width: gray!30 and very thin when left out */
+  gridColour?: string;
+  gridWidth?: Thickness;
 }
 
 /** A right-angle mark at a point, one side towards another point and the other turned anticlockwise (clockwise when flipped). */
-export interface RightMark {
+export interface RightMark extends Stroke {
   id: string;
   kind: 'right';
   at: string;
@@ -111,7 +175,7 @@ export interface RightMark {
 }
 
 /** A dashed line from a point straight down (or across) to an axis. */
-export interface Drop {
+export interface Drop extends Stroke {
   id: string;
   kind: 'drop';
   from: string;
@@ -339,21 +403,23 @@ function constructed(model: VectorModel, panel: string, of: Construction): { mod
 
 /**
  * A tool used with its picked points (ids, all in one panel): gives the model and the id to select, or null when the
- * picks make nothing (the same point twice).
+ * picks make nothing (the same point twice). A new item leaves its look to the Style, but a vector in a drawing whose
+ * Style has no vector thickness (one made before there was one) is very thick, as vectors were then.
  */
-export function applyTool(model: VectorModel, tool: string, picks: string[]): { model: VectorModel; id: string } | null {
+export function applyTool(model: VectorModel, tool: string, picks: string[], styled = true): { model: VectorModel; id: string } | null {
   const panel = model.points.find((p) => p.id === picks[0])?.panel ?? model.panels[0].id;
   const [a, b, c] = picks;
   const id = newId(model, 'i');
   const add = (item: Item) => ({ model: { ...model, items: [...model.items, item] }, id });
   const origin = model.points.find((p) => p.panel === panel && p.name === 'O')?.id;
+  const thick = !styled && { width: 'very thick' as Width };
   switch (tool) {
     case 'vector':
     case 'segment':
     case 'line':
     case 'highlight':
       if (a === b) return null;
-      return add({ id, kind: tool, a, b, ...(tool === 'vector' && { width: 'very thick' as Width }), ...(tool === 'highlight' && { colour: 'blue!50' }) });
+      return add({ id, kind: tool, a, b, ...(tool === 'vector' && thick), ...(tool === 'highlight' && { colour: 'blue!50' }) });
     case 'drop':
       return add({ id, kind: 'drop', from: a, axis: 'x' });
     case 'right':
@@ -373,7 +439,7 @@ export function applyTool(model: VectorModel, tool: string, picks: string[]): { 
       if (!origin) return made;
       // drawn as a vector from the origin
       const vid = newId(made.model, 'i');
-      return { model: { ...made.model, items: [...made.model.items, { id: vid, kind: 'vector', a: origin, b: made.id, width: 'very thick' }] }, id: made.id };
+      return { model: { ...made.model, items: [...made.model.items, { id: vid, kind: 'vector', a: origin, b: made.id, ...thick }] }, id: made.id };
     }
   }
   return null;
