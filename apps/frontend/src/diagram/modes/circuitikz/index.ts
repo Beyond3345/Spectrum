@@ -13,6 +13,7 @@ const circuitikz: DiagramMode<CircuitModel> = {
   label: 'Circuit (circuitikz)',
   language: 'tikz',
   emptyModel: emptyCircuit,
+  newStyle: (defaults) => ({ siUnits: defaults.siUnits }),
   toCode: (model, style) => circuitCode(asCircuit(model), style),
   sets: ['circuitikz'],
   setsInUse: (model) => [...new Set(asCircuit(model).elements.flatMap((el) => (el.kind === 'node' && PARTS.get(el.type)?.set ? [PARTS.get(el.type)!.set!] : [])))],

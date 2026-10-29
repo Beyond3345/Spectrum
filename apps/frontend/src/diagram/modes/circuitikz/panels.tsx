@@ -11,6 +11,7 @@ import { flip, remove, rotate } from './edit';
 import { CATALOGUE, PARTS, asCircuit, variantKey } from './model';
 import type { CircuitModel, Element, Mark, NodePart, PathPart, Pole, Route, Wire } from './model';
 import { setSelection, setTool, shapeOfNow, tidy, useCircuitUi } from './store';
+import { UnitsSwitch } from '../../controls';
 import { setFor } from '../../sets';
 import { useSymbols } from './symbols';
 
@@ -259,7 +260,7 @@ export function CircuitInspector({ model: raw, onChange }: { model: CircuitModel
               </div>
             )}
           </Field>
-          <Field label="Value" hint="Written opposite the label. With siunitx values on in Style, 4.7<\kilo\ohm> becomes \SI{4.7}{\kilo\ohm}.">
+          <Field label="Value" hint="Written opposite the label. With siunitx on in Style, 10 kΩ becomes \qty{10}{\kilo\ohm}.">
             {(id) => <input id={id} className="input mono" value={el.value || ''} onChange={(e) => update({ ...el, value: e.target.value || undefined })} spellCheck={false} />}
           </Field>
           <MarkFields label="Voltage" mark={el.voltage} onChange={(voltage) => update({ ...el, voltage })} />
@@ -369,6 +370,35 @@ export function CircuitStyleMenu({ style: raw, onChange }: { style: Record<strin
           />
         )}
       </Field>
+      <Field label="Logic gates" hint={style.logic === 'ieee' ? 'IEEE gates are larger than the others, and need circuitikz 1.1 (TeX Live 2020) or later.' : undefined}>
+        {() => (
+          <Select
+            value={style.logic || ''}
+            options={[
+              ['', 'As the symbols'],
+              ['american', 'American'],
+              ['european', 'European (IEC)'],
+              ['ieee', 'IEEE']
+            ]}
+            onChange={(logic) => set({ logic: logic || undefined })}
+          />
+        )}
+      </Field>
+      {(style.logic || style.preset) === 'european' && (
+        <Field label="NOT output" hint="How a European NOT, NAND, NOR or XNOR gate marks its inverted output.">
+          {() => (
+            <Segmented
+              label="NOT output"
+              value={style.notSymbol || 'triangle'}
+              options={[
+                ['triangle', 'Triangle'],
+                ['circle', 'Circle']
+              ]}
+              onChange={(notSymbol) => set({ notSymbol: notSymbol === 'circle' ? 'circle' : undefined })}
+            />
+          )}
+        </Field>
+      )}
       <Field label="Inductors">
         {() => (
           <Select
@@ -450,13 +480,12 @@ export function CircuitStyleMenu({ style: raw, onChange }: { style: Record<strin
           />
         )}
       </Field>
-      <label className="checkbox-row">
-        <input type="checkbox" checked={!!style.siunitx} onChange={(e) => set({ siunitx: e.target.checked })} />
-        <span>
-          siunitx values
-          <span className="field-hint">A value typed as 4.7&lt;\kilo\ohm&gt; is written as \SI{'{4.7}{\\kilo\\ohm}'}, and the document loads siunitx.</span>
-        </span>
-      </label>
+      {/* a drawing from before the switch with siunitx values on shows it on; changing it leaves \SI behind */}
+      <UnitsSwitch
+        checked={!!(style.siUnits || style.siunitx)}
+        onChange={(siUnits) => set({ siUnits, siunitx: undefined })}
+        hint={'A value such as 10 kΩ or 4.7 µF is written as \\qty{10}{\\kilo\\ohm}, and the document loads siunitx.'}
+      />
       <Field label={`Size: ${(style.length || DEFAULT_LENGTH).toFixed(1)} cm per part`}>
         {(id) => <input id={id} type="range" min={0.8} max={2.4} step={0.1} value={style.length || DEFAULT_LENGTH} onChange={(e) => set({ length: Number(e.target.value) })} />}
       </Field>

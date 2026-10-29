@@ -5,6 +5,7 @@
 // drawn the same way with the axis pointing up), or τ positive upward.
 import type { DiagramCode } from '../../fileFormat';
 import type { ComposerDefaults } from '../../types';
+import { unitWriter } from '../../units';
 import { num } from '../shared';
 import { anchorFor, formatValue } from '../structures/draw';
 import type { Anchor } from '../structures/draw';
@@ -50,7 +51,8 @@ function mohrCode(values: FormValues, style: Record<string, unknown>): DiagramCo
   const convention = (Object.keys(SHEAR_AXIS).includes(String(style.mohrShear)) ? style.mohrShear : 'down') as ComposerDefaults['mohrShear'];
   const m = mohr({ sigmaX: sx, sigmaY: sy, tauXY: txy, theta, ...(threeD && { sigmaZ: sz }) });
   const fmt = (v: number) => formatValue(v, 3);
-  const withUnit = (v: number) => `$${fmt(v)}$${unitTex ? `\\,${unitTex}` : ''}`;
+  const si = unitWriter(style.siUnits === true);
+  const withUnit = (v: number) => (unitTex ? si.qty(fmt(v), unitTex) : `$${fmt(v)}$`);
 
   // drawn τ: down for τ positive downward and for clockwise shear above (X, whose positive τxy turns its element
   // anticlockwise, plotted below), up for τ positive upward
@@ -120,7 +122,7 @@ function mohrCode(values: FormValues, style: Record<string, unknown>): DiagramCo
     // the principal stresses named in order, σ1 ≥ σ2 ≥ σ3
     lines.push(...[a, b, c].flatMap((v, i) => [dot(P(v, 0)), node(P(v, 0), `$\\sigma_${i + 1} = ${fmt(v)}$`, i === 2 ? 'south east' : 'south west')]));
   }
-  if (unitTex) lines.push(node({ x: x1, y: -0.3 }, `(${unitTex})`, 'north east'));
+  if (unitTex) lines.push(node({ x: x1, y: -0.3 }, `(${si.unit(unitTex)})`, 'north east'));
 
   // stress elements in a row under the circle
   const wanted = String(values.elements);
@@ -137,7 +139,7 @@ function mohrCode(values: FormValues, style: Record<string, unknown>): DiagramCo
     lines.push(...stressElement({ x: lo * k + 1.4 + i * 4.2, y: rowY }, e, withUnit), node({ x: lo * k + 1.4 + i * 4.2, y: rowY - 1.45 }, e.title, 'north'));
   });
   lines.push('\\end{tikzpicture}', '');
-  return { body: lines.join('\n'), packages: ['tikz'], libraries: ['arrows.meta', 'babel'] };
+  return { body: lines.join('\n'), packages: ['tikz', ...(si.used ? ['siunitx'] : [])], libraries: ['arrows.meta', 'babel'] };
 }
 
 /** A square element turned by angle (degrees), its normal stresses out of tension faces and shear along the faces. */
@@ -199,6 +201,6 @@ export const MOHR: FormPreset = {
     }
   ],
   values: { sigmaX: 80, sigmaY: -40, tauXY: 25, unit: 'MPa', theta: 0, threeD: false, sigmaZ: 0, elements: 'original' },
-  conventions: ['mohrShear'],
+  conventions: ['mohrShear', 'siUnits'],
   toCode: mohrCode
 };

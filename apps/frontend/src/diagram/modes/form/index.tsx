@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import type { ComponentProps } from 'react';
 import Select from '../../../app/Select';
+import { UnitsSwitch } from '../../controls';
 import type { DiagramMode } from '../../types';
 import { formCode, formStyle, newFormModel, presetFor, valuesOf, PRESETS } from './presets';
 import type { FormField, FormModel, FormValue } from './presets';
@@ -99,9 +100,11 @@ const CONVENTIONS: Record<string, [string, [string, string][]]> = {
 };
 
 /** The conventions the drawing was made with (its preset's, copied from Settings › Composer), changed for it alone. */
-function StyleMenu({ style, onChange }: { style: Record<string, unknown>; onChange(s: Record<string, unknown>): void }) {
+function StyleMenu({ style, onChange, model }: { style: Record<string, unknown>; onChange(s: Record<string, unknown>): void; model?: FormModel }) {
   const keys = Object.keys(CONVENTIONS).filter((key) => key in style);
-  if (!keys.length) return <div className="diagram-hint">This form has no style to change.</div>;
+  // a drawing from before the switch has no siUnits key, and writes units as typed until it's turned on
+  const units = !!model && !!presetFor(model.preset)?.conventions?.includes('siUnits');
+  if (!keys.length && !units) return <div className="diagram-hint">This form has no style to change.</div>;
   return (
     <div className="diagram-inspector-fields">
       {keys.map((key) => (
@@ -110,6 +113,7 @@ function StyleMenu({ style, onChange }: { style: Record<string, unknown>; onChan
           <Select value={String(style[key])} options={CONVENTIONS[key][1]} onChange={(value) => onChange({ ...style, [key]: value })} />
         </div>
       ))}
+      {units && <UnitsSwitch checked={style.siUnits === true} onChange={(siUnits) => onChange({ ...style, siUnits })} />}
     </div>
   );
 }

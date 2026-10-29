@@ -1,6 +1,7 @@
 // What a structure drawing shows in each view, as a list of lines, arcs, symbols and labels in centimetres. The export
 // writes it as TikZ (code.ts) and the canvas draws the same list as SVG, so the live overlays are the export's own
 // polylines.
+import { unitWriter, unitsAsText } from '../../units';
 import { SUPPORT_DEPTH } from './symbols';
 import { UNITS, frameOf, loadDirection, memberName, members, nodeMap, placeAt, supports } from './model';
 import type { Cut, Load, Member, Pt, StructureModel, Support, Units } from './model';
@@ -27,6 +28,8 @@ export interface StructStyle {
   units: Units;
   /** significant figures in the values */
   figures: number;
+  /** values as \\qty and units as \\unit (units.ts); off in a drawing from before the switch */
+  siUnits: boolean;
   /** node letters shown */
   names: boolean;
   /** the structure's larger side, in cm */
@@ -48,6 +51,7 @@ export function readStyle(raw: Record<string, unknown>): StructStyle {
     moments: oneOf(raw.moments, ['tension', 'positive'] as const, 'tension'),
     units: oneOf(raw.units, Object.keys(UNITS) as Units[], 'kN-m'),
     figures: Math.round(n(raw.figures, 2, 5, 3)),
+    siUnits: raw.siUnits === true,
     names: raw.names !== false,
     width: n(raw.width, 3, 20, 8),
     grid: Math.round(n(raw.grid, 0, 3, 1)),
@@ -83,6 +87,8 @@ export interface Scene {
   message?: string;
   /** centimetres a drawing unit */
   scale: number;
+  /** its text uses siunitx's \\qty, \\unit or \\num */
+  siunitx?: boolean;
 }
 
 // ─── helpers ───
@@ -145,7 +151,7 @@ type Box = { x0: number; x1: number; y0: number; y1: number };
 
 /** A label's rough box in cm: its visible letters at 1.5 mm each, 3 mm high, placed by its anchor. */
 function boxOf(item: Extract<Item, { t: 'text' }>): Box {
-  const w = item.tex.replace(/\\,/g, ' ').replace(/[$\\{}_^]/g, '').length * 0.15;
+  const w = unitsAsText(item.tex).replace(/\\,/g, ' ').replace(/[$\\{}_^]/g, '').length * 0.15;
   const h = 0.3;
   const x0 = item.anchor.includes('west') ? item.at.x : item.anchor.includes('east') ? item.at.x - w : item.at.x - w / 2;
   const y0 = item.anchor.includes('south') ? item.at.y : item.anchor.includes('north') ? item.at.y - h : item.at.y - h / 2;
@@ -183,7 +189,9 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
   const scale = canvas ? units.canvasCm : fitScale(model, style.width);
   const P = (p: Pt) => ({ x: p.x * scale, y: p.y * scale });
   const fmt = (v: number) => formatValue(v, style.figures);
-  const value = (v: number, u: string) => `$${fmt(v)}$\\,${u}`;
+  // the canvas shows values as text either way
+  const si = unitWriter(style.siUnits && !canvas);
+  const value = (v: number, u: string) => si.qty(fmt(v), u);
   const solved = solution.status.kind === 'ok';
   const nameOf = (id: string) => nodes.get(id)?.name;
 
@@ -322,13 +330,13 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
       const support = model.parts.find((p): p is Support => p.id === r.support);
       const at = P(nodes.get(r.node)!);
       const name = nameOf(r.node);
-      const tex = (sub: string, v: number, u: string) => (name ? `$${name}${sub} = ${fmt(Math.abs(v))}$\\,${u}` : value(Math.abs(v), u));
+      const tex = (sub: string, v: number, u: string) => (name ? si.equals(`${name}${sub}`, fmt(Math.abs(v)), u) : value(Math.abs(v), u));
       const single = support && (support.type === 'roller' || support.type === 'spring' || support.type === 'guided');
       const forces: [Pt, number, string][] = single
         ? [[r.force, Math.hypot(r.force.x, r.force.y), support!.angle ? '' : '_y']]
         : [[{ x: r.force.x, y: 0 }, r.force.x, '_x'], [{ x: 0, y: r.force.y }, r.force.y, '_y']];
       for (const [force, v, sub] of forces) if (Math.abs(v) > solution.tiny) out.push(...arrowTo(at, unit(force), tex(sub, v, F), 'reaction', r.support));
-      if (Math.abs(r.moment) > solution.tinyMoment) out.push(...momentAt(at, r.moment > 0, name ? `$M_{${name}} = ${fmt(Math.abs(r.moment))}$\\,${momentUnit}` : value(Math.abs(r.moment), momentUnit), 'reaction', r.support, 0.45, unit({ x: -1, y: 0.6 })));
+      if (Math.abs(r.moment) > solution.tinyMoment) out.push(...momentAt(at, r.moment > 0, name ? si.equals(`M_{${name}}`, fmt(Math.abs(r.moment)), momentUnit) : value(Math.abs(r.moment), momentUnit), 'reaction', r.support, 0.45, unit({ x: -1, y: 0.6 })));
     }
     return out;
   };
@@ -462,7 +470,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
     const shape: Item[] = [{ t: 'line', pts: [base(0), ...samples.map((x) => at(x.s, x.v)), base(f.length)], ink: 'line', closed: true, fill: FILL_OF[c] }];
     const labels = labelsOf(m, c, tolerance).map((label): Item => {
       const d = unit(add(times(unit(offsetOf(m, c, label.v)), 1), times(f.u, label.lean * 0.9)));
-      return { t: 'text', at: add(at(label.s, label.v), times(d, 0.08)), tex: `$${fmt(sizes ? Math.abs(label.v) : label.v)}$`, anchor: anchorFor(d) };
+      return { t: 'text', at: add(at(label.s, label.v), times(d, 0.08)), tex: si.num(fmt(sizes ? Math.abs(label.v) : label.v)), anchor: anchorFor(d) };
     });
     return { shape, labels };
   };
@@ -488,7 +496,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
       const tolerance = Math.max(max * 1e-6, solution.tiny);
       const items: Item[] = [{ t: 'line', pts: [{ x: minX, y: 0 }, { x: maxX, y: 0 }], ink: 'axis' }];
       items.push(...componentItems(c, (m) => { const f = frameOf(model, m); return (s) => ({ x: P(add(f.a, times(f.u, s))).x, y: 0 }); }, h, tolerance));
-      items.push({ t: 'text', at: { x: minX - 0.25, y: 0 }, tex: `${TITLES[c][1]} (${UNIT_OF[c]})`, anchor: 'east' });
+      items.push({ t: 'text', at: { x: minX - 0.25, y: 0 }, tex: `${TITLES[c][1]} (${si.unit(UNIT_OF[c])})`, anchor: 'east' });
       const e = extentOf(items);
       const y = cursor - Math.max(e.maxY, 0.35);
       blocks.push({ title: TITLES[c][0], items, shift: { x: 0, y } });
@@ -515,7 +523,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
       const tolerance = Math.max(max * 1e-6, solution.tiny);
       const items: Item[] = all.map((m) => ({ t: 'line', pts: [P(nodes.get(m.a)!), P(nodes.get(m.b)!)], ink: 'line' }) as Item);
       items.push(...componentItems(c, (m) => { const f = frameOf(model, m); return (s) => P(add(f.a, times(f.u, s))); }, h, tolerance, c === 'M' && style.moments === 'tension'));
-      items.push({ t: 'text', at: { x: box.minX - pad + 0.3, y: box.maxY + pad }, tex: `${TITLES[c][0]} (${UNIT_OF[c]})`, anchor: 'south west' });
+      items.push({ t: 'text', at: { x: box.minX - pad + 0.3, y: box.maxY + pad }, tex: `${TITLES[c][0]} (${si.unit(UNIT_OF[c])})`, anchor: 'south west' });
       return { title: TITLES[c][0], items, shift: spots[i] };
     });
   };
@@ -553,7 +561,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
   const flat = (blocks: Block[]) => blocks.flatMap((b) => b.items);
 
   const view = canvas && (style.view === 'joint' || style.view === 'section') ? 'fbd' : style.view;
-  const scene = (blocks: Block[], message?: string): Scene => ({ blocks: blocks.filter((b) => b.items.length), message, scale });
+  const scene = (blocks: Block[], message?: string): Scene => ({ blocks: blocks.filter((b) => b.items.length), message, scale, ...(si.used && { siunitx: true }) });
 
   if (view === 'loading') return scene(whole(false));
   if (view === 'fbd') {
@@ -593,13 +601,13 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
       items.push({ t: 'line', pts: [add(at, times(out, 0.1)), add(at, times(out, reach))], ink: 'faint' });
       if (!end) continue;
       const axial = end.force.x * out.x + end.force.y * out.y;
-      const label = `$F_{${memberName(model, m)}}`;
+      const label = `F_{${memberName(model, m)}}`;
       const tip = add(at, times(out, reach + 0.05));
-      if (Math.abs(axial) < solution.tiny) items.push({ t: 'text', at: tip, tex: `${label} = 0$`, anchor: anchorFor(out) });
+      if (Math.abs(axial) < solution.tiny) items.push({ t: 'text', at: tip, tex: `$${label} = 0$`, anchor: anchorFor(out) });
       else {
         const [from, to] = axial > 0 ? [reach - 1, reach] : [reach, reach - 1];
         items.push({ t: 'line', pts: [add(at, times(out, from)), add(at, times(out, to))], ink: 'force', arrow: '->' });
-        items.push({ t: 'text', at: tip, tex: `${label} = ${fmt(Math.abs(axial))}$\\,${F}${tc(axial)}`, anchor: anchorFor(out) });
+        items.push({ t: 'text', at: tip, tex: `${si.equals(label, fmt(Math.abs(axial)), F)}${tc(axial)}`, anchor: anchorFor(out) });
       }
       if (m.bar) continue;
       // a frame joint: the member's shear and moment on it too, the moment's label on the side away from the shear
@@ -652,7 +660,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
       } else {
         const [from, to] = N > 0 ? [0.05, 1.0] : [1.0, 0.05];
         items.push({ t: 'line', pts: [add(point, times(out, from)), add(point, times(out, to))], ink: 'force', arrow: '->' });
-        items.push({ t: 'text', at: add(point, times(out, 1.05)), tex: `$${m.bar ? `F_{${name}}` : 'N'} = ${fmt(Math.abs(N))}$\\,${F}${tc(N)}`, anchor: anchorFor(out) });
+        items.push({ t: 'text', at: add(point, times(out, 1.05)), tex: `${si.equals(m.bar ? `F_{${name}}` : 'N', fmt(Math.abs(N)), F)}${tc(N)}`, anchor: anchorFor(out) });
       }
       if (m.bar) continue;
       const sv = times(f.n, x.keepsA ? -V : V);
@@ -661,10 +669,10 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
         const c = add(point, times(out, 0.65));
         items.push({ t: 'line', pts: [add(c, times(d, -0.4)), add(c, times(d, 0.4))], ink: 'force', arrow: '->' });
         // labels lean away from the cut line, out over the part taken away
-        items.push({ t: 'text', at: add(c, times(d, 0.45)), tex: `$V = ${fmt(Math.abs(V))}$\\,${F}`, anchor: anchorFor(add(d, out)) });
+        items.push({ t: 'text', at: add(c, times(d, 0.45)), tex: si.equals('V', fmt(Math.abs(V)), F), anchor: anchorFor(add(d, out)) });
       }
       const moment = x.keepsA ? M : -M;
-      if (Math.abs(M) > solution.tinyMoment) items.push(...momentAt(point, moment > 0, `$M = ${fmt(Math.abs(M))}$\\,${momentUnit}`, 'force', undefined, 0.3, unit(add(out, times(d, -1)))));
+      if (Math.abs(M) > solution.tinyMoment) items.push(...momentAt(point, moment > 0, si.equals('M', fmt(Math.abs(M)), momentUnit), 'force', undefined, 0.3, unit(add(out, times(d, -1)))));
     }
     // where two cut members' lines meet: the point to take moments about
     const meets: Pt[] = [];

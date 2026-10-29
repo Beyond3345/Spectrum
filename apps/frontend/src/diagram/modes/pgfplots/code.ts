@@ -1,3 +1,4 @@
+import { unitWriter } from '../../units';
 import { latexColour, num } from '../shared';
 
 // Plots (pgfplots): a form rather than a drawing. Each series is a function of x over a domain, two columns of a data
@@ -335,7 +336,9 @@ function annotationLines(a: Annotation, model: PlotModel, functions: Map<string,
   }
 }
 
-export function plotCode(model: PlotModel) {
+/** style.siUnits: an axis title's unit in brackets, Load (kN), written with \\unit */
+export function plotCode(model: PlotModel, style: Record<string, unknown> = {}) {
+  const si = unitWriter(style.siUnits === true);
   // a data series without its file can't compile: it waits until one is picked
   const series = model.series.filter((s) => s.source === 'function' || NEW_SOURCES.includes(s.source) || s.file);
   const legends = series.some((s) => s.legend.trim());
@@ -347,8 +350,8 @@ export function plotCode(model: PlotModel) {
   const centred = !!model.axes && model.axes !== 'box';
   const axis = [
     model.title.trim() && `title={${model.title.trim()}}`,
-    model.xlabel.trim() && `xlabel={${model.xlabel.trim()}}`,
-    model.ylabel.trim() && `ylabel={${model.ylabel.trim()}}`,
+    model.xlabel.trim() && `xlabel={${si.title(model.xlabel.trim())}}`,
+    model.ylabel.trim() && `ylabel={${si.title(model.ylabel.trim())}}`,
     ...(['xmin', 'xmax', 'ymin', 'ymax'] as const).map((key) => isNumber(model[key]) && `${key}=${num(Number(model[key]))}`),
     model.grid !== 'none' && `grid=${model.grid}`,
     legends && `legend pos=${model.legendPos}`,
@@ -385,5 +388,5 @@ export function plotCode(model: PlotModel) {
     '\\end{tikzpicture}'
   ];
   const between = annotations.some((a) => a.kind === 'area' && a.series2 && functions.has(a.series2) && functions.has(a.series));
-  return { body: `${lines.join('\n')}\n`, packages: ['pgfplots'], libraries: between ? ['pgfplots.fillbetween'] : [] };
+  return { body: `${lines.join('\n')}\n`, packages: ['pgfplots', ...(si.used ? ['siunitx'] : [])], libraries: between ? ['pgfplots.fillbetween'] : [] };
 }

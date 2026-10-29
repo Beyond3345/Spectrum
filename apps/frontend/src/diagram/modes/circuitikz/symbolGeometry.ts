@@ -20,3 +20,21 @@ export function symbolGeometry(page: Pick<SymbolPage, 'pins' | 'width' | 'origin
   const extras = (part.pins || []).filter((name) => pins[name]).map((name) => [name, grid({ x: pins[name].x - middle.x, y: pins[name].y - middle.y })]);
   return { middle, shape: { length: Math.abs(end.x - start.x) / PT_PER_GRID, pins: { ...placeholderShape(type).pins, ...Object.fromEntries(extras) } } };
 }
+
+/** A box in grid steps, y up. */
+export interface Box {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+/**
+ * The symbol's drawn outline (its page), in grid steps with y up: a node's from its reference point, a path part's
+ * from the middle of its symbol with x along the part, where the canvas places the page.
+ */
+export function symbolOutline(page: { width: number; height: number; origin: Pt; middle: Pt }): Box {
+  const minX = -(page.origin.x + page.middle.x) / PT_PER_GRID;
+  const maxY = (page.origin.y - page.middle.y) / PT_PER_GRID;
+  return { minX, maxX: minX + page.width / PT_PER_GRID, minY: maxY - page.height / PT_PER_GRID, maxY };
+}

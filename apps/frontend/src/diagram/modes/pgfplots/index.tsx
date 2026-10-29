@@ -3,7 +3,7 @@ import type { ComponentProps } from 'react';
 import { getFile, getProjectTree } from '../../../api/client';
 import Icon from '../../../app/Icon';
 import Select from '../../../app/Select';
-import { ColourField, ProjectContext, Row } from '../../controls';
+import { ColourField, ProjectContext, Row, UnitsSwitch } from '../../controls';
 import type { DiagramMode } from '../../types';
 import { nextId } from '../tikz/code';
 import { columnsOf, emptyPlot, newSeries, plotCode } from './code';
@@ -457,13 +457,25 @@ function Canvas({ model, onChange, readOnly }: CanvasProps) {
   );
 }
 
+function PlotStyleMenu({ style, onChange }: { style: Record<string, unknown>; onChange(s: Record<string, unknown>): void }) {
+  return (
+    <UnitsSwitch
+      checked={style.siUnits === true}
+      onChange={(siUnits) => onChange({ ...style, siUnits })}
+      hint={'An axis title ending in a unit in brackets, such as Load (kN), writes it as \\unit{\\kilo\\newton}, and the document loads siunitx.'}
+    />
+  );
+}
+
 const plotMode: DiagramMode<PlotModel> = {
   id: 'pgfplots',
   label: 'Plot (pgfplots)',
   language: 'tikz',
   emptyModel: emptyPlot,
-  toCode: (model) => plotCode(model),
-  Canvas
+  newStyle: (defaults) => ({ siUnits: defaults.siUnits }),
+  toCode: (model, style) => plotCode(model, style),
+  Canvas,
+  StyleMenu: PlotStyleMenu
 };
 
 export default plotMode;

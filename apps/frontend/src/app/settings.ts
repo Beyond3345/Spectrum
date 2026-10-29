@@ -169,6 +169,8 @@ export type AppSettings = {
   /** the conventions a new drawing copies into its style (ComposerDefaults) */
   composerMoments: ComposerDefaults['moments'];
   composerMohrShear: ComposerDefaults['mohrShear'];
+  /** Write units with siunitx: a new drawing's values as \qty, its units as \unit */
+  composerSiUnits: boolean;
   /** the chooser's Recently used: starter ids, newest first, at most eight (this computer's) */
   composerRecent: string[];
 };
@@ -256,6 +258,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   composerMixSets: false,
   composerMoments: 'tension',
   composerMohrShear: 'down',
+  composerSiUnits: true,
   composerRecent: []
 };
 
@@ -405,6 +408,7 @@ function parse(raw: string | null): AppSettings {
     merged.composerMixSets = merged.composerMixSets === true;
     if (!['tension', 'positive'].includes(merged.composerMoments)) merged.composerMoments = 'tension';
     if (!['down', 'clockwise-above', 'up'].includes(merged.composerMohrShear)) merged.composerMohrShear = 'down';
+    merged.composerSiUnits = merged.composerSiUnits !== false;
     merged.composerRecent = Array.isArray(merged.composerRecent) ? merged.composerRecent.filter((id) => typeof id === 'string').slice(0, 8) : [];
     for (const key of ['editorFont', 'editorFontCustom', 'editorThemeLight', 'editorThemeDark', 'parser', 'parserProtocol', 'openalexEmail', 'ncbiKey', 'unpaywallEmail'] as const) {
       if (typeof merged[key] !== 'string') merged[key] = DEFAULT_SETTINGS[key];
@@ -484,7 +488,11 @@ export function updateSettings(patch: Partial<AppSettings>) {
 }
 
 /** The Settings › Composer defaults a new drawing copies into its style. */
-export const composerDefaults = (settings: AppSettings): ComposerDefaults => ({ moments: settings.composerMoments, mohrShear: settings.composerMohrShear });
+export const composerDefaults = (settings: AppSettings): ComposerDefaults => ({
+  moments: settings.composerMoments,
+  mohrShear: settings.composerMohrShear,
+  siUnits: settings.composerSiUnits
+});
 
 // ─── Settings that follow the user ───
 
@@ -495,7 +503,8 @@ export const composerDefaults = (settings: AppSettings): ComposerDefaults => ({ 
 const SHARED_KEYS = [
   'theme', 'accent', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize',
   'autoInsertCite', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'languages', 'englishGrammar', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
-  'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions', 'composerMixSets', 'composerMoments', 'composerMohrShear'
+  'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions', 'composerMixSets', 'composerMoments', 'composerMohrShear',
+  'composerSiUnits'
 ] as const satisfies readonly (keyof AppSettings)[];
 
 export const sharedPart = (settings: AppSettings): Record<string, unknown> => Object.fromEntries(SHARED_KEYS.map((key) => [key, settings[key]]));

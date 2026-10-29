@@ -86,8 +86,8 @@ export function structureCode(raw: unknown, rawStyle: Record<string, unknown>): 
   const view = VIEWS.find(([v]) => v === style.view)![1];
   const status = solution.status.kind === 'empty' ? '' : `: ${solution.status.text}`;
   const { body, texts } = sceneTikz(scene, `Structure, ${view.toLowerCase()}${status}`);
-  return { body, packages: ['tikz', ...mathsPackages(texts)], libraries: ['arrows.meta', 'babel'] };
+  return { body, packages: ['tikz', ...mathsPackages(texts), ...(scene.siunitx ? ['siunitx'] : [])], libraries: ['arrows.meta', 'babel'] };
 }
 
-/** A new drawing's style: the bending moment convention from Settings › Composer, kept with the drawing. */
-export const structureStyle = (defaults: ComposerDefaults): Record<string, unknown> => ({ view: 'diagrams', moments: defaults.moments });
+/** A new drawing's style: the bending moment convention and siunitx from Settings › Composer, kept with the drawing. */
+export const structureStyle = (defaults: ComposerDefaults): Record<string, unknown> => ({ view: 'diagrams', moments: defaults.moments, siUnits: defaults.siUnits });

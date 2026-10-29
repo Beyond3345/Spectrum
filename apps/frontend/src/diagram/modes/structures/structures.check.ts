@@ -270,7 +270,7 @@ const texts = (list: Item[]) => list.flatMap((i) => (i.t === 'text' ? [i.tex] : 
 {
   const model = sampleBeam();
   const s = solve(model);
-  eq(readStyle({}), { view: 'diagrams', moments: 'tension', units: 'kN-m', figures: 3, names: true, width: 8, grid: 1 }, 'the style’s defaults');
+  eq(readStyle({}), { view: 'diagrams', moments: 'tension', units: 'kN-m', figures: 3, siUnits: false, names: true, width: 8, grid: 1 }, 'the style’s defaults');
   eq(readStyle({ view: 'nope', figures: 9, width: -1 }).view, 'diagrams', 'anything unknown takes its default');
   // loading: supports drawn, no reactions; free-body: reactions instead of supports
   const loading = items(buildScene(model, s, readStyle({ view: 'loading' })));
@@ -352,11 +352,24 @@ const texts = (list: Item[]) => list.flatMap((i) => (i.t === 'text' ? [i.tex] : 
   eq(structureCode({ nodes: 'x' }, {}).packages, ['tikz'], 'a damaged model');
 }
 
+{
+  // siunitx: values as \qty, axis titles as \unit, diagram values as \num; the canvas keeps plain text
+  const on = structureCode(sampleBeam(), { view: 'diagrams', siUnits: true });
+  eq(on.packages, ['tikz', 'siunitx'], 'the document loads siunitx');
+  eq(on.body.includes('$A_y = \\qty{30}{\\kilo\\newton}$'), true, 'a reaction');
+  eq(on.body.includes('$M$ (\\unit{\\kilo\\newton\\metre})'), true, 'an axis title');
+  eq(/\\num\{-?30\}/.test(on.body), true, 'a diagram value');
+  eq(structureCode(sampleBeam(), { view: 'loading', siUnits: true }).body.includes('\\qty{10}{\\kilo\\newton\\per\\metre}'), true, 'a distributed load');
+  eq(/\$\d|\\,kN/.test(on.body), false, 'no value written the old way');
+  const canvas = texts(items(buildScene(sampleBeam(), solve(sampleBeam()), readStyle({ view: 'loading', siUnits: true }), true)));
+  eq(canvas.includes('$10$\\,kN/m'), true, 'the canvas shows plain text');
+}
+
 // ─── the file: a drawing round-trips through the diagram file (last: it waits for the hash) ───
 
 (async () => {
-  const diagram: DiagramFile = { language: 'tikz', pkg: 'structures', style: structureStyle({ moments: 'positive', mohrShear: 'down' }), model: sampleBeam(), version: 1 };
-  eq(diagram.style, { view: 'diagrams', moments: 'positive' }, 'a new drawing copies the bending moment convention');
+  const diagram: DiagramFile = { language: 'tikz', pkg: 'structures', style: structureStyle({ moments: 'positive', mohrShear: 'down', siUnits: true }), model: sampleBeam(), version: 1 };
+  eq(diagram.style, { view: 'diagrams', moments: 'positive', siUnits: true }, 'a new drawing copies the bending moment convention and siunitx');
   const code = structureCode(diagram.model, diagram.style);
   const back = await readDiagramFile(await diagramFileText(diagram, code));
   eq(back.diagram, diagram, 'the drawing comes back');
