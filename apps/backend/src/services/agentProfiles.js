@@ -9,6 +9,13 @@ import { DATA_DIR } from '../config/constants.js';
 import { writeJsonAtomic } from '../utils/fsUtils.js';
 import { resolveExecutable, isolationAvailable, SYSTEM_READS } from './agentSandbox.js';
 import { safeJoin } from '../utils/pathUtils.js';
+// each adapter's whole tree, every package pinned with its checksum (npm install --package-lock-only from the version)
+import codexLock from '../data/adapters/codex/package-lock.json' with { type: 'json' };
+import claudeLock from '../data/adapters/claude/package-lock.json' with { type: 'json' };
+import piLock from '../data/adapters/pi/package-lock.json' with { type: 'json' };
+import zcodeLock from '../data/adapters/zcode/package-lock.json' with { type: 'json' };
+
+export const ADAPTER_LOCKS = { codex: codexLock, claude: claudeLock, pi: piLock, zcode: zcodeLock };
 
 export const AGENT_DIR = path.join(DATA_DIR, 'agents');
 // the variables a saved key may go in; each profile's keys are the ones its card offers
@@ -330,31 +337,46 @@ function adapterProfile(id) {
 }
 
 /**
- * Installs profile's pinned adapter with npm into agents/adapters/<id>/<version>, from the npm registry only, with
- * install scripts off and none of the user's npm settings. Nothing of it runs until a Test or session starts it in
- * isolation. It goes in a staging folder first, so a failed install leaves nothing behind. npm: its npm-cli.js.
+ * Installs profile's pinned adapter with npm ci into agents/adapters/<id>/<version>, its whole tree as Spectrum's
+ * package-lock.json pins it (ADAPTER_LOCKS), from the npm registry only, with install scripts off and none of the user's
+ * npm settings; every package installed is checked against the lock's checksum. Nothing of it runs until a Test or
+ * session starts it in isolation. It goes in a staging folder first, so a failed install leaves nothing behind. npm:
+ * its npm-cli.js.
  */
 export async function installAdapter(id, { npm } = {}) {
   const profile = adapterProfile(id);
   const a = profile.adapter;
+  const pinned = ADAPTER_LOCKS[id];
   installing.add(id);
   const base = path.join(AGENT_DIR, 'adapters', id);
   const staging = path.join(base, `.staging-${crypto.randomUUID()}`);
   try {
     await fs.mkdir(path.join(staging, '.home'), { recursive: true, mode: 0o700 });
-    const rc = path.join(staging, '.npmrc');
-    await fs.writeFile(rc, '');
+    const { name, dependencies } = pinned.packages[''];
+    await fs.writeFile(path.join(staging, 'package.json'), JSON.stringify({ name, private: true, dependencies }));
+    await fs.writeFile(path.join(staging, 'package-lock.json'), JSON.stringify(pinned));
+    // two files, as npm refuses one loaded as both
+    const [rc, globalRc] = [path.join(staging, '.npmrc'), path.join(staging, '.npmrc-global')];
+    for (const file of [rc, globalRc]) await fs.writeFile(file, '');
     const proxies = Object.fromEntries(Object.entries(process.env).filter(([k]) => /^(https?_proxy|no_proxy)$/i.test(k)));
-    const env = { PATH: process.env.PATH || '/usr/bin:/bin', HOME: path.join(staging, '.home'), npm_config_cache: path.join(staging, '.cache'), npm_config_userconfig: rc, npm_config_globalconfig: rc, ...proxies };
-    const args = [npm || await bundledNpm(), 'install', '--prefix', staging, '--save-exact', '--ignore-scripts', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org/', `${a.package}@${a.version}`];
+    const env = { PATH: process.env.PATH || '/usr/bin:/bin', HOME: path.join(staging, '.home'), npm_config_cache: path.join(staging, '.cache'), npm_config_userconfig: rc, npm_config_globalconfig: globalRc, ...proxies };
+    // as the disk has it: through a link, npm ci takes the folder for a package the lock doesn't have
+    const args = [npm || await bundledNpm(), 'ci', '--prefix', await fs.realpath(staging), '--ignore-scripts', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org/'];
     await new Promise((resolve, reject) => execFile(process.execPath, args, { cwd: staging, env, timeout: 10 * 60 * 1000, maxBuffer: 16 * 1024 * 1024 }, (err, _out, stderr) => (
       err ? reject(new Error(`npm could not install ${a.package} ${a.version}${err.killed ? ' within 10 minutes' : ''}. ${String(stderr).trim().slice(-600)}`)) : resolve()
     )));
-    const lock = await fs.readFile(path.join(staging, 'package-lock.json'), 'utf8').then(JSON.parse, () => ({}));
-    const entry = lock.packages?.[`node_modules/${a.package}`];
-    if (entry?.version !== a.version || entry?.integrity !== a.integrity) throw new Error(`npm did not install ${a.package} ${a.version} with the checksum Spectrum expects, so nothing was installed.`);
+    // what npm installed, as it records it: each package the lock's, with its checksum (one bundled inside another
+    // comes with that one's)
+    const installed = await fs.readFile(path.join(staging, 'node_modules', '.package-lock.json'), 'utf8').then(JSON.parse, () => ({}));
+    const entries = Object.entries(installed.packages || {});
+    const checked = ([rel, entry]) => {
+      const want = pinned.packages[rel];
+      return want && entry.version === want.version && (want.inBundle ? entry.inBundle : entry.integrity === want.integrity);
+    };
+    const top = installed.packages?.[`node_modules/${a.package}`];
+    if (top?.version !== a.version || top?.integrity !== a.integrity || !entries.every(checked)) throw new Error(`npm did not install ${a.package} ${a.version} with the checksums Spectrum expects, so nothing was installed.`);
     if (!(await isFile(path.join(staging, 'node_modules', a.package, a.bin)))) throw new Error(`${a.package} ${a.version} has no ${a.bin}, so nothing was installed.`);
-    for (const rel of ['.home', '.cache', '.npmrc']) await fs.rm(path.join(staging, rel), { recursive: true, force: true });
+    for (const rel of ['.home', '.cache', '.npmrc', '.npmrc-global']) await fs.rm(path.join(staging, rel), { recursive: true, force: true });
     const target = path.join(base, a.version);
     if (await exists(target)) {
       const aside = path.join(base, `.old-${crypto.randomUUID()}`);
