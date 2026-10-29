@@ -555,6 +555,18 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
           {section === 'projects' && (
             <>
               <div className="field">
+                <label id="settings-openOn">Open Spectrum on</label>
+                <div>
+                  <Segmented
+                    labelledBy="settings-openOn"
+                    value={settings.openOn}
+                    options={[['home', 'Home'], ['all', 'All projects']]}
+                    onChange={(openOn) => update({ openOn })}
+                  />
+                </div>
+                <div className="field-hint">Home shows your folders and the projects in no folder. All projects lists every project at once.</div>
+              </div>
+              <div className="field">
                 <label id="settings-projectsDir">Default folder for new projects</label>
                 <div className="path-row" role="group" aria-labelledby="settings-projectsDir">
                   <Icon name="folder" />
