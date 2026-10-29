@@ -7,12 +7,17 @@ import { createServer } from 'node:http';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import {
+// a scratch data folder, whose project list the projects below are listed in
+const data = mkdtempSync(path.join(tmpdir(), 'spectrum-refs-data-'));
+process.env.SPECTRUM_DATA_DIR = data;
+after(() => rmSync(data, { recursive: true, force: true }));
+const {
   detectInput, splitLines, splitInput, cleanDoi, baseKey, uniqueKey, findDuplicate, buildBibIndex,
   parseBibEntries, toBibtex, texEscape, parseHtmlMeta, readHtmlCitation, pickCandidate, titleFitsPage,
   texIncludesBib, normaliseTitle, pickBibTarget, arxivRecordFromAtom, resolveReferences, addReference,
   parseName, pdfTexSafe, issuedFromDate
-} from '../src/services/referenceService.js';
+} = await import('../src/services/referenceService.js');
+const { register } = await import('../src/services/projectService.js');
 
 // Never let a developer's own key send test input to a real provider.
 delete process.env.SPECTRUM_LLM_API_KEY;
@@ -576,17 +581,21 @@ before(async () => {
 
 after(() => mock?.close());
 
-function tempProject(files) {
+/** A project in a scratch folder, listed as the app lists it. */
+async function tempProject(files) {
   const root = mkdtempSync(path.join(tmpdir(), 'spectrum-refs-'));
-  for (const [rel, content] of Object.entries(files)) {
+  const meta = { id: path.basename(root), name: 'Paper' };
+  for (const [rel, content] of Object.entries({ '.spectrum/project.json': JSON.stringify(meta), ...files })) {
     mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
     writeFileSync(path.join(root, rel), content);
   }
+  const { id } = JSON.parse(readFileSync(path.join(root, '.spectrum/project.json'), 'utf8'));
+  await register(id, root, { ...meta, id });
   return root;
 }
 
 test('configured Exa resolves blocked pages without inventing records or leaking keys', async () => {
-  const root = tempProject({ 'main.tex': '' });
+  const root = await tempProject({ 'main.tex': '' });
   const searchConfig = { provider: 'exa', apiKey: 'test-exa-key' };
   try {
     const run = (url, config = searchConfig) => resolveReferences({ projectRoot: root, input: url, searchConfig: config });
@@ -608,7 +617,7 @@ test('configured Exa resolves blocked pages without inventing records or leaking
 });
 
 test('incomplete scholarly citation metadata can recover an author through configured search', async (t) => {
-  const root = tempProject({ 'main.tex': '' });
+  const root = await tempProject({ 'main.tex': '' });
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const before = hits.filter((hit) => hit === '/exa/contents').length;
   const out = await resolveReferences({ projectRoot: root, input: `${base}/page/meta-no-author`, searchConfig: { provider: 'exa', apiKey: 'test-exa-key' } });
@@ -626,7 +635,7 @@ test('generated webpage URLs appear once, including with classic BibTeX styles',
     const bibliography = style === 'apa'
       ? '\\usepackage[style=apa]{biblatex}\n\\addbibresource{references.bib}'
       : `\\bibliographystyle{${style}}\n\\bibliography{references}`;
-    const root = tempProject({ 'main.tex': bibliography });
+    const root = await tempProject({ 'main.tex': bibliography });
     t.after(() => rmSync(root, { recursive: true, force: true }));
     const out = await resolveReferences({ projectRoot: root, input: `${base}/page/plain` });
     assert.equal(out.results[0].status, 'added', style);
@@ -640,7 +649,7 @@ test('generated webpage URLs appear once, including with classic BibTeX styles',
 test('resolves, deduplicates and writes references into a project', async (t) => {
   // No trailing newline on purpose: the original bytes must survive untouched.
   const original = '% keep me exactly\n@article{Smith2020,\n  title = {Old},\n  year = {2020},\n  doi = {10.9999/EXISTING}\n}';
-  const root = tempProject({ 'main.tex': '\\documentclass{article}\n\\begin{document}\n\\bibliography{references}\n\\end{document}\n', 'references.bib': original });
+  const root = await tempProject({ 'main.tex': '\\documentclass{article}\n\\begin{document}\n\\bibliography{references}\n\\end{document}\n', 'references.bib': original });
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const bibPath = path.join(root, 'references.bib');
   const resolve = (input, extra = {}) => resolveReferences({ projectRoot: root, input, ...extra });
@@ -810,7 +819,7 @@ test('resolves, deduplicates and writes references into a project', async (t) =>
 });
 
 test('creates the target .bib, reports bibIncluded and honours bibFile', async (t) => {
-  const root = tempProject({ 'main.tex': '\\addbibresource{other.bib}\n' });
+  const root = await tempProject({ 'main.tex': '\\addbibresource{other.bib}\n' });
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const first = await resolveReferences({ projectRoot: root, input: '10.1234/journal.5' });
   assert.equal(first.bibFile, 'references.bib');
@@ -827,10 +836,24 @@ test('creates the target .bib, reports bibIncluded and honours bibFile', async (
   await assert.rejects(resolveReferences({ projectRoot: root, input: '10.1234/journal.1', bibFile: '../escape.bib' }), (err) => err.statusCode === 400);
 });
 
+test('a reference added after a Locate… took the project elsewhere is refused, not written in the folder left behind', async (t) => {
+  const root = await tempProject({ 'main.tex': '\\bibliography{references}\n', 'references.bib': '' });
+  const moved = `${root} moved`;
+  t.after(() => [root, moved].forEach((dir) => rmSync(dir, { recursive: true, force: true })));
+  // the route took root before the lookup; meanwhile the project was located in another copy
+  mkdirSync(moved);
+  writeFileSync(path.join(moved, 'references.bib'), '');
+  mkdirSync(path.join(moved, '.spectrum'));
+  writeFileSync(path.join(moved, '.spectrum/project.json'), readFileSync(path.join(root, '.spectrum/project.json')));
+  await register(path.basename(root), moved, { id: path.basename(root), name: 'Paper' });
+  await assert.rejects(resolveReferences({ projectRoot: root, input: '10.1234/journal.5' }), (err) => err.code === 'PROJECT_MOVING');
+  assert.equal(readFileSync(path.join(root, 'references.bib'), 'utf8'), '');
+});
+
 test('with no .bib chosen, the target is one the main document loads, not another document’s', async (t) => {
   const files = { 'main.tex': '\\input{body}\n', 'body.tex': '\\bibliography{refs}\n', 'talk/slides.tex': '\\bibliography{../references}\n', 'refs.bib': '', 'references.bib': '' };
-  const root = tempProject({ ...files, '.spectrum/project.json': JSON.stringify({ id: 'p', name: 'Two documents', mainFile: 'main.tex' }) });
-  const unnamed = tempProject(files);
+  const root = await tempProject({ ...files, '.spectrum/project.json': JSON.stringify({ id: 'p', name: 'Two documents', mainFile: 'main.tex' }) });
+  const unnamed = await tempProject(files);
   t.after(() => [root, unnamed].forEach((dir) => rmSync(dir, { recursive: true, force: true })));
   const out = await resolveReferences({ projectRoot: root, input: '10.1234/journal.5' });
   assert.deepEqual([out.bibFile, out.bibIncluded, out.results[0].status], ['refs.bib', true, 'added']);
@@ -839,7 +862,7 @@ test('with no .bib chosen, the target is one the main document loads, not anothe
 });
 
 test('an LLM splits free text when configured', async (t) => {
-  const root = tempProject({ 'main.tex': '' });
+  const root = await tempProject({ 'main.tex': '' });
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const out = await resolveReferences({
     projectRoot: root,
@@ -854,7 +877,7 @@ test('an LLM splits free text when configured', async (t) => {
 });
 
 test('reports references past the first 30 instead of dropping them', async (t) => {
-  const root = tempProject({ 'references.bib': '@misc{X, doi = {10.9999/x}}\n' });
+  const root = await tempProject({ 'references.bib': '@misc{X, doi = {10.9999/x}}\n' });
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const out = await resolveReferences({ projectRoot: root, input: Array(31).fill('10.9999/x').join('\n') });
   assert.equal(out.results.length, 31);
@@ -864,7 +887,7 @@ test('reports references past the first 30 instead of dropping them', async (t) 
 
 test('live: arXiv DOI via doi.org', { skip: process.env.SPECTRUM_LIVE_TESTS !== '1' }, async (t) => {
   for (const name of ['SPECTRUM_DOI_BASE', 'SPECTRUM_CROSSREF_BASE', 'SPECTRUM_ARXIV_BASE']) delete process.env[name];
-  const root = tempProject({});
+  const root = await tempProject({});
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const out = await resolveReferences({ projectRoot: root, input: '10.48550/arXiv.1706.03762' });
   console.log(out.results[0].bibtex);

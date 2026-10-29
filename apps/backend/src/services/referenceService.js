@@ -11,7 +11,7 @@ import { listFilesRecursive } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { inlineInputs } from '../utils/texUtils.js';
 import { callOpenAICompatible, missingKey, resolveLLMConfig } from './llmService.js';
-import { readMeta } from './projectService.js';
+import { mutateProjectRoot, readMeta } from './projectService.js';
 import { extractJSON } from './transferAgent/utils.js';
 
 const TIMEOUT_MS = 20_000;
@@ -595,6 +595,12 @@ async function appendEntry(file, entry) {
   await fs.appendFile(file, sep + entry.replace(/\n/g, eol) + eol, 'utf8');
 }
 
+/**
+ * appendEntry into the project's .bib in the project files' lock (the lookups before it run outside), refused once a
+ * Move or Locate… has taken the project from root, which a route looked up before a long wait.
+ */
+const appendInProject = (projectRoot, target, entry) => mutateProjectRoot(projectRoot, () => appendEntry(safeJoin(projectRoot, target), entry));
+
 // ─── Remote lookups ───
 
 function lookupError(message, code = 'ERROR') {
@@ -1169,8 +1175,9 @@ export async function resolveItems(projectRoot, items, bibFile, searchConfig) {
       const key = uniqueKey(baseKey(record), taken);
       const bibtex = toBibtex(record, key, legacyUrls);
       try {
-        await appendEntry(safeJoin(projectRoot, target), bibtex);
+        await appendInProject(projectRoot, target, bibtex);
       } catch (err) {
+        if (err.code === 'PROJECT_MOVING') throw err;
         results.push({ input, status: 'error', message: `Couldn’t write to ${target}: ${err.message}` });
         continue;
       }
@@ -1210,8 +1217,9 @@ export async function appendEntries(projectRoot, bibFile, make) {
       const key = uniqueKey([wanted, entry.key].find((k) => VALID_KEY.test(k || '')) || 'Ref', taken);
       const text = bibtex.trim().replace(/^(@[A-Za-z]+\s*[{(]\s*)[^,\s{}()"=]+/, (_, head) => head + key);
       try {
-        await appendEntry(safeJoin(projectRoot, target), text);
+        await appendInProject(projectRoot, target, text);
       } catch (err) {
+        if (err.code === 'PROJECT_MOVING') throw err;
         results.push({ input, status: 'error', message: `Couldn’t write to ${target}: ${err.message}` });
         continue;
       }
