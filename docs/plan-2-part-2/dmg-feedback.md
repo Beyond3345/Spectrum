@@ -160,7 +160,7 @@ Agents at medium effort; the vector composer at high effort, as the composer was
    - A small round on lane 5 (lenses: folder data and sync between computers, keyboard and screen reader, live use).
 6. **Builds:** Windows run, then test DMG 5. The user tries it, then phase D's release continues.
 
-## Decisions to confirm
+## Decisions (approved by the user on 29 October 2026, as proposed)
 
 | # | Proposal |
 | --- | --- |
