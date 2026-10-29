@@ -191,11 +191,19 @@ export async function compiledPdfs(root) {
 // a path as a pattern that matches only itself, from the top of the project
 const literal = (rel) => `/${rel.replace(/[\\*?[\]]/g, '\\$&').replace(/ $/, '\\ ')}`;
 
-/** .git/info/exclude, rewritten before each commit with what keptOut leaves out and each compiled document's PDF. */
+const EXCLUDES_START = '# >>> Spectrum';
+const EXCLUDES_END = '# <<< Spectrum';
+
+/**
+ * Spectrum's section of .git/info/exclude, rewritten before each commit with what keptOut leaves out and each compiled
+ * document's PDF, last so that it wins. Every line outside it is the user's and stays, all of a file without the markers.
+ */
 async function writeExcludes(root, pdfs) {
+  const file = path.join(root, '.git', 'info', 'exclude');
   const hidden = [...HIDDEN_ENTRIES].filter((name) => !['.spectrum', '.git'].includes(name) && !/[\r\n]/.test(name));
   const lines = [
-    '# Spectrum rewrites this before each backup. Put your own rules in the project’s .gitignore.',
+    EXCLUDES_START,
+    '# Spectrum rewrites this section before each backup. Lines outside it are yours and stay.',
     '/.spectrum/*',
     // without a trailing slash, which isomorphic-git's check of a folder wouldn't match
     ...APP_SHARED.map((name) => `!/.spectrum/${name}`),
@@ -204,9 +212,15 @@ async function writeExcludes(root, pdfs) {
     '*.upload',
     '*conflicted copy*',
     `!*${OWN_COPY}*`,
-    ...pdfs.map(literal)
+    ...pdfs.map(literal),
+    EXCLUDES_END
   ];
-  await writeFileAtomic(path.join(root, '.git', 'info', 'exclude'), `${lines.join('\n')}\n`);
+  const own = (await fs.readFile(file, 'utf8').catch(() => '')).split(/\r?\n/);
+  const start = own.indexOf(EXCLUDES_START);
+  const end = start === -1 ? -1 : own.indexOf(EXCLUDES_END, start);
+  if (end !== -1) own.splice(start, end - start + 1);
+  while (own.length && own.at(-1) === '') own.pop();
+  await writeFileAtomic(file, `${[...own, ...lines].join('\n')}\n`);
 }
 
 /**
