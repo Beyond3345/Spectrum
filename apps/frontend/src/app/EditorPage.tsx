@@ -138,7 +138,7 @@ import { ZoteroCite, addZoteroHit } from '../editor/ZoteroCite';
 
 // ─── helpers ───
 
-const TEXT_FILE = /\.(tex|typ|bib|sty|cls|bst|bbx|cbx|lbx|cfg|def|clo|ltx|dtx|txt|md|mmd|json|ya?ml|csv|tsv)$|(^|\/)\.latexmkrc$/i;
+const TEXT_FILE = /\.(tex|typ|bib|sty|cls|bst|bbx|cbx|lbx|dbx|cfg|def|clo|ltx|dtx|ins|txt|md|markdown|mmd|json|ya?ml|csv|tsv)$|(^|\/)\.latexmkrc$/i;
 // \includestandalone[…]{figures/name}: the diagram its line takes in
 const INCLUDE_STANDALONE = /\\includestandalone\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/;
 const FIGURE_FILE = /\.(png|jpe?g|pdf|svg|eps)$/i;

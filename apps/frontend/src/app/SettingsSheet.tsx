@@ -57,7 +57,7 @@ import { ParserFields } from './TransferPanel';
 import GitHubSettings from './GitHubSettings';
 import AgentsPane from './AgentSettings';
 import DiagramFields from '../diagram/modes/structures/DiagramFields';
-import { IS_DESKTOP, claimDefaultHandler, pickFolder } from './desktop';
+import { IS_DESKTOP, claimDefaultHandler, isDefaultHandler, pickFolder, releaseDefaultHandler } from './desktop';
 import { toast } from './Toast';
 import { IS_MAC, IS_WINDOWS, OS_NAME, tildify } from './platform';
 import { ACCENTS, PDF_PAGES_DARK, PDF_PAGES_LIGHT, TAG_COLOURS, useDarkMode } from './appearance';
@@ -610,26 +610,19 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                 <>
                   <h3 className="form-section-title">Opening files</h3>
                   {IS_WINDOWS ? (
-                    <div className="field-hint">
-                      Windows leaves the choice to you: right-click a .tex or .bib file, choose Open with → Choose another app, pick Spectrum and select Always.
-                    </div>
+                    <>
+                      <div className="field-hint">Windows leaves the choice to you, for each kind of file. PDFs stay with your PDF viewer.</div>
+                      {FILE_GROUPS.map(({ name, exts: [first, ...rest] }) => (
+                        <div className="field" key={name}>
+                          <div>{capitalised(name)}</div>
+                          <div className="field-hint">
+                            Right-click a .{first} file, choose Open with → Choose another app, pick Spectrum and select Always{rest.length ? `, then do the same for ${dotted(rest)} files` : ''}.
+                          </div>
+                        </div>
+                      ))}
+                    </>
                   ) : (
-                    <div className="field">
-                      <div>
-                        <button
-                          className="btn small"
-                          onClick={() =>
-                            claimDefaultHandler().then(
-                              () => toast('Spectrum now opens .tex and .bib files.', { tone: 'success' }),
-                              (err) => toast(`Couldn’t make Spectrum the default: ${err}`, { tone: 'error' })
-                            )
-                          }
-                        >
-                          Make Spectrum the default for .tex and .bib files
-                        </button>
-                      </div>
-                      <div className="field-hint">Spectrum did this when it first opened. Use it again if another app has taken them since. PDFs stay with your PDF viewer.</div>
-                    </div>
+                    <FileDefaults />
                   )}
                 </>
               )}
@@ -906,7 +899,60 @@ function ComputerName() {
   );
 }
 
-const SHORTCUT_GROUPS: Shortcut['group'][] = ['Editing', 'Selection', 'Folding', 'PDF', 'App'];
+/** Settings › Projects › Opening files, each with a switch of its own; main.rs's OPENABLE has every extension */
+const FILE_GROUPS = [
+  { name: 'LaTeX documents', exts: ['tex', 'ltx'] },
+  { name: 'bibliographies', exts: ['bib'] },
+  { name: 'other TeX files', exts: ['sty', 'cls', 'clo', 'dtx', 'ins', 'bst', 'bbx', 'cbx', 'lbx', 'dbx'] },
+  { name: 'Typst documents', exts: ['typ'] },
+  { name: 'Markdown documents', exts: ['md', 'markdown'] }
+];
+const capitalised = (text: string) => text[0].toUpperCase() + text.slice(1);
+const dotted = (exts: string[]) => {
+  const names = exts.map((ext) => `.${ext}`);
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
+};
+
+/** macOS: on makes Spectrum the default for a kind of file, off gives it back to the app that had it. */
+function FileDefaults() {
+  // as macOS says (null until it answers), asked again when the window comes back, so a change made in Finder shows
+  const [on, setOn] = useState<(boolean | null)[]>(() => FILE_GROUPS.map(() => null));
+  const [busy, setBusy] = useState(false);
+  const read = () => Promise.all(FILE_GROUPS.map(({ exts }) => isDefaultHandler(exts).catch(() => null))).then(setOn);
+  useEffect(() => {
+    read();
+    window.addEventListener('focus', read);
+    return () => window.removeEventListener('focus', read);
+  }, []);
+  const change = ({ name, exts }: (typeof FILE_GROUPS)[number], open: boolean) => {
+    setBusy(true);
+    (open ? claimDefaultHandler : releaseDefaultHandler)(exts)
+      .then(
+        () => toast(open ? `Spectrum now opens ${dotted(exts)} files.` : `${capitalised(name)} open in the app that had them before.`, { tone: 'success' }),
+        (err) => toast(open ? `Couldn’t make Spectrum the default: ${err}` : `${err}`, { tone: 'error' })
+      )
+      .finally(() => read().finally(() => setBusy(false)));
+  };
+
+  return (
+    <>
+      <div className="field-hint">
+        Switch one on and Finder opens those files in Spectrum. Switch it off to give them back to the app that opened them before. Spectrum took LaTeX documents and bibliographies when it first opened. PDFs stay with your PDF viewer.
+      </div>
+      {FILE_GROUPS.map((group, i) => (
+        <label className="checkbox-row" key={group.name}>
+          <input type="checkbox" role="switch" checked={!!on[i]} disabled={busy || on[i] === null} onChange={(e) => change(group, e.target.checked)} />
+          <span>
+            Open {group.name} with Spectrum
+            <span className="field-hint">{dotted(group.exts)}</span>
+          </span>
+        </label>
+      ))}
+    </>
+  );
+}
+
+const SHORTCUT_GROUPS: Shortcut['group'][] =['Editing', 'Selection', 'Folding', 'PDF', 'App'];
 
 function ShortcutsPane() {
   const [settings, update] = useSettings();
