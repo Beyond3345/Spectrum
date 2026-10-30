@@ -3,11 +3,50 @@
 // most, by its id, which stays the same wherever its folder on disk goes. ponytail: the tree goes between computers
 // as one value, newest wins, so folders made on two computers between syncs keep only the newer computer's.
 
-/** A folder's colour on Home; none is blue. Older builds of 2.0 drop it. */
-export const FOLDER_COLOURS = ['blue', 'purple', 'red', 'orange', 'green', 'grey'] as const;
+/** A folder's colour: Finder's tag colours, in its order; none is the light blue folder. Older builds of 2.0 drop yellow. */
+export const FOLDER_COLOURS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'grey'] as const;
 export type FolderColour = (typeof FOLDER_COLOURS)[number];
 
-export type ProjectFolder = { id: string; name: string; parent: string | null; colour?: FolderColour };
+/** The SF Symbols a folder can wear, by Finder's categories; each has a Fluent twin for Windows (scripts/fluent-icons.mjs). */
+export const FOLDER_SYMBOLS: [string, string[]][] = [
+  [
+    'People',
+    ['person', 'person.2', 'person.3', 'person.crop.circle', 'figure.walk', 'figure.run', 'figure.2.and.child.holdinghands', 'hand.raised', 'hand.wave', 'hand.thumbsup', 'hand.point.up.left', 'hands.and.sparkles', 'face.smiling', 'brain.head.profile', 'eye', 'eyeglasses', 'graduationcap', 'stethoscope', 'tshirt', 'crown']
+  ],
+  [
+    'Animals & Nature',
+    ['pawprint', 'dog', 'cat', 'hare', 'tortoise', 'fish', 'ladybug', 'leaf', 'tree', 'camera.macro', 'laurel.leading', 'mountain.2', 'globe.asia.australia', 'sun.max', 'moon', 'cloud', 'cloud.sun', 'cloud.rain', 'cloud.bolt', 'snowflake', 'wind', 'drop', 'flame', 'bolt', 'water.waves', 'sparkles']
+  ],
+  [
+    'Food & Drink',
+    ['fork.knife', 'cup.and.saucer', 'wineglass', 'waterbottle', 'birthday.cake', 'carrot', 'takeoutbag.and.cup.and.straw', 'frying.pan', 'cart', 'basket']
+  ],
+  [
+    'Activities',
+    ['sportscourt', 'soccerball', 'basketball', 'football', 'baseball', 'cricket.ball', 'figure.pool.swim', 'bicycle', 'dumbbell', 'trophy', 'medal', 'gamecontroller', 'puzzlepiece', 'paintbrush', 'paintpalette', 'theatermasks', 'camera', 'film', 'ticket', 'balloon', 'gift', 'tent', 'beach.umbrella']
+  ],
+  [
+    'Travel & Places',
+    ['house', 'building', 'building.2', 'building.columns', 'storefront', 'cross.case', 'car', 'bus', 'tram', 'airplane', 'sailboat', 'fuelpump', 'map', 'mappin.and.ellipse', 'location', 'safari', 'globe', 'suitcase', 'bed.double', 'flag', 'flag.checkered', 'signpost.right']
+  ],
+  [
+    'Objects',
+    ['book', 'books.vertical', 'text.book.closed', 'bookmark', 'backpack', 'pencil', 'pencil.and.ruler', 'ruler', 'scissors', 'paperclip', 'doc.text', 'note.text', 'newspaper', 'list.clipboard', 'calendar', 'clock', 'alarm', 'hourglass', 'lightbulb', 'flask', 'testtube.2', 'atom', 'microbe', 'pills', 'syringe', 'heart.text.square', 'function', 'sum', 'x.squareroot', 'plus.forwardslash.minus', 'number', 'compass.drawing', 'chart.bar', 'chart.pie', 'chart.line.uptrend.xyaxis', 'tablecells', 'music.note', 'music.note.list', 'guitars', 'pianokeys', 'headphones', 'mic', 'speaker.wave.2', 'briefcase', 'tray.full', 'archivebox', 'envelope', 'phone', 'iphone', 'laptopcomputer', 'desktopcomputer', 'keyboard', 'printer', 'cpu', 'server.rack', 'externaldrive', 'terminal', 'chevron.left.forwardslash.chevron.right', 'hammer', 'wrench.and.screwdriver', 'key', 'lock', 'creditcard', 'banknote', 'dollarsign.circle', 'signature', 'scalemass', 'shippingbox', 'photo', 'umbrella']
+  ],
+  [
+    'Symbols',
+    ['star', 'heart', 'bell', 'tag', 'checkmark.circle', 'xmark.circle', 'exclamationmark.triangle', 'questionmark.circle', 'info.circle', 'shield', 'pin', 'paperplane', 'link', 'at', 'quote.opening', 'bubble.left', 'sparkle', 'scope', 'circle', 'square', 'triangle', 'diamond', 'hexagon', 'infinity']
+  ]
+];
+const SYMBOLS = new Set(FOLDER_SYMBOLS.flatMap(([, names]) => names));
+
+// one emoji: a flag, a keycap, or a pictograph with its variation, skin tone, tags and joined parts
+const EMOJI = /^(?:\p{Regional_Indicator}{2}|[#*0-9]\uFE0F?\u20E3|\p{Extended_Pictographic}\uFE0F?\p{Emoji_Modifier}?[\u{E0020}-\u{E007F}]*(?:\u200D\p{Extended_Pictographic}\uFE0F?\p{Emoji_Modifier}?)*)$/u;
+export const isFolderEmoji = (value: unknown): value is string => typeof value === 'string' && value.length <= 16 && EMOJI.test(value);
+export const isFolderSymbol = (value: unknown): value is string => typeof value === 'string' && SYMBOLS.has(value);
+
+/** symbol or emoji: what's drawn on the folder's front, one or the other. Older builds of 2.0 drop them. */
+export type ProjectFolder = { id: string; name: string; parent: string | null; colour?: FolderColour; symbol?: string; emoji?: string };
 export type ProjectFolders = { folders: ProjectFolder[]; placement: Record<string, string> };
 
 export const NO_FOLDERS: ProjectFolders = { folders: [], placement: {} };
@@ -21,13 +60,14 @@ export function cleanFolders(value: unknown): ProjectFolders {
   const raw = (typeof value === 'object' && value ? value : {}) as { folders?: unknown; placement?: unknown };
   const folders: ProjectFolder[] = [];
   for (const f of Array.isArray(raw.folders) ? raw.folders : []) {
-    const { id, name, parent, colour } = (typeof f === 'object' && f ? f : {}) as Record<string, unknown>;
+    const { id, name, parent, colour, symbol, emoji } = (typeof f === 'object' && f ? f : {}) as Record<string, unknown>;
     if (typeof id !== 'string' || !id || typeof name !== 'string' || !name.trim() || folders.some((g) => g.id === id)) continue;
     folders.push({
       id,
       name: name.trim(),
       parent: typeof parent === 'string' ? parent : null,
-      ...(FOLDER_COLOURS.includes(colour as FolderColour) && colour !== 'blue' && { colour: colour as FolderColour })
+      ...(FOLDER_COLOURS.includes(colour as FolderColour) && { colour: colour as FolderColour }),
+      ...(isFolderSymbol(symbol) ? { symbol } : isFolderEmoji(emoji) && { emoji })
     });
   }
   const byId = new Map(folders.map((f) => [f.id, f]));
@@ -61,13 +101,23 @@ export const renameFolder = (tree: ProjectFolders, id: string, name: string): Pr
   folders: tree.folders.map((f) => (f.id === id ? { ...f, name } : f))
 });
 
-/** Blue, the colour of a folder with none, takes the colour away. */
-export const colourFolder = (tree: ProjectFolders, id: string, colour: FolderColour): ProjectFolders => ({
+/** null takes the colour away: the light blue folder. */
+export const colourFolder = (tree: ProjectFolders, id: string, colour: FolderColour | null): ProjectFolders => ({
   ...tree,
   folders: tree.folders.map((f) => {
     if (f.id !== id) return f;
     const { colour: _old, ...rest } = f;
-    return colour === 'blue' ? rest : { ...rest, colour };
+    return colour ? { ...rest, colour } : rest;
+  })
+});
+
+/** A symbol or an emoji on the folder in place of the one there; {} (Clear) leaves it plain. */
+export const markFolder = (tree: ProjectFolders, id: string, mark: { symbol?: string } | { emoji?: string }): ProjectFolders => ({
+  ...tree,
+  folders: tree.folders.map((f) => {
+    if (f.id !== id) return f;
+    const { symbol: _symbol, emoji: _emoji, ...rest } = f;
+    return { ...rest, ...mark };
   })
 });
 
