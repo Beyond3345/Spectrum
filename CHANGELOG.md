@@ -2,6 +2,12 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## Unreleased
+
+### Added
+
+- While Tectonic compiles, its output takes the PDF's place as it comes, with a line saying what it is doing, such as the file it is downloading and how many it has downloaded so far, so a first compile that downloads for minutes does not look stuck
+
 ## 2.0.2 (30 October 2026)
 
 ### Fixed
