@@ -1,6 +1,6 @@
 import { escapeTexText } from '../../../backend/src/latex/text.js';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
+import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   archiveProject,
@@ -107,9 +107,11 @@ type Prefs = {
   closedFolders: string[];
   /** each folder's icons or list and its sort on Home, by its id ('' is Home itself) */
   home: Record<string, Partial<HomeView>>;
+  /** how large icons are, 1 being Goodnotes' size */
+  iconSize: number;
 };
 const PREFS_KEY = 'spectrum-projects-view';
-const DEFAULT_PREFS: Prefs = { layout: 'list', sortKey: 'date', dateField: 'updatedAt', sortDir: 'desc', sidebarCollapsed: false, tagsOpen: true, closedFolders: [], home: {} };
+const DEFAULT_PREFS: Prefs = { layout: 'list', sortKey: 'date', dateField: 'updatedAt', sortDir: 'desc', sidebarCollapsed: false, tagsOpen: true, closedFolders: [], home: {}, iconSize: 1 };
 
 function loadPrefs(): Prefs {
   try {
@@ -1018,6 +1020,19 @@ export default function ProjectPage() {
                 </button>
               </div>
             )}
+            {view !== 'github' && layout === 'grid' && (
+              <input
+                className="icon-size"
+                type="range"
+                min={0.75}
+                max={2}
+                step={0.25}
+                value={prefs.iconSize}
+                aria-label="Icon size"
+                title="Icon size"
+                onChange={(e) => updatePrefs({ iconSize: Number(e.target.value) })}
+              />
+            )}
             <MenuButton
               label="Import"
               disabled={busy}
@@ -1044,7 +1059,7 @@ export default function ProjectPage() {
           </div>
         </header>
 
-        <div className="panel-body">
+        <div className="panel-body" style={{ '--tile': `${Math.round(116 * prefs.iconSize)}px` } as CSSProperties}>
           {view === 'all' && notice && <MoveNotice notice={notice} onMove={moveHere} onDismiss={dismissNotice} />}
           {view === 'github' ? (
             <GitHubView

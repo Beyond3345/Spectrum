@@ -253,10 +253,12 @@ button.badge {
    Grid view
    -------------------------------------------------------------------------- */
 
+/* --tile, the height of a project's first page, is set from the icon size (ProjectPage); 116px is Goodnotes' size */
 .project-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
-  gap: 20px 16px;
+  grid-template-columns: repeat(auto-fill, calc(var(--tile, 116px) + 16px));
+  justify-content: start;
+  gap: 16px 8px;
   padding: 12px 20px 32px;
 }
 
@@ -282,21 +284,26 @@ button.badge {
   box-shadow: inset 0 0 0 2px var(--accent);
 }
 
+/* a page and a folder stand on the same line, each centred, as in Goodnotes */
 .card-thumb {
   position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: var(--tile, 116px);
   margin-bottom: 6px;
-  aspect-ratio: 210 / 297;
 }
 
 .card-thumb .thumb {
-  width: 100%;
+  width: auto;
   height: 100%;
+  aspect-ratio: 210 / 297;
   border-radius: 6px;
 }
 
 .card-thumb .thumb.placeholder {
-  gap: 7px;
-  padding: 22% 14% 0;
+  gap: calc(var(--tile, 116px) * 0.05);
+  padding: calc(var(--tile, 116px) * 0.155) calc(var(--tile, 116px) * 0.1) 0;
 }
 
 .card-thumb .thumb.placeholder i {
@@ -338,6 +345,7 @@ button.badge {
 
 .card-name {
   overflow: hidden;
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13.5px;
@@ -345,12 +353,14 @@ button.badge {
 }
 
 .card-meta {
+  text-align: center;
   font-size: 12px;
   color: var(--text-tertiary);
 }
 
 .card-tags {
   display: flex;
+  justify-content: center;
   flex-wrap: wrap;
   gap: 4px;
   margin-top: 4px;
@@ -394,23 +404,14 @@ button.badge {
   fill: var(--folder);
 }
 
-/* the folder sits where a project's first page would, so the names line up */
-.folder-art {
-  display: flex;
-  align-items: flex-end;
-  padding: 0 4% 6%;
+/* a little wider than a page and shorter, on the page's line, so the names line up */
+.folder-art .folder-shape {
+  width: calc(var(--tile, 116px) * 0.9);
 }
 
-.folder-count {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 20%;
-  text-align: center;
-  color: color-mix(in srgb, var(--folder) 30%, #000);
-  font: 600 20px/1 var(--font-display);
-  font-variant-numeric: tabular-nums;
-  opacity: 0.75;
+.icon-size {
+  width: 88px;
+  accent-color: var(--accent);
 }
 
 .folder-tile:hover .card-menu,

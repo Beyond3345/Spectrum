@@ -279,7 +279,6 @@ export default function Home({
             >
               <div className={`card-thumb folder-art folder-colour ${f.colour ?? 'blue'}`}>
                 <FolderShape colour={f.colour} />
-                <span className="folder-count" aria-hidden="true">{counts.get(f.id) || 0}</span>
                 <span className="card-menu">
                   <MenuButton icon="ellipsis" title="More" className="icon-btn small" align="end" items={menuOf(item)} />
                 </span>
