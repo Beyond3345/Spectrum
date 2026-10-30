@@ -19,6 +19,7 @@ const TRIPLE = WINDOWS ? 'x86_64-pc-windows-msvc' : process.arch === 'arm64' ? '
 const ENGINES_DIR = path.join(DATA_DIR, 'engines');
 const TYPST_DIR = path.join(ENGINES_DIR, 'typst');
 const PANDOC_PATH = path.join(ENGINES_DIR, 'pandoc', 'pandoc' + EXE);
+const BIBER_DIR = path.join(ENGINES_DIR, 'biber');
 const DOWNLOAD_FAILED = 'Check the internet connection and try again.';
 const CHECKSUM_FAILED = 'The download didn’t match its checksum, so it wasn’t installed.';
 /** The Typst version inside Spectrum, for a compile's result or a diagram's import line. */
@@ -64,6 +65,18 @@ export async function pandocPath() {
   if (existsSync(PANDOC_PATH)) return PANDOC_PATH;
   return findExecutable('pandoc');
 }
+
+/** The Biber Spectrum downloaded for the built-in Tectonic (biber.exe on Windows), or null. */
+export function tectonicBiber() {
+  const file = path.join(BIBER_DIR, 'biber' + (process.platform === 'win32' ? '.exe' : ''));
+  return existsSync(file) ? file : null;
+}
+
+/**
+ * Where that Biber unpacks itself: it is a packed Perl program, which fills this folder the first time it runs (at
+ * install, so an agent's compile, which can only read it, finds it full).
+ */
+export const biberCache = () => path.join(BIBER_DIR, 'cache');
 
 /** The version an executable prints for --version, such as 3.12.1, or null when it can't run. */
 export async function versionOf(executable) {
@@ -114,11 +127,13 @@ export async function listEngines() {
       found: pandoc ? { path: pandoc, version: await versionOf(pandoc), fromDownload: pandoc === PANDOC_PATH } : null,
       minimum: list.pandoc.minimum,
       downloadable: list.pandoc.version
-    }
+    },
+    // the release that matches the biblatex in Tectonic's bundle, and its download's size here (none: no build for it)
+    biber: { installed: tectonicBiber() ? list.biber.version : null, downloadable: list.biber.version, size: assetFor(list.biber.assets)?.[2] ?? null }
   };
 }
 
-const downloadBase = () => (process.env.SPECTRUM_ENGINE_DOWNLOAD_BASE || 'https://github.com').replace(/\/$/, '');
+const downloadBase = (home = 'https://github.com') => (process.env.SPECTRUM_ENGINE_DOWNLOAD_BASE || home).replace(/\/$/, '');
 
 /** The archive for this computer's architecture from an engine's assets, or undefined. */
 const assetFor = (assets) => assets?.[ARCH];
@@ -134,14 +149,33 @@ async function executableIn(folder, name) {
 }
 
 /**
- * Downloads one engine's archive, checks it against its SHA-256, extracts its executable into destination and returns
- * its path. Nothing is left behind when any step fails.
+ * Keeps only this Mac's slice of a universal executable (Biber's would thin itself with an option today's lipo no longer
+ * has); any other file stays as it is.
  */
-async function install(name, version, entry, destination, executable, repository, tag) {
+async function thinned(file) {
+  const data = await fs.readFile(file);
+  if (WINDOWS || data.length < 8 || data.readUInt32BE(0) !== 0xcafebabe) return;
+  const wanted = process.arch === 'arm64' ? 0x0100000c : 0x01000007;
+  for (let i = 0, at = 8; i < data.readUInt32BE(4) && at + 20 <= data.length; i += 1, at += 20) {
+    if (data.readUInt32BE(at) !== wanted) continue;
+    const offset = data.readUInt32BE(at + 8);
+    const size = data.readUInt32BE(at + 12);
+    if (offset + size > data.length) break;
+    await fs.writeFile(file, data.subarray(offset, offset + size));
+    return;
+  }
+  throw new Error('no slice for this Mac');
+}
+
+/**
+ * Downloads one engine's archive from the release folder, checks it against its SHA-256, extracts its executable into
+ * destination and returns its path. Nothing is left behind when any step fails.
+ */
+async function install(name, version, entry, destination, executable, release) {
   const asset = assetFor(entry.assets);
   if (!asset) throw httpError(name + ' ' + version + ' isn’t available for this computer.', 400);
   const [file, expected] = asset;
-  const url = downloadBase() + '/' + repository + '/releases/download/' + tag + '/' + file;
+  const url = release + '/' + file;
   const tmpRoot = path.join(ENGINES_DIR, 'tmp');
   await ensureDir(tmpRoot);
   const id = crypto.randomUUID();
@@ -181,6 +215,9 @@ async function install(name, version, entry, destination, executable, repository
     const inside = await fs.realpath(folder);
     const real = await fs.realpath(found);
     if (!real.startsWith(inside + path.sep)) throw httpError('The ' + name + ' download didn’t hold ' + executable + EXE + ', so it wasn’t installed.', 502);
+    await thinned(real).catch(() => {
+      throw httpError('The ' + name + ' download has no build for this Mac, so it wasn’t installed.', 502);
+    });
     await ensureDir(destination);
     const target = path.join(destination, executable + EXE);
     await renameOver(found, target);
@@ -207,6 +244,7 @@ function copyRuntime(executable) {
 
 const typstLock = serialiser();
 const pandocLock = serialiser();
+const biberLock = serialiser();
 
 /** Installs a Typst version from engines.json, one at a time. */
 export function installTypst(version) {
@@ -214,7 +252,7 @@ export function installTypst(version) {
     if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) throw httpError('Choose a Typst version to install.', 400);
     const entry = list.typst.versions.find((release) => release.version === version);
     if (!entry) throw httpError('Typst ' + version + ' isn’t available for this computer.', 400);
-    return install('Typst', version, entry, path.join(TYPST_DIR, version), 'typst', 'typst/typst', 'v' + version);
+    return install('Typst', version, entry, path.join(TYPST_DIR, version), 'typst', downloadBase() + '/typst/typst/releases/download/v' + version);
   });
 }
 
@@ -231,6 +269,26 @@ export function removeTypst(version) {
 export function installPandoc() {
   return pandocLock(async () => {
     const { version, assets } = list.pandoc;
-    return install('pandoc', version, { assets }, path.dirname(PANDOC_PATH), 'pandoc', 'jgm/pandoc', version);
+    return install('pandoc', version, { assets }, path.dirname(PANDOC_PATH), 'pandoc', downloadBase() + '/jgm/pandoc/releases/download/' + version);
   });
+}
+
+/** Downloads the Biber for the built-in Tectonic from the Biber project's own files, one download at a time. */
+export function installBiber() {
+  return biberLock(async () => {
+    // one asked for while another ran finds it there
+    const installed = tectonicBiber();
+    if (installed) return installed;
+    const { version, assets } = list.biber;
+    const release = downloadBase('https://downloads.sourceforge.net') + '/project/biblatex-biber/biblatex-biber/' + version + '/binaries';
+    const target = await install('Biber', version, { assets }, BIBER_DIR, 'biber', release);
+    // it unpacks itself now rather than in the first compile; one that can't run says so in the compile's log
+    await execFileAsync(target, ['--version'], { env: { ...process.env, PAR_GLOBAL_TMPDIR: biberCache() }, timeout: 5 * 60 * 1000, windowsHide: true }).catch(() => {});
+    return target;
+  });
+}
+
+/** Removes the downloaded Biber and what it unpacked. */
+export function removeBiber() {
+  return biberLock(() => fs.rm(BIBER_DIR, { recursive: true, force: true, maxRetries: 5 }));
 }
