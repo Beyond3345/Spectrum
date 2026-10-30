@@ -83,20 +83,47 @@ jobs:
 
       # a TeX for the backend's compile tests. The packages the tests use are installed first: installed as they're
       # asked for, two test files compiling at once could each find one half installed and make no PDF. Anything
-      # else is still installed when asked for.
+      # else is still installed when asked for. Each download is tried three times, as miktex.org sometimes times out;
+      # if it stays down, TeX Live from CTAN instead (it installs nothing when asked for, so a few more packages)
       - name: MiKTeX
         run: |
-          choco install miktex --no-progress -y
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          $bin = "$env:ProgramFiles\MiKTeX\miktex\bin\x64"
-          & "$bin\initexmf.exe" --admin --set-config-value='[MPM]AutoInstall=1'
-          & "$bin\initexmf.exe" --set-config-value='[MPM]AutoInstall=1'
+          function Retry([scriptblock]$step) {
+            foreach ($try in 1..3) {
+              & $step | Out-Host
+              if (!$LASTEXITCODE) { return $true }
+              if ($try -lt 3) { Write-Host "Exit code $LASTEXITCODE, trying again in a minute"; Start-Sleep 60 }
+            }
+            $false
+          }
           $packages = 'latexmk', 'standalone', 'xkeyval', 'currfile', 'filemod', 'gincltex', 'adjustbox', 'collectbox',
             'pgf', 'pgfplots', 'circuitikz', 'float', 'natbib', 'biblatex', 'glossaries', 'import', 'etoolbox'
-          & "$bin\mpm.exe" --admin --update-db
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          & "$bin\mpm.exe" --admin @($packages | ForEach-Object { "--install=$_" })
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $bin = "$env:ProgramFiles\MiKTeX\miktex\bin\x64"
+          if (Retry { choco install miktex --no-progress -y }) {
+            & "$bin\initexmf.exe" --admin --set-config-value='[MPM]AutoInstall=1'
+            & "$bin\initexmf.exe" --set-config-value='[MPM]AutoInstall=1'
+            if ((Retry { & "$bin\mpm.exe" --admin --update-db }) -and
+                (Retry { & "$bin\mpm.exe" --admin @($packages | ForEach-Object { "--install=$_" }) })) {
+              Add-Content $env:GITHUB_PATH $bin
+              exit 0
+            }
+          }
+
+          Write-Host '::warning::MiKTeX could not be installed, so the tests use TeX Live'
+          $tl = 'C:/texlive'
+          $zip = "$env:RUNNER_TEMP\install-tl.zip"
+          if (!(Retry { curl.exe -fsSL --retry 3 -o $zip https://mirror.ctan.org/systems/texlive/tlnet/install-tl.zip })) { exit 1 }
+          Expand-Archive $zip "$env:RUNNER_TEMP\install-tl"
+          $installer = (Get-ChildItem "$env:RUNNER_TEMP\install-tl" -Directory | Select-Object -First 1).FullName
+          @(
+            'selected_scheme scheme-basic', "TEXDIR $tl", "TEXMFLOCAL $tl/texmf-local", "TEXMFSYSVAR $tl/texmf-var",
+            "TEXMFSYSCONFIG $tl/texmf-config", "TEXMFVAR $tl/texmf-var", "TEXMFCONFIG $tl/texmf-config", "TEXMFHOME $tl/texmf-home",
+            'instopt_adjustpath 0', 'tlpdbopt_install_docfiles 0', 'tlpdbopt_install_srcfiles 0'
+          ) | Set-Content "$env:RUNNER_TEMP\texlive.profile"
+          if (!(Retry { & "$installer\install-tl-windows.bat" -no-gui -profile "$env:RUNNER_TEMP\texlive.profile" })) { exit 1 }
+          $bin = (Get-ChildItem "$tl\bin" -Directory | Select-Object -First 1).FullName
+          # what MiKTeX would install when asked for: biber and the packages these need
+          $more = 'collection-latexrecommended', 'biber', 'xstring', 'mfirstuc', 'xfor', 'datatool', 'logreq', 'tracklang'
+          if (!(Retry { & "$bin\tlmgr.bat" install @($packages + $more) })) { exit 1 }
           Add-Content $env:GITHUB_PATH $bin
 
       # the installer build put Typst beside the other sidecars: a copy named typst.exe, with the vcruntime140.dll the

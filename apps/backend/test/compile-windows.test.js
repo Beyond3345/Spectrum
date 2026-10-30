@@ -13,6 +13,8 @@ const { builtInTypst } = await import('../src/services/engineService.js');
 const { synctexView, synctexEdit } = await import('../src/services/synctex.js');
 after(() => fs.rm(tmp, { recursive: true, force: true, maxRetries: 5 }));
 const windows = process.platform === 'win32';
+// before the first test, so the after hook can't run between them
+const xelatex = windows && await findExecutable('xelatex');
 
 test('a failed Windows spawn rejects without unhandled pipe errors', { skip: !windows }, async () => {
   await assert.rejects(runSpawn(process.execPath, ['-e', 'process.exit(0)'], path.join(tmp, 'missing'), () => {}), { code: 'ENOENT' });
@@ -30,7 +32,7 @@ test('Windows compiles a Typst project with a path longer than MAX_PATH', { skip
   assert.equal(Buffer.from(result.pdf, 'base64').subarray(0, 5).toString(), '%PDF-');
 });
 
-test('Windows SyncTeX matches an ANSI-lossy project root with Chinese characters', { skip: !windows || !(await findExecutable('xelatex')), timeout: 60000 }, async () => {
+test('Windows SyncTeX matches an ANSI-lossy project root with Chinese characters', { skip: !xelatex, timeout: 60000 }, async () => {
   const project = await createProject({ name: 'résumé-中文', populate: (root) => fs.writeFile(path.join(root, 'main.tex'), '\\documentclass{article}\n\\begin{document}\nHello Windows scratch project.\n\\end{document}\n') });
   const result = await runCompile({ projectId: project.id, mainFile: 'main.tex', engine: 'xelatex' });
   assert.ok(result.ok, result.error || result.log);

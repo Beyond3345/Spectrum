@@ -42,6 +42,10 @@ const { systemNames, useSharedDir } = await import('../src/services/syncService.
 useSharedDir(shared);
 
 after(() => rmSync(tmp, { recursive: true, force: true }));
+// 1.7.0's services (below), loaded before any test: an await between tests lets the tests above finish first, and the
+// after hook removes tmp before the tests below are added
+const old = await oldService('versionService');
+const oldTemplates = await oldService('templateService');
 
 const json = async (file) => JSON.parse(await fs.readFile(file, 'utf8'));
 const write = async (file, data) => {
@@ -244,8 +248,6 @@ async function oldService(name) {
     .replace("from 'diff'", `from '${import.meta.resolve('diff')}'`));
   return import(pathToFileURL(file));
 }
-const old = await oldService('versionService');
-const oldTemplates = await oldService('templateService');
 
 test('1.7.0 lists and restores versions both computers made, and its own don’t clash', { skip: !old && 'no v1.7.0 in git (set SPECTRUM_OLD_REV)' }, async () => {
   const root = path.join(synced, 'Shared paper');

@@ -4,7 +4,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { promises as fs, existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { promises as fs, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -148,10 +148,14 @@ test('symbols: the cache key holds the engine, the sets’ versions and circuiti
 
 const tectonic = process.env.SPECTRUM_TECTONIC && existsSync(process.env.SPECTRUM_TECTONIC) ? process.env.SPECTRUM_TECTONIC : null;
 
-// the reference figure: every part in the circuit catalogue, each with every pin it offers wires
-const catalogue = JSON.parse(await fs.readFile(new URL('../../frontend/src/diagram/modes/circuitikz/catalogue.json', import.meta.url), 'utf8'))
+// the reference figure: every part in the circuit catalogue, each with every pin it offers wires. Read without awaiting:
+// with the tests above all skipped, an await here lets them finish first, and the after hook closes the app before the
+// tests below are added
+const catalogue = JSON.parse(readFileSync(new URL('../../frontend/src/diagram/modes/circuitikz/catalogue.json', import.meta.url), 'utf8'))
   .filter((part) => part.tikz)
   .map((part) => ({ id: part.id, tikz: part.tikz, kind: part.set ? 'pic' : part.kind, pins: part.pins || [] }));
+// a PATH without TeX: only the built-in Tectonic is left
+const NO_TEX_PATH = process.platform === 'win32' ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32') : '/usr/bin:/bin';
 const drawsEveryPart = (body) => {
   assert.ok(body.ok, body.error || body.log);
   assert.equal(body.log, undefined, 'no part failed');
@@ -170,7 +174,7 @@ test('symbols: every catalogue part draws with all its pins', { skip: needsTex }
 
 test('symbols: every catalogue part draws with all its pins in the built-in Tectonic, European', { skip: !tectonic && 'needs SPECTRUM_TECTONIC' }, async () => {
   const PATH = process.env.PATH;
-  process.env.PATH = '/usr/bin:/bin';
+  process.env.PATH = NO_TEX_PATH;
   try {
     const { body } = await symbols(catalogue, 'european');
     assert.equal(body.engine, 'Tectonic');
@@ -181,8 +185,7 @@ test('symbols: every catalogue part draws with all its pins in the built-in Tect
 });
 test('symbols: without pdfLaTeX the built-in Tectonic draws them', { skip: !tectonic && 'needs SPECTRUM_TECTONIC' }, async () => {
   const PATH = process.env.PATH;
-  // a PATH without TeX: only the built-in Tectonic is left
-  process.env.PATH = '/usr/bin:/bin';
+  process.env.PATH = NO_TEX_PATH;
   try {
     const { body } = await symbols([
       { id: 'resistor', tikz: 'R', kind: 'path' },

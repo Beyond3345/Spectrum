@@ -22,6 +22,9 @@ const { default: Fastify } = await import('fastify');
 
 const run = promisify(execFile);
 const tool = await findExecutable('synctex');
+// looked up before the first test: an await between tests lets the tests above finish first, and the after hook
+// removes tmp before the tests below are added
+const engines = Object.fromEntries(await Promise.all(['pdflatex', 'xelatex', 'lualatex', 'tectonic'].map(async (e) => [e, await findExecutable(e)])));
 const NOT_YET = 'Compile the project first to jump between the source and the PDF.';
 // what a compile keeps of a project, on this computer and out of its folder
 const cached = (project, ...parts) => path.join(process.env.SPECTRUM_DATA_DIR, 'cache', project.id, ...parts);
@@ -118,7 +121,7 @@ async function pool(items, fn) {
 }
 
 for (const engine of ['pdflatex', 'xelatex', 'lualatex', 'tectonic']) {
-  const missing = !tool ? 'needs the synctex tool' : !(await findExecutable(engine)) && `needs ${engine}`;
+  const missing = !tool ? 'needs the synctex tool' : !engines[engine] && `needs ${engine}`;
   test(`${engine}: jumps agree with the synctex tool`, { skip: missing, timeout: 180000 * SLOW }, async (t) => {
     const { project, root, res } = await compiledProject(engine, { 'main.tex': MAIN, 'chapters/one.tex': CHAPTER }, 'main.tex', engine);
     if (engine === 'tectonic' && !res.ok) return t.skip(`tectonic didn't compile: ${res.error}`);
@@ -180,7 +183,7 @@ for (const engine of ['pdflatex', 'xelatex', 'lualatex', 'tectonic']) {
 // NTFS only matches the form a name was given in, so on Windows it's precomposed on disk too
 const DECOMPOSED = process.platform === 'win32' ? 'paper/chapters/r\u00e9sum\u00e9.tex' : 'paper/chapters/re\u0301sume\u0301.tex';
 
-test('a main file in a subfolder maps every input back to the project, and a failed compile keeps the last one', { skip: !(await findExecutable('pdflatex')) && 'needs pdflatex', timeout: 120000 * SLOW }, async () => {
+test('a main file in a subfolder maps every input back to the project, and a failed compile keeps the last one', { skip: !engines.pdflatex && 'needs pdflatex', timeout: 120000 * SLOW }, async () => {
   const files = {
     // APFS finds Shared/Note and résumé whatever their case or Unicode form; jumps use the disk's names
     'paper/main.tex': '\\documentclass{article}\n\\begin{document}\n\\input{chapters/one}\n\n\\input{Shared/Note}\n\n\\input{chapters/r\u00e9sum\u00e9}\n\\end{document}\n',
@@ -224,7 +227,7 @@ test('a main file in a subfolder maps every input back to the project, and a fai
 // A page, its header, footer and rules carry the line TeX was reading when the page went out:
 // often a heading's, since LaTeX likes to break there.
 for (const engine of ['pdflatex', 'xelatex', 'lualatex', 'tectonic']) {
-  test(`${engine}: a page that went out on a line doesn't pull the jump back to it`, { skip: !(await findExecutable(engine)) && `needs ${engine}`, timeout: 120000 * SLOW }, async () => {
+  test(`${engine}: a page that went out on a line doesn't pull the jump back to it`, { skip: !engines[engine] && `needs ${engine}`, timeout: 120000 * SLOW }, async () => {
     const files = {
       'main.tex': '\\documentclass{report}\n\\title{A title}\\author{Me}\n\\begin{document}\n\\maketitle\n\\input{ch1}\n\\input{ch2}\n\\end{document}\n',
       'ch1.tex': ['\\chapter{One}', 'Some text for the first chapter.', '', '\\begin{table}[h]', '\\centering', '\\begin{tabular}{ll} a & b \\\\ c & d \\end{tabular}', '\\caption{A table}', '\\end{table}', '', 'More text.', ''].join('\n'),
@@ -300,7 +303,7 @@ const TUTORIAL = [
   ''
 ].join('\n');
 
-test('a document compiles the one it cross-references first, and each PDF keeps its own SyncTeX', { skip: !(await findExecutable('pdflatex')) && 'needs pdflatex', timeout: 180000 * SLOW }, async () => {
+test('a document compiles the one it cross-references first, and each PDF keeps its own SyncTeX', { skip: !engines.pdflatex && 'needs pdflatex', timeout: 180000 * SLOW }, async () => {
   const { project, root, res } = await compiledProject('Two documents', { 'notes.tex': NOTES, 'tutorial.tex': TUTORIAL }, 'tutorial.tex', 'pdflatex');
   assert.ok(res.ok, res.error || res.log);
   assert.deepEqual(res.linked, [{ file: 'notes.tex', ok: true }]);
@@ -355,7 +358,7 @@ test('a document compiles the one it cross-references first, and each PDF keeps 
   assert.ok(broken.log.startsWith('[spectrum warning] broken.tex didn’t compile, so references to it may show as ??.\n'));
 });
 
-test('a document keeps its own .aux when another left one of the same name, and a link in another letter case finds it', { skip: !(await findExecutable('pdflatex')) && 'needs pdflatex', timeout: 180000 * SLOW }, async () => {
+test('a document keeps its own .aux when another left one of the same name, and a link in another letter case finds it', { skip: !engines.pdflatex && 'needs pdflatex', timeout: 180000 * SLOW }, async () => {
   const intro = '\\section{Introduction}\\label{sec:intro} Both documents include this chapter.\n';
   const paper = '\\documentclass{article}\n\\begin{document}\n\\section{Preliminaries}\n\\include{intro}\n\\end{document}\n';
   const short = '\\documentclass{article}\n\\begin{document}\n\\include{intro}\n\\end{document}\n';
