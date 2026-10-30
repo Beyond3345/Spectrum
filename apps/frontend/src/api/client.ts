@@ -594,6 +594,20 @@ export function stopCompile(compileId: string) {
   return request<{ ok: boolean }>('/api/compile/stop', json('POST', { compileId }));
 }
 
+/**
+ * A compile's output as it comes, by the id it was started with (opened before it starts, it waits): the engine
+ * running first, then output text, the earlier text too when it was opened late. Returns the close.
+ */
+export function watchCompile(compileId: string, on: { engine: (engine: string) => void; output: (text: string) => void }) {
+  const es = new EventSource(`/api/compile/${encodeURIComponent(compileId)}/log`);
+  es.addEventListener('engine', (e) => on.engine(JSON.parse((e as MessageEvent).data)));
+  es.addEventListener('output', (e) => on.output(JSON.parse((e as MessageEvent).data)));
+  // not reopened: the compile is over
+  es.addEventListener('end', () => es.close());
+  es.onerror = () => es.close();
+  return () => es.close();
+}
+
 // ─── Diagram composer ───
 
 /**

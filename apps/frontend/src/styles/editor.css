@@ -1035,6 +1035,52 @@ button.compile-status:hover {
   inset: 0;
 }
 
+/* over the PDF and its sidebar, pill and find bar while Tectonic compiles */
+.live-compile {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: var(--bg-panel-solid);
+}
+
+.live-compile-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.live-compile-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.live-compile-status {
+  color: var(--text-secondary);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.live-compile-output {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font: 11.5px/1.55 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .pdf-scroll {
   position: absolute;
   inset: 0;
