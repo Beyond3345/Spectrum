@@ -1,5 +1,5 @@
 // Engines: what Settings shows (the built-in Typst and Tectonic, a Typst or pandoc on the PATH), installing a Typst
-// version from a release served by a local server, its checksum, and the refusals. Throwaway data folders only.
+// version or Biber from a release served by a local server, its checksum, and the refusals. Throwaway data folders only.
 // Run: node --test apps/backend/test/engines.test.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -42,13 +42,49 @@ execFileSync('tar', ['-czf', archive, '-C', path.join(tmp, 'release'), releaseTy
 const bytes = (await fs.stat(archive)).size;
 const sha = createHash('sha256').update(await fs.readFile(archive)).digest('hex');
 
-const { installTypst, listEngines, removeTypst, typstFor, useEngineList } = await import('../src/services/engineService.js');
+// Biber's Mac release is a universal executable: here two slices, this Mac's a script that unpacks into the cache it is
+// given, the other's a marker. Windows' holds biber.exe, which nothing runs
+const MAC_CPU = { arm64: 0x0100000c, x64: 0x01000007 };
+// (as Biber, it uses the cache only when the folder is there)
+const biberScript = '#!/bin/sh\nmkdir "$PAR_GLOBAL_TMPDIR/unpacked"\necho "biber version: 2.17"\n';
+const universal = (slices) => {
+  const header = Buffer.alloc(8 + 20 * slices.length);
+  header.writeUInt32BE(0xcafebabe, 0);
+  header.writeUInt32BE(slices.length, 4);
+  let offset = header.length;
+  slices.forEach(([cpu, body], i) => {
+    header.writeUInt32BE(cpu, 8 + 20 * i);
+    header.writeUInt32BE(offset, 8 + 20 * i + 8);
+    header.writeUInt32BE(body.length, 8 + 20 * i + 12);
+    offset += body.length;
+  });
+  return Buffer.concat([header, ...slices.map(([, body]) => body)]);
+};
+const biberRelease = async (name, slices) => {
+  const folder = path.join(tmp, name);
+  await fs.mkdir(folder, { recursive: true });
+  const file = WINDOWS ? 'biber.exe' : 'biber';
+  await fs.writeFile(path.join(folder, file), WINDOWS ? 'MZ' : universal(slices), { mode: 0o755 });
+  const tarball = path.join(tmp, name + '.tar.gz');
+  execFileSync('tar', ['-czf', tarball, '-C', folder, file]);
+  const data = await fs.readFile(tarball);
+  return { tarball, sha: createHash('sha256').update(data).digest('hex'), bytes: data.length };
+};
+const here = process.arch === 'arm64' ? 'arm64' : 'x64';
+const other = here === 'arm64' ? 'x64' : 'arm64';
+const biberOk = await biberRelease('biber-ok', [[MAC_CPU[other], Buffer.from('OTHER MAC')], [MAC_CPU[here], Buffer.from(biberScript)]]);
+const biberElsewhere = await biberRelease('biber-elsewhere', [[MAC_CPU[other], Buffer.from('OTHER MAC')]]);
+
+const { installBiber, installTypst, listEngines, removeBiber, removeTypst, tectonicBiber, typstFor, useEngineList } = await import('../src/services/engineService.js');
 
 // serving: 'stall' sends a little and then nothing, 'drop' a little and then closes the connection
 let serving = 'archive';
+let served = archive;
+const requests = [];
 const server = createServer(async (req, res) => {
+  requests.push(req.url);
   res.writeHead(200, { 'Content-Type': 'application/gzip' });
-  if (serving === 'archive') return res.end(await fs.readFile(archive));
+  if (serving === 'archive') return res.end(await fs.readFile(served));
   res.write(Buffer.alloc(16));
   if (serving === 'drop') setTimeout(() => res.socket.destroy(), 50);
 });
@@ -62,7 +98,8 @@ const typstList = (versions, builtIn) => ({
     version: '3.12.1',
     minimum: { latex: '3.1', typst: '3.8.3' },
     assets: { [ARCH]: ["pandoc.zip", "00"] }
-  }
+  },
+  biber: { version: '2.17', assets: { [ARCH]: ['MacOS/biber-darwin_universal.tar.gz', biberOk.sha, biberOk.bytes] } }
 });
 const release = (version, sha256) => ({ version, released: '2026-01-01', assets: { [ARCH]: ['release.tar.gz', sha256, bytes] } });
 
@@ -157,6 +194,60 @@ test('the desktop script runs through a link to it', { skip: process.platform ==
   const run = spawnSync(process.execPath, [link], { encoding: 'utf8' });
   assert.equal(run.status, 1);
   assert.match(run.stderr, /Usage: node scripts\/desktop\.mjs/);
+});
+
+test('Biber installs from its verified release, this Mac’s half only, unpacked into its own cache', async () => {
+  useEngineList(typstList([], '9.9.8'));
+  served = biberOk.tarball;
+  requests.length = 0;
+  try {
+    assert.deepEqual((await listEngines()).biber, { installed: null, downloadable: '2.17', size: biberOk.bytes });
+    // a second download asked for while the first runs finds it there
+    const [first, second] = await Promise.all([installBiber(), installBiber()]);
+    const biber = path.join(dataDir, 'engines', 'biber', WINDOWS ? 'biber.exe' : 'biber');
+    assert.equal(first, biber);
+    assert.equal(second, biber);
+    assert.deepEqual(requests, ['/project/biblatex-biber/biblatex-biber/2.17/binaries/MacOS/biber-darwin_universal.tar.gz']);
+    assert.equal(tectonicBiber(), biber);
+    assert.equal((await listEngines()).biber.installed, '2.17');
+    if (!WINDOWS) {
+      assert.equal(await fs.readFile(biber, 'utf8'), biberScript);
+      assert.ok((await fs.stat(path.join(dataDir, 'engines', 'biber', 'cache', 'unpacked'))).isDirectory(), 'unpacked at install');
+    }
+    await removeBiber();
+    assert.equal(tectonicBiber(), null);
+    await assert.rejects(fs.access(path.join(dataDir, 'engines', 'biber')));
+  } finally {
+    served = archive;
+  }
+});
+
+test('a Biber download that does not match its checksum, or has no build for this Mac, leaves nothing behind', async () => {
+  served = biberOk.tarball;
+  try {
+    useEngineList({ ...typstList([], '9.9.8'), biber: { version: '2.17', assets: { [ARCH]: ['MacOS/biber.tar.gz', '0'.repeat(64), 1] } } });
+    await assert.rejects(installBiber(), /didn’t match its checksum/);
+    if (!WINDOWS) {
+      served = biberElsewhere.tarball;
+      useEngineList({ ...typstList([], '9.9.8'), biber: { version: '2.17', assets: { [ARCH]: ['MacOS/biber.tar.gz', biberElsewhere.sha, 1] } } });
+      await assert.rejects(installBiber(), /has no build for this Mac/);
+    }
+    await assert.rejects(fs.access(path.join(dataDir, 'engines', 'biber')));
+    assert.deepEqual(await fs.readdir(path.join(dataDir, 'engines', 'tmp')).catch(() => []), []);
+  } finally {
+    served = archive;
+  }
+});
+
+test('engines.json pins Biber 2.17, the release that matches the biblatex in Tectonic’s bundle, for every computer', async () => {
+  const { default: list } = await import('../src/data/engines.json', { with: { type: 'json' } });
+  assert.equal(list.biber.version, '2.17');
+  assert.deepEqual(Object.keys(list.biber.assets).sort(), ['arm64', 'win-x64', 'x64']);
+  for (const [file, sha256, size] of Object.values(list.biber.assets)) {
+    assert.match(file, /^(MacOS|Windows)\/biber-/);
+    assert.match(sha256, /^[0-9a-f]{64}$/);
+    assert.ok(size > 0);
+  }
 });
 
 test('the built-in version cannot be removed', async () => {

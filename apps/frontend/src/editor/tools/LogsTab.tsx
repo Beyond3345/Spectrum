@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import Icon from '../../app/Icon';
-import { getGenerated, installPandoc, installTypst } from '../../api/client';
+import { getGenerated, installBiber, installPandoc, installTypst } from '../../api/client';
 import { loadSettings, updateSettings } from '../../app/settings';
 import { useEditor } from '../EditorContext';
 import type { CompileError } from '../EditorContext';
@@ -26,13 +26,14 @@ export default function LogsTab() {
   const warningCount = compileErrors.length - errorCount;
 
   /** Download an engine and compile again, so the notice goes when its engine is there. */
-  const installEngine = async (what: 'typst' | 'pandoc', version?: string) => {
+  const installEngine = async (what: 'typst' | 'pandoc' | 'biber', version?: string) => {
     setInstalling(what);
     try {
       if (what === 'typst' && version) await installTypst(version);
+      else if (what === 'biber') await installBiber();
       else await installPandoc();
       window.dispatchEvent(new Event(ENGINES_CHANGED));
-      api.notify(what === 'typst' ? `Downloaded Typst ${version}.` : 'Downloaded pandoc.', 'success');
+      api.notify(what === 'typst' ? `Downloaded Typst ${version}.` : what === 'biber' ? 'Downloaded Biber.' : 'Downloaded pandoc.', 'success');
       await api.compile();
     } catch (err) {
       api.notify(errorText(err), 'error');
@@ -129,6 +130,18 @@ export default function LogsTab() {
           <div className="row">
             <button className="btn small" disabled={Boolean(installing)} onClick={() => installEngine('pandoc')}>
               {installing === 'pandoc' ? <span className="spinner" /> : <Icon name="arrow.down.circle" />} Download pandoc
+            </button>
+          </div>
+        </div>
+      )}
+      {api.compileNotice?.code === 'BIBER_MISSING' && (
+        <div className="log-card warning">
+          <div className="log-message">
+            This document’s bibliography uses biblatex with Biber. The built-in Tectonic needs its own Biber for that, which Spectrum can download.
+          </div>
+          <div className="row">
+            <button className="btn small" disabled={Boolean(installing)} onClick={() => installEngine('biber')}>
+              {installing === 'biber' ? <span className="spinner" /> : <Icon name="arrow.down.circle" />} Download Biber
             </button>
           </div>
         </div>

@@ -495,6 +495,8 @@ export interface Engines {
     minimum: { latex: string; typst: string };
     downloadable: string;
   };
+  /** the Biber for the built-in Tectonic: the version downloaded, if any, and the download's size (null: none for this computer) */
+  biber: { installed: string | null; downloadable: string; size: number | null };
 }
 
 export function getEngines() {
@@ -511,6 +513,14 @@ export function removeTypst(version: string) {
 
 export function installPandoc() {
   return request<{ ok: boolean; engines: Engines }>('/api/engines/pandoc/install', json('POST'));
+}
+
+export function installBiber() {
+  return request<{ ok: boolean; engines: Engines }>('/api/engines/biber/install', json('POST'));
+}
+
+export function removeBiber() {
+  return request<{ ok: boolean; engines: Engines }>('/api/engines/biber', json('DELETE'));
 }
 
 // ─── Compile ───
@@ -534,7 +544,7 @@ export interface CompileResult {
   log?: string;
   status?: number;
   engine?: string;
-  /** why a compile stopped before an engine ran: PANDOC_MISSING, PANDOC_OLD, TYPST_VERSION_MISSING */
+  /** why a compile stopped before an engine ran (PANDOC_MISSING, PANDOC_OLD, TYPST_VERSION_MISSING), or BIBER_MISSING */
   code?: string;
   /** the version named by a missing-version result */
   version?: string;

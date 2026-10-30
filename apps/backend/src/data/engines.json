@@ -129,6 +129,26 @@
       ]
     }
   },
+  "biber": {
+    "version": "2.17",
+    "assets": {
+      "arm64": [
+        "MacOS/biber-darwin_universal.tar.gz",
+        "182e1efa074d8a2a23a8893f2a22440d4e463cce55e4ed02076ac4c0ee0614b2",
+        89382426
+      ],
+      "x64": [
+        "MacOS/biber-darwin_x86_64.tar.gz",
+        "aa72ccdd01d59367b919d517f7a116e5dc40848abc1909cd812b485f791df7f4",
+        40271872
+      ],
+      "win-x64": [
+        "Windows/biber-MSWIN64.zip",
+        "c103bffc5ae0a7f513e7c26b6d394e9be6cf41952959c5d604ee2e6581b5dea2",
+        25624323
+      ]
+    }
+  },
   "languagetool": {
     "version": "6.8",
     "base": "https://repo1.maven.org/maven2/",

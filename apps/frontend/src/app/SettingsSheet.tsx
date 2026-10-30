@@ -15,8 +15,10 @@ import {
   getEngines,
   getProjectSettings,
   getSkillSharing,
+  installBiber,
   installPandoc,
   installTypst,
+  removeBiber,
   removeTypst,
   getSyncSettings,
   grammarStatus,
@@ -1320,6 +1322,21 @@ function EnginesPane() {
       setBusy('');
     }
   };
+  const changeBiber = async () => {
+    const remove = Boolean(engines?.biber.installed);
+    if (remove && !(await confirmDialog({ title: 'Remove Biber?', message: 'Documents that use biblatex with Biber won’t compile with the built-in Tectonic until it’s downloaded again.', confirmLabel: 'Remove' }))) return;
+    setBusy('biber');
+    setError('');
+    try {
+      setEngines((await (remove ? removeBiber() : installBiber())).engines);
+      window.dispatchEvent(new Event(ENGINES_CHANGED));
+      if (!remove) toast('Downloaded Biber.', { tone: 'success' });
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy('');
+    }
+  };
   const pandoc = engines?.pandoc.found ?? null;
   const pandocOld = !!pandoc?.version && engines != null && !versionAtLeast(pandoc.version, engines.pandoc.minimum.latex);
 
@@ -1415,6 +1432,20 @@ function EnginesPane() {
           <code>{IS_WINDOWS ? 'C:\\texlive\\2026\\bin\\windows' : '/usr/local/texlive/2026/bin/universal-darwin'}</code>.
         </div>
       </div>
+      {engines?.biber.size != null && (
+        <div className="field">
+          <label>Biber for Tectonic</label>
+          <div className="field-hint">
+            {engines.biber.installed ? `Biber ${engines.biber.installed}, downloaded by Spectrum. ` : ''}
+            The built-in Tectonic runs it for a bibliography that uses biblatex with Biber. Its biblatex needs this version, so another Biber on your computer won’t do. TeX Live and MiKTeX use their own.
+          </div>
+          <button className="btn" disabled={busy === 'biber'} onClick={changeBiber}>
+            {busy === 'biber'
+              ? engines.biber.installed ? 'Removing…' : 'Downloading…'
+              : engines.biber.installed ? 'Remove Biber' : `Download Biber ${engines.biber.downloadable} (${sizeLabel(engines.biber.size)})`}
+          </button>
+        </div>
+      )}
       <label className="checkbox-row">
         <input type="checkbox" role="switch" checked={settings.openLogsOnFail} onChange={(e) => update({ openLogsOnFail: e.target.checked })} />
         <span>
