@@ -1,18 +1,21 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { watchCompile } from '../api/client';
-import { tectonicStatus } from './tectonicStatus';
+import { COMPILE_ENGINES } from '../app/settings';
+import { compileStatus } from './compileStatus';
 
-// ponytail: the start is let go past this, so a download count read from it would fall short; Tectonic's whole output
+// ponytail: the start is let go past this, so a download count read from it would fall short; a compile's whole output
 // is rarely half of it
 const MAX_CHARS = 400_000;
 
+const engineName = (engine: string) => COMPILE_ENGINES.find(([value]) => value === engine)?.[1].replace(' (built in)', '') ?? engine;
+
 /**
- * A running compile's output over the PDF, for Tectonic, which can spend minutes downloading its packages: what it's
- * doing now, and the output as it comes, kept at the bottom unless scrolled up. `engine` is the one asked for; Auto's
- * choice comes from the compile itself. Shows nothing for the other engines.
+ * A running compile's output over the PDF: what it's doing now, and the output as it comes, kept at the bottom unless
+ * scrolled up. The engine is the one the compile says it runs (Auto's choice too), and `shows` says whether it's one
+ * whose output the user wants to see (Settings › Engines); nothing shows until then, nor for a Typst compile.
  */
-export default function LiveCompile({ compileId, engine }: { compileId: string; engine: string }) {
-  const [running, setRunning] = useState(engine);
+export default function LiveCompile({ compileId, shows }: { compileId: string; shows: (engine: string) => boolean }) {
+  const [running, setRunning] = useState('');
   const [output, setOutput] = useState('');
   const preRef = useRef<HTMLPreElement>(null);
   const atBottomRef = useRef(true);
@@ -44,21 +47,21 @@ export default function LiveCompile({ compileId, engine }: { compileId: string; 
     if (pre && atBottomRef.current) pre.scrollTop = pre.scrollHeight;
   }, [output]);
 
-  if (running !== 'tectonic') return null;
+  if (!running || !shows(running)) return null;
   return (
     <div className="live-compile">
       <div className="live-compile-head">
         <span className="spinner" aria-hidden="true" />
-        <h2>Compiling with Tectonic</h2>
+        <h2>Compiling with {engineName(running)}</h2>
       </div>
       <div className="live-compile-status" role="status" aria-live="polite">
-        {tectonicStatus(output)}
+        {compileStatus(running, output)}
       </div>
       <pre
         ref={preRef}
         className="live-compile-output"
         tabIndex={0}
-        aria-label="Tectonic’s output"
+        aria-label={`${engineName(running)}’s output`}
         onScroll={(e) => {
           const pre = e.currentTarget;
           atBottomRef.current = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 8;

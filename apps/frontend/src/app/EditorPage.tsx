@@ -65,6 +65,7 @@ import { toast } from './Toast';
 import { IS_DESKTOP, focusWindow, openDiagram } from './desktop';
 import { FILE_MANAGER } from './platform';
 import { BIB_TOOLS, COMPILE_ENGINES, effectiveCompile, effectiveEffort, languageName, llmConfigFor, loadSettings, updateSettings, useProviders, useSettings } from './settings';
+import type { LiveOutputEngine } from './settings';
 import { PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
 import { FIND_NEXT, FIND_PREVIOUS, SHORTCUTS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
 import type { AppCommand } from './shortcuts';
@@ -277,8 +278,8 @@ const SNIPPETS: (Snippet | FloatCard | null)[] = [
   { label: 'Citation', icon: 'quote.opening', text: '[@key]', select: 'key', kinds: MARKDOWN },
   { label: 'Code block', icon: 'chevron.left.forwardslash.chevron.right', text: '```\ncode\n```', select: 'code', block: true, kinds: MARKDOWN }
 ];
-// id: the running compile's, for its live output
-type CompileState = { state: 'idle' | 'running' | 'ok' | 'failed' | 'stopped'; engine: CompileEngine | string; at?: Date; slow?: boolean; id?: string };
+// id: the running compile's, for its live output, which markdown (a Markdown document's) chooses by its own switch
+type CompileState = { state: 'idle' | 'running' | 'ok' | 'failed' | 'stopped'; engine: CompileEngine | string; at?: Date; slow?: boolean; id?: string; markdown?: boolean };
 
 /** what takes the PDF's place, from the top bar */
 type Panel = 'tools' | 'grammar' | 'insights' | 'floats' | 'agent';
@@ -1574,7 +1575,7 @@ function Editor({ projectId }: { projectId: string }) {
     let ended: CompileState['state'] = 'failed';
     // a chapter's % !TEX root can send the compile to its document
     let built = doc;
-    setCompile({ state: 'running', engine: used, id: compileIdRef.current });
+    setCompile({ state: 'running', engine: used, id: compileIdRef.current, markdown: /\.(md|markdown)$/i.test(doc) });
     try {
       await saveNow();
       const startedAt = Date.now();
@@ -3548,8 +3549,14 @@ function Editor({ projectId }: { projectId: string }) {
 
                 {pdf && annotate && <div className="pdf-annotate-hint">Click the page to add a note</div>}
 
-                {/* Tectonic's output over the PDF while it compiles, as it can download for minutes */}
-                {running && compile.id && <LiveCompile key={compile.id} compileId={compile.id} engine={compile.engine} />}
+                {/* the engine's output over the PDF while it compiles, for those switched on in Settings › Engines */}
+                {running && compile.id && (
+                  <LiveCompile
+                    key={compile.id}
+                    compileId={compile.id}
+                    shows={(engine) => settings.liveOutput[compile.markdown ? 'markdown' : (engine as LiveOutputEngine)] === true}
+                  />
+                )}
 
                 {pdf && findOpen && (
                   <PdfFindBar
