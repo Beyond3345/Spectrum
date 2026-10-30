@@ -2,6 +2,19 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## Unreleased
+
+### Added
+
+- Customise Folder… in a folder's menu on Home and in the sidebar, laid out as Finder's: the folder with its name, a row of colours (No colour and the seven tag colours), about 190 symbols in People, Animals & Nature, Food & Drink, Activities, Travel & Places, Objects and Symbols, Clear and Emoji. Emoji takes a typed or pasted emoji (or one from the system's emoji viewer) and offers a few to pick from. Every choice shows on the folder at once, and the symbol or emoji goes with the folder to your other computers
+- An icon size slider beside the layout buttons in the icons view
+
+### Changed
+
+- Folders are drawn as Finder draws them: the light blue folder with a soft gradient, or tinted with the folder's colour, with its symbol engraved on the front in a deeper shade or its emoji in its own colours, on Home's icons and list and in the sidebar
+- Folder colours are Finder's tag colours in Finder's order: Red, Orange, Yellow, Green, Blue, Purple and Grey. Blue is now a colour of its own, and a folder without a colour is the light blue folder. Folders keep the colours they had
+- Project and folder icons on Home are the size of Goodnotes' icons, and a folder no longer shows how many projects it holds on its icon
+
 ## 2.0.0 (29 October 2026)
 
 ### Added
