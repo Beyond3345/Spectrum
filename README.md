@@ -324,7 +324,7 @@ On Windows, run `Spectrum_2.0.2_x64-setup.exe`. It installs Spectrum for the cur
 
 ## Windows
 
-The Windows version is a preview. Version 2.0 was built and tested on a Windows x64 PC, including the packaged backend, the spelling and grammar engines and native agent isolation; see the [Windows 2.0 validation report](docs/WINDOWS_2_0_VALIDATION.md). It differs from the macOS version as follows,
+The Windows version is a preview. Version 2.0 was built and tested on a Windows x64 PC, including the packaged backend, the spelling and grammar engines and native agent isolation; see the [Windows 2.0 validation report](docs/WINDOWS_2_0_VALIDATION.md). To build the installer yourself on a Windows PC, follow [Building Spectrum on Windows](docs/BUILDING_ON_WINDOWS.md). It differs from the macOS version as follows,
 
 - the window has the standard Windows title bar, and Liquid Glass is not available,
 - the icons are Microsoft's Fluent UI System Icons, since Apple's SF Symbols may only be used on Apple platforms,
