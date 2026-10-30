@@ -201,6 +201,13 @@ try {
   }) } } });
   const migrated = searchConfigFor(loadSettings());
   eq(migrated.connections.map((c) => [c.provider, c.apiKey]), [['exa', 'old-exa'], ['tavily', 'old-tavily']], 'previously configured keys migrate into simultaneous connections');
+  eq(loadSettings().liveOutput, DEFAULT_SETTINGS.liveOutput, 'live output from before the setting: Tectonic alone');
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: { getItem: () => JSON.stringify({ liveOutput: { pdflatex: true, tectonic: 'yes', typst: true } }) } } });
+  eq(
+    loadSettings().liveOutput,
+    { tectonic: true, pdflatex: true, xelatex: false, lualatex: false, latexmk: false, markdown: false },
+    'live output keeps what it knows and falls back for the rest'
+  );
 } finally {
   if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow);
   else Reflect.deleteProperty(globalThis, 'window');
