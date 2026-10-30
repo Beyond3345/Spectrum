@@ -7,12 +7,31 @@
     "icon": [
       "icons/icon.ico"
     ],
+    "fileAssociations": [
+      {
+        "ext": ["tex", "ltx"],
+        "name": "TeX document",
+        "description": "TeX document",
+        "role": "Editor",
+        "rank": "Owner",
+        "mimeType": "text/x-tex"
+      },
+      {
+        "ext": ["bib"],
+        "name": "BibTeX bibliography",
+        "description": "BibTeX bibliography",
+        "role": "Editor",
+        "rank": "Owner",
+        "mimeType": "text/x-bibtex"
+      }
+    ],
     "resources": {
       "resources/engines/vcruntime140.dll": "vcruntime140.dll"
     },
     "windows": {
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "installerHooks": "windows/hooks.nsh"
       }
     }
   }

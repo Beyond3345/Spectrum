@@ -2,6 +2,13 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## Unreleased
+
+### Added
+
+- Spectrum opens other TeX files (.sty, .cls, .clo, .dtx, .ins, .bst, .bbx, .cbx, .lbx and .dbx), Typst documents (.typ) and Markdown documents (.md and .markdown) from Finder and File Explorer, and is listed under Open With for each. A package or style opens with the document beside it or up to three folders above, as a .bib does; a Typst or Markdown file with the folder holding its main.typ or main.md, and a lone one, such as notes.md, makes its folder a project with it as the document
+- Settings › Projects › Opening files has a switch for each kind of file on macOS: LaTeX documents, bibliographies, other TeX files, Typst documents and Markdown documents. Switching one on makes Spectrum their default; switching it off gives them back to the app that had them before. Spectrum still takes only .tex, .ltx and .bib files when it first opens. On Windows, each kind says how to choose Spectrum for it
+
 ## 2.0.3 (30 October 2026)
 
 ### Added

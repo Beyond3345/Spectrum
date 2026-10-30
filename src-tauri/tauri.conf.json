@@ -37,6 +37,28 @@
         "role": "Editor",
         "rank": "Owner",
         "mimeType": "text/x-bibtex"
+      },
+      {
+        "ext": ["sty", "cls", "clo", "dtx", "ins", "bst", "bbx", "cbx", "lbx", "dbx"],
+        "name": "TeX file",
+        "description": "TeX package, class or style",
+        "role": "Editor",
+        "rank": "Alternate"
+      },
+      {
+        "ext": ["typ"],
+        "name": "Typst document",
+        "description": "Typst document",
+        "role": "Editor",
+        "rank": "Alternate"
+      },
+      {
+        "ext": ["md", "markdown"],
+        "name": "Markdown document",
+        "description": "Markdown document",
+        "role": "Editor",
+        "rank": "Alternate",
+        "mimeType": "text/markdown"
       }
     ],
     "copyright": "© 2025 OpenDCAI (OpenPrism) · © 2026 Beyond3345. MIT Licence.",

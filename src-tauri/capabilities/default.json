@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "The UI is served by the local backend, in the main window and the diagram composer's: it drags and zooms the window, follows the chosen theme, puts glass behind it, notices full screen and goes full screen for presentations, brings the window forward, picks project folders, says when it has saved before quitting or closing, opens the diagram composer and makes Spectrum the default for .tex and .bib files",
+  "description": "The UI is served by the local backend, in the main window and the diagram composer's: it drags and zooms the window, follows the chosen theme, puts glass behind it, notices full screen and goes full screen for presentations, brings the window forward, picks project folders, says when it has saved before quitting or closing, opens the diagram composer and makes Spectrum the default for each kind of file it opens, or gives one back, and asks macOS which it opens now",
   "windows": ["main", "diagram"],
   "remote": { "urls": ["http://127.0.0.1:*/*"] },
   "permissions": [
@@ -17,6 +17,8 @@
     "core:event:allow-emit",
     "dialog:allow-open",
     "allow-claim-default-handler",
+    "allow-release-default-handler",
+    "allow-is-default-handler",
     "allow-open-diagram"
   ]
 }

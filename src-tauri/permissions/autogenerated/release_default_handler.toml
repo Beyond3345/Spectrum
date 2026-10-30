@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-release-default-handler"
+description = "Enables the release_default_handler command without any pre-configured scope."
+commands.allow = ["release_default_handler"]
+
+[[permission]]
+identifier = "deny-release-default-handler"
+description = "Denies the release_default_handler command without any pre-configured scope."
+commands.deny = ["release_default_handler"]

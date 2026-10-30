@@ -53,8 +53,14 @@ export async function pickFile(opts: { title?: string; defaultPath?: string } = 
 
 const invoke = (cmd: string, args: Record<string, unknown>) => tauri().invoke(cmd, args).catch(() => undefined);
 
-/** macOS app: makes Spectrum the default for .tex, .ltx and .bib files (main.rs). Rejects with macOS's reason. */
-export const claimDefaultHandler = () => tauri().invoke('claim_default_handler');
+/** macOS app: whether Spectrum opens files with all of these extensions now, as macOS says (main.rs). */
+export const isDefaultHandler = async (exts: string[]) => (await tauri().invoke('is_default_handler', { exts })) === true;
+
+/** macOS app: makes Spectrum the default for files with these extensions. Rejects with macOS's reason. */
+export const claimDefaultHandler = (exts: string[]) => tauri().invoke('claim_default_handler', { exts });
+
+/** macOS app: gives these extensions back to the apps that had them before. Rejects saying what to do instead. */
+export const releaseDefaultHandler = (exts: string[]) => tauri().invoke('release_default_handler', { exts });
 
 /**
  * The diagram composer, in a window of its own beside this one, at a diagram of the project (its project-relative file)
