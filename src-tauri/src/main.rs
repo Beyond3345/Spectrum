@@ -21,6 +21,16 @@ use std::time::{Duration, Instant};
 use std::{env, thread};
 
 #[cfg(target_os = "macos")]
+use block2::RcBlock;
+#[cfg(target_os = "macos")]
+use objc2::rc::Retained;
+#[cfg(target_os = "macos")]
+use objc2::runtime::{AnyClass, AnyObject};
+#[cfg(target_os = "macos")]
+use objc2::{class, msg_send};
+#[cfg(target_os = "macos")]
+use objc2_foundation::NSString;
+#[cfg(target_os = "macos")]
 use tauri::menu::{Menu, MenuItem, MenuItemKind};
 use tauri::webview::{DownloadEvent, NewWindowResponse, PageLoadEvent};
 use tauri::window::Color;
@@ -71,7 +81,7 @@ struct Opened {
     waiting: Option<PathBuf>,
 }
 
-// UTType, for claim_defaults (AppKit loads it too, but nothing promises that)
+// UTType, for LaunchServices (AppKit loads it too, but nothing promises that)
 #[cfg(target_os = "macos")]
 #[link(name = "UniformTypeIdentifiers", kind = "framework")]
 extern "C" {}
@@ -102,6 +112,8 @@ fn main() {
     let builder = builder
         .invoke_handler(tauri::generate_handler![
             claim_default_handler,
+            release_default_handler,
+            is_default_handler,
             open_diagram
         ])
         .menu(|app| {
@@ -427,8 +439,8 @@ async fn open_diagram(
     Ok(())
 }
 
-/// Brings the window forward and opens the first .tex, .ltx or .bib file of `paths` (never a
-/// PDF). Until the app's page has loaded, the file waits for it (see start and build_window).
+/// Brings the window forward and opens the first file of `paths` Spectrum edits (never a PDF).
+/// Until the app's page has loaded, the file waits for it (see start and build_window).
 // ponytail: several files at once open the first; tabs for the rest if anyone asks
 fn open_files(app: &AppHandle, paths: impl IntoIterator<Item = PathBuf>) {
     let window = app.get_webview_window("main");
@@ -454,13 +466,35 @@ fn open_files(app: &AppHandle, paths: impl IntoIterator<Item = PathBuf>) {
     }
 }
 
+/// The extensions Finder and Explorer offer to open in Spectrum, as tauri.conf.json's
+/// fileAssociations and the backend's openFile have them: LaTeX documents, bibliographies,
+/// other TeX files, Typst and Markdown documents.
+const OPENABLE: &[&str] = &[
+    "tex", "ltx", "bib", "sty", "cls", "clo", "dtx", "ins", "bst", "bbx", "cbx", "lbx", "dbx",
+    "typ", "md", "markdown",
+];
+
 fn openable(path: &Path) -> bool {
     let ext = path
         .extension()
         .and_then(|ext| ext.to_str())
         .map(str::to_ascii_lowercase);
-    path.is_file() && matches!(ext.as_deref(), Some("tex" | "ltx" | "bib"))
+    path.is_file() && ext.is_some_and(|ext| OPENABLE.contains(&ext.as_str()))
 }
+
+/// The extensions a Settings switch names, all ones Spectrum opens.
+#[cfg(target_os = "macos")]
+fn known_extensions(exts: Vec<String>) -> Result<Vec<String>, String> {
+    match exts.iter().find(|ext| !OPENABLE.contains(&ext.as_str())) {
+        Some(ext) => Err(format!("Spectrum doesn’t open .{ext} files.")),
+        None => Ok(exts),
+    }
+}
+
+/// What the first launch makes Spectrum the default for: LaTeX documents and bibliographies.
+/// The other groups wait for their switch in Settings.
+#[cfg(all(target_os = "macos", not(debug_assertions)))]
+const FIRST_CLAIM: [&str; 3] = ["tex", "ltx", "bib"];
 
 /// Once per Mac (a marker in the app data folder remembers it), so another app picked in Finder
 /// later stays picked. Not in a debug build: `tauri dev` leaves this Mac's defaults alone.
@@ -474,86 +508,267 @@ fn claim_once(app: &AppHandle) {
     }
     // Launch Services can be slow to answer
     thread::spawn(move || {
-        if let Err(message) = claim_defaults(&dir) {
+        if let Err(message) = claim_defaults(&dir, &FIRST_CLAIM.map(String::from)) {
             eprintln!("Couldn’t make Spectrum the default for .tex and .bib files: {message}");
         }
     });
 }
 
-/// Settings → Projects, for when another app has taken the files since.
+/// Settings → Projects → Opening files: a group's switch turned on.
 #[cfg(target_os = "macos")]
 #[tauri::command]
-async fn claim_default_handler(app: AppHandle) -> Result<(), String> {
+async fn claim_default_handler(app: AppHandle, exts: Vec<String>) -> Result<(), String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || claim_defaults(&dir))
+    let exts = known_extensions(exts)?;
+    tauri::async_runtime::spawn_blocking(move || claim_defaults(&dir, &exts))
         .await
         .map_err(|e| e.to_string())?
+}
+
+/// Settings → Projects → Opening files: a group's switch turned off.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+async fn release_default_handler(app: AppHandle, exts: Vec<String>) -> Result<(), String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let exts = known_extensions(exts)?;
+    tauri::async_runtime::spawn_blocking(move || release_defaults(&dir, &exts))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Settings → Projects → Opening files: whether Spectrum opens all of `exts` now, asked of
+/// macOS each time, so a change made in Finder shows. Only reads, so a debug build may ask.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+async fn is_default_handler(exts: Vec<String>) -> Result<bool, String> {
+    let exts = known_extensions(exts)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let ls = LaunchServices::new()?;
+        for ext in &exts {
+            if !ls.spectrum_opens(&*ls.content_type(ext)?) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Marks that Spectrum has made itself the default once.
 #[cfg(target_os = "macos")]
 const CLAIMED: &str = "default-handler-claimed";
 
-/// Makes Spectrum the default app for the content types macOS gives .tex, .ltx and .bib files
-/// (MacTeX declares org.tug.tex; with no app declaring one, a dynamic type), waits for macOS
-/// to confirm each, then leaves the CLAIMED marker in `data_dir`.
+/// The app that opened each extension before Spectrum took it, by extension, for turning the
+/// switch off again.
 #[cfg(target_os = "macos")]
-fn claim_defaults(data_dir: &Path) -> Result<(), String> {
-    use block2::RcBlock;
-    use objc2::rc::Retained;
-    use objc2::runtime::{AnyClass, AnyObject};
-    use objc2::{class, msg_send};
-    use objc2_foundation::NSString;
+const PREVIOUS: &str = "default-apps-before.json";
 
+#[cfg(target_os = "macos")]
+const DEBUG_BUILD: &str = "A debug build leaves this Mac’s defaults alone.";
+
+/// Makes Spectrum the default app for the content types macOS gives files with these extensions,
+/// first noting in `data_dir` the app each had (unless that was Spectrum), waits for macOS to
+/// confirm each, then leaves the CLAIMED marker.
+#[cfg(target_os = "macos")]
+fn claim_defaults(data_dir: &Path, exts: &[String]) -> Result<(), String> {
     if cfg!(debug_assertions) {
-        return Err("A debug build leaves this Mac’s defaults alone.".into());
+        return Err(DEBUG_BUILD.into());
     }
-    let ut_type = AnyClass::get(c"UTType").ok_or("macOS has no UTType here.")?;
-    // SAFETY: class methods and a getter of NSWorkspace and NSBundle, which AppKit always loads
-    let (workspace, app_url): (Retained<AnyObject>, Retained<AnyObject>) = unsafe {
-        let bundle: Retained<AnyObject> = msg_send![class!(NSBundle), mainBundle];
-        (
-            msg_send![class!(NSWorkspace), sharedWorkspace],
-            msg_send![&bundle, bundleURL],
-        )
-    };
-    let exts = ["tex", "ltx", "bib"];
-    let (tx, rx) = mpsc::channel();
+    let ls = LaunchServices::new()?;
+    let mut previous = previous_apps(data_dir);
+    let mut claims = Vec::new();
     for ext in exts {
-        // SAFETY: +[UTType typeWithFilenameExtension:] takes an NSString and returns a UTType or nil
-        let content_type: Option<Retained<AnyObject>> =
-            unsafe { msg_send![ut_type, typeWithFilenameExtension: &*NSString::from_str(ext)] };
-        let Some(content_type) = content_type else {
-            return Err(format!("macOS has no type for .{ext} files."));
-        };
-        let tx = tx.clone();
-        // called once, on a queue of macOS's choosing, with nil or an NSError
-        let done = RcBlock::new(move |error: *mut AnyObject| {
-            // SAFETY: error is nil or an NSError, whose localizedDescription is an NSString
-            let failed = unsafe { error.as_ref() }.map(|error| {
-                let text: Retained<NSString> = unsafe { msg_send![error, localizedDescription] };
-                format!(".{ext}: {text}")
-            });
-            let _ = tx.send(failed);
-        });
-        // SAFETY: an app URL, a UTType and a block taking an NSError, as the method expects (macOS 12+)
-        let () = unsafe {
-            msg_send![&workspace, setDefaultApplicationAtURL: &*app_url, toOpenContentType: &*content_type, completionHandler: &*done]
-        };
+        let content_type = ls.content_type(ext)?;
+        if let Some(app) = ls
+            .default_app(&content_type)
+            .filter(|app| !ls.is_spectrum(app))
+            .and_then(|app| ls.path(&app))
+        {
+            previous.insert(ext.clone(), app.into());
+        }
+        claims.push((ext.as_str(), ls.app.clone(), content_type));
     }
-    let failures: Vec<String> = exts
-        .iter()
-        .filter_map(|_| match rx.recv_timeout(Duration::from_secs(10)) {
-            Ok(failed) => failed,
-            Err(_) => Some("macOS didn’t answer.".into()),
-        })
-        .collect();
+    // never take a type without knowing what to give it back to
+    write_previous_apps(data_dir, &previous)?;
+    let failures = ls.set_defaults(&claims);
     // tried once, whatever came of it: a later launch never takes back a type the user gave another app
     let _ = fs::create_dir_all(data_dir).and_then(|()| fs::write(data_dir.join(CLAIMED), ""));
     if failures.is_empty() {
         Ok(())
     } else {
         Err(failures.join(" "))
+    }
+}
+
+/// Gives each of `exts` that Spectrum opens now back to the app noted when Spectrum took it.
+/// One with no app noted, or whose app has gone, stays with Spectrum, and the error says how to
+/// choose another in Finder.
+#[cfg(target_os = "macos")]
+fn release_defaults(data_dir: &Path, exts: &[String]) -> Result<(), String> {
+    if cfg!(debug_assertions) {
+        return Err(DEBUG_BUILD.into());
+    }
+    let ls = LaunchServices::new()?;
+    let previous = previous_apps(data_dir);
+    let mut back = Vec::new();
+    let mut unknown = Vec::new();
+    for ext in exts {
+        let content_type = ls.content_type(ext)?;
+        if !ls.spectrum_opens(&content_type) {
+            continue;
+        }
+        match app_before(&previous, ext) {
+            Some(app) => back.push((ext.as_str(), ls.file_url(&app), content_type)),
+            None => unknown.push(format!(".{ext}")),
+        }
+    }
+    let mut failures = ls.set_defaults(&back);
+    if !unknown.is_empty() {
+        failures.push(format!(
+            "Spectrum doesn’t know which app opened {} files before. In Finder, select one, choose File › Get Info, pick an app under “Open with” and click “Change All…”.",
+            unknown.join(", ")
+        ));
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join(" "))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn previous_apps(data_dir: &Path) -> serde_json::Map<String, serde_json::Value> {
+    fs::read(data_dir.join(PREVIOUS))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default()
+}
+
+#[cfg(target_os = "macos")]
+fn write_previous_apps(
+    data_dir: &Path,
+    previous: &serde_json::Map<String, serde_json::Value>,
+) -> Result<(), String> {
+    let json = serde_json::to_vec_pretty(previous).map_err(|e| e.to_string())?;
+    fs::create_dir_all(data_dir)
+        .and_then(|()| fs::write(data_dir.join(PREVIOUS), json))
+        .map_err(|e| format!("Couldn’t note the apps these files opened in: {e}"))
+}
+
+/// The app noted for `ext`, while it's still there.
+#[cfg(target_os = "macos")]
+fn app_before(previous: &serde_json::Map<String, serde_json::Value>, ext: &str) -> Option<PathBuf> {
+    previous
+        .get(ext)
+        .and_then(|app| app.as_str())
+        .map(PathBuf::from)
+        .filter(|app| app.exists())
+}
+
+/// NSWorkspace and UTType: which app opens a content type, and changing it. macOS gives an
+/// extension the type an app declares (MacTeX's org.tug.tex, net.daringfireball.markdown), or
+/// with none declared, a dynamic type.
+#[cfg(target_os = "macos")]
+struct LaunchServices {
+    workspace: Retained<AnyObject>,
+    ut_type: &'static AnyClass,
+    /// this app's bundle URL
+    app: Retained<AnyObject>,
+    bundle_id: Option<String>,
+}
+
+#[cfg(target_os = "macos")]
+impl LaunchServices {
+    fn new() -> Result<Self, String> {
+        let ut_type = AnyClass::get(c"UTType").ok_or("macOS has no UTType here.")?;
+        // SAFETY: class methods and getters of NSWorkspace and NSBundle, which AppKit always loads
+        unsafe {
+            let bundle: Retained<AnyObject> = msg_send![class!(NSBundle), mainBundle];
+            let bundle_id: Option<Retained<NSString>> = msg_send![&bundle, bundleIdentifier];
+            Ok(Self {
+                workspace: msg_send![class!(NSWorkspace), sharedWorkspace],
+                ut_type,
+                app: msg_send![&bundle, bundleURL],
+                bundle_id: bundle_id.map(|id| id.to_string()),
+            })
+        }
+    }
+
+    fn content_type(&self, ext: &str) -> Result<Retained<AnyObject>, String> {
+        // SAFETY: +[UTType typeWithFilenameExtension:] takes an NSString and returns a UTType or nil
+        let content_type: Option<Retained<AnyObject>> = unsafe {
+            msg_send![self.ut_type, typeWithFilenameExtension: &*NSString::from_str(ext)]
+        };
+        content_type.ok_or_else(|| format!("macOS has no type for .{ext} files."))
+    }
+
+    /// The URL of the app that opens `content_type` now, if any.
+    fn default_app(&self, content_type: &AnyObject) -> Option<Retained<AnyObject>> {
+        // SAFETY: a UTType in, an NSURL or nil out (macOS 12+)
+        unsafe { msg_send![&self.workspace, URLForApplicationToOpenContentType: content_type] }
+    }
+
+    fn spectrum_opens(&self, content_type: &AnyObject) -> bool {
+        self.default_app(content_type)
+            .is_some_and(|app| self.is_spectrum(&app))
+    }
+
+    /// Whether the app at `url` is Spectrum, this copy or another (by its bundle identifier).
+    fn is_spectrum(&self, url: &AnyObject) -> bool {
+        // SAFETY: +[NSBundle bundleWithURL:] takes an NSURL and returns a bundle or nil
+        let id: Option<Retained<NSString>> = unsafe {
+            let bundle: Option<Retained<AnyObject>> =
+                msg_send![class!(NSBundle), bundleWithURL: url];
+            bundle.and_then(|bundle| msg_send![&bundle, bundleIdentifier])
+        };
+        id.is_some_and(|id| Some(id.to_string()) == self.bundle_id)
+    }
+
+    fn path(&self, url: &AnyObject) -> Option<String> {
+        // SAFETY: -[NSURL path] returns an NSString or nil
+        let path: Option<Retained<NSString>> = unsafe { msg_send![url, path] };
+        path.map(|path| path.to_string())
+    }
+
+    fn file_url(&self, path: &Path) -> Retained<AnyObject> {
+        let path = NSString::from_str(&path.to_string_lossy());
+        // SAFETY: +[NSURL fileURLWithPath:] takes an NSString and returns an NSURL
+        unsafe { msg_send![class!(NSURL), fileURLWithPath: &*path] }
+    }
+
+    /// Makes each app (a URL) the default for its content type, waiting for macOS to confirm
+    /// each. What failed, by extension.
+    fn set_defaults(
+        &self,
+        defaults: &[(&str, Retained<AnyObject>, Retained<AnyObject>)],
+    ) -> Vec<String> {
+        let (tx, rx) = mpsc::channel();
+        for (ext, app, content_type) in defaults {
+            let ext = ext.to_string();
+            let tx = tx.clone();
+            // called once, on a queue of macOS's choosing, with nil or an NSError
+            let done = RcBlock::new(move |error: *mut AnyObject| {
+                // SAFETY: error is nil or an NSError, whose localizedDescription is an NSString
+                let failed = unsafe { error.as_ref() }.map(|error| {
+                    let text: Retained<NSString> =
+                        unsafe { msg_send![error, localizedDescription] };
+                    format!(".{ext}: {text}")
+                });
+                let _ = tx.send(failed);
+            });
+            // SAFETY: an app URL, a UTType and a block taking an NSError, as the method expects (macOS 12+)
+            let () = unsafe {
+                msg_send![&self.workspace, setDefaultApplicationAtURL: &**app, toOpenContentType: &**content_type, completionHandler: &*done]
+            };
+        }
+        defaults
+            .iter()
+            .filter_map(|_| match rx.recv_timeout(Duration::from_secs(10)) {
+                Ok(failed) => failed,
+                Err(_) => Some("macOS didn’t answer.".into()),
+            })
+            .collect()
     }
 }
 
@@ -745,7 +960,10 @@ fn build_diagram_window(app: &AppHandle, port: u16, url: Url) -> tauri::Result<W
             if let Err(error) = flush(&target, &event) {
                 target.unlisten(listener);
                 closing.store(false, Ordering::SeqCst);
-                save_failed(target.app_handle(), &serde_json::json!({ "error": error.to_string() }));
+                save_failed(
+                    target.app_handle(),
+                    &serde_json::json!({ "error": error.to_string() }),
+                );
             }
         }
     });
@@ -912,15 +1130,18 @@ fn spawn_backend(app: &AppHandle, port: u16, log_path: &Path) -> Result<Child, S
     // TexLab, Tectonic and Typst sit beside Spectrum like Node (tauri dev copies them beside the debug build); without
     // them the backend looks on the PATH, and the editor works as before when there's none
     if let Some(dir) = env::current_exe().ok().as_deref().and_then(Path::parent) {
-        cmd.env("SPECTRUM_TEXLAB", dir.join(format!("texlab{}", env::consts::EXE_SUFFIX)))
-            .env(
-                "SPECTRUM_TECTONIC",
-                dir.join(format!("tectonic{}", env::consts::EXE_SUFFIX)),
-            )
-            .env(
-                "SPECTRUM_TYPST",
-                dir.join(format!("typst{}", env::consts::EXE_SUFFIX)),
-            );
+        cmd.env(
+            "SPECTRUM_TEXLAB",
+            dir.join(format!("texlab{}", env::consts::EXE_SUFFIX)),
+        )
+        .env(
+            "SPECTRUM_TECTONIC",
+            dir.join(format!("tectonic{}", env::consts::EXE_SUFFIX)),
+        )
+        .env(
+            "SPECTRUM_TYPST",
+            dir.join(format!("typst{}", env::consts::EXE_SUFFIX)),
+        );
     }
     // its own group, so quitting can stop the compilers it starts too
     #[cfg(unix)]
@@ -1188,15 +1409,18 @@ mod tests {
     }
 
     #[test]
-    fn opens_tex_ltx_and_bib_files_only() {
+    fn opens_tex_typst_and_markdown_files_only() {
         let dir = env::temp_dir().join(format!("spectrum-open-{}", std::process::id()));
         fs::create_dir_all(dir.join("folder.tex")).unwrap();
-        for name in ["a.tex", "b.LTX", "c.bib", "d.pdf"] {
+        let opens = "a.tex b.LTX c.bib d.sty e.cls f.clo g.dtx h.ins i.bst j.bbx k.cbx l.lbx m.dbx n.typ o.md p.Markdown";
+        let not = "a.pdf a.aux a.log a.bbl a.synctex.gz a.txt tex";
+        for name in opens.split(' ').chain(not.split(' ')) {
             fs::write(dir.join(name), "").unwrap();
         }
         let ok = |name: &str| openable(&dir.join(name));
-        assert!(ok("a.tex") && ok("b.LTX") && ok("c.bib"));
-        assert!(!ok("d.pdf") && !ok("gone.tex") && !ok("folder.tex"));
+        assert!(opens.split(' ').all(ok));
+        assert!(!not.split(' ').any(ok));
+        assert!(!ok("gone.tex") && !ok("folder.tex"));
         // the path survives the trip through the query string
         let file = dir.join("a b&c#d.tex");
         let url = app_url(PREFERRED_PORT, Some(&file));
@@ -1204,6 +1428,57 @@ mod tests {
         assert_eq!(url.query_pairs().next().unwrap().1, file.to_string_lossy());
         assert_eq!(app_url(PREFERRED_PORT, None).path(), "/projects");
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn switches_name_only_extensions_spectrum_opens() {
+        let exts =
+            |list: &[&str]| known_extensions(list.iter().map(|ext| ext.to_string()).collect());
+        assert_eq!(exts(&["typ"]), Ok(vec!["typ".to_string()]));
+        assert!(exts(&["md", "markdown"]).is_ok());
+        assert_eq!(
+            exts(&["tex", "pdf"]),
+            Err("Spectrum doesn’t open .pdf files.".into())
+        );
+        assert!(exts(&["TEX"]).is_err() && exts(&[""]).is_err());
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn the_apps_before_spectrum_are_kept_for_giving_back() {
+        let dir = env::temp_dir().join(format!("spectrum-before-{}", std::process::id()));
+        // nothing noted yet, or a file that isn't JSON: no app to give anything back to
+        assert!(previous_apps(&dir).is_empty());
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(PREVIOUS), "not json").unwrap();
+        assert!(previous_apps(&dir).is_empty());
+
+        let app = dir.join("TeXShop.app");
+        fs::create_dir_all(&app).unwrap();
+        let mut previous = serde_json::Map::new();
+        previous.insert("tex".into(), app.to_string_lossy().into());
+        previous.insert("md".into(), dir.join("Gone.app").to_string_lossy().into());
+        write_previous_apps(&dir, &previous).unwrap();
+        let read = previous_apps(&dir);
+        assert_eq!(read, previous);
+        assert_eq!(app_before(&read, "tex"), Some(app));
+        // an app deleted since, or none noted, isn't guessed at
+        assert_eq!(app_before(&read, "md"), None);
+        assert_eq!(app_before(&read, "typ"), None);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // a release build's test would change this Mac's defaults, so only a debug build has it
+    #[test]
+    #[cfg(all(target_os = "macos", debug_assertions))]
+    fn a_debug_build_leaves_the_defaults_alone() {
+        let dir = env::temp_dir().join(format!("spectrum-claim-{}", std::process::id()));
+        let exts = ["tex".to_string(), "typ".to_string()];
+        assert_eq!(claim_defaults(&dir, &exts), Err(DEBUG_BUILD.into()));
+        assert_eq!(release_defaults(&dir, &exts), Err(DEBUG_BUILD.into()));
+        // nothing noted, and the first launch's marker isn't left either
+        assert!(!dir.exists());
     }
 
     #[test]
@@ -1306,10 +1581,22 @@ mod tests {
             fs::create_dir_all(texlive.join(year).join(r"bin\windows")).unwrap();
         }
         fs::create_dir_all(texlive.join("not-a-year").join(r"bin\windows")).unwrap();
-        let expected = format!(r"{};{}", path, texlive.join("2025").join(r"bin\windows").display());
-        assert_eq!(search_path_from(&path, Some(&local), Some(&local), &texlive), expected);
+        let expected = format!(
+            r"{};{}",
+            path,
+            texlive.join("2025").join(r"bin\windows").display()
+        );
         assert_eq!(
-            search_path_from(&expected.to_uppercase(), Some(&local), Some(&local), &texlive),
+            search_path_from(&path, Some(&local), Some(&local), &texlive),
+            expected
+        );
+        assert_eq!(
+            search_path_from(
+                &expected.to_uppercase(),
+                Some(&local),
+                Some(&local),
+                &texlive
+            ),
             expected.to_uppercase()
         );
         fs::remove_dir_all(&local).unwrap();
