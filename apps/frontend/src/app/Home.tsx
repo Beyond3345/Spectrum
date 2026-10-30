@@ -106,6 +106,26 @@ const time = (iso?: string) => (iso && Date.parse(iso)) || 0;
 
 type Item = { key: string; folder?: ProjectFolder; project?: ProjectMeta };
 
+/** Per browser: the Projects page's view preferences, with each folder's sort on Home (ProjectPage's Prefs). */
+export const PREFS_KEY = 'spectrum-projects-view';
+
+/** Each folder's newest project's date, with the folders inside it. */
+export function newestIn(tree: ProjectFolders, projects: ProjectMeta[], date: 'updatedAt' | 'createdAt') {
+  const newest = new Map<string, string>();
+  for (const p of projects) {
+    for (const f of folderPath(tree, tree.placement[p.id] ?? null)) if (time(p[date]) > time(newest.get(f.id))) newest.set(f.id, p[date]);
+  }
+  return newest;
+}
+
+/** Home's order: the folders, then the projects, each by name or newest first (newest: newestIn). */
+export function homeOrder(folders: ProjectFolder[], projects: ProjectMeta[], sort: HomeSort, newest: Map<string, string>): Item[] {
+  const date = sort === 'createdAt' ? 'createdAt' : 'updatedAt';
+  const sortedFolders = sort === 'name' ? [...folders].sort((a, b) => byName(a.name, b.name)) : [...folders].sort((a, b) => time(newest.get(b.id)) - time(newest.get(a.id)));
+  const sortedProjects = sort === 'name' ? [...projects].sort((a, b) => byName(a.name, b.name)) : [...projects].sort((a, b) => time(b[date]) - time(a[date]));
+  return [...sortedFolders.map((f) => ({ key: `f:${f.id}`, folder: f })), ...sortedProjects.map((p) => ({ key: `p:${p.id}`, project: p }))];
+}
+
 export default function Home({
   projects,
   found,
@@ -175,22 +195,14 @@ export default function Home({
   }, [at, searching]);
 
   // each folder's count and its newest project's date, with the folders inside it
-  const { counts, newest } = useMemo(() => {
-    const newest = new Map<string, string>();
-    for (const p of projects) {
-      for (const f of folderPath(tree, tree.placement[p.id] ?? null)) if (time(p[date]) > time(newest.get(f.id))) newest.set(f.id, p[date]);
-    }
-    return { counts: projectCounts(tree, projects.map((p) => p.id)), newest };
-  }, [projects, tree, date]);
+  const { counts, newest } = useMemo(() => ({ counts: projectCounts(tree, projects.map((p) => p.id)), newest: newestIn(tree, projects, date) }), [projects, tree, date]);
 
   const items = useMemo((): Item[] => {
     const q = searching ? query.trim().toLowerCase() : '';
     const folders = searching ? tree.folders.filter((f) => f.name.toLowerCase().includes(q)) : childFolders(tree, at);
     const list = found ?? projects.filter((p) => (tree.placement[p.id] ?? null) === at);
-    const sortedFolders = view.sort === 'name' ? [...folders].sort((a, b) => byName(a.name, b.name)) : [...folders].sort((a, b) => time(newest.get(b.id)) - time(newest.get(a.id)));
-    const sortedProjects = view.sort === 'name' ? [...list].sort((a, b) => byName(a.name, b.name)) : [...list].sort((a, b) => time(b[date]) - time(a[date]));
-    return [...sortedFolders.map((f) => ({ key: `f:${f.id}`, folder: f })), ...sortedProjects.map((p) => ({ key: `p:${p.id}`, project: p }))];
-  }, [projects, found, searching, query, tree, at, view.sort, date, newest]);
+    return homeOrder(folders, list, view.sort, newest);
+  }, [projects, found, searching, query, tree, at, view.sort, newest]);
 
   if (!items.length) return <>{empty}</>;
 

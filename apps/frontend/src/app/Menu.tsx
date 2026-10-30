@@ -5,7 +5,12 @@ import Icon from './Icon';
 
 export type MenuItem = {
   label?: ReactNode;
-  icon?: string;
+  /** an SF Symbol's name, or a small drawing of its own */
+  icon?: string | ReactNode;
+  /** the name read out, when the label alone doesn't say what it is */
+  ariaLabel?: string;
+  /** choosing it leaves the menu open (a folder opened in place) */
+  keepOpen?: boolean;
   onSelect?: () => void;
   destructive?: boolean;
   disabled?: boolean;
@@ -34,7 +39,9 @@ export function MenuList({
   align = 'start',
   onClose,
   className = '',
-  highlightFirst = false
+  highlightFirst = false,
+  level,
+  onBack
 }: {
   items: MenuItems;
   anchor: Anchor;
@@ -43,6 +50,10 @@ export function MenuList({
   className?: string;
   /** start with the first item highlighted (menus opened from the keyboard) */
   highlightFirst?: boolean;
+  /** which items show, for a menu whose items change in place: a new level starts again at the top */
+  level?: string;
+  /** Left or Backspace: up a level */
+  onBack?: () => void;
 }) {
   const list = items.filter(Boolean) as MenuItem[];
   const ref = useRef<HTMLDivElement>(null);
@@ -52,6 +63,17 @@ export function MenuList({
   const [active, setActive] = useState(() => (highlightFirst ? list.findIndex((_, i) => selectable(i)) : -1));
   const hasChecks = list.some((item) => item.checked !== undefined);
   const hasIcons = list.some((item) => item.icon);
+  /** the last thing done was a key, so a new level highlights its first item */
+  const byKey = useRef(highlightFirst);
+  const firstLevel = useRef(level);
+
+  useEffect(() => {
+    if (level === firstLevel.current) return;
+    firstLevel.current = level;
+    setActive(byKey.current ? list.findIndex((_, i) => selectable(i)) : -1);
+    ref.current?.scrollTo({ top: 0 });
+    // the list is the new level's when level changes
+  }, [level]);
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -89,7 +111,7 @@ export function MenuList({
 
   const choose = (item: MenuItem) => {
     if (item.disabled || item.separator) return;
-    onClose();
+    if (!item.keepOpen) onClose();
     item.onSelect?.();
   };
 
@@ -116,7 +138,11 @@ export function MenuList({
       onContextMenu={(e) => e.preventDefault()}
       onKeyDown={(e) => {
         e.stopPropagation();
-        if (e.key === 'Escape' || e.key === 'Tab') {
+        byKey.current = true;
+        if (onBack && (e.key === 'ArrowLeft' || e.key === 'Backspace')) {
+          e.preventDefault();
+          onBack();
+        } else if (e.key === 'Escape' || e.key === 'Tab') {
           e.preventDefault();
           onClose();
         } else if (e.key === 'ArrowDown') {
@@ -149,12 +175,16 @@ export function MenuList({
             aria-checked={item.checked}
             aria-disabled={item.disabled || undefined}
             className={`menu-item${i === active ? ' active' : ''}${item.disabled ? ' disabled' : ''}${item.destructive ? ' destructive' : ''}`}
-            onMouseEnter={() => setActive(selectable(i) ? i : -1)}
+            aria-label={item.ariaLabel}
+            onMouseEnter={() => {
+              byKey.current = false;
+              setActive(selectable(i) ? i : -1);
+            }}
             onMouseLeave={() => setActive(-1)}
             onClick={() => choose(item)}
           >
             {hasChecks && <span className="menu-check">{item.checked && <Icon name="checkmark" />}</span>}
-            {hasIcons && <span className="menu-icon">{item.icon && <Icon name={item.icon} />}</span>}
+            {hasIcons && <span className="menu-icon">{typeof item.icon === 'string' ? <Icon name={item.icon} /> : item.icon}</span>}
             <span className="menu-label">{item.label}</span>
             {item.shortcut && <span className="menu-shortcut">{item.shortcut}</span>}
           </div>
@@ -174,7 +204,10 @@ export function MenuButton({
   title,
   align = 'start',
   chevron,
-  disabled
+  disabled,
+  onOpen,
+  level,
+  onBack
 }: {
   label?: ReactNode;
   icon?: string;
@@ -185,6 +218,10 @@ export function MenuButton({
   /** defaults to true when there is a label */
   chevron?: boolean;
   disabled?: boolean;
+  onOpen?: () => void;
+  /** MenuList's level and onBack, for items that change in place */
+  level?: string;
+  onBack?: () => void;
 }) {
   const [anchor, setAnchor] = useState<Anchor | null>(null);
   const [fromKeyboard, setFromKeyboard] = useState(false);
@@ -215,7 +252,10 @@ export function MenuButton({
           e.stopPropagation();
           setFromKeyboard(false);
           if (anchor) setAnchor(null);
-          else setAnchor(e.currentTarget.getBoundingClientRect());
+          else {
+            onOpen?.();
+            setAnchor(e.currentTarget.getBoundingClientRect());
+          }
         }}
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
@@ -223,6 +263,7 @@ export function MenuButton({
           if (['Enter', ' ', 'ArrowDown'].includes(e.key) && !anchor) {
             e.preventDefault();
             setFromKeyboard(true);
+            onOpen?.();
             setAnchor(e.currentTarget.getBoundingClientRect());
           }
         }}
@@ -231,7 +272,7 @@ export function MenuButton({
         {label && <span className="btn-label">{label}</span>}
         {showChevron && <Icon name="chevron.down" className="btn-chevron" />}
       </button>
-      {anchor && <MenuList items={items} anchor={anchor} align={align} onClose={close} highlightFirst={fromKeyboard} />}
+      {anchor && <MenuList items={items} anchor={anchor} align={align} onClose={close} highlightFirst={fromKeyboard} level={level} onBack={onBack} />}
     </>
   );
 }

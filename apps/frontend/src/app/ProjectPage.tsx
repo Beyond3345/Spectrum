@@ -56,7 +56,7 @@ import { IS_DESKTOP, pickFolder } from './desktop';
 import { FOLDER_COLOURS, addFolder, childFolders, colourFolder, deleteFolder, folderPath, isWithin, moveItems, placeProject, renameFolder, sharedPlace } from './folders';
 import type { ProjectFolder, ProjectFolders } from './folders';
 import CustomiseFolderSheet from './CustomiseFolderSheet';
-import Home, { DRAG_TYPE, FOLDER_TINTS, FolderShape, HOME_SORTS, HOME_VIEW, formatFull, timeAgo } from './Home';
+import Home, { DRAG_TYPE, FOLDER_TINTS, FolderShape, HOME_SORTS, HOME_VIEW, PREFS_KEY, formatFull, timeAgo } from './Home';
 import type { HomeItem, HomeView } from './Home';
 import { BIN, FILE_MANAGER, IS_WINDOWS, tildify } from './platform';
 import { TAG_COLOUR_NAMES, loadSettings, useSettings, type AppSettings, type TagColour } from './settings';
@@ -111,7 +111,6 @@ type Prefs = {
   /** how large icons are, 1 being Goodnotes' size */
   iconSize: number;
 };
-const PREFS_KEY = 'spectrum-projects-view';
 const DEFAULT_PREFS: Prefs = { layout: 'list', sortKey: 'date', dateField: 'updatedAt', sortDir: 'desc', sidebarCollapsed: false, tagsOpen: true, closedFolders: [], home: {}, iconSize: 1 };
 
 function loadPrefs(): Prefs {
@@ -140,6 +139,11 @@ type ActiveJob = TransferJob & { sourceName: string };
 
 /** Where the page was, for coming back from a project; Spectrum opens on Settings › Projects › Open Spectrum on. */
 let place: { view: string; home: string | null } | null = null;
+
+/** The page opens next on All projects, or on Home at the top (the editor's project switcher). */
+export const openProjectsOn = (view: 'all' | 'home') => {
+  place = { view, home: null };
+};
 
 // ─── page ───
 
