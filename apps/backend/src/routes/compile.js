@@ -1,3 +1,4 @@
+import { listenLog } from '../services/compileLog.js';
 import { BIB_TOOLS, runCompile, stopCompile, SUPPORTED_ENGINES } from '../services/compileService.js';
 import { getProjectRoot, readMeta } from '../services/projectService.js';
 import { synctexEdit, synctexView } from '../services/synctex.js';
@@ -61,6 +62,21 @@ export function registerCompileRoutes(fastify) {
     const { compileId } = req.body || {};
     if (typeof compileId !== 'string' || !compileId) return reply.code(400).send({ ok: false, error: 'Missing compileId.' });
     return { ok: stopCompile(compileId) };
+  });
+
+  // A compile's output as it comes, by its id, as server-sent events: engine (the one running, first), output (text),
+  // then end. It can be opened before its compile starts, and one opened late gets the output so far first.
+  fastify.get('/api/compile/:compileId/log', async (req, reply) => {
+    reply.hijack();
+    reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    reply.raw.write(': compiling\n\n');
+    const stop = listenLog(req.params.compileId, (event, data) => {
+      if (reply.raw.writableEnded) return;
+      reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      if (event === 'end') reply.raw.end();
+    });
+    reply.raw.on('close', stop);
+    return reply;
   });
 
   // PDF → source: page is 1-based, x and y are points from the page's top-left corner

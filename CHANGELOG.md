@@ -4,6 +4,10 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ## Unreleased
 
+### Added
+
+- While Tectonic compiles, its output takes the PDF's place as it comes, with a line saying what it is doing, such as the file it is downloading and how many it has downloaded so far, so a first compile that downloads for minutes does not look stuck
+
 ### Changed
 
 - The project switcher above the editor lists your projects as Home does: the folders first, each opening in place with a row back to the folder above, then the projects there with a TeX, Typst or Markdown mark. All projects opens All projects every time, and Home opens Home

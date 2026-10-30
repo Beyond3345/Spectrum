@@ -14,6 +14,7 @@ import { keepSynctex } from './synctex.js';
 import { createCompileCheckpoint } from './versionService.js';
 import { compileTypst } from './typstService.js';
 import { compileMarkdown } from './markdownService.js';
+import { closeLog, openLog, sendLog } from './compileLog.js';
 
 const ENGINES = ['pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic'];
 export const SUPPORTED_ENGINES = ['auto', ...ENGINES];
@@ -330,7 +331,9 @@ export async function runCompile({ projectId, mainFile, engine = 'pdflatex', com
     projectId,
     stopped: stoppedEarly.delete(compileId),
     children: new Set(),
-    searchPath: await texPath(texFolder)
+    searchPath: await texPath(texFolder),
+    // its output as it comes, for the editor's live view
+    log: compileId ? openLog(compileId) : null
   };
   const key = compileId || Symbol('compile');
   running.set(key, job);
@@ -342,6 +345,7 @@ export async function runCompile({ projectId, mainFile, engine = 'pdflatex', com
     return { ...result, doc: mainFile };
   } finally {
     running.delete(key);
+    if (compileId) closeLog(compileId);
   }
 }
 
@@ -547,7 +551,10 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
 
   const logChunks = [];
   let logSize = 0;
+  const live = jobs.getStore()?.log;
+  sendLog(live, 'engine', engine);
   const pushLog = (chunk) => {
+    if (chunk) sendLog(live, 'output', chunk.toString());
     if (!chunk || logSize >= MAX_LOG_BYTES) return;
     const next = chunk.toString().slice(0, MAX_LOG_BYTES - logSize);
     logSize += next.length;
