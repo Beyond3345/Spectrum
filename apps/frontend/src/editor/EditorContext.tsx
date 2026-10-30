@@ -37,7 +37,7 @@ export interface EditorApi {
   /** the document compiled last, whose log compileLog is, and whether that compile made no PDF */
   compiledDoc: string;
   compileFailed: boolean;
-  /** why the last compile stopped before an engine ran (PANDOC_MISSING, PANDOC_OLD, TYPST_VERSION_MISSING), for Logs’ buttons */
+  /** why the last compile stopped before an engine ran (PANDOC_MISSING, PANDOC_OLD, TYPST_VERSION_MISSING), or BIBER_MISSING, for Logs’ buttons */
   compileNotice: Pick<CompileResult, 'code' | 'version' | 'from' | 'builtIn'> | null;
   /** what a Markdown compile generated for its last run, for Logs’ Show generated button */
   compileGenerated: 'latex' | 'typst' | null;
