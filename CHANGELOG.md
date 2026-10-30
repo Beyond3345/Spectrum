@@ -2,6 +2,13 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.0.4 (30 October 2026)
+
+### Fixed
+
+- On Windows, installing Biber for the built-in Tectonic finishes even when the downloaded program cannot be started straight away, as on a Mac, rather than stopping the install
+- The Windows build uses the Node 24 versions of GitHub’s cache and artifact actions, as GitHub retires Node 20
+
 ## 2.0.3 (30 October 2026)
 
 ### Added
