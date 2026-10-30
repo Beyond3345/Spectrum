@@ -285,7 +285,10 @@ export function installBiber() {
     // it unpacks itself now rather than in the first compile (into the temp folder unless this one is there already);
     // one that can't run says so in the compile's log
     await ensureDir(biberCache());
-    await execFileAsync(target, ['--version'], { env: { ...process.env, PAR_GLOBAL_TMPDIR: biberCache() }, timeout: 5 * 60 * 1000, windowsHide: true }).catch(() => {});
+    // Windows refuses a file it can't start at once, before any promise exists, so the call itself is inside the catch
+    await Promise.resolve()
+      .then(() => execFileAsync(target, ['--version'], { env: { ...process.env, PAR_GLOBAL_TMPDIR: biberCache() }, timeout: 5 * 60 * 1000, windowsHide: true }))
+      .catch(() => {});
     return target;
   });
 }
