@@ -1,7 +1,7 @@
 import { promises as fs, createWriteStream } from 'fs';
 import { pipeline, Transform } from 'stream';
 import { promisify } from 'util';
-import { Readable } from 'stream';
+import { get, ok } from '../utils/download.js';
 import { XMLParser } from 'fast-xml-parser';
 
 const pipelineAsync = promisify(pipeline);
@@ -102,7 +102,7 @@ export async function downloadArxivSource(arxivId, outputPath, onProgress, signa
   const url = `${base}/e-print/${arxivId}`;
   let res;
   try {
-    res = await fetch(url, {
+    res = await get(url, {
       headers: { 'User-Agent': 'Spectrum/1.0' },
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(300_000)]) : AbortSignal.timeout(300_000)
     });
@@ -110,12 +110,13 @@ export async function downloadArxivSource(arxivId, outputPath, onProgress, signa
     signal?.throwIfAborted();
     throw new Error('Couldn’t reach arXiv. Check the internet connection and try again.');
   }
-  if (!res.ok) {
-    throw new Error(res.status === 404
+  if (!ok(res)) {
+    res.resume();
+    throw new Error(res.statusCode === 404
       ? 'arXiv has no source for that ID. Check the ID or link.'
-      : `arXiv returned an error (HTTP ${res.status}). Try again later.`);
+      : `arXiv returned an error (HTTP ${res.statusCode}). Try again later.`);
   }
-  const total = parseInt(res.headers.get('content-length') || '0', 10);
+  const total = parseInt(res.headers['content-length'] || '0', 10);
   let received = 0;
   const progress = new Transform({
     transform(chunk, _enc, cb) {
@@ -124,6 +125,5 @@ export async function downloadArxivSource(arxivId, outputPath, onProgress, signa
       cb(null, chunk);
     }
   });
-  const nodeStream = Readable.fromWeb(res.body);
-  await pipelineAsync(nodeStream, progress, createWriteStream(outputPath));
+  await pipelineAsync(res, progress, createWriteStream(outputPath));
 }

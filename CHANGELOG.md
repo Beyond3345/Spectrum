@@ -15,6 +15,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ### Fixed
 
+- Downloading an engine (Typst, pandoc, Biber), LanguageTool or an arXiv source no longer stops Spectrum's server when the download's connection closes early, which Node's built-in download could not recover from
 - A document that uses biblatex with Biber, as most of the LaTeX templates do, compiles with the built-in Tectonic when no TeX Live or MiKTeX is installed. Tectonic's biblatex needs Biber 2.17, which Spectrum downloads when you ask, from the Download Biber button in Logs or from Settings › Engines › LaTeX, where it can also be removed. Spectrum's Biber goes before any other on the PATH that Tectonic is given, so a different Biber on the computer is not used
 
 ## 2.0.2 (30 October 2026)

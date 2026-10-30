@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { promises as fs, createWriteStream, existsSync, copyFileSync } from 'fs';
 import path from 'path';
-import { Readable } from 'stream';
+import { get, ok } from '../utils/download.js';
 import { pipeline } from 'stream/promises';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -192,11 +192,10 @@ async function install(name, version, entry, destination, executable, release) {
   try {
     try {
       stall();
-      const res = await fetch(url, { signal: controller.signal });
-      if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
-      const body = Readable.fromWeb(res.body);
-      body.on('data', stall);
-      await pipeline(body, createWriteStream(part));
+      const res = await get(url, { signal: controller.signal });
+      if (!ok(res)) throw (res.resume(), new Error('HTTP ' + res.statusCode));
+      res.on('data', stall);
+      await pipeline(res, createWriteStream(part));
     } catch {
       throw httpError('Couldn’t download ' + name + ' ' + version + '. ' + DOWNLOAD_FAILED, 502);
     } finally {

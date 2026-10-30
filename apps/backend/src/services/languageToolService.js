@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { createWriteStream, existsSync, promises as fs } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import { Readable } from 'node:stream';
+import { get, ok } from '../utils/download.js';
 import { pipeline } from 'node:stream/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -103,15 +103,14 @@ async function fetchInto(url, file, onBytes, signal) {
   const hash = crypto.createHash('sha256');
   try {
     stall();
-    const res = await fetch(url, { signal: signal ? AbortSignal.any([controller.signal, signal]) : controller.signal });
-    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-    const body = Readable.fromWeb(res.body);
-    body.on('data', (chunk) => {
+    const res = await get(url, { signal: signal ? AbortSignal.any([controller.signal, signal]) : controller.signal });
+    if (!ok(res)) throw (res.resume(), new Error(`HTTP ${res.statusCode}`));
+    res.on('data', (chunk) => {
       stall();
       hash.update(chunk);
       onBytes(chunk.length);
     });
-    await pipeline(body, createWriteStream(file));
+    await pipeline(res, createWriteStream(file));
   } catch {
     throw httpError(DOWNLOAD_FAILED, 502);
   } finally {
