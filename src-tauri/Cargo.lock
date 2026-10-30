@@ -3214,7 +3214,7 @@ dependencies = [
 
 [[package]]
 name = "spectrum"
-version = "2.0.2"
+version = "2.0.3"
 dependencies = [
  "block2",
  "objc2",
