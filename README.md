@@ -2,9 +2,9 @@
 
 # Spectrum
 
-This project is an application for macOS and Windows for writing LaTeX documents with an AI assistant, a references assistant and local checkpoints built in. It is intended for students and researchers who want to keep their papers as ordinary folders on their own Mac while still having help with drafting, citations and compile errors.
+This project is an application for writing and compiling LaTeX/Typst/Markdown documents with deep AI integration.. It is intended for students and researchers who want to keep their papers as ordinary folders on their own device offline while having AI assistance with drafting, citations and compile errors.
 
-Spectrum is a fork of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) by OpenDCAI, which is no longer being maintained. While OpenPrism was a self-hosted web application built around real-time collaboration, Spectrum is a single-user desktop application. Apart from the AI features and reference look-ups, it works entirely offline. The full list of changes from upstream is given in [CHANGELOG.md](CHANGELOG.md).
+Spectrum is originally built from a fork of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) by OpenDCAI, which is no longer being maintained. While OpenPrism was a self-hosted web application built around real-time collaboration, Spectrum is a single-user desktop application. Apart from the AI features and reference look-ups, it works entirely offline. The full list of changes from upstream is given in [CHANGELOG.md](CHANGELOG.md).
 
 ## Features
 
