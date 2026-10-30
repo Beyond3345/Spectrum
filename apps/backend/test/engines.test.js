@@ -45,7 +45,8 @@ const sha = createHash('sha256').update(await fs.readFile(archive)).digest('hex'
 // Biber's Mac release is a universal executable: here two slices, this Mac's a script that unpacks into the cache it is
 // given, the other's a marker. Windows' holds biber.exe, which nothing runs
 const MAC_CPU = { arm64: 0x0100000c, x64: 0x01000007 };
-const biberScript = '#!/bin/sh\nmkdir -p "$PAR_GLOBAL_TMPDIR/unpacked"\necho "biber version: 2.17"\n';
+// (as Biber, it uses the cache only when the folder is there)
+const biberScript = '#!/bin/sh\nmkdir "$PAR_GLOBAL_TMPDIR/unpacked"\necho "biber version: 2.17"\n';
 const universal = (slices) => {
   const header = Buffer.alloc(8 + 20 * slices.length);
   header.writeUInt32BE(0xcafebabe, 0);
