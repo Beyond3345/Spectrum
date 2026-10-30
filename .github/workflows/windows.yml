@@ -58,7 +58,7 @@ jobs:
       # built from its tagged source with the C runtime linked in, which takes a while, so kept between runs: saved as
       # soon as it's built, as the whole cache action saves only when every later step passes
       - id: texlab-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ~\AppData\Local\spectrum-build\texlab-5.26.0-x64
           key: texlab-5.26.0-x64-crt-static
@@ -67,7 +67,7 @@ jobs:
         run: node scripts/desktop.mjs texlab
 
       - if: steps.texlab-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ~\AppData\Local\spectrum-build\texlab-5.26.0-x64
           key: texlab-5.26.0-x64-crt-static
@@ -75,7 +75,7 @@ jobs:
       - name: Installer
         run: node scripts/desktop.mjs build
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: spectrum-windows-x64
           path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
@@ -195,7 +195,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: spectrum-windows-x64
       # TexLab's source (GPL 3.0), to go with the TexLab both installers carry; the digest is desktop.mjs's
