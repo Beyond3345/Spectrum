@@ -67,6 +67,7 @@ import {
   BIB_TOOLS,
   COMPILE_ENGINES,
   ERROR_HANDLING,
+  LIVE_OUTPUT_ENGINES,
   ROLE_FIELDS,
   autoCompileLabel,
   SYNC_HIGHLIGHTS,
@@ -1388,6 +1389,26 @@ function EnginesPane() {
           </span>
         </span>
       </label>
+
+      <h3 className="form-section-title">Show live output while compiling</h3>
+      <div className="field-hint section-hint">
+        The engine’s output takes the PDF’s place as it comes, with a line saying what it’s doing, and the PDF comes back when the compile ends. Typst compiles too quickly to need it.
+      </div>
+      {LIVE_OUTPUT_ENGINES.map(([engine, label]) => (
+        <label key={engine} className="checkbox-row">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={settings.liveOutput[engine]}
+            onChange={(e) => update({ liveOutput: { ...settings.liveOutput, [engine]: e.target.checked } })}
+          />
+          <span>
+            {label}
+            {engine === 'tectonic' && <span className="field-hint">Shows each package it downloads, which can take minutes on a first compile.</span>}
+            {engine === 'markdown' && <span className="field-hint">The LaTeX step of a Markdown document, whichever LaTeX engine it uses.</span>}
+          </span>
+        </label>
+      ))}
 
       <h3 className="form-section-title">TeX installation</h3>
       <div className="field">

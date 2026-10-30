@@ -116,6 +116,8 @@ export type AppSettings = {
   texFolder: string;
   /** a failed compile opens Tools › Logs */
   openLogsOnFail: boolean;
+  /** the compile's output in the PDF's place while it runs, by engine (Markdown: a Markdown document's LaTeX step) */
+  liveOutput: Record<LiveOutputEngine, boolean>;
   /** a checkpoint after each successful compile, and a notice when one can't be saved */
   checkpointOnCompile: boolean;
   checkpointNotice: boolean;
@@ -182,6 +184,16 @@ export type AppSettings = {
 
 export type CompileDefaults = Required<CompileOptions>;
 
+export type LiveOutputEngine = 'tectonic' | 'pdflatex' | 'xelatex' | 'lualatex' | 'latexmk' | 'markdown';
+export const LIVE_OUTPUT_ENGINES: [LiveOutputEngine, string][] = [
+  ['tectonic', 'Tectonic'],
+  ['pdflatex', 'pdfLaTeX'],
+  ['xelatex', 'XeLaTeX'],
+  ['lualatex', 'LuaLaTeX'],
+  ['latexmk', 'Latexmk'],
+  ['markdown', 'Markdown through LaTeX']
+];
+
 export const TAG_COLOUR_NAMES = ['blue', 'green', 'orange', 'red', 'yellow', 'purple', 'teal'] as const;
 export type TagColour = (typeof TAG_COLOUR_NAMES)[number];
 
@@ -230,6 +242,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   compileDefaults: { engine: 'auto', autoCompile: 0, haltOnError: false, bibTool: 'auto', draft: false, syntaxCheck: true, typstVersion: '', markdownEngine: 'latex' },
   texFolder: '',
   openLogsOnFail: false,
+  // Tectonic's first compiles download for minutes; the others are quick enough without
+  liveOutput: { tectonic: true, pdflatex: false, xelatex: false, lualatex: false, latexmk: false, markdown: false },
   checkpointOnCompile: true,
   checkpointNotice: true,
   pdfFollowsFile: true,
@@ -374,6 +388,10 @@ function parse(raw: string | null): AppSettings {
     merged.compileDefaults = cleanCompile(merged.compileDefaults, DEFAULT_SETTINGS.compileDefaults);
     if (typeof merged.texFolder !== 'string') merged.texFolder = '';
     merged.openLogsOnFail = merged.openLogsOnFail === true;
+    const live = (typeof merged.liveOutput === 'object' && merged.liveOutput ? merged.liveOutput : {}) as Record<string, unknown>;
+    merged.liveOutput = Object.fromEntries(
+      LIVE_OUTPUT_ENGINES.map(([engine]) => [engine, typeof live[engine] === 'boolean' ? live[engine] : DEFAULT_SETTINGS.liveOutput[engine]])
+    ) as AppSettings['liveOutput'];
     merged.checkpointOnCompile = merged.checkpointOnCompile !== false;
     merged.checkpointNotice = merged.checkpointNotice !== false;
     merged.pdfFollowsFile = merged.pdfFollowsFile !== false;
