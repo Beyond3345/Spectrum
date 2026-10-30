@@ -2,6 +2,13 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## Unreleased
+
+### Changed
+
+- The project switcher above the editor lists your projects as Home does: the folders first, each opening in place with a row back to the folder above, then the projects there with a TeX, Typst or Markdown mark. All projects opens All projects every time, and Home opens Home
+- Settings › Projects › Project switcher opens at: Home, or this project's folder
+
 ## 2.0.2 (30 October 2026)
 
 ### Fixed

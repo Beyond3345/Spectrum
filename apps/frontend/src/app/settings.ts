@@ -159,6 +159,8 @@ export type AppSettings = {
   projectFolders: ProjectFolders;
   /** the page Spectrum opens on (Settings › Projects): Home, the folders, or All projects (this computer's) */
   openOn: 'home' | 'all';
+  /** where the editor's project switcher opens (Settings › Projects): Home, or the open project's folder (this computer's) */
+  switcherOpensAt: 'home' | 'folder';
   /** a colour chosen for a tag; the others get one from their name */
   tagColours: Record<string, TagColour>;
   /** Settings › Personas, picked per chat; the starters are seeded once */
@@ -255,6 +257,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   syncSettings: true,
   projectFolders: NO_FOLDERS,
   openOn: 'home',
+  switcherOpensAt: 'home',
   tagColours: {},
   personas: STARTER_PERSONAS,
   defaultInstructions: '',
@@ -397,6 +400,7 @@ function parse(raw: string | null): AppSettings {
     if (!['dark', 'black', 'dimmed', 'white'].includes(merged.pdfPageDark)) merged.pdfPageDark = 'dark';
     merged.syncDoubleClick = merged.syncDoubleClick !== false;
     if (merged.openOn !== 'all') merged.openOn = 'home';
+    if (merged.switcherOpensAt !== 'folder') merged.switcherOpensAt = 'home';
     if (!SYNC_HIGHLIGHTS.some(([value]) => value === merged.syncHighlightColour)) merged.syncHighlightColour = DEFAULT_SETTINGS.syncHighlightColour;
     if (typeof merged.syncHighlightCustom !== 'string' || !HEX.test(merged.syncHighlightCustom)) merged.syncHighlightCustom = DEFAULT_SETTINGS.syncHighlightCustom;
     if (!Number.isFinite(merged.syncHighlightSeconds)) merged.syncHighlightSeconds = DEFAULT_SETTINGS.syncHighlightSeconds;

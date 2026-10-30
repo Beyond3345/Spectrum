@@ -52,6 +52,33 @@
   color: var(--text-secondary);
 }
 
+/* the switcher's list (ProjectSwitcher.tsx): Home's folders and each project's kind, at the menu's icon size */
+.switcher-folder {
+  display: block;
+  width: 16px;
+}
+
+.kind-logo {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+/* Typst's teal, a little lighter on a dark menu */
+.kind-logo.typst {
+  color: #239dad;
+}
+
+:root[data-theme='dark'] .kind-logo.typst {
+  color: #4cc1cf;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .kind-logo.typst {
+    color: #4cc1cf;
+  }
+}
+
 .sidebar-tabs {
   flex: none;
   display: flex;

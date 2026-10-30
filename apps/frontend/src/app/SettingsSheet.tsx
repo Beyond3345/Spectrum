@@ -568,6 +568,18 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                 <div className="field-hint">Home shows your folders and the projects in no folder. All projects lists every project at once.</div>
               </div>
               <div className="field">
+                <label id="settings-switcherOpensAt">Project switcher opens at</label>
+                <div>
+                  <Segmented
+                    labelledBy="settings-switcherOpensAt"
+                    value={settings.switcherOpensAt}
+                    options={[['home', 'Home'], ['folder', 'This project’s folder']]}
+                    onChange={(switcherOpensAt) => update({ switcherOpensAt })}
+                  />
+                </div>
+                <div className="field-hint">The list under the project’s name at the top of the editor. With this project’s folder, it opens at the folder the project is in, beside the projects and folders there.</div>
+              </div>
+              <div className="field">
                 <label id="settings-projectsDir">Default folder for new projects</label>
                 <div className="path-row" role="group" aria-labelledby="settings-projectsDir">
                   <Icon name="folder" />

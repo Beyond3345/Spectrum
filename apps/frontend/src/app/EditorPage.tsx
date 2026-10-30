@@ -58,7 +58,8 @@ import type { Section as SettingsSection } from './SettingsSheet';
 import { ContextMenu, MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
 import { confirmDialog, promptDialog } from './Dialogs';
-import { SaveTemplateSheet } from './ProjectPage';
+import { SaveTemplateSheet, openProjectsOn } from './ProjectPage';
+import { switcherList, switcherStart } from './ProjectSwitcher';
 import { withDeletionCheck } from './github';
 import { toast } from './Toast';
 import { IS_DESKTOP, focusWindow, openDiagram } from './desktop';
@@ -330,6 +331,8 @@ function Editor({ projectId }: { projectId: string }) {
   // ─── state ───
 
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
+  /** the folder the project switcher shows (null: Home) */
+  const [switcherAt, setSwitcherAt] = useState<string | null>(null);
   const project = projects.find((p) => p.id === projectId);
   /** the template this project is a working copy of */
   const draft = project?.templateDraft;
@@ -1795,7 +1798,8 @@ function Editor({ projectId }: { projectId: string }) {
     openPanel('agent');
   };
 
-  const leave = async (to: string) => {
+  /** ready: what to do once the text is safe, just before going */
+  const leave = async (to: string, ready?: () => void) => {
     try {
       await saveAll();
     } catch (err) {
@@ -1803,6 +1807,7 @@ function Editor({ projectId }: { projectId: string }) {
       notify(`Couldn’t keep your unsaved changes: ${errorText(err)}`, 'error');
       return;
     }
+    ready?.();
     navigate(to);
   };
 
@@ -2815,14 +2820,12 @@ function Editor({ projectId }: { projectId: string }) {
     }
   };
   const markdownMain = docKind(mainFile) === 'markdown';
+  const tree = settings.projectFolders;
   const switcherItems: MenuItems = [
-    ...projects
-      .filter((p) => p.id === projectId || (!p.missing && !p.archived && !p.templateDraft))
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .slice(0, 12)
-      .map((p) => ({ label: p.name, checked: p.id === projectId, onSelect: () => p.id !== projectId && leave(`/editor/${p.id}`) })),
+    ...switcherList({ projects, tree, at: switcherAt, projectId, go: setSwitcherAt, open: (id) => leave(`/editor/${id}`) }),
     { separator: true },
-    { label: 'All projects', icon: 'square.grid.2x2', onSelect: () => leave('/projects') },
+    { label: 'All projects', icon: 'square.grid.2x2', onSelect: () => leave('/projects', () => openProjectsOn('all')) },
+    { label: 'Home', icon: 'house', onSelect: () => leave('/projects', () => openProjectsOn('home')) },
     // a working copy has its own Save as new template… above the editor
     !draft && { label: 'Save as template…', icon: 'square.and.arrow.down', onSelect: openSaveTemplate },
     IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => revealProject(projectId).catch(() => undefined) },
@@ -3030,7 +3033,15 @@ function Editor({ projectId }: { projectId: string }) {
             </div>
 
             <div className="sidebar-project">
-              <MenuButton className="project-switcher" label={project?.name || 'Loading…'} items={switcherItems} title="Switch project" />
+              <MenuButton
+                className="project-switcher"
+                label={project?.name || 'Loading…'}
+                items={switcherItems}
+                title="Switch project"
+                onOpen={() => setSwitcherAt(switcherStart(tree, projectId, settings.switcherOpensAt))}
+                level={switcherAt ?? ''}
+                onBack={() => setSwitcherAt(tree.folders.find((f) => f.id === switcherAt)?.parent ?? null)}
+              />
             </div>
 
             <div className="sidebar-tabs">
