@@ -6,7 +6,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ### Added
 
-- While Tectonic compiles, its output takes the PDF's place as it comes, with a line saying what it is doing, such as the file it is downloading and how many it has downloaded so far, so a first compile that downloads for minutes does not look stuck
+- Live output while compiling: the engine's output takes the PDF's place as it comes, with a line saying what it is doing, such as the file Tectonic is downloading and how many it has downloaded so far, the file pdfLaTeX, XeLaTeX or LuaLaTeX is reading and the pages written, the rule latexmk is running, Biber, BibTeX or MakeIndex running, or MiKTeX installing a package. Settings › Engines has a switch for each engine and for Markdown through LaTeX; Tectonic's is on by default, so a first compile that downloads for minutes does not look stuck, and the others are off
 
 ### Changed
 
