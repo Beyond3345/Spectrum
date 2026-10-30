@@ -156,7 +156,7 @@ export default function ProjectPage() {
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
   const [categories, setCategories] = useState<TemplateCategory[]>([]);
   const [defaultDir, setDefaultDir] = useState('');
-  // 'home' | 'all' | 'github' | 'archived' | 'tag:<name>' | 'folder:<id>'
+  // 'home' | 'all' | 'github' | 'archived' | 'tag:<name>'; a folder opens on Home
   const [view, setView] = useState(() => place?.view ?? (settings.openOn === 'all' ? 'all' : 'home'));
   /** the folder open on Home (null: Home itself) */
   const [homeAt, setHomeAt] = useState<string | null>(place?.home ?? null);
@@ -244,7 +244,6 @@ export default function ProjectPage() {
 
   const activeTag = view.startsWith('tag:') ? view.slice(4) : null;
   const folders = settings.projectFolders;
-  const activeFolder = view.startsWith('folder:') ? folders.folders.find((f) => f.id === view.slice(7)) : undefined;
 
   const homeFolder = folders.folders.find((f) => f.id === homeAt);
   const homeView: HomeView = { ...HOME_VIEW, ...prefs.home[homeAt ?? ''] };
@@ -264,9 +263,9 @@ export default function ProjectPage() {
   // a tag view whose last project lost the tag, or a deleted folder's view, falls back to All projects; a deleted
   // folder open on Home, to Home
   useEffect(() => {
-    if ((activeTag && loaded && !allTags.some(([tag]) => tag === activeTag)) || (view.startsWith('folder:') && !activeFolder)) setView('all');
+    if ((activeTag && loaded && !allTags.some(([tag]) => tag === activeTag)) ) setView('all');
     if (homeAt && !homeFolder) setHomeAt(null);
-  }, [activeTag, allTags, loaded, view, activeFolder, homeAt, homeFolder]);
+  }, [activeTag, allTags, loaded, homeAt, homeFolder]);
 
   const counts = useMemo(() => {
     const shown = projects.filter((p) => !p.archived);
@@ -284,7 +283,7 @@ export default function ProjectPage() {
       ? projects.filter((p) => p.tags.includes(activeTag))
       : view === 'archived'
         ? projects.filter((p) => p.archived)
-        : projects.filter((p) => !p.archived && (!activeFolder || folders.placement[p.id] === activeFolder.id));
+        : projects.filter((p) => !p.archived);
     const q = query.trim().toLowerCase();
     if (q) {
       list = list.filter(
@@ -302,12 +301,12 @@ export default function ProjectPage() {
         ? dir * a.name.localeCompare(b.name, 'en-AU', { numeric: true, sensitivity: 'base' })
         : dir * (time(a) - time(b))
     );
-  }, [projects, view, activeTag, activeFolder, folders, query, prefs.sortKey, prefs.sortDir, prefs.dateField]);
+  }, [projects, view, activeTag, query, prefs.sortKey, prefs.sortDir, prefs.dateField]);
 
   const title =
-    activeTag ?? activeFolder?.name ?? (view === 'home' ? (homeFolder?.name ?? 'Home') : view === 'github' ? 'GitHub' : view === 'archived' ? 'Archived' : 'All projects');
-  /** the folder New puts things in: the one open on Home or in the sidebar */
-  const here = view === 'home' ? homeAt : (activeFolder?.id ?? null);
+    activeTag ?? (view === 'home' ? (homeFolder?.name ?? 'Home') : view === 'github' ? 'GitHub' : view === 'archived' ? 'Archived' : 'All projects');
+  /** the folder New puts things in: the one open on Home */
+  const here = view === 'home' ? homeAt : null;
   const parentDir = settings.projectsDir || undefined;
 
   // ─── actions ───
@@ -677,8 +676,8 @@ export default function ProjectPage() {
               <span className="folder-disclosure" />
             )}
             <button
-              className={`nav-row ${view === `folder:${f.id}` ? 'active' : ''} ${dropTarget === f.id ? 'drop-into' : ''}`}
-              onClick={() => setView(`folder:${f.id}`)}
+              className={`nav-row ${view === 'home' && homeAt === f.id ? 'active' : ''} ${dropTarget === f.id ? 'drop-into' : ''}`}
+              onClick={() => goHome(f.id)}
               {...menuProps(() => folderMenu(f))}
               {...dropProps(f.id)}
             >
@@ -846,15 +845,6 @@ export default function ProjectPage() {
           <Icon name="folder" size={36} />
           <div className="empty-title">Nothing in “{homeFolder.name}”</div>
           <div className="empty-text">Drag projects or folders onto it, or make one here from New.</div>
-        </div>
-      );
-    }
-    if (activeFolder) {
-      return (
-        <div className="empty-state">
-          <Icon name="folder" size={36} />
-          <div className="empty-title">Nothing in “{activeFolder.name}”</div>
-          <div className="empty-text">Drag projects onto the folder in the sidebar, or choose Move to folder… from a project’s ··· menu.</div>
         </div>
       );
     }

@@ -2,6 +2,12 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## Unreleased
+
+### Fixed
+
+- A folder opened from the sidebar shows the folders inside it, as it does when opened on Home: the sidebar now opens it on Home
+
 ## 2.0.1 (30 October 2026)
 
 ### Added
