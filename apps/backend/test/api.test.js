@@ -359,9 +359,62 @@ test('opens a file from Finder or Explorer in its project, or adopts its folder'
   const chapter = (await open(path.join(thesis, 'chapters', 'intro.tex'))).json;
   assert.equal(chapter.file, 'chapters/intro.tex');
   assert.equal((await api('/api/projects')).json.projects.find((p) => p.id === chapter.projectId)?.path, thesis);
+  const projectOf = async (opened) => (await api('/api/projects')).json.projects.find((p) => p.id === opened.projectId);
+
+  // a package, class, docstrip file or bibliography style goes with the document up to three folders above it
+  const kit = path.join(tmp, 'kit');
+  mkdirSync(path.join(kit, 'tex', 'latex', 'mine'), { recursive: true });
+  writeFileSync(path.join(kit, 'demo.tex'), '\\documentclass{article}\\usepackage{mine}\\begin{document}x\\end{document}\n');
+  const styles = ['mine.sty', 'mine.cls', 'mine10.clo', 'mine.dtx', 'mine.ins', 'mine.bst', 'mine.bbx', 'mine.cbx', 'british.lbx', 'mine.dbx'];
+  for (const name of styles) writeFileSync(path.join(kit, 'tex', 'latex', 'mine', name), '% x\n');
+  const sty = (await open(path.join(kit, 'tex', 'latex', 'mine', 'mine.sty'))).json;
+  assert.equal(sty.file, 'tex/latex/mine/mine.sty');
+  assert.equal((await projectOf(sty))?.path, kit);
+  for (const name of styles) assert.deepEqual((await open(path.join(kit, 'tex', 'latex', 'mine', name))).json, { projectId: sty.projectId, file: `tex/latex/mine/${name}` }, name);
+  // with no document near, its own folder
+  const lone = path.join(tmp, 'lone-style');
+  mkdirSync(lone);
+  writeFileSync(path.join(lone, 'beamerthemeMine.sty'), '\\ProvidesPackage{beamerthemeMine}\n');
+  assert.equal((await projectOf((await open(path.join(lone, 'beamerthemeMine.sty'))).json))?.path, lone);
+
+  // a Typst chapter goes with the folder holding main.typ, a Typst project
+  const book = path.join(tmp, 'book');
+  mkdirSync(path.join(book, 'chapters'), { recursive: true });
+  writeFileSync(path.join(book, 'main.typ'), '#include "chapters/one.typ"\n');
+  writeFileSync(path.join(book, 'chapters', 'one.typ'), '= One\n');
+  const typ = (await open(path.join(book, 'chapters', 'one.typ'))).json;
+  assert.equal(typ.file, 'chapters/one.typ');
+  assert.equal((await projectOf(typ))?.path, book);
+  assert.equal((await projectOf(typ))?.mainFile, 'main.typ');
+
+  // Markdown: a part goes with the folder holding main.md; a lone notes.md makes its folder a Markdown project of it
+  const site = path.join(tmp, 'site');
+  mkdirSync(path.join(site, 'parts'), { recursive: true });
+  writeFileSync(path.join(site, 'main.md'), '# Site\n');
+  writeFileSync(path.join(site, 'parts', 'one.markdown'), '## One\n');
+  const part = (await open(path.join(site, 'parts', 'one.markdown'))).json;
+  assert.equal(part.file, 'parts/one.markdown');
+  assert.equal((await projectOf(part))?.mainFile, 'main.md');
+  const notes = path.join(tmp, 'notes');
+  mkdirSync(notes);
+  writeFileSync(path.join(notes, 'ideas.md'), '# Ideas\n');
+  const idea = (await open(path.join(notes, 'ideas.md'))).json;
+  assert.equal(idea.file, 'ideas.md');
+  assert.equal((await projectOf(idea))?.path, notes);
+  assert.equal((await projectOf(idea))?.mainFile, 'ideas.md');
+  // and a lone Typst file the same
+  const sketch = path.join(tmp, 'sketch');
+  mkdirSync(sketch);
+  writeFileSync(path.join(sketch, 'poster.typ'), '= Poster\n');
+  assert.equal((await projectOf((await open(path.join(sketch, 'poster.typ'))).json))?.mainFile, 'poster.typ');
+  // a Markdown file in a LaTeX project opens there, leaving its main file
+  writeFileSync(path.join(thesis, 'todo.md'), '- write\n');
+  assert.deepEqual((await open(path.join(thesis, 'todo.md'))).json, { projectId: chapter.projectId, file: 'todo.md' });
+  assert.notEqual((await projectOf(chapter))?.mainFile, 'todo.md');
 
   writeFileSync(path.join(loose, 'paper.pdf'), '%PDF-');
-  for (const bad of [path.join(loose, 'paper.pdf'), path.join(loose, 'gone.tex'), loose, 'refs.bib']) {
+  for (const name of ['paper.aux', 'paper.log', 'paper.bbl', 'paper.synctex.gz']) writeFileSync(path.join(loose, name), 'x');
+  for (const bad of [path.join(loose, 'paper.pdf'), path.join(loose, 'paper.aux'), path.join(loose, 'paper.log'), path.join(loose, 'paper.bbl'), path.join(loose, 'paper.synctex.gz'), path.join(loose, 'gone.tex'), loose, 'refs.bib']) {
     assert.equal((await open(bad)).status, 400, bad);
   }
   // the projects folder can't be a project itself

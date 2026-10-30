@@ -463,11 +463,14 @@ export async function openFolder(input) {
   return getProject(id);
 }
 
+// what openFile takes, as main.rs's OPENABLE
+const OPENS = /\.(tex|ltx|bib|sty|cls|clo|dtx|ins|bst|bbx|cbx|lbx|dbx|typ|md|markdown)$/i;
+
 /**
- * A .tex, .ltx or .bib file opened from Finder or Explorer: the listed project it's in (the
- * deepest), or else the folder around it adopted as one, which is the nearest with a
- * .spectrum/project.json (a project from another computer) or the file's own folder.
- * Returns the project's id and the file's path in it.
+ * A LaTeX, BibTeX, TeX package or style, Typst or Markdown file opened from Finder or Explorer (OPENS): the listed
+ * project it's in (the deepest), or else the folder around it adopted as one, which is the nearest with a
+ * .spectrum/project.json (a project from another computer), the nearest holding its document, or the file's own
+ * folder. Returns the project's id and the file's path in it.
  */
 export async function openFile(input) {
   const raw = expandHome(input);
@@ -478,7 +481,7 @@ export async function openFile(input) {
   } catch {
     throw httpError('That file doesn’t exist.', 400);
   }
-  if (!/\.(tex|ltx|bib)$/i.test(file) || !(await fs.stat(file)).isFile()) throw httpError('Spectrum opens .tex, .ltx and .bib files.', 400);
+  if (!OPENS.test(file) || !(await fs.stat(file)).isFile()) throw httpError('Spectrum opens LaTeX, BibTeX, Typst and Markdown files.', 400);
   const inside = (root) => caseless(file).startsWith(caseless(root) + path.sep);
   const relative = (root) => file.slice(root.length + 1).split(path.sep).join('/');
   // in a mirrored project's cloud copy: the same file in the project here, while it holds the same; 2.0 no longer keeps
@@ -506,12 +509,14 @@ export async function openFile(input) {
       break;
     }
   }
-  // a chapter (no \documentclass of its own) or a .bib belongs with the document that uses it: the nearest
-  // folder, this one or up to three above, holding a .tex that compiles on its own
-  if (!carried && !(await isDocumentFile(file))) {
+  // a chapter (no \documentclass of its own), a .bib, a package or a style belongs with the document that uses it: the
+  // nearest folder, this one or up to three above, holding a .tex that compiles on its own; a Typst or Markdown file,
+  // the nearest holding main.typ or main.md, as detectMainFile finds those projects
+  const main = /\.typ$/i.test(file) ? /^main\.typ$/i : /\.(md|markdown)$/i.test(file) ? /^main\.md$/i : null;
+  if (!carried && (main || !(await isDocumentFile(file)))) {
     for (let dir = own, up = 0; up <= 3 && dir !== path.dirname(dir) && dir !== os.homedir(); dir = path.dirname(dir), up++) {
-      const names = (await fs.readdir(dir).catch(() => [])).filter((name) => /\.(tex|ltx)$/i.test(name)).slice(0, 50);
-      if (await anyDocument(dir, names)) {
+      const names = await fs.readdir(dir).catch(() => []);
+      if (main ? names.some((name) => main.test(name)) : await anyDocument(dir, names.filter((name) => /\.(tex|ltx)$/i.test(name)).slice(0, 50))) {
         folder = dir;
         break;
       }
@@ -522,6 +527,8 @@ export async function openFile(input) {
   for (const candidate of folder === own ? [own] : [folder, own]) {
     try {
       const project = await openFolder(candidate);
+      // a lone Typst or Markdown file (notes.md) is its folder's document, so it compiles
+      if (main && !project.mainFile) await updateMeta(project.path, (meta) => ({ ...meta, mainFile: relative(project.path) }));
       return { projectId: project.id, file: relative(project.path) };
     } catch (err) {
       if (err.statusCode !== 400 && err.statusCode !== 409) throw err;
