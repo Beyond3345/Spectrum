@@ -55,7 +55,8 @@ import { toast } from './Toast';
 import { IS_DESKTOP, pickFolder } from './desktop';
 import { FOLDER_COLOURS, addFolder, childFolders, colourFolder, deleteFolder, folderPath, isWithin, moveItems, placeProject, renameFolder, sharedPlace } from './folders';
 import type { ProjectFolder, ProjectFolders } from './folders';
-import Home, { DRAG_TYPE, FOLDER_TINTS, HOME_SORTS, HOME_VIEW, formatFull, timeAgo } from './Home';
+import CustomiseFolderSheet from './CustomiseFolderSheet';
+import Home, { DRAG_TYPE, FOLDER_TINTS, FolderShape, HOME_SORTS, HOME_VIEW, formatFull, timeAgo } from './Home';
 import type { HomeItem, HomeView } from './Home';
 import { BIN, FILE_MANAGER, IS_WINDOWS, tildify } from './platform';
 import { TAG_COLOUR_NAMES, loadSettings, useSettings, type AppSettings, type TagColour } from './settings';
@@ -129,6 +130,7 @@ type SheetState =
   | { kind: 'tags'; id: string }
   // items: projects ('p:<id>') and folders ('f:<id>')
   | { kind: 'move'; items: string[] }
+  | { kind: 'customise'; folder: string }
   | { kind: 'transfer'; id: string }
   | { kind: 'saveTemplate'; id: string }
   | { kind: 'settings'; section?: SettingsSection }
@@ -587,9 +589,11 @@ export default function ProjectPage() {
     f && { label: 'Open', icon: 'folder', onSelect: () => goHome(f.id) },
     { label: 'New folder…', icon: 'folder.badge.plus', onSelect: () => newFolder(f?.id ?? null) },
     f && { label: 'Rename…', icon: 'pencil', onSelect: () => editFolderName(f) },
+    f && { label: 'Customise Folder…', icon: 'paintpalette', onSelect: () => setSheet({ kind: 'customise', folder: f.id }) },
     f && { label: 'Move to folder…', icon: 'tray.and.arrow.down', onSelect: move ?? (() => setSheet({ kind: 'move', items: [`f:${f.id}`] })) },
     f && { separator: true },
     f && { label: 'Colour', heading: true },
+    f && { label: 'No colour', checked: !f.colour, onSelect: () => changeFolders((tree) => colourFolder(tree, f.id, null)) },
     ...(f
       ? FOLDER_COLOURS.map((c) => ({
           label: (
@@ -597,7 +601,7 @@ export default function ProjectPage() {
               <span className={`tag-dot folder-dot folder-colour ${c}`} /> {FOLDER_TINTS[c]}
             </>
           ),
-          checked: (f.colour ?? 'blue') === c,
+          checked: f.colour === c,
           onSelect: () => changeFolders((tree) => colourFolder(tree, f.id, c))
         }))
       : []),
@@ -678,7 +682,7 @@ export default function ProjectPage() {
               {...menuProps(() => folderMenu(f))}
               {...dropProps(f.id)}
             >
-              <Icon name="folder" className={f.colour ? `folder-icon folder-colour ${f.colour}` : ''} />
+              <FolderShape {...f} />
               <span className="nav-label">{f.name}</span>
               <span className="nav-count">{counts.inFolder.get(f.id) || 0}</span>
             </button>
@@ -1200,6 +1204,10 @@ export default function ProjectPage() {
           }}
           onClose={() => setSheet(null)}
         />
+      )}
+
+      {sheet?.kind === 'customise' && folders.folders.some((f) => f.id === sheet.folder) && (
+        <CustomiseFolderSheet folder={folders.folders.find((f) => f.id === sheet.folder)!} onChange={(change) => changeFolders((tree) => change(tree, sheet.folder))} onClose={() => setSheet(null)} />
       )}
 
       {sheet?.kind === 'transfer' && sheetProject && (

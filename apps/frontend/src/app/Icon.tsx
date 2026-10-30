@@ -3,7 +3,8 @@ import { IS_WINDOWS } from './platform';
 
 // SF Symbols may only be used on Apple platforms: Windows gets Fluent UI System Icons of the same
 // names, from scripts/fluent-icons.mjs
-const mask = (name: string) => (IS_WINDOWS ? `url(/fluent/${name}.svg)` : `url(/sf/${name}.png)`);
+export const iconFile = (name: string) => (IS_WINDOWS ? `/fluent/${name}.svg` : `/sf/${name}.png`);
+const mask = (name: string) => `url(${iconFile(name)})`;
 
 /**
  * SF Symbol rendered as a CSS mask so it takes the current text colour.

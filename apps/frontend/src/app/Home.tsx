@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, HTMLAttributes, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import type { ProjectMeta } from '../api/client';
 import { cameFrom, childFolders, folderPath, projectCounts } from './folders';
 import type { FolderColour, ProjectFolder, ProjectFolders } from './folders';
 import { MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
-import Icon from './Icon';
+import Icon, { iconFile } from './Icon';
 
 // Home: the folders as big tiles or a list, opened in place, then the projects in none. The Projects page (ProjectPage)
 // keeps the header, the sidebar and what a project's card or row looks like; Home lays them out and adds selecting,
@@ -38,7 +38,8 @@ export const formatFull = (iso: string) => {
 /** a project card or row, or several things from Home, on their way to a folder: 'p:<id>' and 'f:<id>', a line each */
 export const DRAG_TYPE = 'application/x-spectrum-project';
 
-export const FOLDER_TINTS: Record<FolderColour, string> = { blue: 'Blue', purple: 'Purple', red: 'Red', orange: 'Orange', green: 'Green', grey: 'Grey' };
+/** Finder's names for the colours, in Australian English */
+export const FOLDER_TINTS: Record<FolderColour, string> = { red: 'Red', orange: 'Orange', yellow: 'Yellow', green: 'Green', blue: 'Blue', purple: 'Purple', grey: 'Grey' };
 
 /** How a folder on Home shows (per folder; '' is Home itself). */
 export type HomeSort = 'name' | 'updatedAt' | 'createdAt';
@@ -58,12 +59,43 @@ export type HomeItem = {
   date: 'updatedAt' | 'createdAt';
 };
 
-/** A folder, in its colour (none is blue). */
-export function FolderShape({ colour }: { colour?: FolderColour }) {
+/**
+ * A folder as Finder draws it: light blue, or tinted with its colour, with its symbol engraved on the front in a deeper
+ * shade or its emoji in its own colours. Each drawing has its own gradients, as their stops take its colour.
+ */
+export function FolderShape({ colour, symbol, emoji }: { colour?: FolderColour; symbol?: string; emoji?: string }) {
+  const id = useId().replace(/[^\w-]/g, '');
   return (
-    <svg className={`folder-shape folder-colour ${colour ?? 'blue'}`} viewBox="0 0 120 92" aria-hidden="true">
-      <path className="back" d="M8 4h30c2.4 0 4.6 1 6.2 2.8L50 13h62a8 8 0 0 1 8 8v63a8 8 0 0 1-8 8H8a8 8 0 0 1-8-8V12a8 8 0 0 1 8-8z" />
-      <path className="front" d="M0 30a8 8 0 0 1 8-8h104a8 8 0 0 1 8 8v54a8 8 0 0 1-8 8H8a8 8 0 0 1-8-8z" />
+    <svg className={`folder-shape folder-colour ${colour ?? 'none'}`} viewBox="0 0 120 92" aria-hidden="true">
+      <defs>
+        <linearGradient id={`${id}-back`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" className="back-top" />
+          <stop offset="1" className="back-bottom" />
+        </linearGradient>
+        <linearGradient id={`${id}-front`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" className="front-top" />
+          <stop offset="1" className="front-bottom" />
+        </linearGradient>
+        {symbol && (
+          <mask id={`${id}-symbol`} style={{ maskType: 'alpha' }}>
+            <image href={iconFile(symbol)} x="37" y="33" width="46" height="46" />
+          </mask>
+        )}
+      </defs>
+      <path fill={`url(#${id}-back)`} d="M7 2h31c2.3 0 4.4.9 6 2.6L50 10h63a7 7 0 0 1 7 7v68a7 7 0 0 1-7 7H7a7 7 0 0 1-7-7V9a7 7 0 0 1 7-7z" />
+      <path fill={`url(#${id}-front)`} d="M0 25a7 7 0 0 1 7-7h106a7 7 0 0 1 7 7v60a7 7 0 0 1-7 7H7a7 7 0 0 1-7-7z" />
+      {symbol && (
+        <g className="mark">
+          {/* engraved: a light edge below the deeper shade */}
+          <rect className="mark-light" width="120" height="92" mask={`url(#${id}-symbol)`} transform="translate(0 0.9)" />
+          <rect className="mark-dark" width="120" height="92" mask={`url(#${id}-symbol)`} />
+        </g>
+      )}
+      {!symbol && emoji && (
+        <text className="mark" x="60" y="56" fontSize="38" textAnchor="middle" dominantBaseline="central">
+          {emoji}
+        </text>
+      )}
     </svg>
   );
 }
@@ -277,8 +309,8 @@ export default function Home({
               {...itemProps(item, folderLabel(f))}
               {...dropProps(f.id, `tile:${f.id}`)}
             >
-              <div className={`card-thumb folder-art folder-colour ${f.colour ?? 'blue'}`}>
-                <FolderShape colour={f.colour} />
+              <div className="card-thumb folder-art">
+                <FolderShape {...f} />
                 <span className="card-menu">
                   <MenuButton icon="ellipsis" title="More" className="icon-btn small" align="end" items={menuOf(item)} />
                 </span>
@@ -331,7 +363,7 @@ export default function Home({
               {...itemProps(item, folderLabel(f))}
               {...dropProps(f.id, `tile:${f.id}`)}
             >
-              <span className="col-thumb"><FolderShape colour={f.colour} /></span>
+              <span className="col-thumb"><FolderShape {...f} /></span>
               <span className="col-name">
                 <span className="project-name-line"><span className="project-name">{f.name}</span></span>
                 {searching && <span className="project-path">{where(f.parent)}</span>}

@@ -375,38 +375,233 @@ button.badge {
    Home: folders as tiles or rows, opened in place
    -------------------------------------------------------------------------- */
 
-/* a folder's colour (folders.ts); none is blue, whatever the accent */
-.folder-colour.blue { --folder: #3b8eea; }
-.folder-colour.purple { --folder: #a463d8; }
-.folder-colour.red { --folder: var(--red); }
-.folder-colour.orange { --folder: var(--orange); }
-.folder-colour.green { --folder: var(--green); }
+/* a folder's colour (folders.ts): Finder's tag colours, whatever the accent; none is Finder's light blue folder */
+.folder-colour.red { --folder: #ff3b30; }
+.folder-colour.orange { --folder: #ff9500; }
+.folder-colour.yellow { --folder: #ffcc00; }
+.folder-colour.green { --folder: #34c759; }
+.folder-colour.blue { --folder: #007aff; }
+.folder-colour.purple { --folder: #af52de; }
 .folder-colour.grey { --folder: #8e8e93; }
 
 .folder-dot {
   background: var(--folder);
 }
 
-.nav-row .folder-icon {
-  color: var(--folder);
-}
-
+/* the folder tinted with its colour, the back flap a little deeper than the front, each a soft gradient */
 .folder-shape {
+  --back-top: color-mix(in srgb, var(--folder) 68%, #fff);
+  --back-bottom: color-mix(in srgb, var(--folder) 80%, #fff);
+  --front-top: color-mix(in srgb, var(--folder) 46%, #fff);
+  --front-bottom: color-mix(in srgb, var(--folder) 62%, #fff);
+  --mark: color-mix(in srgb, var(--folder) 70%, #000);
+  --mark-light: rgb(255 255 255 / 0.55);
   display: block;
   width: 100%;
+  overflow: visible;
 }
 
-.folder-shape .back {
-  fill: color-mix(in srgb, var(--folder) 72%, #000);
+.folder-shape.none {
+  --back-top: #6bb5ef;
+  --back-bottom: #58a7e8;
+  --front-top: #a7d5f8;
+  --front-bottom: #86c3f2;
+  --mark: #3c86c9;
 }
 
-.folder-shape .front {
-  fill: var(--folder);
+:root[data-theme='dark'] .folder-shape {
+  --back-top: color-mix(in srgb, var(--folder) 78%, #fff);
+  --back-bottom: color-mix(in srgb, var(--folder) 92%, #fff);
+  --front-top: color-mix(in srgb, var(--folder) 58%, #fff);
+  --front-bottom: color-mix(in srgb, var(--folder) 74%, #fff);
+  --mark: color-mix(in srgb, var(--folder) 66%, #000);
+  --mark-light: rgb(255 255 255 / 0.3);
+}
+
+:root[data-theme='dark'] .folder-shape.none {
+  --back-top: #519fdc;
+  --back-bottom: #418fcf;
+  --front-top: #84c0ee;
+  --front-bottom: #66ade5;
+  --mark: #2d6fa9;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .folder-shape {
+    --back-top: color-mix(in srgb, var(--folder) 78%, #fff);
+    --back-bottom: color-mix(in srgb, var(--folder) 92%, #fff);
+    --front-top: color-mix(in srgb, var(--folder) 58%, #fff);
+    --front-bottom: color-mix(in srgb, var(--folder) 74%, #fff);
+    --mark: color-mix(in srgb, var(--folder) 66%, #000);
+    --mark-light: rgb(255 255 255 / 0.3);
+  }
+
+  :root:not([data-theme='light']) .folder-shape.none {
+    --back-top: #519fdc;
+    --back-bottom: #418fcf;
+    --front-top: #84c0ee;
+    --front-bottom: #66ade5;
+    --mark: #2d6fa9;
+  }
+}
+
+.folder-shape .back-top { stop-color: var(--back-top); }
+.folder-shape .back-bottom { stop-color: var(--back-bottom); }
+.folder-shape .front-top { stop-color: var(--front-top); }
+.folder-shape .front-bottom { stop-color: var(--front-bottom); }
+.folder-shape .mark-dark { fill: var(--mark); }
+.folder-shape .mark-light { fill: var(--mark-light); }
+
+/* too small for a symbol or an emoji to read */
+.nav-row .folder-shape .mark {
+  display: none;
+}
+
+.nav-row .folder-shape {
+  flex: none;
+  width: 18px;
 }
 
 /* a little wider than a page and shorter, on the page's line, so the names line up */
 .folder-art .folder-shape {
   width: calc(var(--tile, 116px) * 0.9);
+}
+
+/* Customise Folder…, laid out as Finder's: the folder, the colours, the symbols or emoji, then Clear and Emoji */
+.customise-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.customise-preview .folder-shape {
+  width: 120px;
+}
+
+.customise-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.customise-colours {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.colour-choice {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--folder);
+  color: var(--text-secondary);
+}
+
+/* No colour: a tag with a slash through it */
+.colour-choice.none {
+  background: transparent;
+}
+
+.colour-choice.none .sf {
+  width: 18px;
+  height: 18px;
+}
+
+.colour-choice.none::after {
+  content: '';
+  position: absolute;
+  width: 26px;
+  height: 1.5px;
+  border-radius: 1px;
+  background: currentColor;
+  transform: rotate(-45deg);
+}
+
+.colour-choice[aria-checked='true'] {
+  box-shadow: 0 0 0 2px var(--bg-elevated), 0 0 0 4px var(--border-strong);
+}
+
+.colour-choice:focus-visible,
+.symbol-choice:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.customise-symbols,
+.customise-grid.emoji {
+  max-height: 248px;
+  overflow-y: auto;
+  padding: 2px 8px 8px;
+  border-radius: 10px;
+  background: var(--bg-subtle);
+}
+
+.customise-heading {
+  margin: 10px 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.customise-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 36px);
+  justify-content: space-between;
+  gap: 2px;
+}
+
+.customise-grid.emoji {
+  padding-top: 8px;
+}
+
+.customise-emoji {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.symbol-choice {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.symbol-choice .sf {
+  width: 20px;
+  height: 20px;
+}
+
+.symbol-choice:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.symbol-choice[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.customise-actions {
+  display: flex;
+  justify-content: space-between;
 }
 
 .icon-size {
