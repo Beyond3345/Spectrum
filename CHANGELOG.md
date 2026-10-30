@@ -2,7 +2,7 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
-## Unreleased
+## 2.0.1 (30 October 2026)
 
 ### Added
 
@@ -14,6 +14,11 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Folders are drawn as Finder draws them: the light blue folder with a soft gradient, or tinted with the folder's colour, with its symbol engraved on the front in a deeper shade or its emoji in its own colours, on Home's icons and list and in the sidebar
 - Folder colours are Finder's tag colours in Finder's order: Red, Orange, Yellow, Green, Blue, Purple and Grey. Blue is now a colour of its own, and a folder without a colour is the light blue folder. Folders keep the colours they had
 - Project and folder icons on Home are the size of Goodnotes' icons, and a folder no longer shows how many projects it holds on its icon
+
+### Fixed
+
+- On Windows, a project in a folder whose path is longer than 260 characters compiles, and a compile whose output pipe fails no longer stops Spectrum
+- On Windows, SyncTeX finds the source of a project whose folder name has characters outside the system's code page, which some TeX engines write as `?`
 
 ## 2.0.0 (29 October 2026)
 

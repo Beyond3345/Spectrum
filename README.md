@@ -308,9 +308,9 @@ From 2.0, projects and settings go between your computers through GitHub, and th
 
 ## Installing
 
-Download the macOS 1.10.4 installer and its SHA-256 checksum from the [latest GitHub release](https://github.com/Beyond3345/Spectrum/releases/latest). The Windows 1.10.4 installer will be added to the same release later; Windows users can use [version 1.10.0](https://github.com/Beyond3345/Spectrum/releases/tag/v1.10.0) meanwhile.
+Download the macOS or Windows installer and the SHA-256 checksums from the [latest GitHub release](https://github.com/Beyond3345/Spectrum/releases/latest).
 
-1. Open `Spectrum_1.10.4_universal.dmg`
+1. Open `Spectrum_2.0.1_universal.dmg`
 2. Drag Spectrum into the Applications folder
 3. Open Spectrum from the Applications folder
 
@@ -320,11 +320,11 @@ Since the application is signed ad hoc rather than with an Apple Developer ID, m
 xattr -dr com.apple.quarantine /Applications/Spectrum.app
 ```
 
-On Windows, run `Spectrum_1.10.0_x64-setup.exe`. It installs Spectrum for the current user without administrator rights and adds it to the Start menu, and it installs Microsoft Edge WebView2 when the PC does not have it yet. Since the installer is not signed, Windows SmartScreen may warn about it on the first run. To continue, select More info and then Run anyway.
+On Windows, run `Spectrum_2.0.1_x64-setup.exe`. It installs Spectrum for the current user without administrator rights and adds it to the Start menu, and it installs Microsoft Edge WebView2 when the PC does not have it yet. Since the installer is not signed, Windows SmartScreen may warn about it on the first run. To continue, select More info and then Run anyway.
 
 ## Windows
 
-The Windows version is a preview. Version 1.10.0 was built and tested on a Windows x64 PC, including the packaged backend and native agent isolation. An installed GUI walkthrough has not been performed; see the [Windows delivery report](docs/WINDOWS_DELIVERY_REPORT.md). It differs from the macOS version as follows,
+The Windows version is a preview. Version 2.0 was built and tested on a Windows x64 PC, including the packaged backend, the spelling and grammar engines and native agent isolation; see the [Windows 2.0 validation report](docs/WINDOWS_2_0_VALIDATION.md). It differs from the macOS version as follows,
 
 - the window has the standard Windows title bar, and Liquid Glass is not available,
 - the icons are Microsoft's Fluent UI System Icons, since Apple's SF Symbols may only be used on Apple platforms,
