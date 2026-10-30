@@ -6,7 +6,7 @@ import { spawn } from 'child_process';
 import { AsyncLocalStorage } from 'async_hooks';
 import { DATA_DIR } from '../config/constants.js';
 import { ensureDir, listFilesRecursive, renameOver } from '../utils/fsUtils.js';
-import { builtInTectonic } from './engineService.js';
+import { biberCache, builtInTectonic, tectonicBiber } from './engineService.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { withoutComments } from '../utils/texUtils.js';
 import { cachePath, getProjectRoot } from './projectService.js';
@@ -54,13 +54,13 @@ const KEPT_MARKER = '.complete';
 const RERUN = /\brerun\b(?! checks for auxiliary files)/i;
 // a % !TEX root = ../thesis.tex comment on a line of its own
 const TEX_ROOT = /^\s*%\s*!TEX\s+root\s*=\s*(.+?)\s*$/im;
-// biblatex's Biber, which needs a newer Biber than Tectonic ships with; backend=bibtex runs BibTeX instead
+// biblatex's Biber, which for Tectonic's biblatex must be Biber 2.17 (Spectrum downloads it); backend=bibtex runs BibTeX instead
 const BIBLATEX = /\\addbibresource\b|\\(?:usepackage|RequirePackage)(?:\s*\[[^\]]*\])?\s*\{biblatex\}/;
 const BIBTEX_BACKEND = /backend\s*=\s*bibtex/;
 // Tectonic's bundle or a package couldn't be fetched (the bundle's own panic says it isn't cached)
 const TECTONIC_DOWNLOAD = /failed to download|failure downloading|couldn't get it from the internet/i;
 const TECTONIC_DOWNLOAD_ERROR = 'Tectonic couldn’t reach its server to download the TeX packages this document needs. Check the internet connection and compile again, or install TeX Live (MacTeX on a Mac, MiKTeX on Windows).';
-const BIBLATEX_NOTE = '\n[spectrum] biblatex with Biber needs TeX Live or MiKTeX (or use backend=bibtex), which the built-in Tectonic can’t run.\n';
+const BIBLATEX_NOTE = '\n[spectrum] biblatex with Biber needs the Biber that matches the built-in Tectonic. Download Biber from Logs or Settings › Engines › LaTeX, or install TeX Live or MiKTeX.\n';
 // the index's and the glossaries' programs, each run when a pass changed its input or it made nothing yet.
 // makeglossaries is Perl, which MiKTeX doesn't come with; makeglossaries-lite is Lua
 const INDEXERS = [
@@ -118,6 +118,14 @@ function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = f
     default:
       return null;
   }
+}
+
+/** Tectonic's environment with Spectrum's Biber first on its PATH (Tectonic runs biber from there), or env as it is. */
+export function withBiber(env, biber) {
+  if (!biber) return env;
+  // Windows spells it Path
+  const key = Object.keys(env).find((name) => name.toUpperCase() === 'PATH') ?? 'PATH';
+  return { ...env, [key]: [path.dirname(biber), env[key]].filter(Boolean).join(path.delimiter), PAR_GLOBAL_TMPDIR: biberCache() };
 }
 
 /** The PATH with a TeX folder first (Settings › Engines › LaTeX), or undefined when it isn't a folder: the PATH as it is. */
@@ -492,7 +500,7 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
   const doc = options.markdownSource ? mainFile : docPath(projectRoot, absMain);
   const searchPath = (name) => [slashed(mainDir), ...(mdDir && mdDir !== mainDir ? [slashed(mdDir)] : []), slashed(projectRoot), process.env[name] ?? ''].join(path.delimiter);
   const binPath = jobs.getStore()?.searchPath;
-  const texEnv = {
+  let texEnv = {
     ...process.env,
     ...(binPath && { [PATH_KEY]: binPath }),
     TEXINPUTS: searchPath('TEXINPUTS'),
@@ -504,6 +512,9 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
     const fontconfig = await tectonicFontconfig();
     if (fontconfig) texEnv.FONTCONFIG_FILE = fontconfig;
   }
+  // a mismatched Biber on the PATH would refuse Tectonic's biblatex; an untrusted compile runs none
+  const biber = engine === 'tectonic' && !options.untrusted ? tectonicBiber() : null;
+  texEnv = withBiber(texEnv, biber);
   // Recompile from scratch: nothing an earlier compile of the document kept, with any engine
   // (one a virus scanner still holds is left: none of it is copied in, and keepBuild clears it again)
   if (options.fresh && cache) await fs.rm(path.join(cache, 'build-files', doc), { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
@@ -654,12 +665,13 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
   if (engine === 'tectonic' && /biblatex control file version/i.test(log)) {
     log += '\n[spectrum] This document uses biblatex, and Tectonic’s bundled biblatex needs a different biber version than the one installed. Compile it with Auto, pdfLaTeX or XeLaTeX instead.\n';
   }
-  // biblatex with Biber needs a real TeX installation, which Auto has already preferred when there is one
-  if (engine === 'tectonic' && BIBLATEX.test(withoutComments(tex)) && !BIBTEX_BACKEND.test(tex)) log += BIBLATEX_NOTE;
+  // biblatex with Biber needs Spectrum's Biber, or a real TeX installation, which Auto has already preferred when there is one
+  const notice = engine === 'tectonic' && !biber && BIBLATEX.test(withoutComments(tex)) && !BIBTEX_BACKEND.test(tex) ? { code: 'BIBER_MISSING' } : null;
+  if (notice) log += BIBLATEX_NOTE;
   // the built-in Tectonic fetches its bundle and each package on first use: offline, say what to do about it
   if (engine === 'tectonic' && code !== 0 && TECTONIC_DOWNLOAD.test(log)) {
     await cleanBuild(buildRoot, outDir);
-    return { ok: false, error: TECTONIC_DOWNLOAD_ERROR, log, status: code ?? -1 };
+    return { ok: false, error: TECTONIC_DOWNLOAD_ERROR, log, status: code ?? -1, ...notice };
   }
   let pdf;
   try {
@@ -668,11 +680,11 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
     // a store Windows still holds is only reused, and a kept file TeX can't read compiles again from scratch
     if (multiPass && store) await fs.rm(store, { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
     await cleanBuild(buildRoot, outDir);
-    return { ok: false, error: 'No PDF was produced.', log, status: code ?? -1 };
+    return { ok: false, error: 'No PDF was produced.', log, status: code ?? -1, ...notice };
   }
   if (!cache) {
     await cleanBuild(buildRoot, outDir);
-    return { ok: true, pdf: pdf.toString('base64'), log, status: code ?? 0 };
+    return { ok: true, pdf: pdf.toString('base64'), log, status: code ?? 0, ...notice };
   }
   // a Markdown document's PDF goes beside the .md (base there is main, not main.md)
   const absPdf = options.markdownSource
@@ -694,7 +706,7 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
     await cleanBuild(buildRoot, outDir);
   }
   const pdfPath = docPath(projectRoot, absPdf);
-  return { ok: true, pdf: pdf.toString('base64'), pdfPath, log, status: code ?? 0, ...(pdfStale && { pdfStale }) };
+  return { ok: true, pdf: pdf.toString('base64'), pdfPath, log, status: code ?? 0, ...(pdfStale && { pdfStale }), ...notice };
 }
 
 /**

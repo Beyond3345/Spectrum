@@ -1,4 +1,4 @@
-// The built-in Tectonic in Auto's choices, the biblatex guard and Tectonic's download failure, with Node scripts
+// The built-in Tectonic in Auto's choices, the biblatex guard, Spectrum's Biber and Tectonic's download failure, with Node scripts
 // standing in for the engines in a throwaway data folder. Run: node --test apps/backend/test/compile-engines.test.js
 import { test, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,7 +17,9 @@ Object.assign(process.env, {
   SPECTRUM_TEMPLATE_SEED_DIR: ''
 });
 const { createProject } = await import('../src/services/projectService.js');
-const { runCompile, tectonicFontconfig } = await import('../src/services/compileService.js');
+const { runCompile, tectonicFontconfig, withBiber } = await import('../src/services/compileService.js');
+const { tectonicBiber } = await import('../src/services/engineService.js');
+const biberDir = path.join(tmp, 'data', 'engines', 'biber');
 
 after(() => {
   process.env.PATH = realPath;
@@ -99,13 +101,56 @@ test('a biblatex document skips Tectonic when another engine is installed', { sk
   assert.doesNotMatch(result.log, /TECTONIC RAN/);
 });
 
-test('with only Tectonic, a biblatex document compiles with the Biber note', { skip }, async () => {
+test('with only Tectonic and no Biber of Spectrum’s, a biblatex document compiles with the Biber note and its button', { skip }, async () => {
   await binWith('biblatex');
   await builtIn('biblatex', 'TECTONIC RAN');
   const p = await projectWith(withBiblatex());
   const result = await compile(p);
   assert.equal(result.engine, 'tectonic');
-  assert.match(result.log, /biblatex with Biber needs TeX Live or MiKTeX/);
+  assert.match(result.log, /\[spectrum\] biblatex with Biber needs the Biber that matches the built-in Tectonic\. Download Biber from Logs or Settings › Engines › LaTeX/);
+  assert.equal(result.code, 'BIBER_MISSING');
+  // backend=bibtex needs none
+  const bibtex = await compile(await projectWith(withBiblatex().replace('{biblatex}', '[backend=bibtex]{biblatex}'), 'BibTeX'));
+  assert.equal(bibtex.code, undefined);
+});
+
+test('with Spectrum’s Biber, Tectonic finds it before any other on the PATH and unpacks it into its cache', { skip }, async () => {
+  const bin = await binWith('biber', { name: 'biber', marker: 'MISMATCHED BIBER' });
+  await fs.mkdir(biberDir, { recursive: true });
+  await fs.writeFile(path.join(biberDir, 'biber'), '#!/bin/sh\n', { mode: 0o755 });
+  const file = path.join(tmp, 'tectonic-env');
+  await fs.writeFile(file, ENGINE('TECTONIC RAN').replace("let out = '';", "console.log('PATH=' + process.env.PATH + ' CACHE=' + process.env.PAR_GLOBAL_TMPDIR); let out = '';"), { mode: 0o755 });
+  process.env.SPECTRUM_TECTONIC = file;
+  try {
+    const result = await compile(await projectWith(withBiblatex(), 'Biber'));
+    assert.equal(result.engine, 'tectonic');
+    assert.ok(result.log.includes('PATH=' + [biberDir, bin].join(path.delimiter) + ' CACHE=' + path.join(biberDir, 'cache')), result.log);
+    assert.doesNotMatch(result.log, /needs the Biber/);
+    assert.equal(result.code, undefined);
+  } finally {
+    await fs.rm(biberDir, { recursive: true, force: true });
+  }
+});
+
+test('on Windows, Spectrum’s biber.exe goes first on the Path Tectonic is given', async () => {
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+  await fs.mkdir(biberDir, { recursive: true });
+  await fs.writeFile(path.join(biberDir, 'biber.exe'), 'MZ');
+  Object.defineProperty(process, 'platform', { ...platform, value: 'win32' });
+  try {
+    const biber = tectonicBiber();
+    assert.equal(biber, path.join(biberDir, 'biber.exe'));
+    const env = withBiber({ Path: 'C:\\texlive\\2022\\bin\\win64', SystemRoot: 'C:\\Windows' }, biber);
+    assert.deepEqual(env, {
+      Path: [biberDir, 'C:\\texlive\\2022\\bin\\win64'].join(path.delimiter),
+      SystemRoot: 'C:\\Windows',
+      PAR_GLOBAL_TMPDIR: path.join(biberDir, 'cache')
+    });
+    assert.deepEqual(withBiber({ Path: 'C:\\Windows' }, null), { Path: 'C:\\Windows' }, 'none downloaded: the Path as it is');
+  } finally {
+    Object.defineProperty(process, 'platform', platform);
+    await fs.rm(biberDir, { recursive: true, force: true });
+  }
 });
 
 test('a Tectonic download failure says how to get the packages', { skip }, async () => {
