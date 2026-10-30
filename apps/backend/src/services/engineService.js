@@ -74,7 +74,8 @@ export function tectonicBiber() {
 
 /**
  * Where that Biber unpacks itself: it is a packed Perl program, which fills this folder the first time it runs (at
- * install, so an agent's compile, which can only read it, finds it full).
+ * install). Where it can't write here (an agent's isolation, which only reads the engines) it unpacks into the temp
+ * folder instead. ponytail: about 250 MB again in each agent's home that runs it
  */
 export const biberCache = () => path.join(BIBER_DIR, 'cache');
 
