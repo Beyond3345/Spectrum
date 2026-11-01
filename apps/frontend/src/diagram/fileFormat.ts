@@ -5,8 +5,8 @@ import { tikzIsNewer } from './modes/tikz/code';
 import type { TikzModel } from './modes/tikz/code';
 import type { DiagramFile } from './types';
 
-// One file per diagram: figures/<name>.tex, a standalone TikZ document, figures/<name>.typ, a Typst file, or
-// figures/<name>.mmd. Its last line keeps the drawing, after a comment mark TeX, Typst and Mermaid skip (%, // and %%),
+// One file per diagram: diagrams/<name>.tex, a standalone TikZ document, diagrams/<name>.typ, a Typst file, or
+// diagrams/<name>.mmd (figures/ before 2.1). Its last line keeps the drawing, after a comment mark TeX, Typst and Mermaid skip (%, // and %%),
 // with a hash of the text the drawing writes:
 //   % spectrum-diagram v1 <base64 of the DiagramFile as JSON> <sha256 of that text, its first 16 hex digits>
 // The text above that line matching the hash means it's as the drawing left it; otherwise it was edited by hand.

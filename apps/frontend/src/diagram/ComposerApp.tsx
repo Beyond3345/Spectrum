@@ -2,8 +2,9 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ReactFlowProvider } from '@xyflow/react';
 import type { EditorView } from '@codemirror/view';
-import { ApiError, compileProject, getEngines, getFile, getProjectSettings, getProjectTree, runAgent, stopCompile, uploadFiles, writeFile } from '../api/client';
+import { ApiError, compileProject, deleteFile, getEngines, getFile, getProjectSettings, getProjectTree, runAgent, stopCompile, uploadFiles, writeFile } from '../api/client';
 import type { CompileEngine } from '../api/client';
+import { confirmDialog } from '../app/Dialogs';
 import Icon from '../app/Icon';
 import { MenuButton } from '../app/Menu';
 import Tabs from '../app/Tabs';
@@ -33,7 +34,7 @@ import type { DiagramFile, DiagramLanguage, DiagramMode } from './types';
 import './composer.css';
 
 // The diagram composer, in its own window: a chooser for a new diagram (a gallery of starters by category), then the
-// canvas (Draw) and the file (Code), the compiled preview below, saved as you go to figures/<name>.tex, .typ or .mmd
+// canvas (Draw) and the file (Code), the compiled preview below, saved as you go to diagrams/<name>.tex, .typ or .mmd
 
 /** Messages to the main window: a diagram to insert as a figure, and a diagram file saved. */
 type DiagramMessage =
@@ -53,6 +54,9 @@ function post(message: DiagramMessage) {
 const nameOf = (path: string) => path.slice(path.lastIndexOf('/') + 1);
 const folderOf = (path: string) => path.slice(0, path.lastIndexOf('/'));
 const stemOf = (path: string) => nameOf(path).replace(/\.[^.]+$/, '');
+
+/** Where the composer saves new diagrams. Those made before 2.1 are in figures/, which now holds Insert figure's images. */
+export const DIAGRAM_FOLDER = 'diagrams';
 
 /** The packages and TikZ libraries a standalone file loads, for the document it goes into. */
 function loadsOf(text: string) {
@@ -132,7 +136,7 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
   useEffect(() => {
     document.title = 'Draw a diagram';
     getProjectTree(projectId)
-      .then(({ items }) => setTaken(new Set(items.filter((i) => i.path.startsWith('figures/')).map((i) => stemOf(i.path).toLowerCase()))))
+      .then(({ items }) => setTaken(new Set(items.filter((i) => i.path.startsWith(`${DIAGRAM_FOLDER}/`)).map((i) => stemOf(i.path).toLowerCase()))))
       .catch(() => setTaken(new Set()));
   }, [projectId]);
 
@@ -173,7 +177,7 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
       setError('Use letters, digits, - and _ only, starting with a letter or digit, so your document can find the file.');
       return;
     }
-    const path = `figures/${name}.${EXTENSION[m.language]}`;
+    const path = `${DIAGRAM_FOLDER}/${name}.${EXTENSION[m.language]}`;
     setBusy(true);
     setError('');
     try {
@@ -345,7 +349,7 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
         <div className="field">
           <label htmlFor="diagram-name">Name</label>
           <div className="chooser-name">
-            <span className="muted">figures/</span>
+            <span className="muted">{DIAGRAM_FOLDER}/</span>
             <input
               id="diagram-name"
               className="input"
@@ -469,6 +473,7 @@ function Composer({ projectId, path, tool }: { projectId: string; path: string; 
 }
 
 function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId: string; path: string; loaded: Loaded; initialTool?: string; onReload(): void }) {
+  const navigate = useNavigate();
   const [settings] = useSettings();
   const [doc, setDoc] = useState<Doc>(loaded.doc);
   const mode: DiagramMode<any> | undefined = doc.diagram ? modeFor(doc.diagram.language === 'mermaid' ? 'mermaid' : doc.diagram.language === 'typst' ? 'fletcher' : doc.diagram.pkg) : undefined;
@@ -526,8 +531,11 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
    * Saves what's here, one write at a time and only over the text it was opened or last saved as. overwrite: over
    * whatever's on disk now (or the file made again). Resolves to whether it's saved.
    */
+  // the diagram was deleted here: nothing saves it back
+  const gone = useRef(false);
   const save = (overwrite = false): Promise<boolean> => {
     const job = writing.current.then(async () => {
+      if (gone.current) return true;
       const now = latest.current;
       if (!overwrite && (now.key === savedRef.current || conflictRef.current)) return now.key === savedRef.current;
       try {
@@ -596,7 +604,7 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
 
   const run = useRef({ count: 0, id: '' });
   const compile = async () => {
-    if (language === 'mermaid') return;
+    if (language === 'mermaid' || gone.current) return;
     const mine = (run.current.count += 1);
     if (run.current.id) stopCompile(run.current.id).catch(() => undefined);
     const compileId = crypto.randomUUID();
@@ -649,7 +657,7 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
   useEffect(() => {
     const hooks = window as Window & { __spectrumFlush?: () => Promise<void> };
     hooks.__spectrumFlush = async () => {
-      if (await actions.current.save()) return;
+      if (gone.current || (await actions.current.save())) return;
       await writeFile(projectId, conflictCopyPath(path, '', new Date()), await fileText(), { create: true });
     };
     // the browser asks before leaving while a save is still to come
@@ -766,6 +774,52 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
       toast('The figure is ready to insert in the editor’s Floats panel.', { tone: 'success' });
     } catch (err) {
       toast(`Couldn’t insert ${name}: ${errorText(err)}`, { tone: 'error' });
+    }
+  };
+
+  /**
+   * Deletes the diagram after asking: its file, the PDF or PNG made from it beside it, and its folder when nothing else
+   * is left there. Then the chooser, for a diagram that is wanted.
+   */
+  const remove = async () => {
+    try {
+      const { items } = await getProjectTree(projectId);
+      const folder = folderOf(path);
+      const stem = `${folder ? `${folder}/` : ''}${stemOf(path)}`;
+      // the compiled preview, and a Mermaid diagram's image for the document
+      const made = items.filter((i) => i.type === 'file' && i.path !== path && [`${stem}.pdf`, `${stem}.png`].includes(i.path)).map((i) => i.path);
+      const files = [path, ...made];
+      const emptied = !!folder && !items.some((i) => i.path.startsWith(`${folder}/`) && !files.includes(i.path));
+      // a document still taking it in would stop compiling
+      const docs = items.filter((i) => i.type === 'file' && /\.(?:tex|ltx|typ|md|markdown)$/i.test(i.path) && !i.path.startsWith(`${folder}/`)).slice(0, 60);
+      // diagrams/amp, not diagrams/amp-2
+      const named = new RegExp(`${stem.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`);
+      const texts = await Promise.all(docs.map((doc) => getFile(projectId, doc.path).then((f) => f.content, () => '')));
+      const users = docs.filter((_, i) => named.test(texts[i])).map((doc) => doc.path);
+      const listed = files.length === 1 ? files[0] : `${files.slice(0, -1).join(', ')} and ${files[files.length - 1]}`;
+      const ok = await confirmDialog({
+        title: `Delete “${name}”?`,
+        message: [
+          `This deletes ${listed}${emptied ? `, and the ${folder}/ folder, which has nothing else in it` : ''}. It can’t be undone.`,
+          users.length ? `${users.join(', ')} still ${users.length === 1 ? 'includes' : 'include'} it, and won’t compile until that line is removed.` : ''
+        ]
+          .filter(Boolean)
+          .join(' '),
+        confirmLabel: 'Delete',
+        destructive: true
+      });
+      if (!ok) return;
+      gone.current = true;
+      if (run.current.id) stopCompile(run.current.id).catch(() => undefined);
+      await writing.current;
+      for (const file of files) await deleteFile(projectId, file);
+      // anything put in the folder meanwhile keeps it
+      if (emptied && !(await getProjectTree(projectId)).items.some((i) => i.path.startsWith(`${folder}/`))) await deleteFile(projectId, folder);
+      post({ type: 'saved', projectId, path });
+      toast(`Deleted ${name}.`, { tone: 'success' });
+      navigate(`/diagram?${new URLSearchParams({ project: projectId, lang: language === 'typst' ? 'typst' : 'tikz' })}`, { replace: true });
+    } catch (err) {
+      toast(`Couldn’t delete ${name}: ${errorText(err)}`, { tone: 'error' });
     }
   };
 
@@ -932,6 +986,9 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
                 ]
           }
         />
+        <button className="icon-btn" title="Delete this diagram" aria-label="Delete this diagram" onClick={remove}>
+          <Icon name="trash" />
+        </button>
       </header>
 
       {conflict && (

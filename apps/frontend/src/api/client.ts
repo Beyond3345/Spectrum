@@ -281,7 +281,7 @@ export function updateProjectSettings(id: string, patch: { compile?: { [K in key
 
 /**
  * documents: the .tex files with a \documentclass of their own, so each compiles to a PDF. diagrams: the files the
- * diagram composer can open (a figures/*.tex or .typ that ends with its drawing, any .mmd). conflicts: a sync app's conflict
+ * diagram composer can open (a diagrams/*.tex or .typ that ends with its drawing, or one in figures/ from before 2.1, any .mmd). conflicts: a sync app's conflict
  * copies, each with its original's path.
  */
 export function getProjectTree(id: string) {
@@ -536,6 +536,8 @@ export interface CompileDiagnostic {
 
 export interface CompileResult {
   ok: boolean;
+  /** a project from before 2.1, on its first compile: what moved to diagrams/ and figures/, and the documents whose paths changed */
+  folders?: { moved: { from: string; to: string }[]; rewrote: string[] };
   pdf?: string;
   /** relative path of the PDF written next to the document, e.g. "main.pdf" */
   pdfPath?: string;
@@ -621,9 +623,9 @@ export function watchCompile(compileId: string, on: { engine: (engine: string) =
 // ─── Diagram composer ───
 
 /**
- * A diagram's preview: its figures/<name>.tex or .typ compiled as a document of its own, with the files kept from its last
+ * A diagram's preview: its diagrams/<name>.tex or .typ compiled as a document of its own, with the files kept from its last
  * compile and no checkpoint, which leaves the project's main file and the editor's PDF as they are. Writes
- * figures/<name>.pdf, which the editor's Insert diagram can also use. compileId: for stopCompile, when a newer change
+ * diagrams/<name>.pdf, which the editor's Insert diagram can also use. compileId: for stopCompile, when a newer change
  * makes this preview stale.
  */
 export function compileDiagram(payload: { projectId: string; file: string; engine?: CompileEngine; compileId?: string; texFolder?: string }) {

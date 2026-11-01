@@ -85,7 +85,7 @@ export interface Starter {
   also?: string[];
   /** what search finds it by, besides its title, groups and packages: FBD, Bode, DFA, MOSFET */
   aliases?: string[];
-  /** the start of a new file's name: circuit gives figures/circuit-1.tex */
+  /** the start of a new file's name: circuit gives diagrams/circuit-1.tex */
   file: string;
   /** the drawing it starts with; none: the mode's empty one */
   model?: () => unknown;

@@ -31,7 +31,7 @@ export const STARTER_PERSONAS: Persona[] = [
     name: 'Draw a figure',
     colour: 'purple',
     prompt:
-      'Help make the figures for this document. In a LaTeX project use TikZ, pgfplots or circuitikz, with each figure in its own file under figures/ that compiles on its own. Match the document’s fonts, use colours that people with colour blindness can tell apart, label axes with their units and size each figure for the column it sits in. Give every figure a caption and a label, refer to it in the text, and compile to check the result before you finish.'
+      'Help make the figures for this document. In a LaTeX project use TikZ, pgfplots or circuitikz, with each figure in its own file under diagrams/ that compiles on its own. Match the document’s fonts, use colours that people with colour blindness can tell apart, label axes with their units and size each figure for the column it sits in. Give every figure a caption and a label, refer to it in the text, and compile to check the result before you finish.'
   }
 ];
 

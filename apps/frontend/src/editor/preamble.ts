@@ -29,24 +29,135 @@ export const loadedPackages = (source: string) => loaded(source, LOAD_RE);
 /** TikZ libraries loaded with \usetikzlibrary, comma lists too, commented-out lines not. */
 export const loadedLibraries = (source: string) => loaded(source, LIBRARY_RE);
 
+/**
+ * The order packages load in, from docs/LATEX_STYLE.md: references, page, maths, figures and tables, code, then links.
+ * A package added to a document goes into its place in this order among the ones the document already loads.
+ */
+export const PACKAGE_ORDER = [
+  // references
+  'csquotes',
+  'biblatex',
+  'xurl',
+  // page
+  'geometry',
+  'parskip',
+  'setspace',
+  'babel',
+  'iftex',
+  'fontenc',
+  'lmodern',
+  'microtype',
+  // maths
+  'amsmath',
+  'amssymb',
+  'mathtools',
+  'amsthm',
+  // figures and tables
+  'graphicx',
+  'subcaption',
+  'float',
+  'booktabs',
+  'tabularx',
+  'xltabular',
+  'siunitx',
+  'multirow',
+  'makecell',
+  'threeparttable',
+  'tikz',
+  'pgfplots',
+  'pgfplotstable',
+  'circuitikz',
+  'tikz-cd',
+  // code
+  'xcolor',
+  'listings',
+  'algorithm',
+  'algpseudocode',
+  // links
+  'hyperref',
+  'cleveref'
+];
+const rankOf = (name: string) => PACKAGE_ORDER.indexOf(name);
+
 export type PackageEdit = {
   source: string;
   added: string[];
-  /** the insertion, for applying it to a live editor */
-  change?: { from: number; insert: string };
+  /** the change that made it (all the insertions, from the first to the last), for applying it to a live editor */
+  change?: { from: number; to: number; insert: string };
   /** nothing was added because the source has no \begin{document} */
   noDocument?: boolean;
 };
 
 /**
- * Adds \usepackage{…} lines for the packages the source doesn't load yet, one per line, just before
- * \begin{document}, or straight after the \usepackage lines when only blank lines separate them from it.
+ * Adds a \usepackage{…} line for each package the source doesn't load yet, in its place in PACKAGE_ORDER: before the
+ * first package the document loads that comes after it (and above that package's comment heading and the blank line
+ * over it, so it ends its own group). When none does, or the document's own order doesn't allow it, or the package
+ * isn't in the order, it goes after the last \usepackage line; with none, just before \begin{document}.
  * first: on the line after \documentclass instead, for a package that wants to load before the others (standalone).
  */
 export function addPackages(source: string, packages: string[], { first = false } = {}): PackageEdit {
   const have = loadedPackages(preambleOf(source));
   const wanted = [...new Set(packages)].filter((p) => !have.has(p));
-  return addLines(source, wanted, wanted.map((p) => `\\usepackage{${p}}`), first);
+  if (first || !wanted.length) return addLines(source, wanted, wanted.map((p) => `\\usepackage{${p}}`), first);
+  // known packages first, in order, so each one placed is there for the next to line up against
+  const ordered = [...wanted.filter((p) => rankOf(p) !== -1).sort((a, b) => rankOf(a) - rankOf(b)), ...wanted.filter((p) => rankOf(p) === -1)];
+  let result = source;
+  for (const name of ordered) {
+    const placed = placePackage(result, name);
+    if (placed.noDocument) return { source, added: [], noDocument: true };
+    result = placed.source;
+  }
+  const { from, to, insert } = changeBetween(source, result);
+  return { source: result, added: wanted, change: { from, to, insert } };
+}
+
+type PackageLine = { start: number; end: number; ranks: number[]; text: string };
+
+/** The preamble's own \usepackage and \RequirePackage lines: where each starts and ends, and its packages' ranks. */
+function packageLines(source: string) {
+  const blank = blankComments(preambleOf(source));
+  const found: PackageLine[] = [];
+  for (let start = 0; start < blank.length; ) {
+    const end = blank.indexOf('\n', start) === -1 ? blank.length : blank.indexOf('\n', start);
+    const text = blank.slice(start, end);
+    // a whole line that loads packages, not a one-line preamble with \documentclass and the rest on it
+    if (/^\s*\\(?:usepackage|RequirePackage)\b/.test(text) && !DOCUMENT_CLASS.test(text)) {
+      const ranks = [...loadedPackages(text)].map(rankOf).filter((r) => r !== -1);
+      found.push({ start, end, ranks, text });
+    }
+    start = end + 1;
+  }
+  return found;
+}
+
+function placePackage(source: string, name: string): PackageEdit {
+  const lines = packageLines(source);
+  const line = `\\usepackage{${name}}`;
+  if (!lines.length) return addLines(source, [name], [line], false);
+  const rank = rankOf(name);
+  const blank = blankComments(source);
+  const insertAt = (at: number, ref: PackageLine) => {
+    const insert = `${/^[ \t]*/.exec(ref.text)![0]}${line}\n`;
+    return { source: source.slice(0, at) + insert + source.slice(at), added: [name] };
+  };
+  const after = (ref: PackageLine) => insertAt(ref.end + 1, ref);
+  const last = lines[lines.length - 1];
+  if (rank === -1) return after(last);
+  const next = lines.findIndex((l) => l.ranks.some((r) => r > rank));
+  // a package before the next one, but loaded after it, means the document's order isn't the guide's
+  const earlier = lines.map((l, i) => (l.ranks.some((r) => r < rank) ? i : -1)).reduce((a, b) => Math.max(a, b), -1);
+  if (next === -1 || earlier > next) return after(last);
+  // up over the next package's comment heading and the blank lines above it, but not past the package before it
+  let at = lines[next].start;
+  const floor = earlier === -1 ? (DOCUMENT_CLASS.exec(blank)?.index ?? 0) : lines[earlier].end + 1;
+  for (const skip of [/^\s*%/, /^\s*$/]) {
+    while (at > floor) {
+      const prev = source.lastIndexOf('\n', at - 2) + 1;
+      if (prev < floor || !skip.test(source.slice(prev, at - 1))) break;
+      at = prev;
+    }
+  }
+  return insertAt(at, lines[next]);
 }
 
 /** Adds a \usetikzlibrary{…} line for the libraries the source doesn't load yet, where addPackages puts packages. */
@@ -65,13 +176,13 @@ function addLines(source: string, added: string[], lines: string[], first: boole
   const classEnd = docClass ? blank.indexOf('\n', docClass.index + docClass[0].length) : -1;
   if (classEnd !== -1 && classEnd < begin) {
     const insert = lines.map((line) => `${line}\n`).join('');
-    return { source: source.slice(0, classEnd + 1) + insert + source.slice(classEnd + 1), added, change: { from: classEnd + 1, insert } };
+    return { source: source.slice(0, classEnd + 1) + insert + source.slice(classEnd + 1), added, change: { from: classEnd + 1, to: classEnd + 1, insert } };
   }
   let at = blank.lastIndexOf('\n', begin - 1) + 1;
   // a one-line preamble (\documentclass{article}\begin{document}): the start of that line would be above \documentclass
   if (blank.slice(at, begin).trim()) {
     const insert = `\n${lines.map((line) => `${line}\n`).join('')}`;
-    return { source: source.slice(0, begin) + insert + source.slice(begin), added, change: { from: begin, insert } };
+    return { source: source.slice(0, begin) + insert + source.slice(begin), added, change: { from: begin, to: begin, insert } };
   }
   let ref = at;
   // walk back over blank lines; a \usepackage line there takes the new lines after it
@@ -90,7 +201,7 @@ function addLines(source: string, added: string[], lines: string[], first: boole
   }
   const indent = /^[ \t]*/.exec(source.slice(ref))![0];
   const insert = lines.map((line) => `${indent}${line}\n`).join('');
-  return { source: source.slice(0, at) + insert + source.slice(at), added, change: { from: at, insert } };
+  return { source: source.slice(0, at) + insert + source.slice(at), added, change: { from: at, to: at, insert } };
 }
 
 /** The one change that turns before into after (what lies between their common start and end), for a live editor. */

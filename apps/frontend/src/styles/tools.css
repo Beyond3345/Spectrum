@@ -1711,6 +1711,89 @@ span.log-location {
   font-size: 12.5px;
 }
 
+/* the label sits before the number in a NumberField, at a width that lines the fields up */
+.figure-custom-width > label {
+  min-width: 52px;
+}
+
+/* the four crop edges, two to a row */
+.figure-trim {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+}
+
+/* one image of several: its preview and name, then its file name, caption and label */
+.figure-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.figure-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  cursor: grab;
+}
+
+/* a panel being dragged to a new place, and the one it would go to */
+.figure-panel.moving {
+  opacity: 0.5;
+}
+
+.figure-panel.over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.figure-panel-head img {
+  width: 56px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+/* the drop zone under images already added, for another */
+.drop-zone.compact {
+  flex-direction: row;
+  min-height: 0;
+  padding: 10px;
+}
+
+/* what the options and packages mean, folded away under the card */
+.tool-help {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.tool-help summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+
+.tool-help dl {
+  margin: 8px 0 0;
+}
+
+.tool-help dt {
+  margin-top: 8px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.tool-help dd {
+  margin: 2px 0 0;
+}
+
+.tool-help code {
+  font-size: 11.5px;
+}
+
 /* the cell grid scrolls sideways inside its card when the Tools column is narrow */
 .table-grid-scroll {
   overflow-x: auto;
@@ -1746,6 +1829,20 @@ span.log-location {
   background: var(--bg-selected);
 }
 
+/* a merged cell fills the rows, columns and gaps it covers, over the line targets there */
+.table-grid .input.merged {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  min-height: 30px;
+  /* opaque, so the rules it stops short of don't show through */
+  background: linear-gradient(var(--fill), var(--fill)), var(--bg-elevated);
+}
+
+.table-grid .input.merged.head {
+  background: linear-gradient(var(--bg-selected), var(--bg-selected)), var(--bg-elevated);
+}
+
 /* a gap that takes a line: the line runs from the middle of one outer gap to the other, so corners meet */
 .table-line {
   position: relative;
@@ -1777,6 +1874,11 @@ span.log-location {
 
 .table-line.on::before {
   border-color: var(--text);
+}
+
+/* a short rule under some columns only (\cmidrule or \cline), drawn above the full-width target in the same gap */
+.table-line.part {
+  z-index: 1;
 }
 
 /* booktabs' top and bottom rules */

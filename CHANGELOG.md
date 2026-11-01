@@ -2,6 +2,21 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.1.0 (1 November 2026)
+
+### Added
+
+- Insert table can merge cells across columns and down rows (\multicolumn and \multirow, or table.cell spans in Typst), draw a short rule under a group of columns (\cmidrule with booktabs, \cline otherwise) and line numbers up on their decimal point with siunitx's S columns, working out each column's table-format from its numbers. A rule stops either side of a cell merged across it
+- Insert table has xltabular as a third environment, for a table that breaks across pages and repeats its header rows on each, and options for line breaks inside cells (makecell) and notes under the table (threeparttable). Each adds the package it needs
+- Insert figure can put several images in one figure, side by side or in a grid of two to four columns, as sub-figures (a), (b) under one caption (subcaption), as separate figures each with its own number, or under one caption alone, lined up along their tops, centres or bottoms. The images are put in order by dragging them or with Move earlier and Move later. An image can be sized by a share of the line, an exact width or height, a box it fits inside or a scale of its own size, and cropped at its edges
+- The diagram composer has a Delete button. After asking, it deletes the diagram's file and the PDF or PNG made from it, and its folder when nothing else is left there, then goes back to choosing a diagram. It says when a document still includes the diagram
+- The Insert table and Insert figure cards explain their options and packages under What these options mean: tabular, tabularx and xltabular, S columns, booktabs, merged cells, short rules, makecell, threeparttable, sub-figures, sizing and placement
+
+### Changed
+
+- The diagram composer saves diagrams in diagrams/, and Insert figure saves images in figures/, rather than figures/ and images/. A project from before moves to the new folders on its first compile: the composer's diagrams to diagrams/ and images/ into figures/, with the paths in its documents updated to match. Images of the user's own in figures/ stay, and a folder whose names would clash stays where it is
+- Insert table, Insert figure and Insert diagram add a package in its place in the order of docs/LATEX_STYLE.md, before the next group's heading, or after the last \usepackage when the document's order does not allow it or the package is not in the guide, rather than just before \begin{document}
+
 ## 2.0.4 (30 October 2026)
 
 ### Fixed

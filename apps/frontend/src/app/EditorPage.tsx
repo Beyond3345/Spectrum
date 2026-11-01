@@ -1597,6 +1597,17 @@ function Editor({ projectId }: { projectId: string }) {
       });
       const actual = res.engine || used;
       built = res.doc || doc;
+      // a project from before 2.1 had its diagrams and images moved to the new folders on this compile
+      if (res.folders) {
+        const { moved, rewrote } = res.folders;
+        refreshTree().catch(() => undefined);
+        recheck(rewrote).catch(() => undefined);
+        const listed = rewrote.length < 2 ? rewrote.join('') : `${rewrote.slice(0, -1).join(', ')} and ${rewrote[rewrote.length - 1]}`;
+        notify(
+          `Spectrum now keeps the composer’s diagrams in diagrams/ and inserted images in figures/, so ${moved.length} ${moved.length === 1 ? 'file was' : 'files were'} moved there${rewrote.length ? `, and the paths in ${listed} were updated` : ''}.`,
+          'success'
+        );
+      }
       if (res.checkpoint?.saved) window.dispatchEvent(new Event(VERSIONS_CHANGED));
       const problem = checkpointProblem(res.checkpoint, skippedToldRef.current);
       if (problem && settings.checkpointNotice) notify(problem, 'error');

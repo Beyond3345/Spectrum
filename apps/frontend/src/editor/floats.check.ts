@@ -1,7 +1,7 @@
 // Self-check for the Floats panel's LaTeX and the preamble helper. Run:
 // npx esbuild apps/frontend/src/editor/floats.check.ts --bundle --platform=node --log-level=warning | node
-import { blockAt, diagramImageLatex, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableRules, tableTypst, typstMarkup, uniqueName } from './floats';
-import type { TableModel } from './floats';
+import { blockAt, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, graphicsOptions, panelWidth, fitMerges, headerRows, numberFormat, tableNotes, tablePackages, withMerge, diagramImageLatex, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableRules, tableTypst, typstMarkup, uniqueName } from './floats';
+import type { FigureSet, FigureSize, TableModel } from './floats';
 import { addLibraries, addPackages, changeBetween, loadedLibraries, loadedPackages, projectPackages } from './preamble';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -25,10 +25,10 @@ eq(safeFileName('results.final.png', 'png'), 'results-final.png', 'dots in the n
 eq(safeFileName('results.jpg', 'png'), 'results-jpg.png', 'a different typed extension is part of the name');
 eq(safeFileName('Café_über', 'jpeg'), 'Cafe_uber.jpeg', 'accents dropped, underscores kept');
 eq(safeFileName('  ', 'png'), 'image.png', 'nothing left');
-eq(uniqueName('cat.png', ['main.tex', 'images/dog.png']), 'cat.png', 'free name');
-eq(uniqueName('cat.png', ['images/cat.png', 'images/cat-2.png']), 'cat-3.png', 'next free number');
-eq(uniqueName('cat.png', ['images/Cat.PNG']), 'cat-2.png', 'letter case clashes on macOS');
-eq(uniqueName('cat.png', ['cat.png', 'figs/images/cat.png']), 'cat.png', 'only images/ at the root counts');
+eq(uniqueName('cat.png', ['main.tex', 'figures/dog.png']), 'cat.png', 'free name');
+eq(uniqueName('cat.png', ['figures/cat.png', 'figures/cat-2.png']), 'cat-3.png', 'next free number');
+eq(uniqueName('cat.png', ['figures/Cat.PNG']), 'cat-2.png', 'letter case clashes on macOS');
+eq(uniqueName('cat.png', ['cat.png', 'figs/figures/cat.png', 'images/cat.png']), 'cat.png', 'only figures/ at the root counts');
 eq(figureLabel('images/My Plot.v2.png'), 'fig:My-Plot-v2', 'figure label');
 
 // a JPEG start: SOI, an APP0, then an APP1 "Exif" whose first IFD has one entry, Orientation
@@ -237,7 +237,66 @@ eq(
   'after the \\usepackage lines'
 );
 const titled = lines('\\documentclass{article}', '\\usepackage{amsmath}', '\\title{T}', '\\begin{document}', '\\end{document}');
-eq(addPackages(titled, ['float']).source.split('\n').slice(2, 5), ['\\title{T}', '\\usepackage{float}', '\\begin{document}'], 'just before \\begin{document}');
+eq(addPackages(titled, ['float']).source.split('\n').slice(1, 4), ['\\usepackage{amsmath}', '\\usepackage{float}', '\\title{T}'], 'after the last \\usepackage, not after \\title');
+eq(addPackages(lines('\\documentclass{article}', '\\title{T}', '\\begin{document}'), ['float']).source.split('\n').slice(1, 3), ['\\title{T}', '\\usepackage{float}'], 'with no \\usepackage, just before \\begin{document}');
+
+// the style guide's order: each package into its group, before the next group's heading
+const guided = lines(
+  '\\documentclass{article}',
+  '',
+  '% References',
+  '\\usepackage{biblatex}',
+  '',
+  '% Page',
+  '\\usepackage[margin=25mm]{geometry}',
+  '\\usepackage[australian]{babel}',
+  '',
+  '% Figures and tables',
+  '\\usepackage{graphicx}',
+  '\\usepackage{siunitx}',
+  '\\sisetup{per-mode = symbol}',
+  '',
+  '% Links',
+  '\\usepackage[hidelinks]{hyperref}',
+  '\\hypersetup{pdflang = {en-AU}}',
+  '\\usepackage{cleveref}',
+  '',
+  '\\begin{document}',
+  '\\end{document}'
+);
+const ordered = addPackages(guided, ['multirow', 'booktabs', 'amsmath', 'titlesec', 'parskip']);
+eq(ordered.added, ['multirow', 'booktabs', 'amsmath', 'titlesec', 'parskip'], 'all added');
+eq(
+  ordered.source.split('\n').slice(5, 25),
+  [
+    '% Page',
+    '\\usepackage[margin=25mm]{geometry}',
+    '\\usepackage{parskip}',
+    '\\usepackage[australian]{babel}',
+    '\\usepackage{amsmath}',
+    '',
+    '% Figures and tables',
+    '\\usepackage{graphicx}',
+    '\\usepackage{booktabs}',
+    '\\usepackage{siunitx}',
+    '\\sisetup{per-mode = symbol}',
+    '\\usepackage{multirow}',
+    '',
+    '% Links',
+    '\\usepackage[hidelinks]{hyperref}',
+    '\\hypersetup{pdflang = {en-AU}}',
+    '\\usepackage{cleveref}',
+    '\\usepackage{titlesec}',
+    '',
+    '\\begin{document}'
+  ],
+  'into place: within a group, at the end of the group before it, and a package not in the guide after the last \\usepackage'
+);
+eq(ordered.change && guided.slice(0, ordered.change.from) + ordered.change.insert + guided.slice(ordered.change.to), ordered.source, 'one change for the live editor');
+// hyperref loaded before graphicx: the guide's order can't be kept, so the package goes after the last \usepackage
+const outOfOrder = lines('\\documentclass{article}', '\\usepackage{hyperref}', '\\usepackage{graphicx}', '\\begin{document}', '\\end{document}');
+eq(addPackages(outOfOrder, ['booktabs']).source.split('\n').slice(1, 4), ['\\usepackage{hyperref}', '\\usepackage{graphicx}', '\\usepackage{booktabs}'], 'out of order: after the last \\usepackage');
+eq(addPackages(outOfOrder, ['amsmath']).source.split('\n').slice(1, 3), ['\\usepackage{amsmath}', '\\usepackage{hyperref}'], 'before the first that comes after it, when nothing before it is loaded');
 eq(addPackages(lines('\\section{A}', 'Text'), ['float']), { source: lines('\\section{A}', 'Text'), added: [], noDocument: true }, 'no \\begin{document}');
 eq(addPackages(doc, ['amsmath']), { source: doc, added: [] }, 'nothing to add');
 eq(addPackages('% \\begin{document}\n\\begin{document}', ['x']).source, '% \\begin{document}\n\\usepackage{x}\n\\begin{document}', 'a commented \\begin{document} is skipped');
@@ -266,15 +325,15 @@ eq(
     '  a4paper]{article}',
     '\\usepackage{standalone}',
     '\\usepackage{amsmath}',
-    '\\usetikzlibrary{calc, arrows.meta}',
     '\\usepackage{circuitikz}',
+    '\\usetikzlibrary{calc, arrows.meta}',
     '\\usetikzlibrary{positioning,shapes.geometric}',
     '% \\usetikzlibrary{positioning}',
     '',
     '\\begin{document}',
     '\\end{document}'
   ),
-  'packages after the last \\usepackage or \\usetikzlibrary line, libraries after them'
+  'packages after the last \\usepackage, before the TikZ libraries that need them, and libraries after those'
 );
 eq(addLibraries(libbed.source, ['calc', 'positioning']), { source: libbed.source, added: [] }, 'no library twice');
 eq(addLibraries(lines('Text'), ['calc']).noDocument, true, 'no \\begin{document}, no libraries');
@@ -377,6 +436,239 @@ eq(
   'Typst: stroke: none and a line each'
 );
 eq(tableTypst({ ...three, lines: 'grid', toggled: [], float: false }).startsWith('#table(columns: 3, align: (left, center, center), table.header('), true, 'Typst grid: Typst’s own lines, its double line single');
+
+// ─── table additions: S columns, merged cells, short rules, xltabular, makecell and threeparttable ───
+
+const grouped: TableModel = {
+  cells: [
+    ['Season', 'Energy (kWh)', ''],
+    ['', 'Measured', 'Modelled'],
+    ['Summer', '2740', '2810.5'],
+    ['Winter', '-1110', 'n/a']
+  ],
+  env: 'tabular',
+  align: ['l', 'S', 'S'],
+  lines: 'booktabs',
+  toggled: ['under-2'],
+  header: true,
+  float: false,
+  placement: '',
+  caption: '',
+  label: '',
+  escape: true,
+  merges: [
+    { r: 0, c: 1, rows: 1, cols: 2 },
+    { r: 0, c: 0, rows: 2, cols: 1 }
+  ]
+};
+eq(numberFormat(grouped.cells, 1, (r) => r < 2), '-4.0', 'S column format: a sign and four digits');
+eq(numberFormat(grouped.cells, 2, (r) => r < 2), '4.1', 'S column format: text left out, one decimal');
+eq(numberFormat([['1e5']], 0, () => false), '', 'an exponent leaves the format to siunitx');
+eq(numberFormat([['7,790']], 0, () => false), '', 'a comma is text, not a number');
+eq(
+  inner(grouped),
+  [
+    '\\begin{tabular}{lS[table-format=-4.0]S[table-format=4.1]}',
+    '    \\toprule',
+    '    \\multirow{2}{*}{Season} & \\multicolumn{2}{c}{Energy (kWh)} \\\\',
+    '    \\cmidrule{2-3}',
+    '     & {Measured} & {Modelled} \\\\',
+    '    \\midrule',
+    '    Summer & 2740 & 2810.5 \\\\',
+    '    Winter & -1110 & {n/a} \\\\',
+    '    \\bottomrule',
+    '\\end{tabular}'
+  ],
+  'merged header: multirow, multicolumn, a rule stopping short of the merged cell, and text braced in S columns'
+);
+eq(
+  inner({ ...grouped, toggled: [], merges: [{ r: 0, c: 1, rows: 1, cols: 2 }], partRules: [{ row: 0, from: 1, to: 2 }], header: false }).slice(1, 4),
+  ['    \\toprule', '    Season & \\multicolumn{2}{c}{Energy (kWh)} \\\\', '    \\cmidrule(lr){2-3}'],
+  'a short rule under a merged group heading'
+);
+eq(
+  inner({ ...grouped, lines: 'grid', toggled: [], align: ['l', 'c', 'c'], merges: [{ r: 0, c: 1, rows: 1, cols: 2 }] }).slice(0, 4),
+  ['\\begin{tabular}{|l|c|c|}', '    \\hline', '    Season & \\multicolumn{2}{c|}{Energy (kWh)} \\\\', '    \\hline\\hline'],
+  'grid: a multicolumn keeps the line after it'
+);
+eq(
+  inner({ ...grouped, lines: 'grid', toggled: [], align: ['l', 'c', 'c'], merges: [{ r: 1, c: 0, rows: 2, cols: 1 }] })[5],
+  '    \\cline{2-3}',
+  'grid: a line beside a cell merged down is a cline'
+);
+eq(
+  inner({ ...grouped, lines: 'none', toggled: [], align: ['l', 'c', 'c'], merges: [], partRules: [{ row: 1, from: 0, to: 1 }] }).filter((l) => l.includes('cline')),
+  ['    \\cline{1-2}'],
+  'a short rule without booktabs is a cline'
+);
+eq(withMerge([{ r: 0, c: 1, rows: 1, cols: 2 }], { r: 0, c: 0, rows: 1, cols: 2 }), [{ r: 0, c: 0, rows: 1, cols: 3 }], 'a merge takes in one it overlaps');
+eq(fitMerges([{ r: 0, c: 0, rows: 2, cols: 2 }, { r: 3, c: 0, rows: 2, cols: 1 }], 2, 1), [{ r: 0, c: 0, rows: 2, cols: 1 }], 'merges cut to a smaller grid');
+eq(tablePackages(grouped), ['booktabs', 'siunitx', 'multirow'], 'packages for S columns and a cell merged down');
+
+const long: TableModel = { ...model, env: 'xltabular', align: ['l', 'c', 'X'], cells: [['A', 'B', 'C'], ['1', '2', '3'], ['4', '5', '6']] };
+eq(
+  tableLatex(long).split('\n'),
+  [
+    '\\begin{xltabular}{\\linewidth}{lcX}',
+    '    \\caption{Results.}\\label{tab:results} \\\\',
+    '    \\toprule',
+    '    A & B & C \\\\',
+    '    \\midrule',
+    '    \\endfirsthead',
+    '    \\toprule',
+    '    A & B & C \\\\',
+    '    \\midrule',
+    '    \\endhead',
+    '    \\multicolumn{3}{r}{\\emph{Continued on the next page}} \\\\',
+    '    \\endfoot',
+    '    \\bottomrule',
+    '    \\endlastfoot',
+    '    1 & 2 & 3 \\\\',
+    '    4 & 5 & 6 \\\\',
+    '\\end{xltabular}'
+  ],
+  'xltabular: the caption inside, the header repeated on each page'
+);
+eq(headerRows(grouped, grouped.merges!), 2, 'a cell merged down from the header takes its row into the header');
+eq(
+  tableLatex({ ...grouped, env: 'xltabular', float: false }).split('\n').slice(1, 9),
+  [
+    '    \\toprule',
+    '    \\multirow{2}{*}{Season} & \\multicolumn{2}{c}{Energy (kWh)} \\\\',
+    '    \\cmidrule{2-3}',
+    '     & {Measured} & {Modelled} \\\\',
+    '    \\midrule',
+    '    \\endfirsthead',
+    '    \\toprule',
+    '    \\multirow{2}{*}{Season} & \\multicolumn{2}{c}{Energy (kWh)} \\\\'
+  ],
+  'xltabular repeats both rows of a header with a cell merged down'
+);
+eq(tableLatex({ ...long, align: ['l', 'c', 'c'] }).split('\n')[0], '\\begin{xltabular}{\\linewidth}{lcX}', 'xltabular always has an X column');
+eq(tablePackages(long), ['booktabs', 'xltabular'], 'xltabular package');
+
+eq(inner({ ...bare, breaks: true, cells: [['Two \\\\ lines', 'b', 'c']], header: false })[2], '    \\makecell{Two \\\\ lines} & b & c \\\\', 'makecell around a cell with a line break');
+eq(tablePackages({ ...bare, breaks: true, cells: [['Two \\\\ lines']] }), ['booktabs', 'makecell'], 'makecell only when a cell breaks');
+eq(
+  tableNotes('a: Measured at noon.\n\n[b] Estimated.\nSource: the logger.'),
+  [
+    { mark: 'a', text: 'Measured at noon.' },
+    { mark: 'b', text: 'Estimated.' },
+    { mark: '', text: 'Source: the logger.' }
+  ],
+  'table notes'
+);
+eq(
+  tableLatex({ ...model, notes: 'a: 50% of runs.' }).split('\n'),
+  [
+    '\\begin{table}[H]',
+    '    \\centering',
+    '    \\begin{threeparttable}',
+    '        \\caption{Results.}',
+    '        \\label{tab:results}',
+    '        \\begin{tabular}{lcc}',
+    '            \\toprule',
+    '            Method & a\\_b & Score \\\\',
+    '            \\midrule',
+    '            Ours & $x_1$ & 50\\% \\\\',
+    '            \\bottomrule',
+    '        \\end{tabular}',
+    '        \\begin{tablenotes}',
+    '            \\small',
+    '            \\item[a] 50\\% of runs.',
+    '        \\end{tablenotes}',
+    '    \\end{threeparttable}',
+    '\\end{table}'
+  ],
+  'threeparttable notes under the table'
+);
+eq(tablePackages({ ...long, notes: 'a: x' }), ['booktabs', 'xltabular'], 'no threeparttable in xltabular');
+
+eq(
+  tableTypst({ ...grouped, float: false }),
+  '#table(columns: 3, align: (left, right, right), stroke: none, table.hline(y: 0, stroke: 0.08em), table.hline(y: 1, start: 1, end: 3, stroke: 0.05em), table.hline(y: 2, stroke: 0.05em), table.hline(y: 4, stroke: 0.08em), table.header(table.cell(rowspan: 2)[Season], table.cell(colspan: 2)[Energy (kWh)], [Measured], [Modelled]), [Summer], [2740], [2810.5], [Winter], [-1110], [n\\/a])',
+  'Typst: merged cells, a line stopping short, and a header taking both rows of a cell merged down'
+);
+eq(tableMarkdown({ ...grouped, float: false }).split('\n')[0], '| Season | Energy (kWh) |  |', 'Markdown: merged text in the first cell');
+
+// ─── figure sizes and layouts ───
+
+const share: FigureSize = { mode: 'line', fraction: 0.5, width: 60, height: 40, scale: 0.5 };
+eq(graphicsOptions(share, true), 'width=0.5\\linewidth,height=0.8\\textheight,keepaspectratio', 'a single image at a share of the line stays within the page');
+eq(graphicsOptions({ ...share, fraction: 1 }), 'width=\\linewidth', 'a panel image at a share of its panel');
+eq(graphicsOptions({ ...share, mode: 'width' }), 'width=60mm', 'exact width');
+eq(graphicsOptions({ ...share, mode: 'height' }), 'height=40mm', 'exact height');
+eq(graphicsOptions({ ...share, mode: 'box' }), 'width=60mm,height=40mm,keepaspectratio', 'fit in a box');
+eq(graphicsOptions({ ...share, mode: 'scale' }), 'scale=0.5', 'scale');
+eq(graphicsOptions({ ...share, mode: 'width', trim: [2, 0, 2.5, 0] }), 'width=60mm,trim=2mm 0mm 2.5mm 0mm,clip', 'crop');
+eq(graphicsOptions({ ...share, mode: 'width', trim: [0, 0, 0, 0] }), 'width=60mm', 'no crop when every edge is 0');
+eq(figureLatex({ path: 'images/a.png', width: 0.75, caption: '', label: '', placement: 'H', size: { ...share, mode: 'scale' } }).split('\n')[2], '    \\includegraphics[scale=0.5]{images/a.png}', 'a single figure scaled');
+eq([panelWidth(2), panelWidth(3), panelWidth(4)], [0.48, 0.31, 0.22], 'panel widths');
+eq(figureSetLabel('Two views of the bridge'), 'fig:two-views-of', 'a set labelled from its caption');
+eq(figureSetLabel('', 'images/bridge.png'), 'fig:bridge-set', 'or its first image');
+
+const pair: FigureSet = {
+  panels: [
+    { path: 'images/a.png', caption: 'Front.', label: 'fig:a' },
+    { path: 'images/b.png', caption: 'Side.', label: 'fig:b' }
+  ],
+  layout: 'row',
+  columns: 2,
+  labels: 'sub',
+  align: 'bottom',
+  size: { ...share, fraction: 1 },
+  caption: 'Two views.',
+  label: 'fig:views',
+  placement: 'H'
+};
+eq(
+  figureSetLatex(pair).split('\n'),
+  [
+    '\\begin{figure}[H]',
+    '    \\centering',
+    '    \\begin{subfigure}[t]{0.48\\linewidth}',
+    '        \\centering',
+    '        \\includegraphics[width=\\linewidth]{images/a.png}',
+    '        \\caption{Front.}',
+    '        \\label{fig:a}',
+    '    \\end{subfigure}\\hfill',
+    '    \\begin{subfigure}[t]{0.48\\linewidth}',
+    '        \\centering',
+    '        \\includegraphics[width=\\linewidth]{images/b.png}',
+    '        \\caption{Side.}',
+    '        \\label{fig:b}',
+    '    \\end{subfigure}',
+    '    \\caption{Two views.}',
+    '    \\label{fig:views}',
+    '\\end{figure}'
+  ],
+  'two sub-figures side by side'
+);
+eq(figureSetPackages(pair), ['graphicx', 'subcaption'], 'sub-figures need subcaption');
+eq(figureSetPackages({ labels: 'separate' }), ['graphicx'], 'separate figures need no extra package');
+const separate = figureSetLatex({ ...pair, labels: 'separate' }).split('\n');
+eq([separate[2], separate.filter((l) => l.includes('\\caption')).length, separate.includes('    \\label{fig:views}')], ['    \\begin{minipage}[t]{0.48\\linewidth}', 2, false], 'separate figures: a minipage and caption each, no shared caption');
+eq(figureSetLatex({ ...pair, labels: 'none' }).split('\n').filter((l) => l.includes('\\caption')), ['    \\caption{Two views.}'], 'one caption only');
+eq(figureSetLatex({ ...pair, align: 'top' }).split('\n')[4], '        \\vtop{\\vskip0pt\\hbox{\\includegraphics[width=\\linewidth]{images/a.png}}}', 'tops lined up');
+eq(figureSetLatex({ ...pair, align: 'centre' }).split('\n')[2], '    \\begin{subfigure}[c]{0.48\\linewidth}', 'centres lined up');
+const grid = figureSetLatex({ ...pair, layout: 'grid', panels: [...pair.panels, ...pair.panels, pair.panels[0]] }).split('\n');
+eq(
+  grid.filter((l) => /end\{subfigure\}|medskip/.test(l)),
+  ['    \\end{subfigure}\\hfill', '    \\end{subfigure}', '    \\par\\medskip', '    \\end{subfigure}\\hfill', '    \\end{subfigure}', '    \\par\\medskip', '    \\end{subfigure}'],
+  'a grid of two columns: a new row after every second image'
+);
+eq(
+  figureSetTypst({ ...pair, panels: pair.panels.map((p) => ({ ...p, label: '' })), label: 'fig-views' }),
+  '#figure(grid(columns: 2, gutter: 1em, align: bottom, stack(spacing: 0.5em, image("/images/a.png", width: 100%), [(a) Front.]), stack(spacing: 0.5em, image("/images/b.png", width: 100%), [(b) Side.])), caption: [Two views.]) <fig-views>',
+  'Typst: a grid, with (a) and (b) under each image'
+);
+eq(
+  figureSetTypst({ ...pair, labels: 'separate', panels: [{ ...pair.panels[0], label: 'fig-a' }] }),
+  '#grid(columns: 1, gutter: 1em, align: bottom, [#figure(image("/images/a.png", width: 100%), caption: [Front.]) <fig-a>])',
+  'Typst: separate figures each with a label'
+);
+eq(figureTypst({ path: 'a.png', width: 0.5, caption: '', label: '', size: { ...share, mode: 'scale' } }), '#figure(scale(50%, reflow: true, image("/a.png")))', 'Typst scale');
+eq(figureMarkdown({ path: 'a.png', width: 0.5, caption: 'C', label: '', size: { ...share, mode: 'height' } }), '![C](a.png){height=40mm}', 'Markdown height');
 
 Promise.all([
   projectPackages('paper/main.tex', new Set(Object.keys(files)), async (p) => files[p]).then((names) => {

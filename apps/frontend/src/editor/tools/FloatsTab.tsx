@@ -16,8 +16,8 @@ import { useEditor } from '../EditorContext';
 import type { EditorApi } from '../EditorContext';
 import { VISION_HINTS, VISION_MODES, docKind, errorText, figureSnippet, isDocument } from '../shared';
 import type { VisionMode } from '../shared';
-import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableRules, tableTypst, uniqueName } from '../floats';
-import type { TableLines, TableModel } from '../floats';
+import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, figureTypst, figureTypstInclude, fitMerges, fitPartRules, jpegOrientation, mergeAt, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tablePackages, tableRules, tableTypst, uniqueName, withMerge } from '../floats';
+import type { FigureSet, FigureSize, TableEnv, TableLines, TableMerge, TableModel, TablePartRule } from '../floats';
 import { addLibraries, addPackages, changeBetween, loadedLibraries, projectPackages } from '../preamble';
 
 const IMAGE_EXTS = /\.(png|jpe?g|gif|svg|webp)$/i;
@@ -44,7 +44,7 @@ export default function FloatsTab({ show }: { show: 'figure' | 'table' | 'diagra
 
 // ─── handing an image to Insert figure ───
 
-/** a dropped or pasted file to save in images/, or the path of a figure already in the project */
+/** a dropped or pasted file to save in figures/, or the path of a figure already in the project */
 type Handed = File | string;
 let handed: Handed | null = null;
 const handedEvents = new EventTarget();
@@ -214,26 +214,95 @@ const WIDTHS: [WidthChoice, string, string?][] = [
   ['custom', 'Custom']
 ];
 
-type FigurePrefs = { width: WidthChoice; custom: number; placement: string; span: boolean };
+type Layout = 'single' | 'row' | 'grid';
+type SizeMode = FigureSize['mode'];
+type FigurePrefs = {
+  width: WidthChoice;
+  custom: number;
+  placement: string;
+  span: boolean;
+  layout: Layout;
+  columns: number;
+  labels: FigureSet['labels'];
+  align: FigureSet['align'];
+  sizeMode: SizeMode;
+  /** each image's share of its panel, in a row or grid */
+  panelShare: WidthChoice;
+  sizeW: number;
+  sizeH: number;
+  scale: number;
+  crop: boolean;
+  trim: [number, number, number, number];
+};
 const PREFS_KEY = 'spectrum-figure-options';
-const DEFAULT_PREFS: FigurePrefs = { width: '0.75', custom: 60, placement: 'H', span: false };
+const DEFAULT_PREFS: FigurePrefs = {
+  width: '0.75',
+  custom: 60,
+  placement: 'H',
+  span: false,
+  layout: 'single',
+  columns: 2,
+  labels: 'sub',
+  align: 'bottom',
+  sizeMode: 'line',
+  panelShare: '1',
+  sizeW: 80,
+  sizeH: 60,
+  scale: 0.5,
+  crop: false,
+  trim: [0, 0, 0, 0]
+};
+
+const LAYOUTS: [Layout, string, string?][] = [
+  ['single', 'Single', 'One image'],
+  ['row', 'Side by side', 'Side by side in one row'],
+  ['grid', 'Grid']
+];
+const LABELLING: [FigureSet['labels'], string, string?][] = [
+  ['sub', '(a), (b)', 'Sub-figures (a), (b) under one caption'],
+  ['separate', 'Separate', 'A figure each, with its own number'],
+  ['none', 'One caption', 'One caption, no sub-labels']
+];
+const ALIGNS: [FigureSet['align'], string, string?][] = [
+  ['top', 'Tops'],
+  ['centre', 'Centres'],
+  ['bottom', 'Bottoms']
+];
+const SIZE_MODES: [SizeMode, string, string?][] = [
+  ['line', 'Share', 'A share of the line'],
+  ['width', 'Width'],
+  ['height', 'Height'],
+  ['box', 'Fit in box', 'Fit in a box'],
+  ['scale', 'Scale']
+];
 
 function loadPrefs(): FigurePrefs {
   try {
     const saved = { ...DEFAULT_PREFS, ...JSON.parse(window.localStorage.getItem(PREFS_KEY) || '{}') };
+    const one = <T,>(value: T, options: [T, ...unknown[]][]) => options.some(([o]) => o === value);
     const valid =
-      WIDTHS.some(([w]) => w === saved.width) &&
+      one(saved.width, WIDTHS) &&
+      one(saved.panelShare, WIDTHS) &&
+      one(saved.layout, LAYOUTS) &&
+      one(saved.labels, LABELLING) &&
+      one(saved.align, ALIGNS) &&
+      one(saved.sizeMode, SIZE_MODES) &&
       typeof saved.placement === 'string' &&
       placementOf(saved.placement) === saved.placement &&
       typeof saved.span === 'boolean' &&
-      typeof saved.custom === 'number';
+      typeof saved.crop === 'boolean' &&
+      [saved.custom, saved.columns, saved.sizeW, saved.sizeH, saved.scale].every((n) => typeof n === 'number') &&
+      Array.isArray(saved.trim) &&
+      saved.trim.length === 4 &&
+      saved.trim.every((n: unknown) => typeof n === 'number');
     return valid ? saved : DEFAULT_PREFS;
   } catch {
     return DEFAULT_PREFS;
   }
 }
 
-const widthOf = (prefs: FigurePrefs) => (prefs.width === 'custom' ? Math.min(100, Math.max(1, prefs.custom || DEFAULT_PREFS.custom)) / 100 : Number(prefs.width));
+const shareOf = (choice: WidthChoice, custom: number) => (choice === 'custom' ? Math.min(100, Math.max(1, custom || DEFAULT_PREFS.custom)) / 100 : Number(choice));
+const widthOf = (prefs: FigurePrefs) => shareOf(prefs.width, prefs.custom);
 
 /**
  * Draws an image LaTeX can't read (GIF, WebP, HEIC, BMP, TIFF, SVG), or a turned JPEG upright, into a PNG or
@@ -260,15 +329,43 @@ async function drawAs(file: File, type: 'image/png' | 'image/jpeg') {
   }
 }
 
+type Panel = { key: number; source: FigureSource; name: string; caption: string; /** null: follows the file name */ label: string | null };
+let panelKeys = 0;
+
+const panelPath = (panel: Panel) => (panel.source.kind === 'project' ? panel.source.path : `figures/${safeFileName(panel.name, panel.source.ext)}`);
+const panelPreview = (projectId: string, panel: Panel) =>
+  panel.source.kind === 'file' ? panel.source.url : IMAGE_EXTS.test(panel.source.path) ? blobUrl(projectId, panel.source.path) : '';
+const forget = (panel: Panel) => panel.source.kind === 'file' && panel.source.url && URL.revokeObjectURL(panel.source.url);
+
+/** A number field with its unit; empty or out of range falls back to min when it loses focus. */
+function NumberField({ id, label, unit, value, min, max, step = 1, onChange }: { id: string; label: string; unit: string; value: number; min: number; max: number; step?: number; onChange: (value: number) => void }) {
+  return (
+    <div className="figure-custom-width">
+      <label htmlFor={id}>{label}</label>
+      <input
+        id={id}
+        className="input number"
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={value || ''}
+        onChange={(e) => onChange(Math.min(max, Math.max(0, Number(e.target.value) || 0)))}
+        onBlur={() => value < min && onChange(min)}
+      />
+      <span>{unit}</span>
+    </div>
+  );
+}
+
 function InsertFigure() {
   const api = useEditor();
   const apiRef = useRef(api);
   apiRef.current = api;
   const id = useId();
-  const [source, setSource] = useState<FigureSource | null>(null);
-  const [name, setName] = useState('');
+  const [panels, setPanels] = useState<Panel[]>([]);
   const [caption, setCaption] = useState('');
-  /** null: follows the file name */
+  /** null: follows the file name, or the caption for several images */
   const [label, setLabel] = useState<string | null>(null);
   const [prefs, setPrefs] = useState(loadPrefs);
   const [error, setError] = useState('');
@@ -278,9 +375,25 @@ function InsertFigure() {
   const dropRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLElement>(null);
   const captionRef = useRef<HTMLTextAreaElement>(null);
+  const panelsRef = useRef(panels);
+  panelsRef.current = panels;
   const docOpen = isDocument(api.activePath);
-  const fileName = source?.kind === 'file' ? safeFileName(name, source.ext) : '';
-  const path = source?.kind === 'project' ? source.path : `images/${fileName}`;
+  const kind = docKind(api.activePath);
+  // Markdown takes one image a figure
+  const layout: Layout = kind === 'markdown' ? 'single' : prefs.layout;
+  const several = layout !== 'single';
+  const first = panels[0];
+  const set = (change: Partial<FigurePrefs>) => setPrefs((prev) => ({ ...prev, ...change }));
+  const setPanel = (key: number, change: Partial<Panel>) => setPanels((prev) => prev.map((p) => (p.key === key ? { ...p, ...change } : p)));
+  const size: FigureSize = {
+    mode: prefs.sizeMode,
+    fraction: several ? shareOf(prefs.panelShare, prefs.custom) : widthOf(prefs),
+    width: prefs.sizeW,
+    height: prefs.sizeH,
+    scale: prefs.scale,
+    trim: prefs.crop ? prefs.trim : null
+  };
+  const mainLabel = label ?? (several ? figureSetLabel(caption, first ? panelPath(first) : '') : first ? figureLabel(panelPath(first)) : '');
 
   useEffect(() => {
     try {
@@ -290,15 +403,26 @@ function InsertFigure() {
     }
   }, [prefs]);
 
+  // the previews' object URLs go with the card
+  useEffect(() => () => panelsRef.current.forEach(forget), []);
+
   // a new image asks for its caption
+  const count = panels.length;
   useEffect(() => {
-    if (!source) return;
+    if (!count) return;
     cardRef.current?.scrollIntoView({ block: 'nearest' });
-    captionRef.current?.focus({ preventScroll: true });
-    return () => {
-      if (source.kind === 'file' && source.url) URL.revokeObjectURL(source.url);
-    };
-  }, [source]);
+    if (count === 1) captionRef.current?.focus({ preventScroll: true });
+  }, [count]);
+
+  const add = (source: FigureSource, name = '') => {
+    const panel: Panel = { key: (panelKeys += 1), source, name, caption: '', label: null };
+    setPanels((prev) => {
+      if (several) return [...prev, panel];
+      prev.forEach(forget);
+      return [panel];
+    });
+    if (!several) setLabel(null);
+  };
 
   const load = async (item: Handed): Promise<void> => {
     setError('');
@@ -312,12 +436,11 @@ function InsertFigure() {
         setError(`Couldn’t read ${item}.`);
         return;
       }
-      setSource({ kind: 'project', path: item });
-      setLabel(null);
+      add({ kind: 'project', path: item });
       return;
     }
-    const kind = figureKind(item.name, item.type);
-    if (!kind) {
+    const fileKind = figureKind(item.name, item.type);
+    if (!fileKind) {
       setError(`${item.name} isn’t an image. Use PNG, JPEG, PDF, EPS, GIF, WebP, HEIC, BMP, TIFF or SVG.`);
       return;
     }
@@ -328,7 +451,7 @@ function InsertFigure() {
       // photos stay JPEG: as PNG they'd be many times the size, and slow every compile
       const photo = jpeg || /^hei[cf]$/.test(original) || /hei[cf]/.test(item.type);
       const turned = jpeg && jpegOrientation(await item.slice(0, 65536).arrayBuffer()) > 1;
-      const convert = kind === 'convert' || turned;
+      const convert = fileKind === 'convert' || turned;
       const blob = convert ? await drawAs(item, photo ? 'image/jpeg' : 'image/png') : item;
       const ext = convert ? (photo ? 'jpg' : 'png') : original;
       const from = original.toUpperCase();
@@ -339,12 +462,10 @@ function InsertFigure() {
           ? `Converted ${from ? `from ${from} ` : ''}to ${photo ? 'JPEG' : 'PNG'}, which LaTeX can read.`
           : ext === 'eps'
             ? mainDir
-              ? `EPS won’t compile from images/ while the main file is in ${mainDir}/: save it as PDF or PNG first.`
+              ? `EPS won’t compile from figures/ while the main file is in ${mainDir}/: save it as PDF or PNG first.`
               : 'EPS goes in as it is: pdfLaTeX converts it with epstopdf when it compiles.'
             : '';
-      setSource({ kind: 'file', blob, ext, url: ext === 'pdf' || ext === 'eps' ? '' : URL.createObjectURL(blob), note });
-      setName(safeFileName(item.name.replace(/\.[^.]*$/, ''), ext));
-      setLabel(null);
+      add({ kind: 'file', blob, ext, url: ext === 'pdf' || ext === 'eps' ? '' : URL.createObjectURL(blob), note }, safeFileName(item.name.replace(/\.[^.]*$/, ''), ext));
     } catch {
       setError(`Couldn’t read ${item.name || 'that image'}. Save it as PNG or JPEG and try again.`);
     } finally {
@@ -365,19 +486,46 @@ function InsertFigure() {
     return () => handedEvents.removeEventListener('figure', take);
   }, []);
 
+  // the panel being dragged to a new place in the order, and the one it's over
+  const [moving, setMoving] = useState<number | null>(null);
+  const [over, setOver] = useState<number | null>(null);
+  /** Puts the panel with key at index to, in reading order. */
+  const move = (key: number, to: number) =>
+    setPanels((prev) => {
+      const from = prev.findIndex((p) => p.key === key);
+      if (from === -1 || to < 0 || to >= prev.length || to === from) return prev;
+      const next = prev.slice();
+      next.splice(to, 0, ...next.splice(from, 1));
+      return next;
+    });
+
+  const remove = (key: number) =>
+    setPanels((prev) => {
+      prev.filter((p) => p.key === key).forEach(forget);
+      return prev.filter((p) => p.key !== key);
+    });
+
   const clear = () => {
-    setSource(null);
-    setName('');
+    panels.forEach(forget);
+    setPanels([]);
     setLabel(null);
     setError('');
+  };
+
+  const loadAll = async (files: File[]) => {
+    for (const file of several ? files : files.slice(0, 1)) await loadRef.current(file);
   };
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
     setDragging(false);
-    const file = figureFile(e.dataTransfer);
-    if (file) load(file);
-    else if (e.dataTransfer.files.length) setError(`${e.dataTransfer.files[0].name} isn’t an image.`);
+    const files = [...e.dataTransfer.files].filter((file) => figureKind(file.name, file.type));
+    if (files.length) loadAll(files);
+    else {
+      const file = figureFile(e.dataTransfer);
+      if (file) load(file);
+      else if (e.dataTransfer.files.length) setError(`${e.dataTransfer.files[0].name} isn’t an image.`);
+    }
   };
 
   const onPaste = (e: ClipboardEvent) => {
@@ -390,31 +538,53 @@ function InsertFigure() {
   };
 
   const insert = async () => {
-    if (!source) return;
+    const used = several ? panels : panels.slice(0, 1);
+    if (!used.length) return;
     setBusy('inserting');
     try {
-      let saved = path;
-      if (source.kind === 'file') {
-        // never over an existing file: the upload replaces one with the same name
-        const tree = await getProjectTree(api.projectId);
-        const unique = uniqueName(fileName, tree.items.map((item) => item.path));
-        const res = await uploadFiles(api.projectId, [new File([source.blob], unique, { type: source.blob.type })], 'images');
-        saved = res.files?.[0] || `images/${unique}`;
+      // never over an existing file: the upload replaces one with the same name, and two new images can't share one either
+      const uploads = used.filter((p) => p.source.kind === 'file');
+      const taken = uploads.length ? (await getProjectTree(api.projectId)).items.map((item) => item.path) : [];
+      const saved: string[] = [];
+      for (const panel of used) {
+        if (panel.source.kind !== 'file') {
+          saved.push(panel.source.path);
+          continue;
+        }
+        const unique = uniqueName(safeFileName(panel.name, panel.source.ext), taken);
+        taken.push(`figures/${unique}`);
+        const res = await uploadFiles(api.projectId, [new File([panel.source.blob], unique, { type: panel.source.blob.type })], 'figures');
+        saved.push(res.files?.[0] || `figures/${unique}`);
       }
-      const kind = docKind(apiRef.current.activePath);
-      const added = kind === 'latex' ? await ensurePackages(() => apiRef.current, ['graphicx', ...(placementOf(prefs.placement, prefs.span) === 'H' ? ['float'] : [])]) : { text: '', warn: false };
-      // an automatic label follows the name the file was saved under
-      const figure = { path: saved, width: widthOf(prefs), caption, label: label ?? figureLabel(saved) };
-      insertBlock(
-        apiRef.current,
-        kind === 'typst'
-          ? figureTypst(figure)
-          : kind === 'markdown'
-            ? figureMarkdown(figure)
-            : figureLatex({ ...figure, placement: prefs.placement, span: prefs.span })
-      );
-      if (source.kind === 'file') await api.refreshTree();
-      api.notify([source.kind === 'file' ? `Saved ${saved} and inserted the figure.` : `Inserted ${saved} as a figure.`, added.text].filter(Boolean).join(' '), added.warn ? 'error' : 'success');
+      const docKindNow = docKind(apiRef.current.activePath);
+      const placement = { placement: prefs.placement, span: prefs.span };
+      let text: string;
+      let wanted = ['graphicx'];
+      if (several) {
+        const figureSet: FigureSet = {
+          panels: used.map((p, i) => ({ path: saved[i], caption: p.caption, label: p.label ?? figureLabel(saved[i]) })),
+          layout,
+          columns: prefs.columns,
+          labels: prefs.labels,
+          align: prefs.align,
+          size,
+          caption,
+          label: label ?? figureSetLabel(caption, saved[0]),
+          ...placement
+        };
+        text = docKindNow === 'typst' ? figureSetTypst(figureSet) : figureSetLatex(figureSet);
+        wanted = figureSetPackages(figureSet);
+      } else {
+        // an automatic label follows the name the file was saved under
+        const figure = { path: saved[0], width: widthOf(prefs), caption, label: label ?? figureLabel(saved[0]), size };
+        text = docKindNow === 'typst' ? figureTypst(figure) : docKindNow === 'markdown' ? figureMarkdown(figure) : figureLatex({ ...figure, ...placement });
+      }
+      const added =
+        docKindNow === 'latex' ? await ensurePackages(() => apiRef.current, [...wanted, ...(placementOf(prefs.placement, prefs.span) === 'H' ? ['float'] : [])]) : { text: '', warn: false };
+      insertBlock(apiRef.current, text);
+      if (uploads.length) await api.refreshTree();
+      const what = uploads.length ? `Saved ${uploads.length === 1 ? saved[used.indexOf(uploads[0])] : `${uploads.length} images in figures/`} and inserted the figure.` : `Inserted ${saved.length === 1 ? saved[0] : `${saved.length} images`} as a figure.`;
+      api.notify([what, added.text].filter(Boolean).join(' '), added.warn ? 'error' : 'success');
       clear();
       setCaption('');
     } catch (err) {
@@ -424,7 +594,8 @@ function InsertFigure() {
     }
   };
 
-  const preview = source?.kind === 'file' ? source.url : source && IMAGE_EXTS.test(source.path) ? blobUrl(api.projectId, source.path) : '';
+  const latex = kind !== 'typst' && kind !== 'markdown';
+  const showDrop = !first || several;
 
   return (
     <section className="tool-card" data-card="figure" ref={cardRef} onPaste={onPaste}>
@@ -432,38 +603,32 @@ function InsertFigure() {
         <Icon name="photo.badge.plus" /> Insert figure
       </div>
       <div className="tool-card-desc">
-        Saves the image in images/ and inserts it as a figure. PNG, JPEG, PDF and EPS go in as they are; HEIC photos are converted to JPEG, and GIF, WebP, BMP, TIFF and SVG to PNG.
+        Saves the image in figures/ and inserts it as a figure. PNG, JPEG, PDF and EPS go in as they are; HEIC photos are converted to JPEG, and GIF, WebP, BMP, TIFF and SVG to PNG.
       </div>
-      <div
-        ref={dropRef}
-        className={`drop-zone ${dragging ? 'dragging' : ''} ${source ? 'has-file' : ''}`}
-        tabIndex={source ? -1 : 0}
-        role={source ? undefined : 'button'}
-        aria-label={source ? undefined : 'Choose an image'}
-        onClick={() => !source && inputRef.current?.click()}
-        onKeyDown={(e) => {
-          if ((e.key !== 'Enter' && e.key !== ' ') || e.target !== e.currentTarget || source) return;
-          // Space would scroll the tools too
-          e.preventDefault();
-          inputRef.current?.click();
-        }}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-      >
-        {source ? (
+      {kind !== 'markdown' && (
+        <Segmented
+          label="Layout"
+          value={prefs.layout}
+          options={LAYOUTS}
+          onChange={(next) => {
+            set({ layout: next });
+            setLabel(null);
+          }}
+        />
+      )}
+      {several && layout === 'grid' && (
+        <NumberField id={`${id}-columns`} label="Columns" unit="images a row" value={prefs.columns} min={2} max={4} onChange={(columns) => set({ columns })} />
+      )}
+      {!several && first ? (
+        <div className="drop-zone has-file" ref={dropRef} tabIndex={-1} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
           <div className="drop-preview">
-            {preview ? <img src={preview} alt="" /> : <Icon name="doc.richtext" size={28} />}
-            <span className="drop-name">{source.kind === 'file' ? fileName : source.path}</span>
+            {panelPreview(api.projectId, first) ? <img src={panelPreview(api.projectId, first)} alt="" /> : <Icon name="doc.richtext" size={28} />}
+            <span className="drop-name">{first.source.kind === 'file' ? safeFileName(first.name, first.source.ext) : first.source.path}</span>
             <button
               className="icon-btn"
               title="Remove image"
               aria-label="Remove image"
-              onClick={(e) => {
-                e.stopPropagation();
+              onClick={() => {
                 clear();
                 // the button goes with the image; focus stays in the card
                 dropRef.current?.focus();
@@ -472,85 +637,289 @@ function InsertFigure() {
               <Icon name="xmark.circle.fill" />
             </button>
           </div>
-        ) : busy === 'reading' ? (
-          <span className="spinner" aria-hidden="true" />
-        ) : (
-          <>
-            <Icon name="photo.badge.plus" size={28} />
-            <span>Click to choose or drag in an image</span>
-          </>
-        )}
-        <input
-          ref={inputRef}
-          type="file"
-          accept={ACCEPT}
-          hidden
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            e.target.value = '';
-            if (file) load(file);
+        </div>
+      ) : null}
+      {several &&
+        panels.map((panel, i) => (
+          <div
+            className={`figure-panel ${moving === panel.key ? 'moving' : ''} ${over === panel.key && moving !== panel.key ? 'over' : ''}`}
+            key={panel.key}
+            // dragged by its head, so text in its fields can still be selected
+            onDragOver={(e) => {
+              if (moving === null) return;
+              e.preventDefault();
+              setOver(panel.key);
+            }}
+            onDrop={(e) => {
+              if (moving === null) return;
+              e.preventDefault();
+              move(moving, i);
+              setMoving(null);
+              setOver(null);
+            }}
+          >
+            <div
+              className="figure-panel-head"
+              draggable
+              title="Drag to reorder"
+              onDragStart={(e) => {
+                setMoving(panel.key);
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', panelPath(panel));
+              }}
+              onDragEnd={() => {
+                setMoving(null);
+                setOver(null);
+              }}
+            >
+              {panelPreview(api.projectId, panel) ? <img src={panelPreview(api.projectId, panel)} alt="" /> : <Icon name="doc.richtext" size={22} />}
+              <span className="drop-name">
+                {prefs.labels === 'sub' ? `(${String.fromCharCode(97 + i)}) ` : ''}
+                {panelPath(panel)}
+              </span>
+              <button className="icon-btn" title="Move earlier" aria-label={`Move image ${i + 1} earlier`} disabled={i === 0} onClick={() => move(panel.key, i - 1)}>
+                <Icon name="chevron.left" />
+              </button>
+              <button className="icon-btn" title="Move later" aria-label={`Move image ${i + 1} later`} disabled={i === panels.length - 1} onClick={() => move(panel.key, i + 1)}>
+                <Icon name="chevron.right" />
+              </button>
+              <button className="icon-btn" title="Remove image" aria-label={`Remove image ${i + 1}`} onClick={() => remove(panel.key)}>
+                <Icon name="xmark.circle.fill" />
+              </button>
+            </div>
+            {panel.source.kind === 'file' && (
+              <input
+                className="input"
+                aria-label={`Image ${i + 1} file name`}
+                value={panel.name}
+                onChange={(e) => setPanel(panel.key, { name: e.target.value })}
+                onBlur={() => panel.source.kind === 'file' && setPanel(panel.key, { name: safeFileName(panel.name, panel.source.ext) })}
+                spellCheck={false}
+              />
+            )}
+            {prefs.labels !== 'none' && (
+              <>
+                <input className="input" aria-label={`Image ${i + 1} caption`} placeholder={prefs.labels === 'sub' ? 'Sub-caption' : 'Caption'} value={panel.caption} onChange={(e) => setPanel(panel.key, { caption: e.target.value })} />
+                <input
+                  className="input mono"
+                  aria-label={`Image ${i + 1} label`}
+                  value={panel.label ?? figureLabel(panelPath(panel))}
+                  onChange={(e) => setPanel(panel.key, { label: e.target.value })}
+                  spellCheck={false}
+                />
+              </>
+            )}
+          </div>
+        ))}
+      {showDrop && (
+        <div
+          ref={dropRef}
+          className={`drop-zone ${dragging ? 'dragging' : ''} ${several && first ? 'compact' : ''}`}
+          tabIndex={0}
+          role="button"
+          aria-label={several ? 'Add images' : 'Choose an image'}
+          onClick={() => inputRef.current?.click()}
+          onKeyDown={(e) => {
+            if ((e.key !== 'Enter' && e.key !== ' ') || e.target !== e.currentTarget) return;
+            // Space would scroll the tools too
+            e.preventDefault();
+            inputRef.current?.click();
           }}
-        />
-      </div>
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+        >
+          {busy === 'reading' ? (
+            <span className="spinner" aria-hidden="true" />
+          ) : (
+            <>
+              <Icon name="photo.badge.plus" size={several && first ? 20 : 28} />
+              <span>{several ? (first ? 'Add another image' : 'Click to choose or drag in images') : 'Click to choose or drag in an image'}</span>
+            </>
+          )}
+        </div>
+      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept={ACCEPT}
+        multiple={several}
+        hidden
+        onChange={(e) => {
+          const files = [...(e.target.files ?? [])];
+          e.target.value = '';
+          loadAll(files);
+        }}
+      />
       {/* always there, so VoiceOver reads what arrives in it */}
       <div className={`field-hint ${error ? 'error' : ''}`} role="status">
-        {error || (busy === 'reading' ? 'Reading the image…' : source?.kind === 'file' ? source.note : '')}
+        {error || (busy === 'reading' ? 'Reading the image…' : !several && first?.source.kind === 'file' ? first.source.note : '')}
       </div>
-      {source && (
+      {first && (
         <>
-          {source.kind === 'file' && (
+          {!several && first.source.kind === 'file' && (
             <div className="field">
               <label htmlFor={`${id}-name`}>File name</label>
-              <input id={`${id}-name`} className="input" value={name} onChange={(e) => setName(e.target.value)} onBlur={() => setName(fileName)} spellCheck={false} />
-              <div className="field-hint">Goes in images/{fileName} when you insert it, or with -2 added if that name’s taken.</div>
-            </div>
-          )}
-          <div className="field">
-            <label htmlFor={`${id}-caption`}>Caption</label>
-            <textarea
-              ref={captionRef}
-              id={`${id}-caption`}
-              className="input"
-              rows={2}
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              placeholder="Leave empty to write it later"
-            />
-          </div>
-          <div className="field">
-            <label htmlFor={`${id}-label`}>Label</label>
-            <input id={`${id}-label`} className="input" value={label ?? figureLabel(path)} onChange={(e) => setLabel(e.target.value)} spellCheck={false} />
-          </div>
-          <Segmented label="Width" value={prefs.width} options={WIDTHS} onChange={(width) => setPrefs({ ...prefs, width })} />
-          {prefs.width === 'custom' && (
-            <div className="figure-custom-width">
               <input
-                id={`${id}-custom`}
-                className="input number"
-                type="number"
-                min={1}
-                max={100}
-                value={prefs.custom || ''}
-                onChange={(e) => setPrefs({ ...prefs, custom: Math.min(100, Math.max(0, Math.round(Number(e.target.value) || 0))) })}
-                onBlur={() => !prefs.custom && setPrefs({ ...prefs, custom: DEFAULT_PREFS.custom })}
+                id={`${id}-name`}
+                className="input"
+                value={first.name}
+                onChange={(e) => setPanel(first.key, { name: e.target.value })}
+                onBlur={() => first.source.kind === 'file' && setPanel(first.key, { name: safeFileName(first.name, first.source.ext) })}
+                spellCheck={false}
               />
-              <label htmlFor={`${id}-custom`}>% of the line width</label>
+              <div className="field-hint">Goes in {panelPath(first)} when you insert it, or with -2 added if that name’s taken.</div>
             </div>
           )}
-          <PlacementField
-            kind="figure"
-            value={prefs.placement}
-            onChange={(placement) => setPrefs({ ...prefs, placement })}
-            span={prefs.span}
-            onSpan={(span) => setPrefs({ ...prefs, span })}
-          />
+          {several && (
+            <>
+              <Segmented label="Labelling" value={prefs.labels} options={LABELLING} onChange={(labels) => set({ labels })} />
+              <div className="field-hint">
+                {prefs.labels === 'sub'
+                  ? `Each image is a sub-figure, (a), (b) and so on, under one caption and one figure number${latex ? '. Uses the subcaption package, which is added' : ''}. Refer to one image by its own label.`
+                  : prefs.labels === 'separate'
+                    ? 'Each image is a figure of its own, with its own number, caption and label, side by side.'
+                    : 'The images share the one caption and label, with no (a) or (b).'}
+              </div>
+              <Segmented label="Line up" value={prefs.align} options={ALIGNS} onChange={(align) => set({ align })} />
+            </>
+          )}
+          {!(several && prefs.labels === 'separate') && (
+            <>
+              <div className="field">
+                <label htmlFor={`${id}-caption`}>Caption</label>
+                <textarea
+                  ref={captionRef}
+                  id={`${id}-caption`}
+                  className="input"
+                  rows={2}
+                  value={caption}
+                  onChange={(e) => setCaption(e.target.value)}
+                  placeholder="Leave empty to write it later"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor={`${id}-label`}>Label</label>
+                <input id={`${id}-label`} className="input" value={mainLabel} onChange={(e) => setLabel(e.target.value)} spellCheck={false} />
+              </div>
+            </>
+          )}
+          <Segmented label="Size by" value={prefs.sizeMode} options={SIZE_MODES} onChange={(sizeMode) => set({ sizeMode })} />
+          {prefs.sizeMode === 'line' && (
+            <>
+              <Segmented
+                label={several ? 'Width in its panel' : 'Width'}
+                value={several ? prefs.panelShare : prefs.width}
+                options={WIDTHS}
+                onChange={(choice) => set(several ? { panelShare: choice } : { width: choice })}
+              />
+              {(several ? prefs.panelShare : prefs.width) === 'custom' && (
+                <NumberField id={`${id}-custom`} label="Custom" unit={several ? '% of the panel’s width' : '% of the line width'} value={prefs.custom} min={1} max={100} onChange={(custom) => set({ custom })} />
+              )}
+            </>
+          )}
+          {(prefs.sizeMode === 'width' || prefs.sizeMode === 'box') && (
+            <NumberField id={`${id}-w`} label="Width" unit="mm" value={prefs.sizeW} min={1} max={400} onChange={(sizeW) => set({ sizeW })} />
+          )}
+          {(prefs.sizeMode === 'height' || prefs.sizeMode === 'box') && (
+            <NumberField id={`${id}-h`} label="Height" unit="mm" value={prefs.sizeH} min={1} max={400} onChange={(sizeH) => set({ sizeH })} />
+          )}
+          {prefs.sizeMode === 'scale' && <NumberField id={`${id}-scale`} label="Scale" unit="× its own size" value={prefs.scale} min={0.05} max={5} step={0.05} onChange={(scale) => set({ scale })} />}
+          <div className="field-hint">
+            {
+              {
+                line: several ? 'Each image takes this share of its panel; the panels share the line between them.' : 'A share of the line width. A tall image is kept within the page.',
+                width: 'Every image is this wide, and as tall as its shape makes it.',
+                height: 'Every image is this tall, and as wide as its shape makes it. Good for images of different shapes side by side.',
+                box: 'Each image is made as big as fits in this box without stretching it.',
+                scale: kind === 'markdown' ? 'Markdown can’t scale an image, so it goes in at the line share.' : 'A scale of the image’s own size, as saved: 0.5 is half.'
+              }[prefs.sizeMode]
+            }
+          </div>
+          {kind !== 'markdown' && (
+            <label className="checkbox-row">
+              <input type="checkbox" checked={prefs.crop} onChange={(e) => set({ crop: e.target.checked })} />
+              <span>
+                Crop edges
+                <span className="field-hint">{kind === 'typst' ? 'Typst can’t crop an image, so this is left out of Typst documents.' : `Trims the edges of ${several ? 'every image' : 'the image'} with trim and clip.`}</span>
+              </span>
+            </label>
+          )}
+          {prefs.crop && latex && (
+            <div className="figure-trim">
+              {(['Left', 'Bottom', 'Right', 'Top'] as const).map((side, i) => (
+                <NumberField
+                  key={side}
+                  id={`${id}-trim-${i}`}
+                  label={side}
+                  unit="mm"
+                  value={prefs.trim[i]}
+                  min={0}
+                  max={200}
+                  onChange={(n) => set({ trim: Object.assign([...prefs.trim], { [i]: n }) as FigurePrefs['trim'] })}
+                />
+              ))}
+            </div>
+          )}
+          {kind !== 'typst' && kind !== 'markdown' && (
+            <PlacementField kind="figure" value={prefs.placement} onChange={(placement) => set({ placement })} span={prefs.span} onSpan={(span) => set({ span })} />
+          )}
           <button className="btn primary full" onClick={insert} disabled={!!busy || !docOpen}>
             {busy === 'inserting' ? <span className="spinner" /> : <Icon name="plus" />} Insert figure
           </button>
           {!docOpen && <div className="field-hint">{NOT_TEX}</div>}
         </>
       )}
+      <FigureHelp />
     </section>
+  );
+}
+
+/** What each layout, size and package does, for the figure card. */
+function FigureHelp() {
+  return (
+    <details className="tool-help">
+      <summary>What these options mean</summary>
+      <dl>
+        <dt>Single, side by side and grid</dt>
+        <dd>
+          Single puts one image in a figure. Side by side puts all the images in one row, sharing the line equally; a grid puts them in rows of the chosen number of columns, as a 2 × 2 square of
+          four.
+        </dd>
+        <dt>(a), (b): sub-figures</dt>
+        <dd>
+          One figure with one number and caption, whose images are lettered (a), (b) with a short caption each. Uses the <code>subcaption</code> package, the current and maintained way to make
+          sub-figures; the older <code>subfig</code> and <code>subfigure</code> packages are out of date and clash with it. With cleveref, <code>\cref</code> on an image’s label prints
+          “Figure 2a”.
+        </dd>
+        <dt>Separate figures</dt>
+        <dd>Each image is a full figure with its own number (Figure 2, Figure 3), caption and label, placed side by side in one float. No extra package.</dd>
+        <dt>One caption</dt>
+        <dd>The images sit together under a single caption and label, with no letters. Use it when the images only make sense together.</dd>
+        <dt>Line up</dt>
+        <dd>How images of different heights line up in a row: along their tops, their centres or their bottoms. Bottoms keeps the captions under them level.</dd>
+        <dt>Size by</dt>
+        <dd>
+          <b>Share</b> sets the width as a part of the line, or of the image’s panel in a row; it keeps the layout when the margins or columns change. <b>Width</b> and <b>Height</b> set an
+          exact size in millimetres and keep the shape. <b>Fit in box</b> makes the image as big as fits in a width and height without stretching it (<code>keepaspectratio</code>).{' '}
+          <b>Scale</b> multiplies the image’s own size, so 0.5 is half; it depends on how big the file was saved.
+        </dd>
+        <dt>Crop edges</dt>
+        <dd>
+          Cuts millimetres off each edge with <code>trim</code> and <code>clip</code>, for white space or a border in a screenshot. The file itself is not changed.
+        </dd>
+        <dt>Placement</dt>
+        <dd>
+          Where LaTeX may put the figure. Exactly here (<code>[H]</code>) stops it floating and uses the <code>float</code> package, which is added. Across both columns uses{' '}
+          <code>figure*</code> in a two-column document.
+        </dd>
+        <dt>graphicx</dt>
+        <dd>The standard package for <code>\includegraphics</code>, added to every LaTeX document a figure goes into.</dd>
+      </dl>
+    </details>
   );
 }
 
@@ -856,6 +1225,14 @@ const ALIGN: [string, string][] = [
   ['r', 'Right']
 ];
 const ALIGN_X: [string, string][] = [...ALIGN, ['X', 'Fill (X)']];
+/** siunitx's S column, for LaTeX only */
+const NUMBERS: [string, string] = ['S', 'Numbers (S)'];
+
+const ENVS: [TableEnv, string, string?][] = [
+  ['tabular', 'tabular'],
+  ['tabularx', 'tabularx'],
+  ['xltabular', 'xltabular', 'xltabular: breaks across pages']
+];
 
 const LINES: [TableLines, string][] = [
   ['booktabs', 'Booktabs'],
@@ -872,7 +1249,7 @@ function InsertTable() {
   apiRef.current = api;
   const id = useId();
   const [cells, setCells] = useState(() => blankGrid(3, 3));
-  const [env, setEnv] = useState<TableModel['env']>('tabular');
+  const [env, setEnv] = useState<TableEnv>('tabular');
   /** chosen alignments; a column without one gets the environment's default */
   const [chosen, setChosen] = useState<string[]>([]);
   const [lines, setLines] = useState<TableLines>('booktabs');
@@ -888,6 +1265,13 @@ function InsertTable() {
   /** null: follows the caption */
   const [label, setLabel] = useState<string | null>(null);
   const [escape, setEscape] = useState(true);
+  const [merges, setMerges] = useState<TableMerge[]>([]);
+  const [partRules, setPartRules] = useState<TablePartRule[]>([]);
+  /** makecell: a \\ in a cell breaks the line there */
+  const [breaks, setBreaks] = useState(false);
+  /** threeparttable: notes under the table */
+  const [withNotes, setWithNotes] = useState(false);
+  const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const focusAfter = useRef<[number, number] | null>(null);
@@ -896,13 +1280,43 @@ function InsertTable() {
   /** a LaTeX document, or none open; Typst and Markdown have no tabularx, so its X columns fall back to the tabular defaults there */
   const latex = kind !== 'typst' && kind !== 'markdown';
   const tableEnv = latex ? env : 'tabular';
-  const align = Array.from({ length: cols }, (_, c) => (chosen[c] === 'X' && tableEnv !== 'tabularx' ? undefined : chosen[c]) ?? defaultAlign(tableEnv, c));
-  const model = { cells, env: tableEnv, align, lines, toggled, header, float, placement, span, caption, label: label ?? tableLabel(caption), escape };
+  const long = tableEnv === 'xltabular';
+  // X needs tabularx or xltabular, and S siunitx, which only LaTeX has
+  const align = Array.from({ length: cols }, (_, c) => ((chosen[c] === 'X' && tableEnv === 'tabular') || (chosen[c] === 'S' && !latex) ? undefined : chosen[c]) ?? defaultAlign(tableEnv, c));
+  const fitted = fitMerges(merges, cells.length, cols);
+  const model: TableModel = {
+    cells,
+    env: tableEnv,
+    align,
+    lines,
+    toggled,
+    header,
+    float,
+    placement,
+    span: span && !long,
+    caption,
+    label: label ?? tableLabel(caption),
+    escape,
+    merges: fitted,
+    partRules: fitPartRules(partRules, cells.length, cols),
+    breaks: latex && breaks,
+    notes: latex && withNotes && !long ? notes : ''
+  };
   const edges = tableEdges(cells.length, cols, header);
   const rules = tableRules(model, cols);
   // a name left over from a removed row or column changes nothing
   const changed = toggled.some((edge) => edges.h.includes(edge) || edges.v.includes(edge));
   const [atRow, atCol] = [Math.min(at[0], cells.length - 1), Math.min(at[1], cols - 1)];
+  // the focused cell's merged block, or the cell on its own
+  const block = mergeAt(fitted, atRow, atCol) ?? { r: atRow, c: atCol, rows: 1, cols: 1 };
+  const merged = block.rows > 1 || block.cols > 1;
+  const shortRule = partRules.find((p) => p.row === block.r + block.rows - 1 && p.from === block.c && p.to === block.c + block.cols - 1);
+  const mergeBy = (rows: number, cols: number) => {
+    setMerges((prev) => withMerge(fitMerges(prev, cells.length, cells[0].length), { ...block, rows: block.rows + rows, cols: block.cols + cols }));
+    setAt([block.r, block.c]);
+  };
+  const toggleShortRule = () =>
+    setPartRules((prev) => (shortRule ? prev.filter((p) => p !== shortRule) : [...prev, { row: block.r + block.rows - 1, from: block.c, to: block.c + block.cols - 1 }]));
   const flip = (edge: string) => setToggled((prev) => (prev.includes(edge) ? prev.filter((e) => e !== edge) : [...prev, edge]));
   const text = kind === 'typst' ? tableTypst(model) : kind === 'markdown' ? tableMarkdown(model) : tableLatex(model);
   const docOpen = isDocument(api.activePath);
@@ -922,6 +1336,13 @@ function InsertTable() {
   const onCellKey = (e: KeyboardEvent<HTMLInputElement>, r: number, c: number) => {
     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
     e.preventDefault();
+    // with line breaks on, Shift-Return puts a \\ in the cell
+    if (e.shiftKey && breaks && latex) {
+      const input = e.currentTarget;
+      const [from, to] = [input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length];
+      setCell(r, c, `${input.value.slice(0, from)} \\\\ ${input.value.slice(to)}`.replace(/ {2,}/g, ' '));
+      return;
+    }
     if (r < cells.length - 1) focusCell(r + 1, c);
     else {
       addRow();
@@ -950,7 +1371,7 @@ function InsertTable() {
 
   const insert = async () => {
     setBusy(true);
-    const wanted = [...(lines === 'booktabs' ? ['booktabs'] : []), ...(env === 'tabularx' ? ['tabularx'] : []), ...(float && placementOf(placement, span) === 'H' ? ['float'] : [])];
+    const wanted = [...tablePackages(model), ...(float && !long && placementOf(placement, model.span) === 'H' ? ['float'] : [])];
     const added = kind === 'latex' ? await ensurePackages(() => apiRef.current, wanted) : { text: '', warn: false };
     insertBlock(apiRef.current, text);
     api.notify(['Inserted the table.', added.text].filter(Boolean).join(' '), added.warn ? 'error' : 'success');
@@ -977,27 +1398,44 @@ function InsertTable() {
               <Select
                 labelId={`${id}-align-${c}`}
                 value={value}
-                options={tableEnv === 'tabularx' ? ALIGN_X : ALIGN}
+                options={[...(tableEnv === 'tabular' ? ALIGN : ALIGN_X), ...(latex ? [NUMBERS] : [])]}
                 onChange={(next) => setChosen((prev) => Object.assign([...prev], { [c]: next }))}
               />
             </div>
           ))}
           {cells.map((row, r) =>
-            row.map((cell, c) => (
-              <input
-                key={`${r}-${c}`}
-                className={`input ${header && r === 0 ? 'head' : ''}`}
-                style={{ gridRow: 2 * r + 3, gridColumn: 2 * c + 2 }}
-                data-cell={`${r}-${c}`}
-                aria-label={`Row ${r + 1}, column ${c + 1}`}
-                value={cell}
-                onChange={(e) => setCell(r, c, e.target.value)}
-                onFocus={() => setAt([r, c])}
-                onKeyDown={(e) => onCellKey(e, r, c)}
-                onPaste={(e) => onCellPaste(e, r, c)}
-              />
-            ))
+            row.map((cell, c) => {
+              const merge = mergeAt(fitted, r, c);
+              // a cell merged into another has no box of its own
+              if (merge && (merge.r !== r || merge.c !== c)) return null;
+              return (
+                <input
+                  key={`${r}-${c}`}
+                  className={`input ${header && r === 0 ? 'head' : ''} ${merge ? 'merged' : ''}`}
+                  style={{ gridRow: `${2 * r + 3} / span ${2 * (merge?.rows ?? 1) - 1}`, gridColumn: `${2 * c + 2} / span ${2 * (merge?.cols ?? 1) - 1}` }}
+                  data-cell={`${r}-${c}`}
+                  aria-label={`Row ${r + 1}, column ${c + 1}`}
+                  value={cell}
+                  onChange={(e) => setCell(r, c, e.target.value)}
+                  onFocus={() => setAt([r, c])}
+                  onKeyDown={(e) => onCellKey(e, r, c)}
+                  onPaste={(e) => onCellPaste(e, r, c)}
+                />
+              );
+            })
           )}
+          {kind !== 'markdown' &&
+            fitPartRules(partRules, cells.length, cols).map((p) => (
+              <div
+                key={`part-${p.row}-${p.from}-${p.to}`}
+                className="table-line h on part"
+                style={{ gridRow: 2 * p.row + 4, gridColumn: `${2 * p.from + 2} / ${2 * p.to + 3}` }}
+                aria-hidden
+                title="Remove the short rule"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setPartRules((prev) => prev.filter((q) => !(q.row === p.row && q.from === p.from && q.to === p.to)))}
+              />
+            ))}
           {/* mouse targets only: the “Lines at …” buttons below are the way in for the keyboard and screen readers */}
           {kind !== 'markdown' &&
             edges.h.map((edge, i) => (
@@ -1053,6 +1491,9 @@ function InsertTable() {
             setToggled([]);
             setCaption('');
             setLabel(null);
+            setMerges([]);
+            setPartRules([]);
+            setNotes('');
           }}
         >
           Clear
@@ -1116,27 +1557,96 @@ function InsertTable() {
           </div>
         </>
       )}
+      <div className="field">
+        <span className="field-label" id={`${id}-merge`}>
+          {merged ? `Merged cells at row ${block.r + 1}, column ${block.c + 1}` : `Cell at row ${atRow + 1}, column ${atCol + 1}`}
+        </span>
+        <div className="chip-row" role="group" aria-labelledby={`${id}-merge`}>
+          <button type="button" className="chip" disabled={block.c + block.cols >= cols || kind === 'markdown'} onClick={() => mergeBy(0, 1)}>
+            Merge right
+          </button>
+          <button type="button" className="chip" disabled={block.r + block.rows >= cells.length || kind === 'markdown'} onClick={() => mergeBy(1, 0)}>
+            Merge down
+          </button>
+          <button type="button" className="chip" disabled={!merged} onClick={() => setMerges((prev) => prev.filter((g) => !(g.r === block.r && g.c === block.c)))}>
+            Split
+          </button>
+          {kind !== 'markdown' && (
+            <button type="button" className={`chip ${shortRule ? 'active' : ''}`} aria-pressed={!!shortRule} disabled={block.r + block.rows >= cells.length} onClick={toggleShortRule}>
+              Short rule below
+            </button>
+          )}
+        </div>
+        <div className="field-hint">
+          {kind === 'markdown'
+            ? 'Markdown tables can’t merge cells.'
+            : latex
+              ? `Merged cells use \\multicolumn, and \\multirow down the rows, which adds the multirow package. A short rule runs under just this cell’s columns, as a ${lines === 'booktabs' ? '\\cmidrule' : '\\cline'}, for a heading over a group of columns.`
+              : 'Merged cells become table.cell with a colspan and rowspan. A short rule runs under just this cell’s columns, for a heading over a group of columns.'}
+        </div>
+      </div>
       {latex && (
         <>
           <Segmented
             label="Environment"
             value={env}
-            options={[
-              ['tabular', 'tabular'],
-              ['tabularx', 'tabularx']
-            ]}
+            options={ENVS}
             onChange={(next) => {
               setEnv(next);
-              setChosen([]);
+              setChosen((prev) => (next === 'tabular' ? [] : prev));
             }}
           />
-          {tableEnv === 'tabularx' && !align.includes('X') && <div className="field-hint">tabularx needs an X column, so the last column fills the width.</div>}
+          {tableEnv !== 'tabular' && !align.includes('X') && <div className="field-hint">{tableEnv} needs an X column, so the last column that isn’t numbers fills the width.</div>}
+          {long && (
+            <div className="field-hint">
+              xltabular breaks across pages and repeats the header row at the top of each. It holds its own caption, so it doesn’t float, and it can’t span both columns or take notes.
+            </div>
+          )}
+          {align.includes('S') && (
+            <div className="field-hint">
+              Numbers (S) lines numbers up on their decimal point with siunitx, which is added. Type them without thousands separators: siunitx groups 7790 as 7,790 itself. Text in the column is kept as text.
+            </div>
+          )}
         </>
       )}
       <label className="checkbox-row">
         <input type="checkbox" checked={header} onChange={(e) => setHeader(e.target.checked)} />
         Header row
       </label>
+      {latex && (
+        <label className="checkbox-row">
+          <input type="checkbox" checked={breaks} onChange={(e) => setBreaks(e.target.checked)} />
+          <span>
+            Line breaks in cells
+            <span className="field-hint">Type \\ in a cell, or press Shift-{IS_WINDOWS ? 'Enter' : 'Return'}, to start a new line in it. Uses the makecell package, which is added.</span>
+          </span>
+        </label>
+      )}
+      {latex && (
+        <label className="checkbox-row">
+          <input type="checkbox" checked={withNotes} disabled={long} onChange={(e) => setWithNotes(e.target.checked)} />
+          <span>
+            Notes under the table
+            <span className="field-hint">
+              {long ? 'xltabular tables can’t take notes.' : 'Uses the threeparttable package, which is added, so the notes are as wide as the table.'}
+            </span>
+          </span>
+        </label>
+      )}
+      {latex && withNotes && !long && (
+        <div className="field">
+          <label htmlFor={`${id}-notes`}>Notes</label>
+          <textarea
+            id={`${id}-notes`}
+            className="input"
+            rows={3}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder={'a: Measured at noon.\nSource: the site logger.'}
+          />
+          <div className="field-hint">One note a line. Start a line with a: to make it the note for \tnote{'{a}'} typed in a cell.</div>
+        </div>
+      )}
       {latex && (
         <label className="checkbox-row">
           <input type="checkbox" checked={escape} onChange={(e) => setEscape(e.target.checked)} />
@@ -1161,7 +1671,7 @@ function InsertTable() {
       </label>
       {float && (
         <>
-          {latex && <PlacementField kind="table" value={placement} onChange={setPlacement} span={span} onSpan={setSpan} />}
+          {latex && !long && <PlacementField kind="table" value={placement} onChange={setPlacement} span={span} onSpan={setSpan} />}
           <div className="field">
             <label htmlFor={`${id}-caption`}>Caption</label>
             <textarea id={`${id}-caption`} className="input" rows={2} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Leave empty to write it later" />
@@ -1185,7 +1695,76 @@ function InsertTable() {
         </button>
       </div>
       {!docOpen && <div className="field-hint">{NOT_TEX}</div>}
+      <TableHelp />
     </section>
+  );
+}
+
+/** What each environment, column type, line and package does, for the table card. */
+function TableHelp() {
+  return (
+    <details className="tool-help">
+      <summary>What these options mean</summary>
+      <dl>
+        <dt>tabular</dt>
+        <dd>
+          LaTeX’s own table. Each column is as wide as its widest cell, so long text runs off the page unless it is short. Works everywhere, with no package. Best for tables of short
+          entries and numbers.
+        </dd>
+        <dt>tabularx</dt>
+        <dd>
+          A table exactly as wide as the line. Its Fill (X) columns share out the width left over and wrap their text onto more lines, so it suits tables with sentences in them. Uses the{' '}
+          <code>tabularx</code> package, which is added.
+        </dd>
+        <dt>xltabular</dt>
+        <dd>
+          Like tabularx, but the table can run over several pages: the header rows repeat at the top of each page, and each page but the last says it goes on. It holds its own caption, so it
+          does not float. Uses the <code>xltabular</code> package (built on <code>longtable</code>), which is added. Use it only for long tables; a table that fits on a page is better
+          as tabular or tabularx.
+        </dd>
+        <dt>Left, Centre, Right and Fill (X)</dt>
+        <dd>How the text in a column lines up. Fill (X) is for tabularx and xltabular: the column takes the spare width and wraps.</dd>
+        <dt>Numbers (S)</dt>
+        <dd>
+          A column from the <code>siunitx</code> package that lines numbers up on their decimal point, so 12.5 sits over 3.25 and −4 over 120. Spectrum works out the column’s{' '}
+          <code>table-format</code> (how many digits go before and after the point) from the numbers typed. Type numbers plainly, without commas: siunitx adds the thousands separator
+          itself. Headings and other text in the column are kept as text.
+        </dd>
+        <dt>Booktabs, Grid, Minimal and None</dt>
+        <dd>
+          Booktabs draws the rules journals use (<code>\toprule</code>, <code>\midrule</code>, <code>\bottomrule</code>), heavier at the top and bottom, with no vertical lines, from the{' '}
+          <code>booktabs</code> package. Grid draws <code>\hline</code> under every row and lines between columns. Minimal draws plain lines at the top, under the header and at the
+          bottom. None draws no lines.
+        </dd>
+        <dt>Merged cells</dt>
+        <dd>
+          Merge right joins a cell with the one beside it, with <code>\multicolumn</code>, built into LaTeX. Merge down joins it with the one below, with <code>\multirow</code> from the{' '}
+          <code>multirow</code> package, which is added. A line that would cross a merged cell stops either side of it.
+        </dd>
+        <dt>Short rule below</dt>
+        <dd>
+          A rule under only some columns, as under a heading that spans a group of them: <code>\cmidrule</code> with booktabs, slightly shortened at each end so neighbouring groups stay
+          apart, or <code>\cline</code> otherwise.
+        </dd>
+        <dt>Line breaks in cells</dt>
+        <dd>
+          A <code>\\</code> in a cell starts a new line inside it, through <code>\makecell</code> from the <code>makecell</code> package. Without it, <code>\\</code> would end the
+          whole row.
+        </dd>
+        <dt>Notes under the table</dt>
+        <dd>
+          Notes set under the table and as wide as it, from the <code>threeparttable</code> package. Mark a cell with <code>\tnote{'{a}'}</code> and start the note’s line with a: to
+          match it.
+        </dd>
+        <dt>Float, placement and the float package</dt>
+        <dd>
+          A float is a table LaTeX may move to where it fits, with a caption and a label to refer to it by. Exactly here (<code>[H]</code>) stops it moving and uses the{' '}
+          <code>float</code> package, which is added.
+        </dd>
+        <dt>Escape special characters</dt>
+        <dd>Lets &amp; % # _ and the like print as themselves in cells. Turn it off to type LaTeX commands that use them.</dd>
+      </dl>
+    </details>
   );
 }
 

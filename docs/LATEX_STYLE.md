@@ -12,7 +12,7 @@ The built-in templates were brought into line with this standard on 1 November 2
 4. Numbers with units use siunitx: `\qty{4.7}{\kilo\ohm}`, never `4.7 k$\Omega$` or `\SI`.
 5. References are APA 7 through biblatex and Biber, with Australian language mapping.
 6. Every cross-reference uses cleveref (`\cref`), equations included, with labels that have a type prefix (`fig:`, `tab:`, `eq:`).
-7. Tables use booktabs rules and no vertical lines. Captions go above tables and below figures.
+7. Tables use booktabs rules and no vertical lines, with siunitx `S` columns for numbers. Captions go above tables and below figures, and images that belong together are sub-figures from `subcaption`.
 8. Code uses listings with the `report` style, and pseudocode uses algpseudocode with Input and Output.
 9. hyperref ends the preamble's packages, followed only by cleveref, with `hidelinks` and the PDF title, author and `en-AU` language set.
 
@@ -22,8 +22,11 @@ The built-in templates were brought into line with this standard on 1 November 2
 | --- | --- |
 | `main.tex` | The document. Short documents keep everything here. |
 | `references.bib` | The bibliography, loaded with `\addbibresource{references.bib}`. |
-| `figures/` | Images and diagrams. Spectrum's diagram composer saves each drawing here as a standalone `.tex` file. |
+| `figures/` | Images. Spectrum's Insert figure saves each image here, converting it first when LaTeX cannot read it. |
+| `diagrams/` | Diagrams. Spectrum's diagram composer saves each drawing here as a standalone `.tex`, `.typ` or `.mmd` file, with the PDF its preview compiled beside it. |
 | `chapters/` | Optional, for long reports: one file per chapter, brought in with `\include{chapters/introduction}`. |
+
+Before Spectrum 2.1 the composer saved diagrams in `figures/` and Insert figure saved images in `images/`. A project from then moves to these folders on its first compile in 2.1: the composer's diagrams go to `diagrams/` and `images/` goes into `figures/`, and the paths in the project's documents follow. Images of your own already in `figures/` stay there. If a name is already taken in the new folder, that diagram, or the whole of `images/`, stays where it is.
 
 ## Engines
 
@@ -45,11 +48,29 @@ The groups always come in this order. Leave out a group the document does not ne
 | `% References` | `csquotes`, `biblatex`, the language mapping, `xurl`, `\addbibresource` |
 | `% Page` | `geometry`, `parskip`, `babel`, the `iftex` font block, `microtype` |
 | `% Maths` | `amsmath`, `amssymb`, `mathtools`, `amsthm` and the theorem set |
-| `% Figures and tables` | `graphicx`, `booktabs`, `siunitx`, `tabularx`, `tikz`, `pgfplots`, `circuitikz`, `standalone` |
+| `% Figures and tables` | `graphicx`, `subcaption`, `float`, `booktabs`, `tabularx`, `xltabular`, `siunitx`, `multirow`, `makecell`, `threeparttable`, `tikz`, `pgfplots`, `pgfplotstable`, `circuitikz`, `tikz-cd` |
 | `% Code` | `xcolor`, `listings` and its style, `algorithm`, `algpseudocode` |
 | `% Links` | `hyperref`, `\hypersetup`, then `cleveref` |
 
+Within a group, packages load in the order the table lists them. A package's own settings follow it straight away, such as `\sisetup` after `siunitx` and `\pgfplotsset` after `pgfplots`.
+
 After the groups come the document's own settings (`\numberwithin`, the theorem environments, any `\newcommand`), then `\title`, `\author` and `\date`, then `\begin{document}`.
+
+Two packages sit outside the groups:
+
+- `standalone`, for diagrams from the composer, loads on the line straight after `\documentclass`, before everything else.
+- TikZ libraries (`\usetikzlibrary{...}`) come after the last `\usepackage`, since they need TikZ loaded first.
+
+### How Spectrum adds a package
+
+When Insert table, Insert figure or Insert diagram needs a package the document does not load, Spectrum adds a `\usepackage{...}` line in the order above:
+
+1. It goes before the first package the document already loads that comes after it in the order. If that package starts a group, the new line goes above the group's `%` heading and the blank line over it, so it ends the group before. For example, `multirow` goes after `siunitx` and its `\sisetup`, before `% Links`.
+2. If the document loads no package that comes after it, or its own order does not match this one (`hyperref` loaded before `graphicx`, say), the new line goes straight after the last `\usepackage`.
+3. A package this guide does not list (`enumitem`, `titlesec`) also goes after the last `\usepackage`.
+4. A document with no `\usepackage` at all gets the line just before `\begin{document}`.
+
+The added line has no comment. Add one in the guide's style when tidying the preamble.
 
 ### Comments
 
@@ -201,9 +222,67 @@ A worked example is an `example` followed by a `solution`, which ends with the p
 
 - A figure is `\begin{figure}[ht]`, then `\centering`, the picture, `\caption{...}` and `\label{fig:...}`. The caption goes below the picture.
 - Captions are sentences: they start with a capital and end with a full stop.
-- Images use `\includegraphics[width=0.8\textwidth]{figures/name}`. Leave off the file extension.
+- Images live in `figures/` and are included with `\includegraphics[width=0.75\linewidth]{figures/name.png}`.
 - Prefer drawing in LaTeX (pgfplots, TikZ, circuitikz) over pasting screenshots of plots, so the text matches the document's font.
-- Use `[H]` (exactly here) only when the user asks for it. It needs the `float` package, which Spectrum's figure tools add.
+- Spectrum inserts figures with `[H]` (exactly here) unless the user chooses other placement. `[H]` needs the `float` package, which Spectrum adds. A float that is allowed to move (`[ht]`) is better in long documents.
+
+### Image sizes
+
+Size an image one way, chosen from these:
+
+| Way | Write | Use it for |
+| --- | --- | --- |
+| A share of the line | `width=0.75\linewidth` | Most images. It keeps the layout when the margins or columns change. |
+| An exact width | `width=60mm` | Images that must be a set size, such as a logo. |
+| An exact height | `height=40mm` | Images of different shapes side by side, so they line up. |
+| A box it fits in | `width=60mm,height=40mm,keepaspectratio` | Images of unknown shape that must not exceed a size. |
+| A scale | `scale=0.5` | Rarely: it depends on the size the file was saved at. |
+
+- A single image at a share of the line also gets `height=0.8\textheight,keepaspectratio`, so a tall image (a phone screenshot) cannot run off the page.
+- Crop with `trim=left bottom right top,clip` in millimetres, such as `trim=5mm 0mm 5mm 0mm,clip`. The image file itself is not changed.
+- Never set both `width` and `height` without `keepaspectratio`, as it stretches the image.
+
+### Several images in one figure
+
+Put images that belong together in one figure. Spectrum's Insert figure offers three kinds, laid out side by side or in a grid of two to four columns.
+
+**Sub-figures (a), (b)** share one figure number and caption, and each has a short caption and a label of its own. Use `subcaption`'s `subfigure`. Do not use the older `subfig` or `subfigure` packages: they are out of date and clash with `subcaption`, `hyperref` and `cleveref`.
+
+```latex
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/measured.png}
+        \caption{Measured output.}
+        \label{fig:measured}
+    \end{subfigure}\hfill
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/modelled.png}
+        \caption{Modelled output.}
+        \label{fig:modelled}
+    \end{subfigure}
+    \caption{Energy across the year.}
+    \label{fig:energy}
+\end{figure}
+```
+
+- `\cref{fig:measured}` prints "Figure 1a" and `\cref{fig:energy}` prints "Figure 1".
+- Panels are `0.48\linewidth` wide for two a row, `0.31\linewidth` for three and `0.22\linewidth` for four, separated by `\hfill`. A new row starts with `\par\medskip` after the last panel of the row before.
+- Inside a panel, `\linewidth` is the panel's width, so `width=\linewidth` fills it.
+
+**Separate figures** side by side each have their own number (Figure 2 and Figure 3), caption and label. Use a `minipage` for each, with its own `\caption`, inside one `figure`. No package is needed.
+
+**One caption** puts the images together under a single caption and label, with no letters. Use a `minipage` for each, and the `\caption` after the last.
+
+**Lining up** panels of different heights:
+
+| Line up | Write | Result |
+| --- | --- | --- |
+| Bottoms | `[t]` on each panel | The images' bottoms line up, so the captions under them start level. The default. |
+| Centres | `[c]` on each panel | The panels' centres line up. |
+| Tops | `[t]`, with each image as `\vtop{\vskip0pt\hbox{\includegraphics[...]{...}}}` | The images' tops line up. A plain `[t]` lines up the bottoms, because an image's baseline is its bottom edge. |
 
 ### Plots with pgfplots
 
@@ -236,12 +315,12 @@ A worked example is an `example` followed by a `solution`, which ends with the p
 
 ### Diagrams from Spectrum's composer
 
-The composer saves each drawing as `figures/<name>.tex`, a standalone document that carries its own packages and a final `% spectrum-diagram v1 ...` line holding the drawing. Do not edit or remove that last line. Insert the drawing with `\includestandalone`, which needs `\usepackage{standalone}` in the preamble. Spectrum's Floats tab adds it, with the drawing's own packages, when it inserts a diagram:
+The composer saves each drawing as `diagrams/<name>.tex`, a standalone document that carries its own packages and a final `% spectrum-diagram v1 ...` line holding the drawing. Do not edit or remove that last line. Insert the drawing with `\includestandalone`, which needs `\usepackage{standalone}` in the preamble. Spectrum's Floats tab adds it, with the drawing's own packages, when it inserts a diagram:
 
 ```latex
 \begin{figure}[ht]
   \centering
-  \includestandalone[width=0.6\linewidth]{figures/amp}
+  \includestandalone[width=0.6\linewidth]{diagrams/amp}
   \caption{An amplifier.}
   \label{fig:amp}
 \end{figure}
@@ -269,8 +348,91 @@ The composer saves each drawing as `figures/<name>.tex`, a standalone document t
 - The caption goes above the table.
 - Use `\toprule`, `\midrule` and `\bottomrule` from booktabs. No `\hline` and no vertical lines.
 - Text columns are `l`, number columns are `S` with a `table-format`, and units go in the column heading, not in every cell.
-- When a column holds long text, use `tabularx` with an `X` column at a set width, such as `0.8\textwidth`.
 - Line up the `&` and `\\` in the source when it helps reading.
+
+### Choosing the environment
+
+| Environment | Package | Width | Use it for |
+| --- | --- | --- | --- |
+| `tabular` | none | Each column as wide as its widest cell | Short entries and numbers. The default. |
+| `tabularx` | `tabularx` | Exactly `\linewidth`; `X` columns share the spare width and wrap | Tables with sentences in them. |
+| `xltabular` | `xltabular` | As `tabularx`, and runs across pages | Long tables only, such as data listings or appendices. |
+
+Do not use `tabulary` (unpredictable widths) or `tabularray` (slow, a syntax of its own, not covered by LaTeX's tagged PDF work, and looking for a new maintainer).
+
+An `xltabular` holds its own caption and does not go inside `table`. Its header rows repeat on every page:
+
+```latex
+\begin{xltabular}{\linewidth}{l S[table-format=3.1] X}
+    \caption{Readings over the year.}\label{tab:readings} \\
+    \toprule
+    Month & {Output (kWh)} & Notes \\
+    \midrule
+    \endfirsthead
+    \toprule
+    Month & {Output (kWh)} & Notes \\
+    \midrule
+    \endhead
+    \multicolumn{3}{r}{\emph{Continued on the next page}} \\
+    \endfoot
+    \bottomrule
+    \endlastfoot
+    January & 950.0 & Hot and clear. \\
+\end{xltabular}
+```
+
+### Numbers: S columns
+
+- An `S` column from `siunitx` lines numbers up on their decimal point.
+- Give it a `table-format`: the digits before and after the point, and a `-` when any number is negative. For example, `S[table-format=-4.1]` fits -1234.5. Spectrum's table tool works this out from the numbers typed.
+- Write numbers plainly, without thousands separators. siunitx adds them, and reads a comma as a decimal point.
+- Put headings and any text in an `S` column in braces, `{Measured (kWh)}` or `{n/a}`, so siunitx leaves them alone.
+
+### Merged cells and grouped headings
+
+```latex
+\begin{tabular}{l S[table-format=4.0] S[table-format=4.1]}
+    \toprule
+    \multirow{2}{*}{Season} & \multicolumn{2}{c}{Energy (kWh)} \\
+    \cmidrule(lr){2-3}
+     & {Measured} & {Modelled} \\
+    \midrule
+    Summer & 2740 & 2810.5 \\
+    \bottomrule
+\end{tabular}
+```
+
+- Merge across columns with `\multicolumn{n}{c}{...}`, which is built in. Centre a merged heading.
+- Merge down rows with `\multirow{n}{*}{...}` from the `multirow` package. Leave the cells it covers empty.
+- Under a heading that spans a group of columns, draw `\cmidrule(lr){a-b}`. The `(lr)` trims its ends so neighbouring groups stay apart. Without booktabs, the equivalent is `\cline{a-b}`.
+- A rule must not cross a cell merged down the rows. Draw `\cmidrule` or `\cline` either side of it instead.
+- In a table with a merged header, all the header rows count as the header. In `xltabular` they all repeat on each page.
+
+### Line breaks and notes
+
+- For a line break inside a cell, wrap the cell in `\makecell{First line \\ second line}` from the `makecell` package. A bare `\\` ends the row.
+- For notes under a table, put the table in a `threeparttable` with a `tablenotes` list after it. Mark a cell with `\tnote{a}`. `xltabular` cannot take notes this way.
+
+```latex
+\begin{table}[H]
+    \centering
+    \begin{threeparttable}
+        \caption{Results.}
+        \label{tab:results}
+        \begin{tabular}{lc}
+            \toprule
+            Method & Score\tnote{a} \\
+            \midrule
+            Ours & 0.91 \\
+            \bottomrule
+        \end{tabular}
+        \begin{tablenotes}
+            \small
+            \item[a] Averaged over five runs.
+        \end{tablenotes}
+    \end{threeparttable}
+\end{table}
+```
 
 ## Code
 
@@ -463,17 +625,18 @@ When writing for a venue, follow the venue's instructions first and this documen
 Before handing back a new `.tex` file, check that:
 
 1. The class is `11pt,a4paper` (or the table above for a CV or slides) with `geometry` at 25 mm and single spacing.
-2. The preamble groups are in the order References, Page, Maths, Figures and tables, Code, Links, each with a `%` heading.
+2. The preamble groups are in the order References, Page, Maths, Figures and tables, Code, Links, each with a `%` heading, and the packages in each group follow the order in [Order](#order).
 3. Every `\usepackage` has a plain English comment, lined up with the others.
 4. The `iftex` block loads `fontenc` and `lmodern` for pdfLaTeX only, and there is no `inputenc` or shell escape package.
 5. `babel` is `australian`, `pdflang` is `en-AU` and the spelling is Australian.
 6. Every number with a unit is `\qty`, `\unit`, `\num` or `\ang`, and `physics` is not loaded.
 7. biblatex is `backend=biber,style=apa,natbib=true` with the `british-apa` mapping, `xurl` and `\printbibliography`, and the keys are in Spectrum's `AuthorYear` form.
 8. Every figure, table, equation, listing and algorithm that is referred to has a prefixed label, and every reference uses `\cref`.
-9. Tables use booktabs with captions above. Figures have captions below.
-10. Code uses the `report` listings style with a language, caption and label on each listing.
-11. `hyperref` ends the packages with `hidelinks` and `\hypersetup`, followed only by `cleveref`.
-12. The document compiles in Spectrum with Tectonic without errors or undefined references.
+9. Tables use booktabs with captions above, `S` columns for numbers, and `xltabular` only for tables longer than a page. Figures have captions below.
+10. Images are sized one way from [Image sizes](#image-sizes), and images that belong together are sub-figures with `subcaption`, not `subfig` or `subfigure`.
+11. Code uses the `report` listings style with a language, caption and label on each listing.
+12. `hyperref` ends the packages with `hidelinks` and `\hypersetup`, followed only by `cleveref`.
+13. The document compiles in Spectrum with Tectonic without errors or undefined references.
 
 ## Exceptions in the templates
 

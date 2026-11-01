@@ -11,6 +11,7 @@ import { ensureDir, copyDir, extractZip, listFilesRecursive, mirrorSkips, rename
 import { onDiskRel, safeJoin, safeJoinLink, sanitizeUploadPath } from '../utils/pathUtils.js';
 import { bibliographyFiles, extractDocumentBody, isDocumentFile, mergeTemplateBody, preserveDocumentMetadata, withBiblatexResources, withoutComments } from '../utils/texUtils.js';
 import { readTemplateManifest, copyTemplateIntoProject, templatePath } from '../services/templateService.js';
+import { DIAGRAM_MARK } from '../services/foldersService.js';
 import {
   APP_DIR,
   mutateProjectFiles,
@@ -150,15 +151,13 @@ async function isDocument(root, relPath) {
   }
 }
 
-// the composer's drawing on a line of its own (% for TikZ, // for Typst and %% for Mermaid): base64 JSON, then the
-// hash of the text the drawing writes. It goes last, but the composer finds it anywhere (diagram/fileFormat.ts), as
-// text added below it is a hand edit there
-const DIAGRAM_MARK = /^(?:%%?|\/\/) spectrum-diagram v1 [A-Za-z0-9+/=]+ [0-9a-f]{16}[ \t]*\r?$/m;
-
-/** A file the diagram composer can open (Edit diagram): a .tex or .typ in figures/ with its drawing, or any .mmd. */
+/**
+ * A file the diagram composer can open (Edit diagram): a .tex or .typ with its drawing in diagrams/, or in figures/,
+ * where diagrams went before 2.1 and stay until the project's first compile moves them, or any .mmd.
+ */
 async function isDiagram(root, relPath) {
   if (/\.mmd$/i.test(relPath)) return true;
-  if (!/^figures\/.+\.(?:tex|typ)$/i.test(relPath)) return false;
+  if (!/^(?:diagrams|figures)\/.+\.(?:tex|typ)$/i.test(relPath)) return false;
   try {
     return DIAGRAM_MARK.test(await fs.readFile(safeJoin(root, relPath), 'utf8'));
   } catch {
@@ -438,7 +437,7 @@ export function registerProjectRoutes(fastify) {
     return { ok: true, path: path.relative(root, output).split(path.sep).join('/') };
   });
 
-  // a new LaTeX project from the .md: pandoc's LaTeX, its .bib files, the images it includes from this project and figures/
+  // a new LaTeX project from the .md: pandoc's LaTeX, its .bib files, the images it includes from this project, figures/ and diagrams/
   fastify.post('/api/projects/:id/export/latex', async (req) => {
     const root = await getProjectRoot(req.params.id);
     const doc = markdownDoc(req.body?.doc);
@@ -454,7 +453,6 @@ export function registerProjectRoutes(fastify) {
       if (!made.ok) throw httpError(made.error || 'pandoc couldn’t read this Markdown.', 502);
       const items = await listFilesRecursive(root);
       const bibs = items.filter((item) => item.type === 'file' && /\.bib$/i.test(item.path)).map((item) => item.path);
-      const figures = path.join(root, 'figures');
       const { text, images } = projectImages(made.text, root, path.dirname(abs));
       const project = await createProject({
         name: meta.name + ' (LaTeX)',
@@ -464,7 +462,10 @@ export function registerProjectRoutes(fastify) {
             await fs.mkdir(path.dirname(path.join(target, file)), { recursive: true });
             await fs.copyFile(path.join(root, file), path.join(target, file));
           }
-          if ((await fs.stat(figures).catch(() => null))?.isDirectory()) await copyDir(figures, path.join(target, 'figures'));
+          for (const dir of ['figures', 'diagrams']) {
+            const from = path.join(root, dir);
+            if ((await fs.stat(from).catch(() => null))?.isDirectory()) await copyDir(from, path.join(target, dir));
+          }
           await fs.writeFile(path.join(target, 'main.tex'), await svgsAsPdf(text, target));
         }
       });

@@ -1,5 +1,6 @@
 import { listenLog } from '../services/compileLog.js';
 import { BIB_TOOLS, runCompile, stopCompile, SUPPORTED_ENGINES } from '../services/compileService.js';
+import { moveToNewFolders } from '../services/foldersService.js';
 import { getProjectRoot, readMeta } from '../services/projectService.js';
 import { synctexEdit, synctexView } from '../services/synctex.js';
 import { auxKept } from '../services/texlabService.js';
@@ -38,6 +39,9 @@ export function registerCompileRoutes(fastify) {
     if (!isMarkdownEngine(markdownEngine)) {
       return { ok: false, error: 'Invalid markdownEngine.' };
     }
+    // a project from before 2.1: its diagrams to diagrams/ and its images to figures/, on its first compile. Not on a
+    // composer preview's, which compiles the very diagram that would move
+    const folders = /^(?:figures|diagrams)\//i.test(mainFile) ? null : await moveToNewFolders(await getProjectRoot(projectId));
     const res = await runCompile({
       projectId,
       mainFile,
@@ -54,7 +58,7 @@ export function registerCompileRoutes(fastify) {
       markdownEngine: markdownEngine ?? undefined
     });
     if (res.ok) auxKept(projectId);
-    return res;
+    return folders ? { ...res, folders } : res;
   });
 
   // by the id the editor gave the compile: a stop that arrives before its compile still stops it
