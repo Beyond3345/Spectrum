@@ -56,7 +56,7 @@ test('every shipped template has APA 7 references and a usable bibliography reso
   const simple = await fs.readFile(path.join(shippedDir, 'simple-document', 'main.tex'), 'utf8');
   assert.match(simple, /\\documentclass\[11pt,a4paper\]\{article\}/);
   assert.match(simple, /margin=25mm/);
-  assert.match(simple, /\\onehalfspacing/);
+  assert.doesNotMatch(simple, /\\onehalfspacing/);
 });
 
 for (const style of ['apa', 'plainnat', 'plainurl', 'plain']) test(`${style} bibliography wraps long URLs and preserves their link targets`, { timeout: 120_000 }, async (t) => {
@@ -120,7 +120,7 @@ test('the Typst and Markdown starters are self-contained', async () => {
   const markdown = await fs.readFile(path.join(shippedDir, 'markdown-article', 'main.md'), 'utf8');
   assert.match(markdown, /^---\ntitle: /);
   assert.match(markdown, /bibliography: refs\.bib/);
-  assert.match(markdown, /\[@knuth1984\]/);
+  assert.match(markdown, /\[@Knuth1984\]/);
   assert.ok(existsSync(path.join(shippedDir, 'markdown-article', 'figures', 'example.png')));
   assert.ok(existsSync(path.join(shippedDir, 'markdown-article', 'refs.bib')));
 });

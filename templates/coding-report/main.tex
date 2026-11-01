@@ -1,13 +1,16 @@
 \documentclass[11pt,a4paper]{article}   % 11 pt text on A4 paper
 
-% Page
-\usepackage{csquotes}
+% References
+\usepackage{csquotes}                   % quotation marks that follow the document's language
 \usepackage[backend=biber,style=apa,natbib=true]{biblatex} % APA 7; compile with Biber
+\DeclareLanguageMapping{australian}{british-apa}
 \usepackage{xurl} % allow long bibliography URLs to wrap within the page
 \addbibresource{references.bib}
 
-\usepackage[margin=2.5cm]{geometry}     % 2.5 cm margins all round
+% Page
+\usepackage[margin=25mm]{geometry}      % 25 mm margins all round
 \usepackage{parskip}                    % a blank line between paragraphs instead of an indent
+\usepackage[australian]{babel}          % Australian hyphenation, and \today as 17 October 2026
 \usepackage{iftex}                      % tells which TeX engine is running
 \ifPDFTeX                               % for pdfLaTeX only:
   \usepackage[T1]{fontenc}              % real < > | " characters in code, and text that copies cleanly from the PDF
@@ -59,6 +62,7 @@
   pdfauthor = {Your Name},
   pdflang   = {en-AU}
 }
+\usepackage[capitalise,noabbrev]{cleveref} % \cref{alg:dijkstra} writes “Algorithm 1” for you; load after hyperref
 
 \title{Assignment 2: Shortest paths in weighted graphs}
 \author{Your Name\\ Student number 12345678}
@@ -71,12 +75,12 @@
 
 This report describes an implementation of Dijkstra's algorithm, which finds the length of the
 shortest path from one vertex to every other vertex of a graph whose edge weights are
-non-negative. Section~\ref{sec:method} gives the algorithm, Section~\ref{sec:code} the code, and
-Section~\ref{sec:analysis} its running time.
+non-negative. \cref{sec:method} gives the algorithm, \cref{sec:code} the code, and
+\cref{sec:analysis} its running time.
 
 \section{Method}\label{sec:method}
 
-Algorithm~\ref{alg:dijkstra} keeps a tentative distance $d[v]$ for every vertex and a
+\cref{alg:dijkstra} keeps a tentative distance $d[v]$ for every vertex and a
 priority queue of vertices to visit, always taking the closest unvisited vertex next. Rather than
 lowering a key already in the queue, it pushes a new entry and skips stale ones when they come out,
 which suits a plain binary heap.
@@ -107,7 +111,7 @@ which suits a plain binary heap.
 
 \section{Implementation}\label{sec:code}
 
-Listing~\ref{lst:python} implements Algorithm~\ref{alg:dijkstra} in Python, using the standard
+\cref{lst:python} implements \cref{alg:dijkstra} in Python, using the standard
 library's \lstinline[language=Python]|heapq| module as the queue. The call
 \lstinline[language=Python]|heapq.heappop(queue)| returns the entry with the smallest distance.
 
@@ -138,7 +142,7 @@ graph = {
 print(dijkstra(graph, "A"))  # {'A': 0, 'B': 3, 'C': 1, 'D': 4}
 \end{lstlisting}
 
-The inner step, relaxing one edge, is the same in any language. Listing~\ref{lst:c} shows it in C,
+The inner step, relaxing one edge, is the same in any language. \cref{lst:c} shows it in C,
 where an unreached vertex has distance \lstinline[language=C]|INT_MAX|.
 
 \begin{lstlisting}[language=C, caption={Relaxing an edge in C.}, label={lst:c}]
@@ -159,7 +163,7 @@ int relax(int dist[], int u, int v, int w)
 
 Every edge is relaxed at most once, and each relaxation can push one entry onto the queue, so
 with a binary heap the algorithm runs in $O\bigl((|V| + |E|) \log |V|\bigr)$ time.
-Table~\ref{tab:queues} compares this with other choices of priority queue.
+\cref{tab:queues} compares this with other choices of priority queue.
 
 \begin{table}[ht]
   \centering

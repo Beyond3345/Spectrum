@@ -1,16 +1,17 @@
 \documentclass[aspectratio=169,11pt]{beamer} % slides at 16:9, the shape of most screens and projectors
 % Beamer loads hyperref itself and spaces its own paragraphs, so neither hyperref nor parskip is loaded here
 
-% Look
-\usetheme{Madrid}                       % a built-in theme: coloured title bars, and author, title and page number along the bottom
-% \usecolortheme{seahorse}              % uncomment for softer colours; try dolphin or whale too
-\setbeamertemplate{navigation symbols}{} % hide the small navigation icons in the corner
-\usepackage{csquotes}
+% References
+\usepackage{csquotes}                   % quotation marks that follow the document's language
 \usepackage[backend=biber,style=apa,natbib=true]{biblatex} % APA 7; compile with Biber
 \DeclareLanguageMapping{australian}{british-apa}
 \usepackage{xurl} % allow long bibliography URLs to wrap within the page
 \addbibresource{references.bib}
 
+% Look
+\usetheme{Madrid}                       % a built-in theme: coloured title bars, and author, title and page number along the bottom
+% \usecolortheme{seahorse}              % uncomment for softer colours; try dolphin or whale too
+\setbeamertemplate{navigation symbols}{} % hide the small navigation icons in the corner
 \usepackage[australian]{babel}          % Australian hyphenation, and \today as 17 October 2026
 \usepackage{iftex}                      % tells which TeX engine is running
 \ifPDFTeX                               % for pdfLaTeX only:

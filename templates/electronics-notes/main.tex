@@ -1,13 +1,21 @@
 \documentclass[11pt,a4paper]{article}   % 11 pt text on A4 paper
 
-% Page
-\usepackage{csquotes}
+% References
+\usepackage{csquotes}                   % quotation marks that follow the document's language
 \usepackage[backend=biber,style=apa,natbib=true]{biblatex} % APA 7; compile with Biber
+\DeclareLanguageMapping{australian}{british-apa}
 \usepackage{xurl} % allow long bibliography URLs to wrap within the page
 \addbibresource{references.bib}
 
-\usepackage[margin=2.5cm]{geometry}     % 2.5 cm margins all round
+% Page
+\usepackage[margin=25mm]{geometry}      % 25 mm margins all round
 \usepackage{parskip}                    % a blank line between paragraphs instead of an indent
+\usepackage[australian]{babel}          % Australian hyphenation, and \today as 17 October 2026
+\usepackage{iftex}                      % tells which TeX engine is running
+\ifPDFTeX                               % for pdfLaTeX only:
+  \usepackage[T1]{fontenc}              % proper accented letters, and text that copies cleanly from the PDF
+  \usepackage{lmodern}                  % Latin Modern, a crisp scalable version of the default font
+\fi                                     % XeLaTeX, LuaLaTeX and Tectonic already use Unicode fonts, which print a typed ’ or é as it is
 
 % Maths and units
 \usepackage{amsmath}                    % align, cases, matrices and \text inside maths
@@ -20,6 +28,7 @@
 \usepackage[american]{circuitikz}       % circuit diagrams; american = zigzag resistors and +/- voltage labels
 \usepackage{pgfplots}                   % plotting responses and data, built on TikZ
 \pgfplotsset{compat=1.18}               % use current pgfplots behaviour (label placement and so on)
+\usepackage{booktabs}                   % \toprule, \midrule and \bottomrule for clean tables
 \usepackage{tabularx}                   % tables that stretch to a set width
 \usepackage{graphicx}                   % \includegraphics for photos, scope captures and screenshots
 
@@ -30,6 +39,7 @@
   pdfauthor = {Your Name},
   pdflang   = {en-AU}
 }
+\usepackage[capitalise,noabbrev]{cleveref} % \cref{fig:filter} writes “Figure 1.1” for you; load after hyperref
 
 % Number equations, figures and tables by section: (1.1), Figure 1.1, ...
 \numberwithin{equation}{section}
@@ -51,7 +61,7 @@
 \section{The inverting low-pass filter}
 
 Putting a capacitor $C$ across the feedback resistor of an inverting amplifier turns it into a
-first-order low-pass filter (Figure~\ref{fig:filter}). It passes low frequencies with the gain of
+first-order low-pass filter (\cref{fig:filter}). It passes low frequencies with the gain of
 the amplifier and rolls off at \qty{-20}{\decibel} per decade above its cut-off frequency.
 
 \begin{figure}[ht]
@@ -82,35 +92,35 @@ and the cut-off frequency, where the gain has fallen by \qty{3}{\decibel}, is
 \end{equation}
 
 \begin{example}\label{ex:design}
-The filter in Figure~\ref{fig:filter} uses the parts in Table~\ref{tab:parts}. Find its passband
+The filter in \cref{fig:filter} uses the parts in \cref{tab:parts}. Find its passband
 gain in decibels and its cut-off frequency.
 \end{example}
 
 \begin{table}[ht]
   \centering
-  \caption{Parts for the filter in Example~\ref{ex:design}.}
+  \caption{Parts for the filter in \cref{ex:design}.}
   \label{tab:parts}
   \begin{tabularx}{0.8\textwidth}{l l X}
-    \hline
+    \toprule
     Part & Value & Purpose \\
-    \hline
+    \midrule
     $R_\mathrm{in}$ & \qty{4.7}{\kilo\ohm} & sets the input current \\
     $R_f$ & \qty{47}{\kilo\ohm} & sets the passband gain, with $R_\mathrm{in}$ \\
     $C$ & \qty{3.3}{\nano\farad} & rolls the gain off above $f_c$ \\
     Op-amp & TL071 & JFET-input op-amp on a \qty{\pm 15}{\volt} supply \\
-    \hline
+    \bottomrule
   \end{tabularx}
 \end{table}
 
 \begin{solution}
-At low frequencies $\omega R_f C \ll 1$, so by \eqref{eq:gain} the gain is
+At low frequencies $\omega R_f C \ll 1$, so by \cref{eq:gain} the gain is
 $-R_f / R_\mathrm{in} = -47 / 4.7 = -10$, that is $20 \log_{10} 10 = \qty{20}{\decibel}$ with the
-output inverted. By \eqref{eq:cutoff},
+output inverted. By \cref{eq:cutoff},
 \[
   f_c = \frac{1}{2\pi \times \qty{47e3}{\ohm} \times \qty{3.3e-9}{\farad}}
       \approx \qty{1.03}{\kilo\hertz}.
 \]
-Figure~\ref{fig:bode} plots the magnitude of \eqref{eq:gain} for these values.
+\cref{fig:bode} plots the magnitude of \cref{eq:gain} for these values.
 \end{solution}
 
 \begin{figure}[ht]
@@ -128,14 +138,14 @@ Figure~\ref{fig:bode} plots the magnitude of \eqref{eq:gain} for these values.
         node[above right] {$f_c$, \qty{17}{\decibel}};
     \end{semilogxaxis}
   \end{tikzpicture}
-  \caption{Gain of the filter in Example~\ref{ex:design}: flat at \qty{20}{\decibel}, then
+  \caption{Gain of the filter in \cref{ex:design}: flat at \qty{20}{\decibel}, then
     falling at \qty{20}{\decibel} per decade above $f_c$.}
   \label{fig:bode}
 \end{figure}
 
 \section{Practical limits}
 
-A real op-amp only approximates \eqref{eq:gain}. The TL071's slew rate of
+A real op-amp only approximates \cref{eq:gain}. The TL071's slew rate of
 \qty{13}{\volt\per\micro\second} caps how fast the output can swing, so a \qty{10}{\volt} peak
 sine wave starts to distort above about
 $\frac{\qty{13}{\volt\per\micro\second}}{2\pi \times \qty{10}{\volt}} \approx \qty{207}{\kilo\hertz}$,

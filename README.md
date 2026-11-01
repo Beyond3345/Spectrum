@@ -24,11 +24,11 @@ The template gallery has templates for notes, reports, letters, slides and a CV,
 
 | Template | For | Main packages |
 | --- | --- | --- |
-| Simple document | a short A4 article with a title, paragraphs, 25 mm margins and one-and-a-half line spacing | `article`, `geometry`, `setspace`, `biblatex` |
+| Simple document | a short A4 article with a title, paragraphs, 25 mm margins and single line spacing | `article`, `geometry`, `biblatex` |
 | Maths notes | lecture notes or assignments with theorems, worked examples and their solutions, matrices and figures | `amsmath`, `amsthm`, `mathtools`, `tikz`, `pgfplots` |
 | Electronics notes | notes or lab reports with circuits, quantities with units and Bode plots | `circuitikz`, `siunitx`, `pgfplots` |
 | Coding report | programming assignments with highlighted code and pseudocode | `listings`, `algorithm`, `algpseudocode`, `booktabs` |
-| Report or thesis | a long document with a title page, abstract, contents, chapters and an APA 7 bibliography | `report` class, `biblatex`, `cleveref`, `setspace` |
+| Report or thesis | a long document with a title page, abstract, contents, chapters and an APA 7 bibliography | `report` class, `biblatex`, `cleveref`, `siunitx` |
 | Formal letter | a letter in Australian block layout | `babel` with Australian English |
 | Slides | a 16:9 Beamer presentation with maths, a chart and code | `beamer` (Madrid), `listings`, `pgfplots` |
 | Academic CV | a one-page CV with links for email, ORCID and a website | `titlesec`, `enumitem`, `xcolor` |

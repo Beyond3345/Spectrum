@@ -1,13 +1,21 @@
 \documentclass[11pt,a4paper]{article}   % 11 pt text on A4 paper
 
-% Page
-\usepackage{csquotes}
+% References
+\usepackage{csquotes}                   % quotation marks that follow the document's language
 \usepackage[backend=biber,style=apa,natbib=true]{biblatex} % APA 7; compile with Biber
+\DeclareLanguageMapping{australian}{british-apa}
 \usepackage{xurl} % allow long bibliography URLs to wrap within the page
 \addbibresource{references.bib}
 
-\usepackage[margin=2.5cm]{geometry}     % 2.5 cm margins all round
+% Page
+\usepackage[margin=25mm]{geometry}      % 25 mm margins all round
 \usepackage{parskip}                    % a blank line between paragraphs instead of an indent
+\usepackage[australian]{babel}          % Australian hyphenation, and \today as 17 October 2026
+\usepackage{iftex}                      % tells which TeX engine is running
+\ifPDFTeX                               % for pdfLaTeX only:
+  \usepackage[T1]{fontenc}              % proper accented letters, and text that copies cleanly from the PDF
+  \usepackage{lmodern}                  % Latin Modern, a crisp scalable version of the default font
+\fi                                     % XeLaTeX, LuaLaTeX and Tectonic already use Unicode fonts, which print a typed ’ or é as it is
 
 % Maths
 \usepackage{amsmath}                    % align, cases, matrices and \text inside maths
@@ -19,6 +27,7 @@
 \usepackage{tikz}                       % drawing diagrams
 \usepackage{pgfplots}                   % plotting functions and data, built on TikZ
 \pgfplotsset{compat=1.18}               % use current pgfplots behaviour (label placement and so on)
+\usepackage{booktabs}                   % \toprule, \midrule and \bottomrule for clean tables
 \usepackage{tabularx}                   % tables that stretch to a set width
 
 % Links
@@ -28,6 +37,7 @@
   pdfauthor = {Your Name},
   pdflang   = {en-AU}
 }
+\usepackage[capitalise,noabbrev]{cleveref} % \cref{fig:phase} writes “Figure 2.1” for you; load after hyperref
 
 % Number equations, figures and tables by section: (2.1), Figure 2.1, ...
 \numberwithin{equation}{section}
@@ -91,7 +101,7 @@ $\mathbf{v}_1, \mathbf{v}_2$. Then every solution of $\mathbf{x}' = A\mathbf{x}$
 Each term solves the system, since
 $\frac{d}{dt}\bigl(e^{\lambda t}\mathbf{v}\bigr) = \lambda e^{\lambda t}\mathbf{v}
 = e^{\lambda t} A\mathbf{v} = A\bigl(e^{\lambda t}\mathbf{v}\bigr)$, and so does any linear
-combination of them. By Lemma~\ref{lem:independent}, $\mathbf{v}_1$ and $\mathbf{v}_2$ form a basis, so we can
+combination of them. By \cref{lem:independent}, $\mathbf{v}_1$ and $\mathbf{v}_2$ form a basis, so we can
 choose $c_1, c_2$ to match any initial value $\mathbf{x}(0)$, and by uniqueness of solutions
 this is the only solution with that initial value.
 \end{proof}
@@ -105,23 +115,23 @@ Solve $\mathbf{x}' = A\mathbf{x}$ with
 \end{example}
 
 \begin{solution}
-By \eqref{eq:char}, $p(\lambda) = (1 - \lambda)^2 - 4 = (\lambda - 3)(\lambda + 1)$, so the
+By \cref{eq:char}, $p(\lambda) = (1 - \lambda)^2 - 4 = (\lambda - 3)(\lambda + 1)$, so the
 eigenvalues are $\lambda_1 = 3$ and $\lambda_2 = -1$. Solving $(A - \lambda I)\mathbf{v} = \mathbf{0}$
 gives
 \[
   \mathbf{v}_1 = \begin{pmatrix} 1 \\ 1 \end{pmatrix}, \qquad
   \mathbf{v}_2 = \begin{pmatrix} 1 \\ -1 \end{pmatrix}.
 \]
-At $t = 0$, \eqref{eq:general} needs $c_1 + c_2 = 2$ and $c_1 - c_2 = 0$, so $c_1 = c_2 = 1$ and
+At $t = 0$, \cref{eq:general} needs $c_1 + c_2 = 2$ and $c_1 - c_2 = 0$, so $c_1 = c_2 = 1$ and
 \begin{align*}
   x_1(t) &= e^{3t} + e^{-t}, \\
   x_2(t) &= e^{3t} - e^{-t}.
 \end{align*}
-Figure~\ref{fig:phase} shows this trajectory in the phase plane.
+\cref{fig:phase} shows this trajectory in the phase plane.
 \end{solution}
 
 \begin{remark}
-If the eigenvalues are complex, \eqref{eq:general} still holds with complex constants, and the real
+If the eigenvalues are complex, \cref{eq:general} still holds with complex constants, and the real
 and imaginary parts of $e^{\lambda_1 t}\mathbf{v}_1$ give two real solutions.
 \end{remark}
 
@@ -141,7 +151,7 @@ and imaginary parts of $e^{\lambda_1 t}\mathbf{v}_1$ give two real solutions.
       \addplot[only marks, mark=*] coordinates {(2,0)} node[above left] {$\mathbf{x}(0)$};
     \end{axis}
   \end{tikzpicture}
-  \caption{The solution of Example~\ref{ex:saddle} (blue) leaves along $\mathbf{v}_1$ as $t$ grows.
+  \caption{The solution of \cref{ex:saddle} (blue) leaves along $\mathbf{v}_1$ as $t$ grows.
     The dashed lines are the eigenvector directions.}
   \label{fig:phase}
 \end{figure}
@@ -149,22 +159,22 @@ and imaginary parts of $e^{\lambda_1 t}\mathbf{v}_1$ give two real solutions.
 \section{Summary}
 
 The signs of the eigenvalues decide how solutions behave near the origin, as
-Table~\ref{tab:cases} shows.
+\cref{tab:cases} shows.
 
 \begin{table}[ht]
   \centering
   \caption{Behaviour of $\mathbf{x}' = A\mathbf{x}$ by eigenvalue.}
   \label{tab:cases}
   \begin{tabularx}{0.85\textwidth}{l l X}
-    \hline
+    \toprule
     Eigenvalues & Origin & Behaviour of solutions \\
-    \hline
+    \midrule
     $\lambda_1, \lambda_2 < 0$ & stable node & every solution tends to $\mathbf{0}$ \\
     $\lambda_1, \lambda_2 > 0$ & unstable node & every non-zero solution grows without bound \\
     $\lambda_1 < 0 < \lambda_2$ & saddle & solutions come in along one eigenvector and leave along the other \\
     $\alpha \pm i\beta$, $\alpha, \beta \neq 0$ & spiral & solutions rotate, growing if $\alpha > 0$ and shrinking if $\alpha < 0$ \\
     $\pm i\beta$, $\beta \neq 0$ & centre & solutions circle the origin forever \\
-    \hline
+    \bottomrule
   \end{tabularx}
 \end{table}
 

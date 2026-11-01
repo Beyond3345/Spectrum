@@ -1,10 +1,15 @@
 \documentclass[11pt,a4paper]{report}    % chapters, a title page and an abstract, on A4
 
+% References
+\usepackage{csquotes}                   % quotation marks that follow the document's language
+\usepackage[backend=biber,style=apa,natbib=true]{biblatex} % APA 7; compile with Biber
+\DeclareLanguageMapping{australian}{british-apa}
+\usepackage{xurl} % allow long bibliography URLs to wrap within the page
+\addbibresource{references.bib}
+
 % Page
 \usepackage[margin=25mm]{geometry}      % 25 mm margins all round
 \usepackage{parskip}                    % a blank line between paragraphs instead of an indent
-\usepackage{setspace}                   % line spacing; \onehalfspacing below, as many universities ask
-\onehalfspacing
 \usepackage[australian]{babel}          % Australian hyphenation, and \today as 17 October 2026
 \usepackage{iftex}                      % tells which TeX engine is running
 \ifPDFTeX                               % for pdfLaTeX only:
@@ -24,13 +29,6 @@
 \sisetup{group-separator={,},group-minimum-digits=4} % 7,790 with a comma, as Australian style has it
 \usepackage{pgfplots}                   % charts drawn from data, right in the document
 \pgfplotsset{compat=1.18}               % use current pgfplots behaviour (label placement and so on)
-
-% References
-\usepackage{csquotes}
-\usepackage[backend=biber,style=apa,natbib=true]{biblatex} % APA 7; compile with Biber
-\DeclareLanguageMapping{australian}{british-apa}
-\usepackage{xurl} % allow long bibliography URLs to wrap within the page
-\addbibresource{references.bib}
 
 % Links
 \usepackage[hidelinks]{hyperref}        % clickable contents, cross-references and citations, without coloured boxes
@@ -98,12 +96,12 @@ describes the system and how it was measured, \cref{ch:results} presents a year 
 \chapter{Background}\label{ch:background}
 
 A panel turns a fraction of the sunlight that falls on it into electricity
-\citep{masters2013}. To a first approximation the power it delivers is
+\citep{Masters2013}. To a first approximation the power it delivers is
 \begin{equation}\label{eq:power}
   P = \eta \, A \, G,
 \end{equation}
 where $\eta$ is the panel's efficiency, $A$ its area and $G$ the irradiance on its surface.
-Efficiency drops as the panel heats up, which \citet{duffie2013} model as a straight line,
+Efficiency drops as the panel heats up, which \citet{Duffie2013} model as a straight line,
 \begin{equation}\label{eq:temperature}
   \eta = \eta_{\text{ref}} \bigl[ 1 - \beta \, (T_c - T_{\text{ref}}) \bigr],
 \end{equation}
@@ -179,7 +177,7 @@ monthly irradiance and temperature gives totals within 6 per cent of those measu
 
 A year of five-minute readings shows that a north-facing \qty{6.6}{\kilo\watt} system in Melbourne produces
 about \qty{7.8}{\mega\watt\hour} a year, most of it between October and March. The simple
-model of \cref{ch:background} is good enough to size a system, and \citet{lamport1994} made
+model of \cref{ch:background} is good enough to size a system, and \citet{Lamport1994} made
 writing it up rather less painful.
 
 % The bibliography comes from references.bib; it shows only the entries you cite

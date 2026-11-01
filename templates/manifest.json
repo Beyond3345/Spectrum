@@ -5,7 +5,7 @@
       "label": "Simple document",
       "mainFile": "main.tex",
       "category": "reports",
-      "description": "An 11 pt A4 article with 25 mm margins, one-and-a-half spacing and APA 7 references",
+      "description": "An 11 pt A4 article with 25 mm margins, single spacing and APA 7 references",
       "tags": [
         "Article",
         "Simple",

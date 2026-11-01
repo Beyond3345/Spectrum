@@ -25,6 +25,6 @@ Table: First measurements.
 | Width | 8 mm | 10 mm |
 | Height | 3 mm | 4 mm |
 
-Cite a source with its key in brackets, as in [@knuth1984].
+Cite a source with its key in brackets, as in [@Knuth1984].
 
 # References

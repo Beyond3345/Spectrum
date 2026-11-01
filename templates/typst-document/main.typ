@@ -25,6 +25,6 @@ Start writing here. This simple document uses A4 paper and 25 mm margins. Typst 
 
 = References
 
-Place the cursor after an at sign to cite a source, as in @knuth1984.
+Place the cursor after an at sign to cite a source, as in @Knuth1984.
 
 #bibliography("refs.bib", style: "apa")
