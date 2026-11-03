@@ -1,0 +1,359 @@
+[
+  {
+    "id": "l2t-titlepage-1",
+    "kind": "titlepage",
+    "direction": "latex-to-typst",
+    "difficulty": "skip",
+    "good": "Already follows the rule card: centred, #v(30mm), the 17 pt bold title, #v(12mm), the 14 pt name, #v(1fr) and the two last lines. SKIP, or the same page with one call per line."
+  },
+  {
+    "id": "l2t-titlepage-2",
+    "kind": "titlepage",
+    "direction": "latex-to-typst",
+    "difficulty": "typical",
+    "good": "One item per line, with no \\ after a #v or #line call; both rules stay full width at 0.8 pt and every size and the italic subtitle stay."
+  },
+  {
+    "id": "l2t-titlepage-3",
+    "kind": "titlepage",
+    "direction": "latex-to-typst",
+    "difficulty": "typical",
+    "good": "The nested #align(center) goes. Hannah Brooks and the supervisor line stay two lines of the one 12 pt text (the \\\\[2mm]); a #v(4mm) goes before November 2026."
+  },
+  {
+    "id": "l2t-titlepage-4",
+    "kind": "titlepage",
+    "direction": "latex-to-typst",
+    "difficulty": "hard",
+    "good": "The two minipages become #grid(columns: (1fr, 1fr), align(left)[*Author* \\ Liam O'Connor], align(right)[*Supervisor* \\ Prof. Aiko Tanaka]) in place of the stray #h(1fr) line."
+  },
+  {
+    "id": "l2t-titlepage-5",
+    "kind": "titlepage",
+    "direction": "latex-to-typst",
+    "difficulty": "typical",
+    "good": "The #table of names and student numbers stays as it is; the \\ after each #v and the #table goes, so no empty lines appear; the submission date stays at the foot after #v(1fr)."
+  },
+  {
+    "id": "l2t-titlepage-6",
+    "kind": "titlepage",
+    "direction": "latex-to-typst",
+    "difficulty": "hard",
+    "good": "\\raggedleft means #align(right), not centre. The title keeps its three lines (Night, sky, survey) at 25 pt bold; \\scshape becomes #smallcaps[...] inside the 12 pt text."
+  },
+  {
+    "id": "l2t-cv-header-1",
+    "kind": "cv-header",
+    "direction": "latex-to-typst",
+    "difficulty": "easy",
+    "good": "#grid(columns: (1fr, auto), [#text(size: 14pt, weight: \"bold\")[Ethan Murphy] \\ Graduate civil engineer], align(right)[ethan.murphy\\@example.com \\ 0400 111 222]). The \\Large name came through as plain bold."
+  },
+  {
+    "id": "l2t-cv-header-2",
+    "kind": "cv-header",
+    "direction": "latex-to-typst",
+    "difficulty": "typical",
+    "good": "#grid(columns: (1fr, auto), ...) with the name at 17 pt bold and the role on the left, and the email link, phone and city in align(right)[...]; the stray #h(1fr) paragraph goes."
+  },
+  {
+    "id": "l2t-cv-header-3",
+    "kind": "cv-header",
+    "direction": "latex-to-typst",
+    "difficulty": "typical",
+    "good": "Not a left and right header. The name at 17 pt bold, the role line, then the three contacts on one line with #h(1em) between them (the \\quad), each link exactly as written."
+  },
+  {
+    "id": "l2t-cv-header-4",
+    "kind": "cv-header",
+    "direction": "latex-to-typst",
+    "difficulty": "typical",
+    "good": "#grid(columns: (1fr, auto), [#text(size: 14pt, weight: \"bold\")[Chloe Bennett] \\ Primary school teacher], align(right)[the email \\ the phone \\ Ballarat, Victoria]); the stray #h(1fr) paragraph goes."
+  },
+  {
+    "id": "l2t-cv-header-5",
+    "kind": "cv-header",
+    "direction": "latex-to-typst",
+    "difficulty": "typical",
+    "good": "A centred header, so #align(center) stays: the name at 21 pt bold (\\huge), the | separators between the three contacts restored, and no empty line before the closing bracket."
+  },
+  {
+    "id": "l2t-unknown-environment-1",
+    "kind": "unknown-environment",
+    "direction": "latex-to-typst",
+    "difficulty": "easy",
+    "good": "#block(inset: 0.6em, stroke: 0.5pt + luma(180))[Rinse each probe ... next site.] with the sentence unchanged."
+  },
+  {
+    "id": "l2t-unknown-environment-2",
+    "kind": "unknown-environment",
+    "direction": "latex-to-typst",
+    "difficulty": "typical",
+    "good": "The same #block round the sentence, keeping _volumetric_ and the maths $theta$, $0$ and $0.5$ exactly."
+  },
+  {
+    "id": "l2t-unknown-environment-3",
+    "kind": "unknown-environment",
+    "direction": "latex-to-typst",
+    "difficulty": "hard",
+    "good": "A Typst list of the three items. The stray $square$ paragraph was the list's marker, so #list(marker: $square$, [Charge the logger], [Pack spare cable ties], [Tell the landholder you are coming]) keeps it."
+  },
+  {
+    "id": "l2t-unknown-environment-4",
+    "kind": "unknown-environment",
+    "direction": "latex-to-typst",
+    "difficulty": "hard",
+    "good": "#columns(2)[...] round the paragraph, which also removes the stray 2 (the column count, read as text). SKIP is acceptable."
+  },
+  {
+    "id": "l2t-unknown-environment-5",
+    "kind": "unknown-environment",
+    "direction": "latex-to-typst",
+    "difficulty": "hard",
+    "good": "The #block round the sentence, with @Nguyen2024 and @sec:probes exactly as written."
+  },
+  {
+    "id": "l2t-unknown-environment-6",
+    "kind": "unknown-environment",
+    "direction": "latex-to-typst",
+    "difficulty": "easy",
+    "good": "#block(inset: 0.6em, stroke: 0.5pt + luma(180))[Do not leave the logger in direct sun.]"
+  },
+  {
+    "id": "l2t-unknown-environment-7",
+    "kind": "unknown-environment",
+    "direction": "latex-to-typst",
+    "difficulty": "hard",
+    "good": "A numbered Typst list (+ Dig a hole ..., + Push the probe ..., + Backfill ...); the stray . paragraph, which was the list's label, goes."
+  },
+  {
+    "id": "l2t-unknown-command-1",
+    "kind": "unknown-command",
+    "direction": "latex-to-typst",
+    "difficulty": "skip",
+    "good": "\\todo is a margin note for the author, which Typst cannot place without a package. SKIP; its words stay inline."
+  },
+  {
+    "id": "l2t-unknown-command-2",
+    "kind": "unknown-command",
+    "direction": "latex-to-typst",
+    "difficulty": "hard",
+    "good": "\\fbox boxed the word Reset, and the converter lost the word. A good answer puts it back as #box(stroke: 0.5pt, inset: 2pt)[Reset]; a check that compares with the converted words rejects that, and then SKIP is the answer."
+  },
+  {
+    "id": "l2t-unknown-command-3",
+    "kind": "unknown-command",
+    "direction": "latex-to-typst",
+    "difficulty": "typical",
+    "good": "Each \\checkmark becomes the symbol in its place: Site A passed ✓ and site B passed ✓ on the first visit."
+  },
+  {
+    "id": "l2t-unknown-command-4",
+    "kind": "unknown-command",
+    "direction": "latex-to-typst",
+    "difficulty": "skip",
+    "good": "\\ce wrote two chemical formulas, which the converter dropped. Putting NO₃⁻ and PO₄³⁻ back adds text the region no longer has, so SKIP and let the author fix it."
+  },
+  {
+    "id": "l2t-unknown-command-5",
+    "kind": "unknown-command",
+    "direction": "latex-to-typst",
+    "difficulty": "typical",
+    "good": "#text(size: 0.9em)[(about 9000 rows per probe)] in place of the bracket, and the stray backslash before it goes."
+  },
+  {
+    "id": "l2t-unknown-command-6",
+    "kind": "unknown-command",
+    "direction": "latex-to-typst",
+    "difficulty": "typical",
+    "good": "#text(fill: red)[Keep away from the bank], with $h = 2$~m and #cite(<Okafor2021>, form: \"prose\") unchanged."
+  },
+  {
+    "id": "l2t-unknown-command-7",
+    "kind": "unknown-command",
+    "direction": "latex-to-typst",
+    "difficulty": "hard",
+    "good": "\\so letter-spaced FRAGILE, and the converter lost the word. A good answer puts back #text(tracking: 0.15em)[FRAGILE]; if added words are rejected, SKIP."
+  },
+  {
+    "id": "l2t-table-layout-1",
+    "kind": "table-layout",
+    "direction": "latex-to-typst",
+    "difficulty": "easy",
+    "good": "Already house style apart from the rule after North (table.hline(y: 2)), which came from an inner \\hline and goes. Every cell, the caption and <tab:sites> stay; one row per line is easier to read."
+  },
+  {
+    "id": "l2t-table-layout-2",
+    "kind": "table-layout",
+    "direction": "latex-to-typst",
+    "difficulty": "skip",
+    "good": "Already right: columns: (5cm, auto) is the p{5cm} column, with the house rules. SKIP, or the same table with one row per line."
+  },
+  {
+    "id": "l2t-table-layout-3",
+    "kind": "table-layout",
+    "direction": "latex-to-typst",
+    "difficulty": "hard",
+    "good": "Both header rows (the two spanning cells and the Month row) belong in table.header, with the two partial rules under the spanning cells kept; every cell in order, one row per line."
+  },
+  {
+    "id": "l2t-table-layout-4",
+    "kind": "table-layout",
+    "direction": "latex-to-typst",
+    "difficulty": "skip",
+    "good": "A plain booktabs table converted to the house rules. SKIP."
+  },
+  {
+    "id": "l2t-table-layout-5",
+    "kind": "table-layout",
+    "direction": "latex-to-typst",
+    "difficulty": "easy",
+    "good": "The \\rowcolor shading is gone, as the house style has none; the partial rule under Ridge (from \\cline{2-3}) stays. SKIP, or one row per line."
+  },
+  {
+    "id": "l2t-table-layout-6",
+    "kind": "table-layout",
+    "direction": "latex-to-typst",
+    "difficulty": "typical",
+    "good": "table.cell(rowspan: 2)[Horsham] and the cell order stay exactly (Loam's row has no first cell); one row per line."
+  },
+  {
+    "id": "t2l-titlepage-1",
+    "kind": "titlepage",
+    "direction": "typst-to-latex",
+    "difficulty": "skip",
+    "good": "Already the LaTeX title page the rule card writes. SKIP."
+  },
+  {
+    "id": "t2l-titlepage-2",
+    "kind": "titlepage",
+    "direction": "typst-to-latex",
+    "difficulty": "typical",
+    "good": "Both rules are 0.8 pt in the Typst, so \\rule{\\linewidth}{0.8pt}; everything else is already right."
+  },
+  {
+    "id": "t2l-titlepage-3",
+    "kind": "titlepage",
+    "direction": "typst-to-latex",
+    "difficulty": "easy",
+    "good": "Already close: \\textbf{Author:} Lucas Fernandes \\hfill \\textbf{Supervisor:} Dr Mei Lin is what the Typst line does. SKIP, or two minipages with Author on the left and Supervisor on the right."
+  },
+  {
+    "id": "t2l-titlepage-4",
+    "kind": "titlepage",
+    "direction": "typst-to-latex",
+    "difficulty": "typical",
+    "good": "align(center + horizon) centres the block down the page, so \\vspace*{\\fill} at the top and \\vfill at the foot; the rest is right."
+  },
+  {
+    "id": "t2l-titlepage-5",
+    "kind": "titlepage",
+    "direction": "typst-to-latex",
+    "difficulty": "hard",
+    "good": "align(right) means \\raggedleft, not \\centering; \\vspace*{40mm}, the \\Huge bold title and the rest stay."
+  },
+  {
+    "id": "t2l-cv-header-1",
+    "kind": "cv-header",
+    "direction": "typst-to-latex",
+    "difficulty": "easy",
+    "good": "Two minipages as the rule card writes: {\\LARGE\\bfseries Harper Singh}\\\\ Mechanical engineer on the left, the email and Brisbane, Australia in a \\raggedleft minipage on the right."
+  },
+  {
+    "id": "t2l-cv-header-2",
+    "kind": "cv-header",
+    "direction": "typst-to-latex",
+    "difficulty": "typical",
+    "good": "The same two minipages with three lines each; the \\href and \\nolinkurl calls exactly as written."
+  },
+  {
+    "id": "t2l-cv-header-3",
+    "kind": "cv-header",
+    "direction": "typst-to-latex",
+    "difficulty": "typical",
+    "good": "The tabular lost the 2fr and 1fr widths and the right-aligned email: minipages of about 0.65 and 0.33 \\linewidth, the name at {\\Large\\bfseries ...}, the email \\raggedleft."
+  },
+  {
+    "id": "t2l-cv-header-4",
+    "kind": "cv-header",
+    "direction": "typst-to-latex",
+    "difficulty": "typical",
+    "good": "A centred header, not a left and right one: \\begin{center}{\\huge\\bfseries Ella Robinson}\\\\ the contacts with their \\textbar{} separators\\end{center}. The size and the centring were lost."
+  },
+  {
+    "id": "t2l-cv-header-5",
+    "kind": "cv-header",
+    "direction": "typst-to-latex",
+    "difficulty": "typical",
+    "good": "Two minipages: name and role on the left (the role's colour needs xcolor, so its effect is dropped), the email, GitHub address and Sydney on the right; the third line with an empty left side goes."
+  },
+  {
+    "id": "t2l-table-layout-1",
+    "kind": "table-layout",
+    "direction": "typst-to-latex",
+    "difficulty": "easy",
+    "good": "booktabs: \\toprule, \\midrule under the header and \\bottomrule; no | and no \\hline. Cells, caption and label unchanged."
+  },
+  {
+    "id": "t2l-table-layout-2",
+    "kind": "table-layout",
+    "direction": "typst-to-latex",
+    "difficulty": "typical",
+    "good": "Already booktabs, but the Hours column was right-aligned in the Typst: {Xr} at least; widths in the ratio 2 to 1 are a bonus."
+  },
+  {
+    "id": "t2l-table-layout-3",
+    "kind": "table-layout",
+    "direction": "typst-to-latex",
+    "difficulty": "hard",
+    "good": "booktabs rules in place of | and \\hline\\hline; the S columns and the braces round their header cells stay; the note row spans all three columns without | (\\multicolumn{3}{l}{...})."
+  },
+  {
+    "id": "t2l-table-layout-4",
+    "kind": "table-layout",
+    "direction": "typst-to-latex",
+    "difficulty": "skip",
+    "good": "Already a booktabs table. SKIP."
+  },
+  {
+    "id": "t2l-table-layout-5",
+    "kind": "table-layout",
+    "direction": "typst-to-latex",
+    "difficulty": "typical",
+    "good": "booktabs rules in place of the grid of lines; the header fill needs colortbl, so its effect is dropped."
+  },
+  {
+    "id": "t2l-table-layout-6",
+    "kind": "table-layout",
+    "direction": "typst-to-latex",
+    "difficulty": "hard",
+    "good": "booktabs, with \\cmidrule(lr){2-3} for the \\cline; \\multirow and \\multicolumn{2}{c}{...} without |; the X columns and every cell stay."
+  },
+  {
+    "id": "t2l-unknown-environment-1",
+    "kind": "unknown-environment",
+    "direction": "typst-to-latex",
+    "difficulty": "typical",
+    "good": "The callout's box, without a package: \\noindent\\fbox{\\parbox{\\dimexpr\\linewidth-2\\fboxsep-2\\fboxrule\\relax}{...}} round the sentence, with \\cref{sec:safety} unchanged. SKIP is acceptable."
+  },
+  {
+    "id": "t2l-unknown-environment-2",
+    "kind": "unknown-environment",
+    "direction": "typst-to-latex",
+    "difficulty": "skip",
+    "good": "Already a numbered list; the \"Step 1.\" labels need enumitem, which a region cannot load. SKIP."
+  },
+  {
+    "id": "t2l-unknown-command-1",
+    "kind": "unknown-command",
+    "direction": "typst-to-latex",
+    "difficulty": "skip",
+    "good": "#flag was bold and red; the bold came through and red needs xcolor, which a region cannot load. SKIP."
+  },
+  {
+    "id": "t2l-unknown-command-2",
+    "kind": "unknown-command",
+    "direction": "typst-to-latex",
+    "difficulty": "typical",
+    "good": "\\fbox{\\texttt{Ctrl}} and \\fbox{\\texttt{S}}, the key boxes the Typst drew; the extra braces go."
+  }
+]

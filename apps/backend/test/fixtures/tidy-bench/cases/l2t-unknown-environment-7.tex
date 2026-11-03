@@ -1,0 +1,17 @@
+\documentclass[11pt]{article}
+\newcounter{step}
+\newenvironment{steps}{\begin{list}{\arabic{step}.}{\usecounter{step}}}{\end{list}}
+\begin{document}
+Region starts here.
+
+\begin{steps}
+\item Dig a hole 60 centimetres deep.
+\item Push the probe into the side wall.
+\item Backfill in the order the soil came out.
+\end{steps}
+
+Region ends here.
+
+\section{Logging}
+Set the interval to one hour.
+\end{document}
