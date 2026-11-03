@@ -40,7 +40,7 @@ import {
 } from '../api/client';
 import type { GitHubProblem, MigrationNotice, ProjectMeta, TemplateCategory, TemplateMeta, UniverseTemplate } from '../api/client';
 import Icon from './Icon';
-import { radioKeys, radioTab } from './Segmented';
+import Segmented, { radioKeys, radioTab } from './Segmented';
 import { ContextMenu, MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
 import Select from './Select';
@@ -97,6 +97,30 @@ const blankTex = (name: string) => `\\documentclass[11pt]{article}
 \\end{document}
 `;
 
+/** What a new project is written in, and so which templates are offered */
+type Engine = 'latex' | 'typst' | 'markdown';
+const ENGINES = [['latex', 'LaTeX'], ['typst', 'Typst'], ['markdown', 'Markdown']] as const;
+const engineOf = (mainFile: string): Engine => (/\.typ$/i.test(mainFile) ? 'typst' : /\.(md|markdown)$/i.test(mainFile) ? 'markdown' : 'latex');
+
+// a blank project's main file for each engine; JSON's quoting escapes the name for Typst and YAML alike
+const BLANK: Record<Engine, { file: string; text: (name: string) => string }> = {
+  latex: { file: 'main.tex', text: blankTex },
+  typst: {
+    file: 'main.typ',
+    text: (name) => `#set document(title: ${JSON.stringify(name)})
+#set page(paper: "a4", margin: 25mm, numbering: "1")
+#set text(size: 11pt, lang: "en", region: "AU")
+#set heading(numbering: "1.1")
+
+#title()
+
+= Introduction
+
+`
+  },
+  markdown: { file: 'main.md', text: (name) => `---\ntitle: ${JSON.stringify(name)}\n---\n\n# Introduction\n\n` }
+};
+
 // ─── view preferences (per browser; nothing important) ───
 
 type Prefs = {
@@ -125,8 +149,8 @@ function loadPrefs(): Prefs {
 
 type SheetState =
   // folder: the one a new project goes in
-  | { kind: 'new'; template: string; universe?: UniverseTemplate; folder?: string | null }
-  | { kind: 'gallery'; folder?: string | null }
+  | { kind: 'new'; template: string; engine?: Engine; universe?: UniverseTemplate; folder?: string | null }
+  | { kind: 'gallery'; engine?: Engine; folder?: string | null }
   | { kind: 'universe'; folder?: string | null }
   | { kind: 'arxiv' }
   | { kind: 'tags'; id: string }
@@ -1137,10 +1161,12 @@ export default function ProjectPage() {
         <NewProjectSheet
           templates={templates}
           initialTemplate={sheet.template}
+          initialEngine={sheet.engine}
           universe={sheet.universe}
           defaultDir={settings.projectsDir || defaultDir}
           onClose={() => setSheet(null)}
-          onBrowse={() => setSheet({ kind: sheet.universe ? 'universe' : 'gallery', folder: sheet.folder })}
+          onBrowse={(engine) => setSheet({ kind: 'gallery', engine, folder: sheet.folder })}
+          onUniverse={() => setSheet({ kind: 'universe', folder: sheet.folder })}
           onCreated={(id) => {
             if (sheet.folder) moveToFolder(id, sheet.folder);
             navigate(`/editor/${id}`);
@@ -1153,6 +1179,7 @@ export default function ProjectPage() {
           templates={templates}
           categories={categories}
           drafts={drafts}
+          initialEngine={sheet.engine}
           onClose={() => setSheet(null)}
           onPick={(id) => setSheet({ kind: 'new', template: id, folder: sheet.folder })}
           onUniverse={() => setSheet({ kind: 'universe', folder: sheet.folder })}
@@ -1164,7 +1191,7 @@ export default function ProjectPage() {
       {sheet?.kind === 'universe' && (
         <UniverseSheet
           onClose={() => setSheet(null)}
-          onBack={() => setSheet({ kind: 'gallery', folder: sheet.folder })}
+          onBack={() => setSheet({ kind: 'gallery', engine: 'typst', folder: sheet.folder })}
           onPick={(t) => setSheet({ kind: 'new', template: '', universe: t, folder: sheet.folder })}
         />
       )}
@@ -1294,23 +1321,37 @@ function Thumb({ project }: { project: ProjectMeta }) {
 function NewProjectSheet({
   templates,
   initialTemplate,
-  universe,
+  initialEngine,
+  universe: chosenUniverse,
   defaultDir,
   onClose,
   onBrowse,
+  onUniverse,
   onCreated
 }: {
   templates: TemplateMeta[];
   initialTemplate: string;
+  initialEngine?: Engine;
   /** a Typst Universe template in place of one of Spectrum's */
   universe?: UniverseTemplate;
   defaultDir: string;
   onClose: () => void;
-  onBrowse: () => void;
+  /** the gallery, showing this engine's templates */
+  onBrowse: (engine: Engine) => void;
+  onUniverse: () => void;
   onCreated: (id: string) => void;
 }) {
   const [name, setName] = useState('');
   const [template, setTemplate] = useState(initialTemplate);
+  const [universe, setUniverse] = useState(chosenUniverse);
+  const picked = templates.find((t) => t.id === initialTemplate);
+  const [engine, setEngine] = useState<Engine>(chosenUniverse ? 'typst' : picked ? engineOf(picked.mainFile) : initialEngine || 'latex');
+  const offered = templates.filter((t) => engineOf(t.mainFile) === engine);
+  const chooseEngine = (next: Engine) => {
+    setEngine(next);
+    setUniverse(undefined);
+    if (!templates.some((t) => t.id === template && engineOf(t.mainFile) === next)) setTemplate('');
+  };
   const [dir, setDir] = useState('');
   const [creating, setCreating] = useState(false);
   const location = dir || defaultDir;
@@ -1324,11 +1365,12 @@ function NewProjectSheet({
         ? await createUniverseProject({ name: trimmed, template: universe.name, version: universe.version, parentDir: location || undefined })
         : await createProject({ name: trimmed, template: template || undefined, parentDir: location || undefined });
       if (!template && !universe) {
-        // a blank project still needs something to compile
+        // a blank project still needs something to compile, in the engine chosen
+        const blank = BLANK[engine];
         const tree = await getProjectTree(project.id);
-        if (!tree.items.some((item) => item.type === 'file' && item.path.endsWith('.tex'))) {
-          await writeFile(project.id, 'main.tex', blankTex(trimmed));
-          await setProjectMainFile(project.id, 'main.tex').catch(() => undefined);
+        if (!tree.items.some((item) => item.type === 'file' && item.path === blank.file)) {
+          await writeFile(project.id, blank.file, blank.text(trimmed));
+          await setProjectMainFile(project.id, blank.file).catch(() => undefined);
         }
       }
       onCreated(project.id);
@@ -1365,6 +1407,10 @@ function NewProjectSheet({
         />
       </div>
       <div className="field">
+        <label id="new-project-engine">Write in</label>
+        <Segmented labelledBy="new-project-engine" value={engine} options={ENGINES} onChange={chooseEngine} />
+      </div>
+      <div className="field">
         <label id="new-project-template">Template</label>
         {universe ? (
           <>
@@ -1373,7 +1419,7 @@ function NewProjectSheet({
                 <Icon name="shippingbox" />
                 <span className="path-text">{universe.name} {universe.version}, from Typst Universe</span>
               </span>
-              <button className="btn" onClick={onBrowse}><Icon name="square.grid.2x2" /> Browse…</button>
+              <button className="btn" onClick={onUniverse}><Icon name="shippingbox" /> Browse…</button>
             </div>
             <div className="field-hint">
               Licence: {universe.license || 'none given'}. {universe.mitCompatible ? '' : LICENCE_NOTE + ' '}Creating the project downloads this template.
@@ -1385,11 +1431,14 @@ function NewProjectSheet({
             className="grow"
             labelId="new-project-template"
             value={template}
-            options={[['', 'Blank'], ...templates.map((t): [string, string] => [t.id, t.label])]}
+            options={[['', 'Blank'], ...offered.map((t): [string, string] => [t.id, t.label])]}
             onChange={setTemplate}
           />
-          <button className="btn" onClick={onBrowse}><Icon name="square.grid.2x2" /> Browse…</button>
+          <button className="btn" onClick={() => onBrowse(engine)}><Icon name="square.grid.2x2" /> Browse…</button>
         </div>
+        )}
+        {engine === 'typst' && !universe && (
+          <button className="btn ghost small" onClick={onUniverse}><Icon name="shippingbox" /> More templates from Typst Universe…</button>
         )}
       </div>
       <div className="field">
@@ -1417,6 +1466,7 @@ function TemplateGallerySheet({
   templates,
   categories,
   drafts,
+  initialEngine,
   onClose,
   onPick,
   onUniverse,
@@ -1426,6 +1476,7 @@ function TemplateGallerySheet({
   templates: TemplateMeta[];
   categories: TemplateCategory[];
   drafts: string[];
+  initialEngine?: Engine;
   onClose: () => void;
   onPick: (id: string) => void;
   /** opens Typst Universe's templates */
@@ -1435,21 +1486,23 @@ function TemplateGallerySheet({
   /** a template was added, changed or deleted */
   onChanged: () => Promise<void>;
 }) {
+  const [engine, setEngine] = useState<Engine>(initialEngine || 'latex');
   const [category, setCategory] = useState('all');
   const [featuredOnly, setFeaturedOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const inEngine = useMemo(() => templates.filter((t) => engineOf(t.mainFile) === engine), [templates, engine]);
 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return templates.filter(
+    return inEngine.filter(
       (t) =>
         (category === 'all' || t.category === category) &&
         (!featuredOnly || t.featured) &&
         (!q || [t.label, t.description, ...(t.tags || [])].some((s) => (s || '').toLowerCase().includes(q)))
     );
-  }, [templates, category, featuredOnly, search]);
+  }, [inEngine, category, featuredOnly, search]);
 
   const upload = async (file: File) => {
     const base = file.name.replace(/\.zip$/i, '');
@@ -1518,8 +1571,17 @@ function TemplateGallerySheet({
   return (
     <Sheet title="Choose a template" width={880} className="gallery-sheet" onClose={onClose}>
       <div className="gallery-toolbar">
+        <Segmented
+          label="Write in"
+          value={engine}
+          options={ENGINES}
+          onChange={(next) => {
+            setEngine(next);
+            setCategory('all');
+          }}
+        />
         <div className="chip-row">
-          {[{ id: 'all', label: 'All' }, ...categories.filter((c) => c.id !== 'all')].map((c) => (
+          {[{ id: 'all', label: 'All' }, ...categories.filter((c) => c.id !== 'all' && inEngine.some((t) => t.category === c.id))].map((c) => (
             <button key={c.id} className={`chip ${category === c.id ? 'active' : ''}`} onClick={() => setCategory(c.id)}>
               {c.label}
             </button>
@@ -1547,7 +1609,7 @@ function TemplateGallerySheet({
           <button className="btn" disabled={uploading} onClick={() => fileRef.current?.click()}>
             {uploading ? <span className="spinner" /> : <Icon name="square.and.arrow.up" />} Upload template…
           </button>
-          <button className="btn" onClick={onUniverse}><Icon name="shippingbox" /> Typst Universe…</button>
+          {engine === 'typst' && <button className="btn" onClick={onUniverse}><Icon name="shippingbox" /> Typst Universe…</button>}
         </div>
       </div>
       {shown.length === 0 ? (
