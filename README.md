@@ -300,7 +300,7 @@ From 2.0, projects and settings go between your computers through GitHub, and th
 
 ## Requirements
 
-- macOS 13.5 or later on Apple silicon or Intel (the Liquid Glass app icon needs macOS 26 or later), or Windows 10 or 11 on an x64 PC (Section Windows),
+- macOS 13.5 or later on Apple silicon (Intel Macs stay on version 2.1.0; the Liquid Glass app icon needs macOS 26 or later), or Windows 10 or 11 on an x64 PC (Section Windows),
 - a LaTeX distribution is optional: Typst 0.15.1 and Tectonic 0.17.0 are built in, and [MacTeX](https://www.tug.org/mactex/), [MiKTeX](https://miktex.org) or [TeX Live](https://www.tug.org/texlive/) can be used instead of Tectonic. Markdown needs pandoc, which Settings › Engines › Markdown downloads on request,
 - an API key from one of the providers in Section Models, or any OpenAI-compatible server, for the AI features,
 - Python 3 with matplotlib for the table to chart tool and with `ddgs` for DDGS web search (both optional) and
@@ -310,7 +310,7 @@ From 2.0, projects and settings go between your computers through GitHub, and th
 
 Download the macOS or Windows installer and the SHA-256 checksums from the [latest GitHub release](https://github.com/Beyond3345/Spectrum/releases/latest).
 
-1. Open `Spectrum_2.1.0_universal.dmg`
+1. Open `Spectrum_<version>_aarch64.dmg`
 2. Drag Spectrum into the Applications folder
 3. Open Spectrum from the Applications folder
 
@@ -428,11 +428,11 @@ Find (`⌘F`), undo (`⌘Z`), redo (`⇧⌘Z`) and Settings (`⌘,`) cannot be c
 
 ## Building from source
 
-Building requires Node.js 20.12 or later, Rust with the `aarch64-apple-darwin` and `x86_64-apple-darwin` targets and Xcode.
+Building requires Node.js 20.12 or later, Rust with the `aarch64-apple-darwin` target and Xcode.
 
 1. Run `npm install`
 2. Run `npm test` to run the backend tests
-3. Run `npm run desktop:build` to build the universal application and the DMG
+3. Run `npm run desktop:build` to build the application for Apple silicon and the DMG
 
 The test that moves a project to the Bin is skipped by default, since it moves a real folder into the macOS Bin. Set `SPECTRUM_TEST_BIN=1` to include it.
 
@@ -442,7 +442,7 @@ To move to a newer Harper or Hunspell, put its version, archive URL and SHA-256 
 
 The language catalogue in `apps/backend/src/data/languages.json` is written by `node scripts/native.mjs catalogue` from the dictionary sources pinned in `native/checkers.lock.json`. It downloads each dictionary, keeps those with a licence file, a UTF-8 or ISO-8859-1 encoding and three words of their own that they accept, and prints every language it kept or refused. `node scripts/native.mjs catalogue --check` downloads them again and compares, for use before a release.
 
-The build script downloads Node.js 24 LTS, TexLab 5.26.0, Tectonic 0.17.0 and Typst 0.15.1 for both architectures, checks them against pinned SHA-256 sums (the engines' sums are in `apps/backend/src/data/engines.json`) and joins each pair into one universal binary. It then bundles the backend with esbuild and runs `tauri build --target universal-apple-darwin`. The results are written to `src-tauri/target/universal-apple-darwin/release/bundle/`. The engines' versions and checksums live in that one file, which Settings and the backend read as well.
+The build script downloads Node.js 24 LTS, TexLab 5.26.0, Tectonic 0.17.0 and Typst 0.15.1 for Apple silicon and checks them against pinned SHA-256 sums (the engines' sums are in `apps/backend/src/data/engines.json`). It then bundles the backend with esbuild and runs `tauri build --target aarch64-apple-darwin`. The results are written to `src-tauri/target/aarch64-apple-darwin/release/bundle/`. The engines' versions and checksums live in that one file, which Settings and the backend read as well.
 
 The Windows installer is built on Windows with the same command. It needs Node.js, Rust with the MSVC toolchain and the Visual Studio Build Tools with C++ and Python for the Hunspell binding, which is built for Windows with `node scripts/native.mjs hunspell`. The build script downloads the Windows Node.js 24 LTS and the engines, checks them in the same way, builds `texlab.exe` from TexLab's checked source with the C runtime linked in, puts Microsoft's `vcruntime140.dll` beside Typst and runs `tauri build --target x86_64-pc-windows-msvc`, which writes an NSIS installer. The workflow in `.github/workflows/windows.yml` does all of this on GitHub Actions, runs the backend tests with MiKTeX and attaches the installer to a release when it is run with a release tag. The Fluent icons in `apps/frontend/public/fluent/` are written by `node scripts/fluent-icons.mjs`.
 
