@@ -104,6 +104,12 @@
       "author": "Spectrum",
       "version": "1.0",
       "source": "spectrum"
+    },
+    "spectrum-convert-tidy": {
+      "licence": "MIT",
+      "author": "Spectrum",
+      "version": "1.0",
+      "source": "spectrum"
     }
   }
 }

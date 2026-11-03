@@ -9,6 +9,7 @@
 import { figureLatex, figureSetLatex, tableEdges, tableLatex } from '../../latex/floats.js';
 import { arg, argsOf, callOf, calleeName, findAll, labelName, leaf, markupOf, markupText, parseTypst, significant, stringOf } from './typstRead.js';
 import { typedNumber, typedUnit } from './units.js';
+import { region } from './regions.js';
 
 const TYPST_LANGUAGES = { python: 'Python', py: 'Python', c: 'C', cpp: 'C++', 'c++': 'C++', java: 'Java', matlab: 'Matlab', bash: 'bash', sh: 'bash', sql: 'SQL', javascript: 'JavaScript', js: 'JavaScript', html: 'HTML', latex: 'TeX', tex: 'TeX', r: 'R', rust: 'Rust', go: 'Go', ruby: 'Ruby', haskell: 'Haskell', fortran: 'Fortran', csharp: '[Sharp]C', xml: 'XML', typst: '' };
 const COL = 40;
@@ -178,7 +179,24 @@ export function prepareTypst(source, ctx, { file }) {
   };
   const root = parseTypst(source);
   for (const error of findAll(root, (n) => n.kind === 'Error')) ctx.note(st, error.text, 'Typst reads this as an error (' + error.message + '), so it may not have come over as meant.');
-  const body = emit(root.children, st, ctx, true);
+  // paragraph by paragraph, each one's place in pandoc's input and in the source kept for the region markers
+  const parts = [[]];
+  for (const n of root.children) {
+    if (n.kind === 'Parbreak') parts.push(n, []);
+    else parts.at(-1).push(n);
+  }
+  let body = '';
+  st.paragraphs = [];
+  for (const part of parts) {
+    if (!Array.isArray(part)) {
+      body += part.text;
+      continue;
+    }
+    const text = emit(part, st, ctx, true);
+    const words = part.filter((n) => n.kind !== 'Space');
+    if (words.length) st.paragraphs.push({ start: body.length, end: body.length + text.length, from: words[0].start, to: words.at(-1).end });
+    body += text;
+  }
   // the title, which \maketitle and \hypersetup print
   if (ctx.facts.title !== null && st.file === ctx.main) st.titlePiece = st.piece(ctx.facts.title);
   const pieces = st.pieces.map((p, n) => '\n\nSPXPIECESTART' + n + '\n\n' + p.markup + '\n\nSPXPIECEEND' + n + '\n').join('');
@@ -1038,7 +1056,7 @@ export function assembleLatex(latex, st, ctx) {
   function resolve(source) {
     return source.replace(/SPXB(\d+)X/g, (_, n) => {
       const record = st.blocks[Number(n)];
-      return resolve(renderBlock(record, pieceText, st, ctx));
+      return resolve(region(record, renderBlock(record, pieceText, st, ctx), st, ctx, 'latex'));
     });
   }
   // the title block's text, which \maketitle and the preamble print

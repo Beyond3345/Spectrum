@@ -112,6 +112,20 @@ export function findAll(node, keep, parent = null, out = []) {
 }
 
 /**
+ * The end (just past) of the expression embedded at the # at i in a Typst file's text, as Typst's parser reads it, with
+ * the ; that ends it; i + 1 when none starts there.
+ */
+export function expressionEnd(source, i) {
+  let end = i + 1;
+  findAll(parseTypst(source), (n, parent) => {
+    const k = n.kind === 'Hash' && n.start === i ? parent.children.indexOf(n) : -1;
+    if (k !== -1 && parent.children[k + 1]) end = (parent.children[k + 2]?.kind === 'Semicolon' ? parent.children[k + 2] : parent.children[k + 1]).end;
+    return false;
+  });
+  return end;
+}
+
+/**
  * What a Typst file names and brings in: its labels (each <name> in markup), its @references with their names, the
  * targets of #ref and the keys of #cite, the files it #includes and the local files it #imports, as written, and its
  * bibliography's file and style.
