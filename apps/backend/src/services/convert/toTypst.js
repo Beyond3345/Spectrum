@@ -25,6 +25,38 @@ const LOOKS = {
   caps: ['m', '#smallcaps['],
   xout: ['m', '#strike[']
 };
+// xcolor's own colours, as Typst writes them
+export const XCOLORS = { red: 'rgb("#ff0000")', green: 'rgb("#00ff00")', blue: 'rgb("#0000ff")', cyan: 'rgb("#00ffff")', magenta: 'rgb("#ff00ff")', yellow: 'rgb("#ffff00")', black: 'black', white: 'white', gray: 'rgb("#808080")', darkgray: 'rgb("#404040")', lightgray: 'rgb("#bfbfbf")', brown: 'rgb("#bf8040")', lime: 'rgb("#bfff00")', olive: 'rgb("#808000")', orange: 'rgb("#ff8000")', pink: 'rgb("#ffbfbf")', purple: 'rgb("#bf0040")', teal: 'rgb("#008080")', violet: 'rgb("#800080")' };
+
+/**
+ * An xcolor colour as Typst: a name (xcolor's or one the document defines), a mix with white or black (red!20,
+ * blue!50!black), or a value in a model ([rgb]{0.2,0.4,0.6}, [RGB], [HTML], [gray]); null for any other.
+ */
+export function typstColour(colour, model, defined = new Map()) {
+  const value = String(colour ?? '').trim();
+  const parts = value.split(',').map((p) => p.trim());
+  const pct = (n) => +(Number(n) * 100).toFixed(1) + '%';
+  switch (String(model ?? '').trim()) {
+    case '':
+      break;
+    case 'rgb':
+      return parts.length === 3 && parts.every((p) => /^\d*\.?\d+$/.test(p)) ? 'rgb(' + parts.map(pct).join(', ') + ')' : null;
+    case 'RGB':
+      return parts.length === 3 && parts.every((p) => /^\d+$/.test(p)) ? 'rgb(' + parts.join(', ') + ')' : null;
+    case 'HTML':
+      return /^[0-9A-Fa-f]{6}$/.test(value) ? 'rgb("#' + value.toLowerCase() + '")' : null;
+    case 'gray':
+      return /^\d*\.?\d+$/.test(value) ? 'luma(' + pct(value) + ')' : null;
+    default:
+      return null;
+  }
+  const mix = /^([A-Za-z]+)(?:!(\d+(?:\.\d+)?)(?:!(white|black))?)?$/.exec(value);
+  const base = mix && (XCOLORS[mix[1]] ?? (defined.has(mix[1]) ? typstColour(defined.get(mix[1]).spec, defined.get(mix[1]).model) : null));
+  if (!base || !mix[2]) return base ?? null;
+  const rest = 100 - Number(mix[2]);
+  return rest <= 0 ? base : base + (mix[3] === 'black' ? '.darken(' : '.lighten(') + rest + '%)';
+}
+
 // the commands whose argument the converter keeps as text itself, which the word check counts as the LaTeX's words
 export const TEXT_COMMANDS = [...Object.keys(LOOKS), 'ce'];
 // the names typed before a reference, Figure~\ref{fig:x}, which Typst prints itself
@@ -120,6 +152,7 @@ export function latexFacts(preamble) {
     bibStyle: biblatex.get('style') ?? biblatex.get('citestyle') ?? null,
     graphicsPaths: command('graphicspath', 'm').flatMap((c) => [...c.args[0].matchAll(/\{([^{}]*)\}/g)].map((m) => m[1])),
     macros: macroDefinitions(text),
+    colours: new Map(command('definecolor', 'mmm').map((c) => [c.args[0].trim(), { model: c.args[1].trim(), spec: c.args[2] }])),
     picturePreamble: pictureLines.join('\n'),
     lstLanguage: [...text.matchAll(/\\lst(?:set|definestyle\s*\{[^}]*\})\s*\{([\s\S]*?)\n\}/g)].map((m) => keyValues(m[1].replace(/%[^\n]*/g, '')).get('language')).find(Boolean) ?? null,
     beamer: /^beamer/.test(cls?.[2].trim() ?? '')
@@ -388,6 +421,23 @@ function inlinePass(text, st, ctx) {
     if (!parsed) return null;
     const tracking = m[1] === 'textls' && Number(parsed.args[0]) ? '#text(tracking: ' + Number(parsed.args[0]) / 1000 + 'em)[' : open;
     return { text: st.inline(tracking) + parsed.args.at(-1) + st.inline(']'), end: parsed.end };
+  });
+  // colour: \textcolor{red}{x} red text, \colorbox{yellow}{x} on a fill, \fcolorbox{red}{white}{x} framed in red on white;
+  // a colour Typst cannot be told keeps the words, and the box its frame
+  prose(/\\(textcolor|colorbox|fcolorbox)(?![A-Za-z])/g, (m, t, maths) => {
+    const parsed = !maths && commandArgs(t, m.index + m[0].length, m[1] === 'fcolorbox' ? 'omomm' : 'omm');
+    if (!parsed) return null;
+    const colours = m[1] === 'fcolorbox' ? [typstColour(parsed.args[1], parsed.args[0], ctx.facts?.colours), typstColour(parsed.args[3], parsed.args[2] ?? parsed.args[0], ctx.facts?.colours)] : [typstColour(parsed.args[1], parsed.args[0], ctx.facts?.colours)];
+    const box = (fill, stroke) => '#box(' + [stroke, fill && 'fill: ' + fill].filter(Boolean).join(', ') + ', inset: (x: 3pt), outset: (y: 3pt))[';
+    if (m[1] === 'textcolor' && !colours[0]) {
+      ctx.note(st, t.slice(m.index, parsed.end), 'A colour Spectrum cannot write in Typst was left out of \\textcolor.');
+      return { text: parsed.args.at(-1), end: parsed.end };
+    }
+    const open = m[1] === 'textcolor' ? '#text(fill: ' + colours[0] + ')['
+      : m[1] === 'colorbox' ? box(colours[0], colours[0] ? null : 'stroke: 0.4pt')
+      : box(colours[1], 'stroke: 0.4pt' + (colours[0] ? ' + ' + colours[0] : ''));
+    if (colours.some((c) => !c)) ctx.note(st, t.slice(m.index, parsed.end), 'A colour Spectrum cannot write in Typst was left out of \\' + m[1] + '.');
+    return { text: st.inline(open) + parsed.args.at(-1) + st.inline(']'), end: parsed.end };
   });
   prose(/\\ce(?![A-Za-z])/g, (m, t, maths) => {
     const arg = braceArg(t, m.index + m[0].length);

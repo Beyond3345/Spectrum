@@ -454,6 +454,28 @@ test('LaTeX to Typst keeps the text of boxes, letter spacing, chemistry, sizes, 
   assert.deepEqual((await result.recheck(edited)).words.lost, ['reset', 'fragile', 'no', 'languages']);
 });
 
+test('xcolor’s \\textcolor, \\colorbox and \\fcolorbox become Typst colours, and no colour, length or option is kept as text', { skip, timeout: 5 * 60 * 1000 }, async () => {
+  const { result, text, notes } = await convertText('main.tex', [
+    '\\documentclass{article}',
+    '\\usepackage{xcolor}',
+    '\\definecolor{brand}{HTML}{3366CC}',
+    '\\begin{document}',
+    'Pay \\fcolorbox{red}{white}{now} and \\colorbox{yellow!30}{today}, as \\textcolor{blue}{the notice} says.',
+    'A \\textcolor[rgb]{0.2,0.4,0.6}{custom shade}, \\textcolor{brand}{our blue}, \\textcolor{gray!50!black}{dark grey} and \\textcolor{mystery}{odd words}.',
+    'The \\foo{orange}{bright words}, \\qux{red!20}{mixed words}, \\quux{blue}{2pt}{tinted words}, \\resizebox{2cm}{!}{Outlet} and \\cvitem{Colour}{red}.',
+    '\\end{document}',
+    ''
+  ].join('\n'));
+  assert.equal(result.checks.ok, true, JSON.stringify(result.checks.diagnostics));
+  assert.deepEqual(result.checks.words.lost, []);
+  const box = (fill) => '#box\\(' + fill + ', inset: \\(x: 3pt\\), outset: \\(y: 3pt\\)\\)';
+  assert.match(text, new RegExp('Pay ' + box('stroke: 0\\.4pt \\+ rgb\\("#ff0000"\\), fill: white') + '\\[now\\] and ' + box('fill: rgb\\("#ffff00"\\)\\.lighten\\(70%\\)') + '\\[today\\], as #text\\(fill: rgb\\("#0000ff"\\)\\)\\[the notice\\] says\\.'));
+  assert.match(text, /A #text\(fill: rgb\(20%, 40%, 60%\)\)\[custom shade\], #text\(fill: rgb\("#3366cc"\)\)\[our blue\], #text\(fill: rgb\("#808080"\)\.darken\(50%\)\)\[dark grey\] and odd words\./);
+  // an unknown command’s colour, colour mix, length and option are no text; a colour that is the text stays
+  assert.match(text, /The bright words, mixed words, tinted words, Outlet and Colour red\./);
+  assert.match(notes, /A colour Spectrum cannot write in Typst was left out of \\textcolor\./);
+});
+
 test('Typst to LaTeX keeps a title page’s alignment and a page of its own, and names the words it loses', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
   const { result, text, notes } = await convertText('main.typ', [
     '#set document(title: [Field trip report])',
