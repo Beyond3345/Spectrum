@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { listSkills, restoreVersion } from '../../api/client';
+import { base64Bytes, listSkills, restoreVersion } from '../../api/client';
 import type { AgentUserRequest, Skill, SuggestedTodo, TodoLink } from '../../api/client';
 import Icon from '../../app/Icon';
 import { MenuButton } from '../../app/Menu';
@@ -454,7 +454,7 @@ function Preview({ load }: { load(): Promise<{ pdf: string | null; log: string }
     load().then(
       (res) => {
         if (!live) return;
-        if (res.pdf) url = URL.createObjectURL(new Blob([Uint8Array.from(atob(res.pdf), (ch) => ch.charCodeAt(0))], { type: 'application/pdf' }));
+        if (res.pdf) url = URL.createObjectURL(new Blob([base64Bytes(res.pdf)], { type: 'application/pdf' }));
         setState(url ? { url } : { log: res.log || 'No PDF was made.' });
       },
       (err) => live && setState({ error: errorText(err) })

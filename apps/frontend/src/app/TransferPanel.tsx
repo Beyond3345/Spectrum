@@ -11,7 +11,8 @@ import {
   transferStart,
   transferStep,
   transferSubmitImages,
-  transferUploadPdf
+  transferUploadPdf,
+  base64Bytes
 } from '../api/client';
 import type { CompileEngine, PageImage, TemplateMeta } from '../api/client';
 import Icon from './Icon';
@@ -61,7 +62,7 @@ export const transferStatusLabel = (status: string) =>
 
 /** Render the first pages of a compiled PDF to PNGs for the VLM layout check. */
 async function renderPdfPages(pdfBase64: string): Promise<PageImage[]> {
-  const data = Uint8Array.from(atob(pdfBase64), (c) => c.charCodeAt(0));
+  const data = base64Bytes(pdfBase64);
   const task = getDocument({ data });
   const pdf = await task.promise;
   const images: PageImage[] = [];

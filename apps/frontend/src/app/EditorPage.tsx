@@ -46,7 +46,8 @@ import {
   syncWithGitHub,
   syncZotero,
   updateProjectSettings,
-  writeFile
+  writeFile,
+  base64Bytes
 } from '../api/client';
 import type { CompileDiagnostic, CompileEngine, CompileOptions, CompileResult, Engines, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
 import Icon from './Icon';
@@ -1618,7 +1619,7 @@ function Editor({ projectId }: { projectId: string }) {
       // an install from Logs' notice changes what the compile menu can offer
       if (res.code) getEngines().then(setEngines).catch(() => undefined);
       if (res.ok && res.pdf) {
-        const bytes = Uint8Array.from(atob(res.pdf), (c) => c.charCodeAt(0));
+        const bytes = base64Bytes(res.pdf);
         const blob = new Blob([bytes], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
         // an auto compile of a document whose PDF was put away meanwhile (another file opened) leaves the pane be;

@@ -572,6 +572,19 @@ export interface CompileResult {
 }
 
 /**
+ * A compile's `pdf` (base64) as bytes: the web view's own decoder where it has one (Chrome 140, Safari 18.2), 0.5 ms
+ * for a 3 MB PDF; otherwise a plain loop, 4 ms. Uint8Array.from with a mapping function took 130 ms or more.
+ */
+export function base64Bytes(base64: string): Uint8Array<ArrayBuffer> {
+  const native = (Uint8Array as { fromBase64?: (s: string) => Uint8Array<ArrayBuffer> }).fromBase64;
+  if (native) return native.call(Uint8Array, base64);
+  const text = atob(base64);
+  const bytes = new Uint8Array(text.length);
+  for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
+  return bytes;
+}
+
+/**
  * mainFile: the document to compile, the project's main file or another. compileId: the editor's name for this
  * compile, so Stop ends this one (even before it has started). fresh: clear the document's kept build files first.
  * texFolder: a TeX installation's folder to try first. checkpoint: save one if the compile succeeds and the source
