@@ -116,6 +116,9 @@ test('with only Tectonic and no Biber of Spectrum’s, a biblatex document compi
 
 test('with Spectrum’s Biber, Tectonic finds it before any other on the PATH and unpacks it into its cache', { skip }, async () => {
   const bin = await binWith('biber', { name: 'biber', marker: 'MISMATCHED BIBER' });
+  // Tectonic would run a tectonic-biber anywhere on the PATH in place of a biber, so its folder is left off
+  const other = await binWith('tectonic-biber', { name: 'tectonic-biber', marker: 'OTHER TECTONIC BIBER' });
+  process.env.PATH = [bin, other].join(path.delimiter);
   await fs.mkdir(biberDir, { recursive: true });
   await fs.writeFile(path.join(biberDir, 'biber'), '#!/bin/sh\n', { mode: 0o755 });
   const file = path.join(tmp, 'tectonic-env');
@@ -130,6 +133,22 @@ test('with Spectrum’s Biber, Tectonic finds it before any other on the PATH an
   } finally {
     await fs.rm(biberDir, { recursive: true, force: true });
   }
+});
+
+test('a tectonic-biber beside the document, which Tectonic would run before any Biber, stops a Tectonic compile', { skip }, async () => {
+  await binWith('own-biber');
+  await builtIn('own-biber', 'TECTONIC RAN');
+  const p = await createProject({
+    name: 'Own Biber',
+    populate: async (root) => {
+      await fs.writeFile(path.join(root, 'main.tex'), withBiblatex());
+      await fs.writeFile(path.join(root, 'tectonic-biber'), '#!/bin/sh\necho RAN\n', { mode: 0o755 });
+    }
+  });
+  const result = await compile(p);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /has a file called tectonic-biber/);
+  assert.doesNotMatch(result.log ?? '', /TECTONIC RAN/);
 });
 
 test('on Windows, Spectrum’s biber.exe goes first on the Path Tectonic is given', async () => {
