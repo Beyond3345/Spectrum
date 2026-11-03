@@ -180,9 +180,11 @@ async function autoEngineCandidates(absMain, without = []) {
 }
 
 // Every running runSpawn child, so quitting can stop them rather than leave them orphaned.
-const children = new Set();
+export const children = new Set();
 // The compile each child belongs to (a project's), so Stop ends that compile and nothing else
 const jobs = new AsyncLocalStorage();
+/** The compile running here: { stopped, children }, or undefined outside one. */
+export const currentJob = () => jobs.getStore();
 const running = new Map();
 const stopped = () => jobs.getStore()?.stopped === true;
 

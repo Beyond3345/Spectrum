@@ -36,6 +36,7 @@ import {
 } from '../services/projectService.js';
 import { followRename } from './todos.js';
 import { offlineMessage } from '../services/syncService.js';
+import { stopTypstWatch } from '../services/typstService.js';
 import { documentLabels, projectStats, typstDocumentLabels } from '../services/statsService.js';
 import { readProjectSettings, updateProjectSettings } from '../services/projectSettings.js';
 import { BIB_TOOLS, SUPPORTED_ENGINES } from '../services/compileService.js';
@@ -208,6 +209,8 @@ export async function moveToBin(folder) {
 export function registerProjectRoutes(fastify) {
   // the open editors' folder watches, ended first when the server closes, so quitting doesn't wait for them
   const watches = new Set();
+  // how many editors have each project's folder open, by its events stream
+  const editors = new Map();
   fastify.addHook('preClose', (done) => {
     for (const res of watches) res.end();
     done();
@@ -590,8 +593,15 @@ export function registerProjectRoutes(fastify) {
     watcher.on('error', () => reply.raw.end());
     const ping = setInterval(() => reply.raw.write(': ping\n\n'), 30_000);
     watches.add(reply.raw);
+    editors.set(root, (editors.get(root) || 0) + 1);
     reply.raw.on('close', () => {
       watches.delete(reply.raw);
+      // the project closed (no editor has it open): its Typst stops running
+      editors.set(root, editors.get(root) - 1);
+      if (!editors.get(root)) {
+        editors.delete(root);
+        stopTypstWatch({ root });
+      }
       watcher.close();
       clearInterval(ping);
       clearTimeout(timer);

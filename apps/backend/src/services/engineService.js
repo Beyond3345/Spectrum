@@ -8,6 +8,7 @@ import { promisify } from 'util';
 import { DATA_DIR, REPO_ROOT } from '../config/constants.js';
 import { ensureDir, listFilesRecursive, renameOver } from '../utils/fsUtils.js';
 import { findExecutable } from './compileService.js';
+import { stopTypstWatch } from './typstService.js';
 import { httpError, serialiser } from './projectService.js';
 import engineList from '../data/engines.json' with { type: 'json' };
 
@@ -261,6 +262,8 @@ export function removeTypst(version) {
   return typstLock(async () => {
     if (version === list.typst.builtIn) throw httpError('The built-in Typst can’t be removed.', 400);
     if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) throw httpError('Choose a Typst version to remove.', 400);
+    // a compile's watcher running it would hold it open on Windows
+    stopTypstWatch({ typstDir: path.join(TYPST_DIR, version) });
     await fs.rm(path.join(TYPST_DIR, version), { recursive: true, force: true, maxRetries: 5 });
   });
 }

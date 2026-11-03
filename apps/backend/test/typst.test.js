@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Fastify from 'fastify';
+import { execFileSync } from 'node:child_process';
 import { promises as fs, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -16,7 +17,7 @@ process.env.SPECTRUM_TEMPLATE_DIR = path.join(tmp, 'templates');
 delete process.env.SPECTRUM_TYPST;
 
 const { BUILT_IN_TYPST_VERSION, builtInTypst } = await import('../src/services/engineService.js');
-const { parseTypstDiagnostics, typstElements } = await import('../src/services/typstService.js');
+const { parseTypstDiagnostics, stopTypstWatch, typstElements } = await import('../src/services/typstService.js');
 const { compileFolder, runCompile } = await import('../src/services/compileService.js');
 const { createProject, getProjectRoot } = await import('../src/services/projectService.js');
 const { updateProjectSettings } = await import('../src/services/projectSettings.js');
@@ -93,6 +94,35 @@ test('a Typst project compiles and writes its PDF beside the main file', async (
   assert.deepEqual(result.errors, []);
   const dir = await getProjectRoot(project.id);
   assert.ok((await fs.stat(path.join(dir, 'main.pdf'))).size > 100);
+});
+
+test('a kept Typst follows each edit, error and fix, and stops when its project closes', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  if (process.platform === 'win32') return t.skip('pgrep');
+  const project = await projectWith('typst-kept', '= Kept\n#include "part.typ"\n');
+  const dir = await getProjectRoot(project.id);
+  const watching = () => execFileSync('pgrep', ['-f', `watch --root ${dir} `]).toString().trim().split('\n').length;
+  const compile = () => runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto' });
+  await fs.writeFile(path.join(dir, 'part.typ'), 'Part one.\n');
+  assert.equal((await compile()).ok, true);
+  assert.equal(watching(), 1);
+  // a broken include, then compiled again with nothing changed, then mended: as a fresh Typst says each time
+  await fs.writeFile(path.join(dir, 'part.typ'), 'Part #nope.\n');
+  for (let i = 0; i < 2; i++) {
+    const broken = await compile();
+    assert.equal(broken.ok, false);
+    assert.equal(broken.status, 1);
+    assert.deepEqual(broken.errors.map((e) => [e.file, e.line, e.message]), [['part.typ', 1, 'unknown variable: nope']]);
+  }
+  await fs.writeFile(path.join(dir, 'part.typ'), '#set text(font: "No Such Font")\nPart two.\n');
+  const mended = await compile();
+  assert.equal(mended.ok, true);
+  assert.deepEqual(mended.errors.map((e) => [e.severity, e.file]), [['warning', 'part.typ']]);
+  assert.match(mended.log, /^part\.typ:1:\d+: warning: unknown font family: no such font\n$/);
+  assert.equal(watching(), 1, 'the same watcher throughout');
+  stopTypstWatch({ root: dir });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.throws(watching, 'stopped with its project');
 });
 
 test('a folder compile of a Typst draft leaves its PDF alone', async (t) => {
