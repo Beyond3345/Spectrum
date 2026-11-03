@@ -6,6 +6,7 @@ The regions a model is asked to tidy in the converter's optional AI step (docs/f
 
 ```sh
 DEEPSEEK_API_KEY=... node scripts/tidy-bench.mjs --models models.json [--regions <filter>] [--out <dir>] [--concurrency <n>] [--dry-run]
+node scripts/tidy-bench.mjs --recheck <results.json> [--out <dir>]
 ```
 
 - `--models`: a JSON list of models, as in `models.example.json` here. Each entry has `name`, `provider`, `model` and, where the server needs one, `apiKeyEnv`, the name of the environment variable that holds the key. Keys come only from those variables; the runner ignores Spectrum's settings and `.env`. Optional: `baseUrl`, `temperature` (default 0), `effort` (default `fast`, as the converter asks) and `price`, `{ "input": 0.5, "output": 2 }` in US dollars per million tokens, for an estimated cost.
@@ -14,12 +15,13 @@ DEEPSEEK_API_KEY=... node scripts/tidy-bench.mjs --models models.json [--regions
 - `--out`: where the results go; by default `tidy-bench-results/<date and time>`.
 - `--concurrency`: requests at once, 1 by default. A 429 or 5xx reply is tried again after 1, 2, 4, 8 and 16 seconds.
 - `--dry-run`: no model is called. Answers come from a script (right first time, right after a chatty answer, SKIP, or a word added every time), so the run can be checked without keys.
+- `--recheck`: no model is called either. The last answer each region got in an earlier run's `results.json` goes through the current checks, so a run can be scored again for free after the checks change. An answer the checks now reject counts as failed, as the model is not asked again. The report starts with each model's scores as the run had them, the same answers scored now, and re-checked, then lists every region whose result changed.
 
 Each region goes to each model as the converter's tidying sends it (`apps/backend/src/services/convertTidy.js`): the checklist and rule card from `skills/spectrum-convert-tidy/SKILL.md` as the system message, the same user message, up to three answers, and the same checks on every answer, including a compile of the converted document with the answer in it. Nothing is written back.
 
 The run writes:
 
-- `report.md`: a comparison of the models, then a table per model by kind and direction and by difficulty. It counts answers that were right first time, right within three, skipped (and how many of those were where SKIP is right), failed after three and API errors, with the reasons answers were rejected by check, tokens in and out, seconds per region and the cost.
+- `report.md`: a comparison of the models, then a table per model by kind and direction and by difficulty. It counts answers that were right first time, right within three, skipped (and how many of those were where SKIP is right), changed a region it should have skipped, failed after three and API errors, with the reasons answers were rejected by check, tokens in and out, seconds per region and the cost.
 - `results.json`: the same per region, with each accepted edit and each model's last answer.
 - `review.html`: every accepted edit beside the original, the converted text and the note of what a good answer looks like, for spot checks by hand.
 
@@ -51,7 +53,7 @@ Each entry of `regions.json` has the fields of `cases.json` and:
 | unknown-command | 12 | 3 |
 | table-layout | 4 | 5 |
 
-Difficulty is `easy` (10, one obvious change), `typical` (24), `hard` (11: a layout the rule card only hints at, or invariants that are easy to break) or `skip` (6, where `SKIP` is the right answer, because the converted text is already right or the fix needs a package). The `good` notes are for people reviewing answers; no check reads them.
+Difficulty is `easy` (10, one obvious change), `typical` (24), `hard` (11: a layout the rule card only hints at, or invariants that are easy to break) or `skip` (6, where `SKIP` is the right answer, because the converted text is already right or the fix needs a package). An accepted change to a `skip` region is never right: the report counts it under “changed a skip region”, apart from the right answers. The `good` notes are for people reviewing answers; no check reads them.
 
 The kind is the one the converter flags the region as. What the rules convert exactly is not flagged, so none of it is in the set: a title page aligned any way, size switches, `\fbox`, soul's `\so`, `\ce` and `multicols`, for example.
 

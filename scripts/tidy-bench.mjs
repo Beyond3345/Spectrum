@@ -2,10 +2,12 @@
 // Measures how well AI models do the converter's optional tidying (docs/featureResearch/LATEX_TYPST_CONVERSION.md
 // section 9) on the test set in apps/backend/test/fixtures/tidy-bench:
 //   node scripts/tidy-bench.mjs --models <file.json> [--regions <filter>] [--out <dir>] [--concurrency <n>] [--timeout <seconds>] [--dry-run]
+//   node scripts/tidy-bench.mjs --recheck <results.json> [--out <dir>]
 // Each region goes to each model as Spectrum's own tidying sends it (convertTidy.js: the skill's checklist and rule
 // card, the user message, up to three answers), and each answer meets the same checks, the compile in a scratch copy
 // of the converted document included. Keys come only from the environment variables the models file names; --dry-run
-// sends nothing anywhere and answers from a script instead. Writes results.json, report.md and review.html.
+// sends nothing anywhere and answers from a script instead; --recheck sends nothing either, and puts the answers saved in
+// an earlier run's results.json through the current checks. Writes results.json, report.md and review.html.
 import { cpSync, mkdtempSync, promises as fs, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -14,13 +16,13 @@ import { parseArgs } from 'node:util';
 
 const repo = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const bench = path.join(repo, 'apps', 'backend', 'test', 'fixtures', 'tidy-bench');
-const USAGE = 'Usage: node scripts/tidy-bench.mjs --models <file.json> [--regions <filter>] [--out <dir>] [--concurrency <n>] [--timeout <seconds>] [--dry-run]';
+const USAGE = 'Usage: node scripts/tidy-bench.mjs --models <file.json> [--regions <filter>] [--out <dir>] [--concurrency <n>] [--timeout <seconds>] [--dry-run]\n       node scripts/tidy-bench.mjs --recheck <results.json> [--out <dir>]';
 
 const { values: opts } = parseArgs({
-  options: { models: { type: 'string' }, regions: { type: 'string' }, out: { type: 'string' }, concurrency: { type: 'string', default: '1' }, timeout: { type: 'string', default: '120' }, 'dry-run': { type: 'boolean', default: false }, help: { type: 'boolean', default: false } }
+  options: { models: { type: 'string' }, regions: { type: 'string' }, out: { type: 'string' }, concurrency: { type: 'string', default: '1' }, timeout: { type: 'string', default: '120' }, recheck: { type: 'string' }, 'dry-run': { type: 'boolean', default: false }, help: { type: 'boolean', default: false } }
 });
 const timeoutMs = Math.max(10, Number(opts.timeout) || 120) * 1000;
-if (opts.help || (!opts.models && !opts['dry-run'])) {
+if (opts.help || (!opts.models && !opts['dry-run'] && !opts.recheck)) {
   console.log(USAGE + '\nSee apps/backend/test/fixtures/tidy-bench/README.md.');
   process.exit(opts.help ? 0 : 1);
 }
@@ -88,7 +90,7 @@ function scripted(region, index, n, converted) {
 
 // ─── One region ───
 
-const KINDS_OF_FAULT = [[/^(?:Answer with|The answer must be|The block must be|Leave out)/, 'form'], [/^The words/, 'words'], [/^The labels/, 'labels'], [/^A reference or citation/, 'references'], [/^The maths/, 'maths'], [/^Do not add/, 'settings'], [/^The answer is too long/, 'length'], [/^It does not compile/, 'compile']];
+const KINDS_OF_FAULT = [[/^(?:Answer with|The answer must be|The block must be|Leave out)/, 'form'], [/^The words/, 'words'], [/^The formatting/, 'formatting'], [/^The labels/, 'labels'], [/^A reference or citation/, 'references'], [/^The maths/, 'maths'], [/^Do not add/, 'settings'], [/^The answer is too long/, 'length'], [/^It does not compile/, 'compile']];
 const faultKind = (fault) => KINDS_OF_FAULT.find(([re]) => re.test(fault))?.[1] ?? 'other';
 
 const baselines = new Map();
@@ -101,6 +103,23 @@ async function scratchFor(region) {
   await fs.writeFile(path.join(dir, mainFile), region.document);
   if (!baselines.has(region.id)) baselines.set(region.id, compileErrors(dir, mainFile, 'auto'));
   return { dir, mainFile, errors: await baselines.get(region.id) };
+}
+
+/** An answer for a region through Spectrum's checks, the compile included: { skip }, { text } or { fault }. */
+async function checkAnswer(region, at, to, content) {
+  const answer = readAnswer(content, region.region);
+  if (answer.skip) return { skip: true };
+  let fault = answer.fault ?? checkReplacement(at.text, answer.text, to, region.original, region.kind);
+  if (!fault) {
+    // check 6: no compile error that the converted document did not have
+    const scratch = await scratchFor(region);
+    await fs.writeFile(path.join(scratch.dir, scratch.mainFile), replaceRegion(region.document, at, answer.text));
+    const left = [...scratch.errors];
+    const added = (await compileErrors(scratch.dir, scratch.mainFile, 'auto')).filter((e) => (left.includes(e) ? !left.splice(left.indexOf(e), 1) : true));
+    rmSync(scratch.dir, { recursive: true, force: true });
+    if (added.length) fault = 'It does not compile: ' + added[0];
+  }
+  return fault ? { fault } : { text: answer.text };
 }
 
 /** Spectrum's tidying loop for one region and model, as tidyRegions runs it, with what it cost. */
@@ -129,21 +148,12 @@ async function runRegion(m, region, index, skill, dry) {
       out.tokensIn += Math.ceil((system.length + messages[1].content.length) / 4);
       out.tokensOut += Math.ceil(reply.content.length / 4);
     }
-    const answer = readAnswer(reply.content, region.region);
+    const answer = await checkAnswer(region, at, to, reply.content);
     if (answer.skip) {
       out.result = 'skipped';
       break;
     }
-    fault = answer.fault ?? checkReplacement(at.text, answer.text, to, region.original);
-    if (!fault) {
-      // check 6: no compile error that the converted document did not have
-      const scratch = await scratchFor(region);
-      await fs.writeFile(path.join(scratch.dir, scratch.mainFile), replaceRegion(region.document, at, answer.text));
-      const left = [...scratch.errors];
-      const added = (await compileErrors(scratch.dir, scratch.mainFile, 'auto')).filter((e) => (left.includes(e) ? !left.splice(left.indexOf(e), 1) : true));
-      rmSync(scratch.dir, { recursive: true, force: true });
-      if (added.length) fault = 'It does not compile: ' + added[0];
-    }
+    fault = answer.fault;
     if (!fault) {
       Object.assign(out, { result: out.answers === 1 ? 'first' : 'later', accepted: answer.text });
       break;
@@ -159,15 +169,34 @@ async function runRegion(m, region, index, skill, dry) {
 const pct = (n, of) => (of ? Math.round((100 * n) / of) + '%' : '');
 const money = (m, s) => (Number.isFinite(m.price?.input) && Number.isFinite(m.price?.output) ? '$' + ((s.tokensIn * m.price.input + s.tokensOut * m.price.output) / 1e6).toFixed(4) : '');
 
-/** The numbers for a list of region results. */
+/**
+ * Re-checks one saved region result: its last answer through the current checks, as no model is asked again. An answer
+ * the checks now reject leaves the region failed; a failed one they now pass is accepted.
+ */
+async function recheckRegion(saved, region) {
+  if (!region || !['first', 'later', 'failed'].includes(saved.result) || saved.lastAnswer == null) return { ...saved };
+  const to = region.direction === 'latex-to-typst' ? 'typst' : 'latex';
+  const answer = await checkAnswer(region, regionAt(region.document, region.region), to, saved.lastAnswer);
+  const faults = saved.result === 'failed' ? saved.faults.slice(0, -1) : [...saved.faults];
+  if (answer.skip) return { ...saved, result: 'skipped', accepted: null, faults };
+  if (answer.text !== undefined) return { ...saved, result: saved.answers === 1 ? 'first' : 'later', accepted: answer.text, faults, fault: undefined };
+  return { ...saved, result: 'failed', accepted: null, faults: [...faults, faultKind(answer.fault)], fault: answer.fault };
+}
+
+// an accepted change where SKIP was the right answer
+const accepted = (r) => r.result === 'first' || r.result === 'later';
+const changedSkip = (r) => accepted(r) && r.difficulty === 'skip';
+
+/** The numbers for a list of region results; a change to a region that should have been skipped is never right. */
 function summarise(results) {
   const n = (test) => results.filter(test).length;
   const faults = {};
   for (const r of results) for (const f of r.faults) faults[f] = (faults[f] ?? 0) + 1;
   return {
     regions: results.length,
-    first: n((r) => r.result === 'first'),
-    withinThree: n((r) => r.result === 'first' || r.result === 'later'),
+    first: n((r) => r.result === 'first' && !changedSkip(r)),
+    withinThree: n((r) => accepted(r) && !changedSkip(r)),
+    changedSkip: n(changedSkip),
     skipped: n((r) => r.result === 'skipped'),
     skippedRightly: n((r) => r.result === 'skipped' && r.difficulty === 'skip'),
     failed: n((r) => r.result === 'failed'),
@@ -184,24 +213,27 @@ function reportMarkdown(runs, meta) {
   const row = (cells) => '| ' + cells.join(' | ') + ' |';
   const head = (cells) => [row(cells), row(cells.map(() => '---'))];
   const faults = (f) => Object.entries(f).sort((a, b) => b[1] - a[1]).map(([k, v]) => k + ' ' + v).join(', ') || 'none';
-  const line = (s) => [s.regions, s.first + ' (' + pct(s.first, s.regions) + ')', s.withinThree + ' (' + pct(s.withinThree, s.regions) + ')', s.skipped + ' (' + s.skippedRightly + ' right)', s.failed, s.errors];
+  const line = (s) => [s.regions, s.first + ' (' + pct(s.first, s.regions) + ')', s.withinThree + ' (' + pct(s.withinThree, s.regions) + ')', s.skipped + ' (' + s.skippedRightly + ' right)', s.changedSkip ?? 0, s.failed, s.errors];
+  const columns = ['Right first', 'Right within three', 'Skipped (right)', 'Changed a skip region', 'Failed after three', 'API errors'];
   const out = [
     '# Tidy benchmark',
     '',
     meta.date + ', ' + meta.regions + ' regions' + (meta.filter ? ' matching “' + meta.filter + '”' : '') + (meta.dry ? ', dry run (scripted answers, no model)' : '') + '.',
-    '“Right first” and “right within three” count answers Spectrum accepted: the checks of section 9.4 passed and the document still compiled. “Skipped (right)” counts SKIP answers, and how many were on regions where SKIP is the right answer. Tokens marked * are estimated (characters / 4), as the provider did not report them.',
+    ...(meta.recheck ? ['Re-check of ' + meta.recheck.file + ' (run ' + meta.recheck.date + '): the answers it saved, through the current checks, with no model called. A saved answer the checks now reject counts as failed, as the model is not asked again; tokens and times are the run’s.'] : []),
+    '“Right first” and “right within three” count answers Spectrum accepted: the checks of section 9.4 passed and the document still compiled. An accepted change to a region whose right answer is SKIP is not right: it counts under “changed a skip region”. “Skipped (right)” counts SKIP answers, and how many were on regions where SKIP is the right answer. Tokens marked * are estimated (characters / 4), as the provider did not report them.',
+    ...(meta.recheck ? ['', '## Re-check', '', ...head(['Model', 'Scores', 'Regions', ...columns]), ...meta.recheck.rows.map((r) => row([r.model, r.label, ...line(r.summary)])), '', ...(meta.recheck.changes.length ? meta.recheck.changes.map((c) => '- ' + c) : ['No region’s result changed.'])] : []),
     '',
     '## Comparison',
     '',
-    ...head(['Model', 'Regions', 'Right first', 'Right within three', 'Skipped (right)', 'Failed after three', 'API errors', 'Tokens in / out', 'Seconds per region', 'Cost']),
+    ...head(['Model', 'Regions', ...columns, 'Tokens in / out', 'Seconds per region', 'Cost']),
     ...runs.map(({ model: m, summary: s }) => row([m.name, ...line(s), s.tokensIn + ' / ' + s.tokensOut + (s.estimatedTokens ? '*' : ''), s.secondsPerRegion, money(m, s)]))
   ];
   for (const { model: m, summary: s, results } of runs) {
     out.push('', '## ' + m.name, '', m.model + ' at ' + m.endpoint + '. Failure reasons, one per rejected answer: ' + faults(s.faults) + '.', '');
-    out.push(...head(['Kind', 'Direction', 'Regions', 'Right first', 'Right within three', 'Skipped (right)', 'Failed after three', 'API errors']));
+    out.push(...head(['Kind', 'Direction', 'Regions', ...columns]));
     const groups = Map.groupBy(results, (r) => r.kind + '\n' + r.direction);
     for (const [key, list] of groups) out.push(row([...key.split('\n').map((k) => k.replace('latex-to-typst', 'LaTeX to Typst').replace('typst-to-latex', 'Typst to LaTeX')), ...line(summarise(list))]));
-    out.push('', ...head(['Difficulty', 'Regions', 'Right first', 'Right within three', 'Skipped (right)', 'Failed after three', 'API errors']));
+    out.push('', ...head(['Difficulty', 'Regions', ...columns]));
     for (const [difficulty, list] of Map.groupBy(results, (r) => r.difficulty)) out.push(row([difficulty, ...line(summarise(list))]));
     const errors = [...new Set(results.filter((r) => r.error).map((r) => r.error))];
     if (errors.length) out.push('', 'API errors: ' + errors.join(' '));
@@ -242,30 +274,56 @@ const concurrency = Math.max(1, Number(opts.concurrency) || 1);
 const outDir = path.resolve(opts.out ?? path.join('tidy-bench-results', new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')));
 try {
   if (!regions.length) throw new Error('No region matches “' + opts.regions + '”.');
-  const models = (Array.isArray(entries) ? entries : entries.models ?? []).map((e) => resolveModel(e, dry));
-  if (!models.length) throw new Error('The models file lists no model.');
-  const skill = await skillParts();
-  const runs = models.map((model) => ({ model, results: new Array(regions.length) }));
-  const tasks = runs.flatMap((run) => regions.map((region, i) => ({ run, region, i })));
-  let done = 0;
-  const worker = async () => {
-    for (let task = tasks.shift(); task; task = tasks.shift()) {
-      const r = await runRegion(task.run.model, task.region, task.i, skill, dry);
-      task.run.results[task.i] = r;
-      done += 1;
-      console.log('[' + done + '/' + runs.length * regions.length + '] ' + task.run.model.name + '  ' + r.id + '  ' + r.result + (r.answers ? ' (' + r.answers + ' answer' + (r.answers === 1 ? '' : 's') + ')' : '') + (r.error ? ': ' + r.error : ''));
+  let runs;
+  let meta;
+  if (opts.recheck) {
+    // the saved answers through the current checks, each model's scores before and after
+    const saved = JSON.parse(await fs.readFile(opts.recheck, 'utf8'));
+    const byId = new Map(regions.map((r) => [r.id, r]));
+    const rows = [];
+    const changes = [];
+    runs = [];
+    for (const { summary, regions: results, ...model } of saved.models ?? []) {
+      const now = [];
+      for (const r of results) {
+        const x = await recheckRegion(r, byId.get(r.id));
+        now.push(x);
+        if (x.result !== r.result) changes.push(model.name + ', ' + r.id + ' (' + r.difficulty + '): ' + r.result + ' → ' + x.result + (x.fault ? '. ' + x.fault : '.'));
+      }
+      rows.push({ model: model.name, label: 'as run, old scoring', summary }, { model: model.name, label: 'as run, scored now', summary: summarise(results) }, { model: model.name, label: 're-checked', summary: summarise(now) });
+      runs.push({ model, results: now, summary: summarise(now) });
     }
-  };
-  await Promise.all(Array.from({ length: concurrency }, worker));
-  for (const run of runs) run.summary = summarise(run.results);
-  const meta = { date: new Date().toISOString(), regions: regions.length, filter: opts.regions ?? null, dry };
+    if (!runs.length) throw new Error(opts.recheck + ' has no model’s results.');
+    meta = { date: new Date().toISOString(), regions: saved.regions, filter: saved.filter ?? null, dry: saved.dry, recheck: { file: path.basename(opts.recheck), date: saved.date, rows, changes } };
+  } else {
+    const models = (Array.isArray(entries) ? entries : entries.models ?? []).map((e) => resolveModel(e, dry));
+    if (!models.length) throw new Error('The models file lists no model.');
+    const skill = await skillParts();
+    runs = models.map((model) => ({ model, results: new Array(regions.length) }));
+    const tasks = runs.flatMap((run) => regions.map((region, i) => ({ run, region, i })));
+    let done = 0;
+    const worker = async () => {
+      for (let task = tasks.shift(); task; task = tasks.shift()) {
+        const r = await runRegion(task.run.model, task.region, task.i, skill, dry);
+        task.run.results[task.i] = r;
+        done += 1;
+        console.log('[' + done + '/' + runs.length * regions.length + '] ' + task.run.model.name + '  ' + r.id + '  ' + r.result + (r.answers ? ' (' + r.answers + ' answer' + (r.answers === 1 ? '' : 's') + ')' : '') + (r.error ? ': ' + r.error : ''));
+      }
+    };
+    await Promise.all(Array.from({ length: concurrency }, worker));
+    for (const run of runs) run.summary = summarise(run.results);
+    meta = { date: new Date().toISOString(), regions: regions.length, filter: opts.regions ?? null, dry };
+  }
   await fs.mkdir(outDir, { recursive: true });
   // the key never goes into the results
   const publicModel = ({ apiKey, ...m }) => m;
   await fs.writeFile(path.join(outDir, 'results.json'), JSON.stringify({ ...meta, models: runs.map((r) => ({ ...publicModel(r.model), summary: r.summary, regions: r.results })) }, null, 2) + '\n');
-  await fs.writeFile(path.join(outDir, 'report.md'), reportMarkdown(runs, meta));
+  const report = reportMarkdown(runs, meta);
+  await fs.writeFile(path.join(outDir, 'report.md'), report);
   await fs.writeFile(path.join(outDir, 'review.html'), reviewHtml(runs, regions));
-  console.log('\n' + reportMarkdown(runs, meta).split('\n## ')[1].replace(/^Comparison\n\n/, ''));
+  // the re-check and the comparison
+  const sections = report.split('\n## ');
+  console.log('\n' + sections.slice(1, sections.findIndex((t) => t.startsWith('Comparison')) + 1).map((t) => '## ' + t).join('\n'));
   console.log('Written to ' + outDir);
 } catch (err) {
   console.error(err.message);
