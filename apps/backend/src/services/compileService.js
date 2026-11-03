@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import os from 'os';
 import path from 'path';
-import { promises as fs, constants as fsConstants } from 'fs';
+import { existsSync, promises as fs, constants as fsConstants } from 'fs';
 import { spawn } from 'child_process';
 import { AsyncLocalStorage } from 'async_hooks';
 import { DATA_DIR } from '../config/constants.js';
@@ -121,12 +121,20 @@ function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = f
   }
 }
 
-/** Tectonic's environment with Spectrum's Biber first on its PATH (Tectonic runs biber from there), or env as it is. */
+// Tectonic 0.17 runs a tectonic-biber in the folder it runs from, then one on the PATH, before any biber
+const TECTONIC_BIBER = ['tectonic-biber', ...(WINDOWS ? ['.exe', '.com', '.bat', '.cmd'].map((ext) => 'tectonic-biber' + ext) : [])];
+const holdsTectonicBiber = (dir) => TECTONIC_BIBER.some((name) => existsSync(path.join(dir, name)));
+
+/**
+ * Tectonic's environment with Spectrum's Biber first on its PATH (Tectonic runs biber from there), or env as it is. A
+ * folder holding a tectonic-biber is left off it, as Tectonic would run that one in place of Spectrum's.
+ */
 export function withBiber(env, biber) {
   if (!biber) return env;
   // Windows spells it Path
   const key = Object.keys(env).find((name) => name.toUpperCase() === 'PATH') ?? 'PATH';
-  return { ...env, [key]: [path.dirname(biber), env[key]].filter(Boolean).join(path.delimiter), PAR_GLOBAL_TMPDIR: biberCache() };
+  const rest = String(env[key] ?? '').split(path.delimiter).filter((dir) => dir && !holdsTectonicBiber(dir));
+  return { ...env, [key]: [path.dirname(biber), ...rest].join(path.delimiter), PAR_GLOBAL_TMPDIR: biberCache() };
 }
 
 /** The PATH with a TeX folder first (Settings › Engines › LaTeX), or undefined when it isn't a folder: the PATH as it is. */
@@ -488,6 +496,10 @@ export async function tectonicFontconfig() {
  * a sync client would copy anything else to the other computer. Its .aux files and SyncTeX are kept in the cache.
  */
 async function compileWith(engine, projectRoot, absMain, mainFile, options = {}) {
+  // Tectonic would run it as its Biber, from the folder it runs in: a program a project brought with it
+  if (engine === 'tectonic' && holdsTectonicBiber(path.dirname(absMain))) {
+    return { ok: false, error: 'This document’s folder has a file called tectonic-biber, which Tectonic would run as a program. Rename or remove it, or compile with another engine.' };
+  }
   const buildRoot = options.buildDir || path.join(os.tmpdir(), 'spectrum-build');
   const outDir = path.join(buildRoot, crypto.randomUUID());
   // a scratch build (compileFolder's) keeps nothing
