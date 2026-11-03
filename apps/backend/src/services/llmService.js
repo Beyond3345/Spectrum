@@ -321,7 +321,7 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
   if (!res.ok) {
     // the local app has no key: a 401 is a :cloud model while it's signed out of ollama.com
     if (provider?.local && res.status === 401) return { ok: false, error: 'Ollama needs you to sign in to use its cloud models. Sign in from the Ollama app, or run ollama signin.' };
-    return { ok: false, error: providerError(res.status, text) };
+    return { ok: false, error: providerError(res.status, text), status: res.status };
   }
   let data = null;
   try {
@@ -340,7 +340,9 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
   if (truncated && (message.tool_calls?.length || !content)) {
     return { ok: false, error: 'The answer was cut off before it finished. Try a lower effort or a smaller request.' };
   }
-  return { ok: true, message: { ...message, content } };
+  // tokens as the provider counted them: Chat Completions' prompt and completion, the Messages and Responses APIs' input and output
+  const usage = data.usage && { input: data.usage.prompt_tokens ?? data.usage.input_tokens ?? 0, output: data.usage.completion_tokens ?? data.usage.output_tokens ?? 0 };
+  return { ok: true, message: { ...message, content }, ...(usage && { usage }) };
 }
 
 // Some providers return content as an array of parts.

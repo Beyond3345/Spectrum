@@ -486,6 +486,16 @@ or the line: SKIP r3
 
 On a retry the same message is sent with one line added at the top: `Your last answer was not used: <the check's sentence> Try again.`
 
+### 9.8 Measuring the AI tidy step
+
+`apps/backend/test/fixtures/tidy-bench` holds 51 regions the converter flags, every kind in both directions, from small source documents written for the purpose. `scripts/tidy-bench.mjs` sends each region to each model exactly as the converter's tidying does (the same system message, user message, retries and checks, the compile included) and counts what happens:
+
+```sh
+DEEPSEEK_API_KEY=... OPENROUTER_API_KEY=... node scripts/tidy-bench.mjs --models models.json --out tidy-bench-results/run1
+```
+
+`models.json` lists the models, as in `apps/backend/test/fixtures/tidy-bench/models.example.json`; each names the environment variable that holds its key, and nothing else is read for keys. `--regions titlepage,t2l-` limits the run, `--concurrency 4` runs four requests at once and `--dry-run` answers from a script without calling any model. The run writes `report.md` (right first time, right within three answers, skipped, failed after three, the failure reasons by check, tokens, time per region and, with prices in the models file, the cost), `results.json` and `review.html`, which shows every accepted edit beside the original and a note of what a good answer looks like. The fixture's README has the details.
+
 ## 10. Phased plan
 
 | Phase | Work | Effort (one developer) | Exit test |
