@@ -377,6 +377,15 @@ test('the converter marks each kind of region, with its original in the record a
   assert.match(await fs.readFile(path.join(staging, 'conversion', 'notes.md'), 'utf8'), /main\.tex line 12: A title page the rules only approximated, marked r1 in main\.typ/);
 });
 
+test('a paragraph on the line straight after \\begin{document} is marked too', { skip, timeout: 5 * 60 * 1000 }, async () => {
+  const folder = mkdtempSync(path.join(tmp, 'first-'));
+  await fs.writeFile(path.join(folder, 'main.tex'), '\\documentclass{article}\n\\begin{document}\nThe gauge at the weir \\todo{check the serial number} was replaced in May.\n\nIt reads well.\n\\end{document}\n');
+  const staging = mkdtempSync(path.join(tmp, 'out-'));
+  const { record } = await latexToTypst(folder, 'main.tex', staging, { engine: 'auto' });
+  assert.deepEqual(record.regions.map((r) => [r.id, r.kind, r.from, r.original]), [['r1', 'unknown-command', 'main.tex:3', 'The gauge at the weir \\todo{check the serial number} was replaced in May.']]);
+  assert.match(regionAt(await fs.readFile(path.join(staging, 'main.typ'), 'utf8'), 'r1').text, /The gauge at the weir check the serial number was replaced in May\./);
+});
+
 test('from Typst too: a title page beyond the rule, a CV header, the document’s own functions and a table in a grid', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
   const staging = mkdtempSync(path.join(tmp, 'out-'));
   const { record, checks } = await typstToLatex(path.join(fixtures, 'regions-typst'), 'main.typ', staging, { engine: 'auto' });
