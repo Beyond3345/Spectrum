@@ -164,6 +164,15 @@ test('the Typst pre-pass reads semicolons, a #text over lines, short rules, the 
   assert.match(notes.join('\n'), /function boxed does more than Spectrum can write in LaTeX, so only the text given to it was kept/);
 });
 
+test('the Typst pre-pass keeps comments in their places, and reads the house \\Call in a sentence and in maths', () => {
+  const ctx = { facts: typstFacts(), main: 'main.typ', labels: new Set(), bibKeys: new Set(), used: new Set(), pictures: [], images: new Set(), refsOut: [], citesOut: [], note: () => {}, include: () => null };
+  const source = ['#set text(lang: "en")', '', '// before the body', '#set page(numbering: none)', '', '#figure(', '  // inside the figure', '  rect(width: 10mm),', '  caption: [A box.],', ')', '', 'One line', '// inside a paragraph', 'and #smallcaps[Relax]; ($u$, $v$) or $x <- #smallcaps[Min];(Q)$.'].join('\n');
+  const { input, state } = prepareTypst(source, ctx, { file: 'main.typ' });
+  assert.deepEqual(state.blocks.map((b) => [b.kind, b.latex ?? b.style]), [['raw', '% before the body'], ['numbering', null], ['raw', '% inside the figure'], ['figure', undefined]]);
+  assert.match(input, /One line\nSPXC0X\nand SPXI0X\$u\$, \$v\$SPXI1X or \$x <- "SPXI2X"Q"SPXI3X"\$\./);
+  assert.deepEqual([state.comments, state.inlines], [['% inside a paragraph'], ['\\Call{Relax}{', '}', '\\Call{Min}{', '}']]);
+});
+
 test('a Typst table from the table tool, its cells Typst already', () => {
   const model = { cells: [['$x$', '*b*'], ['#super[a]', '2,740']], env: 'tabular', align: ['l', 'S'], lines: 'booktabs', header: true, float: false, placement: '', caption: '', label: '', escape: false, markup: true };
   assert.match(tableTypst(model), /table\.header\(\[\$x\$\], \[\*b\*\]\), \[#super\[a\]\], \[2,740\]\)$/);
