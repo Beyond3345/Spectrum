@@ -570,7 +570,7 @@ const withoutRaw = (text) => text.replace(/```[\s\S]*?```|`[^`\n]*`|"(?:[^"\\\n]
  * numbered equations, floats and words came through.
  */
 async function checkLatexToTypst({ staging, out, whole, facts, prepared, ctx }) {
-  const compiled = await compileTypst(staging, path.join(staging, out), out, { scratch: true });
+  const compiled = await compileTypst(staging, path.join(staging, out), out, { scratch: true, spectrumPackages: true });
   const diagnostics = (compiled.errors ?? []).map((d) => ({ severity: d.severity, message: d.message.split('\n')[0], file: d.file, line: d.line }));
   const typst = typstWhole(prepared);
   const code = withoutRaw(typst);

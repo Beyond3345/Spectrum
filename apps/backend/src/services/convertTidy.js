@@ -171,7 +171,8 @@ const commentAbove = (text, at, comment) => {
 
 /** The errors of a compile of dir: Typst's diagnostics, or LaTeX's ! and file:line: lines. */
 export async function compileErrors(dir, mainFile, engine) {
-  const result = await compileFolder({ root: dir, mainFile, engine }).catch((err) => ({ ok: false, error: err.message }));
+  // spectrumPackages: packages go to Spectrum's own cache, not a typst-packages folder in the user's home
+  const result = await compileFolder({ root: dir, mainFile, engine, spectrumPackages: true }).catch((err) => ({ ok: false, error: err.message }));
   const errors = result.errors
     ? result.errors.filter((e) => e.severity === 'error').map((e) => e.message.split('\n')[0])
     : [...String(result.log ?? '').matchAll(/^(?:! |error: )(.*)$/gm)].map((m) => m[1].trim());
