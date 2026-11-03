@@ -625,6 +625,15 @@ function inlineCall(call, nodes, next, st, ctx) {
       ctx.used.add('graphicx');
       return wrap('\\scalebox{' + x + '}' + (y === x ? '' : '[' + y + ']'));
     }
+    case 'skew':
+    case 'overline':
+    case 'repeat': {
+      // dropped by pandoc too, and with no counterpart in LaTeX's own text: their text, with a note
+      const body = markupOf(call.bodies[0] ?? arg(call, null, 0));
+      if (!body) return null;
+      ctx.note(st, call.node.text, 'LaTeX has no counterpart of #' + call.name + ', so only its text was kept.');
+      return { text: emit(body.children, st, ctx) };
+    }
     case 'terms':
     case 'terms.item': {
       // a term list written as a call, which pandoc drops: / Term: description, as the markup writes one

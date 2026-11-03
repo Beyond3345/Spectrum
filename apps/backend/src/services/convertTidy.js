@@ -139,7 +139,7 @@ function typstCallFormats(name, args) {
   if (name === 'box' || name === 'block') return /\bfill\s*:/.test(args) ? ['highlight'] : [];
   if (name !== 'text') return null;
   return [
-    /\bweight\s*:\s*(?:"(?:semibold|bold|extrabold|black)"|[6-9]00)/.test(args) && 'bold',
+    /\bweight\s*:\s*(?:"(?!(?:thin|extralight|light|regular|medium)")[^"]*"|[6-9]\d\d|\d{4,})/.test(args) && 'bold',
     /\bstyle\s*:\s*"(?:italic|oblique)"/.test(args) && 'italic',
     /\bfill\s*:/.test(args) && 'colour',
     /\bsize\s*:|^\s*[\d.]+(?:pt|em|mm|cm|in)\b/.test(args) && 'size'

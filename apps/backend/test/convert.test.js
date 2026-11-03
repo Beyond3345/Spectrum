@@ -362,6 +362,7 @@ test('#move, #scale, #hide and #terms, which pandoc drops with their text, becom
   await fs.writeFile(path.join(folder, 'main.typ'), [
     'The word #move(dy: -2pt)[lifted] sits higher, #move(dy: 1pt)[dropped] lower, #scale(150%)[Danger] is half as big again,',
     '#scale(x: 50%, reflow: true)[narrow] is squeezed and a #hide[secret] gap stays blank, while #move(dx: 3pt)[sideways] stays put.',
+    'A #skew(ax: 10deg)[slanted], #overline[lined] and #repeat[dotted] word keep their text, as do #sub[low] and #super[high].',
     '',
     '#terms(',
     '  ([Logger], [A box that records the water level.]),',
@@ -377,7 +378,8 @@ test('#move, #scale, #hide and #terms, which pandoc drops with their text, becom
   assert.match(latex, /\\usepackage\{graphicx\}/);
   assert.match(latex, /The word \\raisebox\{2pt\}\{lifted\} sits higher, \\raisebox\{-1pt\}\{dropped\} lower, \\scalebox\{1\.5\}\{Danger\} is half as big again,\n\\scalebox\{0\.5\}\[1\]\{narrow\} is squeezed and a \\phantom\{secret\} gap stays blank, while sideways stays put\./);
   assert.match(latex, /\\begin\{description\}\n {2}\\item\[Logger\] A box that records the water level\.\n {2}\\item\[Probe\] A sensor pushed into the soil\.\n\\end\{description\}/);
-  assert.match(notes.map((n) => n.text).join('\n'), /LaTeX has no counterpart of this #move, so its text stays where it is\./);
+  assert.match(latex, /A slanted, lined and dotted word keep their text, as do \\textsubscript\{low\} and \\textsuperscript\{high\}\./);
+  assert.match(notes.map((n) => n.text).join('\n'), /LaTeX has no counterpart of this #move, so its text stays where it is\.[\s\S]*LaTeX has no counterpart of #overline, so only its text was kept\./);
 });
 
 test('mhchem formulas become Typst text, subscripts, charges and arrows upright', () => {
@@ -477,7 +479,7 @@ test('xcolor’s \\textcolor, \\colorbox and \\fcolorbox become Typst colours, a
 });
 
 test('Typst to LaTeX keeps a title page’s alignment and a page of its own, and names the words it loses', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
-  const { result, text, notes } = await convertText('main.typ', [
+  const { result, staging, text, notes } = await convertText('main.typ', [
     '#set document(title: [Field trip report])',
     '#set page(paper: "a4", margin: 25mm)',
     '#set text(size: 11pt, lang: "en", region: "AU")',
@@ -508,8 +510,13 @@ test('Typst to LaTeX keeps a title page’s alignment and a page of its own, and
   assert.match(text, /\\begin\{titlepage\}\n {2}\\raggedleft\n {2}\\vspace\*\{40mm\}\n {2}\{\\Huge\\bfseries Field trip report\\par\}\n {2}\\vfill\n {2}Jack Wilson\\par\n\\end\{titlepage\}/, 'right aligned');
   assert.match(text, /We checked \\ul\{forty\} hives/);
   assert.match(text, /\\usepackage\{soul\}/);
-  assert.deepEqual(result.checks.words.lost, ['nudged'], 'what pandoc drops is named');
-  assert.match(notes, /The LaTeX lacks a word the Typst has: nudged\./);
+  // a sideways #move, which pandoc drops, keeps its text; a word lost after all is named
+  assert.match(text, /hives and nudged one\./);
+  assert.match(notes, /LaTeX has no counterpart of this #move, so its text stays where it is\./);
+  const edited = mkdtempSync(path.join(tmp, 'edited-'));
+  await fs.cp(staging, edited, { recursive: true });
+  await fs.writeFile(path.join(edited, 'main.tex'), text.replace('and nudged one', 'and one'));
+  assert.deepEqual((await result.recheck(edited)).words.lost, ['nudged']);
 });
 
 // ─── Round trips: section 10's phase 4, there and back with the conversion record ───

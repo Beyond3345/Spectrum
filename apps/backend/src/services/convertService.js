@@ -1002,7 +1002,7 @@ async function checkTypstToLatex({ root, doc, staging, out, texts, uses, order, 
     .replace(/caption=\{((?:[^{}]|\{[^{}]*\})*)\}/g, ' $1 ')
     .replace(/\\nolinkurl\{([^}]*)\}/g, ' $1 ');
   const typstWords = order.map((rel) => typstProse(texts.get(rel))).join('\n').replace(/#outline\([^)]*\)/g, ' ').replace(/(\d)~[^\s,;:!?)\]]+/g, '$1');
-  const [before, after] = [wordsOf(maskTypst(typstWords)), wordsOf(latexProse(latexWords, new Set([...TEXT_COMMANDS, 'ul', 'st', 'hl', 'phantom'])))];
+  const [before, after] = [wordsOf(maskTypst(typstWords)), wordsOf(latexProse(latexWords, new Set([...TEXT_COMMANDS, 'ul', 'st', 'hl', 'phantom', 'textsubscript', 'textsuperscript'])))];
   const words = { coverage: coverage(before, after), lowestSection: null, lost: lostWords(before, after) };
   const undefinedRefs = /There were undefined references|Reference `[^']+' on page \d+ undefined/.test(log);
   const result = {
