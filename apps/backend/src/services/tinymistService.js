@@ -120,6 +120,8 @@ async function start(projectId) {
     clients: new Map(),
     // project path → the editors that have it open
     opened: new Map(),
+    // URI → Tinymist's latest diagnostics for it, for an editor that opens it after they came
+    diagnostics: new Map(),
     // the hidden preview (a promise while it starts), its task's number, and what waits for its next jump
     preview: null,
     tasks: 0,
@@ -225,6 +227,7 @@ function fromServer(session, message) {
     return;
   }
   if (method === 'tinymist/preview/dispose') session.preview = null;
+  if (method === 'textDocument/publishDiagnostics' && typeof message.params?.uri === 'string') session.diagnostics.set(message.params.uri, message.params.diagnostics);
   if (QUIET.has(method)) return;
   for (const client of session.clients.values()) client.send(message);
 }
@@ -315,6 +318,9 @@ function syncDocument(session, client, method, params) {
     session.opened.delete(rel);
   }
   write(session, { jsonrpc: '2.0', method, params });
+  // Tinymist says nothing new about a file it has checked already (the main document's chapters, from the start)
+  const kept = method === 'textDocument/didOpen' && session.diagnostics.get(uri);
+  if (kept) client.send({ jsonrpc: '2.0', method: 'textDocument/publishDiagnostics', params: { uri, diagnostics: kept } });
 }
 
 /**

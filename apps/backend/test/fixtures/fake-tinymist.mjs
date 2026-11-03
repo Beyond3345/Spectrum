@@ -1,6 +1,7 @@
 // A stand-in for Tinymist for test/tinymist.test.js: the LSP's framing on stdin and stdout, a line of JSON in
 // FAKE_TINYMIST_LOG for each message it gets, and just enough answers to show the bridge passes them on.
 import { appendFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 const log = (entry) => appendFileSync(process.env.FAKE_TINYMIST_LOG, `${JSON.stringify(entry)}\n`);
 const send = (message) => {
@@ -32,6 +33,11 @@ function handle({ id, method, params }) {
     send({ id: 'config-1', method: 'workspace/configuration', params: { items: [{ section: 'tinymist' }] } });
     send({ method: 'window/logMessage', params: { type: 3, message: 'started' } });
     send({ method: 'tinymist/documentOutline', params: { items: [] } });
+  } else if (method === 'workspace/executeCommand' && params.command === 'tinymist.pinMain') {
+    // the main document's check, which finds something in a chapter no editor has open yet
+    const chapter = new URL('chapter.typ', pathToFileURL(params.arguments[0])).href;
+    send({ method: 'textDocument/publishDiagnostics', params: { uri: chapter, diagnostics: [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }, severity: 1, message: 'unknown variable' }] } });
+    send({ id, result: null });
   } else if (method === 'textDocument/didOpen' || method === 'textDocument/didChange') {
     const text = params.textDocument.text ?? params.contentChanges.at(-1).text;
     const words = text.split(/\s+/).filter(Boolean).length;

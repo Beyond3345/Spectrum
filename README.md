@@ -81,7 +81,7 @@ The menu changes with the document it compiles. A Typst document has the Typst v
 
 The `.aux`, `.bbl`, `.toc` and similar files of each document are kept between compiles, for each compiler, in the app's own data folder, and the next compile reads them back, so a document whose labels, headings and citations have not changed is done in one pass. BibTeX and Biber only run when something is cited and another pass only runs when the log asks for one or a pass changed what TeX reads back. makeindex and makeglossaries run when the document has an index or glossaries. Files are kept only from a compile without errors, and when TeX cannot read one of them, Spectrum clears them and compiles once more from scratch, so a damaged `.aux` never locks a document out.
 
-A chapter with a `% !TEX root = ../thesis.tex` comment compiles the document it names. Latexmk always runs with `-norc`, so a project's own `latexmkrc` cannot run code. Settings › Engines has LaTeX, Typst and Markdown tabs. The LaTeX tab has a TeX folder for a second TeX installation, whose programs are used before the ones on the `PATH`, and Open Logs when a compile fails. The Typst tab installs and removes older Typst versions, and the Markdown tab downloads pandoc 3.12.1. The built-in Tectonic downloads its TeX bundle and each package on first use, and a compile that cannot reach the server says so. A checkpoint is saved after each successful compile (Section Checkpoints).
+A chapter with a `% !TEX root = ../thesis.tex` comment compiles the document it names. Latexmk always runs with `-norc`, so a project's own `latexmkrc` cannot run code. Settings › Engines has LaTeX, Typst and Markdown tabs. The LaTeX tab has a TeX folder for a second TeX installation, whose programs are used before the ones on the `PATH`, and Open Logs when a compile fails. The Typst tab installs and removes older Typst versions and downloads Tinymist (Section Tinymist), and the Markdown tab downloads pandoc 3.12.1. The built-in Tectonic downloads its TeX bundle and each package on first use, and a compile that cannot reach the server says so. A checkpoint is saved after each successful compile (Section Checkpoints).
 
 ### TexLab
 
@@ -98,6 +98,12 @@ With TexLab the sidebar's Outline covers the whole document across its `\input` 
 When Syntax checks in the compile menu is set to Check before compiling, the default, Compile first looks at TexLab's findings in the document's files. When there are missing braces or mismatched environments, it lists them and asks whether to compile anyway, and Cancel goes to the first one. References and citations with no label or entry never stop a compile, and auto compile skips the check. The default for every project is in Settings › Engines › LaTeX.
 
 TexLab's own completion, building and formatting are left off, so Spectrum's completion stays as it is. Without TexLab, for example when Spectrum runs in a browser and `texlab` is not on the `PATH`, the editor works as before and the Outline reads the headings itself.
+
+### Tinymist
+
+[Tinymist](https://github.com/Myriad-Dreamin/tinymist) 0.15.10, a language server for Typst, downloads from Settings › Engines › Typst (about 31 MB, checked against its SHA-256) and then starts for each open project. In `.typ` files it gives the editor completion for the document's own functions, packages, labels and citations, hovers with signatures and docs, Go to definition, Find references and Rename as TexLab does, errors as you type, Format document with typstyle (`⇧⌥F`, or from the editor's right-click menu) and a word count of the PDF in Document insights.
+
+Tinymist has Typst 0.15.1 inside it. In a project on that version, its errors take the place of the syntax check and the last compile's marks, and a double click jumps between the PDF and the source exactly, through Tinymist's preview running out of sight. A project pinned to another version keeps the compile's marks and the word matching for its jumps, since Tinymist would judge its code by 0.15's rules. Without Tinymist the editor works as before.
 
 ### Appearance
 

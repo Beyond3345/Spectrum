@@ -5,7 +5,7 @@ import { linter } from '@codemirror/lint';
 import type { Diagnostic } from '@codemirror/lint';
 import { keymap } from '@codemirror/view';
 import type { EditorView } from '@codemirror/view';
-import { LSPPlugin, formatDocument, hoverTooltips, serverCompletionSource, signatureHelp } from '@codemirror/lsp-client';
+import { LSPPlugin, formatDocument, hoverTooltips, serverCompletionSource, serverDiagnostics, signatureHelp } from '@codemirror/lsp-client';
 import type { LSPClient } from '@codemirror/lsp-client';
 import type * as lsp from 'vscode-languageserver-protocol';
 import { Texlab } from './texlab';
@@ -92,7 +92,9 @@ export class Tinymist extends Texlab {
       languageOf: (path) => (/\.typ$/i.test(path) ? 'typst' : null),
       config: {
         sanitizeHTML: safeHTML,
-        extensions: [hoverTooltips(), signatureHelp(), keymap.of([{ key: 'Shift-Alt-f', run: formatDocument, preventDefault: true }])],
+        // serverDiagnostics for its sending of edits half a second after typing; its marks go through marks() instead
+        extensions: [serverDiagnostics(), hoverTooltips(), signatureHelp(), keymap.of([{ key: 'Shift-Alt-f', run: formatDocument, preventDefault: true }])],
+        // the client's own handlers, which come before its extensions'
         notificationHandlers: {
           'textDocument/publishDiagnostics': (client, params: lsp.PublishDiagnosticsParams) => self.marks(client, params),
           'tinymist/compileStatus': (_client, params: { status: string; path: string; wordsCount: Omit<TypstWords, 'main'> | null }) => {

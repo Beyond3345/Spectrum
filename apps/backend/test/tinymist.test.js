@@ -125,6 +125,9 @@ test('the bridge does the handshake, relays an editor’s messages and runs no c
   assert.equal((await answer(2)).data.result.contents, 'Hover at 0:3');
   assert.match((await answer(3)).data.error.message, /isn’t available here/);
   assert.match((await answer(4)).data.error.message, /isn’t available here/);
+  // what Tinymist found in the file before the editor opened it comes with the opening
+  const kept = editor.events.filter((e) => e.data.method === 'textDocument/publishDiagnostics' && e.data.params.uri === uri);
+  assert.ok(kept.length >= 1 && kept.at(-1).data.params.diagnostics[0].message === 'unknown variable');
   // the word count comes through; the outline and the log don't
   assert.equal((await editor.next((e) => e.data.method === 'tinymist/compileStatus', 'passed the status')).data.params.wordsCount.words, 3);
   assert.ok(!editor.events.some((e) => ['window/logMessage', 'tinymist/documentOutline'].includes(e.data.method)));
