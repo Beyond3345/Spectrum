@@ -132,7 +132,7 @@
       "label": "Typst report",
       "mainFile": "main.typ",
       "category": "reports",
-      "description": "A Typst report with a title page, contents, chapters, a table and APA 7 references",
+      "description": "Thesis or long report in Typst with a title page, abstract, contents, chapters, a chart drawn in Typst, tables, an appendix and APA 7 references",
       "tags": [
         "Typst",
         "Report",

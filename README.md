@@ -33,7 +33,7 @@ The template gallery has templates for notes, reports, letters, slides and a CV,
 | Slides | a 16:9 Beamer presentation with maths, a chart and code | `beamer` (Madrid), `listings`, `pgfplots` |
 | Academic CV | a one-page CV with links for email, ORCID and a website | `titlesec`, `enumitem`, `xcolor` |
 | Typst document | a short A4 article in Typst with a figure, a reference and APA 7 references | Typst only |
-| Typst report | a report in Typst with a title page, contents, chapters, a table and APA 7 references | Typst only |
+| Typst report | the Report or thesis template in Typst: a title page, abstract, contents, chapters, a chart, tables, an appendix and APA 7 references | Typst only |
 | Typst maths notes | lecture notes or assignments in Typst with theorems, worked examples and their solutions and a plot drawn in Typst | Typst only |
 | Typst electronics notes | notes or lab reports in Typst with a circuit, quantities with units and a Bode plot drawn in Typst | Typst only |
 | Typst coding report | programming assignments in Typst with highlighted code and pseudocode | Typst only |
