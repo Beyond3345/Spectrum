@@ -1,0 +1,7 @@
+[package]
+name = "spectrum-sketch"
+version = "0.1.0"
+entrypoint = "lib.typ"
+authors = ["Spectrum"]
+license = "MIT"
+description = "A stand-in for a drawing package such as CeTZ, so the converter's tests run offline."

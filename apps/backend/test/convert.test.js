@@ -8,7 +8,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import Fastify from 'fastify';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, promises as fs, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, promises as fs, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -310,6 +310,31 @@ test('the Typst stress document converts to LaTeX with every label, reference, c
   assert.ok(existsSync(path.join(staging, 'diagrams', 'divider.typ')));
   assert.ok(existsSync(path.join(staging, 'diagrams', 'converted-2.typ')));
   assert.ok(existsSync(path.join(staging, 'references.bib')));
+});
+
+test('what only Typst’s own parser reads converts too: a package’s drawings, semicolons, a #text over lines, short rules and the document’s own functions', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
+  // the stand-in drawing package, where Typst keeps the packages it has downloaded, so this runs offline
+  cpSync(path.join(stress, 'typst-packages'), path.join(tmp, 'data', 'typst', 'packages'), { recursive: true });
+  const staging = mkdtempSync(path.join(tmp, 'out-'));
+  const { checks, notes } = await typstToLatex(path.join(stress, 'typst-syntax'), 'main.typ', staging, { engine: 'auto' });
+  expectNothingLost(checks, 'typst-syntax');
+  assert.deepEqual([checks.labels.source, checks.references.source, checks.citations.source, checks.equations.source], [5, 5, 2, 1]);
+  const latex = await fs.readFile(path.join(staging, 'main.tex'), 'utf8');
+  // both rules of each line with two
+  assert.match(latex, /\\usepackage\[australian\]\{babel\}/);
+  assert.match(latex, /\\section\{Statements on one line\}\\label\{sec:statements\}/);
+  assert.match(latex, /\\author\{Your Name\\\\\s*School of Engineering\}\n\\date\{3 November 2026\}/, 'the #text over two lines is one line of the title block');
+  assert.match(latex, /The op-amp's slew rate is \\qty\{13\}\{\\volt\\per\\micro\\second\}, as \\cref\{sec:pictures\} shows\. Spectrum reads a resistor rated at \\qty\{4\.7\}\{\\kilo\\ohm\}/);
+  assert.match(latex, /which cites \\parencite\[p\.~45\]\{Masters2013\}/);
+  assert.match(latex, /\\cmidrule\(lr\)\{2-3\}[\s\S]*\\cmidrule\(lr\)\{3-4\}[\s\S]*\\cmidrule\(lr\)\{1-2\}[\s\S]*\\cmidrule\(lr\)\{2-4\}/);
+  // a package's drawing in a line and on its own, a function with logic and the figure's, each a picture from its source
+  assert.match(latex, /in a line, \\includegraphics\{diagrams\/converted-\d\.pdf\}, or on its own:/);
+  assert.match(latex, /\\begin\{center\}\n {2}\\includegraphics\{diagrams\/converted-\d\.pdf\}\n\\end\{center\}/);
+  for (const n of [1, 2, 3, 4]) {
+    assert.ok(existsSync(path.join(staging, 'diagrams', 'converted-' + n + '.pdf')), 'picture ' + n + ' compiled');
+    assert.match(await fs.readFile(path.join(staging, 'diagrams', 'converted-' + n + '.typ'), 'utf8'), /^#import "@preview\/spectrum-sketch:0\.1\.0": sketch/m);
+  }
+  assert.match(notes.map((n) => n.text).join('\n'), /function boxed does more than Spectrum can write in LaTeX, so only the text given to it was kept/);
 });
 
 test('a round trip, LaTeX to Typst to LaTeX, keeps the stress document’s labels, references, citations and equations', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
