@@ -1,0 +1,55 @@
+% A document with one of each construct the converter flags for tidying: a title page beyond the title page rule, a
+% CV header in two minipages, an environment and a command Spectrum does not know, and a table with vertical rules.
+\documentclass[11pt,a4paper]{article}
+\usepackage[australian]{babel}
+\usepackage{tcolorbox}
+\usepackage{booktabs}
+\usepackage[hidelinks]{hyperref}
+\usepackage[capitalise,noabbrev]{cleveref}
+
+\begin{document}
+
+\begin{titlepage}
+  \centering
+  \vspace*{30mm}
+  {\LARGE\bfseries Rooftop solar output across a Melbourne year\par}
+  \vspace{12mm}
+  \rule{0.6\linewidth}{0.4pt}\par
+  {\Large Your Name\par}
+  \vfill
+  School of Engineering\par
+  Your University
+\end{titlepage}
+
+\begin{minipage}[t]{0.6\linewidth}
+  Your Name\\
+  Engineer and researcher
+\end{minipage}\hfill
+\begin{minipage}[t]{0.38\linewidth}\raggedleft
+  your.name@example.com\\
+  Canberra, Australia
+\end{minipage}
+
+\section{Results}\label{sec:results}
+
+\begin{tcolorbox}
+The panels lost about four per cent of their output in the hottest weeks, as \cref{tab:output} shows.
+\end{tcolorbox}
+
+The inverter logged its output every five minutes, \hlnote{which is more than enough} for a daily total.
+
+\begin{table}[ht]
+  \centering
+  \caption{Output by season.}
+  \label{tab:output}
+  \begin{tabular}{|l|r|}
+    \hline
+    Season & Output (kWh) \\
+    \hline
+    Summer & 412 \\
+    Winter & 198 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\end{document}

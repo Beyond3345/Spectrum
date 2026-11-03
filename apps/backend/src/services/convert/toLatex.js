@@ -6,6 +6,7 @@
 import { figureLatex, figureSetLatex, tableEdges, tableLatex } from '../../latex/floats.js';
 import { arg, callAt, contentOf, expressionEnd, groupEnd, markupSpans, statementEnd, stringOf } from './typstRead.js';
 import { typedNumber, typedUnit } from './units.js';
+import { region } from './regions.js';
 
 const TYPST_LANGUAGES = { python: 'Python', py: 'Python', c: 'C', cpp: 'C++', 'c++': 'C++', java: 'Java', matlab: 'Matlab', bash: 'bash', sh: 'bash', sql: 'SQL', javascript: 'JavaScript', js: 'JavaScript', html: 'HTML', latex: 'TeX', tex: 'TeX', r: 'R', rust: 'Rust', go: 'Go', ruby: 'Ruby', haskell: 'Haskell', fortran: 'Fortran', csharp: '[Sharp]C', xml: 'XML', typst: '' };
 const COL = 40;
@@ -749,7 +750,7 @@ export function assembleLatex(latex, st, ctx) {
   function resolve(source) {
     return source.replace(/SPXB(\d+)X/g, (_, n) => {
       const record = st.blocks[Number(n)];
-      return resolve(renderBlock(record, pieceText, st, ctx));
+      return resolve(region(record, renderBlock(record, pieceText, st, ctx), st, ctx, 'latex'));
     });
   }
   // the title block's text, which \maketitle and the preamble print

@@ -542,8 +542,19 @@ export interface ConvertChecks {
  * A new project of the other kind from the document, LaTeX to Typst or Typst to LaTeX; this project stays as it is.
  * convertId: its steps, as they start, through watchCompile.
  */
-export function convertProject(projectId: string, payload: { to: 'typst' | 'latex'; doc: string; engine?: CompileEngine; convertId?: string }) {
-  return request<{ ok: boolean; project: ProjectMeta; checks: ConvertChecks }>(`/api/projects/${projectId}/convert`, json('POST', payload));
+/** The AI tidying of the regions a conversion flagged: each region's outcome, and each file it changed, for review. */
+export interface ConvertTidy {
+  regions: { id: string; kind: string; file: string; result: 'replaced' | 'kept' | 'skipped'; answers: number; fault: string | null }[];
+  left: number;
+  changes: { filePath: string; original: string; proposed: string }[];
+  error?: string;
+}
+
+export function convertProject(
+  projectId: string,
+  payload: { to: 'typst' | 'latex'; doc: string; engine?: CompileEngine; convertId?: string; aiCleanup?: boolean; llmConfig?: Partial<LLMConfig> }
+) {
+  return request<{ ok: boolean; project: ProjectMeta; checks: ConvertChecks; regions: number; tidy?: ConvertTidy }>(`/api/projects/${projectId}/convert`, json('POST', payload));
 }
 
 // ─── Typst exports ───
