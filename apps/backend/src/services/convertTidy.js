@@ -342,7 +342,7 @@ function checkFormats(before, after, to, original, kind) {
 }
 
 /**
- * Checks 2 to 5 of a replacement (after) for the region's converted text (before), whose source is original, the
+ * Checks 2 to 6 of a replacement (after) for the region's converted text (before), whose source is original, the
  * formatting check among them: the fault, one sentence for the model, or null.
  */
 export function checkReplacement(before, after, to, original = '', kind = null) {
@@ -462,7 +462,7 @@ export async function tidyRegions({ root, scratch, mainFile, to, engine = 'auto'
       }
       outcome.fault = answer.fault ?? checkReplacement(at.text, answer.text, to, region.original, region.kind);
       if (outcome.fault) continue;
-      // check 6, in the copy: no error that was not there before
+      // check 7, in the copy: no error that was not there before
       const next = replaceRegion(text, at, answer.text);
       await fs.writeFile(path.join(scratch, region.file), next);
       const now = await compileErrors(scratch, mainFile, engine);
@@ -480,7 +480,7 @@ export async function tidyRegions({ root, scratch, mainFile, to, engine = 'auto'
     }
   }
 
-  // check 7: the whole document again; worse than the conversion was, and nothing the model wrote is kept
+  // check 8: the whole document again; worse than the conversion was, and nothing the model wrote is kept
   let undone = false;
   if (outcomes.some((o) => o.result === 'replaced') && recheck) {
     const after = await recheck(scratch).catch(() => null);

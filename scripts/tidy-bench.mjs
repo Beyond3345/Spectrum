@@ -111,7 +111,7 @@ async function checkAnswer(region, at, to, content) {
   if (answer.skip) return { skip: true };
   let fault = answer.fault ?? checkReplacement(at.text, answer.text, to, region.original, region.kind);
   if (!fault) {
-    // check 6: no compile error that the converted document did not have
+    // check 7: no compile error that the converted document did not have
     const scratch = await scratchFor(region);
     await fs.writeFile(path.join(scratch.dir, scratch.mainFile), replaceRegion(region.document, at, answer.text));
     const left = [...scratch.errors];

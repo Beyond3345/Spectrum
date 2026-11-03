@@ -4,7 +4,7 @@ description: Tidy one flagged region of a document Spectrum converted between La
 license: MIT
 compatibility: Called by Spectrum's converter with one region per request. Needs no tools. Works with small, fast models.
 metadata:
-  version: "1.0"
+  version: "1.1"
   skill-author: Spectrum
 ---
 
@@ -29,24 +29,32 @@ Exactly this, with nothing before or after it:
 the new text for the region
 >>>
 
-If you are not sure, answer only:
+If the CONVERTED text already looks like the ORIGINAL, if the only thing missing needs a
+package, or if you are not sure, answer only:
 
 SKIP r3
+
+SKIP is a good answer. Spectrum then keeps the converted text, which is safe.
 
 Use the region's own name (r3 here). Do not copy the `spectrum:region` marker lines.
 
 ## Checklist before you answer
 
-1. I changed only the CONVERTED text, and only its layout.
-2. Every word of the region is still there. I added no words, except ones the ORIGINAL has
+1. First I compared the two. If the CONVERTED text already looks like the ORIGINAL, or the
+   only thing missing needs a package (a colour, a margin note, list labels), I answer SKIP.
+2. I changed only the CONVERTED text, and only its layout.
+3. Every word of the region is still there. I added no words, except ones the ORIGINAL has
    that the CONVERTED text lost.
-3. Every label, such as <fig:x> or \label{fig:x}, is still there, exactly as written.
-4. Every reference and citation, such as @fig:x, @Masters2013, \cref{fig:x} or
+4. Every label, such as <fig:x> or \label{fig:x}, is still there, exactly as written.
+5. Every reference and citation, such as @fig:x, @Masters2013, \cref{fig:x} or
    \parencite{Masters2013}, is still there, exactly as written.
-5. Every piece of maths is still there, unchanged.
-6. I added no #import, no #set page, #set text or #set document, no #show rule,
+6. Every piece of maths is still there, unchanged.
+7. I added no #import, no #set page, #set text or #set document, no #show rule,
    no \usepackage and no preamble command.
-7. My answer is one <<<REPLACE ...>>> block, or SKIP. No explanation, no Markdown fence.
+8. I kept every bit of formatting the CONVERTED text already has (bold, italic, underline,
+   highlight, small caps, monospace, colour, size, and on a title page the alignment), on the
+   same words. I removed none, changed none and spread none to other words.
+9. My answer is one <<<REPLACE ...>>> block, or SKIP. No explanation, no Markdown fence.
 
 ## Rules for every region
 
@@ -55,6 +63,8 @@ Use the region's own name (r3 here). Do not copy the `spectrum:region` marker li
 - When the ORIGINAL does something the target format cannot do, keep the words and drop the
   effect. Do not invent a replacement.
 - Never invent text, numbers, references, labels or citations.
+- Never remove or change formatting the CONVERTED text already has. Add formatting only where
+  the ORIGINAL has it.
 - If the CONVERTED text already looks right, answer SKIP.
 
 ## Rule cards
@@ -64,20 +74,25 @@ Use the region's own name (r3 here). Do not copy the `spectrum:region` marker li
 The ORIGINAL is a LaTeX titlepage. Write a Typst page:
 
 - Start with #page(numbering: none)[ and end with ].
-- Inside, #align(center)[ ... ].
+- Inside, #align(center)[ ... ] for \centering, #align(right)[ ... ] for \raggedleft and
+  #align(left)[ ... ] for \raggedright.
 - \vspace*{30mm} or \vspace{12mm} becomes #v(30mm) or #v(12mm). \vfill becomes #v(1fr).
 - {\LARGE\bfseries Text\par} becomes #text(size: 17pt, weight: "bold")[Text].
   \Large is 14pt, \large is 12pt, \normalsize is the default and needs no #text.
 - Each \par or line of its own becomes its own line. Use \ at the end of a line only where
   the ORIGINAL used \\.
+- Keep every size, bold and italic the CONVERTED text has.
 
 ### titlepage (Typst to LaTeX)
 
 The ORIGINAL is a Typst title block or page. Write:
 
-- \begin{titlepage} ... \end{titlepage}, with \centering first.
+- \begin{titlepage} ... \end{titlepage}, with \centering first (\raggedleft for #align(right)).
 - #v(30mm) becomes \vspace*{30mm} at the top, \vspace{30mm} elsewhere. #v(1fr) becomes \vfill.
 - #text(size: 17pt, weight: "bold")[Text] becomes {\LARGE\bfseries Text\par}.
+- Keep every \centering, \raggedleft, \raggedright, size and \textbf the CONVERTED text has, on
+  the same lines. Do not put its lines in a flushleft, flushright or center environment.
+- If the CONVERTED text already has the ORIGINAL's layout, answer SKIP.
 
 ### cv-header (both directions)
 
@@ -97,6 +112,7 @@ words with a TODO comment.
 - If the environment only boxes or highlights text, write #block(inset: 0.6em,
   stroke: 0.5pt + luma(180))[ ... ] around the words.
 - If it is a list of some kind, write a Typst list (- items, or + for numbered ones).
+- If the CONVERTED text is already that list or block, answer SKIP.
 - Otherwise answer SKIP.
 - Remove the TODO comment only if you replaced the region.
 
@@ -105,8 +121,12 @@ words with a TODO comment.
 The ORIGINAL uses a command the converter does not know, inside one paragraph.
 
 - If it only changes how text looks (bold, italic, colour, size), write the Typst equivalent:
-  *bold*, _italic_, #text(fill: blue)[...], #text(size: 0.9em)[...].
+  *bold*, _italic_, #text(fill: blue)[...], #text(size: 0.9em)[...]. Put it on the words the
+  command holds, and on no other words.
 - If it prints a symbol, write the symbol itself.
+- If the CONVERTED text already has the look, for example #highlight[...] for \hl{...}, answer
+  SKIP. A command that only chooses a colour or a setting for later, such as \sethlcolor,
+  prints nothing: answer SKIP. A note for the author, such as \todo: answer SKIP.
 - Otherwise answer SKIP.
 
 ### unknown-environment (Typst to LaTeX)
@@ -118,6 +138,8 @@ list of steps), and the CONVERTED text keeps its words without its look, with a 
   words, or \begin{quote} ... \end{quote} if it only sets them apart.
 - If it is a list of some kind, write \begin{itemize} or \begin{enumerate} with an \item for each
   part.
+- If the CONVERTED text is already that list, answer SKIP. Labels such as "Step 1." need a
+  package, so they are not a reason to change it.
 - Otherwise answer SKIP.
 - Remove the TODO comment only if you replaced the region.
 
@@ -129,6 +151,10 @@ CONVERTED text keeps its words without its look.
 - If it only changes how text looks, write the LaTeX: \textbf{...}, \emph{...}, {\small ...},
   \texttt{...}, or \fbox{...} for a box around a word. A colour needs a package, so keep the
   words and drop the colour.
+- If the CONVERTED text already has the look, for example \textbf{...} for a function that
+  made words bold, answer SKIP. If the only look missing is a colour, answer SKIP.
+- Never remove \textbf, \emph or any other look the CONVERTED text has, and never swap it for
+  another, such as \fbox.
 - Otherwise answer SKIP.
 - Remove the TODO comment only if you replaced the region.
 
