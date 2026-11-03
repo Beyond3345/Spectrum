@@ -12,10 +12,11 @@ import { httpError } from './projectService.js';
 import { PANDOC_DOWNLOADABLE, PANDOC_MINIMUM, builtInTypst, pandocPath, versionOf } from './engineService.js';
 import { MAX_LOG_BYTES, compileFolder, runSpawn } from './compileService.js';
 import { compileTypst } from './typstService.js';
-import { environments, lineAt, mathSpans } from './convert/latexRead.js';
-import { assembleTypst, astToTypst, latexFacts, pictureDocument, prepareLatex, typstDefinitions, typstLabel, typstPreamble } from './convert/toTypst.js';
+import { environments, lineAt, maskComments, mathSpans } from './convert/latexRead.js';
+import { assembleTypst, astToTypst, latexFacts, pictureDocument, prepareLatex, typstDefinitions, typstLabel, typstMaths, typstPreamble } from './convert/toTypst.js';
 import { assembleLatex, latexPreamble, prepareTypst, typstFacts, typstProse } from './convert/toLatex.js';
-import { typstUses } from './convert/typstRead.js';
+import { expressionEnd, typstUses } from './convert/typstRead.js';
+import { flowchartFile, flowchartFor, flowchartOf, sameFlowchart } from './convert/diagrams.js';
 import { finishRegions, markLatexInput, markTypstInput, regionNote } from './convert/regions.js';
 
 // A LaTeX or Typst project converted into a new project of the other kind, as docs/featureResearch/
@@ -104,6 +105,145 @@ async function preambleWithInputs(root, mainDir, preamble, files) {
   return out + preamble.slice(last);
 }
 
+// ─── The conversion record ───
+
+/**
+ * The record a conversion from `from` (latex or typst) left in the project at root, which a conversion back reads to
+ * restore what the other language has no words for. Null when there is none, or it came the other way.
+ */
+async function conversionRecord(root, from) {
+  try {
+    const record = JSON.parse(await fs.readFile(path.join(root, '.spectrum', 'conversion.json'), 'utf8'));
+    return record?.version === 1 && record.from === from ? record : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Each title page's text in the converted file paired with its source, for the record: the converted one found again
+ * on the way back means it wasn't edited, so its source goes back as it was. found: the title pages in the output.
+ */
+const titlePages = (file, sources, found) => (sources.length === found.length ? found.map((written, i) => ({ kind: 'titlepage', file, written, source: sources[i] })) : []);
+
+/**
+ * The record's title pages that file's text still has, each swapped for a token pandoc keeps as a word: { text,
+ * restore(output) } where restore puts each source back in the converted output.
+ */
+function keepRegions(text, file, record) {
+  const regions = (record?.titlePages ?? []).filter((r) => r.file === file && typeof r.written === 'string' && r.written && typeof r.source === 'string' && text.includes(r.written));
+  regions.forEach((r, i) => {
+    text = text.replace(r.written, () => '\n\nSPXV' + i + 'X\n\n');
+  });
+  return { text, regions, restore: (output) => regions.reduce((out, r, i) => out.replace(new RegExp('^[ \\t]*SPXV' + i + 'X[ \\t]*$', 'm'), () => r.source), output) };
+}
+
+/** A LaTeX preamble's commands one to an element, a command over several lines joined up, comments gone. */
+function preambleCommands(text) {
+  const out = [];
+  let open = '';
+  for (const line of withoutComments(text).split('\n')) {
+    open += (open ? '\n' : '') + line.trim();
+    const depth = [...open.replace(/\\./g, '')].reduce((n, ch) => n + (ch === '{' ? 1 : ch === '}' ? -1 : 0), 0);
+    if (depth > 0) continue;
+    if (open.trim()) out.push(open.trim());
+    open = '';
+  }
+  return out;
+}
+
+/**
+ * What each PDF with a standalone LaTeX document beside it was drawn from, for a figure that shows the PDF: { picture }
+ * the TikZ a figure held, which the record says the converter took out of it, or { standalone } the document to
+ * include; each with the preamble lines it needs. The TikZ is the file's as it is now, edits and all.
+ */
+async function texSources(root, files, record) {
+  const out = new Map();
+  for (const tex of files) {
+    const pdf = tex.replace(/\.tex$/i, '.pdf');
+    if (!/\.tex$/i.test(tex) || !files.has(pdf)) continue;
+    const text = await fs.readFile(safeJoin(root, tex), 'utf8').catch(() => '');
+    const begin = text.indexOf('\\begin{document}');
+    const end = text.lastIndexOf('\\end{document}');
+    if (!/^\s*\\documentclass\s*(?:\[[^\]]*\])?\s*\{standalone\}/.test(text) || begin === -1 || end < begin) continue;
+    const body = text.slice(begin + '\\begin{document}'.length, end).trim();
+    const preamble = preambleCommands(text.slice(0, begin)).filter((c) => !/^\\documentclass|^\\setlength\s*\{\\(?:textwidth|linewidth)\}/.test(c));
+    const env = /^\\begin\{([A-Za-z]+\*?)\}/.exec(body)?.[1];
+    const whole = env && environments(body, [env]).length === 1 && body.endsWith('\\end{' + env + '}');
+    const taken = record?.pictures?.some((p) => p.source === tex && p.kind && p.kind !== 'standalone');
+    out.set(pdf, taken && whole ? { picture: body, preamble } : { standalone: tex.replace(/\.tex$/i, ''), preamble });
+  }
+  return out;
+}
+
+/**
+ * What each PDF with a Typst drawing beside it was drawn from: { body } the figure's own drawing, as the record has it,
+ * when the file is still as the converter wrote it, or { include } a file a figure can include (one that sets its page
+ * only when compiled on its own).
+ */
+async function typstSources(root, files, record) {
+  const out = new Map();
+  for (const typ of files) {
+    const pdf = typ.replace(/\.typ$/i, '.pdf');
+    if (!/\.typ$/i.test(typ) || !files.has(pdf)) continue;
+    const text = await fs.readFile(safeJoin(root, typ), 'utf8').catch(() => '');
+    const drawn = record?.pictures?.find((p) => p.source === typ && typeof p.body === 'string');
+    if (drawn && text.trimEnd().endsWith(contentOfBody(drawn.body).trimEnd())) out.set(pdf, { body: drawn.body });
+    else if (!/^\s*#set\s+page\((?![^\n]*\bif\s+sys\.inputs)/m.test(text) && !/^\s*#bibliography\(/m.test(text)) out.set(pdf, { include: typ });
+  }
+  return out;
+}
+
+/**
+ * The LaTeX class and options the record has, with the size and paper the Typst sets now; null when the Typst no longer
+ * agrees on chapters (an article made a report, or the other way), so the Typst decides.
+ */
+function sourceClass(source, facts) {
+  if (!source?.class || ['report', 'book'].includes(source.class) !== facts.report) return null;
+  const size = Math.round(facts.size) + 'pt';
+  const paper = { a4: 'a4paper', 'us-letter': 'letterpaper', a5: 'a5paper' }[facts.paper] ?? 'a4paper';
+  const options = (source.options ?? []).map((o) => (/^\d+pt$/.test(o) ? size : /^(?:a4|a5|letter)paper$/.test(o) ? paper : o));
+  if (size !== '10pt' && !options.includes(size)) options.unshift(size);
+  return { name: source.class, options };
+}
+
+/**
+ * The composer's flowcharts among the project's diagrams/ files in from ('tikz' or 'typst'), each with its file in the
+ * other language for the new project: { file: { to, text, write } }. The project's own file of the same drawing (a
+ * conversion back) stays as it is (write false); otherwise one is written from the drawing. A flowchart whose texts
+ * the other language can't take is left out, to compile to a PDF as any other drawing.
+ */
+async function composerFlowcharts(root, files, from) {
+  const out = new Map();
+  const to = from === 'tikz' ? 'typst' : 'tikz';
+  const read = (rel) => fs.readFile(safeJoin(root, rel), 'utf8').catch(() => '');
+  for (const rel of files) {
+    if (!rel.startsWith('diagrams/') || !rel.endsWith(from === 'tikz' ? '.tex' : '.typ')) continue;
+    const drawing = flowchartOf(await read(rel));
+    if (!drawing || (drawing.language === 'typst') !== (from === 'typst')) continue;
+    const other = rel.replace(/\.\w+$/, to === 'typst' ? '.typ' : '.tex');
+    const existing = files.has(other) ? await read(other) : '';
+    const before = flowchartOf(existing);
+    if (before && sameFlowchart(flowchartFor(before, from, typstMaths), drawing)) {
+      out.set(rel, { to: other, text: existing, write: false });
+      continue;
+    }
+    const translated = flowchartFor(drawing, to, typstMaths);
+    if (translated) out.set(rel, { to: other, text: flowchartFile(translated, to), write: true });
+  }
+  return out;
+}
+
+/** A flowchart's file in the other language, in the new project. */
+async function writeFlowchart(staging, flowchart) {
+  if (!flowchart.write) return;
+  await ensureDir(path.dirname(path.join(staging, flowchart.to)));
+  await fs.writeFile(path.join(staging, flowchart.to), flowchart.text);
+}
+
+// \verb and \lstinline in LaTeX, with their text: what a conversion back puts in place of `text`
+const INLINE_CODE = /\\(?:verb\*?|lstinline(?:\[[^\]]*\])?)([^\sA-Za-z{])([^\n]*?)\1|\\lstinline(?:\[[^\]]*\])?\{([^{}\n]*)\}/g;
+
 /** The keys of a .bib file's entries. */
 const bibKeys = (text) => [...String(text).matchAll(/@\s*([A-Za-z]+)\s*[{(]\s*([^,\s{}()]+)\s*,/g)].filter((m) => !/^(?:comment|string|preamble)$/i.test(m[1])).map((m) => m[2]);
 
@@ -119,6 +259,9 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
   if (!builtInTypst()) throw httpError('Typst isn’t available in this copy of Spectrum.', 400);
   const items = await listFilesRecursive(root);
   const files = new Set(items.filter((i) => i.type === 'file').map((i) => i.path));
+  // a project converted from Typst: its record says what to put back
+  const previous = await conversionRecord(root, 'typst');
+  const flowcharts = await composerFlowcharts(root, files, 'tikz');
   const mainDir = path.posix.dirname(doc) === '.' ? '' : path.posix.dirname(doc);
   const mainText = await fs.readFile(safeJoin(root, doc), 'utf8');
   const begin = mainText.indexOf('\\begin{document}');
@@ -150,6 +293,7 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
     bibKeys: new Set(bibKeys(bibText)),
     used: new Set(),
     pictures: [],
+    flowcharts: new Set(),
     images: new Set(),
     refsOut: [],
     citesOut: [],
@@ -168,6 +312,12 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
     },
     standalone(st, src) {
       const base = String(src).trim().replace(/\.tex$/i, '');
+      // the composer's flowchart, written again in fletcher from its drawing
+      const flowchart = findFile(base + '.tex');
+      if (flowcharts.has(flowchart)) {
+        ctx.flowcharts.add(flowchart);
+        return { include: flowcharts.get(flowchart).to };
+      }
       const pdf = findFile(base + '.pdf');
       if (pdf) return pdf;
       const tex = findFile(base + '.tex');
@@ -186,13 +336,14 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
       if (!queue.some((q) => q.src === src)) queue.push({ src, out, main: false });
       return out;
     },
-    bibliography(record) {
+    bibliography(block) {
       if (!ctx.citesOut.length && !ctx.nociteAll) return '';
-      if (record.title) ctx.bibliographyTitle = record.title;
+      if (block.title) ctx.bibliographyTitle = block.title;
       return '#bibliography("refs.bib", style: ' + JSON.stringify(bibStyle) + (ctx.nociteAll ? ', full: true' : '') + ')';
     }
   };
   const bibStyle = typstBibStyle(facts.bibStyle, (text) => notes.push({ file: doc, line: null, text }));
+  ctx.typstSources = await typstSources(root, files, previous);
 
   onStep('Converting');
   const work = await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-convert-work-'));
@@ -201,7 +352,8 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
     for (let i = 0; i < queue.length; i += 1) {
       const item = queue[i];
       const text = item.main ? mainText : await fs.readFile(safeJoin(root, item.src), 'utf8');
-      prepared.push({ ...item, ...prepareLatex(text, ctx, { file: item.src, main: item.main }) });
+      const kept = keepRegions(text, item.src, previous);
+      prepared.push({ ...item, text, kept, ...prepareLatex(kept.text, ctx, { file: item.src, main: item.main }) });
     }
     // the files the new project keeps, so a picture finds its data and the Typst its images
     const docs = new Set([...files].filter((f) => /\.(?:tex|ltx)$/i.test(f)));
@@ -211,6 +363,7 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
       await fs.copyFile(safeJoin(root, rel), path.join(staging, rel));
     }
     if (bibText.trim()) await fs.writeFile(path.join(staging, 'refs.bib'), bibText.trim() + '\n');
+    for (const tex of ctx.flowcharts) await writeFlowchart(staging, flowcharts.get(tex));
 
     for (const [i, picture] of ctx.pictures.entries()) {
       onStep('Pictures (' + (i + 1) + ' of ' + ctx.pictures.length + ')');
@@ -243,7 +396,7 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
       const json = JSON.parse(await pandoc(executable, input, ['--from=latex-auto_identifiers', '--to=json'], work));
       file.pandocTypst = await pandoc(executable, JSON.stringify(astToTypst(json, file.state, ctx)), ['--from=json', '--to=typst', '--wrap=preserve'], work);
     }
-    for (const file of prepared) file.typst = assembleTypst(file.pandocTypst, file.state, ctx);
+    for (const file of prepared) file.typst = file.kept.restore(assembleTypst(file.pandocTypst, file.state, ctx));
     const regions = finishRegions(prepared, 'typst', ctx);
     notes.push(...regions.map(regionNote));
 
@@ -276,6 +429,14 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
       source: { mainFile: doc, class: facts.klass, options: facts.options, bibliography: bibFiles, bibliographyStyle: facts.bibStyle },
       files: prepared.map((f) => ({ from: f.src, to: f.out })),
       pictures: ctx.pictures.map((p) => ({ pdf: p.ok ? p.pdf : null, source: p.tex, from: p.file + (p.line ? ':' + p.line : ''), kind: p.standalone ? 'standalone' : p.env })),
+      // code in a sentence, which Typst writes as `text` for \verb and \lstinline alike
+      inlineCode: [...whole.matchAll(INLINE_CODE)].map((m) => ({ text: m[2] ?? m[3], latex: m[0] })),
+      titlePages: prepared.flatMap((f) => {
+        if (f.kept.regions.length) return f.kept.regions.map((r) => ({ kind: r.kind, file: f.out, written: r.source, source: r.written }));
+        const at = f.typst.indexOf('#page(numbering: none)[');
+        const found = at === -1 ? [] : [f.typst.slice(at, expressionEnd(f.typst, at))];
+        return titlePages(f.out, environments(maskComments(f.text), ['titlepage']).map((e) => f.text.slice(e.start, e.end)), found);
+      }),
       regions,
       checks
     };
@@ -514,6 +675,9 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
   const files = new Set(items.filter((i) => i.type === 'file').map((i) => i.path));
   const read = (rel) => fs.readFile(safeJoin(root, rel), 'utf8');
   const mainText = await read(doc);
+  // a project converted from LaTeX: its record says what to put back
+  const previous = await conversionRecord(root, 'latex');
+  const flowcharts = await composerFlowcharts(root, files, 'typst');
   // every file the document is made of, the main file first
   const order = [doc];
   const uses = new Map();
@@ -545,7 +709,9 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
     include: (st, target) => {
       const rel = path.posix.normalize(target.startsWith('/') ? target.slice(1) : path.posix.join(path.posix.dirname(st.file), target));
       return files.has(rel) ? out(rel) : null;
-    }
+    },
+    texSources: await texSources(root, files, previous),
+    inlineCode: new Map((previous?.inlineCode ?? []).filter((c) => typeof c.text === 'string' && typeof c.latex === 'string').reverse().map((c) => [c.text, c.latex]))
   };
 
   onStep('Converting');
@@ -555,7 +721,11 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
     for (const rel of uses.get(doc).imports.map((name) => typstPath(name, doc))) {
       if (files.has(rel)) prepareTypst(await read(rel), ctx, { file: rel });
     }
-    const prepared = order.map((rel) => ({ src: rel, out: out(rel), ...prepareTypst(texts.get(rel), ctx, { file: rel }) }));
+    const prepared = order.map((rel) => {
+      const kept = keepRegions(texts.get(rel), rel, previous);
+      return { src: rel, out: out(rel), kept, ...prepareTypst(kept.text, ctx, { file: rel }) };
+    });
+    ctx.sourceClass = sourceClass(previous?.source, facts);
     const packages = facts.packages.map((p) => p.from);
     if (packages.length) notes.push({ file: doc, line: null, text: 'The document imports ' + packages.join(', ') + ', which LaTeX has no counterpart of, so each drawing made with ' + (packages.length === 1 ? 'it' : 'them') + ' became a picture that Typst compiled.' });
 
@@ -574,18 +744,30 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
       const name = picture.include ? picture.include.replace(/\.typ$/i, '') : 'diagrams/converted-' + (i + 1);
       picture.pdf = name + '.pdf';
       picture.typ = picture.include ?? name + '.typ';
+      // the composer's flowchart, written again in TikZ from its drawing and included as the composer's are
+      const flowchart = flowcharts.get(picture.include);
+      if (flowchart) {
+        await writeFlowchart(staging, flowchart);
+        picture.ok = true;
+        picture.standalone = flowchart.to.replace(/\.tex$/i, '');
+        ctx.texSources.set(picture.pdf, { standalone: picture.standalone, preamble: preambleCommands(flowchart.text.split('\\begin{document}')[0]).filter((c) => !/^\\documentclass/.test(c)) });
+        continue;
+      }
       if (picture.include && files.has(picture.pdf)) {
         picture.ok = true;
         continue;
       }
-      const page = ['#set page(width: auto, height: auto, margin: 2pt)', '#set text(size: ' + facts.size + 'pt)'];
+      // a figure's own drawing sets its page only on its own, as the composer's do, so a document can include it too
+      const alone = ' if sys.inputs.at("spectrum-diagram", default: "") == "standalone"';
+      const page = ['#set page(width: auto, height: auto, margin: 2pt)', '#set text(size: ' + facts.size + 'pt)'].map((l) => (picture.include ? l : l + alone));
       const wrapper = picture.include ? name + '.page.typ' : picture.typ;
       const from = picture.what ? picture.what[0].toUpperCase() + picture.what.slice(1) : 'A drawing from the figure';
-      const body = picture.include ? ['#include "/' + picture.include + '"'] : ['// ' + from + ' in ' + picture.file + ', compiled to ' + picture.pdf + ' for the LaTeX version', ...facts.packages.map((p) => p.text), ...facts.definitions, contentOfBody(picture.body)];
+      const body = picture.include ? ['#include "/' + picture.include + '"'] : [...facts.packages.map((p) => p.text), ...facts.definitions, contentOfBody(picture.body)];
+      const head = picture.include ? [] : ['// ' + from + ' in ' + picture.file + ', compiled to ' + picture.pdf + ' for the LaTeX version'];
       await ensureDir(path.join(staging, path.dirname(wrapper)));
-      await fs.writeFile(path.join(staging, wrapper), [...page, ...body, ''].join('\n'));
+      await fs.writeFile(path.join(staging, wrapper), [...head, ...page, ...body, ''].join('\n'));
       // with the packages the document's own compiles keep in Spectrum's cache
-      const result = await compileTypst(staging, path.join(staging, wrapper), wrapper, { scratch: true, spectrumPackages: true }).catch((err) => ({ ok: false, error: err.message }));
+      const result = await compileTypst(staging, path.join(staging, wrapper), wrapper, { scratch: true, spectrumPackages: true, typstInputs: { 'spectrum-diagram': 'standalone' } }).catch((err) => ({ ok: false, error: err.message }));
       if (picture.include) await fs.rm(path.join(staging, wrapper), { force: true });
       picture.ok = !!(result.ok && result.pdf);
       if (picture.ok) await fs.writeFile(path.join(staging, picture.pdf), Buffer.from(result.pdf, 'base64'));
@@ -593,7 +775,7 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
     }
 
     for (const file of prepared) file.pandocLatex = await pandoc(executable, markTypstInput(file.input, file.state, ctx), ['--from=typst', '--to=latex', '--wrap=preserve'], work);
-    for (const file of prepared) file.latex = assembleLatex(file.pandocLatex, file.state, ctx);
+    for (const file of prepared) file.latex = file.kept.restore(assembleLatex(file.pandocLatex, file.state, ctx));
     const regions = finishRegions(prepared, 'latex', ctx);
     notes.push(...regions.map(regionNote));
 
@@ -614,6 +796,12 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
       await ensureDir(path.dirname(path.join(staging, file.out)));
       await fs.writeFile(path.join(staging, file.out), text);
     }
+    // a picture back in its figure as TikZ no longer needs the PDF and the document it was compiled from
+    const latexText = prepared.map((f) => f.latex).join('\n');
+    for (const [pdf, source] of ctx.texSources) {
+      if (!source.picture || !ctx.used.has('picture:' + pdf) || latexText.includes(pdf.replace(/\.pdf$/i, ''))) continue;
+      for (const rel of [pdf, pdf.replace(/\.pdf$/i, '.tex')]) await fs.rm(path.join(staging, rel), { force: true });
+    }
 
     onStep('Checking');
     const checks = await checkTypstToLatex({ root, doc, staging, out: main.out, texts, uses, order, prepared, facts, ctx, engine });
@@ -625,7 +813,17 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
       convertedAt: new Date().toISOString(),
       source: { mainFile: doc, report: facts.report, bibliography: bibPath, packages },
       files: prepared.map((f) => ({ from: f.src, to: f.out })),
-      pictures: ctx.pictures.map((p) => ({ pdf: p.ok ? p.pdf : null, source: p.typ, from: p.file })),
+      pictures: ctx.pictures.map((p) => ({ pdf: p.ok ? p.pdf : null, source: p.typ, from: p.file, kind: p.include ? 'include' : 'drawing', ...(p.include ? {} : { body: p.body }) })),
+      titlePages: prepared.flatMap((f) => {
+        if (f.kept.regions.length) return f.kept.regions.map((r) => ({ kind: r.kind, file: f.out, written: r.source, source: r.written }));
+        const text = texts.get(f.src);
+        const sources = f.state.blocks.filter((b) => b.kind === 'titlepage' && b.line).map((b) => {
+          const start = text.split('\n').slice(0, b.line - 1).join('\n').length + (b.line > 1 ? 1 : 0);
+          const at = text.indexOf('#', start);
+          return at === -1 ? null : text.slice(at, expressionEnd(text, at));
+        });
+        return sources.every(Boolean) ? titlePages(f.out, sources, environments(f.latex, ['titlepage']).map((e) => f.latex.slice(e.start, e.end))) : [];
+      }),
       regions,
       checks
     };
