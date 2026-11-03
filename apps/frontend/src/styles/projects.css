@@ -857,6 +857,33 @@ button.badge {
   color: var(--text-secondary);
 }
 
+/* Typst Universe: text-only cards, with the licence and authors */
+.universe-card .template-body {
+  border-top: 0;
+}
+
+.universe-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.universe-meta .sf {
+  width: 11px;
+  height: 11px;
+}
+
+.universe-authors {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 /* --------------------------------------------------------------------------
    Template transfer
    -------------------------------------------------------------------------- */

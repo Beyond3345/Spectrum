@@ -394,6 +394,31 @@ export function deleteTemplate(id: string) {
   return request<{ ok: boolean }>(`/api/templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+/** A template from Typst Universe, at the newest version the Typst asked for can compile. */
+export interface UniverseTemplate {
+  name: string;
+  version: string;
+  description: string;
+  /** an SPDX expression */
+  license: string;
+  /** one of its choices is MIT or as permissive */
+  mitCompatible: boolean;
+  authors: string[];
+  keywords: string[];
+  repository: string;
+  entrypoint: string;
+}
+
+/** Typst Universe's templates, from the index cached for a day; offline: the cached one, fetched at fetchedAt. */
+export function listUniverseTemplates(typst?: string) {
+  return request<{ templates: UniverseTemplate[]; fetchedAt: number; offline: boolean }>(`/api/universe/templates${typst ? `?typst=${encodeURIComponent(typst)}` : ''}`);
+}
+
+/** A new project from a Universe template, as `typst init` makes one: only that package is downloaded. */
+export function createUniverseProject(payload: { name: string; template: string; version: string; parentDir?: string }) {
+  return request<ProjectMeta>('/api/universe/projects', json('POST', payload));
+}
+
 /** Swap the project onto another template's preamble, keeping the document body. No AI involved. */
 export function convertTemplate(id: string, targetTemplate: string, mainFile: string) {
   return request<{ ok: boolean; mainFile?: string; changedFiles?: string[]; error?: string }>(
