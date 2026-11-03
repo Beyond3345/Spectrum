@@ -710,6 +710,13 @@ const titleLines = (markup) => splitAt(markup.children, lineEnd).filter(filled).
   return [...out, line.slice(k)];
 });
 
+/** An alignment, center + horizon or right: { h } left, center, right or null and { v } top, horizon or bottom. */
+function alignOf(node) {
+  const words = String(node?.text ?? '').split(/[\s+]+/);
+  const h = words.find((w) => ['left', 'start', 'center', 'right', 'end'].includes(w)) ?? null;
+  return { h: { start: 'left', end: 'right' }[h] ?? h, v: words.find((w) => ['top', 'horizon', 'bottom'].includes(w)) ?? 'top' };
+}
+
 /** A count of columns: columns: 3, or (1fr, auto, 1fr); fallback for anything else. */
 const columnCount = (node, fallback) => (node?.kind === 'Int' ? Number(node.text) : node?.kind === 'Array' ? listed(node).length : fallback);
 /** The items of an array, without its brackets and commas. */
@@ -736,18 +743,23 @@ function construct(call, st, ctx) {
       const markup = markupOf(call.bodies[0] ?? arg(call, null, 1));
       if (!markup || !titled(markup)) return null;
       const lines = titleLines(markup);
+      const align = alignOf(arg(call, null, 0));
       // a title page fills a page of its own: centred down it, or with space pushing its foot down
-      if (/horizon/.test(arg(call, null, 0)?.text ?? '') || lines.some((l) => spaceOf(l) === '1fr')) return { kind: 'titlepage', items: lines.map((l) => titleItem(l, st)) };
+      if (align.v !== 'top' || lines.some((l) => spaceOf(l) === '1fr')) return { kind: 'titlepage', align, items: lines.map((l) => titleItem(l, st)) };
       // the title block: the title, then the author and date lines
       return { kind: 'maketitle', lines: lines.filter((l) => !titled(l) && spaceOf(l) === null).map((l) => st.piece(l)) };
     }
     case 'page': {
-      // the title page the converter writes: #page(numbering: none)[#align(center)[...]]
-      const inner = significant(markupOf(call.bodies[0]));
-      const centred = inner.length === 2 && inner[0].kind === 'Hash' && callOf(inner[1])?.name === 'align' && arg(callOf(inner[1]), null, 0)?.text === 'center' ? callOf(inner[1]) : null;
-      const markup = markupOf(centred?.bodies[0]);
-      if (!markup || arg(call, 'numbering')?.kind !== 'None') return null;
-      return { kind: 'titlepage', items: titleLines(markup).map((l) => titleItem(l, st)) };
+      // a title page, as the converter writes one: #page(numbering: none)[#align(center)[...]], aligned any way
+      const body = call.bodies[0] ?? arg(call, null, 0);
+      if (!markupOf(body)) return null;
+      const inner = significant(markupOf(body));
+      const aligned = inner.length === 2 && inner[0].kind === 'Hash' && callOf(inner[1])?.name === 'align' ? callOf(inner[1]) : null;
+      const markup = markupOf(aligned?.bodies[0] ?? arg(aligned, null, 1));
+      const blank = arg(call, 'numbering')?.kind === 'None';
+      if (markup && blank) return { kind: 'titlepage', align: alignOf(arg(aligned, null, 0)), items: titleLines(markup).map((l) => titleItem(l, st)) };
+      // any other page of its own keeps its text, on a page of its own
+      return { kind: 'page', blank, body: st.piece(body, true) };
     }
     case 'outline': {
       const target = arg(call, 'target')?.text ?? '';
@@ -879,7 +891,10 @@ function gridRecord(call, st, ctx) {
     const [left, right] = cells.map(lines);
     return { kind: 'sides', lines: Array.from({ length: Math.max(left.length, right.length) }, (_, i) => [left[i] ? st.piece(left[i]) : null, right[i] ? st.piece(right[i]) : null]) };
   }
-  return { kind: 'grid', columns: columnCount(columns, 1), cells: cells.map((c) => st.piece(cellMarkup(c) ?? c)) };
+  // each column aligned as its first cell's align(...) has it
+  const align = (c) => (callOf(c)?.name === 'align' ? { center: 'c', right: 'r' }[alignOf(arg(callOf(c), null, 0)).h] : null) ?? 'l';
+  const count = columnCount(columns, 1);
+  return { kind: 'grid', columns: count, align: cells.slice(0, count).map(align).join('').padEnd(count, 'l'), cells: cells.map((c) => st.piece(cellMarkup(c) ?? c)) };
 }
 
 /**
@@ -1319,8 +1334,14 @@ function renderBlock(record, pieceText, st, ctx) {
         const style = item.title && !item.size && !item.bold ? '\\LARGE\\bfseries' : [latexSize(item.size, ctx.facts.size), item.bold && '\\bfseries', item.italic && '\\itshape'].filter(Boolean).join('');
         return style ? '{' + style + ' ' + text + '\\par}' : text + '\\par';
       });
-      return ['\\begin{titlepage}', '  \\centering', ...lines.filter(Boolean).map((l) => '  ' + l), '\\end{titlepage}'].join('\n');
+      // aligned as the Typst was: across the page, and down it with \vspace*{\fill} above, and below too when centred
+      const align = record.align ?? { h: 'center', v: 'top' };
+      const fill = (at) => (at.includes(align.v) ? ['\\vspace*{\\fill}'] : []);
+      const across = { left: '\\raggedright', right: '\\raggedleft' }[align.h] ?? '\\centering';
+      return ['\\begin{titlepage}', '  ' + across, ...[...fill(['horizon', 'bottom']), ...lines.filter(Boolean), ...fill(['horizon'])].map((l) => '  ' + l), '\\end{titlepage}'].join('\n');
     }
+    case 'page':
+      return '\\clearpage' + (record.blank ? '\\thispagestyle{empty}' : '') + '\n' + pieceText(record.body) + '\n\\clearpage';
     case 'picture': {
       // a drawing outside any figure, in its line or a block of its own
       const picture = ctx.pictures[record.picture];
@@ -1347,8 +1368,13 @@ function renderBlock(record, pieceText, st, ctx) {
       return record.lines.map(([left, right]) => (left === null ? '' : pieceText(left)) + (right === null ? '' : ' \\hfill ' + pieceText(right))).join(' \\\\\n') + '\n';
     case 'grid': {
       const rows = [];
-      for (let i = 0; i < record.cells.length; i += record.columns) rows.push(record.cells.slice(i, i + record.columns).map((n) => pieceText(n)).join(' & ') + ' \\\\');
-      return '\\noindent\\begin{tabular}{@{}' + 'l'.repeat(record.columns) + '@{}}\n' + rows.map((r) => '  ' + r).join('\n') + '\n\\end{tabular}';
+      // a cell of several lines is a tabular of its own, as \\ would end the row
+      const cell = (n, k) => {
+        const text = pieceText(n);
+        return /\\\\/.test(text) ? '\\begin{tabular}[t]{@{}' + (record.align?.[k] ?? 'l') + '@{}}' + text + '\\end{tabular}' : text;
+      };
+      for (let i = 0; i < record.cells.length; i += record.columns) rows.push(record.cells.slice(i, i + record.columns).map((n, k) => cell(n, k)).join(' & ') + ' \\\\');
+      return '\\noindent\\begin{tabular}{@{}' + (record.align ?? 'l'.repeat(record.columns)) + '@{}}\n' + rows.map((r) => '  ' + r).join('\n') + '\n\\end{tabular}';
     }
     default:
       return '';
@@ -1437,6 +1463,8 @@ export function latexPreamble(ctx) {
     commented('  \\usepackage{lmodern}', 'Latin Modern, a crisp scalable version of the default font'),
     commented('\\fi', 'XeLaTeX, LuaLaTeX and Tectonic already use Unicode fonts'),
     commented('\\usepackage{microtype}', 'small spacing tweaks so lines break more evenly'),
+    ...(used.has('soul') ? [commented('\\usepackage{soul}', 'underlined, struck out and highlighted text: \\ul, \\st and \\hl')] : []),
+    ...(used.has('soul') && !used.has('code') ? [commented('\\usepackage{xcolor}', 'the colour \\hl highlights in')] : []),
     ...(f.numbering === null && !f.report ? [commented('\\pagestyle{empty}', 'no page numbers, as the Typst had none')] : [])
   ]);
   const maths = [

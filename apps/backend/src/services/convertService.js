@@ -12,8 +12,8 @@ import { httpError } from './projectService.js';
 import { PANDOC_DOWNLOADABLE, PANDOC_MINIMUM, builtInTypst, pandocPath, versionOf } from './engineService.js';
 import { MAX_LOG_BYTES, compileFolder, runSpawn } from './compileService.js';
 import { compileTypst } from './typstService.js';
-import { environments, lineAt, maskComments, mathSpans } from './convert/latexRead.js';
-import { assembleTypst, astToTypst, latexFacts, pictureDocument, prepareLatex, typstDefinitions, typstLabel, typstMaths, typstPreamble } from './convert/toTypst.js';
+import { braceArg, environments, lineAt, maskComments, mathSpans, optionalArg, splice } from './convert/latexRead.js';
+import { REFERENCE_NAMES, TEXT_COMMANDS, assembleTypst, astToTypst, latexFacts, pictureDocument, prepareLatex, typstDefinitions, typstLabel, typstMaths, typstPreamble } from './convert/toTypst.js';
 import { assembleLatex, latexPreamble, prepareTypst, typstFacts, typstProse } from './convert/toLatex.js';
 import { expressionEnd, typstUses } from './convert/typstRead.js';
 import { flowchartFile, flowchartFor, flowchartOf, sameFlowchart } from './convert/diagrams.js';
@@ -63,7 +63,30 @@ async function pandoc(executable, input, args, work) {
 }
 
 // what pandoc keeps as raw TeX when asked to, but reads itself otherwise
-const PANDOC_READS = new Set(['ref', 'cref', 'Cref', 'eqref', 'autoref', 'pageref', 'vref', 'Vref', 'nameref', 'labelcref', 'crefrange', 'Crefrange', 'cpageref', 'label', 'mbox', 'hbox', 'begin{spxpiece}']);
+const PANDOC_READS = new Set(['ref', 'cref', 'Cref', 'eqref', 'autoref', 'pageref', 'vref', 'Vref', 'nameref', 'labelcref', 'crefrange', 'Crefrange', 'cpageref', 'label', 'mbox', 'hbox', 'bgroup', 'egroup', 'begin{spxpiece}']);
+// commands whose argument is a setting, never text: \color{red} prints no red
+const SETTINGS = new Set(['color', 'pagecolor', 'rowcolor', 'cellcolor', 'columncolor', 'arrayrulecolor', 'setlist', 'captionsetup', 'sisetup', 'lstset', 'hypersetup', 'tikzset', 'pgfplotsset', 'usetikzlibrary', 'newgeometry', 'pagenumbering', 'pagestyle', 'thispagestyle', 'setcounter', 'addtocounter', 'stepcounter', 'refstepcounter', 'usecounter', 'newcounter', 'selectfont', 'fontfamily', 'fontseries', 'fontshape', 'setmainfont', 'setsansfont', 'setmonofont', 'linespread', 'setstretch', 'enlargethispage', 'includepdf', 'bibliographystyle', 'label']);
+
+/** The last {argument} of a command whose name ends at from, after any […] and {…} before it: { arg, end }, or null. */
+function lastArgument(text, from) {
+  let last = null;
+  for (let end = from; ; ) {
+    const options = optionalArg(text, end);
+    const group = options ? null : braceArg(text, end);
+    if (!options && !group) return last;
+    last = group ?? last;
+    end = (options ?? group).end;
+  }
+}
+/** Whether LaTeX holds words, its commands aside. */
+const hasWords = (latex) => /\p{L}/u.test(latex.replace(/\\[A-Za-z@]+\*?/g, ' '));
+
+/** An unknown command's text, from its raw TeX: its last {argument} when that reads as words, \raisebox{1pt}{Up}; else null. */
+function commandText(raw) {
+  const name = /^\\([A-Za-z@]+)\*?/.exec(raw);
+  const text = name && !SETTINGS.has(name[1]) ? lastArgument(raw, name[0].length)?.arg : null;
+  return text && hasWords(text) && !text.includes('=') && !/^\s*-?\d*\.?\d+\s*(?:pt|mm|cm|in|em|ex|bp|pc|sp)\s*$/.test(text) ? text : null;
+}
 
 /** The commands pandoc's raw TeX reading shows it doesn't know, from its JSON: { name: [raw texts] }. */
 function unknownCommands(doc) {
@@ -297,6 +320,8 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
     images: new Set(),
     refsOut: [],
     citesOut: [],
+    // the unknown commands, whose text the word check counts as the LaTeX's
+    unknownText: new Set(TEXT_COMMANDS),
     note: (st, snippet, text) => notes.push({ file: st.file, line: lineOf(st.source, snippet), text }),
     image(st, src) {
       const name = String(src).trim().replace(/^\.\//, '');
@@ -389,8 +414,15 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
           notes.push({ file: file.src, line: null, text: 'The environment ' + name.slice(6, -1) + ' is not one Spectrum knows; its text was kept as plain paragraphs.' });
           continue;
         }
-        const prose = texts.every((t) => /^\\[A-Za-z@]+\s*(?:\[[^\]]*\])?\s*\{[^{}]*[A-Za-z]{2,}\s+[A-Za-z][^{}]*\}$/.test(t));
-        if (prose) input = input.replace(new RegExp('\\\\' + name + '(?![A-Za-z@])\\s*(?:\\[[^\\]]*\\])?(?=\\s*\\{)', 'g'), '');
+        // one with text keeps it, as a group of its own: \raisebox{1pt}{Up} is {Up}
+        let prose = false;
+        for (const raw of new Set(texts)) {
+          const text = commandText(raw);
+          if (text === null || !input.includes(raw)) continue;
+          input = input.split(raw).join('{' + text + '}');
+          prose = true;
+        }
+        ctx.unknownText.add(name);
         notes.push({ file: file.src, line: lineOf(file.state.source, '\\' + name), text: '\\' + name + ' is not a command Spectrum knows' + (prose ? ', so only its text was kept.' : ', so it was left out.') });
       }
       const json = JSON.parse(await pandoc(executable, input, ['--from=latex-auto_identifiers', '--to=json'], work));
@@ -441,6 +473,7 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
       checks
     };
     const pictures = ctx.pictures.map((p) => (p.ok ? p.pdf : 'Not compiled') + ', from ' + (p.standalone ? p.standalone : 'the ' + p.env + ' in ' + p.file + (p.line ? ' line ' + p.line : '')) + '. Its source is ' + p.tex + '.' + (p.standalone ? '' : ' Redraw it in Typst (CeTZ or Lilaq in diagrams/) to edit it here.'));
+    if (checks.words.lost.length) notes.push(lostNote(checks.words.lost, doc, 'LaTeX', 'Typst'));
     await writeNotes(staging, { from: 'LaTeX', to: 'Typst', source: doc, out: main.out, checks, notes, pictures });
     await ensureDir(path.join(staging, '.spectrum'));
     await fs.writeFile(path.join(staging, '.spectrum', 'conversion.json'), JSON.stringify(record, null, 2) + '\n');
@@ -518,12 +551,34 @@ function latexFloats(text, theorems) {
 /** The words of masked prose, lower case, longer than one letter: a lone letter is a variable more often than a word. */
 const wordsOf = (masked) => proseWords(masked).map(([word]) => word.toLowerCase()).filter((word) => word.length > 1);
 
-/** LaTeX with its pictures, code and maths blanked too, which the word check leaves out on both sides. */
-function latexProse(text) {
+/**
+ * LaTeX with its pictures, code and maths blanked too, which the word check leaves out on both sides. texts: commands
+ * whose last argument is text, \fbox{Reset}, which the mask would take for a key: their command and other arguments go.
+ */
+function latexProse(text, texts = new Set()) {
   const blank = (t, spans) => spans.reduceRight((out, [start, end]) => out.slice(0, start) + ' '.repeat(end - start) + out.slice(end), t);
   let out = blank(text, environments(text, ['tikzpicture', 'circuitikz', 'lstlisting', 'verbatim', 'algorithmic']).map((e) => [e.start, e.end]));
-  out = out.replace(/\\(?:verb\*?|lstinline(?:\[[^\]]*\])?)([^\sA-Za-z{])[^\n]*?\1|\\lstinline(?:\[[^\]]*\])?\{[^{}\n]*\}/g, (m) => ' '.repeat(m.length));
+  out = out.replace(/\\(?:verb\*?|lstinline(?:\[[^\]]*\])?)([^\sA-Za-z{])[^\n]*?\1|\\lstinline(?:\[[^\]]*\])?\{[^{}\n]*\}|\\cmidrule\s*\([lr]*\)/g, (m) => ' '.repeat(m.length));
+  // the PDF's own words for a heading, \texorpdfstring{$x$}{x}, which neither side prints
+  out = out.replace(/(\\texorpdfstring\s*\{(?:[^{}]|\{[^{}]*\})*\})(\s*\{(?:[^{}]|\{[^{}]*\})*\})/g, (_, shown, pdf) => shown + ' '.repeat(pdf.length));
+  const names = [...texts].filter((name) => !SETTINGS.has(name));
+  for (const m of names.length ? out.matchAll(new RegExp('\\\\(?:' + names.join('|') + ')(?![A-Za-z@])\\*?', 'g')) : []) {
+    const last = lastArgument(out, m.index + m[0].length);
+    if (last && hasWords(last.arg)) out = blank(out, [[m.index, last.end - last.arg.length - 1], [last.end - 1, last.end]]);
+  }
   return maskLatex(blank(out, mathSpans(out)));
+}
+
+/** before's words that after lacks, repeats counted, each named once in the order they come. */
+function lostWords(before, after) {
+  const left = tally(after);
+  const lost = new Set();
+  for (const word of before) {
+    const n = left.get(word) ?? 0;
+    if (n > 0) left.set(word, n - 1);
+    else lost.add(word);
+  }
+  return [...lost];
 }
 
 /** The share of before's words that after still has, repeats counted, order ignored; 1 for none. */
@@ -594,19 +649,25 @@ async function checkLatexToTypst({ staging, out, whole, facts, prepared, ctx }) 
   const kinds = tally(found?.figures ?? []);
   const floatsOut = { figure: kinds.get('image') ?? 0, subfigure: kinds.get('subfigure') ?? 0, table: kinds.get('table') ?? 0, listing: kinds.get('raw') ?? 0, algorithm: kinds.get('algorithm') ?? 0, theorem: kinds.get('theorem') ?? 0 };
 
-  // words, by top-level section where the two have as many, else for the whole document
-  const sourceMasked = latexProse(whole.slice(Math.max(0, whole.indexOf('\\begin{document}'))));
-  const outputMasked = maskTypst(typst);
+  // words, by top-level section where the two have as many, else for the whole document: the LaTeX's own, the text of
+  // its unknown commands too, without the names before a reference that Typst prints itself
+  const wholeBody = whole.slice(Math.max(0, whole.indexOf('\\begin{document}')));
+  const spaces = (m) => ' '.repeat(m.length);
+  // and without a long table's rows repeated on each page, which Typst repeats itself
+  const once = splice(wholeBody, environments(wholeBody, ['xltabular']), (env) => wholeBody.slice(env.start, env.end).replace(/\\endfirsthead[\s\S]*?(?=\\endhead)|\\endhead[\s\S]*?(?=\\endfoot(?![A-Za-z]))/g, spaces));
+  const sourceMasked = latexProse(once.replace(new RegExp(REFERENCE_NAMES.source + '(?=(?:~|\\s+)\\\\(?:ref|eqref)\\{)', 'g'), spaces), ctx.unknownText);
+  // #title() prints the document's title
+  const shown = ctx.titleText ? typst.replace(/(?<![\w.-])title\(\)/g, () => '[' + ctx.titleText + ']') : typst;
+  const outputMasked = maskTypst(shown);
   const latexTop = facts.klass === 'report' || facts.klass === 'book' ? 'chapter' : 'section';
   const cut = (masked, original, pattern) => {
     const at = [0, ...[...original.matchAll(pattern)].map((m) => m.index)];
     return at.map((start, i) => masked.slice(start, at[i + 1] ?? masked.length));
   };
-  const wholeBody = whole.slice(Math.max(0, whole.indexOf('\\begin{document}')));
   const sourceParts = cut(sourceMasked, wholeBody, new RegExp('\\\\' + latexTop + '\\*?\\s*[[{]', 'g'));
-  const outputParts = cut(outputMasked, typst, /^(?:= |#heading\((?!level: [2-9]))/gm);
+  const outputParts = cut(outputMasked, shown, /^(?:= |#heading\((?!level: [2-9]))/gm);
   const sections = sourceParts.length === outputParts.length ? sourceParts.map((part, i) => coverage(wordsOf(part), wordsOf(outputParts[i]))) : null;
-  const words = { coverage: coverage(wordsOf(sourceMasked), wordsOf(outputMasked)), lowestSection: sections ? Math.min(...sections) : null };
+  const words = { coverage: coverage(wordsOf(sourceMasked), wordsOf(outputMasked)), lowestSection: sections ? Math.min(...sections) : null, lost: lostWords(wordsOf(sourceMasked), wordsOf(outputMasked)) };
 
   const equations = { source: numberedEquations(whole), output: found?.equations ?? null };
   const result = {
@@ -626,12 +687,16 @@ async function checkLatexToTypst({ staging, out, whole, facts, prepared, ctx }) 
 
 // ─── The notes ───
 
+/** The note that words of the original are missing from the conversion, which the word check found. */
+const lostNote = (lost, doc, from, to) => ({ file: doc, line: null, text: 'The ' + to + ' lacks ' + (lost.length === 1 ? 'a word' : 'words') + ' the ' + from + ' has: ' + lost.slice(0, 20).join(', ') + (lost.length > 20 ? ' and ' + (lost.length - 20) + ' more' : '') + '. Check that no text was left out.' });
+
 /** conversion/notes.md: the checks, the pictures kept as PDF and every rule that was approximated, with its file and line. */
 async function writeNotes(staging, { from, to, source, out, checks, notes, pictures }) {
   // each picture kept as PDF: what it is, where it came from and its source, as each direction words it
   const of = (c) => (c.source === 0 ? 'none to keep' : c.kept + ' of ' + c.source + ' kept');
   const floats = Object.entries(checks.floats).filter(([, f]) => f.source || f.output).map(([kind, f]) => (f.output === f.source ? plural(f.source, kind) : kind + ': ' + f.source + ' in the ' + from + ', ' + (f.output ?? 'unknown') + ' in the ' + to)).join(', ') || 'none';
-  const words = checks.words ? Math.round(checks.words.coverage * 100) + ' per cent of the words' + (checks.words.lowestSection !== null ? ', at least ' + Math.round(checks.words.lowestSection * 100) + ' per cent in each section' : '') : 'not measured';
+  const lost = checks.words?.lost ?? [];
+  const words = checks.words ? Math.round(checks.words.coverage * 100) + ' per cent of the words' + (checks.words.lowestSection !== null ? ', at least ' + Math.round(checks.words.lowestSection * 100) + ' per cent in each section' : '') + (lost.length ? '; missing: ' + lost.slice(0, 20).join(', ') + (lost.length > 20 ? ' and ' + (lost.length - 20) + ' more' : '') : '') : 'not measured';
   const where = (n) => n.file + (n.line ? ' line ' + n.line : '');
   const text = lines(
     '# Conversion notes',
@@ -788,6 +853,8 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
     ctx.bibStyle = { apa: 'apa', ieee: 'ieee', 'chicago-author-date': 'authoryear', mla: 'mla', nature: 'nature', vancouver: 'vancouver' }[bibliography?.style ?? 'apa'] ?? 'apa';
     ctx.bibFile = 'references.bib';
     if (prepared.some((f) => /\\coloneqq|\\eqqcolon/.test(f.latex))) ctx.used.add('mathtools');
+    // pandoc's #underline, #strike and #highlight
+    if (prepared.some((f) => /\\(?:ul|st|hl)\{/.test(f.latex))) ctx.used.add('soul');
     ctx.titleLatex ??= facts.title ?? '';
     ctx.pdfTitle = String(ctx.titleLatex ?? '').replace(/\\[A-Za-z]+\*?(?:\[[^\]]*\])?/g, '').replace(/[{}$]/g, '').replace(/\s+/g, ' ').trim();
     const preamble = latexPreamble(ctx);
@@ -828,6 +895,7 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
       checks
     };
     const pictures = ctx.pictures.map((p) => (p.ok ? p.pdf : 'Not compiled') + ', from ' + (p.include ? p.include : p.what ? p.what + ' in ' + p.file : 'the drawing in a figure of ' + p.file) + '. Its source is ' + p.typ + '.');
+    if (checks.words.lost.length) notes.push(lostNote(checks.words.lost, doc, 'Typst', 'LaTeX'));
     await writeNotes(staging, { from: 'Typst', to: 'LaTeX', source: doc, out: main.out, checks, notes, pictures });
     await ensureDir(path.join(staging, '.spectrum'));
     await fs.writeFile(path.join(staging, '.spectrum', 'conversion.json'), JSON.stringify(record, null, 2) + '\n');
@@ -898,12 +966,14 @@ async function checkTypstToLatex({ root, doc, staging, out, texts, uses, order, 
   // what each side prints of itself, or keeps in an argument the masks leave out, is set level first: the and of
   // \cref{a,b}, a theorem's title, a listing's caption, a link's text; the Typst's units and its outline's titles
   const latexWords = latex
+    .replace(/(\\begin\{lstlisting\}\[[^\]]*?)caption=\{((?:[^{}]|\{[^{}]*\})*)\}/g, ' $2 $1')
     .replace(/\\[cC]ref\{([^}]*)\}/g, (_, list) => ' ' + list.split(',').slice(1).map(() => 'and').join(' ') + ' ')
     .replace(/\\begin\{(?!figure|table|algorithm|subfigure|minipage|lstlisting|tabular|threeparttable)\w+\}\[([^\]]*)\]/g, ' $1 ')
     .replace(/caption=\{((?:[^{}]|\{[^{}]*\})*)\}/g, ' $1 ')
     .replace(/\\nolinkurl\{([^}]*)\}/g, ' $1 ');
   const typstWords = order.map((rel) => typstProse(texts.get(rel))).join('\n').replace(/#outline\([^)]*\)/g, ' ').replace(/(\d)~[^\s,;:!?)\]]+/g, '$1');
-  const words = { coverage: coverage(wordsOf(maskTypst(typstWords)), wordsOf(latexProse(latexWords))), lowestSection: null };
+  const [before, after] = [wordsOf(maskTypst(typstWords)), wordsOf(latexProse(latexWords, new Set([...TEXT_COMMANDS, 'ul', 'st', 'hl'])))];
+  const words = { coverage: coverage(before, after), lowestSection: null, lost: lostWords(before, after) };
   const undefinedRefs = /There were undefined references|Reference `[^']+' on page \d+ undefined/.test(log);
   const result = {
     compiles: !!compiled.ok && !diagnostics.some((d) => d.severity === 'error'),

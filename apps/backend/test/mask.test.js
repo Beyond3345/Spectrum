@@ -1,8 +1,8 @@
-// Typst and Markdown masks for the spell and grammar checkers: the words that must survive, and the markup that
+// LaTeX, Typst and Markdown masks for the spell and grammar checkers: the words that must survive, and the markup that
 // must not, with every position kept. Run: node --test apps/backend/test/mask.test.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { maskMarkdown, maskTypst, proseWords } from '../src/latex/mask.js';
+import { maskLatex, maskMarkdown, maskTypst, proseWords } from '../src/latex/mask.js';
 
 const words = (masked) => proseWords(masked).map(([word]) => word);
 const sameShape = (source, masked) => {
@@ -59,4 +59,11 @@ test('Markdown keeps prose and link text, and drops front matter, code, maths, U
   const kept = words(masked);
   for (const word of ['Heading', 'prose', 'link', 'list', 'item', 'escape', 'plain', 'word']) assert.ok(kept.includes(word), word + ' survives');
   for (const word of ['Secret', 'code_word', 'alt', 'image', 'hidden', 'comment', 'indented', 'citation', 'fenced', 'heading', 'example']) assert.ok(!kept.includes(word), word + ' is masked');
+});
+
+test('LaTeX: a {…} on the line after \\vspace is text, not its argument', () => {
+  const source = '\\vspace*{30mm}\n{\\LARGE\\bfseries Field notes\\par}\n\\cite{a}{b} after';
+  const masked = maskLatex(source);
+  assert.equal(masked.length, source.length);
+  assert.deepEqual(words(masked), ['Field', 'notes', 'after']);
 });

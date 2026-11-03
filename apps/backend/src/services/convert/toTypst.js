@@ -13,8 +13,24 @@ import { region } from './regions.js';
 const TODAY = '#datetime.today().display("[day padding:none] [month repr:long] [year]")';
 // the house theorem set's LaTeX styles: plain statements are italic, remarks have an italic heading
 const STYLES = { plain: ', body-style: emph', definition: '', remark: ', head-style: emph' };
-// LaTeX's font sizes for an 10, 11 or 12 pt document, rounded as the title page rule card has them
-const SIZES = { tiny: 5, scriptsize: 7, footnotesize: 8, small: 9, normalsize: 0, large: 12, Large: 14, LARGE: 17, huge: 21, Huge: 25 };
+// LaTeX's font sizes in an 11 pt document, the house size, rounded as the title page rule card has them
+const SIZES = { tiny: 6, scriptsize: 8, footnotesize: 9, small: 10, normalsize: 0, large: 12, Large: 14, LARGE: 17, huge: 21, Huge: 25 };
+const SWITCHES = Object.keys(SIZES).join('|') + '|bfseries|itshape|scshape';
+// text Typst gives a look of its own: \fbox{Reset} framed, soul's \so{FRAGILE} spaced out, \caps{Note} in small capitals
+const LOOKS = {
+  fbox: ['m', '#box(stroke: 0.4pt, inset: (x: 3pt), outset: (y: 3pt))['],
+  framebox: ['oom', '#box(stroke: 0.4pt, inset: (x: 3pt), outset: (y: 3pt))['],
+  so: ['m', '#text(tracking: 0.25em)['],
+  textls: ['om', '#text(tracking: 0.1em)['],
+  caps: ['m', '#smallcaps['],
+  xout: ['m', '#strike[']
+};
+// the commands whose argument the converter keeps as text itself, which the word check counts as the LaTeX's words
+export const TEXT_COMMANDS = [...Object.keys(LOOKS), 'ce'];
+// the names typed before a reference, Figure~\ref{fig:x}, which Typst prints itself
+export const REFERENCE_NAMES = /\b(?:Figures?|Fig\.|Tables?|Sections?|Chapters?|Equations?|Eqs?\.|Listings?|Algorithms?|Appendix|Theorems?|Lemmas?|Definitions?|Examples?)/;
+// mhchem's arrows and signs, each a part of its own between spaces
+const CHEMISTRY = { '->': '→', '<-': '←', '<->': '↔', '<=>': '⇌', '<=>>': '⇌', '<<=>': '⇌', '+': '+', '=': '=', '^': '↑', v: '↓' };
 const LANGUAGES = {
   australian: ['en', 'AU'], british: ['en', 'GB'], UKenglish: ['en', 'GB'], english: ['en', ''], american: ['en', 'US'], USenglish: ['en', 'US'],
   canadian: ['en', 'CA'], newzealand: ['en', 'NZ'], french: ['fr', ''], german: ['de', ''], ngerman: ['de', ''], spanish: ['es', ''],
@@ -346,8 +362,40 @@ function inlinePass(text, st, ctx) {
     const name = '#smallcaps[' + typstMarkup(parsed.args[0]) + '];';
     return { text: (inside(callSpans, m.index) ? '\\text{' + st.inline(name, name) + '}' : st.inline(name, name)) + '(' + parsed.args[1] + ')', end: parsed.end };
   });
+  out = plainLists(out);
+  out = styledGroups(out, st, false);
+  // the rest outside maths only, where Typst's maths has its own: maths says whether one is in it
+  const prose = (pattern, fn) => {
+    const spans = mathSpans(out);
+    replaced(pattern, (m, t) => fn(m, t, inside(spans, m.index)));
+  };
+  // a size switch on its own sets the text to the end of its group or environment, or of the document
+  prose(new RegExp('\\\\(' + Object.keys(SIZES).join('|') + ')(?![A-Za-z])\\s*', 'g'), (m, t, maths) => {
+    if (maths) return null;
+    const after = m.index + m[0].length;
+    const scope = scopeEnd(t, after);
+    if (!SIZES[m[1]] || scope.items) return { text: '', end: after };
+    const size = 'size: ' + SIZES[m[1]] + 'pt';
+    if (scope.end === t.length) return { text: st.inline('#set text(' + size + ')') + ' ', end: after };
+    return { text: st.inline('#text(' + size + ')[') + t.slice(after, scope.end) + st.inline(']'), end: scope.end };
+  });
+  prose(/\\(q?quad)(?![A-Za-z])\s*/g, (m, t, maths) => !maths && { text: ' ' + st.inline(m[1] === 'quad' ? '#h(1em)' : '#h(2em)') + ' ', end: m.index + m[0].length });
+  simple(/[ \t]*\\columnbreak(?![A-Za-z])[ \t]*/g, '#colbreak()');
+  replaced(/\\textbar(?![A-Za-z])(?:\s*\{\})?/g, (m) => ({ text: st.inline('|'), end: m.index + m[0].length }));
+  prose(new RegExp('\\\\(' + Object.keys(LOOKS).join('|') + ')(?![A-Za-z])', 'g'), (m, t, maths) => {
+    const [spec, open] = LOOKS[m[1]];
+    const parsed = !maths && commandArgs(t, m.index + m[0].length, spec);
+    if (!parsed) return null;
+    const tracking = m[1] === 'textls' && Number(parsed.args[0]) ? '#text(tracking: ' + Number(parsed.args[0]) / 1000 + 'em)[' : open;
+    return { text: st.inline(tracking) + parsed.args.at(-1) + st.inline(']'), end: parsed.end };
+  });
+  prose(/\\ce(?![A-Za-z])/g, (m, t, maths) => {
+    const arg = braceArg(t, m.index + m[0].length);
+    const typst = arg && chemistryTypst(arg.arg);
+    return typst && { text: maths ? '\\text{' + st.inline(typst) + '}' : st.inline(typst), end: arg.end };
+  });
   // the name typed before a reference, which Typst prints itself: Figure~\ref{fig:x}
-  out = out.replace(/\b(?:Figures?|Fig\.|Tables?|Sections?|Chapters?|Equations?|Eqs?\.|Listings?|Algorithms?|Appendix|Theorems?|Lemmas?|Definitions?|Examples?)(?:~|\s+)\\(ref|eqref)\{/g, '\\$1{');
+  out = out.replace(new RegExp(REFERENCE_NAMES.source + '(?:~|\\s+)\\\\(ref|eqref)\\{', 'g'), '\\$1{');
   out = out.replace(/(\d)\\,(?=\s*[A-Za-zµ°%Ω])/g, '$1~');
   out = out.replace(/\\(?:noindent|centering|phantomsection|raggedright|raggedleft|thispagestyle\s*\{[^}]*\}|bibliographystyle\s*\{[^}]*\})(?![A-Za-z])/g, '');
   replaced(/\\addcontentsline(?![A-Za-z])/g, (m, t) => {
@@ -391,7 +439,7 @@ function inlinePass(text, st, ctx) {
 /** The figures, tables, pseudocode, theorems, title page and abstract in text, each held as a block with its pieces. */
 function blockPass(text, st, ctx) {
   const theorems = [...ctx.facts.theorems.keys(), 'proof', ...(ctx.facts.solution ? ['solution'] : [])];
-  const names = ['figure', 'figure*', 'table', 'table*', 'algorithm', 'titlepage', 'abstract', 'tabular', 'tabularx', 'xltabular', 'threeparttable', ...theorems];
+  const names = ['figure', 'figure*', 'table', 'table*', 'algorithm', 'titlepage', 'abstract', 'tabular', 'tabularx', 'xltabular', 'threeparttable', 'multicols', 'multicols*', ...theorems];
   return splice(text, environments(text, names), (env) => {
     const line = lineOf(st, '\\begin{' + env.name + '}');
     let record;
@@ -400,6 +448,10 @@ function blockPass(text, st, ctx) {
     else if (env.name === 'algorithm') record = algorithmRecord(env.body, st, ctx);
     else if (env.name === 'titlepage') record = titlepageRecord(env.body, st, ctx);
     else if (env.name === 'abstract') record = { kind: 'abstract', body: piece(st, ctx, env.body, true) };
+    else if (env.name.startsWith('multicols')) {
+      const count = braceArg(env.body, 0);
+      record = { kind: 'columns', count: Number(count?.arg) || 2, body: piece(st, ctx, count ? env.body.slice(count.end) : env.body, true) };
+    }
     else record = theoremRecord(env.name, env.body, st, ctx);
     return st.block({ ...record, line });
   });
@@ -804,25 +856,106 @@ function theoremRecord(name, body, st, ctx) {
  * #text(size: 17pt, weight: "bold")[Text], each \par a line of its own.
  */
 function titlepageRecord(body, st, ctx) {
-  const styled = rewrite(body, /\{(?=\s*\\(?:tiny|scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge|Huge|bfseries|itshape|scshape)(?![A-Za-z]))/g, (m, t) => {
+  const lines = styledGroups(body, st, true).replace(/\\par(?![A-Za-z])/g, '\n\n');
+  return { kind: 'titlepage', body: piece(st, ctx, lines, true) };
+}
+
+/**
+ * Each group that starts with a size switch, {\LARGE\bfseries Text\par}, as #text(size: 17pt, weight: "bold")[Text]
+ * and a \par when it had one. any: a group that starts with \bfseries or \itshape alone too, as a title page sets them.
+ */
+function styledGroups(text, st, any) {
+  const run = '(?:\\s*\\\\(?:' + SWITCHES + ')(?![A-Za-z]))';
+  const starts = any ? run : run + '*?\\s*\\\\(?:' + Object.keys(SIZES).join('|') + ')(?![A-Za-z])';
+  return rewrite(text, new RegExp('\\{(?=' + starts + ')', 'g'), (m, t) => {
     const close = braceArg(t, m.index);
     if (!close) return null;
-    let text = close.arg;
     let size = 0;
     let weight = false;
     let italic = false;
-    text = text.replace(/\\(tiny|scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge|Huge|bfseries|itshape|scshape)(?![A-Za-z])\s*/g, (_, cmd) => {
-      if (cmd in SIZES) size = SIZES[cmd];
-      else if (cmd === 'bfseries') weight = true;
-      else if (cmd === 'itshape') italic = true;
+    let inner = close.arg.replace(new RegExp('^' + run + '+\\s*'), (switches) => {
+      for (const [, cmd] of switches.matchAll(/\\([A-Za-z]+)/g)) {
+        if (cmd in SIZES) size = SIZES[cmd];
+        else if (cmd === 'bfseries') weight = true;
+        else if (cmd === 'itshape') italic = true;
+      }
       return '';
     });
     const settings = [...(size ? ['size: ' + size + 'pt'] : []), ...(weight ? ['weight: "bold"'] : []), ...(italic ? ['style: "italic"'] : [])];
-    text = text.replace(/\\par(?![A-Za-z])\s*$/, '').trim();
-    return { text: settings.length ? st.inline('#text(' + settings.join(', ') + ')[') + text + st.inline(']') + '\\par ' : text + '\\par ', end: close.end };
+    const par = /\\par(?![A-Za-z])\s*$/.test(inner);
+    inner = inner.replace(/\\par(?![A-Za-z])\s*$/, '').trim();
+    return { text: (settings.length ? st.inline('#text(' + settings.join(', ') + ')[') + inner + st.inline(']') : inner) + (par || any ? '\\par ' : ''), end: close.end };
   });
-  const lines = styled.replace(/\\par(?![A-Za-z])/g, '\n\n');
-  return { kind: 'titlepage', body: piece(st, ctx, lines, true) };
+}
+
+/**
+ * Where the group or environment around from ends: { end } the index of its } or \end, or text's end at the top level,
+ * and { items } whether an \item or & of its own comes first, which a #text around it would split.
+ */
+function scopeEnd(text, from) {
+  let depth = 0;
+  let items = false;
+  for (let i = from; i < text.length; i += 1) {
+    if (text[i] === '\\') {
+      const name = /^\\([A-Za-z]+)/.exec(text.slice(i, i + 8))?.[1];
+      if (name === 'begin') depth += 1;
+      else if (name === 'end' && depth-- === 0) return { end: i, items };
+      else if (name === 'item' && depth === 0) items = true;
+      i += 1;
+    } else if (text[i] === '{') depth += 1;
+    else if (text[i] === '}' && depth-- === 0) return { end: i, items };
+    else if (text[i] === '&' && depth === 0) items = true;
+  }
+  return { end: text.length, items };
+}
+
+/** LaTeX's own list environment as itemize, or enumerate when its label counts: its two arguments go, which pandoc would print. */
+function plainLists(text) {
+  const open = [];
+  return rewrite(text, /\\(begin|end)\s*\{list\}/g, (m, t) => {
+    if (m[1] === 'end') {
+      const kind = open.pop();
+      return kind && { text: '\\end{' + kind + '}', end: m.index + m[0].length };
+    }
+    const parsed = commandArgs(t, m.index + m[0].length, 'mm');
+    const kind = parsed && (/\\(?:arabic|roman|Roman|alph|Alph|usecounter)(?![A-Za-z])/.test(parsed.args.join('')) ? 'enumerate' : 'itemize');
+    open.push(kind);
+    return kind && { text: '\\begin{' + kind + '}', end: parsed.end };
+  });
+}
+
+/** mhchem's \ce{...} as Typst text: NO3- as NO#sub[3]#super[−], -> as →; null for one with commands or maths in it. */
+export function chemistryTypst(formula) {
+  if (/[\\$]/.test(formula) || !formula.trim()) return null;
+  const charge = (t) => t.replace(/-/g, '−');
+  const term = (part) => {
+    let out = '';
+    let plain = '';
+    const flush = (typst = '') => {
+      out += typstMarkup(plain) + typst;
+      plain = '';
+    };
+    // a number before the formula counts its molecules: 2H2O
+    let i = /^(?:\d+(?:\/\d+)?|\d*\.\d+)(?=[A-Z([])/.exec(part)?.[0].length ?? 0;
+    plain = part.slice(0, i);
+    while (i < part.length) {
+      const rest = part.slice(i);
+      const after = /[A-Za-z)\]]$/.test(part.slice(0, i));
+      let m;
+      if ((m = /^\^(?:\{([^{}]*)\}|(\d*[+-]|\d+))/.exec(rest))) flush('#super[' + charge(m[1] ?? m[2]) + ']');
+      else if ((m = /^_(?:\{([^{}]*)\}|(\d+))/.exec(rest))) flush('#sub[' + (m[1] ?? m[2]) + ']');
+      else if (after && (m = /^\d+/.exec(rest))) flush('#sub[' + m[0] + ']');
+      else if (i > 0 && (m = /^[+-]+$/.exec(rest))) flush('#super[' + charge(m[0]) + ']');
+      else {
+        m = [rest[0]];
+        plain += rest[0] === '*' ? '·' : rest[0];
+      }
+      i += m[0].length;
+    }
+    flush();
+    return out;
+  };
+  return formula.trim().split(/\s+/).map((part) => CHEMISTRY[part] ?? term(part)).join(' ');
 }
 
 // ─── pandoc's JSON ───
@@ -1140,6 +1273,8 @@ function renderBlock(record, pieceText, st, ctx) {
       return '#page(numbering: none)[\n  #align(center)[\n' + pieceText(record.body).split('\n\n').map((line) => '    ' + line.replace(/\n/g, ' ')).join(' \\\n') + '\n  ]\n]';
     case 'abstract':
       return '#heading(numbering: none, outlined: false)[Abstract]\n' + pieceText(record.body);
+    case 'columns':
+      return '#columns(' + record.count + ')[\n' + pieceText(record.body) + '\n]';
     case 'maketitle': {
       const lines = ['#title()', ...(ctx.authorText ? [ctx.authorText] : []), ...(ctx.dateText ? [ctx.dateText] : [])];
       return '#align(center)[\n' + lines.map((l, i) => '  ' + indentRest(l, '  ') + (i > 0 && i < lines.length - 1 ? ' \\' : '')).join('\n') + '\n]';

@@ -92,7 +92,12 @@ export function maskLatex(source) {
   /** Applies an argument spec after a command or \begin; returns where scanning carries on. */
   const args = (pos, specList) => {
     if (specList === 'K') {
-      for (let at = skipSpaces(pos); s[at] === '{' || s[at] === '[' || s[at] === '*'; at = skipSpaces(pos)) {
+      // on the command's own line: {\Large Title} on the next one is text, not an argument of \vspace{10mm}
+      const skipInline = (k) => {
+        while (s[k] === ' ' || s[k] === '\t') k += 1;
+        return k;
+      };
+      for (let at = skipInline(pos); s[at] === '{' || s[at] === '[' || s[at] === '*'; at = skipInline(pos)) {
         const end = s[at] === '*' ? at + 1 : groupEnd(s, at);
         if (end < 0) break;
         blank(at, end);
