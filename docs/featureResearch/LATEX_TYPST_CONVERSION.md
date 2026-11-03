@@ -399,7 +399,7 @@ A raw LaTeX block cannot be passed through to Typst, and a raw Typst block canno
 
 ### 9.1 When it runs
 
-Only after the deterministic conversion has passed its validators, only if the user turned it on and only on regions the converter flagged. A region is one construct the rules could not place: a title page, a CV header, an unknown environment, an unknown command with its paragraph, an approximated table. The converter also flags an environment the document defines with `\newenvironment`, `multicols`, and in Typst a call of the document's own `#let` function whose look pandoc cannot write (a box, a fill, a size), since all of these keep their words but lose their look. Each region is at most 60 lines. The model never sees or rewrites the whole document, which is the difference from `transferAgent`'s `applyTransfer` and `fixCompile`.
+Only after the deterministic conversion has passed its validators, only if the user turned it on and only on regions the converter flagged. A region is one construct the rules could not place: a title page, a CV header, an unknown environment, an unknown command with its paragraph, an approximated table. The converter also flags an environment the document defines with `\newenvironment`, and in Typst a call of the document's own `#let` function whose look pandoc cannot write (a box, a fill, a size), since all of these keep their words but lose their look. Each region is at most 60 lines. The model never sees or rewrites the whole document, which is the difference from `transferAgent`'s `applyTransfer` and `fixCompile`.
 
 ### 9.2 The task
 
@@ -431,7 +431,7 @@ A full replacement of a small region is easier for a weak model than a unified d
 In this order, stopping at the first failure:
 
 1. Exactly one `<<<REPLACE rN ... >>>` block for the region asked, or `SKIP rN`. No markers inside.
-2. The words of the region are still there, in any order, ignoring Typst or LaTeX calls and their settings, so layout may change and text may not. A word may be added only if the ORIGINAL has it, since the converter loses the text of some commands (`\fbox{Reset}`, `\so{FRAGILE}`).
+2. The words of the region are still there, in any order, ignoring Typst or LaTeX calls and their settings, so layout may change and text may not. A word may be added only if the ORIGINAL has it. The converter keeps the text of every command it does not know, and its own word check names in `conversion/notes.md` any word of the original that the conversion lacks.
 3. The labels are the same. The references and citations are the same.
 4. No package, `#import`, page, document or text setting and no show rule appears (no `\usepackage` or preamble command in LaTeX).
 5. The replacement is no more than three times the region's length plus 200 characters.

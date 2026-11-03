@@ -393,6 +393,7 @@ test('LaTeX to Typst keeps the text of boxes, letter spacing, chemistry, sizes, 
     '',
     'Press the \\fbox{Reset} button; the box reads \\so{FRAGILE}; the water holds \\ce{NO3-} and \\ce{2H2 + O2 -> 2H2O}; the arrow points \\raisebox{1pt}{upwards} and {\\small (about 9000 rows)} fit.',
     'Gap\\quad one\\qquad two \\textbar{} three. The logger failed on 12 June\\marginpar{replaced under warranty} and went back.',
+    '\\cvitem{Languages}{English and French}\\sethlcolor{yellow}',
     '',
     '\\begin{checklist}',
     '\\item Charge the logger',
@@ -412,7 +413,7 @@ test('LaTeX to Typst keeps the text of boxes, letter spacing, chemistry, sizes, 
   assert.match(text, /#text\(size: 14pt, weight: "bold"\)\[Ada Lovelace\] \\ #text\(size: 10pt\)\[Analyst\s*\]/, 'a size in a group, and one to the end of its minipage');
   assert.match(text, /Press the #box\(stroke: 0\.4pt, inset: \(x: 3pt\), outset: \(y: 3pt\)\)\[Reset\] button; the box reads #text\(tracking: 0\.25em\)\[FRAGILE\]/);
   assert.match(text, /holds NO#sub\[3\]#super\[−\] and 2H#sub\[2\] \+ O#sub\[2\] → 2H#sub\[2\]O; the arrow points upwards and #text\(size: 10pt\)\[\(about 9000 rows\)\] fit\./);
-  assert.match(text, /Gap #h\(1em\) one #h\(2em\) two \| three\./);
+  assert.match(text, /Gap #h\(1em\) one #h\(2em\) two \| three\. The logger failed on 12 June replaced under warranty and went back\.\nLanguages English and French\n/, 'an unknown command’s text, apart from the word before it, and a setting’s none');
   assert.match(text, /^- Charge the logger$/m, 'the list the document defines, without its marker as a paragraph');
   assert.match(text, /^\+ Dig a hole\.$/m, 'and numbered when its label counts');
   assert.doesNotMatch(text, /\$square\$|^\.$/m);
@@ -421,15 +422,13 @@ test('LaTeX to Typst keeps the text of boxes, letter spacing, chemistry, sizes, 
   assert.deepEqual(result.record.regions.map((r) => r.kind), ['cv-header', 'unknown-command', 'unknown-environment', 'unknown-environment']);
   assert.match(result.record.regions[0].original, /^\\begin\{minipage\}/);
   assert.match(notes, /\\raisebox is not a command Spectrum knows, so only its text was kept\./);
-  // the safety net: the words still lost are named, \marginpar's text run into the word before it
-  assert.deepEqual(result.checks.words.lost, ['june', 'replaced']);
-  assert.match(notes, /\| Words \| \d+ per cent of the words, at least \d+ per cent in each section; missing: june, replaced \|/);
-  assert.match(notes, /The Typst lacks words the LaTeX has: june, replaced\. Check that no text was left out\./);
-  // and the original's words count, a command's one-word text too: the box's word gone is found
+  assert.deepEqual(result.checks.words.lost, []);
+  assert.match(notes, /\| Words \| 100 per cent of the words, at least 100 per cent in each section \|/);
+  // the safety net: the original's words count, a command's one-word text too, so any lost would be named
   const edited = mkdtempSync(path.join(tmp, 'edited-'));
   await fs.cp(staging, edited, { recursive: true });
-  await fs.writeFile(path.join(edited, 'main.typ'), text.replace('[Reset]', '[]').replace('[FRAGILE]', '[]').replace('NO#sub[3]', '#sub[3]'));
-  assert.deepEqual((await result.recheck(edited)).words.lost, ['reset', 'fragile', 'no', 'june', 'replaced']);
+  await fs.writeFile(path.join(edited, 'main.typ'), text.replace('[Reset]', '[]').replace('[FRAGILE]', '[]').replace('NO#sub[3]', '#sub[3]').replace('Languages English', 'English'));
+  assert.deepEqual((await result.recheck(edited)).words.lost, ['reset', 'fragile', 'no', 'languages']);
 });
 
 test('Typst to LaTeX keeps a title page’s alignment and a page of its own, and names the words it loses', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {

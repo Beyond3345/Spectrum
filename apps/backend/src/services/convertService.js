@@ -12,7 +12,7 @@ import { httpError } from './projectService.js';
 import { PANDOC_DOWNLOADABLE, PANDOC_MINIMUM, builtInTypst, pandocPath, versionOf } from './engineService.js';
 import { MAX_LOG_BYTES, compileFolder, runSpawn } from './compileService.js';
 import { compileTypst } from './typstService.js';
-import { braceArg, environments, lineAt, maskComments, mathSpans, optionalArg, splice } from './convert/latexRead.js';
+import { braceArg, environments, lineAt, maskComments, mathSpans, optionalArg, rewrite, splice } from './convert/latexRead.js';
 import { REFERENCE_NAMES, TEXT_COMMANDS, assembleTypst, astToTypst, latexFacts, pictureDocument, prepareLatex, typstDefinitions, typstLabel, typstMaths, typstPreamble } from './convert/toTypst.js';
 import { assembleLatex, latexPreamble, prepareTypst, typstFacts, typstProse } from './convert/toLatex.js';
 import { expressionEnd, typstUses } from './convert/typstRead.js';
@@ -64,28 +64,29 @@ async function pandoc(executable, input, args, work) {
 
 // what pandoc keeps as raw TeX when asked to, but reads itself otherwise
 const PANDOC_READS = new Set(['ref', 'cref', 'Cref', 'eqref', 'autoref', 'pageref', 'vref', 'Vref', 'nameref', 'labelcref', 'crefrange', 'Crefrange', 'cpageref', 'label', 'mbox', 'hbox', 'bgroup', 'egroup', 'begin{spxpiece}']);
-// commands whose argument is a setting, never text: \color{red} prints no red
-const SETTINGS = new Set(['color', 'pagecolor', 'rowcolor', 'cellcolor', 'columncolor', 'arrayrulecolor', 'setlist', 'captionsetup', 'sisetup', 'lstset', 'hypersetup', 'tikzset', 'pgfplotsset', 'usetikzlibrary', 'newgeometry', 'pagenumbering', 'pagestyle', 'thispagestyle', 'setcounter', 'addtocounter', 'stepcounter', 'refstepcounter', 'usecounter', 'newcounter', 'selectfont', 'fontfamily', 'fontseries', 'fontshape', 'setmainfont', 'setsansfont', 'setmonofont', 'linespread', 'setstretch', 'enlargethispage', 'includepdf', 'bibliographystyle', 'label']);
+// commands whose arguments are settings, never text: \color{red} or \sethlcolor{yellow} prints no red or yellow
+const SETTING = /^(?:set|new|renew|provide|use|add|define|step|refstep|include|enlarge)|(?:colou?r|set|setup|style|counter|numbering|font|family|series|shape|spread|stretch|label|library)$/;
 
-/** The last {argument} of a command whose name ends at from, after any […] and {…} before it: { arg, end }, or null. */
-function lastArgument(text, from) {
-  let last = null;
+/** The […] and {…} arguments of a command whose name ends at from: [{ arg, start, end, brace }]. */
+function argumentsAt(text, from) {
+  const out = [];
   for (let end = from; ; ) {
     const options = optionalArg(text, end);
     const group = options ? null : braceArg(text, end);
-    if (!options && !group) return last;
-    last = group ?? last;
-    end = (options ?? group).end;
+    if (!options && !group) return out;
+    const found = options ?? group;
+    out.push({ ...found, start: found.end - found.arg.length - 2, brace: !options });
+    end = found.end;
   }
 }
-/** Whether LaTeX holds words, its commands aside. */
-const hasWords = (latex) => /\p{L}/u.test(latex.replace(/\\[A-Za-z@]+\*?/g, ' '));
+/** Whether an argument reads as words: letters outside commands, no key=value, no length. */
+const textual = (arg) => /\p{L}/u.test(arg.replace(/\\[A-Za-z@]+\*?/g, ' ')) && !arg.includes('=') && !/^\s*-?\d*\.?\d+\s*(?:pt|mm|cm|in|em|ex|bp|pc|sp)\s*$/.test(arg);
 
-/** An unknown command's text, from its raw TeX: its last {argument} when that reads as words, \raisebox{1pt}{Up}; else null. */
+/** An unknown command's text, from its raw TeX: the {arguments} that read as words, \raisebox{1pt}{Up} is Up; else null. */
 function commandText(raw) {
   const name = /^\\([A-Za-z@]+)\*?/.exec(raw);
-  const text = name && !SETTINGS.has(name[1]) ? lastArgument(raw, name[0].length)?.arg : null;
-  return text && hasWords(text) && !text.includes('=') && !/^\s*-?\d*\.?\d+\s*(?:pt|mm|cm|in|em|ex|bp|pc|sp)\s*$/.test(text) ? text : null;
+  const texts = name && !SETTING.test(name[1]) ? argumentsAt(raw, name[0].length).filter((a) => a.brace && textual(a.arg)) : [];
+  return texts.length ? texts.map((a) => a.arg).join(' ') : null;
 }
 
 /** The commands pandoc's raw TeX reading shows it doesn't know, from its JSON: { name: [raw texts] }. */
@@ -411,15 +412,21 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
       let input = markLatexInput(file.input, detected, file.state, ctx);
       for (const [name, texts] of detected) {
         if (name.startsWith('begin{')) {
+          // its arguments that aren't text go, which pandoc would print: \begin{adjustwidth}{1cm}{1cm}
+          input = rewrite(input, new RegExp('\\\\begin\\s*\\{' + name.slice(6, -1).replace(/[*]/g, '\\*') + '\\d*\\}', 'g'), (m, t) => {
+            const args = argumentsAt(t, m.index + m[0].length);
+            return args.length && { text: m[0] + args.filter((a) => a.brace && textual(a.arg)).map((a) => '{' + a.arg + '}').join(''), end: args.at(-1).end };
+          });
           notes.push({ file: file.src, line: null, text: 'The environment ' + name.slice(6, -1) + ' is not one Spectrum knows; its text was kept as plain paragraphs.' });
           continue;
         }
-        // one with text keeps it, as a group of its own: \raisebox{1pt}{Up} is {Up}
+        // one with text keeps it, as a group of its own: \raisebox{1pt}{Up} is {Up}, \cvitem{Languages}{English} {Languages English}
         let prose = false;
         for (const raw of new Set(texts)) {
           const text = commandText(raw);
           if (text === null || !input.includes(raw)) continue;
-          input = input.split(raw).join('{' + text + '}');
+          // a space from the word before, which a margin note's text would run into
+          input = input.replace(new RegExp('([\\p{L}\\p{N}]?)' + raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gu'), (_, before) => before + (before ? ' ' : '') + '{' + text + '}');
           prose = true;
         }
         ctx.unknownText.add(name);
@@ -561,10 +568,12 @@ function latexProse(text, texts = new Set()) {
   out = out.replace(/\\(?:verb\*?|lstinline(?:\[[^\]]*\])?)([^\sA-Za-z{])[^\n]*?\1|\\lstinline(?:\[[^\]]*\])?\{[^{}\n]*\}|\\cmidrule\s*\([lr]*\)/g, (m) => ' '.repeat(m.length));
   // the PDF's own words for a heading, \texorpdfstring{$x$}{x}, which neither side prints
   out = out.replace(/(\\texorpdfstring\s*\{(?:[^{}]|\{[^{}]*\})*\})(\s*\{(?:[^{}]|\{[^{}]*\})*\})/g, (_, shown, pdf) => shown + ' '.repeat(pdf.length));
-  const names = [...texts].filter((name) => !SETTINGS.has(name));
+  const names = [...texts].filter((name) => !SETTING.test(name));
   for (const m of names.length ? out.matchAll(new RegExp('\\\\(?:' + names.join('|') + ')(?![A-Za-z@])\\*?', 'g')) : []) {
-    const last = lastArgument(out, m.index + m[0].length);
-    if (last && hasWords(last.arg)) out = blank(out, [[m.index, last.end - last.arg.length - 1], [last.end - 1, last.end]]);
+    const args = argumentsAt(out, m.index + m[0].length);
+    if (!args.some((a) => a.brace && textual(a.arg))) continue;
+    // the command and its other arguments go, and the braces around its text
+    out = blank(out, [[m.index, m.index + m[0].length], ...args.flatMap((a) => (a.brace && textual(a.arg) ? [[a.start, a.start + 1], [a.end - 1, a.end]] : [[a.start, a.end]]))]);
   }
   return maskLatex(blank(out, mathSpans(out)));
 }
