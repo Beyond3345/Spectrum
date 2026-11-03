@@ -248,6 +248,7 @@ Typst has no siunitx. Spectrum writes quantities as text, by the same rules siun
 - In running prose a percentage is written in words, `6 per cent`. In a table or next to other measured values, use `19.0~%`.
 - Values that are compared use the same unit, prefix and number of decimal places.
 - Do not use maths for a unit: Typst sets maths letters in italic, and `kΩ` is not a product of `k` and `Ω`.
+- Where a quantity has to sit inside an equation, as in a worked calculation, put the unit in quotes after a thin space: `$f_c approx 1.03 thin "kHz"$`. Typst sets quoted text upright.
 
 ## Maths
 
@@ -392,6 +393,7 @@ Plain Typst draws lines, rectangles, circles and curves, but nothing like pgfplo
 - Set the width in centimetres or millimetres, and give axis labels as `Quantity (unit)`.
 - A drawing with coordinates uses `#import "@preview/cetz:0.5.3"` in the same way.
 - A plot made elsewhere (Python, R) is saved as SVG in `figures/` and included with `image`, which keeps it sharp.
+- A simple plot or circuit can be drawn in plain Typst instead, with `line`, `curve`, `circle` and `place` in a fixed-size `box`, in a `diagrams/` file with no import. It then compiles offline. The Typst maths notes, electronics notes and their diagrams show how.
 
 ### Diagrams from Spectrum's composer
 
@@ -591,6 +593,11 @@ Plain Typst has no algorithm environment. Write pseudocode as a figure of kind `
 - `form: "author"` prints only the author and `form: "year"` only the year. `#cite(<key>, form: none)` lists a work without citing it in the text, like `\nocite`.
 - The bibliography goes at the end of the document, and appears in the contents by itself.
 - Typst 0.15 allows several bibliographies in one document. A Spectrum document has one.
+- Typst prints the References heading even when nothing is cited, where `\printbibliography` prints nothing. Notes that may cite nothing yet add one line to the `// References` group, so the list appears with the first citation:
+
+```typst
+#show bibliography: it => context if query(cite).len() > 0 { it } // no References heading until something is cited
+```
 
 ```typst
 As #cite(<Masters2013>, form: "prose") shows, output follows the sun @Duffie2013.
@@ -702,6 +709,8 @@ The CV keeps its look in a few lines that are easy to change:
 #entry[Engineering intern, Example Company][2022--2023][Worked with the structural team on bridge inspections.]
 ```
 
+A `grid` of plain text, such as a list of skills, needs `row-gutter: 0.65em`: without it the rows touch, and one row's descenders run into the next.
+
 Letters and CVs use `numbering: none`, since they have no page numbers. A letter sets `#set par(justify: false)` and has no title block.
 
 ## From LaTeX
@@ -793,7 +802,7 @@ Before handing back a new `.typ` file, check that:
 4. There is no `@preview` import outside `diagrams/`, and every import in `diagrams/` has an exact version.
 5. The spelling is Australian, and the date prints without a leading zero.
 6. Every number with a unit is the number, `~` and the unit's symbol in text, with commas in numbers of four or more digits.
-7. The document ends with `#bibliography("refs.bib", style: "apa")` and the preamble sets the title to References. The keys are in Spectrum's `AuthorYear` form.
+7. The document ends with `#bibliography("refs.bib", style: "apa")` and the preamble sets the title to References. The keys are in Spectrum's `AuthorYear` form. A letter or CV, which cites nothing, has no bibliography.
 8. Every figure, table, equation, listing, algorithm and theorem that is referred to has a prefixed label, and every reference is `@label`.
 9. Tables have `stroke: none`, booktabs rules as `table.hline`, a `table.header`, captions above, right-aligned number columns with equal decimals. Only a table longer than a page has a breakable figure. Figures have captions below.
 10. Images are sized one way from [Image sizes](#image-sizes), with paths from the project root, and images that belong together are `subfigure` panels in a grid.
@@ -802,22 +811,11 @@ Before handing back a new `.typ` file, check that:
 
 ## The templates and this standard
 
-The four Typst templates (`typst-document`, `typst-report`, `typst-letter`, `typst-cv`) predate this standard. They meet its core (A4, 25 mm margins, 11 pt, no packages, APA from `refs.bib`) and differ in these ways, until they are brought into line:
+Spectrum's seven Typst templates follow this standard: `typst-document`, `typst-report`, `typst-maths-notes`, `typst-electronics-notes`, `typst-coding-report`, `typst-letter` and `typst-cv`. The maths notes, electronics notes and coding report carry the same content as their LaTeX versions. There is no Typst slides template.
 
-| Template | Difference | What the standard says |
-| --- | --- | --- |
-| All four | No `lang: "en", region: "AU"` | Set it: it gives Australian hyphenation and en-AU in the PDF. |
-| All four | No `//` group headings or comments | Group and comment the preamble. |
-| Document, report, CV | `[day]` in the date prints 03 November | `[day padding:none]` |
-| Document | `#set heading(numbering: "1.")` prints "1." | `"1.1"`, which prints 1 and 1.1, as LaTeX does |
-| Document | A `= References` heading, then a bibliography with its own title, so two headings | No heading of your own; `#set bibliography(title: [References])` |
-| Document, report | The title typed again in `#text(...)` | `#title()`, which prints the title from `#set document` |
-| Document, report | No page number in the document template; no caption rule in the report, so its table caption sits below | `numbering: "1"`, and captions above tables |
-| Report | Its table has every line drawn and units in the cells | Booktabs rules, units in the heading |
-| Letter | No `#set document` | Set the title and author for the PDF. |
-| CV | No accent colour or links | Optional; see [CV and letter extras](#cv-and-letter-extras). |
-
-The templates must keep passing `apps/backend/test/templates.test.js`, which requires `#set page(paper: "a4"`, no `@preview` and no `#import` in each `main.typ`. It also requires `#bibliography("refs.bib", style: "apa")` in the document template. The standard preamble meets them all. A template with chapters would keep its definitions in `main.typ` rather than importing `style.typ`.
+- Their drawings are plain Typst in `diagrams/`, with no package, so every template compiles offline on the first try.
+- Each `main.typ` keeps its definitions rather than importing `style.typ`, so a template is one file to read.
+- `apps/backend/test/templates.test.js` checks each one for `#set page(paper: "a4"`, `lang: "en", region: "AU"`, `#set document`, no `@preview` and no `#import`, and, apart from the letter and CV, a closing `#bibliography("refs.bib", style: "apa")` with its `refs.bib`.
 
 Spectrum's Insert tools write plain Typst that fits this standard, with two differences:
 

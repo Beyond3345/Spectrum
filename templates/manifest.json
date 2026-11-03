@@ -132,11 +132,56 @@
       "label": "Typst report",
       "mainFile": "main.typ",
       "category": "reports",
-      "description": "A Typst report with a title page, contents, numbered headings and a table",
+      "description": "A Typst report with a title page, contents, chapters, a table and APA 7 references",
       "tags": [
         "Typst",
         "Report",
         "Contents"
+      ],
+      "author": "Spectrum",
+      "featured": true
+    },
+    {
+      "id": "typst-maths-notes",
+      "label": "Typst maths notes",
+      "mainFile": "main.typ",
+      "category": "notes",
+      "description": "Lecture notes or an assignment in Typst with theorems, proofs, worked solutions and a plot",
+      "tags": [
+        "Typst",
+        "Maths",
+        "Notes",
+        "Assignment"
+      ],
+      "author": "Spectrum",
+      "featured": true
+    },
+    {
+      "id": "typst-electronics-notes",
+      "label": "Typst electronics notes",
+      "mainFile": "main.typ",
+      "category": "notes",
+      "description": "Notes or a lab report in Typst with a circuit diagram, units and a frequency-response plot",
+      "tags": [
+        "Typst",
+        "Electronics",
+        "Circuits",
+        "Lab report"
+      ],
+      "author": "Spectrum",
+      "featured": true
+    },
+    {
+      "id": "typst-coding-report",
+      "label": "Typst coding report",
+      "mainFile": "main.typ",
+      "category": "reports",
+      "description": "A programming assignment or technical report in Typst with highlighted code and pseudocode",
+      "tags": [
+        "Typst",
+        "Programming",
+        "Code",
+        "Algorithms"
       ],
       "author": "Spectrum",
       "featured": true

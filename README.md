@@ -33,12 +33,15 @@ The template gallery has templates for notes, reports, letters, slides and a CV,
 | Slides | a 16:9 Beamer presentation with maths, a chart and code | `beamer` (Madrid), `listings`, `pgfplots` |
 | Academic CV | a one-page CV with links for email, ORCID and a website | `titlesec`, `enumitem`, `xcolor` |
 | Typst document | a short A4 article in Typst with a figure, a reference and APA 7 references | Typst only |
-| Typst report | a report in Typst with a title page, contents, numbered headings and a table | Typst only |
+| Typst report | a report in Typst with a title page, contents, chapters, a table and APA 7 references | Typst only |
+| Typst maths notes | lecture notes or assignments in Typst with theorems, worked examples and their solutions and a plot drawn in Typst | Typst only |
+| Typst electronics notes | notes or lab reports in Typst with a circuit, quantities with units and a Bode plot drawn in Typst | Typst only |
+| Typst coding report | programming assignments in Typst with highlighted code and pseudocode | Typst only |
 | Typst letter | a formal letter in Typst with sender, date, recipient and sign-off | Typst only |
 | Typst CV | a one-page CV in Typst with dated education, experience and skills | Typst only |
 | Markdown article | a Markdown article for pandoc with a YAML title, a figure, a pipe table and citations | pandoc only |
 
-Every LaTeX template uses APA 7 citations and references through `biblatex-apa` and Biber. Use Auto, pdfLaTeX, XeLaTeX or LuaLaTeX with a current TeX distribution, or the built-in Tectonic; Tectonic's older bibliography bundle can require a different Biber version. `\textcite` and `\parencite` produce narrative and parenthetical citations; the familiar `\citet` and `\citep` commands also work. The Typst starters use Typst's own APA style, and the Markdown article uses pandoc's citeproc with the `.bib` its front matter names.
+Every LaTeX template uses APA 7 citations and references through `biblatex-apa` and Biber. Use Auto, pdfLaTeX, XeLaTeX or LuaLaTeX with a current TeX distribution, or the built-in Tectonic; Tectonic's older bibliography bundle can require a different Biber version. `\textcite` and `\parencite` produce narrative and parenthetical citations; the familiar `\citet` and `\citep` commands also work. The Typst templates follow [docs/TYPST_STYLE.md](docs/TYPST_STYLE.md), compile offline with no packages and use Typst's own APA style, and the Markdown article uses pandoc's citeproc with the `.bib` its front matter names.
 
 The general templates use A4 paper apart from the slides, Australian English and no shell escape. Conference templates retain their page layouts but use an APA 7 bibliography adaptation. Use the venue's official reference style for an actual conference submission.
 
