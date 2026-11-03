@@ -2934,6 +2934,7 @@ function Editor({ projectId }: { projectId: string }) {
   };
   const markdownMain = docKind(mainFile) === 'markdown';
   const latexMain = docKind(mainFile) === 'latex';
+  const typstMain = docKind(mainFile) === 'typst';
   const tree = settings.projectFolders;
   const switcherItems: MenuItems = [
     ...switcherList({ projects, tree, at: switcherAt, projectId, go: setSwitcherAt, open: (id) => leave(`/editor/${id}`) }),
@@ -2943,10 +2944,11 @@ function Editor({ projectId }: { projectId: string }) {
     // a working copy has its own Save as new template… above the editor
     !draft && { label: 'Save as template…', icon: 'square.and.arrow.down', onSelect: openSaveTemplate },
     IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => revealProject(projectId).catch(() => undefined) },
-    (markdownMain || latexMain) && { separator: true },
+    (markdownMain || latexMain || typstMain) && { separator: true },
     markdownMain && { label: 'Export to Word', icon: 'doc.richtext', onSelect: exportWord },
     markdownMain && { label: 'Convert to LaTeX project…', icon: 'doc.text', onSelect: convertMarkdownToLatex },
-    latexMain && !draft && { label: 'Convert to Typst project…', icon: 'arrow.triangle.2.circlepath', onSelect: () => saveNow().then(() => setConverting('typst')) }
+    latexMain && !draft && { label: 'Convert to Typst project…', icon: 'arrow.triangle.2.circlepath', onSelect: () => saveNow().then(() => setConverting('typst')) },
+    typstMain && !draft && { label: 'Convert to LaTeX project…', icon: 'arrow.triangle.2.circlepath', onSelect: () => saveNow().then(() => setConverting('latex')) }
   ];
 
   const filesMenu: MenuItems = [

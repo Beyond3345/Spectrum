@@ -99,6 +99,7 @@ export default function ConvertSheet({
         <p className="field-hint">
           Spectrum makes a new {target} project from this {source}. This project stays as it is. Pictures are compiled to PDF with
           their source kept beside them, and conversion/notes.md in the new project lists anything to check.
+          {to === 'latex' && ' The LaTeX is checked by compiling it with your LaTeX engine.'}
         </p>
       )}
       {steps.length > 0 && !result && (
