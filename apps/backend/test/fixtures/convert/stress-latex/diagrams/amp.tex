@@ -1,0 +1,10 @@
+\documentclass[border=2pt]{standalone}
+\usepackage[american]{circuitikz}
+\begin{document}
+\begin{circuitikz}
+  \draw (0,0) node[op amp] (A) {}
+    (A.-) to[R, l_=$R_\mathrm{in}$, -o] ++(-2,0)
+    (A.out) to[short, -o] ++(1,0);
+\end{circuitikz}
+\end{document}
+% spectrum-diagram v1 circuitikz 0000000000000000
