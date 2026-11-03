@@ -149,6 +149,22 @@
       ]
     }
   },
+  "tinymist": {
+    "version": "0.15.10",
+    "typst": "0.15.1",
+    "assets": {
+      "arm64": [
+        "tinymist-aarch64-apple-darwin.tar.gz",
+        "34f5cd17610efca7b5f742a664a9fc31827327f3eebbc886cfcf2c6be69dd27e",
+        30842346
+      ],
+      "win-x64": [
+        "tinymist-x86_64-pc-windows-msvc.zip",
+        "3eace211115e9e81a3f37f2db4640c1de62ab5f11468d176531619cdc8b11b49",
+        30091634
+      ]
+    }
+  },
   "languagetool": {
     "version": "6.8",
     "base": "https://repo1.maven.org/maven2/",

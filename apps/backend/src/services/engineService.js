@@ -20,6 +20,7 @@ const ENGINES_DIR = path.join(DATA_DIR, 'engines');
 const TYPST_DIR = path.join(ENGINES_DIR, 'typst');
 const PANDOC_PATH = path.join(ENGINES_DIR, 'pandoc', 'pandoc' + EXE);
 const BIBER_DIR = path.join(ENGINES_DIR, 'biber');
+const TINYMIST_DIR = path.join(ENGINES_DIR, 'tinymist');
 const DOWNLOAD_FAILED = 'Check the internet connection and try again.';
 const CHECKSUM_FAILED = 'The download didn’t match its checksum, so it wasn’t installed.';
 /** The Typst version inside Spectrum, for a compile's result or a diagram's import line. */
@@ -70,6 +71,17 @@ export async function pandocPath() {
 export function tectonicBiber() {
   const file = path.join(BIBER_DIR, 'biber' + (process.platform === 'win32' ? '.exe' : ''));
   return existsSync(file) ? file : null;
+}
+
+/**
+ * The Tinymist to run and the Typst version inside it: SPECTRUM_TINYMIST (tests) or the one Spectrum downloaded, in a
+ * folder of its version, so a newer pin asks for its own download. null when there's none.
+ */
+export function tinymistProgram() {
+  const { version, typst } = list.tinymist;
+  const given = process.env.SPECTRUM_TINYMIST;
+  const file = given || path.join(TINYMIST_DIR, version, 'tinymist' + EXE);
+  return existsSync(file) ? { path: file, typst } : null;
 }
 
 /**
@@ -130,7 +142,9 @@ export async function listEngines() {
       downloadable: list.pandoc.version
     },
     // the release that matches the biblatex in Tectonic's bundle, and its download's size here (none: no build for it)
-    biber: { installed: tectonicBiber() ? list.biber.version : null, downloadable: list.biber.version, size: assetFor(list.biber.assets)?.[2] ?? null }
+    biber: { installed: tectonicBiber() ? list.biber.version : null, downloadable: list.biber.version, size: assetFor(list.biber.assets)?.[2] ?? null },
+    // Typst's language server, and the Typst inside it (size null: no build for this computer)
+    tinymist: { installed: tinymistProgram() ? list.tinymist.version : null, downloadable: list.tinymist.version, typst: list.tinymist.typst, size: assetFor(list.tinymist.assets)?.[2] ?? null }
   };
 }
 
@@ -245,6 +259,7 @@ function copyRuntime(executable) {
 const typstLock = serialiser();
 const pandocLock = serialiser();
 const biberLock = serialiser();
+const tinymistLock = serialiser();
 
 /** Installs a Typst version from engines.json, one at a time. */
 export function installTypst(version) {
@@ -296,4 +311,19 @@ export function installBiber() {
 /** Removes the downloaded Biber and what it unpacked. */
 export function removeBiber() {
   return biberLock(() => fs.rm(BIBER_DIR, { recursive: true, force: true, maxRetries: 5 }));
+}
+
+/** Downloads the pinned Tinymist from its GitHub release, one download at a time; another version's goes. */
+export function installTinymist() {
+  return tinymistLock(async () => {
+    const { version, assets } = list.tinymist;
+    const target = await install('Tinymist', version, { assets }, path.join(TINYMIST_DIR, version), 'tinymist', downloadBase() + '/Myriad-Dreamin/tinymist/releases/download/v' + version);
+    for (const entry of await fs.readdir(TINYMIST_DIR)) if (entry !== version) await fs.rm(path.join(TINYMIST_DIR, entry), { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
+    return target;
+  });
+}
+
+/** Removes the downloaded Tinymist. */
+export function removeTinymist() {
+  return tinymistLock(() => fs.rm(TINYMIST_DIR, { recursive: true, force: true, maxRetries: 5 }));
 }
