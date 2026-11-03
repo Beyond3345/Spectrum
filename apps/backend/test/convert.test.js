@@ -357,6 +357,29 @@ test('what only Typst’s own parser reads converts too: a package’s drawings,
   assert.match(notes.map((n) => n.text).join('\n'), /function boxed does more than Spectrum can write in LaTeX, so only the text given to it was kept/);
 });
 
+test('#move, #scale, #hide and #terms, which pandoc drops with their text, become LaTeX', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
+  const folder = mkdtempSync(path.join(tmp, 'moved-'));
+  await fs.writeFile(path.join(folder, 'main.typ'), [
+    'The word #move(dy: -2pt)[lifted] sits higher, #move(dy: 1pt)[dropped] lower, #scale(150%)[Danger] is half as big again,',
+    '#scale(x: 50%, reflow: true)[narrow] is squeezed and a #hide[secret] gap stays blank, while #move(dx: 3pt)[sideways] stays put.',
+    '',
+    '#terms(',
+    '  ([Logger], [A box that records the water level.]),',
+    '  terms.item[Probe][A sensor pushed into the soil.],',
+    ')',
+    ''
+  ].join('\n'));
+  const staging = mkdtempSync(path.join(tmp, 'out-'));
+  const { checks, notes } = await typstToLatex(folder, 'main.typ', staging, { engine: 'auto' });
+  expectNothingLost(checks, 'move');
+  assert.equal(checks.words.coverage, 1);
+  const latex = await fs.readFile(path.join(staging, 'main.tex'), 'utf8');
+  assert.match(latex, /\\usepackage\{graphicx\}/);
+  assert.match(latex, /The word \\raisebox\{2pt\}\{lifted\} sits higher, \\raisebox\{-1pt\}\{dropped\} lower, \\scalebox\{1\.5\}\{Danger\} is half as big again,\n\\scalebox\{0\.5\}\[1\]\{narrow\} is squeezed and a \\phantom\{secret\} gap stays blank, while sideways stays put\./);
+  assert.match(latex, /\\begin\{description\}\n {2}\\item\[Logger\] A box that records the water level\.\n {2}\\item\[Probe\] A sensor pushed into the soil\.\n\\end\{description\}/);
+  assert.match(notes.map((n) => n.text).join('\n'), /LaTeX has no counterpart of this #move, so its text stays where it is\./);
+});
+
 test('mhchem formulas become Typst text, subscripts, charges and arrows upright', () => {
   assert.equal(chemistryTypst('NO3-'), 'NO#sub[3]#super[−]');
   assert.equal(chemistryTypst('PO4^3-'), 'PO#sub[4]#super[3−]');

@@ -599,6 +599,40 @@ function inlineCall(call, nodes, next, st, ctx) {
     }
     case 'line':
       return arg(call, 'length')?.text === '100%' ? { text: st.inline('\\rule{\\linewidth}{0.4pt}') } : null;
+    case 'move':
+    case 'scale':
+    case 'hide': {
+      // what pandoc drops with its text: a word raised or lowered, scaled, or hidden to leave its gap
+      const body = markupOf(call.bodies[0] ?? arg(call, null, call.name === 'scale' ? 1 : 0));
+      if (!body) return null;
+      const content = emit(body.children, st, ctx);
+      const wrap = (open) => ({ text: st.inline(open + '{') + content + st.inline('}') });
+      if (call.name === 'hide') return wrap('\\phantom');
+      if (call.name === 'move') {
+        // Typst moves down for a positive dy, \raisebox up
+        const dy = arg(call, 'dy')?.text.trim() ?? '';
+        const length = texLength(dy.replace(/^-/, ''));
+        if (arg(call, 'dx') || (dy && (!length || length === '\\fill'))) ctx.note(st, call.node.text, 'LaTeX has no counterpart of this #move, so its text stays where it is.');
+        return length && length !== '\\fill' ? wrap('\\raisebox{' + (dy.startsWith('-') ? '' : '-') + length + '}') : { text: content };
+      }
+      const factor = (node) => /^(-?\d*\.?\d+)%$/.exec(node?.text.trim() ?? '')?.[1];
+      const both = factor(arg(call, null, 0));
+      const [x, y] = [factor(arg(call, 'x')) ?? both ?? '100', factor(arg(call, 'y')) ?? both ?? '100'].map((f) => +(Number(f) / 100).toFixed(3));
+      if ((arg(call, null, 0) && !both) || (arg(call, 'x') && !factor(arg(call, 'x'))) || (arg(call, 'y') && !factor(arg(call, 'y')))) {
+        ctx.note(st, call.node.text, 'LaTeX has no counterpart of this #scale, so its text is at its own size.');
+        return { text: content };
+      }
+      ctx.used.add('graphicx');
+      return wrap('\\scalebox{' + x + '}' + (y === x ? '' : '[' + y + ']'));
+    }
+    case 'terms':
+    case 'terms.item': {
+      // a term list written as a call, which pandoc drops: / Term: description, as the markup writes one
+      const parts = (c) => [...c.args.filter((a) => a.name === null).map((a) => a.value), ...c.bodies];
+      const items = call.name === 'terms.item' ? [parts(call)] : parts(call).map((v) => (callOf(v)?.name === 'terms.item' ? parts(callOf(v)) : v.kind === 'Array' ? significant(v).filter((n) => !['LeftParen', 'RightParen', 'Comma'].includes(n.kind)) : null));
+      if (!items.length || items.some((item) => item?.length !== 2 || item.some((n) => markupText(n) === null))) return null;
+      return { text: emitText(items.map((item) => '/ ' + item.map((n) => markupText(n).trim().replace(/\s*\n\s*/g, ' ')).join(': ')).join('\n'), st, ctx) };
+    }
     case 'smallcaps': {
       const name = markupOf(call.bodies[0])?.text;
       if (name === undefined || call.args.length) return null;
