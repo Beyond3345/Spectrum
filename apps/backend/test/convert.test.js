@@ -26,9 +26,10 @@ if (pandoc) {
   symlinkSync(pandoc, path.join(tmp, 'data', 'engines', 'pandoc', path.basename(pandoc)));
 }
 const { siAngle, siNumber, siQuantity, siUnit, typedNumber, typedUnit } = await import('../src/services/convert/units.js');
-const { callAt, markupSpans, splitArgs } = await import('../src/services/convert/typstRead.js');
+const { callOf, findAll, parseTypst, typstUses } = await import('../src/services/convert/typstRead.js');
 const { commandArgs, environments, mathSpans } = await import('../src/services/convert/latexRead.js');
 const { latexFacts, prepareLatex, typstMaths } = await import('../src/services/convert/toTypst.js');
+const { prepareTypst, typstFacts } = await import('../src/services/convert/toLatex.js');
 const { latexToTypst, typstToLatex } = await import('../src/services/convertService.js');
 const { builtInTypst, tectonicBiber } = await import('../src/services/engineService.js');
 const { findExecutable } = await import('../src/services/compileService.js');
@@ -117,17 +118,48 @@ test('typed units back to siunitx, by longest match of the symbols', () => {
   assert.deepEqual(['4.7', '±15', '7,790', '(1.2~±~0.1)', '47 times 10^3', '3.3 times 10^(-9)', 'x'].map(typedNumber), ['4.7', '\\pm 15', '7790', '1.2 \\pm 0.1', '47e3', '3.3e-9', null]);
 });
 
-test('Typst reading: a call’s arguments, and markup inside content blocks but not code', () => {
-  const text = '#figure(image("/a.png", width: 50%), // a comment\n  caption: [See @fig:b, "quoted".]) <fig:a>';
-  const call = callAt(text, 0);
+test('Typst reading: Typst’s own parser, a call’s arguments, and what a file names and uses', () => {
+  const text = '#figure(image("/a.png", width: 50%), // a comment\n  caption: [See @fig:b, "quoted".]) <fig:a> 4.7~kΩ 🙂 #set text(red); after';
+  const root = parseTypst(text);
+  assert.equal(findAll(root, (n) => !n.children).map((n) => n.text).join(''), text, 'every character in one leaf, wide ones too');
+  const call = callOf(root.children[1]);
   assert.equal(call.name, 'figure');
-  assert.deepEqual(call.args.map((a) => [a.name, a.value]), [[null, 'image("/a.png", width: 50%)'], ['caption', '[See @fig:b, "quoted".]']]);
-  assert.deepEqual(splitArgs('a, b: (1, 2), c: "x, y"').map((a) => a.value), ['a', '(1, 2)', '"x, y"']);
-  const prose = markupSpans(text).map(([s, e]) => text.slice(s, e)).join('|');
-  assert.match(prose, /See @fig:b, "quoted"\./, 'a caption is markup');
-  assert.doesNotMatch(prose, /a\.png|comment/, 'an argument and a comment are not');
-  const statements = '#import "@preview/cetz:0.3.4": canvas // 5" wide\n#block[#set text(red)]\nSee @fig:a.';
-  assert.equal(markupSpans(statements).map(([s, e]) => statements.slice(s, e)).join('').trim(), 'See @fig:a.', 'a statement runs to the end of its line or its bracket');
+  assert.deepEqual(call.args.map((a) => [a.name, a.value.text]), [[null, 'image("/a.png", width: 50%)'], ['caption', '[See @fig:b, "quoted".]']]);
+  assert.deepEqual(root.children.slice(-4).map((n) => n.kind), ['SetRule', 'Semicolon', 'Space', 'Text'], 'a statement ends at its semicolon');
+  const uses = typstUses('#import "/style.typ": *\n= A <sec:a>\nSee @sec:a and @Knuth1984[p.~4], not `@sec:b` // or @sec:c\n#cite(<Lamport1994>, form: "prose") #ref(<sec:a>)\n#figure(include "/diagrams/x.typ") #include "chapters/b.typ"\n#bibliography("refs.bib", style: "apa")');
+  assert.deepEqual([uses.labels, uses.at, uses.refs, uses.cites, uses.includes, uses.imports, uses.bibliography], [['sec:a'], ['sec:a', 'Knuth1984'], ['sec:a'], ['Lamport1994'], ['chapters/b.typ'], ['/style.typ'], { path: 'refs.bib', style: 'apa' }]);
+});
+
+test('the Typst pre-pass reads semicolons, a #text over lines, short rules, the document’s own functions and packages', () => {
+  const notes = [];
+  const ctx = { facts: typstFacts(), main: 'main.typ', labels: new Set(['sec:a']), bibKeys: new Set(['Masters2013']), used: new Set(), pictures: [], images: new Set(), refsOut: [], citesOut: [], note: (st, snippet, text) => notes.push(text), include: () => null };
+  const source = [
+    '#import "@preview/spectrum-sketch:0.1.0": sketch',
+    '#set text(size: 10pt); #set heading(numbering: none)',
+    '#let rated(value) = [rated at #value]',
+    '#let stars(n) = for i in range(n) [★]',
+    '#let boxed(body) = { set text(weight: "bold"); box(body) }',
+    '#align(center)[',
+    '  #title()',
+    '  #text(size: 12pt)[Your Name \\',
+    '    School of Engineering]',
+    ']',
+    '= One <sec:a>',
+    '#let speed = [13~V/µs]; The slew rate is #speed, #rated[4.7~kΩ], as @sec:a and @Masters2013[p.~45] say. #stars(3) #boxed[Kept, @sec:a.]',
+    '',
+    '#sketch[A drawing]',
+    '',
+    '#table(columns: 3, stroke: none, [a], [b], [c], table.hline(start: 1, end: 3), [d], [e], [f], table.hline(start: 2, end: none), [g], [h], [i])'
+  ].join('\n');
+  const { input, state } = prepareTypst(source, ctx, { file: 'main.typ' });
+  assert.deepEqual([ctx.facts.size, ctx.facts.headingNumbers], [10, false], 'both rules of a line');
+  assert.match(input, /The slew rate is SPXI\d+X, rated at SPXI\d+X, as SPXI\d+X say\. SPXB\d+X Kept, SPXI\d+X\./);
+  assert.deepEqual(state.inlines, ['\\qty{13}{\\volt\\per\\micro\\second}', '\\qty{4.7}{\\kilo\\ohm}', '\\cref{sec:a} and \\parencite[p.~45]{Masters2013}', '\\cref{sec:a}']);
+  assert.deepEqual(state.blocks.map((b) => b.kind + (b.inline ? ' inline' : '')), ['maketitle', 'heading', 'picture inline', 'picture', 'table']);
+  assert.match(state.pieces[state.blocks[0].lines[0]].markup, /^#text\(size: 12pt\)\[Your Name \\\s+School of Engineering\]$/, 'the #text over two lines is one line of the title block');
+  assert.deepEqual(ctx.pictures.map((p) => [p.body, p.what]), [['stars(3)', 'the output of the document’s own function stars'], ['sketch[A drawing]', 'a drawing made with @preview/spectrum-sketch:0.1.0']]);
+  assert.deepEqual(state.blocks[4].model.partRules, [{ row: 0, from: 1, to: 2 }, { row: 1, from: 2, to: 2 }]);
+  assert.match(notes.join('\n'), /function boxed does more than Spectrum can write in LaTeX, so only the text given to it was kept/);
 });
 
 test('a Typst table from the table tool, its cells Typst already', () => {

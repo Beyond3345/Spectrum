@@ -1,0 +1,22 @@
+[package]
+name = "spectrum-typst-syntax"
+version = "0.15.1"
+edition = "2024"
+license = "MIT"
+publish = false
+description = "Typst's own parser (typst-syntax) as WebAssembly, for Spectrum's converter"
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+# the parser of the Typst Spectrum bundles; scripts/native.mjs checks it against native/checkers.lock.json
+typst-syntax = "=0.15.1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

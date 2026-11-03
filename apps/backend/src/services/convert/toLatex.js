@@ -1,10 +1,13 @@
-// Typst to LaTeX for documents written to docs/TYPST_STYLE.md, on pandoc's Typst reader, as section 5.2 of
-// docs/featureResearch/LATEX_TYPST_CONVERSION.md designs it. A pre-pass reads the preamble's rules as facts and holds
-// every house construct (headings, equations, figures, tables, listings, pseudocode, theorems, the title block, units,
-// references and citations) as a token, pandoc writes the prose and each held piece as LaTeX in one run, and the house
-// writers of LATEX_STYLE.md put the constructs back. Pure: the caller runs pandoc and Typst (convertService.js).
+// Typst to LaTeX for documents written to docs/TYPST_STYLE.md, as section 5.2 of docs/featureResearch/
+// LATEX_TYPST_CONVERSION.md designs it, read with Typst's own parser (typstRead.js). The pre-pass walks each file's
+// syntax tree: the preamble's rules become facts, every house construct (headings, equations, figures, tables,
+// listings, pseudocode, theorems, the title block, units, references and citations) is held as a token, the
+// document's own simple functions are expanded, and what LaTeX cannot have (a package's drawing, Typst scripting)
+// becomes a picture Typst compiles. What is left for pandoc is plain Typst prose, which it writes with each held piece
+// as LaTeX in one run, and the house writers of LATEX_STYLE.md put the constructs back. Pure: the caller runs pandoc and
+// Typst (convertService.js).
 import { figureLatex, figureSetLatex, tableEdges, tableLatex } from '../../latex/floats.js';
-import { arg, callAt, contentOf, expressionEnd, groupEnd, markupSpans, statementEnd, stringOf } from './typstRead.js';
+import { arg, argsOf, callOf, calleeName, findAll, labelName, leaf, markupOf, markupText, parseTypst, significant, stringOf } from './typstRead.js';
 import { typedNumber, typedUnit } from './units.js';
 
 const TYPST_LANGUAGES = { python: 'Python', py: 'Python', c: 'C', cpp: 'C++', 'c++': 'C++', java: 'Java', matlab: 'Matlab', bash: 'bash', sh: 'bash', sql: 'SQL', javascript: 'JavaScript', js: 'JavaScript', html: 'HTML', latex: 'TeX', tex: 'TeX', r: 'R', rust: 'Rust', go: 'Go', ruby: 'Ruby', haskell: 'Haskell', fortran: 'Fortran', csharp: '[Sharp]C', xml: 'XML', typst: '' };
@@ -13,13 +16,21 @@ const COL = 40;
 const commented = (code, comment) => (code.length < COL ? code.padEnd(COL) : code + ' ') + '% ' + comment;
 const LATEX_SPECIAL = /[\\{}$&%#_^~]/g;
 const texText = (text) => String(text).replace(LATEX_SPECIAL, (ch) => ({ '\\': '\\textbackslash{}', '^': '\\textasciicircum{}', '~': '\\textasciitilde{}' })[ch] ?? '\\' + ch);
-const LABEL = /^\s*<([A-Za-z0-9_:.-]+)>/;
+
+// the statements, which change what follows rather than print anything
+const STATEMENTS = new Set(['SetRule', 'ShowRule', 'LetBinding', 'ModuleImport']);
+// the house definitions, which LATEX_STYLE.md has its own of
+const HOUSE = ['subfigure', 'theorem-number', 'theorem-like', 'proof', 'solution', 'by-section', 'accent'];
+// what makes a function more than a template to fill in: scripting, and rules or definitions of its own
+const SCRIPTING = new Set(['Closure', 'LetBinding', 'SetRule', 'ShowRule', 'Contextual', 'Conditional', 'WhileLoop', 'ForLoop', 'CodeBlock', 'FuncReturn', 'LoopBreak', 'LoopContinue', 'DestructAssignment', 'ModuleImport', 'ModuleInclude', 'Spread']);
+// Typst's own functions a document calls in its text; any other name may be a package's, when one is imported with *
+const BUILT_IN = new Set(['align', 'bibliography', 'block', 'box', 'circle', 'cite', 'cmyk', 'colbreak', 'color', 'columns', 'context', 'counter', 'curve', 'datetime', 'ellipse', 'emph', 'emoji', 'enum', 'figure', 'footnote', 'grid', 'h', 'heading', 'hide', 'highlight', 'image', 'label', 'layout', 'line', 'linebreak', 'link', 'list', 'lorem', 'lower', 'luma', 'math', 'measure', 'metadata', 'move', 'numbering', 'outline', 'overline', 'pad', 'pagebreak', 'parbreak', 'place', 'polygon', 'query', 'quote', 'raw', 'rect', 'ref', 'repeat', 'rgb', 'rotate', 'scale', 'skew', 'smallcaps', 'square', 'stack', 'state', 'str', 'strike', 'strong', 'sub', 'super', 'sym', 'table', 'terms', 'text', 'title', 'underline', 'upper', 'v']);
 
 // ─── The facts of the preamble ───
 
 /** An empty fact sheet, filled by the preamble's rules and definitions. */
 export function typstFacts() {
-  return { title: null, author: null, paper: 'a4', margin: null, numbering: '1', size: 11, lang: 'en', region: 'AU', headingNumbers: true, report: false, bySection: false, bibTitle: null, theorems: new Map(), house: new Set(), definitions: [], packages: [] };
+  return { title: null, author: null, paper: 'a4', margin: null, numbering: '1', size: 11, lang: 'en', region: 'AU', headingNumbers: true, equationNumbers: false, report: false, bySection: false, bibTitle: null, theorems: new Map(), house: new Set(), definitions: [], functions: new Map(), packages: [] };
 }
 
 /** A Typst length as TeX writes it: 25mm, 1.5cm, 12pt; 1fr as \fill. */
@@ -31,61 +42,109 @@ const texLength = (value) => {
   return share ? +(Number(share[1]) / 100).toFixed(2) + '\\linewidth' : null;
 };
 
-/** One #set, #show, #let or #import at the top of a file, read into the facts; true when it's done with. */
-function readStatement(kind, text, facts, st) {
-  const call = callAt(text, text.indexOf(kind) + kind.length + 1);
-  if (kind === 'set' && call) {
-    const a = call.args;
-    if (call.name === 'document') {
-      if (arg(a, 'title') !== null) facts.title = contentOf(arg(a, 'title')) ?? stringOf(arg(a, 'title'));
-      if (arg(a, 'author') !== null) facts.author = stringOf(arg(a, 'author')) ?? arg(a, 'author').replace(/[()"]/g, '').trim();
-    } else if (call.name === 'page') {
-      if (arg(a, 'paper')) facts.paper = stringOf(arg(a, 'paper')) ?? facts.paper;
-      if (arg(a, 'margin')) facts.margin = arg(a, 'margin');
-      if (arg(a, 'numbering') !== null) facts.numbering = stringOf(arg(a, 'numbering'));
-    } else if (call.name === 'text') {
-      const size = /^(\d+(?:\.\d+)?)pt$/.exec(arg(a, 'size') ?? '');
+/** A set rule as a call: { name, args, bodies }. */
+const setRule = (node) => ({ name: calleeName(node.children.find((c) => c.kind === 'Ident' || c.kind === 'FieldAccess')), ...argsOf(node.children.find((c) => c.kind === 'Args')) });
+
+/** The names an import of a package brings in: the name it goes by, unless only items are taken, and its items; * for all. */
+function importedNames(node, from) {
+  const items = node.children.find((c) => c.kind === 'ImportItems');
+  const as = node.children.findIndex((c) => c.kind === 'As');
+  const own = as !== -1 ? node.children.slice(as + 1).find((c) => c.kind === 'Ident')?.text : items || node.children.some((c) => c.kind === 'Star') ? null : /^@[^/]+\/([^:]+)/.exec(from)?.[1];
+  const taken = items ? significant(items).filter((c) => c.kind !== 'Comma').map((item) => findAll(item, (n) => n.kind === 'Ident').pop()?.text) : [];
+  return [own, ...taken, ...(node.children.some((c) => c.kind === 'Star') ? ['*'] : [])].filter(Boolean);
+}
+
+/** The package a name (or the namespace before its dot) comes from, as its import has it, or null. */
+function packageOf(name, facts) {
+  const head = String(name ?? '').split('.')[0];
+  if (!head) return null;
+  const named = facts.packages.find((p) => p.names.includes(head));
+  if (named) return named.from;
+  const known = BUILT_IN.has(head) || HOUSE.includes(head) || facts.functions.has(head) || facts.theorems.has(head);
+  return known ? null : facts.packages.find((p) => p.names.includes('*'))?.from ?? null;
+}
+
+/**
+ * A #let of the document's own: { params (its closure's, null for a value), body, simple, text }. A simple one is a
+ * template to fill in, with no scripting, packages or functions of its own that aren't, and no parameter it calls or
+ * takes a field of; Spectrum expands it where it is used.
+ */
+function definitionOf(node, facts) {
+  const [, bound] = significant(node);
+  const closure = bound?.kind === 'Closure' ? bound : null;
+  const name = closure ? (closure.children[0]?.kind === 'Ident' ? closure.children[0].text : null) : bound?.kind === 'Ident' ? bound.text : null;
+  if (!name || !node.children.some((c) => c.kind === 'Eq') && !closure) return { name: null };
+  const body = significant(closure ?? node).at(-1);
+  const params = closure ? closure.children.find((c) => c.kind === 'Params') : null;
+  const list = significant(params).filter((p) => !['LeftParen', 'RightParen', 'Comma'].includes(p.kind));
+  const names = new Set(list.map((p) => (p.kind === 'Named' ? p.children[0].text : p.text)));
+  const simple = list.every((p) => p.kind === 'Ident' || p.kind === 'Named') && !findAll(body, (n) => SCRIPTING.has(n.kind)
+    || ((n.kind === 'FieldAccess' || n.kind === 'FuncCall') && names.has(n.children[0]?.text))
+    || (n.kind === 'Ident' && (n.text === name || facts.functions.get(n.text)?.simple === false || facts.packages.some((p) => p.names.includes(n.text))))).length;
+  return { name, params, body, simple, text: '#' + node.text };
+}
+
+/** One #set, #show, #let or #import read into the facts. */
+function readStatement(node, facts, st, ctx) {
+  if (node.kind === 'SetRule') {
+    const rule = setRule(node);
+    const value = (name) => arg(rule, name);
+    if (rule.name === 'document') {
+      if (value('title')) facts.title = markupText(value('title'));
+      if (value('author')) facts.author = stringOf(value('author')) ?? significant(value('author')).map(stringOf).filter(Boolean).join(', ');
+    } else if (rule.name === 'page') {
+      if (value('paper')) facts.paper = stringOf(value('paper')) ?? facts.paper;
+      if (value('margin')) facts.margin = value('margin').text;
+      if (value('numbering')) facts.numbering = stringOf(value('numbering'));
+    } else if (rule.name === 'text') {
+      const size = /^(\d+(?:\.\d+)?)pt$/.exec(value('size')?.text ?? '');
       if (size) facts.size = Number(size[1]);
-      if (arg(a, 'lang')) facts.lang = stringOf(arg(a, 'lang'));
-      if (arg(a, 'region') !== null) facts.region = stringOf(arg(a, 'region')) ?? '';
-    } else if (call.name === 'heading' && arg(a, 'numbering') !== null) facts.headingNumbers = stringOf(arg(a, 'numbering')) !== null;
-    else if (call.name === 'math.equation' || call.name === 'figure') facts.bySection ||= /by-section/.test(arg(a, 'numbering') ?? '');
-    else if (call.name === 'bibliography') facts.bibTitle = contentOf(arg(a, 'title'));
-    return true;
+      if (value('lang')) facts.lang = stringOf(value('lang')) ?? facts.lang;
+      if (value('region')) facts.region = stringOf(value('region')) ?? '';
+    } else if (rule.name === 'heading' && value('numbering')) facts.headingNumbers = value('numbering').kind !== 'None';
+    else if (rule.name === 'math.equation' || rule.name === 'figure') {
+      if (rule.name === 'math.equation' && value('numbering')) facts.equationNumbers = value('numbering').kind !== 'None';
+      facts.bySection ||= /by-section/.test(value('numbering')?.text ?? '');
+    } else if (rule.name === 'bibliography') facts.bibTitle = markupText(value('title'));
+    return;
   }
-  if (kind === 'show') {
-    if (/supplement:\s*\[Chapter\]/.test(text)) facts.report = true;
-    return true;
+  if (node.kind === 'ShowRule') {
+    if (/supplement:\s*\[Chapter\]/.test(node.text)) facts.report = true;
+    // a template applied to the whole document, #show: conf.with(...), which LaTeX has no counterpart of
+    if (significant(node)[1]?.kind === 'Colon' && ctx) ctx.note(st, node.text, 'The rule #' + node.text.split('\n')[0].trim() + ' styles the whole document with a function, which was left out.');
+    return;
   }
-  if (kind === 'import') {
-    const from = stringOf(/^#import\s+("[^"]*")/.exec(text)?.[1] ?? '');
-    // a package pandoc can't read, kept for the pictures, which Typst compiles with it
-    if (from?.startsWith('@')) facts.packages.push({ from, text });
+  if (node.kind === 'ModuleImport') {
+    const from = stringOf(node.children.find((c) => c.kind === 'Str'));
+    // a package, kept for the pictures, which Typst compiles with it
+    if (from?.startsWith('@')) facts.packages.push({ from, text: '#' + node.text, names: importedNames(node, from) });
     else if (from) facts.imports = [...(facts.imports ?? []), from];
-    return true;
+    return;
   }
-  if (kind === 'let') {
-    const name = /^#let\s+([A-Za-z_][\w-]*)/.exec(text)?.[1];
-    const like = /^#let\s+([A-Za-z_][\w-]*)\s*=\s*theorem-like\(\s*\[([^\]]*)\]\s*(?:,\s*([^)]*))?\)/.exec(text);
+  if (node.kind === 'LetBinding') {
+    const [, bound] = significant(node);
+    const value = significant(node).at(-1);
+    const like = bound?.kind === 'Ident' && callOf(value)?.name === 'theorem-like' ? callOf(value) : null;
     if (like) {
-      facts.theorems.set(like[1], { display: like[2], style: /head-style:\s*emph/.test(like[3] ?? '') ? 'remark' : /body-style:\s*emph/.test(like[3] ?? '') ? 'plain' : 'definition' });
-      return true;
+      const style = arg(like, 'head-style')?.text === 'emph' ? 'remark' : arg(like, 'body-style')?.text === 'emph' ? 'plain' : 'definition';
+      facts.theorems.set(bound.text, { display: markupOf(arg(like, null, 0))?.text ?? bound.text, style });
+      return;
     }
-    if (['subfigure', 'theorem-number', 'theorem-like', 'proof', 'solution', 'by-section', 'accent'].includes(name)) {
-      facts.house.add(name);
-      return true;
+    const definition = definitionOf(node, facts);
+    if (HOUSE.includes(definition.name)) {
+      facts.house.add(definition.name);
+      return;
     }
-    // the document's own definitions stay for pandoc, which evaluates them
-    facts.definitions.push(text);
-    return true;
+    // every definition goes with the pictures, which Typst compiles; the document's own are expanded where they are used
+    facts.definitions.push('#' + node.text);
+    if (definition.name) facts.functions.set(definition.name, definition);
   }
-  return false;
 }
 
 // ─── The pre-pass ───
 
 function newState(file, source) {
-  const st = { file, source, blocks: [], inlines: [], pieces: [], held: [] };
+  const st = { file, source, blocks: [], inlines: [], pieces: [], body: false, depth: 0 };
   st.block = (record) => {
     st.blocks.push(record);
     return '\n\nSPXB' + (st.blocks.length - 1) + 'X\n\n';
@@ -95,28 +154,16 @@ function newState(file, source) {
     st.inlines.push(latex);
     return 'SPXI' + (st.inlines.length - 1) + 'X';
   };
-  st.hold = (text) => {
-    st.held.push(text);
-    return 'SPXH' + (st.held.length - 1) + 'X';
-  };
-  st.restore = (text) => text.replace(/SPXH(\d+)X/g, (_, n) => st.restore(st.held[n]));
   // a construct that stays in its paragraph, as an equation does in LaTeX
   st.inlineBlock = (record) => {
     st.blocks.push(record);
     return 'SPXB' + (st.blocks.length - 1) + 'X';
   };
-  st.piece = (markup, block = false) => {
-    st.pieces.push({ markup: String(markup ?? '').trim(), block });
-    return st.pieces.length - 1;
-  };
   return st;
 }
 
-/** The line of a construct in its file, found by its first characters. */
-const lineOf = (st, snippet) => {
-  const at = st.source.indexOf(String(snippet).trim().slice(0, 60));
-  return at === -1 ? null : st.source.slice(0, at).split('\n').length;
-};
+/** The line of a node in its file; null for one from a function's expansion. */
+const lineAt = (st, node) => (node.source === st.source ? st.source.slice(0, node.start).split('\n').length : null);
 
 /**
  * One Typst file made ready for pandoc: { input, state }. The preamble's rules and definitions go into facts (the main
@@ -124,156 +171,395 @@ const lineOf = (st, snippet) => {
  */
 export function prepareTypst(source, ctx, { file }) {
   const st = newState(file, source);
-  // raw text first, which nothing else may read into
-  let body = source.replace(/```[\s\S]*?```|`[^`\n]*`/g, (raw) => st.hold(raw));
-  body = statements(body, st, ctx);
+  // a piece of markup pandoc writes on its own, which its construct puts in its place
+  st.piece = (markup, block = false) => {
+    st.pieces.push({ markup: pieceMarkup(markup, st, ctx).trim(), block });
+    return st.pieces.length - 1;
+  };
+  const root = parseTypst(source);
+  for (const error of findAll(root, (n) => n.kind === 'Error')) ctx.note(st, error.text, 'Typst reads this as an error (' + error.message + '), so it may not have come over as meant.');
+  const body = emit(root.children, st, ctx, true);
   // the title, which \maketitle and \hypersetup print
   if (ctx.facts.title !== null && st.file === ctx.main) st.titlePiece = st.piece(ctx.facts.title);
-  body = blockPass(body, st, ctx);
-  body = inlinePass(body, st, ctx);
-  for (const p of st.pieces) p.markup = inlinePass(p.block ? blockPass(p.markup, st, ctx) : p.markup, st, ctx);
   const pieces = st.pieces.map((p, n) => '\n\nSPXPIECESTART' + n + '\n\n' + p.markup + '\n\nSPXPIECEEND' + n + '\n').join('');
-  const definitions = ctx.facts.definitions.map((d) => inlinePass(d, st, ctx));
-  const input = definitions.join('\n') + '\n\n' + body + '\n' + pieces;
-  return { input: st.restore(input), state: st };
+  return { input: body + '\n' + pieces, state: st };
+}
+
+/** What a piece is made of as pandoc's input: markup or a content block, a string, an equation, nodes, or markup's text. */
+function pieceMarkup(markup, st, ctx) {
+  if (markup === null || markup === undefined) return '';
+  if (typeof markup === 'string') return emitText(markup, st, ctx);
+  if (Array.isArray(markup)) return emit(markup, st, ctx);
+  if (markupOf(markup)) return emit(markupOf(markup).children, st, ctx);
+  if (markup.kind === 'Str') return emitText(markupText(markup), st, ctx);
+  if (markup.kind === 'Equation') return maths(markup, st, ctx);
+  return emitText('#' + markup.text, st, ctx);
+}
+
+/** Markup's text as pandoc's input, read with Typst's parser. */
+const emitText = (text, st, ctx) => emit(parseTypst(text).children, st, ctx);
+
+const QUIET = new Set(['Space', 'Parbreak', 'LineComment', 'BlockComment', 'Semicolon']);
+/** Whether a space or paragraph break ends a line; the edge of the markup does too. */
+const breaksLine = (node) => !node || node.kind === 'Parbreak' || (node.kind === 'Space' && node.text.includes('\n'));
+/** Where a line of a title block or of pseudocode ends: a \, or the end of a source line. */
+const lineEnd = (node) => node.kind === 'Linebreak' || node.kind === 'Parbreak' || (node.kind === 'Space' && node.text.includes('\n'));
+
+/**
+ * Markup nodes as pandoc's input: each house construct held as a block or a token, the document's own functions
+ * expanded, rules and comments taken out, everything else as written. top: a file's own markup, where the statements
+ * before its first text are the preamble's facts.
+ */
+function emit(markup, st, ctx, top = false) {
+  const nodes = markup.slice();
+  let out = '';
+  // where the text is, which is where units are typed
+  const prose = [];
+  for (let i = 0; i < nodes.length; i += 1) {
+    const node = nodes[i];
+    if (top && !st.body && !QUIET.has(node.kind) && !(node.kind === 'Hash' && STATEMENTS.has(nodes[i + 1]?.kind))) st.body = true;
+    switch (node.kind) {
+      case 'Hash': {
+        const { text, next } = embedded(nodes, i, st, ctx);
+        out += text;
+        i = next - 1;
+        break;
+      }
+      case 'Heading': {
+        const { label, end } = labelAfter(nodes, i + 1);
+        out += st.block({ kind: 'heading', level: node.children[0].text.length, numbered: ctx.facts.headingNumbers, title: st.piece(node.children.find((c) => c.kind === 'Markup')), label });
+        i = end - 1;
+        break;
+      }
+      case 'Equation': {
+        // display maths: $ ... $ with a space inside each dollar, numbered as the preamble says
+        if (node.children[1]?.kind === 'Space' && node.children.at(-2)?.kind === 'Space') {
+          const { label, end } = labelAfter(nodes, i + 1);
+          out += st.inlineBlock({ kind: 'equation', numbered: ctx.facts.equationNumbers, maths: st.piece(node), aligned: /&|\\\s/.test(node.text), label, line: lineAt(st, node) });
+          i = end - 1;
+        } else out += maths(node, st, ctx);
+        break;
+      }
+      case 'Ref': {
+        // @a @b and @a and @b, which become one command
+        const run = [node];
+        let and = false;
+        let j = i + 1;
+        for (;;) {
+          let k = j;
+          if (nodes[k]?.kind !== 'Space') break;
+          const word = nodes[k + 1]?.kind === 'Text' && nodes[k + 1].text === 'and' && nodes[k + 2]?.kind === 'Space';
+          k += word ? 3 : 1;
+          if (nodes[k]?.kind !== 'Ref') break;
+          and ||= word;
+          run.push(nodes[k]);
+          j = k + 1;
+        }
+        out += references(run, and, st, ctx);
+        i = j - 1;
+        break;
+      }
+      case 'Text':
+      case 'Shorthand':
+        prose.push([out.length, out.length + node.text.length]);
+        out += node.text;
+        break;
+      case 'Strong':
+      case 'Emph':
+      case 'ListItem':
+      case 'EnumItem':
+      case 'TermItem':
+        out += node.children.map((c) => (c.kind === 'Markup' ? emit(c.children, st, ctx) : c.text)).join('');
+        break;
+      case 'LineComment': {
+        // a comment on lines of its own between paragraphs comes over as one; any other goes, with its line
+        const [before, after] = [nodes[i - 1], nodes[i + 1]];
+        const own = breaksLine(before) && breaksLine(after);
+        const text = node.text.replace(/^\/\/\s?/, '').trim();
+        if (top && st.body && own && text && (!before || !after || before.kind === 'Parbreak' || after.kind === 'Parbreak')) out += st.block({ kind: 'raw', latex: '% ' + text });
+        else if (own && after) {
+          out += after.text.slice(after.text.indexOf('\n') + 1);
+          i += 1;
+        }
+        break;
+      }
+      case 'BlockComment':
+        break;
+      default:
+        out += node.text;
+    }
+  }
+  return units(out, prose, st, ctx);
+}
+
+/** The label after a construct that ends before nodes[k], past spaces: { label, end }, end just past it. */
+function labelAfter(nodes, k) {
+  let j = k;
+  while (nodes[j]?.kind === 'Space') j += 1;
+  return nodes[j]?.kind === 'Label' ? { label: labelName(nodes[j]), end: j + 1 } : { label: null, end: k };
+}
+
+/** Whether the expression from nodes[i] up to nodes[end] is a paragraph of its own. */
+function alone(nodes, i, end) {
+  const quiet = (n) => n.kind === 'Space' || n.kind === 'LineComment' || n.kind === 'BlockComment' || n.kind === 'Semicolon' || n.kind === 'Label';
+  let a = i - 1;
+  while (a >= 0 && quiet(nodes[a])) a -= 1;
+  let b = end;
+  while (b < nodes.length && quiet(nodes[b])) b += 1;
+  return (a < 0 || nodes[a].kind === 'Parbreak') && (b >= nodes.length || nodes[b].kind === 'Parbreak');
 }
 
 /**
- * The file's top-level statements (#set, #show, #let, #import) read as facts and taken out, and its comments: one on
- * lines of its own outside any brackets comes over as a % comment, any other goes. The rules in the body that change
- * the layout from there on (page numbering, the appendix) become blocks.
+ * References and citations: @label as \cref, @key as \parencite with its page supplement, a run of either as one
+ * command; a key no .bib file has is left out.
  */
-function statements(text, st, ctx) {
-  let out = '';
-  let body = false;
-  for (let i = 0; i < text.length; ) {
-    const lineEnd = text.indexOf('\n', i) === -1 ? text.length : text.indexOf('\n', i);
-    const line = text.slice(i, lineEnd);
-    const statement = /^\s*#(set|show|let|import)\s/.exec(line);
-    if (statement) {
-      const start = i + line.indexOf('#');
-      const end = statementEnd(text, start);
-      const whole = text.slice(start, end);
-      if (body && statement[1] === 'set' && /^#set\s+page\(/.test(whole)) {
-        const numbering = stringOf(arg(callAt(whole, 5)?.args ?? [], 'numbering') ?? '');
-        out += st.block({ kind: 'numbering', style: numbering });
-      } else if (body && statement[1] === 'set' && /^#set\s+heading\(\s*numbering:\s*"A/.test(whole)) {
-        out += st.block({ kind: 'appendix' });
-      } else if (!(body && statement[1] === 'show')) {
-        readStatement(statement[1], whole, ctx.facts, st);
-      }
-      i = end + 1;
-      continue;
-    }
-    // a comment on lines of its own
-    const comment = /^\s*\/\/\s?(.*)$/.exec(line);
-    if (comment) {
-      const prev = out.endsWith('\n\n') || !out.trim();
-      const next = !text.slice(lineEnd + 1, text.indexOf('\n', lineEnd + 1) === -1 ? undefined : text.indexOf('\n', lineEnd + 1)).trim();
-      if (comment[1].trim() && (prev || next) && body) out += st.block({ kind: 'raw', latex: '% ' + comment[1].trim() });
-      i = lineEnd + 1;
-      continue;
-    }
-    if (line.trim()) body = true;
-    // any other line, without its comments (a URL's // is not one)
-    out += line.replace(/(^|[^:\\])\/\/.*$/, '$1').replace(/\/\*.*?\*\//g, '') + '\n';
-    i = lineEnd + 1;
+function references(run, and, st, ctx) {
+  const parts = run.map((r) => ({ name: r.children[0].text.slice(1), supplement: markupOf(r.children.find((c) => c.kind === 'ContentBlock'))?.text ?? null }));
+  const known = (p) => ctx.labels.has(p.name);
+  if (parts.every(known)) {
+    ctx.refsOut.push(...parts.map((p) => p.name));
+    return st.inline('\\cref{' + parts.map((p) => p.name).join(',') + '}');
   }
+  if (!parts.some(known) && !and) {
+    const cited = parts.filter((p) => ctx.bibKeys.has(p.name));
+    ctx.citesOut.push(...cited.map((p) => p.name));
+    if (cited.length < parts.length) ctx.note(st, run[0].text, 'A citation of a key no .bib file has was left out: ' + parts.filter((p) => !ctx.bibKeys.has(p.name)).map((p) => p.name).join(', ') + '.');
+    const page = cited.find((p) => p.supplement)?.supplement;
+    return cited.length ? st.inline('\\parencite' + (page ? '[' + page + ']' : '') + '{' + cited.map((p) => p.name).join(',') + '}') : '';
+  }
+  // a run of both goes one at a time
+  return st.inline(parts.map((p) => {
+    if (known(p)) {
+      ctx.refsOut.push(p.name);
+      return '\\cref{' + p.name + '}';
+    }
+    if (!ctx.bibKeys.has(p.name)) return texText(p.name);
+    ctx.citesOut.push(p.name);
+    return '\\parencite' + (p.supplement ? '[' + p.supplement + ']' : '') + '{' + p.name + '}';
+  }).join(and ? ' and ' : ' '));
+}
+
+/** An embedded expression, #… with its hash at nodes[i], as pandoc's input: { text, next }, next the index past it. */
+function embedded(nodes, i, st, ctx) {
+  const node = nodes[i + 1];
+  if (!node) return { text: '', next: i + 1 };
+  const semicolon = nodes[i + 2]?.kind === 'Semicolon';
+  const next = i + 2 + (semicolon ? 1 : 0);
+  if (STATEMENTS.has(node.kind)) return { text: statement(node, st, ctx), next };
+  switch (node.kind) {
+    case 'ModuleInclude':
+      return { text: st.block({ kind: 'include', path: ctx.include(st, stringOf(node.children.find((c) => c.kind === 'Str'))) }), next };
+    case 'FuncCall':
+      return embeddedCall(nodes, i, st, ctx);
+    case 'ContentBlock':
+      return { text: emit(markupOf(node).children, st, ctx), next };
+    case 'Ident': {
+      const def = ctx.facts.functions.get(node.text);
+      // a function named but not called prints nothing worth having
+      if (def?.params) return { text: '', next };
+      if (def && !def.simple) return { text: pictureOf(node, !alone(nodes, i, next), 'the value ' + node.text + ' the document works out', st, ctx), next };
+      if (def) return { text: valueMarkup(def, st, ctx), next };
+      if (packageOf(node.text, ctx.facts)) return { text: pictureOf(node, !alone(nodes, i, next), 'what ' + packageOf(node.text, ctx.facts) + ' gives for ' + node.text, st, ctx), next };
+      break;
+    }
+    case 'CodeBlock':
+    case 'Contextual':
+    case 'Conditional':
+    case 'ForLoop':
+    case 'WhileLoop':
+      return { text: pictureOf(node, !alone(nodes, i, next), 'the output of Typst scripting', st, ctx), next };
+  }
+  return { text: '#' + code(node, st, ctx) + (semicolon ? ';' : ''), next };
+}
+
+/** A value of the document's own as the markup it stands for. */
+const valueMarkup = (def, st, ctx) => (def.body.kind === 'ContentBlock' ? emit(markupOf(def.body).children, st, ctx) : def.body.kind === 'Str' ? emitText(markupText(def.body), st, ctx) : '#' + code(def.body, st, ctx));
+
+/** A statement in markup: the preamble's are read as facts; in the body a page numbering or the appendix's is a block. */
+function statement(node, st, ctx) {
+  if (st.body && node.kind === 'SetRule') {
+    const rule = setRule(node);
+    if (rule.name === 'page' && arg(rule, 'numbering')) return st.block({ kind: 'numbering', style: stringOf(arg(rule, 'numbering')) });
+    if (rule.name === 'heading' && /^"A/.test(arg(rule, 'numbering')?.text ?? '')) return st.block({ kind: 'appendix' });
+    return '';
+  }
+  if (!(st.body && node.kind === 'ShowRule')) readStatement(node, ctx.facts, st, ctx);
+  return '';
+}
+
+/** A call embedded in markup: a house construct, an inline command, the document's own function or a package's. */
+function embeddedCall(nodes, i, st, ctx) {
+  const node = nodes[i + 1];
+  const call = callOf(node);
+  const semicolon = nodes[i + 2]?.kind === 'Semicolon';
+  const next = i + 2 + (semicolon ? 1 : 0);
+  const record = construct(call, st, ctx);
+  if (record) {
+    const { label, end } = labelAfter(nodes, i + 2);
+    const held = { ...record, label: record.label ?? label, line: lineAt(st, node) };
+    return { text: record.kind === 'equation' ? st.inlineBlock(held) : st.block(held), next: label ? end : next };
+  }
+  const inline = inlineCall(call, nodes, i + 2, st, ctx);
+  if (inline) return { text: inline.text, next: inline.next ?? next };
+  const def = call.name && ctx.facts.functions.get(call.name);
+  if (def?.params) {
+    const expanded = def.simple && st.depth < 8 ? userCall(def, call, st, ctx) : null;
+    if (expanded !== null) return { text: expanded, next };
+    // a function with logic: the text given to it, or a picture of what it makes from none
+    const contents = [...call.args.filter((a) => a.value.kind === 'ContentBlock').map((a) => a.value), ...call.bodies];
+    if (!contents.length) return { text: pictureOf(node, !alone(nodes, i, next), 'the output of the document’s own function ' + call.name, st, ctx), next };
+    ctx.note(st, node.text, 'The document’s own function ' + call.name + ' does more than Spectrum can write in LaTeX, so only the text given to it was kept.');
+    return { text: contents.map((c) => emit(markupOf(c).children, st, ctx)).join(' '), next };
+  }
+  const from = call.name && packageOf(call.name, ctx.facts);
+  if (from) return { text: pictureOf(node, !alone(nodes, i, next), 'a drawing made with ' + from, st, ctx), next };
+  return { text: '#' + code(node, st, ctx) + (semicolon ? ';' : ''), next };
+}
+
+/** What LaTeX can't have, compiled by Typst into a picture: in its line, or a block of its own. */
+function pictureOf(node, inline, what, st, ctx) {
+  ctx.pictures.push({ body: node.text, file: st.file, what });
+  const record = { kind: 'picture', picture: ctx.pictures.length - 1, inline };
+  return inline ? st.inlineBlock(record) : st.block(record);
+}
+
+/**
+ * Code as pandoc's input: its content blocks read as markup, the document's own values and functions put in and a
+ * package's calls as pictures, so pandoc never meets a name it doesn't know.
+ */
+function code(node, st, ctx, parent = null, index = 0) {
+  if (node.kind === 'ContentBlock') return '[' + emit(markupOf(node).children, st, ctx) + ']';
+  const own = !(parent?.kind === 'Named' && index === 0) && !(parent?.kind === 'FieldAccess' && index > 0);
+  if (own && node.kind === 'Ident') {
+    const def = ctx.facts.functions.get(node.text);
+    if (def && !def.params && def.simple) return '(' + code(def.body, st, ctx) + ')';
+  }
+  if (node.kind === 'FuncCall') {
+    const call = callOf(node);
+    const def = call.name && ctx.facts.functions.get(call.name);
+    const expanded = def?.params && def.simple && st.depth < 8 ? userCall(def, call, st, ctx) : null;
+    if (expanded !== null) return '[' + expanded + ']';
+    const from = call.name && packageOf(call.name, ctx.facts);
+    if (from || def) return '[' + pictureOf(node, true, from ? 'a drawing made with ' + from : 'the output of the document’s own function ' + call.name, st, ctx) + ']';
+  }
+  if (!node.children) return node.text;
+  return node.children.map((c, k) => code(c, st, ctx, node, k)).join('');
+}
+
+// what may stand in for a parameter without brackets around it
+const ATOMIC = new Set(['ContentBlock', 'Str', 'Ident', 'FieldAccess', 'FuncCall', 'Numeric', 'Int', 'Float', 'Bool', 'None', 'Auto', 'Parenthesized', 'Array', 'Dict', 'Label', 'CodeBlock', 'Raw']);
+
+/** A call of the document's own simple function as the markup it stands for, read again; null when its arguments don't fit. */
+function userCall(def, call, st, ctx) {
+  const params = significant(def.params).filter((p) => p.kind === 'Ident' || p.kind === 'Named');
+  const positional = [...call.args.filter((a) => a.name === null).map((a) => a.value), ...call.bodies];
+  const bound = new Map();
+  for (const p of params) {
+    if (p.kind === 'Ident') bound.set(p.text, positional.shift());
+    else bound.set(p.children[0].text, arg(call, p.children[0].text) ?? significant(p)[2]);
+  }
+  if (positional.length || [...bound.values()].some((v) => !v)) return null;
+  // each parameter's use, not a named argument's name or a field's, takes the argument's code
+  const fill = (node, parent = null, index = 0) => {
+    if (node.kind === 'Ident' && bound.has(node.text) && !(parent?.kind === 'Named' && index === 0) && !(parent?.kind === 'FieldAccess' && index > 0)) {
+      const value = bound.get(node.text);
+      return ATOMIC.has(value.kind) ? value.text : '(' + value.text + ')';
+    }
+    return node.children ? node.children.map((c, k) => fill(c, node, k)).join('') : node.text;
+  };
+  const text = fill(def.body);
+  const markup = def.body.kind === 'ContentBlock' ? text.slice(1, -1) : '#' + (ATOMIC.has(def.body.kind) ? text : '(' + text + ')');
+  st.depth += 1;
+  const out = emitText(markup, st, ctx);
+  st.depth -= 1;
   return out;
 }
 
-/** The label right after position end, as in ) <fig:x>: { label, end }. */
-function labelAfter(text, end) {
-  const m = LABEL.exec(text.slice(end, end + 200));
-  return m ? { label: m[1], end: end + m[0].length } : { label: null, end };
+/** The calls that stay in their line: #cite, #ref, #h, #v, a full-width #line, today's date and the house \Call; { text, next } or null. */
+function inlineCall(call, nodes, next, st, ctx) {
+  if (/^datetime\.today\(\)/.test(call.node.text)) return { text: st.inline('\\today') };
+  switch (call.name) {
+    case 'cite':
+    case 'ref': {
+      const target = arg(call, null, 0);
+      const key = labelName(target) ?? (callOf(target)?.name === 'label' ? stringOf(arg(callOf(target), null, 0)) : null);
+      if (!key) return null;
+      const form = arg(call, 'form');
+      if (call.name === 'ref') {
+        ctx.refsOut.push(key);
+        return { text: st.inline((stringOf(form) === 'page' ? '\\pageref{' : '\\cref{') + key + '}') };
+      }
+      if (!ctx.bibKeys.has(key)) {
+        ctx.note(st, call.node.text, 'A citation of ' + key + ', which no .bib file has, was left out.');
+        return { text: '' };
+      }
+      ctx.citesOut.push(key);
+      const supplement = markupOf(arg(call, 'supplement'))?.text;
+      const command = form?.kind === 'None' ? 'nocite' : { prose: 'textcite', author: 'citeauthor', year: 'citeyear', full: 'fullcite' }[stringOf(form)] ?? 'parencite';
+      return { text: st.inline('\\' + command + (supplement ? '[' + supplement + ']' : '') + '{' + key + '}') };
+    }
+    case 'h':
+    case 'v': {
+      const length = arg(call, null, 0)?.text ?? '';
+      if (length === '1fr') return { text: st.inline(call.name === 'h' ? '\\hfill' : '\\vfill') };
+      const tex = texLength(length);
+      return { text: tex ? st.inline((call.name === 'h' ? '\\hspace{' : '\\vspace{') + tex + '}') : '' };
+    }
+    case 'line':
+      return arg(call, 'length')?.text === '100%' ? { text: st.inline('\\rule{\\linewidth}{0.4pt}') } : null;
+    case 'smallcaps': {
+      const name = markupOf(call.bodies[0])?.text;
+      if (name === undefined || call.args.length) return null;
+      // #smallcaps[F]$(args)$, a \Call with its arguments in maths
+      const after = nodes[next];
+      const only = after?.kind === 'Equation' ? significant(after.children.find((c) => c.kind === 'Math')) : [];
+      if (only.length === 1 && only[0].kind === 'MathDelimited' && only[0].children[0].text === '(') {
+        return { text: st.inline('\\Call{' + name + '}{') + '$' + only[0].children.slice(1, -1).map((c) => c.text).join('') + '$' + st.inline('}'), next: next + 1 };
+      }
+      // #smallcaps[F];(args), the house \Call: its name and brackets as tokens, its arguments as they are
+      const open = nodes[next];
+      if (nodes[next - 1]?.kind !== 'Semicolon' || open?.kind !== 'Text' || !open.text.startsWith('(')) return null;
+      let depth = 0;
+      for (let j = next; j < nodes.length; j += 1) {
+        if (nodes[j].kind !== 'Text') continue;
+        for (let k = nodes[j].start; k < nodes[j].end; k += 1) {
+          const ch = nodes[j].source[k];
+          if (ch === '(') depth += 1;
+          else if (ch === ')' && (depth -= 1) === 0) {
+            const inner = open.source.slice(open.start + 1, k);
+            // the text after the bracket stays for the markup that follows
+            nodes.splice(next, j - next + 1, ...(k + 1 < nodes[j].end ? [leaf('Text', nodes[j].source, k + 1, nodes[j].end)] : []));
+            return { text: st.inline('\\Call{' + name + '}{') + emitText(inner, st, ctx) + st.inline('}'), next };
+          }
+        }
+      }
+      return null;
+    }
+  }
+  return null;
 }
 
-/**
- * The house constructs in markup, each held as a block with its pieces: headings, display equations, figures, tables,
- * theorems, pseudocode, the title block and page-level calls.
- */
-function blockPass(text, st, ctx) {
-  let out = '';
-  let last = 0;
-  const lineStart = (k) => k === 0 || text[k - 1] === '\n';
-  for (let k = 0; k < text.length; k += 1) {
-    const ch = text[k];
-    if (ch === '\\') {
-      k += 1;
-      continue;
-    }
-    // a heading line: = Title <sec:x>
-    if (ch === '=' && lineStart(k) && /^=+ /.test(text.slice(k, k + 12))) {
-      const end = text.indexOf('\n', k) === -1 ? text.length : text.indexOf('\n', k);
-      const m = /^(=+) ([\s\S]*?)(?:\s*<([A-Za-z0-9_:.-]+)>)?\s*$/.exec(text.slice(k, end));
-      out += text.slice(last, k) + st.block({ kind: 'heading', level: m[1].length, numbered: ctx.facts.headingNumbers, title: st.piece(m[2]), label: m[3] ?? null });
-      last = end;
-      k = end - 1;
-      continue;
-    }
-    // display maths: $ ... $ with a space inside each dollar
-    if (ch === '$') {
-      const close = mathClose(text, k);
-      const inner = text.slice(k + 1, close - 1);
-      if (/^\s/.test(inner) && /\s$/.test(inner)) {
-        const { label, end } = labelAfter(text, close);
-        out += text.slice(last, k) + st.inlineBlock({ kind: 'equation', numbered: true, maths: st.piece('$' + inner + '$'), aligned: /&|\\\s/.test(inner), label });
-        last = end;
-        k = end - 1;
+/** An equation as pandoc's input: the house \Call's name and brackets as string tokens, each typed quantity one token. */
+function maths(node, st, ctx) {
+  const write = (n) => {
+    if (!n.children) return n.text;
+    let text = '';
+    for (let k = 0; k < n.children.length; k += 1) {
+      const c = n.children[k];
+      const call = c.kind === 'Hash' ? callOf(n.children[k + 1]) : null;
+      const name = call?.name === 'smallcaps' && !call.args.length ? markupOf(call.bodies[0])?.text : undefined;
+      const at = k + 2 + (n.children[k + 2]?.kind === 'Semicolon' ? 1 : 0);
+      const delimited = n.children[at];
+      if (name !== undefined && delimited?.kind === 'MathDelimited' && delimited.children[0].text === '(') {
+        text += '"' + st.inline('\\Call{' + name + '}{') + '"' + delimited.children.slice(1, -1).map(write).join('') + '"' + st.inline('}') + '"';
+        k = at;
         continue;
       }
-      k = close - 1;
-      continue;
+      text += write(c);
     }
-    if (ch !== '#') continue;
-    // #include "chapters/x.typ", the one call without brackets
-    const include = /^#include\s+("[^"\n]+")/.exec(text.slice(k, k + 300));
-    if (include) {
-      out += text.slice(last, k) + st.block({ kind: 'include', path: ctx.include(st, stringOf(include[1])) });
-      last = k + include[0].length;
-      k = last - 1;
-      continue;
-    }
-    const call = callAt(text, k);
-    const end = expressionEnd(text, k);
-    const record = call && construct(call, text, k, st, ctx);
-    if (record) {
-      const { label, end: after } = labelAfter(text, end);
-      const held = { ...record, label: record.label ?? label, line: lineOf(st, text.slice(k, k + 40)) };
-      out += text.slice(last, k) + (record.kind === 'equation' ? st.inlineBlock(held) : st.block(held));
-      last = after;
-      k = after - 1;
-      continue;
-    }
-    k = end - 1;
-  }
-  return out + text.slice(last);
-}
-
-/** The end (just past) of the maths opening at i. */
-function mathClose(text, i) {
-  for (let k = i + 1; k < text.length; k += 1) {
-    if (text[k] === '\\') k += 1;
-    else if (text[k] === '"') {
-      for (k += 1; k < text.length && text[k] !== '"'; k += 1) if (text[k] === '\\') k += 1;
-    } else if (text[k] === '#') k = expressionEnd(text, k) - 1;
-    else if (text[k] === '$') return k + 1;
-  }
-  return text.length;
-}
-
-// the document's title, printed by #title() or inside a #text(…) that styles it
-const TITLE = /(?:^|[^\w.-])title\(\)/;
-
-/** A line of a title page: { space } for a #v(…), else the title or a text piece, with the size and weight #text gives. */
-function titleItem(line, st) {
-  const space = /^#v\(\s*([^)]*?)\s*\)$/.exec(line);
-  if (space) return { space: space[1] };
-  const call = /^#text\(/.test(line) ? callAt(line, 0) : null;
-  const a = call?.args ?? [];
-  const value = a.find((x) => x.name === null)?.value;
-  const title = TITLE.test(line);
-  return { title, size: arg(a, 'size'), bold: /bold/.test(arg(a, 'weight') ?? ''), italic: /italic/.test(arg(a, 'style') ?? ''), text: title ? null : st.piece(call ? call.bodies[0] ?? contentOf(value) ?? value ?? '' : line) };
+    return text;
+  };
+  return mathsUnits(write(node), st, ctx);
 }
 
 /** The LaTeX size command nearest a Typst text size (12pt, 1.2em) in a document of base pt; '' at the base size. */
@@ -285,9 +571,44 @@ function latexSize(size, base) {
   return sizes.reduce((best, s) => (Math.abs(s[1] - pt) < Math.abs(best[1] - pt) ? s : best))[0];
 }
 
+/** Nodes split into runs where at(node) holds, without those nodes. */
+function splitAt(nodes, at) {
+  const out = [[]];
+  for (const n of nodes) {
+    if (at(n)) out.push([]);
+    else out.at(-1).push(n);
+  }
+  return out;
+}
+const filled = (line) => line.some((n) => !['Space', 'LineComment', 'BlockComment'].includes(n.kind));
+
+/** Whether markup (a node or nodes) prints the document's title with #title(). */
+const titled = (markup) => [].concat(markup).some((n) => findAll(n, (m) => callOf(m)?.name === 'title' && !callOf(m).args.length).length > 0);
+
+/** A line that is one #v(…): its length; null for any other. */
+function spaceOf(line) {
+  const nodes = line.filter((n) => n.kind !== 'Space');
+  const call = nodes.length === 2 && nodes[0].kind === 'Hash' ? callOf(nodes[1]) : null;
+  return call?.name === 'v' ? arg(call, null, 0)?.text ?? '' : null;
+}
+
+/** A line of a title page: { space } for a #v(…), else the title or a text piece, with the size and weight a #text gives. */
+function titleItem(line, st) {
+  const space = spaceOf(line);
+  if (space !== null) return { space };
+  const nodes = line.filter((n) => n.kind !== 'Space');
+  const call = nodes.length === 2 && nodes[0].kind === 'Hash' && callOf(nodes[1])?.name === 'text' ? callOf(nodes[1]) : null;
+  const title = titled(line);
+  return { title, size: arg(call, 'size')?.text ?? null, bold: /bold/.test(arg(call, 'weight')?.text ?? ''), italic: /italic/.test(arg(call, 'style')?.text ?? ''), text: title ? null : st.piece(call ? call.bodies[0] ?? arg(call, null, 0) : line) };
+}
+
+/** A count of columns: columns: 3, or (1fr, auto, 1fr); fallback for anything else. */
+const columnCount = (node, fallback) => (node?.kind === 'Int' ? Number(node.text) : node?.kind === 'Array' ? listed(node).length : fallback);
+/** The items of an array, without its brackets and commas. */
+const listed = (node) => significant(node).filter((c) => !['LeftParen', 'RightParen', 'Comma'].includes(c.kind));
+
 /** A call that is a house construct, as its record; null for anything pandoc writes itself. */
-function construct(call, text, at, st, ctx) {
-  const a = call.args;
+function construct(call, st, ctx) {
   switch (call.name) {
     case 'figure':
       return figureRecord(call, st, ctx);
@@ -296,56 +617,55 @@ function construct(call, text, at, st, ctx) {
     case 'table':
       return tableRecord(call, null, st, ctx);
     case 'math.equation': {
-      const maths = a.find((x) => x.name === null && x.value.startsWith('$'))?.value;
-      if (!maths || arg(a, 'block') !== 'true') return null;
-      return { kind: 'equation', numbered: arg(a, 'numbering') !== 'none', maths: st.piece(maths), aligned: /&|\\\s/.test(maths) };
+      const maths = call.args.find((a) => a.name === null && a.value.kind === 'Equation')?.value;
+      if (!maths || arg(call, 'block')?.text !== 'true') return null;
+      const numbering = arg(call, 'numbering');
+      return { kind: 'equation', numbered: numbering ? numbering.kind !== 'None' : ctx.facts.equationNumbers, maths: st.piece(maths), aligned: /&|\\\s/.test(maths.text) };
     }
-    case 'heading': {
-      const level = Number(arg(a, 'level') ?? 1);
-      return { kind: 'heading', level, numbered: arg(a, 'numbering') !== 'none', title: st.piece(call.bodies[0] ?? contentOf(a.find((x) => x.name === null)?.value) ?? '') };
-    }
+    case 'heading':
+      return { kind: 'heading', level: Number(arg(call, 'level')?.text ?? 1), numbered: arg(call, 'numbering')?.kind !== 'None', title: st.piece(call.bodies[0] ?? arg(call, null, 0)) };
     case 'align': {
-      const body = call.bodies[0] ?? contentOf(arg(a, null, 1)) ?? '';
-      if (!TITLE.test(body)) return null;
-      const lines = body.split(/\\\s*\n|\n/).map((l) => l.trim()).filter(Boolean);
+      const markup = markupOf(call.bodies[0] ?? arg(call, null, 1));
+      if (!markup || !titled(markup)) return null;
+      const lines = splitAt(markup.children, lineEnd).filter(filled);
       // a title page fills a page of its own: centred down it, or with space pushing its foot down
-      if (/horizon/.test(arg(a, null, 0) ?? '') || lines.some((l) => /^#v\(\s*1fr\s*\)$/.test(l))) return { kind: 'titlepage', items: lines.map((l) => titleItem(l, st)) };
+      if (/horizon/.test(arg(call, null, 0)?.text ?? '') || lines.some((l) => spaceOf(l) === '1fr')) return { kind: 'titlepage', items: lines.map((l) => titleItem(l, st)) };
       // the title block: the title, then the author and date lines
-      return { kind: 'maketitle', lines: lines.filter((l) => !TITLE.test(l) && !/^#v\(/.test(l)).map((l) => st.piece(l)) };
+      return { kind: 'maketitle', lines: lines.filter((l) => !titled(l) && spaceOf(l) === null).map((l) => st.piece(l)) };
     }
     case 'outline': {
-      const target = arg(a, 'target') ?? '';
+      const target = arg(call, 'target')?.text ?? '';
       return { kind: /kind:\s*image/.test(target) ? 'listoffigures' : /kind:\s*table/.test(target) ? 'listoftables' : 'tableofcontents' };
     }
     case 'bibliography':
-      ctx.bibliography = stringOf(a.find((x) => x.name === null)?.value) ?? 'refs.bib';
+      ctx.bibliography = stringOf(arg(call, null, 0)) ?? 'refs.bib';
       return { kind: 'bibliography' };
     case 'pagebreak':
       return { kind: 'raw', latex: '\\clearpage' };
-    case 'counter':
-      // the counts an appendix or new page numbering starts again, which LaTeX's own commands do
-      return /^\.update\(/.test(text.slice(call.end, call.end + 9)) ? { kind: 'raw', latex: '' } : null;
     case 'proof':
     case 'solution':
-      return { kind: 'theorem', name: call.name, title: arg(a, 'name') ? st.piece(contentOf(arg(a, 'name'))) : null, body: st.piece(call.bodies[0] ?? '', true) };
+      return { kind: 'theorem', name: call.name, title: arg(call, 'name') ? st.piece(arg(call, 'name')) : null, body: st.piece(call.bodies[0] ?? arg(call, null, 0), true) };
+    case null:
+      // the counts an appendix or new page numbering starts again, which LaTeX's own commands do
+      return /^counter\([\s\S]*\)\.update\(/.test(call.node.text) ? { kind: 'raw', latex: '' } : null;
     default:
       if (ctx.facts.theorems.has(call.name)) {
         ctx.used.add('theorem:' + call.name);
-        return { kind: 'theorem', name: call.name, title: arg(a, 'title') ? st.piece(contentOf(arg(a, 'title'))) : null, body: st.piece(call.bodies[0] ?? contentOf(arg(a, null, 0)) ?? '', true) };
+        return { kind: 'theorem', name: call.name, title: arg(call, 'title') ? st.piece(arg(call, 'title')) : null, body: st.piece(call.bodies[0] ?? arg(call, null, 0), true) };
       }
       return null;
   }
 }
 
-/** A Typst image call's path and its size as the table tool's FigureSize. */
-function imageOf(value) {
-  const scaled = /^scale\(\s*(\d+(?:\.\d+)?)%\s*,\s*reflow:\s*true\s*,\s*([\s\S]*)\)$/.exec(value.trim());
-  const call = callAt(scaled ? scaled[2] : value, 0);
-  if (!call || call.name !== 'image') return null;
-  const path = stringOf(arg(call.args, null, 0));
+/** A Typst image call's path and its size as the table tool's FigureSize, or null. */
+function imageOf(node) {
+  const outer = callOf(node);
+  const scaled = outer?.name === 'scale' && arg(outer, 'reflow')?.text === 'true' ? /^(\d+(?:\.\d+)?)%$/.exec(arg(outer, null, 0)?.text ?? '') : null;
+  const call = callOf(scaled ? arg(outer, null, 1) : node);
+  const path = call?.name === 'image' ? stringOf(arg(call, null, 0)) : null;
   if (!path) return null;
-  const width = arg(call.args, 'width');
-  const height = arg(call.args, 'height');
+  const width = arg(call, 'width')?.text;
+  const height = arg(call, 'height')?.text;
   const mm = (v) => {
     const m = /^(\d*\.?\d+)(mm|cm|in|pt)$/.exec(v ?? '');
     return m ? Number(m[1]) * { mm: 1, cm: 10, in: 25.4, pt: 0.3528 }[m[2]] : null;
@@ -360,57 +680,60 @@ function imageOf(value) {
   return { path: path.replace(/^\/+/, ''), size };
 }
 
+/** The panels made with name (subfigure or figure) in a grid's cell: { path, caption, label } each. */
+function panelsOf(cell, name, st, ctx) {
+  const nodes = markupOf(cell)?.children ?? [];
+  return nodes.flatMap((n, k) => {
+    const call = n.kind === 'Hash' ? callOf(nodes[k + 1]) : null;
+    if (call?.name !== name) return [];
+    const img = imageOf(arg(call, null, 0));
+    if (img) ctx.images.add(img.path);
+    return [{ path: img?.path ?? '', caption: arg(call, 'caption') ? st.piece(arg(call, 'caption')) : null, label: labelAfter(nodes, k + 2).label ?? '' }];
+  });
+}
+
 /** A figure: an image, a table, a listing, pseudocode, sub-figures, a composer diagram, or a drawing in Typst. */
 function figureRecord(call, st, ctx) {
-  const a = call.args;
-  const caption = arg(a, 'caption') !== null ? st.piece(contentOf(arg(a, 'caption')) ?? '') : null;
-  const placement = { auto: 'tbp', top: 't', bottom: 'b' }[arg(a, 'placement')] ?? 'ht';
-  const body = a.find((x) => x.name === null)?.value ?? '';
-  const kind = stringOf(arg(a, 'kind') ?? '') ?? arg(a, 'kind');
+  const body = arg(call, null, 0);
+  if (!body) return null;
+  const caption = arg(call, 'caption') ? st.piece(arg(call, 'caption')) : null;
+  const placement = { auto: 'tbp', top: 't', bottom: 'b' }[arg(call, 'placement')?.text] ?? 'ht';
+  const kind = stringOf(arg(call, 'kind')) ?? arg(call, 'kind')?.text;
   if (kind === 'algorithm') return algorithmRecord(body, caption, placement, st, ctx);
-  const raw = /^SPXH(\d+)X$/.exec(body.trim());
-  if (raw) {
-    const m = /^```(\w*)\n?([\s\S]*?)\n?\s*```$/.exec(st.held[raw[1]].trim());
-    const code = m ? dedent(m[2]) : '';
+  if (body.kind === 'Raw') {
+    const m = /^```(\w*)\n?([\s\S]*?)\n?\s*```$/.exec(body.text.trim());
     ctx.used.add('code');
-    return { kind: 'listing', language: TYPST_LANGUAGES[(m?.[1] ?? '').toLowerCase()] ?? m?.[1] ?? '', code, caption };
+    return { kind: 'listing', language: TYPST_LANGUAGES[(m?.[1] ?? '').toLowerCase()] ?? m?.[1] ?? '', code: m ? dedent(m[2]) : '', caption };
   }
   const image = imageOf(body);
   if (image) {
     ctx.images.add(image.path);
     return { kind: 'figure', layout: 'image', path: image.path, size: image.size, caption, placement };
   }
-  const tableCall = /^table\(/.test(body.trim()) ? callAt(body.trim(), 0) : null;
-  if (tableCall) return tableRecord(tableCall, { caption, placement }, st, ctx);
+  const inner = callOf(body);
+  if (inner?.name === 'table') return tableRecord(inner, { caption, placement }, st, ctx);
   // notes under a table, in the figure's content: [ #table(...) #text(size: 0.9em)[#super[a] ...] ]
-  const content = contentOf(body);
-  if (content !== null && /#table\(/.test(content)) {
-    const at = content.indexOf('#table(');
-    const inner = callAt(content, at);
-    const notes = [...content.slice(inner.end).matchAll(/#text\([^)]*\)\[([\s\S]*?)\]\s*(?=#text|$)/g)].map((m) => {
-      const mark = /^\s*#super\[([^\]]*)\]\s*/.exec(m[1]);
-      return { mark: mark?.[1] ?? '', text: st.piece(mark ? m[1].slice(mark[0].length) : m[1]) };
+  const content = markupOf(body)?.children ?? [];
+  const at = content.findIndex((n, k) => content[k - 1]?.kind === 'Hash' && callOf(n)?.name === 'table');
+  if (at !== -1) {
+    const notes = content.slice(at + 1).filter((n, k, all) => all[k - 1]?.kind === 'Hash' && callOf(n)?.name === 'text').map((n) => {
+      const text = callOf(n);
+      const nodes = markupOf(text.bodies[0] ?? arg(text, null, 0))?.children ?? [];
+      const first = nodes.findIndex((c) => c.kind !== 'Space');
+      const mark = nodes[first]?.kind === 'Hash' && callOf(nodes[first + 1])?.name === 'super' ? callOf(nodes[first + 1]) : null;
+      return { mark: mark ? markupOf(mark.bodies[0])?.text ?? '' : '', text: st.piece(mark ? nodes.slice(first + 2) : nodes) };
     });
-    return tableRecord(inner, { caption, placement, notes }, st, ctx);
+    return tableRecord(callOf(content[at]), { caption, placement, notes }, st, ctx);
   }
-  const grid = /^grid\(/.test(body.trim()) ? callAt(body.trim(), 0) : null;
-  if (grid && /#subfigure\(/.test(body)) {
+  if (inner?.name === 'grid' && findAll(body, (n) => callOf(n)?.name === 'subfigure').length) {
     ctx.used.add('subfigure');
-    const panels = [...body.matchAll(/#subfigure\(/g)].map((m) => {
-      const sub = callAt(body, m.index);
-      const img = imageOf(arg(sub.args, null, 0) ?? '');
-      const after = LABEL.exec(body.slice(sub.end));
-      if (img) ctx.images.add(img.path);
-      return { path: img?.path ?? '', caption: arg(sub.args, 'caption') !== null ? st.piece(contentOf(arg(sub.args, 'caption'))) : null, label: after?.[1] ?? '' };
-    });
-    const columns = arg(grid.args, 'columns') ?? String(panels.length);
-    const count = /^\d+$/.test(columns) ? Number(columns) : columns.split(',').length;
-    const align = arg(grid.args, 'align') ?? 'bottom';
-    return { kind: 'figure', layout: 'sub', panels, columns: count, align: align === 'top' ? 'top' : align === 'horizon' ? 'centre' : 'bottom', caption, placement };
+    const panels = inner.args.filter((a) => a.name === null).flatMap((a) => panelsOf(a.value, 'subfigure', st, ctx));
+    const align = arg(inner, 'align')?.text ?? 'bottom';
+    return { kind: 'figure', layout: 'sub', panels, columns: columnCount(arg(inner, 'columns'), panels.length), align: align === 'top' ? 'top' : align === 'horizon' ? 'centre' : 'bottom', caption, placement };
   }
   // anything else is drawn in Typst: a composer diagram or shapes, compiled to a picture
-  const include = /^include\s+("[^"]+")$/.exec(body.trim());
-  ctx.pictures.push(include ? { include: stringOf(include[1]).replace(/^\/+/, ''), file: st.file } : { body, file: st.file });
+  const include = body.kind === 'ModuleInclude' ? stringOf(body.children.find((c) => c.kind === 'Str')) : null;
+  ctx.pictures.push(include ? { include: include.replace(/^\/+/, ''), file: st.file } : { body: body.text, file: st.file });
   return { kind: 'figure', layout: 'picture', picture: ctx.pictures.length - 1, caption, placement };
 }
 
@@ -422,41 +745,38 @@ const dedent = (code) => {
 
 /** A grid of separate figures, a CV-style line of text with something on the right, or a plain grid as a tabular. */
 function gridRecord(call, st, ctx) {
-  const a = call.args;
-  const cells = a.filter((x) => x.name === null).map((x) => x.value);
-  if (cells.length && cells.every((c) => /^\[\s*#figure\(/.test(c))) {
-    const panels = cells.map((c) => {
-      const inner = contentOf(c);
-      const fig = callAt(inner, inner.indexOf('#figure('));
-      const img = imageOf(arg(fig.args, null, 0) ?? '');
-      if (img) ctx.images.add(img.path);
-      return { path: img?.path ?? '', caption: arg(fig.args, 'caption') !== null ? st.piece(contentOf(arg(fig.args, 'caption'))) : null, label: LABEL.exec(inner.slice(fig.end))?.[1] ?? '' };
-    });
+  const cells = call.args.filter((a) => a.name === null).map((a) => a.value);
+  const figureIn = (cell) => {
+    const nodes = significant(markupOf(cell));
+    return nodes[0]?.kind === 'Hash' && callOf(nodes[1])?.name === 'figure';
+  };
+  if (cells.length && cells.every(figureIn)) {
+    const panels = cells.flatMap((c) => panelsOf(c, 'figure', st, ctx));
     return { kind: 'figure', layout: 'separate', panels, columns: panels.length, caption: null, placement: 'ht', keepsLabel: false };
   }
-  const columns = arg(a, 'columns') ?? '1';
-  const cellText = (c) => contentOf(c) ?? (/^align\(/.test(c) ? contentOf(callAt(c, 0)?.bodies[0] !== undefined ? '[' + callAt(c, 0).bodies[0] + ']' : arg(callAt(c, 0)?.args ?? [], null, 1)) : null) ?? '#' + c;
-  if (/^\(\s*1fr\s*,\s*auto\s*\)$/.test(columns) && cells.length === 2) {
+  const columns = arg(call, 'columns');
+  // a cell's markup: a content block's, or that of the align(...) around it
+  const cellMarkup = (c) => markupOf(c) ?? (callOf(c)?.name === 'align' ? markupOf(callOf(c).bodies[0] ?? arg(callOf(c), null, 1)) : null);
+  if (columns?.kind === 'Array' && /^\(\s*1fr\s*,\s*auto\s*\)$/.test(columns.text) && cells.length === 2) {
     // what on the left and what on the right, each line of the two side by side
-    const left = cellText(cells[0]).split(/\\\s*\n/).map((l) => l.trim());
-    const right = cellText(cells[1]).split(/\\\s*\n/).map((l) => l.trim());
+    const lines = (c) => (cellMarkup(c) ? splitAt(cellMarkup(c).children, (n) => n.kind === 'Linebreak').map((l) => (filled(l) ? l : null)) : [c]);
+    const [left, right] = cells.map(lines);
     return { kind: 'sides', lines: Array.from({ length: Math.max(left.length, right.length) }, (_, i) => [left[i] ? st.piece(left[i]) : null, right[i] ? st.piece(right[i]) : null]) };
   }
-  const n = /^\d+$/.test(columns) ? Number(columns) : columns.split(',').length;
-  return { kind: 'grid', columns: n, cells: cells.map((c) => st.piece(cellText(c))) };
+  return { kind: 'grid', columns: columnCount(columns, 1), cells: cells.map((c) => st.piece(cellMarkup(c) ?? c)) };
 }
 
 /**
- * A Typst table into the table tool's model: its cells pieces, its rules from table.hline (at y: or between rows),
- * table.header's rows as the header, table.cell's spans as merges, and right-aligned numbers as S columns.
+ * A Typst table into the table tool's model: its cells pieces, its rules from table.hline (at y: or between rows, from
+ * start to end), table.header's rows as the header, table.cell's spans as merges, and right-aligned numbers as S columns.
  */
 function tableRecord(call, float, st, ctx) {
-  const a = call.args;
-  const columns = arg(a, 'columns') ?? '1';
-  const widths = /^\d+$/.test(columns) ? Array(Number(columns)).fill('auto') : columns.replace(/^\(|\)$/g, '').split(',').map((w) => w.trim()).filter(Boolean);
+  const columns = arg(call, 'columns');
+  const widths = columns?.kind === 'Int' ? Array(Number(columns.text)).fill('auto') : columns?.kind === 'Array' ? listed(columns).map((c) => c.text) : ['auto'];
   const cols = widths.length;
-  const alignArg = arg(a, 'align') ?? 'left';
-  const aligns = alignArg.startsWith('(') ? alignArg.slice(1, -1).split(',').map((x) => x.trim()) : Array(cols).fill(alignArg);
+  const alignArg = arg(call, 'align');
+  const word = (node) => /^\w+/.exec(node?.text ?? '')?.[0] ?? 'left';
+  const aligns = alignArg?.kind === 'Array' ? listed(alignArg).map(word) : Array(cols).fill(word(alignArg));
   const grid = [];
   const taken = new Set();
   const merges = [];
@@ -468,41 +788,44 @@ function tableRecord(call, float, st, ctx) {
     return slot;
   };
   const rowOfNext = () => Math.floor(free() / cols);
-  const place = (markup, colspan = 1, rowspan = 1) => {
+  const place = (node, colspan = 1, rowspan = 1) => {
     const at = free();
     const [r, c] = [Math.floor(at / cols), at % cols];
     for (let i = 0; i < rowspan; i += 1) for (let j = 0; j < colspan; j += 1) taken.add((r + i) * cols + c + j);
     while (grid.length < r + rowspan) grid.push(Array(cols).fill(null));
-    grid[r][c] = { markup: markup.trim() };
+    grid[r][c] = { node, markup: (markupOf(node)?.text ?? (node ? '#' + node.text : '')).trim() };
     if (colspan > 1 || rowspan > 1) merges.push({ r, c, rows: rowspan, cols: colspan });
+  };
+  const number = (sub, name, fallback) => {
+    const n = arg(sub, name);
+    return n?.kind === 'Int' ? Number(n.text) : fallback;
   };
   const visit = (items) => {
     for (const item of items) {
       if (item.name !== null) continue;
-      const v = item.value.trim();
-      const sub = /^table\.(hline|vline|header|footer|cell)\b/.exec(v);
-      if (!sub) {
-        place(contentOf(v) ?? '#' + v);
+      const sub = callOf(item.value);
+      const kind = /^table\.(hline|vline|header|footer|cell)$/.exec(sub?.name ?? '')?.[1];
+      if (!kind) {
+        place(item.value);
         continue;
       }
-      const c = callAt(v, 0);
-      if (sub[1] === 'hline') {
-        const y = arg(c.args, 'y');
-        const edge = y !== null ? Number(y) : rowOfNext();
-        const start = Number(arg(c.args, 'start') ?? 0);
-        const end = Number(arg(c.args, 'end') ?? cols);
+      if (kind === 'hline') {
+        // end: none, as end left out, runs to the last column
+        const edge = number(sub, 'y', rowOfNext());
+        const start = number(sub, 'start', 0);
+        const end = number(sub, 'end', cols);
         const list = rules.get(edge) ?? [];
-        list.push(start === 0 && end >= cols ? 'full' : [start, end - 1]);
+        list.push(start === 0 && end >= cols ? 'full' : [start, Math.min(end, cols) - 1]);
         rules.set(edge, list);
-      } else if (sub[1] === 'header' || sub[1] === 'footer') {
-        visit(c.args);
-        if (sub[1] === 'header') header = Math.max(header, rowOfNext());
-      } else if (sub[1] === 'cell') {
-        place(c.bodies[0] ?? contentOf(arg(c.args, null, 0)) ?? '', Number(arg(c.args, 'colspan') ?? 1), Number(arg(c.args, 'rowspan') ?? 1));
+      } else if (kind === 'header' || kind === 'footer') {
+        visit(sub.args);
+        if (kind === 'header') header = Math.max(header, rowOfNext());
+      } else if (kind === 'cell') {
+        place(sub.bodies[0] ?? arg(sub, null, 0), number(sub, 'colspan', 1), number(sub, 'rowspan', 1));
       }
     }
   };
-  visit(a);
+  visit(call.args);
   const rows = grid.length;
   // a right-aligned column of numbers lines up on the decimal point, an S column
   const plain = (m) => m?.markup.replace(/^\\?-/, '-') ?? '';
@@ -510,8 +833,11 @@ function tableRecord(call, float, st, ctx) {
   const align = widths.map((w, j) => (w.endsWith('fr') ? 'X' : numeric(j) && grid.slice(header).some((row) => row[j]) ? 'S' : { left: 'l', center: 'c', right: 'r', start: 'l', end: 'r' }[aligns[j]] ?? 'l'));
   const cells = grid.map((row, r) => row.map((cell, j) => {
     if (!cell) return null;
-    const markup = align[j] === 'S' && r >= header ? plain(cell).replace(/,/g, '') : cell.markup;
-    return markup ? st.piece(markup) : null;
+    if (align[j] === 'S' && r >= header) {
+      const markup = plain(cell).replace(/,/g, '');
+      return markup ? st.piece(markup) : null;
+    }
+    return cell.markup ? st.piece(cell.node) : null;
   }));
   const full = (i) => (rules.get(i) ?? []).includes('full');
   const preset = (i) => i === 0 || i === rows || (header > 0 && i === 1);
@@ -519,7 +845,7 @@ function tableRecord(call, float, st, ctx) {
   const toggled = edges.filter((_, i) => full(i) !== preset(i));
   const partRules = [...rules].filter(([i]) => i > 0 && !full(i)).flatMap(([i, list]) => list.filter(Array.isArray).map(([from, to]) => ({ row: i - 1, from, to })));
   ctx.used.add('table');
-  const booktabs = /stroke:\s*none/.test(call.args.map((x) => (x.name ? x.name + ': ' + x.value : '')).join(','));
+  const booktabs = arg(call, 'stroke')?.kind === 'None';
   return {
     kind: 'table',
     model: { cells, env: align.includes('X') ? 'tabularx' : 'tabular', align, lines: booktabs ? 'booktabs' : 'grid', toggled: booktabs ? toggled : [], header: header > 0, float: !!float, placement: float?.placement ?? 'ht', caption: '', label: '', escape: false, merges, partRules },
@@ -549,7 +875,23 @@ const OPENERS = [
  */
 function algorithmRecord(body, caption, placement, st, ctx) {
   ctx.used.add('algorithm');
-  const inner = contentOf(body) ?? (/^align\(/.test(body.trim()) ? callAt(body.trim(), 0)?.bodies[0] : null) ?? '';
+  const align = callOf(body)?.name === 'align' ? callOf(body) : null;
+  const markup = markupOf(body) ?? markupOf(align?.bodies[0] ?? arg(align, null, 1));
+  // each item of the list a line, and the lines before it as they break
+  const texts = [];
+  let line = '';
+  const flush = () => {
+    if (line.trim()) texts.push(line.trim());
+    line = '';
+  };
+  for (const n of markup?.children ?? []) {
+    if (n.kind === 'EnumItem' || n.kind === 'ListItem') {
+      flush();
+      texts.push(n.text.replace(/\s*\n\s*/g, ' ').trim());
+    } else if (lineEnd(n)) flush();
+    else line += n.text;
+  }
+  flush();
   const lines = [];
   const open = [];
   // the blocks opened at this level or deeper end here
@@ -559,7 +901,7 @@ function algorithmRecord(body, caption, placement, st, ctx) {
       lines.push({ command: 'End' + block.kind, level: block.level });
     }
   };
-  for (const raw of inner.split('\n').map((l) => l.trim()).filter(Boolean)) {
+  for (const raw of texts) {
     const io = /^\*(Input|Output):\*\s*([\s\S]*?)\s*(?:\\)?$/.exec(raw);
     if (io) {
       lines.push({ command: io[1] === 'Input' ? 'Require' : 'Ensure', text: st.piece(io[2]), level: 0 });
@@ -599,121 +941,68 @@ function algorithmRecord(body, caption, placement, st, ctx) {
   return { kind: 'algorithm', lines, caption, placement };
 }
 
-// ─── Inline: references, citations and units ───
+// ─── Inline: units ───
 
 const QUANTITY = /(\(?[-+±−]?\d[\d,]*(?:\.\d+)?(?:~±~\d+(?:\.\d+)?\))?|\$[^$]*times\s*10\^\(?-?\d+\)?\$)~([^\s,;:!?\])}"'<]+?)(?=[\s,;:!?\])}"'<]|\.(?:\s|$)|$)/g;
+const ANGLE = /(?<![\p{L}\p{N}.,~])(\d+(?:\.\d+)?)°(?![\p{L}\p{N}C])/gu;
+const GROUPED = /(?<![\p{L}\p{N}.,~\\])(\d{1,3}(?:,\d{3})+(?:\.\d+)?)(?![\p{L}\p{N},~]|\.\d)/gu;
 
 /**
- * References, citations and units in markup as tokens of their LaTeX: @label as \cref, @key as \parencite (neighbours
- * together, a [p.~12] supplement kept), #cite forms, #ref(…, form: "page"), typed quantities, comma-grouped numbers,
- * angles and today's date. In maths a quantity is a string token. ctx null: a definition, read before any document.
+ * Typed quantities, comma-grouped numbers and angles in markup as tokens of their siunitx: each must start in text
+ * (prose: where the text is), or be a power of ten in maths before its ~.
  */
-function inlinePass(text, st, ctx) {
-  const spans = markupSpans(text);
-  const outside = (index) => spans.some(([s, e]) => index >= s && index < e);
-  const labels = ctx?.labels ?? new Set();
-  const keys = ctx?.bibKeys ?? new Set();
-  let out = '';
-  let last = 0;
-  // references and citations, @a @b and @a and @b runs together
-  const runs = /@([A-Za-z0-9_:.-]*[A-Za-z0-9_-])(\[(?:[^\]\\]|\\.)*\])?((?:\s+(?:and\s+|,\s*)?@[A-Za-z0-9_:.-]*[A-Za-z0-9_-](?:\[(?:[^\]\\]|\\.)*\])?)*)/g;
-  for (const m of text.matchAll(runs)) {
-    if (!outside(m.index) || (m.index > 0 && /[\p{L}\p{N}\\]/u.test(text[m.index - 1]))) continue;
-    const parts = [...m[0].matchAll(/@([A-Za-z0-9_:.-]*[A-Za-z0-9_-])(\[((?:[^\]\\]|\\.)*)\])?/g)].map((p) => ({ name: p[1], supplement: p[3] ?? null }));
-    const refs = parts.filter((p) => labels.has(p.name));
-    const cites = parts.filter((p) => !labels.has(p.name));
-    // a run is one kind or the other; a mixed one goes one at a time
-    let latex;
-    if (refs.length === parts.length) {
-      ctx?.refsOut.push(...refs.map((r) => r.name));
-      latex = '\\cref{' + refs.map((r) => r.name).join(',') + '}';
-    } else if (cites.length === parts.length && /^(?:@\S+\s*)+$/.test(m[0].replace(/\[[^\]]*\]/g, ''))) {
-      const known = cites.filter((c) => keys.has(c.name));
-      ctx?.citesOut.push(...known.map((c) => c.name));
-      const page = known.find((c) => c.supplement)?.supplement;
-      latex = known.length ? '\\parencite' + (page ? '[' + page + ']' : '') + '{' + known.map((c) => c.name).join(',') + '}' : '';
-      if (known.length < cites.length) ctx?.note(st, m[0], 'A citation of a key no .bib file has was left out: ' + cites.filter((c) => !keys.has(c.name)).map((c) => c.name).join(', ') + '.');
-    } else {
-      latex = parts.map((p) => (labels.has(p.name) ? (ctx?.refsOut.push(p.name), '\\cref{' + p.name + '}') : keys.has(p.name) ? (ctx?.citesOut.push(p.name), '\\parencite{' + p.name + '}') : p.name)).join(m[0].includes(' and ') ? ' and ' : ' ');
-    }
-    out += text.slice(last, m.index) + st.inline(latex);
-    last = m.index + m[0].length;
-  }
-  text = out + text.slice(last);
-  // #cite(<key>, form: …, supplement: […]) and #ref(<label>, form: "page")
-  text = text.replace(/#(cite|ref)\((<([^>]+)>|label\("([^"]+)"\))((?:\s*,\s*(?:form|supplement):\s*(?:"[^"]*"|\[[^\]]*\]|none))*)\s*\)/g, (whole, kind, _, a, b, rest) => {
-    const key = a ?? b;
-    const form = /form:\s*(?:"([^"]*)"|(none))/.exec(rest);
-    const supplement = /supplement:\s*\[([^\]]*)\]/.exec(rest)?.[1];
-    if (kind === 'ref') {
-      ctx?.refsOut.push(key);
-      return st.inline((form?.[1] === 'page' ? '\\pageref{' : '\\cref{') + key + '}');
-    }
-    if (!keys.has(key) && ctx) {
-      ctx.note(st, whole, 'A citation of ' + key + ', which no .bib file has, was left out.');
-      return '';
-    }
-    ctx?.citesOut.push(key);
-    const command = form?.[2] ? 'nocite' : { prose: 'textcite', author: 'citeauthor', year: 'citeyear', full: 'fullcite' }[form?.[1]] ?? 'parencite';
-    return st.inline('\\' + command + (supplement ? '[' + supplement + ']' : '') + '{' + key + '}');
-  });
-  // the page-level calls inside text
-  text = text
-    .replace(/#datetime\.today\(\)(?:\.display\([^)]*\))?/g, () => st.inline('\\today'))
-    .replace(/#h\(\s*1fr\s*\)/g, () => st.inline('\\hfill'))
-    .replace(/#v\(\s*1fr\s*\)/g, () => st.inline('\\vfill'))
-    .replace(/#v\(\s*([^)]+?)\s*\)/g, (whole, length) => (texLength(length) ? st.inline('\\vspace{' + texLength(length) + '}') : ''))
-    .replace(/#h\(\s*([^)]+?)\s*\)/g, (whole, length) => (texLength(length) ? st.inline('\\hspace{' + texLength(length) + '}') : ''))
-    .replace(/#line\(\s*length:\s*100%[^)]*\)/g, () => st.inline('\\rule{\\linewidth}{0.4pt}'));
-  // #smallcaps[F]$(args)$, a \Call with its arguments in maths
-  text = text.replace(/#smallcaps\[([^\]]*)\]\$\(([^$]*)\)\$/g, (whole, name, args) => st.inline('\\Call{' + name + '}{') + '$' + args + '$' + st.inline('}'));
-  // #smallcaps[F];(args), the house \Call: its name and brackets as tokens, its arguments as they are
-  const mathsAt = [...text.matchAll(/\$[^$]*\$/g)].map((m) => [m.index, m.index + m[0].length]);
-  let called = '';
-  let from = 0;
-  for (const m of text.matchAll(/#smallcaps\[([^\]]*)\];?\(/g)) {
-    if (m.index < from) continue;
-    const open = m.index + m[0].length - 1;
-    const close = groupEnd(text, open);
-    const quote = mathsAt.some(([s, e]) => m.index > s && m.index < e) ? '"' : '';
-    called += text.slice(from, m.index) + quote + st.inline('\\Call{' + m[1] + '}{') + quote + text.slice(open + 1, close - 1) + quote + st.inline('}') + quote;
-    from = close;
-  }
-  text = called + text.slice(from);
-  // quantities and numbers, in text (and in table cells and captions) and in maths
-  const prose = markupSpans(text);
+function units(text, prose, st, ctx) {
   const inProse = (index) => prose.some(([s, e]) => index >= s && index < e);
-  text = text.replace(QUANTITY, (whole, number, unit, at) => {
-    if (!inProse(at) && !/^\$/.test(number)) return whole;
+  const edits = [];
+  const take = (pattern, make) => {
+    for (const m of text.matchAll(pattern)) {
+      const end = m.index + m[0].length;
+      if (edits.some((e) => m.index < e.end && end > e.start)) continue;
+      const latex = make(m);
+      if (latex) edits.push({ start: m.index, end, latex });
+    }
+  };
+  take(QUANTITY, (m) => {
+    const [, number, unit] = m;
+    if (!inProse(m.index) && !/^\$/.test(number)) return null;
     const n = typedNumber(number.replace(/^\$|\$$/g, ''));
     const u = typedUnit(unit);
-    if (n === null || !u) return whole;
-    if (ctx) ctx.units = true;
-    return st.inline('\\qty{' + n + '}{' + u + '}');
+    return n !== null && u ? '\\qty{' + n + '}{' + u + '}' : null;
   });
+  take(ANGLE, (m) => (inProse(m.index) ? '\\ang{' + m[1] + '}' : null));
+  take(GROUPED, (m) => (inProse(m.index) ? '\\num{' + m[1].replace(/,/g, '') + '}' : null));
+  if (edits.length) ctx.units = true;
+  edits.sort((a, b) => a.start - b.start);
+  let out = '';
+  let last = 0;
+  for (const e of edits) {
+    out += text.slice(last, e.start) + st.inline(e.latex);
+    last = e.end;
+  }
+  return out + text.slice(last);
+}
+
+/** Quantities in maths, 4.7 thin "kΩ" and #[4.7~kΩ], as string tokens: the token is one atom already. */
+function mathsUnits(maths, st, ctx) {
   const unit = (latex) => {
-    if (ctx) ctx.units = true;
+    ctx.units = true;
     return st.inline(latex);
   };
-  text = text.replace(/(?<![\p{L}\p{N}.,~])(\d+(?:\.\d+)?)°(?![\p{L}\p{N}C])/gu, (whole, n, at) => (inProse(at) ? unit('\\ang{' + n + '}') : whole));
-  text = text.replace(/(?<![\p{L}\p{N}.,~\\])(\d{1,3}(?:,\d{3})+(?:\.\d+)?)(?![\p{L}\p{N},~]|\.\d)/gu, (whole, n, at) => (inProse(at) ? unit('\\num{' + n.replace(/,/g, '') + '}') : whole));
-  // in maths: 4.7 thin "kΩ" and #[4.7~kΩ]
-  text = text.replace(/\$[^$]*\$/g, (maths) => maths
+  return maths
     .replace(/#\[([^\]]*)\]/g, (whole, inner) => {
       const q = /^(.+?)~(.+)$/.exec(inner);
       const n = q && typedNumber(q[1]);
       const u = q && typedUnit(q[2]);
       return n !== null && n !== undefined && u ? '"' + unit('\\qty{' + n + '}{' + u + '}') + '"' : typedNumber(inner) !== null ? '"' + unit('\\num{' + typedNumber(inner) + '}') + '"' : whole;
     })
-    // a quantity in brackets of its own, (13 thin "V/µs") / ..., loses them: the token is one atom already
+    // a quantity in brackets of its own, (13 thin "V/µs") / ..., loses them
     .replace(/(\()?\s*((?:\(\s*)?(?:plus\.minus\s*)?\d[\d.]*(?:\s*plus\.minus\s*\d[\d.]*)?(?:\s*\))?(?:\s*times\s*10\^\(?-?\d+\)?)?)\s+thin\s+"([^"]+)"\s*(\))?/g, (whole, open, number, symbols, close) => {
       const n = typedNumber(number.replace(/plus\.minus/g, '±'));
       const u = typedUnit(symbols);
       if (n === null || !u) return whole;
       const token = '"' + unit('\\qty{' + n + '}{' + u + '}') + '"';
       return open && close ? token : (open ?? '') + token + (close ?? '');
-    }));
-  return text;
+    });
 }
 
 // ─── LaTeX back together ───
@@ -860,6 +1149,13 @@ function renderBlock(record, pieceText, st, ctx) {
         return style ? '{' + style + ' ' + text + '\\par}' : text + '\\par';
       });
       return ['\\begin{titlepage}', '  \\centering', ...lines.filter(Boolean).map((l) => '  ' + l), '\\end{titlepage}'].join('\n');
+    }
+    case 'picture': {
+      // a drawing outside any figure, in its line or a block of its own
+      const picture = ctx.pictures[record.picture];
+      ctx.used.add('graphicx');
+      const image = picture.ok ? '\\includegraphics{' + picture.pdf + '}' : '\\fbox{Picture not converted: ' + texText(picture.typ ?? '') + '}';
+      return record.inline ? image : '\\begin{center}\n  ' + image + '\n\\end{center}';
     }
     case 'tableofcontents':
     case 'listoffigures':
@@ -1047,28 +1343,40 @@ export function latexPreamble(ctx) {
 }
 
 /**
- * A Typst file's prose for the word check: without its rules and definitions, comments, raw text, title block and
- * pseudocode, whose words the LaTeX keeps in its preamble or in algorithmic, which the check leaves out there too.
+ * A Typst file's prose for the word check: without its rules and definitions, comments, raw text, title block,
+ * pseudocode and the drawings a package makes, whose words the LaTeX keeps in its preamble, in algorithmic or in a
+ * picture, which the check leaves out there too.
  */
 export function typstProse(text) {
+  const root = parseTypst(text);
+  const packages = findAll(root, (n) => n.kind === 'ModuleImport').map((n) => {
+    const from = stringOf(n.children.find((c) => c.kind === 'Str'));
+    return { from, names: from?.startsWith('@') ? importedNames(n, from) : [] };
+  });
+  const facts = { packages, functions: new Map(), theorems: new Map() };
+  const cut = [];
+  const visit = (node) => {
+    const kids = node.children ?? [];
+    for (let k = 0; k < kids.length; k += 1) {
+      const n = kids[k];
+      const hashed = n.kind === 'Hash' ? kids[k + 1] : null;
+      const call = callOf(hashed ?? n);
+      const drop = (hashed && STATEMENTS.has(hashed.kind)) || ['LineComment', 'BlockComment', 'Raw'].includes(n.kind)
+        || (call && ((call.name === 'align' && titled(call.node)) || (call.name === 'figure' && stringOf(arg(call, 'kind')) === 'algorithm') || packageOf(call.name, facts)));
+      if (!drop) {
+        visit(n);
+        continue;
+      }
+      cut.push([n.start, (hashed ?? n).end]);
+      if (hashed) k += 1;
+    }
+  };
+  visit(root);
   let out = '';
-  for (let i = 0; i < text.length; ) {
-    const lineEnd = text.indexOf('\n', i) === -1 ? text.length : text.indexOf('\n', i);
-    const line = text.slice(i, lineEnd);
-    if (/^\s*#(set|show|let|import)\s/.test(line)) {
-      i = statementEnd(text, i + line.indexOf('#')) + 1;
-      continue;
-    }
-    out += /^\s*\/\//.test(line) ? '\n' : line + '\n';
-    i = lineEnd + 1;
+  let last = 0;
+  for (const [start, end] of cut) {
+    out += text.slice(last, start) + text.slice(start, end).replace(/[^\n]/g, ' ');
+    last = end;
   }
-  out = out.replace(/```[\s\S]*?```|`[^`\n]*`/g, (raw) => ' '.repeat(raw.length));
-  for (const name of ['#align(', '#figure(']) {
-    for (let at = out.indexOf(name); at !== -1; at = out.indexOf(name, at + 1)) {
-      const end = expressionEnd(out, at);
-      const call = out.slice(at, end);
-      if ((name === '#align(' && TITLE.test(call)) || (name === '#figure(' && /kind:\s*"algorithm"/.test(call))) out = out.slice(0, at) + ' '.repeat(end - at) + out.slice(end);
-    }
-  }
-  return out;
+  return out + text.slice(last);
 }

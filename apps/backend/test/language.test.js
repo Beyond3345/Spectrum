@@ -104,6 +104,7 @@ test('checkers:verify checks both engines and their files, and fails on a file t
   assert.equal(ok.status, 0, ok.stderr);
   assert.match(ok.stdout, /"engine": "Hunspell"/);
   assert.match(ok.stdout, /"engine": "Harper"/);
+  assert.match(ok.stdout, /"engine": "typst-syntax"/);
   const native = path.join(dataDir, 'native-copy');
   cpSync(path.join(repo, 'native'), native, { recursive: true, filter: (src) => !src.includes(`${path.sep}node_modules`) });
   writeFileSync(path.join(native, 'harper', 'LICENSE'), 'changed');

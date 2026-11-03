@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "engine": "typst-syntax",
+  "version": "0.15.1",
+  "source": {
+    "version": "0.15.1",
+    "url": "https://static.crates.io/crates/typst-syntax/typst-syntax-0.15.1.crate",
+    "sha256": "92a20d79df5d10c7fb0b4f7c18e4b2671edfc21e5ed9ad9894e18cccefd1c70f",
+    "wrapperHash": "23f9b4920bb054fa32b14765e161bc1804df231d9ce7604ba327cd7f1459bee3"
+  },
+  "build": {
+    "rust": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "target": "wasm32-unknown-unknown",
+    "selfTest": "passed"
+  },
+  "files": {
+    "typst-syntax.wasm": "995c0407feef5347a80bcc81531d0836ec04772aa8582a82b0f575eb2c82c0b7"
+  }
+}

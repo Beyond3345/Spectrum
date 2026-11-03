@@ -12,6 +12,11 @@
     "sha256": "58eb4c2933c2c4c20952c3022fcbf99c0f1d95eaaeda35ad32ac1706b34194d6",
     "sourceHash": "7d3ed9461ad537e9b431ae5b147dbf1105f8b0da31a7585b6a82c9e57dde3f74"
   },
+  "typstSyntax": {
+    "version": "0.15.1",
+    "url": "https://static.crates.io/crates/typst-syntax/typst-syntax-0.15.1.crate",
+    "sha256": "92a20d79df5d10c7fb0b4f7c18e4b2671edfc21e5ed9ad9894e18cccefd1c70f"
+  },
   "tools": {
     "nodeGyp": "12.4.0"
   },

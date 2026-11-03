@@ -353,8 +353,9 @@ async function typstSetup(projectRoot, options) {
   const fonts = (await fs.stat(fontFolder).catch(() => null))?.isDirectory() ? ['--font-path', fontFolder] : [];
   const env = {
     ...process.env,
-    // Spectrum's own cache is never passed into an agent's sandbox: there the agent's home keeps it
-    TYPST_PACKAGE_CACHE_PATH: options.scratch
+    // Spectrum's own cache is never passed into an agent's sandbox: there the agent's home keeps it. A scratch build
+    // of Spectrum's own (the converter's pictures) uses the cache the document's own compiles fill
+    TYPST_PACKAGE_CACHE_PATH: options.scratch && !options.spectrumPackages
       ? path.join(process.env.HOME || os.homedir(), 'typst-packages')
       : path.join(DATA_DIR, 'typst', 'packages')
   };
@@ -364,7 +365,7 @@ async function typstSetup(projectRoot, options) {
 /**
  * Compiles a .typ main file in outDir and writes its PDF beside it (a scratch build only returns it). The project's
  * Typst version wins over options.typstVersion, the app's default; typstInputs become the document's sys.inputs;
- * scratch keeps the package cache in the agent's home.
+ * scratch keeps the package cache in the agent's home, or with spectrumPackages in Spectrum's own.
  * source, when given, is compiled from standard input in place of absMain (a Markdown document's generated Typst).
  */
 export async function compileTypst(projectRoot, absMain, mainFile, options = {}) {
