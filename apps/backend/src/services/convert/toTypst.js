@@ -267,12 +267,16 @@ function inlinePass(text, st, ctx) {
     const parsed = commandArgs(t, m.index + m[0].length, spec);
     if (!parsed || parsed.args.some((a) => a?.includes('#'))) return null;
     const [, a, b, c] = parsed.args;
-    const typst = m[1] === 'qty' ? siQuantity(a, b) : m[1] === 'SI' ? siQuantity(a, c) : m[1] === 'num' ? siNumber(a)?.text : m[1] === 'ang' ? siAngle(a) : siUnit(a);
+    // each as text and as maths, as TYPST_STYLE.md writes a quantity in prose and in an equation
+    const number = m[1] === 'num' ? siNumber(a) : null;
+    const unit = m[1] === 'unit' || m[1] === 'si' ? siUnit(a) : null;
+    const angle = m[1] === 'ang' ? siAngle(a) : null;
+    const typst = m[1] === 'qty' ? siQuantity(a, b) : m[1] === 'SI' ? siQuantity(a, c) : number ? { text: number.text, maths: number.maths } : unit ? { text: unit, maths: JSON.stringify(unit) } : angle ? { text: angle, maths: '#[' + angle + ']' } : null;
     if (!typst) {
       ctx.note(st, t.slice(m.index, parsed.end), 'A unit Spectrum does not know was left to pandoc: ' + t.slice(m.index, parsed.end));
       return null;
     }
-    return { text: token(m.index, typst), end: parsed.end };
+    return { text: token(m.index, typst.text, typst.maths), end: parsed.end };
   });
   const replaced = (pattern, fn) => {
     out = rewrite(out, pattern, fn);
@@ -317,10 +321,12 @@ function inlinePass(text, st, ctx) {
     const arg = braceArg(t, m.index + m[0].length);
     return arg && { text: '\\textsuperscript{' + arg.arg + '}', end: arg.end };
   });
+  const callSpans = mathSpans(out);
   replaced(/\\Call(?![A-Za-z])/g, (m, t) => {
     const parsed = commandArgs(t, m.index + m[0].length, 'mm');
     if (!parsed) return null;
-    return { text: token(m.index, '#smallcaps[' + typstMarkup(parsed.args[0]) + '];', '#smallcaps[' + typstMarkup(parsed.args[0]) + '];') + '(' + parsed.args[1] + ')', end: parsed.end };
+    const name = '#smallcaps[' + typstMarkup(parsed.args[0]) + '];';
+    return { text: (inside(callSpans, m.index) ? '\\text{' + st.inline(name, name) + '}' : st.inline(name, name)) + '(' + parsed.args[1] + ')', end: parsed.end };
   });
   // the name typed before a reference, which Typst prints itself: Figure~\ref{fig:x}
   out = out.replace(/\b(?:Figures?|Fig\.|Tables?|Sections?|Chapters?|Equations?|Eqs?\.|Listings?|Algorithms?|Appendix|Theorems?|Lemmas?|Definitions?|Examples?)(?:~|\s+)\\(ref|eqref)\{/g, '\\$1{');
@@ -837,9 +843,14 @@ export function astToTypst(doc, st, ctx) {
       const found = ctx.image(st, src);
       return [found ? { t: 'Image', c: [attr, walk(alt), ['/' + found, title]] } : { t: 'Str', c: '[' + src + ']' }];
     },
+    BulletList: ({ c: items }) => [{ t: 'BulletList', c: items.map((item) => walk(tight(item))) }],
+    OrderedList: ({ c: [attrs, items] }) => [{ t: 'OrderedList', c: [attrs, items.map((item) => walk(tight(item)))] }],
+    DefinitionList: ({ c: items }) => [{ t: 'DefinitionList', c: items.map(([term, defs]) => [walk(term), defs.map((d) => walk(tight(d)))]) }],
     RawInline: () => [],
     RawBlock: () => []
   };
+  // an item of one paragraph, which LaTeX's lists all are, as a tight list item
+  const tight = (blocks) => (blocks.length === 1 && blocks[0].t === 'Para' ? [{ t: 'Plain', c: blocks[0].c }] : blocks);
   function walk(value) {
     if (!Array.isArray(value)) return value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, walk(v)])) : value;
     const out = value.flatMap((item) => (isNode(item) ? transform(item) : [walk(item)]));
@@ -931,6 +942,8 @@ export function typstMaths(tex) {
   const t = arrows(tex)
     .replace(/\\mathop\s*\{\\(?:mathrm|operatorname)\s*\{([^{}]*)\}\}/g, '\\operatorname{$1}')
     .replace(/\\mathrm\s*\{([A-Za-z][A-Za-z ]+)\}/g, (whole, word) => (word.trim().length > 1 ? '\\text{' + word + '}' : whole))
+    // an upright letter as a subscript is a label (v_d, the drain's), which tex2typst would take for a differential
+    .replace(/([_^])\s*(?:\{\s*\\mathrm\s*\{([A-Za-z])\}\s*\}|\\mathrm\s*\{([A-Za-z])\})/g, (_, at, a, b) => at + '\\text{' + (a ?? b) + '}')
     .replace(/\\left\\lVert/g, '\\left\\|')
     .replace(/\\right\\rVert/g, '\\right\\|')
     .replace(/\\[lr]Vert(?![A-Za-z])/g, '\\|')
@@ -1028,7 +1041,11 @@ export function assembleTypst(typst, st, ctx) {
     let out = source;
     for (let k = 0; k < 3 && /SPXI\d+X/.test(out); k += 1) {
       out = out
-        .replace(/"SPXI(\d+)X"/g, (_, n) => st.inlines[n].maths)
+        // a quantity in maths is several atoms, so a fraction or power around it takes it in brackets (a fraction's vanish)
+        .replace(/(\/\s*)?"SPXI(\d+)X"(\s*[/^_])?/g, (_, before, n, after) => {
+          const maths = st.inlines[n].maths;
+          return (before ?? '') + ((before || after) && /\s/.test(maths) ? '(' + maths + ')' : maths) + (after ?? '');
+        })
         .replace(/SPXI(\d+)X/g, (_, n) => st.inlines[n].text);
     }
     return out;
@@ -1047,8 +1064,11 @@ export function assembleTypst(typst, st, ctx) {
     .trim() + '\n';
 }
 
-/** A figure or table may float to the top or bottom of a page, as LaTeX's [ht] lets it. */
-const floating = (typst, placement) => (/[tbp]/.test(placement ?? '') && !/H/.test(placement) ? typst.replace(/\)((?: <[^>]+>)?)$/, ', placement: auto)$1') : typst);
+/**
+ * A figure or table LaTeX may only put at the top or bottom of a page ([t], [b], [p]) floats there in Typst too. One it
+ * may keep here ([h], [ht]) stays in place: Typst's floats always move, and took a table above its chapter's heading.
+ */
+const floating = (typst, placement) => (/[tbp]/.test(placement ?? '') && !/[hH]/.test(placement) ? typst.replace(/\)((?: <[^>]+>)?)$/, ', placement: auto)$1') : typst);
 const captionArg = (text) => (text ? ', caption: [' + text + ']' : '');
 const labelAfter = (label) => (label ? ' <' + typstLabel(label) + '>' : '');
 
@@ -1163,13 +1183,15 @@ function renderTable(record, pieceText, ctx) {
     const cells = model.cells.map((row) => row.map((n) => (n === null ? '' : pieceText(n))));
     let typst = tableTypst({ ...model, cells });
     if (widths) typst = typst.replace('#table(columns: ' + model.align.length, '#table(columns: (' + widths.join(', ') + ')');
+    // the table tool leaves out an all-left align, and a figure would then centre every cell
+    if (!/^#table\(columns: (?:\([^)]*\)|\d+), align: /.test(typst)) typst = typst.replace(/^(#table\(columns: (?:\([^)]*\)|\d+)), /, '$1, align: (' + model.align.map(() => 'left').join(', ') + '), ');
     return typst;
   });
   const caption = record.caption === null ? '' : pieceText(record.caption);
   const notes = record.notes.map((n) => '#text(size: 0.9em)[' + (n.mark ? '#super[' + n.mark + '] ' : '') + pieceText(n.text) + ']');
   const long = record.tables.some((t) => t.long);
   if (!record.float && !caption) return [...tables, ...notes].join('\n');
-  const body = tables.length === 1 && !notes.length ? tables[0].replace(/^#/, '') : '[\n  ' + [...tables, ...notes].join(' \\\n  ') + '\n]';
+  const body = tables.length === 1 && !notes.length ? tables[0].replace(/^#/, '') : '[\n  ' + [...tables, ...notes].join('\n  ') + '\n]';
   const figure = floating('#figure(' + body + (tables.length === 1 && !notes.length ? '' : ', kind: table') + captionArg(caption) + ')' + labelAfter(record.label), record.placement);
   return long ? '#[\n  ' + commented('#show figure: set block(breakable: true)', 'this table may run across pages') + '\n  ' + figure + '\n]' : figure;
 }

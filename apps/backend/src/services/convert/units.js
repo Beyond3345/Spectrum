@@ -30,8 +30,9 @@ export function groupDigits(number) {
 }
 
 /**
- * A siunitx number as typed text: { text, maths } where maths says it needs Typst maths (a power of ten), or null when
- * it isn't one siunitx would read. \pm 15 is ±15, 1.2 \pm 0.1 is 1.2~±~0.1 and 47e3 is 47 times 10^3.
+ * A siunitx number as typed text and as Typst maths: { text, maths, power, uncertain }, power saying the text needs maths
+ * itself (a power of ten); null when it isn't one siunitx would read. \pm 15 is ±15, 1.2 \pm 0.1 is 1.2~±~0.1 and 47e3
+ * is $47 times 10^3$. In maths a number of four or more digits keeps its commas as text, where maths would space them.
  */
 export function siNumber(source) {
   const text = String(source).replace(/\\pm\b|\+-/g, '±').replace(/\\mp\b/g, '∓').replace(/\\,|~|\s+/g, ' ').trim();
@@ -39,12 +40,16 @@ export function siNumber(source) {
   if (!m) return null;
   const [, sign, mantissa, pm, uncertainty, exponent] = m;
   const digits = (n) => groupDigits(n.replace(',', '.').replace(/^\./, '0.'));
-  let out = sign + digits(mantissa) + (pm ? '~' + pm + '~' + digits(uncertainty) : '');
+  const inMaths = (n) => (digits(n).includes(',') ? '#[' + digits(n) + ']' : digits(n));
+  const out = sign + digits(mantissa) + (pm ? '~' + pm + '~' + digits(uncertainty) : '');
+  const maths = { '±': 'plus.minus ', '∓': 'minus.plus ' }[sign] ?? sign;
+  let inside = maths + inMaths(mantissa) + (pm ? ' ' + (pm === '±' ? 'plus.minus' : 'minus.plus') + ' ' + inMaths(uncertainty) : '');
   if (exponent !== undefined) {
     const power = String(Number(exponent));
-    return { text: '$' + out.replace(/~/g, ' ') + ' times 10^' + (power.length > 1 ? '(' + power + ')' : power) + '$', maths: true, uncertain: !!pm };
+    inside = (pm ? '(' + inside + ')' : inside) + ' times 10^' + (power.length > 1 ? '(' + power + ')' : power);
+    return { text: '$' + inside + '$', maths: inside, power: true, uncertain: !!pm };
   }
-  return { text: out, maths: false, uncertain: !!pm };
+  return { text: out, maths: inside, power: false, uncertain: !!pm };
 }
 
 /**
@@ -82,16 +87,20 @@ export function siUnit(source) {
   return top + '/' + (below.length === 1 ? write(below[0]) : '(' + below.map((unit) => write(unit)).join('·') + ')');
 }
 
-/** A quantity as typed text: 4.7~kΩ, ±15~V, (1.2~±~0.1)~m, 22.5°. null when either part isn't siunitx's. */
+/**
+ * A quantity as typed text and as Typst maths: { text: '4.7~kΩ', maths: '4.7 thin "kΩ"' }, as TYPST_STYLE.md writes one
+ * in prose and in an equation; ±15~V, (1.2~±~0.1)~m and 22.5° too. null when either part isn't siunitx's.
+ */
 export function siQuantity(number, unit) {
   const n = siNumber(number);
   const u = siUnit(unit);
   if (!n || !u) return null;
-  const value = n.uncertain && !n.maths ? '(' + n.text + ')' : n.text;
-  return value + (NO_SPACE.has(u) ? '' : '~') + u;
+  const value = n.uncertain && !n.power ? '(' + n.text + ')' : n.text;
+  const inside = n.uncertain && !n.power ? '(' + n.maths + ')' : n.maths;
+  return { text: value + (NO_SPACE.has(u) ? '' : '~') + u, maths: inside + (NO_SPACE.has(u) ? '' : ' thin ') + JSON.stringify(u) };
 }
 
-/** \ang's argument as typed text: 22.5° or 1°2′3″. */
+/** \ang's argument as typed text: 22.5° or 1°2′3″ (in maths too, as text). */
 export function siAngle(source) {
   const parts = String(source).split(';').map((part) => part.trim());
   if (parts.length > 3 || parts.some((part) => part && !siNumber(part))) return null;
