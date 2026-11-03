@@ -3,9 +3,10 @@
 //   SPECTRUM_PANDOC=<pandoc 3.12.1> node scripts/tidy-bench-regions.mjs
 // Each case in apps/backend/test/fixtures/tidy-bench/cases.json is one small LaTeX or Typst document whose region sits
 // between two plain paragraphs, "Region starts here." and "Region ends here.". The converter turns the document into
-// the other format in a throwaway folder, and the text between the same two paragraphs of its output is the converted
-// region. A case whose conversion fails its checks, or loses a paragraph marker, stops the build. The result is
-// regions.json beside cases.json. Throwaway folders only; no model is called.
+// the other format in a throwaway folder, and the region the converter marked (spectrum:region) between the same two
+// paragraphs of its output is the case's region. A case whose conversion fails its checks, or that has no such region,
+// more than one or one of another kind, stops the build. The result is regions.json beside cases.json. Throwaway
+// folders only; no model is called.
 import { existsSync, mkdirSync, mkdtempSync, promises as fs, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -32,6 +33,7 @@ Object.assign(process.env, { SPECTRUM_DATA_DIR: path.join(tmp, 'data'), SPECTRUM
 mkdirSync(path.join(tmp, 'data', 'engines', 'pandoc'), { recursive: true });
 symlinkSync(pandoc, path.join(tmp, 'data', 'engines', 'pandoc', path.basename(pandoc)));
 const { latexToTypst, typstToLatex } = await import('../apps/backend/src/services/convertService.js');
+const { regionAt } = await import('../apps/backend/src/services/convertTidy.js');
 
 /** The lines strictly between the two marker paragraphs, without the blank lines at either end. */
 function between(text, where) {
@@ -62,10 +64,16 @@ try {
       const document = await fs.readFile(path.join(out, result.mainFile), 'utf8');
       const original = between(source, c.id + ' (source)');
       const converted = between(document, c.id + ' (converted)');
-      // the converter's notes for the region: those on its lines, and those with no line at all
+      // the converter's own region between the two paragraphs (between() counts lines from 1, regionAt from 0)
+      const found = result.record.regions.filter((r) => r.file === result.mainFile).map((r) => ({ r, at: regionAt(document, r.id) })).filter(({ at }) => at && at.start >= converted.from && at.end < converted.to - 1);
+      if (!found.length) throw new Error('the converter flags nothing between the paragraphs');
+      if (found.length > 1) throw new Error(found.length + ' regions between the paragraphs');
+      const [{ r, at }] = found;
+      if (r.kind !== c.kind) throw new Error('flagged as ' + r.kind + ', not ' + c.kind);
+      // the converter's notes for the region's lines, and those with no line at all
       const notes = result.notes.filter((n) => n.line === null || (n.line >= original.from && n.line <= original.to)).map((n) => n.text);
-      regions.push({ id: c.id, kind: c.kind, direction: c.direction, difficulty: c.difficulty, original: original.text, converted: converted.text, good: c.good, notes, document });
-      console.log('ok   ' + c.id + (notes.length ? '  (' + notes.length + ' note' + (notes.length === 1 ? '' : 's') + ')' : ''));
+      regions.push({ id: c.id, region: r.id, kind: c.kind, direction: c.direction, difficulty: c.difficulty, original: r.original, converted: at.text, good: c.good, notes, document });
+      console.log('ok   ' + c.id);
     } catch (err) {
       failed += 1;
       console.error('FAIL ' + c.id + ': ' + err.message);

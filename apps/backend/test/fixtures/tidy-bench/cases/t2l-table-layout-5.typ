@@ -5,16 +5,14 @@ Region starts here.
 
 #figure(
   table(
-    columns: 3,
-    fill: (_, y) => if y == 0 { luma(220) },
-    table.header([Week], [Rain (mm)], [Site visits]),
-    [1], [12], [2],
-    [2], [0], [3],
-    [3], [31], [1],
+    columns: (auto, 1fr, 1fr),
+    table.header(table.cell(rowspan: 2)[Beam], table.cell(colspan: 2)[Deflection (mm)], [Measured], [Predicted]),
+    [B1], [4.1], [3.9],
+    [B2], [5.6], [5.2],
   ),
-  caption: [Weekly rain and visits.],
-) <tab:weeks>
+  caption: [Beam deflections.],
+) <tab:beams>
 
 Region ends here.
 
-Week 3 was the wettest (@tab:weeks).
+B2 is furthest from its prediction (@tab:beams).

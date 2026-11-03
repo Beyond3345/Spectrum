@@ -1,22 +1,23 @@
 \documentclass[11pt]{article}
-\usepackage{booktabs}
+\usepackage{booktabs,multirow}
 \begin{document}
 Region starts here.
 
 \begin{table}[ht]
 \centering
-\caption{Probe readings.}\label{tab:read}
-\begin{tabular}{lrr}
+\caption{Soil types and depths.}\label{tab:soil}
+\begin{tabular}{llr}
 \toprule
-Probe & Mean & Spread \\
+Farm & Soil & Depth (cm) \\
 \midrule
-P1 & 0.30 & 0.02 \\
-P2 & 0.28 & 0.03 \\
+\multirow{2}{*}{Horsham} & Clay & 60 \\
+ & Loam & 30 \\
+Dimboola & Sand & 90 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 Region ends here.
 
-P1 read slightly higher (Table~\ref{tab:read}).
+Sand drains fastest (Table~\ref{tab:soil}).
 \end{document}

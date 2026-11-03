@@ -5,18 +5,16 @@ Region starts here.
 
 #figure(
   table(
-    columns: 2,
-    stroke: none,
-    table.hline(stroke: 0.08em),
-    table.header([Bolt], [Torque (Nm)]),
-    table.hline(stroke: 0.05em),
-    [M12], [80],
-    [M16], [200],
-    table.hline(stroke: 0.08em),
+    columns: 3,
+    fill: (_, y) => if y == 0 { luma(220) },
+    table.header([Week], [Rain (mm)], [Site visits]),
+    [1], [12], [2],
+    [2], [0], [3],
+    [3], [31], [1],
   ),
-  caption: [Bolt torques.],
-) <tab:bolts>
+  caption: [Weekly rain and visits.],
+) <tab:weeks>
 
 Region ends here.
 
-Use a calibrated wrench for @tab:bolts.
+Week 3 was the wettest (@tab:weeks).

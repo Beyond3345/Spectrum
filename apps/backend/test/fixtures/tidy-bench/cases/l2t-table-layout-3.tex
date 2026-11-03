@@ -1,24 +1,24 @@
 \documentclass[11pt]{article}
-\usepackage{booktabs}
+\usepackage[table]{xcolor}
 \begin{document}
 Region starts here.
 
 \begin{table}[ht]
 \centering
-\caption{Rainfall and run-off.}\label{tab:rain}
-\begin{tabular}{lrrrr}
-\toprule
- & \multicolumn{2}{c}{Rainfall (mm)} & \multicolumn{2}{c}{Run-off (mm)} \\
-\cmidrule(lr){2-3}\cmidrule(lr){4-5}
-Month & 2024 & 2025 & 2024 & 2025 \\
-\midrule
-March & 41 & 18 & 3 & 0 \\
-April & 66 & 52 & 9 & 6 \\
-\bottomrule
+\caption{Visits per site.}\label{tab:visits}
+\begin{tabular}{lcc}
+\hline
+\rowcolor{gray!20} Site & Visits & Faults \\
+\hline
+Creek & 12 & 1 \\
+Ridge & 9 & 0 \\
+\cline{2-3}
+Total & 21 & 1 \\
+\hline
 \end{tabular}
 \end{table}
 
 Region ends here.
 
-April ran off most (Table~\ref{tab:rain}).
+The creek site had the only fault (Table~\ref{tab:visits}).
 \end{document}

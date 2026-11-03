@@ -1,17 +1,17 @@
-#set document(title: [Heat pumps in cold climates])
+#set document(title: [Bees on the Mornington Peninsula])
 #set page(paper: "a4", margin: 25mm)
 #set text(size: 11pt, lang: "en", region: "AU")
 
 Region starts here.
 
 #set page(numbering: none)
-#align(center)[
-  #v(30mm)
-  #text(size: 17pt, weight: "bold", title())
-  #v(20mm)
-  *Author:* Lucas Fernandes #h(1fr) *Supervisor:* Dr Mei Lin
-  #v(1fr)
-  #text(size: 12pt)[Faculty of Engineering]
+#align(center + horizon)[
+  #text(size: 20pt, weight: "bold", title()) \
+  #v(8mm)
+  #text(style: "italic")[Notes from a season of hive checks] \
+  #v(8mm)
+  Amelia Scott \
+  Beekeepers' Club field notes, 2026
 ]
 
 Region ends here.
@@ -19,6 +19,6 @@ Region ends here.
 #pagebreak()
 #set page(numbering: "1")
 
-= Climate data
+= Hives
 
-Canberra winters are the test case.
+We checked forty hives.

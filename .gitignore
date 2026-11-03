@@ -21,3 +21,6 @@ native/win32-x64/
 native/agent-sandbox/bin/
 native/hunspell/build/
 windows-delivery/
+
+# the tidy benchmark's results (scripts/tidy-bench.mjs)
+tidy-bench-results/

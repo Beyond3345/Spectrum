@@ -1,4 +1,4 @@
-#set document(title: [Shade trees and school playgrounds])
+#set document(title: [Heat pumps in cold climates])
 #set page(paper: "a4", margin: 25mm)
 #set text(size: 11pt, lang: "en", region: "AU")
 
@@ -6,16 +6,12 @@ Region starts here.
 
 #set page(numbering: none)
 #align(center)[
-  #v(25mm)
-  #line(length: 100%, stroke: 0.8pt)
+  #v(30mm)
   #text(size: 17pt, weight: "bold", title())
-  #line(length: 100%, stroke: 0.8pt)
-  #v(15mm)
-  #text(size: 12pt, style: "italic")[A survey of twenty schools]
-  #v(10mm)
-  #text(size: 14pt)[Oliver Grant]
+  #v(20mm)
+  *Author:* Lucas Fernandes #h(1fr) *Supervisor:* Dr Mei Lin
   #v(1fr)
-  #text(size: 12pt)[August 2026]
+  #text(size: 12pt)[Faculty of Engineering]
 ]
 
 Region ends here.
@@ -23,6 +19,6 @@ Region ends here.
 #pagebreak()
 #set page(numbering: "1")
 
-= Schools
+= Climate data
 
-Twenty schools took part.
+Canberra winters are the test case.

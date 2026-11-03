@@ -1,13 +1,24 @@
 \documentclass[10pt,a4paper]{article}
+\usepackage[backend=biber,style=apa]{biblatex}
+\addbibresource{refs.bib}
 \begin{document}
 Region starts here.
 
 \noindent
-\parbox[t]{0.6\linewidth}{{\Large\bfseries Chloe Bennett}\\ Primary school teacher}\hfill
-\parbox[t]{0.35\linewidth}{\raggedleft chloe.bennett@example.com\\ 0412 345 678\\ Ballarat, Victoria}
+\begin{minipage}[b]{0.65\linewidth}
+{\huge\bfseries Dr Grace Okafor}\\[2pt]
+Hydrologist; author of \textcite{Okafor2021}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.33\linewidth}
+\raggedleft
+g.okafor@example.edu.au\\
+Hobart, Tasmania
+\end{minipage}
 
 Region ends here.
 
-\section{Teaching}
-Year 3 and 4, 2019 to now.
+\section{Books}
+One field guide.
+
+\printbibliography
 \end{document}

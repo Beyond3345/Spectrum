@@ -25,7 +25,7 @@ const SKILL = 'spectrum-convert-tidy';
 // ─── The prompt ───
 
 /** The skill's checklist and rule cards: { checklist, cards: Map(heading → text) }. */
-async function skillParts() {
+export async function skillParts() {
   const body = await loadSkill(SKILL).then((s) => s.body, async () => readFrontMatter(await fs.readFile(path.join(SKILLS_SEED_DIR, SKILL, 'SKILL.md'), 'utf8')).body);
   const section = (title) => new RegExp('^## ' + title + '\\n([\\s\\S]*?)(?=^## |(?![\\s\\S]))', 'm').exec(body)?.[1].trim() ?? '';
   const cards = new Map([...section('Rule cards').matchAll(/^### (.+)\n([\s\S]*?)(?=^### |(?![\s\S]))/gm)].map((m) => [m[1].trim(), m[2].trim()]));
@@ -170,7 +170,7 @@ const commentAbove = (text, at, comment) => {
 };
 
 /** The errors of a compile of dir: Typst's diagnostics, or LaTeX's ! and file:line: lines. */
-async function compileErrors(dir, mainFile, engine) {
+export async function compileErrors(dir, mainFile, engine) {
   const result = await compileFolder({ root: dir, mainFile, engine }).catch((err) => ({ ok: false, error: err.message }));
   const errors = result.errors
     ? result.errors.filter((e) => e.severity === 'error').map((e) => e.message.split('\n')[0])
