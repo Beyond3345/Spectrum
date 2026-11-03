@@ -262,6 +262,29 @@ function mathClose(text, i) {
   return text.length;
 }
 
+// the document's title, printed by #title() or inside a #text(…) that styles it
+const TITLE = /(?:^|[^\w.-])title\(\)/;
+
+/** A line of a title page: { space } for a #v(…), else the title or a text piece, with the size and weight #text gives. */
+function titleItem(line, st) {
+  const space = /^#v\(\s*([^)]*?)\s*\)$/.exec(line);
+  if (space) return { space: space[1] };
+  const call = /^#text\(/.test(line) ? callAt(line, 0) : null;
+  const a = call?.args ?? [];
+  const value = a.find((x) => x.name === null)?.value;
+  const title = TITLE.test(line);
+  return { title, size: arg(a, 'size'), bold: /bold/.test(arg(a, 'weight') ?? ''), italic: /italic/.test(arg(a, 'style') ?? ''), text: title ? null : st.piece(call ? call.bodies[0] ?? contentOf(value) ?? value ?? '' : line) };
+}
+
+/** The LaTeX size command nearest a Typst text size (12pt, 1.2em) in a document of base pt; '' at the base size. */
+function latexSize(size, base) {
+  const m = /^(\d*\.?\d+)(pt|em)$/.exec(String(size ?? '').trim());
+  if (!m) return '';
+  const pt = Number(m[1]) * (m[2] === 'em' ? base : 1);
+  const sizes = [['\\footnotesize', 8], ['\\small', 9.5], ['', base], ['\\large', 12], ['\\Large', 14.4], ['\\LARGE', 17.28], ['\\huge', 20.74], ['\\Huge', 24.88]];
+  return sizes.reduce((best, s) => (Math.abs(s[1] - pt) < Math.abs(best[1] - pt) ? s : best))[0];
+}
+
 /** A call that is a house construct, as its record; null for anything pandoc writes itself. */
 function construct(call, text, at, st, ctx) {
   const a = call.args;
@@ -283,11 +306,12 @@ function construct(call, text, at, st, ctx) {
     }
     case 'align': {
       const body = call.bodies[0] ?? contentOf(arg(a, null, 1)) ?? '';
-      if (!/#title\(\)/.test(body)) return null;
+      if (!TITLE.test(body)) return null;
+      const lines = body.split(/\\\s*\n|\n/).map((l) => l.trim()).filter(Boolean);
+      // a title page fills a page of its own: centred down it, or with space pushing its foot down
+      if (/horizon/.test(arg(a, null, 0) ?? '') || lines.some((l) => /^#v\(\s*1fr\s*\)$/.test(l))) return { kind: 'titlepage', items: lines.map((l) => titleItem(l, st)) };
       // the title block: the title, then the author and date lines
-      const lines = body.split(/\\\s*\n|\n/).map((l) => l.trim()).filter((l) => l && !/^#title\(\)$/.test(l) && !/^#v\(/.test(l));
-      const page = /horizon/.test(arg(a, null, 0) ?? '');
-      return { kind: page ? 'titlepage' : 'maketitle', lines: lines.map((l) => st.piece(l)) };
+      return { kind: 'maketitle', lines: lines.filter((l) => !TITLE.test(l) && !/^#v\(/.test(l)).map((l) => st.piece(l)) };
     }
     case 'outline': {
       const target = arg(a, 'target') ?? '';
@@ -824,8 +848,19 @@ function renderBlock(record, pieceText, st, ctx) {
       ctx.authorLatex = lines.join(' \\\\ ');
       return '\\maketitle';
     }
-    case 'titlepage':
-      return ['\\begin{titlepage}', '  \\centering', '  \\vspace*{30mm}', '  {\\LARGE\\bfseries ' + (ctx.titleLatex ?? '') + '\\par}', '  \\vspace{12mm}', ...record.lines.map((n) => '  ' + pieceText(n) + '\\par'), '\\end{titlepage}'].join('\n');
+    case 'titlepage': {
+      const lines = record.items.map((item, i) => {
+        if (item.space !== undefined) {
+          if (/fr$/.test(item.space)) return '\\vfill';
+          return /^\d*\.?\d+(?:mm|cm|in|pt|em)$/.test(item.space) ? '\\vspace' + (i === 0 ? '*' : '') + '{' + item.space + '}' : null;
+        }
+        const text = item.title ? ctx.titleLatex ?? '' : pieceText(item.text);
+        // a bare #title() as Typst sets it, large and bold
+        const style = item.title && !item.size && !item.bold ? '\\LARGE\\bfseries' : [latexSize(item.size, ctx.facts.size), item.bold && '\\bfseries', item.italic && '\\itshape'].filter(Boolean).join('');
+        return style ? '{' + style + ' ' + text + '\\par}' : text + '\\par';
+      });
+      return ['\\begin{titlepage}', '  \\centering', ...lines.filter(Boolean).map((l) => '  ' + l), '\\end{titlepage}'].join('\n');
+    }
     case 'tableofcontents':
     case 'listoffigures':
     case 'listoftables':
@@ -1032,7 +1067,7 @@ export function typstProse(text) {
     for (let at = out.indexOf(name); at !== -1; at = out.indexOf(name, at + 1)) {
       const end = expressionEnd(out, at);
       const call = out.slice(at, end);
-      if ((name === '#align(' && /#title\(\)/.test(call)) || (name === '#figure(' && /kind:\s*"algorithm"/.test(call))) out = out.slice(0, at) + ' '.repeat(end - at) + out.slice(end);
+      if ((name === '#align(' && TITLE.test(call)) || (name === '#figure(' && /kind:\s*"algorithm"/.test(call))) out = out.slice(0, at) + ' '.repeat(end - at) + out.slice(end);
     }
   }
   return out;

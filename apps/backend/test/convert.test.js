@@ -247,6 +247,8 @@ for (const name of ['typst-document', 'typst-report', 'typst-maths-notes', 'typs
     assert.match(latex, /\\usepackage\[australian\]\{babel\}/);
     assert.match(latex, /\\usepackage\[capitalise,noabbrev\]\{cleveref\}/);
     assert.doesNotMatch(latex, /SPX[IBPH]\d+X/, 'no token left');
+    // the report's title page comes over as the LaTeX report's: sizes, space and the title itself
+    if (name === 'typst-report') assert.match(latex, /\\begin\{titlepage\}\n {2}\\centering\n {2}\\vspace\*\{30mm\}\n {2}\{\\LARGE\\bfseries Rooftop solar output across a Melbourne year\\par\}\n {2}\\vspace\{12mm\}\n {2}\{\\Large Your Name\\par\}[\s\S]*\\vfill[\s\S]*\\end\{titlepage\}/);
   });
 }
 
