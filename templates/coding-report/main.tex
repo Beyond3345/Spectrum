@@ -75,7 +75,7 @@
 
 This report describes an implementation of Dijkstra's algorithm, which finds the length of the
 shortest path from one vertex to every other vertex of a graph whose edge weights are
-non-negative. \cref{sec:method} gives the algorithm, \cref{sec:code} the code, and
+non-negative \parencite{Dijkstra1959}. \cref{sec:method} gives the algorithm, \cref{sec:code} the code, and
 \cref{sec:analysis} its running time.
 
 \section{Method}\label{sec:method}
@@ -163,7 +163,7 @@ int relax(int dist[], int u, int v, int w)
 
 Every edge is relaxed at most once, and each relaxation can push one entry onto the queue, so
 with a binary heap the algorithm runs in $O\bigl((|V| + |E|) \log |V|\bigr)$ time.
-\cref{tab:queues} compares this with other choices of priority queue.
+\cref{tab:queues} compares this with other choices of priority queue, following \textcite{Cormen2022}.
 
 \begin{table}[ht]
   \centering

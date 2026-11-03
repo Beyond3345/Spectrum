@@ -1733,3 +1733,20 @@ button.compile-status:hover {
 .cm-tooltip-autocomplete li:not([aria-selected]) .cm-completionDetail {
   color: var(--text-tertiary);
 }
+
+/* Tinymist's hovers are Markdown: its headings sit at the text's size, and a long signature scrolls */
+.cm-lsp-documentation :is(h1, h2, h3, h4, h5, h6) {
+  margin: 6px 0 2px;
+  font-size: 1em;
+}
+
+.cm-lsp-documentation {
+  max-width: 560px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.cm-lsp-documentation hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+}

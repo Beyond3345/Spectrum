@@ -5,7 +5,7 @@ import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import type { PdfBox, PdfPoint } from '../api/client';
 import { linger, overlayStyle, pdfPoint } from './synctex';
-import { findAll, matchBoxes, pageText } from './pdfFind';
+import { findAll, lineBoxFrom, matchBoxes, pageText } from './pdfFind';
 import type { TextRun } from './pdfFind';
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -31,6 +31,8 @@ export type PdfHandle = {
   find(query: string, index: number): Promise<number>;
   /** The boxes of the first match of `query` in the PDF's text, for a source-to-PDF jump without SyncTeX. */
   firstMatch(query: string): Promise<PdfBox[]>;
+  /** The box of the text from a spot on a baseline to the end of its line (lineBoxFrom), for Tinymist's jumps. */
+  lineFrom(at: PdfPoint): Promise<PdfBox[]>;
   /** A page drawn to fit `width` × `height` CSS pixels (thumbnails, presentation mode); null until the PDF has loaded. */
   renderPage(page: number, width: number, height: number): Promise<HTMLCanvasElement | null>;
 };
@@ -316,12 +318,8 @@ const PdfPreview = forwardRef<
     });
   };
 
-  /** Marks Find's matches on the pages laid out now, and brings the chosen one into view when `show`. */
-  const markMatches = async (show: boolean) => {
-    const layout = layoutRef.current;
-    const asked = findRef.current;
-    pagesRef.current?.querySelectorAll('.pdf-find-box').forEach((node) => node.remove());
-    if (!layout || !asked.query.trim()) return 0;
+  /** Each page's text runs, read once for each PDF: Find's matches, and the line a Typst jump lands on. */
+  const pageTexts = (layout: NonNullable<typeof layoutRef.current>) => {
     if (textRef.current?.url !== layout.url) {
       const pages = Promise.all(
         layout.pages.map(async (page) => {
@@ -331,7 +329,16 @@ const PdfPreview = forwardRef<
       );
       textRef.current = { url: layout.url, pages };
     }
-    const texts = await textRef.current.pages.catch(() => []);
+    return textRef.current.pages.catch(() => []);
+  };
+
+  /** Marks Find's matches on the pages laid out now, and brings the chosen one into view when `show`. */
+  const markMatches = async (show: boolean) => {
+    const layout = layoutRef.current;
+    const asked = findRef.current;
+    pagesRef.current?.querySelectorAll('.pdf-find-box').forEach((node) => node.remove());
+    if (!layout || !asked.query.trim()) return 0;
+    const texts = await pageTexts(layout);
     // asked again, or another PDF, meanwhile: that call marks its own
     if (findRef.current !== asked || layoutRef.current?.url !== layout.url) return 0;
     const matches: HTMLElement[][] = [];
@@ -426,16 +433,7 @@ const PdfPreview = forwardRef<
     async firstMatch(query) {
       const layout = layoutRef.current;
       if (!layout || !query.trim()) return [];
-      if (textRef.current?.url !== layout.url) {
-        const pages = Promise.all(
-          layout.pages.map(async (page) => {
-            const content = await page.getTextContent();
-            return { runs: content.items.filter((item) => 'str' in item), measure: measure(content.styles) };
-          })
-        );
-        textRef.current = { url: layout.url, pages };
-      }
-      const texts = await textRef.current.pages.catch(() => []);
+      const texts = await pageTexts(layout);
       for (let i = 0; i < texts.length; i += 1) {
         const { runs, measure } = texts[i];
         const { text, starts } = pageText(runs);
@@ -445,6 +443,13 @@ const PdfPreview = forwardRef<
         return matchBoxes(runs, starts, match, i + 1, (x, y) => view.convertToViewportPoint(x, y), measure);
       }
       return [];
+    },
+    async lineFrom({ page, x, y }) {
+      const layout = layoutRef.current;
+      const runs = layout && (await pageTexts(layout))[page - 1]?.runs;
+      if (!layout || !runs) return [];
+      const view = layout.pages[page - 1].getViewport({ scale: 1 });
+      return lineBoxFrom(runs, page, (px, py) => view.convertToViewportPoint(px, py), x, y);
     },
     async renderPage(number, width, height) {
       const page = layoutRef.current?.pages[number - 1];

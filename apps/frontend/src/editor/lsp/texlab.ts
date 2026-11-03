@@ -3,7 +3,7 @@ import type { EditorState, Extension } from '@codemirror/state';
 import { diagnosticCount, setDiagnostics } from '@codemirror/lint';
 import { EditorView, keymap } from '@codemirror/view';
 import { LSPClient, LSPPlugin, Workspace, hoverTooltips, jumpToDefinition, serverDiagnostics } from '@codemirror/lsp-client';
-import type { WorkspaceFile } from '@codemirror/lsp-client';
+import type { LSPClientConfig, WorkspaceFile } from '@codemirror/lsp-client';
 import type * as lsp from 'vscode-languageserver-protocol';
 import { getDiagnostics } from '../../api/client';
 import { IS_MAC, IS_WINDOWS } from '../../app/platform';
@@ -37,6 +37,9 @@ export const texlabSlot = new Compartment();
 export const clearMarks = (state: EditorState) => (diagnosticCount(state) ? setDiagnostics(state, []) : null);
 
 const languageOf = (path: string) => (/\.bib$/i.test(path) ? 'bibtex' : /\.(tex|ltx|sty|cls|dtx)$/i.test(path) ? 'latex' : null);
+
+/** The language server a line goes to: TexLab, or Tinymist for Typst (tinymist.ts), each by its own backend route. */
+export type LspServer = { name: string; route: string; languageOf: (path: string) => string | null; config: LSPClientConfig };
 
 /**
  * Hovers as plain text only: the bridge asks TexLab for plain text, which comes here escaped with line breaks, and a
@@ -117,8 +120,10 @@ export class ProjectWorkspace extends Workspace {
   }
 }
 
+const TEXLAB: LspServer = { name: 'TexLab', route: 'lsp', languageOf, config: { sanitizeHTML: plainOnly, extensions: [serverDiagnostics(), hoverTooltips()] } };
+
 /**
- * One project's line to its TexLab, from the editor's first look until close(). The backend's event stream says
+ * One project's line to its TexLab (or another server), from the editor's first look until close(). The backend's event stream says
  * hello with this editor's id and the project's root; when TexLab stops, the stream ends and EventSource connects again
  * (to a new TexLab), and a 503 (no TexLab) ends it for good. onAvailable hears each change.
  */
@@ -131,18 +136,19 @@ export class Texlab {
   private extensions = new Map<string, Extension>();
 
   constructor(
-    private projectId: string,
+    protected projectId: string,
     readonly host: TexlabHost,
-    private onAvailable: (available: boolean) => void
+    private onAvailable: (available: boolean) => void,
+    readonly server = TEXLAB
   ) {
     this.client = new LSPClient({
       // TexLab's first answers can wait for it to read the project
       timeout: 15_000,
       workspace: (client) => new ProjectWorkspace(client, this),
-      sanitizeHTML: plainOnly,
-      extensions: [serverDiagnostics(), hoverTooltips(), this.keys()]
+      ...server.config,
+      extensions: [...(server.config.extensions ?? []), this.keys()]
     });
-    this.events = new EventSource(`/api/projects/${projectId}/lsp`);
+    this.events = new EventSource(`/api/projects/${projectId}/${server.route}`);
     this.events.addEventListener('hello', (e) => this.hello(JSON.parse((e as MessageEvent<string>).data)));
     this.events.onmessage = (e) => this.connection?.receive(e.data);
     this.events.onerror = () => this.lost();
@@ -151,8 +157,8 @@ export class Texlab {
   private hello({ client, rootUri }: { client: string; rootUri: string }) {
     this.lost();
     const connection = lspTransport((body) =>
-      fetch(`/api/projects/${this.projectId}/lsp?client=${encodeURIComponent(client)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }).then((res) => {
-        if (!res.ok) throw new Error(`TexLab’s line answered ${res.status}.`);
+      fetch(`/api/projects/${this.projectId}/${this.server.route}?client=${encodeURIComponent(client)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }).then((res) => {
+        if (!res.ok) throw new Error(`${this.server.name}’s line answered ${res.status}.`);
       })
     );
     this.connection = connection;
@@ -221,7 +227,7 @@ export class Texlab {
 
   /** The extensions for a file the editor shows, the same object each time for the same file (none without TexLab). */
   extensionFor(path: string): Extension {
-    const languageId = this.available && path ? languageOf(path) : null;
+    const languageId = this.available && path ? this.server.languageOf(path) : null;
     if (!languageId) return [];
     const uri = this.uriOf(path);
     let extension = this.extensions.get(uri);
@@ -280,7 +286,7 @@ export class Texlab {
   }
 
   private ready() {
-    if (!this.available) throw new Error('TexLab isn’t running.');
+    if (!this.available) throw new Error(`${this.server.name} isn’t running.`);
     this.client.sync();
   }
 

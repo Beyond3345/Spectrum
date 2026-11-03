@@ -2,7 +2,7 @@
 // npx esbuild apps/frontend/src/editor/floats.check.ts --bundle --platform=node --log-level=warning | node
 import { blockAt, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, graphicsOptions, panelWidth, fitMerges, headerRows, numberFormat, tableNotes, tablePackages, withMerge, diagramImageLatex, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableRules, tableTypst, typstMarkup, uniqueName } from './floats';
 import type { FigureSet, FigureSize, TableModel } from './floats';
-import { addLibraries, addPackages, changeBetween, loadedLibraries, loadedPackages, projectPackages } from './preamble';
+import { TYPST_SUBFIGURE, addLibraries, addPackages, addTypstSubfigure, changeBetween, loadedLibraries, loadedPackages, projectPackages } from './preamble';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -658,10 +658,21 @@ eq(
   'a grid of two columns: a new row after every second image'
 );
 eq(
-  figureSetTypst({ ...pair, panels: pair.panels.map((p) => ({ ...p, label: '' })), label: 'fig-views' }),
-  '#figure(grid(columns: 2, gutter: 1em, align: bottom, stack(spacing: 0.5em, image("/images/a.png", width: 100%), [(a) Front.]), stack(spacing: 0.5em, image("/images/b.png", width: 100%), [(b) Side.])), caption: [Two views.]) <fig-views>',
-  'Typst: a grid, with (a) and (b) under each image'
+  figureSetTypst(pair),
+  '#figure(grid(columns: 2, gutter: 1em, align: bottom, [#subfigure(image("/images/a.png", width: 100%), caption: [Front.]) <fig:a>], [#subfigure(image("/images/b.png", width: 100%), caption: [Side.]) <fig:b>]), caption: [Two views.]) <fig:views>',
+  'Typst: house sub-figures in a grid, each with its own label'
 );
+eq(figureSetTypst({ ...pair, panels: [{ ...pair.panels[0], label: '' }] }).includes('caption: [Front.])]'), true, 'Typst: a sub-figure without a label');
+const typstDoc = lines('#set page(paper: "a4")', '#show heading: it => {', '  it', '}', '// Code', '#set raw(tab-size: 4)', '', '= Introduction', 'Text.');
+eq(
+  addTypstSubfigure(typstDoc)!.source,
+  lines('#set page(paper: "a4")', '#show heading: it => {', '  it', '}', '// Code', '#set raw(tab-size: 4)', '', TYPST_SUBFIGURE, '= Introduction', 'Text.'),
+  'Typst sub-figure definitions go after the preamble’s last rule'
+);
+eq(addTypstSubfigure('= Intro\n')!.source, TYPST_SUBFIGURE + '\n= Intro\n', 'no preamble: at the top');
+eq(addTypstSubfigure(addTypstSubfigure(typstDoc)!.source), null, 'already defined');
+eq(addTypstSubfigure('#import "/style.typ": *\n= Intro'), null, 'imported from the project’s style file');
+eq(addTypstSubfigure('#import "@preview/cetz:0.5.3": *\n')!.source.startsWith('#import "@preview/cetz:0.5.3": *\n\n#show'), true, 'a package import doesn’t count');
 eq(
   figureSetTypst({ ...pair, labels: 'separate', panels: [{ ...pair.panels[0], label: 'fig-a' }] }),
   '#grid(columns: 1, gutter: 1em, align: bottom, [#figure(image("/images/a.png", width: 100%), caption: [Front.]) <fig-a>])',

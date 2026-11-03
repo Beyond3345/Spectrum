@@ -108,15 +108,28 @@ for (const style of ['apa', 'plainnat', 'plainurl', 'plain']) test(`${style} bib
   }
 });
 
+const readDiagrams = async (id) => {
+  const dir = path.join(shippedDir, id, 'diagrams');
+  if (!existsSync(dir)) return [];
+  return Promise.all((await fs.readdir(dir)).map((f) => fs.readFile(path.join(dir, f), 'utf8')));
+};
+
 test('the Typst and Markdown starters are self-contained', async () => {
-  for (const id of ['typst-document', 'typst-report', 'typst-letter', 'typst-cv']) {
+  const typst = shipped.templates.filter((t) => t.mainFile === 'main.typ').map((t) => t.id);
+  assert.deepEqual(typst, ['typst-document', 'typst-report', 'typst-maths-notes', 'typst-electronics-notes', 'typst-coding-report', 'typst-letter', 'typst-cv']);
+  for (const id of typst) {
     const main = await fs.readFile(path.join(shippedDir, id, 'main.typ'), 'utf8');
     assert.match(main, /#set page\(paper: "a4"/, `${id}: A4`);
-    assert.doesNotMatch(main, /@preview|^\s*#import/m, `${id}: no packages`);
+    assert.match(main, /#set text\(size: 1[01]pt, lang: "en", region: "AU"\)/, `${id}: Australian English`);
+    assert.match(main, /^#set document\(/m, `${id}: PDF title and author`);
+    // drawings in diagrams/ are plain Typst too, so every template compiles offline
+    for (const file of [main, ...await readDiagrams(id)]) assert.doesNotMatch(file, /@preview|^\s*#import/m, `${id}: no packages`);
+    // letters and CVs cite nothing; everything else ends with the APA bibliography from refs.bib
+    if (!['typst-letter', 'typst-cv'].includes(id)) {
+      assert.match(main, /#bibliography\("refs.bib", style: "apa"\)\n$/, `${id}: bibliography`);
+      assert.ok(existsSync(path.join(shippedDir, id, 'refs.bib')), `${id}/refs.bib`);
+    }
   }
-  const typstDocument = await fs.readFile(path.join(shippedDir, 'typst-document', 'main.typ'), 'utf8');
-  assert.match(typstDocument, /#bibliography\("refs.bib", style: "apa"\)/);
-  assert.ok(existsSync(path.join(shippedDir, 'typst-document', 'refs.bib')));
   const markdown = await fs.readFile(path.join(shippedDir, 'markdown-article', 'main.md'), 'utf8');
   assert.match(markdown, /^---\ntitle: /);
   assert.match(markdown, /bibliography: refs\.bib/);

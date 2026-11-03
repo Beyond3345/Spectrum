@@ -168,10 +168,12 @@ export const FIXED_SHORTCUTS: [string, string][] = [
   ['Undo', 'Mod-z'],
   ['Redo', IS_MAC ? 'Shift-Mod-z' : 'Mod-y'],
   ['Settings', 'Mod-,'],
-  // TexLab's, while it runs (editor/lsp/texlab.ts); go to definition is also ⌘ or Ctrl and a click
+  // TexLab's and Tinymist's, while they run (editor/lsp/texlab.ts); go to definition is also ⌘ or Ctrl and a click
   ['Go to definition', 'F12'],
   ['Find references', 'Shift-F12'],
-  ['Rename label, citation key or command', 'F2']
+  ['Rename label, citation key or command', 'F2'],
+  // Tinymist's, in a .typ file
+  ['Format Typst document', 'Shift-Alt-f']
 ];
 
 /** Shortcuts the system or the clipboard keep for themselves. */

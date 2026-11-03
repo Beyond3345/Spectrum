@@ -557,10 +557,10 @@ function badRequest(message) {
 }
 
 /**
- * bibFile param → a .bib the .tex sources load → references.bib → first .bib → new references.bib, each in the order
- * references.bib, then shallowest, then by name.
+ * bibFile param → a .bib the .tex sources load → references.bib → first .bib → new references.bib (refs.bib in a Typst
+ * project, as docs/TYPST_STYLE.md names it), each in the order references.bib, then shallowest, then by name.
  */
-export function pickBibTarget(root, files, requested, texSources = []) {
+export function pickBibTarget(root, files, requested, texSources = [], typst = false) {
   if (requested) {
     const rel = String(requested).replace(/\\/g, '/').replace(/^(\.\/)+/, '');
     const parts = rel.split('/');
@@ -573,7 +573,7 @@ export function pickBibTarget(root, files, requested, texSources = []) {
   const depth = (f) => f.split('/').length;
   const bibs = files.filter((f) => /\.bib$/i.test(f)).sort((a, b) => (b === 'references.bib') - (a === 'references.bib') || depth(a) - depth(b) || a.localeCompare(b));
   // one the document loads, so a \cite of what's added there resolves
-  return bibs.find((bib) => texIncludesBib(texSources, bib)) || bibs[0] || 'references.bib';
+  return bibs.find((bib) => texIncludesBib(texSources, bib)) || bibs[0] || (typst ? 'refs.bib' : 'references.bib');
 }
 
 /**
@@ -1135,7 +1135,9 @@ async function bibContext(projectRoot, bibFile) {
   const { mainFile } = await readMeta(projectRoot).catch(() => ({}));
   const main = mainFile ? await inlineInputs(projectRoot, mainFile).catch(() => '') : '';
   const sources = main ? [main] : await Promise.all(files.filter((f) => /\.(?:tex|typ|md|markdown)$/i.test(f)).map((file) => fs.readFile(path.join(projectRoot, file), 'utf8').catch(() => '')));
-  const target = pickBibTarget(projectRoot, files, bibFile, sources);
+  // a Typst project: its main file is .typ, or, with none named, it has .typ files and no .tex
+  const typst = mainFile ? /\.typ$/i.test(mainFile) : files.some((f) => /\.typ$/i.test(f)) && !files.some((f) => /\.tex$/i.test(f));
+  const target = pickBibTarget(projectRoot, files, bibFile, sources, typst);
   const bibliographySources = withoutComments(sources.filter((source) => texIncludesBib([source], target)).join('\n'));
   const BIBLATEX = /\\addbibresource\b|\{biblatex\}/;
   // Classic BibTeX styles ignore url; modern styles print it, so never emit both fields.

@@ -290,10 +290,38 @@ export function getProjectTree(id: string) {
   );
 }
 
+type FileText = { content: string; hash: string };
+// reads asked for in the same moment, which go as one request: the to-do list reads every text file as a project opens,
+// 650 requests in a project of 1,800 files that waited on each other for over a second
+let reads: { id: string; path: string; resolve(file: FileText): void; reject(err: unknown): void }[] = [];
+
+function sendReads() {
+  const batch = reads;
+  reads = [];
+  for (const id of new Set(batch.map((r) => r.id))) {
+    const mine = batch.filter((r) => r.id === id);
+    if (mine.length === 1) {
+      const [{ path, resolve, reject }] = mine;
+      request<FileText>(`/api/projects/${id}/file?${new URLSearchParams({ path })}`).then(resolve, reject);
+      continue;
+    }
+    request<{ files: (FileText | { status: number; error: string })[] }>(`/api/projects/${id}/files`, json('POST', { paths: mine.map((r) => r.path) })).then(
+      ({ files }) => mine.forEach((r, i) => {
+        const file = files[i];
+        if ('error' in file) r.reject(new ApiError(file.error, file.status, { ok: false, error: file.error }));
+        else r.resolve(file);
+      }),
+      (err) => mine.forEach((r) => r.reject(err))
+    );
+  }
+}
+
 /** hash: the text's, for a later writeFile's base */
 export function getFile(id: string, filePath: string) {
-  const qs = new URLSearchParams({ path: filePath }).toString();
-  return request<{ content: string; hash: string }>(`/api/projects/${id}/file?${qs}`);
+  return new Promise<FileText>((resolve, reject) => {
+    if (!reads.length) queueMicrotask(sendReads);
+    reads.push({ id, path: filePath, resolve, reject });
+  });
 }
 
 /** The file as getFile gives it, without the text when that's still the text with hash `base`. */
@@ -394,6 +422,31 @@ export function deleteTemplate(id: string) {
   return request<{ ok: boolean }>(`/api/templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+/** A template from Typst Universe, at the newest version the Typst asked for can compile. */
+export interface UniverseTemplate {
+  name: string;
+  version: string;
+  description: string;
+  /** an SPDX expression */
+  license: string;
+  /** one of its choices is MIT or as permissive */
+  mitCompatible: boolean;
+  authors: string[];
+  keywords: string[];
+  repository: string;
+  entrypoint: string;
+}
+
+/** Typst Universe's templates, from the index cached for a day; offline: the cached one, fetched at fetchedAt. */
+export function listUniverseTemplates(typst?: string) {
+  return request<{ templates: UniverseTemplate[]; fetchedAt: number; offline: boolean }>(`/api/universe/templates${typst ? `?typst=${encodeURIComponent(typst)}` : ''}`);
+}
+
+/** A new project from a Universe template, as `typst init` makes one: only that package is downloaded. */
+export function createUniverseProject(payload: { name: string; template: string; version: string; parentDir?: string }) {
+  return request<ProjectMeta>('/api/universe/projects', json('POST', payload));
+}
+
 /** Swap the project onto another template's preamble, keeping the document body. No AI involved. */
 export function convertTemplate(id: string, targetTemplate: string, mainFile: string) {
   return request<{ ok: boolean; mainFile?: string; changedFiles?: string[]; error?: string }>(
@@ -472,6 +525,15 @@ export function convertToLatex(projectId: string, doc: string) {
   return request<{ ok: boolean; project: ProjectMeta }>(`/api/projects/${projectId}/export/latex`, json('POST', { doc }));
 }
 
+// ─── Typst exports ───
+
+export type TypstExport = 'png' | 'svg' | 'html' | 'pdf-a' | 'pdf-ua';
+
+/** The Typst document as PNG or SVG pages (a .zip when there are several), HTML, PDF/A or PDF/UA, base64, to download. */
+export function exportTypst(projectId: string, doc: string, format: TypstExport, typstVersion?: string) {
+  return request<{ ok: boolean; name: string; data: string }>(`/api/projects/${projectId}/export/typst`, json('POST', { doc, format, typstVersion }));
+}
+
 // ─── Engines ───
 
 /** A program found on this computer. */
@@ -497,6 +559,8 @@ export interface Engines {
   };
   /** the Biber for the built-in Tectonic: the version downloaded, if any, and the download's size (null: none for this computer) */
   biber: { installed: string | null; downloadable: string; size: number | null };
+  /** Typst's language server: the version downloaded, if any, the Typst inside it, and the download's size (null: none for this computer) */
+  tinymist: { installed: string | null; downloadable: string; typst: string; size: number | null };
 }
 
 export function getEngines() {
@@ -521,6 +585,14 @@ export function installBiber() {
 
 export function removeBiber() {
   return request<{ ok: boolean; engines: Engines }>('/api/engines/biber', json('DELETE'));
+}
+
+export function installTinymist() {
+  return request<{ ok: boolean; engines: Engines }>('/api/engines/tinymist/install', json('POST'));
+}
+
+export function removeTinymist() {
+  return request<{ ok: boolean; engines: Engines }>('/api/engines/tinymist', json('DELETE'));
 }
 
 // ─── Compile ───
@@ -569,6 +641,19 @@ export interface CompileResult {
   doc?: string;
   /** the checkpoint asked for: saved or not, why it couldn't be, and files it left out (too large or unreadable) */
   checkpoint?: { saved: boolean; id?: number; error?: string; skipped?: string[] };
+}
+
+/**
+ * A compile's `pdf` (base64) as bytes: the web view's own decoder where it has one (Chrome 140, Safari 18.2), 0.5 ms
+ * for a 3 MB PDF; otherwise a plain loop, 4 ms. Uint8Array.from with a mapping function took 130 ms or more.
+ */
+export function base64Bytes(base64: string): Uint8Array<ArrayBuffer> {
+  const native = (Uint8Array as { fromBase64?: (s: string) => Uint8Array<ArrayBuffer> }).fromBase64;
+  if (native) return native.call(Uint8Array, base64);
+  const text = atob(base64);
+  const bytes = new Uint8Array(text.length);
+  for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
+  return bytes;
 }
 
 /**
@@ -714,6 +799,16 @@ export function synctexEdit(projectId: string, at: PdfPoint, doc: string) {
 
 export function synctexView(projectId: string, at: { file: string; line: number; column?: number }, doc: string) {
   return request<{ ok: true; page: number; boxes: PdfBox[] } | SynctexFailure>(`/api/projects/${projectId}/synctex/view`, json('POST', { ...at, doc }));
+}
+
+/** A Typst document's PDF spot → its source, through Tinymist's hidden preview; ok false for a spot with nothing there. */
+export function tinymistSource(projectId: string, at: PdfPoint, doc: string) {
+  return request<{ ok: true; file: string; line: number; column: number } | { ok: false }>(`/api/projects/${projectId}/tinymist/source`, json('POST', { ...at, doc }));
+}
+
+/** A place in a Typst source → its spot in doc's PDF, y on the baseline at the start of the text it is in. */
+export function tinymistPdf(projectId: string, at: { file: string; line: number; column: number }, doc: string) {
+  return request<({ ok: true } & PdfPoint) | { ok: false }>(`/api/projects/${projectId}/tinymist/pdf`, json('POST', { ...at, doc }));
 }
 
 // ─── Review ───

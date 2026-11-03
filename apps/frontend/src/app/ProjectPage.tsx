@@ -7,6 +7,7 @@ import {
   binProject,
   copyProject,
   createProject,
+  createUniverseProject,
   deleteTemplate,
   dismissMigrationNotice,
   editTemplate,
@@ -37,7 +38,7 @@ import {
   syncPlace,
   syncWithGitHub
 } from '../api/client';
-import type { GitHubProblem, MigrationNotice, ProjectMeta, TemplateCategory, TemplateMeta } from '../api/client';
+import type { GitHubProblem, MigrationNotice, ProjectMeta, TemplateCategory, TemplateMeta, UniverseTemplate } from '../api/client';
 import Icon from './Icon';
 import { radioKeys, radioTab } from './Segmented';
 import { ContextMenu, MenuButton } from './Menu';
@@ -56,6 +57,7 @@ import { IS_DESKTOP, pickFolder } from './desktop';
 import { FOLDER_COLOURS, addFolder, childFolders, colourFolder, deleteFolder, folderPath, isWithin, moveItems, placeProject, renameFolder, sharedPlace } from './folders';
 import type { ProjectFolder, ProjectFolders } from './folders';
 import CustomiseFolderSheet from './CustomiseFolderSheet';
+import UniverseSheet, { LICENCE_NOTE } from './UniverseSheet';
 import Home, { DRAG_TYPE, FOLDER_TINTS, FolderShape, HOME_SORTS, HOME_VIEW, PREFS_KEY, formatFull, timeAgo } from './Home';
 import type { HomeItem, HomeView } from './Home';
 import { BIN, FILE_MANAGER, IS_WINDOWS, tildify } from './platform';
@@ -123,8 +125,9 @@ function loadPrefs(): Prefs {
 
 type SheetState =
   // folder: the one a new project goes in
-  | { kind: 'new'; template: string; folder?: string | null }
+  | { kind: 'new'; template: string; universe?: UniverseTemplate; folder?: string | null }
   | { kind: 'gallery'; folder?: string | null }
+  | { kind: 'universe'; folder?: string | null }
   | { kind: 'arxiv' }
   | { kind: 'tags'; id: string }
   // items: projects ('p:<id>') and folders ('f:<id>')
@@ -1134,9 +1137,10 @@ export default function ProjectPage() {
         <NewProjectSheet
           templates={templates}
           initialTemplate={sheet.template}
+          universe={sheet.universe}
           defaultDir={settings.projectsDir || defaultDir}
           onClose={() => setSheet(null)}
-          onBrowse={() => setSheet({ kind: 'gallery', folder: sheet.folder })}
+          onBrowse={() => setSheet({ kind: sheet.universe ? 'universe' : 'gallery', folder: sheet.folder })}
           onCreated={(id) => {
             if (sheet.folder) moveToFolder(id, sheet.folder);
             navigate(`/editor/${id}`);
@@ -1151,8 +1155,17 @@ export default function ProjectPage() {
           drafts={drafts}
           onClose={() => setSheet(null)}
           onPick={(id) => setSheet({ kind: 'new', template: id, folder: sheet.folder })}
+          onUniverse={() => setSheet({ kind: 'universe', folder: sheet.folder })}
           onEdit={(projectId) => navigate(`/editor/${projectId}`)}
           onChanged={reloadTemplates}
+        />
+      )}
+
+      {sheet?.kind === 'universe' && (
+        <UniverseSheet
+          onClose={() => setSheet(null)}
+          onBack={() => setSheet({ kind: 'gallery', folder: sheet.folder })}
+          onPick={(t) => setSheet({ kind: 'new', template: '', universe: t, folder: sheet.folder })}
         />
       )}
 
@@ -1281,6 +1294,7 @@ function Thumb({ project }: { project: ProjectMeta }) {
 function NewProjectSheet({
   templates,
   initialTemplate,
+  universe,
   defaultDir,
   onClose,
   onBrowse,
@@ -1288,6 +1302,8 @@ function NewProjectSheet({
 }: {
   templates: TemplateMeta[];
   initialTemplate: string;
+  /** a Typst Universe template in place of one of Spectrum's */
+  universe?: UniverseTemplate;
   defaultDir: string;
   onClose: () => void;
   onBrowse: () => void;
@@ -1304,8 +1320,10 @@ function NewProjectSheet({
     if (!trimmed || creating) return;
     setCreating(true);
     try {
-      const project = await createProject({ name: trimmed, template: template || undefined, parentDir: location || undefined });
-      if (!template) {
+      const project = universe
+        ? await createUniverseProject({ name: trimmed, template: universe.name, version: universe.version, parentDir: location || undefined })
+        : await createProject({ name: trimmed, template: template || undefined, parentDir: location || undefined });
+      if (!template && !universe) {
         // a blank project still needs something to compile
         const tree = await getProjectTree(project.id);
         if (!tree.items.some((item) => item.type === 'file' && item.path.endsWith('.tex'))) {
@@ -1348,6 +1366,20 @@ function NewProjectSheet({
       </div>
       <div className="field">
         <label id="new-project-template">Template</label>
+        {universe ? (
+          <>
+            <div className="row">
+              <span className="path-row grow" aria-labelledby="new-project-template">
+                <Icon name="shippingbox" />
+                <span className="path-text">{universe.name} {universe.version}, from Typst Universe</span>
+              </span>
+              <button className="btn" onClick={onBrowse}><Icon name="square.grid.2x2" /> Browse…</button>
+            </div>
+            <div className="field-hint">
+              Licence: {universe.license || 'none given'}. {universe.mitCompatible ? '' : LICENCE_NOTE + ' '}Creating the project downloads this template.
+            </div>
+          </>
+        ) : (
         <div className="row">
           <Select
             className="grow"
@@ -1358,6 +1390,7 @@ function NewProjectSheet({
           />
           <button className="btn" onClick={onBrowse}><Icon name="square.grid.2x2" /> Browse…</button>
         </div>
+        )}
       </div>
       <div className="field">
         <label id="new-project-location">Location</label>
@@ -1386,6 +1419,7 @@ function TemplateGallerySheet({
   drafts,
   onClose,
   onPick,
+  onUniverse,
   onEdit,
   onChanged
 }: {
@@ -1394,6 +1428,8 @@ function TemplateGallerySheet({
   drafts: string[];
   onClose: () => void;
   onPick: (id: string) => void;
+  /** opens Typst Universe's templates */
+  onUniverse: () => void;
   /** opens the working copy, a project */
   onEdit: (projectId: string) => void;
   /** a template was added, changed or deleted */
@@ -1511,6 +1547,7 @@ function TemplateGallerySheet({
           <button className="btn" disabled={uploading} onClick={() => fileRef.current?.click()}>
             {uploading ? <span className="spinner" /> : <Icon name="square.and.arrow.up" />} Upload template…
           </button>
+          <button className="btn" onClick={onUniverse}><Icon name="shippingbox" /> Typst Universe…</button>
         </div>
       </div>
       {shown.length === 0 ? (

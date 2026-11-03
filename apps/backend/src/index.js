@@ -32,6 +32,8 @@ import { registerSyncRoutes } from './routes/sync.js';
 import { registerPresenceRoutes } from './routes/presence.js';
 import { registerTexlabRoutes } from './routes/texlab.js';
 import { stopTexlab } from './services/texlabService.js';
+import { registerTinymistRoutes } from './routes/tinymist.js';
+import { stopTinymist } from './services/tinymistService.js';
 import { stopLanguageTool } from './services/languageToolService.js';
 import { registerReviewRoutes } from './routes/review.js';
 import { registerGitHubRoutes } from './routes/github.js';
@@ -39,6 +41,7 @@ import { commitWaiting, resumeBackups, startRetries } from './services/githubSer
 import { startSettingsRepo } from './services/settingsRepoService.js';
 import { registerZoteroRoutes } from './routes/zotero.js';
 import { registerEngineRoutes } from './routes/engines.js';
+import { registerUniverseRoutes } from './routes/universe.js';
 import { seedTemplates, syncTemplates } from './services/templateService.js';
 import { dropOldAuxFolders, migrateLegacyProjects } from './services/projectService.js';
 import { migrateToV2 } from './services/mirrorService.js';
@@ -107,10 +110,12 @@ registerLanguageRoutes(fastify);
 registerSyncRoutes(fastify);
 registerPresenceRoutes(fastify);
 registerTexlabRoutes(fastify);
+registerTinymistRoutes(fastify);
 registerReviewRoutes(fastify);
 registerGitHubRoutes(fastify);
 registerZoteroRoutes(fastify);
 registerEngineRoutes(fastify);
+registerUniverseRoutes(fastify);
 
 // Serve the built frontend (production and desktop modes)
 if (existsSync(FRONTEND_DIST)) {
@@ -148,7 +153,7 @@ startRetries();
 // the settings repository, pulled now, then pushed after each change
 startSettingsRepo();
 
-// Stop compiles, plots, TexLab and LanguageTool (they run in their own process groups, so nothing else would), let
+// Stop compiles, plots, TexLab, Tinymist and LanguageTool (they run in their own process groups, so nothing else would), let
 // in-flight requests such as a file save finish for up to 2 s, then exit.
 let quitting = false;
 async function quit() {
@@ -158,6 +163,7 @@ async function quit() {
   await Promise.race([commitWaiting(), new Promise((resolve) => setTimeout(resolve, 3000))]);
   await shutdownAgents();
   await stopTexlab();
+  await stopTinymist();
   await stopLanguageTool();
   killAllChildren();
   await Promise.race([fastify.close(), new Promise((resolve) => setTimeout(resolve, 2000))]);

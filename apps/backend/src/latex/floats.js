@@ -433,22 +433,18 @@ function typstImage(path, size, fraction = 1) {
 export const figureTypst = (o) => typstFloat(typstImage(o.path, o.size, o.width), o.caption, o.label, o.markup);
 
 /**
- * Several images in a Typst grid. Typst has no sub-figures without a package, so sub-figure captions go under each image
- * as (a), (b) text inside the one figure; separate figures are a figure each in the grid, each with its own label.
+ * Several images in a Typst grid. Sub-figures are the house #subfigure from docs/TYPST_STYLE.md, each with its own label,
+ * so @fig:measured prints Figure 1a (addTypstSubfigure puts its definition in the preamble); separate figures are a
+ * figure each in the grid, each with its own label.
  */
 export function figureSetTypst(f) {
   const n = f.layout === 'row' ? f.panels.length : Math.max(1, Math.min(f.columns, f.panels.length));
   const grid = (cells) => 'grid(columns: ' + n + ', gutter: 1em, align: ' + (f.align === 'top' ? 'top' : f.align === 'centre' ? 'horizon' : 'bottom') + ', ' + cells.join(', ') + ')';
-  if (f.labels === 'separate')
-    // a label attaches to the figure before it in markup, so each cell is markup holding its labelled figure
-    return (
-      '#' +
-      grid(f.panels.map((panel) => '[#figure(' + typstImage(panel.path, f.size) + ', caption: [' + typstText(panel.caption, f.markup) + '])' + (panel.label.trim() ? ' <' + panel.label.trim() + '>' : '') + ']'))
-    );
-  const cells = f.panels.map((panel, i) =>
-    f.labels === 'sub' ? 'stack(spacing: 0.5em, ' + typstImage(panel.path, f.size) + ', [(' + String.fromCharCode(97 + i) + ') ' + typstText(panel.caption, f.markup) + '])' : typstImage(panel.path, f.size)
-  );
-  return typstFloat(grid(cells), f.caption, f.label, f.markup);
+  // a label attaches to the figure before it in markup, so each cell is markup holding its labelled figure
+  const labelled = (func) =>
+    f.panels.map((panel) => '[#' + func + '(' + typstImage(panel.path, f.size) + ', caption: [' + typstText(panel.caption, f.markup) + '])' + (panel.label.trim() ? ' <' + panel.label.trim() + '>' : '') + ']');
+  if (f.labels === 'separate') return '#' + grid(labelled('figure'));
+  return typstFloat(grid(f.labels === 'sub' ? labelled('subfigure') : f.panels.map((panel) => typstImage(panel.path, f.size))), f.caption, f.label, f.markup);
 }
 
 /** A Typst diagram file included as a figure: #figure(include "/diagrams/x.typ", caption: [caption]) <label>. */

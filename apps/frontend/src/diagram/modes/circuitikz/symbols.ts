@@ -4,7 +4,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { diagramSymbols } from '../../../api/client';
+import { base64Bytes, diagramSymbols } from '../../../api/client';
 import type { SymbolPage } from '../../../api/client';
 import { SYMBOL_SETS } from '../../../../../backend/src/data/symbolSets.js';
 import { loadSettings } from '../../../app/settings';
@@ -37,7 +37,7 @@ export interface Variant {
 }
 
 async function renderPages(pdfBase64: string, pages: SymbolPage[]) {
-  const data = Uint8Array.from(atob(pdfBase64), (c) => c.charCodeAt(0));
+  const data = base64Bytes(pdfBase64);
   const task = getDocument({ data });
   try {
     const pdf = await task.promise;

@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { CompileOptions, CompileResult, LLMConfig, TexlabDiagnostic, VersionMeta, VersionReason } from '../api/client';
 import type { AppSettings } from '../app/settings';
+import type { TypstWords } from './lsp/tinymist';
 
 export interface PendingChange {
   filePath: string;
@@ -13,6 +14,8 @@ export interface CompileError {
   severity: 'error' | 'warning';
   message: string;
   line?: number;
+  /** from 0, in characters: Typst's only */
+  column?: number;
   file?: string;
   raw?: string;
 }
@@ -88,6 +91,8 @@ export interface EditorApi {
   keptPdf(doc: string): { blob: Blob; at: number } | null;
   /** TexLab's diagnostics by project file, once it has the open file's latest text; available is false without TexLab */
   diagnostics(): Promise<{ available: boolean; files: Record<string, TexlabDiagnostic[]> }>;
+  /** Tinymist's word count of the Typst document it compiled last, while it runs */
+  typstWords(): TypstWords | null;
   prepareAgent(): Promise<void>;
   /** saves the open file first; silent (callers report the outcome). unchanged: nothing new, `version` is the latest one */
   createVersion(reason: VersionReason, label?: string): Promise<{ version: VersionMeta | null; unchanged: boolean }>;

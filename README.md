@@ -33,12 +33,15 @@ The template gallery has templates for notes, reports, letters, slides and a CV,
 | Slides | a 16:9 Beamer presentation with maths, a chart and code | `beamer` (Madrid), `listings`, `pgfplots` |
 | Academic CV | a one-page CV with links for email, ORCID and a website | `titlesec`, `enumitem`, `xcolor` |
 | Typst document | a short A4 article in Typst with a figure, a reference and APA 7 references | Typst only |
-| Typst report | a report in Typst with a title page, contents, numbered headings and a table | Typst only |
+| Typst report | a report in Typst with a title page, contents, chapters, a table and APA 7 references | Typst only |
+| Typst maths notes | lecture notes or assignments in Typst with theorems, worked examples and their solutions and a plot drawn in Typst | Typst only |
+| Typst electronics notes | notes or lab reports in Typst with a circuit, quantities with units and a Bode plot drawn in Typst | Typst only |
+| Typst coding report | programming assignments in Typst with highlighted code and pseudocode | Typst only |
 | Typst letter | a formal letter in Typst with sender, date, recipient and sign-off | Typst only |
 | Typst CV | a one-page CV in Typst with dated education, experience and skills | Typst only |
 | Markdown article | a Markdown article for pandoc with a YAML title, a figure, a pipe table and citations | pandoc only |
 
-Every LaTeX template uses APA 7 citations and references through `biblatex-apa` and Biber. Use Auto, pdfLaTeX, XeLaTeX or LuaLaTeX with a current TeX distribution, or the built-in Tectonic; Tectonic's older bibliography bundle can require a different Biber version. `\textcite` and `\parencite` produce narrative and parenthetical citations; the familiar `\citet` and `\citep` commands also work. The Typst starters use Typst's own APA style, and the Markdown article uses pandoc's citeproc with the `.bib` its front matter names.
+Every LaTeX template uses APA 7 citations and references through `biblatex-apa` and Biber. Use Auto, pdfLaTeX, XeLaTeX or LuaLaTeX with a current TeX distribution, or the built-in Tectonic; Tectonic's older bibliography bundle can require a different Biber version. `\textcite` and `\parencite` produce narrative and parenthetical citations; the familiar `\citet` and `\citep` commands also work. The Typst templates follow [docs/TYPST_STYLE.md](docs/TYPST_STYLE.md), compile offline with no packages and use Typst's own APA style, and the Markdown article uses pandoc's citeproc with the `.bib` its front matter names.
 
 The general templates use A4 paper apart from the slides, Australian English and no shell escape. Conference templates retain their page layouts but use an APA 7 bibliography adaptation. Use the venue's official reference style for an actual conference submission.
 
@@ -81,7 +84,7 @@ The menu changes with the document it compiles. A Typst document has the Typst v
 
 The `.aux`, `.bbl`, `.toc` and similar files of each document are kept between compiles, for each compiler, in the app's own data folder, and the next compile reads them back, so a document whose labels, headings and citations have not changed is done in one pass. BibTeX and Biber only run when something is cited and another pass only runs when the log asks for one or a pass changed what TeX reads back. makeindex and makeglossaries run when the document has an index or glossaries. Files are kept only from a compile without errors, and when TeX cannot read one of them, Spectrum clears them and compiles once more from scratch, so a damaged `.aux` never locks a document out.
 
-A chapter with a `% !TEX root = ../thesis.tex` comment compiles the document it names. Latexmk always runs with `-norc`, so a project's own `latexmkrc` cannot run code. Settings › Engines has LaTeX, Typst and Markdown tabs. The LaTeX tab has a TeX folder for a second TeX installation, whose programs are used before the ones on the `PATH`, and Open Logs when a compile fails. The Typst tab installs and removes older Typst versions, and the Markdown tab downloads pandoc 3.12.1. The built-in Tectonic downloads its TeX bundle and each package on first use, and a compile that cannot reach the server says so. A checkpoint is saved after each successful compile (Section Checkpoints).
+A chapter with a `% !TEX root = ../thesis.tex` comment compiles the document it names. Latexmk always runs with `-norc`, so a project's own `latexmkrc` cannot run code. Settings › Engines has LaTeX, Typst and Markdown tabs. The LaTeX tab has a TeX folder for a second TeX installation, whose programs are used before the ones on the `PATH`, and Open Logs when a compile fails. The Typst tab installs and removes older Typst versions and downloads Tinymist (Section Tinymist), and the Markdown tab downloads pandoc 3.12.1. The built-in Tectonic downloads its TeX bundle and each package on first use, and a compile that cannot reach the server says so. A checkpoint is saved after each successful compile (Section Checkpoints).
 
 ### TexLab
 
@@ -98,6 +101,12 @@ With TexLab the sidebar's Outline covers the whole document across its `\input` 
 When Syntax checks in the compile menu is set to Check before compiling, the default, Compile first looks at TexLab's findings in the document's files. When there are missing braces or mismatched environments, it lists them and asks whether to compile anyway, and Cancel goes to the first one. References and citations with no label or entry never stop a compile, and auto compile skips the check. The default for every project is in Settings › Engines › LaTeX.
 
 TexLab's own completion, building and formatting are left off, so Spectrum's completion stays as it is. Without TexLab, for example when Spectrum runs in a browser and `texlab` is not on the `PATH`, the editor works as before and the Outline reads the headings itself.
+
+### Tinymist
+
+[Tinymist](https://github.com/Myriad-Dreamin/tinymist) 0.15.10, a language server for Typst, downloads from Settings › Engines › Typst (about 31 MB, checked against its SHA-256) and then starts for each open project. In `.typ` files it gives the editor completion for the document's own functions, packages, labels and citations, hovers with signatures and docs, Go to definition, Find references and Rename as TexLab does, errors as you type, Format document with typstyle (`⇧⌥F`, or from the editor's right-click menu) and a word count of the PDF in Document insights.
+
+Tinymist has Typst 0.15.1 inside it. In a project on that version, its errors take the place of the syntax check and the last compile's marks, and a double click jumps between the PDF and the source exactly, through Tinymist's preview running out of sight. A project pinned to another version keeps the compile's marks and the word matching for its jumps, since Tinymist would judge its code by 0.15's rules. Without Tinymist the editor works as before.
 
 ### Appearance
 
@@ -300,7 +309,7 @@ From 2.0, projects and settings go between your computers through GitHub, and th
 
 ## Requirements
 
-- macOS 13.5 or later on Apple silicon or Intel (the Liquid Glass app icon needs macOS 26 or later), or Windows 10 or 11 on an x64 PC (Section Windows),
+- macOS 13.5 or later on Apple silicon (Intel Macs stay on version 2.1.0; the Liquid Glass app icon needs macOS 26 or later), or Windows 10 or 11 on an x64 PC (Section Windows),
 - a LaTeX distribution is optional: Typst 0.15.1 and Tectonic 0.17.0 are built in, and [MacTeX](https://www.tug.org/mactex/), [MiKTeX](https://miktex.org) or [TeX Live](https://www.tug.org/texlive/) can be used instead of Tectonic. Markdown needs pandoc, which Settings › Engines › Markdown downloads on request,
 - an API key from one of the providers in Section Models, or any OpenAI-compatible server, for the AI features,
 - Python 3 with matplotlib for the table to chart tool and with `ddgs` for DDGS web search (both optional) and
@@ -310,7 +319,7 @@ From 2.0, projects and settings go between your computers through GitHub, and th
 
 Download the macOS or Windows installer and the SHA-256 checksums from the [latest GitHub release](https://github.com/Beyond3345/Spectrum/releases/latest).
 
-1. Open `Spectrum_2.1.0_universal.dmg`
+1. Open `Spectrum_<version>_aarch64.dmg`
 2. Drag Spectrum into the Applications folder
 3. Open Spectrum from the Applications folder
 
@@ -428,11 +437,11 @@ Find (`⌘F`), undo (`⌘Z`), redo (`⇧⌘Z`) and Settings (`⌘,`) cannot be c
 
 ## Building from source
 
-Building requires Node.js 20.12 or later, Rust with the `aarch64-apple-darwin` and `x86_64-apple-darwin` targets and Xcode.
+Building requires Node.js 20.12 or later, Rust with the `aarch64-apple-darwin` target and Xcode.
 
 1. Run `npm install`
 2. Run `npm test` to run the backend tests
-3. Run `npm run desktop:build` to build the universal application and the DMG
+3. Run `npm run desktop:build` to build the application for Apple silicon and the DMG
 
 The test that moves a project to the Bin is skipped by default, since it moves a real folder into the macOS Bin. Set `SPECTRUM_TEST_BIN=1` to include it.
 
@@ -442,7 +451,7 @@ To move to a newer Harper or Hunspell, put its version, archive URL and SHA-256 
 
 The language catalogue in `apps/backend/src/data/languages.json` is written by `node scripts/native.mjs catalogue` from the dictionary sources pinned in `native/checkers.lock.json`. It downloads each dictionary, keeps those with a licence file, a UTF-8 or ISO-8859-1 encoding and three words of their own that they accept, and prints every language it kept or refused. `node scripts/native.mjs catalogue --check` downloads them again and compares, for use before a release.
 
-The build script downloads Node.js 24 LTS, TexLab 5.26.0, Tectonic 0.17.0 and Typst 0.15.1 for both architectures, checks them against pinned SHA-256 sums (the engines' sums are in `apps/backend/src/data/engines.json`) and joins each pair into one universal binary. It then bundles the backend with esbuild and runs `tauri build --target universal-apple-darwin`. The results are written to `src-tauri/target/universal-apple-darwin/release/bundle/`. The engines' versions and checksums live in that one file, which Settings and the backend read as well.
+The build script downloads Node.js 24 LTS, TexLab 5.26.0, Tectonic 0.17.0 and Typst 0.15.1 for Apple silicon and checks them against pinned SHA-256 sums (the engines' sums are in `apps/backend/src/data/engines.json`). It then bundles the backend with esbuild and runs `tauri build --target aarch64-apple-darwin`. The results are written to `src-tauri/target/aarch64-apple-darwin/release/bundle/`. The engines' versions and checksums live in that one file, which Settings and the backend read as well.
 
 The Windows installer is built on Windows with the same command. It needs Node.js, Rust with the MSVC toolchain and the Visual Studio Build Tools with C++ and Python for the Hunspell binding, which is built for Windows with `node scripts/native.mjs hunspell`. The build script downloads the Windows Node.js 24 LTS and the engines, checks them in the same way, builds `texlab.exe` from TexLab's checked source with the C runtime linked in, puts Microsoft's `vcruntime140.dll` beside Typst and runs `tauri build --target x86_64-pc-windows-msvc`, which writes an NSIS installer. The workflow in `.github/workflows/windows.yml` does all of this on GitHub Actions, runs the backend tests with MiKTeX and attaches the installer to a release when it is run with a release tag. The Fluent icons in `apps/frontend/public/fluent/` are written by `node scripts/fluent-icons.mjs`.
 

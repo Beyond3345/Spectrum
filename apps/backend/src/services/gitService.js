@@ -9,7 +9,7 @@ import path from 'path';
 import crypto from 'crypto';
 import git from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
-import { HIDDEN_ENTRIES, listFilesRecursive, writeFileAtomic } from '../utils/fsUtils.js';
+import { HIDDEN_ENTRIES, inPool, listFilesRecursive, writeFileAtomic } from '../utils/fsUtils.js';
 import { looksLikeConflictCopy } from '../utils/conflictCopies.js';
 import { safeJoinLink } from '../utils/pathUtils.js';
 import { mergeText } from '../utils/merge3.js';
@@ -180,11 +180,15 @@ export async function compiledPdfs(root) {
   const files = (await listFilesRecursive(root)).filter((i) => i.type === 'file' && /\.(tex|ltx|typ|md|markdown)$/i.test(i.path)).map((i) => i.path);
   const included = new Set();
   const docs = [];
-  for (const rel of files) {
-    if (!/\.(tex|ltx)$/i.test(rel) || (await isDocumentFile(join(root, rel)))) docs.push(rel);
+  const found = await inPool(files, async (rel) => {
+    const doc = !/\.(tex|ltx)$/i.test(rel) || (await isDocumentFile(join(root, rel)));
     const text = await fs.readFile(join(root, rel), 'utf8').catch(() => '');
-    for (const m of text.matchAll(INCLUDED)) included.add(path.posix.basename(m.slice(1).find((p) => p !== undefined).trim()).replace(/\.pdf$/i, '').toLowerCase());
-  }
+    return { doc, includes: [...text.matchAll(INCLUDED)].map((m) => path.posix.basename(m.slice(1).find((p) => p !== undefined).trim()).replace(/\.pdf$/i, '').toLowerCase()) };
+  });
+  files.forEach((rel, i) => {
+    if (found[i].doc) docs.push(rel);
+    for (const name of found[i].includes) included.add(name);
+  });
   return docs.map((rel) => rel.replace(/\.(tex|ltx|typ|md|markdown)$/i, '.pdf')).filter((pdf) => !included.has(path.posix.basename(pdf).slice(0, -4).toLowerCase()));
 }
 

@@ -459,6 +459,13 @@ test('a Typst #bibliography and a Markdown front matter’s bibliography load th
     const out = await resolveReferences({ projectRoot: root, input: '10.1234/journal.5' });
     assert.deepEqual([out.bibFile, out.bibIncluded], ['refs.bib', true], file);
   }
+  // a Typst project with no .bib yet gets refs.bib, a LaTeX one references.bib
+  for (const [file, bib] of [['main.typ', 'refs.bib'], ['main.tex', 'references.bib']]) {
+    const root = await tempProject({ [file]: '= Intro\n', '.spectrum/project.json': JSON.stringify({ id: `new-${file.replace('.', '-')}`, name: 'P', mainFile: file }) });
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const out = await resolveReferences({ projectRoot: root, input: '10.1234/journal.5' });
+    assert.equal(out.bibFile, bib, file);
+  }
 });
 
 test('picks the target .bib', () => {
@@ -466,6 +473,9 @@ test('picks the target .bib', () => {
   assert.equal(pickBibTarget('/p', ['sub/z.bib', 'b.bib', 'a.tex'], ''), 'b.bib');
   assert.equal(pickBibTarget('/p', ['main.tex'], ''), 'references.bib');
   assert.equal(pickBibTarget('/p', [], 'refs/new.bib'), 'refs/new.bib');
+  // a new one is refs.bib in a Typst project, as the Typst standard names it
+  assert.equal(pickBibTarget('/p', ['main.typ'], '', [], true), 'refs.bib');
+  assert.equal(pickBibTarget('/p', ['main.typ', 'a.bib'], '', [], true), 'a.bib');
   // the one the document loads, ahead of references.bib and a shallower one
   assert.equal(pickBibTarget('/p', ['references.bib', 'a.bib', 'chapters/thesis.bib'], '', ['\\bibliography{chapters/thesis}']), 'chapters/thesis.bib');
   assert.equal(pickBibTarget('/p', ['a.bib', 'references.bib'], '', ['% \\bibliography{a}']), 'references.bib');

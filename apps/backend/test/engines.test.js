@@ -75,7 +75,15 @@ const other = here === 'arm64' ? 'x64' : 'arm64';
 const biberOk = await biberRelease('biber-ok', [[MAC_CPU[other], Buffer.from('OTHER MAC')], [MAC_CPU[here], Buffer.from(biberScript)]]);
 const biberElsewhere = await biberRelease('biber-elsewhere', [[MAC_CPU[other], Buffer.from('OTHER MAC')]]);
 
-const { installBiber, installTypst, listEngines, removeBiber, removeTypst, tectonicBiber, typstFor, useEngineList } = await import('../src/services/engineService.js');
+// Tinymist's release holds tinymist in a folder of its own, as the real one does
+const tinymistFile = WINDOWS ? 'tinymist.exe' : 'tinymist';
+await fs.mkdir(path.join(tmp, 'tinymist-release', 'tinymist-here'), { recursive: true });
+await fs.writeFile(path.join(tmp, 'tinymist-release', 'tinymist-here', tinymistFile), '#!/bin/sh\necho tinymist\n', { mode: 0o755 });
+const tinymistTarball = path.join(tmp, 'tinymist.tar.gz');
+execFileSync('tar', ['-czf', tinymistTarball, '-C', path.join(tmp, 'tinymist-release'), 'tinymist-here']);
+const tinymistSha = createHash('sha256').update(await fs.readFile(tinymistTarball)).digest('hex');
+
+const { installBiber, installTinymist, installTypst, listEngines, removeBiber, removeTinymist, removeTypst, tectonicBiber, tinymistProgram, typstFor, useEngineList } = await import('../src/services/engineService.js');
 
 // serving: 'stall' sends a little and then nothing, 'drop' a little and then closes the connection
 let serving = 'archive';
@@ -99,7 +107,8 @@ const typstList = (versions, builtIn) => ({
     minimum: { latex: '3.1', typst: '3.8.3' },
     assets: { [ARCH]: ["pandoc.zip", "00"] }
   },
-  biber: { version: '2.17', assets: { [ARCH]: ['MacOS/biber-darwin_universal.tar.gz', biberOk.sha, biberOk.bytes] } }
+  biber: { version: '2.17', assets: { [ARCH]: ['MacOS/biber-darwin_universal.tar.gz', biberOk.sha, biberOk.bytes] } },
+  tinymist: { version: '9.9.9', typst: '9.9.8', assets: { [ARCH]: ['tinymist-here.tar.gz', tinymistSha, 3] } }
 });
 const release = (version, sha256) => ({ version, released: '2026-01-01', assets: { [ARCH]: ['release.tar.gz', sha256, bytes] } });
 
@@ -188,6 +197,13 @@ test('the Windows workflow runs typst.exe by its path, and its tests after a fai
   for (const step of ['TeX tools', 'Backend tests']) assert.match(workflow, new RegExp(`- name: ${step}\\n\\s+if: \\$\\{\\{ !cancelled\\(\\) \\}\\}`), step);
 });
 
+test('the Mac app is built for Apple silicon only', async () => {
+  const script = await repo('scripts/desktop.mjs');
+  assert.match(script, /: \{ arm64: 'aarch64-apple-darwin' \};/);
+  assert.match(script, /'tauri', 'build', '--target', TRIPLES\.arm64\]/);
+  assert.doesNotMatch(script, /universal-apple-darwin|x86_64-apple-darwin|'lipo'/);
+});
+
 test('the desktop script runs through a link to it', { skip: process.platform === 'win32' && 'links need Developer Mode' }, async () => {
   const link = path.join(tmp, 'desktop-link.mjs');
   await fs.symlink(path.join(import.meta.dirname, '..', '..', '..', 'scripts', 'desktop.mjs'), link);
@@ -245,6 +261,46 @@ test('engines.json pins Biber 2.17, the release that matches the biblatex in Tec
   assert.deepEqual(Object.keys(list.biber.assets).sort(), ['arm64', 'win-x64', 'x64']);
   for (const [file, sha256, size] of Object.values(list.biber.assets)) {
     assert.match(file, /^(MacOS|Windows)\/biber-/);
+    assert.match(sha256, /^[0-9a-f]{64}$/);
+    assert.ok(size > 0);
+  }
+});
+
+test('Tinymist installs from its verified release into its version’s folder, and a newer pin asks for its own', async () => {
+  delete process.env.SPECTRUM_TINYMIST;
+  served = tinymistTarball;
+  requests.length = 0;
+  try {
+    useEngineList(typstList([], '9.9.8'));
+    assert.deepEqual((await listEngines()).tinymist, { installed: null, downloadable: '9.9.9', typst: '9.9.8', size: 3 });
+    const installed = await installTinymist();
+    assert.equal(installed, path.join(dataDir, 'engines', 'tinymist', '9.9.9', tinymistFile));
+    assert.deepEqual(requests, ['/Myriad-Dreamin/tinymist/releases/download/v9.9.9/tinymist-here.tar.gz']);
+    assert.deepEqual(tinymistProgram(), { path: installed, typst: '9.9.8' });
+    assert.equal((await listEngines()).tinymist.installed, '9.9.9');
+    // the next release's download takes the old one's place
+    useEngineList({ ...typstList([], '9.9.8'), tinymist: { version: '9.9.10', typst: '9.9.9', assets: { [ARCH]: ['tinymist-here.tar.gz', tinymistSha, 3] } } });
+    assert.equal(tinymistProgram(), null);
+    await installTinymist();
+    assert.deepEqual(await fs.readdir(path.join(dataDir, 'engines', 'tinymist')), ['9.9.10']);
+    await removeTinymist();
+    assert.equal(tinymistProgram(), null);
+    useEngineList({ ...typstList([], '9.9.8'), tinymist: { version: '9.9.9', typst: '9.9.8', assets: { [ARCH]: ['tinymist-here.tar.gz', '0'.repeat(64), 3] } } });
+    await assert.rejects(installTinymist(), /didn’t match its checksum/);
+    await assert.rejects(fs.access(path.join(dataDir, 'engines', 'tinymist', '9.9.9')));
+  } finally {
+    served = archive;
+  }
+});
+
+test('engines.json pins Tinymist with the Typst inside it, for Apple silicon and Windows', async () => {
+  const { default: list } = await import('../src/data/engines.json', { with: { type: 'json' } });
+  assert.match(list.tinymist.version, /^\d+\.\d+\.\d+$/);
+  // its minor version follows Typst's
+  assert.equal(list.tinymist.typst.split('.').slice(0, 2).join('.'), list.tinymist.version.split('.').slice(0, 2).join('.'));
+  assert.deepEqual(Object.keys(list.tinymist.assets).sort(), ['arm64', 'win-x64']);
+  for (const [file, sha256, size] of Object.values(list.tinymist.assets)) {
+    assert.match(file, /^tinymist-(aarch64-apple-darwin\.tar\.gz|x86_64-pc-windows-msvc\.zip)$/);
     assert.match(sha256, /^[0-9a-f]{64}$/);
     assert.ok(size > 0);
   }

@@ -1,5 +1,7 @@
 // Self-check for the log parser: `node apps/frontend/src/editor/compileLog.check.ts` (Node ≥ 23 strips the types).
+import { EditorState, Text } from '@codemirror/state';
 import { parseCompileLog, projectFile } from './compileLog.ts';
+import { compileLint, compileMarks, compileMarksField, setCompileMarks } from './compileMarks.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -164,5 +166,32 @@ eq(brief('C:/Users/me/thesis/chapters/intro.tex:12: Undefined control sequence.'
 const note79 = '[spectrum warning] main.tex didn’t compile, so references to it may show as ??.';
 eq(note79.length, 79, 'the note is 79 characters');
 eq(brief(`${note79}\nThis is pdfTeX, Version 3.141592653-2.6-1.40.26\n! Undefined control sequence.`).find((e) => e[0] === 'warning')?.[3], note79.slice(19), 'note before a pass');
+
+// Typst's errors as squiggles: line from 1, column from 0 in characters (😀 is two UTF-16 units)
+const doc = Text.of(['😀 #foo', '#set text(fnt: "x")', '#text(font: "No Such")[hi]', '#']);
+eq(
+  compileMarks(
+    [
+      { severity: 'error', message: 'unknown variable: foo', file: 'main.typ', line: 1, column: 3 },
+      { severity: 'error', message: 'unexpected argument: fnt', file: 'main.typ', line: 2, column: 10 },
+      { severity: 'warning', message: 'unknown font family', file: 'main.typ', line: 3, column: 12 },
+      { severity: 'error', message: 'at the end', file: 'main.typ', line: 4, column: 1 },
+      { severity: 'error', message: 'other file', file: 'ch.typ', line: 1, column: 0 },
+      { severity: 'error', message: 'past the end', file: 'main.typ', line: 9, column: 0 },
+      { severity: 'error', message: 'LaTeX: no column', file: 'main.typ', line: 1 }
+    ],
+    'main.typ',
+    doc
+  ).map((d) => [doc.sliceString(d.from, d.to), d.severity]),
+  [['foo', 'error'], ['fnt', 'error'], ['"No Such"', 'warning'], ['', 'error']],
+  'compile marks underline the token Typst points at, in the open file only'
+);
+// the marks move with the text typed before them, and the next compile's replace them
+let state = EditorState.create({ doc: 'a #foo', extensions: compileLint });
+state = state.update({ effects: setCompileMarks.of([{ from: 3, to: 6, severity: 'error', message: 'm' }]) }).state;
+state = state.update({ changes: { from: 0, insert: 'xx' } }).state;
+eq(state.field(compileMarksField).map((d) => state.doc.sliceString(d.from, d.to)), ['foo'], 'a mark moves with the text');
+eq(state.update({ effects: setCompileMarks.of([]) }).state.field(compileMarksField), [], 'the next compile replaces them');
+eq(state.update({ changes: { from: 8, insert: 'x' } }).state.field(compileMarksField), [], 'an edit beside a mark takes it away');
 
 console.log('compileLog: all checks passed');

@@ -201,6 +201,9 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
         ['Inline maths', stats?.mathInline],
         ['Displayed maths', stats?.mathDisplay]
       ];
+      // Tinymist's count of the PDF, when the document it compiled last is this one
+      const counted = api.typstWords();
+      const typstWords = counted?.main === doc ? counted : null;
       const meta = scan.metadata;
       const details: [string, string][] = [
         ['Title', text(meta.title)],
@@ -237,8 +240,23 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
                 </div>
               )}
             </>
+          ) : typstWords ? (
+            <>
+              <h3 className="form-section-title">Words</h3>
+              <div className="stat-grid">
+                {([['Words', typstWords.words], ['Characters', typstWords.chars], ...(typstWords.cjkChars ? [['CJK characters', typstWords.cjkChars]] : [])] as [string, number][]).map(([label, value]) => (
+                  <div key={label} className="stat-card">
+                    <div className="stat-label">{label}</div>
+                    <div className="stat-value">{num(value)}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="tool-footnote">Counted by Tinymist in the PDF of {doc}, numbering and generated text included.</div>
+            </>
           ) : (
-            <div className="tool-footnote">Word counts come from texcount, so they are for LaTeX documents.</div>
+            <div className="tool-footnote">
+              {/\.typ$/i.test(doc) ? 'Typst documents get a word count from Tinymist (Settings › Engines › Typst) once it has compiled them.' : 'Word counts come from texcount, so they are for LaTeX documents.'}
+            </div>
           )}
           <div className="tool-page-head">
             <h3 className="form-section-title">Submission metadata</h3>

@@ -57,3 +57,25 @@ export function matchBoxes(
   });
   return boxes;
 }
+
+/**
+ * The box from (x, y), a spot on a baseline as Tinymist's jumps give it, to the end of the text on that baseline: the
+ * run there and those after it on the line. None when no text is there.
+ */
+export function lineBoxFrom(runs: TextRun[], page: number, toView: (x: number, y: number) => number[], x: number, y: number): PdfBox[] {
+  let left = Infinity;
+  let right = -Infinity;
+  let size = 0;
+  for (const run of runs) {
+    const [rx, ry] = toView(run.transform[4], run.transform[5]);
+    // a hundredth of a point either way, as the PDF and the layout round them
+    if (Math.abs(ry - y) > 0.5 || rx + run.width <= x || !run.str.trim()) continue;
+    left = Math.min(left, rx);
+    right = Math.max(right, rx + run.width);
+    size = Math.max(size, Math.hypot(run.transform[2], run.transform[3]));
+  }
+  if (right < left) return [];
+  const from = Math.max(left, x);
+  const round = (n: number) => Math.round(n * 100) / 100;
+  return [{ page, x: round(from), y: round(y - size * 0.8), width: round(right - from), height: round(size) }];
+}

@@ -301,6 +301,27 @@ test('compile checkpoints: only when something changed, at most one every 10 min
   assert.deepEqual((await versions()).map((v) => [v.reason, v.label]), [['compile', 'Submitted'], ['manual', '']]);
 });
 
+test('a checkpoint keeps a file’s hash without reading it only while its size, times and inode match', async () => {
+  const p = await newProject('Hash cache');
+  const file = path.join(p.path, 'main.tex');
+  const hour = new Date(Date.now() - 3600_000);
+  const sha = (text) => crypto.createHash('sha256').update(text).digest('hex');
+  const object = (text) => path.join(p.path, '.spectrum', 'history', 'objects', sha(text).slice(0, 2), `${sha(text)}.gz`);
+  await fs.writeFile(file, 'aaaa');
+  await fs.utimes(file, hour, hour);
+  assert.equal((await createCompileCheckpoint(p.path)).saved, true);
+  assert.deepEqual(await createCompileCheckpoint(p.path), { saved: false });
+  // the same size and its old time given back: its change time still differs
+  await fs.writeFile(file, 'bbbb');
+  await fs.utimes(file, hour, hour);
+  assert.equal((await createCompileCheckpoint(p.path)).saved, true);
+  // a stored copy removed meanwhile is stored again rather than left out
+  await fs.rm(object('bbbb'));
+  await fs.writeFile(path.join(p.path, 'notes.txt'), 'new');
+  assert.equal((await createCompileCheckpoint(p.path)).saved, true);
+  assert.ok(existsSync(object('bbbb')));
+});
+
 test('a checkpoint asked for with nothing changed since a compile’s becomes that one, so the next compile keeps it', async () => {
   const p = await newProject('Promoted');
   const versions = async () => listVersions(p.path);

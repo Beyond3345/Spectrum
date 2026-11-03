@@ -2,13 +2,13 @@ import crypto from 'crypto';
 import os from 'os';
 import path from 'path';
 import { promises as fs } from 'fs';
-import { execFile } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import { DATA_DIR } from '../config/constants.js';
-import { ensureDir } from '../utils/fsUtils.js';
+import { ensureDir, zipFiles } from '../utils/fsUtils.js';
 import { readProjectSettings } from './projectSettings.js';
 import { BUILT_IN_TYPST_VERSION, builtInTypst, typstFor } from './engineService.js';
-import { MAX_LOG_BYTES, cleanBuild, runSpawn, writePdf } from './compileService.js';
+import { MAX_LOG_BYTES, children, cleanBuild, currentJob, killGroup, runSpawn, writePdf } from './compileService.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -126,13 +126,216 @@ export async function typstElements(projectRoot, doc, fallback = '') {
   return null;
 }
 
+// ─── Typst kept running ───
+// A project's document compiles through a `typst watch` kept between compiles, whose incremental compile rebuilds a
+// 300-page document in about a third of the time a fresh `typst compile` takes (0.55 s against 1.6 s). The watcher compiles each change to a
+// file the document uses (it lists them in --deps) about 100 ms after it lands. A compile asked for takes the watcher's
+// latest result when that began after every one of those files last changed, or waits for the one the change starts;
+// whatever it can't tell (no list yet, a change the watcher didn't take up, a watcher that stopped) compiles once in a
+// fresh Typst, as before. One watcher a project, for the document last compiled; it stops when the project closes, when
+// its Typst is removed and after 10 minutes without a compile.
+// ponytail: a watcher outliving a backend that was killed ends at its next compile, when its output pipe is gone
+const watchers = new Map();
+const WATCH_IDLE_MS = 10 * 60 * 1000;
+const WATCH_LIMIT_MS = 3 * 60 * 1000;
+// a change the watcher hasn't begun compiling this long after it was made, it never will
+const NOTICE_MS = 500;
+// a compile that began this soon after a file changed may have read the file before the change
+const MARGIN_MS = 50;
+// a compile's diagnostics follow its status line at once: this long without more ends them
+const QUIET_MS = 30;
+const STATUS = /^\[[^\]]*\] (?:(compiling) \.\.\.|compiled (successfully|with warnings|with errors))/;
+
+// ended with the backend (or a test) however it exits normally; killAllChildren stops them at quit too
+process.on('exit', () => {
+  for (const w of watchers.values()) if (w.child && !w.exited) killGroup(w.child);
+});
+
+const stopWatcher = (w) => {
+  if (watchers.get(w.root) === w) watchers.delete(w.root);
+  w.ready.then(() => w.exited || killGroup(w.child));
+};
+
+/** Stops the watchers of a project (its folder), or those running a Typst in this folder (removing that version). */
+export function stopTypstWatch({ root, typstDir } = {}) {
+  for (const w of [...watchers.values()]) {
+    if ((root && w.root === root) || (typstDir && w.executable.startsWith(typstDir + path.sep))) stopWatcher(w);
+  }
+}
+
+function startWatcher(root, key, executable, args, cwd, env) {
+  const buildRoot = path.join(os.tmpdir(), 'spectrum-build');
+  const outDir = path.join(buildRoot, crypto.randomUUID());
+  const w = { root, key, executable, outDir, pdf: path.join(outDir, 'out.pdf'), deps: path.join(outDir, 'deps.json'), cwd, compiling: false, startedAt: 0, last: null, exited: false, wake: new Set(), queue: Promise.resolve(), idle: null };
+  w.ready = ensureDir(outDir).then(() => {
+    const windows = process.platform === 'win32';
+    // as runSpawn: CreateProcess needs the extended-length form for a working directory beyond MAX_PATH
+    const dir = windows && cwd.length >= 248 ? path.toNamespacedPath(path.resolve(cwd)) : cwd;
+    w.child = spawn(executable, ['watch', ...args, '--deps', w.deps, w.pdf], { cwd: dir, env, detached: !windows, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+    children.add(w.child);
+    // never what keeps the backend (or a test) running
+    w.child.unref();
+    w.child.stderr.unref();
+    let pending = '';
+    let lines = null;
+    let outcome = '';
+    let quiet = null;
+    const wake = () => {
+      for (const fn of w.wake) fn();
+      w.wake.clear();
+    };
+    const finish = () => {
+      clearTimeout(quiet);
+      w.compiling = false;
+      w.last = { outcome, startedAt: w.startedAt, finishedAt: Date.now(), log: lines.join('\n').replace(/^\n+|\n+$/g, '').slice(0, MAX_LOG_BYTES) };
+      lines = null;
+      wake();
+    };
+    w.child.stderr.on('data', (chunk) => {
+      const parts = (pending + chunk).split(/\r?\n/);
+      pending = parts.pop();
+      for (const line of parts) {
+        const status = line.match(STATUS);
+        // each compile's output starts with these two lines, then "compiling ...", then them again before its status
+        if (/^(?:watching|writing to) /.test(line) || status?.[1]) {
+          if (lines) finish();
+          if (status) {
+            w.compiling = true;
+            w.startedAt = Date.now();
+            wake();
+          }
+        } else if (status) {
+          outcome = status[2];
+          lines = [];
+        } else if (lines) lines.push(line);
+      }
+      if (lines) {
+        clearTimeout(quiet);
+        quiet = setTimeout(finish, QUIET_MS);
+      }
+    });
+    w.child.on('error', () => w.child.emit('exit'));
+    w.child.on('exit', () => {
+      if (w.exited) return;
+      w.exited = true;
+      clearTimeout(w.idle);
+      clearTimeout(quiet);
+      children.delete(w.child);
+      if (watchers.get(root) === w) watchers.delete(root);
+      wake();
+      cleanBuild(buildRoot, outDir).catch(() => {});
+    });
+  });
+  return w;
+}
+
 /**
- * Compiles a .typ main file in outDir and writes its PDF beside it (a scratch build only returns it). The project's
- * Typst version wins over options.typstVersion, the app's default; typstInputs become the document's sys.inputs;
- * scratch keeps the package cache in the agent's home.
- * source, when given, is compiled from standard input in place of absMain (a Markdown document's generated Typst).
+ * The latest time a file the watcher's last compile used changed: undefined while the list of them isn't written yet
+ * (just after the compile's output), null when it can't tell.
  */
-export async function compileTypst(projectRoot, absMain, mainFile, options = {}) {
+async function lastChange(w) {
+  const deps = await fs.stat(w.deps).catch(() => null);
+  if (!deps || deps.mtimeMs < w.last.startedAt - MARGIN_MS) return Date.now() < w.last.finishedAt + NOTICE_MS ? undefined : null;
+  let inputs;
+  try {
+    inputs = JSON.parse(await fs.readFile(w.deps, 'utf8')).inputs;
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(inputs) || !inputs.length) return null;
+  let latest = 0;
+  for (const rel of inputs) {
+    const stat = await fs.stat(path.resolve(w.cwd, rel)).catch(() => null);
+    // gone, at a time this can't know
+    if (!stat) return null;
+    // a file system that keeps whole seconds (FAT) may have rounded the time down by up to 2 s
+    latest = Math.max(latest, stat.mtimeMs + (stat.mtimeMs % 1000 === 0 ? 2000 : 0));
+  }
+  return latest;
+}
+
+const PDF_END = /%%EOF\s*$/;
+
+/**
+ * The watcher's compile of the files as they are now: { code, log, pdf } (pdf: its bytes, or null after errors),
+ * { code: null } when stopped, { timedOut: true }, or null to compile in a fresh Typst instead.
+ */
+async function watchedCompile(root, executable, args, cwd, env) {
+  if (currentJob()?.stopped) return { code: null };
+  const key = JSON.stringify([executable, args, cwd, env.TYPST_PACKAGE_CACHE_PATH]);
+  let w = watchers.get(root);
+  if (w && w.key !== key) {
+    // another document, Typst version, inputs or fonts
+    stopWatcher(w);
+    w = null;
+  }
+  if (!w) {
+    w = startWatcher(root, key, executable, args, cwd, env);
+    watchers.set(root, w);
+  }
+  const run = w.queue.then(() => settle(w));
+  w.queue = run.catch(() => {});
+  return run;
+}
+
+async function settle(w) {
+  await w.ready;
+  const job = currentJob();
+  job?.children.add(w.child);
+  clearTimeout(w.idle);
+  const deadline = Date.now() + WATCH_LIMIT_MS;
+  try {
+    for (;;) {
+      if (job?.stopped) return { code: null };
+      if (w.exited) return null;
+      if (Date.now() > deadline) {
+        stopWatcher(w);
+        return { timedOut: true };
+      }
+      let wait = deadline - Date.now();
+      if (!w.compiling && w.last) {
+        const last = w.last;
+        const changed = await lastChange(w);
+        // a time ahead of this computer's clock (a sync app's) can't be compared
+        if (changed === null || changed > Date.now()) return null;
+        if (changed !== undefined && !w.compiling && last.startedAt > changed + MARGIN_MS) {
+          if (last.outcome === 'with errors') return { code: 1, log: last.log, pdf: null };
+          const pdf = await fs.readFile(w.pdf).catch(() => null);
+          // a compile begun meanwhile may have been writing it: that one's result, then
+          if (w.compiling || w.last !== last) continue;
+          // ponytail: one that began writing before its output said so is caught only by the PDF's end missing
+          if (!pdf || !PDF_END.test(pdf.subarray(-32).toString('latin1'))) return null;
+          return { code: 0, log: last.log, pdf };
+        }
+        if (changed === undefined) wait = 15;
+        else {
+          // it missed a change (its folder was replaced, say): a new one next time
+          if (Date.now() > changed + NOTICE_MS) {
+            stopWatcher(w);
+            return null;
+          }
+          wait = Math.min(wait, changed + NOTICE_MS - Date.now());
+        }
+      }
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, Math.max(10, wait));
+        w.wake.add(() => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+    }
+  } finally {
+    job?.children.delete(w.child);
+    if (!w.exited) w.idle = setTimeout(() => stopWatcher(w), WATCH_IDLE_MS).unref();
+  }
+}
+
+/**
+ * The Typst to run for a project, with its fonts and package cache: the project's pin wins over options.typstVersion,
+ * the app's default. Returns { error } when that version is not on this computer.
+ */
+async function typstSetup(projectRoot, options) {
   const settings = await readProjectSettings(projectRoot);
   const pinned = settings.compile?.typstVersion || options.typstVersion || '';
   const executable = typstFor(pinned);
@@ -140,19 +343,14 @@ export async function compileTypst(projectRoot, absMain, mainFile, options = {})
     if (pinned) {
       // from: the project's pin or the app's default, which Logs' card offers different ways out of
       if (settings.compile?.typstVersion) {
-        return { ok: false, code: 'TYPST_VERSION_MISSING', version: pinned, from: 'project', error: 'Typst ' + pinned + ' isn’t installed on this computer. Download it, or use the default version.' };
+        return { error: { ok: false, code: 'TYPST_VERSION_MISSING', version: pinned, from: 'project', error: 'Typst ' + pinned + ' isn’t installed on this computer. Download it, or use the default version.' } };
       }
-      return { ok: false, code: 'TYPST_VERSION_MISSING', version: pinned, from: 'default', builtIn: BUILT_IN_TYPST_VERSION, error: 'Typst ' + pinned + ' is the default version in Settings › Engines, and it isn’t installed on this computer. Download it, or use the built-in version.' };
+      return { error: { ok: false, code: 'TYPST_VERSION_MISSING', version: pinned, from: 'default', builtIn: BUILT_IN_TYPST_VERSION, error: 'Typst ' + pinned + ' is the default version in Settings › Engines, and it isn’t installed on this computer. Download it, or use the built-in version.' } };
     }
-    return { ok: false, error: 'Typst isn’t available in this copy of Spectrum.' };
+    return { error: { ok: false, error: 'Typst isn’t available in this copy of Spectrum.' } };
   }
-  const buildRoot = options.buildDir || path.join(os.tmpdir(), 'spectrum-build');
-  const outDir = path.join(buildRoot, crypto.randomUUID());
-  await ensureDir(outDir);
-  const base = path.basename(mainFile, path.extname(mainFile));
   const fontFolder = path.join(projectRoot, 'fonts');
   const fonts = (await fs.stat(fontFolder).catch(() => null))?.isDirectory() ? ['--font-path', fontFolder] : [];
-  const inputs = Object.entries(options.typstInputs || {}).flatMap(([key, value]) => ['--input', key + '=' + value]);
   const env = {
     ...process.env,
     // Spectrum's own cache is never passed into an agent's sandbox: there the agent's home keeps it
@@ -160,6 +358,24 @@ export async function compileTypst(projectRoot, absMain, mainFile, options = {})
       ? path.join(process.env.HOME || os.homedir(), 'typst-packages')
       : path.join(DATA_DIR, 'typst', 'packages')
   };
+  return { pinned, executable, fonts, env };
+}
+
+/**
+ * Compiles a .typ main file in outDir and writes its PDF beside it (a scratch build only returns it). The project's
+ * Typst version wins over options.typstVersion, the app's default; typstInputs become the document's sys.inputs;
+ * scratch keeps the package cache in the agent's home.
+ * source, when given, is compiled from standard input in place of absMain (a Markdown document's generated Typst).
+ */
+export async function compileTypst(projectRoot, absMain, mainFile, options = {}) {
+  const setup = await typstSetup(projectRoot, options);
+  if (setup.error) return setup.error;
+  const { pinned, executable, fonts, env } = setup;
+  const buildRoot = options.buildDir || path.join(os.tmpdir(), 'spectrum-build');
+  const outDir = path.join(buildRoot, crypto.randomUUID());
+  await ensureDir(outDir);
+  const base = path.basename(mainFile, path.extname(mainFile));
+  const inputs = Object.entries(options.typstInputs || {}).flatMap(([key, value]) => ['--input', key + '=' + value]);
   const chunks = [];
   let size = 0;
   const pushLog = (chunk) => {
@@ -169,19 +385,31 @@ export async function compileTypst(projectRoot, absMain, mainFile, options = {})
     chunks.push(next);
   };
   let result;
-  try {
-    result = await runSpawn(
-      executable,
-      ['compile', '--root', projectRoot, '--diagnostic-format', 'short', ...fonts, ...inputs, options.source == null ? absMain : '-', path.join(outDir, base + '.pdf')],
-      path.dirname(absMain),
-      pushLog,
-      env,
-      undefined,
-      options.source ?? null
-    );
-  } catch (err) {
-    await cleanBuild(buildRoot, outDir);
-    return { ok: false, error: 'Typst isn’t available: ' + err.message, engine: 'typst' };
+  let pdf;
+  // a project's own document through its kept watcher; a scratch build, or Markdown's Typst on standard input, once
+  const watched = options.scratch || options.source != null ? null : await watchedCompile(projectRoot, executable, ['--root', projectRoot, '--diagnostic-format', 'short', ...fonts, ...inputs, absMain], path.dirname(absMain), env);
+  if (watched?.timedOut) {
+    pushLog(`\n[spectrum] ${executable} was stopped after ${WATCH_LIMIT_MS / 1000}s.\n`);
+    result = { code: null, timedOut: true };
+  } else if (watched) {
+    if (watched.log) pushLog(watched.log + '\n');
+    result = { code: watched.code, timedOut: false };
+    pdf = watched.pdf;
+  } else {
+    try {
+      result = await runSpawn(
+        executable,
+        ['compile', '--root', projectRoot, '--diagnostic-format', 'short', ...fonts, ...inputs, options.source == null ? absMain : '-', path.join(outDir, base + '.pdf')],
+        path.dirname(absMain),
+        pushLog,
+        env,
+        undefined,
+        options.source ?? null
+      );
+    } catch (err) {
+      await cleanBuild(buildRoot, outDir);
+      return { ok: false, error: 'Typst isn’t available: ' + err.message, engine: 'typst' };
+    }
   }
   let log = chunks.join('');
   if (PACKAGE_FAILED.test(log)) log += PACKAGE_NOTE;
@@ -195,9 +423,8 @@ export async function compileTypst(projectRoot, absMain, mainFile, options = {})
     await cleanBuild(buildRoot, outDir);
     return typed({ ok: false, error: 'The compile took too long and was stopped.', status: -1 });
   }
-  let pdf;
   try {
-    pdf = await fs.readFile(path.join(outDir, base + '.pdf'));
+    pdf ??= await fs.readFile(path.join(outDir, base + '.pdf'));
   } catch {
     await cleanBuild(buildRoot, outDir);
     return typed({ ok: false, error: 'No PDF was produced.', status: result.code ?? -1 });
@@ -222,4 +449,57 @@ export async function compileTypst(projectRoot, absMain, mainFile, options = {})
     status: result.code ?? 0,
     ...(written.stale && { pdfStale: true })
   });
+}
+
+// what Export offers: the file Typst writes and what it needs for it; PNG and SVG make one file per page
+export const TYPST_EXPORTS = {
+  png: { ext: 'png', pages: true },
+  svg: { ext: 'svg', pages: true },
+  html: { ext: 'html', args: ['--features', 'html'] },
+  'pdf-a': { ext: 'pdf', args: ['--pdf-standard', 'a-2b'] },
+  'pdf-ua': { ext: 'pdf', args: ['--pdf-standard', 'ua-1'] }
+};
+
+/**
+ * Exports a .typ document in one of TYPST_EXPORTS' formats, in a build folder of its own, so the project and its PDF
+ * stay as they are. Returns { ok, name, data } with one file, or a .zip of the pages when PNG or SVG makes several.
+ */
+export async function exportTypst(projectRoot, absMain, mainFile, format, options = {}) {
+  const kind = TYPST_EXPORTS[format];
+  if (!kind) return { ok: false, error: 'Typst can’t export ' + format + '.' };
+  const setup = await typstSetup(projectRoot, options);
+  if (setup.error) return setup.error;
+  const buildRoot = path.join(os.tmpdir(), 'spectrum-build');
+  const outDir = path.join(buildRoot, crypto.randomUUID());
+  await ensureDir(outDir);
+  const base = path.basename(mainFile, path.extname(mainFile));
+  const output = path.join(outDir, kind.pages ? base + '-{0p}.' + kind.ext : base + '.' + kind.ext);
+  const chunks = [];
+  try {
+    const result = await runSpawn(
+      setup.executable,
+      ['compile', '--root', projectRoot, '--diagnostic-format', 'short', ...setup.fonts, ...(kind.args || []), absMain, output],
+      path.dirname(absMain),
+      (chunk) => chunks.push(chunk.toString()),
+      setup.env
+    );
+    const files = (await fs.readdir(outDir)).sort();
+    if (result.code !== 0 || !files.length) {
+      const errors = parseTypstDiagnostics(chunks.join(''), projectRoot, path.dirname(absMain)).filter((e) => e.severity === 'error');
+      const first = errors[0];
+      // an error with no place in the source (a PDF standard the document breaks, a flag an older Typst lacks)
+      const unplaced = chunks.join('').split(/\r?\n/).find((line) => /error/i.test(line))?.replace(/^error:\s*/i, '');
+      if (result.timedOut) return { ok: false, error: 'The export took too long and was stopped.' };
+      return { ok: false, error: first ? first.file + ':' + first.line + ': ' + first.message : unplaced || 'Typst made nothing to export.' };
+    }
+    if (files.length === 1) {
+      return { ok: true, name: base + '.' + kind.ext, data: (await fs.readFile(path.join(outDir, files[0]))).toString('base64') };
+    }
+    const pages = await Promise.all(files.map(async (name) => ({ name, data: await fs.readFile(path.join(outDir, name)) })));
+    return { ok: true, name: base + '-' + kind.ext + '.zip', data: zipFiles(pages).toString('base64') };
+  } catch (err) {
+    return { ok: false, error: 'Typst isn’t available: ' + err.message };
+  } finally {
+    await cleanBuild(buildRoot, outDir);
+  }
 }

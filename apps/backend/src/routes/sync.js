@@ -8,6 +8,7 @@ import { dismissMigrationNotice, legacyLocationOf, migrationNotice } from '../se
 import { offlineMessage, placeOf, readSyncConfig, setMachineName } from '../services/syncService.js';
 import { compiling } from '../services/compileService.js';
 import { stopProjectTexlab } from '../services/texlabService.js';
+import { stopProjectTinymist } from '../services/tinymistService.js';
 import { copyProject, preflight } from '../utils/projectCopy.js';
 import { transferring } from './transfer.js';
 import { agentAtWork, rehomeAgentRuns } from '../services/agentSessionService.js';
@@ -43,9 +44,10 @@ async function moveHere(id, root, parentDir) {
   }
   await moveEntry(id, target);
   rehomeAgentRuns(id, target);
-  // its own cache's SyncTeX holds the old path, and its TexLab the old folder
+  // its own cache's SyncTeX holds the old path, and its TexLab and Tinymist the old folder
   await fs.rm(await cachePath(target, 'synctex'), { recursive: true, force: true });
   await stopProjectTexlab(id);
+  await stopProjectTinymist(id);
   return { project: await getProject(id), left: { label: place.label, path: root } };
 }
 

@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Fastify from 'fastify';
+import { execFileSync } from 'node:child_process';
 import { promises as fs, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -16,7 +17,7 @@ process.env.SPECTRUM_TEMPLATE_DIR = path.join(tmp, 'templates');
 delete process.env.SPECTRUM_TYPST;
 
 const { BUILT_IN_TYPST_VERSION, builtInTypst } = await import('../src/services/engineService.js');
-const { parseTypstDiagnostics, typstElements } = await import('../src/services/typstService.js');
+const { parseTypstDiagnostics, stopTypstWatch, typstElements } = await import('../src/services/typstService.js');
 const { compileFolder, runCompile } = await import('../src/services/compileService.js');
 const { createProject, getProjectRoot } = await import('../src/services/projectService.js');
 const { updateProjectSettings } = await import('../src/services/projectSettings.js');
@@ -93,6 +94,35 @@ test('a Typst project compiles and writes its PDF beside the main file', async (
   assert.deepEqual(result.errors, []);
   const dir = await getProjectRoot(project.id);
   assert.ok((await fs.stat(path.join(dir, 'main.pdf'))).size > 100);
+});
+
+test('a kept Typst follows each edit, error and fix, and stops when its project closes', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  if (process.platform === 'win32') return t.skip('pgrep');
+  const project = await projectWith('typst-kept', '= Kept\n#include "part.typ"\n');
+  const dir = await getProjectRoot(project.id);
+  const watching = () => execFileSync('pgrep', ['-f', `watch --root ${dir} `]).toString().trim().split('\n').length;
+  const compile = () => runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto' });
+  await fs.writeFile(path.join(dir, 'part.typ'), 'Part one.\n');
+  assert.equal((await compile()).ok, true);
+  assert.equal(watching(), 1);
+  // a broken include, then compiled again with nothing changed, then mended: as a fresh Typst says each time
+  await fs.writeFile(path.join(dir, 'part.typ'), 'Part #nope.\n');
+  for (let i = 0; i < 2; i++) {
+    const broken = await compile();
+    assert.equal(broken.ok, false);
+    assert.equal(broken.status, 1);
+    assert.deepEqual(broken.errors.map((e) => [e.file, e.line, e.message]), [['part.typ', 1, 'unknown variable: nope']]);
+  }
+  await fs.writeFile(path.join(dir, 'part.typ'), '#set text(font: "No Such Font")\nPart two.\n');
+  const mended = await compile();
+  assert.equal(mended.ok, true);
+  assert.deepEqual(mended.errors.map((e) => [e.severity, e.file]), [['warning', 'part.typ']]);
+  assert.match(mended.log, /^part\.typ:1:\d+: warning: unknown font family: no such font\n$/);
+  assert.equal(watching(), 1, 'the same watcher throughout');
+  stopTypstWatch({ root: dir });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.throws(watching, 'stopped with its project');
 });
 
 test('a folder compile of a Typst draft leaves its PDF alone', async (t) => {
@@ -252,6 +282,43 @@ test('an unpinned Typst document reads its numbers with the app’s default vers
   const stats = async (query) => JSON.parse((await app.inject({ method: 'GET', url: `/api/projects/${project.id}/stats?doc=main.typ${query}` })).payload);
   assert.deepEqual((await stats('&typstVersion=9.9.9')).headings, []);
   assert.equal((await stats('&typstVersion=../9')).headings.length, 1);
+  await app.close();
+});
+
+test('a Typst document exports as PNG and SVG pages, HTML, PDF/A and PDF/UA, and its project keeps no file of it', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const unzipper = (await import('unzipper')).default;
+  const project = await projectWith('typst-export', '#set document(title: "Export")\n= One\n\nText.\n#pagebreak()\n= Two\n');
+  const app = Fastify();
+  const { registerProjectRoutes } = await import('../src/routes/projects.js');
+  registerProjectRoutes(app);
+  const exported = async (format, doc = 'main.typ') => {
+    const res = await app.inject({ method: 'POST', url: `/api/projects/${project.id}/export/typst`, payload: { doc, format } });
+    const body = JSON.parse(res.payload);
+    return { status: res.statusCode, ...body, bytes: body.data ? Buffer.from(body.data, 'base64') : null };
+  };
+  for (const [format, ext, magic] of [['png', 'png', '\x89PNG'], ['svg', 'svg', '<svg']]) {
+    const made = await exported(format);
+    assert.equal(made.name, `main-${ext}.zip`, made.error);
+    const zip = await unzipper.Open.buffer(made.bytes);
+    assert.deepEqual(zip.files.map((file) => file.path), [`main-1.${ext}`, `main-2.${ext}`]);
+    assert.ok((await zip.files[0].buffer()).toString('latin1').includes(magic));
+  }
+  const html = await exported('html');
+  assert.equal(html.name, 'main.html');
+  assert.match(html.bytes.toString(), /<h2>One<\/h2>/);
+  for (const [format, mark] of [['pdf-a', 'pdfaid'], ['pdf-ua', 'pdfuaid']]) {
+    const pdf = await exported(format);
+    assert.equal(pdf.name, 'main.pdf');
+    assert.ok(pdf.bytes.toString('latin1').startsWith('%PDF') && pdf.bytes.toString('latin1').includes(mark), format);
+  }
+  const dir = await getProjectRoot(project.id);
+  assert.deepEqual((await fs.readdir(dir)).filter((name) => !name.startsWith('.')), ['main.typ']);
+  // PDF/UA's own rule comes back as the reason; a format or file it doesn't know is refused
+  await fs.writeFile(path.join(dir, 'untitled.typ'), '= One\n');
+  assert.equal((await exported('pdf-ua', 'untitled.typ')).message, 'PDF/UA-1 error: missing document title');
+  assert.equal((await exported('docx')).status, 400);
+  assert.equal((await exported('png', '../main.typ')).status, 400);
   await app.close();
 });
 
