@@ -386,6 +386,33 @@ function Editor({ projectId }: { projectId: string }) {
   const usedRef = useRef(new Map<string, number>());
   const [editorValue, setEditorValue] = useState('');
   const [selectionRange, setSelectionRange] = useState<[number, number]>([0, 0]);
+  // the open file's text and selection as they are now, and when the text last changed. The state copies above, which
+  // the page and its panels render from, follow a pause in typing: set on every key, they rendered the whole page again
+  // each time (about 20 ms a key)
+  const liveRef = useRef<{ value: string; range: [number, number]; changedAt: number }>({ value: '', range: [0, 0], changedAt: 0 });
+  const liveTimer = useRef(0);
+  const showText = (value: string, range: [number, number], later = false) => {
+    if (value !== liveRef.current.value) liveRef.current.changedAt = Date.now();
+    Object.assign(liveRef.current, { value, range });
+    window.clearTimeout(liveTimer.current);
+    const show = () => {
+      setEditorValue(liveRef.current.value);
+      setSelectionRange(liveRef.current.range);
+    };
+    if (later) liveTimer.current = window.setTimeout(show, 250);
+    else show();
+  };
+  /** fn once ms have passed since the open file's text last changed, as a timer set again on every change would */
+  const afterChange = (ms: number, fn: () => void) => {
+    let timer = 0;
+    const wait = () => {
+      const left = liveRef.current.changedAt + ms - Date.now();
+      if (left > 0) timer = window.setTimeout(wait, left);
+      else fn();
+    };
+    timer = window.setTimeout(wait, Math.max(0, liveRef.current.changedAt + ms - Date.now()));
+    return () => window.clearTimeout(timer);
+  };
   const [dirty, setDirty] = useState(false);
   const dirtyRef = useRef(false);
   const viewRef = useRef<EditorView | null>(null);
@@ -540,7 +567,6 @@ function Editor({ projectId }: { projectId: string }) {
       : parseCompileLog(compileLog, project?.path).map((e) => (e.file ? { ...e, file: projectFile(e.file, compiledDoc, files) } : e));
     return compileFailure && !parsed.some((e) => e.severity === 'error') ? [{ severity: 'error', message: compileFailure }, ...parsed] : parsed;
   }, [compileDiagnostics, compileLog, compileFailure, project?.path, items, compiledDoc]);
-  const selectionText = selectionRange[0] === selectionRange[1] ? '' : editorValue.slice(selectionRange[0], selectionRange[1]);
   const fileSet = useMemo(() => new Set(items.filter((i) => i.type === 'file').map((i) => i.path)), [items]);
   // the files to-dos are looked for in, never a sync app's conflict copy
   const todoSources = useMemo(
@@ -729,8 +755,7 @@ function Editor({ projectId }: { projectId: string }) {
     setActivePath('');
     markClean();
     viewRef.current?.setState(EditorState.create({ doc: '', extensions: extensionsRef.current }));
-    setEditorValue('');
-    setSelectionRange([0, 0]);
+    showText('', [0, 0]);
   };
 
   /** TexLab's squiggles, hovers and jumps for the open file, when TexLab is answering and reads that kind of file. */
@@ -777,9 +802,8 @@ function Editor({ projectId }: { projectId: string }) {
       attachTexlab();
       cursorPlacedRef.current = false;
       setActivePath(path);
-      setEditorValue(content);
       const sel = view.state.selection.main;
-      setSelectionRange([sel.from, sel.to]);
+      showText(content, [sel.from, sel.to]);
       markClean();
     }
     setTabs((prev) => {
@@ -2130,11 +2154,10 @@ function Editor({ projectId }: { projectId: string }) {
   useEffect(() => {
     const a = () => actions.current;
     const listener = EditorView.updateListener.of((update) => {
+      const value = update.docChanged ? update.state.doc.toString() : liveRef.current.value;
       if (update.docChanged) {
-        const value = update.state.doc.toString();
         const path = activeRef.current;
         if (path) filesRef.current.set(path, value);
-        setEditorValue(value);
         if (path && !update.transactions.some((tr) => tr.annotation(programmatic))) {
           dirtyRef.current = true;
           editedRef.current = true;
@@ -2145,7 +2168,8 @@ function Editor({ projectId }: { projectId: string }) {
       if (update.transactions.some((tr) => tr.isUserEvent('select') || tr.isUserEvent('input') || tr.isUserEvent('delete'))) cursorPlacedRef.current = true;
       if (update.docChanged || update.selectionSet) {
         const { from, to } = update.state.selection.main;
-        setSelectionRange([from, to]);
+        // typing shows in the page at a pause; a selection made or moved on its own straight away
+        showText(value, [from, to], update.docChanged);
         // typing or moving away drops a pending suggestion (accepting one doesn't)
         if (ghostRef.current.pos != null && !acceptingRef.current) {
           ghostRef.current = { text: '', pos: null };
@@ -2643,15 +2667,13 @@ function Editor({ projectId }: { projectId: string }) {
   // autosave 1.5 s after the last keystroke
   useEffect(() => {
     if (!dirty) return;
-    const timer = window.setTimeout(() => saveNow(), 1500);
-    return () => window.clearTimeout(timer);
+    return afterChange(1500, () => saveNow());
   }, [dirty, editorValue]);
 
   // auto compile, the chosen pause after the last keystroke
   useEffect(() => {
     if (!compileOptions.autoCompile || !editedRef.current) return;
-    const timer = window.setTimeout(() => actions.current.autoCompile(), compileOptions.autoCompile * 1000);
-    return () => window.clearTimeout(timer);
+    return afterChange(compileOptions.autoCompile * 1000, () => actions.current.autoCompile());
   }, [editorValue, compileOptions.autoCompile]);
 
   // PDF follows the open file: another document's .tex, or a chapter whose % !TEX root names one, shows that
@@ -2692,9 +2714,17 @@ function Editor({ projectId }: { projectId: string }) {
     bibFiles,
     figureFiles,
     projectFiles: [...fileSet],
-    selectionText,
-    selectionRange,
-    editorValue,
+    // as they are now, for a panel acting straight after a key (rendering, it has the copies that follow a pause)
+    get selectionText() {
+      const [from, to] = liveRef.current.range;
+      return liveRef.current.value.slice(from, to);
+    },
+    get selectionRange() {
+      return liveRef.current.range;
+    },
+    get editorValue() {
+      return liveRef.current.value;
+    },
     compileLog,
     compileErrors,
     compiledDoc,
