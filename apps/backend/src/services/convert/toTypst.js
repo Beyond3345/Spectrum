@@ -153,10 +153,15 @@ function macroDefinitions(text) {
  * pass (held).
  */
 function newState(file, source) {
-  const st = { file, source, blocks: [], inlines: [], pieces: [], held: [] };
+  const st = { file, source, blocks: [], inlines: [], pieces: [], held: [], comments: [] };
   st.block = (record) => {
     st.blocks.push(record);
     return '\n\nSPXB' + (st.blocks.length - 1) + 'X\n\n';
+  };
+  // a comment inside a paragraph, a line of its own wherever pandoc puts it
+  st.comment = (typst) => {
+    st.comments.push(typst);
+    return 'SPXC' + (st.comments.length - 1) + 'X';
   };
   st.inline = (text, maths = '#[' + text + ']') => {
     st.inlines.push({ text, maths });
@@ -231,26 +236,38 @@ function holdVerbatim(text, st) {
 }
 
 /**
- * A comment on lines of its own, between paragraphs and outside every environment, comes over as a // comment; any
+ * A comment on lines of its own comes over as a // comment in its place: between paragraphs as a block, inside one as a
+ * line of it, and inside an environment (whose Typst the house writers make whole) just before that environment. Any
  * other comment goes, as it does for TeX.
  */
 function comments(text, st) {
   const lines = text.split('\n');
   let depth = 0;
-  const out = lines.map((line, i) => {
+  // the output line where the environment around this line began
+  let opened = 0;
+  const out = [];
+  lines.forEach((line, i) => {
     const whole = /^[ \t]*%(.*)$/.exec(line);
     const at = depth;
     depth += (line.match(/\\begin\s*\{/g)?.length ?? 0) - (line.match(/\\end\s*\{/g)?.length ?? 0);
-    if (!whole || at > 0) return line;
+    if (at === 0 && depth > 0) opened = out.length;
+    const words = whole?.[1].replace(/^%+/, '').trim();
+    if (!words) {
+      out.push(line);
+      return;
+    }
+    if (at > 0) {
+      out.splice(opened, 0, st.comment('// ' + words));
+      opened += 1;
+      return;
+    }
     const lone = (k, step) => {
       for (let j = k + step; j >= 0 && j < lines.length; j += step) {
         if (!/^[ \t]*%/.test(lines[j])) return !lines[j].trim();
       }
       return true;
     };
-    if (!lone(i, -1) && !lone(i, 1)) return line;
-    const words = whole[1].replace(/^%+/, '').trim();
-    return words ? st.block({ kind: 'raw', typst: '// ' + words }) : line;
+    out.push(lone(i, -1) || lone(i, 1) ? st.block({ kind: 'raw', typst: '// ' + words }) : st.comment('// ' + words));
   });
   return withoutComments(out.join('\n'));
 }
@@ -433,7 +450,7 @@ function graphicIn(text, st, ctx) {
   if (standalone) {
     // the composer's PDF beside its drawing, or the drawing compiled now
     const target = ctx.standalone(st, standalone.args[1].trim());
-    return typeof target === 'number' ? { kind: 'picture', n: target } : { kind: 'standalone', path: target, size: imageSize(standalone.args[0]) };
+    return typeof target === 'number' ? { kind: 'picture', n: target, size: imageSize(standalone.args[0]) } : { kind: 'standalone', path: target, size: imageSize(standalone.args[0]) };
   }
   const image = commandIn(text, 'includegraphics', 'om');
   if (image) {
@@ -1048,7 +1065,7 @@ export function assembleTypst(typst, st, ctx) {
         })
         .replace(/SPXI(\d+)X/g, (_, n) => st.inlines[n].text);
     }
-    return out;
+    return out.replace(/([^\n]*?)[ \t]*SPXC(\d+)X[ \t]*([^\n]*)/g, (_, before, n, after) => [before, st.comments[n], after].filter((s) => s.trim()).join('\n'));
   };
   // the title block's text, which \maketitle and the preamble's #set document print
   if (st.meta) {
@@ -1057,7 +1074,8 @@ export function assembleTypst(typst, st, ctx) {
     ctx.authorText = st.meta.author === null ? null : one(st.meta.author);
     ctx.dateText = st.meta.date === 'today' ? TODAY : st.meta.date === null ? null : one(st.meta.date);
   }
-  const out = finish(resolve(plainEmphasis(text)));
+  // a #set page starts its own page, so the \clearpage before new numbering goes
+  const out = finish(resolve(plainEmphasis(text))).replace(/^#pagebreak\(weak: true\)\n+(?=#set page\(numbering: )/gm, '');
   return out
     .replace(/[ \t]+$/gm, '')
     .replace(/\n{3,}/g, '\n\n')
@@ -1074,12 +1092,12 @@ const labelAfter = (label) => (label ? ' <' + typstLabel(label) + '>' : '');
 
 /** A picture's image: the PDF it compiled to, or a box that says it couldn't be. */
 function pictureImage(graphic, ctx, size = null) {
+  const share = size?.mode === 'line' ? ', width: ' + Math.round(size.fraction * 100) + '%' : size?.mode === 'width' ? ', width: ' + +size.width.toFixed(1) + 'mm' : '';
   if (graphic.kind === 'picture') {
     const picture = ctx.pictures[graphic.n];
-    return picture?.ok ? 'image("/' + picture.pdf + '")' : 'rect(width: 60mm, height: 30mm, stroke: 0.5pt)[Picture not converted: ' + typstMarkup(picture?.tex ?? 'see the conversion notes') + ']';
+    return picture?.ok ? 'image("/' + picture.pdf + '"' + share + ')' : 'rect(width: 60mm, height: 30mm, stroke: 0.5pt)[Picture not converted: ' + typstMarkup(picture?.tex ?? 'see the conversion notes') + ']';
   }
   if (!graphic.path) return 'rect(width: 60mm, height: 30mm, stroke: 0.5pt)[Missing picture]';
-  const share = size?.mode === 'line' ? ', width: ' + Math.round(size.fraction * 100) + '%' : size?.mode === 'width' ? ', width: ' + +size.width.toFixed(1) + 'mm' : '';
   return 'image("/' + graphic.path + '"' + share + ')';
 }
 
@@ -1136,7 +1154,8 @@ function renderBlock(record, pieceText, st, ctx) {
       ].join('\n');
     case 'numbering': {
       const style = { alph: 'none', Alph: 'none', roman: '"i"', Roman: '"I"', arabic: '"1"' }[record.style] ?? '"1"';
-      return style === 'none' ? commented('#set page(numbering: none)', 'this page has no number') : commented('#set page(numbering: ' + style + ')', style === '"1"' ? 'numbered 1, 2, 3 from here' : 'front matter: i, ii, iii') + '\n#counter(page).update(1)';
+      const report = ctx.facts.klass === 'report' || ctx.facts.klass === 'book';
+      return style === 'none' ? commented('#set page(numbering: none)', 'the title page has no number') : commented('#set page(numbering: ' + style + ')', style === '"1"' ? (report ? 'chapter 1 starts again at 1' : 'numbered 1, 2, 3 from here') : 'front matter: i, ii, iii') + '\n#counter(page).update(1)';
     }
     case 'bibliography':
       ctx.bibliographyPlaced = true;
@@ -1154,6 +1173,9 @@ function renderFigure(record, pieceText, st, ctx) {
   const label = record.label;
   if (record.layout === 'single') {
     const g = record.graphic;
+    // a PDF drawn in Typst, as a conversion from Typst left it: the figure's own drawing, or the file it includes
+    const drawn = g.kind === 'image' && ctx.typstSources?.get(g.path);
+    if (drawn) return floating('#figure(' + (drawn.include ? 'include "/' + drawn.include + '"' : drawn.body) + captionArg(caption) + ')' + labelAfter(label), record.placement);
     if (g.kind === 'image' && g.path && g.size && g.size.mode !== 'natural') return floating(figureTypst({ path: g.path, width: g.size.fraction, size: g.size, caption, label: label ? typstLabel(label) : '', markup: true }), record.placement);
     return floating('#figure(' + pictureImage(g, ctx, g.size) + captionArg(caption) + ')' + labelAfter(label), record.placement);
   }

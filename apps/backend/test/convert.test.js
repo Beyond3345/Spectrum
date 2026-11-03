@@ -187,8 +187,8 @@ test('the Beamer slides are refused, as there is no Typst slides template', { sk
 test('the stress document converts with every label, reference, citation, equation and float', { skip, timeout: 5 * 60 * 1000 }, async () => {
   const { checks, staging } = await convert(path.join(stress, 'stress-latex'));
   expectNothingLost(checks, 'stress');
-  assert.deepEqual([checks.labels.source, checks.references.source, checks.citations.source, checks.equations.source], [29, 28, 9, 4]);
-  assert.deepEqual(Object.fromEntries(Object.entries(checks.floats).map(([k, f]) => [k, f.source])), { figure: 5, subfigure: 2, table: 4, listing: 2, algorithm: 1, theorem: 6 });
+  assert.deepEqual([checks.labels.source, checks.references.source, checks.citations.source, checks.equations.source], [32, 31, 9, 4]);
+  assert.deepEqual(Object.fromEntries(Object.entries(checks.floats).map(([k, f]) => [k, f.source])), { figure: 7, subfigure: 2, table: 5, listing: 2, algorithm: 1, theorem: 6 });
   assert.ok(checks.words.lowestSection >= 0.95, 'each section keeps its words');
   // one file out for each file in: the \input and the \include, with the definitions they share in style.typ
   const units = await fs.readFile(path.join(staging, 'sections', 'units.typ'), 'utf8');
@@ -285,5 +285,5 @@ test('a round trip, LaTeX to Typst to LaTeX, keeps the stress document’s label
   const back = mkdtempSync(path.join(tmp, 'back-'));
   const { checks } = await typstToLatex(typst, 'main.typ', back, { engine: 'auto' });
   expectNothingLost(checks, 'round trip');
-  assert.deepEqual([checks.labels.source, checks.references.source, checks.citations.source, checks.equations.source], [29, 28, 9, 4]);
+  assert.deepEqual([checks.labels.source, checks.references.source, checks.citations.source, checks.equations.source], [32, 31, 9, 4]);
 });
