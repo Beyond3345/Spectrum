@@ -17,8 +17,10 @@ import {
   getSkillSharing,
   installBiber,
   installPandoc,
+  installTinymist,
   installTypst,
   removeBiber,
+  removeTinymist,
   removeTypst,
   getSyncSettings,
   grammarStatus,
@@ -1384,6 +1386,21 @@ function EnginesPane() {
       setBusy('');
     }
   };
+  const changeTinymist = async () => {
+    const remove = Boolean(engines?.tinymist.installed);
+    if (remove && !(await confirmDialog({ title: 'Remove Tinymist?', message: 'Typst documents go back to Spectrum’s own completion, and jumps between the PDF and the source match words again.', confirmLabel: 'Remove' }))) return;
+    setBusy('tinymist');
+    setError('');
+    try {
+      setEngines((await (remove ? removeTinymist() : installTinymist())).engines);
+      window.dispatchEvent(new Event(ENGINES_CHANGED));
+      if (!remove) toast('Downloaded Tinymist.', { tone: 'success' });
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy('');
+    }
+  };
   const pandoc = engines?.pandoc.found ?? null;
   const pandocOld = !!pandoc?.version && engines != null && !versionAtLeast(pandoc.version, engines.pandoc.minimum.latex);
 
@@ -1565,6 +1582,20 @@ function EnginesPane() {
                 />
                 <div className="field-hint">A project that doesn’t pin its own version uses this one.</div>
               </div>
+              {engines.tinymist.size != null && (
+                <div className="field">
+                  <label>Tinymist</label>
+                  <div className="field-hint">
+                    {engines.tinymist.installed ? `Tinymist ${engines.tinymist.installed}, downloaded by Spectrum. ` : ''}
+                    Typst’s language server: completion for your own functions and packages, hover help, go to definition, rename, errors as you type, Format document and a word count. Projects on Typst {engines.tinymist.typst} also get exact jumps between the PDF and the source.
+                  </div>
+                  <button className="btn" disabled={busy === 'tinymist'} onClick={changeTinymist}>
+                    {busy === 'tinymist'
+                      ? engines.tinymist.installed ? 'Removing…' : 'Downloading…'
+                      : engines.tinymist.installed ? 'Remove Tinymist' : `Download Tinymist ${engines.tinymist.downloadable} (${sizeLabel(engines.tinymist.size)})`}
+                  </button>
+                </div>
+              )}
             </>
           )}
         </>

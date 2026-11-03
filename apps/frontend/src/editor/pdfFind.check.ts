@@ -1,6 +1,6 @@
 // Self-check for Find in the PDF. Run:
 // npx esbuild apps/frontend/src/editor/pdfFind.check.ts --bundle --platform=node --log-level=warning --outfile=<scratch>/pdfFind.cjs && node <scratch>/pdfFind.cjs
-import { findAll, matchBoxes, pageText } from './pdfFind';
+import { findAll, lineBoxFrom, matchBoxes, pageText } from './pdfFind';
 import type { TextRun } from './pdfFind';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -34,5 +34,11 @@ eq(
   'one box per run, the line break in none'
 );
 eq(matchBoxes(runs, starts, [0, 3], 1, toView, () => 0)[0].width, 15, 'unmeasurable text: shared out by letters');
+
+// a Typst jump's spot on a baseline (114 down the page): from there to the line's end, past the run it is in
+eq(lineBoxFrom(runs, 1, toView, 120, 114), [{ page: 1, x: 120, y: 106, width: 50, height: 10 }], 'from the spot to the line’s end');
+eq(lineBoxFrom(runs, 1, toView, 50, 100), [{ page: 1, x: 100, y: 92, width: 75, height: 10 }], 'from the line’s start for a spot before it');
+eq(lineBoxFrom(runs, 1, toView, 120, 110), [], 'nothing on another baseline');
+eq(lineBoxFrom(runs, 1, toView, 400, 114), [], 'nothing past the line’s end');
 
 console.log('pdfFind: all checks passed');

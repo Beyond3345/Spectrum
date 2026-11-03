@@ -531,6 +531,8 @@ export interface Engines {
   };
   /** the Biber for the built-in Tectonic: the version downloaded, if any, and the download's size (null: none for this computer) */
   biber: { installed: string | null; downloadable: string; size: number | null };
+  /** Typst's language server: the version downloaded, if any, the Typst inside it, and the download's size (null: none for this computer) */
+  tinymist: { installed: string | null; downloadable: string; typst: string; size: number | null };
 }
 
 export function getEngines() {
@@ -555,6 +557,14 @@ export function installBiber() {
 
 export function removeBiber() {
   return request<{ ok: boolean; engines: Engines }>('/api/engines/biber', json('DELETE'));
+}
+
+export function installTinymist() {
+  return request<{ ok: boolean; engines: Engines }>('/api/engines/tinymist/install', json('POST'));
+}
+
+export function removeTinymist() {
+  return request<{ ok: boolean; engines: Engines }>('/api/engines/tinymist', json('DELETE'));
 }
 
 // ─── Compile ───
@@ -748,6 +758,16 @@ export function synctexEdit(projectId: string, at: PdfPoint, doc: string) {
 
 export function synctexView(projectId: string, at: { file: string; line: number; column?: number }, doc: string) {
   return request<{ ok: true; page: number; boxes: PdfBox[] } | SynctexFailure>(`/api/projects/${projectId}/synctex/view`, json('POST', { ...at, doc }));
+}
+
+/** A Typst document's PDF spot → its source, through Tinymist's hidden preview; ok false for a spot with nothing there. */
+export function tinymistSource(projectId: string, at: PdfPoint, doc: string) {
+  return request<{ ok: true; file: string; line: number; column: number } | { ok: false }>(`/api/projects/${projectId}/tinymist/source`, json('POST', { ...at, doc }));
+}
+
+/** A place in a Typst source → its spot in doc's PDF, y on the baseline at the start of the text it is in. */
+export function tinymistPdf(projectId: string, at: { file: string; line: number; column: number }, doc: string) {
+  return request<({ ok: true } & PdfPoint) | { ok: false }>(`/api/projects/${projectId}/tinymist/pdf`, json('POST', { ...at, doc }));
 }
 
 // ─── Review ───
