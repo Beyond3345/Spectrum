@@ -431,7 +431,7 @@ A full replacement of a small region is easier for a weak model than a unified d
 In this order, stopping at the first failure:
 
 1. Exactly one `<<<REPLACE rN ... >>>` block for the region asked, or `SKIP rN`. No markers inside.
-2. The words of the region are the same, ignoring Typst or LaTeX calls and their settings, so layout may change and text may not.
+2. The words of the region are still there, in any order, ignoring Typst or LaTeX calls and their settings, so layout may change and text may not. A word may be added only if the ORIGINAL has it, since the converter loses the text of some commands (`\fbox{Reset}`, `\so{FRAGILE}`).
 3. The labels are the same. The references and citations are the same.
 4. No package, `#import`, page, document or text setting and no show rule appears (no `\usepackage` or preamble command in LaTeX).
 5. The replacement is no more than three times the region's length plus 200 characters.
@@ -571,7 +571,8 @@ Use the region's own name (r3 here). Do not copy the `spectrum:region` marker li
 ## Checklist before you answer
 
 1. I changed only the CONVERTED text, and only its layout.
-2. Every word of the region is still there, in the same order. I added no words.
+2. Every word of the region is still there. I added no words, except ones the ORIGINAL has
+   that the CONVERTED text lost.
 3. Every label, such as <fig:x> or \label{fig:x}, is still there, exactly as written.
 4. Every reference and citation, such as @fig:x, @Masters2013, \cref{fig:x} or
    \parencite{Masters2013}, is still there, exactly as written.
@@ -640,6 +641,29 @@ The ORIGINAL uses a command the converter does not know, inside one paragraph.
   *bold*, _italic_, #text(fill: blue)[...], #text(size: 0.9em)[...].
 - If it prints a symbol, write the symbol itself.
 - Otherwise answer SKIP.
+
+### unknown-environment (Typst to LaTeX)
+
+The ORIGINAL is a call, on its own, of a function the document defines with #let (a box, a
+list of steps), and the CONVERTED text keeps its words without its look, with a TODO comment.
+
+- If the function only boxes or shades text, write \fbox{\parbox{\linewidth}{ ... }} around the
+  words, or \begin{quote} ... \end{quote} if it only sets them apart.
+- If it is a list of some kind, write \begin{itemize} or \begin{enumerate} with an \item for each
+  part.
+- Otherwise answer SKIP.
+- Remove the TODO comment only if you replaced the region.
+
+### unknown-command (Typst to LaTeX)
+
+The ORIGINAL calls a function the document defines with #let, inside one paragraph, and the
+CONVERTED text keeps its words without its look.
+
+- If it only changes how text looks, write the LaTeX: \textbf{...}, \emph{...}, {\small ...},
+  \texttt{...}, or \fbox{...} for a box around a word. A colour needs a package, so keep the
+  words and drop the colour.
+- Otherwise answer SKIP.
+- Remove the TODO comment only if you replaced the region.
 
 ### table-layout (both directions)
 
