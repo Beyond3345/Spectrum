@@ -19,7 +19,10 @@
         display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
         -webkit-user-select: none; user-select: none; cursor: default;
       }
-      img { width: 112px; height: 112px; filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.25)); }
+      img { display: block; width: 112px; height: 112px; }
+      /* the shadow on a wrapper with room for it: on the image itself WebKit can clip the shadow to the image's
+         square, which shows as a grey square behind the icon's transparent corners */
+      .icon { padding: 48px; margin: -48px; filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.25)); }
       h1 { margin: 0; font: 600 22px -apple-system, "SF Pro Display", system-ui; letter-spacing: -0.01em; }
       .status { display: flex; align-items: center; gap: 8px; opacity: 0.65; }
       .spinner {
@@ -35,7 +38,7 @@
     </style>
   </head>
   <body data-tauri-drag-region>
-    <img src="icon.png" alt="" data-tauri-drag-region />
+    <div class="icon" data-tauri-drag-region><img src="icon.png" alt="" data-tauri-drag-region /></div>
     <h1 data-tauri-drag-region>Spectrum</h1>
     <div class="status"><span class="spinner"></span><span>Starting…</span></div>
     <div class="error">
