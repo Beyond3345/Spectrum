@@ -5,7 +5,7 @@
 // pandoc and the picture compiles (convertService.js).
 import { tex2typst } from 'tex2typst';
 import { withoutComments } from '../../latex/text.js';
-import { figureSetTypst, figureTypst, tableEdges, tableTypst, typstMarkup } from '../../latex/floats.js';
+import { figureSetTypst, figureTypst, figureTypstInclude, tableEdges, tableTypst, typstMarkup } from '../../latex/floats.js';
 import { braceArg, commandArgs, environments, inside, keyValues, lengthMm, lineAt, maskComments, mathSpans, optionalArg, rewrite, splice, splitTop, typstLength } from './latexRead.js';
 import { groupDigits, siAngle, siNumber, siQuantity, siUnit } from './units.js';
 
@@ -450,6 +450,7 @@ function graphicIn(text, st, ctx) {
   if (standalone) {
     // the composer's PDF beside its drawing, or the drawing compiled now
     const target = ctx.standalone(st, standalone.args[1].trim());
+    if (target?.include) return { kind: 'include', path: target.include };
     return typeof target === 'number' ? { kind: 'picture', n: target, size: imageSize(standalone.args[0]) } : { kind: 'standalone', path: target, size: imageSize(standalone.args[0]) };
   }
   const image = commandIn(text, 'includegraphics', 'om');
@@ -1093,6 +1094,7 @@ const labelAfter = (label) => (label ? ' <' + typstLabel(label) + '>' : '');
 /** A picture's image: the PDF it compiled to, or a box that says it couldn't be. */
 function pictureImage(graphic, ctx, size = null) {
   const share = size?.mode === 'line' ? ', width: ' + Math.round(size.fraction * 100) + '%' : size?.mode === 'width' ? ', width: ' + +size.width.toFixed(1) + 'mm' : '';
+  if (graphic.kind === 'include') return 'include "/' + graphic.path + '"';
   if (graphic.kind === 'picture') {
     const picture = ctx.pictures[graphic.n];
     return picture?.ok ? 'image("/' + picture.pdf + '"' + share + ')' : 'rect(width: 60mm, height: 30mm, stroke: 0.5pt)[Picture not converted: ' + typstMarkup(picture?.tex ?? 'see the conversion notes') + ']';
@@ -1174,6 +1176,7 @@ function renderFigure(record, pieceText, st, ctx) {
   if (record.layout === 'single') {
     const g = record.graphic;
     // a PDF drawn in Typst, as a conversion from Typst left it: the figure's own drawing, or the file it includes
+    if (g.kind === 'include') return floating(figureTypstInclude({ path: g.path, caption, label: label ? typstLabel(label) : '', markup: true }), record.placement);
     const drawn = g.kind === 'image' && ctx.typstSources?.get(g.path);
     if (drawn) return floating('#figure(' + (drawn.include ? 'include "/' + drawn.include + '"' : drawn.body) + captionArg(caption) + ')' + labelAfter(label), record.placement);
     if (g.kind === 'image' && g.path && g.size && g.size.mode !== 'natural') return floating(figureTypst({ path: g.path, width: g.size.fraction, size: g.size, caption, label: label ? typstLabel(label) : '', markup: true }), record.placement);

@@ -13,9 +13,10 @@ import { PANDOC_DOWNLOADABLE, PANDOC_MINIMUM, builtInTypst, pandocPath, versionO
 import { MAX_LOG_BYTES, compileFolder, runSpawn } from './compileService.js';
 import { compileTypst } from './typstService.js';
 import { environments, lineAt, maskComments, mathSpans } from './convert/latexRead.js';
-import { assembleTypst, astToTypst, latexFacts, pictureDocument, prepareLatex, typstDefinitions, typstLabel, typstPreamble } from './convert/toTypst.js';
+import { assembleTypst, astToTypst, latexFacts, pictureDocument, prepareLatex, typstDefinitions, typstLabel, typstMaths, typstPreamble } from './convert/toTypst.js';
 import { assembleLatex, latexPreamble, prepareTypst, typstFacts, typstProse } from './convert/toLatex.js';
 import { callAt, markupSpans } from './convert/typstRead.js';
+import { flowchartFile, flowchartFor, flowchartOf, sameFlowchart } from './convert/diagrams.js';
 
 // A LaTeX or Typst project converted into a new project of the other kind, as docs/featureResearch/
 // LATEX_TYPST_CONVERSION.md designs it: pandoc reads the prose, Spectrum's own rules (convert/) write every construct the
@@ -205,6 +206,40 @@ function sourceClass(source, facts) {
   return { name: source.class, options };
 }
 
+/**
+ * The composer's flowcharts among the project's diagrams/ files in from ('tikz' or 'typst'), each with its file in the
+ * other language for the new project: { file: { to, text, write } }. The project's own file of the same drawing (a
+ * conversion back) stays as it is (write false); otherwise one is written from the drawing. A flowchart whose texts
+ * the other language can't take is left out, to compile to a PDF as any other drawing.
+ */
+async function composerFlowcharts(root, files, from) {
+  const out = new Map();
+  const to = from === 'tikz' ? 'typst' : 'tikz';
+  const read = (rel) => fs.readFile(safeJoin(root, rel), 'utf8').catch(() => '');
+  for (const rel of files) {
+    if (!rel.startsWith('diagrams/') || !rel.endsWith(from === 'tikz' ? '.tex' : '.typ')) continue;
+    const drawing = flowchartOf(await read(rel));
+    if (!drawing || (drawing.language === 'typst') !== (from === 'typst')) continue;
+    const other = rel.replace(/\.\w+$/, to === 'typst' ? '.typ' : '.tex');
+    const existing = files.has(other) ? await read(other) : '';
+    const before = flowchartOf(existing);
+    if (before && sameFlowchart(flowchartFor(before, from, typstMaths), drawing)) {
+      out.set(rel, { to: other, text: existing, write: false });
+      continue;
+    }
+    const translated = flowchartFor(drawing, to, typstMaths);
+    if (translated) out.set(rel, { to: other, text: flowchartFile(translated, to), write: true });
+  }
+  return out;
+}
+
+/** A flowchart's file in the other language, in the new project. */
+async function writeFlowchart(staging, flowchart) {
+  if (!flowchart.write) return;
+  await ensureDir(path.dirname(path.join(staging, flowchart.to)));
+  await fs.writeFile(path.join(staging, flowchart.to), flowchart.text);
+}
+
 // \verb and \lstinline in LaTeX, with their text: what a conversion back puts in place of `text`
 const INLINE_CODE = /\\(?:verb\*?|lstinline(?:\[[^\]]*\])?)([^\sA-Za-z{])([^\n]*?)\1|\\lstinline(?:\[[^\]]*\])?\{([^{}\n]*)\}/g;
 
@@ -225,6 +260,7 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
   const files = new Set(items.filter((i) => i.type === 'file').map((i) => i.path));
   // a project converted from Typst: its record says what to put back
   const previous = await conversionRecord(root, 'typst');
+  const flowcharts = await composerFlowcharts(root, files, 'tikz');
   const mainDir = path.posix.dirname(doc) === '.' ? '' : path.posix.dirname(doc);
   const mainText = await fs.readFile(safeJoin(root, doc), 'utf8');
   const begin = mainText.indexOf('\\begin{document}');
@@ -256,6 +292,7 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
     bibKeys: new Set(bibKeys(bibText)),
     used: new Set(),
     pictures: [],
+    flowcharts: new Set(),
     images: new Set(),
     refsOut: [],
     citesOut: [],
@@ -274,6 +311,12 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
     },
     standalone(st, src) {
       const base = String(src).trim().replace(/\.tex$/i, '');
+      // the composer's flowchart, written again in fletcher from its drawing
+      const flowchart = findFile(base + '.tex');
+      if (flowcharts.has(flowchart)) {
+        ctx.flowcharts.add(flowchart);
+        return { include: flowcharts.get(flowchart).to };
+      }
       const pdf = findFile(base + '.pdf');
       if (pdf) return pdf;
       const tex = findFile(base + '.tex');
@@ -319,6 +362,7 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
       await fs.copyFile(safeJoin(root, rel), path.join(staging, rel));
     }
     if (bibText.trim()) await fs.writeFile(path.join(staging, 'refs.bib'), bibText.trim() + '\n');
+    for (const tex of ctx.flowcharts) await writeFlowchart(staging, flowcharts.get(tex));
 
     for (const [i, picture] of ctx.pictures.entries()) {
       onStep('Pictures (' + (i + 1) + ' of ' + ctx.pictures.length + ')');
@@ -633,6 +677,7 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
   const mainText = await read(doc);
   // a project converted from LaTeX: its record says what to put back
   const previous = await conversionRecord(root, 'latex');
+  const flowcharts = await composerFlowcharts(root, files, 'typst');
   // every file the document is made of, the main file first
   const order = [doc];
   for (let i = 0; i < order.length; i += 1) {
@@ -697,6 +742,15 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
       const name = picture.include ? picture.include.replace(/\.typ$/i, '') : 'diagrams/converted-' + (i + 1);
       picture.pdf = name + '.pdf';
       picture.typ = picture.include ?? name + '.typ';
+      // the composer's flowchart, written again in TikZ from its drawing and included as the composer's are
+      const flowchart = flowcharts.get(picture.include);
+      if (flowchart) {
+        await writeFlowchart(staging, flowchart);
+        picture.ok = true;
+        picture.standalone = flowchart.to.replace(/\.tex$/i, '');
+        ctx.texSources.set(picture.pdf, { standalone: picture.standalone, preamble: preambleCommands(flowchart.text.split('\\begin{document}')[0]).filter((c) => !/^\\documentclass/.test(c)) });
+        continue;
+      }
       if (picture.include && files.has(picture.pdf)) {
         picture.ok = true;
         continue;

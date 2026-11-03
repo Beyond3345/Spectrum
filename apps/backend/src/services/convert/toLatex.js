@@ -1022,15 +1022,17 @@ function renderFigure(record, pieceText, ctx) {
   const caption = record.caption === null ? '' : pieceText(record.caption);
   ctx.used.add('graphicx');
   // a picture whose LaTeX sits beside its PDF: the TikZ it was made from, or the composer's drawing
-  const source = record.layout === 'image' ? ctx.texSources?.get(record.path) : null;
+  const drawn = record.layout === 'picture' ? ctx.pictures[record.picture] : null;
+  const key = record.layout === 'image' ? record.path : drawn?.standalone ? drawn.pdf : null;
+  const source = key ? ctx.texSources?.get(key) : null;
   if (source?.picture) {
-    ctx.used.add('picture:' + record.path);
+    ctx.used.add('picture:' + key);
     // the figure indented as the picture's own lines are, by its \end line
     const indent = /\n([ \t]+)\\end\{[^}]*\}$/.exec(source.picture)?.[1] ?? '  ';
     return ['\\begin{figure}[' + record.placement + ']', indent + '\\centering', indent + source.picture, indent + '\\caption{' + caption + '}', ...(record.label ? [indent + '\\label{' + record.label + '}'] : []), '\\end{figure}'].join('\n');
   }
   if (source?.standalone) {
-    ctx.used.add('picture:' + record.path);
+    ctx.used.add('picture:' + key);
     return diagramLatex({ path: source.standalone, width: record.size?.mode === 'line' ? record.size.fraction : null, caption, label: record.label ?? '', placement: record.placement, markup: true });
   }
   if (record.layout === 'image' || record.layout === 'picture') {
