@@ -17,6 +17,8 @@ export function placementOf(letters, span = false) {
 }
 
 const placed = (placement) => (placement ? `[${placement}]` : '');
+// a caption's LaTeX: escaped text, or LaTeX already (the converter's markup), on one line either way
+const latexText = (text, markup) => (markup ? oneLine(text) : escapeCell(oneLine(text)));
 const labelLine = (label, indent) => (label.trim() ? [`${indent}\\label{${label.trim()}}`] : []);
 
 // mm as LaTeX writes them: 60mm, 12.5mm
@@ -62,13 +64,13 @@ export function figureSetLatex(f) {
       `\\begin{${env}}[${pos}]{${widthArg(panelWidth(n))}}`,
       '    \\centering',
       `    ${graphic(panel.path)}`,
-      ...(captioned ? [`    \\caption{${escapeCell(oneLine(panel.caption))}}`, ...labelLine(panel.label, '    ')] : []),
+      ...(captioned ? [`    \\caption{${latexText(panel.caption, f.markup)}}`, ...labelLine(panel.label, '    ')] : []),
       // between panels in a row a stretch of space, and at the end of a row a new line with a little space
       `\\end{${env}}${i === f.panels.length - 1 ? '' : (i + 1) % n === 0 ? '\n\\par\\medskip' : '\\hfill'}`
     );
   });
   const body = lines.join('\n').split('\n');
-  const main = f.labels === 'separate' ? [] : [`\\caption{${escapeCell(oneLine(f.caption))}}`, ...labelLine(f.label, '')];
+  const main = f.labels === 'separate' ? [] : [`\\caption{${latexText(f.caption, f.markup)}}`, ...labelLine(f.label, '')];
   return [
     `\\begin{figure${f.span ? '*' : ''}}${placed(placementOf(f.placement, f.span))}`,
     '    \\centering',
@@ -82,7 +84,7 @@ const figureFloat = (o, body) =>
     `\\begin{figure${o.span ? '*' : ''}}${placed(placementOf(o.placement, o.span))}`,
     '    \\centering',
     `    ${body}`,
-    `    \\caption{${escapeCell(oneLine(o.caption))}}`,
+    `    \\caption{${latexText(o.caption, o.markup)}}`,
     ...labelLine(o.label, '    '),
     `\\end{figure${o.span ? '*' : ''}}`
   ].join('\n');

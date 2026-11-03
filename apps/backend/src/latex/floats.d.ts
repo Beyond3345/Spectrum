@@ -10,6 +10,8 @@ export type FigureOptions = {
   span?: boolean;
   /** how the image is sized; without it, width as a share of the line */
   size?: FigureSize;
+  /** the caption is LaTeX already (the converter's), written as it is */
+  markup?: boolean;
 };
 
 /**
@@ -42,7 +44,7 @@ export type FigureSet = {
   label: string;
   placement: string;
   span?: boolean;
-  /** Typst: the captions are Typst markup already, written as they are */
+  /** the captions are markup of the target language already (the converter's), written as they are */
   markup?: boolean;
 };
 

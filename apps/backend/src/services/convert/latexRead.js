@@ -1,7 +1,7 @@
 // Reading LaTeX source: arguments, environments, comments and maths, by position, for the converter's passes. Pure.
 import { matchBrace } from '../../latex/text.js';
 
-export const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** The line (from 1) of index in text. */
 export const lineAt = (text, index) => text.slice(0, Math.max(0, index)).split('\n').length;

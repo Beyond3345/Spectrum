@@ -106,3 +106,62 @@ export function siAngle(source) {
   if (parts.length > 3 || parts.some((part) => part && !siNumber(part))) return null;
   return parts.map((part, i) => (part ? siNumber(part).text + ['°', '′', '″'][i] : '')).join('');
 }
+
+// ─── Typed units back to siunitx ───
+
+// each symbol's macro, the first spelling winning (metre, not meter); B is a byte, which a bel alone seldom is
+const symbolTable = (table, skip = []) => [...new Map(Object.entries(table).filter(([name]) => !skip.includes(name)).map(([name, symbol]) => [symbol, name]))].sort((a, b) => b[0].length - a[0].length);
+const UNIT_SYMBOLS = symbolTable(UNITS, ['meter', 'liter', 'bel', 'degree', 'arcminute', 'arcsecond']);
+const PREFIX_SYMBOLS = [...symbolTable(PREFIXES, ['deka']), ['μ', 'micro']];
+const POWER = /^(⁻)?([⁰¹²³⁴⁵⁶⁷⁸⁹]+)/;
+const DIGIT = Object.fromEntries([...'⁰¹²³⁴⁵⁶⁷⁸⁹'].map((d, i) => [d, String(i)]));
+
+/** A run of unit symbols (kWh, µs², K⁻¹) as [{ prefix, unit, power }] by longest match, whole symbols first; null if one doesn't read. */
+function symbolRun(run) {
+  const out = [];
+  for (let i = 0; i < run.length; ) {
+    if (run[i] === '·' || run[i] === '⋅') {
+      i += 1;
+      continue;
+    }
+    let best = null;
+    for (const [symbol, unit] of UNIT_SYMBOLS) if (run.startsWith(symbol, i) && (!best || symbol.length > best.len)) best = { len: symbol.length, prefix: '', unit };
+    for (const [psymbol, prefix] of PREFIX_SYMBOLS) {
+      if (!run.startsWith(psymbol, i)) continue;
+      for (const [symbol, unit] of UNIT_SYMBOLS) {
+        const len = psymbol.length + symbol.length;
+        if (run.startsWith(symbol, i + psymbol.length) && (!best || len > best.len)) best = { len, prefix, unit };
+      }
+    }
+    if (!best) return null;
+    i += best.len;
+    const power = POWER.exec(run.slice(i));
+    if (power) i += power[0].length;
+    out.push({ prefix: best.prefix, unit: best.unit, power: (power?.[1] ? -1 : 1) * (power ? Number([...power[2]].map((d) => DIGIT[d]).join('')) : 1) });
+  }
+  return out.length ? out : null;
+}
+
+/** A typed unit (kΩ, V/µs, m/s², J/(kg·K), K⁻¹) as siunitx macros, or null when it isn't one. */
+export function typedUnit(text) {
+  const [top, bottom = '', ...more] = String(text).split('/');
+  if (more.length) return null;
+  const above = top ? symbolRun(top) : [];
+  const below = bottom ? symbolRun(bottom.replace(/^\((.*)\)$/, '$1')) : [];
+  if (!above || !below || (!above.length && !below.length)) return null;
+  const write = ({ prefix, unit, power }, per) => {
+    const p = Math.abs(power);
+    return (per || power < 0 ? '\\per' : '') + (prefix ? '\\' + prefix : '') + '\\' + unit + (p === 2 ? '\\squared' : p === 3 ? '\\cubed' : p === 1 ? '' : '\\tothe{' + p + '}');
+  };
+  return [...above.map((u) => write(u, false)), ...below.map((u) => write(u, true))].join('');
+}
+
+/** A typed number (4.7, -5.4, ±15, 7,790, 1.2~±~0.1, 47 times 10^3) as siunitx reads one, or null. */
+export function typedNumber(text) {
+  const t = String(text).replace(/[−–]/g, '-').replace(/~|\s+|thin/g, ' ').trim();
+  const m = /^\(?\s*([-+±∓])?\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?(?:\s*(±|plus\.minus)\s*(\d+(?:\.\d+)?))?\s*\)?(?:\s*(?:times|×)\s*10\s*\^\s*\(?\s*([-−]?\d+)\s*\)?)?$/.exec(t);
+  if (!m) return null;
+  const [, sign = '', whole, decimals = '', pm, uncertainty, exponent] = m;
+  const signText = sign === '±' ? '\\pm ' : sign === '∓' ? '\\mp ' : sign;
+  return signText + whole.replace(/,/g, '') + decimals + (pm ? ' \\pm ' + uncertainty : '') + (exponent !== undefined ? 'e' + exponent.replace('−', '-') : '');
+}
