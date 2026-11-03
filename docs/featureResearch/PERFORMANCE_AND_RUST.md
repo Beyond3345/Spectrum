@@ -43,6 +43,8 @@ The LaTeX book class starts each chapter on a right-hand page, so its 141,000 wo
 
 **Limits.** The browser pane was hidden while it ran, so the page counted as a background tab: CPU times there are upper bounds and timer-based numbers were not used. The PDF decode was therefore also timed in Node, which uses the same V8 engine. pdf.js was timed in Node without drawing to a canvas. LanguageTool (Java) is not installed here and was not measured, and TexLab was not measured. File caches were warm, the content is synthetic and there was one machine. Only arm64 programs were run.
 
+**A probe that made its own stalls.** Gaps in the main thread were first watched by awaiting a message on a new `MessageChannel` in a loop. That makes hundreds of thousands of channels in a few seconds, and collecting them stops the page for 0.2 to 2 s, on an empty page too. The gaps fell around the autosave, 1.5 s after the last key, so they looked like stalls after each save. With one channel reused there is no gap over 40 ms in the 3.5 s after typing stops, in a 1.15 MB LaTeX file or a 0.87 MB Typst file, with TexLab or Tinymist running, in headless Chrome and in the browser pane. What follows a save is a few short tasks: the completion scan (6 to 15 ms), the to-do scan (4 to 6 ms), TexLab's outline (4 to 5 ms) and the page's render (3 to 10 ms). Keys typed through the save took 5 to 10 ms (at most 21 ms).
+
 ## 3. The measured profile
 
 ### 3.1 Start-up
