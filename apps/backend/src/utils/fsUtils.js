@@ -123,6 +123,20 @@ export async function readdirTyped(dir, { skipUnreadable = false } = {}) {
   return typed.filter(Boolean);
 }
 
+/** fn over the items, 16 at a time (libuv's thread pool), the results in the items' order. */
+export async function inPool(items, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(16, items.length) }, worker));
+  return out;
+}
+
 /** Every file and folder under root, as '/'-separated paths from root on every system (a link is a file). */
 export async function listFilesRecursive(root, rel = '') {
   const items = [];

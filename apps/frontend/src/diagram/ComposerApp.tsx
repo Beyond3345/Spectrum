@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ReactFlowProvider } from '@xyflow/react';
 import type { EditorView } from '@codemirror/view';
-import { ApiError, compileProject, deleteFile, getEngines, getFile, getProjectSettings, getProjectTree, runAgent, stopCompile, uploadFiles, writeFile } from '../api/client';
+import { ApiError, base64Bytes, compileProject, deleteFile, getEngines, getFile, getProjectSettings, getProjectTree, runAgent, stopCompile, uploadFiles, writeFile } from '../api/client';
 import type { CompileEngine } from '../api/client';
 import { confirmDialog } from '../app/Dialogs';
 import Icon from '../app/Icon';
@@ -634,7 +634,7 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
       // Typst brings its diagnostics with it; TeX's come from the log
       const errors = language === 'typst' ? (res.errors ?? []).map((e) => ({ severity: e.severity, message: e.message, line: e.line, file: e.file })) : parseCompileLog(log);
       if (res.ok && res.pdf) {
-        setPreview({ state: res.status === 0 ? 'ok' : 'failed', pdf: Uint8Array.from(atob(res.pdf), (c) => c.charCodeAt(0)), errors, log, source });
+        setPreview({ state: res.status === 0 ? 'ok' : 'failed', pdf: base64Bytes(res.pdf), errors, log, source });
       } else {
         setPreview((p) => ({ ...p, state: 'failed', errors, log, failure: res.error }));
       }

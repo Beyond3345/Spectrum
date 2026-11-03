@@ -238,6 +238,21 @@ test('tree hides app data, VCS internals and Finder and Explorer litter', async 
   assert.equal((await api(`/api/projects/${p.id}/file?path=.`, { method: 'DELETE' })).status, 400);
 });
 
+test('several files read at once answer as each read alone would', async () => {
+  const p = await newProject('Batch');
+  await writeFile(p.id, 'main.tex', 'a');
+  await writeFile(p.id, 'notes/one.md', 'ü');
+  await fs.symlink(tmp, path.join(p.path, 'out'));
+  const paths = ['main.tex', 'notes/one.md', 'missing.tex', 'out', '../x'];
+  const { status, json } = await api(`/api/projects/${p.id}/files`, { method: 'POST', body: { paths } });
+  assert.equal(status, 200);
+  for (const [i, rel] of paths.entries()) {
+    const one = await api(`/api/projects/${p.id}/file?path=${encodeURIComponent(rel)}`);
+    assert.deepEqual(json.files[i], one.status === 200 ? one.json : { status: one.status, error: one.json.error }, rel);
+  }
+  assert.equal((await api(`/api/projects/${p.id}/files`, { method: 'POST', body: { paths: [1] } })).status, 400);
+});
+
 test('tree lists the .tex files that are documents of their own', async () => {
   const p = await newProject('Documents');
   await writeFile(p.id, 'notes.tex', '% !TEX program = xelatex\n\\documentclass[11pt]{article}\n\\begin{document}\\input{chapters/one}\\end{document}\n');

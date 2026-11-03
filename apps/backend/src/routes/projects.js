@@ -7,7 +7,7 @@ import { promisify } from 'util';
 import * as tar from 'tar';
 import crypto from 'crypto';
 import { gunzipSync } from 'zlib';
-import { ensureDir, copyDir, extractZip, listFilesRecursive, mirrorSkips, renameOver, skipInArchive, writeFileAtomic } from '../utils/fsUtils.js';
+import { ensureDir, copyDir, extractZip, inPool, listFilesRecursive, mirrorSkips, renameOver, skipInArchive, writeFileAtomic } from '../utils/fsUtils.js';
 import { onDiskRel, safeJoin, safeJoinLink, sanitizeUploadPath } from '../utils/pathUtils.js';
 import { bibliographyFiles, extractDocumentBody, isDocumentFile, mergeTemplateBody, preserveDocumentMetadata, withBiblatexResources, withoutComments } from '../utils/texUtils.js';
 import { readTemplateManifest, copyTemplateIntoProject, templatePath } from '../services/templateService.js';
@@ -35,6 +35,8 @@ import {
   updateMeta
 } from '../services/projectService.js';
 import { followRename } from './todos.js';
+import { offlineMessage } from '../services/syncService.js';
+import { stopTypstWatch } from '../services/typstService.js';
 import { documentLabels, projectStats, typstDocumentLabels } from '../services/statsService.js';
 import { readProjectSettings, updateProjectSettings } from '../services/projectSettings.js';
 import { BIB_TOOLS, SUPPORTED_ENGINES } from '../services/compileService.js';
@@ -209,6 +211,8 @@ export async function moveToBin(folder) {
 export function registerProjectRoutes(fastify) {
   // the open editors' folder watches, ended first when the server closes, so quitting doesn't wait for them
   const watches = new Set();
+  // how many editors have each project's folder open, by its events stream
+  const editors = new Map();
   fastify.addHook('preClose', (done) => {
     for (const res of watches) res.end();
     done();
@@ -610,8 +614,15 @@ export function registerProjectRoutes(fastify) {
     watcher.on('error', () => reply.raw.end());
     const ping = setInterval(() => reply.raw.write(': ping\n\n'), 30_000);
     watches.add(reply.raw);
+    editors.set(root, (editors.get(root) || 0) + 1);
     reply.raw.on('close', () => {
       watches.delete(reply.raw);
+      // the project closed (no editor has it open): its Typst stops running
+      editors.set(root, editors.get(root) - 1);
+      if (!editors.get(root)) {
+        editors.delete(root);
+        stopTypstWatch({ root });
+      }
       watcher.close();
       clearInterval(ping);
       clearTimeout(timer);
@@ -654,6 +665,26 @@ export function registerProjectRoutes(fastify) {
     const data = await fs.readFile(safeJoin(root, filePath));
     const hash = sha256(data);
     return base === hash ? { hash } : { content: data.toString('utf8'), hash };
+  });
+
+  // several files at once, each as GET /file gives it or as the error it would answer: the editor reads a project's
+  // text files with one request as it opens rather than one each (650 in a project of 1,800 files)
+  fastify.post('/api/projects/:id/files', async (req) => {
+    const paths = req.body?.paths;
+    if (!Array.isArray(paths) || !paths.every((p) => typeof p === 'string')) throw httpError('Invalid paths.', 400);
+    const root = await getProjectRoot(req.params.id);
+    const files = await inPool(paths, async (filePath) => {
+      if (!filePath) return { content: '' };
+      try {
+        const data = await fs.readFile(safeJoin(root, filePath));
+        return { content: data.toString('utf8'), hash: sha256(data) };
+      } catch (err) {
+        const offline = await offlineMessage(err).catch(() => null);
+        if (offline) return { status: 503, error: offline };
+        return err.code === 'ENOENT' ? { status: 404, error: 'File not found.' } : { status: err.statusCode || 500, error: err.message };
+      }
+    });
+    return { files };
   });
 
   fastify.get('/api/projects/:id/blob', async (req, reply) => {

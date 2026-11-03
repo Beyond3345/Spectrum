@@ -2,9 +2,9 @@ import { RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
 import type { EditorState, Extension } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin } from '@codemirror/view';
 import type { DecorationSet, ViewUpdate } from '@codemirror/view';
-import { maskLatex, maskMarkdown, maskTypst } from '../../../backend/src/latex/mask.js';
-import { languageMarkup, prosePieces } from '../../../backend/src/language/markup.js';
 import { spellCheck } from '../api/client';
+import { maskForSpelling } from './spellMask';
+import type { Masked, SpellKind as Kind, SpellPiece as Piece } from './spellMask';
 
 // Spell checking as you type, in the languages the user listed. The text is reduced to its prose (the same stripper
 // the grammar check uses) and cut into paragraphs; the ones in and near the view go to the backend, which works out
@@ -50,9 +50,39 @@ export function misspeltAt(state: EditorState, pos: number) {
   return hit as { from: number; to: number; word: string; lang: string } | null;
 }
 
-type Kind = 'latex' | 'typst' | 'markdown' | 'text';
-type Piece = { from: number; to: number; lang?: string };
 type Answer = { lang: string; misspelt: [number, number][] };
+
+// the mask runs in a worker, so a pause in typing doesn't stall the editor; in the editor's thread where there's none
+let worker: Worker | null | undefined;
+let asked = 0;
+const waiting = new Map<number, { source: string; kind: Kind; resolve(masked: Masked): void }>();
+
+function masked(source: string, kind: Kind): Promise<Masked> {
+  if (worker === undefined) {
+    try {
+      worker = new Worker(new URL('./spellMask.worker.ts', import.meta.url), { type: 'module' });
+      worker.onmessage = (e: MessageEvent<{ id: number; masked: Masked }>) => {
+        waiting.get(e.data.id)?.resolve(e.data.masked);
+        waiting.delete(e.data.id);
+      };
+      // one that can't start or fails: the rest in this thread
+      worker.onerror = () => {
+        worker?.terminate();
+        worker = null;
+        for (const { source: s, kind: k, resolve } of waiting.values()) resolve(maskForSpelling(s, k));
+        waiting.clear();
+      };
+    } catch {
+      worker = null;
+    }
+  }
+  if (!worker) return Promise.resolve(maskForSpelling(source, kind));
+  const id = ++asked;
+  return new Promise((resolve) => {
+    waiting.set(id, { source, kind, resolve });
+    worker!.postMessage({ id, source, kind });
+  });
+}
 
 /** The pieces near the view, and up to LOOKBACK before them, within what one request may carry. */
 export function piecesNear(pieces: Piece[], ranges: readonly { from: number; to: number }[]) {
@@ -92,7 +122,7 @@ export function spellChecker(opts: {
   const plugin = ViewPlugin.fromClass(
     class {
       ignored = new Set<string>();
-      masked: { doc: unknown; kind: string; text: string; pieces: Piece[]; main: string | null } = { doc: null, kind: '', text: '', pieces: [], main: null };
+      masked: Masked & { doc: unknown; kind: string } = { doc: null, kind: '', text: '', pieces: [], main: null };
       // what was last sent and its answer, so an unchanged view isn't sent again
       last: { key: string; answers: Answer[] } = { key: '', answers: [] };
       timer = 0;
@@ -135,10 +165,10 @@ export function spellChecker(opts: {
         const doc = view.state.doc;
         const kind: Kind = /\.(tex|ltx)$/i.test(path) ? 'latex' : /\.typ$/i.test(path) ? 'typst' : /\.(md|markdown)$/i.test(path) ? 'markdown' : 'text';
         if (this.masked.doc !== doc || this.masked.kind !== kind) {
-          const source = doc.toString();
-          const prose = kind === 'latex' ? maskLatex(source) : kind === 'typst' ? maskTypst(source) : kind === 'markdown' ? maskMarkdown(source) : source;
-          const { main, ranges } = languageMarkup(source, kind);
-          this.masked = { doc, kind, text: prose, pieces: prosePieces(prose, ranges), main };
+          const result = await masked(doc.toString(), kind);
+          // typed on meanwhile: the newer check masks again
+          if (run !== this.run) return;
+          this.masked = { doc, kind, ...result };
         }
         const { text: prose, main } = this.masked;
         const pieces = piecesNear(this.masked.pieces, view.visibleRanges);

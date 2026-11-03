@@ -4,8 +4,8 @@ import crypto from 'crypto';
 import { promisify } from 'util';
 import { gzip, gunzip } from 'zlib';
 import { diffLines } from 'diff';
-import { ensureDir, freePath, listFilesRecursive, readJson, renameOver, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
-import { safeJoin } from '../utils/pathUtils.js';
+import { ensureDir, freePath, inPool, listFilesRecursive, readJson, renameOver, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
+import { inside, safeJoin } from '../utils/pathUtils.js';
 import { appPath, httpError, mutateProjectRoot, serialiser } from './projectService.js';
 import { compiledPdfs } from './gitService.js';
 
@@ -52,6 +52,9 @@ const lockFor = (root) => {
 };
 // stored files this run of the app wrote, which a compile's checkpoint taking another's place may remove again
 const written = new Set();
+// each project's files as last hashed, by path: { size, mtimeMs, ctimeMs, ino, sha, at }, `at` when it was stat'd
+const hashedFiles = new Map();
+const RACY_MS = 2000;
 
 async function readIndex(root) {
   try {
@@ -169,47 +172,79 @@ const diskFiles = async (root) => (await listFilesRecursive(root)).filter((item)
  * PDF a document includes), anything over 50 MB (those go in `large`), and anything that can't be read (broken or
  * outside links, no permission) rather than failing; those go in `skipped`.
  */
-async function trackedFiles(root, skipped = [], large = []) {
-  const files = await diskFiles(root);
+async function trackedFiles(root, skipped = [], large = [], stats = null) {
   const compiled = new Set((await compiledPdfs(root)).map((rel) => rel.toLowerCase()));
-  const tracked = [];
-  for (const rel of files) {
-    if (compiled.has(rel.toLowerCase())) continue;
+  const files = (await diskFiles(root)).filter((rel) => !compiled.has(rel.toLowerCase()));
+  const realRoot = await fs.realpath(root).catch(() => path.resolve(root));
+  const found = await inPool(files, async (rel) => {
     try {
-      const abs = safeJoin(root, rel);
+      // safeJoin's check without its blocking realpaths, 60 ms in 1,700 files: a link out of the project, or to nothing, is skipped
+      const abs = path.join(root, rel);
+      if (!inside(realRoot, await fs.realpath(abs))) return null;
       const stat = await fs.stat(abs);
       await fs.access(abs, fsConstants.R_OK);
-      if (stat.isFile()) (stat.size <= MAX_TRACKED_BYTES ? tracked : large).push(rel);
+      return stat;
     } catch {
-      skipped.push(rel);
+      return null;
     }
-  }
+  });
+  const tracked = [];
+  files.forEach((rel, i) => {
+    const stat = found[i];
+    if (!stat) skipped.push(rel);
+    else if (stat.isFile()) {
+      (stat.size <= MAX_TRACKED_BYTES ? tracked : large).push(rel);
+      stats?.set(rel, stat);
+    }
+  });
   return tracked.sort();
 }
 
-/** Hash the tracked files; with store=true also save their contents as objects. Unreadable ones go in `skipped`. */
+/**
+ * Hash the tracked files; with store=true also save their contents as objects. Unreadable ones go in `skipped`.
+ * A file whose size, times and inode match when it was last hashed keeps that hash without being read, as git's index
+ * does, unless it changed within RACY_MS of being hashed (a second write in the same tick of a coarse clock).
+ */
 async function snapshotDisk(root, store, skipped = [], large = []) {
-  const files = {};
-  for (const rel of await trackedFiles(root, skipped, large)) {
+  const key = path.resolve(root);
+  const known = hashedFiles.get(key) || new Map();
+  const stats = new Map();
+  const at = Date.now();
+  const tracked = await trackedFiles(root, skipped, large, stats);
+  const now = new Map();
+  const shas = await inPool(tracked, async (rel) => {
+    const stat = stats.get(rel);
+    const was = known.get(rel);
+    let sha = was && was.size === stat.size && was.mtimeMs === stat.mtimeMs && was.ctimeMs === stat.ctimeMs && was.ino === stat.ino && was.mtimeMs < was.at - RACY_MS ? was.sha : null;
+    // its stored copy is gone (a checkpoint's clean-up): read it again
+    if (sha && store && !(await exists(objectPath(root, sha)))) sha = null;
+    if (sha) {
+      now.set(rel, was);
+      return sha;
+    }
     let buf;
     try {
       buf = await fs.readFile(path.join(root, rel));
     } catch {
-      skipped.push(rel); // unreadable (online-only and offline, say): leave it out
-      continue;
+      return null; // unreadable (online-only and offline, say): leave it out
     }
-    const sha = sha256(buf);
-    files[rel] = sha;
+    sha = sha256(buf);
+    now.set(rel, { size: stat.size, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs, ino: stat.ino, sha, at });
     if (store) {
       const target = objectPath(root, sha);
-      try {
-        await fs.access(target);
-      } catch {
+      if (!(await exists(target))) {
         await writeFileAtomic(target, await gzipAsync(buf));
         written.add(target);
       }
     }
-  }
+    return sha;
+  });
+  hashedFiles.set(key, now);
+  const files = {};
+  tracked.forEach((rel, i) => {
+    if (shas[i]) files[rel] = shas[i];
+    else skipped.push(rel);
+  });
   return files;
 }
 

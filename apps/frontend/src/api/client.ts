@@ -290,10 +290,38 @@ export function getProjectTree(id: string) {
   );
 }
 
+type FileText = { content: string; hash: string };
+// reads asked for in the same moment, which go as one request: the to-do list reads every text file as a project opens,
+// 650 requests in a project of 1,800 files that waited on each other for over a second
+let reads: { id: string; path: string; resolve(file: FileText): void; reject(err: unknown): void }[] = [];
+
+function sendReads() {
+  const batch = reads;
+  reads = [];
+  for (const id of new Set(batch.map((r) => r.id))) {
+    const mine = batch.filter((r) => r.id === id);
+    if (mine.length === 1) {
+      const [{ path, resolve, reject }] = mine;
+      request<FileText>(`/api/projects/${id}/file?${new URLSearchParams({ path })}`).then(resolve, reject);
+      continue;
+    }
+    request<{ files: (FileText | { status: number; error: string })[] }>(`/api/projects/${id}/files`, json('POST', { paths: mine.map((r) => r.path) })).then(
+      ({ files }) => mine.forEach((r, i) => {
+        const file = files[i];
+        if ('error' in file) r.reject(new ApiError(file.error, file.status, { ok: false, error: file.error }));
+        else r.resolve(file);
+      }),
+      (err) => mine.forEach((r) => r.reject(err))
+    );
+  }
+}
+
 /** hash: the text's, for a later writeFile's base */
 export function getFile(id: string, filePath: string) {
-  const qs = new URLSearchParams({ path: filePath }).toString();
-  return request<{ content: string; hash: string }>(`/api/projects/${id}/file?${qs}`);
+  return new Promise<FileText>((resolve, reject) => {
+    if (!reads.length) queueMicrotask(sendReads);
+    reads.push({ id, path: filePath, resolve, reject });
+  });
 }
 
 /** The file as getFile gives it, without the text when that's still the text with hash `base`. */
@@ -613,6 +641,19 @@ export interface CompileResult {
   doc?: string;
   /** the checkpoint asked for: saved or not, why it couldn't be, and files it left out (too large or unreadable) */
   checkpoint?: { saved: boolean; id?: number; error?: string; skipped?: string[] };
+}
+
+/**
+ * A compile's `pdf` (base64) as bytes: the web view's own decoder where it has one (Chrome 140, Safari 18.2), 0.5 ms
+ * for a 3 MB PDF; otherwise a plain loop, 4 ms. Uint8Array.from with a mapping function took 130 ms or more.
+ */
+export function base64Bytes(base64: string): Uint8Array<ArrayBuffer> {
+  const native = (Uint8Array as { fromBase64?: (s: string) => Uint8Array<ArrayBuffer> }).fromBase64;
+  if (native) return native.call(Uint8Array, base64);
+  const text = atob(base64);
+  const bytes = new Uint8Array(text.length);
+  for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
+  return bytes;
 }
 
 /**
