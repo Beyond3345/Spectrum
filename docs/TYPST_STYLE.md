@@ -752,7 +752,8 @@ Each rule in [LATEX_STYLE.md](LATEX_STYLE.md) and its Typst equivalent in this g
 | `\begin{theorem}[Euclid] ... \label{thm:e}` | `#theorem(title: [Euclid])[...] <thm:e>` |
 | `\begin{proof}`, the `solution` environment | `#proof[...]`, `#solution[...]` |
 | `\begin{figure}[H]`, `\centering`, `\includegraphics`, `\caption`, `\label` | `#figure(image("/figures/x.png", width: 75%), caption: [...]) <fig:x>` |
-| `[ht]` | `placement: auto` |
+| `[t]`, `[b]`, `[p]` (without `h`) | `placement: auto` |
+| `[h]`, `[ht]`, `[H]` | No placement: the figure stays where it is written. With `placement: auto` Typst can move a figure above a chapter heading |
 | `width=0.75\linewidth`, `width=60mm`, `height=40mm` | `width: 75%`, `width: 60mm`, `height: 40mm` |
 | `width=60mm,height=40mm,keepaspectratio` | `width: 60mm, height: 40mm, fit: "contain"` |
 | `scale=0.5` | `scale(50%, reflow: true, image(...))` |
@@ -820,4 +821,4 @@ Spectrum's seven Typst templates follow this standard: `typst-document`, `typst-
 Spectrum's Insert tools write plain Typst that fits this standard, with two differences:
 
 - **Tables** from the table tool write each rule as `table.hline(y: n, ...)` with the row number, rather than between the rows. The two are the same table. A number column (`S` in the tool) is right aligned.
-- **Sub-figures** from Insert figure are written as an image with `(a) caption` text under it in a `stack`, with no label for each panel, and the grid uses `columns: 2` rather than `(1fr, 1fr)`. To refer to a panel, rewrite it as a `#subfigure` with a label.
+- **Sub-figures** from Insert figure are house `#subfigure` panels, each with its own label, and Insert figure adds the sub-figure definitions to the file when they are missing. The grid uses `columns: 2` rather than `(1fr, 1fr)`; the two lay out the same.
