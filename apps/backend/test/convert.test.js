@@ -357,6 +357,31 @@ test('what only Typst’s own parser reads converts too: a package’s drawings,
   assert.match(notes.map((n) => n.text).join('\n'), /function boxed does more than Spectrum can write in LaTeX, so only the text given to it was kept/);
 });
 
+test('#move, #scale, #hide and #terms, which pandoc drops with their text, become LaTeX', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
+  const folder = mkdtempSync(path.join(tmp, 'moved-'));
+  await fs.writeFile(path.join(folder, 'main.typ'), [
+    'The word #move(dy: -2pt)[lifted] sits higher, #move(dy: 1pt)[dropped] lower, #scale(150%)[Danger] is half as big again,',
+    '#scale(x: 50%, reflow: true)[narrow] is squeezed and a #hide[secret] gap stays blank, while #move(dx: 3pt)[sideways] stays put.',
+    'A #skew(ax: 10deg)[slanted], #overline[lined] and #repeat[dotted] word keep their text, as do #sub[low] and #super[high].',
+    '',
+    '#terms(',
+    '  ([Logger], [A box that records the water level.]),',
+    '  terms.item[Probe][A sensor pushed into the soil.],',
+    ')',
+    ''
+  ].join('\n'));
+  const staging = mkdtempSync(path.join(tmp, 'out-'));
+  const { checks, notes } = await typstToLatex(folder, 'main.typ', staging, { engine: 'auto' });
+  expectNothingLost(checks, 'move');
+  assert.equal(checks.words.coverage, 1);
+  const latex = await fs.readFile(path.join(staging, 'main.tex'), 'utf8');
+  assert.match(latex, /\\usepackage\{graphicx\}/);
+  assert.match(latex, /The word \\raisebox\{2pt\}\{lifted\} sits higher, \\raisebox\{-1pt\}\{dropped\} lower, \\scalebox\{1\.5\}\{Danger\} is half as big again,\n\\scalebox\{0\.5\}\[1\]\{narrow\} is squeezed and a \\phantom\{secret\} gap stays blank, while sideways stays put\./);
+  assert.match(latex, /\\begin\{description\}\n {2}\\item\[Logger\] A box that records the water level\.\n {2}\\item\[Probe\] A sensor pushed into the soil\.\n\\end\{description\}/);
+  assert.match(latex, /A slanted, lined and dotted word keep their text, as do \\textsubscript\{low\} and \\textsuperscript\{high\}\./);
+  assert.match(notes.map((n) => n.text).join('\n'), /LaTeX has no counterpart of this #move, so its text stays where it is\.[\s\S]*LaTeX has no counterpart of #overline, so only its text was kept\./);
+});
+
 test('mhchem formulas become Typst text, subscripts, charges and arrows upright', () => {
   assert.equal(chemistryTypst('NO3-'), 'NO#sub[3]#super[−]');
   assert.equal(chemistryTypst('PO4^3-'), 'PO#sub[4]#super[3−]');
@@ -431,8 +456,30 @@ test('LaTeX to Typst keeps the text of boxes, letter spacing, chemistry, sizes, 
   assert.deepEqual((await result.recheck(edited)).words.lost, ['reset', 'fragile', 'no', 'languages']);
 });
 
+test('xcolor’s \\textcolor, \\colorbox and \\fcolorbox become Typst colours, and no colour, length or option is kept as text', { skip, timeout: 5 * 60 * 1000 }, async () => {
+  const { result, text, notes } = await convertText('main.tex', [
+    '\\documentclass{article}',
+    '\\usepackage{xcolor}',
+    '\\definecolor{brand}{HTML}{3366CC}',
+    '\\begin{document}',
+    'Pay \\fcolorbox{red}{white}{now} and \\colorbox{yellow!30}{today}, as \\textcolor{blue}{the notice} says.',
+    'A \\textcolor[rgb]{0.2,0.4,0.6}{custom shade}, \\textcolor{brand}{our blue}, \\textcolor{gray!50!black}{dark grey} and \\textcolor{mystery}{odd words}.',
+    'The \\foo{orange}{bright words}, \\qux{red!20}{mixed words}, \\quux{blue}{2pt}{tinted words}, \\resizebox{2cm}{!}{Outlet} and \\cvitem{Colour}{red}.',
+    '\\end{document}',
+    ''
+  ].join('\n'));
+  assert.equal(result.checks.ok, true, JSON.stringify(result.checks.diagnostics));
+  assert.deepEqual(result.checks.words.lost, []);
+  const box = (fill) => '#box\\(' + fill + ', inset: \\(x: 3pt\\), outset: \\(y: 3pt\\)\\)';
+  assert.match(text, new RegExp('Pay ' + box('stroke: 0\\.4pt \\+ rgb\\("#ff0000"\\), fill: white') + '\\[now\\] and ' + box('fill: rgb\\("#ffff00"\\)\\.lighten\\(70%\\)') + '\\[today\\], as #text\\(fill: rgb\\("#0000ff"\\)\\)\\[the notice\\] says\\.'));
+  assert.match(text, /A #text\(fill: rgb\(20%, 40%, 60%\)\)\[custom shade\], #text\(fill: rgb\("#3366cc"\)\)\[our blue\], #text\(fill: rgb\("#808080"\)\.darken\(50%\)\)\[dark grey\] and odd words\./);
+  // an unknown command’s colour, colour mix, length and option are no text; a colour that is the text stays
+  assert.match(text, /The bright words, mixed words, tinted words, Outlet and Colour red\./);
+  assert.match(notes, /A colour Spectrum cannot write in Typst was left out of \\textcolor\./);
+});
+
 test('Typst to LaTeX keeps a title page’s alignment and a page of its own, and names the words it loses', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
-  const { result, text, notes } = await convertText('main.typ', [
+  const { result, staging, text, notes } = await convertText('main.typ', [
     '#set document(title: [Field trip report])',
     '#set page(paper: "a4", margin: 25mm)',
     '#set text(size: 11pt, lang: "en", region: "AU")',
@@ -463,8 +510,13 @@ test('Typst to LaTeX keeps a title page’s alignment and a page of its own, and
   assert.match(text, /\\begin\{titlepage\}\n {2}\\raggedleft\n {2}\\vspace\*\{40mm\}\n {2}\{\\Huge\\bfseries Field trip report\\par\}\n {2}\\vfill\n {2}Jack Wilson\\par\n\\end\{titlepage\}/, 'right aligned');
   assert.match(text, /We checked \\ul\{forty\} hives/);
   assert.match(text, /\\usepackage\{soul\}/);
-  assert.deepEqual(result.checks.words.lost, ['nudged'], 'what pandoc drops is named');
-  assert.match(notes, /The LaTeX lacks a word the Typst has: nudged\./);
+  // a sideways #move, which pandoc drops, keeps its text; a word lost after all is named
+  assert.match(text, /hives and nudged one\./);
+  assert.match(notes, /LaTeX has no counterpart of this #move, so its text stays where it is\./);
+  const edited = mkdtempSync(path.join(tmp, 'edited-'));
+  await fs.cp(staging, edited, { recursive: true });
+  await fs.writeFile(path.join(edited, 'main.tex'), text.replace('and nudged one', 'and one'));
+  assert.deepEqual((await result.recheck(edited)).words.lost, ['nudged']);
 });
 
 // ─── Round trips: section 10's phase 4, there and back with the conversion record ───
@@ -505,7 +557,8 @@ async function typstSummary(folder, main = 'main.typ') {
     for (const m of [...text.matchAll(/^#include\s+"\/?([^"]+)"/gm)].reverse()) if (depth < 5) text = text.slice(0, m.index) + (await expand(m[1], depth + 1)) + text.slice(m.index + m[0].length);
     return text;
   };
-  const text = (await expand(main)).replace(/```[\s\S]*?```|`[^`\n]*`/g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+  // an #import's "@preview/…" is no citation
+  const text = (await expand(main)).replace(/```[\s\S]*?```|`[^`\n]*`/g, '').replace(/^[ \t]*\/\/.*$/gm, '').replace(/^#import\s+"[^"\n]*"/gm, '');
   const labels = [...new Set([...text.matchAll(/(?<![\w(<])<([A-Za-z0-9_:.-]+)>/g)].map((m) => m[1]))].sort();
   const ats = [...text.matchAll(/(?<![\p{L}\p{N}\\/])@([A-Za-z0-9_:.-]*[A-Za-z0-9_-])/gu)].map((m) => m[1]);
   const call = (at) => text.slice(at, expressionEnd(text, at));
@@ -608,6 +661,21 @@ test('the Typst stress document’s drawings come back as the figure drew them',
   assert.match(typst, /#figure\(include "\/diagrams\/divider\.typ", caption: \[A divider, drawn in plain Typst\.\]\) <fig:divider>/);
   assert.match(typst, /#figure\(rect\(width: 40mm, height: 15mm, stroke: 0\.5pt, fill: luma\(240\)\), caption: \[A box drawn by the figure itself\.\]\) <fig:box>/);
   assert.match(typst, /code in\na sentence reads `heapq\.heappop\(queue\)`/);
+});
+
+test('the Typst syntax document goes Typst to LaTeX to Typst, its package’s figure back as the drawing’s file', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
+  cpSync(path.join(stress, 'typst-packages'), path.join(tmp, 'data', 'typst', 'packages'), { recursive: true });
+  const folder = path.join(stress, 'typst-syntax');
+  const trip = await roundTrip(folder, 'main.typ');
+  // a drawing in a line comes back as its picture, and the title block's 12 pt author line at the size of the rest
+  const { pictures, titlePage, ...before } = await typstSummary(folder);
+  const { pictures: back, titlePage: page, ...after } = await typstSummary(trip.back);
+  expectSame(before, after, trip, 'typst-syntax');
+  assert.match(page, /#title\(\) Your Name \\ School of Engineering \\ 3 November 2026/);
+  // the figure's body calls the package's sketch, which the document converted back no longer imports
+  const typst = await fs.readFile(path.join(trip.back, 'main.typ'), 'utf8');
+  assert.match(typst, /#figure\(include "\/diagrams\/converted-4\.typ", caption: \[A drawing made with a package\.\]\) <fig:sketch>/);
+  assert.deepEqual([pictures, back.length], [[], 4]);
 });
 
 test('a project edited since it was converted comes back with its edits, the record matched where it still can be', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {

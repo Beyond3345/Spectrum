@@ -109,23 +109,243 @@ function latexFacts(text) {
 
 /**
  * Every word of a region's source, its commands' arguments too (\fbox{Reset}, #kbd("Ctrl")), which a replacement may
- * bring back: the words of the text with only commands, comments and brackets taken out.
+ * bring back: the words of the text with only commands, comments and brackets taken out, each at its place.
  */
-const sourceWords = (original, to) => {
+const sourceProse = (original, to) => {
+  const spaces = (m) => ' '.repeat(m.length);
   const text = to === 'typst'
-    ? maskComments(original).replace(/\\[A-Za-z@]+\*?/g, ' ')
-    : original.replace(/(^|[^:\\])\/\/[^\n]*/g, '$1').replace(/#[A-Za-z_][\w.-]*/g, ' ').replace(/[A-Za-z_][\w-]*\s*:/g, ' ');
-  return proseWords(text.replace(/[{}[\]()"#$\\]/g, ' ')).map(([w]) => w);
+    ? maskComments(original).replace(/\\[A-Za-z@]+\*?/g, spaces)
+    : original.replace(/(^|[^:\\])(\/\/[^\n]*)/g, (m, before, comment) => before + spaces(comment)).replace(/#[A-Za-z_][\w.-]*/g, spaces).replace(/[A-Za-z_][\w-]*\s*:/g, spaces);
+  return proseWords(text.replace(/[{}[\]()"#$\\]/g, ' '));
 };
+const sourceWords = (original, to) => sourceProse(original, to).map(([w]) => w);
 
 /** Each word's count. */
 const counts = (words) => words.reduce((m, w) => m.set(w, (m.get(w) ?? 0) + 1), new Map());
 
+// ─── The formatting on each word ───
+
+// what each command or function sets; a LaTeX declaration lasts to the end of its group
+const LATEX_SPANS = { textbf: 'bold', emph: 'italic', textit: 'italic', textsl: 'italic', underline: 'underline', uline: 'underline', sout: 'strike', st: 'strike', xout: 'strike', hl: 'highlight', colorbox: 'highlight', fcolorbox: 'highlight', textsc: 'small caps', texttt: 'monospace', textcolor: 'colour' };
+const LATEX_DECLS = { bfseries: 'bold', bf: 'bold', itshape: 'italic', it: 'italic', em: 'italic', slshape: 'italic', scshape: 'small caps', sc: 'small caps', ttfamily: 'monospace', tt: 'monospace', color: 'colour', fontsize: 'size', raggedleft: 'right alignment', raggedright: 'left alignment', centering: 'centring', ...Object.fromEntries('tiny scriptsize footnotesize small normalsize large Large LARGE huge Huge'.split(' ').map((s) => [s, 'size'])) };
+const LATEX_ENVS = { flushright: 'right alignment', flushleft: 'left alignment', center: 'centring' };
+const TYPST_CALLS = { strong: 'bold', emph: 'italic', underline: 'underline', strike: 'strike', highlight: 'highlight', smallcaps: 'small caps', raw: 'monospace' };
+const ALIGNS = new Set(Object.values(LATEX_ENVS));
+
+/** What a #text, #align, #box or #block call's name and arguments set. */
+function typstCallFormats(name, args) {
+  if (TYPST_CALLS[name]) return [TYPST_CALLS[name]];
+  if (name === 'align') return [/\b(?:right|end)\b/.test(args) ? 'right alignment' : /\b(?:left|start)\b/.test(args) ? 'left alignment' : /\bcenter\b/.test(args) ? 'centring' : null].filter(Boolean);
+  if (name === 'box' || name === 'block') return /\bfill\s*:/.test(args) ? ['highlight'] : [];
+  if (name !== 'text') return null;
+  return [
+    /\bweight\s*:\s*(?:"(?!(?:thin|extralight|light|regular|medium)")[^"]*"|[6-9]\d\d|\d{4,})/.test(args) && 'bold',
+    /\bstyle\s*:\s*"(?:italic|oblique)"/.test(args) && 'italic',
+    /\bfill\s*:/.test(args) && 'colour',
+    /\bsize\s*:|^\s*[\d.]+(?:pt|em|mm|cm|in)\b/.test(args) && 'size'
+  ].filter(Boolean);
+}
+
 /**
- * Checks 2 to 5 of a replacement (after) for the region's converted text (before), whose source is original: the
- * fault, one sentence for the model, or null.
+ * Each prose word of a region with the formatting on it, as 'word\tformat' strings, once per word and format. A word
+ * has at most one alignment, the innermost. In the ORIGINAL (wild), what a command or function this does not know
+ * holds may take any format ('*'), as no one knows what it looks like.
  */
-export function checkReplacement(before, after, to, original = '') {
+function formats(text, to, wild = false) {
+  const typst = to === 'typst';
+  const s = typst ? text : maskComments(text);
+  // the words as the checks take them, LaTeX line by line, and in the ORIGINAL its commands' arguments too
+  let offset = 0;
+  const words = wild ? sourceProse(text, typst ? 'latex' : 'typst') : typst ? proseWords(maskTypst(s)) : s.split('\n').flatMap((line) => {
+    const found = proseWords(maskLatex(line)).map(([w, at]) => [w, offset + at]);
+    offset += line.length + 1;
+    return found;
+  });
+  const starts = new Map(words.map(([w, at]) => [at, w]));
+  const out = [];
+  // frames: { close, markup (Typst), set: formats, align, chain: what a group straight after it inherits }
+  const stack = [{ close: null, markup: true, set: new Set(), align: null }];
+  const push = (frame) => stack.push({ set: new Set(), align: null, markup: true, ...frame });
+  const pushFormats = (frame, list) => push({ ...frame, set: new Set(list.filter((f) => !ALIGNS.has(f))), align: list.find((f) => ALIGNS.has(f)) ?? null, chain: list });
+  const add = (frame, list) => {
+    for (const f of list) (ALIGNS.has(f) ? (frame.align = f) : frame.set.add(f));
+  };
+  const record = (i) => {
+    const word = starts.get(i);
+    if (word === undefined) return;
+    const set = new Set(stack.flatMap((f) => [...f.set]));
+    const align = stack.findLast((f) => f.align)?.align;
+    if (align) set.add(align);
+    for (const f of set) out.push(word + '\t' + f);
+  };
+  let chain = null;
+  for (let i = 0; i < s.length;) {
+    const top = stack.at(-1);
+    const c = s[i];
+    record(i);
+    // a group straight after a command or call (spaces apart) has its formats; any other character ends the chain
+    if (chain && c === (typst ? '[' : '{')) {
+      pushFormats({ close: typst ? ']' : '}' }, chain);
+      chain = null;
+      i += 1;
+      continue;
+    }
+    if (chain && c !== ' ' && c !== '\t' && !(c === '[' && !typst)) chain = null;
+    if (!typst) {
+      if (c === '\\') {
+        const name = /^[A-Za-z]+/.exec(s.slice(i + 1, i + 40))?.[0];
+        if (!name) {
+          i += 2;
+          continue;
+        }
+        i += 1 + name.length;
+        if (name === 'begin' || name === 'end') {
+          const env = /^\s*\{([^}]*)\}/.exec(s.slice(i));
+          if (!env) continue;
+          i += env[0].length;
+          if (name === 'begin') push({ close: 'env:' + env[1], align: LATEX_ENVS[env[1]] ?? null });
+          else if (stack.some((f) => f.close === 'env:' + env[1])) while (stack.pop().close !== 'env:' + env[1]);
+          continue;
+        }
+        if (LATEX_DECLS[name]) add(top, [LATEX_DECLS[name]]);
+        else if (LATEX_SPANS[name]) chain = [LATEX_SPANS[name]];
+        else if (wild) chain = ['*'];
+        continue;
+      }
+      if (c === '[' && chain) {
+        // a command's options
+        const end = s.indexOf(']', i);
+        i = end < 0 ? s.length : end + 1;
+        continue;
+      }
+      if (c === '{') push({ close: '}' });
+      else if (c === '}' && top.close === '}') {
+        stack.pop();
+        if (top.chain) chain = top.chain;
+      }
+      i += 1;
+      continue;
+    }
+    // Typst: markup in [ ], code in ( ) and { }
+    if (c === '"' && !top.markup) {
+      i = stringStopAt(s, i);
+      continue;
+    }
+    if (c === '\\' && top.markup) {
+      i += 2;
+      continue;
+    }
+    if (s.startsWith('//', i) && (top.markup || s[i - 1] !== ':')) {
+      i = s.indexOf('\n', i) < 0 ? s.length : s.indexOf('\n', i);
+      continue;
+    }
+    if ((c === '`' || c === '$') && top.markup) {
+      const fence = c === '`' && s.startsWith('```', i) ? '```' : c;
+      const end = s.indexOf(fence, i + fence.length);
+      i = end < 0 ? s.length : end + fence.length;
+      continue;
+    }
+    if (c === top.close) {
+      stack.pop();
+      if (top.chain) chain = top.chain;
+      i += 1;
+      continue;
+    }
+    const wordAround = /\w/.test(s[i - 1] ?? '') && /\w/.test(s[i + 1] ?? '');
+    if ((c === '*' || c === '_') && top.markup && !wordAround) {
+      const f = c === '*' ? 'bold' : 'italic';
+      if (!top.set.delete(f)) top.set.add(f);
+      i += 1;
+      continue;
+    }
+    const call = (top.markup ? /^#([A-Za-z_][\w-]*(?:\.[A-Za-z_][\w-]*)*)/ : /^([A-Za-z_][\w-]*(?:\.[A-Za-z_][\w-]*)*)/).exec(s.slice(i, i + 80));
+    if (call && (top.markup || !/[\w.]/.test(s[i - 1] ?? ''))) {
+      i += call[0].length;
+      const name = call[1];
+      if (name === 'show' || name === 'let' || name === 'import' || name === 'include') {
+        // a whole line of code, with no prose in it
+        if (top.markup) i = s.indexOf('\n', i) < 0 ? s.length : s.indexOf('\n', i);
+        continue;
+      }
+      const set = name === 'set' && /^\s+([A-Za-z_][\w-]*)\s*\(/.exec(s.slice(i));
+      const fn = set ? set[1] : name;
+      if (set) i += set[0].length - 1;
+      const close = s[i] === '(' ? groupCloseAt(s, i) : -1;
+      const found = typstCallFormats(fn, close > i ? s.slice(i + 1, close) : '') ?? (wild && !set ? ['*'] : []);
+      if (set) {
+        add(top, found);
+        i = close > i ? close + 1 : i;
+        continue;
+      }
+      // the arguments' content blocks have the call's formats, and so do the content blocks after them
+      if (s[i] === '(' || s[i] === '[') {
+        pushFormats(s[i] === '(' ? { close: ')', markup: false } : { close: ']' }, found);
+        i += 1;
+      }
+      continue;
+    }
+    if (c === '[') push({ close: ']' });
+    else if (c === '(' && !top.markup) push({ close: ')', markup: false });
+    else if (c === '{' && !top.markup) push({ close: '}', markup: false });
+    i += 1;
+  }
+  return out;
+}
+
+/** Index just past the Typst string at i. */
+function stringStopAt(s, i) {
+  let j = i + 1;
+  while (j < s.length && s[j] !== '"') j += s[j] === '\\' ? 2 : 1;
+  return j + 1;
+}
+
+/** Index of the ) closing the ( at i, strings and nested brackets skipped, or -1. */
+function groupCloseAt(s, i) {
+  let depth = 0;
+  for (let j = i; j < s.length; j += 1) {
+    if (s[j] === '"') j = stringStopAt(s, j) - 1;
+    else if ('([{'.includes(s[j])) depth += 1;
+    else if (')]}'.includes(s[j]) && (depth -= 1) === 0) return j;
+  }
+  return -1;
+}
+
+/**
+ * The formatting check: every format the converted text (before) has on a word stays on it, and a format is added only
+ * where the original has it on that word. Alignment counts on title pages only. The fault, or null.
+ */
+function checkFormats(before, after, to, original, kind) {
+  const aligns = (f) => ALIGNS.has(f);
+  const keep = (list) => (kind === 'titlepage' ? list : list.filter((key) => !aligns(key.split('\t')[1])));
+  const [had, has] = [counts(keep(formats(before, to))), counts(keep(formats(after, to)))];
+  const source = counts(formats(original, to === 'typst' ? 'latex' : 'typst', true));
+  // an added format the ORIGINAL has on the word, or anything on a word an unknown command holds; an alignment only
+  // as the ORIGINAL sets it
+  const allowed = (key) => source.has(key) || (!aligns(key.split('\t')[1]) && source.has(key.split('\t')[0] + '\t*'));
+  const added = [...has].filter(([k, n]) => n > (had.get(k) ?? 0)).map(([k]) => k);
+  // a word may lose its alignment for the one the ORIGINAL gives it (the converter centred a \raggedright minipage)
+  const lost = [...had].filter(([k, n]) => (has.get(k) ?? 0) < n).map(([k]) => k)
+    .filter((k) => !(aligns(k.split('\t')[1]) && added.some((a) => a.split('\t')[0] === k.split('\t')[0] && aligns(a.split('\t')[1]) && source.has(a))));
+  // the longest word, as a stray letter such as tabular's [t] says little
+  const longest = (keys) => keys.map((k) => k.split('\t')).sort((a, b) => b[0].length - a[0].length)[0];
+  const sentence = ': keep every format the CONVERTED text has on the same words, and add only formats the ORIGINAL has.';
+  if (lost.length) {
+    const [word, format] = longest(lost);
+    return 'The formatting changed (“' + word + '” lost its ' + format + ')' + sentence;
+  }
+  const wrong = added.filter((k) => !allowed(k));
+  if (wrong.length) {
+    const [word, format] = longest(wrong);
+    return 'The formatting changed (“' + word + '” got ' + format + ' that the ORIGINAL does not have)' + sentence;
+  }
+  return null;
+}
+
+/**
+ * Checks 2 to 6 of a replacement (after) for the region's converted text (before), whose source is original, the
+ * formatting check among them: the fault, one sentence for the model, or null.
+ */
+export function checkReplacement(before, after, to, original = '', kind = null) {
   const facts = to === 'typst' ? typstFacts : latexFacts;
   const [a, b] = [facts(before), facts(after)];
   // every word kept, in any order (a CV header's two sides come one after the other in LaTeX, line by line side by
@@ -142,6 +362,8 @@ export function checkReplacement(before, after, to, original = '') {
   if (b.settings.some((s) => (settings.includes(s) ? !settings.splice(settings.indexOf(s), 1) : true))) {
     return to === 'typst' ? 'Do not add #import, #include, #set page, #set text, #set document or any #set or #show rule.' : 'Do not add \\usepackage or any other preamble command.';
   }
+  const format = checkFormats(before, after, to, original, kind);
+  if (format) return format;
   if (after.length > 3 * before.length + 200) return 'The answer is too long. Keep it about as long as the region.';
   return null;
 }
@@ -238,9 +460,9 @@ export async function tidyRegions({ root, scratch, mainFile, to, engine = 'auto'
         outcome.result = 'skipped';
         break;
       }
-      outcome.fault = answer.fault ?? checkReplacement(at.text, answer.text, to, region.original);
+      outcome.fault = answer.fault ?? checkReplacement(at.text, answer.text, to, region.original, region.kind);
       if (outcome.fault) continue;
-      // check 6, in the copy: no error that was not there before
+      // check 7, in the copy: no error that was not there before
       const next = replaceRegion(text, at, answer.text);
       await fs.writeFile(path.join(scratch, region.file), next);
       const now = await compileErrors(scratch, mainFile, engine);
@@ -258,7 +480,7 @@ export async function tidyRegions({ root, scratch, mainFile, to, engine = 'auto'
     }
   }
 
-  // check 7: the whole document again; worse than the conversion was, and nothing the model wrote is kept
+  // check 8: the whole document again; worse than the conversion was, and nothing the model wrote is kept
   let undone = false;
   if (outcomes.some((o) => o.result === 'replaced') && recheck) {
     const after = await recheck(scratch).catch(() => null);

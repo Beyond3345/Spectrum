@@ -150,9 +150,10 @@ export function markLatexInput(input, detected, st, ctx) {
   const to = pieces === -1 ? input.lastIndexOf('\\end{document}') : pieces;
   if (from < '\\begin{document}'.length || to < from) return input;
   const body = input.slice(from, to);
-  // the source's body, comments blanked, where the k-th of each is the original of the k-th in pandoc's input
+  // the source's body, comments blanked, where the k-th of each is the original of the k-th in pandoc's input; from
+  // just past \begin{document}, as the input's is, so a paragraph on the line after it is a paragraph in both
   const begin = st.source.indexOf('\\begin{document}');
-  const offset = begin === -1 ? 0 : begin;
+  const offset = begin === -1 ? 0 : begin + '\\begin{document}'.length;
   const source = maskComments(st.source.slice(offset));
   const floats = environments(source, ['figure', 'figure*', 'table', 'table*', 'titlepage']);
   const free = (span) => !floats.some((f) => span.start >= f.start && span.start < f.end);

@@ -13,7 +13,7 @@ import { PANDOC_DOWNLOADABLE, PANDOC_MINIMUM, builtInTypst, pandocPath, versionO
 import { MAX_LOG_BYTES, compileFolder, runSpawn } from './compileService.js';
 import { compileTypst } from './typstService.js';
 import { braceArg, environments, lineAt, maskComments, mathSpans, optionalArg, rewrite, splice } from './convert/latexRead.js';
-import { REFERENCE_NAMES, TEXT_COMMANDS, assembleTypst, astToTypst, latexFacts, pictureDocument, prepareLatex, typstDefinitions, typstLabel, typstMaths, typstPreamble } from './convert/toTypst.js';
+import { REFERENCE_NAMES, TEXT_COMMANDS, XCOLORS, assembleTypst, astToTypst, latexFacts, pictureDocument, prepareLatex, typstDefinitions, typstLabel, typstMaths, typstPreamble } from './convert/toTypst.js';
 import { assembleLatex, latexPreamble, prepareTypst, typstFacts, typstProse } from './convert/toLatex.js';
 import { expressionEnd, typstUses } from './convert/typstRead.js';
 import { flowchartFile, flowchartFor, flowchartOf, sameFlowchart } from './convert/diagrams.js';
@@ -79,13 +79,19 @@ function argumentsAt(text, from) {
     end = found.end;
   }
 }
-/** Whether an argument reads as words: letters outside commands, no key=value, no length. */
-const textual = (arg) => /\p{L}/u.test(arg.replace(/\\[A-Za-z@]+\*?/g, ' ')) && !arg.includes('=') && !/^\s*-?\d*\.?\d+\s*(?:pt|mm|cm|in|em|ex|bp|pc|sp)\s*$/.test(arg);
+/** Whether an argument reads as words: letters outside commands, no key=value, no length, no colour mix (red!20). */
+const textual = (arg) => /\p{L}/u.test(arg.replace(/\\[A-Za-z@]+\*?/g, ' ')) && !arg.includes('=') && !/^\s*-?\d*\.?\d+\s*(?:pt|mm|cm|in|em|ex|bp|pc|sp)\s*$/.test(arg) && !/^\s*[A-Za-z]+(?:!\d*\.?\d+)+(?:![A-Za-z]+)?\s*$/.test(arg);
+const colourName = (arg) => Object.hasOwn(XCOLORS, arg.trim());
+/** The {arguments} of a command that read as words, but a colour's name before the text it colours: \foo{orange}{Text} is Text. */
+function textArgs(args) {
+  const texts = args.filter((a) => a.brace && textual(a.arg));
+  return texts.filter((a, k) => !(colourName(a.arg) && texts.slice(k + 1).some((b) => !colourName(b.arg))));
+}
 
 /** An unknown command's text, from its raw TeX: the {arguments} that read as words, \raisebox{1pt}{Up} is Up; else null. */
 function commandText(raw) {
   const name = /^\\([A-Za-z@]+)\*?/.exec(raw);
-  const texts = name && !SETTING.test(name[1]) ? argumentsAt(raw, name[0].length).filter((a) => a.brace && textual(a.arg)) : [];
+  const texts = name && !SETTING.test(name[1]) ? textArgs(argumentsAt(raw, name[0].length)) : [];
   return texts.length ? texts.map((a) => a.arg).join(' ') : null;
 }
 
@@ -201,6 +207,20 @@ async function texSources(root, files, record) {
 }
 
 /**
+ * Whether a drawing's body uses a name its file imports or defines (a package's function, the document's own #let),
+ * which the document converted back no longer has, so the figure includes the file rather than the body.
+ */
+function drawingNeeds(text, body) {
+  const names = [...text.matchAll(/^#let\s+([A-Za-z_][\w-]*)/gm)].map((m) => m[1]);
+  for (const [, from, rest] of text.matchAll(/^#import\s+"([^"\n]*)"(?:[ \t]*:[ \t]*([^\n]*))?/gm)) {
+    const items = rest?.replace(/\/\/.*$/, '').trim();
+    if (items?.startsWith('*')) return true;
+    names.push(...(items ? items.split(',').map((item) => item.trim().split(/\s+as\s+/).pop()) : [/^@[^/]+\/([^:]+)/.exec(from)?.[1] ?? path.basename(from, '.typ')]));
+  }
+  return names.some((name) => name && new RegExp('(?<![\\w.-])' + name.replace(/[-]/g, '\\-') + '(?![\\w-])').test(body));
+}
+
+/**
  * What each PDF with a Typst drawing beside it was drawn from: { body } the figure's own drawing, as the record has it,
  * when the file is still as the converter wrote it, or { include } a file a figure can include (one that sets its page
  * only when compiled on its own).
@@ -212,7 +232,7 @@ async function typstSources(root, files, record) {
     if (!/\.typ$/i.test(typ) || !files.has(pdf)) continue;
     const text = await fs.readFile(safeJoin(root, typ), 'utf8').catch(() => '');
     const drawn = record?.pictures?.find((p) => p.source === typ && typeof p.body === 'string');
-    if (drawn && text.trimEnd().endsWith(contentOfBody(drawn.body).trimEnd())) out.set(pdf, { body: drawn.body });
+    if (drawn && text.trimEnd().endsWith(contentOfBody(drawn.body).trimEnd()) && !drawingNeeds(text, drawn.body)) out.set(pdf, { body: drawn.body });
     else if (!/^\s*#set\s+page\((?![^\n]*\bif\s+sys\.inputs)/m.test(text) && !/^\s*#bibliography\(/m.test(text)) out.set(pdf, { include: typ });
   }
   return out;
@@ -415,7 +435,7 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
           // its arguments that aren't text go, which pandoc would print: \begin{adjustwidth}{1cm}{1cm}
           input = rewrite(input, new RegExp('\\\\begin\\s*\\{' + name.slice(6, -1).replace(/[*]/g, '\\*') + '\\d*\\}', 'g'), (m, t) => {
             const args = argumentsAt(t, m.index + m[0].length);
-            return args.length && { text: m[0] + args.filter((a) => a.brace && textual(a.arg)).map((a) => '{' + a.arg + '}').join(''), end: args.at(-1).end };
+            return args.length && { text: m[0] + textArgs(args).map((a) => '{' + a.arg + '}').join(''), end: args.at(-1).end };
           });
           notes.push({ file: file.src, line: null, text: 'The environment ' + name.slice(6, -1) + ' is not one Spectrum knows; its text was kept as plain paragraphs.' });
           continue;
@@ -571,9 +591,10 @@ function latexProse(text, texts = new Set()) {
   const names = [...texts].filter((name) => !SETTING.test(name));
   for (const m of names.length ? out.matchAll(new RegExp('\\\\(?:' + names.join('|') + ')(?![A-Za-z@])\\*?', 'g')) : []) {
     const args = argumentsAt(out, m.index + m[0].length);
-    if (!args.some((a) => a.brace && textual(a.arg))) continue;
+    const texts = textArgs(args);
+    if (!texts.length) continue;
     // the command and its other arguments go, and the braces around its text
-    out = blank(out, [[m.index, m.index + m[0].length], ...args.flatMap((a) => (a.brace && textual(a.arg) ? [[a.start, a.start + 1], [a.end - 1, a.end]] : [[a.start, a.end]]))]);
+    out = blank(out, [[m.index, m.index + m[0].length], ...args.flatMap((a) => (texts.includes(a) ? [[a.start, a.start + 1], [a.end - 1, a.end]] : [[a.start, a.end]]))]);
   }
   return maskLatex(blank(out, mathSpans(out)));
 }
@@ -981,7 +1002,7 @@ async function checkTypstToLatex({ root, doc, staging, out, texts, uses, order, 
     .replace(/caption=\{((?:[^{}]|\{[^{}]*\})*)\}/g, ' $1 ')
     .replace(/\\nolinkurl\{([^}]*)\}/g, ' $1 ');
   const typstWords = order.map((rel) => typstProse(texts.get(rel))).join('\n').replace(/#outline\([^)]*\)/g, ' ').replace(/(\d)~[^\s,;:!?)\]]+/g, '$1');
-  const [before, after] = [wordsOf(maskTypst(typstWords)), wordsOf(latexProse(latexWords, new Set([...TEXT_COMMANDS, 'ul', 'st', 'hl'])))];
+  const [before, after] = [wordsOf(maskTypst(typstWords)), wordsOf(latexProse(latexWords, new Set([...TEXT_COMMANDS, 'ul', 'st', 'hl', 'phantom', 'textsubscript', 'textsuperscript'])))];
   const words = { coverage: coverage(before, after), lowestSection: null, lost: lostWords(before, after) };
   const undefinedRefs = /There were undefined references|Reference `[^']+' on page \d+ undefined/.test(log);
   const result = {

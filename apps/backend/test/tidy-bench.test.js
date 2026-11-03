@@ -78,3 +78,40 @@ test('the runner sends each region through Spectrum’s checks and reports what 
   assert.match(readFileSync(path.join(out, 'report.md'), 'utf8'), /\| Fake \| 2 \| 2 \(100%\) \| 2 \(100%\) \|.*\| \$0\.0003 \|/);
   assert.match(readFileSync(path.join(out, 'review.html'), 'utf8'), /l2t-table-layout-1/);
 });
+
+test('--recheck puts a run’s saved answers through the current checks, and a change to a skip region is never right', { skip: !builtInTypst() && 'needs the built-in Typst' }, async () => {
+  const tmp = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'spectrum-tidy-bench-recheck-')));
+  after(() => rmSync(tmp, { recursive: true, force: true }));
+  const result = (id, answer, extra = {}) => {
+    const r = regions.find((x) => x.id === id);
+    const lastAnswer = '<<<REPLACE ' + r.region + '\n' + answer + '\n>>>';
+    return { id, kind: r.kind, direction: r.direction, difficulty: r.difficulty, result: 'first', answers: 1, faults: [], tokensIn: 10, tokensOut: 5, estimatedTokens: false, ms: 1000, accepted: answer, lastAnswer, error: null, ...extra };
+  };
+  const saved = {
+    date: '2026-10-30T00:00:00.000Z',
+    regions: 3,
+    filter: null,
+    dry: false,
+    models: [{ name: 'Old', model: 'old-1', endpoint: 'http://127.0.0.1:9/v1', summary: { regions: 3, first: 3, withinThree: 3, skipped: 0, skippedRightly: 0, failed: 0, errors: 0, faults: {}, tokensIn: 30, tokensOut: 15, estimatedTokens: false, secondsPerRegion: 1 }, regions: [
+      // still right; the whole sentence highlighted on a skip region; a skip region left as it was but for its TODO line
+      result('l2t-unknown-environment-1', '#block(inset: 0.6em, stroke: 0.5pt + luma(180))[\nRinse each probe in clean water before you move to the next site.\n]'),
+      result('l2t-unknown-command-4', '#highlight(fill: yellow)[Check the drain valve before each run, and close it again afterwards.]'),
+      result('l2t-unknown-environment-7', '+ Dig a hole 60 centimetres deep.\n+ Push the probe into the side wall.\n+ Backfill in the order the soil came out.')
+    ] }]
+  };
+  const file = path.join(tmp, 'results.json');
+  writeFileSync(file, JSON.stringify(saved));
+  const out = path.join(tmp, 'out');
+  const script = path.join(import.meta.dirname, '..', '..', '..', 'scripts', 'tidy-bench.mjs');
+  await promisify(execFile)(process.execPath, [script, '--recheck', file, '--out', out], { timeout: 120_000 });
+
+  const now = JSON.parse(readFileSync(path.join(out, 'results.json'), 'utf8')).models[0];
+  assert.deepEqual(now.regions.map((r) => [r.id, r.result, r.faults]), [['l2t-unknown-environment-1', 'first', []], ['l2t-unknown-command-4', 'failed', ['formatting']], ['l2t-unknown-environment-7', 'first', []]]);
+  assert.deepEqual([now.summary.first, now.summary.withinThree, now.summary.changedSkip, now.summary.failed], [1, 1, 1, 1]);
+  const report = readFileSync(path.join(out, 'report.md'), 'utf8');
+  assert.match(report, /\| Old \| as run, old scoring \| 3 \| 3 \(100%\) \| 3 \(100%\) \| 0 \(0 right\) \| 0 \| 0 \| 0 \|/);
+  assert.match(report, /\| Old \| as run, scored now \| 3 \| 1 \(33%\) \| 1 \(33%\) \| 0 \(0 right\) \| 2 \| 0 \| 0 \|/);
+  assert.match(report, /\| Old \| re-checked \| 3 \| 1 \(33%\) \| 1 \(33%\) \| 0 \(0 right\) \| 1 \| 1 \| 0 \|/);
+  assert.match(report, /- Old, l2t-unknown-command-4 \(skip\): first → failed\. The formatting changed/);
+  assert.match(report, /\| Kind \| Direction \| Regions \| Right first \| Right within three \| Skipped \(right\) \| Changed a skip region \|/);
+});

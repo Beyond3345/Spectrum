@@ -8,7 +8,7 @@ import { test, after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import Fastify from 'fastify';
-import { existsSync, mkdirSync, mkdtempSync, promises as fs, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, promises as fs, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -177,6 +177,40 @@ test('a word the converter lost may come back, if the original has it', () => {
   assert.match(checkReplacement(converted, 'Hold for five seconds.', 'typst', original), /words changed/, 'every converted word stays');
 });
 
+test('the formatting check: every format the converted text has stays on its words, and one is added only as the original has it', () => {
+  // answers a real model gave in the tidy benchmark, which passed every other check
+  const bench = JSON.parse(readFileSync(path.join(import.meta.dirname, 'fixtures', 'tidy-bench', 'regions.json'), 'utf8'));
+  const check = (id, answer) => {
+    const r = bench.find((x) => x.id === id);
+    return checkReplacement(r.converted, answer, r.direction === 'latex-to-typst' ? 'typst' : 'latex', r.original, r.kind);
+  };
+  // the whole sentence highlighted, not drain valve
+  assert.match(check('l2t-unknown-command-4', 'Check the #highlight[drain valve] before each run, and close it again #highlight(fill: yellow)[afterwards].'), /^The formatting changed \(“afterwards” got highlight that the ORIGINAL does not have\): keep every format/);
+  assert.match(check('l2t-unknown-command-4', '#highlight(fill: yellow)[Check the drain valve before each run, and close it again afterwards.]'), /^The formatting changed/);
+  // \textbf{not yet} made an \fbox, the bold of main valve dropped
+  assert.match(check('t2l-unknown-command-1', 'The east abutment is \\fbox{not yet} signed off by the council engineer.'), /“not” lost its bold/);
+  assert.match(check('t2l-unknown-command-3', 'Turn the main valve a quarter turn before you open the tap.'), /“valve” lost its bold/);
+  // the right-aligned names wrapped in flushleft
+  const flushleft = '\\begin{titlepage}\n  \\raggedleft\n  \\vspace*{40mm}\n  {\\Huge\\bfseries Field trip report\\par}\n  \\vspace{10mm}\n  \\begin{flushleft}\n  \\begin{tabular}[t]{@{}l@{}}\n    \\textbf{Student}\\\\\n    Jack Wilson\n  \\end{tabular}\\hspace{1em}\n  \\begin{tabular}[t]{@{}r@{}}\n    \\textbf{Teacher}\\\\\n    Ms Ana Lopez\n  \\end{tabular}\n  \\end{flushleft}\n  \\par\n  \\vfill\n  Year 11 Geography\\par\n\\end{titlepage}';
+  assert.match(check('t2l-titlepage-4', flushleft), /“Teacher” lost its right alignment/);
+  assert.match(check('t2l-titlepage-2', bench.find((x) => x.id === 't2l-titlepage-2').converted.replace('{\\large Faculty', '{Faculty')), /“Engineering” lost its size/);
+
+  // good answers stay good: a drop cap for an unknown command, and a minipage’s \raggedright the converter had centred
+  assert.equal(check('l2t-unknown-command-10', '#text(size: 1.4em)[T]he survey began in March, when the creek was at its lowest for ten years.'), null);
+  const grid = '#page(numbering: none)[\n  #align(center)[\n    #v(30mm)\n    #text(size: 17pt, weight: "bold")[Battery storage for a small dairy farm]\n    #v(20mm)\n    #grid(\n      columns: (1fr, 1fr),\n      align(left)[*Author* \\ Liam O\'Connor],\n      align(right)[*Supervisor* \\ Prof.~Aiko Tanaka],\n    )\n    #v(1fr)\n    #text(size: 12pt)[Faculty of Engineering]\n  ]\n]';
+  assert.equal(check('l2t-titlepage-3', grid), null);
+  assert.match(check('l2t-titlepage-3', grid.replace('*Author*', 'Author')), /“Author” lost its bold/);
+  // \raggedleft is right, so left is no fix for the centring
+  const survey = bench.find((x) => x.id === 'l2t-titlepage-5').converted;
+  assert.equal(check('l2t-titlepage-5', survey.replace('align(center)', 'align(right)')), null);
+  assert.match(check('l2t-titlepage-5', survey.replace('align(center)', 'align(left)')), /lost its centring/);
+  // alignment counts on title pages only; colour, as \fcolorbox and \textcolor set it, both ways
+  assert.equal(check('t2l-cv-header-3', '\\begin{minipage}[t]{0.6\\linewidth}\n  \\textbf{Mateo Garcia}\n\\end{minipage}\\hfill\n\\begin{minipage}[t]{0.38\\linewidth}\\raggedleft\n  mateo.garcia@example.com\n\\end{minipage}'), null);
+  assert.equal(checkReplacement('Pay #box(stroke: red, fill: white)[now].', 'Pay #highlight(fill: white)[now].', 'typst', 'Pay \\fcolorbox{red}{white}{now}.'), null);
+  assert.match(checkReplacement('Pay #text(fill: red)[now].', 'Pay now.', 'typst', 'Pay \\textcolor{red}{now}.'), /“now” lost its colour/);
+  assert.equal(checkReplacement('Pay \\textcolor{red}{now}.', 'Pay {\\color{red} now}.', 'latex', 'Pay #text(fill: red)[now].'), null);
+});
+
 test('a region in its file: found by its markers, replaced between them at their indent', () => {
   const text = 'a\n  // spectrum:region r1 start kind=titlepage\n  #x\n    #y\n  // spectrum:region r1 end\nb';
   const at = regionAt(text, 'r1');
@@ -341,6 +375,15 @@ test('the converter marks each kind of region, with its original in the record a
   assert.match(record.regions[3].original, /\\hlnote\{which is more than enough\}/);
   assert.match(regionAt(typst, 'r3').text, /^\/\/ TODO\(spectrum\): The environment tcolorbox/);
   assert.match(await fs.readFile(path.join(staging, 'conversion', 'notes.md'), 'utf8'), /main\.tex line 12: A title page the rules only approximated, marked r1 in main\.typ/);
+});
+
+test('a paragraph on the line straight after \\begin{document} is marked too', { skip, timeout: 5 * 60 * 1000 }, async () => {
+  const folder = mkdtempSync(path.join(tmp, 'first-'));
+  await fs.writeFile(path.join(folder, 'main.tex'), '\\documentclass{article}\n\\begin{document}\nThe gauge at the weir \\todo{check the serial number} was replaced in May.\n\nIt reads well.\n\\end{document}\n');
+  const staging = mkdtempSync(path.join(tmp, 'out-'));
+  const { record } = await latexToTypst(folder, 'main.tex', staging, { engine: 'auto' });
+  assert.deepEqual(record.regions.map((r) => [r.id, r.kind, r.from, r.original]), [['r1', 'unknown-command', 'main.tex:3', 'The gauge at the weir \\todo{check the serial number} was replaced in May.']]);
+  assert.match(regionAt(await fs.readFile(path.join(staging, 'main.typ'), 'utf8'), 'r1').text, /The gauge at the weir check the serial number was replaced in May\./);
 });
 
 test('from Typst too: a title page beyond the rule, a CV header, the document’s own functions and a table in a grid', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
