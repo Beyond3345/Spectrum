@@ -331,11 +331,13 @@ async function resources() {
   copyDir(path.join(root, 'dictionaries'), path.join(resourcesDir, 'dictionaries'));
   // the bundled skills (scripts/sync-skills.mjs), with their licences
   copyDir(path.join(root, 'skills'), path.join(resourcesDir, 'skills'));
-  // the built Hunspell binding and Harper only, not their sources
+  // the built Hunspell binding, Harper and the converter's Typst parser only, not their sources
   const native = path.join(resourcesDir, 'native');
   fs.rmSync(native, { recursive: true, force: true });
   fs.mkdirSync(native, { recursive: true });
   copyDir(path.join(root, 'native/harper'), path.join(native, 'harper'));
+  // typst-syntax as WebAssembly, the same file on every platform
+  for (const file of ['typst-syntax.wasm', 'typst-syntax.manifest.json']) fs.copyFileSync(path.join(root, 'native', file), path.join(native, file));
   const hunspell = path.join(root, win ? 'native/win32-x64/hunspell.node' : 'native/hunspell.node');
   // the backend carries on without the spell checker, and says why
   if (win && !fs.existsSync(hunspell)) console.warn(`\nWARNING: no ${path.relative(root, hunspell)} (node scripts/native.mjs hunspell builds it), so this build has no spell checker.\n`);

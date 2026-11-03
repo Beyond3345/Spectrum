@@ -15,7 +15,7 @@ import { compileTypst } from './typstService.js';
 import { environments, lineAt, maskComments, mathSpans } from './convert/latexRead.js';
 import { assembleTypst, astToTypst, latexFacts, pictureDocument, prepareLatex, typstDefinitions, typstLabel, typstMaths, typstPreamble } from './convert/toTypst.js';
 import { assembleLatex, latexPreamble, prepareTypst, typstFacts, typstProse } from './convert/toLatex.js';
-import { callAt, markupSpans } from './convert/typstRead.js';
+import { expressionEnd, typstUses } from './convert/typstRead.js';
 import { flowchartFile, flowchartFor, flowchartOf, sameFlowchart } from './convert/diagrams.js';
 import { finishRegions, markLatexInput, markTypstInput, regionNote } from './convert/regions.js';
 
@@ -434,7 +434,7 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
       titlePages: prepared.flatMap((f) => {
         if (f.kept.regions.length) return f.kept.regions.map((r) => ({ kind: r.kind, file: f.out, written: r.source, source: r.written }));
         const at = f.typst.indexOf('#page(numbering: none)[');
-        const found = at === -1 ? [] : [f.typst.slice(at, callAt(f.typst, at).end)];
+        const found = at === -1 ? [] : [f.typst.slice(at, expressionEnd(f.typst, at))];
         return titlePages(f.out, environments(maskComments(f.text), ['titlepage']).map((e) => f.text.slice(e.start, e.end)), found);
       }),
       regions,
@@ -660,14 +660,8 @@ async function writeNotes(staging, { from, to, source, out, checks, notes, pictu
 
 // ─── Typst to LaTeX ───
 
-/** The labels a Typst file has: <name> outside code, raw text and maths. */
-const typstLabels = (text) => {
-  const spans = markupSpans(text);
-  return [...text.matchAll(/<([A-Za-z0-9_:.-]+)>/g)].filter((m) => spans.some(([s, e]) => m.index >= s && m.index < e)).map((m) => m[1]);
-};
-
-/** The files a Typst file includes, project-relative. */
-const typstIncludes = (text, from) => [...withoutComments(text.replace(/\/\/[^\n]*/g, '')).matchAll(/#include\s+"([^"]+)"/g)].map((m) => path.posix.normalize(m[1].startsWith('/') ? m[1].slice(1) : path.posix.join(path.posix.dirname(from), m[1])));
+/** A path a Typst file names, project-relative: from the root with a leading /, else from the file's folder. */
+const typstPath = (name, from) => path.posix.normalize(name.startsWith('/') ? name.slice(1) : path.posix.join(path.posix.dirname(from), name));
 
 /**
  * The Typst document doc of the project at root as a LaTeX project in staging (an empty folder): { mainFile, checks,
@@ -686,13 +680,16 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
   const flowcharts = await composerFlowcharts(root, files, 'typst');
   // every file the document is made of, the main file first
   const order = [doc];
+  const uses = new Map();
   for (let i = 0; i < order.length; i += 1) {
-    for (const inc of typstIncludes(i === 0 ? mainText : await read(order[i]).catch(() => ''), order[i])) if (files.has(inc) && !order.includes(inc)) order.push(inc);
+    uses.set(order[i], typstUses(i === 0 ? mainText : await read(order[i]).catch(() => '')));
+    for (const inc of uses.get(order[i]).includes.map((name) => typstPath(name, order[i]))) if (files.has(inc) && !order.includes(inc)) order.push(inc);
   }
   const texts = new Map([[doc, mainText]]);
   for (const rel of order.slice(1)) texts.set(rel, await read(rel));
-  const labels = new Set([...texts.values()].flatMap(typstLabels));
-  const bibPath = (/#bibliography\(\s*"([^"]+)"/.exec(mainText)?.[1] ?? 'refs.bib').replace(/^\/+/, '');
+  const labels = new Set([...uses.values()].flatMap((u) => u.labels));
+  const bibliography = uses.get(doc).bibliography;
+  const bibPath = (bibliography?.path ?? 'refs.bib').replace(/^\/+/, '');
   const bibText = files.has(bibPath) ? await read(bibPath) : '';
   const notes = [];
   const facts = typstFacts();
@@ -721,8 +718,7 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
   const work = await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-convert-work-'));
   try {
     // the definitions a local #import brings in come first
-    for (const m of mainText.matchAll(/#import\s+"(\/?[^"@][^"]*)"/g)) {
-      const rel = m[1].replace(/^\/+/, '');
+    for (const rel of uses.get(doc).imports.map((name) => typstPath(name, doc))) {
       if (files.has(rel)) prepareTypst(await read(rel), ctx, { file: rel });
     }
     const prepared = order.map((rel) => {
@@ -731,7 +727,7 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
     });
     ctx.sourceClass = sourceClass(previous?.source, facts);
     const packages = facts.packages.map((p) => p.from);
-    if (packages.length) notes.push({ file: doc, line: null, text: 'The document imports ' + packages.join(', ') + '. pandoc cannot read a package, so anything drawn with it outside a figure is missing; each figure drawn with it became a picture.' });
+    if (packages.length) notes.push({ file: doc, line: null, text: 'The document imports ' + packages.join(', ') + ', which LaTeX has no counterpart of, so each drawing made with ' + (packages.length === 1 ? 'it' : 'them') + ' became a picture that Typst compiled.' });
 
     // the files the new project keeps: images and data, the Typst drawings as the source of their pictures
     for (const rel of files) {
@@ -765,11 +761,13 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
       const alone = ' if sys.inputs.at("spectrum-diagram", default: "") == "standalone"';
       const page = ['#set page(width: auto, height: auto, margin: 2pt)', '#set text(size: ' + facts.size + 'pt)'].map((l) => (picture.include ? l : l + alone));
       const wrapper = picture.include ? name + '.page.typ' : picture.typ;
+      const from = picture.what ? picture.what[0].toUpperCase() + picture.what.slice(1) : 'A drawing from the figure';
       const body = picture.include ? ['#include "/' + picture.include + '"'] : [...facts.packages.map((p) => p.text), ...facts.definitions, contentOfBody(picture.body)];
-      const head = picture.include ? [] : ['// A drawing from the figure in ' + picture.file + ', compiled to ' + picture.pdf + ' for the LaTeX version'];
+      const head = picture.include ? [] : ['// ' + from + ' in ' + picture.file + ', compiled to ' + picture.pdf + ' for the LaTeX version'];
       await ensureDir(path.join(staging, path.dirname(wrapper)));
       await fs.writeFile(path.join(staging, wrapper), [...head, ...page, ...body, ''].join('\n'));
-      const result = await compileTypst(staging, path.join(staging, wrapper), wrapper, { scratch: true, typstInputs: { 'spectrum-diagram': 'standalone' } }).catch((err) => ({ ok: false, error: err.message }));
+      // with the packages the document's own compiles keep in Spectrum's cache
+      const result = await compileTypst(staging, path.join(staging, wrapper), wrapper, { scratch: true, spectrumPackages: true, typstInputs: { 'spectrum-diagram': 'standalone' } }).catch((err) => ({ ok: false, error: err.message }));
       if (picture.include) await fs.rm(path.join(staging, wrapper), { force: true });
       picture.ok = !!(result.ok && result.pdf);
       if (picture.ok) await fs.writeFile(path.join(staging, picture.pdf), Buffer.from(result.pdf, 'base64'));
@@ -787,7 +785,7 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
       main.latex += '\n\\printbibliography\n';
       notes.push({ file: doc, line: null, text: 'The Typst cites sources but has no #bibliography, so the LaTeX ends with its bibliography.' });
     }
-    ctx.bibStyle = { apa: 'apa', ieee: 'ieee', 'chicago-author-date': 'authoryear', mla: 'mla', nature: 'nature', vancouver: 'vancouver' }[/style:\s*"([^"]+)"/.exec(/#bibliography\([^)]*\)/.exec(mainText)?.[0] ?? '')?.[1] ?? 'apa'] ?? 'apa';
+    ctx.bibStyle = { apa: 'apa', ieee: 'ieee', 'chicago-author-date': 'authoryear', mla: 'mla', nature: 'nature', vancouver: 'vancouver' }[bibliography?.style ?? 'apa'] ?? 'apa';
     ctx.bibFile = 'references.bib';
     if (prepared.some((f) => /\\coloneqq|\\eqqcolon/.test(f.latex))) ctx.used.add('mathtools');
     ctx.titleLatex ??= facts.title ?? '';
@@ -806,7 +804,7 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
     }
 
     onStep('Checking');
-    const checks = await checkTypstToLatex({ root, doc, staging, out: main.out, texts, order, prepared, facts, ctx, engine });
+    const checks = await checkTypstToLatex({ root, doc, staging, out: main.out, texts, uses, order, prepared, facts, ctx, engine });
     const record = {
       version: 1,
       from: 'typst',
@@ -821,19 +819,19 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
         const text = texts.get(f.src);
         const sources = f.state.blocks.filter((b) => b.kind === 'titlepage' && b.line).map((b) => {
           const start = text.split('\n').slice(0, b.line - 1).join('\n').length + (b.line > 1 ? 1 : 0);
-          const call = callAt(text, text.indexOf('#', start));
-          return call ? text.slice(text.indexOf('#', start), call.end) : null;
+          const at = text.indexOf('#', start);
+          return at === -1 ? null : text.slice(at, expressionEnd(text, at));
         });
         return sources.every(Boolean) ? titlePages(f.out, sources, environments(f.latex, ['titlepage']).map((e) => f.latex.slice(e.start, e.end))) : [];
       }),
       regions,
       checks
     };
-    const pictures = ctx.pictures.map((p) => (p.ok ? p.pdf : 'Not compiled') + ', from ' + (p.include ? p.include : 'the drawing in a figure of ' + p.file) + '. Its source is ' + p.typ + '.');
+    const pictures = ctx.pictures.map((p) => (p.ok ? p.pdf : 'Not compiled') + ', from ' + (p.include ? p.include : p.what ? p.what + ' in ' + p.file : 'the drawing in a figure of ' + p.file) + '. Its source is ' + p.typ + '.');
     await writeNotes(staging, { from: 'Typst', to: 'LaTeX', source: doc, out: main.out, checks, notes, pictures });
     await ensureDir(path.join(staging, '.spectrum'));
     await fs.writeFile(path.join(staging, '.spectrum', 'conversion.json'), JSON.stringify(record, null, 2) + '\n');
-    const recheck = async (dir) => checkTypstToLatex({ root, doc, staging: dir, out: main.out, texts, order, facts, ctx, engine, prepared: await Promise.all(prepared.map(async (f) => ({ ...f, latex: await fs.readFile(path.join(dir, f.out), 'utf8') }))) });
+    const recheck = async (dir) => checkTypstToLatex({ root, doc, staging: dir, out: main.out, texts, uses, order, facts, ctx, engine, prepared: await Promise.all(prepared.map(async (f) => ({ ...f, latex: await fs.readFile(path.join(dir, f.out), 'utf8') }))) });
     return { mainFile: main.out, checks, notes, record, recheck };
   } finally {
     await fs.rm(work, { recursive: true, force: true });
@@ -869,7 +867,7 @@ function latexOutputFloats(text, theorems) {
  * The checks of section 6.2 for a Typst to LaTeX conversion: the LaTeX compiles with the user's engine, and the labels,
  * references, citations, numbered equations, floats and words of the Typst (as Typst itself counts them) came through.
  */
-async function checkTypstToLatex({ root, doc, staging, out, texts, order, prepared, facts, ctx, engine }) {
+async function checkTypstToLatex({ root, doc, staging, out, texts, uses, order, prepared, facts, ctx, engine }) {
   const compiled = await compileFolder({ root: staging, mainFile: out, engine }).catch((err) => ({ ok: false, error: err.message, log: '' }));
   const log = lastPass(compiled.log ?? '');
   const diagnostics = [
@@ -878,15 +876,14 @@ async function checkTypstToLatex({ root, doc, staging, out, texts, order, prepar
     ...[...log.matchAll(/(?:LaTeX|Package \w+) Warning: ((?:Reference|Citation|Label)[^\n]*)/g)].map((m) => ({ severity: 'warning', message: m[1].trim() }))
   ];
   const latex = prepared.map((f) => f.latex).join('\n');
-  // the Typst without its raw text, where an @ or #cite is an example, not a citation
-  const typst = order.map((rel) => texts.get(rel)).join('\n').replace(/```[\s\S]*?```|`[^`\n]*`/g, (raw) => ' '.repeat(raw.length));
   const sourceLabels = [...ctx.labels];
   const outputLabels = new Set([...latex.matchAll(/\\label\{([^}]+)\}|\blabel=\{([^}]+)\}/g)].map((m) => m[1] ?? m[2]));
   const missingLabels = sourceLabels.filter((l) => !outputLabels.has(l));
-  const spans = markupSpans(typst);
-  const atRefs = [...typst.matchAll(/(?<![\p{L}\p{N}\\])@([A-Za-z0-9_:.-]*[A-Za-z0-9_-])/gu)].filter((m) => spans.some(([s, e]) => m.index >= s && m.index < e)).map((m) => m[1]);
-  const refsIn = [...atRefs.filter((r) => ctx.labels.has(r)), ...[...typst.matchAll(/#ref\(<([^>]+)>/g)].map((m) => m[1])];
-  const citesIn = [...atRefs.filter((r) => !ctx.labels.has(r)), ...[...typst.matchAll(/#cite\((?:<([^>]+)>|label\("([^"]+)"\))/g)].map((m) => m[1] ?? m[2])];
+  // what Typst's parser finds in the source: each @ reference, #ref and #cite, outside raw text and code
+  const used = order.map((rel) => uses.get(rel));
+  const atRefs = used.flatMap((u) => u.at);
+  const refsIn = [...atRefs.filter((r) => ctx.labels.has(r)), ...used.flatMap((u) => u.refs)];
+  const citesIn = [...atRefs.filter((r) => !ctx.labels.has(r)), ...used.flatMap((u) => u.cites)];
   const refsOut = [...latex.matchAll(/\\(?:[cC]ref|ref|eqref|autoref|pageref)\*?\{([^}]*)\}/g)].flatMap((m) => m[1].split(',').map((t) => t.trim()));
   const citesOut = [...latex.matchAll(/\\(?:[A-Za-z]*cite[A-Za-z]*|nocite)\*?(?:\[[^\]]*\])*\{([^}]*)\}/g)].flatMap((m) => m[1].split(',').map((k) => k.trim()).filter(Boolean));
   const refs = { source: tally(refsIn), output: tally(refsOut) };
@@ -905,7 +902,7 @@ async function checkTypstToLatex({ root, doc, staging, out, texts, order, prepar
     .replace(/\\begin\{(?!figure|table|algorithm|subfigure|minipage|lstlisting|tabular|threeparttable)\w+\}\[([^\]]*)\]/g, ' $1 ')
     .replace(/caption=\{((?:[^{}]|\{[^{}]*\})*)\}/g, ' $1 ')
     .replace(/\\nolinkurl\{([^}]*)\}/g, ' $1 ');
-  const typstWords = typstProse(typst).replace(/#outline\([^)]*\)/g, ' ').replace(/(\d)~[^\s,;:!?)\]]+/g, '$1');
+  const typstWords = order.map((rel) => typstProse(texts.get(rel))).join('\n').replace(/#outline\([^)]*\)/g, ' ').replace(/(\d)~[^\s,;:!?)\]]+/g, '$1');
   const words = { coverage: coverage(wordsOf(maskTypst(typstWords)), wordsOf(latexProse(latexWords))), lowestSection: null };
   const undefinedRefs = /There were undefined references|Reference `[^']+' on page \d+ undefined/.test(log);
   const result = {

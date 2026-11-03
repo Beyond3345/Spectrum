@@ -204,46 +204,31 @@ export function markLatexInput(input, detected, st, ctx) {
  * pandoc's input for one Typst file with each paragraph that calls one of the document's own functions with a look
  * pandoc cannot write (a box, a fill, a stroke, a size), and each centred block that starts with a large line of text
  * (a CV header), between region markers held as blocks. A paragraph that is only the call is an unknown environment,
- * one with text around it an unknown command. Only the body is marked, not the pieces after it.
+ * one with text around it an unknown command. Only the body is marked, not the pieces after it: st.paragraphs, from the
+ * pre-pass, has where each of its paragraphs is in input and in the source.
  */
 export function markTypstInput(input, st, ctx) {
-  const pieces = input.indexOf('\n\nSPXPIECESTART');
-  const body = input.slice(0, pieces === -1 ? input.length : pieces);
   const functions = ctx.facts.definitions
     .map((d) => /^#let\s+([A-Za-z_][\w-]*)\s*\([^)]*\)\s*=\s*([\s\S]*)$/.exec(d))
     .filter((m) => m && (/\b(?:fill|stroke|inset|radius|size|weight)\s*:/.test(m[2]) || /(?:^|[^\w#.-])(?!h\()[a-z][\w.-]*\(/.test(m[2])))
     .map((m) => m[1]);
   const calls = functions.length ? new RegExp('#(' + functions.map((f) => f.replace(/[-]/g, '\\-')).join('|') + ')(?![\\w-])[([]') : null;
   const header = /^#align\(\s*center\s*\)\[\s*#text\(\s*size:/;
-  const prose = (p, text) => {
-    const t = text.slice(p.start, p.end);
-    return !/^#(?:let|set|show|import)\s/.test(t) && !/```|^SPXB\d+X$/.test(t) && !/title\(\)/.test(t);
-  };
-  const spans = [];
-  const sourceParagraphs = paragraphs(st.source).filter((p) => prose(p, st.source));
-  const pair = (test, kindOf) => {
-    const there = sourceParagraphs.filter((p) => test(st.source.slice(p.start, p.end)));
-    paragraphs(body).filter((p) => prose(p, body) && test(body.slice(p.start, p.end))).forEach((p, k) => there[k] && spans.push({ ...p, at: there[k], ...kindOf(st.source.slice(there[k].start, there[k].end)) }));
-  };
-  if (calls) {
-    pair((t) => calls.test(t), (t) => {
-      const name = calls.exec(t)[1];
-      const alone = new RegExp('^#' + name + '(?:\\([^\\n]*?\\))?(?:\\[[\\s\\S]*\\])+$').test(t.trim());
-      return { kind: alone ? 'unknown-environment' : 'unknown-command', todo: '#' + name + ' is a function of this document; its text was kept without its look.' };
-    });
-  }
-  pair((t) => header.test(t), () => ({ kind: 'cv-header', todo: null }));
   let out = '';
   let last = 0;
-  for (const span of spans.sort((a, b) => a.start - b.start)) {
-    const original = st.source.slice(span.at.start, span.at.end);
-    if (span.start < last || original.split('\n').length > REGION_LINES) continue;
-    const id = newRegion(ctx, span.kind, st, lineAt(st.source, span.at.start), original);
-    const start = markerLine('latex', id, span.kind) + (span.todo ? '\n% TODO(spectrum): ' + span.todo : '');
-    out += body.slice(last, span.start) + st.block({ kind: 'raw', latex: start }) + body.slice(span.start, span.end) + st.block({ kind: 'raw', latex: markerLine('latex', id) });
-    last = span.end;
+  for (const p of st.paragraphs ?? []) {
+    const original = st.source.slice(p.from, p.to);
+    if (/^#(?:let|set|show|import)\s|```|title\(\)/.test(original) || original.split('\n').length > REGION_LINES) continue;
+    const name = calls?.exec(original)?.[1];
+    const alone = name && new RegExp('^#' + name + '(?:\\([^\\n]*?\\))?(?:\\[[\\s\\S]*\\])+$').test(original);
+    const kind = name ? (alone ? 'unknown-environment' : 'unknown-command') : header.test(original) ? 'cv-header' : null;
+    if (!kind) continue;
+    const id = newRegion(ctx, kind, st, lineAt(st.source, p.from), original);
+    const start = markerLine('latex', id, kind) + (name ? '\n% TODO(spectrum): #' + name + ' is a function of this document; its text was kept without its look.' : '');
+    out += input.slice(last, p.start) + st.block({ kind: 'raw', latex: start }) + input.slice(p.start, p.end) + st.block({ kind: 'raw', latex: markerLine('latex', id) });
+    last = p.end;
   }
-  return out + body.slice(last) + input.slice(body.length);
+  return out + input.slice(last);
 }
 
 // ─── The regions as written ───

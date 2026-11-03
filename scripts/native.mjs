@@ -1,20 +1,22 @@
 #!/usr/bin/env node
-// Rebuild the bundled checkers. Sources and tools are pinned in native/checkers.lock.json.
-//   node scripts/native.mjs [hunspell|harper|dictionaries|catalogue|all|verify] [--update] [--archive file.tgz] [--check]
+// Rebuild the bundled checkers, and Typst's own parser for the converter. Sources and tools are pinned in
+// native/checkers.lock.json.
+//   node scripts/native.mjs [hunspell|harper|typst-syntax|dictionaries|catalogue|all|verify] [--update] [--archive file.tgz] [--check]
 //   node scripts/native.mjs languagetool <jars folder>
 // catalogue writes the language list with its pinned dictionaries; catalogue --check downloads them again and compares.
 // languagetool pins LanguageTool's jars and Temurin's Java runtimes in apps/backend/src/data/engines.json (see below).
 // --update refreshes the vendored Hunspell core (native/hunspell/core) from the pinned archive; Spectrum's binding stays.
 // --archive supplies an offline archive for one engine; its pinned SHA-256 is still checked.
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir, homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { x as extract } from 'tar';
 import { createRequire } from 'node:module';
-import { DICTIONARY_FILES, HARPER_FILES, hunPath, sha256 } from '../apps/backend/src/utils/checkerMetadata.js';
+import { DICTIONARY_FILES, HARPER_FILES, hunPath, inspectCheckerAssets, sha256 } from '../apps/backend/src/utils/checkerMetadata.js';
+import { findAll, typstParser } from '../apps/backend/src/services/convert/typstRead.js';
 import { workerClient } from '../apps/backend/src/utils/workerClient.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -168,6 +170,61 @@ async function buildHarper(work, archive) {
   catch (err) { rmSync(dest, { recursive: true, force: true }); if (existsSync(backup)) renameSync(backup, dest); throw err; }
   rmSync(backup, { recursive: true, force: true });
   console.log(`Harper ${version}: built, self-tested and installed.`);
+}
+
+// Typst's own parser for the converter (apps/backend/src/services/convert/typstRead.js): typst-syntax at the bundled
+// Typst's version, built to WebAssembly from Spectrum's wrapper in native/typst-syntax, whose Cargo.lock pins every
+// crate it compiles with its crates.io checksum
+const TYPST_SYNTAX_INPUTS = ['Cargo.toml', 'Cargo.lock', 'src'];
+const TYPST_SYNTAX_FILES = ['typst-syntax.wasm'];
+
+/** The answers every build must give: a tree whose leaves are the source again, wide letters and all, with the kinds Spectrum reads. */
+function typstSyntaxWorks(parse) {
+  const source = '= Results <sec:results>\nA 4.7~kΩ resistor 🙂, as @Lamport1994[p.~12] says. #set text(lang: "en"); After.';
+  const root = parse(source);
+  const kinds = new Set(findAll(root, () => true).map((n) => n.kind));
+  return findAll(root, (n) => !n.children).map((n) => n.text).join('') === source && ['Heading', 'Label', 'Ref', 'SetRule', 'Semicolon', 'Shorthand'].every((k) => kinds.has(k));
+}
+
+async function buildTypstSyntax(work) {
+  const crate = join(NATIVE, 'typst-syntax');
+  const pin = lock.typstSyntax;
+  const typst = JSON.parse(readFileSync(join(ROOT, 'apps', 'backend', 'src', 'data', 'engines.json'), 'utf8')).typst.builtIn;
+  if (pin.version !== typst) throw new Error(`typst-syntax is pinned at ${pin.version}, but Spectrum bundles Typst ${typst}: pin the parser of the same version in checkers.lock.json.`);
+  const locked = /\[\[package\]\]\nname = "typst-syntax"\nversion = "([^"]+)"\nsource = "registry\+[^"]+"\nchecksum = "([0-9a-f]{64})"/.exec(readFileSync(join(crate, 'Cargo.lock'), 'utf8'));
+  if (locked?.[1] !== pin.version || locked[2] !== pin.sha256) throw new Error(`native/typst-syntax/Cargo.lock has typst-syntax ${locked?.[1] ?? 'missing'}, not ${pin.version} with the pinned checksum. Nothing was installed.`);
+  const target = join(work, 'target');
+  // the build's own folders kept out of the binary, which is then the same on any computer with the same Rust
+  const remap = [[versionOf('rustc', ['--print', 'sysroot']), '/rust'], [process.env.CARGO_HOME || join(homedir(), '.cargo'), '/cargo'], [crate, '/spectrum']];
+  run('cargo', ['build', '--release', '--locked', '--target', 'wasm32-unknown-unknown', '--manifest-path', join(crate, 'Cargo.toml'), '--target-dir', target], { env: { ...process.env, RUSTFLAGS: remap.map(([from, to]) => `--remap-path-prefix=${from}=${to}`).join(' ') } });
+  const staged = join(work, 'typst-syntax.wasm');
+  copyFileSync(join(target, 'wasm32-unknown-unknown', 'release', 'spectrum_typst_syntax.wasm'), staged);
+  chmodSync(staged, 0o644);
+  if (!typstSyntaxWorks(typstParser(staged))) throw new Error('The typst-syntax build gave unexpected answers. Nothing was installed.');
+  const manifest = join(work, 'typst-syntax.manifest.json');
+  json(manifest, { schema: 1, engine: 'typst-syntax', version: pin.version, source: { ...pin, wrapperHash: sourceHash(crate, TYPST_SYNTAX_INPUTS) },
+    build: { rust: versionOf('rustc'), target: 'wasm32-unknown-unknown', selfTest: 'passed' }, files: digestFiles(work, TYPST_SYNTAX_FILES) });
+  installFile(staged, join(NATIVE, 'typst-syntax.wasm'));
+  installFile(manifest, join(NATIVE, 'typst-syntax.manifest.json'));
+  console.log(`typst-syntax ${pin.version}: built, self-tested and installed.`);
+}
+
+/** The parser's state as the checkers report theirs: its files against their build information, its wrapper as built, its answers. */
+async function typstSyntaxStatus() {
+  const dir = process.env.SPECTRUM_NATIVE_DIR || NATIVE;
+  const assets = await inspectCheckerAssets(dir, 'typst-syntax.manifest.json', TYPST_SYNTAX_FILES);
+  const crate = join(NATIVE, 'typst-syntax');
+  if (assets.manifest && existsSync(crate) && sourceHash(crate, TYPST_SYNTAX_INPUTS) !== assets.manifest.source?.wrapperHash) {
+    assets.warnings.push('native/typst-syntax has changed since typst-syntax.wasm was built: run node scripts/native.mjs typst-syntax.');
+    assets.integrity = 'mismatch';
+  }
+  let available = false;
+  try {
+    available = assets.integrity === 'verified' && typstSyntaxWorks(typstParser(join(dir, 'typst-syntax.wasm')));
+  } catch {
+    // a file that isn't WebAssembly
+  }
+  return { engine: 'typst-syntax', available, version: assets.version, diagnostics: { assets } };
 }
 
 async function dictionaries() {
@@ -350,7 +407,7 @@ async function pinLanguageTool(folder) {
 async function main() {
   const [which = 'all', ...args] = process.argv.slice(2);
   if (which === 'languagetool') return pinLanguageTool(args[0] && resolve(args[0]));
-  if (!['hunspell', 'harper', 'dictionaries', 'catalogue', 'all', 'verify'].includes(which)) throw new Error('Choose hunspell, harper, dictionaries, catalogue, languagetool, all or verify.');
+  if (!['hunspell', 'harper', 'typst-syntax', 'dictionaries', 'catalogue', 'all', 'verify'].includes(which)) throw new Error('Choose hunspell, harper, typst-syntax, dictionaries, catalogue, languagetool, all or verify.');
   if (which === 'catalogue') return catalogue(args.includes('--check'));
   let update = false, archive;
   while (args.length) {
@@ -368,7 +425,7 @@ async function main() {
     // the checkers' worker threads don't hold the process open (unref), so this does until both have answered
     const hold = setInterval(() => {}, 60_000);
     try {
-      for (const status of await Promise.all([spell.spellStatus(), grammar.grammarStatus({ start: true })])) {
+      for (const status of await Promise.all([spell.spellStatus(), grammar.grammarStatus({ start: true }), typstSyntaxStatus()])) {
         console.log(JSON.stringify(status, null, 2));
         if (!status.available || status.diagnostics.assets.integrity !== 'verified' || (status.diagnostics.dictionaries && status.diagnostics.dictionaries.integrity !== 'verified')) process.exitCode = 1;
       }
@@ -384,6 +441,7 @@ async function main() {
   try {
     if (which === 'hunspell' || which === 'all') { const dir = join(work, 'spell'); mkdirSync(dir); await buildHunspell(dir, update, archive); }
     if (which === 'harper' || which === 'all') { const dir = join(work, 'grammar'); mkdirSync(dir); await buildHarper(dir, archive); }
+    if (which === 'typst-syntax' || which === 'all') { const dir = join(work, 'typst-syntax'); mkdirSync(dir); await buildTypstSyntax(dir); }
     if (which === 'all' || which === 'hunspell') await dictionaries();
   } finally {
     // the self-tests load the staged hunspell.node into this process, and Windows keeps a loaded DLL locked until it exits

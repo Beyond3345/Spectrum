@@ -8,7 +8,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import Fastify from 'fastify';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, promises as fs, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, promises as fs, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -26,9 +26,10 @@ if (pandoc) {
   symlinkSync(pandoc, path.join(tmp, 'data', 'engines', 'pandoc', path.basename(pandoc)));
 }
 const { siAngle, siNumber, siQuantity, siUnit, typedNumber, typedUnit } = await import('../src/services/convert/units.js');
-const { callAt, markupSpans, splitArgs } = await import('../src/services/convert/typstRead.js');
+const { callOf, expressionEnd, findAll, parseTypst, typstUses } = await import('../src/services/convert/typstRead.js');
 const { commandArgs, environments, mathSpans } = await import('../src/services/convert/latexRead.js');
 const { latexFacts, prepareLatex, typstMaths } = await import('../src/services/convert/toTypst.js');
+const { prepareTypst, typstFacts } = await import('../src/services/convert/toLatex.js');
 const { flowchartFile, flowchartFor, flowchartOf } = await import('../src/services/convert/diagrams.js');
 const { inlineInputs } = await import('../src/utils/texUtils.js');
 const { latexToTypst, typstToLatex } = await import('../src/services/convertService.js');
@@ -119,17 +120,61 @@ test('typed units back to siunitx, by longest match of the symbols', () => {
   assert.deepEqual(['4.7', '±15', '7,790', '(1.2~±~0.1)', '47 times 10^3', '3.3 times 10^(-9)', 'x'].map(typedNumber), ['4.7', '\\pm 15', '7790', '1.2 \\pm 0.1', '47e3', '3.3e-9', null]);
 });
 
-test('Typst reading: a call’s arguments, and markup inside content blocks but not code', () => {
-  const text = '#figure(image("/a.png", width: 50%), // a comment\n  caption: [See @fig:b, "quoted".]) <fig:a>';
-  const call = callAt(text, 0);
+test('Typst reading: Typst’s own parser, a call’s arguments, and what a file names and uses', () => {
+  const text = '#figure(image("/a.png", width: 50%), // a comment\n  caption: [See @fig:b, "quoted".]) <fig:a> 4.7~kΩ 🙂 #set text(red); after';
+  const root = parseTypst(text);
+  assert.equal(findAll(root, (n) => !n.children).map((n) => n.text).join(''), text, 'every character in one leaf, wide ones too');
+  const call = callOf(root.children[1]);
   assert.equal(call.name, 'figure');
-  assert.deepEqual(call.args.map((a) => [a.name, a.value]), [[null, 'image("/a.png", width: 50%)'], ['caption', '[See @fig:b, "quoted".]']]);
-  assert.deepEqual(splitArgs('a, b: (1, 2), c: "x, y"').map((a) => a.value), ['a', '(1, 2)', '"x, y"']);
-  const prose = markupSpans(text).map(([s, e]) => text.slice(s, e)).join('|');
-  assert.match(prose, /See @fig:b, "quoted"\./, 'a caption is markup');
-  assert.doesNotMatch(prose, /a\.png|comment/, 'an argument and a comment are not');
-  const statements = '#import "@preview/cetz:0.3.4": canvas // 5" wide\n#block[#set text(red)]\nSee @fig:a.';
-  assert.equal(markupSpans(statements).map(([s, e]) => statements.slice(s, e)).join('').trim(), 'See @fig:a.', 'a statement runs to the end of its line or its bracket');
+  assert.deepEqual(call.args.map((a) => [a.name, a.value.text]), [[null, 'image("/a.png", width: 50%)'], ['caption', '[See @fig:b, "quoted".]']]);
+  assert.deepEqual(root.children.slice(-4).map((n) => n.kind), ['SetRule', 'Semicolon', 'Space', 'Text'], 'a statement ends at its semicolon');
+  const uses = typstUses('#import "/style.typ": *\n= A <sec:a>\nSee @sec:a and @Knuth1984[p.~4], not `@sec:b` // or @sec:c\n#cite(<Lamport1994>, form: "prose") #ref(<sec:a>)\n#figure(include "/diagrams/x.typ") #include "chapters/b.typ"\n#bibliography("refs.bib", style: "apa")');
+  assert.deepEqual([uses.labels, uses.at, uses.refs, uses.cites, uses.includes, uses.imports, uses.bibliography], [['sec:a'], ['sec:a', 'Knuth1984'], ['sec:a'], ['Lamport1994'], ['chapters/b.typ'], ['/style.typ'], { path: 'refs.bib', style: 'apa' }]);
+});
+
+test('the Typst pre-pass reads semicolons, a #text over lines, short rules, the document’s own functions and packages', () => {
+  const notes = [];
+  const ctx = { facts: typstFacts(), main: 'main.typ', labels: new Set(['sec:a']), bibKeys: new Set(['Masters2013']), used: new Set(), pictures: [], images: new Set(), refsOut: [], citesOut: [], note: (st, snippet, text) => notes.push(text), include: () => null };
+  const source = [
+    '#import "@preview/spectrum-sketch:0.1.0": sketch',
+    '#set text(size: 10pt); #set heading(numbering: none)',
+    '#let rated(value) = [rated at #value]',
+    '#let stars(n) = for i in range(n) [★]',
+    '#let boxed(body) = { set text(weight: "bold"); box(body) }',
+    '#let steps(..items) = enum(numbering: "Step 1.", ..items)',
+    '#align(center)[',
+    '  #title()',
+    '  #text(size: 12pt)[Your Name \\',
+    '    School of Engineering]',
+    ']',
+    '= One <sec:a>',
+    '#let speed = [13~V/µs]; The slew rate is #speed, #rated[4.7~kΩ], as @sec:a and @Masters2013[p.~45] say. #stars(3) #boxed[Kept, @sec:a.]',
+    '',
+    '#sketch[A drawing]',
+    '',
+    '#steps[First][Second]',
+    '',
+    '#table(columns: 3, stroke: none, [a], [b], [c], table.hline(start: 1, end: 3), [d], [e], [f], table.hline(start: 2, end: none), [g], [h], [i])'
+  ].join('\n');
+  const { input, state } = prepareTypst(source, ctx, { file: 'main.typ' });
+  assert.deepEqual([ctx.facts.size, ctx.facts.headingNumbers], [10, false], 'both rules of a line');
+  assert.match(input, /The slew rate is SPXI\d+X, rated at SPXI\d+X, as SPXI\d+X say\. SPXB\d+X Kept, SPXI\d+X\./);
+  assert.deepEqual(state.inlines, ['\\qty{13}{\\volt\\per\\micro\\second}', '\\qty{4.7}{\\kilo\\ohm}', '\\cref{sec:a} and \\parencite[p.~45]{Masters2013}', '\\cref{sec:a}']);
+  assert.deepEqual(state.blocks.map((b) => b.kind + (b.inline ? ' inline' : '')), ['maketitle', 'heading', 'picture inline', 'picture', 'table']);
+  assert.match(input, /#enum\(numbering: "Step 1\.", \[First\], \[Second\]\)/, 'a sink passes its arguments on');
+  assert.match(state.pieces[state.blocks[0].lines[0]].markup, /^#text\(size: 12pt\)\[Your Name \\\s+School of Engineering\]$/, 'the #text over two lines is one line of the title block');
+  assert.deepEqual(ctx.pictures.map((p) => [p.body, p.what]), [['stars(3)', 'the output of the document’s own function stars'], ['sketch[A drawing]', 'a drawing made with @preview/spectrum-sketch:0.1.0']]);
+  assert.deepEqual(state.blocks[4].model.partRules, [{ row: 0, from: 1, to: 2 }, { row: 1, from: 2, to: 2 }]);
+  assert.match(notes.join('\n'), /function boxed does more than Spectrum can write in LaTeX, so only the text given to it was kept/);
+});
+
+test('the Typst pre-pass keeps comments in their places, and reads the house \\Call in a sentence and in maths', () => {
+  const ctx = { facts: typstFacts(), main: 'main.typ', labels: new Set(), bibKeys: new Set(), used: new Set(), pictures: [], images: new Set(), refsOut: [], citesOut: [], note: () => {}, include: () => null };
+  const source = ['#set text(lang: "en")', '', '// before the body', '#set page(numbering: none)', '', '#figure(', '  // inside the figure', '  rect(width: 10mm),', '  caption: [A box.],', ')', '', 'One line', '// inside a paragraph', 'and #smallcaps[Relax]; ($u$, $v$) or $x <- #smallcaps[Min];(Q)$.'].join('\n');
+  const { input, state } = prepareTypst(source, ctx, { file: 'main.typ' });
+  assert.deepEqual(state.blocks.map((b) => [b.kind, b.latex ?? b.style]), [['raw', '% before the body'], ['numbering', null], ['raw', '% inside the figure'], ['figure', undefined]]);
+  assert.match(input, /One line\nSPXC0X\nand SPXI0X\$u\$, \$v\$SPXI1X or \$x <- "SPXI2X"Q"SPXI3X"\$\./);
+  assert.deepEqual([state.comments, state.inlines], [['% inside a paragraph'], ['\\Call{Relax}{', '}', '\\Call{Min}{', '}']]);
 });
 
 test('a Typst table from the table tool, its cells Typst already', () => {
@@ -287,6 +332,31 @@ test('the Typst stress document converts to LaTeX with every label, reference, c
   assert.ok(existsSync(path.join(staging, 'references.bib')));
 });
 
+test('what only Typst’s own parser reads converts too: a package’s drawings, semicolons, a #text over lines, short rules and the document’s own functions', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
+  // the stand-in drawing package, where Typst keeps the packages it has downloaded, so this runs offline
+  cpSync(path.join(stress, 'typst-packages'), path.join(tmp, 'data', 'typst', 'packages'), { recursive: true });
+  const staging = mkdtempSync(path.join(tmp, 'out-'));
+  const { checks, notes } = await typstToLatex(path.join(stress, 'typst-syntax'), 'main.typ', staging, { engine: 'auto' });
+  expectNothingLost(checks, 'typst-syntax');
+  assert.deepEqual([checks.labels.source, checks.references.source, checks.citations.source, checks.equations.source], [5, 5, 2, 1]);
+  const latex = await fs.readFile(path.join(staging, 'main.tex'), 'utf8');
+  // both rules of each line with two
+  assert.match(latex, /\\usepackage\[australian\]\{babel\}/);
+  assert.match(latex, /\\section\{Statements on one line\}\\label\{sec:statements\}/);
+  assert.match(latex, /\\author\{Your Name\\\\\s*School of Engineering\}\n\\date\{3 November 2026\}/, 'the #text over two lines is one line of the title block');
+  assert.match(latex, /The op-amp's slew rate is \\qty\{13\}\{\\volt\\per\\micro\\second\}, as \\cref\{sec:pictures\} shows\. Spectrum reads a resistor rated at \\qty\{4\.7\}\{\\kilo\\ohm\}/);
+  assert.match(latex, /which cites \\parencite\[p\.~45\]\{Masters2013\}/);
+  assert.match(latex, /\\cmidrule\(lr\)\{2-3\}[\s\S]*\\cmidrule\(lr\)\{3-4\}[\s\S]*\\cmidrule\(lr\)\{1-2\}[\s\S]*\\cmidrule\(lr\)\{2-4\}/);
+  // a package's drawing in a line and on its own, a function with logic and the figure's, each a picture from its source
+  assert.match(latex, /in a line, \\includegraphics\{diagrams\/converted-\d\.pdf\}, or on its own:/);
+  assert.match(latex, /\\begin\{center\}\n {2}\\includegraphics\{diagrams\/converted-\d\.pdf\}\n\\end\{center\}/);
+  for (const n of [1, 2, 3, 4]) {
+    assert.ok(existsSync(path.join(staging, 'diagrams', 'converted-' + n + '.pdf')), 'picture ' + n + ' compiled');
+    assert.match(await fs.readFile(path.join(staging, 'diagrams', 'converted-' + n + '.typ'), 'utf8'), /^#import "@preview\/spectrum-sketch:0\.1\.0": sketch/m);
+  }
+  assert.match(notes.map((n) => n.text).join('\n'), /function boxed does more than Spectrum can write in LaTeX, so only the text given to it was kept/);
+});
+
 // ─── Round trips: section 10's phase 4, there and back with the conversion record ───
 
 /** source's items that items has, repeats counted: what is missing from it. */
@@ -328,7 +398,7 @@ async function typstSummary(folder, main = 'main.typ') {
   const text = (await expand(main)).replace(/```[\s\S]*?```|`[^`\n]*`/g, '').replace(/^[ \t]*\/\/.*$/gm, '');
   const labels = [...new Set([...text.matchAll(/(?<![\w(<])<([A-Za-z0-9_:.-]+)>/g)].map((m) => m[1]))].sort();
   const ats = [...text.matchAll(/(?<![\p{L}\p{N}\\/])@([A-Za-z0-9_:.-]*[A-Za-z0-9_-])/gu)].map((m) => m[1]);
-  const call = (at) => text.slice(at, callAt(text, at)?.end ?? at);
+  const call = (at) => text.slice(at, expressionEnd(text, at));
   const titled = [...text.matchAll(/^#(?:align|page)\(/gm)].map((m) => call(m.index)).find((c) => /title\(\)|#v\(1fr\)/.test(c));
   return {
     labels,
