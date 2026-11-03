@@ -294,7 +294,7 @@ async function writeTidyNotes(root, { model, outcomes, left, error, undone, jobI
     '',
     '## AI tidying',
     '',
-    'The AI model (' + model + ') was asked to tidy ' + outcomes.length + ' of the flagged regions, one at a time. Spectrum checked every answer (its form, words, labels, references, citations, maths and settings, and that the document still compiles) before using it. The checkpoint “Before AI tidying” has the document as converted, and .spectrum/agent-runs/' + jobId + ' each file before an edit.',
+    'The AI model (' + model + ') was asked to tidy ' + outcomes.length + ' of the flagged regions, one at a time. Spectrum checked every answer (its form, words, labels, references, citations, maths and settings, and that the document still compiles) before using it. The checkpoint “Before AI tidying” has the document as converted, and .spectrum/agent-runs/' + jobId + ' each file before an edit. Spectrum shows the edits for review after converting, and one rejected there goes back to the converted text.',
     '',
     ...outcomes.map(line),
     ...(undone ? ['', 'With every edit in, the document no longer passed the checks it passed when converted, so all of them were undone.'] : []),
