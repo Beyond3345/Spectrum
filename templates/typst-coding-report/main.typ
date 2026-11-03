@@ -6,7 +6,6 @@
 
 // References
 #set bibliography(title: [References])          // APA heads the list References, not Bibliography
-#show bibliography: it => context if query(cite).len() > 0 { it } // no References heading until something is cited
 
 // Page
 #set page(paper: "a4", margin: 25mm, numbering: "1") // A4, 25 mm margins all round, page numbers at the foot
@@ -37,7 +36,7 @@
 = Introduction
 
 This report describes an implementation of Dijkstra's algorithm, which finds the length of the shortest path
-from one vertex to every other vertex of a graph whose edge weights are non-negative. @sec:method gives the
+from one vertex to every other vertex of a graph whose edge weights are non-negative @Dijkstra1959. @sec:method gives the
 algorithm, @sec:code the code, and @sec:analysis its running time.
 
 = Method <sec:method>
@@ -128,7 +127,7 @@ vertex has distance `INT_MAX`.
 
 Every edge is relaxed at most once, and each relaxation can push one entry onto the queue, so with a binary
 heap the algorithm runs in $O(lr(((|V| + |E|) log |V|), size: #120%))$ time. @tab:queues compares this with
-other choices of priority queue.
+other choices of priority queue, following #cite(<Cormen2022>, form: "prose").
 
 #figure(
   table(

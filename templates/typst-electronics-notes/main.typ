@@ -3,7 +3,6 @@
 
 // References
 #set bibliography(title: [References])          // APA heads the list References, not Bibliography
-#show bibliography: it => context if query(cite).len() > 0 { it } // no References heading until something is cited
 
 // Page
 #set page(paper: "a4", margin: 25mm, numbering: "1") // A4, 25 mm margins all round, page numbers at the foot
@@ -106,7 +105,7 @@ $ f_c = 1 / (2 pi R_f C). $ <eq:cutoff>
 
 = Practical limits
 
-A real op-amp only approximates @eq:gain. The TL071's slew rate of 13~V/µs caps how fast the output can
+A real op-amp only approximates @eq:gain @Horowitz2015. The TL071's slew rate of 13~V/µs caps how fast the output can
 swing, so a 10~V peak sine wave starts to distort above about
 $(13 thin "V/µs") / (2 pi times 10 thin "V") approx 207 thin "kHz"$, well above this filter's cut-off.
 

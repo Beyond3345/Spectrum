@@ -6,7 +6,6 @@
 
 // References
 #set bibliography(title: [References])          // APA heads the list References, not Bibliography
-#show bibliography: it => context if query(cite).len() > 0 { it } // no References heading until something is cited
 
 // Page
 #set page(paper: "a4", margin: 25mm, numbering: "1") // A4, 25 mm margins all round, page numbers at the foot
@@ -137,7 +136,7 @@ Throughout, $A$ is a real $2 times 2$ matrix and $upright(bold(x))(t) in RR^2$.
 
 = Summary
 
-The signs of the eigenvalues decide how solutions behave near the origin, as @tab:cases shows.
+The signs of the eigenvalues decide how solutions behave near the origin, as @tab:cases shows. #cite(<Boyce2017>, form: "prose") work through each case in detail.
 
 #figure(
   table(
