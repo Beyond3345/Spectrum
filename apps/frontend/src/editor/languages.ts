@@ -4,6 +4,7 @@ import type { CompletionContext, CompletionResult } from '@codemirror/autocomple
 import { foldService, syntaxHighlighting } from '@codemirror/language';
 import { markdown } from '@codemirror/lang-markdown';
 import { latex } from '../latex/lang';
+import { compileLint } from './compileMarks';
 import { latexFoldService, latexHighlight, mathsWrap } from './latexEditor';
 import { docKind } from './shared';
 
@@ -18,7 +19,7 @@ let loading: Promise<Extension | null> | null = null;
 /** The Typst language, loaded once; null while loading or when the package fails. */
 export function loadTypst(): Promise<Extension | null> {
   loading ??= import('codemirror-lang-typst/lezer')
-    .then(({ typst_lezer }) => (typst = typst_lezer()))
+    .then(({ typst_lezer }) => (typst = [typst_lezer(), compileLint]))
     .catch(() => null);
   return loading;
 }
@@ -81,7 +82,7 @@ const latexLanguage = (): Extension => [latex(), syntaxHighlighting(latexHighlig
 export function languageFor(path: string): Extension {
   const kind = docKind(path);
   if (kind === 'latex') return latexLanguage();
-  if (kind === 'typst') return typst ?? [];
+  if (kind === 'typst') return typst ?? compileLint;
   if (kind === 'markdown') return markdown();
   return [];
 }
