@@ -17,6 +17,7 @@ import { assembleTypst, astToTypst, latexFacts, pictureDocument, prepareLatex, t
 import { assembleLatex, latexPreamble, prepareTypst, typstFacts, typstProse } from './convert/toLatex.js';
 import { callAt, markupSpans } from './convert/typstRead.js';
 import { flowchartFile, flowchartFor, flowchartOf, sameFlowchart } from './convert/diagrams.js';
+import { finishRegions, markLatexInput, markTypstInput, regionNote } from './convert/regions.js';
 
 // A LaTeX or Typst project converted into a new project of the other kind, as docs/featureResearch/
 // LATEX_TYPST_CONVERSION.md designs it: pandoc reads the prose, Spectrum's own rules (convert/) write every construct the
@@ -130,7 +131,7 @@ const titlePages = (file, sources, found) => (sources.length === found.length ? 
  * restore(output) } where restore puts each source back in the converted output.
  */
 function keepRegions(text, file, record) {
-  const regions = (record?.regions ?? []).filter((r) => r.file === file && r.written && text.includes(r.written));
+  const regions = (record?.titlePages ?? []).filter((r) => r.file === file && typeof r.written === 'string' && r.written && typeof r.source === 'string' && text.includes(r.written));
   regions.forEach((r, i) => {
     text = text.replace(r.written, () => '\n\nSPXV' + i + 'X\n\n');
   });
@@ -382,7 +383,7 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
     for (const file of prepared) {
       // the commands pandoc doesn't know: one that holds prose keeps its words, the others are dropped and noted
       const detected = unknownCommands(JSON.parse(await pandoc(executable, file.input, ['--from=latex-auto_identifiers+raw_tex', '--to=json'], work)));
-      let input = file.input;
+      let input = markLatexInput(file.input, detected, file.state, ctx);
       for (const [name, texts] of detected) {
         if (name.startsWith('begin{')) {
           notes.push({ file: file.src, line: null, text: 'The environment ' + name.slice(6, -1) + ' is not one Spectrum knows; its text was kept as plain paragraphs.' });
@@ -396,6 +397,8 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
       file.pandocTypst = await pandoc(executable, JSON.stringify(astToTypst(json, file.state, ctx)), ['--from=json', '--to=typst', '--wrap=preserve'], work);
     }
     for (const file of prepared) file.typst = file.kept.restore(assembleTypst(file.pandocTypst, file.state, ctx));
+    const regions = finishRegions(prepared, 'typst', ctx);
+    notes.push(...regions.map(regionNote));
 
     // a document that cites without a \printbibliography still gets its list at the end, as Typst needs one
     const main = prepared[0];
@@ -428,19 +431,22 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
       pictures: ctx.pictures.map((p) => ({ pdf: p.ok ? p.pdf : null, source: p.tex, from: p.file + (p.line ? ':' + p.line : ''), kind: p.standalone ? 'standalone' : p.env })),
       // code in a sentence, which Typst writes as `text` for \verb and \lstinline alike
       inlineCode: [...whole.matchAll(INLINE_CODE)].map((m) => ({ text: m[2] ?? m[3], latex: m[0] })),
-      regions: prepared.flatMap((f) => {
+      titlePages: prepared.flatMap((f) => {
         if (f.kept.regions.length) return f.kept.regions.map((r) => ({ kind: r.kind, file: f.out, written: r.source, source: r.written }));
         const at = f.typst.indexOf('#page(numbering: none)[');
         const found = at === -1 ? [] : [f.typst.slice(at, callAt(f.typst, at).end)];
         return titlePages(f.out, environments(maskComments(f.text), ['titlepage']).map((e) => f.text.slice(e.start, e.end)), found);
       }),
+      regions,
       checks
     };
     const pictures = ctx.pictures.map((p) => (p.ok ? p.pdf : 'Not compiled') + ', from ' + (p.standalone ? p.standalone : 'the ' + p.env + ' in ' + p.file + (p.line ? ' line ' + p.line : '')) + '. Its source is ' + p.tex + '.' + (p.standalone ? '' : ' Redraw it in Typst (CeTZ or Lilaq in diagrams/) to edit it here.'));
     await writeNotes(staging, { from: 'LaTeX', to: 'Typst', source: doc, out: main.out, checks, notes, pictures });
     await ensureDir(path.join(staging, '.spectrum'));
     await fs.writeFile(path.join(staging, '.spectrum', 'conversion.json'), JSON.stringify(record, null, 2) + '\n');
-    return { mainFile: main.out, checks, notes, record };
+    // the checks again on a copy of the project whose files have changed since, as the AI tidying asks
+    const recheck = async (dir) => checkLatexToTypst({ staging: dir, out: main.out, whole, facts, ctx, prepared: await Promise.all(prepared.map(async (f) => ({ ...f, typst: await fs.readFile(path.join(dir, f.out), 'utf8') }))) });
+    return { mainFile: main.out, checks, notes, record, recheck };
   } finally {
     await fs.rm(work, { recursive: true, force: true });
   }
@@ -770,8 +776,10 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
       else notes.push({ file: picture.file, line: null, text: 'The Typst drawing ' + picture.typ + ' did not compile (' + (result.errors?.[0]?.message ?? result.error ?? 'see its log') + '), so the figure shows a box in its place.' });
     }
 
-    for (const file of prepared) file.pandocLatex = await pandoc(executable, file.input, ['--from=typst', '--to=latex', '--wrap=preserve'], work);
+    for (const file of prepared) file.pandocLatex = await pandoc(executable, markTypstInput(file.input, file.state, ctx), ['--from=typst', '--to=latex', '--wrap=preserve'], work);
     for (const file of prepared) file.latex = file.kept.restore(assembleLatex(file.pandocLatex, file.state, ctx));
+    const regions = finishRegions(prepared, 'latex', ctx);
+    notes.push(...regions.map(regionNote));
 
     const main = prepared[0];
     ctx.hasBibliography = ctx.citesOut.length > 0 && !!bibText.trim();
@@ -808,7 +816,7 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
       source: { mainFile: doc, report: facts.report, bibliography: bibPath, packages },
       files: prepared.map((f) => ({ from: f.src, to: f.out })),
       pictures: ctx.pictures.map((p) => ({ pdf: p.ok ? p.pdf : null, source: p.typ, from: p.file, kind: p.include ? 'include' : 'drawing', ...(p.include ? {} : { body: p.body }) })),
-      regions: prepared.flatMap((f) => {
+      titlePages: prepared.flatMap((f) => {
         if (f.kept.regions.length) return f.kept.regions.map((r) => ({ kind: r.kind, file: f.out, written: r.source, source: r.written }));
         const text = texts.get(f.src);
         const sources = f.state.blocks.filter((b) => b.kind === 'titlepage' && b.line).map((b) => {
@@ -818,13 +826,15 @@ export async function typstToLatex(root, doc, staging, { engine = 'auto', onStep
         });
         return sources.every(Boolean) ? titlePages(f.out, sources, environments(f.latex, ['titlepage']).map((e) => f.latex.slice(e.start, e.end))) : [];
       }),
+      regions,
       checks
     };
     const pictures = ctx.pictures.map((p) => (p.ok ? p.pdf : 'Not compiled') + ', from ' + (p.include ? p.include : 'the drawing in a figure of ' + p.file) + '. Its source is ' + p.typ + '.');
     await writeNotes(staging, { from: 'Typst', to: 'LaTeX', source: doc, out: main.out, checks, notes, pictures });
     await ensureDir(path.join(staging, '.spectrum'));
     await fs.writeFile(path.join(staging, '.spectrum', 'conversion.json'), JSON.stringify(record, null, 2) + '\n');
-    return { mainFile: main.out, checks, notes, record };
+    const recheck = async (dir) => checkTypstToLatex({ root, doc, staging: dir, out: main.out, texts, order, facts, ctx, engine, prepared: await Promise.all(prepared.map(async (f) => ({ ...f, latex: await fs.readFile(path.join(dir, f.out), 'utf8') }))) });
+    return { mainFile: main.out, checks, notes, record, recheck };
   } finally {
     await fs.rm(work, { recursive: true, force: true });
   }

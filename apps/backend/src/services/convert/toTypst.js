@@ -8,6 +8,7 @@ import { withoutComments } from '../../latex/text.js';
 import { figureSetTypst, figureTypst, figureTypstInclude, tableEdges, tableTypst, typstMarkup } from '../../latex/floats.js';
 import { braceArg, commandArgs, environments, inside, keyValues, lengthMm, lineAt, maskComments, mathSpans, optionalArg, rewrite, splice, splitTop, typstLength } from './latexRead.js';
 import { groupDigits, siAngle, siNumber, siQuantity, siUnit } from './units.js';
+import { region } from './regions.js';
 
 const TODAY = '#datetime.today().display("[day padding:none] [month repr:long] [year]")';
 // the house theorem set's LaTeX styles: plain statements are italic, remarks have an italic heading
@@ -1053,7 +1054,7 @@ export function assembleTypst(typst, st, ctx) {
   const pieceText = (n) => (n === null || n === undefined ? '' : resolve(plainEmphasis(pieces[n] ?? '')));
   function resolve(source) {
     return source
-      .replace(/^(.*?)SPXB(\d+)X/gm, (_, before, n) => before + indentRest(resolve(renderBlock(st.blocks[Number(n)], pieceText, st, ctx)), ' '.repeat(before.length)))
+      .replace(/^(.*?)SPXB(\d+)X/gm, (_, before, n) => before + indentRest(resolve(region(st.blocks[Number(n)], renderBlock(st.blocks[Number(n)], pieceText, st, ctx), st, ctx, 'typst')), ' '.repeat(before.length)))
       // a picture on its own, outside a figure
       .replace(/SPXR(\d+)X/g, (_, n) => '#box(' + pictureImage({ kind: 'picture', n: Number(n) }, ctx) + ')');
   }
