@@ -5,15 +5,17 @@ import { createProject, getProjectRoot, httpError, readMeta } from '../services/
 import { safeJoin } from '../utils/pathUtils.js';
 import { closeLog, openLog, sendLog } from '../services/compileLog.js';
 import { SUPPORTED_ENGINES } from '../services/compileService.js';
-import { latexToTypst } from '../services/convertService.js';
+import { latexToTypst, typstToLatex } from '../services/convertService.js';
 
 const KINDS = {
-  typst: { from: /\.(?:tex|ltx)$/i, convert: latexToTypst, suffix: ' (Typst)', wrong: 'Only a LaTeX document (.tex) converts to Typst.' }
+  typst: { from: /\.(?:tex|ltx)$/i, convert: latexToTypst, suffix: ' (Typst)', wrong: 'Only a LaTeX document (.tex) converts to Typst.' },
+  latex: { from: /\.typ$/i, convert: typstToLatex, suffix: ' (LaTeX)', wrong: 'Only a Typst document (.typ) converts to LaTeX.' }
 };
 
 export function registerConvertRoutes(fastify) {
-  // A new project of the other kind from one of this project's documents, which stays as it is: { to: 'typst', doc,
-  // engine (the LaTeX engine for pictures), convertId }. The steps arrive as they start at /api/compile/:convertId/log.
+  // A new project of the other kind from one of this project's documents, which stays as it is: { to: 'typst' or
+  // 'latex', doc, engine (the LaTeX engine for pictures, or for checking the LaTeX made), convertId }. The steps arrive as
+  // they start at /api/compile/:convertId/log.
   fastify.post('/api/projects/:id/convert', async (req) => {
     const { to, doc, engine = 'auto', convertId } = req.body || {};
     const kind = KINDS[to];

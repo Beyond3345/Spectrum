@@ -25,11 +25,13 @@ if (pandoc) {
   mkdirSync(path.join(tmp, 'data', 'engines', 'pandoc'), { recursive: true });
   symlinkSync(pandoc, path.join(tmp, 'data', 'engines', 'pandoc', path.basename(pandoc)));
 }
-const { siAngle, siNumber, siQuantity, siUnit } = await import('../src/services/convert/units.js');
+const { siAngle, siNumber, siQuantity, siUnit, typedNumber, typedUnit } = await import('../src/services/convert/units.js');
+const { callAt, markupSpans, splitArgs } = await import('../src/services/convert/typstRead.js');
 const { commandArgs, environments, mathSpans } = await import('../src/services/convert/latexRead.js');
 const { latexFacts, prepareLatex, typstMaths } = await import('../src/services/convert/toTypst.js');
-const { latexToTypst } = await import('../src/services/convertService.js');
-const { builtInTypst } = await import('../src/services/engineService.js');
+const { latexToTypst, typstToLatex } = await import('../src/services/convertService.js');
+const { builtInTypst, tectonicBiber } = await import('../src/services/engineService.js');
+const { findExecutable } = await import('../src/services/compileService.js');
 const { createProject } = await import('../src/services/projectService.js');
 const { registerConvertRoutes } = await import('../src/routes/convert.js');
 const { tableTypst } = await import('../src/latex/floats.js');
@@ -37,6 +39,8 @@ const { tableTypst } = await import('../src/latex/floats.js');
 const templates = path.join(repo, 'templates');
 const stress = path.join(import.meta.dirname, 'fixtures', 'convert');
 const skip = !pandoc ? 'needs pandoc: download it in Settings › Engines › Markdown, or set SPECTRUM_PANDOC' : !builtInTypst() && 'needs the built-in Typst';
+// the LaTeX made from Typst is checked by compiling it, with Biber for its references
+const skipLatex = skip || (!(await findExecutable('biber')) && !tectonicBiber() && 'needs a LaTeX engine with Biber (TeX Live, or Tectonic with Spectrum’s Biber)');
 
 after(() => rmSync(tmp, { recursive: true, force: true }));
 
@@ -104,6 +108,26 @@ test('the pre-pass holds each house construct for pandoc, with units in maths as
   assert.deepEqual([state.blocks[1].layout, state.blocks[1].label, state.blocks[2].label], ['single', 'fig:line', 'thm:e']);
   assert.doesNotMatch(input, /tikzpicture|\\begin\{figure\}/);
   assert.match(input, /\\begin\{spxpiece\d+\}\nEuclid\n\\end\{spxpiece\d+\}/, 'the theorem’s title is a piece for pandoc');
+});
+
+test('typed units back to siunitx, by longest match of the symbols', () => {
+  assert.deepEqual(['kΩ', 'V/µs', 'K⁻¹', 'm/s²', 'J/(kg·K)', 'kWh', 'dB', 'ms', 'min', 'kinds'].map(typedUnit), [
+    '\\kilo\\ohm', '\\volt\\per\\micro\\second', '\\per\\kelvin', '\\metre\\per\\second\\squared', '\\joule\\per\\kilogram\\per\\kelvin', '\\kilo\\watt\\hour', '\\decibel', '\\milli\\second', '\\minute', null
+  ]);
+  assert.deepEqual(['4.7', '±15', '7,790', '(1.2~±~0.1)', '47 times 10^3', '3.3 times 10^(-9)', 'x'].map(typedNumber), ['4.7', '\\pm 15', '7790', '1.2 \\pm 0.1', '47e3', '3.3e-9', null]);
+});
+
+test('Typst reading: a call’s arguments, and markup inside content blocks but not code', () => {
+  const text = '#figure(image("/a.png", width: 50%), // a comment\n  caption: [See @fig:b, "quoted".]) <fig:a>';
+  const call = callAt(text, 0);
+  assert.equal(call.name, 'figure');
+  assert.deepEqual(call.args.map((a) => [a.name, a.value]), [[null, 'image("/a.png", width: 50%)'], ['caption', '[See @fig:b, "quoted".]']]);
+  assert.deepEqual(splitArgs('a, b: (1, 2), c: "x, y"').map((a) => a.value), ['a', '(1, 2)', '"x, y"']);
+  const prose = markupSpans(text).map(([s, e]) => text.slice(s, e)).join('|');
+  assert.match(prose, /See @fig:b, "quoted"\./, 'a caption is markup');
+  assert.doesNotMatch(prose, /a\.png|comment/, 'an argument and a comment are not');
+  const statements = '#import "@preview/cetz:0.3.4": canvas // 5" wide\n#block[#set text(red)]\nSee @fig:a.';
+  assert.equal(markupSpans(statements).map(([s, e]) => statements.slice(s, e)).join('').trim(), 'See @fig:a.', 'a statement runs to the end of its line or its bracket');
 });
 
 test('a Typst table from the table tool, its cells Typst already', () => {
@@ -202,5 +226,62 @@ test('the route makes a new Typst project and leaves the LaTeX one as it was', {
   assert.equal(project.mainFile, 'main.typ');
   assert.ok(existsSync(path.join(project.path, 'main.typ')) && existsSync(path.join(project.path, 'refs.bib')));
   assert.deepEqual(await snapshot(source.path), before, 'the source project is never changed');
+  if (!skipLatex) {
+    const back = await app.inject({ method: 'POST', url: '/api/projects/' + project.id + '/convert', payload: { to: 'latex', doc: 'main.typ', engine: 'auto' } });
+    assert.equal(back.statusCode, 200, back.body);
+    assert.equal(back.json().project.name, 'Stress (Typst) (LaTeX)');
+    assert.equal(back.json().checks.ok, true);
+  }
   await app.close();
+});
+
+for (const name of ['typst-document', 'typst-report', 'typst-maths-notes', 'typst-electronics-notes', 'typst-coding-report', 'typst-letter', 'typst-cv']) {
+  test('the ' + name + ' template converts to LaTeX and loses nothing', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
+    const staging = mkdtempSync(path.join(tmp, 'out-'));
+    const { checks, mainFile } = await typstToLatex(path.join(templates, name), 'main.typ', staging, { engine: 'auto' });
+    expectNothingLost(checks, name);
+    assert.equal(checks.undefinedReferences, false, name + ' left a reference undefined');
+    assert.equal(mainFile, 'main.tex');
+    const latex = await fs.readFile(path.join(staging, 'main.tex'), 'utf8');
+    assert.match(latex, /^\\documentclass\[\d+pt,a4paper\]\{(?:article|report)\}/);
+    assert.match(latex, /\\usepackage\[australian\]\{babel\}/);
+    assert.match(latex, /\\usepackage\[capitalise,noabbrev\]\{cleveref\}/);
+    assert.doesNotMatch(latex, /SPX[IBPH]\d+X/, 'no token left');
+  });
+}
+
+test('the Typst stress document converts to LaTeX with every label, reference, citation, equation and float', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
+  const staging = mkdtempSync(path.join(tmp, 'out-'));
+  const { checks } = await typstToLatex(path.join(stress, 'stress-typst'), 'main.typ', staging, { engine: 'auto' });
+  expectNothingLost(checks, 'stress-typst');
+  assert.deepEqual([checks.labels.source, checks.references.source, checks.citations.source, checks.equations.source], [27, 26, 8, 2]);
+  const latex = await fs.readFile(path.join(staging, 'main.tex'), 'utf8');
+  assert.match(latex, /a resistor of \\qty\{4\.7\}\{\\kilo\\ohm\}, a slew rate of \\qty\{13\}\{\\volt\\per\\micro\\second\}/);
+  assert.match(latex, /\\qty\{1\.2 \\pm 0\.1\}\{\\metre\}.*\\qty\{47e3\}\{\\ohm\}/s);
+  assert.match(latex, /\\num\{7790\} hours of light at a\npitch of \\ang\{22\.5\}/);
+  assert.match(latex, /\\parencite\[p\.~12\]\{Lamport1994\}/);
+  assert.match(latex, /\\parencite\{Masters2013,Duffie2013\}/);
+  assert.match(latex, /\\textcite\{Masters2013\}.*\\citeauthor\{Knuth1984\}.*\\citeyear\{Lamport1994\}/s);
+  assert.match(latex, /\\begin\{theorem\}\[Euclid\]\\label\{thm:euclid\}/);
+  assert.match(latex, /\\begin\{subfigure\}/);
+  assert.match(latex, /S\[table-format=4\.0\]/);
+  assert.match(latex, /\\multirow\{2\}\{\*\}\{Season\} & \\multicolumn\{2\}\{c\}\{Energy \(kWh\)\}/);
+  assert.match(latex, /\\cmidrule\(lr\)\{2-3\}/);
+  assert.match(latex, /\\begin\{threeparttable\}[\s\S]*Score\\tnote\{a\}[\s\S]*\\item\[a\] Averaged over five runs\./);
+  assert.match(latex, /\\begin\{lstlisting\}\[language=Python, caption=\{Dijkstra's algorithm in Python\.\}, label=\{lst:python\}\]/);
+  assert.match(latex, /\\While\{the queue \\\(Q\\\) is not empty\}[\s\S]*\\EndWhile/);
+  assert.match(latex, /\\include\{chapters\/results\}/);
+  assert.match(await fs.readFile(path.join(staging, 'chapters', 'results.tex'), 'utf8'), /\\section\{Results\}\\label\{sec:results\}/);
+  // the Typst drawings become pictures with their source kept beside them
+  assert.ok(existsSync(path.join(staging, 'diagrams', 'divider.typ')));
+  assert.ok(existsSync(path.join(staging, 'diagrams', 'converted-2.typ')));
+  assert.ok(existsSync(path.join(staging, 'references.bib')));
+});
+
+test('a round trip, LaTeX to Typst to LaTeX, keeps the stress document’s labels, references, citations and equations', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
+  const { staging: typst } = await convert(path.join(stress, 'stress-latex'));
+  const back = mkdtempSync(path.join(tmp, 'back-'));
+  const { checks } = await typstToLatex(typst, 'main.typ', back, { engine: 'auto' });
+  expectNothingLost(checks, 'round trip');
+  assert.deepEqual([checks.labels.source, checks.references.source, checks.citations.source, checks.equations.source], [29, 28, 9, 4]);
 });
