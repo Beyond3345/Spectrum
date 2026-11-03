@@ -5,7 +5,7 @@ import { promises as fs } from 'fs';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { DATA_DIR } from '../config/constants.js';
-import { ensureDir } from '../utils/fsUtils.js';
+import { ensureDir, zipFiles } from '../utils/fsUtils.js';
 import { readProjectSettings } from './projectSettings.js';
 import { BUILT_IN_TYPST_VERSION, builtInTypst, typstFor } from './engineService.js';
 import { MAX_LOG_BYTES, cleanBuild, runSpawn, writePdf } from './compileService.js';
@@ -127,12 +127,10 @@ export async function typstElements(projectRoot, doc, fallback = '') {
 }
 
 /**
- * Compiles a .typ main file in outDir and writes its PDF beside it (a scratch build only returns it). The project's
- * Typst version wins over options.typstVersion, the app's default; typstInputs become the document's sys.inputs;
- * scratch keeps the package cache in the agent's home.
- * source, when given, is compiled from standard input in place of absMain (a Markdown document's generated Typst).
+ * The Typst to run for a project, with its fonts and package cache: the project's pin wins over options.typstVersion,
+ * the app's default. Returns { error } when that version is not on this computer.
  */
-export async function compileTypst(projectRoot, absMain, mainFile, options = {}) {
+async function typstSetup(projectRoot, options) {
   const settings = await readProjectSettings(projectRoot);
   const pinned = settings.compile?.typstVersion || options.typstVersion || '';
   const executable = typstFor(pinned);
@@ -140,19 +138,14 @@ export async function compileTypst(projectRoot, absMain, mainFile, options = {})
     if (pinned) {
       // from: the project's pin or the app's default, which Logs' card offers different ways out of
       if (settings.compile?.typstVersion) {
-        return { ok: false, code: 'TYPST_VERSION_MISSING', version: pinned, from: 'project', error: 'Typst ' + pinned + ' isn’t installed on this computer. Download it, or use the default version.' };
+        return { error: { ok: false, code: 'TYPST_VERSION_MISSING', version: pinned, from: 'project', error: 'Typst ' + pinned + ' isn’t installed on this computer. Download it, or use the default version.' } };
       }
-      return { ok: false, code: 'TYPST_VERSION_MISSING', version: pinned, from: 'default', builtIn: BUILT_IN_TYPST_VERSION, error: 'Typst ' + pinned + ' is the default version in Settings › Engines, and it isn’t installed on this computer. Download it, or use the built-in version.' };
+      return { error: { ok: false, code: 'TYPST_VERSION_MISSING', version: pinned, from: 'default', builtIn: BUILT_IN_TYPST_VERSION, error: 'Typst ' + pinned + ' is the default version in Settings › Engines, and it isn’t installed on this computer. Download it, or use the built-in version.' } };
     }
-    return { ok: false, error: 'Typst isn’t available in this copy of Spectrum.' };
+    return { error: { ok: false, error: 'Typst isn’t available in this copy of Spectrum.' } };
   }
-  const buildRoot = options.buildDir || path.join(os.tmpdir(), 'spectrum-build');
-  const outDir = path.join(buildRoot, crypto.randomUUID());
-  await ensureDir(outDir);
-  const base = path.basename(mainFile, path.extname(mainFile));
   const fontFolder = path.join(projectRoot, 'fonts');
   const fonts = (await fs.stat(fontFolder).catch(() => null))?.isDirectory() ? ['--font-path', fontFolder] : [];
-  const inputs = Object.entries(options.typstInputs || {}).flatMap(([key, value]) => ['--input', key + '=' + value]);
   const env = {
     ...process.env,
     // Spectrum's own cache is never passed into an agent's sandbox: there the agent's home keeps it
@@ -160,6 +153,24 @@ export async function compileTypst(projectRoot, absMain, mainFile, options = {})
       ? path.join(process.env.HOME || os.homedir(), 'typst-packages')
       : path.join(DATA_DIR, 'typst', 'packages')
   };
+  return { pinned, executable, fonts, env };
+}
+
+/**
+ * Compiles a .typ main file in outDir and writes its PDF beside it (a scratch build only returns it). The project's
+ * Typst version wins over options.typstVersion, the app's default; typstInputs become the document's sys.inputs;
+ * scratch keeps the package cache in the agent's home.
+ * source, when given, is compiled from standard input in place of absMain (a Markdown document's generated Typst).
+ */
+export async function compileTypst(projectRoot, absMain, mainFile, options = {}) {
+  const setup = await typstSetup(projectRoot, options);
+  if (setup.error) return setup.error;
+  const { pinned, executable, fonts, env } = setup;
+  const buildRoot = options.buildDir || path.join(os.tmpdir(), 'spectrum-build');
+  const outDir = path.join(buildRoot, crypto.randomUUID());
+  await ensureDir(outDir);
+  const base = path.basename(mainFile, path.extname(mainFile));
+  const inputs = Object.entries(options.typstInputs || {}).flatMap(([key, value]) => ['--input', key + '=' + value]);
   const chunks = [];
   let size = 0;
   const pushLog = (chunk) => {
@@ -222,4 +233,57 @@ export async function compileTypst(projectRoot, absMain, mainFile, options = {})
     status: result.code ?? 0,
     ...(written.stale && { pdfStale: true })
   });
+}
+
+// what Export offers: the file Typst writes and what it needs for it; PNG and SVG make one file per page
+export const TYPST_EXPORTS = {
+  png: { ext: 'png', pages: true },
+  svg: { ext: 'svg', pages: true },
+  html: { ext: 'html', args: ['--features', 'html'] },
+  'pdf-a': { ext: 'pdf', args: ['--pdf-standard', 'a-2b'] },
+  'pdf-ua': { ext: 'pdf', args: ['--pdf-standard', 'ua-1'] }
+};
+
+/**
+ * Exports a .typ document in one of TYPST_EXPORTS' formats, in a build folder of its own, so the project and its PDF
+ * stay as they are. Returns { ok, name, data } with one file, or a .zip of the pages when PNG or SVG makes several.
+ */
+export async function exportTypst(projectRoot, absMain, mainFile, format, options = {}) {
+  const kind = TYPST_EXPORTS[format];
+  if (!kind) return { ok: false, error: 'Typst can’t export ' + format + '.' };
+  const setup = await typstSetup(projectRoot, options);
+  if (setup.error) return setup.error;
+  const buildRoot = path.join(os.tmpdir(), 'spectrum-build');
+  const outDir = path.join(buildRoot, crypto.randomUUID());
+  await ensureDir(outDir);
+  const base = path.basename(mainFile, path.extname(mainFile));
+  const output = path.join(outDir, kind.pages ? base + '-{0p}.' + kind.ext : base + '.' + kind.ext);
+  const chunks = [];
+  try {
+    const result = await runSpawn(
+      setup.executable,
+      ['compile', '--root', projectRoot, '--diagnostic-format', 'short', ...setup.fonts, ...(kind.args || []), absMain, output],
+      path.dirname(absMain),
+      (chunk) => chunks.push(chunk.toString()),
+      setup.env
+    );
+    const files = (await fs.readdir(outDir)).sort();
+    if (result.code !== 0 || !files.length) {
+      const errors = parseTypstDiagnostics(chunks.join(''), projectRoot, path.dirname(absMain)).filter((e) => e.severity === 'error');
+      const first = errors[0];
+      // an error with no place in the source (a PDF standard the document breaks, a flag an older Typst lacks)
+      const unplaced = chunks.join('').split(/\r?\n/).find((line) => /error/i.test(line))?.replace(/^error:\s*/i, '');
+      if (result.timedOut) return { ok: false, error: 'The export took too long and was stopped.' };
+      return { ok: false, error: first ? first.file + ':' + first.line + ': ' + first.message : unplaced || 'Typst made nothing to export.' };
+    }
+    if (files.length === 1) {
+      return { ok: true, name: base + '.' + kind.ext, data: (await fs.readFile(path.join(outDir, files[0]))).toString('base64') };
+    }
+    const pages = await Promise.all(files.map(async (name) => ({ name, data: await fs.readFile(path.join(outDir, name)) })));
+    return { ok: true, name: base + '-' + kind.ext + '.zip', data: zipFiles(pages).toString('base64') };
+  } catch (err) {
+    return { ok: false, error: 'Typst isn’t available: ' + err.message };
+  } finally {
+    await cleanBuild(buildRoot, outDir);
+  }
 }

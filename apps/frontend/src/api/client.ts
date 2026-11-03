@@ -472,6 +472,15 @@ export function convertToLatex(projectId: string, doc: string) {
   return request<{ ok: boolean; project: ProjectMeta }>(`/api/projects/${projectId}/export/latex`, json('POST', { doc }));
 }
 
+// ─── Typst exports ───
+
+export type TypstExport = 'png' | 'svg' | 'html' | 'pdf-a' | 'pdf-ua';
+
+/** The Typst document as PNG or SVG pages (a .zip when there are several), HTML, PDF/A or PDF/UA, base64, to download. */
+export function exportTypst(projectId: string, doc: string, format: TypstExport, typstVersion?: string) {
+  return request<{ ok: boolean; name: string; data: string }>(`/api/projects/${projectId}/export/typst`, json('POST', { doc, format, typstVersion }));
+}
+
 // ─── Engines ───
 
 /** A program found on this computer. */
