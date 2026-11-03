@@ -525,6 +525,27 @@ export function convertToLatex(projectId: string, doc: string) {
   return request<{ ok: boolean; project: ProjectMeta }>(`/api/projects/${projectId}/export/latex`, json('POST', { doc }));
 }
 
+/** What a conversion kept of the original, each counted in both: what the converter's checks found. */
+export interface ConvertChecks {
+  ok: boolean;
+  compiles: boolean;
+  diagnostics: { severity: string; message: string; file?: string; line?: number }[];
+  labels: { source: number; kept: number; missing: string[] };
+  references: { source: number; kept: number; lost: string[] };
+  citations: { source: number; kept: number; lost: string[]; invented: string[] };
+  equations: { source: number; output: number | null };
+  floats: Record<string, { source: number; output: number | null }>;
+  words: { coverage: number; lowestSection: number | null };
+}
+
+/**
+ * A new project of the other kind from the document, LaTeX to Typst or Typst to LaTeX; this project stays as it is.
+ * convertId: its steps, as they start, through watchCompile.
+ */
+export function convertProject(projectId: string, payload: { to: 'typst' | 'latex'; doc: string; engine?: CompileEngine; convertId?: string }) {
+  return request<{ ok: boolean; project: ProjectMeta; checks: ConvertChecks }>(`/api/projects/${projectId}/convert`, json('POST', payload));
+}
+
 // ─── Typst exports ───
 
 export type TypstExport = 'png' | 'svg' | 'html' | 'pdf-a' | 'pdf-ua';

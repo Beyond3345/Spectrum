@@ -64,6 +64,7 @@ import { ContextMenu, MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
 import { confirmDialog, promptDialog } from './Dialogs';
 import { SaveTemplateSheet, openProjectsOn } from './ProjectPage';
+import ConvertSheet from './ConvertSheet';
 import { switcherList, switcherStart } from './ProjectSwitcher';
 import { withDeletionCheck } from './github';
 import { toast } from './Toast';
@@ -347,6 +348,7 @@ function Editor({ projectId }: { projectId: string }) {
   /** the template this project is a working copy of */
   const draft = project?.templateDraft;
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const [converting, setConverting] = useState<'typst' | 'latex' | null>(null);
   const [savingTemplate, setSavingTemplate] = useState(false);
 
   const [items, setItems] = useState<FileItem[]>([]);
@@ -2931,6 +2933,7 @@ function Editor({ projectId }: { projectId: string }) {
     }
   };
   const markdownMain = docKind(mainFile) === 'markdown';
+  const latexMain = docKind(mainFile) === 'latex';
   const tree = settings.projectFolders;
   const switcherItems: MenuItems = [
     ...switcherList({ projects, tree, at: switcherAt, projectId, go: setSwitcherAt, open: (id) => leave(`/editor/${id}`) }),
@@ -2940,9 +2943,10 @@ function Editor({ projectId }: { projectId: string }) {
     // a working copy has its own Save as new template… above the editor
     !draft && { label: 'Save as template…', icon: 'square.and.arrow.down', onSelect: openSaveTemplate },
     IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => revealProject(projectId).catch(() => undefined) },
-    markdownMain && { separator: true },
+    (markdownMain || latexMain) && { separator: true },
     markdownMain && { label: 'Export to Word', icon: 'doc.richtext', onSelect: exportWord },
-    markdownMain && { label: 'Convert to LaTeX project…', icon: 'doc.text', onSelect: convertMarkdownToLatex }
+    markdownMain && { label: 'Convert to LaTeX project…', icon: 'doc.text', onSelect: convertMarkdownToLatex },
+    latexMain && !draft && { label: 'Convert to Typst project…', icon: 'arrow.triangle.2.circlepath', onSelect: () => saveNow().then(() => setConverting('typst')) }
   ];
 
   const filesMenu: MenuItems = [
@@ -4011,6 +4015,10 @@ function Editor({ projectId }: { projectId: string }) {
       )}
 
       {settingsOpen && <SettingsSheet projectId={projectId} section={settingsOpen === true ? undefined : settingsOpen} onClose={() => setSettingsOpen(false)} />}
+
+      {converting && mainFile && (
+        <ConvertSheet projectId={projectId} doc={mainFile} to={converting} engine={engine} onClose={() => setConverting(null)} onOpen={(id) => leave(`/editor/${id}`)} />
+      )}
 
       {saveTemplateOpen && project && (
         <SaveTemplateSheet
