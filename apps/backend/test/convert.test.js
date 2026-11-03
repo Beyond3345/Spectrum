@@ -505,7 +505,8 @@ async function typstSummary(folder, main = 'main.typ') {
     for (const m of [...text.matchAll(/^#include\s+"\/?([^"]+)"/gm)].reverse()) if (depth < 5) text = text.slice(0, m.index) + (await expand(m[1], depth + 1)) + text.slice(m.index + m[0].length);
     return text;
   };
-  const text = (await expand(main)).replace(/```[\s\S]*?```|`[^`\n]*`/g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+  // an #import's "@preview/…" is no citation
+  const text = (await expand(main)).replace(/```[\s\S]*?```|`[^`\n]*`/g, '').replace(/^[ \t]*\/\/.*$/gm, '').replace(/^#import\s+"[^"\n]*"/gm, '');
   const labels = [...new Set([...text.matchAll(/(?<![\w(<])<([A-Za-z0-9_:.-]+)>/g)].map((m) => m[1]))].sort();
   const ats = [...text.matchAll(/(?<![\p{L}\p{N}\\/])@([A-Za-z0-9_:.-]*[A-Za-z0-9_-])/gu)].map((m) => m[1]);
   const call = (at) => text.slice(at, expressionEnd(text, at));
@@ -608,6 +609,21 @@ test('the Typst stress document’s drawings come back as the figure drew them',
   assert.match(typst, /#figure\(include "\/diagrams\/divider\.typ", caption: \[A divider, drawn in plain Typst\.\]\) <fig:divider>/);
   assert.match(typst, /#figure\(rect\(width: 40mm, height: 15mm, stroke: 0\.5pt, fill: luma\(240\)\), caption: \[A box drawn by the figure itself\.\]\) <fig:box>/);
   assert.match(typst, /code in\na sentence reads `heapq\.heappop\(queue\)`/);
+});
+
+test('the Typst syntax document goes Typst to LaTeX to Typst, its package’s figure back as the drawing’s file', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
+  cpSync(path.join(stress, 'typst-packages'), path.join(tmp, 'data', 'typst', 'packages'), { recursive: true });
+  const folder = path.join(stress, 'typst-syntax');
+  const trip = await roundTrip(folder, 'main.typ');
+  // a drawing in a line comes back as its picture, and the title block's 12 pt author line at the size of the rest
+  const { pictures, titlePage, ...before } = await typstSummary(folder);
+  const { pictures: back, titlePage: page, ...after } = await typstSummary(trip.back);
+  expectSame(before, after, trip, 'typst-syntax');
+  assert.match(page, /#title\(\) Your Name \\ School of Engineering \\ 3 November 2026/);
+  // the figure's body calls the package's sketch, which the document converted back no longer imports
+  const typst = await fs.readFile(path.join(trip.back, 'main.typ'), 'utf8');
+  assert.match(typst, /#figure\(include "\/diagrams\/converted-4\.typ", caption: \[A drawing made with a package\.\]\) <fig:sketch>/);
+  assert.deepEqual([pictures, back.length], [[], 4]);
 });
 
 test('a project edited since it was converted comes back with its edits, the record matched where it still can be', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {

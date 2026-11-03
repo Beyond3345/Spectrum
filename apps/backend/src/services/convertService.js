@@ -201,6 +201,20 @@ async function texSources(root, files, record) {
 }
 
 /**
+ * Whether a drawing's body uses a name its file imports or defines (a package's function, the document's own #let),
+ * which the document converted back no longer has, so the figure includes the file rather than the body.
+ */
+function drawingNeeds(text, body) {
+  const names = [...text.matchAll(/^#let\s+([A-Za-z_][\w-]*)/gm)].map((m) => m[1]);
+  for (const [, from, rest] of text.matchAll(/^#import\s+"([^"\n]*)"(?:[ \t]*:[ \t]*([^\n]*))?/gm)) {
+    const items = rest?.replace(/\/\/.*$/, '').trim();
+    if (items?.startsWith('*')) return true;
+    names.push(...(items ? items.split(',').map((item) => item.trim().split(/\s+as\s+/).pop()) : [/^@[^/]+\/([^:]+)/.exec(from)?.[1] ?? path.basename(from, '.typ')]));
+  }
+  return names.some((name) => name && new RegExp('(?<![\\w.-])' + name.replace(/[-]/g, '\\-') + '(?![\\w-])').test(body));
+}
+
+/**
  * What each PDF with a Typst drawing beside it was drawn from: { body } the figure's own drawing, as the record has it,
  * when the file is still as the converter wrote it, or { include } a file a figure can include (one that sets its page
  * only when compiled on its own).
@@ -212,7 +226,7 @@ async function typstSources(root, files, record) {
     if (!/\.typ$/i.test(typ) || !files.has(pdf)) continue;
     const text = await fs.readFile(safeJoin(root, typ), 'utf8').catch(() => '');
     const drawn = record?.pictures?.find((p) => p.source === typ && typeof p.body === 'string');
-    if (drawn && text.trimEnd().endsWith(contentOfBody(drawn.body).trimEnd())) out.set(pdf, { body: drawn.body });
+    if (drawn && text.trimEnd().endsWith(contentOfBody(drawn.body).trimEnd()) && !drawingNeeds(text, drawn.body)) out.set(pdf, { body: drawn.body });
     else if (!/^\s*#set\s+page\((?![^\n]*\bif\s+sys\.inputs)/m.test(text) && !/^\s*#bibliography\(/m.test(text)) out.set(pdf, { include: typ });
   }
   return out;
