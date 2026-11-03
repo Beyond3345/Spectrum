@@ -26,7 +26,7 @@ function newRegion(ctx, kind, st, line, original) {
 // what the title page rule of toTypst.js writes itself; any other command in a title page is beyond it
 const TITLE_RULE_LATEX = /^(?:vspace|vfill|par|centering|tiny|scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge|Huge|bfseries|itshape|scshape|today|newline|null|noindent|thispagestyle|textbf|textit|emph)$/;
 // and of toLatex.js, in a Typst title block
-const TITLE_RULE_TYPST = /^(?:align|v|text|title|linebreak|emph|strong)$/;
+const TITLE_RULE_TYPST = /^(?:page|align|v|text|title|linebreak|emph|strong)$/;
 const TABLES = ['table', 'table*', 'tabular', 'tabularx', 'xltabular', 'threeparttable'];
 const TABULARS = { tabular: 'om', 'tabular*': 'mom', tabularx: 'mm', xltabular: 'omm' };
 
@@ -88,10 +88,9 @@ function flagged(record, st, format) {
     return found && record.cells.length === 2 && /,\s*align\(\s*right/.test(found.original) ? { kind: 'cv-header', ...found } : null;
   }
   if (record.kind === 'titlepage') {
-    // the rule centres it: one aligned otherwise, or centred down the page too, comes out only centred across
-    const found = typstOriginal(record, st, ['align']);
-    const beyond = found && (!/^#align\(\s*center\s*\)/.test(found.original) || [...found.original.matchAll(/#([A-Za-z][\w.-]*)/g)].some((m) => !TITLE_RULE_TYPST.test(m[1])));
-    return beyond ? { kind: 'titlepage', ...found } : null;
+    // the rule keeps its alignment, across and down the page
+    const found = typstOriginal(record, st, ['page', 'align']);
+    return found && [...found.original.matchAll(/#([A-Za-z][\w.-]*)/g)].some((m) => !TITLE_RULE_TYPST.test(m[1])) ? { kind: 'titlepage', ...found } : null;
   }
   if (record.kind === 'table') {
     // grid lines, colour, or columns in proportion (2fr, 1fr) or of a length, which become X or l columns
@@ -173,20 +172,21 @@ export function markLatexInput(input, detected, st, ctx) {
       pair(paragraphs(body).filter((p) => plain(p, body)), paragraphs(source).filter((p) => plain(p, source)), 'unknown-command', '\\' + name + ' is not a command Spectrum knows; check this paragraph.');
     }
   }
-  // the document's own environments, which pandoc expands but often not as they look, and multicols, whose columns go
+  // the document's own environments, which pandoc expands but often not as they look
   const own = [...String(ctx.facts.macros ?? '').matchAll(/\\(?:re)?newenvironment\s*\{([^}]+)\}/g)].map((m) => m[1].trim());
-  for (const env of new Set([...own, 'multicols', 'multicols*'])) {
+  for (const env of new Set(own)) {
     if (detected.has('begin{' + env + '}')) continue;
-    pair(environments(body, [env]), environments(source, [env]), 'unknown-environment', 'The environment ' + env + (own.includes(env) ? ' is defined by this document; check how its text came out.' : ' has no Typst equivalent here; its text was kept in one column.'));
+    pair(environments(body, [env]), environments(source, [env]), 'unknown-environment', 'The environment ' + env + ' is defined by this document; check how its text came out.');
   }
   pair(minipagePairs(body), minipagePairs(source).filter(free), 'cv-header', null);
-  // the first of any that overlap, each at most REGION_LINES long in the source
+  // of any that overlap, a CV header, then the first; each at most REGION_LINES long in the source
   const kept = [];
-  for (const span of spans.sort((a, b) => a.start - b.start)) {
+  for (const span of spans.sort((a, b) => (b.kind === 'cv-header') - (a.kind === 'cv-header') || a.start - b.start)) {
     const original = st.source.slice(offset + span.at.start, offset + span.at.end);
-    if (kept.some((k) => span.start < k.end) || original.split('\n').length > REGION_LINES) continue;
+    if (kept.some((k) => span.start < k.end && k.start < span.end) || original.split('\n').length > REGION_LINES) continue;
     kept.push({ ...span, original });
   }
+  kept.sort((a, b) => a.start - b.start);
   let out = '';
   let last = 0;
   for (const span of kept) {
@@ -280,5 +280,5 @@ export function finishRegions(files, key, ctx) {
 /** A region as conversion/notes.md lists it. */
 export function regionNote(r) {
   const at = r.from.lastIndexOf(':');
-  return { file: at === -1 ? r.from : r.from.slice(0, at), line: at === -1 ? null : Number(r.from.slice(at + 1)), text: 'A ' + KIND_NAMES[r.kind] + ' the rules only approximated, marked ' + r.id + ' in ' + r.file + ' for tidying by hand or with the AI model.' };
+  return { file: at === -1 ? r.from : r.from.slice(0, at), line: at === -1 ? null : Number(r.from.slice(at + 1)), text: (/^[aeiou]/.test(KIND_NAMES[r.kind]) ? 'An ' : 'A ') + KIND_NAMES[r.kind] + ' the rules only approximated, marked ' + r.id + ' in ' + r.file + ' for tidying by hand or with the AI model.' };
 }

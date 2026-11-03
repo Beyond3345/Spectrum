@@ -1,5 +1,6 @@
 // The tidy benchmark's test set (fixtures/tidy-bench): every case has its region, each region is the converter's
-// own output for its source document, between the markers the converter wrote, and the set covers each kind in both directions with every difficulty.
+// own output for its source document, between the markers the converter wrote, with no word of the source lost, and the set covers each kind in
+// both directions with every difficulty.
 // Rebuild regions.json after changing a case or the converter: SPECTRUM_PANDOC=<pandoc> node scripts/tidy-bench-regions.mjs
 // Then scripts/tidy-bench.mjs end to end against a fake OpenAI-compatible server on this computer. Throwaway folders only.
 import { test, after } from 'node:test';
@@ -26,6 +27,7 @@ test('regions.json matches cases.json and the source documents', () => {
     assert.ok(r.original.trim() && source.includes(r.original), r.id + ': the original is the source document’s region');
     assert.equal(regionAt(r.document, r.region)?.text, r.converted, r.id + ': the converted region is the one the converter marked');
     assert.ok(r.good.trim(), r.id + ': a note of what a good answer looks like');
+    assert.ok(!r.notes.some((n) => /lacks (?:a word|words)/.test(n)), r.id + ': the converter keeps every word, so a model never has to put one back');
   }
 });
 

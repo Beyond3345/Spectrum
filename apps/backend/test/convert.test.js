@@ -28,7 +28,7 @@ if (pandoc) {
 const { siAngle, siNumber, siQuantity, siUnit, typedNumber, typedUnit } = await import('../src/services/convert/units.js');
 const { callOf, expressionEnd, findAll, parseTypst, typstUses } = await import('../src/services/convert/typstRead.js');
 const { commandArgs, environments, mathSpans } = await import('../src/services/convert/latexRead.js');
-const { latexFacts, prepareLatex, typstMaths } = await import('../src/services/convert/toTypst.js');
+const { chemistryTypst, latexFacts, prepareLatex, typstMaths } = await import('../src/services/convert/toTypst.js');
 const { prepareTypst, typstFacts } = await import('../src/services/convert/toLatex.js');
 const { flowchartFile, flowchartFor, flowchartOf } = await import('../src/services/convert/diagrams.js');
 const { inlineInputs } = await import('../src/utils/texUtils.js');
@@ -355,6 +355,116 @@ test('what only Typst’s own parser reads converts too: a package’s drawings,
     assert.match(await fs.readFile(path.join(staging, 'diagrams', 'converted-' + n + '.typ'), 'utf8'), /^#import "@preview\/spectrum-sketch:0\.1\.0": sketch/m);
   }
   assert.match(notes.map((n) => n.text).join('\n'), /function boxed does more than Spectrum can write in LaTeX, so only the text given to it was kept/);
+});
+
+test('mhchem formulas become Typst text, subscripts, charges and arrows upright', () => {
+  assert.equal(chemistryTypst('NO3-'), 'NO#sub[3]#super[−]');
+  assert.equal(chemistryTypst('PO4^3-'), 'PO#sub[4]#super[3−]');
+  assert.equal(chemistryTypst('2H2 + O2 -> 2H2O'), '2H#sub[2] + O#sub[2] → 2H#sub[2]O');
+  assert.equal(chemistryTypst('Ca(OH)2 <=> Ca^{2+}'), 'Ca(OH)#sub[2] ⇌ Ca#super[2+]');
+  assert.equal(chemistryTypst('\\alpha'), null, 'a formula with a command keeps its text another way');
+});
+
+/** A project of one main file in a fresh folder, converted into another: { result, text, notes } of the converted main file. */
+async function convertText(name, source) {
+  const root = mkdtempSync(path.join(tmp, 'source-'));
+  await fs.writeFile(path.join(root, name), source);
+  const staging = mkdtempSync(path.join(tmp, 'out-'));
+  const result = await (name.endsWith('.tex') ? latexToTypst : typstToLatex)(root, name, staging, { engine: 'auto' });
+  return { result, staging, text: await fs.readFile(path.join(staging, result.mainFile), 'utf8'), notes: await fs.readFile(path.join(staging, 'conversion', 'notes.md'), 'utf8') };
+}
+
+test('LaTeX to Typst keeps the text of boxes, letter spacing, chemistry, sizes, spaces, own lists and columns', { skip, timeout: 5 * 60 * 1000 }, async () => {
+  const { result, staging, text, notes } = await convertText('main.tex', [
+    '\\documentclass[11pt]{article}',
+    '\\usepackage{multicol}',
+    '\\newenvironment{checklist}{\\begin{list}{$\\square$}{}}{\\end{list}}',
+    '\\newcounter{step}',
+    '\\newenvironment{steps}{\\begin{list}{\\arabic{step}.}{\\usecounter{step}}}{\\end{list}}',
+    '\\begin{document}',
+    '',
+    '\\noindent\\begin{minipage}[t]{0.6\\linewidth}',
+    '{\\Large\\bfseries Ada Lovelace}\\\\',
+    '\\small Analyst',
+    '\\end{minipage}\\hfill',
+    '\\begin{minipage}[t]{0.38\\linewidth}',
+    '\\raggedleft \\faPhone\\ 0400 111 222',
+    '\\end{minipage}',
+    '',
+    'Press the \\fbox{Reset} button; the box reads \\so{FRAGILE}; the water holds \\ce{NO3-} and \\ce{2H2 + O2 -> 2H2O}; the arrow points \\raisebox{1pt}{upwards} and {\\small (about 9000 rows)} fit.',
+    'Gap\\quad one\\qquad two \\textbar{} three. The logger failed on 12 June\\marginpar{replaced under warranty} and went back.',
+    '\\cvitem{Languages}{English and French}\\sethlcolor{yellow}',
+    '',
+    '\\begin{checklist}',
+    '\\item Charge the logger',
+    '\\end{checklist}',
+    '',
+    '\\begin{steps}',
+    '\\item Dig a hole.',
+    '\\end{steps}',
+    '',
+    '\\begin{multicols}{2}',
+    'Twelve farms across the Wimmera.',
+    '\\end{multicols}',
+    '\\end{document}',
+    ''
+  ].join('\n'));
+  assert.equal(result.checks.ok, true, JSON.stringify(result.checks.diagnostics));
+  assert.match(text, /#text\(size: 14pt, weight: "bold"\)\[Ada Lovelace\] \\ #text\(size: 10pt\)\[Analyst\s*\]/, 'a size in a group, and one to the end of its minipage');
+  assert.match(text, /Press the #box\(stroke: 0\.4pt, inset: \(x: 3pt\), outset: \(y: 3pt\)\)\[Reset\] button; the box reads #text\(tracking: 0\.25em\)\[FRAGILE\]/);
+  assert.match(text, /holds NO#sub\[3\]#super\[−\] and 2H#sub\[2\] \+ O#sub\[2\] → 2H#sub\[2\]O; the arrow points upwards and #text\(size: 10pt\)\[\(about 9000 rows\)\] fit\./);
+  assert.match(text, /Gap #h\(1em\) one #h\(2em\) two \| three\. The logger failed on 12 June replaced under warranty and went back\.\nLanguages English and French\n/, 'an unknown command’s text, apart from the word before it, and a setting’s none');
+  assert.match(text, /^- Charge the logger$/m, 'the list the document defines, without its marker as a paragraph');
+  assert.match(text, /^\+ Dig a hole\.$/m, 'and numbered when its label counts');
+  assert.doesNotMatch(text, /\$square\$|^\.$/m);
+  assert.match(text, /#columns\(2\)\[\nTwelve farms across the Wimmera\.\n\]/, 'multicols, without its 2 as text');
+  // the minipages side by side are a CV header, though a command in them is unknown
+  assert.deepEqual(result.record.regions.map((r) => r.kind), ['cv-header', 'unknown-command', 'unknown-environment', 'unknown-environment']);
+  assert.match(result.record.regions[0].original, /^\\begin\{minipage\}/);
+  assert.match(notes, /\\raisebox is not a command Spectrum knows, so only its text was kept\./);
+  assert.deepEqual(result.checks.words.lost, []);
+  assert.match(notes, /\| Words \| 100 per cent of the words, at least 100 per cent in each section \|/);
+  // the safety net: the original's words count, a command's one-word text too, so any lost would be named
+  const edited = mkdtempSync(path.join(tmp, 'edited-'));
+  await fs.cp(staging, edited, { recursive: true });
+  await fs.writeFile(path.join(edited, 'main.typ'), text.replace('[Reset]', '[]').replace('[FRAGILE]', '[]').replace('NO#sub[3]', '#sub[3]').replace('Languages English', 'English'));
+  assert.deepEqual((await result.recheck(edited)).words.lost, ['reset', 'fragile', 'no', 'languages']);
+});
+
+test('Typst to LaTeX keeps a title page’s alignment and a page of its own, and names the words it loses', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
+  const { result, text, notes } = await convertText('main.typ', [
+    '#set document(title: [Field trip report])',
+    '#set page(paper: "a4", margin: 25mm)',
+    '#set text(size: 11pt, lang: "en", region: "AU")',
+    '',
+    '#page(numbering: none)[',
+    '  #align(center + horizon)[',
+    '    #text(size: 20pt, weight: "bold")[Bees on the Peninsula] \\',
+    '    #v(8mm)',
+    '    #grid(columns: (1fr, 1fr), align(left)[*Author* \\ Amelia Scott], align(right)[*Supervisor* \\ Dr Mei Lin])',
+    '  ]',
+    ']',
+    '',
+    '#align(right)[',
+    '  #v(40mm)',
+    '  #text(size: 24pt, weight: "bold", title())',
+    '  #v(1fr)',
+    '  Jack Wilson',
+    ']',
+    '',
+    '= Hives',
+    '',
+    'We checked #underline[forty] hives and #move(dx: 1pt)[nudged] one.',
+    ''
+  ].join('\n'));
+  assert.equal(result.checks.ok, true, JSON.stringify(result.checks.diagnostics));
+  // a page of its own without title(), centred down the page, its grid's cells of two lines each a tabular
+  assert.match(text, /\\begin\{titlepage\}\n {2}\\centering\n {2}\\vspace\*\{\\fill\}\n {2}\{\\huge\\bfseries Bees on the Peninsula\\par\}[\s\S]*\\begin\{tabular\}\{@\{\}lr@\{\}\}\n {2}\\begin\{tabular\}\[t\]\{@\{\}l@\{\}\}\\textbf\{Author\}\\\\\nAmelia Scott\\end\{tabular\} & \\begin\{tabular\}\[t\]\{@\{\}r@\{\}\}\\textbf\{Supervisor\}\\\\\nDr Mei Lin\\end\{tabular\} \\\\[\s\S]*\\vspace\*\{\\fill\}\n\\end\{titlepage\}/);
+  assert.match(text, /\\begin\{titlepage\}\n {2}\\raggedleft\n {2}\\vspace\*\{40mm\}\n {2}\{\\Huge\\bfseries Field trip report\\par\}\n {2}\\vfill\n {2}Jack Wilson\\par\n\\end\{titlepage\}/, 'right aligned');
+  assert.match(text, /We checked \\ul\{forty\} hives/);
+  assert.match(text, /\\usepackage\{soul\}/);
+  assert.deepEqual(result.checks.words.lost, ['nudged'], 'what pandoc drops is named');
+  assert.match(notes, /The LaTeX lacks a word the Typst has: nudged\./);
 });
 
 // ─── Round trips: section 10's phase 4, there and back with the conversion record ───

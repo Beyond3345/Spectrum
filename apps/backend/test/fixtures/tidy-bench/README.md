@@ -51,11 +51,11 @@ Each entry of `regions.json` has the fields of `cases.json` and:
 | unknown-command | 12 | 3 |
 | table-layout | 4 | 5 |
 
-Difficulty is `easy` (9, one obvious change), `typical` (23), `hard` (14: a layout the rule card only hints at, or invariants that are easy to break) or `skip` (5, where `SKIP` is the right answer, because the converted text is already right or the fix needs a package). The `good` notes are for people reviewing answers; no check reads them.
+Difficulty is `easy` (10, one obvious change), `typical` (24), `hard` (11: a layout the rule card only hints at, or invariants that are easy to break) or `skip` (6, where `SKIP` is the right answer, because the converted text is already right or the fix needs a package). The `good` notes are for people reviewing answers; no check reads them.
 
-The kind is the one the converter flags the region as. Four CV headers written with `\hfill`, a `tabular`-like layout or a centred block are flagged for their size commands, so they are unknown-command regions (l2t-unknown-command-8 to -11). Title pages and tables the rules convert exactly are not flagged, so none is in the set.
+The kind is the one the converter flags the region as. What the rules convert exactly is not flagged, so none of it is in the set: a title page aligned any way, size switches, `\fbox`, soul's `\so`, `\ce` and `multicols`, for example.
 
-Some converted regions show the converter losing words: `\fbox{Reset}`, `\so{FRAGILE}` and `\ce{...}` are left out with their text (l2t-unknown-command-2, -7 and -4), a `\marginpar` runs into the word before it (-12), and a list made with `\newenvironment` leaves its marker behind as a stray paragraph (l2t-unknown-environment-3 and -7). They are kept as they are, since a model meets the converter's real output.
+No converted region loses a word of its source. The converter keeps the text of every command it does not know, and its word check names any word a conversion lacks in `conversion/notes.md`. What the regions lose is the look: a rotated or scaled word, a drop cap, a symbol or icon (`\checkmark`, `\dag`, `\ding`, Font Awesome), a margin note set in the sentence, a box, a frame or a fill.
 
 ## Rebuilding regions.json
 
