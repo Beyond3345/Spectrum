@@ -55,7 +55,8 @@ export function flowchartFor(diagram, language, maths) {
     boxes: diagram.model.boxes.map((b) => ({ ...b, text: text(b.text, MATHS_SHAPES.includes(b.shape)), ...(b.repeat ? { repeat: text(b.repeat, true) } : {}) })),
     links: diagram.model.links.map((l) => (l.label ? { ...l, label: text(l.label, false) } : l))
   };
-  return ok ? { ...diagram, language: language === 'typst' ? 'typst' : 'tikz', model } : null;
+  const { pkg: _pkg, ...rest } = diagram;
+  return ok ? (language === 'typst' ? { ...rest, language: 'typst', model } : { ...rest, language: 'tikz', pkg: 'tikz', model }) : null;
 }
 
 /** The two drawings are of the same flowchart. */

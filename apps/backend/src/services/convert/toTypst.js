@@ -696,6 +696,8 @@ function tabularModel(tab, st, ctx) {
     },
     widths: widths.some((w) => w !== 'auto') ? Array.from({ length: width }, (_, i) => widths[i] ?? 'auto') : null,
     long: tab.name === 'xltabular',
+    // a tabular with no rules and no space at its sides, as Typst to LaTeX writes a #grid
+    grid: /^\s*@\{\}/.test(args?.args.at(-1) ?? '') && !rules.some((r) => r.length),
     caption,
     label
   };
@@ -1215,6 +1217,10 @@ function renderTable(record, pieceText, ctx) {
   const caption = record.caption === null ? '' : pieceText(record.caption);
   const notes = record.notes.map((n) => '#text(size: 0.9em)[' + (n.mark ? '#super[' + n.mark + '] ' : '') + pieceText(n.text) + ']');
   const long = record.tables.some((t) => t.long);
+  if (!record.float && !caption && !notes.length && record.tables.length === 1 && record.tables[0].grid) {
+    const { model } = record.tables[0];
+    return '#grid(columns: ' + model.align.length + ', column-gutter: 1em, row-gutter: 0.65em, ' + model.cells.flat().map((n) => '[' + (n === null ? '' : pieceText(n)) + ']').join(', ') + ')';
+  }
   if (!record.float && !caption) return [...tables, ...notes].join('\n');
   const body = tables.length === 1 && !notes.length ? tables[0].replace(/^#/, '') : '[\n  ' + [...tables, ...notes].join('\n  ') + '\n]';
   const figure = floating('#figure(' + body + (tables.length === 1 && !notes.length ? '' : ', kind: table') + captionArg(caption) + ')' + labelAfter(record.label), record.placement);

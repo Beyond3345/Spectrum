@@ -843,7 +843,7 @@ export function assembleLatex(latex, st, ctx) {
   out = inlineCode(out, ctx);
   out = out.replace(/([^\n]*?)[ \t]*SPXC(\d+)X[ \t]*([^\n]*)/g, (_, before, n, after) => [before, st.comments[n], after].filter((s) => s.trim()).join('\n'));
   // a new page once: after a title page, which ends its own, or where a #pagebreak and new numbering meet
-  out = out.replace(/(\\end\{titlepage\}\n(?:[ \t]*(?:%[^\n]*)?\n)*)[ \t]*\\clearpage\n/g, '$1').replace(/\\clearpage(?:\s*\\clearpage)+/g, '\\clearpage');
+  out = out.replace(/((?:\\end\{titlepage\}|^SPXV\d+X)\n(?:[ \t]*(?:%[^\n]*)?\n)*)[ \t]*\\clearpage\n/gm, '$1').replace(/\\clearpage(?:\s*\\clearpage)+/g, '\\clearpage');
   return out.replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim() + '\n';
 }
 

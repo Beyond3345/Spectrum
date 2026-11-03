@@ -1,7 +1,7 @@
 // The LaTeX and Typst converter: siunitx's units, the LaTeX reading helpers and the pre-pass on their own, then, with
 // pandoc and the built-in Typst, the house templates and the stress document converted and checked as
 // docs/featureResearch/LATEX_TYPST_CONVERSION.md section 10 asks: each compiles and loses no label, reference,
-// citation, numbered equation or float. pandoc is the one Settings downloads into the repo's data folder, or the one
+// citation, numbered equation or float, and each goes there and back with the conversion record and ends as it began. pandoc is the one Settings downloads into the repo's data folder, or the one
 // SPECTRUM_PANDOC names; without it those tests skip. Throwaway folders only.
 // Run: SPECTRUM_PANDOC=<pandoc 3.12.1> node --test apps/backend/test/convert.test.js
 import { test, after } from 'node:test';
@@ -29,6 +29,8 @@ const { siAngle, siNumber, siQuantity, siUnit, typedNumber, typedUnit } = await 
 const { callAt, markupSpans, splitArgs } = await import('../src/services/convert/typstRead.js');
 const { commandArgs, environments, mathSpans } = await import('../src/services/convert/latexRead.js');
 const { latexFacts, prepareLatex, typstMaths } = await import('../src/services/convert/toTypst.js');
+const { flowchartFile, flowchartFor, flowchartOf } = await import('../src/services/convert/diagrams.js');
+const { inlineInputs } = await import('../src/utils/texUtils.js');
 const { latexToTypst, typstToLatex } = await import('../src/services/convertService.js');
 const { builtInTypst, tectonicBiber } = await import('../src/services/engineService.js');
 const { findExecutable } = await import('../src/services/compileService.js');
@@ -146,11 +148,18 @@ async function snapshot(root) {
   return out;
 }
 
-/** The checks of a conversion of folder's main file, made into a fresh staging folder. */
-async function convert(folder, main = 'main.tex') {
-  const staging = mkdtempSync(path.join(tmp, 'out-'));
-  const result = await latexToTypst(folder, main, staging, { engine: 'auto' });
-  return { ...result, staging };
+// each conversion once: the round trips below go back from the ones the tests above made
+const converted = new Map();
+
+/** The checks of a conversion of folder's main file, made into a fresh staging folder: LaTeX to Typst, or Typst to LaTeX. */
+function convert(folder, main = 'main.tex') {
+  const key = folder + '|' + main;
+  if (!converted.has(key)) {
+    const staging = mkdtempSync(path.join(tmp, 'out-'));
+    const run = main.endsWith('.typ') ? typstToLatex : latexToTypst;
+    converted.set(key, run(folder, main, staging, { engine: 'auto' }).then((result) => ({ ...result, staging })));
+  }
+  return converted.get(key);
 }
 
 const expectNothingLost = (checks, what) => {
@@ -237,8 +246,7 @@ test('the route makes a new Typst project and leaves the LaTeX one as it was', {
 
 for (const name of ['typst-document', 'typst-report', 'typst-maths-notes', 'typst-electronics-notes', 'typst-coding-report', 'typst-letter', 'typst-cv']) {
   test('the ' + name + ' template converts to LaTeX and loses nothing', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
-    const staging = mkdtempSync(path.join(tmp, 'out-'));
-    const { checks, mainFile } = await typstToLatex(path.join(templates, name), 'main.typ', staging, { engine: 'auto' });
+    const { checks, mainFile, staging } = await convert(path.join(templates, name), 'main.typ');
     expectNothingLost(checks, name);
     assert.equal(checks.undefinedReferences, false, name + ' left a reference undefined');
     assert.equal(mainFile, 'main.tex');
@@ -253,8 +261,7 @@ for (const name of ['typst-document', 'typst-report', 'typst-maths-notes', 'typs
 }
 
 test('the Typst stress document converts to LaTeX with every label, reference, citation, equation and float', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
-  const staging = mkdtempSync(path.join(tmp, 'out-'));
-  const { checks } = await typstToLatex(path.join(stress, 'stress-typst'), 'main.typ', staging, { engine: 'auto' });
+  const { checks, staging } = await convert(path.join(stress, 'stress-typst'), 'main.typ');
   expectNothingLost(checks, 'stress-typst');
   assert.deepEqual([checks.labels.source, checks.references.source, checks.citations.source, checks.equations.source], [27, 26, 8, 2]);
   const latex = await fs.readFile(path.join(staging, 'main.tex'), 'utf8');
@@ -280,10 +287,194 @@ test('the Typst stress document converts to LaTeX with every label, reference, c
   assert.ok(existsSync(path.join(staging, 'references.bib')));
 });
 
-test('a round trip, LaTeX to Typst to LaTeX, keeps the stress document’s labels, references, citations and equations', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
-  const { staging: typst } = await convert(path.join(stress, 'stress-latex'));
+// ─── Round trips: section 10's phase 4, there and back with the conversion record ───
+
+/** source's items that items has, repeats counted: what is missing from it. */
+const missingFrom = (source, items) => {
+  const left = [...items];
+  return source.filter((x) => {
+    const at = left.indexOf(x);
+    if (at !== -1) left.splice(at, 1);
+    return at === -1;
+  });
+};
+
+/** What a LaTeX project says of itself, from its main file with its \input and \include files in place. */
+async function latexSummary(folder, main = 'main.tex') {
+  const text = await inlineInputs(folder, main, { stripComments: true });
+  const all = (pattern) => [...text.matchAll(pattern)];
+  const list = (pattern) => all(pattern).flatMap((m) => m[1].split(',').map((x) => x.trim())).filter(Boolean).sort();
+  return {
+    class: /\\documentclass\s*(?:\[[^\]]*\])?\s*\{[^}]+\}/.exec(text)[0],
+    labels: [...new Set([...list(/\\label\{([^}]*)\}/g), ...list(/\blabel=\{?([^,}\]\s]+)/g)])].sort(),
+    references: list(/\\(?:[cC]ref|ref|eqref|autoref|pageref)\*?\{([^}]*)\}/g),
+    citations: list(/\\(?:[A-Za-z]*cite[A-Za-z]*|nocite)\*?(?:\[[^\]]*\])*\{([^}]*)\}/g),
+    // \SI is written \qty, as LATEX_STYLE.md asks
+    units: all(/\\(?:qty|SI)\{([^{}]*)\}\{([^{}]*)\}|\\(num|ang)\{([^{}]*)\}/g).map((m) => (m[1] !== undefined ? 'qty ' + m[1] + ' ' + m[2] : m[3] + ' ' + m[4])).sort(),
+    tables: all(/\\begin\{(tabular\*?|tabularx|xltabular|threeparttable)\}/g).map((m) => m[1]).sort(),
+    pictures: all(/\\begin\{(tikzpicture|circuitikz)\}|\\includestandalone(?:\[[^\]]*\])?\{([^}]*)\}/g).map((m) => m[0]).sort(),
+    titlePage: /\\begin\{titlepage\}[\s\S]*?\\end\{titlepage\}/.exec(text)?.[0] ?? null,
+    numbering: all(/\\pagenumbering\{\w+\}|\\pagestyle\{\w+\}/g).map((m) => m[0])
+  };
+}
+
+/** What a Typst project says of itself, from its main file with its #include files in place. */
+async function typstSummary(folder, main = 'main.typ') {
+  const expand = async (rel, depth = 0) => {
+    let text = await fs.readFile(path.join(folder, rel), 'utf8');
+    for (const m of [...text.matchAll(/^#include\s+"\/?([^"]+)"/gm)].reverse()) if (depth < 5) text = text.slice(0, m.index) + (await expand(m[1], depth + 1)) + text.slice(m.index + m[0].length);
+    return text;
+  };
+  const text = (await expand(main)).replace(/```[\s\S]*?```|`[^`\n]*`/g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+  const labels = [...new Set([...text.matchAll(/(?<![\w(<])<([A-Za-z0-9_:.-]+)>/g)].map((m) => m[1]))].sort();
+  const ats = [...text.matchAll(/(?<![\p{L}\p{N}\\/])@([A-Za-z0-9_:.-]*[A-Za-z0-9_-])/gu)].map((m) => m[1]);
+  const call = (at) => text.slice(at, callAt(text, at)?.end ?? at);
+  const titled = [...text.matchAll(/^#(?:align|page)\(/gm)].map((m) => call(m.index)).find((c) => /title\(\)|#v\(1fr\)/.test(c));
+  return {
+    labels,
+    references: [...ats.filter((a) => labels.includes(a)), ...[...text.matchAll(/#ref\(<([^>]+)>/g)].map((m) => m[1])].sort(),
+    citations: [...ats.filter((a) => !labels.includes(a)), ...[...text.matchAll(/#cite\(<([^>]+)>/g)].map((m) => m[1])].sort(),
+    units: [...text.matchAll(/(?<![\w.,])(\d[\d,]*(?:\.\d+)?)~([^\s,;:!?\])}"'<]*[^\s,;:!?\])}"'<.])/g)].map((m) => m[1] + ' ' + m[2]).sort(),
+    tables: [...text.matchAll(/(?<![\w.])table\(/g)].length,
+    pictures: [...text.matchAll(/include\s+"\/?(diagrams\/[^"]+)"|image\("\/?(diagrams\/[^"]+)"/g)].map((m) => m[0]).sort(),
+    titlePage: titled?.replace(/\s+/g, ' ') ?? null,
+    numbering: [...text.matchAll(/#set page\(([^\n]*)\)/g)].map((m) => /numbering:\s*("[^"]*"|none)/.exec(m[1])?.[1] ?? '').filter(Boolean)
+  };
+}
+
+const trips = new Map();
+
+/** The project in folder there and back again, once: the first and second conversions, and the project they ended in. */
+function roundTrip(folder, main) {
+  const key = folder + '|' + main;
+  if (!trips.has(key)) {
+    trips.set(key, (async () => {
+      const first = await convert(folder, main);
+      const back = mkdtempSync(path.join(tmp, 'back-'));
+      const second = await (main.endsWith('.typ') ? latexToTypst : typstToLatex)(first.staging, first.mainFile, back, { engine: 'auto' });
+      return { first, second, back };
+    })());
+  }
+  return trips.get(key);
+}
+
+/** A round trip lost nothing on either way, and ended where it started. */
+function expectSame(before, after, { first, second }, what) {
+  expectNothingLost(first.checks, what + ' there');
+  expectNothingLost(second.checks, what + ' back');
+  const { units, ...rest } = before;
+  assert.deepEqual(missingFrom(units, after.units), [], what + ': units');
+  for (const [key, value] of Object.entries(rest)) assert.deepEqual(after[key], value, what + ': ' + key);
+  assert.equal(second.checks.equations.output, first.checks.equations.source, what + ': numbered equations');
+  for (const [kind, f] of Object.entries(first.checks.floats)) assert.equal(second.checks.floats[kind].output, f.source, what + ': ' + kind);
+}
+
+const latexDocuments = [...['simple-document', 'report-thesis', 'maths-notes', 'electronics-notes', 'coding-report', 'cv', 'letter'].map((name) => [name, path.join(templates, name)]), ['stress document', path.join(stress, 'stress-latex')]];
+for (const [name, folder] of latexDocuments) {
+  test('the ' + name + ' goes LaTeX to Typst to LaTeX and comes back as it was', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
+    const trip = await roundTrip(folder, 'main.tex');
+    expectSame(await latexSummary(folder), await latexSummary(trip.back), trip, name);
+  });
+}
+
+const typstDocuments = [...['typst-document', 'typst-report', 'typst-maths-notes', 'typst-electronics-notes', 'typst-coding-report', 'typst-letter', 'typst-cv'].map((name) => [name, path.join(templates, name)]), ['Typst stress document', path.join(stress, 'stress-typst')]];
+for (const [name, folder] of typstDocuments) {
+  test('the ' + name + ' goes Typst to LaTeX to Typst and comes back as it was', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
+    const trip = await roundTrip(folder, 'main.typ');
+    expectSame(await typstSummary(folder), await typstSummary(trip.back), trip, name);
+  });
+}
+
+test('the stress document comes back with its pictures’ TikZ, code in a sentence, minipages, xltabular and comments', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
+  const { back } = await roundTrip(path.join(stress, 'stress-latex'), 'main.tex');
+  const latex = await fs.readFile(path.join(back, 'main.tex'), 'utf8');
+  assert.match(latex, /^\\usepackage\{standalone\}/m);
+  assert.match(latex, /\\begin\{figure\}\[ht\]\n  \\centering\n  \\begin\{tikzpicture\}\n    \\begin\{semilogxaxis\}/, 'the plot’s TikZ back in its figure');
+  assert.match(latex, /% sampled in powers of ten so the points spread evenly along the log axis/);
+  assert.match(latex, /\\includestandalone\[width=0\.6\\linewidth\]\{diagrams\/amp\}/);
+  assert.ok(!existsSync(path.join(back, 'diagrams', 'converted-1.pdf')) && existsSync(path.join(back, 'diagrams', 'amp.tex')), 'the PDFs made on the way are gone');
+  assert.match(latex, /\\lstinline\[language=Python\]\|heapq\.heappop\(queue\)\|,\nand a command is written \\verb\|\\cref\|\./);
+  assert.match(latex, /\\begin\{minipage\}\[t\]\{0\.48\\linewidth\}[\s\S]*\\label\{fig:left\}\n {4}\\end\{minipage\}\\hfill/);
+  assert.match(latex, /\\begin\{xltabular\}\{\\linewidth\}\{lX\}\n {4}\\caption\{Readings, in a table that may break across pages\.\}\\label\{tab:long\} \\\\/);
+  assert.match(latex, /\\begin\{threeparttable\}[\s\S]*Score\\tnote\{a\}[\s\S]*\\item\[a\] Averaged over five runs\./);
+  assert.match(latex, /\\cref\{tab:long\} may run across pages\.\n% a comment inside a paragraph stays in it\nIts heading rows/);
+  assert.match(latex, /% A comment on a line of its own comes over as a comment\./);
+});
+
+test('the report comes back with its class, title page and front matter numbered i, ii, iii', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
+  const { back } = await roundTrip(path.join(templates, 'report-thesis'), 'main.tex');
+  const latex = await fs.readFile(path.join(back, 'main.tex'), 'utf8');
+  assert.match(latex, /^\\documentclass\[11pt,a4paper\]\{report\}/);
+  assert.match(latex, /% The title page is numbered a, so its link target can’t clash with page 1 or page i\n\n\\pagenumbering\{alph\}\n\n\\begin\{titlepage\}/);
+  assert.match(latex, /\\end\{titlepage\}\n\n% Front matter is numbered i, ii, iii; chapter 1 starts again at 1\n\n\\pagenumbering\{roman\}/);
+  assert.match(latex, /\\listoffigures\n\n\\listoftables\n\n\\clearpage\n\\pagenumbering\{arabic\}/);
+});
+
+test('the Typst report comes back with its title page and the drawings it includes', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
+  const { first, back } = await roundTrip(path.join(templates, 'typst-report'), 'main.typ');
+  // there: the deterministic rules, without a record
+  const latex = await fs.readFile(path.join(first.staging, 'main.tex'), 'utf8');
+  assert.match(latex, /\\pagenumbering\{alph\}\n\n\\begin\{titlepage\}[\s\S]*\\end\{titlepage\}\n\n\\pagenumbering\{roman\}/);
+  const typst = await fs.readFile(path.join(back, 'main.typ'), 'utf8');
+  const source = await fs.readFile(path.join(templates, 'typst-report', 'main.typ'), 'utf8');
+  const titlePage = source.slice(source.indexOf('#align(center)['), source.indexOf('#set page(numbering: "i")')).trim();
+  assert.ok(typst.includes(titlePage), 'the title page as it was');
+  assert.match(typst, /#figure\(include "\/diagrams\/monthly\.typ", caption: \[Energy produced in each month of 2025\.\]\) <fig:monthly>/);
+});
+
+test('the Typst stress document’s drawings come back as the figure drew them', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
+  const { back } = await roundTrip(path.join(stress, 'stress-typst'), 'main.typ');
+  const typst = await fs.readFile(path.join(back, 'main.typ'), 'utf8');
+  assert.match(typst, /#figure\(include "\/diagrams\/divider\.typ", caption: \[A divider, drawn in plain Typst\.\]\) <fig:divider>/);
+  assert.match(typst, /#figure\(rect\(width: 40mm, height: 15mm, stroke: 0\.5pt, fill: luma\(240\)\), caption: \[A box drawn by the figure itself\.\]\) <fig:box>/);
+  assert.match(typst, /code in\na sentence reads `heapq\.heappop\(queue\)`/);
+});
+
+test('a project edited since it was converted comes back with its edits, the record matched where it still can be', { skip: skipLatex, timeout: 5 * 60 * 1000 }, async () => {
+  // the Typst report: its title page reworded, so the record's no longer matches and the rules write it
+  const report = mkdtempSync(path.join(tmp, 'edited-'));
+  await fs.cp((await convert(path.join(templates, 'report-thesis'))).staging, report, { recursive: true });
+  const typst = await fs.readFile(path.join(report, 'main.typ'), 'utf8');
+  await fs.writeFile(path.join(report, 'main.typ'), typst.replace('A thesis submitted in partial fulfilment', 'A report submitted in partial fulfilment'));
   const back = mkdtempSync(path.join(tmp, 'back-'));
-  const { checks } = await typstToLatex(typst, 'main.typ', back, { engine: 'auto' });
-  expectNothingLost(checks, 'round trip');
-  assert.deepEqual([checks.labels.source, checks.references.source, checks.citations.source, checks.equations.source], [32, 31, 9, 4]);
+  const { checks } = await typstToLatex(report, 'main.typ', back, { engine: 'auto' });
+  expectNothingLost(checks, 'edited report');
+  const latex = await fs.readFile(path.join(back, 'main.tex'), 'utf8');
+  assert.match(latex, /^\\documentclass\[11pt,a4paper\]\{report\}/);
+  assert.match(latex, /\\begin\{titlepage\}\n {2}\\centering\n {2}\\vspace\*\{30mm\}[\s\S]*A report submitted in partial fulfilment[\s\S]*\\end\{titlepage\}/);
+
+  // the stress document: one picture's TikZ edited, another's deleted, and a record from a Spectrum that wrote it oddly
+  const stressed = mkdtempSync(path.join(tmp, 'edited-'));
+  await fs.cp((await convert(path.join(stress, 'stress-latex'))).staging, stressed, { recursive: true });
+  const plot = path.join(stressed, 'diagrams', 'converted-1.tex');
+  await fs.writeFile(plot, (await fs.readFile(plot, 'utf8')).replace('samples=100', 'samples=50'));
+  await fs.rm(path.join(stressed, 'diagrams', 'converted-2.tex'));
+  const recordFile = path.join(stressed, '.spectrum', 'conversion.json');
+  const record = JSON.parse(await fs.readFile(recordFile, 'utf8'));
+  await fs.writeFile(recordFile, JSON.stringify({ ...record, regions: [{ kind: 'titlepage', file: 'main.typ', written: 'not in the file', source: '\\fail' }, { file: 'main.typ' }], inlineCode: [{ text: 5 }, null].filter(Boolean) }));
+  const stressBack = mkdtempSync(path.join(tmp, 'back-'));
+  const result = await typstToLatex(stressed, 'main.typ', stressBack, { engine: 'auto' });
+  expectNothingLost(result.checks, 'edited stress document');
+  const stressLatex = await fs.readFile(path.join(stressBack, 'main.tex'), 'utf8');
+  assert.match(stressLatex, /samples=50/, 'the edited TikZ');
+  assert.match(stressLatex, /\\includegraphics[^\n]*\{diagrams\/converted-2\.pdf\}/, 'a picture whose source is gone stays its PDF');
+  assert.doesNotMatch(stressLatex, /\\fail/);
+  assert.match(stressLatex, /\\lstinline\|heapq\.heappop\(queue\)\|/, 'code in a sentence by the rule, the record’s unreadable');
+});
+
+test('a composer flowchart is written again in the other language from its drawing, and back as it was', () => {
+  const tikz = { language: 'tikz', pkg: 'tikz', style: {}, version: 1, model: {
+    boxes: [{ id: 'n1', shape: 'rounded', x: 0, y: 0, w: 8, h: 4, text: 'Start' }, { id: 'n2', shape: 'maths', x: 16, y: 0, w: 6, h: 2, text: '\\mathbb{R}^2' }],
+    links: [{ id: 'e1', from: 'n1', to: 'n2', fromSide: 'r', toSide: 'l', route: 'straight', heads: 'end', label: 'maps' }]
+  } };
+  const file = flowchartFile(tikz, 'tikz');
+  assert.deepEqual(flowchartOf(file), tikz, 'a composer file reads back');
+  assert.equal(flowchartOf(file.replace('Start', 'Begin')), null, 'one edited by hand is no longer its drawing');
+  const typst = flowchartFor(tikz, 'typst', typstMaths);
+  assert.deepEqual([typst.language, typst.pkg, typst.model.boxes[1].text], ['typst', undefined, 'RR^2']);
+  const typ = flowchartFile(typst, 'typst');
+  assert.match(typ, /^#import "@preview\/fletcher:[\d.]+" as fletcher[\s\S]*node\(\(4\.75cm, -0\.25cm\), \[\$RR\^2\$\][\s\S]*\n\/\/ spectrum-diagram v1 \S+ [0-9a-f]{16}\n$/);
+  assert.equal(flowchartFor(typst, 'tikz'), null, 'Typst maths TeX can’t read keeps the picture a PDF');
+  const plain = { ...typst, model: { ...typst.model, boxes: [typst.model.boxes[0]] } };
+  assert.match(flowchartFile(flowchartFor(plain, 'tikz'), 'tikz'), /^\\documentclass\[border=2pt\]\{standalone\}\n\\usepackage\{tikz\}[\s\S]*\\node\[draw, rectangle, rounded corners/);
 });
