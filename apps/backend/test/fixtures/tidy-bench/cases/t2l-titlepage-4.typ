@@ -9,9 +9,13 @@ Region starts here.
   #v(40mm)
   #text(size: 24pt, weight: "bold", title())
   #v(10mm)
-  #text(size: 12pt)[Grampians, 3 to 5 April 2026]
+  #grid(
+    columns: (auto, auto),
+    column-gutter: 1em,
+    align(left)[*Student* \ Jack Wilson],
+    align(right)[*Teacher* \ Ms Ana Lopez],
+  )
   #v(1fr)
-  Jack Wilson \
   Year 11 Geography
 ]
 

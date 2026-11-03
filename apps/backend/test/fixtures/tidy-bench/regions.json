@@ -76,13 +76,12 @@
     "direction": "latex-to-typst",
     "difficulty": "typical",
     "original": "\\begin{minipage}[t]{0.6\\linewidth}\n{\\LARGE\\bfseries Sofia Rossi}\\\\\nData analyst, public health\n\\end{minipage}\\hfill\n\\begin{minipage}[t]{0.38\\linewidth}\n\\raggedleft\n\\href{mailto:sofia.rossi@example.org}{sofia.rossi@example.org}\\\\\n+61 401 234 567\\\\\nPerth, Australia\n\\end{minipage}",
-    "converted": "\n*Sofia Rossi* \\ Data analyst, public health\n\n#h(1fr)\n\n#link(\"mailto:sofia.rossi@example.org\")[sofia.rossi\\@example.org] \\ +61 401 234 567 \\ Perth, Australia\n",
+    "converted": "\n#text(size: 17pt, weight: \"bold\")[Sofia Rossi] \\ Data analyst, public health\n\n#h(1fr)\n\n#link(\"mailto:sofia.rossi@example.org\")[sofia.rossi\\@example.org] \\ +61 401 234 567 \\ Perth, Australia\n",
     "good": "#grid(columns: (1fr, auto), ...) with the name at 17 pt bold and the role on the left, and the email link, phone and city in align(right)[...]; the stray #h(1fr) paragraph goes.",
     "notes": [
-      "\\LARGE is not a command Spectrum knows, so it was left out.",
       "A CV header the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
-    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 10pt, lang: \"en\")               // 10 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=cv-header\n\n*Sofia Rossi* \\ Data analyst, public health\n\n#h(1fr)\n\n#link(\"mailto:sofia.rossi@example.org\")[sofia.rossi\\@example.org] \\ +61 401 234 567 \\ Perth, Australia\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Experience\n\nAnalyst, state health department, 2022 to now.\n"
+    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 10pt, lang: \"en\")               // 10 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=cv-header\n\n#text(size: 17pt, weight: \"bold\")[Sofia Rossi] \\ Data analyst, public health\n\n#h(1fr)\n\n#link(\"mailto:sofia.rossi@example.org\")[sofia.rossi\\@example.org] \\ +61 401 234 567 \\ Perth, Australia\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Experience\n\nAnalyst, state health department, 2022 to now.\n"
   },
   {
     "id": "l2t-cv-header-2",
@@ -91,13 +90,12 @@
     "direction": "latex-to-typst",
     "difficulty": "easy",
     "original": "\\begin{minipage}[t]{0.6\\linewidth}\n{\\Large\\bfseries Ethan Murphy}\\\\\nGraduate civil engineer\n\\end{minipage}\\hfill\n\\begin{minipage}[t]{0.38\\linewidth}\n\\raggedleft\nethan.murphy@example.com\\\\\n0400 111 222\n\\end{minipage}",
-    "converted": "\n*Ethan Murphy* \\ Graduate civil engineer\n\n#h(1fr)\n\nethan.murphy\\@example.com \\ 0400 111 222\n",
+    "converted": "\n#text(size: 14pt, weight: \"bold\")[Ethan Murphy] \\ Graduate civil engineer\n\n#h(1fr)\n\nethan.murphy\\@example.com \\ 0400 111 222\n",
     "good": "#grid(columns: (1fr, auto), [#text(size: 14pt, weight: \"bold\")[Ethan Murphy] \\ Graduate civil engineer], align(right)[ethan.murphy\\@example.com \\ 0400 111 222]), the rule card's layout.",
     "notes": [
-      "\\Large is not a command Spectrum knows, so it was left out.",
       "A CV header the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
-    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 10pt, lang: \"en\")               // 10 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=cv-header\n\n*Ethan Murphy* \\ Graduate civil engineer\n\n#h(1fr)\n\nethan.murphy\\@example.com \\ 0400 111 222\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Education\n\nBachelor of Engineering, 2025.\n"
+    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 10pt, lang: \"en\")               // 10 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=cv-header\n\n#text(size: 14pt, weight: \"bold\")[Ethan Murphy] \\ Graduate civil engineer\n\n#h(1fr)\n\nethan.murphy\\@example.com \\ 0400 111 222\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Education\n\nBachelor of Engineering, 2025.\n"
   },
   {
     "id": "l2t-cv-header-3",
@@ -120,13 +118,12 @@
     "direction": "latex-to-typst",
     "difficulty": "hard",
     "original": "\\begin{minipage}[b]{0.65\\linewidth}\n{\\huge\\bfseries Dr Grace Okafor}\\\\[2pt]\nHydrologist; author of \\textcite{Okafor2021}\n\\end{minipage}\\hfill\n\\begin{minipage}[b]{0.33\\linewidth}\n\\raggedleft\ng.okafor@example.edu.au\\\\\nHobart, Tasmania\n\\end{minipage}",
-    "converted": "\n*Dr Grace Okafor* \\ Hydrologist; author of #cite(<Okafor2021>, form: \"prose\")\n\n#h(1fr)\n\ng.okafor\\@example.edu.au \\ Hobart, Tasmania\n",
+    "converted": "\n#text(size: 21pt, weight: \"bold\")[Dr Grace Okafor] \\ Hydrologist; author of #cite(<Okafor2021>, form: \"prose\")\n\n#h(1fr)\n\ng.okafor\\@example.edu.au \\ Hobart, Tasmania\n",
     "good": "The rule card's #grid, the name at 21 pt bold (\\huge) and the citation #cite(<Okafor2021>, form: \"prose\") exactly as converted; both sides aligned at the bottom (the [b] minipages) is a bonus.",
     "notes": [
-      "\\huge is not a command Spectrum knows, so it was left out.",
       "A CV header the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
-    "document": "// References\n#set bibliography(title: [References])          // APA heads the list References, not Bibliography\n\n// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 10pt, lang: \"en\")               // 10 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=cv-header\n\n*Dr Grace Okafor* \\ Hydrologist; author of #cite(<Okafor2021>, form: \"prose\")\n\n#h(1fr)\n\ng.okafor\\@example.edu.au \\ Hobart, Tasmania\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Books\n\nOne field guide.\n\n#bibliography(\"refs.bib\", style: \"apa\")\n"
+    "document": "// References\n#set bibliography(title: [References])          // APA heads the list References, not Bibliography\n\n// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 10pt, lang: \"en\")               // 10 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=cv-header\n\n#text(size: 21pt, weight: \"bold\")[Dr Grace Okafor] \\ Hydrologist; author of #cite(<Okafor2021>, form: \"prose\")\n\n#h(1fr)\n\ng.okafor\\@example.edu.au \\ Hobart, Tasmania\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Books\n\nOne field guide.\n\n#bibliography(\"refs.bib\", style: \"apa\")\n"
   },
   {
     "id": "l2t-unknown-environment-1",
@@ -139,7 +136,7 @@
     "good": "#block(inset: 0.6em, stroke: 0.5pt + luma(180))[Rinse each probe ... next site.] with the sentence unchanged.",
     "notes": [
       "The environment tcolorbox is not one Spectrum knows; its text was kept as plain paragraphs.",
-      "A unknown environment the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
+      "An unknown environment the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
     "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-environment\n// TODO(spectrum): The environment tcolorbox is not one Spectrum knows; its text was kept as plain paragraphs.\n\nRinse each probe in clean water before you move to the next site.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Sites\n\nThere are six sites.\n"
   },
@@ -154,7 +151,7 @@
     "good": "The same #block round the sentence, keeping _volumetric_ and the maths $theta$, $0$ and $0.5$ exactly.",
     "notes": [
       "The environment mdframed is not one Spectrum knows; its text was kept as plain paragraphs.",
-      "A unknown environment the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
+      "An unknown environment the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
     "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-environment\n// TODO(spectrum): The environment mdframed is not one Spectrum knows; its text was kept as plain paragraphs.\n\nThe probe reads _volumetric_ water content $theta$, which ranges from $0$ to about $0.5$ in clay.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Calibration\n\nWe used five soil samples.\n"
   },
@@ -163,32 +160,29 @@
     "region": "r1",
     "kind": "unknown-environment",
     "direction": "latex-to-typst",
-    "difficulty": "hard",
+    "difficulty": "typical",
     "original": "\\begin{checklist}\n\\item Charge the logger\n\\item Pack spare cable ties\n\\item Tell the landholder you are coming\n\\end{checklist}",
-    "converted": "// TODO(spectrum): The environment checklist is defined by this document; check how its text came out.\n\n$square$\n\nCharge the logger\n\nPack spare cable ties\n\nTell the landholder you are coming\n",
-    "good": "A Typst list of the three items. The stray $square$ paragraph was the list's marker, so #list(marker: $square$, [Charge the logger], [Pack spare cable ties], [Tell the landholder you are coming]) keeps it.",
+    "converted": "// TODO(spectrum): The environment checklist is defined by this document; check how its text came out.\n\n- Charge the logger\n- Pack spare cable ties\n- Tell the landholder you are coming\n",
+    "good": "The three items are already a list; the checkbox the document drew as its marker comes back with #list(marker: [$square$], [Charge the logger], [Pack spare cable ties], [Tell the landholder you are coming]), or a #set list(marker: ...) around it.",
     "notes": [
-      "\\bgroup is not a command Spectrum knows, so it was left out.",
-      "The environment list is not one Spectrum knows; its text was kept as plain paragraphs.",
-      "\\egroup is not a command Spectrum knows, so it was left out.",
-      "A unknown environment the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
+      "An unknown environment the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
-    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-environment\n// TODO(spectrum): The environment checklist is defined by this document; check how its text came out.\n\n$square$\n\nCharge the logger\n\nPack spare cable ties\n\nTell the landholder you are coming\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= On site\n\nStart at the north gate.\n"
+    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-environment\n// TODO(spectrum): The environment checklist is defined by this document; check how its text came out.\n\n- Charge the logger\n- Pack spare cable ties\n- Tell the landholder you are coming\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= On site\n\nStart at the north gate.\n"
   },
   {
     "id": "l2t-unknown-environment-4",
     "region": "r1",
     "kind": "unknown-environment",
     "direction": "latex-to-typst",
-    "difficulty": "hard",
-    "original": "\\begin{multicols}{2}\nThe survey covered twelve farms across the Wimmera. Each farm had three probes at 10, 30 and 60 centimetres. Readings were logged every hour from March to October.\n\\end{multicols}",
-    "converted": "// TODO(spectrum): The environment multicols is not one Spectrum knows; its text was kept as plain paragraphs.\n\n2\nThe survey covered twelve farms across the Wimmera. Each farm had three probes at 10, 30 and 60 centimetres. Readings were logged every hour from March to October.\n",
-    "good": "#columns(2)[...] round the paragraph, which also removes the stray 2 (the column count, read as text). SKIP is acceptable.",
+    "difficulty": "typical",
+    "original": "\\begin{adjustwidth}{1cm}{1cm}\nReadings were logged every hour from March to October, and each logger was checked when its battery was changed.\n\\end{adjustwidth}",
+    "converted": "// TODO(spectrum): The environment adjustwidth is not one Spectrum knows; its text was kept as plain paragraphs.\n\nReadings were logged every hour from March to October, and each logger was checked when its battery was changed.\n",
+    "good": "adjustwidth indented the paragraph 1 cm on both sides: #pad(x: 1cm)[...] round the sentence, its words unchanged.",
     "notes": [
-      "The environment multicols is not one Spectrum knows; its text was kept as plain paragraphs.",
-      "A unknown environment the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
+      "The environment adjustwidth is not one Spectrum knows; its text was kept as plain paragraphs.",
+      "An unknown environment the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
-    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-environment\n// TODO(spectrum): The environment multicols is not one Spectrum knows; its text was kept as plain paragraphs.\n\n2\nThe survey covered twelve farms across the Wimmera. Each farm had three probes at 10, 30 and 60 centimetres. Readings were logged every hour from March to October.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Results\n\nThe deep probes changed least.\n"
+    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-environment\n// TODO(spectrum): The environment adjustwidth is not one Spectrum knows; its text was kept as plain paragraphs.\n\nReadings were logged every hour from March to October, and each logger was checked when its battery was changed.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Results\n\nThe deep probes changed least.\n"
   },
   {
     "id": "l2t-unknown-environment-5",
@@ -201,7 +195,7 @@
     "good": "The #block round the sentence, with @Nguyen2024 and @sec:probes exactly as written.",
     "notes": [
       "The environment framed is not one Spectrum knows; its text was kept as plain paragraphs.",
-      "A unknown environment the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
+      "An unknown environment the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
     "document": "// References\n#set bibliography(title: [References])          // APA heads the list References, not Bibliography\n\n// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\n= Probes <sec:probes>\n\nTwo kinds of probe were used.\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-environment\n// TODO(spectrum): The environment framed is not one Spectrum knows; its text was kept as plain paragraphs.\n\nCapacitive probes drift in heavy clay @Nguyen2024, so recalibrate them each season as @sec:probes describes.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n#bibliography(\"refs.bib\", style: \"apa\")\n"
   },
@@ -216,7 +210,7 @@
     "good": "#block(inset: 0.6em, stroke: 0.5pt + luma(180))[Do not leave the logger in direct sun.]",
     "notes": [
       "The environment shaded is not one Spectrum knows; its text was kept as plain paragraphs.",
-      "A unknown environment the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
+      "An unknown environment the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
     "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-environment\n// TODO(spectrum): The environment shaded is not one Spectrum knows; its text was kept as plain paragraphs.\n\nDo not leave the logger in direct sun.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Storage\n\nKeep it in the shed.\n"
   },
@@ -225,17 +219,14 @@
     "region": "r1",
     "kind": "unknown-environment",
     "direction": "latex-to-typst",
-    "difficulty": "hard",
+    "difficulty": "skip",
     "original": "\\begin{steps}\n\\item Dig a hole 60 centimetres deep.\n\\item Push the probe into the side wall.\n\\item Backfill in the order the soil came out.\n\\end{steps}",
-    "converted": "// TODO(spectrum): The environment steps is defined by this document; check how its text came out.\n\n.\n\nDig a hole 60 centimetres deep.\n\nPush the probe into the side wall.\n\nBackfill in the order the soil came out.\n",
-    "good": "A numbered Typst list (+ Dig a hole ..., + Push the probe ..., + Backfill ...); the stray . paragraph, which was the list's label, goes.",
+    "converted": "// TODO(spectrum): The environment steps is defined by this document; check how its text came out.\n\n+ Dig a hole 60 centimetres deep.\n+ Push the probe into the side wall.\n+ Backfill in the order the soil came out.\n",
+    "good": "The steps are already a numbered Typst list, and the document’s label (1., 2., 3.) is Typst’s own. SKIP.",
     "notes": [
-      "\\bgroup is not a command Spectrum knows, so it was left out.",
-      "The environment list is not one Spectrum knows; its text was kept as plain paragraphs.",
-      "\\egroup is not a command Spectrum knows, so it was left out.",
-      "A unknown environment the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
+      "An unknown environment the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
-    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-environment\n// TODO(spectrum): The environment steps is defined by this document; check how its text came out.\n\n.\n\nDig a hole 60 centimetres deep.\n\nPush the probe into the side wall.\n\nBackfill in the order the soil came out.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Logging\n\nSet the interval to one hour.\n"
+    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-environment\n// TODO(spectrum): The environment steps is defined by this document; check how its text came out.\n\n+ Dig a hole 60 centimetres deep.\n+ Push the probe into the side wall.\n+ Backfill in the order the soil came out.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Logging\n\nSet the interval to one hour.\n"
   },
   {
     "id": "l2t-unknown-command-1",
@@ -258,14 +249,14 @@
     "kind": "unknown-command",
     "direction": "latex-to-typst",
     "difficulty": "hard",
-    "original": "Press the \\fbox{Reset} button once, then wait for the green light.",
-    "converted": "// TODO(spectrum): \\fbox is not a command Spectrum knows; check this paragraph.\n\nPress the button once, then wait for the green light.\n",
-    "good": "\\fbox boxed the word Reset, and the converter lost the word. A good answer puts it back as #box(stroke: 0.5pt, inset: 2pt)[Reset]; a check that compares with the converted words rejects that, and then SKIP is the answer.",
+    "original": "The label \\rotatebox{90}{Inlet} runs up the side of the pipe, so read it with your head tilted.",
+    "converted": "// TODO(spectrum): \\rotatebox is not a command Spectrum knows; check this paragraph.\n\nThe label Inlet runs up the side of the pipe, so read it with your head tilted.\n",
+    "good": "\\rotatebox{90} turned Inlet to read upwards: #box(rotate(-90deg, reflow: true)[Inlet]) in its place, the rest of the sentence unchanged.",
     "notes": [
-      "\\fbox is not a command Spectrum knows, so it was left out.",
+      "\\rotatebox is not a command Spectrum knows, so only its text was kept.",
       "A paragraph with an unknown command the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
-    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-command\n// TODO(spectrum): \\fbox is not a command Spectrum knows; check this paragraph.\n\nPress the button once, then wait for the green light.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Errors\n\nA red light means a flat battery.\n"
+    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-command\n// TODO(spectrum): \\rotatebox is not a command Spectrum knows; check this paragraph.\n\nThe label Inlet runs up the side of the pipe, so read it with your head tilted.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Outlets\n\nThe outlet has no label.\n"
   },
   {
     "id": "l2t-unknown-command-3",
@@ -288,14 +279,14 @@
     "kind": "unknown-command",
     "direction": "latex-to-typst",
     "difficulty": "skip",
-    "original": "The samples were dried before testing for \\ce{NO3-} and \\ce{PO4^3-} in the run-off.",
-    "converted": "// TODO(spectrum): \\ce is not a command Spectrum knows; check this paragraph.\n\nThe samples were dried before testing for and in the run-off.\n",
-    "good": "\\ce wrote two chemical formulas, which the converter dropped. Putting NO₃⁻ and PO₄³⁻ back adds text the region no longer has, so SKIP and let the author fix it.",
+    "original": "\\sethlcolor{yellow}Check the \\hl{drain valve} before each run, and close it again afterwards.",
+    "converted": "// TODO(spectrum): \\sethlcolor is not a command Spectrum knows; check this paragraph.\n\nCheck the #highlight[drain valve] before each run, and close it again afterwards.\n",
+    "good": "\\sethlcolor{yellow} only chose the colour, and Typst’s #highlight is yellow already, so the converted sentence is right. SKIP.",
     "notes": [
-      "\\ce is not a command Spectrum knows, so it was left out.",
+      "\\sethlcolor is not a command Spectrum knows, so it was left out.",
       "A paragraph with an unknown command the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
-    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-command\n// TODO(spectrum): \\ce is not a command Spectrum knows; check this paragraph.\n\nThe samples were dried before testing for and in the run-off.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Nutrients\n\nNitrate was highest after rain.\n"
+    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-command\n// TODO(spectrum): \\sethlcolor is not a command Spectrum knows; check this paragraph.\n\nCheck the #highlight[drain valve] before each run, and close it again afterwards.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Pumps\n\nPrime the pump by hand.\n"
   },
   {
     "id": "l2t-unknown-command-5",
@@ -303,14 +294,16 @@
     "kind": "unknown-command",
     "direction": "latex-to-typst",
     "difficulty": "typical",
-    "original": "The logger stores a year of hourly readings {\\small (about 9000 rows per probe)} on its card.",
-    "converted": "// TODO(spectrum): \\small is not a command Spectrum knows; check this paragraph.\n\nThe logger stores a year of hourly readings \\(about 9000 rows per probe) on its card.\n",
-    "good": "#text(size: 0.9em)[(about 9000 rows per probe)] in place of the bracket, and the stray backslash before it goes.",
+    "original": "\\faEnvelope\\ mia.walker@example.com \\quad \\faPhone\\ 0412 777 888 \\quad \\faMapMarker\\ Geelong, Victoria",
+    "converted": "// TODO(spectrum): \\faEnvelope is not a command Spectrum knows; check this paragraph.\n\n~mia.walker\\@example.com #h(1em) ~0412 777 888 #h(1em) ~Geelong, Victoria\n",
+    "good": "The Font Awesome icons are gone. Keep the three contacts with #h(1em) between them; plain symbols such as ✉ and ☎ before the email and phone are a bonus, and no package is loaded.",
     "notes": [
-      "\\small is not a command Spectrum knows, so it was left out.",
+      "\\faEnvelope is not a command Spectrum knows, so it was left out.",
+      "\\faPhone is not a command Spectrum knows, so it was left out.",
+      "\\faMapMarker is not a command Spectrum knows, so it was left out.",
       "A paragraph with an unknown command the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
-    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-command\n// TODO(spectrum): \\small is not a command Spectrum knows; check this paragraph.\n\nThe logger stores a year of hourly readings \\(about 9000 rows per probe) on its card.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Downloads\n\nCopy the card each month.\n"
+    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 10pt, lang: \"en\")               // 10 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-command\n// TODO(spectrum): \\faEnvelope is not a command Spectrum knows; check this paragraph.\n\n~mia.walker\\@example.com #h(1em) ~0412 777 888 #h(1em) ~Geelong, Victoria\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Experience\n\nSite engineer, 2023 to now.\n"
   },
   {
     "id": "l2t-unknown-command-6",
@@ -332,15 +325,15 @@
     "region": "r1",
     "kind": "unknown-command",
     "direction": "latex-to-typst",
-    "difficulty": "hard",
-    "original": "The label on the box reads \\so{FRAGILE} in red, and the courier ignored it.",
-    "converted": "// TODO(spectrum): \\so is not a command Spectrum knows; check this paragraph.\n\nThe label on the box reads in red, and the courier ignored it.\n",
-    "good": "\\so letter-spaced FRAGILE, and the converter lost the word. A good answer puts back #text(tracking: 0.15em)[FRAGILE]; if added words are rejected, SKIP.",
+    "difficulty": "typical",
+    "original": "The sign on the gate says \\scalebox{1.5}{Danger} in red, and nobody may enter the pit alone.",
+    "converted": "// TODO(spectrum): \\scalebox is not a command Spectrum knows; check this paragraph.\n\nThe sign on the gate says Danger in red, and nobody may enter the pit alone.\n",
+    "good": "\\scalebox{1.5} made Danger half as big again: #text(size: 1.5em)[Danger] (or #scale(150%, reflow: true)[Danger]), the rest unchanged.",
     "notes": [
-      "\\so is not a command Spectrum knows, so it was left out.",
+      "\\scalebox is not a command Spectrum knows, so only its text was kept.",
       "A paragraph with an unknown command the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
-    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-command\n// TODO(spectrum): \\so is not a command Spectrum knows; check this paragraph.\n\nThe label on the box reads in red, and the courier ignored it.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Claims\n\nWe claimed for two probes.\n"
+    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-command\n// TODO(spectrum): \\scalebox is not a command Spectrum knows; check this paragraph.\n\nThe sign on the gate says Danger in red, and nobody may enter the pit alone.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Access\n\nSign in at the site office.\n"
   },
   {
     "id": "l2t-unknown-command-8",
@@ -348,14 +341,14 @@
     "kind": "unknown-command",
     "direction": "latex-to-typst",
     "difficulty": "easy",
-    "original": "{\\Large\\bfseries Ethan Murphy} \\hfill ethan.murphy@example.com\\\\\nGraduate civil engineer \\hfill 0400 111 222",
-    "converted": "// TODO(spectrum): \\Large is not a command Spectrum knows; check this paragraph.\n\n*Ethan Murphy* #h(1fr) ethan.murphy\\@example.com \\ Graduate civil engineer #h(1fr) 0400 111 222\n",
-    "good": "A CV header the converter flagged for its size command. #grid(columns: (1fr, auto), [#text(size: 14pt, weight: \"bold\")[Ethan Murphy] \\ Graduate civil engineer], align(right)[ethan.murphy\\@example.com \\ 0400 111 222]). The \\Large name came through as plain bold.",
+    "original": "Site C\\dag{} was dry on every visit, so its readings are left out of the averages.",
+    "converted": "// TODO(spectrum): \\dag is not a command Spectrum knows; check this paragraph.\n\nSite C was dry on every visit, so its readings are left out of the averages.\n",
+    "good": "\\dag printed a dagger after Site C: Site C† was dry ..., with nothing else changed.",
     "notes": [
-      "\\Large is not a command Spectrum knows, so it was left out.",
+      "\\dag is not a command Spectrum knows, so it was left out.",
       "A paragraph with an unknown command the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
-    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 10pt, lang: \"en\")               // 10 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-command\n// TODO(spectrum): \\Large is not a command Spectrum knows; check this paragraph.\n\n*Ethan Murphy* #h(1fr) ethan.murphy\\@example.com \\ Graduate civil engineer #h(1fr) 0400 111 222\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Education\n\nBachelor of Engineering, 2025.\n"
+    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-command\n// TODO(spectrum): \\dag is not a command Spectrum knows; check this paragraph.\n\nSite C was dry on every visit, so its readings are left out of the averages.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Averages\n\nThe mean moisture was 0.29.\n"
   },
   {
     "id": "l2t-unknown-command-9",
@@ -363,46 +356,44 @@
     "kind": "unknown-command",
     "direction": "latex-to-typst",
     "difficulty": "typical",
-    "original": "{\\LARGE\\bfseries Dr Kwame Mensah}\\\\[3pt]\nResearch fellow in hydrology, Example University\\\\\n\\href{mailto:k.mensah@example.edu.au}{k.mensah@example.edu.au} \\quad\nORCID \\href{https://orcid.org/0000-0001-2345-6789}{0000-0001-2345-6789} \\quad\n\\href{https://example.edu.au/mensah}{example.edu.au/mensah}",
-    "converted": "// TODO(spectrum): \\LARGE is not a command Spectrum knows; check this paragraph.\n\n*Dr Kwame Mensah* \\ Research fellow in hydrology, Example University \\ #link(\"mailto:k.mensah@example.edu.au\")[k.mensah\\@example.edu.au]\nORCID #link(\"https://orcid.org/0000-0001-2345-6789\")[0000-0001-2345-6789]\n#link(\"https://example.edu.au/mensah\")[example.edu.au/mensah]\n",
-    "good": "A CV header the converter flagged for its size command. Not a left and right header. The name at 17 pt bold, the role line, then the three contacts on one line with #h(1em) between them (the \\quad), each link exactly as written.",
+    "original": "\\cvitem{Languages}{English and Vietnamese, both fluent}",
+    "converted": "// TODO(spectrum): \\cvitem is not a command Spectrum knows; check this paragraph.\n\nLanguages English and Vietnamese, both fluent\n",
+    "good": "moderncv’s \\cvitem set Languages as a label on the left: #grid(columns: (auto, 1fr), column-gutter: 1em, [*Languages*], [English and Vietnamese, both fluent]) or a term list (/ Languages: ...); both words stay.",
     "notes": [
-      "\\LARGE is not a command Spectrum knows, so it was left out.",
-      "\\quad is not a command Spectrum knows, so it was left out.",
+      "\\cvitem is not a command Spectrum knows, so only its text was kept.",
       "A paragraph with an unknown command the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
-    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 10pt, lang: \"en\")               // 10 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-command\n// TODO(spectrum): \\LARGE is not a command Spectrum knows; check this paragraph.\n\n*Dr Kwame Mensah* \\ Research fellow in hydrology, Example University \\ #link(\"mailto:k.mensah@example.edu.au\")[k.mensah\\@example.edu.au]\nORCID #link(\"https://orcid.org/0000-0001-2345-6789\")[0000-0001-2345-6789]\n#link(\"https://example.edu.au/mensah\")[example.edu.au/mensah]\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Research interests\n\nGroundwater recharge in dry country.\n"
+    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-command\n// TODO(spectrum): \\cvitem is not a command Spectrum knows; check this paragraph.\n\nLanguages English and Vietnamese, both fluent\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Interests\n\nRock climbing and choir.\n"
   },
   {
     "id": "l2t-unknown-command-10",
     "region": "r1",
     "kind": "unknown-command",
     "direction": "latex-to-typst",
-    "difficulty": "typical",
-    "original": "\\noindent\n\\parbox[t]{0.6\\linewidth}{{\\Large\\bfseries Chloe Bennett}\\\\ Primary school teacher}\\hfill\n\\parbox[t]{0.35\\linewidth}{\\raggedleft chloe.bennett@example.com\\\\ 0412 345 678\\\\ Ballarat, Victoria}",
-    "converted": "// TODO(spectrum): \\Large is not a command Spectrum knows; check this paragraph.\n\n*Chloe Bennett* \\ Primary school teacher\n\n#h(1fr)\n\nchloe.bennett\\@example.com \\ 0412 345 678 \\ Ballarat, Victoria\n",
-    "good": "A CV header the converter flagged for its size command. #grid(columns: (1fr, auto), [#text(size: 14pt, weight: \"bold\")[Chloe Bennett] \\ Primary school teacher], align(right)[the email \\ the phone \\ Ballarat, Victoria]); the stray #h(1fr) paragraph goes.",
+    "difficulty": "hard",
+    "original": "\\lettrine{T}{he} survey began in March, when the creek was at its lowest for ten years.",
+    "converted": "// TODO(spectrum): \\lettrine is not a command Spectrum knows; check this paragraph.\n\nT he survey began in March, when the creek was at its lowest for ten years.\n",
+    "good": "\\lettrine made a large initial T: #text(size: 2em)[T]he survey began ... with no space between T and he; the rest of the sentence unchanged.",
     "notes": [
-      "\\Large is not a command Spectrum knows, so it was left out.",
+      "\\lettrine is not a command Spectrum knows, so only its text was kept.",
       "A paragraph with an unknown command the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
-    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 10pt, lang: \"en\")               // 10 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-command\n// TODO(spectrum): \\Large is not a command Spectrum knows; check this paragraph.\n\n*Chloe Bennett* \\ Primary school teacher\n\n#h(1fr)\n\nchloe.bennett\\@example.com \\ 0412 345 678 \\ Ballarat, Victoria\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Teaching\n\nYear 3 and 4, 2019 to now.\n"
+    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-command\n// TODO(spectrum): \\lettrine is not a command Spectrum knows; check this paragraph.\n\nT he survey began in March, when the creek was at its lowest for ten years.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Method\n\nWe walked the creek once a week.\n"
   },
   {
     "id": "l2t-unknown-command-11",
     "region": "r1",
     "kind": "unknown-command",
     "direction": "latex-to-typst",
-    "difficulty": "typical",
-    "original": "\\begin{center}\n{\\huge\\bfseries Isaac Lee}\\\\[2mm]\nisaac.lee@example.com \\textbar{} 0433 222 111 \\textbar{} Darwin\n\\end{center}",
-    "converted": "// TODO(spectrum): \\huge is not a command Spectrum knows; check this paragraph.\n\n#align(center)[\n*Isaac Lee* \\ isaac.lee\\@example.com 0433 222 111 Darwin\n\n]",
-    "good": "A CV header the converter flagged for its size command. A centred header, so #align(center) stays: the name at 21 pt bold (\\huge), the | separators between the three contacts restored, and no empty line before the closing bracket.",
+    "difficulty": "easy",
+    "original": "Both pumps passed \\ding{51} on the first test, and the spare passed on the second.",
+    "converted": "// TODO(spectrum): \\ding is not a command Spectrum knows; check this paragraph.\n\nBoth pumps passed on the first test, and the spare passed on the second.\n",
+    "good": "\\ding{51} is a tick: Both pumps passed ✓ on the first test ..., with nothing else changed.",
     "notes": [
-      "\\huge is not a command Spectrum knows, so it was left out.",
-      "\\textbar is not a command Spectrum knows, so it was left out.",
+      "\\ding is not a command Spectrum knows, so it was left out.",
       "A paragraph with an unknown command the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
-    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 10pt, lang: \"en\")               // 10 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-command\n// TODO(spectrum): \\huge is not a command Spectrum knows; check this paragraph.\n\n#align(center)[\n*Isaac Lee* \\ isaac.lee\\@example.com 0433 222 111 Darwin\n\n]\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Skills\n\nWelding, first aid, heavy rigid licence.\n"
+    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-command\n// TODO(spectrum): \\ding is not a command Spectrum knows; check this paragraph.\n\nBoth pumps passed on the first test, and the spare passed on the second.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Spares\n\nKeep the spare in the shed.\n"
   },
   {
     "id": "l2t-unknown-command-12",
@@ -411,13 +402,13 @@
     "direction": "latex-to-typst",
     "difficulty": "hard",
     "original": "The second logger failed on 12 June\\marginpar{replaced under warranty} and was sent back to the maker.",
-    "converted": "// TODO(spectrum): \\marginpar is not a command Spectrum knows; check this paragraph.\n\nThe second logger failed on 12 Junereplaced under warranty and was sent back to the maker.\n",
-    "good": "The margin note ran into the word before it (Junereplaced). A good answer separates them, for example 12 June (replaced under warranty); a word check that keeps every converted word rejects that, and then SKIP is the answer.",
+    "converted": "// TODO(spectrum): \\marginpar is not a command Spectrum knows; check this paragraph.\n\nThe second logger failed on 12 June replaced under warranty and was sent back to the maker.\n",
+    "good": "The margin note’s text follows June as part of the sentence. A good answer marks it as an aside, for example 12 June (replaced under warranty) or 12 June#footnote[Replaced under warranty.]; SKIP is acceptable, as Typst has no margin notes of its own.",
     "notes": [
       "\\marginpar is not a command Spectrum knows, so only its text was kept.",
       "A paragraph with an unknown command the rules only approximated, marked r1 in main.typ for tidying by hand or with the AI model."
     ],
-    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-command\n// TODO(spectrum): \\marginpar is not a command Spectrum knows; check this paragraph.\n\nThe second logger failed on 12 Junereplaced under warranty and was sent back to the maker.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Repairs\n\nThe maker replaced it within a week.\n"
+    "document": "// Page\n#set page(paper: \"a4\", margin: 25mm, numbering: \"1\") // A4, 25 mm margins all round, page numbers at the foot\n#set text(size: 11pt, lang: \"en\")               // 11 pt text; the LaTeX's language\n#set par(justify: true)                         // straight right margins, as LaTeX sets them\n#set heading(numbering: \"1.1\")                  // numbered headings: 1, 1.1, 1.1.1\n\nRegion starts here.\n\n// spectrum:region r1 start kind=unknown-command\n// TODO(spectrum): \\marginpar is not a command Spectrum knows; check this paragraph.\n\nThe second logger failed on 12 June replaced under warranty and was sent back to the maker.\n\n// spectrum:region r1 end\n\nRegion ends here.\n\n= Repairs\n\nThe maker replaced it within a week.\n"
   },
   {
     "id": "l2t-table-layout-1",
@@ -509,13 +500,13 @@
     "kind": "titlepage",
     "direction": "typst-to-latex",
     "difficulty": "typical",
-    "original": "#align(center + horizon)[\n  #text(size: 20pt, weight: \"bold\", title()) \\\n  #v(8mm)\n  #text(style: \"italic\")[Notes from a season of hive checks] \\\n  #v(8mm)\n  Amelia Scott \\\n  Beekeepers' Club field notes, 2026\n]",
-    "converted": "\\begin{titlepage}\n  \\centering\n  {\\huge\\bfseries Bees on the Mornington Peninsula\\par}\n  \\vspace{8mm}\n  {\\itshape Notes from a season of hive checks\\par}\n  \\vspace{8mm}\n  Amelia Scott\\par\n  Beekeepers' Club field notes, 2026\\par\n\\end{titlepage}",
-    "good": "align(center + horizon) centres the block down the page, so \\vspace*{\\fill} at the top and \\vfill at the foot; the rest is right.",
+    "original": "#align(center + horizon)[\n  #rect(width: 100%, inset: 12pt, stroke: 0.8pt)[\n    #text(size: 20pt, weight: \"bold\", title())\n  ]\n  #v(8mm)\n  #text(style: \"italic\")[Notes from a season of hive checks] \\\n  Amelia Scott\n]",
+    "converted": "\\begin{titlepage}\n  \\centering\n  \\vspace*{\\fill}\n  {\\LARGE\\bfseries Bees on the Mornington Peninsula\\par}\n  \\vspace{8mm}\n  {\\itshape Notes from a season of hive checks\\par}\n  Amelia Scott\\par\n  \\vspace*{\\fill}\n\\end{titlepage}",
+    "good": "The title sat in a framed box: \\fbox{\\parbox{\\linewidth}{\\centering ...}} (or \\framebox) round the title line, at \\huge (20 pt) bold; the vertical centring and the rest stay.",
     "notes": [
       "A title page the rules only approximated, marked r1 in main.tex for tidying by hand or with the AI model."
     ],
-    "document": "\\documentclass[11pt,a4paper]{article}   % 11 pt text on A4 paper\n\n% Page\n\\usepackage[margin=25mm]{geometry}      % 25 mm margins all round\n\\usepackage{parskip}                    % a blank line between paragraphs instead of an indent\n\\usepackage[australian]{babel}          % Australian hyphenation, and \\today as 17 October 2026\n\\usepackage{iftex}                      % tells which TeX engine is running\n\\ifPDFTeX                               % for pdfLaTeX only:\n  \\usepackage[T1]{fontenc}              % proper accented letters, and text that copies cleanly from the PDF\n  \\usepackage{lmodern}                  % Latin Modern, a crisp scalable version of the default font\n\\fi                                     % XeLaTeX, LuaLaTeX and Tectonic already use Unicode fonts\n\\usepackage{microtype}                  % small spacing tweaks so lines break more evenly\n\n% Maths\n\\usepackage{amsmath}                    % align, cases, matrices and \\text inside maths\n\\usepackage{amssymb}                    % extra symbols such as \\mathbb{R}\n\n% Links\n\\usepackage[hidelinks]{hyperref}        % clickable cross-references and citations, without coloured boxes\n\\hypersetup{                            % details shown in the PDF viewer's document properties\n  pdftitle  = {Bees on the Mornington Peninsula},\n  pdfauthor = {},\n  pdflang   = {en-AU}\n}\n\\usepackage[capitalise,noabbrev]{cleveref} % \\cref{fig:x} writes \"Figure 1.1\" for you; load after hyperref\n\n\\title{Bees on the Mornington Peninsula}\n\n\\begin{document}\n\nRegion starts here.\n\n\\pagenumbering{alph}\n\n% spectrum:region r1 start kind=titlepage\n\\begin{titlepage}\n  \\centering\n  {\\huge\\bfseries Bees on the Mornington Peninsula\\par}\n  \\vspace{8mm}\n  {\\itshape Notes from a season of hive checks\\par}\n  \\vspace{8mm}\n  Amelia Scott\\par\n  Beekeepers' Club field notes, 2026\\par\n\\end{titlepage}\n% spectrum:region r1 end\n\nRegion ends here.\n\n\\clearpage\n\\pagenumbering{arabic}\n\n\\section{Hives}\n\nWe checked forty hives.\n\n\\end{document}\n"
+    "document": "\\documentclass[11pt,a4paper]{article}   % 11 pt text on A4 paper\n\n% Page\n\\usepackage[margin=25mm]{geometry}      % 25 mm margins all round\n\\usepackage{parskip}                    % a blank line between paragraphs instead of an indent\n\\usepackage[australian]{babel}          % Australian hyphenation, and \\today as 17 October 2026\n\\usepackage{iftex}                      % tells which TeX engine is running\n\\ifPDFTeX                               % for pdfLaTeX only:\n  \\usepackage[T1]{fontenc}              % proper accented letters, and text that copies cleanly from the PDF\n  \\usepackage{lmodern}                  % Latin Modern, a crisp scalable version of the default font\n\\fi                                     % XeLaTeX, LuaLaTeX and Tectonic already use Unicode fonts\n\\usepackage{microtype}                  % small spacing tweaks so lines break more evenly\n\n% Maths\n\\usepackage{amsmath}                    % align, cases, matrices and \\text inside maths\n\\usepackage{amssymb}                    % extra symbols such as \\mathbb{R}\n\n% Links\n\\usepackage[hidelinks]{hyperref}        % clickable cross-references and citations, without coloured boxes\n\\hypersetup{                            % details shown in the PDF viewer's document properties\n  pdftitle  = {Bees on the Mornington Peninsula},\n  pdfauthor = {},\n  pdflang   = {en-AU}\n}\n\\usepackage[capitalise,noabbrev]{cleveref} % \\cref{fig:x} writes \"Figure 1.1\" for you; load after hyperref\n\n\\title{Bees on the Mornington Peninsula}\n\n\\begin{document}\n\nRegion starts here.\n\n\\pagenumbering{alph}\n\n% spectrum:region r1 start kind=titlepage\n\\begin{titlepage}\n  \\centering\n  \\vspace*{\\fill}\n  {\\LARGE\\bfseries Bees on the Mornington Peninsula\\par}\n  \\vspace{8mm}\n  {\\itshape Notes from a season of hive checks\\par}\n  Amelia Scott\\par\n  \\vspace*{\\fill}\n\\end{titlepage}\n% spectrum:region r1 end\n\nRegion ends here.\n\n\\clearpage\n\\pagenumbering{arabic}\n\n\\section{Hives}\n\nWe checked forty hives.\n\n\\end{document}\n"
   },
   {
     "id": "t2l-titlepage-4",
@@ -523,13 +514,13 @@
     "kind": "titlepage",
     "direction": "typst-to-latex",
     "difficulty": "hard",
-    "original": "#align(right)[\n  #v(40mm)\n  #text(size: 24pt, weight: \"bold\", title())\n  #v(10mm)\n  #text(size: 12pt)[Grampians, 3 to 5 April 2026]\n  #v(1fr)\n  Jack Wilson \\\n  Year 11 Geography\n]",
-    "converted": "\\begin{titlepage}\n  \\centering\n  \\vspace*{40mm}\n  {\\Huge\\bfseries Field trip report\\par}\n  \\vspace{10mm}\n  {\\large Grampians, 3 to 5 April 2026\\par}\n  \\vfill\n  Jack Wilson\\par\n  Year 11 Geography\\par\n\\end{titlepage}",
-    "good": "align(right) means \\raggedleft, not \\centering; \\vspace*{40mm}, the \\Huge bold title and the rest stay.",
+    "original": "#align(right)[\n  #v(40mm)\n  #text(size: 24pt, weight: \"bold\", title())\n  #v(10mm)\n  #grid(\n    columns: (auto, auto),\n    column-gutter: 1em,\n    align(left)[*Student* \\ Jack Wilson],\n    align(right)[*Teacher* \\ Ms Ana Lopez],\n  )\n  #v(1fr)\n  Year 11 Geography\n]",
+    "converted": "\\begin{titlepage}\n  \\raggedleft\n  \\vspace*{40mm}\n  {\\Huge\\bfseries Field trip report\\par}\n  \\vspace{10mm}\n\\noindent\\begin{tabular}{@{}lr@{}}\n  \\begin{tabular}[t]{@{}l@{}}\\textbf{Student}\\\\\nJack Wilson\\end{tabular} & \\begin{tabular}[t]{@{}r@{}}\\textbf{Teacher}\\\\\nMs Ana Lopez\\end{tabular} \\\\\n\\end{tabular}\n\\par\n  \\vfill\n  Year 11 Geography\\par\n\\end{titlepage}",
+    "good": "Already \\raggedleft and right; the student and teacher, which the #grid set side by side, can stay as the tabular, or become two minipages, Student on the left and Teacher on the right; \\vfill and the year line stay.",
     "notes": [
       "A title page the rules only approximated, marked r1 in main.tex for tidying by hand or with the AI model."
     ],
-    "document": "\\documentclass[11pt,a4paper]{article}   % 11 pt text on A4 paper\n\n% Page\n\\usepackage[margin=25mm]{geometry}      % 25 mm margins all round\n\\usepackage{parskip}                    % a blank line between paragraphs instead of an indent\n\\usepackage[australian]{babel}          % Australian hyphenation, and \\today as 17 October 2026\n\\usepackage{iftex}                      % tells which TeX engine is running\n\\ifPDFTeX                               % for pdfLaTeX only:\n  \\usepackage[T1]{fontenc}              % proper accented letters, and text that copies cleanly from the PDF\n  \\usepackage{lmodern}                  % Latin Modern, a crisp scalable version of the default font\n\\fi                                     % XeLaTeX, LuaLaTeX and Tectonic already use Unicode fonts\n\\usepackage{microtype}                  % small spacing tweaks so lines break more evenly\n\n% Maths\n\\usepackage{amsmath}                    % align, cases, matrices and \\text inside maths\n\\usepackage{amssymb}                    % extra symbols such as \\mathbb{R}\n\n% Links\n\\usepackage[hidelinks]{hyperref}        % clickable cross-references and citations, without coloured boxes\n\\hypersetup{                            % details shown in the PDF viewer's document properties\n  pdftitle  = {Field trip report},\n  pdfauthor = {},\n  pdflang   = {en-AU}\n}\n\\usepackage[capitalise,noabbrev]{cleveref} % \\cref{fig:x} writes \"Figure 1.1\" for you; load after hyperref\n\n\\title{Field trip report}\n\n\\begin{document}\n\nRegion starts here.\n\n\\pagenumbering{alph}\n\n% spectrum:region r1 start kind=titlepage\n\\begin{titlepage}\n  \\centering\n  \\vspace*{40mm}\n  {\\Huge\\bfseries Field trip report\\par}\n  \\vspace{10mm}\n  {\\large Grampians, 3 to 5 April 2026\\par}\n  \\vfill\n  Jack Wilson\\par\n  Year 11 Geography\\par\n\\end{titlepage}\n% spectrum:region r1 end\n\nRegion ends here.\n\n\\clearpage\n\\pagenumbering{arabic}\n\n\\section{Day one}\n\nWe walked to the Pinnacle.\n\n\\end{document}\n"
+    "document": "\\documentclass[11pt,a4paper]{article}   % 11 pt text on A4 paper\n\n% Page\n\\usepackage[margin=25mm]{geometry}      % 25 mm margins all round\n\\usepackage{parskip}                    % a blank line between paragraphs instead of an indent\n\\usepackage[australian]{babel}          % Australian hyphenation, and \\today as 17 October 2026\n\\usepackage{iftex}                      % tells which TeX engine is running\n\\ifPDFTeX                               % for pdfLaTeX only:\n  \\usepackage[T1]{fontenc}              % proper accented letters, and text that copies cleanly from the PDF\n  \\usepackage{lmodern}                  % Latin Modern, a crisp scalable version of the default font\n\\fi                                     % XeLaTeX, LuaLaTeX and Tectonic already use Unicode fonts\n\\usepackage{microtype}                  % small spacing tweaks so lines break more evenly\n\n% Maths\n\\usepackage{amsmath}                    % align, cases, matrices and \\text inside maths\n\\usepackage{amssymb}                    % extra symbols such as \\mathbb{R}\n\n% Links\n\\usepackage[hidelinks]{hyperref}        % clickable cross-references and citations, without coloured boxes\n\\hypersetup{                            % details shown in the PDF viewer's document properties\n  pdftitle  = {Field trip report},\n  pdfauthor = {},\n  pdflang   = {en-AU}\n}\n\\usepackage[capitalise,noabbrev]{cleveref} % \\cref{fig:x} writes \"Figure 1.1\" for you; load after hyperref\n\n\\title{Field trip report}\n\n\\begin{document}\n\nRegion starts here.\n\n\\pagenumbering{alph}\n\n% spectrum:region r1 start kind=titlepage\n\\begin{titlepage}\n  \\raggedleft\n  \\vspace*{40mm}\n  {\\Huge\\bfseries Field trip report\\par}\n  \\vspace{10mm}\n\\noindent\\begin{tabular}{@{}lr@{}}\n  \\begin{tabular}[t]{@{}l@{}}\\textbf{Student}\\\\\nJack Wilson\\end{tabular} & \\begin{tabular}[t]{@{}r@{}}\\textbf{Teacher}\\\\\nMs Ana Lopez\\end{tabular} \\\\\n\\end{tabular}\n\\par\n  \\vfill\n  Year 11 Geography\\par\n\\end{titlepage}\n% spectrum:region r1 end\n\nRegion ends here.\n\n\\clearpage\n\\pagenumbering{arabic}\n\n\\section{Day one}\n\nWe walked to the Pinnacle.\n\n\\end{document}\n"
   },
   {
     "id": "t2l-cv-header-1",
@@ -566,12 +557,12 @@
     "direction": "typst-to-latex",
     "difficulty": "typical",
     "original": "#grid(\n  columns: (2fr, 1fr),\n  [#text(size: 18pt, weight: \"bold\")[Mateo Garcia]],\n  align(right)[mateo.garcia\\@example.com],\n)",
-    "converted": "\\noindent\\begin{tabular}{@{}ll@{}}\n  \\textbf{Mateo Garcia} & mateo.garcia@example.com \\\\\n\\end{tabular}",
+    "converted": "\\noindent\\begin{tabular}{@{}lr@{}}\n  \\textbf{Mateo Garcia} & mateo.garcia@example.com \\\\\n\\end{tabular}",
     "good": "The tabular lost the 2fr and 1fr widths and the right-aligned email: minipages of about 0.65 and 0.33 \\linewidth, the name at {\\Large\\bfseries ...}, the email \\raggedleft.",
     "notes": [
       "A CV header the rules only approximated, marked r1 in main.tex for tidying by hand or with the AI model."
     ],
-    "document": "\\documentclass[10pt,a4paper]{article}   % 10 pt text on A4 paper\n\n% Page\n\\usepackage[hmargin=20mm,vmargin=18mm]{geometry} % the Typst page's margins\n\\usepackage{parskip}                    % a blank line between paragraphs instead of an indent\n\\usepackage[australian]{babel}          % Australian hyphenation, and \\today as 17 October 2026\n\\usepackage{iftex}                      % tells which TeX engine is running\n\\ifPDFTeX                               % for pdfLaTeX only:\n  \\usepackage[T1]{fontenc}              % proper accented letters, and text that copies cleanly from the PDF\n  \\usepackage{lmodern}                  % Latin Modern, a crisp scalable version of the default font\n\\fi                                     % XeLaTeX, LuaLaTeX and Tectonic already use Unicode fonts\n\\usepackage{microtype}                  % small spacing tweaks so lines break more evenly\n\\pagestyle{empty}                       % no page numbers, as the Typst had none\n\n% Maths\n\\usepackage{amsmath}                    % align, cases, matrices and \\text inside maths\n\\usepackage{amssymb}                    % extra symbols such as \\mathbb{R}\n\n% Links\n\\usepackage[hidelinks]{hyperref}        % clickable cross-references and citations, without coloured boxes\n\\hypersetup{                            % details shown in the PDF viewer's document properties\n  pdftitle  = {Curriculum vitae},\n  pdfauthor = {},\n  pdflang   = {en-AU}\n}\n\\usepackage[capitalise,noabbrev]{cleveref} % \\cref{fig:x} writes \"Figure 1.1\" for you; load after hyperref\n\n\\setcounter{secnumdepth}{0}             % headings without numbers, as the Typst had them\n\n\\title{Curriculum vitae}\n\n\\begin{document}\n\nRegion starts here.\n\n% spectrum:region r1 start kind=cv-header\n\\noindent\\begin{tabular}{@{}ll@{}}\n  \\textbf{Mateo Garcia} & mateo.garcia@example.com \\\\\n\\end{tabular}\n% spectrum:region r1 end\n\nRegion ends here.\n\n\\section{Skills}\n\nCarpentry and site safety.\n\n\\end{document}\n"
+    "document": "\\documentclass[10pt,a4paper]{article}   % 10 pt text on A4 paper\n\n% Page\n\\usepackage[hmargin=20mm,vmargin=18mm]{geometry} % the Typst page's margins\n\\usepackage{parskip}                    % a blank line between paragraphs instead of an indent\n\\usepackage[australian]{babel}          % Australian hyphenation, and \\today as 17 October 2026\n\\usepackage{iftex}                      % tells which TeX engine is running\n\\ifPDFTeX                               % for pdfLaTeX only:\n  \\usepackage[T1]{fontenc}              % proper accented letters, and text that copies cleanly from the PDF\n  \\usepackage{lmodern}                  % Latin Modern, a crisp scalable version of the default font\n\\fi                                     % XeLaTeX, LuaLaTeX and Tectonic already use Unicode fonts\n\\usepackage{microtype}                  % small spacing tweaks so lines break more evenly\n\\pagestyle{empty}                       % no page numbers, as the Typst had none\n\n% Maths\n\\usepackage{amsmath}                    % align, cases, matrices and \\text inside maths\n\\usepackage{amssymb}                    % extra symbols such as \\mathbb{R}\n\n% Links\n\\usepackage[hidelinks]{hyperref}        % clickable cross-references and citations, without coloured boxes\n\\hypersetup{                            % details shown in the PDF viewer's document properties\n  pdftitle  = {Curriculum vitae},\n  pdfauthor = {},\n  pdflang   = {en-AU}\n}\n\\usepackage[capitalise,noabbrev]{cleveref} % \\cref{fig:x} writes \"Figure 1.1\" for you; load after hyperref\n\n\\setcounter{secnumdepth}{0}             % headings without numbers, as the Typst had them\n\n\\title{Curriculum vitae}\n\n\\begin{document}\n\nRegion starts here.\n\n% spectrum:region r1 start kind=cv-header\n\\noindent\\begin{tabular}{@{}lr@{}}\n  \\textbf{Mateo Garcia} & mateo.garcia@example.com \\\\\n\\end{tabular}\n% spectrum:region r1 end\n\nRegion ends here.\n\n\\section{Skills}\n\nCarpentry and site safety.\n\n\\end{document}\n"
   },
   {
     "id": "t2l-cv-header-4",
@@ -611,7 +602,7 @@
     "converted": "% TODO(spectrum): #callout is a function of this document; its text was kept without its look.\n\nWear a hard hat on site at all times, and sign in at the office as \\cref{sec:safety} asks.\n",
     "good": "The callout's box, without a package: \\noindent\\fbox{\\parbox{\\dimexpr\\linewidth-2\\fboxsep-2\\fboxrule\\relax}{...}} round the sentence, with \\cref{sec:safety} unchanged. SKIP is acceptable.",
     "notes": [
-      "A unknown environment the rules only approximated, marked r1 in main.tex for tidying by hand or with the AI model."
+      "An unknown environment the rules only approximated, marked r1 in main.tex for tidying by hand or with the AI model."
     ],
     "document": "\\documentclass[11pt,a4paper]{article}   % 11 pt text on A4 paper\n\n% Page\n\\usepackage[margin=25mm]{geometry}      % 25 mm margins all round\n\\usepackage{parskip}                    % a blank line between paragraphs instead of an indent\n\\usepackage[australian]{babel}          % Australian hyphenation, and \\today as 17 October 2026\n\\usepackage{iftex}                      % tells which TeX engine is running\n\\ifPDFTeX                               % for pdfLaTeX only:\n  \\usepackage[T1]{fontenc}              % proper accented letters, and text that copies cleanly from the PDF\n  \\usepackage{lmodern}                  % Latin Modern, a crisp scalable version of the default font\n\\fi                                     % XeLaTeX, LuaLaTeX and Tectonic already use Unicode fonts\n\\usepackage{microtype}                  % small spacing tweaks so lines break more evenly\n\n% Maths\n\\usepackage{amsmath}                    % align, cases, matrices and \\text inside maths\n\\usepackage{amssymb}                    % extra symbols such as \\mathbb{R}\n\n% Links\n\\usepackage[hidelinks]{hyperref}        % clickable cross-references and citations, without coloured boxes\n\\hypersetup{                            % details shown in the PDF viewer's document properties\n  pdftitle  = {},\n  pdfauthor = {},\n  pdflang   = {en-AU}\n}\n\\usepackage[capitalise,noabbrev]{cleveref} % \\cref{fig:x} writes \"Figure 1.1\" for you; load after hyperref\n\n\\begin{document}\n\n\\section{Safety}\\label{sec:safety}\n\nRead this before the site visit.\n\nRegion starts here.\n\n% spectrum:region r1 start kind=unknown-environment\n% TODO(spectrum): #callout is a function of this document; its text was kept without its look.\n\nWear a hard hat on site at all times, and sign in at the office as \\cref{sec:safety} asks.\n\n% spectrum:region r1 end\n\nRegion ends here.\n\nVisitors must be escorted.\n\n\\end{document}\n"
   },
@@ -625,7 +616,7 @@
     "converted": "% TODO(spectrum): #steps is a function of this document; its text was kept without its look.\n\n\\begin{enumerate}\n  \\item Turn off the mains.\n  \\item Test the circuit is dead.\n  \\item Lock the switchboard.\n\\end{enumerate}\n",
     "good": "Already a numbered list; the \"Step 1.\" labels need enumitem, which a region cannot load. SKIP.",
     "notes": [
-      "A unknown environment the rules only approximated, marked r1 in main.tex for tidying by hand or with the AI model."
+      "An unknown environment the rules only approximated, marked r1 in main.tex for tidying by hand or with the AI model."
     ],
     "document": "\\documentclass[11pt,a4paper]{article}   % 11 pt text on A4 paper\n\n% Page\n\\usepackage[margin=25mm]{geometry}      % 25 mm margins all round\n\\usepackage{parskip}                    % a blank line between paragraphs instead of an indent\n\\usepackage[australian]{babel}          % Australian hyphenation, and \\today as 17 October 2026\n\\usepackage{iftex}                      % tells which TeX engine is running\n\\ifPDFTeX                               % for pdfLaTeX only:\n  \\usepackage[T1]{fontenc}              % proper accented letters, and text that copies cleanly from the PDF\n  \\usepackage{lmodern}                  % Latin Modern, a crisp scalable version of the default font\n\\fi                                     % XeLaTeX, LuaLaTeX and Tectonic already use Unicode fonts\n\\usepackage{microtype}                  % small spacing tweaks so lines break more evenly\n\n% Maths\n\\usepackage{amsmath}                    % align, cases, matrices and \\text inside maths\n\\usepackage{amssymb}                    % extra symbols such as \\mathbb{R}\n\n% Links\n\\usepackage[hidelinks]{hyperref}        % clickable cross-references and citations, without coloured boxes\n\\hypersetup{                            % details shown in the PDF viewer's document properties\n  pdftitle  = {},\n  pdfauthor = {},\n  pdflang   = {en-AU}\n}\n\\usepackage[capitalise,noabbrev]{cleveref} % \\cref{fig:x} writes \"Figure 1.1\" for you; load after hyperref\n\n\\begin{document}\n\nRegion starts here.\n\n% spectrum:region r1 start kind=unknown-environment\n% TODO(spectrum): #steps is a function of this document; its text was kept without its look.\n\n\\begin{enumerate}\n  \\item Turn off the mains.\n  \\item Test the circuit is dead.\n  \\item Lock the switchboard.\n\\end{enumerate}\n\n% spectrum:region r1 end\n\nRegion ends here.\n\n\\section{Testing}\n\nUse a two-pole tester.\n\n\\end{document}\n"
   },

@@ -6,12 +6,12 @@ Region starts here.
 
 #set page(numbering: none)
 #align(center + horizon)[
-  #text(size: 20pt, weight: "bold", title()) \
+  #rect(width: 100%, inset: 12pt, stroke: 0.8pt)[
+    #text(size: 20pt, weight: "bold", title())
+  ]
   #v(8mm)
   #text(style: "italic")[Notes from a season of hive checks] \
-  #v(8mm)
-  Amelia Scott \
-  Beekeepers' Club field notes, 2026
+  Amelia Scott
 ]
 
 Region ends here.

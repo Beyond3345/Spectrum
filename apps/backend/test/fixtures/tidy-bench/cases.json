@@ -80,15 +80,15 @@
     "id": "l2t-unknown-environment-3",
     "kind": "unknown-environment",
     "direction": "latex-to-typst",
-    "difficulty": "hard",
-    "good": "A Typst list of the three items. The stray $square$ paragraph was the list's marker, so #list(marker: $square$, [Charge the logger], [Pack spare cable ties], [Tell the landholder you are coming]) keeps it."
+    "difficulty": "typical",
+    "good": "The three items are already a list; the checkbox the document drew as its marker comes back with #list(marker: [$square$], [Charge the logger], [Pack spare cable ties], [Tell the landholder you are coming]), or a #set list(marker: ...) around it."
   },
   {
     "id": "l2t-unknown-environment-4",
     "kind": "unknown-environment",
     "direction": "latex-to-typst",
-    "difficulty": "hard",
-    "good": "#columns(2)[...] round the paragraph, which also removes the stray 2 (the column count, read as text). SKIP is acceptable."
+    "difficulty": "typical",
+    "good": "adjustwidth indented the paragraph 1 cm on both sides: #pad(x: 1cm)[...] round the sentence, its words unchanged."
   },
   {
     "id": "l2t-unknown-environment-5",
@@ -108,8 +108,8 @@
     "id": "l2t-unknown-environment-7",
     "kind": "unknown-environment",
     "direction": "latex-to-typst",
-    "difficulty": "hard",
-    "good": "A numbered Typst list (+ Dig a hole ..., + Push the probe ..., + Backfill ...); the stray . paragraph, which was the list's label, goes."
+    "difficulty": "skip",
+    "good": "The steps are already a numbered Typst list, and the document’s label (1., 2., 3.) is Typst’s own. SKIP."
   },
   {
     "id": "l2t-unknown-command-1",
@@ -123,7 +123,7 @@
     "kind": "unknown-command",
     "direction": "latex-to-typst",
     "difficulty": "hard",
-    "good": "\\fbox boxed the word Reset, and the converter lost the word. A good answer puts it back as #box(stroke: 0.5pt, inset: 2pt)[Reset]; a check that compares with the converted words rejects that, and then SKIP is the answer."
+    "good": "\\rotatebox{90} turned Inlet to read upwards: #box(rotate(-90deg, reflow: true)[Inlet]) in its place, the rest of the sentence unchanged."
   },
   {
     "id": "l2t-unknown-command-3",
@@ -137,14 +137,14 @@
     "kind": "unknown-command",
     "direction": "latex-to-typst",
     "difficulty": "skip",
-    "good": "\\ce wrote two chemical formulas, which the converter dropped. Putting NO₃⁻ and PO₄³⁻ back adds text the region no longer has, so SKIP and let the author fix it."
+    "good": "\\sethlcolor{yellow} only chose the colour, and Typst’s #highlight is yellow already, so the converted sentence is right. SKIP."
   },
   {
     "id": "l2t-unknown-command-5",
     "kind": "unknown-command",
     "direction": "latex-to-typst",
     "difficulty": "typical",
-    "good": "#text(size: 0.9em)[(about 9000 rows per probe)] in place of the bracket, and the stray backslash before it goes."
+    "good": "The Font Awesome icons are gone. Keep the three contacts with #h(1em) between them; plain symbols such as ✉ and ☎ before the email and phone are a bonus, and no package is loaded."
   },
   {
     "id": "l2t-unknown-command-6",
@@ -157,43 +157,43 @@
     "id": "l2t-unknown-command-7",
     "kind": "unknown-command",
     "direction": "latex-to-typst",
-    "difficulty": "hard",
-    "good": "\\so letter-spaced FRAGILE, and the converter lost the word. A good answer puts back #text(tracking: 0.15em)[FRAGILE]; if added words are rejected, SKIP."
+    "difficulty": "typical",
+    "good": "\\scalebox{1.5} made Danger half as big again: #text(size: 1.5em)[Danger] (or #scale(150%, reflow: true)[Danger]), the rest unchanged."
   },
   {
     "id": "l2t-unknown-command-8",
     "kind": "unknown-command",
     "direction": "latex-to-typst",
     "difficulty": "easy",
-    "good": "A CV header the converter flagged for its size command. #grid(columns: (1fr, auto), [#text(size: 14pt, weight: \"bold\")[Ethan Murphy] \\ Graduate civil engineer], align(right)[ethan.murphy\\@example.com \\ 0400 111 222]). The \\Large name came through as plain bold."
+    "good": "\\dag printed a dagger after Site C: Site C† was dry ..., with nothing else changed."
   },
   {
     "id": "l2t-unknown-command-9",
     "kind": "unknown-command",
     "direction": "latex-to-typst",
     "difficulty": "typical",
-    "good": "A CV header the converter flagged for its size command. Not a left and right header. The name at 17 pt bold, the role line, then the three contacts on one line with #h(1em) between them (the \\quad), each link exactly as written."
+    "good": "moderncv’s \\cvitem set Languages as a label on the left: #grid(columns: (auto, 1fr), column-gutter: 1em, [*Languages*], [English and Vietnamese, both fluent]) or a term list (/ Languages: ...); both words stay."
   },
   {
     "id": "l2t-unknown-command-10",
     "kind": "unknown-command",
     "direction": "latex-to-typst",
-    "difficulty": "typical",
-    "good": "A CV header the converter flagged for its size command. #grid(columns: (1fr, auto), [#text(size: 14pt, weight: \"bold\")[Chloe Bennett] \\ Primary school teacher], align(right)[the email \\ the phone \\ Ballarat, Victoria]); the stray #h(1fr) paragraph goes."
+    "difficulty": "hard",
+    "good": "\\lettrine made a large initial T: #text(size: 2em)[T]he survey began ... with no space between T and he; the rest of the sentence unchanged."
   },
   {
     "id": "l2t-unknown-command-11",
     "kind": "unknown-command",
     "direction": "latex-to-typst",
-    "difficulty": "typical",
-    "good": "A CV header the converter flagged for its size command. A centred header, so #align(center) stays: the name at 21 pt bold (\\huge), the | separators between the three contacts restored, and no empty line before the closing bracket."
+    "difficulty": "easy",
+    "good": "\\ding{51} is a tick: Both pumps passed ✓ on the first test ..., with nothing else changed."
   },
   {
     "id": "l2t-unknown-command-12",
     "kind": "unknown-command",
     "direction": "latex-to-typst",
     "difficulty": "hard",
-    "good": "The margin note ran into the word before it (Junereplaced). A good answer separates them, for example 12 June (replaced under warranty); a word check that keeps every converted word rejects that, and then SKIP is the answer."
+    "good": "The margin note’s text follows June as part of the sentence. A good answer marks it as an aside, for example 12 June (replaced under warranty) or 12 June#footnote[Replaced under warranty.]; SKIP is acceptable, as Typst has no margin notes of its own."
   },
   {
     "id": "l2t-table-layout-1",
@@ -242,14 +242,14 @@
     "kind": "titlepage",
     "direction": "typst-to-latex",
     "difficulty": "typical",
-    "good": "align(center + horizon) centres the block down the page, so \\vspace*{\\fill} at the top and \\vfill at the foot; the rest is right."
+    "good": "The title sat in a framed box: \\fbox{\\parbox{\\linewidth}{\\centering ...}} (or \\framebox) round the title line, at \\huge (20 pt) bold; the vertical centring and the rest stay."
   },
   {
     "id": "t2l-titlepage-4",
     "kind": "titlepage",
     "direction": "typst-to-latex",
     "difficulty": "hard",
-    "good": "align(right) means \\raggedleft, not \\centering; \\vspace*{40mm}, the \\Huge bold title and the rest stay."
+    "good": "Already \\raggedleft and right; the student and teacher, which the #grid set side by side, can stay as the tabular, or become two minipages, Student on the left and Teacher on the right; \\vfill and the year line stay."
   },
   {
     "id": "t2l-cv-header-1",
