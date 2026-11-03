@@ -18,6 +18,7 @@ import { KIND_NAMES, MARKER } from './convert/regions.js';
 
 export const MAX_REGIONS = 20;
 export const MAX_ANSWERS = 3;
+const REGION_TIMEOUT_MS = 2 * 60 * 1000;
 // ponytail: Settings has no token limit, so a fixed one for a run, counted as characters / 4; the route takes another
 export const TOKEN_LIMIT = 150_000;
 const SKILL = 'spectrum-convert-tidy';
@@ -224,9 +225,10 @@ export async function tidyRegions({ root, scratch, mainFile, to, engine = 'auto'
     }
     while (outcome.answers < MAX_ANSWERS && tokens < tokenLimit) {
       const messages = [{ role: 'system', content: system }, { role: 'user', content: userMessage(region, at.text, to, outcome.fault) }];
-      const reply = await chatCompletion({ ...config, messages, temperature: 0, reasoningEffort: 'fast' });
+      // a region is a short task: two minutes, not the 10 an agent's turn may take
+      const reply = await chatCompletion({ ...config, messages, temperature: 0, reasoningEffort: 'fast', signal: AbortSignal.timeout(REGION_TIMEOUT_MS) });
       if (!reply.ok) {
-        error = reply.error;
+        error = reply.stopped ? 'The model didn’t answer within two minutes.' : reply.error;
         break;
       }
       outcome.answers += 1;

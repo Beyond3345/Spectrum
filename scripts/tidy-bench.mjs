@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Measures how well AI models do the converter's optional tidying (docs/featureResearch/LATEX_TYPST_CONVERSION.md
 // section 9) on the test set in apps/backend/test/fixtures/tidy-bench:
-//   node scripts/tidy-bench.mjs --models <file.json> [--regions <filter>] [--out <dir>] [--concurrency <n>] [--dry-run]
+//   node scripts/tidy-bench.mjs --models <file.json> [--regions <filter>] [--out <dir>] [--concurrency <n>] [--timeout <seconds>] [--dry-run]
 // Each region goes to each model as Spectrum's own tidying sends it (convertTidy.js: the skill's checklist and rule
 // card, the user message, up to three answers), and each answer meets the same checks, the compile in a scratch copy
 // of the converted document included. Keys come only from the environment variables the models file names; --dry-run
@@ -14,11 +14,12 @@ import { parseArgs } from 'node:util';
 
 const repo = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const bench = path.join(repo, 'apps', 'backend', 'test', 'fixtures', 'tidy-bench');
-const USAGE = 'Usage: node scripts/tidy-bench.mjs --models <file.json> [--regions <filter>] [--out <dir>] [--concurrency <n>] [--dry-run]';
+const USAGE = 'Usage: node scripts/tidy-bench.mjs --models <file.json> [--regions <filter>] [--out <dir>] [--concurrency <n>] [--timeout <seconds>] [--dry-run]';
 
 const { values: opts } = parseArgs({
-  options: { models: { type: 'string' }, regions: { type: 'string' }, out: { type: 'string' }, concurrency: { type: 'string', default: '1' }, 'dry-run': { type: 'boolean', default: false }, help: { type: 'boolean', default: false } }
+  options: { models: { type: 'string' }, regions: { type: 'string' }, out: { type: 'string' }, concurrency: { type: 'string', default: '1' }, timeout: { type: 'string', default: '120' }, 'dry-run': { type: 'boolean', default: false }, help: { type: 'boolean', default: false } }
 });
+const timeoutMs = Math.max(10, Number(opts.timeout) || 120) * 1000;
 if (opts.help || (!opts.models && !opts['dry-run'])) {
   console.log(USAGE + '\nSee apps/backend/test/fixtures/tidy-bench/README.md.');
   process.exit(opts.help ? 0 : 1);
@@ -53,12 +54,16 @@ function resolveModel(entry, dry) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** One request, again after a pause when the provider is busy (429) or failing (5xx): { ok, content, usage, error }. */
+/**
+ * One request, again after a pause when the provider is busy (429), failing (5xx) or silent for --timeout seconds
+ * (a request can otherwise hang for the app's 10 minutes): { ok, content, usage, error }.
+ */
 async function ask(m, messages) {
   for (let attempt = 0; ; attempt += 1) {
-    const reply = await chatCompletion({ endpoint: m.endpoint, apiKey: m.apiKey, model: m.model, provider: m.provider, messages, temperature: m.temperature, reasoningEffort: m.effort });
+    const reply = await chatCompletion({ endpoint: m.endpoint, apiKey: m.apiKey, model: m.model, provider: m.provider, messages, temperature: m.temperature, reasoningEffort: m.effort, signal: AbortSignal.timeout(timeoutMs) });
     if (reply.ok) return { ok: true, content: reply.message.content, usage: reply.usage ?? null };
-    if (!(reply.status === 429 || reply.status >= 500) || attempt >= 5) return reply;
+    if (reply.stopped) reply.error = `No answer within ${timeoutMs / 1000} s.`;
+    if (!(reply.stopped || reply.status === 429 || reply.status >= 500) || attempt >= 5) return reply;
     await sleep(1000 * 2 ** attempt);
   }
 }
