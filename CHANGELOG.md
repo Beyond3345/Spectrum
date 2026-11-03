@@ -4,6 +4,10 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ## 2.2.1 (3 November 2026)
 
+### Added
+
+- Convert to Typst project… and Convert to LaTeX project… in a project's menu on Home, as in the editor's project menu
+
 ### Fixed
 
 - The LaTeX, Typst and Markdown choice in New project and the template gallery fills its row, the three sharing the width evenly, rather than leaving empty space at its end

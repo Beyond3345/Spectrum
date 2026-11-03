@@ -58,6 +58,7 @@ import { FOLDER_COLOURS, addFolder, childFolders, colourFolder, deleteFolder, fo
 import type { ProjectFolder, ProjectFolders } from './folders';
 import CustomiseFolderSheet from './CustomiseFolderSheet';
 import UniverseSheet, { LICENCE_NOTE } from './UniverseSheet';
+import ConvertSheet from './ConvertSheet';
 import Home, { DRAG_TYPE, FOLDER_TINTS, FolderShape, HOME_SORTS, HOME_VIEW, PREFS_KEY, formatFull, timeAgo } from './Home';
 import type { HomeItem, HomeView } from './Home';
 import { BIN, FILE_MANAGER, IS_WINDOWS, tildify } from './platform';
@@ -159,6 +160,7 @@ type SheetState =
   | { kind: 'customise'; folder: string }
   | { kind: 'transfer'; id: string }
   | { kind: 'saveTemplate'; id: string }
+  | { kind: 'convert'; id: string; doc: string; to: 'typst' | 'latex' }
   | { kind: 'settings'; section?: SettingsSection }
   | null;
 
@@ -607,6 +609,9 @@ export default function ProjectPage() {
           { label: 'Move to folder…', icon: 'tray.and.arrow.down', onSelect: move ?? (() => setSheet({ kind: 'move', items: [`p:${p.id}`] })) },
           { label: 'Change template…', icon: 'arrow.triangle.2.circlepath', onSelect: () => setSheet({ kind: 'transfer', id: p.id }) },
           { label: 'Save as template…', icon: 'square.and.arrow.down', onSelect: () => setSheet({ kind: 'saveTemplate', id: p.id }) },
+          // as the editor's project menu offers it: a new project in the other language from the main file
+          /\.(tex|ltx)$/i.test(p.mainFile ?? '') && { label: 'Convert to Typst project…', icon: 'arrow.triangle.2.circlepath', onSelect: () => setSheet({ kind: 'convert', id: p.id, doc: p.mainFile!, to: 'typst' }) },
+          /\.typ$/i.test(p.mainFile ?? '') && { label: 'Convert to LaTeX project…', icon: 'arrow.triangle.2.circlepath', onSelect: () => setSheet({ kind: 'convert', id: p.id, doc: p.mainFile!, to: 'latex' }) },
           IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => reveal(p) },
           { label: 'Sync with GitHub', icon: 'arrow.triangle.2.circlepath', onSelect: () => syncGitHub(p) },
           { separator: true },
@@ -1193,6 +1198,20 @@ export default function ProjectPage() {
           onClose={() => setSheet(null)}
           onBack={() => setSheet({ kind: 'gallery', engine: 'typst', folder: sheet.folder })}
           onPick={(t) => setSheet({ kind: 'new', template: '', universe: t, folder: sheet.folder })}
+        />
+      )}
+
+      {sheet?.kind === 'convert' && (
+        <ConvertSheet
+          projectId={sheet.id}
+          doc={sheet.doc}
+          to={sheet.to}
+          engine="auto"
+          onClose={() => {
+            setSheet(null);
+            reload();
+          }}
+          onOpen={(id) => navigate(`/editor/${id}`)}
         />
       )}
 
