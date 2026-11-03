@@ -184,6 +184,16 @@ Ranked by user value against effort, with the Tinymist work first because severa
 - **Alternative considered.** typst.ts in WASM inside the webview avoids a sidecar process, but it is a second copy of one Typst version with no pinning and is more work. Tinymist's preview already uses its renderer.
 - **Risk.** Medium: two preview surfaces to keep consistent, a loopback server to secure (bind to 127.0.0.1 and a random port) and dark-mode inversion choices.
 
+#### Spike result (3 November 2026)
+
+The exact jumps work with the preview running hidden, so they were built (`tinymistService.js`, `routes/tinymist.js`). Checked with Tinymist 0.15.10 against scratch projects:
+
+- `tinymist.doStartPreview` from the language server, with `--data-plane-host=127.0.0.1:0` and `--no-open`, starts a preview in a few milliseconds. Spectrum connects to its data plane over WebSocket as the preview page would, with an `Origin` header of the page's own address (without one Tinymist logs that it will refuse such connections in future). Nothing is shown and no browser opens. The drawing it sends is ignored.
+- PDF to source: `src-point {"page_no":1,"x":60,"y":54}` on the data plane makes Tinymist ask `window/showDocument` with the file and the character. It is exact: repeated phrases and included files land in the right place. A spot between lines gets no answer, so Spectrum waits 0.8 seconds and then matches words.
+- Source to PDF: `tinymist.scrollPreview` with `panelScrollTo` and a line and character sends `jump,page x y` back on the data plane, in points from the page's top left with y on the baseline. It gives the start of the source text the place is in (about a source line), not the character itself. Spectrum highlights from there to the end of that line of the PDF.
+- The points match Spectrum's own PDF exactly when the Typst versions match: Tinymist's points for three lines equalled pdf.js's text positions in the PDF from the built-in Typst 0.15.1 to the thousandth of a point.
+- Limits: the preview lays out the editor's unsaved text, so a stale PDF can be a little off until the next compile. The preview sets `sys.inputs.x-preview`, so a document that reads it could lay out differently. Spectrum stops the preview five minutes after the last jump, as it lays out every change while it runs.
+
 ### 4.3 Inline error display
 
 - **Value.** The error appears where it is, while the user looks at the text. Today it is a list in Logs.

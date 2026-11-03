@@ -42,6 +42,7 @@ import { SKILL_ID } from '../services/skillService.js';
 import { TYPST_EXPORTS, exportTypst } from '../services/typstService.js';
 import { knownMachineNames } from '../services/presenceService.js';
 import { stopProjectTexlab } from '../services/texlabService.js';
+import { stopProjectTinymist } from '../services/tinymistService.js';
 import { rehomeAgentRuns } from '../services/agentSessionService.js';
 import { refuseBusy } from './sync.js';
 import { syncSoon } from '../services/zoteroService.js';
@@ -356,6 +357,7 @@ export function registerProjectRoutes(fastify) {
 
   fastify.post('/api/projects/:id/remove', async (req) => {
     await stopProjectTexlab(req.params.id);
+    await stopProjectTinymist(req.params.id);
     await unregister(req.params.id);
     return { ok: true };
   });
@@ -363,8 +365,9 @@ export function registerProjectRoutes(fastify) {
   fastify.post('/api/projects/:id/trash', async (req) => {
     if (!['darwin', 'win32'].includes(process.platform)) return { ok: false, error: 'Moving to the Bin is only supported on macOS and Windows.' };
     const root = await getProjectRoot(req.params.id);
-    // Windows can't bin a folder its TexLab is watching
+    // Windows can't bin a folder its TexLab or Tinymist is watching
     await stopProjectTexlab(req.params.id);
+    await stopProjectTinymist(req.params.id);
     try {
       await moveToBin(root);
     } catch (err) {
@@ -378,8 +381,9 @@ export function registerProjectRoutes(fastify) {
     refuseBusy(req.params.id, (await getProject(req.params.id)).name);
     const project = await relocateProject(req.params.id, req.body?.path);
     rehomeAgentRuns(req.params.id, project.path);
-    // a TexLab on the old folder has its old text
+    // a TexLab or Tinymist on the old folder has its old text
     await stopProjectTexlab(req.params.id);
+    await stopProjectTinymist(req.params.id);
     return { ok: true, project };
   });
 

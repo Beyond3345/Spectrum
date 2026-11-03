@@ -9,6 +9,8 @@ import { EditorState } from '@codemirror/state';
 import { diagnosticCount, setDiagnostics } from '@codemirror/lint';
 import type { LSPClient } from '@codemirror/lsp-client';
 import { ProjectWorkspace, Texlab, clearMarks, texlabSlot } from './texlab.ts';
+import { lspMarks, markFilter } from './tinymist.ts';
+import { Text } from '@codemirror/state';
 import { lspTransport } from './transport.ts';
 import { IS_MAC, IS_WINDOWS } from '../../app/platform.ts';
 
@@ -242,6 +244,42 @@ function marks() {
   eq(diagnosticCount(state), 0, 'cleared');
 }
 
+// ─── Tinymist's marks, beside Typst's syntax check and the compile's ───
+
+function tinymist() {
+  const synced = Text.of(['#let x = 1', '#y + 2']);
+  const range = (line: number, from: number, to: number) => ({ start: { line, character: from }, end: { line, character: to } });
+  const found = lspMarks(
+    [
+      { range: range(1, 1, 2), severity: 1, message: 'unknown variable: y' },
+      { range: range(0, 5, 6), severity: 2, message: 'unused' },
+      // for text since cut: left out
+      { range: range(4, 0, 1), message: 'gone' }
+    ],
+    synced,
+    (pos) => pos + 3
+  );
+  eq(
+    found.map((d) => [d.from, d.to, d.severity, d.source]),
+    [
+      [15, 16, 'error', 'Tinymist'],
+      [8, 9, 'warning', 'Tinymist']
+    ],
+    'positions in the synced text, mapped on to the editor’s'
+  );
+  const all = [...found, { from: 0, to: 1, severity: 'error' as const, message: 'syntax', source: 'Typst syntax' }, { from: 2, to: 3, severity: 'error' as const, message: 'compile' }];
+  eq(markFilter(true)(all).map((d) => d.message), ['unknown variable: y', 'unused'], 'Tinymist’s alone where it checks the file');
+  eq(markFilter(false)(all).map((d) => d.message), ['syntax', 'compile'], 'and never where it doesn’t');
+
+  // F2 on a Typst label: Tinymist's edits replace the name inside <…> and after @
+  const text = '= Intro <intro>\nSee @intro.\n';
+  const edits = [
+    { range: range(0, 9, 14), newText: 'introduction' },
+    { range: range(1, 5, 10), newText: 'introduction' }
+  ];
+  eq(applyEdits(text, edits, 'intro'), '= Intro <introduction>\nSee @introduction.\n', 'a label and its reference');
+}
+
 // ─── the syntax check before compiling ───
 
 function syntax() {
@@ -295,5 +333,6 @@ transport()
   .then(paths)
   .then(marks)
   .then(syntax)
+  .then(tinymist)
   .then(outline)
   .then(() => console.log('lsp.check: ok'));

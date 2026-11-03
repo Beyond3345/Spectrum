@@ -44,6 +44,8 @@ import {
   downloadDictionary,
   synctexEdit,
   synctexView,
+  tinymistPdf,
+  tinymistSource,
   searchZotero,
   syncWithGitHub,
   syncZotero,
@@ -129,7 +131,8 @@ import { NO_PROJECT, externalDocuments, scanProject, texRoot } from '../editor/l
 import type { Project } from '../editor/latexEnvs';
 import type { OutlineItem } from '../editor/latexEditor';
 import { Texlab, clearMarks, texlabSlot } from '../editor/lsp/texlab';
-import type { Reference } from '../editor/lsp/texlab';
+import type { Reference, TexlabHost } from '../editor/lsp/texlab';
+import { Tinymist, tinymistCompletions } from '../editor/lsp/tinymist';
 import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
@@ -511,6 +514,9 @@ function Editor({ projectId }: { projectId: string }) {
   /** the project's TexLab while the editor is open, and whether it's answering (editor/lsp/texlab.ts) */
   const texlabRef = useRef<Texlab | null>(null);
   const [texlabOn, setTexlabOn] = useState(false);
+  /** the project's Tinymist for .typ files, once downloaded, and whether it's answering (editor/lsp/tinymist.ts) */
+  const tinymistRef = useRef<Tinymist | null>(null);
+  const [tinymistOn, setTinymistOn] = useState(false);
   /** ⇧F12's list: where what's at the cursor is used */
   const [references, setReferences] = useState<Reference[] | null>(null);
   /** the outline TexLab gives for a document: its root, the headings and floats, and the files it read */
@@ -744,12 +750,14 @@ function Editor({ projectId }: { projectId: string }) {
     view.dispatch({ effects: setCompileMarks.of(compileMarks(compileErrorsRef.current, activeRef.current, view.state.doc)) });
   };
 
-  /** TexLab's squiggles, hovers and jumps for the open file, when TexLab is answering and reads that kind of file. */
+  /** TexLab's (Tinymist's in a .typ file) squiggles, hovers and jumps for the open file, when it's answering. */
   const attachTexlab = () => {
     const view = viewRef.current;
     if (!view) return;
-    view.dispatch({ effects: texlabSlot.reconfigure(texlabRef.current?.extensionFor(activeRef.current) ?? []) });
-    const clear = texlabRef.current?.available ? null : clearMarks(view.state);
+    const path = activeRef.current;
+    view.dispatch({ effects: texlabSlot.reconfigure([texlabRef.current?.extensionFor(path) ?? [], tinymistRef.current?.extensionFor(path) ?? []]) });
+    // a .typ file's marks come from lint sources, Tinymist's among them, and go with their source
+    const clear = texlabRef.current?.available || docKind(path) === 'typst' ? null : clearMarks(view.state);
     if (clear) view.dispatch(clear);
   };
 
@@ -1140,7 +1148,12 @@ function Editor({ projectId }: { projectId: string }) {
     const kind = docKind(shownDoc);
     let landed = false;
     if (kind !== 'latex') {
-      if (text.length >= 3) landed = await findInSource(text);
+      // Typst: the very place, from Tinymist's preview, when the project's Typst is the one inside it
+      const exact = kind === 'typst' && tinymistRef.current?.exact() ? await tinymistSource(projectId, at, shownDoc).catch(() => null) : null;
+      if (exact?.ok && items.some((i) => i.path === exact.file)) {
+        await jumpTo(exact.file, exact.line, exact.column);
+        landed = activeRef.current === exact.file;
+      } else if (text.length >= 3) landed = await findInSource(text);
     } else {
       const res = await synctexEdit(projectId, at, shownDoc).catch(() => null);
       if (res?.ok && items.some((i) => i.path === res.file)) {
@@ -1165,8 +1178,15 @@ function Editor({ projectId }: { projectId: string }) {
     if (!settings.syncDoubleClick || !view || !pdf || !isDocument(file) || layout.view !== 'split' || panel) return;
     const line = view.state.doc.lineAt(pos);
     const kind = docKind(file);
-    // Typst and Markdown have no SyncTeX: the line's words find it in the PDF
+    // Typst and Markdown have no SyncTeX: Tinymist's preview finds a Typst place, else the line's words find it
     if (kind !== 'latex') {
+      const exact = kind === 'typst' && tinymistRef.current?.exact() ? await tinymistPdf(projectId, { file, line: line.number, column: pos - line.from + 1 }, shownDoc).catch(() => null) : null;
+      if (exact?.ok) {
+        const boxes = (await pdfRef.current?.lineFrom(exact).catch(() => [])) ?? [];
+        // no text there (a picture, a rule): a mark at the spot
+        pdfRef.current?.highlight(boxes.length ? boxes : [{ page: exact.page, x: exact.x - 6, y: exact.y - 10, width: 12, height: 12 }], settings.syncHighlightSeconds);
+        return;
+      }
       const words = lineWords(line.text);
       const runs = [words, words.slice(0, 8), words.slice(0, 4)].filter((run, i, all) => run.length >= 2 && all.findIndex((r) => r.join(' ') === run.join(' ')) === i);
       for (const run of runs) {
@@ -1297,13 +1317,15 @@ function Editor({ projectId }: { projectId: string }) {
    */
   const renameSymbol = async () => {
     const view = viewRef.current;
-    const texlab = texlabRef.current;
+    // Tinymist's in a .typ file: a label, function or variable
+    const typst = docKind(activeRef.current) === 'typst';
+    const texlab = typst ? tinymistRef.current : texlabRef.current;
     if (!view || !texlab?.available || !activeRef.current) return;
     const pos = view.state.selection.main.head;
     try {
       const found = await texlab.renameTarget(view, pos);
       if (!found) {
-        notify('There’s nothing here to rename. Put the cursor on a label, citation key or command.');
+        notify(`There’s nothing here to rename. Put the cursor on a label, ${typst ? 'function or variable' : 'citation key or command'}.`);
         return;
       }
       const target = found.text;
@@ -1312,7 +1334,8 @@ function Editor({ projectId }: { projectId: string }) {
       if (!name || name === target) return;
       // TexLab doesn't check either: a second \label or .bib entry by that name
       const scan = projectScanRef.current;
-      if (!found.command && (scan.scans.some((s) => s.labels.includes(name)) || scan.bib.some((b) => b.key === name))) {
+      const taken = typst ? typstLabelsRef.current.some((label) => label.replace(/^<|>$/g, '') === name) : scan.scans.some((s) => s.labels.includes(name));
+      if (!found.command && (taken || scan.bib.some((b) => b.key === name))) {
         throw new Error(`“${name}” is already used in this project. Pick another name.`);
       }
       // nor rename a key where another .bib entry inherits from it
@@ -1331,7 +1354,7 @@ function Editor({ projectId }: { projectId: string }) {
         return file;
       });
       if (!edits.size) {
-        notify(`TexLab found nothing to rename for “${target}”.`);
+        notify(`${texlab.server.name} found nothing to rename for “${target}”.`);
         return;
       }
       const held = [...edits.keys()].find((file) => heldRef.current.has(file));
@@ -2246,7 +2269,7 @@ function Editor({ projectId }: { projectId: string }) {
       autocompletion({
         override: [
           latexCompletionSource(() => projectScanRef.current, () => activeRef.current),
-          typstCompletions({ path: () => activeRef.current, version: () => compileOptionsRef.current.typstVersion ?? '' }),
+          tinymistCompletions(() => tinymistRef.current, typstCompletions({ path: () => activeRef.current, version: () => compileOptionsRef.current.typstVersion ?? '' })),
           referenceCompletions({ path: () => activeRef.current, keys: () => projectScanRef.current.bib.map((entry) => entry.key), labels: () => typstLabelsRef.current, version: () => compileOptionsRef.current.typstVersion ?? '' }),
           zoteroCompletionSource({
             enabled: () => loadSettings().zoteroCompletion,
@@ -2466,21 +2489,18 @@ function Editor({ projectId }: { projectId: string }) {
 
   // the project's TexLab, while the editor is open: a jump to another file opens it here, and the open file gets its
   // extensions whenever TexLab starts answering or stops
+  const lspHost: TexlabHost = {
+    open: async (path) => {
+      await actions.current.showFile(path);
+      return activeRef.current === path ? viewRef.current : null;
+    },
+    read: (path) => actions.current.readText(path),
+    files: () => actions.current.files(),
+    showReferences: setReferences,
+    rename: () => actions.current.renameSymbol()
+  };
   useEffect(() => {
-    const texlab = new Texlab(
-      projectId,
-      {
-        open: async (path) => {
-          await actions.current.showFile(path);
-          return activeRef.current === path ? viewRef.current : null;
-        },
-        read: (path) => actions.current.readText(path),
-        files: () => actions.current.files(),
-        showReferences: setReferences,
-        rename: () => actions.current.renameSymbol()
-      },
-      setTexlabOn
-    );
+    const texlab = new Texlab(projectId, lspHost, setTexlabOn);
     texlabRef.current = texlab;
     return () => {
       texlab.close();
@@ -2488,7 +2508,23 @@ function Editor({ projectId }: { projectId: string }) {
     };
   }, [projectId]);
 
-  useEffect(() => attachTexlab(), [texlabOn]);
+  // the project's Tinymist, the same way, once it's downloaded; its errors and jumps count only while the project's
+  // Typst is the one inside it
+  const tinymistInstalled = engines?.tinymist.installed ?? null;
+  useEffect(() => {
+    if (!tinymistInstalled || !engines) return;
+    const inside = engines.tinymist.typst;
+    const builtIn = engines.typst.builtIn;
+    const tinymist = new Tinymist(projectId, lspHost, setTinymistOn, () => (compileOptionsRef.current.typstVersion || builtIn) === inside);
+    tinymistRef.current = tinymist;
+    return () => {
+      tinymist.close();
+      tinymistRef.current = null;
+      setTinymistOn(false);
+    };
+  }, [projectId, tinymistInstalled]);
+
+  useEffect(() => attachTexlab(), [texlabOn, tinymistOn]);
   useEffect(() => markCompileErrors(), [compileErrors]);
 
   // TexLab's outline of the document being edited, a moment after typing stops, a file changes, a compile ends or
@@ -2764,6 +2800,7 @@ function Editor({ projectId }: { projectId: string }) {
     save: () => saveNow(),
     keptPdf: (doc) => stalePdf.current.get(doc) ?? null,
     diagnostics: async () => (texlabRef.current?.available ? texlabRef.current.diagnostics() : { available: false, files: {} }),
+    typstWords: () => (tinymistRef.current?.available ? tinymistRef.current.words : null),
     createVersion
   };
 
@@ -3833,6 +3870,7 @@ function Editor({ projectId }: { projectId: string }) {
               { separator: true },
               !!diagram && { label: 'Edit diagram', onSelect: () => drawDiagram(diagram) },
               isDocument(activePath) && { label: 'Cite from Zotero…', onSelect: () => window.dispatchEvent(new Event(ZOTERO_CITE)) },
+              tinymistOn && docKind(activePath) === 'typst' && { label: 'Format document', shortcut: formatShortcut('Shift-Alt-f'), onSelect: () => view && tinymistRef.current?.format(view) },
               { label: 'Add to-do here', onSelect: () => addTodoAtLine(lineMenu.pos) }
             ];
           })()}
