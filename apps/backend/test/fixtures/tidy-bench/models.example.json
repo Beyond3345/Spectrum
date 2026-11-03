@@ -1,0 +1,7 @@
+[
+  { "name": "DeepSeek Flash", "provider": "deepseek", "model": "deepseek-flash", "apiKeyEnv": "DEEPSEEK_API_KEY", "price": { "input": null, "output": null } },
+  { "name": "DeepSeek V4.1 Flash (OpenRouter)", "provider": "openrouter", "model": "deepseek/deepseek-v4.1-flash", "apiKeyEnv": "OPENROUTER_API_KEY", "price": { "input": null, "output": null } },
+  { "name": "Local model (LM Studio)", "provider": "lmstudio", "model": "your-model-id", "baseUrl": "http://localhost:1234/v1" },
+  { "name": "Local model (Ollama)", "provider": "ollama", "model": "your-model:tag" },
+  { "name": "Another OpenAI-compatible server", "provider": "openai-compatible", "model": "your-model-id", "baseUrl": "https://example.com/v1", "apiKeyEnv": "OTHER_API_KEY", "temperature": 0, "effort": "fast" }
+]
