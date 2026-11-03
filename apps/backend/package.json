@@ -20,6 +20,7 @@
     "isomorphic-git": "1.43.3",
     "parse-entities": "4.0.2",
     "tar": "^7.5.22",
+    "tex2typst": "0.6.2",
     "unzipper": "^0.12.5",
     "zod": "^4.2.0"
   }
