@@ -1408,7 +1408,7 @@ function NewProjectSheet({
       </div>
       <div className="field">
         <label id="new-project-engine">Write in</label>
-        <Segmented labelledBy="new-project-engine" value={engine} options={ENGINES} onChange={chooseEngine} />
+        <Segmented className="fill" labelledBy="new-project-engine" value={engine} options={ENGINES} onChange={chooseEngine} />
       </div>
       <div className="field">
         <label id="new-project-template">Template</label>
@@ -1572,6 +1572,7 @@ function TemplateGallerySheet({
     <Sheet title="Choose a template" width={880} className="gallery-sheet" onClose={onClose}>
       <div className="gallery-toolbar">
         <Segmented
+          className="fill"
           label="Write in"
           value={engine}
           options={ENGINES}

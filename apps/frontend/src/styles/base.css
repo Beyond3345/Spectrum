@@ -979,6 +979,15 @@ textarea.input {
   padding: 0;
 }
 
+/* a segmented control as wide as its row, the segments sharing the width evenly */
+.segmented.fill {
+  display: flex;
+}
+
+.segmented.fill .segment {
+  flex: 1;
+}
+
 .tabs {
   display: flex;
   align-items: center;
