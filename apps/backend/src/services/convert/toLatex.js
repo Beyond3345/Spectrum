@@ -69,7 +69,7 @@ function packageOf(name, facts) {
 /**
  * A #let of the document's own: { params (its closure's, null for a value), body, simple, text }. A simple one is a
  * template to fill in, with no scripting, packages or functions of its own that aren't, and no parameter it calls or
- * takes a field of; Spectrum expands it where it is used.
+ * takes a field of, or a sink (..items) it does more with than pass on; Spectrum expands it where it is used.
  */
 function definitionOf(node, facts) {
   const [, bound] = significant(node);
@@ -79,12 +79,17 @@ function definitionOf(node, facts) {
   const body = significant(closure ?? node).at(-1);
   const params = closure ? closure.children.find((c) => c.kind === 'Params') : null;
   const list = significant(params).filter((p) => !['LeftParen', 'RightParen', 'Comma'].includes(p.kind));
-  const names = new Set(list.map((p) => (p.kind === 'Named' ? p.children[0].text : p.text)));
-  const simple = list.every((p) => p.kind === 'Ident' || p.kind === 'Named') && !findAll(body, (n) => SCRIPTING.has(n.kind)
+  const sink = list.at(-1)?.kind === 'Spread' ? sinkName(list.at(-1)) : null;
+  const names = new Set(list.map((p) => (p.kind === 'Named' ? p.children[0].text : p.kind === 'Spread' ? sink : p.text)));
+  const simple = list.every((p, k) => p.kind === 'Ident' || p.kind === 'Named' || (k === list.length - 1 && sink)) && !findAll(body, (n, parent) => (SCRIPTING.has(n.kind) && !(sink && parent?.kind === 'Args' && sinkName(n) === sink))
     || ((n.kind === 'FieldAccess' || n.kind === 'FuncCall') && names.has(n.children[0]?.text))
+    || (n.kind === 'Ident' && n.text === sink && parent?.kind !== 'Spread')
     || (n.kind === 'Ident' && (n.text === name || facts.functions.get(n.text)?.simple === false || facts.packages.some((p) => p.names.includes(n.text))))).length;
   return { name, params, body, simple, text: '#' + node.text };
 }
+
+/** The name a spread, ..items, passes on: the sink of a function's parameters, or its use in a call. */
+const sinkName = (node) => (node?.kind === 'Spread' ? node.children.find((c) => c.kind === 'Ident')?.text ?? null : null);
 
 /** One #set, #show, #let or #import read into the facts. */
 function readStatement(node, facts, st, ctx) {
@@ -529,16 +534,25 @@ const ATOMIC = new Set(['ContentBlock', 'Str', 'Ident', 'FieldAccess', 'FuncCall
 
 /** A call of the document's own simple function as the markup it stands for, read again; null when its arguments don't fit. */
 function userCall(def, call, st, ctx) {
-  const params = significant(def.params).filter((p) => p.kind === 'Ident' || p.kind === 'Named');
+  const params = significant(def.params).filter((p) => p.kind === 'Ident' || p.kind === 'Named' || p.kind === 'Spread');
   const positional = [...call.args.filter((a) => a.name === null).map((a) => a.value), ...call.bodies];
+  const named = new Map(call.args.filter((a) => a.name !== null).map((a) => [a.name, a.value]));
   const bound = new Map();
+  let sink = null;
   for (const p of params) {
     if (p.kind === 'Ident') bound.set(p.text, positional.shift());
-    else bound.set(p.children[0].text, arg(call, p.children[0].text) ?? significant(p)[2]);
+    else if (p.kind === 'Spread') sink = sinkName(p);
+    else {
+      bound.set(p.children[0].text, named.get(p.children[0].text) ?? significant(p)[2]);
+      named.delete(p.children[0].text);
+    }
   }
-  if (positional.length || [...bound.values()].some((v) => !v)) return null;
+  if ((positional.length && !sink) || [...bound.values()].some((v) => !v)) return null;
+  // a sink passes on what no parameter took, positional and named, as it was written
+  const sunk = [...positional.map((v) => v.text), ...[...named].map(([name, v]) => name + ': ' + v.text)].join(', ');
   // each parameter's use, not a named argument's name or a field's, takes the argument's code
   const fill = (node, parent = null, index = 0) => {
+    if (sink && node.kind === 'Spread' && sinkName(node) === sink) return sunk;
     if (node.kind === 'Ident' && bound.has(node.text) && !(parent?.kind === 'Named' && index === 0) && !(parent?.kind === 'FieldAccess' && index > 0)) {
       const value = bound.get(node.text);
       return ATOMIC.has(value.kind) ? value.text : '(' + value.text + ')';

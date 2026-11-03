@@ -141,6 +141,7 @@ test('the Typst pre-pass reads semicolons, a #text over lines, short rules, the 
     '#let rated(value) = [rated at #value]',
     '#let stars(n) = for i in range(n) [★]',
     '#let boxed(body) = { set text(weight: "bold"); box(body) }',
+    '#let steps(..items) = enum(numbering: "Step 1.", ..items)',
     '#align(center)[',
     '  #title()',
     '  #text(size: 12pt)[Your Name \\',
@@ -151,6 +152,8 @@ test('the Typst pre-pass reads semicolons, a #text over lines, short rules, the 
     '',
     '#sketch[A drawing]',
     '',
+    '#steps[First][Second]',
+    '',
     '#table(columns: 3, stroke: none, [a], [b], [c], table.hline(start: 1, end: 3), [d], [e], [f], table.hline(start: 2, end: none), [g], [h], [i])'
   ].join('\n');
   const { input, state } = prepareTypst(source, ctx, { file: 'main.typ' });
@@ -158,6 +161,7 @@ test('the Typst pre-pass reads semicolons, a #text over lines, short rules, the 
   assert.match(input, /The slew rate is SPXI\d+X, rated at SPXI\d+X, as SPXI\d+X say\. SPXB\d+X Kept, SPXI\d+X\./);
   assert.deepEqual(state.inlines, ['\\qty{13}{\\volt\\per\\micro\\second}', '\\qty{4.7}{\\kilo\\ohm}', '\\cref{sec:a} and \\parencite[p.~45]{Masters2013}', '\\cref{sec:a}']);
   assert.deepEqual(state.blocks.map((b) => b.kind + (b.inline ? ' inline' : '')), ['maketitle', 'heading', 'picture inline', 'picture', 'table']);
+  assert.match(input, /#enum\(numbering: "Step 1\.", \[First\], \[Second\]\)/, 'a sink passes its arguments on');
   assert.match(state.pieces[state.blocks[0].lines[0]].markup, /^#text\(size: 12pt\)\[Your Name \\\s+School of Engineering\]$/, 'the #text over two lines is one line of the title block');
   assert.deepEqual(ctx.pictures.map((p) => [p.body, p.what]), [['stars(3)', 'the output of the document’s own function stars'], ['sketch[A drawing]', 'a drawing made with @preview/spectrum-sketch:0.1.0']]);
   assert.deepEqual(state.blocks[4].model.partRules, [{ row: 0, from: 1, to: 2 }, { row: 1, from: 2, to: 2 }]);
