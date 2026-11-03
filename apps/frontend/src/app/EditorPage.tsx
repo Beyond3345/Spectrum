@@ -17,6 +17,8 @@ import {
   compileProject,
   convertToLatex,
   exportDocx,
+  exportTypst,
+  type TypstExport,
   saveTemplateDraft,
   stopCompile,
   createVersion as saveVersion,
@@ -1991,18 +1993,33 @@ function Editor({ projectId }: { projectId: string }) {
     e.preventDefault();
   };
 
-  const downloadPdf = () => {
-    if (!pdf) return;
+  // main's downloads are under the project's name, another document's under its own
+  const downloadStem = () =>
+    shownDoc !== mainFile
+      ? nameOf(shownDoc).replace(/\.[^.]+$/, '')
+      : (project?.name || nameOf(mainPdf).replace(/\.pdf$/i, '') || 'document').replace(/[\\/:*?"<>|]+/g, '').trim() || 'document';
+  const download = (url: string, name: string) => {
     const link = document.createElement('a');
-    link.href = pdf.url;
-    // main's under the project's name, another document's under its own
-    link.download =
-      shownDoc !== mainFile
-        ? nameOf(pdfOf(shownDoc))
-        : `${(project?.name || nameOf(mainPdf).replace(/\.pdf$/i, '') || 'document').replace(/[\\/:*?"<>|]+/g, '').trim() || 'document'}.pdf`;
+    link.href = url;
+    link.download = name;
     document.body.append(link);
     link.click();
     link.remove();
+  };
+  const downloadPdf = () => {
+    if (pdf) download(pdf.url, `${downloadStem()}.pdf`);
+  };
+  // PNG, SVG, HTML, PDF/A and PDF/UA, made by Typst on request: the compile and its PDF stay as they are
+  const downloadTypst = async (format: TypstExport) => {
+    try {
+      const res = await exportTypst(projectId, shownDoc, format, loadSettings().compileDefaults.typstVersion || undefined);
+      const url = URL.createObjectURL(new Blob([Uint8Array.from(atob(res.data), (c) => c.charCodeAt(0))]));
+      // main-png.zip, main.html: the document's name swapped for the download's
+      download(url, downloadStem() + res.name.slice(nameOf(shownDoc).replace(/\.typ$/i, '').length));
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      notify(`Couldn’t export: ${errorText(err)}`, 'error');
+    }
   };
 
   // shortcuts and CodeMirror key bindings call the newest handlers through this
@@ -3478,9 +3495,26 @@ function Editor({ projectId }: { projectId: string }) {
                     onSelect: () => setZoom(z)
                   }))}
                 />
-                <button className="icon-btn" title="Download PDF" aria-label="Download PDF" disabled={!pdf} onClick={downloadPdf}>
-                  <Icon name="arrow.down.to.line" />
-                </button>
+                {/\.typ$/i.test(shownDoc) ? (
+                  <MenuButton
+                    icon="arrow.down.to.line"
+                    title="Download"
+                    align="end"
+                    items={[
+                      { label: 'PDF', disabled: !pdf, onSelect: downloadPdf },
+                      { label: 'PDF/A-2b (for archiving)', onSelect: () => downloadTypst('pdf-a') },
+                      { label: 'PDF/UA-1 (accessible)', onSelect: () => downloadTypst('pdf-ua') },
+                      { separator: true },
+                      { label: 'PNG (one image per page)', onSelect: () => downloadTypst('png') },
+                      { label: 'SVG (one image per page)', onSelect: () => downloadTypst('svg') },
+                      { label: 'HTML (experimental)', onSelect: () => downloadTypst('html') }
+                    ]}
+                  />
+                ) : (
+                  <button className="icon-btn" title="Download PDF" aria-label="Download PDF" disabled={!pdf} onClick={downloadPdf}>
+                    <Icon name="arrow.down.to.line" />
+                  </button>
+                )}
                 <MenuButton
                   icon="ellipsis"
                   title="More"

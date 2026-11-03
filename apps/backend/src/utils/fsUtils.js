@@ -3,6 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { pipeline } from 'stream/promises';
 import unzipper from 'unzipper';
+import { crc32, deflateRawSync } from 'zlib';
 import { safeJoin, sanitizeUploadPath } from './pathUtils.js';
 import { looksLikeConflictCopy } from './conflictCopies.js';
 
@@ -190,6 +191,44 @@ export async function extractZip(stream, root) {
     await pipeline(entry, createWriteStream(abs));
   }
   await unwrapSingleFolder(root);
+}
+
+/**
+ * A .zip of files ({ name, data } each) in one buffer, deflated, dated 1 January 1980.
+ * ponytail: no zip64, so under 4 GB and 65,535 files; a page export is far smaller
+ */
+export function zipFiles(files) {
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+  for (const { name, data } of files) {
+    const nameBytes = Buffer.from(name);
+    const packed = deflateRawSync(data);
+    // the fields from version needed to the name's length, the same in the local and the central header
+    const shared = Buffer.alloc(26);
+    shared.writeUInt16LE(20, 0);
+    shared.writeUInt16LE(0x0800, 2); // UTF-8 names
+    shared.writeUInt16LE(8, 4); // deflate
+    shared.writeUInt16LE(0x21, 8); // 1980-01-01
+    shared.writeUInt32LE(crc32(data), 10);
+    shared.writeUInt32LE(packed.length, 14);
+    shared.writeUInt32LE(data.length, 18);
+    shared.writeUInt16LE(nameBytes.length, 22);
+    const local = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), shared, nameBytes, packed]);
+    const tail = Buffer.alloc(14);
+    tail.writeUInt32LE(offset, 10);
+    centrals.push(Buffer.concat([Buffer.from([0x50, 0x4b, 0x01, 0x02, 20, 0]), shared, tail, nameBytes]));
+    locals.push(local);
+    offset += local.length;
+  }
+  const central = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(files.length, 8);
+  end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(central.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, central, end]);
 }
 
 /** Zips made by compressing a folder hold just that folder; use its contents instead. */

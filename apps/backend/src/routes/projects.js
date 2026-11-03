@@ -39,6 +39,7 @@ import { documentLabels, projectStats, typstDocumentLabels } from '../services/s
 import { readProjectSettings, updateProjectSettings } from '../services/projectSettings.js';
 import { BIB_TOOLS, SUPPORTED_ENGINES } from '../services/compileService.js';
 import { SKILL_ID } from '../services/skillService.js';
+import { TYPST_EXPORTS, exportTypst } from '../services/typstService.js';
 import { knownMachineNames } from '../services/presenceService.js';
 import { stopProjectTexlab } from '../services/texlabService.js';
 import { rehomeAgentRuns } from '../services/agentSessionService.js';
@@ -435,6 +436,22 @@ export function registerProjectRoutes(fastify) {
     const made = await pandocDocx(root, abs, output);
     if (!made.ok) throw httpError('pandoc couldn’t make a Word document from this Markdown.', 502);
     return { ok: true, path: path.relative(root, output).split(path.sep).join('/') };
+  });
+
+  // PNG, SVG, HTML, PDF/A or PDF/UA from a .typ document, sent back to download; the project and its PDF stay as they are
+  // typstVersion: the app's default, which a project that pins none exports with
+  fastify.post('/api/projects/:id/export/typst', async (req) => {
+    const root = await getProjectRoot(req.params.id);
+    const doc = path.posix.normalize(String(req.body?.doc || '').replace(/\\/g, '/'));
+    if (!/\.typ$/i.test(doc) || doc.startsWith('../') || path.posix.isAbsolute(doc)) throw httpError('Choose a Typst document.', 400);
+    const format = String(req.body?.format || '');
+    if (!Object.hasOwn(TYPST_EXPORTS, format)) throw httpError('Unknown export format.', 400);
+    const abs = safeJoin(root, doc);
+    if (!(await fs.stat(abs).catch(() => null))?.isFile()) throw httpError('That Typst file doesn’t exist.', 404);
+    const typstVersion = COMPILE_SETTINGS.typstVersion(req.body?.typstVersion) ? req.body.typstVersion : '';
+    const made = await exportTypst(root, abs, doc, format, { typstVersion });
+    if (!made.ok) throw httpError(made.error, 422);
+    return made;
   });
 
   // a new LaTeX project from the .md: pandoc's LaTeX, its .bib files, the images it includes from this project, figures/ and diagrams/

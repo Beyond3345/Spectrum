@@ -255,6 +255,43 @@ test('an unpinned Typst document reads its numbers with the app’s default vers
   await app.close();
 });
 
+test('a Typst document exports as PNG and SVG pages, HTML, PDF/A and PDF/UA, and its project keeps no file of it', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const unzipper = (await import('unzipper')).default;
+  const project = await projectWith('typst-export', '#set document(title: "Export")\n= One\n\nText.\n#pagebreak()\n= Two\n');
+  const app = Fastify();
+  const { registerProjectRoutes } = await import('../src/routes/projects.js');
+  registerProjectRoutes(app);
+  const exported = async (format, doc = 'main.typ') => {
+    const res = await app.inject({ method: 'POST', url: `/api/projects/${project.id}/export/typst`, payload: { doc, format } });
+    const body = JSON.parse(res.payload);
+    return { status: res.statusCode, ...body, bytes: body.data ? Buffer.from(body.data, 'base64') : null };
+  };
+  for (const [format, ext, magic] of [['png', 'png', '\x89PNG'], ['svg', 'svg', '<svg']]) {
+    const made = await exported(format);
+    assert.equal(made.name, `main-${ext}.zip`, made.error);
+    const zip = await unzipper.Open.buffer(made.bytes);
+    assert.deepEqual(zip.files.map((file) => file.path), [`main-1.${ext}`, `main-2.${ext}`]);
+    assert.ok((await zip.files[0].buffer()).toString('latin1').includes(magic));
+  }
+  const html = await exported('html');
+  assert.equal(html.name, 'main.html');
+  assert.match(html.bytes.toString(), /<h2>One<\/h2>/);
+  for (const [format, mark] of [['pdf-a', 'pdfaid'], ['pdf-ua', 'pdfuaid']]) {
+    const pdf = await exported(format);
+    assert.equal(pdf.name, 'main.pdf');
+    assert.ok(pdf.bytes.toString('latin1').startsWith('%PDF') && pdf.bytes.toString('latin1').includes(mark), format);
+  }
+  const dir = await getProjectRoot(project.id);
+  assert.deepEqual((await fs.readdir(dir)).filter((name) => !name.startsWith('.')), ['main.typ']);
+  // PDF/UA's own rule comes back as the reason; a format or file it doesn't know is refused
+  await fs.writeFile(path.join(dir, 'untitled.typ'), '= One\n');
+  assert.equal((await exported('pdf-ua', 'untitled.typ')).message, 'PDF/UA-1 error: missing document title');
+  assert.equal((await exported('docx')).status, 400);
+  assert.equal((await exported('png', '../main.typ')).status, 400);
+  await app.close();
+});
+
 test.after(async () => {
   rmSync(tmp, { recursive: true, force: true });
 });
