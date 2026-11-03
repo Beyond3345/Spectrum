@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { convertProject, watchCompile } from '../api/client';
-import type { CompileEngine, ConvertChecks, ProjectMeta } from '../api/client';
+import { convertProject, watchCompile, writeFile } from '../api/client';
+import type { CompileEngine, ConvertChecks, ConvertTidy, ProjectMeta } from '../api/client';
+import ReviewChangesSheet from '../editor/ReviewChangesSheet';
+import type { PendingChange } from '../editor/EditorContext';
 import { errorText } from '../editor/shared';
+import { llmConfigFor, useSettings } from './settings';
 import Sheet from './Sheet';
 import { toast } from './Toast';
 
@@ -20,9 +23,24 @@ export function checkLines(checks: ConvertChecks) {
   ];
 }
 
+/** What the AI tidying did, in a line. */
+export function tidyLine(tidy: ConvertTidy) {
+  const done = tidy.regions.filter((r) => r.result === 'replaced').length;
+  const asked = tidy.regions.length;
+  return [
+    `The AI model tidied ${done} of ${asked} flagged part${asked === 1 ? '' : 's'}`,
+    asked - done ? `; ${asked - done} stay as converted, with a TODO comment` : '',
+    tidy.left ? `, and ${tidy.left} more were left for another time` : '',
+    '.',
+    tidy.error ? ` It stopped: ${tidy.error}` : ''
+  ].join('');
+}
+
 /**
  * "Convert to Typst project…" and "Convert to LaTeX project…": what happens, then each step as it starts, then the
- * checks and the new project to open. Closing it while it runs lets the conversion finish, and a toast says so.
+ * checks and the new project to open. Closing it while it runs lets the conversion finish, and a toast says so. With a
+ * model set up, the flagged parts can be tidied by it too (convertTidy.js), each edit checked before it is written, and
+ * then reviewed here: Reject puts the converted text back.
  */
 export default function ConvertSheet({
   projectId,
@@ -42,7 +60,13 @@ export default function ConvertSheet({
   const [steps, setSteps] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
-  const [result, setResult] = useState<{ project: ProjectMeta; checks: ConvertChecks } | null>(null);
+  const [result, setResult] = useState<{ project: ProjectMeta; checks: ConvertChecks; regions: number; tidy?: ConvertTidy } | null>(null);
+  const [settings] = useSettings();
+  const model = llmConfigFor(settings, 'quick');
+  // a local server on plain http, such as Ollama, takes no key
+  const modelReady = !!model.apiKey || /^http:\/\//i.test(model.endpoint || '');
+  const [tidy, setTidy] = useState(false);
+  const [review, setReview] = useState<PendingChange[] | null>(null);
   const shown = useRef(true);
   useEffect(() => {
     shown.current = true;
@@ -62,7 +86,7 @@ export default function ConvertSheet({
       output: (text) => setSteps((was) => text.split('\n').filter(Boolean).reduce((list, step) => (list[list.length - 1]?.split(' (')[0] === step.split(' (')[0] ? [...list.slice(0, -1), step] : [...list, step]), was))
     });
     try {
-      const res = await convertProject(projectId, { to, doc, engine, convertId });
+      const res = await convertProject(projectId, { to, doc, engine, convertId, ...(tidy && modelReady && { aiCleanup: true, llmConfig: model }) });
       if (shown.current) setResult(res);
       else toast(`Made ${res.project.name}.`, { tone: 'success', action: { label: 'Open', onClick: () => onOpen(res.project.id) } });
     } catch (err) {
@@ -74,6 +98,31 @@ export default function ConvertSheet({
     }
   };
 
+  const changes = result?.tidy?.changes ?? [];
+  if (review && result) {
+    // the edits are in the new project already: Accept keeps one, Reject writes the converted text back
+    const done = (list: PendingChange[]) => {
+      const left = (was: PendingChange[]) => was.filter((c) => !list.some((l) => l.filePath === c.filePath));
+      setReview((was) => was && left(was));
+      setResult((was) => (was?.tidy ? { ...was, tidy: { ...was.tidy, changes: left(was.tidy.changes) } } : was));
+    };
+    return (
+      <ReviewChangesSheet
+        changes={review.map((c) => ({ ...c, source: 'AI tidying' }))}
+        onAccept={async (list) => done(list)}
+        onReject={(list) => {
+          Promise.all(list.map((c) => writeFile(result.project.id, c.filePath, c.original)))
+            .then(() => {
+              done(list);
+              toast(list.length === 1 ? `Put back the converted ${list[0].filePath}` : `Put back ${list.length} converted files`, { tone: 'success' });
+            })
+            .catch((err) => toast(`Couldn’t put the converted text back: ${errorText(err)}`, { tone: 'error' }));
+        }}
+        onClose={() => setReview(null)}
+      />
+    );
+  }
+
   return (
     <Sheet
       title={result ? `Made ${result.project.name}` : `Convert to a ${target} project?`}
@@ -83,6 +132,7 @@ export default function ConvertSheet({
         result ? (
           <>
             <button className="btn" onClick={onClose}>Close</button>
+            {changes.length > 0 && <button className="btn" onClick={() => setReview(changes)}>Review the AI’s edits…</button>}
             <button className="btn primary" onClick={() => onOpen(result.project.id)}>Open new project</button>
           </>
         ) : (
@@ -102,6 +152,18 @@ export default function ConvertSheet({
           {to === 'latex' && ' The LaTeX is checked by compiling it with your LaTeX engine.'}
         </p>
       )}
+      {!result && modelReady && (
+        <label className="checkbox-row">
+          <input type="checkbox" checked={tidy} disabled={running} onChange={(e) => setTidy(e.target.checked)} />
+          <span>
+            <span>Tidy flagged parts with the AI model <span className="badge">Experimental</span></span>
+            <span className="field-hint">
+              Your quick model (Settings › Models) rewrites each part the rules could only approximate (a title page, a CV header, a table), one at a time, and Spectrum
+              checks every answer keeps the words, labels, references and maths and still compiles before using it. You review the edits afterwards.
+            </span>
+          </span>
+        </label>
+      )}
       {steps.length > 0 && !result && (
         <div className="log-box" aria-live="polite">
           {steps.map((step, i) => <div key={step + i}>{i < steps.length - 1 || !running ? '✓ ' : '… '}{step}</div>)}
@@ -116,6 +178,7 @@ export default function ConvertSheet({
             {result.checks.ok ? 'Everything the original had came through.' : 'Some of the original did not come through.'} See conversion/notes.md in the new project
             for the pictures kept as PDF and what was approximated.
           </p>
+          {result.tidy && <p className="field-hint">{tidyLine(result.tidy)}{changes.length > 0 && ' Review the edits before you keep them.'}</p>}
         </>
       )}
       {error && <div className="field-hint error">{error}</div>}
