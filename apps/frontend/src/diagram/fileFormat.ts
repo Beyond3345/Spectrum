@@ -4,6 +4,7 @@ import type { PlotModel } from './modes/pgfplots/code';
 import { tikzIsNewer } from './modes/tikz/code';
 import type { TikzModel } from './modes/tikz/code';
 import type { DiagramFile } from './types';
+import { tikzDocument } from '../../../backend/src/latex/flowchart.js';
 
 // One file per diagram: diagrams/<name>.tex, a standalone TikZ document, diagrams/<name>.typ, a Typst file, or
 // diagrams/<name>.mmd (figures/ before 2.1). Its last line keeps the drawing, after a comment mark TeX, Typst and Mermaid skip (%, // and %%),
@@ -53,18 +54,7 @@ const MARK_LINE = /^(?:%%?|\/\/) spectrum-diagram v1 ([A-Za-z0-9+/=]+) ([0-9a-f]
 export const hasDrawing = (text: string) => new RegExp(MARK_LINE.source, 'm').test(text);
 
 /** The standalone document a TikZ diagram compiles as, and \includestandalone takes the picture from. */
-export function tikzDocument({ body, packages, libraries }: DiagramCode) {
-  return [
-    // Crop the whole picture; the tikz option only captures tikzpicture, missing wrapper environments such as circuitikz.
-    '\\documentclass[border=2pt]{standalone}',
-    ...packages.map((name) => `\\usepackage{${name}}`),
-    ...(libraries.length ? [`\\usetikzlibrary{${libraries.join(',')}}`] : []),
-    '\\begin{document}',
-    body.trimEnd(),
-    '\\end{document}',
-    ''
-  ].join('\n');
-}
+export { tikzDocument };
 
 /** The text a drawing writes, above the last line. */
 export const drawnText = (diagram: DiagramFile, code: DiagramCode) =>

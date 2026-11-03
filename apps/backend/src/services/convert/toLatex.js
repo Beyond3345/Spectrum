@@ -3,8 +3,9 @@
 // every house construct (headings, equations, figures, tables, listings, pseudocode, theorems, the title block, units,
 // references and citations) as a token, pandoc writes the prose and each held piece as LaTeX in one run, and the house
 // writers of LATEX_STYLE.md put the constructs back. Pure: the caller runs pandoc and Typst (convertService.js).
-import { figureLatex, figureSetLatex, tableEdges, tableLatex } from '../../latex/floats.js';
+import { diagramLatex, figureLatex, figureSetLatex, tableEdges, tableLatex } from '../../latex/floats.js';
 import { arg, callAt, contentOf, expressionEnd, groupEnd, markupSpans, statementEnd, stringOf } from './typstRead.js';
+import { braceArg, environments } from './latexRead.js';
 import { typedNumber, typedUnit } from './units.js';
 import { region } from './regions.js';
 
@@ -86,10 +87,15 @@ function readStatement(kind, text, facts, st) {
 // ─── The pre-pass ───
 
 function newState(file, source) {
-  const st = { file, source, blocks: [], inlines: [], pieces: [], held: [] };
+  const st = { file, source, blocks: [], inlines: [], pieces: [], held: [], comments: [] };
   st.block = (record) => {
     st.blocks.push(record);
     return '\n\nSPXB' + (st.blocks.length - 1) + 'X\n\n';
+  };
+  // a comment inside a paragraph, a line of its own wherever pandoc puts it
+  st.comment = (latex) => {
+    st.comments.push(latex);
+    return 'SPXC' + (st.comments.length - 1) + 'X';
   };
   // a token pandoc reads as a word in markup, and as a string in maths
   st.inline = (latex) => {
@@ -147,6 +153,7 @@ export function prepareTypst(source, ctx, { file }) {
 function statements(text, st, ctx) {
   let out = '';
   let body = false;
+  text = hoistComments(text);
   for (let i = 0; i < text.length; ) {
     const lineEnd = text.indexOf('\n', i) === -1 ? text.length : text.indexOf('\n', i);
     const line = text.slice(i, lineEnd);
@@ -155,23 +162,28 @@ function statements(text, st, ctx) {
       const start = i + line.indexOf('#');
       const end = statementEnd(text, start);
       const whole = text.slice(start, end);
-      if (body && statement[1] === 'set' && /^#set\s+page\(/.test(whole)) {
+      // a page's numbering set on its own, as a title page and the front matter have it, is a rule from there on
+      if (statement[1] === 'set' && /^#set\s+page\(/.test(whole) && (body || pageRule(whole) && bodyAhead(text, end + 1))) {
         const numbering = stringOf(arg(callAt(whole, 5)?.args ?? [], 'numbering') ?? '');
         out += st.block({ kind: 'numbering', style: numbering });
       } else if (body && statement[1] === 'set' && /^#set\s+heading\(\s*numbering:\s*"A/.test(whole)) {
         out += st.block({ kind: 'appendix' });
+      } else if (body && /^#show figure: set block\(breakable: true\)/.test(whole)) {
+        // the mark of a table that may run across pages, which blockPass reads with its table
+        out += line.slice(0, line.indexOf('#')) + '#show figure: set block(breakable: true)\n';
       } else if (!(body && statement[1] === 'show')) {
         readStatement(statement[1], whole, ctx.facts, st);
       }
       i = end + 1;
       continue;
     }
-    // a comment on lines of its own
+    // a comment on lines of its own, before the body's text or in it: between paragraphs a block, inside one a line of it
     const comment = /^\s*\/\/\s?(.*)$/.exec(line);
     if (comment) {
       const prev = out.endsWith('\n\n') || !out.trim();
       const next = !text.slice(lineEnd + 1, text.indexOf('\n', lineEnd + 1) === -1 ? undefined : text.indexOf('\n', lineEnd + 1)).trim();
-      if (comment[1].trim() && (prev || next) && body) out += st.block({ kind: 'raw', latex: '% ' + comment[1].trim() });
+      const words = comment[1].trim();
+      if (words && (body || bodyAhead(text, lineEnd + 1))) out += prev || next ? st.block({ kind: 'raw', latex: '% ' + words }) : st.comment('% ' + words) + '\n';
       i = lineEnd + 1;
       continue;
     }
@@ -181,6 +193,38 @@ function statements(text, st, ctx) {
     i = lineEnd + 1;
   }
   return out;
+}
+
+/** A #set page that only numbers the pages, which TYPST_STYLE.md writes for a title page and the front matter. */
+const pageRule = (statement) => {
+  const args = callAt(statement, 5)?.args ?? [];
+  return args.length > 0 && args.every((a) => a.name === 'numbering');
+};
+
+/** The next line after from that isn't blank or a comment is the body's: text, a call, or a rule the body sets. */
+function bodyAhead(text, from) {
+  for (const line of text.slice(from).split('\n')) {
+    if (!line.trim() || /^\s*\/\//.test(line)) continue;
+    const statement = /^\s*#(set|show|let|import)\s/.exec(line);
+    return !statement || (/^\s*#set\s+page\(/.test(line) && pageRule(line.trim())) || /^\s*#set\s+heading\(\s*numbering:\s*"A/.test(line);
+  }
+  return false;
+}
+
+/** Whole-line comments inside a call over several lines (a figure, the title block), moved to just before it. */
+function hoistComments(text) {
+  let out = '';
+  let last = 0;
+  for (const m of text.matchAll(/^#(?!(?:set|show|let|import|include)\b)[A-Za-z]/gm)) {
+    if (m.index < last) continue;
+    const end = expressionEnd(text, m.index);
+    const call = text.slice(m.index, end);
+    const inside = call.match(/^[ \t]*\/\/[^\n]*\n/gm);
+    if (!inside) continue;
+    out += text.slice(last, m.index) + inside.map((c) => c.trimStart()).join('') + call.replace(/^[ \t]*\/\/[^\n]*\n/gm, '');
+    last = end;
+  }
+  return out + text.slice(last);
 }
 
 /** The label right after position end, as in ) <fig:x>: { label, end }. */
@@ -235,6 +279,18 @@ function blockPass(text, st, ctx) {
       k = last - 1;
       continue;
     }
+    // a table that may run across pages, as the converter writes xltabular: #[ #show figure: set block(breakable: true) #figure(table(…)) ]
+    const long = /^#\[\s*#show figure: set block\(breakable: true\)[^\n]*\n\s*(?=#figure\()/.exec(text.slice(k, k + 300));
+    const figure = long && callAt(text, k + long[0].length);
+    const table = figure && figureRecord(figure, st, ctx);
+    if (table?.kind === 'table') {
+      table.model.env = 'xltabular';
+      const after = groupEnd(text, k + 1);
+      out += text.slice(last, k) + st.block({ ...table, label: labelAfter(text, figure.end).label, line: lineOf(st, text.slice(k, k + 40)) });
+      last = after;
+      k = after - 1;
+      continue;
+    }
     const call = callAt(text, k);
     const end = expressionEnd(text, k);
     const record = call && construct(call, text, k, st, ctx);
@@ -277,6 +333,17 @@ function titleItem(line, st) {
   return { title, size: arg(a, 'size'), bold: /bold/.test(arg(a, 'weight') ?? ''), italic: /italic/.test(arg(a, 'style') ?? ''), text: title ? null : st.piece(call ? call.bodies[0] ?? contentOf(value) ?? value ?? '' : line) };
 }
 
+/** A title block's lines, at \\ or a line's end, each #v(…) that starts one a line of its own. */
+const titleLines = (body) => body.split(/\\\s*\n|\n/).map((l) => l.trim()).filter(Boolean).flatMap((line) => {
+  const out = [];
+  let rest = line;
+  for (let m = /^(#v\([^()]*\))\s*/.exec(rest); m && rest.length > m[0].length; m = /^(#v\([^()]*\))\s*/.exec(rest)) {
+    out.push(m[1]);
+    rest = rest.slice(m[0].length);
+  }
+  return [...out, rest];
+});
+
 /** The LaTeX size command nearest a Typst text size (12pt, 1.2em) in a document of base pt; '' at the base size. */
 function latexSize(size, base) {
   const m = /^(\d*\.?\d+)(pt|em)$/.exec(String(size ?? '').trim());
@@ -308,11 +375,18 @@ function construct(call, text, at, st, ctx) {
     case 'align': {
       const body = call.bodies[0] ?? contentOf(arg(a, null, 1)) ?? '';
       if (!TITLE.test(body)) return null;
-      const lines = body.split(/\\\s*\n|\n/).map((l) => l.trim()).filter(Boolean);
+      const lines = titleLines(body);
       // a title page fills a page of its own: centred down it, or with space pushing its foot down
       if (/horizon/.test(arg(a, null, 0) ?? '') || lines.some((l) => /^#v\(\s*1fr\s*\)$/.test(l))) return { kind: 'titlepage', items: lines.map((l) => titleItem(l, st)) };
       // the title block: the title, then the author and date lines
       return { kind: 'maketitle', lines: lines.filter((l) => !TITLE.test(l) && !/^#v\(/.test(l)).map((l) => st.piece(l)) };
+    }
+    case 'page': {
+      // the title page the converter writes: #page(numbering: none)[#align(center)[...]]
+      const inner = (call.bodies[0] ?? '').trim();
+      const centred = /^#align\(\s*center\s*\)\[/.test(inner) ? callAt(inner, 0) : null;
+      if (!centred || arg(a, 'numbering') !== 'none' || centred.end !== inner.length) return null;
+      return { kind: 'titlepage', items: titleLines(centred.bodies[0] ?? '').map((l) => titleItem(l, st)) };
     }
     case 'outline': {
       const target = arg(a, 'target') ?? '';
@@ -672,7 +746,7 @@ function inlinePass(text, st, ctx) {
   const mathsAt = [...text.matchAll(/\$[^$]*\$/g)].map((m) => [m.index, m.index + m[0].length]);
   let called = '';
   let from = 0;
-  for (const m of text.matchAll(/#smallcaps\[([^\]]*)\];?\(/g)) {
+  for (const m of text.matchAll(/#smallcaps\[([^\]]*)\](?:;\s*)?\(/g)) {
     if (m.index < from) continue;
     const open = m.index + m[0].length - 1;
     const close = groupEnd(text, open);
@@ -767,7 +841,62 @@ export function assembleLatex(latex, st, ctx) {
   for (const key of ['titleLatex', 'authorLatex', 'dateLatex']) if (typeof ctx[key] === 'string') ctx[key] = finish(ctx[key]);
   // \Call's arguments go through \ifthenelse, which takes $…$ but not \(…\)
   out = out.replace(/\\Call\{([^{}]*)\}\{\\\(([\s\S]*?)\\\)\}/g, '\\Call{$1}{$$$2$$}');
+  out = inlineCode(out, ctx);
+  out = out.replace(/([^\n]*?)[ \t]*SPXC(\d+)X[ \t]*([^\n]*)/g, (_, before, n, after) => [before, st.comments[n], after].filter((s) => s.trim()).join('\n'));
+  // a new page once: after a title page, which ends its own, or where a #pagebreak and new numbering meet
+  out = out.replace(/((?:\\end\{titlepage\}|^SPXV\d+X)\n(?:[ \t]*(?:%[^\n]*)?\n)*)[ \t]*\\clearpage\n/gm, '$1').replace(/\\clearpage(?:\s*\\clearpage)+/g, '\\clearpage');
   return out.replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim() + '\n';
+}
+
+// pandoc's escapes in \texttt, and the characters they stand for
+const CODE_ESCAPES = { '\\textbackslash{}': '\\', '\\textasciitilde{}': '~', '\\^{}': '^', '\\textless{}': '<', '\\textgreater{}': '>', '\\textbar{}': '|', '\\textquotesingle{}': "'", '\\textasciigrave{}': '`', '\\/': '' };
+
+/**
+ * pandoc's \texttt for code in a sentence as LATEX_STYLE.md writes it, \lstinline|…|, or as the LaTeX it came from
+ * (ctx.inlineCode: its text → the \verb or \lstinline), where \lstinline works: in a paragraph, not in a command's argument (a
+ * caption, a footnote) or a table, which read their text before listings can.
+ */
+function inlineCode(latex, ctx) {
+  const skip = environments(latex, ['tabular', 'tabularx', 'xltabular', 'tabular*', 'lstlisting', 'verbatim']).map((e) => [e.start, e.end]);
+  let out = '';
+  let depth = 0;
+  for (let i = 0; i < latex.length; i += 1) {
+    const ch = latex[i];
+    if (ch === '\\' && latex.startsWith('\\texttt{', i) && depth === 0 && !skip.some(([s, e]) => i >= s && i < e)) {
+      const arg = braceArg(latex, i + '\\texttt'.length);
+      const code = arg && codeText(arg.arg);
+      const mark = code !== null && [...'|!+@='].find((c) => !code.includes(c));
+      if (mark && !code.includes('\n')) {
+        const written = ctx.inlineCode?.get(code) ?? '\\lstinline' + mark + code + mark;
+        if (written.startsWith('\\lstinline')) ctx.used.add('code');
+        out += written;
+        i = arg.end - 1;
+        continue;
+      }
+    }
+    if (ch === '\\') {
+      out += latex.slice(i, i + 2);
+      i += 1;
+      continue;
+    }
+    if (ch === '{' || ch === '[') depth += 1;
+    else if (ch === '}' || ch === ']') depth = Math.max(0, depth - 1);
+    else if (ch === '\n' && latex[i + 1] === '\n') depth = 0;
+    out += ch;
+  }
+  return out;
+}
+
+/** The text of pandoc's \texttt{…} argument, or null for anything but its escapes. */
+function codeText(arg) {
+  let out = '';
+  for (const m of arg.matchAll(/\\(?:textbackslash|textasciitilde|textless|textgreater|textbar|textquotesingle|textasciigrave)\{\}|\\\^\{\}|\\\/|\\([{}$%&#_ ])|\\[A-Za-z]+|\\.|[^\\]/g)) {
+    if (m[1]) out += m[1];
+    else if (m[0] in CODE_ESCAPES) out += CODE_ESCAPES[m[0]];
+    else if (m[0].startsWith('\\')) return null;
+    else out += m[0];
+  }
+  return out;
 }
 
 /** One held construct as LaTeX. */
@@ -803,7 +932,7 @@ function renderBlock(record, pieceText, st, ctx) {
       }
       ctx.used.add('booktabs');
       if (model.align.includes('S')) ctx.used.add('siunitx');
-      if (model.env === 'tabularx') ctx.used.add('tabularx');
+      if (model.env === 'tabularx' || model.env === 'xltabular') ctx.used.add(model.env);
       if (model.merges.some((g) => g.rows > 1)) ctx.used.add('multirow');
       if (model.cells.some((row) => row.some((c) => c.includes('\\\\')))) {
         model.breaks = true;
@@ -893,6 +1022,20 @@ function renderBlock(record, pieceText, st, ctx) {
 function renderFigure(record, pieceText, ctx) {
   const caption = record.caption === null ? '' : pieceText(record.caption);
   ctx.used.add('graphicx');
+  // a picture whose LaTeX sits beside its PDF: the TikZ it was made from, or the composer's drawing
+  const drawn = record.layout === 'picture' ? ctx.pictures[record.picture] : null;
+  const key = record.layout === 'image' ? record.path : drawn?.standalone ? drawn.pdf : null;
+  const source = key ? ctx.texSources?.get(key) : null;
+  if (source?.picture) {
+    ctx.used.add('picture:' + key);
+    // the figure indented as the picture's own lines are, by its \end line
+    const indent = /\n([ \t]+)\\end\{[^}]*\}$/.exec(source.picture)?.[1] ?? '  ';
+    return ['\\begin{figure}[' + record.placement + ']', indent + '\\centering', indent + source.picture, indent + '\\caption{' + caption + '}', ...(record.label ? [indent + '\\label{' + record.label + '}'] : []), '\\end{figure}'].join('\n');
+  }
+  if (source?.standalone) {
+    ctx.used.add('picture:' + key);
+    return diagramLatex({ path: source.standalone, width: record.size?.mode === 'line' ? record.size.fraction : null, caption, label: record.label ?? '', placement: record.placement, markup: true });
+  }
   if (record.layout === 'image' || record.layout === 'picture') {
     const picture = record.layout === 'picture' ? ctx.pictures[record.picture] : null;
     if (picture && !picture.ok) return ['\\begin{figure}[' + record.placement + ']', '  \\centering', '  \\fbox{Picture not converted: ' + texText(picture.typ ?? '') + '}', '  \\caption{' + caption + '}', ...(record.label ? ['  \\label{' + record.label + '}'] : []), '\\end{figure}'].join('\n');
@@ -927,7 +1070,15 @@ export function latexPreamble(ctx) {
   const used = ctx.used;
   const theorems = [...f.theorems].filter(([name]) => used.has('theorem:' + name));
   const groups = [];
-  groups.push([commented('\\documentclass[' + Math.round(f.size) + 'pt,' + paper + ']{' + klass + '}', Math.round(f.size) + ' pt text on ' + paper.replace('paper', '').toUpperCase().replace('LETTER', 'US Letter') + ' paper' + (f.report ? '; chapters and a title page' : ''))]);
+  // the class and options of the LaTeX this came from, when the record has them, with the page's size and paper now
+  const options = ctx.sourceClass?.options ?? [Math.round(f.size) + 'pt', paper];
+  const pictures = [...ctx.used].filter((u) => u.startsWith('picture:')).map((u) => ctx.texSources.get(u.slice(8)));
+  // a package the house preamble writes with its settings, when a picture needs it
+  for (const name of ['siunitx', 'mathtools', 'graphicx']) if (pictures.some((p) => p.preamble.some((l) => new RegExp('^\\\\usepackage\\s*(?:\\[[^\\]]*\\])?\\s*\\{' + name + '\\}').test(l)))) ctx.used.add(name);
+  groups.push([
+    commented('\\documentclass' + (options.length ? '[' + options.join(',') + ']' : '') + '{' + (ctx.sourceClass?.name ?? klass) + '}', Math.round(f.size) + ' pt text on ' + paper.replace('paper', '').toUpperCase().replace('LETTER', 'US Letter') + ' paper' + (f.report ? '; chapters and a title page' : '')),
+    ...(pictures.some((p) => p.standalone) ? [commented('\\usepackage{standalone}', '\\includestandalone, for the diagram composer\'s drawings')] : [])
+  ]);
   if (ctx.hasBibliography) {
     groups.push([
       '% References',
@@ -963,10 +1114,12 @@ export function latexPreamble(ctx) {
     ...(used.has('subcaption') ? [commented('\\usepackage{subcaption}', 'sub-figures (a), (b), each with its own caption and label')] : []),
     ...(used.has('booktabs') ? [commented('\\usepackage{booktabs}', '\\toprule, \\midrule and \\bottomrule for clean tables')] : []),
     ...(used.has('tabularx') ? [commented('\\usepackage{tabularx}', 'tables that stretch to the line, with wrapping X columns')] : []),
+    ...(used.has('xltabular') ? [commented('\\usepackage{xltabular}', 'long tables that break across pages, with X columns')] : []),
     ...(used.has('siunitx') || ctx.units ? [commented('\\usepackage{siunitx}', 'numbers and units: \\qty{6.6}{\\kilo\\watt}, aligned table columns'), '\\sisetup{group-separator={,},group-minimum-digits=4,per-mode=symbol} % 7,790 with a comma, and V/µs'] : []),
     ...(used.has('multirow') ? [commented('\\usepackage{multirow}', 'cells merged down the rows')] : []),
     ...(used.has('makecell') ? [commented('\\usepackage{makecell}', 'a line break inside a cell')] : []),
-    ...(used.has('threeparttable') ? [commented('\\usepackage{threeparttable}', 'notes under a table')] : [])
+    ...(used.has('threeparttable') ? [commented('\\usepackage{threeparttable}', 'notes under a table')] : []),
+    ...pictureLines(pictures, used)
   ];
   if (figures.length) groups.push(['% Figures and tables', ...figures]);
   const code = [
@@ -1045,6 +1198,31 @@ export function latexPreamble(ctx) {
     ...(ctx.dateLatex !== undefined ? ['\\date{' + ctx.dateLatex + '}'] : [])
   ];
   return [...groups.map((g) => g.join('\n')), ...(own.length ? [own.join('\n').trim()] : []), ...(head.length ? [head.join('\n')] : [])].join('\n\n');
+}
+
+// what the drawing packages do, as the house preamble says it
+const DRAWING_COMMENTS = { tikz: 'drawing diagrams', pgfplots: 'charts drawn from data, right in the document', circuitikz: 'circuit diagrams', 'tikz-cd': 'commutative diagrams' };
+
+/**
+ * The preamble lines the pictures put back as TikZ or \\includestandalone need, from the LaTeX documents beside their
+ * PDFs: their packages and settings, each once, and the document's own commands a picture uses. The packages the house
+ * preamble loads (amsmath, babel, siunitx when anything uses it, and the like) are left to it.
+ */
+function pictureLines(pictures, used) {
+  const house = new Set(['amsmath', 'amssymb', 'babel', 'standalone', 'iftex', 'fontenc', 'lmodern', 'inputenc', ...['mathtools', 'graphicx', 'siunitx'].filter((p) => used.has(p)), ...(used.has('code') ? ['xcolor'] : [])]);
+  const lines = [...new Set(pictures.flatMap((p) => p.preamble))];
+  const bodies = pictures.map((p) => p.picture ?? '').join('\n');
+  return lines.filter((line) => {
+    const pkg = /^\\usepackage\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/.exec(line);
+    if (pkg) return !pkg[1].split(',').every((name) => house.has(name.trim()));
+    if (/^\\sisetup\b/.test(line)) return false;
+    const command = /^\\(?:newcommand|renewcommand|providecommand|DeclareRobustCommand|DeclareMathOperator|def)\*?\s*\{?(\\[A-Za-z@]+)/.exec(line);
+    return !command || new RegExp(command[1].replace(/\\/g, '\\\\') + '(?![A-Za-z@])').test(bodies);
+  }).map((line) => {
+    const pkg = /^\\usepackage\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}$/.exec(line);
+    if (/^\\pgfplotsset\{compat=[\d.]+\}$/.test(line)) return commented(line, 'use current pgfplots behaviour (label placement and so on)');
+    return pkg && DRAWING_COMMENTS[pkg[1]] ? commented(line, DRAWING_COMMENTS[pkg[1]]) : line;
+  });
 }
 
 /**

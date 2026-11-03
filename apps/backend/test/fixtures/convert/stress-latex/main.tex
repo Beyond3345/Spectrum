@@ -36,6 +36,7 @@
 \usepackage{multirow}                   % cells merged down the rows
 \usepackage{makecell}                   % a line break inside a cell
 \usepackage{threeparttable}             % notes under a table
+\usepackage{xltabular}                  % long tables that break across pages, with X columns
 \usepackage{tikz}                       % drawing diagrams
 \usepackage{pgfplots}                   % charts drawn from data, right in the document
 \pgfplotsset{compat=1.18}               % use current pgfplots behaviour (label placement and so on)
@@ -254,6 +255,24 @@ Any proof needs only one prime outside the list, as \cref{def:prime,ex:first} su
   \label{fig:amp}
 \end{figure}
 
+Two figures can also sit side by side, \cref{fig:left} and \cref{fig:right}, each with its own number.
+
+\begin{figure}[ht]
+    \centering
+    \begin{minipage}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/measured.png}
+        \caption{Measured on its own.}
+        \label{fig:left}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/modelled.png}
+        \caption{Modelled on its own.}
+        \label{fig:right}
+    \end{minipage}
+\end{figure}
+
 \Cref{tab:seasons} lines its numbers up, \cref{tab:grouped} groups its heading,
 \cref{tab:results} has a note, and \cref{tab:parts} stretches to the line.
 
@@ -320,6 +339,28 @@ Any proof needs only one prime outside the list, as \cref{def:prime,ex:first} su
     \bottomrule
   \end{tabularx}
 \end{table}
+
+\Cref{tab:long} may run across pages.
+% a comment inside a paragraph stays in it
+Its heading rows repeat at the top of each page.
+
+\begin{xltabular}{\linewidth}{lX}
+    \caption{Readings, in a table that may break across pages.}\label{tab:long} \\
+    \toprule
+    Month & Note \\
+    \midrule
+    \endfirsthead
+    \toprule
+    Month & Note \\
+    \midrule
+    \endhead
+    \multicolumn{2}{r}{\emph{Continued on the next page}} \\
+    \endfoot
+    \bottomrule
+    \endlastfoot
+    January & The highest output of the year \\
+    June & The lowest, with the shortest days \\
+\end{xltabular}
 
 \section{Code}\label{sec:code}
 
