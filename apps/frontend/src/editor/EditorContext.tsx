@@ -13,6 +13,8 @@ export interface CompileError {
   severity: 'error' | 'warning';
   message: string;
   line?: number;
+  /** from 0, in characters: Typst's only */
+  column?: number;
   file?: string;
   raw?: string;
 }

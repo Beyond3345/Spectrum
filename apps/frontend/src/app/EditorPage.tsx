@@ -104,6 +104,7 @@ import PdfPresentation from '../editor/PdfPresentation';
 import TodosList, { useTodos } from '../editor/TodosList';
 import { findKey, findLine, snippetOf } from '../editor/todos';
 import { parseCompileLog, projectFile } from '../editor/compileLog';
+import { compileMarks, setCompileMarks } from '../editor/compileMarks';
 import { highlightColour, linger } from '../editor/synctex';
 import {
   closeEnvironment,
@@ -537,10 +538,12 @@ function Editor({ projectId }: { projectId: string }) {
     const files = items.map((i) => i.path);
     // a Typst compile brings its diagnostics with it; an empty list is a Typst compile with nothing to report
     const parsed = compileDiagnostics !== null
-      ? compileDiagnostics.map((e) => ({ severity: e.severity, message: e.message, line: e.line, file: projectFile(e.file, compiledDoc, files) }))
+      ? compileDiagnostics.map((e) => ({ severity: e.severity, message: e.message, line: e.line, column: e.column, file: projectFile(e.file, compiledDoc, files) }))
       : parseCompileLog(compileLog, project?.path).map((e) => (e.file ? { ...e, file: projectFile(e.file, compiledDoc, files) } : e));
     return compileFailure && !parsed.some((e) => e.severity === 'error') ? [{ severity: 'error', message: compileFailure }, ...parsed] : parsed;
   }, [compileDiagnostics, compileLog, compileFailure, project?.path, items, compiledDoc]);
+  const compileErrorsRef = useRef(compileErrors);
+  compileErrorsRef.current = compileErrors;
   const selectionText = selectionRange[0] === selectionRange[1] ? '' : editorValue.slice(selectionRange[0], selectionRange[1]);
   const fileSet = useMemo(() => new Set(items.filter((i) => i.type === 'file').map((i) => i.path)), [items]);
   // the files to-dos are looked for in, never a sync app's conflict copy
@@ -734,6 +737,13 @@ function Editor({ projectId }: { projectId: string }) {
     setSelectionRange([0, 0]);
   };
 
+  /** The last compile's Typst errors and warnings underlined in the open .typ file, until the next compile. */
+  const markCompileErrors = () => {
+    const view = viewRef.current;
+    if (!view || docKind(activeRef.current) !== 'typst') return;
+    view.dispatch({ effects: setCompileMarks.of(compileMarks(compileErrorsRef.current, activeRef.current, view.state.doc)) });
+  };
+
   /** TexLab's squiggles, hovers and jumps for the open file, when TexLab is answering and reads that kind of file. */
   const attachTexlab = () => {
     const view = viewRef.current;
@@ -776,6 +786,7 @@ function Editor({ projectId }: { projectId: string }) {
       if (docKind(path) === 'typst') loadTypst().then((language) => { if (language && activeRef.current === path) viewRef.current?.dispatch({ effects: languageCompartment.reconfigure(language) }); });
       activeRef.current = path;
       attachTexlab();
+      markCompileErrors();
       cursorPlacedRef.current = false;
       setActivePath(path);
       setEditorValue(content);
@@ -2478,6 +2489,7 @@ function Editor({ projectId }: { projectId: string }) {
   }, [projectId]);
 
   useEffect(() => attachTexlab(), [texlabOn]);
+  useEffect(() => markCompileErrors(), [compileErrors]);
 
   // TexLab's outline of the document being edited, a moment after typing stops, a file changes, a compile ends or
   // TexLab starts. A compile's numbers reach TexLab two seconds after it ends (the backend's auxKept), so no outline

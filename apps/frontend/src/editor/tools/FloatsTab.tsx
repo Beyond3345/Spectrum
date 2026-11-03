@@ -18,7 +18,7 @@ import { VISION_HINTS, VISION_MODES, docKind, errorText, figureSnippet, isDocume
 import type { VisionMode } from '../shared';
 import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, figureTypst, figureTypstInclude, fitMerges, fitPartRules, jpegOrientation, mergeAt, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tablePackages, tableRules, tableTypst, uniqueName, withMerge } from '../floats';
 import type { FigureSet, FigureSize, TableEnv, TableLines, TableMerge, TableModel, TablePartRule } from '../floats';
-import { addLibraries, addPackages, changeBetween, loadedLibraries, projectPackages } from '../preamble';
+import { addLibraries, addPackages, addTypstSubfigure, changeBetween, loadedLibraries, projectPackages } from '../preamble';
 
 const IMAGE_EXTS = /\.(png|jpe?g|gif|svg|webp)$/i;
 
@@ -581,6 +581,12 @@ function InsertFigure() {
       }
       const added =
         docKindNow === 'latex' ? await ensurePackages(() => apiRef.current, [...wanted, ...(placementOf(prefs.placement, prefs.span) === 'H' ? ['float'] : [])]) : { text: '', warn: false };
+      // Typst's sub-figures need the house definition in the file they go in, since a #let doesn't reach other files
+      const subfigure = docKindNow === 'typst' && several && prefs.labels === 'sub' ? addTypstSubfigure(apiRef.current.editorValue) : null;
+      if (subfigure?.change) {
+        apiRef.current.editOpenFile(subfigure.change);
+        added.text = `Added the sub-figure definitions to ${apiRef.current.activePath}.`;
+      }
       insertBlock(apiRef.current, text);
       if (uploads.length) await api.refreshTree();
       const what = uploads.length ? `Saved ${uploads.length === 1 ? saved[used.indexOf(uploads[0])] : `${uploads.length} images in figures/`} and inserted the figure.` : `Inserted ${saved.length === 1 ? saved[0] : `${saved.length} images`} as a figure.`;

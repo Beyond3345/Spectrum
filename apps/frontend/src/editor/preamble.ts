@@ -234,3 +234,50 @@ export async function projectPackages(mainFile: string, texFiles: Set<string>, r
   }
   return names;
 }
+
+// ─── Typst ───
+
+/** The house sub-figure rules and definition, as docs/TYPST_STYLE.md writes them in its preamble. */
+export const TYPST_SUBFIGURE = String.raw`#show figure.caption.where(kind: "subfigure"): it => [#context it.counter.display(it.numbering) #it.body] // a panel's caption: (a) Measured output.
+#show figure: it => {                           // each figure starts its panels again at (a)
+  if it.kind != "subfigure" { counter(figure.where(kind: "subfigure")).update(0) }
+  it
+}
+#show ref: it => {                              // a reference to a panel reads Figure 1a
+  let panel = it.element
+  if panel == none or panel.func() != figure or panel.kind != "subfigure" { return it }
+  let parent = query(figure.where(kind: image).before(panel.location())).last()
+  let number = parent.counter.display(parent.numbering, at: parent.location())
+  link(panel.location(), [Figure~#number#numbering("a", ..panel.counter.at(panel.location()))])
+}
+
+// A panel of a figure: #subfigure(image(...), caption: [...]) <fig:name>, numbered (a), (b), ...
+#let subfigure = figure.with(kind: "subfigure", supplement: [Figure], numbering: "(a)")
+`;
+
+// a top-level line that starts a set, show, let or import rule; its own lines after it are indented or close a bracket
+const TYPST_RULE = /^#(?:set|show|let|import)\b/;
+
+/**
+ * The Typst source with the house sub-figure definitions after its preamble (the set, show, let and import rules at the
+ * top), or null when it defines subfigure already or imports a project file that may (#import "/style.typ": *).
+ */
+export function addTypstSubfigure(source: string): PackageEdit | null {
+  if (/^[ \t]*#let\s+subfigure\b/m.test(source) || /^[ \t]*#import\s+"[^"@]+"\s*:\s*(?:\*|.*\bsubfigure\b)/m.test(source)) return null;
+  let at = 0;
+  let inRule = false;
+  for (let start = 0; start < source.length; ) {
+    const end = source.indexOf('\n', start) === -1 ? source.length : source.indexOf('\n', start);
+    const line = source.slice(start, end);
+    if (TYPST_RULE.test(line)) inRule = true;
+    else if (!line.trim() || line.startsWith('//')) inRule = false;
+    else if (!(inRule && /^[ \t)}\]]/.test(line))) break;
+    if (inRule) at = Math.min(source.length, end + 1);
+    start = end + 1;
+  }
+  const head = source.slice(0, at);
+  const rest = source.slice(at);
+  // a blank line either side, unless the source has one there already
+  const insert = (at && !head.endsWith('\n') ? '\n' : '') + (at ? '\n' : '') + TYPST_SUBFIGURE + (rest.trim() && !/^[ \t]*\n/.test(rest) ? '\n' : '');
+  return { source: head + insert + rest, added: ['subfigure'], change: { from: at, to: at, insert } };
+}
