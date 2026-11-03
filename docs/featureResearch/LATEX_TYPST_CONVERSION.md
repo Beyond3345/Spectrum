@@ -399,7 +399,7 @@ A raw LaTeX block cannot be passed through to Typst, and a raw Typst block canno
 
 ### 9.1 When it runs
 
-Only after the deterministic conversion has passed its validators, only if the user turned it on and only on regions the converter flagged. A region is one construct the rules could not place: a title page, a CV header, an unknown environment, an unknown command with its paragraph, an approximated table. Each region is at most 60 lines. The model never sees or rewrites the whole document, which is the difference from `transferAgent`'s `applyTransfer` and `fixCompile`.
+Only after the deterministic conversion has passed its validators, only if the user turned it on and only on regions the converter flagged. A region is one construct the rules could not place: a title page, a CV header, an unknown environment, an unknown command with its paragraph, an approximated table. The converter also flags an environment the document defines with `\newenvironment`, `multicols`, and in Typst a call of the document's own `#let` function whose look pandoc cannot write (a box, a fill, a size), since all of these keep their words but lose their look. Each region is at most 60 lines. The model never sees or rewrites the whole document, which is the difference from `transferAgent`'s `applyTransfer` and `fixCompile`.
 
 ### 9.2 The task
 
