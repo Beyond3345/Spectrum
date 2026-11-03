@@ -2,6 +2,32 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.2.0 (3 November 2026)
+
+### Added
+
+- Convert to Typst project… in a LaTeX project's menu, and Convert to LaTeX project… in a Typst project's, make a new project in the other language and leave the original as it is. Labels, references, citations, numbered equations, figures, sub-figures, tables, listings, pseudocode and theorems come across; siunitx quantities become typed units and back; TikZ and Typst drawings are compiled to PDF with their source kept beside them, and the diagram composer's flowcharts are written again as fletcher or TikZ. Spectrum checks that the new project compiles and that nothing was lost, and conversion/notes.md lists the checks, any word missing and anything to look over. Converting back reads the conversion record, so the class, title page, roman front-matter numbering, drawings, long tables and comments return as they were. Typst is read with Typst's own parser, built in, so documents that import packages or define their own functions convert. It uses pandoc from Settings › Engines; Beamer slides are not converted
+- Experimental, off by default: Tidy flagged parts with the AI model, when converting. The parts the rules can only approximate (title pages, CV headers, unknown environments and commands, unusual tables) are sent to your quick model one at a time; Spectrum keeps an answer only if it keeps the words, labels, references, citations, maths and formatting and still compiles, saves a checkpoint first, and shows every edit for review. scripts/tidy-bench.mjs measures how well a model does this on 51 test regions, with --recheck to score saved answers again
+- Tinymist, Typst's language server, downloads from Settings › Engines › Typst and gives Typst files completion for your own functions and packages, hover help, go to definition, rename, errors as you type, Format document and a word count in Document insights. In projects on Typst 0.15.1, double clicks jump exactly between the PDF and the source in both directions
+- Typst compile errors and warnings are underlined at their place in the editor, with the message on hover, until the next compile
+- Typst documents download as PNG or SVG (one image per page, zipped), HTML (experimental), PDF/A-2b or PDF/UA-1 from the download menu in the PDF toolbar
+- New project and the template gallery ask first whether to write in LaTeX, Typst or Markdown and offer only that language's templates; a blank project starts in the language chosen. Typst Universe is a separate, searchable section of the gallery for Typst, working offline from a daily cached index, showing each template's version, description and licence and flagging licences that are not MIT-compatible. Choosing one downloads only that template
+- Typst templates for maths notes, electronics notes and a coding report, matching their LaTeX versions, with plots and the circuit drawn in plain Typst so they compile offline. docs/TYPST_STYLE.md sets out the Typst house style, as docs/LATEX_STYLE.md does for LaTeX
+
+### Changed
+
+- The Typst document, report, letter and CV templates follow the Typst house style. The Typst report is now the Report or thesis template in Typst, with the same title page, chapters, chart, tables, citations and appendix
+- The maths notes, electronics notes and coding report templates cite a real source in both their LaTeX and Typst versions
+- Insert figure's Typst sub-figures are #subfigure panels with a label each, so @fig:measured prints Figure 1a, and the definitions are added to the file when it lacks them. The References tool names a new bibliography refs.bib in Typst projects
+- Faster: Typst stays running for the open project, so a recompile with nothing changed takes milliseconds and one after a save a fraction of a second; a project's files are read in one request when it opens; checkpoints rehash only the files that changed; the editor no longer redraws on every key; spell checking runs off the typing thread; the PDF reaches the editor without slow decoding
+- The Mac app is built for Apple silicon only and ships as Spectrum_2.2.0_aarch64.dmg, about 250 MB smaller. Intel Macs stay on version 2.1.0
+
+### Fixed
+
+- The built-in Tectonic always runs Spectrum's own Biber, even when another tectonic-biber is on the PATH, and refuses to run a tectonic-biber kept in a document's folder
+- The splash screen no longer shows a grey square behind the icon
+- Text on the line after \vspace{…} is spell checked again
+
 ## 2.1.0 (1 November 2026)
 
 ### Added
