@@ -7,6 +7,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 ### Fixed
 
 - The LaTeX, Typst and Markdown choice in New project and the template gallery fills its row, the three sharing the width evenly, rather than leaving empty space at its end
+- Settings › Engines › Markdown offers to download pandoc when the computer's own is older than 3.8.3, which converting between LaTeX and Typst needs, and when it is older than the version Spectrum is tested with; it compared against the minimum for LaTeX output before, so a pandoc 3.8 had no button. The Convert sheet has a Download pandoc button when pandoc is missing or too old
 
 ## 2.2.0 (3 November 2026)
 

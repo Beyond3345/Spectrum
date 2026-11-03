@@ -1402,7 +1402,10 @@ function EnginesPane() {
     }
   };
   const pandoc = engines?.pandoc.found ?? null;
-  const pandocOld = !!pandoc?.version && engines != null && !versionAtLeast(pandoc.version, engines.pandoc.minimum.latex);
+  // too old for Typst output and for converting between LaTeX and Typst, which need the Typst minimum
+  const pandocOld = !!pandoc?.version && engines != null && !versionAtLeast(pandoc.version, engines.pandoc.minimum.typst);
+  // a pandoc of the computer's own, older than the one Spectrum is tested with, can be replaced by Spectrum's
+  const pandocBehind = !!pandoc && !pandoc.fromDownload && engines != null && (!pandoc.version || !versionAtLeast(pandoc.version, engines.pandoc.downloadable));
 
   return (
     <>
@@ -1616,9 +1619,11 @@ function EnginesPane() {
                   {pandoc
                     ? `pandoc ${pandoc.version || 'with an unknown version'}, ${pandoc.fromDownload ? 'downloaded by Spectrum' : 'at ' + pandoc.path}.`
                     : 'No pandoc was found on this computer.'}
-                  {pandocOld && ` This one is older than pandoc ${engines.pandoc.minimum.typst}, which Typst output needs.`}
+                  {pandocOld
+                    ? ` This one is older than pandoc ${engines.pandoc.minimum.typst}, which Typst output and converting between LaTeX and Typst need.`
+                    : pandocBehind && ` Spectrum is tested with pandoc ${engines.pandoc.downloadable}, which it can download and use instead.`}
                 </div>
-                {(!pandoc || pandocOld) && (
+                {(!pandoc || pandocOld || pandocBehind) && (
                   <button className="btn" disabled={busy === 'pandoc'} onClick={downloadPandoc}>
                     {busy === 'pandoc' ? 'Downloading…' : `Download pandoc ${engines.pandoc.downloadable} (about 42 MB)`}
                   </button>

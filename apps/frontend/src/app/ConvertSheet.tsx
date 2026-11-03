@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { convertProject, watchCompile, writeFile } from '../api/client';
+import { convertProject, installPandoc, watchCompile, writeFile } from '../api/client';
 import type { CompileEngine, ConvertChecks, ConvertTidy, ProjectMeta } from '../api/client';
 import ReviewChangesSheet from '../editor/ReviewChangesSheet';
 import type { PendingChange } from '../editor/EditorContext';
@@ -67,6 +67,21 @@ export default function ConvertSheet({
   const modelReady = !!model.apiKey || /^http:\/\//i.test(model.endpoint || '');
   const [tidy, setTidy] = useState(false);
   const [review, setReview] = useState<PendingChange[] | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  // the backend's message when there's no pandoc or it is too old; the sheet offers the download right here
+  const needsPandoc = /needs pandoc|pandoc .* too old/i.test(error);
+  const downloadPandoc = async () => {
+    setDownloading(true);
+    try {
+      await installPandoc();
+      setError('');
+      toast('Downloaded pandoc. Convert again.', { tone: 'success' });
+    } catch (err) {
+      toast(`Couldn’t download pandoc: ${errorText(err)}`, { tone: 'error' });
+    } finally {
+      setDownloading(false);
+    }
+  };
   const shown = useRef(true);
   useEffect(() => {
     shown.current = true;
@@ -182,6 +197,11 @@ export default function ConvertSheet({
         </>
       )}
       {error && <div className="field-hint error">{error}</div>}
+      {needsPandoc && (
+        <button className="btn" disabled={downloading} onClick={downloadPandoc}>
+          {downloading ? <><span className="spinner" /> Downloading pandoc…</> : 'Download pandoc'}
+        </button>
+      )}
     </Sheet>
   );
 }
