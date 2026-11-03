@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Desktop app helper.
 //   node scripts/desktop.mjs dev        run the shell against the repo backend (tauri dev)
-//   node scripts/desktop.mjs build      universal Spectrum.app + .dmg on macOS, the x64 installer on Windows
+//   node scripts/desktop.mjs build      Apple silicon Spectrum.app + .dmg on macOS, the x64 installer on Windows
 //   node scripts/desktop.mjs resources  everything `build` bundles, without packaging
 //   node scripts/desktop.mjs texlab     TexLab alone (the Windows workflow builds it as a step of its own)
 //   node scripts/desktop.mjs tectonic   Tectonic alone
@@ -24,7 +24,7 @@ const resourcesDir = path.join(tauriDir, 'resources');
 const binDir = path.join(tauriDir, 'binaries');
 const win = process.platform === 'win32';
 const cacheDir = win ? path.join(process.env.LOCALAPPDATA, 'spectrum-build') : path.join(os.homedir(), 'Library', 'Caches', 'spectrum-build');
-const TRIPLES = win ? { x64: 'x86_64-pc-windows-msvc' } : { arm64: 'aarch64-apple-darwin', x64: 'x86_64-apple-darwin' };
+const TRIPLES = win ? { x64: 'x86_64-pc-windows-msvc' } : { arm64: 'aarch64-apple-darwin' };
 const EXE = win ? '.exe' : '';
 // Windows' own tar reads zips; the GNU tar that Git for Windows puts on PATH doesn't
 const winTar = win && path.join(process.env.SystemRoot, 'System32', 'tar.exe');
@@ -141,20 +141,13 @@ async function nodeBinary(version, arch) {
   return out;
 }
 
-/** Writes binaries/<name>-<triple> from binary(arch) for each arch, plus the universal binary when both are asked for. */
+/** Writes binaries/<name>-<triple> from binary(arch) for each arch. */
 async function sidecar(name, arches, binary) {
   fs.mkdirSync(binDir, { recursive: true });
-  const bins = {};
   for (const arch of arches) {
-    bins[arch] = await binary(arch);
     const dest = path.join(binDir, `${name}-${TRIPLES[arch]}${EXE}`);
-    fs.copyFileSync(bins[arch], dest);
+    fs.copyFileSync(await binary(arch), dest);
     fs.chmodSync(dest, 0o755);
-  }
-  if (bins.arm64 && bins.x64) {
-    const universal = path.join(binDir, `${name}-universal-apple-darwin`);
-    run('lipo', ['-create', bins.arm64, bins.x64, '-output', universal]);
-    fs.chmodSync(universal, 0o755);
   }
 }
 
@@ -167,7 +160,7 @@ async function nodeRuntime(arches) {
 }
 
 /**
- * The npm of the same verified Node archive (JavaScript, so either Mac's), beside the bundled backend, which installs
+ * The npm of the same verified Node archive (JavaScript, so the arm64 archive's), beside the bundled backend, which installs
  * the agents' ACP adapters with it (agentProfiles.js). Its own licence files come with it.
  */
 async function bundledNpm(version) {
@@ -191,8 +184,7 @@ async function bundledNpm(version) {
 const TEXLAB = {
   version: '5.26.0',
   mac: {
-    arm64: ['texlab-aarch64-macos.tar.gz', 'af7972ffd230711ba04ada9b69cc32ce9111d9196ba69538062872faefdbee56'],
-    x64: ['texlab-x86_64-macos.tar.gz', '6091611f756b28e1a57612b130c196df4b0bb6e22dde5cf5d890578513397daf']
+    arm64: ['texlab-aarch64-macos.tar.gz', 'af7972ffd230711ba04ada9b69cc32ce9111d9196ba69538062872faefdbee56']
   },
   source: ['https://github.com/latex-lsp/texlab/archive/refs/tags/v5.26.0.tar.gz', '47af7e71247fe186ddbaa62373ce5fbebc802ab8df9924958ac62788a644f84e']
 };
@@ -370,8 +362,8 @@ async function build() {
     return;
   }
   // CI skips the Finder AppleScript that lays out the DMG window
-  run('npx', ['tauri', 'build', '--target', 'universal-apple-darwin'], { env: { ...process.env, CI: 'true' } });
-  const bundle = path.join(targetDir, 'universal-apple-darwin/release/bundle');
+  run('npx', ['tauri', 'build', '--target', TRIPLES.arm64], { env: { ...process.env, CI: 'true' } });
+  const bundle = path.join(targetDir, `${TRIPLES.arm64}/release/bundle`);
   const dmgDir = path.join(bundle, 'dmg');
   console.log(`\nApp: ${path.join(bundle, 'macos/Spectrum.app')}`);
   for (const f of fs.readdirSync(dmgDir).filter((f) => f.endsWith('.dmg'))) {

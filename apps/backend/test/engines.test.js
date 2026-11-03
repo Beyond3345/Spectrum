@@ -188,6 +188,13 @@ test('the Windows workflow runs typst.exe by its path, and its tests after a fai
   for (const step of ['TeX tools', 'Backend tests']) assert.match(workflow, new RegExp(`- name: ${step}\\n\\s+if: \\$\\{\\{ !cancelled\\(\\) \\}\\}`), step);
 });
 
+test('the Mac app is built for Apple silicon only', async () => {
+  const script = await repo('scripts/desktop.mjs');
+  assert.match(script, /: \{ arm64: 'aarch64-apple-darwin' \};/);
+  assert.match(script, /'tauri', 'build', '--target', TRIPLES\.arm64\]/);
+  assert.doesNotMatch(script, /universal-apple-darwin|x86_64-apple-darwin|'lipo'/);
+});
+
 test('the desktop script runs through a link to it', { skip: process.platform === 'win32' && 'links need Developer Mode' }, async () => {
   const link = path.join(tmp, 'desktop-link.mjs');
   await fs.symlink(path.join(import.meta.dirname, '..', '..', '..', 'scripts', 'desktop.mjs'), link);
