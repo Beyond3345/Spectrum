@@ -2,6 +2,17 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.2.2 (5 November 2026)
+
+### Changed
+
+- A new install's first LaTeX compile is quick: when the built-in Tectonic is the LaTeX Spectrum uses, Spectrum compiles copies of its LaTeX templates in the background after it opens, so the packages and fonts they use are downloaded beforehand, and downloads Biber. Settings › Engines › LaTeX shows Preparing LaTeX packages… until they are ready. A compile of your own always goes first
+- A built-in Tectonic compile that needs Biber downloads it and carries on, with the download shown in the compile's status line, rather than stopping. When it cannot, the PDF pane offers Download Biber and compile. A long first compile says that later ones are quick
+
+### Fixed
+
+- The PDF viewer draws text on older versions of macOS. It used a build of pdf.js that needs JavaScript newer than their WebKit has, so pages could show without their text
+
 ## 2.2.1 (3 November 2026)
 
 ### Added

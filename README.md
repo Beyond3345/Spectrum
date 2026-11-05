@@ -329,7 +329,7 @@ Since the application is signed ad hoc rather than with an Apple Developer ID, m
 xattr -dr com.apple.quarantine /Applications/Spectrum.app
 ```
 
-On Windows, run `Spectrum_2.2.1_x64-setup.exe`. It installs Spectrum for the current user without administrator rights and adds it to the Start menu, and it installs Microsoft Edge WebView2 when the PC does not have it yet. Since the installer is not signed, Windows SmartScreen may warn about it on the first run. To continue, select More info and then Run anyway.
+On Windows, run `Spectrum_2.2.2_x64-setup.exe`. It installs Spectrum for the current user without administrator rights and adds it to the Start menu, and it installs Microsoft Edge WebView2 when the PC does not have it yet. Since the installer is not signed, Windows SmartScreen may warn about it on the first run. To continue, select More info and then Run anyway.
 
 ## Windows
 

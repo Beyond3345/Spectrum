@@ -38,11 +38,11 @@ The second line matters: the dictionaries and templates must keep their LF line 
 ```
 git clone https://github.com/Beyond3345/Spectrum.git
 cd Spectrum
-git switch --detach v2.2.1
+git switch --detach v2.2.2
 npm ci
 ```
 
-Use the tag of the release you are building (`v2.2.1` here). Building `main` instead gives you whatever is newest.
+Use the tag of the release you are building (`v2.2.2` here). Building `main` instead gives you whatever is newest.
 
 ## 3. Build
 
@@ -59,7 +59,7 @@ node scripts/desktop.mjs build
 The installer is then at:
 
 ```
-src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.2.1_x64-setup.exe
+src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.2.2_x64-setup.exe
 ```
 
 Run it to install Spectrum for your account. It is not code signed, so SmartScreen may ask you to choose More info and then Run anyway.
@@ -87,8 +87,8 @@ npm run typecheck
 Only once the release exists on GitHub, published from the Mac with the DMG. Sign in once with `gh auth login`, then:
 
 ```
-$tag = "v2.2.1"
-$exe = "src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.2.1_x64-setup.exe"
+$tag = "v2.2.2"
+$exe = "src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.2.2_x64-setup.exe"
 $src = "texlab-5.26.0-source.tar.gz"
 Invoke-WebRequest https://github.com/latex-lsp/texlab/archive/refs/tags/v5.26.0.tar.gz -OutFile $src
 (Get-FileHash $src -Algorithm SHA256).Hash.ToLower() -eq "47af7e71247fe186ddbaa62373ce5fbebc802ab8df9924958ac62788a644f84e"
