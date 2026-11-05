@@ -1,5 +1,5 @@
-import { OPS, getDocument } from 'pdfjs-dist';
-import type { PDFPageProxy } from 'pdfjs-dist';
+import { OPS, getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import type { PDFPageProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import type { StructTreeNode } from 'pdfjs-dist/types/src/display/api';
 import type { PdfFacts, PdfPage } from './run';
 

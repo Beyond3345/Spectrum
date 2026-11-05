@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import Icon from '../app/Icon';
 import type { CompileError } from '../editor/EditorContext';
 

@@ -1,8 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { GlobalWorkerOptions, TextLayer, getDocument } from 'pdfjs-dist';
-import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy, PageViewport } from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import 'pdfjs-dist/web/pdf_viewer.css';
+import { GlobalWorkerOptions, TextLayer, getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy, PageViewport } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
+import 'pdfjs-dist/legacy/web/pdf_viewer.css';
 import type { PdfBox, PdfPoint } from '../api/client';
 import { linger, overlayStyle, pdfPoint } from './synctex';
 import { findAll, lineBoxFrom, matchBoxes, pageText } from './pdfFind';

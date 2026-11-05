@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { GlobalWorkerOptions } from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { blobUrl, getFile, getReviewState, runAiReview } from '../../api/client';
 import type { AiFinding, AiReview, LLMConfig } from '../../api/client';
 import Icon from '../../app/Icon';

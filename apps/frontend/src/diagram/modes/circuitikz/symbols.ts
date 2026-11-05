@@ -2,8 +2,8 @@
 // backend compiles one page per part and reads each pin back (/api/diagram/symbols); pdf.js turns the pages into
 // images. Kept in memory per style, and in IndexedDB so the next window opens with them.
 import { useEffect, useSyncExternalStore } from 'react';
-import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { base64Bytes, diagramSymbols } from '../../../api/client';
 import type { SymbolPage } from '../../../api/client';
 import { SYMBOL_SETS } from '../../../../../backend/src/data/symbolSets.js';

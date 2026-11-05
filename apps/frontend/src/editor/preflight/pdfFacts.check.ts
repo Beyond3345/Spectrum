@@ -1,7 +1,7 @@
 // Self-check for pdfFacts on a real PDF read by pdf.js, here a small tagged one made below. Bundle it first:
 // `npx esbuild apps/frontend/src/editor/preflight/pdfFacts.check.ts --bundle --platform=node --log-level=warning --outfile=<file>.js`, then `node <file>.js`
 // @ts-expect-error: the worker module comes without types
-import * as worker from 'pdfjs-dist/build/pdf.worker.mjs';
+import * as worker from 'pdfjs-dist/legacy/build/pdf.worker.mjs';
 import { pdfFacts } from './pdfFacts.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
