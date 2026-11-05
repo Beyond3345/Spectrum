@@ -53,10 +53,11 @@ export async function warmUpTectonic({ online = () => dns.promises.lookup(RELAY)
   state = 'preparing';
   const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-warm-up-'));
   try {
-    // every template's bibliography is biblatex's, which Tectonic runs Biber for
-    if (!tectonicBiber()) await installBiber().catch(() => {});
     let failed = 0;
     for (const t of templates) {
+      // every template's bibliography is biblatex's, which Tectonic runs Biber for (without it, it stops before the
+      // PDF and the fonts that go in it); asked for again before each, after a download that failed
+      if (!tectonicBiber()) await installBiber().catch(() => {});
       const folder = path.join(scratch, t.id);
       await fs.cp(t.root, folder, { recursive: true });
       // a PDF means TeX found every file it asked for
