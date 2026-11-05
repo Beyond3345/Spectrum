@@ -10,7 +10,8 @@ import {applyTransfer} from '../src/services/transferAgent/nodes/applyTransfer.j
 import {fixCompile} from '../src/services/transferAgent/nodes/fixCompile.js';
 import {fixLayout} from '../src/services/transferAgent/nodes/fixLayout.js';
 const temp=mkdtempSync(path.join(tmpdir(),'spectrum-bib-transfer-'));
-after(()=>rmSync(temp,{recursive:true,force:true}));
+// Windows: a TeX that outlived its test can still hold the folder for a moment
+after(()=>rmSync(temp,{recursive:true,force:true,maxRetries:10,retryDelay:500}));
 const template=String.raw`\documentclass{article}
 \usepackage[style=apa,backend=biber]{biblatex}
 \usepackage{hyperref}
@@ -132,7 +133,8 @@ test('AI conversion compiles the actual names, PDF properties and copied source 
  const state={sourceProjectRoot:source,sourceMainFile:'main.tex',sourceAssets:{bib:['references.bib']},sourceFullContent:String.raw`\title{STEAM AI Pitch}\author{Longkai Li \& Ankie Cheung}\date{}\begin{document}Original\end{document}`,targetTemplateContent:template,targetProjectRoot:target,targetMainFile:'main.tex',jobId:'fixture',llmConfig:{endpoint:'https://model.invalid/v1',apiKey:'test',model:'test'}};
  await applyTransfer(state);await copyAssets(state);
  for(const[command,args]of[['pdflatex',['-interaction=nonstopmode','-halt-on-error','main.tex']],['biber',['main']],['pdflatex',['-interaction=nonstopmode','-halt-on-error','main.tex']],['pdflatex',['-interaction=nonstopmode','-halt-on-error','main.tex']]]){
-  const result=spawnSync(command,args,{cwd:target,encoding:'utf8',windowsHide:true,timeout:30000});
+  // MiKTeX installs the packages a first run asks for, which can take minutes on a CI machine
+  const result=spawnSync(command,args,{cwd:target,encoding:'utf8',windowsHide:true,timeout:300000});
   assert.equal(result.status,0,result.error?.message||result.stdout+result.stderr);
  }
  const log=await fs.readFile(path.join(target,'main.log'),'utf8');

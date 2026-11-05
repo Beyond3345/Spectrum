@@ -107,7 +107,8 @@ test('generated Greek and Vietnamese references compile with pdfLaTeX and APA 7'
       ['biber', ['main']],
       ['pdflatex', ['-interaction=nonstopmode', '-halt-on-error', 'main.tex']]
     ]) {
-      const result = spawnSync(command, args, { cwd: dir, encoding: 'utf8', windowsHide: true, timeout: 30_000 });
+      // MiKTeX installs the packages a first run asks for, which can take minutes on a CI machine
+      const result = spawnSync(command, args, { cwd: dir, encoding: 'utf8', windowsHide: true, timeout: 300_000 });
       assert.equal(result.status, 0, result.error?.message || result.stdout + result.stderr);
     }
     assert.doesNotMatch(readFileSync(path.join(dir, 'main.log'), 'utf8'), /Missing character|Unicode character .*not set up/);
