@@ -47,6 +47,7 @@ import { seedTemplates, syncTemplates } from './services/templateService.js';
 import { dropOldAuxFolders, migrateLegacyProjects } from './services/projectService.js';
 import { migrateToV2 } from './services/mirrorService.js';
 import { killAllChildren } from './services/compileService.js';
+import { warmUpTectonic } from './services/tectonicWarmUp.js';
 import { offlineMessage, placeOf } from './services/syncService.js';
 import { isLocalRequest } from './utils/authUtils.js';
 
@@ -183,6 +184,8 @@ if (process.env.SPECTRUM_EXIT_WITH_STDIN === '1') {
 }
 
 await fastify.listen({ port: PORT, host: HOST });
+// the built-in Tectonic's packages for the templates, in the background (not in the tests' servers)
+if (!process.env.NODE_TEST_CONTEXT) warmUpTectonic().catch((err) => fastify.log.error(err));
 
 console.log('');
 console.log(`  Spectrum started at http://localhost:${PORT}`);

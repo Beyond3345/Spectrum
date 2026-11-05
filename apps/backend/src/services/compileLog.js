@@ -1,6 +1,7 @@
 // A running compile's output as it comes, by the id the editor gave the compile, for the editor to show while
-// Tectonic downloads and runs. The engine goes first, then the output in chunks; a listener that arrives late gets
-// the engine and the last BUFFER_CHARS of output first. Nothing is kept once the compile ends.
+// Tectonic downloads and runs. The engine goes first, then the output in chunks, and a status line of Spectrum's own
+// ('' when there's none) while it downloads something itself; a listener that arrives late gets the engine, the last
+// BUFFER_CHARS of output and the status first. Nothing is kept once the compile ends.
 const BUFFER_CHARS = 64_000;
 // a listener that comes before its compile (the editor saves first) waits this long for it
 const WAIT_MS = 60_000;
@@ -8,7 +9,7 @@ const logs = new Map();
 
 const entry = (compileId) => {
   let log = logs.get(compileId);
-  if (!log) logs.set(compileId, (log = { started: false, engine: null, chunks: [], size: 0, listeners: new Set(), timer: null }));
+  if (!log) logs.set(compileId, (log = { started: false, engine: null, status: '', chunks: [], size: 0, listeners: new Set(), timer: null }));
   return log;
 };
 
@@ -21,10 +22,11 @@ export function openLog(compileId) {
   return log;
 }
 
-/** Sends an event ('engine' or 'output') to the compile's listeners, and keeps it for those who come later. */
+/** Sends an event ('engine', 'output' or 'status') to the compile's listeners, and keeps it for those who come later. */
 export function sendLog(log, event, data) {
   if (!log) return;
   if (event === 'engine') log.engine = data;
+  else if (event === 'status') log.status = data;
   else {
     log.chunks.push(data);
     log.size += data.length;
@@ -47,6 +49,7 @@ export function listenLog(compileId, listener) {
   const log = entry(compileId);
   if (log.engine) listener('engine', log.engine);
   if (log.chunks.length) listener('output', log.chunks.join(''));
+  if (log.status) listener('status', log.status);
   log.listeners.add(listener);
   if (!log.started) {
     clearTimeout(log.timer);

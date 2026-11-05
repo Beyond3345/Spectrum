@@ -1320,6 +1320,27 @@ button.compile-status:hover {
   background: var(--border-strong);
 }
 
+/* a compile that needed Biber Spectrum couldn't download, with the button that does */
+.pdf-notice {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(420px, calc(100% - 32px));
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--bg-panel-solid);
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  text-align: center;
+  transform: translateX(-50%);
+}
+
 .pdf-annotate-hint {
   position: absolute;
   top: 12px;
