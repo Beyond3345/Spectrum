@@ -576,7 +576,8 @@ export interface EngineFound {
 
 /** What Settings › Engines shows: the built-in Typst and Tectonic, a Typst or pandoc on the PATH, and what can be installed. */
 export interface Engines {
-  tectonic: { builtIn: string | null; system: EngineFound | null };
+  /** warmUp: the templates' TeX files downloading in the background for the built-in Tectonic, or ready (null: neither) */
+  tectonic: { builtIn: string | null; system: EngineFound | null; warmUp: 'preparing' | 'ready' | null };
   typst: {
     builtIn: string | null;
     system: EngineFound | null;
@@ -725,12 +726,14 @@ export function stopCompile(compileId: string) {
 
 /**
  * A compile's output as it comes, by the id it was started with (opened before it starts, it waits): the engine
- * running first, then output text, the earlier text too when it was opened late. Returns the close.
+ * running first, then output text, the earlier text too when it was opened late, and Spectrum's status line. Returns the close.
  */
-export function watchCompile(compileId: string, on: { engine: (engine: string) => void; output: (text: string) => void }) {
+export function watchCompile(compileId: string, on: { engine: (engine: string) => void; output: (text: string) => void; status?: (text: string) => void }) {
   const es = new EventSource(`/api/compile/${encodeURIComponent(compileId)}/log`);
   es.addEventListener('engine', (e) => on.engine(JSON.parse((e as MessageEvent).data)));
   es.addEventListener('output', (e) => on.output(JSON.parse((e as MessageEvent).data)));
+  // Spectrum's own line while it downloads something for the compile (Biber), '' once it's done
+  es.addEventListener('status', (e) => on.status?.(JSON.parse((e as MessageEvent).data)));
   // not reopened: the compile is over
   es.addEventListener('end', () => es.close());
   es.onerror = () => es.close();

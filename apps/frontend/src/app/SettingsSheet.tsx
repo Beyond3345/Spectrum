@@ -1326,6 +1326,13 @@ function EnginesPane() {
   useEffect(() => {
     loadEngines();
   }, []);
+  // the built-in Tectonic's packages downloading in the background: looked at again until they're ready
+  const warmUp = engines?.tectonic.warmUp;
+  useEffect(() => {
+    if (warmUp !== 'preparing') return;
+    const timer = window.setInterval(loadEngines, 5000);
+    return () => window.clearInterval(timer);
+  }, [warmUp]);
   const install = async (version: string) => {
     setBusy('typst:' + version);
     setError('');
@@ -1428,6 +1435,13 @@ function EnginesPane() {
           Auto reads a <code>% !TEX program</code> comment, uses XeLaTeX when the document needs Unicode fonts, and pdfLaTeX otherwise.
           When no TeX is installed, Auto uses the built-in Tectonic, which downloads each package the first time a document needs it.
         </div>
+        {warmUp && (
+          <div className="field-hint" role="status">
+            {warmUp === 'preparing'
+              ? 'Preparing LaTeX packages… The built-in Tectonic is downloading what the templates need, in the background.'
+              : 'Ready: the built-in Tectonic has the packages the templates need.'}
+          </div>
+        )}
       </div>
       <div className="field">
         <label id="settings-autoCompile">Auto compile</label>

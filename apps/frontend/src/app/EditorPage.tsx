@@ -104,6 +104,7 @@ import PdfSidebar from '../editor/PdfSidebar';
 import type { PdfSidebarTab } from '../editor/PdfSidebar';
 import PdfFindBar from '../editor/PdfFindBar';
 import LiveCompile from '../editor/LiveCompile';
+import BiberNotice from '../editor/BiberNotice';
 import PdfPresentation from '../editor/PdfPresentation';
 import TodosList, { useTodos } from '../editor/TodosList';
 import { findKey, findLine, snippetOf } from '../editor/todos';
@@ -3679,6 +3680,8 @@ function Editor({ projectId }: { projectId: string }) {
                 )}
 
                 {pdf && annotate && <div className="pdf-annotate-hint">Click the page to add a note</div>}
+
+                {compileNotice?.code === 'BIBER_MISSING' && !running && <BiberNotice compile={() => runCompile()} notify={notify} />}
 
                 {/* the engine's output over the PDF while it compiles, for those switched on in Settings › Engines */}
                 {running && compile.id && (

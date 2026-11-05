@@ -17,6 +17,8 @@ const engineName = (engine: string) => COMPILE_ENGINES.find(([value]) => value =
 export default function LiveCompile({ compileId, shows }: { compileId: string; shows: (engine: string) => boolean }) {
   const [running, setRunning] = useState('');
   const [output, setOutput] = useState('');
+  // Spectrum's own, while it downloads Biber for the compile
+  const [status, setStatus] = useState('');
   const preRef = useRef<HTMLPreElement>(null);
   const atBottomRef = useRef(true);
 
@@ -26,6 +28,7 @@ export default function LiveCompile({ compileId, shows }: { compileId: string; s
     let frame = 0;
     const close = watchCompile(compileId, {
       engine: setRunning,
+      status: setStatus,
       output: (text) => {
         pending += text;
         frame ||= requestAnimationFrame(() => {
@@ -55,7 +58,7 @@ export default function LiveCompile({ compileId, shows }: { compileId: string; s
         <h2>Compiling with {engineName(running)}</h2>
       </div>
       <div className="live-compile-status" role="status" aria-live="polite">
-        {compileStatus(running, output)}
+        {status || compileStatus(running, output)}
       </div>
       <pre
         ref={preRef}

@@ -12,6 +12,9 @@ const TOOLS: Record<string, string> = {
   lualatex: 'LuaLaTeX'
 };
 const tool = (name: string) => TOOLS[name.toLowerCase()] ?? name;
+// this many downloads in one compile, and it's Tectonic's first: the status line says so
+const FIRST_COMPILE = 20;
+const FIRST_COMPILE_NOTE = '. The first compile downloads the packages it needs; later ones are quick.';
 const files = (count: number) => `${count} ${count === 1 ? 'file' : 'files'}`;
 
 /** The status line: “Downloading latex.ltx… (37 files so far)”, “Running pdfLaTeX, pass 2: reading article.cls”. */
@@ -25,7 +28,9 @@ function tectonicStatus(output: string) {
   const last = notes[notes.length - 1];
   if (!last) return 'Starting…';
   const downloading = /^downloading (.+)$/.exec(last);
-  if (downloading) return `Downloading ${downloading[1]}… (${files(notes.filter((note) => note.startsWith('downloading ')).length)} so far)`;
+  // a new install's first compile fetches hundreds, one by one
+  const count = notes.filter((note) => note.startsWith('downloading ')).length;
+  if (downloading) return `Downloading ${downloading[1]}… (${files(count)} so far)${count >= FIRST_COMPILE ? FIRST_COMPILE_NOTE : ''}`;
   if (/^Rerunning TeX\b/.test(last)) return 'Running TeX again';
   if (/^Running TeX\b/.test(last)) return 'Running TeX';
   const ran = /^Running (?:external tool )?(\S+)/.exec(last)?.[1];

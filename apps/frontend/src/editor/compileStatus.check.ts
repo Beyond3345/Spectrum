@@ -17,6 +17,11 @@ eq(
   'downloads counted, Windows line ends'
 );
 eq(compileStatus('tectonic', 'note: downloading a.tex\nnote: Running TeX ...\n(./main.tex'), 'Running TeX', 'TeX');
+eq(
+  compileStatus('tectonic', Array.from({ length: 20 }, (_, i) => `note: downloading f${i}.sty\n`).join('')),
+  'Downloading f19.sty… (20 files so far). The first compile downloads the packages it needs; later ones are quick.',
+  'a first compile’s many downloads'
+);
 eq(compileStatus('tectonic', 'note: Rerunning TeX because "main.aux" changed ...\n'), 'Running TeX again', 'rerun');
 eq(compileStatus('tectonic', 'note: Running external tool biber ...\n'), 'Running Biber', 'Biber');
 eq(compileStatus('tectonic', 'note: Running external tool bibtex ...\n'), 'Running BibTeX', 'BibTeX');
