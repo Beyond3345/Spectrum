@@ -9,6 +9,7 @@ import { offlineMessage, placeOf, readSyncConfig, setMachineName } from '../serv
 import { compiling } from '../services/compileService.js';
 import { stopProjectTexlab } from '../services/texlabService.js';
 import { stopProjectTinymist } from '../services/tinymistService.js';
+import { stopTypstWatch } from '../services/typstService.js';
 import { copyProject, preflight } from '../utils/projectCopy.js';
 import { transferring } from './transfer.js';
 import { agentAtWork, rehomeAgentRuns } from '../services/agentSessionService.js';
@@ -48,6 +49,7 @@ async function moveHere(id, root, parentDir) {
   await fs.rm(await cachePath(target, 'synctex'), { recursive: true, force: true });
   await stopProjectTexlab(id);
   await stopProjectTinymist(id);
+  await stopTypstWatch({ root });
   return { project: await getProject(id), left: { label: place.label, path: root } };
 }
 

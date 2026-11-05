@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { promises as fs } from 'fs';
 import { execFile, spawn } from 'child_process';
+import { once } from 'events';
 import { promisify } from 'util';
 import { DATA_DIR } from '../config/constants.js';
 import { ensureDir, zipFiles } from '../utils/fsUtils.js';
@@ -151,16 +152,28 @@ process.on('exit', () => {
   for (const w of watchers.values()) if (w.child && !w.exited) killGroup(w.child);
 });
 
+// resolves once the Typst has exited (or after three seconds): Windows can't move or delete a folder it is watching
 const stopWatcher = (w) => {
   if (watchers.get(w.root) === w) watchers.delete(w.root);
-  w.ready.then(() => w.exited || killGroup(w.child));
+  return w.ready.then(() => {
+    if (w.exited) return;
+    const gone = once(w.child, 'exit').catch(() => {});
+    killGroup(w.child);
+    return Promise.race([gone, new Promise((resolve) => setTimeout(resolve, 3000).unref())]);
+  });
 };
 
-/** Stops the watchers of a project (its folder), or those running a Typst in this folder (removing that version). */
+/**
+ * Stops the watchers of a project (its folder), or those running a Typst in this folder (removing that version), or
+ * with neither, every one. Resolves once they have exited.
+ */
 export function stopTypstWatch({ root, typstDir } = {}) {
-  for (const w of [...watchers.values()]) {
-    if ((root && w.root === root) || (typstDir && w.executable.startsWith(typstDir + path.sep))) stopWatcher(w);
-  }
+  const all = !root && !typstDir;
+  return Promise.all(
+    [...watchers.values()]
+      .filter((w) => all || (root && w.root === root) || (typstDir && w.executable.startsWith(typstDir + path.sep)))
+      .map(stopWatcher)
+  );
 }
 
 function startWatcher(root, key, executable, args, cwd, env) {

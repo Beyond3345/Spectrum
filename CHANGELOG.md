@@ -2,6 +2,13 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.2.3 (5 November 2026)
+
+### Fixed
+
+- Moving a Typst project to the Bin, removing it from the list, moving it to another folder or to this computer stops the Typst Spectrum keeps running for it first, as it does TexLab and Tinymist. On Windows, moving an open Typst project to the Bin could fail while that Typst still had its folder open
+- The Windows build's tests pass again: one compared a folder by its spelling, which Windows can shorten, and one deleted a folder a running Typst still had open
+
 ## 2.2.2 (5 November 2026)
 
 ### Changed

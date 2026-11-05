@@ -323,5 +323,7 @@ test('a Typst document exports as PNG and SVG pages, HTML, PDF/A and PDF/UA, and
 });
 
 test.after(async () => {
-  rmSync(tmp, { recursive: true, force: true });
+  // a kept-running Typst still watching a project here: Windows can't delete the folder until it has exited
+  await stopTypstWatch();
+  rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
 });

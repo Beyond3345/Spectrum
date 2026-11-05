@@ -104,7 +104,8 @@ test('the bridge does the handshake, relays an editor’s messages and runs no c
   // document is checked whole, and Tinymist's ask for settings is answered
   await until(() => received().some((m) => m.method === 'workspace/executeCommand'), 'pinned the main file');
   const [start, initialize] = received();
-  assert.equal(start.cwd, realpathSync.native(tmpdir()));
+  // Windows may give the same folder by its 8.3 short name (RUNNER~1): compare folders, not spellings
+  assert.equal(realpathSync.native(start.cwd), realpathSync.native(tmpdir()));
   assert.equal(start.cache, path.join(tmp, 'data', 'typst', 'packages'));
   assert.deepEqual(start.args, ['lsp']);
   assert.equal(initialize.params.initializationOptions.exportPdf, 'never');

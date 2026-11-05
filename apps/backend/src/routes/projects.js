@@ -362,6 +362,8 @@ export function registerProjectRoutes(fastify) {
   fastify.post('/api/projects/:id/remove', async (req) => {
     await stopProjectTexlab(req.params.id);
     await stopProjectTinymist(req.params.id);
+    const root = await getProjectRoot(req.params.id).catch(() => null);
+    if (root) await stopTypstWatch({ root });
     await unregister(req.params.id);
     return { ok: true };
   });
@@ -369,9 +371,10 @@ export function registerProjectRoutes(fastify) {
   fastify.post('/api/projects/:id/trash', async (req) => {
     if (!['darwin', 'win32'].includes(process.platform)) return { ok: false, error: 'Moving to the Bin is only supported on macOS and Windows.' };
     const root = await getProjectRoot(req.params.id);
-    // Windows can't bin a folder its TexLab or Tinymist is watching
+    // Windows can't bin a folder its TexLab, Tinymist or kept-running Typst is watching
     await stopProjectTexlab(req.params.id);
     await stopProjectTinymist(req.params.id);
+    await stopTypstWatch({ root });
     try {
       await moveToBin(root);
     } catch (err) {
@@ -383,7 +386,10 @@ export function registerProjectRoutes(fastify) {
 
   fastify.post('/api/projects/:id/relocate', async (req) => {
     refuseBusy(req.params.id, (await getProject(req.params.id)).name);
+    const before = await getProjectRoot(req.params.id).catch(() => null);
     const project = await relocateProject(req.params.id, req.body?.path);
+    // a kept-running Typst follows the old folder
+    if (before) await stopTypstWatch({ root: before });
     rehomeAgentRuns(req.params.id, project.path);
     // a TexLab or Tinymist on the old folder has its old text
     await stopProjectTexlab(req.params.id);
