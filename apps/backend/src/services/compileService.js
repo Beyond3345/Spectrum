@@ -4,9 +4,10 @@ import path from 'path';
 import { existsSync, promises as fs, constants as fsConstants } from 'fs';
 import { spawn } from 'child_process';
 import { AsyncLocalStorage } from 'async_hooks';
+import { EventEmitter } from 'events';
 import { DATA_DIR } from '../config/constants.js';
 import { ensureDir, listFilesRecursive, renameOver } from '../utils/fsUtils.js';
-import { biberCache, builtInTectonic, tectonicBiber } from './engineService.js';
+import { biberCache, biberDownload, builtInTectonic, installBiber, tectonicBiber } from './engineService.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { withoutComments } from '../utils/texUtils.js';
 import { cachePath, getProjectRoot } from './projectService.js';
@@ -58,10 +59,11 @@ const TEX_ROOT = /^\s*%\s*!TEX\s+root\s*=\s*(.+?)\s*$/im;
 // biblatex's Biber, which for Tectonic's biblatex must be Biber 2.17 (Spectrum downloads it); backend=bibtex runs BibTeX instead
 const BIBLATEX = /\\addbibresource\b|\\(?:usepackage|RequirePackage)(?:\s*\[[^\]]*\])?\s*\{biblatex\}/;
 const BIBTEX_BACKEND = /backend\s*=\s*bibtex/;
+const needsBiber = (tex) => BIBLATEX.test(withoutComments(tex)) && !BIBTEX_BACKEND.test(tex);
 // Tectonic's bundle or a package couldn't be fetched (the bundle's own panic says it isn't cached)
 const TECTONIC_DOWNLOAD = /failed to download|failure downloading|couldn't get it from the internet/i;
 const TECTONIC_DOWNLOAD_ERROR = 'Tectonic couldn’t reach its server to download the TeX packages this document needs. Check the internet connection and compile again, or install TeX Live (MacTeX on a Mac, MiKTeX on Windows).';
-const BIBLATEX_NOTE = '\n[spectrum] biblatex with Biber needs the Biber that matches the built-in Tectonic. Download Biber from Logs or Settings › Engines › LaTeX, or install TeX Live or MiKTeX.\n';
+const BIBLATEX_NOTE = '\n[spectrum] biblatex with Biber needs the Biber that matches the built-in Tectonic, which Spectrum couldn’t download just now. Choose Download Biber and compile over the PDF, download it from Logs or Settings › Engines › LaTeX, or install TeX Live or MiKTeX.\n';
 // the index's and the glossaries' programs, each run when a pass changed its input or it made nothing yet.
 // makeglossaries is Perl, which MiKTeX doesn't come with; makeglossaries-lite is Lua
 const INDEXERS = [
@@ -180,7 +182,7 @@ async function autoEngineCandidates(absMain, without = []) {
     else if (await findExecutable(engine)) installed.push(engine);
   }
   // biblatex with Biber can't run under the built-in Tectonic, which another engine can
-  if (BIBLATEX.test(withoutComments(tex)) && !BIBTEX_BACKEND.test(tex) && installed.some((engine) => engine !== 'tectonic')) {
+  if (needsBiber(tex) && installed.some((engine) => engine !== 'tectonic')) {
     const at = installed.indexOf('tectonic');
     if (at !== -1) installed.splice(at, 1);
   }
@@ -267,6 +269,13 @@ export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOU
     const child = spawn(file, args, options);
     children.add(child);
     job?.children.add(child);
+    if (job?.lowPriority && child.pid) {
+      try {
+        os.setPriority(child.pid, os.constants.priority.PRIORITY_LOW);
+      } catch {
+        // it runs at the usual priority
+      }
+    }
     if (WINDOWS) child.stdin.on('error', () => {});
     if (input != null) {
       // a command that never reads it closes the pipe first
@@ -386,15 +395,19 @@ export const compiling = (projectId) => [...running.values()].some((job) => job.
  * A compile of a folder that isn't a project (an agent's copy), as the agent's tools and the review's preview run one
  * inside isolation: built in buildDir (the temp folder's spectrum-build by default), nothing written into the folder,
  * and no kept files, SyncTeX or checkpoints. env: more for TeX's; without: engines Auto doesn't pick; untrusted: no
- * shell escape, Biber or index and glossary tools, for a draft compiled outside isolation. Resolves as runCompile does,
- * with the PDF in base64.
+ * shell escape, Biber or index and glossary tools, for a draft compiled outside isolation. warmUp: the background
+ * warm-up's, at low priority, stopped by its signal. Resolves as runCompile does, with the PDF in base64.
  */
-export async function compileFolder({ root, mainFile, engine = 'auto', texFolder, ...options }) {
+export async function compileFolder({ root, mainFile, engine = 'auto', texFolder, signal, ...options }) {
   if (!SUPPORTED_ENGINES.includes(engine) || options.without?.includes(engine)) return { ok: false, error: `Unsupported engine: ${engine}`, engine };
   const absMain = safeJoin(root, String(mainFile || ''));
   if (path.basename(absMain).startsWith('-')) return { ok: false, error: 'The main file’s name can’t start with “-”.', engine };
   if (!(await fs.stat(absMain).catch(() => null))?.isFile()) return { ok: false, error: `The main file “${mainFile}” doesn’t exist.`, engine };
-  const job = { stopped: false, children: new Set(), searchPath: await texPath(texFolder) };
+  const job = { stopped: false, children: new Set(), searchPath: await texPath(texFolder), lowPriority: options.warmUp === true };
+  signal?.addEventListener('abort', () => {
+    job.stopped = true;
+    for (const child of job.children) killGroup(child);
+  });
   const file = docPath(root, absMain);
   return jobs.run(job, () => {
     if (/\.typ$/i.test(absMain)) return compileTypst(root, absMain, file, { ...options, scratch: true });
@@ -492,12 +505,28 @@ export async function tectonicFontconfig() {
   return fontconfigFile;
 }
 
+// The Tectonic compiles running now, which the background warm-up (tectonicWarmUp.js) gives way to: 'start' as each
+// begins, 'idle' when none is left
+export const tectonicRuns = Object.assign(new EventEmitter(), { count: 0 });
+
+async function compileWith(engine, projectRoot, absMain, mainFile, options = {}) {
+  if (engine !== 'tectonic' || options.warmUp) return buildWith(engine, projectRoot, absMain, mainFile, options);
+  tectonicRuns.count += 1;
+  tectonicRuns.emit('start');
+  try {
+    return await buildWith(engine, projectRoot, absMain, mainFile, options);
+  } finally {
+    tectonicRuns.count -= 1;
+    if (!tectonicRuns.count) tectonicRuns.emit('idle');
+  }
+}
+
 /**
  * Build in the temp folder's spectrum-build/<runId> (removed afterwards) and put the PDF next to the
  * main file, e.g. chapters/thesis.tex -> chapters/thesis.pdf, the only file a compile writes in the project:
  * a sync client would copy anything else to the other computer. Its .aux files and SyncTeX are kept in the cache.
  */
-async function compileWith(engine, projectRoot, absMain, mainFile, options = {}) {
+async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   // Tectonic would run it as its Biber, from the folder it runs in: a program a project brought with it
   if (engine === 'tectonic' && holdsTectonicBiber(path.dirname(absMain))) {
     return { ok: false, error: 'This document’s folder has a file called tectonic-biber, which Tectonic would run as a program. Rename or remove it, or compile with another engine.' };
@@ -530,8 +559,26 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
     const fontconfig = await tectonicFontconfig();
     if (fontconfig) texEnv.FONTCONFIG_FILE = fontconfig;
   }
-  // a mismatched Biber on the PATH would refuse Tectonic's biblatex; an untrusted compile runs none
-  const biber = engine === 'tectonic' && !options.untrusted ? tectonicBiber() : null;
+  const logChunks = [];
+  let logSize = 0;
+  const live = jobs.getStore()?.log;
+  sendLog(live, 'engine', engine);
+  const pushLog = (chunk) => {
+    if (chunk) sendLog(live, 'output', chunk.toString());
+    if (!chunk || logSize >= MAX_LOG_BYTES) return;
+    const next = chunk.toString().slice(0, MAX_LOG_BYTES - logSize);
+    logSize += next.length;
+    logChunks.push(next);
+  };
+  const tex = await fs.readFile(absMain, 'utf8').catch(() => '');
+  // a mismatched Biber on the PATH would refuse Tectonic's biblatex; an untrusted compile runs none. Tectonic runs
+  // Biber for any biblatex document, so Spectrum's is downloaded first when it isn't there yet
+  let biber = engine === 'tectonic' && !options.untrusted ? tectonicBiber() : null;
+  if (engine === 'tectonic' && !options.untrusted && !options.warmUp && !biber && needsBiber(tex)) biber = await fetchBiber(live, pushLog);
+  if (stopped()) {
+    await cleanBuild(buildRoot, outDir);
+    return { ok: false, stopped: true, error: 'The compile was stopped.', log: logChunks.join(''), status: -1 };
+  }
   texEnv = withBiber(texEnv, biber);
   // Recompile from scratch: nothing an earlier compile of the document kept, with any engine
   // (one a virus scanner still holds is left: none of it is copied in, and keepBuild clears it again)
@@ -574,18 +621,6 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
     }
   }
 
-  const logChunks = [];
-  let logSize = 0;
-  const live = jobs.getStore()?.log;
-  sendLog(live, 'engine', engine);
-  const pushLog = (chunk) => {
-    if (chunk) sendLog(live, 'output', chunk.toString());
-    if (!chunk || logSize >= MAX_LOG_BYTES) return;
-    const next = chunk.toString().slice(0, MAX_LOG_BYTES - logSize);
-    logSize += next.length;
-    logChunks.push(next);
-  };
-
   const { cmd, args } = buildCommand(engine, slashed(outDir), `./${mainName}`, options);
   // by the engine, as cmd is the built-in Tectonic's path when Spectrum carries one
   const limit = PASS_TIMEOUT_MS[engine] || DEFAULT_PASS_TIMEOUT_MS;
@@ -600,7 +635,6 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
   if (WINDOWS && multiPass && /[\\/]miktex[\\/]/i.test((await findExecutable(cmd)) || '')) args.unshift('--enable-installer');
   // the generated file's base for a Markdown document (main.md.tex), so the engine's log and PDF keep its name
   const base = path.basename(absMain, path.extname(absMain));
-  const tex = await fs.readFile(absMain, 'utf8').catch(() => '');
   // the whole log of the pass just run, which the log sent back may have cut short
   const passLog = async () => unwrap(await fs.readFile(path.join(outDir, `${base}.log`), 'utf8').catch(() => ''));
 
@@ -687,7 +721,7 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
     log += '\n[spectrum] This document uses biblatex, and Tectonic’s bundled biblatex needs a different biber version than the one installed. Compile it with Auto, pdfLaTeX or XeLaTeX instead.\n';
   }
   // biblatex with Biber needs Spectrum's Biber, or a real TeX installation, which Auto has already preferred when there is one
-  const notice = engine === 'tectonic' && !biber && BIBLATEX.test(withoutComments(tex)) && !BIBTEX_BACKEND.test(tex) ? { code: 'BIBER_MISSING' } : null;
+  const notice = engine === 'tectonic' && !biber && needsBiber(tex) ? { code: 'BIBER_MISSING' } : null;
   if (notice) log += BIBLATEX_NOTE;
   // the built-in Tectonic fetches its bundle and each package on first use: offline, say what to do about it
   if (engine === 'tectonic' && code !== 0 && TECTONIC_DOWNLOAD.test(log)) {
@@ -728,6 +762,38 @@ async function compileWith(engine, projectRoot, absMain, mainFile, options = {})
   }
   const pdfPath = docPath(projectRoot, absPdf);
   return { ok: true, pdf: pdf.toString('base64'), pdfPath, log, status: code ?? 0, ...(pdfStale && { pdfStale }), ...notice };
+}
+
+/**
+ * Spectrum's Biber, downloaded now for a Tectonic compile that needs it, or null when it couldn't be (offline, say),
+ * which the compile then says. What the download is doing goes to the editor's status line, and a Stop doesn't wait
+ * for it (the download carries on for the next compile).
+ */
+async function fetchBiber(live, pushLog) {
+  const { version, size } = biberDownload() ?? {};
+  if (!version) return null;
+  const doing = `Downloading Biber (${Math.round(size / 1e6)} MB)…`;
+  pushLog(Buffer.from(`[spectrum] This document’s bibliography uses biblatex, which the built-in Tectonic runs with Biber. Downloading Biber ${version} (${Math.round(size / 1e6)} MB) first, once.\n`));
+  sendLog(live, 'status', doing);
+  let shown = -1;
+  const progress = (received, total) => {
+    const percent = Math.floor((received / total) * 100);
+    // then it unpacks itself, which takes a moment
+    if (percent !== shown) sendLog(live, 'status', (shown = percent) < 100 ? `${doing} ${percent}%` : 'Setting up Biber…');
+  };
+  let poll;
+  const stop = new Promise((resolve) => (poll = setInterval(() => stopped() && resolve(null), 250)));
+  try {
+    const biber = await Promise.race([installBiber(progress), stop]);
+    if (biber) pushLog(Buffer.from(`[spectrum] Downloaded Biber ${version}.\n`));
+    return biber;
+  } catch (err) {
+    pushLog(Buffer.from(`[spectrum] Couldn’t download Biber: ${err.message}\n`));
+    return null;
+  } finally {
+    clearInterval(poll);
+    sendLog(live, 'status', '');
+  }
 }
 
 /**

@@ -3,8 +3,12 @@
 import { test, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { promises as fs, mkdtempSync, realpathSync, rmSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { createServer } from 'node:http';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import engineList from '../src/data/engines.json' with { type: 'json' };
 
 const WINDOWS = process.platform === 'win32';
 const skip = WINDOWS ? 'scripts stand in for the engines' : false;
@@ -16,12 +20,40 @@ Object.assign(process.env, {
   SPECTRUM_TEMPLATE_DIR: path.join(tmp, 'templates'),
   SPECTRUM_TEMPLATE_SEED_DIR: ''
 });
+// Biber's release, served here: 'missing' answers 404 (offline, as far as the compile can tell), 'biber' the archive in
+// two halves a moment apart, so two compiles' downloads would overlap
+let serving = 'missing';
+const requests = [];
+const server = createServer(async (req, res) => {
+  requests.push(req.url);
+  if (serving === 'missing') return res.writeHead(404).end();
+  const data = await fs.readFile(biberRelease.tarball);
+  res.writeHead(200, { 'Content-Length': data.length });
+  res.write(data.subarray(0, data.length >> 1));
+  setTimeout(() => res.end(data.subarray(data.length >> 1)), 200);
+});
+await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+process.env.SPECTRUM_ENGINE_DOWNLOAD_BASE = 'http://127.0.0.1:' + server.address().port;
+const biberRelease = await (async () => {
+  const folder = path.join(tmp, 'biber-release');
+  await fs.mkdir(folder, { recursive: true });
+  await fs.writeFile(path.join(folder, 'biber'), '#!/bin/sh\necho "biber version: 2.17"\n', { mode: 0o755 });
+  const tarball = path.join(tmp, 'biber.tar.gz');
+  execFileSync('tar', ['-czf', tarball, '-C', folder, 'biber']);
+  const data = await fs.readFile(tarball);
+  return { tarball, sha: createHash('sha256').update(data).digest('hex'), bytes: data.length };
+})();
+
 const { createProject } = await import('../src/services/projectService.js');
 const { runCompile, tectonicFontconfig, withBiber } = await import('../src/services/compileService.js');
-const { tectonicBiber } = await import('../src/services/engineService.js');
+const { listenLog } = await import('../src/services/compileLog.js');
+const { tectonicBiber, useEngineList } = await import('../src/services/engineService.js');
 const biberDir = path.join(tmp, 'data', 'engines', 'biber');
+const ARCH = process.arch === 'arm64' ? 'arm64' : 'x64';
+useEngineList({ ...engineList, biber: { version: '2.17', assets: { [ARCH]: ['MacOS/biber.tar.gz', biberRelease.sha, biberRelease.bytes] } } });
 
 after(() => {
+  server.close();
   process.env.PATH = realPath;
   delete process.env.SPECTRUM_TECTONIC;
   rmSync(tmp, { recursive: true, force: true });
@@ -101,17 +133,60 @@ test('a biblatex document skips Tectonic when another engine is installed', { sk
   assert.doesNotMatch(result.log, /TECTONIC RAN/);
 });
 
-test('with only Tectonic and no Biber of Spectrum’s, a biblatex document compiles with the Biber note and its button', { skip }, async () => {
+test('with only Tectonic and no Biber of Spectrum’s that can be downloaded, a biblatex document compiles with the Biber note and its button', { skip }, async () => {
   await binWith('biblatex');
   await builtIn('biblatex', 'TECTONIC RAN');
+  serving = 'missing';
   const p = await projectWith(withBiblatex());
   const result = await compile(p);
   assert.equal(result.engine, 'tectonic');
-  assert.match(result.log, /\[spectrum\] biblatex with Biber needs the Biber that matches the built-in Tectonic\. Download Biber from Logs or Settings › Engines › LaTeX/);
+  assert.match(result.log, /Downloading Biber 2\.17 \(\d+ MB\) first, once\.\n\[spectrum\] Couldn’t download Biber: Couldn’t download Biber 2\.17\. Check the internet connection/);
+  assert.match(result.log, /TECTONIC RAN/);
+  assert.match(result.log, /\[spectrum\] biblatex with Biber needs the Biber that matches the built-in Tectonic, which Spectrum couldn’t download just now\. Choose Download Biber and compile over the PDF, download it from Logs or Settings › Engines › LaTeX/);
   assert.equal(result.code, 'BIBER_MISSING');
   // backend=bibtex needs none
   const bibtex = await compile(await projectWith(withBiblatex().replace('{biblatex}', '[backend=bibtex]{biblatex}'), 'BibTeX'));
   assert.equal(bibtex.code, undefined);
+});
+
+test('a Tectonic compile that needs Biber downloads it first, once for compiles at the same time, and says so as it goes', { skip }, async () => {
+  // with the system's tar, which unpacks the download
+  process.env.PATH = [await binWith('fetch'), '/usr/bin', '/bin'].join(path.delimiter);
+  const file = path.join(tmp, 'tectonic-fetch');
+  await fs.writeFile(file, ENGINE('TECTONIC RAN').replace("let out = '';", "console.log('PATH=' + process.env.PATH); let out = '';"), { mode: 0o755 });
+  process.env.SPECTRUM_TECTONIC = file;
+  serving = 'biber';
+  requests.length = 0;
+  const events = [];
+  const stop = listenLog('fetch-one', (event, data) => events.push({ event, data }));
+  try {
+    const [one, two] = await Promise.all([
+      runCompile({ projectId: (await projectWith(withBiblatex(), 'Fetch one')).id, mainFile: 'main.tex', engine: 'auto', compileId: 'fetch-one' }),
+      runCompile({ projectId: (await projectWith(withBiblatex(), 'Fetch two')).id, mainFile: 'main.tex', engine: 'auto' })
+    ]);
+    assert.deepEqual(requests, ['/project/biblatex-biber/biblatex-biber/2.17/binaries/MacOS/biber.tar.gz'], 'one download');
+    for (const result of [one, two]) {
+      assert.equal(result.engine, 'tectonic');
+      assert.equal(result.code, undefined, result.log);
+      assert.match(result.log, /\[spectrum\] Downloaded Biber 2\.17\./);
+      assert.ok(result.log.includes('PATH=' + biberDir + path.delimiter), result.log);
+    }
+    assert.equal(tectonicBiber(), path.join(biberDir, 'biber'));
+    // the status line: the download's size, then how far it is, then nothing once it's done
+    const status = events.filter((e) => e.event === 'status').map((e) => e.data);
+    assert.match(status[0], /^Downloading Biber \(\d+ MB\)…$/);
+    assert.ok(status.some((line) => /^Downloading Biber \(\d+ MB\)… \d+%$/.test(line)), status.join('\n'));
+    assert.equal(status.at(-2), 'Setting up Biber…');
+    assert.equal(status.at(-1), '');
+    // with it there, the next compile downloads nothing
+    requests.length = 0;
+    assert.doesNotMatch((await compile(await projectWith(withBiblatex(), 'Fetch three'))).log, /Downloading Biber/);
+    assert.deepEqual(requests, []);
+  } finally {
+    stop();
+    serving = 'missing';
+    await fs.rm(biberDir, { recursive: true, force: true });
+  }
 });
 
 test('with Spectrum’s Biber, Tectonic finds it before any other on the PATH and unpacks it into its cache', { skip }, async () => {

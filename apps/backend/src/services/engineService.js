@@ -9,6 +9,7 @@ import { DATA_DIR, REPO_ROOT } from '../config/constants.js';
 import { ensureDir, listFilesRecursive, renameOver } from '../utils/fsUtils.js';
 import { findExecutable } from './compileService.js';
 import { stopTypstWatch } from './typstService.js';
+import { warmUpState } from './tectonicWarmUp.js';
 import { httpError, serialiser } from './projectService.js';
 import engineList from '../data/engines.json' with { type: 'json' };
 
@@ -128,7 +129,8 @@ export async function listEngines() {
   };
   const pandoc = await pandocPath();
   return {
-    tectonic: { builtIn: builtInTectonic() ? list.tectonic.version : null, system: await found('tectonic') },
+    // warmUp: 'preparing' while the templates' TeX files download in the background, 'ready' once they have
+    tectonic: { builtIn: builtInTectonic() ? list.tectonic.version : null, system: await found('tectonic'), warmUp: warmUpState() },
     typst: {
       builtIn: builtInTypst() ? list.typst.builtIn : null,
       system: await found('typst'),
@@ -185,9 +187,10 @@ async function thinned(file) {
 
 /**
  * Downloads one engine's archive from the release folder, checks it against its SHA-256, extracts its executable into
- * destination and returns its path. Nothing is left behind when any step fails.
+ * destination and returns its path. Nothing is left behind when any step fails. onProgress(received, total) hears the
+ * download's bytes as they come.
  */
-async function install(name, version, entry, destination, executable, release) {
+async function install(name, version, entry, destination, executable, release, onProgress) {
   const asset = assetFor(entry.assets);
   if (!asset) throw httpError(name + ' ' + version + ' isn’t available for this computer.', 400);
   const [file, expected] = asset;
@@ -209,7 +212,11 @@ async function install(name, version, entry, destination, executable, release) {
       stall();
       const res = await get(url, { signal: controller.signal });
       if (!ok(res)) throw (res.resume(), new Error('HTTP ' + res.statusCode));
-      res.on('data', stall);
+      let received = 0;
+      res.on('data', (chunk) => {
+        stall();
+        onProgress?.((received += chunk.length), asset[2]);
+      });
       await pipeline(res, createWriteStream(part));
     } catch {
       throw httpError('Couldn’t download ' + name + ' ' + version + '. ' + DOWNLOAD_FAILED, 502);
@@ -291,15 +298,30 @@ export function installPandoc() {
   });
 }
 
-/** Downloads the Biber for the built-in Tectonic from the Biber project's own files, one download at a time. */
-export function installBiber() {
+/** The Biber download for this computer: its version and size in bytes, or null when there's no build for it. */
+export function biberDownload() {
+  const asset = assetFor(list.biber.assets);
+  return asset ? { version: list.biber.version, size: asset[2] } : null;
+}
+
+// what each caller of installBiber hears of the download running, theirs or one they wait behind
+const biberListeners = new Set();
+
+/**
+ * Downloads the Biber for the built-in Tectonic from the Biber project's own files, one download at a time: a second
+ * caller waits for the first's and finds it installed. onProgress(received, total) hears the download's bytes.
+ */
+export function installBiber(onProgress) {
+  if (onProgress) biberListeners.add(onProgress);
   return biberLock(async () => {
     // one asked for while another ran finds it there
     const installed = tectonicBiber();
     if (installed) return installed;
     const { version, assets } = list.biber;
     const release = downloadBase('https://downloads.sourceforge.net') + '/project/biblatex-biber/biblatex-biber/' + version + '/binaries';
-    const target = await install('Biber', version, { assets }, BIBER_DIR, 'biber', release);
+    const target = await install('Biber', version, { assets }, BIBER_DIR, 'biber', release, (received, total) => {
+      for (const hear of biberListeners) hear(received, total);
+    });
     // it unpacks itself now rather than in the first compile (into the temp folder unless this one is there already);
     // one that can't run says so in the compile's log
     await ensureDir(biberCache());
@@ -308,7 +330,7 @@ export function installBiber() {
       .then(() => execFileAsync(target, ['--version'], { env: { ...process.env, PAR_GLOBAL_TMPDIR: biberCache() }, timeout: 5 * 60 * 1000, windowsHide: true }))
       .catch(() => {});
     return target;
-  });
+  }).finally(() => biberListeners.delete(onProgress));
 }
 
 /** Removes the downloaded Biber and what it unpacked. */

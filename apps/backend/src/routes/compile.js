@@ -69,7 +69,7 @@ export function registerCompileRoutes(fastify) {
   });
 
   // A compile's output as it comes, by its id, as server-sent events: engine (the one running, first), output (text),
-  // then end. It can be opened before its compile starts, and one opened late gets the output so far first.
+  // status (Spectrum's own line, such as a Biber download's), then end. It can be opened before its compile starts, and one opened late gets the output so far first.
   fastify.get('/api/compile/:compileId/log', async (req, reply) => {
     reply.hijack();
     reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
