@@ -114,6 +114,8 @@ export type AppSettings = {
   compileDefaults: CompileDefaults;
   /** a second TeX installation's folder, tried first by every compile ('' = none) */
   texFolder: string;
+  /** this computer's own copy of the xjyutping package, used in place of the built-in one ('' = none) */
+  xjyutpingFolder: string;
   /** a failed compile opens Tools › Logs */
   openLogsOnFail: boolean;
   /** the compile's output in the PDF's place while it runs, by engine (Markdown: a Markdown document's LaTeX step) */
@@ -241,6 +243,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   // a new setting, so 1.x's saved compiler (compileEngine, left in place for it) doesn't carry over
   compileDefaults: { engine: 'auto', autoCompile: 0, haltOnError: false, bibTool: 'auto', draft: false, syntaxCheck: true, typstVersion: '', markdownEngine: 'latex' },
   texFolder: '',
+  xjyutpingFolder: '',
   openLogsOnFail: false,
   // Tectonic's first compiles download for minutes; the others are quick enough without
   liveOutput: { tectonic: true, pdflatex: false, xelatex: false, lualatex: false, latexmk: false, markdown: false },
@@ -387,6 +390,7 @@ function parse(raw: string | null): AppSettings {
     const merged = { ...DEFAULT_SETTINGS, ...parsed };
     merged.compileDefaults = cleanCompile(merged.compileDefaults, DEFAULT_SETTINGS.compileDefaults);
     if (typeof merged.texFolder !== 'string') merged.texFolder = '';
+    if (typeof merged.xjyutpingFolder !== 'string') merged.xjyutpingFolder = '';
     merged.openLogsOnFail = merged.openLogsOnFail === true;
     const live = (typeof merged.liveOutput === 'object' && merged.liveOutput ? merged.liveOutput : {}) as Record<string, unknown>;
     merged.liveOutput = Object.fromEntries(

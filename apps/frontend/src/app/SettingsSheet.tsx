@@ -19,6 +19,7 @@ import {
   installPandoc,
   installTinymist,
   installTypst,
+  jyutpingInfo,
   removeBiber,
   removeTinymist,
   removeTypst,
@@ -39,7 +40,7 @@ import {
   updateSyncSettings,
   writeSkillFile
 } from '../api/client';
-import type { BibTool, CheckerStatus, CompileEngine, Engines, LanguageInfo, LanguageToolStatus, SearchProvider, Skill, SkillShare, SystemCheck } from '../api/client';
+import type { BibTool, CheckerStatus, CompileEngine, Engines, JyutpingInfo, LanguageInfo, LanguageToolStatus, SearchProvider, Skill, SkillShare, SystemCheck } from '../api/client';
 import { COLOUR_ROLES, EDITOR_FONTS, EDITOR_THEMES, chosenColours, editorColours, highlightLines, themeFor, wellColour } from '../editor/editorThemes';
 import type { EditorMode } from '../editor/editorThemes';
 import { highlightColour } from '../editor/synctex';
@@ -1326,6 +1327,19 @@ function EnginesPane() {
   useEffect(() => {
     loadEngines();
   }, []);
+  // the xjyutping the folder holds, or why it isn't used
+  const [jyutping, setJyutping] = useState<JyutpingInfo | string | null>(null);
+  useEffect(() => {
+    let live = true;
+    setJyutping(null);
+    jyutpingInfo(settings.xjyutpingFolder || undefined).then(
+      (info) => live && setJyutping(info),
+      (err) => live && setJyutping(errorText(err))
+    );
+    return () => {
+      live = false;
+    };
+  }, [settings.xjyutpingFolder]);
   // the built-in Tectonic's packages downloading in the background: looked at again until they're ready
   const warmUp = engines?.tectonic.warmUp;
   useEffect(() => {
@@ -1532,6 +1546,33 @@ function EnginesPane() {
           For a second TeX installation, tried before the one on your PATH, e.g.{' '}
           <code>{IS_WINDOWS ? 'C:\\texlive\\2026\\bin\\windows' : '/usr/local/texlive/2026/bin/universal-darwin'}</code>.
         </div>
+      </div>
+      <div className="field">
+        <label id="settings-xjyutpingFolder">xjyutping folder</label>
+        <div className="path-row" role="group" aria-labelledby="settings-xjyutpingFolder">
+          <Icon name="folder" />
+          <span className="path-text" title={settings.xjyutpingFolder}>
+            {settings.xjyutpingFolder || 'None: the built-in copy'}
+          </span>
+          <button
+            className="btn small"
+            onClick={async () => {
+              const picked = await pickFolder({ title: 'Choose the folder with xjyutping.sty', defaultPath: settings.xjyutpingFolder });
+              if (picked) update({ xjyutpingFolder: picked });
+            }}
+          >
+            Change…
+          </button>
+          <button className="btn small" disabled={!settings.xjyutpingFolder} onClick={() => update({ xjyutpingFolder: '' })}>
+            Reset
+          </button>
+        </div>
+        <div className="field-hint">
+          Use your own copy of the xjyutping package, such as a clone of its repository. Spectrum’s built-in copy is used when this is empty.
+          {typeof jyutping === 'object' && jyutping && ` Using xjyutping ${jyutping.version}${jyutping.source === 'folder' ? ' from this folder' : ', built in'}.`}
+        </div>
+        {typeof jyutping === 'string' && <div className="field-hint error">Couldn’t check the package: {jyutping}</div>}
+        {typeof jyutping === 'object' && jyutping?.folderProblem && <div className="field-hint error">{jyutping.folderProblem}</div>}
       </div>
       {engines?.biber.size != null && (
         <div className="field">

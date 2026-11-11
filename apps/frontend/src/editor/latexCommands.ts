@@ -1211,6 +1211,13 @@ export const TEXT_COMMANDS: Cmd[] = [
   { name: 'foreignlanguage', args: '{}{}', mode: 'text', pkg: 'babel' },
   { name: 'setdefaultlanguage', args: '{}', mode: 'text', pkg: 'polyglossia', preamble: true },
   { name: 'setotherlanguage', args: '{}', mode: 'text', pkg: 'polyglossia', preamble: true },
+  // xjyutping, which isn't in TeX Live: Spectrum's Jyutping sheet adds it (Beyond3345/xjyutping-tex)
+  { name: 'xjyutping*', args: '{}', mode: 'text', pkg: 'xjyutping' },
+  { name: 'xjyutping', args: '{}{}', mode: 'text', pkg: 'xjyutping' },
+  { name: 'setjyutping', args: '{}{}', mode: 'text', pkg: 'xjyutping' },
+  { name: 'xjyutpingsetup', args: '{}', mode: 'text', pkg: 'xjyutping' },
+  { name: 'disablejyutping', mode: 'text', pkg: 'xjyutping' },
+  { name: 'enablejyutping', mode: 'text', pkg: 'xjyutping' },
 
   // Glossaries and acronyms
   { name: 'gls', args: '{}', mode: 'text', pkg: 'glossaries' },

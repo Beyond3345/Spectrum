@@ -641,7 +641,7 @@ input[type='checkbox'][role='switch']:checked::before {
   height: 16px;
 }
 
-.icon-btn:hover:not(:disabled) {
+.icon-btn:hover:not(:disabled, [aria-disabled='true']) {
   background: var(--bg-hover);
   color: var(--text);
 }
@@ -662,7 +662,8 @@ input[type='checkbox'][role='switch']:checked::before {
   color: var(--red);
 }
 
-.icon-btn:disabled {
+.icon-btn:disabled,
+.icon-btn[aria-disabled='true'] {
   opacity: 0.35;
 }
 
