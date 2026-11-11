@@ -16,6 +16,7 @@ import { createCompileCheckpoint } from './versionService.js';
 import { compileTypst } from './typstService.js';
 import { compileMarkdown } from './markdownService.js';
 import { closeLog, openLog, sendLog } from './compileLog.js';
+import { jyutpingDocument, jyutpingSearch, projectPaths, writeAutoCopy } from './jyutpingService.js';
 
 const ENGINES = ['pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic'];
 export const SUPPORTED_ENGINES = ['auto', ...ENGINES];
@@ -62,6 +63,9 @@ const BIBTEX_BACKEND = /backend\s*=\s*bibtex/;
 const needsBiber = (tex) => BIBLATEX.test(withoutComments(tex)) && !BIBTEX_BACKEND.test(tex);
 // Tectonic's bundle or a package couldn't be fetched (the bundle's own panic says it isn't cached)
 const TECTONIC_DOWNLOAD = /failed to download|failure downloading|couldn't get it from the internet/i;
+const ENGINE_NAMES = { pdflatex: 'pdfLaTeX', xelatex: 'XeLaTeX', lualatex: 'LuaLaTeX', tectonic: 'Tectonic', latexmk: 'Latexmk' };
+// the built-in Tectonic's LaTeX (2021-11-15) can't load xjyutping 2, which needs 2023-11-01
+const XJYUTPING_ENGINE_ERROR = 'Jyutping (xjyutping) needs XeLaTeX or LuaLaTeX from a TeX installation, and the built-in Tectonic’s LaTeX is too old for it. Install MacTeX, TeX Live or MiKTeX, or choose its folder in Settings › Engines › LaTeX.';
 const TECTONIC_DOWNLOAD_ERROR = 'Tectonic couldn’t reach its server to download the TeX packages this document needs. Check the internet connection and compile again, or install TeX Live (MacTeX on a Mac, MiKTeX on Windows).';
 const BIBLATEX_NOTE = '\n[spectrum] biblatex with Biber needs the Biber that matches the built-in Tectonic, which Spectrum couldn’t download just now. Choose Download Biber and compile over the PDF, download it from Logs or Settings › Engines › LaTeX, or install TeX Live or MiKTeX.\n';
 // the index's and the glossaries' programs, each run when a pass changed its input or it made nothing yet.
@@ -90,7 +94,7 @@ function engineCommand(engine) {
 }
 
 // Every engine writes <main>.synctex.gz too, for jumping between the source and the PDF.
-function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = false, untrusted = false } = {}) {
+function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = false, untrusted = false, ...options } = {}) {
   const halt = haltOnError ? ['-halt-on-error'] : [];
   switch (engine) {
     case 'pdflatex':
@@ -107,7 +111,7 @@ function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = f
       // images as boxes but still runs as many passes as it wants
       return {
         cmd: 'latexmk',
-        args: ['-norc', '-pdf', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', ...(haltOnError ? halt : ['-f']), ...(draft ? [`-usepretex=${DRAFT_IMAGES}`] : []), `-outdir=${outDir}`, mainFile]
+        args: ['-norc', options.latexmkEngine ? `-${options.latexmkEngine}` : '-pdf', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', ...(haltOnError ? halt : ['-f']), ...(draft ? [`-usepretex=${DRAFT_IMAGES}`] : []), `-outdir=${outDir}`, mainFile]
       };
     case 'tectonic':
       // Tectonic keeps its .aux in memory unless told otherwise, and only finds other
@@ -439,6 +443,9 @@ async function compileWithLinks(engine, projectRoot, absMain, mainFile, options)
 }
 
 export async function compileDocument(engine, projectRoot, absMain, mainFile, options) {
+  // a .md's generated LaTeX never uses xjyutping
+  const jyutping = options.markdownSource ? null : await jyutpingDocument(projectRoot, absMain, options);
+  if (jyutping) return compileJyutping(engine, projectRoot, absMain, mainFile, options, jyutping);
   if (engine !== 'auto') return { ...(await compileWith(engine, projectRoot, absMain, mainFile, options)), engine };
   const candidates = await autoEngineCandidates(absMain, options.without);
   if (!candidates.length) {
@@ -451,6 +458,40 @@ export async function compileDocument(engine, projectRoot, absMain, mainFile, op
     return { ...(await compileWith(fallback, projectRoot, absMain, mainFile, options)), engine: fallback };
   }
   return { ...result, engine: candidates[0] };
+}
+
+/**
+ * The engine for a document that uses xjyutping: XeLaTeX or LuaLaTeX as the project chose, latexmk running one of them,
+ * otherwise (Auto, pdfLaTeX, Tectonic) XeLaTeX, or LuaLaTeX for a LuaTeX-ja document or when it's the one installed.
+ * { engine, latexmk?, note? (when it isn't the engine the compile would have used) } or { error }.
+ */
+async function jyutpingEngine(engine, absMain, lua, without = []) {
+  if (engine === 'xelatex' || engine === 'lualatex') return { engine };
+  if (engine === 'latexmk') return { engine, latexmk: lua ? 'lualatex' : 'xelatex' };
+  for (const choice of lua ? ['lualatex', 'xelatex'] : ['xelatex', 'lualatex']) {
+    if (without.includes(choice) || !(await findExecutable(choice))) continue;
+    const usual = engine === 'auto' ? (await autoEngineCandidates(absMain, without))[0] : engine;
+    return { engine: choice, ...(usual !== choice && { note: `[spectrum] This compile used ${ENGINE_NAMES[choice]}, as Jyutping (xjyutping) needs XeLaTeX or LuaLaTeX.` }) };
+  }
+  return { error: XJYUTPING_ENGINE_ERROR };
+}
+
+/**
+ * A document that loads xjyutping, or one auto mode adds it to: compiled with an engine that can load it, auto mode's
+ * from a copy with jyutpingscope in it (writeAutoCopy) whose paths the log and SyncTeX then give as the project's.
+ */
+async function compileJyutping(engine, projectRoot, absMain, mainFile, options, jyutping) {
+  const picked = await jyutpingEngine(engine, absMain, jyutping.lua, options.without);
+  if (picked.error) return { ok: false, error: picked.error, engine };
+  const base = options.scratch ? options.buildDir || path.join(os.tmpdir(), 'spectrum-build') : await cachePath(projectRoot, 'jyutping');
+  const copy = jyutping.auto ? await writeAutoCopy(projectRoot, absMain, jyutping, picked.engine, base) : null;
+  try {
+    const result = await compileWith(picked.engine, projectRoot, absMain, mainFile, { ...options, latexmkEngine: picked.latexmk, jyutpingCopy: copy });
+    const log = copy ? projectPaths(result.log, copy.root, projectRoot) : result.log;
+    return { ...result, log: picked.note ? `${picked.note}\n${log ?? ''}` : log, engine: picked.engine };
+  } finally {
+    if (copy) await fs.rm(copy.root, { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
+  }
 }
 
 /** The project's .tex files absMain \externaldocument's whose kept .aux is missing or older than the .tex. */
@@ -545,12 +586,22 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   const mdDir = options.markdownSource ? path.dirname(options.markdownSource) : null;
   // kept under the .md for a Markdown document, so its next compile reuses them
   const doc = options.markdownSource ? mainFile : docPath(projectRoot, absMain);
-  const searchPath = (name) => [slashed(mainDir), ...(mdDir && mdDir !== mainDir ? [slashed(mdDir)] : []), slashed(projectRoot), process.env[name] ?? ''].join(path.delimiter);
+  // auto mode's copy of the document (jyutpingCopy), whose folders TeX looks in first: the main file it runs, and the
+  // chapters, found there before the project's own
+  const copy = options.jyutpingCopy;
+  const copyDirs = copy ? [path.join(copy.root, path.relative(projectRoot, mainDir)), copy.root].map(slashed) : [];
+  // xjyutping (the user's folder, then Spectrum's) before TeX's own, and the bundled CJK fonts by file name, in every compile
+  const jyutping = await jyutpingSearch(options.xjyutpingFolder);
+  const before = (dirs, name) => [...dirs.map(slashed), process.env[name] ?? ''].join(path.delimiter);
+  const searchPath = (name, more = []) => before([...copyDirs.slice(0, 1), mainDir, ...copyDirs.slice(1), ...(mdDir && mdDir !== mainDir ? [mdDir] : []), projectRoot, ...more], name);
   const binPath = jobs.getStore()?.searchPath;
   let texEnv = {
     ...process.env,
     ...(binPath && { [PATH_KEY]: binPath }),
-    TEXINPUTS: searchPath('TEXINPUTS'),
+    LUAINPUTS: before(jyutping.tex, 'LUAINPUTS'),
+    OPENTYPEFONTS: before([jyutping.fonts], 'OPENTYPEFONTS'),
+    TTFONTS: before([jyutping.fonts], 'TTFONTS'),
+    TEXINPUTS: searchPath('TEXINPUTS', jyutping.tex),
     BIBINPUTS: searchPath('BIBINPUTS'),
     BSTINPUTS: searchPath('BSTINPUTS'),
     ...options.env
@@ -621,13 +672,13 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
     }
   }
 
-  const { cmd, args } = buildCommand(engine, slashed(outDir), `./${mainName}`, options);
+  const { cmd, args } = buildCommand(engine, slashed(outDir), copy ? slashed(copy.main) : `./${mainName}`, options);
   // by the engine, as cmd is the built-in Tectonic's path when Spectrum carries one
   const limit = PASS_TIMEOUT_MS[engine] || DEFAULT_PASS_TIMEOUT_MS;
   if (engine === 'tectonic') {
     // Tectonic ignores TEXINPUTS; its unstable search-path option does the same job
-    const paths = [...new Set([projectRoot, ...(mdDir ? [mdDir] : [])].map(slashed))].filter((dir) => dir !== slashed(mainDir));
-    for (const dir of paths) args.unshift('-Z', `search-path=${dir}`);
+    const paths = [...new Set([...(mdDir ? [mdDir] : []), projectRoot, ...jyutping.tex, jyutping.fonts].map(slashed))].filter((dir) => dir !== slashed(mainDir));
+    args.unshift(...paths.flatMap((dir) => ['-Z', `search-path=${dir}`]));
   }
   // MiKTeX asks before installing a missing package, in a window the hidden engine never shows, so the
   // compile would sit until its time limit; this installs it without asking. ponytail: latexmk's own
@@ -752,7 +803,7 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
     log = written.log;
     pdfStale = written.stale;
     // SyncTeX jumps do not point into the .md, so a Markdown compile keeps none
-    if (!options.markdownSource) await keepSynctex(projectRoot, doc, path.join(outDir, `${base}.synctex.gz`), mainDir);
+    if (!options.markdownSource) await keepSynctex(projectRoot, doc, path.join(outDir, `${base}.synctex.gz`), mainDir, copy?.root);
     // only a build without errors is read back; after one with errors the next compile starts from nothing. A draft
     // leaves the last full compile's: its .idx kept beside the old .ind would keep makeindex from running again
     if (multiPass && !options.draft) await (code === 0 ? keepBuild(outDir, store, others, await passLog()) : fs.rm(store, { recursive: true, force: true })).catch(() => {});

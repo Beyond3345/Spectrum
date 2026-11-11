@@ -43,6 +43,7 @@ import { startSettingsRepo } from './services/settingsRepoService.js';
 import { registerZoteroRoutes } from './routes/zotero.js';
 import { registerEngineRoutes } from './routes/engines.js';
 import { registerUniverseRoutes } from './routes/universe.js';
+import { registerJyutpingRoutes } from './routes/jyutping.js';
 import { seedTemplates, syncTemplates } from './services/templateService.js';
 import { dropOldAuxFolders, migrateLegacyProjects } from './services/projectService.js';
 import { migrateToV2 } from './services/mirrorService.js';
@@ -119,6 +120,7 @@ registerGitHubRoutes(fastify);
 registerZoteroRoutes(fastify);
 registerEngineRoutes(fastify);
 registerUniverseRoutes(fastify);
+registerJyutpingRoutes(fastify);
 
 // Serve the built frontend (production and desktop modes)
 if (existsSync(FRONTEND_DIST)) {

@@ -27,6 +27,9 @@ export const SKILLS_SEED_DIR = process.env.SPECTRUM_SKILLS_SEED_DIR || path.join
 // the Hunspell binding and Harper's engine (built by scripts/native.mjs), and the spell-check dictionaries
 export const NATIVE_DIR = process.env.SPECTRUM_NATIVE_DIR || path.join(REPO_ROOT, 'native');
 export const DICT_DIR = process.env.SPECTRUM_DICT_DIR || path.join(REPO_ROOT, 'dictionaries');
+// TeX packages Spectrum ships (xjyutping), and the CJK fonts it bundles (node scripts/desktop.mjs fonts fetches them)
+export const TEX_DIR = process.env.SPECTRUM_TEX_DIR || path.join(REPO_ROOT, 'vendor');
+export const CJK_FONTS_DIR = process.env.SPECTRUM_FONTS_DIR || path.join(REPO_ROOT, 'src-tauri', 'resources', 'fonts', 'cjk');
 export const FRONTEND_DIST = process.env.SPECTRUM_FRONTEND_DIST || path.join(REPO_ROOT, 'apps', 'frontend', 'dist');
 export const PORT = Number(process.env.PORT || 8787);
 export const HOST = process.env.SPECTRUM_HOST || '127.0.0.1';

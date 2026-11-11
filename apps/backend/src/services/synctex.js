@@ -53,10 +53,13 @@ const RECORD = /^([[(hvxkg$r])(\d+),(-?\d+)(?:,(-?\d+))?:(-?\d+),(-?\d+|=)(?::(-
 // first compile there); remove it once that's moot
 const stored = (dir, doc) => ({ file: path.join(dir, `${doc}.gz`), meta: path.join(dir, `${doc}.json`) });
 
-/** Keep the SyncTeX file a compile of `doc` just built (`built` in its build folder, TeX run in `cwd`). */
-export async function keepSynctex(root, doc, built, cwd) {
+/**
+ * Keep the SyncTeX file a compile of `doc` just built (`built` in its build folder, TeX run in `cwd`). copy: the folder
+ * of auto mode's copy of the project (Jyutping), whose files stand for the project's at the same paths.
+ */
+export async function keepSynctex(root, doc, built, cwd, copy) {
   const { file, meta } = stored(await cachePath(root, 'synctex'), doc);
-  await writeJsonAtomic(meta, { root, cwd });
+  await writeJsonAtomic(meta, { root, cwd, ...(copy && { copy }) });
   // an engine that wrote none leaves nothing to keep
   await renameOver(built, file).catch(() => dropSynctex(root, doc));
   // 1.4.0 kept a single one for the whole project
@@ -98,6 +101,8 @@ const projectRelative = (root, file) => path.relative(root, safeJoin(root, file)
 function projectPath(where, name) {
   if (!name) return null;
   let input = path.resolve(where.cwd, name);
+  const copied = where.copy && path.relative(where.copy, input);
+  if (copied && !copied.startsWith('..') && !path.isAbsolute(copied)) input = path.join(where.root, copied);
   if (process.platform === 'win32' && input.includes('?')) {
     // Some Windows TeX engines replace characters outside the ANSI code page with '?'.
     // Only repair this known project's root prefix, never guess a source filename.

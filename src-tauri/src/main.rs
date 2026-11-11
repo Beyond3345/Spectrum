@@ -1177,7 +1177,9 @@ fn backend_command(app: &AppHandle, data_dir: &Path, _path_var: &str) -> Result<
         .env("SPECTRUM_NATIVE_DIR", resources.join("native"))
         .env("SPECTRUM_ENGINES_RESOURCE_DIR", resources.join("engines"))
         .env("SPECTRUM_DICT_DIR", resources.join("dictionaries"))
-        .env("SPECTRUM_SKILLS_SEED_DIR", resources.join("skills"));
+        .env("SPECTRUM_SKILLS_SEED_DIR", resources.join("skills"))
+        .env("SPECTRUM_TEX_DIR", resources.join("tex"))
+        .env("SPECTRUM_FONTS_DIR", resources.join("fonts").join("cjk"));
     Ok(cmd)
 }
 

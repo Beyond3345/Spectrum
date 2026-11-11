@@ -83,7 +83,9 @@
       "resources/native/": "native/",
       "resources/dictionaries/": "dictionaries/",
       "resources/skills/": "skills/",
-      "resources/engines/": "engines/"
+      "resources/engines/": "engines/",
+      "resources/tex/": "tex/",
+      "resources/fonts/": "fonts/"
     },
     "macOS": {
       "minimumSystemVersion": "13.5",
