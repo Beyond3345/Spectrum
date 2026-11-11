@@ -2,6 +2,20 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.3.0 (12 November 2026)
+
+### Added
+
+- Jyutping: the 粵 button beside Draw a diagram adds Cantonese Jyutping above the Chinese characters of a LaTeX document with the xjyutping package, which Spectrum includes. Apply when compiling adds it at each compile without changing the `.tex` files, and In the .tex file writes the package and font into the preamble and wraps the selection. The window has every option of the package with a preview, and the settings are saved with the project
+- Chinese support turns on with Jyutping: xeCJK, or `luatexja-fontspec` under LuaLaTeX, with the chosen font when the document has neither. Changing the font or the engine changes the preamble lines already there rather than adding new ones
+- Six bundled Chinese fonts, all under the SIL Open Font License: Noto Serif TC and SC and Noto Sans TC and SC, each with bold, and LXGW WenKai TC and LXGW WenKai, found by file name in every LaTeX compile
+- An xjyutping folder in Settings › Engines › LaTeX, used in place of Spectrum's own copy of the package when set
+
+### Changed
+
+- A project set to Auto or pdfLaTeX compiles with XeLaTeX while Jyutping is on, and the log says so. The built-in Tectonic's LaTeX is too old for xjyutping
+- The Mac app is about 110 MB larger, for the fonts
+
 ## 2.2.3 (5 November 2026)
 
 ### Fixed

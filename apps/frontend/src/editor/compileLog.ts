@@ -104,6 +104,8 @@ export function parseCompileLog(log: string, root = ''): CompileError[] {
     }
 
     // the backend's own explanations (biber mismatch, timeouts, a linked document that failed)
+    // [spectrum note]: only for the log, such as the engine Jyutping switched to
+    if (line.startsWith('[spectrum note] ')) continue;
     const note = line.match(/^\[spectrum( warning)?\] (.*)/);
     if (note) {
       push(note[1] ? 'warning' : 'error', note[2], line);

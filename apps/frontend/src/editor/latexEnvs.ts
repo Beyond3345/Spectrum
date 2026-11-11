@@ -97,6 +97,8 @@ export const PACKAGE_ENVS: Record<string, string[]> = {
   forest: ['forest'],
   circuitikz: ['circuitikz'],
   quantikz: ['quantikz'],
+  // not in TeX Live: Spectrum's Jyutping sheet adds it (Beyond3345/xjyutping-tex)
+  xjyutping: ['jyutpingscope'],
 
   // classes
   amsart: ['proof', 'abstract'],

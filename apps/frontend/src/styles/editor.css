@@ -1771,3 +1771,42 @@ button.compile-status:hover {
   border: 0;
   border-top: 1px solid var(--border);
 }
+
+/* the Jyutping sheet: its options two to a row, its buttons wrapping, and the preview on a white page */
+.jyut-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px 16px;
+}
+
+.jyut-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.jyut-preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: #fff;
+}
+
+.jyut-preview .field-hint {
+  color: #6e6e73;
+}
+
+.jyut-preview img.stale {
+  opacity: 0.5;
+}
+
+.jyut-preview > .spinner {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}

@@ -29,6 +29,7 @@ import {
   getProjectSettings,
   getProjectTree,
   getSyncSettings,
+  jyutpingPreamble,
   gitHubLeft,
   gitHubOpened,
   listNotes,
@@ -53,7 +54,7 @@ import {
   writeFile,
   base64Bytes
 } from '../api/client';
-import type { CompileDiagnostic, CompileEngine, CompileOptions, CompileResult, Engines, FileItem, FileOrderMap, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
+import type { CompileDiagnostic, CompileEngine, CompileOptions, CompileResult, Engines, FileItem, FileOrderMap, JyutpingSettings, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
 import Icon from './Icon';
 import { radioKeys, radioTab } from './Segmented';
 import Tabs from './Tabs';
@@ -65,6 +66,8 @@ import type { MenuItems } from './Menu';
 import { confirmDialog, promptDialog } from './Dialogs';
 import { SaveTemplateSheet, openProjectsOn } from './ProjectPage';
 import ConvertSheet from './ConvertSheet';
+import JyutpingSheet from './JyutpingSheet';
+import { jyutpingWrap, loadsXjyutping } from '../editor/jyutping';
 import { switcherList, switcherStart } from './ProjectSwitcher';
 import { withDeletionCheck } from './github';
 import { toast } from './Toast';
@@ -350,6 +353,9 @@ function Editor({ projectId }: { projectId: string }) {
   const draft = project?.templateDraft;
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const [converting, setConverting] = useState<'typst' | 'latex' | null>(null);
+  /** the project's Jyutping settings, and the 粵 sheet that changes them */
+  const [jyutping, setJyutping] = useState<JyutpingSettings | null>(null);
+  const [jyutpingOpen, setJyutpingOpen] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
 
   const [items, setItems] = useState<FileItem[]>([]);
@@ -1115,6 +1121,47 @@ function Editor({ projectId }: { projectId: string }) {
     if (done && at !== -1) viewRef.current?.dispatch({ selection: { anchor: done.from + at, head: done.from + at + snippet.select.length } });
   };
 
+  // ─── Jyutping (the 粵 sheet) ───
+
+  /** Jyutping works in LaTeX: the open file's kind, or the main file's when the open one is neither (a .bib) */
+  const jyutpingOk = (docKind(activePath) ?? docKind(mainFile)) === 'latex';
+  /** the document whose preamble gets the package: the open document, or the main file */
+  const jyutpingText = (path: string) => (path === activeRef.current && viewRef.current ? viewRef.current.state.doc.toString() : filesRef.current.get(path) ?? '');
+  const openJyutping = async () => {
+    if (!jyutpingOk) return;
+    // the main file's text, to tell whether it loads xjyutping already
+    await ensureFileContent(docRoot).catch(() => undefined);
+    setJyutpingOpen(true);
+  };
+  const saveJyutping = (next: JyutpingSettings | null) => {
+    setJyutping(next);
+    updateProjectSettings(projectId, { jyutping: next }).catch((err) => notify(`Couldn’t save the Jyutping settings: ${errorText(err)}`, 'error'));
+  };
+  /** The package added to the preamble, brought up to date (the old lines changed in place) or taken out. */
+  const jyutpingPreambleNow = async (s: JyutpingSettings, remove: boolean) => {
+    const path = docRoot;
+    try {
+      const text = path === activeRef.current ? jyutpingText(path) : await ensureFileContent(path);
+      const res = await jyutpingPreamble({ text, options: s.options, cjkFont: s.cjkFont, engine, remove });
+      // typed meanwhile: left as it is rather than written over
+      if (jyutpingText(path) !== text) throw new Error(`${nameOf(path)} changed meanwhile. Try again.`);
+      if (res.text !== text) await writeProjectFile(path, res.text);
+      return loadsXjyutping(res.text);
+    } catch (err) {
+      notify(`Couldn’t change the preamble of ${nameOf(path)}: ${errorText(err)}`, 'error');
+      return null;
+    }
+  };
+  /** The selection in a jyutpingscope or \xjyutping*, or an empty scope at the cursor. */
+  const jyutpingWrapNow = (kind: 'scope' | 'star' | 'insert') => {
+    const view = viewRef.current;
+    if (!view || docKind(activeRef.current) !== 'latex') return;
+    const { from, to, head } = view.state.selection.main;
+    const w = kind === 'insert' ? jyutpingWrap(view.state.doc.toString(), head, head, 'scope') : jyutpingWrap(view.state.doc.toString(), from, to, kind);
+    view.dispatch({ changes: { from: w.from, to: w.to, insert: w.insert }, selection: { anchor: w.cursor }, scrollIntoView: true, userEvent: 'input' });
+    view.focus();
+  };
+
   /** To a line (1-based), and to its column (1-based) when there is one. */
   const jumpTo = async (file: string, line: number, column?: number | null) => {
     if (!items.some((i) => i.path === file)) {
@@ -1653,6 +1700,7 @@ function Editor({ projectId }: { projectId: string }) {
         draft: options.draft,
         fresh: opts.fresh,
         texFolder: settings.texFolder || undefined,
+        xjyutpingFolder: settings.xjyutpingFolder || undefined,
         checkpoint: settings.checkpointOnCompile,
         // the app's default only, read now: the backend takes the project's pin from its settings file first, so a
         // pin cleared a moment ago can't come back from this render
@@ -2401,6 +2449,7 @@ function Editor({ projectId }: { projectId: string }) {
       if (!live) return;
       setProjectCompile(res.settings.compile ?? {});
       setProjectLanguages(res.settings.language?.languages ?? null);
+      setJyutping(res.settings.jyutping ?? null);
     }, () => undefined);
     (async () => {
       const [list, tree] = await Promise.all([listProjects(), refreshTree()]);
@@ -3055,9 +3104,9 @@ function Editor({ projectId }: { projectId: string }) {
   );
 
   const insertKind: DocKind = docKind(activePath) ?? 'latex';
-  const insertItems: MenuItems = SNIPPETS.filter((s) => !s || typeof s === 'string' || !('kinds' in s) || s.kinds.includes(insertKind)).map((s) =>
+  const insertItems: MenuItems = SNIPPETS.filter((s) => !s || typeof s === 'string' || !('kinds' in s) || s.kinds.includes(insertKind)).flatMap((s): MenuItems | MenuItems[number] =>
     s === 'diagram'
-      ? { label: 'Draw a diagram…', icon: 'pencil', onSelect: () => drawDiagram() }
+      ? [{ label: 'Draw a diagram…', icon: 'pencil', onSelect: () => drawDiagram() }, jyutpingOk && { label: 'Jyutping…', icon: 'custom.jyut', onSelect: () => void openJyutping() }]
       : s === 'figure' || s === 'table'
         ? { label: s === 'figure' ? 'Figure…' : 'Table…', icon: s === 'figure' ? 'photo' : 'tablecells', onSelect: () => openFloats(s) }
         : s
@@ -3347,6 +3396,16 @@ function Editor({ projectId }: { projectId: string }) {
               </button>
               <button className="icon-btn float-button" title="Draw a diagram" aria-label="Draw a diagram" onClick={() => drawDiagram()}>
                 <Icon name="pencil" />
+              </button>
+              {/* aria-disabled rather than disabled, so its tooltip still says why */}
+              <button
+                className="icon-btn float-button"
+                title={jyutpingOk ? 'Jyutping' : 'Jyutping works in LaTeX documents only'}
+                aria-label="Jyutping"
+                aria-disabled={!jyutpingOk}
+                onClick={() => void openJyutping()}
+              >
+                <Icon name="custom.jyut" />
               </button>
               <span className="spacer" />
               <button className={`icon-btn ${composerOpen ? 'active' : ''}`} title={withShortcut(settings.shortcuts, 'Assistant', 'assistant')} aria-label="Assistant" aria-pressed={composerOpen} onClick={toggleComposer}>
@@ -3908,6 +3967,9 @@ function Editor({ projectId }: { projectId: string }) {
                   )
               },
               { separator: true },
+              docKind(activePath) === 'latex' && { label: 'Wrap in Jyutping scope', disabled: !selected, onSelect: () => jyutpingWrapNow('scope') },
+              docKind(activePath) === 'latex' && { label: 'Add Jyutping to selection (\\xjyutping*)', disabled: !selected, onSelect: () => jyutpingWrapNow('star') },
+              docKind(activePath) === 'latex' && { separator: true },
               !!diagram && { label: 'Edit diagram', onSelect: () => drawDiagram(diagram) },
               isDocument(activePath) && { label: 'Cite from Zotero…', onSelect: () => window.dispatchEvent(new Event(ZOTERO_CITE)) },
               tinymistOn && docKind(activePath) === 'typst' && { label: 'Format document', shortcut: formatShortcut('Shift-Alt-f'), onSelect: () => view && tinymistRef.current?.format(view) },
@@ -4021,6 +4083,20 @@ function Editor({ projectId }: { projectId: string }) {
 
       {settingsOpen && <SettingsSheet projectId={projectId} section={settingsOpen === true ? undefined : settingsOpen} onClose={() => setSettingsOpen(false)} />}
 
+      {jyutpingOpen && (
+        <JyutpingSheet
+          initial={jyutping}
+          engine={engine}
+          folder={settings.xjyutpingFolder}
+          hasPackage={loadsXjyutping(jyutpingText(docRoot))}
+          canWrap={docKind(activePath) === 'latex'}
+          hasSelection={!!viewRef.current && !viewRef.current.state.selection.main.empty}
+          onSave={saveJyutping}
+          onPreamble={jyutpingPreambleNow}
+          onWrap={jyutpingWrapNow}
+          onClose={() => setJyutpingOpen(false)}
+        />
+      )}
       {converting && mainFile && (
         <ConvertSheet projectId={projectId} doc={mainFile} to={converting} engine={engine} onClose={() => setConverting(null)} onOpen={(id) => leave(`/editor/${id}`)} />
       )}

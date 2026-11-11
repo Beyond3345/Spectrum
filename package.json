@@ -1,6 +1,6 @@
 {
   "name": "spectrum",
-  "version": "2.2.3",
+  "version": "2.3.0",
   "private": true,
   "engines": {
     "node": ">=20.12"
@@ -22,7 +22,8 @@
     "native:build": "node scripts/native.mjs",
     "checkers:update": "node scripts/native.mjs all --update",
     "checkers:verify": "node scripts/native.mjs verify",
-    "test:agents": "node scripts/check-agents.mjs"
+    "test:agents": "node scripts/check-agents.mjs",
+    "xjyutping:sync": "node scripts/xjyutping.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.2",

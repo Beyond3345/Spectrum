@@ -3,7 +3,8 @@ import { IS_WINDOWS } from './platform';
 
 // SF Symbols may only be used on Apple platforms: Windows gets Fluent UI System Icons of the same
 // names, from scripts/fluent-icons.mjs
-export const iconFile = (name: string) => (IS_WINDOWS ? `/fluent/${name}.svg` : `/sf/${name}.png`);
+// names starting "custom." are Spectrum's own drawings, the same on both (public/custom: custom.jyut is 粵)
+export const iconFile = (name: string) => (name.startsWith('custom.') ? `/custom/${name.slice(7)}.svg` : IS_WINDOWS ? `/fluent/${name}.svg` : `/sf/${name}.png`);
 const mask = (name: string) => `url(${iconFile(name)})`;
 
 /**

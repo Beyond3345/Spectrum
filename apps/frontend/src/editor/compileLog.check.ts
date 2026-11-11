@@ -157,6 +157,7 @@ eq(
 
 // a generic Tectonic error still shows when it is the only one
 eq(brief('error: couldn\'t open main.tex'), [['error', '', 0, "couldn't open main.tex"]], 'loose error');
+eq(brief('[spectrum note] This compile used XeLaTeX.'), [], 'log-only note');
 eq(brief('[spectrum] Compile it with Auto instead.'), [['error', '', 0, 'Compile it with Auto instead.']], 'backend note');
 eq(brief('[spectrum warning] notes.tex didn’t compile.'), [['warning', '', 0, 'notes.tex didn’t compile.']], 'backend warning');
 eq(brief('Compiled notes.tex first for its cross-references.'), [], 'linked compile note');

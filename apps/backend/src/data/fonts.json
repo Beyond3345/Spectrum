@@ -1,0 +1,62 @@
+{
+  "cjk": [
+    {
+      "id": "noto-serif-tc",
+      "name": "Noto Serif TC",
+      "nameZh": "思源宋體",
+      "script": "tc",
+      "style": "serif",
+      "licence": "noto-cjk-OFL.txt",
+      "regular": ["NotoSerifTC-Regular.otf", "https://raw.githubusercontent.com/notofonts/noto-cjk/Serif2.003/Serif/SubsetOTF/TC/NotoSerifTC-Regular.otf", "63515eb0622d589a2f4062e8757c598b3da3bffd053f69abd181c210158ef10c", 7936104],
+      "bold": ["NotoSerifTC-Bold.otf", "https://raw.githubusercontent.com/notofonts/noto-cjk/Serif2.003/Serif/SubsetOTF/TC/NotoSerifTC-Bold.otf", "3ca2b3294ec84b795d0a45695e78e3612a44dce50f9fc776cd40206340a5768d", 8253304]
+    },
+    {
+      "id": "noto-serif-sc",
+      "name": "Noto Serif SC",
+      "nameZh": "思源宋体",
+      "script": "sc",
+      "style": "serif",
+      "licence": "noto-cjk-OFL.txt",
+      "regular": ["NotoSerifSC-Regular.otf", "https://raw.githubusercontent.com/notofonts/noto-cjk/Serif2.003/Serif/SubsetOTF/SC/NotoSerifSC-Regular.otf", "e8f396decc1f0963a016a989c3d8852e863d1350996f573860a80767c83a1cd3", 11625800],
+      "bold": ["NotoSerifSC-Bold.otf", "https://raw.githubusercontent.com/notofonts/noto-cjk/Serif2.003/Serif/SubsetOTF/SC/NotoSerifSC-Bold.otf", "24693d48bdb9152f0a06b02af625638a1097abd6de4010ebba027f6e82710527", 12094336]
+    },
+    {
+      "id": "noto-sans-tc",
+      "name": "Noto Sans TC",
+      "nameZh": "思源黑體",
+      "script": "tc",
+      "style": "sans",
+      "licence": "noto-cjk-OFL.txt",
+      "regular": ["NotoSansTC-Regular.otf", "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/SubsetOTF/TC/NotoSansTC-Regular.otf", "5bab0cb3c1cf89dde07c4a95a4054b195afbcfe784d69d75c340780712237537", 5683368],
+      "bold": ["NotoSansTC-Bold.otf", "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/SubsetOTF/TC/NotoSansTC-Bold.otf", "55420b259eb119bf5f2a0aadba10cf9d736c12d64ab93e78546d69ef5f43558b", 5839972]
+    },
+    {
+      "id": "noto-sans-sc",
+      "name": "Noto Sans SC",
+      "nameZh": "思源黑体",
+      "script": "sc",
+      "style": "sans",
+      "licence": "noto-cjk-OFL.txt",
+      "regular": ["NotoSansSC-Regular.otf", "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf", "faa6c9df652116dde789d351359f3d7e5d2285a2b2a1f04a2d7244df706d5ea9", 8331336],
+      "bold": ["NotoSansSC-Bold.otf", "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/SubsetOTF/SC/NotoSansSC-Bold.otf", "c6cb5a93abaa9edc8ee7463b7ebb7f42d618d40e6ed2f7a5371c97b0b64767c0", 8543168]
+    },
+    {
+      "id": "lxgw-wenkai-tc",
+      "name": "LXGW WenKai TC",
+      "nameZh": "霞鶩文楷 TC",
+      "script": "tc",
+      "style": "kai",
+      "licence": "lxgw-wenkai-tc-OFL.txt",
+      "regular": ["LXGWWenKaiTC-Regular.ttf", "https://github.com/lxgw/LxgwWenkaiTC/releases/download/v1.530/LXGWWenKaiTC-Regular.ttf", "6662480a3f95b4a90c80b189c679617a48adce3a505118a6af63ce5a482b83fa", 15341148]
+    },
+    {
+      "id": "lxgw-wenkai-sc",
+      "name": "LXGW WenKai",
+      "nameZh": "霞鹜文楷",
+      "script": "sc",
+      "style": "kai",
+      "licence": "lxgw-wenkai-OFL.txt",
+      "regular": ["LXGWWenKai-Regular.ttf", "https://github.com/lxgw/LxgwWenKai/releases/download/v1.530/LXGWWenKai-Regular.ttf", "2d73eea94ad808999d90c0000c239a84a33b09d4bc6ab6c5b8bbf1eda8a7fc8b", 25928940]
+    }
+  ]
+}

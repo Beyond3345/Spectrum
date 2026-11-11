@@ -279,6 +279,20 @@ Each drawing is saved in `figures/` with its source, as `.tex` for TikZ, `.typ` 
 
 Mermaid diagrams export as PNG or PDF and insert as PDF figures in LaTeX, or as the image a Typst or Markdown document needs. The PDF embeds the high-resolution image at its original size.
 
+### Jyutping
+
+The 粵 button beside Draw a diagram, also in Insert (+), adds Cantonese Jyutping above the Chinese characters of a LaTeX document with [xjyutping](https://ctan.org/pkg/xjyutping), which Spectrum includes. Its window has three modes,
+
+- Off, the default,
+- Apply when compiling, where Spectrum adds the Jyutping each time it compiles without changing your `.tex` files. Each paragraph that holds Chinese is read as a whole, so 行 is read *hong4* in 銀行 and *haang4* in 行路. Verbatim text, `\verb` and code listings are left as they are, and so is a document that loads xjyutping itself and
+- In the .tex file, where Add to preamble writes `\usepackage[…]{xjyutping}` and the Chinese font into the preamble, and the buttons wrap the selection in a `jyutpingscope` or in `\xjyutping*{…}` or insert a scope at the cursor. The editor's right-click menu has the same wrapping, and completion lists the package's commands.
+
+The window has every option of the package (the size and position of the Jyutping, cell width, colours, fancy tones, lazy sounds, the script, line breaks and alignment) and a preview of a sample line that you can change. The settings are saved with the project.
+
+Chinese support is turned on with it: when the document does not load ctex, xeCJK or LuaTeX-ja, xeCJK (or `luatexja-fontspec` under LuaLaTeX) is added with the font chosen in the window. Spectrum includes six Chinese fonts, Noto Serif and Noto Sans in Traditional and Simplified Chinese (with bold) and LXGW WenKai in both, and any font installed on the computer can be named instead. Changing the font or the engine changes the lines already in the preamble rather than adding new ones.
+
+xjyutping needs XeLaTeX or LuaLaTeX, so a project set to Auto or pdfLaTeX compiles with XeLaTeX while Jyutping is on, and the log says so. The built-in Tectonic's LaTeX is too old for it. Settings › Engines › LaTeX has an xjyutping folder, which can be a copy of the package's repository; it is used in place of Spectrum's own when set.
+
 ### Document insights
 
 Document insights, beside Check grammar in the top bar, takes the PDF's place with tabs for the Overview, Headings, Figures, Tables, Equations, Labels, Citations and To-dos, each with its count. Rows show the label with the number and page it had in the last compile, read from the `.aux` files that compile kept for LaTeX and from Typst's own eval for Typst, and clicking one jumps to its line in the source. A Markdown document lists its headings, figures, tables, equations, citations and labels from the source, without word counts, numbers or pages, since pandoc's generated LaTeX is not the document. The To-dos tab lists the to-dos in the source (Section To-do list). The Overview has the counts and the submission metadata (title, authors, keywords, date and abstract), with Copy submission metadata for a submission form; a LaTeX document also has the word counts from `texcount`. The footer says that the numbers and pages are from the last compile, marks them as out of date when the source has changed since and has Refresh.

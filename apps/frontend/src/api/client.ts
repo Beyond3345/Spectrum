@@ -261,6 +261,8 @@ export interface ProjectSettings {
   skills?: ProjectSkills;
   /** the project's own language list, in place of the user's */
   language?: { languages?: string[] };
+  /** Jyutping over the Chinese text (the xjyutping package) */
+  jyutping?: JyutpingSettings;
 }
 
 export interface ProjectSkills {
@@ -273,7 +275,10 @@ export function getProjectSettings(id: string) {
 }
 
 /** A compile key set to null is removed, so the app's default applies again; skills replaces the project's choices (null: none). */
-export function updateProjectSettings(id: string, patch: { compile?: { [K in keyof CompileOptions]?: CompileOptions[K] | null }; skills?: ProjectSkills | null; language?: { languages: string[] | null } }) {
+export function updateProjectSettings(
+  id: string,
+  patch: { compile?: { [K in keyof CompileOptions]?: CompileOptions[K] | null }; skills?: ProjectSkills | null; language?: { languages: string[] | null }; jyutping?: JyutpingSettings | null }
+) {
   return request<{ settings: ProjectSettings }>(`/api/projects/${id}/settings`, json('PATCH', patch));
 }
 
@@ -715,6 +720,8 @@ export function compileProject(payload: {
   /** the app's defaults, for a project without its own ('' is the built-in Typst) */
   typstVersion?: string;
   markdownEngine?: 'latex' | 'typst';
+  /** Settings › Engines › LaTeX's own copy of the xjyutping package ('' or none: the built-in one) */
+  xjyutpingFolder?: string;
 }) {
   return request<CompileResult>('/api/compile', json('POST', payload));
 }
@@ -789,6 +796,76 @@ export interface SymbolPage {
  */
 export function diagramSymbols(payload: { parts: SymbolPart[]; style: { ctikzOptions: string }; texFolder?: string }) {
   return request<{ ok: boolean; engine?: string; pdf?: string; pages?: SymbolPage[]; log?: string; error?: string }>('/api/diagram/symbols', json('POST', payload));
+}
+
+// ─── Jyutping (the xjyutping package) ───
+
+/** The package's options, only those that differ from its defaults. */
+export interface JyutpingOptions {
+  ratio?: string;
+  vsep?: string;
+  hsep?: string;
+  width?: string;
+  font?: string;
+  format?: string;
+  multiple?: string;
+  fancy?: boolean;
+  lazy?: boolean | 'all';
+  script?: 'auto' | 'simplified' | 'traditional';
+  linebreak?: boolean;
+  align?: 'justify' | 'left' | 'centre' | 'right';
+  debug?: boolean;
+}
+
+/** off; auto: added to the Chinese text as it compiles, the .tex files unchanged; manual: written in the preamble */
+export interface JyutpingSettings {
+  mode: 'off' | 'auto' | 'manual';
+  options: JyutpingOptions;
+  /** 'bundled:<id>' for one of Spectrum's fonts, else a font family installed on this computer */
+  cjkFont: string;
+}
+
+export interface JyutpingFont {
+  id: string;
+  name: string;
+  nameZh?: string;
+  script: 'tc' | 'sc';
+  style: 'serif' | 'sans' | 'kai';
+  bold: boolean;
+}
+
+export interface JyutpingInfo {
+  ok: boolean;
+  version: string;
+  source: 'bundled' | 'folder';
+  folder?: string;
+  /** why the folder's copy isn't used */
+  folderProblem?: string;
+  fonts: JyutpingFont[];
+  defaultFont: { tc: string; sc: string };
+}
+
+/** folder: Settings › Engines › LaTeX's xjyutping folder */
+export function jyutpingInfo(folder?: string) {
+  return request<JyutpingInfo>(`/api/jyutping/info${folder ? `?${new URLSearchParams({ folder })}` : ''}`);
+}
+
+/** A line of text compiled with these settings: the PDF's bytes, or why it didn't compile and the log. */
+export async function jyutpingPreview(body: { options: JyutpingOptions; cjkFont: string; engine?: CompileEngine; text: string; folder?: string }, signal?: AbortSignal) {
+  const res = await fetch('/api/jyutping/preview', { ...json('POST', body), headers: { 'Content-Type': 'application/json' }, signal });
+  if ((res.headers.get('content-type') || '').includes('application/pdf')) return { ok: true as const, pdf: new Uint8Array(await res.arrayBuffer()) };
+  const text = await res.text();
+  try {
+    const data = JSON.parse(text) as { error?: string; log?: string };
+    return { ok: false as const, error: data.error || `Request failed (${res.status})`, log: data.log || '' };
+  } catch {
+    return { ok: false as const, error: text || `Request failed (${res.status})`, log: '' };
+  }
+}
+
+/** The document's text with its xjyutping lines added or brought up to date in the preamble, or taken out (remove). */
+export function jyutpingPreamble(body: { text: string; options: JyutpingOptions; cjkFont: string; engine: CompileEngine; remove?: boolean }) {
+  return request<{ ok: boolean; text: string }>('/api/jyutping/preamble', json('POST', body));
 }
 
 // ─── TexLab's diagnostics ───

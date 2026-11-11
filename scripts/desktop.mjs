@@ -6,6 +6,7 @@
 //   node scripts/desktop.mjs texlab     TexLab alone (the Windows workflow builds it as a step of its own)
 //   node scripts/desktop.mjs tectonic   Tectonic alone
 //   node scripts/desktop.mjs typst      Typst alone
+//   node scripts/desktop.mjs fonts      the bundled CJK fonts alone (the backend in dev finds them there too)
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -15,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
 import { buildAgentSandbox } from './build-agent-sandbox.mjs';
 import engines from '../apps/backend/src/data/engines.json' with { type: 'json' };
+import fonts from '../apps/backend/src/data/fonts.json' with { type: 'json' };
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tauriDir = path.join(root, 'src-tauri');
@@ -302,6 +304,27 @@ async function typstRuntime(arches) {
 }
 
 /**
+ * The CJK fonts Spectrum bundles for Jyutping (SIL OFL 1.1), pinned in apps/backend/src/data/fonts.json: verified,
+ * kept from an earlier run, and put in resources/fonts/cjk with each one's licence, where compiles find them by file name.
+ */
+async function cjkFonts() {
+  const from = path.join(cacheDir, 'fonts');
+  const to = path.join(resourcesDir, 'fonts', 'cjk');
+  fs.mkdirSync(from, { recursive: true });
+  fs.rmSync(to, { recursive: true, force: true });
+  fs.mkdirSync(to, { recursive: true });
+  let bytes = 0;
+  for (const font of fonts.cjk) {
+    for (const [file, url, expected, size] of [font.regular, font.bold].filter(Boolean)) {
+      fs.copyFileSync(await verifiedDownload(url, path.join(from, file), expected), path.join(to, file));
+      bytes += size;
+    }
+    fs.copyFileSync(path.join(root, 'apps/frontend/public/licences', font.licence), path.join(to, font.licence));
+  }
+  console.log(`${fonts.cjk.length} CJK fonts (${Math.round(bytes / 1e6)} MB) → ${path.relative(root, to)}`);
+}
+
+/**
  * THIRD_PARTY_NOTICES.md and the licence files it links to go with the app, in frontend/licences at their repository
  * paths, where Settings › System › Licences links to them (apps/frontend/src/app/Licences.tsx). One without .txt
  * (LICENSE, COPYING.MPL, a .md) gets .txt, so the browser shows it rather than downloading it. The interface's own
@@ -329,6 +352,9 @@ async function resources() {
   licences();
   copyDir(path.join(root, 'templates'), path.join(resourcesDir, 'templates'));
   copyDir(path.join(root, 'dictionaries'), path.join(resourcesDir, 'dictionaries'));
+  // xjyutping (scripts/xjyutping.mjs copies it into vendor/), with its licence
+  copyDir(path.join(root, 'vendor/xjyutping'), path.join(resourcesDir, 'tex', 'xjyutping'));
+  await cjkFonts();
   // the bundled skills (scripts/sync-skills.mjs), with their licences
   copyDir(path.join(root, 'skills'), path.join(resourcesDir, 'skills'));
   // the built Hunspell binding, Harper and the converter's Typst parser only, not their sources
@@ -377,7 +403,9 @@ async function dev() {
   // the debug backend serves apps/frontend/dist from the repo
   run('npm', ['run', 'build']);
   // bundle inputs aren't used in dev, but tauri-build insists they exist
-  for (const dir of ['backend', 'frontend', 'templates', 'native', 'dictionaries', 'skills']) fs.mkdirSync(path.join(resourcesDir, dir), { recursive: true });
+  for (const dir of ['backend', 'frontend', 'templates', 'native', 'dictionaries', 'skills', 'tex']) fs.mkdirSync(path.join(resourcesDir, dir), { recursive: true });
+  // the backend in dev reads them from here, as the app does from its resources
+  if (!fs.existsSync(path.join(resourcesDir, 'fonts', 'cjk', fonts.cjk[0].regular[0]))) await cjkFonts();
   prepareEnginesDir();
   if (!fs.existsSync(path.join(binDir, `node-${TRIPLES[process.arch]}${EXE}`))) await nodeRuntime([process.arch]);
   if (!fs.existsSync(path.join(binDir, `texlab-${TRIPLES[process.arch]}${EXE}`))) await texlabRuntime([process.arch]);
@@ -392,13 +420,14 @@ const commands = {
   resources,
   texlab: () => texlabRuntime(Object.keys(TRIPLES)),
   tectonic: () => tectonicRuntime(Object.keys(TRIPLES)),
-  typst: () => typstRuntime(Object.keys(TRIPLES))
+  typst: () => typstRuntime(Object.keys(TRIPLES)),
+  fonts: cjkFonts
 };
 // run, not imported (the backend's tests check engineAsset), also through a link to this file
 if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const command = commands[process.argv[2]];
   if (!command) {
-    console.error('Usage: node scripts/desktop.mjs dev|build|resources|texlab|tectonic|typst');
+    console.error('Usage: node scripts/desktop.mjs dev|build|resources|texlab|tectonic|typst|fonts');
     process.exit(1);
   }
   try {
