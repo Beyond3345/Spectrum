@@ -14,7 +14,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 ### Changed
 
 - A project set to Auto or pdfLaTeX compiles with XeLaTeX while Jyutping is on, and the log says so. The built-in Tectonic's LaTeX is too old for xjyutping
-- The Mac app is about 110 MB larger, for the fonts
+- The Mac download is about 80 MB larger, for the fonts
 
 ## 2.2.3 (5 November 2026)
 
