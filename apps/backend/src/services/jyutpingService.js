@@ -132,12 +132,14 @@ export function projectPaths(log, from, to) {
   if (!log || !from) return log;
   if (log.includes('\r\n')) return projectPaths(log.replace(/\r\n/g, '\n'), from, to).replace(/\n/g, '\r\n');
   const [old, now] = [slashed(from), slashed(to)];
+  // and where TeX cut its start off (<*> ...ab12/jyutping/jyutping-x1Y2z3/main.tex)
+  const cut = new RegExp(`\\.\\.\\.\\S*?${path.basename(old).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`, 'g');
   const out = [];
   let group = [];
   const flush = () => {
     const whole = group.join('');
-    if (whole.includes(old)) {
-      const changed = whole.split(old).join(now);
+    const changed = whole.split(old).join(now).replace(cut, `${now}/`);
+    if (changed !== whole) {
       for (let i = 0; i < changed.length || i === 0; i += 79) out.push(changed.slice(i, i + 79));
     } else out.push(...group);
     group = [];

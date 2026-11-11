@@ -101,11 +101,25 @@ for (const engine of ['xelatex', 'lualatex']) {
 }
 
 // TeX reads a scope whole before typesetting it, so an error in it is reported on the line that ends the scope
-test('an error in auto mode’s copy points at the project’s file, on the line that ends its scope', { skip: skipFor('xelatex'), timeout: 300000 * SLOW }, async () => {
+test('an error in auto mode’s copy points at the project’s file, on the line that ends its paragraph', { skip: skipFor('xelatex'), timeout: 300000 * SLOW }, async () => {
   const made = await project('auto-error', { 'main.tex': MAIN, 'chapters/one.tex': '\\section{一章}\n行路\\undefinedcommand 返屋企。\n' }, { mode: 'auto' });
   const res = await runCompile({ projectId: made.id, mainFile: 'main.tex', engine: 'xelatex' });
   const root = made.path.split(path.sep).join('/');
-  assert.ok(flat(res.log).includes(`${root}/chapters/one.tex:3: Undefined control sequence`), res.log);
+  assert.ok(flat(res.log).includes(`${root}/chapters/one.tex:2: Undefined control sequence`), res.log);
+});
+
+test('auto mode compiles \\include’d chapters and a beamer deck with a fragile frame', { skip: skipFor('xelatex'), timeout: 300000 * SLOW }, async () => {
+  const book = ['\\documentclass{report}', TERMINAL, '\\begin{document}', '前言', '\\include{chapters/one}', '\\include{chapters/two}', '\\end{document}', ''].join('\n');
+  const made = await project('include', { 'main.tex': book, 'chapters/one.tex': CHAPTER, 'chapters/two.tex': '\\chapter{二}\n校長喺學校長大。\n' }, { mode: 'auto', options: { debug: true } });
+  const res = await runCompile({ projectId: made.id, mainFile: 'main.tex', engine: 'auto' });
+  assert.ok(res.ok && res.status === 0, res.error || res.log);
+  assert.match(flat(res.log), /行haang4:w路lou6:w/);
+  assert.match(flat(res.log), /校haau6:w長zoeng2:w/);
+  const deck = ['\\documentclass{beamer}', '\\begin{document}', '\\begin{frame}{標題}', '銀行', '\\begin{itemize}', '\\item<2-> 行路', '\\end{itemize}', '\\end{frame}',
+    '\\begin{frame}[fragile]', '\\begin{verbatim}', 'x % y', '\\end{verbatim}', '\\end{frame}', '\\end{document}', ''].join('\n');
+  const slides = await project('beamer', { 'main.tex': deck }, { mode: 'auto' });
+  const shown = await runCompile({ projectId: slides.id, mainFile: 'main.tex', engine: 'auto' });
+  assert.ok(shown.ok && shown.status === 0, shown.error || shown.log);
 });
 
 test('a document that loads xjyutping compiles with XeLaTeX when the project says pdfLaTeX, and the log says so', { skip: skipFor('xelatex'), timeout: 300000 * SLOW }, async () => {

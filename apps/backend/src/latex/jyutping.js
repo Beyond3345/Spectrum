@@ -375,7 +375,7 @@ export function bodyInputs(text) {
  * The document with its body in jyutpingscope, every line where it was (text is only added to lines): role 'main'
  * puts additions (preamble lines) just before \begin{document} and opens the scope after it; 'body' (a file the body
  * \input's) wraps the whole file, or a subfile's \begin{document}…\end{document}. The scope is closed before and
- * opened again after what it can't hold (verbatim, \verb, a \url with %, catcode changes, \input and the like),
+ * opened again on the line after what it can't hold (verbatim, \verb, a \url with %, catcode changes, \input and the like),
  * widened to the outermost group or environment around it, as a scope must close where it opened.
  */
 export function jyutpingTransform(text, { role = 'main', additions = '' } = {}) {
@@ -386,7 +386,8 @@ export function jyutpingTransform(text, { role = 'main', additions = '' } = {}) 
   if (first === -1) {
     first = 0;
     last = scans.findIndex((scan) => scan.endinput !== -1);
-    if (last === -1) last = lines.length - 1;
+    // its last line with anything on it, so an error at the scope's end is reported there
+    if (last === -1) last = Math.max(0, lines.findLastIndex((line) => line.trim()));
   } else {
     last = scans.findIndex((scan, n) => n >= first && scan.close !== -1);
     if (last === -1) last = lines.length - 1;
@@ -424,7 +425,14 @@ export function jyutpingTransform(text, { role = 'main', additions = '' } = {}) 
   if (startsOpen) at(first, opening, open);
   for (const gap of gaps) {
     if (gap.from !== first) at(gap.from, 0, close);
-    if (gap.to !== last) at(gap.to, scans[gap.to].end, open);
+    // on the next line: a fragile frame's or comment's end must be alone on its line
+    if (gap.to !== last) at(gap.to + 1, 0, open);
+  }
+  // a scope is typeset once read whole, so TeX (its errors and SyncTeX) puts everything in it on the line that closes
+  // it: one per paragraph, closed on the blank line after it, which ends the paragraph as the blank line did
+  const inGap = (n) => gaps.some((gap) => n >= gap.from - 1 && n <= gap.to);
+  for (let n = first + 1; n < last; n += 1) {
+    if (!lines[n].trim() && lines[n - 1].trim() && !depth[n] && !inGap(n)) at(n, 0, close + open);
   }
   if (endsOpen) {
     const end = scans[last];
