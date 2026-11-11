@@ -243,7 +243,7 @@ function scanText(text) {
 }
 
 /** The code of each line: the line without its comment (the line itself when it has none). */
-const codeOf = (lines) => scanText(lines.join('\n')).scans.map((scan, n) => lines[n].slice(0, scan.end));
+const codeOf = (lines) => (lines.length ? scanText(lines.join('\n')).scans.map((scan, n) => lines[n].slice(0, scan.end)) : []);
 
 /** The text holds a Chinese character outside its comments. */
 export function hasChinese(text) {
@@ -283,7 +283,7 @@ function cjkSupport(codes) {
 export function cjkKind(text) {
   const lines = String(text).split('\n');
   const begin = beginLine(lines);
-  return cjkSupport(codeOf(lines.slice(0, begin === -1 ? lines.length : begin)))?.kind ?? null;
+  return cjkSupport(codeOf(lines.slice(0, begin === -1 ? lines.length : begin + 1)))?.kind ?? null;
 }
 
 // ─── The preamble the editor writes ───
@@ -451,7 +451,7 @@ export function jyutpingTransform(text, { role = 'main', additions = '' } = {}) 
 export function autoAdditions(text, { options, cjkFont, engine, fontDir }) {
   const lines = String(text).split('\n');
   const begin = beginLine(lines);
-  const codes = codeOf(lines.slice(0, begin === -1 ? lines.length : begin));
+  const codes = codeOf(lines.slice(0, begin === -1 ? lines.length : begin + 1));
   let kind = cjkSupport(codes)?.kind ?? null;
   const out = [];
   if (!kind) {

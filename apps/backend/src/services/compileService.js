@@ -443,8 +443,8 @@ async function compileWithLinks(engine, projectRoot, absMain, mainFile, options)
 }
 
 export async function compileDocument(engine, projectRoot, absMain, mainFile, options) {
-  // a .md's generated LaTeX never uses xjyutping
-  const jyutping = options.markdownSource ? null : await jyutpingDocument(projectRoot, absMain, options);
+  // a .md's generated LaTeX never uses xjyutping; a document Spectrum can't read for it compiles as it would without
+  const jyutping = options.markdownSource ? null : await jyutpingDocument(projectRoot, absMain, options).catch(() => null);
   if (jyutping) return compileJyutping(engine, projectRoot, absMain, mainFile, options, jyutping);
   if (engine !== 'auto') return { ...(await compileWith(engine, projectRoot, absMain, mainFile, options)), engine };
   const candidates = await autoEngineCandidates(absMain, options.without);

@@ -182,6 +182,7 @@ test('what auto mode looks at: Chinese outside comments, xjyutping in the preamb
     [{ command: 'include', file: 'a' }, { command: 'import', file: 'dir/c' }, { command: 'subfile', file: 'd.tex' }]);
   assert.equal(J.cjkKind('\\documentclass{ctexbook}\n\\begin{document}'), 'ctex');
   assert.equal(J.cjkKind('\\usepackage{luatexja-fontspec}\n\\begin{document}'), 'luatexja-fontspec');
+  assert.equal(J.cjkKind('\\documentclass{article}\\begin{document}Hi\\end{document}'), null);
 });
 
 test('the log names the project’s files in place of the copy’s, across TeX’s 79-character lines', () => {
