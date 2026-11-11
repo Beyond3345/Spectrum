@@ -471,7 +471,7 @@ async function jyutpingEngine(engine, absMain, lua, without = []) {
   for (const choice of lua ? ['lualatex', 'xelatex'] : ['xelatex', 'lualatex']) {
     if (without.includes(choice) || !(await findExecutable(choice))) continue;
     const usual = engine === 'auto' ? (await autoEngineCandidates(absMain, without))[0] : engine;
-    return { engine: choice, ...(usual !== choice && { note: `[spectrum] This compile used ${ENGINE_NAMES[choice]}, as Jyutping (xjyutping) needs XeLaTeX or LuaLaTeX.` }) };
+    return { engine: choice, ...(usual !== choice && { note: `[spectrum note] This compile used ${ENGINE_NAMES[choice]}, as Jyutping (xjyutping) needs XeLaTeX or LuaLaTeX.` }) };
   }
   return { error: XJYUTPING_ENGINE_ERROR };
 }

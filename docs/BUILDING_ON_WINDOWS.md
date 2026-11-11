@@ -38,11 +38,11 @@ The second line matters: the dictionaries and templates must keep their LF line 
 ```
 git clone https://github.com/Beyond3345/Spectrum.git
 cd Spectrum
-git switch --detach v2.2.3
+git switch --detach v2.3.0
 npm ci
 ```
 
-Use the tag of the release you are building (`v2.2.3` here). Building `main` instead gives you whatever is newest.
+Use the tag of the release you are building (`v2.3.0` here). Building `main` instead gives you whatever is newest.
 
 ## 3. Build
 
@@ -54,12 +54,12 @@ node scripts/desktop.mjs build
 
 - **`native.mjs hunspell`** builds the spelling module. A warning at the end that its work folder could not be deleted is normal on Windows; any other error is real.
 - **`desktop.mjs texlab`** builds TexLab from its source. It is the slow step the first time and is cached afterwards in `%LOCALAPPDATA%\spectrum-build`.
-- **`desktop.mjs build`** downloads the pinned Node, Tectonic, Typst and pandoc, checks each against its SHA-256, and builds the installer.
+- **`desktop.mjs build`** downloads the pinned Node, Tectonic, Typst and pandoc and the bundled Chinese fonts (about 110 MB), checks each against its SHA-256, and builds the installer. The xjyutping package it bundles is already in the repository, in `vendor\xjyutping`.
 
 The installer is then at:
 
 ```
-src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.2.3_x64-setup.exe
+src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.3.0_x64-setup.exe
 ```
 
 Run it to install Spectrum for your account. It is not code signed, so SmartScreen may ask you to choose More info and then Run anyway.
@@ -87,8 +87,8 @@ npm run typecheck
 Only once the release exists on GitHub, published from the Mac with the DMG. Sign in once with `gh auth login`, then:
 
 ```
-$tag = "v2.2.3"
-$exe = "src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.2.3_x64-setup.exe"
+$tag = "v2.3.0"
+$exe = "src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.3.0_x64-setup.exe"
 $src = "texlab-5.26.0-source.tar.gz"
 Invoke-WebRequest https://github.com/latex-lsp/texlab/archive/refs/tags/v5.26.0.tar.gz -OutFile $src
 (Get-FileHash $src -Algorithm SHA256).Hash.ToLower() -eq "47af7e71247fe186ddbaa62373ce5fbebc802ab8df9924958ac62788a644f84e"

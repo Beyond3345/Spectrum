@@ -20,6 +20,7 @@ The [user guide](docs/USER_GUIDE.md) describes installing, setting up and every 
 - **LaTeX ⇄ Typst converter:** makes a new project in the other language, keeps labels, references, citations, maths, figures and tables and checks that the result compiles and nothing was lost.
 - **References and research:** DOIs, links, arXiv IDs and titles become BibTeX entries, Zotero citing and collections, and a Research tab that searches OpenAlex, Semantic Scholar, arXiv, Crossref and PubMed at once.
 - **Figures and diagrams:** Insert figure and Insert table panels, and a diagram composer for circuits, structures, plots, flowcharts and Mermaid diagrams that saves its source.
+- **Jyutping:** Cantonese Jyutping above Chinese text with [xjyutping](https://ctan.org/pkg/xjyutping), added each time you compile without changing your files or written into the preamble, with six bundled Chinese fonts.
 - **Review:** checks for compile and layout problems, missing references, anonymity, accessibility and submission readiness, with an optional AI review.
 - **Spelling and grammar:** Hunspell and Harper on this computer, in Australian English by default and in other languages on request, with LanguageTool as an option.
 - **Checkpoints and GitHub:** checkpoints inside each project to compare and restore, and private GitHub repositories that keep projects and settings in step between computers.

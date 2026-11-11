@@ -128,7 +128,7 @@ test('a document that loads xjyutping compiles with XeLaTeX when the project say
   const res = await runCompile({ projectId: made.id, mainFile: 'main.tex', engine: 'pdflatex' });
   assert.ok(res.ok && res.status === 0, res.error || res.log);
   assert.equal(res.engine, 'xelatex');
-  assert.match(res.log, /^\[spectrum\] This compile used XeLaTeX, as Jyutping \(xjyutping\) needs XeLaTeX or LuaLaTeX\./);
+  assert.match(res.log, /^\[spectrum note\] This compile used XeLaTeX, as Jyutping \(xjyutping\) needs XeLaTeX or LuaLaTeX\./);
 });
 
 test('auto mode leaves a document without Chinese as it is', { skip: skipFor('xelatex'), timeout: 120000 * SLOW }, async () => {
