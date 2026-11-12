@@ -2,6 +2,14 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.3.1 (12 November 2026)
+
+### Fixed
+
+- LaTeX autocomplete suggests siunitx units in unit arguments, including in equations. Typing `/vo` offers `\volt`.
+- Projects created from a Home folder appear there and default to the matching disk path under Spectrum's save folder. Choosing a custom disk location preserves their placement in Home.
+- Opening an existing project folder lists it in the current Home folder and keeps its files at the selected disk location.
+
 ## 2.3.0 (12 November 2026)
 
 ### Added

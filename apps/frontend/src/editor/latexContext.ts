@@ -1,3 +1,5 @@
+import { matchBrace, withoutComments } from '../../../backend/src/latex/text.js';
+
 // Where the cursor is in LaTeX source: maths or text, which environments are open, and whether it's in the
 // braces of a command whose argument names something in the project (a label, a citation key, a file).
 
@@ -176,6 +178,30 @@ const FILE_COMMANDS = /^(?:usepackage|RequirePackage|documentclass|LoadClass|bib
 const ARG = /\\([A-Za-z]+)\*?\s*(?:<[^>]*>\s*)?(?:\[[^\]]*\]\s*)*\{([^{}\\]*)$/;
 /** How far back argContext looks for the command: a long \cite list fits. */
 export const ARG_WINDOW = 2000;
+
+// The unit is the last argument. Skip escaped backslashes so a line break isn't read as a command.
+const UNIT_COMMAND = /\\(?:\\|(qtyrange|SIrange|complexqty|qtyproduct|qtylist|SIlist|qty|SI|unit|si)(?![A-Za-z@])\s*(?:\[[^\]]*\]\s*)?)/g;
+
+/** Whether the cursor is in the unit argument of an siunitx command. */
+export function inUnitArgument(before: string): boolean {
+  const text = withoutComments(before);
+  for (const match of text.matchAll(UNIT_COMMAND)) {
+    const command = match[1];
+    if (!command) continue;
+    let start = match.index + match[0].length;
+    const numbers = /range$/i.test(command) ? 2 : command === 'unit' || command === 'si' ? 0 : 1;
+    for (let i = 0; i < numbers && text[start] === '{'; i++) {
+      const end = matchBrace(text, start);
+      if (end < 0) {
+        start = text.length;
+        break;
+      }
+      start = end + 1 + (text.slice(end + 1).match(/^\s*/)?.[0].length ?? 0);
+    }
+    if (text[start] === '{' && matchBrace(text, start) < 0) return true;
+  }
+  return false;
+}
 
 /**
  * The command whose braces the cursor is in, when it completes something (\label doesn't: its name is new).

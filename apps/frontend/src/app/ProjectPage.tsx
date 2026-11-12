@@ -27,7 +27,6 @@ import {
   revealProject,
   saveAsTemplate,
   setProjectMainFile,
-  systemCheck,
   thumbnailUrl,
   updateProjectTags,
   uploadTemplate,
@@ -54,7 +53,7 @@ import type { TransferJob } from './TransferPanel';
 import { confirmDialog, promptDialog } from './Dialogs';
 import { toast } from './Toast';
 import { IS_DESKTOP, pickFolder } from './desktop';
-import { FOLDER_COLOURS, addFolder, childFolders, colourFolder, deleteFolder, folderPath, isWithin, moveItems, placeProject, renameFolder, sharedPlace } from './folders';
+import { FOLDER_COLOURS, addFolder, childFolders, colourFolder, deleteFolder, folderPath, isWithin, moveItems, placeProject, projectLocation, renameFolder, sharedPlace } from './folders';
 import type { ProjectFolder, ProjectFolders } from './folders';
 import CustomiseFolderSheet from './CustomiseFolderSheet';
 import UniverseSheet, { LICENCE_NOTE } from './UniverseSheet';
@@ -222,6 +221,7 @@ export default function ProjectPage() {
   const reload = useCallback(async () => {
     try {
       const res = await listProjects();
+      setDefaultDir(res.projectsDir || '');
       const all = (res.projects || []).map((p) => ({ ...p, tags: p.tags || [] }));
       // working copies of templates open from the template gallery, not the list
       setProjects(all.filter((p) => !p.templateDraft));
@@ -244,7 +244,6 @@ export default function ProjectPage() {
   useEffect(() => {
     reload();
     reloadTemplates().catch((err) => toast(`Couldn’t load templates: ${errorText(err)}`, { tone: 'error' }));
-    systemCheck().then((res) => setDefaultDir(res.projectsDir || '')).catch(() => undefined);
     getMigrationNotice().then((res) => setNotice(res.notice)).catch(() => undefined);
   }, [reload, reloadTemplates]);
 
@@ -572,6 +571,7 @@ export default function ProjectPage() {
     if (!path) return;
     try {
       const project = await openFolder(path);
+      if (view === 'home') moveToFolder(project.id, here);
       navigate(`/editor/${project.id}`);
     } catch (err) {
       toast(`Couldn’t open the folder: ${errorText(err)}`, { tone: 'error' });
@@ -890,7 +890,7 @@ export default function ProjectPage() {
         <div className="empty-title">{projects.length ? 'Everything here is archived' : 'No projects yet'}</div>
         <div className="empty-text">Start a new paper, or open a folder that already holds your LaTeX files.</div>
         <div className="empty-actions">
-          <button className="btn inverse" onClick={() => setSheet({ kind: 'new', template: '' })}><Icon name="plus" /> New project…</button>
+          <button className="btn inverse" onClick={() => setSheet({ kind: 'new', template: '', folder: here })}><Icon name="plus" /> New project…</button>
           <button className="btn" onClick={openExisting}><Icon name="folder" /> Open existing folder…</button>
         </div>
       </div>
@@ -1168,7 +1168,8 @@ export default function ProjectPage() {
           initialTemplate={sheet.template}
           initialEngine={sheet.engine}
           universe={sheet.universe}
-          defaultDir={settings.projectsDir || defaultDir}
+          defaultDir={projectLocation(settings.projectsDir || defaultDir, folderPath(folders, sheet.folder ?? null), IS_WINDOWS)}
+          needsLocation={Boolean(sheet.folder)}
           onClose={() => setSheet(null)}
           onBrowse={(engine) => setSheet({ kind: 'gallery', engine, folder: sheet.folder })}
           onUniverse={() => setSheet({ kind: 'universe', folder: sheet.folder })}
@@ -1343,6 +1344,7 @@ function NewProjectSheet({
   initialEngine,
   universe: chosenUniverse,
   defaultDir,
+  needsLocation,
   onClose,
   onBrowse,
   onUniverse,
@@ -1354,6 +1356,7 @@ function NewProjectSheet({
   /** a Typst Universe template in place of one of Spectrum's */
   universe?: UniverseTemplate;
   defaultDir: string;
+  needsLocation: boolean;
   onClose: () => void;
   /** the gallery, showing this engine's templates */
   onBrowse: (engine: Engine) => void;
@@ -1374,10 +1377,11 @@ function NewProjectSheet({
   const [dir, setDir] = useState('');
   const [creating, setCreating] = useState(false);
   const location = dir || defaultDir;
+  const canCreate = Boolean(name.trim()) && !creating && (!needsLocation || Boolean(location));
 
   const create = async () => {
     const trimmed = name.trim();
-    if (!trimmed || creating) return;
+    if (!canCreate) return;
     setCreating(true);
     try {
       const project = universe
@@ -1407,7 +1411,7 @@ function NewProjectSheet({
       actions={
         <>
           <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn primary" disabled={!name.trim() || creating} onClick={create}>
+          <button className="btn primary" disabled={!canCreate} onClick={create}>
             {creating ? <><span className="spinner" /> Creating…</> : 'Create'}
           </button>
         </>

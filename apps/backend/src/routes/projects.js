@@ -7,6 +7,7 @@ import { promisify } from 'util';
 import * as tar from 'tar';
 import crypto from 'crypto';
 import { gunzipSync } from 'zlib';
+import { PROJECTS_DIR } from '../config/constants.js';
 import { ensureDir, copyDir, extractZip, inPool, listFilesRecursive, mirrorSkips, renameOver, skipInArchive, writeFileAtomic } from '../utils/fsUtils.js';
 import { onDiskRel, safeJoin, safeJoinLink, sanitizeUploadPath } from '../utils/pathUtils.js';
 import { bibliographyFiles, extractDocumentBody, isDocumentFile, mergeTemplateBody, preserveDocumentMetadata, withBiblatexResources, withoutComments } from '../utils/texUtils.js';
@@ -219,7 +220,7 @@ export function registerProjectRoutes(fastify) {
     done();
   });
 
-  fastify.get('/api/projects', async () => ({ projects: await listProjects() }));
+  fastify.get('/api/projects', async () => ({ projects: await listProjects(), projectsDir: PROJECTS_DIR }));
 
   fastify.post('/api/projects', async (req) => {
     const { name, template, parentDir } = req.body || {};

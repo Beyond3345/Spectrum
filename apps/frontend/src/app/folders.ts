@@ -1,7 +1,9 @@
-// The folders on the Projects page. They're for looking only: nothing moves on disk. They live in the settings
+// The folders on the Projects page. Moving a project here changes its placement only. They live in the settings
 // (projectFolders), so they follow the user to their other computers with the rest. A project is in one folder at
 // most, by its id, which stays the same wherever its folder on disk goes. ponytail: the tree goes between computers
 // as one value, newest wins, so folders made on two computers between syncs keep only the newer computer's.
+
+import { sanitiseFolderName } from '../../../backend/src/utils/folderName.js';
 
 /** A folder's colour: Finder's tag colours, in its order; none is the light blue folder. Older builds of 2.0 drop yellow. */
 export const FOLDER_COLOURS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'grey'] as const;
@@ -126,6 +128,14 @@ export function folderPath(tree: ProjectFolders, id: string | null): ProjectFold
   const path: ProjectFolder[] = [];
   for (let f = tree.folders.find((g) => g.id === id); f && !path.includes(f); f = tree.folders.find((g) => g.id === f!.parent)) path.unshift(f);
   return path;
+}
+
+/** The open Home folder's default disk location for new projects. */
+export function projectLocation(base: string, folders: ProjectFolder[], windows: boolean): string {
+  if (!base || !folders.length) return base;
+  const separator = windows ? '\\' : '/';
+  const root = base.replace(windows ? /[\\/]+$/ : /\/+$/, '');
+  return [root, ...folders.map((folder) => sanitiseFolderName(folder.name))].join(separator);
 }
 
 /** Going up from folder from to at (null: the top): the folder in at that from is in or is, or null. */

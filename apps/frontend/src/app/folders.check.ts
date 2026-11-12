@@ -1,6 +1,6 @@
 // Self-check for the folders on the Projects page. Run:
 // npx esbuild apps/frontend/src/app/folders.check.ts --bundle --platform=node --log-level=warning | node
-import { NO_FOLDERS, addFolder, childFolders, cleanFolders, deleteFolder, placeProject, renameFolder } from './folders';
+import { NO_FOLDERS, addFolder, childFolders, cleanFolders, deleteFolder, folderPath, placeProject, projectLocation, renameFolder } from './folders';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -15,6 +15,10 @@ t = placeProject(placeProject(placeProject(t, 'intro', 'c'), 'draft', 't'), 'rev
 eq(names(t, null), ['papers', 'Thesis'], 'the top, by name whatever the case');
 eq(names(t, 't'), ['Chapters'], 'inside Thesis');
 eq(renameFolder(t, 'p', 'Papers').folders.find((f) => f.id === 'p')?.name, 'Papers', 'renamed');
+eq(projectLocation('/papers/', folderPath(t, 'c'), false), '/papers/Thesis/Chapters', 'nested Home folder under the configured save folder');
+eq(projectLocation('C:\\Spectrum\\', folderPath(t, 'c'), true), 'C:\\Spectrum\\Thesis\\Chapters', 'Windows disk location');
+eq(projectLocation('/papers', folderPath(t, null), false), '/papers', 'Home root uses the base folder');
+eq(projectLocation('/papers', folderPath(renameFolder(t, 'c', '../../Drafts'), 'c'), false), '/papers/Thesis/Drafts', 'folder names cannot change the disk hierarchy');
 
 // one folder per project: moving it takes it out of the other, and null takes it out of any
 eq(placeProject(t, 'intro', 'p').placement.intro, 'p', 'moved');

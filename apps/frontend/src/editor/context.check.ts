@@ -204,6 +204,26 @@ function accept(text: string, label: string, tabs = 0) {
 eq([accept('$\\fr|', '\\frac{}{}'), accept('$\\fr|', '\\frac{}{}', 1), accept('$\\fr|', '\\frac{}{}', 2)], ['$\\frac{|}{}', '$\\frac{}{|}', '$\\frac{}{}|'], 'arguments are fields, and Tab goes on, then past the end');
 eq(accept('$\\alp|', '\\alpha'), '$\\alpha|', 'a command without arguments is just its name');
 eq([accept('$\\left|', '\\left( \\right)'), accept('$\\left|', '\\left\\{ \\right\\}')], ['$\\left( | \\right)', '$\\left\\{ | \\right\\}'], 'a snippet, with escaped braces');
+const siunitx = '\\usepackage{siunitx}\n\\begin{document}\n';
+eq(accept(siunitx + '\\qty{12}{/vo|}', '/volt'), siunitx + '\\qty{12}{\\volt|}', 'slash in the unit argument inserts a backslash');
+eq(accept(siunitx + '$\\qty[parse-numbers=false]{\\frac{1}{2}}{\\kilo/vo|}$', '/volt'), siunitx + '$\\qty[parse-numbers=false]{\\frac{1}{2}}{\\kilo\\volt|}$', 'unit after a prefix in maths, with options and nested braces');
+eq(accept(siunitx + '\\qtyrange{2}{5}{\\vo|}', '\\volt'), siunitx + '\\qtyrange{2}{5}{\\volt|}', 'backslash in the third argument of a range');
+eq(shown(siunitx + '\\unit{\\metre\\pe').includes('\\per'), true, 'unit modifiers');
+eq(shown(siunitx + '\\unit{\\ki').includes('\\kilo'), true, 'unit prefixes');
+eq([
+  shown(siunitx + '\\qty{\\vo').includes('\\volt'),
+  shown(siunitx + '\\qty{12}{\\volt} \\vo').includes('\\volt'),
+  shown('\\usepackage{physics}\n\\qty{12}{\\vo').includes('\\volt'),
+  shown(siunitx + '\\begin{verbatim}\n\\qty{12}{/vo').includes('/volt')
+], [false, false, false, false], 'unit suggestions stay in the right argument and require siunitx');
+const quantity = editor(siunitx + '$\\qt|$');
+quantity.pick('\\qty{}{}');
+quantity.type('12');
+nextSnippetField(quantity.view);
+quantity.type('/vo');
+quantity.pick('/volt');
+nextSnippetField(quantity.view);
+eq(quantity.marked(), siunitx + '$\\qty{12}{\\volt}|$', 'unit completion preserves the quantity snippet');
 eq(accept('\\begin{align}\n\\end{|}', '\\end{align}'), '\\begin{align}\n\\end{align}|', '\\end{ takes the } closeBrackets added');
 const nested = editor('$\\fr|');
 nested.pick('\\frac{}{}');

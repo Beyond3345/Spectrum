@@ -137,7 +137,7 @@ const json = (method: string, body: unknown = {}): RequestInit => ({ method, bod
 // ─── Projects ───
 
 export function listProjects() {
-  return request<{ projects: ProjectMeta[] }>('/api/projects');
+  return request<{ projects: ProjectMeta[]; projectsDir: string }>('/api/projects');
 }
 
 /** parentDir: absolute folder to create the project in; defaults to ~/Documents/Spectrum */

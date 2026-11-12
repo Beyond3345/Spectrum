@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { DATA_DIR, PROJECTS_DIR } from '../config/constants.js';
 import { HIDDEN_ENTRIES, ensureDir, listFilesRecursive, readJson, readdirTyped, writeJsonAtomic } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
+import { sanitiseFolderName } from '../utils/folderName.js';
 import { isDocumentFile } from '../utils/texUtils.js';
 import { caseless, isConflictCopy, placeOf, syncRoots } from './syncService.js';
 import { cloudCopyOwner, setMirrorAside } from './mirrorService.js';
@@ -288,19 +289,7 @@ export async function renameProject(id, name) {
 
 // ─── Folders ───
 
-/** Turn a display name into a safe folder name. */
-export function sanitiseFolderName(name) {
-  const clean = String(name || '')
-    .replace(/[/\\:*?"<>|\u0000-\u001f\u007f]/g, '')
-    .trim()
-    // and a leading ~, which Synology passes by and OneDrive refuses
-    .replace(/^[.~]+/, '')
-    .trim();
-  // Windows drops a trailing dot or space, and CON, AUX and the like are devices, which TeX and Explorer can't open;
-  // on macOS too, so a folder made here still syncs to and opens on a Windows computer
-  const short = Array.from(clean).slice(0, 100).join('').trim().replace(/[. ]+$/, '').replace(/^(con|prn|aux|nul|com\d|lpt\d)(?=\.|$)/i, '$1_');
-  return short || 'Untitled';
-}
+export { sanitiseFolderName };
 
 function expandHome(input) {
   return String(input || '').trim().replace(/^~(?=$|\/)/, os.homedir());

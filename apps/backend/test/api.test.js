@@ -193,6 +193,7 @@ test('migrates upstream projects in place', async () => {
 });
 
 test('creates projects in the chosen folder with safe, unique folder names', async () => {
+  assert.equal((await api('/api/projects')).json.projectsDir, projectsDir);
   const parent = path.join(tmp, 'chosen', 'nested');
   const a = await newProject('Draft: v1/final', { template: 'acl', parentDir: parent });
   assert.equal(a.path, path.join(parent, 'Draft v1final'));

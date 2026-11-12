@@ -1,4 +1,5 @@
 import { withoutComments } from '../../../backend/src/latex/text.js';
+import { PREFIXES, UNITS } from '../../../backend/src/services/convert/units.js';
 import { Annotation, EditorSelection, RangeSetBuilder, StateEffect, StateField, countColumn } from '@codemirror/state';
 import type { EditorState, Text } from '@codemirror/state';
 import { Decoration, EditorView, GutterMarker, ViewPlugin, WidgetType, gutter } from '@codemirror/view';
@@ -12,7 +13,7 @@ import { ALGORITHM2E_SNIPPET, COMMON_ENVS, ENV_SNIPPETS, INPUT_RE, MATHS_ONLY_EN
 import type { Project, Snip, TexScan } from './latexEnvs';
 import { BIB_STYLES, CLASS_NAMES, MATH_COMMANDS, PACKAGE_NAMES, TEXT_COMMANDS } from './latexCommands';
 import type { Cmd } from './latexCommands';
-import { ARG_WINDOW, CITE_COMMANDS, REF_COMMANDS, VERBATIM_ENVS, argContext, texContext } from './latexContext';
+import { ARG_WINDOW, CITE_COMMANDS, REF_COMMANDS, VERBATIM_ENVS, argContext, inUnitArgument, texContext } from './latexContext';
 import type { TexContext } from './latexContext';
 
 // CodeMirror pieces for LaTeX: indentation and wrapping, folding, the environment scope gutter,
@@ -401,6 +402,13 @@ const commandOf = (cmd: Cmd) => {
   return option;
 };
 
+const unitOptions = [
+  ...Object.entries({ ...UNITS, ...PREFIXES }).map(([name, symbol]) => commandOption(snippetOf(name), symbol + ' siunitx')),
+  ...['per', 'squared', 'cubed'].map((name) => commandOption(snippetOf(name), 'siunitx')),
+  ...['tothe', 'raiseto'].map((name) => commandOption(snippetOf(name, '{}'), 'siunitx'))
+].map((option) => ({ ...option, boost: 3 }));
+const unitLabels = new Set(unitOptions.map((option) => option.label));
+
 /**
  * An environment that keeps the indent of the line it's typed on: the body one step in (nested
  * environments a step further), and \end{…} back under \begin{…}. Its snippet (latexEnvs) adds
@@ -577,19 +585,24 @@ export function latexCompletionSource(project: () => Project, openFile: () => st
     if (!before) return null;
     const prev = before.from > 0 ? state.doc.sliceString(before.from - 1, before.from) : ' ';
     const trigger = before.text[0];
-    // "/" only triggers at the start of a word, and never in URLs
-    if (trigger === '/' && (!/[\s({]/.test(prev) || prev === ':')) return null;
     // after an odd run of "\" it's escaped; after \\ (a line break) it starts a command, as in \\\hline
     if (trigger === '\\' && /\\*$/.exec(state.sliceDoc(Math.max(0, before.from - 64), before.from))![0].length % 2) return null;
     const ctx = contextAt(before.from);
     const top = innermost(ctx);
     // in verbatim nothing is a command, and "\end{" only closes it
     if (VERBATIM_ENVS.has(top)) return /^\\end(?:\{|$)/.test(before.text) ? { from: before.from, options: [endOption(top, 1)] } : null;
-    // in maths "/" is division
-    if (trigger === '/' && ctx.mode === 'math') return null;
     const kind = group(before.text);
+    const unitBefore = tex && kind === '' ? state.sliceDoc(start, before.from) : '';
+    const slashStart = /[\s({]/.test(prev);
+    const slashRestricted = trigger === '/' && (!slashStart || ctx.mode === 'math');
+    const unit = (trigger !== '/' || slashStart || /\\[A-Za-z]+$/.test(unitBefore)) && inUnitArgument(unitBefore);
+    // "/" only triggers at the start of a word in prose, or in an siunitx unit, including after a prefix.
+    if (slashRestricted && !unit) return null;
     const all = scans();
-    let options = before.text.includes('{') ? [] : commandOptions(ctx, all);
+    const siunitx = unit && loadedPackages(all).has('siunitx');
+    if (slashRestricted && !siunitx) return null;
+    let options = before.text.includes('{') || slashRestricted ? [] : commandOptions(ctx, all);
+    if (siunitx) options = [...unitOptions, ...options.filter((option) => !unitLabels.has(option.label))];
     if (kind === 'begin') options.push(...envOptions(ctx, all));
     // each open environment once (nested lists), ranked by its innermost depth
     if (kind === 'end') options.push(...[...new Map(ctx.openEnvs.map((name, depth) => [name, depth]))].map(([name, depth]) => endOption(name, depth)));
