@@ -85,7 +85,8 @@ for (const engine of ['xelatex', 'lualatex']) {
     // the copy's paths aren't in the log (it's in the cache, and gone): the project's are
     assert.ok(!log.includes(path.join(tmp, 'data', 'cache').split(path.sep).join('/')), 'no path of the copy');
     assert.deepEqual(await fs.readdir(path.join(tmp, 'data', 'cache', made.id, 'jyutping')), []);
-    assert.ok(log.includes(`${made.path.split(path.sep).join('/')}/chapters/one.tex`), 'the chapter by its path in the project');
+    // MiKTeX joins a search folder and a file with \, as in tex/latex/base\article.cls
+    assert.ok(log.replace(/\\(?=chapters\/)/g, '/').includes(`${made.path.split(path.sep).join('/')}/chapters/one.tex`), 'the chapter by its path in the project');
     // the source is as it was, and the PDF is beside it
     assert.equal(await fs.readFile(path.join(made.path, 'main.tex'), 'utf8'), MAIN);
     assert.ok(existsSync(path.join(made.path, 'main.pdf')));
@@ -105,7 +106,7 @@ test('an error in auto mode’s copy points at the project’s file, on the line
   const made = await project('auto-error', { 'main.tex': MAIN, 'chapters/one.tex': '\\section{一章}\n行路\\undefinedcommand 返屋企。\n' }, { mode: 'auto' });
   const res = await runCompile({ projectId: made.id, mainFile: 'main.tex', engine: 'xelatex' });
   const root = made.path.split(path.sep).join('/');
-  assert.ok(flat(res.log).includes(`${root}/chapters/one.tex:2: Undefined control sequence`), res.log);
+  assert.ok(flat(res.log).replace(/\\(?=chapters\/)/g, '/').includes(`${root}/chapters/one.tex:2: Undefined control sequence`), res.log);
 });
 
 test('auto mode compiles \\include’d chapters and a beamer deck with a fragile frame', { skip: skipFor('xelatex'), timeout: 300000 * SLOW }, async () => {

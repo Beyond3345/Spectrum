@@ -207,10 +207,11 @@ test('an upload that began before a move isn’t left in the folder the move lea
   const body = new PassThrough();
   const upload = app.inject({ method: 'POST', url: `/api/projects/${id}/upload`, headers: { 'content-type': 'multipart/form-data; boundary=b' }, payload: body });
   body.write('--b\r\nContent-Disposition: form-data; name="files"; filename="figure.png"\r\nContent-Type: image/png\r\n\r\npart');
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  // ponytail: waits long enough for a slow Windows runner; an event from the upload and the move would remove them
+  await new Promise((resolve) => setTimeout(resolve, 300));
   let release;
   const move = whileMoving(id, () => new Promise((resolve) => (release = resolve)));
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await new Promise((resolve) => setTimeout(resolve, 200));
   body.end(' and the rest\r\n--b--\r\n');
   const res = await upload;
   assert.equal(res.statusCode, 409, res.body);
