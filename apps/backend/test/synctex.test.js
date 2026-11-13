@@ -105,10 +105,10 @@ async function toolView(pdf, root, file, line) {
   return boxes.filter((a, i) => !boxes.some((b, j) => j !== i && within(a, b) && !(j > i && within(b, a))));
 }
 
-// Windows starts processes several times slower (MiKTeX's engines and its synctex tool included), so
-// its compiles get longer and the cross-check samples every other grid point
+// Windows starts processes several times slower (MiKTeX's and TeX Live's engines and synctex tools included), so
+// its compiles get longer and the cross-check samples every fourth grid point each way
 const SLOW = process.platform === 'win32' ? 3 : 1;
-const GRID = process.platform === 'win32' ? 26 : 13;
+const GRID = process.platform === 'win32' ? 52 : 13;
 
 const close = (a, b) => a.page === b.page && ['x', 'y', 'width', 'height'].every((k) => Math.abs(a[k] - b[k]) <= 2);
 
