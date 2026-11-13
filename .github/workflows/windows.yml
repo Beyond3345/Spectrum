@@ -122,7 +122,8 @@ jobs:
           if (!(Retry { & "$installer\install-tl-windows.bat" -no-gui -profile "$env:RUNNER_TEMP\texlive.profile" })) { exit 1 }
           $bin = (Get-ChildItem "$tl\bin" -Directory | Select-Object -First 1).FullName
           # what MiKTeX would install when asked for: biber and the packages these need
-          $more = 'collection-latexrecommended', 'biber', 'xstring', 'mfirstuc', 'xfor', 'datatool', 'logreq', 'tracklang'
+          $more = 'collection-latexrecommended', 'biber', 'xstring', 'mfirstuc', 'xfor', 'datatool', 'logreq', 'tracklang',
+            'csquotes', 'biblatex-apa', 'xurl', 'greek-fontenc', 'cbfonts', 'cbfonts-fd', 'vntex'
           if (!(Retry { & "$bin\tlmgr.bat" install @($packages + $more) })) { exit 1 }
           Add-Content $env:GITHUB_PATH $bin
 
