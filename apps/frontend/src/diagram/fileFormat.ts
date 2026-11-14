@@ -1,4 +1,4 @@
-import { PARTS, asCircuit, usesNewerParts } from './modes/circuitikz/model';
+import { PARTS, asCircuit, isPart, usesNewerParts } from './modes/circuitikz/model';
 import { plotIsNewer } from './modes/pgfplots/code';
 import type { PlotModel } from './modes/pgfplots/code';
 import { tikzIsNewer } from './modes/tikz/code';
@@ -15,6 +15,8 @@ import { tikzDocument } from '../../../backend/src/latex/flowchart.js';
 // didn't have before them (circuit parts, and the flowchart and plot additions), which builds from before don't read (they open such a
 // file as code). It is 3 when the drawing has what the 2.0 release candidate's builds would save without: siunitx,
 // logic gate styles, the flowchart and point sets, or a structure's chosen force diagrams. Those builds read 1 and 2.
+// It is 4 when a circuit has annotations, currents or flows on its wires, or styled Text, which builds up to 2.3 would
+// save without (and some would fail to draw); they read 1 to 3, so they open it as code.
 
 /** The drawing has parts a build from before sets would write without, rather than refuse. */
 function newerParts(diagram: DiagramFile) {
@@ -36,12 +38,21 @@ function phaseE(diagram: DiagramFile) {
   const style = diagram.style;
   if (style.siUnits === true || style.physics === true || diagram.sets?.some((set) => NEWER_SETS.includes(set))) return true;
   try {
-    if (diagram.pkg === 'circuitikz') return !!(style.logic || style.notSymbol) || asCircuit(diagram.model).elements.some((el) => el.kind !== 'wire' && NEWER_SETS.includes(PARTS.get(el.type)?.set ?? ''));
+    if (diagram.pkg === 'circuitikz') return !!(style.logic || style.notSymbol) || asCircuit(diagram.model).elements.some((el) => isPart(el) && NEWER_SETS.includes(PARTS.get(el.type)?.set ?? ''));
     if (diagram.pkg === 'structures') return style.diagrams !== undefined;
   } catch {
     // a model of the wrong shape: its mode refuses it anyway
   }
   return false;
+}
+
+/** The circuit has Annotate's additions (annotations, marks on wires, Text with a look), which 2.3's builds don't keep. */
+function annotated(diagram: DiagramFile) {
+  try {
+    return diagram.pkg === 'circuitikz' && asCircuit(diagram.model).elements.some((el) => el.kind === 'annotation' || (el.kind === 'wire' && !!(el.currents || el.flows)) || (el.kind === 'node' && !!(el.colour || el.bold || el.italic || el.font)));
+  } catch {
+    return false;
+  }
 }
 
 /** What a mode's toCode gives: the picture, and what the document around it has to load. */
@@ -87,7 +98,7 @@ async function withLastLine(diagram: DiagramFile, above: string, drawn: string) 
   const mark =diagram.language === 'mermaid' ? '%%' : diagram.language === 'typst' ? '//' : '%';
   // no sets: no sets key and version 1, as before sets, unless the drawing has parts a build from before doesn't know
   const { sets, ...rest } = diagram;
-  const version = phaseE(diagram) ? 3 : sets?.length || newerParts(diagram) ? 2 : 1;
+  const version = annotated(diagram) ? 4 : phaseE(diagram) ? 3 : sets?.length || newerParts(diagram) ? 2 : 1;
   const kept: DiagramFile = sets?.length ? { ...rest, sets, version } : { ...rest, version };
   return `${above}${mark} spectrum-diagram v1 ${toBase64(JSON.stringify(kept))} ${await hashOf(drawn)}\n`;
 }
@@ -121,7 +132,7 @@ export async function readDiagramFile(text: string): Promise<{ code: string; dia
     const parsed = JSON.parse(fromBase64(last[1]));
     const object = (value: unknown) => !!value && typeof value === 'object' && !Array.isArray(value);
     const sets = parsed?.sets === undefined || (Array.isArray(parsed.sets) && parsed.sets.every((s: unknown) => typeof s === 'string'));
-    if (parsed && [1, 2, 3].includes(parsed.version) && sets && ['tikz', 'mermaid', 'typst'].includes(parsed.language) && object(parsed.style) && object(parsed.model)) diagram = parsed;
+    if (parsed && [1, 2, 3, 4].includes(parsed.version) && sets && ['tikz', 'mermaid', 'typst'].includes(parsed.language) && object(parsed.style) && object(parsed.model)) diagram = parsed;
   } catch {
     // a damaged line: the file opens as code
   }

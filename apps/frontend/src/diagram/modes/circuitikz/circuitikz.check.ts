@@ -4,7 +4,7 @@ import { symbolGeometry, symbolRequest } from './symbolGeometry';
 import { circuitCode, readStyle, symbolOptions } from './code';
 import { attach, detach, moveBy, newPathPart, paste, remove, rotate } from './edit';
 import { pinLabelSpots, plusAtStart, sideName } from './labels';
-import { CATALOGUE, PARTS, PT_PER_GRID, circuitBounds, findJunctions, locator, pathFrame, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
+import { CATALOGUE, PARTS, PT_PER_GRID, circuitBounds, isPart, findJunctions, locator, pathFrame, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
 import type { CircuitModel, Shape } from './model';
 import { astable, astable555, bridgeRectifier, centreTapRectifier, commonEmitterStage, conversionRatio, converter, differenceAmplifier, differenceGain, differentiator, feedbackLoop, figure, halfWaveRectifier, hybridPi, integrator, invertingAmplifier, invertingGain, massSpringDamper, monostable, monostable555, nonInvertingAmplifier, nonInvertingGain, rcLadder, summingAmplifier, voltageFollower } from './templates';
 
@@ -277,12 +277,12 @@ for (const [name, model] of Object.entries(templates)) {
   const ids = model.elements.map((el) => el.id);
   eq(new Set(ids).size, ids.length, `${name}: ids are unique`);
   for (const el of model.elements) {
-    if (el.kind !== 'wire') eq(PARTS.has(el.type), true, `${name}: ${el.type} is in the catalogue`);
+    if (isPart(el)) eq(PARTS.has(el.type), true, `${name}: ${el.type} is in the catalogue`);
     const ends = el.kind === 'wire' ? el.points : el.kind === 'path' ? [el.a, el.b] : [];
     for (const end of ends) {
       if ('x' in end) continue;
       const to = model.elements.find((x) => x.id === end.part);
-      eq(!!to && to.kind !== 'wire' && (to.kind === 'path' ? ['a', 'b', ...(PARTS.get(to.type)?.pins ?? [])] : PARTS.get(to.type)?.pins ?? []).includes(end.pin), true, `${name}: ${end.part}.${end.pin} is a pin`);
+      eq(!!to && isPart(to) && (to.kind === 'path' ? ['a', 'b', ...(PARTS.get(to.type)?.pins ?? [])] : PARTS.get(to.type)?.pins ?? []).includes(end.pin), true, `${name}: ${end.part}.${end.pin} is a pin`);
     }
   }
   const { pos } = locator(model, measuredShape);

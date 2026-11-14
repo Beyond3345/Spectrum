@@ -122,6 +122,20 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
   );
   const v3 = await readDiagramFile(await diagramFileText({ ...circuit, style: { siUnits: true } }, code));
   eq([v3.diagram?.version, v3.edited], [3, false], 'version 3 reads back');
+  // Annotate's additions make version 4, which 2.3's builds open as code rather than save without them
+  const withEls = (elements: unknown[]) => ({ ...circuit, model: { elements, junctions: [] } });
+  const wire = { id: 'w', kind: 'wire', points: [{ x: 0, y: 0 }, { x: 4, y: 0 }], routes: ['--'] };
+  eq(
+    [
+      (await json(withEls([{ id: 'a', kind: 'annotation', shape: 'cross', points: [{ x: 0, y: 0 }] }])))?.version,
+      (await json({ ...withEls([wire, { id: 'a', kind: 'annotation', shape: 'cross', points: [{ x: 0, y: 0 }] }]), style: { preset: 'american', siUnits: true } }))?.version,
+      (await json(withEls([{ ...wire, currents: [{ text: 'i' }] }])))?.version,
+      (await json(withEls([{ id: 't', kind: 'node', type: 'text', at: { x: 0, y: 0 }, text: 'x', colour: 'red' }])))?.version,
+      (await json(withEls([wire, { id: 't', kind: 'node', type: 'text', at: { x: 0, y: 0 }, text: 'x' }])))?.version
+    ],
+    [4, 4, 4, 4, 2],
+    'annotations, marks on wires and styled Text make version 4; plain Text stays a version 2 part'
+  );
   // for a document that loads physics: \qty becomes \SI, in the text and in the drawing, which still reads as drawn
   const si = { body: '\\begin{tikzpicture}\n\\node {\\qty{10}{\\kilo\\newton}};\n\\end{tikzpicture}\n', packages: ['tikz', 'siunitx'], libraries: [] };
   const siFile = await diagramFileText({ ...structure, style: { siUnits: true } }, si);
@@ -131,7 +145,7 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
   eq([(await forPhysics(byHand))?.includes('\\qty'), (await readDiagramFile((await forPhysics(byHand))!)).edited], [false, true], 'edited by hand: the text only, still edited');
   eq(await forPhysics(await diagramFileText(circuit, code)), null, 'nothing to change');
 
-  for (const bad of [{ ...circuit, sets: 'spx-mech' }, { ...circuit, sets: [1] }, { ...circuit, version: 4 }]) {
+  for (const bad of [{ ...circuit, sets: 'spx-mech' }, { ...circuit, sets: [1] }, { ...circuit, version: 5 }]) {
     const text = `${tikzDocument(code)}% spectrum-diagram v1 ${btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(bad))))} 0123456789abcdef\n`;
     eq((await readDiagramFile(text)).diagram, null, `opens as code: ${JSON.stringify(bad).slice(-30)}`);
   }
