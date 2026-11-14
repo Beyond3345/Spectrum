@@ -6,13 +6,23 @@ import type { CircuitModel, Element, End, NodePart, PathPart, Pt, ShapeOf } from
 const same = (p: Pt, q: Pt) => Math.abs(p.x - q.x) < 1e-3 && Math.abs(p.y - q.y) < 1e-3;
 const add = (p: Pt, d: Pt) => ({ x: p.x + d.x, y: p.y + d.y });
 
-/** A new path part between two ends, labelled with the next number of its letter (R_1, R_2…). */
+/** A new path part between two ends, labelled with the next number of its letter (R_1, R_2…), or for a part that
+ * marks a voltage, with the next voltage (v_1, v_2…). */
 export function newPathPart(model: CircuitModel, type: string, a: End, b: End): PathPart {
-  const letter = PARTS.get(type)?.defaultLabel;
-  const labels = new Set(model.elements.flatMap((el) => el.kind === 'path' && el.label ? [el.label.text.replace(/[{}$]/g, '')] : []));
-  let n = 1;
-  while (labels.has(`${letter}_${n}`)) n += 1;
-  return { id: newId(model), kind: 'path', type, a, b, ...(letter ? { label: { text: n < 10 ? `${letter}_${n}` : `${letter}_{${n}}` } } : null) };
+  const part = PARTS.get(type);
+  const next = (letter: string, taken: (el: PathPart) => string | undefined) => {
+    const used = new Set(model.elements.flatMap((el) => (el.kind === 'path' && taken(el) ? [taken(el)!.replace(/[{}$]/g, '')] : [])));
+    let n = 1;
+    while (used.has(`${letter}_${n}`)) n += 1;
+    return n < 10 ? `${letter}_${n}` : `${letter}_{${n}}`;
+  };
+  const letter = part?.defaultLabel;
+  const volts = part?.defaultVoltage;
+  return {
+    id: newId(model), kind: 'path', type, a, b,
+    ...(letter ? { label: { text: next(letter, (el) => el.label?.text) } } : null),
+    ...(volts ? { voltage: { text: next(volts, (el) => el.voltage?.text) } } : null)
+  };
 }
 
 /** A new placed part, named with the next number of its letter (U1, U2…) when it has one. */
@@ -89,23 +99,42 @@ export function remove(model: CircuitModel, ids: Set<string>, shapeOf: ShapeOf):
   };
 }
 
-/** Turns placed parts by `step` degrees, and path parts about their middle, back onto the grid. */
+/**
+ * Turns by `step` degrees: one part about itself (a placed part about its reference point, a path part about its middle),
+ * several together about their middle, so a part keeps its place beside the others; back onto the grid. Text turned
+ * with other things moves with them and stays upright.
+ */
 export function rotate(model: CircuitModel, ids: Set<string>, step: number, shapeOf: ShapeOf): CircuitModel {
-  const loose = detach(model, new Set([...ids].filter((id) => model.elements.find((el) => el.id === id)?.kind === 'path')), shapeOf);
+  const group = ids.size > 1;
+  const loose = detach(model, new Set([...ids].filter((id) => { const el = model.elements.find((x) => x.id === id); return el?.kind === 'path' || (group && el?.kind === 'wire'); })), shapeOf);
   const t = (step * Math.PI) / 180;
   const turn = (p: Pt, c: Pt) => ({
     x: Math.round(c.x + (p.x - c.x) * Math.cos(t) - (p.y - c.y) * Math.sin(t)),
     y: Math.round(c.y + (p.x - c.x) * Math.sin(t) + (p.y - c.y) * Math.cos(t))
   });
+  const picked = loose.elements.filter((el) => ids.has(el.id));
+  const spots = picked.flatMap((el): Pt[] => (el.kind === 'node' ? [el.at] : el.kind === 'path' ? [el.a, el.b] : el.points).filter(isPoint));
+  const xs = spots.map((p) => p.x);
+  const ys = spots.map((p) => p.y);
+  const centre = group && spots.length ? { x: Math.round((Math.min(...xs) + Math.max(...xs)) / 2), y: Math.round((Math.min(...ys) + Math.max(...ys)) / 2) } : null;
+  const quarter = ((step % 180) + 180) % 180 === 90;
   return {
     ...loose,
     elements: loose.elements.map((el) => {
       if (!ids.has(el.id)) return el;
-      if (el.kind === 'node') return { ...el, rotate: ((((el.rotate || 0) + step) % 360) + 360) % 360 };
+      if (el.kind === 'node') {
+        const at = centre ? turn(el.at, centre) : el.at;
+        return centre && !PARTS.get(el.type)?.tikz ? { ...el, at } : { ...el, at, rotate: ((((el.rotate || 0) + step) % 360) + 360) % 360 };
+      }
+      // ends held by a part turned with them follow it
+      const turned = (end: End) => (centre && isPoint(end) ? turn(end, centre) : end);
+      if (el.kind === 'path' && centre) return { ...el, a: turned(el.a), b: turned(el.b) };
       if (el.kind === 'path' && isPoint(el.a) && isPoint(el.b)) {
         const c = { x: (el.a.x + el.b.x) / 2, y: (el.a.y + el.b.y) / 2 };
         return { ...el, a: turn(el.a, c), b: turn(el.b, c) };
       }
+      // a wire's bends turn with it: across-then-up becomes up-then-across after a quarter turn
+      if (el.kind === 'wire' && centre) return { ...el, points: el.points.map(turned), routes: quarter ? el.routes.map((r) => (r === '-|' ? '|-' : r === '|-' ? '-|' : r)) : el.routes };
       return el;
     })
   };

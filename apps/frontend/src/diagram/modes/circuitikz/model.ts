@@ -26,7 +26,14 @@ export interface CataloguePart {
   defaultLabel?: string;
   /** takes text inside: a node's content, a path part's t=…; with no tikz key, a node that is only its text */
   text?: boolean;
+  /** the letter a new path part's voltage is numbered with: v gives v_1, v_2 */
+  defaultVoltage?: string;
+  /** a transistor's pins, each with the way its lead leaves the body when the part is unturned: Label pins writes each
+   * pin's letter beside it (bulk as B) */
+  pinLabels?: Record<string, PinSide>;
 }
+
+export type PinSide = 'left' | 'right' | 'up' | 'down';
 
 export const CATALOGUE = catalogueData as CataloguePart[];
 export const PARTS = new Map(CATALOGUE.map((part) => [part.id, part]));
@@ -96,6 +103,8 @@ export interface NodePart {
   options?: string[];
   /** the node's content, for a part that takes text: TeX as typed */
   text?: string;
+  /** a transistor's pin letters (G, D, S…) written beside its pins */
+  pinLabels?: boolean;
 }
 
 export interface Wire {

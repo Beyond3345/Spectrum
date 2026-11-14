@@ -1,7 +1,7 @@
 // The circuit canvas's labels: TeX sketched as text with its subscripts and superscripts, and placed beside a part
 // clear of the symbol's drawn outline (symbolGeometry.ts), whichever way the part runs or turns.
-import { placeNodeOffset } from './model';
-import type { NodePart, PathPart, Pt, pathFrame } from './model';
+import { PARTS, placeNodeOffset } from './model';
+import type { NodePart, PathPart, PinSide, Pt, pathFrame } from './model';
 import type { Box } from './symbolGeometry';
 
 const SYMBOLS: Record<string, string> = { Omega: 'Ω', mu: 'µ', pi: 'π', int: '∫', approx: '≈', cdot: '·', times: '×', '%': '%' };
@@ -71,3 +71,33 @@ export function nodeNameAt(part: Pick<NodePart, 'at' | 'rotate' | 'flipX' | 'fli
   const top = Math.max(...corners.map((p) => p.y));
   return { x: part.at.x + (Math.min(...xs) + Math.max(...xs)) / 2, y: part.at.y + top + size.h / 2 + GAP };
 }
+
+/** Which way a path part's side lies as it runs (u, from a to b): 1 is circuitikz's ^, the left of a→b. */
+export function sideName(u: Pt, side: 1 | -1): 'Above' | 'Below' | 'Left' | 'Right' {
+  const n = { x: -u.y * side, y: u.x * side };
+  return Math.abs(n.y) >= Math.abs(n.x) - 1e-9 ? (n.y > 0 ? 'Above' : 'Below') : n.x < 0 ? 'Left' : 'Right';
+}
+
+/** Whether a voltage's + is at the part's start (a), with circuitikz's american voltages: v and v> put it there, and
+ * v< at the end, but voltage dir=RP turns v> and v< round. */
+export const plusAtStart = (voltageDir: string | undefined, dir: '>' | '<' | undefined) => (voltageDir === 'RP' ? dir !== '>' : dir !== '<');
+
+const OUT: Record<PinSide, Pt> = { left: { x: -1, y: 0 }, right: { x: 1, y: 0 }, up: { x: 0, y: 1 }, down: { x: 0, y: -1 } };
+
+/**
+ * Label pins: each pin's letter and which way it sits from the pin, x and y each -1, 0 or 1. The letter goes beyond the
+ * pin's end, along its lead, and to the gate's side of a drain or source lead (above a gate's or bulk's), so it stays
+ * clear of the body and beside the wire that joins there; turned and flipped with the part.
+ */
+export function pinLabelSpots(part: Pick<NodePart, 'type' | 'rotate' | 'flipX' | 'flipY'>): { pin: string; letter: string; dir: Pt }[] {
+  return Object.entries(PARTS.get(part.type)?.pinLabels || {}).map(([pin, side]) => {
+    const out = OUT[side];
+    const d = placeNodeOffset(part, { x: out.x || -1, y: out.y || 1 });
+    // within 22.5° of an axis is along it, as a 45° turn gives
+    const step = (c: number) => (Math.abs(c) / Math.hypot(d.x, d.y) > 0.39 ? Math.sign(c) : 0);
+    return { pin, letter: pin === 'bulk' ? 'B' : pin, dir: { x: step(d.x), y: step(d.y) } };
+  });
+}
+
+/** The TikZ anchor that puts a node on that side of its point: up and left is south east. */
+export const anchorFor = (dir: Pt) => [dir.y > 0 ? 'south' : dir.y < 0 ? 'north' : '', dir.x > 0 ? 'west' : dir.x < 0 ? 'east' : ''].filter(Boolean).join(' ') || 'center';

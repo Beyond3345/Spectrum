@@ -42,26 +42,117 @@
 
   {
     "id": "npn", "label": "NPN transistor", "group": "Transistors", "kind": "node", "tikz": "npn", "pins": ["B", "C", "E"], "defaultLabel": "Q",
-    "options": [{ "name": "photo", "label": "Light sensitive" }]
+    "pinLabels": { "B": "left", "C": "up", "E": "down" },
+    "options": [{ "name": "photo", "label": "Light sensitive" }, { "name": "tr circle", "label": "Circle" }]
   },
   {
     "id": "pnp", "label": "PNP transistor", "group": "Transistors", "kind": "node", "tikz": "pnp", "pins": ["B", "C", "E"], "defaultLabel": "Q",
-    "options": [{ "name": "photo", "label": "Light sensitive" }]
+    "pinLabels": { "B": "left", "C": "down", "E": "up" },
+    "options": [{ "name": "photo", "label": "Light sensitive" }, { "name": "tr circle", "label": "Circle" }]
   },
   {
-    "id": "nmos", "label": "N-channel MOSFET", "group": "Transistors", "kind": "node", "tikz": "nmos", "pins": ["G", "D", "S"], "defaultLabel": "M",
+    "id": "njfet", "label": "N-channel JFET", "group": "Transistors", "kind": "node", "tikz": "njfet", "pins": ["G", "D", "S"], "defaultLabel": "J",
+    "pinLabels": { "G": "left", "D": "up", "S": "down" }
+  },
+  {
+    "id": "pjfet", "label": "P-channel JFET", "group": "Transistors", "kind": "node", "tikz": "pjfet", "pins": ["G", "D", "S"], "defaultLabel": "J",
+    "pinLabels": { "G": "left", "D": "down", "S": "up" }
+  },
+  {
+    "id": "nigbt", "label": "N-channel IGBT", "group": "Transistors", "kind": "node", "tikz": "nigbt", "pins": ["G", "C", "E"], "defaultLabel": "Q",
+    "pinLabels": { "G": "left", "C": "up", "E": "down" }
+  },
+  {
+    "id": "pigbt", "label": "P-channel IGBT", "group": "Transistors", "kind": "node", "tikz": "pigbt", "pins": ["G", "C", "E"], "defaultLabel": "Q",
+    "pinLabels": { "G": "left", "C": "down", "E": "up" }
+  },
+
+  {
+    "id": "nmos", "label": "N-channel MOSFET (enhancement)", "group": "MOSFETs", "kind": "node", "tikz": "nmos", "pins": ["G", "D", "S"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "up", "S": "down" },
     "options": [{ "name": "bodydiode", "label": "Body diode" }],
     "enumOptions": [{ "label": "Arrow", "values": [{ "name": "arrowmos", "label": "Shown" }, { "name": "noarrowmos", "label": "Hidden" }] }]
   },
   {
-    "id": "pmos", "label": "P-channel MOSFET", "group": "Transistors", "kind": "node", "tikz": "pmos", "pins": ["G", "D", "S"], "defaultLabel": "M",
+    "id": "pmos", "label": "P-channel MOSFET (enhancement)", "group": "MOSFETs", "kind": "node", "tikz": "pmos", "pins": ["G", "D", "S"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "down", "S": "up" },
     "options": [{ "name": "bodydiode", "label": "Body diode" }],
     "enumOptions": [{ "label": "Arrow", "values": [{ "name": "arrowmos", "label": "Shown" }, { "name": "noarrowmos", "label": "Hidden" }] }]
   },
-  { "id": "njfet", "label": "N-channel JFET", "group": "Transistors", "kind": "node", "tikz": "njfet", "pins": ["G", "D", "S"], "defaultLabel": "J" },
-  { "id": "pjfet", "label": "P-channel JFET", "group": "Transistors", "kind": "node", "tikz": "pjfet", "pins": ["G", "D", "S"], "defaultLabel": "J" },
-  { "id": "nigbt", "label": "N-channel IGBT", "group": "Transistors", "kind": "node", "tikz": "nigbt", "pins": ["G", "C", "E"], "defaultLabel": "Q" },
-  { "id": "pigbt", "label": "P-channel IGBT", "group": "Transistors", "kind": "node", "tikz": "pigbt", "pins": ["G", "C", "E"], "defaultLabel": "Q" },
+  {
+    "id": "nmosd", "label": "N-channel MOSFET (depletion)", "group": "MOSFETs", "kind": "node", "tikz": "nmosd", "pins": ["G", "D", "S"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "up", "S": "down" },
+    "options": [{ "name": "bodydiode", "label": "Body diode" }],
+    "enumOptions": [{ "label": "Arrow", "values": [{ "name": "arrowmos", "label": "Shown" }, { "name": "noarrowmos", "label": "Hidden" }] }]
+  },
+  {
+    "id": "pmosd", "label": "P-channel MOSFET (depletion)", "group": "MOSFETs", "kind": "node", "tikz": "pmosd", "pins": ["G", "D", "S"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "down", "S": "up" },
+    "options": [{ "name": "bodydiode", "label": "Body diode" }],
+    "enumOptions": [{ "label": "Arrow", "values": [{ "name": "arrowmos", "label": "Shown" }, { "name": "noarrowmos", "label": "Hidden" }] }]
+  },
+  {
+    "id": "nmos-bulk", "label": "N-channel MOSFET with bulk", "group": "MOSFETs", "kind": "node", "tikz": "nmos, bulk", "pins": ["G", "D", "S", "bulk"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "up", "S": "down", "bulk": "right" },
+    "options": [{ "name": "bodydiode", "label": "Body diode" }],
+    "enumOptions": [{ "label": "Arrow", "values": [{ "name": "arrowmos", "label": "Shown" }, { "name": "noarrowmos", "label": "Hidden" }] }]
+  },
+  {
+    "id": "pmos-bulk", "label": "P-channel MOSFET with bulk", "group": "MOSFETs", "kind": "node", "tikz": "pmos, bulk", "pins": ["G", "D", "S", "bulk"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "down", "S": "up", "bulk": "right" },
+    "options": [{ "name": "bodydiode", "label": "Body diode" }],
+    "enumOptions": [{ "label": "Arrow", "values": [{ "name": "arrowmos", "label": "Shown" }, { "name": "noarrowmos", "label": "Hidden" }] }]
+  },
+  {
+    "id": "nfet", "label": "N-channel MOSFET (IEEE, enhancement)", "group": "MOSFETs", "kind": "node", "tikz": "nfet", "pins": ["G", "D", "S"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "up", "S": "down" },
+    "options": [{ "name": "bodydiode", "label": "Body diode" }, { "name": "tr circle", "label": "Circle" }]
+  },
+  {
+    "id": "pfet", "label": "P-channel MOSFET (IEEE, enhancement)", "group": "MOSFETs", "kind": "node", "tikz": "pfet", "pins": ["G", "D", "S"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "down", "S": "up" },
+    "options": [{ "name": "bodydiode", "label": "Body diode" }, { "name": "tr circle", "label": "Circle" }]
+  },
+  {
+    "id": "nfetd", "label": "N-channel MOSFET (IEEE, depletion)", "group": "MOSFETs", "kind": "node", "tikz": "nfetd", "pins": ["G", "D", "S"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "up", "S": "down" },
+    "options": [{ "name": "bodydiode", "label": "Body diode" }, { "name": "tr circle", "label": "Circle" }]
+  },
+  {
+    "id": "pfetd", "label": "P-channel MOSFET (IEEE, depletion)", "group": "MOSFETs", "kind": "node", "tikz": "pfetd", "pins": ["G", "D", "S"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "down", "S": "up" },
+    "options": [{ "name": "bodydiode", "label": "Body diode" }, { "name": "tr circle", "label": "Circle" }]
+  },
+  {
+    "id": "nigfete", "label": "N-channel IGFET (enhancement)", "group": "MOSFETs", "kind": "node", "tikz": "nigfete", "pins": ["G", "D", "S"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "up", "S": "down" },
+    "options": [{ "name": "bodydiode", "label": "Body diode" }]
+  },
+  {
+    "id": "pigfete", "label": "P-channel IGFET (enhancement)", "group": "MOSFETs", "kind": "node", "tikz": "pigfete", "pins": ["G", "D", "S"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "down", "S": "up" },
+    "options": [{ "name": "bodydiode", "label": "Body diode" }]
+  },
+  {
+    "id": "nigfetd", "label": "N-channel IGFET (depletion)", "group": "MOSFETs", "kind": "node", "tikz": "nigfetd", "pins": ["G", "D", "S"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "up", "S": "down" },
+    "options": [{ "name": "bodydiode", "label": "Body diode" }]
+  },
+  {
+    "id": "pigfetd", "label": "P-channel IGFET (depletion)", "group": "MOSFETs", "kind": "node", "tikz": "pigfetd", "pins": ["G", "D", "S"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "down", "S": "up" },
+    "options": [{ "name": "bodydiode", "label": "Body diode" }]
+  },
+  {
+    "id": "nigfetebulk", "label": "N-channel IGFET with bulk", "group": "MOSFETs", "kind": "node", "tikz": "nigfetebulk", "pins": ["G", "D", "S", "bulk"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "up", "S": "down", "bulk": "right" },
+    "options": [{ "name": "bodydiode", "label": "Body diode" }]
+  },
+  {
+    "id": "pigfetebulk", "label": "P-channel IGFET with bulk", "group": "MOSFETs", "kind": "node", "tikz": "pigfetebulk", "pins": ["G", "D", "S", "bulk"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "down", "S": "up", "bulk": "right" },
+    "options": [{ "name": "bodydiode", "label": "Body diode" }]
+  },
 
   {
     "id": "op-amp", "label": "Op amp", "group": "Amplifiers and chips", "kind": "node", "tikz": "op amp", "pins": ["-", "+", "out", "up", "down"], "defaultLabel": "U",
@@ -91,6 +182,7 @@
   { "id": "signal-ground", "label": "Signal ground", "group": "Ground, supply and terminals", "kind": "node", "tikz": "sground", "pins": ["center"] },
   { "id": "supply-up", "label": "Supply (positive)", "group": "Ground, supply and terminals", "kind": "node", "tikz": "vcc", "pins": ["center"] },
   { "id": "supply-down", "label": "Supply (negative)", "group": "Ground, supply and terminals", "kind": "node", "tikz": "vee", "pins": ["center"] },
+  { "id": "voltage-between", "label": "Voltage between two points", "group": "Ground, supply and terminals", "kind": "path", "tikz": "open", "defaultVoltage": "v" },
   { "id": "terminal", "label": "Terminal", "group": "Ground, supply and terminals", "kind": "node", "tikz": "ocirc", "pins": ["center"] },
   { "id": "jump-crossing", "label": "Crossing (jump)", "group": "Ground, supply and terminals", "kind": "node", "tikz": "jump crossing", "pins": ["west", "east", "north", "south"] },
   { "id": "plain-crossing", "label": "Crossing (plain)", "group": "Ground, supply and terminals", "kind": "node", "tikz": "plain crossing", "pins": ["west", "east", "north", "south"] },

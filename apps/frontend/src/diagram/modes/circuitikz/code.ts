@@ -4,6 +4,7 @@
 // added to what the document loads.
 import { SYMBOL_SETS, picDefinition } from '../../../../../backend/src/data/symbolSets.js';
 import { unitWriter } from '../../units';
+import { anchorFor, pinLabelSpots } from './labels';
 import { CATALOGUE, GRID_CM, PARTS, isPoint } from './model';
 import type { CircuitModel, Element, End, Mark, NodePart, PathPart, Wire } from './model';
 
@@ -141,6 +142,8 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
     if (el.kind === 'path') [el.a, el.b].forEach(note);
   }
   model.junctions.forEach(note);
+  // and when its pins are labelled, at its anchors
+  for (const el of model.elements) if (el.kind === 'node' && el.pinLabels && PARTS.get(el.type)?.pinLabels) named.add(el.id);
   // Wires bind by element id; repeated or sanitised user names must not redirect them to another part.
   const names = new Map<string, string>();
   const takenNames = new Set<string>();
@@ -206,7 +209,9 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
     if (part?.set) return `\\pic${picKeys.length ? `[${picKeys.join(', ')}]` : ''}${name} at ${at(el.at)} {${part.tikz}};`;
     // Text is a plain node: its keys are only the turns
     const keys = [...(part && !part.tikz ? [] : [part?.tikz || 'circ']), ...(el.options || []), ...turns];
-    return `\\node${keys.length ? `[${keys.join(', ')}]` : ''}${name} at ${at(el.at)} {${part?.text ? el.text || '' : ''}};`;
+    // Label pins: a small letter beside each pin, a line each after the part
+    const pins = el.pinLabels ? pinLabelSpots(el).map(({ pin, letter, dir }) => `\n\\node[font=\\scriptsize, anchor=${anchorFor(dir)}] at (${nameOf(el)}.${pin}) {${letter}};`) : [];
+    return `\\node${keys.length ? `[${keys.join(', ')}]` : ''}${name} at ${at(el.at)} {${part?.text ? el.text || '' : ''}};${pins.join('')}`;
   };
   const arrowKey = { '->': '-latex', '<-': 'latex-', '<->': 'latex-latex' };
 

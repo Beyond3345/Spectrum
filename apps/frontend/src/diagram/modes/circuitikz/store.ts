@@ -13,6 +13,8 @@ interface Ui {
   selection: string[];
   /** the style's symbol options, so the rail shows the canvas's symbols */
   ctikz: string;
+  /** the style's voltage direction, so the inspector knows which way a voltage's + and − go */
+  voltageDir?: string;
 }
 
 let ui: Ui = { tool: 'select', selection: [], ctikz: 'american' };
@@ -32,6 +34,9 @@ export const setSelection = (selection: string[]) => {
 };
 export const setCtikz = (ctikz: string) => {
   if (ctikz !== ui.ctikz) set({ ctikz });
+};
+export const setVoltageDir = (voltageDir: string | undefined) => {
+  if (voltageDir !== ui.voltageDir) set({ voltageDir });
 };
 export const getUi = () => ui;
 

@@ -2,8 +2,9 @@
 // npx esbuild apps/frontend/src/diagram/modes/circuitikz/circuitikz.check.ts --bundle --platform=node --log-level=warning | node
 import { symbolGeometry, symbolRequest } from './symbolGeometry';
 import { circuitCode, readStyle, symbolOptions } from './code';
-import { attach, detach, moveBy, newPathPart, paste, remove } from './edit';
-import { CATALOGUE, PARTS, PT_PER_GRID, circuitBounds, findJunctions, locator, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
+import { attach, detach, moveBy, newPathPart, paste, remove, rotate } from './edit';
+import { pinLabelSpots, plusAtStart, sideName } from './labels';
+import { CATALOGUE, PARTS, PT_PER_GRID, circuitBounds, findJunctions, locator, pathFrame, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
 import type { CircuitModel, Shape } from './model';
 import { astable, astable555, bridgeRectifier, centreTapRectifier, commonEmitterStage, conversionRatio, converter, differenceAmplifier, differenceGain, differentiator, feedbackLoop, figure, halfWaveRectifier, hybridPi, integrator, invertingAmplifier, invertingGain, massSpringDamper, monostable, monostable555, nonInvertingAmplifier, nonInvertingGain, rcLadder, summingAmplifier, voltageFollower } from './templates';
 
@@ -291,5 +292,80 @@ for (const [name, model] of Object.entries(templates)) {
 }
 eq(rcLadder(5).elements.filter((el) => el.kind === 'path' && el.type === 'capacitor').length, 5, 'an RC ladder has n stages');
 eq(massSpringDamper().elements.some((el) => el.kind === 'node' && PARTS.get(el.type)?.set === 'spx-mech'), true, 'the mass, spring and damper stands on a supports wall');
+
+// ─── transistors, pin labels, voltages, turning ───
+
+// every MOS style circuitikz has, each with its pins and their letters
+const kinds = ['nmos', 'pmos', 'nmosd', 'pmosd', 'nmos, bulk', 'pmos, bulk', 'nfet', 'pfet', 'nfetd', 'pfetd', 'nigfete', 'pigfete', 'nigfetd', 'pigfetd', 'nigfetebulk', 'pigfetebulk'];
+eq(kinds.every((tikz) => CATALOGUE.some((part) => part.tikz === tikz && part.group === 'MOSFETs')), true, 'every MOS style, in its own group');
+for (const part of CATALOGUE.filter((p) => p.pinLabels)) eq(Object.keys(part.pinLabels!), part.pins, `${part.id}: a letter for each pin`);
+const fets: CircuitModel = { elements: [
+  { id: 'm', kind: 'node', type: 'nfet', at: { x: 0, y: 0 }, name: 'M1', options: ['tr circle'] },
+  { id: 'b', kind: 'node', type: 'nmos-bulk', at: { x: 12, y: 0 }, options: ['arrowmos'] },
+  { id: 'q', kind: 'node', type: 'npn', at: { x: 24, y: 0 }, options: ['tr circle'] }
+], junctions: [] };
+eq(circuitCode(fets, {}).body.split('\n').slice(2, 5), ['\\node[nfet, tr circle] (M1) at (0,0) {};', '\\node[nmos, bulk, arrowmos] at (3,0) {};', '\\node[npn, tr circle] at (6,0) {};'], 'new parts and their options as circuitikz keys');
+
+// Label pins: a small letter at each anchor, beyond the pin along its lead and to the gate's side, as the part turns
+const labelled = (rotate: number, flipX = false) => circuitCode({ elements: [{ id: 'm', kind: 'node', type: 'nmos', at: { x: 0, y: 0 }, name: 'M1', rotate, flipX, pinLabels: true }], junctions: [] }, {}).body.split('\n').slice(3, 6);
+const pinLine = (pin: string, anchor: string) => `\\node[font=\\scriptsize, anchor=${anchor}] at (M1.${pin}) {${pin}};`;
+eq(labelled(0), [pinLine('G', 'south east'), pinLine('D', 'south east'), pinLine('S', 'north east')], 'G above its lead, D and S on the gate’s side, beyond the pins');
+eq(labelled(90), [pinLine('G', 'north east'), pinLine('D', 'north east'), pinLine('S', 'north west')], 'a quarter turn: the gate at the bottom, D and S below their leads');
+eq(labelled(180), [pinLine('G', 'north west'), pinLine('D', 'north west'), pinLine('S', 'south west')], 'half a turn');
+eq(labelled(270), [pinLine('G', 'south west'), pinLine('D', 'south west'), pinLine('S', 'south east')], 'three quarters');
+eq(labelled(0, true), [pinLine('G', 'south west'), pinLine('D', 'south west'), pinLine('S', 'north west')], 'flipped: the gate on the right');
+eq(labelled(45)[0], pinLine('G', 'east'), 'turned 45°: straight beside the pin');
+eq(pinLabelSpots({ type: 'nigfetebulk' }).map((spot) => spot.letter), ['G', 'D', 'S', 'B'], 'bulk is written B');
+eq(pinLabelSpots({ type: 'resistor' }), [], 'only transistors have pin letters');
+eq(circuitCode({ elements: [{ id: 'm', kind: 'node', type: 'pnp', at: { x: 0, y: 0 }, pinLabels: true }], junctions: [] }, {}).body.split('\n')[2], '\\node[pnp] (m) at (0,0) {};', 'a labelled part gets a name for its anchors');
+
+// voltages: + and − at the ends, the name beside; flipped, and between two points
+const volts: CircuitModel = { elements: [
+  { id: 'r', kind: 'path', type: 'resistor', a: { x: 0, y: 0 }, b: { x: 0, y: 8 }, voltage: { text: 'v_R', dir: '<' } },
+  { id: 'o', kind: 'path', type: 'voltage-between', a: { x: 8, y: 8 }, b: { x: 8, y: 0 }, voltage: { text: 'v_o' }, poles: ['o', 'o'] }
+], junctions: [] };
+eq(circuitCode(volts, {}).body.split('\n').slice(2, 4), ['\\draw (0,0) to[R, v<={$v_R$}] (0,2);', '\\draw (2,2) to[open, o-o, v={$v_o$}] (2,0);'], 'a voltage flipped, and one between two points');
+eq([plusAtStart(undefined, undefined), plusAtStart('noold', '<'), plusAtStart('EF', '>'), plusAtStart('RP', '>'), plusAtStart('RP', '<')], [true, false, true, false, true], '+ at the start, as circuitikz puts it');
+const placed = newPathPart(volts, 'voltage-between', { x: 12, y: 8 }, { x: 12, y: 0 });
+eq([placed.voltage, placed.label], [{ text: 'v_1' }, undefined], 'a new voltage between two points is v_1');
+eq(newPathPart({ ...volts, elements: [...volts.elements, placed] }, 'voltage-between', { x: 0, y: 0 }, { x: 0, y: 8 }).voltage, { text: 'v_2' }, 'then v_2');
+
+// sides named as the part runs, so a turned resistor's label is left or right
+eq([sideName({ x: 1, y: 0 }, 1), sideName({ x: 1, y: 0 }, -1), sideName({ x: 0, y: 1 }, 1), sideName({ x: 0, y: -1 }, 1), sideName({ x: -1, y: 0 }, 1)], ['Above', 'Below', 'Left', 'Right', 'Below'], 'circuitikz’s ^ side, as it looks');
+const flat: CircuitModel = { elements: [{ id: 'r', kind: 'path', type: 'resistor', a: { x: 0, y: 0 }, b: { x: 8, y: 0 }, label: { text: 'R_1' } }], junctions: [] };
+const upright = rotate(flat, new Set(['r']), 90, shapeOf).elements[0];
+if (upright.kind !== 'path') throw new Error('a path part');
+eq([upright.a, upright.b, sideName(pathFrame(upright.a as { x: number; y: number }, upright.b as { x: number; y: number }).u, 1)], [{ x: 4, y: -4 }, { x: 4, y: 4 }, 'Left'], 'a turned resistor runs up, its label to the left');
+eq(circuitCode({ ...flat, elements: [upright] }, {}).body.split('\n')[2], '\\draw (1,-1) to[R, l={$R_1$}] (1,1);', 'and circuitikz puts l= there with label/align=smart');
+
+// turned together: about their middle, text moving with the part and staying upright, a wire's bends turned too
+const marked: CircuitModel = { elements: [
+  { id: 'r', kind: 'path', type: 'resistor', a: { x: 0, y: -4 }, b: { x: 0, y: 4 } },
+  { id: 't', kind: 'node', type: 'text', at: { x: 3, y: 0 }, text: '$v_o$' },
+  { id: 'w', kind: 'wire', points: [{ part: 'r', pin: 'b' }, { x: 6, y: 8 }], routes: ['-|'] }
+], junctions: [] };
+const turned = rotate(marked, new Set(['r', 't', 'w']), 90, shapeOf).elements;
+eq(turned, [
+  { id: 'r', kind: 'path', type: 'resistor', a: { x: 9, y: -1 }, b: { x: 1, y: -1 } },
+  { id: 't', kind: 'node', type: 'text', at: { x: 5, y: 2 }, text: '$v_o$' },
+  { id: 'w', kind: 'wire', points: [{ part: 'r', pin: 'b' }, { x: -3, y: 5 }], routes: ['|-'] }
+], 'turned about the middle of all three (3,2), the text still beside the part');
+eq((rotate(marked, new Set(['t']), 90, shapeOf).elements[1] as { rotate?: number }).rotate, 90, 'Text on its own still turns');
+
+// a drawing as the composer saved it before these (an old-style nmos at a measured, not grid, height) writes the same
+const before = JSON.parse('{"elements":[{"id":"e1","kind":"node","type":"nmos","at":{"x":-9,"y":1.9199677777777773}},{"id":"e3","kind":"path","type":"resistor","a":{"x":-16,"y":6},"b":{"x":-16,"y":14},"label":{"text":"R_2"}},{"id":"e4","kind":"path","type":"resistor","a":{"x":-9,"y":6.000000000000001},"b":{"part":"e15","pin":"center"},"label":{"text":"R_C"}},{"id":"e10","kind":"wire","points":[{"part":"e1","pin":"S"},{"x":-9,"y":-2}],"routes":["--"]},{"id":"e13","kind":"wire","points":[{"part":"e1","pin":"D"},{"part":"e4","pin":"a"}],"routes":["--"]},{"id":"e14","kind":"node","type":"text","at":{"x":-8,"y":15},"text":"$V_{DD}$"},{"id":"e21","kind":"node","type":"text","at":{"x":25,"y":-4},"rotate":0,"text":"$v_0$"},{"id":"e15","kind":"node","type":"terminal","at":{"x":-9,"y":14}},{"id":"c","kind":"path","type":"controlled-current-source","a":{"x":4,"y":4},"b":{"x":4,"y":-4},"label":{"text":"g_mV_{gs}","side":"_"}}],"junctions":[{"part":"e15","pin":"center"}]}') as CircuitModel;
+eq(circuitCode(before, { siUnits: true }).body.split('\n').slice(2), [
+  '\\node[nmos] (e1) at (-2.25,0.48) {};',
+  '\\node at (-2,3.75) {$V_{DD}$};',
+  '\\node at (6.25,-1) {$v_0$};',
+  '\\node[ocirc] (e15) at (-2.25,3.5) {};',
+  '\\draw (-4,1.5) to[R, l={$R_2$}] (-4,3.5);',
+  '\\draw (-2.25,1.5) to[R, l={$R_C$}] (e15.center);',
+  '\\draw (1,1) to[cI, l_={$g_mV_{gs}$}] (1,-1);',
+  '\\draw (e1.S) -- (-2.25,-0.5);',
+  '\\draw (e1.D) -- (-2.25,1.5);',
+  '\\node[circ] at (e15.center) {};',
+  '\\end{circuitikz}'
+], 'an earlier drawing writes what it did');
 
 console.log('circuitikz.check: ok');

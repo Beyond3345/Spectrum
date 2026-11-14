@@ -9,8 +9,8 @@ import { readStyle, symbolOptions } from './code';
 import { copy, detach, flip, moveBy, newNodePart, newPathPart, paste, remove, rotate } from './edit';
 import { PARTS, PT_PER_GRID, asCircuit, drawsSymbol,circuitBounds, isPart, isPoint, locator, newId, pathFrame, pinsOfElement, placeholderShape, snapDelta, variantKey, wirePath } from './model';
 import type { CircuitModel, Element, End, Mark, NodePart, PathPart, Pt, Route, ShapeOf, Wire } from './model';
-import { labelSize, nodeNameAt, pathLabelAt, plain, scriptRuns } from './labels';
-import { setCtikz, setSelection, setShapeOf, setTool, tidy, useCircuitUi } from './store';
+import { labelSize, nodeNameAt, pathLabelAt, pinLabelSpots, plain, plusAtStart, scriptRuns } from './labels';
+import { setCtikz, setSelection, setShapeOf, setTool, setVoltageDir, tidy, useCircuitUi } from './store';
 import { symbolOutline } from './symbolGeometry';
 import { useSymbols } from './symbols';
 import type { CircuitSymbol } from './symbols';
@@ -39,6 +39,11 @@ type Drag =
 /** clipboard for copy and paste, shared by every circuit in this window */
 let clipboard: Element[] = [];
 
+/** circuitikz's open: nothing drawn between its ends but what's marked on it */
+const isOpen = (type: string) => PARTS.get(type)?.tikz === 'open';
+/** where a path part placed with a click, no drag, ends */
+const clickEnd = (type: string, a: Pt): Pt => (isOpen(type) ? { x: a.x, y: a.y - 8 } : { x: a.x + 8, y: a.y });
+
 const autoRoute = (from: Pt, to: Pt): Route => (Math.abs(from.x - to.x) < 1e-6 || Math.abs(from.y - to.y) < 1e-6 ? '--' : '-|');
 
 export default function CircuitCanvas({ model: raw, onChange, style, readOnly }: { model: CircuitModel; onChange(m: CircuitModel): void; style: Record<string, unknown>; readOnly?: boolean }) {
@@ -59,8 +64,12 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   // the frame's light or dark canvas, which it sets on the stage around this (data-canvas)
   const prefs = useCanvasPrefs();
   const shown = draft || model;
-  const ctikz = symbolOptions(readStyle(style));
+  const circuitStyle = readStyle(style);
+  const ctikz = symbolOptions(circuitStyle);
   useEffect(() => setCtikz(ctikz), [ctikz]);
+  useEffect(() => setVoltageDir(circuitStyle.voltageDir), [circuitStyle.voltageDir]);
+  /** voltages drawn as + and −, not an arrow */
+  const signs = (circuitStyle.voltages || circuitStyle.preset) === 'american' || circuitStyle.voltages === 'raised';
   const used = shown.elements.filter(isPart).map((el) => ({ type: el.type, options: el.options || [] }));
   const { symbol, loading, error } = useSymbols(ctikz, used);
   const symbolOf = (type: string, options: string[] = []): CircuitSymbol | undefined => symbol(variantKey(type, options));
@@ -313,8 +322,8 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
     if (d.kind === 'place' && el?.kind === 'path') {
       const a = pos(el.a);
       const b = pos(el.b);
-      // a click without a drag puts a 2 cm part across
-      if (Math.hypot(b.x - a.x, b.y - a.y) < 1) next = { ...next, elements: next.elements.map((x) => (x.id === id && x.kind === 'path' ? { ...x, b: { x: a.x + 8, y: a.y } } : x)) };
+      // a click without a drag puts a 2 cm part across, or a voltage between two points down, + at the top
+      if (Math.hypot(b.x - a.x, b.y - a.y) < 1) next = { ...next, elements: next.elements.map((x) => (x.id === id && x.kind === 'path' ? { ...x, b: clickEnd(x.type, a) } : x)) };
       setSelection([id]);
     }
     const placed = next.elements.find((x) => x.id === id);
@@ -404,10 +413,10 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   const fontSize = Math.max(9, k * 1.1);
 
   /** TeX sketched as text, its subscripts and superscripts set as the preview sets them */
-  const text = (at: Pt, tex: string, className = 'ckt-text') => {
+  const text = (at: Pt, tex: string, className = 'ckt-text', size = fontSize) => {
     const s = toScreen(at);
     return (
-      <text x={s.x} y={s.y} className={className} fontSize={fontSize} textAnchor="middle" dominantBaseline="middle">
+      <text x={s.x} y={s.y} className={className} fontSize={size} textAnchor="middle" dominantBaseline="middle">
         {scriptRuns(tex).map((run, i) =>
           run.shift ? (
             <tspan key={i} baselineShift={run.shift} fontSize="70%">
@@ -423,14 +432,30 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   /** a label's size in grid steps, as text() draws it */
   const sizeOf = (tex: string) => labelSize(scriptRuns(tex), fontSize / k);
 
-  /** a voltage, current or flow sketched beside a path part */
-  const markSketch = (m: Mark | undefined, kind: 'v' | 'i' | 'f', f: ReturnType<typeof pathFrame>, glyph: number) => {
+  /**
+   * A voltage, current or flow sketched beside a path part. With + and − voltages, the signs go at the symbol's ends
+   * and the name beside its middle (`besides`, clear of the symbol); between two points, at the ends and between them.
+   */
+  const markSketch = (m: Mark | undefined, kind: 'v' | 'i' | 'f', f: ReturnType<typeof pathFrame>, glyph: number, besides: (side: 1 | -1, tex: string) => Pt, open = false) => {
     if (!m?.text.trim()) return null;
     const n = { x: -f.u.y, y: f.u.x };
     const side = m.side === '^' ? 1 : m.side === '_' ? -1 : kind === 'v' ? -1 : 1;
     const way = m.dir === '<' ? -1 : 1;
     const off = (p: Pt, d: number) => ({ x: p.x + n.x * d * side, y: p.y + n.y * d * side });
     const along = (d: number) => ({ x: f.mid.x + f.u.x * d, y: f.mid.y + f.u.y * d });
+    if (kind === 'v' && signs) {
+      // ponytail: the signs' places are a sketch, near circuitikz's; the preview has them exactly
+      const reach = open ? Math.max(f.length / 2 - 1, 0.6) : glyph / 2;
+      const ends = [off(along(-reach), open ? 0 : 1.2), off(along(reach), open ? 0 : 1.2)];
+      const [plus, minus] = plusAtStart(circuitStyle.voltageDir, m.dir) ? ends : [ends[1], ends[0]];
+      return (
+        <g className="ckt-sketch">
+          {text(plus, '+', 'ckt-text ckt-sign')}
+          {text(minus, '−', 'ckt-text ckt-sign')}
+          {text(open ? f.mid : besides(side, m.text), m.text)}
+        </g>
+      );
+    }
     if (kind !== 'i') {
       const half = Math.max(glyph / 2, 1.5);
       const gap = kind === 'v' ? 3 : 2.2;
@@ -474,17 +499,19 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
       { x: f.mid.x + (f.u.x * glyph) / 2, y: f.mid.y + (f.u.y * glyph) / 2 }
     ];
     const [poleA, poleB] = el.poles || ['', ''];
+    const open = isOpen(el.type);
     return (
       <g key={el.id} data-id={ghost ? undefined : el.id} className={`ckt-part ${ghost ? 'ghost' : ''} ${selected.has(el.id) ? 'selected' : ''}`}>
         {selected.has(el.id) && line(a, b, { className: 'ckt-halo' })}
         {line(a, b, { className: 'ckt-hit' })}
-        {f.length > glyph && (
+        {open && line(a, b, { className: 'ckt-open' })}
+        {!open && f.length > glyph && (
           <>
             {line(a, start, { className: 'ckt-wire' })}
             {line(end, b, { className: 'ckt-wire' })}
           </>
         )}
-        {sym ? (
+        {open ? null : sym ? (
           <g clipPath={`url(#ckt-clip-${el.id})`} transform={`translate(${m.x},${m.y}) scale(${kpt * s}) rotate(${-angle}) scale(${el.invert ? -1 : 1},${el.mirror ? -1 : 1})`}>
             <clipPath id={`ckt-clip-${el.id}`}>
               <rect x={-halfSpanPt} y={-1e4} width={2 * halfSpanPt} height={2e4} />
@@ -496,9 +523,9 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
         )}
         {el.label?.text.trim() && text(besides(labelSide, el.label.text), el.label.text)}
         {el.value?.trim() && text(besides(labelSide > 0 ? -1 : 1, el.value), el.value)}
-        {markSketch(el.voltage, 'v', f, glyph)}
-        {markSketch(el.current, 'i', f, glyph)}
-        {markSketch(el.flow, 'f', f, glyph)}
+        {markSketch(el.voltage, 'v', f, glyph, besides, open)}
+        {markSketch(el.current, 'i', f, glyph, besides)}
+        {markSketch(el.flow, 'f', f, glyph, besides)}
         {PARTS.get(el.type)?.text && el.text?.trim() && text(f.mid, el.text)}
         {[poleA, poleB].map((pole, i) =>
           pole ? <circle key={i} className={`ckt-pole ${pole === 'o' ? 'open' : ''}`} cx={toScreen(i ? b : a).x} cy={toScreen(i ? b : a).y} r={Math.max(2.5, k * 0.22)} /> : null
@@ -542,6 +569,12 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
         )}
         {content.trim() && text(el.at, el.text || '')}
         {el.name && !ghost && text(nameAt, el.name, 'ckt-text ckt-name')}
+        {el.pinLabels && !ghost && pinLabelSpots(el).map(({ pin, letter, dir }) => {
+          // as TikZ's anchor puts it: the letter's near corner a node's inner sep from the pin
+          const at = pos({ part: el.id, pin });
+          const size = labelSize([{ text: letter }], (fontSize * 0.7) / k);
+          return <g key={pin}>{text({ x: at.x + dir.x * (size.w / 2 + 0.3), y: at.y + dir.y * (size.h / 2 + 0.3) }, letter, 'ckt-text ckt-pin-label', fontSize * 0.7)}</g>;
+        })}
       </g>
     );
   };
@@ -569,7 +602,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
     const type = tool.slice(5);
     const part = PARTS.get(type);
     if (!part) return null;
-    if (part.kind === 'path') return drawPath({ id: 'ghost', kind: 'path', type, a: hover, b: { x: hover.x + 8, y: hover.y } }, true);
+    if (part.kind === 'path') return drawPath({ id: 'ghost', kind: 'path', type, a: hover, b: clickEnd(type, hover) }, true);
     return drawNode({ id: 'ghost', kind: 'node', type, at: hover }, true);
   })();
 

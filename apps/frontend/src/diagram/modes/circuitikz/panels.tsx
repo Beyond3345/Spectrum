@@ -8,8 +8,9 @@ import { IS_WINDOWS } from '../../../app/platform';
 import { DEFAULT_LENGTH, readStyle } from './code';
 import type { CircuitStyle } from './code';
 import { flip, remove, rotate } from './edit';
-import { CATALOGUE, PARTS, asCircuit, variantKey } from './model';
-import type { CircuitModel, Element, Mark, NodePart, PathPart, Pole, Route, Wire } from './model';
+import { plusAtStart, sideName } from './labels';
+import { CATALOGUE, PARTS, asCircuit, locator, pathFrame, variantKey } from './model';
+import type { CircuitModel, Element, Mark, NodePart, PathPart, Pole, Pt, Route, Wire } from './model';
 import { setSelection, setTool, shapeOfNow, tidy, useCircuitUi } from './store';
 import { UnitsSwitch } from '../../controls';
 import { setFor } from '../../sets';
@@ -30,7 +31,8 @@ export function CircuitRail({ onPick, tool, sets = [] }: { onPick(tool: string):
     setTool(next);
     onPick(next);
   };
-  const shown = CATALOGUE.filter((part) => (!part.set || sets.includes(part.set)) && part.label.toLowerCase().includes(filter.trim().toLowerCase()));
+  // by its name or its circuitikz key: nmos finds the depletion and bulk ones too
+  const shown = CATALOGUE.filter((part) => (!part.set || sets.includes(part.set)) && `${part.label} ${part.tikz}`.toLowerCase().includes(filter.trim().toLowerCase()));
   return (
     <div className="ckt-rail">
       <Segmented
@@ -67,7 +69,10 @@ export function CircuitRail({ onPick, tool, sets = [] }: { onPick(tool: string):
                       title={part.kind === 'path' ? `${part.label}: click to place, or drag to set its length` : `${part.label}: click to place`}
                       onClick={() => pick(ui.tool === value ? 'select' : value)}
                     >
-                      <span className="ckt-rail-thumb">{symbol ? <img className="ckt-glyph" src={symbol.image} alt="" /> : <span className="ckt-rail-blank" />}</span>
+                      <span className="ckt-rail-thumb">
+                        {/* circuitikz's open draws nothing, so its thumbnail is what it marks */}
+                        {part.tikz === 'open' ? <span className="ckt-rail-open">+ v −</span> : symbol ? <img className="ckt-glyph" src={symbol.image} alt="" /> : <span className="ckt-rail-blank" />}
+                      </span>
                       <span className="ckt-rail-label">{part.label}</span>
                     </button>
                   );
@@ -96,10 +101,11 @@ function Field({ label, children, hint }: { label: string; children: (id: string
   );
 }
 
-const SIDES: [string, string][] = [
+/** circuitikz's ^ and _ sides, named as the part runs now: above and below, or left and right once it's upright */
+const sidesOf = (u: Pt): [string, string][] => [
   ['', 'Default side'],
-  ['^', 'Above'],
-  ['_', 'Below']
+  ['^', sideName(u, 1)],
+  ['_', sideName(u, -1)]
 ];
 const DIRS: [string, string][] = [
   ['', 'Default direction'],
@@ -126,7 +132,8 @@ const ARROWS: [string, string][] = [
 /** TikZ node names: letters, digits, - and _ */
 const cleanName = (text: string) => text.replace(/[^A-Za-z0-9_-]/g, '');
 
-function MarkFields({ label, mark, onChange, hint }: { label: string; mark: Mark | undefined; onChange: (m: Mark | undefined) => void; hint?: string }) {
+function MarkFields({ label, mark, onChange, hint, u, voltage }: { label: string; mark: Mark | undefined; onChange: (m: Mark | undefined) => void; hint?: string; u: Pt; voltage?: boolean }) {
+  const { voltageDir } = useCircuitUi();
   const m = mark || { text: '' };
   const set = (patch: Partial<Mark>) => {
     const next = { ...m, ...patch };
@@ -138,9 +145,15 @@ function MarkFields({ label, mark, onChange, hint }: { label: string; mark: Mark
         <>
           <input id={id} className="input mono" value={m.text} onChange={(e) => set({ text: e.target.value })} spellCheck={false} />
           <div className="ckt-row">
-            <Select value={m.side || ''} options={SIDES} onChange={(side) => set({ side: (side || undefined) as Mark['side'] })} title={`${label}: side`} />
-            <Select value={m.dir || ''} options={DIRS} onChange={(dir) => set({ dir: (dir || undefined) as Mark['dir'] })} title={`${label}: direction`} />
+            <Select value={m.side || ''} options={sidesOf(u)} onChange={(side) => set({ side: (side || undefined) as Mark['side'] })} title={`${label}: side`} />
+            {!voltage && <Select value={m.dir || ''} options={DIRS} onChange={(dir) => set({ dir: (dir || undefined) as Mark['dir'] })} title={`${label}: direction`} />}
           </div>
+          {voltage && (
+            <label className="checkbox-row">
+              <input type="checkbox" checked={!plusAtStart(voltageDir, m.dir)} onChange={(e) => set({ dir: e.target.checked ? (voltageDir === 'RP' ? '>' : '<') : undefined })} />
+              <span>Flip polarity</span>
+            </label>
+          )}
         </>
       )}
     </Field>
@@ -234,6 +247,10 @@ export function CircuitInspector({ model: raw, onChange }: { model: CircuitModel
   const el = picked[0];
   if (el.kind === 'wire') return <WireInspector el={el} update={update} actions={actions} />;
   const part = PARTS.get(el.type);
+  // which way a path part runs now, so its sides are named as they look
+  const { pos } = locator(model, shapeOfNow());
+  const u = el.kind === 'path' ? pathFrame(pos(el.a), pos(el.b)).u : { x: 1, y: 0 };
+  const pinLetters = Object.keys(part?.pinLabels || {}).map((pin) => (pin === 'bulk' ? 'B' : pin));
   return (
     <div className="ckt-inspector">
       <div className="ckt-inspector-title">{part?.label || el.type}</div>
@@ -251,8 +268,8 @@ export function CircuitInspector({ model: raw, onChange }: { model: CircuitModel
                 <Select
                   value={el.label?.side === '_' ? '_' : ''}
                   options={[
-                    ['', 'Above'],
-                    ['_', 'Below']
+                    ['', sideName(u, 1)],
+                    ['_', sideName(u, -1)]
                   ]}
                   onChange={(side) => el.label && update({ ...el, label: side ? { text: el.label.text, side: '_' } : { text: el.label.text } })}
                   title="Label side"
@@ -263,9 +280,16 @@ export function CircuitInspector({ model: raw, onChange }: { model: CircuitModel
           <Field label="Value" hint="Written opposite the label. With siunitx on in Style, 10 kΩ becomes \qty{10}{\kilo\ohm}.">
             {(id) => <input id={id} className="input mono" value={el.value || ''} onChange={(e) => update({ ...el, value: e.target.value || undefined })} spellCheck={false} />}
           </Field>
-          <MarkFields label="Voltage" mark={el.voltage} onChange={(voltage) => update({ ...el, voltage })} />
-          <MarkFields label="Current" mark={el.current} onChange={(current) => update({ ...el, current })} />
-          <MarkFields label="Flow" mark={el.flow} onChange={(flow) => update({ ...el, flow })} hint="An arrow beside the part, for power or heat flow." />
+          <MarkFields
+            label="Voltage"
+            mark={el.voltage}
+            onChange={(voltage) => update({ ...el, voltage })}
+            u={u}
+            voltage
+            hint={part?.tikz === 'open' ? 'Marked between the two ends: + and − at the ends, the name between them.' : 'Marked across the part: + and − at its ends, the name beside it.'}
+          />
+          <MarkFields label="Current" mark={el.current} onChange={(current) => update({ ...el, current })} u={u} />
+          <MarkFields label="Flow" mark={el.flow} onChange={(flow) => update({ ...el, flow })} hint="An arrow beside the part, for power or heat flow." u={u} />
           <Field label="Poles">
             {() => (
               <div className="ckt-row">
@@ -325,6 +349,12 @@ export function CircuitInspector({ model: raw, onChange }: { model: CircuitModel
             <input type="checkbox" checked={!!el.flipY} onChange={(e) => update({ ...el, flipY: e.target.checked || undefined })} />
             <span>Flip top to bottom</span>
           </label>
+          {pinLetters.length > 0 && (
+            <label className="checkbox-row">
+              <input type="checkbox" checked={!!el.pinLabels} onChange={(e) => update({ ...el, pinLabels: e.target.checked || undefined })} />
+              <span>Label pins ({pinLetters.join(', ')})</span>
+            </label>
+          )}
         </>
       )}
       <OptionFields el={el} onChange={(options) => update({ ...el, options: options.length ? options : undefined })} />

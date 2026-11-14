@@ -351,6 +351,13 @@
   border-radius: 3px;
 }
 
+.ckt-rail-open {
+  font-family: var(--font-serif);
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 .ckt-rail-label {
   max-width: 100%;
   font-size: 11px;
@@ -390,4 +397,16 @@
 .ckt-inspector input[type='range'],
 .ckt-style input[type='range'] {
   width: 100%;
+}
+
+/* a voltage between two points: its ends joined faintly, as nothing is drawn there */
+.ckt-open {
+  stroke: var(--ckt-muted);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.ckt-sign,
+.ckt-pin-label {
+  font-style: normal;
 }
