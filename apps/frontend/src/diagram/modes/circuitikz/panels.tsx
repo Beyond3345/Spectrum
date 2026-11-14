@@ -5,12 +5,14 @@ import Icon from '../../../app/Icon';
 import Segmented from '../../../app/Segmented';
 import Select from '../../../app/Select';
 import { IS_WINDOWS } from '../../../app/platform';
+import { ColourField } from '../../controls';
+import { ANNOTATION_COLOURS, PRESETS } from './annotate';
 import { DEFAULT_LENGTH, readStyle } from './code';
 import type { CircuitStyle } from './code';
 import { flip, remove, rotate } from './edit';
 import { plusAtStart, sideName } from './labels';
-import { CATALOGUE, PARTS, asCircuit, locator, pathFrame, variantKey } from './model';
-import type { CircuitModel, Element, Mark, NodePart, PathPart, Pole, Pt, Route, Wire } from './model';
+import { CATALOGUE, PARTS, asCircuit, locator, pathFrame, variantKey, wirePath } from './model';
+import type { Annotation, CircuitModel, Element, FontSize, Mark, NodePart, PathPart, Pole, Pt, Route, Wire } from './model';
 import { setSelection, setTool, shapeOfNow, tidy, useCircuitUi } from './store';
 import { UnitsSwitch } from '../../controls';
 import { setFor } from '../../sets';
@@ -19,6 +21,24 @@ import { useSymbols } from './symbols';
 const GROUPS = [...new Set(CATALOGUE.map((part) => part.group))];
 
 // ─── rail ───
+
+const PRESET_THUMBS: Record<string, ReactNode> = {
+  resistance: <><path d="M14,5 L22,13 M14,13 L22,5" strokeWidth={2} /><path d="M18,24 L18,16 L40,16" markerEnd="url(#ckt-rail-head)" /></>,
+  current: <><path d="M10,18 L44,18" markerEnd="url(#ckt-rail-head)" /><text x={27} y={12} textAnchor="middle">i</text></>,
+  loop: <><circle cx={28} cy={14} r={10} /><path d="M38,12 L38,17" markerEnd="url(#ckt-rail-head)" /><text x={28} y={18} textAnchor="middle">i₁</text></>,
+  mesh: <><rect x={18} y={2} width={20} height={24} rx={5} className="ckt-rail-tint" /><path d="M38,11 L38,17" markerEnd="url(#ckt-rail-head)" /><circle cx={28} cy={14} r={4.5} /></>,
+  frame: <><rect x={8} y={9} width={40} height={17} strokeDasharray="4 3" /><text x={28} y={7} textAnchor="middle" fontStyle="normal">Frame</text></>,
+  highlight: <ellipse cx={28} cy={14} rx={14} ry={9} className="ckt-rail-red" />
+};
+
+/** Annotate's tools and presets, each with its thumbnail (a 56 × 28 sketch) and how it's used */
+const ANNOTATE: [string, string, string, ReactNode][] = [
+  ['annotate:line', 'Line or arrow', 'click each point, then double-click or press Return', <path d="M8,20 L8,9 L46,9" markerEnd="url(#ckt-rail-head)" />],
+  ['annotate:rect', 'Rectangle', 'drag from corner to corner, or click', <rect x={10} y={5} width={36} height={18} rx={2} strokeDasharray="4 3" />],
+  ['annotate:ellipse', 'Ellipse', 'drag from corner to corner, or click', <ellipse cx={28} cy={14} rx={18} ry={9} />],
+  ['annotate:cross', 'Cross', 'click to place', <path d="M22,8 L34,20 M22,20 L34,8" strokeWidth={2.2} />],
+  ...PRESETS.map(([id, label]): [string, string, string, ReactNode] => [`preset:${id}`, label, 'click to place, then edit its parts', PRESET_THUMBS[id]])
+];
 
 /** sets: the other symbol sets the drawing has, each shown as its own groups after circuitikz's */
 export function CircuitRail({ onPick, tool, sets = [] }: { onPick(tool: string): void; tool: string; sets?: string[] }) {
@@ -81,6 +101,29 @@ export function CircuitRail({ onPick, tool, sets = [] }: { onPick(tool: string):
             </section>
           );
         })}
+        {/* drawn over the circuit, never connected to it (annotate.ts) */}
+        {ANNOTATE.some(([, label]) => label.toLowerCase().includes(filter.trim().toLowerCase())) && (
+          <section className="ckt-rail-group">
+            <h3>Annotate</h3>
+            <div className="ckt-rail-parts">
+              {ANNOTATE.filter(([, label]) => label.toLowerCase().includes(filter.trim().toLowerCase())).map(([value, label, how, thumb]) => (
+                <button key={value} type="button" className={`ckt-rail-part ${ui.tool === value ? 'active' : ''}`} aria-pressed={ui.tool === value} title={`${label}: ${how}`} onClick={() => pick(ui.tool === value ? 'select' : value)}>
+                  <span className="ckt-rail-thumb">
+                    <svg className="ckt-rail-sketch" viewBox="0 0 56 28" width="56" height="28" aria-hidden="true">
+                      <defs>
+                        <marker id="ckt-rail-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+                          <path d="M0,1 L10,5 L0,9 z" />
+                        </marker>
+                      </defs>
+                      {thumb}
+                    </svg>
+                  </span>
+                  <span className="ckt-rail-label">{label}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );
@@ -127,6 +170,36 @@ const ARROWS: [string, string][] = [
   ['->', 'At the end'],
   ['<-', 'At the start'],
   ['<->', 'At both ends']
+];
+const HEADS: [string, string][] = [
+  ['', 'Latex'],
+  ['stealth', 'Stealth'],
+  ['triangle', 'Open triangle'],
+  ['to', 'Plain']
+];
+const HEAD_SIZES: [string, string][] = [
+  ['small', 'Small'],
+  ['', 'Medium'],
+  ['large', 'Large']
+];
+const DASHES: [string, string][] = [
+  ['', 'Solid'],
+  ['dashed', 'Dashed'],
+  ['dotted', 'Dotted'],
+  ['dash dot', 'Dash dot']
+];
+const WIDTHS: [string, string][] = [
+  ['', 'Thin, as the circuit'],
+  ['semithick', 'Semithick'],
+  ['thick', 'Thick'],
+  ['very thick', 'Very thick']
+];
+const FONTS: [string, string][] = [
+  ['scriptsize', 'Script'],
+  ['footnotesize', 'Footnote'],
+  ['small', 'Small'],
+  ['', 'Normal'],
+  ['large', 'Large']
 ];
 
 /** TikZ node names: letters, digits, - and _ */
@@ -199,6 +272,13 @@ export function CircuitInspector({ model: raw, onChange }: { model: CircuitModel
   const ids = new Set(picked.map((el) => el.id));
   const commit = (next: CircuitModel) => onChange(tidy(next));
   const update = (el: Element) => commit({ ...model, elements: model.elements.map((x) => (x.id === el.id ? el : x)) });
+  /** one change to every picked annotation, and the colour to picked Text too */
+  const restyle = (patch: Partial<Annotation>) =>
+    commit({
+      ...model,
+      elements: model.elements.map((x) => (!ids.has(x.id) ? x : x.kind === 'annotation' ? { ...x, ...patch } : 'colour' in patch && isText(x) ? { ...x, colour: patch.colour } : x))
+    });
+  const annotations = picked.filter((el): el is Annotation => el.kind === 'annotation');
   const actions = (
     <div className="ckt-row">
       {picked.some((el) => el.kind !== 'wire') && (
@@ -231,6 +311,7 @@ export function CircuitInspector({ model: raw, onChange }: { model: CircuitModel
         <p className="field-hint">
           Pick a part on the left, then click the canvas to place it; drag to set a two-terminal part’s length. Wire draws connections that hold on to pins: click to bend, and finish on a pin, with a double-click or with Return.
         </p>
+        <p className="field-hint">Annotate draws arrows, frames, highlights and crosses over the circuit. They never connect to it.</p>
         <p className="field-hint">Select something to edit it here. R turns it, X and Y flip it, {IS_WINDOWS ? 'Ctrl+D' : '⌘D'} duplicates and Delete removes it.</p>
       </div>
     );
@@ -239,13 +320,21 @@ export function CircuitInspector({ model: raw, onChange }: { model: CircuitModel
     return (
       <div className="ckt-inspector">
         <div className="ckt-inspector-title">{picked.length} items selected</div>
+        {(annotations.length > 0 || picked.some(isText)) && <LookFields els={annotations} texts={picked.filter(isText)} set={restyle} />}
         {actions}
       </div>
     );
   }
 
   const el = picked[0];
-  if (el.kind === 'wire') return <WireInspector el={el} update={update} actions={actions} />;
+  if (el.kind === 'wire') {
+    // which way each segment's first leg runs, so a mark's sides are named as they look
+    const { pos } = locator(model, shapeOfNow());
+    const ends = el.points.map((p) => pos(p));
+    const legs = ends.slice(1).map((to, i) => wirePath([ends[i], to], [el.routes[i] || '--'])).map((leg) => pathFrame(leg[0], leg[1]).u);
+    return <WireInspector el={el} update={update} actions={actions} legs={legs} />;
+  }
+  if (el.kind === 'annotation') return <AnnotationInspector el={el} update={update} actions={actions} restyle={restyle} />;
   const part = PARTS.get(el.type);
   // which way a path part runs now, so its sides are named as they look
   const { pos } = locator(model, shapeOfNow());
@@ -258,6 +347,22 @@ export function CircuitInspector({ model: raw, onChange }: { model: CircuitModel
         <Field label="Text" hint={el.kind === 'path' ? 'Written inside the symbol. Type $…$ for maths.' : 'TeX, as typed: $…$ for maths.'}>
           {(id) => <input id={id} className="input mono" value={el.text || ''} onChange={(e) => update({ ...el, text: e.target.value || undefined })} spellCheck={false} />}
         </Field>
+      )}
+      {isText(el) && (
+        <>
+          <ColourField label="Colour" value={el.colour} fallback="Black" swatches={ANNOTATION_COLOURS} onChange={(colour) => update({ ...el, colour })} />
+          <div className="ckt-row">
+            <label className="checkbox-row">
+              <input type="checkbox" checked={!!el.bold} onChange={(e) => update({ ...el, bold: e.target.checked || undefined })} />
+              <span>Bold</span>
+            </label>
+            <label className="checkbox-row">
+              <input type="checkbox" checked={!!el.italic} onChange={(e) => update({ ...el, italic: e.target.checked || undefined })} />
+              <span>Italic</span>
+            </label>
+          </div>
+          <Field label="Size">{() => <Select value={el.font || ''} options={FONTS} onChange={(font) => update({ ...el, font: (font || undefined) as FontSize | undefined })} />}</Field>
+        </>
       )}
       {el.kind === 'path' ? (
         <>
@@ -363,18 +468,112 @@ export function CircuitInspector({ model: raw, onChange }: { model: CircuitModel
   );
 }
 
-function WireInspector({ el, update, actions }: { el: Wire; update: (el: Element) => void; actions: ReactNode }) {
+/** Text: the catalogue's part that is only its words */
+const isText = (el: Element): el is NodePart => el.kind === 'node' && PARTS.has(el.type) && !PARTS.get(el.type)!.tikz;
+
+function WireInspector({ el, update, actions, legs }: { el: Wire; update: (el: Element) => void; actions: ReactNode; legs: Pt[] }) {
+  // a segment's current or flow, kept one place per segment, the list dropped when it has none
+  const setMark = (key: 'currents' | 'flows', i: number, m: Mark | undefined) => {
+    const list = el.routes.map((_, j) => (j === i ? m ?? null : el[key]?.[j] ?? null));
+    update({ ...el, [key]: list.some(Boolean) ? list : undefined });
+  };
   return (
     <div className="ckt-inspector">
       <div className="ckt-inspector-title">Wire</div>
       {el.routes.map((route, i) => (
-        <Field key={i} label={el.routes.length > 1 ? `Segment ${i + 1}` : 'Route'}>
-          {() => <Select value={route} options={ROUTES} onChange={(value) => update({ ...el, routes: el.routes.map((r, j) => (j === i ? (value as Route) : r)) })} />}
-        </Field>
+        <div key={i} className="ckt-segment">
+          <Field label={el.routes.length > 1 ? `Segment ${i + 1}` : 'Route'}>
+            {() => <Select value={route} options={ROUTES} onChange={(value) => update({ ...el, routes: el.routes.map((r, j) => (j === i ? (value as Route) : r)) })} />}
+          </Field>
+          <MarkFields label="Current" mark={el.currents?.[i] ?? undefined} onChange={(m) => setMark('currents', i, m)} u={legs[i] || { x: 1, y: 0 }} hint={route === '--' ? undefined : 'On the first leg of the bend.'} />
+          <MarkFields label="Flow" mark={el.flows?.[i] ?? undefined} onChange={(m) => setMark('flows', i, m)} u={legs[i] || { x: 1, y: 0 }} />
+        </div>
       ))}
       <Field label="Arrowheads">
         {() => <Select value={el.arrows || ''} options={ARROWS} onChange={(value) => update({ ...el, arrows: (value || undefined) as Wire['arrows'] })} />}
       </Field>
+      {actions}
+    </div>
+  );
+}
+
+/** Colour, line style and width: one annotation's, or every picked one's (and the colour of picked Text). */
+function LookFields({ els, texts = [], set }: { els: Annotation[]; texts?: NodePart[]; set: (patch: Partial<Annotation>) => void }) {
+  const shared = <K extends keyof Annotation>(key: K) => (els.every((el) => el[key] === els[0][key]) ? els[0]?.[key] : undefined);
+  const colours = [...els.map((el) => el.colour), ...texts.map((el) => el.colour)];
+  return (
+    <>
+      <ColourField label="Colour" value={colours.every((c) => c === colours[0]) ? colours[0] : undefined} fallback="Black" swatches={ANNOTATION_COLOURS} onChange={(colour) => set({ colour })} />
+      {els.some((el) => el.shape !== 'cross') && (
+        <Field label="Line">
+          {() => <Select value={shared('dash') || ''} options={DASHES} onChange={(dash) => set({ dash: (dash || undefined) as Annotation['dash'] })} title="Line style" />}
+        </Field>
+      )}
+      {els.length > 0 && (
+        <Field label="Width">
+          {() => <Select value={shared('width') || ''} options={WIDTHS} onChange={(width) => set({ width: (width || undefined) as Annotation['width'] })} />}
+        </Field>
+      )}
+    </>
+  );
+}
+
+const SHAPE_NAMES = { line: 'Line', rect: 'Rectangle', ellipse: 'Ellipse', cross: 'Cross' };
+
+function AnnotationInspector({ el, update, actions, restyle }: { el: Annotation; update: (el: Element) => void; actions: ReactNode; restyle: (patch: Partial<Annotation>) => void }) {
+  const set = (patch: Partial<Annotation>) => update(Object.fromEntries(Object.entries({ ...el, ...patch }).filter(([, v]) => v !== undefined)) as unknown as Annotation);
+  const heads = el.shape === 'line' ? !!el.arrows : !!el.loop;
+  return (
+    <div className="ckt-inspector">
+      <div className="ckt-inspector-title">{el.shape === 'line' && el.arrows ? 'Arrow' : SHAPE_NAMES[el.shape]}</div>
+      <LookFields els={[el]} set={restyle} />
+      {el.shape === 'line' && (
+        <>
+          <Field label="Arrowheads">{() => <Select value={el.arrows || ''} options={ARROWS} onChange={(arrows) => set({ arrows: (arrows || undefined) as Annotation['arrows'] })} />}</Field>
+          <Field label={`Bend: ${el.bend ? `${Math.abs(el.bend)}° ${el.bend > 0 ? 'left' : 'right'}` : 'none'}`} hint="TikZ’s bend left or right, on every segment.">
+            {(id) => <input id={id} type="range" min={-90} max={90} step={15} value={el.bend || 0} onChange={(e) => set({ bend: Number(e.target.value) || undefined })} />}
+          </Field>
+        </>
+      )}
+      {(el.shape === 'rect' || el.shape === 'ellipse') && (
+        <>
+          {el.shape === 'rect' && (
+            <label className="checkbox-row">
+              <input type="checkbox" checked={!!el.rounded} onChange={(e) => set({ rounded: e.target.checked || undefined })} />
+              <span>Rounded corners</span>
+            </label>
+          )}
+          <ColourField label="Light fill" value={el.fill} fallback="None" swatches={ANNOTATION_COLOURS} onChange={(fill) => set({ fill })} />
+          <Field label="Loop arrow" hint="One arrowhead on the right side, for a loop or mesh current.">
+            {() => (
+              <Select
+                value={el.loop || ''}
+                options={[
+                  ['', 'None'],
+                  ['cw', 'Clockwise'],
+                  ['ccw', 'Anticlockwise']
+                ]}
+                onChange={(loop) => set({ loop: (loop || undefined) as Annotation['loop'] })}
+              />
+            )}
+          </Field>
+        </>
+      )}
+      {heads && (
+        <Field label="Arrowhead">
+          {() => (
+            <div className="ckt-row">
+              <Select value={el.head || ''} options={HEADS} onChange={(head) => set({ head: (head || undefined) as Annotation['head'] })} title="Arrowhead style" />
+              <Select value={el.headSize || ''} options={HEAD_SIZES} onChange={(headSize) => set({ headSize: (headSize || undefined) as Annotation['headSize'] })} title="Arrowhead size" />
+            </div>
+          )}
+        </Field>
+      )}
+      {el.shape === 'cross' && (
+        <Field label={`Size: ${((el.size ?? 0.5) * 0.5).toFixed(2)} cm`}>
+          {(id) => <input id={id} type="range" min={0.25} max={2} step={0.25} value={el.size ?? 0.5} onChange={(e) => set({ size: Number(e.target.value) === 0.5 ? undefined : Number(e.target.value) })} />}
+        </Field>
+      )}
       {actions}
     </div>
   );

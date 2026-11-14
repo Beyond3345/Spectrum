@@ -39,7 +39,7 @@ export const CATALOGUE = catalogueData as CataloguePart[];
 export const PARTS = new Map(CATALOGUE.map((part) => [part.id, part]));
 /** The catalogue as the first 2.0 builds knew it: a drawing with any other part is a version 2 file, which they open as code. */
 const FIRST_PARTS = new Set(['resistor', 'variable-resistor', 'potentiometer', 'impedance', 'fuse', 'capacitor', 'polarised-capacitor', 'variable-capacitor', 'inductor', 'variable-inductor', 'voltage-source', 'current-source', 'ac-source', 'controlled-voltage-source', 'controlled-current-source', 'battery', 'cell', 'switch-open', 'switch-closed', 'push-button', 'changeover-switch', 'diode', 'led', 'zener', 'schottky', 'photodiode', 'npn', 'pnp', 'nmos', 'pmos', 'op-amp', 'amplifier', 'buffer', 'and', 'or', 'not', 'nand', 'nor', 'xor', 'ammeter', 'voltmeter', 'lamp', 'ground', 'reference-ground', 'signal-ground', 'supply-up', 'supply-down', 'transformer', 'transformer-core', 'mech-ground', 'mech-pin']);
-export const usesNewerParts = (model: unknown) => asCircuit(model).elements.some((el) => el.kind !== 'wire' && !FIRST_PARTS.has(el.type));
+export const usesNewerParts = (model: unknown) => asCircuit(model).elements.some((el) => el.kind === 'annotation' || (isPart(el) && !FIRST_PARTS.has(el.type)));
 
 /** A part TeX draws a symbol for: all but Text, which the canvas writes itself. */
 export const drawsSymbol = (type: string) => !!PARTS.get(type)?.tikz;
@@ -105,7 +105,14 @@ export interface NodePart {
   text?: string;
   /** a transistor's pin letters (G, D, S…) written beside its pins */
   pinLabels?: boolean;
+  /** Text's look: its colour (as annotate.ts writes colours), bold, italic and size; left out, as before */
+  colour?: string;
+  bold?: boolean;
+  italic?: boolean;
+  font?: FontSize;
 }
+
+export type FontSize = 'scriptsize' | 'footnotesize' | 'small' | 'large';
 
 export interface Wire {
   id: string;
@@ -116,9 +123,46 @@ export interface Wire {
   routes: Route[];
   /** arrowheads, for signal flow in block diagrams */
   arrows?: '->' | '<-' | '<->';
+  /** a current (i=) or flow (f=) arrow on a segment, one place per segment; null where there's none */
+  currents?: (Mark | null)[];
+  flows?: (Mark | null)[];
 }
 
-export type Element = PathPart | NodePart | Wire;
+/**
+ * A drawing over the circuit that never connects: no pins, no junctions, never held by a wire. Written after the
+ * circuit (annotate.ts), so it sits above it.
+ */
+export interface Annotation {
+  id: string;
+  kind: 'annotation';
+  /** line: through its points; rect and ellipse: in the box of two opposite corners; cross: centred on its point */
+  shape: 'line' | 'rect' | 'ellipse' | 'cross';
+  points: Pt[];
+  /** a line's bend in degrees, TikZ's bend left (+) or bend right (−) on every segment */
+  bend?: number;
+  /** a line's arrowheads */
+  arrows?: '->' | '<-' | '<->';
+  /** left out: Latex */
+  head?: 'stealth' | 'triangle' | 'to';
+  /** left out: medium */
+  headSize?: 'small' | 'large';
+  /** left out: solid */
+  dash?: 'dashed' | 'dotted' | 'dash dot';
+  /** left out: circuitikz's own line width */
+  width?: 'semithick' | 'thick' | 'very thick';
+  /** an xcolor name or mix, or #rrggbb; left out: black */
+  colour?: string;
+  /** a rectangle's rounded corners */
+  rounded?: boolean;
+  /** a rectangle's or ellipse's light fill: this colour at 15 % */
+  fill?: string;
+  /** a rectangle's or ellipse's one arrowhead, on its right side, going round clockwise or anticlockwise: a loop current */
+  loop?: 'cw' | 'ccw';
+  /** a cross's half width, in grid steps; left out 0.5 */
+  size?: number;
+}
+
+export type Element = PathPart | NodePart | Wire | Annotation;
 export type Part = PathPart | NodePart;
 
 export interface CircuitModel {
@@ -136,7 +180,7 @@ export const asCircuit = (model: unknown): CircuitModel => {
 };
 
 export const isPoint = (end: End): end is Pt => 'x' in end;
-export const isPart = (el: Element): el is Part => el.kind !== 'wire';
+export const isPart = (el: Element): el is Part => el.kind === 'path' || el.kind === 'node';
 
 /** A symbol variant: the part with its chosen options, sorted so the same set always gives the same key. */
 export const variantKey = (type: string, options: string[] = []) => [type, ...[...options].sort()].join('|');
@@ -208,7 +252,7 @@ export function locator(model: CircuitModel, shapeOf: ShapeOf) {
   const pos = (end: End, depth = 0): Pt => {
     if (isPoint(end)) return end;
     const el = byId.get(end.part);
-    if (!el || el.kind === 'wire' || depth > 4) return { x: 0, y: 0 };
+    if (!el || !isPart(el) || depth > 4) return { x: 0, y: 0 };
     const shape = shapeOf(el.type, el.options || []);
     if (el.kind === 'node') {
       const offset = placeNodeOffset(el, shape.pins[end.pin] || { x: 0, y: 0 });
@@ -225,7 +269,7 @@ export function locator(model: CircuitModel, shapeOf: ShapeOf) {
 
 /** Every pin an element offers, by name, with its position. */
 export function pinsOfElement(el: Element, shapeOf: ShapeOf, pos: (end: End) => Pt): { pin: string; at: Pt }[] {
-  if (el.kind === 'wire') return [];
+  if (!isPart(el)) return [];
   const named = Object.keys(shapeOf(el.type, el.options || []).pins);
   const names = el.kind === 'path' ? ['a', 'b', ...named] : named;
   return names.map((pin) => ({ pin, at: pos({ part: el.id, pin }) }));
@@ -307,7 +351,7 @@ export function findJunctions(model: CircuitModel, shapeOf: ShapeOf): End[] {
     } else if (el.kind === 'path') {
       add(pos(el.a), 1, isPoint(el.a) ? undefined : el.a);
       add(pos(el.b), 1, isPoint(el.b) ? undefined : el.b);
-    } else {
+    } else if (el.kind === 'node') {
       for (const { pin, at } of pinsOfElement(el, shapeOf, pos)) add(at, 1, { part: el.id, pin });
     }
   }
@@ -321,7 +365,7 @@ export function findJunctions(model: CircuitModel, shapeOf: ShapeOf): End[] {
 
 /** The next free name with this prefix: R1, R2… */
 export function nextName(model: CircuitModel, prefix: string) {
-  const taken = new Set(model.elements.map((el) => (el.kind !== 'wire' ? el.name || '' : '')));
+  const taken = new Set(model.elements.map((el) => (isPart(el) ? el.name || '' : '')));
   for (let n = 1; ; n += 1) if (!taken.has(`${prefix}${n}`)) return `${prefix}${n}`;
 }
 
@@ -339,7 +383,7 @@ export function circuitBounds(model: CircuitModel, shapeOf: ShapeOf) {
   const { pos } = locator(model, shapeOf);
   const points = model.elements.flatMap((el): Pt[] => el.kind === 'node'
     ? [{ x: el.at.x - 5, y: el.at.y - 5 }, { x: el.at.x + 5, y: el.at.y + 5 }, ...pinsOfElement(el, shapeOf, pos).map((pin) => pin.at)]
-    : el.kind === 'path' ? [pos(el.a), pos(el.b)] : el.points.map((point) => pos(point)));
+    : el.kind === 'path' ? [pos(el.a), pos(el.b)] : el.kind === 'wire' ? el.points.map((point) => pos(point)) : el.points);
   if (!points.length) return null;
   return { minX: Math.min(...points.map((p) => p.x)) - 4, maxX: Math.max(...points.map((p) => p.x)) + 4, minY: Math.min(...points.map((p) => p.y)) - 4, maxY: Math.max(...points.map((p) => p.y)) + 4 };
 }

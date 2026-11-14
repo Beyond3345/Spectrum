@@ -72,6 +72,27 @@
   stroke-linejoin: round;
 }
 
+/* annotations: their own colour inline, else the canvas's ink */
+.ckt-annotation {
+  fill: none;
+  stroke: var(--ckt-ink);
+  stroke-linejoin: round;
+}
+
+.ckt-annotation-open {
+  fill: var(--ckt-paper);
+}
+
+.ckt-annotation-head {
+  fill: var(--ckt-ink);
+}
+
+.ckt-annotation-fill {
+  stroke: none;
+  fill-opacity: 0.15;
+  pointer-events: none;
+}
+
 .ckt-draft {
   stroke: var(--accent);
   stroke-dasharray: 5 4;
@@ -356,6 +377,39 @@
   font-size: 13px;
   color: var(--text-secondary);
   white-space: nowrap;
+}
+
+.ckt-rail-sketch {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.4;
+}
+
+.ckt-rail-sketch text {
+  fill: var(--text);
+  stroke: none;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 10px;
+}
+
+.ckt-rail-sketch marker path {
+  fill: var(--text);
+  stroke: none;
+}
+
+.ckt-rail-tint {
+  fill: color-mix(in srgb, #4a6cf7 18%, transparent);
+}
+
+.ckt-rail-red {
+  stroke: #d33;
+}
+
+.ckt-segment {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .ckt-rail-label {
