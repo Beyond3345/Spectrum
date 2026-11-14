@@ -99,6 +99,11 @@ export const setOfPic = (key) => Object.keys(SYMBOL_SETS).find((id) => key in SY
 // into a P one (#4 = 0), or on a bulk lead to the bulk anchor, into an N channel and out of a P one (#4 = 1).
 // ponytail: no body diode or transistor circle on them; draw those from circuitikz's own code if they're asked for
 const MU_MOS = String.raw`% MU Style MOSFETs: circuitikz's nmos and pmos with the channel in three segments or solid, and the arrow on the source or bulk lead
+% what circuitikz before 1.5 (the built-in Tectonic's) lacks
+\ifcsname pgf@circ@draw@component\endcsname\else\long\def\pgf@circ@draw@component#1{\behindbackgroundpath{#1}}\fi
+\ifcsname pgf@circ@setcolor\endcsname\else\def\pgf@circ@setcolor{\pgfsetcolor{\ctikzvalof{color}}}\fi
+\ifcsname ifpgf@circuit@trans@roundedcap\endcsname\else\expandafter\let\csname ifpgf@circuit@trans@roundedcap\expandafter\endcsname\csname iffalse\endcsname\fi
+\ifcsname pgfk@/tikz/circuitikz/transistors/gate thickness\endcsname\else\ctikzset{transistors/gate thickness/.initial=1}\fi
 \def\spectrummumos#1#2#3#4{\pgfdeclareshape{#1}{\inheritsavedanchors[from=#2]\inheritanchorborder[from=#2]%
 \foreach\a in {center,text,north,south,east,west,north east,north west,south east,south west,left,right,G,D,S,gate,drain,source,bulk}{\inheritanchor[from=#2]{\a}}%
 \pgf@circ@draw@component{\pgftransformationadjustments\pgf@circ@setcolor
