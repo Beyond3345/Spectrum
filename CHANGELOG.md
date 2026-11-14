@@ -2,6 +2,35 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.4.0 (15 November 2026)
+
+### Added
+
+- MU Style circuit parts in the diagram composer, for the symbols Hong Kong Metropolitan University's lecture slides use that circuitikz does not draw:
+  - N- and P-channel MOSFETs with the channel in three segments (enhancement) or solid (depletion) and the arrow on the source, with or without a separate bulk pin B
+  - an ideal diode drawn in a box
+  - a current source drawn as a box with an arrow
+  - AC sources with + and − around a ~ or a sine
+
+  They are sized and drawn like circuitikz's own parts, take pin labels, turn and mirror, and a drawing that uses one declares it in its own picture, so it compiles anywhere
+- Variants of existing parts from the slides: a Zener diode with both ends bent, a grey Filled option on diodes, an open or no gate circle on P-channel MOSFETs, an impedance with its text inside, text and a ground pin on amplifiers, a Size of 150, 200 or 300% for op amps and amplifiers, a bar in place of an arrow on the positive supply and polarity dots on transformers
+- Annotate, at the end of the circuit parts, draws over a circuit without joining it:
+  - lines and arrows through the points you click, straight, with corners or curved, with arrowheads at either end or both in four styles and three sizes
+  - rectangles and ellipses, with rounded corners, a light fill or a loop arrowhead, to frame a subcircuit or highlight a node
+  - a cross to mark a cut wire or a shorted capacitor
+  - colours (the slides' dark red, red, magenta, blue, green, orange and grey, or your own), solid, dashed, dotted or dash dot lines and four widths
+  - presets that place a styled, labelled group in one click: Resistance looking in, Current arrow, Loop current, Mesh current marker, Frame and Highlight
+- Text in a circuit takes a colour, bold, italic and a size
+- A wire's segments take a current (`i=`) or flow (`f=`) arrow, as a two-terminal part's do
+
+### Changed
+
+- A drawing that uses annotations, styled text or arrows on wires saves as file version 4, which Spectrum 2.3 and earlier open as code rather than drawing it wrongly
+
+### Fixed
+
+- The MU Style symbols also draw with the built-in Tectonic's older circuitikz
+
 ## 2.3.2 (14 November 2026)
 
 ### Added
