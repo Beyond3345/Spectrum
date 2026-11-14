@@ -5,10 +5,13 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import Icon from '../../../app/Icon';
 import { useCanvasPrefs } from '../../FlowCanvas';
+import { colourCss } from '../shared';
+import { FONT_SCALE, HEAD_CM, ROUNDED_CM, box, loopLine, presetElements } from './annotate';
+import type { Preset } from './annotate';
 import { readStyle, symbolOptions } from './code';
 import { copy, detach, flip, moveBy, newNodePart, newPathPart, paste, remove, rotate } from './edit';
-import { PARTS, PT_PER_GRID, asCircuit, drawsSymbol,circuitBounds, isPart, isPoint, locator, newId, pathFrame, pinsOfElement, placeholderShape, snapDelta, variantKey, wirePath } from './model';
-import type { CircuitModel, Element, End, Mark, NodePart, PathPart, Pt, Route, ShapeOf, Wire } from './model';
+import { GRID_CM, PARTS, PT_PER_GRID, asCircuit, drawsSymbol,circuitBounds, isPart, isPoint, locator, newId, pathFrame, pinsOfElement, placeholderShape, snapDelta, variantKey, wirePath } from './model';
+import type { Annotation, CircuitModel, Element, End, Mark, NodePart, PathPart, Pt, Route, ShapeOf, Wire } from './model';
 import { labelSize, nodeNameAt, pathLabelAt, pinLabelSpots, plain, plusAtStart, scriptRuns } from './labels';
 import { setCtikz, setSelection, setShapeOf, setTool, setVoltageDir, tidy, useCircuitUi } from './store';
 import { symbolOutline } from './symbolGeometry';
@@ -34,7 +37,9 @@ type Drag =
   | { kind: 'move'; start: Pt; base: CircuitModel; ids: Set<string>; moving: Pt[]; fixed: Pt[] }
   /** one end of a path part (0 a, 1 b), or one point of a wire */
   | { kind: 'handle'; start: Pt; base: CircuitModel; id: string; index: number; from: Pt; fixed: Pt[] }
-  | { kind: 'place'; base: CircuitModel; id: string; from: End; fixed: Pt[] };
+  | { kind: 'place'; base: CircuitModel; id: string; from: End; fixed: Pt[] }
+  /** a rectangle or ellipse being drawn from one corner to the other */
+  | { kind: 'box'; base: CircuitModel; id: string; fixed: Pt[] };
 
 /** clipboard for copy and paste, shared by every circuit in this window */
 let clipboard: Element[] = [];
@@ -46,6 +51,17 @@ const clickEnd = (type: string, a: Pt): Pt => (isOpen(type) ? { x: a.x, y: a.y -
 
 const autoRoute = (from: Pt, to: Pt): Route => (Math.abs(from.x - to.x) < 1e-6 || Math.abs(from.y - to.y) < 1e-6 ? '--' : '-|');
 
+/** an annotation's line widths on screen, as the wires' 1.4 px stands for circuitikz's thin */
+const ANNOTATION_PX = { thin: 1.4, semithick: 1.9, thick: 2.4, 'very thick': 3.4 };
+/** TikZ's to path with a bend: its two control points, at 0.3915 of the length along the out and in angles */
+function bendControls(p: Pt, q: Pt, bend: number): [Pt, Pt] {
+  const d = Math.hypot(q.x - p.x, q.y - p.y) * 0.3915;
+  const a = Math.atan2(q.y - p.y, q.x - p.x);
+  const out = a + (bend * Math.PI) / 180;
+  const into = a + Math.PI - (bend * Math.PI) / 180;
+  return [{ x: p.x + d * Math.cos(out), y: p.y + d * Math.sin(out) }, { x: q.x + d * Math.cos(into), y: q.y + d * Math.sin(into) }];
+}
+
 export default function CircuitCanvas({ model: raw, onChange, style, readOnly }: { model: CircuitModel; onChange(m: CircuitModel): void; style: Record<string, unknown>; readOnly?: boolean }) {
   const model = asCircuit(raw);
   const { tool, selection: rawSelection } = useCircuitUi();
@@ -55,8 +71,10 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   const [view, setView] = useState<View | null>(null);
   const [draft, setDraft] = useState<CircuitModel | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
-  /** the wire being drawn: its points so far */
+  /** the wire, or an annotation's line, being drawn: its points so far */
   const [wire, setWire] = useState<End[] | null>(null);
+  /** the points being drawn are an annotation's line, not a wire */
+  const drawingLine = useRef(false);
   /** where the pointer would put something now, snapped */
   const [hover, setHover] = useState<Pt | null>(null);
   const [space, setSpace] = useState(false);
@@ -190,10 +208,13 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
     const grid = toGrid(at);
     const target = (e.target as globalThis.Element).closest('[data-id], [data-handle]') as HTMLElement | SVGElement | null;
 
-    if (tool === 'wire') {
+    if (tool === 'wire' || tool === 'annotate:line') {
+      const line = tool === 'annotate:line';
       const point = snapPoint(grid, allPins(model));
-      const end = pinAt(model, point, false);
+      // a line snaps to pins but never holds one
+      const end = line ? point : pinAt(model, point, false);
       if (!wire) {
+        drawingLine.current = line;
         setWire([end]);
         return;
       }
@@ -202,6 +223,22 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
       const points = done ? wire : [...wire, end];
       if (done || (!isPoint(end) && points.length > 1)) finishWire(points);
       else setWire(points);
+      return;
+    }
+
+    if (tool === 'annotate:rect' || tool === 'annotate:ellipse' || tool === 'annotate:cross' || tool.startsWith('preset:')) {
+      const fixed = allPins(model);
+      const point = snapPoint(grid, fixed);
+      if (tool === 'annotate:cross' || tool.startsWith('preset:')) {
+        const added: Element[] = tool.startsWith('preset:') ? presetElements(model, tool.slice(7) as Preset, point) : [{ id: newId(model), kind: 'annotation', shape: 'cross', points: [point], width: 'thick' }];
+        commit({ ...model, elements: [...model.elements, ...added] });
+        setSelection(added.map((el) => el.id));
+        return;
+      }
+      const added: Annotation = { id: newId(model), kind: 'annotation', shape: tool === 'annotate:rect' ? 'rect' : 'ellipse', points: [point, point] };
+      const base = { ...model, elements: [...model.elements, added] };
+      setDraft(base);
+      setDrag({ kind: 'box', base, id: added.id, fixed });
       return;
     }
 
@@ -235,7 +272,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
       if (!el) return;
       const loose = detach(model, new Set([id]), shapeOf);
       const looseEl = loose.elements.find((x) => x.id === id)!;
-      const point = looseEl.kind === 'path' ? (index === '0' ? looseEl.a : looseEl.b) : looseEl.kind === 'wire' ? looseEl.points[Number(index)] : null;
+      const point = looseEl.kind === 'path' ? (index === '0' ? looseEl.a : looseEl.b) : looseEl.kind === 'wire' || looseEl.kind === 'annotation' ? looseEl.points[Number(index)] : null;
       if (!point || !isPoint(point)) return;
       setDrag({ kind: 'handle', start: at, base: loose, id, index: Number(index), from: point, fixed: allPins(model, (x) => x.id === id) });
       return;
@@ -251,7 +288,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
       const { pos: at0 } = locator(loose, shapeOf);
       const moving = loose.elements
         .filter((el) => moved.has(el.id))
-        .flatMap((el) => (el.kind === 'wire' ? el.points.map((p) => at0(p)) : pinsOfElement(el, shapeOf, at0).map((p) => p.at).concat(el.kind === 'node' && !PARTS.get(el.type)?.pins?.length ? [el.at] : [])));
+        .flatMap((el) => (el.kind === 'wire' || el.kind === 'annotation' ? el.points.map((p) => at0(p)) : pinsOfElement(el, shapeOf, at0).map((p) => p.at).concat(el.kind === 'node' && !PARTS.get(el.type)?.pins?.length ? [el.at] : [])));
       setDrag({ kind: 'move', start: at, base: loose, ids: moved, moving, fixed: allPins(loose, (el) => moved.has(el.id)) });
       return;
     }
@@ -265,7 +302,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
     const at = local(e);
     const grid = toGrid(at);
     if (!drag) {
-      if (tool === 'wire' || tool.startsWith('part:')) setHover(snapPoint(grid, allPins(model)));
+      if (tool !== 'select') setHover(snapPoint(grid, allPins(model)));
       else if (hover) setHover(null);
       return;
     }
@@ -285,9 +322,13 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
           if (el.id !== drag.id) return el;
           if (el.kind === 'path') return drag.index === 0 ? { ...el, a: point } : { ...el, b: point };
           if (el.kind === 'wire') return { ...el, points: el.points.map((p, i) => (i === drag.index ? point : p)) };
+          if (el.kind === 'annotation') return { ...el, points: el.points.map((p, i) => (i === drag.index ? point : p)) };
           return el;
         })
       });
+    } else if (drag.kind === 'box') {
+      const point = snapPoint(grid, drag.fixed);
+      setDraft({ ...drag.base, elements: drag.base.elements.map((el) => (el.id === drag.id && el.kind === 'annotation' ? { ...el, points: [el.points[0], point] } : el)) });
     } else if (drag.kind === 'place') {
       const point = snapPoint(grid, drag.fixed);
       setDraft({ ...drag.base, elements: drag.base.elements.map((el) => (el.id === drag.id && el.kind === 'path' ? { ...el, b: point } : el)) });
@@ -304,6 +345,15 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
       const inside = (p: Pt) => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY;
       const hits = model.elements.filter((el) => (el.kind === 'node' ? inside(el.at) : el.kind === 'path' ? inside(pos(el.a)) && inside(pos(el.b)) : el.points.every((p) => inside(pos(p)))));
       if (Math.hypot(d.now.x - d.start.x, d.now.y - d.start.y) > 3) setSelection([...new Set([...d.keep, ...hits.map((el) => el.id)])]);
+      return;
+    }
+    if (d.kind === 'box') {
+      // a click without a drag draws one 2 cm across and 1.5 cm high
+      const el = (draft || d.base).elements.find((x) => x.id === d.id) as Annotation;
+      const [p, q] = el.points;
+      const sized = Math.abs(q.x - p.x) < 1 || Math.abs(q.y - p.y) < 1 ? { ...el, points: [{ x: p.x - 4, y: p.y + 3 }, { x: p.x + 4, y: p.y - 3 }] } : el;
+      commit({ ...d.base, elements: d.base.elements.map((x) => (x.id === d.id ? sized : x)) });
+      setSelection([d.id]);
       return;
     }
     if (d.kind === 'pan' || !draft) {
@@ -338,13 +388,19 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
     setWire(null);
     const resolved = points.map((p) => pos(p));
     if (points.length < 2) return;
+    if (drawingLine.current) {
+      const line: Annotation = { id: newId(model), kind: 'annotation', shape: 'line', points: resolved, arrows: '->' };
+      commit({ ...model, elements: [...model.elements, line] });
+      setSelection([line.id]);
+      return;
+    }
     const added: Wire = { id: newId(model), kind: 'wire', points, routes: resolved.slice(1).map((p, i) => autoRoute(resolved[i], p)) };
     commit({ ...model, elements: [...model.elements, added] });
   };
 
-  // another tool picked mid-wire keeps the wire drawn so far
+  // another tool picked mid-wire keeps the wire (or line) drawn so far
   useEffect(() => {
-    if (tool !== 'wire' && wire) finishWire(wire);
+    if (tool !== (drawingLine.current ? 'annotate:line' : 'wire') && wire) finishWire(wire);
   }, [tool]);
 
   // ─── keys ───
@@ -411,12 +467,14 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   };
   const poly = (points: Pt[]) => points.map((p) => toScreen(p)).map((p) => `${p.x},${p.y}`).join(' ');
   const fontSize = Math.max(9, k * 1.1);
+  /** a colour as the canvas shows it; black, or none, is the canvas's ink, so it reads on a dark canvas too */
+  const ink = (colour?: string) => (colour && colour !== 'black' ? colourCss(colour) : undefined);
 
   /** TeX sketched as text, its subscripts and superscripts set as the preview sets them */
-  const text = (at: Pt, tex: string, className = 'ckt-text', size = fontSize) => {
+  const text = (at: Pt, tex: string, className = 'ckt-text', size = fontSize, style?: Record<string, string | number | undefined>) => {
     const s = toScreen(at);
     return (
-      <text x={s.x} y={s.y} className={className} fontSize={size} textAnchor="middle" dominantBaseline="middle">
+      <text x={s.x} y={s.y} className={className} fontSize={size} textAnchor="middle" dominantBaseline="middle" style={style}>
         {scriptRuns(tex).map((run, i) =>
           run.shift ? (
             <tspan key={i} baselineShift={run.shift} fontSize="70%">
@@ -544,7 +602,11 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
       return (
         <g key={el.id} data-id={ghost ? undefined : el.id} className={`ckt-part ${ghost ? 'ghost' : ''} ${selected.has(el.id) ? 'selected' : ''}`}>
           <rect className={selected.has(el.id) ? 'ckt-halo-box' : content ? 'ckt-hit-box' : 'ckt-outline'} x={p.x - half * k} y={p.y - 1.2 * k} width={2 * half * k} height={2.4 * k} />
-          {text(el.at, content ? el.text! : 'Text', content ? 'ckt-text' : 'ckt-text ckt-sketch-text')}
+          {text(el.at, content ? el.text! : 'Text', content ? 'ckt-text' : 'ckt-text ckt-sketch-text', fontSize * (el.font ? FONT_SCALE[el.font] : 1), {
+            fill: content ? ink(el.colour) : undefined,
+            fontWeight: el.bold ? 700 : undefined,
+            fontStyle: el.italic ? 'italic' : undefined
+          })}
         </g>
       );
     }
@@ -580,8 +642,22 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   };
 
   const drawWire = (el: Wire) => {
-    const path = wirePath(el.points.map((p) => pos(p)), el.routes);
+    const ends = el.points.map((p) => pos(p));
+    const path = wirePath(ends, el.routes);
     const points = poly(path);
+    // a segment's current or flow, sketched on its first leg as the code writes it
+    const marks = ends.slice(1).map((to, i) => {
+      const from = ends[i];
+      const route = el.routes[i] || '--';
+      const legEnd = route === '-|' ? { x: to.x, y: from.y } : route === '|-' ? { x: from.x, y: to.y } : to;
+      const f = pathFrame(from, Math.hypot(legEnd.x - from.x, legEnd.y - from.y) < 1e-6 ? to : legEnd);
+      return (
+        <g key={i}>
+          {markSketch(el.currents?.[i] ?? undefined, 'i', f, 0, () => f.mid)}
+          {markSketch(el.flows?.[i] ?? undefined, 'f', f, 0, () => f.mid)}
+        </g>
+      );
+    });
     return (
       <g key={el.id} data-id={el.id} className={`ckt-part ${selected.has(el.id) ? 'selected' : ''}`}>
         {selected.has(el.id) && <polyline className="ckt-halo" points={points} />}
@@ -592,6 +668,73 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
           markerEnd={el.arrows === '->' || el.arrows === '<->' ? 'url(#ckt-arrow)' : undefined}
           markerStart={el.arrows === '<-' || el.arrows === '<->' ? 'url(#ckt-arrow)' : undefined}
         />
+        {marks}
+      </g>
+    );
+  };
+
+  /** an arrowhead at `at`, pointing along `dir` (grid steps), as arrows.meta draws it */
+  const head = (el: Annotation, at: Pt, dir: Pt, key: string, style: Record<string, unknown>) => {
+    const len = Math.hypot(dir.x, dir.y) || 1;
+    const u = { x: dir.x / len, y: dir.y / len };
+    const n = { x: -u.y, y: u.x };
+    const l = HEAD_CM[el.headSize || 'medium'] / GRID_CM;
+    const half = l * (el.head === 'triangle' || el.head === 'to' ? 0.5 : 0.375);
+    const back = { x: at.x - u.x * l, y: at.y - u.y * l };
+    const side = (s: number) => ({ x: back.x + n.x * half * s, y: back.y + n.y * half * s });
+    if (el.head === 'to') return <polyline key={key} className="ckt-annotation" points={poly([side(1), at, side(-1)])} style={{ ...style, strokeDasharray: undefined }} />;
+    const points = el.head === 'stealth' ? [at, side(1), { x: at.x - u.x * l * 0.675, y: at.y - u.y * l * 0.675 }, side(-1)] : [at, side(1), side(-1)];
+    return <polygon key={key} className={el.head === 'triangle' ? 'ckt-annotation ckt-annotation-open' : 'ckt-annotation-head'} points={poly(points)} style={el.head === 'triangle' ? { ...style, strokeDasharray: undefined } : { fill: style.stroke as string | undefined }} />;
+  };
+
+  /** an annotation, over the circuit: taken by its outline, never its inside, so the parts under a frame stay reachable */
+  const drawAnnotation = (el: Annotation) => {
+    const w = ANNOTATION_PX[el.width || 'thin'];
+    const dash = el.dash === 'dashed' ? `${3 * kpt} ${3 * kpt}` : el.dash === 'dotted' ? `${w} ${2 * kpt}` : el.dash === 'dash dot' ? `${3 * kpt} ${2 * kpt} ${w} ${2 * kpt}` : undefined;
+    const style = { stroke: ink(el.colour), strokeWidth: w, strokeDasharray: dash };
+    const S = (p: Pt) => {
+      const q = toScreen(p);
+      return `${q.x},${q.y}`;
+    };
+    const heads: [Pt, Pt][] = [];
+    let outline: (className: string, extra?: object) => JSX.Element;
+    if (el.shape === 'line' || el.shape === 'cross') {
+      const p = el.points;
+      let d = '';
+      if (el.shape === 'cross') {
+        const s = el.size ?? 0.5;
+        const { x, y } = p[0];
+        d = `M${S({ x: x - s, y: y - s })} L${S({ x: x + s, y: y + s })} M${S({ x: x - s, y: y + s })} L${S({ x: x + s, y: y - s })}`;
+      } else {
+        d = `M${S(p[0])}`;
+        for (let i = 1; i < p.length; i += 1) {
+          const [c1, c2] = el.bend ? bendControls(p[i - 1], p[i], el.bend) : [p[i], p[i - 1]];
+          d += el.bend ? ` C${S(c1)} ${S(c2)} ${S(p[i])}` : ` L${S(p[i])}`;
+          // the tips point along the path where it meets them
+          if (i === 1 && el.arrows?.startsWith('<')) heads.push([p[0], { x: p[0].x - c1.x, y: p[0].y - c1.y }]);
+          if (i === p.length - 1 && el.arrows?.endsWith('>')) heads.push([p[i], { x: p[i].x - c2.x, y: p[i].y - c2.y }]);
+        }
+      }
+      outline = (className, extra) => <path className={className} d={d} {...extra} />;
+    } else {
+      const { c, rx, ry } = box(el);
+      const corner = toScreen({ x: c.x - rx, y: c.y + ry });
+      const round = el.shape === 'rect' && el.rounded ? Math.min((ROUNDED_CM / GRID_CM) * k, rx * k, ry * k) : 0;
+      const centre = toScreen(c);
+      outline = (className, extra) =>
+        el.shape === 'rect' ? <rect className={className} x={corner.x} y={corner.y} width={2 * rx * k} height={2 * ry * k} rx={round} {...extra} /> : <ellipse className={className} cx={centre.x} cy={centre.y} rx={rx * k} ry={ry * k} {...extra} />;
+      if (el.loop) {
+        const [from, to] = loopLine(el);
+        heads.push([to, { x: to.x - from.x, y: to.y - from.y }]);
+      }
+    }
+    return (
+      <g key={el.id} data-id={el.id} className={`ckt-part ${selected.has(el.id) ? 'selected' : ''}`}>
+        {selected.has(el.id) && outline('ckt-halo')}
+        {el.fill && outline('ckt-annotation-fill', { style: { fill: colourCss(el.fill) } })}
+        {outline('ckt-hit')}
+        {outline('ckt-annotation', { style })}
+        {heads.map(([at, dir], i) => head(el, at, dir, String(i), style))}
       </g>
     );
   };
@@ -615,13 +758,14 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
     const el = byId.get(id);
     if (!el || readOnly) return [];
     if (el.kind === 'path') return [el.a, el.b].map((end, i) => ({ key: `${id}:${i}`, at: toScreen(pos(end)) }));
-    if (el.kind === 'wire') return el.points.map((p, i) => ({ key: `${id}:${i}`, at: toScreen(pos(p)) }));
+    if (el.kind === 'wire' || el.kind === 'annotation') return el.points.map((p, i) => ({ key: `${id}:${i}`, at: toScreen(pos(p)) }));
     return [];
   });
 
   const dot = Math.max(2.5, k * 0.22);
   const gridStep = k < 6 ? 4 : 1;
   const wirePreview = wire && hover ? [...wire.map((p) => pos(p)), hover] : null;
+  const previewRoutes = wirePreview?.slice(1).map((p, i): Route => (drawingLine.current ? '--' : autoRoute(wirePreview[i], p)));
   const cursor = space || drag?.kind === 'pan' ? 'grab' : tool === 'select' ? 'default' : 'crosshair';
   const bounds = circuitBounds(shown, shapeOf);
   const viewport = { x: -v.x / k, y: -v.y / k, width: size.width / k, height: size.height / k };
@@ -672,7 +816,8 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
               return <circle key={i} className="ckt-junction" cx={s.x} cy={s.y} r={dot} />;
             })}
             {ghostPart}
-            {wirePreview && <polyline className="ckt-wire ckt-draft" points={poly(wirePath(wirePreview, wirePreview.slice(1).map((p, i) => autoRoute(wirePreview[i], p))))} />}
+            {shown.elements.filter((el): el is Annotation => el.kind === 'annotation' && el.points.length > 0).map(drawAnnotation)}
+            {wirePreview && <polyline className="ckt-wire ckt-draft" points={poly(wirePath(wirePreview, previewRoutes!))} />}
             {pinDots.map((p) => <circle key={p.key} className="ckt-pin" cx={p.at.x} cy={p.at.y} r={3} />)}
             {handles.map((h) => <rect key={h.key} data-handle={h.key} className="ckt-handle" x={h.at.x - 4} y={h.at.y - 4} width={8} height={8} />)}
             {hover && tool !== 'select' && <circle className="ckt-target" cx={toScreen(hover).x} cy={toScreen(hover).y} r={5} />}
@@ -702,7 +847,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
           <svg viewBox={`${overview.minX} ${overview.minY} ${overview.maxX - overview.minX} ${overview.maxY - overview.minY}`} aria-hidden="true">
             {shown.elements.map((el) => {
               if (el.kind === 'node') return <rect key={el.id} x={el.at.x - 2} y={-el.at.y - 2} width={4} height={4} className="ckt-minimap-part" />;
-              const path = el.kind === 'path' ? [pos(el.a), pos(el.b)] : wirePath(el.points.map((p) => pos(p)), el.routes);
+              const path = el.kind === 'path' ? [pos(el.a), pos(el.b)] : el.kind === 'annotation' ? (el.shape === 'rect' || el.shape === 'ellipse' ? [0, 1, 2, 3, 0].map((i) => ({ x: el.points[i % 3 ? 1 : 0].x, y: el.points[i < 2 ? 0 : 1].y })) : el.points) : wirePath(el.points.map((p) => pos(p)), el.routes);
               return <polyline key={el.id} points={path.map((p) => `${p.x},${-p.y}`).join(' ')} className="ckt-minimap-wire" />;
             })}
             <rect {...viewport} className="ckt-minimap-view" />

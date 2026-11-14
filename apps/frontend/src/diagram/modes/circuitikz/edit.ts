@@ -1,6 +1,6 @@
 // Edits to a circuit: adding, moving, attaching, turning, flipping, deleting, copying and pasting. Each
 // takes a model and gives a new one; the canvas works out junctions after.
-import { PARTS, isPoint, locator, newId, nextName, pinsOfElement } from './model';
+import { PARTS, isPart, isPoint, locator, newId, nextName, pinsOfElement } from './model';
 import type { CircuitModel, Element, End, NodePart, PathPart, Pt, ShapeOf } from './model';
 
 const same = (p: Pt, q: Pt) => Math.abs(p.x - q.x) < 1e-3 && Math.abs(p.y - q.y) < 1e-3;
@@ -38,7 +38,7 @@ export function detach(model: CircuitModel, ids: Set<string>, shapeOf: ShapeOf):
   return {
     ...model,
     elements: model.elements.map((el) => {
-      if (!ids.has(el.id) || el.kind === 'node') return el;
+      if (!ids.has(el.id) || el.kind === 'node' || el.kind === 'annotation') return el;
       if (el.kind === 'path') return { ...el, a: free(el.a), b: free(el.b) };
       return { ...el, points: el.points.map(free) };
     })
@@ -54,6 +54,7 @@ export function moveBy(model: CircuitModel, ids: Set<string>, delta: Pt): Circui
       if (!ids.has(el.id)) return el;
       if (el.kind === 'node') return { ...el, at: add(el.at, delta) };
       if (el.kind === 'path') return { ...el, a: shift(el.a), b: shift(el.b) };
+      if (el.kind === 'annotation') return { ...el, points: el.points.map((p) => add(p, delta)) };
       return { ...el, points: el.points.map(shift) };
     })
   };
@@ -74,7 +75,8 @@ export function attach(model: CircuitModel, ids: Set<string>, shapeOf: ShapeOf):
   return {
     ...model,
     elements: model.elements.map((el) => {
-      if (!ids.has(el.id) || el.kind === 'node') return el;
+      // an annotation never takes hold of anything
+      if (!ids.has(el.id) || el.kind === 'node' || el.kind === 'annotation') return el;
       if (el.kind === 'path') return { ...el, a: hold(el.a, el.id, true), b: hold(el.b, el.id, true) };
       const last = el.points.length - 1;
       return { ...el, points: el.points.map((p, i) => (i === 0 || i === last ? hold(p, el.id, false) : p)) };
@@ -114,6 +116,7 @@ export function rotate(model: CircuitModel, ids: Set<string>, step: number, shap
   });
   const picked = loose.elements.filter((el) => ids.has(el.id));
   const spots = picked.flatMap((el): Pt[] => (el.kind === 'node' ? [el.at] : el.kind === 'path' ? [el.a, el.b] : el.points).filter(isPoint));
+  const middle = (points: Pt[]) => ({ x: (Math.min(...points.map((p) => p.x)) + Math.max(...points.map((p) => p.x))) / 2, y: (Math.min(...points.map((p) => p.y)) + Math.max(...points.map((p) => p.y))) / 2 });
   const xs = spots.map((p) => p.x);
   const ys = spots.map((p) => p.y);
   const centre = group && spots.length ? { x: Math.round((Math.min(...xs) + Math.max(...xs)) / 2), y: Math.round((Math.min(...ys) + Math.max(...ys)) / 2) } : null;
@@ -122,6 +125,9 @@ export function rotate(model: CircuitModel, ids: Set<string>, step: number, shap
     ...loose,
     elements: loose.elements.map((el) => {
       if (!ids.has(el.id)) return el;
+      // an annotation turns about its own middle, or with the rest; a box's corners stay a box's corners
+      // ponytail: a rectangle or ellipse turned 45° stays upright, its corners turned; draw it again for a slanted frame
+      if (el.kind === 'annotation') return { ...el, points: el.points.map((p) => turn(p, centre || middle(el.points))) };
       if (el.kind === 'node') {
         const at = centre ? turn(el.at, centre) : el.at;
         return centre && !PARTS.get(el.type)?.tikz ? { ...el, at } : { ...el, at, rotate: ((((el.rotate || 0) + step) % 360) + 360) % 360 };
@@ -140,12 +146,27 @@ export function rotate(model: CircuitModel, ids: Set<string>, step: number, shap
   };
 }
 
-/** Flips placed parts across (x: left to right) or (y: top to bottom); a path part inverts (x) or mirrors (y). */
+/**
+ * Flips placed parts across (x: left to right) or (y: top to bottom); a path part inverts (x) or mirrors (y), each in its
+ * place. An annotation mirrors about its own middle, so it stays on what it marks; a group of only annotations and Text
+ * (a preset's) mirrors about its middle as one, the Text moved and still readable.
+ */
 export function flip(model: CircuitModel, ids: Set<string>, axis: 'x' | 'y'): CircuitModel {
+  const isText = (el: Element) => el.kind === 'node' && !PARTS.get(el.type)?.tikz;
+  const picked = model.elements.filter((el) => ids.has(el.id));
+  const overlays = picked.length > 1 && picked.every((el) => el.kind === 'annotation' || isText(el));
+  const middle = (spots: Pt[]) => ({ x: (Math.min(...spots.map((p) => p.x)) + Math.max(...spots.map((p) => p.x))) / 2, y: (Math.min(...spots.map((p) => p.y)) + Math.max(...spots.map((p) => p.y))) / 2 });
+  const group = overlays ? middle(picked.flatMap((el) => (el.kind === 'annotation' ? el.points : el.kind === 'node' ? [el.at] : []))) : null;
+  const across = (p: Pt, c: Pt) => (axis === 'x' ? { x: 2 * c.x - p.x, y: p.y } : { x: p.x, y: 2 * c.y - p.y });
   return {
     ...model,
     elements: model.elements.map((el) => {
       if (!ids.has(el.id)) return el;
+      if (el.kind === 'annotation') {
+        const c = group || middle(el.points);
+        return { ...el, points: el.points.map((p) => across(p, c)), ...(el.bend ? { bend: -el.bend } : null), ...(el.loop ? { loop: el.loop === 'cw' ? 'ccw' : 'cw' } : null) } as typeof el;
+      }
+      if (group && el.kind === 'node') return { ...el, at: across(el.at, group) };
       if (el.kind === 'node') return axis === 'x' ? { ...el, flipX: !el.flipX } : { ...el, flipY: !el.flipY };
       if (el.kind === 'path') return axis === 'x' ? { ...el, invert: !el.invert } : { ...el, mirror: !el.mirror };
       return el;
@@ -166,12 +187,13 @@ export function paste(model: CircuitModel, items: Element[], offset: Pt): { mode
     const id = newId(next);
     ids.set(el.id, id);
     // a placeholder so the next id and name skip this one
-    next = { ...next, elements: [...next.elements, { ...el, id, ...(el.kind !== 'wire' && el.name ? { name: nextName(next, el.name.replace(/\d+$/, '')) } : null) } as Element] };
+    next = { ...next, elements: [...next.elements, { ...el, id, ...(isPart(el) && el.name ? { name: nextName(next, el.name.replace(/\d+$/, '')) } : null) } as Element] };
   }
   const map = (end: End): End => (isPoint(end) ? add(end, offset) : { part: ids.get(end.part) || end.part, pin: end.pin });
   const pasted = next.elements.slice(model.elements.length).map((el): Element => {
     if (el.kind === 'node') return { ...el, at: add(el.at, offset) };
     if (el.kind === 'path') return { ...el, a: map(el.a), b: map(el.b) };
+    if (el.kind === 'annotation') return { ...el, points: el.points.map((p) => add(p, offset)) };
     return { ...el, points: el.points.map(map) };
   });
   return { model: { ...model, elements: [...model.elements, ...pasted] }, ids: pasted.map((el) => el.id) };

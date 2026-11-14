@@ -5,9 +5,10 @@
 // when it uses one.
 import { SYMBOL_SETS, picDefinition, shapeDefinitions } from '../../../../../backend/src/data/symbolSets.js';
 import { unitWriter } from '../../units';
+import { annotationCode, textKeys, usesArrows } from './annotate';
 import { anchorFor, pinLabelSpots } from './labels';
-import { CATALOGUE, GRID_CM, PARTS, isPoint } from './model';
-import type { CircuitModel, Element, End, Mark, NodePart, PathPart, Wire } from './model';
+import { CATALOGUE, GRID_CM, PARTS, isPart, isPoint } from './model';
+import type { Annotation, CircuitModel, Element, End, Mark, NodePart, PathPart, Wire } from './model';
 
 export interface CircuitStyle {
   preset: 'american' | 'european';
@@ -148,7 +149,7 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
   // Wires bind by element id; repeated or sanitised user names must not redirect them to another part.
   const names = new Map<string, string>();
   const takenNames = new Set<string>();
-  for (const el of model.elements.filter((el) => el.kind !== 'wire')) {
+  for (const el of model.elements.filter(isPart)) {
     const base = safeName(el.name || el.id);
     let name = base;
     for (let n = 2; takenNames.has(name); n += 1) name = `${base}_${n}`;
@@ -160,7 +161,7 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
   const at = (end: End, depth = 0): string => {
     if (isPoint(end)) return `(${num(end.x * GRID_CM)},${num(end.y * GRID_CM)})`;
     const el = byId.get(end.part);
-    if (!el || el.kind === 'wire' || depth > 4) return '(0,0)';
+    if (!el || !isPart(el) || depth > 4) return '(0,0)';
     if (el.kind === 'path' && (end.pin === 'a' || end.pin === 'b')) return at(el[end.pin], depth + 1);
     // a pic names its pins' coordinates <pic>-<pin>
     return PARTS.get(el.type)?.set ? `(${nameOf(el)}-${end.pin})` : `(${nameOf(el)}.${end.pin})`;
@@ -208,13 +209,23 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
     // a set's shape that takes text gets it as the pic's text, which its pic sets in a node (\\tikzpictext)
     const picKeys = [...turns, ...(part?.text && el.text?.trim() ? [`pic text={${el.text}}`] : [])];
     if (part?.set) return `\\pic${picKeys.length ? `[${picKeys.join(', ')}]` : ''}${name} at ${at(el.at)} {${part.tikz}};`;
-    // Text is a plain node: its keys are only the turns
-    const keys = [...(part && !part.tikz ? [] : [part?.tikz || 'circ']), ...(el.options || []), ...turns];
+    // Text is a plain node: its keys are only its look and the turns
+    const keys = [...(part && !part.tikz ? textKeys(el) : [part?.tikz || 'circ']), ...(el.options || []), ...turns];
     // Label pins: a small letter beside each pin, a line each after the part
     const pins = el.pinLabels ? pinLabelSpots(el).map(({ pin, letter, dir }) => `\n\\node[font=\\scriptsize, anchor=${anchorFor(dir)}] at (${nameOf(el)}.${pin}) {${letter}};`) : [];
     return `\\node${keys.length ? `[${keys.join(', ')}]` : ''}${name} at ${at(el.at)} {${part?.text ? el.text || '' : ''}};${pins.join('')}`;
   };
   const arrowKey = { '->': '-latex', '<-': 'latex-', '<->': 'latex-latex' };
+  // a segment with a current or flow arrow is a short with i= or f=; a bent one has it on its first leg
+  // ponytail: the second leg of a bent segment can't carry it; split the segment with a point for that
+  const segment = (el: Wire, i: number) => {
+    const [from, to] = [at(el.points[i - 1]), at(el.points[i])];
+    const route = el.routes[i - 1] || '--';
+    const marks = [mark('i', el.currents?.[i - 1] ?? undefined), mark('f', el.flows?.[i - 1] ?? undefined)].filter(Boolean);
+    if (!marks.length) return `${route} ${to}`;
+    const corner = route === '--' ? '' : ` (${from.slice(1, -1)} ${route} ${to.slice(1, -1)}) --`;
+    return `to[short, ${marks.join(', ')}]${corner} ${to}`;
+  };
 
   const { picture, ctikz } = styleCode(style);
   // the other sets' pictures this drawing uses, in the catalogue's order
@@ -231,10 +242,12 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
     ...model.elements.filter((el): el is PathPart => el.kind === 'path').map(pathCode),
     ...model.elements
       .filter((el): el is Wire => el.kind === 'wire' && el.points.length > 1)
-      .map((el) => `\\draw${el.arrows ? `[${arrowKey[el.arrows]}]` : ''} ${el.points.map((p, i) => (i ? `${el.routes[i - 1] || '--'} ${at(p)}` : at(p))).join(' ')};`),
-    ...model.junctions.map((j) => `\\node[circ] at ${at(j)} {};`)
+      .map((el) => `\\draw${el.arrows ? `[${arrowKey[el.arrows]}]` : ''} ${el.points.map((p, i) => (i ? segment(el, i) : at(p))).join(' ')};`),
+    ...model.junctions.map((j) => `\\node[circ] at ${at(j)} {};`),
+    // annotations last, over the circuit
+    ...model.elements.filter((el): el is Annotation => el.kind === 'annotation' && el.points.length > 0).map(annotationCode)
   ];
   const body = [`\\begin{circuitikz}[${picture}]`, ctikz, ...definitions, ...lines, '\\end{circuitikz}'].join('\n');
   const packages = [...new Set(['circuitikz', ...sets.flatMap((set) => set.packages), ...(siunitxUsed || units.used ? ['siunitx'] : [])])];
-  return { body, packages, libraries: [...new Set(sets.flatMap((set) => set.libraries))] };
+  return { body, packages, libraries: [...new Set([...sets.flatMap((set) => set.libraries), ...(usesArrows(model.elements) ? ['arrows.meta'] : [])])] };
 }
