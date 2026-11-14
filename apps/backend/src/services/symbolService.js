@@ -8,7 +8,7 @@ import os from 'os';
 import path from 'path';
 import { promises as fs } from 'fs';
 import { DATA_DIR } from '../config/constants.js';
-import { SYMBOL_SETS, picDefinition, setOfPic } from '../data/symbolSets.js';
+import { SYMBOL_SETS, picDefinition, setOfPic, shapeDefinitions } from '../data/symbolSets.js';
 import { readJson, writeJsonAtomic } from '../utils/fsUtils.js';
 import { PATH_KEY, findExecutable, runSpawn, texPath, unwrap } from './compileService.js';
 import { builtInTectonic } from './engineService.js';
@@ -73,8 +73,8 @@ export function symbolsRequestError(body) {
 const setsOf = (parts) => [...new Set(parts.map((part) => (part.kind === 'pic' ? setOfPic(part.tikz) : 'circuitikz')))];
 
 /**
- * The pages' TeX: the sets' packages, libraries and pics, then a path part between two points its glyph's length
- * apart, a node or pic part at the origin. The picture is circuitikz's, in the style's options, when that's loaded.
+ * The pages' TeX: the sets' packages, libraries and pics, and the circuitikz shapes of Spectrum's own the parts use,
+ * then a path part between two points its glyph's length apart, a node or pic part at the origin. The picture is circuitikz's, in the style's options, when that's loaded.
  */
 function symbolsTex(parts, options) {
   const sets = setsOf(parts).map((id) => SYMBOL_SETS[id]);
@@ -102,6 +102,8 @@ function symbolsTex(parts, options) {
     ...(libraries.length ? [`\\usetikzlibrary{${libraries.join(',')}}`] : []),
     ...PREAMBLE.slice(1),
     ...sets.flatMap((set) => Object.entries(set.pics).map(([key, body]) => picDefinition(key, body))),
+    // Spectrum's own circuitikz shapes the parts use
+    ...(environment === 'circuitikz' ? shapeDefinitions(parts.filter((part) => part.kind === 'node').map((part) => part.tikz)) : []),
     '\\begin{document}',
     ...lines,
     '\\end{document}',

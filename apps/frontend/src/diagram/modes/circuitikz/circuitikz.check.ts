@@ -368,4 +368,31 @@ eq(circuitCode(before, { siUnits: true }).body.split('\n').slice(2), [
   '\\end{circuitikz}'
 ], 'an earlier drawing writes what it did');
 
+// MU Style MOSFETs: their own group, found by name or key; the shapes declared in the picture only when one is used,
+// before the parts, and named anchors for wires and pin letters
+const mu = CATALOGUE.filter((part) => part.group === 'MU Style');
+eq(mu.map((part) => part.tikz), ['munmos', 'mupmos', 'nmos, arrowmos', 'pmos, arrowmos, nocircle'], 'four MU Style MOSFETs');
+for (const word of ['mu', 'mosfet', 'nmos', 'pmos', 'enhancement', 'depletion']) eq(mu.some((part) => `${part.label} ${part.tikz}`.toLowerCase().includes(word)), true, `MU Style found by ${word}`);
+const muCircuit: CircuitModel = { elements: [
+  { id: 'n', kind: 'node', type: 'mu-nmos', at: { x: 0, y: 0 }, name: 'M1', rotate: 90, flipX: true, pinLabels: true },
+  { id: 'p', kind: 'node', type: 'mu-pmos', at: { x: 12, y: 0 } },
+  { id: 'r', kind: 'path', type: 'resistor', a: { part: 'n', pin: 'D' }, b: { part: 'p', pin: 'S' } }
+], junctions: [] };
+const muLines = circuitCode(muCircuit, {}).body.split('\n');
+eq([muLines[2], muLines[muLines.length - 8]], ['\\makeatletter', '\\makeatother'], 'the shapes declared at the picture’s start');
+eq(muLines.filter((line) => line.startsWith('\\spectrummumos{')), ['\\spectrummumos{munmos}{nmos}\\spectrummumos{mupmos}{pmos}'], 'each shape used declared once');
+eq(muLines.slice(-7, -1), [
+  '\\node[munmos, rotate=90, xscale=-1] (M1) at (0,0) {};',
+  '\\node[font=\\scriptsize, anchor=south east] at (M1.G) {G};',
+  '\\node[font=\\scriptsize, anchor=south east] at (M1.D) {D};',
+  '\\node[font=\\scriptsize, anchor=south west] at (M1.S) {S};',
+  '\\node[mupmos] (p) at (3,0) {};',
+  '\\draw (M1.D) to[R] (p.S);'
+], 'MU parts as circuitikz nodes, wired and labelled at their anchors');
+eq(pinLabelSpots({ type: 'mu-pmos', rotate: 90 }), pinLabelSpots({ type: 'pmos', rotate: 90 }), 'pin letters where pmos has them');
+const depletion = circuitCode({ elements: [{ id: 'd', kind: 'node', type: 'mu-nmosd', at: { x: 0, y: 0 } }, { id: 'e', kind: 'node', type: 'mu-pmosd', at: { x: 8, y: 0 } }], junctions: [] }, {});
+eq(depletion.body.split('\n').slice(2, 4), ['\\node[nmos, arrowmos] at (0,0) {};', '\\node[pmos, arrowmos, nocircle] at (2,0) {};'], 'the depletion ones are circuitikz’s solid channel with the source arrow, nothing to declare');
+eq([depletion.packages, circuitCode(muCircuit, {}).packages], [['circuitikz'], ['circuitikz']], 'nothing more for the preamble');
+eq(circuitCode(before, {}).body.includes('makeatletter'), false, 'a drawing without them declares nothing');
+
 console.log('circuitikz.check: ok');
