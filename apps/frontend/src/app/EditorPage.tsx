@@ -2986,9 +2986,12 @@ function Editor({ projectId }: { projectId: string }) {
   const latexMain = docKind(mainFile) === 'latex';
   const typstMain = docKind(mainFile) === 'typst';
   const tree = settings.projectFolders;
+  const homeFolder = tree.folders.find((f) => f.id === tree.placement[projectId]);
   const switcherItems: MenuItems = [
     ...switcherList({ projects, tree, at: switcherAt, projectId, go: setSwitcherAt, open: (id) => leave(`/editor/${id}`) }),
     { separator: true },
+    // the Home folder the project is in, opened on Home
+    homeFolder && { label: `Back to ${homeFolder.name}`, icon: 'arrow.uturn.backward', onSelect: () => leave('/projects', () => openProjectsOn('home', homeFolder.id)) },
     { label: 'All projects', icon: 'square.grid.2x2', onSelect: () => leave('/projects', () => openProjectsOn('all')) },
     { label: 'Home', icon: 'house', onSelect: () => leave('/projects', () => openProjectsOn('home')) },
     // a working copy has its own Save as new template… above the editor

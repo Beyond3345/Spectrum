@@ -168,9 +168,9 @@ type ActiveJob = TransferJob & { sourceName: string };
 /** Where the page was, for coming back from a project; Spectrum opens on Settings › Projects › Open Spectrum on. */
 let place: { view: string; home: string | null } | null = null;
 
-/** The page opens next on All projects, or on Home at the top (the editor's project switcher). */
-export const openProjectsOn = (view: 'all' | 'home') => {
-  place = { view, home: null };
+/** The page opens next on All projects, or on Home at the top or in a folder (the editor's project switcher). */
+export const openProjectsOn = (view: 'all' | 'home', home: string | null = null) => {
+  place = { view, home };
 };
 
 // ─── page ───

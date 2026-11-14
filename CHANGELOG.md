@@ -2,6 +2,23 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.3.2 (14 November 2026)
+
+### Added
+
+- More MOSFET symbols in the diagram composer, in a group of their own: the IEEE style (`nfet`, `pfet` and their depletion forms), depletion `nmosd` and `pmosd`, `nmos` and `pmos` with a bulk pin and the IGFETs (`nigfete`, `nigfetd`, `pigfete`, `pigfetd` and their bulk forms). The Arrow and Body diode options apply to more of them, and Circle draws the ring around npn, pnp and the IEEE MOSFETs
+- Label pins, in the inspector for a transistor, writes G, D and S (B for the bulk), B, C and E, or C, G and E beside its pins, outside the body, in the right places after a turn or a mirror
+- Voltage between two points, a part for ports such as v_o and v_i, with + at one end, its name in the middle and − at the other
+- A part's voltage shows with + and − at its ends on the canvas, and Flip polarity swaps them
+- Back to its folder, in the editor's project menu, opens Home in the folder the project is in
+
+### Fixed
+
+- Turning several things in the diagram composer turns them together about their common centre, with their wires and text, rather than each in its own place
+- The inspector names a label's sides by the way the part runs, Left and Right on an upright part, rather than always Above and Below
+- On Windows, editing a document while it compiles no longer fails to save. TeX keeps the main file open while it compiles, which Windows wouldn't let a save replace, so a save now writes into the file itself
+- siunitx groups only the whole-number digits in the Report or thesis template and in LaTeX converted from Typst, so 0.3574 is no longer shown as 0.357,4 while 7,790 keeps its comma
+
 ## 2.3.1 (12 November 2026)
 
 ### Fixed
