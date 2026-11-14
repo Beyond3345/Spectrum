@@ -371,8 +371,8 @@ eq(circuitCode(before, { siUnits: true }).body.split('\n').slice(2), [
 // MU Style MOSFETs: their own group, found by name or key; the shapes declared in the picture only when one is used,
 // before the parts, and named anchors for wires and pin letters
 const mu = CATALOGUE.filter((part) => part.group === 'MU Style');
-eq(mu.map((part) => part.tikz), ['munmos', 'mupmos', 'nmos, arrowmos', 'pmos, arrowmos, nocircle'], 'four MU Style MOSFETs');
-for (const word of ['mu', 'mosfet', 'nmos', 'pmos', 'enhancement', 'depletion']) eq(mu.some((part) => `${part.label} ${part.tikz}`.toLowerCase().includes(word)), true, `MU Style found by ${word}`);
+eq(mu.map((part) => part.tikz), ['munmos', 'mupmos', 'nmos, arrowmos', 'pmos, arrowmos, nocircle', 'munmosb', 'mupmosb', 'munmosdb', 'mupmosdb', 'muidealdiode', 'murectisource', 'mutildesource', 'musinesource'], 'the MU Style parts');
+for (const word of ['mu', 'mosfet', 'nmos', 'pmos', 'enhancement', 'depletion', 'bulk', 'ideal diode', 'current source', 'ac voltage source', 'sine']) eq(mu.some((part) => `${part.label} ${part.tikz}`.toLowerCase().includes(word)), true, `MU Style found by ${word}`);
 const muCircuit: CircuitModel = { elements: [
   { id: 'n', kind: 'node', type: 'mu-nmos', at: { x: 0, y: 0 }, name: 'M1', rotate: 90, flipX: true, pinLabels: true },
   { id: 'p', kind: 'node', type: 'mu-pmos', at: { x: 12, y: 0 } },
@@ -380,7 +380,7 @@ const muCircuit: CircuitModel = { elements: [
 ], junctions: [] };
 const muLines = circuitCode(muCircuit, {}).body.split('\n');
 eq([muLines[2], muLines[muLines.length - 8]], ['\\makeatletter', '\\makeatother'], 'the shapes declared at the picture’s start');
-eq(muLines.filter((line) => line.startsWith('\\spectrummumos{')), ['\\spectrummumos{munmos}{nmos}\\spectrummumos{mupmos}{pmos}'], 'each shape used declared once');
+eq(muLines.filter((line) => line.startsWith('\\spectrummumos{')), ['\\spectrummumos{munmos}{nmos}{1}{0}', '\\spectrummumos{mupmos}{pmos}{1}{0}'], 'each shape used declared once');
 eq(muLines.slice(-7, -1), [
   '\\node[munmos, rotate=90, xscale=-1] (M1) at (0,0) {};',
   '\\node[font=\\scriptsize, anchor=south east] at (M1.G) {G};',
@@ -394,5 +394,63 @@ const depletion = circuitCode({ elements: [{ id: 'd', kind: 'node', type: 'mu-nm
 eq(depletion.body.split('\n').slice(2, 4), ['\\node[nmos, arrowmos] at (0,0) {};', '\\node[pmos, arrowmos, nocircle] at (2,0) {};'], 'the depletion ones are circuitikz’s solid channel with the source arrow, nothing to declare');
 eq([depletion.packages, circuitCode(muCircuit, {}).packages], [['circuitikz'], ['circuitikz']], 'nothing more for the preamble');
 eq(circuitCode(before, {}).body.includes('makeatletter'), false, 'a drawing without them declares nothing');
+
+// the rest of the lecture slides' symbols: MU Style shapes declared once each, after the MOSFET macro they share, and
+// circuitikz's own keys and options with nothing to declare
+const slides: CircuitModel = { elements: [
+  { id: 'b', kind: 'node', type: 'mu-nmosb', at: { x: 0, y: 0 }, name: 'M1', pinLabels: true },
+  { id: 'c', kind: 'node', type: 'mu-pmosdb', at: { x: 8, y: 0 } },
+  { id: 'd', kind: 'path', type: 'mu-ideal-diode', a: { part: 'b', pin: 'bulk' }, b: { x: 4, y: -8 }, label: { text: 'D_1' }, options: ['fill=gray!25'] },
+  { id: 'i', kind: 'path', type: 'mu-current-source', a: { x: 0, y: -8 }, b: { x: 0, y: -16 }, label: { text: 'I_{SS}' }, current: { text: 'I' } },
+  { id: 'v', kind: 'path', type: 'mu-ac-source', a: { x: 4, y: -16 }, b: { x: 4, y: -8 }, voltage: { text: 'v_s' } },
+  { id: 's', kind: 'path', type: 'mu-ac-sine-source', a: { x: 8, y: -16 }, b: { x: 8, y: -8 } },
+  { id: 'r', kind: 'node', type: 'supply-up', at: { x: 0, y: 8 }, options: ['mu rail'] },
+  { id: 't', kind: 'node', type: 'transformer', at: { x: 20, y: 0 }, options: ['mu dots outside'] },
+  { id: 'u', kind: 'node', type: 'mu-nmosb', at: { x: 12, y: 0 } }
+], junctions: [] };
+const slideLines = circuitCode(slides, {}).body.split('\n');
+const declared = ['% MU Style MOSFETs:', '\\def\\spectrummumos#1#2#3#4{', '\\spectrummumos{munmosb}{nmos}{1}{1}', '\\spectrummumos{mupmosdb}{pmos}{0}{1}', '% MU Style ideal diode', '% MU Style current source (box)', '% MU Style AC source (+ ~ −)', '% MU Style AC source (sine, + and −)', '\\tikzset{mu rail/', '\\tikzset{mu dots outside/'];
+eq(slideLines.filter((line) => /^(\\def\\spectrummumos|\\spectrummumos\{|% MU|\\tikzset\{mu)/.test(line)).map((line, i) => line.startsWith(declared[i]) && declared[i]), declared, 'each shape and style used, once, the MOSFET macro first');
+eq(slideLines.filter((line) => /^\\(node|draw)/.test(line)), [
+  '\\node[munmosb] (M1) at (0,0) {};',
+  '\\node[font=\\scriptsize, anchor=south east] at (M1.G) {G};',
+  '\\node[font=\\scriptsize, anchor=south east] at (M1.D) {D};',
+  '\\node[font=\\scriptsize, anchor=north east] at (M1.S) {S};',
+  '\\node[font=\\scriptsize, anchor=south west] at (M1.bulk) {B};',
+  '\\node[mupmosdb] at (2,0) {};',
+  '\\node[vcc, mu rail] at (0,2) {};',
+  '\\node[transformer, mu dots outside] at (5,0) {};',
+  '\\node[munmosb] at (3,0) {};',
+  '\\draw (M1.bulk) to[muidealdiode, fill=gray!25, l={$D_1$}] (1,-2);',
+  '\\draw (0,-2) to[murectisource, l={$I_{SS}$}, i={$I$}] (0,-4);',
+  '\\draw (1,-4) to[mutildesource, v={$v_s$}] (1,-2);',
+  '\\draw (2,-4) to[musinesource] (2,-2);'
+], 'MU parts as circuitikz keys, with labels, currents, voltages, fill and pin letters as other parts have them');
+eq(circuitCode(slides, {}).packages, ['circuitikz'], 'nothing more for the preamble');
+eq(circuitCode({ elements: [{ id: 'd', kind: 'path', type: 'mu-ideal-diode', a: { x: 0, y: 0 }, b: { x: 4, y: 0 } }], junctions: [] }, {}).body.split('\n').filter((line) => line.startsWith('\\def')), [], 'a two-terminal one alone leaves the MOSFET macro out');
+const options = circuitCode({ elements: [
+  { id: 'z', kind: 'path', type: 'zener-z', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, options: ['fill=gray!25'] },
+  { id: 'x', kind: 'path', type: 'impedance-text', a: { x: 0, y: 4 }, b: { x: 8, y: 4 }, text: '$Z_1(s)$' },
+  { id: 'p', kind: 'node', type: 'pmos', at: { x: 0, y: 8 }, options: ['emptycircle'] },
+  { id: 'o', kind: 'node', type: 'op-amp', at: { x: 8, y: 8 }, text: '$A$', options: ['noinv input up', 'circuitikz/amplifiers/scale=3'] },
+  { id: 'a', kind: 'node', type: 'amplifier', at: { x: 16, y: 8 }, text: '$A$' },
+  { id: 'g', kind: 'node', type: 'ground', at: { x: 16, y: 4 } },
+  { id: 'w', kind: 'wire', points: [{ part: 'a', pin: 'down' }, { part: 'g', pin: 'center' }], routes: ['--'] }
+], junctions: [] }, {}).body.split('\n');
+eq(options.slice(2, -1), [
+  '\\node[pmos, emptycircle] at (0,2) {};',
+  '\\node[op amp, noinv input up, circuitikz/amplifiers/scale=3] at (2,2) {$A$};',
+  '\\node[plain mono amp] (a) at (4,2) {$A$};',
+  '\\node[ground] (g) at (4,1) {};',
+  '\\draw (0,0) to[zzD, fill=gray!25] (1,0);',
+  '\\draw (0,1) to[twoport, bipoles/twoport/width=.8, bipoles/twoport/height=.3, t={$Z_1(s)$}] (2,1);',
+  '\\draw (a.down) -- (g.center);'
+], 'the circuitikz options and entries: zzD, text in a box, the gate circle, a sized op amp with text, an amplifier’s bottom pin');
+for (const [id, choices] of [['pmos', 3], ['pmosd', 3], ['pmos-bulk', 3], ['op-amp', 3], ['amplifier', 3], ['transformer', 2], ['transformer-core', 2]] as const) {
+  eq(PARTS.get(id)?.enumOptions?.slice(-1)[0]?.values.length, choices, `${id} offers its new choice`);
+}
+for (const id of ['diode', 'zener', 'zener-z', 'mu-ideal-diode']) eq(PARTS.get(id)?.options?.map((o) => o.label), ['Filled'], `${id} can be filled`);
+// every option and key Spectrum declares is one the symbol route lets through (symbolService's SAFE)
+for (const part of CATALOGUE) for (const key of [part.tikz, ...(part.options || []), ...(part.enumOptions || []).flatMap((group) => group.values)].map((k) => (typeof k === 'string' ? k : k.name))) eq(/^[\w .,=+\-/*<>^!|:]*$/.test(key), true, `${part.id}: ${key} is safe to send`);
 
 console.log('circuitikz.check: ok');

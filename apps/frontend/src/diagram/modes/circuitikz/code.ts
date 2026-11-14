@@ -1,8 +1,8 @@
 // The circuit as circuitikz code: one \draw or \node per element with plain coordinates in cm, and the
 // style as picture options and \ctikzset, so the document's preamble needs only \usepackage{circuitikz}. A part from
 // another symbol set is a \pic, defined inside the picture (only the ones used), its set's packages and libraries
-// added to what the document loads. Spectrum's own circuitikz shapes (the MU Style MOSFETs) are declared in the picture
-// too, only when it uses one.
+// added to what the document loads. Spectrum's own circuitikz shapes (MU Style) are declared in the picture too, only
+// when it uses one.
 import { SYMBOL_SETS, picDefinition, shapeDefinitions } from '../../../../../backend/src/data/symbolSets.js';
 import { unitWriter } from '../../units';
 import { anchorFor, pinLabelSpots } from './labels';
@@ -221,9 +221,9 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
   const usedTypes = new Set(model.elements.map((el) => el.kind === 'node' && el.type));
   const pics = CATALOGUE.filter((part) => part.set && usedTypes.has(part.id) && SYMBOL_SETS[part.set]?.pics[part.tikz]);
   const sets = [...new Set(pics.map((part) => SYMBOL_SETS[part.set!]))];
-  // and Spectrum's own circuitikz shapes it uses (the MU Style MOSFETs), declared in the picture, as \includestandalone
-  // leaves the drawing's preamble behind
-  const shapes = shapeDefinitions(model.elements.flatMap((el) => (el.kind === 'node' && !PARTS.get(el.type)?.set ? [PARTS.get(el.type)?.tikz || ''] : [])));
+  // and Spectrum's own circuitikz shapes and styles its parts and options use (MU Style), declared in the picture, as
+  // \includestandalone leaves the drawing's preamble behind
+  const shapes = shapeDefinitions(model.elements.flatMap((el) => (el.kind !== 'wire' && !PARTS.get(el.type)?.set ? [[PARTS.get(el.type)?.tikz || '', ...(el.options || [])].join(', ')] : [])));
   const definitions = [...shapes, ...pics.map((part) => picDefinition(part.tikz, SYMBOL_SETS[part.set!].pics[part.tikz]))];
   const lines = [
     // nodes first, so wires and parts can reach their anchors

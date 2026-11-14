@@ -103,7 +103,7 @@ function symbolsTex(parts, options) {
     ...PREAMBLE.slice(1),
     ...sets.flatMap((set) => Object.entries(set.pics).map(([key, body]) => picDefinition(key, body))),
     // Spectrum's own circuitikz shapes the parts use
-    ...(environment === 'circuitikz' ? shapeDefinitions(parts.filter((part) => part.kind === 'node').map((part) => part.tikz)) : []),
+    ...(environment === 'circuitikz' ? shapeDefinitions(parts.filter((part) => part.kind !== 'pic').map((part) => [part.tikz, ...(part.options || [])].join(', '))) : []),
     '\\begin{document}',
     ...lines,
     '\\end{document}',

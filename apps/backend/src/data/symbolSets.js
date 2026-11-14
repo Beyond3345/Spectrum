@@ -14,7 +14,7 @@ const sides = (w, h) => `\\coordinate (-north) at (0,${h});\\coordinate (-south)
 
 /** id → { version, packages (bare names, never options), libraries (TikZ names), pics: { key: body } } */
 export const SYMBOL_SETS = {
-  circuitikz: { version: 1, packages: ['circuitikz'], libraries: [], pics: {} },
+  circuitikz: { version: 2, packages: ['circuitikz'], libraries: [], pics: {} },
   'spx-mech': {
     version: 2,
     packages: [],
@@ -89,41 +89,88 @@ export const picDefinition = (key, body) => `\\tikzset{${key}/.pic={${body}}}`;
 /** The set a pic key belongs to, or undefined. */
 export const setOfPic = (key) => Object.keys(SYMBOL_SETS).find((id) => key in SYMBOL_SETS[id].pics);
 
-// circuitikz shapes of Spectrum's own, declared where a drawing or the palette uses one. The MU Style MOSFETs (as Hong
-// Kong Metropolitan University draws them) are circuitikz's nmos and pmos, their anchors and size taken from those, with
-// the channel in three segments as nigfete has it and the arrow on the source lead as arrowmos puts it: out of an N
-// channel, into a P one. Bump circuitikz's version above whenever this TeX changes.
+// circuitikz shapes of Spectrum's own, declared where a drawing or the palette uses one: the MU Style symbols, as Hong
+// Kong Metropolitan University's lecture slides draw them. Each is drawn from circuitikz's own parameters, line widths and
+// currarrow, so it sizes, turns, flips, colours and labels as circuitikz's parts do. Bump circuitikz's version above
+// whenever this TeX changes.
+//
+// The MOSFETs are circuitikz's nmos and pmos, their anchors and size taken from those: the channel in three segments as
+// nigfete has it (#3 = 1) or solid (0), and the arrow on the source lead as arrowmos puts it, out of an N channel and
+// into a P one (#4 = 0), or on a bulk lead to the bulk anchor, into an N channel and out of a P one (#4 = 1).
 // ponytail: no body diode or transistor circle on them; draw those from circuitikz's own code if they're asked for
-const MU_MOS = String.raw`% MU Style MOSFETs: circuitikz's nmos and pmos with the channel in three segments and the arrow on the source lead
-\def\spectrummumos#1#2{\pgfdeclareshape{#1}{\inheritsavedanchors[from=#2]\inheritanchorborder[from=#2]%
-\foreach\a in {center,text,north,south,east,west,north east,north west,south east,south west,left,right,G,D,S,gate,drain,source}{\inheritanchor[from=#2]{\a}}%
+const MU_MOS = String.raw`% MU Style MOSFETs: circuitikz's nmos and pmos with the channel in three segments or solid, and the arrow on the source or bulk lead
+\def\spectrummumos#1#2#3#4{\pgfdeclareshape{#1}{\inheritsavedanchors[from=#2]\inheritanchorborder[from=#2]%
+\foreach\a in {center,text,north,south,east,west,north east,north west,south east,south west,left,right,G,D,S,gate,drain,source,bulk}{\inheritanchor[from=#2]{\a}}%
 \pgf@circ@draw@component{\pgftransformationadjustments\pgf@circ@setcolor
 \northeast\pgf@circ@res@up=\pgf@y\left\pgf@circ@res@left=\pgf@x
 \def\x####1{\ctikzvalof{tripoles/#2/####1 width}\pgf@circ@res@left}\def\y####1{\ctikzvalof{tripoles/#2/####1 height}\pgf@circ@res@up}%
-% the drain and source leads, and the gate's
+% the drain and source leads, the gate's and the bulk's
 \pgfpathmoveto{\pgfpoint{0pt}{\pgf@circ@res@up+\pgfverticaltransformationadjustment*.5\pgflinewidth}}\pgfpathlineto{\pgfpoint{0pt}{\y{gate}}}\pgfpathlineto{\pgfpoint{\x{base}}{\y{gate}}}%
 \pgfpathmoveto{\pgfpoint{\x{base}}{-\y{gate}}}\pgfpathlineto{\pgfpoint{0pt}{-\y{gate}}}\pgfpathlineto{\pgfpoint{0pt}{-\pgf@circ@res@up-\pgfverticaltransformationadjustment*.5\pgflinewidth}}%
 \ifpgf@circuit@bpt@drawgate\pgfpathmoveto{\pgfpoint{\x{gate}}{0pt}}\pgfpathlineto{\pgfpoint{\pgf@circ@res@left-\pgfhorizontaltransformationadjustment*.5\pgflinewidth}{0pt}}\fi
+\ifnum#4=1 \pgfpathmoveto{\pgfpoint{\x{base}}{0pt}}\pgfpathlineto{\pgfpoint{\pgfhorizontaltransformationadjustment*.5\pgflinewidth}{0pt}}\fi
 \pgfusepath{draw}%
-% the channel in three segments, and the gate
+% the channel, and the gate
 \pgfscope\pgf@circ@setlinewidth{tripoles}{\pgflinewidth}\ifpgf@circuit@trans@roundedcap\pgfsetroundcap\fi
-\pgfpathmoveto{\pgfpoint{\x{base}}{\y{base}}}\pgfpathlineto{\pgfpoint{\x{base}}{\y{base}*.45}}%
+\ifnum#3=1 \pgfpathmoveto{\pgfpoint{\x{base}}{\y{base}}}\pgfpathlineto{\pgfpoint{\x{base}}{\y{base}*.45}}%
 \pgfpathmoveto{\pgfpoint{\x{base}}{\y{base}*.25}}\pgfpathlineto{\pgfpoint{\x{base}}{-\y{base}*.25}}%
-\pgfpathmoveto{\pgfpoint{\x{base}}{-\y{base}*.45}}\pgfpathlineto{\pgfpoint{\x{base}}{-\y{base}}}\pgfusepath{draw}%
+\pgfpathmoveto{\pgfpoint{\x{base}}{-\y{base}*.45}}\pgfpathlineto{\pgfpoint{\x{base}}{-\y{base}}}%
+\else\pgfpathmoveto{\pgfpoint{\x{base}}{\y{base}}}\pgfpathlineto{\pgfpoint{\x{base}}{-\y{base}}}\fi\pgfusepath{draw}%
 \pgfsetlinewidth{\ctikzvalof{transistors/gate thickness}\pgflinewidth}%
 \pgfpathmoveto{\pgfpoint{\x{gate}}{\y{gate}}}\pgfpathlineto{\pgfpoint{\x{gate}}{-\y{gate}}}\pgfusepath{draw}\endpgfscope
-% the arrow on the source lead
+% the arrow on the source or bulk lead
 \pgfscope\pgfslopedattimetrue\pgfallowupsidedownattimetrue\pgfresetnontranslationattimefalse
-\ifnum\ctikzvalof{tripoles/#2/curr direction}>0
+\ifnum#4=1 \ifnum\ctikzvalof{tripoles/#2/curr direction}>0
+\pgftransformlineattime{\ctikzvalof{tripoles/#2/arrow pos}}{\pgfpointorigin}{\pgfpoint{\x{base}}{0pt}}%
+\else\pgftransformlineattime{\ctikzvalof{tripoles/#2/arrow pos}}{\pgfpoint{\x{base}}{0pt}}{\pgfpointorigin}\fi
+\else\ifnum\ctikzvalof{tripoles/#2/curr direction}>0
 \pgftransformlineattime{\ctikzvalof{tripoles/#2/arrow pos}}{\pgfpoint{\x{gate}}{-\y{gate}}}{\pgfpoint{0pt}{-\y{gate}}}%
-\else\pgftransformlineattime{\ctikzvalof{tripoles/#2/arrow pos}}{\pgfpoint{0pt}{\y{gate}}}{\pgfpoint{\x{gate}}{\y{gate}}}\fi
+\else\pgftransformlineattime{\ctikzvalof{tripoles/#2/arrow pos}}{\pgfpoint{0pt}{\y{gate}}}{\pgfpoint{\x{gate}}{\y{gate}}}\fi\fi
 \pgfnode{currarrow}{center}{}{}{\pgfusepath{stroke}}\endpgfscope}}}`;
 
-/** Each shape's declaration, by the shape's name (its circuitikz key). */
-const CIRCUIT_SHAPES = { munmos: '\\spectrummumos{munmos}{nmos}', mupmos: '\\spectrummumos{mupmos}{pmos}' };
+// Two-terminal parts: bipole shapes declared as circuitikz declares its own, so labels, values, voltages, currents, poles
+// and fill work on them as on D, I and V.
+const bipole = (name, cls, height, width, kind, options, drawing) => String.raw`\ctikzset{bipoles/${name}/height/.initial=${height},bipoles/${name}/width/.initial=${width}}%
+\pgfcircdeclarebipolescaled{${cls}}{}{\ctikzvalof{bipoles/${name}/height}}{${name}}{\ctikzvalof{bipoles/${name}/height}}{\ctikzvalof{bipoles/${name}/width}}{\pgf@circ@setlinewidth{bipoles}{\pgfstartlinewidth}${drawing}}%
+\pgfcirc@activate@bipole@opt{${kind}}{${name}}{${name}}{${name}}{${options}}`;
+const box = String.raw`\pgfpathrectanglecorners{\pgfpoint{\pgf@circ@res@left}{\pgf@circ@res@down}}{\pgfpoint{\pgf@circ@res@right}{\pgf@circ@res@up}}`;
+const circle = String.raw`\pgfscope\pgfpathellipse{\pgfpointorigin}{\pgfpoint{0pt}{\pgf@circ@res@up}}{\pgfpoint{\pgf@circ@res@left}{0pt}}\pgf@circ@draworfill\endpgfscope`;
+// a voltage source's + and −, as circuitikz's american voltage source sets them but smaller and nearer the rim, as the
+// slides have them, to leave room between them; circuitikz before 1.5 (Tectonic's) sets them in the default way only
+const signs = String.raw`\pgfscope\ctikzset{bipoles/vsourceam/margin=.8,bipoles/vsourceam/inner plus={$\scriptstyle+$},bipoles/vsourceam/inner minus={$\vphantom{\scriptstyle+}\scriptstyle-$}}\csname pgf@circ@text@strokecolor\endcsname
+\ifcsname pgf@circ@vsources@draw@signs\endcsname\pgf@circ@vsources@draw@signs\else\def\p{\ctikzvalof{bipoles/vsourceam/inner plus}}\def\m{\ctikzvalof{bipoles/vsourceam/inner minus}}%
+\ifpgf@circ@oldvoltagedirection\else\def\p{\ctikzvalof{bipoles/vsourceam/inner minus}}\def\m{\ctikzvalof{bipoles/vsourceam/inner plus}}\fi
+\pgftext[bottom,rotate=90,y=\ctikzvalof{bipoles/vsourceam/margin}\pgf@circ@res@down]{\p}\pgftext[top,rotate=90,y=\ctikzvalof{bipoles/vsourceam/margin}\pgf@circ@res@up]{\m}\fi\endpgfscope`;
+const voltage = String.raw`\circuitikzbasekey/bipole/is voltage=true,\circuitikzbasekey/bipole/is voltageoutsideofsymbol=false`;
 
-/** The lines that declare the shapes these circuitikz keys (nmos, munmos, …) use, for a picture or a preamble; none when they use none. */
+/** Each shape's TeX, by the key a drawing uses it with; `needs` is shared TeX it calls, declared once before it. */
+const CIRCUIT_SHAPES = {
+  munmos: { needs: MU_MOS, tex: '\\spectrummumos{munmos}{nmos}{1}{0}' },
+  mupmos: { needs: MU_MOS, tex: '\\spectrummumos{mupmos}{pmos}{1}{0}' },
+  munmosb: { needs: MU_MOS, tex: '\\spectrummumos{munmosb}{nmos}{1}{1}' },
+  mupmosb: { needs: MU_MOS, tex: '\\spectrummumos{mupmosb}{pmos}{1}{1}' },
+  munmosdb: { needs: MU_MOS, tex: '\\spectrummumos{munmosdb}{nmos}{0}{1}' },
+  mupmosdb: { needs: MU_MOS, tex: '\\spectrummumos{mupmosdb}{pmos}{0}{1}' },
+  // the ideal diode: circuitikz's empty diode at about two thirds of its size, in a square
+  muidealdiode: { tex: `% MU Style ideal diode\n${bipole('muidealdiode', 'diodes', '.6', '.6', 'l', '', String.raw`${box}\pgfusepath{draw}\pgf@circ@res@up=.6\pgf@circ@res@up\pgf@circ@res@down=.6\pgf@circ@res@down\pgf@circ@res@left=.5\pgf@circ@res@left\pgf@circ@res@right=.5\pgf@circ@res@right\pgfscope\pgf@circ@basicdiodeshape\endpgfscope\pgfpathmoveto{\pgfpoint{\pgf@circ@res@right}{\pgf@circ@res@down}}\pgfpathlineto{\pgfpoint{\pgf@circ@res@right}{\pgf@circ@res@up}}\pgfusepath{draw}`)}` },
+  // the electronic current source: a box along the wire with the american current source's arrow in it
+  murectisource: { tex: `% MU Style current source (box)\n${bipole('murectisource', 'sources', '.4', '.7', 'i', '\\circuitikzbasekey/bipole/is current=true', String.raw`${box}\pgf@circ@draworfill\pgfpathmoveto{\pgfpoint{.75\pgf@circ@res@left}{0pt}}\pgfpathlineto{\pgfpoint{.75\pgf@circ@res@right}{0pt}}\pgfusepath{draw}\pgfscope\pgftransformshift{\pgfpoint{.5\pgf@circ@res@right}{0pt}}\pgfnode{currarrow}{center}{}{}{\pgfusepath{stroke}}\endpgfscope`)}` },
+  // AC sources: the american voltage source with ~ between its + and −, or with a smaller sine than sV's between them;
+  // the ~ and the sine turn with the part as sV's sine does
+  mutildesource: { tex: `% MU Style AC source (+ ~ −)\n${bipole('mutildesource', 'sources', '.6', '.6', 'v', voltage, String.raw`${circle}${signs}\pgfscope\pgf@circ@sources@symbol@setup\csname pgf@circ@text@strokecolor\endcsname\pgftext{$\sim$}\endpgfscope`)}` },
+  musinesource: { tex: `% MU Style AC source (sine, + and −)\n${bipole('musinesource', 'sources', '.6', '.6', 'v', voltage, String.raw`${circle}${signs}\pgf@circ@res@up=.4\pgf@circ@res@up\pgfscope\pgf@circ@sources@symbol@setup\pgfpathmoveto{\pgfpoint{-\pgf@circ@res@up}{0pt}}\pgfpathsine{\pgfpoint{.5\pgf@circ@res@up}{.5\pgf@circ@res@up}}\pgfpathcosine{\pgfpoint{.5\pgf@circ@res@up}{-.5\pgf@circ@res@up}}\pgfpathsine{\pgfpoint{.5\pgf@circ@res@up}{-.5\pgf@circ@res@up}}\pgfpathcosine{\pgfpoint{.5\pgf@circ@res@up}{.5\pgf@circ@res@up}}\pgfusepath{draw}\endpgfscope`)}` },
+  // a supply drawn as a bar, not an arrow: vcc with arrows.meta's Bar, as wide as three of its arrows and as thick as its arrow's lines
+  'mu rail': { tex: '\\tikzset{mu rail/.style={circuitikz/monopoles/vcc/arrow={Bar[width=.6*\\the\\pgf@circ@scaled@Rlen, line width=0pt 2]}}}' },
+  // a transformer's polarity dots, circuitikz's junction dots at its own dot anchors
+  'mu dots outside': { tex: '\\tikzset{mu dots outside/.style={append after command={\\pgfextra{\\edef\\spectrumtr{\\tikzlastnode}} node[circ] at (\\spectrumtr.outer dot A1) {} node[circ] at (\\spectrumtr.outer dot B1) {}}}}' },
+  'mu dots inside': { tex: '\\tikzset{mu dots inside/.style={append after command={\\pgfextra{\\edef\\spectrumtr{\\tikzlastnode}} node[circ] at (\\spectrumtr.inner dot A1) {} node[circ] at (\\spectrumtr.inner dot B1) {}}}}' }
+};
+
+/** The lines that declare the shapes and styles these circuitikz keys (`nmos`, `munmos, mu rail`, …) use, for a picture or a preamble; none when they use none. */
 export function shapeDefinitions(keys) {
-  const used = Object.keys(CIRCUIT_SHAPES).filter((shape) => keys.some((key) => key.split(',')[0].trim() === shape));
-  return used.length ? ['\\makeatletter', MU_MOS, used.map((shape) => CIRCUIT_SHAPES[shape]).join(''), '\\makeatother'] : [];
+  const words = new Set(keys.flatMap((key) => key.split(',').map((word) => word.trim())));
+  const used = Object.keys(CIRCUIT_SHAPES).filter((shape) => words.has(shape)).map((shape) => CIRCUIT_SHAPES[shape]);
+  if (!used.length) return [];
+  const needs = [...new Set(used.flatMap((shape) => (shape.needs ? [shape.needs] : [])))];
+  return ['\\makeatletter', ...needs, ...used.map((shape) => shape.tex), '\\makeatother'];
 }

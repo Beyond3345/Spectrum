@@ -3,6 +3,7 @@
   { "id": "variable-resistor", "label": "Variable resistor", "group": "Resistors and impedances", "kind": "path", "tikz": "vR", "defaultLabel": "R" },
   { "id": "potentiometer", "label": "Potentiometer", "group": "Resistors and impedances", "kind": "path", "tikz": "pR", "pins": ["wiper"], "defaultLabel": "R" },
   { "id": "impedance", "label": "Impedance", "group": "Resistors and impedances", "kind": "path", "tikz": "generic", "defaultLabel": "Z" },
+  { "id": "impedance-text", "label": "Impedance (text inside)", "group": "Resistors and impedances", "kind": "path", "tikz": "twoport, bipoles/twoport/width=.8, bipoles/twoport/height=.3", "text": true },
   { "id": "fuse", "label": "Fuse", "group": "Resistors and impedances", "kind": "path", "tikz": "fuse", "defaultLabel": "F" },
 
   { "id": "capacitor", "label": "Capacitor", "group": "Capacitors and inductors", "kind": "path", "tikz": "C", "defaultLabel": "C" },
@@ -32,9 +33,10 @@
   { "id": "switch-opening", "label": "Switch (opening)", "group": "Switches", "kind": "path", "tikz": "ospst", "defaultLabel": "S" },
   { "id": "changeover-switch", "label": "Changeover switch", "group": "Switches", "kind": "node", "tikz": "spdt", "pins": ["in", "out 1", "out 2"], "defaultLabel": "S" },
 
-  { "id": "diode", "label": "Diode", "group": "Diodes and thyristors", "kind": "path", "tikz": "D", "defaultLabel": "D" },
+  { "id": "diode", "label": "Diode", "group": "Diodes and thyristors", "kind": "path", "tikz": "D", "defaultLabel": "D", "options": [{ "name": "fill=gray!25", "label": "Filled" }] },
   { "id": "led", "label": "LED", "group": "Diodes and thyristors", "kind": "path", "tikz": "leD", "defaultLabel": "D" },
-  { "id": "zener", "label": "Zener diode", "group": "Diodes and thyristors", "kind": "path", "tikz": "zD", "defaultLabel": "D" },
+  { "id": "zener", "label": "Zener diode", "group": "Diodes and thyristors", "kind": "path", "tikz": "zD", "defaultLabel": "D", "options": [{ "name": "fill=gray!25", "label": "Filled" }] },
+  { "id": "zener-z", "label": "Zener diode (both ends bent)", "group": "Diodes and thyristors", "kind": "path", "tikz": "zzD", "defaultLabel": "D", "options": [{ "name": "fill=gray!25", "label": "Filled" }] },
   { "id": "schottky", "label": "Schottky diode", "group": "Diodes and thyristors", "kind": "path", "tikz": "sD", "defaultLabel": "D" },
   { "id": "photodiode", "label": "Photodiode", "group": "Diodes and thyristors", "kind": "path", "tikz": "pD", "defaultLabel": "D" },
   { "id": "thyristor", "label": "Thyristor", "group": "Diodes and thyristors", "kind": "path", "tikz": "thyristor", "pins": ["gate"], "defaultLabel": "T" },
@@ -77,7 +79,7 @@
     "id": "pmos", "label": "P-channel MOSFET (enhancement)", "group": "MOSFETs", "kind": "node", "tikz": "pmos", "pins": ["G", "D", "S"], "defaultLabel": "M",
     "pinLabels": { "G": "left", "D": "down", "S": "up" },
     "options": [{ "name": "bodydiode", "label": "Body diode" }],
-    "enumOptions": [{ "label": "Arrow", "values": [{ "name": "arrowmos", "label": "Shown" }, { "name": "noarrowmos", "label": "Hidden" }] }]
+    "enumOptions": [{ "label": "Arrow", "values": [{ "name": "arrowmos", "label": "Shown" }, { "name": "noarrowmos", "label": "Hidden" }] }, { "label": "Gate circle", "values": [{ "name": "fullcircle", "label": "Filled" }, { "name": "emptycircle", "label": "Open" }, { "name": "nocircle", "label": "None" }] }]
   },
   {
     "id": "nmosd", "label": "N-channel MOSFET (depletion)", "group": "MOSFETs", "kind": "node", "tikz": "nmosd", "pins": ["G", "D", "S"], "defaultLabel": "M",
@@ -89,7 +91,7 @@
     "id": "pmosd", "label": "P-channel MOSFET (depletion)", "group": "MOSFETs", "kind": "node", "tikz": "pmosd", "pins": ["G", "D", "S"], "defaultLabel": "M",
     "pinLabels": { "G": "left", "D": "down", "S": "up" },
     "options": [{ "name": "bodydiode", "label": "Body diode" }],
-    "enumOptions": [{ "label": "Arrow", "values": [{ "name": "arrowmos", "label": "Shown" }, { "name": "noarrowmos", "label": "Hidden" }] }]
+    "enumOptions": [{ "label": "Arrow", "values": [{ "name": "arrowmos", "label": "Shown" }, { "name": "noarrowmos", "label": "Hidden" }] }, { "label": "Gate circle", "values": [{ "name": "fullcircle", "label": "Filled" }, { "name": "emptycircle", "label": "Open" }, { "name": "nocircle", "label": "None" }] }]
   },
   {
     "id": "nmos-bulk", "label": "N-channel MOSFET with bulk", "group": "MOSFETs", "kind": "node", "tikz": "nmos, bulk", "pins": ["G", "D", "S", "bulk"], "defaultLabel": "M",
@@ -101,7 +103,7 @@
     "id": "pmos-bulk", "label": "P-channel MOSFET with bulk", "group": "MOSFETs", "kind": "node", "tikz": "pmos, bulk", "pins": ["G", "D", "S", "bulk"], "defaultLabel": "M",
     "pinLabels": { "G": "left", "D": "down", "S": "up", "bulk": "right" },
     "options": [{ "name": "bodydiode", "label": "Body diode" }],
-    "enumOptions": [{ "label": "Arrow", "values": [{ "name": "arrowmos", "label": "Shown" }, { "name": "noarrowmos", "label": "Hidden" }] }]
+    "enumOptions": [{ "label": "Arrow", "values": [{ "name": "arrowmos", "label": "Shown" }, { "name": "noarrowmos", "label": "Hidden" }] }, { "label": "Gate circle", "values": [{ "name": "fullcircle", "label": "Filled" }, { "name": "emptycircle", "label": "Open" }, { "name": "nocircle", "label": "None" }] }]
   },
   {
     "id": "nfet", "label": "N-channel MOSFET (IEEE, enhancement)", "group": "MOSFETs", "kind": "node", "tikz": "nfet", "pins": ["G", "D", "S"], "defaultLabel": "M",
@@ -170,12 +172,32 @@
     "id": "mu-pmosd", "label": "MU P-channel MOSFET (depletion)", "group": "MU Style", "kind": "node", "tikz": "pmos, arrowmos, nocircle", "pins": ["G", "D", "S"], "defaultLabel": "M",
     "pinLabels": { "G": "left", "D": "down", "S": "up" }
   },
+  {
+    "id": "mu-nmosb", "label": "MU N-channel MOSFET with bulk (enhancement)", "group": "MU Style", "kind": "node", "tikz": "munmosb", "pins": ["G", "D", "S", "bulk"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "up", "S": "down", "bulk": "right" }
+  },
+  {
+    "id": "mu-pmosb", "label": "MU P-channel MOSFET with bulk (enhancement)", "group": "MU Style", "kind": "node", "tikz": "mupmosb", "pins": ["G", "D", "S", "bulk"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "down", "S": "up", "bulk": "right" }
+  },
+  {
+    "id": "mu-nmosdb", "label": "MU N-channel MOSFET with bulk (depletion)", "group": "MU Style", "kind": "node", "tikz": "munmosdb", "pins": ["G", "D", "S", "bulk"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "up", "S": "down", "bulk": "right" }
+  },
+  {
+    "id": "mu-pmosdb", "label": "MU P-channel MOSFET with bulk (depletion)", "group": "MU Style", "kind": "node", "tikz": "mupmosdb", "pins": ["G", "D", "S", "bulk"], "defaultLabel": "M",
+    "pinLabels": { "G": "left", "D": "down", "S": "up", "bulk": "right" }
+  },
+  { "id": "mu-ideal-diode", "label": "MU ideal diode", "group": "MU Style", "kind": "path", "tikz": "muidealdiode", "defaultLabel": "D", "options": [{ "name": "fill=gray!25", "label": "Filled" }] },
+  { "id": "mu-current-source", "label": "MU current source (box)", "group": "MU Style", "kind": "path", "tikz": "murectisource", "defaultLabel": "I" },
+  { "id": "mu-ac-source", "label": "MU AC voltage source (+ ~ −)", "group": "MU Style", "kind": "path", "tikz": "mutildesource", "defaultLabel": "V" },
+  { "id": "mu-ac-sine-source", "label": "MU AC voltage source (sine with + and −)", "group": "MU Style", "kind": "path", "tikz": "musinesource", "defaultLabel": "V" },
 
   {
-    "id": "op-amp", "label": "Op amp", "group": "Amplifiers and chips", "kind": "node", "tikz": "op amp", "pins": ["-", "+", "out", "up", "down"], "defaultLabel": "U",
-    "enumOptions": [{ "label": "Inputs", "values": [{ "name": "noinv input down", "label": "Inverting on top" }, { "name": "noinv input up", "label": "Non-inverting on top" }] }]
+    "id": "op-amp", "label": "Op amp", "group": "Amplifiers and chips", "kind": "node", "tikz": "op amp", "pins": ["-", "+", "out", "up", "down"], "text": true, "defaultLabel": "U",
+    "enumOptions": [{ "label": "Inputs", "values": [{ "name": "noinv input down", "label": "Inverting on top" }, { "name": "noinv input up", "label": "Non-inverting on top" }] }, { "label": "Size", "values": [{ "name": "circuitikz/amplifiers/scale=1.5", "label": "150%" }, { "name": "circuitikz/amplifiers/scale=2", "label": "200%" }, { "name": "circuitikz/amplifiers/scale=3", "label": "300%" }] }]
   },
-  { "id": "amplifier", "label": "Amplifier", "group": "Amplifiers and chips", "kind": "node", "tikz": "plain mono amp", "pins": ["in", "out"], "defaultLabel": "A" },
+  { "id": "amplifier", "label": "Amplifier", "group": "Amplifiers and chips", "kind": "node", "tikz": "plain mono amp", "pins": ["in", "out", "up", "down"], "text": true, "defaultLabel": "A", "enumOptions": [{ "label": "Size", "values": [{ "name": "circuitikz/amplifiers/scale=1.5", "label": "150%" }, { "name": "circuitikz/amplifiers/scale=2", "label": "200%" }, { "name": "circuitikz/amplifiers/scale=3", "label": "300%" }] }] },
   { "id": "buffer", "label": "Buffer", "group": "Amplifiers and chips", "kind": "node", "tikz": "buffer", "pins": ["in", "out"], "defaultLabel": "U" },
   { "id": "chip-8", "label": "Chip (8 pins)", "group": "Amplifiers and chips", "kind": "node", "tikz": "dipchip, num pins=8", "pins": ["pin 1", "pin 2", "pin 3", "pin 4", "pin 5", "pin 6", "pin 7", "pin 8"], "text": true, "defaultLabel": "U" },
 
@@ -197,15 +219,15 @@
   { "id": "ground", "label": "Ground", "group": "Ground, supply and terminals", "kind": "node", "tikz": "ground", "pins": ["center"] },
   { "id": "reference-ground", "label": "Reference ground", "group": "Ground, supply and terminals", "kind": "node", "tikz": "rground", "pins": ["center"] },
   { "id": "signal-ground", "label": "Signal ground", "group": "Ground, supply and terminals", "kind": "node", "tikz": "sground", "pins": ["center"] },
-  { "id": "supply-up", "label": "Supply (positive)", "group": "Ground, supply and terminals", "kind": "node", "tikz": "vcc", "pins": ["center"] },
+  { "id": "supply-up", "label": "Supply (positive)", "group": "Ground, supply and terminals", "kind": "node", "tikz": "vcc", "pins": ["center"], "options": [{ "name": "mu rail", "label": "Bar instead of an arrow" }] },
   { "id": "supply-down", "label": "Supply (negative)", "group": "Ground, supply and terminals", "kind": "node", "tikz": "vee", "pins": ["center"] },
   { "id": "voltage-between", "label": "Voltage between two points", "group": "Ground, supply and terminals", "kind": "path", "tikz": "open", "defaultVoltage": "v" },
   { "id": "terminal", "label": "Terminal", "group": "Ground, supply and terminals", "kind": "node", "tikz": "ocirc", "pins": ["center"] },
   { "id": "jump-crossing", "label": "Crossing (jump)", "group": "Ground, supply and terminals", "kind": "node", "tikz": "jump crossing", "pins": ["west", "east", "north", "south"] },
   { "id": "plain-crossing", "label": "Crossing (plain)", "group": "Ground, supply and terminals", "kind": "node", "tikz": "plain crossing", "pins": ["west", "east", "north", "south"] },
 
-  { "id": "transformer", "label": "Transformer", "group": "Transformers", "kind": "node", "tikz": "transformer", "pins": ["A1", "A2", "B1", "B2"], "defaultLabel": "T" },
-  { "id": "transformer-core", "label": "Transformer with core", "group": "Transformers", "kind": "node", "tikz": "transformer core", "pins": ["A1", "A2", "B1", "B2"], "defaultLabel": "T" },
+  { "id": "transformer", "label": "Transformer", "group": "Transformers", "kind": "node", "tikz": "transformer", "pins": ["A1", "A2", "B1", "B2"], "defaultLabel": "T", "enumOptions": [{ "label": "Polarity dots", "values": [{ "name": "mu dots outside", "label": "Outside the coils" }, { "name": "mu dots inside", "label": "Inside the coils" }] }] },
+  { "id": "transformer-core", "label": "Transformer with core", "group": "Transformers", "kind": "node", "tikz": "transformer core", "pins": ["A1", "A2", "B1", "B2"], "defaultLabel": "T", "enumOptions": [{ "label": "Polarity dots", "values": [{ "name": "mu dots outside", "label": "Outside the coils" }, { "name": "mu dots inside", "label": "Inside the coils" }] }] },
 
   { "id": "spring", "label": "Spring", "group": "Mechanical", "kind": "path", "tikz": "spring", "defaultLabel": "k" },
   { "id": "damper", "label": "Damper", "group": "Mechanical", "kind": "path", "tikz": "damper", "defaultLabel": "c" },
