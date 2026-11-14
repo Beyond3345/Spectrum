@@ -28,7 +28,21 @@ export async function writeFileAtomic(filePath, data) {
   try {
     await fs.writeFile(tmp, data);
     if (mode !== undefined) await fs.chmod(tmp, mode);
-    await renameOver(tmp, filePath);
+    try {
+      await fs.rename(tmp, filePath);
+    } catch (err) {
+      // Windows refuses to replace a file another program holds open. TeX keeps the main file open for its whole
+      // compile, sharing it for reading and writing but not deleting, so the text is written into the file itself.
+      // ponytail: not atomic; the copy in tmp stays until this write has finished, so nothing is lost
+      if (process.platform !== 'win32' || !['EPERM', 'EACCES', 'EBUSY'].includes(err.code)) throw err;
+      try {
+        await fs.writeFile(filePath, data);
+      } catch {
+        await renameOver(tmp, filePath); // held more tightly (a scanner's moment): retried for a few seconds
+        return;
+      }
+      await fs.rm(tmp, { force: true });
+    }
   } catch (err) {
     await fs.rm(tmp, { force: true });
     throw err;
