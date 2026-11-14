@@ -1523,7 +1523,7 @@ export function latexPreamble(ctx) {
     ...(used.has('booktabs') ? [commented('\\usepackage{booktabs}', '\\toprule, \\midrule and \\bottomrule for clean tables')] : []),
     ...(used.has('tabularx') ? [commented('\\usepackage{tabularx}', 'tables that stretch to the line, with wrapping X columns')] : []),
     ...(used.has('xltabular') ? [commented('\\usepackage{xltabular}', 'long tables that break across pages, with X columns')] : []),
-    ...(used.has('siunitx') || ctx.units ? [commented('\\usepackage{siunitx}', 'numbers and units: \\qty{6.6}{\\kilo\\watt}, aligned table columns'), '\\sisetup{group-separator={,},group-minimum-digits=4,per-mode=symbol} % 7,790 with a comma, and V/µs'] : []),
+    ...(used.has('siunitx') || ctx.units ? [commented('\\usepackage{siunitx}', 'numbers and units: \\qty{6.6}{\\kilo\\watt}, aligned table columns'), '\\sisetup{group-separator={,},group-minimum-digits=4,group-digits=integer,per-mode=symbol} % 7,790 with a comma, 0.3574 left whole, and V/µs'] : []),
     ...(used.has('multirow') ? [commented('\\usepackage{multirow}', 'cells merged down the rows')] : []),
     ...(used.has('makecell') ? [commented('\\usepackage{makecell}', 'a line break inside a cell')] : []),
     ...(used.has('threeparttable') ? [commented('\\usepackage{threeparttable}', 'notes under a table')] : []),

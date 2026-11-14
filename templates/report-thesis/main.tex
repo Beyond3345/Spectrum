@@ -26,7 +26,7 @@
 \usepackage{graphicx}                   % \includegraphics, for photos and saved plots
 \usepackage{booktabs}                   % \toprule, \midrule and \bottomrule for clean tables
 \usepackage{siunitx}                    % numbers and units: \qty{6.6}{\kilo\watt}, aligned table columns
-\sisetup{group-separator={,},group-minimum-digits=4} % 7,790 with a comma, as Australian style has it
+\sisetup{group-separator={,},group-minimum-digits=4,group-digits=integer} % 7,790 with a comma, as Australian style has it, and 0.3574 left whole
 \usepackage{pgfplots}                   % charts drawn from data, right in the document
 \pgfplotsset{compat=1.18}               % use current pgfplots behaviour (label placement and so on)
 
