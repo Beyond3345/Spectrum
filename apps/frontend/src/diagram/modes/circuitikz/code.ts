@@ -234,7 +234,7 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
   const sets = [...new Set(pics.map((part) => SYMBOL_SETS[part.set!]))];
   // and Spectrum's own circuitikz shapes and styles its parts and options use (MU Style), declared in the picture, as
   // \includestandalone leaves the drawing's preamble behind
-  const shapes = shapeDefinitions(model.elements.flatMap((el) => (el.kind !== 'wire' && !PARTS.get(el.type)?.set ? [[PARTS.get(el.type)?.tikz || '', ...(el.options || [])].join(', ')] : [])));
+  const shapes = shapeDefinitions(model.elements.flatMap((el) => (isPart(el) && !PARTS.get(el.type)?.set ? [[PARTS.get(el.type)?.tikz || '', ...(el.options || [])].join(', ')] : [])));
   const definitions = [...shapes, ...pics.map((part) => picDefinition(part.tikz, SYMBOL_SETS[part.set!].pics[part.tikz]))];
   const lines = [
     // nodes first, so wires and parts can reach their anchors
