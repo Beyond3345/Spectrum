@@ -4,6 +4,12 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ## 2.4.1 (15 November 2026)
 
+### Added
+
+- W picks the wire tool in the diagram composer while the pointer is over the drawing, so the key still types in the parts search and the inspector. The key can be changed
+- The circuit canvas marks every fifth dot with a larger dot, so squares can be counted, or can draw a line every few dots, a grid of lines or plain dots, with the interval adjustable
+- Settings › Diagram composer (renamed from Composer) holds the canvas background, the wire shortcut and the options for new drawings, and the gear button in the composer's toolbar opens the same settings
+
 ### Changed
 
 - The circuit inspector folds a part's voltage, current, flow, poles, mirror, invert, size and name under Voltage, current and more, and a wire's current and flow under Current and flow, so a part shows its label and value first. Each opens by itself when the part already has any of them
@@ -12,7 +18,6 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 - A circuit part's label, value, voltage, current and flow no longer overlap in the PDF or on the canvas. A voltage keeps its side to itself: the label and value move to the other side, as two lines when there are both, and a current or flow on that side moves across too. A flow that meets a current at the same end of a part goes to the other end, or on a wire to the other side. A value now sits opposite its label in the PDF as it does on the canvas. Drawings where nothing overlapped write the same code as before
 - The + and − of a voltage sit further from the part, the same distance on every part, and the canvas puts them where the PDF does: beside the leads, beside a source's body or not at all where a source draws its own
-
 - Wires run straight into a transistor's pins in the diagram composer. A MOSFET's gate and its drain and source cannot all sit on the grid, and a placed part snapped by whichever pin was nearest, so the wires to the others jogged on the canvas and in the PDF. Each pin now snaps across the way its lead runs, so the drain and source sit on a grid column and the gate on a grid row
 - Circuit symbols line up with their wires to a fraction of a pixel on the canvas. A symbol's page became an image rounded up to whole pixels, which the canvas then showed at the page's size, so a lead near the edge of a symbol landed up to 0.13 pt from its pin and a wire met it with a slight step
 - Clearing a circuit part's label keeps the side chosen for it, rather than putting it back to the default
