@@ -369,14 +369,14 @@ export function CircuitInspector({ model: raw, onChange }: { model: CircuitModel
           <Field label="Label" hint="Maths unless you type your own $…$.">
             {(id) => (
               <div className="ckt-row">
-                <input id={id} className="input mono" value={el.label?.text || ''} onChange={(e) => update({ ...el, label: e.target.value ? { ...el.label, text: e.target.value } : undefined })} spellCheck={false} />
+                <input id={id} className="input mono" value={el.label?.text || ''} onChange={(e) => update({ ...el, label: e.target.value || el.label?.side ? { ...el.label, text: e.target.value } : undefined })} spellCheck={false} />
                 <Select
                   value={el.label?.side === '_' ? '_' : ''}
                   options={[
                     ['', sideName(u, 1)],
                     ['_', sideName(u, -1)]
                   ]}
-                  onChange={(side) => el.label && update({ ...el, label: side ? { text: el.label.text, side: '_' } : { text: el.label.text } })}
+                  onChange={(side) => update({ ...el, label: side ? { text: el.label?.text ?? '', side: '_' } : el.label?.text ? { text: el.label.text } : undefined })}
                   title="Label side"
                 />
               </div>
