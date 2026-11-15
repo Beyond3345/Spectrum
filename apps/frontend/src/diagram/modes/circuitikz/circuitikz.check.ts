@@ -3,10 +3,10 @@
 import { symbolGeometry, symbolRequest } from './symbolGeometry';
 import { circuitCode, readStyle, symbolOptions } from './code';
 import { attach, detach, moveBy, newPathPart, paste, remove, rotate } from './edit';
-import { pinLabelSpots, plusAtStart, sideName } from './labels';
+import { markLayout, pinLabelSpots, plusAtStart, sideName } from './labels';
 import { CATALOGUE, PARTS, PT_PER_GRID, circuitBounds, isPart, findJunctions, locator, pathFrame, pinAxis, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
 import outlinesData from './outlines.fixture.json';
-import type { CircuitModel, Shape } from './model';
+import type { CircuitModel, PathPart, Shape } from './model';
 import type { SymbolPage } from '../../../api/client';
 import { astable, astable555, bridgeRectifier, centreTapRectifier, commonEmitterStage, conversionRatio, converter, differenceAmplifier, differenceGain, differentiator, feedbackLoop, figure, halfWaveRectifier, hybridPi, integrator, invertingAmplifier, invertingGain, massSpringDamper, monostable, monostable555, nonInvertingAmplifier, nonInvertingGain, rcLadder, summingAmplifier, voltageFollower } from './templates';
 
@@ -45,10 +45,10 @@ eq(
   circuitCode(circuit, { voltageDir: 'RP', siunitx: true, labels: 'straight', length: 1.2 }).body.split('\n'),
   [
     '\\begin{circuitikz}[american, american inductors, american resistors, american voltages, voltage dir=RP]',
-    '\\ctikzset{label/align=straight, diode=empty, bipoles/length=1.2cm}',
+    '\\ctikzset{label/align=straight, diode=empty, bipoles/length=1.2cm, voltage shift=1}',
     '\\node[op amp, noinv input up, rotate=90, xscale=-1] (U1) at (2,1) {};',
     '\\node[ground] (e7) at (0,-0.5) {};',
-    '\\draw (0,0) to[R, mirror, invert, *-o, bipoles/length=1.8cm, name=Rin, l={$R_1$}, a={\\SI{4.7}{\\kilo\\ohm}}, v_<={$v_1$}, i>={$i$}] (2,0);',
+    '\\draw (0,0) to[R, mirror, invert, *-o, bipoles/length=1.8cm, name=Rin, l2 halign=c, l2 valign=b, l2^={$R_1$} and {\\SI{4.7}{\\kilo\\ohm}}, v_<={$v_1$}, i>={$i$}] (2,0);',
     '\\draw (U1.out) to[C, l_={$C$ here}] (3.5,1);',
     '\\draw (0,2) to[pR, name=e4] (2,2);',
     '\\draw (2,0) -- (2,0.5) -| (U1.-);',
@@ -62,17 +62,17 @@ eq(
 );
 eq(circuitCode(circuit, { voltageDir: 'RP', siunitx: true }).packages, ['circuitikz', 'siunitx'], 'siunitx when a value used it');
 eq(circuitCode(circuit, {}).packages, ['circuitikz'], 'no siunitx when it is off');
-eq(circuitCode(circuit, {}).body.includes('a={$4.7<\\kilo\\ohm>$}'), true, 'a value is maths when siunitx is off');
+eq(circuitCode(circuit, {}).body.includes('and {$4.7<\\kilo\\ohm>$}'), true, 'a value is maths when siunitx is off');
 eq(circuitCode({ elements: [], junctions: [] }, { preset: 'european' }).body, '\\begin{circuitikz}[european, european inductors, european resistors, european voltages, voltage dir=noold]\n\\ctikzset{label/align=smart, diode=empty, bipoles/length=1.4cm}\n\\end{circuitikz}', 'an empty circuit: every style key written, defaults too');
 
 // siunitx (Write units with siunitx): a value that reads as a number and a unit as \qty, the rest as maths
 {
   const on = circuitCode(circuit, { siUnits: true });
-  eq(on.body.includes('a={\\qty{4.7}{\\kilo\\ohm}}'), true, 'circuitikz’s own <…> as \\qty');
+  eq(on.body.includes('and {\\qty{4.7}{\\kilo\\ohm}}'), true, 'circuitikz’s own <…> as \\qty');
   eq(on.packages, ['circuitikz', 'siunitx'], 'siunitx loaded');
   const typed: CircuitModel = { elements: [{ id: 'c', kind: 'path', type: 'capacitor', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, value: '4.7 µF', voltage: { text: '5 V' }, current: { text: 'i_1' } }], junctions: [] };
   const line = circuitCode(typed, { siUnits: true }).body.split('\n')[2];
-  eq(line, '\\draw (0,0) to[C, a={\\qty{4.7}{\\micro\\farad}}, v={\\qty{5}{\\volt}}, i={$i_1$}] (1,0);', 'values, voltages and currents');
+  eq(line, '\\draw (0,0) to[C, a^={\\qty{4.7}{\\micro\\farad}}, v={\\qty{5}{\\volt}}, i={$i_1$}] (1,0);', 'values, voltages and currents (the value above, clear of the voltage)');
   eq(circuitCode(typed, {}).packages, ['circuitikz'], 'off: no siunitx');
   eq(readStyle({ siUnits: true, siunitx: true }), { preset: 'american', siunitx: true, siUnits: true }, 'both kept: siUnits wins');
 }
@@ -481,5 +481,48 @@ for (const [id, choices] of [['pmos', 3], ['pmosd', 3], ['pmos-bulk', 3], ['op-a
 for (const id of ['diode', 'zener', 'zener-z', 'mu-ideal-diode']) eq(PARTS.get(id)?.options?.map((o) => o.label), ['Filled'], `${id} can be filled`);
 // every option and key Spectrum declares is one the symbol route lets through (symbolService's SAFE)
 for (const part of CATALOGUE) for (const key of [part.tikz, ...(part.options || []), ...(part.enumOptions || []).flatMap((group) => group.values)].map((k) => (typeof k === 'string' ? k : k.name))) eq(/^[\w .,=+\-/*<>^!|:]*$/.test(key), true, `${part.id}: ${key} is safe to send`);
+
+// ─── texts kept apart (labels.ts markLayout) ───
+{
+  const draw = (marks: Partial<PathPart>, type = 'resistor', style: Record<string, unknown> = {}) =>
+    circuitCode({ elements: [{ id: 'r', kind: 'path', type, a: { x: 0, y: 0 }, b: { x: 8, y: 0 }, ...marks } as PathPart], junctions: [] }, style).body.split('\n');
+  const keys = (marks: Partial<PathPart>, type?: string, style?: Record<string, unknown>) => /to\[[^,\]]+(?:, )?(.*)\] \(2,0\);$/.exec(draw(marks, type, style)[2])?.[1];
+  const [L, A, V, I, F] = [{ text: 'R' }, '2', { text: 'v' }, { text: 'i' }, { text: 'f' }];
+  // no two on one side: word for word as before
+  eq(keys({ label: L, value: A }), 'l={$R$}, a={$2$}', 'label above, value below');
+  eq(keys({ label: L, voltage: V }), 'l={$R$}, v={$v$}', 'label above, voltage below');
+  eq(keys({ label: L, value: A, current: I, flow: { text: 'f', side: '_' } }), 'l={$R$}, a={$2$}, i={$i$}, f_={$f$}', 'current and flow on their own sides');
+  eq(keys({ label: L, value: A, voltage: V, current: I, flow: F }, 'voltage-between'), 'l={$R$}, a={$2$}, v={$v$}, i={$i$}, f>^={$f$}', 'between two points the voltage is on the line: only the flow moves');
+  // the value goes opposite the label, as the canvas has it
+  eq(keys({ label: { text: 'R', side: '_' }, value: A }), 'l_={$R$}, a^={$2$}', 'label below, value above');
+  // a voltage keeps its side: the label and value go to the other, as two lines when both are there
+  eq(keys({ label: L, value: A, voltage: V }), 'l2 halign=c, l2 valign=b, l2^={$R$} and {$2$}, v={$v$}', 'the reported clash: value and voltage below');
+  eq(keys({ label: L, value: A, voltage: { text: 'v', side: '^' } }), 'l2 halign=c, l2 valign=t, l2_={$R$} and {$2$}, v^={$v$}', 'label and voltage above');
+  eq(keys({ label: L, voltage: { text: 'v', side: '^' } }), 'l_={$R$}, v^={$v$}', 'a label alone moves');
+  eq(keys({ value: A, voltage: V }), 'a^={$2$}, v={$v$}', 'a value alone moves');
+  eq(keys({ label: L, voltage: V }, 'voltage-source'), 'l_={$R$}, v={$v$}', 'a source’s voltage is above it');
+  // and a current or flow on its side goes to the other, at the same end
+  eq(keys({ voltage: { text: 'v', side: '^' }, current: I }), 'v^={$v$}, i_={$i$}', 'current off the voltage’s side');
+  eq(keys({ voltage: { text: 'v', side: '^' }, current: { text: 'i', dir: '<' } }), 'v^={$v$}, i<_={$i$}', 'i< stays before the part');
+  eq(keys({ voltage: V, current: { text: 'i', side: '_', dir: '>' }, flow: { text: 'f', side: '_' } }), 'v={$v$}, i^>={$i$}, f>^={$f$}', 'both off the voltage’s side, then apart');
+  // a flow meeting a current at the same end goes to the other end
+  eq(keys({ current: I, flow: F }), 'i={$i$}, f>^={$f$}', 'flow before the part');
+  eq(keys({ current: I, flow: { text: 'f', dir: '<' } }), 'i={$i$}, f<^={$f$}', 'its direction kept');
+  eq(keys({ current: I, flow: F }, 'voltage-source'), 'i={$i$}, f={$f$}', 'a source’s current is already before it');
+  eq(keys({ current: I, flow: F }, 'voltage-source', { voltageDir: 'RP' }), 'i={$i$}, f>^={$f$}', 'but after it with voltage dir=RP');
+  const wire = circuitCode({ elements: [{ id: 'w', kind: 'wire', points: [{ x: 0, y: 0 }, { x: 8, y: 0 }], routes: ['--'], currents: [I], flows: [F] }], junctions: [] }, {}).body.split('\n')[2];
+  eq(wire, '\\draw (0,0) to[short, i={$i$}, f_={$f$}] (2,0);', 'a wire’s current and flow apart too, on its two sides');
+  const upright = circuitCode({ elements: [{ id: 'r', kind: 'path', type: 'resistor', a: { x: 0, y: 0 }, b: { x: 0, y: 8 }, label: L, value: A, voltage: V }], junctions: [] }, {}).body.split('\n')[2];
+  eq(upright, '\\draw (0,0) to[R, l2 halign=c, l2^={$R$} and {$2$}, v={$v$}] (0,2);', 'beside an upright part the two lines centre on its middle');
+  // + and − voltages clear of the leads: voltage shift, only in a drawing that has them
+  eq(draw({ voltage: V })[1], '\\ctikzset{label/align=smart, diode=empty, bipoles/length=1.4cm, voltage shift=1}', 'voltage shift with + and −');
+  eq(draw({ voltage: V }, 'resistor', { preset: 'european' })[1], '\\ctikzset{label/align=smart, diode=empty, bipoles/length=1.4cm}', 'none with arrows');
+  eq(draw({ label: L })[1], '\\ctikzset{label/align=smart, diode=empty, bipoles/length=1.4cm}', 'none without a voltage');
+  // the layout the canvas draws from
+  eq(markLayout({ type: 'resistor', label: L, value: A, voltage: V }, { preset: 'american' }), { voltage: -1, signsAt: 'leads', label: 1, value: 1, stacked: true, current: undefined, flow: undefined }, 'stacked above');
+  eq(markLayout({ type: 'voltage-source', current: I }, { preset: 'american' }).current, { side: 1, start: true, back: true, moved: false }, 'a source’s current: before it, backwards');
+  eq(markLayout({ type: 'voltage-source', voltage: { text: 'v', dir: '<' }, current: I }, { preset: 'american' }).current, { side: -1, start: false, back: false, moved: false }, 'with v<: after, forwards, below');
+  eq(keys({ voltage: { text: 'v', dir: '<' }, current: I }, 'voltage-source'), 'v<={$v$}, i={$i$}', 'and written as it was');
+}
 
 console.log('circuitikz.check: ok');

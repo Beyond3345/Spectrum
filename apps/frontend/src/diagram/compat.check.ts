@@ -64,7 +64,9 @@ function loadsOf(text: string) {
     // options and \ctikzset line change, and the preset stays first
     if (diagram.pkg === 'circuitikz') {
       const styleOut = (t: string) => t.replace(/\\begin\{circuitikz\}\[[^\]\n]*\]\n(?:\\ctikzset\{[^\n]*\}\n)?/, '');
-      eq(styleOut(drawnText(diagram, generated)), styleOut(code), `${path}: its mode writes the same circuit, every style key written`);
+      // and a label and value that met a voltage on its side go to the other side as two lines (labels.ts markLayout)
+      const stacked = (t: string) => t.replace('l={$R_1$}, a={\\SI{4.7}{\\kilo\\ohm}}', 'l2 halign=c, l2 valign=b, l2^={$R_1$} and {\\SI{4.7}{\\kilo\\ohm}}');
+      eq(styleOut(drawnText(diagram, generated)), stacked(styleOut(code)), `${path}: its mode writes the same circuit, every style key written`);
       const preset = (t: string) => /\\begin\{circuitikz\}\[(\w+)/.exec(t)?.[1];
       eq(preset(generated.body), preset(code), `${path}: the same preset first`);
     } else if (path === 'figures/structure-rc.tex') {

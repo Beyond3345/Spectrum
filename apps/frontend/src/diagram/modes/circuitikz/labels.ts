@@ -1,7 +1,7 @@
 // The circuit canvas's labels: TeX sketched as text with its subscripts and superscripts, and placed beside a part
 // clear of the symbol's drawn outline (symbolGeometry.ts), whichever way the part runs or turns.
 import { PARTS, placeNodeOffset } from './model';
-import type { NodePart, PathPart, PinSide, Pt, pathFrame } from './model';
+import type { Mark, NodePart, PathPart, PinSide, Pt, pathFrame } from './model';
 import type { Box } from './symbolGeometry';
 
 const SYMBOLS: Record<string, string> = { Omega: 'Ω', mu: 'µ', pi: 'π', int: '∫', approx: '≈', cdot: '·', times: '×', '%': '%' };
@@ -59,8 +59,9 @@ export function pathLabelAt(part: Pick<PathPart, 'mirror' | 'size'>, frame: Retu
   return { x: frame.mid.x + d.x * t, y: frame.mid.y + d.y * t };
 }
 
-/** Where a node part's name goes (its centre): above the outline as the part is turned and flipped. */
-export function nodeNameAt(part: Pick<NodePart, 'at' | 'rotate' | 'flipX' | 'flipY'>, outline: Box, size: { w: number; h: number }): Pt {
+/** Where a node part's name goes (its centre): above the outline as the part is turned and flipped, and above `tops`
+ * (from the part's point), its pin letters' tops. */
+export function nodeNameAt(part: Pick<NodePart, 'at' | 'rotate' | 'flipX' | 'flipY'>, outline: Box, size: { w: number; h: number }, tops: number[] = []): Pt {
   const corners = [
     { x: outline.minX, y: outline.minY },
     { x: outline.maxX, y: outline.minY },
@@ -68,7 +69,7 @@ export function nodeNameAt(part: Pick<NodePart, 'at' | 'rotate' | 'flipX' | 'fli
     { x: outline.minX, y: outline.maxY }
   ].map((p) => placeNodeOffset(part, p));
   const xs = corners.map((p) => p.x);
-  const top = Math.max(...corners.map((p) => p.y));
+  const top = Math.max(...corners.map((p) => p.y), ...tops);
   return { x: part.at.x + (Math.min(...xs) + Math.max(...xs)) / 2, y: part.at.y + top + size.h / 2 + GAP };
 }
 
@@ -101,3 +102,58 @@ export function pinLabelSpots(part: Pick<NodePart, 'type' | 'rotate' | 'flipX' |
 
 /** The TikZ anchor that puts a node on that side of its point: up and left is south east. */
 export const anchorFor = (dir: Pt) => [dir.y > 0 ? 'south' : dir.y < 0 ? 'north' : '', dir.x > 0 ? 'west' : dir.x < 0 ? 'east' : ''].filter(Boolean).join(' ') || 'center';
+
+/** circuitikz's voltage sources (bipole/is voltage): a voltage with no side goes above them, a current before them,
+ * backwards */
+const VOLTAGE_SOURCES = new Set(['V', 'sV', 'cV', 'battery', 'battery1', 'pvsource', 'pvmodule', 'mutildesource', 'musinesource']);
+/** the ones whose + and − are drawn inside: their voltage is only its name */
+const INNER_SIGNS = new Set(['V', 'cV', 'mutildesource', 'musinesource']);
+
+type Side = 1 | -1;
+const sideOf = (m: Mark | undefined, fallback: Side): Side => (m?.side === '^' ? 1 : m?.side === '_' ? -1 : fallback);
+const written = (m: Mark | undefined) => !!m?.text.trim();
+
+/**
+ * Where a path part's texts go, as circuitikz puts them (1 is ^, -1 is _), so none overlaps another. A voltage keeps its
+ * side to itself: a label, value, current or flow that would share it goes to the other side, the label and value then
+ * together as two lines, label first. The value goes opposite the label. A flow that meets a current at the same end
+ * of the part goes to the other end (on a wire, to the other side). Currents and flows sit on a lead, before (start) or
+ * after the symbol.
+ */
+export function markLayout(el: Pick<PathPart, 'type' | 'label' | 'value' | 'voltage' | 'current' | 'flow'>, style: { preset: string; voltages?: string; voltageDir?: string }) {
+  const tikz = PARTS.get(el.type)?.tikz || '';
+  const source = VOLTAGE_SOURCES.has(tikz);
+  const signs = (style.voltages || style.preset) === 'american' || style.voltages === 'raised';
+  // american + and − between two points go on the line, the name between them: on neither side
+  const voltage: Side | 0 = written(el.voltage) && !(tikz === 'open' && signs) ? sideOf(el.voltage, source ? 1 : -1) : 0;
+  const away = (side: Side): Side => (side === voltage ? (-side as Side) : side);
+  const hasLabel = written(el.label);
+  const hasValue = !!el.value?.trim();
+  let label = sideOf(el.label, 1);
+  let value = -label as Side;
+  if (voltage && ((hasLabel && label === voltage) || (hasValue && value === voltage))) label = value = -voltage as Side;
+  // circuitikz's current keys (measured, TeX Live 2026): i^>, i_<… go after the symbol and i< before; i, i^, i_ and i>
+  // after, but before a voltage source, backwards, unless its voltage is v< (then after, below) or voltage dir=RP
+  const reversed = source && style.voltageDir !== 'RP' && !(written(el.voltage) && el.voltage!.dir === '<');
+  const c = el.current;
+  const own = sideOf(c, source && style.voltageDir !== 'RP' && !reversed ? -1 : 1);
+  const current = written(c)
+    ? {
+        side: away(own),
+        start: !(c!.side && c!.dir) && ((c!.dir === '<' && !c!.side) || reversed),
+        back: c!.dir ? c!.dir === '<' : reversed,
+        moved: away(own) !== own
+      }
+    : undefined;
+  // a flow is after the symbol, as the code writes it, unless it meets the current
+  const flow = written(el.flow) ? { side: away(sideOf(el.flow, 1)), start: false, back: el.flow!.dir === '<', moved: away(sideOf(el.flow, 1)) !== sideOf(el.flow, 1) } : undefined;
+  // (on a wire both sit at its middle: the flow goes to the other side)
+  if (flow && current && flow.side === current.side && !current.start) {
+    if (tikz) flow.start = true;
+    else flow.side = -flow.side as Side;
+    flow.moved = true;
+  }
+  // where + and − go: inside a source's symbol, beside a source's body, or by the leads
+  const signsAt = INNER_SIGNS.has(tikz) ? 'inside' : source ? 'beside' : 'leads';
+  return { voltage, signsAt, label, value, stacked: hasLabel && hasValue && label === value, current, flow };
+}

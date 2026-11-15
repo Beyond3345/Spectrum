@@ -124,11 +124,18 @@ for (const [style, symbols] of Object.entries(pages)) {
       for (const flipX of [false, true]) {
         const node = { type: part.id, at: { x: 0, y: 0 }, rotate: turn, flipX };
         const drawn = corners(outline).map((p) => placeNodeOffset(node, p));
-        for (const { pin, letter, dir } of pinLabelSpots(node)) {
-          if (pin === 'bulk') continue;
+        const spots = pinLabelSpots(node).map(({ pin, letter, dir }) => {
           const at = placeNodeOffset(node, pins[pin]);
           const size = labelSize([{ text: letter }], 0.77);
-          const box = rect({ x: at.x + dir.x * (size.w / 2 + 0.3), y: at.y + dir.y * (size.h / 2 + 0.3) }, size.w, size.h);
+          return { pin, letter, size, at: { x: at.x + dir.x * (size.w / 2 + 0.3), y: at.y + dir.y * (size.h / 2 + 0.3) } };
+        });
+        // the part's name goes above them all, as the canvas puts it
+        const name = labelSize(scriptRuns('M_1'), 1.1);
+        const nameBox = rect(nodeNameAt(node, outline, name, spots.map((s) => s.at.y + s.size.h / 2)), name.w, name.h);
+        for (const { pin, letter, size, at } of spots) {
+          const box = rect(at, size.w, size.h);
+          if (!apart(box, nameBox)) throw new Error(`${style} ${part.id} at ${turn}°${flipX ? ' flipped' : ''}: ${letter} touches its name`);
+          if (pin === 'bulk') continue;
           if (!apart(drawn, box)) throw new Error(`${style} ${part.id} at ${turn}°${flipX ? ' flipped' : ''}: ${letter} touches the symbol`);
           letters += 1;
         }

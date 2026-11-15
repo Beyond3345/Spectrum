@@ -6,8 +6,8 @@
 import { SYMBOL_SETS, picDefinition, shapeDefinitions } from '../../../../../backend/src/data/symbolSets.js';
 import { unitWriter } from '../../units';
 import { annotationCode, textKeys, usesArrows } from './annotate';
-import { anchorFor, pinLabelSpots } from './labels';
-import { CATALOGUE, GRID_CM, PARTS, isPart, isPoint } from './model';
+import { anchorFor, markLayout, pinLabelSpots } from './labels';
+import { CATALOGUE, GRID_CM, PARTS, isPart, isPoint, locator, placeholderShape } from './model';
 import type { Annotation, CircuitModel, Element, End, Mark, NodePart, PathPart, Wire } from './model';
 
 export interface CircuitStyle {
@@ -40,6 +40,8 @@ export interface CircuitStyle {
 }
 
 export const DEFAULT_LENGTH = 1.4;
+/** circuitikz's voltage shift, written when a drawing has + and − voltages: the signs and the name clear of the leads */
+export const VOLTAGE_SHIFT = 1;
 
 const oneOf = <T extends string>(value: unknown, allowed: readonly T[]): T | undefined =>
   allowed.includes(value as T) ? (value as T) : undefined;
@@ -105,7 +107,7 @@ export function symbolOptions(style: CircuitStyle) {
  * TikZ-level keys go on the picture; circuitikz's own go in \ctikzset at its start. Every key is written, defaults
  * too, so a document's own circuitikz options or \ctikzset can't make the PDF differ from the preview.
  */
-function styleCode(style: CircuitStyle) {
+function styleCode(style: CircuitStyle, signs: boolean) {
   const picture = [
     style.preset,
     `${style.inductors || style.preset} inductors`,
@@ -117,7 +119,9 @@ function styleCode(style: CircuitStyle) {
   ];
   const ctikz = [
     ...logicKeys(style).filter((key) => !key.endsWith(' ports')),
-    `label/align=${style.labels || 'smart'}`, `diode=${style.diodes || 'empty'}`, `bipoles/length=${num(style.length || DEFAULT_LENGTH)}cm`];
+    `label/align=${style.labels || 'smart'}`, `diode=${style.diodes || 'empty'}`, `bipoles/length=${num(style.length || DEFAULT_LENGTH)}cm`,
+    // only then, so a drawing without them writes what it did
+    ...(signs ? [`voltage shift=${VOLTAGE_SHIFT}`] : [])];
   return { picture: picture.join(', '), ctikz: `\\ctikzset{${ctikz.join(', ')}}` };
 }
 
@@ -167,6 +171,8 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
     return PARTS.get(el.type)?.set ? `(${nameOf(el)}-${end.pin})` : `(${nameOf(el)}.${end.pin})`;
   };
 
+  // where the ends are, near enough to tell which way a part runs (a node's pins as their stand-ins)
+  const { pos } = locator(model, placeholderShape);
   const units = unitWriter(!!style.siUnits, !!style.physics);
   const value = (text: string) => {
     if (style.siUnits) return units.typed(text) ?? maths(text);
@@ -177,10 +183,33 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
   };
   const mark = (letter: string, m: Mark | undefined) => (m?.text.trim() ? `${letter}${m.side || ''}${m.dir || ''}={${value(m.text)}}` : '');
 
+  // a current or flow moved off a side (labels.ts markLayout): its new side, before the symbol as > or < first
+  const moved = (letter: string, m: Mark, at: { side: 1 | -1; start: boolean }) => {
+    const side = at.side > 0 ? '^' : '_';
+    // with no direction, i_ keeps the current's own end and way; a flow is forwards
+    const dir = m.dir || (letter === 'f' && at.start ? '>' : '');
+    return `${letter}${dir && at.start ? dir + side : side + dir}={${value(m.text)}}`;
+  };
+
+  // two lines above a part grow up from its edge and below it down; beside an upright part, centred on its middle
+  // ponytail: with label/align=rotate an upright part's lines turn too, and stay centred
+  const stackAlign = (el: PathPart, side: 1 | -1) => {
+    const [a, b] = [pos(el.a), pos(el.b)];
+    const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const up = ((b.x - a.x) / length) * side;
+    return up > 0.1 ? 'l2 valign=b' : up < -0.1 ? 'l2 valign=t' : '';
+  };
+
   // the order circuitikz reads them in: part, options, mirror, invert, poles, size, name, text, label, voltage,
   // current, flow
   const pathCode = (el: PathPart) => {
     const part = PARTS.get(el.type);
+    const layout = markLayout(el, style);
+    const sideKey = (side: 1 | -1) => (side > 0 ? '^' : '_');
+    const label = el.label?.text.trim() ? maths(el.label.text) : '';
+    const shown = el.value?.trim() ? value(el.value) : '';
+    const current = layout.current?.moved ? moved('i', el.current!, layout.current) : mark('i', el.current);
+    const flow = layout.flow?.moved ? moved('f', el.flow!, layout.flow) : mark('f', el.flow);
     const [from, to] = el.poles || ['', ''];
     const size = el.size && el.size !== 1 ? `bipoles/length=${num((style.length || DEFAULT_LENGTH) * el.size)}cm` : '';
     const keys = [
@@ -192,11 +221,14 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
       size,
       (el.name || named.has(el.id)) && `name=${nameOf(el)}`,
       part?.text && el.text?.trim() && `t={${el.text}}`,
-      el.label?.text.trim() && `l${el.label.side === '_' ? '_' : ''}={${maths(el.label.text)}}`,
-      el.value?.trim() && `a={${value(el.value)}}`,
+      // label and value as two lines (circuitikz's l2) when a voltage takes the other side; the value, when it is
+      // above, as a^
+      ...(layout.stacked
+        ? ['l2 halign=c', stackAlign(el, layout.label), `l2${sideKey(layout.label)}={${label}} and {${shown}}`]
+        : [label && `l${layout.label < 0 ? '_' : ''}={${label}}`, shown && `a${layout.value > 0 ? '^' : ''}={${shown}}`]),
       mark('v', el.voltage),
-      mark('i', el.current),
-      mark('f', el.flow)
+      current,
+      flow
     ].filter(Boolean);
     return `\\draw ${at(el.a)} to[${keys.join(', ')}] ${at(el.b)};`;
   };
@@ -221,13 +253,16 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
   const segment = (el: Wire, i: number) => {
     const [from, to] = [at(el.points[i - 1]), at(el.points[i])];
     const route = el.routes[i - 1] || '--';
-    const marks = [mark('i', el.currents?.[i - 1] ?? undefined), mark('f', el.flows?.[i - 1] ?? undefined)].filter(Boolean);
+    const [current, flow] = [el.currents?.[i - 1] ?? undefined, el.flows?.[i - 1] ?? undefined];
+    const layout = markLayout({ type: 'short', current, flow }, style);
+    const marks = [mark('i', current), layout.flow?.moved ? moved('f', flow!, layout.flow) : mark('f', flow)].filter(Boolean);
     if (!marks.length) return `${route} ${to}`;
     const corner = route === '--' ? '' : ` (${from.slice(1, -1)} ${route} ${to.slice(1, -1)}) --`;
     return `to[short, ${marks.join(', ')}]${corner} ${to}`;
   };
 
-  const { picture, ctikz } = styleCode(style);
+  const signs = ['american', 'raised'].includes(style.voltages || style.preset) && model.elements.some((el) => el.kind === 'path' && !!el.voltage?.text.trim());
+  const { picture, ctikz } = styleCode(style, signs);
   // the other sets' pictures this drawing uses, in the catalogue's order
   const usedTypes = new Set(model.elements.map((el) => el.kind === 'node' && el.type));
   const pics = CATALOGUE.filter((part) => part.set && usedTypes.has(part.id) && SYMBOL_SETS[part.set]?.pics[part.tikz]);

@@ -65,7 +65,7 @@ const wire = (extra: Partial<Wire>): Wire => ({ id: 'w', kind: 'wire', points: [
 eq(body([wire({})]), ['\\draw (0,0) -- (2,0) -| (3,1);'], 'a wire without marks writes what it did');
 eq(body([wire({ currents: [{ text: 'i_b', dir: '>' }, null] })]), ['\\draw (0,0) to[short, i>={$i_b$}] (2,0) -| (3,1);'], 'a current on a straight segment');
 eq(body([wire({ flows: [null, { text: 'I_D', side: '_' }], arrows: '->' })]), ['\\draw[-latex] (0,0) -- (2,0) to[short, f_={$I_D$}] (2,0 -| 3,1) -- (3,1);'], 'a flow on a bent segment, on its first leg');
-eq(body([wire({ routes: ['--', '|-'], currents: [null, { text: 'i' }], flows: [null, { text: 'f' }] })]), ['\\draw (0,0) -- (2,0) to[short, i={$i$}, f={$f$}] (2,0 |- 3,1) -- (3,1);'], 'both, up then across');
+eq(body([wire({ routes: ['--', '|-'], currents: [null, { text: 'i' }], flows: [null, { text: 'f' }] })]), ['\\draw (0,0) -- (2,0) to[short, i={$i$}, f_={$f$}] (2,0 |- 3,1) -- (3,1);'], 'both, up then across, the flow across the wire from the current');
 
 // ─── presets ───
 
