@@ -2,7 +2,7 @@
 // and snapping to the 0.25 cm grid and to nearby pins. Voltages, currents and labels are sketched here;
 // the compiled preview shows them exactly.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import Icon from '../../../app/Icon';
 import { useCanvasPrefs } from '../../FlowCanvas';
 import { colourCss } from '../shared';
@@ -10,8 +10,8 @@ import { FONT_SCALE, HEAD_CM, ROUNDED_CM, box, loopLine, presetElements } from '
 import type { Preset } from './annotate';
 import { readStyle, symbolOptions } from './code';
 import { copy, detach, flip, moveBy, newNodePart, newPathPart, paste, remove, rotate } from './edit';
-import { GRID_CM, PARTS, PT_PER_GRID, asCircuit, drawsSymbol,circuitBounds, isPart, isPoint, locator, newId, pathFrame, pinsOfElement, placeholderShape, snapDelta, variantKey, wirePath } from './model';
-import type { Annotation, CircuitModel, Element, End, Mark, NodePart, PathPart, Pt, Route, ShapeOf, Wire } from './model';
+import { GRID_CM, PARTS, PT_PER_GRID, asCircuit, drawsSymbol,circuitBounds, isPart, isPoint, locator, newId, pathFrame, pinAxis, pinsOfElement, placeholderShape, snapDelta, variantKey, wirePath } from './model';
+import type { Annotation, CircuitModel, Element, End, Mark, NodePart, PathPart, Pt, Route, ShapeOf, SnapPin, Wire } from './model';
 import { labelSize, nodeNameAt, pathLabelAt, pinLabelSpots, plain, plusAtStart, scriptRuns } from './labels';
 import { setCtikz, setSelection, setShapeOf, setTool, setVoltageDir, tidy, useCircuitUi } from './store';
 import { symbolOutline } from './symbolGeometry';
@@ -34,7 +34,7 @@ interface View {
 type Drag =
   | { kind: 'pan'; start: Pt; view: View }
   | { kind: 'marquee'; start: Pt; now: Pt; keep: string[] }
-  | { kind: 'move'; start: Pt; base: CircuitModel; ids: Set<string>; moving: Pt[]; fixed: Pt[] }
+  | { kind: 'move'; start: Pt; base: CircuitModel; ids: Set<string>; moving: SnapPin[]; fixed: Pt[] }
   /** one end of a path part (0 a, 1 b), or one point of a wire */
   | { kind: 'handle'; start: Pt; base: CircuitModel; id: string; index: number; from: Pt; fixed: Pt[] }
   | { kind: 'place'; base: CircuitModel; id: string; from: End; fixed: Pt[] }
@@ -51,8 +51,10 @@ const clickEnd = (type: string, a: Pt): Pt => (isOpen(type) ? { x: a.x, y: a.y -
 
 const autoRoute = (from: Pt, to: Pt): Route => (Math.abs(from.x - to.x) < 1e-6 || Math.abs(from.y - to.y) < 1e-6 ? '--' : '-|');
 
-/** an annotation's line widths on screen, as the wires' 1.4 px stands for circuitikz's thin */
+/** an annotation's line widths on screen at 100 %, as the wires' 1.4 px stands for circuitikz's thin */
 const ANNOTATION_PX = { thin: 1.4, semithick: 1.9, thick: 2.4, 'very thick': 3.4 };
+/** TikZ's line width, in PDF points, that circuitikz draws wires and the symbols' leads with */
+const LINE_PT = 0.4;
 /** TikZ's to path with a bend: its two control points, at 0.3915 of the length along the out and in angles */
 function bendControls(p: Pt, q: Pt, bend: number): [Pt, Pt] {
   const d = Math.hypot(q.x - p.x, q.y - p.y) * 0.3915;
@@ -89,7 +91,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   /** voltages drawn as + and −, not an arrow */
   const signs = (circuitStyle.voltages || circuitStyle.preset) === 'american' || circuitStyle.voltages === 'raised';
   const used = shown.elements.filter(isPart).map((el) => ({ type: el.type, options: el.options || [] }));
-  const { symbol, loading, error } = useSymbols(ctikz, used);
+  const { symbol, image, loading, error } = useSymbols(ctikz, used);
   const symbolOf = (type: string, options: string[] = []): CircuitSymbol | undefined => symbol(variantKey(type, options));
   const shapeOf: ShapeOf = (type, options) => symbolOf(type, options)?.shape || placeholderShape(type);
   setShapeOf(shapeOf);
@@ -130,6 +132,8 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   const v = view || { x: 0, y: 0, zoom: 1 };
   const k = STEP_PX * v.zoom;
   const kpt = k / PT_PER_GRID;
+  // wires as wide as the symbols' leads once those are wider than 1.4 px, so a zoomed-in symbol doesn't outweigh them
+  const linePx = Math.max(ANNOTATION_PX.thin, LINE_PT * kpt);
   const toScreen = (p: Pt) => ({ x: v.x + p.x * k, y: v.y - p.y * k });
   const toGrid = (s: Pt) => ({ x: (s.x - v.x) / k, y: (v.y - s.y) / k });
 
@@ -249,8 +253,8 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
       const fixed = allPins(model);
       if (part.kind === 'node') {
         const placed = newNodePart(model, type, grid);
-        const offsets = Object.values(shapeOf(type, []).pins);
-        const moving = (offsets.length ? offsets : [{ x: 0, y: 0 }]).map((o) => ({ x: grid.x + o.x, y: grid.y + o.y }));
+        const offsets = Object.entries(shapeOf(type, []).pins);
+        const moving = offsets.length ? offsets.map(([pin, o]) => ({ x: grid.x + o.x, y: grid.y + o.y, axis: pinAxis(placed, pin) })) : [grid];
         const d = snapDelta(moving, { x: 0, y: 0 }, fixed, SNAP_PX / k);
         const next = { ...model, elements: [...model.elements, { ...placed, at: { x: grid.x + d.x, y: grid.y + d.y } }] };
         commit(next);
@@ -288,7 +292,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
       const { pos: at0 } = locator(loose, shapeOf);
       const moving = loose.elements
         .filter((el) => moved.has(el.id))
-        .flatMap((el) => (el.kind === 'wire' || el.kind === 'annotation' ? el.points.map((p) => at0(p)) : pinsOfElement(el, shapeOf, at0).map((p) => p.at).concat(el.kind === 'node' && !PARTS.get(el.type)?.pins?.length ? [el.at] : [])));
+        .flatMap((el) => (el.kind === 'wire' || el.kind === 'annotation' ? el.points.map((p) => at0(p)) : pinsOfElement(el, shapeOf, at0).map((p): SnapPin => ({ ...p.at, axis: p.axis })).concat(el.kind === 'node' && !PARTS.get(el.type)?.pins?.length ? [el.at] : [])));
       setDrag({ kind: 'move', start: at, base: loose, ids: moved, moving, fixed: allPins(loose, (el) => moved.has(el.id)) });
       return;
     }
@@ -574,7 +578,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
             <clipPath id={`ckt-clip-${el.id}`}>
               <rect x={-halfSpanPt} y={-1e4} width={2 * halfSpanPt} height={2e4} />
             </clipPath>
-            <image className="ckt-glyph" href={sym.image} x={-(sym.origin.x + sym.middle.x)} y={-(sym.origin.y - sym.middle.y)} width={sym.width} height={sym.height} />
+            <image className="ckt-glyph" href={image(variantKey(el.type, el.options), sym, kpt * s)} x={-(sym.origin.x + sym.middle.x)} y={-(sym.origin.y - sym.middle.y)} width={sym.width} height={sym.height} />
           </g>
         ) : (
           <polygon className="ckt-outline" points={poly([start, end].flatMap((p, i) => (i ? [{ x: p.x + n.x * 0.8, y: p.y + n.y * 0.8 }, { x: p.x - n.x * 0.8, y: p.y - n.y * 0.8 }] : [{ x: p.x - n.x * 0.8, y: p.y - n.y * 0.8 }, { x: p.x + n.x * 0.8, y: p.y + n.y * 0.8 }])))} />
@@ -622,7 +626,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
         {sym ? (
           <g transform={`translate(${p.x},${p.y}) scale(${kpt}) ${turn}`}>
             <rect className={selected.has(el.id) ? 'ckt-halo-box' : 'ckt-hit-box'} x={-sym.origin.x} y={-sym.origin.y} width={sym.width} height={sym.height} />
-            <image className="ckt-glyph" href={sym.image} x={-sym.origin.x} y={-sym.origin.y} width={sym.width} height={sym.height} />
+            <image className="ckt-glyph" href={image(variantKey(el.type, el.options), sym, kpt)} x={-sym.origin.x} y={-sym.origin.y} width={sym.width} height={sym.height} />
           </g>
         ) : (
           <g transform={`translate(${p.x},${p.y}) scale(${k},${-k}) rotate(${rotation}) scale(${el.flipX ? -1 : 1},${el.flipY ? -1 : 1})`}>
@@ -689,7 +693,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
 
   /** an annotation, over the circuit: taken by its outline, never its inside, so the parts under a frame stay reachable */
   const drawAnnotation = (el: Annotation) => {
-    const w = ANNOTATION_PX[el.width || 'thin'];
+    const w = (ANNOTATION_PX[el.width || 'thin'] * linePx) / ANNOTATION_PX.thin;
     const dash = el.dash === 'dashed' ? `${3 * kpt} ${3 * kpt}` : el.dash === 'dotted' ? `${w} ${2 * kpt}` : el.dash === 'dash dot' ? `${3 * kpt} ${2 * kpt} ${w} ${2 * kpt}` : undefined;
     const style = { stroke: ink(el.colour), strokeWidth: w, strokeDasharray: dash };
     const S = (p: Pt) => {
@@ -790,7 +794,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
         ref={svgRef}
         width="100%"
         height="100%"
-        style={{ cursor }}
+        style={{ cursor, '--ckt-line': `${linePx}px` } as CSSProperties}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

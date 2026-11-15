@@ -267,12 +267,28 @@ export function locator(model: CircuitModel, shapeOf: ShapeOf) {
   return { pos, byId };
 }
 
-/** Every pin an element offers, by name, with its position. */
-export function pinsOfElement(el: Element, shapeOf: ShapeOf, pos: (end: End) => Pt): { pin: string; at: Pt }[] {
+/** A point snapping moves, and the coordinate it wants on the grid (pinAxis); both when it has none. */
+export type SnapPin = Pt & { axis?: 'x' | 'y' };
+
+/**
+ * The coordinate a node's pin wants on the grid, so a wire leaves it straight: x when its lead goes up or down, y when
+ * it goes left or right (the catalogue's pinLabels), turned with the part. Undefined when the part doesn't say, or it's
+ * turned 45°. A transistor's pins can't all be on the grid (circuitikz's nmos has its gate 0.98 cm left of its drain
+ * and source, which are 0.77 cm above and below it), but each can be on it across its lead.
+ */
+export function pinAxis(el: Pick<NodePart, 'type' | 'rotate' | 'flipX' | 'flipY'>, pin: string): 'x' | 'y' | undefined {
+  const side = PARTS.get(el.type)?.pinLabels?.[pin];
+  if (!side) return undefined;
+  const lead = placeNodeOffset(el, side === 'up' || side === 'down' ? { x: 0, y: 1 } : { x: 1, y: 0 });
+  return Math.abs(lead.x) < 1e-6 ? 'x' : Math.abs(lead.y) < 1e-6 ? 'y' : undefined;
+}
+
+/** Every pin an element offers, by name, with its position and, for a node's, the coordinate it wants on the grid. */
+export function pinsOfElement(el: Element, shapeOf: ShapeOf, pos: (end: End) => Pt): { pin: string; at: Pt; axis?: 'x' | 'y' }[] {
   if (!isPart(el)) return [];
   const named = Object.keys(shapeOf(el.type, el.options || []).pins);
   const names = el.kind === 'path' ? ['a', 'b', ...named] : named;
-  return names.map((pin) => ({ pin, at: pos({ part: el.id, pin }) }));
+  return names.map((pin) => ({ pin, at: pos({ part: el.id, pin }), ...(el.kind === 'node' && { axis: pinAxis(el, pin) }) }));
 }
 
 /** The corners a wire passes through: its points, with the bend of each -| or |- segment between them. */
@@ -292,26 +308,37 @@ export function wirePath(points: Pt[], routes: Route[]): Pt[] {
 const dist = (p: Pt, q: Pt) => Math.hypot(p.x - q.x, p.y - q.y);
 
 /**
- * Snapping: every moving pin is tried against the nearest grid point and against the fixed pins within
- * `radius` (grid steps), and the shortest correction wins and moves them all. Returns the snapped offset.
+ * Snapping: every moving pin is tried against the fixed pins within `radius` (grid steps), and against the grid, an
+ * axis at a time: x puts on the grid whichever pin wanting x on it (pinAxis) is nearest, y likewise, so a transistor's
+ * drain and source go on grid lines across their leads and its gate on one across its own. The shortest correction
+ * wins and moves them all. Returns the snapped offset.
  */
-export function snapDelta(moving: Pt[], delta: Pt, fixed: Pt[], radius: number): Pt {
+export function snapDelta(moving: SnapPin[], delta: Pt, fixed: Pt[], radius: number): Pt {
   if (!moving.length) return { x: Math.round(delta.x), y: Math.round(delta.y) };
   let best: Pt | null = null;
   let bestDist = Infinity;
-  const consider = (target: Pt, to: Pt) => {
-    const d = dist(target, to);
+  const consider = (fix: Pt) => {
+    const d = Math.hypot(fix.x, fix.y);
     if (d < bestDist) {
       bestDist = d;
-      best = { x: to.x - target.x, y: to.y - target.y };
+      best = fix;
     }
   };
+  const toGrid = (c: 'x' | 'y') => {
+    const wanting = moving.filter((m) => m.axis !== (c === 'x' ? 'y' : 'x'));
+    let fix = Infinity;
+    for (const m of wanting.length ? wanting : moving) {
+      const t = m[c] + delta[c];
+      if (Math.abs(Math.round(t) - t) < Math.abs(fix)) fix = Math.round(t) - t;
+    }
+    return fix;
+  };
+  // ponytail: every fixed pin is checked against every moving one; a spatial index if circuits grow to thousands of parts
   for (const m of moving) {
     const target = { x: m.x + delta.x, y: m.y + delta.y };
-    // ponytail: every fixed pin is checked against every moving one; a spatial index if circuits grow to thousands of parts
-    for (const f of fixed) if (dist(target, f) <= radius) consider(target, f);
-    consider(target, { x: Math.round(target.x), y: Math.round(target.y) });
+    for (const f of fixed) if (dist(target, f) <= radius) consider({ x: f.x - target.x, y: f.y - target.y });
   }
+  consider({ x: toGrid('x'), y: toGrid('y') });
   const fix = best as Pt | null;
   return fix ? { x: delta.x + fix.x, y: delta.y + fix.y } : delta;
 }

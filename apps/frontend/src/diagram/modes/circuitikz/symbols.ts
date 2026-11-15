@@ -1,11 +1,11 @@
 // Circuit symbols drawn by the user's own circuitikz in the diagram's style, and other sets' symbols beside them. The
 // backend compiles one page per part and reads each pin back (/api/diagram/symbols); pdf.js turns the pages into
-// images. Kept in memory per style, and in IndexedDB so the next window opens with them.
+// images. Kept in memory per style, and in IndexedDB so the next window opens with them. A part the canvas shows larger
+// than those images are drawn is drawn again, sharper, from the same PDF.
 import { useEffect, useSyncExternalStore } from 'react';
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { base64Bytes, diagramSymbols } from '../../../api/client';
-import type { SymbolPage } from '../../../api/client';
 import { SYMBOL_SETS } from '../../../../../backend/src/data/symbolSets.js';
 import { loadSettings } from '../../../app/settings';
 import { CATALOGUE, PARTS, drawsSymbol, variantKey } from './model';
@@ -28,23 +28,25 @@ export interface CircuitSymbol {
   shape: Shape;
 }
 
-/** pixels per PDF point in the stored images: sharp up to about four times zoom */
+/** pixels per PDF point in the stored images, which the rail and the canvas up to about 200 % on a 2× screen show */
 const RENDER_SCALE = 6;
+/** the sharper images' pixels per PDF point: the canvas at 600 % on a 2× screen shows 17 */
+const SHARP_SCALES = [12, 18];
 
 export interface Variant {
   type: string;
   options: string[];
 }
 
-async function renderPages(pdfBase64: string, pages: SymbolPage[]) {
+async function renderPages(pdfBase64: string, pages: number[], scale = RENDER_SCALE) {
   const data = base64Bytes(pdfBase64);
   const task = getDocument({ data });
   try {
     const pdf = await task.promise;
     const images: string[] = [];
-    for (const meta of pages) {
-      const page = await pdf.getPage(meta.page);
-      const viewport = page.getViewport({ scale: RENDER_SCALE });
+    for (const n of pages) {
+      const page = await pdf.getPage(n);
+      const viewport = page.getViewport({ scale });
       const canvas = document.createElement('canvas');
       canvas.width = Math.ceil(viewport.width);
       canvas.height = Math.ceil(viewport.height);
@@ -130,13 +132,16 @@ async function load(ctikzOptions: string, variants: Variant[]) {
   // cache; key this by circuitikz's date as well if that bites
   const versions = Object.fromEntries([...new Set(variants.map((v) => PARTS.get(v.type)?.set || 'circuitikz'))].map((set) => [set, SYMBOL_SETS[set]?.version]));
   const cacheKey = JSON.stringify({ ...body, versions });
+  // the backend draws a part on the page of its place in the request
+  keys.forEach((k, i) => sources.set(`${ctikzOptions}\n${k}`, { body, page: i + 1 }));
   try {
     let found = await idb<Record<string, CircuitSymbol>>('readonly', (store) => store.get(cacheKey));
     if (!found) {
       const data = await diagramSymbols(body);
       if (!data.ok || !data.pdf || !data.pages) throw new Error(data.error || 'TeX couldn’t draw the symbols');
       const pages = data.pages;
-      const images = await renderPages(data.pdf, pages);
+      pdfs.set(JSON.stringify(body), Promise.resolve(data.pdf));
+      const images = await renderPages(data.pdf, pages.map((page) => page.page));
       const typeOf = new Map(variants.map((v) => [variantKey(v.type, v.options), v.type]));
       found = Object.fromEntries(pages.flatMap((page, i) => {
         if (page.error) { entry.error = page.error; return []; }
@@ -160,6 +165,59 @@ async function load(ctikzOptions: string, variants: Variant[]) {
     keys.forEach((k) => entry.loading.delete(k));
     changed();
   }
+}
+
+// ─── sharper images, of the parts the canvas shows larger than RENDER_SCALE ───
+
+type SymbolsBody = Parameters<typeof diagramSymbols>[0];
+/** where each variant was drawn, by style and key: its request and page */
+const sources = new Map<string, { body: SymbolsBody; page: number }>();
+/** each request's PDF, by the request: kept from the fetch, or fetched again (the backend's cache has it) */
+const pdfs = new Map<string, Promise<string>>();
+/** style, key and scale → the image; null while it's drawn, or when it couldn't be */
+const sharpImages = new Map<string, string | null>();
+/** the sharper images asked for since the last draw, by request: drawn a PDF at a time */
+const wanted = new Map<string, { body: SymbolsBody; pages: { id: string; page: number; scale: number }[] }>();
+
+async function drawSharp() {
+  const batches = [...wanted.values()];
+  wanted.clear();
+  for (const { body, pages } of batches) {
+    const id = JSON.stringify(body);
+    if (!pdfs.has(id)) pdfs.set(id, diagramSymbols(body).then((data) => (data.ok && data.pdf ? data.pdf : Promise.reject(new Error(data.error)))));
+    try {
+      const pdf = await pdfs.get(id)!;
+      for (const scale of new Set(pages.map((p) => p.scale))) {
+        const these = pages.filter((p) => p.scale === scale);
+        const images = await renderPages(pdf, these.map((p) => p.page), scale);
+        these.forEach((p, i) => sharpImages.set(p.id, images[i]));
+      }
+    } catch {
+      pdfs.delete(id);
+    }
+  }
+  changed();
+}
+
+/**
+ * The image of a variant drawn by this style for the canvas at `pxPerPt` CSS pixels a PDF point: the stored one, or a
+ * sharper one when the screen shows it larger, once that's drawn. ponytail: the sharper images stay in memory until
+ * the window closes; drop the least used if long sessions zoom over hundreds of parts.
+ */
+function imageFor(ctikzOptions: string, key: string, symbol: CircuitSymbol, pxPerPt: number) {
+  const need = pxPerPt * (window.devicePixelRatio || 1);
+  const source = sources.get(`${ctikzOptions}\n${key}`);
+  if (need <= RENDER_SCALE * 1.05 || !source) return symbol.image;
+  const scale = SHARP_SCALES.find((s) => s >= need) ?? SHARP_SCALES[SHARP_SCALES.length - 1];
+  const id = `${ctikzOptions}\n${key}\n${scale}`;
+  if (!sharpImages.has(id)) {
+    sharpImages.set(id, null);
+    const request = JSON.stringify(source.body);
+    if (!wanted.size) setTimeout(() => void drawSharp());
+    if (!wanted.has(request)) wanted.set(request, { body: source.body, pages: [] });
+    wanted.get(request)!.pages.push({ id, page: source.page, scale });
+  }
+  return sharpImages.get(id) || symbol.image;
 }
 
 /** A set's catalogue parts with no options: one request per set and style, so the backend's cache serves it again. */
@@ -194,5 +252,11 @@ export function useSymbols(ctikzOptions: string, used: Variant[], sets: string[]
     if (extra.size) void load(ctikzOptions, [...extra.values()].sort((a, b) => variantKey(a.type, a.options).localeCompare(variantKey(b.type, b.options))));
     // usedKey stands for used, setsKey for sets
   }, [ctikzOptions, usedKey, setsKey, entry]);
-  return { symbol: (key: string) => entry.symbols.get(key) || latest.get(key), loading: entry.loading.size > 0, error: entry.failed.size ? entry.error : '' };
+  return {
+    symbol: (key: string) => entry.symbols.get(key) || latest.get(key),
+    /** the image to show a symbol with at this many CSS pixels a PDF point */
+    image: (key: string, symbol: CircuitSymbol, pxPerPt: number) => imageFor(ctikzOptions, key, symbol, pxPerPt),
+    loading: entry.loading.size > 0,
+    error: entry.failed.size ? entry.error : ''
+  };
 }

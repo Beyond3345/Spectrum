@@ -4,10 +4,13 @@ import { symbolGeometry, symbolRequest } from './symbolGeometry';
 import { circuitCode, readStyle, symbolOptions } from './code';
 import { attach, detach, moveBy, newPathPart, paste, remove, rotate } from './edit';
 import { pinLabelSpots, plusAtStart, sideName } from './labels';
-import { CATALOGUE, PARTS, PT_PER_GRID, circuitBounds, isPart, findJunctions, locator, pathFrame, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
+import { CATALOGUE, PARTS, PT_PER_GRID, circuitBounds, isPart, findJunctions, locator, pathFrame, pinAxis, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
+import outlinesData from './outlines.fixture.json';
 import type { CircuitModel, Shape } from './model';
+import type { SymbolPage } from '../../../api/client';
 import { astable, astable555, bridgeRectifier, centreTapRectifier, commonEmitterStage, conversionRatio, converter, differenceAmplifier, differenceGain, differentiator, feedbackLoop, figure, halfWaveRectifier, hybridPi, integrator, invertingAmplifier, invertingGain, massSpringDamper, monostable, monostable555, nonInvertingAmplifier, nonInvertingGain, rcLadder, summingAmplifier, voltageFollower } from './templates';
 
+const outlines = outlinesData as unknown as Record<string, Record<string, SymbolPage>>;
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
 };
@@ -177,6 +180,32 @@ near(snapDelta([{ x: 0, y: 0 }, { x: 0.4, y: 0 }], { x: 1.5, y: 0 }, [], 1), { x
 near(snapDelta([{ x: 0, y: 0 }], { x: 3.3, y: 0.2 }, [{ x: 3.45, y: 0.3 }], 1), { x: 3.45, y: 0.3 }, 'a fixed pin nearer than the grid wins');
 near(snapDelta([{ x: 0, y: 0 }], { x: 3.1, y: 0 }, [{ x: 3.45, y: 0.3 }], 1), { x: 3, y: 0 }, 'the grid wins when it is nearer');
 near(snapDelta([{ x: 0, y: 0 }], { x: 3.4, y: 0.4 }, [{ x: 3.45, y: 2.3 }], 1), { x: 3, y: 0 }, 'a pin outside the radius is ignored');
+// A transistor's pins measured off its circuitikz symbol (outlines.fixture.json) aren't all on the grid together.
+// However it's placed or turned, each lands on a grid line across its lead, so a wire leaves it straight; MU's sit
+// where nmos's and pmos's do.
+const fixturePins = (type: string) => symbolGeometry(outlines.american[type], type).shape.pins;
+for (const [mu, base] of [['mu-nmos', 'nmos'], ['mu-pmos', 'pmos'], ['mu-nmosd', 'nmos'], ['mu-pmosd', 'pmos'], ['mu-nmosb', 'nmos-bulk'], ['mu-pmosb', 'pmos-bulk'], ['mu-nmosdb', 'nmos-bulk'], ['mu-pmosdb', 'pmos-bulk']]) {
+  for (const pin of Object.keys(PARTS.get(mu)!.pinLabels!)) near(fixturePins(mu)[pin], fixturePins(base)[pin], `${mu}'s ${pin} is ${base}'s`);
+}
+for (const part of CATALOGUE.filter((p) => p.pinLabels && outlines.american[p.id])) {
+  for (const turn of [{}, { rotate: 90 }, { rotate: 270, flipX: true }]) {
+    for (const cursor of [{ x: 0.92, y: 0 }, { x: 0.5, y: 0.5 }, { x: 0.1, y: 0.9 }]) {
+      const el = { type: part.id, ...turn };
+      const offsets = Object.entries(fixturePins(part.id)).map(([pin, o]) => ({ pin, o: placeNodeOffset(el, o) }));
+      const d = snapDelta(offsets.map(({ pin, o }) => ({ x: cursor.x + o.x, y: cursor.y + o.y, axis: pinAxis(el, pin) })), { x: 0, y: 0 }, [], 1.2);
+      const off = offsets.filter(({ pin, o }) => {
+        const c = pinAxis(el, pin)!;
+        const at = c === 'x' ? cursor.x + o.x + d.x : cursor.y + o.y + d.y;
+        return Math.abs(at - Math.round(at)) > 1e-6;
+      }).map(({ pin }) => pin);
+      // nigfetebulk's and pigfetebulk's gate is 1.08 steps off their bulk's level: one of the two is off the grid
+      const allowed = /^.igfetebulk$/.test(part.id) && off.length === 1 && ['G', 'bulk'].includes(off[0]) ? [] : off;
+      if (allowed.length) throw new Error(`${part.id} ${JSON.stringify(turn)} placed at ${JSON.stringify(cursor)}: ${off.join(', ')} off the grid across the lead`);
+    }
+  }
+}
+eq(pinAxis({ type: 'nmos', rotate: 45 }, 'D'), undefined, 'a part turned 45° has no grid line across its leads');
+eq(pinAxis({ type: 'op-amp' }, 'out'), undefined, 'a part without pin sides snaps as before');
 
 // ─── junctions ───
 

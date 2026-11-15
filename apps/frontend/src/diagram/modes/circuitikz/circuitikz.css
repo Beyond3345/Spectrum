@@ -68,7 +68,8 @@
 .ckt-wire {
   fill: none;
   stroke: var(--ckt-ink);
-  stroke-width: 1.4;
+  /* the canvas sets it with the zoom */
+  stroke-width: var(--ckt-line, 1.4px);
   stroke-linejoin: round;
 }
 
