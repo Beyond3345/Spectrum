@@ -58,7 +58,7 @@ export type AppCommand =
 export type Shortcut = {
   id: string;
   label: string;
-  group: 'Editing' | 'Selection' | 'Folding' | 'PDF' | 'App';
+  group: 'Editing' | 'Selection' | 'Folding' | 'PDF' | 'App' | 'Diagram';
   key: string;
   /** editor commands; app commands are run by the page that owns them */
   run?: Command;
@@ -121,7 +121,9 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'sidebar', label: 'Show or hide the sidebar', group: 'App', key: 'Mod-\\' },
   { id: 'viewEditor', label: 'Show the editor only', group: 'App', key: 'Mod-1' },
   { id: 'viewSplit', label: 'Show the editor and PDF', group: 'App', key: 'Mod-2' },
-  { id: 'viewPdf', label: 'Show the PDF only', group: 'App', key: 'Mod-3' }
+  { id: 'viewPdf', label: 'Show the PDF only', group: 'App', key: 'Mod-3' },
+  // answered only while the pointer is over the circuit canvas, so a plain key is fine
+  { id: 'diagramWire', label: 'Draw a wire', group: 'Diagram', key: 'w' }
 ];
 
 /** CodeMirror commands whose built-in bindings give way to the ones above. */
@@ -245,10 +247,16 @@ export function shortcutFromEvent(e: KeyboardEvent) {
 }
 
 /** Why a recorded shortcut can't be used, or '' when it can. */
-export function shortcutProblem(binding: string) {
+/** Keys the circuit canvas answers to itself, which a diagram shortcut can't take. */
+const CANVAS_KEYS = ['r', 'Shift-r', 'x', 'y', ' ', 'Escape', 'Enter', 'Backspace', 'Delete', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Mod-a', 'Mod-c', 'Mod-x', 'Mod-v', 'Mod-d', 'Mod-z', 'Shift-Mod-z'];
+
+export function shortcutProblem(binding: string, id = '') {
   const p = parse(binding);
   if (!p) return '';
   const key = canonical(binding);
+  if (SHORTCUTS.find((s) => s.id === id)?.group === 'Diagram') {
+    return CANVAS_KEYS.map(canonical).includes(key) ? `${formatShortcut(binding)} is kept by the circuit canvas.` : '';
+  }
   if (RESERVED.map(canonical).includes(key)) return `${formatShortcut(binding)} is kept by ${OS_NAME}.`;
   const fixed = FIXED_SHORTCUTS.find(([, k]) => canonical(k) === key);
   if (fixed) return `${formatShortcut(binding)} is kept for ${fixed[0].toLowerCase()}.`;

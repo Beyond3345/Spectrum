@@ -138,7 +138,7 @@ const SECTION_GROUPS: [string, [Section, string, string][]][] = [
   ['Writing', [
     ['engines', 'Engines', 'hammer'],
     ['language', 'Spelling & grammar', 'textformat.abc.dottedunderline'],
-    ['composer', 'Composer', 'pencil'],
+    ['composer', 'Diagram composer', 'pencil'],
     ['checkpoints', 'Checkpoints', 'clock.arrow.circlepath']
   ]],
   ['Projects', [
@@ -955,9 +955,10 @@ function FileDefaults() {
   );
 }
 
-const SHORTCUT_GROUPS: Shortcut['group'][] =['Editing', 'Selection', 'Folding', 'PDF', 'App'];
+const SHORTCUT_GROUPS: Shortcut['group'][] = ['Editing', 'Selection', 'Folding', 'PDF', 'App'];
 
-function ShortcutsPane() {
+/** groups: the ones shown (Diagram composer shows its own); compact: without the hint and Restore all defaults */
+function ShortcutsPane({ groups = SHORTCUT_GROUPS, compact = false }: { groups?: Shortcut['group'][]; compact?: boolean }) {
   const [settings, update] = useSettings();
   const overrides = settings.shortcuts;
   const [recording, setRecording] = useState('');
@@ -996,7 +997,7 @@ function ShortcutsPane() {
       }
       const key = shortcutFromEvent(e);
       if (!key) return;
-      const why = shortcutProblem(key);
+      const why = shortcutProblem(key, recording);
       if (why) return setProblem(why);
       assign(recording, key);
       stop();
@@ -1015,12 +1016,14 @@ function ShortcutsPane() {
 
   return (
     <>
-      <div className="field-hint section-hint">
-        Click a shortcut and press the new keys. Delete removes it and Escape cancels. Tab and {IS_MAC ? '⇧Tab' : 'Shift+Tab'} also indent and unindent the selected lines.
-      </div>
-      {SHORTCUT_GROUPS.map((group) => (
+      {!compact && (
+        <div className="field-hint section-hint">
+          Click a shortcut and press the new keys. Delete removes it and Escape cancels. Tab and {IS_MAC ? '⇧Tab' : 'Shift+Tab'} also indent and unindent the selected lines.
+        </div>
+      )}
+      {groups.map((group) => (
         <div key={group}>
-          <h3 className="form-section-title">{group}</h3>
+          {!compact && <h3 className="form-section-title">{group}</h3>}
           <div className="kv-list">
             {SHORTCUTS.filter((s) => s.group === group).map((s) => {
               const key = formatShortcut(keyOf(s.id));
@@ -1057,20 +1060,26 @@ function ShortcutsPane() {
           </div>
         </div>
       ))}
-      <h3 className="form-section-title">Fixed</h3>
-      <div className="kv-list">
-        {FIXED_SHORTCUTS.map(([label, key]) => (
-          <div key={label} className="kv-row shortcut-row">
-            <span>{label}</span>
-            <kbd>{formatShortcut(key)}</kbd>
+      {!compact && (
+        <>
+          <h3 className="form-section-title">Fixed</h3>
+          <div className="kv-list">
+            {FIXED_SHORTCUTS.map(([label, key]) => (
+              <div key={label} className="kv-row shortcut-row">
+                <span>{label}</span>
+                <kbd>{formatShortcut(key)}</kbd>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <div>
-        <button className="btn small" disabled={!Object.keys(overrides).length} onClick={() => update({ shortcuts: {} })}>
-          Restore all defaults
-        </button>
-      </div>
+        </>
+      )}
+      {!compact && (
+        <div>
+          <button className="btn small" disabled={!Object.keys(overrides).length} onClick={() => update({ shortcuts: {} })}>
+            Restore all defaults
+          </button>
+        </div>
+      )}
     </>
   );
 }
@@ -1736,12 +1745,53 @@ function CheckpointsPane() {
   );
 }
 
-/** The diagram composer: mixing symbol sets, and the conventions a new drawing starts with. */
-function ComposerPane() {
+/** The diagram composer: its canvas and wire shortcut, mixing symbol sets, and the conventions a new drawing starts with.
+ * Also opened from the composer's own Settings button. */
+export function ComposerPane() {
   const [settings, update] = useSettings();
   return (
     <>
       <div className="field-hint section-hint">These follow you to your other computers when settings sync is on. A drawing keeps the conventions it was made with; change one in the drawing’s Style menu.</div>
+      <h3 className="form-section-title">Canvas</h3>
+      <div className="field">
+        <label id="settings-composerGrid">Background</label>
+        <Select
+          labelId="settings-composerGrid"
+          value={settings.composerGrid}
+          options={[
+            ['major-dots', 'Dots, a larger dot every few'],
+            ['major-lines', 'Dots, a line every few'],
+            ['lines', 'Grid lines, a heavier line every few'],
+            ['dots', 'Dots only']
+          ]}
+          onChange={(value) => update({ composerGrid: value as AppSettings['composerGrid'] })}
+        />
+        <span className="field-hint">The circuit canvas’s grid, to count squares and line parts up. The marks repeat from the same point, so they stay on the same grid points when you pan or zoom.</span>
+      </div>
+      {settings.composerGrid !== 'dots' && (
+        <div className="field">
+          <label htmlFor="settings-composerGridEvery">Every</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              id="settings-composerGridEvery"
+              className="input"
+              type="number"
+              min={2}
+              max={20}
+              value={settings.composerGridEvery}
+              onChange={(e) => {
+                const n = Math.round(Number(e.target.value));
+                if (n >= 2 && n <= 20) update({ composerGridEvery: n });
+              }}
+              style={{ width: '6em' }}
+            />
+            <span className="field-hint">dots</span>
+          </div>
+        </div>
+      )}
+      <ShortcutsPane groups={['Diagram']} compact />
+      <div className="field-hint">The wire shortcut works while the pointer is over the drawing, so the key still types everywhere else.</div>
+      <h3 className="form-section-title">New drawings</h3>
       <label className="checkbox-row">
         <input type="checkbox" role="switch" checked={settings.composerMixSets} onChange={(e) => update({ composerMixSets: e.target.checked })} />
         <span>

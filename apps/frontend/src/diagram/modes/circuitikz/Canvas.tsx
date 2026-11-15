@@ -4,6 +4,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import Icon from '../../../app/Icon';
+import { loadSettings, useSettings } from '../../../app/settings';
+import { matchesShortcut, shortcutKey } from '../../../app/shortcuts';
 import { useCanvasPrefs } from '../../FlowCanvas';
 import { colourCss } from '../shared';
 import { FONT_SCALE, HEAD_CM, ROUNDED_CM, box, loopLine, presetElements } from './annotate';
@@ -67,6 +69,7 @@ function bendControls(p: Pt, q: Pt, bend: number): [Pt, Pt] {
 export default function CircuitCanvas({ model: raw, onChange, style, readOnly }: { model: CircuitModel; onChange(m: CircuitModel): void; style: Record<string, unknown>; readOnly?: boolean }) {
   const model = asCircuit(raw);
   const { tool, selection: rawSelection } = useCircuitUi();
+  const [settings] = useSettings();
   const boxRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -408,6 +411,22 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   }, [tool]);
 
   // ─── keys ───
+
+  // the wire shortcut (W unless changed in Settings › Shortcuts), only while the pointer is over the drawing and
+  // nothing is being typed, so the key still types everywhere else
+  const hovered = useRef(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (readOnly || !hovered.current || e.repeat) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"], .cm-editor')) return;
+      if (!matchesShortcut(shortcutKey(loadSettings().shortcuts, 'diagramWire'), e)) return;
+      e.preventDefault();
+      setTool('wire');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [readOnly]);
 
   const onKeyDown = (e: ReactKeyboardEvent) => {
     if (readOnly || (e.target as HTMLElement).closest('input, textarea, select, button, a')) return;
@@ -768,6 +787,10 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
 
   const dot = Math.max(2.5, k * 0.22);
   const gridStep = k < 6 ? 4 : 1;
+  // the background (Settings › Diagram composer): every Nth dot larger, or joined by lines, so squares can be counted
+  const minor = k * gridStep;
+  const major = minor * settings.composerGridEvery;
+  const pad = 3;
   const wirePreview = wire && hover ? [...wire.map((p) => pos(p)), hover] : null;
   const previewRoutes = wirePreview?.slice(1).map((p, i): Route => (drawingLine.current ? '--' : autoRoute(wirePreview[i], p)));
   const cursor = space || drag?.kind === 'pan' ? 'grab' : tool === 'select' ? 'default' : 'crosshair';
@@ -795,21 +818,39 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
         width="100%"
         height="100%"
         style={{ cursor, '--ckt-line': `${linePx}px` } as CSSProperties}
+        onPointerEnter={() => (hovered.current = true)}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerLeave={() => !drag && setHover(null)}
+        onPointerLeave={() => {
+          hovered.current = false;
+          if (!drag) setHover(null);
+        }}
         onDoubleClick={() => wire && finishWire(wire)}
       >
         <defs>
-          <pattern id="ckt-dots" width={k * gridStep} height={k * gridStep} patternUnits="userSpaceOnUse" x={v.x} y={v.y}>
-            <circle cx={0.75} cy={0.75} r={0.75} className="ckt-dot" />
+          <pattern id="ckt-dots" width={minor} height={minor} patternUnits="userSpaceOnUse" x={v.x} y={v.y}>
+            {settings.composerGrid === 'lines' ? (
+              <path d={`M0.75,0 V${minor} M0,0.75 H${minor}`} className="ckt-grid-line" />
+            ) : (
+              <circle cx={0.75} cy={0.75} r={0.75} className="ckt-dot" />
+            )}
           </pattern>
+          {settings.composerGrid !== 'dots' && (
+            <pattern id="ckt-major" width={major} height={major} patternUnits="userSpaceOnUse" x={v.x - pad} y={v.y - pad}>
+              {settings.composerGrid === 'major-dots' ? (
+                <circle cx={pad + 0.75} cy={pad + 0.75} r={1.6} className="ckt-dot" />
+              ) : (
+                <path d={`M${pad + 0.75},0 V${major} M0,${pad + 0.75} H${major}`} className="ckt-grid-line ckt-grid-major" />
+              )}
+            </pattern>
+          )}
           <marker id="ckt-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 z" className="ckt-arrowhead" />
           </marker>
         </defs>
         <rect width="100%" height="100%" fill="url(#ckt-dots)" />
+        {settings.composerGrid !== 'dots' && <rect width="100%" height="100%" fill="url(#ckt-major)" />}
         {view && (
           <>
             {shown.elements.filter((el): el is Wire => el.kind === 'wire').map(drawWire)}

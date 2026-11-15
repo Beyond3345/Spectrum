@@ -57,7 +57,14 @@ eq(['1', '2', '3', '0', '9'].map(digit), ['viewEditor', 'viewSplit', 'viewPdf', 
 // the defaults are free and don't clash with each other, on a Mac and elsewhere
 const defaults = SHORTCUTS.map((s) => canonical(s.key));
 eq(defaults.filter((k, i) => defaults.indexOf(k) !== i), [], 'default shortcuts are distinct');
-eq(SHORTCUTS.filter((s) => shortcutProblem(s.key)).map((s) => s.id), [], 'default shortcuts are allowed');
+eq(SHORTCUTS.filter((s) => shortcutProblem(s.key, s.id)).map((s) => s.id), [], 'default shortcuts are allowed');
+// the diagram's wire shortcut: a plain key is fine, but not one the circuit canvas uses
+eq(shortcutKey({}, 'diagramWire'), 'w', 'W draws a wire by default');
+eq(shortcutProblem('w', 'diagramWire'), '', 'a plain key for the diagram');
+eq(shortcutProblem('Shift-k', 'diagramWire'), '', 'a shifted key for the diagram');
+eq(shortcutProblem('r', 'diagramWire') !== '', true, 'R turns parts on the canvas');
+eq(shortcutProblem('x', 'diagramWire') !== '', true, 'X flips parts on the canvas');
+eq(shortcutProblem('Shift-k') !== '', true, 'other shortcuts still need a modifier');
 if (!IS_MAC) eq([formatShortcut('Shift-Mod-Enter'), formatShortcut('Alt-ArrowUp')], ['Ctrl+Shift+Enter', 'Alt+↑'], 'key names elsewhere');
 // a click with ⌥ (Alt) held adds a cursor, and one with ⌘ (Ctrl) held is left to Go to definition
 const adds = EditorState.create({ extensions: editorBasics }).facet(EditorView.clickAddsSelectionRange);

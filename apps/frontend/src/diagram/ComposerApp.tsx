@@ -10,6 +10,7 @@ import { MenuButton } from '../app/Menu';
 import Tabs from '../app/Tabs';
 import { toast } from '../app/Toast';
 import Sheet from '../app/Sheet';
+import { ComposerPane } from '../app/SettingsSheet';
 import { composerDefaults, effectiveCompile, llmConfigFor, loadSettings, useSettings } from '../app/settings';
 import { formatShortcut, matchesShortcut } from '../app/shortcuts';
 import { parseCompileLog } from '../editor/compileLog';
@@ -488,6 +489,8 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
   const [setsOpen, setSetsOpen] = useState(false);
   const [prefs, setPrefs] = useState(loadPrefs);
   const [styleOpen, setStyleOpen] = useState(false);
+  /** Settings › Diagram composer, opened here too */
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [preview, setPreview] = useState<PreviewState>({ state: 'idle', errors: [], log: '' });
   const [fixing, setFixing] = useState(false);
   const [conflict, setConflict] = useState<'changed' | 'deleted' | null>(null);
@@ -973,6 +976,14 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
         <button className="btn small primary" onClick={insert}>
           <Icon name="text.insert" /> Insert as figure
         </button>
+        <button className="icon-btn" title="Diagram composer settings" aria-label="Diagram composer settings" onClick={() => setSettingsOpen(true)}>
+          <Icon name="gearshape" />
+        </button>
+        {settingsOpen && (
+          <Sheet title="Diagram composer settings" onClose={() => setSettingsOpen(false)} width={560}>
+            <ComposerPane />
+          </Sheet>
+        )}
         <MenuButton
           label="Export"
           className="btn small"

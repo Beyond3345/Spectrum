@@ -61,6 +61,18 @@
   fill: var(--ckt-grid);
 }
 
+.ckt-grid-line {
+  fill: none;
+  stroke: var(--ckt-grid);
+  stroke-width: 1;
+  opacity: 0.45;
+}
+
+.ckt-grid-line.ckt-grid-major {
+  stroke-width: 1.4;
+  opacity: 0.9;
+}
+
 .ckt-glyph {
   filter: var(--ckt-glyph-filter);
 }

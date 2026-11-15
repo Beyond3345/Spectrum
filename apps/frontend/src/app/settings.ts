@@ -178,6 +178,9 @@ export type AppSettings = {
   composerMohrShear: ComposerDefaults['mohrShear'];
   /** Write units with siunitx: a new drawing's values as \qty, its units as \unit */
   composerSiUnits: boolean;
+  /** the circuit canvas's background: dots, with every composerGridEvery-th dot larger or joined by a line, or lines */
+  composerGrid: 'dots' | 'major-dots' | 'major-lines' | 'lines';
+  composerGridEvery: number;
   /** a new structure's force diagrams: which are drawn, their fills and opacities */
   composerDiagrams: DiagramLooks;
   /** the chooser's Recently used: starter ids, newest first, at most eight (this computer's) */
@@ -282,6 +285,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   composerMoments: 'tension',
   composerMohrShear: 'down',
   composerSiUnits: true,
+  composerGrid: 'major-dots',
+  composerGridEvery: 5,
   composerDiagrams: DIAGRAM_LOOKS,
   composerRecent: []
 };
@@ -439,6 +444,8 @@ function parse(raw: string | null): AppSettings {
     if (!['tension', 'positive'].includes(merged.composerMoments)) merged.composerMoments = 'tension';
     if (!['down', 'clockwise-above', 'up'].includes(merged.composerMohrShear)) merged.composerMohrShear = 'down';
     merged.composerSiUnits = merged.composerSiUnits !== false;
+    if (!['dots', 'major-dots', 'major-lines', 'lines'].includes(merged.composerGrid)) merged.composerGrid = 'major-dots';
+    merged.composerGridEvery = Number.isInteger(merged.composerGridEvery) && merged.composerGridEvery >= 2 && merged.composerGridEvery <= 20 ? merged.composerGridEvery : 5;
     merged.composerDiagrams = readLooks(merged.composerDiagrams);
     merged.composerRecent = Array.isArray(merged.composerRecent) ? merged.composerRecent.filter((id) => typeof id === 'string').slice(0, 8) : [];
     for (const key of ['editorFont', 'editorFontCustom', 'editorThemeLight', 'editorThemeDark', 'parser', 'parserProtocol', 'openalexEmail', 'ncbiKey', 'unpaywallEmail'] as const) {
@@ -536,7 +543,7 @@ const SHARED_KEYS = [
   'theme', 'accent', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize',
   'autoInsertCite', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'languages', 'englishGrammar', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
   'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions', 'composerMixSets', 'composerMoments', 'composerMohrShear',
-  'composerSiUnits', 'composerDiagrams'
+  'composerSiUnits', 'composerDiagrams', 'composerGrid', 'composerGridEvery'
 ] as const satisfies readonly (keyof AppSettings)[];
 
 export const sharedPart = (settings: AppSettings): Record<string, unknown> => Object.fromEntries(SHARED_KEYS.map((key) => [key, settings[key]]));
