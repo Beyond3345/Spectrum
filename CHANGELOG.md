@@ -7,6 +7,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 ### Fixed
 
 - Wires run straight into a transistor's pins in the diagram composer. A MOSFET's gate and its drain and source cannot all sit on the grid, and a placed part snapped by whichever pin was nearest, so the wires to the others jogged on the canvas and in the PDF. Each pin now snaps across the way its lead runs, so the drain and source sit on a grid column and the gate on a grid row
+- Circuit symbols line up with their wires to a fraction of a pixel on the canvas. A symbol's page became an image rounded up to whole pixels, which the canvas then showed at the page's size, so a lead near the edge of a symbol landed up to 0.13 pt from its pin and a wire met it with a slight step
 - Circuit symbols stay sharp when zoomed in. They are redrawn at a higher resolution when the canvas shows them larger than their stored images, and wires and annotations take circuitikz's line width when zoomed in, so they match the symbols' leads
 
 ## 2.4.0 (15 November 2026)
