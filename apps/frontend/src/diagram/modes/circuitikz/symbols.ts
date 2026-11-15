@@ -52,8 +52,11 @@ async function renderPages(pdfBase64: string, pages: number[], scale = RENDER_SC
       canvas.height = Math.ceil(viewport.height);
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('No canvas to draw the symbols on');
-      // see-through, so the canvas behind shows and dark mode can invert the ink
-      await page.render({ canvas, canvasContext: ctx, viewport, background: 'rgba(0,0,0,0)' }).promise;
+      // see-through, so the canvas behind shows and dark mode can invert the ink. The page fills the whole pixels exactly
+      // (a stretch of under 1 px): the canvas shows the image at the page's size, and an image drawn at the viewport's
+      // size inside a rounded-up canvas would be squeezed, moving the leads off their pins by up to a pixel
+      const transform = [canvas.width / viewport.width, 0, 0, canvas.height / viewport.height, 0, 0];
+      await page.render({ canvas, canvasContext: ctx, viewport, transform, background: 'rgba(0,0,0,0)' }).promise;
       images.push(canvas.toDataURL('image/png'));
     }
     return images;
@@ -131,7 +134,8 @@ async function load(ctikzOptions: string, variants: Variant[]) {
   // a set's version too, so a changed set draws afresh. ponytail: a TeX update isn't seen here, only in the backend's
   // cache; key this by circuitikz's date as well if that bites
   const versions = Object.fromEntries([...new Set(variants.map((v) => PARTS.get(v.type)?.set || 'circuitikz'))].map((set) => [set, SYMBOL_SETS[set]?.version]));
-  const cacheKey = JSON.stringify({ ...body, versions });
+  // images: bumped when the way pages become images changes, so stored ones are drawn again
+  const cacheKey = JSON.stringify({ ...body, versions, images: 2 });
   // the backend draws a part on the page of its place in the request
   keys.forEach((k, i) => sources.set(`${ctikzOptions}\n${k}`, { body, page: i + 1 }));
   try {
