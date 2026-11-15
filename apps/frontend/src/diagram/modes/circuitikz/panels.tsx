@@ -205,6 +205,17 @@ const FONTS: [string, string][] = [
 /** TikZ node names: letters, digits, - and _ */
 const cleanName = (text: string) => text.replace(/[^A-Za-z0-9_-]/g, '');
 
+/** Fields folded away until wanted: open to begin with when the part already has any of them set */
+function More({ summary, open, children }: { summary: string; open: boolean; children: ReactNode }) {
+  const [shown, setShown] = useState(open);
+  return (
+    <details className="ckt-more" open={shown} onToggle={(e) => setShown(e.currentTarget.open)}>
+      <summary>{summary}</summary>
+      <div className="ckt-more-body">{children}</div>
+    </details>
+  );
+}
+
 function MarkFields({ label, mark, onChange, hint, u, voltage }: { label: string; mark: Mark | undefined; onChange: (m: Mark | undefined) => void; hint?: string; u: Pt; voltage?: boolean }) {
   const { voltageDir } = useCircuitUi();
   const m = mark || { text: '' };
@@ -382,52 +393,54 @@ export function CircuitInspector({ model: raw, onChange }: { model: CircuitModel
               </div>
             )}
           </Field>
-          <Field label="Value" hint="Written opposite the label. With siunitx on in Style, 10 kΩ becomes \qty{10}{\kilo\ohm}.">
+          <Field label="Value" hint="Written opposite the label, or under it when the voltage is on that side. With siunitx on in Style, 10 kΩ becomes \qty{10}{\kilo\ohm}.">
             {(id) => <input id={id} className="input mono" value={el.value || ''} onChange={(e) => update({ ...el, value: e.target.value || undefined })} spellCheck={false} />}
           </Field>
-          <MarkFields
-            label="Voltage"
-            mark={el.voltage}
-            onChange={(voltage) => update({ ...el, voltage })}
-            u={u}
-            voltage
-            hint={part?.tikz === 'open' ? 'Marked between the two ends: + and − at the ends, the name between them.' : 'Marked across the part: + and − at its ends, the name beside it.'}
-          />
-          <MarkFields label="Current" mark={el.current} onChange={(current) => update({ ...el, current })} u={u} />
-          <MarkFields label="Flow" mark={el.flow} onChange={(flow) => update({ ...el, flow })} hint="An arrow beside the part, for power or heat flow." u={u} />
-          <Field label="Poles">
-            {() => (
-              <div className="ckt-row">
-                {[0, 1].map((i) => (
-                  <Select
-                    key={i}
-                    value={(el.poles || ['', ''])[i]}
-                    options={POLES.map(([value, label]) => [value, `${i ? 'End' : 'Start'}: ${label}`])}
-                    onChange={(value) => {
-                      const poles = [...(el.poles || ['', ''])] as [Pole, Pole];
-                      poles[i] = value as Pole;
-                      update({ ...el, poles: poles[0] || poles[1] ? poles : undefined });
-                    }}
-                    title={i ? 'Pole at the end' : 'Pole at the start'}
-                  />
-                ))}
-              </div>
-            )}
-          </Field>
-          <label className="checkbox-row">
-            <input type="checkbox" checked={!!el.mirror} onChange={(e) => update({ ...el, mirror: e.target.checked || undefined })} />
-            <span>Mirror (flip across the wire)</span>
-          </label>
-          <label className="checkbox-row">
-            <input type="checkbox" checked={!!el.invert} onChange={(e) => update({ ...el, invert: e.target.checked || undefined })} />
-            <span>Invert (turn end for end)</span>
-          </label>
-          <Field label={`Size: ${Math.round((el.size || 1) * 100)}%`}>
-            {(id) => <input id={id} type="range" min={0.5} max={2} step={0.05} value={el.size || 1} onChange={(e) => update({ ...el, size: Number(e.target.value) === 1 ? undefined : Number(e.target.value) })} />}
-          </Field>
-          <Field label="Name" hint="Optional: lets other drawings reach its anchors.">
-            {(id) => <input id={id} className="input mono" value={el.name || ''} onChange={(e) => update({ ...el, name: cleanName(e.target.value) || undefined })} spellCheck={false} />}
-          </Field>
+          <More key={el.id} summary="Voltage, current and more" open={!!(el.voltage || el.current || el.flow || el.poles || el.mirror || el.invert || el.size || el.name)}>
+            <MarkFields
+              label="Voltage"
+              mark={el.voltage}
+              onChange={(voltage) => update({ ...el, voltage })}
+              u={u}
+              voltage
+              hint={part?.tikz === 'open' ? 'Marked between the two ends: + and − at the ends, the name between them.' : 'Marked across the part: + and − at its ends, the name beside it. The label, value, current and flow keep to the other side.'}
+            />
+            <MarkFields label="Current" mark={el.current} onChange={(current) => update({ ...el, current })} u={u} />
+            <MarkFields label="Flow" mark={el.flow} onChange={(flow) => update({ ...el, flow })} hint="An arrow beside the part, for power or heat flow." u={u} />
+            <Field label="Poles">
+              {() => (
+                <div className="ckt-row">
+                  {[0, 1].map((i) => (
+                    <Select
+                      key={i}
+                      value={(el.poles || ['', ''])[i]}
+                      options={POLES.map(([value, label]) => [value, `${i ? 'End' : 'Start'}: ${label}`])}
+                      onChange={(value) => {
+                        const poles = [...(el.poles || ['', ''])] as [Pole, Pole];
+                        poles[i] = value as Pole;
+                        update({ ...el, poles: poles[0] || poles[1] ? poles : undefined });
+                      }}
+                      title={i ? 'Pole at the end' : 'Pole at the start'}
+                    />
+                  ))}
+                </div>
+              )}
+            </Field>
+            <label className="checkbox-row">
+              <input type="checkbox" checked={!!el.mirror} onChange={(e) => update({ ...el, mirror: e.target.checked || undefined })} />
+              <span>Mirror (flip across the wire)</span>
+            </label>
+            <label className="checkbox-row">
+              <input type="checkbox" checked={!!el.invert} onChange={(e) => update({ ...el, invert: e.target.checked || undefined })} />
+              <span>Invert (turn end for end)</span>
+            </label>
+            <Field label={`Size: ${Math.round((el.size || 1) * 100)}%`}>
+              {(id) => <input id={id} type="range" min={0.5} max={2} step={0.05} value={el.size || 1} onChange={(e) => update({ ...el, size: Number(e.target.value) === 1 ? undefined : Number(e.target.value) })} />}
+            </Field>
+            <Field label="Name" hint="Optional: lets other drawings reach its anchors.">
+              {(id) => <input id={id} className="input mono" value={el.name || ''} onChange={(e) => update({ ...el, name: cleanName(e.target.value) || undefined })} spellCheck={false} />}
+            </Field>
+          </More>
         </>
       ) : (
         <>
@@ -485,8 +498,10 @@ function WireInspector({ el, update, actions, legs }: { el: Wire; update: (el: E
           <Field label={el.routes.length > 1 ? `Segment ${i + 1}` : 'Route'}>
             {() => <Select value={route} options={ROUTES} onChange={(value) => update({ ...el, routes: el.routes.map((r, j) => (j === i ? (value as Route) : r)) })} />}
           </Field>
-          <MarkFields label="Current" mark={el.currents?.[i] ?? undefined} onChange={(m) => setMark('currents', i, m)} u={legs[i] || { x: 1, y: 0 }} hint={route === '--' ? undefined : 'On the first leg of the bend.'} />
-          <MarkFields label="Flow" mark={el.flows?.[i] ?? undefined} onChange={(m) => setMark('flows', i, m)} u={legs[i] || { x: 1, y: 0 }} />
+          <More key={`${el.id}-${i}`} summary="Current and flow" open={!!(el.currents?.[i] || el.flows?.[i])}>
+            <MarkFields label="Current" mark={el.currents?.[i] ?? undefined} onChange={(m) => setMark('currents', i, m)} u={legs[i] || { x: 1, y: 0 }} hint={route === '--' ? undefined : 'On the first leg of the bend.'} />
+            <MarkFields label="Flow" mark={el.flows?.[i] ?? undefined} onChange={(m) => setMark('flows', i, m)} u={legs[i] || { x: 1, y: 0 }} />
+          </More>
         </div>
       ))}
       <Field label="Arrowheads">
