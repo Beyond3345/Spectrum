@@ -329,7 +329,7 @@ export const STARTERS: Starter[] = [
   },
   // fluid mechanics, worked out from a form
   ...([
-    ['gate', 'F_R, the centre of pressure and the stop’s force on a gate, with the pressure prism', ['hydrostatic', 'gate', 'sluice', 'plane surface', 'pressure prism', 'centre of pressure', 'center of pressure', 'hinge', 'ridge', 'submerged', 'dam', 'fluid statics']],
+    ['gate', 'The resultant force, centre of pressure and stop force on a gate, with its pressure prism', ['hydrostatic', 'gate', 'sluice', 'plane surface', 'pressure prism', 'centre of pressure', 'center of pressure', 'hinge', 'ridge', 'submerged', 'dam', 'fluid statics']],
     ['manometer', 'U-tube, differential, inverted or multi-fluid, with the pressure difference', ['manometer', 'U-tube', 'differential', 'inverted', 'mercury', 'pressure difference', 'gauge pressure', 'piezometer', 'fluid statics']],
     ['tank', 'The tilted free surface under an acceleration, with θ, the depths and pressures', ['accelerating', 'tank', 'rigid-body motion', 'rigid body', 'free surface', 'acceleration', 'truck', 'incline', 'spill', 'fluid statics']],
     ['floating', 'Draught, G, B and M of a floating block, with the metacentric height', ['buoyancy', 'floating', 'stability', 'metacentre', 'metacenter', 'metacentric height', 'Archimedes', 'draught', 'draft', 'barge', 'fluid statics']]

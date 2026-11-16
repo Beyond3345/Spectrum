@@ -77,7 +77,7 @@ const measured = (tex: string) => tex.replace(/\\(?:mathrm|text)\b/g, '').replac
  * A drawing being written: its lines, the shapes its labels keep clear of, and its labels, each written where its
  * marker is once all are placed (in the order they were added, fixed ones staying where they are).
  */
-export function scene() {
+export function scene(look = 'colour') {
   const lines: string[] = [];
   const items: ShapeItem[] = [];
   const labels: Label[] = [];
@@ -165,7 +165,8 @@ export function scene() {
         if (!line.startsWith('\u0000')) return line;
         const i = Number(line.slice(1));
         const p = placed[i] ?? labels[i];
-        return `\\node[anchor=${p.anchor}] at ${at(p.at)} {${labels[i].tex}};`;
+        // on an exam paper's black and white, a label over a fluid's lines sits on white, as the papers' do
+        return `\\node[anchor=${p.anchor}${look === 'exam' ? ', fill=white' : ''}] at ${at(p.at)} {${labels[i].tex}};`;
       });
       return { body, patterns, labels: placed.map((l, i) => l ?? { ...labels[i], tex: measured(labels[i].tex) }), shapes };
     }
@@ -176,11 +177,13 @@ export function scene() {
 export type Scene = ReturnType<typeof scene>;
 
 /**
- * The results under the figure, centred under x from y down, one line each; the labels keep clear of them.
- * ponytail: their box is guessed from the longest line's length (about 1.8 mm a character), as labels.ts measures.
+ * The results under the figure, one line each, centred under x and below everything drawn so far; the labels keep
+ * clear of them. ponytail: their box is guessed from the longest line (about 1.8 mm a character), as labels.ts measures.
  */
-export function results(sc: Scene, x: number, y: number, parts: string[]) {
+export function results(sc: Scene, x: number, parts: string[]) {
   if (!parts.length) return;
+  const ys = sc.items.flatMap((item) => (item.t === 'line' ? item.pts.map((p) => p.y) : item.t === 'arc' ? [item.c.y - item.r] : item.t === 'dot' ? [item.at.y - item.r] : []));
+  const y = Math.min(0, ...ys) - 0.55;
   const w = Math.max(...parts.map((p) => p.replace(/\\[a-zA-Z]+|[{}$^_]/g, '').length)) * 0.18;
   sc.add(`\\node[anchor=north, align=center] at ${at({ x, y })} {${parts.join(';\\\\ ')}};`);
   sc.items.push({ t: 'line', pts: [{ x: x - w / 2, y }, { x: x + w / 2, y }, { x: x + w / 2, y: y - parts.length * 0.42 }, { x: x - w / 2, y: y - parts.length * 0.42 }], closed: true, fill: 'white' });

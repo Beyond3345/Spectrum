@@ -4,7 +4,7 @@
 // the hinge, and draws them as the course's slides and exam papers do: the fluid with its ▽ mark, the hatched wall and
 // bed, the gate, the pressure prism with its pressures, F_R in red at the centre of pressure, and the dimensions.
 import { unitWriter } from '../../units';
-import { fluidFields, fluidOf, fmt, G, LOOK_FIELD, pictureOf, pressure, results, RESULTS_FIELD, scene } from './fluids';
+import { at as pt, fluidFields, fluidOf, fmt, G, LOOK_FIELD, pictureOf, pressure, results, RESULTS_FIELD, scene } from './fluids';
 import type { Pt } from './fluids';
 import type { FormPreset, FormValues } from './presets';
 
@@ -125,7 +125,7 @@ export function gateDrawing(values: FormValues, style: Record<string, unknown>) 
   const xR = Math.max(T.x, B.x) + (two ? 4.6 : 1.4);
   const yB = B.y;
   const at = (xi: number) => P(along(xi));
-  const sc = scene();
+  const sc = scene(look);
 
   // the fluids, their free surfaces and the bed
   if (r.F1 > 0 || top + L * s > 0) {
@@ -187,12 +187,11 @@ export function gateDrawing(values: FormValues, style: Record<string, unknown>) 
     if (r.pressures.top1 > 0) pressureLabel(tip(0), r.pressures.top1, n1);
     pressureLabel(tip(L), r.pressures.bottom1, n1);
   }
-  let tip2: ((xi: number) => Pt) | null = null;
   if (input.other && r.F2 > 0) {
     const o = input.other;
     sc.add('% Pressure from the other side');
     const from = Math.min(L, Math.max(0, L - o.depth / s));
-    tip2 = prism(from, (xi) => o.rho * (input.g ?? G) * (o.depth - (L - xi) * s), -1, blue);
+    const tip2 = prism(from, (xi) => o.rho * (input.g ?? G) * (o.depth - (L - xi) * s), -1, blue);
     if (r.pressures.top2 > 0) pressureLabel(tip2(0), r.pressures.top2, { x: -n1.x, y: -n1.y });
     pressureLabel(tip2(L), r.pressures.bottom2, { x: -n1.x, y: -n1.y });
   }
@@ -230,7 +229,9 @@ export function gateDrawing(values: FormValues, style: Record<string, unknown>) 
       const from = add(to, n1, r.stop > 0 ? -1.1 : 1.1);
       sc.add(`\\draw[-{Stealth[length=2.6mm]}, line width=1.2pt, ${red}] ${pt(from)} -- ${pt(to)};`);
       sc.seg([from, to]);
-      sc.label(from, si.equals('F_B', kN(Math.abs(r.stop)), 'kN'), { x: r.stop > 0 ? -n1.x : n1.x, y: (r.stop > 0 ? -n1.y : n1.y) - 0.5 });
+      // beyond its tail, towards the gate's middle (off the bed for a stop at the foot)
+      const sign = r.stop > 0 ? -1 : 1;
+      sc.label(from, si.equals('F_B', kN(Math.abs(r.stop)), 'kN'), { x: n1.x * sign + inward.x * 0.5, y: n1.y * sign + inward.y * 0.5 });
     }
   }
 
@@ -240,7 +241,7 @@ export function gateDrawing(values: FormValues, style: Record<string, unknown>) 
   const off1 = { x: -n1.x * offset, y: -n1.y * offset };
   const off2 = { x: -n1.x * (offset + 1.1), y: -n1.y * (offset + 1.1) };
   const xiO = -top / s;
-  const stops = [...new Set([0, L, ...(xiO > 0 && xiO < L ? [xiO] : xiO < 0 ? [xiO] : [])])].sort((a, b) => a - b);
+  const stops = [...new Set([0, L, ...(xiO < L ? [xiO] : [])])].sort((a, b) => a - b);
   sc.add('% Dimensions');
   for (let i = 1; i < stops.length; i += 1) sc.dimension(at(stops[i - 1]), at(stops[i]), off1, metres(stops[i] - stops[i - 1]));
   // ponytail: with fluid on both sides y_p's extension line would cross the other side, so its value is in the results only
@@ -249,8 +250,8 @@ export function gateDrawing(values: FormValues, style: Record<string, unknown>) 
   if (input.angle < 90 - 1e-9) {
     sc.add(`\\draw[line width=0.4pt] ${pt(add(B, { x: 1, y: 0 }, 0.6))} arc[start angle=0, end angle=${fmt(input.angle, 6)}, radius=0.6];`);
     sc.items.push({ t: 'arc', c: B, r: 0.6, from: 0, to: input.angle });
-    const mid = theta / 2;
-    sc.label(add(B, { x: Math.cos(mid), y: Math.sin(mid) }, 0.6), `$\\theta = ${fmt(input.angle, 3)}^\\circ$`, { x: Math.cos(mid), y: Math.sin(mid) });
+    // past the arc's foot on the bed, clear of the stop's arrow, which crosses the arc
+    sc.label({ x: B.x + 0.62, y: B.y + 0.06 }, `$\\theta = ${fmt(input.angle, 3)}^\\circ$`, { x: 1, y: 0.35 });
   }
   sc.label({ x: xL + 0.15, y: (yB + 0) / 2 - 0.25 }, f1.label, { x: 1, y: 0 });
   if (input.other) sc.label({ x: xR - 0.1, y: y2 - 0.1 }, f2.label, { x: -1, y: -1 });
@@ -268,13 +269,11 @@ export function gateDrawing(values: FormValues, style: Record<string, unknown>) 
       ...(input.other && r.F2 > 0 ? [`${si.equals('F_{R2}', kN(r.F2), 'kN')} at ${si.equals('y_p', fmt(r.yp2, 3), 'm')}`] : []),
       ...(r.stop !== null ? [`stop ${si.equals('F_B', kN(r.stop), 'kN')}, hinge ${si.equals('F_A', kN(r.hinge!), 'kN')}`] : [])
     ];
-    results(sc, (xL + xR) / 2, yB - 0.5, parts);
+    results(sc, (xL + xR) / 2, parts);
   }
   return pictureOf(sc, comments, si.used);
 }
 
-const fmtCm = (v: number) => String(Math.round(v * 1000) / 1000);
-const pt = (p: Pt) => `(${fmtCm(p.x)},${fmtCm(p.y)})`;
 
 export const GATE: FormPreset = {
   id: 'gate',

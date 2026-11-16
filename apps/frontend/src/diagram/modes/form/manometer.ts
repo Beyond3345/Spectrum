@@ -43,7 +43,7 @@ export function manometerDrawing(values: FormValues, style: Record<string, unkno
   const X = (j: number) => j * 1.6;
   const R = 0.8;
   const e = 0.5;
-  const sc = scene();
+  const sc = scene(look);
   const colour = (f: FluidOf) => (look === 'exam' ? f.grey : f.tube);
   // the tube's pieces in the walk's order, each with its fluid: [path, fluid, its points for the label spacing]
   const pieces: { path: string; fluid: FluidOf; mid: Pt; side: Pt }[] = [];
@@ -124,8 +124,7 @@ export function manometerDrawing(values: FormValues, style: Record<string, unkno
   else if (end.open && !start.open) lines.push(...gauge(start.name, -dp));
   else lines.push(`$P_{${bare(end.name)}} - P_{${bare(start.name)}} = $ ${write(dp)}`);
   const xs = cols.map((c, i) => X(leg[i]));
-  const bottoms = cols.flatMap((c, i) => (cols[i + 1] && c.down && !cols[i + 1].down ? [Z[i + 1] - e - R] : []));
-  if (values.results === true) results(sc, (Math.min(...xs) + Math.max(...xs)) / 2, Math.min(...Z, ...bottoms) - 0.5, lines);
+  if (values.results === true) results(sc, (Math.min(...xs) + Math.max(...xs)) / 2, lines);
   const comments = [
     `Manometer: from ${bare(start.name)} ${cols.map((c) => `${c.down ? 'down' : 'up'} ${fmt(c.h)} ${unit} of ${c.fluid.label}`).join(', ')} to ${bare(end.name)}`,
     `P_${bare(end.name)} - P_${bare(start.name)} = ${fmt(dp, 6)} Pa`

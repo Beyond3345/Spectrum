@@ -43,7 +43,7 @@ export function floatingDrawing(values: FormValues, style: Record<string, unknow
   const surface = r.floats ? 0 : top + 0.5;
   const [x0, x1] = [-w - 2.2, w + 3];
   const yBed = -d - (r.floats ? 0.9 : 0);
-  const sc = scene();
+  const sc = scene(look);
   sc.add('% The liquid and its free surface');
   sc.fill([{ x: x0, y: yBed }, { x: x1, y: yBed }, { x: x1, y: surface }, { x: x0, y: surface }], f, look);
   sc.add(`\\draw[line width=0.5pt] ${at({ x: x0, y: surface })} -- ${at({ x: x1, y: surface })};`);
@@ -90,7 +90,7 @@ export function floatingDrawing(values: FormValues, style: Record<string, unknow
         `${si.equals('GM', fmt(r.GM!, 3), 'm')}: ${verdict}`
       ]
     : [`It sinks: RD ${fmt(input.rdBody)} is not less than the liquid’s ${fmt(f.rd)}`];
-  if (values.results === true) results(sc, 0, yBed - (r.floats ? 0.25 : 0.45), parts);
+  if (values.results === true) results(sc, 0, parts);
   const comments = [
     `Floating ${input.shape}: ${fmt(input.width)} m ${input.shape === 'cylinder' ? 'across' : 'wide'}, ${fmt(input.height)} m high, RD ${fmt(input.rdBody)} in ${f.label}`,
     r.floats ? `Draught ${fmt(r.d)} m; KB ${fmt(r.KB)} m, BM ${fmt(r.BM)} m, KG ${fmt(r.KG)} m, GM ${fmt(r.GM!)} m (${verdict})` : 'It sinks'

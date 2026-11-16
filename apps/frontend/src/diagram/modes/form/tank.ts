@@ -77,7 +77,7 @@ export function tankDrawing(values: FormValues, style: Record<string, unknown>) 
   const k = 5 / Math.max(input.length, input.height);
   const [L, H] = [input.length * k, input.height * k];
   const d0 = input.depth * k;
-  const sc = scene();
+  const sc = scene(look);
   const metres = (m: number) => si.qty(fmt(m, 3), 'm');
 
   // the liquid: under the surface line, inside the tank; the surface's ends where it's in the tank
@@ -120,7 +120,8 @@ export function tankDrawing(values: FormValues, style: Record<string, unknown>) 
     const to = { x: L / 2 + 0.6 * Math.cos(dir), y: H + 0.7 + 0.6 * Math.sin(dir) };
     sc.add('% The acceleration', `\\draw[-{Stealth[length=2.4mm]}, line width=1pt] ${at(from)} -- ${at(to)};`);
     sc.seg([from, to]);
-    sc.label(to, si.equals('a', fmt(Math.abs(input.a), 4), 'm/s$^2$'), { x: Math.cos(dir), y: Math.sin(dir) });
+    const slope = input.angle ? ` at $${fmt(Math.abs(input.angle), 3)}^\\circ$` : '';
+    sc.label(to, `${si.equals('a', fmt(Math.abs(input.a), 4), 'm/s$^2$')}${slope}`, { x: Math.cos(dir), y: Math.sin(dir) });
   }
   // depths at the walls, the tank's size, and the bottom pressures
   sc.add('% Dimensions');
@@ -143,7 +144,7 @@ export function tankDrawing(values: FormValues, style: Record<string, unknown>) 
         `rear ${metres(r.rear)} deep, front ${metres(r.front)}${r.spills ? '; it spills over the rear wall' : r.front <= 0 ? '; the front of the floor is dry' : ''}`,
         ...(Number.isFinite(r.aMax) ? [`spills from ${si.equals('a', fmt(r.aMax, 3), 'm/s$^2$')}`] : [])
       ];
-  if (values.results === true) results(sc, L / 2, -1.25, parts);
+  if (values.results === true) results(sc, L / 2, parts);
   const comments = [
     `Accelerating tank: ${fmt(input.length)} m long, ${fmt(input.height)} m high, ${fmt(input.depth)} m deep at rest; a = ${fmt(input.a)} m/s2 at ${fmt(input.angle)} degrees`,
     r
