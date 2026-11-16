@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { jyutpingInfo, jyutpingPreview } from '../api/client';
 import type { CompileEngine, JyutpingInfo, JyutpingOptions, JyutpingSettings } from '../api/client';
 import { pdfPageCanvas } from '../diagram/Preview';
-import { JYUTPING_DEFAULTS, cleanOptions } from '../editor/jyutping';
+import { JYUTPING_DEFAULTS, cleanOptions, jyutpingEngineLine } from '../editor/jyutping';
 import { errorText } from '../editor/shared';
 import Segmented from './Segmented';
 import Select from './Select';
@@ -22,10 +22,6 @@ const named = (label: string, key: string): ReactNode => (
     {label} <span className="optional">{key}</span>
   </>
 );
-
-/** The engine the project's compiles use for xjyutping, which needs XeLaTeX or LuaLaTeX. */
-export const jyutpingEngineLine = (engine: CompileEngine) =>
-  engine === 'lualatex' ? 'Compiles with LuaLaTeX' : engine === 'xelatex' ? 'Compiles with XeLaTeX' : 'Compiles with XeLaTeX (or the built-in Tectonic)';
 
 /**
  * The toolbar's 粵: Jyutping over the Chinese text with xjyutping, added as the project compiles or written into the

@@ -1,6 +1,6 @@
 // Self-check for the Jyutping sheet's options and wrapping. Run:
 // npx esbuild apps/frontend/src/editor/jyutping.check.ts --bundle --platform=node --log-level=warning | node
-import { cleanOptions, jyutpingWrap, loadsXjyutping } from './jyutping';
+import { cleanOptions, jyutpingEngineLine, jyutpingWrap, loadsXjyutping } from './jyutping';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -24,3 +24,6 @@ eq(apply('x 我哋 y', 2, 4, 'scope'), 'x \n\\begin{jyutpingscope}\n我哋\n\\en
 eq(apply('x\n\n', 2, 2, 'scope'), 'x\n\\begin{jyutpingscope}\n|\n\\end{jyutpingscope}\n', 'empty scope');
 
 console.log('jyutping: ok');
+
+// Auto, pdfLaTeX and Tectonic compile with XeLaTeX, never the built-in Tectonic, whose LaTeX is too old for xjyutping
+for (const engine of ['auto', 'pdflatex', 'tectonic'] as const) eq(/XeLaTeX/.test(jyutpingEngineLine(engine)) && !/or the built-in Tectonic/.test(jyutpingEngineLine(engine)), true, `engine line for ${engine}`);
