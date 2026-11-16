@@ -1,7 +1,7 @@
 // Plain TikZ: boxes and the arrows between them, written as absolute coordinates. One grid unit is 0.25 cm, y down on
 // the canvas and up in TikZ. The writers live in the backend's latex/flowchart.js, which the converter uses too, to
 // write a drawing again as fletcher.
-import { holds } from '../../../../../backend/src/latex/flowchart.js';
+import { BAND, holds } from '../../../../../backend/src/latex/flowchart.js';
 import type { Box, Link, Shape, Side, TikzModel } from '../../../../../backend/src/latex/flowchart.js';
 
 export type { Box, Dash, Heads, LabelSide, Line, Link, Route, Shape, Side, TikzModel } from '../../../../../backend/src/latex/flowchart.js';
@@ -52,6 +52,21 @@ export const tikzNeedsVersion5 = (model: TikzModel) =>
   model.boxes.some((b) => SHAPES_25.includes(b.shape) || b.dir) || model.links.some((l) => l.labelSide || l.labelPos !== undefined || l.sign);
 
 export const emptyTikz = (): TikzModel => ({ boxes: [], links: [] });
+
+/** A swimlane's title band as [x, y, w, h] in grid units from its top-left corner, which a click on picks the lane up by. */
+export function bandArea(box: Box): [number, number, number, number] {
+  const band = Math.min(BAND, box.w, box.h);
+  switch (box.dir ?? 't') {
+    case 'b':
+      return [0, box.h - band, box.w, band];
+    case 'l':
+      return [0, 0, band, box.h];
+    case 'r':
+      return [box.w - band, 0, band, box.h];
+    default:
+      return [0, 0, box.w, band];
+  }
+}
 
 /**
  * a new shape's size in grid units, and its text. Every size even, so each box's centre is on the grid as its corner is,

@@ -1,7 +1,7 @@
 // Self-check for the plain TikZ mode's code. Run:
 // npx esbuild apps/frontend/src/diagram/modes/tikz/tikz.check.ts --bundle --platform=node --log-level=warning | node
 import { fletcherCode } from '../fletcher/code';
-import { FLETCHER_SHAPES, NEW, along, connect, copyTikz, corners, dividersOf, facing, middleOf, moveBoxes, nextId, pasteTikz, removeTikz, resized, tikzCode, tikzIsNewer, tikzNeedsVersion5, turnTikz } from './code';
+import { FLETCHER_SHAPES, NEW, along, bandArea, connect, copyTikz, corners, dividersOf, facing, middleOf, moveBoxes, nextId, pasteTikz, removeTikz, resized, tikzCode, tikzIsNewer, tikzNeedsVersion5, turnTikz } from './code';
 import type { Box, Link, Shape, TikzModel } from './code';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -253,5 +253,10 @@ eq(facing(done, check), ['l', 'r'], 'to the left, across');
 eq(facing(start, start), ['t', 't'], 'itself, a loop above');
 const joined = connect(model, 'n2', 'n3', ...facing(check, done));
 eq(tikzCode(joined).body.includes('\\draw[-{Stealth}] (n2.east) -- (n3.west);'), true, 'a connected arrow writes as one dragged between those sides');
+
+// a swimlane is picked up by its title band as well as its outline: the band on the side it is on, 3 units deep
+const lane: Box = { id: 'l1', shape: 'swimlane', x: 4, y: 2, w: 16, h: 24, text: 'Shop' };
+eq([undefined, 'b', 'l', 'r'].map((dir) => bandArea({ ...lane, dir } as Box)), [[0, 0, 16, 3], [0, 21, 16, 3], [0, 0, 3, 24], [13, 0, 3, 24]], 'a swimlane’s title band');
+eq(bandArea({ ...lane, w: 2 }), [0, 0, 2, 2], 'no deeper than a small lane');
 
 console.log('tikz.check: ok');
