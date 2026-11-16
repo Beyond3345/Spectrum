@@ -1,6 +1,7 @@
 import { PARTS, annotatesWith25, asCircuit, isPart, usesNewerParts, usesSetsOf25 } from './modes/circuitikz/model';
-import { plotIsNewer } from './modes/pgfplots/code';
+import { plotIsNewer, plotNeedsVersion5 } from './modes/pgfplots/code';
 import type { PlotModel } from './modes/pgfplots/code';
+import { structureNeedsVersion5 } from './modes/structures/model';
 import { tikzIsNewer, tikzNeedsVersion5 } from './modes/tikz/code';
 import { cdNeedsVersion5 } from './modes/tikzcd/code';
 import type { CdModel } from './modes/tikzcd/code';
@@ -71,6 +72,8 @@ function version5(diagram: DiagramFile) {
     if (diagram.pkg === 'tikz-cd') return cdNeedsVersion5(diagram.model as CdModel);
     if (diagram.pkg === 'circuitikz' && (usesSetsOf25(diagram.model) || annotatesWith25(diagram.model))) return true;
     if (diagram.pkg === 'vectors' && vectorsNeedVersion5(diagram.model, diagram.style)) return true;
+    if (diagram.pkg === 'structures' && structureNeedsVersion5(diagram.model, diagram.style)) return true;
+    if (diagram.pkg === 'pgfplots' && plotNeedsVersion5(diagram.model as PlotModel)) return true;
   } catch {
     // a model of the wrong shape: its mode refuses it anyway
   }

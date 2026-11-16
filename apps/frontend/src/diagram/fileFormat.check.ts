@@ -100,6 +100,9 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
   const plot: DiagramFile = { language: 'tikz', pkg: 'pgfplots', style: {}, model: { series: [{ id: 's1', source: 'function' }] }, version: 1 };
   eq((await json(plot))?.version, 1, 'a plot of functions is version 1');
   eq((await json({ ...plot, model: { series: [], axes: 'sketch' } }))?.version, 2, 'sketch axes make version 2');
+  // Spectrum 2.5's plot additions make version 5, which 2.4 and earlier open as code
+  eq((await json({ ...plot, model: { series: [{ id: 's1', source: 'points', points: '1, 2' }] } }))?.version, 5, 'typed points make version 5');
+  eq((await json({ ...plot, model: { series: [], axes: 'sketch', equal: true } }))?.version, 5, 'so do equal axes');
   // phase E's additions make version 3, which the release candidate's builds open as code rather than save without
   // them; drawings without them keep 1 or 2
   const structure: DiagramFile = { language: 'tikz', pkg: 'structures', style: { view: 'diagrams', moments: 'tension' }, model: {}, version: 1 };
@@ -187,6 +190,24 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
     ],
     [5, 5, 5, 2, 1, 5, 5],
     'a gain (TikZ and Typst) and a sign make version 5, a state stays 2; tikz-cd: a kind or loop makes 5, a plain arrow 1'
+  );
+
+  // a structure with what 2.5 added (a shear release, a settlement, a load on plan, the deflected shape, x marks) is
+  // version 5; one without keeps its version
+  const beam = { nodes: [{ id: 'A', x: 0, y: 0 }, { id: 'B', x: 6, y: 0 }], parts: [{ id: 'm', kind: 'member', a: 'A', b: 'B' }, { id: 's', kind: 'support', node: 'A', type: 'pin' }, { id: 'w', kind: 'dist', member: 'm', from: 0, to: 6, w1: 10, w2: 10, angle: -90 }] };
+  const withPart = (patch: Record<string, unknown>, id: string) => ({ ...beam, parts: beam.parts.map((p) => (p.id === id ? { ...p, ...patch } : p)) });
+  eq(
+    [
+      (await json({ ...structure, model: beam }))?.version,
+      (await json({ ...structure, model: { ...beam, nodes: [beam.nodes[0], { ...beam.nodes[1], shear: true }] } }))?.version,
+      (await json({ ...structure, model: withPart({ settle: 0.01 }, 's') }))?.version,
+      (await json({ ...structure, model: withPart({ projected: true }, 'w') }))?.version,
+      (await json({ ...structure, model: beam, style: { ...structure.style, deflection: 'fit' } }))?.version,
+      (await json({ ...structure, model: beam, style: { ...structure.style, positions: true } }))?.version,
+      (await json({ ...structure, model: beam, style: { ...structure.style, siUnits: true } }))?.version
+    ],
+    [1, 5, 5, 5, 5, 5, 3],
+    'structures: 2.5’s additions make version 5'
   );
 
   // version 5 (what 2.5 adds to a drawing) reads back; a version this build doesn't know opens as code

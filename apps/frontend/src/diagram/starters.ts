@@ -3,7 +3,7 @@
 import * as circuitTemplates from './modes/circuitikz/templates';
 import { TEMPLATES } from './modes/mermaid/templates';
 import { newFormModel, presetFor } from './modes/form/presets';
-import { signalSketch, slopeField } from './modes/pgfplots/code';
+import { gradingCurve, signalSketch, slopeField, stressStrain } from './modes/pgfplots/code';
 import { sampleBeam } from './modes/structures/model';
 import { dividingSegment, lineThroughPoints, projections, triangleMidpoints } from './modes/vectors/model';
 import { modelArchitecture, stateMachine } from './modes/tikz/examples';
@@ -261,6 +261,27 @@ export const STARTERS: Starter[] = [
     aliases: ['direction field', 'quiver', 'differential equation', 'ODE', 'vector field'],
     file: 'field',
     model: slopeField
+  },
+  {
+    id: 'stress-strain',
+    mode: 'pgfplots',
+    title: 'Stress–strain curve',
+    blurb: 'Yield, ultimate strength and fracture marked, with an unloading line and the area under the curve',
+    home: 'engineering/mechanical',
+    also: ['physics/mechanics'],
+    aliases: ['tensile test', 'mild steel', 'yield point', 'toughness', 'unloading', 'elastic', 'plastic', 'materials'],
+    file: 'stress-strain',
+    model: stressStrain
+  },
+  {
+    id: 'grading-curve',
+    mode: 'pgfplots',
+    title: 'Grading curve',
+    blurb: 'Percent passing against sieve size on a log axis, inside a grading envelope',
+    home: 'engineering/mechanical',
+    aliases: ['particle size distribution', 'sieve analysis', 'PSD', 'aggregate', 'sand', 'gradation', 'envelope', 'ASTM C33'],
+    file: 'grading',
+    model: gradingCurve
   },
   {
     id: 'venn',
