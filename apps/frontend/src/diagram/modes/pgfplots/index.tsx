@@ -6,7 +6,7 @@ import Select from '../../../app/Select';
 import { ColourField, More, ProjectContext, Row, UnitsSwitch } from '../../controls';
 import type { DiagramMode } from '../../types';
 import { nextId } from '../tikz/code';
-import { axesFolded, columnsOf, emptyPlot, fitEquation, isSemicolonCsv, newSeries, plotCode, pointsOf, seriesFolded } from './code';
+import { asKind, axesFolded, columnsOf, emptyPlot, fitEquation, isSemicolonCsv, newSeries, plotCode, pointsOf, seriesFolded } from './code';
 import type { Annotation, AnnotationKind, LegendPos, MarkShape, Piece, PlotModel, Series, SeriesSource, Signal } from './code';
 
 // Plots: the form that writes the axis, previewed below it
@@ -262,31 +262,6 @@ function SeriesFields({ s, model, patch }: { s: Series; model: PlotModel; patch(
       );
     default:
       return null;
-  }
-}
-
-/** A new series of a kind, keeping what the kinds share. */
-function asKind(s: Series, source: SeriesSource): Partial<Series> {
-  switch (source) {
-    case 'parametric':
-      return { source, exprX: s.exprX || 'cos(t)', expr: 'sin(t)', from: '0', to: '2*pi' };
-    case 'polar':
-      return { source, expr: '1+cos(t)', from: '0', to: '2*pi' };
-    case 'piecewise':
-      return { source, pieces: s.pieces?.length ? s.pieces : [{ expr: '-x', from: '-2', to: '0' }, { expr: 'x^2', from: '0', to: '2' }] };
-    case 'signal':
-      return { source, signal: s.signal ?? 'square', amplitude: s.amplitude ?? '1', period: s.period ?? '2', duty: s.duty ?? '0.5', from: '0', to: '6' };
-    case 'quiver':
-      return { source, exprX: '1', expr: 'x - y', from: '-2', to: '2', samples: 15, normalise: true };
-    case 'function':
-      // a data series keeps the function it was
-      return s.source === 'data' ? { source } : { source, expr: 'x^2', from: '-2', to: '2', samples: 100 };
-    case 'points':
-      return { source, points: s.points ?? '0, 1\n1, 3\n2, 4\n3, 7', marks: true };
-    case 'fit':
-      return { source, of: s.of, from: '', to: '' };
-    default:
-      return { source };
   }
 }
 

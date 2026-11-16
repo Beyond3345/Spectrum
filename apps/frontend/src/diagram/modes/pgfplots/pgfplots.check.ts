@@ -1,6 +1,6 @@
 // Self-check for the plot mode's code. Run:
 // npx esbuild apps/frontend/src/diagram/modes/pgfplots/pgfplots.check.ts --bundle --platform=node --log-level=warning | node
-import { axesFolded, bodeMagnitude, columnsOf, conics, dampedOscillation, emptyPlot, lissajous, normalCurve, phasePortrait, polarRose, seriesFolded, evaluate, fitEquation, gradingCurve, isSemicolonCsv, leastSquares, newSeries, plotCode, plotIsNewer, plotNeedsVersion5, pointsOf, separatorOf, signalSketch, slopeField, smoothThrough, stressStrain, ticksOf, waveformPoints } from './code';
+import { asKind, axesFolded, bodeMagnitude, columnsOf, conics, dampedOscillation, emptyPlot, lissajous, normalCurve, phasePortrait, polarRose, seriesFolded, evaluate, fitEquation, gradingCurve, isSemicolonCsv, leastSquares, newSeries, plotCode, plotIsNewer, plotNeedsVersion5, pointsOf, separatorOf, signalSketch, slopeField, smoothThrough, stressStrain, ticksOf, waveformPoints } from './code';
 import type { Annotation, PlotModel, Series } from './code';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -353,5 +353,11 @@ const starters = [normalCurve(), bodeMagnitude(), dampedOscillation(), polarRose
 eq(starters.map(plotNeedsVersion5), Array(7).fill(true), 'the 2.5 starters are version 5');
 eq(plotCode(normalCurve()).body.includes('domain=1.645:3.5, samples=50] {spxfa(x)} \\closedcycle;'), true, 'the normal curve shades its tail');
 eq(plotCode(conics()).body.includes('axis equal image'), true, 'conics on equal axes');
+
+// a series made a new kind takes that kind's marks: typed points have them, a curve made from them does not
+const typed: Series = { ...newSeries('s9'), ...asKind(newSeries('s9'), 'points') } as Series;
+eq(typed.marks, true, 'typed points have marks');
+eq((['function', 'parametric', 'polar', 'piecewise', 'signal', 'quiver', 'fit', 'data'] as const).map((k) => asKind(typed, k).marks), [false, false, false, false, false, false, false, false], 'no kind but points takes them on');
+eq(seriesFolded({ ...typed, ...asKind(typed, 'parametric') } as Series), false, 'so its fold stays shut');
 
 console.log('pgfplots.check: ok');
