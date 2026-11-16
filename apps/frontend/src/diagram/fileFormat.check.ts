@@ -239,6 +239,7 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
   // a Form preset new in 2.5 (the fluid mechanics ones) makes version 5; Mohr's circle keeps its version
   const form = (preset: string, style: Record<string, unknown> = {}): DiagramFile => ({ language: 'tikz', pkg: 'form', style, model: { preset, values: {} }, version: 1 });
   eq([(await json(form('gate')))?.version, (await json(form('manometer', { siUnits: true })))?.version, (await json(form('mohr')))?.version, (await json(form('mohr', { siUnits: true })))?.version], [5, 5, 1, 3], 'new Form presets make version 5');
+  eq([(await json(form('conic')))?.version, (await json(form('transformation')))?.version, (await json(form('venn')))?.version], [5, 5, 1], 'the maths presets too; Venn keeps its version');
 
   console.log('fileFormat.check: ok');
 })();
