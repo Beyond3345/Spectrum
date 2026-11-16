@@ -2,16 +2,19 @@
 // every edit, with nodes to drag and the rail's tools to place members, supports, loads and notes. Nodes snap to the
 // grid in the drawing's unit and to each other; members are drawn node to node, and one ending on a member splits it.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { PointerEvent as ReactPointerEvent } from 'react';
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import Icon from '../../../app/Icon';
+import { CanvasGrid } from '../../CanvasGrid';
 import { useCanvasPrefs } from '../../FlowCanvas';
+import { svgRuns } from '../../sketch';
+import { useToolKeys } from '../../toolKeys';
 import { unitsAsText } from '../../units';
 import { colourCss } from '../shared';
-import { buildScene, extentOf, readStyle } from './draw';
+import { buildScene, extentOf, fitScale, readStyle } from './draw';
 import type { Anchor, Item } from './draw';
 import { INNER_SEP } from './labels';
-import { UNITS, asStructure, connect, dist, frameOf, placeTool, settleNode, snapOnMember } from './model';
-import type { Part, Pt, StructureModel } from './model';
+import { UNITS, asStructure, connect, dist, frameOf, inBox, mirror, moveBy, nodesOf, placeTool, settleNode, snapOnMember } from './model';
+import type { Part, Pt, StructureModel, Units } from './model';
 import { solve } from './solve';
 import { setShown } from './store';
 import { symbolSvg } from './symbols';
@@ -22,6 +25,11 @@ const PX_PER_CM = 36;
 const SNAP_PX = 10;
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 8;
+/** a point (TeX's) in cm, and the export's \footnotesize text in cm */
+const PT_CM = 2.54 / 72.27;
+const TEXT_CM = 8 * PT_CM;
+/** the counting grid's larger mark: every whole metre, or a foot in inches */
+const MAJOR: Record<Units, number> = { 'kN-m': 1, 'N-mm': 1000, 'kip-ft': 1, 'lb-in': 12 };
 
 interface View {
   x: number;
@@ -32,6 +40,9 @@ interface View {
 type Drag =
   | { kind: 'pan'; start: Pt; view: View }
   | { kind: 'node'; id: string; base: StructureModel; moved: boolean }
+  /** the picked group dragged from where the pointer went down (drawing units) */
+  | { kind: 'group'; ids: string[]; start: Pt; base: StructureModel }
+  | { kind: 'marquee'; start: Pt; now: Pt; keep: string[] }
   /** a load sliding along its member, or a distributed load's end */
   | { kind: 'slide'; id: string; end: 'at' | 'from' | 'to'; base: StructureModel }
   | { kind: 'point'; id: string; end: 'at' | 'p' | 'q'; base: StructureModel }
@@ -40,15 +51,8 @@ type Drag =
 
 const TWO_POINT = (tool: string) => tool === 'beam' || tool === 'bar' || tool === 'cut' || tool.startsWith('dim-');
 
-/** TeX as the canvas shows it: maths without dollars, thin spaces as spaces, commands as their names. */
-const plain = (tex: string) =>
-  tex
-    .replace(/\\,/g, ' ')
-    .replace(/\\(theta|sigma|tau|alpha|beta|phi|Delta|delta|times|max)(?![a-zA-Z])/g, (_, name: string) => ({ theta: 'θ', sigma: 'σ', tau: 'τ', alpha: 'α', beta: 'β', phi: 'φ', Delta: 'Δ', delta: 'δ', times: '×', max: 'max' })[name] ?? name)
-    .replace(/[$]/g, '')
-    .replace(/_\{([^}]*)\}|_(\w)/g, '$1$2')
-    .replace(/\\[a-zA-Z]+/g, '')
-    .replace(/[{}]/g, '');
+/** A label as it prints (sketch.tsx): units as siunitx sets them, A_y and δ_max with real subscripts. */
+const sketched = (tex: string) => svgRuns(unitsAsText(tex).replace(/\\(max|min)(?![a-zA-Z])/g, '$1'));
 
 const TEXT_ANCHOR: Record<Anchor, ['start' | 'middle' | 'end', 'auto' | 'middle' | 'hanging']> = {
   center: ['middle', 'middle'],
@@ -93,14 +97,19 @@ export default function StructureCanvas({
   /** a two-point tool's first point, waiting for its second click */
   const [pending, setPending] = useState<Pt | null>(null);
   const [hover, setHover] = useState<Pt | null>(null);
+  /** Space held: a drag pans */
+  const [space, setSpace] = useState(false);
   const prefs = useCanvasPrefs();
 
   const shown = draft || model;
   useEffect(() => setShown(model, style, onChange), [model, rawStyle]);
-  const solution = useMemo(() => solve(shown), [shown]);
-  const scene = useMemo(() => buildScene(shown, solution, style, true), [shown, solution, rawStyle]);
   const units = UNITS[style.units];
-  const scale = units.canvasCm;
+  // the export's scale, as the drawing was last saved (not while a drag is under way), so the text, arrows and symbols
+  // sit on the structure as they will in the PDF; a drawing with no length yet keeps the unit's own
+  const fitted = fitScale(model, style.width);
+  const scale = model.nodes.some((n) => n.x !== model.nodes[0].x || n.y !== model.nodes[0].y) ? fitted : units.canvasCm;
+  const solution = useMemo(() => solve(shown), [shown]);
+  const scene = useMemo(() => buildScene(shown, solution, style, true, scale), [shown, solution, rawStyle, scale]);
   const grid = units.grids[style.grid];
   const selected = new Set(selection);
 
@@ -130,6 +139,15 @@ export default function StructureCanvas({
   useEffect(() => {
     if (!view && size.width) fit();
   }, [size.width, size.height]);
+
+  // a new scale (the structure grew or shrank, or the width changed) keeps the structure where it is on screen: the
+  // zoom takes the change, and only the text, arrows and symbols change size against it, as in the PDF
+  const lastScale = useRef(scale);
+  useLayoutEffect(() => {
+    const f = lastScale.current / scale;
+    lastScale.current = scale;
+    if (f !== 1) setView((prev) => prev && { ...prev, zoom: prev.zoom * f });
+  }, [scale]);
 
   const v = view || { x: 0, y: 0, zoom: 1 };
   const k = PX_PER_CM * v.zoom;
@@ -195,7 +213,7 @@ export default function StructureCanvas({
     } catch {
       // a pointer the browser no longer tracks
     }
-    if (e.button === 1 || readOnly) {
+    if (e.button === 1 || space || readOnly) {
       setDrag({ kind: 'pan', start: at, view: v });
       return;
     }
@@ -230,22 +248,24 @@ export default function StructureCanvas({
       else if (part) setDrag({ kind: 'point', id, end: end as 'p' | 'q', base: model });
       return;
     }
-    const nodeId = target?.dataset.node;
-    if (nodeId) {
-      onSelect?.(e.shiftKey ? (selected.has(nodeId) ? selection.filter((s) => s !== nodeId) : [...selection, nodeId]) : [nodeId]);
-      setDrag({ kind: 'node', id: nodeId, base: model, moved: false });
-      return;
-    }
-    const id = target?.dataset.id;
+    // what's pressed joins the selection (or leaves it, with Shift); pressed inside a selection, the selection stays
+    const id = target?.dataset.node ?? target?.dataset.id;
     if (id) {
-      onSelect?.(e.shiftKey ? (selected.has(id) ? selection.filter((s) => s !== id) : [...selection, id]) : [id]);
+      const ids = e.shiftKey ? (selected.has(id) ? selection.filter((s) => s !== id) : [...selection, id]) : selected.has(id) ? selection : [id];
+      onSelect?.(ids);
+      if (!ids.includes(id)) return;
       const part = model.parts.find((p) => p.id === id);
-      if ((part?.kind === 'force' || part?.kind === 'moment') && 'member' in part.on) setDrag({ kind: 'slide', id, end: 'at', base: model });
+      // a group drags as one; alone, a joint drags onto members and other joints, a load slides along its member
+      if (ids.length > 1 && (nodesOf(model, ids).size || ids.some((x) => model.parts.some((p) => p.id === x && (p.kind === 'label' || p.kind === 'axes' || p.kind === 'cut'))))) setDrag({ kind: 'group', ids, start: point, base: model });
+      else if (target?.dataset.node) setDrag({ kind: 'node', id, base: model, moved: false });
+      else if ((part?.kind === 'force' || part?.kind === 'moment') && 'member' in part.on) setDrag({ kind: 'slide', id, end: 'at', base: model });
       else if (part?.kind === 'label' || part?.kind === 'axes') setDrag({ kind: 'point', id, end: 'at', base: model });
+      else if (part && nodesOf(model, [id]).size) setDrag({ kind: 'group', ids, start: point, base: model });
       return;
     }
-    onSelect?.([]);
-    setDrag({ kind: 'pan', start: at, view: v });
+    // empty space: a box picks what's wholly inside it (adding to the selection with Shift)
+    setDrag({ kind: 'marquee', start: at, now: at, keep: e.shiftKey ? selection : [] });
+    if (!e.shiftKey) onSelect?.([]);
   };
 
   const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -258,6 +278,12 @@ export default function StructureCanvas({
     }
     if (drag.kind === 'pan') {
       setView({ ...drag.view, x: drag.view.x + at.x - drag.start.x, y: drag.view.y + at.y - drag.start.y });
+    } else if (drag.kind === 'marquee') {
+      setDrag({ ...drag, now: at });
+    } else if (drag.kind === 'group') {
+      // whole grid steps, so what sat on the grid stays on it
+      const d = { x: Math.round((point.x - drag.start.x) / grid) * grid, y: Math.round((point.y - drag.start.y) / grid) * grid };
+      setDraft(d.x || d.y ? moveBy(drag.base, drag.ids, d) : null);
     } else if (drag.kind === 'connect') {
       const b = snapFor(point);
       setDrag({ ...drag, b, moved: drag.moved || dist(b, drag.a) > 1e-9 });
@@ -310,6 +336,13 @@ export default function StructureCanvas({
       else setPending(d.a);
       return;
     }
+    if (d.kind === 'marquee') {
+      if (Math.hypot(d.now.x - d.start.x, d.now.y - d.start.y) <= 3) return;
+      const [a, b] = [toModel(d.start), toModel(d.now)];
+      const hits = inBox(model, { minX: Math.min(a.x, b.x), maxX: Math.max(a.x, b.x), minY: Math.min(a.y, b.y), maxY: Math.max(a.y, b.y) });
+      onSelect?.([...new Set([...d.keep, ...hits])]);
+      return;
+    }
     if (d.kind === 'pan' || !draft) {
       setDraft(null);
       return;
@@ -325,13 +358,51 @@ export default function StructureCanvas({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setPending(null);
     };
+    const onUp = (e: KeyboardEvent) => e.key === ' ' && setSpace(false);
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keyup', onUp);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onUp);
+    };
   }, []);
+
+  // ─── keys ───
+
+  // M and T (or as changed in Settings › Diagram composer) pick the member tools while the pointer is over the drawing
+  useToolKeys(() => svgRef.current, { diagramMember: () => onTool?.('beam'), diagramTruss: () => onTool?.('bar') }, readOnly);
+
+  // the frame has copy, paste, duplicate, delete, undo and Escape; the canvas, once clicked, the rest
+  const onKeyDown = (e: ReactKeyboardEvent) => {
+    if (readOnly || (e.target as HTMLElement).closest('input, textarea, select, button, a')) return;
+    const mod = e.metaKey || e.ctrlKey;
+    const key = e.key.toLowerCase();
+    const handled = () => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    if (e.key === ' ') {
+      setSpace(true);
+      handled();
+    } else if (mod && key === 'a') {
+      onSelect?.([...model.nodes.map((n) => n.id), ...model.parts.map((p) => p.id)]);
+      handled();
+    } else if (!mod && (key === 'x' || key === 'y') && selection.length) {
+      onChange(mirror(model, selection, key));
+      handled();
+    } else if (!mod && e.key.startsWith('Arrow') && selection.length) {
+      const step = grid * (e.shiftKey ? 4 : 1);
+      const d = { ArrowLeft: { x: -step, y: 0 }, ArrowRight: { x: step, y: 0 }, ArrowUp: { x: 0, y: step }, ArrowDown: { x: 0, y: -step } }[e.key];
+      if (d) onChange(moveBy(model, selection, d));
+      handled();
+    }
+  };
 
   // ─── drawing ───
 
-  const fontSize = Math.max(9, Math.min(15, k * 0.3));
+  // the export's \footnotesize at this zoom, and a TeX point in screen pixels for the line widths (structures.css),
+  // neither smaller than the canvas can show plainly
+  const fontSize = Math.max(9, TEXT_CM * k);
   const drawItem = (item: Item, key: string, shift: Pt = { x: 0, y: 0 }) => {
     const id = 'id' in item ? item.id : undefined;
     const on = id !== undefined && selected.has(id);
@@ -391,7 +462,7 @@ export default function StructureCanvas({
         const [anchor, baseline] = TEXT_ANCHOR[item.anchor];
         return (
           <text key={key} {...hit} x={p.x} y={p.y} className={`st-text ${on ? 'selected' : ''}`} fontSize={fontSize} textAnchor={anchor} dominantBaseline={baseline}>
-            {plain(unitsAsText(item.tex))}
+            {sketched(item.tex)}
           </text>
         );
       }
@@ -419,19 +490,17 @@ export default function StructureCanvas({
 
   const nodesShown = shown.nodes.map((n) => ({ n, at: S({ x: n.x * scale, y: n.y * scale }) }));
   const gridPx = grid * scale * k;
-  const gridStep = gridPx < 8 ? Math.ceil(8 / gridPx) : 1;
+  // a coarse grid (a metre's step) counts in fives of its own
+  const major = (grid < MAJOR[style.units] ? MAJOR[style.units] : 5 * grid) * scale * k;
   const ghost = drag?.kind === 'connect' ? [drag.a, drag.b] : pending && hover ? [pending, hover] : null;
   const status = solution.status;
   const message = [status.text, ...solution.notes, scene.message].filter(Boolean).join(' ');
-  const cursor = drag?.kind === 'pan' ? 'grabbing' : tool === 'select' ? 'default' : 'crosshair';
+  const cursor = drag?.kind === 'pan' ? 'grabbing' : space ? 'grab' : tool === 'select' ? 'default' : 'crosshair';
 
   return (
-    <div ref={boxRef} className="ckt-canvas st-canvas" tabIndex={0} aria-label="Structure canvas">
-      <svg ref={svgRef} width="100%" height="100%" style={{ cursor }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerLeave={() => !drag && setHover(null)}>
+    <div ref={boxRef} className="ckt-canvas st-canvas" tabIndex={0} aria-label="Structure canvas" onKeyDown={onKeyDown}>
+      <svg ref={svgRef} width="100%" height="100%" style={{ cursor, '--st-pt': `${PT_CM * k}px` } as CSSProperties} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerLeave={() => !drag && setHover(null)}>
         <defs>
-          <pattern id="st-dots" width={gridPx * gridStep} height={gridPx * gridStep} patternUnits="userSpaceOnUse" x={v.x} y={v.y}>
-            <circle cx={0.75} cy={0.75} r={0.75} className="ckt-dot" />
-          </pattern>
           <marker id="st-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
             <path d="M0,1 L10,5 L0,9 z" className="st-arrowhead" />
           </marker>
@@ -439,7 +508,7 @@ export default function StructureCanvas({
             <path d="M10,1 L0,5 L10,9 z" className="st-arrowhead" />
           </marker>
         </defs>
-        <rect width="100%" height="100%" fill="url(#st-dots)" />
+        <CanvasGrid id="st" step={gridPx} x={v.x} y={v.y} major={major} />
         {view && (
           <>
             {scene.blocks.flatMap((b, i) => b.items.map((item, j) => drawItem(item, `${i}-${j}`, b.shift)))}
@@ -456,6 +525,7 @@ export default function StructureCanvas({
               const [a, b] = ghost.map((p) => S({ x: p.x * scale, y: p.y * scale }));
               return <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} className={`st-ghost ${tool === 'cut' ? 'cut' : ''}`} />;
             })()}
+            {drag?.kind === 'marquee' && <rect className="ckt-marquee" x={Math.min(drag.start.x, drag.now.x)} y={Math.min(drag.start.y, drag.now.y)} width={Math.abs(drag.now.x - drag.start.x)} height={Math.abs(drag.now.y - drag.start.y)} />}
             {hover && tool !== 'select' && (() => {
               const p = S({ x: hover.x * scale, y: hover.y * scale });
               return <circle className="ckt-target" cx={p.x} cy={p.y} r={5} />;

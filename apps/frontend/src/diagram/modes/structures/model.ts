@@ -430,6 +430,146 @@ export function pasteInto(model: StructureModel, clip: StructureModel, offset: P
   return { model: { ...next, parts: [...next.parts, ...parts] }, ids: [...clip.nodes.map((n) => map(n.id)), ...parts.map((p) => p.id)] };
 }
 
+// ─── group edits ───
+
+/** The nodes an edit to these ids moves: those picked, and the joints of the members, supports, dimensions, angle arcs and loads picked. */
+export function nodesOf(model: StructureModel, ids: string[]): Set<string> {
+  const picked = new Set(ids);
+  const out = new Set(model.nodes.filter((n) => picked.has(n.id)).map((n) => n.id));
+  for (const p of model.parts) {
+    if (!picked.has(p.id)) continue;
+    if (p.kind === 'member' || p.kind === 'dim') [p.a, p.b].forEach((n) => out.add(n));
+    else if (p.kind === 'support' || p.kind === 'angle') out.add(p.node);
+    else if ((p.kind === 'force' || p.kind === 'moment') && 'node' in p.on) out.add(p.on.node);
+  }
+  return out;
+}
+
+/** The points the picked labels, axes and cuts sit at, which an edit moves with the nodes. */
+const freePoints = (p: Part): Pt[] => (p.kind === 'label' || p.kind === 'axes' ? [p.at] : p.kind === 'cut' ? [p.p, p.q] : []);
+
+/** The middle of what an edit to these ids moves: the box round its nodes and free points. */
+export function centreOf(model: StructureModel, ids: string[]): Pt {
+  const moved = nodesOf(model, ids);
+  const picked = new Set(ids);
+  const pts = [...model.nodes.filter((n) => moved.has(n.id)), ...model.parts.filter((p) => picked.has(p.id)).flatMap(freePoints)];
+  if (!pts.length) return { x: 0, y: 0 };
+  const xs = pts.map((p) => p.x);
+  const ys = pts.map((p) => p.y);
+  return { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 };
+}
+
+/** twelve figures and nine places, so a turn or a mirror leaves 3, not 2.9999999999999996, and 0, not 4e-12 */
+const tidy = (v: number) => Number(Number(v.toFixed(9)).toPrecision(12)) || 0;
+/** an angle in degrees, in (−180, 180] */
+const tidyAngle = (a: number) => {
+  const r = tidy((((a % 360) + 360) % 360));
+  return r > 180 ? tidy(r - 360) : r || 0;
+};
+
+/**
+ * A picked group taken through a move, a mirror or a turn: `pt` maps a point and `dir` a direction (degrees); a mirror
+ * `flips`. Nodes move, and with them what hangs on them: supports turn, loads and angle arcs turn or mirror, a moment's
+ * sense and a cut's kept side swap in a mirror. A member mirrored whole is drawn the other way round, its loads along
+ * it measured from its other end, so a load square to it stays on the side it was mirrored to.
+ */
+function reshape(model: StructureModel, ids: string[], pt: (p: Pt) => Pt, dir: (a: number) => number, flips: boolean): StructureModel {
+  const picked = new Set(ids);
+  const moved = nodesOf(model, ids);
+  const whole = new Set(members(model).filter((m) => moved.has(m.a) && moved.has(m.b)).map((m) => m.id));
+  const swap = new Map(flips ? members(model).filter((m) => whole.has(m.id)).map((m) => [m.id, frameOf(model, m).length]) : []);
+  const P = (p: Pt) => {
+    const q = pt(p);
+    return { x: tidy(q.x), y: tidy(q.y) };
+  };
+  const D = (a: number) => tidyAngle(dir(a));
+  // a symbol's turn, not a direction: a support at 0° stands under its node, its reaction pushing up (90°)
+  const R = (a: number) => tidyAngle(dir(a + 90) - 90);
+  // from the other end; an end stays exactly an end
+  const along = (member: string, s: number) => {
+    const L = swap.get(member);
+    if (L === undefined) return s;
+    return Math.abs(s) <= L * 1e-9 ? L : Math.abs(L - s) <= L * 1e-9 ? 0 : L - s;
+  };
+  const parts = model.parts.map((p): Part => {
+    const on =
+      picked.has(p.id) ||
+      (p.kind === 'support' || p.kind === 'angle' ? moved.has(p.node)
+      : p.kind === 'force' || p.kind === 'moment' ? ('node' in p.on ? moved.has(p.on.node) : whole.has(p.on.member))
+      : p.kind === 'dist' ? whole.has(p.member)
+      : p.kind === 'dim' ? moved.has(p.a) && moved.has(p.b)
+      : p.kind === 'member' && whole.has(p.id));
+    if (!on) return p;
+    switch (p.kind) {
+      case 'member':
+        return swap.has(p.id) ? { ...p, a: p.b, b: p.a, ...(p.release && { release: [p.release[1], p.release[0]] }) } : p;
+      case 'support': {
+        const angle = R(p.angle ?? 0);
+        const { angle: _, ...rest } = p;
+        return angle ? { ...rest, angle } : rest;
+      }
+      case 'force':
+        return { ...p, ...(!p.perp && { angle: D(p.angle) }), ...('member' in p.on && { on: { member: p.on.member, at: along(p.on.member, p.on.at) } }) };
+      case 'moment': {
+        const { cw, ...rest } = p;
+        const sense = flips ? !cw : !!cw;
+        return { ...rest, ...(sense && { cw: true }), ...('member' in p.on && { on: { member: p.on.member, at: along(p.on.member, p.on.at) } }) };
+      }
+      case 'dist': {
+        const turned = { ...p, ...(!p.perp && { angle: D(p.angle) }) };
+        return swap.has(p.member) ? { ...turned, from: along(p.member, p.to), to: along(p.member, p.from), w1: p.w2, w2: p.w1 } : turned;
+      }
+      case 'angle':
+        return flips ? { ...p, from: D(p.to), to: D(p.from) } : { ...p, from: D(p.from), to: D(p.to) };
+      case 'dim': {
+        // the side it's on: below or above for a horizontal one, left or right for a vertical one, a→b's left when aligned
+        const across = p.dir === 'aligned' ? flips : p.dir === 'h' ? flips && D(90) !== 90 : flips && D(0) !== 0;
+        return across ? { ...p, offset: -p.offset } : p;
+      }
+      case 'label':
+      case 'axes':
+        return { ...p, at: P(p.at) };
+      case 'cut':
+        return { ...p, p: P(p.p), q: P(p.q), ...(flips ? { flip: !p.flip || undefined } : {}) };
+    }
+  });
+  return { nodes: model.nodes.map((n) => (moved.has(n.id) ? { ...n, ...P(n) } : n)), parts };
+}
+
+/** The picked nodes, and labels, axes and cuts, moved by d (in the drawing's unit). */
+export const moveBy = (model: StructureModel, ids: string[], d: Pt) => reshape(model, ids, (p) => ({ x: p.x + d.x, y: p.y + d.y }), (a) => a, false);
+
+/** The picked group mirrored left to right (x) or top to bottom (y), about its middle. */
+export function mirror(model: StructureModel, ids: string[], axis: 'x' | 'y') {
+  const c = centreOf(model, ids);
+  return axis === 'x'
+    ? reshape(model, ids, (p) => ({ x: 2 * c.x - p.x, y: p.y }), (a) => 180 - a, true)
+    : reshape(model, ids, (p) => ({ x: p.x, y: 2 * c.y - p.y }), (a) => -a, true);
+}
+
+/** The picked group turned anticlockwise by some degrees about its middle. */
+export function turn(model: StructureModel, ids: string[], degrees: number) {
+  const c = centreOf(model, ids);
+  const [cos, sin] = [Math.cos((degrees * Math.PI) / 180), Math.sin((degrees * Math.PI) / 180)];
+  return reshape(model, ids, (p) => ({ x: c.x + (p.x - c.x) * cos - (p.y - c.y) * sin, y: c.y + (p.x - c.x) * sin + (p.y - c.y) * cos }), (a) => a + degrees, false);
+}
+
+/** What lies wholly inside a box (drawing units): nodes, and parts whose joints, members or points are all in it. */
+export function inBox(model: StructureModel, box: { minX: number; maxX: number; minY: number; maxY: number }): string[] {
+  const inside = (p: Pt) => p.x >= box.minX && p.x <= box.maxX && p.y >= box.minY && p.y <= box.maxY;
+  const nodes = new Set(model.nodes.filter(inside).map((n) => n.id));
+  const whole = new Set(members(model).filter((m) => nodes.has(m.a) && nodes.has(m.b)).map((m) => m.id));
+  const parts = model.parts.filter((p) =>
+    p.kind === 'member' ? whole.has(p.id)
+    : p.kind === 'dim' ? nodes.has(p.a) && nodes.has(p.b)
+    : p.kind === 'support' || p.kind === 'angle' ? nodes.has(p.node)
+    : p.kind === 'force' || p.kind === 'moment' ? inside(placeAt(model, p.on))
+    : p.kind === 'dist' ? whole.has(p.member)
+    : freePoints(p).every(inside)
+  );
+  return [...nodes, ...parts.map((p) => p.id)];
+}
+
 // ─── placing from the rail ───
 
 /** The member a point is on or beside (within tolerance of the line between its ends), and how far along. */

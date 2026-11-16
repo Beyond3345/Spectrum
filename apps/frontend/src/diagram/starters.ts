@@ -5,6 +5,7 @@ import { TEMPLATES } from './modes/mermaid/templates';
 import { newFormModel, presetFor } from './modes/form/presets';
 import { signalSketch, slopeField } from './modes/pgfplots/code';
 import { sampleBeam } from './modes/structures/model';
+import * as structureTemplates from './modes/structures/templates';
 import { dividingSegment, lineThroughPoints, projections, triangleMidpoints } from './modes/vectors/model';
 import { modelArchitecture, stateMachine } from './modes/tikz/examples';
 import { SETS } from './sets';
@@ -139,6 +140,24 @@ const CIRCUIT_TEMPLATES: Starter[] = [
     also: ['physics/mechanics'],
     sets: ['spx-mech']
   }
+];
+
+/** Beams, trusses and frames that open pre-drawn and solved (modes/structures/templates). */
+const structure = (id: string, title: string, blurb: string, model: () => unknown, aliases: string[]): Starter =>
+  ({ id, mode: 'structures', title, blurb, home: 'engineering/mechanical', also: ['physics/mechanics'], aliases: [...aliases, 'statics', 'reactions'], file: id, model });
+const STRUCTURE_TEMPLATES: Starter[] = [
+  structure('cantilever', 'Cantilever', 'Fixed at one end, a point load and a moment at the other', structureTemplates.cantilever, ['beam', 'fixed support', 'SFD', 'BMD']),
+  structure('overhanging-beam', 'Overhanging beam', 'A uniform load between the supports and a point load on the overhang', structureTemplates.overhangingBeam, ['beam', 'overhang', 'SFD', 'BMD']),
+  structure('propped-cantilever', 'Propped cantilever', 'Fixed at one end and on a roller at the other, indeterminate', structureTemplates.proppedCantilever, ['beam', 'indeterminate', 'SFD', 'BMD']),
+  structure('two-span-beam', 'Two-span beam', 'A continuous beam over three supports, indeterminate', structureTemplates.twoSpanBeam, ['beam', 'continuous beam', 'indeterminate', 'SFD', 'BMD']),
+  structure('hinged-beam', 'Beam with an internal hinge', 'A Gerber beam: fixed, hinged and on a roller', structureTemplates.hingedBeam, ['beam', 'Gerber', 'internal hinge', 'compound beam', 'SFD', 'BMD']),
+  structure('triangular-load', 'Triangular load', 'A simply supported beam under a linearly varying load', structureTemplates.triangularLoad, ['beam', 'linearly varying load', 'distributed load', 'SFD', 'BMD']),
+  structure('pratt-truss', 'Pratt truss', 'Diagonals in tension, with a section cut placed', structureTemplates.prattTruss, ['truss', 'method of joints', 'method of sections', 'member forces']),
+  structure('howe-truss', 'Howe truss', 'Diagonals in compression, with a section cut placed', structureTemplates.howeTruss, ['truss', 'method of joints', 'method of sections', 'member forces']),
+  structure('warren-truss', 'Warren truss', 'Triangles without verticals, with a section cut placed', structureTemplates.warrenTruss, ['truss', 'method of joints', 'method of sections', 'member forces']),
+  structure('portal-frame', 'Portal frame', 'Fixed feet, a sideways load and a load along the beam', structureTemplates.portalFrame, ['frame', 'sway', 'indeterminate', 'SFD', 'BMD']),
+  structure('three-hinged-frame', 'Three-hinged frame', 'Pinned feet and a hinged ridge, snow on plan and wind', structureTemplates.threeHingedFrame, ['frame', 'three-pinned', 'arch', 'roof', 'snow', 'portal']),
+  structure('inclined-member', 'Inclined member', 'A sloping beam under a load along its length', structureTemplates.inclinedMember, ['beam', 'inclined', 'rafter', 'ramp', 'stair'])
 ];
 
 export const STARTERS: Starter[] = [
@@ -316,6 +335,7 @@ export const STARTERS: Starter[] = [
     file: 'structure',
     model: sampleBeam
   },
+  ...STRUCTURE_TEMPLATES,
   {
     id: 'mohr',
     mode: 'form',

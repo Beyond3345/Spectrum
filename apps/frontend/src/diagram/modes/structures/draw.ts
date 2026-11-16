@@ -183,13 +183,16 @@ const component = (piece: Piece, c: 'N' | 'V' | 'M') => piece[c];
 const LOAD = 0.9;
 const GAP = 0.06;
 
-export function buildScene(model: StructureModel, solution: Solution, style: StructStyle, canvas = false): Scene {
+/**
+ * The scene in centimetres. The canvas passes the scale the export fitted to the drawing it last saved, so text,
+ * arrows and symbols sit on it as they will in the PDF while a drag is under way.
+ */
+export function buildScene(model: StructureModel, solution: Solution, style: StructStyle, canvas = false, scale = fitScale(model, style.width)): Scene {
   const units = UNITS[style.units];
   const [F, L] = [units.force, units.length];
   const momentUnit = `${F}\\,${L}`;
   const nodes = nodeMap(model);
   const all = members(model).filter((m) => nodes.has(m.a) && nodes.has(m.b) && frameOf(model, m).length > 0);
-  const scale = canvas ? units.canvasCm : fitScale(model, style.width);
   const P = (p: Pt) => ({ x: p.x * scale, y: p.y * scale });
   const fmt = (v: number) => formatValue(v, style.figures);
   // the canvas shows these as text (unitsAsText), and places them by the export's own
@@ -300,12 +303,14 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
         // a load that changes sign has each part on its own side, its arrows the way it acts
         const sideAt = (s: number) => Math.sign(w(s)) || Math.sign(p.w1 + p.w2) || 1;
         const d = loadDirection(p, f.u);
-        const base = (s: number, side = sideAt(s)) => add(P(add(f.a, times(f.u, s))), times(d, -GAP * side));
         const rise = (s: number) => 0.15 + (0.5 * Math.abs(w(s))) / wMax;
-        // a vertical load per horizontal length is drawn on plan: its band level over the member, its arrows down to it
-        const level = (side: number) => (-d.y * side > 0 ? Math.max : Math.min)(base(from, side).y, base(to, side).y);
+        // a vertical load per horizontal length is drawn on plan, as snow on a roof is: a level band over the member's
+        // highest point, its arrows short and alike, so a steep rafter's low end doesn't read as a larger load
         const flat = p.projected && Math.abs(d.x) < 1e-9 && Math.abs(f.u.y) > 1e-9;
-        const top = (s: number, side = sideAt(s)) => (flat ? { x: base(s, side).x, y: level(side) - d.y * side * rise(s) } : add(base(s, side), times(d, -side * rise(s))));
+        const onMember = (s: number, side: number) => add(P(add(f.a, times(f.u, s))), times(d, -GAP * side));
+        const level = (side: number) => (-d.y * side > 0 ? Math.max : Math.min)(onMember(from, side).y, onMember(to, side).y);
+        const base = (s: number, side = sideAt(s)) => (flat ? { x: onMember(s, side).x, y: level(side) } : onMember(s, side));
+        const top = (s: number, side = sideAt(s)) => add(base(s, side), times(d, -side * rise(s)));
         const lengthCm = (to - from) * scale;
         const count = Math.max(2, Math.round(lengthCm / 0.4) + 1);
         const stops = Array.from({ length: count }, (_, i) => from + ((to - from) * i) / (count - 1));

@@ -5,12 +5,14 @@ import type { ReactNode } from 'react';
 import Icon from '../../../app/Icon';
 import Segmented from '../../../app/Segmented';
 import Select from '../../../app/Select';
-import { UnitsSwitch } from '../../controls';
+import { More, UnitsSwitch } from '../../controls';
+import { useToolTitle } from '../../toolKeys';
+import type { ToolKey } from '../../toolKeys';
 import DiagramFields from './DiagramFields';
 import { VIEWS, formatValue, readStyle } from './draw';
 import type { StructStyle } from './draw';
 import { changedLooks } from './looks';
-import { UNITS, asStructure, convertUnits, fitLoads, frameOf, memberName, removeIds } from './model';
+import { UNITS, asStructure, convertUnits, fitLoads, frameOf, memberName, mirror, nodesOf, removeIds, turn } from './model';
 import type { AngleArc, Cut, Dimension, Dist, Force, Member, Moment, Note, Part, SNode, StructureModel, Support, SupportType, Units } from './model';
 import { solve } from './solve';
 import { getShown, useShown } from './store';
@@ -25,6 +27,9 @@ const GROUPS: [string, [string, string][]][] = [
   ['Loads', [['force', 'Point force'], ['moment-ccw', 'Moment, anticlockwise'], ['moment-cw', 'Moment, clockwise'], ['udl', 'Uniform load'], ['linear', 'Linearly varying load']]],
   ['Annotations', [['dim-h', 'Dimension, horizontal'], ['dim-v', 'Dimension, vertical'], ['dim-aligned', 'Dimension, aligned'], ['label', 'Label'], ['angle', 'Angle arc'], ['axes', 'Axes'], ['cut', 'Section cut']]]
 ];
+
+/** the tools a key picks while the pointer is over the drawing (Canvas.tsx) */
+const KEYS: Record<string, ToolKey> = { beam: 'diagramMember', bar: 'diagramTruss' };
 
 const HINTS: Record<string, string> = {
   beam: 'drag from one point to another, or click both; ending on a member splits it',
@@ -84,6 +89,7 @@ function Thumb({ tool }: { tool: string }) {
 
 export function StructureRail({ onPick, tool }: { onPick(tool: string): void; tool: string }) {
   const [filter, setFilter] = useState('');
+  const title = useToolTitle();
   const words = filter.trim().toLowerCase();
   return (
     <div className="ckt-rail st-rail">
@@ -103,7 +109,7 @@ export function StructureRail({ onPick, tool }: { onPick(tool: string): void; to
                     type="button"
                     className={`ckt-rail-part ${tool === value ? 'active' : ''}`}
                     aria-pressed={tool === value}
-                    title={HINTS[value] ? `${label}: ${HINTS[value]}` : `${label}: click to place`}
+                    title={`${title(label, KEYS[value])}: ${HINTS[value] ?? 'click to place'}`}
                     onClick={() => onPick(tool === value ? 'select' : value)}
                   >
                     <span className="ckt-rail-thumb">
@@ -224,6 +230,33 @@ function LabelField({ value, onChange }: { value?: string; onChange(v: string | 
   );
 }
 
+/** Mirror and turn for what's picked (X and Y on the canvas mirror too), about the middle of it. */
+function GroupActions({ model, ids, onChange }: { model: StructureModel; ids: string[]; onChange(m: StructureModel): void }) {
+  const [angle, setAngle] = useState(90);
+  return (
+    <>
+      <div className="ckt-row">
+        <button type="button" className="btn small" title="Mirror left to right (X)" onClick={() => onChange(mirror(model, ids, 'x'))}>
+          <Icon name="arrow.left.and.right" /> Mirror
+        </button>
+        <button type="button" className="btn small" title="Mirror top to bottom (Y)" onClick={() => onChange(mirror(model, ids, 'y'))}>
+          <Icon name="arrow.left.and.right" style={{ transform: 'rotate(90deg)' }} /> Mirror
+        </button>
+      </div>
+      <Field label="Turn by" hint="Anticlockwise, about the middle of what’s selected.">
+        {(id) => (
+          <div className="ckt-row">
+            <NumberInput id={id} value={angle} unit="°" onChange={setAngle} />
+            <button type="button" className="btn small" onClick={() => angle && onChange(turn(model, ids, angle))}>
+              <Icon name="arrow.counterclockwise" /> Turn
+            </button>
+          </div>
+        )}
+      </Field>
+    </>
+  );
+}
+
 export function StructureInspector({ model: raw, onChange, selection = [] }: { model: StructureModel; onChange(m: StructureModel): void; selection?: string[] }) {
   const model = useMemo(() => asStructure(raw), [raw]);
   const solution = useMemo(() => solve(model), [model]);
@@ -245,10 +278,13 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
       </div>
     );
   }
+  // a group, or one member: mirrored and turned as a whole
+  const group = picked.length > 1 || nodesOf(model, selection).size > 1 ? <GroupActions model={model} ids={picked.map((x) => x.id)} onChange={onChange} /> : null;
   if (picked.length > 1) {
     return (
       <div className="ckt-inspector">
         <div className="ckt-inspector-title">{picked.length} items selected</div>
+        {group}
         {remove}
       </div>
     );
@@ -289,14 +325,16 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
             </div>
           )}
         </Field>
-        <label className="checkbox-row">
-          <input type="checkbox" role="switch" checked={!!node.hinge} onChange={(e) => updateNode({ ...node, hinge: e.target.checked || undefined })} />
-          <span>Internal hinge</span>
-        </label>
-        <label className="checkbox-row">
-          <input type="checkbox" role="switch" checked={!!node.shear} onChange={(e) => updateNode({ ...node, shear: e.target.checked || undefined })} />
-          <span>Internal shear release</span>
-        </label>
+        <More key={node.id} summary="Hinge and shear release" open={!!node.hinge || !!node.shear}>
+          <label className="checkbox-row">
+            <input type="checkbox" role="switch" checked={!!node.hinge} onChange={(e) => updateNode({ ...node, hinge: e.target.checked || undefined })} />
+            <span>Internal hinge</span>
+          </label>
+          <label className="checkbox-row">
+            <input type="checkbox" role="switch" checked={!!node.shear} onChange={(e) => updateNode({ ...node, shear: e.target.checked || undefined })} />
+            <span>Internal shear release</span>
+          </label>
+        </More>
       </>
     );
   } else {
@@ -336,14 +374,16 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
                   <span>Released at {model.nodes.find((n) => n.id === (end ? part.b : part.a))?.name ?? (end ? 'its end' : 'its start')}</span>
                 </label>
               ))}
-            {!part.bar && (
-              <Field label="EI" hint="An indeterminate structure needs only the members’ ratios; a settlement and the deflections use the value.">
-                {(id) => <NumberInput id={id} value={part.EI ?? 1} unit={`${units.force} ${units.length}²`} positive onChange={(EI) => set({ EI: EI === 1 ? undefined : EI })} />}
+            <More key={part.id} summary={part.bar ? 'Stiffness, EA' : 'Stiffness, EI and EA'} open={part.EI !== undefined || part.EA !== undefined}>
+              {!part.bar && (
+                <Field label="EI" hint="An indeterminate structure needs only the members’ ratios; a settlement and the deflections use the value.">
+                  {(id) => <NumberInput id={id} value={part.EI ?? 1} unit={`${units.force} ${units.length}²`} positive onChange={(EI) => set({ EI: EI === 1 ? undefined : EI })} />}
+                </Field>
+              )}
+              <Field label="Relative EA" hint="Members are nearly rigid along their length; a smaller EA lets this one stretch.">
+                {(id) => <NumberInput id={id} value={part.EA ?? 1} positive onChange={(EA) => set({ EA: EA === 1 ? undefined : EA })} />}
               </Field>
-            )}
-            <Field label="Relative EA" hint="Members are nearly rigid along their length; a smaller EA lets this one stretch.">
-              {(id) => <NumberInput id={id} value={part.EA ?? 1} positive onChange={(EA) => set({ EA: EA === 1 ? undefined : EA })} />}
-            </Field>
+            </More>
             <div className="field-hint">Length {formatValue(lengthOf(part.id), 4)}</div>
           </>
         );
@@ -355,14 +395,16 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
         fields = (
           <>
             <Field label="Kind">{(id) => <Select labelId={`${id}-label`} value={part.type} options={SUPPORT_TYPES} onChange={(type) => set({ type: type as SupportType })} />}</Field>
-            <Field label="Angle" hint="Turns the support anticlockwise; a roller at an angle pushes square to its surface.">
-              {(id) => <NumberInput id={id} value={part.angle ?? 0} unit="°" onChange={(angle) => set({ angle: angle || undefined })} />}
-            </Field>
-            {part.type !== 'spring' && (
-              <Field label="Settlement" hint="How far the ground under it moves down. The structure follows it, and takes forces from it when indeterminate.">
-                {(id) => <NumberInput id={id} value={part.settle ?? 0} unit={units.length} onChange={(settle) => set({ settle: settle || undefined })} />}
+            <More key={part.id} summary={part.type === 'spring' ? 'Angle' : 'Angle and settlement'} open={!!part.angle || part.settle !== undefined}>
+              <Field label="Angle" hint="Turns the support anticlockwise; a roller at an angle pushes square to its surface.">
+                {(id) => <NumberInput id={id} value={part.angle ?? 0} unit="°" onChange={(angle) => set({ angle: angle || undefined })} />}
               </Field>
-            )}
+              {part.type !== 'spring' && (
+                <Field label="Settlement" hint="How far the ground under it moves down. The structure follows it, and takes forces from it when indeterminate.">
+                  {(id) => <NumberInput id={id} value={part.settle ?? 0} unit={units.length} onChange={(settle) => set({ settle: settle || undefined })} />}
+                </Field>
+              )}
+            </More>
             {(part.type === 'spring' || part.type === 'rotspring') && (
               <Field label="Stiffness" hint={`Set against the members’ EI, in ${units.force} ${units.length}².`}>
                 {(id) => <NumberInput id={id} value={part.k ?? 1} unit={part.type === 'spring' ? `${units.force}/${units.length}` : `${units.force} ${units.length}/rad`} positive onChange={(k) => set({ k: k === 1 ? undefined : k })} />}
@@ -432,12 +474,14 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
                 </div>
               )}
             </Field>
-            <DirectionFields load={part} onMember update={set} />
-            <label className="checkbox-row">
-              <input type="checkbox" role="switch" checked={!!part.projected} onChange={(e) => set({ projected: e.target.checked || undefined })} />
-              <span>Per horizontal length, as snow on a roof</span>
-            </label>
             <LabelField value={part.label} onChange={(label) => set({ label })} />
+            <More key={part.id} summary="Direction, and per horizontal length" open={!!part.perp || part.angle !== -90 || !!part.projected}>
+              <DirectionFields load={part} onMember update={set} />
+              <label className="checkbox-row">
+                <input type="checkbox" role="switch" checked={!!part.projected} onChange={(e) => set({ projected: e.target.checked || undefined })} />
+                <span>Per horizontal length, as snow on a roof</span>
+              </label>
+            </More>
           </>
         );
         break;
@@ -518,6 +562,7 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
     <div className="ckt-inspector">
       <div className="ckt-inspector-title">{title}</div>
       {fields}
+      {group}
       {remove}
     </div>
   );
@@ -564,7 +609,7 @@ export function StructureStyleMenu({ style: raw, onChange }: { style: Record<str
         />
       )}
       {style.view === 'diagrams' && (
-        <>
+        <More summary="Deflected shape and x of zero shear" open={style.deflection !== undefined || !!style.positions}>
           <label className="checkbox-row">
             <input type="checkbox" role="switch" checked={style.deflection !== undefined} onChange={(e) => onChange(e.target.checked ? { ...raw, deflection: 'fit' } : without('deflection'))} />
             <span>Deflected shape</span>
@@ -578,7 +623,7 @@ export function StructureStyleMenu({ style: raw, onChange }: { style: Record<str
             <input type="checkbox" role="switch" checked={!!style.positions} onChange={(e) => onChange(e.target.checked ? { ...raw, positions: true } : without('positions'))} />
             <span>Mark x where the shear is zero</span>
           </label>
-        </>
+        </More>
       )}
       <Field label="Bending moment diagrams" hint="The default for new drawings is in Settings › Composer.">
         {(id) => (
