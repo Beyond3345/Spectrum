@@ -79,6 +79,10 @@ for (const id of ['structure', 'mohr']) {
   eq(sectionsFor('physics').find((s) => s.id === 'physics/mechanics')?.starters.some((s) => s.id === id), true, `${id} under Mechanics and fluids`);
 }
 for (const q of ['beam', 'truss', 'frame', 'SFD', 'BMD']) eq(ids(q).includes('structure'), true, `${q} finds Structure`);
+// the pre-drawn structures (their reactions are checked in structures.check.ts), beside Structure
+eq(STARTERS.filter((s) => s.mode === 'structures' && s.id !== 'structure').map((s) => s.id), ['cantilever', 'overhanging-beam', 'propped-cantilever', 'two-span-beam', 'hinged-beam', 'triangular-load', 'pratt-truss', 'howe-truss', 'warren-truss', 'portal-frame', 'three-hinged-frame', 'inclined-member'], 'twelve structures');
+eq(ids('truss').filter((id) => starterFor(id)?.mode === 'structures'), ['structure', 'pratt-truss', 'howe-truss', 'warren-truss'], 'truss finds the trusses');
+eq(ids('Gerber'), ['hinged-beam'], 'an alias');
 for (const q of ['Mohr', 'stress']) eq(ids(q).includes('mohr'), true, `${q} finds Mohr’s circle`);
 eq(ids('shear').includes('structure') && ids('shear').includes('mohr'), true, 'shear finds both');
 // the fluid mechanics Form presets: there too, found by their words, opening their presets

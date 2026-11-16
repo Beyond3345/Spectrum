@@ -92,9 +92,12 @@ export function structureCode(raw: unknown, rawStyle: Record<string, unknown>): 
 
 /**
  * A new drawing's style: the bending moment convention, siunitx and the force diagrams from Settings › Composer, kept
- * with the drawing. The diagrams are kept only where they differ from the defaults.
+ * with the drawing. The diagrams are kept only where they differ from the defaults. A truss (a starter's) opens on its
+ * member forces, wide enough for a label on each.
  */
-export function structureStyle(defaults: ComposerDefaults): Record<string, unknown> {
+export function structureStyle(defaults: ComposerDefaults, raw?: unknown): Record<string, unknown> {
   const diagrams = changedLooks(defaults.diagrams ?? DIAGRAM_LOOKS);
-  return { view: 'diagrams', moments: defaults.moments, siUnits: defaults.siUnits, ...(Object.keys(diagrams).length && { diagrams }) };
+  const bars = asStructure(raw).parts.filter((p) => p.kind === 'member');
+  const truss = bars.length > 0 && bars.every((p) => p.kind === 'member' && p.bar);
+  return { view: truss ? 'forces' : 'diagrams', ...(truss && { width: 14 }), moments: defaults.moments, siUnits: defaults.siUnits, ...(Object.keys(diagrams).length && { diagrams }) };
 }

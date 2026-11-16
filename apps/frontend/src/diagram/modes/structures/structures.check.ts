@@ -3,9 +3,10 @@
 // npx esbuild apps/frontend/src/diagram/modes/structures/structures.check.ts --bundle --platform=node --log-level=warning | node
 import { axialForce, displacementAt, extremesInside, evalPoly, forcesAt, indeterminacy, solve } from './solve';
 import type { Solution } from './solve';
-import { connect, convertUnits, copyIds, fitLoads, nodeAt, pasteInto, placeTool, removeIds, sampleBeam, settleNode, snapOnMember, splitMember } from './model';
+import { centreOf, connect, convertUnits, copyIds, fitLoads, inBox, mirror, moveBy, nodeAt, nodesOf, pasteInto, placeTool, removeIds, sampleBeam, settleNode, snapOnMember, splitMember, turn } from './model';
 import type { Part, SNode, StructureModel, SupportType } from './model';
-import { buildScene, cutSection, extentOf, formatValue, readStyle } from './draw';
+import { buildScene, cutSection, extentOf, fitScale, formatValue, readStyle } from './draw';
+import * as templates from './templates';
 import type { Item } from './draw';
 import { structureCode, structureStyle } from './code';
 import { DIAGRAM_LOOKS, changedLooks, readLooks } from './looks';
@@ -537,9 +538,14 @@ const blockTexts = (model: StructureModel, style: Record<string, unknown>, title
   close(maxMoment(snow, 'm').at, 2.5, 'snow on plan: at mid-length');
   close(reaction(solve(rafter(false)), 'a').force.y, 5, 'per length of rafter: 5 kN');
   close(maxMoment(solve(rafter(false)), 'm').M, 5, 'per length of rafter: 5 kN m');
-  // drawn on plan: the band's top is level over the sloping rafter
-  const band = items(buildScene(rafter(true), snow, readStyle({ view: 'loading' }))).find((i) => i.t === 'line' && i.id === 'w' && i.closed) as Extract<Item, { t: 'line' }>;
+  // drawn on plan, as snow is: a level band floating just over the rafter's highest point, its arrows short and alike
+  const planned = buildScene(rafter(true), snow, readStyle({ view: 'loading' }));
+  const band = items(planned).find((i) => i.t === 'line' && i.id === 'w' && i.closed) as Extract<Item, { t: 'line' }>;
   close(band.pts[2].y, band.pts[3].y, 'snow on plan: a level band');
+  close(band.pts[0].y, band.pts[1].y, 'snow on plan: its underside level too');
+  eq(band.pts[0].y >= 3 * planned.scale, true, 'snow on plan: over the ridge, not down at the eaves');
+  const arrows = items(planned).filter((i): i is Extract<Item, { t: 'line' }> => i.t === 'line' && i.id === 'w' && i.arrow === '->');
+  eq(new Set(arrows.map((a) => (a.pts[0].y - a.pts[1].y).toFixed(9))).size, 1, 'snow on plan: arrows of one length');
   const sloped = items(buildScene(rafter(false), solve(rafter(false)), readStyle({ view: 'loading' }))).find((i) => i.t === 'line' && i.id === 'w' && i.closed) as Extract<Item, { t: 'line' }>;
   eq(Math.abs(sloped.pts[2].y - sloped.pts[3].y) > 1, true, 'per length: the band follows the rafter');
 }
@@ -677,6 +683,154 @@ function diagramsTitles(model: StructureModel, style: Record<string, unknown>) {
 {
   // the new style keys: kept when set, nothing otherwise, so a drawing without them writes as before
   eq([readStyle({ deflection: 'fit' }).deflection, readStyle({ deflection: 100 }).deflection, readStyle({ deflection: -1 }).deflection, readStyle({ deflection: 'x' }).deflection, readStyle({ positions: true }).positions, readStyle({ positions: 'yes' }).positions], ['fit', 100, undefined, undefined, true, undefined], 'deflection and positions read back');
+}
+
+// ─── the starters: each stable, its reactions as a hand calculation gives them ───
+
+{
+  const at = (s: Solution, node: string) => {
+    const r = s.reactions.find((x) => x.node === node)!;
+    return [r.force.x, r.force.y, r.moment];
+  };
+  const near = (actual: number[], expected: number[], what: string) => actual.forEach((v, i) => close(v, expected[i], `${what} [${i}]`, 1e-4));
+  const solved = (model: StructureModel, what: string) => {
+    const s = solve(model);
+    eq(s.status.kind, 'ok', `${what}: stable`);
+    return s;
+  };
+  // cantilever: ΣF: A_y = 10; ΣM_A: M_A − 10 × 4 − 5 = 0, so 45 kN m anticlockwise
+  near(at(solved(templates.cantilever(), 'cantilever'), 'A'), [0, 10, 45], 'cantilever');
+  // overhang: ΣM_A: 6B − 60 × 3 − 15 × 8 = 0, B = 50; A = 60 + 15 − 50 = 25
+  const overhang = solved(templates.overhangingBeam(), 'overhang');
+  near([...at(overhang, 'A'), ...at(overhang, 'B')], [0, 25, 0, 0, 50, 0], 'overhang');
+  // propped cantilever: B = 3wL/8 = 22.5, A = 5wL/8 = 37.5, M_A = wL²/8 = 45 anticlockwise
+  const propped = solved(templates.proppedCantilever(), 'propped cantilever');
+  near([...at(propped, 'A'), ...at(propped, 'B')], [0, 37.5, 45, 0, 22.5, 0], 'propped cantilever');
+  // two equal spans, uniform load (three-moment equation): M_B = −wL²/8, so A = C = 3wL/8 = 18.75, B = 10wL/8 = 62.5
+  const spans = solved(templates.twoSpanBeam(), 'two spans');
+  near([at(spans, 'A')[1], at(spans, 'B')[1], at(spans, 'C')[1]], [18.75, 62.5, 18.75], 'two spans');
+  // the hinge carries no moment: BC alone, 4C − 20 × 2 = 0, C = 10; then A = 20 + 20 − 10 = 30 and
+  // ΣM_A: M_A − 20 × 2 − 20 × 6 + 10 × 8 = 0, M_A = 80 anticlockwise
+  const hinged = solved(templates.hingedBeam(), 'hinged beam');
+  near([...at(hinged, 'A'), at(hinged, 'C')[1]], [0, 30, 80, 10], 'hinged beam');
+  // triangle: 36 kN at 4 m from A, so B = 36 × 4 / 6 = 24 and A = 12
+  const triangle = solved(templates.triangularLoad(), 'triangular load');
+  near([at(triangle, 'A')[1], at(triangle, 'B')[1]], [12, 24], 'triangular load');
+  // trusses: 15 kN up at each end by symmetry. Sections through the second panel, moments about the joint where the
+  // other two cut members meet: Pratt about F, 3 F_BC − 15 × 3 = 0, 15 kN (T); Howe about G, 3 F_BC − 15 × 6 + 10 × 3 = 0,
+  // 20 kN (T); Warren (10 kN each end) about F, 3 F_BC − 10 × 6 + 10 × 2 = 0, 13.3 kN (T)
+  for (const [name, model, end, force] of [['Pratt', templates.prattTruss(), 'E', 15], ['Howe', templates.howeTruss(), 'E', 20], ['Warren', templates.warrenTruss(), 'D', 40 / 3]] as const) {
+    const s = solved(model, name);
+    const ends = name === 'Warren' ? 10 : 15;
+    near([...at(s, 'A'), at(s, end)[1]], [0, ends, 0, ends], name);
+    close(axialForce(s, 'mBC'), force, `${name}: F_BC by the method of sections`, 1e-4);
+    eq('error' in cutSection(model, model.parts.find((p) => p.kind === 'cut') as Extract<Part, { kind: 'cut' }>), false, `${name}: its cut splits it`);
+    eq(structureStyle({ moments: 'tension', mohrShear: 'down', siUnits: false }, model).view, 'forces', `${name}: opens on its member forces`);
+  }
+  // portal frame, by slope-deflection (EI the same throughout, axial shortening ignored): unknowns θB, θC and the
+  // sway Δ, end moments clockwise positive, ψ = Δ/h
+  {
+    const [h, L, P, w] = [4, 6, 10, 5];
+    const F = (w * L * L) / 12;
+    // joint B: (2/h)(2θB − 3ψ) + (2/L)(2θB + θC) − F = 0; joint C: (2/L)(2θC + θB) + F + (2/h)(2θC − 3ψ) = 0;
+    // sway: the four column moments add to −P h
+    const A = [
+      [4 / h + 4 / L, 2 / L, -6 / h],
+      [2 / L, 4 / L + 4 / h, -6 / h],
+      [6 / h, 6 / h, -24 / h]
+    ];
+    const b = [F, -F, -P * h];
+    const det = (m: number[][]) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+    const [tB, tC, psi] = [0, 1, 2].map((i) => det(A.map((row, r) => row.map((v, c) => (c === i ? b[r] : v)))) / det(A));
+    const [MAB, MBA, MDC, MCD] = [(2 / h) * (tB - 3 * psi), (2 / h) * (2 * tB - 3 * psi), (2 / h) * (tC - 3 * psi), (2 / h) * (2 * tC - 3 * psi)];
+    // a support's moment on the frame is the end moment turned round; ΣM_A gives D_y
+    const [MA, MD] = [-MAB, -MDC];
+    const Dy = ((w * L * L) / 2 + P * h - MA - MD) / L;
+    const hand = [(MAB + MBA) / h, w * L - Dy, MA, (MDC + MCD) / h, Dy, MD];
+    // with the members made stiff along their length, as the hand calculation takes them: the same to 1e-4
+    const stiff = templates.portalFrame();
+    const rigid = solved({ ...stiff, parts: stiff.parts.map((p) => (p.kind === 'member' ? { ...p, EA: 1e6 } : p)) }, 'portal frame, rigid members');
+    near([...at(rigid, 'A'), ...at(rigid, 'D')], hand, 'portal frame, rigid members');
+    // as drawn (members nearly rigid, their shortening a hand calculation leaves out): within 2 %
+    const s = solved(templates.portalFrame(), 'portal frame');
+    [...at(s, 'A'), ...at(s, 'D')].forEach((v, i) => close(v, hand[i], `portal frame [${i}]`, 0.02));
+    eq(s.status.kind === 'ok' && s.status.degree, 3, 'portal frame: three times indeterminate');
+  }
+  // three-hinged frame: 40 kN of snow on plan; ΣM_A: 8E_y − 40 × 4 − 10 × 4 = 0, E_y = 25, A_y = 15; the right half about
+  // the hinge C: 4 × 25 + 6E_x − 20 × 2 = 0, E_x = −10; ΣF_x: A_x = −10 − E_x = 0
+  const hinged3 = solved(templates.threeHingedFrame(), 'three-hinged frame');
+  near([...at(hinged3, 'A'), ...at(hinged3, 'E')], [0, 15, 0, -10, 25, 0], 'three-hinged frame');
+  // inclined: 2 kN/m over 5 m, 10 kN at 2 m across; ΣM_A: 4B − 10 × 2 = 0, B = 5, A = 5
+  const inclined = solved(templates.inclinedMember(), 'inclined member');
+  near([...at(inclined, 'A'), at(inclined, 'B')[1]], [0, 5, 0, 5], 'inclined member');
+  eq(structureStyle({ moments: 'tension', mohrShear: 'down', siUnits: false }, templates.portalFrame()).view, 'diagrams', 'a frame opens on its diagrams');
+  // every starter writes TikZ that holds its reactions
+  for (const make of Object.values(templates)) eq(structureCode(make(), { view: 'fbd' }).body.includes('struct reaction'), true, 'a starter’s reactions drawn');
+}
+
+// ─── group edits ───
+
+{
+  // a frame with a perpendicular load on its rafter, a support turned, a moment, a dimension, a label and a cut
+  const frame: StructureModel = {
+    nodes: [node('A', 0, 0), node('B', 0, 4), node('C', 3, 6)],
+    parts: [
+      beam('m1', 'A', 'B'),
+      beam('m2', 'B', 'C'),
+      support('s', 'A', 'fixed', 30),
+      { id: 'p', kind: 'dist', member: 'm2', from: 0, to: 2, w1: 1, w2: 3, angle: -90, perp: true },
+      { id: 'f', kind: 'force', on: { member: 'm2', at: 1 }, value: 5, angle: -60 },
+      { id: 'q', kind: 'moment', on: { node: 'B' }, value: 2 },
+      { id: 'd', kind: 'dim', a: 'A', b: 'B', dir: 'v', offset: -1 },
+      { id: 'l', kind: 'label', at: { x: 1, y: 1 }, text: 'x' },
+      { id: 'c', kind: 'cut', p: { x: -1, y: 2 }, q: { x: 1, y: 2 } }
+    ]
+  };
+  const all = [...frame.nodes.map((n) => n.id), ...frame.parts.map((p) => p.id)];
+  // what moves: the members' and the support's joints
+  eq([...nodesOf(frame, ['m2'])], ['B', 'C'], 'a member moves its joints');
+  eq([...nodesOf(frame, ['s', 'l'])], ['A'], 'a support its joint; a label only itself');
+  eq(centreOf(frame, all), { x: 1, y: 3 }, 'the middle of the box round it all');
+  // a move by a step: every joint and point by it, nothing turned
+  const moved = moveBy(frame, all, { x: 0.5, y: -0.25 });
+  eq(moved.nodes.map((n) => [n.x, n.y]), [[0.5, -0.25], [0.5, 3.75], [3.5, 5.75]], 'nudged joints');
+  eq([moved.parts.find((p) => p.id === 'l'), moved.parts.find((p) => p.id === 'c')].map((p) => (p!.kind === 'label' ? p!.at : p!.kind === 'cut' ? p!.p : null)), [{ x: 1.5, y: 0.75 }, { x: -0.5, y: 1.75 }], 'and the label and cut with them');
+  eq(moveBy(frame, ['m2'], { x: 1, y: 0 }).nodes.map((n) => n.x), [0, 1, 4], 'a member moved alone pulls only its ends');
+  // mirrored left to right about x = 1, a whole member is drawn the other way, its loads measured from its other end
+  const mirrored = mirror(frame, all, 'x');
+  const part = (m: StructureModel, id: string) => m.parts.find((p) => p.id === id)!;
+  eq(mirrored.nodes.map((n) => [n.x, n.y]), [[2, 0], [2, 4], [-1, 6]], 'mirrored joints');
+  eq([part(mirrored, 'm2'), part(mirrored, 'p'), part(mirrored, 'f')], [
+    beam('m2', 'C', 'B'),
+    { id: 'p', kind: 'dist', member: 'm2', from: Math.hypot(3, 2) - 2, to: Math.hypot(3, 2), w1: 3, w2: 1, angle: -90, perp: true },
+    { id: 'f', kind: 'force', on: { member: 'm2', at: Math.hypot(3, 2) - 1 }, value: 5, angle: -120 }
+  ], 'the rafter reversed, its loads with it, the force’s angle mirrored');
+  eq([part(mirrored, 's'), part(mirrored, 'q'), part(mirrored, 'd'), part(mirrored, 'c')], [support('s', 'A', 'fixed', -30), { id: 'q', kind: 'moment', on: { node: 'B' }, value: 2, cw: true }, { id: 'd', kind: 'dim', a: 'A', b: 'B', dir: 'v', offset: 1 }, { id: 'c', kind: 'cut', p: { x: 3, y: 2 }, q: { x: 1, y: 2 }, flip: true }], 'support, moment, dimension and cut mirrored');
+  // the perpendicular load lands on the mirror side: its arrows are the original's mirrored
+  const arrowsOf = (m: StructureModel) => items(buildScene(m, solve(m), readStyle({ view: 'loading' }), false, 1)).filter((i): i is Extract<Item, { t: 'line' }> => i.t === 'line' && i.id === 'p' && i.arrow === '->').map((a) => ({ x: Number((a.pts[1].x - a.pts[0].x).toFixed(6)), y: Number((a.pts[1].y - a.pts[0].y).toFixed(6)) }));
+  eq(arrowsOf(mirrored).map((d) => `${-d.x},${d.y}`).sort(), arrowsOf(frame).map((d) => `${d.x},${d.y}`).sort(), 'the perpendicular load’s arrows mirrored');
+  eq(mirror(mirrored, all, 'x'), { ...frame, parts: frame.parts.map((p) => (p.id === 'f' ? { ...p, angle: -60 } : p)) }, 'mirrored twice: as it was');
+  eq(mirror(mirror(frame, all, 'y'), all, 'y'), frame, 'top to bottom twice: as it was');
+  eq((part(mirror(frame, ['s'], 'y'), 's') as Extract<Part, { kind: 'support' }>).angle, 150, 'a support mirrored top to bottom stands over its joint');
+  // turned: a quarter turn four times is where it started; a half turn moves joints through the middle
+  const quarter = (m: StructureModel) => turn(m, all, 90);
+  eq(quarter(quarter(quarter(quarter(frame)))), frame, 'four quarter turns');
+  const half = turn(frame, all, 180);
+  eq(half.nodes.map((n) => [n.x, n.y]), [[2, 6], [2, 2], [-1, 0]], 'a half turn about (1, 3)');
+  eq([(part(half, 's') as Extract<Part, { kind: 'support' }>).angle, (part(half, 'f') as Extract<Part, { kind: 'force' }>).angle], [-150, 120], 'the support and the force turned with it');
+  eq(solve(half).status.kind, solve(frame).status.kind, 'and it solves as it did');
+  // a quarter turn lays a dimension down: left of the column, turned anticlockwise, is below the beam it becomes
+  eq([part(turn(frame, all, 90), 'd'), part(turn(frame, all, -90), 'd')], [{ id: 'd', kind: 'dim', a: 'A', b: 'B', dir: 'h', offset: -1 }, { id: 'd', kind: 'dim', a: 'A', b: 'B', dir: 'h', offset: 1 }], 'a vertical dimension turned a quarter: horizontal, on the side it turned to');
+  close(reaction(solve(turn(frame, all, 37)), 's').moment, reaction(solve(frame), 's').moment, 'a turned frame carries the same moment at its foot', 1e-6);
+  // a box picks what's wholly inside it
+  eq(inBox(frame, { minX: -0.5, maxX: 0.5, minY: -0.5, maxY: 4.5 }).sort(), ['A', 'B', 'd', 'm1', 'q', 's'].sort(), 'the column, its support, moment and dimension');
+}
+
+{
+  // the canvas lays the drawing out at the export's own scale, so its labels sit where the PDF's do
+  const model = templates.overhangingBeam();
+  const style = readStyle({ view: 'diagrams' });
+  eq(buildScene(model, solve(model), style, true, fitScale(model, style.width)).blocks.filter((b) => b.title !== 'Supports'), buildScene(model, solve(model), style).blocks.filter((b) => b.title !== 'Supports'), 'the canvas’s scene is the export’s');
 }
 
 // ─── the file: a drawing round-trips through the diagram file (last: it waits for the hash) ───
