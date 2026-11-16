@@ -548,11 +548,16 @@ export function sectionsFor(view: 'all' | CategoryId, starters: Starter[] = STAR
 /** Lower case, without accents, for matching typed text. */
 const fold = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-/** Every word typed is in the text. */
+/**
+ * Every word typed is in the text: a short one (up to three letters) at the start of a word, so "op amp" doesn't find
+ * a ramp or a damped curve, and a longer one anywhere, so "mosfet" still finds nMOSFET.
+ */
 const matches = (query: string, haystack: string[]) => {
   const words = fold(query).split(/\s+/).filter(Boolean);
   const text = fold(haystack.join(' '));
-  return words.length > 0 && words.every((word) => text.includes(word));
+  // ponytail: three letters is the line between a stray fragment and a word worth finding inside another
+  const atStart = (word: string) => new RegExp(`(?:^|[^\\p{L}\\p{N}])${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'u').test(text);
+  return words.length > 0 && words.every((word) => (word.length > 3 ? text.includes(word) : atStart(word)));
 };
 
 /**
