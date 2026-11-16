@@ -347,6 +347,13 @@ export function nextName(model: VectorModel, panel: string) {
   }
 }
 
+/** A label with its text changed: emptied, it stays while it has a side, size or colour, so they're kept for new text. */
+export const withText = <L extends { text: string }>(label: L, text: string): L | undefined =>
+  text || Object.entries(label).some(([key, value]) => key !== 'text' && value !== undefined) ? { ...label, text } : undefined;
+
+/** Whether a point can take a name: no other point in its panel has it. */
+export const nameFree = (model: VectorModel, point: VPoint, name: string) => !model.points.some((p) => p.id !== point.id && p.panel === point.panel && p.name === name);
+
 /** A name typed for a point: letters and digits only. */
 export const cleanName = (typed: string) => typed.replace(/[^A-Za-z0-9]/g, '');
 
@@ -459,6 +466,13 @@ export function newAxes(model: VectorModel, panel: string): { model: VectorModel
 /** The points and items an item stands on. */
 const pointsOf = (item: Item): string[] =>
   isLink(item) ? [item.a, item.b] : item.kind === 'polygon' ? item.points : item.kind === 'right' ? [item.at, item.toward] : item.kind === 'drop' ? [item.from] : [];
+
+/** The model without those of these points that nothing draws or builds on (left by a pick that was given up). */
+export const dropUnused = (model: VectorModel, ids: string[]) => {
+  const used = new Set([...model.items.flatMap(pointsOf), ...model.points.flatMap((p) => (p.of ? parentsOf(p.of) : []))]);
+  const stray = ids.filter((id) => !used.has(id));
+  return stray.length ? removeIds(model, stray) : model;
+};
 
 /** The model without these points, items and panels, and without what's built on them. */
 export function removeIds(model: VectorModel, ids: string[]): VectorModel {
