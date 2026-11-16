@@ -5,7 +5,8 @@ import { num } from '../shared';
 import type { Pt } from './model';
 
 type Shape =
-  | { line: [number, number][]; closed?: boolean; fill?: 'paper' | 'ink'; heavy?: boolean }
+  /** bare: filled without its outline (paper over the member, as a gap) */
+  | { line: [number, number][]; closed?: boolean; fill?: 'paper' | 'ink'; heavy?: boolean; bare?: boolean }
   | { circle: [number, number]; r: number; fill?: 'paper' | 'ink' };
 
 /** A hatched surface from x0 to x1 at height y, hatched below. */
@@ -47,7 +48,13 @@ export const SYMBOLS: Record<string, Shape[]> = {
   guided: [{ line: [[-0.3, 0], [0.3, 0]], heavy: true }, { circle: [-0.15, -0.08], r: 0.07, fill: 'paper' }, { circle: [0.15, -0.08], r: 0.07, fill: 'paper' }, ...ground(-0.4, 0.4, -0.15)],
   spring: [{ line: zigzag(0, -0.6) }, ...ground(-0.3, 0.3, -0.6), { circle: [0, 0], r: 0.06, fill: 'paper' }],
   rotspring: [{ line: spiral() }, { line: [[0.22, 0], [0.22, -0.45]] }, { line: [[0, 0], [-0.2, -0.45], [0.2, -0.45]], closed: true }, ...ground(-0.4, 0.4, -0.45), { circle: [0, 0], r: 0.06, fill: 'paper' }],
-  hinge: [{ circle: [0, 0], r: 0.07, fill: 'paper' }]
+  hinge: [{ circle: [0, 0], r: 0.07, fill: 'paper' }],
+  // an internal shear release: the member broken by two strokes square to it, which slide past each other
+  shear: [
+    { line: [[-0.06, -0.04], [0.06, -0.04], [0.06, 0.04], [-0.06, 0.04]], closed: true, fill: 'paper', bare: true },
+    { line: [[-0.06, -0.17], [-0.06, 0.17]], heavy: true },
+    { line: [[0.06, -0.17], [0.06, 0.17]], heavy: true }
+  ]
 };
 
 /** How far below its node a support reaches, for spacing what's drawn under it. */
@@ -59,6 +66,7 @@ const pt = ([x, y]: [number, number]) => `(${num(x)},${num(y)})`;
 
 function shapeTikz(shape: Shape) {
   if ('circle' in shape) return `\\draw${shape.fill === 'ink' ? '[fill]' : shape.fill === 'paper' ? '[fill=white]' : ''} ${pt(shape.circle)} circle (${num(shape.r)});`;
+  if (shape.bare) return `\\fill[white] ${shape.line.map(pt).join(' -- ')} -- cycle;`;
   const options = [shape.heavy && 'line width=0.8pt', shape.fill === 'paper' && 'fill=white', shape.fill === 'ink' && 'fill'].filter(Boolean);
   return `\\draw${options.length ? `[${options.join(', ')}]` : ''} ${shape.line.map(pt).join(' -- ')}${shape.closed ? ' -- cycle' : ''};`;
 }
@@ -72,10 +80,10 @@ export const picDefinition = (name: string) => `${picName(name)}/.pic={${SYMBOLS
 // ─── SVG ───
 
 /** A symbol as SVG pieces in centimetres with y up (the canvas flips and scales them). */
-export function symbolSvg(name: string): { d: string; fill?: 'paper' | 'ink'; heavy?: boolean; circle?: { c: Pt; r: number } }[] {
+export function symbolSvg(name: string): { d: string; fill?: 'paper' | 'ink'; heavy?: boolean; bare?: boolean; circle?: { c: Pt; r: number } }[] {
   return (SYMBOLS[name] ?? []).map((shape) =>
     'circle' in shape
       ? { d: '', fill: shape.fill, circle: { c: { x: shape.circle[0], y: shape.circle[1] }, r: shape.r } }
-      : { d: `M${shape.line.map(([x, y]) => `${x},${y}`).join(' L')}${shape.closed ? ' Z' : ''}`, fill: shape.fill, heavy: shape.heavy }
+      : { d: `M${shape.line.map(([x, y]) => `${x},${y}`).join(' L')}${shape.closed ? ' Z' : ''}`, fill: shape.fill, heavy: shape.heavy, bare: shape.bare }
   );
 }

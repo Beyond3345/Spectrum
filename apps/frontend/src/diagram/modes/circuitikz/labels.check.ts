@@ -1,12 +1,13 @@
 // Self-check for the circuit canvas's labels: every catalogue symbol, labelled on each side, running each of eight
-// ways, mirrored or not (a node turned each of eight ways and flipped), has its label clear of its drawn outline; and
-// subscripts and superscripts come out as their own runs. Run:
+// ways, mirrored or not (a node turned each of eight ways and flipped), has its label clear of its drawn outline
+// (how a label is sketched and measured is checked in ../../sketch.check.ts). Run:
 // npx esbuild apps/frontend/src/diagram/modes/circuitikz/labels.check.ts --bundle --platform=node --log-level=warning | node
 //
 // outlines.fixture.json holds every symbol's page as the backend's drawSymbols measured it with TeX Live 2026's
 // circuitikz 1.8.7, in American, European and IEEE logic styles, with a path part's ends and a transistor's pins.
 // Measure it again when the catalogue changes.
-import { labelSize, nodeNameAt, pathLabelAt, pinLabelSpots, scriptRuns } from './labels';
+import { labelSize, scriptRuns } from '../../sketch';
+import { nodeNameAt, pathLabelAt, pinLabelSpots } from './labels';
 import { CATALOGUE, PT_PER_GRID, pathFrame, placeNodeOffset } from './model';
 import type { Pt } from './model';
 import OUTLINES from './outlines.fixture.json';
@@ -16,15 +17,6 @@ import type { Box } from './symbolGeometry';
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
 };
-
-// ─── sub and superscripts ───
-
-eq(scriptRuns('C_1'), [{ text: 'C' }, { text: '1', shift: 'sub' }], 'C_1');
-eq(scriptRuns('$R_{in}$'), [{ text: 'R' }, { text: 'in', shift: 'sub' }], 'R_{in}');
-eq(scriptRuns('V^2'), [{ text: 'V' }, { text: '2', shift: 'super' }], 'V^2');
-eq(scriptRuns('R_{\\text{load}} = 4.7\\,\\Omega'), [{ text: 'R' }, { text: 'load', shift: 'sub' }, { text: ' = 4.7 Ω' }], 'a nested group and a unit');
-eq(scriptRuns('v_\\mu'), [{ text: 'v' }, { text: 'µ', shift: 'sub' }], 'a command as the script');
-eq(scriptRuns('10 kΩ'), [{ text: '10 kΩ' }], 'no scripts');
 
 // ─── clear of the outline ───
 

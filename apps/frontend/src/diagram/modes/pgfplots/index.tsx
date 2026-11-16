@@ -6,8 +6,8 @@ import Select from '../../../app/Select';
 import { ColourField, ProjectContext, Row, UnitsSwitch } from '../../controls';
 import type { DiagramMode } from '../../types';
 import { nextId } from '../tikz/code';
-import { columnsOf, emptyPlot, newSeries, plotCode } from './code';
-import type { Annotation, AnnotationKind, LegendPos, Piece, PlotModel, Series, SeriesSource, Signal } from './code';
+import { columnsOf, emptyPlot, fitEquation, isSemicolonCsv, newSeries, plotCode, pointsOf } from './code';
+import type { Annotation, AnnotationKind, LegendPos, MarkShape, Piece, PlotModel, Series, SeriesSource, Signal } from './code';
 
 // Plots: the form that writes the axis, previewed below it
 
@@ -15,7 +15,22 @@ const DATA_FILE = /\.(csv|tsv|dat|txt)$/i;
 const LINES: [Series['line'], string][] = [
   ['solid', 'Solid'],
   ['dashed', 'Dashed'],
-  ['dotted', 'Dotted']
+  ['dotted', 'Dotted'],
+  ['dashdotted', 'Dash dot'],
+  ['none', 'None: marks only']
+];
+const MARKS: [MarkShape | '', string][] = [
+  ['', 'Auto'],
+  ['*', 'Filled circle'],
+  ['o', 'Open circle'],
+  ['x', 'Cross'],
+  ['+', 'Plus'],
+  ['square*', 'Filled square'],
+  ['square', 'Open square'],
+  ['triangle*', 'Filled triangle'],
+  ['triangle', 'Open triangle'],
+  ['diamond*', 'Filled diamond'],
+  ['diamond', 'Open diamond']
 ];
 const GRIDS: [PlotModel['grid'], string][] = [
   ['none', 'None'],
@@ -27,10 +42,13 @@ const LEGEND_PLACES: [LegendPos, string][] = [
   ['north east', 'Top right'],
   ['south west', 'Bottom left'],
   ['south east', 'Bottom right'],
-  ['outer north east', 'Outside, top right']
+  ['outer north east', 'Outside, top right'],
+  ['below', 'Below, in a row']
 ];
 const SOURCES: [SeriesSource, string][] = [
   ['function', 'Function y = f(x)'],
+  ['points', 'Points typed in'],
+  ['fit', 'Least-squares line'],
   ['data', 'Data file'],
   ['parametric', 'Parametric (x(t), y(t))'],
   ['polar', 'Polar r = f(t)'],
@@ -85,8 +103,21 @@ function Pair({ label, values, labels, placeholder, onChange }: { label: string;
   );
 }
 
+/** A switch on a row of its own. */
+function Switch({ label, checked, hint, onChange }: { label: string; checked: boolean; hint?: string; onChange(checked: boolean): void }) {
+  return (
+    <label className="checkbox-row">
+      <input type="checkbox" role="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span>
+        {label}
+        {hint && <span className="field-hint">{hint}</span>}
+      </span>
+    </label>
+  );
+}
+
 /** The fields of a series of each kind but data, whose file and columns the form shows itself. */
-function SeriesFields({ s, patch }: { s: Series; patch(next: Partial<Series>): void }) {
+function SeriesFields({ s, model, patch }: { s: Series; model: PlotModel; patch(next: Partial<Series>): void }) {
   const samples = (
     <input className="input" type="number" min={2} max={2000} aria-label="Samples" value={s.samples} onChange={(e) => patch({ samples: Number(e.target.value) })} />
   );
@@ -105,8 +136,41 @@ function SeriesFields({ s, patch }: { s: Series; patch(next: Partial<Series>): v
               {samples}
             </span>
           </div>
+          <Switch label="Break at asymptotes" checked={!!s.breaks} hint="So tan(x) is not joined across them, with or without a y range." onChange={(breaks) => patch({ breaks: breaks || undefined })} />
         </>
       );
+    case 'points': {
+      const typed = (s.points ?? '').split(/[\n;]/).filter((l) => l.trim()).length;
+      const read = pointsOf(s.points ?? '').length;
+      return (
+        <>
+          <div className="diagram-row">
+            <label htmlFor={`plot-points-${s.id}`}>Points: x, y on each line</label>
+            <textarea id={`plot-points-${s.id}`} className="input mono" rows={Math.min(10, Math.max(3, typed + 1))} spellCheck={false} value={s.points ?? ''} onChange={(e) => patch({ points: e.target.value })} />
+            <div className="field-hint">
+              {'A third number is the error bar, and = then text labels the point: 0.6, 55 = 55%.'}
+              {read < typed && ` ${typed - read} of the lines are not two numbers and are left out.`}
+            </div>
+          </div>
+          <Switch label="Smooth curve through them" checked={!!s.smooth} hint="For a sketch curve. With no line, only the marks show." onChange={(smooth) => patch({ smooth: smooth || undefined })} />
+          <Switch label="Bars" checked={!!s.bars} onChange={(bars) => patch({ bars: bars || undefined })} />
+        </>
+      );
+    }
+    case 'fit': {
+      const points: [string, string][] = model.series.flatMap((p, i): [string, string][] => (p.source === 'points' ? [[p.id, `Series ${i + 1}`]] : []));
+      const fit = fitEquation(s, model);
+      return (
+        <>
+          <Row label="Through the points of">
+            <Select value={s.of ?? ''} options={points} placeholder={points.length ? 'Choose a series' : 'Add a series of points first'} onChange={(of) => patch({ of })} />
+          </Row>
+          <Switch label="Through the origin" checked={!!s.origin} onChange={(origin) => patch({ origin: origin || undefined })} />
+          <Pair label="x from, to" placeholder="Points’ range" values={[s.from, s.to]} labels={['x from', 'x to']} onChange={(i, value) => patch(i ? { to: value } : { from: value })} />
+          <div className="field-hint">{fit ? `y = ${fit.text}, the legend when it has none of its own.` : 'Needs two points with different x.'}</div>
+        </>
+      );
+    }
     case 'parametric':
     case 'polar':
       return (
@@ -220,19 +284,25 @@ function asKind(s: Series, source: SeriesSource): Partial<Series> {
     case 'function':
       // a data series keeps the function it was
       return s.source === 'data' ? { source } : { source, expr: 'x^2', from: '-2', to: '2', samples: 100 };
+    case 'points':
+      return { source, points: s.points ?? '0, 1\n1, 3\n2, 4\n3, 7', marks: true };
+    case 'fit':
+      return { source, of: s.of, from: '', to: '' };
     default:
       return { source };
   }
 }
 
 /** What each kind of series sets for itself, kept while the form is open so going back to a kind brings them back. */
-const KIND_FIELDS = ['expr', 'exprX', 'from', 'to', 'samples', 'pieces', 'signal', 'amplitude', 'period', 'duty', 'normalise'] as const;
+const KIND_FIELDS = ['expr', 'exprX', 'from', 'to', 'samples', 'pieces', 'signal', 'amplitude', 'period', 'duty', 'normalise', 'marks'] as const;
 
 /** An annotation's fields: the curve it's on, where, and its text. */
-function AnnotationFields({ a, functions, patch }: { a: Annotation; functions: [string, string][]; patch(next: Partial<Annotation>): void }) {
+function AnnotationFields({ a, functions, paths, patch }: { a: Annotation; functions: [string, string][]; paths: [string, string][]; patch(next: Partial<Annotation>): void }) {
+  // an area goes on any series that draws one line; the rest on functions
+  const curves = a.kind === 'area' ? paths : functions;
   const curve = (label: string, key: 'series' | 'series2', none?: string) => (
     <Row label={label}>
-      <Select value={a[key] ?? ''} options={none ? [['', none], ...functions] : functions} placeholder={functions.length ? 'Choose a function' : 'Add a function series first'} onChange={(id) => patch({ [key]: id || undefined })} />
+      <Select value={a[key] ?? ''} options={none ? [['', none], ...curves] : curves} placeholder={curves.length ? 'Choose a series' : 'Add a function series first'} onChange={(id) => patch({ [key]: id || undefined })} />
     </Row>
   );
   const text = (label: string) => (
@@ -259,6 +329,7 @@ function AnnotationFields({ a, functions, patch }: { a: Annotation; functions: [
           {curve('On', 'series')}
           {a.kind === 'area' && curve('Down to', 'series2', 'The x axis (y = 0)')}
           <Pair label="x from, to" values={[a.at, a.to ?? '']} labels={['x from', 'x to']} onChange={(i, value) => patch(i ? { to: value } : { at: value })} />
+          {a.kind === 'area' && <div className="field-hint">Numbers or expressions such as pi/2. Between two series that are not functions, leave both empty for the whole band.</div>}
         </>
       );
     default:
@@ -277,10 +348,11 @@ function AnnotationFields({ a, functions, patch }: { a: Annotation; functions: [
   }
 }
 
-/** The project's data files, and each one's columns once asked for. */
+/** The project's data files, and each one's columns (and whether it is split by semicolons) once asked for. */
 function useDataFiles(projectId: string, wanted: string[]) {
   const [files, setFiles] = useState<string[]>([]);
   const [columns, setColumns] = useState<Record<string, string[]>>({});
+  const [semicolons, setSemicolons] = useState<Record<string, boolean>>({});
   useEffect(() => {
     if (!projectId) return;
     getProjectTree(projectId)
@@ -291,29 +363,35 @@ function useDataFiles(projectId: string, wanted: string[]) {
   useEffect(() => {
     for (const file of missing) {
       getFile(projectId, file)
-        .then(({ content }) => setColumns((prev) => ({ ...prev, [file]: columnsOf(file, content.slice(0, 64 * 1024)) })))
+        .then(({ content }) => {
+          setColumns((prev) => ({ ...prev, [file]: columnsOf(file, content.slice(0, 64 * 1024)) }));
+          setSemicolons((prev) => ({ ...prev, [file]: isSemicolonCsv(file, content.slice(0, 64 * 1024)) }));
+        })
         .catch(() => setColumns((prev) => ({ ...prev, [file]: [] })));
     }
   }, [missing.join('\n')]);
-  return { files, columns };
+  return { files, columns, semicolons };
 }
 
 type CanvasProps = ComponentProps<DiagramMode<PlotModel>['Canvas']>;
 
 function Canvas({ model, onChange, readOnly }: CanvasProps) {
   const projectId = useContext(ProjectContext);
-  const { files, columns } = useDataFiles(projectId, model.series.map((s) => (s.source === 'data' ? s.file : '')));
+  const { files, columns, semicolons } = useDataFiles(projectId, model.series.map((s) => (s.source === 'data' ? s.file : '')));
   const patch = (next: Partial<PlotModel>) => onChange({ ...model, ...next });
   const patchSeries = (id: string, next: Partial<Series>) => patch({ series: model.series.map((s) => (s.id === id ? { ...s, ...next } : s)) });
   // each series' fields as they were in each kind it has been, by id and kind
   const kinds = useRef(new Map<string, Partial<Series>>());
   const switchKind = (s: Series, source: SeriesSource) => {
     kinds.current.set(`${s.id} ${s.source}`, Object.fromEntries(KIND_FIELDS.map((k) => [k, s[k]])));
-    patchSeries(s.id, { ...asKind(s, source), ...kinds.current.get(`${s.id} ${source}`) });
+    // a new fit goes through the first series of points
+    const of = source === 'fit' && !s.of ? { of: model.series.find((p) => p.source === 'points')?.id } : {};
+    patchSeries(s.id, { ...asKind(s, source), ...of, ...kinds.current.get(`${s.id} ${source}`) });
   };
   const patchAnnotation = (id: string, next: Partial<Annotation>) => patch({ annotations: model.annotations?.map((a) => (a.id === id ? { ...a, ...next } : a)) });
   // the function series an annotation can be on, by their place in the list
   const functions: [string, string][] = model.series.flatMap((s, i): [string, string][] => (s.source === 'function' ? [[s.id, `Series ${i + 1}: y = ${s.expr}`]] : []));
+  const paths: [string, string][] = model.series.flatMap((s, i): [string, string][] => (s.source === 'piecewise' || s.source === 'quiver' ? [] : [[s.id, s.source === 'function' ? `Series ${i + 1}: y = ${s.expr}` : `Series ${i + 1}`]]));
   const text = (key: 'title' | 'xlabel' | 'ylabel', label: string) => (
     <Row label={label}>
       <input className="input" spellCheck={false} value={model[key]} onChange={(e) => patch({ [key]: e.target.value })} />
@@ -355,7 +433,7 @@ function Canvas({ model, onChange, readOnly }: CanvasProps) {
                 </button>
               </div>
               {s.source !== 'data' ? (
-                <SeriesFields s={s} patch={(next) => patchSeries(s.id, next)} />
+                <SeriesFields s={s} model={model} patch={(next) => patchSeries(s.id, next)} />
               ) : (
                 <>
                   <Row label="File">
@@ -363,17 +441,22 @@ function Canvas({ model, onChange, readOnly }: CanvasProps) {
                       value={s.file}
                       options={files.map((f): [string, string] => [f, f])}
                       placeholder={files.length ? 'Choose a file' : 'No .csv, .tsv or .dat files in the project'}
-                      onChange={(file) => patchSeries(s.id, { file, x: '', y: '' })}
+                      onChange={(file) => patchSeries(s.id, { file, x: '', y: '', yerr: undefined, sep: undefined })}
                     />
                   </Row>
                   <div className="diagram-row">
                     <span>x and y columns</span>
                     <span className="diagram-pair">
-                      <Select value={s.x} options={cols} placeholder="x" onChange={(x) => patchSeries(s.id, { x })} />
-                      <Select value={s.y} options={cols} placeholder="y" onChange={(y) => patchSeries(s.id, { y })} />
+                      {/* the separator saved with the columns, so the figure reads the file as the form did */}
+                      <Select value={s.x} options={cols} placeholder="x" onChange={(x) => patchSeries(s.id, { x, sep: semicolons[s.file] ? 'semicolon' : undefined })} />
+                      <Select value={s.y} options={cols} placeholder="y" onChange={(y) => patchSeries(s.id, { y, sep: semicolons[s.file] ? 'semicolon' : undefined })} />
                     </span>
                   </div>
-                  {s.file && columns[s.file]?.length === 0 && <div className="field-hint">No columns found. A .csv is read split by commas, a .tsv by tabs and other files by spaces.</div>}
+                  {s.file && columns[s.file]?.length === 0 && <div className="field-hint">No columns found. A .csv is read split by commas or semicolons, a .tsv by tabs and other files by spaces.</div>}
+                  <Row label="Error bar column">
+                    <Select value={s.yerr ?? ''} options={[['', 'None'], ...cols]} onChange={(yerr) => patchSeries(s.id, { yerr: yerr || undefined })} />
+                  </Row>
+                  <Switch label="Bars" checked={!!s.bars} onChange={(bars) => patchSeries(s.id, { bars: bars || undefined })} />
                 </>
               )}
               <Row label="Legend (LaTeX)">
@@ -383,10 +466,13 @@ function Canvas({ model, onChange, readOnly }: CanvasProps) {
                 <span>Line</span>
                 <span className="diagram-pair">
                   <Select value={s.line} options={LINES} onChange={(line) => patchSeries(s.id, { line: line as Series['line'] })} />
-                  <label className="checkbox-row align-end">
-                    <input type="checkbox" checked={s.marks} onChange={(e) => patchSeries(s.id, { marks: e.target.checked })} />
-                    <span>Marks</span>
-                  </label>
+                  {s.line !== 'none' && (
+                    <label className="checkbox-row align-end">
+                      <input type="checkbox" checked={s.marks} onChange={(e) => patchSeries(s.id, { marks: e.target.checked })} />
+                      <span>Marks</span>
+                    </label>
+                  )}
+                  {(s.marks || s.line === 'none') && <Select value={s.mark ?? ''} options={MARKS} onChange={(mark) => patchSeries(s.id, { mark: (mark || undefined) as MarkShape | undefined })} />}
                   {(s.source === 'function' || s.source === 'data') && (
                     <label className="checkbox-row align-end">
                       <input type="checkbox" checked={!!s.stem} onChange={(e) => patchSeries(s.id, { stem: e.target.checked || undefined })} />
@@ -416,9 +502,10 @@ function Canvas({ model, onChange, readOnly }: CanvasProps) {
         <Row label="Legend">
           <Select value={model.legendPos} options={LEGEND_PLACES} onChange={(legendPos) => patch({ legendPos: legendPos as LegendPos })} />
         </Row>
-        <Row label="Width in cm">
-          <input className="input" inputMode="decimal" placeholder="Auto" value={model.width} onChange={(e) => patch({ width: e.target.value })} />
-        </Row>
+        <Pair label="Width, height in cm" placeholder="Auto" values={[model.width, model.height ?? '']} labels={['Width in cm', 'Height in cm']} onChange={(i, value) => patch(i ? { height: value || undefined } : { width: value })} />
+        <Switch label="Equal axes" checked={!!model.equal} hint="One unit is as long on both axes, so a circle is round." onChange={(equal) => patch({ equal: equal || undefined })} />
+        <Switch label="x increases to the left" checked={!!model.xReverse} onChange={(xReverse) => patch({ xReverse: xReverse || undefined })} />
+        <Switch label="Black and white" checked={!!model.bw} hint="Series told apart by dashes and marks. A series with its own colour keeps it." onChange={(bw) => patch({ bw: bw || undefined })} />
         <Row label="Axes">
           <Select value={model.axes ?? 'box'} options={AXES} onChange={(axes) => patch({ axes: axes === 'box' ? undefined : (axes as PlotModel['axes']) })} />
         </Row>
@@ -437,6 +524,21 @@ function Canvas({ model, onChange, readOnly }: CanvasProps) {
             {key === 'yticks' && <div className="field-hint">{'Positions, each with a label if you like, separated by semicolons: pi/2 = $\\frac{\\pi}{2}$; pi = $\\pi$'}</div>}
           </div>
         ))}
+        <div className="diagram-row">
+          <span>Tick numbers: decimals</span>
+          <span className="diagram-pair">
+            <input className="input" type="number" min={0} max={6} placeholder="Auto" aria-label="Decimals on the ticks" value={model.tickDecimals ?? ''} onChange={(e) => patch({ tickDecimals: e.target.value || undefined })} />
+            <label className="checkbox-row align-end">
+              <input type="checkbox" checked={!!model.tickPlain} onChange={(e) => patch({ tickPlain: e.target.checked || undefined })} />
+              <span>Plain</span>
+            </label>
+            <label className="checkbox-row align-end">
+              <input type="checkbox" checked={!!model.tickComma} onChange={(e) => patch({ tickComma: e.target.checked || undefined })} />
+              <span>Decimal comma</span>
+            </label>
+          </span>
+          <div className="field-hint">Plain: 20000 with no ×10ⁿ or thousands separator, and 0.3 on a log axis, not 10 to a power.</div>
+        </div>
       </section>
       <section>
         <h3 className="form-section-title">Annotations</h3>
@@ -449,11 +551,11 @@ function Canvas({ model, onChange, readOnly }: CanvasProps) {
                 <Icon name="trash" />
               </button>
             </div>
-            <AnnotationFields a={a} functions={functions} patch={(next) => patchAnnotation(a.id, next)} />
+            <AnnotationFields a={a} functions={functions} paths={paths} patch={(next) => patchAnnotation(a.id, next)} />
             <ColourField label="Colour" value={a.colour} fallback="Auto" onChange={(colour) => patchAnnotation(a.id, { colour })} />
           </div>
         ))}
-        {!functions.length && <div className="field-hint">Points, tangents, secants, areas and labels go on a function series.</div>}
+        {!functions.length && <div className="field-hint">Points, tangents, secants and labels go on a function series; a shaded area on any series.</div>}
         <button
           type="button"
           className="btn small"

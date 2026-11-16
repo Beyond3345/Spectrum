@@ -2,8 +2,8 @@
 // TikZ each starter writes. Run:
 // npx esbuild apps/frontend/src/diagram/modes/vectors/vectors.check.ts --bundle --platform=node --log-level=warning | node
 import { isColour } from '../shared';
-import { vectorCode, readStyle, styledVectors } from './code';
-import { COLOURS, addPanel, applyTool, dropUnused, nameFree, withText, clipLine, copyIds, dividingSegment, lineThroughPoints, newAxes, pasteInto, projections, removeIds, resolve, rightCorners, triangleMidpoints } from './model';
+import { eqLineEnds, notate, vectorCode, readStyle, styledVectors } from './code';
+import { COLOURS, addPanel, addPoint, applyTool, dropUnused, equationText, frameOf, nameFree, newEqLine, setEquation, vectorsNeedVersion5, withText, clipLine, copyIds, dividingSegment, lineThroughPoints, newAxes, pasteInto, projections, removeIds, resolve, rightCorners, triangleMidpoints } from './model';
 import type { Item, Link, VPoint, VectorModel } from './model';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -275,6 +275,137 @@ eq(readStyle({ width: 'huge', vectorWidth: 1.5, colour: ' ', tips: 'none' }), { 
   const picked = { ...m, points: [...m.points, { id: 'v9', name: 'Z', x: 9, y: 9, panel: 'g1' }] };
   eq(dropUnused(picked, ['v9']).points.length, m.points.length, 'a stray point goes');
   eq(dropUnused(m, ['A', 'B']), m, 'a point a vector or construction uses stays');
+}
+
+// ─── 2.5's items: constructions, angles, circles, lines from equations, drops, ticks and vector names ───
+
+{
+  const pt = (id: string, x: number, y: number): VPoint => ({ id, name: id, x, y, panel: 'g1' });
+  const four = (): VectorModel => ({ panels: [{ id: 'g1', shift: 0 }], points: [pt('O', 0, 0), pt('A', 3.8, 2.9), pt('B', 5.3, 0), pt('C', 1, 3)], items: [] });
+  const body = (m: VectorModel, style: Record<string, unknown> = {}) => vectorCode(m, style).body.split('\n').map((l) => l.trim());
+  const made = (m: VectorModel, tool: string, picks: string[]) => applyTool(m, tool, picks)!;
+  const pointOf = (m: VectorModel, id: string) => m.points.find((p) => p.id === id)!;
+
+  // a point made by a drawing tool has no dot or letter; the Point tool's has both
+  const bare = addPoint(four(), 'g1', { x: 1, y: 1 }, true);
+  eq([pointOf(bare.model, bare.id).dot, pointOf(bare.model, bare.id).label], [undefined, undefined], 'a tool’s point is bare');
+  const named = addPoint(four(), 'g1', { x: 1, y: 1 });
+  eq([pointOf(named.model, named.id).dot, pointOf(named.model, named.id).label?.text], [true, '$D$'], 'the Point tool’s keeps its dot and letter');
+
+  // where two lines cross, following their points; nowhere while parallel, and left out of the code
+  let m = four();
+  const meet = made(m, 'meet', ['O', 'A', 'B', 'C']);
+  m = meet.model;
+  const X = resolve(m).get(meet.id)!;
+  close((X.y / X.x) - 2.9 / 3.8, 0, 'on OA');
+  close((X.y - 0) * (1 - 5.3) - (X.x - 5.3) * 3, 0, 'and on BC');
+  eq(body(m).includes(`\\coordinate (D) at (intersection of O--A and B--C);`), true, 'written with TikZ’s own intersection');
+  const parallel = move(m, 'C', 5.3 + 3.8, 2.9);
+  eq(Number.isNaN(resolve(parallel).get(meet.id)!.x), true, 'parallel lines meet nowhere');
+  eq(body({ ...parallel, items: [{ id: 'v', kind: 'vector', a: 'O', b: meet.id }] }).some((l) => l.includes('(D)')), false, 'so it and what’s drawn to it are left out');
+  closePt(resolve(move(m, 'A', 1, 1)).get(meet.id), 15.9 / 7.3, 15.9 / 7.3, 'and it follows A');
+
+  // a signed scalar multiple, drawn from the tail with its label
+  m = { ...four(), points: [pt('O', 0, 0), pt('V', 1, 2)], items: [{ id: 'v', kind: 'vector', a: 'O', b: 'V', label: { text: '$\\mathbf{v}$' } }] };
+  const twice = made(m, 'scale', ['O', 'V']);
+  closePt(resolve(twice.model).get(twice.id), 2, 4, '2v');
+  const negative = { ...twice.model, points: twice.model.points.map((p) => (p.id === twice.id ? { ...p, of: { kind: 'scale' as const, a: 'O', b: 'V', k: -2 } } : p)) };
+  closePt(resolve(negative).get(twice.id), -2, -4, '−2v');
+  closePt(resolve(move(negative, 'V', 1, -1)).get(twice.id), -2, 2, 'following v');
+  eq(body(negative).filter((l) => l.includes('(A)')), ['\\coordinate (A) at ($(O)!-2!(V)$);', '\\draw[->] (O) -- (A) node[midway, left] {$2\\mathbf{v}$};'], 'written with calc, labelled from v’s own label');
+  eq([pointOf(twice.model, twice.id).dot, pointOf(twice.model, twice.id).label], [undefined, undefined], 'its tip bare');
+
+  // AB placed at P: v − u from P
+  m = four();
+  const placedAt = made(m, 'place', ['O', 'A', 'C']);
+  closePt(resolve(placedAt.model).get(placedAt.id), 4.8, 5.9, 'OA from C');
+  eq(placedAt.model.items.find((i) => i.kind === 'vector')!, { id: placedAt.model.items[0].id, kind: 'vector', a: 'C', b: placedAt.id, label: { text: '$\\mathbf{a}$', side: 'left' } }, 'drawn from C, named a');
+
+  // the reflection of P(1,1) in x + y = 5 is (4,4), and follows
+  m = { ...four(), points: [pt('P', 1, 1), pt('M', 0, 5), pt('N', 5, 0)] };
+  const mirror = made(m, 'reflect', ['P', 'M', 'N']);
+  closePt(resolve(mirror.model).get(mirror.id), 4, 4, 'P′');
+  closePt(resolve(move(mirror.model, 'P', 0, 0)).get(mirror.id), 5, 5, 'F(0,0) = (5,5)');
+  eq(body(mirror.model).includes('\\coordinate (A) at ($(P)!2!($(M)!(P)!(N)$)$);'), true, 'twice the way to the foot');
+
+  // a parallel and a perpendicular through a point: a line through it and a bare point that aims it
+  m = four();
+  const par = made(m, 'parallel', ['O', 'B', 'C']);
+  const aim = par.model.points.find((p) => !m.points.includes(p))!;
+  closePt(resolve(par.model).get(aim.id), 6.3, 3, 'parallel to OB through C');
+  eq(par.model.items.find((i) => i.id === par.id), { id: par.id, kind: 'line', a: 'C', b: aim.id }, 'the line is selected');
+  const perp = made(m, 'perp', ['O', 'B', 'C']);
+  const perpAim = perp.model.points.find((p) => !m.points.includes(p))!;
+  closePt(resolve(perp.model).get(perpAim.id), 1, 8.3, 'square to OB through C');
+  eq(body(perp.model).includes('\\coordinate (D) at ($(C)!1!90:($(C)+(B)-(O)$)$);'), true, 'OB turned a quarter about C');
+  eq(frameOf(perp.model, 'g1'), frameOf(m, 'g1'), 'the aiming point doesn’t stretch the frame');
+
+  // a line from its equation with its intercepts, which follow it; the label follows while it's as written
+  eq([equationText({ a: 4, b: 1, c: -9 }), equationText({ a: -1, b: 0, c: 2.5 }), equationText({ a: 0, b: 0, c: 0 })], ['$4x+y-9=0$', '$-x+2.5=0$', '$0=0$'], 'equations as TeX');
+  let e = newEqLine({ ...four(), points: [] }, 'g1');
+  m = setEquation(setEquation(setEquation(e.model, e.id, { a: 4 }), e.id, { b: 1 }), e.id, { c: -9 });
+  const [xi, yi] = m.points;
+  closePt(resolve(m).get(xi.id), 2.25, 0, 'x-intercept');
+  closePt(resolve(m).get(yi.id), 0, 9, 'y-intercept');
+  eq([m.items[0].kind === 'eqline' && m.items[0].label?.text, xi.label?.text, yi.label?.text, xi.shape], ['$4x+y-9=0$', '$(2.25,0)$', '$(0,9)$', 'cross'], 'their labels followed, crosses');
+  const own = setEquation({ ...m, points: m.points.map((p) => (p.id === xi.id ? { ...p, label: { text: '$X$' } } : p)) }, e.id, { c: -8 });
+  eq(own.points.find((p) => p.id === xi.id)!.label?.text, '$X$', 'a label of its own stays');
+  const flat = setEquation(m, e.id, { a: 0 });
+  eq([Number.isNaN(resolve(flat).get(xi.id)!.x), body(flat).filter((l) => l.startsWith('\\coordinate')).length], [true, 1], 'a flat line has no x-intercept, left out');
+  eq(body(m).filter((l) => l.startsWith('\\coordinate') || l.includes('=0$')), ['\\coordinate (A) at (2.25,0);', '\\coordinate (B) at (0,9);', '\\draw (-0.25,10) -- (2.5,-1) node[midway, above right] {$4x+y-9=0$};'], 'the line out to the frame, left to right');
+  eq(eqLineEnds({ a: 1, b: 0, c: -1 }, { minX: -2, maxX: 2, minY: -2, maxY: 2 }), [{ x: 1, y: -2 }, { x: 1, y: 2 }], 'an upright line runs upwards');
+  eq(eqLineEnds({ a: 1, b: 0, c: -5 }, { minX: -2, maxX: 2, minY: -2, maxY: 2 }), null, 'one outside the frame isn’t drawn');
+  eq(removeIds(m, [e.id]).points, [], 'its intercepts go with it');
+
+  // an angle: the one less than a half turn, written as the angle pic, live on its points
+  m = four();
+  const angle = made(m, 'angle', ['O', 'B', 'A']);
+  eq(angle.model.items[0], { id: angle.id, kind: 'angle', at: 'O', from: 'B', to: 'A', label: { text: '$\\theta$' } }, 'from OB anticlockwise to OA');
+  eq((made(m, 'angle', ['O', 'A', 'B']).model.items[0] as { from: string }).from, 'B', 'whichever side is clicked first');
+  const theta = { ...angle.model, items: [{ ...angle.model.items[0], radius: 0.8, double: true, colour: 'red', label: { text: '$\\theta$', size: 'small' as const } }] as Item[] };
+  eq(body(theta).filter((l) => l.startsWith('\\pic')), [
+    '\\pic[draw, red, angle radius=0.8cm, angle eccentricity=1.313, pic text={$\\theta$}, pic text options={font=\\small}] {angle=B--O--A};',
+    '\\pic[draw, red, angle radius=0.87cm] {angle=B--O--A};'
+  ], 'a double arc with its label');
+  eq(vectorCode(theta, {}).libraries, ['angles'], 'the angles library');
+
+  // a circle and an arc, with the numbers they have now
+  m = { ...four(), points: [pt('O', 0, 0), pt('Q', 1.2, 1.6), pt('S', -1.5, 0)] };
+  const circle = made(m, 'circle', ['O', 'Q']);
+  eq(body(circle.model).includes('\\draw (O) circle[radius=2];'), true, 'a circle through Q');
+  eq(body(move(circle.model, 'Q', 0, 3)).includes('\\draw (O) circle[radius=3];'), true, 'following Q');
+  const arc = made(m, 'arc', ['O', 'S', 'Q']);
+  eq(body(arc.model).includes('\\draw (S) arc[start angle=180, end angle=413.13, radius=1.5];'), true, 'an arc from S anticlockwise round to Q’s side');
+
+  // drop to both axes, dotted in the point's colour; equal-length ticks, one more each time
+  m = { ...four(), points: [pt('O', 0, 0), { ...pt('A', 2, 3), colour: 'red' }] };
+  eq(body(made(m, 'dropBoth', ['A']).model).includes('\\draw[dotted, red] (A -| 0,0) -- (A) -- (A |- 0,0);'), true, 'a drop to both axes');
+  let ticked = made(m, 'ticks', ['O', 'A']);
+  eq(ticked.model.items[0], { id: ticked.id, kind: 'segment', a: 'O', b: 'A', ticks: 1 }, 'a segment with one tick');
+  for (const n of [2, 3, 1]) {
+    ticked = made(ticked.model, 'ticks', ['A', 'O']);
+    eq((ticked.model.items[0] as Link).ticks, n, `then ${n}`);
+  }
+  eq(body({ ...m, items: [{ id: 'v', kind: 'vector', a: 'O', b: 'A', ticks: 2 }] }).includes('\\draw[->, postaction={decorate, decoration={markings, mark=at position 0.5 with {\\draw[-] (-1pt,-3pt) -- ++(0,6pt) (1pt,-3pt) -- ++(0,6pt);}}}] (O) -- (A);'), true, 'two ticks on a vector, no tips on them');
+
+  // vector names: each \mathbf in the labels in the chosen notation, and esvect only when \vv is written
+  eq([notate('$\\mathbf{a}+\\mathbf {b}$', 'vec'), notate('$\\mathbf{OA}$', 'arrow'), notate('$\\mathbf{a}$', 'vv'), notate('$\\mathbf{a}$')], ['$\\vec{a}+\\vec {b}$', '$\\overrightarrow{OA}$', '$\\vv{a}$', '$\\mathbf{a}$'], 'notations');
+  const named2 = dividingSegment();
+  eq(vectorCode(named2, { notation: 'vv' }).packages, ['tikz', 'esvect'], 'esvect for \\vv');
+  eq(vectorCode({ ...named2, items: [] , points: named2.points.map((p) => ({ ...p, label: undefined }))}, { notation: 'vv' }).packages, ['tikz'], 'not when nothing is written with it');
+  eq(body(named2, { notation: 'arrow' }).includes('\\draw[->, very thick] (O) -- (A) node[midway, below] {$\\overrightarrow{a}$};'), true, 'a label in the notation');
+  eq(vectorCode(named2, { notation: 'bold' }), vectorCode(named2, {}), 'bold writes what it did');
+  eq([readStyle({ notation: 'vec' }).notation, readStyle({ notation: 'bold' }).notation, readStyle({ notation: 'hat' }).notation], ['vec', undefined, undefined], 'the Style’s notation read back');
+
+  // copied and pasted, a construction is built on the copies
+  const clip = copyIds(meet.model, [meet.id]);
+  const pasted = pasteInto(meet.model, clip, 'g1', { x: 1, y: 0 });
+  const copy = pasted.model.points.find((p) => p.id === pasted.ids[pasted.ids.length - 1])!;
+  eq(copy.of?.kind === 'meet' && [copy.of.a, copy.of.b, copy.of.c, copy.of.d].every((id) => pasted.ids.includes(id)), true, 'a copied meet is built on the copied points');
+
+  // version 5 only with what's new
+  for (const starter of [lineThroughPoints, dividingSegment, triangleMidpoints, projections]) eq(vectorsNeedVersion5(starter()), false, `${starter.name} stays as it was`);
+  eq([vectorsNeedVersion5(meet.model), vectorsNeedVersion5(theta), vectorsNeedVersion5(dividingSegment(), { notation: 'vec' }), vectorsNeedVersion5(placedAt.model)], [true, true, true, false], 'new kinds and notations make version 5; a vector placed at a point is 2.4’s v − u');
 }
 
 console.log('vectors.check: ok');

@@ -30,6 +30,7 @@
 }
 .st-sym-heavy { stroke-width: 2; }
 .st-sym-paper { fill: var(--ckt-paper); }
+.st-sym.st-sym-bare, .st-rail .st-sym.st-sym-bare { stroke: none; }
 .st-sym-ink { fill: var(--ckt-ink); }
 .st-faint-pic { opacity: 0.35; }
 

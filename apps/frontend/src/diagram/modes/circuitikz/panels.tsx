@@ -5,13 +5,14 @@ import Icon from '../../../app/Icon';
 import Segmented from '../../../app/Segmented';
 import Select from '../../../app/Select';
 import { IS_WINDOWS } from '../../../app/platform';
-import { ColourField } from '../../controls';
+import { ColourField, More } from '../../controls';
+import { useToolTitle } from '../../toolKeys';
 import { ANNOTATION_COLOURS, PRESETS } from './annotate';
 import { DEFAULT_LENGTH, readStyle } from './code';
 import type { CircuitStyle } from './code';
 import { flip, remove, rotate } from './edit';
 import { plusAtStart, sideName } from './labels';
-import { CATALOGUE, PARTS, asCircuit, railParts, locator, pathFrame, variantKey, wirePath } from './model';
+import { CATALOGUE, PARTS, asCircuit, railParts, locator, pathFrame, variantKey, wirePath, withLaterSets } from './model';
 import type { Annotation, CircuitModel, Element, FontSize, Mark, NodePart, PathPart, Pole, Pt, Route, Wire } from './model';
 import { setSelection, setTool, shapeOfNow, tidy, useCircuitUi } from './store';
 import { UnitsSwitch } from '../../controls';
@@ -42,7 +43,8 @@ const ANNOTATE: [string, string, string, ReactNode][] = [
 ];
 
 /** sets: the other symbol sets the drawing has, each shown as its own groups after circuitikz's */
-export function CircuitRail({ onPick, tool, sets = [] }: { onPick(tool: string): void; tool: string; sets?: string[] }) {
+export function CircuitRail({ onPick, tool, sets: chosen = [] }: { onPick(tool: string): void; tool: string; sets?: string[] }) {
+  const sets = withLaterSets(chosen);
   const ui = useCircuitUi();
   const [filter, setFilter] = useState('');
   const { symbol: symbolFor } = useSymbols(ui.ctikz, [], sets);
@@ -54,6 +56,7 @@ export function CircuitRail({ onPick, tool, sets = [] }: { onPick(tool: string):
   };
   const [settings] = useSettings();
   const shown = railParts(filter, sets, settings.composerStylesOff);
+  const title = useToolTitle();
   return (
     <div className="ckt-rail">
       <Segmented
@@ -62,7 +65,7 @@ export function CircuitRail({ onPick, tool, sets = [] }: { onPick(tool: string):
         value={ui.tool}
         options={[
           ['select', 'Select'],
-          ['wire', 'Wire']
+          ['wire', 'Wire', undefined, title('Wire', 'diagramWire')]
         ]}
         onChange={pick}
       />
@@ -205,17 +208,6 @@ const FONTS: [string, string][] = [
 
 /** TikZ node names: letters, digits, - and _ */
 const cleanName = (text: string) => text.replace(/[^A-Za-z0-9_-]/g, '');
-
-/** Fields folded away until wanted: open to begin with when the part already has any of them set */
-function More({ summary, open, children }: { summary: string; open: boolean; children: ReactNode }) {
-  const [shown, setShown] = useState(open);
-  return (
-    <details className="ckt-more" open={shown} onToggle={(e) => setShown(e.currentTarget.open)}>
-      <summary>{summary}</summary>
-      <div className="ckt-more-body">{children}</div>
-    </details>
-  );
-}
 
 function MarkFields({ label, mark, onChange, hint, u, voltage }: { label: string; mark: Mark | undefined; onChange: (m: Mark | undefined) => void; hint?: string; u: Pt; voltage?: boolean }) {
   const { voltageDir } = useCircuitUi();

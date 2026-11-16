@@ -1,6 +1,7 @@
 import type { ComponentProps, CSSProperties } from 'react';
 import { BaseEdge, Handle, MarkerType, NodeResizer, Position } from '@xyflow/react';
 import type { Edge, EdgeProps, Node, NodeProps } from '@xyflow/react';
+import Icon from '../../../app/Icon';
 import Select from '../../../app/Select';
 import { FlowCanvas } from '../../FlowCanvas';
 import { ColourField, Row, ToolRail, railIcon } from '../../controls';
@@ -11,14 +12,18 @@ import {
   FLETCHER_SHAPES,
   MATHS_SHAPES,
   ROUND_SHAPES,
+  SIGN_AT,
+  along,
   anchorOf,
+  bandOf,
+  holds,
+  polygonOf,
   connect,
   copyTikz,
   curveControls,
   dividersOf,
   drawingOrder,
   emptyTikz,
-  middleOf,
   moveBoxes,
   NEW,
   nextId,
@@ -28,9 +33,10 @@ import {
   removeTikz,
   resized,
   stateShape,
-  tikzCode
+  tikzCode,
+  turnTikz
 } from './code';
-import type { Box, Dash, Heads, Line, Link, Route, Shape, Side, TikzModel } from './code';
+import type { Box, Dash, Heads, LabelSide, Line, Link, Route, Shape, Side, TikzModel, Turn } from './code';
 
 // Plain TikZ: flowcharts and block diagrams on the canvas
 
@@ -56,7 +62,13 @@ const TOOLS: Tool[] = [
   { id: 'trapezium', label: 'Trapezium (manual step)', icon: railIcon(<path d="M4.5 4h7l2.5 8H2z" />) },
   { id: 'operator', label: 'Operator circle', icon: railIcon(<><circle cx="8" cy="8" r="5.5" /><path d="M8 5v6M5 8h6" /></>) },
   { id: 'stack', label: 'Vector stack', icon: railIcon(<><rect x="5" y="2" width="6" height="12" /><path d="M5 5h6M5 8h6M5 11h6" /></>) },
-  { id: 'container', label: 'Container', icon: railIcon(<><rect x="1.5" y="2.5" width="13" height="11" rx="2" /><path d="M3.5 5h5" /></>) }
+  { id: 'container', label: 'Container', icon: railIcon(<><rect x="1.5" y="2.5" width="13" height="11" rx="2" /><path d="M3.5 5h5" /></>) },
+  { id: 'terminal', label: 'Terminal (start or end)', icon: railIcon(<rect x="1.5" y="4.5" width="13" height="7" rx="3.5" />) },
+  { id: 'manualInput', label: 'Manual input', icon: railIcon(<path d="M2 6.5 14 3.5v9H2z" strokeLinejoin="round" />) },
+  { id: 'offPage', label: 'Off-page connector', icon: railIcon(<path d="M3.5 2.5h9v7L8 13.5 3.5 9.5z" strokeLinejoin="round" />) },
+  { id: 'gain', label: 'Gain (block diagram)', icon: railIcon(<path d="M3 2.5v11L13.5 8z" strokeLinejoin="round" />) },
+  { id: 'takeoff', label: 'Takeoff point', icon: railIcon(<><path d="M1.5 8h13M8 8v6" /><circle cx="8" cy="8" r="1.8" fill="currentColor" /></>) },
+  { id: 'swimlane', label: 'Swimlane', icon: railIcon(<><rect x="1.5" y="1.5" width="13" height="13" /><path d="M1.5 5h13M8 1.5v13" /></>) }
 ];
 
 const SHAPES: [Shape, string][] = [
@@ -75,7 +87,36 @@ const SHAPES: [Shape, string][] = [
   ['trapezium', 'Trapezium'],
   ['operator', 'Operator circle'],
   ['stack', 'Vector stack'],
-  ['container', 'Container']
+  ['container', 'Container'],
+  ['terminal', 'Terminal'],
+  ['manualInput', 'Manual input'],
+  ['offPage', 'Off-page connector'],
+  ['gain', 'Gain'],
+  ['takeoff', 'Takeoff point'],
+  ['swimlane', 'Swimlane']
+];
+const TIPS: [Side, string][] = [
+  ['r', 'Right'],
+  ['l', 'Left'],
+  ['t', 'Up'],
+  ['b', 'Down']
+];
+const BANDS: [Side, string][] = [
+  ['t', 'At the top'],
+  ['l', 'On the left'],
+  ['r', 'On the right'],
+  ['b', 'At the bottom']
+];
+const SIGNS: [string, string][] = [
+  ['', 'None'],
+  ['+', '+'],
+  ['-', '−']
+];
+const TURNS: [Turn, string, string, string][] = [
+  ['left', 'Turn a quarter anticlockwise', 'arrow.counterclockwise', ''],
+  ['right', 'Turn a quarter clockwise', 'arrow.clockwise', ''],
+  ['across', 'Mirror left to right', 'arrow.left.and.right', ''],
+  ['over', 'Mirror top to bottom', 'arrow.left.and.right', 'rotate(90deg)']
 ];
 
 
@@ -129,7 +170,24 @@ const strokeOf = (line: Line) => ({
 /** The outline of a box w × h px, as TikZ draws it. */
 function outline(box: Box, w: number, h: number, style: CSSProperties) {
   const r = Math.min(w, h) / 2;
+  const here = { ...box, x: 0, y: 0, w: w / UNIT, h: h / UNIT };
+  const polygon = polygonOf(here);
+  if (polygon) return <path d={`M${polygon.map(([x, y]) => [x * UNIT, y * UNIT]).join('L')}Z`} style={style} />;
   switch (box.shape) {
+    case 'terminal':
+      return <rect width={w} height={h} rx={r} style={style} />;
+    case 'takeoff':
+      // a dot 1.2 mm across, filled in its line colour
+      return <circle cx={w / 2} cy={h / 2} r={0.06 * 64} style={{ ...style, fill: style.stroke }} />;
+    case 'swimlane': {
+      const [[x1, y1], [x2, y2]] = bandOf(here).line;
+      return (
+        <>
+          <rect width={w} height={h} style={style} />
+          <line x1={x1 * UNIT} y1={y1 * UNIT} x2={x2 * UNIT} y2={y2 * UNIT} style={style} />
+        </>
+      );
+    }
     case 'rectangle':
       return <rect width={w} height={h} style={style} />;
     case 'rounded':
@@ -205,7 +263,8 @@ function startArrow(side: Side, w: number, h: number) {
 
 function BoxView({ data: { box, readOnly }, selected, width = 0, height = 0 }: NodeProps<BoxNode>) {
   const plain = plainShape(box.shape);
-  const container = box.shape === 'container';
+  const container = holds(box.shape);
+  const band = box.shape === 'swimlane' && bandOf({ ...box, x: 0, y: 0, w: width / UNIT, h: height / UNIT });
   return (
     <div className={`tikz-box${plain ? ' plain' : ''}`}>
       <NodeResizer isVisible={selected && !readOnly} minWidth={UNIT * 2} minHeight={UNIT * 2} />
@@ -213,10 +272,17 @@ function BoxView({ data: { box, readOnly }, selected, width = 0, height = 0 }: N
         {outline(box, width, height, { fill: box.fill ?? 'none', ...strokeOf(box) })}
         {stateShape(box.shape) && box.initial && <path d={startArrow(box.initial, width, height)} style={{ ...strokeOf(box), fill: 'none' }} />}
         {/* a container is picked up by its edge, so clicks inside it reach the boxes in it and the canvas */}
-        {container && <rect className="tikz-container-hit" width={width} height={height} rx={4 * PT} />}
+        {container && <rect className="tikz-container-hit" width={width} height={height} rx={band ? 0 : 4 * PT} />}
       </svg>
       {/* TikZ writes black on a fill, so a dark canvas keeps it black there */}
-      {container || box.shape === 'stack' ? (
+      {band ? (
+        <div
+          className="tikz-box-caption"
+          style={{ left: band.title[0] * UNIT, top: band.title[1] * UNIT, transform: `translate(-50%, -50%) rotate(${-band.rotate}deg)`, color: box.fill ? '#000000' : inkOf(box.stroke), textAlign: 'center' }}
+        >
+          {box.text}
+        </div>
+      ) : box.shape === 'takeoff' ? null : container || box.shape === 'stack' ? (
         <div className={`tikz-box-caption ${container ? 'title' : 'below'}`} style={{ color: inkOf(box.stroke) }}>
           {box.text}
         </div>
@@ -225,7 +291,7 @@ function BoxView({ data: { box, readOnly }, selected, width = 0, height = 0 }: N
           {box.text}
         </div>
       )}
-      {container && box.repeat?.trim() && <div className="tikz-box-caption repeat">× {box.repeat.trim()}</div>}
+      {box.shape === 'container' && box.repeat?.trim() && <div className="tikz-box-caption repeat">× {box.repeat.trim()}</div>}
       {(['t', 'r', 'b', 'l'] as Side[]).map((side) => (
         <Handle key={side} id={side} type="source" position={{ t: Position.Top, r: Position.Right, b: Position.Bottom, l: Position.Left }[side]} />
       ))}
@@ -233,38 +299,80 @@ function BoxView({ data: { box, readOnly }, selected, width = 0, height = 0 }: N
   );
 }
 
-type LinkEdge = Edge<{ d: string; labelX: number; labelY: number; text?: string }, 'link'>;
+type LinkEdge = Edge<{ d: string; labelX: number; labelY: number; text?: string; beside?: boolean; sign?: { x: number; y: number; text: string } }, 'link'>;
 
 function LinkView({ data, style, markerStart, markerEnd, interactionWidth }: EdgeProps<LinkEdge>) {
   if (!data) return null;
+  const font = { fill: 'var(--diagram-ink)', fontSize: 18, fontFamily: 'var(--font-serif)' };
   return (
-    <BaseEdge
-      path={data.d}
-      style={style}
-      markerStart={markerStart}
-      markerEnd={markerEnd}
-      interactionWidth={interactionWidth}
-      label={data.text || undefined}
-      labelX={data.labelX}
-      labelY={data.labelY}
-      labelShowBg
-      labelBgPadding={[4, 2]}
-      labelBgStyle={{ fill: 'var(--diagram-paper)' }}
-      labelStyle={{ fill: 'var(--diagram-ink)', fontSize: 18, fontFamily: 'var(--font-serif)' }}
-    />
+    <>
+      <BaseEdge
+        path={data.d}
+        style={style}
+        markerStart={markerStart}
+        markerEnd={markerEnd}
+        interactionWidth={interactionWidth}
+        label={data.text || undefined}
+        labelX={data.labelX}
+        labelY={data.labelY}
+        // on the line, over the paper; beside it, as TikZ's auto writes it, with nothing under it
+        labelShowBg={!data.beside}
+        labelBgPadding={[4, 2]}
+        labelBgStyle={{ fill: 'var(--diagram-paper)' }}
+        labelStyle={font}
+      />
+      {data.sign && (
+        <text x={data.sign.x} y={data.sign.y} textAnchor="middle" dominantBaseline="central" style={font}>
+          {data.sign.text}
+        </text>
+      )}
+    </>
   );
 }
 
 const nodeTypes = { box: BoxView };
 const edgeTypes = { link: LinkView };
 
-/** The SVG path of a link in px, and where its label goes, matching what tikzCode writes. */
+/** A point on a link and which way it goes there, in px. */
+type OnPath = { p: number[]; u: number[] };
+
+/**
+ * The SVG path of a link in px, and where its label and sign go, matching what tikzCode writes: a label on the line,
+ * or beside it on the left or right of the way it goes, at its place along it; a sign on the left near the end.
+ */
 function linkPath(link: Link, from: Box, to: Box) {
-  const px = ([x, y]: [number, number]) => [x * UNIT, y * UNIT];
-  const cubic = (a: number[], c1: number[], c2: number[], b: number[]) => {
-    const mid = [0, 1].map((i) => (a[i] + 3 * c1[i] + 3 * c2[i] + b[i]) / 8);
-    return { d: `M${a}C${c1} ${c2} ${b}`, labelX: mid[0], labelY: mid[1] };
+  const { d, at } = linkLine(link, from, to);
+  const text = link.label?.trim() ?? '';
+  const side = link.labelSide === 'left' ? 1 : link.labelSide === 'right' ? -1 : 0;
+  // left of the way it goes, on a canvas whose y goes down
+  const beside = ({ p, u }: OnPath, s: number, w: number, hh: number) => {
+    const n = [u[1] * s, -u[0] * s];
+    const gap = 6 + Math.abs(n[0]) * w + Math.abs(n[1]) * hh;
+    return [p[0] + n[0] * gap, p[1] + n[1] * gap];
   };
+  const label = at(link.labelPos ?? 0.5);
+  // ponytail: the label's width guessed from its length, 9 px a character; measure it if labels land badly
+  const [labelX, labelY] = side ? beside(label, side, text.length * 4.5, 10) : label.p;
+  const signAt = link.sign && beside(at(SIGN_AT), 1, 6, 10);
+  return { d, labelX, labelY, beside: !!side, sign: signAt ? { x: signAt[0], y: signAt[1], text: link.sign === '-' ? '−' : '+' } : undefined };
+}
+
+/** The SVG path of a link in px, and the point a fraction t of the way along it. */
+function linkLine(link: Link, from: Box, to: Box): { d: string; at(t: number): OnPath } {
+  const px = ([x, y]: [number, number]) => [x * UNIT, y * UNIT];
+  const unit = (v: number[]) => {
+    const l = Math.hypot(v[0], v[1]) || 1;
+    return [v[0] / l, v[1] / l];
+  };
+  const cubic = (a: number[], c1: number[], c2: number[], b: number[]) => ({
+    d: `M${a}C${c1} ${c2} ${b}`,
+    at: (t: number) => {
+      const s = 1 - t;
+      const p = [0, 1].map((i) => s * s * s * a[i] + 3 * s * s * t * c1[i] + 3 * s * t * t * c2[i] + t * t * t * b[i]);
+      const u = [0, 1].map((i) => 3 * s * s * (c1[i] - a[i]) + 6 * s * t * (c2[i] - c1[i]) + 3 * t * t * (b[i] - c2[i]));
+      return { p, u: unit(u) };
+    }
+  });
   if (from === to) {
     // a loop out of its side and back, its ends a little apart
     const [dx, dy] = OUT[link.fromSide];
@@ -296,14 +404,17 @@ function linkPath(link: Link, from: Box, to: Box) {
   if (link.route === 'curved') {
     const [a, b] = [anchorOf(from, link.fromSide), anchorOf(to, link.toSide)].map(px);
     const [c1, c2] = curveControls(link, from, to).map(px);
-    // a cubic Bézier's middle
-    const mid = [0, 1].map((i) => (a[i] + 3 * c1[i] + 3 * c2[i] + b[i]) / 8);
-    return { d: `M${a}C${c1} ${c2} ${b}`, labelX: mid[0], labelY: mid[1] };
+    return cubic(a, c1, c2, b);
   }
   const points = pathPoints(link, from, to);
-  const { leg, pos } = middleOf(points);
-  const [p, q] = [points[leg], points[leg + 1]].map(px);
-  return { d: `M${points.map(px).join('L')}`, labelX: p[0] + (q[0] - p[0]) * pos, labelY: p[1] + (q[1] - p[1]) * pos };
+  return {
+    d: `M${points.map(px).join('L')}`,
+    at: (t: number) => {
+      const { leg, pos } = along(points, t);
+      const [p, q] = [points[leg], points[leg + 1]].map(px);
+      return { p: [p[0] + (q[0] - p[0]) * pos, p[1] + (q[1] - p[1]) * pos], u: unit([q[0] - p[0], q[1] - p[1]]) };
+    }
+  };
 }
 
 
@@ -318,7 +429,7 @@ function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 's
     position: { x: box.x * UNIT, y: box.y * UNIT },
     width: box.w * UNIT,
     height: box.h * UNIT,
-    className: box.shape === 'container' ? 'tikz-container' : undefined,
+    className: holds(box.shape) ? 'tikz-container' : undefined,
     data: { box, readOnly: !!readOnly }
   }));
   const edges: LinkEdge[] = model.links.flatMap((link) => {
@@ -416,15 +527,23 @@ function Inspector({ model, onChange, selection = [], typst = false }: { model: 
   const link = links.length === 1 && !boxes.length ? links[0] : null;
   const allPlain = boxes.length > 0 && !links.length && boxes.every((b) => plainShape(b.shape));
   const textLabel = (shape: Shape) =>
-    MATHS_SHAPES.includes(shape) ? `Maths (${language}, without $)` : `${shape === 'container' ? 'Title' : shape === 'stack' ? 'Caption' : 'Text'} ($…$ for ${language} maths)`;
+    MATHS_SHAPES.includes(shape) ? `Maths (${language}, without $)` : `${holds(shape) ? 'Title' : shape === 'stack' ? 'Caption' : 'Text'} ($…$ for ${language} maths)`;
+  // a label beside the line or on it; in Typst, none is fletcher's own choice, which puts it beside
+  const labelSides: [string, string][] = [
+    ...(typst ? ([['', 'Fletcher’s choice'], ['on', 'On the line']] as [string, string][]) : ([['', 'On the line']] as [string, string][])),
+    ['left', 'Left, as it goes'],
+    ['right', 'Right, as it goes']
+  ];
 
   return (
     <div className="diagram-inspector-fields">
       {box && (
         <>
-          <Row label={textLabel(box.shape)}>
-            <textarea id="diagram-text" className="input diagram-textarea" rows={3} spellCheck={false} value={box.text} onChange={(e) => patchBoxes({ text: e.target.value })} />
-          </Row>
+          {box.shape !== 'takeoff' && (
+            <Row label={textLabel(box.shape)}>
+              <textarea id="diagram-text" className="input diagram-textarea" rows={3} spellCheck={false} value={box.text} onChange={(e) => patchBoxes({ text: e.target.value })} />
+            </Row>
+          )}
           <Row label="Shape">
             <Select value={box.shape} options={typst ? SHAPES.filter(([s]) => FLETCHER_SHAPES.includes(s)) : SHAPES} onChange={(shape) => patchBoxes({ shape: shape as Shape })} />
           </Row>
@@ -438,12 +557,22 @@ function Inspector({ model, onChange, selection = [], typst = false }: { model: 
               <input className="input" placeholder="N" spellCheck={false} value={box.repeat ?? ''} onChange={(e) => patchBoxes({ repeat: e.target.value || undefined })} />
             </Row>
           )}
+          {box.shape === 'gain' && (
+            <Row label="Points">
+              <Select value={box.dir ?? 'r'} options={TIPS} onChange={(dir) => patchBoxes({ dir: dir === 'r' ? undefined : (dir as Side) })} />
+            </Row>
+          )}
+          {box.shape === 'swimlane' && (
+            <Row label="Title band">
+              <Select value={box.dir ?? 't'} options={BANDS} onChange={(dir) => patchBoxes({ dir: dir === 't' ? undefined : (dir as Side) })} />
+            </Row>
+          )}
           {box.shape === 'stack' && (
             <Row label="Cells">
               <input type="number" className="input" min={1} max={20} value={box.cells ?? 4} onChange={(e) => Number(e.target.value) >= 1 && Number(e.target.value) <= 20 && patchBoxes({ cells: Math.round(Number(e.target.value)) })} />
             </Row>
           )}
-          {!plainShape(box.shape) && !MATHS_SHAPES.includes(box.shape) && box.shape !== 'container' && box.shape !== 'stack' && (
+          {!plainShape(box.shape) && !MATHS_SHAPES.includes(box.shape) && !holds(box.shape) && box.shape !== 'stack' && box.shape !== 'takeoff' && (
             <label className="checkbox-row">
               <input type="checkbox" role="switch" checked={!!box.wrap} onChange={(e) => patchBoxes({ wrap: e.target.checked || undefined })} />
               <span>Wrap the text to the box’s width</span>
@@ -482,12 +611,52 @@ function Inspector({ model, onChange, selection = [], typst = false }: { model: 
               <Select value={link.route} options={ROUTES} onChange={(route) => patchLinks({ route: route as Route })} />
             </Row>
           )}
+          {link.label?.trim() && (
+            <>
+              <Row label="Label">
+                <Select
+                  value={!typst && link.labelSide === 'on' ? '' : (link.labelSide ?? '')}
+                  options={labelSides}
+                  onChange={(side) => patchLinks({ labelSide: (side || undefined) as LabelSide | undefined })}
+                />
+              </Row>
+              <Row label="Label along the arrow (%)">
+                <input
+                  type="number"
+                  className="input"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={Math.round((link.labelPos ?? 0.5) * 100)}
+                  onChange={(e) => {
+                    const pos = Number(e.target.value);
+                    if (e.target.value !== '' && pos >= 0 && pos <= 100) patchLinks({ labelPos: pos === 50 ? undefined : pos / 100 });
+                  }}
+                />
+              </Row>
+            </>
+          )}
           <Row label="Arrowheads">
             <Select value={link.heads} options={HEADS} onChange={(heads) => patchLinks({ heads: heads as Heads })} />
           </Row>
+          <Row label="Sign at the end (summing junction)">
+            <Select value={link.sign ?? ''} options={SIGNS} onChange={(sign) => patchLinks({ sign: (sign || undefined) as Link['sign'] })} />
+          </Row>
         </>
       )}
-      {boxes.length > 0 && !links.length && !allPlain && (
+      {boxes.length > 0 && (
+        <div className="diagram-row">
+          <span>{boxes.length > 1 ? 'Turn or mirror these' : 'Turn or mirror'}</span>
+          <span className="diagram-pair">
+            {TURNS.map(([how, title, icon, transform]) => (
+              <button key={how} type="button" className="btn small" title={title} aria-label={title} onClick={() => onChange(turnTikz(model, boxes.map((b) => b.id), how))}>
+                <Icon name={icon} style={transform ? { transform } : undefined} />
+              </button>
+            ))}
+          </span>
+        </div>
+      )}
+      {boxes.length > 0 && !links.length && !allPlain && !boxes.every((b) => b.shape === 'takeoff') && (
         <ColourField label="Fill" value={shared(boxes.map((b) => b.fill))} fallback="None" onChange={(fill) => patchBoxes({ fill })} />
       )}
       <ColourField label={allPlain ? 'Text colour' : 'Line colour'} value={shared(items.map((i) => i.stroke))} fallback="Black" onChange={(stroke) => patchAll({ stroke })} />

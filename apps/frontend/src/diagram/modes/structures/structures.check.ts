@@ -1,9 +1,9 @@
 // Self-check for the Structures mode: the model's edits, the solver against textbook cases (values checked with SymPy
 // 1.14), the instability reports, the views and the TikZ they write. Run:
 // npx esbuild apps/frontend/src/diagram/modes/structures/structures.check.ts --bundle --platform=node --log-level=warning | node
-import { axialForce, extremesInside, evalPoly, forcesAt, indeterminacy, solve } from './solve';
+import { axialForce, displacementAt, extremesInside, evalPoly, forcesAt, indeterminacy, solve } from './solve';
 import type { Solution } from './solve';
-import { connect, copyIds, fitLoads, nodeAt, pasteInto, placeTool, removeIds, sampleBeam, settleNode, splitMember } from './model';
+import { connect, convertUnits, copyIds, fitLoads, nodeAt, pasteInto, placeTool, removeIds, sampleBeam, settleNode, snapOnMember, splitMember } from './model';
 import type { Part, SNode, StructureModel, SupportType } from './model';
 import { buildScene, cutSection, extentOf, formatValue, readStyle } from './draw';
 import type { Item } from './draw';
@@ -483,6 +483,200 @@ const texts = (list: Item[]) => list.flatMap((i) => (i.t === 'text' ? [i.tex] : 
   setShown(sampleBeam(), readStyle({ units: 'N-mm' }));
   const pasted = structures.paste!(sampleBeam(), copyIds(sampleBeam(), ['m1'])) as { model: StructureModel };
   eq(pasted.model.nodes.slice(2).map((n) => [n.x, n.y]), [[500, -500], [506, -500]], 'pasted 500 mm along and down');
+}
+
+// ─── 2.5 features, each against a hand calculation ───
+
+const withEI = (model: StructureModel, EI: number): StructureModel => ({ ...model, parts: model.parts.map((p) => (p.kind === 'member' ? { ...p, EI } : p)) });
+const settling = (model: StructureModel, id: string, settle: number): StructureModel => ({ ...model, parts: model.parts.map((p) => (p.id === id && p.kind === 'support' ? { ...p, settle } : p)) });
+const blockTexts = (model: StructureModel, style: Record<string, unknown>, title: string) => texts(buildScene(model, solve(model), readStyle({ view: 'diagrams', ...style })).blocks.find((b) => b.title === title)?.items ?? []);
+
+{
+  // settlement. A propped cantilever, 6 m, EI 20000 kN m², whose prop B settles 10 mm: by hand the prop pulls down
+  // 3EIδ/L³ = 2.778 kN and the wall takes 3EIδ/L² = 16.67 kN m; with 10 kN/m as well, R_B = 22.5 − 2.778 = 19.72 kN and
+  // M_A = 45 + 16.67 = 61.67 kN m. The beam's end follows the ground: 10 mm down at B
+  const propped: StructureModel = withEI({ nodes: [node('A', 0, 0), node('B', 6, 0)], parts: [beam('m', 'A', 'B'), support('a', 'A', 'fixed', -90), support('b', 'B', 'roller')] }, 20000);
+  const alone = solve(settling(propped, 'b', 0.01));
+  close(reaction(alone, 'b').force.y, -3 * 20000 * 0.01 / 216, 'settlement alone: the prop pulls down 3EIδ/L³');
+  close(reaction(alone, 'a').force.y, 3 * 20000 * 0.01 / 216, 'settlement alone: the wall pushes up as much');
+  close(reaction(alone, 'a').moment, 3 * 20000 * 0.01 / 36, 'settlement alone: the wall’s moment 3EIδ/L²');
+  close(displacementAt(alone, 'm', 6).v, -0.01, 'the beam follows the prop down');
+  close(displacementAt(alone, 'm', 0).v, 0, 'and stays put at the wall');
+  eq(alone.status.text, 'Indeterminate to degree 1 (EI used)', 'the status says EI itself was used');
+  const loaded = solve(settling({ ...propped, parts: [...propped.parts, udl('w', 'm', 0, 6, 10)] }, 'b', 0.01));
+  close(reaction(loaded, 'b').force.y, 22.5 - 50 / 18, 'settlement and load: R_B = 19.72 kN');
+  close(reaction(loaded, 'a').moment, 45 + 50 / 3, 'settlement and load: M_A = 61.67 kN m');
+  // two 5 m spans, EI 20000, the middle support settling 10 mm: it lets go of 48EIδ/(2L)³ = 9.6 kN, the ends take 4.8
+  const spans: StructureModel = withEI({ nodes: [node('A', 0, 0), node('B', 5, 0), node('C', 10, 0)], parts: [beam('ab', 'A', 'B'), beam('bc', 'B', 'C'), support('a', 'A', 'pin'), support('b', 'B', 'roller'), support('c', 'C', 'roller'), udl('w1', 'ab', 0, 5, 10), udl('w2', 'bc', 0, 5, 10)] }, 20000);
+  const sunk = solve(settling(spans, 'b', 0.01));
+  close(reaction(sunk, 'b').force.y, 62.5 - 9.6, 'two spans, B settles: 52.9 kN');
+  close(reaction(sunk, 'a').force.y, 18.75 + 4.8, 'two spans, B settles: 23.55 kN at A');
+  // a determinate beam just turns: the same reactions, and its middle drops half the settlement more
+  const simple = withEI(sampleBeam(), 20000);
+  const turned = solve(settling(simple, 'p2', 0.01));
+  close(reaction(turned, 'p2').force.y, 30, 'determinate: no forces from a settlement');
+  close(displacementAt(turned, 'm1', 3).v, -5 * 10 * 6 ** 4 / (384 * 20000) - 0.005, 'determinate: 5wL⁴/384EI plus half the settlement');
+  // a settlement on a support turned to face a wall still moves it down; a horizontal roller ignores it
+  const wall = solve(settling({ nodes: [node('A', 0, 0), node('B', 4, 0)], parts: [beam('m', 'A', 'B'), support('a', 'A', 'fixed', -90), { id: 'b', kind: 'support', node: 'B', type: 'roller' }] }, 'a', 0.02));
+  close(displacementAt(wall, 'm', 0).v, -0.02, 'a fixed support turned −90° settles down, not sideways');
+  close(displacementAt(wall, 'm', 4).v, 0, 'the prop holds its end');
+  // shown under the support, with its letter
+  eq(texts(items(buildScene(settling(simple, 'p2', 0.01), turned, readStyle({ view: 'loading' })))).includes('$\\Delta_{B} = 0.01$\\,m'), true, 'the settlement labelled');
+}
+
+{
+  // a load per horizontal length: a 4 m by 3 m rafter (5 m long), pinned at the eaves, a roller at the ridge, 2 kN/m of
+  // snow on plan. By hand 8 kN in all: 4 kN at each end, M = wL²/8 = 4 kN m at mid-length. Per length of rafter it
+  // would be 10 kN: 5 kN each, 5 kN m
+  const rafter = (projected: boolean): StructureModel => ({ nodes: [node('A', 0, 0), node('B', 4, 3)], parts: [beam('m', 'A', 'B'), support('a', 'A', 'pin'), support('b', 'B', 'roller'), { id: 'w', kind: 'dist', member: 'm', from: 0, to: 5, w1: 2, w2: 2, angle: -90, ...(projected && { projected: true }) }] });
+  const snow = solve(rafter(true));
+  close(reaction(snow, 'a').force.y, 4, 'snow on plan: 4 kN at the eaves');
+  close(reaction(snow, 'b').force.y, 4, 'snow on plan: 4 kN at the ridge');
+  close(reaction(snow, 'a').force.x, 0, 'snow on plan: nothing sideways');
+  close(maxMoment(snow, 'm').M, 4, 'snow on plan: wL²/8 = 4 kN m');
+  close(maxMoment(snow, 'm').at, 2.5, 'snow on plan: at mid-length');
+  close(reaction(solve(rafter(false)), 'a').force.y, 5, 'per length of rafter: 5 kN');
+  close(maxMoment(solve(rafter(false)), 'm').M, 5, 'per length of rafter: 5 kN m');
+  // drawn on plan: the band's top is level over the sloping rafter
+  const band = items(buildScene(rafter(true), snow, readStyle({ view: 'loading' }))).find((i) => i.t === 'line' && i.id === 'w' && i.closed) as Extract<Item, { t: 'line' }>;
+  close(band.pts[2].y, band.pts[3].y, 'snow on plan: a level band');
+  const sloped = items(buildScene(rafter(false), solve(rafter(false)), readStyle({ view: 'loading' }))).find((i) => i.t === 'line' && i.id === 'w' && i.closed) as Extract<Item, { t: 'line' }>;
+  eq(Math.abs(sloped.pts[2].y - sloped.pts[3].y) > 1, true, 'per length: the band follows the rafter');
+}
+
+{
+  // the deflected shape. A simply supported 6 m beam, 10 kN/m: 5wL⁴/384EI at mid-span, 168.75 m with EI 1 kN m², and
+  // 8.4375 mm with EI 20000; the same beam in N and mm (EI 2e13 N mm²) gives 8.4375 mm
+  close(displacementAt(solve(sampleBeam()), 'm1', 3).v, -5 * 10 * 6 ** 4 / 384, 'mid-span: 5wL⁴/384EI, EI 1');
+  close(displacementAt(solve(withEI(sampleBeam(), 20000)), 'm1', 3).v, -0.0084375, 'mid-span: 8.44 mm, EI 20000');
+  const mm = convertUnits(withEI(sampleBeam(), 20000), 'kN-m', 'N-mm');
+  close(displacementAt(solve(mm), 'm1', 3000).v, -8.4375, 'in N and mm: 8.44 mm');
+  // a cantilever, 4 m, EI 1000, 10 kN at its tip: PL³/3EI = 0.2133 m; stood up as a column with the load sideways, the
+  // same across, drawn up or down
+  const tip = solve({ nodes: [node('A', 0, 0), node('B', 4, 0)], parts: [{ ...beam('m', 'A', 'B'), EI: 1000 } as Part, support('a', 'A', 'fixed', -90), { id: 'P', kind: 'force', on: { node: 'B' }, value: 10, angle: -90 }] });
+  close(displacementAt(tip, 'm', 4).v, -10 * 64 / 3000, 'cantilever tip: PL³/3EI');
+  for (const [a, b] of [['A', 'B'], ['B', 'A']]) {
+    const column = solve({ nodes: [node('A', 0, 0), node('B', 0, 4)], parts: [{ ...beam('m', a, b), EI: 1000 } as Part, support('a', 'A', 'fixed'), { id: 'P', kind: 'force', on: { node: 'B' }, value: 10, angle: 0 }] });
+    const top = displacementAt(column, 'm', a === 'A' ? 4 : 0);
+    // across a member drawn up its left is −x; drawn down, +x
+    close(a === 'A' ? -top.v : top.v, 10 * 64 / 3000, `column drawn ${a} to ${b}: PL³/3EI across`);
+  }
+  // a triangular load, 0 to 9 kN/m on 6 m, EI 1: the largest deflection is at x = L√(1 − √(8/15)) = 3.116 m, and is
+  // 0.006522 w₀L⁴/EI = 76.08 m
+  const tri = solve({ nodes: [node('A', 0, 0), node('B', 6, 0)], parts: [beam('m', 'A', 'B'), support('a', 'A', 'pin'), support('b', 'B', 'roller'), udl('w', 'm', 0, 6, 0, 9)] });
+  const deepest = Array.from({ length: 60001 }, (_, i) => i / 10000).reduce((a, x) => (displacementAt(tri, 'm', x).v < displacementAt(tri, 'm', a).v ? x : a), 0);
+  close(deepest, 6 * Math.sqrt(1 - Math.sqrt(8 / 15)), 'triangle: x of the largest deflection', 1e-4);
+  // the textbook elastic curve, v = w₀x(7L⁴ − 10L²x² + 3x⁴)/360LEI, at that x
+  const x = 6 * Math.sqrt(1 - Math.sqrt(8 / 15));
+  close(-displacementAt(tri, 'm', x).v, (9 * x * (7 * 6 ** 4 - 10 * 36 * x * x + 3 * x ** 4)) / (360 * 6), 'triangle: the largest deflection, 76.07 m');
+  // a Gerber beam: the hinge is one point, both sides there move together
+  const gerber = solve({ nodes: [node('A', 0, 0), { ...node('H', 4, 0), hinge: true }, node('B', 6, 0)], parts: [beam('ah', 'A', 'H'), beam('hb', 'H', 'B'), support('a', 'A', 'fixed', -90), support('b', 'B', 'roller'), udl('w1', 'ah', 0, 4, 10), udl('w2', 'hb', 0, 2, 10)] });
+  close(displacementAt(gerber, 'ah', 4).v, displacementAt(gerber, 'hb', 0).v, 'a hinge: both sides together');
+  // drawn: a block after the moment, its largest value labelled (−169 m with EI 1), and none unless asked for
+  eq(diagramsTitles(sampleBeam(), { deflection: 'fit' }), ['Shear force', 'Bending moment', 'Deflected shape'], 'a beam: the deflected shape after the moment');
+  eq(diagramsTitles(sampleBeam(), {}), ['Shear force', 'Bending moment'], 'not drawn unless asked for');
+  eq(blockTexts(sampleBeam(), { deflection: 100 }, 'Deflected shape'), ['$-169$', '$\\delta$ (m)'], 'its largest deflection and its axis');
+  const curve = (h: 'fit' | number) => (buildScene(sampleBeam(), solve(sampleBeam()), readStyle({ view: 'diagrams', deflection: h })).blocks.find((b) => b.title === 'Deflected shape')!.items.find((i) => i.t === 'line' && i.ink === 'member') as Extract<Item, { t: 'line' }>).pts;
+  const scale = 8 / 6;
+  close(Math.min(...curve(1).map((p) => p.y)), -168.75 * scale, '× 1: drawn to the true deflection');
+  close(Math.min(...curve('fit').map((p) => p.y)), -1, 'fitted: the largest 1 cm');
+  // a frame: its own block in the grid, the frame faint under it and the largest displacement labelled
+  const portal: StructureModel = { nodes: [node('A', 0, 0), node('B', 0, 4), node('C', 6, 4), node('D', 6, 0)], parts: [beam('m1', 'A', 'B'), beam('m2', 'B', 'C'), beam('m3', 'C', 'D'), support('a', 'A', 'fixed'), support('d', 'D', 'fixed'), { id: 'P', kind: 'force', on: { node: 'B' }, value: 10, angle: 0 }] };
+  const frame = buildScene(portal, solve(portal), readStyle({ view: 'diagrams', deflection: 10 })).blocks.filter((b) => b.shift);
+  eq(frame.map((b) => b.title), ['Axial force', 'Shear force', 'Bending moment', 'Deflected shape'], 'a frame: the deflected shape fourth');
+  eq(frame[3].shift!.x === 0 && frame[3].shift!.y < frame[2].shift!.y, true, 'on a new row');
+  eq(texts(frame[3].items).filter((t) => t.startsWith('$\\delta')).length, 1, 'its largest displacement labelled');
+  eq(texts(frame[3].items).includes('Deflected shape ($\\times 10$)'), true, 'its title gives the exaggeration');
+  // EI typed in real units leaves the members as rigid along their length: a fixed portal's forces are the same with EI
+  // 20000 as with 1, and its base shears share the 10 kN equally (5 kN each, by symmetry)
+  const real = solve(withEI(portal, 20000));
+  close(reaction(real, 'a').force.x, reaction(solve(portal), 'a').force.x, 'portal: EI 20000 as EI 1');
+  close(reaction(real, 'a').force.x, -5, 'portal: half the sway load at A', 1e-3);
+  // joints move together: B's displacement from AB's top and BC's start agree
+  const ps = solve(portal);
+  const fromAB = displacementAt(ps, 'm1', 4);
+  const fromBC = displacementAt(ps, 'm2', 0);
+  close(-fromAB.v, fromBC.u, 'frame joint B: sideways the same from both members');
+  close(fromAB.u, fromBC.v, 'frame joint B: up and down the same from both members');
+}
+
+function diagramsTitles(model: StructureModel, style: Record<string, unknown>) {
+  return buildScene(model, solve(model), readStyle({ view: 'diagrams', ...style })).blocks.filter((b) => b.shift).map((b) => b.title);
+}
+
+{
+  // x of zero shear and the largest moment: a triangular load 0 to 9 kN/m on 6 m, x = 2√3 = 3.46 m (Mmax 20.8 kN m),
+  // on both diagrams; a 12 kN load 2 m from the left of a beam drawn right to left, x = 2 m from the left
+  const tri: StructureModel = { nodes: [node('A', 0, 0), node('B', 6, 0)], parts: [beam('m', 'A', 'B'), support('a', 'A', 'pin'), support('b', 'B', 'roller'), udl('w', 'm', 0, 6, 0, 9)] };
+  eq(['Shear force', 'Bending moment'].map((t) => blockTexts(tri, { positions: true }, t).filter((x) => x.startsWith('$x'))), [['$x = 3.46$\\,m'], ['$x = 3.46$\\,m']], 'triangle: x = 3.46 m on both');
+  eq(blockTexts(tri, {}, 'Bending moment').some((x) => x.startsWith('$x')), false, 'not marked unless asked for');
+  const back: StructureModel = { nodes: [node('A', 0, 0), node('B', 6, 0)], parts: [beam('m', 'B', 'A'), support('a', 'A', 'pin'), support('b', 'B', 'roller'), down('P', 'm', 4, 12)] };
+  eq(blockTexts(back, { positions: true }, 'Shear force').filter((x) => x.startsWith('$x')), ['$x = 2$\\,m'], 'a point load: x where the shear changes sign, from the left');
+  eq(blockTexts(sampleBeam(), { positions: true }, 'Bending moment').filter((x) => x.startsWith('$x')), ['$x = 3$\\,m'], 'a UDL: mid-span');
+}
+
+{
+  // an internal shear release: fixed at A, the release at H 4 m along, a roller at B 2 m on, 10 kN/m all along. By hand
+  // no shear crosses H, so B carries HB's 20 kN, H passes 20 kN m and the wall takes 40 kN and 60 kN m: determinate
+  const model: StructureModel = {
+    nodes: [node('A', 0, 0), { ...node('H', 4, 0), shear: true }, node('B', 6, 0)],
+    parts: [beam('ah', 'A', 'H'), beam('hb', 'H', 'B'), support('a', 'A', 'fixed', -90), support('b', 'B', 'roller'), udl('w1', 'ah', 0, 4, 10), udl('w2', 'hb', 0, 2, 10)]
+  };
+  const s = solve(model);
+  eq(s.status, { kind: 'ok', text: 'Determinate and stable', degree: 0 }, 'shear release: determinate');
+  close(reaction(s, 'b').force.y, 20, 'shear release: B carries HB');
+  close(reaction(s, 'a').force.y, 40, 'shear release: the wall carries AH');
+  close(reaction(s, 'a').moment, 60, 'shear release: the wall’s moment');
+  close(forcesAt(s, 'ah', 4).V, 0, 'no shear at H');
+  close(forcesAt(s, 'ah', 4).M, 20, 'the moment passes H');
+  // the two sides slide past each other at H but turn together
+  const slope = (member: string, at: number) => (displacementAt(s, member, at + 1e-6).v - displacementAt(s, member, at - 1e-6).v) / 2e-6;
+  close(slope('ah', 4 - 1e-5), slope('hb', 1e-5), 'the sides turn together', 1e-4);
+  eq(Math.abs(displacementAt(s, 'ah', 4).v - displacementAt(s, 'hb', 0).v) > 1, true, 'and slide apart');
+  // on a simply supported beam it makes a mechanism; placed from the rail like a hinge; drawn as two strokes
+  eq(solve({ nodes: [node('A', 0, 0), { ...node('H', 3, 0), shear: true }, node('B', 6, 0)], parts: [beam('ah', 'A', 'H'), beam('hb', 'H', 'B'), support('a', 'A', 'pin'), support('b', 'B', 'roller'), down('P', 'ah', 1, 5)] }).status.kind, 'unstable', 'shear release on a simple beam: unstable');
+  const placed = placeTool(sampleBeam(), 'shear', { x: 3, y: 0 }, 0.05)!;
+  eq([placed.model.nodes.find((n) => n.id === placed.id)?.shear, placed.model.parts.filter((p) => p.kind === 'member').length], [true, 2], 'the tool splits the member and marks the joint');
+  eq(/spx\/struct\/shear\/\.pic=\{\\fill\[white\]/.test(structureCode(model, { view: 'loading' }).body), true, 'drawn as its pic');
+}
+
+{
+  // F13: with Positive up, a frame's moment labels don't hang on the way a member was drawn
+  const portal = (up: boolean): StructureModel => ({
+    nodes: [node('A', 0, 0), node('B', 0, 4), node('C', 6, 4), node('D', 6, 0)],
+    parts: [beam('m1', up ? 'A' : 'B', up ? 'B' : 'A'), beam('m2', 'B', 'C'), beam('m3', 'C', 'D'), support('a', 'A', 'pin'), support('d', 'D', 'roller'), { id: 'P', kind: 'force', on: { node: 'B' }, value: 15, angle: 0 }]
+  });
+  const labels = (up: boolean) => blockTexts(portal(up), { moments: 'positive' }, 'Bending moment').filter((t) => /^\$-?\d/.test(t)).sort();
+  eq(labels(false), labels(true), 'a column drawn down reads as one drawn up');
+  eq(labels(true), ['$60$', '$60$'], 'and as before for one drawn up');
+}
+
+{
+  // a member drawn to end on an inclined member lands on its line, splitting it, not on a grid point beside it
+  const inclined: StructureModel = { nodes: [node('A', 0, 0), node('B', 4, 3)], parts: [beam('m', 'A', 'B')] };
+  const end = snapOnMember(inclined, { x: 2.9, y: 2.1 }, 0.25, 0.185);
+  close(end.x * 0.6 - end.y * 0.8, 0, 'on the line');
+  close(Math.hypot(end.x, end.y), 3.5, 'at a grid step along it');
+  eq(connect(inclined, 'beam', { x: 3, y: 5 }, end, 0.185)!.model.parts.filter((p) => p.kind === 'member').length, 3, 'the inclined member split there');
+  eq(snapOnMember(inclined, { x: 0.04, y: 2.1 }, 0.25, 0.185), { x: 0, y: 2 }, 'away from it: the grid');
+}
+
+{
+  // converting units: the same structure in other numbers, and back again as typed
+  const model = settling({ ...withEI(sampleBeam(), 20000), parts: [...withEI(sampleBeam(), 20000).parts, down('P', 'm1', 2, 12), { id: 'M', kind: 'moment', on: { node: 'n2' }, value: 5 }] }, 'p1', 0.01);
+  const mm = convertUnits(model, 'kN-m', 'N-mm');
+  eq(mm.nodes.map((n) => [n.x, n.y]), [[0, 0], [6000, 0]], 'joints in mm');
+  eq(mm.parts.map((p) => (p.kind === 'dist' ? [p.w1, p.to] : p.kind === 'force' ? [p.value, 'member' in p.on && p.on.at] : p.kind === 'moment' ? p.value : p.kind === 'dim' ? p.offset : p.kind === 'member' ? p.EI : p.kind === 'support' ? p.settle ?? null : null)), [2e13, 10, null, [10, 6000], -1600, [12000, 2000], 5e6], 'loads, EI, settlement and dimension converted');
+  close(reaction(solve(mm), 'p2').force.y, 1000 * reaction(solve(model), 'p2').force.y, 'the same reactions, in N');
+  eq(convertUnits(convertUnits(model, 'kN-m', 'kip-ft'), 'kip-ft', 'kN-m'), model, 'kip and ft and back: as typed');
+  const plain = convertUnits(sampleBeam(), 'kN-m', 'N-mm');
+  eq(plain.parts.filter((p) => p.kind === 'member').map((p) => p.kind === 'member' && [p.EI, p.EA ?? 'relative']), [[1e9, 'relative']], 'EI turns explicit; EA, relative to it, stays');
+  close(maxMoment(solve(plain), 'm1').M, 45e6, 'and solve as before: 45 kN m is 45e6 N mm');
+}
+
+{
+  // the new style keys: kept when set, nothing otherwise, so a drawing without them writes as before
+  eq([readStyle({ deflection: 'fit' }).deflection, readStyle({ deflection: 100 }).deflection, readStyle({ deflection: -1 }).deflection, readStyle({ deflection: 'x' }).deflection, readStyle({ positions: true }).positions, readStyle({ positions: 'yes' }).positions], ['fit', 100, undefined, undefined, true, undefined], 'deflection and positions read back');
 }
 
 // ─── the file: a drawing round-trips through the diagram file (last: it waits for the hash) ───
