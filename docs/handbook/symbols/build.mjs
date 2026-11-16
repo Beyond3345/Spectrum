@@ -96,6 +96,7 @@ for (const name of [...new Set(app.CATALOGUE.map((part) => part.group))]) {
 }
 
 // Annotate: its tools and presets in the parts list's order, then the looks its Line, Point and Liquid or solid take
+// (Point's dot is the tool's own picture, so only its cross is added)
 const at = (x, y) => ({ x, y });
 const annotation = (props) => ({ id: 'a1', kind: 'annotation', ...props });
 const TOOL_LOOKS = {
@@ -120,7 +121,6 @@ group('annotate', 'Presets', app.PRESETS.map(([id, name]) => ({ id, name, draw: 
 const heads = literal('circuitikz/panels.tsx', 'HEADS');
 group('annotate', 'Arrowheads and point marks', [
   ...heads.map(([head, name]) => ({ id: `head-${head || 'latex'}`, name, draw: circuit([annotation({ shape: 'line', points: [at(0, 0), at(5, 0)], arrows: '->', ...(head && { head }) })]) })),
-  { id: 'mark-dot', name: 'Dot', draw: circuit([annotation({ shape: 'mark', points: [at(0, 0)], text: 'A' })]) },
   { id: 'mark-cross', name: 'Cross', draw: circuit([annotation({ shape: 'mark', points: [at(0, 0)], text: 'A', cross: true })]) }
 ]);
 const square = [at(0, 0), at(5, 0), at(5, 4), at(0, 4)];
@@ -153,7 +153,8 @@ const STRUCTURE_LOOKS = {
 };
 for (const [title, tools] of literal('structures/panels.tsx', 'GROUPS')) {
   group('structures', title, tools.map(([tool, name]) => {
-    const look = tool.startsWith('support:') ? () => place(beam(), tool, at(0, 0)) : STRUCTURE_LOOKS[tool];
+    // a support at the beam's left end, where a fixed or guided one turns to face along it
+    const look = tool.startsWith('support:') ? () => place(beam(), tool, at(-1, 0)) : STRUCTURE_LOOKS[tool];
     if (!look) throw new Error(`Structures’ ${tool} is new: give it a look in build.mjs`);
     return { id: tool.replace(':', '-'), name, draw: { structure: look() } };
   }));
@@ -226,7 +227,8 @@ const pageBoxes = (pdf) => spawnSync('gs', ['-q', '-dNOPAUSE', '-dBATCH', '-sDEV
 function split(pdf, dir, names) {
   const parts = path.join(tmp, `split-${path.basename(pdf, '.pdf')}`);
   mkdirSync(parts, { recursive: true });
-  run('gs', ['-q', '-dNOPAUSE', '-dBATCH', '-sDEVICE=pdfwrite', '-dCompatibilityLevel=1.5', '-o', path.join(parts, 'p-%03d.pdf'), pdf]);
+  // no date, ID or XMP, so a run that changes nothing leaves the files as they were
+  run('gs', ['-q', '-dNOPAUSE', '-dBATCH', '-sDEVICE=pdfwrite', '-dCompatibilityLevel=1.5', '-dOmitInfoDate', '-dOmitID', '-dOmitXMP', '-o', path.join(parts, 'p-%03d.pdf'), pdf]);
   const pages = readdirSync(parts).filter((f) => f.endsWith('.pdf')).sort();
   if (pages.length !== names.length) throw new Error(`${path.basename(pdf)} has ${pages.length} pages for ${names.length} symbols`);
   mkdirSync(dir, { recursive: true });

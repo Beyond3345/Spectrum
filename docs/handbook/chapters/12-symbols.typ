@@ -124,7 +124,7 @@ Annotate comes at the end of the parts list in Circuits and General drawing. Its
 #show-section("annotate", (
   "Tools": [Annotate's tools, each as a click or a short drag places it.],
   "Presets": [Groups of annotations and text that one click puts down, which are then edited like anything else.],
-  "Arrowheads and point marks": [The heads a line or arrow takes from the inspector, then the dot and the cross that Point places.],
+  "Arrowheads and point marks": [The heads a line or arrow takes from the inspector, then the cross that Point places instead of its dot.],
   "Liquids and solids": [The fills of Liquid or solid, as their tints.],
   "Patterns": [The patterns #ui[Drawn as] gives a fill instead of its tint, shown here on water.],
 ))
@@ -136,7 +136,7 @@ Structures places members, joints, supports, loads and annotations from its own 
 #show-section("structures", (
   "Members": [A beam or frame member, drawn heavy, and a truss bar, pinned at both ends.],
   "Joints": [A joint, an internal hinge, an internal shear release and a released member end.],
-  "Supports": [The six supports, each under the middle of a beam.],
+  "Supports": [Each support is drawn at the left end of a beam, where a fixed or guided support turns to face along it.],
   "Loads": [Point forces, moments and distributed loads, with the value each is placed with.],
   "Annotations": [Dimensions, a label, an angle arc, axes and a section cut.],
 ))
