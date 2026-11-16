@@ -43,7 +43,7 @@ export function resolveLLMConfig(llmConfig) {
   };
 }
 
-export const NO_API_KEY = 'No AI model is set up yet. Add an endpoint, model and API key in Settings → Models.';
+export const NO_API_KEY = 'No AI model is set up yet. Add an endpoint, model and API key in Settings › Models.';
 
 /** A resolved config that can't work without a key. Local servers such as Ollama speak plain http and take none. */
 export const missingKey = (config) => !config.apiKey && !/^http:\/\//i.test(config.endpoint);
@@ -113,8 +113,8 @@ export async function listLiveModels(preset, endpoint) {
 
 /** A provider's non-2xx answer as one plain sentence, never the raw body. */
 export function providerError(status, text) {
-  if (status === 401 || status === 403) return 'The API key was rejected. Check it in Settings → Models.';
-  if (status === 404) return 'The endpoint or model wasn’t found. Check Settings → Models.';
+  if (status === 401 || status === 403) return 'The API key was rejected. Check it in Settings › Models.';
+  if (status === 404) return 'The endpoint or model wasn’t found. Check Settings › Models.';
   if (status === 429) return 'The provider is limiting requests. Try again shortly.';
   let detail = '';
   try {
@@ -315,7 +315,7 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
         ? `${host} took too long to answer. Try again.`
         : provider?.local
           ? `Couldn’t reach Ollama at ${host}. ${NO_OLLAMA}`
-          : `Couldn’t reach ${host}. Check the endpoint in Settings → Models.`
+          : `Couldn’t reach ${host}. Check the endpoint in Settings › Models.`
     };
   }
   if (!res.ok) {

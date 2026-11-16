@@ -107,7 +107,7 @@ export function resolveParserConfig(raw) {
   const key = String(typedKey || '').trim();
   const envBase = preset.id === 'mineru' ? String(process.env.SPECTRUM_MINERU_API_BASE || '').trim() : '';
   const endpoint = String(typed || '').trim() || (custom ? '' : (!key && envBase) || preset.endpoint);
-  if (!endpoint) throw new Error('Add the parser’s address in Settings → Template transfer first.');
+  if (!endpoint) throw new Error('Add the parser’s address in Settings › Template transfer first.');
   let scheme = '';
   try {
     scheme = new URL(endpoint).protocol;
@@ -126,7 +126,7 @@ export function resolveParserConfig(raw) {
   };
   // a self-hosted server may run without a key
   if (!custom && !preset.keyOptional && (!config.key || (preset.appId && !config.appId))) {
-    throw new Error(`Add your ${preset.name} ${preset.appId ? 'app ID and app key' : preset.keyName} in Settings → Template transfer first.`);
+    throw new Error(`Add your ${preset.name} ${preset.appId ? 'app ID and app key' : preset.keyName} in Settings › Template transfer first.`);
   }
   return config;
 }

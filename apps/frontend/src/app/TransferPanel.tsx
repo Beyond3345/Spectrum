@@ -266,7 +266,7 @@ export default function TransferPanel({
     running || mode === 'quick'
       ? ''
       : !llmConfigFor(settings, 'main').apiKey && !/^http:\/\//i.test(settings.llmEndpoint)
-        ?'Needs an API key for the main model in Settings → Models, or in the .env file.'
+        ?'Needs an API key for the main model in Settings › Models, or in the .env file.'
         : mode === 'pdf'
           ? parserWarning(settings, parserPreset(parsers, settings))
           : '';
