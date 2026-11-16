@@ -191,14 +191,15 @@ export const SYMBOL_SETS = {
       'spx/fluid/hydrometer': String.raw`${body} (-0.08,1.5) -- (-0.08,0.25) -- (-0.2,0.1) -- (-0.2,-0.55) arc[start angle=180, end angle=360, radius=0.2] -- (0.2,0.1) -- (0.08,0.25) -- (0.08,1.5) -- cycle;\fill (-0.2,-0.5) -- (-0.2,-0.55) arc[start angle=180, end angle=360, radius=0.2] -- (0.2,-0.5) -- cycle;\draw (-0.08,1.2) -- (0.03,1.2) (-0.08,1) -- (0.03,1) (-0.08,0.8) -- (0.03,0.8) (-0.08,0.6) -- (0.03,0.6);` + pins({ top: [0, 1.5], bottom: [0, -0.75] }),
       // a hull's section upright in the water, with its metacentre, centre of gravity and centre of buoyancy
       'spx/fluid/hull': String.raw`${body} (1,0.5) -- (-1,0.5) .. controls (-1,-0.2) and (-0.4,-0.55) .. (0,-0.75) .. controls (0.4,-0.55) and (1,-0.2) .. (1,0.5);\draw[dash dot] (0,-1) -- (0,1.25);\draw (-1.5,0) -- (-0.88,0) (0.88,0) -- (1.5,0);\fill (0,1) circle (1pt) (0,0.25) circle (1pt) (0,-0.25) circle (1pt);\node[right] at (0,1) {$M$};\node[right] at (0,0.25) {$G$};\node[right] at (0,-0.25) {$B$};` + freeSurface(1.25, 0) + pins({ M: [0, 1], G: [0, 0.25], B: [0, -0.25], keel: [0, -0.75], west: [-1.5, 0], east: [1.5, 0] }),
+      // a slope of 3 in 5
+      'spx/fluid/incline': String.raw`${body} (-1.25,-0.75) -- (1.25,-0.75) -- (1.25,0.75) -- cycle;\draw (-0.5,-0.75) arc[start angle=0, end angle=30.96, radius=0.75];\node at (-0.27,-0.5) {$\theta$};` + pins({ toe: [-1.25, -0.75], top: [1.25, 0.75], base: [1.25, -0.75], mid: [0, 0] }),
+      // viscosity and surface tension
+      // a fixed plate, hatched, and a plate 1 cm above it pulled to the right
+      'spx/fluid/plates': String.raw`${body} (-1.25,-0.5) -- (1.25,-0.5);\draw[line width=1.6pt] (-1.25,0.5) -- (1.25,0.5);\draw[-latex] (1.25,0.5) -- (2,0.5);` + hatching(steps(-1, 1.25, 0.25).map((x) => [x, -0.5]), -0.2, -0.2) + pins({ centre: [0, 0], force: [2, 0.5] }),
       'spx/fluid/capillary': capillary(-0.5, 1.25, 0.75, -0.09),
       'spx/fluid/capillary-depression': capillary(-0.75, 1, -0.3, 0.08),
       // a liquid's surface meeting a wall, the angle between the wall and its tangent there
-      'spx/fluid/contact-angle': String.raw`${body} (0,-0.5) -- (0,1);\draw (-1.5,0) .. controls (-0.8,0) and (-0.3,0.25) .. (0,0.75) (0,0.25) arc[start angle=-90, end angle=-121, radius=0.5];\draw[dashed] (0,0.75) -- (-0.46,-0.02);\node at (-0.19,0.06) {$\phi$};` + pins({ p: [0, 0.75], west: [-1.5, 0] }),
-      // a fixed plate, hatched, and a plate 1 cm above it pulled to the right
-      'spx/fluid/plates': String.raw`${body} (-1.25,-0.5) -- (1.25,-0.5);\draw[line width=1.6pt] (-1.25,0.5) -- (1.25,0.5);\draw[-latex] (1.25,0.5) -- (2,0.5);` + hatching(steps(-1, 1.25, 0.25).map((x) => [x, -0.5]), -0.2, -0.2) + pins({ centre: [0, 0], force: [2, 0.5] }),
-      // a slope of 3 in 5
-      'spx/fluid/incline': String.raw`${body} (-1.25,-0.75) -- (1.25,-0.75) -- (1.25,0.75) -- cycle;\draw (-0.5,-0.75) arc[start angle=0, end angle=30.96, radius=0.75];\node at (-0.27,-0.5) {$\theta$};` + pins({ toe: [-1.25, -0.75], top: [1.25, 0.75], base: [1.25, -0.75], mid: [0, 0] })
+      'spx/fluid/contact-angle': String.raw`${body} (0,-0.5) -- (0,1);\draw (-1.5,0) .. controls (-0.8,0) and (-0.3,0.25) .. (0,0.75) (0,0.25) arc[start angle=-90, end angle=-121, radius=0.5];\draw[dashed] (0,0.75) -- (-0.46,-0.02);\node at (-0.19,0.06) {$\phi$};` + pins({ p: [0, 0.75], west: [-1.5, 0] })
     }
   },
   // test specimens and sections of a construction materials course, 150 mm to the centimetre

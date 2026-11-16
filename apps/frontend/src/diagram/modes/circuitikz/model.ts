@@ -55,6 +55,9 @@ export const usesNewerParts = (model: unknown) => asCircuit(model).elements.some
 /** The sets Spectrum 2.5 added, whose parts builds up to 2.4 would write as a dot: a drawing with one is a version 5 file. */
 const SETS_OF_2_5 = ['spx-fluid', 'spx-mat'];
 export const usesSetsOf25 = (model: unknown) => asCircuit(model).elements.some((el) => isPart(el) && SETS_OF_2_5.includes(PARTS.get(el.type)?.set ?? ''));
+/** A General drawing from before 2.5 has the sets added since in its parts list too: it is known by the three sets it opened with.
+ * ponytail: any drawing given those three sets counts as one; keep the starter in the file if that ever misleads */
+export const withLaterSets = (sets: string[]) => (['spx-mech', 'spx-flow', 'spx-geom'].every((set) => sets.includes(set)) ? [...new Set([...sets, ...SETS_OF_2_5])] : sets);
 
 /** A part TeX draws a symbol for: all but Text, which the canvas writes itself. */
 export const drawsSymbol = (type: string) => !!PARTS.get(type)?.tikz;

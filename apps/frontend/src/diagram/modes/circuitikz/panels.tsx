@@ -11,7 +11,7 @@ import { DEFAULT_LENGTH, readStyle } from './code';
 import type { CircuitStyle } from './code';
 import { flip, remove, rotate } from './edit';
 import { plusAtStart, sideName } from './labels';
-import { CATALOGUE, PARTS, asCircuit, railParts, locator, pathFrame, variantKey, wirePath } from './model';
+import { CATALOGUE, PARTS, asCircuit, railParts, locator, pathFrame, variantKey, wirePath, withLaterSets } from './model';
 import type { Annotation, CircuitModel, Element, FontSize, Mark, NodePart, PathPart, Pole, Pt, Route, Wire } from './model';
 import { setSelection, setTool, shapeOfNow, tidy, useCircuitUi } from './store';
 import { UnitsSwitch } from '../../controls';
@@ -42,7 +42,8 @@ const ANNOTATE: [string, string, string, ReactNode][] = [
 ];
 
 /** sets: the other symbol sets the drawing has, each shown as its own groups after circuitikz's */
-export function CircuitRail({ onPick, tool, sets = [] }: { onPick(tool: string): void; tool: string; sets?: string[] }) {
+export function CircuitRail({ onPick, tool, sets: chosen = [] }: { onPick(tool: string): void; tool: string; sets?: string[] }) {
+  const sets = withLaterSets(chosen);
   const ui = useCircuitUi();
   const [filter, setFilter] = useState('');
   const { symbol: symbolFor } = useSymbols(ui.ctikz, [], sets);
