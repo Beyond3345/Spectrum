@@ -4,11 +4,10 @@
 // tikz.check.ts and fletcher.check.ts. One grid unit is 0.25 cm, y down on the canvas and up in TikZ and fletcher.
 
 import { typstText } from './floats.js';
+import { escapeTex } from './texEscape.js';
 
-// ponytail: a local escape for flow texts; it folds into the shared helper (apps/frontend/src/diagram/texEscape.ts)
-// once both are merged
-/** Plain text as LaTeX prints it: % & # _ escaped (unless they are already), outside its $…$ maths. */
-const texText = (text) => text.split(/(\$[^$]*\$)/).map((part, i) => (i % 2 ? part : part.replace(/(?<!\\)[%&#_]/g, '\\$&'))).join('');
+/** Plain text as LaTeX prints it: % & # _ escaped (unless they are already), outside its $…$ maths, and % in it too. */
+const texText = (text) => escapeTex(text, '%&#_');
 /** A text as fletcher content: its $…$ maths kept as maths and each line break a Typst linebreak. */
 const content = (text) => text.trim().split('\n').map((line) => typstText(line)).join(' \\ ');
 

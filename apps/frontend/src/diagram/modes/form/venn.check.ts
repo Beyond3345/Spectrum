@@ -2,6 +2,7 @@
 // and the code. Run:
 // npx esbuild apps/frontend/src/diagram/modes/form/venn.check.ts --bundle --platform=node --log-level=warning | node
 import { formCode, newFormModel, presetFor } from './presets';
+import { textBox } from '../structures/labels';
 import { circlesOf, labelPoint, maskOf, regionLoops, vennCode } from './venn';
 import type { Arc } from './venn';
 
@@ -67,8 +68,8 @@ eq(body.slice(2), [
   '\\draw (-0.9,0) circle[radius=1.5];',
   '\\draw (0.9,0) circle[radius=1.5];',
   '\\draw (-2.9,-2) rectangle (2.9,2);',
-  '\\node[anchor=315] at (-1.961,1.061) {$A$};',
-  '\\node[anchor=225] at (1.961,1.061) {$B$};',
+  '\\node[anchor=south east] at (-1.961,1.061) {$A$};',
+  '\\node[anchor=south west] at (1.961,1.061) {$B$};',
   '\\node[anchor=north west] at (-2.9,2) {$U$};',
   '\\end{tikzpicture}',
   ''
@@ -85,5 +86,34 @@ eq([twoSets.body.includes('{x}'), twoSets.body.includes('even odd'), twoSets.bod
 const shownWith = (values: Record<string, unknown>) => venn.fields.filter((f) => f.shown?.(values as never) ?? true).map((f) => f.key);
 eq(shownWith({ sets: '2', universe: false }).filter((k) => /c$|4|5|6|7|0|^u$/.test(k)), [], 'two sets hide the third set’s fields and outside');
 eq(shownWith({ sets: '3', universe: true }).length, venn.fields.length, 'three sets and the frame show them all');
+
+// long names: each clear of every circle and inside the frame, which grows round them; the outside's count clear of them
+{
+  const nodes = (body: string) => [...body.matchAll(/\\node(?:\[anchor=([a-z ]+)\])? at \((-?[\d.]+),(-?[\d.]+)\) \{([^\n]*)\};/g)].map(([, anchor, x, y, tex]) => {
+    // the spacing's \footnotesize boxes, 10 pt to 8
+    const b = textBox({ at: { x: Number(x) / 1.25, y: Number(y) / 1.25 }, tex, anchor: (anchor ?? 'center') as never });
+    return { tex, box: { x0: b.x0 * 1.25, x1: b.x1 * 1.25, y0: b.y0 * 1.25, y1: b.y1 * 1.25 } };
+  });
+  const crosses = (b: { x0: number; x1: number; y0: number; y1: number }, c: { x: number; y: number; r: number }) => {
+    const near = Math.hypot(Math.max(b.x0 - c.x, 0, c.x - b.x1), Math.max(b.y0 - c.y, 0, c.y - b.y1));
+    const far = Math.max(...[[b.x0, b.y0], [b.x1, b.y0], [b.x0, b.y1], [b.x1, b.y1]].map(([x, y]) => Math.hypot(x - c.x, y - c.y)));
+    return near < c.r && c.r < far;
+  };
+  const overlap = (a: { x0: number; x1: number; y0: number; y1: number }, b: typeof a) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+  for (const sets of ['2', '3']) {
+    const long = vennCode({ ...venn.values, sets, a: 'Physics', b: 'Chemistry', c: 'Biology', text0: '7', text7: '3' });
+    const frame = /\\draw \((-?[\d.]+),(-?[\d.]+)\) rectangle \((-?[\d.]+),(-?[\d.]+)\);/.exec(long.body)!.slice(1).map(Number);
+    const all = nodes(long.body);
+    const named = all.filter((n) => /^[A-Z][a-z]/.test(n.tex));
+    eq(named.length, Number(sets), `${sets} sets: a name each`);
+    for (const n of named) {
+      eq(circlesOf(Number(sets)).some((c) => crosses(n.box, c)), false, `${sets} sets: ${n.tex} crosses no circle`);
+      eq(n.box.x0 > frame[0] && n.box.y0 > frame[1] && n.box.x1 < frame[2] && n.box.y1 < frame[3], true, `${sets} sets: ${n.tex} inside the frame`);
+    }
+    eq(all.some((a, i) => all.some((b, j) => i < j && overlap(a.box, b.box))), false, `${sets} sets: no two texts overlap`);
+  }
+}
+// a bare % in a name or a count is written \%
+eq(vennCode({ ...venn.values, a: 'Pass %', text3: '20%' }).body.match(/\{Pass \\%\}|\{20\\%\}/g)?.length, 2, 'a % escaped');
 
 console.log('venn.check: ok');
