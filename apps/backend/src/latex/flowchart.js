@@ -46,7 +46,7 @@ export function tikzDocument({ body, packages, libraries }) {
 // ─── the shapes and where arrows meet them ───
 
 /** Shapes whose text is maths, written without $. */
-export const MATHS_SHAPES = ['maths', 'state', 'accepting', 'operator'];
+export const MATHS_SHAPES = ['maths', 'state', 'accepting', 'operator', 'gain'];
 /** Shapes drawn as their text alone, without a box. */
 export const plainShape = (shape) => shape === 'text' || shape === 'maths';
 /** Shapes that can have a start arrow. */
@@ -58,8 +58,9 @@ const ANGLE = { r: 0, t: 90, l: 180, b: 270 };
 const DIRECTION = { r: [1, 0], t: [0, -1], l: [-1, 0], b: [0, 1] };
 const horizontal = (side) => side === 'r' || side === 'l';
 
-/** Where a side's anchor is, in grid units. */
+/** Where a side's anchor is, in grid units: a takeoff point's are all its centre, as the dot is that small. */
 export function anchorOf(box, side) {
+  if (box.shape === 'takeoff') return [box.x + box.w / 2, box.y + box.h / 2];
   const [dx, dy] = DIRECTION[side];
   return [box.x + (box.w * (1 + dx)) / 2, box.y + (box.h * (1 + dy)) / 2];
 }
@@ -106,16 +107,20 @@ export function curveControls(link, from, to) {
   ];
 }
 
-/** Where along a polyline its middle falls: the leg it's on and how far along that leg (0 to 1). */
-export function middleOf(points) {
+/** Where a fraction t (0 to 1) of the way along a polyline falls: the leg it's on and how far along that leg (0 to 1). */
+export function along(points, t) {
   const legs = points.slice(1).map(([x, y], i) => Math.hypot(x - points[i][0], y - points[i][1]));
-  let left = legs.reduce((a, b) => a + b, 0) / 2;
+  let left = legs.reduce((a, b) => a + b, 0) * t;
   for (let i = 0; i < legs.length; i += 1) {
     if (left <= legs[i] || i === legs.length - 1) return { leg: i, pos: legs[i] ? Math.min(1, left / legs[i]) : 0.5 };
     left -= legs[i];
   }
   return { leg: 0, pos: 0.5 };
 }
+/** Where along a polyline its middle falls. */
+export const middleOf = (points) => along(points, 0.5);
+/** How far along its arrow a summing junction's sign sits, near the end it goes into. */
+export const SIGN_AT = 0.85;
 
 /** Shapes as wide as they are tall. */
 export const ROUND_SHAPES = ['circle', 'state', 'accepting', 'operator'];
@@ -128,8 +133,36 @@ export function dividersOf(box) {
   const cells = Math.max(1, Math.round(box.cells ?? 4));
   return Array.from({ length: cells - 1 }, (_, i) => box.y + (box.h * (i + 1)) / cells);
 }
-/** Containers first, so the boxes in them are drawn over them. */
-export const drawingOrder = (boxes) => [...boxes.filter((b) => b.shape === 'container'), ...boxes.filter((b) => b.shape !== 'container')];
+/** Shapes that hold the boxes in them: moving one takes them along, and it is drawn first, under them. */
+export const holds = (shape) => shape === 'container' || shape === 'swimlane';
+/** Containers and swimlanes first, so the boxes in them are drawn over them. */
+export const drawingOrder = (boxes) => [...boxes.filter((b) => holds(b.shape)), ...boxes.filter((b) => !holds(b.shape))];
+
+/** The corners of the shapes drawn as a polygon, as fractions of the box, y down; a gain's by the side its tip points to. */
+const POLYGON = { manualInput: [[0, 0.25], [1, 0], [1, 1], [0, 1]], offPage: [[0, 0], [1, 0], [1, 0.6], [0.5, 1], [0, 0.6]] };
+const GAIN = { r: [[0, 0], [1, 0.5], [0, 1]], l: [[1, 0], [0, 0.5], [1, 1]], b: [[0, 0], [1, 0], [0.5, 1]], t: [[0.5, 0], [1, 1], [0, 1]] };
+/** A polygon shape's corners in grid units, or null for a shape that isn't one. */
+export function polygonOf(box) {
+  const corners = box.shape === 'gain' ? GAIN[box.dir ?? 'r'] : POLYGON[box.shape];
+  return corners ? corners.map(([fx, fy]) => [box.x + fx * box.w, box.y + fy * box.h]) : null;
+}
+
+/** How deep a swimlane's title band is, in grid units. */
+export const BAND = 3;
+/**
+ * A swimlane's band, on the side its dir names (the top when none): the line that closes it off and where its title
+ * goes, in grid units, and how the title turns (degrees anticlockwise, as TikZ's rotate) to read along the band.
+ */
+export function bandOf(box) {
+  const side = box.dir ?? 't';
+  const [cx, cy] = [box.x + box.w / 2, box.y + box.h / 2];
+  if (side === 't' || side === 'b') {
+    const y = side === 't' ? box.y + BAND : box.y + box.h - BAND;
+    return { line: [[box.x, y], [box.x + box.w, y]], title: [cx, side === 't' ? box.y + BAND / 2 : box.y + box.h - BAND / 2], rotate: 0 };
+  }
+  const x = side === 'l' ? box.x + BAND : box.x + box.w - BAND;
+  return { line: [[x, box.y], [x, box.y + box.h]], title: [side === 'l' ? box.x + BAND / 2 : box.x + box.w - BAND / 2, cy], rotate: side === 'l' ? 90 : -90 };
+}
 
 // ─── TikZ ───
 
@@ -155,24 +188,34 @@ const TIKZ_SHAPE = {
   trapezium: 'trapezium, trapezium left angle=70, trapezium right angle=70, trapezium stretches=true',
   operator: 'circle, inner sep=0pt',
   stack: 'rectangle',
-  container: 'rectangle, rounded corners'
+  container: 'rectangle, rounded corners',
+  // a pill, its ends rounded by half its height (in boxLines); the polygons are drawn round a node of their size
+  terminal: 'rectangle',
+  manualInput: 'rectangle',
+  offPage: 'rectangle',
+  gain: 'rectangle',
+  takeoff: 'circle, inner sep=0pt, minimum size=1.2mm',
+  swimlane: 'rectangle'
 };
 
 const COMPASS = { t: 'above', r: 'right', b: 'below', l: 'left' };
 
 function boxLines(box) {
   const plain = plainShape(box.shape);
-  const size = ROUND_SHAPES.includes(box.shape)
+  const polygon = polygonOf(box);
+  const dot = box.shape === 'takeoff';
+  const size = dot ? [] : ROUND_SHAPES.includes(box.shape)
     ? [`minimum size=${num(Math.min(box.w, box.h) * CM_PER_UNIT)}cm`]
     : plain ? [] : [`minimum width=${num(box.w * CM_PER_UNIT)}cm`, `minimum height=${num(box.h * CM_PER_UNIT)}cm`];
   const title = box.text.trim();
   const options = [
-    // a label's colour is its text's; a box's is its border's
-    ...(plain ? [] : [box.stroke ? `draw=${latexColour(box.stroke)}` : 'draw']),
-    TIKZ_SHAPE[box.shape],
+    // a label's colour is its text's; a box's is its border's; a polygon's border is drawn round its node, a takeoff
+    // point is filled in its line colour
+    ...(plain || polygon ? [] : dot ? [box.stroke ? `fill=${latexColour(box.stroke)}` : 'fill'] : [box.stroke ? `draw=${latexColour(box.stroke)}` : 'draw']),
+    box.shape === 'terminal' ? `rectangle, rounded corners=${num((Math.min(box.w, box.h) * CM_PER_UNIT) / 2)}cm` : TIKZ_SHAPE[box.shape],
     box.shape === 'diamond' && `aspect=${num(box.w / box.h)}`,
-    box.fill && `fill=${latexColour(box.fill)}`,
-    ...(plain ? lineOptions({ stroke: box.stroke }, 'text') : lineOptions({ dash: box.dash, width: box.width })),
+    !polygon && !dot && box.fill && `fill=${latexColour(box.fill)}`,
+    ...(plain ? lineOptions({ stroke: box.stroke }, 'text') : polygon || dot ? [] : lineOptions({ dash: box.dash, width: box.width })),
     ...size,
     stateShape(box.shape) && box.initial && `initial, initial where=${COMPASS[box.initial]}, initial text=`,
     // a container's title sits inside its top-left corner and its ×N outside on the right; a stack's caption below it
@@ -183,14 +226,29 @@ function boxLines(box) {
     'align=center'
   ].filter(Boolean);
   const lines = box.text.split('\n').map((l) => texText(l.trim()));
-  const text = box.shape === 'container' || box.shape === 'stack' ? '' : MATHS_SHAPES.includes(box.shape) ? (title ? `$${title}$` : '') : lines.join(' \\\\ ').trim();
+  const text = holds(box.shape) || box.shape === 'stack' || dot ? '' : MATHS_SHAPES.includes(box.shape) ? (title ? `$${title}$` : '') : lines.join(' \\\\ ').trim();
   const node = `\\node[${options.join(', ')}] (${box.id}) at ${at(box.x + box.w / 2, box.y + box.h / 2)} {${text}};`;
+  if (polygon) {
+    // the outline first, so the text is over its fill
+    const look = [...lineOptions(box), box.fill && `fill=${latexColour(box.fill)}`].filter(Boolean);
+    return [`\\draw${look.length ? `[${look.join(', ')}]` : ''} ${polygon.map(([x, y]) => at(x, y)).join(' -- ')} -- cycle;`, node];
+  }
+  if (box.shape === 'swimlane') {
+    const band = bandOf(box);
+    const line = lineOptions(box);
+    const lines = [node, `\\draw${line.length ? `[${line.join(', ')}]` : ''} ${at(...band.line[0])} -- ${at(...band.line[1])};`];
+    const name = box.text.split('\n').map((l) => texText(l.trim())).join(' \\\\ ').trim();
+    if (name) lines.push(`\\node[${band.rotate ? `rotate=${band.rotate}, ` : ''}align=center] at ${at(...band.title)} {${name}};`);
+    return lines;
+  }
   if (box.shape !== 'stack') return [node];
   const line = lineOptions(box);
   return [node, ...dividersOf(box).map((y) => `\\draw${line.length ? `[${line.join(', ')}]` : ''} ${at(box.x, y)} -- ${at(box.x + box.w, y)};`)];
 }
 
 const TIKZ_HEADS = { none: '', end: '-{Stealth}', start: '{Stealth}-', both: '{Stealth}-{Stealth}' };
+
+const tikzPos = (pos) => (pos === 0.5 ? 'midway' : `pos=${num(pos)}`);
 
 function linkLine(link, boxes) {
   const from = boxes.get(link.from);
@@ -199,22 +257,30 @@ function linkLine(link, boxes) {
   const options = [TIKZ_HEADS[link.heads], ...lineOptions(link)].filter(Boolean);
   const start = `(${from.id}.${ANCHOR[link.fromSide]})`;
   const end = `(${to.id}.${ANCHOR[link.toSide]})`;
-  const label = (pos) => (link.label?.trim() ? ` node[${pos}, fill=white, inner sep=2pt] {${texText(link.label.trim())}}` : '');
+  const text = link.label?.trim();
+  // on the line, over a white fill; or beside it, on the left or right of the way it goes (TikZ's auto and swap)
+  const beside = link.labelSide === 'left' || link.labelSide === 'right';
+  const label = (pos) =>
+    !text ? '' : beside ? ` node[${pos}, auto${link.labelSide === 'right' ? ', swap' : ''}] {${texText(text)}}` : ` node[${pos}, fill=white, inner sep=2pt] {${texText(text)}}`;
+  // a summing junction's + or −, on the left near the end
+  const sign = (pos) => (link.sign ? ` node[${pos}, auto] {$${link.sign}$}` : '');
+  const marks = label(tikzPos(link.labelPos ?? 0.5)) + sign(tikzPos(SIGN_AT));
   let path;
   if (from === to) {
     // out and back on its side as TikZ's loop above and the like do, without their every loop arrow
     const [out, back] = LOOP[link.fromSide];
-    path = `(${from.id}) to[out=${out}, in=${back}, looseness=8, min distance=5mm]${label('midway')} (${to.id})`;
+    path = `(${from.id}) to[out=${out}, in=${back}, looseness=8, min distance=5mm]${marks} (${to.id})`;
   } else if (link.route === 'bend') {
     // from the centres, so the two arrows of a pair meet their boxes apart
-    path = `(${from.id}) to[bend left=${BEND}]${label('midway')} (${to.id})`;
+    path = `(${from.id}) to[bend left=${BEND}]${marks} (${to.id})`;
   } else if (link.route === 'curved') {
-    path = `${start} to[out=${ANGLE[link.fromSide]}, in=${ANGLE[link.toSide]}]${label('midway')} ${end}`;
+    path = `${start} to[out=${ANGLE[link.fromSide]}, in=${ANGLE[link.toSide]}]${marks} ${end}`;
   } else {
+    // each mark on the leg its place along the whole route falls on
     const points = pathPoints(link, from, to);
-    const middle = middleOf(points);
+    const [l, s] = [along(points, link.labelPos ?? 0.5), along(points, SIGN_AT)];
     const targets = [...points.slice(1, -1).map(([x, y]) => at(x, y)), end];
-    path = start + targets.map((target, i) => ` --${i === middle.leg ? label(middle.pos === 0.5 ? 'midway' : `pos=${num(middle.pos)}`) : ''} ${target}`).join('');
+    path = start + targets.map((target, i) => ` --${i === l.leg ? label(tikzPos(l.pos)) : ''}${i === s.leg ? sign(tikzPos(s.pos)) : ''} ${target}`).join('');
   }
   return `\\draw${options.length ? `[${options.join(', ')}]` : ''} ${path};`;
 }
@@ -269,6 +335,9 @@ const FLETCHER_SHAPE = {
   trapezium: 'trapezium',
   operator: 'circle',
   container: 'rect',
+  terminal: 'pill',
+  takeoff: 'circle',
+  swimlane: 'rect',
   // not in FLETCHER_SHAPES, so the Typst canvas never offers them: a plain box should one get here
   document: 'rect',
   stack: 'rect'
@@ -294,36 +363,55 @@ function strokeOf(line, dash = true) {
  * and size; then a container's ×N and a state's start arrow. version: the fletcher the import line loads, whose 0.5.5
  * (for Typst 0.12) has no cylinder, so one is a plain box there.
  */
+/** A polygon shape as a fletcher shape: a CeTZ line through its corners, about the node's centre, y up. */
+function polygonShape(box, corners) {
+  const [cx, cy] = [box.x + box.w / 2, box.y + box.h / 2];
+  const points = corners.map(([x, y]) => '(' + cm(x - cx) + ', ' + cm(cy - y) + ')').join(', ');
+  return '(node, extrude) => fletcher.cetz.draw.group(fletcher.cetz.draw.line(' + points + ', close: true))';
+}
+
 function nodeCode(box, version) {
   const plain = plainShape(box.shape);
+  const polygon = polygonOf(box);
+  const dot = box.shape === 'takeoff';
   const size = ROUND_SHAPES.includes(box.shape) ? Math.min(box.w, box.h) : 0;
   const width = size || box.w;
   const height = size || box.h;
   const container = box.shape === 'container';
   const options = [
-    'shape: fletcher.shapes.' + (box.shape === 'cylinder' && !atLeast(version, '0.5.8') ? 'rect' : FLETCHER_SHAPE[box.shape]),
+    'shape: ' + (polygon ? polygonShape(box, polygon) : 'fletcher.shapes.' + (box.shape === 'cylinder' && !atLeast(version, '0.5.8') ? 'rect' : FLETCHER_SHAPE[box.shape])),
     (box.shape === 'rounded' || container) && 'corner-radius: 4pt',
-    'width: ' + cm(width),
-    'height: ' + cm(height),
+    // a takeoff point: a dot 1.2 mm across, filled in its line colour
+    'width: ' + (dot ? '1.2mm' : cm(width)),
+    'height: ' + (dot ? '1.2mm' : cm(height)),
     // a double circle, as TikZ's accepting state
     box.shape === 'accepting' && 'extrude: (-2.5, 0)',
     // its title fills it from the top-left corner, under the other nodes and the edges
-    container && 'inset: 0pt',
-    container && 'layer: -1',
-    plain && 'stroke: none',
+    (holds(box.shape) || dot) && 'inset: 0pt',
+    holds(box.shape) && 'layer: -1',
+    (plain || dot) && 'stroke: none',
     plain && 'fill: none',
-    !plain && strokeOf(box),
-    !plain && box.fill && 'fill: rgb("' + box.fill + '")',
+    dot && 'fill: ' + (box.stroke ? 'rgb("' + box.stroke + '")' : 'black'),
+    !plain && !dot && strokeOf(box),
+    !plain && !dot && box.fill && 'fill: rgb("' + box.fill + '")',
     'name: <' + box.id + '>'
   ].filter(Boolean);
   const maths = MATHS_SHAPES.includes(box.shape);
-  let text = maths ? (box.text.trim() ? '[$' + box.text.trim() + '$]' : '[]') : '[' + content(box.text) + ']';
+  let text = maths ? (box.text.trim() ? '[$' + box.text.trim() + '$]' : '[]') : box.shape === 'swimlane' || dot ? '[]' : '[' + content(box.text) + ']';
   if (container) text = 'box(width: ' + cm(box.w) + ', height: ' + cm(box.h) + ', inset: 4pt, align(top + left)' + text + ')';
   else if (box.wrap && !plain) text = 'box(width: ' + cm(Math.max(1, box.w - 1)) + ')' + text;
   // a label's colour is its text's; a box's is its border's
   const label = plain && box.stroke ? 'text(fill: rgb("' + box.stroke + '"))' + text : text;
   const [x, y] = [box.x + box.w / 2, -(box.y + box.h / 2)];
   const lines = ['node((' + cm(x) + ', ' + cm(y) + '), ' + label + ', ' + options.join(', ') + ')'];
+  // a swimlane's band: the line across it, and its title there, turned to read along it
+  if (box.shape === 'swimlane') {
+    const band = bandOf(box);
+    const point = ([px, py]) => '(' + cm(px) + ', ' + cm(-py) + ')';
+    const stroke = strokeOf(box);
+    lines.push('edge(' + point(band.line[0]) + ', ' + point(band.line[1]) + ', "-"' + (stroke ? ', ' + stroke : '') + ')');
+    if (box.text.trim()) lines.push('node(' + point(band.title) + ', ' + (band.rotate ? 'rotate(' + -band.rotate + 'deg, reflow: true)' : '') + '[' + content(box.text) + '], stroke: none, fill: none)');
+  }
   // a container's ×N, outside on the right
   if (container && box.repeat?.trim()) lines.push('node((' + cm(x + box.w / 2 + 2) + ', ' + cm(y) + '), [$times ' + box.repeat.trim() + '$], stroke: none, fill: none)');
   // a start arrow, from a little way out on its side
@@ -343,25 +431,40 @@ const marksOf = (link) => {
   return (heads.startsWith('<') ? '<' : '') + line + (heads.endsWith('>') ? '>' : '');
 };
 
-/** The edge between two boxes, with its label and route. */
+const LABEL_SIDE = { on: 'center', left: 'left', right: 'right' };
+
+/**
+ * The edge between two boxes, with its label and route; then, for a summing junction's sign, an edge with no line
+ * along the same route to carry it, as an edge has one label.
+ */
 function edgeCode(link, boxes) {
   const from = boxes.get(link.from);
   const to = boxes.get(link.to);
-  if (!from || !to) return '';
+  if (!from || !to) return [];
   const loop = from === to;
   // a corner between boxes in line would sit on one of them, which fletcher refuses: straight there
   const centre = (box) => [cm(box.x + box.w / 2), cm(box.y + box.h / 2)];
   const inLine = centre(from).some((v, i) => v === centre(to)[i]);
-  const options = [
+  const route = [
     !loop && link.route === 'curved' && 'bend: 30deg',
     // to the same side as TikZ's bend left, with lengths that go up
     !loop && link.route === 'bend' && 'bend: ' + BEND + 'deg',
     !loop && !inLine && link.route === 'angled' && 'corner: right',
-    loop && 'bend: 130deg, loop-angle: ' + LOOP_ANGLE[link.fromSide] + 'deg',
-    link.label?.trim() && 'label: [' + content(link.label.trim()) + ']',
+    loop && 'bend: 130deg, loop-angle: ' + LOOP_ANGLE[link.fromSide] + 'deg'
+  ];
+  const text = link.label?.trim();
+  const options = [
+    ...route,
+    text && 'label: [' + content(text) + ']',
+    // with none, fletcher's own choice: beside the line
+    text && link.labelSide && 'label-side: ' + LABEL_SIDE[link.labelSide],
+    text && link.labelPos !== undefined && 'label-pos: ' + num(link.labelPos),
     strokeOf(link, false)
   ].filter(Boolean);
-  return 'edge(<' + from.id + '>, <' + to.id + '>, "' + marksOf(link) + '"' + (options.length ? ', ' + options.join(', ') : '') + ')';
+  const ends = 'edge(<' + from.id + '>, <' + to.id + '>, ';
+  const lines = [ends + '"' + marksOf(link) + '"' + (options.length ? ', ' + options.join(', ') : '') + ')'];
+  if (link.sign) lines.push(ends + '"-", ' + [...route.filter(Boolean), 'stroke: none', 'label: [$' + link.sign + '$]', 'label-pos: ' + SIGN_AT, 'label-side: left'].join(', ') + ')');
+  return lines;
 }
 
 /** A fletcher diagram as the Typst file a document includes. typstVersion picks the import line. */
@@ -374,7 +477,7 @@ export function fletcherCode(model, typstVersion = '') {
     '#diagram(',
     '  node-stroke: 0.4pt,',
     ...drawingOrder(model.boxes).flatMap((box) => nodeCode(box, version)).map((line) => '  ' + line + ','),
-    ...model.links.map((link) => edgeCode(link, boxes)).filter(Boolean).map((line) => '  ' + line + ','),
+    ...model.links.flatMap((link) => edgeCode(link, boxes)).map((line) => '  ' + line + ','),
     ')',
     ''
   ];
