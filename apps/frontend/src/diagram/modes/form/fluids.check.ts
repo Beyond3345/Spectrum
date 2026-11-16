@@ -173,6 +173,11 @@ eq(manometerDrawing({ ...MANOMETER.values, look: 'exam' }, {}).code.libraries, [
 eq(floatingDrawing({ ...FLOATING.values, fluid: 'mercury', bodyRD: 7.6, look: 'exam' }, {}).code.libraries.includes('patterns'), true, 'mercury hatched');
 eq(gateDrawing({ ...GATE.values, fluid: 'oil', look: 'exam' }, {}).code.body.includes('pattern=dots'), true, 'oil dotted');
 eq(formCode({ preset: 'manometer', values: { ...MANOMETER.values, endName: '50% $A$' } }, {}).body.includes('50\\% $A$'), true, 'a % in a name escaped');
+// a gate clear of the fluid names no fluid and writes no NaN; a second fluid with no depth is none
+const clear = gateDrawing({ ...GATE.values, top: -5 }, {}).code.body;
+eq([/NaN|Infinity/.test(clear), clear.includes('Water, RD'), clear.includes('% The gate is clear of the fluid')], [false, false, true], 'a gate clear of the fluid');
+eq(gateDrawing({ ...GATE.values, other: true, depth2: 0 }, {}).code.body, gateDrawing(GATE.values, {}).code.body, 'no depth on the other side: as without it');
+eq(/NaN|Infinity/.test(tankDrawing({ ...TANK.values, depth: 0 }, {}).code.body + tankDrawing({ ...TANK.values, angle: 90 }, {}).code.body), false, 'an empty tank and a lift: no Infinity in the comments');
 (async () => {
   for (const id of ['gate', 'manometer', 'tank', 'floating']) {
     const model = newFormModel(id);
