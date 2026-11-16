@@ -20,10 +20,12 @@ export default defineConfig({
     }
   ],
   server: {
-    port: 5173,
+    // VITE_PORT and PORT (the backend's) let two copies of the repository run their dev servers side by side
+    port: Number(process.env.VITE_PORT) || 5173,
+    strictPort: Boolean(process.env.VITE_PORT),
     proxy: {
       '/api': {
-        target: 'http://localhost:8787',
+        target: `http://localhost:${process.env.PORT || 8787}`,
         changeOrigin: true,
         ws: true,
         xfwd: true
