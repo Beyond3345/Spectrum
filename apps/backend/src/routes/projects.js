@@ -798,6 +798,10 @@ export function registerProjectRoutes(fastify) {
         const currentMainPath = safeJoin(root, mainFile);
         const templateRoot = templatePath(template.id);
         const templateMain = template.mainFile || 'main.tex';
+        // the body is read and merged as LaTeX: a Typst or Markdown template (or main file) would come out as neither
+        if (![templateMain, mainFile].every((f) => /\.(tex|ltx)$/i.test(f))) {
+          return { ok: false, error: 'Quick switch moves a LaTeX document into another LaTeX template.' };
+        }
 
         let currentTex = '';
         try {

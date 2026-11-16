@@ -1282,6 +1282,16 @@ test('quick template switch keeps the user\'s own files', async () => {
   assert.ok(!res.changedFiles.includes('references.bib'));
 });
 
+test('quick template switch refuses a Typst template for a LaTeX document', async () => {
+  const p = await newProject('Switch to Typst');
+  const tex = '\\documentclass{article}\\begin{document}My body\\end{document}';
+  await writeFile(p.id, 'main.tex', tex);
+  const res = (await api(`/api/projects/${p.id}/convert-template`, { method: 'POST', body: { targetTemplate: 'typst-document', mainFile: 'main.tex' } })).json;
+  assert.equal(res.ok, false);
+  assert.match(res.error, /LaTeX/);
+  assert.equal(await readFile(p.id, 'main.tex'), tex);
+});
+
 test('quick APA template switching reconnects a custom bibliography and compiles it', async (t) => {
   const p = await newProject('Switch custom bibliography');
   const bib = '@misc{Mine2026,author={{Example}},title={Source reference},year={2026}}\n';

@@ -129,7 +129,8 @@ export default function TransferPanel({
       })
       .catch((err) => setError(message(err)));
     listTemplates()
-      .then((res) => setTemplates(res.templates || []))
+      // every mode writes LaTeX, so only LaTeX templates: a Typst or Markdown one's preamble would land in a .tex
+      .then((res) => setTemplates((res.templates || []).filter((tp) => /\.(tex|ltx)$/i.test(tp.mainFile || 'main.tex'))))
       .catch((err) => setError(message(err)));
   }, [projectId]);
 
