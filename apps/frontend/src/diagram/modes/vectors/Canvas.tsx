@@ -9,7 +9,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerE
 import Icon from '../../../app/Icon';
 import { CanvasGrid } from '../../CanvasGrid';
 import { useCanvasPrefs } from '../../FlowCanvas';
-import { plain, svgRuns } from '../../sketch';
+import { plain, scriptRuns, svgRuns } from '../../sketch';
 import { useToolKeys } from '../../toolKeys';
 import { colourCss, num } from '../shared';
 import { eqLineEnds, notate, readStyle, styledVectors } from './code';
@@ -105,8 +105,11 @@ const MARKED = /(\\(?:mathbf|boldsymbol|vec|overrightarrow|vv|hat)\s*\{[^{}]*\})
  * ponytail: the arrow of \overrightarrow{OA} sits over its last letter only; the preview sets it across
  */
 export function sketch(tex: string, notation?: Notation): ReactNode {
+  const group = '((?:[^{}]|\\{[^{}]*\\})*)';
   const written = notate(tex, notation)
-    .replace(/\\[td]?frac\{([^{}]*)\}\{([^{}]*)\}/g, '$1/$2')
+    // a/b, or (a·b)/(|a| |b|) when there is more to them
+    .replace(new RegExp(`\\\\[td]?frac\\{${group}\\}\\{${group}\\}`, 'g'), (_, a: string, b: string) => (plain(a).length + plain(b).length > 3 ? `(${a})/(${b})` : `${a}/${b}`))
+    .replace(/\\(cos|sin|tan|log|ln|exp|max|min)\b\s*/g, '$1 ')
     .replace(/\\frac(\d)(\d)/g, '$1/$2')
     .replace(/-/g, '−');
   return written.split(MARKED).map((part, i) => {
@@ -522,6 +525,9 @@ export default function VectorCanvas({
   const label = (at: Pt, text: string, spot: { side?: Side; dist?: number } | undefined, key: string, look: { size?: FontSize; colour?: string } = {}) => {
     const o = spot?.side ? sideOffset(spot.side) : { x: 0, y: 0 };
     const font = fontPx * FONT_SCALE[look.size ?? 'normalsize'];
+    // a subscript under the baseline (a superscript over the top) is inside the node, as TikZ counts the text's depth
+    const runs = scriptRuns(text);
+    const script = (o.y > 0 && runs.some((r) => r.shift === 'sub')) || (o.y < 0 && runs.some((r) => r.shift === 'super')) ? font * 0.25 : 0;
     const gap = font / 3 + (spot?.dist ?? 0) * ptPx;
     const s = S(at);
     const [anchor, baseline] = ANCHOR[`${o.x},${o.y}`];
@@ -529,7 +535,7 @@ export default function VectorCanvas({
       <text
         key={key}
         x={s.x + o.x * gap}
-        y={s.y - o.y * gap}
+        y={s.y - o.y * (gap + script)}
         className="st-text"
         fontSize={font}
         textAnchor={anchor}
@@ -543,6 +549,9 @@ export default function VectorCanvas({
   /** a label with a side of its own, or where the spacing put it */
   const spotOf = (id: string, own?: { side?: string; dist?: number }): Spot | { side: Side; dist?: number } | undefined =>
     own?.side && own.side !== 'beside' ? { side: own.side as Side, dist: own.dist } : spots.get(id);
+
+  /** a label written on its line's path takes the line's colour unless it has its own, as TikZ sets it */
+  const onPath = (s: Stroke, look: { size?: FontSize; colour?: string }) => ({ ...look, colour: look.colour ?? s.colour ?? style.colour });
 
   const line = (a: Pt, b: Pt, className: string, extra: Record<string, unknown> = {}) => {
     const [p, q] = [S(a), S(b)];
@@ -643,7 +652,7 @@ export default function VectorCanvas({
           {line(a, b, 'vec-stroke', { style: look })}
           {!highlight && item.kind !== 'line' && Array.from({ length: n }, (_, i) => tickAt(i))}
           {!highlight && tips(item, item.kind === 'vector', look, a, b)}
-          {!highlight && item.label?.text.trim() && label(at, item.label.text, spotOf(item.id, item.label) ?? { side: 'above' }, `${item.id}-label`, item.label)}
+          {!highlight && item.label?.text.trim() && label(at, item.label.text, spotOf(item.id, item.label) ?? { side: 'above' }, `${item.id}-label`, onPath(item, item.label))}
         </>,
         `${names[item.kind]} ${nameOf(item.a)}${nameOf(item.b)}${item.label?.text ? `, ${plain(item.label.text)}` : ''}`
       );
@@ -811,7 +820,7 @@ export default function VectorCanvas({
             {on && line(a, b, 'st-halo')}
             {line(a, b, 'st-hit')}
             {line(a, b, 'vec-stroke', { style: look })}
-            {item.label?.text.trim() && label(at, item.label.text, spotOf(item.id, item.label) ?? { side: 'above' }, `${item.id}-label`, item.label)}
+            {item.label?.text.trim() && label(at, item.label.text, spotOf(item.id, item.label) ?? { side: 'above' }, `${item.id}-label`, onPath(item, item.label))}
           </>,
           `Line ${plain(item.label?.text ?? '')}`
         );

@@ -483,6 +483,8 @@ eq(readStyle({ width: 'huge', vectorWidth: 1.5, colour: ' ', tips: 'none' }), { 
   };
   const markup = markupOf(sketch('$\\mathbf{F}_1 \\parallel \\vec{v} - \\frac{1}{2}\\mathbf{a}$'));
   for (const part of ['fontWeight="bold"', 'baselineShift="sub"', '∥', 'v⃗', '−', '1/2']) eq(markup.includes(part), true, `sketched: ${part} in ${markup}`);
+  const cos = markupOf(sketch('$\\cos\\theta=\\frac{\\mathbf{a}\\cdot\\mathbf{b}}{|\\mathbf{a}|}$'));
+  eq(['cos θ=(', ')/(|'].every((part) => cos.includes(part)), true, `cos and a fraction of vectors: ${cos}`);
   eq(markupOf(sketch('$\\mathbf{a}$', 'vec')).includes('a⃗'), true, 'in the Style’s notation');
 
   // the starters: each new one compiles from 2.4's kinds, or 2.5's where it shows them off
