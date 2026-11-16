@@ -619,6 +619,8 @@ function styleOf(s: Series) {
     s.colour && `color=${latexColour(s.colour)}`,
     s.line === 'none' ? 'only marks' : s.line !== 'solid' && s.line,
     marks && s.mark && `mark=${s.mark}`,
+    // a filled mark in the series' own colour: pgfplots' cycle list would fill it in the colour of the series' place
+    marks && s.colour && `every mark/.append style={fill=${latexColour(s.colour)}}`,
     // bars filled in a tint of their own colour, and shown so in the legend
     s.bars ? 'ybar, fill=.!30, area legend' : s.stem ? 'ycomb' : !marks && 'no markers',
     ...(s.bars && !marks ? ['no markers'] : [])

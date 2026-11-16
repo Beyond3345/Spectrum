@@ -360,4 +360,9 @@ eq(typed.marks, true, 'typed points have marks');
 eq((['function', 'parametric', 'polar', 'piecewise', 'signal', 'quiver', 'fit', 'data'] as const).map((k) => asKind(typed, k).marks), [false, false, false, false, false, false, false, false], 'no kind but points takes them on');
 eq(seriesFolded({ ...typed, ...asKind(typed, 'parametric') } as Series), false, 'so its fold stays shut');
 
+// a coloured series' filled marks take its colour, not the colour of its place in pgfplots' cycle list
+const dotted = plotCode({ ...emptyPlot(), series: [{ ...newSeries('s1'), source: 'points', points: '0, 1\n1, 2', marks: true, mark: '*', colour: '#1f4e9c' }] }).body;
+eq(dotted.includes('mark=*, every mark/.append style={fill={rgb,255:red,31;green,78;blue,156}}'), true, 'a coloured series fills its marks in its colour');
+eq(plotCode({ ...emptyPlot(), series: [{ ...newSeries('s1'), colour: '#1f4e9c' }] }).body.includes('every mark'), false, 'nothing for a series without marks');
+
 console.log('pgfplots.check: ok');
