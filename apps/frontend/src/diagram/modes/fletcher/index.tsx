@@ -14,7 +14,7 @@ const fletcher: DiagramMode<TikzModel> = {
   language: 'typst',
   emptyModel: emptyTikz,
   toCode: (model, _style, context) => fletcherCode(model, context?.typstVersion ?? ''),
-  Canvas,
+  Canvas: (props) => <Canvas {...props} typst />,
   Rail: (props) => <Rail {...props} shapes={FLETCHER_SHAPES} />,
   Inspector: (props) => <Inspector {...props} typst />,
   copy: copyTikz,

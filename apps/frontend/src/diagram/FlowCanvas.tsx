@@ -1,14 +1,18 @@
-import { createContext, useContext, useRef, useState } from 'react';
-import { Background, BackgroundVariant, ConnectionMode, MiniMap, ReactFlow, useReactFlow, useStore } from '@xyflow/react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { ConnectionMode, MiniMap, ReactFlow, useReactFlow, useStore, useStoreApi } from '@xyflow/react';
 import type { Connection, Edge, EdgeChange, EdgeTypes, Node, NodeChange, NodeTypes } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import Icon from '../app/Icon';
+import { matchesShortcut } from '../app/shortcuts';
+import { FlowGrid } from './CanvasGrid';
+import { isTyping } from './toolKeys';
 
-// The canvas the drawing modes share: React Flow with a dotted grid, and the frame's zoom, minimap and canvas colour
+// The canvas the drawing modes share: React Flow with Settings' counting grid, the frame's zoom, minimap and canvas
+// colour, and the circuit canvas's mouse: drag to select, Shift to add, Space or the middle button to pan
 
-/** What the frame's canvas controls set; a mode's own React Flow canvas can follow it too. */
+/** Settings › Diagram composer's dark canvas and minimap, which the canvas controls change there; every canvas follows them. */
 export type CanvasPrefs = { minimap: boolean; dark: boolean };
-/** onPrefs: for a canvas of a mode's own that isn't React Flow (the circuit's), which shows its own controls */
+/** onPrefs: for a canvas of a mode's own that isn't React Flow (the circuit's), whose own controls change them in Settings */
 export const CanvasPrefsContext = createContext<CanvasPrefs & { onPrefs?(p: CanvasPrefs): void }>({ minimap: false, dark: false });
 export const useCanvasPrefs = () => useContext(CanvasPrefsContext);
 
@@ -32,6 +36,7 @@ export function FlowCanvas({
   onResize,
   onConnect,
   onPlace,
+  onNodeClick,
   onNodeDoubleClick,
   loops
 }: {
@@ -51,6 +56,8 @@ export function FlowCanvas({
   onConnect?(c: Connection): void;
   /** a click on the empty canvas, where it is in px: for placing the rail's tool */
   onPlace?(at: { x: number; y: number }): void;
+  /** a click on a node: for a Connect tool */
+  onNodeClick?(id: string): void;
   onNodeDoubleClick?(id: string): void;
   /** an edge may go from a node back to itself (a state's loop) */
   loops?: boolean;
@@ -61,15 +68,23 @@ export function FlowCanvas({
   const measured = useRef(new Map<string, Size>());
   const [, remeasured] = useState(0);
   const [fitAtStart] = useState(nodes.length > 0);
+  const store = useStoreApi();
+  const wrapper = useRef<HTMLDivElement>(null);
   // node and edge selection changes come in separate calls for one click; each builds on the last
   const picked = useRef(selection);
   picked.current = selection;
+  // what a drag on the canvas started with Shift keeps selected, besides what it goes round
+  const kept = useRef(new Set<string>());
+  const ends = new Map(edges.map((e) => [e.id, [e.source, e.target]]));
 
   const select = (changes: (NodeChange | EdgeChange)[]) => {
     const next = new Set(picked.current);
+    // a drag on the canvas selects the boxes it goes round, and only the arrows between two of them
+    const marquee = !!store.getState().userSelectionRect;
     let changed = false;
     for (const c of changes) {
       if (c.type !== 'select' || next.has(c.id) === c.selected) continue;
+      if (marquee && (c.selected ? ends.get(c.id)?.some((end) => !next.has(end)) : kept.current.has(c.id))) continue;
       if (c.selected) next.add(c.id);
       else next.delete(c.id);
       changed = true;
@@ -97,43 +112,67 @@ export function FlowCanvas({
     select(changes);
   };
 
+  // ⌘A selects everything, while the pointer is over the drawing or it has the focus, and nothing is being typed
+  const selectAll = useRef(() => {});
+  selectAll.current = () => onSelect?.([...nodes, ...edges].map((n) => n.id));
+  useEffect(() => {
+    if (readOnly) return;
+    const onKey = (e: KeyboardEvent) => {
+      const here = wrapper.current;
+      if (!matchesShortcut('Mod-a', e) || isTyping(e.target) || !here || !(here.matches(':hover') || here.contains(document.activeElement))) return;
+      e.preventDefault();
+      selectAll.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [readOnly]);
+
   return (
-    <ReactFlow
-      nodes={nodes.map((n) => ({ ...n, selected: selection.includes(n.id), measured: measured.current.get(n.id) }))}
-      edges={edges.map((e) => ({ ...e, selected: selection.includes(e.id) }))}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      onNodesChange={onNodesChange}
-      onEdgesChange={select}
-      onConnect={onConnect}
-      isValidConnection={(c) => loops || c.source !== c.target}
-      connectionMode={ConnectionMode.Loose}
-      onPaneClick={(e) => {
-        const at = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-        // after React Flow has cleared the selection for the click, so what's placed stays selected
-        queueMicrotask(() => onPlace?.(at));
-      }}
-      onNodeDoubleClick={(_, node) => onNodeDoubleClick?.(node.id)}
-      nodesDraggable={!readOnly}
-      nodesConnectable={!readOnly}
-      elementsSelectable={!readOnly}
-      snapToGrid
-      snapGrid={[grid, grid]}
-      // the frame deletes, through the mode, so Undo has it
-      deleteKeyCode={null}
-      zoomOnDoubleClick={false}
-      panOnScroll
-      minZoom={0.2}
-      maxZoom={4}
-      // a drawing opened is fitted to the window; a new one starts at 100% and stays put as it grows
-      fitView={fitAtStart}
-      fitViewOptions={{ padding: 0.3, maxZoom: 1.5 }}
-      colorMode={prefs.dark ? 'dark' : 'light'}
-      proOptions={{ hideAttribution: true }}
-    >
-      <Background variant={BackgroundVariant.Dots} gap={dots} size={1.2} />
-      {prefs.minimap && <MiniMap pannable zoomable />}
-    </ReactFlow>
+    <div ref={wrapper} className="diagram-flow-canvas" onPointerDownCapture={(e) => (kept.current = new Set(e.shiftKey ? picked.current : []))}>
+      <ReactFlow
+        nodes={nodes.map((n) => ({ ...n, selected: selection.includes(n.id), measured: measured.current.get(n.id) }))}
+        edges={edges.map((e) => ({ ...e, selected: selection.includes(e.id) }))}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={select}
+        onConnect={onConnect}
+        isValidConnection={(c) => loops || c.source !== c.target}
+        connectionMode={ConnectionMode.Loose}
+        onPaneClick={(e) => {
+          const at = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+          // after React Flow has cleared the selection for the click, so what's placed stays selected
+          queueMicrotask(() => onPlace?.(at));
+        }}
+        onNodeClick={(_, node) => onNodeClick?.(node.id)}
+        onNodeDoubleClick={(_, node) => onNodeDoubleClick?.(node.id)}
+        nodesDraggable={!readOnly}
+        nodesConnectable={!readOnly}
+        elementsSelectable={!readOnly}
+        snapToGrid
+        snapGrid={[grid, grid]}
+        // the frame deletes, through the mode, so Undo has it
+        deleteKeyCode={null}
+        zoomOnDoubleClick={false}
+        // the circuit canvas's mouse: a drag on the canvas selects, Shift adds, Space (React Flow's own) or the middle
+        // button pans; a drawing that can't be changed pans with any drag
+        selectionOnDrag={!readOnly}
+        panOnDrag={readOnly ? true : [1]}
+        selectionKeyCode={null}
+        multiSelectionKeyCode="Shift"
+        panOnScroll
+        minZoom={0.2}
+        maxZoom={4}
+        // a drawing opened is fitted to the window; a new one starts at 100% and stays put as it grows
+        fitView={fitAtStart}
+        fitViewOptions={{ padding: 0.3, maxZoom: 1.5 }}
+        colorMode={prefs.dark ? 'dark' : 'light'}
+        proOptions={{ hideAttribution: true }}
+      >
+        <FlowGrid gap={dots} />
+        {prefs.minimap && <MiniMap pannable zoomable />}
+      </ReactFlow>
+    </div>
   );
 }
 

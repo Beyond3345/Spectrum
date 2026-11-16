@@ -8,6 +8,8 @@ import { FLETCHER_SHAPES, tikzCode } from './modes/tikz/code';
 import type { TikzModel } from './modes/tikz/code';
 import { vectorCode } from './modes/vectors/code';
 import { SETS } from './sets';
+import { cdCode } from './modes/tikzcd/code';
+import type { CdModel } from './modes/tikzcd/code';
 import { CATEGORIES, MODE_FACTS, STARTERS, search, sectionsFor, starterFor, usedNow } from './starters';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -53,7 +55,7 @@ eq(ids('MOSFET'), ['circuit'], 'an alias');
 eq(ids('gantt'), ['gantt'], 'a title, any case');
 eq(ids('circuitikz').slice(0, 3), ['circuit', 'general-drawing', 'logic'], 'a package name');
 eq(ids('circuitikz').length, STARTERS.filter((s) => s.mode === 'circuitikz').length, 'every circuitikz starter');
-eq(ids('category theory'), ['commutative'], 'two words');
+eq(ids('category theory'), ['commutative', 'commutative-square', 'pullback', 'exact-sequence'], 'two words');
 eq(ids('electromagnetism'), ['circuit'], 'a group it is cross-listed in');
 eq(ids('fletcher').includes('flowchart-typst'), true, 'fletcher');
 eq(ids('Zwölf'), [], 'nothing matches');
@@ -96,7 +98,7 @@ eq(['signal-sketch', 'slope-field', 'venn', 'state-machine', 'state-machine-typs
 ], 'their homes and cross-listings');
 eq(ids('DFA'), ['state-machine', 'state-machine-typst'], 'DFA finds both state machines');
 eq(ids('slope field'), ['slope-field'], 'a title');
-eq(ids('transformer'), ['centre-tap-rectifier', 'model-architecture'], 'an alias, also the rectifier with a transformer');
+eq(ids('transformer'), ['centre-tap-rectifier', 'model-architecture', 'model-architecture-typst'], 'an alias, also the rectifier with a transformer');
 eq(sectionsFor('others').find((s) => s.id === 'others/charts')?.starters.map((s) => s.id).includes('venn'), true, 'Venn under Others › Charts');
 eq(starterFor('venn')?.model?.(), { preset: 'venn', values: presetFor('venn')!.values }, 'Venn opens the Form preset');
 // the Typst state machine has only shapes fletcher writes, and every new starter's drawing writes code
@@ -122,7 +124,35 @@ eq(['circuitikz', 'spx-mech', 'spx-flow', 'spx-geom'].every((id) => SETS.some((s
 for (const set of SETS) {
   for (const symbol of set.symbols) eq(search(symbol.label).symbols.some((x) => x.starter.id === 'general-drawing' && x.symbol.id === symbol.id), true, `${symbol.label} is in General drawing`);
 }
-eq(search('decision').symbols.map(({ starter, symbol }) => `${symbol.label}, in ${starter.title}`), ['Decision, in General drawing'], 'a flowchart shape, in General drawing');
+// a flowchart shape: in the Flowchart composers first, with its tool, then in General drawing; “decision” opens the Flowchart
+const decision = search('decision');
+eq(decision.symbols.map(({ starter, symbol, tool }) => `${symbol.label}, in ${starter.title}${tool ? ` (${tool})` : ''}`), ['Diamond, in Flowchart (diamond)', 'Diamond, in Flowchart in Typst (diamond)', 'Decision, in General drawing'], 'a flowchart shape, in the Flowchart and General drawing');
+eq([decision.starters[0].id, decision.starters[0].mode], ['decision-flowchart', 'tikz'], 'the first match for decision is a Flowchart');
+eq(search('vector stack').symbols.map(({ starter }) => starter.id), ['flowchart'], 'a shape fletcher can’t write, in the TikZ Flowchart only');
+eq(search('takeoff point').symbols.map(({ starter, tool }) => `${starter.id} ${tool}`), ['flowchart takeoff', 'flowchart-typst takeoff'], 'a 2.5 shape by its name');
+eq(search('flowchart shape').symbols.filter(({ starter }) => starter.id === 'flowchart').length, 20, 'every Flowchart shape');
+
+// the 2.5 flowchart, block diagram and commutative diagram starters: where they're listed, and code from each
+eq(['decision-flowchart', 'feedback-loop', 'swimlane', 'model-architecture-typst', 'commutative-square', 'pullback', 'exact-sequence'].map((id) => [starterFor(id)?.mode, starterFor(id)?.home]), [
+  ['tikz', 'others/flowcharts'],
+  ['tikz', 'engineering/signals'],
+  ['tikz', 'others/flowcharts'],
+  ['fletcher', 'computing/learning'],
+  ['tikz-cd', 'mathematics/algebra'],
+  ['tikz-cd', 'mathematics/algebra'],
+  ['tikz-cd', 'mathematics/algebra']
+], 'the seven starters');
+const flowOf = (id: string) => starterFor(id)!.model!() as TikzModel;
+const feedback = tikzCode(flowOf('feedback-loop')).body;
+eq(['-- cycle;', 'minimum size=1.2mm', '{$+$}', '{$-$}', 'auto] {$E(s)$}'].map((bit) => feedback.includes(bit) || bit), [true, true, true, true, true], 'the feedback loop: a gain, a takeoff point, its signs and a label beside');
+eq(tikzCode(flowOf('decision-flowchart')).body.includes('diamond'), true, 'a decision');
+eq(tikzCode(flowOf('swimlane')).body.match(/\\node\[align=center\]/g)?.length, 2, 'two lanes, a title each');
+eq(flowOf('model-architecture-typst').boxes.every((b) => FLETCHER_SHAPES.includes(b.shape)), true, 'the Typst model architecture: fletcher shapes only');
+eq(fletcherCode(flowOf('model-architecture-typst')).body.includes('$times N$'), true, 'its block ×N');
+const cd = (id: string) => cdCode(starterFor(id)!.model!() as CdModel).body;
+eq(cd('commutative-square').includes('A \\arrow[r, "f"] \\arrow[d, "g"\'] & B'), true, 'the square');
+eq(cd('pullback').includes('\\arrow[rd, "u", dashed]'), true, 'the pullback’s dashed u');
+eq(cd('exact-sequence').split('&').length, 5, 'the exact sequence, five objects in a row');
 eq(search('sawtooth').starters.some((s) => s.id === 'general-drawing'), false, 'no plotters');
 
 console.log('starters.check: ok');

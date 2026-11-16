@@ -175,6 +175,17 @@ export function connect(model: TikzModel, from: string, to: string, fromSide: Si
   return { ...model, links: [...links, { id, from, to, fromSide, toSide: from === to ? fromSide : toSide, route: pair ? 'bend' : 'straight', heads: 'end' }] };
 }
 
+/**
+ * The sides of two boxes that face each other, for an arrow between them: left and right when they are further apart
+ * across than up and down, otherwise top and bottom; a box with itself, a loop above it.
+ */
+export function facing(from: Box, to: Box): [Side, Side] {
+  if (from === to) return ['t', 't'];
+  const [dx, dy] = [to.x + to.w / 2 - (from.x + from.w / 2), to.y + to.h / 2 - (from.y + from.h / 2)];
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? ['r', 'l'] : ['l', 'r'];
+  return dy >= 0 ? ['b', 't'] : ['t', 'b'];
+}
+
 /** Boxes moved to these top-left corners, in grid units. A container moved takes the boxes whose centres are in it along. */
 export function moveBoxes(boxes: Box[], moves: { id: string; x: number; y: number }[]): Box[] {
   const moved = new Map(moves.map((m) => [m.id, m]));
