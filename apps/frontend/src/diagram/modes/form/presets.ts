@@ -4,7 +4,11 @@
 import type { DiagramCode } from '../../fileFormat';
 import type { ComposerDefaults } from '../../types';
 import { num } from '../shared';
+import { FLOATING } from './floating';
+import { GATE } from './gate';
+import { MANOMETER } from './manometer';
 import { MOHR } from './mohr';
+import { TANK } from './tank';
 import { venn } from './venn';
 
 export type FormValue = string | number | boolean;
@@ -26,6 +30,8 @@ export interface FormPreset {
   values: FormValues;
   /** the Settings › Composer conventions it uses, copied into a new drawing's style */
   conventions?: (keyof ComposerDefaults)[];
+  /** new in 2.5: its drawings are file version 5, which Spectrum 2.4 and earlier open as code */
+  version5?: boolean;
   /** the picture; values are the preset's own with the drawing's over them, each of its field's kind */
   toCode(values: FormValues, style: Record<string, unknown>): DiagramCode;
 }
@@ -59,11 +65,23 @@ const test: FormPreset = {
   }
 };
 
-export const PRESETS: FormPreset[] = [test, MOHR, venn];
+export const PRESETS: FormPreset[] = [
+  test,
+  MOHR,
+  venn,
+  // fluid mechanics (2.5)
+  GATE,
+  MANOMETER,
+  TANK,
+  FLOATING
+];
 
 export const presetFor = (id: string) => PRESETS.find((preset) => preset.id === id);
 
 export const newFormModel = (id: string): FormModel => ({ preset: id, values: { ...presetFor(id)?.values } });
+
+/** The drawing is a preset new in 2.5, which builds up to 2.4 don't have (fileFormat's version5). */
+export const formNeedsVersion5 = (model: FormModel) => !!presetFor(model?.preset)?.version5;
 
 /** A value kept as its field's kind: a number in range, a choice it offers; anything else, the preset's own. */
 function valueFor(field: FormField, value: unknown, fallback: FormValue): FormValue {

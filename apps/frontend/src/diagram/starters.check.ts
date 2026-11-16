@@ -81,6 +81,12 @@ for (const id of ['structure', 'mohr']) {
 for (const q of ['beam', 'truss', 'frame', 'SFD', 'BMD']) eq(ids(q).includes('structure'), true, `${q} finds Structure`);
 for (const q of ['Mohr', 'stress']) eq(ids(q).includes('mohr'), true, `${q} finds Mohr’s circle`);
 eq(ids('shear').includes('structure') && ids('shear').includes('mohr'), true, 'shear finds both');
+// the fluid mechanics Form presets: there too, found by their words, opening their presets
+for (const [q, id] of [['hydrostatic', 'gate'], ['gate', 'gate'], ['sluice', 'gate'], ['manometer', 'manometer'], ['U-tube', 'manometer'], ['accelerating', 'tank'], ['buoyancy', 'floating'], ['metacentre', 'floating']]) eq(ids(q).includes(id), true, `${q} finds ${id}`);
+for (const id of ['gate', 'manometer', 'tank', 'floating']) {
+  eq(sectionsFor('physics').find((s) => s.id === 'physics/mechanics')?.starters.some((s) => s.id === id), true, `${id} under Mechanics and fluids`);
+  eq(starterFor(id)?.model?.(), { preset: id, values: presetFor(id)!.values }, `${id} opens its preset`);
+}
 
 eq(usedNow(['a', 'b', 'c'], 'b'), ['b', 'a', 'c'], 'Recently used puts it first');
 eq(usedNow(['1', '2', '3', '4', '5', '6', '7', '8'], '9').length, 8, 'at most eight');
