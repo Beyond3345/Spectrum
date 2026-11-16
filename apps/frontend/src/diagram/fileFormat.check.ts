@@ -166,6 +166,14 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
   // version 5 (what 2.5 adds to a drawing) reads back; a version this build doesn't know opens as code
   const v5 = `${tikzDocument(code)}% spectrum-diagram v1 ${btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify({ ...circuit, version: 5 }))))} 0123456789abcdef\n`;
   eq((await readDiagramFile(v5)).diagram?.version, 5, 'version 5 reads back');
+  // a part from a set 2.5 added (fluid mechanics, construction materials) makes version 5: 2.4 would write it as a dot.
+  // The sets being on, as in every new General drawing, changes nothing while no such part is used
+  const everySet = ['spx-mech', 'spx-flow', 'spx-geom', 'spx-fluid', 'spx-mat'];
+  eq(
+    [(await json(part('fluid-pipe')))?.version, (await json(part('mat-cube')))?.version, (await json({ ...part('fluid-tank'), sets: everySet }))?.version, (await json({ ...part('resistor'), sets: everySet }))?.version, (await json({ ...circuit, sets: ['spx-fluid'] }))?.version],
+    [5, 5, 5, 3, 2],
+    'a fluid or materials part makes version 5; the sets alone keep the version they had'
+  );
   for (const bad of [{ ...circuit, sets: 'spx-mech' }, { ...circuit, sets: [1] }, { ...circuit, version: 6 }]) {
     const text = `${tikzDocument(code)}% spectrum-diagram v1 ${btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(bad))))} 0123456789abcdef\n`;
     eq((await readDiagramFile(text)).diagram, null, `opens as code: ${JSON.stringify(bad).slice(-30)}`);
