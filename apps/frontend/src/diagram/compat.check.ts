@@ -76,6 +76,12 @@ function loadsOf(text: string) {
       const changed = drawn.filter((line, i) => line !== before[i]);
       eq(changed.every((line) => line.trimStart().startsWith('\\node')), true, `${path}: only \\node lines change`);
       eq((await readDiagramFile(await diagramFileText(diagram, generated))).diagram?.version, 1, `${path}: still version 1`);
+    } else if (path === 'figures/plot-1.tex') {
+      // a series without a legend no longer takes an empty row: its \addlegendentry lines become one \legend
+      const legendOut = (t: string) => t.split('\n').filter((line) => !/^\\(?:addlegendentry|legend)\{/.test(line)).join('\n');
+      const drawn = drawnText(diagram, generated);
+      eq([legendOut(drawn), drawn.includes('\n\\legend{,{Run}}\n')], [legendOut(code), true], `${path}: only the legend lines change`);
+      eq((await readDiagramFile(await diagramFileText(diagram, generated))).diagram?.version, 1, `${path}: still version 1`);
     } else if (!restyled) {
       eq(drawnText(diagram, generated), code, `${path}: its mode writes the same text`);
       const again = await diagramFileText(diagram, generated);

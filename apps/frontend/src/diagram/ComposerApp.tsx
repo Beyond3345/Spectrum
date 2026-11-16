@@ -547,6 +547,8 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
         savedRef.current = now.key;
         setSavedKey(now.key);
         setConflict(null);
+        // a Mermaid diagram's image beside it, which Insert made for the document, follows its code; one that won't draw keeps the last
+        if (language === 'mermaid') await refreshMermaidImages().catch(() => undefined);
         post({ type: 'saved', projectId, path });
         return true;
       } catch (err) {
@@ -750,9 +752,18 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
   };
 
   const mermaidImage = async (kind: 'pdf' | 'png') => {
-    const png = await svgToPng(await renderMermaid(code?.body ?? text));
+    const png = await svgToPng(await renderMermaid(latest.current.code?.body ?? latest.current.text));
     return kind === 'png' ? png : new Blob([await pngToPdf(new Uint8Array(await png.arrayBuffer()), RASTER_SCALE)], { type: 'application/pdf' });
   };
+  /** Draws again the PDF and PNG beside a Mermaid diagram that Insert made. */
+  async function refreshMermaidImages() {
+    const { items } = await getProjectTree(projectId);
+    for (const image of ['pdf', 'png'].map((kind) => path.replace(/\.mmd$/i, `.${kind}`))) {
+      if (!items.some((i) => i.type === 'file' && i.path === image)) continue;
+      const blob = await mermaidImage(image.endsWith('.png') ? 'png' : 'pdf');
+      await uploadFiles(projectId, [new File([blob], nameOf(image), { type: blob.type })], folderOf(image));
+    }
+  }
 
   const insert = async () => {
     if (!(await save())) return;

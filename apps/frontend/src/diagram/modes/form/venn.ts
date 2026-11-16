@@ -1,7 +1,10 @@
 // The Venn diagram preset: two or three sets as circles, any region shaded, a count or text in any region. Each
 // region's boundary is worked out here as arcs of the circles, so each shaded region is one \fill of its own.
 import type { DiagramCode } from '../../fileFormat';
+import { escapeTex } from '../../texEscape';
 import { mathsPackages, num } from '../shared';
+import { anchorFor, placeLabels, shapesOf, textBox } from '../structures/labels';
+import type { Box } from '../structures/labels';
 import type { FormField, FormPreset, FormValues } from './presets';
 
 type Circle = { x: number; y: number; r: number };
@@ -68,27 +71,32 @@ function loopPath(circles: Circle[], loop: Arc[]) {
   return `(${num(x)},${num(y)}) ${loop.map((arc) => `arc[start angle=${num(arc.a)}, end angle=${num(arc.b)}, radius=${num(circles[arc.c].r)}]`).join(' ')} -- cycle`;
 }
 
-/** The frame round every circle, as its corners. */
-function frameOf(circles: Circle[]): [[number, number], [number, number]] {
-  const pad = 0.5;
+type Frame = [[number, number], [number, number]];
+/** The frame round every circle and every box (the set names), as its corners. */
+function frameOf(circles: Circle[], boxes: Box[] = []): Frame {
+  const [pad, gap] = [0.5, 0.15];
   return [
-    [Math.min(...circles.map((c) => c.x - c.r)) - pad, Math.min(...circles.map((c) => c.y - c.r)) - pad],
-    [Math.max(...circles.map((c) => c.x + c.r)) + pad, Math.max(...circles.map((c) => c.y + c.r)) + pad]
+    [Math.min(...circles.map((c) => c.x - c.r - pad), ...boxes.map((b) => b.x0 - gap)), Math.min(...circles.map((c) => c.y - c.r - pad), ...boxes.map((b) => b.y0 - gap))],
+    [Math.max(...circles.map((c) => c.x + c.r + pad), ...boxes.map((b) => b.x1 + gap)), Math.max(...circles.map((c) => c.y + c.r + pad), ...boxes.map((b) => b.y1 + gap))]
   ];
 }
 
 /**
- * A point well inside the region, for its text: on a grid, the one farthest from every circle's edge (and the frame's,
- * outside the sets). ponytail: a 0.05 cm grid search, plenty for three circles.
+ * A point well inside the region, for its text: on a grid, the one farthest from every circle's edge, from the boxes
+ * (the names) and from the frame's edge outside the sets. ponytail: a 0.05 cm grid search, plenty for three circles.
  */
-export function labelPoint(circles: Circle[], mask: number): [number, number] {
-  const [[x0, y0], [x1, y1]] = frameOf(circles);
+export function labelPoint(circles: Circle[], mask: number, frame = frameOf(circles), boxes: Box[] = []): [number, number] {
+  const [[x0, y0], [x1, y1]] = frame;
   let best: [number, number] = [0, 0];
   let score = -1;
   for (let x = x0; x <= x1; x += 0.05) {
     for (let y = y0; y <= y1; y += 0.05) {
       if (maskOf(circles, [x, y]) !== mask) continue;
-      const room = Math.min(...circles.map((c) => Math.abs(Math.hypot(x - c.x, y - c.y) - c.r)), mask ? Infinity : Math.min(x - x0, x1 - x, y - y0, y1 - y));
+      const room = Math.min(
+        ...circles.map((c) => Math.abs(Math.hypot(x - c.x, y - c.y) - c.r)),
+        ...boxes.map((b) => Math.hypot(Math.max(b.x0 - x, 0, x - b.x1), Math.max(b.y0 - y, 0, y - b.y1))),
+        mask ? Infinity : Math.min(x - x0, x1 - x, y - y0, y1 - y)
+      );
       if (room > score) [best, score] = [[x, y], room];
     }
   }
@@ -131,11 +139,43 @@ const fields: FormField[] = [
   ])
 ];
 
+/** The label spacing measures text at \\footnotesize; Venn's is \\normalsize, 10 pt to 8, so it works on the drawing shrunk by this. */
+const SIZE = 1.25;
+
+/**
+ * Each set's name outside its circle, up and to the left, up and to the right, or down and to the right, moved round
+ * that point when it would cross a circle or another name; as a label, and its text's box.
+ */
+function namesOf(circles: Circle[], names: string[]) {
+  const LABEL_AT = [135, 45, 315];
+  const shrink = (p: [number, number]) => ({ x: p[0] / SIZE, y: p[1] / SIZE });
+  const shapes = shapesOf(circles.map((c) => ({ item: { t: 'line' as const, closed: true, pts: Array.from({ length: 72 }, (_, i) => shrink(at(c, i * 5))) }, shift: { x: 0, y: 0 } })));
+  const named = circles.flatMap((c, i) => {
+    if (!names[i]) return [];
+    const d = { x: Math.cos((LABEL_AT[i] * Math.PI) / 180), y: Math.sin((LABEL_AT[i] * Math.PI) / 180) };
+    const p = shrink(at(c, LABEL_AT[i]));
+    // a hair from its point, so it knows which side it started on
+    return [{ label: { at: { x: p.x + d.x * 1e-4, y: p.y + d.y * 1e-4 }, tex: names[i], anchor: anchorFor(d), around: p }, shift: { x: 0, y: 0 } }];
+  });
+  return placeLabels(named, shapes).map((l, i) => {
+    const label = l ?? named[i].label;
+    const b = textBox(label);
+    return { tex: label.tex, anchor: label.anchor, at: [label.at.x * SIZE, label.at.y * SIZE] as [number, number], box: { x0: b.x0 * SIZE, x1: b.x1 * SIZE, y0: b.y0 * SIZE, y1: b.y1 * SIZE } };
+  });
+}
+
 export function vennCode(values: FormValues): DiagramCode {
   const circles = circlesOf(three(values) ? 3 : 2);
-  const names = ['a', 'b', 'c'].slice(0, circles.length).map((key) => String(values[key] ?? '').trim());
+  const names = ['a', 'b', 'c'].slice(0, circles.length).map((key) => escapeTex(String(values[key] ?? '').trim()));
   const regions = REGIONS.filter(([mask]) => hasRegion(mask, values));
-  const [[x0, y0], [x1, y1]] = frameOf(circles);
+  const placed = namesOf(circles, names);
+  const frameAt = frameOf(circles, placed.map((n) => n.box));
+  const [[x0, y0], [x1, y1]] = frameAt;
+  const universe = values.universe === true;
+  const u = escapeTex(String(values.u ?? '').trim());
+  // the universal set's name in the frame's corner, which the outside's text keeps clear of too
+  const uBox = textBox({ at: { x: x0 / SIZE, y: y1 / SIZE }, tex: u, anchor: 'north west' });
+  const boxes = [...placed.map((n) => n.box), ...(universe && u ? [{ x0: uBox.x0 * SIZE, x1: uBox.x1 * SIZE, y0: uBox.y0 * SIZE, y1: uBox.y1 * SIZE }] : [])];
   const frame = `(${num(x0)},${num(y0)}) rectangle (${num(x1)},${num(y1)})`;
   const fill = String(values.shade);
   const shaded = regions.filter(([mask]) => values[`shade${mask}`] === true).map(([mask]) => {
@@ -143,26 +183,19 @@ export function vennCode(values: FormValues): DiagramCode {
     // outside: the frame with the sets cut out of it
     return mask === 0 ? `\\fill[${fill}, even odd rule] ${frame} ${loops.join(' ')};` : `\\fill[${fill}] ${loops.join(' ')};`;
   });
-  // each name outside its circle, up and to the left, up and to the right, or down and to the right
-  const LABEL_AT = [135, 45, 315];
   const texts = regions.flatMap(([mask]) => {
-    const text = String(values[`text${mask}`] ?? '').trim();
+    const text = escapeTex(String(values[`text${mask}`] ?? '').trim());
     if (!text) return [];
-    const [x, y] = labelPoint(circles, mask);
+    const [x, y] = labelPoint(circles, mask, frameAt, boxes);
     return [`\\node at (${num(x)},${num(y)}) {${text}};`];
   });
-  const universe = values.universe === true;
   const body = [
     '\\begin{tikzpicture}',
     ...shaded,
     ...circles.map((c) => `\\draw (${num(c.x)},${num(c.y)}) circle[radius=${num(c.r)}];`),
     ...(universe ? [`\\draw ${frame};`] : []),
-    ...circles.flatMap((c, i) => {
-      if (!names[i]) return [];
-      const [x, y] = at(c, LABEL_AT[i]);
-      return [`\\node[anchor=${(LABEL_AT[i] + 180) % 360}] at (${num(x)},${num(y)}) {${names[i]}};`];
-    }),
-    ...(universe && String(values.u ?? '').trim() ? [`\\node[anchor=north west] at (${num(x0)},${num(y1)}) {${String(values.u).trim()}};`] : []),
+    ...placed.map((n) => `\\node[anchor=${n.anchor}] at (${num(n.at[0])},${num(n.at[1])}) {${n.tex}};`),
+    ...(universe && u ? [`\\node[anchor=north west] at (${num(x0)},${num(y1)}) {${u}};`] : []),
     ...texts,
     '\\end{tikzpicture}',
     ''

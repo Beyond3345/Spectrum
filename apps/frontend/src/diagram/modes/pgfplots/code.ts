@@ -1,3 +1,4 @@
+import { escapeTex } from '../../texEscape';
 import { unitWriter } from '../../units';
 import { latexColour, num } from '../shared';
 
@@ -100,7 +101,8 @@ export const emptyPlot = (): PlotModel => ({
   ymin: '',
   ymax: '',
   grid: 'major',
-  legendPos: 'north west',
+  // beside the plot, where no curve can be
+  legendPos: 'outer north east',
   width: ''
 });
 
@@ -135,20 +137,28 @@ export const plotIsNewer = (model: PlotModel) =>
   model.series.some((s) => NEW_SOURCES.includes(s.source) || s.stem);
 
 /** The separator pgfplots needs told for a data file, by its extension (whitespace needs none). */
+const isNumber = (text: string | undefined) => text !== undefined && text.trim() !== '' && Number.isFinite(Number(text));
+
 export const separatorOf = (file: string) => (/\.csv$/i.test(file) ? 'comma' : /\.tsv$/i.test(file) ? 'tab' : null);
 
-/** A data file's column names, from its first line. */
+/**
+ * A data file's column names, from its first line; a file whose first line is numbers has no names, so its columns are
+ * '0', '1', … (written as x index). None when a .csv's first line has no commas, as one split by semicolons.
+ */
 export function columnsOf(file: string, text: string) {
   const first = text.split(/\r?\n/).find((l) => l.trim() && !/^\s*[#%]/.test(l)) ?? '';
   const sep = separatorOf(file);
-  return first.split(sep === 'comma' ? ',' : sep === 'tab' ? '\t' : /\s+/).map((c) => c.trim().replace(/^"(.*)"$/, '$1')).filter(Boolean);
+  const columns = first.split(sep === 'comma' ? ',' : sep === 'tab' ? '\t' : /\s+/).map((c) => c.trim().replace(/^"(.*)"$/, '$1')).filter(Boolean);
+  if (sep === 'comma' && columns.length < 2) return [];
+  return columns.every(isNumber) ? columns.map((_, i) => String(i)) : columns;
 }
+/** ponytail: a column named by digits alone is taken as its place, so a header of numbers reads as headerless; fine for data files */
+const columnKey = (axis: 'x' | 'y', column: string) => (/^\d+$/.test(column) ? `${axis} index=${column}` : `${axis}={${column}}`);
 
-const isNumber = (text: string | undefined) => text !== undefined && text.trim() !== '' && Number.isFinite(Number(text));
 /** A number typed, or the fallback. */
 const numberOr = (text: string | undefined, fallback: number) => (isNumber(text) ? Number(text) : fallback);
-/** A domain bound pgfmath reads: a number, or a short expression such as 2*pi. */
-const bound = (text: string) => (isNumber(text) ? num(Number(text)) : /^[\d\s.+\-*/()a-z]+$/i.test(text.trim()) ? `{${text.trim()}}` : '');
+/** A domain bound or axis limit pgfmath reads: a number, or a short expression such as 2*pi; '' for anything else. */
+const bound = (text: string) => (isNumber(text) ? num(Number(text)) : /^(?:[\d\s.+\-*/()]|pi|e|sqrt|exp|ln|sin|cos|tan|deg|rad)+$/i.test(text.trim()) ? `{${text.trim()}}` : '');
 
 /** The value of a waveform at t, and where it turns or jumps between a and b. */
 function waveform(s: Series, a: number, b: number): { value(t: number): number; breaks: number[] } {
@@ -201,7 +211,7 @@ function styleOf(s: Series) {
   return [s.colour && `color=${latexColour(s.colour)}`, s.line !== 'solid' && s.line, s.stem ? 'ycomb' : !s.marks && 'no markers'];
 }
 
-function seriesLines(s: Series): string[] {
+function seriesLines(s: Series, model: PlotModel): string[] {
   const style = styleOf(s);
   const samples = `samples=${Math.max(2, Math.round(s.samples) || 100)}`;
   const domainOf = (from: string, to: string) => {
@@ -211,8 +221,11 @@ function seriesLines(s: Series): string[] {
   const plot = (options: unknown[], what: string) => `\\addplot+[${options.filter(Boolean).join(', ')}] ${what};`;
   switch (s.source) {
     case 'function': {
-      const domain = isNumber(s.from) && isNumber(s.to) ? `domain=${num(Number(s.from))}:${num(Number(s.to))}` : '';
-      return [plot([domain, samples, ...style], `{${s.expr.trim() || 'x'}}`)];
+      // with the y range set, a point far beyond it breaks the line, so tan(x) is not joined across its asymptotes
+      const [lo, hi] = [model.ymin, model.ymax].map(Number);
+      const span = hi - lo;
+      const breaks = isNumber(model.ymin) && isNumber(model.ymax) && span > 0 && model.ymode !== 'log' && ['unbounded coords=jump', `restrict y to domain=${num(lo - span)}:${num(hi + span)}`];
+      return [plot([domainOf(s.from, s.to), samples, ...(breaks || []), ...style], `{${s.expr.trim() || 'x'}}`)];
     }
     case 'parametric':
       return [plot([domainOf(s.from, s.to), samples, 'variable=t', ...style], `({${s.exprX?.trim() || 't'}}, {${s.expr.trim() || 't'}})`)];
@@ -248,7 +261,7 @@ function seriesLines(s: Series): string[] {
     }
     default: {
       const sep = separatorOf(s.file);
-      const table = [s.x && `x={${s.x}}`, s.y && `y={${s.y}}`, sep && `col sep=${sep}`].filter(Boolean);
+      const table = [s.x && columnKey('x', s.x), s.y && columnKey('y', s.y), sep && `col sep=${sep}`].filter(Boolean);
       const options = style.filter(Boolean);
       return [`\\addplot+[${options.join(', ')}] table${table.length ? `[${table.join(', ')}]` : ''} {${s.file}};`];
     }
@@ -264,14 +277,14 @@ export function ticksOf(axis: 'x' | 'y', text: string) {
   if (!ticks.length) return [];
   // a tick without a label among labelled ones shows its value, as it would on its own
   const value = (at: string) => (isNumber(at) ? `$${num(Number(at))}$` : `$\\pgfmathparse{${at}}\\pgfmathprintnumber{\\pgfmathresult}$`);
-  return [`${axis}tick={${ticks.map((t) => t.at).join(',')}}`, ...(ticks.some((t) => t.label) ? [`${axis}ticklabels={${ticks.map((t) => `{${t.label || value(t.at)}}`).join(',')}}`] : [])];
+  return [`${axis}tick={${ticks.map((t) => t.at).join(',')}}`, ...(ticks.some((t) => t.label) ? [`${axis}ticklabels={${ticks.map((t) => `{${escapeTex(t.label) || value(t.at)}}`).join(',')}}`] : [])];
 }
 
 /** What an annotation draws, after the series: TeX works out every value from the declared functions. */
 function annotationLines(a: Annotation, model: PlotModel, functions: Map<string, string>): string[] {
   const f = functions.get(a.series);
   const colour = a.colour ? `color=${latexColour(a.colour)}` : '';
-  const text = a.text?.trim();
+  const text = a.text?.trim() && escapeTex(a.text.trim());
   const opts = (...more: unknown[]) => [...more, colour].filter(Boolean).join(', ');
   const x0 = Number(a.at);
   if (!isNumber(a.at)) return [];
@@ -341,7 +354,11 @@ export function plotCode(model: PlotModel, style: Record<string, unknown> = {}) 
   const si = unitWriter(style.siUnits === true);
   // a data series without its file can't compile: it waits until one is picked
   const series = model.series.filter((s) => s.source === 'function' || NEW_SOURCES.includes(s.source) || s.file);
-  const legends = series.some((s) => s.legend.trim());
+  // each series drawn, with its legend
+  const drawn = series.map((s) => ({ lines: seriesLines(s, model), legend: escapeTex(s.legend.trim()) })).filter((d) => d.lines.length);
+  const legends = drawn.some((d) => d.legend);
+  // a series without a legend among some with: one \legend, where an empty entry takes no row
+  const mixed = legends && drawn.some((d) => !d.legend);
   const annotations = model.annotations ?? [];
   // each function series an annotation is on, declared as a function TeX can evaluate anywhere: spxfa, spxfb, …
   const used = new Set(annotations.flatMap((a) => (a.kind === 'line' ? [] : [a.series, ...(a.kind === 'area' && a.series2 ? [a.series2] : [])])));
@@ -349,10 +366,10 @@ export function plotCode(model: PlotModel, style: Record<string, unknown> = {}) 
   const functions = new Map(declared.map((s, i) => [s.id, `spxf${String.fromCharCode(97 + (i % 26)).repeat(1 + Math.floor(i / 26))}`]));
   const centred = !!model.axes && model.axes !== 'box';
   const axis = [
-    model.title.trim() && `title={${model.title.trim()}}`,
-    model.xlabel.trim() && `xlabel={${si.title(model.xlabel.trim())}}`,
-    model.ylabel.trim() && `ylabel={${si.title(model.ylabel.trim())}}`,
-    ...(['xmin', 'xmax', 'ymin', 'ymax'] as const).map((key) => isNumber(model[key]) && `${key}=${num(Number(model[key]))}`),
+    model.title.trim() && `title={${escapeTex(model.title.trim())}}`,
+    model.xlabel.trim() && `xlabel={${escapeTex(si.title(model.xlabel.trim()))}}`,
+    model.ylabel.trim() && `ylabel={${escapeTex(si.title(model.ylabel.trim()))}}`,
+    ...(['xmin', 'xmax', 'ymin', 'ymax'] as const).map((key) => bound(model[key]) && `${key}=${bound(model[key])}`),
     model.grid !== 'none' && `grid=${model.grid}`,
     legends && `legend pos=${model.legendPos}`,
     isNumber(model.width) && Number(model.width) > 0 && `width=${num(Number(model.width))}cm`,
@@ -378,11 +395,8 @@ export function plotCode(model: PlotModel, style: Record<string, unknown> = {}) 
     '\\pgfplotsset{compat=1.18}',
     '\\begin{tikzpicture}',
     `\\begin{axis}[${axis.join(', ')}]`,
-    ...series.flatMap((s) => {
-      const drawn = seriesLines(s);
-      if (!drawn.length) return [];
-      return [...drawn, ...(s.legend.trim() ? [`\\addlegendentry{${s.legend.trim()}}`] : legends ? ['\\addlegendentry{}'] : [])];
-    }),
+    ...drawn.flatMap((d) => [...d.lines, ...(d.legend && !mixed ? [`\\addlegendentry{${d.legend}}`] : [])]),
+    ...(mixed ? [`\\legend{${drawn.map((d) => (d.legend ? `{${d.legend}}` : '')).join(',')}}`] : []),
     ...annotations.flatMap((a) => annotationLines(a, model, functions)),
     '\\end{axis}',
     '\\end{tikzpicture}'

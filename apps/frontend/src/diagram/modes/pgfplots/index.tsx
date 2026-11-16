@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import type { ComponentProps } from 'react';
 import { getFile, getProjectTree } from '../../../api/client';
 import Icon from '../../../app/Icon';
@@ -218,11 +218,15 @@ function asKind(s: Series, source: SeriesSource): Partial<Series> {
     case 'quiver':
       return { source, exprX: '1', expr: 'x - y', from: '-2', to: '2', samples: 15, normalise: true };
     case 'function':
-      return { source, expr: 'x^2', from: '-2', to: '2', samples: 100 };
+      // a data series keeps the function it was
+      return s.source === 'data' ? { source } : { source, expr: 'x^2', from: '-2', to: '2', samples: 100 };
     default:
       return { source };
   }
 }
+
+/** What each kind of series sets for itself, kept while the form is open so going back to a kind brings them back. */
+const KIND_FIELDS = ['expr', 'exprX', 'from', 'to', 'samples', 'pieces', 'signal', 'amplitude', 'period', 'duty', 'normalise'] as const;
 
 /** An annotation's fields: the curve it's on, where, and its text. */
 function AnnotationFields({ a, functions, patch }: { a: Annotation; functions: [string, string][]; patch(next: Partial<Annotation>): void }) {
@@ -301,6 +305,12 @@ function Canvas({ model, onChange, readOnly }: CanvasProps) {
   const { files, columns } = useDataFiles(projectId, model.series.map((s) => (s.source === 'data' ? s.file : '')));
   const patch = (next: Partial<PlotModel>) => onChange({ ...model, ...next });
   const patchSeries = (id: string, next: Partial<Series>) => patch({ series: model.series.map((s) => (s.id === id ? { ...s, ...next } : s)) });
+  // each series' fields as they were in each kind it has been, by id and kind
+  const kinds = useRef(new Map<string, Partial<Series>>());
+  const switchKind = (s: Series, source: SeriesSource) => {
+    kinds.current.set(`${s.id} ${s.source}`, Object.fromEntries(KIND_FIELDS.map((k) => [k, s[k]])));
+    patchSeries(s.id, { ...asKind(s, source), ...kinds.current.get(`${s.id} ${source}`) });
+  };
   const patchAnnotation = (id: string, next: Partial<Annotation>) => patch({ annotations: model.annotations?.map((a) => (a.id === id ? { ...a, ...next } : a)) });
   // the function series an annotation can be on, by their place in the list
   const functions: [string, string][] = model.series.flatMap((s, i): [string, string][] => (s.source === 'function' ? [[s.id, `Series ${i + 1}: y = ${s.expr}`]] : []));
@@ -333,12 +343,13 @@ function Canvas({ model, onChange, readOnly }: CanvasProps) {
       <section>
         <h3 className="form-section-title">Series</h3>
         {model.series.map((s, i) => {
-          const cols: [string, string][] = (columns[s.file] ?? []).map((c) => [c, c]);
+          // a file without a header row: its columns by place
+          const cols: [string, string][] = (columns[s.file] ?? []).map((c) => [c, /^\d+$/.test(c) ? `Column ${Number(c) + 1}` : c]);
           return (
             <div key={s.id} className="plot-series">
               <div className="plot-series-head">
                 <span className="plot-series-name">Series {i + 1}</span>
-                <Select value={s.source} options={SOURCES} onChange={(source) => patchSeries(s.id, asKind(s, source as SeriesSource))} />
+                <Select value={s.source} options={SOURCES} onChange={(source) => switchKind(s, source as SeriesSource)} />
                 <button type="button" className="icon-btn small destructive" title="Remove this series" aria-label="Remove this series" onClick={() => patch({ series: model.series.filter((x) => x.id !== s.id) })}>
                   <Icon name="trash" />
                 </button>
@@ -362,6 +373,7 @@ function Canvas({ model, onChange, readOnly }: CanvasProps) {
                       <Select value={s.y} options={cols} placeholder="y" onChange={(y) => patchSeries(s.id, { y })} />
                     </span>
                   </div>
+                  {s.file && columns[s.file]?.length === 0 && <div className="field-hint">No columns found. A .csv is read split by commas, a .tsv by tabs and other files by spaces.</div>}
                 </>
               )}
               <Row label="Legend (LaTeX)">

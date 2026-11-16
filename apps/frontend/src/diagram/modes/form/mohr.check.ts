@@ -1,7 +1,8 @@
 // Self-check for the Mohr's circle preset: the circle's numbers against textbook cases (checked with SymPy 1.14), the
 // three shear-axis conventions and the stress elements. Run:
 // npx esbuild apps/frontend/src/diagram/modes/form/mohr.check.ts --bundle --platform=node --log-level=warning | node
-import { MOHR, mohr } from './mohr';
+import { clashes } from '../structures/labels';
+import { MOHR, mohr, mohrDrawing } from './mohr';
 import { formCode, formStyle, newFormModel, presetFor } from './presets';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -90,5 +91,23 @@ eq(down.body.includes('{$80$\\,MPa}') && down.body.includes('{(MPa)}'), true, 'o
 eq(code({ siUnits: true }, { unit: 'ksi' }).body.includes('\\qty{80}{ksi}'), true, 'an unknown unit literally');
 // a pure hydrostatic state: a point, nothing to divide by zero
 eq(/NaN|Infinity/.test(code({}, { sigmaX: 10, sigmaY: 10, tauXY: 0, elements: 'all' }).body), false, 'a point circle');
+
+// labels clear of the circle, the axes, the diameter, the dots and each other: small shear (Y was over σ2 and the
+// diameter struck 2θp), pure shear (Y over τmax on the τ axis, C crossed by it), the default (C crossed by the diameter)
+for (const [what, v] of [
+  ['small shear', { sigmaX: 80, sigmaY: -40, tauXY: 5 }],
+  ['pure shear', { sigmaX: 0, sigmaY: 0, tauXY: 50 }],
+  ['the default', {}],
+  ['rotated', { theta: 30 }],
+  ['3D', { threeD: true, sigmaZ: 100 }],
+  ['τ up', { sigmaX: -20, sigmaY: 60, tauXY: -30 }]
+] as [string, object][]) {
+  for (const mohrShear of ['down', 'up']) {
+    const { labels, shapes } = mohrDrawing({ ...MOHR.values, ...v }, { mohrShear });
+    eq(clashes(labels.map((label) => ({ label, shift: { x: 0, y: 0 } })), shapes), [], `${what}, τ ${mohrShear}: no label touches`);
+  }
+}
+// a % in the unit is written \%
+eq(code({}, { unit: '%' }).body.includes('{$80$\\,\\%}'), true, 'a % unit escaped');
 
 console.log('mohr.check: ok');
