@@ -10,7 +10,7 @@ import type { PendingChange } from './EditorContext';
 import { Markdown, VISION_HINTS, VISION_MODES, buildProjectContext, citationText, errorText, isDocument, patchesToChanges, reloadBib } from './shared';
 import { ZOTERO_CITE } from './zotero';
 import type { VisionMode } from './shared';
-import { chatMessage, useChatThread } from './chatThread';
+import { chatMessage, isEditChat, useChatThread } from './chatThread';
 import { resolveInstructions } from './personas';
 import { PersonaPicker } from './agent/parts';
 import ChatsList from './ChatsList';
@@ -20,7 +20,7 @@ type TranslateScope = 'selection' | 'file' | 'project';
 type ProposedFile = { filePath: string; proposed: string };
 type ReferencesMeta = { results: ReferenceResult[]; bibFile: string; bibIncluded: boolean };
 /** what we keep in ChatMessage.meta */
-type MessageMeta = { changes?: ProposedFile[]; references?: ReferencesMeta; latex?: string; error?: boolean };
+type MessageMeta = { changes?: ProposedFile[]; quick?: boolean; references?: ReferencesMeta; latex?: string; error?: boolean };
 
 const LANGUAGES = ['English', 'Chinese', 'Japanese', 'Korean', 'French', 'German', 'Spanish'];
 const ACTION_VERBS: Record<Exclude<QuickAction, 'translate'>, string> = { polish: 'Polish', rewrite: 'Rewrite', structure: 'Restructure' };
@@ -308,7 +308,7 @@ export default function Composer({
       const fallback = chat ? 'No reply.' : changes.length ? 'Suggested changes are ready to review.' : 'No changes were suggested.';
       append(
         base,
-        msg('assistant', res.reply || fallback, changes.length ? { changes: changes.map(({ filePath, proposed }) => ({ filePath, proposed })) } : undefined)
+        msg('assistant', res.reply || fallback, changes.length ? { changes: changes.map(({ filePath, proposed }) => ({ filePath, proposed })), quick: true } : undefined)
       );
       if (changes.length) latest.current.proposeChanges(changes);
     } catch (err) {
@@ -360,7 +360,7 @@ export default function Composer({
   const messages = thread?.messages || [];
   const placeholder = mode === 'references' ? 'Paste a DOI, link, arXiv ID or title' : 'Ask anything';
   // an Edit chat from before 2.0, whose suggested changes the agent workspace now looks after
-  const editChat = mode === 'assistant' && messages.some((m) => metaOf(m).changes?.length);
+  const editChat = mode === 'assistant' && isEditChat(messages);
 
   const renderReferences = (refs: ReferencesMeta, index: number) => {
     const bibName = refs.bibFile.split('/').pop()?.replace(/\.bib$/i, '') || 'references';
