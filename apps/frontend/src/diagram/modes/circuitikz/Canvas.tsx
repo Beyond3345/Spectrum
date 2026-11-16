@@ -12,7 +12,7 @@ import { FONT_SCALE, HEAD_CM, MARK_CROSS_CM, MARK_PT, MATERIALS, PATTERNS, PATTE
 import type { Preset } from './annotate';
 import { DEFAULT_LENGTH, VOLTAGE_SHIFT, readStyle, symbolOptions } from './code';
 import { copy, detach, flip, moveBy, newNodePart, newPathPart, paste, remove, rotate } from './edit';
-import { GRID_CM, PARTS, PT_PER_GRID, asCircuit, drawsSymbol,circuitBounds, isPart, isPoint, locator, newId, pathFrame, pinAxis, pinsOfElement, placeholderShape, snapDelta, variantKey, wirePath } from './model';
+import { GRID_CM, PARTS, PT_PER_GRID, asCircuit, drawsSymbol,circuitBounds, isPart, isPoint, locator, newId, pathFrame, pinAxis, pinsOfElement, placeholderBox, placeholderShape, snapDelta, variantKey, wirePath } from './model';
 import type { Annotation, CircuitModel, Element, End, Mark, NodePart, PathPart, Pt, Route, ShapeOf, SnapPin, Wire } from './model';
 import { labelSize, plain, scriptRuns, svgRuns } from '../../sketch';
 import { markLayout, nodeNameAt, pathLabelAt, pinLabelSpots, plusAtStart } from './labels';
@@ -674,10 +674,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
     }
     const rotation = el.rotate || 0;
     const turn = `rotate(${-rotation}) scale(${el.flipX ? -1 : 1},${el.flipY ? -1 : 1})`;
-    const pins = Object.values(placeholderShape(el.type).pins);
-    const box = pins.length
-      ? { minX: Math.min(...pins.map((q) => q.x)) + 0.5, maxX: Math.max(...pins.map((q) => q.x)) - 0.5, minY: Math.min(...pins.map((q) => q.y)) - 1.5, maxY: Math.max(...pins.map((q) => q.y)) + 1.5 }
-      : { minX: -1.5, maxX: 1.5, minY: -1.5, maxY: 1.5 };
+    const box = placeholderBox(el.type);
     // the pin letters, as TikZ's anchor puts each: its near corner a node's inner sep from the pin
     const letters = el.pinLabels && !ghost
       ? pinLabelSpots(el).map(({ pin, letter, dir }) => {

@@ -267,6 +267,17 @@ export function placeholderShape(type: string): Shape {
   };
 }
 
+/**
+ * The box a node part is drawn as until its symbol comes, in grid steps from its point: inside its stand-in pins
+ * across, past them up and down. A part with one pin (ground, a supply, a terminal) has no width between pins, so it
+ * gets a 3 by 3 square, as one with none does.
+ */
+export function placeholderBox(type: string) {
+  const pins = Object.values(placeholderShape(type).pins);
+  if (pins.length < 2) return { minX: -1.5, maxX: 1.5, minY: -1.5, maxY: 1.5 };
+  return { minX: Math.min(...pins.map((q) => q.x)) + 0.5, maxX: Math.max(...pins.map((q) => q.x)) - 0.5, minY: Math.min(...pins.map((q) => q.y)) - 1.5, maxY: Math.max(...pins.map((q) => q.y)) + 1.5 };
+}
+
 const rad = (deg: number) => (deg * Math.PI) / 180;
 
 /** A node part's pin offset turned the way TikZ turns it for `rotate=…, xscale=-1, yscale=-1`: flip first, then rotate. */
