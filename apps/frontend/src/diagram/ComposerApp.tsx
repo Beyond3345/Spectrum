@@ -76,15 +76,6 @@ function download(blob: Blob, name: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-const PREFS_KEY = 'spectrum-diagram-canvas';
-function loadPrefs(): CanvasPrefs {
-  try {
-    return { minimap: false, dark: false, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') };
-  } catch {
-    return { minimap: false, dark: false };
-  }
-}
-
 /** tool: the rail's tool a new drawing opens with, when the chooser found it through one of its symbols */
 export default function ComposerApp({ projectId, file, lang, tool }: { projectId: string; file?: string; lang?: DiagramLanguage; tool?: string }) {
   // another file, or a new diagram, starts afresh
@@ -475,7 +466,7 @@ function Composer({ projectId, path, tool }: { projectId: string; path: string; 
 
 function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId: string; path: string; loaded: Loaded; initialTool?: string; onReload(): void }) {
   const navigate = useNavigate();
-  const [settings] = useSettings();
+  const [settings, updateSettings] = useSettings();
   const [doc, setDoc] = useState<Doc>(loaded.doc);
   const mode: DiagramMode<any> | undefined = doc.diagram ? modeFor(doc.diagram.language === 'mermaid' ? 'mermaid' : doc.diagram.language === 'typst' ? 'fletcher' : doc.diagram.pkg) : undefined;
   const language: DiagramLanguage = /\.mmd$/i.test(path) ? 'mermaid' : /\.typ$/i.test(path) ? 'typst' : 'tikz';
@@ -487,7 +478,6 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
   const [selection, setSelection] = useState<string[]>([]);
   const [tool, setTool] = useState(initialTool || 'select');
   const [setsOpen, setSetsOpen] = useState(false);
-  const [prefs, setPrefs] = useState(loadPrefs);
   const [styleOpen, setStyleOpen] = useState(false);
   /** Settings › Diagram composer, opened here too */
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -740,14 +730,9 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
 
   // ─── header actions ───
 
-  const choosePrefs = (next: CanvasPrefs) => {
-    setPrefs(next);
-    try {
-      localStorage.setItem(PREFS_KEY, JSON.stringify(next));
-    } catch {
-      // no storage: the canvas just doesn't remember
-    }
-  };
+  // the canvas's colour and minimap are Settings › Diagram composer's; a canvas's own buttons change them there
+  const prefs: CanvasPrefs = { minimap: settings.composerMinimap, dark: settings.composerDark };
+  const choosePrefs = (next: CanvasPrefs) => updateSettings({ composerMinimap: next.minimap, composerDark: next.dark });
 
   const mermaidImage = async (kind: 'pdf' | 'png') => {
     const png = await svgToPng(await renderMermaid(code?.body ?? text));

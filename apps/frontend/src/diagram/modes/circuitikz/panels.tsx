@@ -5,7 +5,8 @@ import Icon from '../../../app/Icon';
 import Segmented from '../../../app/Segmented';
 import Select from '../../../app/Select';
 import { IS_WINDOWS } from '../../../app/platform';
-import { ColourField } from '../../controls';
+import { ColourField, More } from '../../controls';
+import { useToolTitle } from '../../toolKeys';
 import { ANNOTATION_COLOURS, PRESETS } from './annotate';
 import { DEFAULT_LENGTH, readStyle } from './code';
 import type { CircuitStyle } from './code';
@@ -54,6 +55,7 @@ export function CircuitRail({ onPick, tool, sets = [] }: { onPick(tool: string):
   };
   const [settings] = useSettings();
   const shown = railParts(filter, sets, settings.composerStylesOff);
+  const title = useToolTitle();
   return (
     <div className="ckt-rail">
       <Segmented
@@ -62,7 +64,7 @@ export function CircuitRail({ onPick, tool, sets = [] }: { onPick(tool: string):
         value={ui.tool}
         options={[
           ['select', 'Select'],
-          ['wire', 'Wire']
+          ['wire', 'Wire', undefined, title('Wire', 'diagramWire')]
         ]}
         onChange={pick}
       />
@@ -205,17 +207,6 @@ const FONTS: [string, string][] = [
 
 /** TikZ node names: letters, digits, - and _ */
 const cleanName = (text: string) => text.replace(/[^A-Za-z0-9_-]/g, '');
-
-/** Fields folded away until wanted: open to begin with when the part already has any of them set */
-function More({ summary, open, children }: { summary: string; open: boolean; children: ReactNode }) {
-  const [shown, setShown] = useState(open);
-  return (
-    <details className="ckt-more" open={shown} onToggle={(e) => setShown(e.currentTarget.open)}>
-      <summary>{summary}</summary>
-      <div className="ckt-more-body">{children}</div>
-    </details>
-  );
-}
 
 function MarkFields({ label, mark, onChange, hint, u, voltage }: { label: string; mark: Mark | undefined; onChange: (m: Mark | undefined) => void; hint?: string; u: Pt; voltage?: boolean }) {
   const { voltageDir } = useCircuitUi();

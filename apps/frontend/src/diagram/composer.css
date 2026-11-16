@@ -100,6 +100,56 @@
   overflow: hidden;
 }
 
+/* ─── the counting grid (CanvasGrid.tsx) ─── */
+
+.canvas-grid-dot {
+  fill: var(--ckt-grid);
+}
+
+.canvas-grid-line {
+  fill: none;
+  stroke: var(--ckt-grid);
+  stroke-width: 1;
+  opacity: 0.45;
+}
+
+.canvas-grid-line.canvas-grid-major {
+  stroke-width: 1.4;
+  opacity: 0.9;
+}
+
+/* x = 0 and y = 0 */
+.canvas-grid-origin {
+  stroke: var(--ckt-muted);
+  stroke-width: 1.2;
+  pointer-events: none;
+}
+
+/* on a React Flow canvas (FlowGrid), in React Flow's own pattern colour */
+.react-flow__background-pattern.flow-grid-line {
+  opacity: 0.45;
+}
+
+.react-flow__background-pattern.flow-grid-line.flow-grid-major {
+  stroke-width: 1.4;
+  opacity: 0.9;
+}
+
+/* ─── an inspector's rarer fields, folded until wanted (controls.tsx More) ─── */
+
+.diagram-more > summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--accent);
+}
+
+.diagram-more-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
 /* ─── tool rail ─── */
 
 .diagram-rail {
