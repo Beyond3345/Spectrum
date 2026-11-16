@@ -14,6 +14,8 @@ import { colourCss, isColour } from '../shared';
 import { INNER_SEP, clashes, shapesOf, textBox } from './labels';
 import { diagramFileText, readDiagramFile } from '../../fileFormat';
 import type { DiagramFile } from '../../types';
+import structures from './index';
+import { setShown } from './store';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -430,6 +432,57 @@ const texts = (list: Item[]) => list.flatMap((i) => (i.t === 'text' ? [i.tex] : 
   eq(texts(buildScene(varying, solve(varying), readStyle({ view: 'diagrams' })).blocks.find((b) => b.title === 'Bending moment')!.items).filter((t) => /^\$-?\d/.test(t)), ['$28.1$', '$-40$'], 'the moment’s values');
   // a label set inside TikZ's inner sep from its anchor: the box starts that far in
   eq(textBox({ at: { x: 0, y: 0 }, tex: '$A$', anchor: 'south west' }).x0, INNER_SEP, 'the inner sep');
+}
+
+// ─── 2.5 fixes ───
+
+{
+  // a beam drawn right to left: the moment is labelled sagging positive, as one drawn left to right (+45, not −45)
+  const moments = (model: StructureModel, moments: 'tension' | 'positive') => texts(buildScene(model, solve(model), readStyle({ view: 'diagrams', moments })).blocks.find((b) => b.title === 'Bending moment')!.items).filter((t) => /^\$-?\d/.test(t));
+  const reversed: StructureModel = { nodes: [node('A', 0, 0), node('B', 6, 0)], parts: [beam('m', 'B', 'A'), support('a', 'A', 'pin'), support('b', 'B', 'roller'), udl('w', 'm', 0, 6, 10)] };
+  for (const c of ['tension', 'positive'] as const) eq(moments(reversed, c), ['$45$'], `reversed beam, ${c}: +45`);
+  // A to B drawn left to right, C to B right to left; 12 kN 3 m from C: 3.6 kN at A, so 14.4 at B and 25.2 under the load
+  const mixed: StructureModel = { nodes: [node('A', 0, 0), node('B', 4, 0), node('C', 10, 0)], parts: [beam('m1', 'A', 'B'), beam('m2', 'C', 'B'), support('a', 'A', 'pin'), support('c', 'C', 'roller'), down('f', 'm2', 3, 12)] };
+  eq(moments(mixed, 'tension'), ['$14.4$', '$25.2$'], 'members drawn both ways: both moments sagging positive');
+}
+
+{
+  // a spring's stiffness doesn't hang on the longest member: a 4 m cantilever, EI 1, a tip spring k 1, 10 kN at the tip.
+  // By hand the spring takes 10·k/(k + 3EI/L³) = 9.552 kN, with or without an unloaded stub behind the wall
+  const cantilever = (stub: number): StructureModel => ({
+    nodes: [node('O', 0, 0), node('A', 4, 0), ...(stub ? [node('S', -stub, 0)] : [])],
+    parts: [beam('m', 'O', 'A'), ...(stub ? [beam('s', 'O', 'S')] : []), support('o', 'O', 'fixed'), { id: 'k', kind: 'support', node: 'A', type: 'spring' }, { id: 'f', kind: 'force', on: { node: 'A' }, value: 10, angle: -90 }]
+  });
+  for (const stub of [0, 2, 10]) close(reaction(solve(cantilever(stub)), 'k').force.y, 10 / (1 + 3 / 64), `tip spring, stub ${stub} m`);
+  // a rotational spring k 1 at B, A fixed, 10 kN at mid-span: (4EI/L + k)θ = PL/8 gives θ = 2.5, so the spring holds
+  // 2.5 kN m and B carries P/2 − (6.25 − 2.5)/L = 4.0625 kN
+  const turning = (stub: number): StructureModel => ({
+    nodes: [node('A', 0, 0), node('B', 4, 0), ...(stub ? [node('S', -stub, 0)] : [])],
+    parts: [beam('m', 'A', 'B'), ...(stub ? [beam('s', 'A', 'S')] : []), support('a', 'A', 'fixed'), { id: 'b', kind: 'support', node: 'B', type: 'rotspring' }, down('f', 'm', 2, 10)]
+  });
+  for (const stub of [0, 10]) {
+    const s = solve(turning(stub));
+    close(reaction(s, 'b').moment, -2.5, `rotational spring, stub ${stub} m: its moment`);
+    close(reaction(s, 'b').force.y, 4.0625, `rotational spring, stub ${stub} m: B`);
+  }
+}
+
+{
+  // a load from 10 down to −10 kN/m: the first half's arrows point down, the second half's up
+  const model: StructureModel = { nodes: [node('A', 0, 0), node('B', 6, 0)], parts: [beam('m', 'A', 'B'), support('a', 'A', 'pin'), support('b', 'B', 'roller'), udl('w', 'm', 0, 6, 10, -10)] };
+  const arrows = items(buildScene(model, solve(model), readStyle({ view: 'loading' }))).filter((i): i is Extract<Item, { t: 'line' }> => i.t === 'line' && i.id === 'w' && !!i.arrow);
+  const ways = arrows.map((a) => Math.sign(a.pts[1].y - a.pts[0].y));
+  eq([ways.includes(-1), ways.includes(1)], [true, true], 'arrows both ways');
+  const mid = (Math.min(...arrows.map((a) => a.pts[0].x)) + Math.max(...arrows.map((a) => a.pts[0].x))) / 2;
+  eq(arrows.every((a) => (a.pts[0].x < mid ? a.pts[1].y < a.pts[0].y : a.pts[1].y > a.pts[0].y)), true, 'down on the left half, up on the right');
+  eq(items(buildScene(model, solve(model), readStyle({ view: 'loading' }))).filter((i) => i.t === 'line' && i.id === 'w' && i.closed).length, 2, 'a band each side');
+}
+
+{
+  // paste: two grid steps along and down, in the drawing's units (500 mm in N-mm, not 1 mm on top of the original)
+  setShown(sampleBeam(), readStyle({ units: 'N-mm' }));
+  const pasted = structures.paste!(sampleBeam(), copyIds(sampleBeam(), ['m1'])) as { model: StructureModel };
+  eq(pasted.model.nodes.slice(2).map((n) => [n.x, n.y]), [[500, -500], [506, -500]], 'pasted 500 mm along and down');
 }
 
 // ─── the file: a drawing round-trips through the diagram file (last: it waits for the hash) ───
