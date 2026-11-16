@@ -7,7 +7,7 @@ import { MenuButton } from '../app/Menu';
 import { effortOptions, modelOf, presetOf, searchConfigFor, updateSettings, useLivePreset, useProviders } from '../app/settings';
 import { useEditor } from './EditorContext';
 import type { PendingChange } from './EditorContext';
-import { Markdown, VISION_HINTS, VISION_MODES, buildProjectContext, citationText, errorText, isDocument, patchesToChanges, reloadBib } from './shared';
+import { Markdown, VISION_HINTS, VISION_MODES, bibIncludeLine, buildProjectContext, citationText, errorText, isDocument, patchesToChanges, reloadBib } from './shared';
 import { ZOTERO_CITE } from './zotero';
 import type { VisionMode } from './shared';
 import { chatMessage, isEditChat, useChatThread } from './chatThread';
@@ -363,7 +363,6 @@ export default function Composer({
   const editChat = mode === 'assistant' && isEditChat(messages);
 
   const renderReferences = (refs: ReferencesMeta, index: number) => {
-    const bibName = refs.bibFile.split('/').pop()?.replace(/\.bib$/i, '') || 'references';
     const cited = refs.results.some((r) => r.status === 'added' || r.status === 'duplicate');
     return (
       <div className="ref-cards">
@@ -418,7 +417,7 @@ export default function Composer({
         ))}
         {cited && !refs.bibIncluded && (
           <div className="composer-hint">
-            {refs.bibFile} isn’t included in {api.mainFile || 'the main file'} yet — add <code>{`\\bibliography{${bibName}}`}</code>
+            {refs.bibFile} isn’t included in {api.mainFile || 'the main file'} yet — add <code>{bibIncludeLine(api.mainFile, refs.bibFile)}</code>
           </div>
         )}
       </div>
