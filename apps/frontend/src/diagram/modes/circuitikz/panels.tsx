@@ -11,12 +11,13 @@ import { DEFAULT_LENGTH, readStyle } from './code';
 import type { CircuitStyle } from './code';
 import { flip, remove, rotate } from './edit';
 import { plusAtStart, sideName } from './labels';
-import { CATALOGUE, PARTS, asCircuit, locator, pathFrame, variantKey, wirePath } from './model';
+import { CATALOGUE, PARTS, asCircuit, railParts, locator, pathFrame, variantKey, wirePath } from './model';
 import type { Annotation, CircuitModel, Element, FontSize, Mark, NodePart, PathPart, Pole, Pt, Route, Wire } from './model';
 import { setSelection, setTool, shapeOfNow, tidy, useCircuitUi } from './store';
 import { UnitsSwitch } from '../../controls';
 import { setFor } from '../../sets';
 import { useSymbols } from './symbols';
+import { useSettings } from '../../../app/settings';
 
 const GROUPS = [...new Set(CATALOGUE.map((part) => part.group))];
 
@@ -51,8 +52,8 @@ export function CircuitRail({ onPick, tool, sets = [] }: { onPick(tool: string):
     setTool(next);
     onPick(next);
   };
-  // by its name or its circuitikz key: nmos finds the depletion and bulk ones too
-  const shown = CATALOGUE.filter((part) => (!part.set || sets.includes(part.set)) && `${part.label} ${part.tikz}`.toLowerCase().includes(filter.trim().toLowerCase()));
+  const [settings] = useSettings();
+  const shown = railParts(filter, sets, settings.composerStylesOff);
   return (
     <div className="ckt-rail">
       <Segmented

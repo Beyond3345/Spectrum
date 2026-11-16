@@ -147,7 +147,7 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
   const fitFirst = (list: Starter[]) => [...list].sort((a, b) => Number(fits(b)) - Number(fits(a)));
   const unavailable = (s: Starter) => (languageOf(s) === 'typst' && typstBuiltIn !== true ? 'Needs Spectrum’s built-in Typst' : '');
 
-  const found = query.trim() ? search(query, LISTED) : null;
+  const found = query.trim() ? search(query, LISTED, settings.composerStylesOff) : null;
   const sections: Section[] = found
     ? found.starters.length
       ? [{ id: 'found', label: 'Diagrams', starters: fitFirst(found.starters) }]

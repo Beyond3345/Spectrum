@@ -101,6 +101,7 @@ import type { AppSettings, ModelRole, PdfPageDark, PdfPageLight, Theme } from '.
 import type { ProviderPreset } from '../api/client';
 import { FIXED_SHORTCUTS, SHORTCUTS, canonical, formatShortcut, shortcutFromEvent, shortcutKey, shortcutProblem } from './shortcuts';
 import type { Shortcut } from './shortcuts';
+import { UNIVERSITY_STYLES } from '../diagram/universityStyles';
 
 export type Section =
   | 'appearance'
@@ -1843,6 +1844,23 @@ export function ComposerPane() {
           </span>
         </span>
       </label>
+      <h3 className="form-section-title">University styles</h3>
+      <div className="field-hint">Symbols drawn as a university’s lecture slides draw them. Switch a style off to hide its parts from the parts list and the search. Drawings that already use one still open and compile.</div>
+      {UNIVERSITY_STYLES.map((style) => (
+        <label key={style.id} className="checkbox-row">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={!settings.composerStylesOff.includes(style.id)}
+            onChange={(e) => update({ composerStylesOff: e.target.checked ? settings.composerStylesOff.filter((id) => id !== style.id) : [...settings.composerStylesOff, style.id] })}
+          />
+          <span>
+            {style.name}
+            <span className="field-hint">{style.university}</span>
+          </span>
+        </label>
+      ))}
+      <div className="field-hint">More to come…</div>
     </>
   );
 }

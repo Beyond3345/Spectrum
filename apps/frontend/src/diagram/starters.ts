@@ -8,6 +8,7 @@ import { sampleBeam } from './modes/structures/model';
 import { dividingSegment, lineThroughPoints, projections, triangleMidpoints } from './modes/vectors/model';
 import { modelArchitecture, stateMachine } from './modes/tikz/examples';
 import { SETS } from './sets';
+import { styleHidden } from './universityStyles';
 import type { SetSymbol } from './sets';
 import type { DiagramLanguage } from './types';
 
@@ -401,14 +402,15 @@ const startersOfSet = (set: string, starters: Starter[]) =>
 
 /**
  * The starters and symbols matching a search: a starter by its title, aliases, groups, categories and packages; a
- * symbol by its label or aliases, listed with the starter it opens in (“Resistor, in Circuit”).
+ * symbol by its label or aliases, listed with the starter it opens in (“Resistor, in Circuit”), unless its university
+ * style is switched off (stylesOff).
  */
-export function search(query: string, starters: Starter[] = STARTERS): { starters: Starter[]; symbols: { starter: Starter; symbol: SetSymbol }[] } {
+export function search(query: string, starters: Starter[] = STARTERS, stylesOff: string[] = []): { starters: Starter[]; symbols: { starter: Starter; symbol: SetSymbol }[] } {
   const found = starters.filter((s) =>
     matches(query, [s.title, s.blurb, ...(s.aliases ?? []), ...[s.home, ...(s.also ?? [])].flatMap((g) => [groupLabel(g), categoryLabel(g)]), ...MODE_FACTS[s.mode].packages, s.mode])
   );
   const symbols = SETS.flatMap((set) =>
-    set.symbols.filter((symbol) => matches(query, [symbol.label, ...(symbol.aliases ?? [])])).flatMap((symbol) => startersOfSet(set.id, starters).map((starter) => ({ starter, symbol })))
+    set.symbols.filter((symbol) => !styleHidden(symbol.style, stylesOff) && matches(query, [symbol.label, ...(symbol.aliases ?? [])])).flatMap((symbol) => startersOfSet(set.id, starters).map((starter) => ({ starter, symbol })))
   );
   return { starters: found, symbols };
 }
