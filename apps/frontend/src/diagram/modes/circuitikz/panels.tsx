@@ -47,7 +47,7 @@ const ANNOTATE: [string, string, string, ReactNode][] = [
   ['annotate:surface', 'Free surface', 'click on the surface', <><path d="M8,20 L48,20" strokeWidth={0.9} /><path d="M28,20 L23,11 L33,11 Z M23,23 L33,23 M25.5,26 L30.5,26" strokeWidth={0.9} /></>],
   ['annotate:mark', 'Point', 'click to place, then type its letter', <><circle cx={22} cy={14} r={2.2} className="ckt-rail-ink" /><text x={27} y={18}>A</text></>],
   ['annotate:leader', 'Leader', 'click where the words go, then the point, then double-click or press Return', <><path d="M28,12 L44,22" markerEnd="url(#ckt-rail-head)" strokeWidth={0.9} /><text x={16} y={14} textAnchor="middle" fontStyle="normal">Text</text></>],
-  ...PRESETS.map(([id, label]): [string, string, string, ReactNode] => [`preset:${id}`, label, 'click to place, then edit its parts', PRESET_THUMBS[id]])
+  ...PRESETS.map(([id, label]): [string, string, string, ReactNode] => [`preset:${id}`, label, /^[A-Z]+$/.test(id) ? 'click to place' : 'click to place, then edit its parts', PRESET_THUMBS[id]])
 ];
 
 /** sets: the other symbol sets the drawing has, each shown as its own groups after circuitikz's */
