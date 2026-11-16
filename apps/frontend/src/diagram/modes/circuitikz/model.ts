@@ -475,11 +475,26 @@ export function newId(model: CircuitModel) {
   return `e${counter}`;
 }
 
-/** The drawing's extent for Fit and the overview, with room for symbols and labels. */
-export function circuitBounds(model: CircuitModel, shapeOf: ShapeOf) {
+/** A box in grid steps, y up. */
+export type Outline = { minX: number; maxX: number; minY: number; maxY: number };
+
+/**
+ * The drawing's extent for Fit and the overview, with room for symbols and labels. A placed part counts 5 grid steps
+ * about its point and its pins, and its drawn symbol's outline (from its point, as outlineOf gives it once the symbol
+ * has loaded) turned and flipped with it, so a large symbol such as the axes or an antenna's waves fits in the view.
+ */
+export function circuitBounds(model: CircuitModel, shapeOf: ShapeOf, outlineOf?: (el: NodePart) => Outline | undefined) {
   const { pos } = locator(model, shapeOf);
+  const drawn = (el: NodePart): Pt[] => {
+    const o = outlineOf?.(el);
+    if (!o) return [];
+    return [{ x: o.minX, y: o.minY }, { x: o.maxX, y: o.minY }, { x: o.minX, y: o.maxY }, { x: o.maxX, y: o.maxY }].map((c) => {
+      const d = placeNodeOffset(el, c);
+      return { x: el.at.x + d.x, y: el.at.y + d.y };
+    });
+  };
   const points = model.elements.flatMap((el): Pt[] => el.kind === 'node'
-    ? [{ x: el.at.x - 5, y: el.at.y - 5 }, { x: el.at.x + 5, y: el.at.y + 5 }, ...pinsOfElement(el, shapeOf, pos).map((pin) => pin.at)]
+    ? [{ x: el.at.x - 5, y: el.at.y - 5 }, { x: el.at.x + 5, y: el.at.y + 5 }, ...pinsOfElement(el, shapeOf, pos).map((pin) => pin.at), ...drawn(el)]
     : el.kind === 'path' ? [pos(el.a), pos(el.b)] : el.kind === 'wire' ? el.points.map((point) => pos(point)) : el.points);
   if (!points.length) return null;
   return { minX: Math.min(...points.map((p) => p.x)) - 4, maxX: Math.max(...points.map((p) => p.x)) + 4, minY: Math.min(...points.map((p) => p.y)) - 4, maxY: Math.max(...points.map((p) => p.y)) + 4 };

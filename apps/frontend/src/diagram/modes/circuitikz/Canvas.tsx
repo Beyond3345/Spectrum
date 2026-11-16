@@ -103,6 +103,11 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   const { symbol, image, loading, error } = useSymbols(ctikz, used);
   const symbolOf = (type: string, options: string[] = []): CircuitSymbol | undefined => symbol(variantKey(type, options));
   const shapeOf: ShapeOf = (type, options) => symbolOf(type, options)?.shape || placeholderShape(type);
+  /** a placed part's drawn outline, once its symbol has loaded, for Fit */
+  const outlineOf = (el: NodePart) => {
+    const sym = symbolOf(el.type, el.options);
+    return sym && symbolOutline(sym);
+  };
   setShapeOf(shapeOf);
   const { pos, byId } = locator(shown, shapeOf);
   const selection = rawSelection.filter((id) => byId.has(id));
@@ -122,7 +127,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
 
   const fit = () => {
     if (!size.width || !size.height) return;
-    const bounds = circuitBounds(shown, shapeOf);
+    const bounds = circuitBounds(shown, shapeOf, outlineOf);
     if (!bounds) {
       setView({ x: size.width / 2, y: size.height / 2, zoom: 1 });
       return;
@@ -130,13 +135,21 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
     const { minX, maxX, minY, maxY } = bounds;
     const zoom = Math.min(MAX_ZOOM / 2, Math.max(MIN_ZOOM, Math.min(size.width / ((maxX - minX) * STEP_PX), size.height / ((maxY - minY) * STEP_PX))));
     const k = STEP_PX * zoom;
-    setView({ zoom, x: size.width / 2 - ((minX + maxX) / 2) * k, y: size.height / 2 + ((minY + maxY) / 2) * k });
+    const next = { zoom, x: size.width / 2 - ((minX + maxX) / 2) * k, y: size.height / 2 + ((minY + maxY) / 2) * k };
+    fitted.current = next;
+    setView(next);
   };
+  /** the view the first fit gave, until the user pans or zooms: fitted again when the symbols' outlines arrive */
+  const fitted = useRef<View | null>(null);
 
   useEffect(() => {
     // the first view, once the box has a size
     if (!view && size.width) fit();
   }, [size.width, size.height]);
+  useEffect(() => {
+    // the first fit used stand-ins when the symbols were still loading, which a large symbol can outgrow
+    if (!loading && view && view === fitted.current) fit();
+  }, [loading]);
 
   const v = view || { x: 0, y: 0, zoom: 1 };
   const k = STEP_PX * v.zoom;
@@ -912,7 +925,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   const wirePreview = wire && hover ? [...wire.map((p) => pos(p)), hover] : null;
   const previewRoutes = wirePreview?.slice(1).map((p, i): Route => (drawingLine.current ? '--' : autoRoute(wirePreview[i], p)));
   const cursor = space || drag?.kind === 'pan' ? 'grab' : tool === 'select' ? 'default' : 'crosshair';
-  const bounds = circuitBounds(shown, shapeOf);
+  const bounds = circuitBounds(shown, shapeOf, outlineOf);
   const viewport = { x: -v.x / k, y: -v.y / k, width: size.width / k, height: size.height / k };
   const overview = {
     minX: Math.min(bounds?.minX ?? viewport.x, viewport.x),

@@ -174,6 +174,12 @@ eq(circuitBounds({ elements: [], junctions: [] }, shapeOf), null, 'an empty over
 eq(circuitBounds({ elements: [{ id: 'w', kind: 'wire', points: [{ x: -8, y: -2 }, { x: 12, y: 4 }], routes: ['--'] }], junctions: [] }, shapeOf), { minX: -12, maxX: 16, minY: -6, maxY: 8 }, 'overview includes negative coordinates with padding');
 const wide = circuitBounds({ elements: [{ id: 'u', kind: 'node', type: 'op-amp', at: { x: 0, y: 0 } }], junctions: [] }, () => ({ pins: { out: { x: 12, y: 0 } } }));
 eq(wide?.maxX, 16, 'Fit includes a measured pin beyond a stand-in box');
+// a large symbol's drawn outline, once known, turned with its part: the axes reach 12 steps right of their point
+const axes = { elements: [{ id: 'a', kind: 'node' as const, type: 'geom-axes', at: { x: 0, y: 0 } }], junctions: [] };
+const axesOutline = () => ({ minX: -10, maxX: 12, minY: -10, maxY: 11 });
+eq(circuitBounds(axes, shapeOf)?.maxX, 9, 'without its outline, a part counts 5 steps about its point');
+eq(circuitBounds(axes, shapeOf, axesOutline), { minX: -14, maxX: 16, minY: -14, maxY: 15 }, 'Fit takes in the drawn outline');
+eq(circuitBounds({ ...axes, elements: [{ ...axes.elements[0], rotate: 90 }] }, shapeOf, axesOutline)?.maxY, 16, 'turned a quarter, the outline’s right is its top');
 
 // ─── snapping ───
 
