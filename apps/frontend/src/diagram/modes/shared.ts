@@ -4,6 +4,7 @@
 import { latexColour } from '../../../../backend/src/latex/flowchart.js';
 
 export { latexColour, mathsPackages, num } from '../../../../backend/src/latex/flowchart.js';
+export { escapeTex } from '../../../../backend/src/latex/texEscape.js';
 
 // ─── colours as typed: an xcolor name or mix (blue!15, red!30!yellow), or '#rrggbb' from the colour well ───
 
