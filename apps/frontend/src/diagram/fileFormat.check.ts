@@ -136,6 +136,32 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
     [4, 4, 4, 4, 2],
     'annotations, marks on wires and styled Text make version 4; plain Text stays a version 2 part'
   );
+  // vector diagrams: 2.5's items, constructions and notation make version 5; a drawing of 2.4's kinds keeps version 1
+  const vec = (items: unknown[], points: unknown[] = [], style: Record<string, unknown> = {}): DiagramFile => ({
+    language: 'tikz',
+    pkg: 'vectors',
+    style,
+    model: { panels: [{ id: 'g1', shift: 0 }], points: [{ id: 'A', name: 'A', x: 0, y: 0, panel: 'g1' }, { id: 'B', name: 'B', x: 1, y: 0, panel: 'g1' }, { id: 'C', name: 'C', x: 0, y: 1, panel: 'g1' }, ...points], items },
+    version: 1
+  });
+  eq(
+    await Promise.all(
+      [
+        vec([{ id: 'v', kind: 'vector', a: 'A', b: 'B' }, { id: 'd', kind: 'drop', from: 'B', axis: 'x' }], [{ id: 'P', name: 'P', x: 0, y: 0, panel: 'g1', of: { kind: 'diff', u: 'A', v: 'B', o: 'C' } }]),
+        vec([{ id: 'v', kind: 'vector', a: 'A', b: 'B' }], [], { notation: 'bold' }),
+        vec([{ id: 'n', kind: 'angle', at: 'A', from: 'B', to: 'C' }]),
+        vec([{ id: 'c', kind: 'circle', centre: 'A', through: 'B' }]),
+        vec([{ id: 'e', kind: 'eqline', panel: 'g1', a: 1, b: 1, c: -2 }]),
+        vec([{ id: 'd', kind: 'drop', from: 'B', axis: 'both' }]),
+        vec([{ id: 's', kind: 'segment', a: 'A', b: 'B', ticks: 2 }]),
+        vec([], [{ id: 'X', name: 'X', x: 0, y: 0, panel: 'g1', of: { kind: 'meet', a: 'A', b: 'B', c: 'A', d: 'C' } }]),
+        vec([], [{ id: 'X', name: 'X', x: 0, y: 0, panel: 'g1', of: { kind: 'scale', a: 'A', b: 'B', k: -2 } }]),
+        vec([], [], { notation: 'vv' })
+      ].map(async (d) => (await json(d))?.version)
+    ),
+    [1, 1, 5, 5, 5, 5, 5, 5, 5, 5],
+    'a vector drawing is version 5 only with 2.5’s additions'
+  );
   // for a document that loads physics: \qty becomes \SI, in the text and in the drawing, which still reads as drawn
   const si = { body: '\\begin{tikzpicture}\n\\node {\\qty{10}{\\kilo\\newton}};\n\\end{tikzpicture}\n', packages: ['tikz', 'siunitx'], libraries: [] };
   const siFile = await diagramFileText({ ...structure, style: { siUnits: true } }, si);

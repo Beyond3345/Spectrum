@@ -2,6 +2,7 @@ import { PARTS, asCircuit, isPart, usesNewerParts } from './modes/circuitikz/mod
 import { plotIsNewer } from './modes/pgfplots/code';
 import type { PlotModel } from './modes/pgfplots/code';
 import { tikzIsNewer } from './modes/tikz/code';
+import { vectorsNeedVersion5 } from './modes/vectors/model';
 import type { TikzModel } from './modes/tikz/code';
 import type { DiagramFile } from './types';
 import { tikzDocument } from '../../../backend/src/latex/flowchart.js';
@@ -64,6 +65,7 @@ function annotated(diagram: DiagramFile) {
 function version5(diagram: DiagramFile) {
   try {
     // e.g. if (diagram.pkg === 'vectors') return vectorsNeedVersion5(diagram.model);
+    if (diagram.pkg === 'vectors' && vectorsNeedVersion5(diagram.model, diagram.style)) return true;
   } catch {
     // a model of the wrong shape: its mode refuses it anyway
   }

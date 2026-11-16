@@ -2,11 +2,13 @@
 // (a constructed one with the calc library, so it stays exact in the code too), \draw[->, very thick, blue] for a
 // vector, \fill … circle (2pt) for a dot with its label as a node, and each panel in a scope shifted right with its
 // caption under it. Each look an item or the Style leaves out is written as 2.0 first wrote it, so older drawings
-// keep their code; arrows.meta and decorations.markings are loaded only by the tips and middle arrows that need them.
+// keep their code; arrows.meta, decorations.markings and angles are loaded only by the tips, middle arrows, ticks and
+// angles that need them. An angle is TikZ's angle pic, live on its three points; a circle, an arc and a line from its
+// equation are written with the numbers they have now, as a line through two points is.
 import type { DiagramCode } from '../../fileFormat';
 import { latexColour, mathsPackages, num } from '../shared';
-import { TIPS, WIDTHS, clipLine, frameOf, isLink, panelOf, parentsOf, resolve, rightCorners } from './model';
-import type { Axes, Construction, Dash, Item, Label, Link, Pt, Stroke, TextStyle, Thickness, Tip, Tips, VPoint, VectorModel } from './model';
+import { TIPS, WIDTHS, clipLine, dist, frameOf, isLink, panelOf, parentsOf, placed, pointsOf, resolve, rightCorners } from './model';
+import type { Angle, Axes, Circle, Construction, Dash, EdgeLabel, EqLine, Item, Label, Link, Pt, Stroke, TextStyle, Thickness, Tip, Tips, VPoint, VectorModel } from './model';
 import { asVectors } from './model';
 
 /** The drawing's look: what each item without its own takes. A default left out is TikZ's, as 2.0 first drew. */
@@ -27,9 +29,23 @@ export interface VectorStyle {
   colour?: string;
   /** a dot's radius in pt */
   pointSize: number;
+  /** how \mathbf{a} in a label is written; bold (as typed) when left out */
+  notation?: Notation;
 }
 
 export const GRIDS = [0.25, 0.5, 1];
+
+/** How a vector's name is written: each \mathbf{…} in the drawing's labels becomes the command, with the package it needs. */
+export type Notation = 'bold' | 'vec' | 'arrow' | 'vv';
+export const NOTATIONS: Record<Notation, { command: string; label: string; package?: string }> = {
+  bold: { command: '\\mathbf', label: 'Bold, \\mathbf{a}' },
+  vec: { command: '\\vec', label: 'Arrow, \\vec{a}' },
+  arrow: { command: '\\overrightarrow', label: 'Long arrow, \\overrightarrow{OA}' },
+  vv: { command: '\\vv', label: 'esvect, \\vv{a}', package: 'esvect' }
+};
+export const isNotation = (raw: unknown): raw is Notation => typeof raw === 'string' && Object.keys(NOTATIONS).includes(raw);
+/** A label's TeX with its vector names in a notation. */
+export const notate = (tex: string, notation: Notation = 'bold') => (notation === 'bold' ? tex : tex.replace(/\\mathbf(?=\s*\{)/g, NOTATIONS[notation].command));
 
 /**
  * Whether a Style says how thick vectors are: Normal is kept as null, so only a drawing from before there was a vector
@@ -54,7 +70,8 @@ export function readStyle(raw: Record<string, unknown>): VectorStyle {
     pointSize: inRange(raw.pointSize, 0.2, 20, 2),
     ...(width !== undefined && { width }),
     ...(vectorWidth !== undefined && { vectorWidth }),
-    ...(colour && { colour })
+    ...(colour && { colour }),
+    ...(isNotation(raw.notation) && raw.notation !== 'bold' && { notation: raw.notation })
   };
 }
 
@@ -89,8 +106,14 @@ export function vectorCode(raw: unknown, rawStyle: Record<string, unknown>): Dia
   const places = resolve(model);
   const byId = new Map(model.points.map((p) => [p.id, p]));
   const texts: string[] = [];
+  /** a text as it's written, its vector names in the Style's notation */
+  const tex = (text: string) => {
+    const written = notate(text, style.notation);
+    texts.push(written);
+    return written;
+  };
   // the libraries it uses, found as it's written
-  let [calc, meta, markings] = [false, false, false] as boolean[];
+  let [calc, meta, markings, angles] = [false, false, false, false] as boolean[];
 
   /** a tip as arrows.meta writes it: Stealth, Triangle[open, scale=1.5] */
   const tipCode = (tip: Exclude<Tip, 'none'>, size: number) => {
@@ -108,12 +131,16 @@ export function vectorCode(raw: unknown, rawStyle: Record<string, unknown>): Dia
     const size = t.tipSize ?? style.tipSize;
     return `${start ? `{${tipCode(start, size)}}` : ''}-${end !== 'none' ? `{${tipCode(end, size)}}` : ''}`;
   };
-  /** an arrow halfway along, pointing the way the line runs */
-  const middleOption = (t: Tips) => {
-    if (!t.middle) return '';
+  /** an arrow halfway along, pointing the way the line runs, and equal-length ticks across the middle */
+  const middleOption = (t: Tips & { ticks?: number }) => {
+    const marks: string[] = [];
+    if (t.middle) marks.push(`mark=at position 0.5 with {\\arrow{${tipCode(t.end && t.end !== 'none' ? t.end : style.tips, t.tipSize ?? style.tipSize)}}}`);
+    const n = Math.min(3, Math.max(0, Math.round(t.ticks ?? 0)));
+    // 2pt apart, 6pt long; [-] so a vector's tips aren't drawn on them
+    if (n) marks.push(`mark=at position 0.5 with {\\draw[-] ${Array.from({ length: n }, (_, i) => `(${num((i - (n - 1) / 2) * 2)}pt,-3pt) -- ++(0,6pt)`).join(' ')};}`);
+    if (!marks.length) return '';
     markings = true;
-    const tip = t.end && t.end !== 'none' ? t.end : style.tips;
-    return `postaction={decorate, decoration={markings, mark=at position 0.5 with {\\arrow{${tipCode(tip, t.tipSize ?? style.tipSize)}}}}}`;
+    return `postaction={decorate, decoration={markings, ${marks.join(', ')}}}`;
   };
   /** a line's thickness, dashes, colour and opacity, each its own or the Style's */
   const strokeOptions = (s: Stroke & { dashed?: boolean }, width = style.width, dash?: Dash) => [
@@ -137,8 +164,12 @@ export function vectorCode(raw: unknown, rawStyle: Record<string, unknown>): Dia
   }
   const ref = (id: string) => `(${names.get(id) ?? 'O'})`;
   const plain = (id: string) => names.get(id) ?? 'O';
+  /** points that aren't anywhere now (parallel lines' meet), left out with what's drawn on them */
+  const there = (id: string) => placed(places.get(id));
 
-  const constructionCode = (c: Construction) => {
+  const constructionCode = (c: Construction, p: VPoint) => {
+    if (c.kind === 'intercept') return at(places.get(p.id)!);
+    if (c.kind === 'meet') return `(intersection of ${plain(c.a)}--${plain(c.b)} and ${plain(c.c)}--${plain(c.d)})`;
     calc = true;
     const o = 'o' in c && c.o ? ref(c.o) : '';
     switch (c.kind) {
@@ -152,6 +183,14 @@ export function vectorCode(raw: unknown, rawStyle: Record<string, unknown>): Dia
         return `($${ref(c.u)}+${ref(c.v)}${o && `-${o}`}$)`;
       case 'diff':
         return o ? `($${o}+${ref(c.v)}-${ref(c.u)}$)` : `($${ref(c.v)}-${ref(c.u)}$)`;
+      case 'scale':
+        return `($${ref(c.a)}!${num(c.k)}!${ref(c.b)}$)`;
+      // twice the way to the foot
+      case 'reflect':
+        return `($${ref(c.p)}!2!($${ref(c.a)}!${ref(c.p)}!${ref(c.b)}$)$)`;
+      // AB from P, turned a quarter about P
+      case 'perp':
+        return `($${ref(c.p)}!1!90:($${ref(c.p)}+${ref(c.b)}-${ref(c.a)}$)$)`;
     }
   };
 
@@ -166,11 +205,10 @@ export function vectorCode(raw: unknown, rawStyle: Record<string, unknown>): Dia
   };
   model.points.forEach((p) => visit(p));
 
-  const edgeLabel = (link: Link) => {
-    if (!link.label?.text.trim()) return '';
-    texts.push(link.label.text);
-    const pos = link.label.pos ?? 0.5;
-    return ` node[${[pos === 0.5 ? 'midway' : `pos=${num(pos)}`, link.label.side || 'above', ...textOptions(link.label)].join(', ')}] {${link.label.text}}`;
+  const edgeLabel = (label?: EdgeLabel) => {
+    if (!label?.text.trim()) return '';
+    const pos = label.pos ?? 0.5;
+    return ` node[${[pos === 0.5 ? 'midway' : `pos=${num(pos)}`, label.side || 'above', ...textOptions(label)].join(', ')}] {${tex(label.text)}}`;
   };
 
   const linkCode = (link: Link, panel: string) => {
@@ -183,15 +221,52 @@ export function vectorCode(raw: unknown, rawStyle: Record<string, unknown>): Dia
     if (link.kind === 'line') {
       const ends = clipLine(places.get(link.a)!, places.get(link.b)!, frameOf(model, panel, places));
       if (!ends) return '';
-      return `\\draw${options} ${at(ends[0])} -- ${at(ends[1])}${edgeLabel(link)};`;
+      return `\\draw${options} ${at(ends[0])} -- ${at(ends[1])}${edgeLabel(link.label)};`;
     }
-    return `\\draw${options} ${ref(link.a)} -- ${ref(link.b)}${edgeLabel(link)};`;
+    return `\\draw${options} ${ref(link.a)} -- ${ref(link.b)}${edgeLabel(link.label)};`;
+  };
+
+  /** an angle's arc (two for a double), with its label beside the arc's middle */
+  const angleLines = (angle: Angle) => {
+    const [V, A, B] = [angle.at, angle.from, angle.to].map((id) => places.get(id)!);
+    if (dist(V, A) < 1e-9 || dist(V, B) < 1e-9) return [];
+    angles = true;
+    const r = angle.radius ?? 0.6;
+    const look = ['draw', ...strokeOptions(angle)];
+    const text = angle.label?.text.trim() ? [`angle eccentricity=${num((r + 0.25) / r)}`, `pic text={${tex(angle.label.text)}}`] : [];
+    const textLook = angle.label ? textOptions(angle.label) : [];
+    const corner = `{angle=${plain(angle.from)}--${plain(angle.at)}--${plain(angle.to)}}`;
+    return [
+      `\\pic${bracket([...look, angle.arrow && '->', `angle radius=${num(r)}cm`, ...text, textLook.length > 0 && text.length > 0 && `pic text options={${textLook.join(', ')}}`])} ${corner};`,
+      ...(angle.double ? [`\\pic${bracket([...look, `angle radius=${num(r + 0.07)}cm`])} ${corner};`] : [])
+    ];
+  };
+
+  /** a circle, or its arc from one point anticlockwise round to another's side */
+  const circleCode = (circle: Circle) => {
+    const [C, P] = [places.get(circle.centre)!, places.get(circle.through)!];
+    const r = dist(C, P);
+    if (r < 1e-9) return '';
+    const fill = circle.fill ? [colourOption(circle.fill, 'fill') || 'fill=black', opacityOption(circle.fillOpacity, 'fill opacity')] : [];
+    const options = bracket([...fill, ...strokeOptions(circle)]);
+    if (!circle.to) return `\\draw${options} ${ref(circle.centre)} circle[radius=${num(r)}];`;
+    const T = places.get(circle.to)!;
+    const start = (Math.atan2(P.y - C.y, P.x - C.x) * 180) / Math.PI;
+    let end = (Math.atan2(T.y - C.y, T.x - C.x) * 180) / Math.PI;
+    while (end <= start) end += 360;
+    return `\\draw${options} ${ref(circle.through)} arc[start angle=${num(start)}, end angle=${num(end)}, radius=${num(r)}];`;
+  };
+
+  /** a line from its equation, out to its panel's frame */
+  const eqLineCode = (line: EqLine) => {
+    const ends = eqLineEnds(line, frameOf(model, line.panel, places));
+    if (!ends) return '';
+    return `\\draw${bracket(strokeOptions(line))} ${at(ends[0])} -- ${at(ends[1])}${edgeLabel(line.label)};`;
   };
 
   const axesLines = (axes: Axes) => {
     const lines: string[] = [];
-    const [xName, yName] = axes.names ?? ['$x$', '$y$'];
-    texts.push(xName, yName);
+    const [xName, yName] = (axes.names ?? ['$x$', '$y$']).map(tex);
     const step = axes.step ?? 1;
     if (axes.grid) {
       const grid = [widthOption(axes.gridWidth ?? 'very thin'), colourOption(axes.gridColour ?? 'gray!30'), step !== 1 && `step=${num(step)}`];
@@ -218,13 +293,13 @@ export function vectorCode(raw: unknown, rawStyle: Record<string, unknown>): Dia
   /** a point's dot (filled, open or a cross) with its label, or the label alone */
   const pointLines = (p: VPoint) => {
     const options = p.label?.text.trim() ? [side(p.label!), ...textOptions(p.label!)].join(', ') : '';
-    if (options) texts.push(p.label!.text);
-    const node = () => `\\node[${options}] at ${ref(p.id)} {${p.label!.text}};`;
+    const text = options ? tex(p.label!.text) : '';
+    const node = () => `\\node[${options}] at ${ref(p.id)} {${text}};`;
     if (!p.dot) return options ? [node()] : [];
     const r = `${num(p.size ?? style.pointSize)}pt`;
     const colour = colourOption(p.colour ?? style.colour);
     // a node on a coloured dot's path would take its colour, so its label is a node of its own
-    const label = options && !colour ? ` node[${options}] {${p.label!.text}}` : '';
+    const label = options && !colour ? ` node[${options}] {${text}}` : '';
     const own = options && colour ? [node()] : [];
     if (p.shape === 'open') return [`\\draw${bracket([colour, 'fill=white'])} ${ref(p.id)} circle (${r})${label};`, ...own];
     if (p.shape === 'cross') {
@@ -235,13 +310,13 @@ export function vectorCode(raw: unknown, rawStyle: Record<string, unknown>): Dia
   };
 
   /** the order things are drawn in, bottom first: highlights under the lines, dots and labels on top */
-  const LAYERS: Item['kind'][] = ['axes', 'highlight', 'polygon', 'line', 'segment', 'drop', 'right', 'vector', 'text'];
+  const LAYERS: Item['kind'][] = ['axes', 'highlight', 'polygon', 'circle', 'line', 'eqline', 'segment', 'drop', 'right', 'angle', 'vector', 'text'];
 
   const panelLines = (panel: string) => {
     const lines: string[] = [];
-    const points = ordered.filter((p) => p.panel === panel);
-    for (const p of points) lines.push(`\\coordinate (${plain(p.id)}) at ${p.of ? constructionCode(p.of) : at(p)};`);
-    const items = model.items.filter((i) => panelOf(model, i) === panel);
+    const points = ordered.filter((p) => p.panel === panel && there(p.id));
+    for (const p of points) lines.push(`\\coordinate (${plain(p.id)}) at ${p.of ? constructionCode(p.of, p) : at(p)};`);
+    const items = model.items.filter((i) => panelOf(model, i) === panel && pointsOf(i).every(there));
     for (const layer of LAYERS) {
       for (const item of items.filter((i) => i.kind === layer)) {
         if (isLink(item)) lines.push(linkCode(item, panel));
@@ -251,11 +326,16 @@ export function vectorCode(raw: unknown, rawStyle: Record<string, unknown>): Dia
           // draw=: a bare colour would fill it too
           const colour = colourOption(item.colour ?? style.colour, 'draw');
           lines.push(`\\draw${bracket([...fill, width, dash, colour, opacityOption(item.opacity, 'draw opacity')])} ${item.points.map(ref).join(' -- ')} -- cycle;`);
-        } else if (item.kind === 'drop') lines.push(`\\draw${bracket(strokeOptions(item, style.width, 'dashed'))} ${ref(item.from)} -- (${plain(item.from)} ${item.axis === 'x' ? '|-' : '-|'} 0,0);`);
+        } else if (item.kind === 'drop') {
+          const [from, name, look] = [ref(item.from), plain(item.from), bracket(strokeOptions(item, style.width, 'dashed'))];
+          // to both: across to the y axis, the point, down to the x axis
+          lines.push(item.axis === 'both' ? `\\draw${look} (${name} -| 0,0) -- ${from} -- (${name} |- 0,0);` : `\\draw${look} ${from} -- (${name} ${item.axis === 'x' ? '|-' : '-|'} 0,0);`);
+        } else if (item.kind === 'angle') lines.push(...angleLines(item));
+        else if (item.kind === 'circle') lines.push(circleCode(item));
+        else if (item.kind === 'eqline') lines.push(eqLineCode(item));
         else if (item.kind === 'right') lines.push(`\\draw${bracket(strokeOptions(item))} ${rightCorners(places.get(item.at)!, places.get(item.toward)!, !!item.flip).map(at).join(' -- ')};`);
         else if (item.kind === 'text') {
-          texts.push(item.text);
-          lines.push(`\\node${bracket(textOptions(item))} at ${at(item)} {${item.text}};`);
+          lines.push(`\\node${bracket(textOptions(item))} at ${at(item)} {${tex(item.text)}};`);
         } else if (item.kind === 'axes') lines.push(...axesLines(item));
       }
     }
@@ -275,8 +355,7 @@ export function vectorCode(raw: unknown, rawStyle: Record<string, unknown>): Dia
     if (panel.caption?.trim()) {
       const f = frameOf(model, panel.id, places);
       // under what's drawn: the axes' ends, or the points
-      texts.push(panel.caption);
-      lines.push(`\\node at (${num((f.minX + f.maxX) / 2)},${num(f.minY - (model.items.some((i) => i.kind === 'axes' && i.panel === panel.id) ? 0.6 : 0))}) {${panel.caption}};`);
+      lines.push(`\\node at (${num((f.minX + f.maxX) / 2)},${num(f.minY - (model.items.some((i) => i.kind === 'axes' && i.panel === panel.id) ? 0.6 : 0))}) {${tex(panel.caption)}};`);
     }
     if (scoped) body.push(`  \\begin{scope}${panel.shift ? `[xshift=${num(panel.shift)}cm]` : ''}`, ...lines.map((l) => `    ${l}`), '  \\end{scope}');
     else body.push(...lines.map((l) => `  ${l}`));
@@ -285,6 +364,23 @@ export function vectorCode(raw: unknown, rawStyle: Record<string, unknown>): Dia
   const tips = ['stealth', 'latex', 'to'].includes(style.tips) && style.tipSize === 1 ? style.tips : `{${tipCode(style.tips, style.tipSize)}}`;
   body[0] = `\\begin{tikzpicture}[${[style.scale !== 1 && `scale=${num(style.scale)}`, `>=${tips}`].filter(Boolean).join(', ')}]`;
   body.push('\\end{tikzpicture}', '');
-  const libraries = [calc && 'calc', meta && 'arrows.meta', markings && 'decorations.markings'].filter((l): l is string => !!l);
-  return { body: body.join('\n'), packages: ['tikz', ...mathsPackages(texts)], libraries };
+  const libraries = [calc && 'calc', meta && 'arrows.meta', markings && 'decorations.markings', angles && 'angles'].filter((l): l is string => !!l);
+  // \vv is esvect's
+  const notation = style.notation && NOTATIONS[style.notation].package;
+  const needs = notation && texts.some((t) => t.includes(`${NOTATIONS[style.notation!].command}`)) ? [notation] : [];
+  return { body: body.join('\n'), packages: ['tikz', ...needs, ...mathsPackages(texts)], libraries };
+}
+
+/** The ends of the line ax + by + c = 0 at a frame; null when there's no line (a = b = 0) or it misses the frame. */
+export function eqLineEnds(line: Pick<EqLine, 'a' | 'b' | 'c'>, frame: { minX: number; maxX: number; minY: number; maxY: number }): [Pt, Pt] | null {
+  const n2 = line.a * line.a + line.b * line.b;
+  if (n2 < 1e-24) return null;
+  // the point on it nearest the origin, and along it
+  const P = { x: (-line.a * line.c) / n2, y: (-line.b * line.c) / n2 };
+  const ends = clipLine(P, { x: P.x - line.b, y: P.y + line.a }, frame);
+  const inside = (q: Pt) => q.x >= frame.minX - 1e-9 && q.x <= frame.maxX + 1e-9 && q.y >= frame.minY - 1e-9 && q.y <= frame.maxY + 1e-9;
+  if (!ends || !inside(ends[0]) || !inside(ends[1])) return null;
+  // left to right (upwards when it's upright), so a label's place along it doesn't hang on the signs of a, b and c
+  const [p, q] = ends;
+  return q.x < p.x - 1e-9 || (Math.abs(q.x - p.x) <= 1e-9 && q.y < p.y) ? [q, p] : ends;
 }
