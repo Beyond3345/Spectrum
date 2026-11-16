@@ -57,6 +57,9 @@ const CLICK_TO_PLACE = ['annotate:cross', 'annotate:surface', 'annotate:mark'];
 
 const autoRoute = (from: Pt, to: Pt): Route => (Math.abs(from.x - to.x) < 1e-6 || Math.abs(from.y - to.y) < 1e-6 ? '--' : '-|');
 
+/** text typed as TeX (Text, a part's text inside it) prints upright unless it brings its own $…$, as the canvas then shows it */
+const typedStyle = (tex: string) => (tex.includes('$') ? undefined : { fontStyle: 'normal' });
+
 /** an annotation's line widths on screen at 100 %, as the wires' 1.4 px stands for circuitikz's thin */
 const ANNOTATION_PX = { thin: 1.4, semithick: 1.9, thick: 2.4, 'very thick': 3.4 };
 /** TikZ's line width, in PDF points, that circuitikz draws wires and the symbols' leads with */
@@ -645,7 +648,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
         {markSketch(el.voltage, 'v', f, glyph, besides, { side: layout.voltage, signsAt: layout.signsAt }, s)}
         {layout.current && markSketch(el.current, 'i', f, glyph, besides, layout.current, s)}
         {layout.flow && markSketch(el.flow, 'f', f, glyph, besides, layout.flow, s)}
-        {PARTS.get(el.type)?.text && el.text?.trim() && text(f.mid, el.text)}
+        {PARTS.get(el.type)?.text && el.text?.trim() && text(f.mid, el.text, 'ckt-text', fontSize, typedStyle(el.text))}
         {[poleA, poleB].map((pole, i) =>
           pole ? <circle key={i} className={`ckt-pole ${pole === 'o' ? 'open' : ''}`} cx={toScreen(i ? b : a).x} cy={toScreen(i ? b : a).y} r={Math.max(2.5, k * 0.22)} /> : null
         )}
@@ -666,7 +669,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
           {text(el.at, content ? el.text! : 'Text', content ? 'ckt-text' : 'ckt-text ckt-sketch-text', fontSize * (el.font ? FONT_SCALE[el.font] : 1), {
             fill: content ? ink(el.colour) : undefined,
             fontWeight: el.bold ? 700 : undefined,
-            fontStyle: el.italic ? 'italic' : undefined
+            fontStyle: el.italic ? 'italic' : typedStyle(el.text || '')?.fontStyle
           })}
         </g>
       );
@@ -696,7 +699,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
             <rect className={`ckt-outline ${selected.has(el.id) ? 'ckt-halo-box' : ''}`} x={box.minX} y={box.minY} width={box.maxX - box.minX} height={box.maxY - box.minY} vectorEffect="non-scaling-stroke" />
           </g>
         )}
-        {content.trim() && text(el.at, el.text || '')}
+        {content.trim() && text(el.at, el.text || '', 'ckt-text', fontSize, typedStyle(el.text || ''))}
         {el.name && !ghost && text(nameAt, el.name, 'ckt-text ckt-name')}
         {letters.map(({ pin, letter, at }) => <g key={pin}>{text(at, letter, 'ckt-text ckt-pin-label', fontSize * 0.7)}</g>)}
       </g>
