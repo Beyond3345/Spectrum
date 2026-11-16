@@ -238,7 +238,7 @@ export const plotIsNewer = (model: PlotModel) =>
 export const plotNeedsVersion5 = (model: PlotModel) =>
   !!(model.height || model.equal || model.xReverse || model.bw || model.tickPlain || model.tickDecimals || model.tickComma || model.legendPos === 'below') ||
   model.series.some((s) => s.source === 'points' || s.source === 'fit' || s.line === 'none' || s.line === 'dashdotted' || s.mark || s.smooth || s.bars || s.yerr || s.sep || s.breaks) ||
-  (model.annotations ?? []).some((a) => !isNumber(a.at) || (a.to !== undefined && a.to !== '' && !isNumber(a.to)) || (a.kind === 'area' && [a.series, a.series2].some((id) => id && model.series.find((s) => s.id === id)?.source !== 'function')));
+  (model.annotations ?? []).some((a) => [a.at, a.to].some((t) => !isNumber(t) && valueOf(t) !== null) || (a.kind === 'area' && [a.series, a.series2].some((id) => id && model.series.find((s) => s.id === id)?.source !== 'function')));
 
 /** The separator pgfplots needs told for a data file, by its extension (whitespace needs none). */
 const isNumber = (text: string | undefined) => text !== undefined && text.trim() !== '' && Number.isFinite(Number(text));

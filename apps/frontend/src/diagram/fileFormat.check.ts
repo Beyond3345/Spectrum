@@ -100,6 +100,9 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
   const plot: DiagramFile = { language: 'tikz', pkg: 'pgfplots', style: {}, model: { series: [{ id: 's1', source: 'function' }] }, version: 1 };
   eq((await json(plot))?.version, 1, 'a plot of functions is version 1');
   eq((await json({ ...plot, model: { series: [], axes: 'sketch' } }))?.version, 2, 'sketch axes make version 2');
+  // Spectrum 2.5's plot additions make version 5, which 2.4 and earlier open as code
+  eq((await json({ ...plot, model: { series: [{ id: 's1', source: 'points', points: '1, 2' }] } }))?.version, 5, 'typed points make version 5');
+  eq((await json({ ...plot, model: { series: [], axes: 'sketch', equal: true } }))?.version, 5, 'so do equal axes');
   // phase E's additions make version 3, which the release candidate's builds open as code rather than save without
   // them; drawings without them keep 1 or 2
   const structure: DiagramFile = { language: 'tikz', pkg: 'structures', style: { view: 'diagrams', moments: 'tension' }, model: {}, version: 1 };
