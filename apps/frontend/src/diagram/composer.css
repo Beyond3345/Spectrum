@@ -285,6 +285,12 @@
   --diagram-paper: #1b1b1d;
 }
 
+/* the minimap's boxes in the canvas's ink, as the circuit's minimap draws its parts: React Flow's own grey barely
+   shows on either canvas */
+.diagram-flow .react-flow__minimap {
+  --xy-minimap-node-background-color: color-mix(in srgb, var(--diagram-ink) 45%, transparent);
+}
+
 .diagram-flow-canvas {
   position: absolute;
   inset: 0;
