@@ -260,6 +260,14 @@
 .diagram-flow {
   position: absolute;
   inset: 0;
+  /* text at the PDF's size, at 64 px a centimetre: LaTeX's 10 pt and Typst's 11 pt (tikz/index.tsx textPx) */
+  --diagram-text: 22.5px;
+  --diagram-leading: 1.2;
+}
+
+.diagram-flow.typst {
+  --diagram-text: 24.74px;
+  --diagram-leading: 1.35;
 }
 
 .diagram-flow .react-flow {
@@ -277,8 +285,19 @@
   --diagram-paper: #1b1b1d;
 }
 
+.diagram-flow-canvas {
+  position: absolute;
+  inset: 0;
+}
+
 .diagram-flow.placing .react-flow__pane {
   cursor: crosshair;
+}
+
+/* React Flow's box round what a drag selected would cover the boxes, so a click there would miss the box under it;
+   a selected box still drags the others with it */
+.diagram-flow .react-flow__nodesselection {
+  display: none;
 }
 
 .diagram-flow .react-flow__node {
@@ -336,13 +355,24 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2px 6px;
   color: var(--diagram-ink);
-  font: 20px/1.15 var(--font-serif);
+  font: var(--diagram-text) / var(--diagram-leading) var(--font-serif);
   text-align: center;
-  white-space: pre-line;
-  overflow: hidden;
+  /* a line as long as it's typed, past the box if need be, as TikZ widens the box for it */
+  white-space: pre;
   pointer-events: none;
+}
+
+/* fletcher breaks every box's lines at its width less its inset, 6 pt each side */
+.diagram-flow.typst .tikz-box-text {
+  padding: 0 13.5px;
+  white-space: pre-line;
+}
+
+/* Wrap: lines broken at the PDF's text width, the box's less 0.25 cm */
+.diagram-flow .tikz-box-text.wrap {
+  padding: 0 8px;
+  white-space: pre-line;
 }
 
 .tikz-box-text.maths {
@@ -353,7 +383,7 @@
 .tikz-box-caption {
   position: absolute;
   color: var(--diagram-ink);
-  font: 20px/1.15 var(--font-serif);
+  font: var(--diagram-text) / var(--diagram-leading) var(--font-serif);
   white-space: pre;
   pointer-events: none;
 }
@@ -376,13 +406,14 @@
   font-style: italic;
 }
 
-/* a container is picked up by its edge, so clicks inside reach the boxes in it and the canvas */
-.diagram-flow .react-flow__node.tikz-container,
-.diagram-flow .react-flow__node.tikz-container.draggable {
-  pointer-events: none;
+/* a container is picked up by its edge, so clicks and drags inside reach the boxes in it and the canvas (over the
+   pointer-events React Flow writes on the node itself) */
+.diagram-flow .react-flow__node.tikz-container {
+  pointer-events: none !important;
 }
 
-.diagram-flow .react-flow__node.tikz-container .react-flow__resize-control {
+.diagram-flow .react-flow__node.tikz-container .react-flow__resize-control,
+.diagram-flow .react-flow__node.tikz-container .react-flow__handle {
   pointer-events: all;
 }
 
@@ -407,7 +438,8 @@
 
 .cd-label {
   fill: var(--diagram-ink);
-  font: italic 17px var(--font-serif);
+  /* tikz-cd sets its labels in \scriptstyle, 7 pt */
+  font: italic 15.74px var(--font-serif);
 }
 
 .diagram-canvas-controls {

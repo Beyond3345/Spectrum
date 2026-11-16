@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { ComponentProps, KeyboardEvent } from 'react';
 import { BaseEdge, Handle, Position } from '@xyflow/react';
 import type { Edge, EdgeProps, Node, NodeProps } from '@xyflow/react';
@@ -5,6 +6,8 @@ import Segmented from '../../../app/Segmented';
 import Select from '../../../app/Select';
 import { FlowCanvas } from '../../FlowCanvas';
 import { nextId } from '../tikz/code';
+import { CONNECT } from '../tikz';
+import { htmlRuns, svgRuns } from '../../sketch';
 import { Row, ToolRail, railIcon } from '../../controls';
 import type { Tool } from '../../controls';
 import type { DiagramMode } from '../../types';
@@ -20,6 +23,7 @@ const BOX_H = 48;
 
 const TOOLS: Tool[] = [
   { id: 'select', label: 'Select', icon: railIcon(<path d="M4 2.5v10l2.8-2.6 1.9 4.3 1.6-.7-1.9-4.2 3.8-.2z" strokeLinejoin="round" />) },
+  CONNECT,
   { id: 'object', label: 'Object', icon: railIcon(<><rect x="2.5" y="2.5" width="11" height="11" strokeDasharray="2 2" /><path d="M5.5 11 8 5l2.5 6M6.4 9h3.2" /></>) }
 ];
 
@@ -28,7 +32,9 @@ type CellNode = Node<{ cell: Cell }, 'cell'>;
 function CellView({ data: { cell } }: NodeProps<CellNode>) {
   return (
     <div className="cd-cell">
-      <span className="tikz-box-text maths">{cell.text || ' '}</span>
+      <span className="tikz-box-text maths">
+        <span>{cell.text ? htmlRuns(cell.text) : ' '}</span>
+      </span>
       {[Position.Top, Position.Right, Position.Bottom, Position.Left].map((p) => (
         <Handle key={p} id={p} type="source" position={p} />
       ))}
@@ -104,7 +110,7 @@ function ArrowView({ data, selected }: EdgeProps<ArrowEdge>) {
       />
       {arrow.label?.trim() && (
         <text x={mid[0]} y={mid[1]} className="cd-label" textAnchor="middle" dominantBaseline="central">
-          {arrow.label}
+          {svgRuns(arrow.label)}
         </text>
       )}
     </>
@@ -120,6 +126,15 @@ type CanvasProps = ComponentProps<DiagramMode<CdModel>['Canvas']>;
 
 function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 'select', onTool }: CanvasProps) {
   const cells = new Map(model.cells.map((c) => [c.id, c]));
+  // Connect: the object clicked first, until a second is clicked
+  const start = useRef<string | null>(null);
+  useEffect(() => {
+    start.current = null;
+  }, [tool]);
+  const join = (next: CdModel) => {
+    onChange(next);
+    onSelect?.([next.arrows[next.arrows.length - 1].id]);
+  };
   const nodes: CellNode[] = model.cells.map((cell) => ({
     id: cell.id,
     type: 'cell',
@@ -169,13 +184,16 @@ function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 's
           )
         }
         loops
-        onConnect={(c) => {
-          const side = ({ top: 'above', right: 'right', bottom: 'below', left: 'left' } as Record<string, CdLoop>)[c.sourceHandle ?? ''];
-          const next = connectCd(model, c.source, c.target, side);
-          onChange(next);
-          onSelect?.([next.arrows[next.arrows.length - 1].id]);
+        onConnect={(c) => join(connectCd(model, c.source, c.target, ({ top: 'above', right: 'right', bottom: 'below', left: 'left' } as Record<string, CdLoop>)[c.sourceHandle ?? '']))}
+        // Connect: an arrow from the object clicked first to this one, or a loop above one clicked twice; the tool stays
+        onNodeClick={(id) => {
+          if (tool !== 'connect' || readOnly) return;
+          const from = start.current;
+          start.current = from ? null : id;
+          if (from && cells.has(from)) queueMicrotask(() => join(connectCd(model, from, id)));
         }}
         onPlace={({ x, y }) => {
+          start.current = null;
           if (tool !== 'object' || readOnly) return;
           const col = Math.floor(x / CELL);
           const row = Math.floor(y / CELL);
@@ -303,7 +321,8 @@ function Inspector({ model, onChange, selection = [] }: { model: CdModel; onChan
   return (
     <div className="diagram-hint">
       Pick Object on the left, then click a cell to place one. Drag from a dot on an object’s edge to another object to draw an
-      arrow, or to another dot on the same object for a loop. Select something to change it here.
+      arrow, or to another dot on the same object for a loop; or pick Connect and click one object, then another. Select
+      something to change it here.
     </div>
   );
 }

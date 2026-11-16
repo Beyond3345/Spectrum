@@ -7,7 +7,10 @@ import { gradingCurve, signalSketch, slopeField, stressStrain } from './modes/pg
 import { sampleBeam } from './modes/structures/model';
 import * as structureTemplates from './modes/structures/templates';
 import { angleBetween, cevians, dividingSegment, forcePolygon, freeBody, lineFromEquation, lineThroughPoints, parallelogramLaw, positionVectors, projections, scalarMultiples, triangleLaw, triangleMidpoints } from './modes/vectors/model';
-import { modelArchitecture, stateMachine } from './modes/tikz/examples';
+import { decisionFlowchart, feedbackLoop, modelArchitecture, modelArchitectureTypst, stateMachine, swimlanes } from './modes/tikz/examples';
+import { FLETCHER_SHAPES } from './modes/tikz/code';
+import type { Shape } from './modes/tikz/code';
+import { exactSequence, pullback, square } from './modes/tikzcd/examples';
 import { SETS } from './sets';
 import { styleHidden } from './universityStyles';
 import type { SetSymbol } from './sets';
@@ -345,6 +348,80 @@ export const STARTERS: Starter[] = [
     file: 'model',
     model: modelArchitecture
   },
+  // flowcharts, block diagrams and commutative diagrams that open pre-drawn
+  {
+    id: 'decision-flowchart',
+    mode: 'tikz',
+    title: 'Decision flowchart',
+    blurb: 'Start, an input, a yes-or-no question that loops back, and the end',
+    home: 'others/flowcharts',
+    also: ['computing/software'],
+    aliases: ['decision', 'algorithm', 'yes no', 'branch', 'loop', 'process', 'flow chart'],
+    file: 'decision',
+    model: decisionFlowchart
+  },
+  {
+    id: 'feedback-loop',
+    mode: 'tikz',
+    title: 'Feedback loop',
+    blurb: 'A summing junction with its signs, a gain, a plant and a takeoff point back through H(s)',
+    home: 'engineering/signals',
+    also: ['others/flowcharts'],
+    aliases: ['block diagram', 'control', 'closed loop', 'transfer function', 'summing junction', 'gain', 'takeoff point'],
+    file: 'feedback',
+    model: feedbackLoop
+  },
+  {
+    id: 'swimlane',
+    mode: 'tikz',
+    title: 'Swimlane process',
+    blurb: 'Each step in the lane of who does it',
+    home: 'others/flowcharts',
+    also: ['others/planning'],
+    aliases: ['swimlane', 'swim lane', 'lanes', 'cross-functional', 'process', 'workflow', 'flow chart'],
+    file: 'swimlane',
+    model: swimlanes
+  },
+  {
+    id: 'model-architecture-typst',
+    mode: 'fletcher',
+    title: 'Model architecture in Typst',
+    blurb: 'Layers and operators in a block repeated ×N, for a Typst document',
+    home: 'computing/learning',
+    aliases: ['neural network', 'transformer', 'machine learning', 'deep learning', 'encoder', 'layers', 'Typst'],
+    file: 'model',
+    model: modelArchitectureTypst
+  },
+  {
+    id: 'commutative-square',
+    mode: 'tikz-cd',
+    title: 'Commutative square',
+    blurb: 'Four objects and the two ways round, f then h and g then k',
+    home: 'mathematics/algebra',
+    aliases: ['category theory', 'square', 'morphism', 'commutes'],
+    file: 'square',
+    model: square
+  },
+  {
+    id: 'pullback',
+    mode: 'tikz-cd',
+    title: 'Pullback',
+    blurb: 'P with its maps p₁ and p₂, and the one arrow u from any X',
+    home: 'mathematics/algebra',
+    aliases: ['category theory', 'fibre product', 'fiber product', 'universal property', 'limit'],
+    file: 'pullback',
+    model: pullback
+  },
+  {
+    id: 'exact-sequence',
+    mode: 'tikz-cd',
+    title: 'Short exact sequence',
+    blurb: '0 → A → B → C → 0, with f and g',
+    home: 'mathematics/algebra',
+    aliases: ['exact sequence', 'homological algebra', 'chain', 'category theory'],
+    file: 'exact-sequence',
+    model: exactSequence
+  },
   {
     id: 'structure',
     mode: 'structures',
@@ -460,6 +537,33 @@ const matches = (query: string, haystack: string[]) => {
   return words.length > 0 && words.every((word) => text.includes(word));
 };
 
+/**
+ * The flowchart canvas's shapes, which search finds as it finds a set's symbols: a shape opens the Flowchart (and, for
+ * one fletcher writes, the Typst one) with its tool picked. Their labels are the rail's (modes/tikz/index.tsx).
+ */
+const FLOW_SHAPES: [Shape, string, string[]][] = [
+  ['rectangle', 'Rectangle', ['process', 'step', 'box', 'block']],
+  ['rounded', 'Rounded rectangle', ['process', 'box', 'layer']],
+  ['circle', 'Circle', ['node', 'connector']],
+  ['ellipse', 'Ellipse', ['oval']],
+  ['diamond', 'Diamond', ['decision', 'condition', 'branch', 'if']],
+  ['parallelogram', 'Parallelogram', ['input', 'output', 'data', 'read', 'print']],
+  ['state', 'State', ['automaton']],
+  ['accepting', 'Accepting state', ['final state', 'automaton']],
+  ['cylinder', 'Cylinder (data store)', ['database', 'storage']],
+  ['document', 'Document', ['report', 'file']],
+  ['trapezium', 'Trapezium (manual step)', ['manual operation']],
+  ['operator', 'Operator circle', ['summing junction', 'adder', 'sum', 'plus']],
+  ['stack', 'Vector stack', ['vector', 'embedding', 'tensor']],
+  ['container', 'Container', ['group', 'block', 'repeat']],
+  ['terminal', 'Terminal (start or end)', ['start', 'end', 'stop', 'begin', 'terminator']],
+  ['manualInput', 'Manual input', ['keyboard', 'input']],
+  ['offPage', 'Off-page connector', ['connector', 'continued']],
+  ['gain', 'Gain (block diagram)', ['amplifier', 'triangle', 'control']],
+  ['takeoff', 'Takeoff point', ['branch point', 'pickoff', 'junction']],
+  ['swimlane', 'Swimlane', ['lane', 'pool', 'actor']]
+];
+
 /** A starter's drawings have a set's symbols: circuitikz's are in every circuit, another set's where the starter opens it. */
 const holds = (s: Starter, set: string) => s.mode === 'circuitikz' && (set === 'circuitikz' || !!s.sets?.includes(set));
 
@@ -470,16 +574,22 @@ const startersOfSet = (set: string, starters: Starter[]) =>
 /**
  * The starters and symbols matching a search: a starter by its title, aliases, groups, categories and packages; a
  * symbol by its label or aliases, listed with the starter it opens in (“Resistor, in Circuit”), unless its university
- * style is switched off (stylesOff).
+ * style is switched off (stylesOff). A symbol's `tool` is the tool it opens with, when it isn't the circuit canvas's
+ * part:<id> (a flowchart shape's).
  */
-export function search(query: string, starters: Starter[] = STARTERS, stylesOff: string[] = []): { starters: Starter[]; symbols: { starter: Starter; symbol: SetSymbol }[] } {
+export function search(query: string, starters: Starter[] = STARTERS, stylesOff: string[] = []): { starters: Starter[]; symbols: { starter: Starter; symbol: SetSymbol; tool?: string }[] } {
   const found = starters.filter((s) =>
     matches(query, [s.title, s.blurb, ...(s.aliases ?? []), ...[s.home, ...(s.also ?? [])].flatMap((g) => [groupLabel(g), categoryLabel(g)]), ...MODE_FACTS[s.mode].packages, s.mode])
+  );
+  // the Flowchart's shapes first, so “decision” opens the Flowchart before General drawing's shape
+  const flow = ['flowchart', 'flowchart-typst'].flatMap((id) => starters.filter((s) => s.id === id));
+  const shapes = FLOW_SHAPES.filter(([, label, aliases]) => matches(query, [label, ...aliases, 'flowchart shape'])).flatMap(([tool, label, aliases]) =>
+    flow.filter((starter) => starter.mode === 'tikz' || FLETCHER_SHAPES.includes(tool)).map((starter) => ({ starter, symbol: { id: tool, label, group: 'Flowchart shapes', aliases }, tool }))
   );
   const symbols = SETS.flatMap((set) =>
     set.symbols.filter((symbol) => !styleHidden(symbol.style, stylesOff) && matches(query, [symbol.label, ...(symbol.aliases ?? [])])).flatMap((symbol) => startersOfSet(set.id, starters).map((starter) => ({ starter, symbol })))
   );
-  return { starters: found, symbols };
+  return { starters: found, symbols: [...shapes, ...symbols] };
 }
 
 /** Recently used after creating from a starter: it first, at most eight. */

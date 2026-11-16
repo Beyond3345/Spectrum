@@ -149,7 +149,7 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
   // every card and symbol in the order shown, for the arrow keys
   const choices: Choice[] = [
     ...sections.flatMap((section) => section.starters.map((starter) => ({ starter }))),
-    ...(found?.symbols ?? []).map(({ starter, symbol }) => ({ starter, tool: `part:${symbol.id}` }))
+    ...(found?.symbols ?? []).map(({ starter, symbol, tool }) => ({ starter, tool: tool ?? `part:${symbol.id}` }))
   ].filter((c) => !unavailable(c.starter));
   // the choice stays while it's shown; a search picks its first match
   const chosen = choices.find((c) => sameChoice(c, choice)) ?? (found ? choices[0] : null) ?? null;
@@ -313,8 +313,8 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
               <section className="chooser-section" role="group" aria-labelledby={`${id}-symbols`}>
                 <h3 id={`${id}-symbols`}>Symbols</h3>
                 <div className="chooser-symbols">
-                  {found.symbols.map(({ starter, symbol }) => {
-                    const c = { starter, tool: `part:${symbol.id}` };
+                  {found.symbols.map(({ starter, symbol, tool }) => {
+                    const c = { starter, tool: tool ?? `part:${symbol.id}` };
                     const selected = sameChoice(chosen, c);
                     return (
                       <button

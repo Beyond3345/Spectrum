@@ -1,7 +1,7 @@
 // Self-check for the plain TikZ mode's code. Run:
 // npx esbuild apps/frontend/src/diagram/modes/tikz/tikz.check.ts --bundle --platform=node --log-level=warning | node
 import { fletcherCode } from '../fletcher/code';
-import { FLETCHER_SHAPES, NEW, along, connect, copyTikz, corners, dividersOf, middleOf, moveBoxes, nextId, pasteTikz, removeTikz, resized, tikzCode, tikzIsNewer, tikzNeedsVersion5, turnTikz } from './code';
+import { FLETCHER_SHAPES, NEW, along, connect, copyTikz, corners, dividersOf, facing, middleOf, moveBoxes, nextId, pasteTikz, removeTikz, resized, tikzCode, tikzIsNewer, tikzNeedsVersion5, turnTikz } from './code';
 import type { Box, Link, Shape, TikzModel } from './code';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -244,5 +244,14 @@ eq(tikzNeedsVersion5(shapes), false, 'nor do the shapes from before 2.5');
 eq(block.boxes.map((b) => tikzNeedsVersion5({ boxes: [b], links: [] })), [true, false, true, true, true, true, true], 'each new shape (the operator circle is older)');
 eq([{ labelSide: 'on' }, { labelPos: 0.5 }, { sign: '-' }].map((x) => tikzNeedsVersion5({ boxes: [start, check], links: [{ ...down, ...x } as Link] })), [true, true, true], 'a label’s side or place, a sign');
 eq(tikzNeedsVersion5(lanes), true, 'a swimlane');
+
+// Connect (the W tool): the arrow joins the sides that face each other, and a shape clicked twice gets a loop above it
+eq(facing(start, check), ['b', 't'], 'below, down to the top');
+eq(facing(check, start), ['t', 'b'], 'above, up to the bottom');
+eq(facing(check, done), ['r', 'l'], 'to the right, across');
+eq(facing(done, check), ['l', 'r'], 'to the left, across');
+eq(facing(start, start), ['t', 't'], 'itself, a loop above');
+const joined = connect(model, 'n2', 'n3', ...facing(check, done));
+eq(tikzCode(joined).body.includes('\\draw[-{Stealth}] (n2.east) -- (n3.west);'), true, 'a connected arrow writes as one dragged between those sides');
 
 console.log('tikz.check: ok');

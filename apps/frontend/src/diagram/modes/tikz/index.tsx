@@ -1,10 +1,12 @@
-import type { ComponentProps, CSSProperties } from 'react';
+import { useEffect, useRef } from 'react';
+import type { ComponentProps, CSSProperties, ReactNode } from 'react';
 import { BaseEdge, Handle, MarkerType, NodeResizer, Position } from '@xyflow/react';
 import type { Edge, EdgeProps, Node, NodeProps } from '@xyflow/react';
 import Icon from '../../../app/Icon';
 import Select from '../../../app/Select';
 import { FlowCanvas } from '../../FlowCanvas';
 import { ColourField, Row, ToolRail, railIcon } from '../../controls';
+import { htmlRuns, labelSize, scriptRuns, svgRuns } from '../../sketch';
 import type { Tool } from '../../controls';
 import type { DiagramMode } from '../../types';
 import {
@@ -24,6 +26,7 @@ import {
   dividersOf,
   drawingOrder,
   emptyTikz,
+  facing,
   moveBoxes,
   NEW,
   nextId,
@@ -44,9 +47,30 @@ import type { Box, Dash, Heads, LabelSide, Line, Link, Route, Shape, Side, TikzM
 const UNIT = 16;
 /** 1 pt in px at that scale */
 const PT = 64 / 28.45;
+/** The text's size as the PDF prints it: LaTeX's standalone at 10 pt, Typst at its 11 pt (composer.css has the same). */
+const textPx = (typst: boolean) => (typst ? 11 : 10) * PT;
+
+/**
+ * A text as it prints: its $…$ maths sketched in italics with real subscripts and superscripts, the rest as typed (the
+ * writers escape it, so an _ outside maths prints as one). maths: the whole text is maths, as in a state or a gain.
+ * svg: for an SVG <text>, an arrow's label.
+ */
+const printed = (text: string, maths = false, svg = false): ReactNode =>
+  maths
+    ? htmlRuns(text)
+    : text.split(/(\$[^$]*\$)/).map((part, i) => (i % 2 === 0 ? part : svg ? <tspan key={i} fontStyle="italic">{svgRuns(part)}</tspan> : <i key={i}>{htmlRuns(part)}</i>));
+
+/** Connect: click one shape, then another, for an arrow between them (the tikz-cd canvas has it too) */
+export const CONNECT: Tool = {
+  id: 'connect',
+  label: 'Connect',
+  icon: railIcon(<><rect x="1.5" y="10" width="4.5" height="4.5" /><rect x="10" y="1.5" width="4.5" height="4.5" /><path d="M6 10 10 6M7 6h3v3" /></>),
+  shortcut: 'diagramWire'
+};
 
 const TOOLS: Tool[] = [
   { id: 'select', label: 'Select', icon: railIcon(<path d="M4 2.5v10l2.8-2.6 1.9 4.3 1.6-.7-1.9-4.2 3.8-.2z" strokeLinejoin="round" />) },
+  CONNECT,
   { id: 'rectangle', label: 'Rectangle', icon: railIcon(<rect x="2" y="4" width="12" height="8" />) },
   { id: 'rounded', label: 'Rounded rectangle', icon: railIcon(<rect x="2" y="4" width="12" height="8" rx="3" />) },
   { id: 'circle', label: 'Circle', icon: railIcon(<circle cx="8" cy="8" r="5.5" />) },
@@ -280,15 +304,20 @@ function BoxView({ data: { box, readOnly }, selected, width = 0, height = 0 }: N
           className="tikz-box-caption"
           style={{ left: band.title[0] * UNIT, top: band.title[1] * UNIT, transform: `translate(-50%, -50%) rotate(${-band.rotate}deg)`, color: box.fill ? '#000000' : inkOf(box.stroke), textAlign: 'center' }}
         >
-          {box.text}
+          {printed(box.text)}
         </div>
       ) : box.shape === 'takeoff' ? null : container || box.shape === 'stack' ? (
         <div className={`tikz-box-caption ${container ? 'title' : 'below'}`} style={{ color: inkOf(box.stroke) }}>
-          {box.text}
+          {printed(box.text)}
         </div>
       ) : (
-        <div className={`tikz-box-text${MATHS_SHAPES.includes(box.shape) ? ' maths' : ''}`} style={{ color: plain ? inkOf(box.stroke) : box.fill && '#000000' }}>
-          {box.text}
+        // without Wrap, a line is as long as it's typed, as TikZ widens the box for it; with it, as wide as the PDF's text width
+        <div
+          className={`tikz-box-text${MATHS_SHAPES.includes(box.shape) ? ' maths' : ''}${box.wrap && !plain ? ' wrap' : ''}`}
+          style={{ color: plain ? inkOf(box.stroke) : box.fill && '#000000' }}
+        >
+          {/* one flex item, so the scripts and maths stay in the line */}
+          <span>{printed(box.text, MATHS_SHAPES.includes(box.shape))}</span>
         </div>
       )}
       {box.shape === 'container' && box.repeat?.trim() && <div className="tikz-box-caption repeat">× {box.repeat.trim()}</div>}
@@ -303,7 +332,7 @@ type LinkEdge = Edge<{ d: string; labelX: number; labelY: number; text?: string;
 
 function LinkView({ data, style, markerStart, markerEnd, interactionWidth }: EdgeProps<LinkEdge>) {
   if (!data) return null;
-  const font = { fill: 'var(--diagram-ink)', fontSize: 18, fontFamily: 'var(--font-serif)' };
+  const font = { fill: 'var(--diagram-ink)', fontSize: 'var(--diagram-text)', fontFamily: 'var(--font-serif)' };
   return (
     <>
       <BaseEdge
@@ -312,7 +341,7 @@ function LinkView({ data, style, markerStart, markerEnd, interactionWidth }: Edg
         markerStart={markerStart}
         markerEnd={markerEnd}
         interactionWidth={interactionWidth}
-        label={data.text || undefined}
+        label={data.text ? printed(data.text, false, true) : undefined}
         labelX={data.labelX}
         labelY={data.labelY}
         // on the line, over the paper; beside it, as TikZ's auto writes it, with nothing under it
@@ -340,7 +369,7 @@ type OnPath = { p: number[]; u: number[] };
  * The SVG path of a link in px, and where its label and sign go, matching what tikzCode writes: a label on the line,
  * or beside it on the left or right of the way it goes, at its place along it; a sign on the left near the end.
  */
-function linkPath(link: Link, from: Box, to: Box) {
+function linkPath(link: Link, from: Box, to: Box, font: number) {
   const { d, at } = linkLine(link, from, to);
   const text = link.label?.trim() ?? '';
   const side = link.labelSide === 'left' ? 1 : link.labelSide === 'right' ? -1 : 0;
@@ -351,9 +380,9 @@ function linkPath(link: Link, from: Box, to: Box) {
     return [p[0] + n[0] * gap, p[1] + n[1] * gap];
   };
   const label = at(link.labelPos ?? 0.5);
-  // ponytail: the label's width guessed from its length, 9 px a character; measure it if labels land badly
-  const [labelX, labelY] = side ? beside(label, side, text.length * 4.5, 10) : label.p;
-  const signAt = link.sign && beside(at(SIGN_AT), 1, 6, 10);
+  const size = labelSize(scriptRuns(text), font);
+  const [labelX, labelY] = side ? beside(label, side, size.w / 2, size.h / 2) : label.p;
+  const signAt = link.sign && beside(at(SIGN_AT), 1, font / 3, font / 2);
   return { d, labelX, labelY, beside: !!side, sign: signAt ? { x: signAt[0], y: signAt[1], text: link.sign === '-' ? '−' : '+' } : undefined };
 }
 
@@ -418,10 +447,16 @@ function linkLine(link: Link, from: Box, to: Box): { d: string; at(t: number): O
 }
 
 
-type CanvasProps = ComponentProps<DiagramMode<TikzModel>['Canvas']>;
+type CanvasProps = ComponentProps<DiagramMode<TikzModel>['Canvas']> & { typst?: boolean };
 
-function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 'select', onTool }: CanvasProps) {
+/** typst: the fletcher mode's, whose text prints at Typst's size */
+function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 'select', onTool, typst = false }: CanvasProps) {
   const boxes = new Map(model.boxes.map((b) => [b.id, b]));
+  // Connect: the shape clicked first, until a second is clicked
+  const start = useRef<string | null>(null);
+  useEffect(() => {
+    start.current = null;
+  }, [tool]);
   // containers first, under the boxes in them
   const nodes: BoxNode[] = drawingOrder(model.boxes).map((box) => ({
     id: box.id,
@@ -446,7 +481,7 @@ function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 's
         target: link.to,
         sourceHandle: link.fromSide,
         targetHandle: link.toSide,
-        data: { ...linkPath(link, from, to), text: link.label },
+        data: { ...linkPath(link, from, to, textPx(typst)), text: link.label },
         style: strokeOf(link),
         markerEnd: link.heads === 'end' || link.heads === 'both' ? head : undefined,
         markerStart: link.heads === 'start' || link.heads === 'both' ? head : undefined
@@ -454,7 +489,24 @@ function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 's
     ];
   });
 
+  const join = (next: TikzModel) => {
+    onChange(next);
+    onSelect?.([next.links[next.links.length - 1].id]);
+  };
+  // Connect: an arrow from the shape clicked first to this one, between the sides that face each other, or a loop
+  // above a shape clicked twice; the tool stays, for the next arrow
+  const connectTo = (id: string) => {
+    if (tool !== 'connect' || readOnly) return;
+    const from = start.current && boxes.get(start.current);
+    const to = boxes.get(id);
+    start.current = from ? null : id;
+    if (!from || !to) return;
+    const [fromSide, toSide] = facing(from, to);
+    queueMicrotask(() => join(connect(model, from.id, to.id, fromSide, toSide)));
+  };
+
   const place = (at: { x: number; y: number }) => {
+    start.current = null;
     const shape = SHAPES.find(([s]) => s === tool)?.[0];
     if (!shape || readOnly) return;
     const [w, h, text] = NEW[shape];
@@ -465,7 +517,7 @@ function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 's
   };
 
   return (
-    <div className={`diagram-flow${tool !== 'select' ? ' placing' : ''}`}>
+    <div className={`diagram-flow${tool !== 'select' ? ' placing' : ''}${typst ? ' typst' : ''}`}>
       <FlowCanvas
         nodes={nodes}
         edges={edges}
@@ -479,11 +531,8 @@ function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 's
         onMove={(moves) => onChange({ ...model, boxes: moveBoxes(model.boxes, moves.map((m) => ({ id: m.id, x: Math.round(m.x / UNIT), y: Math.round(m.y / UNIT) }))) })}
         onResize={(id, width, height, at) => onChange({ ...model, boxes: model.boxes.map((b) => (b.id === id ? resized(b, width / UNIT, height / UNIT, at && { x: at.x / UNIT, y: at.y / UNIT }) : b)) })}
         loops
-        onConnect={(c) => {
-          const next = connect(model, c.source, c.target, (c.sourceHandle || 'r') as Side, (c.targetHandle || 'l') as Side);
-          onChange(next);
-          onSelect?.([next.links[next.links.length - 1].id]);
-        }}
+        onConnect={(c) => join(connect(model, c.source, c.target, (c.sourceHandle || 'r') as Side, (c.targetHandle || 'l') as Side))}
+        onNodeClick={connectTo}
         onPlace={place}
         onNodeDoubleClick={(id) => {
           onSelect?.([id]);
@@ -496,7 +545,7 @@ function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 's
 
 /** shapes: the ones this mode can write (fletcher's fewer); Select always */
 function Rail({ tool, onPick, shapes }: { tool: string; onPick(tool: string): void; shapes?: Shape[] }) {
-  return <ToolRail tools={shapes ? TOOLS.filter((t) => t.id === 'select' || shapes.includes(t.id as Shape)) : TOOLS} tool={tool} onPick={onPick} />;
+  return <ToolRail tools={shapes ? TOOLS.filter((t) => t.id === 'select' || t.id === 'connect' || shapes.includes(t.id as Shape)) : TOOLS} tool={tool} onPick={onPick} />;
 }
 
 /** The value the selected items share, or undefined when they differ. */
@@ -511,7 +560,8 @@ function Inspector({ model, onChange, selection = [], typst = false }: { model: 
     return (
       <div className="diagram-hint">
         Pick a shape on the left, then click the canvas to place it. Drag from a dot on a shape’s edge to another shape to join
-        them with an arrow, or to another dot on the same shape for a loop. Select something to change it here.
+        them with an arrow, or to another dot on the same shape for a loop; or pick Connect and click one shape, then another.
+        Select something to change it here.
       </div>
     );
   }
@@ -656,7 +706,8 @@ function Inspector({ model, onChange, selection = [], typst = false }: { model: 
           </span>
         </div>
       )}
-      {boxes.length > 0 && !links.length && !allPlain && !boxes.every((b) => b.shape === 'takeoff') && (
+      {/* the boxes' fill, also with the arrows between them that a drag on the canvas selects */}
+      {boxes.length > 0 && !boxes.every((b) => plainShape(b.shape) || b.shape === 'takeoff') && (
         <ColourField label="Fill" value={shared(boxes.map((b) => b.fill))} fallback="None" onChange={(fill) => patchBoxes({ fill })} />
       )}
       <ColourField label={allPlain ? 'Text colour' : 'Line colour'} value={shared(items.map((i) => i.stroke))} fallback="Black" onChange={(stroke) => patchAll({ stroke })} />
