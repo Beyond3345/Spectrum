@@ -436,7 +436,8 @@ export function findJunctions(model: CircuitModel, shapeOf: ShapeOf): End[] {
       const path = wirePath(el.points.map((p) => pos(p)), el.routes);
       path.forEach((p, i) => add(p, i === 0 || i === path.length - 1 ? 1 : 2));
       for (let i = 1; i < path.length; i += 1) legs.push([path[i - 1], path[i]]);
-    } else if (el.kind === 'path') {
+    } else if (el.kind === 'path' && PARTS.get(el.type)?.tikz !== 'open') {
+      // (Voltage between two points marks a voltage and joins nothing, so a port's terminal stays open)
       add(pos(el.a), 1, isPoint(el.a) ? undefined : el.a);
       add(pos(el.b), 1, isPoint(el.b) ? undefined : el.b);
     } else if (el.kind === 'node' && !SETS_OF_2_5.includes(PARTS.get(el.type)?.set ?? '')) {

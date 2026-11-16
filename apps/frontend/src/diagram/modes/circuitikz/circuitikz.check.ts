@@ -230,6 +230,17 @@ const three: CircuitModel = {
   junctions: []
 };
 eq(findJunctions(three, shapeOf), [{ part: 'u', pin: 'out' }], 'three ends at a node’s pin: the dot is kept as that pin');
+const port: CircuitModel = {
+  elements: [
+    { id: 'w', kind: 'wire', points: [{ x: 0, y: 8 }, { part: 't1', pin: 'center' }], routes: ['--'] },
+    { id: 't1', kind: 'node', type: 'terminal', at: { x: 8, y: 8 } },
+    { id: 't2', kind: 'node', type: 'terminal', at: { x: 8, y: 0 } },
+    { id: 'w2', kind: 'wire', points: [{ x: 0, y: 0 }, { part: 't2', pin: 'center' }], routes: ['--'] },
+    { id: 'v', kind: 'path', type: 'voltage-between', a: { part: 't1', pin: 'center' }, b: { part: 't2', pin: 'center' }, voltage: { text: 'v_o' } }
+  ],
+  junctions: []
+};
+eq(findJunctions(port, shapeOf), [], 'a voltage between two terminals joins nothing: they stay open, without dots');
 
 // ─── edits ───
 
