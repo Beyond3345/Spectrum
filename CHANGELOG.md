@@ -74,6 +74,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
   - New Mermaid starters and templates: Entity–relationship diagram, Pie chart, Bar and line chart, Mind map, Timeline and Git graph
 - Form presets:
   - Four new Form presets for fluid mechanics, in the chooser: Hydrostatic force on a gate, Manometer, Accelerating tank, and Floating body and stability. Each works out its answers (the resultant force and centre of pressure and the forces on the stop and hinge; the pressure difference; the tilted surface, depths, corner pressures and the acceleration that spills; the draught and metacentric height) and draws the figure as the course's slides or exam papers do
+  - Two new Form presets for mathematics, in the chooser. Conic section takes the general equation Ax² + Bxy + Cy² + Dx + Ey + F = 0 or an ellipse's, hyperbola's or parabola's own numbers, says what it is (the degenerate cases too), completes the squares, turns the axes when there is an xy term and draws the curve with its foci, vertices, directrix, asymptotes and turned axes. Linear transformation takes a 2×2 matrix and draws the unit square or a grid before and after, with the images of e₁ and e₂, the determinant and the real eigenvectors. Both write their working under the figure
 
 ### Changed
 
