@@ -108,14 +108,19 @@ export function FlowGrid({ gap, major }: { gap: number; major?: number }) {
   const [settings] = useSettings();
   const kind = settings.composerGrid;
   const far = major ?? gap * settings.composerGridEvery;
-  // React Flow draws a dot in its tile's corner and starts the tiles half a gap before the grid point
-  const dots = (id: string, spacing: number, size: number) => <Background id={id} variant={BackgroundVariant.Dots} gap={spacing} size={size} offset={(size - spacing) / 2} />;
-  const lines = (id: string, spacing: number, className: string) => <Background id={id} variant={BackgroundVariant.Lines} gap={spacing} patternClassName={className} />;
+  // React Flow draws a dot in its tile's corner and starts the tiles half a gap before the grid point. Each
+  // <Background> paints the canvas's colour under its marks, so the second one, over the first, is see-through
+  const dots = (id: string, spacing: number, size: number) => (
+    <Background id={id} variant={BackgroundVariant.Dots} gap={spacing} size={size} offset={(size - spacing) / 2} bgColor={id === 'major' ? 'transparent' : undefined} />
+  );
+  const lines = (id: string, spacing: number) => (
+    <Background id={id} variant={BackgroundVariant.Lines} gap={spacing} patternClassName={`flow-grid-line flow-grid-${id}`} bgColor={id === 'major' ? 'transparent' : undefined} />
+  );
   return (
     <>
-      {kind === 'lines' ? lines('minor', gap, 'flow-grid-line') : dots('minor', gap, 1.2)}
+      {kind === 'lines' ? lines('minor', gap) : dots('minor', gap, 1.2)}
       {kind === 'major-dots' && dots('major', far, 2.6)}
-      {(kind === 'major-lines' || kind === 'lines') && lines('major', far, 'flow-grid-line flow-grid-major')}
+      {(kind === 'major-lines' || kind === 'lines') && lines('major', far)}
     </>
   );
 }

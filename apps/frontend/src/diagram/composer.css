@@ -126,11 +126,11 @@
 }
 
 /* on a React Flow canvas (FlowGrid), in React Flow's own pattern colour */
-.react-flow__background-pattern.flow-grid-line {
+.react-flow__background-pattern.flow-grid-minor {
   opacity: 0.45;
 }
 
-.react-flow__background-pattern.flow-grid-line.flow-grid-major {
+.react-flow__background-pattern.flow-grid-major {
   stroke-width: 1.4;
   opacity: 0.9;
 }
