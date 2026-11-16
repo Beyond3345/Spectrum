@@ -95,6 +95,14 @@
   pointer-events: none;
 }
 
+.ckt-gap {
+  /* a dimension's text in a gap in its line, as the code's white box clears it */
+  paint-order: stroke;
+  stroke: var(--ckt-paper);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+}
+
 .ckt-draft {
   stroke: var(--accent);
   stroke-dasharray: 5 4;
@@ -402,6 +410,11 @@
 
 .ckt-rail-tint {
   fill: color-mix(in srgb, #4a6cf7 18%, transparent);
+}
+
+.ckt-rail-ink {
+  fill: var(--text);
+  stroke: none;
 }
 
 .ckt-rail-red {

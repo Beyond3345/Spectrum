@@ -127,7 +127,8 @@ export function rotate(model: CircuitModel, ids: Set<string>, step: number, shap
       if (!ids.has(el.id)) return el;
       // an annotation turns about its own middle, or with the rest; a box's corners stay a box's corners
       // ponytail: a rectangle or ellipse turned 45° stays upright, its corners turned; draw it again for a slanted frame
-      if (el.kind === 'annotation') return { ...el, points: el.points.map((p) => turn(p, centre || middle(el.points))) };
+      // a dimension measured across or up turns to measure up or across; a mark's letter and the ▽ mark stay upright
+      if (el.kind === 'annotation') return { ...el, points: el.points.map((p) => turn(p, centre || middle(el.points))), ...(el.along && quarter ? { along: el.along === 'x' ? 'y' : 'x' } : null) } as typeof el;
       if (el.kind === 'node') {
         const at = centre ? turn(el.at, centre) : el.at;
         return centre && !PARTS.get(el.type)?.tikz ? { ...el, at } : { ...el, at, rotate: ((((el.rotate || 0) + step) % 360) + 360) % 360 };
@@ -145,6 +146,9 @@ export function rotate(model: CircuitModel, ids: Set<string>, step: number, shap
     })
   };
 }
+
+/** a mark's letter across a mirror: left for right across a vertical one, below for above across a horizontal one */
+const MIRRORED_PLACE = { x: { right: 'left', left: 'right' }, y: { above: 'below', below: 'above' } };
 
 /**
  * Flips placed parts across (x: left to right) or (y: top to bottom); a path part inverts (x) or mirrors (y), each in its
@@ -164,7 +168,17 @@ export function flip(model: CircuitModel, ids: Set<string>, axis: 'x' | 'y'): Ci
       if (!ids.has(el.id)) return el;
       if (el.kind === 'annotation') {
         const c = group || middle(el.points);
-        return { ...el, points: el.points.map((p) => across(p, c)), ...(el.bend ? { bend: -el.bend } : null), ...(el.loop ? { loop: el.loop === 'cw' ? 'ccw' : 'cw' } : null) } as typeof el;
+        // a boundary's hatching stays on the side it was (mirrored, the way it was drawn turns round), and a mark's letter
+        // goes to the other side across the mirror
+        const place = el.shape === 'mark' ? (MIRRORED_PLACE[axis] as Record<string, string | undefined>)[el.place || 'right'] : undefined;
+        return {
+          ...el,
+          points: el.points.map((p) => across(p, c)),
+          ...(el.bend ? { bend: -el.bend } : null),
+          ...(el.loop ? { loop: el.loop === 'cw' ? 'ccw' : 'cw' } : null),
+          ...(el.shape === 'boundary' ? { hatch: el.hatch ? undefined : 'left' } : null),
+          ...(place ? { place: place === 'right' ? undefined : place } : null)
+        } as typeof el;
       }
       if (group && el.kind === 'node') return { ...el, at: across(el.at, group) };
       if (el.kind === 'node') return axis === 'x' ? { ...el, flipX: !el.flipX } : { ...el, flipY: !el.flipY };
