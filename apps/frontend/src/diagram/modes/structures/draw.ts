@@ -7,7 +7,7 @@ import type { Anchor, Box } from './labels';
 import { SUPPORT_DEPTH } from './symbols';
 import { UNITS, frameOf, loadDirection, memberName, members, nodeMap, placeAt, supports } from './model';
 import type { Cut, Load, Member, Pt, StructureModel, Support, Units } from './model';
-import { evalPoly, extremesInside, forcesAt } from './solve';
+import { displacementAt, evalPoly, extremesInside, forcesAt, rootsInside } from './solve';
 import type { Piece, Solution } from './solve';
 import { readLooks } from './looks';
 import type { DiagramLooks } from '../../types';
@@ -50,6 +50,10 @@ export interface StructStyle {
   /** the joint or cut the joint and section views show */
   joint?: string;
   cut?: string;
+  /** the deflected shape drawn with the diagrams: fitted to them, or the true deflections times this */
+  deflection?: 'fit' | number;
+  /** the diagrams mark x, along each member, where the shear is zero (and the moment largest) */
+  positions?: boolean;
 }
 
 const oneOf = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T => (allowed.includes(value as T) ? (value as T) : fallback);
@@ -69,7 +73,9 @@ export function readStyle(raw: Record<string, unknown>): StructStyle {
     grid: Math.round(n(raw.grid, 0, 3, 1)),
     diagrams: readLooks(raw.diagrams),
     ...(typeof raw.joint === 'string' && { joint: raw.joint }),
-    ...(typeof raw.cut === 'string' && { cut: raw.cut })
+    ...(typeof raw.cut === 'string' && { cut: raw.cut }),
+    ...((raw.deflection === 'fit' || n(raw.deflection, 1e-12, Infinity, 0) > 0) && { deflection: raw.deflection as 'fit' | number }),
+    ...(raw.positions === true && { positions: true })
   };
 }
 
@@ -118,6 +124,9 @@ export function formatValue(value: number, figures: number) {
   if (Math.abs(value) < 1e-12) return '0';
   return String(Number(value.toPrecision(figures)));
 }
+
+/** A member's own way along: left to right, or up when it's vertical. Its x is measured from that end and its moment read that way round. */
+export const forward = (u: Pt) => u.x > 1e-9 || (Math.abs(u.x) <= 1e-9 && u.y > 0);
 
 /** The structure's extent in drawing units. */
 function boundsOf(model: StructureModel) {
@@ -221,6 +230,12 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
       const on = all.filter((m) => m.a === n.id || m.b === n.id);
       if (n.hinge) out.push({ t: 'pic', name: 'hinge', at: P(n), rotate: 0 });
       else if (on.length && on.every((m) => m.bar)) out.push({ t: 'dot', at: P(n), r: 0.06, open: true });
+      // a shear release: its two strokes square to the member that carries the node
+      const carrier = n.shear && on.find((m) => !m.bar);
+      if (carrier) {
+        const u = frameOf(model, carrier).u;
+        out.push({ t: 'pic', name: 'shear', at: P(n), rotate: Math.round((Math.atan2(u.y, u.x) * 180) / Math.PI) });
+      }
     }
     return out;
   };
@@ -286,7 +301,11 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
         const sideAt = (s: number) => Math.sign(w(s)) || Math.sign(p.w1 + p.w2) || 1;
         const d = loadDirection(p, f.u);
         const base = (s: number, side = sideAt(s)) => add(P(add(f.a, times(f.u, s))), times(d, -GAP * side));
-        const top = (s: number, side = sideAt(s)) => add(base(s, side), times(d, -side * (0.15 + (0.5 * Math.abs(w(s))) / wMax)));
+        const rise = (s: number) => 0.15 + (0.5 * Math.abs(w(s))) / wMax;
+        // a vertical load per horizontal length is drawn on plan: its band level over the member, its arrows down to it
+        const level = (side: number) => (-d.y * side > 0 ? Math.max : Math.min)(base(from, side).y, base(to, side).y);
+        const flat = p.projected && Math.abs(d.x) < 1e-9 && Math.abs(f.u.y) > 1e-9;
+        const top = (s: number, side = sideAt(s)) => (flat ? { x: base(s, side).x, y: level(side) - d.y * side * rise(s) } : add(base(s, side), times(d, -side * rise(s))));
         const lengthCm = (to - from) * scale;
         const count = Math.max(2, Math.round(lengthCm / 0.4) + 1);
         const stops = Array.from({ length: count }, (_, i) => from + ((to - from) * i) / (count - 1));
@@ -322,6 +341,15 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
     }
     return out;
   };
+
+  /** each settling support's settlement, under it */
+  const settleItems = (keepNode: (id: string) => boolean): Item[] =>
+    supports(model).flatMap((s) => {
+      if (!s.settle || !nodes.has(s.node) || !keepNode(s.node)) return [];
+      const at = P(nodes.get(s.node)!);
+      const name = nameOf(s.node);
+      return [{ t: 'text', at: add(at, { x: 0.1, y: -SUPPORT_DEPTH - 0.05 }), tex: name ? si.equals(`\\Delta_{${name}}`, fmt(s.settle), L) : value(s.settle, L), anchor: 'north west', id: s.id, around: at } as Item];
+    });
 
   // ─── reactions ───
 
@@ -473,14 +501,48 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
     if (!samples.length) return { shape: [], labels: [] };
     const at = (s: number, v: number) => add(base(s), times(offsetOf(m, c, v), h));
     const shape: Item[] = [{ t: 'line', pts: [base(0), ...samples.map((x) => at(x.s, x.v)), base(f.length)], ink: 'line', closed: true, fill: FILL_OF[c] }];
-    // a beam drawn right to left has its own axes turned half a turn: V reads the same, M the other way (sagging +)
-    const sense = c === 'M' && isBeam && f.u.x < 0 ? -1 : 1;
+    // a member drawn against its own way (right to left, or down) has its axes turned half a turn: V reads the same,
+    // M the other way, so it reads as one drawn the other way would (a beam's sagging +)
+    const sense = c === 'M' && !forward(f.u) ? -1 : 1;
     const labels = labelsOf(m, c, tolerance).map((label): Item => {
       const d = unit(add(times(unit(offsetOf(m, c, label.v)), 1), times(f.u, label.lean * 0.9)));
       return { t: 'text', at: add(at(label.s, label.v), times(d, 0.08)), tex: si.num(fmt(sizes ? Math.abs(label.v) : sense * label.v)), anchor: anchorFor(d), around: at(label.s, label.v), optional: true };
     });
-    return { shape, labels };
+    // x from the member's start, on the axis, away from the diagram there
+    const marks = !style.positions || c === 'N' ? [] : zeroShear(m).map((s): Item => {
+      const v = forcesAt(solution, m.id, s)[c];
+      const d = Math.abs(v) > tolerance ? times(unit(offsetOf(m, c, v)), -1) : times(sideOf(m).plot, -1);
+      return { t: 'text', at: add(base(s), times(d, 0.08)), tex: si.equals('x', fmt(forward(f.u) ? s : f.length - s), L), anchor: anchorFor(d), around: base(s) };
+    });
+    return { shape, labels: [...marks, ...labels] };
   };
+
+  /** where the shear is zero along a member: inside a piece, or changing sign at a load between two */
+  const zeroShear = (m: Member) => {
+    const out: number[] = [];
+    piecesOf(m).forEach((p, i, list) => {
+      out.push(...rootsInside(p.V, p.L).map((t) => p.s0 + t));
+      const [before, after] = [evalPoly(p.V, p.L), list[i + 1] && evalPoly(list[i + 1].V, 0)];
+      if (after !== undefined && Math.abs(before) > solution.tiny && Math.abs(after) > solution.tiny && Math.sign(before) !== Math.sign(after)) out.push(p.s0 + p.L);
+    });
+    return out;
+  };
+
+  // ─── the deflected shape ───
+
+  /** a member's true displacement at s, in the drawing's length unit */
+  const moved = (m: Member, s: number) => {
+    const f = frameOf(model, m);
+    const { u, v } = displacementAt(solution, m.id, s);
+    return add(times(f.u, u), times(f.n, v));
+  };
+  /** points along each piece of a member: the ends and 48 between (the curve is a quintic, smooth at this spacing) */
+  const stations = (m: Member) => piecesOf(m).flatMap((p) => Array.from({ length: 49 }, (_, i) => p.s0 + (p.L * i) / 48));
+  /** the exaggeration in cm a unit of deflection, `fit` putting the largest at this many cm */
+  const exaggeration = (largest: number, fit: number) => (style.deflection === 'fit' ? (largest > 0 ? fit / largest : 0) : (style.deflection ?? 0) * scale);
+  // ponytail: a truss's EA is relative (nearly rigid), so its deflections are to scale only against each other: its
+  // values aren't labelled; a true EA when truss deflections are asked for
+  const trueDeflections = all.some((m) => !m.bar);
 
   /** every member's diagram for a component, the extremes' labels first and any that would overlap left out */
   const componentItems = (c: 'N' | 'V' | 'M', base: (m: Member) => (s: number) => Pt, h: number, tolerance: number, sizes = false) => {
@@ -509,12 +571,32 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
       blocks.push({ title: TITLES[c][0], items, shift: { x: 0, y } });
       cursor = y + Math.min(e.minY, -0.35) - 0.3;
     }
+    if (style.deflection !== undefined) {
+      // the elastic curve on the beam's axis, and each member's largest deflection (up positive)
+      const curves = all.map((m) => stations(m).map((s) => ({ s, v: moved(m, s).y })));
+      const largest = Math.max(0, ...curves.flat().map((x) => Math.abs(x.v)));
+      const h = exaggeration(largest, 1);
+      const x = (m: Member, s: number) => P(add(frameOf(model, m).a, times(frameOf(model, m).u, s))).x;
+      const items: Item[] = [{ t: 'line', pts: [{ x: minX, y: 0 }, { x: maxX, y: 0 }], ink: 'axis' }];
+      all.forEach((m, i) => items.push({ t: 'line', pts: curves[i].map((p) => ({ x: x(m, p.s), y: p.v * h })), ink: 'member' }));
+      const labels = all.flatMap((m, i) => {
+        const peak = curves[i].reduce((a, b) => (Math.abs(b.v) > Math.abs(a.v) ? b : a));
+        if (!h || Math.abs(peak.v) <= largest * 1e-6) return [];
+        const d = { x: 0, y: Math.sign(peak.v) };
+        const at = { x: x(m, peak.s), y: peak.v * h };
+        return [{ t: 'text', at: add(at, times(d, 0.08)), tex: si.num(fmt(peak.v)), anchor: anchorFor(d), around: at, optional: true } as Item];
+      });
+      items.push(...declutter(labels), { t: 'text', at: { x: minX - 0.25, y: 0 }, tex: `$\\delta$ (${si.unit(L)})`, anchor: 'east' });
+      const e = extentOf(items);
+      const y = cursor - Math.max(e.maxY, 0.35);
+      blocks.push({ title: 'Deflected shape', items, shift: { x: 0, y } });
+    }
     return blocks;
   };
 
   /** a frame's (or truss's) diagrams, each on a copy of it, in a grid beside the free-body diagram */
   const frameDiagrams = (fbd: Item[]): Block[] => {
-    const wanted = shown(all.every((m) => m.bar) ? ['N'] : ['N', 'V', 'M']);
+    const wanted: ('N' | 'V' | 'M' | 'D')[] = [...shown(all.every((m) => m.bar) ? ['N'] : ['N', 'V', 'M']), ...(style.deflection !== undefined ? ['D' as const] : [])];
     const pts = model.nodes.filter((n) => all.some((m) => m.a === n.id || m.b === n.id)).map(P);
     const box = { minX: Math.min(...pts.map((p) => p.x)), maxX: Math.max(...pts.map((p) => p.x)), minY: Math.min(...pts.map((p) => p.y)), maxY: Math.max(...pts.map((p) => p.y)) };
     const size = Math.max(box.maxX - box.minX, box.maxY - box.minY, 1);
@@ -523,16 +605,37 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
     const fe = extentOf(fbd);
     const dx = Math.max(fe.maxX, box.maxX + pad) - Math.min(fe.minX, box.minX - pad) + 0.6;
     const dy = Math.max(fe.maxY, box.maxY + pad) - Math.min(fe.minY, box.minY - pad) + 0.6;
-    const spots = [{ x: dx, y: 0 }, { x: 0, y: -dy }, { x: dx, y: -dy }];
-    return wanted.map((c, i) => {
+    // two to a row, the free-body diagram first
+    const spot = (i: number) => ({ x: ((i + 1) % 2) * dx, y: -Math.floor((i + 1) / 2) * dy });
+    return wanted.map((c, i): Block => {
+      if (c === 'D') return { title: 'Deflected shape', items: frameDeflection(box, pad, hMax), shift: spot(i) };
       const max = maxOf(c, all);
       const h = max > 0 ? hMax / max : 0;
       const tolerance = Math.max(max * 1e-6, solution.tiny);
       const items: Item[] = all.map((m) => ({ t: 'line', pts: [P(nodes.get(m.a)!), P(nodes.get(m.b)!)], ink: 'line' }) as Item);
       items.push(...componentItems(c, (m) => { const f = frameOf(model, m); return (s) => P(add(f.a, times(f.u, s))); }, h, tolerance, c === 'M' && style.moments === 'tension'));
       items.push({ t: 'text', at: { x: box.minX - pad + 0.3, y: box.maxY + pad }, tex: `${TITLES[c][0]} (${si.unit(UNIT_OF[c])})`, anchor: 'south west' });
-      return { title: TITLES[c][0], items, shift: spots[i] };
+      return { title: TITLES[c][0], items, shift: spot(i) };
     });
+  };
+
+  /** a frame's deflected shape over its members, faint, and its largest displacement */
+  const frameDeflection = (box: { minX: number; maxY: number }, pad: number, hMax: number): Item[] => {
+    const curves = all.map((m) => stations(m).map((s) => ({ s, d: moved(m, s) })));
+    const largest = curves.flat().reduce((a, b) => (Math.hypot(b.d.x, b.d.y) > Math.hypot(a.d.x, a.d.y) ? b : a), { s: 0, d: { x: 0, y: 0 } });
+    const size = Math.hypot(largest.d.x, largest.d.y);
+    const h = exaggeration(size, hMax);
+    const where = (m: Member, p: { s: number; d: Pt }) => add(P(add(frameOf(model, m).a, times(frameOf(model, m).u, p.s))), times(p.d, h));
+    const items: Item[] = all.map((m) => ({ t: 'line', pts: [P(nodes.get(m.a)!), P(nodes.get(m.b)!)], ink: 'faint' }) as Item);
+    all.forEach((m, i) => items.push({ t: 'line', pts: curves[i].map((p) => where(m, p)), ink: 'member' }));
+    const peak = all.flatMap((m, i) => curves[i].filter((p) => p === largest).map((p) => where(m, p)))[0];
+    if (peak && size > 0 && h && trueDeflections) {
+      const d = unit(largest.d);
+      items.push({ t: 'text', at: add(peak, times(d, 0.08)), tex: si.equals('\\delta_{\\max}', fmt(size), L), anchor: anchorFor(d), around: peak });
+    }
+    const times100 = typeof style.deflection === 'number' ? ` ($\\times ${fmt(style.deflection)}$)` : '';
+    items.push({ t: 'text', at: { x: box.minX - pad + 0.3, y: box.maxY + pad }, tex: `Deflected shape${times100}`, anchor: 'south west' });
+    return items;
   };
 
   const isBeam = all.length > 0 && all.every((m) => !m.bar && Math.abs(frameOf(model, m).u.y) < 1e-9) && new Set(all.map((m) => nodes.get(m.a)!.y)).size === 1;
@@ -559,7 +662,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
     const blocks: Block[] = [
       { title: 'Structure', items: [...memberItems(() => [0, Infinity], undefined), ...nameItems(everything)] },
       { title: 'Supports', items: fbd ? (canvas ? supportItems(everything, true) : []) : supportItems(everything) },
-      { title: 'Loads', items: loadItems(() => true) },
+      { title: 'Loads', items: [...loadItems(() => true), ...settleItems(everything)] },
       { title: 'Reactions', items: fbd ? reactionItems(everything) : [] }
     ];
     // dimensions below the structure go under its supports and reactions
@@ -633,7 +736,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
     const keep = (place: Load) => place.kind !== 'dist' && 'node' in place.on && place.on.node === node.id;
     return scene([
       { title: `Joint ${name}`.trim(), items: nudge(items) },
-      { title: 'Loads', items: loadItems(keep) },
+      { title: 'Loads', items: [...loadItems(keep), ...settleItems((n) => n === node.id)] },
       { title: 'Reactions', items: reactionItems((n) => n === node.id) }
     ]);
   }
@@ -706,7 +809,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
     return scene(
       [
         { title: 'Part kept', items: [...memberItems((m) => ranges.get(m.id) ?? null), ...nameItems(keepNode)] },
-        { title: 'Loads', items: loadItems(keepLoad) },
+        { title: 'Loads', items: [...loadItems(keepLoad), ...settleItems(keepNode)] },
         { title: 'Reactions', items: reactionItems(keepNode) },
         { title: 'Forces at the cut', items: [{ t: 'line', pts: [P(cut.p), P(cut.q)], ink: 'cut', id: cut.id }, ...nudge(items)] }
       ],

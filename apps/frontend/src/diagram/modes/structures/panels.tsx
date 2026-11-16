@@ -10,17 +10,17 @@ import DiagramFields from './DiagramFields';
 import { VIEWS, formatValue, readStyle } from './draw';
 import type { StructStyle } from './draw';
 import { changedLooks } from './looks';
-import { UNITS, asStructure, fitLoads, frameOf, memberName, removeIds } from './model';
+import { UNITS, asStructure, convertUnits, fitLoads, frameOf, memberName, removeIds } from './model';
 import type { AngleArc, Cut, Dimension, Dist, Force, Member, Moment, Note, Part, SNode, StructureModel, Support, SupportType, Units } from './model';
 import { solve } from './solve';
-import { useShown } from './store';
+import { getShown, useShown } from './store';
 import { symbolSvg } from './symbols';
 
 // ─── rail ───
 
 const GROUPS: [string, [string, string][]][] = [
   ['Members', [['beam', 'Beam or frame member'], ['bar', 'Truss bar']]],
-  ['Joints', [['joint', 'Joint'], ['hinge', 'Internal hinge'], ['release', 'Released member end']]],
+  ['Joints', [['joint', 'Joint'], ['hinge', 'Internal hinge'], ['shear', 'Internal shear release'], ['release', 'Released member end']]],
   ['Supports', [['support:pin', 'Pin'], ['support:roller', 'Roller'], ['support:fixed', 'Fixed'], ['support:guided', 'Guided (slider)'], ['support:spring', 'Spring'], ['support:rotspring', 'Rotational spring']]],
   ['Loads', [['force', 'Point force'], ['moment-ccw', 'Moment, anticlockwise'], ['moment-cw', 'Moment, clockwise'], ['udl', 'Uniform load'], ['linear', 'Linearly varying load']]],
   ['Annotations', [['dim-h', 'Dimension, horizontal'], ['dim-v', 'Dimension, vertical'], ['dim-aligned', 'Dimension, aligned'], ['label', 'Label'], ['angle', 'Angle arc'], ['axes', 'Axes'], ['cut', 'Section cut']]]
@@ -31,6 +31,7 @@ const HINTS: Record<string, string> = {
   bar: 'drag from one joint to another; truss bars carry force along their length only',
   joint: 'click a member to split it, or anywhere for a free joint',
   hinge: 'click a joint, or a member to add one there',
+  shear: 'click a joint, or a member to add one there; moment passes it, shear doesn’t',
   release: 'click near the end of a member',
   force: 'click a joint or a point along a member',
   'moment-ccw': 'click a joint or a point along a member',
@@ -49,12 +50,12 @@ function Thumb({ tool }: { tool: string }) {
   const line = (d: string, extra = '') => <path d={d} className={`st-thumb ${extra}`} />;
   const arrow = 'st-thumb-arrow';
   let body: ReactNode;
-  if (tool.startsWith('support:') || tool === 'hinge') {
-    const name = tool === 'hinge' ? 'hinge' : tool.slice(8);
+  if (tool.startsWith('support:') || tool === 'hinge' || tool === 'shear') {
+    const name = tool.startsWith('support:') ? tool.slice(8) : tool;
     body = (
       <g transform="translate(16,11) scale(22,-22)">
         {name !== 'hinge' && <path d="M-0.55,0 L0.55,0" className="st-sym st-sym-heavy" vectorEffect="non-scaling-stroke" />}
-        {symbolSvg(name).map((s, i) => (s.circle ? <circle key={i} cx={s.circle.c.x} cy={s.circle.c.y} r={s.circle.r} className={`st-sym ${s.fill ? `st-sym-${s.fill}` : ''}`} vectorEffect="non-scaling-stroke" /> : <path key={i} d={s.d} className={`st-sym ${s.fill ? `st-sym-${s.fill}` : ''} ${s.heavy ? 'st-sym-heavy' : ''}`} vectorEffect="non-scaling-stroke" />))}
+        {symbolSvg(name).map((s, i) => (s.circle ? <circle key={i} cx={s.circle.c.x} cy={s.circle.c.y} r={s.circle.r} className={`st-sym ${s.fill ? `st-sym-${s.fill}` : ''}`} vectorEffect="non-scaling-stroke" /> : <path key={i} d={s.d} className={`st-sym ${s.fill ? `st-sym-${s.fill}` : ''} ${s.heavy ? 'st-sym-heavy' : ''} ${s.bare ? 'st-sym-bare' : ''}`} vectorEffect="non-scaling-stroke" />))}
       </g>
     );
   } else if (tool === 'beam') body = line('M4,14 L28,14', 'st-thumb-heavy');
@@ -292,6 +293,10 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
           <input type="checkbox" role="switch" checked={!!node.hinge} onChange={(e) => updateNode({ ...node, hinge: e.target.checked || undefined })} />
           <span>Internal hinge</span>
         </label>
+        <label className="checkbox-row">
+          <input type="checkbox" role="switch" checked={!!node.shear} onChange={(e) => updateNode({ ...node, shear: e.target.checked || undefined })} />
+          <span>Internal shear release</span>
+        </label>
       </>
     );
   } else {
@@ -332,8 +337,8 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
                 </label>
               ))}
             {!part.bar && (
-              <Field label="Relative EI" hint="Matters only when the structure is indeterminate.">
-                {(id) => <NumberInput id={id} value={part.EI ?? 1} positive onChange={(EI) => set({ EI: EI === 1 ? undefined : EI })} />}
+              <Field label="EI" hint="An indeterminate structure needs only the members’ ratios; a settlement and the deflections use the value.">
+                {(id) => <NumberInput id={id} value={part.EI ?? 1} unit={`${units.force} ${units.length}²`} positive onChange={(EI) => set({ EI: EI === 1 ? undefined : EI })} />}
               </Field>
             )}
             <Field label="Relative EA" hint="Members are nearly rigid along their length; a smaller EA lets this one stretch.">
@@ -353,8 +358,13 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
             <Field label="Angle" hint="Turns the support anticlockwise; a roller at an angle pushes square to its surface.">
               {(id) => <NumberInput id={id} value={part.angle ?? 0} unit="°" onChange={(angle) => set({ angle: angle || undefined })} />}
             </Field>
+            {part.type !== 'spring' && (
+              <Field label="Settlement" hint="How far the ground under it moves down. The structure follows it, and takes forces from it when indeterminate.">
+                {(id) => <NumberInput id={id} value={part.settle ?? 0} unit={units.length} onChange={(settle) => set({ settle: settle || undefined })} />}
+              </Field>
+            )}
             {(part.type === 'spring' || part.type === 'rotspring') && (
-              <Field label="Stiffness" hint={`Set against the members’ EI, where a relative EI of 1 means 1 ${units.force} ${units.length}².`}>
+              <Field label="Stiffness" hint={`Set against the members’ EI, in ${units.force} ${units.length}².`}>
                 {(id) => <NumberInput id={id} value={part.k ?? 1} unit={part.type === 'spring' ? `${units.force}/${units.length}` : `${units.force} ${units.length}/rad`} positive onChange={(k) => set({ k: k === 1 ? undefined : k })} />}
               </Field>
             )}
@@ -423,6 +433,10 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
               )}
             </Field>
             <DirectionFields load={part} onMember update={set} />
+            <label className="checkbox-row">
+              <input type="checkbox" role="switch" checked={!!part.projected} onChange={(e) => set({ projected: e.target.checked || undefined })} />
+              <span>Per horizontal length, as snow on a roof</span>
+            </label>
             <LabelField value={part.label} onChange={(label) => set({ label })} />
           </>
         );
@@ -515,6 +529,14 @@ export function StructureStyleMenu({ style: raw, onChange }: { style: Record<str
   const style = readStyle(raw);
   const { model } = useShown();
   const set = (patch: Partial<StructStyle>) => onChange({ ...raw, ...patch });
+  /** units picked for a drawing with something in it, waiting for convert or keep */
+  const [units, setUnits] = useState<Units>();
+  const changeUnits = (to: Units, convert: boolean) => {
+    setUnits(undefined);
+    if (convert) getShown().edit?.(convertUnits(model, style.units, to));
+    set({ units: to, grid: 1 });
+  };
+  const without = (key: string) => Object.fromEntries(Object.entries(raw).filter(([k]) => k !== key));
   const joints = model.nodes.filter((n) => model.parts.some((p) => p.kind === 'member' && (p.a === n.id || p.b === n.id)));
   const cuts = model.parts.filter((p): p is Cut => p.kind === 'cut');
   return (
@@ -541,6 +563,23 @@ export function StructureStyleMenu({ style: raw, onChange }: { style: Record<str
           }}
         />
       )}
+      {style.view === 'diagrams' && (
+        <>
+          <label className="checkbox-row">
+            <input type="checkbox" role="switch" checked={style.deflection !== undefined} onChange={(e) => onChange(e.target.checked ? { ...raw, deflection: 'fit' } : without('deflection'))} />
+            <span>Deflected shape</span>
+          </label>
+          {style.deflection !== undefined && (
+            <Field label="Exaggeration" hint="Fitted, or the true deflections (from each member’s EI) times a factor.">
+              {(id) => <Select labelId={`${id}-label`} value={String(style.deflection)} options={[['fit', 'Fitted to the drawing'], ...[1, 10, 100, 1000, 10000].map((k): [string, string] => [String(k), `× ${k}`])]} onChange={(value) => set({ deflection: value === 'fit' ? 'fit' : Number(value) })} />}
+            </Field>
+          )}
+          <label className="checkbox-row">
+            <input type="checkbox" role="switch" checked={!!style.positions} onChange={(e) => onChange(e.target.checked ? { ...raw, positions: true } : without('positions'))} />
+            <span>Mark x where the shear is zero</span>
+          </label>
+        </>
+      )}
       <Field label="Bending moment diagrams" hint="The default for new drawings is in Settings › Composer.">
         {(id) => (
           <Select
@@ -554,9 +593,19 @@ export function StructureStyleMenu({ style: raw, onChange }: { style: Record<str
           />
         )}
       </Field>
-      <Field label="Units" hint="Values are kept as typed; only the units’ names change.">
-        {(id) => <Select labelId={`${id}-label`} value={style.units} options={Object.entries(UNITS).map(([id, u]): [string, string] => [id, u.label])} onChange={(units) => set({ units: units as Units, grid: 1 })} />}
+      <Field label="Units" hint={units ? undefined : 'Changing them converts the drawing’s numbers, or keeps them as typed.'}>
+        {(id) => <Select labelId={`${id}-label`} value={units ?? style.units} options={Object.entries(UNITS).map(([id, u]): [string, string] => [id, u.label])} onChange={(to) => (to === style.units ? setUnits(undefined) : model.nodes.length ? setUnits(to as Units) : changeUnits(to as Units, false))} />}
       </Field>
+      {units && (
+        <div className="ckt-row">
+          <button type="button" className="btn small" onClick={() => changeUnits(units, true)}>
+            Convert to {UNITS[units].force} and {UNITS[units].length}
+          </button>
+          <button type="button" className="btn small" onClick={() => changeUnits(units, false)}>
+            Keep the numbers
+          </button>
+        </div>
+      )}
       <Field label="Grid">
         {(id) => <Select labelId={`${id}-label`} value={String(style.grid)} options={UNITS[style.units].grids.map((g, i): [string, string] => [String(i), `${g} ${UNITS[style.units].length}`])} onChange={(grid) => set({ grid: Number(grid) })} />}
       </Field>

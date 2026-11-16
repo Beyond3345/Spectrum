@@ -1,13 +1,14 @@
 // The vector canvas: the drawing as the code draws it, its panels side by side, with points to drag (snapped to the
 // grid and to each other) and the rail's tools, which pick points one after another: a vector from one point to
-// another, the foot of a projection from a point and two on a line. Clicking where there's no point makes one.
+// another, the foot of a projection from a point and two on a line. Clicking where there's no point makes one, bare (no
+// dot or letter); the Point tool's points have both.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import Icon from '../../../app/Icon';
 import { useCanvasPrefs } from '../../FlowCanvas';
 import { colourCss } from '../shared';
-import { readStyle, styledVectors } from './code';
-import { PICKS, WIDTH_PT, addPoint, applyTool, asVectors, dropUnused, clipLine, dist, frameOf, isLink, newAxes, newId, panelOf, pointNear, resolve, rightCorners, sideOffset } from './model';
+import { eqLineEnds, readStyle, styledVectors } from './code';
+import { PICKS, WIDTH_PT, addPoint, applyTool, asVectors, dropUnused, clipLine, dist, frameOf, isLink, newAxes, newEqLine, newId, panelOf, placed, pointNear, pointsOf, resolve, rightCorners, sideOffset } from './model';
 import type { Dash, FontSize, Item, Pt, Side, Stroke, Thickness, Tip, Tips, VPoint, VectorModel } from './model';
 
 /** screen pixels a centimetre at 100 % */
@@ -41,7 +42,18 @@ const ASKS: Record<string, string[]> = {
   sum: ['Click the tip of u', 'Click the tip of v'],
   diff: ['Click the tip of u', 'Click the tip of v'],
   foot: ['Click the point to project', 'Click a point on the line', 'Click another point on the line'],
-  polygon: ['Click the first corner', 'Click the next corner', 'Click the next corner', 'Click the next corner, or the first to close it']
+  polygon: ['Click the first corner', 'Click the next corner', 'Click the next corner', 'Click the next corner, or the first to close it'],
+  dropBoth: ['Click the point'],
+  ticks: ['Click one end', 'Click the other end: one more tick on the line between them'],
+  circle: ['Click the centre', 'Click a point on the circle'],
+  arc: ['Click the centre', 'Click where the arc starts', 'Click where it ends, anticlockwise'],
+  angle: ['Click the corner', 'Click a point on one side', 'Click a point on the other side'],
+  meet: ['Click a point on the first line', 'Click another', 'Click a point on the second line', 'Click another'],
+  scale: ['Click the tail of the vector', 'Click its tip'],
+  place: ['Click the tail of the vector', 'Click its tip', 'Click the point to draw it from'],
+  reflect: ['Click the point to reflect', 'Click a point on the mirror line', 'Click another'],
+  parallel: ['Click a point on the line', 'Click another', 'Click the point the parallel goes through'],
+  perp: ['Click a point on the line', 'Click another', 'Click the point the perpendicular goes through']
 };
 
 /** TeX as the canvas sketches it: the common maths read as text, the rest of the markup dropped. */
@@ -241,7 +253,7 @@ export default function VectorCanvas({
     // the point within reach, or the one on the grid point the click snaps to (clicking where one was made)
     let id = pointNear(model, panel, at, tolerance, places) ?? pointNear(model, panel, snapToGrid(at), 1e-9, places);
     if (!id) {
-      const added = addPoint(model, panel, snapToGrid(at));
+      const added = addPoint(model, panel, snapToGrid(at), true);
       next = added.model;
       id = added.id;
       setMade((m) => [...m, added.id]);
@@ -265,7 +277,7 @@ export default function VectorCanvas({
     commit(done.model);
     onSelect?.([done.id]);
     // drawing tools stay picked, to draw the next; a construction or mark goes back to Select
-    if (!['vector', 'segment', 'line', 'point'].includes(tool)) onTool?.('select');
+    if (!['vector', 'segment', 'line', 'point', 'circle'].includes(tool)) onTool?.('select');
   };
 
   /** A one-click tool: a point, a note or axes. */
@@ -283,15 +295,15 @@ export default function VectorCanvas({
       commit({ ...model, items: [...model.items, { id, kind: 'text', panel, x: at.x, y: at.y, text: 'Text' }] });
       onSelect?.([id]);
       onTool?.('select');
-    } else if (tool === 'axes') {
-      const made = newAxes(model, panel);
+    } else if (tool === 'axes' || tool === 'eqline') {
+      const made = (tool === 'axes' ? newAxes : newEqLine)(model, panel);
       commit(made.model);
       onSelect?.([made.id]);
       onTool?.('select');
     }
   };
 
-  const ONE_CLICK = (t: string) => t === 'point' || t === 'text' || t === 'axes';
+  const ONE_CLICK = (t: string) => t === 'point' || t === 'text' || t === 'axes' || t === 'eqline';
 
   // ─── pointer ───
 
@@ -472,7 +484,22 @@ export default function VectorCanvas({
     );
   };
 
+  /** an arc about c, radius r cm, anticlockwise from one angle to another in degrees, as an SVG path */
+  const arcPath = (c: Pt, r: number, from: number, to: number) => {
+    const sweep = ((to - from) % 360 + 360) % 360 || 360;
+    const point = (deg: number) => S({ x: c.x + r * Math.cos((deg * Math.PI) / 180), y: c.y + r * Math.sin((deg * Math.PI) / 180) });
+    // a whole turn as two halves
+    if (sweep >= 359.999) return `M${point(from).x},${point(from).y} A${r * k},${r * k} 0 1 0 ${point(from + 180).x},${point(from + 180).y} A${r * k},${r * k} 0 1 0 ${point(from).x},${point(from).y}`;
+    const [p, q] = [point(from), point(from + sweep)];
+    return `M${p.x},${p.y} A${r * k},${r * k} 0 ${sweep > 180 ? 1 : 0} 0 ${q.x},${q.y}`;
+  };
+  const degrees = (from: Pt, to: Pt) => (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI;
+  /** screen pixels a pt is at this zoom */
+  const ptPx = k / 28.45;
+
   const drawItem = (item: Item): ReactNode => {
+    // left out with a point that isn't anywhere now, as the code leaves it out
+    if (!pointsOf(item).every((id) => placed(places.get(id)))) return null;
     const on = selected.has(item.id);
     const panel = panelOf(shown, item);
     const shift = shiftOf.get(panel) ?? 0;
@@ -495,11 +522,23 @@ export default function VectorCanvas({
       const pos = item.label?.pos ?? 0.5;
       const at = { x: a.x + (b.x - a.x) * pos, y: a.y + (b.y - a.y) * pos };
       const names = { vector: 'Vector', segment: 'Segment', line: 'Line', highlight: 'Highlight' };
+      // equal-length ticks across the middle, 2 pt apart and 6 pt long
+      const n = Math.min(3, Math.max(0, Math.round(item.ticks ?? 0)));
+      const len = dist(a, b) || 1;
+      const [u, across] = [{ x: (b.x - a.x) / len, y: (b.y - a.y) / len }, { x: -(b.y - a.y) / len, y: (b.x - a.x) / len }];
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const tickAt = (i: number) => {
+        const along = (((i - (n - 1) / 2) * 2) * ptPx) / k;
+        const c = { x: mid.x + u.x * along, y: mid.y + u.y * along };
+        const h = (3 * ptPx) / k;
+        return <g key={i}>{line({ x: c.x - across.x * h, y: c.y - across.y * h }, { x: c.x + across.x * h, y: c.y + across.y * h }, 'vec-stroke', { style: look })}</g>;
+      };
       return group(
         <>
           {on && line(a, b, 'st-halo')}
           {line(a, b, 'st-hit')}
           {line(a, b, 'vec-stroke', { style: look })}
+          {!highlight && item.kind !== 'line' && Array.from({ length: n }, (_, i) => tickAt(i))}
           {!highlight && tips(item, item.kind === 'vector', look, a, b)}
           {item.label?.text.trim() && label(at, item.label.text, item.label.side ?? 'above', `${item.id}-label`, 0, item.label)}
         </>,
@@ -605,14 +644,71 @@ export default function VectorCanvas({
       }
       case 'drop': {
         const from = world(item.from);
-        const to = item.axis === 'x' ? { x: from.x, y: 0 } : { x: shift, y: from.y };
+        const ends = [...(item.axis !== 'y' ? [{ x: from.x, y: 0 }] : []), ...(item.axis !== 'x' ? [{ x: shift, y: from.y }] : [])];
         return group(
           <>
-            {on && line(from, to, 'st-halo')}
-            {line(from, to, 'st-hit')}
-            {line(from, to, 'vec-stroke', { style: strokeLook(item, style.width, 'dashed') })}
+            {ends.map((to, i) => (
+              <g key={i}>
+                {on && line(from, to, 'st-halo')}
+                {line(from, to, 'st-hit')}
+                {line(from, to, 'vec-stroke', { style: strokeLook(item, style.width, 'dashed') })}
+              </g>
+            ))}
           </>,
-          `Drop from ${nameOf(item.from)} to the ${item.axis} axis`
+          item.axis === 'both' ? `Drop from ${nameOf(item.from)} to both axes` : `Drop from ${nameOf(item.from)} to the ${item.axis} axis`
+        );
+      }
+      case 'angle': {
+        const [V, A, B] = [world(item.at), world(item.from), world(item.to)];
+        if (dist(V, A) < 1e-9 || dist(V, B) < 1e-9) return null;
+        const r = item.radius ?? 0.6;
+        const [from, to] = [degrees(V, A), degrees(V, B)];
+        const sweep = ((to - from) % 360 + 360) % 360;
+        const look = strokeLook(item);
+        const d = arcPath(V, r, from, to);
+        const middle = ((from + sweep / 2) * Math.PI) / 180;
+        const end = (deg: number) => ({ x: V.x + r * Math.cos((deg * Math.PI) / 180), y: V.y + r * Math.sin((deg * Math.PI) / 180) });
+        return group(
+          <>
+            {on && <path d={d} className="st-halo" />}
+            <path d={d} className="st-hit" />
+            <path d={d} className="vec-stroke" style={look} />
+            {item.double && <path d={arcPath(V, r + 0.07, from, to)} className="vec-stroke" style={look} />}
+            {item.arrow && tips({ end: style.tips }, false, look, end(to - Math.min(10, sweep / 2)), end(to))}
+            {item.label?.text.trim() && label({ x: V.x + (r + 0.25) * Math.cos(middle), y: V.y + (r + 0.25) * Math.sin(middle) }, item.label.text, undefined, `${item.id}-label`, 0, item.label)}
+          </>,
+          `Angle ${nameOf(item.from)}${nameOf(item.at)}${nameOf(item.to)}${item.label?.text ? `, ${plain(item.label.text)}` : ''}`
+        );
+      }
+      case 'circle': {
+        const [C, P] = [world(item.centre), world(item.through)];
+        const r = dist(C, P);
+        if (r < 1e-9) return null;
+        const d = item.to ? arcPath(C, r, degrees(C, P), degrees(C, world(item.to))) : arcPath(C, r, 0, 360);
+        return group(
+          <>
+            {on && <path d={d} className="st-halo" />}
+            <path d={d} className="st-hit" />
+            <path d={d} className="vec-stroke" style={{ ...strokeLook({ ...item, opacity: undefined }), strokeOpacity: item.opacity, fill: item.fill ? ink(item.fill) : 'none', fillOpacity: item.fillOpacity }} />
+          </>,
+          `${item.to ? 'Arc' : 'Circle'} about ${nameOf(item.centre)}`
+        );
+      }
+      case 'eqline': {
+        const ends = eqLineEnds(item, frames.get(panel)!);
+        if (!ends) return null;
+        const [a, b] = ends.map(W);
+        const look = strokeLook(item);
+        const pos = item.label?.pos ?? 0.5;
+        const at = { x: a.x + (b.x - a.x) * pos, y: a.y + (b.y - a.y) * pos };
+        return group(
+          <>
+            {on && line(a, b, 'st-halo')}
+            {line(a, b, 'st-hit')}
+            {line(a, b, 'vec-stroke', { style: look })}
+            {item.label?.text.trim() && label(at, item.label.text, item.label.side ?? 'above', `${item.id}-label`, 0, item.label)}
+          </>,
+          `Line ${plain(item.label?.text ?? '')}`
         );
       }
     }
@@ -628,7 +724,7 @@ export default function VectorCanvas({
   };
 
   /** the order things are drawn in, as the code writes them */
-  const LAYERS: Item['kind'][] = ['axes', 'highlight', 'polygon', 'line', 'segment', 'drop', 'right', 'vector', 'text'];
+  const LAYERS: Item['kind'][] = ['axes', 'highlight', 'polygon', 'circle', 'line', 'eqline', 'segment', 'drop', 'right', 'angle', 'vector', 'text'];
   const items = LAYERS.flatMap((layer) => shown.items.filter((i) => i.kind === layer));
 
   const gridPx = grid * k;
@@ -657,7 +753,7 @@ export default function VectorCanvas({
               })}
             {items.map(drawItem)}
             {shown.points.flatMap((p) =>
-              p.of?.kind === 'ratio' && p.of.marks
+              p.of?.kind === 'ratio' && p.of.marks && placed(places.get(p.id))
                 ? [
                     label({ x: (world(p.of.a).x + world(p.id).x) / 2, y: (world(p.of.a).y + world(p.id).y) / 2 }, String(p.of.m), p.of.marks, `${p.id}-m`),
                     label({ x: (world(p.id).x + world(p.of.b).x) / 2, y: (world(p.id).y + world(p.of.b).y) / 2 }, String(p.of.n), p.of.marks, `${p.id}-n`)
@@ -665,6 +761,7 @@ export default function VectorCanvas({
                 : []
             )}
             {shown.points.map((p) => {
+              if (!placed(places.get(p.id))) return null;
               const s = S(world(p.id));
               const on = selected.has(p.id);
               const picked = picks.includes(p.id);

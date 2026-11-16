@@ -179,11 +179,16 @@ export type AppSettings = {
   /** the conventions a new drawing copies into its style (ComposerDefaults) */
   composerMoments: ComposerDefaults['moments'];
   composerMohrShear: ComposerDefaults['mohrShear'];
+  /** how a new vector drawing writes a vector's name: \mathbf, \vec, \overrightarrow or esvect's \vv */
+  composerVectorNotation: NonNullable<ComposerDefaults['vectorNotation']>;
   /** Write units with siunitx: a new drawing's values as \qty, its units as \unit */
   composerSiUnits: boolean;
-  /** the circuit canvas's background: dots, with every composerGridEvery-th dot larger or joined by a line, or lines */
+  /** every canvas's background (diagram/CanvasGrid.tsx): dots, with every composerGridEvery-th dot larger or joined by a line, or lines */
   composerGrid: 'dots' | 'major-dots' | 'major-lines' | 'lines';
   composerGridEvery: number;
+  /** every canvas: dark whatever the app's theme, and its minimap shown; the buttons on a canvas change these too */
+  composerDark: boolean;
+  composerMinimap: boolean;
   /** a new structure's force diagrams: which are drawn, their fills and opacities */
   composerDiagrams: DiagramLooks;
   /** the chooser's Recently used: starter ids, newest first, at most eight (this computer's) */
@@ -288,9 +293,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   composerStylesOff: [],
   composerMoments: 'tension',
   composerMohrShear: 'down',
+  composerVectorNotation: 'bold',
   composerSiUnits: true,
   composerGrid: 'major-dots',
   composerGridEvery: 5,
+  composerDark: false,
+  composerMinimap: false,
   composerDiagrams: DIAGRAM_LOOKS,
   composerRecent: []
 };
@@ -389,7 +397,10 @@ export function effortOptions(model: ProviderModel | null): [ReasoningEffort, st
 }
 
 function parse(raw: string | null): AppSettings {
-  if (!raw) return DEFAULT_SETTINGS;
+  if (!raw) {
+    const canvas = canvasPrefs({});
+    return canvas.composerDark || canvas.composerMinimap ? { ...DEFAULT_SETTINGS, ...canvas } : DEFAULT_SETTINGS;
+  }
   try {
     const { ngrokToken: _dropped, mineruApiBase, mineruToken, ...parsed } = JSON.parse(raw) as Partial<AppSettings> & {
       ngrokToken?: string;
@@ -449,9 +460,11 @@ function parse(raw: string | null): AppSettings {
     merged.composerStylesOff = Array.isArray(merged.composerStylesOff) ? [...new Set(merged.composerStylesOff.filter((id) => typeof id === 'string'))] : [];
     if (!['tension', 'positive'].includes(merged.composerMoments)) merged.composerMoments = 'tension';
     if (!['down', 'clockwise-above', 'up'].includes(merged.composerMohrShear)) merged.composerMohrShear = 'down';
+    if (!['bold', 'vec', 'arrow', 'vv'].includes(merged.composerVectorNotation)) merged.composerVectorNotation = 'bold';
     merged.composerSiUnits = merged.composerSiUnits !== false;
     if (!['dots', 'major-dots', 'major-lines', 'lines'].includes(merged.composerGrid)) merged.composerGrid = 'major-dots';
     merged.composerGridEvery = Number.isInteger(merged.composerGridEvery) && merged.composerGridEvery >= 2 && merged.composerGridEvery <= 20 ? merged.composerGridEvery : 5;
+    Object.assign(merged, canvasPrefs(parsed));
     merged.composerDiagrams = readLooks(merged.composerDiagrams);
     merged.composerRecent = Array.isArray(merged.composerRecent) ? merged.composerRecent.filter((id) => typeof id === 'string').slice(0, 8) : [];
     for (const key of ['editorFont', 'editorFontCustom', 'editorThemeLight', 'editorThemeDark', 'parser', 'parserProtocol', 'openalexEmail', 'ncbiKey', 'unpaywallEmail'] as const) {
@@ -471,6 +484,22 @@ function parse(raw: string | null): AppSettings {
   } catch {
     return DEFAULT_SETTINGS;
   }
+}
+
+/**
+ * The canvas's colour and minimap, checked. Spectrum 2.4 and earlier kept the two in the composer's own storage, on
+ * this computer only: each starts from there until Settings has stored its own.
+ */
+function canvasPrefs(stored: { composerDark?: unknown; composerMinimap?: unknown }) {
+  let old: { dark?: unknown; minimap?: unknown } = {};
+  if (stored.composerDark === undefined || stored.composerMinimap === undefined) {
+    try {
+      old = Object(JSON.parse(window.localStorage.getItem('spectrum-diagram-canvas') || '{}'));
+    } catch {
+      // no storage, or nothing readable in it
+    }
+  }
+  return { composerDark: (stored.composerDark ?? old.dark) === true, composerMinimap: (stored.composerMinimap ?? old.minimap) === true };
 }
 
 function readRaw() {
@@ -535,6 +564,7 @@ export function updateSettings(patch: Partial<AppSettings>) {
 export const composerDefaults = (settings: AppSettings): ComposerDefaults => ({
   moments: settings.composerMoments,
   mohrShear: settings.composerMohrShear,
+  vectorNotation: settings.composerVectorNotation,
   siUnits: settings.composerSiUnits,
   diagrams: settings.composerDiagrams
 });
@@ -548,8 +578,8 @@ export const composerDefaults = (settings: AppSettings): ComposerDefaults => ({
 const SHARED_KEYS = [
   'theme', 'accent', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize',
   'autoInsertCite', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'languages', 'englishGrammar', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
-  'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions', 'composerMixSets', 'composerStylesOff', 'composerMoments', 'composerMohrShear',
-  'composerSiUnits', 'composerDiagrams', 'composerGrid', 'composerGridEvery'
+  'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions', 'composerMixSets', 'composerStylesOff', 'composerMoments', 'composerMohrShear', 'composerVectorNotation',
+  'composerSiUnits', 'composerDiagrams', 'composerGrid', 'composerGridEvery', 'composerDark', 'composerMinimap'
 ] as const satisfies readonly (keyof AppSettings)[];
 
 export const sharedPart = (settings: AppSettings): Record<string, unknown> => Object.fromEntries(SHARED_KEYS.map((key) => [key, settings[key]]));

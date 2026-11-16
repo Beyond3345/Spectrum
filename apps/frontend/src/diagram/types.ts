@@ -19,6 +19,8 @@ export interface ComposerDefaults {
   siUnits: boolean;
   /** structures: which of the axial force, shear force and bending moment diagrams are drawn, and their fills */
   diagrams?: DiagramLooks;
+  /** vector diagrams: how a vector's name (\mathbf{a} in a label) is written: bold, \vec, \overrightarrow or esvect's \vv */
+  vectorNotation?: 'bold' | 'vec' | 'arrow' | 'vv';
 }
 /** A structure's force diagram: drawn or not, its fill (an xcolor name or mix, or '#rrggbb') and the fill's opacity. */
 export interface DiagramLook { on: boolean; fill: string; opacity: number }

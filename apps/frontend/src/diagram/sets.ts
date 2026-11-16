@@ -32,7 +32,9 @@ const META: Record<string, Pick<SymbolSet, 'label' | 'categories'>> = {
   circuitikz: { label: 'Circuit symbols', categories: ['engineering/electrical', 'physics/electromagnetism'] },
   'spx-mech': { label: 'Mechanical supports (Spectrum)', categories: ['engineering/mechanical', 'physics/mechanics'] },
   'spx-flow': { label: 'Flowchart shapes (Spectrum)', categories: ['others/flowcharts', 'computing/software'] },
-  'spx-geom': { label: 'Points and marks (Spectrum)', categories: ['mathematics/geometry', 'physics/mechanics'] }
+  'spx-geom': { label: 'Points and marks (Spectrum)', categories: ['mathematics/geometry', 'physics/mechanics'] },
+  'spx-fluid': { label: 'Fluid mechanics (Spectrum)', categories: ['engineering/mechanical', 'physics/mechanics'] },
+  'spx-mat': { label: 'Construction materials (Spectrum)', categories: ['engineering/mechanical'] }
 };
 
 /** Every set, circuitikz's first: the circuit canvas's palette is its catalogue, a part's set its `set` (none: circuitikz). */
@@ -43,7 +45,7 @@ export const SETS: SymbolSet[] = Object.entries(SYMBOL_SETS).map(([id, set]) => 
   categories: META[id]?.categories ?? [],
   packages: set.packages,
   libraries: set.libraries,
-  symbols: CATALOGUE.filter((part) => (part.set || 'circuitikz') === id).map(({ id: symbol, label, group, style }) => ({ id: symbol, label, group, ...(style && { style }) }))
+  symbols: CATALOGUE.filter((part) => (part.set || 'circuitikz') === id).map(({ id: symbol, label, group, style, aliases }) => ({ id: symbol, label, group, ...(style && { style }), ...(aliases && { aliases }) }))
 }));
 
 export const setFor = (id: string) => SETS.find((set) => set.id === id);

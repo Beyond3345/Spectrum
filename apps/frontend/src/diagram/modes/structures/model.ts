@@ -12,6 +12,8 @@ export interface SNode {
   name?: string;
   /** an internal hinge: every member end here turns freely */
   hinge?: boolean;
+  /** an internal shear release: the beam members' ends here slide square to themselves past the first one's */
+  shear?: boolean;
 }
 
 export type SupportType = 'pin' | 'roller' | 'fixed' | 'guided' | 'spring' | 'rotspring';
@@ -25,6 +27,8 @@ export interface Support {
   angle?: number;
   /** a spring's stiffness, relative (force per length, or moment per radian) */
   k?: number;
+  /** settlement: how far the ground under it moves down, in the drawing's length unit */
+  settle?: number;
 }
 
 export interface Member {
@@ -76,6 +80,8 @@ export interface Dist {
   w2: number;
   angle: number;
   perp?: boolean;
+  /** w is per length of the horizontal projection (snow on a rafter), not per length of member */
+  projected?: boolean;
   label?: string;
 }
 
@@ -184,6 +190,9 @@ export function placeAt(model: StructureModel, place: Place): Pt {
   const f = frameOf(model, member);
   return { x: f.a.x + f.u.x * place.at, y: f.a.y + f.u.y * place.at };
 }
+
+/** What a distributed load's w is multiplied by to give it per length of member: the slope's cosine when it's per horizontal length. */
+export const perLength = (load: Dist, u: Pt) => (load.projected ? Math.abs(u.x) : 1);
 
 /** A load's direction as a unit vector (perpendicular loads need their member's frame). */
 export function loadDirection(load: { angle: number; perp?: boolean }, memberU?: Pt): Pt {
@@ -435,6 +444,18 @@ export function memberNear(model: StructureModel, at: Pt, tolerance: number): { 
   return best && { member: best.member, at: best.at };
 }
 
+/** Where a point snaps to on or along a member: a node within reach, else a grid step along the member it's beside, else the grid. */
+export function snapOnMember(model: StructureModel, p: Pt, grid: number, tolerance: number): Pt {
+  const node = model.nodes.find((n) => dist(n, p) <= tolerance);
+  if (node) return { x: node.x, y: node.y };
+  const hit = memberNear(model, p, tolerance * 1.5);
+  if (!hit) return { x: Math.round(p.x / grid) * grid, y: Math.round(p.y / grid) * grid };
+  const f = frameOf(model, hit.member);
+  const s = Math.max(0, Math.min(f.length, Math.round(hit.at / grid) * grid));
+  // twelve figures: 3.4, not 3.4000000000000004, in the inspector
+  return { x: Number((f.a.x + f.u.x * s).toPrecision(12)), y: Number((f.a.y + f.u.y * s).toPrecision(12)) };
+}
+
 /** The angle that turns a support's symbol to face the members on its node (a wall behind a cantilever's end). */
 function facing(model: StructureModel, node: string) {
   const on = members(model).filter((m) => m.a === node || m.b === node);
@@ -456,10 +477,10 @@ const SUPPORT_TOOLS: SupportType[] = ['pin', 'roller', 'fixed', 'guided', 'sprin
 export function placeTool(model: StructureModel, tool: string, at: Pt, tolerance: number): { model: StructureModel; id: string } | null {
   const near = model.nodes.find((n) => dist(n, at) <= tolerance);
   const onMember = memberNear(model, at, tolerance);
-  if (tool === 'joint' || tool === 'hinge') {
+  if (tool === 'joint' || tool === 'hinge' || tool === 'shear') {
     const placed = nodeAt(model, at, tolerance);
     if (tool === 'joint') return { model: placed.model, id: placed.node };
-    return { model: { ...placed.model, nodes: placed.model.nodes.map((n) => (n.id === placed.node ? { ...n, hinge: !n.hinge || undefined } : n)) }, id: placed.node };
+    return { model: { ...placed.model, nodes: placed.model.nodes.map((n) => (n.id === placed.node ? { ...n, [tool]: !n[tool] || undefined } : n)) }, id: placed.node };
   }
   if (tool === 'release') {
     if (!onMember || onMember.member.bar) return null;
@@ -521,6 +542,62 @@ export function connect(model: StructureModel, tool: string, a: Pt, b: Pt, toler
     return { model: { ...model, parts: [...model.parts, { id, kind: 'cut', p: a, q: b }] }, id };
   }
   return null;
+}
+
+// ─── units ───
+
+/** Each unit system's force in kN and length in m. */
+const SI: Record<Units, [number, number]> = { 'kN-m': [1, 1], 'N-mm': [1e-3, 1e-3], 'kip-ft': [4.4482216152605, 0.3048], 'lb-in': [4.4482216152605e-3, 0.0254] };
+
+/**
+ * The drawing's numbers in other units, the same structure: lengths, forces, loads, moments, EI, springs and
+ * settlements converted. EI turns explicit, since 1 in one unit is not 1 in another; EA, relative to EI, stays.
+ */
+export function convertUnits(model: StructureModel, from: Units, to: Units): StructureModel {
+  const [f, l] = [SI[from][0] / SI[to][0], SI[from][1] / SI[to][1]];
+  // ten figures, no float dust; within a billionth of a number of six figures, that number, so a round trip comes back as typed
+  const c = (v: number, k: number) => {
+    const [x, short] = [Number((v * k).toPrecision(10)), Number((v * k).toPrecision(6))];
+    return Math.abs(x - short) <= Math.abs(x) * 1e-9 ? short : x;
+  };
+  const pt = (p: Pt) => ({ x: c(p.x, l), y: c(p.y, l) });
+  const place = (on: Place): Place => ('node' in on ? on : { member: on.member, at: c(on.at, l) });
+  const stiff = (v: number | undefined) => (c(v ?? 1, f * l * l) === 1 ? undefined : c(v ?? 1, f * l * l));
+  const parts = model.parts.map((p): Part => {
+    switch (p.kind) {
+      case 'member': {
+        const { EI, ...rest } = p;
+        const ei = p.bar ? EI : stiff(EI);
+        return { ...rest, ...(ei !== undefined && { EI: ei }) };
+      }
+      case 'support':
+        return { ...p, ...(p.k !== undefined && { k: c(p.k, p.type === 'rotspring' ? f * l : f / l) }), ...(p.settle !== undefined && { settle: c(p.settle, l) }) };
+      case 'force':
+        return { ...p, on: place(p.on), value: c(p.value, f) };
+      case 'moment':
+        return { ...p, on: place(p.on), value: c(p.value, f * l) };
+      case 'dist':
+        return { ...p, from: c(p.from, l), to: c(p.to, l), w1: c(p.w1, f / l), w2: c(p.w2, f / l) };
+      case 'dim':
+        return { ...p, offset: c(p.offset, l) };
+      case 'label':
+      case 'axes':
+        return { ...p, at: pt(p.at) };
+      case 'cut':
+        return { ...p, p: pt(p.p), q: pt(p.q) };
+      default:
+        return p;
+    }
+  });
+  return { nodes: model.nodes.map((n) => ({ ...n, ...pt(n) })), parts };
+}
+
+// ─── the file ───
+
+/** The drawing has what Spectrum 2.5 added (a shear release, a settlement, a load on plan, the deflected shape, x labels): file version 5. */
+export function structureNeedsVersion5(raw: unknown, style: Record<string, unknown>) {
+  const model = asStructure(raw);
+  return style.deflection !== undefined || style.positions !== undefined || model.nodes.some((n) => n.shear) || model.parts.some((p) => (p.kind === 'support' && p.settle !== undefined) || (p.kind === 'dist' && p.projected !== undefined));
 }
 
 // ─── a starting drawing ───

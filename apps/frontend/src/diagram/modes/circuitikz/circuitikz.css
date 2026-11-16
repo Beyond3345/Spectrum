@@ -57,20 +57,9 @@
   display: block;
 }
 
+/* the dots Structures and Vector diagrams still draw themselves; the shared grid's marks are in composer.css */
 .ckt-dot {
   fill: var(--ckt-grid);
-}
-
-.ckt-grid-line {
-  fill: none;
-  stroke: var(--ckt-grid);
-  stroke-width: 1;
-  opacity: 0.45;
-}
-
-.ckt-grid-line.ckt-grid-major {
-  stroke-width: 1.4;
-  opacity: 0.9;
 }
 
 .ckt-glyph {
@@ -447,20 +436,6 @@
 .ckt-inspector-title {
   font-size: 13px;
   font-weight: 600;
-}
-
-/* the inspector's rarer fields, folded away until wanted (open by itself when a part has any set) */
-.ckt-more > summary {
-  cursor: pointer;
-  font-size: 12.5px;
-  color: var(--accent);
-}
-
-.ckt-more-body {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 12px;
 }
 
 .ckt-row {

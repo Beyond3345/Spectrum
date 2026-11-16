@@ -157,9 +157,9 @@ export const STARTERS: Starter[] = [
     id: 'general-drawing',
     mode: 'circuitikz',
     title: 'General drawing',
-    blurb: 'Every symbol on one canvas: circuits, logic, supports, flowchart shapes, points and marks, lines and arrows',
+    blurb: 'Every symbol on one canvas: circuits, logic, supports, pipes and tanks, test specimens, flowchart shapes, points and marks, lines and arrows',
     home: 'others/general',
-    aliases: ['general', 'drawing', 'sketch', 'symbols', 'mixed', 'anything', 'blank', 'shapes', 'lines', 'arrows'],
+    aliases: ['general', 'drawing', 'sketch', 'symbols', 'mixed', 'anything', 'blank', 'shapes', 'lines', 'arrows', 'fluid mechanics', 'hydrostatics', 'construction materials'],
     file: 'drawing',
     sets: SETS.filter((set) => set.id !== 'circuitikz').map((set) => set.id)
   },

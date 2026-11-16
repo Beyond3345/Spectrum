@@ -5,8 +5,16 @@ import { nextId } from '../tikz/code';
 // Commutative diagrams (tikz-cd): maths objects on a grid of rows and columns, and labelled arrows between them
 
 export type Cell = { id: string; row: number; col: number; text: string };
-/** swap: the label on the other side (below a rightward arrow) */
-export type CdArrow = { id: string; from: string; to: string; label?: string; swap?: boolean; hook?: boolean; twoHeads?: boolean; dashed?: boolean };
+/** An arrow's kind besides the plain one: ⇒, ↦, =, ↣ and ⇀ (tikz-cd's Rightarrow, mapsto, equal, tail and harpoon). */
+export type CdKind = 'double' | 'mapsto' | 'equal' | 'tail' | 'harpoon';
+/** Where a loop (an arrow from an object to itself) goes round. */
+export type CdLoop = 'above' | 'right' | 'below' | 'left';
+/**
+ * swap: the label on the other side (below a rightward arrow). kind: none is the plain arrow. shift: moved a little to
+ * its left or right, as each of two arrows between the same objects is. loop: an arrow to itself goes round this side,
+ * above when none.
+ */
+export type CdArrow = { id: string; from: string; to: string; label?: string; swap?: boolean; hook?: boolean; twoHeads?: boolean; dashed?: boolean; kind?: CdKind; shift?: 'left' | 'right'; loop?: CdLoop };
 export type CdModel = { cells: Cell[]; arrows: CdArrow[] };
 
 export const emptyCd = (): CdModel => ({ cells: [], arrows: [] });
@@ -32,10 +40,14 @@ export function labelSides(arrow: CdArrow, model: CdModel): [string, string][] {
   ];
 }
 
+const KIND: Record<CdKind, string> = { double: 'Rightarrow', mapsto: 'mapsto', equal: 'equal', tail: 'tail', harpoon: 'harpoon' };
+
 function arrowCode(arrow: CdArrow, from: Cell, to: Cell) {
   const label = arrow.label?.trim();
   const options = [
-    direction(from, to),
+    from === to ? `loop ${arrow.loop ?? 'above'}` : direction(from, to),
+    arrow.kind && KIND[arrow.kind],
+    arrow.shift && `shift ${arrow.shift}`,
     label && `${quoted(label)}${arrow.swap ? "'" : ''}`,
     arrow.hook && 'hook',
     arrow.twoHeads && 'two heads',
@@ -57,7 +69,7 @@ export function cdCode(model: CdModel) {
       const arrows = cell
         ? model.arrows.flatMap((a) => {
             const to = cells.get(a.to);
-            return a.from === cell.id && to && to !== cell ? [arrowCode(a, cell, to)] : [];
+            return a.from === cell.id && to ? [arrowCode(a, cell, to)] : [];
           })
         : [];
       entries.push([cell?.text.trim(), ...arrows].filter(Boolean).join(' '));
@@ -69,6 +81,26 @@ export function cdCode(model: CdModel) {
   const body = ['\\begin{tikzcd}', lines.join(' \\\\\n'), '\\end{tikzcd}'].filter((l) => l !== '');
   const texts = [...model.cells.map((c) => c.text), ...model.arrows.map((a) => a.label ?? '')];
   return { body: `${body.join('\n')}\n`, packages: ['tikz-cd', ...mathsPackages(texts)], libraries: [] };
+}
+
+/** The drawing uses something 2.5 added (fileFormat.ts's version 5), which builds up to 2.4 would write without. */
+export const cdNeedsVersion5 = (model: CdModel) => model.arrows.some((a) => a.kind || a.shift || a.from === a.to);
+
+/**
+ * A new arrow: a loop round the side it was drawn from when both ends are one object. A second arrow between the same
+ * two objects, either way, shifts both apart: each to its own left when they go opposite ways, to either side when they
+ * go the same way, the one on the right with its label below it.
+ */
+export function connectCd(model: CdModel, from: string, to: string, loop?: CdLoop): CdModel {
+  const id = nextId('a', model.arrows.map((a) => a.id));
+  if (from === to) return { ...model, arrows: [...model.arrows, { id, from, to, ...(loop && loop !== 'above' ? { loop } : {}) }] };
+  const same = (a: CdArrow) => a.from === from && a.to === to;
+  const back = (a: CdArrow) => a.from === to && a.to === from;
+  const pair = model.arrows.some((a) => same(a) || back(a));
+  const arrows = model.arrows.map((a) => ((same(a) || back(a)) && !a.shift ? { ...a, shift: 'left' as const } : a));
+  // the one on the right, going the same way, has its label on that side too
+  const shift: Partial<CdArrow> = !pair ? {} : model.arrows.some(same) ? { shift: 'right', swap: true } : { shift: 'left' };
+  return { ...model, arrows: [...arrows, { id, from, to, ...shift }] };
 }
 
 // ─── the selection's Copy, Paste and Delete ───

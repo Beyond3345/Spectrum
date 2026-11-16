@@ -1,16 +1,24 @@
 import { createContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { colourCss, isColour } from './modes/shared';
+import { useToolKeys, useToolTitle } from './toolKeys';
+import type { ToolKey } from './toolKeys';
 
 // The pieces the drawing modes' rails and inspectors share.
 
 /** The project the diagram is in, for a mode that reads its files (a plot's data). */
 export const ProjectContext = createContext('');
 
-export type Tool = { id: string; label: string; icon: ReactNode };
+/** shortcut: the tool's key (toolKeys.ts), shown in its tooltip and answered while the pointer is over the drawing */
+export type Tool = { id: string; label: string; icon: ReactNode; shortcut?: ToolKey };
 
-/** The left rail: one button per tool, the chosen one pressed. */
+/** The left rail: one button per tool, the chosen one pressed. A tool's key picks it as a click does. */
 export function ToolRail({ tools, tool, onPick }: { tools: Tool[]; tool: string; onPick(tool: string): void }) {
+  const title = useToolTitle();
+  useToolKeys(
+    () => document.querySelector('.diagram-stage'),
+    Object.fromEntries(tools.flatMap((t) => (t.shortcut ? [[t.shortcut, () => onPick(t.id)]] : [])))
+  );
   return (
     <div className="diagram-rail-tools" role="toolbar" aria-orientation="vertical" aria-label="Tools">
       {tools.map((t) => (
@@ -18,7 +26,7 @@ export function ToolRail({ tools, tool, onPick }: { tools: Tool[]; tool: string;
           key={t.id}
           type="button"
           className={`diagram-tool${t.id === tool ? ' active' : ''}`}
-          title={t.label}
+          title={title(t.label, t.shortcut)}
           aria-label={t.label}
           aria-pressed={t.id === tool}
           onClick={() => onPick(t.id)}
@@ -44,6 +52,26 @@ export function Row({ label, children }: { label: string; children: ReactNode })
       <span>{label}</span>
       {children}
     </label>
+  );
+}
+
+/**
+ * An inspector's rarer fields, folded under one line (`summary`, such as “Voltage, current and more”) until wanted.
+ * `open`: whether any field inside is set now; the fold then opens by itself, when the item is first shown and when one
+ * becomes set later (by Undo, say). It never closes by itself. Give it the item's id as `key`, so the next item
+ * selected starts folded again unless it has a field set:
+ *   <More key={el.id} summary="Voltage, current and more" open={!!(el.voltage || el.current)}>…fields…</More>
+ */
+export function More({ summary, open, children }: { summary: string; open: boolean; children: ReactNode }) {
+  const [shown, setShown] = useState(open);
+  useEffect(() => {
+    if (open) setShown(true);
+  }, [open]);
+  return (
+    <details className="diagram-more" open={shown} onToggle={(e) => setShown(e.currentTarget.open)}>
+      <summary>{summary}</summary>
+      <div className="diagram-more-body">{children}</div>
+    </details>
   );
 }
 
