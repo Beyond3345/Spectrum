@@ -5,7 +5,7 @@ import { TEMPLATES } from './modes/mermaid/templates';
 import { newFormModel, presetFor } from './modes/form/presets';
 import { signalSketch, slopeField } from './modes/pgfplots/code';
 import { sampleBeam } from './modes/structures/model';
-import { dividingSegment, lineThroughPoints, projections, triangleMidpoints } from './modes/vectors/model';
+import { angleBetween, cevians, dividingSegment, forcePolygon, freeBody, lineFromEquation, lineThroughPoints, parallelogramLaw, positionVectors, projections, scalarMultiples, triangleLaw, triangleMidpoints } from './modes/vectors/model';
 import { modelArchitecture, stateMachine } from './modes/tikz/examples';
 import { SETS } from './sets';
 import { styleHidden } from './universityStyles';
@@ -327,21 +327,30 @@ export const STARTERS: Starter[] = [
     file: 'mohr',
     model: () => newFormModel('mohr')
   },
-  // vector diagrams, from the user's own figures
+  // vector diagrams: the user's own figures, then forces, the sum laws and 2.5's constructions
   ...([
-    ['vectors', 'Vector diagram', 'Points, vectors, midpoints and projections on axes, kept exact as points move', undefined],
-    ['vector-line', 'Line through two points', 'A line through U and V with position vectors u and v and direction d = v − u', lineThroughPoints],
-    ['vector-ratio', 'Dividing a segment in a ratio', 'M on AB with AM : MB = 1 : 2, and the vectors a, b and m from O', dividingSegment],
-    ['vector-midpoints', 'Midpoints of a triangle', 'PQ joins the midpoints of OA and OB, parallel to AB and half as long', triangleMidpoints],
-    ['vector-projections', 'Projections', 'The projection of b onto a in three panels: acute, right and obtuse', projections]
-  ] as const).map(([id, title, blurb, model]): Starter => ({
+    ['vectors', 'Vector diagram', 'Points, vectors, midpoints and projections on axes, kept exact as points move', undefined, ['axes', 'coordinates', 'geometry', 'position vector', 'midpoint', 'projection', 'construction']],
+    ['vector-line', 'Line through two points', 'A line through U and V with position vectors u and v and direction d = v − u', lineThroughPoints, ['position vector', 'direction vector', 'vector equation of a line']],
+    ['vector-ratio', 'Dividing a segment in a ratio', 'M on AB with AM : MB = 1 : 2, and the vectors a, b and m from O', dividingSegment, ['ratio', 'section formula', 'internal division']],
+    ['vector-midpoints', 'Midpoints of a triangle', 'PQ joins the midpoints of OA and OB, parallel to AB and half as long', triangleMidpoints, ['midpoint theorem', 'midpoint']],
+    ['vector-projections', 'Projections', 'The projection of b onto a in three panels: acute, right and obtuse', projections, ['projection', 'foot', 'dot product', 'scalar product']],
+    ['vector-free-body', 'Free-body diagram on a block', 'A block with its weight, the normal reaction, a pull and friction', freeBody, ['FBD', 'free body', 'forces', 'friction', 'normal reaction', 'weight']],
+    ['vector-triangle-law', 'Triangle law', 'b drawn from the tip of a, and the resultant a + b', triangleLaw, ['vector addition', 'head to tail', 'resultant']],
+    ['vector-parallelogram-law', 'Parallelogram law', 'a and b from one point, the dashed sides and the diagonal a + b', parallelogramLaw, ['parallelogram', 'vector addition', 'resultant']],
+    ['vector-force-polygon', 'Force polygon', 'Four forces head to tail and the resultant closing the polygon', forcePolygon, ['polygon of forces', 'resultant', 'equilibrium', 'forces']],
+    ['vector-position-ij', 'Position vectors with i and j', 'P(3, 2) with r = 3i + 2j and the unit vectors i and j', positionVectors, ['unit vector', 'components', 'i j', 'position vector']],
+    ['vector-cevians', 'Medians of a triangle', 'The medians meeting at the centroid G, each side’s halves ticked alike', cevians, ['cevian', 'centroid', 'median', 'intersection', 'equal-length ticks']],
+    ['vector-angle', 'Angle between two vectors', 'θ between a and b, with cos θ from their dot product', angleBetween, ['angle', 'theta', 'dot product', 'scalar product', 'cosine']],
+    ['vector-eqline', 'Line from its equation', '2x + 3y − 6 = 0 with its intercepts and its normal n', lineFromEquation, ['intercepts', 'normal vector', 'linear equation', 'ax + by + c = 0']],
+    ['vector-scalar-multiples', 'Scalar multiples', 'v with 2v, −v and ½v beside it, following v as it moves', scalarMultiples, ['scalar multiple', 'parallel vectors', 'scaling']]
+  ] as const).map(([id, title, blurb, model, aliases]): Starter => ({
     id,
     mode: 'vectors',
     title,
     blurb,
     home: 'mathematics/geometry',
     also: ['physics/mechanics'],
-    aliases: ['vector', 'vectors', 'position vector', 'geometry', 'midpoint', 'ratio', 'projection', 'foot', 'axes', 'coordinates', 'parallelogram'],
+    aliases: ['vector', 'vectors', ...aliases],
     file: id === 'vectors' ? 'vectors' : id,
     ...(model && { model })
   })),

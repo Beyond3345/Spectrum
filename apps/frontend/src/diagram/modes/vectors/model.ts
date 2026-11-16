@@ -1066,3 +1066,140 @@ export function projections(): VectorModel {
     items: [...a.items, ...b.items, ...c.items]
   };
 }
+
+// ─── starters for vector work: forces, the sum laws, i and j, and 2.5's constructions ───
+
+/** a point with its letter where it's clear (no side), dotted */
+const named = (id: string, x: number, y: number, text = `$${id}$`, panel = 'g1'): VPoint => pt(id, id, x, y, text ? { text } : null, true, panel);
+/** a point only there for a line to start or end at: no dot or letter */
+const bare = (id: string, x: number, y: number): VPoint => pt(id, id, x, y, null);
+const one = (points: VPoint[], items: Item[]): VectorModel => ({ panels: [{ id: 'g1', shift: 0 }], points, items });
+
+/** A block with its weight, the normal reaction, a pull and friction, each from its centre. */
+export function freeBody(): VectorModel {
+  return one(
+    [bare('A', -1, -0.75), bare('B', 1, -0.75), bare('C', 1, 0.75), bare('D', -1, 0.75), { ...bare('G', 0, 0), dot: true }, bare('W', 0, -2.5), bare('N', 0, 2.5), bare('F', 2.75, 0), bare('f', -2.25, 0)],
+    [
+      { id: 'block', kind: 'polygon', points: ['A', 'B', 'C', 'D'], fill: 'gray!20' },
+      { id: 'w', kind: 'vector', a: 'G', b: 'W', label: { text: '$W$', pos: 0.8 } },
+      { id: 'n', kind: 'vector', a: 'G', b: 'N', label: { text: '$N$', pos: 0.8 } },
+      { id: 'pull', kind: 'vector', a: 'G', b: 'F', label: { text: '$F$', pos: 0.8 } },
+      { id: 'fr', kind: 'vector', a: 'G', b: 'f', label: { text: '$f$', pos: 0.8 } }
+    ]
+  );
+}
+
+/** The triangle law: b drawn from the tip of a, and a + b from the tail of a to the tip of b. */
+export function triangleLaw(): VectorModel {
+  return one(
+    [named('O', 0, 0), named('A', 4, 1), named('B', 5, 4)],
+    [
+      { id: 'a', kind: 'vector', a: 'O', b: 'A', label: { text: bold('a') } },
+      { id: 'b', kind: 'vector', a: 'A', b: 'B', label: { text: bold('b') } },
+      { id: 's', kind: 'vector', a: 'O', b: 'B', colour: 'red', label: { text: '$\\mathbf{a}+\\mathbf{b}$' } }
+    ]
+  );
+}
+
+/** The parallelogram law: a and b from O, the dashed sides, and the diagonal a + b, which stays exact as A and B move. */
+export function parallelogramLaw(): VectorModel {
+  return one(
+    [named('O', 0, 0), named('A', 4, 0.5), named('B', 1.5, 3), { ...named('C', 5.5, 3.5), of: { kind: 'sum', u: 'A', v: 'B', o: 'O' } }],
+    [
+      { id: 'ac', kind: 'segment', a: 'A', b: 'C', dash: 'dashed' },
+      { id: 'bc', kind: 'segment', a: 'B', b: 'C', dash: 'dashed' },
+      { id: 'a', kind: 'vector', a: 'O', b: 'A', label: { text: bold('a') } },
+      { id: 'b', kind: 'vector', a: 'O', b: 'B', label: { text: bold('b') } },
+      { id: 's', kind: 'vector', a: 'O', b: 'C', colour: 'red', label: { text: '$\\mathbf{a}+\\mathbf{b}$' } }
+    ]
+  );
+}
+
+/** Four forces head to tail, and their resultant R closing the polygon. */
+export function forcePolygon(): VectorModel {
+  return one(
+    [named('P', 0, 0, ''), bare('Q', 3.5, 0.5), bare('R', 5, 2.5), bare('S', 3.5, 4.5), bare('T', 1, 4)],
+    [
+      { id: 'f1', kind: 'vector', a: 'P', b: 'Q', label: { text: '$\\mathbf{F}_1$' } },
+      { id: 'f2', kind: 'vector', a: 'Q', b: 'R', label: { text: '$\\mathbf{F}_2$' } },
+      { id: 'f3', kind: 'vector', a: 'R', b: 'S', label: { text: '$\\mathbf{F}_3$' } },
+      { id: 'f4', kind: 'vector', a: 'S', b: 'T', label: { text: '$\\mathbf{F}_4$' } },
+      { id: 'r', kind: 'vector', a: 'P', b: 'T', colour: 'red', dash: 'dashed', label: { text: '$\\mathbf{R}$' } }
+    ]
+  );
+}
+
+/** P(3, 2) and its position vector r = 3i + 2j, with the unit vectors i and j along the axes. */
+export function positionVectors(): VectorModel {
+  return one(
+    [pt('O', 'O', 0, 0, { text: '$O$', side: 'below left' }, true), named('P', 3, 2, '$P(3,2)$'), bare('I', 1, 0), bare('J', 0, 1)],
+    [
+      { id: 'ax', kind: 'axes', panel: 'g1', x: [-0.5, 4.5], y: [-0.5, 3.5], ticks: true },
+      { id: 'dx', kind: 'drop', from: 'P', axis: 'x' },
+      { id: 'i', kind: 'vector', a: 'O', b: 'I', colour: 'red', label: { text: bold('i'), side: 'below' } },
+      { id: 'j', kind: 'vector', a: 'O', b: 'J', colour: 'red', label: { text: bold('j') } },
+      { id: 'r', kind: 'vector', a: 'O', b: 'P', colour: 'blue', label: { text: '$\\mathbf{r}=3\\mathbf{i}+2\\mathbf{j}$' } }
+    ]
+  );
+}
+
+/** The medians of triangle ABC to the midpoints of its sides, the halves of each side ticked alike, meeting at G. */
+export function cevians(): VectorModel {
+  const mid = (id: string, a: string, b: string, x: number, y: number): VPoint => ({ ...named(id, x, y), of: { kind: 'mid', a, b } });
+  return one(
+    [
+      named('A', 0, 0),
+      named('B', 6, 0),
+      named('C', 2, 4),
+      mid('D', 'B', 'C', 4, 2),
+      mid('E', 'C', 'A', 1, 2),
+      mid('F', 'A', 'B', 3, 0),
+      { ...named('G', 8 / 3, 4 / 3), of: { kind: 'meet', a: 'A', b: 'D', c: 'B', d: 'E' } }
+    ],
+    [
+      { id: 'bd', kind: 'segment', a: 'B', b: 'D', ticks: 1 },
+      { id: 'dc', kind: 'segment', a: 'D', b: 'C', ticks: 1 },
+      { id: 'ce', kind: 'segment', a: 'C', b: 'E', ticks: 2 },
+      { id: 'ea', kind: 'segment', a: 'E', b: 'A', ticks: 2 },
+      { id: 'af', kind: 'segment', a: 'A', b: 'F', ticks: 3 },
+      { id: 'fb', kind: 'segment', a: 'F', b: 'B', ticks: 3 },
+      { id: 'ad', kind: 'segment', a: 'A', b: 'D', colour: 'blue' },
+      { id: 'be', kind: 'segment', a: 'B', b: 'E', colour: 'blue' },
+      { id: 'cf', kind: 'segment', a: 'C', b: 'F', colour: 'blue' }
+    ]
+  );
+}
+
+/** The angle θ between a and b, with cos θ as their dot product over their lengths. */
+export function angleBetween(): VectorModel {
+  return one(
+    [named('O', 0, 0), bare('A', 4, 1), bare('B', 1.5, 3)],
+    [
+      { id: 'a', kind: 'vector', a: 'O', b: 'A', label: { text: bold('a') } },
+      { id: 'b', kind: 'vector', a: 'O', b: 'B', label: { text: bold('b') } },
+      { id: 't', kind: 'angle', at: 'O', from: 'A', to: 'B', radius: 0.8, label: { text: '$\\theta$' } },
+      { id: 'cos', kind: 'text', panel: 'g1', x: 2.5, y: -1, text: '$\\cos\\theta=\\frac{\\mathbf{a}\\cdot\\mathbf{b}}{|\\mathbf{a}|\\,|\\mathbf{b}|}$' }
+    ]
+  );
+}
+
+/** The line 2x + 3y − 6 = 0 with its intercepts, and its normal n = (2, 3) from a point on it. */
+export function lineFromEquation(): VectorModel {
+  const line: EqLine = { id: 'l', kind: 'eqline', panel: 'g1', a: 2, b: 3, c: -6, label: { text: equationText({ a: 2, b: 3, c: -6 }), pos: 0.6 } };
+  const cut = (id: string, axis: 'x' | 'y', x: number, y: number): VPoint => ({ ...named(id, x, y, interceptText({ x, y })), shape: 'cross', of: { kind: 'intercept', line: 'l', axis } });
+  return one(
+    [pt('O', 'O', 0, 0, { text: '$O$', side: 'below left' }), cut('X', 'x', 3, 0), cut('Y', 'y', 0, 2), bare('P', 1.5, 1), bare('N', 2.5, 2.5)],
+    [{ id: 'ax', kind: 'axes', panel: 'g1', x: [-1, 4.5], y: [-1, 3.5], ticks: true }, line, { id: 'n', kind: 'vector', a: 'P', b: 'N', colour: 'red', label: { text: bold('n') } }]
+  );
+}
+
+/** v, and 2v, −v and ½v drawn beside it, each following v as it moves. */
+export function scalarMultiples(): VectorModel {
+  // each from its own tail T: T + v (as v − O from T), then k times that from T
+  const times = (n: string, x: number, k: number, text: string) => ({
+    points: [bare(`T${n}`, x, 0), { ...bare(`U${n}`, x + 2, 1), of: { kind: 'diff', u: 'O', v: 'V', o: `T${n}` } as Construction }, { ...bare(`K${n}`, x + 2 * k, k), of: { kind: 'scale', a: `T${n}`, b: `U${n}`, k } as Construction }],
+    items: [{ id: `v${n}`, kind: 'vector', a: `T${n}`, b: `K${n}`, label: { text } } as Item]
+  });
+  const rows = [times('2', 3, 2, '$2\\mathbf{v}$'), times('m', 10, -1, '$-\\mathbf{v}$'), times('h', 11, 0.5, '$\\frac{1}{2}\\mathbf{v}$')];
+  return one([named('O', 0, 0, ''), bare('V', 2, 1), ...rows.flatMap((r) => r.points)], [{ id: 'v', kind: 'vector', a: 'O', b: 'V', label: { text: bold('v') } }, ...rows.flatMap((r) => r.items)]);
+}

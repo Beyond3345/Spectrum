@@ -107,11 +107,17 @@ eq(plotCode(starterFor('signal-sketch')!.model!() as PlotModel).body.includes('x
 
 // vector diagrams: under Mathematics › Geometry and vectors, cross-listed under Physics › Mechanics and fluids
 const vectorStarters = STARTERS.filter((s) => s.mode === 'vectors');
-eq(vectorStarters.map((s) => s.id), ['vectors', 'vector-line', 'vector-ratio', 'vector-midpoints', 'vector-projections'], 'the vector composer and its four figures');
+eq(
+  vectorStarters.map((s) => s.id),
+  ['vectors', 'vector-line', 'vector-ratio', 'vector-midpoints', 'vector-projections', 'vector-free-body', 'vector-triangle-law', 'vector-parallelogram-law', 'vector-force-polygon', 'vector-position-ij', 'vector-cevians', 'vector-angle', 'vector-eqline', 'vector-scalar-multiples'],
+  'the vector composer, its four figures and nine more'
+);
+for (const [q, id] of [['FBD', 'vector-free-body'], ['parallelogram', 'vector-parallelogram-law'], ['resultant', 'vector-force-polygon'], ['centroid', 'vector-cevians'], ['unit vector', 'vector-position-ij'], ['dot product', 'vector-angle'], ['intercepts', 'vector-eqline'], ['scalar multiple', 'vector-scalar-multiples']]) eq(ids(q).includes(id), true, `${q} finds ${id}`);
+eq(ids('parallelogram').filter((id) => id.startsWith('vector')), ['vector-parallelogram-law'], 'each figure found by its own words, not every vector figure');
 eq(sectionsFor('mathematics').find((s) => s.id === 'mathematics/geometry')?.label, 'Geometry and vectors', 'the group');
 eq(vectorStarters.every((s) => s.home === 'mathematics/geometry' && sectionsFor('physics').find((x) => x.id === 'physics/mechanics')!.starters.includes(s)), true, 'each under Mechanics and fluids too');
 for (const q of ['vector', 'midpoint', 'projection', 'position vector']) eq(ids(q).includes('vectors'), true, `${q} finds the vector composer`);
-eq(vectorStarters.filter((s) => s.model).every((s) => vectorCode(s.model!(), {}).body.includes('\\coordinate (O) at (0,0);')), true, 'each figure writes code');
+eq(vectorStarters.filter((s) => s.model).every((s) => /\\coordinate \(\w+\) at \(0,0\);/.test(vectorCode(s.model!(), {}).body)), true, 'each figure writes code');
 
 // General drawing: under Others, with every symbol set on and no plotters
 const general = starterFor('general-drawing')!;

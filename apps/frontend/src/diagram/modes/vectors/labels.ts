@@ -60,7 +60,8 @@ export function placeVectorLabels(model: VectorModel, style: { scale: number; po
   const paper = (p: Pt, panel: string) => ({ x: (p.x + (shiftOf.get(panel) ?? 0)) * k, y: p.y * k });
   const pointAt = (id: string) => paper(places.get(id)!, panelOfPoint.get(id) ?? '');
   const there = (id: string) => placed(places.get(id));
-  const measured = (tex: string) => plain(notate(tex, style.notation));
+  // an operator measured with the space maths sets round it (the spacing counts a minus or equals sign wide, a space thin)
+  const measured = (tex: string) => plain(notate(tex, style.notation)).replace(/\s*[-+=<>−·×]\s*/g, ' = ');
   /** a label on a side of a place, dist pt further along each axis, as TikZ sets above right=2pt */
   const sided = (at: Pt, tex: string, side: Side, dist = 0): Spaced => {
     const o = sideOffset(side);
