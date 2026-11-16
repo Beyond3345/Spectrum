@@ -1746,8 +1746,8 @@ function CheckpointsPane() {
   );
 }
 
-/** The diagram composer: its canvas and wire shortcut, mixing symbol sets, and the conventions a new drawing starts with.
- * Also opened from the composer's own Settings button. */
+/** The diagram composer: every canvas's background, colour, minimap and tool keys, mixing symbol sets, and the
+ * conventions a new drawing starts with. Also opened from the composer's own Settings button. */
 export function ComposerPane() {
   const [settings, update] = useSettings();
   return (
@@ -1767,7 +1767,7 @@ export function ComposerPane() {
           ]}
           onChange={(value) => update({ composerGrid: value as AppSettings['composerGrid'] })}
         />
-        <span className="field-hint">The circuit canvas’s grid, to count squares and line parts up. The marks repeat from the same point, so they stay on the same grid points when you pan or zoom.</span>
+        <span className="field-hint">Every canvas’s grid, to count squares and line things up. The marks repeat from the same point, so they stay on the same grid points when you pan or zoom.</span>
       </div>
       {settings.composerGrid !== 'dots' && (
         <div className="field">
@@ -1788,10 +1788,26 @@ export function ComposerPane() {
             />
             <span className="field-hint">dots</span>
           </div>
+          <span className="field-hint">Structures marks every whole metre and Vector diagrams every centimetre, whatever this says.</span>
         </div>
       )}
+      <label className="checkbox-row">
+        <input type="checkbox" role="switch" checked={settings.composerDark} onChange={(e) => update({ composerDark: e.target.checked })} />
+        <span>
+          Dark canvas
+          <span className="field-hint">Every canvas is light until this is on, whatever the app’s theme; the PDF prints the same either way. The moon button on a canvas switches it too.</span>
+        </span>
+      </label>
+      <label className="checkbox-row">
+        <input type="checkbox" role="switch" checked={settings.composerMinimap} onChange={(e) => update({ composerMinimap: e.target.checked })} />
+        <span>
+          Minimap
+          <span className="field-hint">A small overview of the whole drawing in a corner of the canvas, on the canvases that have one.</span>
+        </span>
+      </label>
+      <h3 className="form-section-title">Tool keys</h3>
       <ShortcutsPane groups={['Diagram']} compact />
-      <div className="field-hint">The wire shortcut works while the pointer is over the drawing, so the key still types everywhere else.</div>
+      <div className="field-hint">A tool key works while the pointer is over the drawing, so the key still types everywhere else. Click one and press the new key; a key the canvases already use, such as R to turn, can’t be taken.</div>
       <h3 className="form-section-title">New drawings</h3>
       <label className="checkbox-row">
         <input type="checkbox" role="switch" checked={settings.composerMixSets} onChange={(e) => update({ composerMixSets: e.target.checked })} />
@@ -1828,6 +1844,21 @@ export function ComposerPane() {
           onChange={(value) => update({ composerMohrShear: value as AppSettings['composerMohrShear'] })}
         />
         <div className="field-hint">With τ positive downward, 2θ on the circle turns the same way as θ on the element.</div>
+      </div>
+      <div className="field">
+        <label id="settings-composerVectorNotation">Vector names</label>
+        <Select
+          labelId="settings-composerVectorNotation"
+          value={settings.composerVectorNotation}
+          options={[
+            ['bold', 'Bold, \\mathbf{a}'],
+            ['vec', 'Arrow, \\vec{a}'],
+            ['arrow', 'Long arrow, \\overrightarrow{OA}'],
+            ['vv', 'esvect, \\vv{a}']
+          ]}
+          onChange={(value) => update({ composerVectorNotation: value as AppSettings['composerVectorNotation'] })}
+        />
+        <div className="field-hint">How a new vector diagram writes each {'\\mathbf{…}'} in its labels. Each drawing can change it in its Style.</div>
       </div>
       <div className="field">
         <label>Structure diagrams</label>

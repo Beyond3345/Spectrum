@@ -2,13 +2,14 @@ import type { ComponentProps, KeyboardEvent } from 'react';
 import { BaseEdge, Handle, Position } from '@xyflow/react';
 import type { Edge, EdgeProps, Node, NodeProps } from '@xyflow/react';
 import Segmented from '../../../app/Segmented';
+import Select from '../../../app/Select';
 import { FlowCanvas } from '../../FlowCanvas';
+import { nextId } from '../tikz/code';
 import { Row, ToolRail, railIcon } from '../../controls';
 import type { Tool } from '../../controls';
 import type { DiagramMode } from '../../types';
-import { nextId } from '../tikz/code';
-import { cdCode, copyCd, emptyCd, labelSides, pasteCd, removeCd } from './code';
-import type { CdArrow, CdModel, Cell } from './code';
+import { cdCode, connectCd, copyCd, emptyCd, labelSides, pasteCd, removeCd } from './code';
+import type { CdArrow, CdKind, CdLoop, CdModel, Cell } from './code';
 
 // Commutative diagrams on a grid of cells
 
@@ -37,27 +38,64 @@ function CellView({ data: { cell } }: NodeProps<CellNode>) {
 
 type ArrowEdge = Edge<{ arrow: CdArrow; from: Cell; to: Cell }, 'cdArrow'>;
 
-/** tikz-cd's arrow, drawn between the two objects' boxes: hook, two heads, dashes and the label on its side. */
+const LOOP_OUT: Record<CdLoop, number[]> = { above: [0, -1], right: [1, 0], below: [0, 1], left: [-1, 0] };
+
+/**
+ * tikz-cd's arrow, drawn between the two objects' boxes, or round one as a loop: its kind (⇒, ↦, =, ↣, ⇀), hook, two
+ * heads, dashes, shift and the label on its side.
+ */
 function ArrowView({ data, selected }: EdgeProps<ArrowEdge>) {
   if (!data) return null;
   const { arrow, from, to } = data;
   const centre = (c: Cell) => [c.col * CELL + CELL / 2, c.row * CELL + CELL / 2];
   const [ax, ay] = centre(from);
-  const [bx, by] = centre(to);
-  const length = Math.hypot(bx - ax, by - ay) || 1;
-  const [ux, uy] = [(bx - ax) / length, (by - ay) / length];
-  // where the line leaves one box and reaches the other
-  const trim = Math.min(BOX_W / 2 / Math.abs(ux || 1e-9), BOX_H / 2 / Math.abs(uy || 1e-9)) + 4;
-  const p = [ax + ux * trim, ay + uy * trim];
-  const q = [bx - ux * trim, by - uy * trim];
+  let p: number[];
+  let q: number[];
+  let ux: number;
+  let uy: number;
+  let line: string;
+  let mid: number[];
+  if (from === to) {
+    // out of the box's side and back, a little apart, as tikz-cd's loop above and the like
+    const [dx, dy] = LOOP_OUT[arrow.loop ?? 'above'];
+    const edge = [ax + (dx * BOX_W) / 2, ay + (dy * BOX_H) / 2];
+    [p, q] = [1, -1].map((s) => [edge[0] - dy * 10 * s, edge[1] + dx * 10 * s]);
+    const reach = 36;
+    const [c1, c2] = [p, q].map((e, i) => [e[0] + dx * reach - dy * reach * 0.5 * (i ? -1 : 1), e[1] + dy * reach + dx * reach * 0.5 * (i ? -1 : 1)]);
+    const l = Math.hypot(q[0] - c2[0], q[1] - c2[1]) || 1;
+    [ux, uy] = [(q[0] - c2[0]) / l, (q[1] - c2[1]) / l];
+    line = `M${p[0]} ${p[1]}C${c1[0]} ${c1[1]} ${c2[0]} ${c2[1]} ${q[0]} ${q[1]}`;
+    mid = [edge[0] + dx * 46, edge[1] + dy * 40];
+  } else {
+    const [bx, by] = centre(to);
+    const length = Math.hypot(bx - ax, by - ay) || 1;
+    [ux, uy] = [(bx - ax) / length, (by - ay) / length];
+    // where the line leaves one box and reaches the other, moved to its left or right when shifted
+    const trim = Math.min(BOX_W / 2 / Math.abs(ux || 1e-9), BOX_H / 2 / Math.abs(uy || 1e-9)) + 4;
+    const shift = arrow.shift === 'left' ? 5 : arrow.shift === 'right' ? -5 : 0;
+    p = [ax + ux * trim + uy * shift, ay + uy * trim - ux * shift];
+    q = [bx - ux * trim + uy * shift, by - uy * trim - ux * shift];
+    line = `M${p[0]} ${p[1]}L${q[0]} ${q[1]}`;
+    const s = arrow.swap ? -1 : 1;
+    mid = [(p[0] + q[0]) / 2 + uy * 16 * s, (p[1] + q[1]) / 2 - ux * 16 * s];
+  }
   // left of the arrow, as tikz-cd puts a label (above a rightward arrow)
   const [nx, ny] = arrow.swap ? [-uy, ux] : [uy, -ux];
-  const head = (at: number[]) => `M${at[0] - ux * 8 + nx * 5} ${at[1] - uy * 8 + ny * 5}L${at[0]} ${at[1]}L${at[0] - ux * 8 - nx * 5} ${at[1] - uy * 8 - ny * 5}`;
-  const parts = [`M${p[0]} ${p[1]}L${q[0]} ${q[1]}`, head(q)];
+  const [lx, ly] = [uy, -ux];
+  const barb = (at: number[], side: number, size = 5) => `M${at[0] - ux * 8 + lx * size * side} ${at[1] - uy * 8 + ly * size * side}L${at[0]} ${at[1]}`;
+  const head = (at: number[], size = 5) => barb(at, 1, size) + `L${at[0] - ux * 8 - lx * size} ${at[1] - uy * 8 - ly * size}`;
+  const kind: CdKind | undefined = arrow.kind;
+  // the double and equal kinds are two lines, 2 px either side of the one
+  const twin = (k: number) => line.replace(/(-?[\d.]+) (-?[\d.]+)/g, (_, x, y) => `${Number(x) + lx * k} ${Number(y) + ly * k}`);
+  const parts = kind === 'double' || kind === 'equal' ? [twin(2.2), twin(-2.2)] : [line];
+  if (kind === 'double') parts.push(head(q, 7));
+  else if (kind === 'harpoon') parts.push(barb(q, 1));
+  else if (kind !== 'equal') parts.push(head(q));
+  if (kind === 'mapsto') parts.push(`M${p[0] + lx * 5} ${p[1] + ly * 5}L${p[0] - lx * 5} ${p[1] - ly * 5}`);
+  if (kind === 'tail') parts.push(head([p[0] + ux * 7, p[1] + uy * 7]));
   if (arrow.twoHeads) parts.push(head([q[0] - ux * 6, q[1] - uy * 6]));
   // the hook curls back from the tail, on the side opposite the label as tikz-cd draws it
   if (arrow.hook) parts.push(`M${p[0]} ${p[1]}A4 4 0 0 ${arrow.swap ? 1 : 0} ${p[0] - nx * 8} ${p[1] - ny * 8}`);
-  const mid = [(p[0] + q[0]) / 2 + nx * 16, (p[1] + q[1]) / 2 + ny * 16];
   return (
     <>
       <BaseEdge
@@ -130,10 +168,12 @@ function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 's
             })
           )
         }
+        loops
         onConnect={(c) => {
-          const id = nextId('a', model.arrows.map((a) => a.id));
-          onChange({ ...model, arrows: [...model.arrows, { id, from: c.source, to: c.target }] });
-          onSelect?.([id]);
+          const side = ({ top: 'above', right: 'right', bottom: 'below', left: 'left' } as Record<string, CdLoop>)[c.sourceHandle ?? ''];
+          const next = connectCd(model, c.source, c.target, side);
+          onChange(next);
+          onSelect?.([next.arrows[next.arrows.length - 1].id]);
         }}
         onPlace={({ x, y }) => {
           if (tool !== 'object' || readOnly) return;
@@ -162,11 +202,30 @@ function Rail({ tool, onPick }: { tool: string; onPick(tool: string): void }) {
 }
 
 
+const KINDS: [string, string][] = [
+  ['', 'Plain (→)'],
+  ['double', 'Double (⇒)'],
+  ['mapsto', 'Maps to (↦)'],
+  ['equal', 'Equals (=)'],
+  ['tail', 'Tail (↣)'],
+  ['harpoon', 'Harpoon (⇀)']
+];
+const LOOPS: [CdLoop, string][] = [
+  ['above', 'Above'],
+  ['right', 'On the right'],
+  ['below', 'Below'],
+  ['left', 'On the left']
+];
+/** The value the selected items share, or undefined when they differ. */
+const shared = <T,>(values: T[]) => (values.every((v) => v === values[0]) ? values[0] : undefined);
+
+/** One object's text; or one arrow's fields, or the fields several arrows share, changed for all of them at once. */
 function Inspector({ model, onChange, selection = [] }: { model: CdModel; onChange(m: CdModel): void; selection?: string[] }) {
-  const cell = selection.length === 1 ? model.cells.find((c) => c.id === selection[0]) : undefined;
-  const arrow = selection.length === 1 ? model.arrows.find((a) => a.id === selection[0]) : undefined;
-  const patchArrow = (patch: Partial<CdArrow>) => onChange({ ...model, arrows: model.arrows.map((a) => (a.id === arrow?.id ? { ...a, ...patch } : a)) });
-  if (cell) {
+  const cells = model.cells.filter((c) => selection.includes(c.id));
+  const arrows = model.arrows.filter((a) => selection.includes(a.id));
+  const patchArrows = (patch: Partial<CdArrow>) => onChange({ ...model, arrows: model.arrows.map((a) => (selection.includes(a.id) ? { ...a, ...patch } : a)) });
+  if (cells.length === 1 && !arrows.length) {
+    const cell = cells[0];
     return (
       <div className="diagram-inspector-fields">
         <Row label="Object (maths, without $)">
@@ -181,21 +240,48 @@ function Inspector({ model, onChange, selection = [] }: { model: CdModel; onChan
       </div>
     );
   }
-  if (arrow) {
+  if (arrows.length) {
+    const one = arrows.length === 1 ? arrows[0] : null;
+    const loops = arrows.filter((a) => a.from === a.to);
+    const straight = arrows.filter((a) => a.from !== a.to);
+    // named as one arrow runs (Above, Right, …); for several, as each goes
+    const sides: [string, string][] = one && !loops.length ? labelSides(one, model) : [['above', 'Left, as it goes'], ['below', 'Right, as it goes']];
+    const swap = shared(arrows.map((a) => !!a.swap));
     return (
       <div className="diagram-inspector-fields">
-        <Row label="Label (maths, without $)">
-          <input className="input" spellCheck={false} value={arrow.label ?? ''} onChange={(e) => patchArrow({ label: e.target.value })} />
-        </Row>
+        {!one && (
+          <div className="diagram-hint">
+            {arrows.length} arrows: a change here goes to all of them.{cells.length ? ' The objects selected with them keep their text.' : ''}
+          </div>
+        )}
+        {one && (
+          <Row label="Label (maths, without $)">
+            <input className="input" spellCheck={false} value={one.label ?? ''} onChange={(e) => patchArrows({ label: e.target.value })} />
+          </Row>
+        )}
         <div className="diagram-row">
           <span>Label side</span>
-          <Segmented
-            label="Label side"
-            value={arrow.swap ? 'below' : 'above'}
-            options={labelSides(arrow, model)}
-            onChange={(side) => patchArrow({ swap: side === 'below' || undefined })}
-          />
+          <Segmented label="Label side" value={swap === undefined ? null : swap ? 'below' : 'above'} options={sides} onChange={(side) => patchArrows({ swap: side === 'below' || undefined })} />
         </div>
+        <Row label="Arrow">
+          <Select value={shared(arrows.map((a) => a.kind ?? '')) ?? 'mixed'} options={KINDS} onChange={(kind) => patchArrows({ kind: (kind || undefined) as CdKind | undefined })} />
+        </Row>
+        {straight.length > 0 && (
+          <Row label={loops.length ? 'Shift (not the loops)' : 'Shift, for two arrows between the same objects'}>
+            <Select
+              value={shared(straight.map((a) => a.shift ?? '')) ?? 'mixed'}
+              options={[['', 'None'], ['left', sides[0][1]], ['right', sides[1][1]]]}
+              onChange={(shift) =>
+                onChange({ ...model, arrows: model.arrows.map((a) => (selection.includes(a.id) && a.from !== a.to ? { ...a, shift: (shift || undefined) as CdArrow['shift'] } : a)) })
+              }
+            />
+          </Row>
+        )}
+        {loops.length > 0 && !straight.length && (
+          <Row label="Loop">
+            <Select value={shared(loops.map((a) => a.loop ?? 'above')) ?? 'mixed'} options={LOOPS} onChange={(loop) => patchArrows({ loop: loop === 'above' ? undefined : (loop as CdLoop) })} />
+          </Row>
+        )}
         {(
           [
             ['hook', 'Hook at the tail (↪)'],
@@ -204,17 +290,20 @@ function Inspector({ model, onChange, selection = [] }: { model: CdModel; onChan
           ] as const
         ).map(([key, label]) => (
           <label key={key} className="checkbox-row">
-            <input type="checkbox" checked={!!arrow[key]} onChange={(e) => patchArrow({ [key]: e.target.checked || undefined })} />
+            <input type="checkbox" checked={arrows.every((a) => !!a[key])} onChange={(e) => patchArrows({ [key]: e.target.checked || undefined })} />
             <span>{label}</span>
           </label>
         ))}
       </div>
     );
   }
+  if (cells.length > 1) {
+    return <div className="diagram-hint">{cells.length} objects selected. Select one to change its text, or select arrows to change them together.</div>;
+  }
   return (
     <div className="diagram-hint">
       Pick Object on the left, then click a cell to place one. Drag from a dot on an object’s edge to another object to draw an
-      arrow. Select something to change it here.
+      arrow, or to another dot on the same object for a loop. Select something to change it here.
     </div>
   );
 }

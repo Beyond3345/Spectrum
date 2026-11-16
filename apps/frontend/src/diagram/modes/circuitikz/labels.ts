@@ -1,46 +1,8 @@
-// The circuit canvas's labels: TeX sketched as text with its subscripts and superscripts, and placed beside a part
-// clear of the symbol's drawn outline (symbolGeometry.ts), whichever way the part runs or turns.
+// The circuit canvas's labels, placed beside a part clear of the symbol's drawn outline (symbolGeometry.ts), whichever
+// way the part runs or turns. How their TeX is sketched as text is every canvas's (../../sketch).
 import { PARTS, placeNodeOffset } from './model';
 import type { Mark, NodePart, PathPart, PinSide, Pt, pathFrame } from './model';
 import type { Box } from './symbolGeometry';
-
-const SYMBOLS: Record<string, string> = { Omega: 'Ω', mu: 'µ', pi: 'π', int: '∫', approx: '≈', cdot: '·', times: '×', '%': '%' };
-
-/** TeX as the canvas sketches it: the common maths and units read as text, font sizes and the rest of the markup dropped. */
-export const plain = (text: string) =>
-  text
-    .replace(/\$/g, '')
-    .replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, '($1)/($2)')
-    .replace(/\\[,;!]/g, ' ')
-    .replace(/\\(tiny|scriptsize|footnotesize|small|normalsize|large|Large)\s*/g, '')
-    .replace(/\\(Omega|mu|pi|int|approx|cdot|times|%)/g, (_, name: string) => SYMBOLS[name])
-    .replace(/\\[A-Za-z]+/g, '')
-    .replace(/[{}]/g, '');
-
-export type Run = { text: string; shift?: 'sub' | 'super' };
-
-/** TeX as runs of text, a subscript or superscript its own run as the preview sets it: C_1, R_{in}, V^2. */
-export function scriptRuns(tex: string): Run[] {
-  const runs: Run[] = [];
-  const push = (text: string, shift?: Run['shift']) => {
-    const shown = plain(text);
-    if (shown) runs.push(shift ? { text: shown, shift } : { text: shown });
-  };
-  let last = 0;
-  for (const m of tex.matchAll(/([_^])(?:\{((?:[^{}]|\{[^{}]*\})*)\}|(\\[A-Za-z]+|[^\s{}]))/g)) {
-    push(tex.slice(last, m.index));
-    push(m[2] ?? m[3], m[1] === '_' ? 'sub' : 'super');
-    last = m.index! + m[0].length;
-  }
-  push(tex.slice(last));
-  return runs;
-}
-
-/** A label's size in grid steps, for text `font` grid steps high: a script run is set smaller. */
-export function labelSize(runs: Run[], font: number) {
-  const chars = runs.reduce((n, run) => n + run.text.length * (run.shift ? 0.7 : 1), 0);
-  return { w: chars * 0.6 * font, h: font * (runs.some((run) => run.shift) ? 1.4 : 1.1) };
-}
 
 /** grid steps between a label and the outline */
 const GAP = 0.3;

@@ -122,8 +122,13 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'viewEditor', label: 'Show the editor only', group: 'App', key: 'Mod-1' },
   { id: 'viewSplit', label: 'Show the editor and PDF', group: 'App', key: 'Mod-2' },
   { id: 'viewPdf', label: 'Show the PDF only', group: 'App', key: 'Mod-3' },
-  // answered only while the pointer is over the circuit canvas, so a plain key is fine
-  { id: 'diagramWire', label: 'Draw a wire', group: 'Diagram', key: 'w' }
+  // the composer's tool keys (diagram/toolKeys.ts): answered only while the pointer is over the drawing, so a plain
+  // key is fine. Each is one composer's, or the same tool in several, so two composers may share a key
+  { id: 'diagramWire', label: 'Draw a wire, or connect in a flowchart', group: 'Diagram', key: 'w' },
+  { id: 'diagramMember', label: 'Structures: draw a member', group: 'Diagram', key: 'm' },
+  { id: 'diagramTruss', label: 'Structures: draw a truss bar', group: 'Diagram', key: 't' },
+  { id: 'diagramPoint', label: 'Vector diagrams: add a point', group: 'Diagram', key: 'p' },
+  { id: 'diagramVector', label: 'Vector diagrams: draw a vector', group: 'Diagram', key: 'v' }
 ];
 
 /** CodeMirror commands whose built-in bindings give way to the ones above. */
@@ -246,16 +251,19 @@ export function shortcutFromEvent(e: KeyboardEvent) {
   return [ctrl && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', mod && 'Mod', eventKey(e)].filter(Boolean).join('-');
 }
 
-/** Why a recorded shortcut can't be used, or '' when it can. */
-/** Keys the circuit canvas answers to itself, which a diagram shortcut can't take. */
-const CANVAS_KEYS = ['r', 'Shift-r', 'x', 'y', ' ', 'Escape', 'Enter', 'Backspace', 'Delete', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Mod-a', 'Mod-c', 'Mod-x', 'Mod-v', 'Mod-d', 'Mod-z', 'Shift-Mod-z'];
+/**
+ * Keys a canvas answers to itself (turn, flip, pan, finish, delete, nudge, select all, copy and paste, undo), which a
+ * diagram shortcut can't take. One list for every canvas: a canvas that takes another plain key adds it here.
+ */
+const CANVAS_KEYS = ['r', 'Shift-r', 'x', 'y', 'Space', 'Escape', 'Enter', 'Backspace', 'Delete', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Shift-ArrowUp', 'Shift-ArrowDown', 'Shift-ArrowLeft', 'Shift-ArrowRight', 'Mod-a', 'Mod-c', 'Mod-x', 'Mod-v', 'Mod-d', 'Mod-z', 'Shift-Mod-z', 'Mod-y'];
 
+/** Why a recorded shortcut can't be used, or '' when it can. */
 export function shortcutProblem(binding: string, id = '') {
   const p = parse(binding);
   if (!p) return '';
   const key = canonical(binding);
   if (SHORTCUTS.find((s) => s.id === id)?.group === 'Diagram') {
-    return CANVAS_KEYS.map(canonical).includes(key) ? `${formatShortcut(binding)} is kept by the circuit canvas.` : '';
+    return CANVAS_KEYS.map(canonical).includes(key) ? `${formatShortcut(binding)} is kept by the canvas.` : '';
   }
   if (RESERVED.map(canonical).includes(key)) return `${formatShortcut(binding)} is kept by ${OS_NAME}.`;
   const fixed = FIXED_SHORTCUTS.find(([, k]) => canonical(k) === key);

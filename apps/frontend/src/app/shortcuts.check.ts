@@ -64,6 +64,16 @@ eq(shortcutProblem('w', 'diagramWire'), '', 'a plain key for the diagram');
 eq(shortcutProblem('Shift-k', 'diagramWire'), '', 'a shifted key for the diagram');
 eq(shortcutProblem('r', 'diagramWire') !== '', true, 'R turns parts on the canvas');
 eq(shortcutProblem('x', 'diagramWire') !== '', true, 'X flips parts on the canvas');
+// the other tools' keys, each refused a key the canvases use themselves, as recorded in Settings
+eq(['diagramWire', 'diagramMember', 'diagramTruss', 'diagramPoint', 'diagramVector'].map((id) => shortcutKey({}, id)), ['w', 'm', 't', 'p', 'v'], 'W, M, T, P and V by default');
+eq(SHORTCUTS.filter((s) => s.group === 'Diagram').length, 5, 'Settings › Diagram composer lists them all');
+const space = shortcutFromEvent(press(' ', 'Space'))!;
+const refused = ['r', 'Shift-r', 'y', space, 'Escape', 'Enter', 'Delete', 'ArrowLeft', 'Shift-ArrowUp', 'Mod-a', 'Mod-c', 'Mod-z'];
+for (const id of ['diagramMember', 'diagramTruss', 'diagramPoint', 'diagramVector']) {
+  eq(refused.filter((key) => !shortcutProblem(key, id)), [], `${id}: a canvas key is refused`);
+  eq(['b', 'Shift-m', 'Alt-v', '1'].filter((key) => shortcutProblem(key, id)), [], `${id}: any other key is fine`);
+}
+eq(shortcutProblem('r', 'diagramMember'), 'R is kept by the canvas.', 'and says why');
 eq(shortcutProblem('Shift-k') !== '', true, 'other shortcuts still need a modifier');
 if (!IS_MAC) eq([formatShortcut('Shift-Mod-Enter'), formatShortcut('Alt-ArrowUp')], ['Ctrl+Shift+Enter', 'Alt+↑'], 'key names elsewhere');
 // a click with ⌥ (Alt) held adds a cursor, and one with ⌘ (Ctrl) held is left to Go to definition

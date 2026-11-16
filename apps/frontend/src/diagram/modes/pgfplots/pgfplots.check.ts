@@ -42,24 +42,63 @@ const model: PlotModel = {
     { ...newSeries('s4'), source: 'data', file: '' }
   ]
 };
+const axisLine = (m: PlotModel) => plotCode(m).body.split('\n')[2];
+const one = (s: Partial<Series>, m: Partial<PlotModel> = {}) => plotCode({ ...emptyPlot(), ...m, series: [{ ...newSeries('s1'), ...s }] }).body.split('\n').slice(3, -3);
 eq(plotCode(model).body.split('\n').slice(2, -3), [
   '\\begin{axis}[title={Results}, xlabel={$x$}, ylabel={$y$}, xmin=0, xmax=10.5, grid=both, legend pos=south east, width=8cm, trig format plots=rad]',
   '\\addplot+[domain=0:6.283, samples=2, color={rgb,255:red,255;green,0;blue,0}, dashed, no markers] {sin(x)};',
-  '\\addlegendentry{$\\sin x$}',
-  // a series without a legend keeps its place in it, so the next legend goes with its own plot
   '\\addplot+[] table[x={time}, y={value (V)}, col sep=comma] {data/run 1.csv};',
-  '\\addlegendentry{}',
   '\\addplot+[no markers] table[x={t}, y={v}] {data/run.dat};',
-  '\\addlegendentry{run}'
+  // a series without a legend among some with: one \legend, whose empty entry takes no row
+  '\\legend{{$\\sin x$},,{run}}'
 ], 'functions and data; a data series with no file yet is left out');
+{
+  // every series with a legend: each its own entry, as before
+  const both = plotCode({ ...emptyPlot(), series: [{ ...newSeries('s1'), legend: 'a' }, { ...newSeries('s2'), legend: 'b, c' }] }).body;
+  eq([both.includes('\\addlegendentry{a}'), both.includes('\\addlegendentry{b, c}'), both.includes('\\legend')], [true, true, false], 'all legended: an entry each');
+  eq(axisLine(emptyPlot()), axisLine({ ...emptyPlot(), legendPos: 'north west' }), 'no legend text, no legend');
+  eq(emptyPlot().legendPos, 'outer north east', 'a new plot’s legend beside it, off every curve');
+}
+
+// a bare % in any text is written \%, so it doesn't comment out the rest of the figure
+{
+  const percent = plotCode({
+    ...emptyPlot(),
+    title: '50% done',
+    ylabel: 'Percent passing (%) by mass',
+    xticks: '1 = 10%',
+    series: [{ ...newSeries('s1'), legend: '5% line' }],
+    annotations: [{ id: 'a1', kind: 'line', series: '', at: '1', text: '1%' }]
+  }).body;
+  eq(['title={50\\% done}', 'ylabel={Percent passing (\\%) by mass}', 'xticklabels={{10\\%}}', '\\addlegendentry{5\\% line}', '{1\\%};'].map((t) => percent.includes(t)), [true, true, true, true, true], 'every text escaped');
+  eq(/[^\\]%/.test(percent), false, 'no bare % left');
+  eq(plotCode({ ...emptyPlot(), ylabel: 'Passing (%)' }, { siUnits: true }).body.includes('ylabel={Passing (\\unit{\\percent})}'), true, 'siunitx’s own percent kept');
+}
+
+// a domain or a limit typed as an expression
+{
+  const pi = plotCode({ ...emptyPlot(), series: [{ ...newSeries('s1'), expr: 'sin(x)', from: '0', to: '2*pi' }], xmin: '0', xmax: '2*pi', ymin: 'oops' }).body;
+  eq([pi.includes('domain=0:{2*pi}'), pi.includes('xmax={2*pi}'), pi.includes('ymin')], [true, true, false], 'function domain and axis limits; text that isn’t maths still left out');
+}
+
+// tan(x): with the y range set, points far beyond it break the line instead of joining across an asymptote
+{
+  const tan = one({ expr: 'tan(x)', from: '-3', to: '3' }, { ymin: '-5', ymax: '5' });
+  eq(tan, ['\\addplot+[domain=-3:3, samples=100, unbounded coords=jump, restrict y to domain=-15:15, no markers] {tan(x)};'], 'tan(x) breaks at its asymptotes');
+  eq(one({ expr: 'tan(x)' }, { ymin: '-5' })[0].includes('restrict'), false, 'only with both ends of y');
+  eq(one({ expr: 'exp(x)' }, { ymin: '1', ymax: '100', ymode: 'log' })[0].includes('restrict'), false, 'not on a log axis');
+}
 
 eq([separatorOf('a.CSV'), separatorOf('b.tsv'), separatorOf('c.dat')], ['comma', 'tab', null], 'separators');
 eq(columnsOf('a.csv', '# made by hand\n"time", value (V)\n0,1\n'), ['time', 'value (V)'], 'CSV header, after a comment');
 eq(columnsOf('a.tsv', 'x\ty\n1\t2'), ['x', 'y'], 'TSV header');
 eq(columnsOf('a.dat', '  t   v  \n1 2'), ['t', 'v'], 'whitespace header');
+eq(columnsOf('a.dat', '0.1 2\n0.2 4'), ['0', '1'], 'no header: columns by place');
+eq(columnsOf('a.csv', '1,2,3\n'), ['0', '1', '2'], 'a CSV without a header');
+eq(columnsOf('a.csv', 'd;p\n1,5;2'), [], 'a semicolon CSV: no columns, which the form says');
+eq(one({ source: 'data', file: 'a.dat', x: '0', y: '1' }), ['\\addplot+[no markers] table[x index=0, y index=1] {a.dat};'], 'columns by place as x index');
 
 // axes, scales and ticks
-const axisLine = (m: PlotModel) => plotCode(m).body.split('\n')[2];
 eq(axisLine({ ...emptyPlot(), axes: 'centre', xmode: 'log', ymode: 'log' }), '\\begin{axis}[xlabel={$x$}, ylabel={$y$}, grid=major, axis lines=middle, xlabel style={at={(ticklabel* cs:1)}, anchor=west}, ylabel style={at={(ticklabel* cs:1)}, anchor=south}, xmode=log, ymode=log, trig format plots=rad]', 'centred, log');
 eq(axisLine({ ...emptyPlot(), axes: 'sketch', xlabel: '', yticks: '1 = $V$' }), '\\begin{axis}[ylabel={$y$}, grid=major, axis lines=middle, ylabel style={at={(ticklabel* cs:1)}, anchor=south}, ytick={1}, yticklabels={{$V$}}, xtick=\\empty, trig format plots=rad]', 'a sketch has only the ticks asked for');
 eq(ticksOf('x', 'pi/2 = $\\frac{\\pi}{2}$; pi ;; 2'), ['xtick={pi/2,pi,2}', 'xticklabels={{$\\frac{\\pi}{2}$},{$\\pgfmathparse{pi}\\pgfmathprintnumber{\\pgfmathresult}$},{$2$}}'], 'ticks, one labelled, the rest their values');
@@ -67,7 +106,7 @@ eq(ticksOf('y', '0; 1'), ['ytick={0,1}'], 'ticks without labels');
 eq(ticksOf('y', ' ; '), [], 'no ticks');
 
 // the other kinds of series
-const one = (s: Partial<Series>) => plotCode({ ...emptyPlot(), series: [{ ...newSeries('s1'), ...s }] }).body.split('\n').slice(3, -3);
+
 eq(one({ source: 'parametric', exprX: 'cos(t)', expr: 'sin(t)', from: '0', to: '2*pi' }), ['\\addplot+[domain=0:{2*pi}, samples=100, variable=t, no markers] ({cos(t)}, {sin(t)});'], 'parametric');
 eq(one({ source: 'polar', expr: '1+cos(t)', from: '0', to: '6.283' }), ['\\addplot+[domain=0:6.283, samples=100, variable=t, no markers] ({(1+cos(t))*cos(t)}, {(1+cos(t))*sin(t)});'], 'polar, on these axes');
 eq(one({ source: 'polar', from: '0', to: '\\input{x}' })[0].includes('domain'), false, 'a bound that isn’t maths is left out');

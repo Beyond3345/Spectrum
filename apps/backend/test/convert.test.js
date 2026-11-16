@@ -732,4 +732,13 @@ test('a composer flowchart is written again in the other language from its drawi
   // TikZ escapes % & # _ in plain words, so a Typst text with them reads the same in TikZ
   const amp = { ...plain, model: { ...plain.model, boxes: [{ ...plain.model.boxes[0], text: 'R&D 50%' }] } };
   assert.match(flowchartFile(flowchartFor(amp, 'tikz'), 'tikz'), /\{R\\&D 50\\%\}/);
+  // 2.5's shapes, labels beside and signs all have a Typst form, so a block diagram converts
+  const block = { ...tikz, version: 5, model: {
+    boxes: [{ id: 'g1', shape: 'gain', x: 0, y: 0, w: 6, h: 6, text: 'K' }, { id: 'l1', shape: 'swimlane', x: -2, y: -2, w: 30, h: 12, text: 'Plant', dir: 'l' }, { id: 'p1', shape: 'takeoff', x: 10, y: 2, w: 2, h: 2, text: '' }],
+    links: [{ id: 'e1', from: 'g1', to: 'p1', fromSide: 'r', toSide: 'l', route: 'straight', heads: 'none', label: 'u', labelSide: 'right', sign: '-' }]
+  } };
+  const blockTyp = flowchartFile(flowchartFor(block, 'typst', typstMaths), 'typst');
+  assert.match(blockTyp, /\[\$K\$\], shape: \(node, extrude\) => fletcher\.cetz\.draw\.group/);
+  assert.match(blockTyp, /rotate\(-90deg, reflow: true\)\[Plant\]/);
+  assert.match(blockTyp, /label: \[u\], label-side: right[\s\S]*label: \[\$-\$\], label-pos: 0\.85/);
 });
