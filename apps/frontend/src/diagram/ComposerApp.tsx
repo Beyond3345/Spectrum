@@ -672,15 +672,16 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
 
   // ─── copy, paste, duplicate and delete, through the mode ───
 
-  const clipboard = useRef<unknown>(null);
+  // state, so the Edit menu's Paste is ready as soon as something is copied
+  const [clipboard, setClipboard] = useState<unknown>(null);
   const canEdit = tab === 'draw' && drawable && doc.hand === null && !!doc.diagram;
   const edits = {
     copy: () => {
       if (!canEdit || !mode?.copy || !selection.length) return false;
-      clipboard.current = mode.copy(doc.diagram!.model, selection);
+      setClipboard(mode.copy(doc.diagram!.model, selection));
       return true;
     },
-    paste: (clip = clipboard.current) => {
+    paste: (clip = clipboard) => {
       if (!canEdit || !mode?.paste || !clip) return false;
       const { model, ids } = mode.paste(doc.diagram!.model, JSON.parse(JSON.stringify(clip)));
       setModel(model);
@@ -939,7 +940,7 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
             align="end"
             items={[
               { label: 'Copy', onSelect: () => edits.copy(), disabled: !selection.length, shortcut: formatShortcut('Mod-c') },
-              { label: 'Paste', onSelect: () => edits.paste(), disabled: !clipboard.current, shortcut: formatShortcut('Mod-v') },
+              { label: 'Paste', onSelect: () => edits.paste(), disabled: !clipboard, shortcut: formatShortcut('Mod-v') },
               { label: 'Duplicate', onSelect: () => duplicate(), disabled: !selection.length, shortcut: formatShortcut('Mod-d') },
               { separator: true },
               { label: 'Delete', destructive: true, onSelect: () => edits.remove(), disabled: !selection.length, shortcut: '⌫' }
