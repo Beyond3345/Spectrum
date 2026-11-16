@@ -2,7 +2,7 @@
 // npx esbuild apps/frontend/src/diagram/sets.check.ts --bundle --platform=node --log-level=warning | node
 import { SYMBOL_SETS } from '../../../backend/src/data/symbolSets.js';
 import { circuitCode } from './modes/circuitikz/code';
-import { CATALOGUE, railParts, usesSetsOf25, withLaterSets } from './modes/circuitikz/model';
+import { CATALOGUE, findJunctions, placeholderShape, railParts, usesSetsOf25, withLaterSets } from './modes/circuitikz/model';
 import type { CircuitModel } from './modes/circuitikz/model';
 import { symbolRequest } from './modes/circuitikz/symbolGeometry';
 import { SETS, clashesWith, documentLoads, mergeLoads, setFor, setLoads } from './sets';
@@ -97,6 +97,18 @@ const piped = circuitCode({
 }, {}).body.split('\n');
 eq(piped.filter((l) => l.startsWith('\\tikzset')).map((l) => l.split('/.pic')[0]), ['\\tikzset{spx/fluid/pipe', '\\tikzset{spx/fluid/reducer', '\\tikzset{spx/fluid/gauge', '\\tikzset{spx/fluid/section', '\\tikzset{spx/fluid/control-volume'], 'only the pictures used, in the catalogue’s order');
 eq(piped.slice(7, 14), ['\\pic (e1) at (0,0) {spx/fluid/pipe};', '\\pic (e2) at (1.75,0) {spx/fluid/reducer};', '\\pic (e3) at (0,2) {spx/fluid/gauge};', '\\pic[pic text={1}] at (0,1) {spx/fluid/section};', '\\pic[pic text={CV}] (e5) at (5,0) {spx/fluid/control-volume};', '\\draw (e3-p) -- (e1-top);', '\\draw (e2-out) -- (e5-in);'], 'a gauge tapped into a pipe, a reducer feeding a control volume');
+// where pipes, a centre line and a wire meet is a joint, not a circuit's junction: no dot; three wires still make one
+const joint = (type: string) => findJunctions({
+  elements: [
+    { id: 'e1', kind: 'node', type, at: { x: 0, y: 0 } },
+    { id: 'e2', kind: 'node', type, at: { x: 0, y: 0 } },
+    { id: 'e3', kind: 'node', type, at: { x: 0, y: 0 } },
+    { id: 'e4', kind: 'wire', points: [{ part: 'e1', pin: 'p' }, { x: 8, y: 0 }], routes: ['--'] }
+  ],
+  junctions: []
+}, () => ({ pins: { p: { x: 0, y: 0 } } }));
+eq([joint('fluid-gauge'), joint('mat-roller'), joint('mech-ground')], [[], [], [{ part: 'e1', pin: 'p' }]], 'no junction dot where fluid or materials parts meet; the supports’ as before');
+eq(placeholderShape('fluid-pipe').pins.in !== undefined, true, 'a pipe has its pins before TeX has drawn it');
 // the reducer's wide end sits on the pipe's end when their pins meet: 1 cm + 0.75 cm apart, both bores 1 cm
 eq([SYMBOL_SETS['spx-fluid'].pics['spx/fluid/pipe'].includes('(-out) at (1,0)'), SYMBOL_SETS['spx-fluid'].pics['spx/fluid/reducer'].includes('(-0.75,0.5)') && SYMBOL_SETS['spx-fluid'].pics['spx/fluid/reducer'].includes('(-in) at (-0.75,0)')], [true, true], 'a pipe’s end and a reducer’s wide end are the same bore');
 // drawings without them write what they did, and keep their version

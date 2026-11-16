@@ -139,8 +139,9 @@ export const SYMBOL_SETS = {
       // a dial on a short tapping, its pin where it meets the wall
       'spx/fluid/gauge': String.raw`\draw (0,0) -- (0,0.25);${body} (0,0.5) circle (0.25);\draw[-latex] (-0.13,0.37) -- (0.14,0.64);` + pins({ p: [0, 0] }),
 
-      // flow: one end of a section's cut line, its number in the circle (pic text); two of them, one flipped, make the pair
-      'spx/fluid/section': String.raw`\draw (0,0) circle (0.25);\draw[dashed] (0,-0.25) -- (0,-1);\node at (0,0) {\tikzpictext};` + pins({ end: [0, -1] }),
+      // flow: one end of a section's cut line, its number in the circle (pic text); two of them, one flipped, their pins
+      // meeting on the pipe's centre line, make the pair
+      'spx/fluid/section': String.raw`\draw (0,0) circle (0.25);\draw[dashed] (0,-0.25) -- (0,-1.5);\node at (0,0) {\tikzpictext};` + pins({ end: [0, -1.5] }),
       'spx/fluid/centre-line': String.raw`\draw[dash dot] (-1,0) -- (1,0);` + pins({ west: [-1, 0], east: [1, 0] }),
       // a dashed boundary with an arrow in and an arrow out, its name inside (pic text)
       'spx/fluid/control-volume': String.raw`\draw[dashed] (-1.25,-0.75) rectangle (1.25,0.75);\draw[-latex] (-2,0) -- (-1.25,0);\draw[-latex] (1.25,0) -- (2,0);\node at (0,0) {\tikzpictext};` + pins({ in: [-2, 0], out: [2, 0], north: [0, 0.75], south: [0, -0.75] }),

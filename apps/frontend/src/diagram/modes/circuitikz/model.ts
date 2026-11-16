@@ -396,7 +396,8 @@ export function findJunctions(model: CircuitModel, shapeOf: ShapeOf): End[] {
     } else if (el.kind === 'path') {
       add(pos(el.a), 1, isPoint(el.a) ? undefined : el.a);
       add(pos(el.b), 1, isPoint(el.b) ? undefined : el.b);
-    } else if (el.kind === 'node') {
+    } else if (el.kind === 'node' && !SETS_OF_2_5.includes(PARTS.get(el.type)?.set ?? '')) {
+      // (a pipe, tank or specimen conducts nothing: where its pins meet others is a joint, never a dot)
       for (const { pin, at } of pinsOfElement(el, shapeOf, pos)) add(at, 1, { part: el.id, pin });
     }
   }
