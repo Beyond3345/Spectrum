@@ -216,6 +216,9 @@ const central = (q: Conic, k: 'circle' | 'ellipse' | 'hyperbola', what: string) 
   const h = central(conic(standardConic({ ...own, kind: 'hyperbola', a: 1.5, b: 1 })), 'hyperbola', 'hyperbola (1.5 and 1)');
   eq(h.foci.map((f) => round(f.x, 3)), [-1.803, 1.803], 'its foci');
   eq(asymptotes(h).map((d) => round((d.y / d.x) * 4.8, 9)).sort(), [-3.2, 3.2], 'its asymptotes');
+  // given by its own numbers, there was no discriminant to read and no square to complete
+  eq(conicWorking(h, true), ['Hyperbola: $\\frac{x^2}{2.25} - \\frac{y^2}{1} = 1$', 'centre $(0, 0)$, $a = 1.5$, $b = 1$, $c = 1.803$, $e = 1.202$', 'asymptotes $y = 0.6667x$ and $y = -0.6667x$'], 'its working');
+  eq(conicWorking(p, true), ['Parabola: $y^2 = 4x$', 'vertex $(0, 0)$, $4a = 4$, $a = 1$, focus $(1, 0)$', 'directrix $x = -1$, $e = 1$'], 'y² = 4x working');
   // each parabola opens the way it says, each hyperbola along its axis
   eq((['right', 'left', 'up', 'down'] as const).map((opens) => kind(conic(standardConic({ ...own, kind: 'parabola', opens })), 'parabola', opens).axis).map((d) => [round(d.x, 9), round(d.y, 9)]), [[1, 0], [-1, 0], [0, 1], [0, -1]], 'opens');
   at(central(conic(standardConic({ ...own, kind: 'hyperbola', axis: 'y' })), 'hyperbola', 'axis y').axis, 0, 1, 'a hyperbola opening up and down');

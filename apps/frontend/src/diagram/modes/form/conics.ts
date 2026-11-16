@@ -157,18 +157,27 @@ const NAMES: Record<Conic['kind'], string> = {
   none: 'No real points, so nothing to draw'
 };
 
-/** What the conic is and how that was found, a line each: its kind, the turn, the completed squares, the standard form and its numbers. */
-export function conicWorking(q: Conic): string[] {
+/**
+ * What the conic is and how that was found, a line each: its kind, the turn, the completed squares, the standard form
+ * and its numbers. `own`: it was given by its own numbers, so there was no discriminant to read or square to complete.
+ */
+export function conicWorking(q: Conic, own = false): string[] {
+  const out = steps(q, own);
+  // with nothing to say about how it was classified, its name leads the next line
+  return own && out.length > 1 ? [`${out[0]}: ${out[1]}`, ...out.slice(2)] : out;
+}
+
+function steps(q: Conic, own: boolean): string[] {
   if (q.family === 'none') return [q.kind === 'line' ? `Not a conic (no $x^2$, $xy$ or $y^2$ term): the straight line $${lineTex(q.through, q.dir)}$` : 'Not a conic: the equation has no $x$ or $y$'];
   const turned = q.theta !== 0;
   const [p, r] = turned ? ['u', 'v'] : ['x', 'y'];
-  const out = [`${NAMES[q.kind]}: $B^2 - 4AC = ${fmt(q.family === 'parabola' ? 0 : q.disc)}${q.family === 'ellipse' ? ' < 0' : q.family === 'hyperbola' ? ' > 0' : ''}$`];
-  if (turned) out.push(`axes turned by $\\theta = ${fmt(q.theta)}^\\circ$, where $\\cot 2\\theta = \\frac{A - C}{B}$`);
+  const out = [own ? NAMES[q.kind] : `${NAMES[q.kind]}: $B^2 - 4AC = ${fmt(q.family === 'parabola' ? 0 : q.disc)}${q.family === 'ellipse' ? ' < 0' : q.family === 'hyperbola' ? ' > 0' : ''}$`];
+  if (turned) out.push(`axes turned by $\\theta = ${fmt(q.theta)}^\\circ$${own ? '' : ', where $\\cot 2\\theta = \\frac{A - C}{B}$'}`);
   if (q.family !== 'parabola') {
     const [U0, V0] = [-q.g1 / (2 * q.l1), -q.g2 / (2 * q.l2)];
     const K = q.kind === 'point' || q.kind === 'lines' ? 0 : q.g1 ** 2 / (4 * q.l1) + q.g2 ** 2 / (4 * q.l2) - q.F;
     if (q.kind === 'circle') return [...out, `$${squared(p, U0)} + ${squared(r, V0)} = ${fmt(K / q.l1)}$`, `centre $${point(q.centre)}$, radius $${fmt(q.a)}$`];
-    out.push(`$${sum([[q.l1, squared(p, U0)], [q.l2, squared(r, V0)]])} = ${fmt(K)}$`);
+    if (!own) out.push(`$${sum([[q.l1, squared(p, U0)], [q.l2, squared(r, V0)]])} = ${fmt(K)}$`);
     if (q.kind === 'ellipse' || q.kind === 'hyperbola') {
       const over = (name: string, by: number, d: number) => `\\frac{${squared(name, by)}}{${fmt(Math.abs(d))}}`;
       const [first, second] = [over(p, U0, K / q.l1), over(r, V0, K / q.l2)];
@@ -328,7 +337,7 @@ export function conicDrawing(values: FormValues) {
     }
   }
 
-  const working = conicWorking(q);
+  const working = conicWorking(q, values.input === 'standard');
   if (show('results')) results(sc, ((v.x1 - v.x0) * k) / 2, working);
   return { ...pictureOf(sc, [`Conic: ${equationTex(input)}`, ...working.map(plain)], false), conic: q };
 }

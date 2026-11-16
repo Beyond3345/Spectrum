@@ -145,7 +145,9 @@ export function transformationDrawing(values: FormValues) {
   }
   if (eigen.length) {
     sc.add('% Eigenvectors v, and Av along the same lines');
-    eigen.forEach(({ v, sub }, i) => pair(v, `\\mathbf{v}${sub}`, i ? 'orange!80!black' : 'teal', 'thick'));
+    // red and blue as the notes have them; teal and orange beside the red and blue of e1, e2 and their images
+    const colours = show('basis') ? ['teal', 'orange!80!black'] : ['red', 'blue'];
+    eigen.forEach(({ v, sub }, i) => pair(v, `\\mathbf{v}${sub}`, colours[i], 'thick'));
   }
 
   const working = linearWorking(m, name);
