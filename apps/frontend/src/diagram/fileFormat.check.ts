@@ -145,7 +145,10 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
   eq([(await forPhysics(byHand))?.includes('\\qty'), (await readDiagramFile((await forPhysics(byHand))!)).edited], [false, true], 'edited by hand: the text only, still edited');
   eq(await forPhysics(await diagramFileText(circuit, code)), null, 'nothing to change');
 
-  for (const bad of [{ ...circuit, sets: 'spx-mech' }, { ...circuit, sets: [1] }, { ...circuit, version: 5 }]) {
+  // version 5 (what 2.5 adds to a drawing) reads back; a version this build doesn't know opens as code
+  const v5 = `${tikzDocument(code)}% spectrum-diagram v1 ${btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify({ ...circuit, version: 5 }))))} 0123456789abcdef\n`;
+  eq((await readDiagramFile(v5)).diagram?.version, 5, 'version 5 reads back');
+  for (const bad of [{ ...circuit, sets: 'spx-mech' }, { ...circuit, sets: [1] }, { ...circuit, version: 6 }]) {
     const text = `${tikzDocument(code)}% spectrum-diagram v1 ${btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(bad))))} 0123456789abcdef\n`;
     eq((await readDiagramFile(text)).diagram, null, `opens as code: ${JSON.stringify(bad).slice(-30)}`);
   }

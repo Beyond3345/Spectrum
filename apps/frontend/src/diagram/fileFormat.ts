@@ -17,6 +17,8 @@ import { tikzDocument } from '../../../backend/src/latex/flowchart.js';
 // logic gate styles, the flowchart and point sets, or a structure's chosen force diagrams. Those builds read 1 and 2.
 // It is 4 when a circuit has annotations, currents or flows on its wires, or styled Text, which builds up to 2.3 would
 // save without (and some would fail to draw); they read 1 to 3, so they open it as code.
+// It is 5 when the drawing has anything Spectrum 2.5 added to what a drawing saves (version5 below), which builds up
+// to 2.4 would save without; they read 1 to 4, so they open it as code.
 
 /** The drawing has parts a build from before sets would write without, rather than refuse. */
 function newerParts(diagram: DiagramFile) {
@@ -53,6 +55,19 @@ function annotated(diagram: DiagramFile) {
   } catch {
     return false;
   }
+}
+
+/**
+ * The drawing has something Spectrum 2.5 added to what a drawing saves, which builds up to 2.4 don't keep. One line
+ * for each composer, asking a function its own model file exports (as usesNewerParts and plotIsNewer are asked above).
+ */
+function version5(diagram: DiagramFile) {
+  try {
+    // e.g. if (diagram.pkg === 'vectors') return vectorsNeedVersion5(diagram.model);
+  } catch {
+    // a model of the wrong shape: its mode refuses it anyway
+  }
+  return false;
 }
 
 /** What a mode's toCode gives: the picture, and what the document around it has to load. */
@@ -98,7 +113,7 @@ async function withLastLine(diagram: DiagramFile, above: string, drawn: string) 
   const mark =diagram.language === 'mermaid' ? '%%' : diagram.language === 'typst' ? '//' : '%';
   // no sets: no sets key and version 1, as before sets, unless the drawing has parts a build from before doesn't know
   const { sets, ...rest } = diagram;
-  const version = annotated(diagram) ? 4 : phaseE(diagram) ? 3 : sets?.length || newerParts(diagram) ? 2 : 1;
+  const version = version5(diagram) ? 5 : annotated(diagram) ? 4 : phaseE(diagram) ? 3 : sets?.length || newerParts(diagram) ? 2 : 1;
   const kept: DiagramFile = sets?.length ? { ...rest, sets, version } : { ...rest, version };
   return `${above}${mark} spectrum-diagram v1 ${toBase64(JSON.stringify(kept))} ${await hashOf(drawn)}\n`;
 }
@@ -132,7 +147,7 @@ export async function readDiagramFile(text: string): Promise<{ code: string; dia
     const parsed = JSON.parse(fromBase64(last[1]));
     const object = (value: unknown) => !!value && typeof value === 'object' && !Array.isArray(value);
     const sets = parsed?.sets === undefined || (Array.isArray(parsed.sets) && parsed.sets.every((s: unknown) => typeof s === 'string'));
-    if (parsed && [1, 2, 3, 4].includes(parsed.version) && sets && ['tikz', 'mermaid', 'typst'].includes(parsed.language) && object(parsed.style) && object(parsed.model)) diagram = parsed;
+    if (parsed && [1, 2, 3, 4, 5].includes(parsed.version) && sets && ['tikz', 'mermaid', 'typst'].includes(parsed.language) && object(parsed.style) && object(parsed.model)) diagram = parsed;
   } catch {
     // a damaged line: the file opens as code
   }
