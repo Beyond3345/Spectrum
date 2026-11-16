@@ -179,6 +179,8 @@ export type AppSettings = {
   /** the conventions a new drawing copies into its style (ComposerDefaults) */
   composerMoments: ComposerDefaults['moments'];
   composerMohrShear: ComposerDefaults['mohrShear'];
+  /** how a new vector drawing writes a vector's name: \mathbf, \vec, \overrightarrow or esvect's \vv */
+  composerVectorNotation: NonNullable<ComposerDefaults['vectorNotation']>;
   /** Write units with siunitx: a new drawing's values as \qty, its units as \unit */
   composerSiUnits: boolean;
   /** every canvas's background (diagram/CanvasGrid.tsx): dots, with every composerGridEvery-th dot larger or joined by a line, or lines */
@@ -291,6 +293,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   composerStylesOff: [],
   composerMoments: 'tension',
   composerMohrShear: 'down',
+  composerVectorNotation: 'bold',
   composerSiUnits: true,
   composerGrid: 'major-dots',
   composerGridEvery: 5,
@@ -457,6 +460,7 @@ function parse(raw: string | null): AppSettings {
     merged.composerStylesOff = Array.isArray(merged.composerStylesOff) ? [...new Set(merged.composerStylesOff.filter((id) => typeof id === 'string'))] : [];
     if (!['tension', 'positive'].includes(merged.composerMoments)) merged.composerMoments = 'tension';
     if (!['down', 'clockwise-above', 'up'].includes(merged.composerMohrShear)) merged.composerMohrShear = 'down';
+    if (!['bold', 'vec', 'arrow', 'vv'].includes(merged.composerVectorNotation)) merged.composerVectorNotation = 'bold';
     merged.composerSiUnits = merged.composerSiUnits !== false;
     if (!['dots', 'major-dots', 'major-lines', 'lines'].includes(merged.composerGrid)) merged.composerGrid = 'major-dots';
     merged.composerGridEvery = Number.isInteger(merged.composerGridEvery) && merged.composerGridEvery >= 2 && merged.composerGridEvery <= 20 ? merged.composerGridEvery : 5;
@@ -560,6 +564,7 @@ export function updateSettings(patch: Partial<AppSettings>) {
 export const composerDefaults = (settings: AppSettings): ComposerDefaults => ({
   moments: settings.composerMoments,
   mohrShear: settings.composerMohrShear,
+  vectorNotation: settings.composerVectorNotation,
   siUnits: settings.composerSiUnits,
   diagrams: settings.composerDiagrams
 });
@@ -573,7 +578,7 @@ export const composerDefaults = (settings: AppSettings): ComposerDefaults => ({
 const SHARED_KEYS = [
   'theme', 'accent', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize',
   'autoInsertCite', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'languages', 'englishGrammar', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
-  'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions', 'composerMixSets', 'composerStylesOff', 'composerMoments', 'composerMohrShear',
+  'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions', 'composerMixSets', 'composerStylesOff', 'composerMoments', 'composerMohrShear', 'composerVectorNotation',
   'composerSiUnits', 'composerDiagrams', 'composerGrid', 'composerGridEvery', 'composerDark', 'composerMinimap'
 ] as const satisfies readonly (keyof AppSettings)[];
 

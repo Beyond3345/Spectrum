@@ -1,6 +1,6 @@
 // Self-check for where model requests and keys go. Run (it imports React, so bundle it first):
 // npx esbuild apps/frontend/src/app/settings.check.ts --bundle --platform=node --log-level=warning | node
-import { DEFAULT_SETTINGS, effectiveCompile, followSettingsNow, followSharedSettings, keysBackFromOlder, llmConfigFor, loadSettings, presetForEndpoint, presetPatch, rolePatch, searchConfigFor, searchProviderPatch, sharedPart, takeInShared, withShared } from './settings';
+import { DEFAULT_SETTINGS, composerDefaults, effectiveCompile, followSettingsNow, followSharedSettings, keysBackFromOlder, llmConfigFor, loadSettings, presetForEndpoint, presetPatch, rolePatch, searchConfigFor, searchProviderPatch, sharedPart, takeInShared, withShared } from './settings';
 import { NO_FOLDERS } from './folders';
 import type { AppSettings } from './settings';
 import type { ProviderPreset } from '../api/client';
@@ -144,6 +144,8 @@ eq(sharedPart(at({ composerDark: true, composerMinimap: true })), { ...sharedPar
 const canvas = withShared(theirs, { composerDark: true, composerMinimap: true });
 eq([canvas.composerDark, canvas.composerMinimap], [true, true], 'and come in');
 eq(['yes', 1, null, {}, 'true'].map((v) => [withShared(canvas, { composerDark: v }).composerDark, withShared(canvas, { composerMinimap: v }).composerMinimap]).flat(), Array(10).fill(false), 'anything but true is off');
+// a new vector drawing's names: bold to start, synced, checked, and handed to the drawing as a default
+eq([DEFAULT_SETTINGS.composerVectorNotation, withShared(theirs, sharedPart(at({ composerVectorNotation: 'vv' }))).composerVectorNotation, withShared(theirs, { composerVectorNotation: 'hat' as never }).composerVectorNotation, composerDefaults(at({ composerVectorNotation: 'arrow' })).vectorNotation], ['bold', 'vv', 'bold', 'arrow'], 'vector names');
 // a new structure's force diagrams follow the user too, each part checked and anything unusable its default
 eq(DEFAULT_SETTINGS.composerDiagrams.shear, { on: true, fill: 'blue!12', opacity: 1 }, 'all three diagrams in today’s fills');
 // University styles: all on by default, shared, and cleaned of bad values (unknown ids stay, for a newer Spectrum)

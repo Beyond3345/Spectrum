@@ -1,6 +1,6 @@
 // The vector mode's panels: the tools rail, the inspector for what's selected (with the coordinate table and the
 // drawing's panels when nothing is), with each item's colour, thickness, dashes, tips and label look; and the style
-// menu: the scale, the grid and the drawing's defaults.
+// menu: the scale, the grid, the drawing's defaults and how vector names are written.
 import { useEffect, useId, useState } from 'react';
 import type { ReactNode } from 'react';
 import Icon from '../../../app/Icon';
@@ -8,10 +8,10 @@ import Segmented from '../../../app/Segmented';
 import Select from '../../../app/Select';
 import { ColourField } from '../../controls';
 import { num } from '../shared';
-import { GRIDS, readStyle } from './code';
-import type { VectorStyle } from './code';
-import { COLOURS, FONT_SIZES, SIDES, TIPS, WIDTHS, WIDTH_PT, addPanel, asVectors, cleanName, isLink, nameFree, withText, resolve, removeIds } from './model';
-import type { Axes, Construction, Dash, EdgeLabel, FontSize, Item, Label, Link, LinkKind, Panel, PointShape, Stroke, TextStyle, Thickness, Tip, Tips, VPoint, VectorModel, Width } from './model';
+import { GRIDS, NOTATIONS, readStyle } from './code';
+import type { Notation, VectorStyle } from './code';
+import { COLOURS, FONT_SIZES, SIDES, TIPS, WIDTHS, WIDTH_PT, addPanel, asVectors, cleanName, dist, isLink, nameFree, placed, scaledName, setEquation, vectorName, withText, resolve, removeIds } from './model';
+import type { Axes, Construction, Dash, EdgeLabel, FontSize, Item, Label, Link, LinkKind, Panel, PointShape, Pt, Stroke, TextStyle, Thickness, Tip, Tips, VPoint, VectorModel, Width } from './model';
 
 const POINT_SHAPES: [PointShape, string][] = [
   ['filled', 'Filled'],
@@ -22,9 +22,48 @@ const POINT_SHAPES: [PointShape, string][] = [
 // ─── rail ───
 
 const GROUPS: [string, [string, string][]][] = [
-  ['Drawing', [['point', 'Point'], ['vector', 'Vector'], ['segment', 'Segment'], ['line', 'Line through two points'], ['polygon', 'Polygon'], ['text', 'Text']]],
-  ['Axes and marks', [['axes', 'Axes'], ['right', 'Right-angle mark'], ['drop', 'Drop to an axis'], ['highlight', 'Highlighted segment']]],
-  ['Constructions', [['mid', 'Midpoint'], ['ratio', 'Point dividing a segment'], ['foot', 'Foot of a projection'], ['sum', 'u + v'], ['diff', 'v − u']]]
+  [
+    'Drawing',
+    [
+      ['point', 'Point'],
+      ['vector', 'Vector'],
+      ['segment', 'Segment'],
+      ['line', 'Line through two points'],
+      ['eqline', 'Line from its equation'],
+      ['circle', 'Circle'],
+      ['arc', 'Arc'],
+      ['polygon', 'Polygon'],
+      ['text', 'Text']
+    ]
+  ],
+  [
+    'Axes and marks',
+    [
+      ['axes', 'Axes'],
+      ['angle', 'Angle'],
+      ['right', 'Right-angle mark'],
+      ['ticks', 'Equal-length ticks'],
+      ['drop', 'Drop to an axis'],
+      ['dropBoth', 'Drop to both axes'],
+      ['highlight', 'Highlighted segment']
+    ]
+  ],
+  [
+    'Constructions',
+    [
+      ['mid', 'Midpoint'],
+      ['ratio', 'Point dividing a segment'],
+      ['foot', 'Foot of a projection'],
+      ['meet', 'Intersection of two lines'],
+      ['sum', 'u + v'],
+      ['diff', 'v − u'],
+      ['scale', 'Scalar multiple'],
+      ['place', 'Vector placed at a point'],
+      ['reflect', 'Reflection in a line'],
+      ['parallel', 'Parallel through a point'],
+      ['perp', 'Perpendicular through a point']
+    ]
+  ]
 ];
 
 const HINTS: Record<string, string> = {
@@ -42,7 +81,19 @@ const HINTS: Record<string, string> = {
   ratio: 'click A then B; the point divides AB in a ratio you choose',
   foot: 'click the point, then two points on the line',
   sum: 'click the tips of u and v; drawn from O when there is one',
-  diff: 'click the tips of u and v; drawn from O when there is one'
+  diff: 'click the tips of u and v; drawn from O when there is one',
+  eqline: 'click a panel for ax + by + c = 0 with its intercepts; type a, b and c',
+  circle: 'click the centre, then a point on the circle',
+  arc: 'click the centre, then where the arc starts and ends, anticlockwise',
+  angle: 'click the corner, then a point on each side; θ by the arc',
+  ticks: 'click both ends of a segment or vector; again for two or three ticks',
+  dropBoth: 'click a point; dotted lines drop to both axes',
+  meet: 'click two points on each line; the point where they cross',
+  scale: 'click the tail and tip of a vector; 2 times it, any number after',
+  place: 'click the tail and tip of a vector, then where to draw it from',
+  reflect: 'click the point, then two points on the mirror line',
+  parallel: 'click two points on a line, then the point to draw it through',
+  perp: 'click two points on a line, then the point to draw it through'
 };
 
 /** A small picture of each tool. */
@@ -65,7 +116,19 @@ function Thumb({ tool }: { tool: string }) {
     ratio: <>{line('M4,22 L28,6')}{dot(4, 22)}{dot(28, 6)}{dot(12, 16.7, true)}</>,
     foot: <>{line('M3,24 L29,24')}{line('M14,5 L14,24', 'st-thumb-dash')}{dot(14, 5)}{dot(14, 24, true)}</>,
     sum: <>{line('M4,24 L22,22', arrow)}{line('M4,24 L10,8', arrow)}{line('M4,24 L27,7', arrow)}</>,
-    diff: <>{line('M4,24 L24,22', arrow)}{line('M4,24 L10,6', arrow)}{line('M24,22 L11,8', `${arrow} st-thumb-dash`)}</>
+    diff: <>{line('M4,24 L24,22', arrow)}{line('M4,24 L10,6', arrow)}{line('M24,22 L11,8', `${arrow} st-thumb-dash`)}</>,
+    eqline: <>{line('M3,22 L29,22')}{line('M7,26 L7,3')}{line('M4,6 L28,25')}{line('M5,9 L9,13 M9,9 L5,13 M22,18 L26,22 M26,18 L22,22')}</>,
+    circle: <>{line('M26,14 A10,10 0 1 0 6,14 A10,10 0 1 0 26,14')}{dot(16, 14)}</>,
+    arc: <>{line('M26,20 A11,11 0 0 0 7,8')}{dot(16, 20)}</>,
+    angle: <>{line('M4,24 L29,24 M4,24 L22,6')}{line('M14,24 A10,10 0 0 0 11,17')}</>,
+    ticks: <>{line('M3,16 L29,16')}{line('M14,11 L14,21 M18,11 L18,21')}</>,
+    dropBoth: <>{line('M3,24 L29,24 M6,27 L6,3')}{line('M6,8 L22,8 L22,24', 'st-thumb-dash')}{dot(22, 8)}</>,
+    meet: <>{line('M3,24 L29,6 M3,8 L29,22')}{dot(16, 15.3, true)}</>,
+    scale: <>{line('M4,24 L28,6', arrow)}{line('M4,24 L14,16.5', 'st-thumb-heavy')}</>,
+    place: <>{line('M4,24 L14,10', arrow)}{line('M16,24 L26,10', `${arrow} st-thumb-dash`)}</>,
+    reflect: <>{line('M3,26 L29,2', 'st-thumb-dash')}{dot(9, 8)}{dot(23, 20, true)}</>,
+    parallel: <>{line('M3,24 L29,12')}{line('M3,14 L29,2')}{dot(14, 9)}</>,
+    perp: <>{line('M3,22 L29,22')}{line('M16,4 L16,26')}{dot(16, 10)}</>
   };
   return (
     <svg viewBox="0 0 32 28" width="32" height="28" aria-hidden="true">
@@ -347,8 +410,21 @@ const describe = (c: Construction, name: (id: string) => string) => {
       return `The tip of u + v, with u and v from ${c.o ? name(c.o) : 'the origin'} to ${name(c.u)} and ${name(c.v)}.`;
     case 'diff':
       return `The tip of v − u from ${c.o ? name(c.o) : 'the origin'}, with u and v to ${name(c.u)} and ${name(c.v)}.`;
+    case 'meet':
+      return `Where the lines ${name(c.a)}${name(c.b)} and ${name(c.c)}${name(c.d)} cross.`;
+    case 'scale':
+      return `The tip of k times ${name(c.a)}${name(c.b)}, drawn from ${name(c.a)}.`;
+    case 'reflect':
+      return `The reflection of ${name(c.p)} in the line ${name(c.a)}${name(c.b)}.`;
+    case 'perp':
+      return `With ${name(c.p)}, on the line through ${name(c.p)} square to ${name(c.a)}${name(c.b)}.`;
+    case 'intercept':
+      return `Where the line from its equation crosses the ${c.axis} axis.`;
   }
 };
+
+/** A place as the inspector shows it: (2, 1), or nowhere for a construction with none now. */
+const where = (p: Pt | undefined) => (placed(p) ? `(${num(p.x)}, ${num(p.y)})` : 'Nowhere now: the lines are parallel or it has no place');
 
 /** Every point's coordinates, a free point's to type exactly; and the drawing's panels. */
 function Overview({ model, onChange }: { model: VectorModel; onChange(m: VectorModel): void }) {
@@ -379,7 +455,7 @@ function Overview({ model, onChange }: { model: VectorModel; onChange(m: VectorM
                   </td>
                   {p.of ? (
                     <td colSpan={2} className="muted" title="Constructed: worked out from its points">
-                      ({num(places.get(p.id)!.x)}, {num(places.get(p.id)!.y)})
+                      {placed(places.get(p.id)) ? where(places.get(p.id)) : 'Nowhere'}
                     </td>
                   ) : (
                     <>
@@ -445,6 +521,13 @@ function NameField({ name, free, onChange }: { name: string; free(name: string):
   );
 }
 
+const TICKS: [string, string][] = [
+  ['0', 'None'],
+  ['1', 'One'],
+  ['2', 'Two'],
+  ['3', 'Three']
+];
+
 const LINK_KINDS: [LinkKind, string][] = [
   ['vector', 'Vector'],
   ['segment', 'Segment'],
@@ -486,7 +569,7 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
     const point = item;
     const set = (patch: Partial<VPoint>) => onChange({ ...model, points: model.points.map((p) => (p.id === point.id ? { ...p, ...patch } : p)) });
     const setOf = (patch: Partial<Construction>) => set({ of: { ...point.of!, ...patch } as Construction });
-    const at = resolve(model).get(point.id)!;
+    const at = resolve(model).get(point.id);
     title = `Point ${point.name}`;
     fields = (
       <>
@@ -540,9 +623,27 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
                 </Field>
               </>
             )}
-            <div className="field-hint">
-              At ({num(at.x)}, {num(at.y)})
-            </div>
+            {point.of.kind === 'scale' && (
+              <Field label="k" hint="Any number: −1 turns it round, 0.5 halves it.">
+                {(id) => (
+                  <NumberInput
+                    id={id}
+                    value={point.of!.kind === 'scale' ? point.of!.k : 2}
+                    onChange={(k) => {
+                      const of = point.of as Extract<Construction, { kind: 'scale' }>;
+                      // the vector drawn to it keeps its label in step while it's the one written for k
+                      const auto = scaledName(of.k, vectorName(model, of.a, of.b));
+                      onChange({
+                        ...model,
+                        points: model.points.map((p) => (p.id === point.id ? { ...p, of: { ...of, k } } : p)),
+                        items: model.items.map((i) => (isLink(i) && i.b === point.id && i.label?.text === auto ? { ...i, label: { ...i.label, text: scaledName(k, vectorName(model, of.a, of.b)) } } : i))
+                      });
+                    }}
+                  />
+                )}
+              </Field>
+            )}
+            <div className="field-hint">At {where(at)}</div>
           </>
         ) : (
           <Field label="Position">
@@ -571,6 +672,11 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
               <StrokeFields stroke={link} onChange={set} />
               <div className="ckt-inspector-title">Arrow tips</div>
               <TipFields tips={link} vector={link.kind === 'vector'} tipSize={style.tipSize} onChange={set} />
+              {link.kind !== 'line' && (
+                <Field label="Equal-length ticks">
+                  {(_, labelId) => <Select labelId={labelId} value={String(link.ticks ?? 0)} options={TICKS} onChange={(n) => set({ ticks: Number(n) || undefined })} />}
+                </Field>
+              )}
               <EdgeLabelFields label={link.label} onChange={(label) => set({ label })} />
             </>
           )}
@@ -683,9 +789,10 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
                     value={item.axis}
                     options={[
                       ['x', 'x axis'],
-                      ['y', 'y axis']
+                      ['y', 'y axis'],
+                      ['both', 'Both axes']
                     ]}
-                    onChange={(axis) => set({ axis: axis as 'x' | 'y' })}
+                    onChange={(axis) => set({ axis: axis as 'x' | 'y' | 'both' })}
                   />
                 )}
               </Field>
@@ -693,6 +800,92 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
             </>
           );
           break;
+        case 'angle': {
+          title = `Angle ${name(item.from)}${name(item.at)}${name(item.to)}`;
+          const angle = item;
+          const text = angle.label ?? { text: '' };
+          fields = (
+            <>
+              <TexField label="Label" value={text.text} hint="LaTeX: $\theta$, $45^\circ$." onChange={(t) => set({ label: withText(text, t) })} />
+              {angle.label && <TextFields text={text} onChange={(patch) => set({ label: { ...text, ...patch } })} />}
+              <Field label="Radius">{(id) => <NumberInput id={id} value={angle.radius ?? 0.6} positive unit="cm" onChange={(radius) => radius <= 10 && set({ radius: radius === 0.6 ? undefined : radius })} />}</Field>
+              <label className="checkbox-row">
+                <input type="checkbox" role="switch" checked={!!angle.double} onChange={(e) => set({ double: e.target.checked || undefined })} />
+                <span>Double arc</span>
+              </label>
+              <label className="checkbox-row">
+                <input type="checkbox" role="switch" checked={!!angle.arrow} onChange={(e) => set({ arrow: e.target.checked || undefined })} />
+                <span>Arrow, for a turn</span>
+              </label>
+              <StrokeFields stroke={angle} onChange={set} />
+              <button type="button" className="btn small" title="The angle the other way round, the rest of the turn" onClick={() => set({ from: angle.to, to: angle.from })}>
+                Other side
+              </button>
+            </>
+          );
+          break;
+        }
+        case 'circle': {
+          const circle = item;
+          title = `${circle.to ? 'Arc' : 'Circle'} about ${name(circle.centre)}`;
+          const places = resolve(model);
+          const [C, P] = [places.get(circle.centre)!, places.get(circle.through)!];
+          const through = model.points.find((p) => p.id === circle.through);
+          const r = dist(C, P);
+          fields = (
+            <>
+              <Field label="Radius" hint={through?.of ? 'Set by the point it goes through, which is constructed.' : 'Moves the point it goes through.'}>
+                {(id) =>
+                  through?.of || r < 1e-9 ? (
+                    <input id={id} className="input" value={num(r)} readOnly />
+                  ) : (
+                    <NumberInput
+                      id={id}
+                      value={Math.round(r * 1000) / 1000}
+                      positive
+                      unit="cm"
+                      onChange={(radius) =>
+                        onChange({ ...model, points: model.points.map((p) => (p.id === circle.through ? { ...p, x: C.x + ((P.x - C.x) * radius) / r, y: C.y + ((P.y - C.y) * radius) / r } : p)) })
+                      }
+                    />
+                  )
+                }
+              </Field>
+              <StrokeFields stroke={circle} onChange={set} />
+              <ColourInput label="Fill" value={circle.fill} fallback="None" onChange={(fill) => set({ fill })} />
+              {circle.fill && <OpacityField label="Fill opacity" value={circle.fillOpacity} onChange={(fillOpacity) => set({ fillOpacity })} />}
+              {circle.to && (
+                <button type="button" className="btn small" title="The rest of the circle" onClick={() => set({ through: circle.to!, to: circle.through })}>
+                  Other part
+                </button>
+              )}
+            </>
+          );
+          break;
+        }
+        case 'eqline': {
+          const line = item;
+          title = 'Line from its equation';
+          const coefficient = (key: 'a' | 'b' | 'c') => (
+            <NumberInput label={key} value={line[key]} unit={key === 'a' ? 'x +' : key === 'b' ? 'y +' : '= 0'} onChange={(v) => onChange(setEquation(model, line.id, { [key]: v }))} />
+          );
+          fields = (
+            <>
+              <Field label="ax + by + c = 0" hint="Its intercepts and label follow while they’re as written for it.">
+                {() => (
+                  <div className="ckt-row">
+                    {coefficient('a')}
+                    {coefficient('b')}
+                    {coefficient('c')}
+                  </div>
+                )}
+              </Field>
+              <StrokeFields stroke={line} onChange={set} />
+              <EdgeLabelFields label={line.label} onChange={(label) => set({ label })} />
+            </>
+          );
+          break;
+        }
       }
     }
   }
@@ -728,6 +921,16 @@ export function VectorStyleMenu({ style: raw, onChange }: { style: Record<string
       <ColourInput label="Colour" value={style.colour} fallback="Black" onChange={(colour) => set({ colour })} />
       <Field label="Point size" hint="A dot’s radius.">
         {(id) => <NumberInput id={id} value={style.pointSize} positive unit="pt" onChange={(pointSize) => pointSize <= 20 && set({ pointSize: pointSize === 2 ? undefined : pointSize })} />}
+      </Field>
+      <Field label="Vector names" hint="How each \mathbf{…} in the labels is written. esvect’s \vv is added to the document when it’s used.">
+        {(_, labelId) => (
+          <Select
+            labelId={labelId}
+            value={style.notation ?? 'bold'}
+            options={(Object.keys(NOTATIONS) as Notation[]).map((n): [string, string] => [n, NOTATIONS[n].label])}
+            onChange={(notation) => onChange({ ...raw, notation: notation === 'bold' ? undefined : notation })}
+          />
+        )}
       </Field>
     </div>
   );

@@ -4,6 +4,7 @@ import type { PlotModel } from './modes/pgfplots/code';
 import { tikzIsNewer, tikzNeedsVersion5 } from './modes/tikz/code';
 import { cdNeedsVersion5 } from './modes/tikzcd/code';
 import type { CdModel } from './modes/tikzcd/code';
+import { vectorsNeedVersion5 } from './modes/vectors/model';
 import type { TikzModel } from './modes/tikz/code';
 import type { DiagramFile } from './types';
 import { tikzDocument } from '../../../backend/src/latex/flowchart.js';
@@ -69,6 +70,7 @@ function version5(diagram: DiagramFile) {
     if (diagram.language === 'typst' || diagram.pkg === 'tikz') return tikzNeedsVersion5(diagram.model as TikzModel);
     if (diagram.pkg === 'tikz-cd') return cdNeedsVersion5(diagram.model as CdModel);
     if (diagram.pkg === 'circuitikz' && usesSetsOf25(diagram.model)) return true;
+    if (diagram.pkg === 'vectors' && vectorsNeedVersion5(diagram.model, diagram.style)) return true;
   } catch {
     // a model of the wrong shape: its mode refuses it anyway
   }

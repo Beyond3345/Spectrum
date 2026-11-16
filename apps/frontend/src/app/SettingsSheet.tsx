@@ -1846,6 +1846,21 @@ export function ComposerPane() {
         <div className="field-hint">With τ positive downward, 2θ on the circle turns the same way as θ on the element.</div>
       </div>
       <div className="field">
+        <label id="settings-composerVectorNotation">Vector names</label>
+        <Select
+          labelId="settings-composerVectorNotation"
+          value={settings.composerVectorNotation}
+          options={[
+            ['bold', 'Bold, \\mathbf{a}'],
+            ['vec', 'Arrow, \\vec{a}'],
+            ['arrow', 'Long arrow, \\overrightarrow{OA}'],
+            ['vv', 'esvect, \\vv{a}']
+          ]}
+          onChange={(value) => update({ composerVectorNotation: value as AppSettings['composerVectorNotation'] })}
+        />
+        <div className="field-hint">How a new vector diagram writes each {'\\mathbf{…}'} in its labels. Each drawing can change it in its Style.</div>
+      </div>
+      <div className="field">
         <label>Structure diagrams</label>
         <div className="field-hint">Which force diagrams a new structure draws, and their fills: any xcolor name or mix, such as blue!15.</div>
         <DiagramFields looks={settings.composerDiagrams} onChange={(composerDiagrams) => update({ composerDiagrams })} />
