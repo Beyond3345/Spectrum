@@ -57,6 +57,7 @@
   display: block;
 }
 
+/* the dots Structures and Vector diagrams still draw themselves; the shared grid's marks are in composer.css */
 .ckt-dot {
   fill: var(--ckt-grid);
 }
