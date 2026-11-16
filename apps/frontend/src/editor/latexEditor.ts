@@ -43,6 +43,22 @@ function bracedGroup(line: string, start: number) {
   return null;
 }
 
+/** A heading as the outline shows it: \texorpdfstring{TeX}{plain} as its plain form, as the PDF's bookmarks have it. */
+export function outlineTitle(title: string) {
+  const re = /\\texorpdfstring\s*\{/g;
+  for (let m = re.exec(title); m; m = re.exec(title)) {
+    const tex = bracedGroup(title, re.lastIndex);
+    if (tex === null) break;
+    const second = /^\s*\{/.exec(title.slice(re.lastIndex + tex.length + 1));
+    const plain = second && bracedGroup(title, re.lastIndex + tex.length + 1 + second[0].length);
+    if (plain == null) break;
+    const end = re.lastIndex + tex.length + 1 + second![0].length + plain.length + 1;
+    title = title.slice(0, m.index) + plain + title.slice(end);
+    re.lastIndex = m.index + plain.length;
+  }
+  return title;
+}
+
 export function parseOutline(text: string): OutlineItem[] {
   const items: OutlineItem[] = [];
   let offset = 0;
@@ -51,7 +67,7 @@ export function parseOutline(text: string): OutlineItem[] {
     for (const m of code.matchAll(HEADING)) {
       const title = bracedGroup(code, (m.index ?? 0) + m[0].length);
       if (title === null) continue;
-      items.push({ title: title.trim() || '(untitled)', level: HEADING_LEVEL[m[1]], pos: offset + (m.index ?? 0), line: index + 1 });
+      items.push({ title: outlineTitle(title.trim()) || '(untitled)', level: HEADING_LEVEL[m[1]], pos: offset + (m.index ?? 0), line: index + 1 });
     }
     offset += line.length + 1;
   });
@@ -80,7 +96,7 @@ export async function documentOutline(
         ...[...code.matchAll(INPUT_RE)].map((m) => ({ at: m.index ?? 0, input: includedFile(files, root, inputName(m), '.tex') }))
       ].sort((a, b) => a.at - b.at);
       for (const mark of marks) {
-        if ('heading' in mark) headings.push({ ...mark.heading, pos: offset + mark.at, line: index + 1, file: path });
+        if ('heading' in mark) headings.push({ ...mark.heading, title: outlineTitle(mark.heading.title), pos: offset + mark.at, line: index + 1, file: path });
         else if (mark.input && !seen.has(mark.input)) await walk(mark.input);
       }
       offset += line.length + 1;
