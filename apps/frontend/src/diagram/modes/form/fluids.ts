@@ -70,8 +70,8 @@ export const pressure = (pa: number): [string, string] => (Math.abs(pa) >= 1e4 ?
 const at = (p: Pt) => `(${num(p.x)},${num(p.y)})`;
 export { at };
 
-/** The labels' text as the spacing measures it: a Greek letter one letter wide, \mathrm and \text not at all. */
-const measured = (tex: string) => tex.replace(/\\(?:mathrm|text)\b/g, '').replace(/\\(?:theta|rho|Delta|max)\b/g, 'x').replace(/\\circ\b/g, '');
+/** The labels' text as the spacing measures it: a Greek letter one letter wide, \mathrm, \mathbf and \text not at all. */
+const measured = (tex: string) => tex.replace(/\\(?:mathrm|mathbf|text)\b/g, '').replace(/\\(?:theta|rho|Delta|max|lambda)\b/g, 'x').replace(/\\circ\b/g, '');
 
 /**
  * A drawing being written: its lines, the shapes its labels keep clear of, and its labels, each written where its
@@ -81,6 +81,8 @@ export function scene(look = 'colour') {
   const lines: string[] = [];
   const items: ShapeItem[] = [];
   const labels: Label[] = [];
+  /** a label's colour, when it isn't the picture's */
+  const colours: Record<number, string> = {};
   let patterns = false;
   const s = {
     lines,
@@ -93,8 +95,9 @@ export function scene(look = 'colour') {
       lines.push(`\\fill ${at(p)} circle (${num(r)});`);
     },
     /** a label beside p towards d, moved round p when that side is taken; or, fixed, anchored there whatever it touches */
-    label(p: Pt, tex: string, d: Pt, fixed = false) {
+    label(p: Pt, tex: string, d: Pt, fixed = false, colour?: string) {
       const n = Math.hypot(d.x, d.y) || 1;
+      if (colour) colours[labels.length] = colour;
       labels.push({ at: { x: p.x + (d.x / n) * 1e-4, y: p.y + (d.y / n) * 1e-4 }, tex, anchor: anchorFor(d), ...(!fixed && { around: p }) });
       lines.push(`\u0000${labels.length - 1}`);
     },
@@ -166,7 +169,7 @@ export function scene(look = 'colour') {
         const i = Number(line.slice(1));
         const p = placed[i] ?? labels[i];
         // on an exam paper's black and white, a label over a fluid's lines sits on white, as the papers' do
-        return `\\node[anchor=${p.anchor}${look === 'exam' ? ', fill=white' : ''}] at ${at(p.at)} {${labels[i].tex}};`;
+        return `\\node[anchor=${p.anchor}${look === 'exam' ? ', fill=white' : ''}${colours[i] ? `, ${colours[i]}` : ''}] at ${at(p.at)} {${labels[i].tex}};`;
       });
       return { body, patterns, labels: placed.map((l, i) => l ?? { ...labels[i], tex: measured(labels[i].tex) }), shapes };
     }

@@ -4,11 +4,13 @@
 import type { DiagramCode } from '../../fileFormat';
 import type { ComposerDefaults } from '../../types';
 import { num } from '../shared';
+import { CONIC } from './conics';
 import { FLOATING } from './floating';
 import { GATE } from './gate';
 import { MANOMETER } from './manometer';
 import { MOHR } from './mohr';
 import { TANK } from './tank';
+import { TRANSFORMATION } from './transformation';
 import { venn } from './venn';
 
 export type FormValue = string | number | boolean;
@@ -73,7 +75,10 @@ export const PRESETS: FormPreset[] = [
   GATE,
   MANOMETER,
   TANK,
-  FLOATING
+  FLOATING,
+  // maths (2.5)
+  CONIC,
+  TRANSFORMATION
 ];
 
 export const presetFor = (id: string) => PRESETS.find((preset) => preset.id === id);
