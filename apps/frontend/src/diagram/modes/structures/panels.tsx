@@ -625,7 +625,7 @@ export function StructureStyleMenu({ style: raw, onChange }: { style: Record<str
           </label>
         </More>
       )}
-      <Field label="Bending moment diagrams" hint="The default for new drawings is in Settings › Composer.">
+      <Field label="Bending moment diagrams" hint="The default for new drawings is in Settings › Diagram composer.">
         {(id) => (
           <Select
             labelId={`${id}-label`}
