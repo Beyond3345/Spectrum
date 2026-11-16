@@ -224,6 +224,8 @@ try {
     Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: { getItem: (k: string) => (k === 'spectrum-diagram-canvas' ? canvas : JSON.stringify(settings)) } } });
   stored({ theme: 'dark' }, '{"minimap":true,"dark":true}');
   eq([loadSettings().composerDark, loadSettings().composerMinimap], [true, true], 'the old canvas choices carry over');
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: { getItem: (k: string) => (k === 'spectrum-diagram-canvas' ? '{"minimap":false,"dark":true}' : null) } } });
+  eq([loadSettings().composerDark, loadSettings().composerMinimap, loadSettings().theme], [true, false, DEFAULT_SETTINGS.theme], 'with no settings stored yet, too');
   stored({ theme: 'light' }, '{"dark":true}');
   eq([loadSettings().composerDark, loadSettings().composerMinimap], [true, false], 'one alone too');
   stored({ composerDark: false, composerMinimap: true }, '{"minimap":false,"dark":true}');

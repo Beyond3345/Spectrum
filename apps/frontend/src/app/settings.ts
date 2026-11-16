@@ -394,7 +394,10 @@ export function effortOptions(model: ProviderModel | null): [ReasoningEffort, st
 }
 
 function parse(raw: string | null): AppSettings {
-  if (!raw) return DEFAULT_SETTINGS;
+  if (!raw) {
+    const canvas = canvasPrefs({});
+    return canvas.composerDark || canvas.composerMinimap ? { ...DEFAULT_SETTINGS, ...canvas } : DEFAULT_SETTINGS;
+  }
   try {
     const { ngrokToken: _dropped, mineruApiBase, mineruToken, ...parsed } = JSON.parse(raw) as Partial<AppSettings> & {
       ngrokToken?: string;
@@ -457,10 +460,7 @@ function parse(raw: string | null): AppSettings {
     merged.composerSiUnits = merged.composerSiUnits !== false;
     if (!['dots', 'major-dots', 'major-lines', 'lines'].includes(merged.composerGrid)) merged.composerGrid = 'major-dots';
     merged.composerGridEvery = Number.isInteger(merged.composerGridEvery) && merged.composerGridEvery >= 2 && merged.composerGridEvery <= 20 ? merged.composerGridEvery : 5;
-    // 2.4 and earlier kept these two in the composer's own storage, on this computer only: they start from there
-    const canvas = parsed.composerDark === undefined || parsed.composerMinimap === undefined ? oldCanvasPrefs() : {};
-    merged.composerDark = (parsed.composerDark ?? canvas.dark) === true;
-    merged.composerMinimap = (parsed.composerMinimap ?? canvas.minimap) === true;
+    Object.assign(merged, canvasPrefs(parsed));
     merged.composerDiagrams = readLooks(merged.composerDiagrams);
     merged.composerRecent = Array.isArray(merged.composerRecent) ? merged.composerRecent.filter((id) => typeof id === 'string').slice(0, 8) : [];
     for (const key of ['editorFont', 'editorFontCustom', 'editorThemeLight', 'editorThemeDark', 'parser', 'parserProtocol', 'openalexEmail', 'ncbiKey', 'unpaywallEmail'] as const) {
@@ -482,13 +482,20 @@ function parse(raw: string | null): AppSettings {
   }
 }
 
-/** The canvas colour and minimap as Spectrum 2.4 and earlier stored them. */
-function oldCanvasPrefs(): { dark?: unknown; minimap?: unknown } {
-  try {
-    return Object(JSON.parse(window.localStorage.getItem('spectrum-diagram-canvas') || '{}'));
-  } catch {
-    return {};
+/**
+ * The canvas's colour and minimap, checked. Spectrum 2.4 and earlier kept the two in the composer's own storage, on
+ * this computer only: each starts from there until Settings has stored its own.
+ */
+function canvasPrefs(stored: { composerDark?: unknown; composerMinimap?: unknown }) {
+  let old: { dark?: unknown; minimap?: unknown } = {};
+  if (stored.composerDark === undefined || stored.composerMinimap === undefined) {
+    try {
+      old = Object(JSON.parse(window.localStorage.getItem('spectrum-diagram-canvas') || '{}'));
+    } catch {
+      // no storage, or nothing readable in it
+    }
   }
+  return { composerDark: (stored.composerDark ?? old.dark) === true, composerMinimap: (stored.composerMinimap ?? old.minimap) === true };
 }
 
 function readRaw() {
