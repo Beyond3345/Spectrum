@@ -40,6 +40,46 @@ export const tikzIsNewer = (model: TikzModel) =>
 
 export const emptyTikz = (): TikzModel => ({ boxes: [], links: [] });
 
+/**
+ * a new shape's size in grid units, and its text. Every size even, so each box's centre is on the grid as its corner is,
+ * and an arrow between two boxes in line is straight.
+ */
+export const NEW: Record<Shape, [number, number, string]> = {
+  rectangle: [8, 4, 'Text'],
+  rounded: [8, 4, 'Text'],
+  circle: [6, 6, ''],
+  ellipse: [8, 6, 'Text'],
+  diamond: [8, 6, 'Text'],
+  parallelogram: [8, 4, 'Text'],
+  text: [6, 2, 'Text'],
+  maths: [6, 2, 'x^2'],
+  state: [6, 6, 'q_0'],
+  accepting: [6, 6, 'q_1'],
+  cylinder: [6, 6, 'Data'],
+  document: [8, 6, 'Report'],
+  trapezium: [8, 4, 'Text'],
+  operator: [4, 4, '+'],
+  stack: [4, 8, ''],
+  container: [20, 14, 'Block']
+};
+
+/**
+ * A box resized on the canvas to w × h grid units, in steps of 2 so its centre stays on the grid. at: its new top-left
+ * corner, when dragged from the left or top edge, whose opposite edge then stays put. A container keeps the boxes in it
+ * where they are, as a resize isn't a move.
+ */
+export function resized(box: Box, w: number, h: number, at?: { x: number; y: number }): Box {
+  const even = (v: number) => Math.max(2, 2 * Math.round(v / 2));
+  const [nw, nh] = [even(w), even(h)];
+  return {
+    ...box,
+    x: at && Math.round(at.x) !== box.x ? box.x + box.w - nw : box.x,
+    y: at && Math.round(at.y) !== box.y ? box.y + box.h - nh : box.y,
+    w: nw,
+    h: nh
+  };
+}
+
 // ─── the selection's Copy, Paste and Delete ───
 
 /** The next free id with this prefix: n1, n2, … */

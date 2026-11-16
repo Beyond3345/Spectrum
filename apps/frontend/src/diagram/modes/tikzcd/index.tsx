@@ -1,4 +1,4 @@
-import type { ComponentProps } from 'react';
+import type { ComponentProps, KeyboardEvent } from 'react';
 import { BaseEdge, Handle, Position } from '@xyflow/react';
 import type { Edge, EdgeProps, Node, NodeProps } from '@xyflow/react';
 import Segmented from '../../../app/Segmented';
@@ -7,7 +7,7 @@ import { Row, ToolRail, railIcon } from '../../controls';
 import type { Tool } from '../../controls';
 import type { DiagramMode } from '../../types';
 import { nextId } from '../tikz/code';
-import { cdCode, copyCd, emptyCd, pasteCd, removeCd } from './code';
+import { cdCode, copyCd, emptyCd, labelSides, pasteCd, removeCd } from './code';
 import type { CdArrow, CdModel, Cell } from './code';
 
 // Commutative diagrams on a grid of cells
@@ -96,8 +96,22 @@ function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 's
     return from && to ? [{ id: arrow.id, type: 'cdArrow', source: arrow.from, target: arrow.to, data: { arrow, from, to } }] : [];
   });
 
+  // objects jump from cell to cell, and stay put rather than land on another
+  const moveTo = (next: Cell[]) => {
+    const moved = next.some((c, i) => c.row !== model.cells[i].row || c.col !== model.cells[i].col);
+    if (moved && new Set(next.map((c) => `${c.row},${c.col}`)).size === next.length) onChange({ ...model, cells: next });
+  };
+  // an arrow key moves the selected objects a cell: React Flow's own nudge, a pixel, rounds back to the cell they were in
+  const nudge = (e: KeyboardEvent) => {
+    const step = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, number[]>)[e.key];
+    if (!step || readOnly || !(e.target as HTMLElement).closest('.react-flow__node')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    moveTo(model.cells.map((c) => (selection.includes(c.id) ? { ...c, col: c.col + step[0], row: c.row + step[1] } : c)));
+  };
+
   return (
-    <div className={`diagram-flow${tool !== 'select' ? ' placing' : ''}`}>
+    <div className={`diagram-flow${tool !== 'select' ? ' placing' : ''}`} onKeyDownCapture={nudge}>
       <FlowCanvas
         nodes={nodes}
         edges={edges}
@@ -108,15 +122,14 @@ function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 's
         readOnly={readOnly}
         selection={selection}
         onSelect={onSelect}
-        // objects jump from cell to cell, and stay put rather than land on another
-        onMove={(moves) => {
-          const next = model.cells.map((c) => {
-            const m = moves.find((move) => move.id === c.id);
-            return m ? { ...c, ...cellAt(m.x, m.y) } : c;
-          });
-          const moved = next.some((c, i) => c.row !== model.cells[i].row || c.col !== model.cells[i].col);
-          if (moved && new Set(next.map((c) => `${c.row},${c.col}`)).size === next.length) onChange({ ...model, cells: next });
-        }}
+        onMove={(moves) =>
+          moveTo(
+            model.cells.map((c) => {
+              const m = moves.find((move) => move.id === c.id);
+              return m ? { ...c, ...cellAt(m.x, m.y) } : c;
+            })
+          )
+        }
         onConnect={(c) => {
           const id = nextId('a', model.arrows.map((a) => a.id));
           onChange({ ...model, arrows: [...model.arrows, { id, from: c.source, to: c.target }] });
@@ -148,6 +161,7 @@ function Rail({ tool, onPick }: { tool: string; onPick(tool: string): void }) {
   return <ToolRail tools={TOOLS} tool={tool} onPick={onPick} />;
 }
 
+
 function Inspector({ model, onChange, selection = [] }: { model: CdModel; onChange(m: CdModel): void; selection?: string[] }) {
   const cell = selection.length === 1 ? model.cells.find((c) => c.id === selection[0]) : undefined;
   const arrow = selection.length === 1 ? model.arrows.find((a) => a.id === selection[0]) : undefined;
@@ -178,10 +192,7 @@ function Inspector({ model, onChange, selection = [] }: { model: CdModel; onChan
           <Segmented
             label="Label side"
             value={arrow.swap ? 'below' : 'above'}
-            options={[
-              ['above', 'Above'],
-              ['below', 'Below']
-            ]}
+            options={labelSides(arrow, model)}
             onChange={(side) => patchArrow({ swap: side === 'below' || undefined })}
           />
         </div>

@@ -1,7 +1,7 @@
 // Self-check for the plain TikZ mode's code. Run:
 // npx esbuild apps/frontend/src/diagram/modes/tikz/tikz.check.ts --bundle --platform=node --log-level=warning | node
 import { fletcherCode } from '../fletcher/code';
-import { FLETCHER_SHAPES, connect, copyTikz, corners, dividersOf, middleOf, moveBoxes, nextId, pasteTikz, removeTikz, tikzCode, tikzIsNewer } from './code';
+import { FLETCHER_SHAPES, NEW, connect, copyTikz, corners, dividersOf, middleOf, moveBoxes, nextId, pasteTikz, removeTikz, resized, tikzCode, tikzIsNewer } from './code';
 import type { Box, Link, Shape, TikzModel } from './code';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -127,5 +127,22 @@ eq(moveBoxes(boxed, [{ id: 'c1', x: 0, y: 10 }]).map((b) => [b.id, b.x, b.y]), [
 eq(moveBoxes(boxed, [{ id: 'c1', x: 0, y: 10 }, { id: 'n1', x: 9, y: 9 }]).map((b) => [b.x, b.y]), [[0, 10], [9, 9], [30, 30]], 'a box dragged with it goes where it’s dragged');
 eq(moveBoxes(boxed, [{ id: 'n1', x: 5, y: 5 }])[0], boxed[0], 'moving a box leaves its container');
 eq(dividersOf({ ...shapes.boxes[7], cells: 1 }), [], 'one cell, no lines');
+
+// texts with LaTeX's special characters compile: % & # _ escaped, unless they are already, outside $…$ maths
+const special = tikzCode({
+  boxes: [{ ...start, text: '50% done\nR&D #1 a_b $x_1$ 10\\%' }, { ...shapes.boxes[0], text: 'Q&A' }, { ...sum, id: 'n5', text: 'a_1' }],
+  links: [{ ...down, from: 'n1', to: 'c1', label: '5% & $y_2$' }]
+}).body;
+eq(special.includes('{50\\% done \\\\ R\\&D \\#1 a\\_b $x_1$ 10\\%}'), true, 'box text escaped, its maths kept');
+eq(special.includes('north west:{Q\\&A}'), true, 'a container title escaped');
+eq(special.includes('{$a_1$}'), true, 'a maths box as it is');
+eq(special.includes('{5\\% \\& $y_2$}'), true, 'a label escaped');
+
+// new boxes are even both ways, so a box's centre is on the grid and arrows between boxes in line are straight
+eq(Object.entries(NEW).filter(([, [w, h]]) => w % 2 || h % 2), [], 'every new size even');
+// resizing: in steps of 2; from the left or top, the opposite edge stays put and the move isn't lost
+eq(resized(start, 9.2, 4), { ...start, w: 10 }, 'from the right, wider');
+eq(resized(start, 12, 6, { x: -4, y: -2 }), { ...start, x: -4, y: -2, w: 12, h: 6 }, 'from the top-left, bigger and moved');
+eq(resized({ ...start, w: 5 }, 7, 4, { x: -2, y: 0 }), { ...start, x: -3, w: 8 }, 'an odd box from the left: its right edge kept');
 
 console.log('tikz.check: ok');

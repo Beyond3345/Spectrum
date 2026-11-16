@@ -101,7 +101,9 @@ export default function ConvertSheet({
       output: (text) => setSteps((was) => text.split('\n').filter(Boolean).reduce((list, step) => (list[list.length - 1]?.split(' (')[0] === step.split(' (')[0] ? [...list.slice(0, -1), step] : [...list, step]), was))
     });
     try {
-      const res = await convertProject(projectId, { to, doc, engine, convertId, ...(tidy && modelReady && { aiCleanup: true, llmConfig: model }) });
+      // the app's default Typst, which the new project, pinning none, compiles with
+      const typstVersion = settings.compileDefaults.typstVersion || undefined;
+      const res = await convertProject(projectId, { to, doc, engine, convertId, typstVersion, ...(tidy && modelReady && { aiCleanup: true, llmConfig: model }) });
       if (shown.current) setResult(res);
       else toast(`Made ${res.project.name}.`, { tone: 'success', action: { label: 'Open', onClick: () => onOpen(res.project.id) } });
     } catch (err) {
