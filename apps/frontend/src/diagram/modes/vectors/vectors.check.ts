@@ -209,7 +209,7 @@ eq(readStyle({ width: 'huge', vectorWidth: 1.5, colour: ' ', tips: 'none' }), { 
   eq(one({ id: 'd', kind: 'drop', from: 'B', axis: 'x', dash: 'solid' })[0], ['\\draw (B) -- (B |- 0,0);'], 'a solid drop');
   eq(one({ id: 'r', kind: 'right', at: 'A', toward: 'B', width: 'thick', colour: 'red' })[0][0].startsWith('\\draw[thick, red] '), true, 'a right-angle mark’s look');
   // labels' size and colour
-  eq(one(link({ label: { text: '$\\mathbf{a}$', size: 'footnotesize', colour: 'red' } }))[0], ['\\draw[->] (A) -- (B) node[midway, above, font=\\footnotesize, red] {$\\mathbf{a}$};'], 'a vector’s label');
+  eq(one(link({ label: { text: '$\\mathbf{a}$', side: 'above', size: 'footnotesize', colour: 'red' } }))[0], ['\\draw[->] (A) -- (B) node[midway, above, font=\\footnotesize, red] {$\\mathbf{a}$};'], 'a vector’s label');
   eq(one({ id: 't', kind: 'text', panel: 'g1', x: 1, y: 1, text: 'Hi', size: 'Large', colour: '#00ff00' })[0], ['\\node[font=\\Large, color={rgb,255:red,0;green,255;blue,0}] at (1,1) {Hi};'], 'a note’s');
 }
 {
@@ -312,14 +312,14 @@ eq(readStyle({ width: 'huge', vectorWidth: 1.5, colour: ' ', tips: 'none' }), { 
   const negative = { ...twice.model, points: twice.model.points.map((p) => (p.id === twice.id ? { ...p, of: { kind: 'scale' as const, a: 'O', b: 'V', k: -2 } } : p)) };
   closePt(resolve(negative).get(twice.id), -2, -4, '−2v');
   closePt(resolve(move(negative, 'V', 1, -1)).get(twice.id), -2, 2, 'following v');
-  eq(body(negative).filter((l) => l.includes('(A)')), ['\\coordinate (A) at ($(O)!-2!(V)$);', '\\draw[->] (O) -- (A) node[midway, left] {$2\\mathbf{v}$};'], 'written with calc, labelled from v’s own label');
+  eq(body(negative).filter((l) => l.includes('(A)')), ['\\coordinate (A) at ($(O)!-2!(V)$);', '\\draw[->] (O) -- (A) node[midway, above left] {$2\\mathbf{v}$};'], 'written with calc, labelled from v’s own label, placed clear of the arrows');
   eq([pointOf(twice.model, twice.id).dot, pointOf(twice.model, twice.id).label], [undefined, undefined], 'its tip bare');
 
   // AB placed at P: v − u from P
   m = four();
   const placedAt = made(m, 'place', ['O', 'A', 'C']);
   closePt(resolve(placedAt.model).get(placedAt.id), 4.8, 5.9, 'OA from C');
-  eq(placedAt.model.items.find((i) => i.kind === 'vector')!, { id: placedAt.model.items[0].id, kind: 'vector', a: 'C', b: placedAt.id, label: { text: '$\\mathbf{a}$', side: 'left' } }, 'drawn from C, named a');
+  eq(placedAt.model.items.find((i) => i.kind === 'vector')!, { id: placedAt.model.items[0].id, kind: 'vector', a: 'C', b: placedAt.id, label: { text: '$\\mathbf{a}$' } }, 'drawn from C, named a, its label placed clear');
 
   // the reflection of P(1,1) in x + y = 5 is (4,4), and follows
   m = { ...four(), points: [pt('P', 1, 1), pt('M', 0, 5), pt('N', 5, 0)] };

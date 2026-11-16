@@ -1,22 +1,59 @@
-// The vector canvas: the drawing as the code draws it, its panels side by side, with points to drag (snapped to the
-// grid and to each other) and the rail's tools, which pick points one after another: a vector from one point to
-// another, the foot of a projection from a point and two on a line. Clicking where there's no point makes one, bare (no
-// dot or letter); the Point tool's points have both.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+// The vector canvas: the drawing as the code draws it, its panels side by side, at the Style's scale with lines, tips,
+// dots and labels at their printed sizes, on the counting grid (a larger mark every centimetre, x = 0 and y = 0
+// darker). Points drag (snapped to the grid and to each other), a selection drags, nudges, turns and mirrors as one,
+// and the rail's tools pick points one after another: a vector from one point to another, the foot of a projection
+// from a point and two on a line. Clicking where there's no point makes one, bare (no dot or letter); the Point tool's
+// points have both.
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import Icon from '../../../app/Icon';
+import { CanvasGrid } from '../../CanvasGrid';
 import { useCanvasPrefs } from '../../FlowCanvas';
-import { colourCss } from '../shared';
-import { eqLineEnds, readStyle, styledVectors } from './code';
-import { PICKS, WIDTH_PT, addPoint, applyTool, asVectors, dropUnused, clipLine, dist, frameOf, isLink, newAxes, newEqLine, newId, panelOf, placed, pointNear, pointsOf, resolve, rightCorners, sideOffset } from './model';
+import { plain, svgRuns } from '../../sketch';
+import { useToolKeys } from '../../toolKeys';
+import { colourCss, num } from '../shared';
+import { eqLineEnds, notate, readStyle, styledVectors } from './code';
+import type { Notation } from './code';
+import { placeVectorLabels } from './labels';
+import type { Spot } from './labels';
+import {
+  PICKS,
+  WIDTH_PT,
+  addPoint,
+  applyTool,
+  asVectors,
+  clipLine,
+  dist,
+  dropUnused,
+  frameOf,
+  idsInside,
+  isLink,
+  mirrorIds,
+  moveIds,
+  moversOf,
+  newAxes,
+  newEqLine,
+  newId,
+  panelOf,
+  placed,
+  pointNear,
+  pointsOf,
+  resolve,
+  rightCorners,
+  sideOffset,
+  turnIds
+} from './model';
 import type { Dash, FontSize, Item, Pt, Side, Stroke, Thickness, Tip, Tips, VPoint, VectorModel } from './model';
 
-/** screen pixels a centimetre at 100 % */
+/** screen pixels a centimetre of paper at 100 % */
 const PX_PER_CM = 36;
+const PT_PER_CM = 28.45;
 /** how near, in screen pixels, a point pulls what's dragged or picked */
 const SNAP_PX = 10;
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 8;
+/** \normalsize, as the document sets a label: 10 pt */
+const NORMAL_PT = 10;
 
 interface View {
   x: number;
@@ -26,7 +63,9 @@ interface View {
 
 type Drag =
   | { kind: 'pan'; start: Pt; view: View }
-  | { kind: 'point' | 'note'; id: string; base: VectorModel; moved: boolean }
+  /** a selection dragged by one of its points or items: anchor is the place that snaps, start where the press was */
+  | { kind: 'move'; ids: string[]; base: VectorModel; start: Pt; anchor: Pt; panel: string; moved: boolean }
+  | { kind: 'marquee'; start: Pt; now: Pt; keep: string[] }
   /** a picking tool pressed at a point; let go elsewhere, it picks there too */
   | { kind: 'pick'; start: Pt };
 
@@ -56,29 +95,32 @@ const ASKS: Record<string, string[]> = {
   perp: ['Click a point on the line', 'Click another', 'Click the point the perpendicular goes through']
 };
 
-/** TeX as the canvas sketches it: the common maths read as text, the rest of the markup dropped. */
-export const plain = (tex: string) =>
-  tex
-    .replace(/\\[td]?frac\{([^}]*)\}\{([^}]*)\}/g, '$1/$2')
-    .replace(/\\frac12/g, '½')
-    .replace(/\\(theta|lambda|mu|alpha|beta|phi)\b/g, (_, name: string) => ({ theta: 'θ', lambda: 'λ', mu: 'μ', alpha: 'α', beta: 'β', phi: 'φ' })[name] ?? name)
-    .replace(/\\cdot/g, '·')
-    .replace(/-/g, '−')
-    .replace(/[$]/g, '')
-    .replace(/\\[a-zA-Z]+/g, '')
-    .replace(/[{}]/g, '');
+/** the commands the canvas sets itself: bold, and an arrow (or hat) over the last letter */
+const MARKED = /(\\(?:mathbf|boldsymbol|vec|overrightarrow|vv|hat)\s*\{[^{}]*\})/;
+
+/**
+ * TeX as it prints, sketched: vector names in the Style's notation, \mathbf in bold, \vec, \overrightarrow and \vv
+ * with an arrow over the last letter, \hat with a hat, fractions as a/b, minus signs, and the shared sketch's scripts
+ * and symbols (A_y with a real subscript, \parallel as ∥).
+ * ponytail: the arrow of \overrightarrow{OA} sits over its last letter only; the preview sets it across
+ */
+export function sketch(tex: string, notation?: Notation): ReactNode {
+  const written = notate(tex, notation)
+    .replace(/\\[td]?frac\{([^{}]*)\}\{([^{}]*)\}/g, '$1/$2')
+    .replace(/\\frac(\d)(\d)/g, '$1/$2')
+    .replace(/-/g, '−');
+  return written.split(MARKED).map((part, i) => {
+    const m = part.match(/^\\(\w+)\s*\{([^{}]*)\}$/);
+    if (!m) return <Fragment key={i}>{svgRuns(part)}</Fragment>;
+    if (m[1] === 'mathbf' || m[1] === 'boldsymbol') return <tspan key={i} fontWeight="bold">{svgRuns(m[2])}</tspan>;
+    return <Fragment key={i}>{svgRuns(m[2])}{m[1] === 'hat' ? '̂' : '⃗'}</Fragment>;
+  });
+}
 
 /** An xcolor colour as CSS on the canvas, as it prints (the shared xcolor maths); black is the canvas's ink, so it shows on the dark canvas too. */
 const ink = (colour = 'black') => (colour === 'black' ? 'var(--ckt-ink)' : colourCss(colour));
-/** screen pixels a pt of line width or dash draws, kept the same at every zoom so thin lines stay seen */
-const PX_PER_PT = 1.5;
-/** a line's width on screen: TikZ's thin (0.4 pt) when it has none */
-export const widthPx = (width?: Thickness) => 0.6 + (typeof width === 'number' ? width : WIDTH_PT[width ?? 'thin']) * PX_PER_PT;
-/** a dash pattern on screen, the gaps widened by the round caps' reach */
-export function dashArray(dash: Dash | undefined, width: number) {
-  const pattern = dash === 'dashed' ? [3, 3] : dash === 'dotted' ? [0, 2] : dash === 'dash dot' ? [3, 2, 0, 2] : Array.isArray(dash) ? dash : null;
-  return pattern?.map((n, i) => (i % 2 ? n * PX_PER_PT + width : Math.max(0.01, n * PX_PER_PT))).join(' ');
-}
+/** a thickness in pt: TikZ's thin (0.4 pt) when it has none */
+const widthPt = (width?: Thickness) => (typeof width === 'number' ? width : WIDTH_PT[width ?? 'thin']);
 const FONT_SCALE: Record<FontSize, number> = { tiny: 0.5, scriptsize: 0.7, footnotesize: 0.8, small: 0.9, normalsize: 1, large: 1.2, Large: 1.44 };
 
 /** each tip drawn in a 10 × 10 box pointing right, its point at (9, 5) */
@@ -135,6 +177,9 @@ export default function VectorCanvas({
   /** the points those picks made where there was none, taken away again if the pick is given up */
   const [made, setMade] = useState<string[]>([]);
   const [hover, setHover] = useState<Pt | null>(null);
+  /** where the pointer is on the canvas, in cm, for the readout */
+  const [pointer, setPointer] = useState<Pt | null>(null);
+  const [space, setSpace] = useState(false);
   const prefs = useCanvasPrefs();
 
   const shown = draft || model;
@@ -146,6 +191,8 @@ export default function VectorCanvas({
     return { x: p.x + (shiftOf.get(shown.points.find((q) => q.id === id)?.panel ?? '') ?? 0), y: p.y };
   };
   const frames = useMemo(() => new Map(shown.panels.map((p) => [p.id, frameOf(shown, p.id, places)])), [shown, places]);
+  // the labels with no side of their own, where the code puts them
+  const spots = useMemo(() => placeVectorLabels(shown, style, places), [shown, places, style.scale, style.pointSize, style.notation]);
   const selected = new Set(selection);
   const grid = style.grid;
 
@@ -170,8 +217,9 @@ export default function VectorCanvas({
     const e = { minX: Math.min(...boxes.map((b) => b.minX)), maxX: Math.max(...boxes.map((b) => b.maxX)), minY: Math.min(...boxes.map((b) => b.minY)), maxY: Math.max(...boxes.map((b) => b.maxY)) };
     const w = Math.max(e.maxX - e.minX, 2) + 1;
     const h = Math.max(e.maxY - e.minY, 2) + 1;
-    const zoom = Math.min(MAX_ZOOM / 2, Math.max(MIN_ZOOM, Math.min(size.width / (w * PX_PER_CM), size.height / (h * PX_PER_CM))));
-    const k = PX_PER_CM * zoom;
+    const unit = PX_PER_CM * style.scale;
+    const zoom = Math.min(MAX_ZOOM / 2, Math.max(MIN_ZOOM, Math.min(size.width / (w * unit), size.height / (h * unit))));
+    const k = unit * zoom;
     setView({ zoom, x: size.width / 2 - ((e.minX + e.maxX) / 2) * k, y: size.height / 2 + ((e.minY + e.maxY) / 2) * k });
   };
 
@@ -180,7 +228,13 @@ export default function VectorCanvas({
   }, [size.width, size.height]);
 
   const v = view || { x: 0, y: 0, zoom: 1 };
-  const k = PX_PER_CM * v.zoom;
+  /** screen pixels a centimetre of paper, and a pt of paper: line widths, tips, text and label distances */
+  const paper = PX_PER_CM * v.zoom;
+  const ptPx = paper / PT_PER_CM;
+  /** screen pixels a centimetre of the drawing: the Style's scale on the paper */
+  const k = paper * style.scale;
+  /** a pt inside the picture (a dot's radius, a tick's length), which the Style's scale scales too */
+  const ptIn = k / PT_PER_CM;
   /** centimetres to screen */
   const S = (p: Pt) => ({ x: v.x + p.x * k, y: v.y - p.y * k });
   /** screen to centimetres */
@@ -206,7 +260,7 @@ export default function VectorCanvas({
     };
     svg.addEventListener('wheel', onWheel, { passive: false });
     return () => svg.removeEventListener('wheel', onWheel);
-  });
+  }, [size.width, size.height]);
 
   // ─── panels and snapping ───
 
@@ -222,9 +276,9 @@ export default function VectorCanvas({
     return shown.panels.reduce((best, p) => (gap(p.id) < gap(best.id) ? p : best), shown.panels[0]).id;
   };
   const snapToGrid = (p: Pt) => ({ x: Math.round(p.x / grid) * grid, y: Math.round(p.y / grid) * grid });
-  /** in a panel: a point within reach, else the grid; skip: a point that's moving */
-  const snapIn = (panel: string, local: Pt, m: VectorModel, skip?: string) => {
-    const near = m.points.filter((p) => p.panel === panel && p.id !== skip).reduce<{ p: Pt; d: number } | null>((best, p) => {
+  /** in a panel: a point within reach, else the grid; skip: points that are moving */
+  const snapIn = (panel: string, local: Pt, m: VectorModel, skip: Set<string> = new Set()) => {
+    const near = m.points.filter((p) => p.panel === panel && !skip.has(p.id)).reduce<{ p: Pt; d: number } | null>((best, p) => {
       const at = places.get(p.id)!;
       const d = dist(at, local);
       return d <= tolerance && (!best || d < best.d) ? { p: at, d } : best;
@@ -316,7 +370,7 @@ export default function VectorCanvas({
     } catch {
       // a pointer the browser no longer tracks
     }
-    if (e.button === 1 || readOnly) {
+    if (e.button === 1 || space || readOnly) {
       setDrag({ kind: 'pan', start: at, view: v });
       return;
     }
@@ -330,20 +384,28 @@ export default function VectorCanvas({
     const target = (e.target as globalThis.Element).closest('[data-id]') as SVGElement | null;
     const id = target?.dataset.id;
     if (id) {
-      onSelect?.(e.shiftKey ? (selected.has(id) ? selection.filter((s) => s !== id) : [...selection, id]) : selected.has(id) ? selection : [id]);
+      const ids = e.shiftKey ? (selected.has(id) ? selection.filter((s) => s !== id) : [...selection, id]) : selected.has(id) ? selection : [id];
+      onSelect?.(ids);
+      if (!ids.includes(id)) return;
+      // the selection moves together, snapping by the point pressed (or the first of what moves)
+      const { points, items } = moversOf(model, ids);
       const point = model.points.find((p) => p.id === id);
-      if (point && !point.of) setDrag({ kind: 'point', id, base: model, moved: false });
-      else if (model.items.find((i) => i.id === id)?.kind === 'text') setDrag({ kind: 'note', id, base: model, moved: false });
+      const note = model.items.find((i) => i.id === id && i.kind === 'text') as Extract<Item, { kind: 'text' }> | undefined;
+      const first = point && points.has(point.id) ? point : note ?? model.points.find((p) => points.has(p.id));
+      if (!first && !items.size) return;
+      const panel = first && 'panel' in first ? first.panel : panelOf(model, model.items.find((i) => items.has(i.id))!);
+      setDrag({ kind: 'move', ids, base: model, start: w, anchor: first ? { x: first.x, y: first.y } : { x: 0, y: 0 }, panel, moved: false });
       return;
     }
-    onSelect?.([]);
-    setDrag({ kind: 'pan', start: at, view: v });
+    setDrag({ kind: 'marquee', start: at, now: at, keep: e.shiftKey ? selection : [] });
+    if (!e.shiftKey) onSelect?.([]);
   };
 
   const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
     if (!view) return;
     const at = local(e);
     const w = toWorld(at);
+    setPointer(w);
     if (!drag || drag.kind === 'pick') {
       if (tool === 'select') return setHover(null);
       const panel = panelAt(w);
@@ -356,17 +418,16 @@ export default function VectorCanvas({
       setView({ ...drag.view, x: drag.view.x + at.x - drag.start.x, y: drag.view.y + at.y - drag.start.y });
       return;
     }
-    const base = drag.base;
-    if (drag.kind === 'point') {
-      const point = base.points.find((p) => p.id === drag.id)!;
-      const p = snapIn(point.panel, { x: w.x - (shiftOf.get(point.panel) ?? 0), y: w.y }, base, drag.id);
-      setDraft({ ...base, points: base.points.map((q) => (q.id === drag.id ? { ...q, x: p.x, y: p.y } : q)) });
-    } else {
-      const note = base.items.find((i) => i.id === drag.id);
-      if (note?.kind !== 'text') return;
-      const p = snapToGrid({ x: w.x - (shiftOf.get(note.panel) ?? 0), y: w.y });
-      setDraft({ ...base, items: base.items.map((i) => (i.id === drag.id ? { ...note, x: p.x, y: p.y } : i)) });
+    if (drag.kind === 'marquee') {
+      setDrag({ ...drag, now: at });
+      return;
     }
+    // the anchor lands on a point within reach or the grid, and everything else moves as far
+    const raw = { x: drag.anchor.x + w.x - drag.start.x, y: drag.anchor.y + w.y - drag.start.y };
+    const moving = moversOf(drag.base, drag.ids).points;
+    // only lines from equations: moved a grid step at a time
+    const p = moving.size || drag.base.items.some((i) => drag.ids.includes(i.id) && i.kind === 'text') ? snapIn(drag.panel, raw, drag.base, moving) : snapToGrid(raw);
+    setDraft(moveIds(drag.base, drag.ids, { x: p.x - drag.anchor.x, y: p.y - drag.anchor.y }));
     if (!drag.moved) setDrag({ ...drag, moved: true });
   };
 
@@ -378,6 +439,13 @@ export default function VectorCanvas({
     if (d.kind === 'pick') {
       const at = local(e);
       if (dist(at, d.start) > SNAP_PX && picks.length) pickAt(toWorld(at));
+      return;
+    }
+    if (d.kind === 'marquee') {
+      if (dist(d.now, d.start) <= 3) return;
+      const [a, b] = [toWorld(d.start), toWorld(d.now)];
+      const hits = shown.panels.flatMap((p) => idsInside(shown, p.id, { minX: Math.min(a.x, b.x) - p.shift, maxX: Math.max(a.x, b.x) - p.shift, minY: Math.min(a.y, b.y), maxY: Math.max(a.y, b.y) }, places));
+      onSelect?.([...new Set([...d.keep, ...hits])]);
       return;
     }
     if (d.kind === 'pan' || !draft) return setDraft(null);
@@ -396,7 +464,18 @@ export default function VectorCanvas({
   // a tool picked part way through another starts again
   useEffect(dropPicks, [tool]);
 
+  // ─── keys ───
+
+  // P and V (as Settings › Diagram composer has them) pick Point and Vector while the pointer is over the drawing
+  useToolKeys(() => svgRef.current, { diagramPoint: () => onTool?.('point'), diagramVector: () => onTool?.('vector') }, readOnly);
+
   const onKeyDown = (e: ReactKeyboardEvent) => {
+    if ((e.target as HTMLElement).closest('input, textarea, select, button, a')) return;
+    if (e.key === ' ') {
+      setSpace(true);
+      e.preventDefault();
+      return;
+    }
     if (e.key === 'Escape') {
       // during a pick Esc starts it again and keeps the tool; the frame's Esc (back to Select) is for after
       if (picks.length) {
@@ -410,45 +489,60 @@ export default function VectorCanvas({
       e.preventDefault();
       return;
     }
-    if (readOnly || !e.key.startsWith('Arrow') || e.metaKey || e.ctrlKey || e.altKey) return;
-    // the arrow keys move the selected free points and notes a grid step (a tenth with Shift)
+    if (readOnly || e.altKey) return;
+    const mod = e.metaKey || e.ctrlKey;
+    const key = e.key.toLowerCase();
+    const handled = (next?: VectorModel) => {
+      if (next) onChange(next);
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    if (mod && key === 'a') {
+      onSelect?.([...model.points.map((p) => p.id), ...model.items.map((i) => i.id)]);
+      return handled();
+    }
+    if (mod || !selection.length) return;
+    // R turns the selection a quarter (Shift: an eighth) anticlockwise; X and Y mirror it
+    if (key === 'r') return handled(turnIds(model, selection, e.shiftKey ? 45 : 90));
+    if (key === 'x' || key === 'y') return handled(mirrorIds(model, selection, key));
+    // the arrow keys move the selection a grid step (a tenth with Shift)
     const step = e.shiftKey ? grid / 10 : grid;
     const delta = { ArrowLeft: { x: -step, y: 0 }, ArrowRight: { x: step, y: 0 }, ArrowUp: { x: 0, y: step }, ArrowDown: { x: 0, y: -step } }[e.key];
-    if (!delta || !selection.length) return;
-    const round = (n: number) => Math.round(n * 1e6) / 1e6;
-    onChange({
-      ...model,
-      points: model.points.map((p) => (selected.has(p.id) && !p.of ? { ...p, x: round(p.x + delta.x), y: round(p.y + delta.y) } : p)),
-      items: model.items.map((i) => (selected.has(i.id) && i.kind === 'text' ? { ...i, x: round(i.x + delta.x), y: round(i.y + delta.y) } : i))
-    });
-    e.preventDefault();
+    if (delta) handled(moveIds(model, selection, delta));
   };
 
   // ─── drawing ───
 
-  const fontSize = Math.max(9, Math.min(16, k * 0.36));
-  /** a label beside a place, on a side, as TikZ sets it, in its size and colour */
-  const label = (at: Pt, text: string, side: Side | undefined, key: string, extra = 0, look: { size?: FontSize; colour?: string } = {}) => {
-    const o = side ? sideOffset(side) : { x: 0, y: 0 };
-    const gap = 4 + extra * (k / 28.45);
+  /** text's size on screen: the document's \normalsize at the paper's scale, as it prints */
+  const fontPx = NORMAL_PT * ptPx;
+  /**
+   * A label set as TikZ sets a node on a side of a place: its anchor there, the text an inner sep (a third of an em)
+   * beyond, and `dist` pt further along each axis (above right=2pt).
+   */
+  const label = (at: Pt, text: string, spot: { side?: Side; dist?: number } | undefined, key: string, look: { size?: FontSize; colour?: string } = {}) => {
+    const o = spot?.side ? sideOffset(spot.side) : { x: 0, y: 0 };
+    const font = fontPx * FONT_SCALE[look.size ?? 'normalsize'];
+    const gap = font / 3 + (spot?.dist ?? 0) * ptPx;
     const s = S(at);
     const [anchor, baseline] = ANCHOR[`${o.x},${o.y}`];
-    const len = Math.hypot(o.x, o.y) || 1;
     return (
       <text
         key={key}
-        x={s.x + (o.x / len) * gap}
-        y={s.y - (o.y / len) * gap}
+        x={s.x + o.x * gap}
+        y={s.y - o.y * gap}
         className="st-text"
-        fontSize={fontSize * FONT_SCALE[look.size ?? 'normalsize']}
+        fontSize={font}
         textAnchor={anchor}
         dominantBaseline={baseline}
         style={look.colour ? { fill: ink(look.colour) } : undefined}
       >
-        {plain(text)}
+        {sketch(text, style.notation)}
       </text>
     );
   };
+  /** a label with a side of its own, or where the spacing put it */
+  const spotOf = (id: string, own?: { side?: string; dist?: number }): Spot | { side: Side; dist?: number } | undefined =>
+    own?.side && own.side !== 'beside' ? { side: own.side as Side, dist: own.dist } : spots.get(id);
 
   const line = (a: Pt, b: Pt, className: string, extra: Record<string, unknown> = {}) => {
     const [p, q] = [S(a), S(b)];
@@ -461,25 +555,36 @@ export default function VectorCanvas({
     const [p, q] = [S(at), S(from)];
     const [d, className] = TIP_SHAPES[tip];
     const angle = (Math.atan2(p.y - q.y, p.x - q.x) * 180) / Math.PI;
-    return <path key={key} d={d} className={className} transform={`translate(${p.x},${p.y}) rotate(${angle}) scale(${size / 10}) translate(-9,-5)`} style={className === 'st-arrowhead' ? { fill: colour } : { stroke: colour }} />;
+    return <path key={key} d={d} className={className} transform={`translate(${p.x},${p.y}) rotate(${angle}) scale(${size / 10}) translate(-9,-5)`} style={className === 'st-arrowhead' ? { fill: colour } : { stroke: colour, strokeWidth: (10 * 0.4 * ptPx) / size }} />;
   };
-  /** a line's look on screen: its own, else the Style's (or the width, dash and colour it has when it has none) */
+  /** a line's look on screen at its printed width: its own, else the Style's (or the width, dash and colour it has when it has none) */
   const strokeLook = (s: Stroke & { dashed?: boolean }, width = style.width, dash?: Dash, colour = style.colour) => {
-    const w = widthPx(s.width ?? width);
+    const pt = widthPt(s.width ?? width);
+    const w = Math.max(0.5, pt * ptPx);
     const stroke = ink(s.colour ?? colour);
-    return { stroke, strokeWidth: w, strokeDasharray: dashArray(s.dash ?? (s.dashed ? 'dashed' : dash), w), opacity: s.opacity, color: stroke };
+    return { stroke, strokeWidth: w, strokeDasharray: dashArray(s.dash ?? (s.dashed ? 'dashed' : dash), w), opacity: s.opacity, color: stroke, pt };
   };
-  /** a line's tips from a to b, as the code writes them: a vector's end is the Style's tip when it has none */
-  const tips = (t: Tips, styleEnd: boolean, look: { strokeWidth: number; stroke: string; opacity?: number }, a: Pt, b: Pt) => {
+  /** a dash pattern on screen, the gaps widened by the round caps' reach */
+  const dashArray = (dash: Dash | undefined, width: number) => {
+    const pattern = dash === 'dashed' ? [3, 3] : dash === 'dotted' ? [0, 2] : dash === 'dash dot' ? [3, 2, 0, 2] : Array.isArray(dash) ? dash : null;
+    return pattern?.map((n, i) => (i % 2 ? n * ptPx + width : Math.max(0.01, n * ptPx))).join(' ');
+  };
+  /**
+   * A line's tips from a to b, as the code writes them (a vector's end is the Style's tip when it has none), as long as
+   * they print: TikZ's own stealth is 8 × (0.28 pt + 0.3 × the line width), arrows.meta's 3 pt + 4.5 × the line width.
+   */
+  const tips = (t: Tips, styleEnd: boolean, look: { pt: number; stroke: string; opacity?: number }, a: Pt, b: Pt) => {
     const end = t.end ? (t.end === 'none' ? undefined : t.end) : styleEnd ? style.tips : undefined;
-    const size = (5 + 1.2 * look.strokeWidth) * (t.tipSize ?? style.tipSize);
     const start = t.start && t.start !== 'none' ? t.start : undefined;
+    const own = !start && t.end === undefined && t.tipSize === undefined && ['stealth', 'latex', 'to'].includes(style.tips) && style.tipSize === 1;
+    const meta = (3 + 4.5 * look.pt) * (t.tipSize ?? style.tipSize) * ptPx;
+    const size = own ? 8 * (0.28 + 0.3 * look.pt) * ptPx : meta;
     const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     return (
       <g style={{ opacity: look.opacity }}>
         {tipPath(start, a, b, size, look.stroke, 'start')}
         {tipPath(end, b, a, size, look.stroke, 'end')}
-        {t.middle && tipPath(end ?? style.tips, mid, a, size, look.stroke, 'middle')}
+        {t.middle && tipPath(end ?? style.tips, mid, a, meta, look.stroke, 'middle')}
       </g>
     );
   };
@@ -494,8 +599,6 @@ export default function VectorCanvas({
     return `M${p.x},${p.y} A${r * k},${r * k} 0 ${sweep > 180 ? 1 : 0} 0 ${q.x},${q.y}`;
   };
   const degrees = (from: Pt, to: Pt) => (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI;
-  /** screen pixels a pt is at this zoom */
-  const ptPx = k / 28.45;
 
   const drawItem = (item: Item): ReactNode => {
     // left out with a point that isn't anywhere now, as the code leaves it out
@@ -528,9 +631,9 @@ export default function VectorCanvas({
       const [u, across] = [{ x: (b.x - a.x) / len, y: (b.y - a.y) / len }, { x: -(b.y - a.y) / len, y: (b.x - a.x) / len }];
       const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
       const tickAt = (i: number) => {
-        const along = (((i - (n - 1) / 2) * 2) * ptPx) / k;
+        const along = ((i - (n - 1) / 2) * 2 * ptIn) / k;
         const c = { x: mid.x + u.x * along, y: mid.y + u.y * along };
-        const h = (3 * ptPx) / k;
+        const h = (3 * ptIn) / k;
         return <g key={i}>{line({ x: c.x - across.x * h, y: c.y - across.y * h }, { x: c.x + across.x * h, y: c.y + across.y * h }, 'vec-stroke', { style: look })}</g>;
       };
       return group(
@@ -540,7 +643,7 @@ export default function VectorCanvas({
           {line(a, b, 'vec-stroke', { style: look })}
           {!highlight && item.kind !== 'line' && Array.from({ length: n }, (_, i) => tickAt(i))}
           {!highlight && tips(item, item.kind === 'vector', look, a, b)}
-          {item.label?.text.trim() && label(at, item.label.text, item.label.side ?? 'above', `${item.id}-label`, 0, item.label)}
+          {!highlight && item.label?.text.trim() && label(at, item.label.text, spotOf(item.id, item.label) ?? { side: 'above' }, `${item.id}-label`, item.label)}
         </>,
         `${names[item.kind]} ${nameOf(item.a)}${nameOf(item.b)}${item.label?.text ? `, ${plain(item.label.text)}` : ''}`
       );
@@ -563,11 +666,12 @@ export default function VectorCanvas({
       }
       case 'text': {
         const s = S(W(item));
+        const font = fontPx * FONT_SCALE[item.size ?? 'normalsize'];
         return group(
           <>
-            {on && <rect x={s.x - fontSize * 2} y={s.y - fontSize * 0.8} width={fontSize * 4} height={fontSize * 1.6} className="st-halo-pic" rx={3} />}
-            <text x={s.x} y={s.y} className="st-text" fontSize={fontSize * FONT_SCALE[item.size ?? 'normalsize']} textAnchor="middle" dominantBaseline="middle" style={item.colour ? { fill: ink(item.colour) } : undefined}>
-              {plain(item.text) || 'Text'}
+            {on && <rect x={s.x - font * 2} y={s.y - font * 0.8} width={font * 4} height={font * 1.6} className="st-halo-pic" rx={3} />}
+            <text x={s.x} y={s.y} className="st-text" fontSize={font} textAnchor="middle" dominantBaseline="middle" style={item.colour ? { fill: ink(item.colour) } : undefined}>
+              {item.text.trim() ? sketch(item.text, style.notation) : 'Text'}
             </text>
           </>,
           `Text ${plain(item.text)}`
@@ -593,6 +697,7 @@ export default function VectorCanvas({
           for (let n = Math.ceil(from / step); n * step <= to && out.length < 200; n += 1) out.push(n * step);
           return out;
         };
+        const axisTips = { end: item.tip };
         return group(
           <>
             {item.grid && (
@@ -606,26 +711,26 @@ export default function VectorCanvas({
             {line(W({ x: item.x[0], y: 0 }), W({ x: item.x[1], y: 0 }), 'st-hit')}
             {line(W({ x: 0, y: item.y[0] }), W({ x: 0, y: item.y[1] }), 'st-hit')}
             {line(W({ x: item.x[0], y: 0 }), W({ x: item.x[1], y: 0 }), 'vec-stroke', { style: look })}
-            {tips({ end: item.tip }, true, look, W({ x: item.x[0], y: 0 }), W({ x: item.x[1], y: 0 }))}
+            {tips(axisTips, true, look, W({ x: item.x[0], y: 0 }), W({ x: item.x[1], y: 0 }))}
             {line(W({ x: 0, y: item.y[0] }), W({ x: 0, y: item.y[1] }), 'vec-stroke', { style: look })}
-            {tips({ end: item.tip }, true, look, W({ x: 0, y: item.y[0] }), W({ x: 0, y: item.y[1] }))}
-            {label(W({ x: item.x[1], y: 0 }), xName, 'right', 'xn', 0, { colour: item.colour })}
-            {label(W({ x: 0, y: item.y[1] }), yName, 'above', 'yn', 0, { colour: item.colour })}
+            {tips(axisTips, true, look, W({ x: 0, y: item.y[0] }), W({ x: 0, y: item.y[1] }))}
+            {label(W({ x: item.x[1], y: 0 }), xName, { side: 'right' }, 'xn', { colour: item.colour })}
+            {label(W({ x: 0, y: item.y[1] }), yName, { side: 'above' }, 'yn', { colour: item.colour })}
             {item.ticks &&
               ticks(item.x).map((t) => (
                 <g key={`x${t}`}>
                   {line(W({ x: t, y: tick }), W({ x: t, y: -tick }), 'vec-stroke', { style: look })}
-                  {label(W({ x: t, y: -tick }), String(t), 'below', `xl${t}`, 0, numbers)}
+                  {label(W({ x: t, y: -tick }), String(t), { side: 'below' }, `xl${t}`, numbers)}
                 </g>
               ))}
             {item.ticks &&
               ticks(item.y).map((t) => (
                 <g key={`y${t}`}>
                   {line(W({ x: tick, y: t }), W({ x: -tick, y: t }), 'vec-stroke', { style: look })}
-                  {label(W({ x: -tick, y: t }), String(t), 'left', `yl${t}`, 0, numbers)}
+                  {label(W({ x: -tick, y: t }), String(t), { side: 'left' }, `yl${t}`, numbers)}
                 </g>
               ))}
-            {item.origin && label(W({ x: 0, y: 0 }), '$O$', 'below left', 'o')}
+            {item.origin && label(W({ x: 0, y: 0 }), '$O$', { side: 'below left' }, 'o')}
           </>,
           'Axes'
         );
@@ -675,7 +780,7 @@ export default function VectorCanvas({
             <path d={d} className="vec-stroke" style={look} />
             {item.double && <path d={arcPath(V, r + 0.07, from, to)} className="vec-stroke" style={look} />}
             {item.arrow && tips({ end: style.tips }, false, look, end(to - Math.min(10, sweep / 2)), end(to))}
-            {item.label?.text.trim() && label({ x: V.x + (r + 0.25) * Math.cos(middle), y: V.y + (r + 0.25) * Math.sin(middle) }, item.label.text, undefined, `${item.id}-label`, 0, item.label)}
+            {item.label?.text.trim() && label({ x: V.x + (r + 0.25) * Math.cos(middle), y: V.y + (r + 0.25) * Math.sin(middle) }, item.label.text, undefined, `${item.id}-label`, item.label)}
           </>,
           `Angle ${nameOf(item.from)}${nameOf(item.at)}${nameOf(item.to)}${item.label?.text ? `, ${plain(item.label.text)}` : ''}`
         );
@@ -706,7 +811,7 @@ export default function VectorCanvas({
             {on && line(a, b, 'st-halo')}
             {line(a, b, 'st-hit')}
             {line(a, b, 'vec-stroke', { style: look })}
-            {item.label?.text.trim() && label(at, item.label.text, item.label.side ?? 'above', `${item.id}-label`, 0, item.label)}
+            {item.label?.text.trim() && label(at, item.label.text, spotOf(item.id, item.label) ?? { side: 'above' }, `${item.id}-label`, item.label)}
           </>,
           `Line ${plain(item.label?.text ?? '')}`
         );
@@ -716,10 +821,11 @@ export default function VectorCanvas({
 
   /** a point's dot, filled, open or a cross, its radius in pt drawn to scale */
   const dot = (p: VPoint, s: Pt) => {
-    const r = Math.max(1.5, (p.size ?? style.pointSize) * (k / 28.45));
+    const r = Math.max(1, (p.size ?? style.pointSize) * ptIn);
     const colour = ink(p.colour ?? style.colour);
-    if (p.shape === 'open') return <circle cx={s.x} cy={s.y} r={r} className="st-dot-open" style={{ stroke: colour }} />;
-    if (p.shape === 'cross') return <path d={`M${s.x - r},${s.y - r} L${s.x + r},${s.y + r} M${s.x - r},${s.y + r} L${s.x + r},${s.y - r}`} className="vec-stroke" style={{ stroke: colour }} />;
+    const w = Math.max(0.5, 0.4 * ptPx);
+    if (p.shape === 'open') return <circle cx={s.x} cy={s.y} r={r} className="st-dot-open" style={{ stroke: colour, strokeWidth: w }} />;
+    if (p.shape === 'cross') return <path d={`M${s.x - r},${s.y - r} L${s.x + r},${s.y + r} M${s.x - r},${s.y + r} L${s.x + r},${s.y - r}`} className="vec-stroke" style={{ stroke: colour, strokeWidth: w }} />;
     return <circle cx={s.x} cy={s.y} r={r} className="st-dot" style={{ fill: colour }} />;
   };
 
@@ -727,22 +833,43 @@ export default function VectorCanvas({
   const LAYERS: Item['kind'][] = ['axes', 'highlight', 'polygon', 'circle', 'line', 'eqline', 'segment', 'drop', 'right', 'angle', 'vector', 'text'];
   const items = LAYERS.flatMap((layer) => shown.items.filter((i) => i.kind === layer));
 
-  const gridPx = grid * k;
-  const gridStep = gridPx < 8 ? Math.ceil(8 / gridPx) : 1;
   const picking = tool !== 'select' && !!PICKS[tool] && !ONE_CLICK(tool);
   const ghost = picking && picks.length && hover ? [world(picks[picks.length - 1]), hover] : null;
   const message = picking ? (ASKS[tool]?.[Math.min(picks.length, (ASKS[tool]?.length ?? 1) - 1)] ?? '') + (picks.length ? '. Esc starts again.' : '') : '';
-  const cursor = drag?.kind === 'pan' ? 'grabbing' : tool === 'select' ? 'default' : 'crosshair';
+  const cursor = space || drag?.kind === 'pan' ? 'grab' : tool === 'select' ? 'default' : 'crosshair';
+  // the pointer's place in its panel, on the grid, as a click there would put a point
+  const readout = (() => {
+    if (!pointer || !view) return null;
+    const panel = panelAt(pointer);
+    const p = snapToGrid({ x: pointer.x - (shiftOf.get(panel) ?? 0), y: pointer.y });
+    return `(${num(p.x).replace('-', '−')}, ${num(p.y).replace('-', '−')})`;
+  })();
 
   return (
-    <div ref={boxRef} className="ckt-canvas st-canvas" tabIndex={0} aria-label="Vector canvas" onKeyDown={onKeyDown}>
-      <svg ref={svgRef} width="100%" height="100%" style={{ cursor }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerLeave={() => !drag && setHover(null)}>
-        <defs>
-          <pattern id="vec-dots" width={gridPx * gridStep} height={gridPx * gridStep} patternUnits="userSpaceOnUse" x={v.x} y={v.y}>
-            <circle cx={0.75} cy={0.75} r={0.75} className="ckt-dot" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#vec-dots)" />
+    <div
+      ref={boxRef}
+      className="ckt-canvas st-canvas"
+      tabIndex={0}
+      aria-label="Vector canvas"
+      onKeyDown={onKeyDown}
+      onKeyUp={(e) => e.key === ' ' && setSpace(false)}
+      onBlur={() => setSpace(false)}
+    >
+      <svg
+        ref={svgRef}
+        width="100%"
+        height="100%"
+        style={{ cursor }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={() => {
+          setPointer(null);
+          if (!drag) setHover(null);
+        }}
+      >
+        {/* a larger mark every centimetre of the drawing, and x = 0 and y = 0 darker */}
+        <CanvasGrid id="vec" step={grid * k} x={v.x} y={v.y} major={k} origin />
         {view && (
           <>
             {shown.panels.length > 1 &&
@@ -755,8 +882,8 @@ export default function VectorCanvas({
             {shown.points.flatMap((p) =>
               p.of?.kind === 'ratio' && p.of.marks && placed(places.get(p.id))
                 ? [
-                    label({ x: (world(p.of.a).x + world(p.id).x) / 2, y: (world(p.of.a).y + world(p.id).y) / 2 }, String(p.of.m), p.of.marks, `${p.id}-m`),
-                    label({ x: (world(p.id).x + world(p.of.b).x) / 2, y: (world(p.id).y + world(p.of.b).y) / 2 }, String(p.of.n), p.of.marks, `${p.id}-n`)
+                    label({ x: (world(p.of.a).x + world(p.id).x) / 2, y: (world(p.of.a).y + world(p.id).y) / 2 }, String(p.of.m), { side: p.of.marks }, `${p.id}-m`),
+                    label({ x: (world(p.id).x + world(p.of.b).x) / 2, y: (world(p.id).y + world(p.of.b).y) / 2 }, String(p.of.n), { side: p.of.marks }, `${p.id}-n`)
                   ]
                 : []
             )}
@@ -770,7 +897,7 @@ export default function VectorCanvas({
                   <circle cx={s.x} cy={s.y} r={10} className="st-hit-box" />
                   {p.dot && dot(p, s)}
                   <circle cx={s.x} cy={s.y} r={on || picked ? 6 : 4} className="vec-handle" />
-                  {p.label?.text.trim() && label(world(p.id), p.label.text, p.label.side ?? 'above right', `${p.id}-label`, p.label.dist ?? 0, p.label)}
+                  {p.label?.text.trim() && label(world(p.id), p.label.text, spotOf(p.id, p.label) ?? { side: 'above right' }, `${p.id}-label`, p.label)}
                 </g>
               );
             })}
@@ -785,10 +912,18 @@ export default function VectorCanvas({
               const p = S(hover);
               return <circle className="ckt-target" cx={p.x} cy={p.y} r={5} />;
             })()}
+            {drag?.kind === 'marquee' && (
+              <rect className="ckt-marquee" x={Math.min(drag.start.x, drag.now.x)} y={Math.min(drag.start.y, drag.now.y)} width={Math.abs(drag.now.x - drag.start.x)} height={Math.abs(drag.now.y - drag.start.y)} />
+            )}
           </>
         )}
       </svg>
       <div className="ckt-zoom">
+        {readout && (
+          <span className="ckt-zoom-level vec-readout" aria-label="Pointer, x and y in cm">
+            {readout}
+          </span>
+        )}
         <button type="button" className="icon-btn" aria-label="Zoom out" title="Zoom out" onClick={() => zoomAt(1 / 1.25)}>
           <Icon name="minus.magnifyingglass" />
         </button>

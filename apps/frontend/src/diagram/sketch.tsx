@@ -12,7 +12,7 @@ const SYMBOLS: Record<string, string> = {
   alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', varepsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ', kappa: 'κ', lambda: 'λ', nu: 'ν',
   xi: 'ξ', rho: 'ρ', sigma: 'σ', tau: 'τ', phi: 'φ', varphi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω',
   Gamma: 'Γ', Delta: 'Δ', Theta: 'Θ', Lambda: 'Λ', Sigma: 'Σ', Phi: 'Φ', Psi: 'Ψ',
-  pm: '±', le: '≤', leq: '≤', ge: '≥', geq: '≥', ne: '≠', neq: '≠', infty: '∞', degree: '°', circ: '°', angle: '∠', sum: '∑', to: '→', rightarrow: '→', ell: 'ℓ', partial: '∂', nabla: '∇'
+  parallel: '∥', perp: '⊥', pm: '±', le: '≤', leq: '≤', ge: '≥', geq: '≥', ne: '≠', neq: '≠', infty: '∞', degree: '°', circ: '°', angle: '∠', sum: '∑', to: '→', rightarrow: '→', ell: 'ℓ', partial: '∂', nabla: '∇'
 };
 
 /**
