@@ -1,7 +1,7 @@
 // Self-check for the plain TikZ mode's code. Run:
 // npx esbuild apps/frontend/src/diagram/modes/tikz/tikz.check.ts --bundle --platform=node --log-level=warning | node
 import { fletcherCode } from '../fletcher/code';
-import { FLETCHER_SHAPES, NEW, connect, copyTikz, corners, dividersOf, middleOf, moveBoxes, nextId, pasteTikz, removeTikz, resized, tikzCode, tikzIsNewer } from './code';
+import { FLETCHER_SHAPES, NEW, along, connect, copyTikz, corners, dividersOf, middleOf, moveBoxes, nextId, pasteTikz, removeTikz, resized, tikzCode, tikzIsNewer, tikzNeedsVersion5, turnTikz } from './code';
 import type { Box, Link, Shape, TikzModel } from './code';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -58,10 +58,11 @@ eq(pasteTikz(model, null).ids, [], 'nothing to paste');
 const left = removeTikz(model, ['n2', 'e3']);
 eq([left.boxes.map((b) => b.id), left.links.map((l) => l.id)], [['n1', 'n3', 'n4'], []], 'deleting a box takes its arrows');
 
-// the Typst canvas offers only what fletcher writes: each such shape becomes a node of one of fletcher's shapes
+// the Typst canvas offers only what fletcher writes: each such shape becomes a node of one of fletcher's shapes, or a
+// polygon of its own drawn with fletcher's CeTZ
 for (const shape of FLETCHER_SHAPES) {
   const body = fletcherCode({ boxes: [{ ...start, shape }], links: [] }).body;
-  eq(/node\(\(.*shape: fletcher\.shapes\.(rect|circle|ellipse|diamond|parallelogram|cylinder|trapezium),/.test(body), true, `fletcher writes a ${shape}`);
+  eq(/node\(\(.*shape: (fletcher\.shapes\.(rect|circle|ellipse|diamond|parallelogram|cylinder|trapezium|pill)|\(node, extrude\) => fletcher\.cetz\.draw\.group\(fletcher\.cetz\.draw\.line\(.*, close: true\)\)),/.test(body), true, `fletcher writes a ${shape}`);
 }
 eq(['document', 'stack'].some((s) => FLETCHER_SHAPES.includes(s as Shape)), false, 'the document and the stack are TikZ only');
 
@@ -144,5 +145,104 @@ eq(Object.entries(NEW).filter(([, [w, h]]) => w % 2 || h % 2), [], 'every new si
 eq(resized(start, 9.2, 4), { ...start, w: 10 }, 'from the right, wider');
 eq(resized(start, 12, 6, { x: -4, y: -2 }), { ...start, x: -4, y: -2, w: 12, h: 6 }, 'from the top-left, bigger and moved');
 eq(resized({ ...start, w: 5 }, 7, 4, { x: -2, y: 0 }), { ...start, x: -3, w: 8 }, 'an odd box from the left: its right edge kept');
+
+// 2.5: block diagrams, the new flowchart shapes and a swimlane, each drawn as it writes
+const block: TikzModel = {
+  boxes: [
+    { id: 't1', shape: 'terminal', x: 0, y: 0, w: 8, h: 4, text: 'Start' },
+    { id: 's1', shape: 'operator', x: 12, y: 0, w: 4, h: 4, text: '' },
+    { id: 'g1', shape: 'gain', x: 20, y: -1, w: 6, h: 6, text: 'K' },
+    { id: 'p1', shape: 'takeoff', x: 30, y: 1, w: 2, h: 2, text: '' },
+    { id: 'g2', shape: 'gain', x: 20, y: 10, w: 6, h: 6, text: 'H', dir: 'l', stroke: '#0000ff' },
+    { id: 'm1', shape: 'manualInput', x: 0, y: 10, w: 8, h: 4, text: 'Type it', fill: '#eeeeee' },
+    { id: 'o1', shape: 'offPage', x: 36, y: 0, w: 4, h: 4, text: 'A' }
+  ],
+  links: [
+    { id: 'e1', from: 't1', to: 's1', fromSide: 'r', toSide: 'l', route: 'straight', heads: 'end', label: '$r$', labelSide: 'left', labelPos: 0.3, sign: '+' },
+    { id: 'e2', from: 's1', to: 'g1', fromSide: 'r', toSide: 'l', route: 'straight', heads: 'end', label: 'e', labelSide: 'right' },
+    { id: 'e3', from: 'g1', to: 'p1', fromSide: 'r', toSide: 'l', route: 'straight', heads: 'none' },
+    { id: 'e4', from: 'p1', to: 'g2', fromSide: 'b', toSide: 'r', route: 'angled', heads: 'end' },
+    { id: 'e5', from: 'g2', to: 's1', fromSide: 'l', toSide: 'b', route: 'angled', heads: 'end', sign: '-', label: 'y', labelSide: 'on', labelPos: 0.2 },
+    { id: 'e6', from: 'p1', to: 'o1', fromSide: 'r', toSide: 'l', route: 'curved', heads: 'end', label: 'z', labelPos: 0.25, sign: '+' }
+  ]
+};
+eq(tikzCode(block).body.split('\n').slice(1, -2), [
+  '\\node[draw, rectangle, rounded corners=0.5cm, minimum width=2cm, minimum height=1cm, align=center] (t1) at (1,-0.5) {Start};',
+  '\\node[draw, circle, inner sep=0pt, minimum size=1cm, align=center] (s1) at (3.5,-0.5) {};',
+  // a polygon's outline, then its node with the text over it
+  '\\draw (5,0.25) -- (6.5,-0.5) -- (5,-1.25) -- cycle;',
+  '\\node[rectangle, minimum width=1.5cm, minimum height=1.5cm, align=center] (g1) at (5.75,-0.5) {$K$};',
+  '\\node[fill, circle, inner sep=0pt, minimum size=1.2mm, align=center] (p1) at (7.75,-0.5) {};',
+  '\\draw[draw={rgb,255:red,0;green,0;blue,255}] (6.5,-2.5) -- (5,-3.25) -- (6.5,-4) -- cycle;',
+  '\\node[rectangle, minimum width=1.5cm, minimum height=1.5cm, align=center] (g2) at (5.75,-3.25) {$H$};',
+  '\\draw[fill={rgb,255:red,238;green,238;blue,238}] (0,-2.75) -- (2,-2.5) -- (2,-3.5) -- (0,-3.5) -- cycle;',
+  '\\node[rectangle, minimum width=2cm, minimum height=1cm, align=center] (m1) at (1,-3) {Type it};',
+  '\\draw (9,0) -- (10,0) -- (10,-0.6) -- (9.5,-1) -- (9,-0.6) -- cycle;',
+  '\\node[rectangle, minimum width=1cm, minimum height=1cm, align=center] (o1) at (9.5,-0.5) {A};',
+  // beside the line on its left, 30% along, and a + on the left near the end
+  '\\draw[-{Stealth}] (t1.east) -- node[pos=0.3, auto] {$r$} node[pos=0.85, auto] {$+$} (s1.west);',
+  '\\draw[-{Stealth}] (s1.east) -- node[midway, auto, swap] {e} (g1.west);',
+  '\\draw (g1.east) -- (p1.west);',
+  // a takeoff point's anchors are its centre, so the route's corner is straight under it
+  '\\draw[-{Stealth}] (p1.south) -- (7.75,-3.25) -- (g2.east);',
+  // each mark on the leg its place along the route falls on
+  '\\draw[-{Stealth}] (g2.west) -- node[midway, fill=white, inner sep=2pt] {y} (3.5,-3.25) -- node[pos=0.75, auto] {$-$} (s1.south);',
+  '\\draw[-{Stealth}] (p1.east) to[out=0, in=180] node[pos=0.25, fill=white, inner sep=2pt] {z} node[pos=0.85, auto] {$+$} (o1.west);'
+], 'block diagram parts, new shapes, label sides and places, and signs');
+eq(tikzCode(block).libraries, ['shapes.geometric', 'arrows.meta', 'positioning'], 'the new shapes need no new library');
+eq(along([[0, 0], [8, 0], [8, 2]], 0.9), { leg: 1, pos: 0.5 }, 'nine tenths of the way along');
+eq(tikzCode({ boxes: [{ ...block.boxes[0], w: 4, h: 8 }], links: [] }).body.includes('rounded corners=0.5cm, minimum width=1cm, minimum height=2cm'), true, 'a tall terminal rounds by half its width');
+
+const lanes: TikzModel = {
+  boxes: [
+    { id: 'l1', shape: 'swimlane', x: 0, y: 0, w: 16, h: 24, text: 'Student' },
+    { id: 'l2', shape: 'swimlane', x: 16, y: 0, w: 16, h: 24, text: 'R&D', dir: 'l', fill: '#eef4ff', dash: 'dashed' },
+    { id: 'a', shape: 'rectangle', x: 4, y: 6, w: 8, h: 4, text: 'Submit' }
+  ],
+  links: []
+};
+eq(tikzCode(lanes).body.split('\n').slice(1, -2), [
+  '\\node[draw, rectangle, minimum width=4cm, minimum height=6cm, align=center] (l1) at (2,-3) {};',
+  '\\draw (0,-0.75) -- (4,-0.75);',
+  '\\node[align=center] at (2,-0.375) {Student};',
+  '\\node[draw, rectangle, fill={rgb,255:red,238;green,244;blue,255}, dashed, minimum width=4cm, minimum height=6cm, align=center] (l2) at (6,-3) {};',
+  '\\draw[dashed] (4.75,0) -- (4.75,-6);',
+  '\\node[rotate=90, align=center] at (4.375,-3) {R\\&D};',
+  '\\node[draw, rectangle, minimum width=2cm, minimum height=1cm, align=center] (a) at (2,-2) {Submit};'
+], 'swimlanes, a title band on top and one on the left, drawn first');
+eq(moveBoxes(lanes.boxes, [{ id: 'l1', x: 2, y: 0 }])[2].x, 6, 'moving a swimlane takes its boxes along');
+
+// turning and mirroring a selection about its middle
+const pair: TikzModel = {
+  boxes: [
+    { id: 'a', shape: 'rectangle', x: 0, y: 0, w: 8, h: 4, text: 'A' },
+    { id: 'b', shape: 'gain', x: 0, y: 8, w: 6, h: 4, text: 'K' },
+    { id: 'c', shape: 'rectangle', x: 20, y: 0, w: 8, h: 4, text: 'C' }
+  ],
+  links: [
+    { id: 'e1', from: 'a', to: 'b', fromSide: 'b', toSide: 't', route: 'straight', heads: 'end', label: 'x', labelSide: 'left' },
+    { id: 'e2', from: 'b', to: 'c', fromSide: 'r', toSide: 'l', route: 'straight', heads: 'end' },
+    { id: 'e3', from: 'a', to: 'a', fromSide: 't', toSide: 't', route: 'straight', heads: 'end' }
+  ]
+};
+const right = turnTikz(pair, ['a', 'b'], 'right');
+// the two take 8 × 12 about (4, 6): a's centre (4, 2) goes to (8, 6), b's (3, 10) to (0, 5); b, a gain, turns 4 × 6
+eq(right.boxes.map((b) => [b.id, b.x, b.y, b.w, b.h, b.dir]), [['a', 4, 4, 8, 4, undefined], ['b', -2, 2, 4, 6, 'b'], ['c', 20, 0, 8, 4, undefined]], 'a quarter turn to the right');
+eq(right.links.map((l) => [l.fromSide, l.toSide, l.labelSide]), [['l', 'r', 'left'], ['b', 'l', undefined], ['r', 'r', undefined]], 'the sides go round, the end outside the selection keeps its side');
+// a turn back lays them out as they were, though the middle of the space they take has moved, so they may sit apart
+const turnedBack = turnTikz(right, ['a', 'b'], 'left').boxes;
+eq([turnedBack[1].x - turnedBack[0].x, turnedBack[1].y - turnedBack[0].y, turnedBack[1].w, turnedBack[1].h, turnedBack[1].dir], [0, 8, 6, 4, undefined], 'a turn back lays them out as they were');
+const across = turnTikz(pair, ['a', 'b'], 'across');
+eq([across.boxes[1].x, across.boxes[1].dir, across.links[0].labelSide, across.links[1].fromSide], [2, 'l', 'right', 'l'], 'a mirror: the gain points left, the label beside goes to the other side');
+eq(turnTikz(pair, ['a'], 'over').links[2], { ...pair.links[2], fromSide: 'b', toSide: 'b' }, 'a loop goes round with its box');
+eq(turnTikz(pair, ['e1'], 'right'), pair, 'no boxes, nothing turns');
+eq(turnTikz({ boxes: [lanes.boxes[0]], links: [] }, ['l1'], 'left').boxes[0].dir, 'l', 'a swimlane’s band goes round');
+
+// version 5: a drawing with any of 2.5's additions; one without has nothing new
+eq(tikzNeedsVersion5(model), false, 'the first drawing needs no version 5');
+eq(tikzNeedsVersion5(shapes), false, 'nor do the shapes from before 2.5');
+eq(block.boxes.map((b) => tikzNeedsVersion5({ boxes: [b], links: [] })), [true, false, true, true, true, true, true], 'each new shape (the operator circle is older)');
+eq([{ labelSide: 'on' }, { labelPos: 0.5 }, { sign: '-' }].map((x) => tikzNeedsVersion5({ boxes: [start, check], links: [{ ...down, ...x } as Link] })), [true, true, true], 'a label’s side or place, a sign');
+eq(tikzNeedsVersion5(lanes), true, 'a swimlane');
 
 console.log('tikz.check: ok');

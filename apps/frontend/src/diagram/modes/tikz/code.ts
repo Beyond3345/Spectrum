@@ -1,12 +1,19 @@
 // Plain TikZ: boxes and the arrows between them, written as absolute coordinates. One grid unit is 0.25 cm, y down on
 // the canvas and up in TikZ. The writers live in the backend's latex/flowchart.js, which the converter uses too, to
 // write a drawing again as fletcher.
+import { holds } from '../../../../../backend/src/latex/flowchart.js';
 import type { Box, Link, Shape, Side, TikzModel } from '../../../../../backend/src/latex/flowchart.js';
 
-export type { Box, Dash, Heads, Line, Link, Route, Shape, Side, TikzModel } from '../../../../../backend/src/latex/flowchart.js';
+export type { Box, Dash, Heads, LabelSide, Line, Link, Route, Shape, Side, TikzModel } from '../../../../../backend/src/latex/flowchart.js';
 export {
+  BAND,
   BEND,
   CM_PER_UNIT,
+  SIGN_AT,
+  along,
+  bandOf,
+  holds,
+  polygonOf,
   LOOP,
   MATHS_SHAPES,
   ROUND_SHAPES,
@@ -26,7 +33,7 @@ export {
  * The shapes fletcher/code.ts writes, which the Typst canvas offers (its rail and its inspector's Shape): a shape fletcher
  * has no equivalent for (the document and the stack) stays TikZ only, hidden in Typst drawings.
  */
-export const FLETCHER_SHAPES: Shape[] = ['rectangle', 'rounded', 'circle', 'ellipse', 'diamond', 'parallelogram', 'text', 'maths', 'state', 'accepting', 'cylinder', 'trapezium', 'operator', 'container'];
+export const FLETCHER_SHAPES: Shape[] = ['rectangle', 'rounded', 'circle', 'ellipse', 'diamond', 'parallelogram', 'text', 'maths', 'state', 'accepting', 'cylinder', 'trapezium', 'operator', 'container', 'terminal', 'manualInput', 'offPage', 'gain', 'takeoff', 'swimlane'];
 
 /** The shapes there were before the automata, flowchart and model architecture ones. */
 const FIRST_SHAPES: Shape[] = ['rectangle', 'rounded', 'circle', 'ellipse', 'diamond', 'parallelogram', 'text', 'maths'];
@@ -37,6 +44,12 @@ const FIRST_SHAPES: Shape[] = ['rectangle', 'rounded', 'circle', 'ellipse', 'dia
 export const tikzIsNewer = (model: TikzModel) =>
   model.boxes.some((b) => !FIRST_SHAPES.includes(b.shape) || b.initial || b.wrap || b.cells || b.repeat) ||
   model.links.some((l) => l.route === 'bend' || l.from === l.to);
+
+/** The shapes 2.5 added. */
+const SHAPES_25: Shape[] = ['terminal', 'manualInput', 'offPage', 'gain', 'takeoff', 'swimlane'];
+/** The drawing uses something 2.5 added (fileFormat.ts's version 5), which builds up to 2.4 would write without. */
+export const tikzNeedsVersion5 = (model: TikzModel) =>
+  model.boxes.some((b) => SHAPES_25.includes(b.shape) || b.dir) || model.links.some((l) => l.labelSide || l.labelPos !== undefined || l.sign);
 
 export const emptyTikz = (): TikzModel => ({ boxes: [], links: [] });
 
@@ -60,7 +73,13 @@ export const NEW: Record<Shape, [number, number, string]> = {
   trapezium: [8, 4, 'Text'],
   operator: [4, 4, '+'],
   stack: [4, 8, ''],
-  container: [20, 14, 'Block']
+  container: [20, 14, 'Block'],
+  terminal: [8, 4, 'Start'],
+  manualInput: [8, 4, 'Input'],
+  offPage: [4, 4, 'A'],
+  gain: [6, 6, 'K'],
+  takeoff: [2, 2, ''],
+  swimlane: [16, 24, 'Lane']
 };
 
 /**
@@ -78,6 +97,58 @@ export function resized(box: Box, w: number, h: number, at?: { x: number; y: num
     w: nw,
     h: nh
   };
+}
+
+// ─── turning and mirroring a selection ───
+
+export type Turn = 'left' | 'right' | 'across' | 'over';
+/** Each side turned: a quarter turn left (anticlockwise) or right, or mirrored left to right (across) or top to bottom (over). */
+const TURNED: Record<Turn, Record<Side, Side>> = {
+  right: { t: 'r', r: 'b', b: 'l', l: 't' },
+  left: { t: 'l', l: 'b', b: 'r', r: 't' },
+  across: { t: 't', b: 'b', l: 'r', r: 'l' },
+  over: { t: 'b', b: 't', l: 'l', r: 'r' }
+};
+
+/**
+ * The selected boxes turned a quarter or mirrored about the middle of the space they take, each box's centre carried
+ * round (and a container's, swimlane's or gain's width and height swapped by a turn); the sides arrows leave and reach them by, loops, start arrows, a
+ * gain's tip and a swimlane's band go round with them, and a mirror puts labels beside an arrow on its other side.
+ * ponytail: a parallelogram's slant, a manual input's sloped top, a bent arrow's side and a sign's side (always on the
+ * left of its arrow) stay as they were, as the model has no field for them.
+ */
+export function turnTikz(model: TikzModel, ids: string[], how: Turn): TikzModel {
+  const picked = model.boxes.filter((b) => ids.includes(b.id));
+  if (!picked.length) return model;
+  const [x0, y0] = [Math.min(...picked.map((b) => b.x)), Math.min(...picked.map((b) => b.y))];
+  const [x1, y1] = [Math.max(...picked.map((b) => b.x + b.w)), Math.max(...picked.map((b) => b.y + b.h))];
+  const [cx, cy] = [(x0 + x1) / 2, (y0 + y1) / 2];
+  const side = TURNED[how];
+  const quarter = how === 'left' || how === 'right';
+  const boxes = model.boxes.map((b) => {
+    if (!ids.includes(b.id)) return b;
+    const [bx, by] = [b.x + b.w / 2 - cx, b.y + b.h / 2 - cy];
+    // on the canvas, whose y goes down, a turn to the right is clockwise
+    const [nx, ny] = how === 'right' ? [-by, bx] : how === 'left' ? [by, -bx] : how === 'across' ? [-bx, by] : [bx, -by];
+    // boxes of text keep their size, to read as before; what holds others, and a gain, turn with them
+    const [w, h] = quarter && (holds(b.shape) || b.shape === 'gain') ? [b.h, b.w] : [b.w, b.h];
+    const turned: Box = { ...b, x: Math.round(cx + nx - w / 2), y: Math.round(cy + ny - h / 2), w, h };
+    if (b.initial) turned.initial = side[b.initial];
+    if (b.shape === 'gain' || b.shape === 'swimlane') {
+      const dir = side[b.dir ?? (b.shape === 'gain' ? 'r' : 't')];
+      turned.dir = dir === (b.shape === 'gain' ? 'r' : 't') ? undefined : dir;
+    }
+    return turned;
+  });
+  const links = model.links.map((l) => {
+    const [a, b] = [ids.includes(l.from), ids.includes(l.to)];
+    if (!a && !b) return l;
+    const turned = { ...l, fromSide: a ? side[l.fromSide] : l.fromSide, toSide: b ? side[l.toSide] : l.toSide };
+    // a mirror image has its labels on the other side of the way the arrow goes
+    if (a && b && !quarter && (l.labelSide === 'left' || l.labelSide === 'right')) turned.labelSide = l.labelSide === 'left' ? 'right' : 'left';
+    return turned;
+  });
+  return { boxes, links };
 }
 
 // ─── the selection's Copy, Paste and Delete ───
@@ -110,7 +181,7 @@ export function moveBoxes(boxes: Box[], moves: { id: string; x: number; y: numbe
   const along = new Map<string, [number, number]>();
   for (const box of boxes) {
     const m = moved.get(box.id);
-    if (!m || box.shape !== 'container' || (m.x === box.x && m.y === box.y)) continue;
+    if (!m || !holds(box.shape) || (m.x === box.x && m.y === box.y)) continue;
     for (const b of boxes) {
       const [cx, cy] = [b.x + b.w / 2, b.y + b.h / 2];
       if (b !== box && !moved.has(b.id) && cx > box.x && cx < box.x + box.w && cy > box.y && cy < box.y + box.h) along.set(b.id, [m.x - box.x, m.y - box.y]);
