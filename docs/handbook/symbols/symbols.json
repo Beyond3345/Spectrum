@@ -1,0 +1,2876 @@
+{
+ "note": "Made by build.mjs from the app’s own data. Do not edit by hand.",
+ "sections": [
+  {
+   "id": "circuits",
+   "groups": [
+    {
+     "title": "Resistors and impedances",
+     "symbols": [
+      {
+       "id": "resistor",
+       "name": "Resistor",
+       "key": "R",
+       "picture": "pictures/catalogue/resistor.pdf",
+       "width": 35.33,
+       "height": 14.69
+      },
+      {
+       "id": "variable-resistor",
+       "name": "Variable resistor",
+       "key": "vR",
+       "picture": "pictures/catalogue/variable-resistor.pdf",
+       "width": 35.33,
+       "height": 26.6
+      },
+      {
+       "id": "potentiometer",
+       "name": "Potentiometer",
+       "key": "pR",
+       "picture": "pictures/catalogue/potentiometer.pdf",
+       "width": 35.33,
+       "height": 24.62
+      },
+      {
+       "id": "impedance",
+       "name": "Impedance",
+       "key": "generic",
+       "picture": "pictures/catalogue/impedance.pdf",
+       "width": 34.54,
+       "height": 14.69
+      },
+      {
+       "id": "impedance-text",
+       "name": "Impedance (text inside)",
+       "key": "twoport",
+       "picture": "pictures/catalogue/impedance-text.pdf",
+       "width": 34.54,
+       "height": 14.69
+      },
+      {
+       "id": "fuse",
+       "name": "Fuse",
+       "key": "fuse",
+       "picture": "pictures/catalogue/fuse.pdf",
+       "width": 22.63,
+       "height": 10.73
+      }
+     ]
+    },
+    {
+     "title": "Capacitors and inductors",
+     "symbols": [
+      {
+       "id": "capacitor",
+       "name": "Capacitor",
+       "key": "C",
+       "picture": "pictures/catalogue/capacitor.pdf",
+       "width": 10.73,
+       "height": 26.6
+      },
+      {
+       "id": "polarised-capacitor",
+       "name": "Polarised capacitor",
+       "key": "eC",
+       "picture": "pictures/catalogue/polarised-capacitor.pdf",
+       "width": 20,
+       "height": 22.63
+      },
+      {
+       "id": "variable-capacitor",
+       "name": "Variable capacitor",
+       "key": "vC",
+       "picture": "pictures/catalogue/variable-capacitor.pdf",
+       "width": 26.6,
+       "height": 26.6
+      },
+      {
+       "id": "curved-capacitor",
+       "name": "Capacitor (curved plate)",
+       "key": "cC",
+       "picture": "pictures/catalogue/curved-capacitor.pdf",
+       "width": 10.73,
+       "height": 26.6
+      },
+      {
+       "id": "inductor",
+       "name": "Inductor",
+       "key": "L",
+       "picture": "pictures/catalogue/inductor.pdf",
+       "width": 35.33,
+       "height": 8.74
+      },
+      {
+       "id": "variable-inductor",
+       "name": "Variable inductor",
+       "key": "vL",
+       "picture": "pictures/catalogue/variable-inductor.pdf",
+       "width": 35.33,
+       "height": 18.66
+      },
+      {
+       "id": "tapped-inductor",
+       "name": "Centre-tapped inductor",
+       "key": "L",
+       "picture": "pictures/catalogue/tapped-inductor.pdf",
+       "width": 35.33,
+       "height": 8.74
+      }
+     ]
+    },
+    {
+     "title": "Sources",
+     "symbols": [
+      {
+       "id": "voltage-source",
+       "name": "Voltage source",
+       "key": "V",
+       "picture": "pictures/catalogue/voltage-source.pdf",
+       "width": 26.6,
+       "height": 26.6
+      },
+      {
+       "id": "current-source",
+       "name": "Current source",
+       "key": "I",
+       "picture": "pictures/catalogue/current-source.pdf",
+       "width": 26.6,
+       "height": 26.6
+      },
+      {
+       "id": "ac-source",
+       "name": "AC voltage source",
+       "key": "sV",
+       "picture": "pictures/catalogue/ac-source.pdf",
+       "width": 26.6,
+       "height": 26.6
+      },
+      {
+       "id": "controlled-voltage-source",
+       "name": "Controlled voltage source",
+       "key": "cV",
+       "picture": "pictures/catalogue/controlled-voltage-source.pdf",
+       "width": 30.57,
+       "height": 30.57
+      },
+      {
+       "id": "controlled-current-source",
+       "name": "Controlled current source",
+       "key": "cI",
+       "picture": "pictures/catalogue/controlled-current-source.pdf",
+       "width": 30.57,
+       "height": 30.57
+      },
+      {
+       "id": "battery",
+       "name": "Battery",
+       "key": "battery",
+       "picture": "pictures/catalogue/battery.pdf",
+       "width": 14.69,
+       "height": 26.6
+      },
+      {
+       "id": "cell",
+       "name": "Cell",
+       "key": "battery1",
+       "picture": "pictures/catalogue/cell.pdf",
+       "width": 14.3,
+       "height": 26.6
+      },
+      {
+       "id": "pv-source",
+       "name": "Photovoltaic source",
+       "key": "pvsource",
+       "picture": "pictures/catalogue/pv-source.pdf",
+       "width": 33.22,
+       "height": 33.22
+      },
+      {
+       "id": "pv-module",
+       "name": "Photovoltaic module",
+       "key": "pvmodule",
+       "picture": "pictures/catalogue/pv-module.pdf",
+       "width": 50.41,
+       "height": 26.6
+      },
+      {
+       "id": "dc-dc",
+       "name": "DC–DC converter",
+       "key": "sdcdc",
+       "picture": "pictures/catalogue/dc-dc.pdf",
+       "width": 30.57,
+       "height": 30.57
+      },
+      {
+       "id": "dc-ac",
+       "name": "Inverter (DC–AC)",
+       "key": "sdcac",
+       "picture": "pictures/catalogue/dc-ac.pdf",
+       "width": 30.57,
+       "height": 30.57
+      }
+     ]
+    },
+    {
+     "title": "Switches",
+     "symbols": [
+      {
+       "id": "switch-open",
+       "name": "Switch (normally open)",
+       "key": "nos",
+       "picture": "pictures/catalogue/switch-open.pdf",
+       "width": 16.48,
+       "height": 8.74
+      },
+      {
+       "id": "switch-closed",
+       "name": "Switch (normally closed)",
+       "key": "ncs",
+       "picture": "pictures/catalogue/switch-closed.pdf",
+       "width": 16.48,
+       "height": 9.73
+      },
+      {
+       "id": "push-button",
+       "name": "Push button",
+       "key": "push button",
+       "picture": "pictures/catalogue/push-button.pdf",
+       "width": 25.81,
+       "height": 14.3
+      },
+      {
+       "id": "switch-closing",
+       "name": "Switch (closing)",
+       "key": "cspst",
+       "picture": "pictures/catalogue/switch-closing.pdf",
+       "width": 16.48,
+       "height": 13.97
+      },
+      {
+       "id": "switch-opening",
+       "name": "Switch (opening)",
+       "key": "ospst",
+       "picture": "pictures/catalogue/switch-opening.pdf",
+       "width": 16.48,
+       "height": 12.57
+      },
+      {
+       "id": "changeover-switch",
+       "name": "Changeover switch",
+       "key": "spdt",
+       "picture": "pictures/catalogue/changeover-switch.pdf",
+       "width": 36.12,
+       "height": 23.42
+      }
+     ]
+    },
+    {
+     "title": "Diodes and thyristors",
+     "symbols": [
+      {
+       "id": "diode",
+       "name": "Diode",
+       "key": "D",
+       "picture": "pictures/catalogue/diode.pdf",
+       "width": 18.66,
+       "height": 22.63
+      },
+      {
+       "id": "led",
+       "name": "LED",
+       "key": "leD",
+       "picture": "pictures/catalogue/led.pdf",
+       "width": 20.05,
+       "height": 32.35
+      },
+      {
+       "id": "zener",
+       "name": "Zener diode",
+       "key": "zD",
+       "picture": "pictures/catalogue/zener.pdf",
+       "width": 18.66,
+       "height": 22.63
+      },
+      {
+       "id": "zener-z",
+       "name": "Zener diode (both ends bent)",
+       "key": "zzD",
+       "picture": "pictures/catalogue/zener-z.pdf",
+       "width": 25.01,
+       "height": 32.55
+      },
+      {
+       "id": "schottky",
+       "name": "Schottky diode",
+       "key": "sD",
+       "picture": "pictures/catalogue/schottky.pdf",
+       "width": 21.84,
+       "height": 22.63
+      },
+      {
+       "id": "photodiode",
+       "name": "Photodiode",
+       "key": "pD",
+       "picture": "pictures/catalogue/photodiode.pdf",
+       "width": 20.05,
+       "height": 32.35
+      },
+      {
+       "id": "thyristor",
+       "name": "Thyristor",
+       "key": "thyristor",
+       "picture": "pictures/catalogue/thyristor.pdf",
+       "width": 42.08,
+       "height": 34.34
+      },
+      {
+       "id": "triac",
+       "name": "Triac",
+       "key": "triac",
+       "picture": "pictures/catalogue/triac.pdf",
+       "width": 42.08,
+       "height": 41.25
+      }
+     ]
+    },
+    {
+     "title": "Transistors",
+     "symbols": [
+      {
+       "id": "npn",
+       "name": "NPN transistor",
+       "key": "npn",
+       "picture": "pictures/catalogue/npn.pdf",
+       "width": 26.4,
+       "height": 46.44
+      },
+      {
+       "id": "pnp",
+       "name": "PNP transistor",
+       "key": "pnp",
+       "picture": "pictures/catalogue/pnp.pdf",
+       "width": 26.4,
+       "height": 46.44
+      },
+      {
+       "id": "njfet",
+       "name": "N-channel JFET",
+       "key": "njfet",
+       "picture": "pictures/catalogue/njfet.pdf",
+       "width": 30.17,
+       "height": 46.44
+      },
+      {
+       "id": "pjfet",
+       "name": "P-channel JFET",
+       "key": "pjfet",
+       "picture": "pictures/catalogue/pjfet.pdf",
+       "width": 30.17,
+       "height": 46.44
+      },
+      {
+       "id": "nigbt",
+       "name": "N-channel IGBT",
+       "key": "nigbt",
+       "picture": "pictures/catalogue/nigbt.pdf",
+       "width": 26.4,
+       "height": 46.44
+      },
+      {
+       "id": "pigbt",
+       "name": "P-channel IGBT",
+       "key": "pigbt",
+       "picture": "pictures/catalogue/pigbt.pdf",
+       "width": 26.4,
+       "height": 46.44
+      }
+     ]
+    },
+    {
+     "title": "MOSFETs",
+     "symbols": [
+      {
+       "id": "nmos",
+       "name": "N-channel MOSFET (enhancement)",
+       "key": "nmos",
+       "picture": "pictures/catalogue/nmos.pdf",
+       "width": 30.37,
+       "height": 46.44
+      },
+      {
+       "id": "pmos",
+       "name": "P-channel MOSFET (enhancement)",
+       "key": "pmos",
+       "picture": "pictures/catalogue/pmos.pdf",
+       "width": 30.37,
+       "height": 46.44
+      },
+      {
+       "id": "nmosd",
+       "name": "N-channel MOSFET (depletion)",
+       "key": "nmosd",
+       "picture": "pictures/catalogue/nmosd.pdf",
+       "width": 30.37,
+       "height": 46.44
+      },
+      {
+       "id": "pmosd",
+       "name": "P-channel MOSFET (depletion)",
+       "key": "pmosd",
+       "picture": "pictures/catalogue/pmosd.pdf",
+       "width": 30.37,
+       "height": 46.44
+      },
+      {
+       "id": "nmos-bulk",
+       "name": "N-channel MOSFET with bulk",
+       "key": "nmos",
+       "picture": "pictures/catalogue/nmos-bulk.pdf",
+       "width": 30.57,
+       "height": 46.44
+      },
+      {
+       "id": "pmos-bulk",
+       "name": "P-channel MOSFET with bulk",
+       "key": "pmos",
+       "picture": "pictures/catalogue/pmos-bulk.pdf",
+       "width": 30.57,
+       "height": 46.44
+      },
+      {
+       "id": "nfet",
+       "name": "N-channel MOSFET (IEEE, enhancement)",
+       "key": "nfet",
+       "picture": "pictures/catalogue/nfet.pdf",
+       "width": 30.57,
+       "height": 46.44
+      },
+      {
+       "id": "pfet",
+       "name": "P-channel MOSFET (IEEE, enhancement)",
+       "key": "pfet",
+       "picture": "pictures/catalogue/pfet.pdf",
+       "width": 30.57,
+       "height": 46.44
+      },
+      {
+       "id": "nfetd",
+       "name": "N-channel MOSFET (IEEE, depletion)",
+       "key": "nfetd",
+       "picture": "pictures/catalogue/nfetd.pdf",
+       "width": 30.57,
+       "height": 46.44
+      },
+      {
+       "id": "pfetd",
+       "name": "P-channel MOSFET (IEEE, depletion)",
+       "key": "pfetd",
+       "picture": "pictures/catalogue/pfetd.pdf",
+       "width": 30.57,
+       "height": 46.44
+      },
+      {
+       "id": "nigfete",
+       "name": "N-channel IGFET (enhancement)",
+       "key": "nigfete",
+       "picture": "pictures/catalogue/nigfete.pdf",
+       "width": 30.57,
+       "height": 46.44
+      },
+      {
+       "id": "pigfete",
+       "name": "P-channel IGFET (enhancement)",
+       "key": "pigfete",
+       "picture": "pictures/catalogue/pigfete.pdf",
+       "width": 30.57,
+       "height": 46.44
+      },
+      {
+       "id": "nigfetd",
+       "name": "N-channel IGFET (depletion)",
+       "key": "nigfetd",
+       "picture": "pictures/catalogue/nigfetd.pdf",
+       "width": 30.57,
+       "height": 46.44
+      },
+      {
+       "id": "pigfetd",
+       "name": "P-channel IGFET (depletion)",
+       "key": "pigfetd",
+       "picture": "pictures/catalogue/pigfetd.pdf",
+       "width": 30.57,
+       "height": 46.44
+      },
+      {
+       "id": "nigfetebulk",
+       "name": "N-channel IGFET with bulk",
+       "key": "nigfetebulk",
+       "picture": "pictures/catalogue/nigfetebulk.pdf",
+       "width": 30.57,
+       "height": 46.44
+      },
+      {
+       "id": "pigfetebulk",
+       "name": "P-channel IGFET with bulk",
+       "key": "pigfetebulk",
+       "picture": "pictures/catalogue/pigfetebulk.pdf",
+       "width": 30.57,
+       "height": 46.44
+      }
+     ]
+    },
+    {
+     "title": "MU Style",
+     "symbols": [
+      {
+       "id": "mu-nmos",
+       "name": "MU N-channel MOSFET (enhancement)",
+       "key": "munmos",
+       "style": "MU Style",
+       "picture": "pictures/catalogue/mu-nmos.pdf",
+       "width": 30.37,
+       "height": 46.44
+      },
+      {
+       "id": "mu-pmos",
+       "name": "MU P-channel MOSFET (enhancement)",
+       "key": "mupmos",
+       "style": "MU Style",
+       "picture": "pictures/catalogue/mu-pmos.pdf",
+       "width": 30.37,
+       "height": 46.44
+      },
+      {
+       "id": "mu-nmosd",
+       "name": "MU N-channel MOSFET (depletion)",
+       "key": "nmos",
+       "style": "MU Style",
+       "picture": "pictures/catalogue/mu-nmosd.pdf",
+       "width": 30.37,
+       "height": 46.44
+      },
+      {
+       "id": "mu-pmosd",
+       "name": "MU P-channel MOSFET (depletion)",
+       "key": "pmos",
+       "style": "MU Style",
+       "picture": "pictures/catalogue/mu-pmosd.pdf",
+       "width": 30.37,
+       "height": 46.44
+      },
+      {
+       "id": "mu-nmosb",
+       "name": "MU N-channel MOSFET with bulk (enhancement)",
+       "key": "munmosb",
+       "style": "MU Style",
+       "picture": "pictures/catalogue/mu-nmosb.pdf",
+       "width": 30.57,
+       "height": 46.44
+      },
+      {
+       "id": "mu-pmosb",
+       "name": "MU P-channel MOSFET with bulk (enhancement)",
+       "key": "mupmosb",
+       "style": "MU Style",
+       "picture": "pictures/catalogue/mu-pmosb.pdf",
+       "width": 30.57,
+       "height": 46.44
+      },
+      {
+       "id": "mu-nmosdb",
+       "name": "MU N-channel MOSFET with bulk (depletion)",
+       "key": "munmosdb",
+       "style": "MU Style",
+       "picture": "pictures/catalogue/mu-nmosdb.pdf",
+       "width": 30.57,
+       "height": 46.44
+      },
+      {
+       "id": "mu-pmosdb",
+       "name": "MU P-channel MOSFET with bulk (depletion)",
+       "key": "mupmosdb",
+       "style": "MU Style",
+       "picture": "pictures/catalogue/mu-pmosdb.pdf",
+       "width": 30.57,
+       "height": 46.44
+      },
+      {
+       "id": "mu-ideal-diode",
+       "name": "MU ideal diode",
+       "key": "muidealdiode",
+       "style": "MU Style",
+       "picture": "pictures/catalogue/mu-ideal-diode.pdf",
+       "width": 26.6,
+       "height": 26.6
+      },
+      {
+       "id": "mu-current-source",
+       "name": "MU current source (box)",
+       "key": "murectisource",
+       "style": "MU Style",
+       "picture": "pictures/catalogue/mu-current-source.pdf",
+       "width": 30.57,
+       "height": 18.66
+      },
+      {
+       "id": "mu-ac-source",
+       "name": "MU AC voltage source (+ ~ −)",
+       "key": "mutildesource",
+       "style": "MU Style",
+       "picture": "pictures/catalogue/mu-ac-source.pdf",
+       "width": 26.6,
+       "height": 26.6
+      },
+      {
+       "id": "mu-ac-sine-source",
+       "name": "MU AC voltage source (sine with + and −)",
+       "key": "musinesource",
+       "style": "MU Style",
+       "picture": "pictures/catalogue/mu-ac-sine-source.pdf",
+       "width": 26.6,
+       "height": 26.6
+      }
+     ]
+    },
+    {
+     "title": "Amplifiers and chips",
+     "symbols": [
+      {
+       "id": "op-amp",
+       "name": "Op amp",
+       "key": "op amp",
+       "picture": "pictures/catalogue/op-amp.pdf",
+       "width": 69.86,
+       "height": 58.35
+      },
+      {
+       "id": "amplifier",
+       "name": "Amplifier",
+       "key": "plain mono amp",
+       "picture": "pictures/catalogue/amplifier.pdf",
+       "width": 69.86,
+       "height": 58.35
+      },
+      {
+       "id": "buffer",
+       "name": "Buffer",
+       "key": "buffer",
+       "picture": "pictures/catalogue/buffer.pdf",
+       "width": 42.08,
+       "height": 42.47
+      },
+      {
+       "id": "chip-8",
+       "name": "Chip (8 pins)",
+       "key": "dipchip",
+       "picture": "pictures/catalogue/chip-8.pdf",
+       "width": 65.89,
+       "height": 66.28
+      }
+     ]
+    },
+    {
+     "title": "Logic",
+     "symbols": [
+      {
+       "id": "and",
+       "name": "AND gate",
+       "key": "and port",
+       "picture": "pictures/catalogue/and.pdf",
+       "width": 46.04,
+       "height": 34.54
+      },
+      {
+       "id": "or",
+       "name": "OR gate",
+       "key": "or port",
+       "picture": "pictures/catalogue/or.pdf",
+       "width": 46.04,
+       "height": 34.54
+      },
+      {
+       "id": "not",
+       "name": "NOT gate",
+       "key": "not port",
+       "picture": "pictures/catalogue/not.pdf",
+       "width": 42.08,
+       "height": 42.47
+      },
+      {
+       "id": "nand",
+       "name": "NAND gate",
+       "key": "nand port",
+       "picture": "pictures/catalogue/nand.pdf",
+       "width": 46.04,
+       "height": 34.54
+      },
+      {
+       "id": "nor",
+       "name": "NOR gate",
+       "key": "nor port",
+       "picture": "pictures/catalogue/nor.pdf",
+       "width": 46.04,
+       "height": 34.54
+      },
+      {
+       "id": "xor",
+       "name": "XOR gate",
+       "key": "xor port",
+       "picture": "pictures/catalogue/xor.pdf",
+       "width": 46.04,
+       "height": 34.54
+      },
+      {
+       "id": "xnor",
+       "name": "XNOR gate",
+       "key": "xnor port",
+       "picture": "pictures/catalogue/xnor.pdf",
+       "width": 46.04,
+       "height": 34.54
+      }
+     ]
+    },
+    {
+     "title": "Meters and lamps",
+     "symbols": [
+      {
+       "id": "ammeter",
+       "name": "Ammeter",
+       "key": "ammeter",
+       "picture": "pictures/catalogue/ammeter.pdf",
+       "width": 26.2,
+       "height": 26.2
+      },
+      {
+       "id": "voltmeter",
+       "name": "Voltmeter",
+       "key": "voltmeter",
+       "picture": "pictures/catalogue/voltmeter.pdf",
+       "width": 26.2,
+       "height": 26.2
+      },
+      {
+       "id": "lamp",
+       "name": "Lamp",
+       "key": "lamp",
+       "picture": "pictures/catalogue/lamp.pdf",
+       "width": 26.6,
+       "height": 26.6
+      },
+      {
+       "id": "round-meter",
+       "name": "Meter",
+       "key": "rmeter",
+       "picture": "pictures/catalogue/round-meter.pdf",
+       "width": 26.6,
+       "height": 26.6
+      },
+      {
+       "id": "round-meter-arrow",
+       "name": "Meter with an arrow",
+       "key": "rmeterwa",
+       "picture": "pictures/catalogue/round-meter-arrow.pdf",
+       "width": 49.62,
+       "height": 49.62
+      },
+      {
+       "id": "oscilloscope",
+       "name": "Oscilloscope",
+       "key": "oscope",
+       "picture": "pictures/catalogue/oscilloscope.pdf",
+       "width": 26.6,
+       "height": 26.6
+      }
+     ]
+    },
+    {
+     "title": "Ground, supply and terminals",
+     "symbols": [
+      {
+       "id": "ground",
+       "name": "Ground",
+       "key": "ground",
+       "picture": "pictures/catalogue/ground.pdf",
+       "width": 14.69,
+       "height": 18.46
+      },
+      {
+       "id": "reference-ground",
+       "name": "Reference ground",
+       "key": "rground",
+       "picture": "pictures/catalogue/reference-ground.pdf",
+       "width": 14.69,
+       "height": 12.51
+      },
+      {
+       "id": "signal-ground",
+       "name": "Signal ground",
+       "key": "sground",
+       "picture": "pictures/catalogue/signal-ground.pdf",
+       "width": 14.69,
+       "height": 20.45
+      },
+      {
+       "id": "supply-up",
+       "name": "Supply (positive)",
+       "key": "vcc",
+       "picture": "pictures/catalogue/supply-up.pdf",
+       "width": 10.73,
+       "height": 18.07
+      },
+      {
+       "id": "supply-down",
+       "name": "Supply (negative)",
+       "key": "vee",
+       "picture": "pictures/catalogue/supply-down.pdf",
+       "width": 10.73,
+       "height": 18.07
+      },
+      {
+       "id": "voltage-between",
+       "name": "Voltage between two points",
+       "key": "open",
+       "picture": "pictures/circuits/voltage-between.pdf",
+       "width": 43,
+       "height": 10
+      },
+      {
+       "id": "terminal",
+       "name": "Terminal",
+       "key": "ocirc",
+       "picture": "pictures/catalogue/terminal.pdf",
+       "width": 5.57,
+       "height": 5.57
+      },
+      {
+       "id": "jump-crossing",
+       "name": "Crossing (jump)",
+       "key": "jump crossing",
+       "picture": "pictures/catalogue/jump-crossing.pdf",
+       "width": 10.33,
+       "height": 10.33
+      },
+      {
+       "id": "plain-crossing",
+       "name": "Crossing (plain)",
+       "key": "plain crossing",
+       "picture": "pictures/catalogue/plain-crossing.pdf",
+       "width": 10.33,
+       "height": 10.33
+      }
+     ]
+    },
+    {
+     "title": "Transformers",
+     "symbols": [
+      {
+       "id": "transformer",
+       "name": "Transformer",
+       "key": "transformer",
+       "picture": "pictures/catalogue/transformer.pdf",
+       "width": 61.92,
+       "height": 61.92
+      },
+      {
+       "id": "transformer-core",
+       "name": "Transformer with core",
+       "key": "transformer core",
+       "picture": "pictures/catalogue/transformer-core.pdf",
+       "width": 61.92,
+       "height": 61.92
+      }
+     ]
+    },
+    {
+     "title": "Mechanical",
+     "symbols": [
+      {
+       "id": "spring",
+       "name": "Spring",
+       "key": "spring",
+       "picture": "pictures/catalogue/spring.pdf",
+       "width": 23.43,
+       "height": 22.63
+      },
+      {
+       "id": "damper",
+       "name": "Damper",
+       "key": "damper",
+       "picture": "pictures/catalogue/damper.pdf",
+       "width": 18.66,
+       "height": 16.68
+      },
+      {
+       "id": "mass",
+       "name": "Mass",
+       "key": "mass",
+       "picture": "pictures/catalogue/mass.pdf",
+       "width": 22.63,
+       "height": 21.64
+      },
+      {
+       "id": "inerter",
+       "name": "Inerter",
+       "key": "inerter",
+       "picture": "pictures/catalogue/inerter.pdf",
+       "width": 9.73,
+       "height": 30.57
+      },
+      {
+       "id": "viscoelastic",
+       "name": "Viscoelastic element",
+       "key": "viscoe",
+       "picture": "pictures/catalogue/viscoelastic.pdf",
+       "width": 19.06,
+       "height": 16.68
+      },
+      {
+       "id": "motor",
+       "name": "Motor or generator",
+       "key": "elmech",
+       "picture": "pictures/catalogue/motor.pdf",
+       "width": 26.6,
+       "height": 33.74
+      }
+     ]
+    },
+    {
+     "title": "Blocks",
+     "symbols": [
+      {
+       "id": "block",
+       "name": "Block",
+       "key": "twoport",
+       "picture": "pictures/catalogue/block.pdf",
+       "width": 30.57,
+       "height": 30.57
+      },
+      {
+       "id": "gain",
+       "name": "Gain",
+       "key": "amp",
+       "picture": "pictures/catalogue/gain.pdf",
+       "width": 30.57,
+       "height": 33.35
+      },
+      {
+       "id": "lowpass",
+       "name": "Low-pass filter",
+       "key": "lowpass",
+       "picture": "pictures/catalogue/lowpass.pdf",
+       "width": 30.57,
+       "height": 30.57
+      },
+      {
+       "id": "highpass",
+       "name": "High-pass filter",
+       "key": "highpass",
+       "picture": "pictures/catalogue/highpass.pdf",
+       "width": 30.57,
+       "height": 30.57
+      },
+      {
+       "id": "bandpass",
+       "name": "Band-pass filter",
+       "key": "bandpass",
+       "picture": "pictures/catalogue/bandpass.pdf",
+       "width": 30.57,
+       "height": 30.57
+      },
+      {
+       "id": "adc",
+       "name": "Analogue-to-digital converter",
+       "key": "adc",
+       "picture": "pictures/catalogue/adc.pdf",
+       "width": 30.57,
+       "height": 30.57
+      },
+      {
+       "id": "dsp",
+       "name": "Digital signal processor",
+       "key": "dsp",
+       "picture": "pictures/catalogue/dsp.pdf",
+       "width": 30.57,
+       "height": 30.57
+      },
+      {
+       "id": "adder",
+       "name": "Adder",
+       "key": "adder",
+       "picture": "pictures/catalogue/adder.pdf",
+       "width": 30.57,
+       "height": 30.57
+      },
+      {
+       "id": "mixer",
+       "name": "Mixer",
+       "key": "mixer",
+       "picture": "pictures/catalogue/mixer.pdf",
+       "width": 30.57,
+       "height": 30.57
+      },
+      {
+       "id": "oscillator",
+       "name": "Oscillator",
+       "key": "oscillator",
+       "picture": "pictures/catalogue/oscillator.pdf",
+       "width": 30.57,
+       "height": 30.57
+      },
+      {
+       "id": "antenna",
+       "name": "Antenna",
+       "key": "antenna",
+       "picture": "pictures/catalogue/antenna.pdf",
+       "width": 22.63,
+       "height": 62.12
+      },
+      {
+       "id": "rx-antenna",
+       "name": "Receiving antenna",
+       "key": "rxantenna",
+       "picture": "pictures/catalogue/rx-antenna.pdf",
+       "width": 81.76,
+       "height": 71.84
+      },
+      {
+       "id": "tx-antenna",
+       "name": "Transmitting antenna",
+       "key": "txantenna",
+       "picture": "pictures/catalogue/tx-antenna.pdf",
+       "width": 83.89,
+       "height": 71.84
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "sets",
+   "groups": [
+    {
+     "title": "Supports",
+     "set": "Mechanical supports (Spectrum)",
+     "symbols": [
+      {
+       "id": "mech-ground",
+       "name": "Ground (hatched)",
+       "key": "spx/mech/ground",
+       "picture": "pictures/catalogue/mech-ground.pdf",
+       "width": 36.81,
+       "height": 8.26
+      },
+      {
+       "id": "mech-pin",
+       "name": "Pinned support",
+       "key": "spx/mech/pin",
+       "picture": "pictures/catalogue/mech-pin.pdf",
+       "width": 25.47,
+       "height": 19.4
+      },
+      {
+       "id": "mech-wall",
+       "name": "Wall (hatched)",
+       "key": "spx/mech/wall",
+       "picture": "pictures/catalogue/mech-wall.pdf",
+       "width": 8.26,
+       "height": 36.81
+      },
+      {
+       "id": "mech-ceiling",
+       "name": "Ceiling (hatched)",
+       "key": "spx/mech/ceiling",
+       "picture": "pictures/catalogue/mech-ceiling.pdf",
+       "width": 36.81,
+       "height": 8.26
+      },
+      {
+       "id": "mech-cart",
+       "name": "Cart on wheels",
+       "key": "spx/mech/cart",
+       "picture": "pictures/catalogue/mech-cart.pdf",
+       "width": 36.41,
+       "height": 25.07
+      }
+     ]
+    },
+    {
+     "title": "Flowchart shapes",
+     "set": "Flowchart shapes (Spectrum)",
+     "symbols": [
+      {
+       "id": "flow-process",
+       "name": "Process",
+       "key": "spx/flow/process",
+       "picture": "pictures/catalogue/flow-process.pdf",
+       "width": 59.08,
+       "height": 30.74
+      },
+      {
+       "id": "flow-terminal",
+       "name": "Start or end",
+       "key": "spx/flow/terminal",
+       "picture": "pictures/catalogue/flow-terminal.pdf",
+       "width": 59.08,
+       "height": 30.74
+      },
+      {
+       "id": "flow-decision",
+       "name": "Decision",
+       "key": "spx/flow/decision",
+       "picture": "pictures/catalogue/flow-decision.pdf",
+       "width": 73.26,
+       "height": 44.91
+      },
+      {
+       "id": "flow-data",
+       "name": "Input or output",
+       "key": "spx/flow/data",
+       "picture": "pictures/catalogue/flow-data.pdf",
+       "width": 73.26,
+       "height": 30.74
+      },
+      {
+       "id": "flow-database",
+       "name": "Database",
+       "key": "spx/flow/database",
+       "picture": "pictures/catalogue/flow-database.pdf",
+       "width": 44.91,
+       "height": 44.91
+      },
+      {
+       "id": "flow-circle",
+       "name": "Circle",
+       "key": "spx/flow/circle",
+       "picture": "pictures/catalogue/flow-circle.pdf",
+       "width": 30.74,
+       "height": 30.74
+      },
+      {
+       "id": "flow-ellipse",
+       "name": "Ellipse",
+       "key": "spx/flow/ellipse",
+       "picture": "pictures/catalogue/flow-ellipse.pdf",
+       "width": 59.08,
+       "height": 30.74
+      }
+     ]
+    },
+    {
+     "title": "Points and marks",
+     "set": "Points and marks (Spectrum)",
+     "symbols": [
+      {
+       "id": "geom-point",
+       "name": "Point",
+       "key": "spx/geom/point",
+       "picture": "pictures/catalogue/geom-point.pdf",
+       "width": 5.98,
+       "height": 5.98
+      },
+      {
+       "id": "geom-open-point",
+       "name": "Open point",
+       "key": "spx/geom/open",
+       "picture": "pictures/catalogue/geom-open-point.pdf",
+       "width": 6.38,
+       "height": 6.38
+      },
+      {
+       "id": "geom-right",
+       "name": "Right-angle mark",
+       "key": "spx/geom/right",
+       "picture": "pictures/catalogue/geom-right.pdf",
+       "width": 12.31,
+       "height": 12.31
+      },
+      {
+       "id": "geom-axes",
+       "name": "Axes",
+       "key": "spx/geom/axes",
+       "picture": "pictures/catalogue/geom-axes.pdf",
+       "width": 156.46,
+       "height": 156.99
+      }
+     ]
+    },
+    {
+     "title": "Pipes and fittings",
+     "set": "Fluid mechanics (Spectrum)",
+     "symbols": [
+      {
+       "id": "fluid-pipe",
+       "name": "Pipe",
+       "key": "spx/fluid/pipe",
+       "picture": "pictures/catalogue/fluid-pipe.pdf",
+       "width": 59.48,
+       "height": 31.14
+      },
+      {
+       "id": "fluid-pipe-narrow",
+       "name": "Pipe (narrow)",
+       "key": "spx/fluid/pipe-narrow",
+       "picture": "pictures/catalogue/fluid-pipe-narrow.pdf",
+       "width": 59.48,
+       "height": 16.96
+      },
+      {
+       "id": "fluid-reducer",
+       "name": "Reducer",
+       "key": "spx/fluid/reducer",
+       "picture": "pictures/catalogue/fluid-reducer.pdf",
+       "width": 45.31,
+       "height": 31.14
+      },
+      {
+       "id": "fluid-nozzle",
+       "name": "Nozzle",
+       "key": "spx/fluid/nozzle",
+       "picture": "pictures/catalogue/fluid-nozzle.pdf",
+       "width": 52.2,
+       "height": 31.14
+      },
+      {
+       "id": "fluid-bend",
+       "name": "Bend (90°)",
+       "key": "spx/fluid/bend",
+       "picture": "pictures/catalogue/fluid-bend.pdf",
+       "width": 45.31,
+       "height": 45.31
+      },
+      {
+       "id": "fluid-bend-45",
+       "name": "Bend (45°)",
+       "key": "spx/fluid/bend-45",
+       "picture": "pictures/catalogue/fluid-bend-45.pdf",
+       "width": 41.17,
+       "height": 41.16
+      },
+      {
+       "id": "fluid-tee",
+       "name": "Tee junction",
+       "key": "spx/fluid/tee",
+       "picture": "pictures/catalogue/fluid-tee.pdf",
+       "width": 59.48,
+       "height": 45.31
+      },
+      {
+       "id": "fluid-valve",
+       "name": "Valve",
+       "key": "spx/fluid/valve",
+       "picture": "pictures/catalogue/fluid-valve.pdf",
+       "width": 31.14,
+       "height": 38.22
+      },
+      {
+       "id": "fluid-pump",
+       "name": "Pump",
+       "key": "spx/fluid/pump",
+       "picture": "pictures/catalogue/fluid-pump.pdf",
+       "width": 59.48,
+       "height": 45.31
+      },
+      {
+       "id": "fluid-turbine",
+       "name": "Turbine",
+       "key": "spx/fluid/turbine",
+       "picture": "pictures/catalogue/fluid-turbine.pdf",
+       "width": 59.48,
+       "height": 45.31
+      },
+      {
+       "id": "fluid-gauge",
+       "name": "Pressure gauge",
+       "key": "spx/fluid/gauge",
+       "picture": "pictures/catalogue/fluid-gauge.pdf",
+       "width": 16.96,
+       "height": 23.85
+      }
+     ]
+    },
+    {
+     "title": "Flow",
+     "set": "Fluid mechanics (Spectrum)",
+     "symbols": [
+      {
+       "id": "fluid-section",
+       "name": "Section marker",
+       "key": "spx/fluid/section",
+       "picture": "pictures/catalogue/fluid-section.pdf",
+       "width": 16.56,
+       "height": 52
+      },
+      {
+       "id": "fluid-centre-line",
+       "name": "Centre line",
+       "key": "spx/fluid/centre-line",
+       "picture": "pictures/catalogue/fluid-centre-line.pdf",
+       "width": 59.08,
+       "height": 2.39
+      },
+      {
+       "id": "fluid-control-volume",
+       "name": "Control volume",
+       "key": "spx/fluid/control-volume",
+       "picture": "pictures/catalogue/fluid-control-volume.pdf",
+       "width": 115.78,
+       "height": 44.91
+      },
+      {
+       "id": "fluid-profile-uniform",
+       "name": "Velocity profile (uniform)",
+       "key": "spx/fluid/profile-uniform",
+       "picture": "pictures/catalogue/fluid-profile-uniform.pdf",
+       "width": 23.65,
+       "height": 30.74
+      },
+      {
+       "id": "fluid-profile-linear",
+       "name": "Velocity profile (linear)",
+       "key": "spx/fluid/profile-linear",
+       "picture": "pictures/catalogue/fluid-profile-linear.pdf",
+       "width": 30.74,
+       "height": 30.74
+      },
+      {
+       "id": "fluid-profile-parabolic",
+       "name": "Velocity profile (parabolic)",
+       "key": "spx/fluid/profile-parabolic",
+       "picture": "pictures/catalogue/fluid-profile-parabolic.pdf",
+       "width": 30.74,
+       "height": 30.74
+      },
+      {
+       "id": "fluid-streamline",
+       "name": "Streamline",
+       "key": "spx/fluid/streamline",
+       "picture": "pictures/catalogue/fluid-streamline.pdf",
+       "width": 59.08,
+       "height": 16.56
+      },
+      {
+       "id": "fluid-streamtube",
+       "name": "Streamtube",
+       "key": "spx/fluid/streamtube",
+       "picture": "pictures/catalogue/fluid-streamtube.pdf",
+       "width": 66.45,
+       "height": 30.74
+      }
+     ]
+    },
+    {
+     "title": "Tanks and manometers",
+     "set": "Fluid mechanics (Spectrum)",
+     "symbols": [
+      {
+       "id": "fluid-surface",
+       "name": "Free surface mark",
+       "key": "spx/fluid/surface",
+       "picture": "pictures/catalogue/fluid-surface.pdf",
+       "width": 10.9,
+       "height": 13.73
+      },
+      {
+       "id": "fluid-tank",
+       "name": "Open tank",
+       "key": "spx/fluid/tank",
+       "picture": "pictures/catalogue/fluid-tank.pdf",
+       "width": 87.83,
+       "height": 59.48
+      },
+      {
+       "id": "fluid-tank-closed",
+       "name": "Closed tank",
+       "key": "spx/fluid/tank-closed",
+       "picture": "pictures/catalogue/fluid-tank-closed.pdf",
+       "width": 87.83,
+       "height": 59.48
+      },
+      {
+       "id": "fluid-tank-cylinder",
+       "name": "Cylindrical tank",
+       "key": "spx/fluid/tank-cylinder",
+       "picture": "pictures/catalogue/fluid-tank-cylinder.pdf",
+       "width": 59.48,
+       "height": 73.66
+      },
+      {
+       "id": "fluid-manometer",
+       "name": "U-tube manometer",
+       "key": "spx/fluid/manometer",
+       "picture": "pictures/catalogue/fluid-manometer.pdf",
+       "width": 38.22,
+       "height": 63.03
+      },
+      {
+       "id": "fluid-manometer-differential",
+       "name": "Differential manometer",
+       "key": "spx/fluid/manometer-differential",
+       "picture": "pictures/catalogue/fluid-manometer-differential.pdf",
+       "width": 73.66,
+       "height": 66.57
+      },
+      {
+       "id": "fluid-manometer-inverted",
+       "name": "Inverted U-tube manometer",
+       "key": "spx/fluid/manometer-inverted",
+       "picture": "pictures/catalogue/fluid-manometer-inverted.pdf",
+       "width": 38.22,
+       "height": 63.03
+      },
+      {
+       "id": "fluid-manometer-inclined",
+       "name": "Inclined manometer",
+       "key": "spx/fluid/manometer-inclined",
+       "picture": "pictures/catalogue/fluid-manometer-inclined.pdf",
+       "width": 87.83,
+       "height": 41.77
+      },
+      {
+       "id": "fluid-column",
+       "name": "Column of three liquids",
+       "key": "spx/fluid/column",
+       "picture": "pictures/catalogue/fluid-column.pdf",
+       "width": 31.14,
+       "height": 73.74
+      },
+      {
+       "id": "fluid-piezometer",
+       "name": "Piezometer tube",
+       "key": "spx/fluid/piezometer",
+       "picture": "pictures/catalogue/fluid-piezometer.pdf",
+       "width": 9.88,
+       "height": 45.31
+      },
+      {
+       "id": "fluid-barometer",
+       "name": "Barometer",
+       "key": "spx/fluid/barometer",
+       "picture": "pictures/catalogue/fluid-barometer.pdf",
+       "width": 45.31,
+       "height": 59.48
+      },
+      {
+       "id": "fluid-jack",
+       "name": "Hydraulic jack",
+       "key": "spx/fluid/jack",
+       "picture": "pictures/catalogue/fluid-jack.pdf",
+       "width": 74.05,
+       "height": 52.4
+      }
+     ]
+    },
+    {
+     "title": "Hydrostatics and buoyancy",
+     "set": "Fluid mechanics (Spectrum)",
+     "symbols": [
+      {
+       "id": "fluid-gate",
+       "name": "Gate",
+       "key": "spx/fluid/gate",
+       "picture": "pictures/catalogue/fluid-gate.pdf",
+       "width": 3.19,
+       "height": 59.88
+      },
+      {
+       "id": "fluid-hinge",
+       "name": "Hinge",
+       "key": "spx/fluid/hinge",
+       "picture": "pictures/catalogue/fluid-hinge.pdf",
+       "width": 19.97,
+       "height": 25.47
+      },
+      {
+       "id": "fluid-stop",
+       "name": "Stop",
+       "key": "spx/fluid/stop",
+       "picture": "pictures/catalogue/fluid-stop.pdf",
+       "width": 13.73,
+       "height": 10.9
+      },
+      {
+       "id": "fluid-pressure",
+       "name": "Pressure distribution (triangular)",
+       "key": "spx/fluid/pressure",
+       "picture": "pictures/catalogue/fluid-pressure.pdf",
+       "width": 30.74,
+       "height": 59.08
+      },
+      {
+       "id": "fluid-pressure-trapezoid",
+       "name": "Pressure distribution (trapezoidal)",
+       "key": "spx/fluid/pressure-trapezoid",
+       "picture": "pictures/catalogue/fluid-pressure-trapezoid.pdf",
+       "width": 30.74,
+       "height": 59.08
+      },
+      {
+       "id": "fluid-resultant",
+       "name": "Resultant force",
+       "key": "spx/fluid/resultant",
+       "picture": "pictures/catalogue/fluid-resultant.pdf",
+       "width": 31.53,
+       "height": 3.19
+      },
+      {
+       "id": "fluid-block",
+       "name": "Floating block",
+       "key": "spx/fluid/block",
+       "picture": "pictures/catalogue/fluid-block.pdf",
+       "width": 45.31,
+       "height": 47.94
+      },
+      {
+       "id": "fluid-hydrometer",
+       "name": "Hydrometer",
+       "key": "spx/fluid/hydrometer",
+       "picture": "pictures/catalogue/fluid-hydrometer.pdf",
+       "width": 14.13,
+       "height": 66.57
+      },
+      {
+       "id": "fluid-hull",
+       "name": "Ship hull section",
+       "key": "spx/fluid/hull",
+       "picture": "pictures/catalogue/fluid-hull.pdf",
+       "width": 87.43,
+       "height": 66.17
+      },
+      {
+       "id": "fluid-incline",
+       "name": "Incline",
+       "key": "spx/fluid/incline",
+       "picture": "pictures/catalogue/fluid-incline.pdf",
+       "width": 73.66,
+       "height": 45.31
+      }
+     ]
+    },
+    {
+     "title": "Viscosity and surface tension",
+     "set": "Fluid mechanics (Spectrum)",
+     "symbols": [
+      {
+       "id": "fluid-plates",
+       "name": "Fixed and moving plates",
+       "key": "spx/fluid/plates",
+       "picture": "pictures/catalogue/fluid-plates.pdf",
+       "width": 95.11,
+       "height": 37
+      },
+      {
+       "id": "fluid-capillary",
+       "name": "Capillary tube (rise)",
+       "key": "spx/fluid/capillary",
+       "picture": "pictures/catalogue/fluid-capillary.pdf",
+       "width": 59.08,
+       "height": 52.4
+      },
+      {
+       "id": "fluid-capillary-depression",
+       "name": "Capillary tube (depression)",
+       "key": "spx/fluid/capillary-depression",
+       "picture": "pictures/catalogue/fluid-capillary-depression.pdf",
+       "width": 59.08,
+       "height": 52.4
+      },
+      {
+       "id": "fluid-contact-angle",
+       "name": "Contact angle",
+       "key": "spx/fluid/contact-angle",
+       "picture": "pictures/catalogue/fluid-contact-angle.pdf",
+       "width": 45.61,
+       "height": 45.31
+      }
+     ]
+    },
+    {
+     "title": "Test specimens",
+     "set": "Construction materials (Spectrum)",
+     "symbols": [
+      {
+       "id": "mat-cube",
+       "name": "Cube between platens",
+       "key": "spx/mat/cube",
+       "picture": "pictures/catalogue/mat-cube.pdf",
+       "width": 39.24,
+       "height": 59.08
+      },
+      {
+       "id": "mat-cylinder",
+       "name": "Cylinder specimen",
+       "key": "spx/mat/cylinder",
+       "picture": "pictures/catalogue/mat-cylinder.pdf",
+       "width": 31.14,
+       "height": 101.6
+      },
+      {
+       "id": "mat-flexure-3",
+       "name": "Flexural test (3-point)",
+       "key": "spx/mat/flexure-3",
+       "picture": "pictures/catalogue/mat-flexure-3.pdf",
+       "width": 144.52,
+       "height": 87.43
+      },
+      {
+       "id": "mat-flexure-4",
+       "name": "Flexural test (4-point)",
+       "key": "spx/mat/flexure-4",
+       "picture": "pictures/catalogue/mat-flexure-4.pdf",
+       "width": 144.52,
+       "height": 87.43
+      },
+      {
+       "id": "mat-slump-cone",
+       "name": "Slump cone",
+       "key": "spx/mat/slump-cone",
+       "picture": "pictures/catalogue/mat-slump-cone.pdf",
+       "width": 42.08,
+       "height": 45.31
+      },
+      {
+       "id": "mat-slump-true",
+       "name": "Slump (true)",
+       "key": "spx/mat/slump-true",
+       "picture": "pictures/catalogue/mat-slump-true.pdf",
+       "width": 33.97,
+       "height": 32.55
+      },
+      {
+       "id": "mat-slump-shear",
+       "name": "Slump (shear)",
+       "key": "spx/mat/slump-shear",
+       "picture": "pictures/catalogue/mat-slump-shear.pdf",
+       "width": 39.64,
+       "height": 39.64
+      },
+      {
+       "id": "mat-slump-collapse",
+       "name": "Slump (collapse)",
+       "key": "spx/mat/slump-collapse",
+       "picture": "pictures/catalogue/mat-slump-collapse.pdf",
+       "width": 59.48,
+       "height": 16.96
+      },
+      {
+       "id": "mat-tension",
+       "name": "Tension bar",
+       "key": "spx/mat/tension",
+       "picture": "pictures/catalogue/mat-tension.pdf",
+       "width": 115.78,
+       "height": 14.13
+      },
+      {
+       "id": "mat-shear",
+       "name": "Shear block",
+       "key": "spx/mat/shear",
+       "picture": "pictures/catalogue/mat-shear.pdf",
+       "width": 38.02,
+       "height": 44.91
+      },
+      {
+       "id": "mat-roller",
+       "name": "Roller",
+       "key": "spx/mat/roller",
+       "picture": "pictures/catalogue/mat-roller.pdf",
+       "width": 9.48,
+       "height": 9.48
+      },
+      {
+       "id": "mat-platen",
+       "name": "Platen",
+       "key": "spx/mat/platen",
+       "picture": "pictures/catalogue/mat-platen.pdf",
+       "width": 44.91,
+       "height": 6.64
+      }
+     ]
+    },
+    {
+     "title": "Sections and brickwork",
+     "set": "Construction materials (Spectrum)",
+     "symbols": [
+      {
+       "id": "mat-rc-section",
+       "name": "Reinforced concrete section",
+       "key": "spx/mat/rc-section",
+       "picture": "pictures/catalogue/mat-rc-section.pdf",
+       "width": 45.31,
+       "height": 59.48
+      },
+      {
+       "id": "mat-steel-i",
+       "name": "Steel I-section",
+       "key": "spx/mat/steel-i",
+       "picture": "pictures/catalogue/mat-steel-i.pdf",
+       "width": 45.31,
+       "height": 59.48
+      },
+      {
+       "id": "mat-steel-channel",
+       "name": "Steel channel",
+       "key": "spx/mat/steel-channel",
+       "picture": "pictures/catalogue/mat-steel-channel.pdf",
+       "width": 31.14,
+       "height": 59.48
+      },
+      {
+       "id": "mat-steel-angle",
+       "name": "Steel angle",
+       "key": "spx/mat/steel-angle",
+       "picture": "pictures/catalogue/mat-steel-angle.pdf",
+       "width": 31.14,
+       "height": 31.14
+      },
+      {
+       "id": "mat-steel-tee",
+       "name": "Steel tee",
+       "key": "spx/mat/steel-tee",
+       "picture": "pictures/catalogue/mat-steel-tee.pdf",
+       "width": 45.31,
+       "height": 38.22
+      },
+      {
+       "id": "mat-steel-rhs",
+       "name": "Rectangular hollow section",
+       "key": "spx/mat/steel-rhs",
+       "picture": "pictures/catalogue/mat-steel-rhs.pdf",
+       "width": 31.14,
+       "height": 45.31
+      },
+      {
+       "id": "mat-steel-chs",
+       "name": "Circular hollow section",
+       "key": "spx/mat/steel-chs",
+       "picture": "pictures/catalogue/mat-steel-chs.pdf",
+       "width": 45.31,
+       "height": 45.31
+      },
+      {
+       "id": "mat-bond-stretcher",
+       "name": "Brickwork (stretcher bond)",
+       "key": "spx/mat/bond-stretcher",
+       "picture": "pictures/catalogue/mat-bond-stretcher.pdf",
+       "width": 87.83,
+       "height": 45.31
+      },
+      {
+       "id": "mat-bond-english",
+       "name": "Brickwork (English bond)",
+       "key": "spx/mat/bond-english",
+       "picture": "pictures/catalogue/mat-bond-english.pdf",
+       "width": 87.83,
+       "height": 45.31
+      },
+      {
+       "id": "mat-bond-flemish",
+       "name": "Brickwork (Flemish bond)",
+       "key": "spx/mat/bond-flemish",
+       "picture": "pictures/catalogue/mat-bond-flemish.pdf",
+       "width": 87.83,
+       "height": 45.31
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "annotate",
+   "groups": [
+    {
+     "title": "Tools",
+     "symbols": [
+      {
+       "id": "line",
+       "name": "Line or arrow",
+       "picture": "pictures/annotate/line.pdf",
+       "width": 53,
+       "height": 26
+      },
+      {
+       "id": "rect",
+       "name": "Rectangle",
+       "picture": "pictures/annotate/rect.pdf",
+       "width": 53,
+       "height": 32
+      },
+      {
+       "id": "ellipse",
+       "name": "Ellipse",
+       "picture": "pictures/annotate/ellipse.pdf",
+       "width": 53,
+       "height": 32
+      },
+      {
+       "id": "cross",
+       "name": "Cross",
+       "picture": "pictures/annotate/cross.pdf",
+       "width": 11,
+       "height": 10
+      },
+      {
+       "id": "polygon",
+       "name": "Liquid or solid",
+       "picture": "pictures/annotate/polygon.pdf",
+       "width": 53,
+       "height": 32
+      },
+      {
+       "id": "boundary",
+       "name": "Hatched boundary",
+       "picture": "pictures/annotate/boundary.pdf",
+       "width": 53,
+       "height": 9
+      },
+      {
+       "id": "dimension",
+       "name": "Dimension",
+       "picture": "pictures/annotate/dimension.pdf",
+       "width": 53,
+       "height": 26
+      },
+      {
+       "id": "surface",
+       "name": "Free surface",
+       "picture": "pictures/annotate/surface.pdf",
+       "width": 12,
+       "height": 15
+      },
+      {
+       "id": "mark",
+       "name": "Point",
+       "picture": "pictures/annotate/mark.pdf",
+       "width": 15,
+       "height": 10
+      },
+      {
+       "id": "leader",
+       "name": "Leader",
+       "picture": "pictures/annotate/leader.pdf",
+       "width": 62,
+       "height": 34
+      }
+     ]
+    },
+    {
+     "title": "Presets",
+     "symbols": [
+      {
+       "id": "resistance",
+       "name": "Resistance looking in",
+       "picture": "pictures/annotate/resistance.pdf",
+       "width": 38,
+       "height": 48
+      },
+      {
+       "id": "current",
+       "name": "Current arrow",
+       "picture": "pictures/annotate/current.pdf",
+       "width": 32,
+       "height": 18
+      },
+      {
+       "id": "loop",
+       "name": "Loop current",
+       "picture": "pictures/annotate/loop.pdf",
+       "width": 62,
+       "height": 61
+      },
+      {
+       "id": "mesh",
+       "name": "Mesh current marker",
+       "picture": "pictures/annotate/mesh.pdf",
+       "width": 48,
+       "height": 75
+      },
+      {
+       "id": "frame",
+       "name": "Frame",
+       "picture": "pictures/annotate/frame.pdf",
+       "width": 117,
+       "height": 101
+      },
+      {
+       "id": "highlight",
+       "name": "Highlight",
+       "picture": "pictures/annotate/highlight.pdf",
+       "width": 46,
+       "height": 33
+      },
+      {
+       "id": "C",
+       "name": "Centroid C",
+       "picture": "pictures/annotate/C.pdf",
+       "width": 15,
+       "height": 10
+      },
+      {
+       "id": "CP",
+       "name": "Centre of pressure CP",
+       "picture": "pictures/annotate/CP.pdf",
+       "width": 23,
+       "height": 10
+      },
+      {
+       "id": "G",
+       "name": "Centre of gravity G",
+       "picture": "pictures/annotate/G.pdf",
+       "width": 15,
+       "height": 10
+      },
+      {
+       "id": "B",
+       "name": "Centre of buoyancy B",
+       "picture": "pictures/annotate/B.pdf",
+       "width": 15,
+       "height": 10
+      },
+      {
+       "id": "M",
+       "name": "Metacentre M",
+       "picture": "pictures/annotate/M.pdf",
+       "width": 18,
+       "height": 10
+      }
+     ]
+    },
+    {
+     "title": "Arrowheads and point marks",
+     "symbols": [
+      {
+       "id": "head-latex",
+       "name": "Latex",
+       "picture": "pictures/annotate/head-latex.pdf",
+       "width": 38,
+       "height": 8
+      },
+      {
+       "id": "head-stealth",
+       "name": "Stealth",
+       "picture": "pictures/annotate/head-stealth.pdf",
+       "width": 38,
+       "height": 8
+      },
+      {
+       "id": "head-triangle",
+       "name": "Open triangle",
+       "picture": "pictures/annotate/head-triangle.pdf",
+       "width": 38,
+       "height": 8
+      },
+      {
+       "id": "head-to",
+       "name": "Plain",
+       "picture": "pictures/annotate/head-to.pdf",
+       "width": 38,
+       "height": 15
+      },
+      {
+       "id": "mark-dot",
+       "name": "Dot",
+       "picture": "pictures/annotate/mark-dot.pdf",
+       "width": 15,
+       "height": 10
+      },
+      {
+       "id": "mark-cross",
+       "name": "Cross",
+       "picture": "pictures/annotate/mark-cross.pdf",
+       "width": 16,
+       "height": 10
+      }
+     ]
+    },
+    {
+     "title": "Liquids and solids",
+     "symbols": [
+      {
+       "id": "material-water",
+       "name": "Water",
+       "picture": "pictures/annotate/material-water.pdf",
+       "width": 39,
+       "height": 32
+      },
+      {
+       "id": "material-seawater",
+       "name": "Seawater",
+       "picture": "pictures/annotate/material-seawater.pdf",
+       "width": 39,
+       "height": 32
+      },
+      {
+       "id": "material-oil",
+       "name": "Oil",
+       "picture": "pictures/annotate/material-oil.pdf",
+       "width": 39,
+       "height": 32
+      },
+      {
+       "id": "material-mercury",
+       "name": "Mercury",
+       "picture": "pictures/annotate/material-mercury.pdf",
+       "width": 39,
+       "height": 32
+      },
+      {
+       "id": "material-air",
+       "name": "Air",
+       "picture": "pictures/annotate/material-air.pdf",
+       "width": 39,
+       "height": 32
+      },
+      {
+       "id": "material-concrete",
+       "name": "Concrete",
+       "picture": "pictures/annotate/material-concrete.pdf",
+       "width": 39,
+       "height": 32
+      }
+     ]
+    },
+    {
+     "title": "Patterns",
+     "symbols": [
+      {
+       "id": "pattern-dashes",
+       "name": "Dashes",
+       "picture": "pictures/annotate/pattern-dashes.pdf",
+       "width": 39,
+       "height": 32
+      },
+      {
+       "id": "pattern-dots",
+       "name": "Dots",
+       "picture": "pictures/annotate/pattern-dots.pdf",
+       "width": 39,
+       "height": 32
+      },
+      {
+       "id": "pattern-hatch",
+       "name": "Hatching",
+       "picture": "pictures/annotate/pattern-hatch.pdf",
+       "width": 39,
+       "height": 32
+      },
+      {
+       "id": "pattern-crosshatch",
+       "name": "Cross hatching",
+       "picture": "pictures/annotate/pattern-crosshatch.pdf",
+       "width": 39,
+       "height": 32
+      },
+      {
+       "id": "pattern-stipple",
+       "name": "Stipple",
+       "picture": "pictures/annotate/pattern-stipple.pdf",
+       "width": 39,
+       "height": 32
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "structures",
+   "groups": [
+    {
+     "title": "Members",
+     "symbols": [
+      {
+       "id": "beam",
+       "name": "Beam or frame member",
+       "picture": "pictures/structures/beam.pdf",
+       "width": 88,
+       "height": 5
+      },
+      {
+       "id": "bar",
+       "name": "Truss bar",
+       "picture": "pictures/structures/bar.pdf",
+       "width": 92,
+       "height": 7
+      }
+     ]
+    },
+    {
+     "title": "Joints",
+     "symbols": [
+      {
+       "id": "joint",
+       "name": "Joint",
+       "picture": "pictures/structures/joint.pdf",
+       "width": 88,
+       "height": 5
+      },
+      {
+       "id": "hinge",
+       "name": "Internal hinge",
+       "picture": "pictures/structures/hinge.pdf",
+       "width": 88,
+       "height": 8
+      },
+      {
+       "id": "shear",
+       "name": "Internal shear release",
+       "picture": "pictures/structures/shear.pdf",
+       "width": 88,
+       "height": 13
+      },
+      {
+       "id": "release",
+       "name": "Released member end",
+       "picture": "pictures/structures/release.pdf",
+       "width": 88,
+       "height": 7
+      }
+     ]
+    },
+    {
+     "title": "Supports",
+     "symbols": [
+      {
+       "id": "support-pin",
+       "name": "Pin",
+       "picture": "pictures/structures/support-pin.pdf",
+       "width": 88,
+       "height": 20
+      },
+      {
+       "id": "support-roller",
+       "name": "Roller",
+       "picture": "pictures/structures/support-roller.pdf",
+       "width": 88,
+       "height": 22
+      },
+      {
+       "id": "support-fixed",
+       "name": "Fixed",
+       "picture": "pictures/structures/support-fixed.pdf",
+       "width": 88,
+       "height": 7
+      },
+      {
+       "id": "support-guided",
+       "name": "Guided (slider)",
+       "picture": "pictures/structures/support-guided.pdf",
+       "width": 88,
+       "height": 11
+      },
+      {
+       "id": "support-spring",
+       "name": "Spring",
+       "picture": "pictures/structures/support-spring.pdf",
+       "width": 88,
+       "height": 25
+      },
+      {
+       "id": "support-rotspring",
+       "name": "Rotational spring",
+       "picture": "pictures/structures/support-rotspring.pdf",
+       "width": 88,
+       "height": 24
+      }
+     ]
+    },
+    {
+     "title": "Loads",
+     "symbols": [
+      {
+       "id": "force",
+       "name": "Point force",
+       "picture": "pictures/structures/force.pdf",
+       "width": 88,
+       "height": 42
+      },
+      {
+       "id": "moment-ccw",
+       "name": "Moment, anticlockwise",
+       "picture": "pictures/structures/moment-ccw.pdf",
+       "width": 88,
+       "height": 33
+      },
+      {
+       "id": "moment-cw",
+       "name": "Moment, clockwise",
+       "picture": "pictures/structures/moment-cw.pdf",
+       "width": 88,
+       "height": 33
+      },
+      {
+       "id": "udl",
+       "name": "Uniform load",
+       "picture": "pictures/structures/udl.pdf",
+       "width": 92,
+       "height": 37
+      },
+      {
+       "id": "linear",
+       "name": "Linearly varying load",
+       "picture": "pictures/structures/linear.pdf",
+       "width": 104,
+       "height": 37
+      }
+     ]
+    },
+    {
+     "title": "Annotations",
+     "symbols": [
+      {
+       "id": "dim-h",
+       "name": "Dimension, horizontal",
+       "picture": "pictures/structures/dim-h.pdf",
+       "width": 89,
+       "height": 80
+      },
+      {
+       "id": "dim-v",
+       "name": "Dimension, vertical",
+       "picture": "pictures/structures/dim-v.pdf",
+       "width": 129,
+       "height": 46
+      },
+      {
+       "id": "dim-aligned",
+       "name": "Dimension, aligned",
+       "picture": "pictures/structures/dim-aligned.pdf",
+       "width": 101,
+       "height": 70
+      },
+      {
+       "id": "label",
+       "name": "Label",
+       "picture": "pictures/structures/label.pdf",
+       "width": 23,
+       "height": 8
+      },
+      {
+       "id": "angle",
+       "name": "Angle arc",
+       "picture": "pictures/structures/angle.pdf",
+       "width": 88,
+       "height": 22
+      },
+      {
+       "id": "axes",
+       "name": "Axes",
+       "picture": "pictures/structures/axes.pdf",
+       "width": 40,
+       "height": 40
+      },
+      {
+       "id": "cut",
+       "name": "Section cut",
+       "picture": "pictures/structures/cut.pdf",
+       "width": 88,
+       "height": 45
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "vectors",
+   "groups": [
+    {
+     "title": "Axes and marks",
+     "symbols": [
+      {
+       "id": "axes",
+       "name": "Axes",
+       "picture": "pictures/vectors/axes.pdf",
+       "width": 154,
+       "height": 154
+      },
+      {
+       "id": "angle",
+       "name": "Angle",
+       "picture": "pictures/vectors/angle.pdf",
+       "width": 60,
+       "height": 38
+      },
+      {
+       "id": "right",
+       "name": "Right-angle mark",
+       "picture": "pictures/vectors/right.pdf",
+       "width": 60,
+       "height": 43
+      },
+      {
+       "id": "ticks",
+       "name": "Equal-length ticks",
+       "picture": "pictures/vectors/ticks.pdf",
+       "width": 60,
+       "height": 9
+      },
+      {
+       "id": "drop",
+       "name": "Drop to an axis",
+       "picture": "pictures/vectors/drop.pdf",
+       "width": 16,
+       "height": 46
+      },
+      {
+       "id": "dropBoth",
+       "name": "Drop to both axes",
+       "picture": "pictures/vectors/dropBoth.pdf",
+       "width": 56,
+       "height": 47
+      },
+      {
+       "id": "highlight",
+       "name": "Highlighted segment",
+       "picture": "pictures/vectors/highlight.pdf",
+       "width": 60,
+       "height": 6
+      }
+     ]
+    },
+    {
+     "title": "Point shapes",
+     "symbols": [
+      {
+       "id": "point-filled",
+       "name": "Filled",
+       "picture": "pictures/vectors/point-filled.pdf",
+       "width": 7,
+       "height": 7
+      },
+      {
+       "id": "point-open",
+       "name": "Open",
+       "picture": "pictures/vectors/point-open.pdf",
+       "width": 7,
+       "height": 8
+      },
+      {
+       "id": "point-cross",
+       "name": "Cross",
+       "picture": "pictures/vectors/point-cross.pdf",
+       "width": 7,
+       "height": 7
+      }
+     ]
+    },
+    {
+     "title": "Arrow tips",
+     "symbols": [
+      {
+       "id": "tip-stealth",
+       "name": "Stealth",
+       "picture": "pictures/vectors/tip-stealth.pdf",
+       "width": 46,
+       "height": 7
+      },
+      {
+       "id": "tip-latex",
+       "name": "Latex",
+       "picture": "pictures/vectors/tip-latex.pdf",
+       "width": 46,
+       "height": 7
+      },
+      {
+       "id": "tip-to",
+       "name": "To",
+       "picture": "pictures/vectors/tip-to.pdf",
+       "width": 46,
+       "height": 9
+      },
+      {
+       "id": "tip-triangle",
+       "name": "Triangle",
+       "picture": "pictures/vectors/tip-triangle.pdf",
+       "width": 46,
+       "height": 8
+      },
+      {
+       "id": "tip-open-triangle",
+       "name": "Open triangle",
+       "picture": "pictures/vectors/tip-open-triangle.pdf",
+       "width": 46,
+       "height": 8
+      },
+      {
+       "id": "tip-bar",
+       "name": "Bar",
+       "picture": "pictures/vectors/tip-bar.pdf",
+       "width": 46,
+       "height": 8
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "flow",
+   "groups": [
+    {
+     "title": "Shapes in TikZ",
+     "symbols": [
+      {
+       "id": "rectangle",
+       "name": "Rectangle",
+       "picture": "pictures/flow/rectangle.pdf",
+       "width": 60,
+       "height": 32
+      },
+      {
+       "id": "rounded",
+       "name": "Rounded rectangle",
+       "picture": "pictures/flow/rounded.pdf",
+       "width": 60,
+       "height": 32
+      },
+      {
+       "id": "circle",
+       "name": "Circle",
+       "picture": "pictures/flow/circle.pdf",
+       "width": 46,
+       "height": 46
+      },
+      {
+       "id": "ellipse",
+       "name": "Ellipse",
+       "picture": "pictures/flow/ellipse.pdf",
+       "width": 60,
+       "height": 46
+      },
+      {
+       "id": "diamond",
+       "name": "Diamond",
+       "picture": "pictures/flow/diamond.pdf",
+       "width": 60,
+       "height": 46
+      },
+      {
+       "id": "parallelogram",
+       "name": "Parallelogram",
+       "picture": "pictures/flow/parallelogram.pdf",
+       "width": 60,
+       "height": 32
+      },
+      {
+       "id": "text",
+       "name": "Text",
+       "picture": "pictures/flow/text.pdf",
+       "width": 22,
+       "height": 10
+      },
+      {
+       "id": "maths",
+       "name": "Maths label",
+       "picture": "pictures/flow/maths.pdf",
+       "width": 12,
+       "height": 11
+      },
+      {
+       "id": "state",
+       "name": "State",
+       "picture": "pictures/flow/state.pdf",
+       "width": 46,
+       "height": 46
+      },
+      {
+       "id": "accepting",
+       "name": "Accepting state",
+       "picture": "pictures/flow/accepting.pdf",
+       "width": 47,
+       "height": 47
+      },
+      {
+       "id": "cylinder",
+       "name": "Cylinder (data store)",
+       "picture": "pictures/flow/cylinder.pdf",
+       "width": 46,
+       "height": 46
+      },
+      {
+       "id": "document",
+       "name": "Document",
+       "picture": "pictures/flow/document.pdf",
+       "width": 60,
+       "height": 46
+      },
+      {
+       "id": "trapezium",
+       "name": "Trapezium (manual step)",
+       "picture": "pictures/flow/trapezium.pdf",
+       "width": 60,
+       "height": 32
+      },
+      {
+       "id": "operator",
+       "name": "Operator circle",
+       "picture": "pictures/flow/operator.pdf",
+       "width": 32,
+       "height": 32
+      },
+      {
+       "id": "stack",
+       "name": "Vector stack",
+       "picture": "pictures/flow/stack.pdf",
+       "width": 32,
+       "height": 61
+      },
+      {
+       "id": "container",
+       "name": "Container",
+       "picture": "pictures/flow/container.pdf",
+       "width": 145,
+       "height": 103
+      },
+      {
+       "id": "terminal",
+       "name": "Terminal (start or end)",
+       "picture": "pictures/flow/terminal.pdf",
+       "width": 60,
+       "height": 32
+      },
+      {
+       "id": "manualInput",
+       "name": "Manual input",
+       "picture": "pictures/flow/manualInput.pdf",
+       "width": 60,
+       "height": 32
+      },
+      {
+       "id": "offPage",
+       "name": "Off-page connector",
+       "picture": "pictures/flow/offPage.pdf",
+       "width": 32,
+       "height": 32
+      },
+      {
+       "id": "gain",
+       "name": "Gain (block diagram)",
+       "picture": "pictures/flow/gain.pdf",
+       "width": 46,
+       "height": 47
+      },
+      {
+       "id": "takeoff",
+       "name": "Takeoff point",
+       "picture": "pictures/flow/takeoff.pdf",
+       "width": 6,
+       "height": 7
+      },
+      {
+       "id": "swimlane",
+       "name": "Swimlane",
+       "picture": "pictures/flow/swimlane.pdf",
+       "width": 117,
+       "height": 174
+      }
+     ]
+    },
+    {
+     "title": "Shapes in Typst",
+     "symbols": [
+      {
+       "id": "typst-rectangle",
+       "name": "Rectangle",
+       "picture": "pictures/flow/typst-rectangle.pdf",
+       "width": 64.69,
+       "height": 36.35
+      },
+      {
+       "id": "typst-rounded",
+       "name": "Rounded rectangle",
+       "picture": "pictures/flow/typst-rounded.pdf",
+       "width": 64.69,
+       "height": 36.35
+      },
+      {
+       "id": "typst-circle",
+       "name": "Circle",
+       "picture": "pictures/flow/typst-circle.pdf",
+       "width": 68.13,
+       "height": 68.13
+      },
+      {
+       "id": "typst-ellipse",
+       "name": "Ellipse",
+       "picture": "pictures/flow/typst-ellipse.pdf",
+       "width": 64.69,
+       "height": 50.52
+      },
+      {
+       "id": "typst-diamond",
+       "name": "Diamond",
+       "picture": "pictures/flow/typst-diamond.pdf",
+       "width": 93.04,
+       "height": 71.78
+      },
+      {
+       "id": "typst-parallelogram",
+       "name": "Parallelogram",
+       "picture": "pictures/flow/typst-parallelogram.pdf",
+       "width": 72.95,
+       "height": 36.35
+      },
+      {
+       "id": "typst-text",
+       "name": "Text",
+       "picture": "pictures/flow/typst-text.pdf",
+       "width": 50.52,
+       "height": 22.17
+      },
+      {
+       "id": "typst-maths",
+       "name": "Maths label",
+       "picture": "pictures/flow/typst-maths.pdf",
+       "width": 50.52,
+       "height": 22.17
+      },
+      {
+       "id": "typst-state",
+       "name": "State",
+       "picture": "pictures/flow/typst-state.pdf",
+       "width": 68.13,
+       "height": 68.13
+      },
+      {
+       "id": "typst-accepting",
+       "name": "Accepting state",
+       "picture": "pictures/flow/typst-accepting.pdf",
+       "width": 68.13,
+       "height": 68.13
+      },
+      {
+       "id": "typst-cylinder",
+       "name": "Cylinder (data store)",
+       "picture": "pictures/flow/typst-cylinder.pdf",
+       "width": 50.52,
+       "height": 56.44
+      },
+      {
+       "id": "typst-trapezium",
+       "name": "Trapezium (manual step)",
+       "picture": "pictures/flow/typst-trapezium.pdf",
+       "width": 72.95,
+       "height": 36.35
+      },
+      {
+       "id": "typst-operator",
+       "name": "Operator circle",
+       "picture": "pictures/flow/typst-operator.pdf",
+       "width": 48.09,
+       "height": 48.09
+      },
+      {
+       "id": "typst-container",
+       "name": "Container",
+       "picture": "pictures/flow/typst-container.pdf",
+       "width": 149.73,
+       "height": 107.21
+      },
+      {
+       "id": "typst-terminal",
+       "name": "Terminal (start or end)",
+       "picture": "pictures/flow/typst-terminal.pdf",
+       "width": 64.69,
+       "height": 36.35
+      },
+      {
+       "id": "typst-manualInput",
+       "name": "Manual input",
+       "picture": "pictures/flow/typst-manualInput.pdf",
+       "width": 64.69,
+       "height": 36.35
+      },
+      {
+       "id": "typst-offPage",
+       "name": "Off-page connector",
+       "picture": "pictures/flow/typst-offPage.pdf",
+       "width": 36.35,
+       "height": 36.35
+      },
+      {
+       "id": "typst-gain",
+       "name": "Gain (block diagram)",
+       "picture": "pictures/flow/typst-gain.pdf",
+       "width": 50.52,
+       "height": 50.52
+      },
+      {
+       "id": "typst-takeoff",
+       "name": "Takeoff point",
+       "picture": "pictures/flow/typst-takeoff.pdf",
+       "width": 12.81,
+       "height": 12.81
+      },
+      {
+       "id": "typst-swimlane",
+       "name": "Swimlane",
+       "picture": "pictures/flow/typst-swimlane.pdf",
+       "width": 121.39,
+       "height": 178.08
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cd",
+   "groups": [
+    {
+     "title": "Arrows",
+     "symbols": [
+      {
+       "id": "plain",
+       "name": "Plain (→)",
+       "picture": "pictures/cd/plain.pdf",
+       "width": 51,
+       "height": 10
+      },
+      {
+       "id": "double",
+       "name": "Double (⇒)",
+       "picture": "pictures/cd/double.pdf",
+       "width": 51,
+       "height": 10
+      },
+      {
+       "id": "mapsto",
+       "name": "Maps to (↦)",
+       "picture": "pictures/cd/mapsto.pdf",
+       "width": 51,
+       "height": 10
+      },
+      {
+       "id": "equal",
+       "name": "Equals (=)",
+       "picture": "pictures/cd/equal.pdf",
+       "width": 51,
+       "height": 10
+      },
+      {
+       "id": "tail",
+       "name": "Tail (↣)",
+       "picture": "pictures/cd/tail.pdf",
+       "width": 51,
+       "height": 10
+      },
+      {
+       "id": "harpoon",
+       "name": "Harpoon (⇀)",
+       "picture": "pictures/cd/harpoon.pdf",
+       "width": 51,
+       "height": 10
+      },
+      {
+       "id": "hook",
+       "name": "Hook at the tail (↪)",
+       "picture": "pictures/cd/hook.pdf",
+       "width": 51,
+       "height": 10
+      },
+      {
+       "id": "twoHeads",
+       "name": "Two heads (↠)",
+       "picture": "pictures/cd/twoHeads.pdf",
+       "width": 51,
+       "height": 10
+      },
+      {
+       "id": "dashed",
+       "name": "Dashed",
+       "picture": "pictures/cd/dashed.pdf",
+       "width": 51,
+       "height": 10
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "plots",
+   "groups": [
+    {
+     "title": "Marks",
+     "symbols": [
+      {
+       "id": "mark--filled",
+       "name": "Filled circle",
+       "key": "*",
+       "picture": "pictures/plots/mark--filled.pdf",
+       "width": 7,
+       "height": 8
+      },
+      {
+       "id": "mark-o",
+       "name": "Open circle",
+       "key": "o",
+       "picture": "pictures/plots/mark-o.pdf",
+       "width": 7,
+       "height": 8
+      },
+      {
+       "id": "mark-x",
+       "name": "Cross",
+       "key": "x",
+       "picture": "pictures/plots/mark-x.pdf",
+       "width": 6,
+       "height": 6
+      },
+      {
+       "id": "mark-+",
+       "name": "Plus",
+       "key": "+",
+       "picture": "pictures/plots/mark-+.pdf",
+       "width": 7,
+       "height": 7
+      },
+      {
+       "id": "mark-square-filled",
+       "name": "Filled square",
+       "key": "square*",
+       "picture": "pictures/plots/mark-square-filled.pdf",
+       "width": 7,
+       "height": 8
+      },
+      {
+       "id": "mark-square",
+       "name": "Open square",
+       "key": "square",
+       "picture": "pictures/plots/mark-square.pdf",
+       "width": 7,
+       "height": 8
+      },
+      {
+       "id": "mark-triangle-filled",
+       "name": "Filled triangle",
+       "key": "triangle*",
+       "picture": "pictures/plots/mark-triangle-filled.pdf",
+       "width": 7,
+       "height": 7
+      },
+      {
+       "id": "mark-triangle",
+       "name": "Open triangle",
+       "key": "triangle",
+       "picture": "pictures/plots/mark-triangle.pdf",
+       "width": 7,
+       "height": 7
+      },
+      {
+       "id": "mark-diamond-filled",
+       "name": "Filled diamond",
+       "key": "diamond*",
+       "picture": "pictures/plots/mark-diamond-filled.pdf",
+       "width": 6,
+       "height": 8
+      },
+      {
+       "id": "mark-diamond",
+       "name": "Open diamond",
+       "key": "diamond",
+       "picture": "pictures/plots/mark-diamond.pdf",
+       "width": 6,
+       "height": 8
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
