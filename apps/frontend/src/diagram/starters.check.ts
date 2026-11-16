@@ -99,6 +99,11 @@ for (const id of ['gate', 'manometer', 'tank', 'floating']) {
   eq(sectionsFor('physics').find((s) => s.id === 'physics/mechanics')?.starters.some((s) => s.id === id), true, `${id} under Mechanics and fluids`);
   eq(starterFor(id)?.model?.(), { preset: id, values: presetFor(id)!.values }, `${id} opens its preset`);
 }
+// the maths Form presets, beside the Conics plot starter (which stays)
+for (const [q, id] of [['conic', 'conic'], ['ellipse', 'conic'], ['hyperbola', 'conic'], ['parabola', 'conic'], ['directrix', 'conic'], ['eigenvector', 'transformation'], ['matrix', 'transformation'], ['linear map', 'transformation'], ['determinant', 'transformation']]) eq(ids(q).includes(id), true, `${q} finds ${id}`);
+eq(['conic', 'ellipse', 'hyperbola', 'parabola'].every((q) => ids(q).includes('conic-sections')), true, 'the Conics plot is still found');
+eq([starterFor('conic')?.home, starterFor('transformation')?.home, starterFor('conic-sections')?.mode], ['mathematics/geometry', 'mathematics/geometry', 'pgfplots'], 'their homes');
+for (const id of ['conic', 'transformation']) eq(starterFor(id)?.model?.(), { preset: id, values: presetFor(id)!.values }, `${id} opens its preset`);
 
 eq(usedNow(['a', 'b', 'c'], 'b'), ['b', 'a', 'c'], 'Recently used puts it first');
 eq(usedNow(['1', '2', '3', '4', '5', '6', '7', '8'], '9').length, 8, 'at most eight');

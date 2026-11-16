@@ -480,6 +480,11 @@ export const STARTERS: Starter[] = [
     file: id,
     model: () => newFormModel(id)
   })),
+  // maths, worked out from a form
+  ...([
+    ['conic', 'From its equation or its own numbers: classified, with foci, vertices, directrix, asymptotes and turned axes', ['conic', 'conics', 'conic section', 'ellipse', 'hyperbola', 'parabola', 'circle', 'focus', 'foci', 'directrix', 'asymptote', 'eccentricity', 'general equation', 'completing the square', 'rotated conic', 'quadratic form']],
+    ['transformation', 'A 2×2 matrix on the unit square or a grid, with the images of e₁ and e₂, the determinant and the eigenvectors', ['matrix', 'linear map', 'linear transformation', 'eigenvector', 'eigenvalue', 'determinant', 'shear', 'rotation', 'reflection', 'unit square', 'basis', 'linear algebra']]
+  ] as const).map(([id, blurb, aliases]): Starter => ({ id, mode: 'form', title: presetFor(id)!.label, blurb, home: 'mathematics/geometry', aliases: [...aliases], file: id, model: () => newFormModel(id) })),
   // vector diagrams: the user's own figures, then forces, the sum laws and 2.5's constructions
   ...([
     ['vectors', 'Vector diagram', 'Points, vectors, midpoints and projections on axes, kept exact as points move', undefined, ['axes', 'coordinates', 'geometry', 'position vector', 'midpoint', 'projection', 'construction']],
