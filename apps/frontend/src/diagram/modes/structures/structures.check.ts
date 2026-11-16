@@ -587,6 +587,11 @@ const blockTexts = (model: StructureModel, style: Record<string, unknown>, title
   eq(frame[3].shift!.x === 0 && frame[3].shift!.y < frame[2].shift!.y, true, 'on a new row');
   eq(texts(frame[3].items).filter((t) => t.startsWith('$\\delta')).length, 1, 'its largest displacement labelled');
   eq(texts(frame[3].items).includes('Deflected shape ($\\times 10$)'), true, 'its title gives the exaggeration');
+  // EI typed in real units leaves the members as rigid along their length: a fixed portal's forces are the same with EI
+  // 20000 as with 1, and its base shears share the 10 kN equally (5 kN each, by symmetry)
+  const real = solve(withEI(portal, 20000));
+  close(reaction(real, 'a').force.x, reaction(solve(portal), 'a').force.x, 'portal: EI 20000 as EI 1');
+  close(reaction(real, 'a').force.x, -5, 'portal: half the sway load at A', 1e-3);
   // joints move together: B's displacement from AB's top and BC's start agree
   const ps = solve(portal);
   const fromAB = displacementAt(ps, 'm1', 4);
@@ -665,7 +670,7 @@ function diagramsTitles(model: StructureModel, style: Record<string, unknown>) {
   close(reaction(solve(mm), 'p2').force.y, 1000 * reaction(solve(model), 'p2').force.y, 'the same reactions, in N');
   eq(convertUnits(convertUnits(model, 'kN-m', 'kip-ft'), 'kip-ft', 'kN-m'), model, 'kip and ft and back: as typed');
   const plain = convertUnits(sampleBeam(), 'kN-m', 'N-mm');
-  eq(plain.parts.filter((p) => p.kind === 'member').map((p) => p.kind === 'member' && [p.EI, p.EA]), [[1e9, 1e9]], 'EI and EA turn explicit, EA keeping its ratio to EI');
+  eq(plain.parts.filter((p) => p.kind === 'member').map((p) => p.kind === 'member' && [p.EI, p.EA ?? 'relative']), [[1e9, 'relative']], 'EI turns explicit; EA, relative to it, stays');
   close(maxMoment(solve(plain), 'm1').M, 45e6, 'and solve as before: 45 kN m is 45e6 N mm');
 }
 

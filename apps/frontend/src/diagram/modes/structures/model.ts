@@ -452,7 +452,8 @@ export function snapOnMember(model: StructureModel, p: Pt, grid: number, toleran
   if (!hit) return { x: Math.round(p.x / grid) * grid, y: Math.round(p.y / grid) * grid };
   const f = frameOf(model, hit.member);
   const s = Math.max(0, Math.min(f.length, Math.round(hit.at / grid) * grid));
-  return { x: f.a.x + f.u.x * s, y: f.a.y + f.u.y * s };
+  // twelve figures: 3.4, not 3.4000000000000004, in the inspector
+  return { x: Number((f.a.x + f.u.x * s).toPrecision(12)), y: Number((f.a.y + f.u.y * s).toPrecision(12)) };
 }
 
 /** The angle that turns a support's symbol to face the members on its node (a wall behind a cantilever's end). */
@@ -549,8 +550,8 @@ export function connect(model: StructureModel, tool: string, a: Pt, b: Pt, toler
 const SI: Record<Units, [number, number]> = { 'kN-m': [1, 1], 'N-mm': [1e-3, 1e-3], 'kip-ft': [4.4482216152605, 0.3048], 'lb-in': [4.4482216152605e-3, 0.0254] };
 
 /**
- * The drawing's numbers in other units, the same structure: lengths, forces, loads, moments, stiffnesses and
- * settlements converted. EI and EA turn explicit, since 1 in one unit is not 1 in another, and EA keeps its ratio to EI.
+ * The drawing's numbers in other units, the same structure: lengths, forces, loads, moments, EI, springs and
+ * settlements converted. EI turns explicit, since 1 in one unit is not 1 in another; EA, relative to EI, stays.
  */
 export function convertUnits(model: StructureModel, from: Units, to: Units): StructureModel {
   const [f, l] = [SI[from][0] / SI[to][0], SI[from][1] / SI[to][1]];
@@ -565,9 +566,9 @@ export function convertUnits(model: StructureModel, from: Units, to: Units): Str
   const parts = model.parts.map((p): Part => {
     switch (p.kind) {
       case 'member': {
-        const { EI, EA, ...rest } = p;
-        const [ei, ea] = [p.bar ? EI : stiff(EI), stiff(EA)];
-        return { ...rest, ...(ei !== undefined && { EI: ei }), ...(ea !== undefined && { EA: ea }) };
+        const { EI, ...rest } = p;
+        const ei = p.bar ? EI : stiff(EI);
+        return { ...rest, ...(ei !== undefined && { EI: ei }) };
       }
       case 'support':
         return { ...p, ...(p.k !== undefined && { k: c(p.k, p.type === 'rotspring' ? f * l : f / l) }), ...(p.settle !== undefined && { settle: c(p.settle, l) }) };

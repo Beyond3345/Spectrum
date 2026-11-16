@@ -86,7 +86,10 @@ export const extremesInside = (c: number[], L: number) => rootsInside(derivative
 
 // ─── the solve ───
 
-/** Members are this much stiffer along their length than across, unless EA says otherwise: rigid, as by hand. */
+/**
+ * Members are this much stiffer along their length than across, times the largest EI (so EI typed in real units
+ * leaves them as rigid), unless EA says otherwise: rigid, as by hand.
+ */
 const AXIAL = 1e4;
 
 type Element = {
@@ -262,6 +265,8 @@ export function solve(model: StructureModel): Solution {
   };
   const elements: Element[] = [];
   const slid = slidEnds(model);
+  const beams = all.filter((m) => !m.bar);
+  const EIref = beams.length ? Math.max(...beams.map((m) => (m.EI && m.EI > 0 ? m.EI : 1))) : 1;
   /** where along each member its cuts are, and the point index at each */
   const cutsOf = new Map<string, { s: number; point: number }[]>();
   for (const m of all) {
@@ -299,7 +304,7 @@ export function solve(model: StructureModel): Solution {
         bar: !!m.bar,
         slid: [i === 0 && slid.has(`${m.id}:0`), i === cuts.length - 2 && slid.has(`${m.id}:1`)],
         EI: m.EI && m.EI > 0 ? m.EI : 1,
-        EA: m.EA && m.EA > 0 ? m.EA : 1,
+        EA: (m.EA && m.EA > 0 ? m.EA : 1) * EIref,
         c: f.u.x,
         s: f.u.y,
         p: [0, 0],

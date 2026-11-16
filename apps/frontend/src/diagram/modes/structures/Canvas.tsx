@@ -44,7 +44,7 @@ const TWO_POINT = (tool: string) => tool === 'beam' || tool === 'bar' || tool ==
 const plain = (tex: string) =>
   tex
     .replace(/\\,/g, ' ')
-    .replace(/\\(theta|sigma|tau|alpha|beta|phi|Delta|delta|times|max)\b/g, (_, name: string) => ({ theta: 'θ', sigma: 'σ', tau: 'τ', alpha: 'α', beta: 'β', phi: 'φ', Delta: 'Δ', delta: 'δ', times: '×', max: 'max' })[name] ?? name)
+    .replace(/\\(theta|sigma|tau|alpha|beta|phi|Delta|delta|times|max)(?![a-zA-Z])/g, (_, name: string) => ({ theta: 'θ', sigma: 'σ', tau: 'τ', alpha: 'α', beta: 'β', phi: 'φ', Delta: 'Δ', delta: 'δ', times: '×', max: 'max' })[name] ?? name)
     .replace(/[$]/g, '')
     .replace(/_\{([^}]*)\}|_(\w)/g, '$1$2')
     .replace(/\\[a-zA-Z]+/g, '')
