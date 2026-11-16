@@ -522,9 +522,14 @@ function reshape(model: StructureModel, ids: string[], pt: (p: Pt) => Pt, dir: (
       case 'angle':
         return flips ? { ...p, from: D(p.to), to: D(p.from) } : { ...p, from: D(p.from), to: D(p.to) };
       case 'dim': {
-        // the side it's on: below or above for a horizontal one, left or right for a vertical one, a→b's left when aligned
-        const across = p.dir === 'aligned' ? flips : p.dir === 'h' ? flips && D(90) !== 90 : flips && D(0) !== 0;
-        return across ? { ...p, offset: -p.offset } : p;
+        if (p.dir === 'aligned') return flips ? { ...p, offset: -p.offset } : p;
+        // the side it's on (below or above, left or right) as a direction, taken through the edit: a quarter turn makes
+        // a horizontal dimension vertical
+        const a = (D((p.dir === 'h' ? 90 : 0) + (p.offset < 0 ? 180 : 0)) * Math.PI) / 180;
+        const [c, s] = [Math.cos(a), Math.sin(a)];
+        const dir = Math.abs(c) > Math.abs(s) + 1e-9 ? 'v' : Math.abs(s) > Math.abs(c) + 1e-9 ? 'h' : p.dir;
+        const offset = Math.abs(p.offset) * Math.sign(dir === 'v' ? c : s) || p.offset;
+        return dir === p.dir && offset === p.offset ? p : { ...p, dir, offset };
       }
       case 'label':
       case 'axes':

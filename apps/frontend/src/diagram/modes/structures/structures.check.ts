@@ -819,6 +819,8 @@ function diagramsTitles(model: StructureModel, style: Record<string, unknown>) {
   eq(half.nodes.map((n) => [n.x, n.y]), [[2, 6], [2, 2], [-1, 0]], 'a half turn about (1, 3)');
   eq([(part(half, 's') as Extract<Part, { kind: 'support' }>).angle, (part(half, 'f') as Extract<Part, { kind: 'force' }>).angle], [-150, 120], 'the support and the force turned with it');
   eq(solve(half).status.kind, solve(frame).status.kind, 'and it solves as it did');
+  // a quarter turn lays a dimension down: left of the column, turned anticlockwise, is below the beam it becomes
+  eq([part(turn(frame, all, 90), 'd'), part(turn(frame, all, -90), 'd')], [{ id: 'd', kind: 'dim', a: 'A', b: 'B', dir: 'h', offset: -1 }, { id: 'd', kind: 'dim', a: 'A', b: 'B', dir: 'h', offset: 1 }], 'a vertical dimension turned a quarter: horizontal, on the side it turned to');
   close(reaction(solve(turn(frame, all, 37)), 's').moment, reaction(solve(frame), 's').moment, 'a turned frame carries the same moment at its foot', 1e-6);
   // a box picks what's wholly inside it
   eq(inBox(frame, { minX: -0.5, maxX: 0.5, minY: -0.5, maxY: 4.5 }).sort(), ['A', 'B', 'd', 'm1', 'q', 's'].sort(), 'the column, its support, moment and dimension');
