@@ -5,7 +5,7 @@
 // when it uses one.
 import { SYMBOL_SETS, picDefinition, shapeDefinitions } from '../../../../../backend/src/data/symbolSets.js';
 import { unitWriter } from '../../units';
-import { annotationCode, textKeys, usesArrows } from './annotate';
+import { annotationCode, isBehind, patternDefinition, patternsUsed, textKeys, usesArrows } from './annotate';
 import { anchorFor, markLayout, pinLabelSpots } from './labels';
 import { CATALOGUE, GRID_CM, PARTS, isPart, isPoint, locator, placeholderShape } from './model';
 import type { Annotation, CircuitModel, Element, End, Mark, NodePart, PathPart, Wire } from './model';
@@ -270,8 +270,13 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
   // and Spectrum's own circuitikz shapes and styles its parts and options use (MU Style), declared in the picture, as
   // \includestandalone leaves the drawing's preamble behind
   const shapes = shapeDefinitions(model.elements.flatMap((el) => (isPart(el) && !PARTS.get(el.type)?.set ? [[PARTS.get(el.type)?.tikz || '', ...(el.options || [])].join(', ')] : [])));
-  const definitions = [...shapes, ...pics.map((part) => picDefinition(part.tikz, SYMBOL_SETS[part.set!].pics[part.tikz]))];
+  // and the fill patterns its annotations use (the patterns library's own, declared in the picture)
+  const patterns = patternsUsed(model.elements);
+  const definitions = [...shapes, ...pics.map((part) => picDefinition(part.tikz, SYMBOL_SETS[part.set!].pics[part.tikz])), ...patterns.map(patternDefinition)];
+  const annotations = model.elements.filter((el): el is Annotation => el.kind === 'annotation' && el.points.length > 0);
   const lines = [
+    // a liquid or solid fill first, behind the parts drawn in it
+    ...annotations.filter(isBehind).map(annotationCode),
     // nodes first, so wires and parts can reach their anchors
     ...model.elements.filter((el): el is NodePart => el.kind === 'node').map(nodeCode),
     ...model.elements.filter((el): el is PathPart => el.kind === 'path').map(pathCode),
@@ -280,9 +285,9 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
       .map((el) => `\\draw${el.arrows ? `[${arrowKey[el.arrows]}]` : ''} ${el.points.map((p, i) => (i ? segment(el, i) : at(p))).join(' ')};`),
     ...model.junctions.map((j) => `\\node[circ] at ${at(j)} {};`),
     // annotations last, over the circuit
-    ...model.elements.filter((el): el is Annotation => el.kind === 'annotation' && el.points.length > 0).map(annotationCode)
+    ...annotations.filter((el) => !isBehind(el)).map(annotationCode)
   ];
   const body = [`\\begin{circuitikz}[${picture}]`, ctikz, ...definitions, ...lines, '\\end{circuitikz}'].join('\n');
   const packages = [...new Set(['circuitikz', ...sets.flatMap((set) => set.packages), ...(siunitxUsed || units.used ? ['siunitx'] : [])])];
-  return { body, packages, libraries: [...new Set([...sets.flatMap((set) => set.libraries), ...(usesArrows(model.elements) ? ['arrows.meta'] : [])])] };
+  return { body, packages, libraries: [...new Set([...sets.flatMap((set) => set.libraries), ...(usesArrows(model.elements) ? ['arrows.meta'] : []), ...(patterns.length ? ['patterns'] : [])])] };
 }

@@ -153,8 +153,13 @@ export interface Wire {
 export interface Annotation {
   id: string;
   kind: 'annotation';
-  /** line: through its points; rect and ellipse: in the box of two opposite corners; cross: centred on its point */
-  shape: 'line' | 'rect' | 'ellipse' | 'cross';
+  /**
+   * line: through its points; rect and ellipse: in the box of two opposite corners; cross: centred on its point. Added
+   * in 2.5 (file version 5): polygon, closed through its points; boundary, a line hatched on one side; dimension, from
+   * its first point to its second, its line through the third; surface, the ▽ mark standing on its point; mark, a dot
+   * or cross at its point with a letter; leader, text at its last point with a line to its first.
+   */
+  shape: 'line' | 'rect' | 'ellipse' | 'cross' | Shape25;
   points: Pt[];
   /** a line's bend in degrees, TikZ's bend left (+) or bend right (−) on every segment */
   bend?: number;
@@ -178,7 +183,34 @@ export interface Annotation {
   loop?: 'cw' | 'ccw';
   /** a cross's half width, in grid steps; left out 0.5 */
   size?: number;
+  // ─── 2.5 ───
+  /** a closed shape's liquid or solid (annotate.ts MATERIALS), behind the parts: its tint, or its pattern */
+  material?: Material;
+  /** the material drawn as a pattern in the line colour, not a tint */
+  pattern?: Pattern;
+  /** a filled shape with no outline */
+  noOutline?: boolean;
+  /** a boundary's hatching on the left of the way it was drawn; left out, on the right (under a line drawn rightwards) */
+  hatch?: 'left';
+  /** a dimension's text, a mark's letter or a leader's words */
+  text?: string;
+  /** a dimension measured across (x) or up (y), not along the line between its points */
+  along?: 'x' | 'y';
+  /** a dimension's text in a gap in its line, not beside it */
+  textAt?: 'gap';
+  /** a mark drawn as a cross, not a dot */
+  cross?: boolean;
+  /** which side of a mark its letter goes; left out, right */
+  place?: 'left' | 'above' | 'below';
 }
+
+export type Shape25 = 'polygon' | 'boundary' | 'dimension' | 'surface' | 'mark' | 'leader';
+export type Material = 'water' | 'seawater' | 'oil' | 'mercury' | 'air' | 'concrete';
+export type Pattern = 'dashes' | 'dots' | 'hatch' | 'crosshatch' | 'stipple';
+const SHAPES_25 = ['polygon', 'boundary', 'dimension', 'surface', 'mark', 'leader'];
+/** Annotate's 2.5 tools: builds up to 2.4 would drop or misdraw them, so a drawing with one is a version 5 file. */
+export const annotatesWith25 = (model: unknown) =>
+  asCircuit(model).elements.some((el) => el.kind === 'annotation' && (SHAPES_25.includes(el.shape) || !!(el.material || el.pattern || el.noOutline)));
 
 export type Element = PathPart | NodePart | Wire | Annotation;
 export type Part = PathPart | NodePart;

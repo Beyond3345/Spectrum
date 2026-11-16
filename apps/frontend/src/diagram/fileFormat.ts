@@ -1,4 +1,4 @@
-import { PARTS, asCircuit, isPart, usesNewerParts, usesSetsOf25 } from './modes/circuitikz/model';
+import { PARTS, annotatesWith25, asCircuit, isPart, usesNewerParts, usesSetsOf25 } from './modes/circuitikz/model';
 import { formNeedsVersion5 } from './modes/form/presets';
 import type { FormModel } from './modes/form/presets';
 import { plotIsNewer, plotNeedsVersion5 } from './modes/pgfplots/code';
@@ -72,7 +72,7 @@ function version5(diagram: DiagramFile) {
     // e.g. if (diagram.pkg === 'vectors') return vectorsNeedVersion5(diagram.model);
     if (diagram.language === 'typst' || diagram.pkg === 'tikz') return tikzNeedsVersion5(diagram.model as TikzModel);
     if (diagram.pkg === 'tikz-cd') return cdNeedsVersion5(diagram.model as CdModel);
-    if (diagram.pkg === 'circuitikz' && usesSetsOf25(diagram.model)) return true;
+    if (diagram.pkg === 'circuitikz' && (usesSetsOf25(diagram.model) || annotatesWith25(diagram.model))) return true;
     if (diagram.pkg === 'vectors' && vectorsNeedVersion5(diagram.model, diagram.style)) return true;
     if (diagram.pkg === 'structures' && structureNeedsVersion5(diagram.model, diagram.style)) return true;
     if (diagram.pkg === 'pgfplots' && plotNeedsVersion5(diagram.model as PlotModel)) return true;

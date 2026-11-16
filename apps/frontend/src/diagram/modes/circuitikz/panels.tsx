@@ -7,7 +7,7 @@ import Select from '../../../app/Select';
 import { IS_WINDOWS } from '../../../app/platform';
 import { ColourField, More } from '../../controls';
 import { useToolTitle } from '../../toolKeys';
-import { ANNOTATION_COLOURS, PRESETS } from './annotate';
+import { ANNOTATION_COLOURS, MATERIALS, PATTERNS, PRESETS } from './annotate';
 import { DEFAULT_LENGTH, readStyle } from './code';
 import type { CircuitStyle } from './code';
 import { flip, remove, rotate } from './edit';
@@ -30,7 +30,8 @@ const PRESET_THUMBS: Record<string, ReactNode> = {
   loop: <><circle cx={28} cy={14} r={10} /><path d="M38,12 L38,17" markerEnd="url(#ckt-rail-head)" /><text x={28} y={18} textAnchor="middle">i₁</text></>,
   mesh: <><rect x={18} y={2} width={20} height={24} rx={5} className="ckt-rail-tint" /><path d="M38,11 L38,17" markerEnd="url(#ckt-rail-head)" /><circle cx={28} cy={14} r={4.5} /></>,
   frame: <><rect x={8} y={9} width={40} height={17} strokeDasharray="4 3" /><text x={28} y={7} textAnchor="middle" fontStyle="normal">Frame</text></>,
-  highlight: <ellipse cx={28} cy={14} rx={14} ry={9} className="ckt-rail-red" />
+  highlight: <ellipse cx={28} cy={14} rx={14} ry={9} className="ckt-rail-red" />,
+  ...Object.fromEntries(['C', 'CP', 'G', 'B', 'M'].map((letter) => [letter, <><circle cx={22} cy={14} r={2.2} className="ckt-rail-ink" /><text x={27} y={18}>{letter}</text></>]))
 };
 
 /** Annotate's tools and presets, each with its thumbnail (a 56 × 28 sketch) and how it's used */
@@ -39,7 +40,14 @@ const ANNOTATE: [string, string, string, ReactNode][] = [
   ['annotate:rect', 'Rectangle', 'drag from corner to corner, or click', <rect x={10} y={5} width={36} height={18} rx={2} strokeDasharray="4 3" />],
   ['annotate:ellipse', 'Ellipse', 'drag from corner to corner, or click', <ellipse cx={28} cy={14} rx={18} ry={9} />],
   ['annotate:cross', 'Cross', 'click to place', <path d="M22,8 L34,20 M22,20 L34,8" strokeWidth={2.2} />],
-  ...PRESETS.map(([id, label]): [string, string, string, ReactNode] => [`preset:${id}`, label, 'click to place, then edit its parts', PRESET_THUMBS[id]])
+  // the fluid mechanics and materials courses' tools
+  ['annotate:polygon', 'Liquid or solid', 'click each corner, then the first again, or press Return', <path d="M8,9 L48,9 L48,24 L8,24 Z" className="ckt-rail-tint" strokeWidth={0} />],
+  ['annotate:boundary', 'Hatched boundary', 'click each point, then double-click or press Return', <><path d="M8,10 L48,10" strokeWidth={2} /><path d="M14,10 l-5,6 M22,10 l-5,6 M30,10 l-5,6 M38,10 l-5,6 M46,10 l-5,6" strokeWidth={0.9} /></>],
+  ['annotate:dimension', 'Dimension', 'drag from one end to the other, then move its line with the third handle', <><path d="M10,6 L10,24 M46,6 L46,24" strokeWidth={0.8} /><path d="M12,16 L44,16" markerEnd="url(#ckt-rail-head)" markerStart="url(#ckt-rail-head)" strokeWidth={0.9} /><text x={28} y={13} textAnchor="middle">h</text></>],
+  ['annotate:surface', 'Free surface', 'click on the surface', <><path d="M8,20 L48,20" strokeWidth={0.9} /><path d="M28,20 L23,11 L33,11 Z M23,23 L33,23 M25.5,26 L30.5,26" strokeWidth={0.9} /></>],
+  ['annotate:mark', 'Point', 'click to place, then type its letter', <><circle cx={22} cy={14} r={2.2} className="ckt-rail-ink" /><text x={27} y={18}>A</text></>],
+  ['annotate:leader', 'Leader', 'click where the words go, then the point, then double-click or press Return', <><path d="M28,12 L44,22" markerEnd="url(#ckt-rail-head)" strokeWidth={0.9} /><text x={16} y={14} textAnchor="middle" fontStyle="normal">Text</text></>],
+  ...PRESETS.map(([id, label]): [string, string, string, ReactNode] => [`preset:${id}`, label, /^[A-Z]+$/.test(id) ? 'click to place' : 'click to place, then edit its parts', PRESET_THUMBS[id]])
 ];
 
 /** sets: the other symbol sets the drawing has, each shown as its own groups after circuitikz's */
@@ -315,7 +323,7 @@ export function CircuitInspector({ model: raw, onChange }: { model: CircuitModel
         <p className="field-hint">
           Pick a part on the left, then click the canvas to place it; drag to set a two-terminal part’s length. Wire draws connections that hold on to pins: click to bend, and finish on a pin, with a double-click or with Return.
         </p>
-        <p className="field-hint">Annotate draws arrows, frames, highlights and crosses over the circuit. They never connect to it.</p>
+        <p className="field-hint">Annotate draws arrows, frames, highlights, liquids, hatched walls, dimensions and marks over the drawing. They never connect to it.</p>
         <p className="field-hint">Select something to edit it here. R turns it, X and Y flip it, {IS_WINDOWS ? 'Ctrl+D' : '⌘D'} duplicates and Delete removes it.</p>
       </div>
     );
@@ -512,7 +520,7 @@ function LookFields({ els, texts = [], set }: { els: Annotation[]; texts?: NodeP
   return (
     <>
       <ColourField label="Colour" value={colours.every((c) => c === colours[0]) ? colours[0] : undefined} fallback="Black" swatches={ANNOTATION_COLOURS} onChange={(colour) => set({ colour })} />
-      {els.some((el) => el.shape !== 'cross') && (
+      {els.some((el) => !UNDASHED.includes(el.shape)) && (
         <Field label="Line">
           {() => <Select value={shared('dash') || ''} options={DASHES} onChange={(dash) => set({ dash: (dash || undefined) as Annotation['dash'] })} title="Line style" />}
         </Field>
@@ -526,16 +534,31 @@ function LookFields({ els, texts = [], set }: { els: Annotation[]; texts?: NodeP
   );
 }
 
-const SHAPE_NAMES = { line: 'Line', rect: 'Rectangle', ellipse: 'Ellipse', cross: 'Cross' };
+/** what never takes a dash: a cross, a dimension, the ▽ mark and a point mark */
+const UNDASHED: Annotation['shape'][] = ['cross', 'dimension', 'surface', 'mark'];
+const SHAPE_NAMES = { line: 'Line', rect: 'Rectangle', ellipse: 'Ellipse', cross: 'Cross', polygon: 'Liquid or solid', boundary: 'Hatched boundary', dimension: 'Dimension', surface: 'Free surface', mark: 'Point', leader: 'Leader' };
+const MATERIAL_OPTIONS: [string, string][] = [['', 'None'], ...Object.entries(MATERIALS).map(([id, [label]]): [string, string] => [id, label])];
+const DRAWN_AS: [string, string][] = [['', 'Tint, as the slides'], ...Object.entries(PATTERNS).map(([id, { label }]): [string, string] => [id, label])];
+const PLACE_OPTIONS: [string, string][] = [['', 'Right'], ['left', 'Left'], ['above', 'Above'], ['below', 'Below']];
 
 function AnnotationInspector({ el, update, actions, restyle }: { el: Annotation; update: (el: Element) => void; actions: ReactNode; restyle: (patch: Partial<Annotation>) => void }) {
   const set = (patch: Partial<Annotation>) => update(Object.fromEntries(Object.entries({ ...el, ...patch }).filter(([, v]) => v !== undefined)) as unknown as Annotation);
-  const heads = el.shape === 'line' ? !!el.arrows : !!el.loop;
+  const lined = el.shape === 'line' || el.shape === 'leader';
+  const closed = el.shape === 'rect' || el.shape === 'ellipse' || el.shape === 'polygon';
+  const heads = lined ? !!el.arrows : el.shape === 'dimension' || !!el.loop;
+  const textField = (label: string, hint: string) => (
+    <Field label={label} hint={hint}>
+      {(id) => <input id={id} className="input mono" value={el.text || ''} onChange={(e) => set({ text: e.target.value || undefined })} spellCheck={false} />}
+    </Field>
+  );
   return (
     <div className="ckt-inspector">
       <div className="ckt-inspector-title">{el.shape === 'line' && el.arrows ? 'Arrow' : SHAPE_NAMES[el.shape]}</div>
+      {el.shape === 'dimension' && textField('Text', 'Maths unless it has a space or its own $…$: h, y_p, 2 m.')}
+      {el.shape === 'mark' && textField('Letter', 'Maths unless it has a space or its own $…$: G, CP, x_c.')}
+      {el.shape === 'leader' && textField('Words', 'TeX, as typed: $…$ for maths.')}
       <LookFields els={[el]} set={restyle} />
-      {el.shape === 'line' && (
+      {lined && (
         <>
           <Field label="Arrowheads">{() => <Select value={el.arrows || ''} options={ARROWS} onChange={(arrows) => set({ arrows: (arrows || undefined) as Annotation['arrows'] })} />}</Field>
           <Field label={`Bend: ${el.bend ? `${Math.abs(el.bend)}° ${el.bend > 0 ? 'left' : 'right'}` : 'none'}`} hint="TikZ’s bend left or right, on every segment.">
@@ -543,29 +566,97 @@ function AnnotationInspector({ el, update, actions, restyle }: { el: Annotation;
           </Field>
         </>
       )}
-      {(el.shape === 'rect' || el.shape === 'ellipse') && (
+      {closed && (
         <>
-          {el.shape === 'rect' && (
-            <label className="checkbox-row">
-              <input type="checkbox" checked={!!el.rounded} onChange={(e) => set({ rounded: e.target.checked || undefined })} />
-              <span>Rounded corners</span>
-            </label>
+          <Field label="Fill" hint="A liquid or solid, behind the parts drawn in it.">
+            {() => <Select value={el.material || ''} options={MATERIAL_OPTIONS} onChange={(material) => set({ material: (material || undefined) as Annotation['material'], ...(material ? null : { pattern: undefined, noOutline: undefined }) })} />}
+          </Field>
+          {el.material && (
+            <>
+              <Field label="Drawn as" hint={el.pattern ? 'As the exam papers draw it, in the line colour.' : undefined}>
+                {() => <Select value={el.pattern || ''} options={DRAWN_AS} onChange={(pattern) => set({ pattern: (pattern || undefined) as Annotation['pattern'] })} />}
+              </Field>
+              <label className="checkbox-row">
+                <input type="checkbox" checked={!el.noOutline} onChange={(e) => set({ noOutline: e.target.checked ? undefined : true })} />
+                <span>Outline</span>
+              </label>
+            </>
           )}
-          <ColourField label="Light fill" value={el.fill} fallback="None" swatches={ANNOTATION_COLOURS} onChange={(fill) => set({ fill })} />
-          <Field label="Loop arrow" hint="One arrowhead on the right side, for a loop or mesh current.">
+          {el.shape !== 'polygon' && (
+            <More key={el.id} summary="Corners, light fill and loop arrow" open={!!(el.rounded || el.fill || el.loop)}>
+              {el.shape === 'rect' && (
+                <label className="checkbox-row">
+                  <input type="checkbox" checked={!!el.rounded} onChange={(e) => set({ rounded: e.target.checked || undefined })} />
+                  <span>Rounded corners</span>
+                </label>
+              )}
+              {!el.material && <ColourField label="Light fill" value={el.fill} fallback="None" swatches={ANNOTATION_COLOURS} onChange={(fill) => set({ fill })} />}
+              <Field label="Loop arrow" hint="One arrowhead on the right side, for a loop or mesh current.">
+                {() => (
+                  <Select
+                    value={el.loop || ''}
+                    options={[
+                      ['', 'None'],
+                      ['cw', 'Clockwise'],
+                      ['ccw', 'Anticlockwise']
+                    ]}
+                    onChange={(loop) => set({ loop: (loop || undefined) as Annotation['loop'] })}
+                  />
+                )}
+              </Field>
+            </More>
+          )}
+        </>
+      )}
+      {el.shape === 'boundary' && (
+        <label className="checkbox-row">
+          <input type="checkbox" checked={el.hatch === 'left'} onChange={(e) => set({ hatch: e.target.checked ? 'left' : undefined })} />
+          <span>Hatching on the other side</span>
+        </label>
+      )}
+      {el.shape === 'dimension' && (
+        <>
+          <Field label="Measures" hint="Drag the third handle to move the line out.">
             {() => (
               <Select
-                value={el.loop || ''}
+                value={el.along || ''}
                 options={[
-                  ['', 'None'],
-                  ['cw', 'Clockwise'],
-                  ['ccw', 'Anticlockwise']
+                  ['', 'Along the line between its ends'],
+                  ['x', 'Across'],
+                  ['y', 'Up and down']
                 ]}
-                onChange={(loop) => set({ loop: (loop || undefined) as Annotation['loop'] })}
+                onChange={(along) => set({ along: (along || undefined) as Annotation['along'] })}
+              />
+            )}
+          </Field>
+          <Field label="Text">
+            {() => (
+              <Segmented
+                label="Text"
+                value={el.textAt || 'beside'}
+                options={[
+                  ['beside', 'Beside the line'],
+                  ['gap', 'In a gap']
+                ]}
+                onChange={(textAt) => set({ textAt: textAt === 'gap' ? 'gap' : undefined })}
               />
             )}
           </Field>
         </>
+      )}
+      {el.shape === 'mark' && (
+        <div className="ckt-row">
+          <Segmented
+            label="Mark"
+            value={el.cross ? 'cross' : 'dot'}
+            options={[
+              ['dot', 'Dot'],
+              ['cross', 'Cross']
+            ]}
+            onChange={(mark) => set({ cross: mark === 'cross' || undefined })}
+          />
+          <Select value={el.place || ''} options={PLACE_OPTIONS} onChange={(place) => set({ place: (place || undefined) as Annotation['place'] })} title="Letter side" />
+        </div>
       )}
       {heads && (
         <Field label="Arrowhead">
