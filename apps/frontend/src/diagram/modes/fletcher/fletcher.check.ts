@@ -115,4 +115,38 @@ has(fletcherCode({ boxes: [box({ id: 'd1', shape: 'cylinder' })], links: [] }, '
 eq(shapes.includes('gone'), false, 'an edge to a missing node is left out');
 eq(lines.filter((l) => l.trim() === ',').length, 0, 'without an empty line in its place');
 
+// 2.5: the new shapes, the polygons drawn with fletcher's CeTZ about the node's centre, y up
+const parts = fletcherCode({
+  boxes: [
+    box({ id: 't1', shape: 'terminal', text: 'Start' }),
+    box({ id: 'g1', shape: 'gain', x: 12, w: 6, h: 6, text: 'K' }),
+    box({ id: 'p1', shape: 'takeoff', x: 22, y: 1, w: 2, h: 2, stroke: '#ff0000' }),
+    box({ id: 'm1', shape: 'manualInput', y: 8, text: 'Type' }),
+    box({ id: 'o1', shape: 'offPage', x: 12, y: 8, w: 4, h: 4, text: 'A' }),
+    box({ id: 'l1', shape: 'swimlane', x: -2, y: -4, w: 16, h: 24, text: 'Student', dir: 'l' })
+  ],
+  links: [
+    link({ id: 'e1', from: 't1', to: 'g1', label: 'r', labelSide: 'right', labelPos: 0.3, sign: '-' }),
+    link({ id: 'e2', from: 'g1', to: 'p1', label: 'u', labelSide: 'on' }),
+    link({ id: 'e3', from: 'p1', to: 'o1', route: 'angled', sign: '+' }),
+    link({ id: 'e4', from: 'm1', to: 'o1', labelSide: 'left' })
+  ]
+}, '').body;
+has(parts, 'node((1cm, -0.5cm), [Start], shape: fletcher.shapes.pill, width: 2cm, height: 1cm, name: <t1>),', 'a terminal, a pill');
+has(parts, 'node((3.75cm, -0.75cm), [$K$], shape: (node, extrude) => fletcher.cetz.draw.group(fletcher.cetz.draw.line((-0.75cm, 0.75cm), (0.75cm, 0cm), (-0.75cm, -0.75cm), close: true)), width: 1.5cm, height: 1.5cm, name: <g1>),', 'a gain pointing right, its text maths');
+has(parts, 'node((5.75cm, -0.5cm), [], shape: fletcher.shapes.circle, width: 1.2mm, height: 1.2mm, inset: 0pt, stroke: none, fill: rgb("#ff0000"), name: <p1>),', 'a takeoff point, a dot in its colour');
+has(parts, '[Type], shape: (node, extrude) => fletcher.cetz.draw.group(fletcher.cetz.draw.line((-1cm, 0.25cm), (1cm, 0.5cm), (1cm, -0.5cm), (-1cm, -0.5cm), close: true))', 'manual input, its top sloping up');
+has(parts, '[A], shape: (node, extrude) => fletcher.cetz.draw.group(fletcher.cetz.draw.line((-0.5cm, 0.5cm), (0.5cm, 0.5cm), (0.5cm, -0.1cm), (0cm, -0.5cm), (-0.5cm, -0.1cm), close: true))', 'an off-page connector');
+// a swimlane under the rest, its band's line and its title turned to read up the band on its left
+eq(parts.split('\n').slice(4, 7), [
+  '  node((1.5cm, -2cm), [], shape: fletcher.shapes.rect, width: 4cm, height: 6cm, inset: 0pt, layer: -1, name: <l1>),',
+  '  edge((0.25cm, 1cm), (0.25cm, -5cm), "-"),',
+  '  node((-0.125cm, -2cm), rotate(-90deg, reflow: true)[Student], stroke: none, fill: none),'
+], 'a swimlane, drawn first');
+has(parts, 'edge(<t1>, <g1>, "->", label: [r], label-side: right, label-pos: 0.3),', 'a label on the right, 30% along');
+has(parts, 'edge(<t1>, <g1>, "-", stroke: none, label: [$-$], label-pos: 0.85, label-side: left),', 'its sign on an edge with no line');
+has(parts, 'edge(<g1>, <p1>, "->", label: [u], label-side: center),', 'a label on the line');
+has(parts, 'edge(<p1>, <o1>, "-", corner: right, stroke: none, label: [$+$], label-pos: 0.85, label-side: left),', 'a sign follows the route');
+has(parts, 'edge(<m1>, <o1>, "->"),', 'a side with no label writes nothing');
+
 console.log('fletcher.check: ok');

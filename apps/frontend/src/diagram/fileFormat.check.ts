@@ -145,6 +145,24 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
   eq([(await forPhysics(byHand))?.includes('\\qty'), (await readDiagramFile((await forPhysics(byHand))!)).edited], [false, true], 'edited by hand: the text only, still edited');
   eq(await forPhysics(await diagramFileText(circuit, code)), null, 'nothing to change');
 
+  // flowcharts and commutative diagrams with 2.5's additions are version 5; without, as before
+  const gain = { ...flow, model: { boxes: [{ id: 'n1', shape: 'gain', x: 0, y: 0, w: 6, h: 6, text: 'K' }], links: [] } };
+  const signed = { ...flow, model: { boxes: [], links: [{ id: 'e1', from: 'n1', to: 'n2', fromSide: 'r', toSide: 'l', route: 'straight', heads: 'end', sign: '-' }] } };
+  const cd: DiagramFile = { language: 'tikz', pkg: 'tikz-cd', style: {}, model: { cells: [], arrows: [{ id: 'a1', from: 'c1', to: 'c2' }] }, version: 1 };
+  eq(
+    [
+      (await json(gain))?.version,
+      (await json({ ...gain, language: 'typst', pkg: undefined }))?.version,
+      (await json(signed))?.version,
+      (await json(state))?.version,
+      (await json(cd))?.version,
+      (await json({ ...cd, model: { cells: [], arrows: [{ id: 'a1', from: 'c1', to: 'c2', kind: 'mapsto' }] } }))?.version,
+      (await json({ ...cd, model: { cells: [], arrows: [{ id: 'a1', from: 'c1', to: 'c1' }] } }))?.version
+    ],
+    [5, 5, 5, 2, 1, 5, 5],
+    'a gain (TikZ and Typst) and a sign make version 5, a state stays 2; tikz-cd: a kind or loop makes 5, a plain arrow 1'
+  );
+
   // version 5 (what 2.5 adds to a drawing) reads back; a version this build doesn't know opens as code
   const v5 = `${tikzDocument(code)}% spectrum-diagram v1 ${btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify({ ...circuit, version: 5 }))))} 0123456789abcdef\n`;
   eq((await readDiagramFile(v5)).diagram?.version, 5, 'version 5 reads back');
