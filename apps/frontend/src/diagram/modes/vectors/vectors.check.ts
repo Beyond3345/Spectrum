@@ -4,7 +4,12 @@
 import { isColour } from '../shared';
 import { eqLineEnds, notate, vectorCode, readStyle, styledVectors } from './code';
 import { COLOURS, addPanel, addPoint, applyTool, dropUnused, equationText, frameOf, nameFree, newEqLine, setEquation, vectorsNeedVersion5, withText, clipLine, copyIds, dividingSegment, lineThroughPoints, newAxes, pasteInto, projections, removeIds, resolve, rightCorners, triangleMidpoints } from './model';
-import type { Item, Link, VPoint, VectorModel } from './model';
+import type { Angle, EqLine, Item, Link, Note, RightMark, VPoint, VectorModel } from './model';
+import { angleBetween, cevians, emptyVectors, forcePolygon, freeBody, idsInside, lineFromEquation, mirrorIds, moveIds, parallelogramLaw, positionVectors, restyleIds, scalarMultiples, triangleLaw, turnIds } from './model';
+import { besideSide } from './labels';
+import { sketch } from './Canvas';
+import { isValidElement } from 'react';
+import type { ReactNode } from 'react';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -209,7 +214,7 @@ eq(readStyle({ width: 'huge', vectorWidth: 1.5, colour: ' ', tips: 'none' }), { 
   eq(one({ id: 'd', kind: 'drop', from: 'B', axis: 'x', dash: 'solid' })[0], ['\\draw (B) -- (B |- 0,0);'], 'a solid drop');
   eq(one({ id: 'r', kind: 'right', at: 'A', toward: 'B', width: 'thick', colour: 'red' })[0][0].startsWith('\\draw[thick, red] '), true, 'a right-angle mark’s look');
   // labels' size and colour
-  eq(one(link({ label: { text: '$\\mathbf{a}$', size: 'footnotesize', colour: 'red' } }))[0], ['\\draw[->] (A) -- (B) node[midway, above, font=\\footnotesize, red] {$\\mathbf{a}$};'], 'a vector’s label');
+  eq(one(link({ label: { text: '$\\mathbf{a}$', side: 'above', size: 'footnotesize', colour: 'red' } }))[0], ['\\draw[->] (A) -- (B) node[midway, above, font=\\footnotesize, red] {$\\mathbf{a}$};'], 'a vector’s label');
   eq(one({ id: 't', kind: 'text', panel: 'g1', x: 1, y: 1, text: 'Hi', size: 'Large', colour: '#00ff00' })[0], ['\\node[font=\\Large, color={rgb,255:red,0;green,255;blue,0}] at (1,1) {Hi};'], 'a note’s');
 }
 {
@@ -312,14 +317,14 @@ eq(readStyle({ width: 'huge', vectorWidth: 1.5, colour: ' ', tips: 'none' }), { 
   const negative = { ...twice.model, points: twice.model.points.map((p) => (p.id === twice.id ? { ...p, of: { kind: 'scale' as const, a: 'O', b: 'V', k: -2 } } : p)) };
   closePt(resolve(negative).get(twice.id), -2, -4, '−2v');
   closePt(resolve(move(negative, 'V', 1, -1)).get(twice.id), -2, 2, 'following v');
-  eq(body(negative).filter((l) => l.includes('(A)')), ['\\coordinate (A) at ($(O)!-2!(V)$);', '\\draw[->] (O) -- (A) node[midway, left] {$2\\mathbf{v}$};'], 'written with calc, labelled from v’s own label');
+  eq(body(negative).filter((l) => l.includes('(A)')), ['\\coordinate (A) at ($(O)!-2!(V)$);', '\\draw[->] (O) -- (A) node[midway, above left] {$2\\mathbf{v}$};'], 'written with calc, labelled from v’s own label, placed clear of the arrows');
   eq([pointOf(twice.model, twice.id).dot, pointOf(twice.model, twice.id).label], [undefined, undefined], 'its tip bare');
 
   // AB placed at P: v − u from P
   m = four();
   const placedAt = made(m, 'place', ['O', 'A', 'C']);
   closePt(resolve(placedAt.model).get(placedAt.id), 4.8, 5.9, 'OA from C');
-  eq(placedAt.model.items.find((i) => i.kind === 'vector')!, { id: placedAt.model.items[0].id, kind: 'vector', a: 'C', b: placedAt.id, label: { text: '$\\mathbf{a}$', side: 'left' } }, 'drawn from C, named a');
+  eq(placedAt.model.items.find((i) => i.kind === 'vector')!, { id: placedAt.model.items[0].id, kind: 'vector', a: 'C', b: placedAt.id, label: { text: '$\\mathbf{a}$' } }, 'drawn from C, named a, its label placed clear');
 
   // the reflection of P(1,1) in x + y = 5 is (4,4), and follows
   m = { ...four(), points: [pt('P', 1, 1), pt('M', 0, 5), pt('N', 5, 0)] };
@@ -406,6 +411,89 @@ eq(readStyle({ width: 'huge', vectorWidth: 1.5, colour: ' ', tips: 'none' }), { 
   // version 5 only with what's new
   for (const starter of [lineThroughPoints, dividingSegment, triangleMidpoints, projections]) eq(vectorsNeedVersion5(starter()), false, `${starter.name} stays as it was`);
   eq([vectorsNeedVersion5(meet.model), vectorsNeedVersion5(theta), vectorsNeedVersion5(dividingSegment(), { notation: 'vec' }), vectorsNeedVersion5(placedAt.model)], [true, true, true, false], 'new kinds and notations make version 5; a vector placed at a point is 2.4’s v − u');
+}
+
+// ─── 2.5: labels kept clear, beside the arrow, group edits, labels as they print, the starters ───
+
+{
+  const pts = (...list: [string, number, number][]): VPoint[] => list.map(([id, x, y]) => ({ id, name: id, x, y, panel: 'g1' }));
+  const drawing = (points: VPoint[], items: Item[]): VectorModel => ({ panels: [{ id: 'g1', shift: 0 }], points, items });
+  const lines = (m: VectorModel, style: Record<string, unknown> = {}) => vectorCode(m, style).body.split('\n').map((l) => l.trim());
+  // an upright vector's label with no side moves off its line; one that's clear stays where 2.4 put it
+  const up = drawing(pts(['A', 0, 0], ['B', 0, 3]), [{ id: 'v', kind: 'vector', a: 'A', b: 'B', label: { text: '$\\mathbf{a}$' } }]);
+  eq(lines(up).find((l) => l.includes('node')), '\\draw[->] (A) -- (B) node[midway, above left] {$\\mathbf{a}$};', 'an upright vector’s label beside it, not on it');
+  const flat = drawing(pts(['A', 0, 0], ['B', 3, 0]), [{ id: 'v', kind: 'vector', a: 'A', b: 'B', label: { text: '$\\mathbf{a}$' } }]);
+  eq(lines(flat).find((l) => l.includes('node')), '\\draw[->] (A) -- (B) node[midway, above] {$\\mathbf{a}$};', 'a flat one’s stays above');
+  eq(lines({ ...up, items: [{ ...(up.items[0] as Link), label: { text: '$a$', side: 'below' } }] }).find((l) => l.includes('node')), '\\draw[->] (A) -- (B) node[midway, below] {$a$};', 'a side of its own is kept');
+  // a point's letter off the lines through it, and clear of another label
+  const corner = drawing([...pts(['A', 0, 0], ['B', 2, 2], ['C', 2, -2]), { id: 'P', name: 'P', x: 0, y: 0.01, panel: 'g1', label: { text: '$P$' } }], [
+    { id: 'ab', kind: 'segment', a: 'A', b: 'B' },
+    { id: 's', kind: 'text', panel: 'g1', x: -0.4, y: -0.3, text: 'Q' }
+  ]);
+  const p = lines(corner).find((l) => l.startsWith('\\node') && l.includes('{$P$}'))!;
+  eq(/node\[(above|above left|left|below right|right)(=[\d.]+pt)?\]/.test(p), true, `P clear of AB and the note: ${p}`);
+  // beside the arrow: TikZ's auto on its clear side, swap on the other; version 5
+  const beside = (b: [number, number], extra: Item[] = []) =>
+    lines(drawing(pts(['A', 0, 0], ['B', ...b], ['C', -0.6, 1]), [{ id: 'v', kind: 'vector', a: 'A', b: 'B', label: { text: '$a$', side: 'beside' } }, ...extra])).find((l) => l.includes('{$a$}'));
+  eq(beside([0, 3]), '\\draw[->] (A) -- (B) node[midway, auto] {$a$};', 'beside an upright arrow, its left');
+  eq(beside([0, 3], [{ id: 'w', kind: 'segment', a: 'C', b: 'A' }, { id: 'u', kind: 'text', panel: 'g1', x: -0.35, y: 1.5, text: 'XXX' }]), '\\draw[->] (A) -- (B) node[midway, auto, swap] {$a$};', 'its right when its left is taken');
+  eq([besideSide({ x: 0, y: 1 }, false), besideSide({ x: 1, y: 1 }, false), besideSide({ x: 1, y: 0 }, true), besideSide({ x: -1, y: -2 }, false)], ['left', 'above left', 'below', 'below right'], 'auto’s sides as TikZ sets them');
+  eq(vectorsNeedVersion5(drawing(pts(['A', 0, 0], ['B', 0, 3]), [{ id: 'v', kind: 'vector', a: 'A', b: 'B', label: { text: '$a$', side: 'beside' } }])), true, 'beside the arrow is version 5');
+  // a point the tools make has its letter where it's clear (O below left), and the four older starters keep their code
+  eq([addPoint(emptyVectors(), 'g1', { x: 1, y: 1 }).model.points[0].label, addPoint(emptyVectors(), 'g1', { x: 0, y: 0 }).model.points[0].label], [{ text: '$A$' }, { text: '$O$', side: 'below left' }], 'new points’ letters');
+
+  // group edits: a selection moves, turns and mirrors together, lines from equations and marks with it
+  const m: VectorModel = drawing(
+    [...pts(['O', 0, 0], ['A', 2, 0], ['B', 0, 1]), { id: 'M', name: 'M', x: 0, y: 0, panel: 'g1', of: { kind: 'mid', a: 'O', b: 'A' }, label: { text: '$M$', side: 'above left' } }],
+    [
+      { id: 'v', kind: 'vector', a: 'O', b: 'A', label: { text: '$a$', side: 'below right' } },
+      { id: 'n', kind: 'angle', at: 'O', from: 'A', to: 'B' },
+      { id: 'r', kind: 'right', at: 'O', toward: 'A' },
+      { id: 'e', kind: 'eqline', panel: 'g1', a: 1, b: 1, c: -2 },
+      { id: 't', kind: 'text', panel: 'g1', x: 1, y: 1, text: 'T' }
+    ]
+  );
+  const all = ['v', 'n', 'r', 'e', 't'];
+  const moved = moveIds(m, ['v', 'e', 't'], { x: 1, y: 2 });
+  eq([moved.points.map((q) => [q.x, q.y]), (moved.items[3] as EqLine).c, (moved.items[4] as Note).x], [[[1, 2], [3, 2], [0, 1], [0, 0]], -5, 2], 'a vector’s ends, a line from its equation (x + y = 5) and a note move');
+  closePt(resolve(moved).get('M'), 2, 2, 'a construction on them follows');
+  const turned = turnIds(m, all, 90);
+  eq(turned.points.slice(0, 3).map((q) => [q.x, q.y]), [[1.5, -0.5], [1.5, 1.5], [0.5, -0.5]], 'turned a quarter about the middle');
+  const e = turned.items[3] as EqLine;
+  close(e.a * 1.5 + e.b * 1.5 + e.c, 0, 'the line turned with it: (1, 1) went to (1.5, 1.5)');
+  const mirrored = mirrorIds(m, all, 'x');
+  const [mv, mn, mr] = mirrored.items as [Link, Angle, RightMark];
+  eq([mirrored.points[1].x, mn.from, mn.to, mr.flip, mv.label?.side, mirrored.points[3].label?.side], [0, 'B', 'A', true, 'below left', 'above right'], 'mirrored: the angle marks the same corner, the right-angle mark flips, sides mirror');
+  eq(mirrorIds(mirrored, all, 'x').items.map((i) => JSON.stringify(i)), m.items.map((i) => JSON.stringify(i)), 'twice is as it was');
+  const styled = restyleIds(m, ['O', 'v', 't'], { colour: 'red', width: 'thick' });
+  eq([styled.points[0].colour, (styled.items[0] as Link).colour, (styled.items[0] as Link).width, (styled.items[4] as Note).colour, 'width' in styled.items[4]], ['red', 'red', 'thick', 'red', false], 'colour for all, thickness for lines');
+  eq((restyleIds(styled, ['v'], { colour: undefined }).items[0] as Link).colour, undefined, 'and back to the Style’s');
+  eq(idsInside(m, 'g1', { minX: -0.5, maxX: 2.5, minY: -0.5, maxY: 0.5 }), ['O', 'A', 'M', 'v', 'r'], 'a marquee takes the points in it and what stands on them only');
+  eq(JSON.stringify(vectorCode(moveIds(dividingSegment(), [], { x: 1, y: 1 }), {})), JSON.stringify(vectorCode(dividingSegment(), {})), 'nothing selected, nothing moves');
+
+  // labels as they print
+  // a sketch as markup: each element with its props, then its children
+  const markupOf = (n: ReactNode): string => {
+    if (n === null || n === undefined || typeof n === 'boolean') return '';
+    if (typeof n === 'string' || typeof n === 'number') return String(n);
+    if (Array.isArray(n)) return n.map(markupOf).join('');
+    if (!isValidElement<{ children?: ReactNode }>(n)) return '';
+    const props = Object.entries(n.props).filter(([key]) => key !== 'children').map(([key, value]) => ` ${key}="${value}"`);
+    return `<${typeof n.type === 'string' ? n.type : ''}${props.join('')}>${markupOf(n.props.children)}</>`;
+  };
+  const markup = markupOf(sketch('$\\mathbf{F}_1 \\parallel \\vec{v} - \\frac{1}{2}\\mathbf{a}$'));
+  for (const part of ['fontWeight="bold"', 'baselineShift="sub"', '∥', 'v⃗', '−', '1/2']) eq(markup.includes(part), true, `sketched: ${part} in ${markup}`);
+  const cos = markupOf(sketch('$\\cos\\theta=\\frac{\\mathbf{a}\\cdot\\mathbf{b}}{|\\mathbf{a}|}$'));
+  eq(['cos θ=(', ')/(|'].every((part) => cos.includes(part)), true, `cos and a fraction of vectors: ${cos}`);
+  eq(markupOf(sketch('$\\mathbf{a}$', 'vec')).includes('a⃗'), true, 'in the Style’s notation');
+
+  // the starters: each new one compiles from 2.4's kinds, or 2.5's where it shows them off
+  const added = { freeBody, triangleLaw, parallelogramLaw, forcePolygon, positionVectors, cevians, angleBetween, lineFromEquation, scalarMultiples };
+  eq(Object.values(added).map((s) => vectorsNeedVersion5(s())), [false, false, false, false, false, true, true, true, true], 'the first five are 2.4’s kinds, the last four 2.5’s');
+  closePt(resolve(parallelogramLaw()).get('C'), 5.5, 3.5, 'the parallelogram’s fourth corner');
+  closePt(resolve(cevians()).get('G'), 8 / 3, 4 / 3, 'the medians meet at the centroid');
+  closePt(resolve(move(scalarMultiples(), 'V', 1, 2)).get('Km'), 9, -2, '−v follows v');
+  closePt(resolve(lineFromEquation()).get('X'), 3, 0, 'the x intercept');
 }
 
 console.log('vectors.check: ok');

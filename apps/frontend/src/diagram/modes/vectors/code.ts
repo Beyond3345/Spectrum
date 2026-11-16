@@ -10,6 +10,7 @@ import { latexColour, mathsPackages, num } from '../shared';
 import { TIPS, WIDTHS, clipLine, dist, frameOf, isLink, panelOf, parentsOf, placed, pointsOf, resolve, rightCorners } from './model';
 import type { Angle, Axes, Circle, Construction, Dash, EdgeLabel, EqLine, Item, Label, Link, Pt, Stroke, TextStyle, Thickness, Tip, Tips, VPoint, VectorModel } from './model';
 import { asVectors } from './model';
+import { placeVectorLabels } from './labels';
 
 /** The drawing's look: what each item without its own takes. A default left out is TikZ's, as 2.0 first drew. */
 export interface VectorStyle {
@@ -79,7 +80,7 @@ const at = (p: Pt) => `(${num(p.x)},${num(p.y)})`;
 const safeName = (name: string) => name.replace(/[^A-Za-z0-9]/g, '') || 'P';
 
 /** A label's node options: its side, and how far when it's set. */
-const side = (label: Pick<Label, 'side' | 'dist'>, fallback = 'above right') => `${label.side || fallback}${label.dist ? `=${num(label.dist)}pt` : ''}`;
+const side = (label: Pick<Label, 'side' | 'dist'>) => `${label.side}${label.dist ? `=${num(label.dist)}pt` : ''}`;
 
 /** The fraction m/(m+n) as calc takes it: {1/3} for whole numbers, else a decimal. */
 const fraction = (m: number, n: number) => (Number.isInteger(m) && Number.isInteger(n) && m + n ? `{${m}/${m + n}}` : num(m + n ? m / (m + n) : 0.5));
@@ -205,10 +206,13 @@ export function vectorCode(raw: unknown, rawStyle: Record<string, unknown>): Dia
   };
   model.points.forEach((p) => visit(p));
 
-  const edgeLabel = (label?: EdgeLabel) => {
+  // labels with no side, or beside their arrow, where they're clear (as the canvas draws them)
+  const spots = placeVectorLabels(model, style, places);
+  const edgeLabel = (id: string, label?: EdgeLabel) => {
     if (!label?.text.trim()) return '';
     const pos = label.pos ?? 0.5;
-    return ` node[${[pos === 0.5 ? 'midway' : `pos=${num(pos)}`, label.side || 'above', ...textOptions(label)].join(', ')}] {${tex(label.text)}}`;
+    const where = label.side && label.side !== 'beside' ? label.side : spots.get(id)?.code ?? 'above';
+    return ` node[${[pos === 0.5 ? 'midway' : `pos=${num(pos)}`, where, ...textOptions(label)].join(', ')}] {${tex(label.text)}}`;
   };
 
   const linkCode = (link: Link, panel: string) => {
@@ -221,9 +225,9 @@ export function vectorCode(raw: unknown, rawStyle: Record<string, unknown>): Dia
     if (link.kind === 'line') {
       const ends = clipLine(places.get(link.a)!, places.get(link.b)!, frameOf(model, panel, places));
       if (!ends) return '';
-      return `\\draw${options} ${at(ends[0])} -- ${at(ends[1])}${edgeLabel(link.label)};`;
+      return `\\draw${options} ${at(ends[0])} -- ${at(ends[1])}${edgeLabel(link.id, link.label)};`;
     }
-    return `\\draw${options} ${ref(link.a)} -- ${ref(link.b)}${edgeLabel(link.label)};`;
+    return `\\draw${options} ${ref(link.a)} -- ${ref(link.b)}${edgeLabel(link.id, link.label)};`;
   };
 
   /** an angle's arc (two for a double), with its label beside the arc's middle */
@@ -261,7 +265,7 @@ export function vectorCode(raw: unknown, rawStyle: Record<string, unknown>): Dia
   const eqLineCode = (line: EqLine) => {
     const ends = eqLineEnds(line, frameOf(model, line.panel, places));
     if (!ends) return '';
-    return `\\draw${bracket(strokeOptions(line))} ${at(ends[0])} -- ${at(ends[1])}${edgeLabel(line.label)};`;
+    return `\\draw${bracket(strokeOptions(line))} ${at(ends[0])} -- ${at(ends[1])}${edgeLabel(line.id, line.label)};`;
   };
 
   const axesLines = (axes: Axes) => {
@@ -292,7 +296,7 @@ export function vectorCode(raw: unknown, rawStyle: Record<string, unknown>): Dia
 
   /** a point's dot (filled, open or a cross) with its label, or the label alone */
   const pointLines = (p: VPoint) => {
-    const options = p.label?.text.trim() ? [side(p.label!), ...textOptions(p.label!)].join(', ') : '';
+    const options = p.label?.text.trim() ? [p.label.side ? side(p.label) : spots.get(p.id)?.code ?? 'above right', ...textOptions(p.label!)].join(', ') : '';
     const text = options ? tex(p.label!.text) : '';
     const node = () => `\\node[${options}] at ${ref(p.id)} {${text}};`;
     if (!p.dot) return options ? [node()] : [];

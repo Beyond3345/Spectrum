@@ -116,7 +116,8 @@ export interface EdgeLabel extends TextStyle {
   text: string;
   /** 0 at the start to 1 at the end; 0.5 when left out */
   pos?: number;
-  side?: Side;
+  /** beside: on whichever side of the line is clear, written as TikZ's auto; left out: placed clear (labels.ts) */
+  side?: Side | 'beside';
 }
 
 /** vector: an arrow; line: through a and b, out to the panel's frame; highlight: thick and light, for a projection */
@@ -478,7 +479,8 @@ export function addPoint(model: VectorModel, panel: string, at: Pt, bare = false
   const id = newId(model, 'v');
   const origin = Math.abs(at.x) < 1e-9 && Math.abs(at.y) < 1e-9 && !model.points.some((p) => p.panel === panel && p.name === 'O');
   const name = origin ? 'O' : nextName(model, panel);
-  const point: VPoint = bare ? { id, name, x: at.x, y: at.y, panel } : { id, name, x: at.x, y: at.y, panel, dot: true, label: { text: `$${name}$`, side: origin ? 'below left' : 'above right' } };
+  // its letter where it's clear (labels.ts), but O below left of the origin, where it's always written
+  const point: VPoint = bare ? { id, name, x: at.x, y: at.y, panel } : { id, name, x: at.x, y: at.y, panel, dot: true, label: { text: `$${name}$`, ...(origin && { side: 'below left' as Side }) } };
   return { model: { ...model, points: [...model.points, point] }, id };
 }
 
@@ -530,7 +532,7 @@ function constructed(model: VectorModel, panel: string, of: Construction, bare =
   const places = resolve({ ...model, points: [...model.points, { id, name, x: 0, y: 0, of, panel }] });
   // a place kept for when the parents are gone; JSON has no NaN
   const place = placed(places.get(id)) ? places.get(id)! : { x: 0, y: 0 };
-  const point: VPoint = bare ? { id, name, x: place.x, y: place.y, of, panel } : { id, name, x: place.x, y: place.y, of, panel, dot: true, label: { text: `$${name}$`, side: 'above right' } };
+  const point: VPoint = bare ? { id, name, x: place.x, y: place.y, of, panel } : { id, name, x: place.x, y: place.y, of, panel, dot: true, label: { text: `$${name}$` } };
   return { model: { ...model, points: [...model.points, point] }, id };
 }
 
@@ -586,12 +588,12 @@ export function setEquation(model: VectorModel, id: string, patch: Partial<Pick<
 /** A line from its equation, x + 2y − 4 = 0 to start, with its intercepts marked by crosses and their coordinates. */
 export function newEqLine(model: VectorModel, panel: string): { model: VectorModel; id: string } {
   const id = newId(model, 'i');
-  const line: EqLine = { id, kind: 'eqline', panel, a: 1, b: 2, c: -4, label: { text: equationText({ a: 1, b: 2, c: -4 }), side: 'above right' } };
+  const line: EqLine = { id, kind: 'eqline', panel, a: 1, b: 2, c: -4, label: { text: equationText({ a: 1, b: 2, c: -4 }) } };
   let next: VectorModel = { ...model, items: [...model.items, line] };
   for (const axis of ['x', 'y'] as const) {
     const made = constructed(next, panel, { kind: 'intercept', line: id, axis }, true);
     const p = made.model.points.find((q) => q.id === made.id)!;
-    next = { ...made.model, points: made.model.points.map((q) => (q.id === made.id ? { ...p, dot: true, shape: 'cross', label: { text: interceptText(p), side: 'above right' } } : q)) };
+    next = { ...made.model, points: made.model.points.map((q) => (q.id === made.id ? { ...p, dot: true, shape: 'cross', label: { text: interceptText(p) } } : q)) };
   }
   return { model: next, id };
 }
@@ -670,13 +672,13 @@ export function applyTool(model: VectorModel, tool: string, picks: string[], sty
       // 2 times AB, drawn from A over it
       if (a === b) return null;
       const made = constructed(model, panel, { kind: 'scale', a, b, k: 2 }, true);
-      return { model: withItem(made, { id: newId(made.model, 'i'), kind: 'vector', a, b: made.id, ...thick, label: { text: scaledName(2, vectorName(model, a, b)), side: 'left' } }), id: made.id };
+      return { model: withItem(made, { id: newId(made.model, 'i'), kind: 'vector', a, b: made.id, ...thick, label: { text: scaledName(2, vectorName(model, a, b)) } }), id: made.id };
     }
     case 'place': {
       // AB drawn again from P: P + B − A, as v − u from P
       if (a === b) return null;
       const made = constructed(model, panel, { kind: 'diff', u: a, v: b, o: c }, true);
-      return { model: withItem(made, { id: newId(made.model, 'i'), kind: 'vector', a: c, b: made.id, ...thick, label: { text: `$${vectorName(model, a, b)}$`, side: 'left' } }), id: made.id };
+      return { model: withItem(made, { id: newId(made.model, 'i'), kind: 'vector', a: c, b: made.id, ...thick, label: { text: `$${vectorName(model, a, b)}$` } }), id: made.id };
     }
     case 'parallel':
     case 'perp': {
@@ -789,6 +791,146 @@ export function pasteInto(model: VectorModel, clip: VectorModel, panel: string, 
   return { model: { ...model, points, items: [...model.items, ...items] }, ids: [...clip.points.map((p) => map(p.id)), ...items.map((i) => i.id)] };
 }
 
+// ─── group edits: move, turn, mirror and restyle a selection ───
+
+/** p ↦ (m[0]x + m[1]y, m[2]x + m[3]y) + t, a move, a turn or a mirror */
+interface Affine {
+  m: [number, number, number, number];
+  t: Pt;
+}
+const apply = ({ m, t }: Affine, p: Pt) => ({ x: m[0] * p.x + m[1] * p.y + t.x, y: m[2] * p.x + m[3] * p.y + t.y });
+const tidy = (n: number) => Math.round(n * 1e6) / 1e6 || 0;
+
+/** What a selection moves: its free points, the free points its items stand on, its notes and lines from equations. */
+export function moversOf(model: VectorModel, ids: string[]) {
+  const picked = new Set(ids);
+  const free = new Set(model.points.filter((p) => !p.of).map((p) => p.id));
+  const points = new Set([...ids, ...model.items.filter((i) => picked.has(i.id)).flatMap(pointsOf)].filter((id) => free.has(id)));
+  const items = new Set(model.items.filter((i) => picked.has(i.id) && (i.kind === 'text' || i.kind === 'eqline')).map((i) => i.id));
+  return { points, items };
+}
+
+/**
+ * A selection's free points, notes and lines from equations taken by an affine map (with m a turn or a mirror):
+ * ax + by + c = 0 goes to its image, n·p + c = 0 with n = (a, b) becoming (Mn)·p + c − (Mn)·t = 0.
+ */
+function transform(model: VectorModel, ids: string[], f: Affine): VectorModel {
+  const { points, items } = moversOf(model, ids);
+  return {
+    ...model,
+    points: model.points.map((p) => {
+      if (!points.has(p.id)) return p;
+      const q = apply(f, p);
+      return { ...p, x: tidy(q.x), y: tidy(q.y) };
+    }),
+    items: model.items.map((i): Item => {
+      if (!items.has(i.id)) return i;
+      if (i.kind === 'text') {
+        const q = apply(f, i);
+        return { ...i, x: tidy(q.x), y: tidy(q.y) };
+      }
+      if (i.kind !== 'eqline') return i;
+      const n = apply({ m: f.m, t: { x: 0, y: 0 } }, { x: i.a, y: i.b });
+      return { ...i, a: tidy(n.x), b: tidy(n.y), c: tidy(i.c - n.x * f.t.x - n.y * f.t.y) };
+    })
+  };
+}
+
+/** The selection moved by d cm. */
+export const moveIds = (model: VectorModel, ids: string[], d: Pt) => transform(model, ids, { m: [1, 0, 0, 1], t: d });
+
+/** The middle of what a selection moves: of its free points and notes, or the point of its line nearest the origin. */
+function middleOf(model: VectorModel, ids: string[]): Pt {
+  const { points, items } = moversOf(model, ids);
+  const spots: Pt[] = [
+    ...model.points.filter((p) => points.has(p.id)),
+    ...model.items.flatMap((i) => (!items.has(i.id) ? [] : i.kind === 'text' ? [i] : i.kind === 'eqline' && (i.a || i.b) ? [{ x: (-i.a * i.c) / (i.a ** 2 + i.b ** 2), y: (-i.b * i.c) / (i.a ** 2 + i.b ** 2) }] : []))
+  ];
+  if (!spots.length) return { x: 0, y: 0 };
+  const xs = spots.map((p) => p.x);
+  const ys = spots.map((p) => p.y);
+  return { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 };
+}
+
+/**
+ * The selection turned anticlockwise by `degrees` about its middle, as an inclined plane is drawn.
+ * ponytail: a selection across panels turns about one middle of their own coordinates
+ */
+export function turnIds(model: VectorModel, ids: string[], degrees: number): VectorModel {
+  const c = middleOf(model, ids);
+  const [cos, sin] = [Math.cos((degrees * Math.PI) / 180), Math.sin((degrees * Math.PI) / 180)];
+  return transform(model, ids, { m: [cos, -sin, sin, cos], t: { x: c.x - cos * c.x + sin * c.y, y: c.y - sin * c.x - cos * c.y } });
+}
+
+/** A side mirrored left to right (x) or top to bottom (y). */
+const mirrorSide = <S extends string>(side: S, axis: 'x' | 'y'): S =>
+  side.replace(axis === 'x' ? /left|right/ : /above|below/, (w) => ({ left: 'right', right: 'left', above: 'below', below: 'above' })[w]!) as S;
+
+/**
+ * The selection mirrored left to right (x) or top to bottom (y) about its middle. The labels of what went with it
+ * mirror their sides too, and an angle, an arc or a right-angle mark whose points all went keeps marking its corner.
+ */
+export function mirrorIds(model: VectorModel, ids: string[], axis: 'x' | 'y'): VectorModel {
+  const c = middleOf(model, ids);
+  const f: Affine = axis === 'x' ? { m: [-1, 0, 0, 1], t: { x: 2 * c.x, y: 0 } } : { m: [1, 0, 0, -1], t: { x: 0, y: 2 * c.y } };
+  const moved = transform(model, ids, f);
+  const [before, after] = [resolve(model), resolve(moved)];
+  const { points: movers } = moversOf(model, ids);
+  const constructed = new Set(model.points.filter((p) => p.of).map((p) => p.id));
+  // a free point it moved, or a constructed one that followed
+  const went = (id: string) => (movers.has(id) || constructed.has(id)) && placed(before.get(id)) && dist(apply(f, before.get(id)!), after.get(id)!) < 1e-6;
+  const picked = new Set(ids);
+  const label = <L extends { side?: string }>(l: L | undefined) => (l?.side && l.side !== 'beside' ? { ...l, side: mirrorSide(l.side, axis) } : l);
+  return {
+    ...moved,
+    points: moved.points.map((p) => {
+      if (!went(p.id)) return p;
+      const of = p.of?.kind === 'ratio' && p.of.marks ? { ...p.of, marks: mirrorSide(p.of.marks, axis) } : p.of;
+      return { ...p, ...(p.label && { label: label(p.label) }), ...(of && { of }) };
+    }),
+    items: moved.items.map((i): Item => {
+      const all = pointsOf(i).length > 0 && pointsOf(i).every(went);
+      if (i.kind === 'angle' && all) return { ...i, from: i.to, to: i.from };
+      if (i.kind === 'circle' && i.to && all) return { ...i, through: i.to, to: i.through };
+      if (i.kind === 'right' && all) return { ...i, flip: !i.flip || undefined };
+      if ((all || picked.has(i.id)) && (isLink(i) || i.kind === 'eqline') && i.label) return { ...i, label: label(i.label) };
+      return i;
+    })
+  };
+}
+
+/** Each selected thing that takes a colour or a thickness given it (undefined: the Style's, or its own default). */
+export function restyleIds(model: VectorModel, ids: string[], patch: { colour?: string; width?: Thickness }): VectorModel {
+  const picked = new Set(ids);
+  const keys = Object.keys(patch) as ('colour' | 'width')[];
+  const set = <T extends object>(thing: T, allowed: ('colour' | 'width')[]) => {
+    const next = { ...thing } as Record<string, unknown>;
+    for (const key of keys.filter((key) => allowed.includes(key))) {
+      if (patch[key] === undefined) delete next[key];
+      else next[key] = patch[key];
+    }
+    return next as T;
+  };
+  return {
+    ...model,
+    points: model.points.map((p) => (picked.has(p.id) ? set(p, ['colour']) : p)),
+    items: model.items.map((i) => (!picked.has(i.id) ? i : i.kind === 'text' ? set(i, ['colour']) : set(i, ['colour', 'width'])))
+  };
+}
+
+/** Ids of the things inside a box (panel coordinates, its panel's): points, notes, and items whose points all are. */
+export function idsInside(model: VectorModel, panel: string, box: { minX: number; maxX: number; minY: number; maxY: number }, places = resolve(model)) {
+  const inside = (p: Pt | undefined) => placed(p) && p.x >= box.minX && p.x <= box.maxX && p.y >= box.minY && p.y <= box.maxY;
+  const panelPoints = new Set(model.points.filter((p) => p.panel === panel).map((p) => p.id));
+  const points = model.points.filter((p) => panelPoints.has(p.id) && inside(places.get(p.id))).map((p) => p.id);
+  const items = model.items.filter((i) => {
+    if (i.kind === 'text') return i.panel === panel && inside(i);
+    const pts = pointsOf(i);
+    return pts.length > 0 && pts.every((id) => panelPoints.has(id) && inside(places.get(id)));
+  });
+  return [...points, ...items.map((i) => i.id)];
+}
+
 /** A new panel to the right of the last, captioned (b), (c)…, the first getting (a) if it had no caption. */
 export function addPanel(model: VectorModel): VectorModel {
   const places = resolve(model);
@@ -802,15 +944,15 @@ export function addPanel(model: VectorModel): VectorModel {
 
 /**
  * The drawing has what 2.5 added to what a drawing saves (the constructions, angles, circles, lines from equations,
- * drops to both axes, equal-length ticks or a vector notation), which builds up to 2.4 would save without, so it's
- * file version 5.
+ * drops to both axes, equal-length ticks, a label beside its arrow or a vector notation), which builds up to 2.4 would
+ * save without, so it's file version 5.
  */
 export function vectorsNeedVersion5(raw: unknown, style: Record<string, unknown> = {}) {
   const model = asVectors(raw);
   return (
     (typeof style.notation === 'string' && style.notation !== 'bold') ||
     model.points.some((p) => p.of && NEW_CONSTRUCTIONS.includes(p.of.kind)) ||
-    model.items.some((i) => i.kind === 'angle' || i.kind === 'circle' || i.kind === 'eqline' || (i.kind === 'drop' && i.axis === 'both') || (isLink(i) && !!i.ticks))
+    model.items.some((i) => i.kind === 'angle' || i.kind === 'circle' || i.kind === 'eqline' || (i.kind === 'drop' && i.axis === 'both') || (isLink(i) && (!!i.ticks || i.label?.side === 'beside')))
   );
 }
 
@@ -923,4 +1065,141 @@ export function projections(): VectorModel {
     points: [...a.points, ...b.points, ...c.points],
     items: [...a.items, ...b.items, ...c.items]
   };
+}
+
+// ─── starters for vector work: forces, the sum laws, i and j, and 2.5's constructions ───
+
+/** a point with its letter where it's clear (no side), dotted */
+const named = (id: string, x: number, y: number, text = `$${id}$`, panel = 'g1'): VPoint => pt(id, id, x, y, text ? { text } : null, true, panel);
+/** a point only there for a line to start or end at: no dot or letter */
+const bare = (id: string, x: number, y: number): VPoint => pt(id, id, x, y, null);
+const one = (points: VPoint[], items: Item[]): VectorModel => ({ panels: [{ id: 'g1', shift: 0 }], points, items });
+
+/** A block with its weight, the normal reaction, a pull and friction, each from its centre. */
+export function freeBody(): VectorModel {
+  return one(
+    [bare('A', -1, -0.75), bare('B', 1, -0.75), bare('C', 1, 0.75), bare('D', -1, 0.75), { ...bare('G', 0, 0), dot: true }, bare('W', 0, -2.5), bare('N', 0, 2.5), bare('F', 2.75, 0), bare('f', -2.25, 0)],
+    [
+      { id: 'block', kind: 'polygon', points: ['A', 'B', 'C', 'D'], fill: 'gray!20' },
+      { id: 'w', kind: 'vector', a: 'G', b: 'W', label: { text: '$W$', pos: 0.8 } },
+      { id: 'n', kind: 'vector', a: 'G', b: 'N', label: { text: '$N$', pos: 0.8 } },
+      { id: 'pull', kind: 'vector', a: 'G', b: 'F', label: { text: '$F$', pos: 0.8 } },
+      { id: 'fr', kind: 'vector', a: 'G', b: 'f', label: { text: '$f$', pos: 0.8 } }
+    ]
+  );
+}
+
+/** The triangle law: b drawn from the tip of a, and a + b from the tail of a to the tip of b. */
+export function triangleLaw(): VectorModel {
+  return one(
+    [named('O', 0, 0), named('A', 4, 1), named('B', 5, 4)],
+    [
+      { id: 'a', kind: 'vector', a: 'O', b: 'A', label: { text: bold('a') } },
+      { id: 'b', kind: 'vector', a: 'A', b: 'B', label: { text: bold('b') } },
+      { id: 's', kind: 'vector', a: 'O', b: 'B', colour: 'red', label: { text: '$\\mathbf{a}+\\mathbf{b}$' } }
+    ]
+  );
+}
+
+/** The parallelogram law: a and b from O, the dashed sides, and the diagonal a + b, which stays exact as A and B move. */
+export function parallelogramLaw(): VectorModel {
+  return one(
+    [named('O', 0, 0), named('A', 4, 0.5), named('B', 1.5, 3), { ...named('C', 5.5, 3.5), of: { kind: 'sum', u: 'A', v: 'B', o: 'O' } }],
+    [
+      { id: 'ac', kind: 'segment', a: 'A', b: 'C', dash: 'dashed' },
+      { id: 'bc', kind: 'segment', a: 'B', b: 'C', dash: 'dashed' },
+      { id: 'a', kind: 'vector', a: 'O', b: 'A', label: { text: bold('a') } },
+      { id: 'b', kind: 'vector', a: 'O', b: 'B', label: { text: bold('b') } },
+      { id: 's', kind: 'vector', a: 'O', b: 'C', colour: 'red', label: { text: '$\\mathbf{a}+\\mathbf{b}$' } }
+    ]
+  );
+}
+
+/** Four forces head to tail, and their resultant R closing the polygon. */
+export function forcePolygon(): VectorModel {
+  return one(
+    [named('P', 0, 0, ''), bare('Q', 3.5, 0.5), bare('R', 5, 2.5), bare('S', 3.5, 4.5), bare('T', 1, 4)],
+    [
+      { id: 'f1', kind: 'vector', a: 'P', b: 'Q', label: { text: '$\\mathbf{F}_1$' } },
+      { id: 'f2', kind: 'vector', a: 'Q', b: 'R', label: { text: '$\\mathbf{F}_2$' } },
+      { id: 'f3', kind: 'vector', a: 'R', b: 'S', label: { text: '$\\mathbf{F}_3$' } },
+      { id: 'f4', kind: 'vector', a: 'S', b: 'T', label: { text: '$\\mathbf{F}_4$' } },
+      { id: 'r', kind: 'vector', a: 'P', b: 'T', colour: 'red', dash: 'dashed', label: { text: '$\\mathbf{R}$' } }
+    ]
+  );
+}
+
+/** P(3, 2) and its position vector r = 3i + 2j, with the unit vectors i and j along the axes. */
+export function positionVectors(): VectorModel {
+  return one(
+    [pt('O', 'O', 0, 0, { text: '$O$', side: 'below left' }, true), named('P', 3, 2, '$P(3,2)$'), bare('I', 1, 0), bare('J', 0, 1)],
+    [
+      { id: 'ax', kind: 'axes', panel: 'g1', x: [-0.5, 4.5], y: [-0.5, 3.5], ticks: true },
+      { id: 'dx', kind: 'drop', from: 'P', axis: 'x' },
+      { id: 'i', kind: 'vector', a: 'O', b: 'I', colour: 'red', label: { text: bold('i'), side: 'below' } },
+      { id: 'j', kind: 'vector', a: 'O', b: 'J', colour: 'red', label: { text: bold('j') } },
+      { id: 'r', kind: 'vector', a: 'O', b: 'P', colour: 'blue', label: { text: '$\\mathbf{r}=3\\mathbf{i}+2\\mathbf{j}$' } }
+    ]
+  );
+}
+
+/** The medians of triangle ABC to the midpoints of its sides, the halves of each side ticked alike, meeting at G. */
+export function cevians(): VectorModel {
+  const mid = (id: string, a: string, b: string, x: number, y: number): VPoint => ({ ...named(id, x, y), of: { kind: 'mid', a, b } });
+  return one(
+    [
+      named('A', 0, 0),
+      named('B', 6, 0),
+      named('C', 2, 4),
+      mid('D', 'B', 'C', 4, 2),
+      mid('E', 'C', 'A', 1, 2),
+      mid('F', 'A', 'B', 3, 0),
+      { ...named('G', 8 / 3, 4 / 3), of: { kind: 'meet', a: 'A', b: 'D', c: 'B', d: 'E' } }
+    ],
+    [
+      { id: 'bd', kind: 'segment', a: 'B', b: 'D', ticks: 1 },
+      { id: 'dc', kind: 'segment', a: 'D', b: 'C', ticks: 1 },
+      { id: 'ce', kind: 'segment', a: 'C', b: 'E', ticks: 2 },
+      { id: 'ea', kind: 'segment', a: 'E', b: 'A', ticks: 2 },
+      { id: 'af', kind: 'segment', a: 'A', b: 'F', ticks: 3 },
+      { id: 'fb', kind: 'segment', a: 'F', b: 'B', ticks: 3 },
+      { id: 'ad', kind: 'segment', a: 'A', b: 'D', colour: 'blue' },
+      { id: 'be', kind: 'segment', a: 'B', b: 'E', colour: 'blue' },
+      { id: 'cf', kind: 'segment', a: 'C', b: 'F', colour: 'blue' }
+    ]
+  );
+}
+
+/** The angle θ between a and b, with cos θ as their dot product over their lengths. */
+export function angleBetween(): VectorModel {
+  return one(
+    [named('O', 0, 0), bare('A', 4, 1), bare('B', 1.5, 3)],
+    [
+      { id: 'a', kind: 'vector', a: 'O', b: 'A', label: { text: bold('a') } },
+      { id: 'b', kind: 'vector', a: 'O', b: 'B', label: { text: bold('b') } },
+      { id: 't', kind: 'angle', at: 'O', from: 'A', to: 'B', radius: 0.8, label: { text: '$\\theta$' } },
+      { id: 'cos', kind: 'text', panel: 'g1', x: 2.5, y: -1, text: '$\\cos\\theta=\\frac{\\mathbf{a}\\cdot\\mathbf{b}}{|\\mathbf{a}|\\,|\\mathbf{b}|}$' }
+    ]
+  );
+}
+
+/** The line 2x + 3y − 6 = 0 with its intercepts, and its normal n = (2, 3) from a point on it. */
+export function lineFromEquation(): VectorModel {
+  const line: EqLine = { id: 'l', kind: 'eqline', panel: 'g1', a: 2, b: 3, c: -6, label: { text: equationText({ a: 2, b: 3, c: -6 }), pos: 0.6 } };
+  const cut = (id: string, axis: 'x' | 'y', x: number, y: number): VPoint => ({ ...named(id, x, y, interceptText({ x, y })), shape: 'cross', of: { kind: 'intercept', line: 'l', axis } });
+  return one(
+    [pt('O', 'O', 0, 0, { text: '$O$', side: 'below left' }), cut('X', 'x', 3, 0), cut('Y', 'y', 0, 2), bare('P', 1.5, 1), bare('N', 2.5, 2.5)],
+    [{ id: 'ax', kind: 'axes', panel: 'g1', x: [-1, 4.5], y: [-1, 3.5], ticks: true }, line, { id: 'n', kind: 'vector', a: 'P', b: 'N', colour: 'red', label: { text: bold('n') } }]
+  );
+}
+
+/** v, and 2v, −v and ½v drawn beside it, each following v as it moves. */
+export function scalarMultiples(): VectorModel {
+  // each from its own tail T: T + v (as v − O from T), then k times that from T
+  const times = (n: string, x: number, k: number, text: string) => ({
+    points: [bare(`T${n}`, x, 0), { ...bare(`U${n}`, x + 2, 1), of: { kind: 'diff', u: 'O', v: 'V', o: `T${n}` } as Construction }, { ...bare(`K${n}`, x + 2 * k, k), of: { kind: 'scale', a: `T${n}`, b: `U${n}`, k } as Construction }],
+    items: [{ id: `v${n}`, kind: 'vector', a: `T${n}`, b: `K${n}`, label: { text } } as Item]
+  });
+  const rows = [times('2', 3, 2, '$2\\mathbf{v}$'), times('m', 10, -1, '$-\\mathbf{v}$'), times('h', 11, 0.5, '$\\frac{1}{2}\\mathbf{v}$')];
+  return one([named('O', 0, 0, ''), bare('V', 2, 1), ...rows.flatMap((r) => r.points)], [{ id: 'v', kind: 'vector', a: 'O', b: 'V', label: { text: bold('v') } }, ...rows.flatMap((r) => r.items)]);
 }

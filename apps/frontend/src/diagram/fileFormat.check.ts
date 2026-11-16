@@ -159,11 +159,13 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
         vec([{ id: 's', kind: 'segment', a: 'A', b: 'B', ticks: 2 }]),
         vec([], [{ id: 'X', name: 'X', x: 0, y: 0, panel: 'g1', of: { kind: 'meet', a: 'A', b: 'B', c: 'A', d: 'C' } }]),
         vec([], [{ id: 'X', name: 'X', x: 0, y: 0, panel: 'g1', of: { kind: 'scale', a: 'A', b: 'B', k: -2 } }]),
-        vec([], [], { notation: 'vv' })
+        vec([], [], { notation: 'vv' }),
+        vec([{ id: 'v', kind: 'vector', a: 'A', b: 'B', label: { text: '$a$', side: 'beside' } }]),
+        vec([{ id: 'v', kind: 'vector', a: 'A', b: 'B', label: { text: '$a$' } }])
       ].map(async (d) => (await json(d))?.version)
     ),
-    [1, 1, 5, 5, 5, 5, 5, 5, 5, 5],
-    'a vector drawing is version 5 only with 2.5’s additions'
+    [1, 1, 5, 5, 5, 5, 5, 5, 5, 5, 5, 1],
+    'a vector drawing is version 5 only with 2.5’s additions (a label beside its arrow too; one placed clear is 2.4’s)'
   );
   // for a document that loads physics: \qty becomes \SI, in the text and in the drawing, which still reads as drawn
   const si = { body: '\\begin{tikzpicture}\n\\node {\\qty{10}{\\kilo\\newton}};\n\\end{tikzpicture}\n', packages: ['tikz', 'siunitx'], libraries: [] };

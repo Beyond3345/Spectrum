@@ -6,11 +6,13 @@ import type { ReactNode } from 'react';
 import Icon from '../../../app/Icon';
 import Segmented from '../../../app/Segmented';
 import Select from '../../../app/Select';
-import { ColourField } from '../../controls';
+import { ColourField, More } from '../../controls';
+import { useToolTitle } from '../../toolKeys';
+import type { ToolKey } from '../../toolKeys';
 import { num } from '../shared';
 import { GRIDS, NOTATIONS, readStyle } from './code';
 import type { Notation, VectorStyle } from './code';
-import { COLOURS, FONT_SIZES, SIDES, TIPS, WIDTHS, WIDTH_PT, addPanel, asVectors, cleanName, dist, isLink, nameFree, placed, scaledName, setEquation, vectorName, withText, resolve, removeIds } from './model';
+import { COLOURS, FONT_SIZES, SIDES, TIPS, WIDTHS, WIDTH_PT, addPanel, asVectors, cleanName, dist, isLink, mirrorIds, moversOf, nameFree, placed, restyleIds, scaledName, setEquation, turnIds, vectorName, withText, resolve, removeIds } from './model';
 import type { Axes, Construction, Dash, EdgeLabel, FontSize, Item, Label, Link, LinkKind, Panel, PointShape, Pt, Stroke, TextStyle, Thickness, Tip, Tips, VPoint, VectorModel, Width } from './model';
 
 const POINT_SHAPES: [PointShape, string][] = [
@@ -142,8 +144,12 @@ function Thumb({ tool }: { tool: string }) {
   );
 }
 
+/** the tools with a key of their own (Settings › Diagram composer), answered over the drawing (Canvas.tsx) */
+const TOOL_KEYS: Record<string, ToolKey> = { point: 'diagramPoint', vector: 'diagramVector' };
+
 export function VectorRail({ onPick, tool }: { onPick(tool: string): void; tool: string }) {
   const [filter, setFilter] = useState('');
+  const toolTitle = useToolTitle();
   const words = filter.trim().toLowerCase();
   return (
     <div className="ckt-rail st-rail">
@@ -163,7 +169,7 @@ export function VectorRail({ onPick, tool }: { onPick(tool: string): void; tool:
                     type="button"
                     className={`ckt-rail-part ${tool === value ? 'active' : ''}`}
                     aria-pressed={tool === value}
-                    title={`${label}: ${HINTS[value]}`}
+                    title={`${toolTitle(label, TOOL_KEYS[value])}: ${HINTS[value]}`}
                     onClick={() => onPick(tool === value ? 'select' : value)}
                   >
                     <span className="ckt-rail-thumb">
@@ -298,40 +304,55 @@ function OpacityField({ label = 'Opacity', value, onChange }: { label?: string; 
 
 type Lined = Stroke & { dashed?: boolean };
 
-/** A line's colour, thickness, dashes and opacity; dash is the dashes it has when none are set (a drop's are dashed). */
-function StrokeFields({ stroke, onChange, colour = STYLED, width = STYLED, dash = 'solid' }: { stroke: Lined; onChange(patch: Lined): void; colour?: string; width?: string; dash?: Dash }) {
+/** A line's colour and thickness. */
+function StrokeFields({ stroke, onChange, colour = STYLED, width = STYLED }: { stroke: Lined; onChange(patch: Lined): void; colour?: string; width?: string }) {
   return (
     <>
       <ColourInput label="Colour" value={stroke.colour} fallback={colour} onChange={(c) => onChange({ colour: c })} />
       <ThicknessField value={stroke.width} fallback={width} onChange={(w) => onChange({ width: w })} />
+    </>
+  );
+}
+
+/** A line's dashes and opacity, the rarer half of its look; dash is the dashes it has when none are set (a drop's are dashed). */
+function LineLook({ stroke, onChange, dash = 'solid' }: { stroke: Lined; onChange(patch: Lined): void; dash?: Dash }) {
+  return (
+    <>
       <DashField value={stroke.dash ?? (stroke.dashed ? 'dashed' : dash)} onChange={(d) => onChange({ dash: d === dash ? undefined : d, dashed: undefined })} />
       <OpacityField value={stroke.opacity} onChange={(opacity) => onChange({ opacity })} />
     </>
   );
 }
+/** whether a line's dashes or opacity are its own, so its fold opens */
+const lookSet = (s: Lined) => s.dash !== undefined || !!s.dashed || s.opacity !== undefined;
 
 const TIP_NAMES: Record<Tip, string> = { none: 'None', stealth: 'Stealth', latex: 'Latex', to: 'To', triangle: 'Triangle', 'open triangle': 'Open triangle', bar: 'Bar' };
 const tipOptions = (tips: Tip[]): [string, string][] => tips.map((t) => [t, TIP_NAMES[t]]);
+const endOf = (tips: Tips, vector: boolean) => tips.end ?? (vector ? undefined : 'none');
 
-/** A line's tips: at each end (a vector's end is the Style's unless set), their size, both ends alike, and one halfway. */
+/** A line's end tip: a vector's is the Style's unless set. */
+function EndTip({ tips, vector, onChange }: { tips: Tips; vector: boolean; onChange(patch: Tips): void }) {
+  return (
+    <Field label="End tip">
+      {(_, labelId) => (
+        <Select
+          labelId={labelId}
+          value={endOf(tips, vector) ?? ''}
+          options={[...(vector ? ([['', STYLED]] as [string, string][]) : []), ...tipOptions(TIPS)]}
+          onChange={(t) => onChange({ end: t === '' || (!vector && t === 'none') ? undefined : (t as Tip) })}
+        />
+      )}
+    </Field>
+  );
+}
+
+/** A line's other tips: at the start, both ends alike, one halfway, and their size. */
 function TipFields({ tips, vector, tipSize, onChange }: { tips: Tips; vector: boolean; tipSize: number; onChange(patch: Tips): void }) {
-  const end = tips.end ?? (vector ? undefined : 'none');
+  const end = endOf(tips, vector);
   const both = !!tips.start && tips.start !== 'none';
   return (
     <>
-      <div className="ckt-row">
-        <Field label="Start">{(_, labelId) => <Select labelId={labelId} value={tips.start ?? 'none'} options={tipOptions(TIPS)} onChange={(t) => onChange({ start: t === 'none' ? undefined : (t as Tip) })} />}</Field>
-        <Field label="End">
-          {(_, labelId) => (
-            <Select
-              labelId={labelId}
-              value={end ?? ''}
-              options={[...(vector ? ([['', STYLED]] as [string, string][]) : []), ...tipOptions(TIPS)]}
-              onChange={(t) => onChange({ end: t === '' || (!vector && t === 'none') ? undefined : (t as Tip) })}
-            />
-          )}
-        </Field>
-      </div>
+      <Field label="Start tip">{(_, labelId) => <Select labelId={labelId} value={tips.start ?? 'none'} options={tipOptions(TIPS)} onChange={(t) => onChange({ start: t === 'none' ? undefined : (t as Tip) })} />}</Field>
       <label className="checkbox-row">
         <input type="checkbox" role="switch" checked={both} onChange={(e) => onChange({ start: e.target.checked ? (end && end !== 'none' ? end : 'stealth') : undefined })} />
         <span>Double-headed</span>
@@ -346,6 +367,7 @@ function TipFields({ tips, vector, tipSize, onChange }: { tips: Tips; vector: bo
     </>
   );
 }
+const tipsSet = (t: Tips) => (!!t.start && t.start !== 'none') || !!t.middle || t.tipSize !== undefined;
 
 const SIZE_OPTIONS: [string, string][] = FONT_SIZES.map((s) => [s, `\\${s}`]);
 
@@ -358,42 +380,42 @@ function TextFields({ text, onChange }: { text: TextStyle; onChange(patch: TextS
     </>
   );
 }
+const textSet = (t?: TextStyle) => !!t && (t.size !== undefined || t.colour !== undefined);
+/** whether a label's rarer settings are set, so its fold opens */
+const labelSet = (l?: Label | EdgeLabel) => textSet(l) || !!(l && 'dist' in l && l.dist) || (!!l && 'pos' in l && l.pos !== undefined);
 
-/** A point's label: its text, side and distance, size and colour. */
-function LabelFields({ label, onChange }: { label?: Label; onChange(l: Label | undefined): void }) {
-  const now = label ?? { text: '' };
-  const set = (patch: Partial<Label>) => onChange({ ...now, ...patch });
+/** no side: the label goes where it touches nothing (labels.ts) */
+const CLEAR = 'Where it’s clear';
+const POINT_SIDES: [string, string][] = [['', CLEAR], ...SIDE_OPTIONS];
+const EDGE_SIDES: [string, string][] = [['', CLEAR], ['beside', 'Beside the arrow, left or right'], ...SIDE_OPTIONS];
+
+/** A label's text and side: a point's, or a line's (edge), which can also sit beside the arrow. */
+function LabelMain<L extends Label | EdgeLabel>({ label, onChange, edge, hint }: { label?: L; onChange(l: L | undefined): void; edge?: boolean; hint: string }) {
+  const now = (label ?? { text: '' }) as L;
   return (
     <>
-      <TexField label="Label" value={now.text} hint="LaTeX, as in the document: $A$, $U(2,5)$." onChange={(text) => onChange(withText(now, text))} />
+      <TexField label="Label" value={now.text} hint={hint} onChange={(text) => onChange(withText(now, text))} />
       {label && (
-        <>
-          <div className="ckt-row">
-            <Field label="Side">{(_, labelId) => <Select labelId={labelId} value={now.side ?? 'above right'} options={SIDE_OPTIONS} onChange={(side) => set({ side: side as Label['side'] })} />}</Field>
-            <Field label="Distance">{(id) => <NumberInput id={id} value={now.dist ?? 0} unit="pt" onChange={(d) => set({ dist: d || undefined })} />}</Field>
-          </div>
-          <TextFields text={now} onChange={set} />
-        </>
+        <Field label="Side">
+          {(_, labelId) => <Select labelId={labelId} value={now.side ?? ''} options={edge ? EDGE_SIDES : POINT_SIDES} onChange={(side) => onChange({ ...now, side: side || undefined })} />}
+        </Field>
       )}
     </>
   );
 }
 
-function EdgeLabelFields({ label, onChange }: { label?: EdgeLabel; onChange(l: EdgeLabel | undefined): void }) {
-  const now = label ?? { text: '' };
-  const set = (patch: Partial<EdgeLabel>) => onChange({ ...now, ...patch });
+/** A label's rarer settings: a point's distance (once it has a side) or a line's place along it, its size and colour. */
+function LabelLook<L extends Label | EdgeLabel>({ label, onChange, edge }: { label?: L; onChange(l: L): void; edge?: boolean }) {
+  if (!label) return null;
+  const set = (patch: Partial<Label & EdgeLabel>) => onChange({ ...label, ...patch });
   return (
     <>
-      <TexField label="Label" value={now.text} hint="LaTeX: $\mathbf{a}$, $\frac{1}{2}\mathbf{b}$." onChange={(text) => onChange(withText(now, text))} />
-      {label && (
-        <>
-          <div className="ckt-row">
-            <Field label="Along it">{(id) => <NumberInput id={id} value={now.pos ?? 0.5} onChange={(pos) => pos >= 0 && pos <= 1 && set({ pos: pos === 0.5 ? undefined : pos })} />}</Field>
-            <Field label="Side">{(_, labelId) => <Select labelId={labelId} value={now.side ?? 'above'} options={SIDE_OPTIONS} onChange={(side) => set({ side: side as EdgeLabel['side'] })} />}</Field>
-          </div>
-          <TextFields text={now} onChange={set} />
-        </>
+      {!edge ? (
+        label.side && <Field label="Distance">{(id) => <NumberInput id={id} value={(label as Label).dist ?? 0} unit="pt" onChange={(d) => set({ dist: d || undefined })} />}</Field>
+      ) : (
+        <Field label="Along it" hint="0 at the start, 1 at the end.">{(id) => <NumberInput id={id} value={(label as EdgeLabel).pos ?? 0.5} onChange={(pos) => pos >= 0 && pos <= 1 && set({ pos: pos === 0.5 ? undefined : pos })} />}</Field>
       )}
+      <TextFields text={label} onChange={set} />
     </>
   );
 }
@@ -535,13 +557,46 @@ const LINK_KINDS: [LinkKind, string][] = [
   ['highlight', 'Highlighted segment']
 ];
 
+/** Turns a selection by an angle typed in, or mirrors it; over the canvas R, X and Y do the same. */
+function Arrange({ model, ids, onChange }: { model: VectorModel; ids: string[]; onChange(m: VectorModel): void }) {
+  const [angle, setAngle] = useState(15);
+  return (
+    <>
+      <Field label="Turn by" hint="Anticlockwise about the middle of what’s selected. Over the canvas, R turns it 90° and X and Y mirror it.">
+        {(id) => (
+          <div className="ckt-row">
+            <NumberInput id={id} value={angle} unit="°" onChange={setAngle} />
+            <button type="button" className="btn small" onClick={() => onChange(turnIds(model, ids, angle))}>
+              Turn
+            </button>
+          </div>
+        )}
+      </Field>
+      <div className="ckt-row">
+        <button type="button" className="btn small" onClick={() => onChange(mirrorIds(model, ids, 'x'))}>
+          Mirror left to right
+        </button>
+        <button type="button" className="btn small" onClick={() => onChange(mirrorIds(model, ids, 'y'))}>
+          Mirror top to bottom
+        </button>
+      </div>
+    </>
+  );
+}
+
+/** The value every one of these has (undefined, the Style's, when they differ). */
+const common = <T,>(values: T[]) => (values.length && values.every((v) => JSON.stringify(v) === JSON.stringify(values[0])) ? values[0] : undefined);
+
 export function VectorInspector({ model: raw, onChange, selection = [], style: rawStyle = {} }: { model: VectorModel; onChange(m: VectorModel): void; selection?: string[]; style?: Record<string, unknown> }) {
   const model = asVectors(raw);
   const style = readStyle(rawStyle);
   const picked: (VPoint | Item)[] = [...model.points.filter((p) => selection.includes(p.id)), ...model.items.filter((i) => selection.includes(i.id))];
+  const ids = picked.map((x) => x.id);
+  const movers = moversOf(model, ids);
+  const arrangeable = movers.points.size > 0 || movers.items.size > 0;
   const remove = (
     <div className="ckt-row">
-      <button type="button" className="btn small destructive" title="Delete (⌫)" onClick={() => onChange(removeIds(model, picked.map((x) => x.id)))}>
+      <button type="button" className="btn small destructive" title="Delete (⌫)" onClick={() => onChange(removeIds(model, ids))}>
         <Icon name="trash" /> Delete
       </button>
     </div>
@@ -554,15 +609,28 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
     );
   }
   if (picked.length > 1) {
+    // colour for all that take one, thickness for all lines
+    const lines = picked.filter((x) => 'kind' in x && x.kind !== 'text') as Item[];
     return (
       <div className="ckt-inspector">
         <div className="ckt-inspector-title">{picked.length} items selected</div>
+        <ColourInput label="Colour" value={common(picked.map((x) => ('colour' in x ? x.colour : undefined)))} fallback={STYLED} onChange={(colour) => onChange(restyleIds(model, ids, { colour }))} />
+        {lines.length > 0 && <ThicknessField value={common(lines.map((x) => ('width' in x ? x.width : undefined)))} fallback={STYLED} onChange={(width) => onChange(restyleIds(model, ids, { width }))} />}
+        <div className="field-hint">Each selected item takes it; ‘As in Style’ gives each its default again.</div>
+        {arrangeable && <Arrange model={model} ids={ids} onChange={onChange} />}
         {remove}
       </div>
     );
   }
   const name = (id: string) => model.points.find((p) => p.id === id)?.name ?? '?';
   const item = picked[0];
+  /** the item's rarer fields, folded until one is set */
+  const more = (summary: string, open: boolean, children: ReactNode) => (
+    <More key={item.id} summary={summary} open={open}>
+      {children}
+    </More>
+  );
+  const arrange = arrangeable && more('Turn and mirror', false, <Arrange model={model} ids={ids} onChange={onChange} />);
   let title = '';
   let fields: ReactNode = null;
   if (!('kind' in item)) {
@@ -582,22 +650,11 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
             set({ name: typed, ...(follows && { label: { ...point.label!, text: `$${typed}$` } }) });
           }}
         />
-        <LabelFields label={point.label} onChange={(label) => set({ label })} />
+        <LabelMain label={point.label} hint="LaTeX, as in the document: $A$, $U(2,5)$." onChange={(label) => set({ label })} />
         <label className="checkbox-row">
           <input type="checkbox" role="switch" checked={!!point.dot} onChange={(e) => set({ dot: e.target.checked || undefined })} />
           <span>Dot</span>
         </label>
-        {point.dot && (
-          <>
-            <div className="ckt-row">
-              <Field label="Shape">{(_, labelId) => <Select labelId={labelId} value={point.shape ?? 'filled'} options={POINT_SHAPES} onChange={(shape) => set({ shape: shape === 'filled' ? undefined : (shape as PointShape) })} />}</Field>
-              <Field label="Size" hint="Its radius; the Style’s until changed.">
-                {(id) => <NumberInput id={id} value={point.size ?? style.pointSize} positive unit="pt" onChange={(size) => size <= 20 && set({ size: size === style.pointSize ? undefined : size })} />}
-              </Field>
-            </div>
-            <ColourInput label="Colour" value={point.colour} fallback={STYLED} onChange={(colour) => set({ colour })} />
-          </>
-        )}
         {point.of ? (
           <>
             <div className="field-hint">{describe(point.of, name)}</div>
@@ -655,6 +712,24 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
             )}
           </Field>
         )}
+        {more(
+          'Dot and label look',
+          labelSet(point.label) || point.shape !== undefined || point.size !== undefined || point.colour !== undefined,
+          <>
+            {point.dot && (
+              <>
+                <div className="ckt-row">
+                  <Field label="Shape">{(_, labelId) => <Select labelId={labelId} value={point.shape ?? 'filled'} options={POINT_SHAPES} onChange={(shape) => set({ shape: shape === 'filled' ? undefined : (shape as PointShape) })} />}</Field>
+                  <Field label="Size" hint="Its radius; the Style’s until changed.">
+                    {(id) => <NumberInput id={id} value={point.size ?? style.pointSize} positive unit="pt" onChange={(size) => size <= 20 && set({ size: size === style.pointSize ? undefined : size })} />}
+                  </Field>
+                </div>
+                <ColourInput label="Colour" value={point.colour} fallback={STYLED} onChange={(colour) => set({ colour })} />
+              </>
+            )}
+            <LabelLook label={point.label} onChange={(label) => set({ label })} />
+          </>
+        )}
       </>
     );
   } else {
@@ -662,22 +737,29 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
     if (isLink(item)) {
       const link: Link = item;
       title = `${LINK_KINDS.find(([k]) => k === link.kind)![1]} ${name(link.a)}${name(link.b)}`;
+      const highlight = link.kind === 'highlight';
       fields = (
         <>
           <Field label="Kind">{(_, labelId) => <Select labelId={labelId} value={link.kind} options={LINK_KINDS} onChange={(kind) => set({ kind: kind as LinkKind })} />}</Field>
-          {link.kind === 'highlight' ? (
-            <StrokeFields stroke={link} colour="blue!50" width="2.5 pt" onChange={set} />
-          ) : (
+          {highlight ? <StrokeFields stroke={link} colour="blue!50" width="2.5 pt" onChange={set} /> : <StrokeFields stroke={link} onChange={set} />}
+          {!highlight && <EndTip tips={link} vector={link.kind === 'vector'} onChange={set} />}
+          {!highlight && <LabelMain label={link.label} edge hint="LaTeX: $\mathbf{a}$, $\frac{1}{2}\mathbf{b}$." onChange={(label) => set({ label })} />}
+          {more(
+            highlight ? 'Dashes and opacity' : 'Dashes, tips, ticks and label look',
+            lookSet(link) || (!highlight && (tipsSet(link) || !!link.ticks || labelSet(link.label))),
             <>
-              <StrokeFields stroke={link} onChange={set} />
-              <div className="ckt-inspector-title">Arrow tips</div>
-              <TipFields tips={link} vector={link.kind === 'vector'} tipSize={style.tipSize} onChange={set} />
-              {link.kind !== 'line' && (
-                <Field label="Equal-length ticks">
-                  {(_, labelId) => <Select labelId={labelId} value={String(link.ticks ?? 0)} options={TICKS} onChange={(n) => set({ ticks: Number(n) || undefined })} />}
-                </Field>
+              <LineLook stroke={link} onChange={set} />
+              {!highlight && (
+                <>
+                  <TipFields tips={link} vector={link.kind === 'vector'} tipSize={style.tipSize} onChange={set} />
+                  {link.kind !== 'line' && (
+                    <Field label="Equal-length ticks">
+                      {(_, labelId) => <Select labelId={labelId} value={String(link.ticks ?? 0)} options={TICKS} onChange={(n) => set({ ticks: Number(n) || undefined })} />}
+                    </Field>
+                  )}
+                  <LabelLook label={link.label} edge onChange={(label) => set({ label })} />
+                </>
               )}
-              <EdgeLabelFields label={link.label} onChange={(label) => set({ label })} />
             </>
           )}
           <button type="button" className="btn small" onClick={() => set({ a: link.b, b: link.a })}>
@@ -693,7 +775,14 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
             <>
               <StrokeFields stroke={item} onChange={set} />
               <ColourInput label="Fill" value={item.fill} fallback="None" onChange={(fill) => set({ fill })} />
-              {item.fill && <OpacityField label="Fill opacity" value={item.fillOpacity} onChange={(fillOpacity) => set({ fillOpacity })} />}
+              {more(
+                'Dashes and opacity',
+                lookSet(item) || item.fillOpacity !== undefined,
+                <>
+                  <LineLook stroke={item} onChange={set} />
+                  {item.fill && <OpacityField label="Fill opacity" value={item.fillOpacity} onChange={(fillOpacity) => set({ fillOpacity })} />}
+                </>
+              )}
             </>
           );
           break;
@@ -702,7 +791,7 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
           fields = (
             <>
               <TexField label="Text" value={item.text} hint="LaTeX, as in the document." onChange={(text) => set({ text })} />
-              <TextFields text={item} onChange={set} />
+              {more('Size and colour', textSet(item), <TextFields text={item} onChange={set} />)}
             </>
           );
           break;
@@ -736,30 +825,36 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
                 <input type="checkbox" role="switch" checked={!!axes.ticks} onChange={(e) => set({ ticks: e.target.checked || undefined })} />
                 <span>Ticks and numbers</span>
               </label>
-              {axes.ticks && (
-                <>
-                  <div className="ckt-row">
-                    <Field label="Step">{(id) => <NumberInput id={id} value={axes.step ?? 1} positive onChange={(step) => set({ step: step === 1 ? undefined : step })} />}</Field>
-                    <Field label="Tick length">{(id) => <NumberInput id={id} value={axes.tick ?? 0.08} positive unit="cm" onChange={(tick) => set({ tick: tick === 0.08 ? undefined : tick })} />}</Field>
-                  </div>
-                  <Field label="Number size">{(_, labelId) => <Select labelId={labelId} value={axes.numbers ?? 'small'} options={SIZE_OPTIONS} onChange={(numbers) => set({ numbers: numbers === 'small' ? undefined : (numbers as FontSize) })} />}</Field>
-                </>
-              )}
               <label className="checkbox-row">
                 <input type="checkbox" role="switch" checked={!!axes.origin} onChange={(e) => set({ origin: e.target.checked || undefined })} />
                 <span>O at the origin</span>
               </label>
-              <ColourInput label="Colour" value={axes.colour} fallback="Black" onChange={(colour) => set({ colour })} />
-              <ThicknessField value={axes.width} fallback="Normal" onChange={(width) => set({ width })} />
-              <Field label="Arrow tips">{(_, labelId) => <Select labelId={labelId} value={axes.tip ?? ''} options={[['', STYLED], ...tipOptions(TIPS)]} onChange={(tip) => set({ tip: (tip || undefined) as Tip | undefined })} />}</Field>
               <label className="checkbox-row">
                 <input type="checkbox" role="switch" checked={!!axes.grid} onChange={(e) => set({ grid: e.target.checked || undefined })} />
                 <span>Grid</span>
               </label>
-              {axes.grid && (
+              {more(
+                'Ticks, colour, tips and grid look',
+                [axes.step, axes.tick, axes.numbers, axes.colour, axes.width, axes.tip, axes.gridColour, axes.gridWidth].some((v) => v !== undefined),
                 <>
-                  <ColourInput label="Grid colour" value={axes.gridColour} fallback="gray!30" onChange={(gridColour) => set({ gridColour })} />
-                  <ThicknessField label="Grid thickness" value={axes.gridWidth} fallback="Very thin" onChange={(gridWidth) => set({ gridWidth })} />
+                  {axes.ticks && (
+                    <>
+                      <div className="ckt-row">
+                        <Field label="Step">{(id) => <NumberInput id={id} value={axes.step ?? 1} positive onChange={(step) => set({ step: step === 1 ? undefined : step })} />}</Field>
+                        <Field label="Tick length">{(id) => <NumberInput id={id} value={axes.tick ?? 0.08} positive unit="cm" onChange={(tick) => set({ tick: tick === 0.08 ? undefined : tick })} />}</Field>
+                      </div>
+                      <Field label="Number size">{(_, labelId) => <Select labelId={labelId} value={axes.numbers ?? 'small'} options={SIZE_OPTIONS} onChange={(numbers) => set({ numbers: numbers === 'small' ? undefined : (numbers as FontSize) })} />}</Field>
+                    </>
+                  )}
+                  <ColourInput label="Colour" value={axes.colour} fallback="Black" onChange={(colour) => set({ colour })} />
+                  <ThicknessField value={axes.width} fallback="Normal" onChange={(width) => set({ width })} />
+                  <Field label="Arrow tips">{(_, labelId) => <Select labelId={labelId} value={axes.tip ?? ''} options={[['', STYLED], ...tipOptions(TIPS)]} onChange={(tip) => set({ tip: (tip || undefined) as Tip | undefined })} />}</Field>
+                  {axes.grid && (
+                    <>
+                      <ColourInput label="Grid colour" value={axes.gridColour} fallback="gray!30" onChange={(gridColour) => set({ gridColour })} />
+                      <ThicknessField label="Grid thickness" value={axes.gridWidth} fallback="Very thin" onChange={(gridWidth) => set({ gridWidth })} />
+                    </>
+                  )}
                 </>
               )}
             </>
@@ -775,6 +870,7 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
                 <span>On the other side</span>
               </label>
               <StrokeFields stroke={item} onChange={set} />
+              {more('Dashes and opacity', lookSet(item), <LineLook stroke={item} onChange={set} />)}
             </>
           );
           break;
@@ -796,7 +892,8 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
                   />
                 )}
               </Field>
-              <StrokeFields stroke={item} dash="dashed" onChange={set} />
+              <StrokeFields stroke={item} onChange={set} />
+              {more('Dashes and opacity', lookSet(item), <LineLook stroke={item} dash="dashed" onChange={set} />)}
             </>
           );
           break;
@@ -807,17 +904,24 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
           fields = (
             <>
               <TexField label="Label" value={text.text} hint="LaTeX: $\theta$, $45^\circ$." onChange={(t) => set({ label: withText(text, t) })} />
-              {angle.label && <TextFields text={text} onChange={(patch) => set({ label: { ...text, ...patch } })} />}
               <Field label="Radius">{(id) => <NumberInput id={id} value={angle.radius ?? 0.6} positive unit="cm" onChange={(radius) => radius <= 10 && set({ radius: radius === 0.6 ? undefined : radius })} />}</Field>
               <label className="checkbox-row">
                 <input type="checkbox" role="switch" checked={!!angle.double} onChange={(e) => set({ double: e.target.checked || undefined })} />
                 <span>Double arc</span>
               </label>
-              <label className="checkbox-row">
-                <input type="checkbox" role="switch" checked={!!angle.arrow} onChange={(e) => set({ arrow: e.target.checked || undefined })} />
-                <span>Arrow, for a turn</span>
-              </label>
-              <StrokeFields stroke={angle} onChange={set} />
+              {more(
+                'Arrow, line and label look',
+                !!angle.arrow || angle.colour !== undefined || angle.width !== undefined || lookSet(angle) || textSet(angle.label),
+                <>
+                  <label className="checkbox-row">
+                    <input type="checkbox" role="switch" checked={!!angle.arrow} onChange={(e) => set({ arrow: e.target.checked || undefined })} />
+                    <span>Arrow, for a turn</span>
+                  </label>
+                  <StrokeFields stroke={angle} onChange={set} />
+                  <LineLook stroke={angle} onChange={set} />
+                  {angle.label && <TextFields text={text} onChange={(patch) => set({ label: { ...text, ...patch } })} />}
+                </>
+              )}
               <button type="button" className="btn small" title="The angle the other way round, the rest of the turn" onClick={() => set({ from: angle.to, to: angle.from })}>
                 Other side
               </button>
@@ -853,7 +957,14 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
               </Field>
               <StrokeFields stroke={circle} onChange={set} />
               <ColourInput label="Fill" value={circle.fill} fallback="None" onChange={(fill) => set({ fill })} />
-              {circle.fill && <OpacityField label="Fill opacity" value={circle.fillOpacity} onChange={(fillOpacity) => set({ fillOpacity })} />}
+              {more(
+                'Dashes and opacity',
+                lookSet(circle) || circle.fillOpacity !== undefined,
+                <>
+                  <LineLook stroke={circle} onChange={set} />
+                  {circle.fill && <OpacityField label="Fill opacity" value={circle.fillOpacity} onChange={(fillOpacity) => set({ fillOpacity })} />}
+                </>
+              )}
               {circle.to && (
                 <button type="button" className="btn small" title="The rest of the circle" onClick={() => set({ through: circle.to!, to: circle.through })}>
                   Other part
@@ -881,7 +992,15 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
                 )}
               </Field>
               <StrokeFields stroke={line} onChange={set} />
-              <EdgeLabelFields label={line.label} onChange={(label) => set({ label })} />
+              <LabelMain label={line.label} edge hint="LaTeX: $x+2y-4=0$." onChange={(label) => set({ label })} />
+              {more(
+                'Dashes, opacity and label look',
+                lookSet(line) || labelSet(line.label),
+                <>
+                  <LineLook stroke={line} onChange={set} />
+                  <LabelLook label={line.label} edge onChange={(label) => set({ label })} />
+                </>
+              )}
             </>
           );
           break;
@@ -893,6 +1012,7 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
     <div className="ckt-inspector">
       <div className="ckt-inspector-title">{title}</div>
       {fields}
+      {arrange}
       {remove}
     </div>
   );
