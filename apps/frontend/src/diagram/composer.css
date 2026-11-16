@@ -406,13 +406,14 @@
   font-style: italic;
 }
 
-/* a container is picked up by its edge, so clicks inside reach the boxes in it and the canvas */
-.diagram-flow .react-flow__node.tikz-container,
-.diagram-flow .react-flow__node.tikz-container.draggable {
-  pointer-events: none;
+/* a container is picked up by its edge, so clicks and drags inside reach the boxes in it and the canvas (over the
+   pointer-events React Flow writes on the node itself) */
+.diagram-flow .react-flow__node.tikz-container {
+  pointer-events: none !important;
 }
 
-.diagram-flow .react-flow__node.tikz-container .react-flow__resize-control {
+.diagram-flow .react-flow__node.tikz-container .react-flow__resize-control,
+.diagram-flow .react-flow__node.tikz-container .react-flow__handle {
   pointer-events: all;
 }
 
