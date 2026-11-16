@@ -31,6 +31,12 @@ export interface VectorStyle {
 
 export const GRIDS = [0.25, 0.5, 1];
 
+/**
+ * Whether a Style says how thick vectors are: Normal is kept as null, so only a drawing from before there was a vector
+ * thickness has none, and its new vectors are very thick, as vectors were then.
+ */
+export const styledVectors = (raw: Record<string, unknown>) => raw.vectorWidth !== undefined;
+
 /** A thickness read back: a TikZ name, or a width in pt. */
 export const asThickness = (raw: unknown): Thickness | undefined =>
   WIDTHS.includes(raw as never) ? (raw as Thickness) : typeof raw === 'number' && raw > 0 && raw <= 20 ? raw : undefined;

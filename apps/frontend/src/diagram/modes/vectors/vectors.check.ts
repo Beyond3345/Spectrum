@@ -1,8 +1,9 @@
 // Self-check for the vector diagrams mode: constructions stay exact as their points move, the tools' edits, and the
 // TikZ each starter writes. Run:
 // npx esbuild apps/frontend/src/diagram/modes/vectors/vectors.check.ts --bundle --platform=node --log-level=warning | node
-import { vectorCode, readStyle } from './code';
-import { addPanel, applyTool, clipLine, copyIds, dividingSegment, lineThroughPoints, newAxes, pasteInto, projections, removeIds, resolve, rightCorners, triangleMidpoints } from './model';
+import { isColour } from '../shared';
+import { vectorCode, readStyle, styledVectors } from './code';
+import { COLOURS, addPanel, applyTool, dropUnused, nameFree, withText, clipLine, copyIds, dividingSegment, lineThroughPoints, newAxes, pasteInto, projections, removeIds, resolve, rightCorners, triangleMidpoints } from './model';
 import type { Item, Link, VPoint, VectorModel } from './model';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -248,6 +249,32 @@ eq(readStyle({ width: 'huge', vectorWidth: 1.5, colour: ' ', tips: 'none' }), { 
   const old = { ...dividingSegment(), items: [...dividingSegment().items, { id: 'dd', kind: 'segment' as const, a: 'O', b: 'B', dashed: true, width: 'ultra thick' as const }] };
   eq(code(old).body.includes('  \\draw[ultra thick, dashed] (O) -- (B);'), true, '2.0’s dashed and width');
   for (const starter of [lineThroughPoints, dividingSegment, triangleMidpoints, projections]) eq(code(starter()).libraries.filter((l) => l !== 'calc'), [], `${starter.name} needs no new library`);
+}
+
+// ─── 2.5 fixes ───
+
+{
+  // Style › Vector thickness › Normal is kept as null, so new vectors stay thin; only a pre-2.0 Style has none
+  const normal = JSON.parse(JSON.stringify({ vectorWidth: null }));
+  eq([styledVectors(normal), styledVectors({ vectorWidth: 'very thick' }), styledVectors({})], [true, true, false], 'Normal is a vector thickness, a missing one is pre-2.0');
+  eq(readStyle(normal).vectorWidth, undefined, 'and Normal writes no thickness');
+  // clearing a label's text keeps its side, size and colour; a label with nothing else goes
+  eq(withText({ text: '$A$', side: 'below' as const, size: 'small' as const, colour: 'red' }, ''), { text: '', side: 'below', size: 'small', colour: 'red' }, 'an emptied label keeps its look');
+  eq(withText({ text: '$\\mathbf{a}$', pos: 0.3 }, ''), { text: '', pos: 0.3 }, 'and its place along the line');
+  eq(withText({ text: '$A$', side: undefined }, ''), undefined, 'a label with nothing but text goes');
+  eq(withText({ text: '', colour: 'red' }, 'x'), { text: 'x', colour: 'red' }, 'new text takes the kept look');
+  // the swatches are colours the shared field takes
+  eq(COLOURS.every(isColour), true, 'every swatch is an xcolor colour');
+  // a point's name is its own in its panel
+  const m = dividingSegment();
+  const A = m.points.find((p) => p.id === 'A')!;
+  eq([nameFree(m, A, 'B'), nameFree(m, A, 'A'), nameFree(m, A, 'Z')], [false, true, true], 'no second B in a panel');
+  const two = addPanel(m);
+  eq(nameFree({ ...two, points: [...two.points, { ...A, id: 'A9', panel: two.panels[1].id }] }, { ...A, id: 'A9', panel: two.panels[1].id }, 'A'), true, 'another panel may have its own A');
+  // a pick given up takes away the points it made that nothing uses
+  const picked = { ...m, points: [...m.points, { id: 'v9', name: 'Z', x: 9, y: 9, panel: 'g1' }] };
+  eq(dropUnused(picked, ['v9']).points.length, m.points.length, 'a stray point goes');
+  eq(dropUnused(m, ['A', 'B']), m, 'a point a vector or construction uses stays');
 }
 
 console.log('vectors.check: ok');

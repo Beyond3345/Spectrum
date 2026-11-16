@@ -1098,7 +1098,7 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
         </div>
         {canEdit && mode?.Inspector && doc.diagram && (
           <aside className="diagram-inspector">
-            <mode.Inspector model={doc.diagram.model} onChange={setModel} selection={selection} />
+            <mode.Inspector model={doc.diagram.model} onChange={setModel} selection={selection} style={doc.diagram.style} />
           </aside>
         )}
       </div>
