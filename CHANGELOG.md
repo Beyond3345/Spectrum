@@ -2,6 +2,128 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.5.0 (17 November 2026)
+
+### Added
+
+- Every diagram canvas:
+  - Every diagram canvas can draw the circuit canvas's backgrounds: a larger dot every few dots, a line every few, a grid of lines or plain dots
+  - Tool keys for the other composers: W also connects in flowcharts, M draws a member and T a truss bar in Structures, and P adds a point and V a vector in Vector diagrams. Each shows in its tool's tooltip, works only while the pointer is over the drawing and can be changed in Settings › Diagram composer
+  - Settings › Diagram composer has Dark canvas and Minimap switches, which follow you to your other computers. The buttons on a canvas change the same settings
+- Circuits and General drawing:
+  - University styles in Settings › Diagram composer: a switch for each university's symbols, starting with MU Style. Switching one off hides its parts from the parts list and the search. Drawings that already use them still open and compile
+  - General drawing has a Fluid mechanics symbol set of 45 parts: pipes, a reducer, a nozzle, bends, a tee, a valve, a pump, a turbine and a pressure gauge that join end to end, section markers, a centre line, a control volume, velocity profiles, a streamline and a streamtube, tanks with the free surface mark, U-tube, differential, inverted and inclined manometers, a piezometer, a barometer and a hydraulic jack, a gate with its hinge and stop, pressure distributions and the resultant force, a floating block, a hydrometer, a ship's hull with G, B and M, an incline, the plates of a viscosity sketch, capillary tubes and a contact angle
+  - General drawing has a Construction materials symbol set of 22 parts: a cube between platens, a cylinder, the three and four point flexural tests, the slump cone with a true, shear and collapsed slump, a tension bar, a shear block, a roller and a platen, a reinforced concrete section, six steel sections and brickwork in stretcher, English and Flemish bond
+  - The parts list and the chooser find a part by other words for it, so elbow finds a bend and water level finds the free surface mark
+  - Annotate can fill a rectangle, an ellipse or a new shape drawn point by point with water, seawater, oil, mercury, air or concrete. Each is drawn as a tint or as dashes, dots, hatching, cross hatching or stipple, and sits behind the parts drawn in it
+  - Annotate draws hatched boundaries of any length, dimensions with extension lines (along a slope, across or up), the ▽ free-surface mark, points with a letter (with C, CP, G, B and M ready to place) and leader callouts
+- Structures:
+  - Twelve pre-drawn starters (cantilever, overhanging beam, propped cantilever, two-span beam, beam with an internal hinge, triangular load, Pratt, Howe and Warren trusses, portal frame, three-hinged frame and inclined member), each solved as it opens
+  - A support can be given a settlement, which the structure follows and, when it is indeterminate, takes forces from. EI is now in the drawing's units (kN m² by default), so a settlement and the deflections use the members' own EI
+  - A distributed load on an inclined member can be per horizontal length, as snow on a roof, and is drawn on plan
+  - The deflected shape can be drawn with the other diagrams, fitted to the drawing or the true deflection times 1 to 10000, with the largest deflection labelled
+  - x can be marked on the shear and bending moment diagrams where the shear is zero and the moment largest
+  - An internal shear release beside the internal hinge: moment passes it and shear does not
+  - Changing a structure's units offers to convert its numbers or keep them as typed
+  - The canvas counts in whole metres (or feet), with Settings › Diagram composer's backgrounds
+  - M picks Beam or frame member and T picks Truss bar while the pointer is over the drawing; both can be changed in Settings
+  - The inspector folds the rarer fields (stiffness, a support's angle and settlement, a load's direction and on-plan switch, hinge and shear release), and each fold opens when one of its fields is set
+  - Labels on the canvas show subscripts as they print, such as A_y and q_0
+  - Drag a box to select, drag a selection to move it, nudge with the arrow keys, select all with ⌘A, mirror with X and Y, and turn a selection by any angle from the inspector. Space or the middle button pans
+  - The canvas uses the PDF's scale, so text, arrows and line widths sit where they will print
+  - A load per horizontal length is drawn as a level band just above the member, with arrows all the same length
+- Vector diagrams:
+  - An angle with θ, a circle or an arc, a line from its equation with its intercepts marked, a drop to both axes and equal-length ticks
+  - Constructions for where two lines cross, a scalar multiple such as −2v, a vector placed at another point, a reflection in a line, and a parallel or a perpendicular through a point. Each follows the points it is built on
+  - Points made by a vector diagram's drawing tools have no dot or letter. The Point tool's points still have both
+  - Style › Vector names writes each \mathbf{…} in a vector diagram's labels as \vec, \overrightarrow or esvect's \vv, with a default for new drawings in Settings › Diagram composer. Insert adds esvect when \vv is used
+  - The canvas has the counting grid, with a larger mark every centimetre, the x and y axes darker, and the pointer's x and y beside the zoom
+  - P picks Point and V picks Vector while the pointer is over the drawing. You can change both in Settings › Diagram composer
+  - Rarer settings fold under one line in the inspector, which opens when any of them is set
+  - A label with no side of its own is placed clear of arrows, lines and other labels, in the PDF and on the canvas alike. Existing figures with such labels may show them moved. A new side, "Beside the arrow, left or right", keeps a label beside a steep vector
+  - Labels show as they print, with real subscripts, bold vectors, arrows over \vec and \parallel as ∥
+  - Drag a whole selection, select with a marquee, nudge with the arrow keys, turn by any angle, mirror, and set the colour and thickness of everything selected
+  - The canvas follows the Style's scale, and lines and arrow tips are drawn at their printed width
+  - Nine new starters: free-body diagram on a block, triangle law, parallelogram law, force polygon, position vectors with i and j, medians of a triangle, angle between two vectors, line from its equation and scalar multiples
+- Flowcharts and commutative diagrams:
+  - A label can sit on its arrow or beside it, on either side, anywhere along it
+  - Block diagrams get a gain, a takeoff point and + and − signs at a summing junction
+  - New terminal, manual input and off-page connector shapes, and swimlanes with their title on any side
+  - Turn a selection a quarter either way, or mirror it
+  - Commutative diagrams: double, maps to, equals, tail and harpoon arrows, loops, and two arrows between the same objects drawn apart
+  - Commutative diagrams: select several arrows to change them all at once
+  - Flowcharts, state machines, model architectures and commutative diagrams draw Settings › Diagram composer's background, on the points boxes snap to
+  - A Connect tool (W) joins two shapes with a click on each
+  - Flow canvases use the circuit canvas's mouse: drag to select, Shift to add, Space or the middle button to pan, ⌘A to select all
+  - Box text and arrow labels show subscripts and superscripts, and canvas text is the size the PDF prints, breaking lines where the PDF does
+  - New flow starters: Decision flowchart, Feedback loop, Swimlane process, Model architecture in Typst, Commutative square, Pullback and Short exact sequence. A search for a flowchart shape such as "decision" opens the Flowchart composer
+- Plots, Venn diagrams and Mermaid:
+  - Plots take points typed into the composer, with an error bar and a label on any point, and no data file needed
+  - A least-squares line through a series of points, through the origin if you like, with its equation as its legend
+  - Mark shapes, a dash-dot line, and marks with no line for a scatter
+  - Equal axes, so a circle is round; a height; x increasing to the left; a black and white line and marker cycle
+  - Break at asymptotes, so tan(x) is not joined across them, now without a y range
+  - Tick numbers with a set number of decimals, plain numbers with no ×10ⁿ, and a decimal comma
+  - The legend can sit below the plot in a row; bars and error bars for typed points and data files
+  - A shaded area on any series, so a band between two series (an envelope) or the area under a data curve; and a smooth sketch curve through typed points
+  - Two starters from Construction Materials: a stress–strain curve with its named points, an unloading line and the area under it, and a grading curve on a log axis inside a grading envelope
+  - A .csv split by semicolons, with decimal commas, plots as its columns. Annotations go at expressions such as pi/2
+  - Each series' line, marks and colour, the rarer axis settings (grid, size, scales, ticks) and an annotation's colour fold under one line, which opens when any of them is set, so a new plot's form is short
+  - Venn diagrams: the regions are one table, a row each named by the sets' names, with a shade switch and a count
+  - New plot starters: Normal curve, Bode magnitude plot, Damped oscillation, Polar rose, Lissajous figure, Conics and Phase portrait
+  - New Mermaid starters and templates: Entity–relationship diagram, Pie chart, Bar and line chart, Mind map, Timeline and Git graph
+- Form presets:
+  - Four new Form presets for fluid mechanics, in the chooser: Hydrostatic force on a gate, Manometer, Accelerating tank, and Floating body and stability. Each works out its answers (the resultant force and centre of pressure and the forces on the stop and hinge; the pressure difference; the tilted surface, depths, corner pressures and the acceleration that spills; the draught and metacentric height) and draws the figure as the course's slides or exam papers do
+
+### Changed
+
+- Settings › Diagram composer describes every canvas, not only the circuit's
+- An inspector's fold opens by itself when a field inside becomes set later, such as by Redo
+- Labels on the circuit canvas show Greek letters and common maths signs
+- A drawing that uses anything new in 2.5 saves as file version 5, which Spectrum 2.4 and earlier open as code
+
+### Fixed
+
+- Structures:
+  - A bending moment diagram labels its values with the right sign on a beam drawn from right to left, so a 6 m beam with 10 kN/m reads 45 kN m, not −45. The diagram itself was already on the correct side
+  - A spring support's stiffness no longer depends on the longest member in the structure. Its stiffness is now set in force per length (a moment per radian for a rotational spring) against the members' EI, so drawings with springs show different reactions from before
+  - The structures canvas no longer solves the structure again on every pointer move
+  - Paste puts the copy two grid steps along and down, so it no longer lands on top of the original in N and mm
+  - A joint, hinge or support clicked on an inclined member lands on the member. It could land on a grid point beside it, where a support was silently left out of the solve
+  - An unstable structure marks the joint that can move on the canvas, as well as naming it
+  - A distributed load that changes sign draws each part on its own side, with its arrows the way it acts
+  - The structures inspector's and Style menu's dropdowns and paired number fields have accessible names
+  - A member drawn to end on an inclined member, or a joint dragged onto one, lands on its line and splits it, rather than on a grid point beside it
+  - With bending moments positive up, a frame member's moment values no longer change sign with the way the member was drawn
+  - Members of a structure whose EI is typed in real units stay as rigid along their length as before, so a frame no longer sinks and shares its sideways load correctly
+- Vector diagrams:
+  - Choosing Normal for Style › Vector thickness no longer makes every new vector very thick
+  - Clearing a label's text keeps its side, size and colour
+  - A colour name is written into the code only once it is a whole xcolor colour, and the canvas shows colours as the PDF prints them
+  - Esc part way through a tool starts it again, keeps the tool and takes away the points it had made
+  - The inspector shows the Style's tip size and point size, and typing that value keeps the item on the Style
+  - A point cannot take a name another point in its panel already has
+  - Every inspector menu is named by its label for screen readers
+- Flowcharts and commutative diagrams:
+  - Resizing a flowchart box from its left or top edge now grows it that way, in 0.5 cm steps
+  - Flowchart text with %, &, # or _ (such as "50% done" or "R&D") now compiles in TikZ
+  - Typst flowcharts keep a box's line breaks, and $…$ in a box or label is maths
+  - New circles, states, operators, ellipses, documents and stacks have even sizes, so arrows between boxes in line come out straight
+  - Black lines and text show on the dark canvas
+  - The arrow keys move the selected objects a cell, and the label side is named as the arrow runs (Left or Right for a vertical arrow)
+  - Converting to Typst imports the fletcher version your default Typst can load, and a flowchart with a document or stack stays a picture
+  - A drag inside a container or swimlane moved the whole box instead of reaching what is in it
+- Plots, Mohr's circle, Venn diagrams and Mermaid:
+  - A % in a plot's, Venn diagram's or Mohr's circle's text no longer stops the figure compiling
+  - Mohr's circle and Venn diagram labels move clear of the circles, the axes and each other, and a Venn diagram's frame grows to hold long set names. Existing figures get the new places when next opened
+  - A plot's domain and axis limits accept expressions such as 2*pi
+  - A new plot's legend sits beside it, and a series without a legend no longer leaves an empty row in it
+  - Changing a series' kind and back keeps what it had
+  - tan(x) and the like are no longer joined across their asymptotes when the y range is set
+  - A data file without a header row offers its columns by place, and a file whose columns cannot be found says so
+  - A Mermaid diagram's PDF or PNG in the document follows its code each time it is saved
+- Space could be recorded as a diagram shortcut although the canvas uses it to pan
+
 ## 2.4.1 (15 November 2026)
 
 ### Added
