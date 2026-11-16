@@ -93,6 +93,8 @@ export default function JyutpingSheet({
 
   // saved as it changes, after a pause in typing; the last change goes as the sheet closes
   const savedRef = useRef(JSON.stringify(initial ?? null));
+  // as the sheet opened: `initial` follows each save, so a change saved before closing would look like none
+  const openedRef = useRef(JSON.stringify(initial ?? null));
   const latest = useRef({ stored, storedKey, current });
   latest.current = { stored, storedKey, current };
   const save = () => {
@@ -106,7 +108,7 @@ export default function JyutpingSheet({
   }, [storedKey, info]);
 
   const close = () => {
-    const changed = latest.current.storedKey !== JSON.stringify(initial ?? null);
+    const changed = latest.current.storedKey !== openedRef.current;
     save();
     // no stale font or options left in the preamble
     if (changed && info && mode === 'manual' && loaded) void onPreamble(latest.current.current, false);
