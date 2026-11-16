@@ -1,8 +1,7 @@
 // The Venn diagram preset: two or three sets as circles, any region shaded, a count or text in any region. Each
 // region's boundary is worked out here as arcs of the circles, so each shaded region is one \fill of its own.
 import type { DiagramCode } from '../../fileFormat';
-import { escapeTex } from '../../texEscape';
-import { mathsPackages, num } from '../shared';
+import { escapeTex, mathsPackages, num } from '../shared';
 import { anchorFor, placeLabels, shapesOf, textBox } from '../structures/labels';
 import type { Box } from '../structures/labels';
 import type { FormField, FormPreset, FormValues } from './presets';

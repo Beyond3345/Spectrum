@@ -5,9 +5,8 @@
 // drawn the same way with the axis pointing up), or τ positive upward.
 import type { DiagramCode } from '../../fileFormat';
 import type { ComposerDefaults } from '../../types';
-import { escapeTex } from '../../texEscape';
 import { unitWriter } from '../../units';
-import { num } from '../shared';
+import { escapeTex, num } from '../shared';
 import { anchorFor, formatValue } from '../structures/draw';
 import { placeLabels, shapesOf } from '../structures/labels';
 import type { Label, Shape, ShapeItem } from '../structures/labels';
