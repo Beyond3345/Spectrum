@@ -396,7 +396,7 @@ const MATHS = /(\$\$\S(?:[^$]*?\S)?\$\$(?!\d)|\$[^\s$](?:[^$]*?[^\s$])?\$(?!\d))
  * A caption's or cell's Typst text: typstMarkup, but its maths kept as maths, with only \ [ and ] escaped there. markup:
  * the text is Typst markup already (the converter's), written as it is.
  */
-const typstText = (text, markup = false) =>
+export const typstText = (text, markup = false) =>
   markup
     ? text.trim()
     : escapeMarker(

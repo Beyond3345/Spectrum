@@ -3,7 +3,14 @@
 // fletcher/code.ts import it) and the converter, which writes a drawing again in the other language. Pure; checked in
 // tikz.check.ts and fletcher.check.ts. One grid unit is 0.25 cm, y down on the canvas and up in TikZ and fletcher.
 
-import { typstMarkup as content } from './floats.js';
+import { typstText } from './floats.js';
+
+// ponytail: a local escape for flow texts; it folds into the shared helper (apps/frontend/src/diagram/texEscape.ts)
+// once both are merged
+/** Plain text as LaTeX prints it: % & # _ escaped (unless they are already), outside its $…$ maths. */
+const texText = (text) => text.split(/(\$[^$]*\$)/).map((part, i) => (i % 2 ? part : part.replace(/(?<!\\)[%&#_]/g, '\\$&'))).join('');
+/** A text as fletcher content: its $…$ maths kept as maths and each line break a Typst linebreak. */
+const content = (text) => text.trim().split('\n').map((line) => typstText(line)).join(' \\ ');
 
 // ─── small pieces the TikZ modes' code writers share ───
 
@@ -169,13 +176,13 @@ function boxLines(box) {
     ...size,
     stateShape(box.shape) && box.initial && `initial, initial where=${COMPASS[box.initial]}, initial text=`,
     // a container's title sits inside its top-left corner and its ×N outside on the right; a stack's caption below it
-    box.shape === 'container' && title && `label={[anchor=north west]north west:{${title}}}`,
+    box.shape === 'container' && title && `label={[anchor=north west]north west:{${texText(title)}}}`,
     box.shape === 'container' && box.repeat?.trim() && `label={east:{$\\times ${box.repeat.trim()}$}}`,
-    box.shape === 'stack' && title && `label={below:{${title}}}`,
+    box.shape === 'stack' && title && `label={below:{${texText(title)}}}`,
     box.wrap && !plain && `text width=${num(Math.max(0.25, box.w * CM_PER_UNIT - 0.25))}cm`,
     'align=center'
   ].filter(Boolean);
-  const lines = box.text.split('\n').map((l) => l.trim());
+  const lines = box.text.split('\n').map((l) => texText(l.trim()));
   const text = box.shape === 'container' || box.shape === 'stack' ? '' : MATHS_SHAPES.includes(box.shape) ? (title ? `$${title}$` : '') : lines.join(' \\\\ ').trim();
   const node = `\\node[${options.join(', ')}] (${box.id}) at ${at(box.x + box.w / 2, box.y + box.h / 2)} {${text}};`;
   if (box.shape !== 'stack') return [node];
@@ -192,7 +199,7 @@ function linkLine(link, boxes) {
   const options = [TIKZ_HEADS[link.heads], ...lineOptions(link)].filter(Boolean);
   const start = `(${from.id}.${ANCHOR[link.fromSide]})`;
   const end = `(${to.id}.${ANCHOR[link.toSide]})`;
-  const label = (pos) => (link.label?.trim() ? ` node[${pos}, fill=white, inner sep=2pt] {${link.label.trim()}}` : '');
+  const label = (pos) => (link.label?.trim() ? ` node[${pos}, fill=white, inner sep=2pt] {${texText(link.label.trim())}}` : '');
   let path;
   if (from === to) {
     // out and back on its side as TikZ's loop above and the like do, without their every loop arrow

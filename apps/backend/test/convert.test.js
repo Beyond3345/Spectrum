@@ -725,4 +725,11 @@ test('a composer flowchart is written again in the other language from its drawi
   assert.equal(flowchartFor(typst, 'tikz'), null, 'Typst maths TeX can’t read keeps the picture a PDF');
   const plain = { ...typst, model: { ...typst.model, boxes: [typst.model.boxes[0]] } };
   assert.match(flowchartFile(flowchartFor(plain, 'tikz'), 'tikz'), /^\\documentclass\[border=2pt\]\{standalone\}\n\\usepackage\{tikz\}[\s\S]*\\node\[draw, rectangle, rounded corners/);
+  // the Typst the new project compiles with picks fletcher's import line
+  assert.match(flowchartFile(typst, 'typst', '0.12.0'), /^#import "@preview\/fletcher:0\.5\.5"/);
+  // a shape fletcher can't draw keeps the picture a PDF
+  for (const shape of ['document', 'stack']) assert.equal(flowchartFor({ ...tikz, model: { ...tikz.model, boxes: [{ ...tikz.model.boxes[0], shape }] } }, 'typst', typstMaths), null, shape);
+  // TikZ escapes % & # _ in plain words, so a Typst text with them reads the same in TikZ
+  const amp = { ...plain, model: { ...plain.model, boxes: [{ ...plain.model.boxes[0], text: 'R&D 50%' }] } };
+  assert.match(flowchartFile(flowchartFor(amp, 'tikz'), 'tikz'), /\{R\\&D 50\\%\}/);
 });
