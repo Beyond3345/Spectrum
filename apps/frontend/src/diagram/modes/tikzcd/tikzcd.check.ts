@@ -1,6 +1,6 @@
 // Self-check for the commutative diagram mode's code. Run:
 // npx esbuild apps/frontend/src/diagram/modes/tikzcd/tikzcd.check.ts --bundle --platform=node --log-level=warning | node
-import { cdCode, cdNeedsVersion5, connectCd, copyCd, direction, labelSides, pasteCd, removeCd } from './code';
+import { cdCode, cdNeedsVersion5, connectCd, copyCd, direction, hookEnd, labelSides, pasteCd, removeCd } from './code';
 import type { CdModel } from './code';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -77,5 +77,8 @@ const kinds: CdModel = {
 eq(cdCode(kinds).body.split('\n')[1], 'A \\arrow[r, Rightarrow, "\\alpha"] \\arrow[r, mapsto, shift left] \\arrow[r, equal, shift right] \\arrow[loop above, "f"] & B \\arrow[l, tail, hook] \\arrow[l, harpoon, dashed] \\arrow[loop right, "g"\']', 'kinds, shifts and loops');
 eq(cdNeedsVersion5(square), false, 'the first drawing needs no version 5');
 eq(kinds.arrows.map((a) => cdNeedsVersion5({ cells: two.cells, arrows: [a] })), [true, true, true, true, true, true, true], 'each kind, a shift and a loop need version 5');
+
+// the canvas's hook is on the arrow's left whatever side its label is: above →, right of ↓ (as the screen shows it), below ←
+eq([[1, 0], [0, 1], [-1, 0]].map((u) => hookEnd([0, 0], u)), [[0, -8], [8, 0], [0, 8]], 'a hook on the left of its arrow');
 
 console.log('tikzcd.check: ok');
