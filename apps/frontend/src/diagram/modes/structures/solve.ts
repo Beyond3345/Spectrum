@@ -3,8 +3,13 @@
 // loads, supports as constrained freedoms (turned for inclined ones) and springs on the diagonal, solved by Gaussian
 // elimination with partial pivoting. A determinate structure gets its exact equilibrium answer whatever its stiffnesses;
 // an indeterminate one uses the relative EI and EA. Members are cut at every load so the forces along each piece are
-// exact polynomials (axial and shear up to quadratic, moment up to cubic).
-import { frameOf, loadDirection, memberName, members, nodeMap, supports } from './model';
+// exact polynomials (axial and shear up to quadratic, moment up to cubic), and so is the deflection (M/EI twice
+// integrated, up to the fifth power).
+//
+// The solve's lengths are fractions of the longest member, Lc, with EI as typed: it is the true structure with every
+// stiffness Lc² times greater (EA, which is relative, keeps its ratio to EI). Its forces are the true ones, and its
+// displacements are the true ones over Lc² (in lengths of Lc), which is how settlements go in and deflections come out.
+import { frameOf, loadDirection, memberName, members, nodeMap, perLength, supports } from './model';
 import type { Member, Pt, StructureModel, Support } from './model';
 
 /** Forces along a piece of a member, as polynomials in s, 0 to L from the piece's start (N tension, V and M beam signs). */
@@ -15,6 +20,9 @@ export interface Piece {
   N: number[];
   V: number[];
   M: number[];
+  /** the displacement across the piece, along its left-hand normal, and along it at its two ends, in the drawing's length */
+  D: number[];
+  U: [number, number];
 }
 
 export interface Reaction {
@@ -89,6 +97,8 @@ type Element = {
   nodes: [number, number];
   released: [boolean, boolean];
   bar: boolean;
+  /** the ends whose shear is released (they slide square to the member) */
+  slid: [boolean, boolean];
   EI: number;
   EA: number;
   c: number;
@@ -156,13 +166,31 @@ function condense(k: number[][], f: number[], released: number[]) {
   return { k: kc, f: fc };
 }
 
+/** The inverse of a small matrix (the released freedoms of one piece, up to four), by Gauss–Jordan. */
 function invertSmall(m: number[][]) {
-  if (m.length === 1) return [[1 / m[0][0]]];
-  const det = m[0][0] * m[1][1] - m[0][1] * m[1][0];
-  return [
-    [m[1][1] / det, -m[0][1] / det],
-    [-m[1][0] / det, m[0][0] / det]
-  ];
+  const n = m.length;
+  const a = m.map((row, i) => [...row, ...row.map((_, j) => (i === j ? 1 : 0))]);
+  for (let col = 0; col < n; col += 1) {
+    const best = a.reduce((b, row, r) => (r >= col && Math.abs(row[col]) > Math.abs(a[b][col]) ? r : b), col);
+    [a[col], a[best]] = [a[best], a[col]];
+    const pivot = a[col][col];
+    a[col] = a[col].map((v) => v / pivot);
+    for (let r = 0; r < n; r += 1) if (r !== col) a[r] = a[r].map((v, j) => v - a[r][col] * a[col][j]);
+  }
+  return a.map((row) => row.slice(n));
+}
+
+/**
+ * The member ends whose shear is released, as "member:end": at a node with a shear release, every beam member's end but
+ * the first one's, which carries the node.
+ */
+export function slidEnds(model: StructureModel) {
+  const out = new Set<string>();
+  for (const n of model.nodes) {
+    if (!n.shear) continue;
+    members(model).filter((m) => !m.bar && (m.a === n.id || m.b === n.id)).slice(1).forEach((m) => out.add(`${m.id}:${m.a === n.id ? 0 : 1}`));
+  }
+  return out;
 }
 
 /** Solves A x = b in place by Gaussian elimination with partial pivoting; a column with no usable pivot is returned. */
@@ -201,7 +229,8 @@ export function indeterminacy(model: StructureModel) {
   const endReleased = (m: Member, end: 0 | 1) => !m.bar && (!!m.release?.[end] || hinge(end ? m.b : m.a));
   const sups = supports(model).filter((s) => used.has(s.node));
   const turns = (id: string) => all.some((m) => !m.bar && ((m.a === id && !endReleased(m, 0)) || (m.b === id && !endReleased(m, 1)))) || sups.some((s) => s.node === id && holdsTurning(s.type));
-  const unknowns = all.reduce((n, m) => n + (m.bar ? 1 : 3 - (endReleased(m, 0) ? 1 : 0) - (endReleased(m, 1) ? 1 : 0)), 0);
+  const slid = slidEnds(model);
+  const unknowns = all.reduce((n, m) => n + (m.bar ? 1 : 3 - [0, 1].filter((end) => endReleased(m, end as 0 | 1)).length - [0, 1].filter((end) => slid.has(`${m.id}:${end}`)).length), 0);
   const reactions = sups.reduce((n, s) => n + RESTRAINTS[s.type].fixed.length + (RESTRAINTS[s.type].spring !== undefined ? 1 : 0), 0);
   const equations = [...used].reduce((n, id) => n + (turns(id) ? 3 : 2), 0);
   return unknowns + reactions - equations;
@@ -232,6 +261,7 @@ export function solve(model: StructureModel): Solution {
     return index.get(id)!;
   };
   const elements: Element[] = [];
+  const slid = slidEnds(model);
   /** where along each member its cuts are, and the point index at each */
   const cutsOf = new Map<string, { s: number; point: number }[]>();
   for (const m of all) {
@@ -267,6 +297,7 @@ export function solve(model: StructureModel): Solution {
           i === cuts.length - 2 && !m.bar && (!!m.release?.[1] || !!nodes.get(m.b)?.hinge)
         ],
         bar: !!m.bar,
+        slid: [i === 0 && slid.has(`${m.id}:0`), i === cuts.length - 2 && slid.has(`${m.id}:1`)],
         EI: m.EI && m.EI > 0 ? m.EI : 1,
         EA: m.EA && m.EA > 0 ? m.EA : 1,
         c: f.u.x,
@@ -278,7 +309,7 @@ export function solve(model: StructureModel): Solution {
         if (p.kind !== 'dist' || p.member !== m.id || p.to - p.from <= tol) continue;
         const [lo, hi] = [Math.min(p.from, p.to), Math.max(p.from, p.to)];
         if (from < lo - tol || to > hi + tol) continue;
-        const w = (s: number) => p.w1 + ((p.w2 - p.w1) * (s - p.from)) / (p.to - p.from);
+        const w = (s: number) => (p.w1 + ((p.w2 - p.w1) * (s - p.from)) / (p.to - p.from)) * perLength(p, f.u);
         const d = loadDirection(p, f.u);
         const along = d.x * f.u.x + d.y * f.u.y;
         const across = d.x * f.n.x + d.y * f.n.y;
@@ -320,7 +351,7 @@ export function solve(model: StructureModel): Solution {
     const l = e.L / Lc;
     const k = localStiffness(e, l);
     const f = localLoads([e.p[0] * Lc, e.p[1] * Lc], [e.q[0] * Lc, e.q[1] * Lc], l, e.bar);
-    const released = e.bar ? [] : [e.released[0] && 2, e.released[1] && 5].filter((x): x is number => typeof x === 'number');
+    const released = e.bar ? [] : [e.slid[0] && 1, e.released[0] && 2, e.slid[1] && 4, e.released[1] && 5].filter((x): x is number => typeof x === 'number');
     const kept = condense(k, f, released);
     const T = transform(e);
     const map = elementDofs(e);
@@ -385,11 +416,23 @@ export function solve(model: StructureModel): Solution {
     }
   }
 
+  // ─── settlements: the held freedoms moved with the ground, in the support's frame ───
+  const D = new Array<number>(count).fill(0);
+  for (const [i, sup] of supportAt) {
+    if (!sup.settle) continue;
+    const { c, s } = turned.get(i) ?? { c: 1, s: 0 };
+    // the ground moves (0, −settle): along the surface s·down, out of it c·down; true lengths over Lc³ in the solve
+    const down = -sup.settle / Lc ** 3;
+    const local = [s * down, c * down];
+    for (const l of RESTRAINTS[sup.type].fixed) if (l < 2 && dofs[i][l] >= 0) D[dofs[i][l]] = local[l];
+  }
+
   // ─── solve the free freedoms ───
   const free = [...Array(count).keys()].filter((d) => !held.has(d));
   // scaled by the diagonal first, so a short piece beside a load (very stiff) doesn't swamp the tolerance
   const sc = free.map((d) => (K[d][d] ? 1 / Math.sqrt(Math.abs(K[d][d])) : 1));
-  const solved = gauss(free.map((r, i) => free.map((c, j) => K[r][c] * sc[i] * sc[j])), free.map((r, i) => F[r] * sc[i]), 1e-9);
+  const rhs = free.map((r) => F[r] - [...held].reduce((sum, c) => sum + K[r][c] * D[c], 0));
+  const solved = gauss(free.map((r, i) => free.map((c, j) => K[r][c] * sc[i] * sc[j])), rhs.map((v, i) => v * sc[i]), 1e-9);
   if ('x' in solved) solved.x = solved.x.map((v, i) => v * sc[i]);
   if ('singular' in solved) {
     const dof = free[solved.singular];
@@ -398,7 +441,6 @@ export function solve(model: StructureModel): Solution {
     const name = points[at].name;
     return result({ kind: 'unstable', text: `Unstable: ${name} can move ${DIRECTIONS[way]}.`, node: points[at].real });
   }
-  const D = new Array<number>(count).fill(0);
   free.forEach((d, i) => (D[d] = solved.x[i]));
 
   // ─── reactions, in each support's frame then turned back ───
@@ -439,12 +481,17 @@ export function solve(model: StructureModel): Solution {
     const { L } = e;
     const [p1, p2] = e.p;
     const [q1, q2] = e.q;
+    const M = [-Ma, Fy, q1 / 2, (q2 - q1) / (6 * L)];
+    // the true displacements: the solve's over Lc² in lengths of Lc; across a beam piece, v'' = M/EI from its start
+    const [u0, v0, r0, u1, v1] = [d[0] * Lc ** 3, d[1] * Lc ** 3, d[2] * Lc ** 2, d[3] * Lc ** 3, d[4] * Lc ** 3];
     const piece: Piece = {
       s0: e.s0,
       L,
       N: [-Fx, -p1, -(p2 - p1) / (2 * L), 0],
       V: [Fy, q1, (q2 - q1) / (2 * L), 0],
-      M: [-Ma, Fy, q1 / 2, (q2 - q1) / (6 * L)]
+      M,
+      D: e.bar ? [v0, (v1 - v0) / L] : [v0, r0, ...M.map((c, k) => c / (e.EI * (k + 1) * (k + 2)))],
+      U: [u0, u1]
     };
     pieces.set(e.member.id, [...(pieces.get(e.member.id) ?? []), piece]);
     // the ends' forces on their nodes (the reverse of p), back in x and y
@@ -469,7 +516,7 @@ export function solve(model: StructureModel): Solution {
       // the load as the solve carries it: its ends at their cuts (within the member), its values there
       const [from, to] = [cutAt(m.id, p.from)!.s, cutAt(m.id, p.to)!.s];
       const at = (s: number) => (p.to === p.from ? p.w1 : p.w1 + ((p.w2 - p.w1) * (s - p.from)) / (p.to - p.from));
-      const [w1, w2] = [at(from), at(to)];
+      const [w1, w2] = [at(from) * perLength(p, f.u), at(to) * perLength(p, f.u)];
       const d = loadDirection(p, f.u);
       const span = to - from;
       const W = ((w1 + w2) / 2) * span;
@@ -507,7 +554,8 @@ export function solve(model: StructureModel): Solution {
   }
 
   const degree = indeterminacy(model);
-  const relative = all.some((m) => !m.bar) ? 'relative EI used' : 'relative EA used';
+  // a settlement's forces hang on EI itself, not only on the members' ratios
+  const relative = all.some((m) => !m.bar) ? (sups.some((s) => s.settle) ? 'EI used' : 'relative EI used') : 'relative EA used';
   const status: Status = degree > 0 ? { kind: 'ok', text: `Indeterminate to degree ${degree} (${relative})`, degree } : { kind: 'ok', text: 'Determinate and stable', degree: 0 };
   return { status, reactions, pieces, ends, tiny, tinyMoment: tiny * Lc, notes };
 }
@@ -519,6 +567,15 @@ export function forcesAt(solution: Solution, member: string, s: number) {
   if (!piece) return { N: 0, V: 0, M: 0 };
   const t = Math.max(0, Math.min(piece.L, s - piece.s0));
   return { N: evalPoly(piece.N, t), V: evalPoly(piece.V, t), M: evalPoly(piece.M, t) };
+}
+
+/** A member's displacement at a distance along it (the drawing's length unit): along it, and across it to its left. */
+export function displacementAt(solution: Solution, member: string, s: number) {
+  const list = solution.pieces.get(member) ?? [];
+  const piece = list.find((p) => s <= p.s0 + p.L + 1e-12) ?? list[list.length - 1];
+  if (!piece) return { u: 0, v: 0 };
+  const t = Math.max(0, Math.min(piece.L, s - piece.s0));
+  return { u: piece.U[0] + ((piece.U[1] - piece.U[0]) * t) / piece.L, v: evalPoly(piece.D, t) };
 }
 
 /** A bar's force (tension positive): its axial force, the same all along. */

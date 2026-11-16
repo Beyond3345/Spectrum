@@ -145,6 +145,24 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
   eq([(await forPhysics(byHand))?.includes('\\qty'), (await readDiagramFile((await forPhysics(byHand))!)).edited], [false, true], 'edited by hand: the text only, still edited');
   eq(await forPhysics(await diagramFileText(circuit, code)), null, 'nothing to change');
 
+  // a structure with what 2.5 added (a shear release, a settlement, a load on plan, the deflected shape, x marks) is
+  // version 5; one without keeps its version
+  const beam = { nodes: [{ id: 'A', x: 0, y: 0 }, { id: 'B', x: 6, y: 0 }], parts: [{ id: 'm', kind: 'member', a: 'A', b: 'B' }, { id: 's', kind: 'support', node: 'A', type: 'pin' }, { id: 'w', kind: 'dist', member: 'm', from: 0, to: 6, w1: 10, w2: 10, angle: -90 }] };
+  const withPart = (patch: Record<string, unknown>, id: string) => ({ ...beam, parts: beam.parts.map((p) => (p.id === id ? { ...p, ...patch } : p)) });
+  eq(
+    [
+      (await json({ ...structure, model: beam }))?.version,
+      (await json({ ...structure, model: { ...beam, nodes: [beam.nodes[0], { ...beam.nodes[1], shear: true }] } }))?.version,
+      (await json({ ...structure, model: withPart({ settle: 0.01 }, 's') }))?.version,
+      (await json({ ...structure, model: withPart({ projected: true }, 'w') }))?.version,
+      (await json({ ...structure, model: beam, style: { ...structure.style, deflection: 'fit' } }))?.version,
+      (await json({ ...structure, model: beam, style: { ...structure.style, positions: true } }))?.version,
+      (await json({ ...structure, model: beam, style: { ...structure.style, siUnits: true } }))?.version
+    ],
+    [1, 5, 5, 5, 5, 5, 3],
+    'structures: 2.5’s additions make version 5'
+  );
+
   // version 5 (what 2.5 adds to a drawing) reads back; a version this build doesn't know opens as code
   const v5 = `${tikzDocument(code)}% spectrum-diagram v1 ${btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify({ ...circuit, version: 5 }))))} 0123456789abcdef\n`;
   eq((await readDiagramFile(v5)).diagram?.version, 5, 'version 5 reads back');

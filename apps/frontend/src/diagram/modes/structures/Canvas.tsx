@@ -10,7 +10,7 @@ import { colourCss } from '../shared';
 import { buildScene, extentOf, readStyle } from './draw';
 import type { Anchor, Item } from './draw';
 import { INNER_SEP } from './labels';
-import { UNITS, asStructure, connect, dist, frameOf, memberNear, placeTool, settleNode } from './model';
+import { UNITS, asStructure, connect, dist, frameOf, placeTool, settleNode, snapOnMember } from './model';
 import type { Part, Pt, StructureModel } from './model';
 import { solve } from './solve';
 import { setShown } from './store';
@@ -44,7 +44,7 @@ const TWO_POINT = (tool: string) => tool === 'beam' || tool === 'bar' || tool ==
 const plain = (tex: string) =>
   tex
     .replace(/\\,/g, ' ')
-    .replace(/\\(theta|sigma|tau|alpha|beta|phi)\b/g, (_, name: string) => ({ theta: 'θ', sigma: 'σ', tau: 'τ', alpha: 'α', beta: 'β', phi: 'φ' })[name] ?? name)
+    .replace(/\\(theta|sigma|tau|alpha|beta|phi|Delta|delta|times|max)\b/g, (_, name: string) => ({ theta: 'θ', sigma: 'σ', tau: 'τ', alpha: 'α', beta: 'β', phi: 'φ', Delta: 'Δ', delta: 'δ', times: '×', max: 'max' })[name] ?? name)
     .replace(/[$]/g, '')
     .replace(/_\{([^}]*)\}|_(\w)/g, '$1$2')
     .replace(/\\[a-zA-Z]+/g, '')
@@ -96,7 +96,7 @@ export default function StructureCanvas({
   const prefs = useCanvasPrefs();
 
   const shown = draft || model;
-  useEffect(() => setShown(model, style), [model, rawStyle]);
+  useEffect(() => setShown(model, style, onChange), [model, rawStyle]);
   const solution = useMemo(() => solve(shown), [shown]);
   const scene = useMemo(() => buildScene(shown, solution, style, true), [shown, solution, rawStyle]);
   const units = UNITS[style.units];
@@ -163,26 +163,16 @@ export default function StructureCanvas({
   // ─── snapping ───
 
   const snapToGrid = (p: Pt) => ({ x: Math.round(p.x / grid) * grid, y: Math.round(p.y / grid) * grid });
-  /** a node within reach, else the grid; skip: a node that's moving */
-  const snap = (p: Pt, m: StructureModel, skip?: string) => {
-    const node = m.nodes.filter((n) => n.id !== skip).reduce<{ n: Pt; d: number } | null>((best, n) => {
+  /** a node within reach, else the grid */
+  const snap = (p: Pt, m: StructureModel) => {
+    const node = m.nodes.reduce<{ n: Pt; d: number } | null>((best, n) => {
       const d = dist(n, p);
       return d <= tolerance && (!best || d < best.d) ? { n, d } : best;
     }, null);
     return node ? { x: node.n.x, y: node.n.y } : snapToGrid(p);
   };
-  /** a point on a member at a grid step along it, or a node */
-  const snapOnMember = (p: Pt, m: StructureModel) => {
-    const node = m.nodes.find((n) => dist(n, p) <= tolerance);
-    if (node) return { x: node.x, y: node.y };
-    const hit = memberNear(m, p, tolerance * 1.5);
-    if (!hit) return snapToGrid(p);
-    const f = frameOf(m, hit.member);
-    const s = Math.max(0, Math.min(f.length, Math.round(hit.at / grid) * grid));
-    return { x: f.a.x + f.u.x * s, y: f.a.y + f.u.y * s };
-  };
-  // what lands on a member lands on its line, not on a grid point beside an inclined one
-  const snapFor = (p: Pt) => (tool === 'force' || tool.startsWith('moment') || tool === 'release' || tool === 'udl' || tool === 'linear' || tool === 'joint' || tool === 'hinge' || tool.startsWith('support:') ? snapOnMember(p, model) : snap(p, model));
+  // what lands on a member lands on its line, not on a grid point beside an inclined one: a member's ends too
+  const snapFor = (p: Pt) => (tool === 'cut' || tool.startsWith('dim-') || tool === 'label' || tool === 'axes' || tool === 'angle' ? snap(p, model) : snapOnMember(model, p, grid, tolerance));
 
   const local = (e: { clientX: number; clientY: number }) => {
     const rect = svgRef.current!.getBoundingClientRect();
@@ -214,7 +204,7 @@ export default function StructureCanvas({
     const target = (e.target as globalThis.Element).closest('[data-id], [data-node], [data-handle]') as SVGElement | null;
 
     if (TWO_POINT(tool)) {
-      const p = snap(point, model);
+      const p = snapFor(point);
       if (pending) {
         finishConnect(pending, p);
         return;
@@ -263,16 +253,18 @@ export default function StructureCanvas({
     const at = local(e);
     const point = toModel(at);
     if (!drag) {
-      setHover(tool === 'select' ? null : TWO_POINT(tool) ? snap(point, model) : snapFor(point));
+      setHover(tool === 'select' ? null : snapFor(point));
       return;
     }
     if (drag.kind === 'pan') {
       setView({ ...drag.view, x: drag.view.x + at.x - drag.start.x, y: drag.view.y + at.y - drag.start.y });
     } else if (drag.kind === 'connect') {
-      const b = snap(point, model);
+      const b = snapFor(point);
       setDrag({ ...drag, b, moved: drag.moved || dist(b, drag.a) > 1e-9 });
     } else if (drag.kind === 'node') {
-      const p = snap(point, drag.base, drag.id);
+      // onto another member's line, as a member's end drawn there would; never onto its own
+      const others = { nodes: drag.base.nodes.filter((n) => n.id !== drag.id), parts: drag.base.parts.filter((x) => x.kind !== 'member' || (x.a !== drag.id && x.b !== drag.id)) };
+      const p = snapOnMember(others, point, grid, tolerance);
       setDraft({ ...drag.base, nodes: drag.base.nodes.map((n) => (n.id === drag.id ? { ...n, x: p.x, y: p.y } : n)) });
       if (!drag.moved) setDrag({ ...drag, moved: true });
     } else if (drag.kind === 'slide') {
@@ -385,7 +377,7 @@ export default function StructureCanvas({
               shape.circle ? (
                 <circle key={i} cx={shape.circle.c.x} cy={shape.circle.c.y} r={shape.circle.r} className={`st-sym ${shape.fill ? `st-sym-${shape.fill}` : ''}`} vectorEffect="non-scaling-stroke" />
               ) : (
-                <path key={i} d={shape.d} className={`st-sym ${shape.fill ? `st-sym-${shape.fill}` : ''} ${shape.heavy ? 'st-sym-heavy' : ''}`} vectorEffect="non-scaling-stroke" />
+                <path key={i} d={shape.d} className={`st-sym ${shape.fill ? `st-sym-${shape.fill}` : ''} ${shape.heavy ? 'st-sym-heavy' : ''} ${shape.bare ? 'st-sym-bare' : ''}`} vectorEffect="non-scaling-stroke" />
               )
             )}
           </g>
