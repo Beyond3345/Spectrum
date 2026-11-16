@@ -200,6 +200,14 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
     [5, 5, 5, 3, 2],
     'a fluid or materials part makes version 5; the sets alone keep the version they had'
   );
+  // Annotate's 2.5 tools (a fill, a hatched boundary, a dimension, the ▽ mark, a point mark, a leader) make version 5;
+  // the older annotations keep 4
+  const annotation = (extra: object) => withEls([{ id: 'a', kind: 'annotation', points: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 4 }], ...extra }]);
+  eq(
+    await Promise.all([{ shape: 'polygon', material: 'water' }, { shape: 'rect', material: 'mercury', pattern: 'hatch' }, { shape: 'boundary' }, { shape: 'dimension' }, { shape: 'surface' }, { shape: 'mark' }, { shape: 'leader' }, { shape: 'rect', fill: 'blue' }, { shape: 'line', arrows: '->' }].map(async (extra) => (await json(annotation(extra)))?.version)),
+    [5, 5, 5, 5, 5, 5, 5, 4, 4],
+    'Annotate’s fills, boundaries, dimensions and marks make version 5; a frame or an arrow stays 4'
+  );
   for (const bad of [{ ...circuit, sets: 'spx-mech' }, { ...circuit, sets: [1] }, { ...circuit, version: 6 }]) {
     const text = `${tikzDocument(code)}% spectrum-diagram v1 ${btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(bad))))} 0123456789abcdef\n`;
     eq((await readDiagramFile(text)).diagram, null, `opens as code: ${JSON.stringify(bad).slice(-30)}`);
