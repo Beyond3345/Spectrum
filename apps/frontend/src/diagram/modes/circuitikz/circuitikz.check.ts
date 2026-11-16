@@ -4,8 +4,10 @@ import { symbolGeometry, symbolRequest } from './symbolGeometry';
 import { circuitCode, readStyle, symbolOptions } from './code';
 import { attach, detach, moveBy, newPathPart, paste, remove, rotate } from './edit';
 import { markLayout, pinLabelSpots, plusAtStart, sideName } from './labels';
-import { CATALOGUE, PARTS, PT_PER_GRID, circuitBounds, isPart, findJunctions, locator, pathFrame, pinAxis, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
+import { CATALOGUE, PARTS, PT_PER_GRID, asCircuit, railParts, circuitBounds, isPart, findJunctions, locator, pathFrame, pinAxis, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
 import outlinesData from './outlines.fixture.json';
+import { UNIVERSITY_STYLES, styleFor } from '../../universityStyles';
+import { loadSettings } from '../../../app/settings';
 import type { CircuitModel, PathPart, Shape } from './model';
 import type { SymbolPage } from '../../../api/client';
 import { astable, astable555, bridgeRectifier, centreTapRectifier, commonEmitterStage, conversionRatio, converter, differenceAmplifier, differenceGain, differentiator, feedbackLoop, figure, halfWaveRectifier, hybridPi, integrator, invertingAmplifier, invertingGain, massSpringDamper, monostable, monostable555, nonInvertingAmplifier, nonInvertingGain, rcLadder, summingAmplifier, voltageFollower } from './templates';
@@ -399,7 +401,15 @@ eq(circuitCode(before, { siUnits: true }).body.split('\n').slice(2), [
 
 // MU Style MOSFETs: their own group, found by name or key; the shapes declared in the picture only when one is used,
 // before the parts, and named anchors for wires and pin letters
-const mu = CATALOGUE.filter((part) => part.group === 'MU Style');
+const mu = CATALOGUE.filter((part) => part.style === 'mu');
+eq(UNIVERSITY_STYLES.find((style) => style.id === 'mu'), { id: 'mu', name: 'MU Style', university: 'Hong Kong Metropolitan University' }, 'the MU Style record');
+eq(CATALOGUE.filter((part) => part.group === 'MU Style').map((part) => part.id), mu.map((part) => part.id), 'a style’s parts, and only they, under a group named after it');
+eq(CATALOGUE.filter((part) => part.style && !styleFor(part.style)).map((part) => part.id), [], 'every marked part names a style there is');
+eq(['zener', 'diode', 'supply-up', 'pmos', 'transformer'].map((id) => PARTS.get(id)?.style), [undefined, undefined, undefined, undefined, undefined], 'the slide variants follow no style');
+// off means hidden: the style's parts leave the parts list and its search, the rest stay
+eq(railParts('', [], []).filter((part) => part.style === 'mu').length, 12, 'on: all 12 listed');
+eq(railParts('', [], ['mu']).map((part) => part.id), railParts('', [], []).filter((part) => !part.style).map((part) => part.id), 'off: the 12 leave the list, nothing else does');
+eq([railParts('mu', [], ['mu']).length, railParts('nmos', [], ['mu']).some((part) => part.style), railParts('nmos', [], ['mu']).some((part) => part.id === 'nmos')], [0, false, true], 'and the search finds none of them');
 eq(mu.map((part) => part.tikz), ['munmos', 'mupmos', 'nmos, arrowmos', 'pmos, arrowmos, nocircle', 'munmosb', 'mupmosb', 'munmosdb', 'mupmosdb', 'muidealdiode', 'murectisource', 'mutildesource', 'musinesource'], 'the MU Style parts');
 for (const word of ['mu', 'mosfet', 'nmos', 'pmos', 'enhancement', 'depletion', 'bulk', 'ideal diode', 'current source', 'ac voltage source', 'sine']) eq(mu.some((part) => `${part.label} ${part.tikz}`.toLowerCase().includes(word)), true, `MU Style found by ${word}`);
 const muCircuit: CircuitModel = { elements: [
@@ -408,6 +418,12 @@ const muCircuit: CircuitModel = { elements: [
   { id: 'r', kind: 'path', type: 'resistor', a: { part: 'n', pin: 'D' }, b: { part: 'p', pin: 'S' } }
 ], junctions: [] };
 const muLines = circuitCode(muCircuit, {}).body.split('\n');
+// a drawing with a hidden part opens and writes the same code: the code never asks the setting
+Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: { getItem: () => JSON.stringify({ composerStylesOff: ['mu'] }) } } });
+eq(loadSettings().composerStylesOff, ['mu'], 'MU Style off');
+eq(circuitCode(muCircuit, {}).body.split('\n'), muLines, 'the same code with MU Style off');
+eq(asCircuit(JSON.parse(JSON.stringify(muCircuit))).elements.map((el) => isPart(el) && PARTS.has(el.type)), [true, true, true], 'and its parts still known to the canvas');
+Reflect.deleteProperty(globalThis, 'window');
 eq([muLines[2], muLines[muLines.length - 8]], ['\\makeatletter', '\\makeatother'], 'the shapes declared at the picture’s start');
 eq(muLines.filter((line) => line.startsWith('\\spectrummumos{')), ['\\spectrummumos{munmos}{nmos}{1}{0}', '\\spectrummumos{mupmos}{pmos}{1}{0}'], 'each shape used declared once');
 eq(muLines.slice(-7, -1), [

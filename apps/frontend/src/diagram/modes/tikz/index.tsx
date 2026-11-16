@@ -20,11 +20,13 @@ import {
   emptyTikz,
   middleOf,
   moveBoxes,
+  NEW,
   nextId,
   pasteTikz,
   pathPoints,
   plainShape,
   removeTikz,
+  resized,
   stateShape,
   tikzCode
 } from './code';
@@ -76,25 +78,6 @@ const SHAPES: [Shape, string][] = [
   ['container', 'Container']
 ];
 
-/** a new shape's size in grid units, and its text */
-const NEW: Record<Shape, [number, number, string]> = {
-  rectangle: [8, 4, 'Text'],
-  rounded: [8, 4, 'Text'],
-  circle: [5, 5, ''],
-  ellipse: [8, 5, 'Text'],
-  diamond: [8, 6, 'Text'],
-  parallelogram: [8, 4, 'Text'],
-  text: [6, 2, 'Text'],
-  maths: [6, 2, 'x^2'],
-  state: [5, 5, 'q_0'],
-  accepting: [5, 5, 'q_1'],
-  cylinder: [6, 6, 'Data'],
-  document: [8, 5, 'Report'],
-  trapezium: [8, 4, 'Text'],
-  operator: [3, 3, '+'],
-  stack: [3, 8, ''],
-  container: [20, 14, 'Block']
-};
 
 const LOOP_SIDES: [Side, string][] = [
   ['t', 'Above'],
@@ -133,7 +116,9 @@ const HEADS: [Heads, string][] = [
   ['none', 'None']
 ];
 
-const ink = (line: Line) => line.stroke ?? 'var(--diagram-ink)';
+/** a colour as the canvas shows it: black, or none, is the canvas's ink, so it reads on a dark canvas too */
+const inkOf = (colour?: string) => (colour && colour.toLowerCase() !== '#000000' ? colour : 'var(--diagram-ink)');
+const ink = (line: Line) => inkOf(line.stroke);
 const strokeOf = (line: Line) => ({
   stroke: ink(line),
   strokeWidth: Math.max(1, (line.width ?? 0.4) * PT),
@@ -232,11 +217,11 @@ function BoxView({ data: { box, readOnly }, selected, width = 0, height = 0 }: N
       </svg>
       {/* TikZ writes black on a fill, so a dark canvas keeps it black there */}
       {container || box.shape === 'stack' ? (
-        <div className={`tikz-box-caption ${container ? 'title' : 'below'}`} style={{ color: box.stroke }}>
+        <div className={`tikz-box-caption ${container ? 'title' : 'below'}`} style={{ color: inkOf(box.stroke) }}>
           {box.text}
         </div>
       ) : (
-        <div className={`tikz-box-text${MATHS_SHAPES.includes(box.shape) ? ' maths' : ''}`} style={{ color: plain ? box.stroke : box.fill && '#000000' }}>
+        <div className={`tikz-box-text${MATHS_SHAPES.includes(box.shape) ? ' maths' : ''}`} style={{ color: plain ? inkOf(box.stroke) : box.fill && '#000000' }}>
           {box.text}
         </div>
       )}
@@ -321,6 +306,7 @@ function linkPath(link: Link, from: Box, to: Box) {
   return { d: `M${points.map(px).join('L')}`, labelX: p[0] + (q[0] - p[0]) * pos, labelY: p[1] + (q[1] - p[1]) * pos };
 }
 
+
 type CanvasProps = ComponentProps<DiagramMode<TikzModel>['Canvas']>;
 
 function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 'select', onTool }: CanvasProps) {
@@ -339,7 +325,7 @@ function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 's
     const from = boxes.get(link.from);
     const to = boxes.get(link.to);
     if (!from || !to) return [];
-    const colour = link.stroke ?? 'var(--diagram-ink)';
+    const colour = ink(link);
     const head = { type: MarkerType.ArrowClosed, color: colour, width: 14, height: 14 };
     return [
       {
@@ -380,9 +366,7 @@ function Canvas({ model, onChange, readOnly, selection = [], onSelect, tool = 's
         selection={selection}
         onSelect={onSelect}
         onMove={(moves) => onChange({ ...model, boxes: moveBoxes(model.boxes, moves.map((m) => ({ id: m.id, x: Math.round(m.x / UNIT), y: Math.round(m.y / UNIT) }))) })}
-        onResize={(id, width, height) =>
-          onChange({ ...model, boxes: model.boxes.map((b) => (b.id === id ? { ...b, w: Math.max(2, Math.round(width / UNIT)), h: Math.max(2, Math.round(height / UNIT)) } : b)) })
-        }
+        onResize={(id, width, height, at) => onChange({ ...model, boxes: model.boxes.map((b) => (b.id === id ? resized(b, width / UNIT, height / UNIT, at && { x: at.x / UNIT, y: at.y / UNIT }) : b)) })}
         loops
         onConnect={(c) => {
           const next = connect(model, c.source, c.target, (c.sourceHandle || 'r') as Side, (c.targetHandle || 'l') as Side);
@@ -432,7 +416,7 @@ function Inspector({ model, onChange, selection = [], typst = false }: { model: 
   const link = links.length === 1 && !boxes.length ? links[0] : null;
   const allPlain = boxes.length > 0 && !links.length && boxes.every((b) => plainShape(b.shape));
   const textLabel = (shape: Shape) =>
-    MATHS_SHAPES.includes(shape) ? `Maths (${language}, without $)` : shape === 'container' ? `Title (${language})` : shape === 'stack' ? `Caption (${language})` : `Text (${language})`;
+    MATHS_SHAPES.includes(shape) ? `Maths (${language}, without $)` : `${shape === 'container' ? 'Title' : shape === 'stack' ? 'Caption' : 'Text'} ($…$ for ${language} maths)`;
 
   return (
     <div className="diagram-inspector-fields">
@@ -486,7 +470,7 @@ function Inspector({ model, onChange, selection = [], typst = false }: { model: 
       )}
       {link && (
         <>
-          <Row label="Label">
+          <Row label={`Label ($…$ for ${language} maths)`}>
             <input className="input" value={link.label ?? ''} spellCheck={false} onChange={(e) => patchLinks({ label: e.target.value })} />
           </Row>
           {link.from === link.to ? (

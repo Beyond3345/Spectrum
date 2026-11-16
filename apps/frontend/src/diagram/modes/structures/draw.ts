@@ -282,17 +282,26 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
         const to = Math.min(Math.max(p.from, p.to), hi, f.length);
         if (to - from <= 1e-9 * f.length) continue;
         const w = (s: number) => p.w1 + ((p.w2 - p.w1) * (s - p.from)) / (p.to - p.from || 1);
-        const sign = Math.sign(p.w1 + p.w2) || 1;
-        const e = times(loadDirection(p, f.u), sign);
-        const base = (s: number) => add(P(add(f.a, times(f.u, s))), times(e, -GAP));
-        const top = (s: number) => add(base(s), times(e, -(0.15 + (0.5 * Math.abs(w(s))) / wMax)));
+        // a load that changes sign has each part on its own side, its arrows the way it acts
+        const sideAt = (s: number) => Math.sign(w(s)) || Math.sign(p.w1 + p.w2) || 1;
+        const d = loadDirection(p, f.u);
+        const base = (s: number, side = sideAt(s)) => add(P(add(f.a, times(f.u, s))), times(d, -GAP * side));
+        const top = (s: number, side = sideAt(s)) => add(base(s, side), times(d, -side * (0.15 + (0.5 * Math.abs(w(s))) / wMax)));
         const lengthCm = (to - from) * scale;
         const count = Math.max(2, Math.round(lengthCm / 0.4) + 1);
         const stops = Array.from({ length: count }, (_, i) => from + ((to - from) * i) / (count - 1));
-        out.push({ t: 'line', pts: [base(from), base(to), top(to), top(from)], ink: 'line', closed: true, fill: 'load', id: p.id });
+        const zero = p.w1 !== p.w2 ? p.from + ((p.to - p.from) * p.w1) / (p.w1 - p.w2) : NaN;
+        const spans = zero > from + 1e-9 * f.length && zero < to - 1e-9 * f.length ? [[from, zero], [zero, to]] : [[from, to]];
+        for (const [a, b] of spans) {
+          const side = sideAt((a + b) / 2);
+          out.push({ t: 'line', pts: [base(a, side), base(b, side), top(b, side), top(a, side)], ink: 'line', closed: true, fill: 'load', id: p.id });
+        }
         for (const s of stops) if (Math.abs(w(s)) > 1e-9 * wMax) out.push({ t: 'line', pts: [top(s), base(s)], ink: 'load', arrow: '->', id: p.id });
         const unitTex = `${F}/${L}`;
-        const label = (s: number, tex: string) => out.push({ t: 'text', at: add(top(s), times(e, -0.05)), tex, anchor: anchorFor(times(e, -1)), id: p.id, around: top(s) });
+        const label = (s: number, tex: string) => {
+          const e = times(d, sideAt(s));
+          out.push({ t: 'text', at: add(top(s), times(e, -0.05)), tex, anchor: anchorFor(times(e, -1)), id: p.id, around: top(s) });
+        };
         if (p.label) label((from + to) / 2, p.label);
         else if (Math.abs(w(from) - w(to)) < 1e-9 * wMax) label((from + to) / 2, value(Math.abs(w(from)), unitTex));
         else {
@@ -464,9 +473,11 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
     if (!samples.length) return { shape: [], labels: [] };
     const at = (s: number, v: number) => add(base(s), times(offsetOf(m, c, v), h));
     const shape: Item[] = [{ t: 'line', pts: [base(0), ...samples.map((x) => at(x.s, x.v)), base(f.length)], ink: 'line', closed: true, fill: FILL_OF[c] }];
+    // a beam drawn right to left has its own axes turned half a turn: V reads the same, M the other way (sagging +)
+    const sense = c === 'M' && isBeam && f.u.x < 0 ? -1 : 1;
     const labels = labelsOf(m, c, tolerance).map((label): Item => {
       const d = unit(add(times(unit(offsetOf(m, c, label.v)), 1), times(f.u, label.lean * 0.9)));
-      return { t: 'text', at: add(at(label.s, label.v), times(d, 0.08)), tex: si.num(fmt(sizes ? Math.abs(label.v) : label.v)), anchor: anchorFor(d), around: at(label.s, label.v), optional: true };
+      return { t: 'text', at: add(at(label.s, label.v), times(d, 0.08)), tex: si.num(fmt(sizes ? Math.abs(label.v) : sense * label.v)), anchor: anchorFor(d), around: at(label.s, label.v), optional: true };
     });
     return { shape, labels };
   };

@@ -557,7 +557,7 @@ export interface ConvertTidy {
 
 export function convertProject(
   projectId: string,
-  payload: { to: 'typst' | 'latex'; doc: string; engine?: CompileEngine; convertId?: string; aiCleanup?: boolean; llmConfig?: Partial<LLMConfig> }
+  payload: { to: 'typst' | 'latex'; doc: string; engine?: CompileEngine; convertId?: string; aiCleanup?: boolean; llmConfig?: Partial<LLMConfig>; typstVersion?: string }
 ) {
   return request<{ ok: boolean; project: ProjectMeta; checks: ConvertChecks; regions: number; tidy?: ConvertTidy }>(`/api/projects/${projectId}/convert`, json('POST', payload));
 }

@@ -33,7 +33,12 @@ const body = fletcherCode(model, '0.15.1').body;
 has(body, '#import "@preview/fletcher:0.5.8" as fletcher: diagram, node, edge', 'the import line');
 has(body, '#set page(width: auto, height: auto, margin: 4pt) if sys.inputs.at("spectrum-diagram", default: "") == "standalone"', 'the standalone page');
 has(body, 'node((1cm, -0.5cm), [Start here], shape: fletcher.shapes.rect, width: 2cm, height: 1cm, name: <n1>),', 'a rectangle at its centre');
-has(body, '[A \\[bracket\\] \\#tag \\\\ \\$x\\$], shape: fletcher.shapes.rect, corner-radius: 4pt, width: 2cm, height: 1cm, fill: rgb("#eeeeee")', 'a rounded, filled box with its text escaped');
+// its markup escaped, its $…$ maths kept as maths
+has(body, '[A \\[bracket\\] \\#tag \\\\ $x$], shape: fletcher.shapes.rect, corner-radius: 4pt, width: 2cm, height: 1cm, fill: rgb("#eeeeee")', 'a rounded, filled box with its text escaped');
+// a box's lines and an edge label's as Typst linebreaks, maths in each kept
+const broken = fletcherCode({ boxes: [box({ id: 'a', text: 'Two\nlines $x_1$\n' }), box({ id: 'b', x: 12 })], links: [link({ id: 'e', from: 'a', to: 'b', label: '50% & $y$\nnext' })] }).body;
+has(broken, '[Two \\ lines $x_1$], shape', 'two lines, one with maths');
+has(broken, 'label: [50% & $y$ \\ next]', 'a label of two lines');
 has(body, 'shape: fletcher.shapes.circle, width: 1.5cm, height: 1.5cm', 'a circle is as wide as it is tall');
 has(body, 'shape: fletcher.shapes.diamond, width: 2.5cm, height: 1.5cm', 'a diamond');
 has(body, 'shape: fletcher.shapes.parallelogram, width: 2.5cm, height: 1.25cm', 'a parallelogram');

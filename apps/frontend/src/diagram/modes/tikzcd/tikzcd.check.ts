@@ -1,6 +1,6 @@
 // Self-check for the commutative diagram mode's code. Run:
 // npx esbuild apps/frontend/src/diagram/modes/tikzcd/tikzcd.check.ts --bundle --platform=node --log-level=warning | node
-import { cdCode, copyCd, direction, pasteCd, removeCd } from './code';
+import { cdCode, copyCd, direction, labelSides, pasteCd, removeCd } from './code';
 import type { CdModel } from './code';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -47,5 +47,10 @@ const pasted = pasteCd(square, JSON.parse(JSON.stringify(clip)));
 eq(pasted.ids, ['c6', 'c7', 'a7'], 'pasted ids');
 eq(pasted.model.cells.slice(5).map((c) => [c.row, c.col]), [[1, 3], [1, 4]], 'pasted where row 1 is free');
 eq(removeCd(square, ['c5', 'a1']).arrows.map((a) => a.id), ['a2', 'a3', 'a4'], 'deleting an object takes its arrows');
+
+
+// the label side named as the arrow runs: tikz-cd's default (no swap) is on its left, so right of a downward arrow
+eq(labelSides(square.arrows[0], square), [['above', 'Above'], ['below', 'Below']], 'a rightward arrow’s label sides');
+eq(labelSides(square.arrows[1], square), [['above', 'Right'], ['below', 'Left']], 'a downward arrow’s label sides');
 
 console.log('tikzcd.check: ok');

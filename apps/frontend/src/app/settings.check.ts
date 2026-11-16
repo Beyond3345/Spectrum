@@ -139,6 +139,10 @@ eq([composer.composerMixSets, composer.composerMoments, composer.composerMohrShe
 eq([withShared(theirs, { composerMoments: 'sideways', composerMohrShear: 'left', composerMixSets: 'yes' })].map((s) => [s.composerMoments, s.composerMohrShear, s.composerMixSets])[0], ['tension', 'down', false], 'and are checked');
 // a new structure's force diagrams follow the user too, each part checked and anything unusable its default
 eq(DEFAULT_SETTINGS.composerDiagrams.shear, { on: true, fill: 'blue!12', opacity: 1 }, 'all three diagrams in today’s fills');
+// University styles: all on by default, shared, and cleaned of bad values (unknown ids stay, for a newer Spectrum)
+eq(DEFAULT_SETTINGS.composerStylesOff, [], 'every university style on by default');
+eq(sharedPart(at({ composerStylesOff: ['mu'] })).composerStylesOff, ['mu'], 'the styles switched off follow the user');
+eq(['nonsense', null, { mu: true }, ['mu', 'mu', 3, null, 'later']].map((v) => withShared(theirs, { composerStylesOff: v }).composerStylesOff), [[], [], [], ['mu', 'later']], 'and are checked');
 const diagrams = withShared(theirs, { composerDiagrams: { axial: { on: false, fill: 'teal!20', opacity: 0.6 }, shear: { fill: '}\\evil', opacity: 7 } } as never }).composerDiagrams;
 eq([diagrams.axial, diagrams.shear, diagrams.moment], [{ on: false, fill: 'teal!20', opacity: 0.6 }, DEFAULT_SETTINGS.composerDiagrams.shear, DEFAULT_SETTINGS.composerDiagrams.moment], 'the diagrams come in, checked');
 

@@ -5,8 +5,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import Icon from '../../../app/Icon';
 import { useCanvasPrefs } from '../../FlowCanvas';
-import { readStyle } from './code';
-import { PICKS, WIDTH_PT, addPoint, applyTool, asVectors, clipLine, dist, frameOf, isLink, newAxes, newId, panelOf, pointNear, resolve, rightCorners, sideOffset } from './model';
+import { colourCss } from '../shared';
+import { readStyle, styledVectors } from './code';
+import { PICKS, WIDTH_PT, addPoint, applyTool, asVectors, dropUnused, clipLine, dist, frameOf, isLink, newAxes, newId, panelOf, pointNear, resolve, rightCorners, sideOffset } from './model';
 import type { Dash, FontSize, Item, Pt, Side, Stroke, Thickness, Tip, Tips, VPoint, VectorModel } from './model';
 
 /** screen pixels a centimetre at 100 % */
@@ -55,40 +56,8 @@ export const plain = (tex: string) =>
     .replace(/\\[a-zA-Z]+/g, '')
     .replace(/[{}]/g, '');
 
-/** xcolor's names as the canvas shows them; black is the canvas's ink and white its paper */
-const PALETTE: Record<string, string> = {
-  blue: '#2a5bd7',
-  red: '#d43c3c',
-  teal: '#14857f',
-  orange: '#e07b12',
-  violet: '#7b3fc4',
-  gray: '#888',
-  green: '#2f9e55',
-  cyan: '#1aa3c4',
-  magenta: '#c4309a',
-  yellow: '#d9b500',
-  brown: '#8b5a2b',
-  lime: '#7cc423',
-  olive: '#808000',
-  pink: '#e8789a',
-  purple: '#7a2a8a',
-  darkgray: '#555',
-  lightgray: '#bbb',
-  black: 'var(--ckt-ink)',
-  white: 'var(--ckt-paper)'
-};
-/** An xcolor colour as CSS on the canvas: blue!50 is half blue on the paper, red!30!blue 30 % red in blue, #rrggbb itself. */
-export function colourCss(name = 'black') {
-  if (/^#[0-9a-f]{6}$/i.test(name)) return name;
-  const [first, ...mixes] = name.split('!');
-  let colour = PALETTE[first] ?? PALETTE.black;
-  for (let i = 0; i < mixes.length; i += 2) {
-    const percent = Number(mixes[i]);
-    if (!mixes[i] || !Number.isFinite(percent)) break;
-    colour = `color-mix(in srgb, ${colour} ${Math.min(100, Math.max(0, percent))}%, ${PALETTE[mixes[i + 1] ?? 'white'] ?? PALETTE.black})`;
-  }
-  return colour;
-}
+/** An xcolor colour as CSS on the canvas, as it prints (the shared xcolor maths); black is the canvas's ink, so it shows on the dark canvas too. */
+const ink = (colour = 'black') => (colour === 'black' ? 'var(--ckt-ink)' : colourCss(colour));
 /** screen pixels a pt of line width or dash draws, kept the same at every zoom so thin lines stay seen */
 const PX_PER_PT = 1.5;
 /** a line's width on screen: TikZ's thin (0.4 pt) when it has none */
@@ -151,6 +120,8 @@ export default function VectorCanvas({
   const [drag, setDrag] = useState<Drag | null>(null);
   /** the points a tool has picked so far */
   const [picks, setPicks] = useState<string[]>([]);
+  /** the points those picks made where there was none, taken away again if the pick is given up */
+  const [made, setMade] = useState<string[]>([]);
   const [hover, setHover] = useState<Pt | null>(null);
   const prefs = useCanvasPrefs();
 
@@ -273,6 +244,7 @@ export default function VectorCanvas({
       const added = addPoint(model, panel, snapToGrid(at));
       next = added.model;
       id = added.id;
+      setMade((m) => [...m, added.id]);
     }
     // a polygon closes on its first corner
     if (tool === 'polygon' && picks.length >= 3 && id === picks[0]) return finish(next, picks);
@@ -284,13 +256,14 @@ export default function VectorCanvas({
 
   const finish = (m: VectorModel, all: string[]) => {
     setPicks([]);
-    const made = applyTool(m, tool, all, style.vectorWidth !== undefined);
-    if (!made) {
+    setMade([]);
+    const done = applyTool(m, tool, all, styledVectors(rawStyle));
+    if (!done) {
       if (m !== model) commit(m);
       return;
     }
-    commit(made.model);
-    onSelect?.([made.id]);
+    commit(done.model);
+    onSelect?.([done.id]);
     // drawing tools stay picked, to draw the next; a construction or mark goes back to Select
     if (!['vector', 'segment', 'line', 'point'].includes(tool)) onTool?.('select');
   };
@@ -399,12 +372,25 @@ export default function VectorCanvas({
     commit(d.moved ? draft : model);
   };
 
+  /** A pick given up: it starts again, without the points it made that nothing uses. */
+  const dropPicks = () => {
+    if (made.length) {
+      const next = dropUnused(model, made);
+      if (next !== model) commit(next);
+    }
+    setPicks([]);
+    setMade([]);
+  };
   // a tool picked part way through another starts again
-  useEffect(() => setPicks([]), [tool]);
+  useEffect(dropPicks, [tool]);
 
   const onKeyDown = (e: ReactKeyboardEvent) => {
     if (e.key === 'Escape') {
-      setPicks([]);
+      // during a pick Esc starts it again and keeps the tool; the frame's Esc (back to Select) is for after
+      if (picks.length) {
+        dropPicks();
+        e.stopPropagation();
+      }
       return;
     }
     if (e.key === 'Enter' && tool === 'polygon' && picks.length >= 3) {
@@ -445,7 +431,7 @@ export default function VectorCanvas({
         fontSize={fontSize * FONT_SCALE[look.size ?? 'normalsize']}
         textAnchor={anchor}
         dominantBaseline={baseline}
-        style={look.colour ? { fill: colourCss(look.colour) } : undefined}
+        style={look.colour ? { fill: ink(look.colour) } : undefined}
       >
         {plain(text)}
       </text>
@@ -468,7 +454,7 @@ export default function VectorCanvas({
   /** a line's look on screen: its own, else the Style's (or the width, dash and colour it has when it has none) */
   const strokeLook = (s: Stroke & { dashed?: boolean }, width = style.width, dash?: Dash, colour = style.colour) => {
     const w = widthPx(s.width ?? width);
-    const stroke = colourCss(s.colour ?? colour);
+    const stroke = ink(s.colour ?? colour);
     return { stroke, strokeWidth: w, strokeDasharray: dashArray(s.dash ?? (s.dashed ? 'dashed' : dash), w), opacity: s.opacity, color: stroke };
   };
   /** a line's tips from a to b, as the code writes them: a vector's end is the Style's tip when it has none */
@@ -530,7 +516,7 @@ export default function VectorCanvas({
             <polygon
               points={pts}
               className="vec-stroke"
-              style={{ ...strokeLook({ ...item, opacity: undefined }), strokeOpacity: item.opacity, fill: item.fill ? colourCss(item.fill) : 'none', fillOpacity: item.fillOpacity }}
+              style={{ ...strokeLook({ ...item, opacity: undefined }), strokeOpacity: item.opacity, fill: item.fill ? ink(item.fill) : 'none', fillOpacity: item.fillOpacity }}
             />
           </>,
           `Polygon ${item.points.map(nameOf).join('')}`
@@ -541,7 +527,7 @@ export default function VectorCanvas({
         return group(
           <>
             {on && <rect x={s.x - fontSize * 2} y={s.y - fontSize * 0.8} width={fontSize * 4} height={fontSize * 1.6} className="st-halo-pic" rx={3} />}
-            <text x={s.x} y={s.y} className="st-text" fontSize={fontSize * FONT_SCALE[item.size ?? 'normalsize']} textAnchor="middle" dominantBaseline="middle" style={item.colour ? { fill: colourCss(item.colour) } : undefined}>
+            <text x={s.x} y={s.y} className="st-text" fontSize={fontSize * FONT_SCALE[item.size ?? 'normalsize']} textAnchor="middle" dominantBaseline="middle" style={item.colour ? { fill: ink(item.colour) } : undefined}>
               {plain(item.text) || 'Text'}
             </text>
           </>,
@@ -635,7 +621,7 @@ export default function VectorCanvas({
   /** a point's dot, filled, open or a cross, its radius in pt drawn to scale */
   const dot = (p: VPoint, s: Pt) => {
     const r = Math.max(1.5, (p.size ?? style.pointSize) * (k / 28.45));
-    const colour = colourCss(p.colour ?? style.colour);
+    const colour = ink(p.colour ?? style.colour);
     if (p.shape === 'open') return <circle cx={s.x} cy={s.y} r={r} className="st-dot-open" style={{ stroke: colour }} />;
     if (p.shape === 'cross') return <path d={`M${s.x - r},${s.y - r} L${s.x + r},${s.y + r} M${s.x - r},${s.y + r} L${s.x + r},${s.y - r}`} className="vec-stroke" style={{ stroke: colour }} />;
     return <circle cx={s.x} cy={s.y} r={r} className="st-dot" style={{ fill: colour }} />;

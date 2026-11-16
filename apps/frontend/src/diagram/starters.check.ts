@@ -60,6 +60,10 @@ eq(ids('Zwölf'), [], 'nothing matches');
 const resistor = search('resistor');
 eq(resistor.symbols.map(({ starter, symbol }) => `${symbol.label}, in ${starter.title}`), ['Resistor, in Circuit', 'Resistor, in General drawing', 'Variable resistor, in Circuit', 'Variable resistor, in General drawing'], 'symbols, each in the starter it opens in and in General drawing');
 eq(search('pinned support').symbols.map(({ starter, symbol }) => `${symbol.label}, in ${starter.title}`), ['Pinned support, in Mass, spring and damper', 'Pinned support, in General drawing'], 'a set’s symbol, in the starter that opens the set');
+// a university style switched off: its parts leave the chooser's search, the rest stay
+const mosfets = (off?: string[]) => [...new Set(search('mosfet', STARTERS, off).symbols.map(({ symbol }) => symbol.style ?? 'none'))];
+eq([mosfets(), mosfets(['mu'])], [['none', 'mu'], ['none']], 'MU Style’s MOSFETs found while it is on, not while it is off');
+eq(search('mu ac voltage', STARTERS, ['mu']).symbols, [], 'nor its sources');
 // the circuit templates: each opens the circuit canvas pre-drawn, the mass, spring and damper with its supports set
 const templates = STARTERS.filter((s) => s.mode === 'circuitikz' && s.model);
 eq(templates.length, 20, 'twenty circuit templates');

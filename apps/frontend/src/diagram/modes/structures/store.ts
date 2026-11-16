@@ -16,6 +16,9 @@ export function setShown(model: StructureModel, style: StructStyle) {
   listeners.forEach((fn) => fn());
 }
 
+/** What the canvas last drew, outside React (paste reads the grid from it). */
+export const getShown = () => shown;
+
 export const useShown = () =>
   useSyncExternalStore(
     (fn) => {
