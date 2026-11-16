@@ -4,7 +4,7 @@ import { symbolGeometry, symbolRequest } from './symbolGeometry';
 import { circuitCode, readStyle, symbolOptions } from './code';
 import { attach, detach, moveBy, newPathPart, paste, remove, rotate } from './edit';
 import { markLayout, pinLabelSpots, plusAtStart, sideName } from './labels';
-import { CATALOGUE, PARTS, PT_PER_GRID, asCircuit, railParts, circuitBounds, isPart, findJunctions, locator, pathFrame, pinAxis, placeNodeOffset, placeholderBox, placeholderShape, snapDelta, wirePath } from './model';
+import { CATALOGUE, PARTS, PT_PER_GRID, asCircuit, railParts, circuitBounds, isPart, findJunctions, locator, pathFrame, pinAxis, placeNodeOffset, placeholderBox, grabsHandles, placeholderShape, snapDelta, wirePath } from './model';
 import outlinesData from './outlines.fixture.json';
 import { UNIVERSITY_STYLES, styleFor } from '../../universityStyles';
 import { loadSettings } from '../../../app/settings';
@@ -558,5 +558,8 @@ for (const part of CATALOGUE.filter((p) => p.kind === 'node')) {
   if (!(box.maxX > box.minX && box.maxY > box.minY)) throw new Error(`${part.id}'s stand-in box is inside out: ${JSON.stringify(box)}`);
 }
 eq(placeholderBox('ground'), { minX: -1.5, maxX: 1.5, minY: -1.5, maxY: 1.5 }, 'a one-pin part stands in as a square');
+
+// a dimension's third handle can be dragged while Dimension is still picked; a wire, line or part still starts on one
+eq(['select', 'annotate:dimension', 'annotate:rect', 'part:resistor', 'wire', 'annotate:line', 'annotate:polygon'].map(grabsHandles), [true, true, true, false, false, false, false], 'which tools grab a handle');
 
 console.log('circuitikz.check: ok');

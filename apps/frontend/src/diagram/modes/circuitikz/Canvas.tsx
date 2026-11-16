@@ -12,7 +12,7 @@ import { FONT_SCALE, HEAD_CM, MARK_CROSS_CM, MARK_PT, MATERIALS, PATTERNS, PATTE
 import type { Preset } from './annotate';
 import { DEFAULT_LENGTH, VOLTAGE_SHIFT, readStyle, symbolOptions } from './code';
 import { copy, detach, flip, moveBy, newNodePart, newPathPart, paste, remove, rotate } from './edit';
-import { GRID_CM, PARTS, PT_PER_GRID, asCircuit, drawsSymbol,circuitBounds, isPart, isPoint, locator, newId, pathFrame, pinAxis, pinsOfElement, placeholderBox, placeholderShape, snapDelta, variantKey, wirePath } from './model';
+import { GRID_CM, PARTS, POINT_BY_POINT, PT_PER_GRID, grabsHandles, asCircuit, drawsSymbol,circuitBounds, isPart, isPoint, locator, newId, pathFrame, pinAxis, pinsOfElement, placeholderBox, placeholderShape, snapDelta, variantKey, wirePath } from './model';
 import type { Annotation, CircuitModel, Element, End, Mark, NodePart, PathPart, Pt, Route, ShapeOf, SnapPin, Wire } from './model';
 import { labelSize, plain, scriptRuns, svgRuns } from '../../sketch';
 import { markLayout, nodeNameAt, pathLabelAt, pinLabelSpots, plusAtStart } from './labels';
@@ -52,8 +52,6 @@ const isOpen = (type: string) => PARTS.get(type)?.tikz === 'open';
 /** where a path part placed with a click, no drag, ends */
 const clickEnd = (type: string, a: Pt): Pt => (isOpen(type) ? { x: a.x, y: a.y - 8 } : { x: a.x + 8, y: a.y });
 
-/** Annotate's tools drawn a point at a time, finished with a double-click or Return */
-const POINT_BY_POINT = ['annotate:line', 'annotate:polygon', 'annotate:boundary', 'annotate:leader'];
 /** and the ones a click puts down */
 const CLICK_TO_PLACE = ['annotate:cross', 'annotate:surface', 'annotate:mark'];
 
@@ -219,6 +217,20 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
     if (e.button !== 0) return;
     const grid = toGrid(at);
     const target = (e.target as globalThis.Element).closest('[data-id], [data-handle]') as HTMLElement | SVGElement | null;
+    const handle = target?.dataset.handle;
+
+    // a selected shape's handle, even with its tool still picked: a dimension's third handle right after drawing it
+    if (handle && grabsHandles(tool)) {
+      const [id, index] = handle.split(':');
+      const el = byId.get(id);
+      if (!el) return;
+      const loose = detach(model, new Set([id]), shapeOf);
+      const looseEl = loose.elements.find((x) => x.id === id)!;
+      const point = looseEl.kind === 'path' ? (index === '0' ? looseEl.a : looseEl.b) : looseEl.kind === 'wire' || looseEl.kind === 'annotation' ? looseEl.points[Number(index)] : null;
+      if (!point || !isPoint(point)) return;
+      setDrag({ kind: 'handle', start: at, base: loose, id, index: Number(index), from: point, fixed: allPins(model, (x) => x.id === id) });
+      return;
+    }
 
     if (tool === 'wire' || POINT_BY_POINT.includes(tool)) {
       const line = tool !== 'wire';
@@ -279,19 +291,6 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
       const base = { ...model, elements: [...model.elements, placed] };
       setDraft(base);
       setDrag({ kind: 'place', base, id: placed.id, from, fixed });
-      return;
-    }
-
-    const handle = target?.dataset.handle;
-    if (handle) {
-      const [id, index] = handle.split(':');
-      const el = byId.get(id);
-      if (!el) return;
-      const loose = detach(model, new Set([id]), shapeOf);
-      const looseEl = loose.elements.find((x) => x.id === id)!;
-      const point = looseEl.kind === 'path' ? (index === '0' ? looseEl.a : looseEl.b) : looseEl.kind === 'wire' || looseEl.kind === 'annotation' ? looseEl.points[Number(index)] : null;
-      if (!point || !isPoint(point)) return;
-      setDrag({ kind: 'handle', start: at, base: loose, id, index: Number(index), from: point, fixed: allPins(model, (x) => x.id === id) });
       return;
     }
 

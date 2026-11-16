@@ -59,6 +59,13 @@ export const usesSetsOf25 = (model: unknown) => asCircuit(model).elements.some((
  * ponytail: any drawing given those three sets counts as one; keep the starter in the file if that ever misleads */
 export const withLaterSets = (sets: string[]) => (['spx-mech', 'spx-flow', 'spx-geom'].every((set) => sets.includes(set)) ? [...new Set([...sets, ...SETS_OF_2_5])] : sets);
 
+/** Annotate's tools drawn a point at a time, finished with a double-click or Return */
+export const POINT_BY_POINT = ['annotate:line', 'annotate:polygon', 'annotate:boundary', 'annotate:leader'];
+/** A tool that lets a press on a selected shape's handle drag the handle: Select, and the ones that draw a box or a
+ * dimension, which leave the new shape selected with its handles (a dimension's third moves its line out). The others
+ * start something new there, such as a wire or a resistor from a selected part's end. */
+export const grabsHandles = (tool: string) => ['select', 'annotate:rect', 'annotate:ellipse', 'annotate:dimension'].includes(tool);
+
 /** A part TeX draws a symbol for: all but Text, which the canvas writes itself. */
 export const drawsSymbol = (type: string) => !!PARTS.get(type)?.tikz;
 
