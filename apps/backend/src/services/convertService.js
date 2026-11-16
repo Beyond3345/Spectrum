@@ -257,7 +257,7 @@ function sourceClass(source, facts) {
  * conversion back) stays as it is (write false); otherwise one is written from the drawing. A flowchart whose texts
  * the other language can't take is left out, to compile to a PDF as any other drawing.
  */
-async function composerFlowcharts(root, files, from) {
+async function composerFlowcharts(root, files, from, typstVersion = '') {
   const out = new Map();
   const to = from === 'tikz' ? 'typst' : 'tikz';
   const read = (rel) => fs.readFile(safeJoin(root, rel), 'utf8').catch(() => '');
@@ -273,7 +273,7 @@ async function composerFlowcharts(root, files, from) {
       continue;
     }
     const translated = flowchartFor(drawing, to, typstMaths);
-    if (translated) out.set(rel, { to: other, text: flowchartFile(translated, to), write: true });
+    if (translated) out.set(rel, { to: other, text: flowchartFile(translated, to, typstVersion), write: true });
   }
   return out;
 }
@@ -296,8 +296,9 @@ const bibKeys = (text) => [...String(text).matchAll(/@\s*([A-Za-z]+)\s*[{(]\s*([
 /**
  * The LaTeX document doc of the project at root as a Typst project in staging (an empty folder): { mainFile, checks,
  * notes, record }. onStep(text) hears each step as it starts. engine: the LaTeX engine pictures compile with.
+ * typstVersion: the app's default Typst, which the new project (pinning none) compiles with.
  */
-export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep = () => {} } = {}) {
+export async function latexToTypst(root, doc, staging, { engine = 'auto', typstVersion = '', onStep = () => {} } = {}) {
   onStep('Reading');
   const executable = await pandocFor();
   if (!builtInTypst()) throw httpError('Typst isn’t available in this copy of Spectrum.', 400);
@@ -305,7 +306,7 @@ export async function latexToTypst(root, doc, staging, { engine = 'auto', onStep
   const files = new Set(items.filter((i) => i.type === 'file').map((i) => i.path));
   // a project converted from Typst: its record says what to put back
   const previous = await conversionRecord(root, 'typst');
-  const flowcharts = await composerFlowcharts(root, files, 'tikz');
+  const flowcharts = await composerFlowcharts(root, files, 'tikz', typstVersion);
   const mainDir = path.posix.dirname(doc) === '.' ? '' : path.posix.dirname(doc);
   const mainText = await fs.readFile(safeJoin(root, doc), 'utf8');
   const begin = mainText.indexOf('\\begin{document}');

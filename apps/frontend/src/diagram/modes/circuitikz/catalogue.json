@@ -157,41 +157,41 @@
   },
 
   {
-    "id": "mu-nmos", "label": "MU N-channel MOSFET (enhancement)", "group": "MU Style", "kind": "node", "tikz": "munmos", "pins": ["G", "D", "S"], "defaultLabel": "M",
+    "id": "mu-nmos", "label": "MU N-channel MOSFET (enhancement)", "style": "mu", "kind": "node", "tikz": "munmos", "pins": ["G", "D", "S"], "defaultLabel": "M",
     "pinLabels": { "G": "left", "D": "up", "S": "down" }
   },
   {
-    "id": "mu-pmos", "label": "MU P-channel MOSFET (enhancement)", "group": "MU Style", "kind": "node", "tikz": "mupmos", "pins": ["G", "D", "S"], "defaultLabel": "M",
+    "id": "mu-pmos", "label": "MU P-channel MOSFET (enhancement)", "style": "mu", "kind": "node", "tikz": "mupmos", "pins": ["G", "D", "S"], "defaultLabel": "M",
     "pinLabels": { "G": "left", "D": "down", "S": "up" }
   },
   {
-    "id": "mu-nmosd", "label": "MU N-channel MOSFET (depletion)", "group": "MU Style", "kind": "node", "tikz": "nmos, arrowmos", "pins": ["G", "D", "S"], "defaultLabel": "M",
+    "id": "mu-nmosd", "label": "MU N-channel MOSFET (depletion)", "style": "mu", "kind": "node", "tikz": "nmos, arrowmos", "pins": ["G", "D", "S"], "defaultLabel": "M",
     "pinLabels": { "G": "left", "D": "up", "S": "down" }
   },
   {
-    "id": "mu-pmosd", "label": "MU P-channel MOSFET (depletion)", "group": "MU Style", "kind": "node", "tikz": "pmos, arrowmos, nocircle", "pins": ["G", "D", "S"], "defaultLabel": "M",
+    "id": "mu-pmosd", "label": "MU P-channel MOSFET (depletion)", "style": "mu", "kind": "node", "tikz": "pmos, arrowmos, nocircle", "pins": ["G", "D", "S"], "defaultLabel": "M",
     "pinLabels": { "G": "left", "D": "down", "S": "up" }
   },
   {
-    "id": "mu-nmosb", "label": "MU N-channel MOSFET with bulk (enhancement)", "group": "MU Style", "kind": "node", "tikz": "munmosb", "pins": ["G", "D", "S", "bulk"], "defaultLabel": "M",
+    "id": "mu-nmosb", "label": "MU N-channel MOSFET with bulk (enhancement)", "style": "mu", "kind": "node", "tikz": "munmosb", "pins": ["G", "D", "S", "bulk"], "defaultLabel": "M",
     "pinLabels": { "G": "left", "D": "up", "S": "down", "bulk": "right" }
   },
   {
-    "id": "mu-pmosb", "label": "MU P-channel MOSFET with bulk (enhancement)", "group": "MU Style", "kind": "node", "tikz": "mupmosb", "pins": ["G", "D", "S", "bulk"], "defaultLabel": "M",
+    "id": "mu-pmosb", "label": "MU P-channel MOSFET with bulk (enhancement)", "style": "mu", "kind": "node", "tikz": "mupmosb", "pins": ["G", "D", "S", "bulk"], "defaultLabel": "M",
     "pinLabels": { "G": "left", "D": "down", "S": "up", "bulk": "right" }
   },
   {
-    "id": "mu-nmosdb", "label": "MU N-channel MOSFET with bulk (depletion)", "group": "MU Style", "kind": "node", "tikz": "munmosdb", "pins": ["G", "D", "S", "bulk"], "defaultLabel": "M",
+    "id": "mu-nmosdb", "label": "MU N-channel MOSFET with bulk (depletion)", "style": "mu", "kind": "node", "tikz": "munmosdb", "pins": ["G", "D", "S", "bulk"], "defaultLabel": "M",
     "pinLabels": { "G": "left", "D": "up", "S": "down", "bulk": "right" }
   },
   {
-    "id": "mu-pmosdb", "label": "MU P-channel MOSFET with bulk (depletion)", "group": "MU Style", "kind": "node", "tikz": "mupmosdb", "pins": ["G", "D", "S", "bulk"], "defaultLabel": "M",
+    "id": "mu-pmosdb", "label": "MU P-channel MOSFET with bulk (depletion)", "style": "mu", "kind": "node", "tikz": "mupmosdb", "pins": ["G", "D", "S", "bulk"], "defaultLabel": "M",
     "pinLabels": { "G": "left", "D": "down", "S": "up", "bulk": "right" }
   },
-  { "id": "mu-ideal-diode", "label": "MU ideal diode", "group": "MU Style", "kind": "path", "tikz": "muidealdiode", "defaultLabel": "D", "options": [{ "name": "fill=gray!25", "label": "Filled" }] },
-  { "id": "mu-current-source", "label": "MU current source (box)", "group": "MU Style", "kind": "path", "tikz": "murectisource", "defaultLabel": "I" },
-  { "id": "mu-ac-source", "label": "MU AC voltage source (+ ~ −)", "group": "MU Style", "kind": "path", "tikz": "mutildesource", "defaultLabel": "V" },
-  { "id": "mu-ac-sine-source", "label": "MU AC voltage source (sine with + and −)", "group": "MU Style", "kind": "path", "tikz": "musinesource", "defaultLabel": "V" },
+  { "id": "mu-ideal-diode", "label": "MU ideal diode", "style": "mu", "kind": "path", "tikz": "muidealdiode", "defaultLabel": "D", "options": [{ "name": "fill=gray!25", "label": "Filled" }] },
+  { "id": "mu-current-source", "label": "MU current source (box)", "style": "mu", "kind": "path", "tikz": "murectisource", "defaultLabel": "I" },
+  { "id": "mu-ac-source", "label": "MU AC voltage source (+ ~ −)", "style": "mu", "kind": "path", "tikz": "mutildesource", "defaultLabel": "V" },
+  { "id": "mu-ac-sine-source", "label": "MU AC voltage source (sine with + and −)", "style": "mu", "kind": "path", "tikz": "musinesource", "defaultLabel": "V" },
 
   {
     "id": "op-amp", "label": "Op amp", "group": "Amplifiers and chips", "kind": "node", "tikz": "op amp", "pins": ["-", "+", "out", "up", "down"], "text": true, "defaultLabel": "U",

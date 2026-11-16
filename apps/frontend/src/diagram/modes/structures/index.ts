@@ -3,9 +3,10 @@
 import type { DiagramMode } from '../../types';
 import Canvas from './Canvas';
 import { structureCode, structureStyle } from './code';
-import { asStructure, copyIds, emptyStructure, pasteInto, removeIds } from './model';
+import { UNITS, asStructure, copyIds, emptyStructure, pasteInto, removeIds } from './model';
 import type { StructureModel } from './model';
 import { StructureInspector, StructureRail, StructureStyleMenu } from './panels';
+import { getShown } from './store';
 import './structures.css';
 
 const structures: DiagramMode<StructureModel> = {
@@ -20,7 +21,12 @@ const structures: DiagramMode<StructureModel> = {
   Inspector: StructureInspector,
   StyleMenu: StructureStyleMenu,
   copy: (model, ids) => copyIds(asStructure(model), ids),
-  paste: (model, clip) => pasteInto(asStructure(model), asStructure(clip), { x: 1, y: -1 }),
+  // two grid steps right and down, so the copy shows beside the original in any units
+  paste: (model, clip) => {
+    const { units, grid } = getShown().style;
+    const step = 2 * UNITS[units].grids[grid];
+    return pasteInto(asStructure(model), asStructure(clip), { x: step, y: -step });
+  },
   remove: (model, ids) => removeIds(asStructure(model), ids)
 };
 

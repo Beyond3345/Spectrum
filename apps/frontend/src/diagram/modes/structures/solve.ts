@@ -376,7 +376,10 @@ export function solve(model: StructureModel): Solution {
     const r = RESTRAINTS[sup.type];
     for (const local of r.fixed) if (dofs[i][local] >= 0) held.add(dofs[i][local]);
     if (r.spring !== undefined && dofs[i][r.spring] >= 0) {
-      const k = sup.k && sup.k > 0 ? sup.k : 1;
+      // k is force per length (a moment per radian when it turns) against EI in force·length², both in the drawing's
+      // units. The solve's lengths are fractions of Lc, so EI acts as EI·Lc² and k is scaled to match: the answer
+      // doesn't hang on the longest member
+      const k = (sup.k && sup.k > 0 ? sup.k : 1) * (r.spring === 2 ? Lc : Lc ** 3);
       springs.push({ dof: dofs[i][r.spring], k });
       K[dofs[i][r.spring]][dofs[i][r.spring]] += k;
     }

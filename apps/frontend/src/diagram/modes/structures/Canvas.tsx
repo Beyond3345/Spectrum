@@ -81,7 +81,8 @@ export default function StructureCanvas({
   tool?: string;
   onTool?(tool: string): void;
 }) {
-  const model = asStructure(raw);
+  // the same object while raw is, so a pointer move doesn't solve and lay out the drawing again
+  const model = useMemo(() => asStructure(raw), [raw]);
   const style = readStyle(rawStyle);
   const boxRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -180,7 +181,8 @@ export default function StructureCanvas({
     const s = Math.max(0, Math.min(f.length, Math.round(hit.at / grid) * grid));
     return { x: f.a.x + f.u.x * s, y: f.a.y + f.u.y * s };
   };
-  const snapFor = (p: Pt) => (tool === 'force' || tool.startsWith('moment') || tool === 'release' || tool === 'udl' || tool === 'linear' ? snapOnMember(p, model) : snap(p, model));
+  // what lands on a member lands on its line, not on a grid point beside an inclined one
+  const snapFor = (p: Pt) => (tool === 'force' || tool.startsWith('moment') || tool === 'release' || tool === 'udl' || tool === 'linear' || tool === 'joint' || tool === 'hinge' || tool.startsWith('support:') ? snapOnMember(p, model) : snap(p, model));
 
   const local = (e: { clientX: number; clientY: number }) => {
     const rect = svgRef.current!.getBoundingClientRect();
@@ -449,9 +451,11 @@ export default function StructureCanvas({
         {view && (
           <>
             {scene.blocks.flatMap((b, i) => b.items.map((item, j) => drawItem(item, `${i}-${j}`, b.shift)))}
-            {nodesShown.map(({ n, at }) => (
-              <circle key={n.id} data-node={readOnly ? undefined : n.id} cx={at.x} cy={at.y} r={selected.has(n.id) ? 6 : 4.5} className={`st-node ${selected.has(n.id) ? 'selected' : ''} ${style.view === 'joint' && style.joint === n.id ? 'joint' : ''}`} />
-            ))}
+            {nodesShown.map(({ n, at }) => {
+              // the node the status line says can move
+              const loose = status.kind === 'unstable' && status.node === n.id;
+              return <circle key={n.id} data-node={readOnly ? undefined : n.id} cx={at.x} cy={at.y} r={loose ? 7 : selected.has(n.id) ? 6 : 4.5} className={`st-node ${selected.has(n.id) ? 'selected' : ''} ${style.view === 'joint' && style.joint === n.id ? 'joint' : ''} ${loose ? 'unstable' : ''}`} />;
+            })}
             {handles.map((h) => {
               const p = S({ x: h.at.x * scale, y: h.at.y * scale });
               return <rect key={h.key} data-handle={h.key} className="ckt-handle" x={p.x - 4} y={p.y - 4} width={8} height={8} />;

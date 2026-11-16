@@ -41,7 +41,7 @@ export interface DiagramMode<M = unknown> {
   Canvas: React.ComponentType<{ model: M; onChange(m: M): void; style: Record<string, unknown>; readOnly?: boolean; selection?: string[]; onSelect?(ids: string[]): void; tool?: string; onTool?(tool: string): void }>;
   /** sets: the drawing's other symbol sets, shown after the mode's own */
   Rail?: React.ComponentType<{ onPick(tool: string): void; tool: string; sets?: string[] }>;
-  Inspector?: React.ComponentType<{ model: M; onChange(m: M): void; selection?: string[] }>;
+  Inspector?: React.ComponentType<{ model: M; onChange(m: M): void; selection?: string[]; style?: Record<string, unknown> }>;
   StyleMenu?: React.ComponentType<{ style: Record<string, unknown>; onChange(s: Record<string, unknown>): void; model?: M }>;
   // Copy, Paste, Duplicate and Delete of the selection, through the frame's keys and buttons; a mode without them
   // handles its own

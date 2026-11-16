@@ -1,6 +1,7 @@
 // The circuit drawing: parts, wires and junctions on a 0.25 cm grid, and the geometry the canvas, the
 // snapping and the export share. Coordinates are in grid steps with y up, as TikZ draws them.
 import catalogueData from './catalogue.json';
+import { styleFor, styleHidden } from '../../universityStyles';
 
 export interface CatalogueOption {
   name: string;
@@ -10,7 +11,10 @@ export interface CatalogueOption {
 export interface CataloguePart {
   id: string;
   label: string;
+  /** its group in the parts list; a university style's part has its style's name (catalogue.json leaves it out) */
   group: string;
+  /** the university style it belongs to (universityStyles.ts), whose switch in Settings hides it */
+  style?: string;
   /** path: sits on a wire between two points; node: placed, with named pins */
   kind: 'path' | 'node';
   /** the circuitikz key, or a symbol set's pic (spx/mech/ground) */
@@ -35,8 +39,14 @@ export interface CataloguePart {
 
 export type PinSide = 'left' | 'right' | 'up' | 'down';
 
-export const CATALOGUE = catalogueData as CataloguePart[];
+export const CATALOGUE = (catalogueData as (Omit<CataloguePart, 'group'> & { group?: string })[]).map(
+  (part): CataloguePart => ({ ...part, group: part.group ?? styleFor(part.style ?? '')?.name ?? '' })
+);
 export const PARTS = new Map(CATALOGUE.map((part) => [part.id, part]));
+/** The parts list: circuitikz's and the drawing's other sets' (sets), less the university styles switched off (stylesOff),
+ * found by name or circuitikz key (filter): nmos finds the depletion and bulk ones too. */
+export const railParts = (filter: string, sets: string[], stylesOff: string[]) =>
+  CATALOGUE.filter((part) => (!part.set || sets.includes(part.set)) && !styleHidden(part.style, stylesOff) && `${part.label} ${part.tikz}`.toLowerCase().includes(filter.trim().toLowerCase()));
 /** The catalogue as the first 2.0 builds knew it: a drawing with any other part is a version 2 file, which they open as code. */
 const FIRST_PARTS = new Set(['resistor', 'variable-resistor', 'potentiometer', 'impedance', 'fuse', 'capacitor', 'polarised-capacitor', 'variable-capacitor', 'inductor', 'variable-inductor', 'voltage-source', 'current-source', 'ac-source', 'controlled-voltage-source', 'controlled-current-source', 'battery', 'cell', 'switch-open', 'switch-closed', 'push-button', 'changeover-switch', 'diode', 'led', 'zener', 'schottky', 'photodiode', 'npn', 'pnp', 'nmos', 'pmos', 'op-amp', 'amplifier', 'buffer', 'and', 'or', 'not', 'nand', 'nor', 'xor', 'ammeter', 'voltmeter', 'lamp', 'ground', 'reference-ground', 'signal-ground', 'supply-up', 'supply-down', 'transformer', 'transformer-core', 'mech-ground', 'mech-pin']);
 export const usesNewerParts = (model: unknown) => asCircuit(model).elements.some((el) => el.kind === 'annotation' || (isPart(el) && !FIRST_PARTS.has(el.type)));

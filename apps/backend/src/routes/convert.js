@@ -19,7 +19,7 @@ export function registerConvertRoutes(fastify) {
   // llmConfig }. The steps arrive as they start at /api/compile/:convertId/log. With aiCleanup, the AI model then tidies
   // the regions the converter flagged, in the new project (convertTidy.js), and tidy says what it changed.
   fastify.post('/api/projects/:id/convert', async (req) => {
-    const { to, doc, engine = 'auto', convertId, aiCleanup = false, llmConfig } = req.body || {};
+    const { to, doc, engine = 'auto', convertId, aiCleanup = false, llmConfig, typstVersion } = req.body || {};
     const kind = KINDS[to];
     if (!kind) throw httpError('Choose what to convert to.', 400);
     if (!SUPPORTED_ENGINES.includes(engine)) throw httpError('Unsupported engine: ' + engine, 400);
@@ -32,7 +32,8 @@ export function registerConvertRoutes(fastify) {
     const staging = await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-convert-'));
     try {
       const onStep = (step) => sendLog(log, 'output', step + '\n');
-      const result = await kind.convert(root, rel, staging, { engine, onStep });
+      // the app's default Typst, which the new project compiles with: its flowcharts import the fletcher that one can load
+      const result = await kind.convert(root, rel, staging, { engine, onStep, typstVersion: typeof typstVersion === 'string' && /^\d+\.\d+\.\d+$/.test(typstVersion) ? typstVersion : '' });
       const project = await createProject({
         name: meta.name + kind.suffix,
         meta: { mainFile: result.mainFile },

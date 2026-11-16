@@ -173,6 +173,9 @@ export type AppSettings = {
   defaultInstructions: string;
   /** Settings › Composer: the Symbol sets… button for adding other packages' symbols to a drawing */
   composerMixSets: boolean;
+  /** University styles switched off (universityStyles.ts ids): their parts leave the parts list and the searches. A
+   * style missing here is on, so a style added later starts on. */
+  composerStylesOff: string[];
   /** the conventions a new drawing copies into its style (ComposerDefaults) */
   composerMoments: ComposerDefaults['moments'];
   composerMohrShear: ComposerDefaults['mohrShear'];
@@ -282,6 +285,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   personas: STARTER_PERSONAS,
   defaultInstructions: '',
   composerMixSets: false,
+  composerStylesOff: [],
   composerMoments: 'tension',
   composerMohrShear: 'down',
   composerSiUnits: true,
@@ -441,6 +445,8 @@ function parse(raw: string | null): AppSettings {
     merged.personas = cleanPersonas(merged.personas);
     if (typeof merged.defaultInstructions !== 'string') merged.defaultInstructions = '';
     merged.composerMixSets = merged.composerMixSets === true;
+    // ids this build doesn't know stay, for a newer Spectrum on another computer
+    merged.composerStylesOff = Array.isArray(merged.composerStylesOff) ? [...new Set(merged.composerStylesOff.filter((id) => typeof id === 'string'))] : [];
     if (!['tension', 'positive'].includes(merged.composerMoments)) merged.composerMoments = 'tension';
     if (!['down', 'clockwise-above', 'up'].includes(merged.composerMohrShear)) merged.composerMohrShear = 'down';
     merged.composerSiUnits = merged.composerSiUnits !== false;
@@ -542,7 +548,7 @@ export const composerDefaults = (settings: AppSettings): ComposerDefaults => ({
 const SHARED_KEYS = [
   'theme', 'accent', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize',
   'autoInsertCite', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'languages', 'englishGrammar', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
-  'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions', 'composerMixSets', 'composerMoments', 'composerMohrShear',
+  'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions', 'composerMixSets', 'composerStylesOff', 'composerMoments', 'composerMohrShear',
   'composerSiUnits', 'composerDiagrams', 'composerGrid', 'composerGridEvery'
 ] as const satisfies readonly (keyof AppSettings)[];
 

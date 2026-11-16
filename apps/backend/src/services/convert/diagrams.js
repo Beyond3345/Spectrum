@@ -24,11 +24,14 @@ export function flowchartOf(text) {
   return flowchart && hashOf(above) === last[2] ? diagram : null;
 }
 
-/** A flowchart's file in language ('tikz' or 'typst'), from its model, as the composer would save it. */
-export function flowchartFile(diagram, language) {
+/**
+ * A flowchart's file in language ('tikz' or 'typst'), from its model, as the composer would save it. typstVersion: the
+ * Typst the new project compiles with, which picks fletcher's import line.
+ */
+export function flowchartFile(diagram, language, typstVersion = '') {
   const { language: _language, pkg: _pkg, ...rest } = diagram;
   const kept = language === 'typst' ? { language: 'typst', ...rest } : { language: 'tikz', pkg: 'tikz', ...rest };
-  const drawn = language === 'typst' ? fletcherCode(diagram.model).body.trimEnd() + '\n' : tikzDocument(tikzCode(diagram.model));
+  const drawn = language === 'typst' ? fletcherCode(diagram.model, typstVersion).body.trimEnd() + '\n' : tikzDocument(tikzCode(diagram.model));
   return drawn + (language === 'typst' ? '//' : '%') + ' spectrum-diagram v1 ' + Buffer.from(JSON.stringify(kept)).toString('base64') + ' ' + hashOf(drawn) + '\n';
 }
 
@@ -38,16 +41,18 @@ const SHARED_MATHS = /^(?:[0-9+\-=(),. ]|[A-Za-z](?![A-Za-z])|[_^](?:[0-9]+|[A-Z
 /**
  * A flowchart's drawing for language ('typst' or 'tikz'), its texts as that language reads them: a maths box's maths
  * and a container's ×N through maths (TeX to Typst; null when it can't) for Typst, as they are for TikZ when they read
- * the same in both; any other text as it is when it is plain words. Null when a text needs more than that, so the
- * picture stays a PDF.
+ * the same in both; any other text as it is when it is plain words. Null when a text needs more than that, or (for
+ * Typst) a box has a shape fletcher can't draw, so the picture stays a PDF.
  */
 export function flowchartFor(diagram, language, maths) {
   if (diagram.language === (language === 'typst' ? 'typst' : 'tikz')) return diagram;
+  // the document and the stack, which fletcher has no shape for
+  if (language === 'typst' && diagram.model.boxes.some((b) => b.shape === 'document' || b.shape === 'stack')) return null;
   let ok = true;
   const text = (value, isMaths) => {
     if (!value) return value;
     const out = !isMaths ? value : language === 'typst' ? maths(value) : SHARED_MATHS.test(value) ? value : null;
-    ok &&= out !== null && (isMaths || !(language === 'typst' ? /[\\$]/ : /[\\{}$&%#_^~]/).test(value));
+    ok &&= out !== null && (isMaths || !(language === 'typst' ? /[\\$]/ : /[\\{}$^~]/).test(value));
     return out;
   };
   const model = {

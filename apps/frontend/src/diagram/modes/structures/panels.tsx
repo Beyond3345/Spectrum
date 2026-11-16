@@ -126,7 +126,7 @@ function Field({ label, children, hint }: { label: string; children: (id: string
   const id = useId();
   return (
     <div className="field">
-      <label className="field-label" htmlFor={id}>
+      <label className="field-label" htmlFor={id} id={`${id}-label`}>
         {label}
       </label>
       {children(id)}
@@ -136,7 +136,7 @@ function Field({ label, children, hint }: { label: string; children: (id: string
 }
 
 /** A number typed freely, kept once it's a number (and positive, when it must be). */
-function NumberInput({ id, value, onChange, onDone, positive, unit }: { id?: string; value: number; onChange(v: number): void; onDone?(): void; positive?: boolean; unit?: string }) {
+function NumberInput({ id, label, value, onChange, onDone, positive, unit }: { id?: string; /** the name of one of a pair */ label?: string; value: number; onChange(v: number): void; onDone?(): void; positive?: boolean; unit?: string }) {
   const [text, setText] = useState(String(value));
   useEffect(() => {
     if (Number(text) !== value) setText(String(value));
@@ -146,6 +146,7 @@ function NumberInput({ id, value, onChange, onDone, positive, unit }: { id?: str
     <span className="diagram-pair form-number">
       <input
         id={id}
+        aria-label={label}
         className="input"
         type="number"
         inputMode="decimal"
@@ -193,8 +194,9 @@ function DirectionFields({ load, onMember, update }: { load: Force | Dist; onMem
   return (
     <>
       <Field label="Direction">
-        {() => (
+        {(id) => (
           <Select
+            labelId={`${id}-label`}
             value={direction}
             options={DIRECTIONS.filter(([value]) => onMember || value !== 'perp')}
             onChange={(value) => {
@@ -222,7 +224,7 @@ function LabelField({ value, onChange }: { value?: string; onChange(v: string | 
 }
 
 export function StructureInspector({ model: raw, onChange, selection = [] }: { model: StructureModel; onChange(m: StructureModel): void; selection?: string[] }) {
-  const model = asStructure(raw);
+  const model = useMemo(() => asStructure(raw), [raw]);
   const solution = useMemo(() => solve(model), [model]);
   const units = UNITS[useShown().style.units];
   const picked = [...model.nodes.filter((n) => selection.includes(n.id)), ...model.parts.filter((p) => selection.includes(p.id))];
@@ -281,8 +283,8 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
         <Field label="Position">
           {() => (
             <div className="ckt-row">
-              <NumberInput value={node.x} onChange={(x) => updateNode({ ...node, x })} onDone={fit} unit="x" />
-              <NumberInput value={node.y} onChange={(y) => updateNode({ ...node, y })} onDone={fit} unit="y" />
+              <NumberInput label="Position x" value={node.x} onChange={(x) => updateNode({ ...node, x })} onDone={fit} unit="x" />
+              <NumberInput label="Position y" value={node.y} onChange={(y) => updateNode({ ...node, y })} onDone={fit} unit="y" />
             </div>
           )}
         </Field>
@@ -301,8 +303,9 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
         fields = (
           <>
             <Field label="Kind">
-              {() => (
+              {(id) => (
                 <Select
+                  labelId={`${id}-label`}
                   value={part.bar ? 'bar' : 'beam'}
                   options={[
                     ['beam', 'Beam or frame member'],
@@ -346,13 +349,13 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
         const set = (patch: Partial<Support>) => updatePart({ ...part, ...patch });
         fields = (
           <>
-            <Field label="Kind">{() => <Select value={part.type} options={SUPPORT_TYPES} onChange={(type) => set({ type: type as SupportType })} />}</Field>
+            <Field label="Kind">{(id) => <Select labelId={`${id}-label`} value={part.type} options={SUPPORT_TYPES} onChange={(type) => set({ type: type as SupportType })} />}</Field>
             <Field label="Angle" hint="Turns the support anticlockwise; a roller at an angle pushes square to its surface.">
               {(id) => <NumberInput id={id} value={part.angle ?? 0} unit="°" onChange={(angle) => set({ angle: angle || undefined })} />}
             </Field>
             {(part.type === 'spring' || part.type === 'rotspring') && (
-              <Field label="Relative stiffness" hint="Relative to the members’ EI.">
-                {(id) => <NumberInput id={id} value={part.k ?? 1} positive onChange={(k) => set({ k: k === 1 ? undefined : k })} />}
+              <Field label="Stiffness" hint={`Set against the members’ EI, where a relative EI of 1 means 1 ${units.force} ${units.length}².`}>
+                {(id) => <NumberInput id={id} value={part.k ?? 1} unit={part.type === 'spring' ? `${units.force}/${units.length}` : `${units.force} ${units.length}/rad`} positive onChange={(k) => set({ k: k === 1 ? undefined : k })} />}
               </Field>
             )}
           </>
@@ -379,8 +382,9 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
           <>
             <Field label="Value">{(id) => <NumberInput id={id} value={part.value} unit={`${units.force} ${units.length}`} onChange={(value) => set({ value })} />}</Field>
             <Field label="Turning">
-              {() => (
+              {(id) => (
                 <Select
+                  labelId={`${id}-label`}
                   value={part.cw ? 'cw' : 'ccw'}
                   options={[
                     ['ccw', 'Anticlockwise'],
@@ -405,16 +409,16 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
             <Field label="Intensity" hint="At its start and at its end; equal for a uniform load.">
               {() => (
                 <div className="ckt-row">
-                  <NumberInput value={part.w1} onChange={(w1) => set({ w1 })} />
-                  <NumberInput value={part.w2} unit={`${units.force}/${units.length}`} onChange={(w2) => set({ w2 })} />
+                  <NumberInput label="Intensity at the start" value={part.w1} onChange={(w1) => set({ w1 })} />
+                  <NumberInput label="Intensity at the end" value={part.w2} unit={`${units.force}/${units.length}`} onChange={(w2) => set({ w2 })} />
                 </div>
               )}
             </Field>
             <Field label="From and to" hint={`Along the member, 0 to ${formatValue(L, 4)}.`}>
               {() => (
                 <div className="ckt-row">
-                  <NumberInput value={part.from} onChange={(from) => from < part.to && from >= 0 && set({ from })} />
-                  <NumberInput value={part.to} onChange={(to) => to > part.from && to <= L + 1e-9 && set({ to })} />
+                  <NumberInput label="From" value={part.from} onChange={(from) => from < part.to && from >= 0 && set({ from })} />
+                  <NumberInput label="To" value={part.to} onChange={(to) => to > part.from && to <= L + 1e-9 && set({ to })} />
                 </div>
               )}
             </Field>
@@ -430,8 +434,9 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
         fields = (
           <>
             <Field label="Measures">
-              {() => (
+              {(id) => (
                 <Select
+                  labelId={`${id}-label`}
                   value={part.dir}
                   options={[
                     ['h', 'Horizontal'],
@@ -464,8 +469,8 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
             <Field label="From and to" hint="Anticlockwise from the right.">
               {() => (
                 <div className="ckt-row">
-                  <NumberInput value={part.from} unit="°" onChange={(from) => set({ from })} />
-                  <NumberInput value={part.to} unit="°" onChange={(to) => set({ to })} />
+                  <NumberInput label="From" value={part.from} unit="°" onChange={(from) => set({ from })} />
+                  <NumberInput label="To" value={part.to} unit="°" onChange={(to) => set({ to })} />
                 </div>
               )}
             </Field>
@@ -514,15 +519,15 @@ export function StructureStyleMenu({ style: raw, onChange }: { style: Record<str
   const cuts = model.parts.filter((p): p is Cut => p.kind === 'cut');
   return (
     <div className="ckt-style">
-      <Field label="View">{() => <Select value={style.view} options={VIEWS} onChange={(view) => set({ view: view as StructStyle['view'] })} />}</Field>
+      <Field label="View">{(id) => <Select labelId={`${id}-label`} value={style.view} options={VIEWS} onChange={(view) => set({ view: view as StructStyle['view'] })} />}</Field>
       {style.view === 'joint' && (
         <Field label="Joint">
-          {() => <Select value={style.joint && joints.some((n) => n.id === style.joint) ? style.joint : joints[0]?.id ?? ''} options={joints.map((n, i) => [n.id, n.name ? `Joint ${n.name}` : `Joint ${i + 1}`])} onChange={(joint) => set({ joint })} />}
+          {(id) => <Select labelId={`${id}-label`} value={style.joint && joints.some((n) => n.id === style.joint) ? style.joint : joints[0]?.id ?? ''} options={joints.map((n, i) => [n.id, n.name ? `Joint ${n.name}` : `Joint ${i + 1}`])} onChange={(joint) => set({ joint })} />}
         </Field>
       )}
       {style.view === 'section' && (
         <Field label="Section cut" hint={cuts.length ? undefined : 'Draw one with Section cut on the left.'}>
-          {() => <Select value={style.cut && cuts.some((c) => c.id === style.cut) ? style.cut : cuts[0]?.id ?? ''} options={cuts.map((c, i): [string, string] => [c.id, `Cut ${i + 1}`])} onChange={(cut) => set({ cut })} />}
+          {(id) => <Select labelId={`${id}-label`} value={style.cut && cuts.some((c) => c.id === style.cut) ? style.cut : cuts[0]?.id ?? ''} options={cuts.map((c, i): [string, string] => [c.id, `Cut ${i + 1}`])} onChange={(cut) => set({ cut })} />}
         </Field>
       )}
       {style.view === 'diagrams' && (
@@ -537,8 +542,9 @@ export function StructureStyleMenu({ style: raw, onChange }: { style: Record<str
         />
       )}
       <Field label="Bending moment diagrams" hint="The default for new drawings is in Settings › Composer.">
-        {() => (
+        {(id) => (
           <Select
+            labelId={`${id}-label`}
             value={style.moments}
             options={[
               ['tension', 'Tension side (sagging below)'],
@@ -549,13 +555,13 @@ export function StructureStyleMenu({ style: raw, onChange }: { style: Record<str
         )}
       </Field>
       <Field label="Units" hint="Values are kept as typed; only the units’ names change.">
-        {() => <Select value={style.units} options={Object.entries(UNITS).map(([id, u]): [string, string] => [id, u.label])} onChange={(units) => set({ units: units as Units, grid: 1 })} />}
+        {(id) => <Select labelId={`${id}-label`} value={style.units} options={Object.entries(UNITS).map(([id, u]): [string, string] => [id, u.label])} onChange={(units) => set({ units: units as Units, grid: 1 })} />}
       </Field>
       <Field label="Grid">
-        {() => <Select value={String(style.grid)} options={UNITS[style.units].grids.map((g, i): [string, string] => [String(i), `${g} ${UNITS[style.units].length}`])} onChange={(grid) => set({ grid: Number(grid) })} />}
+        {(id) => <Select labelId={`${id}-label`} value={String(style.grid)} options={UNITS[style.units].grids.map((g, i): [string, string] => [String(i), `${g} ${UNITS[style.units].length}`])} onChange={(grid) => set({ grid: Number(grid) })} />}
       </Field>
       <Field label="Significant figures">
-        {() => <Select value={String(style.figures)} options={[2, 3, 4, 5].map((n): [string, string] => [String(n), String(n)])} onChange={(figures) => set({ figures: Number(figures) })} />}
+        {(id) => <Select labelId={`${id}-label`} value={String(style.figures)} options={[2, 3, 4, 5].map((n): [string, string] => [String(n), String(n)])} onChange={(figures) => set({ figures: Number(figures) })} />}
       </Field>
       <label className="checkbox-row">
         <input type="checkbox" role="switch" checked={style.names} onChange={(e) => set({ names: e.target.checked })} />

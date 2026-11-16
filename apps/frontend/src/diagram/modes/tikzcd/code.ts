@@ -1,4 +1,5 @@
 import { mathsPackages } from '../shared';
+import { sideName } from '../circuitikz/labels';
 import { nextId } from '../tikz/code';
 
 // Commutative diagrams (tikz-cd): maths objects on a grid of rows and columns, and labelled arrows between them
@@ -19,6 +20,17 @@ export function direction(from: Cell, to: Cell) {
 
 // a label with these in it goes in braces, so tikz-cd doesn't read them as its own
 const quoted = (label: string) => (/[",=\]]/.test(label) ? `"{${label}}"` : `"${label}"`);
+
+/** The two sides an arrow's label can go, named as the arrow runs: tikz-cd's default is on its left (above →, right of ↓). */
+export function labelSides(arrow: CdArrow, model: CdModel): [string, string][] {
+  const [from, to] = [arrow.from, arrow.to].map((id) => model.cells.find((c) => c.id === id));
+  // y up, as sideName has it; the grid's rows go down
+  const u = from && to ? { x: to.col - from.col, y: from.row - to.row } : { x: 1, y: 0 };
+  return [
+    ['above', sideName(u, 1)],
+    ['below', sideName(u, -1)]
+  ];
+}
 
 function arrowCode(arrow: CdArrow, from: Cell, to: Cell) {
   const label = arrow.label?.trim();

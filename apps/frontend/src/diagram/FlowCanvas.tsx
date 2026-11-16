@@ -46,8 +46,8 @@ export function FlowCanvas({
   onSelect?(ids: string[]): void;
   /** nodes dragged to these top-left corners, in px */
   onMove?(moves: { id: string; x: number; y: number }[]): void;
-  /** a node's NodeResizer dragged to this size, in px */
-  onResize?(id: string, width: number, height: number): void;
+  /** a node's NodeResizer dragged to this size, in px; at: its new top-left corner, when dragged from the left or top */
+  onResize?(id: string, width: number, height: number, at?: { x: number; y: number }): void;
   onConnect?(c: Connection): void;
   /** a click on the empty canvas, where it is in px: for placing the rail's tool */
   onPlace?(at: { x: number; y: number }): void;
@@ -80,13 +80,16 @@ export function FlowCanvas({
   };
 
   const onNodesChange = (changes: NodeChange[]) => {
-    const moves = changes.flatMap((c) => (c.type === 'position' && c.position ? [{ id: c.id, x: c.position.x, y: c.position.y }] : []));
+    // setAttributes: a resize asked for, rather than the size React Flow found. A resize from the left or top edge comes
+    // with the node's new position in the same call: both go to onResize, so the mode makes one change of them
+    const resized = new Set(changes.flatMap((c) => (c.type === 'dimensions' && c.setAttributes ? [c.id] : [])));
+    const at = new Map(changes.flatMap((c) => (c.type === 'position' && c.position ? [[c.id, c.position] as const] : [])));
+    const moves = [...at].flatMap(([id, p]) => (resized.has(id) ? [] : [{ id, x: p.x, y: p.y }]));
     if (moves.length) onMove?.(moves);
     let sized = false;
     for (const c of changes) {
       if (c.type !== 'dimensions' || !c.dimensions) continue;
-      // setAttributes: a resize asked for, rather than the size React Flow found
-      if (c.setAttributes) onResize?.(c.id, c.dimensions.width, c.dimensions.height);
+      if (c.setAttributes) onResize?.(c.id, c.dimensions.width, c.dimensions.height, at.get(c.id));
       measured.current.set(c.id, c.dimensions);
       sized = true;
     }

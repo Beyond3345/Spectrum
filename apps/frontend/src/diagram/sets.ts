@@ -9,6 +9,8 @@ export interface SetSymbol {
   id: string;
   label: string;
   group: string;
+  /** the university style it belongs to, whose switch hides it from the search */
+  style?: string;
   aliases?: string[];
 }
 
@@ -41,7 +43,7 @@ export const SETS: SymbolSet[] = Object.entries(SYMBOL_SETS).map(([id, set]) => 
   categories: META[id]?.categories ?? [],
   packages: set.packages,
   libraries: set.libraries,
-  symbols: CATALOGUE.filter((part) => (part.set || 'circuitikz') === id).map(({ id: symbol, label, group }) => ({ id: symbol, label, group }))
+  symbols: CATALOGUE.filter((part) => (part.set || 'circuitikz') === id).map(({ id: symbol, label, group, style }) => ({ id: symbol, label, group, ...(style && { style }) }))
 }));
 
 export const setFor = (id: string) => SETS.find((set) => set.id === id);
