@@ -35,6 +35,8 @@ export interface CataloguePart {
   /** a transistor's pins, each with the way its lead leaves the body when the part is unturned: Label pins writes each
    * pin's letter beside it (bulk as B) */
   pinLabels?: Record<string, PinSide>;
+  /** other words the parts list and the chooser find it by: elbow for a bend */
+  aliases?: string[];
 }
 
 export type PinSide = 'left' | 'right' | 'up' | 'down';
@@ -44,12 +46,15 @@ export const CATALOGUE = (catalogueData as (Omit<CataloguePart, 'group'> & { gro
 );
 export const PARTS = new Map(CATALOGUE.map((part) => [part.id, part]));
 /** The parts list: circuitikz's and the drawing's other sets' (sets), less the university styles switched off (stylesOff),
- * found by name or circuitikz key (filter): nmos finds the depletion and bulk ones too. */
+ * found by name, circuitikz key or another word for it (filter): nmos finds the depletion and bulk ones too. */
 export const railParts = (filter: string, sets: string[], stylesOff: string[]) =>
-  CATALOGUE.filter((part) => (!part.set || sets.includes(part.set)) && !styleHidden(part.style, stylesOff) && `${part.label} ${part.tikz}`.toLowerCase().includes(filter.trim().toLowerCase()));
+  CATALOGUE.filter((part) => (!part.set || sets.includes(part.set)) && !styleHidden(part.style, stylesOff) && `${part.label} ${part.tikz} ${part.aliases?.join(' ') ?? ''}`.toLowerCase().includes(filter.trim().toLowerCase()));
 /** The catalogue as the first 2.0 builds knew it: a drawing with any other part is a version 2 file, which they open as code. */
 const FIRST_PARTS = new Set(['resistor', 'variable-resistor', 'potentiometer', 'impedance', 'fuse', 'capacitor', 'polarised-capacitor', 'variable-capacitor', 'inductor', 'variable-inductor', 'voltage-source', 'current-source', 'ac-source', 'controlled-voltage-source', 'controlled-current-source', 'battery', 'cell', 'switch-open', 'switch-closed', 'push-button', 'changeover-switch', 'diode', 'led', 'zener', 'schottky', 'photodiode', 'npn', 'pnp', 'nmos', 'pmos', 'op-amp', 'amplifier', 'buffer', 'and', 'or', 'not', 'nand', 'nor', 'xor', 'ammeter', 'voltmeter', 'lamp', 'ground', 'reference-ground', 'signal-ground', 'supply-up', 'supply-down', 'transformer', 'transformer-core', 'mech-ground', 'mech-pin']);
 export const usesNewerParts = (model: unknown) => asCircuit(model).elements.some((el) => el.kind === 'annotation' || (isPart(el) && !FIRST_PARTS.has(el.type)));
+/** The sets Spectrum 2.5 added, whose parts builds up to 2.4 would write as a dot: a drawing with one is a version 5 file. */
+const SETS_OF_2_5 = ['spx-fluid', 'spx-mat'];
+export const usesSetsOf25 = (model: unknown) => asCircuit(model).elements.some((el) => isPart(el) && SETS_OF_2_5.includes(PARTS.get(el.type)?.set ?? ''));
 
 /** A part TeX draws a symbol for: all but Text, which the canvas writes itself. */
 export const drawsSymbol = (type: string) => !!PARTS.get(type)?.tikz;

@@ -1,4 +1,4 @@
-import { PARTS, asCircuit, isPart, usesNewerParts } from './modes/circuitikz/model';
+import { PARTS, asCircuit, isPart, usesNewerParts, usesSetsOf25 } from './modes/circuitikz/model';
 import { plotIsNewer } from './modes/pgfplots/code';
 import type { PlotModel } from './modes/pgfplots/code';
 import { tikzIsNewer } from './modes/tikz/code';
@@ -64,6 +64,7 @@ function annotated(diagram: DiagramFile) {
 function version5(diagram: DiagramFile) {
   try {
     // e.g. if (diagram.pkg === 'vectors') return vectorsNeedVersion5(diagram.model);
+    if (diagram.pkg === 'circuitikz' && usesSetsOf25(diagram.model)) return true;
   } catch {
     // a model of the wrong shape: its mode refuses it anyway
   }
