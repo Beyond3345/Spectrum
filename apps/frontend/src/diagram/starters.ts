@@ -3,7 +3,7 @@
 import * as circuitTemplates from './modes/circuitikz/templates';
 import { TEMPLATES } from './modes/mermaid/templates';
 import { newFormModel, presetFor } from './modes/form/presets';
-import { gradingCurve, signalSketch, slopeField, stressStrain } from './modes/pgfplots/code';
+import { bodeMagnitude, conics, dampedOscillation, gradingCurve, lissajous, normalCurve, phasePortrait, polarRose, signalSketch, slopeField, stressStrain } from './modes/pgfplots/code';
 import { sampleBeam } from './modes/structures/model';
 import { dividingSegment, lineThroughPoints, projections, triangleMidpoints } from './modes/vectors/model';
 import { modelArchitecture, stateMachine } from './modes/tikz/examples';
@@ -348,6 +348,24 @@ export const STARTERS: Starter[] = [
     file: 'mohr',
     model: () => newFormModel('mohr')
   },
+  // more plots, and Mermaid's other kinds of diagram
+  ...([
+    ['normal-curve', 'Normal curve', 'The standard normal density with its upper tail shaded beyond z = 1.645', 'mathematics/statistics', [], ['normal distribution', 'bell curve', 'Gaussian', 'z-score', 'hypothesis test', 'significance', 'tail', 'p-value'], normalCurve],
+    ['bode-magnitude', 'Bode magnitude plot', 'Gain in dB against frequency on a log axis, with the asymptotes and the corner', 'engineering/signals', ['engineering/electrical'], ['Bode', 'frequency response', 'decibel', 'low-pass', 'filter', 'corner frequency', 'cut-off'], bodeMagnitude],
+    ['damped-oscillation', 'Damped oscillation', 'A decaying cosine inside its exponential envelope', 'physics/waves', ['physics/mechanics', 'engineering/signals'], ['damping', 'underdamped', 'decay', 'envelope', 'vibration', 'oscillator', 'transient'], dampedOscillation],
+    ['polar-rose', 'Polar rose', 'r = cos 3t, three petals on equal axes', 'mathematics/plots', [], ['polar', 'rose', 'rhodonea', 'petals', 'polar curve'], polarRose],
+    ['lissajous', 'Lissajous figure', 'x = sin 3t against y = sin 2t on equal axes', 'mathematics/plots', ['physics/waves', 'engineering/signals'], ['Lissajous', 'parametric', 'oscilloscope', 'XY mode', 'phase'], lissajous],
+    ['conic-sections', 'Conics', 'An ellipse, a hyperbola and a parabola with their equations', 'mathematics/geometry', ['mathematics/plots'], ['conic sections', 'ellipse', 'hyperbola', 'parabola', 'parametric'], conics],
+    ['phase-portrait', 'Phase portrait', 'The field of a damped oscillator with a trajectory spiralling in', 'mathematics/plots', ['physics/mechanics', 'engineering/signals'], ['phase plane', 'vector field', 'quiver', 'trajectory', 'ODE', 'differential equation', 'stability', 'spiral'], phasePortrait]
+  ] as const).map(([id, title, blurb, home, also, aliases, model]): Starter => ({ id, mode: 'pgfplots', title, blurb, home, ...(also.length && { also: [...also] }), aliases: [...aliases], file: id, model })),
+  ...([
+    ['er', 'Entity–relationship diagram', 'Tables, their keys and how they relate, written as text', 'computing/software', ['ER', 'ERD', 'database', 'schema', 'entity', 'relationship', 'crow’s foot'], 'er-diagram'],
+    ['pie', 'Pie chart', 'Shares of a whole, written as text', 'others/charts', ['pie', 'proportion', 'share', 'percentage'], 'pie'],
+    ['xychart', 'Bar and line chart', 'Bars and a line over categories, written as text', 'others/charts', ['bar chart', 'line chart', 'xychart', 'column chart'], 'chart'],
+    ['mindmap', 'Mind map', 'Ideas branching from one centre, written as text', 'others/planning', ['mind map', 'brainstorm', 'ideas', 'outline'], 'mindmap'],
+    ['timeline', 'Timeline', 'Events by period, written as text', 'others/planning', ['timeline', 'milestones', 'history', 'chronology'], 'timeline'],
+    ['gitgraph', 'Git graph', 'Commits, branches and merges, written as text', 'computing/software', ['git', 'branch', 'merge', 'commit', 'version control'], 'gitgraph']
+  ] as const).map(([template, title, blurb, home, aliases, file]): Starter => ({ id: `mermaid-${template}`, mode: 'mermaid', title, blurb, home, aliases: [...aliases], file, model: mermaid(template) })),
   // vector diagrams, from the user's own figures
   ...([
     ['vectors', 'Vector diagram', 'Points, vectors, midpoints and projections on axes, kept exact as points move', undefined],

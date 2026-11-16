@@ -45,7 +45,7 @@ const physics = sectionsFor('physics');
 eq(physics.find((s) => s.id === 'physics/electromagnetism')?.starters.map((s) => s.id), ['circuit'], 'Circuit is cross-listed under Physics › Electromagnetism');
 eq(physics.find((s) => s.id === 'physics/electromagnetism')?.label, 'Electromagnetism', 'a category’s view heads by group alone');
 eq(sectionsFor('physics').every((s) => s.starters.length > 0), true, 'no empty groups');
-eq(sectionsFor('mathematics').find((s) => s.id === 'mathematics/statistics')?.starters.map((s) => s.id), ['plot', 'venn'], 'Plot under Statistics too, beside Venn diagram');
+eq(sectionsFor('mathematics').find((s) => s.id === 'mathematics/statistics')?.starters.map((s) => s.id), ['plot', 'venn', 'normal-curve'], 'Plot under Statistics too, beside Venn diagram and Normal curve');
 
 // search: titles, aliases, groups, categories, packages; symbols with the starter they open in
 const ids = (q: string) => search(q).starters.map((s) => s.id);
@@ -57,6 +57,12 @@ eq(ids('category theory'), ['commutative'], 'two words');
 eq(ids('electromagnetism'), ['circuit'], 'a group it is cross-listed in');
 eq(ids('fletcher').includes('flowchart-typst'), true, 'fletcher');
 eq(ids('Zwölf'), [], 'nothing matches');
+// 2.5's plot and Mermaid starters, each opening a drawing of its own
+for (const id of ['normal-curve', 'bode-magnitude', 'damped-oscillation', 'polar-rose', 'lissajous', 'conic-sections', 'phase-portrait']) eq(plotCode(starterFor(id)!.model!() as PlotModel).body.includes('\\addplot'), true, `${id} plots`);
+for (const [id, first] of [['er', 'erDiagram'], ['pie', 'pie'], ['xychart', 'xychart-beta'], ['mindmap', 'mindmap'], ['timeline', 'timeline'], ['gitgraph', 'gitGraph']]) {
+  eq((starterFor(`mermaid-${id}`)!.model!() as { code: string }).code.split(/\s/)[0], first, `mermaid-${id} is a ${first}`);
+}
+eq(ids('Bode'), ['bode-magnitude'], 'Bode finds its plot');
 const resistor = search('resistor');
 eq(resistor.symbols.map(({ starter, symbol }) => `${symbol.label}, in ${starter.title}`), ['Resistor, in Circuit', 'Resistor, in General drawing', 'Variable resistor, in Circuit', 'Variable resistor, in General drawing'], 'symbols, each in the starter it opens in and in General drawing');
 eq(search('pinned support').symbols.map(({ starter, symbol }) => `${symbol.label}, in ${starter.title}`), ['Pinned support, in Mass, spring and damper', 'Pinned support, in General drawing'], 'a set’s symbol, in the starter that opens the set');

@@ -117,6 +117,21 @@ const three = (v: FormValues) => v.sets === '3';
 /** A region the drawing has: one of the two sets' unless there are three, outside only with the universal set. */
 const hasRegion = (mask: number, v: FormValues) => (mask === 0 ? v.universe === true : three(v) || mask < 4);
 
+/**
+ * The regions the drawing has, each named by its sets' names as `nameOf` shows them (the letter when a name is empty),
+ * for the form's table: [mask, name], in the form's order.
+ */
+export function vennRegions(values: FormValues, nameOf: (tex: string) => string): [number, string][] {
+  const names = ['a', 'b', 'c'].map((key, i) => nameOf(String(values[key] ?? '').trim()) || 'ABC'[i]);
+  const sets = three(values) ? 3 : 2;
+  return REGIONS.filter(([mask]) => hasRegion(mask, values)).map(([mask]): [number, string] => {
+    const inside = names.filter((_, i) => mask & (1 << i));
+    if (!inside.length) return [mask, 'Outside every set'];
+    const list = inside.length === 1 ? inside[0] : `${inside.slice(0, -1).join(', ')} and ${inside[inside.length - 1]}`;
+    return [mask, inside.length < sets ? `${list} only` : list];
+  });
+}
+
 const SHADES: [string, string][] = [
   ['black!20', 'Grey'],
   ['blue!25', 'Blue'],

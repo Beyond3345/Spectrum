@@ -841,3 +841,26 @@
 .form-number .muted {
   flex: none;
 }
+
+/* Venn's regions: a row each */
+.form-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.form-table th {
+  padding: 2px 4px;
+  font-weight: 500;
+  text-align: left;
+  color: var(--text-secondary);
+}
+
+.form-table td {
+  padding: 2px 4px;
+}
+
+.form-table .input {
+  width: 100%;
+  min-width: 0;
+}
