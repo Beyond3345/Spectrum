@@ -74,6 +74,11 @@ for (const id of ['diagramMember', 'diagramTruss', 'diagramPoint', 'diagramVecto
   eq(['b', 'Shift-m', 'Alt-v', '1'].filter((key) => shortcutProblem(key, id)), [], `${id}: any other key is fine`);
 }
 eq(shortcutProblem('r', 'diagramMember'), 'R is kept by the canvas.', 'and says why');
+// two tools on one canvas can't share a key (the first would always win); tools on different canvases can
+eq(shortcutProblem('t', 'diagramMember'), 'T is used to draw a truss bar on the same canvas.', 'M can’t take T in Structures');
+eq(shortcutProblem('v', 'diagramPoint'), 'V is used to draw a vector on the same canvas.', 'nor P take V in Vector diagrams');
+eq([shortcutProblem('b', 'diagramMember', { diagramTruss: 'b' }), shortcutProblem('t', 'diagramMember', { diagramTruss: 'b' })], ['B is used to draw a truss bar on the same canvas.', ''], 'as Settings has them');
+eq([shortcutProblem('w', 'diagramMember'), shortcutProblem('m', 'diagramPoint'), shortcutProblem('p', 'diagramWire')], ['', '', ''], 'a key another canvas uses is fine');
 eq(shortcutProblem('Shift-k') !== '', true, 'other shortcuts still need a modifier');
 if (!IS_MAC) eq([formatShortcut('Shift-Mod-Enter'), formatShortcut('Alt-ArrowUp')], ['Ctrl+Shift+Enter', 'Alt+↑'], 'key names elsewhere');
 // a click with ⌥ (Alt) held adds a cursor, and one with ⌘ (Ctrl) held is left to Go to definition
