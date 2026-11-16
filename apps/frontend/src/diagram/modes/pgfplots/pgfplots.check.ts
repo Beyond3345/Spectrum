@@ -1,6 +1,6 @@
 // Self-check for the plot mode's code. Run:
 // npx esbuild apps/frontend/src/diagram/modes/pgfplots/pgfplots.check.ts --bundle --platform=node --log-level=warning | node
-import { columnsOf, emptyPlot, evaluate, fitEquation, gradingCurve, isSemicolonCsv, leastSquares, newSeries, plotCode, plotIsNewer, plotNeedsVersion5, pointsOf, separatorOf, signalSketch, slopeField, smoothThrough, stressStrain, ticksOf, waveformPoints } from './code';
+import { axesFolded, bodeMagnitude, columnsOf, conics, dampedOscillation, emptyPlot, lissajous, normalCurve, phasePortrait, polarRose, seriesFolded, evaluate, fitEquation, gradingCurve, isSemicolonCsv, leastSquares, newSeries, plotCode, plotIsNewer, plotNeedsVersion5, pointsOf, separatorOf, signalSketch, slopeField, smoothThrough, stressStrain, ticksOf, waveformPoints } from './code';
 import type { Annotation, PlotModel, Series } from './code';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -338,5 +338,20 @@ eq(
   'each addition makes version 5'
 );
 eq([stressStrain(), gradingCurve()].map(plotNeedsVersion5), [true, true], 'so do the starters');
+
+// the form folds the rarer fields, open once one is set: a new plot's are all folded
+eq([axesFolded(emptyPlot()), seriesFolded(newSeries('s'))], [false, false], 'a new plot folds its rarer fields');
+eq([{ grid: 'none' as const }, { width: '8' }, { xmode: 'log' as const }, { yticks: '1' }, { equal: true }, { tickComma: true }].map((m) => axesFolded({ ...emptyPlot(), ...m })), Array(6).fill(true), 'an axes field set opens the fold');
+eq(
+  [{ line: 'dashed' as const }, { marks: true }, { colour: '#000000' }, { stem: true }, { breaks: true }, { bars: true }, { yerr: 'e' }].map((m) => seriesFolded({ ...newSeries('s'), ...m })),
+  Array(7).fill(true),
+  'a series field set opens the fold'
+);
+eq(seriesFolded({ ...newSeries('s'), source: 'points', marks: true }), false, 'points have marks of their own');
+// 2.5's starters: each uses a 2.5 addition (height, equal axes, plain ticks, a points series), so is version 5
+const starters = [normalCurve(), bodeMagnitude(), dampedOscillation(), polarRose(), lissajous(), conics(), phasePortrait()];
+eq(starters.map(plotNeedsVersion5), Array(7).fill(true), 'the 2.5 starters are version 5');
+eq(plotCode(normalCurve()).body.includes('domain=1.645:3.5, samples=50] {spxfa(x)} \\closedcycle;'), true, 'the normal curve shades its tail');
+eq(plotCode(conics()).body.includes('axis equal image'), true, 'conics on equal axes');
 
 console.log('pgfplots.check: ok');

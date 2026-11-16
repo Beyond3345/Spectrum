@@ -2,9 +2,11 @@ import { useEffect, useId, useState } from 'react';
 import type { ComponentProps } from 'react';
 import Select from '../../../app/Select';
 import { UnitsSwitch } from '../../controls';
+import { plain } from '../../sketch';
 import type { DiagramMode } from '../../types';
 import { formCode, formStyle, newFormModel, presetFor, valuesOf, PRESETS } from './presets';
-import type { FormField, FormModel, FormValue } from './presets';
+import type { FormField, FormModel, FormValue, FormValues } from './presets';
+import { vennRegions } from './venn';
 
 // Form: one frame for drawings worked out from a few fields. The preset's fields fill the canvas's place; the
 // composer's preview below compiles its code as they change.
@@ -72,23 +74,49 @@ function FieldRow({ field, value, readOnly, onChange }: { field: FormField; valu
   );
 }
 
+/** Venn's regions as one table, a row each named by its sets' names, instead of a shade and a text row each. */
+function VennTable({ values, readOnly, set }: { values: FormValues; readOnly?: boolean; set(key: string, value: FormValue): void }) {
+  return (
+    <table className="form-table">
+      <thead>
+        <tr>
+          <th>Region</th>
+          <th>Shade</th>
+          <th>Count or text</th>
+        </tr>
+      </thead>
+      <tbody>
+        {vennRegions(values, plain).map(([mask, name]) => (
+          <tr key={mask}>
+            <td>{name}</td>
+            <td>
+              <input type="checkbox" aria-label={`Shade ${name}`} checked={values[`shade${mask}`] === true} disabled={readOnly} onChange={(e) => set(`shade${mask}`, e.target.checked)} />
+            </td>
+            <td>
+              <input className="input" aria-label={`Count or text in ${name}`} spellCheck={false} value={String(values[`text${mask}`])} readOnly={readOnly} onChange={(e) => set(`text${mask}`, e.target.value)} />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function Canvas({ model, onChange, readOnly }: CanvasProps) {
   const preset = presetFor(model.preset);
   if (!preset) return <div className="diagram-hint form-frame">This build of Spectrum has no form called {model.preset}.</div>;
   const values = valuesOf(preset, model.values ?? {});
+  const set = (key: string, value: FormValue) => onChange({ ...model, values: { ...model.values, [key]: value } });
+  // Venn's region fields are its table's rows
+  const venn = model.preset === 'venn';
   return (
     <div className="form-frame">
       <h2>{preset.label}</h2>
       <div className="diagram-inspector-fields">
-        {preset.fields.filter((field) => field.shown?.(values) ?? true).map((field) => (
-          <FieldRow
-            key={field.key}
-            field={field}
-            value={values[field.key]}
-            readOnly={readOnly}
-            onChange={(value) => onChange({ ...model, values: { ...model.values, [field.key]: value } })}
-          />
+        {preset.fields.filter((field) => (field.shown?.(values) ?? true) && !(venn && /^(shade|text)\d$/.test(field.key))).map((field) => (
+          <FieldRow key={field.key} field={field} value={values[field.key]} readOnly={readOnly} onChange={(value) => set(field.key, value)} />
         ))}
+        {venn && <VennTable values={values} readOnly={readOnly} set={set} />}
       </div>
     </div>
   );

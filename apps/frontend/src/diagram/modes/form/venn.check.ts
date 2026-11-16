@@ -3,7 +3,7 @@
 // npx esbuild apps/frontend/src/diagram/modes/form/venn.check.ts --bundle --platform=node --log-level=warning | node
 import { formCode, newFormModel, presetFor } from './presets';
 import { textBox } from '../structures/labels';
-import { circlesOf, labelPoint, maskOf, regionLoops, vennCode } from './venn';
+import { circlesOf, labelPoint, maskOf, regionLoops, vennCode, vennRegions } from './venn';
 import type { Arc } from './venn';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -115,5 +115,14 @@ eq(shownWith({ sets: '3', universe: true }).length, venn.fields.length, 'three s
 }
 // a bare % in a name or a count is written \%
 eq(vennCode({ ...venn.values, a: 'Pass %', text3: '20%' }).body.match(/\{Pass \\%\}|\{20\\%\}/g)?.length, 2, 'a % escaped');
+
+// the form's table: a row a region, named by the sets' names
+const bare = (tex: string) => tex.replace(/\$/g, '');
+eq(vennRegions(venn.values, bare), [[1, 'A only'], [2, 'B only'], [3, 'A and B'], [0, 'Outside every set']], 'two sets: four rows');
+eq(
+  vennRegions({ ...venn.values, sets: '3', universe: false, a: 'Physics', b: '', c: 'Biology' }, bare).map(([, name]) => name),
+  ['Physics only', 'B only', 'Biology only', 'Physics and B only', 'Physics and Biology only', 'B and Biology only', 'Physics, B and Biology'],
+  'three sets, no universal set: seven rows, an empty name its letter'
+);
 
 console.log('venn.check: ok');

@@ -3,10 +3,10 @@ import type { ComponentProps } from 'react';
 import { getFile, getProjectTree } from '../../../api/client';
 import Icon from '../../../app/Icon';
 import Select from '../../../app/Select';
-import { ColourField, ProjectContext, Row, UnitsSwitch } from '../../controls';
+import { ColourField, More, ProjectContext, Row, UnitsSwitch } from '../../controls';
 import type { DiagramMode } from '../../types';
 import { nextId } from '../tikz/code';
-import { columnsOf, emptyPlot, fitEquation, isSemicolonCsv, newSeries, plotCode, pointsOf } from './code';
+import { axesFolded, columnsOf, emptyPlot, fitEquation, isSemicolonCsv, newSeries, plotCode, pointsOf, seriesFolded } from './code';
 import type { Annotation, AnnotationKind, LegendPos, MarkShape, Piece, PlotModel, Series, SeriesSource, Signal } from './code';
 
 // Plots: the form that writes the axis, previewed below it
@@ -136,7 +136,6 @@ function SeriesFields({ s, model, patch }: { s: Series; model: PlotModel; patch(
               {samples}
             </span>
           </div>
-          <Switch label="Break at asymptotes" checked={!!s.breaks} hint="So tan(x) is not joined across them, with or without a y range." onChange={(breaks) => patch({ breaks: breaks || undefined })} />
         </>
       );
     case 'points': {
@@ -152,8 +151,6 @@ function SeriesFields({ s, model, patch }: { s: Series; model: PlotModel; patch(
               {read < typed && ` ${typed - read} of the lines are not two numbers and are left out.`}
             </div>
           </div>
-          <Switch label="Smooth curve through them" checked={!!s.smooth} hint="For a sketch curve. With no line, only the marks show." onChange={(smooth) => patch({ smooth: smooth || undefined })} />
-          <Switch label="Bars" checked={!!s.bars} onChange={(bars) => patch({ bars: bars || undefined })} />
         </>
       );
     }
@@ -338,11 +335,6 @@ function AnnotationFields({ a, functions, paths, patch }: { a: Annotation; funct
           {curve('On', 'series')}
           {at('At x =')}
           {(a.kind === 'point' || a.kind === 'label') && text('Label (LaTeX)')}
-          {(a.kind === 'point' || a.kind === 'label') && (
-            <Row label="Label goes">
-              <Select value={a.place ?? (a.kind === 'point' ? 'above right' : 'above')} options={a.kind === 'point' ? [['above right', 'Above right'], ...PLACES] : PLACES} onChange={(place) => patch({ place: place as Annotation['place'] })} />
-            </Row>
-          )}
         </>
       );
   }
@@ -453,35 +445,41 @@ function Canvas({ model, onChange, readOnly }: CanvasProps) {
                     </span>
                   </div>
                   {s.file && columns[s.file]?.length === 0 && <div className="field-hint">No columns found. A .csv is read split by commas or semicolons, a .tsv by tabs and other files by spaces.</div>}
-                  <Row label="Error bar column">
-                    <Select value={s.yerr ?? ''} options={[['', 'None'], ...cols]} onChange={(yerr) => patchSeries(s.id, { yerr: yerr || undefined })} />
-                  </Row>
-                  <Switch label="Bars" checked={!!s.bars} onChange={(bars) => patchSeries(s.id, { bars: bars || undefined })} />
                 </>
               )}
               <Row label="Legend (LaTeX)">
                 <input className="input" spellCheck={false} value={s.legend} onChange={(e) => patchSeries(s.id, { legend: e.target.value })} />
               </Row>
-              <div className="diagram-row">
-                <span>Line</span>
-                <span className="diagram-pair">
-                  <Select value={s.line} options={LINES} onChange={(line) => patchSeries(s.id, { line: line as Series['line'] })} />
-                  {s.line !== 'none' && (
-                    <label className="checkbox-row align-end">
-                      <input type="checkbox" checked={s.marks} onChange={(e) => patchSeries(s.id, { marks: e.target.checked })} />
-                      <span>Marks</span>
-                    </label>
-                  )}
-                  {(s.marks || s.line === 'none') && <Select value={s.mark ?? ''} options={MARKS} onChange={(mark) => patchSeries(s.id, { mark: (mark || undefined) as MarkShape | undefined })} />}
-                  {(s.source === 'function' || s.source === 'data') && (
-                    <label className="checkbox-row align-end">
-                      <input type="checkbox" checked={!!s.stem} onChange={(e) => patchSeries(s.id, { stem: e.target.checked || undefined })} />
-                      <span>Stems</span>
-                    </label>
-                  )}
-                </span>
-              </div>
-              <ColourField label="Colour" value={s.colour} fallback="Auto" onChange={(colour) => patchSeries(s.id, { colour })} />
+              <More summary="Line, marks, colour and more" open={seriesFolded(s)}>
+                {s.source === 'function' && <Switch label="Break at asymptotes" checked={!!s.breaks} hint="So tan(x) is not joined across them, with or without a y range." onChange={(breaks) => patchSeries(s.id, { breaks: breaks || undefined })} />}
+                {s.source === 'points' && <Switch label="Smooth curve through them" checked={!!s.smooth} hint="For a sketch curve. With no line, only the marks show." onChange={(smooth) => patchSeries(s.id, { smooth: smooth || undefined })} />}
+                {s.source === 'data' && (
+                  <Row label="Error bar column">
+                    <Select value={s.yerr ?? ''} options={[['', 'None'], ...cols]} onChange={(yerr) => patchSeries(s.id, { yerr: yerr || undefined })} />
+                  </Row>
+                )}
+                {(s.source === 'points' || s.source === 'data') && <Switch label="Bars" checked={!!s.bars} onChange={(bars) => patchSeries(s.id, { bars: bars || undefined })} />}
+                <div className="diagram-row">
+                  <span>Line</span>
+                  <span className="diagram-pair">
+                    <Select value={s.line} options={LINES} onChange={(line) => patchSeries(s.id, { line: line as Series['line'] })} />
+                    {s.line !== 'none' && (
+                      <label className="checkbox-row align-end">
+                        <input type="checkbox" checked={s.marks} onChange={(e) => patchSeries(s.id, { marks: e.target.checked })} />
+                        <span>Marks</span>
+                      </label>
+                    )}
+                    {(s.marks || s.line === 'none') && <Select value={s.mark ?? ''} options={MARKS} onChange={(mark) => patchSeries(s.id, { mark: (mark || undefined) as MarkShape | undefined })} />}
+                    {(s.source === 'function' || s.source === 'data') && (
+                      <label className="checkbox-row align-end">
+                        <input type="checkbox" checked={!!s.stem} onChange={(e) => patchSeries(s.id, { stem: e.target.checked || undefined })} />
+                        <span>Stems</span>
+                      </label>
+                    )}
+                  </span>
+                </div>
+                <ColourField label="Colour" value={s.colour} fallback="Auto" onChange={(colour) => patchSeries(s.id, { colour })} />
+              </More>
             </div>
           );
         })}
@@ -496,49 +494,51 @@ function Canvas({ model, onChange, readOnly }: CanvasProps) {
         {text('ylabel', 'y label (LaTeX)')}
         {range('x')}
         {range('y')}
-        <Row label="Grid">
-          <Select value={model.grid} options={GRIDS} onChange={(grid) => patch({ grid: grid as PlotModel['grid'] })} />
-        </Row>
         <Row label="Legend">
           <Select value={model.legendPos} options={LEGEND_PLACES} onChange={(legendPos) => patch({ legendPos: legendPos as LegendPos })} />
         </Row>
-        <Pair label="Width, height in cm" placeholder="Auto" values={[model.width, model.height ?? '']} labels={['Width in cm', 'Height in cm']} onChange={(i, value) => patch(i ? { height: value || undefined } : { width: value })} />
-        <Switch label="Equal axes" checked={!!model.equal} hint="One unit is as long on both axes, so a circle is round." onChange={(equal) => patch({ equal: equal || undefined })} />
-        <Switch label="x increases to the left" checked={!!model.xReverse} onChange={(xReverse) => patch({ xReverse: xReverse || undefined })} />
-        <Switch label="Black and white" checked={!!model.bw} hint="Series told apart by dashes and marks. A series with its own colour keeps it." onChange={(bw) => patch({ bw: bw || undefined })} />
-        <Row label="Axes">
-          <Select value={model.axes ?? 'box'} options={AXES} onChange={(axes) => patch({ axes: axes === 'box' ? undefined : (axes as PlotModel['axes']) })} />
-        </Row>
-        <div className="diagram-row">
-          <span>x and y scales</span>
-          <span className="diagram-pair">
-            {(['xmode', 'ymode'] as const).map((key) => (
-              <Select key={key} value={model[key] ?? 'linear'} options={SCALES} onChange={(mode) => patch({ [key]: mode === 'log' ? 'log' : undefined })} />
-            ))}
-          </span>
-        </div>
-        {(['xticks', 'yticks'] as const).map((key) => (
-          <div className="diagram-row" key={key}>
-            <label htmlFor={`plot-${key}`}>{key === 'xticks' ? 'x ticks' : 'y ticks'}</label>
-            <input id={`plot-${key}`} className="input mono" spellCheck={false} placeholder="Auto" value={model[key] ?? ''} onChange={(e) => patch({ [key]: e.target.value || undefined })} />
-            {key === 'yticks' && <div className="field-hint">{'Positions, each with a label if you like, separated by semicolons: pi/2 = $\\frac{\\pi}{2}$; pi = $\\pi$'}</div>}
+        <More summary="Grid, size, scales, ticks and more" open={axesFolded(model)}>
+          <Row label="Grid">
+            <Select value={model.grid} options={GRIDS} onChange={(grid) => patch({ grid: grid as PlotModel['grid'] })} />
+          </Row>
+          <Pair label="Width, height in cm" placeholder="Auto" values={[model.width, model.height ?? '']} labels={['Width in cm', 'Height in cm']} onChange={(i, value) => patch(i ? { height: value || undefined } : { width: value })} />
+          <Switch label="Equal axes" checked={!!model.equal} hint="One unit is as long on both axes, so a circle is round." onChange={(equal) => patch({ equal: equal || undefined })} />
+          <Switch label="x increases to the left" checked={!!model.xReverse} onChange={(xReverse) => patch({ xReverse: xReverse || undefined })} />
+          <Switch label="Black and white" checked={!!model.bw} hint="Series told apart by dashes and marks. A series with its own colour keeps it." onChange={(bw) => patch({ bw: bw || undefined })} />
+          <Row label="Axes">
+            <Select value={model.axes ?? 'box'} options={AXES} onChange={(axes) => patch({ axes: axes === 'box' ? undefined : (axes as PlotModel['axes']) })} />
+          </Row>
+          <div className="diagram-row">
+            <span>x and y scales</span>
+            <span className="diagram-pair">
+              {(['xmode', 'ymode'] as const).map((key) => (
+                <Select key={key} value={model[key] ?? 'linear'} options={SCALES} onChange={(mode) => patch({ [key]: mode === 'log' ? 'log' : undefined })} />
+              ))}
+            </span>
           </div>
-        ))}
-        <div className="diagram-row">
-          <span>Tick numbers: decimals</span>
-          <span className="diagram-pair">
-            <input className="input" type="number" min={0} max={6} placeholder="Auto" aria-label="Decimals on the ticks" value={model.tickDecimals ?? ''} onChange={(e) => patch({ tickDecimals: e.target.value || undefined })} />
-            <label className="checkbox-row align-end">
-              <input type="checkbox" checked={!!model.tickPlain} onChange={(e) => patch({ tickPlain: e.target.checked || undefined })} />
-              <span>Plain</span>
-            </label>
-            <label className="checkbox-row align-end">
-              <input type="checkbox" checked={!!model.tickComma} onChange={(e) => patch({ tickComma: e.target.checked || undefined })} />
-              <span>Decimal comma</span>
-            </label>
-          </span>
-          <div className="field-hint">Plain: 20000 with no ×10ⁿ or thousands separator, and 0.3 on a log axis, not 10 to a power.</div>
-        </div>
+          {(['xticks', 'yticks'] as const).map((key) => (
+            <div className="diagram-row" key={key}>
+              <label htmlFor={`plot-${key}`}>{key === 'xticks' ? 'x ticks' : 'y ticks'}</label>
+              <input id={`plot-${key}`} className="input mono" spellCheck={false} placeholder="Auto" value={model[key] ?? ''} onChange={(e) => patch({ [key]: e.target.value || undefined })} />
+              {key === 'yticks' && <div className="field-hint">{'Positions, each with a label if you like, separated by semicolons: pi/2 = $\\frac{\\pi}{2}$; pi = $\\pi$'}</div>}
+            </div>
+          ))}
+          <div className="diagram-row">
+            <span>Tick numbers: decimals</span>
+            <span className="diagram-pair">
+              <input className="input" type="number" min={0} max={6} placeholder="Auto" aria-label="Decimals on the ticks" value={model.tickDecimals ?? ''} onChange={(e) => patch({ tickDecimals: e.target.value || undefined })} />
+              <label className="checkbox-row align-end">
+                <input type="checkbox" checked={!!model.tickPlain} onChange={(e) => patch({ tickPlain: e.target.checked || undefined })} />
+                <span>Plain</span>
+              </label>
+              <label className="checkbox-row align-end">
+                <input type="checkbox" checked={!!model.tickComma} onChange={(e) => patch({ tickComma: e.target.checked || undefined })} />
+                <span>Decimal comma</span>
+              </label>
+            </span>
+            <div className="field-hint">Plain: 20000 with no ×10ⁿ or thousands separator, and 0.3 on a log axis, not 10 to a power.</div>
+          </div>
+        </More>
       </section>
       <section>
         <h3 className="form-section-title">Annotations</h3>
@@ -552,7 +552,14 @@ function Canvas({ model, onChange, readOnly }: CanvasProps) {
               </button>
             </div>
             <AnnotationFields a={a} functions={functions} paths={paths} patch={(next) => patchAnnotation(a.id, next)} />
-            <ColourField label="Colour" value={a.colour} fallback="Auto" onChange={(colour) => patchAnnotation(a.id, { colour })} />
+            <More summary={a.kind === 'point' || a.kind === 'label' ? 'Label side and colour' : 'Colour'} open={!!(a.colour || a.place)}>
+              {(a.kind === 'point' || a.kind === 'label') && (
+                <Row label="Label goes">
+                  <Select value={a.place ?? (a.kind === 'point' ? 'above right' : 'above')} options={a.kind === 'point' ? [['above right', 'Above right'], ...PLACES] : PLACES} onChange={(place) => patchAnnotation(a.id, { place: place as Annotation['place'] })} />
+                </Row>
+              )}
+              <ColourField label="Colour" value={a.colour} fallback="Auto" onChange={(colour) => patchAnnotation(a.id, { colour })} />
+            </More>
           </div>
         ))}
         {!functions.length && <div className="field-hint">Points, tangents, secants and labels go on a function series; a shaded area on any series.</div>}

@@ -221,6 +221,149 @@ export const gradingCurve = (): PlotModel => {
   };
 };
 
+// The chooser's other plot starters, each a plot the form can make
+
+/** A function series. */
+const fn = (id: string, expr: string, from: string, to: string, more: Partial<Series> = {}): Series => ({ ...newSeries(id), expr, from, to, ...more });
+
+/** The Normal curve starter: the standard normal density with its upper 5 % tail shaded beyond z = 1.645. */
+export const normalCurve = (): PlotModel => ({
+  ...emptyPlot(),
+  series: [fn('s1', 'exp(-x^2/2)/sqrt(2*pi)', '-3.5', '3.5', { colour: '#1f4e9c' })],
+  annotations: [
+    { id: 'a1', kind: 'area', series: 's1', at: '1.645', to: '3.5', colour: '#1f4e9c' },
+    { id: 'a2', kind: 'label', series: 's1', at: '1.9', text: '$\\alpha = 0.05$', place: 'above right' }
+  ],
+  xlabel: '$z$',
+  ylabel: '$\\varphi(z)$',
+  xmin: '-3.5',
+  xmax: '3.5',
+  ymin: '0',
+  ymax: '0.45',
+  xticks: '-3; -2; -1; 0; 1; 1.645 = $z_{\\alpha}$; 3',
+  grid: 'none',
+  width: '9',
+  height: '5.5'
+});
+
+/** The Bode magnitude starter: a first-order low-pass with its asymptotes, its corner ωc at 100 rad/s. */
+export const bodeMagnitude = (): PlotModel => ({
+  ...emptyPlot(),
+  series: [
+    fn('s1', '-10*log10(1+(x/100)^2)', '1', '10000', { samples: 200, legend: 'Exact' }),
+    { ...newSeries('s2'), source: 'points', points: '1, 0\n100, 0\n10000, -40', line: 'dashed', colour: '#000000', legend: 'Asymptotes' }
+  ],
+  xlabel: 'Frequency $\\omega$ (rad/s)',
+  ylabel: 'Magnitude (dB)',
+  xmin: '1',
+  xmax: '10000',
+  ymin: '-45',
+  ymax: '5',
+  xmode: 'log',
+  // 1000 rad/s, not 10 to a power, and the corner named
+  tickPlain: true,
+  xticks: '1; 10; 100 = $\\omega_c$; 1000; 10000',
+  grid: 'both',
+  legendPos: 'south west',
+  width: '10',
+  height: '6'
+});
+
+/** The Damped oscillation starter: e^(−0.3t) cos 2t inside its dashed envelope ±e^(−0.3t). */
+export const dampedOscillation = (): PlotModel => {
+  const envelope = (id: string, sign: string) => fn(id, `${sign}exp(-0.3*x)`, '0', '12', { line: 'dashed', colour: '#9e9e9e' });
+  return {
+    ...emptyPlot(),
+    series: [fn('s1', 'exp(-0.3*x)*cos(2*x)', '0', '12', { samples: 300 }), envelope('s2', ''), envelope('s3', '-')],
+    xlabel: '$t$',
+    ylabel: '$x(t)$',
+    xmin: '0',
+    xmax: '12',
+    ymin: '-1.1',
+    ymax: '1.1',
+    grid: 'none',
+    width: '10',
+    height: '5'
+  };
+};
+
+/** The Polar rose starter: r = cos 3t, three petals, on equal axes. */
+export const polarRose = (): PlotModel => ({
+  ...emptyPlot(),
+  series: [{ ...fn('s1', 'cos(3*t)', '0', 'pi', { samples: 300 }), source: 'polar' }],
+  xmin: '-1.2',
+  xmax: '1.2',
+  ymin: '-1.2',
+  ymax: '1.2',
+  grid: 'none',
+  axes: 'sketch',
+  equal: true,
+  width: '7'
+});
+
+/** The Lissajous figure starter: x = sin 3t, y = sin 2t, on equal axes. */
+export const lissajous = (): PlotModel => ({
+  ...emptyPlot(),
+  series: [{ ...fn('s1', 'sin(2*t)', '0', '2*pi', { samples: 400 }), source: 'parametric', exprX: 'sin(3*t)' }],
+  xmin: '-1.2',
+  xmax: '1.2',
+  ymin: '-1.2',
+  ymax: '1.2',
+  grid: 'none',
+  axes: 'sketch',
+  equal: true,
+  width: '7'
+});
+
+/** The Conics starter: an ellipse, both branches of a hyperbola and a parabola, drawn parametrically on equal axes. */
+export const conics = (): PlotModel => {
+  const curve = (id: string, x: string, y: string, from: string, to: string, legend: string, colour: string): Series => ({ ...fn(id, y, from, to, { samples: 200, legend, colour }), source: 'parametric', exprX: x });
+  return {
+    ...emptyPlot(),
+    series: [
+      curve('s1', '2*cos(t)', 'sin(t)', '0', '2*pi', '$\\frac{x^2}{4} + y^2 = 1$', '#1f4e9c'),
+      curve('s2', 'cosh(t)', 'sinh(t)', '-1.8', '1.8', '$x^2 - y^2 = 1$', '#c62828'),
+      curve('s3', '-cosh(t)', 'sinh(t)', '-1.8', '1.8', '', '#c62828'),
+      curve('s4', 't', 't^2/4', '-3.5', '3.5', '$x^2 = 4y$', '#2e7d32')
+    ],
+    xmin: '-4',
+    xmax: '4',
+    ymin: '-3',
+    ymax: '3',
+    grid: 'none',
+    axes: 'centre',
+    equal: true,
+    width: '9'
+  };
+};
+
+/** The Phase portrait starter: the field of x' = y, y' = −x − 0.4y, with one trajectory spiralling in to the origin. */
+export const phasePortrait = (): PlotModel => ({
+  ...emptyPlot(),
+  series: [
+    { ...newSeries('s1'), source: 'quiver', exprX: 'y', expr: '-x - 0.4*y', from: '-2.5', to: '2.5', samples: 15, normalise: true, colour: '#9e9e9e' },
+    // x = 2 e^(−0.2t) cos ωt and its derivative, ω = √0.96
+    { ...fn('s2', '2*exp(-0.2*t)*(-0.2*cos(0.9798*t) - 0.9798*sin(0.9798*t))', '0', '20', { samples: 400, colour: '#1f4e9c' }), source: 'parametric', exprX: '2*exp(-0.2*t)*cos(0.9798*t)' }
+  ],
+  xlabel: '$x$',
+  ylabel: '$\\dot{x}$',
+  xmin: '-2.5',
+  xmax: '2.5',
+  ymin: '-2.5',
+  ymax: '2.5',
+  grid: 'none',
+  equal: true,
+  width: '8'
+});
+
+/** A series has one of the rarer fields the form folds set: its line, marks, stems, colour, breaks, curve, bars or error bars. */
+export const seriesFolded = (s: Series) =>
+  !!(s.line !== 'solid' || (s.marks && s.source !== 'points') || s.mark || s.stem || s.colour || s.breaks || s.smooth || s.bars || s.yerr);
+
+/** The axes have one of the rarer fields the form folds set: grid, size, scales, ticks and the switches. */
+export const axesFolded = (m: PlotModel) =>
+  !!(m.grid !== 'major' || m.width || m.height || m.equal || m.xReverse || m.bw || m.axes || m.xmode || m.ymode || m.xticks || m.yticks || m.tickDecimals || m.tickPlain || m.tickComma);
+
 /** The kinds added since functions and data; any other source (older drawings have 'file') is written as data. */
 const NEW_SOURCES: SeriesSource[] = ['parametric', 'polar', 'piecewise', 'signal', 'quiver', 'points', 'fit'];
 /**
