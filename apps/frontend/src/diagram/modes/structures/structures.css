@@ -57,6 +57,7 @@
 }
 .st-node.selected,
 .st-node.joint { stroke: var(--accent); stroke-width: 2; }
+.st-node.unstable { stroke: var(--red-text); stroke-width: 2.5; }
 
 .st-ghost { stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 6 4; }
 .st-ghost.cut { stroke-width: 1.5; }
