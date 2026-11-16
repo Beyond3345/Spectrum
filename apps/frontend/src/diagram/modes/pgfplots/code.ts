@@ -547,7 +547,7 @@ function seriesLines(s: Series, model: PlotModel): string[] {
     }
     default: {
       const sep = s.sep === 'semicolon' ? 'semicolon' : separatorOf(s.file);
-      const table = [s.x && columnKey('x', s.x), s.y && columnKey('y', s.y), s.yerr && columnKey('y error', s.yerr), sep && `col sep=${sep}`, s.sep && 'read comma as period'].filter(Boolean);
+      const table = [s.x && columnKey('x', s.x), s.y && columnKey('y', s.y), s.yerr && columnKey('y error', s.yerr), sep && `col sep=${sep}`, s.sep && '/pgf/number format/read comma as period'].filter(Boolean);
       const options = [...style, named, s.yerr && 'error bars/y dir=both, error bars/y explicit'].filter(Boolean);
       return [`\\addplot+[${options.join(', ')}] table${table.length ? `[${table.join(', ')}]` : ''} {${s.file}};`];
     }

@@ -98,7 +98,7 @@ eq(columnsOf('a.csv', '1,2,3\n'), ['0', '1', '2'], 'a CSV without a header');
 // a semicolon CSV: its columns, and the separator saved with the series, reading its decimal commas
 eq([columnsOf('a.csv', 'd;p\n1,5;2'), isSemicolonCsv('a.csv', 'd;p\n1,5;2')], [['d', 'p'], true], 'a semicolon CSV');
 eq([columnsOf('a.csv', '0,1;2,5\n'), columnsOf('a.csv', 'a,b;c,d\n'), isSemicolonCsv('a.csv', 'time,value\n'), isSemicolonCsv('a.dat', 'a;b')], [['0', '1'], ['a', 'b;c', 'd'], false, false], 'headerless with decimal commas; commas outnumbering semicolons; not a .csv');
-eq(one({ source: 'data', file: 'a.csv', x: 'd', y: 'p', sep: 'semicolon' }), ['\\addplot+[no markers] table[x={d}, y={p}, col sep=semicolon, read comma as period] {a.csv};'], 'written with its separator');
+eq(one({ source: 'data', file: 'a.csv', x: 'd', y: 'p', sep: 'semicolon' }), ['\\addplot+[no markers] table[x={d}, y={p}, col sep=semicolon, /pgf/number format/read comma as period] {a.csv};'], 'written with its separator');
 eq(columnsOf('a.csv', 'd\n1\n'), [], 'one column: none, which the form says');
 eq(one({ source: 'data', file: 'a.dat', x: '0', y: '1' }), ['\\addplot+[no markers] table[x index=0, y index=1] {a.dat};'], 'columns by place as x index');
 
