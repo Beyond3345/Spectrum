@@ -600,6 +600,7 @@ const CONTEXT_ICONS: Record<ContextKind, string> = { file: 'doc.text', selection
  */
 export function AgentComposer({
   busy,
+  disabled = false,
   firstTurn,
   commands = [],
   skills,
@@ -610,6 +611,8 @@ export function AgentComposer({
   onSend
 }: {
   busy: boolean;
+  /** nothing to send to yet (no agent set up): the send button is off, without busy's spinner */
+  disabled?: boolean;
   /** the to-dos go with a conversation's first message unless taken off */
   firstTurn: boolean;
   commands?: AgentCommand[];
@@ -682,7 +685,7 @@ export function AgentComposer({
       use = typed[1];
       message = typed[2].trim();
     }
-    if (busy || (!message && !use)) return;
+    if (busy || disabled || (!message && !use)) return;
     onSend(message, { skill: use, research, context: { file: on('file'), selection: on('selection'), log: on('log'), todos: on('todos') } });
     setText('');
     setSkill(undefined);
@@ -770,7 +773,7 @@ export function AgentComposer({
             )
         )}
         <span className="grow" />
-        <button className="composer-send" title="Send (↵)" aria-label="Send" disabled={busy || (!text.trim() && !skill)} onClick={send}>
+        <button className="composer-send" title="Send (↵)" aria-label="Send" disabled={busy || disabled || (!text.trim() && !skill)} onClick={send}>
           {busy ? <span className="spinner" /> : <Icon name="arrow.up" />}
         </button>
       </div>

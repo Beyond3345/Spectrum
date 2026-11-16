@@ -434,7 +434,8 @@ export default function LocalAgentTab({
         {!reviewing && <ChangesTray changes={tray} direct={session?.mode === 'direct'} onOpen={() => setReviewing(true)} />}
         {!session && mode === 'direct' && <p className="field-hint">The agent can change your project straight away. A checkpoint is saved before each task.</p>}
         <AgentComposer
-          busy={running || (!session && !ready)}
+          busy={running}
+          disabled={!session && !ready}
           firstTurn={empty}
           commands={view.commands}
           skills={skills}
