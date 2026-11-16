@@ -31,21 +31,22 @@ export default function Segmented<T extends string>({
   label?: string;
   labelledBy?: string;
   value: T | null;
-  /** value, what the segment shows and, when that isn't text, what it's called */
-  options: readonly (readonly [T, ReactNode, string?])[];
+  /** value, what the segment shows, what it's called when that isn't text, and its tooltip */
+  options: readonly (readonly [T, ReactNode, string?, string?])[];
   onChange: (value: T) => void;
   className?: string;
 }) {
   const anyChecked = options.some(([option]) => option === value);
   return (
     <div className={`segmented small ${className}`.trim()} role="radiogroup" aria-label={label} aria-labelledby={labelledBy} onKeyDown={radioKeys}>
-      {options.map(([option, text, spoken], i) => (
+      {options.map(([option, text, spoken, title], i) => (
         <button
           key={option}
           type="button"
           role="radio"
           aria-checked={value === option}
           aria-label={spoken}
+          title={title}
           tabIndex={radioTab(value === option, i, anyChecked)}
           className={`segment ${value === option ? 'active' : ''}`}
           onClick={() => onChange(option)}

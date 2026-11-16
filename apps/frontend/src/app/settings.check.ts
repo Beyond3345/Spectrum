@@ -137,6 +137,13 @@ eq([DEFAULT_SETTINGS.composerMixSets, DEFAULT_SETTINGS.composerMoments, DEFAULT_
 const composer = withShared(theirs, { ...sharedPart(at({ composerMixSets: true, composerMoments: 'positive', composerMohrShear: 'clockwise-above', composerRecent: ['circuit'] })) });
 eq([composer.composerMixSets, composer.composerMoments, composer.composerMohrShear, composer.composerRecent], [true, 'positive', 'clockwise-above', []], 'the composer’s settings come in, not Recently used');
 eq([withShared(theirs, { composerMoments: 'sideways', composerMohrShear: 'left', composerMixSets: 'yes' })].map((s) => [s.composerMoments, s.composerMohrShear, s.composerMixSets])[0], ['tension', 'down', false], 'and are checked');
+// the canvas's colour and minimap, once the composer's own on one computer: light and hidden by default, shared, and
+// cleaned of anything that isn't a switch
+eq([DEFAULT_SETTINGS.composerDark, DEFAULT_SETTINGS.composerMinimap], [false, false], 'a light canvas without a minimap by default');
+eq(sharedPart(at({ composerDark: true, composerMinimap: true })), { ...sharedPart(at({})), composerDark: true, composerMinimap: true }, 'both follow the user');
+const canvas = withShared(theirs, { composerDark: true, composerMinimap: true });
+eq([canvas.composerDark, canvas.composerMinimap], [true, true], 'and come in');
+eq(['yes', 1, null, {}, 'true'].map((v) => [withShared(canvas, { composerDark: v }).composerDark, withShared(canvas, { composerMinimap: v }).composerMinimap]).flat(), Array(10).fill(false), 'anything but true is off');
 // a new structure's force diagrams follow the user too, each part checked and anything unusable its default
 eq(DEFAULT_SETTINGS.composerDiagrams.shear, { on: true, fill: 'blue!12', opacity: 1 }, 'all three diagrams in today’s fills');
 // University styles: all on by default, shared, and cleaned of bad values (unknown ids stay, for a newer Spectrum)
@@ -212,6 +219,21 @@ try {
     { tectonic: true, pdflatex: true, xelatex: false, lualatex: false, latexmk: false, markdown: false },
     'live output keeps what it knows and falls back for the rest'
   );
+  // the canvas colour and minimap of 2.4 and earlier, kept in the composer's own storage: taken until Settings has its own
+  const stored = (settings: object, canvas: string | null) =>
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: { getItem: (k: string) => (k === 'spectrum-diagram-canvas' ? canvas : JSON.stringify(settings)) } } });
+  stored({ theme: 'dark' }, '{"minimap":true,"dark":true}');
+  eq([loadSettings().composerDark, loadSettings().composerMinimap], [true, true], 'the old canvas choices carry over');
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: { getItem: (k: string) => (k === 'spectrum-diagram-canvas' ? '{"minimap":false,"dark":true}' : null) } } });
+  eq([loadSettings().composerDark, loadSettings().composerMinimap, loadSettings().theme], [true, false, DEFAULT_SETTINGS.theme], 'with no settings stored yet, too');
+  stored({ theme: 'light' }, '{"dark":true}');
+  eq([loadSettings().composerDark, loadSettings().composerMinimap], [true, false], 'one alone too');
+  stored({ composerDark: false, composerMinimap: true }, '{"minimap":false,"dark":true}');
+  eq([loadSettings().composerDark, loadSettings().composerMinimap], [false, true], 'Settings’ own win once they’re stored');
+  for (const junk of [null, 'not json', '"dark"', 'null', '{"dark":"yes","minimap":1}']) {
+    stored({ theme: junk ? 'dark' : 'system', editorFontSize: 10 + String(junk).length }, junk);
+    eq([loadSettings().composerDark, loadSettings().composerMinimap], [false, false], `old choices that can’t be read (${junk}) are off`);
+  }
 } finally {
   if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow);
   else Reflect.deleteProperty(globalThis, 'window');
