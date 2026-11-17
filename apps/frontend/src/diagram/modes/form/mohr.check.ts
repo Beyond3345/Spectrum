@@ -110,4 +110,8 @@ for (const [what, v] of [
 // a % in the unit is written \%
 eq(code({}, { unit: '%' }).body.includes('{$80$\\,\\%}'), true, 'a % unit escaped');
 
+// σz is asked for only with the three-dimensional state, as its switch says
+const shownKeys = (v: Record<string, unknown>) => MOHR.fields.filter((f) => f.shown?.(v as never) ?? true).map((f) => f.key);
+eq([shownKeys(MOHR.values).includes('sigmaZ'), shownKeys({ ...MOHR.values, threeD: true }).includes('sigmaZ')], [false, true], 'σz with the 3D switch only');
+
 console.log('mohr.check: ok');

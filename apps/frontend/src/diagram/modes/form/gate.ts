@@ -97,7 +97,8 @@ export function gateDrawing(values: FormValues, style: Record<string, unknown>) 
     top: num(values, 'top'),
     rho: f1.rho,
     hinge: (['top', 'bottom', 'none'].includes(String(values.hinge)) ? values.hinge : 'top') as GateInput['hinge'],
-    ...(values.other === true && { other: { rho: f2.rho, depth: num(values, 'depth2') } }),
+    // a fluid on the other side with no depth is none: nothing to draw or push
+    ...(values.other === true && num(values, 'depth2') > 0 && { other: { rho: f2.rho, depth: num(values, 'depth2') } }),
     g: num(values, 'g')
   };
   const r = gate(input);
@@ -253,13 +254,14 @@ export function gateDrawing(values: FormValues, style: Record<string, unknown>) 
     // past the arc's foot on the bed, clear of the stop's arrow, which crosses the arc
     sc.label({ x: B.x + 0.62, y: B.y + 0.06 }, `$\\theta = ${fmt(input.angle, 3)}^\\circ$`, { x: 1, y: 0.35 });
   }
-  sc.label({ x: xL + 0.15, y: (yB + 0) / 2 - 0.25 }, f1.label, { x: 1, y: 0 });
+  // named where it's drawn: not when the gate is clear of it
+  if (r.F1 > 0 || top + L * s > 0) sc.label({ x: xL + 0.15, y: (yB + 0) / 2 - 0.25 }, f1.label, { x: 1, y: 0 });
   if (input.other) sc.label({ x: xR - 0.1, y: y2 - 0.1 }, f2.label, { x: -1, y: -1 });
 
   const area = input.shape === 'circle' ? (Math.PI * L * L) / 4 : L * input.width;
   const comments = [
     `Hydrostatic force on a ${input.shape} gate: ${fmt(L, 3)} m along it${input.shape === 'rectangle' ? `, ${fmt(input.width, 3)} m wide` : ''}, ${fmt(input.angle, 3)} degrees to the horizontal, top edge ${fmt(top, 3)} m deep; area ${fmt(area)} m2`,
-    `F_R = ${kN(r.F1)} kN at y_p = ${fmt(r.yp1)} m along the plane from the free surface, ${fmt(r.hp1)} m deep`,
+    r.F1 > 0 ? `F_R = ${kN(r.F1)} kN at y_p = ${fmt(r.yp1)} m along the plane from the free surface, ${fmt(r.hp1)} m deep` : 'The gate is clear of the fluid',
     ...(input.other ? [`Other side: F_R2 = ${kN(r.F2)} kN at y_p = ${fmt(r.yp2)} m from its free surface; net ${kN(r.net)} kN`] : []),
     ...(r.stop !== null ? [`Force on the stop B = ${kN(r.stop)} kN, on the hinge A = ${kN(r.hinge!)} kN (positive towards the first fluid)`] : [])
   ];

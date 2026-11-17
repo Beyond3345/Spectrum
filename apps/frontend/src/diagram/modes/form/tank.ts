@@ -148,7 +148,7 @@ export function tankDrawing(values: FormValues, style: Record<string, unknown>) 
   const comments = [
     `Accelerating tank: ${fmt(input.length)} m long, ${fmt(input.height)} m high, ${fmt(input.depth)} m deep at rest; a = ${fmt(input.a)} m/s2 at ${fmt(input.angle)} degrees`,
     r
-      ? `theta = ${fmt(r.theta)} degrees; depths rear ${fmt(r.rear)} m, front ${fmt(r.front)} m; bottom pressures ${fmt(r.pRear)} Pa and ${fmt(r.pFront)} Pa${r.spills ? '; spills' : ''}; largest a without spilling ${fmt(r.aMax)} m/s2`
+      ? `theta = ${fmt(r.theta)} degrees; depths rear ${fmt(r.rear)} m, front ${fmt(r.front)} m; bottom pressures ${fmt(r.pRear)} Pa and ${fmt(r.pFront)} Pa${r.spills ? '; spills' : ''}${Number.isFinite(r.aMax) ? `; largest a without spilling ${fmt(r.aMax)} m/s2` : ''}`
       : 'g + a_z <= 0: no free surface'
   ];
   return pictureOf(sc, comments, si.used);

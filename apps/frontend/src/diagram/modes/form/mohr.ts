@@ -229,7 +229,7 @@ export const MOHR: FormPreset = {
     { key: 'unit', label: 'Stress unit', kind: 'text', hint: 'LaTeX, as in the document: MPa, ksi, kN/m$^2$.' },
     { key: 'theta', label: 'Rotation θ', kind: 'number', unit: '°', min: -180, max: 180, hint: 'Anticlockwise. The rotated state is drawn as X′ and Y′; 0 leaves it out.' },
     { key: 'threeD', label: 'Three-dimensional state', kind: 'switch', hint: 'Adds σz and draws three circles with the absolute maximum shear.' },
-    { key: 'sigmaZ', label: 'σz', kind: 'number', min: -1e9, max: 1e9 },
+    { key: 'sigmaZ', label: 'σz', kind: 'number', min: -1e9, max: 1e9, shown: (v) => v.threeD === true },
     {
       key: 'elements',
       label: 'Stress elements',
