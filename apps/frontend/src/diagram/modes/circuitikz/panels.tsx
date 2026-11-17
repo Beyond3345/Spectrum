@@ -151,7 +151,8 @@ function Field({ label, children, hint }: { label: string; children: (id: string
         {label}
       </label>
       {children(id)}
-      {hint && <div className="field-hint">{hint}</div>}
+      {/* a word joiner keeps $…$ on one line: a line may otherwise break after the … */}
+      {hint && <div className="field-hint">{hint.replace(/\$…\$/g, '$…\u2060$')}</div>}
     </div>
   );
 }

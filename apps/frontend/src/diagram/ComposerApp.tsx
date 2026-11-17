@@ -1144,7 +1144,7 @@ function SetsDialog({ projectId, own, chosen, inUse, onUse, onClose }: { project
         </>
       }
     >
-      <div className="field-hint">The drawing’s own symbols are always there. Each set you add shows in the palette, and its packages go into your document when you insert the figure.</div>
+      <div className="field-hint">The drawing’s own symbols are always there. Each set you add shows in the parts list, and its packages go into your document when you insert the figure.</div>
       {!groups.length && <div className="diagram-hint">There are no other symbol sets yet.</div>}
       {groups.map(([label, sets]) => (
         <section key={label} className="sets-group">
