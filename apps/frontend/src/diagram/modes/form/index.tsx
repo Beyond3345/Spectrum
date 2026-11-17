@@ -20,27 +20,42 @@ function NumberInput({ id, field, value, readOnly, onChange }: { id: string; fie
     if (Number(text) !== value) setText(String(value));
     // only when the value changes from elsewhere (undo)
   }, [value]);
+  // a number out of range isn't kept: the field says what it takes, until the next number typed
+  const [out, setOut] = useState(false);
+  const [min, max] = [field.min ?? -Infinity, field.max ?? Infinity];
+  const unit = field.unit ? ` ${field.unit}` : '';
+  const n = (x: number) => x.toLocaleString('en-AU', { maximumFractionDigits: 6 });
   return (
-    <span className="diagram-pair form-number">
-      <input
-        id={id}
-        className="input"
-        type="number"
-        inputMode="decimal"
-        min={field.min}
-        max={field.max}
-        step={field.step ?? 'any'}
-        value={text}
-        readOnly={readOnly}
-        onChange={(e) => {
-          setText(e.target.value);
-          const next = Number(e.target.value);
-          if (e.target.value.trim() && Number.isFinite(next) && next >= (field.min ?? -Infinity) && next <= (field.max ?? Infinity)) onChange(next);
-        }}
-        onBlur={() => setText(String(value))}
-      />
-      {field.unit && <span className="muted">{field.unit}</span>}
-    </span>
+    <>
+      <span className="diagram-pair form-number">
+        <input
+          id={id}
+          className="input"
+          type="number"
+          inputMode="decimal"
+          min={field.min}
+          max={field.max}
+          step={field.step ?? 'any'}
+          value={text}
+          readOnly={readOnly}
+          onChange={(e) => {
+            setText(e.target.value);
+            const next = Number(e.target.value);
+            const number = e.target.value.trim() !== '' && Number.isFinite(next);
+            setOut(number && (next < min || next > max));
+            if (number && next >= min && next <= max) onChange(next);
+          }}
+          onBlur={() => setText(String(value))}
+          aria-invalid={out || undefined}
+        />
+        {field.unit && <span className="muted">{field.unit}</span>}
+      </span>
+      {out && (
+        <div className="field-hint error" role="status">
+          {max === Infinity ? `Takes ${n(min)}${unit} or more.` : min === -Infinity ? `Takes up to ${n(max)}${unit}.` : `Takes ${n(min)} to ${n(max)}${unit}.`}
+        </div>
+      )}
+    </>
   );
 }
 

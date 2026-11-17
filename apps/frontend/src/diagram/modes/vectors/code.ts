@@ -36,6 +36,16 @@ export interface VectorStyle {
 
 export const GRIDS = [0.25, 0.5, 1];
 
+/**
+ * A length or coordinate typed in, kept within ±1 m (in pt, its 2845 pt), so TeX can draw it: its largest length is
+ * 16383 pt, about 575 cm, and 1.5e10 cm gives Dimension too large.
+ * ponytail: a drawing at Style's scale 5 that reaches a metre out can still pass 575 cm; a limit over the scale then
+ */
+export const inReach = (value: number, unit: 'cm' | 'pt' = 'cm') => {
+  const most = unit === 'pt' ? (100 * 72.27) / 2.54 : 100;
+  return Math.max(-most, Math.min(most, value));
+};
+
 /** How a vector's name is written: each \mathbf{…} in the drawing's labels becomes the command, with the package it needs. */
 export type Notation = 'bold' | 'vec' | 'arrow' | 'vv';
 export const NOTATIONS: Record<Notation, { command: string; label: string; package?: string }> = {

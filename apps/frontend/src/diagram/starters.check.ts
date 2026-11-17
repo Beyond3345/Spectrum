@@ -80,6 +80,8 @@ eq([starterFor('block-diagram')?.home, starterFor('mass-spring-damper')?.home, s
 eq(ids('555'), ['astable-555', 'monostable-555'], 'templates found by alias');
 eq(ids('buck').slice(0, 2), ['buck-converter', 'buck-boost-converter'], 'converters by name');
 eq(search('   ').starters, [], 'blank finds nothing');
+// by relevance: title, then blurb or aliases, then groups and packages, each rank in definition order
+eq(ids('fluid statics').slice(0, 5), ['general-drawing', 'gate', 'manometer', 'tank', 'floating'], 'the fluid presets before the beams, which match only by their group');
 // a short word starts a word, a longer one may sit inside one
 eq(ids('op amp').includes('inclined-member') || ids('op amp').includes('damped-oscillation'), false, 'op amp finds no ramp or damped curve');
 eq(search('op amp').symbols.map(({ symbol }) => symbol.label).filter((label) => !/op amp/i.test(label)), [], 'nor the Incline symbol');

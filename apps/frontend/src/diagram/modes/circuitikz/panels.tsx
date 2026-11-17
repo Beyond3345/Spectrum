@@ -151,7 +151,8 @@ function Field({ label, children, hint }: { label: string; children: (id: string
         {label}
       </label>
       {children(id)}
-      {hint && <div className="field-hint">{hint}</div>}
+      {/* a word joiner keeps $…$ on one line: a line may otherwise break after the … */}
+      {hint && <div className="field-hint">{hint.replace(/\$…\$/g, '$…\u2060$')}</div>}
     </div>
   );
 }
@@ -445,7 +446,7 @@ export function CircuitInspector({ model: raw, onChange }: { model: CircuitModel
         </>
       ) : (
         <>
-          <Field label="Name" hint="Wires reach its pins through this name.">
+          <Field label="Name" hint={part?.pins?.length ? 'Wires reach its pins through this name.' : 'Optional: lets other drawings reach its anchors.'}>
             {(id) => <input id={id} className="input mono" value={el.name || ''} onChange={(e) => update({ ...el, name: cleanName(e.target.value) || undefined })} spellCheck={false} />}
           </Field>
           <Field label={`Rotation: ${el.rotate || 0}°`}>

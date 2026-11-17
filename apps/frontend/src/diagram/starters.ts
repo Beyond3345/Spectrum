@@ -606,9 +606,11 @@ const startersOfSet = (set: string, starters: Starter[]) =>
  * part:<id> (a flowchart shape's).
  */
 export function search(query: string, starters: Starter[] = STARTERS, stylesOff: string[] = []): { starters: Starter[]; symbols: { starter: Starter; symbol: SetSymbol; tool?: string }[] } {
-  const found = starters.filter((s) =>
-    matches(query, [s.title, s.blurb, ...(s.aliases ?? []), ...[s.home, ...(s.also ?? [])].flatMap((g) => [groupLabel(g), categoryLabel(g)]), ...MODE_FACTS[s.mode].packages, s.mode])
-  );
+  // by relevance: a match in the title, then in the blurb or aliases, then the rest; the sort keeps definition order within each
+  const rank = (s: Starter) => (matches(query, [s.title]) ? 0 : matches(query, [s.title, s.blurb, ...(s.aliases ?? [])]) ? 1 : 2);
+  const found = starters
+    .filter((s) => matches(query, [s.title, s.blurb, ...(s.aliases ?? []), ...[s.home, ...(s.also ?? [])].flatMap((g) => [groupLabel(g), categoryLabel(g)]), ...MODE_FACTS[s.mode].packages, s.mode]))
+    .sort((a, b) => rank(a) - rank(b));
   // the Flowchart's shapes first, so “decision” opens the Flowchart before General drawing's shape
   const flow = ['flowchart', 'flowchart-typst'].flatMap((id) => starters.filter((s) => s.id === id));
   const shapes = FLOW_SHAPES.filter(([, label, aliases]) => matches(query, [label, ...aliases, 'flowchart shape'])).flatMap(([tool, label, aliases]) =>

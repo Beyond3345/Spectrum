@@ -2,7 +2,7 @@
 // TikZ each starter writes. Run:
 // npx esbuild apps/frontend/src/diagram/modes/vectors/vectors.check.ts --bundle --platform=node --log-level=warning | node
 import { isColour } from '../shared';
-import { eqLineEnds, notate, vectorCode, readStyle, styledVectors } from './code';
+import { eqLineEnds, inReach, notate, vectorCode, readStyle, styledVectors } from './code';
 import { COLOURS, addPanel, addPoint, applyTool, dropUnused, equationText, frameOf, nameFree, newEqLine, setEquation, vectorsNeedVersion5, withText, clipLine, copyIds, dividingSegment, lineThroughPoints, newAxes, pasteInto, projections, removeIds, resolve, rightCorners, triangleMidpoints } from './model';
 import type { Angle, EqLine, Item, Link, Note, RightMark, VPoint, VectorModel } from './model';
 import { angleBetween, cevians, emptyVectors, forcePolygon, freeBody, idsInside, lineFromEquation, mirrorIds, moveIds, parallelogramLaw, positionVectors, restyleIds, scalarMultiples, triangleLaw, turnIds } from './model';
@@ -358,6 +358,8 @@ eq(readStyle({ width: 'huge', vectorWidth: 1.5, colour: ' ', tips: 'none' }), { 
   const flat = setEquation(m, e.id, { a: 0 });
   eq([Number.isNaN(resolve(flat).get(xi.id)!.x), body(flat).filter((l) => l.startsWith('\\coordinate')).length], [true, 1], 'a flat line has no x-intercept, left out');
   eq(body(m).filter((l) => l.startsWith('\\coordinate') || l.includes('=0$')), ['\\coordinate (A) at (2.25,0);', '\\coordinate (B) at (0,9);', '\\draw (-0.25,10) -- (2.5,-1) node[midway, above right] {$4x+y-9=0$};'], 'the line out to the frame, left to right');
+  // a length or coordinate typed in stays where TeX can draw it (1.5e10 cm gave Dimension too large)
+  eq([inReach(1.5e10), inReach(-1e12), inReach(2.5), Math.round(inReach(1e9, 'pt'))], [100, -100, 2.5, 2845], 'within a metre, 2845 pt');
   eq(eqLineEnds({ a: 1, b: 0, c: -1 }, { minX: -2, maxX: 2, minY: -2, maxY: 2 }), [{ x: 1, y: -2 }, { x: 1, y: 2 }], 'an upright line runs upwards');
   eq(eqLineEnds({ a: 1, b: 0, c: -5 }, { minX: -2, maxX: 2, minY: -2, maxY: 2 }), null, 'one outside the frame isn’t drawn');
   eq(removeIds(m, [e.id]).points, [], 'its intercepts go with it');
@@ -482,10 +484,13 @@ eq(readStyle({ width: 'huge', vectorWidth: 1.5, colour: ' ', tips: 'none' }), { 
     return `<${typeof n.type === 'string' ? n.type : ''}${props.join('')}>${markupOf(n.props.children)}</>`;
   };
   const markup = markupOf(sketch('$\\mathbf{F}_1 \\parallel \\vec{v} - \\frac{1}{2}\\mathbf{a}$'));
-  for (const part of ['fontWeight="bold"', 'baselineShift="sub"', '∥', 'v⃗', '−', '1/2']) eq(markup.includes(part), true, `sketched: ${part} in ${markup}`);
+  for (const part of ['fontWeight="bold"', 'baselineShift="sub"', '∥', '<tspan data-arrow="">v</>', '−', '1/2']) eq(markup.includes(part), true, `sketched: ${part} in ${markup}`);
+  // the arrow is drawn over the run, not set as U+20D7, which Chrome's serif fonts draw as bars
+  eq(markupOf(sketch('$\\overrightarrow{AB} = \\vv{c}$')).replace(/<\/?>/g, ''), '<tspan data-arrow="">AB = <tspan data-arrow="">c', 'an arrow run across both letters, and \\vv’s');
+  eq(markup.includes('\u20d7'), false, 'no combining arrow');
   const cos = markupOf(sketch('$\\cos\\theta=\\frac{\\mathbf{a}\\cdot\\mathbf{b}}{|\\mathbf{a}|}$'));
   eq(['cos θ=(', ')/(|'].every((part) => cos.includes(part)), true, `cos and a fraction of vectors: ${cos}`);
-  eq(markupOf(sketch('$\\mathbf{a}$', 'vec')).includes('a⃗'), true, 'in the Style’s notation');
+  eq(markupOf(sketch('$\\mathbf{a}$', 'vec')).includes('<tspan data-arrow="">a</>'), true, 'in the Style’s notation');
 
   // the starters: each new one compiles from 2.4's kinds, or 2.5's where it shows them off
   const added = { freeBody, triangleLaw, parallelogramLaw, forcePolygon, positionVectors, cevians, angleBetween, lineFromEquation, scalarMultiples };
