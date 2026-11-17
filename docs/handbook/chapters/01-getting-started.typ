@@ -71,7 +71,7 @@ The sidebar on the left holds the views of the page, which are,
 
 The header holds a search field, #ui[Sort] (by name, date changed or date created), the list and icon views with a slider for the size of the icons, #ui[Import] and #ui[New]. The search looks through the projects of every folder, and each result says which folder it is in. #menu[Settings][Projects] chooses whether Spectrum opens on Home or on All projects.
 
-#shot("images/01-getting-started/all-projects.png", [All projects as a list. Each row shows the project's folder on disk, its tags and when it was last changed, and the ··· button at the end of the row opens its menu.]) <fig-start-all>
+#shot("images/01-getting-started/all-projects.png", [All projects as a list. Each row shows the project's folder on disk, its tags and when it was last changed, and the #dots button at the end of the row opens its menu.]) <fig-start-all>
 
 === Opening a project
 
@@ -104,11 +104,11 @@ The New project window asks for the following,
 
 The file list of every project follows changes made outside Spectrum, so a file added, removed or renamed in Finder or by another editor shows up straight away. If a project's folder is moved in Finder, the project is marked as missing, and #ui[Locate…] in its menu points it at the new location.
 
-#shots(("images/01-getting-started/import-menu.png", "images/01-getting-started/project-menu.png"), [The Import menu, left, and a project's menu, right, which opens from its ··· button or with a right-click.], columns: (1.3fr, 1fr)) <fig-start-import>
+#shots(("images/01-getting-started/import-menu.png", "images/01-getting-started/project-menu.png"), [The Import menu, left, and a project's menu, right, which opens from its #dots button or with a right-click.], columns: (1.3fr, 1fr)) <fig-start-import>
 
 === A project's menu
 
-Each project has a menu, opened with a right-click on it or with its ··· button. The menu holds the following,
+Each project has a menu, opened with a right-click on it or with its #dots button. The menu holds the following,
 
 - #ui[Open], #ui[Rename…] and #ui[Duplicate], which copies the whole folder into a new project,
 - #ui[Tags…], which adds and removes the project's tags. A tag's colour is chosen with a right-click on the tag in the sidebar, which can also rename it,
@@ -177,7 +177,7 @@ The Typst tab of the gallery also has #ui[Typst Universe…], which lists the te
 
 Any project can become a template with #ui[Save as template…] in its menu, on the projects page or in the editor. It asks for a name, a section of the gallery and a one-line description, and the template gets a copy of the project's files without its compiled PDFs. #ui[Upload template…] in the gallery adds a template from a `.zip` file instead. Templates of your own are marked Yours in the gallery and can be deleted.
 
-Each template's ··· menu has #ui[Edit template], which opens a working copy of it in the editor. The copy compiles like any project, and a bar above the editor holds three buttons,
+Each template's #dots menu has #ui[Edit template], which opens a working copy of it in the editor. The copy compiles like any project, and a bar above the editor holds three buttons,
 
 - #ui[Save template] replaces the template's files with the copy's, leaving out compiled PDFs and the app's own files,
 - #ui[Save as new template…] asks for a name, a section and a description, and keeps the original as it was and
@@ -232,7 +232,7 @@ Settings are saved as they are changed, so there is no Save button. A few sectio
 - the theme, which is System, Light or Dark. System follows the macOS appearance and switches with it,
 - the accent colour, which can follow macOS or be Blue, Purple, Pink, Red, Orange, Yellow, Green, Graphite or any other colour chosen with the colour well at the end of the row,
 - on macOS, a see-through window, which uses Liquid Glass on macOS 26 and later and a frosted blur on earlier versions, with a Clarity slider from Frosted to Clear that sets how much of the desktop shows through while the editor and the PDF stay readable and
-- the colour of the PDF's pages, one for light mode (White, Cream, Sepia or Grey) and one for dark mode (Dark, Black, Dimmed or White). Dark and Black turn the ink light, while Dimmed keeps the page's own colours a little darker. The PDF's ··· menu changes the colour for the mode that is showing.
+- the colour of the PDF's pages, one for light mode (White, Cream, Sepia or Grey) and one for dark mode (Dark, Black, Dimmed or White). Dark and Black turn the ink light, while Dimmed keeps the page's own colours a little darker. The PDF's #dots menu changes the colour for the mode that is showing.
 
 #shot("images/01-getting-started/settings-appearance.png", [The Appearance section of Settings, with the theme, the accent colour and the colour of the PDF's pages. The see-through window appears here on macOS.], width: 72%) <fig-start-appearance>
 

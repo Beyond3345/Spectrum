@@ -148,14 +148,14 @@ The PDF preview fits the page to the width of its column by default. It zooms wi
 
 Links in the PDF work as in a PDF viewer. The contents, `\ref`, `\eqref` and `\cite` jump to the spot they point to, a web address opens in the browser and a reference into a linked document opens that document's PDF at the place it names.
 
-#shots(("images/02-writing/pdf-outline.png", "images/02-writing/pdf-more-menu.png"), [Document outline beside the pages, left, lists the PDF's bookmarks with the current section marked. The ··· menu, right, holds the other views and the page colours.], columns: (1.6fr, 1fr)) <fig-writing-pdf>
+#shots(("images/02-writing/pdf-outline.png", "images/02-writing/pdf-more-menu.png"), [Document outline beside the pages, left, lists the PDF's bookmarks with the current section marked. The #dots menu, right, holds the other views and the page colours.], columns: (1.6fr, 1fr)) <fig-writing-pdf>
 
 The PDF's header holds the following,
 
 - #ui[Document outline], which opens a sidebar beside the pages with two tabs: #ui[Contents], which lists the PDF's bookmarks with the current section marked (or the source's headings when the PDF has none), and #ui[Pages], which shows a thumbnail of each page with the current one outlined (@fig-writing-pdf),
 - the zoom menu,
 - #ui[Download PDF], which saves a copy of the PDF, or the download menu of a Typst document (@sec-writing-engines) and
-- the ··· menu, which holds #ui[Two-page view], #ui[Annotate], #ui[Find in PDF], #ui[Presentation mode], the colour of the pages for the mode showing (@sec-start-appearance) and #ui[Show logs].
+- the #dots menu, which holds #ui[Two-page view], #ui[Annotate], #ui[Find in PDF], #ui[Presentation mode], the colour of the pages for the mode showing (@sec-start-appearance) and #ui[Show logs].
 
 Presentation mode shows the PDF one page at a time in full screen, for slides. A right-click on the PDF offers #ui[Add a note here], which pins a sticky note to that spot, and #ui[Add to-do here], which adds a to-do linked to that page (@sec-writing-todos). The notes are listed under the PDF with their pages, each a click away, and with #ui[Clear all] (@fig-writing-note). They are saved with the project, one small file each in `.spectrum/notes`.
 

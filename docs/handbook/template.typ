@@ -32,6 +32,9 @@
   caption: caption,
 )
 
+// The three-dot button that opens a menu: the ··· of the app, spaced so it reads in print.
+#let dots = box(text(tracking: 0.14em, weight: "semibold")[···])
+
 // An aside the reader should not miss: #note[…], or #note(title: [Before 2.5])[…]
 #let note(title: [Note], body) = block(
   width: 100%, inset: (left: 11pt, y: 3pt), stroke: (left: 1.5pt + accent),
@@ -67,6 +70,8 @@
   // Figures count again in each chapter (Figure 6.3); captions are small and quiet; a table's goes above it.
   set figure(numbering: n => numbering("1.1", counter(heading).get().first(), n), gap: 0.9em)
   show figure: set block(above: 1.5em, below: 1.5em)
+  show figure.where(kind: image): set figure(placement: bottom) // pictures sit at the foot of a page, so no page is left half empty
+  set place(clearance: 1.6em)
   show figure.caption: set text(size: 0.86em, fill: muted)
   show figure.where(kind: table): set figure.caption(position: top)
 
