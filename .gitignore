@@ -24,3 +24,6 @@ windows-delivery/
 
 # the tidy benchmark's results (scripts/tidy-bench.mjs)
 tidy-bench-results/
+
+# The compiled handbook: build it with the command at the top of docs/handbook/handbook.typ
+docs/handbook/handbook.pdf

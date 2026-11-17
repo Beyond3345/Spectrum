@@ -2576,8 +2576,8 @@
        "id": "typst-circle",
        "name": "Circle",
        "picture": "pictures/flow/typst-circle.pdf",
-       "width": 68.13,
-       "height": 68.13
+       "width": 50.52,
+       "height": 50.52
       },
       {
        "id": "typst-ellipse",
@@ -2590,14 +2590,14 @@
        "id": "typst-diamond",
        "name": "Diamond",
        "picture": "pictures/flow/typst-diamond.pdf",
-       "width": 93.04,
-       "height": 71.78
+       "width": 64.69,
+       "height": 50.52
       },
       {
        "id": "typst-parallelogram",
        "name": "Parallelogram",
        "picture": "pictures/flow/typst-parallelogram.pdf",
-       "width": 72.95,
+       "width": 64.69,
        "height": 36.35
       },
       {
@@ -2618,36 +2618,36 @@
        "id": "typst-state",
        "name": "State",
        "picture": "pictures/flow/typst-state.pdf",
-       "width": 68.13,
-       "height": 68.13
+       "width": 50.52,
+       "height": 50.52
       },
       {
        "id": "typst-accepting",
        "name": "Accepting state",
        "picture": "pictures/flow/typst-accepting.pdf",
-       "width": 68.13,
-       "height": 68.13
+       "width": 50.52,
+       "height": 50.52
       },
       {
        "id": "typst-cylinder",
        "name": "Cylinder (data store)",
        "picture": "pictures/flow/typst-cylinder.pdf",
        "width": 50.52,
-       "height": 56.44
+       "height": 50.52
       },
       {
        "id": "typst-trapezium",
        "name": "Trapezium (manual step)",
        "picture": "pictures/flow/typst-trapezium.pdf",
-       "width": 72.95,
+       "width": 64.69,
        "height": 36.35
       },
       {
        "id": "typst-operator",
        "name": "Operator circle",
        "picture": "pictures/flow/typst-operator.pdf",
-       "width": 48.09,
-       "height": 48.09
+       "width": 36.35,
+       "height": 36.35
       },
       {
        "id": "typst-container",
@@ -2688,8 +2688,8 @@
        "id": "typst-takeoff",
        "name": "Takeoff point",
        "picture": "pictures/flow/typst-takeoff.pdf",
-       "width": 12.81,
-       "height": 12.81
+       "width": 11.4,
+       "height": 11.4
       },
       {
        "id": "typst-swimlane",
