@@ -131,6 +131,7 @@ has(shapes, 'edge(<q0>, <q1>, "->", bend: 20deg, label: [a]),', 'a bent arrow');
 has(shapes, 'edge(<q1>, <q0>, "->", bend: 20deg),', 'and the one back, to its own left');
 has(shapes, 'edge(<q0>, <q0>, "->", bend: 130deg, loop-angle: 90deg),', 'a loop above');
 has(shapes, 'edge(<q1>, <q1>, "->", bend: 130deg, loop-angle: -90deg),', 'a loop below, whatever its route says');
+has(fletcherCode({ boxes: [box({ id: 'd2', shape: 'cylinder', w: 12, h: 2 })], links: [] }).body, 'width: 3cm, height: 0.25cm', 'a flat cylinder keeps a height, as fletcher divides by it');
 has(fletcherCode({ boxes: [box({ id: 'd1', shape: 'cylinder' })], links: [] }, '0.12.0').body, '[], shape: fletcher.shapes.rect, width: 2cm, height: 1cm,', 'fletcher 0.5.5 has no cylinder: a box its full size');
 eq(shapes.includes('gone'), false, 'an edge to a missing node is left out');
 eq(lines.filter((l) => l.trim() === ',').length, 0, 'without an empty line in its place');

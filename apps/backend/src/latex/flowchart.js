@@ -346,7 +346,8 @@ const FLETCHER_SHAPE = {
 
 /**
  * A cylinder with ends a quarter of its width deep, as TikZ's aspect=0.25: tilt asin(1/4) makes them so, fit 0 keeps
- * them centred on the ends of the height it is given, which is the box's less those ends (in nodeCode).
+ * them centred on the ends of the height it is given, which is the box's less those ends (in nodeCode). ponytail: at
+ * least a grid unit, as fletcher divides by it, so a cylinder lower than a quarter of its width prints taller.
  */
 const CYLINDER = 'fletcher.shapes.cylinder.with(tilt: 14.48deg, fit: 0)';
 
@@ -391,7 +392,7 @@ function nodeCode(box, version) {
     (box.shape === 'rounded' || container) && 'corner-radius: 4pt',
     // a circle's radius, as fletcher's circle round a width and height is the circle through their corners; a takeoff
     // point a dot 1.2 mm across, filled in its line colour
-    ...(dot ? ['radius: 0.6mm'] : size ? ['radius: ' + cm(size / 2)] : ['width: ' + cm(width), 'height: ' + cm(cylinder ? height - width / 4 : height)]),
+    ...(dot ? ['radius: 0.6mm'] : size ? ['radius: ' + cm(size / 2)] : ['width: ' + cm(width), 'height: ' + cm(cylinder ? Math.max(1, height - width / 4) : height)]),
     // a double circle, as TikZ's accepting state
     box.shape === 'accepting' && 'extrude: (-2.5, 0)',
     // its title fills it from the top-left corner, under the other nodes and the edges
