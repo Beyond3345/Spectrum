@@ -324,14 +324,16 @@ const FLETCHER_SHAPE = {
   rounded: 'rect',
   circle: 'circle',
   ellipse: 'ellipse',
-  diamond: 'diamond',
-  parallelogram: 'parallelogram',
+  // fit 0: the outline through the corners of the box, not round a box of that size; the slant as TikZ's angle=70
+  // (fletcher's angle slants half the height, so atan(2 tan 20°))
+  diamond: 'diamond.with(fit: 0)',
+  parallelogram: 'parallelogram.with(fit: 0, angle: 36.05deg)',
   text: 'rect',
   maths: 'rect',
   state: 'circle',
   accepting: 'circle',
   cylinder: 'cylinder',
-  trapezium: 'trapezium',
+  trapezium: 'trapezium.with(fit: 0, angle: 36.05deg)',
   operator: 'circle',
   container: 'rect',
   terminal: 'pill',
@@ -341,6 +343,13 @@ const FLETCHER_SHAPE = {
   document: 'rect',
   stack: 'rect'
 };
+
+/**
+ * A cylinder with ends a quarter of its width deep, as TikZ's aspect=0.25: tilt asin(1/4) makes them so, fit 0 keeps
+ * them centred on the ends of the height it is given, which is the box's less those ends (in nodeCode). ponytail: at
+ * least a grid unit, as fletcher divides by it, so a cylinder lower than a quarter of its width prints taller.
+ */
+const CYLINDER = 'fletcher.shapes.cylinder.with(tilt: 14.48deg, fit: 0)';
 
 /** Which way a loop on each side sticks out (fletcher's lengths go up, as TikZ's do). */
 const LOOP_ANGLE = { t: 90, r: 0, b: -90, l: 180 };
@@ -377,12 +386,13 @@ function nodeCode(box, version) {
   const width = size || box.w;
   const height = size || box.h;
   const container = box.shape === 'container';
+  const cylinder = box.shape === 'cylinder' && atLeast(version, '0.5.8');
   const options = [
-    'shape: ' + (polygon ? polygonShape(box, polygon) : 'fletcher.shapes.' + (box.shape === 'cylinder' && !atLeast(version, '0.5.8') ? 'rect' : FLETCHER_SHAPE[box.shape])),
+    'shape: ' + (polygon ? polygonShape(box, polygon) : cylinder ? CYLINDER : 'fletcher.shapes.' + (box.shape === 'cylinder' ? 'rect' : FLETCHER_SHAPE[box.shape])),
     (box.shape === 'rounded' || container) && 'corner-radius: 4pt',
-    // a takeoff point: a dot 1.2 mm across, filled in its line colour
-    'width: ' + (dot ? '1.2mm' : cm(width)),
-    'height: ' + (dot ? '1.2mm' : cm(height)),
+    // a circle's radius, as fletcher's circle round a width and height is the circle through their corners; a takeoff
+    // point a dot 1.2 mm across, filled in its line colour
+    ...(dot ? ['radius: 0.6mm'] : size ? ['radius: ' + cm(size / 2)] : ['width: ' + cm(width), 'height: ' + cm(cylinder ? Math.max(1, height - width / 4) : height)]),
     // a double circle, as TikZ's accepting state
     box.shape === 'accepting' && 'extrude: (-2.5, 0)',
     // its title fills it from the top-left corner, under the other nodes and the edges
@@ -441,14 +451,21 @@ function edgeCode(link, boxes) {
   const to = boxes.get(link.to);
   if (!from || !to) return [];
   const loop = from === to;
-  // a corner between boxes in line would sit on one of them, which fletcher refuses: straight there
-  const centre = (box) => [cm(box.x + box.w / 2), cm(box.y + box.h / 2)];
-  const inLine = centre(from).some((v, i) => v === centre(to)[i]);
+  // a right-angled arrow through the corners TikZ turns at, between the nodes it snaps to; a corner inside either box
+  // (boxes in line) would sit on it, which fletcher refuses, so it is left out
+  const inside = (box, [x, y]) => x > box.x && x < box.x + box.w && y > box.y && y < box.y + box.h;
+  const points = !loop && link.route === 'angled' ? pathPoints(link, from, to).filter((p, i, all) => i === 0 || i === all.length - 1 || !(inside(from, p) || inside(to, p))) : [];
+  const via = points.slice(1, -1).map(([x, y]) => '(' + cm(x) + ', ' + cm(-y) + ')');
+  // fletcher shares label-pos evenly among the legs: the leg TikZ's place along the whole route falls on, and how far along it
+  const pos = (t) => {
+    if (!via.length) return num(t);
+    const { leg, pos } = along(points, t);
+    return num((leg + pos) / (points.length - 1));
+  };
   const route = [
     !loop && link.route === 'curved' && 'bend: 30deg',
     // to the same side as TikZ's bend left, with lengths that go up
     !loop && link.route === 'bend' && 'bend: ' + BEND + 'deg',
-    !loop && !inLine && link.route === 'angled' && 'corner: right',
     loop && 'bend: 130deg, loop-angle: ' + LOOP_ANGLE[link.fromSide] + 'deg'
   ];
   const text = link.label?.trim();
@@ -457,12 +474,12 @@ function edgeCode(link, boxes) {
     text && 'label: [' + content(text) + ']',
     // with none, fletcher's own choice: beside the line
     text && link.labelSide && 'label-side: ' + LABEL_SIDE[link.labelSide],
-    text && link.labelPos !== undefined && 'label-pos: ' + num(link.labelPos),
+    text && (link.labelPos !== undefined || via.length) && 'label-pos: ' + pos(link.labelPos ?? 0.5),
     strokeOf(link, false)
   ].filter(Boolean);
-  const ends = 'edge(<' + from.id + '>, <' + to.id + '>, ';
+  const ends = 'edge(' + ['<' + from.id + '>', ...via, '<' + to.id + '>'].join(', ') + ', ';
   const lines = [ends + '"' + marksOf(link) + '"' + (options.length ? ', ' + options.join(', ') : '') + ')'];
-  if (link.sign) lines.push(ends + '"-", ' + [...route.filter(Boolean), 'stroke: none', 'label: [$' + link.sign + '$]', 'label-pos: ' + SIGN_AT, 'label-side: left'].join(', ') + ')');
+  if (link.sign) lines.push(ends + '"-", ' + [...route.filter(Boolean), 'stroke: none', 'label: [$' + link.sign + '$]', 'label-pos: ' + pos(SIGN_AT), 'label-side: left'].join(', ') + ')');
   return lines;
 }
 

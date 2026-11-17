@@ -393,8 +393,14 @@ export const typstMarkup = (text) => escapeMarker(oneLine(text).replace(TYPST_MA
 const MATHS = /(\$\$\S(?:[^$]*?\S)?\$\$(?!\d)|\$[^\s$](?:[^$]*?[^\s$])?\$(?!\d))/;
 
 /**
- * A caption's or cell's Typst text: typstMarkup, but its maths kept as maths, with only \ [ and ] escaped there. markup:
- * the text is Typst markup already (the converter's), written as it is.
+ * Typst maths as written, its \ escapes and linebreaks kept ($a \/ b$ is a slash, not a fraction), [ and ] escaped,
+ * and a \ just before the closing $ doubled, so it can't escape that $ and leave the maths open.
+ */
+const typstMaths = (maths) => maths.replace(/[[\]]/g, '\\$&').replace(/(?<!\\)((?:\\\\)*)\\(\$+)$/, '$1\\\\$2');
+
+/**
+ * A caption's or cell's Typst text: typstMarkup, but its maths kept as maths (typstMaths). markup: the text is Typst
+ * markup already (the converter's), written as it is.
  */
 export const typstText = (text, markup = false) =>
   markup
@@ -402,7 +408,7 @@ export const typstText = (text, markup = false) =>
     : escapeMarker(
         oneLine(text)
           .split(MATHS)
-          .map((part, i) => (i % 2 ? part.replace(/[\\[\]]/g, '\\$&') : part.replace(TYPST_MARKUP, '\\$&')))
+          .map((part, i) => (i % 2 ? typstMaths(part) : part.replace(TYPST_MARKUP, '\\$&')))
           .join('')
       );
 

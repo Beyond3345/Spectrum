@@ -89,6 +89,14 @@ function loadsOf(text: string) {
       if (diagram.style.siUnits === true) eq([again.startsWith(code), (await readDiagramFile(again)).diagram?.version], [true, 3], `${path}: the same text, as version 3`);
       else eq(again, text, `${path}: and the same file, last line and all`);
     }
+    if (restyled) {
+      // and since 2.5 with fletcher's shapes at the canvas's size and right-angled arrows through the canvas's corners:
+      // only node and edge lines change, and the drawing stays version 1
+      const drawn = drawnText(diagram, generated).split('\n'), before = code.split('\n');
+      eq(drawn.length, before.length, `${path}: as many lines`);
+      eq(drawn.filter((line, i) => line !== before[i]).every((line) => /^  (?:node|edge)\(/.test(line)), true, `${path}: only node and edge lines change`);
+      eq((await readDiagramFile(await diagramFileText(diagram, generated))).diagram?.version, 1, `${path}: still version 1`);
+    }
     if (diagram.language === 'tikz') {
       const before = loadsOf(code);
       const now = documentLoads('tikz', before);
