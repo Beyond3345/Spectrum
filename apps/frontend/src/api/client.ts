@@ -252,6 +252,8 @@ export interface CompileOptions {
   typstVersion?: string;
   /** the PDF engine a Markdown project compiles through */
   markdownEngine?: 'latex' | 'typst';
+  /** Compile with page colour: the viewer's light page colour it was turned on with (the project's alone, no default) */
+  pageColour?: 'white' | 'cream' | 'sepia' | 'grey';
 }
 
 /** .spectrum/settings.json, which travels with the project (1.10.4 ignores it) */
@@ -567,8 +569,8 @@ export function convertProject(
 export type TypstExport = 'png' | 'svg' | 'html' | 'pdf-a' | 'pdf-ua';
 
 /** The Typst document as PNG or SVG pages (a .zip when there are several), HTML, PDF/A or PDF/UA, base64, to download. */
-export function exportTypst(projectId: string, doc: string, format: TypstExport, typstVersion?: string) {
-  return request<{ ok: boolean; name: string; data: string }>(`/api/projects/${projectId}/export/typst`, json('POST', { doc, format, typstVersion }));
+export function exportTypst(projectId: string, doc: string, format: TypstExport, typstVersion?: string, pageColour?: string) {
+  return request<{ ok: boolean; name: string; data: string }>(`/api/projects/${projectId}/export/typst`, json('POST', { doc, format, typstVersion, pageColour }));
 }
 
 // ─── Engines ───
@@ -720,6 +722,8 @@ export function compileProject(payload: {
   /** the app's defaults, for a project without its own ('' is the built-in Typst) */
   typstVersion?: string;
   markdownEngine?: 'latex' | 'typst';
+  /** '#rrggbb' as every page's colour (Compile with page colour) */
+  pageColour?: string;
   /** Settings › Engines › LaTeX's own copy of the xjyutping package ('' or none: the built-in one) */
   xjyutpingFolder?: string;
 }) {
