@@ -1,6 +1,6 @@
 // Self-check for the outline parser. latexEditor.ts has TypeScript Node can't strip, so bundle it first:
 // `npx esbuild apps/frontend/src/editor/outline.check.ts --bundle --platform=node --log-level=warning | node`
-import { documentOutline, parseOutline } from './latexEditor.ts';
+import { documentOutline, outlineTitle, parseOutline } from './latexEditor.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -13,6 +13,10 @@ eq(brief('\\chapter*{Intro}\n\\subsection{Sets \\{a\\}}'), [[0, 'Intro', 1], [2,
 eq(brief('\\section{Open {group'), [], 'unclosed heading');
 eq(brief('% \\section{Hidden}\n\\section{}'), [[1, '(untitled)', 2]], 'comment and empty title');
 eq(parseOutline('x\n\\section{B}')[0].pos, 2, 'position');
+// \texorpdfstring shows its plain form, as the PDF's bookmarks do; TexLab's titles too
+eq(brief(String.raw`\section{Solving \texorpdfstring{$\mathbf{x}' = A\mathbf{x}$}{x' = Ax}}`), [[1, "Solving x' = Ax", 1]], 'texorpdfstring');
+eq(outlineTitle('\\texorpdfstring{$a$}{a} and \\texorpdfstring {${b}$} {b}'), 'a and b', 'two texorpdfstrings, nested braces');
+eq(outlineTitle(String.raw`Open \texorpdfstring{$a$}`), String.raw`Open \texorpdfstring{$a$}`, 'no plain form');
 
 // a document's headings across the files it pulls in, in reading order; each file once, a commented-out one never
 const tree = new Map([

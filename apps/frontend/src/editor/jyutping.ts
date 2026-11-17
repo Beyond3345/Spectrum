@@ -1,5 +1,5 @@
 import { withoutComments } from '../../../backend/src/latex/text.js';
-import type { JyutpingOptions } from '../api/client';
+import type { CompileEngine, JyutpingOptions } from '../api/client';
 
 /** The package's defaults (xjyutping-tex README, Options), which aren't stored. */
 export const JYUTPING_DEFAULTS: Required<JyutpingOptions> = {
@@ -48,3 +48,7 @@ export function jyutpingWrap(doc: string, from: number, to: number, kind: 'scope
   const cursor = start + (body ? insert.length - after.length : before.length + '\\begin{jyutpingscope}\n'.length);
   return { from: start, to: end, insert, cursor };
 }
+
+/** The engine the project's compiles use for xjyutping, which needs XeLaTeX or LuaLaTeX from a TeX installation (compileService's jyutpingEngine). */
+export const jyutpingEngineLine = (engine: CompileEngine) =>
+  engine === 'lualatex' ? 'Compiles with LuaLaTeX' : engine === 'xelatex' ? 'Compiles with XeLaTeX' : 'Compiles with XeLaTeX, which needs a TeX installation: the built-in Tectonic is too old for xjyutping';

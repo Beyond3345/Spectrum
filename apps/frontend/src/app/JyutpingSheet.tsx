@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { jyutpingInfo, jyutpingPreview } from '../api/client';
 import type { CompileEngine, JyutpingInfo, JyutpingOptions, JyutpingSettings } from '../api/client';
 import { pdfPageCanvas } from '../diagram/Preview';
-import { JYUTPING_DEFAULTS, cleanOptions } from '../editor/jyutping';
+import { JYUTPING_DEFAULTS, cleanOptions, jyutpingEngineLine } from '../editor/jyutping';
 import { errorText } from '../editor/shared';
 import Segmented from './Segmented';
 import Select from './Select';
@@ -22,10 +22,6 @@ const named = (label: string, key: string): ReactNode => (
     {label} <span className="optional">{key}</span>
   </>
 );
-
-/** The engine the project's compiles use for xjyutping, which needs XeLaTeX or LuaLaTeX. */
-export const jyutpingEngineLine = (engine: CompileEngine) =>
-  engine === 'lualatex' ? 'Compiles with LuaLaTeX' : engine === 'xelatex' ? 'Compiles with XeLaTeX' : 'Compiles with XeLaTeX (or the built-in Tectonic)';
 
 /**
  * The toolbar's 粵: Jyutping over the Chinese text with xjyutping, added as the project compiles or written into the
@@ -97,6 +93,8 @@ export default function JyutpingSheet({
 
   // saved as it changes, after a pause in typing; the last change goes as the sheet closes
   const savedRef = useRef(JSON.stringify(initial ?? null));
+  // as the sheet opened: `initial` follows each save, so a change saved before closing would look like none
+  const openedRef = useRef(JSON.stringify(initial ?? null));
   const latest = useRef({ stored, storedKey, current });
   latest.current = { stored, storedKey, current };
   const save = () => {
@@ -110,7 +108,7 @@ export default function JyutpingSheet({
   }, [storedKey, info]);
 
   const close = () => {
-    const changed = latest.current.storedKey !== JSON.stringify(initial ?? null);
+    const changed = latest.current.storedKey !== openedRef.current;
     save();
     // no stale font or options left in the preamble
     if (changed && info && mode === 'manual' && loaded) void onPreamble(latest.current.current, false);
