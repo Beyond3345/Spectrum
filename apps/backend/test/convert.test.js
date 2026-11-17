@@ -37,7 +37,8 @@ const { builtInTypst, tectonicBiber } = await import('../src/services/engineServ
 const { findExecutable } = await import('../src/services/compileService.js');
 const { createProject } = await import('../src/services/projectService.js');
 const { registerConvertRoutes } = await import('../src/routes/convert.js');
-const { tableTypst } = await import('../src/latex/floats.js');
+const { tableTypst, typstText } = await import('../src/latex/floats.js');
+const { fletcherCode } = await import('../src/latex/flowchart.js');
 
 const templates = path.join(repo, 'templates');
 const stress = path.join(import.meta.dirname, 'fixtures', 'convert');
@@ -166,6 +167,45 @@ test('the Typst pre-pass reads semicolons, a #text over lines, short rules, the 
   assert.deepEqual(ctx.pictures.map((p) => [p.body, p.what]), [['stars(3)', 'the output of the document’s own function stars'], ['sketch[A drawing]', 'a drawing made with @preview/spectrum-sketch:0.1.0']]);
   assert.deepEqual(state.blocks[4].model.partRules, [{ row: 0, from: 1, to: 2 }, { row: 1, from: 2, to: 2 }]);
   assert.match(notes.join('\n'), /function boxed does more than Spectrum can write in LaTeX, so only the text given to it was kept/);
+});
+
+test('fletcher draws a flowchart as the canvas does: its shapes at their size, right-angled arrows through its corners', () => {
+  const box = (id, shape, x, y, w, h) => ({ id, shape, x, y, w, h, text: '' });
+  const body = (version, ...links) => fletcherCode({
+    boxes: [box('d', 'diamond', 0, 0, 10, 6), box('p', 'parallelogram', 0, 10, 10, 4), box('t', 'trapezium', 16, 0, 10, 4), box('c', 'circle', 16, 10, 6, 6), box('y', 'cylinder', 30, 0, 6, 8), box('k', 'takeoff', 30, 12, 2, 2)],
+    links: links.map((l, i) => ({ id: 'e' + i, route: 'angled', heads: 'end', ...l }))
+  }, version).body;
+  const shapes = body('0.15.1');
+  // fit 0: the outline through the box's corners rather than round a box that size; the slant as TikZ's angle=70
+  assert.match(shapes, /\[\], shape: fletcher\.shapes\.diamond\.with\(fit: 0\), width: 2\.5cm, height: 1\.5cm/);
+  assert.match(shapes, /shape: fletcher\.shapes\.parallelogram\.with\(fit: 0, angle: 36\.05deg\), width: 2\.5cm, height: 1cm/);
+  assert.match(shapes, /shape: fletcher\.shapes\.trapezium\.with\(fit: 0, angle: 36\.05deg\), width: 2\.5cm, height: 1cm/);
+  // a circle by its radius, as one round a width and height passes through their corners
+  assert.match(shapes, /shape: fletcher\.shapes\.circle, radius: 0\.75cm, name: <c>/);
+  assert.match(shapes, /shape: fletcher\.shapes\.circle, radius: 0\.6mm, inset: 0pt/);
+  // a cylinder's ends inside its box, a quarter of its width deep; fletcher 0.5.5's plain box keeps the full height
+  assert.match(shapes, /shape: fletcher\.shapes\.cylinder\.with\(tilt: 14\.48deg, fit: 0\), width: 1\.5cm, height: 1\.625cm/);
+  assert.match(body('0.12.0'), /shape: fletcher\.shapes\.rect, width: 1\.5cm, height: 2cm, name: <y>/);
+  // the binary search's loop back: right from the lower box, up past both, into the decision's right side; legs of 6,
+  // 11 and 2 grid units, so TikZ's 75% is three quarters up the second
+  const back = body('', { from: 'c', fromSide: 'r', to: 't', toSide: 'r', label: 'again', labelPos: 0.75 });
+  assert.match(back, /edge\(<c>, \(7cm, -3.25cm\), \(7cm, -0\.5cm\), <t>, "->", label: \[again\], label-pos: 0\.583\)/);
+  assert.doesNotMatch(back, /corner: right/);
+  // each side out and each side in, with one corner
+  for (const [from, to, edge] of [
+    [['d', 'r'], ['c', 't'], '<d>, (4.75cm, -0.75cm), <c>'],
+    [['d', 'b'], ['c', 'l'], '<d>, (1.25cm, -3.25cm), <c>'],
+    [['c', 'l'], ['d', 'b'], '<c>, (1.25cm, -3.25cm), <d>'],
+    [['c', 't'], ['d', 'r'], '<c>, (4.75cm, -0.75cm), <d>']
+  ]) assert.match(body('', { from: from[0], fromSide: from[1], to: to[0], toSide: to[1] }), new RegExp('edge\\(' + edge.replace(/[().]/g, '\\$&') + ', "->"\\)'), from.join() + ' to ' + to.join());
+});
+
+test('Typst maths in a caption, a cell or a flowchart box reaches Typst as typed', () => {
+  assert.equal(typstText('$a \\/ b$ in 50% #x'), '$a \\/ b$ in 50% \\#x', 'a slash in maths, markup outside it escaped');
+  assert.equal(typstText('$f[1]$ [b]'), '$f\\[1\\]$ \\[b\\]', 'brackets escaped as before');
+  assert.equal(typstText('odd $x\\$ end'), 'odd $x\\\\$ end', 'a \\ before the closing $ doubled, so the maths still closes');
+  assert.equal(typstText('$x \\\\$'), '$x \\\\$', 'an escaped backslash left as it is');
+  assert.equal(typstText('a\\b'), 'a\\\\b', 'a backslash outside maths escaped as before');
 });
 
 test('the Typst pre-pass keeps comments in their places, and reads the house \\Call in a sentence and in maths', () => {

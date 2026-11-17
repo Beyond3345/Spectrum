@@ -39,20 +39,39 @@ has(body, '[A \\[bracket\\] \\#tag \\\\ $x$], shape: fletcher.shapes.rect, corne
 const broken = fletcherCode({ boxes: [box({ id: 'a', text: 'Two\nlines $x_1$\n' }), box({ id: 'b', x: 12 })], links: [link({ id: 'e', from: 'a', to: 'b', label: '50% & $y$\nnext' })] }).body;
 has(broken, '[Two \\ lines $x_1$], shape', 'two lines, one with maths');
 has(broken, 'label: [50% & $y$ \\ next]', 'a label of two lines');
-has(body, 'shape: fletcher.shapes.circle, width: 1.5cm, height: 1.5cm', 'a circle is as wide as it is tall');
-has(body, 'shape: fletcher.shapes.diamond, width: 2.5cm, height: 1.5cm', 'a diamond');
-has(body, 'shape: fletcher.shapes.parallelogram, width: 2.5cm, height: 1.25cm', 'a parallelogram');
+// Typst maths as typed: \/ is a slash, not an escaped backslash and a fraction
+has(fletcherCode({ boxes: [box({ id: 'a', text: '$m = (l + h) \\/ 2$' })], links: [] }).body, '[$m = (l + h) \\/ 2$]', 'a slash in maths');
+// the canvas's sizes: a circle by its radius (a width and height would be the circle through their corners), a diamond's
+// and a parallelogram's outline through the box's corners (fit 0), the parallelogram slanting as TikZ's angle=70
+has(body, 'shape: fletcher.shapes.circle, radius: 0.75cm, name', 'a circle is as wide as it is tall');
+has(body, 'shape: fletcher.shapes.diamond.with(fit: 0), width: 2.5cm, height: 1.5cm', 'a diamond');
+has(body, 'shape: fletcher.shapes.parallelogram.with(fit: 0, angle: 36.05deg), width: 2.5cm, height: 1.25cm', 'a parallelogram');
 has(body, 'shape: fletcher.shapes.rect, width: 2cm, height: 1cm, stroke: none, fill: none, name: <n6>', 'a text label, no box');
 has(body, '[$x + y$], shape: fletcher.shapes.rect', 'maths in dollars');
 has(body, 'edge(<n1>, <n2>, "->", label: [yes]),', 'a straight arrow with a label');
 has(body, 'edge(<n1>, <n2>, "<->", bend: 30deg),', 'a curved two-headed arrow');
-has(body, 'edge(<n2>, <n3>, "<--", corner: right),', 'a dashed arrow that starts, at a corner');
+// one box's bottom level with the other's top: a right-angled arrow's corners are its ends, so it goes straight, as in TikZ
+has(body, 'edge(<n2>, <n3>, "<--"),', 'a dashed arrow that starts, with no corner to turn');
 has(body, 'edge(<n3>, <n4>, "..", label: [no]),', 'a dotted line with no heads');
-// an angled link between boxes in line has no corner to turn (fletcher: “Adjacent vertices must be distinct”)
-const inLine = (to: Partial<Box>) => fletcherCode({ boxes: [box({ id: 'a' }), box({ id: 'b', ...to })], links: [link({ id: 'e', from: 'a', to: 'b', route: 'angled' })] }, '').body;
-has(inLine({ y: 12 }), 'edge(<a>, <b>, "->"),', 'one under the other: straight');
-has(inLine({ x: 16 }), 'edge(<a>, <b>, "->"),', 'side by side: straight');
-has(inLine({ x: 16, y: 12 }), 'edge(<a>, <b>, "->", corner: right),', 'offset both ways: a corner');
+// an angled link's corners: on the way between boxes in line, and none that would sit on a box (fletcher: “Adjacent
+// vertices must be distinct”)
+const angled = (to: Partial<Box>, over: Partial<Link> = {}) => fletcherCode({ boxes: [box({ id: 'a' }), box({ id: 'b', ...to })], links: [link({ id: 'e', from: 'a', to: 'b', route: 'angled', ...over })] }, '').body;
+has(angled({ y: 12 }), 'edge(<a>, <b>, "->"),', 'one under the other: both corners on the boxes, straight');
+has(angled({ x: 16 }), 'edge(<a>, (3cm, -0.5cm), <b>, "->"),', 'side by side: straight on through the halfway corner');
+has(angled({ x: 16 }, { toSide: 't' }), 'edge(<a>, <b>, "->"),', 'its one corner on the box it goes to: left out');
+has(angled({ x: 16, y: 12 }, { toSide: 't' }), 'edge(<a>, (5cm, -0.5cm), <b>, "->"),', 'across, then down: one corner');
+has(angled({ x: 16, y: 12 }, { fromSide: 'b' }), 'edge(<a>, (1cm, -3.5cm), <b>, "->"),', 'down, then across');
+has(angled({ x: 16, y: 12 }), 'edge(<a>, (3cm, -0.5cm), (3cm, -3.5cm), <b>, "->"),', 'across, down halfway, across: two corners');
+has(angled({ x: 16, y: 12 }, { toSide: 'r' }), 'edge(<a>, (6.5cm, -0.5cm), (6.5cm, -3.5cm), <b>, "->"),', 'both right: round past the further one');
+has(angled({ x: 16, y: 12 }, { fromSide: 'l', toSide: 'l' }), 'edge(<a>, (-0.5cm, -0.5cm), (-0.5cm, -3.5cm), <b>, "->"),', 'both left');
+has(angled({ x: 16, y: 12 }, { fromSide: 't', toSide: 't' }), 'edge(<a>, (1cm, 0.5cm), (5cm, 0.5cm), <b>, "->"),', 'both up');
+has(angled({ x: 16, y: 12 }, { fromSide: 'b', toSide: 'b' }), 'edge(<a>, (1cm, -4.5cm), (5cm, -4.5cm), <b>, "->"),', 'both down');
+// fletcher shares label-pos evenly among the legs: legs of 1, 3 and 1 cm, so TikZ's middle is halfway along the second
+has(angled({ x: 16, y: 12 }, { label: 'x' }), '"->", label: [x], label-pos: 0.5),', 'the middle, written');
+has(angled({ x: 16, y: 12 }, { label: 'x', labelPos: 0.1 }), 'label-pos: 0.167),', '10% along: half of the first leg');
+has(angled({ x: 16, y: 12 }, { label: 'x', labelPos: 0.9 }), 'label-pos: 0.833),', '90% along: half of the last');
+has(angled({ x: 16, y: 12 }, { label: 'x', labelPos: 0.4 }), 'label-pos: 0.444),', '40% along: a third of the second');
+has(angled({ x: 16, y: 12 }, { label: 'x', toSide: 't' }), 'label-pos: 0.458),', 'one corner: legs of 3 and 2.5 cm, the middle 11/12 along the first');
 // a box lower on the canvas is lower on the page: fletcher's lengths, like TikZ's, go up
 has(body, 'node((0.75cm, -2.75cm), [c]', 'the second row below the first');
 eq(fletcherCode(model, '0.12.0').body.startsWith('#import "@preview/fletcher:0.5.5"'), true, 'an older Typst gets an older fletcher');
@@ -100,18 +119,19 @@ const lines = shapes.split('\n');
 // the container first, under the rest, its title in its top-left corner and its ×N beside it
 eq(lines[4], '  node((2.25cm, -3.5cm), box(width: 5.5cm, height: 3cm, inset: 4pt, align(top + left)[Block]), shape: fletcher.shapes.rect, corner-radius: 4pt, width: 5.5cm, height: 3cm, inset: 0pt, layer: -1, name: <c1>),', 'a container');
 eq(lines[5], '  node((5.5cm, -3.5cm), [$times N$], stroke: none, fill: none),', 'its ×N');
-has(shapes, 'node((0.625cm, -0.625cm), [$q_0$], shape: fletcher.shapes.circle, width: 1.25cm, height: 1.25cm, name: <q0>),', 'a state, its text maths');
+has(shapes, 'node((0.625cm, -0.625cm), [$q_0$], shape: fletcher.shapes.circle, radius: 0.625cm, name: <q0>),', 'a state, its text maths');
 has(shapes, 'edge((-0.75cm, -0.625cm), <q0>, "->"),', 'a start arrow from the left');
-has(shapes, 'shape: fletcher.shapes.circle, width: 1.25cm, height: 1.25cm, extrude: (-2.5, 0), name: <q1>),', 'an accepting state, a double circle');
+has(shapes, 'shape: fletcher.shapes.circle, radius: 0.625cm, extrude: (-2.5, 0), name: <q1>),', 'an accepting state, a double circle');
 has(shapes, 'edge((4.125cm, 0.75cm), <q1>, "->"),', 'a start arrow from above');
-has(shapes, '[Data], shape: fletcher.shapes.cylinder, width: 1.5cm, height: 1.5cm', 'a cylinder');
-has(shapes, 'box(width: 1.75cm)[Manual], shape: fletcher.shapes.trapezium, width: 2cm, height: 1cm', 'a trapezium, its text wrapped');
-has(shapes, '[$times.o$], shape: fletcher.shapes.circle, width: 0.75cm, height: 0.75cm', 'an operator circle');
+// its ends a quarter of its width deep and inside the box, as TikZ's aspect=0.25 and the canvas draw them
+has(shapes, '[Data], shape: fletcher.shapes.cylinder.with(tilt: 14.48deg, fit: 0), width: 1.5cm, height: 1.125cm', 'a cylinder');
+has(shapes, 'box(width: 1.75cm)[Manual], shape: fletcher.shapes.trapezium.with(fit: 0, angle: 36.05deg), width: 2cm, height: 1cm', 'a trapezium, its text wrapped');
+has(shapes, '[$times.o$], shape: fletcher.shapes.circle, radius: 0.375cm', 'an operator circle');
 has(shapes, 'edge(<q0>, <q1>, "->", bend: 20deg, label: [a]),', 'a bent arrow');
 has(shapes, 'edge(<q1>, <q0>, "->", bend: 20deg),', 'and the one back, to its own left');
 has(shapes, 'edge(<q0>, <q0>, "->", bend: 130deg, loop-angle: 90deg),', 'a loop above');
 has(shapes, 'edge(<q1>, <q1>, "->", bend: 130deg, loop-angle: -90deg),', 'a loop below, whatever its route says');
-has(fletcherCode({ boxes: [box({ id: 'd1', shape: 'cylinder' })], links: [] }, '0.12.0').body, '[], shape: fletcher.shapes.rect,', 'fletcher 0.5.5 has no cylinder: a box');
+has(fletcherCode({ boxes: [box({ id: 'd1', shape: 'cylinder' })], links: [] }, '0.12.0').body, '[], shape: fletcher.shapes.rect, width: 2cm, height: 1cm,', 'fletcher 0.5.5 has no cylinder: a box its full size');
 eq(shapes.includes('gone'), false, 'an edge to a missing node is left out');
 eq(lines.filter((l) => l.trim() === ',').length, 0, 'without an empty line in its place');
 
@@ -134,7 +154,7 @@ const parts = fletcherCode({
 }, '').body;
 has(parts, 'node((1cm, -0.5cm), [Start], shape: fletcher.shapes.pill, width: 2cm, height: 1cm, name: <t1>),', 'a terminal, a pill');
 has(parts, 'node((3.75cm, -0.75cm), [$K$], shape: (node, extrude) => fletcher.cetz.draw.group(fletcher.cetz.draw.line((-0.75cm, 0.75cm), (0.75cm, 0cm), (-0.75cm, -0.75cm), close: true)), width: 1.5cm, height: 1.5cm, name: <g1>),', 'a gain pointing right, its text maths');
-has(parts, 'node((5.75cm, -0.5cm), [], shape: fletcher.shapes.circle, width: 1.2mm, height: 1.2mm, inset: 0pt, stroke: none, fill: rgb("#ff0000"), name: <p1>),', 'a takeoff point, a dot in its colour');
+has(parts, 'node((5.75cm, -0.5cm), [], shape: fletcher.shapes.circle, radius: 0.6mm, inset: 0pt, stroke: none, fill: rgb("#ff0000"), name: <p1>),', 'a takeoff point, a dot 1.2 mm across in its colour');
 has(parts, '[Type], shape: (node, extrude) => fletcher.cetz.draw.group(fletcher.cetz.draw.line((-1cm, 0.25cm), (1cm, 0.5cm), (1cm, -0.5cm), (-1cm, -0.5cm), close: true))', 'manual input, its top sloping up');
 has(parts, '[A], shape: (node, extrude) => fletcher.cetz.draw.group(fletcher.cetz.draw.line((-0.5cm, 0.5cm), (0.5cm, 0.5cm), (0.5cm, -0.1cm), (0cm, -0.5cm), (-0.5cm, -0.1cm), close: true))', 'an off-page connector');
 // a swimlane under the rest, its band's line and its title turned to read up the band on its left
@@ -146,7 +166,7 @@ eq(parts.split('\n').slice(4, 7), [
 has(parts, 'edge(<t1>, <g1>, "->", label: [r], label-side: right, label-pos: 0.3),', 'a label on the right, 30% along');
 has(parts, 'edge(<t1>, <g1>, "-", stroke: none, label: [$-$], label-pos: 0.85, label-side: left),', 'its sign on an edge with no line');
 has(parts, 'edge(<g1>, <p1>, "->", label: [u], label-side: center),', 'a label on the line');
-has(parts, 'edge(<p1>, <o1>, "-", corner: right, stroke: none, label: [$+$], label-pos: 0.85, label-side: left),', 'a sign follows the route');
+has(parts, 'edge(<p1>, (4.375cm, -0.5cm), (4.375cm, -2.5cm), <o1>, "-", stroke: none, label: [$+$], label-pos: 0.827, label-side: left),', 'a sign follows the route, 85% along it as in TikZ');
 has(parts, 'edge(<m1>, <o1>, "->"),', 'a side with no label writes nothing');
 
 console.log('fletcher.check: ok');

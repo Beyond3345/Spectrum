@@ -62,7 +62,7 @@ eq([left.boxes.map((b) => b.id), left.links.map((l) => l.id)], [['n1', 'n3', 'n4
 // polygon of its own drawn with fletcher's CeTZ
 for (const shape of FLETCHER_SHAPES) {
   const body = fletcherCode({ boxes: [{ ...start, shape }], links: [] }).body;
-  eq(/node\(\(.*shape: (fletcher\.shapes\.(rect|circle|ellipse|diamond|parallelogram|cylinder|trapezium|pill)|\(node, extrude\) => fletcher\.cetz\.draw\.group\(fletcher\.cetz\.draw\.line\(.*, close: true\)\)),/.test(body), true, `fletcher writes a ${shape}`);
+  eq(/node\(\(.*shape: (fletcher\.shapes\.(rect|circle|ellipse|diamond|parallelogram|cylinder|trapezium|pill)(\.with\([^)]*\))?|\(node, extrude\) => fletcher\.cetz\.draw\.group\(fletcher\.cetz\.draw\.line\(.*, close: true\)\)),/.test(body), true, `fletcher writes a ${shape}`);
 }
 eq(['document', 'stack'].some((s) => FLETCHER_SHAPES.includes(s as Shape)), false, 'the document and the stack are TikZ only');
 
