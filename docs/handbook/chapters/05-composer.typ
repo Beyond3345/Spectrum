@@ -112,7 +112,7 @@ Each starter opens one of the composers below. The chip beside the file's name i
     [Flowchart in Typst], [fletcher], [The same flowcharts, written for a Typst document], [@ch-flow],
     [Commutative diagram], [tikz-cd], [Objects on a grid joined by arrows], [@ch-flow],
     [Plot], [pgfplots], [Functions, data files, typed points and fields, from a form], [@ch-plots],
-    [Form presets], [TikZ], [Mohr's circle, Venn diagrams and the fluid statics figures, worked out from a form], [@ch-forms],
+    [Form presets], [TikZ], [Mohr's circle, Venn diagrams, the fluid statics figures, conic sections and linear transformations, worked out from a form], [@ch-forms],
     [Mermaid], [Mermaid], [Sequence diagrams, Gantt charts and Mermaid's other diagrams, written as code], [@ch-flow],
   ),
   caption: [The composers, what each draws and the chapter that describes it.],
