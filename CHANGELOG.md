@@ -135,6 +135,9 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
   - A Mermaid diagram fills its pane up to its own size, rather than drawing 300 px wide
   - A series changed from typed points to a curve no longer takes a mark at every sample
   - A coloured series' marks are filled in its colour
+- Form presets:
+  - A gate clear of its fluid no longer names the fluid below the bed or writes NaN in its comments, and a fluid on the other side with no depth is drawn as none
+  - Mohr's circle asks for σz only when Three-dimensional state is on
 - Space could be recorded as a diagram shortcut although the canvas uses it to pan
 - Polish, Rewrite and Translate results in the assistant no longer say Edit now lives in the agent workspace
 - Change template offers only LaTeX templates, and Quick switch no longer writes a Typst template's preamble into a .tex file
