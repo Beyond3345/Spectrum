@@ -103,6 +103,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
   - A member drawn to end on an inclined member, or a joint dragged onto one, lands on its line and splits it, rather than on a grid point beside it
   - With bending moments positive up, a frame member's moment values no longer change sign with the way the member was drawn
   - Members of a structure whose EI is typed in real units stay as rigid along their length as before, so a frame no longer sinks and shares its sideways load correctly
+  - Converting a drawing's units in Style no longer leaves the canvas zoomed by the conversion factor
 - Vector diagrams:
   - Choosing Normal for Style › Vector thickness no longer makes every new vector very thick
   - Clearing a label's text keeps its side, size and colour
