@@ -39,7 +39,7 @@ A circuit has 119 parts in 15 groups, and @ch-symbols shows every one of them wi
     [Diodes and thyristors], [The diode, LED, Zener diodes, Schottky diode, photodiode, thyristor and triac],
     [Transistors], [NPN and PNP transistors, N- and P-channel JFETs and IGBTs],
     [MOSFETs], [Every MOSFET circuitikz draws: enhancement and depletion, with a bulk pin, the IEEE style and the IGFETs],
-    [MU Style], [The symbols of Hong Kong Metropolitan University's slides (@sec-circuits-mu)],
+    [MU Style], [The symbols of Hong Kong Metropolitan University's slides, described below],
     [Amplifiers and chips], [The op amp, amplifier, buffer and an 8-pin chip],
     [Logic], [AND, OR, NOT, NAND, NOR, XOR and XNOR gates],
     [Meters and lamps], [The ammeter, voltmeter, lamp, meters and an oscilloscope],
@@ -71,7 +71,7 @@ A click without a drag puts a two-terminal part 2~cm long, to the right of where
 
 Everything snaps to the grid, whose steps are 0.25~cm, and to any pin within about 12 pixels. A placed part with one pin, such as a ground, a supply or a terminal, snaps by that pin. A part with many pins, such as a transistor or an op amp, snaps by whichever pin is nearest, and a pin that lands on another part's pin takes hold of it. A two-terminal part's end placed on a placed part's pin holds that pin too, so a resistor dragged from a ground follows the ground.
 
-=== MU Style <sec-circuits-mu>
+=== MU Style
 
 The MU Style group holds the symbols Hong Kong Metropolitan University's lecture slides use that circuitikz does not draw. Specifically, these are the N- and P-channel MOSFETs with the channel in three segments for enhancement or solid for depletion, with the arrow on the source or on a separate bulk pin B, an ideal diode in a box, a current source drawn as a box with an arrow and two AC sources with + and − around a \~ or a sine. They are sized, wired and labelled like circuitikz's own parts. A drawing that uses one declares it inside its own picture, so the document needs nothing more in its preamble.
 
@@ -108,9 +108,9 @@ Between two points that are not in line, a wire goes across first, then up or do
 
 The canvas puts a junction dot wherever three or more ends meet: the ends of wires and parts, a placed part's pin, or a wire that ends on the open stretch of another. A corner where only two wires meet gets no dot, and two wires that cross without either ending there are not joined. To show that two wires cross without joining, place #ui[Crossing (jump)] or #ui[Crossing (plain)] from the Ground, supply and terminals group where they cross. The dots are worked out again after every edit, so they never need placing by hand. Voltage between two points joins nothing, so it never adds a dot to a terminal.
 
-=== Transistor and op-amp pins
+=== Transistor pins
 
-A transistor's pins cannot all sit on the grid. For example, circuitikz draws an N-channel MOSFET with its gate 0.98~cm to the left of its drain and source, which are 0.77~cm above and below it. Hence each pin snaps across the way its lead runs: the drain and source sit on a grid column and the gate on a grid row. A wire drawn straight up from the drain or straight left from the gate therefore stays straight, on the canvas and in the PDF. An op amp's inputs, output and supply pins snap in the same way.
+A transistor's pins cannot all sit on the grid. For example, circuitikz draws an N-channel MOSFET with its gate 0.98~cm to the left of its drain and source, which are 0.77~cm above and below it. Hence each pin snaps across the way its lead runs: the drain and source sit on a grid column and the gate on a grid row. A wire drawn straight up from the drain or straight left from the gate therefore stays straight, on the canvas and in the PDF. Bipolar transistors, JFETs and IGBTs snap in the same way.
 
 To write each pin's letter beside it, select the part and tick #ui[Label pins]. A MOSFET gets G, D and S (and B for a bulk pin), a bipolar transistor B, C and E, and an IGBT C, G and E. The letters sit outside the body, beyond the end of each pin, and stay in the right places after a turn or a flip.
 
@@ -172,6 +172,7 @@ Selecting is as @ch-composer describes: click a part, drag across empty canvas f
 #figure(
   table(
     columns: (auto, 1fr),
+    align: (center, left),
     table.header[Key][What it does],
     [#key("R")], [Turns a quarter anticlockwise. #key("Shift", "R") turns 45°],
     [#key("X")], [Flips left to right. A two-terminal part across the page turns end for end],
@@ -210,26 +211,23 @@ The Ground, supply and terminals group holds the parts that mark where a circuit
 
 Annotate, at the end of the parts list, draws over a drawing without ever joining it. An annotation has no pins, gets no junction dots and is never held by a wire, while it still snaps to the grid and to pins as it is drawn. It is written after the circuit, so it sits on top, except a filled shape, which is written first and sits behind the parts drawn in it. Annotate has ten tools and eleven presets, and @ch-symbols pictures all of them with their fills and patterns.
 
-#figure(
-  grid(columns: (26%, 62%), gutter: 14pt, align: top, frame("images/06-circuits/group-annotate.png"), frame("images/06-circuits/annotate-lines-shapes.png")),
-  caption: [Left: the Annotate group. Right: a line with a corner, a curved arrow, a dashed rectangle with rounded corners and a light fill, an ellipse and a cross, then the presets Current arrow, Mesh current marker, Frame, Loop current and Resistance looking in.],
-) <fig-circuits-annotate>
+#shot("images/06-circuits/annotate-lines-shapes.png", [Above: a line with a corner, a curved arrow, a dashed rectangle with rounded corners and a light fill, an ellipse and a cross. Below: the presets Current arrow, Mesh current marker, Frame, Loop current and Resistance looking in.], width: 90%) <fig-circuits-annotate>
 
 === Lines, arrows, rectangles, ellipses and crosses
 
 #ui[Line or arrow] draws through the points you click, so it can turn corners like a resistance arrow. Click each point, then double-click or press #key("Return"). A new line has an arrowhead at its end. #ui[Rectangle] and #ui[Ellipse] are drawn by dragging from one corner to the other, and a click without a drag draws one 2~cm across and 1.5~cm high. #ui[Cross] puts down a cross with a click, to mark a cut wire or a shorted capacitor.
 
-Every annotation takes the same look in the inspector,
+Every annotation takes its look in the inspector,
 
 - #ui[Colour], from the palette (the slides' dark red, red, magenta, blue, green, orange and grey), an xcolor name or mix typed in such as `blue!15`, or the colour well, and #ui[Black] for none,
-- #ui[Line], solid, dashed, dotted or dash dot, and
+- #ui[Line], solid, dashed, dotted or dash dot, on all but a cross, a dimension, the ▽ mark and a point, and
 - #ui[Width], from #ui[Thin, as the circuit] to #ui[Very thick].
 
 A line also takes #ui[Arrowheads] at the end, at the start or at both, an #ui[Arrowhead] style (Latex, Stealth, open triangle or plain) and size, and a #ui[Bend] of up to 90° to the left or right, which curves every segment as TikZ's `bend left` does. A rectangle or an ellipse folds #ui[Corners, light fill and loop arrow]: #ui[Rounded corners] on a rectangle, a #ui[Light fill] of any colour at 15%, and a #ui[Loop arrow], a single arrowhead on its right side going clockwise or anticlockwise, for a loop or mesh current. A cross takes a size from 0.13 to 1~cm. Select several annotations to change their colour, line and width together.
 
 #figure(
-  grid(columns: (26%, 26%), gutter: 14pt, align: top, frame("images/06-circuits/inspector-arrow.png"), frame("images/06-circuits/inspector-rectangle.png")),
-  caption: [Left: the curved arrow of @fig-circuits-annotate, blue, thick, bent 45° to the left with a Stealth head. Right: the rectangle, dashed with rounded corners and a green light fill.],
+  grid(columns: (24%, 26%, 26%), gutter: 14pt, align: top, frame("images/06-circuits/group-annotate.png"), frame("images/06-circuits/inspector-arrow.png"), frame("images/06-circuits/inspector-rectangle.png")),
+  caption: [From the left: the Annotate group in the parts list, the inspector of the curved arrow of @fig-circuits-annotate (blue, thick, bent 45° to the left with a Stealth head) and that of the rectangle (dashed, with rounded corners and a green light fill).],
 ) <fig-circuits-annotate-inspector>
 
 === Presets
@@ -301,25 +299,26 @@ A circuit has only the circuit groups, while General drawing has every set. To a
 + Start a #ui[General drawing] from #menu[Others][General drawing]
 + Place a #ui[Differential manometer] from Tanks and manometers
 + Place a #ui[Closed tank] on each side, so that each tank's side pin snaps onto the end of the manometer's side tube
-+ Draw the water in tank A and its tube with #ui[Liquid or solid], and set the shape's #ui[Fill] to #ui[Water] with #ui[Outline] unticked. Do the same with oil for tank B, and with mercury round the bend between its two level marks
++ Drag a #ui[Rectangle] over tank A from its bottom corner to the level line, set its #ui[Fill] to #ui[Water] and untick #ui[Outline]. Do the same with oil for tank B
 + Place #ui[Point] in each tank and type the letters A and B
 + Draw a #ui[Dimension] between the two mercury levels, set #ui[Measures] to #ui[Up and down], type `h` and drag its third handle out between the tubes
-+ Name the three liquids with #ui[Leader]
++ Name the three liquids with #ui[Leader], the mercury's pointing to the bend
 + Click #ui[Compile] to check the preview
 
 #figure(
   grid(columns: (60%, 34%), gutter: 12pt, align: horizon, frame("images/06-circuits/differential-manometer.png"), frame("images/06-circuits/differential-manometer-pdf.png")),
-  caption: [A differential manometer between two tanks, on the canvas and compiled. The liquids are fills behind the parts, so the tank walls and the tube stay on top.],
+  caption: [A differential manometer between two tanks, on the canvas and compiled. The liquids in the tanks are fills behind the parts, so the tank walls stay on top.],
 ) <fig-circuits-manometer>
 
-The picture this writes is ordinary TikZ inside the circuitikz environment. Its first lines declare the three pics it uses, and the fills come before them so they sit behind,
+#note[A fill's corners snap to the grid, 0.25~cm, while the manometers' tubes are 0.25~cm wide and their walls lie between grid lines. Hence a liquid or solid cannot be drawn exactly inside a tube, and the manometer's liquids are named with leaders and shown by its level marks.]
+
+The picture this writes is ordinary TikZ inside the circuitikz environment. Its first lines declare the two pics it uses (shortened here), and the fills come before the parts so they sit behind,
 
 ```latex
 \tikzset{spx/fluid/tank-closed/.pic={\draw[line width=0.8pt] (-1.5,-1) rectangle (1.5,1); ...}}
 \tikzset{spx/fluid/manometer-differential/.pic={...}}
 \path[fill=blue!12] (-4.25,0) rectangle (-1.25,1.25);
 \path[fill=orange!30] (1.25,0) rectangle (4.25,1.25);
-\path[fill=gray!45] (-0.625,-0.25) -- ... -- cycle;
 \pic at (-2.75,1) {spx/fluid/tank-closed};
 \pic at (0,0) {spx/fluid/manometer-differential};
 \pic at (2.75,1) {spx/fluid/tank-closed};
