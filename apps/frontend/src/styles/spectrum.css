@@ -1,0 +1,114 @@
+/* ==========================================================================
+   The Spectrum colour style (Settings › Appearance › Colour style): each area of the app in its colour from
+   palette.json, round the colour wheel as the handbook's chapters are. An element joins an area with the class
+   area-<name>, which sets --area, --area-text, --area-band and --area-on-band (appearance.ts, paletteCss); every rule
+   here is under :root[data-colour-style='spectrum'], so Simple looks exactly as Spectrum did before 2.5. Labels,
+   icons and selection marks stay as they are: colour is never the only sign. Errors, warnings and success keep
+   red, orange and green.
+   ========================================================================== */
+
+/* Settings' pane icons: a rounded square in the area's colour, as in System Settings; in Simple the plain icon */
+.nav-tile {
+  display: contents;
+}
+
+:root[data-colour-style='spectrum'] .settings-nav .nav-tile {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-left: -2px;
+  border-radius: 5px;
+  background: var(--area-band);
+  color: var(--area-on-band);
+}
+
+:root[data-colour-style='spectrum'] .settings-nav .nav-tile .sf {
+  width: 13px;
+  height: 13px;
+}
+
+/* Windows' Settings colours the icons themselves */
+:root.windows[data-colour-style='spectrum'] .settings-nav .nav-tile {
+  background: none;
+  color: var(--area);
+}
+
+:root.windows[data-colour-style='spectrum'] .settings-nav .nav-tile .sf {
+  width: 16px;
+  height: 16px;
+}
+
+/* the editor's toolbar, the sidebars' rows and tabs: the icon in its area's colour, a chosen one on a soft tint */
+:root[data-colour-style='spectrum'] :is(.icon-btn, .nav-row, .tab, .save-version)[class*='area-'] > .sf {
+  color: var(--area);
+}
+
+:root[data-colour-style='spectrum'] :is(.icon-btn[class*='area-'].active, .sidebar-scroll .nav-row[class*='area-'].active) {
+  background: color-mix(in srgb, var(--area-band) 16%, transparent);
+}
+
+:root[data-colour-style='spectrum'] .tab[class*='area-'].active::after {
+  background: var(--area);
+}
+
+/* the projects page's New */
+:root[data-colour-style='spectrum'] .btn.inverse.area-projects {
+  background: var(--area-band);
+  color: var(--area-on-band);
+}
+
+/* the diagram composer: the chooser's categories and each card's badge, the top bar's chip and the rail's headings,
+   in the colour of the composer they open */
+:root[data-colour-style='spectrum'] .chooser-view[class*='area-']::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--area-band);
+  vertical-align: 1px;
+}
+
+:root[data-colour-style='spectrum'] .chooser-view[class*='area-'].active {
+  background: color-mix(in srgb, var(--area-band) 16%, transparent);
+  color: var(--text);
+}
+
+:root[data-colour-style='spectrum'] :is(.chooser-card[class*='area-'], .diagram-header) .chip {
+  border-color: color-mix(in srgb, var(--area) 45%, transparent);
+  background: color-mix(in srgb, var(--area-band) 10%, transparent);
+  color: var(--area-text);
+}
+
+:root[data-colour-style='spectrum'] .diagram-rail h3 {
+  color: var(--area-text);
+}
+
+/* ─── the Spectrum accent: Compile and the progress bar run through the hues, in either colour style ─── */
+
+.accent-swatch.spectrum {
+  background: var(--spectrum-wheel);
+}
+
+/* the palette's light colours, each 4.6:1 or better with white, so Compile's words read all the way along; one
+   gradient under both halves */
+:root.spectrum-accent .compile-split {
+  border-radius: var(--radius-pill);
+  background: var(--spectrum-ink);
+}
+
+:root.spectrum-accent :is(.compile-main, .compile-engine) {
+  background: transparent;
+}
+
+:root.spectrum-accent :is(.compile-main, .compile-engine):hover:not(:disabled),
+:root.spectrum-accent .compile-engine.open {
+  background: rgba(0, 0, 0, 0.14);
+}
+
+:root.spectrum-accent .progress > div {
+  background: var(--spectrum-band);
+}

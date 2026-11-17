@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import Icon from './Icon';
 
-export type TabItem<T extends string> = { value: T; label: ReactNode; icon?: string; badge?: ReactNode };
+/** className: an area-<name> for its colour in the Spectrum colour style (spectrum.css) */
+export type TabItem<T extends string> = { value: T; label: ReactNode; icon?: string; badge?: ReactNode; className?: string };
 
 /** Underlined text tabs ("Files | Research | To-dos", the Tools tabs). */
 export default function Tabs<T extends string>({
@@ -30,7 +31,7 @@ export default function Tabs<T extends string>({
           type="button"
           role="tab"
           aria-selected={item.value === value}
-          className={`tab ${item.value === value ? 'active' : ''}`}
+          className={`tab ${item.className ?? ''} ${item.value === value ? 'active' : ''}`}
           onClick={() => onChange(item.value)}
         >
           {item.icon && <Icon name={item.icon} />}

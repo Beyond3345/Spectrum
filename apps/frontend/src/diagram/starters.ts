@@ -15,13 +15,18 @@ import { SETS } from './sets';
 import { styleHidden } from './universityStyles';
 import type { SetSymbol } from './sets';
 import type { DiagramLanguage } from './types';
+import type { Area } from '../app/appearance';
 
 export type CategoryId = 'engineering' | 'physics' | 'mathematics' | 'computing' | 'others';
 
-/** The five categories and their groups, in the chooser's order. A group's id is '<category>/<group>'. */
-export const CATEGORIES: { id: CategoryId; label: string; groups: [string, string][] }[] = [
+/**
+ * The five categories and their groups, in the chooser's order. A group's id is '<category>/<group>'. area: its colour in
+ * the Spectrum colour style, its chief composer's.
+ */
+export const CATEGORIES: { id: CategoryId; label: string; area: Area; groups: [string, string][] }[] = [
   {
     id: 'engineering',
+    area: 'circuits',
     label: 'Engineering',
     groups: [
       ['electrical', 'Electrical and electronics'],
@@ -32,6 +37,7 @@ export const CATEGORIES: { id: CategoryId; label: string; groups: [string, strin
   },
   {
     id: 'physics',
+    area: 'vectors',
     label: 'Physics',
     groups: [
       ['mechanics', 'Mechanics and fluids'],
@@ -45,6 +51,7 @@ export const CATEGORIES: { id: CategoryId; label: string; groups: [string, strin
   },
   {
     id: 'mathematics',
+    area: 'plots',
     label: 'Mathematics',
     groups: [
       ['plots', 'Plots and analysis'],
@@ -56,6 +63,7 @@ export const CATEGORIES: { id: CategoryId; label: string; groups: [string, strin
   },
   {
     id: 'computing',
+    area: 'flow',
     label: 'Computing',
     groups: [
       ['software', 'Software and automata'],
@@ -64,6 +72,7 @@ export const CATEGORIES: { id: CategoryId; label: string; groups: [string, strin
   },
   {
     id: 'others',
+    area: 'forms',
     label: 'Others',
     groups: [
       ['general', 'General drawing'],
@@ -100,17 +109,20 @@ export interface Starter {
   dev?: boolean;
 }
 
-/** What a mode writes in, for the card's badge, and the packages it names on the card and that search finds. */
-export const MODE_FACTS: Record<StarterMode, { language: DiagramLanguage; packages: string[] }> = {
-  circuitikz: { language: 'tikz', packages: ['circuitikz'] },
-  pgfplots: { language: 'tikz', packages: ['pgfplots'] },
-  tikz: { language: 'tikz', packages: ['TikZ'] },
-  'tikz-cd': { language: 'tikz', packages: ['tikz-cd'] },
-  mermaid: { language: 'mermaid', packages: ['Mermaid'] },
-  fletcher: { language: 'typst', packages: ['fletcher'] },
-  form: { language: 'tikz', packages: ['TikZ'] },
-  structures: { language: 'tikz', packages: ['TikZ'] },
-  vectors: { language: 'tikz', packages: ['TikZ'] }
+/**
+ * What a mode writes in, for the card's badge, the packages it names on the card and that search finds, and its area:
+ * the badge's colour, and the composer's, in the Spectrum colour style.
+ */
+export const MODE_FACTS: Record<StarterMode, { language: DiagramLanguage; packages: string[]; area: Area }> = {
+  circuitikz: { language: 'tikz', packages: ['circuitikz'], area: 'circuits' },
+  pgfplots: { language: 'tikz', packages: ['pgfplots'], area: 'plots' },
+  tikz: { language: 'tikz', packages: ['TikZ'], area: 'flow' },
+  'tikz-cd': { language: 'tikz', packages: ['tikz-cd'], area: 'flow' },
+  mermaid: { language: 'mermaid', packages: ['Mermaid'], area: 'flow' },
+  fletcher: { language: 'typst', packages: ['fletcher'], area: 'flow' },
+  form: { language: 'tikz', packages: ['TikZ'], area: 'forms' },
+  structures: { language: 'tikz', packages: ['TikZ'], area: 'structures' },
+  vectors: { language: 'tikz', packages: ['TikZ'], area: 'vectors' }
 };
 
 const mermaid = (id: string) => () => ({ code: TEMPLATES.find(([t]) => t === id)?.[2] ?? TEMPLATES[0][2] });

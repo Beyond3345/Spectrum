@@ -64,6 +64,7 @@ import { IS_DESKTOP, claimDefaultHandler, isDefaultHandler, pickFolder, releaseD
 import { toast } from './Toast';
 import { IS_MAC, IS_WINDOWS, OS_NAME, tildify } from './platform';
 import { ACCENTS, PDF_PAGES_DARK, PDF_PAGES_LIGHT, TAG_COLOURS, useDarkMode } from './appearance';
+import type { Area } from './appearance';
 import { groupSkills, projectSkills, skillId, skillOn } from './skills';
 
 // the notices are long, so they load only when asked for
@@ -156,6 +157,27 @@ const SECTION_GROUPS: [string, [Section, string, string][]][] = [
     ['search', 'Search', 'magnifyingglass']
   ]]
 ];
+
+/** each pane's area, for its icon's colour in the Spectrum colour style; Symbols' graphite for the general ones */
+const SECTION_AREAS: Record<Section, Area> = {
+  appearance: 'symbols',
+  editor: 'writing',
+  shortcuts: 'symbols',
+  system: 'symbols',
+  engines: 'writing',
+  language: 'writing',
+  composer: 'composer',
+  checkpoints: 'references',
+  projects: 'projects',
+  github: 'references',
+  zotero: 'references',
+  transfer: 'projects',
+  models: 'assistant',
+  personas: 'assistant',
+  skills: 'assistant',
+  agents: 'assistant',
+  search: 'references'
+};
 
 const THEMES: [Theme, string, string][] = [
   ['system', 'System', 'circle.lefthalf.filled'],
@@ -427,8 +449,10 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
             <div key={heading} className="settings-nav-group" role="group" aria-label={heading}>
               <div className="settings-nav-heading">{heading}</div>
               {sections.map(([value, label, icon]) => (
-                <button key={value} className={`nav-row ${section === value ? 'active' : ''}`} onClick={() => value !== section && leave(() => (setSection(value), setLicences(false)))}>
-                  <Icon name={icon} />
+                <button key={value} className={`nav-row area-${SECTION_AREAS[value]} ${section === value ? 'active' : ''}`} onClick={() => value !== section && leave(() => (setSection(value), setLicences(false)))}>
+                  <span className="nav-tile">
+                    <Icon name={icon} />
+                  </span>
                   <span>{label}</span>
                 </button>
               ))}
@@ -454,6 +478,17 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                 ))}
               </div>
               <div className="field-hint">System follows the {OS_NAME} appearance and switches automatically.</div>
+
+              <h3 id="settings-colourStyle" className="form-section-title">Colour style</h3>
+              <div>
+                <Segmented
+                  labelledBy="settings-colourStyle"
+                  value={settings.colourStyle}
+                  options={[['spectrum', 'Spectrum'], ['simple', 'Simple']]}
+                  onChange={(colourStyle) => update({ colourStyle })}
+                />
+              </div>
+              <div className="field-hint">Spectrum gives each part of the app its own colour, round the colour wheel. Simple keeps to grey and your accent colour.</div>
 
               <h3 id="settings-accent" className="form-section-title">Accent colour</h3>
               <div className="row">
@@ -482,7 +517,8 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                 />
               </div>
               <div className="field-hint">
-                Follow {OS_NAME} uses the accent colour chosen in {IS_WINDOWS ? 'Settings → Personalisation → Colours' : 'System Settings'}.
+                Follow {OS_NAME} uses the accent colour chosen in {IS_WINDOWS ? 'Settings → Personalisation → Colours' : 'System Settings'}. Spectrum runs Compile
+                and progress bars through the colours of the wheel, and is blue elsewhere.
               </div>
 
               {/* see-through glass is macOS's alone */}

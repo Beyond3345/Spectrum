@@ -27,7 +27,7 @@ export { IS_DESKTOP } from './desktop';
 
 export type Theme = 'system' | 'light' | 'dark';
 /** 'system' follows the macOS accent colour */
-export type Accent = 'system' | 'blue' | 'purple' | 'pink' | 'red' | 'orange' | 'yellow' | 'green' | 'graphite' | 'custom';
+export type Accent = 'system' | 'spectrum' | 'blue' | 'purple' | 'pink' | 'red' | 'orange' | 'yellow' | 'green' | 'graphite' | 'custom';
 export type PdfPageLight = 'white' | 'cream' | 'sepia' | 'grey';
 export type PdfPageDark = 'dark' | 'black' | 'dimmed' | 'white';
 /** The colours an editor theme sets, each of which can be changed on its own in Settings. */
@@ -36,7 +36,7 @@ export type EditorColours = Partial<Record<EditorColourRole, string>>;
 /** the highlight left after a jump between the source and the PDF */
 export type SyncHighlight = 'accent' | 'yellow' | 'green' | 'pink' | 'blue' | 'custom';
 
-const ACCENTS: Accent[] = ['system', 'blue', 'purple', 'pink', 'red', 'orange', 'yellow', 'green', 'graphite', 'custom'];
+const ACCENTS: Accent[] = ['system', 'spectrum', 'blue', 'purple', 'pink', 'red', 'orange', 'yellow', 'green', 'graphite', 'custom'];
 const HEX = /^#[0-9a-f]{6}$/i;
 
 /** A language list as kept: well-formed tags once each, at most 20, else Australian English alone. */
@@ -62,6 +62,8 @@ export function languageName(tag: string) {
 export type AppSettings = {
   theme: Theme;
   accent: Accent;
+  /** Spectrum colours each area of the app from palette.json (appearance.ts); Simple is the plain look before 2.5 */
+  colourStyle: 'spectrum' | 'simple';
   /** '#rrggbb' for the Custom accent */
   accentCustom: string;
   /** see-through window (Liquid Glass on macOS 26 and later, vibrancy before) */
@@ -218,6 +220,7 @@ const CHANGE_EVENT = SETTINGS_CHANGE_EVENT;
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
   accent: 'system',
+  colourStyle: 'spectrum',
   accentCustom: '#0a84ff',
   glass: false,
   glassClarity: 50,
@@ -434,6 +437,7 @@ function parse(raw: string | null): AppSettings {
     merged.languages = languageList(merged.languages);
     if (merged.englishGrammar !== 'languagetool') merged.englishGrammar = 'harper';
     if (!ACCENTS.includes(merged.accent)) merged.accent = 'system';
+    if (merged.colourStyle !== 'simple') merged.colourStyle = 'spectrum';
     if (typeof merged.accentCustom !== 'string' || !HEX.test(merged.accentCustom)) merged.accentCustom = DEFAULT_SETTINGS.accentCustom;
     merged.glass = merged.glass === true;
     if (!Number.isFinite(merged.glassClarity)) merged.glassClarity = DEFAULT_SETTINGS.glassClarity;
@@ -576,7 +580,7 @@ export const composerDefaults = (settings: AppSettings): ComposerDefaults => ({
  * keys, a path, the window's see-through look, an editor font or compiler only one computer may have, or this switch.
  */
 const SHARED_KEYS = [
-  'theme', 'accent', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize',
+  'theme', 'accent', 'colourStyle', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize',
   'autoInsertCite', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'languages', 'englishGrammar', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
   'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions', 'composerMixSets', 'composerStylesOff', 'composerMoments', 'composerMohrShear', 'composerVectorNotation',
   'composerSiUnits', 'composerDiagrams', 'composerGrid', 'composerGridEvery', 'composerDark', 'composerMinimap'

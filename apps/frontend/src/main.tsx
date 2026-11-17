@@ -21,6 +21,7 @@ import './styles/base.css';
 import './styles/projects.css';
 import './styles/editor.css';
 import './styles/tools.css';
+import './styles/spectrum.css';
 // after every sheet that sets the surfaces (tokens.css, editor-theme.css)
 import './styles/glass.css';
 

@@ -1,6 +1,7 @@
 // Self-check for the accent and glass maths. Run:
 // npx esbuild apps/frontend/src/app/appearance.check.ts --bundle --platform=node --log-level=warning | node
-import { ACCENTS, accentColour, accentInk, accentText, contrast, glassMix } from './appearance';
+import { ACCENTS, accentColour, accentInk, accentText, contrast, glassMix, paletteCss } from './appearance';
+import PALETTE from './palette.json';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -45,4 +46,23 @@ for (let clarity = 0; clarity <= 100; clarity += 5) {
   if (!(chrome < panel && panel < reading)) throw new Error(`at ${clarity} the chrome should be clearest, then the panel, then the text`);
   if (reading < 55) throw new Error(`at ${clarity} the editor and PDF drop below 55%`);
 }
+
+// the Spectrum colour style's stylesheet: every area in light and dark, and nothing for Simple
+const css = paletteCss();
+const rule = (selector: string) => css.split('\n').find((line) => line.includes(selector))?.match(/\{(.*)\}/)?.[1] ?? '';
+const token = (body: string, name: string) => body.match(new RegExp(`${name}: (#[0-9a-f]{6})`))?.[1] ?? '';
+for (const [area, c] of Object.entries(PALETTE)) {
+  const light = rule(`:root[data-colour-style='spectrum'] .area-${area} `);
+  const dark = rule(`[data-theme='dark'] .area-${area} `);
+  eq([token(light, '--area'), token(light, '--area-band'), token(dark, '--area'), token(dark, '--area-text')], [c.light, c.band, c.dark, c.dark], `${area}'s colours`);
+  if (contrast(token(light, '--area-text'), '#f7f7f8') < 4.5) throw new Error(`${area}'s text is below 4.5:1 on the window's grey`);
+  if (contrast(token(light, '--area-text'), c.light) > 1.2) throw new Error(`${area}'s text is darkened further than it needs`);
+  const onBand = token(light, '--area-on-band');
+  eq(onBand, ['assistant', 'references'].includes(area) ? DARK : WHITE, `${area}'s fill takes ${onBand} text`);
+  if (contrast(onBand, c.band) < 3) throw new Error(`${area}'s text on its fill is below 3:1`);
+}
+eq(css.split('\n').filter((line) => line.includes('.area-') && !line.includes("[data-colour-style='spectrum']")), [], 'the areas are coloured in Spectrum alone');
+eq(accentColour({ accent: 'spectrum', accentCustom: '#123456' }), PALETTE.flow.band, 'the Spectrum accent is the palette’s blue elsewhere');
+for (const c of Object.values(PALETTE)) if (contrast('#ffffff', c.light) < 4.5) throw new Error(`Compile’s white words on ${c.light}`);
+
 console.log('appearance.check: ok');

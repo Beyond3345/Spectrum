@@ -126,6 +126,12 @@ eq([merged.theme, merged.spellCheck, merged.editorFontSize], ['dark', false, 99]
 eq([merged.llmApiKey, merged.projectsDir, merged.glass, merged.syncSettings], ['sk-windows', theirs.projectsDir, false, false], 'this computer’s own stay');
 eq(withShared(theirs, { accent: 'neon' }).accent, 'system', 'shared values are checked like stored ones');
 eq(withShared(theirs, { syncHighlightSeconds: 60 }).syncHighlightSeconds, 10, 'and kept in range');
+// the colour style: Spectrum for a new install and for one upgraded from before it, Simple kept, and it follows the user
+eq(DEFAULT_SETTINGS.colourStyle, 'spectrum', 'Spectrum is the colour style to start with');
+eq(withShared(theirs, { colourStyle: 'simple' }).colourStyle, 'simple', 'Simple comes in from the other computer');
+eq(withShared(theirs, { colourStyle: 'loud' as never }).colourStyle, 'spectrum', 'anything else is Spectrum');
+eq(sharedPart(at({ colourStyle: 'simple' })).colourStyle, 'simple', 'and goes to it');
+eq(withShared(theirs, { accent: 'spectrum' }).accent, 'spectrum', 'the Spectrum accent is one of the accents');
 // the language list and the English grammar engine follow the user, checked like stored ones
 eq(withShared(theirs, { languages: ['en-AU', 'zh-TW'], englishGrammar: 'languagetool' }).languages, ['en-AU', 'zh-TW'], 'the language list comes in');
 eq(withShared(theirs, { englishGrammar: 'languagetool' }).englishGrammar, 'languagetool', 'and the English grammar engine');
@@ -228,6 +234,10 @@ try {
   eq([loadSettings().composerDark, loadSettings().composerMinimap], [true, true], 'the old canvas choices carry over');
   Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: { getItem: (k: string) => (k === 'spectrum-diagram-canvas' ? '{"minimap":false,"dark":true}' : null) } } });
   eq([loadSettings().composerDark, loadSettings().composerMinimap, loadSettings().theme], [true, false, DEFAULT_SETTINGS.theme], 'with no settings stored yet, too');
+  stored({ theme: 'dark', accent: 'blue' }, null);
+  eq([loadSettings().colourStyle, loadSettings().accent], ['spectrum', 'blue'], 'settings from before the colour style: Spectrum, the accent kept');
+  stored({ colourStyle: 'simple' }, null);
+  eq(loadSettings().colourStyle, 'simple', 'Simple is kept');
   stored({ theme: 'light' }, '{"dark":true}');
   eq([loadSettings().composerDark, loadSettings().composerMinimap], [true, false], 'one alone too');
   stored({ composerDark: false, composerMinimap: true }, '{"minimap":false,"dark":true}');

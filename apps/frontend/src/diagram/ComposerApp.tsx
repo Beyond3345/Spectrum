@@ -30,7 +30,8 @@ import { RASTER_SCALE, renderMermaid, svgToPng } from './modes/mermaid/render';
 import { pngToPdf } from './modes/mermaid/pdf';
 import { SETS, clashesWith, documentLoads, setLoads } from './sets';
 import { CATEGORIES, MODE_FACTS, STANDARD, STARTERS, search, sectionsFor, starterFor, usedNow } from './starters';
-import type { CategoryId, Section, Starter } from './starters';
+import type { CategoryId, Section, Starter, StarterMode } from './starters';
+import type { Area } from '../app/appearance';
 import type { DiagramFile, DiagramLanguage, DiagramMode } from './types';
 import './composer.css';
 
@@ -239,7 +240,7 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
         tabIndex={-1}
         aria-selected={selected}
         disabled={!!reason}
-        className={`chooser-card${selected ? ' active' : ''}`}
+        className={`chooser-card area-${MODE_FACTS[starter.mode].area}${selected ? ' active' : ''}`}
         onClick={() => choose({ starter })}
         onDoubleClick={() => create({ starter })}
       >
@@ -253,7 +254,12 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
     );
   };
 
-  const views: [View, string][] = [...(recent.length ? [['recent', 'Recently used'] as [View, string]] : []), ['standard', 'Standard'], ['all', 'All'], ...CATEGORIES.map((c): [View, string] => [c.id, c.label])];
+  const views: [View, string, Area][] = [
+    ...(recent.length ? [['recent', 'Recently used', 'composer'] as [View, string, Area]] : []),
+    ['standard', 'Standard', 'composer'],
+    ['all', 'All', 'composer'],
+    ...CATEGORIES.map((c): [View, string, Area] => [c.id, c.label, c.area])
+  ];
 
   return (
     <div className="diagram-app">
@@ -297,8 +303,8 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
         <div className="chooser-body">
           {!found && (
             <nav className="chooser-views" aria-label="Diagrams by category">
-              {views.map(([value, label]) => (
-                <button key={value} type="button" className={`chooser-view${view === value ? ' active' : ''}`} aria-pressed={view === value} onClick={() => setView(value)}>
+              {views.map(([value, label, area]) => (
+                <button key={value} type="button" className={`chooser-view area-${area}${view === value ? ' active' : ''}`} aria-pressed={view === value} onClick={() => setView(value)}>
                   {label}
                 </button>
               ))}
@@ -902,7 +908,8 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
   const StyleMenu = drawable && doc.hand === null ? mode?.StyleMenu : undefined;
 
   return (
-    <div className="diagram-app">
+    // its composer's colour, for the chip and the rail's headings in the Spectrum colour style
+    <div className={`diagram-app area-${MODE_FACTS[mode?.id as StarterMode]?.area ?? 'composer'}`}>
       <header className="diagram-header" data-tauri-drag-region>
         <div className="diagram-title" data-tauri-drag-region>
           <span className="diagram-name" title={path}>

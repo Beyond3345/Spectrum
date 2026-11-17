@@ -3222,9 +3222,10 @@ function Editor({ projectId }: { projectId: string }) {
                   setFilter('');
                 }}
                 items={[
-                  { value: 'files', label: 'Files' },
-                  { value: 'research', label: 'Research' },
-                  { value: 'todos', label: 'To-dos', badge: todos.open || undefined }
+                  { value: 'files', label: 'Files', className: 'area-writing' },
+                  { value: 'research', label: 'Research', className: 'area-references' },
+                  // the assistant keeps them as it works
+                  { value: 'todos', label: 'To-dos', badge: todos.open || undefined, className: 'area-assistant' }
                 ]}
               />
               <span className="spacer" />
@@ -3389,20 +3390,20 @@ function Editor({ projectId }: { projectId: string }) {
             </div>
             {/* the editor's tools, under the tabs */}
             <div className="editor-toolbar">
-              <MenuButton icon="plus.circle" className="icon-btn" title="Insert" items={insertItems} disabled={!activePath} />
+              <MenuButton icon="plus.circle" className="icon-btn area-writing" title="Insert" items={insertItems} disabled={!activePath} />
               {/* a narrow editor leaves these to Insert (+) */}
-              <button className="icon-btn float-button" title="Insert figure" aria-label="Insert figure" onClick={() => openFloats('figure')}>
+              <button className="icon-btn float-button area-writing" title="Insert figure" aria-label="Insert figure" onClick={() => openFloats('figure')}>
                 <Icon name="photo" />
               </button>
-              <button className="icon-btn float-button" title="Insert table" aria-label="Insert table" onClick={() => openFloats('table')}>
+              <button className="icon-btn float-button area-writing" title="Insert table" aria-label="Insert table" onClick={() => openFloats('table')}>
                 <Icon name="tablecells" />
               </button>
-              <button className="icon-btn float-button" title="Draw a diagram" aria-label="Draw a diagram" onClick={() => drawDiagram()}>
+              <button className="icon-btn float-button area-composer" title="Draw a diagram" aria-label="Draw a diagram" onClick={() => drawDiagram()}>
                 <Icon name="pencil" />
               </button>
               {/* aria-disabled rather than disabled, so its tooltip still says why */}
               <button
-                className="icon-btn float-button"
+                className="icon-btn float-button area-writing"
                 title={jyutpingOk ? 'Jyutping' : 'Jyutping works in LaTeX documents only'}
                 aria-label="Jyutping"
                 aria-disabled={!jyutpingOk}
@@ -3411,11 +3412,11 @@ function Editor({ projectId }: { projectId: string }) {
                 <Icon name="custom.jyut" />
               </button>
               <span className="spacer" />
-              <button className={`icon-btn ${composerOpen ? 'active' : ''}`} title={withShortcut(settings.shortcuts, 'Assistant', 'assistant')} aria-label="Assistant" aria-pressed={composerOpen} onClick={toggleComposer}>
+              <button className={`icon-btn area-assistant ${composerOpen ? 'active' : ''}`} title={withShortcut(settings.shortcuts, 'Assistant', 'assistant')} aria-label="Assistant" aria-pressed={composerOpen} onClick={toggleComposer}>
                 <Icon name="sparkles" />
               </button>
               <button
-                className={`icon-btn ${panel === 'grammar' ? 'active' : ''}`}
+                className={`icon-btn area-writing ${panel === 'grammar' ? 'active' : ''}`}
                 title={withShortcut(settings.shortcuts, 'Check grammar', 'grammar')}
                 aria-label="Check grammar"
                 aria-pressed={panel === 'grammar'}
@@ -3424,7 +3425,7 @@ function Editor({ projectId }: { projectId: string }) {
                 <Icon name="text.badge.checkmark" />
               </button>
               <button
-                className={`icon-btn ${panel === 'insights' ? 'active' : ''}`}
+                className={`icon-btn area-writing ${panel === 'insights' ? 'active' : ''}`}
                 title="Document insights"
                 aria-label="Document insights"
                 aria-pressed={panel === 'insights'}
@@ -3449,7 +3450,7 @@ function Editor({ projectId }: { projectId: string }) {
                 )}
               </button>
               <button
-                className={`icon-btn agent-toggle ${panel === 'agent' ? 'active' : ''}`}
+                className={`icon-btn agent-toggle area-assistant ${panel === 'agent' ? 'active' : ''}`}
                 title={agentStatus ? `Agent · ${STATUS_TEXT[agentStatus]}` : 'Agent'}
                 aria-label={agentStatus ? `Agent, ${STATUS_TEXT[agentStatus].toLowerCase()}` : 'Agent'}
                 aria-pressed={panel === 'agent'}
@@ -3608,7 +3609,7 @@ function Editor({ projectId }: { projectId: string }) {
                 {layout.view === 'pdf' && sidebarButton}
                 {!panel && compileSplit}
                 <button
-                  className="btn save-version"
+                  className="btn save-version area-references"
                   onClick={saveVersionNow}
                   disabled={savingVersion}
                   title={withShortcut(settings.shortcuts, 'Save checkpoint', 'saveVersion')}

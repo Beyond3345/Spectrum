@@ -890,7 +890,7 @@ export default function ProjectPage() {
         <div className="empty-title">{projects.length ? 'Everything here is archived' : 'No projects yet'}</div>
         <div className="empty-text">Start a new paper, or open a folder that already holds your LaTeX files.</div>
         <div className="empty-actions">
-          <button className="btn inverse" onClick={() => setSheet({ kind: 'new', template: '', folder: here })}><Icon name="plus" /> New project…</button>
+          <button className="btn inverse area-projects" onClick={() => setSheet({ kind: 'new', template: '', folder: here })}><Icon name="plus" /> New project…</button>
           <button className="btn" onClick={openExisting}><Icon name="folder" /> Open existing folder…</button>
         </div>
       </div>
@@ -909,12 +909,12 @@ export default function ProjectPage() {
           </div>
 
           <nav className="sidebar-scroll">
-            <button className={`nav-row ${view === 'home' ? 'active' : ''} ${dropTarget === 'home' ? 'drop-into' : ''}`} onClick={() => goHome(null)} {...dropProps(null, 'home')}>
+            <button className={`nav-row area-projects ${view === 'home' ? 'active' : ''} ${dropTarget === 'home' ? 'drop-into' : ''}`} onClick={() => goHome(null)} {...dropProps(null, 'home')}>
               <Icon name="house" />
               <span className="nav-label">Home</span>
             </button>
             <button
-              className={`nav-row ${view === 'all' ? 'active' : ''} ${dropTarget === '' ? 'drop-into' : ''}`}
+              className={`nav-row area-projects ${view === 'all' ? 'active' : ''} ${dropTarget === '' ? 'drop-into' : ''}`}
               onClick={() => setView('all')}
               {...menuProps(() => folderMenu(null))}
               {...dropProps(null)}
@@ -924,11 +924,11 @@ export default function ProjectPage() {
               <span className="nav-count">{counts.all}</span>
             </button>
             {folderRows(null, 0)}
-            <button className={`nav-row ${view === 'github' ? 'active' : ''}`} onClick={() => setView('github')}>
+            <button className={`nav-row area-references ${view === 'github' ? 'active' : ''}`} onClick={() => setView('github')}>
               <Icon name="arrow.triangle.branch" />
               <span className="nav-label">GitHub</span>
             </button>
-            <button className={`nav-row ${view === 'archived' ? 'active' : ''}`} onClick={() => setView('archived')}>
+            <button className={`nav-row area-projects ${view === 'archived' ? 'active' : ''}`} onClick={() => setView('archived')}>
               <Icon name="archivebox" />
               <span className="nav-label">Archived</span>
               <span className="nav-count">{counts.archived}</span>
@@ -1076,7 +1076,7 @@ export default function ProjectPage() {
             <MenuButton
               label="New"
               icon="plus"
-              className="btn inverse"
+              className="btn inverse area-projects"
               align="end"
               // inside the folder showing, as in Finder
               items={[

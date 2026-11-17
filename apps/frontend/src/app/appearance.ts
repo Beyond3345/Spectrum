@@ -3,10 +3,18 @@ import { IS_DESKTOP, WINDOW_LABEL, setNativeGlass } from './desktop';
 import { IS_WINDOWS, OS_NAME } from './platform';
 import { SETTINGS_CHANGE_EVENT, loadSettings } from './settings';
 import type { Accent, AppSettings, PdfPageDark, PdfPageLight, TagColour, Theme } from './settings';
+import PALETTE from './palette.json';
+
+/** The app's areas, one per handbook chapter, each with its colour in palette.json */
+export type Area = keyof typeof PALETTE;
+const AREAS = Object.entries(PALETTE) as [Area, (typeof PALETTE)[Area]][];
 
 /** macOS-like accents that read on light and dark surfaces alike */
 export const ACCENTS: [Accent, string, string][] = [
   ['system', `Follow ${OS_NAME}`, ''],
+  // the palette's Flow blue: a blue reads as neither a warning (orange, the Editor's colour) nor an error. Compile and
+  // the progress bar take the whole spectrum (spectrum.css)
+  ['spectrum', 'Spectrum', PALETTE.flow.band],
   ['blue', 'Blue', '#0a84ff'],
   ['purple', 'Purple', '#a550a7'],
   ['pink', 'Pink', '#f74f9e'],
@@ -78,9 +86,9 @@ export function accentText(hex: string) {
  * The accent as text (--accent-ink): mixed towards black for light mode, or white for dark, until
  * it reads at 4.5:1 (WCAG AA) on the panel (#ffffff or #212121). One that already does stays as it is.
  */
-export function accentInk(hex: string, dark: boolean) {
+export function accentInk(hex: string, dark: boolean, on?: string) {
   // the lightest surface accent text sits on in each mode: white, and the dark sheets and menus
-  const [surface, towards] = dark ? ['#2a2a2a', '#ffffff'] : ['#ffffff', '#000000'];
+  const [surface, towards] = dark ? [on ?? '#2a2a2a', '#ffffff'] : [on ?? '#ffffff', '#000000'];
   const [from, to] = [channels(hex), channels(towards)];
   for (let t = 0; t < 1; t += 0.02) {
     const ink = `#${from.map((v, i) => Math.round(v + (to[i] - v) * t).toString(16).padStart(2, '0')).join('')}`;
@@ -97,6 +105,30 @@ export function glassMix(clarity: number) {
   const t = Math.min(100, Math.max(0, clarity)) / 100;
   const pct = (from: number, to: number) => `${Math.round(from + (to - from) * t)}%`;
   return { '--glass-chrome': pct(80, 15), '--glass-panel': pct(88, 40), '--glass-reading': pct(94, 55) };
+}
+
+/**
+ * The Spectrum colour style's stylesheet, from palette.json: each .area-<name> sets --area (icons and marks), --area-text
+ * (text, at 4.5:1 on the window's grey too), --area-band (fills and tints) and --area-on-band (text on the fill: white
+ * at 3:1 or better, else near-black), for light and dark. Only :root[data-colour-style='spectrum'] has them, so the
+ * Simple style never sees any. --spectrum-ink and --spectrum-band run through the hues, for the Spectrum accent.
+ */
+export function paletteCss() {
+  const on = "[data-colour-style='spectrum']";
+  const hues = AREAS.filter(([, c]) => c.hue !== null);
+  const rules = (dark: boolean, root: string) =>
+    AREAS.map(([area, c]) => {
+      const tokens = dark
+        ? `--area: ${c.dark}; --area-text: ${c.dark};`
+        : `--area: ${c.light}; --area-text: ${accentInk(c.light, false, '#f7f7f8')}; --area-band: ${c.band}; --area-on-band: ${accentText(c.band)};`;
+      return `${root} .area-${area} { ${tokens} }`;
+    }).join('\n');
+  return [
+    `:root { --spectrum-ink: linear-gradient(90deg, ${hues.map(([, c]) => c.light).join(', ')}); --spectrum-band: linear-gradient(90deg, ${hues.map(([, c]) => c.band).join(', ')}); --spectrum-wheel: conic-gradient(${hues.map(([, c], i) => `${c.band} ${(i * 360) / hues.length}deg ${((i + 1) * 360) / hues.length}deg`).join(', ')}); }`,
+    rules(false, `:root${on}`),
+    rules(true, `:root${on}[data-theme='dark']`),
+    `@media (prefers-color-scheme: dark) {\n${rules(true, `:root${on}:not([data-theme='light'])`)}\n}`
+  ].join('\n');
 }
 
 const darkQuery = () => window.matchMedia('(prefers-color-scheme: dark)');
@@ -124,6 +156,9 @@ const ACCENT_KEY = 'spectrum-accent';
 
 /** Applies the accent, the see-through window and the PDF page colour now and whenever they change. */
 export function followAppearance() {
+  const style = document.createElement('style');
+  style.textContent = paletteCss();
+  document.head.append(style);
   const apply = () => {
     const settings = loadSettings();
     const root = document.documentElement;
@@ -148,6 +183,8 @@ export function followAppearance() {
     root.classList.toggle('glass', glass);
     for (const [name, value] of Object.entries(glassMix(settings.glassClarity))) root.style.setProperty(name, value);
     setNativeGlass(glass);
+    root.dataset.colourStyle = settings.colourStyle;
+    root.classList.toggle('spectrum-accent', settings.accent === 'spectrum');
     root.dataset.pdfPage = isDark(settings.theme) ? settings.pdfPageDark : settings.pdfPageLight;
   };
   apply();
