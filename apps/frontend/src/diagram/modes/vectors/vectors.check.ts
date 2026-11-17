@@ -2,7 +2,7 @@
 // TikZ each starter writes. Run:
 // npx esbuild apps/frontend/src/diagram/modes/vectors/vectors.check.ts --bundle --platform=node --log-level=warning | node
 import { isColour } from '../shared';
-import { eqLineEnds, notate, vectorCode, readStyle, styledVectors } from './code';
+import { eqLineEnds, inReach, notate, vectorCode, readStyle, styledVectors } from './code';
 import { COLOURS, addPanel, addPoint, applyTool, dropUnused, equationText, frameOf, nameFree, newEqLine, setEquation, vectorsNeedVersion5, withText, clipLine, copyIds, dividingSegment, lineThroughPoints, newAxes, pasteInto, projections, removeIds, resolve, rightCorners, triangleMidpoints } from './model';
 import type { Angle, EqLine, Item, Link, Note, RightMark, VPoint, VectorModel } from './model';
 import { angleBetween, cevians, emptyVectors, forcePolygon, freeBody, idsInside, lineFromEquation, mirrorIds, moveIds, parallelogramLaw, positionVectors, restyleIds, scalarMultiples, triangleLaw, turnIds } from './model';
@@ -358,6 +358,8 @@ eq(readStyle({ width: 'huge', vectorWidth: 1.5, colour: ' ', tips: 'none' }), { 
   const flat = setEquation(m, e.id, { a: 0 });
   eq([Number.isNaN(resolve(flat).get(xi.id)!.x), body(flat).filter((l) => l.startsWith('\\coordinate')).length], [true, 1], 'a flat line has no x-intercept, left out');
   eq(body(m).filter((l) => l.startsWith('\\coordinate') || l.includes('=0$')), ['\\coordinate (A) at (2.25,0);', '\\coordinate (B) at (0,9);', '\\draw (-0.25,10) -- (2.5,-1) node[midway, above right] {$4x+y-9=0$};'], 'the line out to the frame, left to right');
+  // a length or coordinate typed in stays where TeX can draw it (1.5e10 cm gave Dimension too large)
+  eq([inReach(1.5e10), inReach(-1e12), inReach(2.5), Math.round(inReach(1e9, 'pt'))], [100, -100, 2.5, 2845], 'within a metre, 2845 pt');
   eq(eqLineEnds({ a: 1, b: 0, c: -1 }, { minX: -2, maxX: 2, minY: -2, maxY: 2 }), [{ x: 1, y: -2 }, { x: 1, y: 2 }], 'an upright line runs upwards');
   eq(eqLineEnds({ a: 1, b: 0, c: -5 }, { minX: -2, maxX: 2, minY: -2, maxY: 2 }), null, 'one outside the frame isn’t drawn');
   eq(removeIds(m, [e.id]).points, [], 'its intercepts go with it');

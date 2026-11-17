@@ -10,7 +10,7 @@ import { ColourField, More } from '../../controls';
 import { useToolTitle } from '../../toolKeys';
 import type { ToolKey } from '../../toolKeys';
 import { num } from '../shared';
-import { GRIDS, NOTATIONS, readStyle } from './code';
+import { GRIDS, NOTATIONS, inReach, readStyle } from './code';
 import type { Notation, VectorStyle } from './code';
 import { COLOURS, FONT_SIZES, SIDES, TIPS, WIDTHS, WIDTH_PT, addPanel, asVectors, cleanName, dist, isLink, mirrorIds, moversOf, nameFree, placed, restyleIds, scaledName, setEquation, turnIds, vectorName, withText, resolve, removeIds } from './model';
 import type { Axes, Construction, Dash, EdgeLabel, FontSize, Item, Label, Link, LinkKind, Panel, PointShape, Pt, Stroke, TextStyle, Thickness, Tip, Tips, VPoint, VectorModel, Width } from './model';
@@ -203,8 +203,8 @@ function Field({ label, children, hint }: { label: string; children: (id: string
   );
 }
 
-/** A number typed freely, kept once it's a number (and positive, when it must be). */
-function NumberInput({ id, value, onChange, positive, unit, label }: { id?: string; value: number; onChange(v: number): void; positive?: boolean; unit?: string; label?: string }) {
+/** A number typed freely, kept once it's a number (and positive, when it must be); a length or coordinate (reach) kept where TeX can draw it. */
+function NumberInput({ id, value, onChange, positive, unit, label, reach }: { id?: string; value: number; onChange(v: number): void; positive?: boolean; unit?: string; label?: string; reach?: 'cm' | 'pt' }) {
   const [text, setText] = useState(String(value));
   useEffect(() => {
     if (Number(text) !== value) setText(String(value));
@@ -223,7 +223,7 @@ function NumberInput({ id, value, onChange, positive, unit, label }: { id?: stri
         onChange={(e) => {
           setText(e.target.value);
           const next = Number(e.target.value);
-          if (e.target.value.trim() && Number.isFinite(next) && (!positive || next > 0)) onChange(next);
+          if (e.target.value.trim() && Number.isFinite(next) && (!positive || next > 0)) onChange(reach ? inReach(next, reach) : next);
         }}
         onBlur={() => setText(String(value))}
       />
@@ -284,8 +284,8 @@ function DashField({ value, onChange }: { value: Dash; onChange(dash: Dash): voi
           <Select labelId={labelId} value={typeof value === 'string' ? value : 'custom'} options={DASHES} onChange={(d) => onChange(d === 'custom' ? [3, 2] : (d as Dash))} />
           {typeof value !== 'string' && (
             <>
-              <NumberInput label="On" value={value[0]} positive unit="on" onChange={(on) => onChange([on, value[1]])} />
-              <NumberInput label="Off" value={value[1]} positive unit="off" onChange={(off) => onChange([value[0], off])} />
+              <NumberInput label="On" value={value[0]} positive reach="pt" unit="on" onChange={(on) => onChange([on, value[1]])} />
+              <NumberInput label="Off" value={value[1]} positive reach="pt" unit="off" onChange={(off) => onChange([value[0], off])} />
             </>
           )}
         </div>
@@ -411,7 +411,7 @@ function LabelLook<L extends Label | EdgeLabel>({ label, onChange, edge }: { lab
   return (
     <>
       {!edge ? (
-        label.side && <Field label="Distance">{(id) => <NumberInput id={id} value={(label as Label).dist ?? 0} unit="pt" onChange={(d) => set({ dist: d || undefined })} />}</Field>
+        label.side && <Field label="Distance">{(id) => <NumberInput id={id} value={(label as Label).dist ?? 0} reach="pt" unit="pt" onChange={(d) => set({ dist: d || undefined })} />}</Field>
       ) : (
         <Field label="Along it" hint="0 at the start, 1 at the end.">{(id) => <NumberInput id={id} value={(label as EdgeLabel).pos ?? 0.5} onChange={(pos) => pos >= 0 && pos <= 1 && set({ pos: pos === 0.5 ? undefined : pos })} />}</Field>
       )}
@@ -482,10 +482,10 @@ function Overview({ model, onChange }: { model: VectorModel; onChange(m: VectorM
                   ) : (
                     <>
                       <td>
-                        <NumberInput label={`${p.name}, x`} value={p.x} onChange={(x) => setPoint(p.id, { x })} />
+                        <NumberInput label={`${p.name}, x`} value={p.x} reach="cm" onChange={(x) => setPoint(p.id, { x })} />
                       </td>
                       <td>
-                        <NumberInput label={`${p.name}, y`} value={p.y} onChange={(y) => setPoint(p.id, { y })} />
+                        <NumberInput label={`${p.name}, y`} value={p.y} reach="cm" onChange={(y) => setPoint(p.id, { y })} />
                       </td>
                     </>
                   )}
@@ -500,7 +500,7 @@ function Overview({ model, onChange }: { model: VectorModel; onChange(m: VectorM
         {model.panels.map((p, i) => (
           <div key={p.id} className="ckt-row">
             <Field label={`Panel ${i + 1} caption`}>{(id) => <input id={id} className="input" value={p.caption ?? ''} onChange={(e) => setPanel(p.id, { caption: e.target.value || undefined })} spellCheck={false} />}</Field>
-            {i > 0 && <Field label="Shift">{(id) => <NumberInput id={id} value={p.shift} unit="cm" onChange={(shift) => setPanel(p.id, { shift })} />}</Field>}
+            {i > 0 && <Field label="Shift">{(id) => <NumberInput id={id} value={p.shift} reach="cm" unit="cm" onChange={(shift) => setPanel(p.id, { shift })} />}</Field>}
             {i > 0 && (
               <button type="button" className="icon-btn" aria-label={`Delete panel ${i + 1} and what’s in it`} title="Delete the panel and what’s in it" onClick={() => onChange(removeIds(model, [p.id]))}>
                 <Icon name="trash" />
@@ -706,8 +706,8 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
           <Field label="Position">
             {() => (
               <div className="ckt-row">
-                <NumberInput label="x" value={point.x} unit="x" onChange={(x) => set({ x })} />
-                <NumberInput label="y" value={point.y} unit="y" onChange={(y) => set({ y })} />
+                <NumberInput label="x" value={point.x} reach="cm" unit="x" onChange={(x) => set({ x })} />
+                <NumberInput label="y" value={point.y} reach="cm" unit="y" onChange={(y) => set({ y })} />
               </div>
             )}
           </Field>
@@ -804,16 +804,16 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
               <Field label="x from and to">
                 {() => (
                   <div className="ckt-row">
-                    <NumberInput label="x from" value={axes.x[0]} onChange={(v) => v < axes.x[1] && set({ x: [v, axes.x[1]] })} />
-                    <NumberInput label="x to" value={axes.x[1]} onChange={(v) => v > axes.x[0] && set({ x: [axes.x[0], v] })} />
+                    <NumberInput label="x from" value={axes.x[0]} reach="cm" onChange={(v) => v < axes.x[1] && set({ x: [v, axes.x[1]] })} />
+                    <NumberInput label="x to" value={axes.x[1]} reach="cm" onChange={(v) => v > axes.x[0] && set({ x: [axes.x[0], v] })} />
                   </div>
                 )}
               </Field>
               <Field label="y from and to">
                 {() => (
                   <div className="ckt-row">
-                    <NumberInput label="y from" value={axes.y[0]} onChange={(v) => v < axes.y[1] && set({ y: [v, axes.y[1]] })} />
-                    <NumberInput label="y to" value={axes.y[1]} onChange={(v) => v > axes.y[0] && set({ y: [axes.y[0], v] })} />
+                    <NumberInput label="y from" value={axes.y[0]} reach="cm" onChange={(v) => v < axes.y[1] && set({ y: [v, axes.y[1]] })} />
+                    <NumberInput label="y to" value={axes.y[1]} reach="cm" onChange={(v) => v > axes.y[0] && set({ y: [axes.y[0], v] })} />
                   </div>
                 )}
               </Field>
@@ -840,8 +840,8 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
                   {axes.ticks && (
                     <>
                       <div className="ckt-row">
-                        <Field label="Step">{(id) => <NumberInput id={id} value={axes.step ?? 1} positive onChange={(step) => set({ step: step === 1 ? undefined : step })} />}</Field>
-                        <Field label="Tick length">{(id) => <NumberInput id={id} value={axes.tick ?? 0.08} positive unit="cm" onChange={(tick) => set({ tick: tick === 0.08 ? undefined : tick })} />}</Field>
+                        <Field label="Step">{(id) => <NumberInput id={id} value={axes.step ?? 1} positive reach="cm" onChange={(step) => set({ step: step === 1 ? undefined : step })} />}</Field>
+                        <Field label="Tick length">{(id) => <NumberInput id={id} value={axes.tick ?? 0.08} positive reach="cm" unit="cm" onChange={(tick) => set({ tick: tick === 0.08 ? undefined : tick })} />}</Field>
                       </div>
                       <Field label="Number size">{(_, labelId) => <Select labelId={labelId} value={axes.numbers ?? 'small'} options={SIZE_OPTIONS} onChange={(numbers) => set({ numbers: numbers === 'small' ? undefined : (numbers as FontSize) })} />}</Field>
                     </>
@@ -947,6 +947,7 @@ export function VectorInspector({ model: raw, onChange, selection = [], style: r
                       id={id}
                       value={Math.round(r * 1000) / 1000}
                       positive
+                      reach="cm"
                       unit="cm"
                       onChange={(radius) =>
                         onChange({ ...model, points: model.points.map((p) => (p.id === circle.through ? { ...p, x: C.x + ((P.x - C.x) * radius) / r, y: C.y + ((P.y - C.y) * radius) / r } : p)) })
