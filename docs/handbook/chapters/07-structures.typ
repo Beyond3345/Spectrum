@@ -371,6 +371,6 @@ Structures writes its drawing as a standalone TikZ document in `diagrams/`, whic
 - The picture's options define a style for each kind of line, such as `struct member` at 1.2~pt and `struct load` at 0.6~pt, the fills of the force diagrams and each support symbol as a pic, such as `spx/struct/pin`. Nothing reaches the document's preamble.
 - A comment first names the view and the status, such as `% Structure, free-body diagram with shear and bending moment diagrams: Determinate and stable`. Then each part of the picture is headed by its own comment: `% Structure`, `% Supports`, `% Loads`, `% Reactions`, `% Dimensions and labels` and one for each diagram, which sits in a scope shifted below or beside the structure.
 
-#shot("images/07-structures/code.png", [The Code tab of the beam, with the styles in the picture's options and the comment that heads each part.], width: 80%) <fig-structures-code>
+#shot("images/07-structures/code.png", [The Code tab of the beam, with the styles in the picture's options and the comment that heads each part.], width: 92%) <fig-structures-code>
 
 A drawing that uses something added in 2.5 (a settlement, a load per horizontal length, an internal shear release, the deflected shape or x of zero shear) is saved as file version 5, which Spectrum 2.4 and earlier open as code.

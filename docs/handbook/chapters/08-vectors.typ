@@ -22,7 +22,7 @@
 
 = Vector diagrams <ch-vectors>
 
-The Vector diagrams composer draws points, vectors and the lines between them on a centimetre grid. It is meant for mechanics and mathematics courses: a free-body diagram, the triangle and parallelogram laws of vector addition, the components of a force, position vectors on axes and, since Spectrum 2.5, the figures of a geometry or vectors course, such as the medians of a triangle, the angle between two vectors or a line from its equation. Its points can be free or constructed from others, such as a midpoint or the tip of $bold(u) + bold(v)$, and a constructed point follows its parents when they move. The figure is written into the project as TikZ with a named coordinate for each point.
+The Vector diagrams composer draws points, vectors and the lines between them on a centimetre grid. It is meant for mechanics and mathematics courses: a free-body diagram, the triangle and parallelogram laws of vector addition, the components of a force, position vectors on axes and, since Spectrum 2.5, the figures of a geometry or vectors course, such as the medians of a triangle, the angle between two vectors or a line from its equation. Its points can be free or constructed from others, such as a midpoint or the tip of $upright(bold(u)) + upright(bold(v))$, and a constructed point follows its parents when they move. The figure is written into the project as TikZ with a named coordinate for each point.
 
 The chapter first shows how to start a drawing and how the canvas works. It then walks through the rail's three groups of tools: drawing, axes and marks, and constructions. The later sections cover panels, editing several items at once, how labels are placed, how vector names are written and the code the composer writes. What every composer shares is in @ch-composer.
 
@@ -40,19 +40,19 @@ Open #ui[Draw a diagram] in the top bar of a project and pick a card under #menu
     align: left,
     [Starter], [What it holds],
     [Vector diagram], [An empty drawing],
-    [Line through two points], [A line through U and V with their position vectors $bold(u)$ and $bold(v)$ and the direction $bold(d) = bold(v) - bold(u)$],
-    [Dividing a segment in a ratio], [M on AB with AM : MB = 1 : 2, and the vectors $bold(a)$, $bold(b)$ and $bold(m)$ from O],
+    [Line through two points], [A line through U and V with their position vectors $upright(bold(u))$ and $upright(bold(v))$ and the direction $upright(bold(d)) = upright(bold(v)) - upright(bold(u))$],
+    [Dividing a segment in a ratio], [M on AB with AM : MB = 1 : 2, and the vectors $upright(bold(a))$, $upright(bold(b))$ and $upright(bold(m))$ from O],
     [Midpoints of a triangle], [PQ joining the midpoints of OA and OB, parallel to AB and half as long],
-    [Projections], [The projection of $bold(b)$ onto $bold(a)$ in three panels: acute, right and obtuse],
+    [Projections], [The projection of $upright(bold(b))$ onto $upright(bold(a))$ in three panels: acute, right and obtuse],
     [Free-body diagram on a block], [A block with its weight, the normal reaction, a pull and friction],
-    [Triangle law], [$bold(b)$ drawn from the tip of $bold(a)$, and the resultant $bold(a) + bold(b)$],
-    [Parallelogram law], [$bold(a)$ and $bold(b)$ from one point, the dashed sides and the diagonal $bold(a) + bold(b)$],
+    [Triangle law], [$upright(bold(b))$ drawn from the tip of $upright(bold(a))$, and the resultant $upright(bold(a)) + upright(bold(b))$],
+    [Parallelogram law], [$upright(bold(a))$ and $upright(bold(b))$ from one point, the dashed sides and the diagonal $upright(bold(a)) + upright(bold(b))$],
     [Force polygon], [Four forces head to tail and the resultant closing the polygon],
-    [Position vectors with i and j], [P(3, 2) with $bold(r) = 3 bold(i) + 2 bold(j)$ and the unit vectors $bold(i)$ and $bold(j)$],
+    [Position vectors with i and j], [P(3, 2) with $upright(bold(r)) = 3 upright(bold(i)) + 2 upright(bold(j))$ and the unit vectors $upright(bold(i))$ and $upright(bold(j))$],
     [Medians of a triangle], [The medians meeting at the centroid G, each side's halves ticked alike],
-    [Angle between two vectors], [$theta$ between $bold(a)$ and $bold(b)$, with $cos theta$ from their dot product],
-    [Line from its equation], [$2x + 3y - 6 = 0$ with its intercepts and its normal $bold(n)$],
-    [Scalar multiples], [$bold(v)$ with $2 bold(v)$, $-bold(v)$ and $1/2 bold(v)$ beside it, following $bold(v)$ as it moves],
+    [Angle between two vectors], [$theta$ between $upright(bold(a))$ and $upright(bold(b))$, with $cos theta$ from their dot product],
+    [Line from its equation], [$2x + 3y - 6 = 0$ with its intercepts and its normal $upright(bold(n))$],
+    [Scalar multiples], [$upright(bold(v))$ with $2 upright(bold(v))$, $-upright(bold(v))$ and $1/2 upright(bold(v))$ beside it, following $upright(bold(v))$ as it moves],
   ),
   caption: [The vector diagram starters in #ui[Draw a diagram].],
 ) <tab-vectors-starters>
@@ -84,13 +84,13 @@ A point placed at the origin is named O and labelled below and to its left, wher
 
 With nothing selected, the inspector shows the table of every point's coordinates and the drawing's panels (@fig-vectors-coordinates). A free point's x and y can be typed there exactly. A constructed point's place is worked out from its parents, so it is shown in grey and cannot be typed. The panels are described in @sec-vectors-panels.
 
-#shot("images/08-vectors/coordinates.png", [The inspector with nothing selected. O, A and B are free points, while S is constructed as the tip of $bold(a) + bold(b)$ and shows its place, (5.5, 4), in grey.], width: 34%) <fig-vectors-coordinates>
+#shot("images/08-vectors/coordinates.png", [The inspector with nothing selected. O, A and B are free points, while S is constructed as the tip of $upright(bold(a)) + upright(bold(b))$ and shows its place, (5.5, 4), in grey.], width: 34%) <fig-vectors-coordinates>
 
 == The rail <sec-vectors-rail>
 
 The rail holds the tools in three groups (@fig-vectors-rail). #ui[Find a tool] at its top narrows the list as you type, and each tool's tooltip says what to click. Most tools pick points one after another: click a point already there, or an empty spot, which makes a new point there. A point made this way by a tool other than #ui[Point] has no dot or letter, so it does not clutter the figure. Give it a label in the inspector if it needs one.
 
-The hint above the canvas says which point the tool wants next. #key("Esc") part way through starts the tool again, keeps it picked and takes away the points it had made, while #key("Esc") with nothing picked goes back to #ui[Select].
+The line at the bottom left of the canvas says which point the tool wants next, such as “Click where the vector starts”. #key("Esc") part way through starts the tool again, keeps it picked and takes away the points it had made, while #key("Esc") with nothing picked goes back to #ui[Select].
 
 #figure(
   grid(
@@ -128,7 +128,7 @@ Click a point to select it (@fig-vectors-point). Its inspector has the following
 
 A constructed point has no Position. Instead, its inspector says what it is built from, such as "The tip of u + v, with u and v from O to A and B", and where it is now.
 
-#pair(("images/08-vectors/inspector-point.png", "images/08-vectors/inspector-constructed.png"), [The inspector of free point A with its fold open (left) and of the constructed point S (right). The #ui[Turn and mirror] fold is described in @sec-vectors-groups.]) <fig-vectors-point>
+#pair(("images/08-vectors/inspector-point.png", "images/08-vectors/inspector-constructed.png"), width: 52%, [The inspector of free point A with its fold open (left) and of the constructed point S (right). The #ui[Turn and mirror] fold is described in @sec-vectors-groups.]) <fig-vectors-point>
 
 == Vectors and lines <sec-vectors-lines>
 
@@ -163,7 +163,7 @@ Each one's inspector starts with its *Kind*, which changes it to another of the 
   caption: [The fields of a vector, segment or line.],
 ) <tab-vectors-line>
 
-#pair(("images/08-vectors/inspector-vector.png", "images/08-vectors/inspector-axes.png"), [The inspector of the vector $bold(a) + bold(b)$ with its fold open (left) and of the axes (right).]) <fig-vectors-vector>
+#pair(("images/08-vectors/inspector-vector.png", "images/08-vectors/inspector-axes.png"), width: 46%, [The inspector of the vector $upright(bold(a)) + upright(bold(b))$ with its fold open (left) and of the axes (right).]) <fig-vectors-vector>
 
 === Other drawing tools
 
@@ -200,16 +200,16 @@ A construction makes a point from points already there, and keeps it exact: each
 
 #figure(
   table(
-    columns: (auto, auto, 1fr),
+    columns: (24%, 26%, 50%),
     align: left,
     [Construction], [Click], [What it makes],
     [Midpoint], [A, then B], [The midpoint of AB, with a dot and a letter],
     [Point dividing a segment], [A, then B], [The point M with AM : MB = 1 : 2. Its inspector sets the ratio m : n, and #ui[Ratio labels] writes m and n beside each part of the segment],
     [Foot of a projection], [P, then two points on the line], [The foot of the perpendicular from P to the line],
     [Intersection of two lines], [Two points on each line], [Where the two lines cross. It has no place while they are parallel],
-    [u + v], [The tips of $bold(u)$ and $bold(v)$], [The tip of $bold(u) + bold(v)$, drawn as a vector from O when the panel has an O],
-    [v − u], [The tips of $bold(u)$ and $bold(v)$], [The tip of $bold(v) - bold(u)$, drawn the same way],
-    [Scalar multiple], [The tail and tip of a vector], [The vector times 2, drawn from the same tail and labelled $2 bold(v)$. Its inspector's *k* takes any number: −1 turns it round and 0.5 halves it, and the label follows],
+    [u + v], [The tips of $upright(bold(u))$ and $upright(bold(v))$], [The tip of $upright(bold(u)) + upright(bold(v))$, drawn as a vector from O when the panel has an O],
+    [v − u], [The tips of $upright(bold(u))$ and $upright(bold(v))$], [The tip of $upright(bold(v)) - upright(bold(u))$, drawn the same way],
+    [Scalar multiple], [The tail and tip of a vector], [The vector times 2, drawn from the same tail and labelled $2 upright(bold(v))$. Its inspector's *k* takes any number: −1 turns it round and 0.5 halves it, and the label follows],
     [Vector placed at a point], [The tail and tip of a vector, then a point], [The same vector drawn again from the point, with the same name],
     [Reflection in a line], [P, then two points on the mirror line], [The reflection of P in the line],
     [Parallel through a point], [Two points on a line, then a point], [The line through the point parallel to the first],
@@ -218,15 +218,15 @@ A construction makes a point from points already there, and keeps it exact: each
   caption: [The constructions, in the order they appear on the rail.],
 ) <tab-vectors-constructions>
 
-A vector's name in a construction's label, such as the $bold(v)$ of $2 bold(v)$, is the label of the vector already drawn between the two points when there is one. Otherwise it is the lower-case letter of a position vector from O, such as $bold(a)$ for $arrow("OA")$, or both points' letters, such as $bold("AB")$.
+A vector's name in a construction's label, such as the $upright(bold(v))$ of $2 upright(bold(v))$, is the label of the vector already drawn between the two points when there is one. Otherwise it is the lower-case letter of a position vector from O, such as $upright(bold(a))$ for $arrow("OA")$, or both points' letters, such as $upright(bold("AB"))$.
 
 === Resultants and components
 
 The constructions cover the usual figures of vector addition and resolution. For example, @fig-vectors-sum is drawn as follows,
 
 + Place O at the origin and the points A and B with #key("P")
-+ Draw $bold(a)$ from O to A and $bold(b)$ from O to B with #key("V")
-+ Pick #ui[u + v] and click A, then B. The resultant $bold(a) + bold(b)$ is drawn from O to the new point
++ Draw $upright(bold(a))$ from O to A and $upright(bold(b))$ from O to B with #key("V")
++ Pick #ui[u + v] and click A, then B. The resultant $upright(bold(a)) + upright(bold(b))$ is drawn from O to the new point
 + Draw dashed segments from A and B to the new point for the parallelogram
 + Pick #ui[Drop to both axes] and click the new point to read off its components on the axes
 
@@ -235,7 +235,7 @@ Moving A or B then moves the resultant and the parallelogram with it. For the co
 #grid(
   columns: (1fr, 1fr),
   gutter: 12pt,
-  [#printed("images/08-vectors/vector-sum.png", [The parallelogram law with the resultant constructed as $bold(a) + bold(b)$ and dropped to both axes.]) <fig-vectors-sum>],
+  [#printed("images/08-vectors/vector-sum.png", [The parallelogram law with the resultant constructed as $upright(bold(a)) + upright(bold(b))$ and dropped to both axes.]) <fig-vectors-sum>],
   [#printed("images/08-vectors/incline.png", [A block on a 30° incline with its weight, the normal reaction, friction and the components $W sin theta$ and $W cos theta$ dashed.]) <fig-vectors-incline>],
 )
 
@@ -293,13 +293,13 @@ The choice rewrites every `\mathbf`, so a bold letter that is not a vector, such
 
 #gallery(
   (
-    ("images/08-vectors/vector-sum.png", [Bold]),
+    ("images/08-vectors/notation-bold.png", [Bold]),
     ("images/08-vectors/notation-vec.png", [Arrow]),
     ("images/08-vectors/notation-arrow.png", [Long arrow]),
     ("images/08-vectors/notation-vv.png", [esvect]),
   ),
-  [The drawing of @fig-vectors-sum with each of the four vector names. Only the Style changed.],
-  scale: 52%,
+  [Part of the drawing of @fig-vectors-sum with each of the four vector names. Only the Style changed.],
+  scale: 100%,
 ) <fig-vectors-names>
 
 #shot("images/08-vectors/settings-vector-names.png", [#menu[Settings][Diagram composer][Vector names], the choice for new vector diagrams.], width: 70%) <fig-vectors-settings>
@@ -335,12 +335,12 @@ The choice rewrites every `\mathbf`, so a bold letter that is not a vector, such
 
 Vector diagrams writes the figure as TikZ in the way these figures are written by hand (@fig-vectors-code). The drawing is a standalone document in `diagrams/`, which the document brings in with `\includestandalone` (@ch-composer).
 
-- Each point is a named `\coordinate`, such as `\coordinate (A) at (4,1);`. A constructed point is written with the calc library, so it stays exact in the code too: the tip of $bold(a) + bold(b)$ is `($(A)+(B)-(O)$)` and a midpoint `($(A)!0.5!(B)$)`.
+- Each point is a named `\coordinate`, such as `\coordinate (A) at (4,1);`. A constructed point is written with the calc library, so it stays exact in the code too: the tip of $upright(bold(a)) + upright(bold(b))$ is `($(A)+(B)-(O)$)` and a midpoint `($(A)!0.5!(B)$)`.
 - A vector is `\draw[->, very thick] (O) -- (A)`, with its label as a node along it, and a dot is `\fill (A) circle (2pt)` with the point's label as its node.
 - An angle is TikZ's `angle` pic on its three points, so it follows them as well. A circle, an arc and a line from its equation are written with the numbers they have now, as a line through two points is.
 - Each panel after the first is a scope shifted right, with its caption under it.
 - The libraries are loaded only when something needs them: `calc` for constructions, `arrows.meta` for tips other than the Style's, `decorations.markings` for middle arrows and ticks, and `angles` for angles.
 
-#shot("images/08-vectors/code.png", [The Code tab of @fig-vectors-sum: the named coordinates, S constructed with calc, then the axes, the lines and the vectors.], width: 80%) <fig-vectors-code>
+#shot("images/08-vectors/code.png", [The Code tab of @fig-vectors-sum: the named coordinates, S constructed with calc, then the axes, the lines and the vectors.], width: 92%) <fig-vectors-code>
 
 A drawing that uses something added in 2.5 (an angle, a circle or arc, a line from its equation, a drop to both axes, equal-length ticks, a label beside its arrow, a vector name other than bold, an intersection, a scalar multiple, a reflection or a perpendicular) is saved as file version 5, which Spectrum 2.4 and earlier open as code.
