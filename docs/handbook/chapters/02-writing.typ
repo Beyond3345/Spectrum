@@ -2,4 +2,383 @@
 
 = Writing and compiling <ch-writing>
 
-// Not written yet.
+This chapter describes the editor, where a project's documents are written and compiled. It starts with the layout of the editor and the tools around the source, then covers the three languages and their engines, compiling and the PDF preview, and the language servers that check the source as it is typed. The later sections cover the tools for a finished document: floats, document insights, spelling and grammar, the to-do list and Jyutping. The chapter ends with every keyboard shortcut outside the diagram composer.
+
+== The editor <sec-writing-editor>
+
+The editor is divided into three columns (@fig-writing-editor). The sidebar on the left holds the project's files, Research and the to-do list, the middle column holds the source of the open file and the right column holds the compiled PDF. The switcher at the top right shows the source only, the source and the PDF side by side, or the PDF only, as do #key("⌘", "1"), #key("⌘", "2") and #key("⌘", "3"). #key("⌘", "\\") hides and shows the sidebar, and the line between the source and the PDF can be dragged to share the width between them.
+
+#shot("images/02-writing/editor-synctex.jpg", [The editor with a LaTeX project open. A double click in the PDF has jumped to line 109 of the source, which is highlighted, and the Outline in the sidebar marks the section the cursor is in.]) <fig-writing-editor>
+
+=== The sidebar
+
+The sidebar has three tabs. #ui[Files] is the project's file tree, #ui[Research] searches for papers (@ch-references) and #ui[To-dos] is the to-do list (@sec-writing-todos). The magnifying glass searches the tab that is showing: the file names, the research sessions or the to-dos. The #ui[+] button and a right-click on the file tree both hold #ui[New file…], #ui[New folder…], #ui[New .bib], #ui[Upload files…] and #ui[Upload folder…], and a right-click on a file adds #ui[Rename…], #ui[Delete…] and, for a document, #ui[Set as main file]. Files can also be dragged between folders and dropped in from Finder. The main file, which Compile builds, is marked #ui[Main], and a drawing from the diagram composer has #ui[Edit diagram] in its menu (@ch-composer).
+
+Below the files, #ui[Outline] lists the headings of the document, with the figures and tables by their captions, and a click on one moves the cursor to it. For LaTeX the outline follows `\input` and `\include` across the whole document and, with TexLab running (@sec-writing-lsp), shows the section numbers of the last compile. For Typst it follows `#include`, and for Markdown it lists the headings. The heading the cursor is in is shown in bold.
+
+=== The toolbar
+
+Above the source is a row of tabs, one for each open file, and below it the toolbar (@fig-writing-toolbar). The buttons on its left insert things at the cursor, and the buttons on its right open tools in the PDF's place. Each one is listed in @tab-writing-toolbar.
+
+#shot("images/02-writing/toolbar.png", [The file tabs and the toolbar above the source, left, and the PDF's header with Compile, Save checkpoint and the view switcher, right.]) <fig-writing-toolbar>
+
+#figure(
+  table(
+    columns: (auto, 1fr),
+    align: left,
+    table.header([Button], [What it does]),
+    [#ui[Insert] (+)], [inserts a snippet: a section, a list, an equation, an algorithm, a code listing, a citation, a reference or a label in LaTeX, and the Typst and Markdown equivalents. It also holds the four buttons beside it when the editor is too narrow for them],
+    [#ui[Insert figure]], [opens the Floats panel at the figure card (@sec-writing-floats)],
+    [#ui[Insert table]], [opens the Floats panel at the table card],
+    [#ui[Draw a diagram]], [opens the diagram composer (@ch-composer)],
+    [#ui[Jyutping] (粵)], [opens the Jyutping window, in a LaTeX document (@sec-writing-jyutping)],
+    [#ui[Assistant]], [shows or hides the assistant chat (@ch-assistant)],
+    [#ui[Check grammar]], [checks the grammar of the open file (@sec-writing-checks)],
+    [#ui[Document insights]], [counts and lists the document's parts (@sec-writing-insights)],
+    [#ui[Tools]], [opens the Checkpoints, Logs, Review and GitHub tabs. A badge counts the errors and warnings of the last compile],
+    [#ui[Agent]], [opens the agent workspace (@ch-assistant)],
+  ),
+  caption: [The buttons of the editor's toolbar.],
+) <tab-writing-toolbar>
+
+The tools that take the PDF's place, which are Floats, Check grammar, Document insights, Tools and the agent workspace, each have a header with #ui[Close] and the view switcher, and Compile moves into the editor's tab row while one of them is open.
+
+=== Typing in the source
+
+The source editor highlights LaTeX, Typst and Markdown, folds environments and blocks, and wraps long lines under their own indent, with formulas breaking between terms. #key("Tab") indents at the cursor by four spaces, Return after `\begin{…}` adds the matching `\end{…}` at the same indent, and typing `$` with text selected puts the text in maths, in the same way as `(` brackets it.
+
+Completion lists what can be typed where the cursor is (@fig-writing-complete). Typing `\`, or `/` at the start of a word in text, lists the commands that work there. In maths, inside `$…$`, `\[…\]` or an `equation` or `align` environment, it lists maths commands such as `\vec`, `\lambda` and `\frac` with their symbols, and in text it lists text commands, together with the project's own commands from `\newcommand` and `\DeclareMathOperator`. Each command shows the package it comes from. Commands with arguments go in with fields that #key("Tab") moves through, so `\frac` then #key("Tab") goes from the numerator to the denominator. Inside braces it lists the project's labels after `\ref{` and `\cref{`, its citation keys after `\cite{`, packages after `\usepackage{`, the project's images and files after `\includegraphics{` and `\input{`, and siunitx's units in a unit argument, so `/vo` offers `\volt`.
+
+#shots(("images/02-writing/complete-maths.png", "images/02-writing/complete-ref.png"), [Completion in maths, left, lists commands with their symbols and packages. After `\cref{`, right, it lists the project's labels and the file each is in.]) <fig-writing-complete>
+
+Environments are listed once `\beg` is typed (@fig-writing-begin). #key("Tab") fills in as much as the entries share, so `\beg` becomes `\begin{` with the environments still listed, and #key("Tab") or Return then picks one. After `\begin{` the list holds the common environments, such as `equation*`, `align*` and `gather` (only those that work in maths when the cursor is in maths), the environments of the packages and classes the project loads and the ones it defines itself, each marked with where it comes from.
+
+#shot("images/02-writing/complete-begin.png", [Environments listed after `\beg`, each with the package it comes from. The project's own environments are marked this project.], width: 60%) <fig-writing-begin>
+
+A grey suggestion after the cursor is AI autocomplete, which @ch-assistant covers. It is asked for with #key("⌥", "/"), and #key("Tab") accepts it, #key("→") accepts its next word and #key("Esc") dismisses it.
+
+=== Finding and moving around
+
+#key("⌘", "F") opens find and replace in the open file, and #key("⌘", "G") and #key("⇧", "⌘", "G") go to the next and previous match. #key("⌃", "G") goes to a line by its number. #key("⌘", "D") adds the next match of the selection to the selection, #key("⇧", "⌘", "L") selects every match and #key("⌥", "⌘", "↑") and #key("⌥", "⌘", "↓") add a cursor above or below. A click with #key("⌥") held also adds a cursor. The other editing shortcuts are listed in @sec-writing-shortcuts.
+
+== Languages and engines <sec-writing-engines>
+
+Spectrum writes three languages: LaTeX, Typst and Markdown. Each document is compiled by an engine, which is a program that turns the source into a PDF. This section describes the engines each language can use and how to choose between them. The default for every project is set in #menu[Settings][Engines], which has a tab for each language (@fig-writing-engines), and a project can choose its own in the Compile button's menu (@sec-writing-compile).
+
+#shots(("images/02-writing/engines-latex.png", "images/02-writing/engines-typst.png"), [#menu[Settings][Engines] on its LaTeX tab, left, with the default compile settings, and on its Typst tab, right, with the built-in Typst, older versions to install and Tinymist.]) <fig-writing-engines>
+
+=== LaTeX
+
+A LaTeX document compiles with pdfLaTeX, XeLaTeX, LuaLaTeX, Latexmk or the built-in Tectonic. Auto, the default, reads a `% !TEX program` comment in the main file, uses XeLaTeX when the document needs Unicode fonts and pdfLaTeX otherwise. When no TeX is installed, Auto uses Tectonic, which downloads its TeX bundle and each package the first time a document needs it, and a compile that cannot reach the server says so. Latexmk always runs with `-norc`, so a project's own `latexmkrc` cannot run code.
+
+The LaTeX tab of #menu[Settings][Engines] holds the defaults for every project: the compiler, auto compile, compile error handling, the bibliography tool, fast draft mode and the syntax check, which @sec-writing-compile describes. Below them it has the following,
+
+- #ui[Show live output while compiling], one switch for each engine, which shows the engine's output in the PDF's place while it runs, with a line saying what it is doing. Tectonic's is on by default, since it shows each package it downloads, which can take minutes on a first compile,
+- #ui[TeX folder], for a second TeX installation, whose programs are tried before the ones on the `PATH`, for example `/usr/local/texlive/2026/bin/universal-darwin`,
+- #ui[xjyutping folder], which uses your own copy of the xjyutping package in place of Spectrum's (@sec-writing-jyutping),
+- #ui[Biber for Tectonic], which downloads the Biber version that Tectonic's biblatex needs, since another Biber on the computer will not do. TeX Live and MiKTeX use their own and
+- #ui[Open Logs when a compile fails], which opens Tools › Logs in the PDF's place after a failed compile. Auto compile leaves it closed.
+
+=== Typst
+
+Typst 0.15.1 is built into Spectrum, so a Typst document needs nothing installed. The Typst tab installs older versions of Typst (0.14, 0.13 and 0.12) and removes them again, and #ui[Default version] chooses the one a project uses when it does not pin its own. A project pins a version in the Compile button's menu, which saves it with the project, so the document compiles the same way on another computer. The tab also downloads Tinymist, Typst's language server (@sec-writing-lsp).
+
+A Typst document can be downloaded in more forms than a PDF. The download button in the PDF's header offers PDF, PDF/A-2b for archiving, PDF/UA-1 for accessibility, PNG or SVG with one image per page and HTML, which is experimental (@fig-writing-typst-menus).
+
+#shots(("images/02-writing/compile-menu-typst.png", "images/02-writing/typst-download.png"), [For a Typst document the Compile button's menu pins a Typst version, left, and the download button offers the forms Typst can write, right.]) <fig-writing-typst-menus>
+
+=== Markdown
+
+A Markdown document compiles through pandoc, which turns it into LaTeX or Typst, and then through that language's engine. Spectrum uses a pandoc found on the computer when it is new enough, and the Markdown tab of #menu[Settings][Engines] downloads pandoc 3.12.1 (about 42 MB) when it is not. The Typst route needs pandoc 3.8.3 or later. #ui[PDF engine] on the same tab sets the default route, and each project can choose its own in the Compile button's menu, where a Markdown document has #ui[PDF engine (this project)] above the compiler (@fig-writing-compile). Tools › Logs then has #ui[Show generated LaTeX] or #ui[Show generated Typst], which shows what pandoc wrote.
+
+The project switcher of a Markdown project has two more choices. #ui[Export to Word] writes a `.docx` of the document into the project, and #ui[Convert to LaTeX project…] makes a new LaTeX project from it, leaving the Markdown project as it is.
+
+=== Converting between LaTeX and Typst <sec-writing-convert>
+
+#ui[Convert to Typst project…], in the project switcher or in a project's menu on the projects page, makes a new Typst project from a LaTeX one, and #ui[Convert to LaTeX project…] does the reverse (@fig-writing-convert). The original project stays as it is. The conversion runs through pandoc, so it needs pandoc 3.8.3 or later, and the window offers #ui[Download pandoc] when the one on the computer is older.
+
+#shot("images/02-writing/convert.png", [Convert to a Typst project asks first, and says what the conversion does with pictures and where it lists what to check.], width: 62%) <fig-writing-convert>
+
+After #ui[Convert], the window lists each step as it runs and then checks the result against the original: whether it compiles, how many labels, references, citations, numbered equations and floats came through and what share of the words. Pictures drawn in the source, such as TikZ, are compiled to PDF with their source kept beside them, and `conversion/notes.md` in the new project lists anything to check. With a model set up, #ui[Tidy flagged parts with the AI model], which is experimental, has the quick model rewrite each part the rules could only approximate, such as a title page or a table. Spectrum checks that each answer keeps the words, labels, references and maths and still compiles before using it, and #ui[Review the AI's edits…] shows them afterwards. #ui[Open new project] opens the result.
+
+== Compiling <sec-writing-compile>
+
+#ui[Compile], at the top of the PDF, builds the main file and shows the result beside the source. #key("⌘", "Enter") does the same from the keyboard, and the line beside the button says when it last compiled, or that it failed with a link to the log. While a compile runs, the button becomes #ui[Stop], which ends it at once and keeps the last PDF. The clock button beside it saves a checkpoint (@ch-references).
+
+The editor saves each file about 1.5 seconds after the last keystroke, and Compile saves what is still waiting first, so there is nothing to save by hand. #key("⌘", "S") saves at once. A file can also be edited while a compile runs: the compile reads the files as they were when it started, and the next compile picks up the change.
+
+=== The Compile button's menu
+
+The arrow beside #ui[Compile] opens its menu (@fig-writing-compile), which changes with the document it compiles. Each setting is the project's own, saved in its `.spectrum/settings.json`, so it follows the project to your other computer. Once a project has changed one, the menu also offers #ui[Use the default], which goes back to the setting in #menu[Settings][Engines], and #ui[Use for all projects], which makes the project's choice the default for every project. The settings are,
+
+- #ui[Compiler (this project)], which is Auto, pdfLaTeX, XeLaTeX, LuaLaTeX, Latexmk or Tectonic (built in), for a LaTeX document or Markdown through LaTeX,
+- #ui[Typst version (this project)], for a Typst document, in place of the compiler,
+- #ui[PDF engine (this project)], for a Markdown document: LaTeX or Typst,
+- #ui[Auto compile], which is Off, the default, or On. On compiles the document once you stop typing for the pause set in #menu[Settings][Engines], from 1 to 10 seconds. A newer automatic compile takes the place of one that is out of date,
+- #ui[Bibliography tool], which is Auto, BibTeX or Biber. Auto follows a `% !BIB program = biber` comment in the main file and otherwise runs the tool the document's bibliography package needs and
+- #ui[Fast draft mode], which compiles in one pass with each image drawn as a box of its size, for quick previews. Numbers and references can lag behind until a full compile.
+
+Below them are #ui[Stop compilation] and #ui[Recompile from scratch], which first clears what earlier compiles of the document kept. Two more settings apply to every project and are only in #menu[Settings][Engines][LaTeX]: #ui[Compile error handling], which is Try to compile despite errors, the default, or Stop on first error, and #ui[Syntax check before compiling] (@sec-writing-lsp).
+
+#shots(("images/02-writing/compile-menu.png", "images/02-writing/compile-menu-markdown.png"), [The Compile button's menu for a LaTeX document, left, and for a Markdown document, right, which chooses its PDF engine first.]) <fig-writing-compile>
+
+=== What a compile keeps
+
+The `.aux`, `.bbl`, `.toc` and similar files of each document are kept between compiles, for each compiler, in the app's own data folder, and the next compile reads them back. A document whose labels, headings and citations have not changed is therefore done in one pass. BibTeX and Biber only run when something is cited, another pass only runs when the log asks for one, and makeindex and makeglossaries run when the document has an index or glossaries. Files are kept only from a compile without errors, and when TeX cannot read one of them, Spectrum clears them and compiles once more from scratch, so a damaged `.aux` never locks a document out. The compile itself runs in a temporary folder and writes only the PDF into the project. A checkpoint is saved after each successful compile (@ch-references).
+
+=== Several documents in one project
+
+A project can hold more than one document, such as a set of lecture notes and the tutorial solutions that refer to them. Compile and #key("⌘", "Enter") build the main file, which is chosen with #ui[Set as main file] in a file's menu. The Compile button's menu then lists the other documents at its top, and choosing one compiles it once without changing the main file, as does #key("⇧", "⌘", "Enter") for the document that is open. #ui[Recompile all] compiles every document, linked documents first.
+
+With #ui[PDF follows the open file] on, in #menu[Settings][Editor], opening another document's source, or a chapter whose `% !TEX root = ../thesis.tex` comment names one, shows that document's PDF, and Compile and auto compile then build the document that is showing. Opening a file that is not a document leaves the PDF as it is. The page bar at the bottom of the PDF names the PDF that is showing and switches between the documents' PDFs.
+
+Documents can refer to the labels of another with `xr-hyper`, for example `\externaldocument[notes:]{notes}` and `\eqref{notes:eq:ohm}`. Spectrum keeps the `.aux` files of every document for this, compiles a linked document first when it has not been compiled or has changed since, and completes `\ref{notes:` with the labels of the linked document.
+
+=== The log
+
+A failed compile marks the status line #ui[Failed — see Logs], and the #ui[Tools] button shows a badge with the number of errors and warnings. Tools › Logs lists them as cards under #ui[Warnings and errors], each with its message and its file and line, which a click jumps to (@fig-writing-logs). #ui[Full log] shows the engine's whole output. #ui[Fix with AI] on a card, or #ui[Fix all with AI] for the whole list, asks the assistant for a fix that opens as changes to review (@ch-assistant). When a compile needs something Spectrum can download, such as pandoc, Biber for Tectonic or a pinned Typst version, the log says so with a button to download it.
+
+#shot("images/02-writing/logs.png", [Tools › Logs after a compile with one error and two warnings. Each card links to its line in the source and has Fix with AI.], width: 72%) <fig-writing-logs>
+
+For a Typst document, the errors and warnings of the last compile are also underlined in the source, where the pointer resting on one shows its message, until the next compile.
+
+== The PDF preview <sec-writing-preview>
+
+The PDF preview fits the page to the width of its column by default. It zooms with a trackpad pinch, with #key("⌘") and the scroll wheel, with #key("⌘", "=") and #key("⌘", "−") or from the zoom menu in its header, which also holds Fit width (#key("⌘", "0")), Fit page (#key("⌘", "9")) and fixed sizes from 50 to 200 per cent. The page bar at the bottom moves between pages, and its page number can be typed over. While the PDF has the focus, #key("⌘", "F") finds text in it, and Page Up, Page Down, Home and End move through its pages. Each document's PDF opens at the page it was left at.
+
+Links in the PDF work as in a PDF viewer. The contents, `\ref`, `\eqref` and `\cite` jump to the spot they point to, a web address opens in the browser and a reference into a linked document opens that document's PDF at the place it names.
+
+#shots(("images/02-writing/pdf-outline.png", "images/02-writing/pdf-more-menu.png"), [Document outline beside the pages, left, lists the PDF's bookmarks with the current section marked. The ··· menu, right, holds the other views and the page colours.], columns: (1.6fr, 1fr)) <fig-writing-pdf>
+
+The PDF's header holds the following,
+
+- #ui[Document outline], which opens a sidebar beside the pages with two tabs: #ui[Contents], which lists the PDF's bookmarks with the current section marked (or the source's headings when the PDF has none), and #ui[Pages], which shows a thumbnail of each page with the current one outlined (@fig-writing-pdf),
+- the zoom menu,
+- #ui[Download PDF], which saves a copy of the PDF, or the download menu of a Typst document (@sec-writing-engines) and
+- the ··· menu, which holds #ui[Two-page view], #ui[Annotate], #ui[Find in PDF], #ui[Presentation mode], the colour of the pages for the mode showing (@sec-start-appearance) and #ui[Show logs].
+
+Presentation mode shows the PDF one page at a time in full screen, for slides. A right-click on the PDF offers #ui[Add a note here], which pins a sticky note to that spot, and #ui[Add to-do here], which adds a to-do linked to that page (@sec-writing-todos). The notes are listed under the PDF with their pages, each a click away, and with #ui[Clear all] (@fig-writing-note). They are saved with the project, one small file each in `.spectrum/notes`.
+
+#shot("images/02-writing/pdf-note.png", [A note added with a right-click on the PDF. The notes are listed under the pages with the page each one is on.], width: 72%) <fig-writing-note>
+
+=== Jumping between the source and the PDF
+
+A double click in the PDF jumps to the line of the source that made it, and a double click on a line of the source scrolls the PDF to it (@fig-writing-synctex). The spot is marked with a highlight that fades after a few seconds. LaTeX uses the SyncTeX data that every compile writes. Typst and Markdown find the line by its words in the PDF, and a Typst project with Tinymist jumps exactly (@sec-writing-lsp). #menu[Settings][Editor] turns the double-click jumps off and on and sets the highlight's colour and how long it lasts, from 1 to 10 seconds.
+
+#shot("images/02-writing/synctex-to-pdf.png", [A double click on a line of the source has scrolled the PDF to the paragraph it made, which is highlighted until the highlight fades.], width: 80%) <fig-writing-synctex>
+
+== TexLab and Tinymist <sec-writing-lsp>
+
+A language server is a program that reads a project's source as it is typed and tells the editor what it finds. Spectrum uses two: TexLab for LaTeX and Tinymist for Typst. Both are optional, and without them the editor works as described in the rest of this chapter.
+
+=== TexLab
+
+Spectrum includes TexLab 5.26.0 and starts it for each open project. TexLab reads the project's files from the disk and the open file as it is typed, and gives the editor the following,
+
+- squiggles under references and citations that have no label or entry, labels defined twice or never used, missing braces, environments that end with the wrong `\end` and mistakes in `.bib` files, each with its message when the pointer rests on it (@fig-writing-texlab),
+- the entry a citation stands for, or what a `\ref` points to, when the pointer rests on it,
+- Go to definition (#key("F12"), or a click with #key("⌘") held) on a `\ref`, `\cite` or `\input`, which opens the file it leads to,
+- Find references (#key("⇧", "F12")), which lists every use of the label, citation key or command at the cursor in a panel below the editor, with each line a click away and
+- Rename (#key("F2")), which renames a label, citation key or command everywhere in the project, the `.bib` files included. It shows the files with the number of changes in each, saves a Before rename checkpoint and then saves every file (@fig-writing-rename).
+
+#shots(("images/02-writing/texlab-hover.png", "images/02-writing/find-references.png"), [A reference with no label, left, is underlined, and the pointer resting on it shows TexLab's message. Find references, right, lists every use of `eq:gain` below the editor.], columns: (1fr, 2fr)) <fig-writing-texlab>
+
+#shots(("images/02-writing/rename.png", "images/02-writing/rename-confirm.png"), [Rename asks for the new name, left, and then lists the files it will change with the number of changes in each, right.]) <fig-writing-rename>
+
+With TexLab the sidebar's Outline covers the whole document across its `\input` files, with the section numbers of the last compile and the figures and tables by their captions. Document insights marks the labels TexLab finds unused or defined twice and the citations missing from the `.bib`, and Review adds TexLab's findings to its checks (@ch-references).
+
+When #ui[Syntax check before compiling] is on, in #menu[Settings][Engines][LaTeX], a compile you start first looks at TexLab's findings in the document's files. When there are missing braces or mismatched environments, it lists them and asks whether to compile anyway, and #ui[Cancel] goes to the first one (@fig-writing-syntax). References and citations with no label or entry never stop a compile, and auto compile skips the check.
+
+#shot("images/02-writing/syntax-check.png", [The syntax check before a compile has found a brace that is never closed.], width: 55%) <fig-writing-syntax>
+
+TexLab's own completion, building and formatting are left off, so Spectrum's completion stays as it is.
+
+=== Tinymist
+
+Tinymist 0.15.10 is downloaded from #menu[Settings][Engines][Typst] (about 31 MB, checked against its SHA-256), and then starts for each open project. In `.typ` files it gives the editor completion for the document's own functions, packages, labels and citations, hovers with signatures and documentation, Go to definition, Find references and Rename as TexLab does, errors as they are typed, #ui[Format document] with typstyle (#key("⌥", "⇧", "F"), or from the editor's right-click menu) and a word count of the PDF in Document insights.
+
+Tinymist has Typst 0.15.1 inside it. In a project on that version, its errors take the place of the last compile's marks, and a double click jumps between the PDF and the source exactly. A project pinned to another version keeps the compile's marks and the word matching for its jumps, since Tinymist would judge its code by the rules of 0.15. #ui[Remove Tinymist] in the same place takes it away again.
+
+== Floats <sec-writing-floats>
+
+A float is a figure or table that LaTeX places where it fits. The Floats panel inserts figures and tables at the cursor, writing the environment, caption and label for you. #ui[Insert figure] and #ui[Insert table] in the toolbar open it at the figure or the table card, and so do #ui[Figure…] and #ui[Table…] in Insert (+). Each card ends with #ui[What these options mean], which explains its options in the panel.
+
+=== Figures
+
+The figure card takes an image that is dropped on the card or on the editor, pasted or chosen with a click (@fig-writing-figure). It saves the image in the project's `figures` folder, adding `-2` to the name when that name is taken, and inserts it as a figure with a caption, a label and a size. PNG, JPEG, PDF and EPS go in as they are, HEIC photos are converted to JPEG, and GIF, WebP, BMP, TIFF and SVG are converted to PNG. Its options are,
+
+- #ui[Layout], which is Single, Side by side or Grid, for several images under one caption as sub-figures,
+- #ui[File name], #ui[Caption] and #ui[Label], which is made from the file name,
+- #ui[Size by], which is a share of the line width (Full, ¾, Half, Third or Custom), a width, a height, a box to fit in or a scale. A tall image is kept within the page,
+- #ui[Crop edges], which trims the image's edges with `trim` and `clip` and
+- #ui[Placement] and #ui[Span both columns], which @tab-writing-placement describes.
+
+#shots(("images/02-writing/floats-figure.png", "images/02-writing/floats-table.png"), [The figure card with an image chosen, left, and the table card with a filled grid, right. Booktabs draws the heavier rules at the top and bottom of the table.]) <fig-writing-figure>
+
+Below the card, #ui[Project figures] lists the images already in the project, ready to insert. #ui[Image → LaTeX] turns a picture of an equation, a table or other content into LaTeX with the vision model (@ch-assistant).
+
+=== Tables
+
+The table card builds a table from a grid (@fig-writing-figure). #key("Tab") moves to the next cell and Return moves down, and rows pasted from Numbers, Excel or a CSV file fill the grid. The buttons below it add and remove rows and columns, and each column's alignment is chosen above it. Its options are,
+
+- #ui[Lines], which is Booktabs, Grid, Minimal or None. Clicking between two rows or two columns, or along an edge, adds or removes a line across the table, and the buttons under #ui[Lines at row and column] do the same from the keyboard for the cell last edited. Once a line is changed by hand, the card says which preset it was changed from,
+- #ui[Merge right], #ui[Merge down] and #ui[Split], which merge cells with `\multicolumn` and `\multirow`, and #ui[Short rule below], which draws a `\cmidrule` under a heading over a group of columns,
+- #ui[Environment], which is `tabular`, `tabularx` or `xltabular` for a table that runs over pages,
+- #ui[Header row], #ui[Line breaks in cells] (with `makecell`), #ui[Notes under the table] (with `threeparttable`) and #ui[Escape special characters], which makes `&`, `%`, `#`, `_` and a price's `$` print as themselves while commands still work and
+- #ui[Float], with #ui[Placement], #ui[Span both columns], #ui[Caption] and #ui[Label].
+
+#ui[Source] shows the LaTeX the card will insert, which can be edited before #ui[Insert table] or copied with #ui[Copy] (@fig-writing-table-source). In a Typst document the table is a `#table` with its lines as `table.hline` and `table.vline`, and in a Markdown document a pipe table, which has no lines of its own. The packages a float needs, such as `graphicx`, `float`, `booktabs` and `tabularx`, are added before `\begin{document}` when the project does not load them yet. #ui[Table → chart], below the card, plots a table selected in the editor with matplotlib and inserts the chart as a figure, using the main model to write the plotting code (@ch-assistant).
+
+#shot("images/02-writing/floats-table-source.png", [The caption, label and source of the table above. The label is made from the caption and can be typed over.], width: 62%) <fig-writing-table-source>
+
+=== Placement
+
+The placement of a figure or table is chosen with the letters in @tab-writing-placement, which can be combined. `H` is used on its own and is the default. With no letter, LaTeX uses `tbp`. The letters allow places rather than order them, so `[ht]` means here or else the top of a page. #ui[Span both columns] makes a `figure*` or `table*` for two-column papers, which only takes `t`, `p` and `!`.
+
+#figure(
+  table(
+    columns: (auto, 1fr),
+    align: left,
+    table.header([Letter], [Meaning]),
+    [`H`], [exactly here, no longer floating (needs the `float` package, which is added)],
+    [`h`], [roughly here in the text, if there is room on the page],
+    [`t`], [at the top of a page],
+    [`b`], [at the bottom of a page],
+    [`p`], [on a separate page that holds only floats],
+    [`!`], [ignore LaTeX's limits on how many floats a page holds and how much of it they fill],
+  ),
+  caption: [The placement letters of a float.],
+) <tab-writing-placement>
+
+== Document insights <sec-writing-insights>
+
+#ui[Document insights] in the toolbar takes the PDF's place with tabs for the Overview, Headings, Figures, Tables, Equations, Labels, Citations and To-dos, each with its count (@fig-writing-insights). The Overview has the counts, the number of pages and, for a LaTeX document, the word counts from `texcount`: the words in the text, in headings and outside the text, and the inline and displayed maths. Its #ui[Submission metadata] lists the document's title, authors, keywords, date and abstract, and #ui[Copy submission metadata] copies them for a submission form.
+
+#shots(("images/02-writing/insights-overview.png", "images/02-writing/insights-labels.png"), [Document insights. The Overview, left, has the counts and the word counts from texcount, and the Labels tab, right, gives each label its number and page from the last compile.]) <fig-writing-insights>
+
+The other tabs list each item with the number and page it had in the last compile, read from the `.aux` files that compile kept for LaTeX and from Typst's own evaluation for Typst, and a click on a row jumps to its line in the source. A Markdown document lists its headings, figures, tables, equations, citations and labels from the source, without word counts, numbers or pages, since the LaTeX pandoc writes is not the document. The footer says that the numbers and pages come from the last compile, marks them as out of date when the source has changed since and has #ui[Refresh].
+
+== Spelling and grammar <sec-writing-checks>
+
+Spectrum checks spelling as you type and grammar when you ask, and both run on the computer, so nothing you write is sent anywhere. Their settings are in #menu[Settings][Spelling & grammar] (@fig-writing-spelling-settings).
+
+=== Languages
+
+Spectrum checks writing in the languages listed in #menu[Settings][Spelling & grammar], which is Australian English alone unless others are added with #ui[Add a language…]. Each paragraph is checked in one of the listed languages and never in another. Language markup decides first: babel and polyglossia in LaTeX, `text(lang:)` in Typst and `lang` in Markdown front matter and pandoc's spans and divs. Otherwise the script of the text decides, and for listed languages that share a script, their own dictionaries vote on the paragraph's words. Variants of one language, such as Australian and US English, are never guessed: the one higher in the list is used. A project can have its own list of languages, which travels with it.
+
+=== Spelling
+
+Spelling is checked in `.tex`, `.typ`, `.md` and `.txt` files, and misspelt words get a red underline. A right-click on one offers suggestions, #ui[Add to dictionary], #ui[Add to project dictionary] and #ui[Ignore] (@fig-writing-spelling). The project dictionary is kept in the project's `.spectrum` folder, so it travels with the project, while your dictionary covers every project and can be edited at the foot of #menu[Settings][Spelling & grammar].
+
+#shot("images/02-writing/spelling-menu.png", [A right-click on a misspelt word offers its corrections and the two dictionaries.], width: 62%) <fig-writing-spelling>
+
+Spelling uses the Hunspell 1.7.6 spell checker. Australian English uses SCOWL's `en_AU-large`, which sets the standard (colour, organise, centre), AussieDic, which adds Australian places, names and slang such as Parramatta and arvo, and SCOWL's `en_US`, which is only used to recognise the American spellings in AussieDic, so color and organize are still flagged. American, British and Canadian English use their own SCOWL dictionaries. Dictionaries for other languages download only when asked for, from their row in Settings or when the editor first meets a listed language that needs one, and each is checked against its SHA-256 before it is used. Traditional Chinese has no dictionary, so in a mostly Traditional paragraph Spectrum underlines stray Simplified-only characters and suggests their Traditional forms.
+
+=== Grammar
+
+#ui[Check grammar] in the toolbar, or #key("⇧", "⌘", ";"), reads each paragraph of the open file in its language and lists the issues in the PDF's place (@fig-writing-grammar). Each issue is underlined in the editor and listed with its sentence, and it can be fixed with one click on the suggestion, ignored, or turned off for the project with #ui[Ignore rule]. English goes to Harper 3.0.0, in the listed dialect, which starts with the first check and runs on the computer. #ui[Include style suggestions] adds long sentences, wordiness and readability, and #ui[Serial comma] chooses whether the Oxford comma is flagged, which it is by default in line with the Australian Government Style Manual.
+
+#shot("images/02-writing/grammar.png", [Check grammar has found two issues in the open file, each with its sentence, a suggestion to apply and Ignore and Ignore rule.], width: 72%) <fig-writing-grammar>
+
+Other languages go to LanguageTool 6.8 when it is turned on in #menu[Settings][Spelling & grammar]. Spectrum downloads it when you ask (its jars and a Java runtime, about 310 MB, each checked against its SHA-256) and runs it on the computer only while you check grammar. English can go to LanguageTool too, in place of Harper.
+
+#shot("images/02-writing/settings-spelling.png", [#menu[Settings][Spelling & grammar], with the listed languages, the spell checker and its dictionaries and the grammar checkers.], width: 72%) <fig-writing-spelling-settings>
+
+Both checkers read only the prose. In LaTeX, commands, maths, comments, citation and reference keys, URLs, the preamble and code are skipped, while the text of headings, captions, footnotes and `\emph`, `\textbf` and similar commands is checked. Typst skips its comments, raw text, maths, labels and references and the arguments of calls apart from content in brackets. Markdown skips front matter, code, HTML, maths, URLs, link targets and citations, keeping the prose and the link text.
+
+== The to-do list <sec-writing-todos>
+
+The #ui[To-dos] tab in the sidebar holds a to-do list for the project, with a badge counting the open to-dos (@fig-writing-todos). It has two groups,
+
+- #ui[Mine], your own to-dos, each with a tick box, its text, an optional link, Edit and Delete. A link points at a line of the source, which is found again by its text when lines move, at a page of the PDF or at a reference and
+- #ui[In the source], which lists `\todo`, `\missingfigure` and `\fixme`, the notes of the fixme package (`\fxnote`, `\fxwarning`, `\fxerror` and `\fxfatal`) and `TODO`, `FIXME` and `XXX` in comments. Each one jumps to its line, and it is done once its mark is taken out of the source.
+
+#shot("images/02-writing/todos.png", [The To-dos tab with two of your own to-dos and two from the source, a `\todo` and a `TODO` comment, each with its line.], width: 42%) <fig-writing-todos>
+
+A to-do is added in the box at the top of the tab, or with #ui[Add to-do here] in the editor's right-click menu, which links the line, or in the PDF's, which links the page. The tab shows Open, Done or All and Mine, Source or both, and the sidebar's search finds to-dos too. Each to-do is a small file in the project's `.spectrum/todos` folder, so it travels with the project. Document insights also has a To-dos tab, and the open to-dos go with an agent's first message (@ch-assistant).
+
+== Jyutping <sec-writing-jyutping>
+
+Jyutping is the romanisation of Cantonese that the Linguistic Society of Hong Kong devised. The #ui[Jyutping] button (粵) in the toolbar, also in Insert (+), adds Jyutping above the Chinese characters of a LaTeX document with the xjyutping package, which Spectrum includes. It opens a window with three modes (@fig-writing-jyutping),
+
+- #ui[Off], the default, where Spectrum adds nothing,
+- #ui[Apply when compiling], where Spectrum adds the Jyutping each time it compiles without changing your `.tex` files and
+- #ui[In the .tex file], where the package and the font go into the preamble and the Chinese text is put in a `jyutpingscope` or `\xjyutping*{…}` by hand.
+
+#shot("images/02-writing/jyutping-auto.png", [The Jyutping window in Apply when compiling, with the Chinese font, a preview of the sample line and the package's options.], width: 62%) <fig-writing-jyutping>
+
+=== Applying it automatically
+
+With #ui[Apply when compiling], each paragraph that holds Chinese is read as a whole, so 行 is read _hong4_ in 銀行 and _haang4_ in 行路 (@fig-writing-jyutping-pdf). Verbatim text, `\verb` and code listings are left as they are, and so is a document that loads xjyutping itself. This is the simplest mode for a document that should carry Jyutping throughout.
+
+#shot("images/02-writing/jyutping-pdf.png", [A document compiled with Apply when compiling. The source has only the Chinese text, and 行 takes its reading from the word around it.], width: 80%) <fig-writing-jyutping-pdf>
+
+=== Writing it into the .tex file
+
+#ui[In the .tex file] suits a document that needs Jyutping on some passages only, or one that must compile elsewhere. Its buttons are #ui[Add to preamble], which writes `\usepackage[…]{xjyutping}` with the chosen options and the Chinese font into the preamble (and becomes #ui[Update preamble] and #ui[Remove from preamble] once it is there), #ui[Wrap selection in scope], #ui[Wrap selection in \\xjyutping\*] and #ui[Insert scope at cursor] (@fig-writing-jyutping-manual). The editor's right-click menu has the same wrapping, and completion lists the package's commands.
+
+#shots(("images/02-writing/jyutping-manual.png", "images/02-writing/jyutping-preamble.png"), [In the .tex file, left, writes the package into the preamble and wraps the selection. The preamble it wrote, right, loads xeCJK with the chosen font before xjyutping.]) <fig-writing-jyutping-manual>
+
+=== Options and fonts
+
+The window has every option of the package: the size, height and spacing of the Jyutping, its font and formatting, the formatting of guessed readings for proofreading, the cell width, the script, lazy sounds (懶音), the alignment, fancy tones drawn as pitch strokes, keeping the source's line breaks for verse and lyrics, and a debug log. #ui[Preview] compiles a sample line, which can be typed over, with the options as they are set. The settings are saved with the project, and #ui[Reset to defaults] clears them.
+
+Chinese support is turned on with Jyutping. When the document does not load ctex, xeCJK or LuaTeX-ja, xeCJK (or `luatexja-fontspec` under LuaLaTeX) is added with the font chosen under #ui[Chinese font]. Spectrum includes six Chinese fonts, which load by file name in every LaTeX compile: Noto Serif TC and SC and Noto Sans TC and SC, each with bold, and LXGW WenKai TC and LXGW WenKai. #ui[Other font installed on this computer…] names any other font. Changing the font or the engine changes the lines already in the preamble rather than adding new ones, so the `\setCJKmainfont` line is rewritten in place when the window closes.
+
+xjyutping needs XeLaTeX or LuaLaTeX from a TeX installation, so a project set to Auto or pdfLaTeX compiles with XeLaTeX while Jyutping is on, and the log says so. The built-in Tectonic's LaTeX is too old for it. #menu[Settings][Engines][LaTeX] has an #ui[xjyutping folder], which can be a copy of the package's repository, used in place of Spectrum's own when set.
+
+== Keyboard shortcuts <sec-writing-shortcuts>
+
+Every shortcut in @tab-writing-shortcuts can be changed in #menu[Settings][Shortcuts]. Click a shortcut and press the new keys, press Delete to remove it or press Escape to cancel. A shortcut that is already in use is marked, and shortcuts that macOS keeps for itself, such as #key("⌘", "C"), are refused. #ui[Restore all defaults] puts every shortcut back. The diagram composer's tool keys are set in #menu[Settings][Diagram composer] and described in @ch-composer.
+
+#figure(
+  table(
+    columns: (1fr, auto),
+    align: left,
+    table.header([Action], [Default]),
+    [Indent and unindent lines], [#key("⌘", "]") and #key("⌘", "[") (or #key("Tab") and #key("⇧", "Tab") on a selection)],
+    [Comment or uncomment lines], [#key("⌘", "/")],
+    [Move lines up or down], [#key("⌥", "↑") and #key("⌥", "↓")],
+    [Duplicate lines above or below], [#key("⌥", "⇧", "↑") and #key("⌥", "⇧", "↓")],
+    [Delete lines], [#key("⇧", "⌘", "K")],
+    [Bold, italic and emphasis], [#key("⌘", "B"), #key("⌘", "I") and #key("⇧", "⌘", "E")],
+    [Add the next match to the selection], [#key("⌘", "D")],
+    [Select all matches], [#key("⇧", "⌘", "L")],
+    [Add a cursor above or below], [#key("⌥", "⌘", "↑") and #key("⌥", "⌘", "↓")],
+    [Go to the matching bracket], [#key("⇧", "⌘", "\\")],
+    [Go to line], [#key("⌃", "G")],
+    [Fold and unfold], [#key("⌥", "⌘", "[") and #key("⌥", "⌘", "]")],
+    [Fold all and unfold all], [#key("⌃", "⌥", "[") and #key("⌃", "⌥", "]")],
+    [Zoom the PDF in or out], [#key("⌘", "=") and #key("⌘", "−") (or pinch)],
+    [Fit the PDF to the width or the page], [#key("⌘", "0") and #key("⌘", "9")],
+    [Save], [#key("⌘", "S")],
+    [Save a checkpoint], [#key("⇧", "⌘", "S")],
+    [Compile], [#key("⌘", "Enter")],
+    [Compile the open document], [#key("⇧", "⌘", "Enter")],
+    [Show or hide the assistant], [#key("⌘", "L")],
+    [Check grammar], [#key("⇧", "⌘", ";")],
+    [AI autocomplete], [#key("⌥", "/")],
+    [Show or hide the sidebar], [#key("⌘", "\\")],
+    [Editor only, editor and PDF, PDF only], [#key("⌘", "1"), #key("⌘", "2") and #key("⌘", "3")],
+  ),
+  caption: [The shortcuts that can be changed in #menu[Settings][Shortcuts].],
+) <tab-writing-shortcuts>
+
+A few shortcuts are fixed, and they are listed in @tab-writing-fixed. While the PDF has the focus, #key("⌘", "F") finds text in the PDF, and Page Up, Page Down, Home and End move through its pages.
+
+#figure(
+  table(
+    columns: (1fr, auto),
+    align: left,
+    table.header([Action], [Key]),
+    [Find and replace], [#key("⌘", "F")],
+    [Find next and previous], [#key("⌘", "G") and #key("⇧", "⌘", "G")],
+    [Undo and redo], [#key("⌘", "Z") and #key("⇧", "⌘", "Z")],
+    [Settings], [#key("⌘", ",")],
+    [Go to definition (TexLab, Tinymist)], [#key("F12"), or a click with #key("⌘") held],
+    [Find references], [#key("⇧", "F12")],
+    [Rename a label, citation key or command], [#key("F2")],
+    [Format a Typst document (Tinymist)], [#key("⌥", "⇧", "F")],
+  ),
+  caption: [The fixed shortcuts.],
+) <tab-writing-fixed>
