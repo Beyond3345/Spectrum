@@ -126,7 +126,7 @@ The #ui[Axes] column sets what is round the series. Its first fields are always 
 - #ui[x from, to] and #ui[y from, to] are the ranges of the axes, left at #ui[Auto] for pgfplots to fit them to the series. With both ends of the $y$ range set, a function is broken where it leaves the range far behind, as at an asymptote.
 - #ui[Legend] places the legend: #ui[Top left], #ui[Top right], #ui[Bottom left], #ui[Bottom right], #ui[Outside, top right], beside the plot where no curve can be and the default, or #ui[Below, in a row], under the $x$ label.
 
-#shot("images/10-plots/axes-more.png", [The fields under #ui[Grid, size, scales, ticks and more].], width: 50%) <fig-plots-axes>
+#shot("images/10-plots/axes-more.png", [The fields under #ui[Grid, size, scales, ticks and more].], width: 42%) <fig-plots-axes>
 
 The fold #ui[Grid, size, scales, ticks and more] (@fig-plots-axes) holds the rest.
 
@@ -144,9 +144,9 @@ The Style menu in the composer's top bar has one setting for plots, #ui[Write un
 
 == Annotations <sec-plots-annotations>
 
-#shot("images/10-plots/annotations.png", [The #ui[Annotations] column of the RC charging plot in @fig-plots-rc: a tangent at $x = 0$, and a point with drop lines at $x = 2$ and its label.], width: 50%) <fig-plots-annotations>
-
 An annotation marks something on the plot. #ui[Add an annotation] adds one, and the menu at its top sets its kind. Every annotation but the reference line and the shaded area goes on a function series, which #ui[On] picks, and TeX works out its place from the function, so it moves with the curve when the expression changes. @tab-plots-annotations lists the kinds.
+
+#shot("images/10-plots/annotations.png", [The #ui[Annotations] column of the RC charging plot in @fig-plots-rc: a tangent at $x = 0$, and a point with drop lines at $x = 2$ and its label.], width: 50%) <fig-plots-annotations>
 
 #figure(
   table(
