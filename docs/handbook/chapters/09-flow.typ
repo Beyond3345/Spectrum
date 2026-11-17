@@ -208,7 +208,7 @@ The Typst flowchart is the same canvas, rail and inspector as the TikZ one, with
 
 #shots(
   ("images/09-flow/euclid-canvas.png", "images/09-flow/euclid-preview.png"),
-  [Euclid's algorithm in the Typst flowchart (left) and its preview, compiled by the built-in Typst (right). The arrow back to the decision is right-angled.],
+  [Euclid's algorithm in the Typst flowchart (left) and its preview, compiled by the built-in Typst (right). The decision prints at the size drawn, and the right-angled arrow back to it turns where the canvas shows.],
 ) <fig-flow-euclid>
 
 The drawing is saved as a Typst file that imports fletcher and draws a `diagram` with a `node` for each shape and an `edge` for each arrow, its positions in centimetres with $y$ going up,
@@ -220,19 +220,21 @@ The drawing is saved as a Typst file that imports fletcher and draws a `diagram`
   node-stroke: 0.4pt,
   node((1cm, -0.5cm), [Start], shape: fletcher.shapes.pill,
     width: 2cm, height: 1cm, name: <n1>),
-  node((1cm, -4.75cm), [$b = 0$?], shape: fletcher.shapes.diamond,
+  node((1cm, -4.75cm), [$b = 0$?],
+    shape: fletcher.shapes.diamond.with(fit: 0),
     width: 2.5cm, height: 1.5cm, name: <n3>),
   edge(<n3>, <n4>, "->", label: [Yes], label-side: left),
+  edge(<n6>, (-3cm, -4.75cm), <n3>, "->"),
 )
 ```
 ]
 
-The import line follows the Typst version the project compiles with. Typst 0.13 and later get fletcher 0.5.8, and Typst 0.12 gets fletcher 0.5.5, which has no cylinder, so a cylinder is drawn as a plain box there. Typst downloads fletcher the first time the drawing compiles, so that first compile needs the internet. Leave the import line as the composer wrote it.
+A shape is written at the size it has on the canvas: a diamond, a parallelogram or a trapezium with `fit: 0` so its outline is the box drawn, a circle or state with its `radius`. A right-angled arrow is written through the corners it turns at, such as `(-3cm, -4.75cm)` in the last line, so it turns where the canvas shows. The import line follows the Typst version the project compiles with. Typst 0.13 and later get fletcher 0.5.8, and Typst 0.12 gets fletcher 0.5.5, which has no cylinder, so a cylinder is drawn as a plain box there. Typst downloads fletcher the first time the drawing compiles, so that first compile needs the internet. Leave the import line as the composer wrote it.
 
 The file also has a line that sets the page to the size of the drawing when the composer compiles it on its own. A document that takes the drawing in with `#include "/diagrams/euclid.typ"` keeps its own page.
 
 #note(title: [Where fletcher differs from the canvas])[
-  fletcher draws some things its own way, so check the preview of a Typst flowchart before inserting it. A diamond, a parallelogram and a trapezium come out larger than on the canvas, as fletcher draws their outline round a box of the size given. A right-angled arrow turns at the corner fletcher chooses, which is the one the canvas shows when the arrow leaves one shape across and reaches the other up or down, as in @fig-flow-euclid, but not always otherwise. A curved arrow is drawn with a fixed bend of 30°.
+  fletcher still draws a few things its own way, so check the preview of a Typst flowchart before inserting it. A loop is a circle sized by the shape it is on, larger than the loop on the canvas. A curved arrow is a fixed arc of 30° between the two shapes, rather than leaving and arriving square to the sides chosen. Arrowheads are fletcher's own open heads, and an arrow ends where it meets the shape's drawn outline, while the canvas ends it at the middle of a side of the shape's box, which differs on a slanted side. A right-angled arrow whose first corner lies behind the side it leaves, such as one from a shape's right side to a shape further left, leaves by the side facing that corner, while the canvas draws it back across the shape.
 ]
 
 When a project is converted between LaTeX and Typst, as described in @ch-writing, each flowchart drawn in the composer is written again in the other language from its drawing, rather than kept as a picture. One whose text the other language cannot read the same way, or which has a document or a vector stack, stays a picture.
