@@ -85,6 +85,12 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ### Fixed
 
+- Circuits and General drawing:
+  - A ground, supply or terminal no longer logs an error while the circuit symbols load
+  - A terminal with a Voltage between two points across it stays open, without a junction dot
+  - A dimension's third handle can be dragged right after drawing it, while Dimension is still picked
+  - Text, and a part's text inside it, show upright on the canvas, as they print
+  - A drawing opens with its large symbols, such as the axes or an antenna's waves, fully in view
 - Structures:
   - A bending moment diagram labels its values with the right sign on a beam drawn from right to left, so a 6 m beam with 10 kN/m reads 45 kN m, not −45. The diagram itself was already on the correct side
   - A spring support's stiffness no longer depends on the longest member in the structure. Its stiffness is now set in force per length (a moment per radian for a rotational spring) against the members' EI, so drawings with springs show different reactions from before
