@@ -114,6 +114,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
   - The arrow keys move the selected objects a cell, and the label side is named as the arrow runs (Left or Right for a vertical arrow)
   - Converting to Typst imports the fletcher version your default Typst can load, and a flowchart with a document or stack stays a picture
   - A drag inside a container or swimlane moved the whole box instead of reaching what is in it
+  - A swimlane can be selected and moved by its title band
+  - A commutative diagram's hook (↪) shows on the arrow's left on the canvas, as tikz-cd prints it
 - Plots, Mohr's circle, Venn diagrams and Mermaid:
   - A % in a plot's, Venn diagram's or Mohr's circle's text no longer stops the figure compiling
   - Mohr's circle and Venn diagram labels move clear of the circles, the axes and each other, and a Venn diagram's frame grows to hold long set names. Existing figures get the new places when next opened
@@ -123,6 +125,9 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
   - tan(x) and the like are no longer joined across their asymptotes when the y range is set
   - A data file without a header row offers its columns by place, and a file whose columns cannot be found says so
   - A Mermaid diagram's PDF or PNG in the document follows its code each time it is saved
+  - A Mermaid diagram fills its pane up to its own size, rather than drawing 300 px wide
+  - A series changed from typed points to a curve no longer takes a mark at every sample
+  - A coloured series' marks are filled in its colour
 - Space could be recorded as a diagram shortcut although the canvas uses it to pan
 
 ## 2.4.1 (15 November 2026)
