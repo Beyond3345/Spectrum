@@ -27,3 +27,6 @@ tidy-bench-results/
 
 # The compiled handbook: build it with the command at the top of docs/handbook/handbook.typ
 docs/handbook/handbook.pdf
+# Spectrum's own files when the handbook is opened as a project, and drawings made while testing it
+docs/handbook/.spectrum/
+docs/handbook/diagrams/
