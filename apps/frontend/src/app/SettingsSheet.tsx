@@ -1814,8 +1814,8 @@ export function ComposerPane() {
         <span>
           Symbols from other packages
           <span className="field-hint">
-            Adds a Symbol sets… button below a drawing’s symbols, for adding another package’s symbols to it, such as mechanical supports in a circuit. A
-            diagram’s own symbols are always there.
+            Adds a Symbol sets… button below a drawing’s symbols, for adding other kinds of symbol to it, such as logic gates or mechanical supports in a
+            circuit. Off, a drawing lists only its own kind: a circuit’s parts in a circuit, gates in a logic schematic.
           </span>
         </span>
       </label>

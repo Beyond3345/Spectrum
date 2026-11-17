@@ -11,8 +11,8 @@ The chapter is mainly divided into six parts. First it describes the parts list 
 Both composers start from #ui[Draw a diagram], the chooser described in @ch-composer. Specifically, the circuit starters are under #menu[Engineering][Electrical and electronics], and General drawing is under #menu[Others][General drawing]. The starters are,
 
 - #ui[Circuit], an empty circuit,
-- #ui[Logic schematic], an empty circuit for AND, OR, NOT and the other gates, under #menu[Engineering][Digital and computer architecture],
-- #ui[General drawing], an empty canvas with every symbol set on, and
+- #ui[Logic schematic], an empty schematic for AND, OR, NOT and the other gates, with their grounds, supplies and terminals, under #menu[Engineering][Digital and computer architecture],
+- #ui[General drawing], an empty canvas with every kind of symbol and every symbol set on, and
 - 20 circuits that open already drawn: the inverting, non-inverting, summing and difference amplifiers, the voltage follower, the integrator and the differentiator, the half-wave, centre-tap and bridge rectifiers, a transistor amplifier stage and its small-signal (hybrid-π) model, the 555 astable and monostable, the buck, boost and buck-boost converters, an RC ladder, a block diagram and a mass, spring and damper.
 
 A drawn circuit writes the result it computes beside it as Text, such as the gain $-R_f slash R_1$ of the inverting amplifier or the frequency of the 555 astable. Every part of it can be edited or deleted like any other.
@@ -25,7 +25,7 @@ The parts list is the column on the left of the canvas. At its top are the #ui[S
 
 === The groups
 
-A circuit has 119 parts in 15 groups, and @ch-symbols shows every one of them with its picture. The groups are,
+The circuit catalogue has 119 parts in 15 groups, and @ch-symbols shows every one of them with its picture. A drawing lists only the groups of its own kind, as @sec-circuits-kinds describes. The groups are,
 
 #figure(
   table(
@@ -52,6 +52,26 @@ A circuit has 119 parts in 15 groups, and @ch-symbols shows every one of them wi
 ) <fig-circuits-groups>
 
 After the groups come #ui[Text], a part that is only its words, and #ui[Annotate] (@sec-circuits-annotate). The parts list has no row of recently used parts. The chooser's #ui[Recently used] holds starters, not parts.
+
+=== Kinds of drawing <sec-circuits-kinds>
+
+The circuit groups are of three kinds, and each kind is a symbol set that a drawing records, in the same way as the sets of @sec-circuits-general. A drawing lists the groups and the Annotate presets of its own kinds and sets only, so a circuit never lists a centre of pressure and a logic schematic never lists a transistor. The kinds are,
+
+#figure(
+  table(
+    columns: (24%, 1fr, 30%),
+    align: (left, left, left),
+    table.header[Kind][What it lists][Starters],
+    [Circuit symbols], [Every group of @fig-circuits-groups but Logic and Mechanical, and Annotate's #ui[Resistance looking in], #ui[Current arrow], #ui[Loop current] and #ui[Mesh current marker]], [Circuit, the drawn circuits and the block diagram],
+    [Logic gates], [Logic, and Ground, supply and terminals], [Logic schematic],
+    [Springs, dampers and masses], [Mechanical], [Mass, spring and damper, with the Mechanical supports set],
+  ),
+  caption: [The kinds of circuit drawing. General drawing has all three and every set.],
+) <fig-circuits-kinds>
+
+Every drawing lists #ui[Text] and Annotate's general tools: #ui[Line or arrow], #ui[Rectangle], #ui[Ellipse], #ui[Cross], #ui[Dimension], #ui[Point], #ui[Leader], #ui[Frame] and #ui[Highlight]. Annotate's fluid mechanics tools come with the Fluid mechanics set, and its fills and boundaries with Construction materials too (@sec-circuits-annotate). #ui[Find a part] searches only what the list shows.
+
+A drawing keeps a kind whose parts it uses. Hence nothing a drawing already has leaves its parts list, and a ground pasted into a mechanical drawing brings the circuit groups with it. A drawing made before Spectrum 2.5 does not record its kind, so it lists the kinds of the parts it has, or the circuit groups when it has none of them. Specifically, an older circuit lists the circuit groups, an older logic schematic lists the gates with their grounds, supplies and terminals, and an older General drawing lists everything. To add another kind to a drawing, use #ui[Symbol sets…] (@sec-circuits-general).
 
 === Finding a part
 
@@ -209,7 +229,7 @@ The Ground, supply and terminals group holds the parts that mark where a circuit
 
 == Annotate <sec-circuits-annotate>
 
-Annotate, at the end of the parts list, draws over a drawing without ever joining it. An annotation has no pins, gets no junction dots and is never held by a wire, while it still snaps to the grid and to pins as it is drawn. It is written after the circuit, so it sits on top, except a filled shape, which is written first and sits behind the parts drawn in it. Annotate has ten tools and eleven presets, and @ch-symbols pictures all of them with their fills and patterns.
+Annotate, at the end of the parts list, draws over a drawing without ever joining it. A drawing lists the tools of its own kinds and sets (@sec-circuits-kinds), and General drawing lists them all. An annotation has no pins, gets no junction dots and is never held by a wire, while it still snaps to the grid and to pins as it is drawn. It is written after the circuit, so it sits on top, except a filled shape, which is written first and sits behind the parts drawn in it. Annotate has ten tools and eleven presets, and @ch-symbols pictures all of them with their fills and patterns.
 
 #shot("images/06-circuits/annotate-lines-shapes.png", [Above: a line with a corner, a curved arrow, a dashed rectangle with rounded corners and a light fill, an ellipse and a cross. Below: the presets Current arrow, Mesh current marker, Frame, Loop current and Resistance looking in.], width: 90%) <fig-circuits-annotate>
 
@@ -227,7 +247,7 @@ A line also takes #ui[Arrowheads] at the end, at the start or at both, an #ui[Ar
 
 #figure(
   grid(columns: (24%, 26%, 26%), gutter: 14pt, align: top, frame("images/06-circuits/group-annotate.png"), frame("images/06-circuits/inspector-arrow.png"), frame("images/06-circuits/inspector-rectangle.png")),
-  caption: [From the left: the Annotate group in the parts list, the inspector of the curved arrow of @fig-circuits-annotate (blue, thick, bent 45° to the left with a Stealth head) and that of the rectangle (dashed, with rounded corners and a green light fill).],
+  caption: [From the left: the Annotate group in a General drawing's parts list, the inspector of the curved arrow of @fig-circuits-annotate (blue, thick, bent 45° to the left with a Stealth head) and that of the rectangle (dashed, with rounded corners and a green light fill).],
 ) <fig-circuits-annotate-inspector>
 
 === Presets
@@ -238,7 +258,7 @@ A preset puts down a styled group with its label in one click, which you then mo
 
 === Fills, boundaries, dimensions and marks
 
-Spectrum 2.5 added the drawing tools of the fluid mechanics and construction materials courses to Annotate. They are,
+Spectrum 2.5 added the drawing tools of the fluid mechanics and construction materials courses to Annotate. #ui[Dimension], #ui[Point] and #ui[Leader] are in every drawing. The rest are in a drawing with the Fluid mechanics set, and #ui[Liquid or solid] and #ui[Hatched boundary] in one with Construction materials too. They are,
 
 - #ui[Liquid or solid], which draws a closed shape a corner at a time. Click each corner, then the first corner again, or press #key("Return") to close it. A new shape is water,
 - #ui[Hatched boundary], a wall, the ground or a fixed plate of any length, drawn a point at a time like a line. The hatching is on the right of the way it was drawn, so under a line drawn to the right, and #ui[Hatching on the other side] moves it,
@@ -266,7 +286,7 @@ A rectangle, an ellipse or a liquid or solid takes a #ui[Fill]: water, seawater,
 
 == General drawing and the symbol sets <sec-circuits-general>
 
-General drawing is the circuit canvas with every symbol set on, for a figure that is not a circuit or that mixes subjects. Its parts list has the circuit groups, then each set's groups with the set's name beside them, then Text and Annotate. The 83 set parts are pictured in @ch-symbols. The sets are,
+General drawing is the circuit canvas with every kind of symbol and every symbol set on, for a figure that is not a circuit or that mixes subjects. Its parts list has the circuit groups, then each set's groups with the set's name beside them, then Text and Annotate. The 83 set parts are pictured in @ch-symbols. The sets are,
 
 - #ui[Mechanical supports]: a hatched ground, a pinned support, a wall, a ceiling and a cart on wheels,
 - #ui[Flowchart shapes]: a process, start or end, decision, input or output, database, circle and ellipse, each with text inside,
@@ -288,7 +308,7 @@ A set's part is written as a TikZ `\pic`, and the picture declares every pic it 
 
 === Sets in a circuit
 
-A circuit has only the circuit groups, while General drawing has every set. To add a set to a circuit, turn on #menu[Settings][Diagram composer][Symbols from other packages]. A #ui[Symbol sets…] button then shows below the parts list. It lists the sets by subject, each with what it loads into the document, which is TikZ only for all of Spectrum's own. Tick the sets and click #ui[Use these sets], and their groups join the parts list for that drawing, such as mechanical supports beside a mass, spring and damper.
+A drawing lists only its own kinds and sets (@sec-circuits-kinds), while General drawing has them all. To add another to a drawing, turn on #menu[Settings][Diagram composer][Symbols from other packages]. A #ui[Symbol sets…] button then shows below the parts list. It lists the three kinds of circuit and the sets by subject, each with what it loads into the document: circuitikz for the kinds of circuit, and TikZ only for all of Spectrum's own sets. Tick the ones to add and click #ui[Use these sets], and their groups join the parts list for that drawing, such as logic gates beside a transistor stage or mechanical supports beside a mass, spring and damper. Untick one to take it away again. The drawing's own kind and any set whose parts it uses read #ui[In use in this drawing] and stay. With the switch off, the button is hidden and a drawing lists only what it has.
 
 #shot("images/06-circuits/symbol-sets.png", [The #ui[Symbol sets…] dialog of a circuit, with #menu[Settings][Diagram composer][Symbols from other packages] on.], width: 62%) <fig-circuits-symbol-sets>
 
