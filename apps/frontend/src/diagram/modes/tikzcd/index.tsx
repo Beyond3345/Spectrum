@@ -11,7 +11,7 @@ import { htmlRuns, svgRuns } from '../../sketch';
 import { Row, ToolRail, railIcon } from '../../controls';
 import type { Tool } from '../../controls';
 import type { DiagramMode } from '../../types';
-import { cdCode, connectCd, copyCd, emptyCd, labelSides, pasteCd, removeCd } from './code';
+import { cdCode, connectCd, copyCd, emptyCd, hookEnd, labelSides, pasteCd, removeCd } from './code';
 import type { CdArrow, CdKind, CdLoop, CdModel, Cell } from './code';
 
 // Commutative diagrams on a grid of cells
@@ -86,7 +86,6 @@ function ArrowView({ data, selected }: EdgeProps<ArrowEdge>) {
     mid = [(p[0] + q[0]) / 2 + uy * 16 * s, (p[1] + q[1]) / 2 - ux * 16 * s];
   }
   // left of the arrow, as tikz-cd puts a label (above a rightward arrow)
-  const [nx, ny] = arrow.swap ? [-uy, ux] : [uy, -ux];
   const [lx, ly] = [uy, -ux];
   const barb = (at: number[], side: number, size = 5) => `M${at[0] - ux * 8 + lx * size * side} ${at[1] - uy * 8 + ly * size * side}L${at[0]} ${at[1]}`;
   const head = (at: number[], size = 5) => barb(at, 1, size) + `L${at[0] - ux * 8 - lx * size} ${at[1] - uy * 8 - ly * size}`;
@@ -100,8 +99,11 @@ function ArrowView({ data, selected }: EdgeProps<ArrowEdge>) {
   if (kind === 'mapsto') parts.push(`M${p[0] + lx * 5} ${p[1] + ly * 5}L${p[0] - lx * 5} ${p[1] - ly * 5}`);
   if (kind === 'tail') parts.push(head([p[0] + ux * 7, p[1] + uy * 7]));
   if (arrow.twoHeads) parts.push(head([q[0] - ux * 6, q[1] - uy * 6]));
-  // the hook curls back from the tail, on the side opposite the label as tikz-cd draws it
-  if (arrow.hook) parts.push(`M${p[0]} ${p[1]}A4 4 0 0 ${arrow.swap ? 1 : 0} ${p[0] - nx * 8} ${p[1] - ny * 8}`);
+  // the hook curls back from the tail to the arrow's left, as tikz-cd draws it whichever side the label is on
+  if (arrow.hook) {
+    const [hx, hy] = hookEnd(p, [ux, uy]);
+    parts.push(`M${p[0]} ${p[1]}A4 4 0 0 1 ${hx} ${hy}`);
+  }
   return (
     <>
       <BaseEdge

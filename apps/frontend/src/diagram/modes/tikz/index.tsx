@@ -17,6 +17,7 @@ import {
   SIGN_AT,
   along,
   anchorOf,
+  bandArea,
   bandOf,
   holds,
   polygonOf,
@@ -285,6 +286,12 @@ function startArrow(side: Side, w: number, h: number) {
   return `M${x + dx * len} ${y + dy * len}L${x} ${y}M${x + dx * head - dy * head} ${y + dy * head - dx * head}L${x} ${y}L${x + dx * head + dy * head} ${y + dy * head + dx * head}`;
 }
 
+/** A swimlane's title band in px, as the box is w × h px on the canvas. */
+function bandRect(box: Box, w: number, h: number) {
+  const [x, y, bw, bh] = bandArea({ ...box, w: w / UNIT, h: h / UNIT });
+  return { x: x * UNIT, y: y * UNIT, width: bw * UNIT, height: bh * UNIT };
+}
+
 function BoxView({ data: { box, readOnly }, selected, width = 0, height = 0 }: NodeProps<BoxNode>) {
   const plain = plainShape(box.shape);
   const container = holds(box.shape);
@@ -297,6 +304,8 @@ function BoxView({ data: { box, readOnly }, selected, width = 0, height = 0 }: N
         {stateShape(box.shape) && box.initial && <path d={startArrow(box.initial, width, height)} style={{ ...strokeOf(box), fill: 'none' }} />}
         {/* a container is picked up by its edge, so clicks inside it reach the boxes in it and the canvas */}
         {container && <rect className="tikz-container-hit" width={width} height={height} rx={band ? 0 : 4 * PT} />}
+        {/* and a swimlane by its title band too */}
+        {band && <rect {...bandRect(box, width, height)} style={{ fill: 'transparent', pointerEvents: 'all' }} />}
       </svg>
       {/* TikZ writes black on a fill, so a dark canvas keeps it black there */}
       {band ? (

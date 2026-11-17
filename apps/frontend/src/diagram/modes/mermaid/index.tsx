@@ -64,7 +64,9 @@ function Canvas({ model, onChange, readOnly }: CanvasProps) {
       </div>
       <div className={`mermaid-view${dark ? ' dark' : ''}`}>
         {error && <div className="diagram-error-card">{error}</div>}
-        {svg ? <div className="mermaid-svg" dangerouslySetInnerHTML={{ __html: svg }} /> : !error && <div className="diagram-hint">Write a diagram, or start from a template.</div>}
+        {/* as wide as the pane, so the drawing's width: 100% (up to its own size) has a width to be a share of; shrunk to
+            fit, the box gave it none and the drawing came out 300 px wide, its text too small to read */}
+        {svg ? <div className="mermaid-svg" style={{ alignSelf: 'stretch', textAlign: 'center' }} dangerouslySetInnerHTML={{ __html: svg }} /> :!error && <div className="diagram-hint">Write a diagram, or start from a template.</div>}
       </div>
     </div>
   );

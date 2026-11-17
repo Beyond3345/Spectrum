@@ -1,6 +1,6 @@
 // Self-check for the plot mode's code. Run:
 // npx esbuild apps/frontend/src/diagram/modes/pgfplots/pgfplots.check.ts --bundle --platform=node --log-level=warning | node
-import { axesFolded, bodeMagnitude, columnsOf, conics, dampedOscillation, emptyPlot, lissajous, normalCurve, phasePortrait, polarRose, seriesFolded, evaluate, fitEquation, gradingCurve, isSemicolonCsv, leastSquares, newSeries, plotCode, plotIsNewer, plotNeedsVersion5, pointsOf, separatorOf, signalSketch, slopeField, smoothThrough, stressStrain, ticksOf, waveformPoints } from './code';
+import { asKind, axesFolded, bodeMagnitude, columnsOf, conics, dampedOscillation, emptyPlot, lissajous, normalCurve, phasePortrait, polarRose, seriesFolded, evaluate, fitEquation, gradingCurve, isSemicolonCsv, leastSquares, newSeries, plotCode, plotIsNewer, plotNeedsVersion5, pointsOf, separatorOf, signalSketch, slopeField, smoothThrough, stressStrain, ticksOf, waveformPoints } from './code';
 import type { Annotation, PlotModel, Series } from './code';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -353,5 +353,16 @@ const starters = [normalCurve(), bodeMagnitude(), dampedOscillation(), polarRose
 eq(starters.map(plotNeedsVersion5), Array(7).fill(true), 'the 2.5 starters are version 5');
 eq(plotCode(normalCurve()).body.includes('domain=1.645:3.5, samples=50] {spxfa(x)} \\closedcycle;'), true, 'the normal curve shades its tail');
 eq(plotCode(conics()).body.includes('axis equal image'), true, 'conics on equal axes');
+
+// a series made a new kind takes that kind's marks: typed points have them, a curve made from them does not
+const typed: Series = { ...newSeries('s9'), ...asKind(newSeries('s9'), 'points') } as Series;
+eq(typed.marks, true, 'typed points have marks');
+eq((['function', 'parametric', 'polar', 'piecewise', 'signal', 'quiver', 'fit', 'data'] as const).map((k) => asKind(typed, k).marks), [false, false, false, false, false, false, false, false], 'no kind but points takes them on');
+eq(seriesFolded({ ...typed, ...asKind(typed, 'parametric') } as Series), false, 'so its fold stays shut');
+
+// a coloured series' filled marks take its colour, not the colour of its place in pgfplots' cycle list
+const dotted = plotCode({ ...emptyPlot(), series: [{ ...newSeries('s1'), source: 'points', points: '0, 1\n1, 2', marks: true, mark: '*', colour: '#1f4e9c' }] }).body;
+eq(dotted.includes('mark=*, every mark/.append style={fill={rgb,255:red,31;green,78;blue,156}}'), true, 'a coloured series fills its marks in its colour');
+eq(plotCode({ ...emptyPlot(), series: [{ ...newSeries('s1'), colour: '#1f4e9c' }] }).body.includes('every mark'), false, 'nothing for a series without marks');
 
 console.log('pgfplots.check: ok');

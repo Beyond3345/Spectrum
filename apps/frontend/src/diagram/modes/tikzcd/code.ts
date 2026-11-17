@@ -40,6 +40,12 @@ export function labelSides(arrow: CdArrow, model: CdModel): [string, string][] {
   ];
 }
 
+/**
+ * Where the canvas's hook at an arrow's tail p ends, its direction u a unit vector (y down): 8 px to the arrow's left,
+ * above a rightward arrow, as tikz-cd's hook (↪) is whichever side the label is on.
+ */
+export const hookEnd = (p: number[], u: number[]) => [p[0] + u[1] * 8, p[1] - u[0] * 8];
+
 const KIND: Record<CdKind, string> = { double: 'Rightarrow', mapsto: 'mapsto', equal: 'equal', tail: 'tail', harpoon: 'harpoon' };
 
 function arrowCode(arrow: CdArrow, from: Cell, to: Cell) {

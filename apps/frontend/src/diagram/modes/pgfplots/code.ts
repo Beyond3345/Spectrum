@@ -136,6 +136,34 @@ export const emptyPlot = (): PlotModel => ({
   width: ''
 });
 
+/**
+ * A series turned into a kind it has not been yet, keeping what the kinds share. Marks are each kind's own: on for typed
+ * points, off for the rest, so a curve does not take a mark at every sample from the points it was.
+ */
+export function asKind(s: Series, source: SeriesSource): Partial<Series> {
+  switch (source) {
+    case 'parametric':
+      return { source, exprX: s.exprX || 'cos(t)', expr: 'sin(t)', from: '0', to: '2*pi', marks: false };
+    case 'polar':
+      return { source, expr: '1+cos(t)', from: '0', to: '2*pi', marks: false };
+    case 'piecewise':
+      return { source, pieces: s.pieces?.length ? s.pieces : [{ expr: '-x', from: '-2', to: '0' }, { expr: 'x^2', from: '0', to: '2' }], marks: false };
+    case 'signal':
+      return { source, signal: s.signal ?? 'square', amplitude: s.amplitude ?? '1', period: s.period ?? '2', duty: s.duty ?? '0.5', from: '0', to: '6', marks: false };
+    case 'quiver':
+      return { source, exprX: '1', expr: 'x - y', from: '-2', to: '2', samples: 15, normalise: true, marks: false };
+    case 'function':
+      // a data series keeps the function it was
+      return s.source === 'data' ? { source, marks: false } : { source, expr: 'x^2', from: '-2', to: '2', samples: 100, marks: false };
+    case 'points':
+      return { source, points: s.points ?? '0, 1\n1, 3\n2, 4\n3, 7', marks: true };
+    case 'fit':
+      return { source, of: s.of, from: '', to: '', marks: false };
+    default:
+      return { source, marks: false };
+  }
+}
+
 /** The Signal sketch starter: a square wave on axes with arrows and no ticks. */
 export const signalSketch = (): PlotModel => ({
   ...emptyPlot(),
@@ -591,6 +619,8 @@ function styleOf(s: Series) {
     s.colour && `color=${latexColour(s.colour)}`,
     s.line === 'none' ? 'only marks' : s.line !== 'solid' && s.line,
     marks && s.mark && `mark=${s.mark}`,
+    // a filled mark in the series' own colour: pgfplots' cycle list would fill it in the colour of the series' place
+    marks && s.colour && `every mark/.append style={fill=${latexColour(s.colour)}}`,
     // bars filled in a tint of their own colour, and shown so in the legend
     s.bars ? 'ybar, fill=.!30, area legend' : s.stem ? 'ycomb' : !marks && 'no markers',
     ...(s.bars && !marks ? ['no markers'] : [])
