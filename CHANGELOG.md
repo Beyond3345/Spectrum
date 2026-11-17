@@ -135,6 +135,11 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
   - A series changed from typed points to a curve no longer takes a mark at every sample
   - A coloured series' marks are filled in its colour
 - Space could be recorded as a diagram shortcut although the canvas uses it to pan
+- Polish, Rewrite and Translate results in the assistant no longer say Edit now lives in the agent workspace
+- Change template offers only LaTeX templates, and Quick switch no longer writes a Typst template's preamble into a .tex file
+- The References chat suggests #bibliography("refs.bib") for a Typst document and front matter for Markdown, rather than \bibliography
+- The Local agents send button no longer shows a spinner when no agent is set up
+- Messages that point to Settings name the pane with ›, as the rest of the app does
 
 ## 2.4.1 (15 November 2026)
 
