@@ -334,7 +334,7 @@ The composer's settings are in #menu[Settings][Diagram composer] in the main win
 
 A university style is a set of symbols drawn as one university's lecture slides draw them, where circuitikz draws them differently or not at all. The first is MU Style, from Hong Kong Metropolitan University. It adds a group of 12 parts to the circuit parts list: the slides' N- and P-channel MOSFETs, enhancement and depletion, with and without a bulk pin, an ideal diode in a box, a current source drawn as a box with an arrow and two AC voltage sources with + and − marked. They are placed, wired and labelled like any other part, and a drawing that uses one carries the symbol's definition in its own picture, so the document needs nothing more in its preamble. @ch-circuits describes each and @ch-symbols shows them.
 
-#shot("images/05-composer/mu-style.png", [The MU Style group in the circuit parts list.], width: 30%) <fig-composer-mu>
+#shot("images/05-composer/mu-style.png", [The MU Style group in the circuit parts list.], width: 22%) <fig-composer-mu>
 
 To hide a style's parts,
 
