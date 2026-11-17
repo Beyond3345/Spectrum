@@ -36,9 +36,9 @@ To start a drawing from a preset,
 + Click its card and check the name under #ui[Name]
 + Click #ui[Create]
 
-The four fluid statics presets also answer to #ui[fluid statics], as @fig-forms-chooser shows. However, the search lists its matches in the chooser's own order rather than by how well they match, so the beams and trusses come first and the four fluid cards are at the end of the list.
+Search ranks what it finds: cards whose name matches come first, then those that match in their description or other words, then the rest. For example, the four fluid statics presets answer to #ui[fluid statics] and come straight after General drawing (whose other words include fluid mechanics and hydrostatics), ahead of the beams and trusses, as @fig-forms-chooser shows.
 
-#shot("images/11-forms/chooser-fluid-statics.png", [The end of the chooser's list for the search "fluid statics": the four fluid statics presets, with Hydrostatic force on a gate chosen.], width: 82%) <fig-forms-chooser>
+#shot("images/11-forms/chooser-fluid-statics.png", [The chooser's search for "fluid statics": General drawing, then the four fluid statics presets, then the beams. Hydrostatic force on a gate is chosen.], width: 82%) <fig-forms-chooser>
 
 A development build of Spectrum lists one more card, Labelled circle (test), which is the frame's own test: a circle with a radius, a label, a line style and a shading switch. Released builds do not list it.
 
@@ -53,7 +53,9 @@ A Form preset's window has the same header and the same preview as every compose
 
 #shot("images/11-forms/gate-window.png", [A Form preset's window: the form of Hydrostatic force on a gate above, the compiled figure in the preview below.], width: 85%) <fig-forms-window>
 
-A field appears only when it is needed. For example, the gate's #ui[Width] is hidden for a circular gate, and the manometer shows a column's height only once the column names a fluid. A number field takes a value only when it is a number inside the field's range: while the text is not one, the drawing keeps its last value, and the field goes back to that value when you leave it. The ranges are given in each section's table.
+A field appears only when it is needed. For example, the gate's #ui[Width] is hidden for a circular gate, and the manometer shows a column's height only once the column names a fluid. A number field takes a value only when it is a number inside the field's range. When a number outside it is typed, the drawing keeps its last value and a red hint under the field says what it takes (@fig-forms-range). The hint stays until the next number is typed, while the field goes back to the last value when you leave it. The ranges are also given in each section's table.
+
+#shot("images/11-forms/range-hint.png", [A width of 0 typed into the gate's #ui[Width], which takes 0.001 to 1000 m.], width: 55%) <fig-forms-range>
 
 Each change to the form is saved, and 700 ms after the last change the preview compiles the new figure, as in every composer. The figure carries its own answers, while the working is written in two places,
 
