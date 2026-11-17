@@ -445,7 +445,7 @@ export function CircuitInspector({ model: raw, onChange }: { model: CircuitModel
         </>
       ) : (
         <>
-          <Field label="Name" hint="Wires reach its pins through this name.">
+          <Field label="Name" hint={part?.pins?.length ? 'Wires reach its pins through this name.' : 'Optional: lets other drawings reach its anchors.'}>
             {(id) => <input id={id} className="input mono" value={el.name || ''} onChange={(e) => update({ ...el, name: cleanName(e.target.value) || undefined })} spellCheck={false} />}
           </Field>
           <Field label={`Rotation: ${el.rotate || 0}°`}>
