@@ -84,7 +84,7 @@ export function parserWarning(settings: AppSettings, preset: ParserPreset | null
   if (!preset) return '';
   const id = parserId(settings, preset);
   const { endpoint, key, appId } = savedParser(settings, id);
-  if (id === CUSTOM_PARSER) return endpoint.trim() ? '' : 'Needs the parser’s address in Settings → Template transfer.';
+  if (id === CUSTOM_PARSER) return endpoint.trim() ? '' : 'Needs the parser’s address in Settings › Template transfer.';
   if (preset.keyOptional || (key.trim() && (!preset.appId || appId?.trim()))) return '';
   // MinerU's token can also come from the .env file
   return `Needs your ${preset.name} ${preset.appId ? 'app ID and app key' : preset.keyName} above${preset.id === 'mineru' ? ', or one in the .env file' : ''}.`;

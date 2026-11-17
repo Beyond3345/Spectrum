@@ -165,6 +165,13 @@ export type DocKind = 'latex' | 'typst' | 'markdown';
 export const docKind = (path: string): DocKind | null =>
   /\.(tex|ltx)$/i.test(path) ? 'latex' : /\.typ$/i.test(path) ? 'typst' : /\.(md|markdown)$/i.test(path) ? 'markdown' : null;
 export const isDocument = (path: string) => docKind(path) !== null;
+/** The line that includes bibFile in a main file of its kind, for the hint shown when it is not included yet. */
+export const bibIncludeLine = (mainFile: string, bibFile: string) => {
+  const kind = docKind(mainFile);
+  if (kind === 'typst') return `#bibliography("${bibFile}")`;
+  if (kind === 'markdown') return `bibliography: ${bibFile}`;
+  return `\\bibliography{${bibFile.replace(/\.bib$/i, '')}}`;
+};
 /** A file of a document's own source: a document, or a LaTeX package, class or .bib file it reads. */
 export const isSource = (path: string) => isDocument(path) || /\.(sty|cls|bib)$/i.test(path);
 

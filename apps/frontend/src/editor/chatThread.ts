@@ -13,6 +13,16 @@ export const chatMessage = (role: ChatMessage['role'], content: string, meta?: o
 });
 
 /**
+ * An Edit chat from before 2.0, whose suggested changes the agent workspace now looks after. Polish, Rewrite,
+ * Restructure and Translate still suggest changes in the Assistant, and mark them quick, so those chats are not.
+ */
+export const isEditChat = (messages: ChatMessage[]) =>
+  messages.some((m) => {
+    const meta = (m.meta || {}) as { changes?: unknown[]; quick?: boolean };
+    return !!meta.changes?.length && !meta.quick;
+  });
+
+/**
  * The open chat of the bottom card or the Spectrum agent: shown, added to and saved in order, so a reply that lands
  * after the user switched chats still goes in its own chat. fresh: a new chat's own fields (its mode, its marker).
  */

@@ -1,6 +1,6 @@
 // Self-check for the shared helpers that pick a project's files. Run:
 // npx esbuild apps/frontend/src/editor/shared.check.ts --bundle --platform=node --log-level=warning | node
-import { keptMainFile } from './shared';
+import { bibIncludeLine, keptMainFile } from './shared';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -14,5 +14,11 @@ eq(keptMainFile('', ['refs.bib', 'chapters/a.typ', 'main.typ']), 'main.typ', 'no
 eq(keptMainFile('gone.tex', ['draft.markdown', 'logo.png']), 'draft.markdown', 'gone: the first document');
 eq(keptMainFile('', ['main (conflicted copy).tex', 'paper.tex'], { 'main (conflicted copy).tex': 'main.tex' }), 'paper.tex', 'never a conflict copy');
 eq(keptMainFile('main.tex', ['refs.bib', 'figures/a.pdf']), '', 'no document left');
+
+// ─── the line the References chat suggests when the .bib is not included yet ───
+
+eq(bibIncludeLine('main.tex', 'refs.bib'), '\\bibliography{refs}', 'LaTeX');
+eq(bibIncludeLine('main.typ', 'refs.bib'), '#bibliography("refs.bib")', 'Typst');
+eq(bibIncludeLine('notes.md', 'refs.bib'), 'bibliography: refs.bib', 'Markdown front matter');
 
 console.log('shared.check: ok');

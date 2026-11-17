@@ -129,7 +129,8 @@ export default function TransferPanel({
       })
       .catch((err) => setError(message(err)));
     listTemplates()
-      .then((res) => setTemplates(res.templates || []))
+      // every mode writes LaTeX, so only LaTeX templates: a Typst or Markdown one's preamble would land in a .tex
+      .then((res) => setTemplates((res.templates || []).filter((tp) => /\.(tex|ltx)$/i.test(tp.mainFile || 'main.tex'))))
       .catch((err) => setError(message(err)));
   }, [projectId]);
 
@@ -266,7 +267,7 @@ export default function TransferPanel({
     running || mode === 'quick'
       ? ''
       : !llmConfigFor(settings, 'main').apiKey && !/^http:\/\//i.test(settings.llmEndpoint)
-        ?'Needs an API key for the main model in Settings → Models, or in the .env file.'
+        ?'Needs an API key for the main model in Settings › Models, or in the .env file.'
         : mode === 'pdf'
           ? parserWarning(settings, parserPreset(parsers, settings))
           : '';
