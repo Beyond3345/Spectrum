@@ -1,0 +1,98 @@
+{
+  "projects": {
+    "chapter": 1,
+    "name": "Projects",
+    "hue": 15,
+    "light": "#d23855",
+    "band": "#d23855",
+    "dark": "#ff8893"
+  },
+  "writing": {
+    "chapter": 2,
+    "name": "Editor",
+    "hue": 45,
+    "light": "#c45001",
+    "band": "#c45001",
+    "dark": "#fe8f5b"
+  },
+  "assistant": {
+    "chapter": 3,
+    "name": "Assistant",
+    "hue": 75,
+    "light": "#9e6a04",
+    "band": "#fcab05",
+    "dark": "#e8a127"
+  },
+  "references": {
+    "chapter": 4,
+    "name": "References",
+    "hue": 105,
+    "light": "#7f7703",
+    "band": "#d5c918",
+    "dark": "#c0b529"
+  },
+  "composer": {
+    "chapter": 5,
+    "name": "Composer",
+    "hue": 135,
+    "light": "#438303",
+    "band": "#438303",
+    "dark": "#86c660"
+  },
+  "circuits": {
+    "chapter": 6,
+    "name": "Circuits",
+    "hue": 165,
+    "light": "#03845f",
+    "band": "#03845f",
+    "dark": "#2cce99"
+  },
+  "structures": {
+    "chapter": 7,
+    "name": "Structures",
+    "hue": 195,
+    "light": "#0a8282",
+    "band": "#0a8282",
+    "dark": "#10caca"
+  },
+  "vectors": {
+    "chapter": 8,
+    "name": "Vectors",
+    "hue": 225,
+    "light": "#067fa1",
+    "band": "#067fa1",
+    "dark": "#00c3f5"
+  },
+  "flow": {
+    "chapter": 9,
+    "name": "Flow",
+    "hue": 255,
+    "light": "#0073df",
+    "band": "#0073df",
+    "dark": "#7ab4fe"
+  },
+  "plots": {
+    "chapter": 10,
+    "name": "Plots",
+    "hue": 285,
+    "light": "#7361e4",
+    "band": "#7361e4",
+    "dark": "#a9a5ff"
+  },
+  "forms": {
+    "chapter": 11,
+    "name": "Forms",
+    "hue": 315,
+    "light": "#a34ec6",
+    "band": "#a34ec6",
+    "dark": "#d592f2"
+  },
+  "symbols": {
+    "chapter": 12,
+    "name": "Symbols",
+    "hue": null,
+    "light": "#6e6e73",
+    "band": "#6e6e73",
+    "dark": "#a1a1a6"
+  }
+}
