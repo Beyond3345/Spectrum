@@ -72,10 +72,12 @@ A least-squares line is the straight line $y = a + b x$ that fits a series of ty
 
 A data file series plots two columns of a file in the project.
 
+#howto[plot a data file][
 + Put the file in the project, for example as `data/exchanger.csv`
 + Choose #ui[Data file] as the series' kind
 + Choose the file under #ui[File]. The list offers the project's `.csv`, `.tsv`, `.dat` and `.txt` files
 + Choose the columns under #ui[x and y columns]
+]
 
 The columns are named by the file's first line. A file whose first line is numbers has no names, so its columns are offered as Column 1, Column 2 and so on. A `.csv` is split by commas, or by semicolons when its first line has more of them, as a spreadsheet writes one where the comma is the decimal point; such a file is read with its decimal commas. A `.tsv` is split by tabs and any other file by spaces. When no columns can be found the form says so. Under the fold, #ui[Error bar column] picks a column of error bars.
 

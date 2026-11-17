@@ -224,11 +224,13 @@ A vector's name in a construction's label, such as the $upright(bold(v))$ of $2 
 
 The constructions cover the usual figures of vector addition and resolution. For example, @fig-vectors-sum is drawn as follows,
 
+#howto[draw the sum of two vectors][
 + Place O at the origin and the points A and B with #key("P")
 + Draw $upright(bold(a))$ from O to A and $upright(bold(b))$ from O to B with #key("V")
 + Pick #ui[u + v] and click A, then B. The resultant $upright(bold(a)) + upright(bold(b))$ is drawn from O to the new point
 + Draw dashed segments from A and B to the new point for the parallelogram
 + Pick #ui[Drop to both axes] and click the new point to read off its components on the axes
+]
 
 Moving A or B then moves the resultant and the parallelogram with it. For the components of a force along and across a slope, as in @fig-vectors-incline, draw each component as a dashed vector from the force's tail, or use #ui[Foot of a projection] to find the tip of a component on a line.
 

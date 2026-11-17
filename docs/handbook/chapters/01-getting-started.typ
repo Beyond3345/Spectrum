@@ -17,9 +17,11 @@ Spectrum runs on macOS 13.5 or later on Apple silicon, and on Windows 10 or 11 o
 
 The macOS installer and its SHA-256 checksums are on the latest GitHub release of Spectrum.
 
+#howto[install Spectrum on macOS][
 + Open `Spectrum_<version>_aarch64.dmg`
 + Drag Spectrum into the Applications folder
 + Open Spectrum from the Applications folder
+]
 
 Since Spectrum is signed ad hoc rather than with an Apple Developer ID, macOS blocks it on the first launch when the disk image was downloaded from the internet. To allow it, open System Settings, go to Privacy & Security and select Open Anyway. Alternatively, run the following command once,
 
@@ -45,11 +47,13 @@ The Windows version is a preview, and it differs from the macOS version as follo
 
 Spectrum opens on the projects page, with nothing in it the first time. There is no setup assistant: the application works straight away with the built-in engines, and the rest is set in the Settings window (@sec-start-settings). A short pass through Settings before the first project is still worthwhile.
 
+#howto[set up Spectrum before the first project][
 + Open Settings with #key("⌘", ",")
 + Choose a provider under #ui[Models] and paste its API key, if the AI features will be used
 + Choose the theme under #ui[Appearance] and the default compiler under #ui[Engines]
 + Check the #ui[System] section to confirm which TeX tools Spectrum can find
 + Set up the local agents you use, such as OpenCode or Codex, under #ui[Agents]
+]
 
 Choosing a provider fills in its endpoint, its recommended models and the recommended reasoning effort, which @ch-assistant describes. The System section lists each program Spectrum looks for, such as `pdflatex`, `xelatex`, `biber` and `texcount`, with a tick and the path where it was found, together with the app's data folder and the default folder for new projects (@fig-start-system). #ui[Check again] looks again after a TeX installation has been added, and #ui[Licences] lists the software, fonts and word lists Spectrum includes.
 

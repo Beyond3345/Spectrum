@@ -31,10 +31,12 @@ Every preset is a card of its own in the chooser of #ui[Draw a diagram], with th
 
 To start a drawing from a preset,
 
+#howto[start a drawing from a preset][
 + Choose #menu[Draw a diagram] in the editor
 + Type the preset's name, or a word for it, in the search field
 + Click its card and check the name under #ui[Name]
 + Click #ui[Create]
+]
 
 Search ranks what it finds: cards whose name matches come first, then those that match in their description or other words, then the rest. For example, the four fluid statics presets answer to #ui[fluid statics] and come straight after General drawing (whose other words include fluid mechanics and hydrostatics), ahead of the beams and trusses, as @fig-forms-chooser shows.
 
@@ -130,9 +132,9 @@ The figure has the axes, the circle, the points $X(sigma_x, tau_(x y))$ and $Y(s
   figure(frame("images/11-forms/mohr-style.png"), caption: [The Style of a Mohr's circle.]),
 )
 
-=== Worked example
-
+#worked[
 A web element carries $sigma_x = 80$~MPa, $sigma_y = -40$~MPa and $tau_(x y) = 25$~MPa, and the stresses on a plane turned 30° are wanted. By hand, $C = 20$~MPa and $R = sqrt(60^2 + 25^2) = 65$~MPa, so $sigma_1 = 85$~MPa, $sigma_2 = -45$~MPa and $tau_"max" = 65$~MPa, with $2 theta_p = arctan(50 slash 120) = 22.6°$. Turned by 30°, $sigma_(x') = 20 + 60 cos 60° + 25 sin 60° = 71.7$~MPa and $tau_(x' y') = -60 sin 60° + 25 cos 60° = -39.5$~MPa. @fig-forms-mohr shows the form and the figure Spectrum drew, which give the same numbers.
+]
 
 #figure(
   grid(columns: (1fr, 1.25fr), gutter: 10pt, align: horizon,
@@ -171,9 +173,9 @@ The table, new in 2.5, has a row for each region the drawing has: three rows for
 
 The circles have a radius of 1.5~cm. Each set's name is written outside its circle, up and to the left, up and to the right or down and to the right, and is moved round its circle when it would cross another circle or name. The frame grows to hold long names. A region's count is placed at the point of the region farthest from every edge and every name, which Spectrum finds on a 0.5~mm grid. There is nothing to calculate, so the preset has no working and no results switch.
 
-=== Worked example
-
+#worked[
 A survey of 60 first-year students asks which of Physics, Chemistry and Mathematics they take. 12 take Physics only, 8 Chemistry only, 15 Mathematics only, 4 Physics and Chemistry only, 7 Physics and Mathematics only, 3 Chemistry and Mathematics only, 5 all three and 6 none. The regions add up to 60, and @fig-forms-venn-form shows the form, with the region of all three shaded in blue. @fig-forms-venn is its figure.
+]
 
 #figure(
   grid(columns: (1fr, 1fr), gutter: 10pt, align: top,

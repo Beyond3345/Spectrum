@@ -190,8 +190,10 @@ Before signing in, #menu[Tools][GitHub] shows "Keep this project on GitHub" with
 
 Once signed in, a project is backed up as follows,
 
+#howto[back up a project to GitHub][
 + Choose #ui[Sync with GitHub] in the project's menu, or #ui[Back up to GitHub] in #menu[Tools][GitHub]
 + Wait while Spectrum makes a private repository named after the project and pushes the project to it
+]
 
 The repository is recorded in the project's `.spectrum/settings.json` with the project's id, so a Finder copy of the project is not linked to it. From then on Spectrum pulls when the project is opened, backs up about a minute after you stop typing and backs up when you leave the project. Quitting only commits, and the push follows at the next start. #menu[Tools][GitHub] then has #ui[Sync], #ui[Pull], #ui[Back up…], with an optional label, and #ui[Open on GitHub], with how many commits are still to back up or pull.
 

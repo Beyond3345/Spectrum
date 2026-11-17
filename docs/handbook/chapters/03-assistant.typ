@@ -313,10 +313,12 @@ The results are listed under each group with a count and a summary line, such as
 
 The #ui[Research] tab in the sidebar, between #ui[Files] and #ui[To-dos], looks for papers on a question without needing a model. A search is run as follows,
 
+#howto[run a search][
 + Type the question in "What are you looking for?"
 + Choose the sources: OpenAlex, Semantic Scholar, arXiv, Crossref, PubMed, Web, Zotero and the project's `.bib`
 + Give a range of years in #ui[From] and #ui[To] if you want one, and untick #ui[Preprints] to leave them out
 + Press #ui[Search]
+]
 
 #shot("images/03-assistant/research-panel.png", [The #ui[Research] tab with a question typed in. The sources shown in blue are on, and PubMed, Web and Zotero are off by default.], width: 38%) <fig-assistant-research>
 
@@ -385,10 +387,12 @@ Template transfer moves a LaTeX document into another of Spectrum's LaTeX templa
 
 Quick switch changes the project in place and needs no model, so it is the quickest way to try a document in another template. It is used as follows,
 
+#howto[switch a template quickly][
 + Choose #ui[Change template…] in the project's menu
 + Keep #ui[Quick switch] selected and check the #ui[Main file]
 + Choose the #ui[New template]
 + Press #ui[Switch template]
+]
 
 Spectrum first saves a "Before template change" checkpoint and stops if it cannot. It then writes the new template's preamble above your document's body, keeps your title, author and `.bib` files, and copies the template's other files in without replacing your own. The sheet ends with #ui[Finished], the files it changed and #ui[Open project] (@fig-assistant-change-template-done), and the previous state can be restored from #menu[Tools][Checkpoints] (@ch-references).
 

@@ -93,9 +93,11 @@ Some shapes have a field of their own. A state or an accepting state has #ui[Sta
 
 There are two ways to join two shapes with an arrow. The first uses the Connect tool.
 
+#howto[join two shapes with the Connect tool][
 + Pick #ui[Connect] on the rail, or press #key("W") while the pointer is over the drawing
 + Click the shape the arrow starts from
 + Click the shape it goes to
+]
 
 The arrow joins the sides of the two shapes that face each other: the bottom of one and the top of the other when they are further apart up and down than across, otherwise the right of one and the left of the other. #ui[Connect] stays picked after each arrow, so a whole chain can be joined with a click on each shape in turn, and the new arrow is selected each time so its label can be typed at once. Clicking the same shape twice gives a loop above it. The key #key("W") is the default and can be changed in Settings, as described in @ch-composer.
 

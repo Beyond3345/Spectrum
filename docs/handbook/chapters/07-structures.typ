@@ -120,10 +120,12 @@ A member joins two joints. Spectrum has two kinds,
 
 To draw members,
 
+#howto[draw members][
 + Press #key("M") over the canvas, or pick #ui[Beam or frame member] on the rail
 + Drag from one point to another, or click the two points one after the other
 + Carry on from the end of the last member to draw the next one
 + Press #key("Esc") when the structure is drawn
+]
 
 Each end lands on a joint already there, or makes a new one. An end that lands on a member splits that member in two at a new joint, and the loads on it go to the piece they are on. A distributed load across the split becomes one load on each piece. Drawing a member between two joints that already have one selects the one already there.
 
