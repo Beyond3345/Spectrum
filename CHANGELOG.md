@@ -130,6 +130,9 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
   - A drag inside a container or swimlane moved the whole box instead of reaching what is in it
   - A swimlane can be selected and moved by its title band
   - A commutative diagram's hook (↪) shows on the arrow's left on the canvas, as tikz-cd prints it
+  - Typst flowcharts print diamonds, parallelograms, trapeziums, circles and cylinders at the size drawn on the canvas
+  - Right-angled arrows in Typst flowcharts turn where the canvas shows them, so they no longer cross the boxes
+  - Maths in a Typst flowchart, caption or table keeps its backslashes, so `$a \/ b$` prints a slash
 - Plots, Mohr's circle, Venn diagrams and Mermaid:
   - A % in a plot's, Venn diagram's or Mohr's circle's text no longer stops the figure compiling
   - Mohr's circle and Venn diagram labels move clear of the circles, the axes and each other, and a Venn diagram's frame grows to hold long set names. Existing figures get the new places when next opened
