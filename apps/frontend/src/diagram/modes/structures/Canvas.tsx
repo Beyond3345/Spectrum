@@ -102,7 +102,16 @@ export default function StructureCanvas({
   const prefs = useCanvasPrefs();
 
   const shown = draft || model;
-  useEffect(() => setShown(model, style, onChange), [model, rawStyle]);
+  /** the style menu converted the units: every length changed by one factor, so the zoom stays as it is */
+  const converted = useRef(false);
+  useEffect(
+    () =>
+      setShown(model, style, (next) => {
+        converted.current = true;
+        onChange(next);
+      }),
+    [model, rawStyle]
+  );
   const units = UNITS[style.units];
   // the export's scale, as the drawing was last saved (not while a drag is under way), so the text, arrows and symbols
   // sit on the structure as they will in the PDF; a drawing with no length yet keeps the unit's own
@@ -146,8 +155,12 @@ export default function StructureCanvas({
   useLayoutEffect(() => {
     const f = lastScale.current / scale;
     lastScale.current = scale;
-    if (f !== 1) setView((prev) => prev && { ...prev, zoom: prev.zoom * f });
+    if (f !== 1 && !converted.current) setView((prev) => prev && { ...prev, zoom: prev.zoom * f });
   }, [scale]);
+  // after the layout effect above has seen the converted drawing
+  useEffect(() => {
+    converted.current = false;
+  }, [model]);
 
   const v = view || { x: 0, y: 0, zoom: 1 };
   const k = PX_PER_CM * v.zoom;
