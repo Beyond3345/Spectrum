@@ -594,9 +594,9 @@ eq(circuitSetsInUse(invertingAmplifier(), []), ['circuitikz'], 'a circuit from b
 eq(circuitSetsInUse(old('and', 'nor', 'ground', 'supply-up', 'text'), []), ['circuitikz-logic'], 'a logic schematic from before is a Logic schematic, its ground and supply with it');
 eq(circuitSetsInUse(old('and', 'resistor'), []).sort(), ['circuitikz', 'circuitikz-logic'], 'gates and a resistor: both');
 eq(circuitSetsInUse(massSpringDamper(), []).sort(), ['circuitikz-mech', 'spx-mech'], 'a mass, spring and damper from before: its springs and supports');
-eq([circuitSetsInUse(old(), ['circuitikz-logic']), circuitSetsInUse(old(), ['circuitikz'])], [[], []], 'a drawing that records its kind keeps only that');
-eq(circuitSetsInUse(old('ground'), ['circuitikz-mech']), ['circuitikz'], 'a ground pasted into a mechanical drawing brings Circuit');
-eq(circuitSetsInUse(old('ground'), ['circuitikz-logic']), [], 'but not into a Logic schematic, which lists it');
-eq(circuitSetsInUse(old('fluid-pipe'), ['circuitikz-logic']), ['spx-fluid'], 'another set’s part keeps its set');
+eq([circuitSetsInUse(old(), ['circuitikz-logic']), circuitSetsInUse(old(), ['circuitikz', 'circuitikz-logic']), circuitSetsInUse(old(), ['spx-mech', 'circuitikz-mech'])], [['circuitikz-logic'], ['circuitikz'], ['circuitikz-mech']], 'a drawing that records its kind keeps it, and only it; the kinds added later can go');
+eq(circuitSetsInUse(old('ground'), ['circuitikz-mech']), ['circuitikz-mech', 'circuitikz'], 'a ground pasted into a mechanical drawing brings Circuit');
+eq(circuitSetsInUse(old('ground'), ['circuitikz-logic']), ['circuitikz-logic'], 'but not into a Logic schematic, which lists it');
+eq(circuitSetsInUse(old('fluid-pipe'), ['circuitikz-logic']), ['circuitikz-logic', 'spx-fluid'], 'another set’s part keeps its set');
 
 console.log('circuitikz.check: ok');

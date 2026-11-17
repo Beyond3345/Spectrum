@@ -65,13 +65,15 @@ export const railParts = (filter: string, sets: string[], stylesOff: string[]) =
   CATALOGUE.filter((part) => listed(sets)(part) && !styleHidden(part.style, stylesOff) && `${part.label} ${part.tikz} ${part.aliases?.join(' ') ?? ''}`.toLowerCase().includes(filter.trim().toLowerCase()));
 
 /**
- * The sets a drawing keeps whatever the Symbol sets dialog says: those it has parts from (a part two sets list, such
- * as ground, keeps the first unless the drawing has the other), and Circuit for a drawing that has no kind of circuit
- * among its sets or parts, as one made before the kinds were recorded, or empty, is a circuit.
+ * The sets a drawing keeps whatever the Symbol sets dialog says: its own kind (the first kind of circuit it records, as
+ * its starter wrote it), those it has parts from (a part two sets list, such as ground, keeps the first unless the
+ * drawing has the other), and Circuit for a drawing that has no kind of circuit among its sets or parts: one made
+ * before the kinds were recorded, or empty, is a circuit.
  */
 export function circuitSetsInUse(model: unknown, sets: string[] = []) {
   const parts = asCircuit(model).elements.flatMap((el) => (isPart(el) && PARTS.has(el.type) ? [PARTS.get(el.type)!] : []));
-  const used = new Set(parts.flatMap((part) => (listedIn(part).length === 1 ? listedIn(part) : [])));
+  const own = sets.find((set) => CIRCUIT_KINDS.includes(set));
+  const used = new Set([...(own ? [own] : []), ...parts.flatMap((part) => (listedIn(part).length === 1 ? listedIn(part) : []))]);
   for (const part of parts) if (listedIn(part).length > 1 && !listedIn(part).some((set) => used.has(set) || sets.includes(set))) used.add(listedIn(part)[0]);
   if (!CIRCUIT_KINDS.some((kind) => used.has(kind) || sets.includes(kind))) used.add('circuitikz');
   return [...used];
