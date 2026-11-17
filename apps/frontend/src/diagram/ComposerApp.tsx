@@ -29,7 +29,7 @@ import { MODES, modeFor } from './modes';
 import { RASTER_SCALE, renderMermaid, svgToPng } from './modes/mermaid/render';
 import { pngToPdf } from './modes/mermaid/pdf';
 import { SETS, clashesWith, documentLoads, setLoads } from './sets';
-import { CATEGORIES, MODE_FACTS, STARTERS, search, sectionsFor, starterFor, usedNow } from './starters';
+import { CATEGORIES, MODE_FACTS, STANDARD, STARTERS, search, sectionsFor, starterFor, usedNow } from './starters';
 import type { CategoryId, Section, Starter } from './starters';
 import type { DiagramFile, DiagramLanguage, DiagramMode } from './types';
 import './composer.css';
@@ -92,7 +92,7 @@ const LANGUAGE_BADGE: Record<DiagramLanguage, string> = { tikz: 'TikZ', typst: '
 const EXTENSION: Record<DiagramLanguage, string> = { tikz: 'tex', typst: 'typ', mermaid: 'mmd' };
 const NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
-type View = 'recent' | 'all' | CategoryId;
+type View = 'recent' | 'standard' | 'all' | CategoryId;
 /** a starter, and the tool its drawing opens with when it was chosen through one of its symbols */
 type Choice = { starter: Starter; tool?: string };
 const sameChoice = (a: Choice | null, b: Choice | null) => !!a && !!b && a.starter.id === b.starter.id && a.tool === b.tool;
@@ -145,7 +145,9 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
       : []
     : view === 'recent'
       ? [{ id: 'recent', label: 'Recently used', starters: recent }]
-      : sectionsFor(view, LISTED).map((section) => ({ ...section, starters: fitFirst(section.starters) }));
+      : view === 'standard'
+        ? [{ id: 'standard', label: 'Standard', starters: fitFirst(STANDARD.flatMap((id) => LISTED.filter((s) => s.id === id))) }]
+        : sectionsFor(view, LISTED).map((section) => ({ ...section, starters: fitFirst(section.starters) }));
   // every card and symbol in the order shown, for the arrow keys
   const choices: Choice[] = [
     ...sections.flatMap((section) => section.starters.map((starter) => ({ starter }))),
@@ -251,7 +253,7 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
     );
   };
 
-  const views: [View, string][] = [...(recent.length ? [['recent', 'Recently used'] as [View, string]] : []), ['all', 'All'], ...CATEGORIES.map((c): [View, string] => [c.id, c.label])];
+  const views: [View, string][] = [...(recent.length ? [['recent', 'Recently used'] as [View, string]] : []), ['standard', 'Standard'], ['all', 'All'], ...CATEGORIES.map((c): [View, string] => [c.id, c.label])];
 
   return (
     <div className="diagram-app">

@@ -10,7 +10,7 @@ import { vectorCode } from './modes/vectors/code';
 import { SETS } from './sets';
 import { cdCode } from './modes/tikzcd/code';
 import type { CdModel } from './modes/tikzcd/code';
-import { CATEGORIES, MODE_FACTS, STARTERS, search, sectionsFor, starterFor, usedNow } from './starters';
+import { CATEGORIES, MODE_FACTS, STANDARD, STARTERS, search, sectionsFor, starterFor, usedNow } from './starters';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -199,4 +199,9 @@ eq(found('nand'), ['NAND gate, in Logic schematic', 'NAND gate, in General drawi
 eq(found('damper').slice(0, 2), ['Damper, in Mass, spring and damper', 'Damper, in General drawing'], 'a damper opens the mass, spring and damper');
 eq(found('signal ground'), ['Signal ground, in Circuit', 'Signal ground, in General drawing'], 'a ground opens a Circuit');
 
-console.log('starters.check: ok');
+// Standard: one starter for each composer but Form, which has only presets
+const standard = STANDARD.map((id) => starterFor(id)!);
+eq(standard.map((s) => s.title), ['Circuit', 'Logic schematic', 'General drawing', 'Structure (beams, trusses, frames)', 'Vector diagram', 'Plot', 'Flowchart', 'Flowchart in Typst', 'Commutative diagram', 'Mermaid diagram'], 'the Standard view’s starters');
+eq((Object.keys(MODE_FACTS) as (keyof typeof MODE_FACTS)[]).filter((mode) => mode !== 'form' && !standard.some((s) => s.mode === mode)), [], 'every composer but Form has one');
+eq(standard.filter((s) => s.model && s.id !== 'structure').map((s) => s.id), [], 'blank, but for Structure’s sample beam');
+

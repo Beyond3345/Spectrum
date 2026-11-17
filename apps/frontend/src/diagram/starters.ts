@@ -529,6 +529,12 @@ export const STARTERS: Starter[] = [
 
 export const starterFor = (id: string) => STARTERS.find((s) => s.id === id);
 
+/**
+ * The chooser's Standard view: each composer's own starter, blank but for Structure's sample beam. The Form mode has
+ * none, only its presets.
+ */
+export const STANDARD = ['circuit', 'logic', 'general-drawing', 'structure', 'vectors', 'plot', 'flowchart', 'flowchart-typst', 'commutative', 'mermaid'];
+
 const groupLabel = (group: string) => {
   const [category, id] = group.split('/');
   return CATEGORIES.find((c) => c.id === category)?.groups.find(([g]) => g === id)?.[1] ?? group;
