@@ -80,7 +80,8 @@ eq([starterFor('block-diagram')?.home, starterFor('mass-spring-damper')?.home, s
 eq(ids('555'), ['astable-555', 'monostable-555'], 'templates found by alias');
 eq(ids('buck').slice(0, 2), ['buck-converter', 'buck-boost-converter'], 'converters by name');
 eq(search('   ').starters, [], 'blank finds nothing');
-
+// by relevance: title, then blurb or aliases, then groups and packages, each rank in definition order
+eq(ids('fluid statics').slice(0, 5), ['general-drawing', 'gate', 'manometer', 'tank', 'floating'], 'the fluid presets before the beams, which match only by their group');
 // Structures and Mohr's circle: Engineering › Mechanical and structures, cross-listed under Physics › Mechanics and fluids
 for (const id of ['structure', 'mohr']) {
   eq(sectionsFor('engineering').find((s) => s.id === 'engineering/mechanical')?.starters.some((s) => s.id === id), true, `${id} under Mechanical and structures`);
