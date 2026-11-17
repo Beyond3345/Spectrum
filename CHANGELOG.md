@@ -85,6 +85,13 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ### Fixed
 
+- Every diagram canvas:
+  - Settings › Diagram composer refuses a tool key another tool on the same canvas already has, such as T for Structures' member, rather than only noting it
+  - The composer's Edit menu offers Paste as soon as something is copied
+  - A short word in Draw a diagram's search starts a word, so "op amp" no longer finds a ramp or a damped curve
+  - A colour well shows a colour chosen from the swatches or typed as an xcolor name, rather than black
+  - The minimap of a flowchart or commutative diagram shows its boxes on the light and the dark canvas
+  - Labels on the canvas show ∃, ∀, ∈, ∪, ∩, ⌊ ⌋, ↦ and the other common set, logic and arrow signs, and \circ as ∘ rather than a degree sign
 - Circuits and General drawing:
   - A ground, supply or terminal no longer logs an error while the circuit symbols load
   - A terminal with a Voltage between two points across it stays open, without a junction dot
