@@ -7,6 +7,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 ### Added
 
 - Every diagram canvas:
+  - Draw a diagram has a Standard view, after Recently used, with one card for each composer: Circuit, Logic schematic, General drawing, Structure, Vector diagram, Plot, Flowchart, Flowchart in Typst, Commutative diagram and Mermaid diagram
   - Every diagram canvas can draw the circuit canvas's backgrounds: a larger dot every few dots, a line every few, a grid of lines or plain dots
   - Tool keys for the other composers: W also connects in flowcharts, M draws a member and T a truss bar in Structures, and P adds a point and V a vector in Vector diagrams. Each shows in its tool's tooltip, works only while the pointer is over the drawing and can be changed in Settings › Diagram composer
   - Settings › Diagram composer has Dark canvas and Minimap switches, which follow you to your other computers. The buttons on a canvas change the same settings
@@ -82,6 +83,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - An inspector's fold opens by itself when a field inside becomes set later, such as by Redo
 - Labels on the circuit canvas show Greek letters and common maths signs
 - A drawing that uses anything new in 2.5 saves as file version 5, which Spectrum 2.4 and earlier open as code
+- Logic gates and Springs, dampers and masses are symbol sets of their own, which Symbol sets… adds to a drawing when Symbols from other packages is on. Annotate's circuit presets come with circuit symbols, and its fills, boundaries, free surface and C, CP, G, B and M points with the Fluid mechanics and Construction materials sets
 
 ### Fixed
 
@@ -95,6 +97,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
   - Searching in Draw a diagram lists the starters whose name matches first
   - Symbol sets says parts list, not palette
 - Circuits and General drawing:
+  - The parts list shows only a drawing's own kind of symbol: a circuit no longer lists logic gates, springs or the fluid mechanics points (Centre of pressure CP and the like), and a logic schematic no longer lists resistors and transistors. A drawing from before keeps every kind it uses
   - A ground, supply or terminal no longer logs an error while the circuit symbols load
   - A terminal with a Voltage between two points across it stays open, without a junction dot
   - A dimension's third handle can be dragged right after drawing it, while Dimension is still picked
