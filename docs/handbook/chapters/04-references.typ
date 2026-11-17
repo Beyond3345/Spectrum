@@ -176,7 +176,7 @@ Spectrum moves projects between your computers through GitHub. Each project is k
 - #ui[Sign in with GitHub…], which opens GitHub in your browser, where you enter the code Spectrum shows and allow it to use your repositories or
 - #ui[Or paste a token], a personal access token: a fine-grained token for all your repositories with Contents and Administration set to Read and write, or a classic token with the `repo` scope.
 
-#shot("images/04-references/settings-github.png", [#menu[Settings][GitHub] before signing in.], width: 65%) <fig-references-settings-github>
+#shot("images/04-references/settings-github.png", [#menu[Settings][GitHub] before signing in. The switch for keeping your settings on GitHub stays off until you have signed in.], width: 65%) <fig-references-settings-github>
 
 The token is kept in the backend, in `github.json` in Spectrum's data folder, readable by your account only, and never reaches the window. Commits are made as your GitHub account with its noreply email address.
 
@@ -223,4 +223,4 @@ Without a connection, Spectrum waits and tries again every two minutes. A token 
 
 === Settings on GitHub
 
-With #ui[Keep my settings in a private repository (spectrum-settings)] on in #menu[Settings][GitHub], your appearance, editor, spelling, shortcuts, personas, your own skills and templates, the folders on the projects page and the tag colours go through a private `spectrum-settings` repository. Each computer writes its own settings file, so the newer value of each setting wins, while personas, skills and templates are one file or folder each, and the newer copy is kept whole. A computer signing in for the first time takes the settings already there. API keys, tokens and folders on disk never go to GitHub.
+With #ui[Keep my settings in a private repository (spectrum-settings)] on in #menu[Settings][GitHub], your appearance, editor, spelling, shortcuts, personas, your own skills and templates, the folders on the projects page and the tag colours go through a private `spectrum-settings` repository. Each computer writes its own settings file, so the newer value of each setting wins, while personas, skills and templates are one file or folder each, and the newer copy is kept whole. A computer signing in for the first time takes the settings already there. Before you sign in, the switch shows off and cannot be changed, with "Sign in to GitHub to turn it on." in its hint. API keys, tokens and folders on disk never go to GitHub.
