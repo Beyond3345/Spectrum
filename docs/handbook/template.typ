@@ -5,13 +5,13 @@
 #let muted = luma(105)                           // captions, page numbers and quiet marks
 #let hair = luma(212)                            // thin rules and screenshot borders
 #let ink = rgb("#1c1c1e")                        // lettering on a band too bright for white
-#let warn = rgb("#a05a00")                       // the Note boxes, as the app's warning amber
 #let serif = ("Libertinus Serif", "Noto Serif SC") // Typst carries Libertinus; Noto Serif SC is in Spectrum's fonts
 #let mono = ("DejaVu Sans Mono", "Menlo")
 
 // The chapters' colours: one area of the app each, from the palette the app shares (apps/frontend/src/app/palette.json).
 // `light` is for text on white, `band` for bands, icons and fills. About this handbook has none and keeps the accent.
 #let palette = json("palette.json") // a copy of apps/frontend/src/app/palette.json, which the app reads; palette.check.ts keeps them equal
+#let warn = rgb(palette.assistant.light)        // the Note boxes: the palette's gold, darkened for text
 #let chapter-areas = (
   ch-start: "projects", ch-writing: "writing", ch-assistant: "assistant", ch-references: "references",
   ch-composer: "composer", ch-circuits: "circuits", ch-structures: "structures", ch-vectors: "vectors",
@@ -24,7 +24,7 @@
   composer: "pencil", circuits: "bolt", structures: "building.columns", vectors: "triangle",
   flow: "arrow.triangle.branch", plots: "chart.line.uptrend.xyaxis", forms: "list.clipboard", symbols: "square.grid.2x2",
 )
-#let area(key) = if key == none { (light: accent, band: rgb("#3a3a3c"), icon: none) } else {
+#let area(key) = if key == none { (light: accent, band: accent, icon: none) } else {
   let a = palette.at(key)
   (light: rgb(a.light), band: rgb(a.band), dark: rgb(a.dark), icon: area-icons.at(key))
 }
@@ -90,7 +90,7 @@
   },
 )
 
-// An aside the reader should not miss, in the app's warning amber: #note[…], or #note(title: [Before 2.5])[…]
+// An aside the reader should not miss, in the palette's gold: #note[…], or #note(title: [Before 2.5])[…]
 #let note(title: [Note], body) = titled-box(
   [#fluent("exclamationmark.triangle", warn, height: 1.05em)#h(4pt)#title], body,
   frame: warn, title-fill: tint(warn, 12%), title-colour: warn, fill: tint(warn, 4%),
@@ -215,28 +215,22 @@
   show heading.where(level: 3): it => block(above: 1.5em, below: 0.75em, text(size: 11.5pt, weight: "semibold", it.body))
   show heading.where(level: 4): it => block(above: 1.2em, below: 0.6em, text(size: 10.5pt, style: "italic", it.body))
 
-  // The cover: the app icon on the ink of its own square, the name, a spectrum of the chapters' colours and their icons.
+  // The cover: white, with the icon, the name and a thin spectrum of the chapters' colours.
   let areas = palette.keys().sorted(key: k => palette.at(k).chapter)
-  let cover-ink = rgb("#1d1f2a")
-  page(header: none, footer: none, fill: cover-ink, margin: (x: 30mm, top: 40mm, bottom: 26mm), {
-    set align(center)
-    set text(fill: white)
-    image("figures/icon.png", width: 46mm)
-    v(12mm)
-    text(size: 40pt, weight: "semibold", title)
-    v(-4mm)
-    text(size: 22pt, fill: rgb("#b9bccb"), subtitle)
-    v(10mm)
-    box(width: 96mm, height: 2.2pt, radius: 1.1pt, clip: true,
-      grid(columns: (1fr,) * areas.len(), ..areas.map(k => rect(width: 100%, height: 100%, fill: rgb(palette.at(k).band)))))
-    v(10mm)
-    set text(size: 11pt, fill: rgb("#d4d6df"))
-    [Version #version]
-    if date != none { linebreak(); date.display("[day padding:none] [month repr:long] [year]") }
-    v(1fr)
-    areas.map(k => fluent(area-icons.at(k), rgb(palette.at(k).dark), height: 6.5mm)).join(h(4.2mm))
+  page(header: none, footer: none, margin: (x: 30mm, top: 62mm, bottom: 30mm), {
+    image("figures/icon.png", width: 22mm)
     v(9mm)
-    text(size: 11pt, fill: rgb("#d4d6df"), author)
+    text(size: 40pt, weight: "semibold", title)
+    linebreak()
+    v(1mm)
+    text(size: 22pt, fill: muted, subtitle)
+    v(8mm)
+    box(width: 60mm, height: 2.2pt, radius: 1.1pt, clip: true,
+      grid(columns: (1fr,) * areas.len(), ..areas.map(k => rect(width: 100%, height: 100%, fill: rgb(palette.at(k).band)))))
+    v(1fr)
+    set text(size: 11pt)
+    [#author \ ]
+    text(fill: muted)[Version #version#if date != none [, #date.display("[day padding:none] [month repr:long] [year]")]]
   })
 
   // The contents: chapters and their sections, each chapter with a dot of its colour.
