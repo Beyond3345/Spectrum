@@ -29,20 +29,20 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
   - M picks Beam or frame member and T picks Truss bar while the pointer is over the drawing; both can be changed in Settings
   - The inspector folds the rarer fields (stiffness, a support's angle and settlement, a load's direction and on-plan switch, hinge and shear release), and each fold opens when one of its fields is set
   - Labels on the canvas show subscripts as they print, such as A_y and q_0
-  - Drag a box to select, drag a selection to move it, nudge with the arrow keys, select all with ⌘A, mirror with X and Y, and turn a selection by any angle from the inspector. Space or the middle button pans
+  - Drag a box to select, drag a selection to move it, nudge with the arrow keys, select all with ⌘A, mirror with X and Y and turn a selection by any angle from the inspector. Space or the middle button pans
   - The canvas uses the PDF's scale, so text, arrows and line widths sit where they will print
   - A load per horizontal length is drawn as a level band just above the member, with arrows all the same length
 - Vector diagrams:
   - An angle with θ, a circle or an arc, a line from its equation with its intercepts marked, a drop to both axes and equal-length ticks
-  - Constructions for where two lines cross, a scalar multiple such as −2v, a vector placed at another point, a reflection in a line, and a parallel or a perpendicular through a point. Each follows the points it is built on
+  - Constructions for where two lines cross, a scalar multiple such as −2v, a vector placed at another point, a reflection in a line and a parallel or a perpendicular through a point. Each follows the points it is built on
   - Points made by a vector diagram's drawing tools have no dot or letter. The Point tool's points still have both
   - Style › Vector names writes each \mathbf{…} in a vector diagram's labels as \vec, \overrightarrow or esvect's \vv, with a default for new drawings in Settings › Diagram composer. Insert adds esvect when \vv is used
-  - The canvas has the counting grid, with a larger mark every centimetre, the x and y axes darker, and the pointer's x and y beside the zoom
+  - The canvas has the counting grid, with a larger mark every centimetre, the x and y axes darker and the pointer's x and y beside the zoom
   - P picks Point and V picks Vector while the pointer is over the drawing. You can change both in Settings › Diagram composer
   - Rarer settings fold under one line in the inspector, which opens when any of them is set
   - A label with no side of its own is placed clear of arrows, lines and other labels, in the PDF and on the canvas alike. Existing figures with such labels may show them moved. A new side, "Beside the arrow, left or right", keeps a label beside a steep vector
   - Labels show as they print, with real subscripts, bold vectors, arrows over \vec and \parallel as ∥
-  - Drag a whole selection, select with a marquee, nudge with the arrow keys, turn by any angle, mirror, and set the colour and thickness of everything selected
+  - Drag a whole selection, select with a marquee, nudge with the arrow keys, turn by any angle, mirror and set the colour and thickness of everything selected
   - The canvas follows the Style's scale, and lines and arrow tips are drawn at their printed width
   - Nine new starters: free-body diagram on a block, triangle law, parallelogram law, force polygon, position vectors with i and j, medians of a triangle, angle between two vectors, line from its equation and scalar multiples
 - Flowcharts and commutative diagrams:
@@ -50,7 +50,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
   - Block diagrams get a gain, a takeoff point and + and − signs at a summing junction
   - New terminal, manual input and off-page connector shapes, and swimlanes with their title on any side
   - Turn a selection a quarter either way, or mirror it
-  - Commutative diagrams: double, maps to, equals, tail and harpoon arrows, loops, and two arrows between the same objects drawn apart
+  - Commutative diagrams: double, maps to, equals, tail and harpoon arrows, loops and two arrows between the same objects drawn apart
   - Commutative diagrams: select several arrows to change them all at once
   - Flowcharts, state machines, model architectures and commutative diagrams draw Settings › Diagram composer's background, on the points boxes snap to
   - A Connect tool (W) joins two shapes with a click on each
@@ -58,12 +58,12 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
   - Box text and arrow labels show subscripts and superscripts, and canvas text is the size the PDF prints, breaking lines where the PDF does
   - New flow starters: Decision flowchart, Feedback loop, Swimlane process, Model architecture in Typst, Commutative square, Pullback and Short exact sequence. A search for a flowchart shape such as "decision" opens the Flowchart composer
 - Plots, Venn diagrams and Mermaid:
-  - Plots take points typed into the composer, with an error bar and a label on any point, and no data file needed
+  - Plots take points typed into the composer, with an error bar and a label on any point and no data file needed
   - A least-squares line through a series of points, through the origin if you like, with its equation as its legend
-  - Mark shapes, a dash-dot line, and marks with no line for a scatter
+  - Mark shapes, a dash-dot line and marks with no line for a scatter
   - Equal axes, so a circle is round; a height; x increasing to the left; a black and white line and marker cycle
   - Break at asymptotes, so tan(x) is not joined across them, now without a y range
-  - Tick numbers with a set number of decimals, plain numbers with no ×10ⁿ, and a decimal comma
+  - Tick numbers with a set number of decimals, plain numbers with no ×10ⁿ and a decimal comma
   - The legend can sit below the plot in a row; bars and error bars for typed points and data files
   - A shaded area on any series, so a band between two series (an envelope) or the area under a data curve; and a smooth sketch curve through typed points
   - Two starters from Construction Materials: a stress–strain curve with its named points, an unloading line and the area under it, and a grading curve on a log axis inside a grading envelope
@@ -73,7 +73,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
   - New plot starters: Normal curve, Bode magnitude plot, Damped oscillation, Polar rose, Lissajous figure, Conics and Phase portrait
   - New Mermaid starters and templates: Entity–relationship diagram, Pie chart, Bar and line chart, Mind map, Timeline and Git graph
 - Form presets:
-  - Four new Form presets for fluid mechanics, in the chooser: Hydrostatic force on a gate, Manometer, Accelerating tank, and Floating body and stability. Each works out its answers (the resultant force and centre of pressure and the forces on the stop and hinge; the pressure difference; the tilted surface, depths, corner pressures and the acceleration that spills; the draught and metacentric height) and draws the figure as the course's slides or exam papers do
+  - Four new Form presets for fluid mechanics, in the chooser: Hydrostatic force on a gate, Manometer, Accelerating tank and Floating body and stability. Each works out its answers (the resultant force and centre of pressure and the forces on the stop and hinge; the pressure difference; the tilted surface, depths, corner pressures and the acceleration that spills; the draught and metacentric height) and draws the figure as the course's slides or exam papers do
   - Two new Form presets for mathematics, in the chooser. Conic section takes the general equation Ax² + Bxy + Cy² + Dx + Ey + F = 0 or an ellipse's, hyperbola's or parabola's own numbers, says what it is (the degenerate cases too), completes the squares, turns the axes when there is an xy term and draws the curve with its foci, vertices, directrix, asymptotes and turned axes. Linear transformation takes a 2×2 matrix and draws the unit square or a grid before and after, with the images of e₁ and e₂, the determinant and the real eigenvectors. Both write their working under the figure
 
 ### Changed
@@ -92,12 +92,15 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
   - A colour well shows a colour chosen from the swatches or typed as an xcolor name, rather than black
   - The minimap of a flowchart or commutative diagram shows its boxes on the light and the dark canvas
   - Labels on the canvas show ∃, ∀, ∈, ∪, ∩, ⌊ ⌋, ↦ and the other common set, logic and arrow signs, and \circ as ∘ rather than a degree sign
+  - Searching in Draw a diagram lists the starters whose name matches first
+  - Symbol sets says parts list, not palette
 - Circuits and General drawing:
   - A ground, supply or terminal no longer logs an error while the circuit symbols load
   - A terminal with a Voltage between two points across it stays open, without a junction dot
   - A dimension's third handle can be dragged right after drawing it, while Dimension is still picked
   - Text, and a part's text inside it, show upright on the canvas, as they print
   - A drawing opens with its large symbols, such as the axes or an antenna's waves, fully in view
+  - The circuit inspector no longer says a Text part's name reaches its pins, and its hints keep $…$ on one line
 - Structures:
   - A bending moment diagram labels its values with the right sign on a beam drawn from right to left, so a 6 m beam with 10 kN/m reads 45 kN m, not −45. The diagram itself was already on the correct side
   - A spring support's stiffness no longer depends on the longest member in the structure. Its stiffness is now set in force per length (a moment per radian for a rotational spring) against the members' EI, so drawings with springs show different reactions from before
@@ -119,6 +122,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
   - The inspector shows the Style's tip size and point size, and typing that value keeps the item on the Style
   - A point cannot take a name another point in its panel already has
   - Every inspector menu is named by its label for screen readers
+  - The canvas draws the arrow of \vec, \overrightarrow and \vv over the letters. In Chrome and on Windows it showed as bars
+  - A length or coordinate typed in is kept within a metre, so a huge number no longer stops TeX
 - Flowcharts and commutative diagrams:
   - Resizing a flowchart box from its left or top edge now grows it that way, in 0.5 cm steps
   - Flowchart text with %, &, # or _ (such as "50% done" or "R&D") now compiles in TikZ
@@ -148,12 +153,14 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Form presets:
   - A gate clear of its fluid no longer names the fluid below the bed or writes NaN in its comments, and a fluid on the other side with no depth is drawn as none
   - Mohr's circle asks for σz only when Three-dimensional state is on
+  - A number field says what range it takes when a number outside it is typed
 - Space could be recorded as a diagram shortcut although the canvas uses it to pan
 - Polish, Rewrite and Translate results in the assistant no longer say Edit now lives in the agent workspace
 - Change template offers only LaTeX templates, and Quick switch no longer writes a Typst template's preamble into a .tex file
 - The References chat suggests #bibliography("refs.bib") for a Typst document and front matter for Markdown, rather than \bibliography
 - The Local agents send button no longer shows a spinner when no agent is set up
 - Messages that point to Settings name the pane with ›, as the rest of the app does
+- Settings › GitHub shows Keep my settings in a private repository off until you sign in
 - The sidebar's Outline shows a heading's `\texorpdfstring` as its plain form, as the PDF's bookmarks do
 - Closing the Jyutping window after changing the Chinese font or an option brings the preamble's lines up to date, as Update preamble does
 - The Jyutping window no longer says the built-in Tectonic can compile it
