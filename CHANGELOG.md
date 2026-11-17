@@ -6,6 +6,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ### Added
 
+- A Colour style in Settings › Appearance. Spectrum, the new default, gives each part of the app its own colour from the handbook's palette: Settings' sections on coloured squares, the editor's tools and tabs, the projects page's views and New button, and each composer's cards, chip and rail headings. Simple keeps the look of 2.4
+- A Spectrum accent colour: Compile and progress bars run through the colours of the wheel, and the rest of the app uses the palette's blue
 - Every diagram canvas:
   - Draw a diagram has a Standard view, after Recently used, with one card for each composer: Circuit, Logic schematic, General drawing, Structure, Vector diagram, Plot, Flowchart, Flowchart in Typst, Commutative diagram and Mermaid diagram
   - Every diagram canvas can draw the circuit canvas's backgrounds: a larger dot every few dots, a line every few, a grid of lines or plain dots
