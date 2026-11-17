@@ -19,13 +19,13 @@ The References chat is the assistant panel (#key("⌘", "L")) in its #ui[Referen
 + any other link is read for the publisher's metadata, with the search connections tried when a page is blocked or has no authors or date and
 + a title is searched on Crossref, and when no single result clearly matches, the closest candidates are shown with #ui[Add] to choose from.
 
-#shot("images/04-references/references-chat.png", [The assistant panel in #ui[References] mode. #ui[Cite from Zotero] in its bar is described in @sec-references-zotero.], width: 85%) <fig-references-chat>
+#shot("figures/04-references/references-chat.png", [The assistant panel in #ui[References] mode. #ui[Cite from Zotero] in its bar is described in @sec-references-zotero.], width: 85%) <fig-references-chat>
 
 The citation key is the first author's surname followed by the year, such as `Vaswani2017`. Accents are removed and name particles are joined, so "van der Waals" becomes `VanderWaals`, and a key already used for another paper gets a letter (`Smith2020a`). A paper whose DOI or arXiv ID is already in a `.bib` of the project is reported as #ui[Already there] with its existing key and is not added again. Unknown dates and authors are left empty rather than guessed.
 
 Each result is a card with its status, key, title, authors and year, the BibTeX that was written (folded under #ui[BibTeX]) and #ui[Insert citation] (@fig-references-card). When the `.bib` is not yet loaded by the main file, the card says so and gives the line to add, which is `#bibliography("refs.bib")` in Typst, `bibliography: refs.bib` in the front matter of Markdown and `\bibliography{references}` in LaTeX.
 
-#shot("images/04-references/references-card.png", [A reference added in a Typst project, shown again from the chat's history. The hint at the foot gives the Typst line that loads `refs.bib`.], width: 85%) <fig-references-card>
+#shot("figures/04-references/references-card.png", [A reference added in a Typst project, shown again from the chat's history. The hint at the foot gives the Typst line that loads `refs.bib`.], width: 85%) <fig-references-card>
 
 With #ui[Insert `\cite` at the cursor after adding a reference] on, in #menu[Settings][Editor], a single reference that the chat adds or finds is cited at the cursor straight away. This only happens where you had placed the cursor in a document, and otherwise the chat says where to click.
 
@@ -35,7 +35,7 @@ A citation is written in the form the document needs. In a LaTeX document Spectr
 
 #menu[Insert][Citation], under #ui[+] in the editor's toolbar, puts `\cite{key}` at the cursor with `key` selected. Typing over it, or anywhere inside a citation command, lists the matching keys of the project's `.bib` files with their author and year (@fig-references-completion). #key("Enter") or #key("Tab") picks one. With Zotero open, items of your library also appear below the project's keys after three letters (@sec-references-zotero).
 
-#shot("images/04-references/cite-completion.png", [Citation completion after typing `Wh` inside `\cite{}`. The key is shown with its author and year.], width: 60%) <fig-references-completion>
+#shot("figures/04-references/cite-completion.png", [Citation completion after typing `Wh` inside `\cite{}`. The key is shown with its author and year.], width: 60%) <fig-references-completion>
 
 === Checking citations
 
@@ -47,13 +47,13 @@ Spectrum reads your Zotero library through Zotero's local API on the same comput
 
 #menu[Settings][Zotero] shows whether Zotero is open, its version, whether the local API is on and whether the Better BibTeX plug-in is installed, with #ui[Check again] (@fig-references-settings-zotero). With Zotero 10 open, it also has #ui[Allow Spectrum in Zotero…], which asks Zotero for permission to write. The pane's last switch, #ui[Suggest items from your Zotero library in `\cite` completion], is on by default.
 
-#shot("images/04-references/settings-zotero.png", [#menu[Settings][Zotero] with Zotero closed. Citing and completion wait until Zotero is open.], width: 65%) <fig-references-settings-zotero>
+#shot("figures/04-references/settings-zotero.png", [#menu[Settings][Zotero] with Zotero closed. Citing and completion wait until Zotero is open.], width: 65%) <fig-references-settings-zotero>
 
 === Citing from Zotero
 
 #ui[Cite from Zotero…] is in the editor's right-click menu for `.tex` files (@fig-references-editor-menu) and in the bar of the References chat. With Better BibTeX installed, it opens Zotero's own citation picker, brings Zotero to the front and shows #ui[Answer in Zotero] with #ui[Cancel] until you have picked. Without Better BibTeX, it opens a search of your library in Spectrum instead. With Zotero closed, it says "Zotero isn't open. Start Zotero, then try again."
 
-#shot("images/04-references/editor-menu-zotero.png", [The editor's right-click menu, with #ui[Cite from Zotero…] and #ui[Add to-do here].], width: 45%) <fig-references-editor-menu>
+#shot("figures/04-references/editor-menu-zotero.png", [The editor's right-click menu, with #ui[Cite from Zotero…] and #ui[Add to-do here].], width: 45%) <fig-references-editor-menu>
 
 The chosen entries go into the `.bib` under their Zotero citation key, which is Zotero's own field, then Better BibTeX's key, then an author and year key as in @sec-references-bib. They pass through the same duplicate check as the References chat, and the citation is put at the cursor. A key the `.bib` already uses for another work gets the next free letter, and the `file` field, which holds paths to PDFs on your computer, is left out.
 
@@ -79,7 +79,7 @@ Existing work comes into Spectrum as a project through #ui[Import] on the projec
 - #ui[From arXiv…], which downloads a paper's LaTeX source into a new project and
 - #ui[Open existing folder…], which opens a folder already on your computer as a project, where it is.
 
-#shot("images/04-references/import-menu.png", [The #ui[Import] menu on the projects page.], width: 35%) <fig-references-import-menu>
+#shot("figures/04-references/import-menu.png", [The #ui[Import] menu on the projects page.], width: 35%) <fig-references-import-menu>
 
 === From a .zip file
 
@@ -89,7 +89,7 @@ Existing work comes into Spectrum as a project through #ui[Import] on the projec
 
 #ui[From arXiv…] takes an arXiv ID, such as `1706.03762`, or a link to the paper's page (@fig-references-arxiv). #ui[Import] downloads the paper's LaTeX source from arXiv into a new project, showing #ui[Downloading…] with its progress and then #ui[Extracting…], and opens the project when it is done. Closing the sheet or pressing #ui[Cancel import] stops the download.
 
-#shot("images/04-references/import-arxiv.png", [#ui[Import from arXiv]. The note under the field says where the new project is made.], width: 60%) <fig-references-arxiv>
+#shot("figures/04-references/import-arxiv.png", [#ui[Import from arXiv]. The note under the field says where the new project is made.], width: 60%) <fig-references-arxiv>
 
 === From a folder or a single file
 
@@ -115,7 +115,7 @@ A checkpoint is saved in three ways by hand,
 
 After a save, a notice says "Saved checkpoint 2" with #ui[Rename], which names it. When nothing has changed since the last checkpoint, saving with a label offers to label the last checkpoint instead (@fig-references-saved).
 
-#shot("images/04-references/checkpoint-nothing-changed.png", [The question when a labelled checkpoint is saved with nothing changed since the last one.], width: 50%) <fig-references-saved>
+#shot("figures/04-references/checkpoint-nothing-changed.png", [The question when a labelled checkpoint is saved with nothing changed since the last one.], width: 50%) <fig-references-saved>
 
 Spectrum also saves a checkpoint by itself at four times. Each is marked in the list with a badge,
 
@@ -136,7 +136,7 @@ Compiles save at most one checkpoint every 10 minutes, as a newer compile's chec
 - #ui[Rename…], which labels it and
 - #ui[Delete…], which removes it.
 
-#shot("images/04-references/checkpoints-list.png", [#menu[Tools][Checkpoints] after a restore. Checkpoint 3 was saved by Spectrum before the restore, and checkpoint 1 carries the label "Draft for tutor".], width: 60%) <fig-references-checkpoints>
+#shot("figures/04-references/checkpoints-list.png", [#menu[Tools][Checkpoints] after a restore. Checkpoint 3 was saved by Spectrum before the restore, and checkpoint 1 carries the label "Draft for tutor".], width: 60%) <fig-references-checkpoints>
 
 #ui[Delete automatic checkpoints older than…] at the foot removes the compile checkpoints older than a week, a month, three months or a year, for this project. #menu[Settings][Checkpoints] does the same for every project on the computer.
 
@@ -149,7 +149,7 @@ A comparison lists the changed files on the left, each marked #ui[Changed], #ui[
 + Press #ui[Restore this file]
 + Press #ui[Restore] to confirm
 
-#shot("images/04-references/checkpoint-compare.png", [Checkpoint 2 compared with the current files. The checkpoint's text is on the left and the current text on the right.]) <fig-references-compare>
+#shot("figures/04-references/checkpoint-compare.png", [Checkpoint 2 compared with the current files. The checkpoint's text is on the left and the current text on the right.]) <fig-references-compare>
 
 #ui[Restore this checkpoint…] puts every file back after asking first. In both cases Spectrum saves a #ui[Before restore] checkpoint of the current state when it differs from the latest checkpoint, so a restore can itself be undone. An open file reloads in the editor with the restored text.
 
@@ -161,7 +161,7 @@ A comparison lists the changed files on the left, each marked #ui[Changed], #ui[
 - #ui[Warn me when a checkpoint fails to save], on by default, which says when saving fails or when a file was too large (over 50 MB) or could not be read and
 - #ui[Delete automatic checkpoints older than…], for every project on the computer.
 
-#shot("images/04-references/settings-checkpoints.png", [#menu[Settings][Checkpoints].], width: 65%) <fig-references-settings-checkpoints>
+#shot("figures/04-references/settings-checkpoints.png", [#menu[Settings][Checkpoints].], width: 65%) <fig-references-settings-checkpoints>
 
 Checkpoints are stored as Spectrum 1.10.4 stored its versions, so going back to 1.10.4 lists every checkpoint as a version.
 
@@ -176,7 +176,7 @@ Spectrum moves projects between your computers through GitHub. Each project is k
 - #ui[Sign in with GitHub…], which opens GitHub in your browser, where you enter the code Spectrum shows and allow it to use your repositories or
 - #ui[Or paste a token], a personal access token: a fine-grained token for all your repositories with Contents and Administration set to Read and write, or a classic token with the `repo` scope.
 
-#shot("images/04-references/settings-github.png", [#menu[Settings][GitHub] before signing in. The switch for keeping your settings on GitHub stays off until you have signed in.], width: 65%) <fig-references-settings-github>
+#shot("figures/04-references/settings-github.png", [#menu[Settings][GitHub] before signing in. The switch for keeping your settings on GitHub stays off until you have signed in.], width: 65%) <fig-references-settings-github>
 
 The token is kept in the backend, in `github.json` in Spectrum's data folder, readable by your account only, and never reaches the window. Commits are made as your GitHub account with its noreply email address.
 
@@ -184,9 +184,9 @@ The token is kept in the backend, in `github.json` in Spectrum's data folder, re
 
 Before signing in, #menu[Tools][GitHub] shows "Keep this project on GitHub" with a link to #menu[Settings][GitHub], and the GitHub view of the projects page asks you to sign in (@fig-references-github-view). #ui[Sync with GitHub] in a project's menu also opens #menu[Settings][GitHub] until you have signed in.
 
-#shot("images/04-references/tools-github-signed-out.png", [#menu[Tools][GitHub] before signing in, with #ui[Initialise] for a Git repository on this computer only.], width: 60%) <fig-references-github-signed-out>
+#shot("figures/04-references/tools-github-signed-out.png", [#menu[Tools][GitHub] before signing in, with #ui[Initialise] for a Git repository on this computer only.], width: 60%) <fig-references-github-signed-out>
 
-#shot("images/04-references/github-view-signed-out.png", [The GitHub view of the projects page before signing in.], width: 55%) <fig-references-github-view>
+#shot("figures/04-references/github-view-signed-out.png", [The GitHub view of the projects page before signing in.], width: 55%) <fig-references-github-view>
 
 Once signed in, a project is backed up as follows,
 

@@ -26,13 +26,13 @@ The Vector diagrams composer draws points, vectors and the lines between them on
 
 The chapter first shows how to start a drawing and how the canvas works. It then walks through the rail's three groups of tools: drawing, axes and marks, and constructions. The later sections cover panels, editing several items at once, how labels are placed, how vector names are written and the code the composer writes. What every composer shares is in @ch-composer.
 
-#shot("images/08-vectors/composer.jpg", [The Vector diagrams composer with a block on an incline. The rail is on the left, the canvas and the compiled preview in the middle and the table of the points' coordinates on the right. The pointer's place on the grid shows beside the zoom.]) <fig-vectors-composer>
+#shot("figures/08-vectors/composer.jpg", [The Vector diagrams composer with a block on an incline. The rail is on the left, the canvas and the compiled preview in the middle and the table of the points' coordinates on the right. The pointer's place on the grid shows beside the zoom.]) <fig-vectors-composer>
 
 == Starting a vector diagram <sec-vectors-start>
 
 Open #ui[Draw a diagram] in the top bar of a project and pick a card under #menu[Mathematics][Geometry and vectors], or search for vector (@fig-vectors-chooser). #ui[Vector diagram] opens an empty drawing, while the other fourteen starters open a figure already drawn (@tab-vectors-starters, @fig-vectors-starters).
 
-#shot("images/08-vectors/chooser.png", [#ui[Draw a diagram] searched for vector. The vector diagram starters follow the plots and the model architecture that the word also finds.], width: 72%) <fig-vectors-chooser>
+#shot("figures/08-vectors/chooser.png", [#ui[Draw a diagram] searched for vector. The vector diagram starters follow the plots and the model architecture that the word also finds.], width: 72%) <fig-vectors-chooser>
 
 #figure(
   table(
@@ -59,10 +59,10 @@ Open #ui[Draw a diagram] in the top bar of a project and pick a card under #menu
 
 #gallery(
   (
-    ("images/08-vectors/starter-free-body.png", [Free-body diagram]),
-    ("images/08-vectors/starter-triangle-law.png", [Triangle law]),
-    ("images/08-vectors/starter-parallelogram-law.png", [Parallelogram law]),
-    ("images/08-vectors/starter-force-polygon.png", [Force polygon]),
+    ("figures/08-vectors/starter-free-body.png", [Free-body diagram]),
+    ("figures/08-vectors/starter-triangle-law.png", [Triangle law]),
+    ("figures/08-vectors/starter-parallelogram-law.png", [Parallelogram law]),
+    ("figures/08-vectors/starter-force-polygon.png", [Force polygon]),
   ),
   [Four of the starters as the PDF draws them.],
   scale: 70%,
@@ -84,7 +84,7 @@ A point placed at the origin is named O and labelled below and to its left, wher
 
 With nothing selected, the inspector shows the table of every point's coordinates and the drawing's panels (@fig-vectors-coordinates). A free point's x and y can be typed there exactly. A constructed point's place is worked out from its parents, so it is shown in grey and cannot be typed. The panels are described in @sec-vectors-panels.
 
-#shot("images/08-vectors/coordinates.png", [The inspector with nothing selected. O, A and B are free points, while S is constructed as the tip of $upright(bold(a)) + upright(bold(b))$ and shows its place, (5.5, 4), in grey.], width: 34%) <fig-vectors-coordinates>
+#shot("figures/08-vectors/coordinates.png", [The inspector with nothing selected. O, A and B are free points, while S is constructed as the tip of $upright(bold(a)) + upright(bold(b))$ and shows its place, (5.5, 4), in grey.], width: 34%) <fig-vectors-coordinates>
 
 == The rail <sec-vectors-rail>
 
@@ -96,7 +96,7 @@ The line at the bottom left of the canvas says which point the tool wants next, 
   grid(
     columns: (46%, 1fr),
     gutter: 14pt,
-    frame("images/08-vectors/rail.png"),
+    frame("figures/08-vectors/rail.png"),
     align(left + horizon, table(
       columns: (auto, 1fr),
       align: left,
@@ -128,7 +128,7 @@ Click a point to select it (@fig-vectors-point). Its inspector has the following
 
 A constructed point has no Position. Instead, its inspector says what it is built from, such as "The tip of u + v, with u and v from O to A and B", and where it is now.
 
-#pair(("images/08-vectors/inspector-point.png", "images/08-vectors/inspector-constructed.png"), width: 52%, [The inspector of free point A with its fold open (left) and of the constructed point S (right). The #ui[Turn and mirror] fold is described in @sec-vectors-groups.]) <fig-vectors-point>
+#pair(("figures/08-vectors/inspector-point.png", "figures/08-vectors/inspector-constructed.png"), width: 52%, [The inspector of free point A with its fold open (left) and of the constructed point S (right). The #ui[Turn and mirror] fold is described in @sec-vectors-groups.]) <fig-vectors-point>
 
 == Vectors and lines <sec-vectors-lines>
 
@@ -163,7 +163,7 @@ Each one's inspector starts with its *Kind*, which changes it to another of the 
   caption: [The fields of a vector, segment or line.],
 ) <tab-vectors-line>
 
-#pair(("images/08-vectors/inspector-vector.png", "images/08-vectors/inspector-axes.png"), width: 46%, [The inspector of the vector $upright(bold(a)) + upright(bold(b))$ with its fold open (left) and of the axes (right).]) <fig-vectors-vector>
+#pair(("figures/08-vectors/inspector-vector.png", "figures/08-vectors/inspector-axes.png"), width: 46%, [The inspector of the vector $upright(bold(a)) + upright(bold(b))$ with its fold open (left) and of the axes (right).]) <fig-vectors-vector>
 
 === Other drawing tools
 
@@ -186,9 +186,9 @@ The starters show each of these in use: @fig-vectors-geometry has the medians' e
 
 #gallery(
   (
-    ("images/08-vectors/starter-medians.png", [Medians of a triangle]),
-    ("images/08-vectors/starter-angle.png", [Angle between two vectors]),
-    ("images/08-vectors/starter-line-equation.png", [Line from its equation]),
+    ("figures/08-vectors/starter-medians.png", [Medians of a triangle]),
+    ("figures/08-vectors/starter-angle.png", [Angle between two vectors]),
+    ("figures/08-vectors/starter-line-equation.png", [Line from its equation]),
   ),
   [Three of the geometry starters added in Spectrum 2.5.],
   scale: 85%,
@@ -237,8 +237,8 @@ Moving A or B then moves the resultant and the parallelogram with it. For the co
 #grid(
   columns: (1fr, 1fr),
   gutter: 12pt,
-  [#printed("images/08-vectors/vector-sum.png", [The parallelogram law with the resultant constructed as $upright(bold(a)) + upright(bold(b))$ and dropped to both axes.]) <fig-vectors-sum>],
-  [#printed("images/08-vectors/incline.png", [A block on a 30° incline with its weight, the normal reaction, friction and the components $W sin theta$ and $W cos theta$ dashed.]) <fig-vectors-incline>],
+  [#printed("figures/08-vectors/vector-sum.png", [The parallelogram law with the resultant constructed as $upright(bold(a)) + upright(bold(b))$ and dropped to both axes.]) <fig-vectors-sum>],
+  [#printed("figures/08-vectors/incline.png", [A block on a 30° incline with its weight, the normal reaction, friction and the components $W sin theta$ and $W cos theta$ dashed.]) <fig-vectors-incline>],
 )
 
 == Panels <sec-vectors-panels>
@@ -251,7 +251,7 @@ A drawing can hold several diagrams side by side, each in a panel with a caption
 
 Each panel has its own origin and its own point names, so every panel can have an O and an A. The code writes each panel as a scope shifted right, with its caption under it.
 
-#printed("images/08-vectors/starter-projections.png", [The Projections starter: three panels with their captions, each with a right-angle mark, a drop and a highlighted segment for the projection.]) <fig-vectors-panels>
+#printed("figures/08-vectors/starter-projections.png", [The Projections starter: three panels with their captions, each with a right-angle mark, a drop and a highlighted segment for the projection.]) <fig-vectors-panels>
 
 == Selecting and editing several items <sec-vectors-groups>
 
@@ -264,7 +264,7 @@ Selecting works as in every composer (@ch-composer). In Vector diagrams a select
 
 The inspector's fold #ui[Turn and mirror] turns the selection by any angle typed in, anticlockwise about its middle, and mirrors it. With several items selected, the inspector also sets the *Colour* of everything that takes one and the *Thickness* of every line at once (@fig-vectors-group). #ui[As in Style] gives each item its own default again.
 
-#shot("images/08-vectors/inspector-group.png", [The inspector with every item of @fig-vectors-sum selected.], width: 34%) <fig-vectors-group>
+#shot("figures/08-vectors/inspector-group.png", [The inspector with every item of @fig-vectors-sum selected.], width: 34%) <fig-vectors-group>
 
 == How labels are placed <sec-vectors-labels>
 
@@ -295,16 +295,16 @@ The choice rewrites every `\mathbf`, so a bold letter that is not a vector, such
 
 #gallery(
   (
-    ("images/08-vectors/notation-bold.png", [Bold]),
-    ("images/08-vectors/notation-vec.png", [Arrow]),
-    ("images/08-vectors/notation-arrow.png", [Long arrow]),
-    ("images/08-vectors/notation-vv.png", [esvect]),
+    ("figures/08-vectors/notation-bold.png", [Bold]),
+    ("figures/08-vectors/notation-vec.png", [Arrow]),
+    ("figures/08-vectors/notation-arrow.png", [Long arrow]),
+    ("figures/08-vectors/notation-vv.png", [esvect]),
   ),
   [Part of the drawing of @fig-vectors-sum with each of the four vector names. Only the Style changed.],
   scale: 100%,
 ) <fig-vectors-names>
 
-#shot("images/08-vectors/settings-vector-names.png", [#menu[Settings][Diagram composer][Vector names], the choice for new vector diagrams.], width: 70%) <fig-vectors-settings>
+#shot("figures/08-vectors/settings-vector-names.png", [#menu[Settings][Diagram composer][Vector names], the choice for new vector diagrams.], width: 70%) <fig-vectors-settings>
 
 == Style <sec-vectors-style>
 
@@ -314,7 +314,7 @@ The choice rewrites every `\mathbf`, so a bold letter that is not a vector, such
   grid(
     columns: (32%, 1fr),
     gutter: 14pt,
-    frame("images/08-vectors/style.png"),
+    frame("figures/08-vectors/style.png"),
     align(left + top, table(
       columns: (35%, 65%),
       align: left,
@@ -343,6 +343,6 @@ Vector diagrams writes the figure as TikZ in the way these figures are written b
 - Each panel after the first is a scope shifted right, with its caption under it.
 - The libraries are loaded only when something needs them: `calc` for constructions, `arrows.meta` for tips other than the Style's, `decorations.markings` for middle arrows and ticks, and `angles` for angles.
 
-#shot("images/08-vectors/code.png", [The Code tab of @fig-vectors-sum: the named coordinates, S constructed with calc, then the axes, the lines and the vectors.], width: 92%) <fig-vectors-code>
+#shot("figures/08-vectors/code.png", [The Code tab of @fig-vectors-sum: the named coordinates, S constructed with calc, then the axes, the lines and the vectors.], width: 92%) <fig-vectors-code>
 
 A drawing that uses something added in 2.5 (an angle, a circle or arc, a line from its equation, a drop to both axes, equal-length ticks, a label beside its arrow, a vector name other than bold, an intersection, a scalar multiple, a reflection or a perpendicular) is saved as file version 5, which Spectrum 2.4 and earlier open as code.

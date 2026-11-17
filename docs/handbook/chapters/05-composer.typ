@@ -51,13 +51,13 @@ The #ui[Code] tab shows the file above its last line, and it can be edited like 
 
 While the code is kept as typed, the #ui[Draw] tab shows the drawing but does not let it be changed, and the inspector is hidden. The hash on the last line no longer matches the code above it, so the file opens in the #ui[Code] tab with the banner the next time as well. Redraw from the canvas whenever the drawing is wanted again.
 
-#shot("images/05-composer/code-edited.png", [The #ui[Code] tab after a comment was typed at the end of line 12. The banner offers to redraw from the canvas or keep the code as typed.]) <fig-composer-edited>
+#shot("figures/05-composer/code-edited.png", [The #ui[Code] tab after a comment was typed at the end of line 12. The banner offers to redraw from the canvas or keep the code as typed.]) <fig-composer-edited>
 
 === Changes made elsewhere
 
 The composer saves only over the text it opened or last saved. When the file was changed outside the composer meanwhile, such as by an edit in the main window or a sync client, the save stops and a banner says so. #ui[Keep this version] saves the composer's drawing over the change, while #ui[Open the changed file] opens the file as it now is. A file deleted outside the composer offers #ui[Save it again] instead.
 
-#shot("images/05-composer/changed-outside.png", [The banner shown when the file changed outside the composer. The status beside the file's name reads #ui[Not saved] until one of the two buttons is used.]) <fig-composer-changed>
+#shot("figures/05-composer/changed-outside.png", [The banner shown when the file changed outside the composer. The status beside the file's name reads #ui[Not saved] until one of the two buttons is used.]) <fig-composer-changed>
 
 == Opening the composer <sec-composer-open>
 
@@ -71,7 +71,7 @@ There are three ways to start a new drawing from the editor,
 
 Each opens the chooser, #ui[Draw a diagram]. In the desktop app the composer is a window of its own beside the document, and only one is open at a time: asking for another drawing brings that window forward at it. In a browser copy of Spectrum the composer opens as a separate browser page, which the browser may first ask to allow as a pop-up.
 
-#shot("images/05-composer/draw-button.png", [The editor's toolbar. The pencil, fourth from the left, opens #ui[Draw a diagram].], width: 45%) <fig-composer-draw-button>
+#shot("figures/05-composer/draw-button.png", [The editor's toolbar. The pencil, fourth from the left, opens #ui[Draw a diagram].], width: 45%) <fig-composer-draw-button>
 
 === The chooser
 
@@ -79,7 +79,7 @@ The chooser lists the starters as cards. A starter is a drawing to begin from: a
 
 On the left are the views. #ui[Recently used] holds the last eight starters you created, and it is where the chooser opens once there are any. #ui[All] lists every starter, and the five categories, #ui[Engineering], #ui[Physics], #ui[Mathematics], #ui[Computing] and #ui[Others], list theirs in groups such as #ui[Electrical and electronics] or #ui[Machine learning]. A starter can be listed under more than one group. When the open document is a Typst file, the Typst starters come first, and in a copy of Spectrum without its built-in Typst they are greyed out with #ui[Needs Spectrum's built-in Typst].
 
-#shot("images/05-composer/chooser.png", [The chooser on its #ui[Engineering] view, with #ui[Circuit] chosen. The name below the cards is where the drawing will be saved.], width: 80%) <fig-composer-chooser>
+#shot("figures/05-composer/chooser.png", [The chooser on its #ui[Engineering] view, with #ui[Circuit] chosen. The name below the cards is where the drawing will be saved.], width: 80%) <fig-composer-chooser>
 
 To create a drawing,
 
@@ -93,7 +93,7 @@ The name starts as the starter's own with the first free number, such as `circui
 
 Typing anywhere in the chooser goes to #ui[Search diagrams and symbols]. The search finds starters by their name, the other words they answer to (FBD, Bode, MOSFET), their group and category and the package they use. It also finds symbols, listed under #ui[Symbols] as the symbol and the composer it is in, such as #ui[Op amp, in Circuit]. Choosing a symbol creates a drawing in that composer with the symbol's tool already picked, so the first click places it. Every word typed has to be found. A word of up to three letters has to start a word, so `op amp` does not find a ramp, while a longer word may sit inside one, so `mosfet` still finds nMOSFET.
 
-#shot("images/05-composer/chooser-search.png", [The chooser searched for `op amp`: the op amp starters, then the op amp symbol in the two composers that have it.], width: 80%) <fig-composer-search>
+#shot("figures/05-composer/chooser-search.png", [The chooser searched for `op amp`: the op amp starters, then the op amp symbol in the two composers that have it.], width: 80%) <fig-composer-search>
 
 === The composers
 
@@ -127,7 +127,7 @@ A drawing reopens in the composer from the editor in two ways,
 - right-click its file in the file tree and choose #ui[Edit diagram], or
 - right-click the line in a LaTeX document that takes it in with `\includestandalone` and choose #ui[Edit diagram].
 
-#shots(("images/05-composer/tree-menu.png", "images/05-composer/line-menu.png"), [Left: #ui[Edit diagram] in the file tree's menu for a drawing. Right: the same item in the editor's menu for the line that includes it.], columns: (40%, 52%)) <fig-composer-reopen>
+#shots(("figures/05-composer/tree-menu.png", "figures/05-composer/line-menu.png"), [Left: #ui[Edit diagram] in the file tree's menu for a drawing. Right: the same item in the editor's menu for the line that includes it.], columns: (40%, 52%)) <fig-composer-reopen>
 
 === Deleting a drawing
 
@@ -137,7 +137,7 @@ The bin at the right end of the composer's top bar deletes the drawing after ask
 
 Every composer sits in the same frame. Its parts are the top bar, the tool rail on the left, the canvas or form in the middle with the preview under it and the inspector on the right.
 
-#shot("images/05-composer/frame.jpg", [The composer with a circuit open and the resistor $R_1$ selected. Left: the tool rail and parts list. Middle: the canvas, its zoom controls and the compiled preview. Right: the inspector for the selected part.]) <fig-composer-frame>
+#shot("figures/05-composer/frame.jpg", [The composer with a circuit open and the resistor $R_1$ selected. Left: the tool rail and parts list. Middle: the canvas, its zoom controls and the compiled preview. Right: the inspector for the selected part.]) <fig-composer-frame>
 
 === The top bar
 
@@ -162,7 +162,7 @@ Every composer sits in the same frame. Its parts are the top bar, the tool rail 
   caption: [The composer's top bar, from left to right.],
 ) <fig-composer-topbar>
 
-#shot("images/05-composer/header.png", [The top bar of a circuit drawing.]) <fig-composer-header>
+#shot("figures/05-composer/header.png", [The top bar of a circuit drawing.]) <fig-composer-header>
 
 === The tool rail
 
@@ -174,7 +174,7 @@ The column on the right is the inspector. With nothing selected it shows how to 
 
 The rarer fields of an item are folded under one blue line, such as #ui[Voltage, current and more] on a circuit part or #ui[Line, marks, colour and more] on a plot series. Click the line to open it. The fold opens by itself when the item already has any of its fields set, and again when one becomes set later, such as by #ui[Redo], so nothing set is ever hidden. Selecting the next item starts it folded again.
 
-#shot("images/05-composer/inspector-more.png", [The inspector of a resistor, with #ui[Voltage, current and more] opened under its label and value.], width: 34%) <fig-composer-more>
+#shot("figures/05-composer/inspector-more.png", [The inspector of a resistor, with #ui[Voltage, current and more] opened under its label and value.], width: 34%) <fig-composer-more>
 
 === The preview and Compile <sec-composer-preview>
 
@@ -182,7 +182,7 @@ The composer saves the drawing and compiles it about 0.7 s after the last change
 
 While a newer compile is running, the last picture stays in the preview, greyed. When a compile fails, the heading reads #ui[Couldn't compile] and the errors are listed with their lines. Click a line number to open the #ui[Code] tab at that line, and #ui[Show the log] for the whole log. #ui[Fix with AI] asks the assistant's model for a corrected file, which lands in the #ui[Code] tab as a hand edit to be checked and kept or redrawn. It needs a model set up, as @ch-assistant describes.
 
-#shot("images/05-composer/preview-error.png", [A failed compile, after `R_\inn` was typed as a label. Each error gives its line in the code, and the last good picture stays behind it, greyed.]) <fig-composer-error>
+#shot("figures/05-composer/preview-error.png", [A failed compile, after `R_\inn` was typed as a label. Each error gives its line in the code, and the last good picture stays behind it, greyed.]) <fig-composer-error>
 
 Plots and Form presets compile the same way. Mermaid draws its picture beside the code as you type, without a compile.
 
@@ -192,7 +192,7 @@ The drawing is saved as you work, and the window saves once more when it closes.
 
 #ui[Insert as figure] saves the drawing, sends it to the editor's Floats panel and says #ui[The figure is ready to insert in the editor's Floats panel.] The panel's #ui[Insert diagram] card then takes a caption, a label, a width and a placement, and writes the figure at the cursor (@ch-writing). For a TikZ drawing whose packages clash with the document's preamble, #ui[Insert as image] puts in the PDF the composer compiled instead, so none of its packages reach the document.
 
-#shot("images/05-composer/insert-card.png", [The #ui[Insert diagram] card after #ui[Insert as figure], with the drawing's file ready and its label filled in from the file's name.], width: 55%) <fig-composer-insert>
+#shot("figures/05-composer/insert-card.png", [The #ui[Insert diagram] card after #ui[Insert as figure], with the drawing's file ready and its label filled in from the file's name.], width: 55%) <fig-composer-insert>
 
 #ui[Export] downloads the picture as a #ui[PDF] or a #ui[PNG image] of about 290 dpi. Both come from the current preview, so they wait for a successful compile of the drawing as it is now. Mermaid exports are drawn from its code directly.
 
@@ -207,11 +207,11 @@ The controls in a corner of every canvas zoom out and in, show the zoom, fit the
 - scroll to pan, or drag with #key("Space") held, or drag with the middle button, and
 - pinch, or scroll with #key("⌘") held, to zoom about the pointer.
 
-#shot("images/05-composer/canvas-controls.png", [The canvas controls: zoom out, the zoom, zoom in, fit, the minimap and the dark canvas.], width: 30%) <fig-composer-controls>
+#shot("figures/05-composer/canvas-controls.png", [The canvas controls: zoom out, the zoom, zoom in, fit, the minimap and the dark canvas.], width: 30%) <fig-composer-controls>
 
 The minimap is a small overview of the whole drawing in a corner of the canvas, with the part in view outlined. The circuit canvas, the flowchart canvases and commutative diagrams have one, while Structures and Vector diagrams do not. The dark canvas draws the drawing light on dark. It changes only the canvas: the PDF prints the same either way, and the canvas stays light in the app's dark theme until it is switched. Both switches are settings, so a choice made on one canvas holds on every other and on your other computers.
 
-#shot("images/05-composer/dark-minimap.png", [The circuit canvas with the dark canvas and the minimap on. The canvas controls keep their own colours.], width: 80%) <fig-composer-dark>
+#shot("figures/05-composer/dark-minimap.png", [The circuit canvas with the dark canvas and the minimap on. The canvas controls keep their own colours.], width: 80%) <fig-composer-dark>
 
 == The canvas background <sec-composer-grid>
 
@@ -225,14 +225,14 @@ Every canvas draws a grid behind the drawing, so squares can be counted and part
 #ui[Every] sets how many dots apart the larger marks are, from 2 to 20, with 5 by default. The marks repeat from the drawing's own origin, so they stay on the same grid points when you pan or zoom. Zoomed far out, the circuit canvas draws every fourth dot only, so the dots never crowd together.
 
 #shots(
-  ("images/05-composer/grid-major-dots.png", "images/05-composer/grid-major-lines.png", "images/05-composer/grid-lines.png", "images/05-composer/grid-dots.png"),
+  ("figures/05-composer/grid-major-dots.png", "figures/05-composer/grid-major-lines.png", "figures/05-composer/grid-lines.png", "figures/05-composer/grid-dots.png"),
   [The four backgrounds on the circuit canvas, each with #ui[Every] at 5. Top left: dots with a larger dot. Top right: dots with a line. Bottom left: grid lines. Bottom right: dots only.],
   columns: 2,
 ) <fig-composer-backgrounds>
 
 Structures and Vector diagrams count in the drawing's own units instead, whatever #ui[Every] says. Structures puts its larger marks on every whole metre (or foot), and Vector diagrams on every centimetre, with the x and y axes drawn darker through the origin. Zoomed out, both thin their marks to every second, fifth or tenth unit. Vector diagrams also shows the pointer's x and y beside the zoom.
 
-#shots(("images/05-composer/grid-structures.png", "images/05-composer/grid-vectors.png"), [Left: a portal frame in Structures, with a larger dot on every whole metre. Right: a vector diagram, with a larger dot on every centimetre, the axes darker and the pointer's position beside the zoom.], columns: (42%, 58%)) <fig-composer-units>
+#shots(("figures/05-composer/grid-structures.png", "figures/05-composer/grid-vectors.png"), [Left: a portal frame in Structures, with a larger dot on every whole metre. Right: a vector diagram, with a larger dot on every centimetre, the axes darker and the pointer's position beside the zoom.], columns: (42%, 58%)) <fig-composer-units>
 
 == Selecting and editing <sec-composer-select>
 
@@ -244,11 +244,11 @@ Selecting and editing work the same on every canvas, with the few differences no
 - Drag a selected item to move the whole selection, or nudge it with the arrow keys.
 - #key("Esc") clears the selection and goes back to the #ui[Select] tool.
 
-#shots(("images/05-composer/marquee-circuit.png", "images/05-composer/marquee-flow.png"), [A drag across empty canvas on the circuit (left) and on a flowchart (right). The circuit selects the parts whose ends lie in the box, and the flowchart the boxes it takes and the arrow between them.], columns: (58%, 40%)) <fig-composer-marquee>
+#shots(("figures/05-composer/marquee-circuit.png", "figures/05-composer/marquee-flow.png"), [A drag across empty canvas on the circuit (left) and on a flowchart (right). The circuit selects the parts whose ends lie in the box, and the flowchart the boxes it takes and the arrow between them.], columns: (58%, 40%)) <fig-composer-marquee>
 
 #key("⌘", "C") copies the selection, #key("⌘", "X") cuts it, #key("⌘", "V") pastes the copy a little along and down from the original and #key("⌘", "D") duplicates in one step. #key("Delete") or #key("⌫") deletes the selection. A paste or duplicate leaves the new items selected, ready to be moved. On Structures, Vector diagrams, flowcharts and commutative diagrams the same four commands are in the Edit (#ui[…]) menu of the top bar. These keys act on the canvas only, so in a text field they cut, copy and paste text as usual.
 
-#shot("images/05-composer/edit-menu.png", [The Edit menu, with a flowchart box selected. #ui[Paste] is ready once something has been copied.], width: 34%) <fig-composer-edit-menu>
+#shot("figures/05-composer/edit-menu.png", [The Edit menu, with a flowchart box selected. #ui[Paste] is ready once something has been copied.], width: 34%) <fig-composer-edit-menu>
 
 === Nudging, turning and mirroring
 
@@ -328,13 +328,13 @@ The composer's settings are in #menu[Settings][Diagram composer] in the main win
   caption: [Every option in #menu[Settings][Diagram composer].],
 ) <fig-composer-settings>
 
-#shots(("images/05-composer/settings-canvas.png", "images/05-composer/settings-new.png"), [The settings as the gear opens them. Left: the canvas and the tool keys at the top. Right: the structure diagrams, siunitx and university styles at the end.]) <fig-composer-settings-shot>
+#shots(("figures/05-composer/settings-canvas.png", "figures/05-composer/settings-new.png"), [The settings as the gear opens them. Left: the canvas and the tool keys at the top. Right: the structure diagrams, siunitx and university styles at the end.]) <fig-composer-settings-shot>
 
 == University styles <sec-composer-styles>
 
 A university style is a set of symbols drawn as one university's lecture slides draw them, where circuitikz draws them differently or not at all. The first is MU Style, from Hong Kong Metropolitan University. It adds a group of 12 parts to the circuit parts list: the slides' N- and P-channel MOSFETs, enhancement and depletion, with and without a bulk pin, an ideal diode in a box, a current source drawn as a box with an arrow and two AC voltage sources with + and − marked. They are placed, wired and labelled like any other part, and a drawing that uses one carries the symbol's definition in its own picture, so the document needs nothing more in its preamble. @ch-circuits describes each and @ch-symbols shows them.
 
-#shot("images/05-composer/mu-style.png", [The MU Style group in the circuit parts list.], width: 22%) <fig-composer-mu>
+#shot("figures/05-composer/mu-style.png", [The MU Style group in the circuit parts list.], width: 22%) <fig-composer-mu>
 
 To hide a style's parts,
 
@@ -363,7 +363,7 @@ Labels are typed as TeX, the same as in the document. Specifically, a circuit pa
 
 The canvas shows a label as it will print, without the markup. Subscripts and superscripts are set small and lowered or raised, Greek letters, units and the common maths signs show as their symbols, so `A_y`, `\theta` and `g \circ f` read as $A_y$, $theta$ and $g compose f$. The canvas only sketches the label in the app's font, while the preview sets it exactly as the PDF does.
 
-#shots(("images/05-composer/labels-canvas.png", "images/05-composer/labels-pdf.png"), [The same circuit on the canvas (left) and in the compiled preview (right). The labels read alike, with $R_1$, $v_i$ and $A_v$ subscripted on both. The small grey U1 on the canvas is the op amp's name in the code, which the PDF does not print.], columns: (60%, 38%)) <fig-composer-labels>
+#shots(("figures/05-composer/labels-canvas.png", "figures/05-composer/labels-pdf.png"), [The same circuit on the canvas (left) and in the compiled preview (right). The labels read alike, with $R_1$, $v_i$ and $A_v$ subscripted on both. The small grey U1 on the canvas is the op amp's name in the code, which the PDF does not print.], columns: (60%, 38%)) <fig-composer-labels>
 
 Labels keep clear of the drawing and of each other. A circuit part's label and value sit on opposite sides, and a voltage keeps its side to itself (@ch-circuits). In Structures and Vector diagrams a label left to place itself goes where it does not cover a member, a load, a line or another label, on the canvas and in the PDF alike, and the same placing keeps the labels of Mohr's circle and Venn diagrams off their circles (@ch-forms).
 
@@ -389,7 +389,7 @@ Version 5 covers, for example, the fluid mechanics and construction materials sy
 
 Opened as code, a drawing shows #ui[This file has no drawing Spectrum can open, so it opens as code.] Its code can still be edited, saved and inserted, and the drawing's last line is kept as it was, so the drawing opens again in a Spectrum that knows it. Hence a figure drawn in 2.5 survives a trip through an older copy, as long as only its code is changed there.
 
-#shot("images/05-composer/opens-as-code.png", [A drawing from a newer file version than this copy knows, opened as code. Spectrum 2.4 shows a 2.5 drawing the same way.]) <fig-composer-as-code>
+#shot("figures/05-composer/opens-as-code.png", [A drawing from a newer file version than this copy knows, opened as code. Spectrum 2.4 shows a 2.5 drawing the same way.]) <fig-composer-as-code>
 
 == Shortcuts <sec-composer-shortcuts>
 

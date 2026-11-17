@@ -17,7 +17,7 @@ Both composers start from #ui[Draw a diagram], the chooser described in @ch-comp
 
 A drawn circuit writes the result it computes beside it as Text, such as the gain $-R_f slash R_1$ of the inverting amplifier or the frequency of the 555 astable. Every part of it can be edited or deleted like any other.
 
-#shot("images/06-circuits/starters-electrical.png", [The circuit starters in #ui[Draw a diagram], under #menu[Engineering][Electrical and electronics]. Each card names the package it writes, circuitikz.], width: 82%) <fig-circuits-starters>
+#shot("figures/06-circuits/starters-electrical.png", [The circuit starters in #ui[Draw a diagram], under #menu[Engineering][Electrical and electronics]. Each card names the package it writes, circuitikz.], width: 82%) <fig-circuits-starters>
 
 == The parts list <sec-circuits-parts>
 
@@ -57,7 +57,7 @@ After the groups come #ui[Text], a part that is only its words, and #ui[Annotate
 
 Type into #ui[Find a part] to keep only the parts whose name, circuitikz key or another word for them contains what you typed. For example, `nmos` keeps every N-channel MOSFET, those of MU Style included, and `elbow` keeps both pipe bends in General drawing. Clear the search with the cross at its right.
 
-#shots(("images/06-circuits/search-nmos.png", "images/06-circuits/group-ground.png"), [Left: #ui[Find a part] with `nmos` typed, keeping the N-channel MOSFETs of the MOSFETs and MU Style groups. Right: the Ground, supply and terminals group.], columns: (32%, 32%)) <fig-circuits-search>
+#shots(("figures/06-circuits/search-nmos.png", "figures/06-circuits/group-ground.png"), [Left: #ui[Find a part] with `nmos` typed, keeping the N-channel MOSFETs of the MOSFETs and MU Style groups. Right: the Ground, supply and terminals group.], columns: (32%, 32%)) <fig-circuits-search>
 
 === Placing a part
 
@@ -80,7 +80,7 @@ Other parts gained the slides' variants as options in the inspector: a Zener dio
 #menu[Settings][Diagram composer][University styles] has a switch for each university's symbols. Turn #ui[MU Style] off to hide its group from the parts list and from the search in #ui[Draw a diagram]. A drawing that already uses one of its parts still opens, draws and compiles as before.
 
 #figure(
-  grid(columns: (30%, 52%), gutter: 14pt, align: top, frame("images/06-circuits/group-mu-style.png"), frame("images/06-circuits/settings-university-styles.png")),
+  grid(columns: (30%, 52%), gutter: 14pt, align: top, frame("figures/06-circuits/group-mu-style.png"), frame("figures/06-circuits/settings-university-styles.png")),
   caption: [Left: the MU Style group. Right: its switch in #menu[Settings][Diagram composer][University styles].],
 ) <fig-circuits-mu>
 
@@ -100,7 +100,7 @@ Pressing #key("W") picks the tool only while the pointer is over the drawing, so
 Between two points that are not in line, a wire goes across first, then up or down. Select the wire to change each segment's route in the inspector to #ui[Straight], #ui[Across, then up or down] or #ui[Up or down, then across]. The inspector also gives the wire arrowheads at the end, at the start or at both ends, for signal flow in a block diagram, and under #ui[Current and flow] each segment a current arrow (`i=`) or a flow arrow (`f=`), as a two-terminal part has.
 
 #figure(
-  grid(columns: (46%, 30%), gutter: 14pt, align: top, frame("images/06-circuits/wire-drawing.png"), frame("images/06-circuits/inspector-wire.png")),
+  grid(columns: (46%, 30%), gutter: 14pt, align: top, frame("figures/06-circuits/wire-drawing.png"), frame("figures/06-circuits/inspector-wire.png")),
   caption: [Left: a wire being drawn from the foot of $R_2$, with every pin shown as a circle. Right: a wire's inspector, with its route, its current and flow, and its arrowheads.],
 ) <fig-circuits-wire>
 
@@ -115,7 +115,7 @@ A transistor's pins cannot all sit on the grid. For example, circuitikz draws an
 To write each pin's letter beside it, select the part and tick #ui[Label pins]. A MOSFET gets G, D and S (and B for a bulk pin), a bipolar transistor B, C and E, and an IGBT C, G and E. The letters sit outside the body, beyond the end of each pin, and stay in the right places after a turn or a flip.
 
 #figure(
-  grid(columns: (28%, 32%), gutter: 14pt, align: top, frame("images/06-circuits/transistor-pins.png"), frame("images/06-circuits/inspector-transistor.png")),
+  grid(columns: (28%, 32%), gutter: 14pt, align: top, frame("figures/06-circuits/transistor-pins.png"), frame("figures/06-circuits/inspector-transistor.png")),
   caption: [Left: the MOSFET of a common-source amplifier, selected, with #ui[Label pins] on. Its gate, drain and source wires run straight into its pins. Right: its inspector.],
 ) <fig-circuits-transistor>
 
@@ -123,7 +123,7 @@ To write each pin's letter beside it, select the part and tick #ui[Label pins]. 
 
 Drag a part to move it. The wires that hold its pins come with it: each end stays on its pin, while the wire's other points stay where they are. A straight segment can therefore become slanted, as in @fig-circuits-move. Change its route in the inspector, or drag one of its points, to square it again. A two-terminal part's end holds a placed part's pin but not another two-terminal part's end, so two resistors in series move apart when one of them is dragged.
 
-#shot("images/06-circuits/move-with-wires.png", [The MOSFET dragged three grid steps to the right. The wires to its drain, gate and source follow it, and the drain and source wires slant until they are routed again.], width: 34%) <fig-circuits-move>
+#shot("figures/06-circuits/move-with-wires.png", [The MOSFET dragged three grid steps to the right. The wires to its drain, gate and source follow it, and the drain and source wires slant until they are routed again.], width: 34%) <fig-circuits-move>
 
 == A part's inspector <sec-circuits-inspector>
 
@@ -150,10 +150,10 @@ A part's own options follow the fold, such as #ui[Filled] on a diode, #ui[Arrow]
 
 #figure(
   grid(columns: (25%, 25%, 25%, 11%), gutter: 10pt, align: top,
-    frame("images/06-circuits/inspector-part.png"),
-    frame("images/06-circuits/inspector-fold-a.png"),
-    frame("images/06-circuits/inspector-fold-b.png"),
-    frame("images/06-circuits/voltage-label-sides.png")),
+    frame("figures/06-circuits/inspector-part.png"),
+    frame("figures/06-circuits/inspector-fold-a.png"),
+    frame("figures/06-circuits/inspector-fold-b.png"),
+    frame("figures/06-circuits/voltage-label-sides.png")),
   caption: [From the left: a resistor's label and value with the fold shut, the fold opened (in two parts), and the load resistor $R_L$ with its voltage $v_o$ on one side and its label and value on the other, as two lines.],
 ) <fig-circuits-inspector>
 
@@ -188,7 +188,7 @@ Selecting is as @ch-composer describes: click a part, drag across empty canvas f
 
 The #ui[Turn] and #ui[Flip] buttons at the foot of the inspector do the same as #key("R") and #key("X"). One part turns about itself: a placed part about its point and a two-terminal part about its middle. Several parts turn together about their common centre, with their wires and text, so each keeps its place beside the others. Text turned with other parts moves with them and stays upright, and an annotation mirrors about its own middle, so it stays on what it marks.
 
-#shots(("images/06-circuits/turn-before.png", "images/06-circuits/turn-after.png"), [A voltage divider before and after #key("R") with everything selected. The parts keep their places around each other, and the labels move to the outside.]) <fig-circuits-turn>
+#shots(("figures/06-circuits/turn-before.png", "figures/06-circuits/turn-after.png"), [A voltage divider before and after #key("R") with everything selected. The parts keep their places around each other, and the labels move to the outside.]) <fig-circuits-turn>
 
 == Voltages, grounds, supplies and terminals <sec-circuits-ports>
 
@@ -203,7 +203,7 @@ The Ground, supply and terminals group holds the parts that mark where a circuit
 @fig-circuits-rc shows an RC low-pass filter that uses most of them: an AC source on a ground, a current $i$ on the resistor, a voltage $v_C$ across the capacitor and the output voltage $v_o$ between two terminals.
 
 #figure(
-  grid(columns: (52%, 40%), gutter: 14pt, align: horizon, frame("images/06-circuits/rc-filter.png"), frame("images/06-circuits/rc-annotated-pdf.png")),
+  grid(columns: (52%, 40%), gutter: 14pt, align: horizon, frame("figures/06-circuits/rc-filter.png"), frame("figures/06-circuits/rc-annotated-pdf.png")),
   caption: [Left: an RC low-pass filter on the canvas, with Voltage between two points across its output terminals. Right: the same filter compiled, with the annotations of @sec-circuits-annotate added.],
 ) <fig-circuits-rc>
 
@@ -211,7 +211,7 @@ The Ground, supply and terminals group holds the parts that mark where a circuit
 
 Annotate, at the end of the parts list, draws over a drawing without ever joining it. An annotation has no pins, gets no junction dots and is never held by a wire, while it still snaps to the grid and to pins as it is drawn. It is written after the circuit, so it sits on top, except a filled shape, which is written first and sits behind the parts drawn in it. Annotate has ten tools and eleven presets, and @ch-symbols pictures all of them with their fills and patterns.
 
-#shot("images/06-circuits/annotate-lines-shapes.png", [Above: a line with a corner, a curved arrow, a dashed rectangle with rounded corners and a light fill, an ellipse and a cross. Below: the presets Current arrow, Mesh current marker, Frame, Loop current and Resistance looking in.], width: 90%) <fig-circuits-annotate>
+#shot("figures/06-circuits/annotate-lines-shapes.png", [Above: a line with a corner, a curved arrow, a dashed rectangle with rounded corners and a light fill, an ellipse and a cross. Below: the presets Current arrow, Mesh current marker, Frame, Loop current and Resistance looking in.], width: 90%) <fig-circuits-annotate>
 
 === Lines, arrows, rectangles, ellipses and crosses
 
@@ -226,7 +226,7 @@ Every annotation takes its look in the inspector,
 A line also takes #ui[Arrowheads] at the end, at the start or at both, an #ui[Arrowhead] style (Latex, Stealth, open triangle or plain) and size, and a #ui[Bend] of up to 90° to the left or right, which curves every segment as TikZ's `bend left` does. A rectangle or an ellipse folds #ui[Corners, light fill and loop arrow]: #ui[Rounded corners] on a rectangle, a #ui[Light fill] of any colour at 15%, and a #ui[Loop arrow], a single arrowhead on its right side going clockwise or anticlockwise, for a loop or mesh current. A cross takes a size from 0.13 to 1~cm. Select several annotations to change their colour, line and width together.
 
 #figure(
-  grid(columns: (24%, 26%, 26%), gutter: 14pt, align: top, frame("images/06-circuits/group-annotate.png"), frame("images/06-circuits/inspector-arrow.png"), frame("images/06-circuits/inspector-rectangle.png")),
+  grid(columns: (24%, 26%, 26%), gutter: 14pt, align: top, frame("figures/06-circuits/group-annotate.png"), frame("figures/06-circuits/inspector-arrow.png"), frame("figures/06-circuits/inspector-rectangle.png")),
   caption: [From the left: the Annotate group in the parts list, the inspector of the curved arrow of @fig-circuits-annotate (blue, thick, bent 45° to the left with a Stealth head) and that of the rectangle (dashed, with rounded corners and a green light fill).],
 ) <fig-circuits-annotate-inspector>
 
@@ -234,7 +234,7 @@ A line also takes #ui[Arrowheads] at the end, at the start or at both, an #ui[Ar
 
 A preset puts down a styled group with its label in one click, which you then move, turn, mirror or edit like anything else. #ui[Resistance looking in] is a cross on a wire with a hooked arrow and $R_"in"$, #ui[Current arrow] an arrow with $i$, #ui[Loop current] a circle with a loop arrowhead and $i_1$, #ui[Mesh current marker] a tinted rounded box with a circled number, #ui[Frame] a dashed box headed "Feedback network" and #ui[Highlight] a red ellipse. The labels are Text, so their words can be changed. @fig-circuits-annotated shows three of them on the RC filter, the resistance arrow mirrored with #key("X") so it looks into the output.
 
-#shot("images/06-circuits/annotate-circuit.png", [The RC filter with Loop current, Highlight on the top node, Resistance looking in mirrored to face the circuit, and a Text title.], width: 60%) <fig-circuits-annotated>
+#shot("figures/06-circuits/annotate-circuit.png", [The RC filter with Loop current, Highlight on the top node, Resistance looking in mirrored to face the circuit, and a Text title.], width: 60%) <fig-circuits-annotated>
 
 === Fills, boundaries, dimensions and marks
 
@@ -249,18 +249,18 @@ Spectrum 2.5 added the drawing tools of the fluid mechanics and construction mat
 
 A dimension's text and a point's letter are maths unless they have a space or their own `$…$`, so `h_c` prints as $h_c$ while `2 m` prints as words. A leader's words are TeX as typed.
 
-#shots(("images/06-circuits/inspector-fill.png", "images/06-circuits/inspector-dimension.png"), [The inspector of a liquid, drawn as dashes, and of a dimension, measuring up and down.], columns: (26%, 26%)) <fig-circuits-fill-inspector>
+#shots(("figures/06-circuits/inspector-fill.png", "figures/06-circuits/inspector-dimension.png"), [The inspector of a liquid, drawn as dashes, and of a dimension, measuring up and down.], columns: (26%, 26%)) <fig-circuits-fill-inspector>
 
 A rectangle, an ellipse or a liquid or solid takes a #ui[Fill]: water, seawater, oil, mercury, air or concrete. #ui[Drawn as] then picks a tint, as the slides draw it, or a pattern as the exam papers draw it, in the line colour: dashes, dots, hatching, cross hatching or stipple. Untick #ui[Outline] for a fill with no line around it. A filled shape sits behind the parts drawn in it, so a tank's water stays inside the tank.
 
-#shot("images/06-circuits/fills.png", [The six fills as tints, above, and the five patterns, below.], width: 90%) <fig-circuits-fills>
+#shot("figures/06-circuits/fills.png", [The six fills as tints, above, and the five patterns, below.], width: 90%) <fig-circuits-fills>
 
-#shot("images/06-circuits/marks.png", [The point presets C, CP, G, B and M, a point drawn as a cross, the free-surface mark and a hatched boundary.], width: 80%) <fig-circuits-marks>
+#shot("figures/06-circuits/marks.png", [The point presets C, CP, G, B and M, a point drawn as a cross, the free-surface mark and a hatched boundary.], width: 80%) <fig-circuits-marks>
 
 @fig-circuits-gate puts these tools together with four parts of the Fluid mechanics set. First a Gate, a Hinge (flipped with #key("X")), a Stop and a Resultant force are placed. Then the water is drawn as a liquid, the bed and the wall above the gate as hatched boundaries, and the ▽ mark goes on the surface. Lastly the depth of the centroid $h_c$ is a dimension measuring up and down, the centroid and centre of pressure are the C and CP presets, with CP's letter on the left, and a leader names the hinge.
 
 #figure(
-  grid(columns: (55%, 33%), gutter: 14pt, align: horizon, frame("images/06-circuits/gate-sketch.png"), frame("images/06-circuits/gate-sketch-pdf.png")),
+  grid(columns: (55%, 33%), gutter: 14pt, align: horizon, frame("figures/06-circuits/gate-sketch.png"), frame("figures/06-circuits/gate-sketch-pdf.png")),
   caption: [A gate holding back water, on the canvas and compiled.],
 ) <fig-circuits-gate>
 
@@ -274,9 +274,9 @@ General drawing is the circuit canvas with every symbol set on, for a figure tha
 - #ui[Fluid mechanics], in five groups: pipes and fittings (a pipe, a narrow pipe, a reducer, a nozzle, 90° and 45° bends, a tee, a valve, a pump, a turbine and a pressure gauge), flow (a section marker, a centre line, a control volume, three velocity profiles, a streamline and a streamtube), tanks and manometers (the free-surface mark, three tanks, U-tube, differential, inverted and inclined manometers, a column of three liquids, a piezometer, a barometer and a hydraulic jack), hydrostatics and buoyancy (a gate, a hinge, a stop, triangular and trapezoidal pressure distributions, the resultant force, a floating block, a hydrometer, a ship's hull with G, B and M, and an incline) and viscosity and surface tension (fixed and moving plates, capillary rise and depression, and a contact angle), and
 - #ui[Construction materials], in two groups: test specimens (a cube between platens, a cylinder, three- and four-point flexural tests, the slump cone with a true, shear and collapsed slump, a tension bar, a shear block, a roller and a platen) and sections and brickwork (a reinforced concrete section, six steel sections and brickwork in stretcher, English and Flemish bond).
 
-#shots(("images/06-circuits/group-supports.png", "images/06-circuits/group-flowchart.png", "images/06-circuits/group-points.png"), [The Mechanical supports, Flowchart shapes and Points and marks sets in the parts list.], columns: (26%, 26%, 26%)) <fig-circuits-sets-a>
+#shots(("figures/06-circuits/group-supports.png", "figures/06-circuits/group-flowchart.png", "figures/06-circuits/group-points.png"), [The Mechanical supports, Flowchart shapes and Points and marks sets in the parts list.], columns: (26%, 26%, 26%)) <fig-circuits-sets-a>
 
-#shots(("images/06-circuits/group-pipes.png", "images/06-circuits/group-tanks.png", "images/06-circuits/group-specimens.png", "images/06-circuits/group-sections.png"), [Four of the civil engineering groups: Pipes and fittings and Tanks and manometers from Fluid mechanics, and Test specimens and Sections and brickwork from Construction materials.], columns: 4) <fig-circuits-sets-b>
+#shots(("figures/06-circuits/group-pipes.png", "figures/06-circuits/group-tanks.png", "figures/06-circuits/group-specimens.png", "figures/06-circuits/group-sections.png"), [Four of the civil engineering groups: Pipes and fittings and Tanks and manometers from Fluid mechanics, and Test specimens and Sections and brickwork from Construction materials.], columns: 4) <fig-circuits-sets-b>
 
 === Placing a set's part
 
@@ -290,7 +290,7 @@ A set's part is written as a TikZ `\pic`, and the picture declares every pic it 
 
 A circuit has only the circuit groups, while General drawing has every set. To add a set to a circuit, turn on #menu[Settings][Diagram composer][Symbols from other packages]. A #ui[Symbol sets…] button then shows below the parts list. It lists the sets by subject, each with what it loads into the document, which is TikZ only for all of Spectrum's own. Tick the sets and click #ui[Use these sets], and their groups join the parts list for that drawing, such as mechanical supports beside a mass, spring and damper.
 
-#shot("images/06-circuits/symbol-sets.png", [The #ui[Symbol sets…] dialog of a circuit, with #menu[Settings][Diagram composer][Symbols from other packages] on.], width: 62%) <fig-circuits-symbol-sets>
+#shot("figures/06-circuits/symbol-sets.png", [The #ui[Symbol sets…] dialog of a circuit, with #menu[Settings][Diagram composer][Symbols from other packages] on.], width: 62%) <fig-circuits-symbol-sets>
 
 === A worked drawing: a differential manometer
 
@@ -306,7 +306,7 @@ A circuit has only the circuit groups, while General drawing has every set. To a
 + Click #ui[Compile] to check the preview
 
 #figure(
-  grid(columns: (60%, 34%), gutter: 12pt, align: horizon, frame("images/06-circuits/differential-manometer.png"), frame("images/06-circuits/differential-manometer-pdf.png")),
+  grid(columns: (60%, 34%), gutter: 12pt, align: horizon, frame("figures/06-circuits/differential-manometer.png"), frame("figures/06-circuits/differential-manometer-pdf.png")),
   caption: [A differential manometer between two tanks, on the canvas and compiled. The liquids in the tanks are fills behind the parts, so the tank walls stay on top.],
 ) <fig-circuits-manometer>
 
@@ -352,7 +352,7 @@ A part is given a name in the code only when a wire or a pin label reaches one o
 #ui[Style] in the toolbar sets how the whole drawing's symbols look: American or European symbols, the logic gates, the NOT output of a European gate, inductors, resistors, how voltages are marked (+ and − or an arrow), the voltage direction, empty or filled diodes, how labels turn, #ui[Write units with siunitx] and the size of a part, from 0.8 to 2.4~cm. The canvas draws the symbols again with the new style, so it matches the PDF.
 
 #figure(
-  grid(columns: (50%, 26%), gutter: 14pt, align: top, frame("images/06-circuits/common-source.png"), frame("images/06-circuits/style-menu.png")),
+  grid(columns: (50%, 26%), gutter: 14pt, align: top, frame("figures/06-circuits/common-source.png"), frame("figures/06-circuits/style-menu.png")),
   caption: [Left: a common-source amplifier, its MOSFET biased by a divider, with units written by siunitx. Right: the #ui[Style] menu.],
 ) <fig-circuits-style>
 

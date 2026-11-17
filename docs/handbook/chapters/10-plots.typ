@@ -10,9 +10,9 @@ The chapter first describes the form and how it is laid out (@sec-plots-form). T
 
 Open a plot from the #ui[Plot] starter in #ui[Draw a diagram], or from one of the plots already set up (@sec-plots-starters). The form has three columns, #ui[Series], #ui[Axes] and #ui[Annotations] (@fig-plots-annotations), and the compiled preview below them. Every change compiles the preview again after a moment.
 
-#shot("images/10-plots/form.png", [The #ui[Series] and #ui[Axes] columns of the form for an RC charging curve, with one function series. The folded sections under the series and the axes are open because the plot sets fields in them.]) <fig-plots-form>
+#shot("figures/10-plots/form.png", [The #ui[Series] and #ui[Axes] columns of the form for an RC charging curve, with one function series. The folded sections under the series and the axes are open because the plot sets fields in them.]) <fig-plots-form>
 
-#shot("images/10-plots/rc-charging-preview.png", [The preview of the same plot. The tangent at $t = 0$, the point at $t = tau$ with its drop lines and the reference line at $V_s$ are the three annotations.], width: 52%) <fig-plots-rc>
+#shot("figures/10-plots/rc-charging-preview.png", [The preview of the same plot. The tangent at $t = 0$, the point at $t = tau$ with its drop lines and the reference line at $V_s$ are the three annotations.], width: 52%) <fig-plots-rc>
 
 The fields most plots need are shown first. The rarer ones are folded under a line in blue, #ui[Line, marks, colour and more] for each series and #ui[Grid, size, scales, ticks and more] for the axes, which opens with a click. A fold opens by itself when any field in it is set, so a plot that uses one never hides it, and a new plot's form stays short.
 
@@ -45,7 +45,7 @@ A series is one thing drawn on the axes, such as a curve, a set of points or a f
       caption: [The kinds of series.],
     ) <tab-plots-kinds>
   ],
-  [#figure(frame("images/10-plots/series-kinds-menu.png"), caption: [The menu that sets a series' kind.]) <fig-plots-kinds>],
+  [#figure(frame("figures/10-plots/series-kinds-menu.png"), caption: [The menu that sets a series' kind.]) <fig-plots-kinds>],
 )
 
 Changing a series' kind and back again brings back what it had in that kind, while the form stays open.
@@ -63,7 +63,7 @@ Type the points one to a line, or separated by semicolons, as `x, y` or `x y`. A
 A least-squares line is the straight line $y = a + b x$ that fits a series of typed points best. #ui[Through the points of] picks that series, the first one of points by default. #ui[Through the origin] fits $y = b x$ instead. #ui[x from, to] sets how far the line is drawn, and left empty it spans the points. The hint under the fields shows the equation, to four significant figures, and the legend shows it too unless the series has a legend of its own.
 
 #shots(
-  ("images/10-plots/points-and-fit.png", "images/10-plots/points-and-fit-preview.png"),
+  ("figures/10-plots/points-and-fit.png", "figures/10-plots/points-and-fit-preview.png"),
   [Six measured points with error bars and a label on the last (left), and the least-squares line through them, its equation in the legend (right).],
   columns: (1fr, 1.1fr),
 ) <fig-plots-fit>
@@ -82,7 +82,7 @@ A data file series plots two columns of a file in the project.
 The columns are named by the file's first line. A file whose first line is numbers has no names, so its columns are offered as Column 1, Column 2 and so on. A `.csv` is split by commas, or by semicolons when its first line has more of them, as a spreadsheet writes one where the comma is the decimal point; such a file is read with its decimal commas. A `.tsv` is split by tabs and any other file by spaces. When no columns can be found the form says so. Under the fold, #ui[Error bar column] picks a column of error bars.
 
 #shots(
-  ("images/10-plots/data-series.png", "images/10-plots/outlet-temperatures-preview.png"),
+  ("figures/10-plots/data-series.png", "figures/10-plots/outlet-temperatures-preview.png"),
   [A data file series from a heat exchanger lab (left), and the plot of two such series with error bars and the legend below in a row (right).],
   columns: (1fr, 1.1fr),
 ) <fig-plots-data>
@@ -128,7 +128,7 @@ The #ui[Axes] column sets what is round the series. Its first fields are always 
 - #ui[x from, to] and #ui[y from, to] are the ranges of the axes, left at #ui[Auto] for pgfplots to fit them to the series. With both ends of the $y$ range set, a function is broken where it leaves the range far behind, as at an asymptote.
 - #ui[Legend] places the legend: #ui[Top left], #ui[Top right], #ui[Bottom left], #ui[Bottom right], #ui[Outside, top right], beside the plot where no curve can be and the default, or #ui[Below, in a row], under the $x$ label.
 
-#shot("images/10-plots/axes-more.png", [The fields under #ui[Grid, size, scales, ticks and more].], width: 42%) <fig-plots-axes>
+#shot("figures/10-plots/axes-more.png", [The fields under #ui[Grid, size, scales, ticks and more].], width: 42%) <fig-plots-axes>
 
 The fold #ui[Grid, size, scales, ticks and more] (@fig-plots-axes) holds the rest.
 
@@ -148,7 +148,7 @@ The Style menu in the composer's top bar has one setting for plots, #ui[Write un
 
 An annotation marks something on the plot. #ui[Add an annotation] adds one, and the menu at its top sets its kind. Every annotation but the reference line and the shaded area goes on a function series, which #ui[On] picks, and TeX works out its place from the function, so it moves with the curve when the expression changes. @tab-plots-annotations lists the kinds.
 
-#shot("images/10-plots/annotations.png", [The #ui[Annotations] column of the RC charging plot in @fig-plots-rc: a tangent at $x = 0$, and a point with drop lines at $x = 2$ and its label.], width: 50%) <fig-plots-annotations>
+#shot("figures/10-plots/annotations.png", [The #ui[Annotations] column of the RC charging plot in @fig-plots-rc: a tangent at $x = 0$, and a point with drop lines at $x = 2$ and its label.], width: 50%) <fig-plots-annotations>
 
 #figure(
   table(
@@ -195,24 +195,24 @@ The chooser has twelve plots to begin from, listed in @tab-plots-starters. Each 
 ) <tab-plots-starters>
 
 #shots(
-  ("images/10-plots/starter-grading.png", "images/10-plots/starter-stress-strain.png"),
+  ("figures/10-plots/starter-grading.png", "figures/10-plots/starter-stress-strain.png"),
   [The Grading curve starter (left) and the Stress–strain curve starter (right), as they open.],
 ) <fig-plots-starters-1>
 
 #shots(
-  ("images/10-plots/starter-normal.png", "images/10-plots/starter-bode.png"),
+  ("figures/10-plots/starter-normal.png", "figures/10-plots/starter-bode.png"),
   [The Normal curve starter (left) and the Bode magnitude plot starter (right).],
 ) <fig-plots-starters-2>
 
 #shots(
-  ("images/10-plots/starter-square-wave.png", "images/10-plots/starter-rose.png", "images/10-plots/starter-conics.png", "images/10-plots/starter-phase.png"),
+  ("figures/10-plots/starter-square-wave.png", "figures/10-plots/starter-rose.png", "figures/10-plots/starter-conics.png", "figures/10-plots/starter-phase.png"),
   [The Signal sketch, Polar rose, Conics and Phase portrait starters.],
   columns: (1.15fr, 0.95fr, 1.6fr, 1fr),
 ) <fig-plots-starters-3>
 
 The Grading curve form in @fig-plots-grading shows how its band is made: two series of typed points with dashed green lines for the limits, a third for the sample with each point labelled by its value, and one shaded area between the two limits.
 
-#shot("images/10-plots/grading-form.png", [The #ui[Series] and #ui[Axes] columns of the Grading curve starter: dashed green limits, a logarithmic $x$ axis and ticks at the sieve sizes.]) <fig-plots-grading>
+#shot("figures/10-plots/grading-form.png", [The #ui[Series] and #ui[Axes] columns of the Grading curve starter: dashed green limits, a logarithmic $x$ axis and ticks at the sieve sizes.]) <fig-plots-grading>
 
 == The code it writes <sec-plots-code>
 

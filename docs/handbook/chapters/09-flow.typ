@@ -32,7 +32,7 @@ Choose #ui[Commutative diagram] for objects on a grid joined by labelled arrows,
 The flowchart composer places shapes on a grid and joins them with arrows. Every shape and arrow is a TikZ node and path in the code, or a fletcher node and edge, at the place it has on the canvas. The canvas snaps to a grid of 0.25 cm, and its text is set at the size the PDF prints it: 10 pt for LaTeX and 11 pt for Typst. Hence a line of text that fits a box on the canvas fits it in the preview too.
 
 #shots(
-  ("images/09-flow/binary-search-canvas.png", "images/09-flow/binary-search-preview.png"),
+  ("figures/09-flow/binary-search-canvas.png", "figures/09-flow/binary-search-preview.png"),
   [A binary search drawn in the flowchart composer (left) and its compiled preview (right). The decisions are diamonds, the input a parallelogram and the ends are terminals with a light fill.],
 ) <fig-flow-binary-search>
 
@@ -85,7 +85,7 @@ Select a shape to change it in the inspector on the right, shown in @fig-flow-in
 Some shapes have a field of their own. A state or an accepting state has #ui[Start arrow], which draws the arrow into it from the left, above, the right or below. A container has #ui[Repeated ×], maths such as $N$ written as $times N$ beside it. A gain has #ui[Points], the way its tip points, and a swimlane has #ui[Title band], the side its title is on. A vector stack has #ui[Cells], from 1 to 20.
 
 #figure(
-  box(width: 70%, grid(columns: 2, gutter: 10pt, frame("images/09-flow/inspector-box.png"), frame("images/09-flow/inspector-arrow.png"))),
+  box(width: 70%, grid(columns: 2, gutter: 10pt, frame("figures/09-flow/inspector-box.png"), frame("figures/09-flow/inspector-arrow.png"))),
   caption: [The inspector with a diamond selected (left) and with an arrow selected (right). The arrow's label sits on its right as it goes, 30 % of the way along it.],
 ) <fig-flow-inspector-box>
 
@@ -101,7 +101,7 @@ There are two ways to join two shapes with an arrow. The first uses the Connect 
 
 The arrow joins the sides of the two shapes that face each other: the bottom of one and the top of the other when they are further apart up and down than across, otherwise the right of one and the left of the other. #ui[Connect] stays picked after each arrow, so a whole chain can be joined with a click on each shape in turn, and the new arrow is selected each time so its label can be typed at once. Clicking the same shape twice gives a loop above it. The key #key("W") is the default and can be changed in Settings, as described in @ch-composer.
 
-#shot("images/09-flow/connect.png", [Shapes joined with the Connect tool. The diamond's right side was joined to the rectangle's left side because the rectangle is further away across than down.], width: 48%) <fig-flow-connect>
+#shot("figures/09-flow/connect.png", [Shapes joined with the Connect tool. The diamond's right side was joined to the rectangle's left side because the rectangle is further away across than down.], width: 48%) <fig-flow-connect>
 
 The second way is to drag. Each shape has a dot in the middle of each side when the pointer is over it. Drag from one of these dots to another shape to join the two, the arrow leaving by that side and arriving by the side dropped on. Drag from a dot to another dot on the same shape for a loop, which goes round the side it was dragged from.
 
@@ -158,19 +158,19 @@ The flowchart canvas uses the same mouse as the other canvases in @ch-composer.
 A block diagram, as used in control and signals, is drawn with four of the shapes. The Operator circle is the summing junction, the Gain is a triangle with its gain inside, the Takeoff point is the dot where a signal branches, and Maths labels name the input and output. Each arrow into the summing junction takes its sign from #ui[Sign at the end (summing junction)]. The Feedback loop starter in @fig-flow-feedback is a closed loop drawn this way, with $+$ on the input and $-$ on the feedback path from $H(s)$.
 
 #shots(
-  ("images/09-flow/feedback-sign.png", "images/09-flow/feedback-sign-inspector.png"),
+  ("figures/09-flow/feedback-sign.png", "figures/09-flow/feedback-sign-inspector.png"),
   [The Feedback loop starter with the feedback arrow selected (left). Its sign, $-$, is set in the inspector (right) and drawn near the end of the arrow.],
   columns: (2.3fr, 1fr),
 ) <fig-flow-feedback>
 
-#shot("images/09-flow/feedback-preview.png", [The compiled preview of the same block diagram, as LaTeX sets it.], width: 80%)
+#shot("figures/09-flow/feedback-preview.png", [The compiled preview of the same block diagram, as LaTeX sets it.], width: 80%)
 
 === Swimlanes and containers <sec-flow-lanes>
 
 A swimlane is a tall box with a title band, used to show which person or system does each step. A container is a rounded frame with its title in its top-left corner, used to group a few shapes, such as a layer repeated $N$ times in a model architecture. Both hold the shapes whose centres lie inside them: moving a swimlane or container takes those shapes with it. Both are drawn under the shapes in them, so a click inside a container reaches the shape there, or the canvas. To select a container, click its outline. A swimlane can also be picked up by its title band.
 
 #shots(
-  ("images/09-flow/swimlane-selected.png", "images/09-flow/swimlane-inspector.png"),
+  ("figures/09-flow/swimlane-selected.png", "figures/09-flow/swimlane-inspector.png"),
   [The Swimlane process starter with the Shop lane selected by its title band (left), and the lane in the inspector (right). #ui[Title band] moves the title to any side of the lane.],
   columns: (1.6fr, 1fr),
 ) <fig-flow-swimlane>
@@ -180,7 +180,7 @@ A swimlane is a tall box with a title band, used to show which person or system 
 The State and Accepting state shapes draw automata. A state's text is maths, so `q_0` prints as $q_0$, and #ui[Start arrow] draws the arrow into the start state. The State machine starter in @fig-flow-automaton has a start state, an accepting state, a loop on each and a bent pair of arrows between them. The same starter opens in Typst as #ui[State machine in Typst].
 
 #shots(
-  ("images/09-flow/automaton-canvas.png", "images/09-flow/automaton-preview.png"),
+  ("figures/09-flow/automaton-canvas.png", "figures/09-flow/automaton-preview.png"),
   [The State machine starter on the canvas (left) and in the preview (right).],
 ) <fig-flow-automaton>
 
@@ -209,7 +209,7 @@ Text outside maths is escaped as LaTeX needs it, so 50% done or R&D compiles as 
 The Typst flowchart is the same canvas, rail and inspector as the TikZ one, with three differences. Its maths is Typst maths, so a decision reads `$l <= h$?` rather than `$l \le h$?`. Its text is set at 11 pt, Typst's size, so a box holds a little less text on one line. Its rail has neither the Document nor the Vector stack. @fig-flow-euclid shows Euclid's algorithm drawn in it.
 
 #shots(
-  ("images/09-flow/euclid-canvas.png", "images/09-flow/euclid-preview.png"),
+  ("figures/09-flow/euclid-canvas.png", "figures/09-flow/euclid-preview.png"),
   [Euclid's algorithm in the Typst flowchart (left) and its preview, compiled by the built-in Typst (right). The decision prints at the size drawn, and the right-angled arrow back to it turns where the canvas shows.],
 ) <fig-flow-euclid>
 
@@ -246,7 +246,7 @@ When a project is converted between LaTeX and Typst, as described in @ch-writing
 The commutative diagram composer places maths objects in the cells of a grid and joins them with labelled arrows, as tikz-cd draws them. The grid has one object at most in each cell, and the code it writes is a `tikzcd` environment with one row of the grid on each line.
 
 #shots(
-  ("images/09-flow/pullback-canvas.png", "images/09-flow/pullback-preview.png"),
+  ("figures/09-flow/pullback-canvas.png", "figures/09-flow/pullback-preview.png"),
   [A pullback on the canvas (left) and in the preview (right). The arrow $u$ is dashed and the labels $x$, $p_1$ and $f$ are on the other side of their arrows.],
 ) <fig-flow-pullback>
 
@@ -274,14 +274,14 @@ Select an arrow to change it in the inspector (@fig-flow-cd-inspector). Its fiel
 - #ui[Hook at the tail] ($arrow.r.hook$), #ui[Two heads] ($->>$) and #ui[Dashed] add a hook for an inclusion, a second head for a surjection, and dashes for an arrow whose existence is being claimed.
 
 #figure(
-  box(width: 70%, grid(columns: 2, gutter: 10pt, frame("images/09-flow/cd-inspector.png"), frame("images/09-flow/cd-inspector-many.png"))),
+  box(width: 70%, grid(columns: 2, gutter: 10pt, frame("figures/09-flow/cd-inspector.png"), frame("figures/09-flow/cd-inspector-many.png"))),
   caption: [The inspector with the dashed arrow $u$ selected (left), and with three arrows selected together (right), when a change goes to all of them.],
 ) <fig-flow-cd-inspector>
 
 Select several arrows, with #key("Shift") or by dragging across the canvas, to change their side, kind, shift, hook, heads or dashes together. With several selected the sides are named #ui[Left, as it goes] and #ui[Right, as it goes], since the arrows run different ways, and each arrow keeps its own label.
 
 #shots(
-  ("images/09-flow/arrow-kinds-canvas.png", "images/09-flow/arrow-kinds-preview.png"),
+  ("figures/09-flow/arrow-kinds-canvas.png", "figures/09-flow/arrow-kinds-preview.png"),
   [Arrow kinds on the canvas (left) and in the preview (right): a hook and two heads in the top row, a double arrow $alpha$, a shifted pair $f$ and $g$, a loop below $F$ and a maps-to arrow $pi$ going up.],
 ) <fig-flow-cd-kinds>
 
@@ -308,7 +308,7 @@ The prime after a label, as in `"x"'`, puts it on the other side. Empty cells at
 Mermaid is a language for diagrams written as text, such as `A --> B` for an arrow from A to B. Spectrum's Mermaid composer is the code on the left and the diagram it draws on the right, drawn again a moment after you stop typing. There is no canvas to draw on, no #ui[Draw] or #ui[Code] tab and no #ui[Compile] button: the code is the drawing, and Mermaid lays it out.
 
 #shots(
-  ("images/09-flow/mermaid-code.png", "images/09-flow/mermaid-drawing.png"),
+  ("figures/09-flow/mermaid-code.png", "figures/09-flow/mermaid-drawing.png"),
   [A sequence diagram of a login in the Mermaid composer: the code on the left of the window (left) and the diagram Spectrum draws from it on the right (right).],
   columns: (1fr, 1.6fr),
 ) <fig-flow-mermaid>
@@ -342,7 +342,7 @@ The bar above the code has #ui[Start from a template], a menu of eleven diagrams
       caption: [The Mermaid templates.],
     ) <tab-flow-mermaid>
   ],
-  [#figure(frame("images/09-flow/mermaid-templates.png", width: 70%), caption: [The template menu.]) <fig-flow-mermaid-templates>],
+  [#figure(frame("figures/09-flow/mermaid-templates.png", width: 70%), caption: [The template menu.]) <fig-flow-mermaid-templates>],
 )
 
 When the code has a mistake, Mermaid's message shows above the last drawing that worked, which stays until the code draws again. Mermaid draws in its strict mode, which runs no script and follows no link in the code, and it draws labels as plain text rather than HTML so the drawing can be turned into an image. The #ui[Dark canvas] setting in @ch-composer draws the diagram in Mermaid's dark theme while you work; the images for a document are always drawn on white.

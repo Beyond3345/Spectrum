@@ -12,7 +12,7 @@ The Structures composer draws beams, trusses and frames with their supports and 
 
 The chapter first shows how to start a structure and how the canvas works (@sec-structures-canvas). It then walks through the tools on the rail in the order they appear: members and joints, supports, loads and annotations. The later sections explain what the composer works out and how to read it, the options under #ui[Style], editing several parts at once, how labels are placed and the code the composer writes. What every composer shares, such as opening the composer, the frame around the canvas, selecting, undo and file versions, is in @ch-composer.
 
-#shot("images/07-structures/composer.jpg", [The Structures composer with a simply supported beam and an overhang. The rail is on the left, the canvas and the compiled preview in the middle and the inspector on the right. The status line at the bottom left of the canvas says whether the structure is stable.]) <fig-structures-composer>
+#shot("figures/07-structures/composer.jpg", [The Structures composer with a simply supported beam and an overhang. The rail is on the left, the canvas and the compiled preview in the middle and the inspector on the right. The status line at the bottom left of the canvas says whether the structure is stable.]) <fig-structures-composer>
 
 == Starting a structure <sec-structures-start>
 
@@ -21,7 +21,7 @@ Open #ui[Draw a diagram] in the top bar of a project and pick a card in the #ui[
 - #ui[Structure (beams, trusses, frames)] opens a 6~m simply supported beam with a pin at A, a roller at B and a uniform load of 10~kN/m along it, ready to be changed.
 - Twelve pre-drawn structures open already solved, each one a figure a statics course starts from. They are listed in @tab-structures-starters.
 
-#shot("images/07-structures/chooser.png", [#ui[Draw a diagram] searched for statics. The Structure starter and the twelve pre-drawn structures are among the cards, with the fluid statics form presets of @ch-forms after them.], width: 72%) <fig-structures-chooser>
+#shot("figures/07-structures/chooser.png", [#ui[Draw a diagram] searched for statics. The Structure starter and the twelve pre-drawn structures are among the cards, with the fluid statics form presets of @ch-forms after them.], width: 72%) <fig-structures-chooser>
 
 #figure(
   table(
@@ -80,7 +80,7 @@ The line at the bottom left of the canvas says what the solve found, and the ins
 
 A note may follow it, such as a moment applied at a joint where every member end is hinged, which has nothing to turn. While the structure is unstable or in error the diagrams are not drawn.
 
-#shot("images/07-structures/unstable.png", [The beam of @fig-structures-composer with its roller removed. Joint D is ringed in red and the status line says it can move by turning about A.], width: 75%) <fig-structures-unstable>
+#shot("figures/07-structures/unstable.png", [The beam of @fig-structures-composer with its roller removed. Joint D is ringed in red and the status line says it can move by turning about A.], width: 75%) <fig-structures-unstable>
 
 == The rail <sec-structures-rail>
 
@@ -90,7 +90,7 @@ The rail on the left holds every tool, in five groups (@fig-structures-rail). #u
   grid(
     columns: (46%, 1fr),
     gutter: 14pt,
-    frame("images/07-structures/rail.png"),
+    frame("figures/07-structures/rail.png"),
     align(left + horizon)[
       #table(
         columns: (auto, 1fr),
@@ -140,7 +140,7 @@ The four tools of the #ui[Joints] group change how members meet (@fig-structures
 - *Internal shear release* lets the members' ends at a joint slide across each other while the moment still passes. It is drawn as two strokes square to the member.
 - *Released member end* releases the moment at one end of one beam member only, such as a beam pinned to a column that carries on. Click near the end to release. A small open circle beside the joint marks it.
 
-#printed("images/07-structures/joint-kinds.png", [A beam fixed at A with an internal hinge at B, an internal shear release at C and the end of member DE released at D, as the PDF draws them.]) <fig-structures-joints>
+#printed("figures/07-structures/joint-kinds.png", [A beam fixed at A with an internal hinge at B, an internal shear release at C and the end of member DE released at D, as the PDF draws them.]) <fig-structures-joints>
 
 === The member and joint inspectors
 
@@ -152,7 +152,7 @@ Click a member to select it. The inspector shows its name, its kind and its leng
 
 Click a joint to select it. Its inspector has its *Name* (letters, digits and a prime), its *Position* as x and y, which can be typed exactly, and the fold *Hinge and shear release* with a switch for each.
 
-#pair(("images/07-structures/inspector-member.png", "images/07-structures/inspector-joint.png"), [The inspector of member CB with its stiffness fold open (left) and of joint A (right). A selected member also has the Mirror and Turn buttons of @sec-structures-groups.]) <fig-structures-member-joint>
+#pair(("figures/07-structures/inspector-member.png", "figures/07-structures/inspector-joint.png"), [The inspector of member CB with its stiffness fold open (left) and of joint A (right). A selected member also has the Mirror and Turn buttons of @sec-structures-groups.]) <fig-structures-member-joint>
 
 == Supports <sec-structures-supports>
 
@@ -173,7 +173,7 @@ A support holds a joint. Pick its kind on the rail and click a joint, or a membe
   caption: [The six supports. The reactions are named after the joint, here A.],
 ) <tab-structures-supports>
 
-#printed("images/07-structures/supports.png", [The six supports, each under a short member, in the loading diagram.]) <fig-structures-supports>
+#printed("figures/07-structures/supports.png", [The six supports, each under a short member, in the loading diagram.]) <fig-structures-supports>
 
 A fixed or guided support placed on a joint is turned to face the members on it, so a wall goes behind the end of a cantilever without being turned by hand. The other supports sit under their joint until they are turned.
 
@@ -189,7 +189,7 @@ The support's inspector (@fig-structures-support-force) has the following,
 
 The #ui[Loads] group has five tools. A point force or a moment goes on a joint, or anywhere along a member, and a distributed load goes along a member. Each new load is 10 in the drawing's units, pointing down or turning as its tool says, and the inspector then sets its value. @fig-structures-loads shows them on one beam.
 
-#printed("images/07-structures/loads.png", [From the left: a point force of 20~kN, a force at an angle with the label $P$ in place of its value, a moment of 12~kN~m anticlockwise, a uniform load of 8~kN/m and a load rising linearly to 12~kN/m.]) <fig-structures-loads>
+#printed("figures/07-structures/loads.png", [From the left: a point force of 20~kN, a force at an angle with the label $P$ in place of its value, a moment of 12~kN~m anticlockwise, a uniform load of 8~kN/m and a load rising linearly to 12~kN/m.]) <fig-structures-loads>
 
 === Point forces and moments
 
@@ -210,7 +210,7 @@ Pick #ui[Point force], #ui[Moment, anticlockwise] or #ui[Moment, clockwise] and 
   caption: [The fields of a point force and a moment.],
 ) <tab-structures-force>
 
-#pair(("images/07-structures/inspector-support.png", "images/07-structures/inspector-force.png"), [The inspector of the pin at A with its fold open (left) and of the 20~kN force at D (right).]) <fig-structures-support-force>
+#pair(("figures/07-structures/inspector-support.png", "figures/07-structures/inspector-force.png"), [The inspector of the pin at A with its fold open (left) and of the 20~kN force at D (right).]) <fig-structures-support-force>
 
 === Distributed loads
 
@@ -223,7 +223,7 @@ Pick #ui[Uniform load] or #ui[Linearly varying load] and click a member. The loa
 
 A load per horizontal length on an inclined member is drawn on plan, as a level band just above the member with its arrows all the same length (@fig-structures-snow), so the low end of a steep rafter does not read as a larger load. A load whose intensity changes sign along its length draws each part on its own side of the member, with its arrows the way it acts.
 
-#pair(("images/07-structures/three-hinged.png", "images/07-structures/inclined-member.png"), width: 100%, [Left: the Three-hinged frame starter, with 5~kN/m of snow on plan over both rafters. Right: the Inclined member starter, with 2~kN/m along its length, an angle arc and two dimensions.]) <fig-structures-snow>
+#pair(("figures/07-structures/three-hinged.png", "figures/07-structures/inclined-member.png"), width: 100%, [Left: the Three-hinged frame starter, with 5~kN/m of snow on plan over both rafters. Right: the Inclined member starter, with 2~kN/m along its length, an angle arc and two dimensions.]) <fig-structures-snow>
 
 == Annotations <sec-structures-annotations>
 
@@ -235,7 +235,7 @@ The #ui[Annotations] group adds what a figure needs beside the structure itself.
 - *Axes*: click to place a small pair of x and y axes, and drag them to move them.
 - *Section cut*: drag across the members to cut. The part kept is on the left of the line as it was drawn, and the switch #ui[Keep the other side] in its inspector keeps the other part. Drag its ends to move it. The cut is shown by #menu[Style][View][Section free-body diagram] (@sec-structures-results).
 
-#pair(("images/07-structures/inspector-load.png", "images/07-structures/inspector-dimension.png"), [The inspector of the uniform load on AC with its fold open (left) and of the 4~m dimension (right).]) <fig-structures-load-dim>
+#pair(("figures/07-structures/inspector-load.png", "figures/07-structures/inspector-dimension.png"), [The inspector of the uniform load on AC with its fold open (left) and of the 4~m dimension (right).]) <fig-structures-load-dim>
 
 == What the composer works out <sec-structures-results>
 
@@ -256,7 +256,7 @@ The canvas draws the first four as the PDF does. For the joint and section views
 
 In the two free-body diagram views each support is replaced by its reactions (@fig-structures-fbd). A reaction is drawn as an arrow the way it acts on the structure, labelled with its size, so its sign is in the arrow and not in the number. It is named after its joint: $A_x$ and $A_y$ for the horizontal and vertical forces, $M_A$ for a moment and $A$ alone for the single force of a turned roller. A joint without a letter has its reaction labelled with the value only. On the canvas the supports stay faintly under the reactions, so that they can still be selected, while the PDF leaves them out.
 
-#printed("images/07-structures/beam-fbd.png", [The free-body diagram of the beam in @fig-structures-composer: $A_y = 27$~kN and $B_y = 41$~kN, both acting upward.]) <fig-structures-fbd>
+#printed("figures/07-structures/beam-fbd.png", [The free-body diagram of the beam in @fig-structures-composer: $A_y = 27$~kN and $B_y = 41$~kN, both acting upward.]) <fig-structures-fbd>
 
 === Shear force and bending moment diagrams
 
@@ -268,11 +268,11 @@ For a beam, whose members all lie on one horizontal line, the diagrams are stack
 
 Each diagram is labelled at the ends of its pieces, on both sides of a jump and at each largest or smallest value inside a piece, with the value in the style's significant figures. A value the one before it already gives, as along a constant stretch, is not repeated, zeros are not labelled and a value that would overlap another is left out. A member drawn from right to left, or downward, reads the same as one drawn the other way, so a sagging moment is always positive.
 
-#printed("images/07-structures/beam-diagrams.png", [The beam's shear force and bending moment diagrams. The shear falls from 27~kN at A to −21~kN at C and jumps by the 41~kN reaction at B. The moment is largest at 30.4~kN~m in the span and −30~kN~m (hogging) over B.]) <fig-structures-diagrams>
+#printed("figures/07-structures/beam-diagrams.png", [The beam's shear force and bending moment diagrams. The shear falls from 27~kN at A to −21~kN at C and jumps by the 41~kN reaction at B. The moment is largest at 30.4~kN~m in the span and −30~kN~m (hogging) over B.]) <fig-structures-diagrams>
 
 For a frame, or a truss, each diagram is drawn on a copy of the structure, two to a row with the free-body diagram first (@fig-structures-frame). A diagram is drawn square to each member on its plotting side, which is above a horizontal member and to the left of a vertical one. A frame's moments on the tension side are labelled by size only, since the side they are drawn on shows their sense. A truss has only the axial force diagram.
 
-#printed("images/07-structures/portal-frame.png", [The Portal frame starter with its axial force, shear force and bending moment diagrams, each on a copy of the frame.]) <fig-structures-frame>
+#printed("figures/07-structures/portal-frame.png", [The Portal frame starter with its axial force, shear force and bending moment diagrams, each on a copy of the frame.]) <fig-structures-frame>
 
 === The deflected shape and x of zero shear
 
@@ -281,21 +281,21 @@ The fold #ui[Deflected shape and x of zero shear] under #ui[Style] adds two thin
 - *Deflected shape* draws the elastic curve: under a beam as a fourth diagram $delta$ in the length unit, and for a frame on a faint copy of the frame. *Exaggeration* scales it: #ui[Fitted to the drawing] makes the largest deflection a set size on the page, while #ui[× 1] to #ui[× 10000] draw the true deflection times that factor. Each member's largest deflection is labelled, up positive, and a frame's largest displacement is labelled $delta_max$. The values use each member's EI as typed, so with the default EI of 1~kN~m² they are far too large: type the members' real EI first. A truss's deflected shape is to scale only against itself, since EA is relative, and its values are not labelled.
 - *Mark x where the shear is zero* writes $x$ on the shear and moment diagrams where the shear crosses zero inside a member, which is where the moment is largest. It is measured from the left end of the member, or from its lower end when it is vertical.
 
-#printed("images/07-structures/beam-deflection.png", [The same beam with each member's EI set to 20~000~kN~m², its deflected shape and x of zero shear. The shear is zero, and the sagging moment largest, at $x = 2.25$~m from A. The largest deflection is 4.38~mm down, in span AC.]) <fig-structures-deflection>
+#printed("figures/07-structures/beam-deflection.png", [The same beam with each member's EI set to 20~000~kN~m², its deflected shape and x of zero shear. The shear is zero, and the sagging moment largest, at $x = 2.25$~m from A. The largest deflection is 4.38~mm down, in span AC.]) <fig-structures-deflection>
 
 === Member forces, joints and sections
 
 #ui[Member forces] writes the axial force beside each member with (T) for tension or (C) for compression (@fig-structures-truss). A member whose force is zero is drawn dashed and labelled 0, which marks the zero-force members of a truss at a glance. The view works for a frame too, where it gives each member's axial force at its middle.
 
-#printed("images/07-structures/truss-forces.png", [The member forces of a pin-jointed roof truss with 8~kN at each top joint and 4~kN of wind at E. The section cut through the second panel is drawn dashed.]) <fig-structures-truss>
+#printed("figures/07-structures/truss-forces.png", [The member forces of a pin-jointed roof truss with 8~kN at each top joint and 4~kN of wind at E. The section cut through the second panel is drawn dashed.]) <fig-structures-truss>
 
 #ui[Joint free-body diagram] draws one joint with the forces its members put on it, as the method of joints takes them (@fig-structures-joint). Choose the joint in #menu[Style][Joint]. Each member's force is an arrow along it, named $F_"EB"$ after the member, pointing away from the joint for tension and into it for compression. A frame member also shows its shear and moment at the joint. The joint's own loads and reactions are drawn with it.
 
-#printed("images/07-structures/truss-joint.png", [The free-body diagram of joint B of the roof truss: two bars in tension along the bottom chord, EB in tension and BF in compression.]) <fig-structures-joint>
+#printed("figures/07-structures/truss-joint.png", [The free-body diagram of joint B of the roof truss: two bars in tension along the bottom chord, EB in tension and BF in compression.]) <fig-structures-joint>
 
 #ui[Section free-body diagram] draws the part kept on one side of a section cut, as the method of sections takes it (@fig-structures-section). Choose the cut in #menu[Style][Section cut]. The kept part keeps its loads and reactions, and each member the cut crosses gets its force at the cut: $F_"BC"$ along a truss bar, or $N$, $V$ and $M$ for a beam member. Where the lines of two cut members meet, the point is marked $O_1$, $O_2$ and so on: taking moments about it gives the third force directly. A cut through more than three members that do not meet at one point cannot be solved by hand alone, and the composer says so in a comment. The forces it shows then come from the whole structure.
 
-#printed("images/07-structures/truss-section.png", [The right-hand part of the roof truss at the cut, with the forces in EF, BF and BC. $O_2$ at F is where EF and BF meet, so moments about it give $F_"BC"$.]) <fig-structures-section>
+#printed("figures/07-structures/truss-section.png", [The right-hand part of the roof truss at the cut, with the forces in EF, BF and BC. $O_2$ at F is where EF and BF meet, so moments about it give $F_"BC"$.]) <fig-structures-section>
 
 == Style <sec-structures-style>
 
@@ -305,7 +305,7 @@ The fold #ui[Deflected shape and x of zero shear] under #ui[Style] adds two thin
   grid(
     columns: (32%, 1fr),
     gutter: 14pt,
-    frame("images/07-structures/style.png"),
+    frame("figures/07-structures/style.png"),
     align(left + top, table(
       columns: (38%, 62%),
       align: left,
@@ -335,7 +335,7 @@ Choosing other units for a drawing that already has something in it asks what to
 - *Convert to N and mm* (or the units chosen) keeps the same structure in the new units: lengths, forces, distributed loads, moments, EI, spring stiffnesses and settlements are all converted, so a 6~m beam becomes 6000~mm. EI is written out in the new units, since an EI of 1 in one system is not 1 in another.
 - *Keep the numbers* only renames the units, so 6~m becomes 6~mm.
 
-#shot("images/07-structures/units.png", [Choosing N and mm for a drawing in kN and m.], width: 40%) <fig-structures-units>
+#shot("figures/07-structures/units.png", [Choosing N and mm for a drawing in kN and m.], width: 40%) <fig-structures-units>
 
 == Selecting and editing several parts <sec-structures-groups>
 
@@ -348,7 +348,7 @@ Selecting works as in every composer (@ch-composer). In Structures a selection c
 
 Supports, loads and angle arcs turn with the joints they are on. A mirror also swaps a moment's sense and the side a section cut keeps, and a load square to a mirrored member stays on the side it was mirrored to. A horizontal dimension becomes vertical after a quarter turn.
 
-#shot("images/07-structures/group.png", [Joints A and C, member AC, the pin, the load and the 4~m dimension selected by a box. The inspector offers Mirror and Turn by for the six items.]) <fig-structures-group>
+#shot("figures/07-structures/group.png", [Joints A and C, member AC, the pin, the load and the 4~m dimension selected by a box. The inspector offers Mirror and Turn by for the six items.]) <fig-structures-group>
 
 Some edits act on what a part hangs on.
 
@@ -373,6 +373,6 @@ Structures writes its drawing as a standalone TikZ document in `diagrams/`, whic
 - The picture's options define a style for each kind of line, such as `struct member` at 1.2~pt and `struct load` at 0.6~pt, the fills of the force diagrams and each support symbol as a pic, such as `spx/struct/pin`. Nothing reaches the document's preamble.
 - A comment first names the view and the status, such as `% Structure, free-body diagram with shear and bending moment diagrams: Determinate and stable`. Then each part of the picture is headed by its own comment: `% Structure`, `% Supports`, `% Loads`, `% Reactions`, `% Dimensions and labels` and one for each diagram, which sits in a scope shifted below or beside the structure.
 
-#shot("images/07-structures/code.png", [The Code tab of the beam, with the styles in the picture's options and the comment that heads each part.], width: 92%) <fig-structures-code>
+#shot("figures/07-structures/code.png", [The Code tab of the beam, with the styles in the picture's options and the comment that heads each part.], width: 92%) <fig-structures-code>
 
 A drawing that uses something added in 2.5 (a settlement, a load per horizontal length, an internal shear release, the deflected shape or x of zero shear) is saved as file version 5, which Spectrum 2.4 and earlier open as code.

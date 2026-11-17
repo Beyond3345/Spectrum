@@ -4,7 +4,7 @@
 
 // The symbols and their pictures come from symbols/symbols.json, which symbols/build.mjs makes from the app's own
 // data: run it again after the catalogue or a composer's shapes change, and this chapter follows.
-#let data = json("/docs/handbook/symbols/symbols.json")
+#let data = json("../symbols/symbols.json")
 #let groups-of(id) = data.sections.find(s => s.id == id).groups
 #let count(id) = groups-of(id).map(g => g.symbols.len()).sum()
 
@@ -26,7 +26,7 @@
       column-gutter: gap,
       row-gutter: 5pt,
       align: (_, y) => if y == 0 { center + horizon } else { center + top },
-      ..row.map(s => image("/docs/handbook/symbols/" + s.picture, width: s.width * 1pt * scale)),
+      ..row.map(s => image("../symbols/" + s.picture, width: s.width * 1pt * scale)),
       ..blanks,
       ..row.map(s => {
         set par(justify: false, leading: 0.45em)

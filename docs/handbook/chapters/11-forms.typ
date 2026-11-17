@@ -40,7 +40,7 @@ To start a drawing from a preset,
 
 Search ranks what it finds: cards whose name matches come first, then those that match in their description or other words, then the rest. For example, the four fluid statics presets answer to #ui[fluid statics] and come straight after General drawing (whose other words include fluid mechanics and hydrostatics), ahead of the beams and trusses, as @fig-forms-chooser shows.
 
-#shot("images/11-forms/chooser-fluid-statics.png", [The chooser's search for "fluid statics": General drawing, then the four fluid statics presets, then the beams. Hydrostatic force on a gate is chosen.], width: 82%) <fig-forms-chooser>
+#shot("figures/11-forms/chooser-fluid-statics.png", [The chooser's search for "fluid statics": General drawing, then the four fluid statics presets, then the beams. Hydrostatic force on a gate is chosen.], width: 82%) <fig-forms-chooser>
 
 A development build of Spectrum lists one more card, Labelled circle (test), which is the frame's own test: a circle with a radius, a label, a line style and a shading switch. Released builds do not list it.
 
@@ -53,11 +53,11 @@ A Form preset's window has the same header and the same preview as every compose
 - a choice from a list and
 - a switch, which turns a part of the figure on or off.
 
-#shot("images/11-forms/gate-window.png", [A Form preset's window: the form of Hydrostatic force on a gate above, the compiled figure in the preview below.], width: 85%) <fig-forms-window>
+#shot("figures/11-forms/gate-window.png", [A Form preset's window: the form of Hydrostatic force on a gate above, the compiled figure in the preview below.], width: 85%) <fig-forms-window>
 
 A field appears only when it is needed. For example, the gate's #ui[Width] is hidden for a circular gate, and the manometer shows a column's height only once the column names a fluid. A number field takes a value only when it is a number inside the field's range. When a number outside it is typed, the drawing keeps its last value and a red hint under the field says what it takes (@fig-forms-range). The hint stays until the next number is typed, while the field goes back to the last value when you leave it. The ranges are also given in each section's table.
 
-#shot("images/11-forms/range-hint.png", [A width of 0 typed into the gate's #ui[Width], which takes 0.001 to 1000 m.], width: 55%) <fig-forms-range>
+#shot("figures/11-forms/range-hint.png", [A width of 0 typed into the gate's #ui[Width], which takes 0.001 to 1000 m.], width: 55%) <fig-forms-range>
 
 Each change to the form is saved, and 700 ms after the last change the preview compiles the new figure, as in every composer. The figure carries its own answers, while the working is written in two places,
 
@@ -129,7 +129,7 @@ The figure has the axes, the circle, the points $X(sigma_x, tau_(x y))$ and $Y(s
     - #ui[Clockwise shear plotted above] (as in Beer and Johnston), drawn the same way with the axis pointing up and named "τ (clockwise)" and
     - #ui[τ positive upward].
   ],
-  figure(frame("images/11-forms/mohr-style.png"), caption: [The Style of a Mohr's circle.]),
+  figure(frame("figures/11-forms/mohr-style.png"), caption: [The Style of a Mohr's circle.]),
 )
 
 #worked[
@@ -138,7 +138,7 @@ A web element carries $sigma_x = 80$~MPa, $sigma_y = -40$~MPa and $tau_(x y) = 2
 
 #figure(
   grid(columns: (1fr, 1.25fr), gutter: 10pt, align: horizon,
-    frame("images/11-forms/mohr-form.png"), frame("images/11-forms/mohr-preview.png")),
+    frame("figures/11-forms/mohr-form.png"), frame("figures/11-forms/mohr-preview.png")),
   caption: [Mohr's circle for $sigma_x = 80$, $sigma_y = -40$ and $tau_(x y) = 25$~MPa, rotated 30°, with all four stress elements.],
 ) <fig-forms-mohr>
 
@@ -179,11 +179,11 @@ A survey of 60 first-year students asks which of Physics, Chemistry and Mathemat
 
 #figure(
   grid(columns: (1fr, 1fr), gutter: 10pt, align: top,
-    frame("images/11-forms/venn-form1.png"), frame("images/11-forms/venn-form2.png")),
+    frame("figures/11-forms/venn-form1.png"), frame("figures/11-forms/venn-form2.png")),
   caption: [The form of the survey: three named sets, and the regions' table with a count in every row.],
 ) <fig-forms-venn-form>
 
-#shot("images/11-forms/venn-preview.png", [The survey's Venn diagram, with the students who take all three subjects shaded.], width: 58%) <fig-forms-venn>
+#shot("figures/11-forms/venn-preview.png", [The survey's Venn diagram, with the students who take all three subjects shaded.], width: 58%) <fig-forms-venn>
 
 === Limits
 
@@ -240,15 +240,15 @@ Tutorial 3, question 21(a): a vertical gate 3~m high and 1~m wide is hinged at i
 
 #figure(
   grid(columns: (1fr, 1fr), gutter: 10pt, align: top,
-    frame("images/11-forms/gate-form1.png"), frame("images/11-forms/gate-form2.png")),
+    frame("figures/11-forms/gate-form1.png"), frame("figures/11-forms/gate-form2.png")),
   caption: [The form of the gate of Tutorial 3, question 21(a), in two parts: a new gate drawing's starting values.],
 ) <fig-forms-gate-form>
 
-#shot("images/11-forms/gate-preview.png", [The gate of Tutorial 3, question 21(a), with its pressure prism, $F_R$, $y_p$ and the stop's force, and the results under it.], width: 58%) <fig-forms-gate>
+#shot("figures/11-forms/gate-preview.png", [The gate of Tutorial 3, question 21(a), with its pressure prism, $F_R$, $y_p$ and the stop's force, and the results under it.], width: 58%) <fig-forms-gate>
 
 With water on one side and seawater on the other, the sluice gate of Lecture 5, Example 3 is a 5~m gate hinged 1.5~m above 3.5~m of water, with 2.5~m of seawater (RD 1.035) behind it. Spectrum gives $F_(R 1) = 60.09$~kN at $y_p = 2.33$~m and $F_(R 2) = 31.73$~kN at $y_p = 1.67$~m. Taking moments about $A$, $F_B = (60.09 times 3.83 - 31.73 times 4.17) slash 5 = 19.63$~kN, which @fig-forms-gate-exam shows in the exam paper's look.
 
-#shot("images/11-forms/gate-sluice-preview.png", [The sluice gate of Lecture 5, Example 3, with fluid on both sides, in the Exam paper look.], width: 80%) <fig-forms-gate-exam>
+#shot("figures/11-forms/gate-sluice-preview.png", [The sluice gate of Lecture 5, Example 3, with fluid on both sides, in the Exam paper look.], width: 80%) <fig-forms-gate-exam>
 
 === Limits
 
@@ -296,15 +296,15 @@ and the form of @fig-forms-manometer-form gives 9565~Pa, drawn as a U-tube fille
 
 #figure(
   grid(columns: (1fr, 1fr, 1fr), gutter: 10pt, align: top,
-    frame("images/11-forms/manometer-form1.png"), frame("images/11-forms/manometer-form2.png"), frame("images/11-forms/manometer-form3.png")),
+    frame("figures/11-forms/manometer-form1.png"), frame("figures/11-forms/manometer-form2.png"), frame("figures/11-forms/manometer-form3.png")),
   caption: [The walk of Lecture 4, Example 7 in the form, in three parts: from B down 13 cm of oil and 8 cm of mercury, then up 31 cm of oil to A.],
 ) <fig-forms-manometer-form>
 
-#shot("images/11-forms/manometer-preview.png", [The U-tube the walk draws, with the mercury in its bend and $P_A - P_B$ under it.], width: 55%) <fig-forms-manometer>
+#shot("figures/11-forms/manometer-preview.png", [The U-tube the walk draws, with the mercury in its bend and $P_A - P_B$ under it.], width: 55%) <fig-forms-manometer>
 
 The same form draws an inverted U-tube. Lecture 4, Example 8 walks from $M$ up 9.5~cm of water, down 3.5~cm of oil of RD 0.83, then down 18~cm of water to $N$. The walk turns at its top, so Spectrum draws an inverted U with the lighter oil in its bend (@fig-forms-manometer-inverted), and gives $P_N - P_M = 1119$~Pa: the sum of the slide's terms, $284.98 + 1765.80 - 931.95 = 1118.83$~Pa.
 
-#shot("images/11-forms/manometer-inverted-preview.png", [An inverted U-tube from M to N, the walk of Lecture 4, Example 8.], width: 42%) <fig-forms-manometer-inverted>
+#shot("figures/11-forms/manometer-inverted-preview.png", [An inverted U-tube from M to N, the walk of Lecture 4, Example 8.], width: 42%) <fig-forms-manometer-inverted>
 
 === Limits
 
@@ -354,11 +354,11 @@ Lecture 5, Example 7: a tank 5~m long and 2~m high holds 1~m of water and accele
 
 #figure(
   grid(columns: (1fr, 1fr), gutter: 10pt, align: top,
-    frame("images/11-forms/tank-form1.png"), frame("images/11-forms/tank-form2.png")),
+    frame("figures/11-forms/tank-form1.png"), frame("figures/11-forms/tank-form2.png")),
   caption: [The form of the tank of Lecture 5, Example 7: a new tank drawing's starting values.],
 ) <fig-forms-tank-form>
 
-#shot("images/11-forms/tank-preview.png", [The tank accelerating at 3 m/s² up a 40° ramp, with θ, the depths and the corner pressures.], width: 75%) <fig-forms-tank>
+#shot("figures/11-forms/tank-preview.png", [The tank accelerating at 3 m/s² up a 40° ramp, with θ, the depths and the corner pressures.], width: 75%) <fig-forms-tank>
 
 === Limits
 
@@ -404,11 +404,11 @@ A barge 6~m wide and 1.5~m high, of RD 0.4, floats in water with its centre of g
 
 #figure(
   grid(columns: (1fr, 1fr), gutter: 10pt, align: top,
-    frame("images/11-forms/floating-form1.png"), frame("images/11-forms/floating-form2.png")),
+    frame("figures/11-forms/floating-form1.png"), frame("figures/11-forms/floating-form2.png")),
   caption: [The form of the barge, with Uniform body off and its KG.],
 ) <fig-forms-floating-form>
 
-#shot("images/11-forms/floating-preview.png", [A barge 6 m wide of RD 0.4 with its centre of gravity 1.2 m above its base: $G M = 4.1$ m, stable.], width: 75%) <fig-forms-floating>
+#shot("figures/11-forms/floating-preview.png", [A barge 6 m wide of RD 0.4 with its centre of gravity 1.2 m above its base: $G M = 4.1$ m, stable.], width: 75%) <fig-forms-floating>
 
 The ice cube of Lecture 5, Example 5, 2.44~m on a side in seawater, floats with $d = 2.44 times 0.92 slash 1.025 = 2.19$~m, so 0.25~m of it stands above the surface, as the lecture gives.
 
@@ -505,15 +505,15 @@ an ellipse with $a = sqrt(7) = 2.646$, $b = sqrt(3) = 1.732$, $c = 2$ and $e = 0
 
 #figure(
   grid(columns: (1fr, 1fr), gutter: 10pt, align: top,
-    frame("images/11-forms/conic-form1.png"), frame("images/11-forms/conic-form2.png")),
+    frame("figures/11-forms/conic-form1.png"), frame("figures/11-forms/conic-form2.png")),
   caption: [The form of a new Conic section drawing: the notes' rotated ellipse, with its switches.],
 ) <fig-forms-conic-form>
 
-#shot("images/11-forms/conic-preview.png", [The notes' rotated ellipse, with the turned axes U and V and the working under it.], width: 46%) <fig-forms-conic>
+#shot("figures/11-forms/conic-preview.png", [The notes' rotated ellipse, with the turned axes U and V and the working under it.], width: 46%) <fig-forms-conic>
 
 Given by its own numbers instead, a hyperbola centred at $(1, -1)$ with $a = 2$ and $b = 1.5$, opening left and right, has $c = sqrt(4 + 2.25) = 2.5$ and $e = 1.25$, foci at $(-1.5, -1)$ and $(3.5, -1)$ and asymptotes $y + 1 = plus.minus 0.75 (x - 1)$. With #ui[Given as] set to #ui[An ellipse, hyperbola or parabola], #ui[Conic] to #ui[Hyperbola], the centre to $(1, -1)$, #ui[a] to 2 and #ui[b] to 1.5, @fig-forms-conic-standard shows the same with #ui[Coordinates beside the names] on.
 
-#shot("images/11-forms/conic-standard-preview.png", [A hyperbola given by its centre, $a$ and $b$, with each point's coordinates.], width: 50%) <fig-forms-conic-standard>
+#shot("figures/11-forms/conic-standard-preview.png", [A hyperbola given by its centre, $a$ and $b$, with each point's coordinates.], width: 50%) <fig-forms-conic-standard>
 
 === Limits
 
@@ -555,11 +555,11 @@ The notes' matrix $A = mat(4, 1; 2, 3)$ sends $bold(e)_1$ to $(4, 2)$ and $bold(
 
 #figure(
   grid(columns: (1fr, 1fr), gutter: 10pt, align: top,
-    frame("images/11-forms/transformation-form1.png"), frame("images/11-forms/transformation-form2.png")),
+    frame("figures/11-forms/transformation-form1.png"), frame("figures/11-forms/transformation-form2.png")),
   caption: [The form of $mat(4, 1; 2, 3)$ on a grid.],
 ) <fig-forms-transformation-form>
 
-#shot("images/11-forms/transformation-preview.png", [$mat(4, 1; 2, 3)$ on the unit square and grid, with the images of $bold(e)_1$ and $bold(e)_2$ and the eigenvectors $(1, 1)$ and $(1, -2)$.], width: 48%) <fig-forms-transformation>
+#shot("figures/11-forms/transformation-preview.png", [$mat(4, 1; 2, 3)$ on the unit square and grid, with the images of $bold(e)_1$ and $bold(e)_2$ and the eigenvectors $(1, 1)$ and $(1, -2)$.], width: 48%) <fig-forms-transformation>
 
 When #ui[Images of e₁ and e₂] is on, the eigenvectors are teal and orange so that they stand apart from the basis vectors; with it off, they are red and blue, as in the notes.
 

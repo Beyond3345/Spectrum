@@ -57,7 +57,7 @@ Spectrum opens on the projects page, with nothing in it the first time. There is
 
 Choosing a provider fills in its endpoint, its recommended models and the recommended reasoning effort, which @ch-assistant describes. The System section lists each program Spectrum looks for, such as `pdflatex`, `xelatex`, `biber` and `texcount`, with a tick and the path where it was found, together with the app's data folder and the default folder for new projects (@fig-start-system). #ui[Check again] looks again after a TeX installation has been added, and #ui[Licences] lists the software, fonts and word lists Spectrum includes.
 
-#shot("images/01-getting-started/settings-system.png", [The System section of Settings. Each TeX tool Spectrum found has a tick and its path, and the folders below show where the app keeps its data and where new projects go.], width: 72%) <fig-start-system>
+#shot("figures/01-getting-started/settings-system.png", [The System section of Settings. Each TeX tool Spectrum found has a tick and its path, and the folders below show where the app keeps its data and where new projects go.], width: 72%) <fig-start-system>
 
 == The projects page <sec-start-projects>
 
@@ -71,11 +71,11 @@ The sidebar on the left holds the views of the page, which are,
 - #ui[Archived], the projects that have been archived and
 - #ui[Tags], one row for each tag, which lists the projects that carry it.
 
-#shot("images/01-getting-started/home.png", [Home with two folders, each with its own colour and symbol, and three projects that are in no folder. Each project shows the first page of its last compiled PDF.]) <fig-start-home>
+#shot("figures/01-getting-started/home.png", [Home with two folders, each with its own colour and symbol, and three projects that are in no folder. Each project shows the first page of its last compiled PDF.]) <fig-start-home>
 
 The header holds a search field, #ui[Sort] (by name, date changed or date created), the list and icon views with a slider for the size of the icons, #ui[Import] and #ui[New]. The search looks through the projects of every folder, and each result says which folder it is in. #menu[Settings][Projects] chooses whether Spectrum opens on Home or on All projects.
 
-#shot("images/01-getting-started/all-projects.png", [All projects as a list. Each row shows the project's folder on disk, its tags and when it was last changed, and the #dots button at the end of the row opens its menu.]) <fig-start-all>
+#shot("figures/01-getting-started/all-projects.png", [All projects as a list. Each row shows the project's folder on disk, its tags and when it was last changed, and the #dots button at the end of the row opens its menu.]) <fig-start-all>
 
 === Opening a project
 
@@ -87,7 +87,7 @@ Double-clicking a `.tex`, `.ltx` or `.bib` file in Finder or File Explorer also 
 
 #ui[New] in the header has three choices: #ui[Blank project…], #ui[From template…] and #ui[Folder…] (@fig-start-new). Inside a folder on Home they read #ui[Blank project here…] and so on, and the new project or folder goes into the folder that is showing.
 
-#shots(("images/01-getting-started/new-menu.png", "images/01-getting-started/new-project.png"), [The New menu, left, and the New project window, right. Write in chooses LaTeX, Typst or Markdown, and Template lists the templates for that language.], columns: (1fr, 2.1fr)) <fig-start-new>
+#shots(("figures/01-getting-started/new-menu.png", "figures/01-getting-started/new-project.png"), [The New menu, left, and the New project window, right. Write in chooses LaTeX, Typst or Markdown, and Template lists the templates for that language.], columns: (1fr, 2.1fr)) <fig-start-new>
 
 The New project window asks for the following,
 
@@ -108,7 +108,7 @@ The New project window asks for the following,
 
 The file list of every project follows changes made outside Spectrum, so a file added, removed or renamed in Finder or by another editor shows up straight away. If a project's folder is moved in Finder, the project is marked as missing, and #ui[Locate…] in its menu points it at the new location.
 
-#shots(("images/01-getting-started/import-menu.png", "images/01-getting-started/project-menu.png"), [The Import menu, left, and a project's menu, right, which opens from its #dots button or with a right-click.], columns: (1.3fr, 1fr)) <fig-start-import>
+#shots(("figures/01-getting-started/import-menu.png", "figures/01-getting-started/project-menu.png"), [The Import menu, left, and a project's menu, right, which opens from its #dots button or with a right-click.], columns: (1.3fr, 1fr)) <fig-start-import>
 
 === A project's menu
 
@@ -130,7 +130,7 @@ Folders arrange the projects page. They hold projects and other folders, and the
 
 A folder's menu has #ui[Open], #ui[New folder…], #ui[Rename…], #ui[Customise Folder…], #ui[Move to folder…], a colour and #ui[Delete…]. Deleting a folder moves what was in it up a level, so no project is ever deleted with it. #ui[Customise Folder…] gives a folder a colour and a symbol or emoji, which it shows on Home and in the sidebar (@fig-start-customise). The folders and their arrangement follow you to your other computers with your settings (@sec-start-sync).
 
-#shots(("images/01-getting-started/folder-menu.png", "images/01-getting-started/customise-Honours.png"), [A folder's menu, left, and Customise Folder, right, where a folder takes one of seven colours and a symbol or an emoji.], columns: (1fr, 1.5fr)) <fig-start-customise>
+#shots(("figures/01-getting-started/folder-menu.png", "figures/01-getting-started/customise-Honours.png"), [A folder's menu, left, and Customise Folder, right, where a folder takes one of seven colours and a symbol or an emoji.], columns: (1fr, 1.5fr)) <fig-start-customise>
 
 === Going back from the editor
 
@@ -143,13 +143,13 @@ The project's name at the top of the editor's sidebar is the project switcher (@
 
 #menu[Settings][Projects][Project switcher opens at] chooses whether the list starts at Home or at the folder the project is in.
 
-#shot("images/01-getting-started/project-switcher.png", [The project switcher in the editor. For a project filed in Semester 2 it offers Back to Semester 2, which opens Home at that folder.], width: 50%) <fig-start-switcher>
+#shot("figures/01-getting-started/project-switcher.png", [The project switcher in the editor. For a project filed in Semester 2 it offers Back to Semester 2, which opens Home at that folder.], width: 50%) <fig-start-switcher>
 
 == Templates <sec-start-templates>
 
 A template is a starting project: a main file, a bibliography and any files it needs, written in Spectrum's house style. #menu[New][From template…] opens the template gallery (@fig-start-gallery), which has a tab for each language, a row of categories (Notes, Reports, Letters, Slides, CV and Academic, with Featured for the starred templates) and a search. Choosing a template opens the New project window with it filled in.
 
-#shot("images/01-getting-started/template-gallery.png", [The template gallery on its LaTeX tab. The starred templates are the featured ones, and the conference templates follow under Academic.], width: 85%) <fig-start-gallery>
+#shot("figures/01-getting-started/template-gallery.png", [The template gallery on its LaTeX tab. The starred templates are the featured ones, and the conference templates follow under Academic.], width: 85%) <fig-start-gallery>
 
 The built-in templates are listed in @tab-start-templates. Every LaTeX template uses APA 7 citations through `biblatex-apa` and Biber, compiles with Auto, pdfLaTeX, XeLaTeX or LuaLaTeX and uses A4 paper (apart from the slides), Australian English and no shell escape. The conference templates keep their venues' page layouts but use an APA 7 bibliography, so a real submission should go back to the venue's own reference style. The Typst templates follow Spectrum's house style for Typst, compile offline with no packages and use Typst's own APA style, while the Markdown article uses pandoc's citeproc with the `.bib` file its front matter names.
 
@@ -227,7 +227,7 @@ Settings are saved as they are changed, so there is no Save button. A few sectio
 - #ui[Opening files], on macOS, which makes Spectrum the default app for `.tex`, `.ltx` and `.bib` files again and
 - #ui[Use the same settings on each computer] and #ui[This computer's name], which @sec-start-sync covers.
 
-#shot("images/01-getting-started/settings-projects.png", [The Projects section of Settings.], width: 72%) <fig-start-projects-settings>
+#shot("figures/01-getting-started/settings-projects.png", [The Projects section of Settings.], width: 72%) <fig-start-projects-settings>
 
 == Appearance <sec-start-appearance>
 
@@ -238,7 +238,7 @@ Settings are saved as they are changed, so there is no Save button. A few sectio
 - on macOS, a see-through window, which uses Liquid Glass on macOS 26 and later and a frosted blur on earlier versions, with a Clarity slider from Frosted to Clear that sets how much of the desktop shows through while the editor and the PDF stay readable and
 - the colour of the PDF's pages, one for light mode (White, Cream, Sepia or Grey) and one for dark mode (Dark, Black, Dimmed or White). Dark and Black turn the ink light, while Dimmed keeps the page's own colours a little darker. The PDF's #dots menu changes the colour for the mode that is showing.
 
-#shot("images/01-getting-started/settings-appearance.png", [The Appearance section of Settings, with the theme, the accent colour and the colour of the PDF's pages. The see-through window appears here on macOS.], width: 72%) <fig-start-appearance>
+#shot("figures/01-getting-started/settings-appearance.png", [The Appearance section of Settings, with the theme, the accent colour and the colour of the PDF's pages. The see-through window appears here on macOS.], width: 72%) <fig-start-appearance>
 
 === The editor's look
 
@@ -246,7 +246,7 @@ Settings are saved as they are changed, so there is no Save button. A few sectio
 
 Under #ui[Colours], each colour of a theme can be changed for its mode: the background, text, line numbers, current line, selection, cursor, commands, comments, brackets, maths, arguments and environments. The changes go on top of the chosen theme and stay when another theme is chosen, and #ui[Reset to theme] takes them away.
 
-#shot("images/01-getting-started/settings-editor-theme.png", [The editor's light and dark themes with their previews, and below them the colours that can be changed for each mode.], width: 72%) <fig-start-themes>
+#shot("figures/01-getting-started/settings-editor-theme.png", [The editor's light and dark themes with their previews, and below them the colours that can be changed for each mode.], width: 72%) <fig-start-themes>
 
 The same section also holds the settings for jumping between the source and the PDF and for the PDF following the open file, which @sec-writing-preview describes.
 

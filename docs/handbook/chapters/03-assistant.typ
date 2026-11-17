@@ -20,13 +20,13 @@ A model is set up once, in #menu[Settings][Models]. Spectrum uses three of them,
 
 The quick and vision models follow the main model by default, shown as #ui[Same as main], and move with it when it changes. Choosing another provider for either one gives it its own endpoint, model and key, so that, for example, Gemini can read images while Claude writes the text.
 
-#shot("images/03-assistant/settings-models.png", [#menu[Settings][Models] with the OpenAI preset. The endpoint and the recommended model are filled in by the preset, and only the API key is left to paste.], width: 70%) <fig-assistant-settings-models>
+#shot("figures/03-assistant/settings-models.png", [#menu[Settings][Models] with the OpenAI preset. The endpoint and the recommended model are filled in by the preset, and only the API key is left to paste.], width: 70%) <fig-assistant-settings-models>
 
 === Choosing a provider
 
 The #ui[Provider] menu holds a preset for each provider below, as in @fig-assistant-provider-list. A preset fills in the endpoint, the recommended model for each role and the recommended reasoning effort. Other models from the same provider can be picked from the #ui[Model] list, and any other model name can be typed in.
 
-#shot("images/03-assistant/provider-list.png", [The #ui[Provider] menu. Ollama runs on your own computer, and Other takes any server that speaks the OpenAI chat completions API.], width: 70%) <fig-assistant-provider-list>
+#shot("figures/03-assistant/provider-list.png", [The #ui[Provider] menu. Ollama runs on your own computer, and Other takes any server that speaks the OpenAI chat completions API.], width: 70%) <fig-assistant-provider-list>
 
 #figure(
   table(
@@ -56,7 +56,7 @@ Two choices need no key at all. #ui[Ollama] runs models on your own computer, or
 
 The reasoning effort sets how long a model may think before it answers, from #ui[Off] to #ui[Max]. Settings and the assistant offer only the levels the chosen model accepts, and #ui[Recommended] uses the level in @tab-assistant-providers. Spectrum sends the effort in the form each provider expects. Specifically, OpenAI is called through its Responses API with storage turned off, Claude through Anthropic's Messages API, and the providers whose models always think a little start at their lowest level instead of #ui[Off]. Autocomplete and reference splitting use the lowest level a model accepts, so they stay quick.
 
-#shot("images/03-assistant/settings-quick-vision.png", [The quick and vision models further down the same pane. Both follow the main model until another provider is chosen for them.], width: 70%) <fig-assistant-quick-vision>
+#shot("figures/03-assistant/settings-quick-vision.png", [The quick and vision models further down the same pane. Both follow the main model until another provider is chosen for them.], width: 70%) <fig-assistant-quick-vision>
 
 === Where keys are kept
 
@@ -64,7 +64,7 @@ A key is kept in Spectrum's own settings on this computer and is only ever sent 
 
 The model settings can also be given in a `.env` file in Spectrum's data folder, `~/Library/Application Support/com.beyond3345.spectrum/.env` on a Mac and `%APPDATA%\com.beyond3345.spectrum\.env` on Windows. Settings entered in the application take priority over the `.env` file, and a key in the file is also only sent to its own address.
 
-#shot("images/03-assistant/assistant-no-model.png", [A question asked before any model is set up. The request stops in Spectrum and points to #menu[Settings][Models].], width: 85%) <fig-assistant-no-model>
+#shot("figures/03-assistant/assistant-no-model.png", [A question asked before any model is set up. The request stops in Spectrum and points to #menu[Settings][Models].], width: 85%) <fig-assistant-no-model>
 
 == The assistant panel <sec-assistant-panel>
 
@@ -73,13 +73,13 @@ The assistant is a panel that floats at the bottom of the editor. It is opened w
 - #ui[Assistant], which answers questions about the open file and rewrites a selection and
 - #ui[References], which turns DOIs, links, arXiv IDs and titles into `.bib` entries (@ch-references).
 
-#shot("images/03-assistant/top-bar-buttons.png", [The right of the editor's toolbar: Assistant, Check grammar, Document insights, Tools and Agent.], width: 45%) <fig-assistant-top-bar>
+#shot("figures/03-assistant/top-bar-buttons.png", [The right of the editor's toolbar: Assistant, Check grammar, Document insights, Tools and Agent.], width: 45%) <fig-assistant-top-bar>
 
 === Asking about the open file
 
 In #ui[Assistant] mode the panel opens on "How can I help with your paper?" (@fig-assistant-empty). A question typed in the box and sent with #key("Enter") goes to the main model with the open file, the selection and the compile log. #key("⇧", "Enter") starts a new line instead. The answer comes back in the panel and never changes your files. Work across several files of the project belongs to the agent workspace instead (@sec-assistant-workspace).
 
-#shot("images/03-assistant/assistant-empty.png", [The assistant panel in #ui[Assistant] mode. The bar at the bottom holds the image menu (+), the persona and the reasoning effort.], width: 85%) <fig-assistant-empty>
+#shot("figures/03-assistant/assistant-empty.png", [The assistant panel in #ui[Assistant] mode. The bar at the bottom holds the image menu (+), the persona and the reasoning effort.], width: 85%) <fig-assistant-empty>
 
 The bar under the message box holds three controls,
 
@@ -87,17 +87,17 @@ The bar under the message box holds three controls,
 - the persona picker, which shows #ui[Default instructions] until a persona is chosen (@sec-assistant-personas) and
 - #ui[Thinking], which sets the reasoning effort for the assistant and is the same setting as in #menu[Settings][Models] (@fig-assistant-thinking).
 
-#shot("images/03-assistant/thinking-menu.png", [The #ui[Thinking] menu. Only the levels the chosen model accepts are listed.], width: 40%) <fig-assistant-thinking>
+#shot("figures/03-assistant/thinking-menu.png", [The #ui[Thinking] menu. Only the levels the chosen model accepts are listed.], width: 40%) <fig-assistant-thinking>
 
 The header of the panel has #ui[History], #ui[New chat] and #ui[Close]. Each conversation is saved with the project in its `.spectrum/chats` folder and named after its first message. #ui[History] lists the saved Assistant and References chats, with the Edit chats from before 2.0, and has a search and #ui[Delete] (@fig-assistant-history). An Edit chat from before 2.0 opens with #ui[Continue there], which carries it on in the agent workspace.
 
-#shot("images/03-assistant/assistant-history.png", [#ui[History] in the panel's header, with a search across the project's saved chats.], width: 85%) <fig-assistant-history>
+#shot("figures/03-assistant/assistant-history.png", [#ui[History] in the panel's header, with a search across the project's saved chats.], width: 85%) <fig-assistant-history>
 
 === Polishing, rewriting and translating a selection
 
 Selecting text in the editor adds a row of actions to the panel and a #ui[Use selection] chip to its bar, as in @fig-assistant-selection. #ui[Use selection] decides whether the selected text goes with a typed question, and is on by default.
 
-#shot("images/03-assistant/assistant-selection.png", [A paragraph selected in the editor. The panel offers #ui[Polish], #ui[Rewrite], #ui[Restructure] and #ui[Translate], and #ui[Use selection] sends the selection with a question.], width: 85%) <fig-assistant-selection>
+#shot("figures/03-assistant/assistant-selection.png", [A paragraph selected in the editor. The panel offers #ui[Polish], #ui[Rewrite], #ui[Restructure] and #ui[Translate], and #ui[Use selection] sends the selection with a question.], width: 85%) <fig-assistant-selection>
 
 The actions are,
 
@@ -108,13 +108,13 @@ The actions are,
 
 Anything typed in the box before pressing an action goes with it as a note, for example "keep it under 80 words". Translating the whole project asks the model for changes to every `.tex` file, and every other action changes only the open file.
 
-#shot("images/03-assistant/translate-menu.png", [The #ui[Translate] menu. The scope at its foot decides whether the selection, the file or the whole project is translated.], width: 60%) <fig-assistant-translate>
+#shot("figures/03-assistant/translate-menu.png", [The #ui[Translate] menu. The scope at its foot decides whether the selection, the file or the whole project is translated.], width: 60%) <fig-assistant-translate>
 
 === Reviewing suggested changes <sec-assistant-changes>
 
 The assistant never writes into a file by itself. An action that changes text comes back as a reply with #ui[Review 1 change] (@fig-assistant-reply), and the editor shows a banner, "Suggested changes to 1 file", with #ui[Discard] and #ui[Review].
 
-#shot("images/03-assistant/assistant-reply-changes.png", [A reply to #ui[Polish] with its changes waiting to be reviewed.], width: 85%) <fig-assistant-reply>
+#shot("figures/03-assistant/assistant-reply-changes.png", [A reply to #ui[Polish] with its changes waiting to be reviewed.], width: 85%) <fig-assistant-reply>
 
 #ui[Review] opens #ui[Review changes], a side-by-side comparison of each file with your text on the left and the suggestion on the right (@fig-assistant-review-changes). Changed words are marked inside each changed line, and unchanged stretches are folded away as "25 unchanged lines", while #ui[Show whole file] unfolds them. The changes are then accepted or rejected as follows,
 
@@ -122,7 +122,7 @@ The assistant never writes into a file by itself. An action that changes text co
 + Press #ui[Accept] or #ui[Reject] for that file
 + Repeat for the other files, or press #ui[Accept all] or #ui[Reject all] at the foot
 
-#shot("images/03-assistant/review-changes.png", [#ui[Review changes] for one file. Your text is on the left, the suggestion on the right, and the changed words are marked in each.]) <fig-assistant-review-changes>
+#shot("figures/03-assistant/review-changes.png", [#ui[Review changes] for one file. Your text is on the left, the suggestion on the right, and the changed words are marked in each.]) <fig-assistant-review-changes>
 
 Before applying anything, Spectrum saves a "Before AI changes" checkpoint, so an accepted change can always be undone from #menu[Tools][Checkpoints] (@ch-references). The same review is used by #ui[Fix with AI] in the Logs and Review tabs, by Quick switch and by the Spectrum agent.
 
@@ -136,7 +136,7 @@ Before applying anything, Spectrum saves a "Before AI changes" checkpoint, so an
 - #ui[Algorithm from image…], an `algorithm` environment and
 - #ui[Text only from image…], the text read from the picture.
 
-#shot("images/03-assistant/image-menu.png", [The image menu under #ui[+].], width: 40%) <fig-assistant-image-menu>
+#shot("figures/03-assistant/image-menu.png", [The image menu under #ui[+].], width: 40%) <fig-assistant-image-menu>
 
 After choosing a picture, the reply shows the LaTeX in a code block with #ui[Insert at cursor], which puts it into the open file as a block. Anything typed in the message box before choosing the picture is sent with it as an extra instruction.
 
@@ -163,7 +163,7 @@ A persona is picked from the menu in the assistant's bar or in the agent workspa
 - #ui[Critical reviewer], for a referee's reading with major and minor points and
 - #ui[Draw a figure], for TikZ, pgfplots and circuitikz figures saved under `diagrams/`.
 
-#shot("images/03-assistant/persona-picker.png", [The persona picker in the assistant. #ui[Edit personas…] opens #menu[Settings][Personas].], width: 55%) <fig-assistant-persona-picker>
+#shot("figures/03-assistant/persona-picker.png", [The persona picker in the assistant. #ui[Edit personas…] opens #menu[Settings][Personas].], width: 55%) <fig-assistant-persona-picker>
 
 Personas go to the assistant, the Spectrum agent and local agents, but never to autocomplete. A local agent gets the persona in its own system prompt where it offers one, and otherwise with the first message of each new session, so changing the persona starts a new session that is told the conversation so far.
 
@@ -174,9 +174,9 @@ Personas go to the assistant, the Spectrum agent and local agents, but never to 
 + Write the #ui[Instructions], saying how the model should work while the persona is chosen (@fig-assistant-persona-create)
 + Press #ui[Create]
 
-#shot("images/03-assistant/settings-personas.png", [#menu[Settings][Personas] with the default instructions and the four starters.], width: 70%) <fig-assistant-settings-personas>
+#shot("figures/03-assistant/settings-personas.png", [#menu[Settings][Personas] with the default instructions and the four starters.], width: 70%) <fig-assistant-settings-personas>
 
-#shot("images/03-assistant/persona-create.png", [A new persona being made for marking lab reports.], width: 65%) <fig-assistant-persona-create>
+#shot("figures/03-assistant/persona-create.png", [A new persona being made for marking lab reports.], width: 65%) <fig-assistant-persona-create>
 
 Personas follow you to your other computers with the shared settings, as described in @ch-references. Closing Settings with a persona still being edited asks first, with #ui[Discard] and #ui[Keep editing].
 
@@ -190,7 +190,7 @@ A skill is a folder with a `SKILL.md` file, whose front matter gives the skill's
 - `spectrum-related-work` and `spectrum-verify-claims`, for drafting related work and checking claims against their sources and
 - `spectrum-convert-tidy`, used when converting a project between LaTeX and Typst.
 
-#shot("images/03-assistant/settings-skills.png", [#menu[Settings][Skills]. Each card shows the skill's author, licence, version, file count and what its scripts need, with its switch at the top right.], width: 85%) <fig-assistant-settings-skills>
+#shot("figures/03-assistant/settings-skills.png", [#menu[Settings][Skills]. Each card shows the skill's author, licence, version, file count and what its scripts need, with its switch at the top right.], width: 85%) <fig-assistant-settings-skills>
 
 Every skill has a switch. With #ui[All projects] chosen at the top, a switch changes every project that has not made its own choice. With #ui[This project] chosen, it changes only the open project, and the choice is saved in its `.spectrum/settings.json`.
 
@@ -200,7 +200,7 @@ Every skill has a switch. With #ui[All projects] chosen at the top, a switch cha
 - #ui[Add folder…], which copies a folder holding a `SKILL.md` into Spectrum, regular files only and
 - #ui[Duplicate] on any card.
 
-#shot("images/03-assistant/skill-files.png", [The file browser of a built-in skill. "Built in: duplicate it to make changes" says why the text cannot be edited.], width: 75%) <fig-assistant-skill-files>
+#shot("figures/03-assistant/skill-files.png", [The file browser of a built-in skill. "Built in: duplicate it to make changes" says why the text cannot be edited.], width: 75%) <fig-assistant-skill-files>
 
 The Spectrum agent has the list of skills in its instructions and loads them itself, but it cannot run their scripts. Before each local agent session, Spectrum copies the skills that are on for the project into the agent's private home, marked as Spectrum's, so skills the agent installed itself are left alone. Lastly, #ui[Share skills with other agents on this computer], at the foot of the pane and off by default, links your own skills that are switched on into `~/.agents/skills` and `~/.claude/skills` for agents you run outside Spectrum. It does this only where `~/.agents` or `~/.claude` already exists, and never in place of anything already there.
 
@@ -211,7 +211,7 @@ The agent workspace is where a model works across the whole project. It is opene
 - #ui[Spectrum agent], the built-in agent, which reads the project through the main model and proposes changes (the assistant's Edit mode before 2.0) and
 - #ui[Local agents], which runs a coding agent installed on your computer (@sec-assistant-external).
 
-#shot("images/03-assistant/agent-workspace.png", [The agent workspace on a new conversation, with its two tabs, its header and the task buttons.], width: 65%) <fig-assistant-workspace>
+#shot("figures/03-assistant/agent-workspace.png", [The agent workspace on a new conversation, with its two tabs, its header and the task buttons.], width: 65%) <fig-assistant-workspace>
 
 A new conversation opens on "What would you like to do today?" with five task buttons. Each fills in a prepared message with its skill, which you can change before sending it (@fig-assistant-task).
 
@@ -229,11 +229,11 @@ A new conversation opens on "What would you like to do today?" with five task bu
   caption: [The task buttons of the agent workspace.],
 ) <tab-assistant-tasks>
 
-#shot("images/03-assistant/agent-task-prepared.png", [#ui[Manuscript review] pressed. The message, the `peer-review` skill chip and the #ui[Critical reviewer] persona are filled in, and nothing is sent until the send button is pressed.], width: 65%) <fig-assistant-task>
+#shot("figures/03-assistant/agent-task-prepared.png", [#ui[Manuscript review] pressed. The message, the `peer-review` skill chip and the #ui[Critical reviewer] persona are filled in, and nothing is sent until the send button is pressed.], width: 65%) <fig-assistant-task>
 
 The chips under the message box decide what goes with a message: the open file, the selection (#ui[Selection, 1 line]), the compile log and the open to-dos. The to-dos go with the first message of a conversation unless their chip is taken off. Typing `/` lists the agent's commands and the project's skills (@fig-assistant-slash), and a skill chosen there goes with the message in whole.
 
-#shot("images/03-assistant/agent-slash-skills.png", [`/` in the message box lists the skills that are on for the project.], width: 60%) <fig-assistant-slash>
+#shot("figures/03-assistant/agent-slash-skills.png", [`/` in the message box lists the skills that are on for the project.], width: 60%) <fig-assistant-slash>
 
 The header holds the session history (the clock), the #ui[Isolated] or #ui[Direct] badge, the agent's model and mode options, the persona picker and #ui[Stop]. The transcript shows the messages, the agent's thinking folded away, a card for each tool call that updates as it runs, questions and permission requests in line and a #ui[Restore] row for each Before AI changes checkpoint. The agent's plan stays at the top, and #ui[Save open steps as to-dos] adds its open steps to the to-do list (@ch-writing).
 
@@ -247,13 +247,13 @@ Changes from either agent wait in a tray above the message box, such as "3 files
 
 External agents, also called local agents, are coding agents installed on your computer, such as OpenCode, Codex or Claude Agent, which Spectrum runs through the Agent Client Protocol (ACP). The user guide calls this a local preview, since its support for each agent is still being tested. There is no switch to turn it on: an agent becomes available in the #ui[Local agents] tab once it is set up in #menu[Settings][Agents]. Until then, the tab says "No agents are set up yet" with #ui[Set up an agent] (@fig-assistant-local-empty).
 
-#shot("images/03-assistant/local-agents-empty.png", [The #ui[Local agents] tab before any agent is set up.], width: 70%) <fig-assistant-local-empty>
+#shot("figures/03-assistant/local-agents-empty.png", [The #ui[Local agents] tab before any agent is set up.], width: 70%) <fig-assistant-local-empty>
 
 === Setting up an agent
 
 #menu[Settings][Agents] lists every supported agent as a card, grouped as #ui[Finish setting up], #ui[Not installed] and #ui[Planned] (@fig-assistant-settings-agents). Each card has a status chip, such as #ui[Sign-in needed] or #ui[Adapter needed], and one sentence saying what to do next. #ui[Check again] looks for the programs again after you install one.
 
-#shot("images/03-assistant/settings-agents.png", [#menu[Settings][Agents]. OpenCode and DeepSeek Harness were found but need a sign-in, while Codex, Claude Agent and ZCode need their ACP adapter.], width: 70%) <fig-assistant-settings-agents>
+#shot("figures/03-assistant/settings-agents.png", [#menu[Settings][Agents]. OpenCode and DeepSeek Harness were found but need a sign-in, while Codex, Claude Agent and ZCode need their ACP adapter.], width: 70%) <fig-assistant-settings-agents>
 
 Opening a card shows its set-up (@fig-assistant-agent-card), in the following parts,
 
@@ -263,7 +263,7 @@ Opening a card shows its set-up (@fig-assistant-agent-card), in the following pa
 - #ui[Setup guide], a link to the agent's own instructions and
 - #ui[Advanced], with the launcher arguments as a JSON list and the runtime folders the agent may read its installed libraries from.
 
-#shot("images/03-assistant/agent-card.png", [The OpenCode card opened, with its program, sign-in command and API key.], width: 80%) <fig-assistant-agent-card>
+#shot("figures/03-assistant/agent-card.png", [The OpenCode card opened, with its program, sign-in command and API key.], width: 80%) <fig-assistant-agent-card>
 
 For Codex, Claude Agent, Pi and ZCode, Spectrum installs the pinned ACP adapter into its own data folder when you confirm, with the npm that comes with its Node.js and install scripts turned off. The profiles cover OpenCode, Codex, Claude Agent, Gemini CLI, GitHub Copilot CLI, Cursor, Kimi Code, Hermes, Qoder, Pi, DeepSeek Harness and ZCode, and WorkBuddy is listed as planned. Agent names and logos belong to their owners.
 
@@ -274,7 +274,7 @@ The menu at the left of the #ui[Local agents] header chooses how an agent may to
 - #ui[Isolated], the default, runs the agent on a separate copy of the project with a private home, under macOS's Seatbelt or Windows's AppContainer, and its changes wait in the tray for review, while
 - #ui[Direct] lets the agent change the project straight away, and saves a checkpoint before each task.
 
-#shot("images/03-assistant/isolated-direct.png", [The #ui[Isolated] and #ui[Direct] menu of the #ui[Local agents] tab.], width: 40%) <fig-assistant-isolated>
+#shot("figures/03-assistant/isolated-direct.png", [The #ui[Isolated] and #ui[Direct] menu of the #ui[Local agents] tab.], width: 40%) <fig-assistant-isolated>
 
 An isolated agent keeps working on its copy while changes wait, so you can go on prompting and apply or reject each file when you like. An applied file becomes the agent's new starting point, and a rejected one is put back to your version in the agent's copy, which the agent is told with its next task. The isolated agent can reach public HTTPS and DNS but not local services, so local models and MCP servers set up outside Spectrum are not available to it. A project with symbolic links, files over 50 MB, or more than 500 MB or 10,000 files is refused rather than copied incompletely.
 
@@ -284,7 +284,7 @@ On macOS, a local agent also gets Spectrum's tools from a small server it starts
 
 Review checks the document that #ui[Compile] builds before it goes anywhere. It is in #menu[Tools][Review], and one press of #ui[Review] saves the open file, compiles when the PDF is older than the source and runs each group of checks that is ticked (@fig-assistant-review-options). A failed build does not stop the review.
 
-#shot("images/03-assistant/review-options.png", [The top of #menu[Tools][Review]. #ui[AI review] is unticked and says "Set up a model in #menu[Settings][Models] first" until a model is set up.], width: 75%) <fig-assistant-review-options>
+#shot("figures/03-assistant/review-options.png", [The top of #menu[Tools][Review]. #ui[AI review] is unticked and says "Set up a model in #menu[Settings][Models] first" until a model is set up.], width: 75%) <fig-assistant-review-options>
 
 #figure(
   table(
@@ -303,11 +303,11 @@ Review checks the document that #ui[Compile] builds before it goes anywhere. It 
 
 The results are listed under each group with a count and a summary line, such as "0 errors · 1 warning" (@fig-assistant-review-results). A row jumps to its line in the source or to its page in the PDF, and #ui[Dismiss] (the cross) hides it. #ui[Fix with AI] on a row asks the main model for a fix that opens as changes to review (@sec-assistant-changes). A group that needs the PDF or the log and has neither says #ui[Compile first] rather than reporting no problems.
 
-#shot("images/03-assistant/review-results.png", [Review of the lab report. The never-cited `Knuth1984` entry is a note under References and assets, with its line in `references.bib`, and the untagged PDF is an Accessibility warning.], width: 60%) <fig-assistant-review-results>
+#shot("figures/03-assistant/review-results.png", [Review of the lab report. The never-cited `Knuth1984` entry is a note under References and assets, with its line in `references.bib`, and the untagged PDF is an Accessibility warning.], width: 60%) <fig-assistant-review-results>
 
 #ui[Screen reader view], beside the Accessibility group, shows the text a screen reader gets from each page of the PDF in the order it comes (@fig-assistant-screen-reader). Text that is missing or out of order there is missing or out of order for a screen reader too. #ui[Copy report] copies the results as Markdown, and the status line says when Review last ran. The AI review never changes your files, and the latest run is kept for each project until Spectrum quits.
 
-#shot("images/03-assistant/screen-reader-view.png", [#ui[Screen reader view] of the lab report. The fraction in the Darcy–Weisbach equation reaches a screen reader as separate lines.], width: 75%) <fig-assistant-screen-reader>
+#shot("figures/03-assistant/screen-reader-view.png", [#ui[Screen reader view] of the lab report. The fraction in the Darcy–Weisbach equation reaches a screen reader as separate lines.], width: 75%) <fig-assistant-screen-reader>
 
 == Research <sec-assistant-research>
 
@@ -320,7 +320,7 @@ The #ui[Research] tab in the sidebar, between #ui[Files] and #ui[To-dos], looks 
 + Press #ui[Search]
 ]
 
-#shot("images/03-assistant/research-panel.png", [The #ui[Research] tab with a question typed in. The sources shown in blue are on, and PubMed, Web and Zotero are off by default.], width: 38%) <fig-assistant-research>
+#shot("figures/03-assistant/research-panel.png", [The #ui[Research] tab with a question typed in. The sources shown in blue are on, and PubMed, Web and Zotero are off by default.], width: 38%) <fig-assistant-research>
 
 Every source is searched at once, and one that fails or is busy does not stop the others. The results are merged by DOI, arXiv ID and title, keeping the fullest record, so a paper found both as a preprint and as published is shown once, as published. Each result shows its authors, year, venue, the sources that found it and its citation count, with #ui[Open access] when there is a free copy, #ui[Preprint] when no source knows it as published and #ui[In .bib] with its key when the project already has it. #ui[Sort the results with AI] makes one call to the search model, which adds a line on why each result matters, a keep or drop suggestion and a theme.
 
@@ -350,7 +350,7 @@ Web search is used by Research's Web source, by the References chat when a link 
 - #ui[Search connections], the connections that may be used, each with its own switch and key and
 - #ui[Search model], an optional endpoint, model and key used only for web search, which is the main model when left blank.
 
-#shot("images/03-assistant/settings-search.png", [#menu[Settings][Search]. The model's built-in web search is the default, and the other connections are tried in order when it fails.], width: 65%) <fig-assistant-settings-search>
+#shot("figures/03-assistant/settings-search.png", [#menu[Settings][Search]. The model's built-in web search is the default, and the other connections are tried in order when it fails.], width: 65%) <fig-assistant-settings-search>
 
 The default is tried first, then each other connection that is switched on, in the order shown, when a request fails or returns no usable results. Each fallback uses that connection's own account and allowance.
 
@@ -381,7 +381,7 @@ Template transfer moves a LaTeX document into another of Spectrum's LaTeX templa
 - #ui[Classic (LaTeX → LaTeX, AI)], in which the main model rewrites the source for the new template into a new project and
 - #ui[From the PDF (parser → LaTeX)], in which a parser reads the PDF into Markdown with LaTeX maths and figures, and the main model then rebuilds it in the new template as a new project.
 
-#shot("images/03-assistant/change-template.png", [#ui[Change template] for the lab report, with its three methods. Only LaTeX templates are offered.], width: 75%) <fig-assistant-change-template>
+#shot("figures/03-assistant/change-template.png", [#ui[Change template] for the lab report, with its three methods. Only LaTeX templates are offered.], width: 75%) <fig-assistant-change-template>
 
 === Quick switch
 
@@ -396,13 +396,13 @@ Quick switch changes the project in place and needs no model, so it is the quick
 
 Spectrum first saves a "Before template change" checkpoint and stops if it cannot. It then writes the new template's preamble above your document's body, keeps your title, author and `.bib` files, and copies the template's other files in without replacing your own. The sheet ends with #ui[Finished], the files it changed and #ui[Open project] (@fig-assistant-change-template-done), and the previous state can be restored from #menu[Tools][Checkpoints] (@ch-references).
 
-#shot("images/03-assistant/change-template-done.png", [Quick switch finished. The lab report now uses the Electronics notes preamble, and only `main.tex` changed.], width: 75%) <fig-assistant-change-template-done>
+#shot("figures/03-assistant/change-template-done.png", [Quick switch finished. The lab report now uses the Electronics notes preamble, and only `main.tex` changed.], width: 75%) <fig-assistant-change-template-done>
 
 === Classic and From the PDF
 
 The two other methods need the main model, and both leave the original project as it is and make a new one. #ui[Classic] reads the LaTeX source, while #ui[From the PDF] either compiles this project (#ui[Compile this project]) or takes a PDF you upload (#ui[Upload a PDF]). Both have a #ui[Compiler] for the new project and #ui[Check the layout with the vision model], which renders up to eight pages of the result for the vision model to compare (@fig-assistant-change-template-pdf).
 
-#shot("images/03-assistant/change-template-pdf.png", [#ui[From the PDF] with MinerU as the parser. Without a model, the sheet says the main model needs an API key.], width: 75%) <fig-assistant-change-template-pdf>
+#shot("figures/03-assistant/change-template-pdf.png", [#ui[From the PDF] with MinerU as the parser. Without a model, the sheet says the main model needs an API key.], width: 75%) <fig-assistant-change-template-pdf>
 
 The parser is chosen in the sheet or in #menu[Settings][Template transfer], and each keeps its own address and key, which is only sent to that address.
 

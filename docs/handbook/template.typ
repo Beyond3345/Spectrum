@@ -11,13 +11,13 @@
 
 // The chapters' colours: one area of the app each, from the palette the app shares (apps/frontend/src/app/palette.json).
 // `light` is for text on white, `band` for bands, icons and fills. About this handbook has none and keeps the accent.
-#let palette = json("/apps/frontend/src/app/palette.json")
+#let palette = json("palette.json") // a copy of apps/frontend/src/app/palette.json, which the app reads; palette.check.ts keeps them equal
 #let chapter-areas = (
   ch-start: "projects", ch-writing: "writing", ch-assistant: "assistant", ch-references: "references",
   ch-composer: "composer", ch-circuits: "circuits", ch-structures: "structures", ch-vectors: "vectors",
   ch-flow: "flow", ch-plots: "plots", ch-forms: "forms", ch-symbols: "symbols",
 )
-// Each area's icon: a Fluent UI System Icon (MIT) from apps/frontend/public/fluent, never the SF Symbols in public/sf,
+// Each area's icon: a Fluent UI System Icon (MIT), copied into icons/ from apps/frontend/public/fluent, never the SF Symbols in public/sf,
 // which Apple licenses for its own platforms only.
 #let area-icons = (
   projects: "folder", writing: "text.cursor", assistant: "sparkles", references: "books.vertical",
@@ -48,7 +48,7 @@
 
 // A Fluent icon in one colour, sized like a letter by default: #fluent("bolt", red).
 #let fluent(name, fill, height: 1em) = box(baseline: 0.15em, image(
-  bytes(read("/apps/frontend/public/fluent/" + name + ".svg").replace("<svg ", "<svg fill=\"" + fill.to-hex() + "\" ")),
+  bytes(read("icons/" + name + ".svg").replace("<svg ", "<svg fill=\"" + fill.to-hex() + "\" ")),
   format: "svg", height: height,
 ))
 
@@ -65,10 +65,10 @@
 )).join([#h(2pt)+#h(2pt)])
 
 // A picture with the handbook's thin border and rounded corners, for use inside a grid or figure.
-// The path is from docs/handbook, for example "images/06-circuits/parts-list.png".
+// The path is from docs/handbook, for example "figures/06-circuits/parts-list.png".
 #let frame(path, width: 100%) = box(width: width, clip: true, radius: 4pt, stroke: 0.5pt + hair, image(path, width: 100%))
 
-// A screenshot as a numbered figure: #shot("images/…png", [Caption.], width: 70%) <fig-label>
+// A screenshot as a numbered figure: #shot("figures/…png", [Caption.], width: 70%) <fig-label>
 #let shot(path, caption, width: 100%) = figure(frame(path, width: width), caption: caption)
 
 // Two or more screenshots side by side under one caption: #shots(("a.png", "b.png"), [Caption.])
@@ -124,7 +124,7 @@
 #let handbook(title: [], subtitle: [], author: "", version: "", date: none, body) = {
   set document(title: [#title #subtitle], author: author, date: date)
   let starts-chapter(page) = query(heading.where(level: 1)).any(h => h.location().page() == page)
-  let mark(page) = [#box(baseline: 22%, image("images/icon.png", height: 9.5pt))#h(4pt)#page]
+  let mark(page) = [#box(baseline: 22%, image("figures/icon.png", height: 9.5pt))#h(4pt)#page]
   set page(
     paper: "a4",
     margin: (x: 30mm, top: 30mm, bottom: 30mm),
@@ -221,7 +221,7 @@
   page(header: none, footer: none, fill: cover-ink, margin: (x: 30mm, top: 40mm, bottom: 26mm), {
     set align(center)
     set text(fill: white)
-    image("images/icon.png", width: 46mm)
+    image("figures/icon.png", width: 46mm)
     v(12mm)
     text(size: 40pt, weight: "semibold", title)
     v(-4mm)
