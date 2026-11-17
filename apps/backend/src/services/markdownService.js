@@ -6,8 +6,8 @@ import { safeJoin } from '../utils/pathUtils.js';
 import { cachePath } from './projectService.js';
 import { readProjectSettings } from './projectSettings.js';
 import { PANDOC_DOWNLOADABLE, PANDOC_MINIMUM, pandocPath, versionOf } from './engineService.js';
-import { MAX_LOG_BYTES, compileDocument, findExecutable, runSpawn } from './compileService.js';
-import { compileTypst } from './typstService.js';
+import { MAX_LOG_BYTES, compileDocument, findExecutable, pageColourLines, runSpawn } from './compileService.js';
+import { compileTypst, typstFill } from './typstService.js';
 
 // Markdown compiles in two steps: pandoc writes LaTeX or Typst, then that is compiled like any document. An error in
 // the generated text is traced back to the .md line by matching its words, as a PDF jump finds its line.
@@ -357,12 +357,16 @@ export async function compileMarkdown(projectRoot, absMain, mainFile, engine, op
     if (made.timedOut) return { ok: false, error: 'The compile took too long and was stopped.', log: made.log, status: -1, errors: made.errors };
     return { ok: false, error: made.error || PANDOC_UNREADABLE, log: made.log, errors: made.errors, generated: kind };
   }
+  // Compile with page colour goes into Spectrum's own generated file: for Typst a first line (which the errors are
+  // traced through), for LaTeX on its \documentclass line
   if (kind === 'typst') {
-    const result = await compileTypst(projectRoot, absMain, mainFile, { ...options, source: made.text });
-    return { ...result, errors: traceToMarkdown(result.errors || [], made.text, source, mainFile), generated: 'typst' };
+    const typst = options.pageColour ? typstFill(options.pageColour) + made.text : made.text;
+    const result = await compileTypst(projectRoot, absMain, mainFile, { ...options, source: typst });
+    return { ...result, errors: traceToMarkdown(result.errors || [], typst, source, mainFile), generated: 'typst' };
   }
+  if (options.pageColour) await fs.writeFile(made.file, pageColourLines(made.text, options.pageColour));
   // LaTeX: the generated file compiles like any document, with its PDF beside the .md
-  const result = await compileDocument(engine, projectRoot, made.file, mainFile, { ...options, markdownSource: absMain });
+  const result = await compileDocument(engine, projectRoot, made.file, mainFile, { ...options, pageColour: undefined, markdownSource: absMain });
   let log = result.log || '';
   if (SVG.test(source) && !(await findExecutable('rsvg-convert'))) log += SVG_NOTE;
   return {

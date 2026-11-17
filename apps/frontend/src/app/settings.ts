@@ -197,7 +197,8 @@ export type AppSettings = {
   composerRecent: string[];
 };
 
-export type CompileDefaults = Required<CompileOptions>;
+// Compile with page colour is each project's own, with no default
+export type CompileDefaults = Required<Omit<CompileOptions, 'pageColour'>>;
 
 export type LiveOutputEngine = 'tectonic' | 'pdflatex' | 'xelatex' | 'lualatex' | 'latexmk' | 'markdown';
 export const LIVE_OUTPUT_ENGINES: [LiveOutputEngine, string][] = [

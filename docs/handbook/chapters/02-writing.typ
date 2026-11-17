@@ -148,14 +148,18 @@ The PDF preview fits the page to the width of its column by default. It zooms wi
 
 Links in the PDF work as in a PDF viewer. The contents, `\ref`, `\eqref` and `\cite` jump to the spot they point to, a web address opens in the browser and a reference into a linked document opens that document's PDF at the place it names.
 
-#shots(("figures/02-writing/pdf-outline.png", "figures/02-writing/pdf-more-menu.png"), [Document outline beside the pages, left, lists the PDF's bookmarks with the current section marked. The #dots menu, right, holds the other views and the page colours.], columns: (1.6fr, 1fr)) <fig-writing-pdf>
+#shots(("figures/02-writing/pdf-outline.png", "figures/02-writing/pdf-more-menu.png"), [Document outline beside the pages, left, lists the PDF's bookmarks with the current section marked. The #dots menu, right, holds the other views, the page colours and Compile with page colour, here on with cream pages.], columns: (1.6fr, 1fr)) <fig-writing-pdf>
 
 The PDF's header holds the following,
 
 - #ui[Document outline], which opens a sidebar beside the pages with two tabs: #ui[Contents], which lists the PDF's bookmarks with the current section marked (or the source's headings when the PDF has none), and #ui[Pages], which shows a thumbnail of each page with the current one outlined (@fig-writing-pdf),
 - the zoom menu,
 - #ui[Download PDF], which saves a copy of the PDF, or the download menu of a Typst document (@sec-writing-engines) and
-- the #dots menu, which holds #ui[Two-page view], #ui[Annotate], #ui[Find in PDF], #ui[Presentation mode], the colour of the pages for the mode showing (@sec-start-appearance) and #ui[Show logs].
+- the #dots menu, which holds #ui[Two-page view], #ui[Annotate], #ui[Find in PDF], #ui[Presentation mode], the colour of the pages for the mode showing (@sec-start-appearance), #ui[Compile with page colour] and #ui[Show logs].
+
+The page colours only tint the pages in the preview, while the PDF itself stays white. #ui[Compile with page colour] gives the PDF the same colour, so it looks the same in any PDF reader, in presentation mode, when printed and when downloaded or exported. Turned on, it keeps the light page colour chosen at that moment, and choosing another page colour in the #dots menu while it is on changes the project's colour too. Each change compiles the document again. The colour is saved in the project's `.spectrum/settings.json` with its other compile settings, so the project compiles the same on another computer, whatever page colour that computer shows. White gives no colour.
+
+Spectrum adds the colour while it compiles and never writes it into the source. A LaTeX document is compiled from a copy of its main file with a few lines added on the `\documentclass` line, which load `xcolor` only when the document does not already and set `\pagecolor`, or the slide background in beamer. A Typst document is compiled with `#set page(fill: ...)` set before it, and a Markdown document gets the colour through its PDF engine. The lines of the source stay where they were, so errors, SyncTeX and the jumps between the source and the PDF still point at the right lines. A page colour the document sets itself, with `\pagecolor`, a beamer theme or `set page(fill: ...)`, wins over the project's.
 
 Presentation mode shows the PDF one page at a time in full screen, for slides. A right-click on the PDF offers #ui[Add a note here], which pins a sticky note to that spot, and #ui[Add to-do here], which adds a to-do linked to that page (@sec-writing-todos). The notes are listed under the PDF with their pages, each a click away, and with #ui[Clear all] (@fig-writing-note). They are saved with the project, one small file each in `.spectrum/notes`.
 

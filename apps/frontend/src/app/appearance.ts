@@ -44,6 +44,9 @@ export const PDF_PAGES_LIGHT: [PdfPageLight, string][] = [
   ['grey', 'Grey']
 ];
 
+/** Each light page colour as editor.css paints the page, which Compile with page colour gives the PDF */
+export const PDF_PAGE_FILLS: Record<PdfPageLight, string> = { white: '#ffffff', cream: '#f8f1e1', sepia: '#efe0c2', grey: '#e3e3e5' };
+
 export const PDF_PAGES_DARK: [PdfPageDark, string][] = [
   ['dark', 'Dark'],
   ['black', 'Black'],

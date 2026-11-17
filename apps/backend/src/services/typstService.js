@@ -376,6 +376,20 @@ async function typstSetup(projectRoot, options) {
 }
 
 /**
+ * What Typst compiles for absMain: the file, or with Compile with page colour's '#rrggbb' a document on standard input
+ * that sets the page's fill and includes it, so the document's own set page() keeps the colour unless it gives a fill
+ * of its own. Errors and jumps still name the document's files and lines. { input, source }.
+ */
+export function typstInput(projectRoot, absMain, pageColour) {
+  if (!pageColour) return { input: absMain, source: null };
+  const rel = path.relative(projectRoot, absMain).split(path.sep).join('/');
+  return { input: '-', source: typstFill(pageColour) + '#include ' + JSON.stringify('/' + rel) + '\n' };
+}
+
+/** The line that gives the pages '#rrggbb'. */
+export const typstFill = (hex) => '#set page(fill: rgb("' + hex + '"))\n';
+
+/**
  * Compiles a .typ main file in outDir and writes its PDF beside it (a scratch build only returns it). The project's
  * Typst version wins over options.typstVersion, the app's default; typstInputs become the document's sys.inputs;
  * scratch keeps the package cache in the agent's home, or with spectrumPackages in Spectrum's own.
@@ -400,8 +414,11 @@ export async function compileTypst(projectRoot, absMain, mainFile, options = {})
   };
   let result;
   let pdf;
-  // a project's own document through its kept watcher; a scratch build, or Markdown's Typst on standard input, once
-  const watched = options.scratch || options.source != null ? null : await watchedCompile(projectRoot, executable, ['--root', projectRoot, '--diagnostic-format', 'short', ...fonts, ...inputs, absMain], path.dirname(absMain), env);
+  // Markdown's Typst is given its page colour by compileMarkdown
+  const { input, source } = options.source != null ? { input: '-', source: options.source } : typstInput(projectRoot, absMain, options.pageColour);
+  // a project's own document through its kept watcher; a scratch build, or anything on standard input, once.
+  // ponytail: Compile with page colour compiles in a fresh Typst each time (typst watch can't read standard input)
+  const watched = options.scratch || source != null ? null : await watchedCompile(projectRoot, executable, ['--root', projectRoot, '--diagnostic-format', 'short', ...fonts, ...inputs, absMain], path.dirname(absMain), env);
   if (watched?.timedOut) {
     pushLog(`\n[spectrum] ${executable} was stopped after ${WATCH_LIMIT_MS / 1000}s.\n`);
     result = { code: null, timedOut: true };
@@ -413,12 +430,12 @@ export async function compileTypst(projectRoot, absMain, mainFile, options = {})
     try {
       result = await runSpawn(
         executable,
-        ['compile', '--root', projectRoot, '--diagnostic-format', 'short', ...fonts, ...inputs, options.source == null ? absMain : '-', path.join(outDir, base + '.pdf')],
+        ['compile', '--root', projectRoot, '--diagnostic-format', 'short', ...fonts, ...inputs, input, path.join(outDir, base + '.pdf')],
         path.dirname(absMain),
         pushLog,
         env,
         undefined,
-        options.source ?? null
+        source
       );
     } catch (err) {
       await cleanBuild(buildRoot, outDir);
@@ -489,13 +506,17 @@ export async function exportTypst(projectRoot, absMain, mainFile, format, option
   const base = path.basename(mainFile, path.extname(mainFile));
   const output = path.join(outDir, kind.pages ? base + '-{0p}.' + kind.ext : base + '.' + kind.ext);
   const chunks = [];
+  // HTML has no pages to colour
+  const { input, source } = typstInput(projectRoot, absMain, format === 'html' ? null : options.pageColour);
   try {
     const result = await runSpawn(
       setup.executable,
-      ['compile', '--root', projectRoot, '--diagnostic-format', 'short', ...setup.fonts, ...(kind.args || []), absMain, output],
+      ['compile', '--root', projectRoot, '--diagnostic-format', 'short', ...setup.fonts, ...(kind.args || []), input, output],
       path.dirname(absMain),
       (chunk) => chunks.push(chunk.toString()),
-      setup.env
+      setup.env,
+      undefined,
+      source
     );
     const files = (await fs.readdir(outDir)).sort();
     if (result.code !== 0 || !files.length) {

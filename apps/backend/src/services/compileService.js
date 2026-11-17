@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import os from 'os';
 import path from 'path';
-import { existsSync, promises as fs, constants as fsConstants } from 'fs';
+import { existsSync, promises as fs, constants as fsConstants, realpathSync } from 'fs';
 import { spawn } from 'child_process';
 import { AsyncLocalStorage } from 'async_hooks';
 import { EventEmitter } from 'events';
@@ -445,6 +445,8 @@ async function compileWithLinks(engine, projectRoot, absMain, mainFile, options)
 export async function compileDocument(engine, projectRoot, absMain, mainFile, options) {
   // a .md's generated LaTeX never uses xjyutping; a document Spectrum can't read for it compiles as it would without
   const jyutping = options.markdownSource ? null : await jyutpingDocument(projectRoot, absMain, options).catch(() => null);
+  // auto mode's copy takes the page colour's lines too; any other document is compiled from a copy of its own
+  if (options.pageColour && !jyutping?.auto) return compileColoured(engine, projectRoot, absMain, mainFile, options);
   if (jyutping) return compileJyutping(engine, projectRoot, absMain, mainFile, options, jyutping);
   if (engine !== 'auto') return { ...(await compileWith(engine, projectRoot, absMain, mainFile, options)), engine };
   const candidates = await autoEngineCandidates(absMain, options.without);
@@ -484,13 +486,56 @@ async function compileJyutping(engine, projectRoot, absMain, mainFile, options, 
   const picked = await jyutpingEngine(engine, absMain, jyutping.lua, options.without);
   if (picked.error) return { ok: false, error: picked.error, engine };
   const base = options.scratch ? options.buildDir || path.join(os.tmpdir(), 'spectrum-build') : await cachePath(projectRoot, 'jyutping');
-  const copy = jyutping.auto ? await writeAutoCopy(projectRoot, absMain, jyutping, picked.engine, base) : null;
+  const coloured = jyutping.auto && options.pageColour ? { ...jyutping, tex: pageColourLines(jyutping.tex, options.pageColour) } : jyutping;
+  const copy = jyutping.auto ? await writeAutoCopy(projectRoot, absMain, coloured, picked.engine, base) : null;
   try {
-    const result = await compileWith(picked.engine, projectRoot, absMain, mainFile, { ...options, latexmkEngine: picked.latexmk, jyutpingCopy: copy });
+    // or the page colour's copy (compileColoured), which removes its own
+    const result = await compileWith(picked.engine, projectRoot, absMain, mainFile, { ...options, latexmkEngine: picked.latexmk, sourceCopy: copy ?? options.sourceCopy });
     const log = copy ? projectPaths(result.log, copy.root, projectRoot) : result.log;
     return { ...result, log: picked.note ? `${picked.note}\n${log ?? ''}` : log, engine: picked.engine };
   } finally {
     if (copy) await fs.rm(copy.root, { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
+  }
+}
+
+/**
+ * Compile with page colour's lines for a LaTeX document, before its first \documentclass and on that line, so every
+ * line stays where it was: '#rrggbb' as the page, once xcolor or color loads (as the class or the document loads it,
+ * so a \pagecolor of the document's own comes later and wins), and beamer's normal text background, which its themes
+ * set after. A document that loads neither gets xcolor at the end of its preamble. tex as it was when there's no
+ * \documentclass. ponytail: needs LaTeX's hooks (2020-10); an xcolor loaded before the \documentclass line goes uncoloured
+ */
+export function pageColourLines(tex, hex) {
+  // ceiling to five places, as xcolor keeps them, so a renderer that rounds down still gets the byte
+  const rgb = [1, 3, 5].map((i) => Math.ceil((parseInt(hex.slice(i, i + 2), 16) / 255) * 1e5) / 1e5).join(',');
+  const lines = [
+    `\\def\\spectrumpagecolour{\\definecolor{spectrumpage}{rgb}{${rgb}}\\pagecolor{spectrumpage}}`,
+    '\\AddToHook{package/xcolor/after}{\\spectrumpagecolour}\\AddToHook{package/color/after}{\\spectrumpagecolour}',
+    '\\AddToHook{class/beamer/after}{\\setbeamercolor{normal text}{bg=spectrumpage}}',
+    '\\AddToHook{begindocument/before}{\\ifdefined\\pagecolor\\else\\usepackage{xcolor}\\fi}'
+  ].join('');
+  // the first \documentclass outside a comment (\% isn't one)
+  return tex.replace(/^((?:[^%\\\n]|\\[^\n])*?)(?=\\documentclass\b)/m, (before) => before + lines);
+}
+
+/** A document compiled from a copy of its main file with the page colour's lines (pageColourLines), its log naming the project's files. */
+async function compileColoured(engine, projectRoot, absMain, mainFile, options) {
+  const rest = { ...options, pageColour: undefined };
+  const tex = await fs.readFile(absMain, 'utf8').catch(() => '');
+  const coloured = pageColourLines(tex, options.pageColour);
+  if (coloured === tex) return compileDocument(engine, projectRoot, absMain, mainFile, rest);
+  const base = await cachePath(projectRoot, 'page-colour');
+  await ensureDir(base);
+  // without 8.3 names (RUNNER~1), whose ~ TeX would read as a space
+  const root = realpathSync.native(await fs.mkdtemp(path.join(base, 'copy-')));
+  const main = path.join(root, path.relative(projectRoot, absMain));
+  try {
+    await ensureDir(path.dirname(main));
+    await fs.writeFile(main, coloured);
+    const result = await compileDocument(engine, projectRoot, absMain, mainFile, { ...rest, sourceCopy: { root, main } });
+    return { ...result, log: projectPaths(result.log, root, projectRoot) };
+  } finally {
+    await fs.rm(root, { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
   }
 }
 
@@ -586,9 +631,9 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   const mdDir = options.markdownSource ? path.dirname(options.markdownSource) : null;
   // kept under the .md for a Markdown document, so its next compile reuses them
   const doc = options.markdownSource ? mainFile : docPath(projectRoot, absMain);
-  // auto mode's copy of the document (jyutpingCopy), whose folders TeX looks in first: the main file it runs, and the
-  // chapters, found there before the project's own
-  const copy = options.jyutpingCopy;
+  // a copy of the document (sourceCopy: Jyutping's auto mode's, or the page colour's), whose folders TeX looks in first:
+  // the main file it runs, and auto mode's chapters, found there before the project's own
+  const copy = options.sourceCopy;
   const copyDirs = copy ? [path.join(copy.root, path.relative(projectRoot, mainDir)), copy.root].map(slashed) : [];
   // xjyutping (the user's folder, then Spectrum's) before TeX's own, and the bundled CJK fonts by file name, in every compile
   const jyutping = await jyutpingSearch(options.xjyutpingFolder);
@@ -676,8 +721,9 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   // by the engine, as cmd is the built-in Tectonic's path when Spectrum carries one
   const limit = PASS_TIMEOUT_MS[engine] || DEFAULT_PASS_TIMEOUT_MS;
   if (engine === 'tectonic') {
-    // Tectonic ignores TEXINPUTS; its unstable search-path option does the same job
-    const paths = [...new Set([...(mdDir ? [mdDir] : []), projectRoot, ...jyutping.tex, jyutping.fonts].map(slashed))].filter((dir) => dir !== slashed(mainDir));
+    // Tectonic ignores TEXINPUTS; its unstable search-path option does the same job. It looks in the folder of the file
+    // it runs first, which for a copy isn't the main file's
+    const paths = [...new Set([mainDir, ...(mdDir ? [mdDir] : []), projectRoot, ...jyutping.tex, jyutping.fonts].map(slashed))].filter((dir) => dir !== slashed(path.dirname(copy ? copy.main : absMain)));
     args.unshift(...paths.flatMap((dir) => ['-Z', `search-path=${dir}`]));
   }
   // MiKTeX asks before installing a missing package, in a window the hidden engine never shows, so the

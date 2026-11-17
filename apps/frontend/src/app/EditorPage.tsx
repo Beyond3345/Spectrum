@@ -74,8 +74,8 @@ import { toast } from './Toast';
 import { IS_DESKTOP, focusWindow, openDiagram } from './desktop';
 import { FILE_MANAGER } from './platform';
 import { BIB_TOOLS, COMPILE_ENGINES, effectiveCompile, effectiveEffort, languageName, llmConfigFor, loadSettings, updateSettings, useProviders, useSettings } from './settings';
-import type { LiveOutputEngine } from './settings';
-import { PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
+import type { CompileDefaults, LiveOutputEngine } from './settings';
+import { PDF_PAGE_FILLS, PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
 import { FIND_NEXT, FIND_PREVIOUS, SHORTCUTS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
 import type { AppCommand } from './shortcuts';
 import { EditorContext } from '../editor/EditorContext';
@@ -456,6 +456,11 @@ function Editor({ projectId }: { projectId: string }) {
   // the extension list outlives a render, so the completion source reads this rather than a stale compile setting
   const compileOptionsRef = useRef(compileOptions);
   compileOptionsRef.current = compileOptions;
+  // Compile with page colour: the project's colour while it's on, and what the compile gives the pages (white: none)
+  const ownPage = projectCompile.pageColour;
+  const pageFill = ownPage && ownPage !== 'white' ? PDF_PAGE_FILLS[ownPage] : undefined;
+  const pageFillRef = useRef(pageFill);
+  pageFillRef.current = pageFill;
   const engine = compileOptions.engine;
   const [compile, setCompile] = useState<CompileState>({ state: 'idle', engine });
   const compilingRef = useRef(false);
@@ -1705,7 +1710,8 @@ function Editor({ projectId }: { projectId: string }) {
         // the app's default only, read now: the backend takes the project's pin from its settings file first, so a
         // pin cleared a moment ago can't come back from this render
         typstVersion: loadSettings().compileDefaults.typstVersion || undefined,
-        markdownEngine: options.markdownEngine
+        markdownEngine: options.markdownEngine,
+        pageColour: pageFillRef.current
       });
       const actual = res.engine || used;
       built = res.doc || doc;
@@ -1836,10 +1842,23 @@ function Editor({ projectId }: { projectId: string }) {
   };
 
   /** Use for all projects: the project's choice becomes the app's default, and the project follows it. */
-  const useForAllProjects = (key: keyof CompileOptions) => {
+  const useForAllProjects = (key: keyof CompileDefaults) => {
     updateSettings({ compileDefaults: { ...settings.compileDefaults, [key]: compileOptions[key] } });
     setCompileOption(key, null);
   };
+
+  // Compile with page colour turned on, off or to another colour compiles again, once the render has the new colour
+  const recolouredRef = useRef(false);
+  const setOwnPage = (colour: CompileOptions['pageColour'] | null) => {
+    recolouredRef.current = true;
+    setCompileOption('pageColour', colour);
+  };
+  useEffect(() => {
+    if (!recolouredRef.current) return;
+    recolouredRef.current = false;
+    runCompile().catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageFill]);
 
   // Tectonic fetches its packages the first time; say so instead of looking stuck
   useEffect(() => {
@@ -2122,7 +2141,7 @@ function Editor({ projectId }: { projectId: string }) {
   // PNG, SVG, HTML, PDF/A and PDF/UA, made by Typst on request: the compile and its PDF stay as they are
   const downloadTypst = async (format: TypstExport) => {
     try {
-      const res = await exportTypst(projectId, shownDoc, format, loadSettings().compileDefaults.typstVersion || undefined);
+      const res = await exportTypst(projectId, shownDoc, format, loadSettings().compileDefaults.typstVersion || undefined, pageFill);
       const url = URL.createObjectURL(new Blob([Uint8Array.from(atob(res.data), (c) => c.charCodeAt(0))]));
       // main-png.zip, main.html: the document's name swapped for the download's
       download(url, downloadStem() + res.name.slice(nameOf(shownDoc).replace(/\.typ$/i, '').length));
@@ -3013,10 +3032,21 @@ function Editor({ projectId }: { projectId: string }) {
     { label: 'Upload folder…', icon: 'tray.and.arrow.down', onSelect: () => treeRef.current?.upload('folder') }
   ];
 
-  // page colours for the mode showing; both modes are in Settings → Appearance
-  const pageItems: MenuItems = dark
-    ? PDF_PAGES_DARK.map(([value, label]) => ({ label: `${label} pages`, checked: settings.pdfPageDark === value, onSelect: () => updateSettings({ pdfPageDark: value }) }))
-    : PDF_PAGES_LIGHT.map(([value, label]) => ({ label: `${label} pages`, checked: settings.pdfPageLight === value, onSelect: () => updateSettings({ pdfPageLight: value }) }));
+  // page colours for the mode showing; both modes are in Settings → Appearance. While the project compiles with its page
+  // colour, the light ones show and change the project's too
+  const pageItems: MenuItems = [
+    ...(dark
+      ? PDF_PAGES_DARK.map(([value, label]) => ({ label: `${label} pages`, checked: settings.pdfPageDark === value, onSelect: () => updateSettings({ pdfPageDark: value }) }))
+      : PDF_PAGES_LIGHT.map(([value, label]) => ({
+          label: `${label} pages`,
+          checked: (ownPage ?? settings.pdfPageLight) === value,
+          onSelect: () => {
+            updateSettings({ pdfPageLight: value });
+            if (ownPage && ownPage !== value) setOwnPage(value);
+          }
+        }))),
+    { label: 'Compile with page colour', checked: !!ownPage, onSelect: () => setOwnPage(ownPage ? null : settings.pdfPageLight) }
+  ];
 
   // with other documents, the compile menu lists them above the compile settings: picking one compiles it once
   const shortcutOf = (id: AppCommand) => formatShortcut(shortcutKey(settings.shortcuts, id));
@@ -3024,7 +3054,7 @@ function Editor({ projectId }: { projectId: string }) {
    * One compile setting: its choices, the one in use ticked. Once the project has its own, it can go back to the
    * app's default, or make it the default for every project.
    */
-  const compileChoice = <K extends keyof CompileOptions>(key: K, heading: string, choices: [CompileOptions[K], string][], nameOf = (value: CompileOptions[K]) => choices.find(([v]) => v === value)?.[1] ?? String(value)): MenuItems => {
+  const compileChoice = <K extends keyof CompileDefaults>(key: K, heading: string, choices: [CompileOptions[K], string][], nameOf = (value: CompileOptions[K]) => choices.find(([v]) => v === value)?.[1] ?? String(value)): MenuItems => {
     const own = projectCompile[key] != null;
     const fallback = settings.compileDefaults[key];
     return [
@@ -3683,7 +3713,12 @@ function Editor({ projectId }: { projectId: string }) {
                 {viewSwitcher}
               </div>
 
-              <div className={`pdf-body ${pdf && layout.pdfSidebarOpen ? 'with-sidebar' : ''}`} onKeyDown={onPdfKey}>
+              <div
+                className={`pdf-body ${pdf && layout.pdfSidebarOpen ? 'with-sidebar' : ''} ${ownPage && !dark ? 'own-page' : ''}`}
+                // a PDF with its own page colour shows as it is, not tinted again
+                style={ownPage && !dark ? ({ '--pdf-own-page': PDF_PAGE_FILLS[ownPage] } as CSSProperties) : undefined}
+                onKeyDown={onPdfKey}
+              >
                 {pdf && layout.pdfSidebarOpen && (
                   <PdfSidebar
                     tab={layout.pdfSidebarTab}

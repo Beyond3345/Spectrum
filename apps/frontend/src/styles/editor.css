@@ -1180,6 +1180,16 @@ button.compile-status:hover {
   mix-blend-mode: multiply;
 }
 
+/* a project that compiles with its page colour (EditorPage's own-page): the PDF has the colour already, so in light
+   mode its pages show as they are, on paper of that colour until they're drawn */
+.pdf-body.own-page .pdf-page {
+  background: var(--pdf-own-page);
+}
+
+.pdf-body.own-page .pdf-page canvas {
+  mix-blend-mode: normal;
+}
+
 /* dark pages: the paper turns the panel's grey (or black) and the ink light; hue-rotate keeps colours close to their own */
 :is([data-pdf-page='dark'], [data-pdf-page='black']) .pdf-page {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);

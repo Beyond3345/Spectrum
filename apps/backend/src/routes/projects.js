@@ -102,7 +102,9 @@ const COMPILE_SETTINGS = {
   // the Typst version a Typst project pins
   typstVersion: (v) => typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v),
   // the PDF engine a Markdown project compiles through
-  markdownEngine: (v) => v === 'latex' || v === 'typst'
+  markdownEngine: (v) => v === 'latex' || v === 'typst',
+  // Compile with page colour: the viewer's light page colour it was turned on with, which the PDF is given
+  pageColour: (v) => ['white', 'cream', 'sepia', 'grey'].includes(v)
 };
 const isObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 
@@ -465,7 +467,9 @@ export function registerProjectRoutes(fastify) {
     const abs = safeJoin(root, doc);
     if (!(await fs.stat(abs).catch(() => null))?.isFile()) throw httpError('That Typst file doesn’t exist.', 404);
     const typstVersion = COMPILE_SETTINGS.typstVersion(req.body?.typstVersion) ? req.body.typstVersion : '';
-    const made = await exportTypst(root, abs, doc, format, { typstVersion });
+    // Compile with page colour's '#rrggbb', which the pages get as they do in the compile
+    const pageColour = /^#[0-9a-f]{6}$/i.test(String(req.body?.pageColour)) ? req.body.pageColour : undefined;
+    const made = await exportTypst(root, abs, doc, format, { typstVersion, pageColour });
     if (!made.ok) throw httpError(made.error, 422);
     return made;
   });

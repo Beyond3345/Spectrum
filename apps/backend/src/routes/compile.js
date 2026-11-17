@@ -13,6 +13,8 @@ const isTypstInputs = (v) => v == null || (!!v && typeof v === 'object' && !Arra
 // the app's defaults, for a project without its own: '' is the built-in Typst
 const isTypstVersion = (v) => v == null || v === '' || (typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v));
 const isMarkdownEngine = (v) => v == null || v === 'latex' || v === 'typst';
+// Compile with page colour's '#rrggbb' (the project's choice, which the editor sends)
+const isPageColour = (v) => v == null || (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v));
 // doc is the project-relative .tex whose PDF is showing; without it, the main file's
 const isDoc = (doc) => doc == null || (typeof doc === 'string' && !!doc);
 const docOrMain = async (root, doc) => doc ?? ((await readMeta(root)).mainFile || 'main.tex');
@@ -20,7 +22,7 @@ const docOrMain = async (root, doc) => doc ?? ((await readMeta(root)).mainFile |
 export function registerCompileRoutes(fastify) {
   // the options are each optional: an editor from before them compiles as it always did
   fastify.post('/api/compile', async (req) => {
-    const { projectId, mainFile = 'main.tex', engine = 'pdflatex', compileId, haltOnError, bibTool = 'auto', draft, fresh, texFolder, xjyutpingFolder, checkpoint, typstInputs, typstVersion, markdownEngine } = req.body || {};
+    const { projectId, mainFile = 'main.tex', engine = 'pdflatex', compileId, haltOnError, bibTool = 'auto', draft, fresh, texFolder, xjyutpingFolder, checkpoint, typstInputs, typstVersion, markdownEngine, pageColour } = req.body || {};
     if (!projectId) {
       return { ok: false, error: 'Missing projectId.' };
     }
@@ -38,6 +40,9 @@ export function registerCompileRoutes(fastify) {
     }
     if (!isMarkdownEngine(markdownEngine)) {
       return { ok: false, error: 'Invalid markdownEngine.' };
+    }
+    if (!isPageColour(pageColour)) {
+      return { ok: false, error: 'Invalid pageColour.' };
     }
     // a project from before 2.1: its diagrams to diagrams/ and its images to figures/, on its first compile. Not on a
     // composer preview's, which compiles the very diagram that would move
@@ -57,7 +62,8 @@ export function registerCompileRoutes(fastify) {
       checkpoint: checkpoint === true,
       typstInputs: typstInputs ?? undefined,
       typstVersion: typstVersion || undefined,
-      markdownEngine: markdownEngine ?? undefined
+      markdownEngine: markdownEngine ?? undefined,
+      pageColour: pageColour || undefined
     });
     if (res.ok) auxKept(projectId);
     return folders ? { ...res, folders } : res;
