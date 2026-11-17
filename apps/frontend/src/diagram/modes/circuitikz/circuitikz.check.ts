@@ -3,8 +3,9 @@
 import { symbolGeometry, symbolRequest } from './symbolGeometry';
 import { circuitCode, readStyle, symbolOptions } from './code';
 import { attach, detach, moveBy, newPathPart, paste, remove, rotate } from './edit';
+import { PRESETS, annotateListed } from './annotate';
 import { markLayout, pinLabelSpots, plusAtStart, sideName } from './labels';
-import { CATALOGUE, PARTS, PT_PER_GRID, asCircuit, railParts, circuitBounds, isPart, findJunctions, locator, pathFrame, pinAxis, placeNodeOffset, placeholderBox, grabsHandles, placeholderShape, snapDelta, wirePath } from './model';
+import { CATALOGUE, CIRCUIT_KINDS, PARTS, PT_PER_GRID, asCircuit, circuitSetsInUse, listedIn, railParts, circuitBounds, isPart, findJunctions, locator, pathFrame, pinAxis, placeNodeOffset, placeholderBox, grabsHandles, placeholderShape, snapDelta, wirePath } from './model';
 import outlinesData from './outlines.fixture.json';
 import { UNIVERSITY_STYLES, styleFor } from '../../universityStyles';
 import { loadSettings } from '../../../app/settings';
@@ -424,9 +425,9 @@ eq(CATALOGUE.filter((part) => part.group === 'MU Style').map((part) => part.id),
 eq(CATALOGUE.filter((part) => part.style && !styleFor(part.style)).map((part) => part.id), [], 'every marked part names a style there is');
 eq(['zener', 'diode', 'supply-up', 'pmos', 'transformer'].map((id) => PARTS.get(id)?.style), [undefined, undefined, undefined, undefined, undefined], 'the slide variants follow no style');
 // off means hidden: the style's parts leave the parts list and its search, the rest stay
-eq(railParts('', [], []).filter((part) => part.style === 'mu').length, 12, 'on: all 12 listed');
-eq(railParts('', [], ['mu']).map((part) => part.id), railParts('', [], []).filter((part) => !part.style).map((part) => part.id), 'off: the 12 leave the list, nothing else does');
-eq([railParts('mu', [], ['mu']).length, railParts('nmos', [], ['mu']).some((part) => part.style), railParts('nmos', [], ['mu']).some((part) => part.id === 'nmos')], [0, false, true], 'and the search finds none of them');
+eq(railParts('', ['circuitikz'], []).filter((part) => part.style === 'mu').length, 12, 'on: all 12 listed');
+eq(railParts('', ['circuitikz'], ['mu']).map((part) => part.id), railParts('', ['circuitikz'], []).filter((part) => !part.style).map((part) => part.id), 'off: the 12 leave the list, nothing else does');
+eq([railParts('mu', ['circuitikz'], ['mu']).length, railParts('nmos', ['circuitikz'], ['mu']).some((part) => part.style), railParts('nmos', ['circuitikz'], ['mu']).some((part) => part.id === 'nmos')], [0, false, true], 'and the search finds none of them');
 eq(mu.map((part) => part.tikz), ['munmos', 'mupmos', 'nmos, arrowmos', 'pmos, arrowmos, nocircle', 'munmosb', 'mupmosb', 'munmosdb', 'mupmosdb', 'muidealdiode', 'murectisource', 'mutildesource', 'musinesource'], 'the MU Style parts');
 for (const word of ['mu', 'mosfet', 'nmos', 'pmos', 'enhancement', 'depletion', 'bulk', 'ideal diode', 'current source', 'ac voltage source', 'sine']) eq(mu.some((part) => `${part.label} ${part.tikz}`.toLowerCase().includes(word)), true, `MU Style found by ${word}`);
 const muCircuit: CircuitModel = { elements: [
@@ -567,5 +568,35 @@ eq(placeholderBox('ground'), { minX: -1.5, maxX: 1.5, minY: -1.5, maxY: 1.5 }, '
 
 // a dimension's third handle can be dragged while Dimension is still picked; a wire, line or part still starts on one
 eq(['select', 'annotate:dimension', 'annotate:rect', 'part:resistor', 'wire', 'annotate:line', 'annotate:polygon'].map(grabsHandles), [true, true, true, false, false, false, false], 'which tools grab a handle');
+
+// ─── kinds of drawing: a drawing lists only its own sets' parts and tools ───
+
+const groupsIn = (sets: string[]) => [...new Set(railParts('', sets, []).map((part) => part.group))];
+eq(groupsIn(['circuitikz']), ['Resistors and impedances', 'Capacitors and inductors', 'Sources', 'Switches', 'Diodes and thyristors', 'Transistors', 'MOSFETs', 'MU Style', 'Amplifiers and chips', 'Meters and lamps', 'Ground, supply and terminals', 'Transformers', 'Blocks', 'Text'], 'a Circuit: the electronics, no gates, springs, pipes or specimens');
+eq(groupsIn(['circuitikz-logic']), ['Logic', 'Ground, supply and terminals', 'Text'], 'a Logic schematic: the gates, ground, supplies and terminals');
+eq(groupsIn(['circuitikz-mech']), ['Mechanical', 'Text'], 'Springs, dampers and masses on their own');
+eq(groupsIn([]), ['Text'], 'Text in every drawing');
+eq(CATALOGUE.filter((part) => part.id !== 'text' && !listedIn(part).length), [], 'every other part is in a set');
+eq(CATALOGUE.filter((part) => !part.set).every((part) => listedIn(part).every((set) => CIRCUIT_KINDS.includes(set))), true, 'circuitikz’s parts in its kinds of drawing');
+eq([railParts('gate', ['circuitikz'], []).length, railParts('gate', ['circuitikz-logic'], []).length], [0, 7], 'Find a part looks only in what is listed');
+const tools = (sets: string[]) => [...['line', 'rect', 'ellipse', 'cross', 'polygon', 'boundary', 'dimension', 'surface', 'mark', 'leader'].map((t) => `annotate:${t}`), ...PRESETS.map(([id]) => `preset:${id}`)].filter((tool) => annotateListed(tool, sets));
+const general = ['annotate:line', 'annotate:rect', 'annotate:ellipse', 'annotate:cross', 'annotate:dimension', 'annotate:mark', 'annotate:leader', 'preset:frame', 'preset:highlight'];
+eq(tools(['circuitikz']), [...general.slice(0, 7), 'preset:resistance', 'preset:current', 'preset:loop', 'preset:mesh', ...general.slice(7)], 'a Circuit’s Annotate: the general tools and the circuit presets, no fluids');
+eq(tools(['circuitikz-logic']), general, 'a Logic schematic’s: the general tools');
+eq(tools(['spx-fluid']), ['annotate:line', 'annotate:rect', 'annotate:ellipse', 'annotate:cross', 'annotate:polygon', 'annotate:boundary', 'annotate:dimension', 'annotate:surface', 'annotate:mark', 'annotate:leader', 'preset:frame', 'preset:highlight', 'preset:C', 'preset:CP', 'preset:G', 'preset:B', 'preset:M'], 'Fluid mechanics’: fills, boundaries, the surface and the points');
+eq(tools(['spx-mat']).filter((tool) => !general.includes(tool)), ['annotate:polygon', 'annotate:boundary'], 'Construction materials’: fills and boundaries');
+
+// what a drawing keeps: the sets it has parts from, and Circuit for one that says nothing of its kind
+const node = (type: string, id = type) => ({ id, kind: 'node' as const, type, at: { x: 0, y: 0 } });
+const old = (...types: string[]): CircuitModel => ({ elements: types.map((type, i) => node(type, `e${i}`)), junctions: [] });
+eq(circuitSetsInUse(old(), []), ['circuitikz'], 'an empty drawing from before 2.5 is a Circuit');
+eq(circuitSetsInUse(invertingAmplifier(), []), ['circuitikz'], 'a circuit from before is a Circuit');
+eq(circuitSetsInUse(old('and', 'nor', 'ground', 'supply-up', 'text'), []), ['circuitikz-logic'], 'a logic schematic from before is a Logic schematic, its ground and supply with it');
+eq(circuitSetsInUse(old('and', 'resistor'), []).sort(), ['circuitikz', 'circuitikz-logic'], 'gates and a resistor: both');
+eq(circuitSetsInUse(massSpringDamper(), []).sort(), ['circuitikz-mech', 'spx-mech'], 'a mass, spring and damper from before: its springs and supports');
+eq([circuitSetsInUse(old(), ['circuitikz-logic']), circuitSetsInUse(old(), ['circuitikz', 'circuitikz-logic']), circuitSetsInUse(old(), ['spx-mech', 'circuitikz-mech'])], [['circuitikz-logic'], ['circuitikz'], ['circuitikz-mech']], 'a drawing that records its kind keeps it, and only it; the kinds added later can go');
+eq(circuitSetsInUse(old('ground'), ['circuitikz-mech']), ['circuitikz-mech', 'circuitikz'], 'a ground pasted into a mechanical drawing brings Circuit');
+eq(circuitSetsInUse(old('ground'), ['circuitikz-logic']), ['circuitikz-logic'], 'but not into a Logic schematic, which lists it');
+eq(circuitSetsInUse(old('fluid-pipe'), ['circuitikz-logic']), ['circuitikz-logic', 'spx-fluid'], 'another set’s part keeps its set');
 
 console.log('circuitikz.check: ok');

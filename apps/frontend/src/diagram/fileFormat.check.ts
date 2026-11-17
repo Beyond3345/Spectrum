@@ -84,6 +84,12 @@ eq(tikzDocument({ body: 'x', packages: [], libraries: [] }).split('\n').length, 
   eq(await json({ ...circuit, sets: ['spx-mech'] }), { ...circuit, sets: ['spx-mech'], version: 2 }, 'sets make version 2');
   eq(await json({ ...circuit, sets: [], version: 2 }), circuit, 'no sets: no sets key, version 1');
   eq(Object.keys((await json({ ...circuit, sets: ['spx-mech'] }))!), ['language', 'pkg', 'style', 'model', 'version', 'sets'], 'the keys keep their order');
+  // a Circuit, Logic schematic or mechanical drawing records its kind as a set: version 2, which 2.4 reads, the same code
+  for (const kind of ['circuitikz', 'circuitikz-logic', 'circuitikz-mech']) {
+    const text = await diagramFileText({ ...circuit, sets: [kind] }, code);
+    const back = await readDiagramFile(text);
+    eq([back.diagram?.version, back.diagram?.sets, back.code, back.edited], [2, [kind], (await readDiagramFile(await diagramFileText(circuit, code))).code, false], `${kind}: version 2, the same code`);
+  }
   // so is a circuit with a part the first builds didn't know, which they would write without it
   const part = (type: string) => ({ ...circuit, model: { elements: [{ id: 'e1', kind: 'node', type, at: { x: 0, y: 0 } }], junctions: [] } });
   eq([(await json(part('adder')))?.version, (await json(part('op-amp')))?.version], [2, 1], 'a new part makes version 2, an old one keeps 1');

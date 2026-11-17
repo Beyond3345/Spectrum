@@ -260,6 +260,21 @@ export const PRESETS = [
 ] as const;
 export type Preset = (typeof PRESETS)[number][0];
 
+/**
+ * The sets (sets.ts) whose drawings list an Annotate tool or preset, by its tool name: a circuit's currents and loops,
+ * the fluid mechanics course's surface and points, and the fills and boundaries fluids and materials share. The rest
+ * (lines, boxes, crosses, dimensions, points, leaders, frames and highlights) are in every drawing.
+ */
+const ANNOTATE_SETS: Record<string, string[]> = {
+  'annotate:polygon': ['spx-fluid', 'spx-mat'],
+  'annotate:boundary': ['spx-fluid', 'spx-mat'],
+  'annotate:surface': ['spx-fluid'],
+  ...Object.fromEntries(['resistance', 'current', 'loop', 'mesh'].map((id) => [`preset:${id}`, ['circuitikz']])),
+  ...Object.fromEntries(['C', 'CP', 'G', 'B', 'M'].map((id) => [`preset:${id}`, ['spx-fluid']]))
+};
+/** Annotate's tool is listed in a drawing with these sets. */
+export const annotateListed = (tool: string, sets: string[]) => !ANNOTATE_SETS[tool] || ANNOTATE_SETS[tool].some((set) => sets.includes(set));
+
 const shift = (p: Pt, d: Pt) => ({ x: p.x + d.x, y: p.y + d.y });
 
 /** A preset's elements around `c` (grid steps): annotations, and Text for its label, all new. */

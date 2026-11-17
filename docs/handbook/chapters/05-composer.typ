@@ -77,7 +77,7 @@ Each opens the chooser, #ui[Draw a diagram]. In the desktop app the composer is 
 
 The chooser lists the starters as cards. A starter is a drawing to begin from: an empty canvas, such as #ui[Circuit] or #ui[Flowchart], or a figure already drawn, such as #ui[Inverting amplifier] or #ui[Portal frame]. Each card gives the starter's name, the language it writes (TikZ, Typst or Mermaid), one line on what it holds and the package it uses.
 
-On the left are the views. #ui[Recently used] holds the last eight starters you created, and it is where the chooser opens once there are any. #ui[All] lists every starter, and the five categories, #ui[Engineering], #ui[Physics], #ui[Mathematics], #ui[Computing] and #ui[Others], list theirs in groups such as #ui[Electrical and electronics] or #ui[Machine learning]. A starter can be listed under more than one group. When the open document is a Typst file, the Typst starters come first, and in a copy of Spectrum without its built-in Typst they are greyed out with #ui[Needs Spectrum's built-in Typst].
+On the left are the views. #ui[Recently used] holds the last eight starters you created, and it is where the chooser opens once there are any. #ui[Standard] holds one card for each composer, as it starts: #ui[Circuit], #ui[Logic schematic], #ui[General drawing], #ui[Structure (beams, trusses, frames)], #ui[Vector diagram], #ui[Plot], #ui[Flowchart], #ui[Flowchart in Typst], #ui[Commutative diagram] and #ui[Mermaid diagram]. Each is empty but Structure, which starts with a sample beam. The Form presets have no card there, since each preset is its own diagram (@ch-forms). #ui[All] lists every starter, and the five categories, #ui[Engineering], #ui[Physics], #ui[Mathematics], #ui[Computing] and #ui[Others], list theirs in groups such as #ui[Electrical and electronics] or #ui[Machine learning]. A starter can be listed under more than one group. When the open document is a Typst file, the Typst starters come first, and in a copy of Spectrum without its built-in Typst they are greyed out with #ui[Needs Spectrum's built-in Typst].
 
 #shot("figures/05-composer/chooser.png", [The chooser on its #ui[Engineering] view, with #ui[Circuit] chosen. The name below the cards is where the drawing will be saved.], width: 80%) <fig-composer-chooser>
 
@@ -104,8 +104,9 @@ Each starter opens one of the composers below. The chip beside the file's name i
     columns: (auto, auto, 1fr, auto),
     align: left,
     table.header[Composer][Writes][What it draws][Chapter],
-    [Circuit], [circuitikz], [Circuits, logic schematics and block diagrams, with parts joined by wires], [@ch-circuits],
-    [General drawing], [circuitikz, TikZ], [The circuit canvas with the mechanical, fluid mechanics, construction materials and other symbol sets], [@ch-circuits],
+    [Circuit], [circuitikz], [Circuits and block diagrams, with parts joined by wires], [@ch-circuits],
+    [Logic schematic], [circuitikz], [Logic gates with their supplies and terminals, on the circuit canvas], [@ch-circuits],
+    [General drawing], [circuitikz, TikZ], [The circuit canvas with every kind of symbol: circuits, logic, springs and dampers, and the mechanical, fluid mechanics, construction materials and other symbol sets], [@ch-circuits],
     [Structures], [TikZ], [Beams, trusses and frames, solved for their reactions and force diagrams as you draw], [@ch-structures],
     [Vector diagrams], [TikZ], [Points, vectors, lines and constructions on a grid, for geometry and mechanics], [@ch-vectors],
     [Flowchart], [TikZ], [Flowcharts, block diagrams, state machines, swimlanes and model architectures], [@ch-flow],
@@ -316,7 +317,7 @@ The composer's settings are in #menu[Settings][Diagram composer] in the main win
     table.cell(colspan: 2)[_Tool keys_],
     [Five tool keys], [The keys of @fig-composer-keys, each changed with a click and a key press (@sec-composer-keys)],
     table.cell(colspan: 2)[_New drawings_],
-    [#ui[Symbols from other packages]], [Adds a #ui[Symbol sets…] button under a drawing's parts, for adding another package's symbols to it, such as mechanical supports in a circuit (@ch-circuits). Off by default],
+    [#ui[Symbols from other packages]], [Adds a #ui[Symbol sets…] button under a drawing's parts, for adding other kinds of symbol to it, such as logic gates or mechanical supports in a circuit (@ch-circuits). Off, a drawing lists only its own kind. Off by default],
     [#ui[Bending moment diagrams]], [A new structure's bending moment diagram on the #ui[Tension side (sagging below)] or #ui[Positive up] (@ch-structures)],
     [#ui[Mohr's circle shear axis]], [#ui[τ positive downward], #ui[Clockwise shear plotted above] or #ui[τ positive upward] (@ch-forms)],
     [#ui[Vector names]], [How a new vector diagram writes each `\mathbf{…}` in its labels: bold, `\vec`, `\overrightarrow` or esvect's `\vv` (@ch-vectors)],

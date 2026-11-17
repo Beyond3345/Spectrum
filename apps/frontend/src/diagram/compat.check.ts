@@ -6,7 +6,7 @@ import { FIXTURES } from './compat.fixtures';
 import { diagramFileText, drawnText, readDiagramFile } from './fileFormat';
 import type { DiagramCode } from './fileFormat';
 import { circuitCode } from './modes/circuitikz/code';
-import { asCircuit } from './modes/circuitikz/model';
+import { asCircuit, circuitSetsInUse } from './modes/circuitikz/model';
 import { fletcherCode } from './modes/fletcher/code';
 import { plotCode } from './modes/pgfplots/code';
 import { tikzCode } from './modes/tikz/code';
@@ -69,6 +69,8 @@ function loadsOf(text: string) {
       eq(styleOut(drawnText(diagram, generated)), stacked(styleOut(code)), `${path}: its mode writes the same circuit, every style key written`);
       const preset = (t: string) => /\\begin\{circuitikz\}\[(\w+)/.exec(t)?.[1];
       eq(preset(generated.body), preset(code), `${path}: the same preset first`);
+      // it says nothing of its kind, so it opens as a Circuit, with the circuit parts it has
+      eq(circuitSetsInUse(diagram.model, diagram.sets), ['circuitikz'], `${path}: opens as a Circuit`);
     } else if (path === 'figures/structure-rc.tex') {
       // labels now kept clear of members, loads and supports: only where its \node lines are changes
       const drawn = drawnText(diagram, generated).split('\n'), before = code.split('\n');

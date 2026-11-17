@@ -94,7 +94,7 @@ export interface Starter {
   file: string;
   /** the drawing it starts with; none: the mode's empty one */
   model?: () => unknown;
-  /** other symbol sets it opens with, always on in its drawings */
+  /** the symbol sets its drawings record and list (sets.ts): for the circuit canvas, its kinds of circuit and any other sets */
   sets?: string[];
   /** listed in development builds only */
   dev?: boolean;
@@ -115,9 +115,9 @@ export const MODE_FACTS: Record<StarterMode, { language: DiagramLanguage; packag
 
 const mermaid = (id: string) => () => ({ code: TEMPLATES.find(([t]) => t === id)?.[2] ?? TEMPLATES[0][2] });
 
-/** Circuits that open pre-drawn (modes/circuitikz/templates), with what they compute written beside them. */
+/** Circuits that open pre-drawn (modes/circuitikz/templates), with what they compute written beside them: Circuits, with circuit symbols. */
 const circuit = (id: string, title: string, blurb: string, model: () => unknown, aliases: string[], home = 'engineering/electrical'): Starter =>
-  ({ id, mode: 'circuitikz', title, blurb, home, aliases, file: id, model });
+  ({ id, mode: 'circuitikz', title, blurb, home, aliases, file: id, model, sets: ['circuitikz'] });
 const CIRCUIT_TEMPLATES: Starter[] = [
   circuit('inverting-amplifier', 'Inverting amplifier', 'An op amp with its gain, −Rf/R1, written beside it', circuitTemplates.invertingAmplifier, ['op amp', 'opamp', 'gain', 'template']),
   circuit('non-inverting-amplifier', 'Non-inverting amplifier', 'An op amp with its gain, 1 + Rf/R1, written beside it', circuitTemplates.nonInvertingAmplifier, ['op amp', 'opamp', 'gain', 'template']),
@@ -141,7 +141,7 @@ const CIRCUIT_TEMPLATES: Starter[] = [
   {
     ...circuit('mass-spring-damper', 'Mass, spring and damper', 'Springs, dampers and masses from a wall', circuitTemplates.massSpringDamper, ['vibration', 'oscillator', 'mechanical', 'dashpot', 'spring'], 'engineering/mechanical'),
     also: ['physics/mechanics'],
-    sets: ['spx-mech']
+    sets: ['circuitikz-mech', 'spx-mech']
   }
 ];
 
@@ -168,14 +168,15 @@ export const STARTERS: Starter[] = [
     id: 'circuit',
     mode: 'circuitikz',
     title: 'Circuit',
-    blurb: 'Resistors, sources, switches, transistors and gates, wired on a grid',
+    blurb: 'Resistors, sources, switches, transistors and op amps, wired on a grid',
     home: 'engineering/electrical',
     also: ['physics/electromagnetism'],
     aliases: ['schematic', 'electric', 'electronics', 'MOSFET', 'transistor', 'op amp', 'resistor'],
-    file: 'circuit'
+    file: 'circuit',
+    sets: ['circuitikz']
   },
   {
-    // every symbol set on, for anyone unsure where a drawing belongs; plotters stay in their own composers
+    // every symbol set on, the kinds of circuit among them, for anyone unsure where a drawing belongs; plotters stay in their own composers
     id: 'general-drawing',
     mode: 'circuitikz',
     title: 'General drawing',
@@ -183,16 +184,17 @@ export const STARTERS: Starter[] = [
     home: 'others/general',
     aliases: ['general', 'drawing', 'sketch', 'symbols', 'mixed', 'anything', 'blank', 'shapes', 'lines', 'arrows', 'fluid mechanics', 'hydrostatics', 'construction materials'],
     file: 'drawing',
-    sets: SETS.filter((set) => set.id !== 'circuitikz').map((set) => set.id)
+    sets: SETS.map((set) => set.id)
   },
   {
     id: 'logic',
     mode: 'circuitikz',
     title: 'Logic schematic',
-    blurb: 'AND, OR, NOT and the other gates, wired on a grid',
+    blurb: 'AND, OR, NOT and the other gates, with supplies and terminals, wired on a grid',
     home: 'engineering/digital',
     aliases: ['gates', 'digital', 'boolean', 'NAND', 'XOR'],
-    file: 'logic'
+    file: 'logic',
+    sets: ['circuitikz-logic']
   },
   ...CIRCUIT_TEMPLATES,
   {
@@ -527,6 +529,12 @@ export const STARTERS: Starter[] = [
 
 export const starterFor = (id: string) => STARTERS.find((s) => s.id === id);
 
+/**
+ * The chooser's Standard view: each composer's own starter, blank but for Structure's sample beam. The Form mode has
+ * none, only its presets.
+ */
+export const STANDARD = ['circuit', 'logic', 'general-drawing', 'structure', 'vectors', 'plot', 'flowchart', 'flowchart-typst', 'commutative', 'mermaid'];
+
 const groupLabel = (group: string) => {
   const [category, id] = group.split('/');
   return CATEGORIES.find((c) => c.id === category)?.groups.find(([g]) => g === id)?.[1] ?? group;
@@ -592,8 +600,8 @@ const FLOW_SHAPES: [Shape, string, string[]][] = [
   ['swimlane', 'Swimlane', ['lane', 'pool', 'actor']]
 ];
 
-/** A starter's drawings have a set's symbols: circuitikz's are in every circuit, another set's where the starter opens it. */
-const holds = (s: Starter, set: string) => s.mode === 'circuitikz' && (set === 'circuitikz' || !!s.sets?.includes(set));
+/** A starter's drawings have a set's symbols: the circuit canvas's starters whose sets it is. */
+const holds = (s: Starter, set: string) => s.mode === 'circuitikz' && !!s.sets?.includes(set);
 
 /** The starters a set's symbol is placed in: the first that opens the set, and General drawing, which has them all. */
 const startersOfSet = (set: string, starters: Starter[]) =>

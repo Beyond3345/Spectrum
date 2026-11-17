@@ -63,7 +63,7 @@ Every picture is compiled from the code the composer writes for that symbol, so 
 
 == Circuit symbols <sec-symbols-circuits>
 
-The circuit catalogue is circuitikz's parts, in the groups and the order of the parts list. Both Circuits and General drawing have them, and @ch-circuits explains how to place, wire and label them. The key beneath each name is the circuitikz key the drawing writes, and a part of a university style is marked with the style's name.
+The circuit catalogue is circuitikz's parts, in the groups and the order of the parts list. A drawing lists the groups of its own kind: a circuit has all but Logic and Mechanical, a logic schematic has Logic and Ground, supply and terminals, and General drawing has every group. @ch-circuits explains how to place, wire and label them. The key beneath each name is the circuitikz key the drawing writes, and a part of a university style is marked with the style's name.
 
 #show-section("circuits", (
   "Resistors and impedances": [Resistors, a potentiometer with its wiper pin, impedances and a fuse. Each sits on a wire between two points.],
@@ -75,11 +75,11 @@ The circuit catalogue is circuitikz's parts, in the groups and the order of the 
   "MOSFETs": [Every MOSFET style circuitikz draws: its own symbols, the IEEE ones and the IGFETs, with and without a bulk pin.],
   "MU Style": [The symbols of Hong Kong Metropolitan University's lecture slides that circuitikz does not draw. A drawing that uses one declares it in its own picture, and the switch in #menu[Settings][Diagram composer][University styles] hides them from the parts list.],
   "Amplifiers and chips": [An op amp and an amplifier, both with text inside, a buffer and an eight-pin chip.],
-  "Logic": [Logic gates, drawn in the style the drawing chooses, which is American in a new drawing.],
+  "Logic": [Logic gates, drawn in the style the drawing chooses, which is American in a new drawing. A logic schematic and General drawing list them.],
   "Meters and lamps": [An ammeter, a voltmeter, a lamp, two meters that take a letter inside and an oscilloscope.],
   "Ground, supply and terminals": [Grounds, supply rails, a terminal and two crossings. Voltage between two points draws nothing of its own and marks a voltage between its ends, so its picture shows it as a drawing writes it, with its voltage.],
   "Transformers": [Transformers with and without a core, which can also show polarity dots.],
-  "Mechanical": [circuitikz's mechanical parts: a spring, a damper, a mass, an inerter, a viscoelastic element and a motor or generator.],
+  "Mechanical": [circuitikz's mechanical parts: a spring, a damper, a mass, an inerter, a viscoelastic element and a motor or generator. The mass, spring and damper starter and General drawing list them.],
   "Blocks": [Blocks, filters and converters for block diagrams, an adder, a mixer, an oscillator and three antennas.],
 ))
 
@@ -119,7 +119,7 @@ General drawing has every symbol set on one canvas, after the circuit catalogue 
 
 == Annotate <sec-symbols-annotate>
 
-Annotate comes at the end of the parts list in Circuits and General drawing. Its tools draw over the drawing and never join it, and @ch-circuits explains each. The pictures show each tool as it is first placed, then the looks a line, a point and a liquid or solid can take.
+Annotate comes at the end of the parts list in Circuits and General drawing, and a drawing lists the tools of its own kind, General drawing all of them. Its tools draw over the drawing and never join it, and @ch-circuits explains each. The pictures show each tool as it is first placed, then the looks a line, a point and a liquid or solid can take.
 
 #show-section("annotate", (
   "Tools": [Annotate's tools, each as a click or a short drag places it.],

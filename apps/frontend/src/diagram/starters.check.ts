@@ -10,7 +10,7 @@ import { vectorCode } from './modes/vectors/code';
 import { SETS } from './sets';
 import { cdCode } from './modes/tikzcd/code';
 import type { CdModel } from './modes/tikzcd/code';
-import { CATEGORIES, MODE_FACTS, STARTERS, search, sectionsFor, starterFor, usedNow } from './starters';
+import { CATEGORIES, MODE_FACTS, STANDARD, STARTERS, search, sectionsFor, starterFor, usedNow } from './starters';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -76,7 +76,7 @@ eq(search('mu ac voltage', STARTERS, ['mu']).symbols, [], 'nor its sources');
 const templates = STARTERS.filter((s) => s.mode === 'circuitikz' && s.model);
 eq(templates.length, 20, 'twenty circuit templates');
 eq(templates.every((s) => (s.model!() as { elements: unknown[] }).elements.length > 0), true, 'each pre-drawn');
-eq([starterFor('block-diagram')?.home, starterFor('mass-spring-damper')?.home, starterFor('mass-spring-damper')?.also, starterFor('mass-spring-damper')?.sets], ['engineering/signals', 'engineering/mechanical', ['physics/mechanics'], ['spx-mech']], 'Block diagram under Signals and control; Mass, spring and damper under Mechanical and Physics, with its supports');
+eq([starterFor('block-diagram')?.home, starterFor('mass-spring-damper')?.home, starterFor('mass-spring-damper')?.also, starterFor('mass-spring-damper')?.sets], ['engineering/signals', 'engineering/mechanical', ['physics/mechanics'], ['circuitikz-mech', 'spx-mech']], 'Block diagram under Signals and control; Mass, spring and damper under Mechanical and Physics, with its springs and supports');
 eq(ids('555'), ['astable-555', 'monostable-555'], 'templates found by alias');
 eq(ids('buck').slice(0, 2), ['buck-converter', 'buck-boost-converter'], 'converters by name');
 eq(search('   ').starters, [], 'blank finds nothing');
@@ -151,7 +151,7 @@ eq(vectorStarters.filter((s) => s.model).every((s) => /\\coordinate \(\w+\) at \
 
 // General drawing: under Others, with every symbol set on and no plotters
 const general = starterFor('general-drawing')!;
-eq([general.home, general.mode, general.sets], ['others/general', 'circuitikz', SETS.filter((s) => s.id !== 'circuitikz').map((s) => s.id)], 'every set on');
+eq([general.home, general.mode, general.sets], ['others/general', 'circuitikz', SETS.map((s) => s.id)], 'every set on, the kinds of circuit among them');
 eq(sectionsFor('others')[0].starters.map((s) => s.id), ['general-drawing'], 'first under Others');
 eq(['circuitikz', 'spx-mech', 'spx-flow', 'spx-geom'].every((id) => SETS.some((s) => s.id === id)), true, 'circuits, supports, flowchart shapes, points and marks');
 // search finds every symbol in it, and offers General drawing for each
@@ -189,4 +189,19 @@ eq(cd('pullback').includes('\\arrow[rd, "u", dashed]'), true, 'the pullback’s 
 eq(cd('exact-sequence').split('&').length, 5, 'the exact sequence, five objects in a row');
 eq(search('sawtooth').starters.some((s) => s.id === 'general-drawing'), false, 'no plotters');
 
-console.log('starters.check: ok');
+// the circuit canvas's starters record their kinds of drawing (sets), and a symbol opens a starter that lists it
+const circuitStarters = STARTERS.filter((s) => s.mode === 'circuitikz');
+eq(circuitStarters.filter((s) => !s.sets?.length || !s.sets.every((set) => SETS.some((x) => x.id === set)) || !s.sets.some((set) => set.startsWith('circuitikz'))).map((s) => s.id), [], 'each records a kind of circuit, and only sets there are');
+eq(['circuit', 'logic', 'inverting-amplifier', 'block-diagram', 'mass-spring-damper'].map((id) => starterFor(id)?.sets), [['circuitikz'], ['circuitikz-logic'], ['circuitikz'], ['circuitikz'], ['circuitikz-mech', 'spx-mech']], 'Circuit and its templates, Logic schematic, and the mass, spring and damper');
+eq(circuitStarters.filter((s) => !s.model).map((s) => [s.id, s.sets!.length]), [['circuit', 1], ['general-drawing', SETS.length], ['logic', 1]], 'the blank ones: Circuit, General drawing with every set, Logic schematic');
+const found = (q: string) => search(q).symbols.map(({ starter, symbol }) => `${symbol.label}, in ${starter.title}`);
+eq(found('nand'), ['NAND gate, in Logic schematic', 'NAND gate, in General drawing'], 'a gate opens a Logic schematic');
+eq(found('damper').slice(0, 2), ['Damper, in Mass, spring and damper', 'Damper, in General drawing'], 'a damper opens the mass, spring and damper');
+eq(found('signal ground'), ['Signal ground, in Circuit', 'Signal ground, in General drawing'], 'a ground opens a Circuit');
+
+// Standard: one starter for each composer but Form, which has only presets
+const standard = STANDARD.map((id) => starterFor(id)!);
+eq(standard.map((s) => s.title), ['Circuit', 'Logic schematic', 'General drawing', 'Structure (beams, trusses, frames)', 'Vector diagram', 'Plot', 'Flowchart', 'Flowchart in Typst', 'Commutative diagram', 'Mermaid diagram'], 'the Standard view’s starters');
+eq((Object.keys(MODE_FACTS) as (keyof typeof MODE_FACTS)[]).filter((mode) => mode !== 'form' && !standard.some((s) => s.mode === mode)), [], 'every composer but Form has one');
+eq(standard.filter((s) => s.model && s.id !== 'structure').map((s) => s.id), [], 'blank, but for Structure’s sample beam');
+
