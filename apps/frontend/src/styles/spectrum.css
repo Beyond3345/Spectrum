@@ -7,37 +7,13 @@
    red, orange and green.
    ========================================================================== */
 
-/* Settings' pane icons: a rounded square in the area's colour, as in System Settings; in Simple the plain icon */
+/* Settings' pane icons: the icon itself in its area's colour, at its usual size; in Simple the plain icon */
 .nav-tile {
   display: contents;
 }
 
 :root[data-colour-style='spectrum'] .settings-nav .nav-tile {
-  display: inline-grid;
-  flex: none;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  margin-left: -2px;
-  border-radius: 5px;
-  background: var(--area-band);
-  color: var(--area-on-band);
-}
-
-:root[data-colour-style='spectrum'] .settings-nav .nav-tile .sf {
-  width: 13px;
-  height: 13px;
-}
-
-/* Windows' Settings colours the icons themselves */
-:root.windows[data-colour-style='spectrum'] .settings-nav .nav-tile {
-  background: none;
   color: var(--area);
-}
-
-:root.windows[data-colour-style='spectrum'] .settings-nav .nav-tile .sf {
-  width: 16px;
-  height: 16px;
 }
 
 /* the editor's toolbar, the sidebars' rows and tabs: the icon in its area's colour, a chosen one on a soft tint */
