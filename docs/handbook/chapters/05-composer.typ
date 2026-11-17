@@ -13,6 +13,7 @@ Each drawing is one file in the project's `diagrams` folder. The composer writes
 #figure(
   table(
     columns: (auto, auto, 1fr),
+    align: left,
     table.header[Language][File][What it holds],
     [TikZ], [`diagrams/<name>.tex`], [A standalone LaTeX document with the picture, which the document takes in with `\includestandalone`],
     [Typst], [`diagrams/<name>.typ`], [The `#diagram(…)` of fletcher, with its import line, which a Typst document includes],
@@ -70,7 +71,7 @@ There are three ways to start a new drawing from the editor,
 
 Each opens the chooser, #ui[Draw a diagram]. In the desktop app the composer is a window of its own beside the document, and only one is open at a time: asking for another drawing brings that window forward at it. In a browser copy of Spectrum the composer opens as a separate browser page, which the browser may first ask to allow as a pop-up.
 
-#shot("images/05-composer/draw-button.png", [The editor's toolbar. The pencil, fourth from the left, opens #ui[Draw a diagram].], width: 40%) <fig-composer-draw-button>
+#shot("images/05-composer/draw-button.png", [The editor's toolbar. The pencil, fourth from the left, opens #ui[Draw a diagram].], width: 45%) <fig-composer-draw-button>
 
 === The chooser
 
@@ -101,6 +102,7 @@ Each starter opens one of the composers below. The chip beside the file's name i
 #figure(
   table(
     columns: (auto, auto, 1fr, auto),
+    align: left,
     table.header[Composer][Writes][What it draws][Chapter],
     [Circuit], [circuitikz], [Circuits, logic schematics and block diagrams, with parts joined by wires], [@ch-circuits],
     [General drawing], [circuitikz, TikZ], [The circuit canvas with the mechanical, fluid mechanics, construction materials and other symbol sets], [@ch-circuits],
@@ -133,7 +135,7 @@ The bin at the right end of the composer's top bar deletes the drawing after ask
 
 == The frame around the canvas <sec-composer-frame>
 
-Every composer sits in the same frame. Its parts are the top bar, the tool rail on the left, the canvas or form in the middle with the preview under it, and the inspector on the right.
+Every composer sits in the same frame. Its parts are the top bar, the tool rail on the left, the canvas or form in the middle with the preview under it and the inspector on the right.
 
 #shot("images/05-composer/frame.jpg", [The composer with a circuit open and the resistor $R_1$ selected. Left: the tool rail and parts list. Middle: the canvas, its zoom controls and the compiled preview. Right: the inspector for the selected part.]) <fig-composer-frame>
 
@@ -142,6 +144,7 @@ Every composer sits in the same frame. Its parts are the top bar, the tool rail 
 #figure(
   table(
     columns: (auto, 1fr),
+    align: left,
     table.header[Item][What it does],
     [File name and chip], [The drawing's file, and its language and composer, such as #ui[TikZ · Circuit]],
     [#ui[Saved]], [The save status: #ui[Saving…] while a change waits to be written, #ui[Not saved] when a save was refused],
@@ -254,6 +257,7 @@ The arrow keys, turning and mirroring differ from canvas to canvas, as each canv
 #figure(
   table(
     columns: (auto, 1fr, 1fr, 1fr),
+    align: left,
     table.header[Canvas][Arrow keys][#key("R") and #key("X"), #key("Y")][In the inspector],
     [Circuits and General drawing], [One grid step; four with #key("Shift")], [#key("R") turns a quarter anticlockwise, #key("⇧", "R") an eighth; #key("X") and #key("Y") flip left to right and top to bottom], [#ui[Turn] and #ui[Flip]],
     [Structures], [One grid step; four with #key("Shift")], [#key("X") and #key("Y") mirror; no #key("R")], [Two #ui[Mirror] buttons and #ui[Turn by] any angle],
@@ -273,6 +277,7 @@ A tool key picks a tool with one key, as a click on the rail would. There are fi
 #figure(
   table(
     columns: (auto, auto, 1fr),
+    align: left,
     table.header[Key][Canvas][Tool],
     [#key("W")], [Circuits and General drawing], [#ui[Wire]],
     [#key("W")], [Flowcharts and commutative diagrams], [#ui[Connect], which joins two shapes with a click on each],
@@ -301,6 +306,7 @@ The composer's settings are in #menu[Settings][Diagram composer] in the main win
 #figure(
   table(
     columns: (auto, 1fr),
+    align: left,
     table.header[Setting][What it changes],
     table.cell(colspan: 2)[_Canvas_],
     [#ui[Background]], [The grid behind every canvas: a larger dot every few dots, a line every few, grid lines with a heavier line every few, or dots only (@sec-composer-grid)],
@@ -314,7 +320,7 @@ The composer's settings are in #menu[Settings][Diagram composer] in the main win
     [#ui[Bending moment diagrams]], [A new structure's bending moment diagram on the #ui[Tension side (sagging below)] or #ui[Positive up] (@ch-structures)],
     [#ui[Mohr's circle shear axis]], [#ui[τ positive downward], #ui[Clockwise shear plotted above] or #ui[τ positive upward] (@ch-forms)],
     [#ui[Vector names]], [How a new vector diagram writes each `\mathbf{…}` in its labels: bold, `\vec`, `\overrightarrow` or esvect's `\vv` (@ch-vectors)],
-    [#ui[Structure diagrams]], [Which of the axial force, shear force and bending moment diagrams a new structure draws, and each one's fill and opacity],
+    [#ui[Structure diagrams]], [Which of the axial force, shear force and bending moment diagrams a new structure draws and each one's fill and opacity],
     [#ui[Write units with siunitx]], [Values such as 10 kN written as `\qty{10}{\kilo\newton}` and units as `\unit{…}`, with siunitx added to the document on insert. On by default. Not in Typst or Mermaid drawings],
     table.cell(colspan: 2)[_University styles_],
     [#ui[MU Style]], [Hong Kong Metropolitan University's symbols in the parts list and the search (@sec-composer-styles). On by default],
@@ -344,6 +350,7 @@ Labels are typed as TeX, the same as in the document. Specifically, a circuit pa
 #figure(
   table(
     columns: (auto, 1fr),
+    align: left,
     table.header[Canvas][How a label is typed],
     [Circuits and General drawing], [Label and value: maths unless you type your own `$…$`. Text: as typed, with `$…$` for maths],
     [Structures and Vector diagrams], [LaTeX as in the document: `$P$`, `$w_0$`, `$U(2,5)$`],
@@ -367,8 +374,9 @@ Each drawing records a file version in its last line, the lowest that holds ever
 #figure(
   table(
     columns: (auto, 1fr, auto),
+    align: left,
     table.header[Version][When a drawing has it][Opens as code in],
-    [1], [Nothing below], [None],
+    [1], [Nothing in the rows below], [None],
     [2], [Symbol sets, or parts added with them], [Builds before symbol sets],
     [3], [siunitx units, logic gate styles, the flowchart and point sets, or a structure's chosen force diagrams], [The 2.0 release candidates],
     [4], [Circuit annotations, currents or flows on wires, or styled Text], [Spectrum 2.3 and earlier],
@@ -390,6 +398,7 @@ The composer's shortcuts are below. The tool keys can be changed in #menu[Settin
 #figure(
   table(
     columns: (auto, 1fr),
+    align: left,
     table.header[Keys][Action],
     [#key("⌘", "S")], [Save, and compile the preview],
     [#key("⌘", "Enter")], [Compile (save first)],
