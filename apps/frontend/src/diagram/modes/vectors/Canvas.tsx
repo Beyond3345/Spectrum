@@ -5,7 +5,7 @@
 // from a point and two on a line. Clicking where there's no point makes one, bare (no dot or letter); the Point tool's
 // points have both.
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode, SVGProps } from 'react';
 import Icon from '../../../app/Icon';
 import { CanvasGrid } from '../../CanvasGrid';
 import { useCanvasPrefs } from '../../FlowCanvas';
@@ -100,9 +100,8 @@ const MARKED = /(\\(?:mathbf|boldsymbol|vec|overrightarrow|vv|hat)\s*\{[^{}]*\})
 
 /**
  * TeX as it prints, sketched: vector names in the Style's notation, \mathbf in bold, \vec, \overrightarrow and \vv
- * with an arrow over the last letter, \hat with a hat, fractions as a/b, minus signs, and the shared sketch's scripts
- * and symbols (A_y with a real subscript, \parallel as ∥).
- * ponytail: the arrow of \overrightarrow{OA} sits over its last letter only; the preview sets it across
+ * as a run that ArrowedText draws an arrow over, \hat with a hat, fractions as a/b, minus signs, and the shared
+ * sketch's scripts and symbols (A_y with a real subscript, \parallel as ∥).
  */
 export function sketch(tex: string, notation?: Notation): ReactNode {
   const group = '((?:[^{}]|\\{[^{}]*\\})*)';
@@ -116,8 +115,45 @@ export function sketch(tex: string, notation?: Notation): ReactNode {
     const m = part.match(/^\\(\w+)\s*\{([^{}]*)\}$/);
     if (!m) return <Fragment key={i}>{svgRuns(part)}</Fragment>;
     if (m[1] === 'mathbf' || m[1] === 'boldsymbol') return <tspan key={i} fontWeight="bold">{svgRuns(m[2])}</tspan>;
-    return <Fragment key={i}>{svgRuns(m[2])}{m[1] === 'hat' ? '̂' : '⃗'}</Fragment>;
+    if (m[1] === 'hat') return <Fragment key={i}>{svgRuns(m[2])}̂</Fragment>;
+    return (
+      <tspan key={i} data-arrow="">
+        {svgRuns(m[2])}
+      </tspan>
+    );
   });
+}
+
+/**
+ * A sketched label's <text>, with an arrow drawn over each of its arrow runs where they are set, measured: Chrome's
+ * serif fonts draw the combining arrow U+20D7 as bars.
+ */
+function ArrowedText({ children, ...props }: SVGProps<SVGTextElement>) {
+  const ref = useRef<SVGTextElement>(null);
+  const [arrows, setArrows] = useState<{ d: string; w: number }[]>([]);
+  useLayoutEffect(() => {
+    const text = ref.current;
+    if (!text) return;
+    const next = [...text.querySelectorAll<SVGTSpanElement>('[data-arrow]')].flatMap((run) => {
+      const n = run.getNumberOfChars();
+      if (!n) return [];
+      const [a, b] = [run.getExtentOfChar(0), run.getExtentOfChar(n - 1)];
+      // just above the capitals, its head a fifth of an em long
+      const [x0, x1, y, h] = [a.x, b.x + b.width, a.y + a.height * 0.1, a.height * 0.16];
+      return [{ d: `M${x0},${y} H${x1} M${x1 - h},${y - h * 0.6} L${x1},${y} L${x1 - h},${y + h * 0.6}`, w: a.height * 0.05 }];
+    });
+    if (JSON.stringify(next) !== JSON.stringify(arrows)) setArrows(next);
+  });
+  return (
+    <>
+      <text ref={ref} {...props}>
+        {children}
+      </text>
+      {arrows.map((a, i) => (
+        <path key={i} d={a.d} className="vec-over" style={{ stroke: props.style?.fill, strokeWidth: a.w }} />
+      ))}
+    </>
+  );
 }
 
 /** An xcolor colour as CSS on the canvas, as it prints (the shared xcolor maths); black is the canvas's ink, so it shows on the dark canvas too. */
@@ -532,7 +568,7 @@ export default function VectorCanvas({
     const s = S(at);
     const [anchor, baseline] = ANCHOR[`${o.x},${o.y}`];
     return (
-      <text
+      <ArrowedText
         key={key}
         x={s.x + o.x * gap}
         y={s.y - o.y * (gap + script)}
@@ -543,7 +579,7 @@ export default function VectorCanvas({
         style={look.colour ? { fill: ink(look.colour) } : undefined}
       >
         {sketch(text, style.notation)}
-      </text>
+      </ArrowedText>
     );
   };
   /** a label with a side of its own, or where the spacing put it */
@@ -679,9 +715,9 @@ export default function VectorCanvas({
         return group(
           <>
             {on && <rect x={s.x - font * 2} y={s.y - font * 0.8} width={font * 4} height={font * 1.6} className="st-halo-pic" rx={3} />}
-            <text x={s.x} y={s.y} className="st-text" fontSize={font} textAnchor="middle" dominantBaseline="middle" style={item.colour ? { fill: ink(item.colour) } : undefined}>
+            <ArrowedText x={s.x} y={s.y} className="st-text" fontSize={font} textAnchor="middle" dominantBaseline="middle" style={item.colour ? { fill: ink(item.colour) } : undefined}>
               {item.text.trim() ? sketch(item.text, style.notation) : 'Text'}
-            </text>
+            </ArrowedText>
           </>,
           `Text ${plain(item.text)}`
         );

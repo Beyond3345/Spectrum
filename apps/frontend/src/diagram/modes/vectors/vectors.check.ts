@@ -482,10 +482,13 @@ eq(readStyle({ width: 'huge', vectorWidth: 1.5, colour: ' ', tips: 'none' }), { 
     return `<${typeof n.type === 'string' ? n.type : ''}${props.join('')}>${markupOf(n.props.children)}</>`;
   };
   const markup = markupOf(sketch('$\\mathbf{F}_1 \\parallel \\vec{v} - \\frac{1}{2}\\mathbf{a}$'));
-  for (const part of ['fontWeight="bold"', 'baselineShift="sub"', '∥', 'v⃗', '−', '1/2']) eq(markup.includes(part), true, `sketched: ${part} in ${markup}`);
+  for (const part of ['fontWeight="bold"', 'baselineShift="sub"', '∥', '<tspan data-arrow="">v</>', '−', '1/2']) eq(markup.includes(part), true, `sketched: ${part} in ${markup}`);
+  // the arrow is drawn over the run, not set as U+20D7, which Chrome's serif fonts draw as bars
+  eq(markupOf(sketch('$\\overrightarrow{AB} = \\vv{c}$')).replace(/<\/?>/g, ''), '<tspan data-arrow="">AB = <tspan data-arrow="">c', 'an arrow run across both letters, and \\vv’s');
+  eq(markup.includes('\u20d7'), false, 'no combining arrow');
   const cos = markupOf(sketch('$\\cos\\theta=\\frac{\\mathbf{a}\\cdot\\mathbf{b}}{|\\mathbf{a}|}$'));
   eq(['cos θ=(', ')/(|'].every((part) => cos.includes(part)), true, `cos and a fraction of vectors: ${cos}`);
-  eq(markupOf(sketch('$\\mathbf{a}$', 'vec')).includes('a⃗'), true, 'in the Style’s notation');
+  eq(markupOf(sketch('$\\mathbf{a}$', 'vec')).includes('<tspan data-arrow="">a</>'), true, 'in the Style’s notation');
 
   // the starters: each new one compiles from 2.4's kinds, or 2.5's where it shows them off
   const added = { freeBody, triangleLaw, parallelogramLaw, forcePolygon, positionVectors, cevians, angleBetween, lineFromEquation, scalarMultiples };

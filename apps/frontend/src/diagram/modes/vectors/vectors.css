@@ -9,6 +9,15 @@
   stroke-linejoin: round;
 }
 
+/* the arrow over \vec, \overrightarrow and \vv, drawn over its letters (Canvas.tsx's ArrowedText) */
+.vec-over {
+  fill: none;
+  stroke: var(--ckt-ink);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
 .vec-panel {
   fill: none;
   stroke: var(--ckt-grid);
