@@ -485,3 +485,142 @@ test('Tectonic carries on past an error unless told to stop, and says the compil
   const halted = await runCompile({ projectId: p.id, mainFile: 'main.tex', engine: 'tectonic', haltOnError: true });
   assert.equal(halted.ok, false);
 });
+
+// ─── Compile with page colour ───
+
+const { pageColourLines } = await import('../src/services/compileService.js');
+const { synctexEdit, synctexView } = await import('../src/services/synctex.js');
+const { builtInTypst } = await import('../src/services/engineService.js');
+const { stopTypstWatch } = await import('../src/services/typstService.js');
+const { pandocPath } = await import('../src/services/engineService.js');
+const { inflateSync } = await import('node:zlib');
+after(() => stopTypstWatch());
+for (const name of ['xelatex', 'lualatex']) tools[name] = await findExecutable(name);
+const CREAM = '#f8f1e1';
+// every stream in a PDF, unpacked where it's packed
+const streams = (pdf) => [...Buffer.from(pdf, 'base64').toString('latin1').matchAll(/stream\r?\n([\s\S]*?)endstream/g)].map(([, s]) => {
+  try {
+    return inflateSync(Buffer.from(s, 'latin1')).toString('latin1');
+  } catch {
+    return s;
+  }
+}).join('\n');
+// a fill of the colour, to the places each engine writes (xdvipdfmx keeps three)
+const fills = (pdf, hex) => [...streams(pdf).matchAll(/([\d.]+) ([\d.]+) ([\d.]+) (?:rg|scn)\b/g)]
+  .some((m) => [1, 2, 3].every((i) => Math.abs(Number(m[i]) - parseInt(hex.slice(2 * i - 1, 2 * i + 1), 16) / 255) < 0.002));
+const leftovers = async (p) => (await fs.readdir(path.join(dataDir, 'cache', p.id, 'page-colour')).catch(() => [])).length;
+
+test('the page colour’s lines go on the \\documentclass line, past comments, and nothing changes without one', () => {
+  const tex = '% \\documentclass{report}\n\\% x \\RequirePackage{y}\\documentclass{article}\n\\begin{document}\n';
+  const out = pageColourLines(tex, CREAM);
+  assert.equal(out.split('\n').length, tex.split('\n').length);
+  assert.ok(out.startsWith('% \\documentclass{report}\n\\% x \\RequirePackage{y}\\def\\spectrumpagecolour{\\definecolor{spectrumpage}{rgb}{0.97255,0.9451,0.88236}'));
+  assert.match(out.split('\n')[1], /\\usepackage\{xcolor\}\\fi\}\\documentclass\{article\}$/);
+  assert.equal(pageColourLines('\\input{other}\n', CREAM), '\\input{other}\n');
+});
+
+const COLOURED = [
+  '\\documentclass{article}',
+  '\\usepackage[table,dvipsnames]{xcolor}',
+  '\\begin{document}',
+  '\\section{One}\\label{one} \\textcolor{ForestGreen}{Green}, see~\\ref{one}.',
+  '\\input{chapters/one}',
+  '\\end{document}',
+  ''
+].join('\n');
+for (const engine of ['pdflatex', 'xelatex', 'lualatex', 'tectonic', 'latexmk']) {
+  test(`${engine}: Compile with page colour gives every page the colour, from a copy, and the source stays as it was`, { skip: needs(engine === 'latexmk' ? 'pdflatex' : engine) || needs(engine), timeout: 600000 }, async () => {
+    const p = await newProject({ 'main.tex': COLOURED, 'chapters/one.tex': 'A chapter.\n' });
+    const res = await compile(p, { engine, pageColour: CREAM });
+    // without its packages and no connection, Tectonic can't compile anything
+    if (engine === 'tectonic' && !res.ok && /couldn’t reach|download/i.test(res.error || '')) return;
+    assert.equal(res.status, 0, res.error || res.log);
+    assert.ok(fills(res.pdf, CREAM), 'the page is cream');
+    assert.equal(await fs.readFile(path.join(p.path, 'main.tex'), 'utf8'), COLOURED);
+    assert.equal(await leftovers(p), 0);
+    assert.ok(!fills((await compile(p, { engine })).pdf, CREAM), 'off again, the page is white');
+  });
+}
+
+test('with the page colour, errors, SyncTeX and the kept files name the project’s files and lines', { skip: needs('pdflatex') }, async () => {
+  const main = COLOURED.replace('\\input{chapters/one}', '\\undefinedthing\n\\input{chapters/one}');
+  const p = await newProject({ 'main.tex': main, 'chapters/one.tex': 'A chapter.\n\\alsoundefined\n' });
+  const res = await compile(p, { pageColour: CREAM });
+  assert.ok(res.ok, res.error || res.log);
+  const log = res.log.replace(/\r?\n/g, '');
+  assert.match(log, /main\.tex:5: Undefined control sequence/);
+  assert.match(log, /chapters\/one\.tex:2: Undefined control sequence/);
+  assert.doesNotMatch(log, /page-colour/);
+  const box = (await synctexView(p.path, 'main.tex', 'main.tex', 4)).boxes?.[0];
+  assert.ok(box, 'line 4 is on a page');
+  const back = await synctexEdit(p.path, 'main.tex', box.page, box.x + 2, box.y + box.height / 2);
+  assert.deepEqual([back.file, back.line], ['main.tex', 4]);
+  assert.equal((await synctexView(p.path, 'main.tex', 'chapters/one.tex', 1)).boxes?.[0]?.page, 1);
+
+  // fixed: two passes, then one from its kept files, a draft and one from scratch, all coloured
+  await fs.writeFile(path.join(p.path, 'main.tex'), COLOURED);
+  await fs.writeFile(path.join(p.path, 'chapters/one.tex'), 'A chapter.\n');
+  assert.equal((await compile(p, { pageColour: CREAM })).status, 0);
+  const again = await compile(p, { pageColour: CREAM });
+  assert.equal(passes(again.log), 1);
+  assert.ok(fills(again.pdf, CREAM));
+  const draft = await compile(p, { pageColour: CREAM, draft: true });
+  assert.ok(draft.ok && fills(draft.pdf, CREAM), draft.log);
+  const fresh = await compile(p, { pageColour: CREAM, fresh: true });
+  assert.ok(passes(fresh.log) >= 2 && fills(fresh.pdf, CREAM));
+});
+
+test('a document’s own \\pagecolor wins, and beamer’s slides take the colour', { skip: needs('pdflatex') }, async () => {
+  const own = await newProject({ 'main.tex': '\\documentclass{article}\n\\usepackage{xcolor}\n\\pagecolor{blue!20}\n\\begin{document}\nHi\n\\end{document}\n' });
+  const theirs = await compile(own, { pageColour: CREAM });
+  assert.ok(fills(theirs.pdf, '#ccccff') && !fills(theirs.pdf, CREAM), theirs.log);
+  const plain = await newProject({ 'main.tex': '\\documentclass{article}\n\\begin{document}\nNo colour package.\n\\end{document}\n' });
+  assert.ok(fills((await compile(plain, { pageColour: CREAM })).pdf, CREAM));
+  const deck = await newProject({ 'main.tex': '\\documentclass{beamer}\n\\begin{document}\n\\begin{frame}{One}Hi\\end{frame}\n\\end{document}\n' });
+  const slides = await compile(deck, { pageColour: '#efe0c2' });
+  assert.equal(slides.status, 0, slides.log);
+  // the background canvas, drawn over the page in beamer's normal text colour
+  assert.ok((streams(slides.pdf).match(/0\.93726 0\.87844 0\.76079 rg/g) || []).length >= 2, 'the canvas is sepia');
+});
+
+test('Typst: the pages take the colour, a set page() without a fill keeps it, one with a fill wins, and errors keep their lines', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const typst = (source) => createProject({ name: 'Typst colour', meta: { mainFile: 'main.typ' }, populate: (root) => fs.writeFile(path.join(root, 'main.typ'), source) });
+  const run = (p) => runCompile({ projectId: p.id, mainFile: 'main.typ', engine: 'auto', pageColour: CREAM });
+  const a5 = await typst('#set document(title: "Notes")\n#set page(paper: "a5")\n= Hello\n');
+  const res = await run(a5);
+  assert.ok(res.ok && res.status === 0, res.error || res.log);
+  assert.ok(fills(res.pdf, CREAM));
+  assert.match(Buffer.from(res.pdf, 'base64').toString('latin1'), /\/MediaBox ?\[0 0 419\.52/);
+  const blue = await run(await typst('#set page(fill: rgb("#0000ff"))\n= Blue\n'));
+  assert.ok(fills(blue.pdf, '#0000ff') && !fills(blue.pdf, CREAM));
+  const broken = await run(await typst('= Broken\n\n#foo\n'));
+  assert.deepEqual(broken.errors.map((e) => [e.file, e.line]), [['main.typ', 3]]);
+});
+
+test('Markdown takes the colour through LaTeX and through Typst', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
+  if (!(await pandocPath())) return t.skip('needs pandoc');
+  // a stand-in that passes Spectrum's version check, writing Typst itself (an older pandoc's template doesn't suit
+  // Spectrum's Typst) and leaving LaTeX to the real pandoc
+  const shim = path.join(tmp, 'pandoc-shim');
+  await fs.mkdir(shim, { recursive: true });
+  await fs.writeFile(path.join(shim, 'pandoc'), [
+    '#!/bin/sh',
+    'if [ "$1" = --version ]; then echo "pandoc 3.12.1"; exit 0; fi',
+    'case "$*" in *--to=typst*) for a; do [ "$prev" = -o ] && printf "= Heading\\n\\nSome text.\\n" > "$a"; prev="$a"; done; exit 0;; esac',
+    `exec "${await pandocPath()}" "$@"`,
+    ''
+  ].join('\n'), { mode: 0o755 });
+  const realPath = process.env.PATH;
+  process.env.PATH = shim + path.delimiter + realPath;
+  t.after(() => (process.env.PATH = realPath));
+  for (const markdownEngine of ['latex', 'typst']) {
+    if (markdownEngine === 'latex' ? !tools.pdflatex : !builtInTypst()) continue;
+    const p = await createProject({ name: 'Markdown colour', meta: { mainFile: 'main.md' }, populate: (root) => fs.writeFile(path.join(root, 'main.md'), '# Heading\n\nSome text.\n') });
+    const res = await runCompile({ projectId: p.id, mainFile: 'main.md', engine: 'auto', markdownEngine, pageColour: CREAM });
+    assert.ok(res.ok, `${markdownEngine}: ${res.error}\n${res.log}`);
+    assert.equal(res.generated, markdownEngine);
+    assert.ok(fills(res.pdf, CREAM), markdownEngine);
+    assert.equal(await fs.readFile(path.join(p.path, 'main.md'), 'utf8'), '# Heading\n\nSome text.\n');
+  }
+});
