@@ -1,5 +1,7 @@
 #import "../template.typ": *
 
+#set math.mat(delim: "[")                      // matrices in square brackets
+
 = Form presets <ch-forms>
 
 A Form preset is a figure that Spectrum works out from a form. Instead of drawing on a canvas, the user types the numbers of a problem and picks its choices, and Spectrum calculates the answers, draws the figure and writes the working under it. It is meant for the figures of a worked example: a Mohr's circle for a stress element, the hydrostatic force on a gate, the walk through a manometer or a conic given by its equation. This chapter first explains how a preset is found, how its form, its working and its preview relate and what its file holds. Then each preset has its own section, with every field of its form, the formulae it uses, its switches, a worked example and the limits of what it draws. What every composer shares (opening it, the chooser, the window, #ui[Compile] and the preview, settings and file versions) is in @ch-composer and is not repeated here.
@@ -109,7 +111,7 @@ $ sigma_(x') = C + (sigma_x - sigma_y) / 2 cos 2 theta + tau_(x y) sin 2 theta, 
 with $sigma_(y') = 2 C - sigma_(x')$. The angle $2 theta_p$ is taken with its quadrant (from $tau_(x y)$ and $sigma_x - sigma_y$ together), so $theta_p$ always names the plane of $sigma_1$. For a three-dimensional state, the in-plane principal stresses and $sigma_z$ are sorted into $sigma_1 >= sigma_2 >= sigma_3$, three circles are drawn and the absolute maximum shear is
 $ tau_"abs" = (sigma_1 - sigma_3) / 2. $
 
-The figure has the axes, the circle, the points $X(sigma_x, tau_(x y))$ and $Y(sigma_y, -tau_(x y))$ joined through the centre $C$, the principal stresses and $tau_"max"$ marked and named, and the arc of $2 theta_p$ from $C X$ to $sigma_1$. A rotation adds $X'$ and $Y'$ on a dashed diameter. The stress elements are drawn in a row under the circle, each a square turned to its angle with its normal stresses pointing out of the faces in tension and into them in compression, and its shear along the faces.
+The figure has the axes, the circle, the points $X(sigma_x, tau_(x y))$ and $Y(sigma_y, -tau_(x y))$ joined through the centre $C$, the principal stresses and $tau_"max"$ marked and named and the arc of $2 theta_p$ from $C X$ to $sigma_1$. A rotation adds $X'$ and $Y'$ on a dashed diameter. The stress elements are drawn in a row under the circle, each a square turned to its angle with its normal stresses pointing out of the faces in tension and into them in compression. Its shear acts along the faces.
 
 === Style
 
@@ -177,7 +179,7 @@ A survey of 60 first-year students asks which of Physics, Chemistry and Mathemat
   caption: [The form of the survey: three named sets, and the regions' table with a count in every row.],
 ) <fig-forms-venn-form>
 
-#shot("images/11-forms/venn-preview.png", [The survey's Venn diagram, with the students who take all three subjects shaded.], width: 72%) <fig-forms-venn>
+#shot("images/11-forms/venn-preview.png", [The survey's Venn diagram, with the students who take all three subjects shaded.], width: 58%) <fig-forms-venn>
 
 === Limits
 
@@ -226,7 +228,7 @@ With the hinge at one edge and the stop at the other, the stop's force comes fro
 $ F_B = (F_(R 1) ell_1 - F_(R 2) ell_2) / L, quad F_A = F_(R 1) - F_(R 2) - F_B, $
 where $ell$ is the distance from the hinge to each centre of pressure along the gate and $L$ is the gate's length. A positive force pushes back towards the first fluid. The pressures at the gate's edges, $p = rho g h$, are written at the ends of the pressure prism.
 
-The figure has the fluid with its free surface mark ▽, the hatched wall and bed, the gate, the pressure prism drawn as arrows normal to the gate, $F_R$ in red at the centre of pressure, the hinge $A$ and the stop $B$ with its force, and the dimensions: the depth of the top edge, the gate's length, $y_p$ and the angle θ. A sloping gate's plane is carried up to the free surface as a dashed line, which is where $y_p$ is measured from.
+The figure has the fluid with its free surface mark ▽, the hatched wall and bed, the gate, the pressure prism drawn as arrows normal to the gate, $F_R$ in red at the centre of pressure, the hinge $A$, the stop $B$ with its force and the dimensions: the depth of the top edge, the gate's length, $y_p$ and the angle θ. A sloping gate's plane is carried up to the free surface as a dashed line, which is where $y_p$ is measured from.
 
 === Worked example
 
@@ -503,11 +505,11 @@ an ellipse with $a = sqrt(7) = 2.646$, $b = sqrt(3) = 1.732$, $c = 2$ and $e = 0
   caption: [The form of a new Conic section drawing: the notes' rotated ellipse, with its switches.],
 ) <fig-forms-conic-form>
 
-#shot("images/11-forms/conic-preview.png", [The notes' rotated ellipse, with the turned axes U and V and the working under it.], width: 55%) <fig-forms-conic>
+#shot("images/11-forms/conic-preview.png", [The notes' rotated ellipse, with the turned axes U and V and the working under it.], width: 46%) <fig-forms-conic>
 
 Given by its own numbers instead, a hyperbola centred at $(1, -1)$ with $a = 2$ and $b = 1.5$, opening left and right, has $c = sqrt(4 + 2.25) = 2.5$ and $e = 1.25$, foci at $(-1.5, -1)$ and $(3.5, -1)$ and asymptotes $y + 1 = plus.minus 0.75 (x - 1)$. With #ui[Given as] set to #ui[An ellipse, hyperbola or parabola], #ui[Conic] to #ui[Hyperbola], the centre to $(1, -1)$, #ui[a] to 2 and #ui[b] to 1.5, @fig-forms-conic-standard shows the same with #ui[Coordinates beside the names] on.
 
-#shot("images/11-forms/conic-standard-preview.png", [A hyperbola given by its centre, $a$ and $b$, with each point's coordinates.], width: 62%) <fig-forms-conic-standard>
+#shot("images/11-forms/conic-standard-preview.png", [A hyperbola given by its centre, $a$ and $b$, with each point's coordinates.], width: 50%) <fig-forms-conic-standard>
 
 === Limits
 
@@ -540,7 +542,7 @@ Linear transformation draws what a 2×2 matrix does to the plane: the unit squar
 For $A = mat(a, b; c, d)$, the images of the basis vectors are the columns, $A bold(e)_1 = (a, c)$ and $A bold(e)_2 = (b, d)$, and the determinant is $det A = a d - b c$. The working says what it means for areas: they are kept when $abs(det A) = 1$ and otherwise multiplied by $abs(det A)$, the plane is turned over when $det A < 0$, and a singular matrix squashes the plane onto a line, or onto the origin for the zero matrix.
 
 The eigenvalues are the roots of the characteristic polynomial,
-$ lambda^2 - (tr A) lambda + det A = 0, quad lambda = (tr A plus.minus sqrt((a - d)^2 + 4 b c)) / 2. $
+$ lambda^2 - (op("tr") A) lambda + det A = 0, quad lambda = (op("tr") A plus.minus sqrt((a - d)^2 + 4 b c)) / 2. $
 When the discriminant $(a - d)^2 + 4 b c$ is negative there are no real eigenvectors, and the working gives $lambda$ as a complex pair. When it is zero, $lambda$ is repeated, with one line of eigenvectors, or every vector when $A = lambda I$. Each eigenvector is found at right angles to the longer row of $A - lambda I$ and written as the course writes one, with its smaller part $plus.minus 1$ and its first part positive, as $(1, -2)$. A vector that the matrix leaves where it is gets one arrow with both names, as $A bold(e)_1 = bold(e)_1$.
 
 === Worked example
@@ -553,7 +555,7 @@ The notes' matrix $A = mat(4, 1; 2, 3)$ sends $bold(e)_1$ to $(4, 2)$ and $bold(
   caption: [The form of $mat(4, 1; 2, 3)$ on a grid.],
 ) <fig-forms-transformation-form>
 
-#shot("images/11-forms/transformation-preview.png", [$mat(4, 1; 2, 3)$ on the unit square and grid, with the images of $bold(e)_1$ and $bold(e)_2$ and the eigenvectors $(1, 1)$ and $(1, -2)$.], width: 55%) <fig-forms-transformation>
+#shot("images/11-forms/transformation-preview.png", [$mat(4, 1; 2, 3)$ on the unit square and grid, with the images of $bold(e)_1$ and $bold(e)_2$ and the eigenvectors $(1, 1)$ and $(1, -2)$.], width: 48%) <fig-forms-transformation>
 
 When #ui[Images of e₁ and e₂] is on, the eigenvectors are teal and orange so that they stand apart from the basis vectors; with it off, they are red and blue, as in the notes.
 
