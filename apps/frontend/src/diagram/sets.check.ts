@@ -15,7 +15,10 @@ const eq = (actual: unknown, expected: unknown, what: string) => {
 // ─── the sets ───
 
 eq(SETS[0].id, 'circuitikz', 'the circuit catalogue is the first set');
-eq(SETS[0].symbols.length, CATALOGUE.filter((part) => !part.set).length, 'every circuitikz part is in it');
+eq(SETS.slice(0, 3).map((set) => set.id), ['circuitikz', 'circuitikz-logic', 'circuitikz-mech'], 'then its other kinds of drawing, logic and mechanical');
+eq(SETS.slice(0, 3).reduce((n, set) => n + set.symbols.length, 0), CATALOGUE.filter((part) => !part.set).length, 'every circuitikz part is in one of them');
+eq([setFor('circuitikz-logic')!.symbols.map((s) => s.id), setFor('circuitikz-mech')!.symbols.map((s) => s.id)], [['and', 'or', 'not', 'nand', 'nor', 'xor', 'xnor'], ['spring', 'damper', 'mass', 'inerter', 'viscoelastic', 'motor']], 'the gates, and the springs, dampers and masses');
+eq(SETS.slice(0, 3).map((set) => [set.packages, set.version]), [0, 1, 2].map(() => [['circuitikz'], SYMBOL_SETS.circuitikz.version]), 'each loads circuitikz');
 eq(setFor('circuitikz')?.symbols.find((s) => s.id === 'resistor'), { id: 'resistor', label: 'Resistor', group: 'Resistors and impedances' }, 'a symbol keeps its catalogue id, label and group');
 for (const set of SETS) {
   eq(set.label !== set.id && set.categories.length > 0, true, `${set.id} has a label and a category`);
@@ -119,7 +122,7 @@ eq(railParts('elbow', [], []), [], 'but not in a drawing without the set');
 eq(railParts('modulus of rupture', ['spx-mat'], []).map((part) => part.id), ['mat-flexure-3', 'mat-flexure-4'], 'modulus of rupture finds the flexural tests');
 eq(railParts('nmos', ['spx-fluid', 'spx-mat'], []).every((part) => !part.set), true, 'the circuit parts’ own search is as it was');
 // a General drawing from before 2.5 lists them too; a drawing with fewer sets keeps its own
-eq([withLaterSets(['spx-mech', 'spx-flow', 'spx-geom']), withLaterSets(['spx-mech']), withLaterSets([])], [['spx-mech', 'spx-flow', 'spx-geom', 'spx-fluid', 'spx-mat'], ['spx-mech'], []], 'an older General drawing has the later sets');
+eq([withLaterSets(['spx-mech', 'spx-flow', 'spx-geom']), withLaterSets(['spx-mech']), withLaterSets([])], [['spx-mech', 'spx-flow', 'spx-geom', 'spx-fluid', 'spx-mat', 'circuitikz', 'circuitikz-logic', 'circuitikz-mech'], ['spx-mech'], []], 'an older General drawing has the later sets, the kinds of circuit among them');
 eq(search('pipe').symbols.map(({ starter, symbol }) => `${symbol.label}, in ${starter.title}`), ['Pipe, in General drawing', 'Pipe (narrow), in General drawing', 'Piezometer tube, in General drawing', 'Circular hollow section, in General drawing'], 'the chooser finds a pipe in General drawing, and what else is called one');
 eq(search('slump').symbols.length, 4, 'and the slump test’s four parts');
 eq(search('nabla').symbols.map(({ symbol }) => symbol.id), ['fluid-surface'], 'the free surface mark by another name');

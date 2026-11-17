@@ -45,19 +45,47 @@ export const CATALOGUE = (catalogueData as (Omit<CataloguePart, 'group'> & { gro
   (part): CataloguePart => ({ ...part, group: part.group ?? styleFor(part.style ?? '')?.name ?? '' })
 );
 export const PARTS = new Map(CATALOGUE.map((part) => [part.id, part]));
-/** The parts list: circuitikz's and the drawing's other sets' (sets), less the university styles switched off (stylesOff),
- * found by name, circuitikz key or another word for it (filter): nmos finds the depletion and bulk ones too. */
+
+/**
+ * circuitikz's catalogue split by the kind of drawing it is for, each a symbol set (sets.ts) a drawing records in its
+ * sets: Circuit (circuitikz), Logic and Mechanical. A drawing lists only its own sets' parts.
+ */
+export const CIRCUIT_KINDS = ['circuitikz', 'circuitikz-logic', 'circuitikz-mech'];
+const KIND_OF_GROUP: Record<string, string> = { Logic: 'circuitikz-logic', Mechanical: 'circuitikz-mech' };
+/** A part's set: a pic's own (spx-…), or the circuitikz kind its group is for. */
+export const setOf = (part: CataloguePart) => part.set ?? KIND_OF_GROUP[part.group] ?? 'circuitikz';
+/** The sets whose drawings list a part: ground, supplies and terminals in circuits and logic alike, Text in every drawing (none). */
+export const listedIn = (part: CataloguePart) => (part.id === 'text' ? [] : part.group === 'Ground, supply and terminals' ? ['circuitikz', 'circuitikz-logic'] : [setOf(part)]);
+/** Listed in a drawing with these sets. */
+export const listed = (sets: string[]) => (part: CataloguePart) => !listedIn(part).length || listedIn(part).some((set) => sets.includes(set));
+
+/** The parts list: the drawing's sets' parts (sets), less the university styles switched off (stylesOff), found by name,
+ * circuitikz key or another word for it (filter): nmos finds the depletion and bulk ones too. */
 export const railParts = (filter: string, sets: string[], stylesOff: string[]) =>
-  CATALOGUE.filter((part) => (!part.set || sets.includes(part.set)) && !styleHidden(part.style, stylesOff) && `${part.label} ${part.tikz} ${part.aliases?.join(' ') ?? ''}`.toLowerCase().includes(filter.trim().toLowerCase()));
+  CATALOGUE.filter((part) => listed(sets)(part) && !styleHidden(part.style, stylesOff) && `${part.label} ${part.tikz} ${part.aliases?.join(' ') ?? ''}`.toLowerCase().includes(filter.trim().toLowerCase()));
+
+/**
+ * The sets a drawing keeps whatever the Symbol sets dialog says: those it has parts from (a part two sets list, such
+ * as ground, keeps the first unless the drawing has the other), and Circuit for a drawing that has no kind of circuit
+ * among its sets or parts, as one made before the kinds were recorded, or empty, is a circuit.
+ */
+export function circuitSetsInUse(model: unknown, sets: string[] = []) {
+  const parts = asCircuit(model).elements.flatMap((el) => (isPart(el) && PARTS.has(el.type) ? [PARTS.get(el.type)!] : []));
+  const used = new Set(parts.flatMap((part) => (listedIn(part).length === 1 ? listedIn(part) : [])));
+  for (const part of parts) if (listedIn(part).length > 1 && !listedIn(part).some((set) => used.has(set) || sets.includes(set))) used.add(listedIn(part)[0]);
+  if (!CIRCUIT_KINDS.some((kind) => used.has(kind) || sets.includes(kind))) used.add('circuitikz');
+  return [...used];
+}
 /** The catalogue as the first 2.0 builds knew it: a drawing with any other part is a version 2 file, which they open as code. */
 const FIRST_PARTS = new Set(['resistor', 'variable-resistor', 'potentiometer', 'impedance', 'fuse', 'capacitor', 'polarised-capacitor', 'variable-capacitor', 'inductor', 'variable-inductor', 'voltage-source', 'current-source', 'ac-source', 'controlled-voltage-source', 'controlled-current-source', 'battery', 'cell', 'switch-open', 'switch-closed', 'push-button', 'changeover-switch', 'diode', 'led', 'zener', 'schottky', 'photodiode', 'npn', 'pnp', 'nmos', 'pmos', 'op-amp', 'amplifier', 'buffer', 'and', 'or', 'not', 'nand', 'nor', 'xor', 'ammeter', 'voltmeter', 'lamp', 'ground', 'reference-ground', 'signal-ground', 'supply-up', 'supply-down', 'transformer', 'transformer-core', 'mech-ground', 'mech-pin']);
 export const usesNewerParts = (model: unknown) => asCircuit(model).elements.some((el) => el.kind === 'annotation' || (isPart(el) && !FIRST_PARTS.has(el.type)));
 /** The sets Spectrum 2.5 added, whose parts builds up to 2.4 would write as a dot: a drawing with one is a version 5 file. */
 const SETS_OF_2_5 = ['spx-fluid', 'spx-mat'];
 export const usesSetsOf25 = (model: unknown) => asCircuit(model).elements.some((el) => isPart(el) && SETS_OF_2_5.includes(PARTS.get(el.type)?.set ?? ''));
-/** A General drawing from before 2.5 has the sets added since in its parts list too: it is known by the three sets it opened with.
+/** A General drawing from before 2.5 has the sets added since in its parts list too, the circuit kinds among them: it is
+ * known by the three sets it opened with.
  * ponytail: any drawing given those three sets counts as one; keep the starter in the file if that ever misleads */
-export const withLaterSets = (sets: string[]) => (['spx-mech', 'spx-flow', 'spx-geom'].every((set) => sets.includes(set)) ? [...new Set([...sets, ...SETS_OF_2_5])] : sets);
+export const withLaterSets = (sets: string[]) => (['spx-mech', 'spx-flow', 'spx-geom'].every((set) => sets.includes(set)) ? [...new Set([...sets, ...SETS_OF_2_5, ...CIRCUIT_KINDS])] : sets);
 
 /** Annotate's tools drawn a point at a time, finished with a double-click or Return */
 export const POINT_BY_POINT = ['annotate:line', 'annotate:polygon', 'annotate:boundary', 'annotate:leader'];

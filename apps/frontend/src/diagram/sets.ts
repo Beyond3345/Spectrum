@@ -2,7 +2,7 @@
 // merged without duplicates, TikZ's babel library always, the loads Spectrum never writes, and the known clashes
 // between a package a figure needs and one the project already loads.
 import { SYMBOL_SETS } from '../../../backend/src/data/symbolSets.js';
-import { CATALOGUE } from './modes/circuitikz/model';
+import { CATALOGUE, CIRCUIT_KINDS, setOf } from './modes/circuitikz/model';
 
 export interface SetSymbol {
   /** the circuit catalogue's id, which the canvas's tool names as part:<id> */
@@ -30,6 +30,8 @@ export interface SymbolSet {
 
 const META: Record<string, Pick<SymbolSet, 'label' | 'categories'>> = {
   circuitikz: { label: 'Circuit symbols', categories: ['engineering/electrical', 'physics/electromagnetism'] },
+  'circuitikz-logic': { label: 'Logic gates', categories: ['engineering/digital'] },
+  'circuitikz-mech': { label: 'Springs, dampers and masses', categories: ['engineering/mechanical', 'physics/mechanics'] },
   'spx-mech': { label: 'Mechanical supports (Spectrum)', categories: ['engineering/mechanical', 'physics/mechanics'] },
   'spx-flow': { label: 'Flowchart shapes (Spectrum)', categories: ['others/flowcharts', 'computing/software'] },
   'spx-geom': { label: 'Points and marks (Spectrum)', categories: ['mathematics/geometry', 'physics/mechanics'] },
@@ -37,15 +39,20 @@ const META: Record<string, Pick<SymbolSet, 'label' | 'categories'>> = {
   'spx-mat': { label: 'Construction materials (Spectrum)', categories: ['engineering/mechanical'] }
 };
 
-/** Every set, circuitikz's first: the circuit canvas's palette is its catalogue, a part's set its `set` (none: circuitikz). */
-export const SETS: SymbolSet[] = Object.entries(SYMBOL_SETS).map(([id, set]) => ({
+/**
+ * Every set, circuitikz's first: the circuit canvas's palette is its catalogue, a part's set its `set`, or for
+ * circuitikz's own the kind of drawing it is for (setOf): Circuit, Logic gates or Springs, dampers and masses, which
+ * load circuitikz as Circuit does.
+ */
+const ENTRIES = Object.entries(SYMBOL_SETS).flatMap(([id, set]) => (id === 'circuitikz' ? CIRCUIT_KINDS.map((kind) => [kind, set] as const) : [[id, set] as const]));
+export const SETS: SymbolSet[] = ENTRIES.map(([id, set]) => ({
   id,
   version: set.version,
   label: META[id]?.label ?? id,
   categories: META[id]?.categories ?? [],
   packages: set.packages,
   libraries: set.libraries,
-  symbols: CATALOGUE.filter((part) => (part.set || 'circuitikz') === id).map(({ id: symbol, label, group, style, aliases }) => ({ id: symbol, label, group, ...(style && { style }), ...(aliases && { aliases }) }))
+  symbols: CATALOGUE.filter((part) => setOf(part) === id).map(({ id: symbol, label, group, style, aliases }) => ({ id: symbol, label, group, ...(style && { style }), ...(aliases && { aliases }) }))
 }));
 
 export const setFor = (id: string) => SETS.find((set) => set.id === id);

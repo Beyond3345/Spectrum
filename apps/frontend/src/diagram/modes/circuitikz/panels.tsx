@@ -7,7 +7,7 @@ import Select from '../../../app/Select';
 import { IS_WINDOWS } from '../../../app/platform';
 import { ColourField, More } from '../../controls';
 import { useToolTitle } from '../../toolKeys';
-import { ANNOTATION_COLOURS, MATERIALS, PATTERNS, PRESETS } from './annotate';
+import { ANNOTATION_COLOURS, MATERIALS, PATTERNS, PRESETS, annotateListed } from './annotate';
 import { DEFAULT_LENGTH, readStyle } from './code';
 import type { CircuitStyle } from './code';
 import { flip, remove, rotate } from './edit';
@@ -50,7 +50,7 @@ const ANNOTATE: [string, string, string, ReactNode][] = [
   ...PRESETS.map(([id, label]): [string, string, string, ReactNode] => [`preset:${id}`, label, /^[A-Z]+$/.test(id) ? 'click to place' : 'click to place, then edit its parts', PRESET_THUMBS[id]])
 ];
 
-/** sets: the other symbol sets the drawing has, each shown as its own groups after circuitikz's */
+/** sets: the drawing's symbol sets, with the ones it uses; their parts and Annotate's tools are listed, in the catalogue's order */
 export function CircuitRail({ onPick, tool, sets: chosen = [] }: { onPick(tool: string): void; tool: string; sets?: string[] }) {
   const sets = withLaterSets(chosen);
   const ui = useCircuitUi();
@@ -64,6 +64,7 @@ export function CircuitRail({ onPick, tool, sets: chosen = [] }: { onPick(tool: 
   };
   const [settings] = useSettings();
   const shown = railParts(filter, sets, settings.composerStylesOff);
+  const annotate = ANNOTATE.filter(([value, label]) => annotateListed(value, sets) && label.toLowerCase().includes(filter.trim().toLowerCase()));
   const title = useToolTitle();
   return (
     <div className="ckt-rail">
@@ -114,11 +115,11 @@ export function CircuitRail({ onPick, tool, sets: chosen = [] }: { onPick(tool: 
           );
         })}
         {/* drawn over the circuit, never connected to it (annotate.ts) */}
-        {ANNOTATE.some(([, label]) => label.toLowerCase().includes(filter.trim().toLowerCase())) && (
+        {!!annotate.length && (
           <section className="ckt-rail-group">
             <h3>Annotate</h3>
             <div className="ckt-rail-parts">
-              {ANNOTATE.filter(([, label]) => label.toLowerCase().includes(filter.trim().toLowerCase())).map(([value, label, how, thumb]) => (
+              {annotate.map(([value, label, how, thumb]) => (
                 <button key={value} type="button" className={`ckt-rail-part ${ui.tool === value ? 'active' : ''}`} aria-pressed={ui.tool === value} title={`${label}: ${how}`} onClick={() => pick(ui.tool === value ? 'select' : value)}>
                   <span className="ckt-rail-thumb">
                     <svg className="ckt-rail-sketch" viewBox="0 0 56 28" width="56" height="28" aria-hidden="true">

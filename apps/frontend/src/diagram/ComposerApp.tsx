@@ -1039,7 +1039,7 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
       <div className="diagram-main">
         {tab === 'draw' && mode?.Rail && (
           <aside className="diagram-rail">
-            <mode.Rail tool={tool} onPick={setTool} sets={doc.diagram?.sets} />
+            <mode.Rail tool={tool} onPick={setTool} sets={doc.diagram ? [...new Set([...(doc.diagram.sets ?? []), ...(mode.setsInUse?.(doc.diagram.model, doc.diagram.sets ?? []) ?? [])])] : undefined} />
             {canEdit && mode.sets && settings.composerMixSets && (
               <button className="btn small diagram-sets" onClick={() => setSetsOpen(true)}>
                 Symbol sets…
@@ -1052,7 +1052,7 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
             projectId={projectId}
             own={mode.sets ?? []}
             chosen={doc.diagram.sets ?? []}
-            inUse={mode.setsInUse?.(doc.diagram.model) ?? []}
+            inUse={mode.setsInUse?.(doc.diagram.model, doc.diagram.sets ?? []) ?? []}
             onClose={() => setSetsOpen(false)}
             onUse={(sets) => {
               setDoc((d) => (d.diagram ? { ...d, diagram: { ...d.diagram, sets: sets.length ? sets : undefined } } : d));

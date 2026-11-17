@@ -34,8 +34,8 @@ export interface DiagramMode<M = unknown> {
   newStyle?(defaults: ComposerDefaults, model: M): Record<string, unknown>;
   /** the symbol sets of its own, always on, when it draws symbols (the Symbol sets dialog adds others) */
   sets?: string[];
-  /** the other sets the model has parts from, which the dialog can't take away */
-  setsInUse?(model: M): string[];
+  /** the sets the drawing keeps besides the ones it records (sets), which the dialog can't take away: those the model has parts from */
+  setsInUse?(model: M, sets: string[]): string[];
   // body = the picture only. context.typstVersion: the project's Typst version, for a fletcher import line
   toCode(model: M, style: Record<string, unknown>, context?: { typstVersion?: string }): { body: string; packages: string[]; libraries: string[] };
   // the frame also passes what's selected (ids the mode chooses) and the rail's tool; onTool hands the tool back, as

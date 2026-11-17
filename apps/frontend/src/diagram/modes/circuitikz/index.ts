@@ -3,7 +3,7 @@
 import type { DiagramMode } from '../../types';
 import Canvas from './Canvas';
 import { circuitCode } from './code';
-import { PARTS, asCircuit, emptyCircuit } from './model';
+import { asCircuit, circuitSetsInUse, emptyCircuit } from './model';
 import type { CircuitModel } from './model';
 import { CircuitInspector, CircuitRail, CircuitStyleMenu } from './panels';
 import './circuitikz.css';
@@ -15,8 +15,9 @@ const circuitikz: DiagramMode<CircuitModel> = {
   emptyModel: emptyCircuit,
   newStyle: (defaults) => ({ siUnits: defaults.siUnits }),
   toCode: (model, style) => circuitCode(asCircuit(model), style),
-  sets: ['circuitikz'],
-  setsInUse: (model) => [...new Set(asCircuit(model).elements.flatMap((el) => (el.kind === 'node' && PARTS.get(el.type)?.set ? [PARTS.get(el.type)!.set!] : [])))],
+  // none always on: a drawing records its kinds of circuit among its sets (circuitSetsInUse reads an older one's)
+  sets: [],
+  setsInUse: circuitSetsInUse,
   Canvas,
   Rail: CircuitRail,
   Inspector: CircuitInspector,
