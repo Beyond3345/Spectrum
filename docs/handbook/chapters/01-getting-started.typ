@@ -198,7 +198,7 @@ The Settings window holds every preference of the application. It opens with #ke
     columns: (1.1fr, 2.4fr, auto),
     align: left,
     table.header([Section], [What it holds], [Where]),
-    [Appearance], [the theme, accent colour, window and PDF page colours], [@sec-start-appearance],
+    [Appearance], [the theme, colour style, accent colour, window and PDF page colours], [@sec-start-appearance],
     [Editor], [jumps between the source and the PDF, the editor's font and colour themes], [@sec-start-appearance],
     [Shortcuts], [every keyboard shortcut, each of which can be changed], [@sec-writing-shortcuts],
     [System], [the TeX tools Spectrum found, its folders and the licences], [@sec-start-setup],
@@ -234,11 +234,20 @@ Settings are saved as they are changed, so there is no Save button. A few sectio
 #menu[Settings][Appearance] sets how the application looks (@fig-start-appearance). It has the following options,
 
 - the theme, which is System, Light or Dark. System follows the macOS appearance and switches with it,
-- the accent colour, which can follow macOS or be Blue, Purple, Pink, Red, Orange, Yellow, Green, Graphite or any other colour chosen with the colour well at the end of the row,
+- the colour style, which is Spectrum or Simple and is described below,
+- the accent colour, which can follow macOS or be Spectrum, Blue, Purple, Pink, Red, Orange, Yellow, Green, Graphite or any other colour chosen with the colour well at the end of the row. Spectrum, drawn as a wheel of the colours below, runs the #ui[Compile] button and progress bars through every colour and is blue everywhere else, since an orange accent would read as a warning,
 - on macOS, a see-through window, which uses Liquid Glass on macOS 26 and later and a frosted blur on earlier versions, with a Clarity slider from Frosted to Clear that sets how much of the desktop shows through while the editor and the PDF stay readable and
 - the colour of the PDF's pages, one for light mode (White, Cream, Sepia or Grey) and one for dark mode (Dark, Black, Dimmed or White). Dark and Black turn the ink light, while Dimmed keeps the page's own colours a little darker. The PDF's #dots menu changes the colour for the mode that is showing.
 
-#shot("figures/01-getting-started/settings-appearance.png", [The Appearance section of Settings, with the theme, the accent colour and the colour of the PDF's pages. The see-through window appears here on macOS.], width: 72%) <fig-start-appearance>
+#shot("figures/01-getting-started/settings-appearance.png", [The Appearance section of Settings, with the theme, the colour style, the accent colour and the colour of the PDF's pages. The see-through window appears here on macOS.], width: 72%) <fig-start-appearance>
+
+=== Colour style
+
+The colour style decides how much colour the application itself uses. Spectrum, the default, gives each part of the application its own colour, taken from the same spectrum as the chapters of this handbook (@fig-start-colour-style). Specifically, the editor's tools are orange, the assistant and its to-dos gold, references, checkpoints and GitHub olive, the diagram composer green and each composer the colour of its own chapter, while the general sections of Settings are graphite. The colours appear on the icons of the editor's toolbar, the sidebars and the sections of Settings, on the tab and the view that are chosen, on the #ui[New] button and in the diagram chooser, whose categories and cards carry the colour of the composer they open.
+
+Simple keeps to grey and the accent colour, as Spectrum looked before version 2.5. Either way the labels, icons and selection marks stay the same, so nothing is shown by colour alone, and errors, warnings and success keep their red, orange and green. The colour style goes to your other computers with the rest of the appearance.
+
+#shots(("figures/01-getting-started/colour-style-simple.png", "figures/01-getting-started/colour-style-spectrum.png"), [The editor in the Simple colour style, above, and in Spectrum, below. In Spectrum each tool's icon takes the colour of its part of the application, and the chosen tab is underlined in its colour.], columns: 1) <fig-start-colour-style>
 
 === The editor's look
 
