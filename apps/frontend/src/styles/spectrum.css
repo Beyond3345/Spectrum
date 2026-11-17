@@ -104,6 +104,15 @@
   background: transparent;
 }
 
+/* and the Compile under No PDF yet */
+:root.spectrum-accent .pdf-column .empty-state .btn.primary {
+  background: var(--spectrum-ink);
+}
+
+:root.spectrum-accent .pdf-column .empty-state .btn.primary:hover:not(:disabled) {
+  filter: brightness(0.9);
+}
+
 :root.spectrum-accent :is(.compile-main, .compile-engine):hover:not(:disabled),
 :root.spectrum-accent .compile-engine.open {
   background: rgba(0, 0, 0, 0.14);
