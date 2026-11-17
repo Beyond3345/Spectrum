@@ -75,6 +75,13 @@ export function More({ summary, open, children }: { summary: string; open: boole
   );
 }
 
+/** What a colour well shows for a value: the colour an xcolor name or mix prints as, black for none. */
+export function wellColour(value?: string) {
+  if (!value || !isColour(value)) return '#000000';
+  const css = colourCss(value);
+  return css.startsWith('#') ? css : `#${css.match(/\d+/g)!.map((n) => Number(n).toString(16).padStart(2, '0')).join('')}`;
+}
+
 /**
  * A colour, or none (`fallback` says what none means: no fill, black, the default). With `swatches` (xcolor names) it
  * also takes any xcolor name or mix typed in, such as blue!15, so its value is xcolor's as well as '#rrggbb'.
@@ -91,7 +98,7 @@ export function ColourField({ label, value, fallback, onChange, swatches }: { la
         </span>
       )}
       <span className="diagram-colour">
-        <input type="color" className="colour-well" aria-label={label} value={value && /^#/.test(value) ? value : '#000000'} onChange={(e) => onChange(e.target.value)} />
+        <input type="color" className="colour-well" aria-label={label} value={wellColour(value)} onChange={(e) => onChange(e.target.value)} />
         {swatches && <XcolorInput label={label} value={value} onChange={onChange} />}
         <button type="button" className={`btn small${value ? '' : ' active'}`} aria-pressed={!value} onClick={() => onChange(undefined)}>
           {fallback}

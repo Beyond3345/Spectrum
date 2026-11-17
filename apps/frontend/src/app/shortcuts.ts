@@ -257,13 +257,22 @@ export function shortcutFromEvent(e: KeyboardEvent) {
  */
 const CANVAS_KEYS = ['r', 'Shift-r', 'x', 'y', 'Space', 'Escape', 'Enter', 'Backspace', 'Delete', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Shift-ArrowUp', 'Shift-ArrowDown', 'Shift-ArrowLeft', 'Shift-ArrowRight', 'Mod-a', 'Mod-c', 'Mod-x', 'Mod-v', 'Mod-d', 'Mod-z', 'Shift-Mod-z', 'Mod-y'];
 
-/** Why a recorded shortcut can't be used, or '' when it can. */
-export function shortcutProblem(binding: string, id = '') {
+/** Tool keys one canvas answers together, which can't share a key: the first would always win. */
+const SAME_CANVAS = [
+  ['diagramMember', 'diagramTruss'],
+  ['diagramPoint', 'diagramVector']
+];
+
+/** Why a recorded shortcut can't be used, or '' when it can. overrides: Settings' shortcuts, for the other tool keys. */
+export function shortcutProblem(binding: string, id = '', overrides: Record<string, string> = {}) {
   const p = parse(binding);
   if (!p) return '';
   const key = canonical(binding);
   if (SHORTCUTS.find((s) => s.id === id)?.group === 'Diagram') {
-    return CANVAS_KEYS.map(canonical).includes(key) ? `${formatShortcut(binding)} is kept by the canvas.` : '';
+    if (CANVAS_KEYS.map(canonical).includes(key)) return `${formatShortcut(binding)} is kept by the canvas.`;
+    const other = SAME_CANVAS.find((ids) => ids.includes(id))?.find((o) => o !== id && canonical(shortcutKey(overrides, o)) === key);
+    // "Structures: draw a truss bar" gives "T is used to draw a truss bar on the same canvas."
+    return other ? `${formatShortcut(binding)} is used to ${SHORTCUTS.find((s) => s.id === other)!.label.split(': ').pop()} on the same canvas.` : '';
   }
   if (RESERVED.map(canonical).includes(key)) return `${formatShortcut(binding)} is kept by ${OS_NAME}.`;
   const fixed = FIXED_SHORTCUTS.find(([, k]) => canonical(k) === key);

@@ -82,6 +82,12 @@ eq(ids('buck').slice(0, 2), ['buck-converter', 'buck-boost-converter'], 'convert
 eq(search('   ').starters, [], 'blank finds nothing');
 // by relevance: title, then blurb or aliases, then groups and packages, each rank in definition order
 eq(ids('fluid statics').slice(0, 5), ['general-drawing', 'gate', 'manometer', 'tank', 'floating'], 'the fluid presets before the beams, which match only by their group');
+// a short word starts a word, a longer one may sit inside one
+eq(ids('op amp').includes('inclined-member') || ids('op amp').includes('damped-oscillation'), false, 'op amp finds no ramp or damped curve');
+eq(search('op amp').symbols.map(({ symbol }) => symbol.label).filter((label) => !/op amp/i.test(label)), [], 'nor the Incline symbol');
+eq(ids('op amp').includes('inverting-amplifier'), true, 'but the op amp stages');
+eq([ids('RC').includes('rc-ladder'), ids('osfet').includes('circuit')], [true, true], 'RC at a word’s start; a long fragment anywhere');
+
 // Structures and Mohr's circle: Engineering › Mechanical and structures, cross-listed under Physics › Mechanics and fluids
 for (const id of ['structure', 'mohr']) {
   eq(sectionsFor('engineering').find((s) => s.id === 'engineering/mechanical')?.starters.some((s) => s.id === id), true, `${id} under Mechanical and structures`);

@@ -12,7 +12,18 @@ const SYMBOLS: Record<string, string> = {
   alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', varepsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ', kappa: 'κ', lambda: 'λ', nu: 'ν',
   xi: 'ξ', rho: 'ρ', sigma: 'σ', tau: 'τ', phi: 'φ', varphi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω',
   Gamma: 'Γ', Delta: 'Δ', Theta: 'Θ', Lambda: 'Λ', Sigma: 'Σ', Phi: 'Φ', Psi: 'Ψ',
-  parallel: '∥', perp: '⊥', pm: '±', le: '≤', leq: '≤', ge: '≥', geq: '≥', ne: '≠', neq: '≠', infty: '∞', degree: '°', circ: '°', angle: '∠', sum: '∑', to: '→', rightarrow: '→', ell: 'ℓ', partial: '∂', nabla: '∇'
+  iota: 'ι', upsilon: 'υ', Xi: 'Ξ', Pi: 'Π', Upsilon: 'Υ',
+  parallel: '∥', perp: '⊥', pm: '±', mp: '∓', le: '≤', leq: '≤', ge: '≥', geq: '≥', ne: '≠', neq: '≠', ll: '≪', gg: '≫', infty: '∞', degree: '°', circ: '∘', angle: '∠', sum: '∑', prod: '∏',
+  ell: 'ℓ', hbar: 'ℏ', aleph: 'ℵ', partial: '∂', nabla: '∇', prime: '′', div: '÷', ast: '∗', star: '⋆', bullet: '•', ldots: '…', dots: '…', cdots: '⋯',
+  equiv: '≡', cong: '≅', sim: '∼', simeq: '≃', propto: '∝', mid: '∣', vert: '|', lvert: '|', rvert: '|', Vert: '‖', colon: ':', langle: '⟨', rangle: '⟩',
+  lfloor: '⌊', rfloor: '⌋', lceil: '⌈', rceil: '⌉', otimes: '⊗', oplus: '⊕',
+  // sets and logic
+  in: '∈', notin: '∉', ni: '∋', subset: '⊂', subseteq: '⊆', supset: '⊃', supseteq: '⊇', cup: '∪', cap: '∩', setminus: '∖', emptyset: '∅', varnothing: '∅',
+  forall: '∀', exists: '∃', nexists: '∄', neg: '¬', lnot: '¬', land: '∧', wedge: '∧', lor: '∨', vee: '∨', top: '⊤', bot: '⊥',
+  // arrows, as a commutative diagram labels its maps
+  to: '→', rightarrow: '→', longrightarrow: '⟶', leftarrow: '←', gets: '←', longleftarrow: '⟵', leftrightarrow: '↔', mapsto: '↦', longmapsto: '⟼',
+  Rightarrow: '⇒', implies: '⇒', Leftarrow: '⇐', Leftrightarrow: '⇔', iff: '⇔', uparrow: '↑', downarrow: '↓', hookrightarrow: '↪', hookleftarrow: '↩',
+  twoheadrightarrow: '↠', rightharpoonup: '⇀', leftharpoonup: '↼', rightleftharpoons: '⇌'
 };
 
 /**
@@ -26,11 +37,16 @@ export const plain = (text: string) => runText(text).replace(/[_^]/g, '');
 const runText = (text: string) =>
   text
     .replace(/\$/g, '')
+    // a set's \{ \} kept through the braces' removal below
+    .replace(/\\\{/g, '\u0001')
+    .replace(/\\\}/g, '\u0002')
     .replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, '($1)/($2)')
     .replace(/\\[,;!]/g, ' ')
     .replace(/\\(tiny|scriptsize|footnotesize|small|normalsize|large|Large)\s*/g, '')
     .replace(/\\([A-Za-z]+|%)/g, (_, name: string) => SYMBOLS[name] ?? '')
-    .replace(/[{}]/g, '');
+    .replace(/[{}]/g, '')
+    .replace(/\u0001/g, '{')
+    .replace(/\u0002/g, '}');
 
 export type Run = { text: string; shift?: 'sub' | 'super' };
 
