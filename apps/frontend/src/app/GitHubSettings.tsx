@@ -179,13 +179,14 @@ export default function GitHubSettings() {
 
       <h3 className="form-section-title">Your settings on GitHub</h3>
       <label className="checkbox-row">
-        <input type="checkbox" role="switch" checked={auth.settingsRepo} disabled={busy} onChange={(e) => switchRepo(e.target.checked)} />
+        {/* it does nothing until sign-in, so it shows off until then; the stored choice stays as it is */}
+        <input type="checkbox" role="switch" checked={auth.signedIn && auth.settingsRepo} disabled={busy || !auth.signedIn} onChange={(e) => switchRepo(e.target.checked)} />
         <span>
           Keep my settings in a private repository (spectrum-settings)
           <span className="field-hint">
             Appearance, editor, spelling, shortcuts, personas, your own skills and templates, the folders on the Projects page and tag colours follow you to
             your other computers. API keys, tokens and folders on disk stay on each computer. A computer signing in for the first time takes the settings
-            already there.
+            already there.{!auth.signedIn && ' Sign in to GitHub to turn it on.'}
           </span>
         </span>
       </label>
