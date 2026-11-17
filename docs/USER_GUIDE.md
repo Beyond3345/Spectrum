@@ -237,7 +237,8 @@ Tinymist has Typst 0.15.1 inside it. In a project on that version, its errors ta
 
 Settings has the following options under Appearance and Editor,
 
-- the theme (System, Light or Dark) and an accent colour, which can follow macOS or be Blue, Purple, Pink, Red, Orange, Yellow, Green, Graphite or any other colour,
+- the theme (System, Light or Dark) and an accent colour, which can follow macOS or be Spectrum, Blue, Purple, Pink, Red, Orange, Yellow, Green, Graphite or any other colour. Spectrum runs Compile and progress bars through the colours of the wheel and is blue elsewhere,
+- the colour style: Spectrum, the default, colours each part of the app as the handbook's chapters are coloured (the editor's tools orange, the assistant and to-dos gold, references, checkpoints and GitHub olive, the diagram composer green and each composer its own colour), while Simple keeps to grey and the accent colour. Labels and icons are the same in both, and errors, warnings and success keep red, orange and green,
 - a see-through window, which uses Liquid Glass on macOS 26 and later and the system blur on older versions, with a Clarity slider that sets how much of the desktop shows through while the editor and the PDF stay readable,
 - the PDF page colour for light mode and for dark mode,
 - the editor font, which can be one of the Mac's own fonts, one of four bundled open-source fonts (JetBrains Mono, Fira Code, IBM Plex Mono and Source Code Pro) or any installed font by name, and the font size and
