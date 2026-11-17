@@ -80,6 +80,11 @@ eq([starterFor('block-diagram')?.home, starterFor('mass-spring-damper')?.home, s
 eq(ids('555'), ['astable-555', 'monostable-555'], 'templates found by alias');
 eq(ids('buck').slice(0, 2), ['buck-converter', 'buck-boost-converter'], 'converters by name');
 eq(search('   ').starters, [], 'blank finds nothing');
+// a short word starts a word, a longer one may sit inside one
+eq(ids('op amp').includes('inclined-member') || ids('op amp').includes('damped-oscillation'), false, 'op amp finds no ramp or damped curve');
+eq(search('op amp').symbols.map(({ symbol }) => symbol.label).filter((label) => !/op amp/i.test(label)), [], 'nor the Incline symbol');
+eq(ids('op amp').includes('inverting-amplifier'), true, 'but the op amp stages');
+eq([ids('RC').includes('rc-ladder'), ids('osfet').includes('circuit')], [true, true], 'RC at a word’s start; a long fragment anywhere');
 
 // Structures and Mohr's circle: Engineering › Mechanical and structures, cross-listed under Physics › Mechanics and fluids
 for (const id of ['structure', 'mohr']) {

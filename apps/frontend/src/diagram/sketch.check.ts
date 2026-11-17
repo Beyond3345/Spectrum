@@ -31,6 +31,16 @@ eq(plain('$A_y$'), 'Ay', 'no markup and no underscore, for a name read out');
 eq(plain('\\theta_{\\max} = 30\\degree'), 'θ = 30°', 'Greek and a degree sign; an unknown command leaves nothing');
 eq(plain('\\frac{wL^2}{8}'), '(wL2)/(8)', 'a fraction on one line');
 eq(plain('\\small 4.7\\,\\mathrm{k}\\Omega, 5\\%'), '4.7 kΩ, 5%', 'a font size, a thin space, a unit and a per cent');
+// a commutative diagram's and a Venn diagram's maths: composition, sets, logic and arrows, none left blank
+eq(plain('g \\circ f'), 'g ∘ f', 'composition is a ring, not a degree sign');
+eq(plain('30^\\circ'), '30∘', 'a degree written as ^\\circ is a raised ring');
+eq(plain('\\forall x \\in A \\cup B, \\exists y \\notin A \\cap B'), '∀ x ∈ A ∪ B, ∃ y ∉ A ∩ B', 'sets and quantifiers');
+eq(plain('\\lfloor x \\rfloor \\le \\lceil x \\rceil'), '⌊ x ⌋ ≤ ⌈ x ⌉', 'floor and ceiling');
+eq(plain('x \\mapsto f(x)'), 'x ↦ f(x)', 'maps to');
+eq(plain('A \\hookrightarrow B \\twoheadrightarrow C \\Rightarrow D \\iff E'), 'A ↪ B ↠ C ⇒ D ⇔ E', 'the arrows of a diagram');
+eq(plain('A \\setminus B = \\emptyset, \\neg p \\land q \\lor r'), 'A ∖ B = ∅, ¬ p ∧ q ∨ r', 'set difference and logic');
+eq(plain('\\{1, 2\\} \\subseteq \\mathbb{N}'), '{1, 2} ⊆ N', 'a set’s braces stay; a group’s go');
+eq(plain('\\infty \\in'), '∞ ∈', '\\in is not the start of \\infty');
 
 // ─── drawn ───
 

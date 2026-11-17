@@ -998,7 +998,7 @@ function ShortcutsPane({ groups = SHORTCUT_GROUPS, compact = false }: { groups?:
       }
       const key = shortcutFromEvent(e);
       if (!key) return;
-      const why = shortcutProblem(key, recording);
+      const why = shortcutProblem(key, recording, overrides);
       if (why) return setProblem(why);
       assign(recording, key);
       stop();
