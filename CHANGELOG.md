@@ -140,6 +140,9 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - The References chat suggests #bibliography("refs.bib") for a Typst document and front matter for Markdown, rather than \bibliography
 - The Local agents send button no longer shows a spinner when no agent is set up
 - Messages that point to Settings name the pane with ›, as the rest of the app does
+- The sidebar's Outline shows a heading's `\texorpdfstring` as its plain form, as the PDF's bookmarks do
+- Closing the Jyutping window after changing the Chinese font or an option brings the preamble's lines up to date, as Update preamble does
+- The Jyutping window no longer says the built-in Tectonic can compile it
 
 ## 2.4.1 (15 November 2026)
 

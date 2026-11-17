@@ -198,12 +198,12 @@ The menu beside Compile holds the following choices. Use for all projects beside
 
 - Compiler (this project), which is pdfLaTeX, XeLaTeX, LuaLaTeX, Latexmk, Tectonic or Auto, the default. The project's choice is saved in its `.spectrum/settings.json`, so it follows the project to your other computer, and Use the default puts it back,
 - Auto compile, which is Off, the default, or compiles after a pause of 1 to 10 seconds since the last edit. A newer automatic compile takes the place of one that is out of date,
-- Compile error handling, which is Try to compile despite errors, the default, or Stop on first error,
 - Bibliography tool, which is Auto, BibTeX or Biber. Auto follows a `% !BIB program = biber` comment in the main file and otherwise uses Biber for `biblatex` and BibTeX for the rest,
-- Syntax checks, which is Check before compiling, the default, or Don’t check (Section TexLab) and
 - Fast draft mode, which compiles in one pass with each image drawn as a box of its size,
 - Typst version (this project), for a Typst document: Default, the built-in version or one installed in Settings, saved with the project like the other choices, and
 - PDF engine (this project), for a Markdown document: LaTeX, through your TeX or the built-in Tectonic, or Typst.
+
+Two more compile settings apply to every project and are in Settings › Engines › LaTeX: Compile error handling, which is Try to compile despite errors, the default, or Stop on first error, and Syntax check before compiling, which is on by default (Section TexLab).
 
 The menu changes with the document it compiles. A Typst document has the Typst version in place of the compiler, and a Markdown document has the PDF engine above it. The menu also has Stop compilation and Recompile from scratch, which first clears what earlier compiles of the open document kept. Recompile all does the same for every document in the project and compiles each one, linked documents first. While a compile runs, Compile becomes Stop, which ends it at once and keeps the last PDF.
 
@@ -223,7 +223,7 @@ Spectrum includes [TexLab](https://github.com/latex-lsp/texlab) 5.26.0, a langua
 
 With TexLab the sidebar's Outline covers the whole document across its `\input` files, with the section numbers of the last compile and the figures and tables by their captions. Document insights marks the labels TexLab finds unused or defined twice and the citations missing from the `.bib`, and Review adds TexLab's findings to its References and assets group (Section Review).
 
-When Syntax checks in the compile menu is set to Check before compiling, the default, Compile first looks at TexLab's findings in the document's files. When there are missing braces or mismatched environments, it lists them and asks whether to compile anyway, and Cancel goes to the first one. References and citations with no label or entry never stop a compile, and auto compile skips the check. The default for every project is in Settings › Engines › LaTeX.
+When Syntax check before compiling is on in Settings › Engines › LaTeX, the default, Compile first looks at TexLab's findings in the document's files. When there are missing braces or mismatched environments, it lists them and asks whether to compile anyway, and Cancel goes to the first one. References and citations with no label or entry never stop a compile, and auto compile skips the check. The default for every project is in Settings › Engines › LaTeX.
 
 TexLab's own completion, building and formatting are left off, so Spectrum's completion stays as it is. Without TexLab, for example when Spectrum runs in a browser and `texlab` is not on the `PATH`, the editor works as before and the Outline reads the headings itself.
 
@@ -247,7 +247,7 @@ Settings has the following options under Appearance and Editor,
 
 The Floats panel inserts figures and tables at the cursor. Insert figure and Insert table in the top bar open it at the figure or the table card, and so do Figure… and Table… in Insert (+), which also holds the two buttons when the editor is too narrow for them.
 
-- Insert figure takes an image that is dropped on the card or on the editor, pasted or chosen, saves it in the project's `images` folder without replacing an existing file and inserts it as a figure with a caption, a label and a width. Formats that pdfLaTeX cannot read, such as HEIC, WebP and SVG, are converted first,
+- Insert figure takes an image that is dropped on the card or on the editor, pasted or chosen, saves it in the project's `figures` folder without replacing an existing file and inserts it as a figure with a caption, a label and a width. Formats that pdfLaTeX cannot read, such as HEIC, WebP and SVG, are converted first,
 - Insert table builds a `tabular` or `tabularx` from a grid, which also takes cells pasted from Numbers, Excel or a CSV file, with a caption, a label and Booktabs, Grid, Minimal or None lines. Clicking between two rows or two columns, or along an edge, adds or removes a line across the table, and the Lines at row and column buttons do the same from the keyboard for the cell last edited. Grid draws a double line under the header. Once a line is changed by hand the panel says which preset it was changed from, until a preset is chosen again. In a Typst document the table is a `#table` with its lines as `table.hline` and `table.vline`, and in a Markdown document a pipe table, which has no lines of its own, and
 - the packages a float needs (`graphicx`, `float`, `booktabs` and `tabularx`) are added before `\begin{document}` when the project does not load them yet.
 
