@@ -4,7 +4,7 @@ import { symbolGeometry, symbolRequest } from './symbolGeometry';
 import { circuitCode, readStyle, symbolOptions } from './code';
 import { attach, detach, moveBy, newPathPart, paste, remove, rotate } from './edit';
 import { markLayout, pinLabelSpots, plusAtStart, sideName } from './labels';
-import { CATALOGUE, PARTS, PT_PER_GRID, asCircuit, railParts, circuitBounds, isPart, findJunctions, locator, pathFrame, pinAxis, placeNodeOffset, placeholderShape, snapDelta, wirePath } from './model';
+import { CATALOGUE, PARTS, PT_PER_GRID, asCircuit, railParts, circuitBounds, isPart, findJunctions, locator, pathFrame, pinAxis, placeNodeOffset, placeholderBox, grabsHandles, placeholderShape, snapDelta, wirePath } from './model';
 import outlinesData from './outlines.fixture.json';
 import { UNIVERSITY_STYLES, styleFor } from '../../universityStyles';
 import { loadSettings } from '../../../app/settings';
@@ -174,6 +174,12 @@ eq(circuitBounds({ elements: [], junctions: [] }, shapeOf), null, 'an empty over
 eq(circuitBounds({ elements: [{ id: 'w', kind: 'wire', points: [{ x: -8, y: -2 }, { x: 12, y: 4 }], routes: ['--'] }], junctions: [] }, shapeOf), { minX: -12, maxX: 16, minY: -6, maxY: 8 }, 'overview includes negative coordinates with padding');
 const wide = circuitBounds({ elements: [{ id: 'u', kind: 'node', type: 'op-amp', at: { x: 0, y: 0 } }], junctions: [] }, () => ({ pins: { out: { x: 12, y: 0 } } }));
 eq(wide?.maxX, 16, 'Fit includes a measured pin beyond a stand-in box');
+// a large symbol's drawn outline, once known, turned with its part: the axes reach 12 steps right of their point
+const axes = { elements: [{ id: 'a', kind: 'node' as const, type: 'geom-axes', at: { x: 0, y: 0 } }], junctions: [] };
+const axesOutline = () => ({ minX: -10, maxX: 12, minY: -10, maxY: 11 });
+eq(circuitBounds(axes, shapeOf)?.maxX, 9, 'without its outline, a part counts 5 steps about its point');
+eq(circuitBounds(axes, shapeOf, axesOutline), { minX: -14, maxX: 16, minY: -14, maxY: 15 }, 'Fit takes in the drawn outline');
+eq(circuitBounds({ ...axes, elements: [{ ...axes.elements[0], rotate: 90 }] }, shapeOf, axesOutline)?.maxY, 16, 'turned a quarter, the outline’s right is its top');
 
 // ─── snapping ───
 
@@ -230,6 +236,17 @@ const three: CircuitModel = {
   junctions: []
 };
 eq(findJunctions(three, shapeOf), [{ part: 'u', pin: 'out' }], 'three ends at a node’s pin: the dot is kept as that pin');
+const port: CircuitModel = {
+  elements: [
+    { id: 'w', kind: 'wire', points: [{ x: 0, y: 8 }, { part: 't1', pin: 'center' }], routes: ['--'] },
+    { id: 't1', kind: 'node', type: 'terminal', at: { x: 8, y: 8 } },
+    { id: 't2', kind: 'node', type: 'terminal', at: { x: 8, y: 0 } },
+    { id: 'w2', kind: 'wire', points: [{ x: 0, y: 0 }, { part: 't2', pin: 'center' }], routes: ['--'] },
+    { id: 'v', kind: 'path', type: 'voltage-between', a: { part: 't1', pin: 'center' }, b: { part: 't2', pin: 'center' }, voltage: { text: 'v_o' } }
+  ],
+  junctions: []
+};
+eq(findJunctions(port, shapeOf), [], 'a voltage between two terminals joins nothing: they stay open, without dots');
 
 // ─── edits ───
 
@@ -540,5 +557,15 @@ for (const part of CATALOGUE) for (const key of [part.tikz, ...(part.options || 
   eq(markLayout({ type: 'voltage-source', voltage: { text: 'v', dir: '<' }, current: I }, { preset: 'american' }).current, { side: -1, start: false, back: false, moved: false }, 'with v<: after, forwards, below');
   eq(keys({ voltage: { text: 'v', dir: '<' }, current: I }, 'voltage-source'), 'v<={$v$}, i={$i$}', 'and written as it was');
 }
+
+// a node's stand-in box while its symbol loads: never inside out, so a one-pin part logs no "rect width -1"
+for (const part of CATALOGUE.filter((p) => p.kind === 'node')) {
+  const box = placeholderBox(part.id);
+  if (!(box.maxX > box.minX && box.maxY > box.minY)) throw new Error(`${part.id}'s stand-in box is inside out: ${JSON.stringify(box)}`);
+}
+eq(placeholderBox('ground'), { minX: -1.5, maxX: 1.5, minY: -1.5, maxY: 1.5 }, 'a one-pin part stands in as a square');
+
+// a dimension's third handle can be dragged while Dimension is still picked; a wire, line or part still starts on one
+eq(['select', 'annotate:dimension', 'annotate:rect', 'part:resistor', 'wire', 'annotate:line', 'annotate:polygon'].map(grabsHandles), [true, true, true, false, false, false, false], 'which tools grab a handle');
 
 console.log('circuitikz.check: ok');

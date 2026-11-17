@@ -59,6 +59,13 @@ export const usesSetsOf25 = (model: unknown) => asCircuit(model).elements.some((
  * ponytail: any drawing given those three sets counts as one; keep the starter in the file if that ever misleads */
 export const withLaterSets = (sets: string[]) => (['spx-mech', 'spx-flow', 'spx-geom'].every((set) => sets.includes(set)) ? [...new Set([...sets, ...SETS_OF_2_5])] : sets);
 
+/** Annotate's tools drawn a point at a time, finished with a double-click or Return */
+export const POINT_BY_POINT = ['annotate:line', 'annotate:polygon', 'annotate:boundary', 'annotate:leader'];
+/** A tool that lets a press on a selected shape's handle drag the handle: Select, and the ones that draw a box or a
+ * dimension, which leave the new shape selected with its handles (a dimension's third moves its line out). The others
+ * start something new there, such as a wire or a resistor from a selected part's end. */
+export const grabsHandles = (tool: string) => ['select', 'annotate:rect', 'annotate:ellipse', 'annotate:dimension'].includes(tool);
+
 /** A part TeX draws a symbol for: all but Text, which the canvas writes itself. */
 export const drawsSymbol = (type: string) => !!PARTS.get(type)?.tikz;
 
@@ -267,6 +274,17 @@ export function placeholderShape(type: string): Shape {
   };
 }
 
+/**
+ * The box a node part is drawn as until its symbol comes, in grid steps from its point: inside its stand-in pins
+ * across, past them up and down. A part with one pin (ground, a supply, a terminal) has no width between pins, so it
+ * gets a 3 by 3 square, as one with none does.
+ */
+export function placeholderBox(type: string) {
+  const pins = Object.values(placeholderShape(type).pins);
+  if (pins.length < 2) return { minX: -1.5, maxX: 1.5, minY: -1.5, maxY: 1.5 };
+  return { minX: Math.min(...pins.map((q) => q.x)) + 0.5, maxX: Math.max(...pins.map((q) => q.x)) - 0.5, minY: Math.min(...pins.map((q) => q.y)) - 1.5, maxY: Math.max(...pins.map((q) => q.y)) + 1.5 };
+}
+
 const rad = (deg: number) => (deg * Math.PI) / 180;
 
 /** A node part's pin offset turned the way TikZ turns it for `rotate=…, xscale=-1, yscale=-1`: flip first, then rotate. */
@@ -425,7 +443,8 @@ export function findJunctions(model: CircuitModel, shapeOf: ShapeOf): End[] {
       const path = wirePath(el.points.map((p) => pos(p)), el.routes);
       path.forEach((p, i) => add(p, i === 0 || i === path.length - 1 ? 1 : 2));
       for (let i = 1; i < path.length; i += 1) legs.push([path[i - 1], path[i]]);
-    } else if (el.kind === 'path') {
+    } else if (el.kind === 'path' && PARTS.get(el.type)?.tikz !== 'open') {
+      // (Voltage between two points marks a voltage and joins nothing, so a port's terminal stays open)
       add(pos(el.a), 1, isPoint(el.a) ? undefined : el.a);
       add(pos(el.b), 1, isPoint(el.b) ? undefined : el.b);
     } else if (el.kind === 'node' && !SETS_OF_2_5.includes(PARTS.get(el.type)?.set ?? '')) {
@@ -456,11 +475,26 @@ export function newId(model: CircuitModel) {
   return `e${counter}`;
 }
 
-/** The drawing's extent for Fit and the overview, with room for symbols and labels. */
-export function circuitBounds(model: CircuitModel, shapeOf: ShapeOf) {
+/** A box in grid steps, y up. */
+export type Outline = { minX: number; maxX: number; minY: number; maxY: number };
+
+/**
+ * The drawing's extent for Fit and the overview, with room for symbols and labels. A placed part counts 5 grid steps
+ * about its point and its pins, and its drawn symbol's outline (from its point, as outlineOf gives it once the symbol
+ * has loaded) turned and flipped with it, so a large symbol such as the axes or an antenna's waves fits in the view.
+ */
+export function circuitBounds(model: CircuitModel, shapeOf: ShapeOf, outlineOf?: (el: NodePart) => Outline | undefined) {
   const { pos } = locator(model, shapeOf);
+  const drawn = (el: NodePart): Pt[] => {
+    const o = outlineOf?.(el);
+    if (!o) return [];
+    return [{ x: o.minX, y: o.minY }, { x: o.maxX, y: o.minY }, { x: o.minX, y: o.maxY }, { x: o.maxX, y: o.maxY }].map((c) => {
+      const d = placeNodeOffset(el, c);
+      return { x: el.at.x + d.x, y: el.at.y + d.y };
+    });
+  };
   const points = model.elements.flatMap((el): Pt[] => el.kind === 'node'
-    ? [{ x: el.at.x - 5, y: el.at.y - 5 }, { x: el.at.x + 5, y: el.at.y + 5 }, ...pinsOfElement(el, shapeOf, pos).map((pin) => pin.at)]
+    ? [{ x: el.at.x - 5, y: el.at.y - 5 }, { x: el.at.x + 5, y: el.at.y + 5 }, ...pinsOfElement(el, shapeOf, pos).map((pin) => pin.at), ...drawn(el)]
     : el.kind === 'path' ? [pos(el.a), pos(el.b)] : el.kind === 'wire' ? el.points.map((point) => pos(point)) : el.points);
   if (!points.length) return null;
   return { minX: Math.min(...points.map((p) => p.x)) - 4, maxX: Math.max(...points.map((p) => p.x)) + 4, minY: Math.min(...points.map((p) => p.y)) - 4, maxY: Math.max(...points.map((p) => p.y)) + 4 };

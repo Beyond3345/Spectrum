@@ -12,7 +12,7 @@ import { FONT_SCALE, HEAD_CM, MARK_CROSS_CM, MARK_PT, MATERIALS, PATTERNS, PATTE
 import type { Preset } from './annotate';
 import { DEFAULT_LENGTH, VOLTAGE_SHIFT, readStyle, symbolOptions } from './code';
 import { copy, detach, flip, moveBy, newNodePart, newPathPart, paste, remove, rotate } from './edit';
-import { GRID_CM, PARTS, PT_PER_GRID, asCircuit, drawsSymbol,circuitBounds, isPart, isPoint, locator, newId, pathFrame, pinAxis, pinsOfElement, placeholderShape, snapDelta, variantKey, wirePath } from './model';
+import { GRID_CM, PARTS, POINT_BY_POINT, PT_PER_GRID, grabsHandles, asCircuit, drawsSymbol,circuitBounds, isPart, isPoint, locator, newId, pathFrame, pinAxis, pinsOfElement, placeholderBox, placeholderShape, snapDelta, variantKey, wirePath } from './model';
 import type { Annotation, CircuitModel, Element, End, Mark, NodePart, PathPart, Pt, Route, ShapeOf, SnapPin, Wire } from './model';
 import { labelSize, plain, scriptRuns, svgRuns } from '../../sketch';
 import { markLayout, nodeNameAt, pathLabelAt, pinLabelSpots, plusAtStart } from './labels';
@@ -52,12 +52,13 @@ const isOpen = (type: string) => PARTS.get(type)?.tikz === 'open';
 /** where a path part placed with a click, no drag, ends */
 const clickEnd = (type: string, a: Pt): Pt => (isOpen(type) ? { x: a.x, y: a.y - 8 } : { x: a.x + 8, y: a.y });
 
-/** Annotate's tools drawn a point at a time, finished with a double-click or Return */
-const POINT_BY_POINT = ['annotate:line', 'annotate:polygon', 'annotate:boundary', 'annotate:leader'];
 /** and the ones a click puts down */
 const CLICK_TO_PLACE = ['annotate:cross', 'annotate:surface', 'annotate:mark'];
 
 const autoRoute = (from: Pt, to: Pt): Route => (Math.abs(from.x - to.x) < 1e-6 || Math.abs(from.y - to.y) < 1e-6 ? '--' : '-|');
+
+/** text typed as TeX (Text, a part's text inside it) prints upright unless it brings its own $…$, as the canvas then shows it */
+const typedStyle = (tex: string) => (tex.includes('$') ? undefined : { fontStyle: 'normal' });
 
 /** an annotation's line widths on screen at 100 %, as the wires' 1.4 px stands for circuitikz's thin */
 const ANNOTATION_PX = { thin: 1.4, semithick: 1.9, thick: 2.4, 'very thick': 3.4 };
@@ -102,6 +103,11 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   const { symbol, image, loading, error } = useSymbols(ctikz, used);
   const symbolOf = (type: string, options: string[] = []): CircuitSymbol | undefined => symbol(variantKey(type, options));
   const shapeOf: ShapeOf = (type, options) => symbolOf(type, options)?.shape || placeholderShape(type);
+  /** a placed part's drawn outline, once its symbol has loaded, for Fit */
+  const outlineOf = (el: NodePart) => {
+    const sym = symbolOf(el.type, el.options);
+    return sym && symbolOutline(sym);
+  };
   setShapeOf(shapeOf);
   const { pos, byId } = locator(shown, shapeOf);
   const selection = rawSelection.filter((id) => byId.has(id));
@@ -121,7 +127,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
 
   const fit = () => {
     if (!size.width || !size.height) return;
-    const bounds = circuitBounds(shown, shapeOf);
+    const bounds = circuitBounds(shown, shapeOf, outlineOf);
     if (!bounds) {
       setView({ x: size.width / 2, y: size.height / 2, zoom: 1 });
       return;
@@ -129,13 +135,21 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
     const { minX, maxX, minY, maxY } = bounds;
     const zoom = Math.min(MAX_ZOOM / 2, Math.max(MIN_ZOOM, Math.min(size.width / ((maxX - minX) * STEP_PX), size.height / ((maxY - minY) * STEP_PX))));
     const k = STEP_PX * zoom;
-    setView({ zoom, x: size.width / 2 - ((minX + maxX) / 2) * k, y: size.height / 2 + ((minY + maxY) / 2) * k });
+    const next = { zoom, x: size.width / 2 - ((minX + maxX) / 2) * k, y: size.height / 2 + ((minY + maxY) / 2) * k };
+    fitted.current = next;
+    setView(next);
   };
+  /** the view the first fit gave, until the user pans or zooms: fitted again when the symbols' outlines arrive */
+  const fitted = useRef<View | null>(null);
 
   useEffect(() => {
     // the first view, once the box has a size
     if (!view && size.width) fit();
   }, [size.width, size.height]);
+  useEffect(() => {
+    // the first fit used stand-ins when the symbols were still loading, which a large symbol can outgrow
+    if (!loading && view && view === fitted.current) fit();
+  }, [loading]);
 
   const v = view || { x: 0, y: 0, zoom: 1 };
   const k = STEP_PX * v.zoom;
@@ -219,6 +233,20 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
     if (e.button !== 0) return;
     const grid = toGrid(at);
     const target = (e.target as globalThis.Element).closest('[data-id], [data-handle]') as HTMLElement | SVGElement | null;
+    const handle = target?.dataset.handle;
+
+    // a selected shape's handle, even with its tool still picked: a dimension's third handle right after drawing it
+    if (handle && grabsHandles(tool)) {
+      const [id, index] = handle.split(':');
+      const el = byId.get(id);
+      if (!el) return;
+      const loose = detach(model, new Set([id]), shapeOf);
+      const looseEl = loose.elements.find((x) => x.id === id)!;
+      const point = looseEl.kind === 'path' ? (index === '0' ? looseEl.a : looseEl.b) : looseEl.kind === 'wire' || looseEl.kind === 'annotation' ? looseEl.points[Number(index)] : null;
+      if (!point || !isPoint(point)) return;
+      setDrag({ kind: 'handle', start: at, base: loose, id, index: Number(index), from: point, fixed: allPins(model, (x) => x.id === id) });
+      return;
+    }
 
     if (tool === 'wire' || POINT_BY_POINT.includes(tool)) {
       const line = tool !== 'wire';
@@ -279,19 +307,6 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
       const base = { ...model, elements: [...model.elements, placed] };
       setDraft(base);
       setDrag({ kind: 'place', base, id: placed.id, from, fixed });
-      return;
-    }
-
-    const handle = target?.dataset.handle;
-    if (handle) {
-      const [id, index] = handle.split(':');
-      const el = byId.get(id);
-      if (!el) return;
-      const loose = detach(model, new Set([id]), shapeOf);
-      const looseEl = loose.elements.find((x) => x.id === id)!;
-      const point = looseEl.kind === 'path' ? (index === '0' ? looseEl.a : looseEl.b) : looseEl.kind === 'wire' || looseEl.kind === 'annotation' ? looseEl.points[Number(index)] : null;
-      if (!point || !isPoint(point)) return;
-      setDrag({ kind: 'handle', start: at, base: loose, id, index: Number(index), from: point, fixed: allPins(model, (x) => x.id === id) });
       return;
     }
 
@@ -646,7 +661,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
         {markSketch(el.voltage, 'v', f, glyph, besides, { side: layout.voltage, signsAt: layout.signsAt }, s)}
         {layout.current && markSketch(el.current, 'i', f, glyph, besides, layout.current, s)}
         {layout.flow && markSketch(el.flow, 'f', f, glyph, besides, layout.flow, s)}
-        {PARTS.get(el.type)?.text && el.text?.trim() && text(f.mid, el.text)}
+        {PARTS.get(el.type)?.text && el.text?.trim() && text(f.mid, el.text, 'ckt-text', fontSize, typedStyle(el.text))}
         {[poleA, poleB].map((pole, i) =>
           pole ? <circle key={i} className={`ckt-pole ${pole === 'o' ? 'open' : ''}`} cx={toScreen(i ? b : a).x} cy={toScreen(i ? b : a).y} r={Math.max(2.5, k * 0.22)} /> : null
         )}
@@ -667,17 +682,14 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
           {text(el.at, content ? el.text! : 'Text', content ? 'ckt-text' : 'ckt-text ckt-sketch-text', fontSize * (el.font ? FONT_SCALE[el.font] : 1), {
             fill: content ? ink(el.colour) : undefined,
             fontWeight: el.bold ? 700 : undefined,
-            fontStyle: el.italic ? 'italic' : undefined
+            fontStyle: el.italic ? 'italic' : typedStyle(el.text || '')?.fontStyle
           })}
         </g>
       );
     }
     const rotation = el.rotate || 0;
     const turn = `rotate(${-rotation}) scale(${el.flipX ? -1 : 1},${el.flipY ? -1 : 1})`;
-    const pins = Object.values(placeholderShape(el.type).pins);
-    const box = pins.length
-      ? { minX: Math.min(...pins.map((q) => q.x)) + 0.5, maxX: Math.max(...pins.map((q) => q.x)) - 0.5, minY: Math.min(...pins.map((q) => q.y)) - 1.5, maxY: Math.max(...pins.map((q) => q.y)) + 1.5 }
-      : { minX: -1.5, maxX: 1.5, minY: -1.5, maxY: 1.5 };
+    const box = placeholderBox(el.type);
     // the pin letters, as TikZ's anchor puts each: its near corner a node's inner sep from the pin
     const letters = el.pinLabels && !ghost
       ? pinLabelSpots(el).map(({ pin, letter, dir }) => {
@@ -700,7 +712,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
             <rect className={`ckt-outline ${selected.has(el.id) ? 'ckt-halo-box' : ''}`} x={box.minX} y={box.minY} width={box.maxX - box.minX} height={box.maxY - box.minY} vectorEffect="non-scaling-stroke" />
           </g>
         )}
-        {content.trim() && text(el.at, el.text || '')}
+        {content.trim() && text(el.at, el.text || '', 'ckt-text', fontSize, typedStyle(el.text || ''))}
         {el.name && !ghost && text(nameAt, el.name, 'ckt-text ckt-name')}
         {letters.map(({ pin, letter, at }) => <g key={pin}>{text(at, letter, 'ckt-text ckt-pin-label', fontSize * 0.7)}</g>)}
       </g>
@@ -913,7 +925,7 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   const wirePreview = wire && hover ? [...wire.map((p) => pos(p)), hover] : null;
   const previewRoutes = wirePreview?.slice(1).map((p, i): Route => (drawingLine.current ? '--' : autoRoute(wirePreview[i], p)));
   const cursor = space || drag?.kind === 'pan' ? 'grab' : tool === 'select' ? 'default' : 'crosshair';
-  const bounds = circuitBounds(shown, shapeOf);
+  const bounds = circuitBounds(shown, shapeOf, outlineOf);
   const viewport = { x: -v.x / k, y: -v.y / k, width: size.width / k, height: size.height / k };
   const overview = {
     minX: Math.min(bounds?.minX ?? viewport.x, viewport.x),
