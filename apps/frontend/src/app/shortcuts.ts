@@ -237,7 +237,8 @@ function eventKey(e: KeyboardEvent) {
 
 export function matchesShortcut(binding: string, e: KeyboardEvent) {
   const p = parse(binding);
-  if (!p) return false;
+  // off a Mac no shortcut uses the Windows key, so a press with it is the system's (Win-W is not W)
+  if (!p || (!IS_MAC && e.metaKey)) return false;
   const mod = IS_MAC ? e.metaKey : e.ctrlKey;
   const ctrl = IS_MAC ? e.ctrlKey : false;
   return p.mod === mod && p.ctrl === ctrl && p.alt === e.altKey && p.shift === e.shiftKey && p.key === eventKey(e);
