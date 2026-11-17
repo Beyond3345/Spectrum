@@ -17,20 +17,20 @@
 }
 
 /* the editor's toolbar, the sidebars' rows and tabs: the icon in its area's colour, a chosen one on a soft tint */
-:root[data-colour-style='spectrum'] :is(.icon-btn, .nav-row, .tab, .save-version)[class*='area-'] > .sf {
+:root[data-colour-style='spectrum'] :is(.icon-btn, .nav-row, .tab, .save-version):is([class*='area-'], [class*='hue-']) > .sf {
   color: var(--area);
 }
 
-:root[data-colour-style='spectrum'] :is(.icon-btn[class*='area-'].active, .sidebar-scroll .nav-row[class*='area-'].active) {
+:root[data-colour-style='spectrum'] :is(.icon-btn.active, .sidebar-scroll .nav-row.active):is([class*='area-'], [class*='hue-']) {
   background: color-mix(in srgb, var(--area-band) 16%, transparent);
 }
 
-:root[data-colour-style='spectrum'] .tab[class*='area-'].active::after {
+:root[data-colour-style='spectrum'] .tab:is([class*='area-'], [class*='hue-']).active::after {
   background: var(--area);
 }
 
 /* the projects page's New */
-:root[data-colour-style='spectrum'] .btn.inverse.area-projects {
+:root[data-colour-style='spectrum'] .btn.inverse.hue-blue {
   background: var(--area-band);
   color: var(--area-on-band);
 }

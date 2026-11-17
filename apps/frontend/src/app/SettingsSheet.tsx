@@ -64,7 +64,7 @@ import { IS_DESKTOP, claimDefaultHandler, isDefaultHandler, pickFolder, releaseD
 import { toast } from './Toast';
 import { IS_MAC, IS_WINDOWS, OS_NAME, tildify } from './platform';
 import { ACCENTS, PDF_PAGES_DARK, PDF_PAGES_LIGHT, TAG_COLOURS, useDarkMode } from './appearance';
-import type { Area } from './appearance';
+import type { IconColour } from './appearance';
 import { groupSkills, projectSkills, skillId, skillOn } from './skills';
 
 // the notices are long, so they load only when asked for
@@ -159,24 +159,26 @@ const SECTION_GROUPS: [string, [Section, string, string][]][] = [
 ];
 
 /** each pane's area, for its icon's colour in the Spectrum colour style; Symbols' graphite for the general ones */
-const SECTION_AREAS: Record<Section, Area> = {
-  appearance: 'symbols',
-  editor: 'writing',
-  shortcuts: 'symbols',
-  system: 'symbols',
-  engines: 'writing',
-  language: 'writing',
-  composer: 'composer',
-  checkpoints: 'references',
-  projects: 'projects',
-  github: 'references',
-  zotero: 'references',
-  transfer: 'projects',
-  models: 'assistant',
-  personas: 'assistant',
-  skills: 'assistant',
-  agents: 'assistant',
-  search: 'references'
+// each pane's icon in its own colour, different from its neighbours in the list (appearance.ts ICON_COLOURS);
+// GitHub and Zotero in their own brand colours
+const SECTION_HUES: Record<Section, IconColour> = {
+  appearance: 'pink',
+  editor: 'blue',
+  shortcuts: 'indigo',
+  system: 'gray',
+  engines: 'orange',
+  language: 'red',
+  composer: 'green',
+  checkpoints: 'teal',
+  projects: 'cyan',
+  github: 'github',
+  zotero: 'zotero',
+  transfer: 'purple',
+  models: 'purple',
+  personas: 'mint',
+  skills: 'orange',
+  agents: 'teal',
+  search: 'blue'
 };
 
 const THEMES: [Theme, string, string][] = [
@@ -449,7 +451,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
             <div key={heading} className="settings-nav-group" role="group" aria-label={heading}>
               <div className="settings-nav-heading">{heading}</div>
               {sections.map(([value, label, icon]) => (
-                <button key={value} className={`nav-row area-${SECTION_AREAS[value]} ${section === value ? 'active' : ''}`} onClick={() => value !== section && leave(() => (setSection(value), setLicences(false)))}>
+                <button key={value} className={`nav-row hue-${SECTION_HUES[value]} ${section === value ? 'active' : ''}`} onClick={() => value !== section && leave(() => (setSection(value), setLicences(false)))}>
                   <span className="nav-tile">
                     <Icon name={icon} />
                   </span>
@@ -488,7 +490,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                   onChange={(colourStyle) => update({ colourStyle })}
                 />
               </div>
-              <div className="field-hint">Spectrum gives each part of the app its own colour, round the colour wheel. Simple keeps to grey and your accent colour.</div>
+              <div className="field-hint">Spectrum gives each icon its own colour, so each one stands out from its neighbours. Simple keeps to grey and your accent colour.</div>
 
               <h3 id="settings-accent" className="form-section-title">Accent colour</h3>
               <div className="row">

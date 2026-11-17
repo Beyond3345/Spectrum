@@ -3252,10 +3252,10 @@ function Editor({ projectId }: { projectId: string }) {
                   setFilter('');
                 }}
                 items={[
-                  { value: 'files', label: 'Files', className: 'area-writing' },
-                  { value: 'research', label: 'Research', className: 'area-references' },
+                  { value: 'files', label: 'Files', className: 'hue-blue' },
+                  { value: 'research', label: 'Research', className: 'hue-cyan' },
                   // the assistant keeps them as it works
-                  { value: 'todos', label: 'To-dos', badge: todos.open || undefined, className: 'area-assistant' }
+                  { value: 'todos', label: 'To-dos', badge: todos.open || undefined, className: 'hue-orange' }
                 ]}
               />
               <span className="spacer" />
@@ -3420,20 +3420,20 @@ function Editor({ projectId }: { projectId: string }) {
             </div>
             {/* the editor's tools, under the tabs */}
             <div className="editor-toolbar">
-              <MenuButton icon="plus.circle" className="icon-btn area-writing" title="Insert" items={insertItems} disabled={!activePath} />
+              <MenuButton icon="plus.circle" className="icon-btn hue-blue" title="Insert" items={insertItems} disabled={!activePath} />
               {/* a narrow editor leaves these to Insert (+) */}
-              <button className="icon-btn float-button area-writing" title="Insert figure" aria-label="Insert figure" onClick={() => openFloats('figure')}>
+              <button className="icon-btn float-button hue-mint" title="Insert figure" aria-label="Insert figure" onClick={() => openFloats('figure')}>
                 <Icon name="photo" />
               </button>
-              <button className="icon-btn float-button area-writing" title="Insert table" aria-label="Insert table" onClick={() => openFloats('table')}>
+              <button className="icon-btn float-button hue-orange" title="Insert table" aria-label="Insert table" onClick={() => openFloats('table')}>
                 <Icon name="tablecells" />
               </button>
-              <button className="icon-btn float-button area-composer" title="Draw a diagram" aria-label="Draw a diagram" onClick={() => drawDiagram()}>
+              <button className="icon-btn float-button hue-green" title="Draw a diagram" aria-label="Draw a diagram" onClick={() => drawDiagram()}>
                 <Icon name="pencil" />
               </button>
               {/* aria-disabled rather than disabled, so its tooltip still says why */}
               <button
-                className="icon-btn float-button area-writing"
+                className="icon-btn float-button hue-pink"
                 title={jyutpingOk ? 'Jyutping' : 'Jyutping works in LaTeX documents only'}
                 aria-label="Jyutping"
                 aria-disabled={!jyutpingOk}
@@ -3442,11 +3442,11 @@ function Editor({ projectId }: { projectId: string }) {
                 <Icon name="custom.jyut" />
               </button>
               <span className="spacer" />
-              <button className={`icon-btn area-assistant ${composerOpen ? 'active' : ''}`} title={withShortcut(settings.shortcuts, 'Assistant', 'assistant')} aria-label="Assistant" aria-pressed={composerOpen} onClick={toggleComposer}>
+              <button className={`icon-btn hue-purple ${composerOpen ? 'active' : ''}`} title={withShortcut(settings.shortcuts, 'Assistant', 'assistant')} aria-label="Assistant" aria-pressed={composerOpen} onClick={toggleComposer}>
                 <Icon name="sparkles" />
               </button>
               <button
-                className={`icon-btn area-writing ${panel === 'grammar' ? 'active' : ''}`}
+                className={`icon-btn hue-red ${panel === 'grammar' ? 'active' : ''}`}
                 title={withShortcut(settings.shortcuts, 'Check grammar', 'grammar')}
                 aria-label="Check grammar"
                 aria-pressed={panel === 'grammar'}
@@ -3455,7 +3455,7 @@ function Editor({ projectId }: { projectId: string }) {
                 <Icon name="text.badge.checkmark" />
               </button>
               <button
-                className={`icon-btn area-writing ${panel === 'insights' ? 'active' : ''}`}
+                className={`icon-btn hue-cyan ${panel === 'insights' ? 'active' : ''}`}
                 title="Document insights"
                 aria-label="Document insights"
                 aria-pressed={panel === 'insights'}
@@ -3480,7 +3480,7 @@ function Editor({ projectId }: { projectId: string }) {
                 )}
               </button>
               <button
-                className={`icon-btn agent-toggle area-assistant ${panel === 'agent' ? 'active' : ''}`}
+                className={`icon-btn agent-toggle hue-indigo ${panel === 'agent' ? 'active' : ''}`}
                 title={agentStatus ? `Agent · ${STATUS_TEXT[agentStatus]}` : 'Agent'}
                 aria-label={agentStatus ? `Agent, ${STATUS_TEXT[agentStatus].toLowerCase()}` : 'Agent'}
                 aria-pressed={panel === 'agent'}
@@ -3639,7 +3639,7 @@ function Editor({ projectId }: { projectId: string }) {
                 {layout.view === 'pdf' && sidebarButton}
                 {!panel && compileSplit}
                 <button
-                  className="btn save-version area-references"
+                  className="btn save-version hue-teal"
                   onClick={saveVersionNow}
                   disabled={savingVersion}
                   title={withShortcut(settings.shortcuts, 'Save checkpoint', 'saveVersion')}

@@ -243,11 +243,11 @@ Settings are saved as they are changed, so there is no Save button. A few sectio
 
 === Colour style
 
-The colour style decides how much colour the application itself uses. Spectrum, the default, gives each part of the application its own colour, taken from the same spectrum as the chapters of this handbook (@fig-start-colour-style). Specifically, the editor's tools are orange, the assistant and its to-dos gold, references, checkpoints and GitHub olive, the diagram composer green and each composer the colour of its own chapter, while the general sections of Settings are graphite. The colours appear on the icons of the editor's toolbar, the sidebars and the sections of Settings, on the tab and the view that are chosen, on the #ui[New] button and in the diagram chooser, whose categories and cards carry the colour of the composer they open.
+The colour style decides how much colour the application itself uses. Spectrum, the default, gives each symbol its own colour from Apple's system colours, so every icon in a list stands out from its neighbours (@fig-start-colour-style). Specifically, the icons of the editor's toolbar, the sidebars, the projects page and the sections of Settings are each a different colour, and the tab and the view that are chosen take their icon's colour. GitHub and Zotero keep their own colours, black and red. The diagram chooser's categories and cards, each composer's chip and the headings of its tools take the colour of that composer's chapter in this handbook.
 
 Simple keeps to grey and the accent colour, as Spectrum looked before version 2.5. Either way the labels, icons and selection marks stay the same, so nothing is shown by colour alone, and errors, warnings and success keep their red, orange and green. The colour style goes to your other computers with the rest of the appearance.
 
-#shots(("figures/01-getting-started/colour-style-simple.png", "figures/01-getting-started/colour-style-spectrum.png"), [The editor in the Simple colour style, above, and in Spectrum, below. In Spectrum each tool's icon takes the colour of its part of the application, and the chosen tab is underlined in its colour.], columns: 1) <fig-start-colour-style>
+#shots(("figures/01-getting-started/colour-style-simple.png", "figures/01-getting-started/colour-style-spectrum.png"), [The editor in the Simple colour style, above, and in Spectrum, below. In Spectrum each tool's icon has a colour of its own, and the chosen tab is underlined in its colour.], columns: 1) <fig-start-colour-style>
 
 === The editor's look
 

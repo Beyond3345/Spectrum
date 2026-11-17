@@ -9,6 +9,30 @@ import PALETTE from './palette.json';
 export type Area = keyof typeof PALETTE;
 const AREAS = Object.entries(PALETTE) as [Area, (typeof PALETTE)[Area]][];
 
+/**
+ * The Spectrum style's icons: each symbol in one of Apple's system colours (light, dark), as peBands colours its
+ * pages, so every icon in a list stands out from its neighbours; GitHub and Zotero in their own brand colours. An
+ * element takes one with the class hue-<name>, which sets the same tokens as an area.
+ */
+export const ICON_COLOURS = {
+  red: ['#ff3b30', '#ff453a'],
+  orange: ['#ff9500', '#ff9f0a'],
+  yellow: ['#ffcc00', '#ffd60a'],
+  green: ['#34c759', '#30d158'],
+  mint: ['#00c7be', '#63e6e2'],
+  teal: ['#30b0c7', '#40c8e0'],
+  cyan: ['#32ade6', '#64d2ff'],
+  blue: ['#007aff', '#0a84ff'],
+  indigo: ['#5856d6', '#5e5ce6'],
+  purple: ['#af52de', '#bf5af2'],
+  pink: ['#ff2d55', '#ff375f'],
+  brown: ['#a2845e', '#ac8e68'],
+  gray: ['#8e8e93', '#98989d'],
+  github: ['#1f2328', '#f0f6fc'],
+  zotero: ['#cc2936', '#e5484d']
+} as const;
+export type IconColour = keyof typeof ICON_COLOURS;
+
 /** macOS-like accents that read on light and dark surfaces alike */
 export const ACCENTS: [Accent, string, string][] = [
   ['system', `Follow ${OS_NAME}`, ''],
@@ -125,7 +149,17 @@ export function paletteCss() {
         ? `--area: ${c.dark}; --area-text: ${c.dark};`
         : `--area: ${c.light}; --area-text: ${accentInk(c.light, false, '#f7f7f8')}; --area-band: ${c.band}; --area-on-band: ${accentText(c.band)};`;
       return `${root} .area-${area} { ${tokens} }`;
-    }).join('\n');
+    })
+      .concat(
+        // after the areas, so an icon's own colour wins over its area's; text still meets 4.5:1 on the window's grey
+        Object.entries(ICON_COLOURS).map(([name, [light, darkOne]]) => {
+          const tokens = dark
+            ? `--area: ${darkOne}; --area-band: ${darkOne}; --area-text: ${darkOne};`
+            : `--area: ${light}; --area-band: ${light}; --area-text: ${accentInk(light, false, '#f7f7f8')}; --area-on-band: ${accentText(light)};`;
+          return `${root} .hue-${name} { ${tokens} }`;
+        })
+      )
+      .join('\n');
   return [
     `:root { --spectrum-ink: linear-gradient(90deg, ${hues.map(([, c]) => c.light).join(', ')}); --spectrum-band: linear-gradient(90deg, ${hues.map(([, c]) => c.band).join(', ')}); --spectrum-wheel: conic-gradient(${hues.map(([, c], i) => `${c.band} ${(i * 360) / hues.length}deg ${((i + 1) * 360) / hues.length}deg`).join(', ')}); }`,
     rules(false, `:root${on}`),

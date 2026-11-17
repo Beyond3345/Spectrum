@@ -6,7 +6,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ### Added
 
-- A Colour style in Settings › Appearance. Spectrum, the new default, gives each part of the app its own colour from the handbook's palette: Settings' sections on coloured squares, the editor's tools and tabs, the projects page's views and New button, and each composer's cards, chip and rail headings. Simple keeps the look of 2.4
+- A Colour style in Settings › Appearance. Spectrum, the new default, gives each icon its own colour from Apple's system colours (the editor's tools and tabs, the projects page's views and New button, and Settings' sections), with GitHub and Zotero in their own colours, and gives each composer's cards, chip and rail headings the colour of its chapter in the handbook. Simple keeps the look of 2.4
 - A Spectrum accent colour: Compile and progress bars run through the colours of the wheel, and the rest of the app uses the palette's blue
 - Compile with page colour, in the PDF's ··· menu: the project's PDF takes the page colour the preview shows (Cream, Sepia or Grey), so it looks the same in any PDF reader, when printed and in presentation mode. It is saved with the project's compile settings, so it travels with the project, and changing it compiles again. LaTeX, Typst and Markdown all take it without any change to the source, and a page colour the document sets itself wins
 - Every diagram canvas:
