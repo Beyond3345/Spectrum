@@ -5,7 +5,7 @@ import { promises as fs } from 'fs';
 import { execFile, spawn } from 'child_process';
 import { once } from 'events';
 import { promisify } from 'util';
-import { DATA_DIR } from '../config/constants.js';
+import { CJK_FONTS_DIR, DATA_DIR } from '../config/constants.js';
 import { ensureDir, zipFiles } from '../utils/fsUtils.js';
 import { readProjectSettings } from './projectSettings.js';
 import { BUILT_IN_TYPST_VERSION, builtInTypst, typstFor } from './engineService.js';
@@ -78,6 +78,16 @@ export function parseTypstDiagnostics(log, projectRoot, cwd = projectRoot, p = p
   return diagnostics;
 }
 
+/**
+ * Typst's --font-path arguments: the project's fonts/ folder first, then the Chinese fonts Spectrum ships (which every
+ * LaTeX compile finds too), each only when it is there.
+ */
+export async function typstFontArgs(projectRoot) {
+  const folders = [path.join(projectRoot, 'fonts'), CJK_FONTS_DIR];
+  const found = await Promise.all(folders.map(async (dir) => ((await fs.stat(dir).catch(() => null))?.isDirectory() ? ['--font-path', dir] : [])));
+  return found.flat();
+}
+
 /** Every label in a document and its one-level includes: Typst's eval finds a heading's label by querying it. */
 async function labelNames(projectRoot, absMain) {
   const labels = new Set();
@@ -108,8 +118,7 @@ export async function typstElements(projectRoot, doc, fallback = '') {
   // a lone name in (…) is a grouping, not an array: the trailing comma keeps it one
   const names = (await labelNames(projectRoot, absMain)).map((name) => JSON.stringify(name));
   const namesArg = names.length ? names.join(', ') + ',' : '';
-  const fontFolder = path.join(projectRoot, 'fonts');
-  const fonts = (await fs.stat(fontFolder).catch(() => null))?.isDirectory() ? ['--font-path', fontFolder] : [];
+  const fonts = await typstFontArgs(projectRoot);
   for (const typst of new Set([executable, builtInTypst()].filter(Boolean))) {
     try {
       const { stdout } = await execFileAsync(typst, ['eval', '--in', absMain, '--root', projectRoot, '--format', 'json', ...fonts, ELEMENTS.replace('NAMES', namesArg)], {
@@ -362,8 +371,7 @@ async function typstSetup(projectRoot, options) {
     }
     return { error: { ok: false, error: 'Typst isn’t available in this copy of Spectrum.' } };
   }
-  const fontFolder = path.join(projectRoot, 'fonts');
-  const fonts = (await fs.stat(fontFolder).catch(() => null))?.isDirectory() ? ['--font-path', fontFolder] : [];
+  const fonts = await typstFontArgs(projectRoot);
   const env = {
     ...process.env,
     // Spectrum's own cache is never passed into an agent's sandbox: there the agent's home keeps it. A scratch build

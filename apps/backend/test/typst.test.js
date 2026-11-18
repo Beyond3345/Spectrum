@@ -96,6 +96,17 @@ test('a Typst project compiles and writes its PDF beside the main file', async (
   assert.ok((await fs.stat(path.join(dir, 'main.pdf'))).size > 100);
 });
 
+test('a Typst document finds the Chinese fonts Spectrum ships, as LaTeX does', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const { CJK_FONTS_DIR } = await import('../src/config/constants.js');
+  const fonts = await fs.readdir(CJK_FONTS_DIR).catch(() => []);
+  if (!fonts.includes('NotoSerifSC-Regular.otf')) return t.skip('the bundled Chinese fonts are not in this checkout');
+  const project = await projectWith('typst-cjk', '#set text(font: "Noto Serif SC")\n你好\n');
+  const result = await runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto' });
+  assert.equal(result.ok, true, result.error);
+  assert.deepEqual(result.errors, []);
+});
+
 test('a kept Typst follows each edit, error and fix, and stops when its project closes', async (t) => {
   if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
   if (process.platform === 'win32') return t.skip('pgrep');
