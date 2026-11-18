@@ -239,6 +239,11 @@ eq(markdownGot.equations.map((e) => [e.text, e.line]), [['E = m c^2', 20]], 'Mar
 eq(markdownGot.labels.map((l) => l.label), ['sec:intro', 'fig:flow', 'tab:results'], 'Markdown labels');
 eq(markdownGot.citations.map((c) => [c.key, c.count, c.line]), [['knuth84', 1, 10], ['lamport94', 1, 10]], 'Markdown citations');
 eq(markdownGot.metadata, { title: 'A Markdown Paper', authors: ['Ada Lovelace', 'Charles Babbage'], keywords: ['markdown', 'writing'], date: '2026-10-25', abstract: 'A short abstract.' }, 'Markdown metadata');
+eq(
+  scanInsights([{ path: 'main.md', text: ['---', 'title: T', 'author:', '  - name: Alex Chan', '  - Sam Lee', 'abstract: |', '  We metered three', '  buildings.', 'date: 2026-11-19', '---', ''].join(NEWLINE) }], 'main.md').metadata,
+  { title: 'T', authors: ['Alex Chan', 'Sam Lee'], keywords: [], date: '2026-11-19', abstract: 'We metered three buildings.' },
+  'a block-scalar abstract and authors given by name'
+);
 eq(scanTodos([{ path: 'main.typ', text: typstDoc }, { path: 'main.md', text: markdownDoc }]).map((t) => [t.file, t.line, t.text]), [['main.typ', 7, 'add a conclusion'], ['main.md', 24, 'add a conclusion']], 'Typst and Markdown to-dos');
 
 console.log('insights: all checks passed');
