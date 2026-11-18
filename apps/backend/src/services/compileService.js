@@ -76,6 +76,22 @@ const INDEXERS = [
 ];
 // each glossary's files, as the glossaries package names them in the .aux: \@newglossary{name}{log}{out}{in}
 const NEW_GLOSSARY = /\\@newglossary\{[^}]*\}\{[^}]*\}\{([^}]*)\}\{([^}]*)\}/g;
+// What makeglossaries (Perl) and makeglossaries-lite (Lua) take from the .aux and paste into a command line for the
+// shell, or open as Perl opens a name ('|program' runs it): the style file, each glossary's extensions, the sort order,
+// xindy's language and code page, makeindex's extra options, the indexer's own name and the chapters' .aux files. A
+// document writes its own .aux, so one of them (or the document's name) that a shell would read as more than a name,
+// options that aren't plain switches or an indexer that isn't one keep both from running
+const GLOSSARY_SETTING = /\\@(istfilename|newglossary|glsorder|xdylanguage|gls@codepage|gls@extramakeindexopts|glsmakeindexappname|input)(?![A-Za-z@])(.*)$/gm;
+const SHELL_READS = /[$`\\;&|<>^%\r\n]/;
+const GLOSSARY_RULES = {
+  'gls@extramakeindexopts': /^\s*(?:\[1\]\{\}|\{[\w\s-]*\})\s*$/,
+  glsmakeindexappname: /^\s*(?:\[1\]\{\}|\{(?:makeindex|upmendex|mendex)\})\s*$/,
+  input: /^\{[^{}]*\}\s*$/
+};
+export function glossariesUnsafe(aux, base) {
+  if (SHELL_READS.test(base)) return true;
+  return [...aux.matchAll(GLOSSARY_SETTING)].some(([, name, rest]) => SHELL_READS.test(rest) || GLOSSARY_RULES[name]?.test(rest) === false);
+}
 // draft mode's images, as boxes of their size (Overleaf's fast mode)
 const DRAFT_IMAGES = '\\PassOptionsToPackage{draft}{graphicx}';
 // TeX breaks its log's lines at 79 characters
@@ -769,8 +785,11 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
             && (changed(from) || redo || (!now.has(`${base}.${out}`) && now.get(`${base}.${from}`).length > 0)));
           if (!due) continue;
           let ran = null;
+          // a .aux that would have the glossaries' programs run something else: neither runs
+          const unsafe = input === 'glo' && glossariesUnsafe(await auxWithInputs(outDir, `${base}.aux`), base);
+          if (unsafe) pushLog(Buffer.from('\n[spectrum warning] The glossary settings in this document’s .aux file (or its name) hold characters a command line would run, so makeglossaries wasn’t run.\n'));
           // an untrusted compile's helpers are Perl and Lua (and MiKTeX's), which TeX's limits don't reach: none run
-          for (const tool of options.untrusted ? [] : [indexer, fallback].filter(Boolean)) {
+          for (const tool of options.untrusted || unsafe ? [] : [indexer, fallback].filter(Boolean)) {
             ran = await runSpawn(tool, indexArgs(base), outDir, pushLog, texEnv).catch(() => null); // not installed
             if (ran?.code === 0 || stopped()) break;
           }

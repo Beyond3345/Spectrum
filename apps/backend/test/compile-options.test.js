@@ -15,7 +15,7 @@ Object.assign(process.env, {
   SPECTRUM_TEMPLATE_SEED_DIR: ''
 });
 const { createProject } = await import('../src/services/projectService.js');
-const { findExecutable, keptFileFailed, runCompile, stopCompile } = await import('../src/services/compileService.js');
+const { findExecutable, glossariesUnsafe, keptFileFailed, runCompile, stopCompile } = await import('../src/services/compileService.js');
 const { documentLabels, projectStats } = await import('../src/services/statsService.js');
 const { compile: compileTarget } = await import('../src/services/transferAgent/nodes/compile.js');
 const { registerSystemRoutes } = await import('../src/routes/system.js');
@@ -358,6 +358,43 @@ test('makeglossaries-lite stands in for a makeglossaries that fails, and a warni
   await fs.writeFile(path.join(bin, 'makeglossaries-lite'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
   const neither = await compile(p, { texFolder: bin, fresh: true });
   assert.match(neither.log, /\[spectrum warning\] makeglossaries didn’t run, so the glossaries weren’t built/);
+});
+
+test('glossary settings a command line would run are told from the ones the glossaries package writes', () => {
+  const written = [
+    '\\providecommand\\@glsorder[1]{}', '\\providecommand\\@istfilename[1]{}', '\\@istfilename{"my paper (final)".ist}', '\\@glsorder{word}',
+    '\\providecommand\\@glsmakeindexappname[1]{}', '\\@glsmakeindexappname{makeindex}', '\\providecommand\\@gls@extramakeindexopts[1]{}',
+    '\\@gls@extramakeindexopts{ -g -p 5}', '\\providecommand\\@newglossary[4]{}', '\\@newglossary{main}{glg}{gls}{glo}',
+    '\\@xdylanguage{main}{english}', '\\@gls@codepage{main}{utf8}', '\\@input{chapters/one.aux}'
+  ].join('\n');
+  assert.equal(glossariesUnsafe(written, 'my paper (final)'), false);
+  for (const line of [
+    '\\@istfilename{x$(id).ist}', '\\@istfilename{x`id`.ist}', '\\@istfilename{|id}', '\\@newglossary{main}{glg}{gls;id}{glo}',
+    '\\@xdylanguage{main}{english" & calc & "}', '\\@gls@codepage{main}{utf8>out}', '\\@glsmakeindexappname{perl}',
+    '\\@gls@extramakeindexopts{evil.pl}', '\\@gls@extramakeindexopts{-o /tmp/x}', '\\@input{|id #.aux}', '\\@input{a}b.aux}'
+  ]) assert.equal(glossariesUnsafe(`${written}\n${line}\n`, 'main'), true, line);
+  assert.equal(glossariesUnsafe(written, '$(id)'), true);
+});
+
+test('a document that writes a command into its .aux doesn’t have makeglossaries run it', { skip: WINDOWS ? 'a POSIX shell’s $( )' : needs('pdflatex', 'makeglossaries') }, async () => {
+  const marker = path.join(tmp, 'glossaries-ran');
+  const p = await newProject({
+    'main.tex': [
+      '\\documentclass{article}',
+      '\\makeatletter\\AtBeginDocument{%',
+      `  \\immediate\\write\\@auxout{\\string\\@istfilename{x\\string$(touch ${marker}).ist}}%`,
+      '  \\immediate\\write\\@auxout{\\string\\@newglossary{main}{glg}{gls}{glo}}%',
+      '  \\newwrite\\glo\\immediate\\openout\\glo=\\jobname.glo \\immediate\\write\\glo{x}\\immediate\\closeout\\glo}',
+      '\\makeatother',
+      '\\begin{document}Text\\end{document}',
+      ''
+    ].join('\n')
+  });
+  const result = await compile(p);
+  assert.ok(result.ok, result.log);
+  assert.match(result.log, /\[spectrum warning\] The glossary settings/);
+  assert.doesNotMatch(result.log, /makeglossaries version/);
+  assert.equal(existsSync(marker), false);
 });
 
 test('a chapter naming its document with % !TEX root compiles the document', { skip: needs('pdflatex') }, async () => {
