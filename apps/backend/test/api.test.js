@@ -34,6 +34,10 @@ const projectsDir = path.join(tmp, 'projects');
 // uploads write templates, so never into the repo's own folder, which is only read, as the app's shipped copy
 const templateDir = path.join(tmp, 'templates');
 const shippedDir = path.join(here, '..', '..', '..', 'templates');
+// a stand-in for the built frontend, so the app's page is served as the desktop app serves it
+const frontendDist = path.join(tmp, 'dist');
+mkdirSync(frontendDist);
+writeFileSync(path.join(frontendDist, 'index.html'), '<!doctype html><title>Spectrum</title>');
 const port = 20000 + Math.floor(Math.random() * 20000);
 const base = `http://127.0.0.1:${port}`;
 const legacyId = crypto.randomUUID();
@@ -136,6 +140,7 @@ async function startServer() {
       SPECTRUM_PROJECTS_DIR: projectsDir,
       SPECTRUM_TEMPLATE_DIR: templateDir,
       SPECTRUM_TEMPLATE_SEED_DIR: shippedDir,
+      SPECTRUM_FRONTEND_DIST: frontendDist,
       SPECTRUM_LLM_API_KEY: '',
       SPECTRUM_MINERU_TOKEN: '',
       SPECTRUM_ARXIV_BASE: `http://127.0.0.1:${mockPort}/arxiv`
@@ -1740,6 +1745,15 @@ test('a project’s file opened as a page can run no script on the app’s addre
     assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
     assert.match(res.headers.get('content-security-policy'), /^sandbox;/);
   }
+});
+
+test('the app’s pages draw images only from the app itself', async () => {
+  for (const page of ['/', '/editor/some-project']) {
+    const res = await fetch(`${base}${page}`);
+    assert.match(res.headers.get('content-type'), /^text\/html/);
+    assert.equal(res.headers.get('content-security-policy'), "img-src 'self' data: blob:");
+  }
+  assert.equal((await fetch(`${base}/api/health`)).headers.get('content-security-policy'), null);
 });
 
 test('file routes do not follow links out of the project', async () => {

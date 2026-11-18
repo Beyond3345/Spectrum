@@ -74,6 +74,14 @@ fastify.addHook('onRequest', async (req, reply) => {
   }
 });
 
+// The app's pages draw images only from the app itself (its own files, data: and blob:), so nothing a reply, a
+// search result or a document puts on a page is fetched from elsewhere, taking the project's text with it.
+fastify.addHook('onSend', async (req, reply) => {
+  if (String(reply.getHeader('content-type')).startsWith('text/html') && !reply.hasHeader('content-security-policy')) {
+    reply.header('Content-Security-Policy', "img-src 'self' data: blob:");
+  }
+});
+
 fastify.setErrorHandler(async (err, req, reply) => {
   let status = err.statusCode || 500;
   let message = err.message;
