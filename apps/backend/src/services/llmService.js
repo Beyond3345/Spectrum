@@ -115,7 +115,8 @@ export async function listLiveModels(preset, endpoint) {
 export function providerError(status, text) {
   if (status === 401 || status === 403) return 'The API key was rejected. Check it in Settings › Models.';
   if (status === 404) return 'The endpoint or model wasn’t found. Check Settings › Models.';
-  if (status === 429) return 'The provider is limiting requests. Try again shortly.';
+  // a 429 is also how providers say the account has run out, which waiting never mends
+  if (status === 429) return /quota|billing|credit|balance/i.test(text) ? 'The provider says this account has no quota or credit left. Check your plan and billing with the provider.' : 'The provider is limiting requests. Try again shortly.';
   let detail = '';
   try {
     // Gemini wraps the error in an array
