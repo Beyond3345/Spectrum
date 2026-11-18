@@ -360,7 +360,12 @@ function scanTypst(files: { path: string; text: string }[], doc: string): Insigh
       const table = /#?table\s*\(/.test(body);
       (table ? out.tables : out.figures).push({ file: path, line: lineAt(code, m.index!), text: shortened(text) || (table ? '(table)' : '(figure)'), ...(label && { label }) });
     }
-    for (const m of code.matchAll(/\$\s[^$]*?\s\$/g)) out.equations.push({ file: path, line: lineAt(code, m.index!), text: shortened(collapse(m[0].slice(1, -1))) });
+    // each $ opens or closes in turn (an escaped \$ is text); a pair with space inside both ends is a block equation
+    const dollars = [...code.matchAll(/(?<!\\)\$/g)].map((m) => m.index!);
+    for (let i = 0; i + 1 < dollars.length; i += 2) {
+      const maths = code.slice(dollars[i] + 1, dollars[i + 1]);
+      if (/^\s/.test(maths) && /\s$/.test(maths)) out.equations.push({ file: path, line: lineAt(code, dollars[i]), text: shortened(collapse(maths)) });
+    }
     // a citation's <key> is a key, not a label
     const labelCode = code.replace(/#cite\s*\([^)]*\)/g, (m) => m.replace(/[^\n]/g, ' '));
     for (const m of labelCode.matchAll(/<([A-Za-z0-9_:.-]+)>/g)) if (!labels.has(m[1])) labels.set(m[1], { file: path, line: lineAt(code, m.index!) });
@@ -375,7 +380,10 @@ function scanTypst(files: { path: string; text: string }[], doc: string): Insigh
         if (!hit) return [];
         return hit[1] ? [hit[1]] : [...hit[2].matchAll(/"([^"]*)"/g)].map((x) => x[1]);
       };
-      out.metadata.title ||= one('title');
+      // a title is a string or, as often, content in [ ]
+      const titleContent = /title\s*:\s*\[/.exec(args);
+      const titleEnd = titleContent ? typstClose(args, titleContent.index + titleContent[0].length - 1, '[', ']') : -1;
+      out.metadata.title ||= one('title') || (titleContent && titleEnd > 0 ? typstProse(args.slice(titleContent.index + titleContent[0].length, titleEnd)) : '');
       if (!out.metadata.authors.length) out.metadata.authors = list('author').flatMap((author) => author.split(/\s+and\s+|;\s*/)).filter(Boolean);
       if (!out.metadata.keywords.length) out.metadata.keywords = list('keywords').flatMap((word) => word.split(/[,;]/)).map((word) => word.trim()).filter(Boolean);
       out.metadata.date ||= one('date');
@@ -392,8 +400,9 @@ function scanTypst(files: { path: string; text: string }[], doc: string): Insigh
     const code = typstCode(texts.get(path) ?? '');
     // both forms in the order they appear: #cite(<key>) and @key (unless that is a label's reference)
     for (const m of code.matchAll(/#cite\s*\(\s*<([^>]+)>|(?<![A-Za-z0-9])@([A-Za-z0-9_:.-]+)/g)) {
-      const key = m[1] ?? m[2];
-      if (m[2] && labels.has(m[2])) continue;
+      // a reference ends before a full stop or colon that ends the sentence, as Typst reads @sec:intro.
+      const key = m[1] ?? m[2].replace(/[.:]+$/, '');
+      if (m[2] && labels.has(key)) continue;
       cite(key, path, lineAt(code, m.index!));
     }
   }

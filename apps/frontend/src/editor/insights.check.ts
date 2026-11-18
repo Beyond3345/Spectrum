@@ -204,6 +204,19 @@ eq(typstGot.labels.map((l) => l.label), ['sec:intro', 'tab:results', 'fig:flow']
 eq(typstGot.citations.map((c) => [c.key, c.count, c.line]), [['knuth84', 1, 3], ['lamport94', 1, 3]], 'Typst citations');
 eq(typstGot.metadata, { title: 'A Typst Paper', authors: ['Ada Lovelace', 'Charles Babbage'], keywords: ['typst', 'typesetting'], date: '2026-10-25', abstract: '' }, 'Typst metadata');
 
+const typstSentence = [
+  '#set document(title: [Heat flow in a _cooled_ plate])',
+  '= Method <sec:method>',
+  'The temperature $T(x, t)$ obeys',
+  '$ (partial T) / (partial t) = alpha nabla^2 T $ <eq:heat>',
+  'with $alpha$ and $q = -k nabla T$, as in @eq:heat. See @sec:method: it cites @smith2020.',
+  'It costs \\$5 and \\$6.'
+].join(NEWLINE);
+const sentenceGot = scanInsights([{ path: 'main.typ', text: typstSentence }], 'main.typ');
+eq(sentenceGot.equations.map((e) => [e.text, e.line]), [['(partial T) / (partial t) = alpha nabla^2 T', 4]], 'Typst block equations among inline ones');
+eq(sentenceGot.citations.map((c) => c.key), ['smith2020'], 'Typst references before a full stop or colon are references, not citations');
+eq(sentenceGot.metadata.title, 'Heat flow in a cooled plate', 'Typst title given as content');
+
 const markdownDoc = [
   '---',
   'title: A Markdown Paper',
