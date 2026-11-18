@@ -586,8 +586,17 @@ export function latexCompletionSource(project: () => Project, openFile: () => st
     const open = openFile();
     // a file that isn't TeX (a .bib, which can be megabytes) is neither scanned nor read for its context
     const tex = !open || TEX_FILE.test(open);
+    // Markdown's maths is LaTeX, read from the paragraph it is in (pandoc's maths never crosses a blank line)
+    const markdown = /\.(?:md|markdown)$/i.test(open);
+    // ponytail: reads at most 4000 characters back, as a paragraph of maths longer than that is unheard of
+    const paragraph = (at: number) => {
+      const from = Math.max(0, at - 4000);
+      let start = from;
+      for (const m of state.sliceDoc(from, at).matchAll(/\n[ \t]*\n/g)) start = from + m.index + m[0].length;
+      return start;
+    };
     const scans = () => [...project().scans.filter((scan) => !open || scan.file !== open), ...(tex ? [scanOf(state.doc)] : [])];
-    const contextAt = (at: number) => (tex ? texContext(textOf(state.doc), at) : ANYWHERE);
+    const contextAt = (at: number) => (tex ? texContext(textOf(state.doc), at) : markdown ? texContext(state.sliceDoc(paragraph(at), at), at - paragraph(at)) : ANYWHERE);
     const innermost = (ctx: TexContext) => ctx.openEnvs[ctx.openEnvs.length - 1];
     // the braces are near the cursor, so this doesn't need the whole text
     const start = Math.max(0, pos - ARG_WINDOW);
@@ -604,6 +613,8 @@ export function latexCompletionSource(project: () => Project, openFile: () => st
     // after an odd run of "\" it's escaped; after \\ (a line break) it starts a command, as in \\\hline
     if (trigger === '\\' && /\\*$/.exec(state.sliceDoc(Math.max(0, before.from - 64), before.from))![0].length % 2) return null;
     const ctx = contextAt(before.from);
+    // in Markdown's prose \section and the like mean nothing: commands are offered in maths only
+    if (markdown && ctx.mode !== 'math') return null;
     const top = innermost(ctx);
     // in verbatim nothing is a command, and "\end{" only closes it
     if (VERBATIM_ENVS.has(top)) return /^\\end(?:\{|$)/.test(before.text) ? { from: before.from, options: [endOption(top, 1)] } : null;
