@@ -2422,6 +2422,15 @@ function Editor({ projectId }: { projectId: string }) {
           a().openFloats('figure');
           return true;
         },
+        // a pasted screenshot goes there too, at the cursor; text that comes with an image (from Word, say) pastes as text
+        paste(e) {
+          const file = e.clipboardData?.getData('text/plain') ? undefined : figureFile(e.clipboardData);
+          if (!file) return false;
+          e.preventDefault();
+          showFigure(file);
+          a().openFloats('figure');
+          return true;
+        },
         // CodeMirror has already selected the word; the PDF shows where the line went too
         dblclick(e, view) {
           const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
