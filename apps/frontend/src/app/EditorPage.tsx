@@ -2356,6 +2356,8 @@ function Editor({ projectId }: { projectId: string }) {
       languageCompartment.of(languageFor('')),
       scopeGutter,
       EditorView.lineWrapping,
+      // a screen reader names the text box; the open file is the selected tab above it
+      EditorView.contentAttributes.of({ 'aria-label': 'Source' }),
       editorTheme,
       ghostField,
       jumpHighlight,
