@@ -25,7 +25,7 @@ const WINDOWS = process.platform === 'win32';
 after(() => rmSync(tmp, { recursive: true, force: true }));
 
 const tools = {};
-for (const name of ['pdflatex', 'bibtex', 'biber', 'makeindex', 'makeglossaries', 'makeglossaries-lite', 'latexmk', 'tectonic']) tools[name] = await findExecutable(name);
+for (const name of ['pdflatex', 'bibtex', 'biber', 'makeindex', 'makeglossaries', 'makeglossaries-lite', 'xindy', 'latexmk', 'tectonic']) tools[name] = await findExecutable(name);
 const needs = (...names) => names.filter((name) => !tools[name]).map((name) => `needs ${name}`)[0] || false;
 
 const newProject = (files) => createProject({
@@ -401,6 +401,30 @@ test('a document that writes a command into its .aux doesn’t have makeglossari
   assert.ok(result.ok, result.log);
   assert.match(result.log, /\[spectrum warning\] The glossary settings/);
   assert.doesNotMatch(result.log, /makeglossaries version/);
+  assert.equal(existsSync(marker), false);
+});
+
+test('an xindy style the document wrote can’t write outside the build folder', { skip: process.platform !== 'darwin' ? 'the Mac’s sandbox' : needs('pdflatex', 'makeglossaries', 'xindy') }, async () => {
+  const marker = path.join(tmp, 'xindy-ran');
+  const p = await newProject({
+    'main.tex': [
+      '\\documentclass{article}',
+      '\\makeatletter\\AtBeginDocument{%',
+      ...['\\@istfilename{\\jobname.xdy}', '\\@newglossary{main}{glg}{gls}{glo}', '\\@xdylanguage{main}{english}', '\\@gls@codepage{main}{utf8}']
+        .map((line) => `  \\immediate\\write\\@auxout{${line.replace(/\\(?=@)/g, '\\string\\')}}%`),
+      '  \\newwrite\\x\\immediate\\openout\\x=\\jobname.xdy',
+      `  \\immediate\\write\\x{(ext:run-program "/usr/bin/touch" :arguments (list "${marker}"))}%`,
+      '  \\immediate\\write\\x{(define-attributes ("default"))}\\immediate\\closeout\\x',
+      '  \\immediate\\openout\\x=\\jobname.glo',
+      '  \\immediate\\write\\x{(indexentry :tkey (("a" "a")) :locref "1" :attr "default")}\\immediate\\closeout\\x}',
+      '\\makeatother',
+      '\\begin{document}Text\\end{document}',
+      ''
+    ].join('\n')
+  });
+  const result = await compile(p);
+  assert.ok(result.ok, result.log);
+  assert.match(result.log, /xindy/);
   assert.equal(existsSync(marker), false);
 });
 

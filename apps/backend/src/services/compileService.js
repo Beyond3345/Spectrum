@@ -92,6 +92,18 @@ export function glossariesUnsafe(aux, base) {
   if (SHELL_READS.test(base)) return true;
   return [...aux.matchAll(GLOSSARY_SETTING)].some(([, name, rest]) => SHELL_READS.test(rest) || GLOSSARY_RULES[name]?.test(rest) === false);
 }
+/**
+ * An index or glossary program as it runs on a Mac: able to write only the build folder (its temp files there too) and
+ * to reach no network. makeglossaries hands xindy a style file the document wrote, and xindy's styles are Lisp that
+ * can run any program, which the settings check above can't tell from a real one. ponytail: it still reads what the
+ * user can, and Windows has no such wrapper; compiling inside the agents' isolation would cover the engine too
+ */
+async function confined(tool, args, dir, env) {
+  if (process.platform !== 'darwin') return [tool, args, env];
+  const real = await fs.realpath(dir);
+  const profile = `(version 1)(allow default)(deny network*)(deny file-write*)(allow file-write* (subpath ${JSON.stringify(real)}) (literal "/dev/null") (literal "/dev/tty") (literal "/dev/dtracehelper"))`;
+  return ['/usr/bin/sandbox-exec', ['-p', profile, tool, ...args], { ...env, TMPDIR: real }];
+}
 // draft mode's images, as boxes of their size (Overleaf's fast mode)
 const DRAFT_IMAGES = '\\PassOptionsToPackage{draft}{graphicx}';
 // TeX breaks its log's lines at 79 characters
@@ -793,7 +805,8 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
           if (unsafe) pushLog(Buffer.from('\n[spectrum warning] The glossary settings in this document’s .aux file (or its name) hold characters a command line would run, so makeglossaries wasn’t run.\n'));
           // an untrusted compile's helpers are Perl and Lua (and MiKTeX's), which TeX's limits don't reach: none run
           for (const tool of options.untrusted || unsafe ? [] : [indexer, fallback].filter(Boolean)) {
-            ran = await runSpawn(tool, indexArgs(base), outDir, pushLog, texEnv).catch(() => null); // not installed
+            const [run, runArgs, runEnv] = await confined(tool, indexArgs(base), outDir, texEnv);
+            ran = await runSpawn(run, runArgs, outDir, pushLog, runEnv).catch(() => null); // not installed
             if (ran?.code === 0 || stopped()) break;
           }
           if (ran?.code !== 0 && !stopped()) {
