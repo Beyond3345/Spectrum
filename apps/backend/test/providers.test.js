@@ -198,6 +198,11 @@ test('a refusal on the Chat Completions format is the answer', async () => {
   assert.equal((await call(undefined, { model: 'm' })).message.content, 'I can’t help with that.');
 });
 
+test('thinking at the start of an answer, in <think> tags, is left out', async () => {
+  replies.push(chatReply('<think>\nfirst this, then that\n</think>\n\nThe answer, with <think> named in it.'));
+  assert.equal((await call(undefined, { model: 'm' })).message.content, 'The answer, with <think> named in it.');
+});
+
 test('a reply cut off part-way never runs its tool calls', async () => {
   const tools = [{ type: 'function', function: { name: 'propose_patch', description: 'Patch', parameters: { type: 'object' } } }];
   replies.push([200, { content: [{ type: 'tool_use', id: 'tu_1', name: 'propose_patch', input: { path: 'a.tex' } }], stop_reason: 'max_tokens' }]);

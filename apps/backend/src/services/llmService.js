@@ -337,7 +337,8 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
     return { ok: false, error: data?.error?.message || 'The model provider returned no answer.' };
   }
   const { truncated, ...message } = reply;
-  const content = flattenContent(message.content);
+  // open and local reasoning models put their thinking at the start of the answer, in <think> tags
+  const content = flattenContent(message.content).replace(/^\s*<think>[\s\S]*?<\/think>\s*/, '');
   // a tool call cut off part-way has half its arguments, so it must never run
   if (truncated && (message.tool_calls?.length || !content)) {
     return { ok: false, error: 'The answer was cut off before it finished. Try a lower effort or a smaller request.' };
