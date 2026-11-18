@@ -25,7 +25,7 @@ eq(
     ].join('\n')
   ),
   [
-    ['error', 'main.tex', 3, 'Undefined control sequence'],
+    ['error', 'main.tex', 3, 'Undefined control sequence \\foo'],
     ['warning', 'main.tex', 345, 'Underfull \\hbox (badness 3019) in paragraph at lines 345--363']
   ],
   'tectonic'
@@ -48,7 +48,7 @@ eq(
     ].join('\n')
   ),
   [
-    ['error', 'chapters/intro.tex', 12, 'Undefined control sequence.'],
+    ['error', 'chapters/intro.tex', 12, 'Undefined control sequence \\foo.'],
     ['error', '', 2, "LaTeX Error: File `l3backend-pdftex.def' not found."],
     ['warning', '', 40, "Reference `fig:x' on page 1 undefined on input line 40."],
     ['warning', '', 5, "Token not allowed in a PDF string (Unicode): removing `\\\\' on input line 5."],
@@ -71,12 +71,15 @@ eq(
     root
   ),
   [
-    ['error', 'main.tex', 109, 'Undefined control sequence.'],
+    ['error', 'main.tex', 109, 'Undefined control sequence \\undefinedmacro.'],
     ['error', 'main.bbl', 4, "LaTeX Error: Something's wrong--perhaps a missing \\item."],
     ['error', '', 0, "I couldn't open database file custom.bib"]
   ],
   'wrapped pdflatex'
 );
+
+// the command TeX could not find is named from the end of its "l.N" line, here after other text
+eq(brief(['./main.tex:153: Undefined control sequence.', 'l.153 ...ter\'s cut-off. The gain is \\gainval', '                                         {} here.'].join('\n')), [['error', 'main.tex', 153, 'Undefined control sequence \\gainval.']], 'named command');
 
 // warnings count from the last TeX pass only (earlier ones are repeats or fixed by BibTeX); errors from any pass
 const pass = (warning: string) =>
