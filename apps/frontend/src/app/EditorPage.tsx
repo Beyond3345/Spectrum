@@ -3184,6 +3184,11 @@ function Editor({ projectId }: { projectId: string }) {
         <button className="compile-status failed" onClick={() => openTools('logs')}>
           Failed — see Logs
         </button>
+      ) : compile.state === 'ok' && errorCount ? (
+        // TeX went on past an error and made a PDF: still say so, as the PDF may be missing what the error ate
+        <button className="compile-status failed errors" title={`${plural(errorCount, 'error')} — see Logs`} onClick={() => openTools('logs')}>
+          {plural(errorCount, 'error')}
+        </button>
       ) : (
         status
       )}
