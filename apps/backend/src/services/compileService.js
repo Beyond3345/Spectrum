@@ -266,7 +266,10 @@ const cmdEscape = (s) => s.replace(/[()\][%!^"`<>&|;, *?]/g, '^$&');
  */
 export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOUT_MS[cmd] || DEFAULT_PASS_TIMEOUT_MS, input = null) {
   let file = cmd;
-  let options = { cwd, env: env || process.env, detached: true };
+  // never a key or a token of Spectrum's own environment (the .env file's, the system's): a document reads it with
+  // kpsewhich -var-value or Lua's os.getenv, and a plot's code or a filter as easily
+  const safeEnv = Object.fromEntries(Object.entries(env || process.env).filter(([name]) => !/KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL/i.test(name)));
+  let options = { cwd, env: safeEnv, detached: true };
   if (WINDOWS) {
     // Windows would look in cwd (the project) before PATH
     file = path.isAbsolute(cmd) ? cmd : await findExecutable(cmd);

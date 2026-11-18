@@ -15,7 +15,7 @@ Object.assign(process.env, {
   SPECTRUM_TEMPLATE_SEED_DIR: ''
 });
 const { createProject } = await import('../src/services/projectService.js');
-const { findExecutable, glossariesUnsafe, keptFileFailed, runCompile, stopCompile } = await import('../src/services/compileService.js');
+const { findExecutable, glossariesUnsafe, keptFileFailed, runCompile, runSpawn, stopCompile } = await import('../src/services/compileService.js');
 const { documentLabels, projectStats } = await import('../src/services/statsService.js');
 const { compile: compileTarget } = await import('../src/services/transferAgent/nodes/compile.js');
 const { registerSystemRoutes } = await import('../src/routes/system.js');
@@ -358,6 +358,13 @@ test('makeglossaries-lite stands in for a makeglossaries that fails, and a warni
   await fs.writeFile(path.join(bin, 'makeglossaries-lite'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
   const neither = await compile(p, { texFolder: bin, fresh: true });
   assert.match(neither.log, /\[spectrum warning\] makeglossaries didn’t run, so the glossaries weren’t built/);
+});
+
+test('what a compile runs never gets a key or a token from Spectrum’s environment', async () => {
+  const env = { ...process.env, SPECTRUM_LLM_API_KEY: 'sk-test', GITHUB_TOKEN: 'ghp-test', DB_PASSWORD: 'pw', TEXINPUTS: 'kept' };
+  let out = '';
+  await runSpawn(process.execPath, ['-e', 'console.log(JSON.stringify(["SPECTRUM_LLM_API_KEY", "GITHUB_TOKEN", "DB_PASSWORD", "TEXINPUTS"].map((name) => process.env[name] ?? null)))'], tmp, (chunk) => (out += chunk), env);
+  assert.deepEqual(JSON.parse(out), [null, null, null, 'kept']);
 });
 
 test('glossary settings a command line would run are told from the ones the glossaries package writes', () => {
