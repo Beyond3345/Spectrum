@@ -1721,6 +1721,18 @@ test('the local-only gate holds however the path is spelt', async () => {
   assert.equal(await raw('/api/projects', { 'sec-fetch-site': 'same-origin' }), 200);
 });
 
+test('a project’s file opened as a page can run no script on the app’s address', async () => {
+  const p = await newProject('Blob headers');
+  await writeFile(p.id, 'evil.svg', '<svg xmlns="http://www.w3.org/2000/svg"><script>fetch("/api/projects")</script></svg>');
+  await writeFile(p.id, 'page.html', '<script>fetch("/api/projects")</script>');
+  for (const [file, type] of [['evil.svg', 'image/svg+xml'], ['page.html', 'application/octet-stream']]) {
+    const res = await fetch(`${base}/api/projects/${p.id}/blob?path=${file}`);
+    assert.equal(res.headers.get('content-type'), type);
+    assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+    assert.match(res.headers.get('content-security-policy'), /^sandbox;/);
+  }
+});
+
 test('file routes do not follow links out of the project', async () => {
   const p = await newProject('Links out');
   const outside = path.join(tmp, 'outside-secret.txt');

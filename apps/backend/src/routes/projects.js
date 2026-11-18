@@ -716,7 +716,12 @@ export function registerProjectRoutes(fastify) {
       '.pdf': 'application/pdf',
       '.eps': 'application/postscript'
     };
-    reply.header('Content-Type', contentTypes[path.extname(filePath).toLowerCase()] || 'application/octet-stream');
+    const ext = path.extname(filePath).toLowerCase();
+    reply.header('Content-Type', contentTypes[ext] || 'application/octet-stream');
+    // a project's file is someone else's content on the app's own address: opened as a page (an .svg from a link in
+    // a PDF or a chat), its script would have the whole API. As an <img> it still draws. The PDF viewer is left alone
+    reply.header('X-Content-Type-Options', 'nosniff');
+    if (ext !== '.pdf') reply.header('Content-Security-Policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'");
     return reply.send(buffer);
   });
 
