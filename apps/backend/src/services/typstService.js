@@ -88,19 +88,24 @@ export async function typstFontArgs(projectRoot) {
   return found.flat();
 }
 
-/** Every label in a document and its one-level includes: Typst's eval finds a heading's label by querying it. */
+/**
+ * Every label in a document and the files it includes, however deep (a chapter that includes its sections): Typst's
+ * eval finds a heading's label by querying it. A path starting with / is from the project's root, as Typst reads it.
+ */
 async function labelNames(projectRoot, absMain) {
   const labels = new Set();
-  const visit = async (file, depth) => {
+  const seen = new Set();
+  const visit = async (file) => {
+    if (seen.has(file)) return;
+    seen.add(file);
     const text = await fs.readFile(file, 'utf8').catch(() => '');
     for (const match of text.matchAll(LABEL)) labels.add(match[1]);
-    if (depth > 0) return;
     for (const match of text.matchAll(/#include\s+"([^"]+)"/g)) {
-      const next = path.resolve(path.dirname(file), match[1]);
-      if (next === projectRoot || next.startsWith(projectRoot + path.sep)) await visit(next, depth + 1);
+      const next = match[1].startsWith('/') ? path.join(projectRoot, match[1]) : path.resolve(path.dirname(file), match[1]);
+      if (next.startsWith(projectRoot + path.sep)) await visit(next);
     }
   };
-  await visit(absMain, 0);
+  await visit(absMain);
   return [...labels];
 }
 

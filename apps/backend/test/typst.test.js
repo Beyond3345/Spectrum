@@ -269,6 +269,20 @@ test('a Typst document’s headings and labels come with their pages', async (t)
   assert.equal(stale, false);
 });
 
+test('labels in a file an included chapter includes still get their numbers and pages', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const project = await projectWith('typst-nested', '#set heading(numbering: "1.1")\n#include "chapters/one.typ"\n');
+  const dir = await getProjectRoot(project.id);
+  await fs.mkdir(path.join(dir, 'chapters', 'one'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'chapters', 'one.typ'), '= One <sec:one>\n#include "one/part.typ"\n');
+  await fs.writeFile(path.join(dir, 'chapters', 'one', 'part.typ'), '== Part <sec:part>\n#figure(table(columns: 1, [x]), caption: [T]) <tab:deep>\n');
+  const result = await runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto' });
+  assert.equal(result.ok, true, result.error);
+  const { labels } = await typstDocumentLabels(dir, 'main.typ');
+  assert.deepEqual(labels['sec:part'], { number: '1.1', page: '1' });
+  assert.deepEqual(labels['tab:deep'], { number: '1', page: '1' });
+});
+
 test('an unpinned Typst document reads its numbers with the app’s default version', async (t) => {
   if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
   const project = await projectWith('typst-fallback', '#set heading(numbering: "1.")\n= One <sec:one>\n');
