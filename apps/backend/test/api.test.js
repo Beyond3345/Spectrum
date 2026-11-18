@@ -829,7 +829,13 @@ test('refuses requests that did not come from this computer', async () => {
     }).end();
   });
   assert.equal(rebound, 403);
-  assert.equal((await api('/api/projects', { headers: { origin: 'http://localhost:5173' } })).status, 200);
+  // the app's own page, and the dev page through the Vite proxy, which names itself in X-Forwarded-Host
+  assert.equal((await api('/api/projects', { headers: { origin: base } })).status, 200);
+  assert.equal((await api('/api/projects', { headers: { origin: 'http://localhost:5173', 'x-forwarded-host': 'localhost:5173' } })).status, 200);
+  // a page of another program on this computer (a dev server, a notebook) is not the app
+  assert.equal((await api('/api/projects', { headers: { origin: 'http://localhost:5173' } })).status, 403);
+  assert.equal((await api('/api/projects', { method: 'POST', body: { name: 'From another port' }, headers: { origin: 'http://evil.localhost' } })).status, 403);
+  assert.equal((await api('/api/projects', { headers: { 'sec-fetch-site': 'same-site' } })).status, 403);
 });
 
 test('tool agent runs the tool loop and returns proposed patches', async () => {

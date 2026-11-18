@@ -21,7 +21,10 @@ function originHostname(origin) {
 /**
  * A request is local only if it came over loopback, was not forwarded by a proxy
  * from somewhere else, targets a loopback Host (blocks DNS rebinding) and,
- * when a browser sends an Origin, that origin is loopback too (blocks other websites).
+ * when a browser sends an Origin, that origin is the app's own: loopback (blocks other websites)
+ * and the address the request was sent to (blocks a page of another program on this computer, a
+ * dev server or a notebook on another port). The Vite dev proxy sends its own name on as
+ * X-Forwarded-Host, a header a page elsewhere can only add after a preflight, which is refused.
  */
 export function isLocalRequest(req) {
   const headers = req.headers || {};
@@ -33,5 +36,7 @@ export function isLocalRequest(req) {
   const origin = headers.origin;
   // "null" comes from sandboxed iframes, data: URLs and file:// pages, i.e. anyone
   if (origin && !isLoopbackHostname(originHostname(origin))) return false;
+  const own = [headers.host, headers['x-forwarded-host']].filter(Boolean).map((host) => String(host).toLowerCase());
+  if (origin && own.length && !own.includes(originHostname(origin).toLowerCase())) return false;
   return true;
 }

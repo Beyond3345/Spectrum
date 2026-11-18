@@ -65,9 +65,10 @@ await fastify.register(multipart, {
 // Single-user, local-only: nothing off this machine (or relayed through a proxy) may use the
 // server. Every request is checked, however its path is spelt: the router decodes '/%61pi/…'
 // to an /api route. Browsers mark requests another site makes (<img>, links, forms) as
-// cross-site, which no API route accepts, since those carry no Origin header to check.
+// cross-site, and those of a page on another port of this computer as same-site, which no API
+// route accepts, since those carry no Origin header to check.
 fastify.addHook('onRequest', async (req, reply) => {
-  const crossSiteApi = req.routeOptions?.url?.startsWith('/api') && req.headers['sec-fetch-site'] === 'cross-site';
+  const crossSiteApi = req.routeOptions?.url?.startsWith('/api') && ['cross-site', 'same-site'].includes(req.headers['sec-fetch-site']);
   if (crossSiteApi || !isLocalRequest(req)) {
     return reply.code(403).send({ ok: false, error: 'Spectrum only accepts requests from this computer.' });
   }
