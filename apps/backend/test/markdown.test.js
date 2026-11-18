@@ -19,7 +19,7 @@ Object.assign(process.env, {
 const { createProject, getProjectRoot } = await import('../src/services/projectService.js');
 const { runCompile, findExecutable } = await import('../src/services/compileService.js');
 const { pandocPath, versionOf } = await import('../src/services/engineService.js');
-const { latexDiagnostics, markdownToLatex, missingGlyphs, pandocDocx, pandocErrors, parseFrontMatter, rootRelativeImages, svgsAsPdf, traceToMarkdown } = await import('../src/services/markdownService.js');
+const { latexDiagnostics, markdownToLatex, missingGlyphs, pandocDocx, pandocWarnings, pandocErrors, parseFrontMatter, rootRelativeImages, svgsAsPdf, traceToMarkdown } = await import('../src/services/markdownService.js');
 
 after(() => {
   process.env.PATH = realPath;
@@ -125,6 +125,15 @@ test('characters the font has no letters for are one warning at their line', () 
   assert.equal(warning.line, 3);
   assert.match(warning.message, /本 報.*CJKmainfont/);
   assert.deepEqual(missingGlyphs('All fine.\n', '', 'main.md'), []);
+});
+
+test('pandoc’s warnings are listed once, a citation with no entry at the line that cites it', () => {
+  const log = '[WARNING] Citeproc: citation fig:example not found\n[WARNING] Citeproc: citation fig:example not found\n[WARNING] Something else\n';
+  const source = '# One\n\nSee @fig:examples and\n@fig:example.\n';
+  assert.deepEqual(pandocWarnings(log, source, 'main.md'), [
+    { severity: 'warning', message: 'No entry in the bibliography for the citation @fig:example.', file: 'main.md', line: 4, column: 1 },
+    { severity: 'warning', message: 'Something else', file: 'main.md' }
+  ]);
 });
 
 test('pandoc writes LaTeX, TeX compiles it, and the PDF lands beside the .md', { skip }, async () => {

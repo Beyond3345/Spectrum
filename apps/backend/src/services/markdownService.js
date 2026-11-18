@@ -147,6 +147,20 @@ export function latexDiagnostics(log, generatedName) {
 }
 
 /**
+ * pandoc's [WARNING] lines as warnings, each once: a citation with no entry at the .md line that first cites the key,
+ * which the PDF otherwise shows only as (key?).
+ */
+export function pandocWarnings(log, source, mainFile) {
+  const messages = [...new Set([...String(log || '').matchAll(/^\[WARNING\] (.+)$/gm)].map((m) => m[1].trim()))];
+  return messages.map((message) => {
+    const key = /^Citeproc: citation (\S+) not found/.exec(message)?.[1];
+    const at = key ? String(source || '').search(new RegExp('@' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w:.+-]*[\\w])')) : -1;
+    const text = key ? `No entry in the bibliography for the citation @${key}.` : message;
+    return { severity: 'warning', message: text, file: mainFile, ...(at !== -1 && { line: String(source).slice(0, at).split('\n').length, column: 1 }) };
+  });
+}
+
+/**
  * One warning for the characters the font had no glyph for, which TeX leaves out of the PDF without an error (Chinese
  * text in pandoc's Latin Modern, say), at the .md line where the first of them is, or none.
  */
@@ -390,17 +404,18 @@ export async function compileMarkdown(projectRoot, absMain, mainFile, engine, op
   if (kind === 'typst') {
     const typst = options.pageColour ? typstFill(options.pageColour) + made.text : made.text;
     const result = await compileTypst(projectRoot, absMain, mainFile, { ...options, source: typst });
-    return { ...result, errors: traceToMarkdown(result.errors || [], typst, source, mainFile), generated: 'typst' };
+    return { ...result, log: made.log + (result.log || ''), errors: [...traceToMarkdown(result.errors || [], typst, source, mainFile), ...pandocWarnings(made.log, source, mainFile)], generated: 'typst' };
   }
   if (options.pageColour) await fs.writeFile(made.file, pageColourLines(made.text, options.pageColour));
   // LaTeX: the generated file compiles like any document, with its PDF beside the .md
   const result = await compileDocument(engine, projectRoot, made.file, mainFile, { ...options, pageColour: undefined, markdownSource: absMain });
-  let log = result.log || '';
+  // pandoc's own warnings (a citation with no entry) first, as they come first
+  let log = made.log + (result.log || '');
   if (SVG.test(source) && !(await findExecutable('rsvg-convert'))) log += SVG_NOTE;
   return {
     ...result,
     log,
-    errors: [...traceToMarkdown(latexDiagnostics(log, path.basename(made.file)), made.text, source, mainFile), ...missingGlyphs(log, source, mainFile)],
+    errors: [...traceToMarkdown(latexDiagnostics(log, path.basename(made.file)), made.text, source, mainFile), ...pandocWarnings(made.log, source, mainFile), ...missingGlyphs(log, source, mainFile)],
     generated: 'latex'
   };
 }
