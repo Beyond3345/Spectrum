@@ -1,6 +1,6 @@
 // Self-check for the shared helpers that pick a project's files. Run:
 // npx esbuild apps/frontend/src/editor/shared.check.ts --bundle --platform=node --log-level=warning | node
-import { bibIncludeLine, keptMainFile } from './shared';
+import { bibIncludeLine, inlineImage, keptMainFile } from './shared';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -20,5 +20,14 @@ eq(keptMainFile('main.tex', ['refs.bib', 'figures/a.pdf']), '', 'no document lef
 eq(bibIncludeLine('main.tex', 'refs.bib'), '\\bibliography{refs}', 'LaTeX');
 eq(bibIncludeLine('main.typ', 'refs.bib'), '#bibliography("refs.bib")', 'Typst');
 eq(bibIncludeLine('notes.md', 'refs.bib'), 'bibliography: refs.bib', 'Markdown front matter');
+
+// ─── a reply's images: only ones the reply carries, never an address that would be fetched ───
+
+eq(inlineImage('data:image/png;base64,iVBORw0KGgo='), true, 'a data: image');
+eq(inlineImage('blob:http://127.0.0.1:38787/1b9d6bcd'), true, 'a blob: image');
+eq(inlineImage('https://evil.example/leak.gif?d=text-from-the-document'), false, 'a remote image');
+eq(inlineImage('/api/projects/import-arxiv-sse?arxivIdOrUrl=2401.00001'), false, 'the app’s own API');
+eq(inlineImage('data:text/html,<script>1</script>'), false, 'a data: page');
+eq(inlineImage(undefined), false, 'no address');
 
 console.log('shared.check: ok');
