@@ -153,7 +153,8 @@ const ADAPTERS = {
       ...(tools?.length && { tools }),
       ...extra
     }),
-    message: (data) => data?.choices?.[0]?.message && { ...data.choices[0].message, truncated: data.choices[0].finish_reason === 'length' }
+    // a refusal comes with no content and its reason beside it
+    message: (data) => data?.choices?.[0]?.message && { ...data.choices[0].message, ...(!data.choices[0].message.content && data.choices[0].message.refusal && { content: data.choices[0].message.refusal }), truncated: data.choices[0].finish_reason === 'length' }
   },
 
   // Anthropic Messages API

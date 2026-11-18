@@ -193,6 +193,11 @@ test('a spent quota is not worded as a rate limit', async () => {
   assert.equal((await call(undefined, { model: 'm' })).error, 'The provider is limiting requests. Try again shortly.');
 });
 
+test('a refusal on the Chat Completions format is the answer', async () => {
+  replies.push([200, { choices: [{ message: { role: 'assistant', content: null, refusal: 'I can’t help with that.' } }] }]);
+  assert.equal((await call(undefined, { model: 'm' })).message.content, 'I can’t help with that.');
+});
+
 test('a reply cut off part-way never runs its tool calls', async () => {
   const tools = [{ type: 'function', function: { name: 'propose_patch', description: 'Patch', parameters: { type: 'object' } } }];
   replies.push([200, { content: [{ type: 'tool_use', id: 'tu_1', name: 'propose_patch', input: { path: 'a.tex' } }], stop_reason: 'max_tokens' }]);
