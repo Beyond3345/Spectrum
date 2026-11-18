@@ -321,7 +321,9 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
   if (!res.ok) {
     // the local app has no key: a 401 is a :cloud model while it's signed out of ollama.com
     if (provider?.local && res.status === 401) return { ok: false, error: 'Ollama needs you to sign in to use its cloud models. Sign in from the Ollama app, or run ollama signin.' };
-    return { ok: false, error: providerError(res.status, text), status: res.status };
+    // a provider or proxy that repeats the key in its message: the message is shown, and saved with the chat
+    const said = providerError(res.status, text);
+    return { ok: false, error: resolved.apiKey ? said.split(resolved.apiKey).join('[API key]') : said, status: res.status };
   }
   let data = null;
   try {

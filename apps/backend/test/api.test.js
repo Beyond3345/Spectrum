@@ -75,6 +75,7 @@ function startMockLLM() {
         }
         if (payload.model === 'denied') return reply({ error: { message: 'Incorrect API key provided: bad', code: 'invalid_api_key' } }, 401);
         if (payload.model === 'broken') return reply({ error: { message: 'boom' } }, 500);
+        if (payload.model === 'echo') return reply({ error: { message: `Incorrect API key provided: ${req.headers.authorization}` } }, 400);
         if (payload.model === 'plain' && payload.reasoning_effort !== undefined) {
           return reply({ error: { message: 'Unrecognized request argument supplied: reasoning_effort' } }, 400);
         }
@@ -1698,6 +1699,8 @@ test('model errors are plain sentences', async () => {
   });
   assert.equal((await chat(llmConfig('denied'))).json.reply, 'The API key was rejected. Check it in Settings › Models.');
   assert.equal((await chat(llmConfig('broken'))).json.reply, 'The model provider returned an error (HTTP 500): boom.');
+  // a provider that repeats the key: never shown, or saved with the chat
+  assert.equal((await chat({ ...llmConfig('echo'), apiKey: 'sk-test-canary' })).json.reply, 'The model provider returned an error (HTTP 400): Incorrect API key provided: Bearer [API key].');
   assert.equal((await chat({})).json.reply, 'No AI model is set up yet. Add an endpoint, model and API key in Settings › Models.');
   assert.match((await chat({ endpoint: 'http://127.0.0.1:9/v1', apiKey: 'k', model: 'm' })).json.reply, /^Couldn’t reach 127\.0\.0\.1:9\./);
 });
