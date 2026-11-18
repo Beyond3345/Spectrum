@@ -198,6 +198,14 @@ test('an old pandoc is refused with the version to download', { skip }, async ()
   assert.match(result.error, /pandoc 3\.12\.1/);
 });
 
+test('a pandoc new enough for LaTeX but not Typst says so, and offers LaTeX', { skip }, async () => {
+  await bin('good', '3.8');
+  const p = await projectWith(MARKDOWN);
+  const result = await runCompile({ projectId: p.id, mainFile: 'main.md', engine: 'auto', markdownEngine: 'typst' });
+  assert.equal(result.code, 'PANDOC_OLD');
+  assert.match(result.error, /Typst as the PDF engine needs pandoc 3\.8\.3 or later, and this pandoc is 3\.8\..*choose LaTeX/);
+});
+
 test('real pandoc and real TeX compile an article with a citation', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
   process.env.PATH = realPath;
   const pandoc = await pandocPath();

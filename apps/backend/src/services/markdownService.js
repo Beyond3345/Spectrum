@@ -192,6 +192,10 @@ async function pandocProblem(kind) {
   const version = executable && (await versionOf(executable));
   if (!executable || !version) return { code: 'PANDOC_MISSING', error: PANDOC_MISSING };
   const minimum = kind === 'typst' ? PANDOC_MINIMUM.typst : PANDOC_MINIMUM.latex;
+  // pandoc that can write LaTeX but not Typst 0.15's: say so, as LaTeX works with it
+  if (kind === 'typst' && !atLeast(version, minimum) && atLeast(version, PANDOC_MINIMUM.latex)) {
+    return { code: 'PANDOC_OLD', error: 'Typst as the PDF engine needs pandoc ' + minimum + ' or later, and this pandoc is ' + version + '. Download pandoc ' + PANDOC_DOWNLOADABLE + ' from Settings › Engines › Markdown, or choose LaTeX as the PDF engine in the Compile menu.' };
+  }
   if (!atLeast(version, minimum)) {
     return { code: 'PANDOC_OLD', error: 'This pandoc (' + version + ') is too old for Spectrum. Download pandoc ' + PANDOC_DOWNLOADABLE + ' from Settings › Engines › Markdown.' };
   }
