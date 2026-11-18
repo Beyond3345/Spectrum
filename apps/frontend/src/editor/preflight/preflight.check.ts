@@ -354,6 +354,9 @@ const typstProject = [
 const typstFound = runPreflight(input({ doc: 'main.typ', log: 'Engine: Typst\nFinished', files: typstProject.map((f) => ({ path: f.path, text: isScanned(f.path) ? f.text : undefined })) }));
 has(typstFound, 'privacy', 'error', /^This line holds what looks like a GitHub token$/, 'main.typ:3');
 has(typstFound, 'privacy', 'error', /^This line holds what looks like a GitHub token$/, 'notes.markdown:1');
+// a to-do in a chapter the Typst document includes is found, as one in a LaTeX \input is
+const typstChapters = runPreflight(input({ doc: 'main.typ', log: 'Engine: Typst', files: [{ path: 'main.typ', text: '#include "chapters/intro.typ"\n' }, { path: 'chapters/intro.typ', text: '= Intro\n// TODO: thank the lab\n' }] }));
+has(typstChapters, 'privacy', 'info', /^TODO comment: .thank the lab.$/, 'chapters/intro.typ:2');
 eq(['main.typ', 'notes.markdown', 'refs.bib', 'style.sty', 'figures/a.png'].map(isSource), [true, true, true, true, false], 'the source, which Review reads first and watches for edits');
 
 // a document with no title (a CV, a letter) needs no abstract; a thesis's \chapter*{Abstract} is one; notes get a note

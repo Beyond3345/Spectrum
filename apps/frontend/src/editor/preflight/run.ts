@@ -4,6 +4,7 @@ import { figureKind } from '../floats';
 import { plainText, scanInsights } from '../insights';
 import { CITE_COMMANDS, REF_COMMANDS, VERBATIM_ENVS } from '../latexContext';
 import { INPUT_RE, externalDocuments, includedFile, inputName, scanTex } from '../latexEnvs';
+import { includedPath } from '../outlines';
 import { isSource } from '../shared';
 import { scanTodos } from '../todos';
 
@@ -222,7 +223,9 @@ export function runPreflight(input: PreflightInput): Finding[] {
     const visit = (path: string) => {
       if (out.includes(path) || !texts.has(path)) return;
       out.push(path);
-      for (const name of scanTex(texts.get(path)!).inputs) {
+      // a Typst file's chapters are its #include lines
+      if (/\.typ$/i.test(path)) for (const m of texts.get(path)!.matchAll(/^\s*#include\s+"([^"]+)"/gm)) visit(includedPath(path, m[1]));
+      else for (const name of scanTex(texts.get(path)!).inputs) {
         const hit = texFile(from, name);
         if (hit.path ?? hit.folded) visit((hit.path ?? hit.folded)!);
       }
