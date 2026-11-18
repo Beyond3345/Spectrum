@@ -90,6 +90,10 @@ export function parseCompileLog(log: string, root = ''): CompileError[] {
     return message;
   };
 
+  // "==> Fatal error occurred", and "Emergency stop." once an error has been found, only repeat that error
+  const aftermath = (message: string) =>
+    /^\s*==> Fatal error occurred/.test(message) || (/^Emergency stop\.?\s*$/.test(message) && found.some((e) => e.severity === 'error'));
+
   const push = (severity: CompileError['severity'], message: string, raw: string, line?: number, file?: string) => {
     if (severity === 'warning' && earlyLine) return;
     message = message.trim();
@@ -138,13 +142,15 @@ export function parseCompileLog(log: string, root = ''): CompileError[] {
 
     const at = line.match(LOCATED);
     if (at) {
+      // TeX giving up after an error already listed (a missing .sty) says so twice more: once is enough
+      if (aftermath(at[3])) continue;
       push('error', named(at[3], i), line, Number(at[2]), at[1]);
       continue;
     }
 
     if (line.startsWith('!')) {
       const message = line.replace(/^!+\s*/, '');
-      if (/^==> Fatal error occurred/.test(message)) continue;
+      if (aftermath(message)) continue;
       let lineNo: number | undefined;
       for (let j = i + 1; j < Math.min(i + 8, lines.length); j += 1) {
         const m = lines[j].match(/^l\.(\d+)/);
