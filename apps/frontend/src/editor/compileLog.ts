@@ -180,6 +180,14 @@ export function parseCompileLog(log: string, root = ''): CompileError[] {
       continue;
     }
 
+    // \include of a file that isn't there only says so in passing, and the chapter is simply missing from the PDF
+    // (.aux, .toc and the like are missing on a first run, as they should be)
+    const missing = line.match(/^No file (.+\.tex)\.$/);
+    if (missing) {
+      push('warning', `No file ${missing[1]}: \\include left it out of the PDF.`, line, undefined, texFile());
+      continue;
+    }
+
     // BibTeX / Biber
     if (/^I couldn't open (database|style|auxiliary) file /.test(line)) {
       push('error', line, line);

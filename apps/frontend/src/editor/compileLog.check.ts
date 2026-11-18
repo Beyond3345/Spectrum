@@ -81,6 +81,9 @@ eq(
 // the command TeX could not find is named from the end of its "l.N" line, here after other text
 eq(brief(['./main.tex:153: Undefined control sequence.', 'l.153 ...ter\'s cut-off. The gain is \\gainval', '                                         {} here.'].join('\n')), [['error', 'main.tex', 153, 'Undefined control sequence \\gainval.']], 'named command');
 
+// a chapter \include could not find is a warning, while a first run's missing .toc is nothing
+eq(brief(['No file main.toc.', 'No file chapters/intro.tex.', '(./chapters/methods.tex)'].join('\n')), [['warning', '', 0, 'No file chapters/intro.tex: \\include left it out of the PDF.']], 'missing include');
+
 // warnings count from the last TeX pass only (earlier ones are repeats or fixed by BibTeX); errors from any pass
 const pass = (warning: string) =>
   ['This is pdfTeX, Version 3.141592653-2.6-1.40.28 (TeX Live 2026)', warning, './main.tex:7: Undefined control sequence.', 'Transcript written on main.log.'].join('\n');
