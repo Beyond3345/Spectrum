@@ -913,7 +913,7 @@ function Editor({ projectId }: { projectId: string }) {
     const active = path === activeRef.current;
     try {
       if (held) {
-        const res = await saveVersion(projectId, { reason: 'manual', label: `${nameOf(path)} from another computer` });
+        const res = await saveVersion(projectId, { reason: 'manual', label: `${nameOf(path)} as changed on disk` });
         if (!res.ok) throw new Error('The checkpoint couldn’t be saved.');
         if (!res.unchanged) window.dispatchEvent(new Event(VERSIONS_CHANGED));
         hashesRef.current.set(path, held.hash);
@@ -3406,7 +3406,7 @@ function Editor({ projectId }: { projectId: string }) {
                     tabIndex={0}
                     aria-selected={path === activePath}
                     className={`file-tab ${path === activePath ? 'active' : ''} ${heldRef.current.has(path) ? 'held' : ''} ${heldRef.current.get(path) === null ? 'gone' : ''}`}
-                    title={heldRef.current.get(path) === null ? `${path} · Deleted on disk` : heldRef.current.get(path) ? `${path} · Changed on another computer` : path}
+                    title={heldRef.current.get(path) === null ? `${path} · Deleted on disk` : heldRef.current.get(path) ? `${path} · Changed on disk` : path}
                     onClick={() => open(path)}
                     onKeyDown={(e) => e.key === 'Enter' && open(path)}
                     onAuxClick={(e) => e.button === 1 && closeTab(path).catch(() => undefined)}
@@ -3537,7 +3537,7 @@ function Editor({ projectId }: { projectId: string }) {
             {held && (
               <div className="review-banner template-banner" role="status">
                 <Icon name="exclamationmark.triangle" />
-                <span className="grow truncate">{nameOf(activePath)} was changed on another computer</span>
+                <span className="grow truncate">{nameOf(activePath)} was changed on disk, by another app or a pull</span>
                 <button className="btn small ghost" onClick={() => setComparing(true)}>
                   Compare
                 </button>
