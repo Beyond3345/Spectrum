@@ -39,8 +39,9 @@ export function typstCompletions({ path, version }: { path: () => string; versio
 }
 
 /**
- * After @ in Typst (keys and labels) and [@ or ; @ in Markdown (keys): the project's bibliography and labels. Typst's
- * labels only where its own completions, which list them, don't run (version: the project's Typst version).
+ * After @ in Typst (keys and labels) and [@ or ; @ in Markdown (keys): the project's bibliography and labels. Where
+ * Typst's own completions run (version: the project's Typst version), they list the open file's labels, so only the
+ * labels of the project's other files are added here.
  */
 export function referenceCompletions({ path, keys, labels, version }: { path: () => string; keys: () => string[]; labels: () => string[]; version: () => string }) {
   return (context: CompletionContext): CompletionResult | null => {
@@ -64,10 +65,11 @@ export function referenceCompletions({ path, keys, labels, version }: { path: ()
       seen.add(key);
       options.push({ label: key, type: 'keyword' });
     }
-    if (kind === 'typst' && !ownCompletions(version())) {
+    if (kind === 'typst') {
+      const own = ownCompletions(version()) ? context.state.doc.toString() : '';
       for (const label of labels()) {
         const name = label.replace(/^<|>$/g, '');
-        if (!name || seen.has(name)) continue;
+        if (!name || seen.has(name) || own.includes('<' + name + '>')) continue;
         seen.add(name);
         options.push({ label: name, type: 'label', detail: 'label' });
       }

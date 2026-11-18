@@ -13,9 +13,11 @@ const labelsAt = (path: string, version: string, doc = 'See @') => {
   return source(new CompletionContext(EditorState.create({ doc }), doc.length, false))?.options.map((o) => o.label) ?? [];
 };
 
-// Typst's own completions list a document's labels with the built-in 0.15, so they aren't listed twice
-eq(labelsAt('main.typ', ''), ['knuth'], 'the built-in Typst lists its labels itself');
-eq(labelsAt('main.typ', '0.15.1'), ['knuth'], 'as does a project pinned to 0.15');
+// Typst's own completions list the open file's labels with the built-in 0.15, so they aren't listed twice, but a
+// label in another chapter is
+eq(labelsAt('main.typ', '', '= One <sec:one>\nSee @'), ['knuth'], 'the built-in Typst lists the open file’s labels itself');
+eq(labelsAt('main.typ', '0.15.1', '= One <sec:one>\nSee @'), ['knuth'], 'as does a project pinned to 0.15');
+eq(labelsAt('chapters/two.typ', ''), ['knuth', 'sec:one'], 'a label in another file is listed with the built-in Typst');
 eq(labelsAt('main.typ', '0.14.2'), ['knuth', 'sec:one'], 'an older Typst gets the project’s labels here');
 eq(labelsAt('main.md', '', 'See [@'), ['knuth'], 'Markdown gets keys');
 eq(labelsAt('main.md', '', 'See @'), [], 'and only inside brackets');
