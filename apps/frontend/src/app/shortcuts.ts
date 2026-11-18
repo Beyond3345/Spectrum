@@ -131,6 +131,9 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'diagramVector', label: 'Vector diagrams: draw a vector', group: 'Diagram', key: 'v' }
 ];
 
+/** What the source editor answers: the composer's tool keys are the composer's (a plain T or P is typing here). */
+export const EDITOR_SHORTCUTS = SHORTCUTS.filter((s) => s.group !== 'Diagram');
+
 /** CodeMirror commands whose built-in bindings give way to the ones above. */
 export const CUSTOMISABLE_COMMANDS = new Set<Command>(SHORTCUTS.flatMap((s) => (s.run ? [s.run] : [])));
 

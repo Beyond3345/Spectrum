@@ -76,7 +76,7 @@ import { FILE_MANAGER } from './platform';
 import { BIB_TOOLS, COMPILE_ENGINES, effectiveCompile, effectiveEffort, languageName, llmConfigFor, loadSettings, updateSettings, useProviders, useSettings } from './settings';
 import type { CompileDefaults, LiveOutputEngine } from './settings';
 import { PDF_PAGE_FILLS, PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
-import { FIND_NEXT, FIND_PREVIOUS, SHORTCUTS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
+import { EDITOR_SHORTCUTS, FIND_NEXT, FIND_PREVIOUS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
 import type { AppCommand } from './shortcuts';
 import { EditorContext } from '../editor/EditorContext';
 import type { CompileError, EditorApi, PendingChange } from '../editor/EditorContext';
@@ -2319,7 +2319,7 @@ function Editor({ projectId }: { projectId: string }) {
     // matched by hand rather than with keymap.of, which can't see ⌥ shortcuts on a Mac (⌥/ types "÷")
     const shortcuts = EditorView.domEventHandlers({
       keydown(e, view) {
-        for (const s of SHORTCUTS) {
+        for (const s of EDITOR_SHORTCUTS) {
           const hit = s.id === 'zoomIn' ? matchesZoomIn(shortcutsRef.current, e) : matchesShortcut(shortcutKey(shortcutsRef.current, s.id), e);
           if (!hit) continue;
           const handled = s.run ? s.run(view) : (appCommands[s.id as AppCommand](), true);
