@@ -14,6 +14,8 @@ import { fileHash } from './agentWorkspace.js';
 import { readItems } from '../routes/todos.js';
 
 const MAX_STEPS = 25;
+// what one read_file call returns; a longer file is read on with offset
+const MAX_READ = 20000;
 // a skill's supporting file, as the Spectrum agent reads one
 const MAX_SKILL_FILE = 192 * 1024;
 // the skills list in the agent's instructions: each description, and all of them
@@ -60,9 +62,9 @@ const str = { type: 'string' };
 
 const TOOL_SPECS = [
   fn('web_search', 'Search the general web using the configured default and fallback connections. Returns source links and summaries. Input: { query }.', { query: str }, ['query']),
-  fn('read_file', 'Read a UTF-8 file from the project, with the changes you proposed so far. Input: { path } (relative to project root).', { path: str }, ['path']),
+  fn('read_file', `Read a UTF-8 file from the project, with the changes you proposed so far, ${MAX_READ} characters at a time: a longer file ends with a note saying where to read on. Input: { path, offset? } (path relative to project root; offset in characters, 0 by default).`, { path: str, offset: { type: 'number' } }, ['path']),
   fn('list_files', 'List files under a directory. Input: { dir } (relative path, optional).', { dir: str }),
-  fn('propose_patch', 'Propose a full file rewrite. Input: { path, content }. This does NOT write. The user reviews it with your other changes.', { path: str, content: str }, ['path', 'content']),
+  fn('propose_patch', 'Propose a full file rewrite. Input: { path, content }. This does NOT write. The user reviews it with your other changes. A file you have read only part of is refused: read the rest first, or use apply_patch.', { path: str, content: str }, ['path', 'content']),
   fn('apply_patch', 'Apply a unified diff to a file (as you changed it so far) and propose the result. Input: { patch, path? }. This does NOT write.', { patch: str, path: str }, ['patch']),
   fn('get_compile_log', 'Return the latest compile log from the client (read-only). Input: { }.'),
   fn('arxiv_search', 'Search arXiv papers. Input: { query, maxResults? }.', { query: str, maxResults: { type: 'number' } }, ['query']),
@@ -153,6 +155,19 @@ export async function runToolAgent({
     }
   }
   const current = async (rel) => drafts.get(rel)?.content ?? fs.readFile(safeJoin(projectRoot, rel), 'utf8');
+  // how far this run has read each file it read only part of, so a rewrite from a cut-off read never drops the rest
+  const partial = new Map();
+  const read = async (rel, offset) => {
+    const text = await current(rel);
+    const from = Math.min(text.length, Math.max(0, Math.floor(Number(offset) || 0)));
+    const to = Math.min(text.length, from + MAX_READ);
+    // read in order from the start, the file is whole once its end is reached
+    const seen = from <= (partial.get(rel) ?? 0) ? Math.max(to, partial.get(rel) ?? 0) : partial.get(rel) ?? 0;
+    if (seen < text.length) partial.set(rel, seen);
+    else partial.delete(rel);
+    const note = to < text.length ? `\n[Characters ${from} to ${to} of ${text.length}. Read on with read_file { path, offset: ${to} }. Until you have read it all, change this file with apply_patch, not propose_patch.]` : '';
+    return text.slice(from, to) + note;
+  };
   const propose = async (rel, next) => {
     if (!rel) throw new Error('Invalid path.');
     if (!drafts.has(rel)) {
@@ -165,7 +180,7 @@ export async function runToolAgent({
 
   const tools = {
     web_search: async ({ query }) => JSON.stringify(await searchWithFallback({ query, searchConfig, purpose: 'chat', maxResults: 5 })),
-    read_file: async ({ path: filePath }) => (await current(projectPath(filePath))).slice(0, 20000),
+    read_file: async ({ path: filePath, offset }) => read(projectPath(filePath), offset),
     list_files: async ({ dir }) => {
       const root = dir ? safeJoin(projectRoot, projectPath(dir)) : projectRoot;
       const items = await listFilesRecursive(root, '');
@@ -173,7 +188,9 @@ export async function runToolAgent({
     },
     propose_patch: async ({ path: filePath, content }) => {
       if (typeof content !== 'string') throw new Error('Give the file’s new content.');
-      await propose(projectPath(filePath), content);
+      const rel = projectPath(filePath);
+      if (partial.has(rel)) throw new Error(`You have read only the first ${partial.get(rel)} characters of ${rel}, so a rewrite would drop the rest. Read on with read_file and offset, or use apply_patch for this change.`);
+      await propose(rel, content);
       return `Change prepared for ${filePath}. Awaiting user confirmation.`;
     },
     apply_patch: async ({ patch, path: providedPath }) => {
