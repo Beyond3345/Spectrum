@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import type { DragEvent, ReactNode } from 'react';
+import type { DragEvent, KeyboardEvent, ReactNode } from 'react';
 import { ApiError, createFolder, deleteFile, renamePath, revealProject, updateFileOrder, uploadFiles, writeFile } from '../api/client';
 import type { FileItem, FileOrderMap } from '../api/client';
 import Icon from '../app/Icon';
@@ -352,6 +352,39 @@ const FileTree = forwardRef<
       </div>
     ) : null;
 
+  // one stop for Tab in the tree, as in Finder's list: the selected file, else the open one, else the first; the arrow
+  // keys go from there
+  const visible: string[] = [];
+  const walk = (nodes: TreeNode[], depth: number) =>
+    nodes.forEach((n) => {
+      visible.push(n.path);
+      if (n.type === 'dir' && isOpen(n.path, depth)) walk(n.children, depth + 1);
+    });
+  walk(shown.children, 0);
+  const tabStop = [selected, activePath].find((p) => p && visible.includes(p)) ?? visible[0];
+
+  /** Up, Down, Home and End move through the rows shown; Right opens a folder or enters it, Left closes it or goes up. */
+  const arrowKey = (e: KeyboardEvent<HTMLElement>, node: TreeNode, open: boolean) => {
+    const row = e.currentTarget;
+    const rows = [...(row.closest('[role=tree]')?.querySelectorAll<HTMLElement>('[role=treeitem]') ?? [])];
+    const at = rows.indexOf(row);
+    const parentRow = row.parentElement?.parentElement?.getAttribute('role') === 'group' ? (row.parentElement.parentElement.previousElementSibling as HTMLElement | null) : null;
+    const isDir = node.type === 'dir';
+    const to =
+      e.key === 'ArrowDown' ? rows[at + 1]
+      : e.key === 'ArrowUp' ? rows[at - 1]
+      : e.key === 'Home' ? rows[0]
+      : e.key === 'End' ? rows[rows.length - 1]
+      : e.key === 'ArrowRight' && isDir && open ? rows[at + 1]
+      : e.key === 'ArrowLeft' && !(isDir && open) ? parentRow
+      : undefined;
+    if (e.key === 'ArrowRight' && isDir && !open) setOpenFolders((prev) => ({ ...prev, [node.path]: true }));
+    else if (e.key === 'ArrowLeft' && isDir && open) setOpenFolders((prev) => ({ ...prev, [node.path]: false }));
+    else if (!to) return false;
+    to?.focus();
+    return true;
+  };
+
   const renderNodes = (nodes: TreeNode[], depth: number): ReactNode =>
     nodes.map((node) => {
       const isDir = node.type === 'dir';
@@ -373,11 +406,12 @@ const FileTree = forwardRef<
             role="treeitem"
             aria-expanded={isDir ? open : undefined}
             aria-selected={node.path === activePath}
-            tabIndex={0}
+            tabIndex={node.path === tabStop ? 0 : -1}
             className={className}
             style={{ paddingLeft: 10 + depth * 14 }}
             title={node.path}
             draggable={!renaming}
+            onFocus={() => setSelected(node.path)}
             onClick={() => {
               setSelected(node.path);
               if (isDir) setOpenFolders((prev) => ({ ...prev, [node.path]: !open }));
@@ -385,7 +419,9 @@ const FileTree = forwardRef<
             }}
             onKeyDown={(e) => {
               if (renaming) return;
-              if (e.key === 'Enter') e.currentTarget.click();
+              if (['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+                if (arrowKey(e, node, open)) e.preventDefault();
+              } else if (e.key === 'Enter') e.currentTarget.click();
               // the keyboard way to the file menu (rename, delete, set as main file)
               else if ((e.key === 'F10' && e.shiftKey) || e.key === 'ContextMenu') {
                 e.preventDefault();
