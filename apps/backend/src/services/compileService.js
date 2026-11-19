@@ -715,10 +715,10 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   texEnv = withBiber(texEnv, biber);
   // On a Mac every program of the compile runs confined (compileSandbox.js), unless the user trusts the project
   const box = options.trusted ? null : await compileSandbox({ build: outDir, tmp: tmpDir, searchPath: texEnv[PATH_KEY], tectonic: engine === 'tectonic', root: projectRoot, runs: [engineCommand(engine), biber] });
-  if (box) texEnv = { ...texEnv, ...box.env };
   // a trusted project's TeX writes where the document says, as its shell escape could anyway
   if (options.trusted) texEnv.openout_any = 'a';
-  else if (!options.trusted && (await confinement()) === 'no') pushLog(Buffer.from('[spectrum warning] This Mac’s sandbox-exec didn’t run, so this compile wasn’t confined.\n'));
+  else if (box) texEnv = { ...texEnv, ...box.env };
+  else if ((await confinement()) === 'no') pushLog(Buffer.from('[spectrum warning] This Mac’s sandbox-exec didn’t run, so this compile wasn’t confined.\n'));
   const confined = (name, runArgs, cwd, limit) => runSpawn(name, runArgs, cwd, pushLog, texEnv, limit, null, box?.profile);
   // Recompile from scratch: nothing an earlier compile of the document kept, with any engine
   // (one a virus scanner still holds is left: none of it is copied in, and keepBuild clears it again)

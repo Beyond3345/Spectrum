@@ -18,8 +18,8 @@ const real = (p) => fs.realpath(p).catch(() => p);
 
 /**
  * What a confined compile may write besides its build folder, kept apart from what an unconfined compile reads as
- * code: a TEXMFVAR of its own for LuaTeX's font caches (luaotfload's and LuaTeX-ja's, which are Lua) and the fonts
- * mktexpk makes, and the folder Biber unpacks itself into.
+ * code: a TEXMFVAR of its own for LuaTeX's font caches (luaotfload's and LuaTeX-ja's, which are Lua), and the folder
+ * Biber unpacks itself into.
  * ponytail: one cache for every project, so a confined compile can leave Lua for another project's confined compile
  * (still confined); a cache for each project if that ever matters, at a font database's build for each
  */
@@ -73,32 +73,34 @@ const programs = new Map();
  * gives for TeX's scripts when they live elsewhere (MacPorts), and the interpreters, each by its own file. texmfVar:
  * the user's own TEXMFVAR, '' without kpsewhich (Tectonic alone).
  */
-function installation(searchPath) {
-  if (!programs.has(searchPath)) {
-    programs.set(searchPath, (async () => {
-      const found = async (name) => resolveExecutable(name, searchPath).catch(() => null);
+async function installation(searchPath) {
+  const files = {};
+  for (const name of [...TEX_PROGRAMS, ...INTERPRETERS]) files[name] = await resolveExecutable(name, searchPath).catch(() => null);
+  // by what is installed now, so a TeX installed while Spectrum runs is found without a restart
+  const key = JSON.stringify([searchPath, files]);
+  if (!programs.has(key)) {
+    programs.set(key, (async () => {
       const filters = new Set();
       for (const name of TEX_PROGRAMS) {
-        const file = await found(name);
+        const file = files[name];
         if (!file) continue;
         // /usr/local/texlive/2026/bin/universal-darwin/pdftex and …/2026/texmf-dist/scripts/latexmk/latexmk.pl
         const root = file.match(/^(.+?)\/(bin|texmf[^/]*)\//)?.[1];
         if (root && !TOO_WIDE.has(root)) filters.add(`(subpath ${q(root)})`);
         for (const filter of await programFilter(file, searchPath)) filters.add(filter);
       }
-      const kpsewhich = await found('kpsewhich');
+      const { kpsewhich } = files;
       // one at a time: kpsewhich answers only the last -var-value
       const value = async (name) => (kpsewhich ? (await run(kpsewhich, [`-var-value=${name}`])).stdout.trim() : '');
       const [dist, texmfVar] = [await value('TEXMFDIST'), await value('TEXMFVAR')];
       if (path.isAbsolute(dist) && !TOO_WIDE.has(await real(dist))) filters.add(`(subpath ${q(await real(dist))})`);
       for (const name of INTERPRETERS) {
-        const file = await found(name);
-        for (const filter of file ? await programFilter(file, searchPath) : []) filters.add(filter);
+        for (const filter of files[name] ? await programFilter(files[name], searchPath) : []) filters.add(filter);
       }
       return { filters: [...filters], texmfVar: path.isAbsolute(texmfVar) ? texmfVar : '' };
     })());
   }
-  return programs.get(searchPath);
+  return programs.get(key);
 }
 
 // What a compile never reads, though it reads the rest of the disk as TeX always has (fonts, packages and the
@@ -113,12 +115,12 @@ const KEY_FILES = String.raw`/(\.env(\.[^/]*)?|id_(rsa|dsa|ecdsa|ed25519)[^/]*|[
 /**
  * A compile's confinement, or null where there is none (not a Mac, or inside an agent's isolation already):
  * { profile, env }. It reads what the user can but the stores above; writes only the build folder, the temp folder,
- * the confined cache's font folders and, in the project (root), the PDF repstopdf makes of an .eps figure beside it
- * (ponytail: by its name, -eps-converted-to.pdf, so a document can make files of that name there); reaches no
- * network; and runs
- * only TeX's own programs and `runs` (programs by their full path: the built-in Tectonic, Spectrum's Biber). tectonic:
- * Tectonic's own profile, which also writes its cache and downloads its packages over HTTPS. root is read even when
- * it is inside the data folder. env: what the programs are told so their temp and cache files go where they can write.
+ * the confined cache, the fonts mktexpk makes in the user's own TEXMFVAR (bitmaps and metrics, not code) and, in the
+ * project (root), the PDF repstopdf makes of an .eps figure beside it (ponytail: by its name, -eps-converted-to.pdf,
+ * so a document can make files of that name there); reaches no network; and runs only TeX's own programs and `runs`
+ * (programs by their full path: the built-in Tectonic, Spectrum's Biber). tectonic: Tectonic's own profile, which
+ * also writes its cache and downloads its packages over HTTPS. root is read even when it is inside the data folder.
+ * env: what the programs are told so their temp and cache files go where they can write.
  */
 export async function compileSandbox({ build, tmp, searchPath = process.env.PATH || '', tectonic = false, root, runs = [] }) {
   if ((await confinement()) !== 'yes') return null;
@@ -126,10 +128,12 @@ export async function compileSandbox({ build, tmp, searchPath = process.env.PATH
   const data = await real(DATA_DIR);
   const cache = confinedCache();
   // only its caches and fonts: a .sty or a format written into this TEXMFVAR would be found by the next compile
-  const caches = ['par', 'texmf-var/cache', 'texmf-var/luatexja', 'texmf-var/fonts'].map((made) => path.join(cache, made));
-  for (const made of caches) await fs.mkdir(made, { recursive: true });
+  const caches = ['par', 'texmf-var/cache', 'texmf-var/luatexja'].map((made) => path.join(cache, made));
   const { filters, texmfVar } = await installation(searchPath);
-  const writable = await Promise.all([build, tmp, ...caches].map(real));
+  // made here, as a confined mktexpk can't make the folders above it
+  const fonts = texmfVar && path.join(texmfVar, 'fonts');
+  for (const made of [...caches, ...(fonts ? [fonts] : [])]) await fs.mkdir(made, { recursive: true }).catch(() => {});
+  const writable = await Promise.all([build, tmp, ...caches, ...(fonts ? [fonts] : [])].map(real));
   if (tectonic) {
     const bundles = path.join(home, 'Library', 'Caches', 'Tectonic');
     await fs.mkdir(bundles, { recursive: true }).catch(() => {});
@@ -182,7 +186,8 @@ ${tectonic ? `(allow mach-lookup
       ...(texmfVar && {
         TEXMFVAR: path.join(cache, 'texmf-var'),
         TEXMFAUXTREES: `${process.env.TEXMFAUXTREES || ''}${texmfVar},`,
-        TEXMFCACHE: [caches[1], '$TEXMFSYSVAR', texmfVar].join(path.delimiter)
+        TEXMFCACHE: [caches[1], '$TEXMFSYSVAR', texmfVar].join(path.delimiter),
+        VARTEXFONTS: fonts
       }),
       PAR_GLOBAL_TMPDIR: caches[0]
     }
@@ -190,9 +195,10 @@ ${tectonic ? `(allow mach-lookup
 }
 
 const TRUST_HINT = 'If this project is yours, or you have checked what it does, turn on “Trust this project” in the Compile menu and compile again.';
-// a long path keeps its end, where the file's name is
-const short = (text) => (text.length > 160 ? `…${text.slice(-157)}` : text);
-const listed = (items) => [...new Set(items)].slice(0, 3).map((item) => `“${short(item)}”`).join(', ');
+// a long path keeps its end, where the file's name is; a long command its start, where the program's is
+const tail = (text) => (text.length > 120 ? `…${text.slice(-117)}` : text);
+const head = (text) => (text.length > 120 ? `${text.slice(0, 117)}…` : text);
+const listed = (items, short = tail) => [...new Set(items)].slice(0, 3).map((item) => `“${short(item)}”`).join(', ');
 
 /**
  * What stopped a compile that Trust this project would allow, as lines for its log in words a user can act on, or ''.
@@ -218,7 +224,7 @@ export function blockedNotes(log, passLog, { confined, failed }) {
   // file outside the build folder it won't write
   const commands = [...passLog.matchAll(/^runsystem\((.*)\)\.\.\.disabled(?: \(restricted\))?\.$/gm)].map(([, command]) => command);
   if (commands.length || /^(?:!|.*Error:).*(?:-shell-escape|shell[- ]escape|write18)/im.test(log)) {
-    notes.push(`This document needs full shell escape${commands.length ? ` to run ${listed(commands)}` : ''}. Spectrum compiles with TeX’s restricted shell escape, which runs only TeX’s own short list of programs; trusting the project turns on full shell escape.`);
+    notes.push(`This document needs full shell escape${commands.length ? ` to run ${listed(commands, head)}` : ''}. Spectrum compiles with TeX’s restricted shell escape, which runs only TeX’s own short list of programs; trusting the project turns on full shell escape.`);
   }
   const unwritten = [...log.matchAll(/Not writing to (.+?) \(openout_any = /g)].map(([, file]) => file);
   if (unwritten.length) notes.push(`TeX didn’t write ${listed(unwritten)}, outside the document’s build folder; for a trusted project it does.`);

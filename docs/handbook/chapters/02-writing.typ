@@ -118,13 +118,25 @@ The arrow beside #ui[Compile] opens its menu (@fig-writing-compile), which chang
 - #ui[Bibliography tool], which is Auto, BibTeX or Biber. Auto follows a `% !BIB program = biber` comment in the main file and otherwise runs the tool the document's bibliography package needs and
 - #ui[Fast draft mode], which compiles in one pass with each image drawn as a box of its size, for quick previews. Numbers and references can lag behind until a full compile.
 
-Below them are #ui[Stop compilation] and #ui[Recompile from scratch], which first clears what earlier compiles of the document kept. Two more settings apply to every project and are only in #menu[Settings][Engines][LaTeX]: #ui[Compile error handling], which is Try to compile despite errors, the default, or Stop on first error, and #ui[Syntax check before compiling] (@sec-writing-lsp).
+Below them are #ui[Trust this project], which is described under Confined compiles below, #ui[Stop compilation] and #ui[Recompile from scratch], which first clears what earlier compiles of the document kept. Two more settings apply to every project and are only in #menu[Settings][Engines][LaTeX]: #ui[Compile error handling], which is Try to compile despite errors, the default, or Stop on first error, and #ui[Syntax check before compiling] (@sec-writing-lsp).
 
 #shots(("figures/02-writing/compile-menu.png", "figures/02-writing/compile-menu-markdown.png"), [The Compile button's menu for a LaTeX document, left, and for a Markdown document, right, which chooses its PDF engine first.]) <fig-writing-compile>
 
 === What a compile keeps
 
 The `.aux`, `.bbl`, `.toc` and similar files of each document are kept between compiles, for each compiler, in the app's own data folder, and the next compile reads them back. A document whose labels, headings and citations have not changed is therefore done in one pass. BibTeX and Biber only run when something is cited, another pass only runs when the log asks for one, and makeindex and makeglossaries run when the document has an index or glossaries. Files are kept only from a compile without errors, and when TeX cannot read one of them, Spectrum clears them and compiles once more from scratch, so a damaged `.aux` never locks a document out. The compile itself runs in a temporary folder and writes only the PDF into the project. A checkpoint is saved after each successful compile (@ch-references).
+
+=== Confined compiles and Trust this project <sec-writing-trust>
+
+A LaTeX document is a program. Its packages can write files and, with shell escape, start other programs, so compiling a document from someone else is running their code. On a Mac, Spectrum therefore runs every program of a LaTeX compile in a sandbox, which covers the engine, BibTeX or Biber, makeindex, makeglossaries and whatever they start, and Markdown through LaTeX and the composer's own compiles as well. A confined compile can read the project, the TeX installation and your fonts and files, as TeX always has. It can write only its own build files, run only the programs of the TeX installation and use no network, apart from the built-in Tectonic downloading its packages. It also cannot read Spectrum's own data, the usual stores of keys such as `~/.ssh`, or key files such as `.env` and `.pem`. TeX's restricted shell escape stays on, so minted, EPS figures and the other tools on TeX's own short list work as before, and ordinary documents compile as they did.
+
+Some documents need more, such as one that runs gnuplot, Inkscape or a script of its own through full shell escape, one that writes files into other folders, or a bibliography that Biber fetches from a web address. When a compile is stopped for one of these reasons, Tools › Logs says what was blocked and names the switch that allows it. #ui[Trust this project], in the Compile button's menu, is off for every project at first. Turning it on asks once (@fig-writing-trust), and the project's compiles then run without the sandbox and with full shell escape, which means that its documents can run any program as you. It should therefore only be turned on for a project whose files are all your own, or ones you have checked.
+
+Unlike the other settings in the menu, the choice is kept on this computer, in the app's data folder and never in the project. A project that arrives from someone else is therefore never trusted already, and a copy of a trusted project, or its folder once it is moved or renamed, has to be trusted again.
+
+#shot("figures/02-writing/trust-project.png", [Turning on Trust this project asks first and says what the project's documents can then do.], width: 62%) <fig-writing-trust>
+
+#note[On Windows a compile is not confined yet. It runs with TeX's restricted shell escape, and #ui[Trust this project] only turns on full shell escape there.]
 
 === Several documents in one project
 
