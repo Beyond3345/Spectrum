@@ -104,7 +104,9 @@ export function review(base: string, mine: string, theirs: string): Review {
   if (base === mine || mine === theirs) return { mine: lines, hunks: hunksOf(mine, theirs), eol };
 
   const b = toLines(base);
-  const A = hunksOf(base, mine);
+  // the user's lines changed one for one are each a change of their own: an edit of theirs on the line after the
+  // agent's is then not drawn into an overlap
+  const A = hunksOf(base, mine).flatMap((h) => (h.lines.length > 1 && h.lines.length === h.end - h.start ? h.lines.map((line, i) => ({ start: h.start + i, end: h.start + i + 1, lines: [line] })) : [h]));
   const B = hunksOf(base, theirs);
   const hunks: Hunk[] = [];
   let ai = 0;

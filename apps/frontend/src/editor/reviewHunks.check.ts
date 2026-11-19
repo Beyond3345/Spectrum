@@ -145,6 +145,9 @@ eq(review(inOrder.original, inOrder.content!, inOrder.proposed).hunks.length, 2,
 const first = applied(both, [both.hunks[0]]);
 const still = review(first.original, first.text, first.proposed);
 eq([still.hunks.map((h) => !!h.base), toLines(first.text)[9]], [[true, false], 'mine 10\n'], 'the overlap stays marked after another change is applied');
+// the user also edited the line after: only the line both changed is the overlap, and their other line stays theirs
+const two = review(base, doc(20, (i) => (i === 10 ? 'mine 10' : i === 11 ? 'mine 11' : undefined)), theirs);
+eq([where(two.hunks[1]), two.hunks[1].base, toLines(applied(two, two.hunks).text).slice(9, 11)], ['Line 10', ['line 10\n'], ['agent 10\n', 'mine 11\n']], 'an overlap is no wider than the lines both changed');
 // both made the same change: nothing left of it
 eq(review(base, doc(20, (i) => (i === 10 ? 'agent 10' : undefined)), theirs).hunks.map(where), ['Line 3', 'Line 18'], 'the same change on both sides');
 // both added lines at the same place, and the user deleted lines the agent changed
