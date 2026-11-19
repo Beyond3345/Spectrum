@@ -51,9 +51,6 @@ export function getRun(id) {
 /** The run of a project's thread, while it is kept. */
 export const runOfThread = (projectId, threadId) => [...runs.values()].find((r) => r.key === threadKey(projectId, threadId)) || null;
 
-/** Whether a Spectrum agent turn is under way in the project. */
-export const spectrumAgentAtWork = (projectId) => [...runs.values()].some((r) => r.projectId === projectId && RUNNING.includes(r.status));
-
 function forget(run) {
   clearTimeout(run.timer);
   runs.delete(run.id);
