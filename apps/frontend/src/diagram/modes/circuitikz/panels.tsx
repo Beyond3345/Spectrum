@@ -285,7 +285,7 @@ function LiquidFields({ tikz, options, onChange }: { tikz: string; options: stri
       {levels.map(([name, label, start, min, max]) => {
         const key = `${tikz}/${name}`;
         const value = Number(valueOf(key) ?? start);
-        return <Field key={key} label={label} hint={name === levels[0][0] ? `Heights in cm from the part’s reference point, as on the grid; ${start} to start with.` : undefined}>{(id) => <LevelInput id={id} value={value} min={min} max={max} onChange={(v) => set(key, v === start ? undefined : String(v))} />}</Field>;
+        return <Field key={key} label={label} hint={name === levels[levels.length - 1][0] ? 'Heights in cm above the point the part is placed by, as its walls are drawn.' : undefined}>{(id) => <LevelInput id={id} value={value} min={min} max={max} onChange={(v) => set(key, v === start ? undefined : String(v))} />}</Field>;
       })}
     </>
   );

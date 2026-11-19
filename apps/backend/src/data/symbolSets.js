@@ -265,13 +265,14 @@ export const FLUID_TINTS = { water: 'blue!12', oil: 'orange!30', mercury: 'gray!
 
 /**
  * Each keyed part's levels, [key, label, starting value, lowest, highest], and its liquids' labels: the first liquid is
- * spx/fluid/liquid, the second spx/fluid/liquid 2, the third spx/fluid/liquid 3. The starting values are the plain
+ * spx/fluid/liquid, the second spx/fluid/liquid 2, the third spx/fluid/liquid 3. A differential manometer's tubes may
+ * hold two liquids above its gauge liquid, one from each side. The starting values are the plain
  * pic's level marks, so a believable reading.
  */
 export const FLUID_LEVELS = {
   'spx/fluid/manometer': { liquids: ['Liquid'], levels: [['left', 'Level, left limb', -0.25, -0.5, 1], ['right', 'Level, right limb', 0.5, -0.5, 1]] },
-  'spx/fluid/manometer-differential': { liquids: ['Liquid in the bend', 'Liquid above it'], levels: [['left', 'Level, left limb', -0.25, -0.5, 0.875], ['right', 'Level, right limb', 0.5, -0.5, 0.875]] },
-  'spx/fluid/manometer-inverted': { liquids: ['Liquid in the limbs', 'Liquid in the bend'], levels: [['left', 'Level, left limb', 0.25, -1, 0.5], ['right', 'Level, right limb', -0.5, -1, 0.5]] },
+  'spx/fluid/manometer-differential': { liquids: ['Liquid in the bend', 'Liquid above, left', 'Liquid above, right'], levels: [['left', 'Level, left limb', -0.25, -0.5, 0.875], ['right', 'Level, right limb', 0.5, -0.5, 0.875]] },
+  'spx/fluid/manometer-inverted': { liquids: ['Liquid in the bend', 'Liquid below, left', 'Liquid below, right'], levels: [['left', 'Level, left limb', 0.25, -1, 0.5], ['right', 'Level, right limb', -0.5, -1, 0.5]] },
   'spx/fluid/manometer-inclined': { liquids: ['Liquid'], levels: [['well', 'Level, reservoir', 0.125, -0.125, 0.5], ['tube', 'Level, sloping tube', 0.5, -0.125, 0.625]] },
   'spx/fluid/column': { liquids: ['Top liquid', 'Middle liquid', 'Bottom liquid'], levels: [['surface', 'Free surface', 1, -1.25, 1.25], ['upper', 'Upper interface', 0.25, -1.25, 1.25], ['lower', 'Lower interface', -0.5, -1.25, 1.25]] },
   'spx/fluid/piezometer': { liquids: ['Liquid'], levels: [['level', 'Level', 1, 0, 1.5]] },
@@ -309,14 +310,14 @@ export const KEYED_PICS = {
   'spx/fluid/manometer-differential': keyed('spx/fluid/manometer-differential', (l, r) =>
     fill(1, `(-0.625,${l}) -- (-0.625,-0.5) arc[start angle=180, end angle=360, radius=0.625] -- (0.625,${r}) -- (0.375,${r}) -- (0.375,-0.5) arc[start angle=0, end angle=-180, radius=0.375] -- (-0.375,${l})`)
     + fill(2, `(-0.625,${l}) -- (-0.625,0.875) -- (-1.25,0.875) -- (-1.25,1.125) -- (-0.375,1.125) -- (-0.375,${l})`)
-    + fill(2, `(0.375,${r}) -- (0.375,1.125) -- (1.25,1.125) -- (1.25,0.875) -- (0.625,0.875) -- (0.625,${r})`)
+    + fill(3, `(0.375,${r}) -- (0.375,1.125) -- (1.25,1.125) -- (1.25,0.875) -- (0.625,0.875) -- (0.625,${r})`)
     + String.raw`${body} (-1.25,0.875) -- (-0.625,0.875) -- (-0.625,-0.5) arc[start angle=180, end angle=360, radius=0.625] -- (0.625,0.875) -- (1.25,0.875) (-1.25,1.125) -- (-0.375,1.125) -- (-0.375,-0.5) arc[start angle=180, end angle=360, radius=0.375] -- (0.375,1.125) -- (1.25,1.125);\draw (-0.625,${l}) -- (-0.375,${l}) (0.375,${r}) -- (0.625,${r});`
     + pins({ a: [-1.25, 1], b: [1.25, 1] })),
   // drawn upside down, as the plain one is; its levels and liquids are measured upright
   'spx/fluid/manometer-inverted': keyed('spx/fluid/manometer-inverted', (l, r) =>
-    fill(1, `(-0.625,-1) -- (-0.625,${l}) -- (-0.375,${l}) -- (-0.375,-1)`)
-    + fill(1, `(0.375,-1) -- (0.375,${r}) -- (0.625,${r}) -- (0.625,-1)`)
-    + fill(2, `(-0.625,${l}) -- (-0.625,0.5) arc[start angle=180, end angle=0, radius=0.625] -- (0.625,${r}) -- (0.375,${r}) -- (0.375,0.5) arc[start angle=0, end angle=180, radius=0.375] -- (-0.375,${l})`)
+    fill(2, `(-0.625,-1) -- (-0.625,${l}) -- (-0.375,${l}) -- (-0.375,-1)`)
+    + fill(3, `(0.375,-1) -- (0.375,${r}) -- (0.625,${r}) -- (0.625,-1)`)
+    + fill(1, `(-0.625,${l}) -- (-0.625,0.5) arc[start angle=180, end angle=0, radius=0.625] -- (0.625,${r}) -- (0.375,${r}) -- (0.375,0.5) arc[start angle=0, end angle=180, radius=0.375] -- (-0.375,${l})`)
     + String.raw`\begin{scope}[yscale=-1]${uTube(calc(`-(${l})`), calc(`-(${r})`))}\end{scope}` + pins({ left: [-0.5, -1], right: [0.5, -1] })),
   // the liquid's surface is level in the sloping tube too, across it from the upper wall to the lower
   'spx/fluid/manometer-inclined': keyed('spx/fluid/manometer-inclined', (h, t) =>
