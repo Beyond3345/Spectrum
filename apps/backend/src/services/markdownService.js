@@ -10,7 +10,7 @@ import { safeJoin } from '../utils/pathUtils.js';
 import { cachePath } from './projectService.js';
 import { readProjectSettings } from './projectSettings.js';
 import { PANDOC_DOWNLOADABLE, PANDOC_MINIMUM, pandocPath, versionOf } from './engineService.js';
-import { MAX_LOG_BYTES, compileDocument, findExecutable, pageColourLines, runSpawn, unwrap } from './compileService.js';
+import { MAX_LOG_BYTES, compileDocument, findExecutable, pageColourLines, runSpawn } from './compileService.js';
 import { compileTypst, typstFill } from './typstService.js';
 
 // Markdown compiles in two steps: pandoc writes LaTeX or Typst, then that is compiled like any document. An error in
@@ -78,25 +78,25 @@ export const cslArgs = (meta) => (named(meta.csl) || named(meta['citation-style'
 /**
  * The bundled font for the .md's Chinese, Japanese or Korean text, or null when it has none or its front matter names
  * a font (CJKmainfont, or mainfont for all of it): Noto Serif TC for Traditional Chinese with no Simplified-only
- * character (or lang: zh-Hant, zh-TW or zh-HK), else Noto Serif SC, which has the Traditional characters and kana too.
+ * character or kana (or lang: zh-Hant, zh-TW or zh-HK), else Noto Serif SC, which has the Traditional characters and
+ * kana too.
  * Neither has Korean letters, which missingGlyphs then names.
  */
 export function cjkFont(source, meta) {
   if (named(meta.CJKmainfont) || named(meta.mainfont) || !CJK_TEXT.test(source)) return null;
   const { simplified, traditional } = chineseForms(source);
-  const tc = !simplified && (traditional > 0 || /^zh-(?:Hant|TW|HK|MO)\b/i.test(String(meta.lang || '')));
+  // Japanese (any kana) takes SC, which has more of its kanji
+  const tc = !simplified && !/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(source) && (traditional > 0 || /^zh-(?:Hant|TW|HK|MO)\b/i.test(String(meta.lang || '')));
   const font = BUNDLED_FONTS.find((f) => f.id === (tc ? 'noto-serif-tc' : 'noto-serif-sc'));
   return font && existsSync(path.join(CJK_FONTS_DIR, font.regular[0])) ? font : null;
 }
 
 /**
- * pandoc's variables for the bundled CJK font (xeCJK under XeLaTeX, luatexja-fontspec under LuaLaTeX), by file name as
- * every compile finds them; withPath adds the folder, which the built-in Tectonic needs (a compile, never a new project).
+ * pandoc's variables for the bundled CJK font (xeCJK under XeLaTeX, luatexja-fontspec under LuaLaTeX), by file name,
+ * which every LaTeX compile in Spectrum finds (Tectonic too), so a LaTeX project made from the .md keeps it.
  */
-function cjkLatexArgs(font, withPath) {
-  const dir = CJK_FONTS_DIR.split(path.sep).join('/');
-  const options = [...(withPath && !/[\\{}%#~^$&]/.test(dir) ? [`Path={${dir.replace(/\/?$/, '/')}}`] : []), ...(font.bold ? [`BoldFont=${font.bold[0]}`] : [])];
-  return ['-V', 'CJKmainfont=' + font.regular[0], ...options.flatMap((option) => ['-V', 'CJKoptions=' + option])];
+function cjkLatexArgs(font) {
+  return ['-V', 'CJKmainfont=' + font.regular[0], ...(font.bold ? ['-V', 'CJKoptions=BoldFont=' + font.bold[0]] : [])];
 }
 
 /**
@@ -195,13 +195,27 @@ export function latexDiagnostics(log, generatedName) {
   return diagnostics;
 }
 
+/** The log's lines with TeX's wrapping at 79 columns undone, which LuaTeX counts in bytes (a Korean letter is three). */
+function unwrapped(log) {
+  const out = [];
+  let carry = '';
+  for (const line of String(log || '').split(/\r?\n/)) {
+    carry += line;
+    if (line.length === 79 || Buffer.byteLength(line) === 79) continue;
+    out.push(carry);
+    carry = '';
+  }
+  if (carry) out.push(carry);
+  return out;
+}
+
 /**
  * The log's lines, TeX's 79-column wrapping undone, from the last TeX pass: from its banner (Tectonic: its last
  * "note: Running TeX" or "Rerunning") on, as an earlier pass's warnings are repeats or stale. The editor reads a LaTeX
  * document's log the same way (compileLog.ts).
  */
 function lastPass(log) {
-  const lines = unwrap(String(log || '')).split(/\r?\n/);
+  const lines = unwrapped(log);
   const start = lines.findLastIndex((line) => /^(?:This is (?:pdf|Xe|LuaHB|Lua|e-)?TeX, Version|note: (?:Re)?running TeX)/i.test(line));
   return start === -1 ? lines : lines.slice(start);
 }
@@ -217,8 +231,10 @@ export function latexWarnings(log) {
   for (let i = 0; i < lines.length; i += 1) {
     let text = lines[i];
     let line;
-    const tectonic = /^warning: (?:(?:\.\/)?[^\s:]+:(\d+): )?(.*)$/.exec(text);
-    if (tectonic) [line, text] = [Number(tectonic[1]) || undefined, tectonic[2]];
+    // Tectonic's located warnings only, as for a LaTeX document: its others are about Tectonic itself
+    const tectonic = /^warning: (?:\.\/)?[^\s:]+:(\d+): (.*)$/.exec(text);
+    if (/^warning: /.test(text) && (!tectonic || !tectonic[2].trim() || /^Missing character/.test(tectonic[2]))) continue;
+    if (tectonic) [line, text] = [Number(tectonic[1]), tectonic[2]];
     const warning = /^(?:LaTeX|Package (\S+)|Class (\S+))(?: \w+)? Warning: (.*)$/.exec(text);
     const box = /^((?:Over|Under)full \\[hv]box .*?)(?: (?:in paragraph |in alignment |detected )?at lines? (\d+)(?:--\d+)?)?$/.exec(text);
     if (warning) {
@@ -264,9 +280,16 @@ export const fontName = (font) => path.posix.basename(String(font).replace(/^\[(
  */
 export function missingGlyphs(log, source, mainFile) {
   const fonts = new Map();
-  for (const m of unwrap(String(log || '')).matchAll(/^Missing character: There is no (.+?) \(U\+[0-9A-F]+\)(?: in font (.+?)!)?\s*$/gm)) {
-    const font = m[2] ? fontName(m[2]) : '';
-    fonts.set(font, new Set(fonts.get(font)).add(m[1]));
+  // XeTeX's and LuaTeX's "Missing character", Tectonic's "could not represent character" (its other line mangles the
+  // character), each character read from its code
+  const lines = unwrapped(log).join('\n');
+  const found = [
+    ...[...lines.matchAll(/^Missing character: There is no .+? \(U\+([0-9A-F]+)\)(?: in font (.+?)!)?\s*$/gm)],
+    ...[...lines.matchAll(/^warning: could not represent character ".+?" \(0x([0-9a-f]+)\) in font "(.+?)"$/gm)]
+  ];
+  for (const [, code, inFont] of found) {
+    const font = inFont ? fontName(inFont) : '';
+    fonts.set(font, new Set(fonts.get(font)).add(String.fromCodePoint(parseInt(code, 16))));
   }
   return [...fonts].map(([font, set]) => {
     const chars = [...set];
@@ -351,7 +374,7 @@ export async function markdownToLatex({ projectRoot, absMain, mainFile, generate
     '--to=latex', '--standalone', '--citeproc',
     ...(await bibliographyArgs(projectRoot, meta)),
     ...cslArgs(meta),
-    ...(font ? cjkLatexArgs(font, !sandboxed) : []),
+    ...(font ? cjkLatexArgs(font) : []),
     '--resource-path=' + [path.dirname(absMain), projectRoot].join(path.delimiter),
     sandboxed ? '--sandbox' : '--extract-media=' + path.join(generatedDir, 'media'),
     '-o', generatedFile

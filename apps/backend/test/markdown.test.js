@@ -2,7 +2,7 @@
 // refusals. The fake pandoc and TeX are scripts in a throwaway folder. Run: node --test apps/backend/test/markdown.test.js
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { promises as fs, mkdirSync, mkdtempSync, realpathSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { promises as fs, mkdirSync, mkdtempSync, realpathSync, rmSync, existsSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -10,7 +10,17 @@ const WINDOWS = process.platform === 'win32';
 const skip = WINDOWS ? 'scripts stand in for pandoc and TeX' : false;
 const tmp = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'spectrum-markdown-')));
 const realPath = process.env.PATH;
+// the bundled CJK fonts where a checkout has them (node scripts/desktop.mjs fonts), else empty stand-ins of the same names
+const realFonts = path.join(import.meta.dirname, '..', '..', '..', 'src-tauri', 'resources', 'fonts', 'cjk');
+const haveFonts = existsSync(path.join(realFonts, 'NotoSerifSC-Regular.otf'));
+const fontsDir = path.join(tmp, 'fonts');
+mkdirSync(fontsDir);
+for (const name of ['NotoSerifSC-Regular.otf', 'NotoSerifSC-Bold.otf', 'NotoSerifTC-Regular.otf', 'NotoSerifTC-Bold.otf']) {
+  if (haveFonts) symlinkSync(path.join(realFonts, name), path.join(fontsDir, name));
+  else writeFileSync(path.join(fontsDir, name), '');
+}
 Object.assign(process.env, {
+  SPECTRUM_FONTS_DIR: fontsDir,
   SPECTRUM_DATA_DIR: path.join(tmp, 'data'),
   SPECTRUM_PROJECTS_DIR: path.join(tmp, 'projects'),
   SPECTRUM_TEMPLATE_DIR: path.join(tmp, 'templates'),
@@ -19,7 +29,7 @@ Object.assign(process.env, {
 const { createProject, getProjectRoot } = await import('../src/services/projectService.js');
 const { runCompile, findExecutable } = await import('../src/services/compileService.js');
 const { pandocPath, versionOf } = await import('../src/services/engineService.js');
-const { latexDiagnostics, markdownToLatex, missingGlyphs, pandocDocx, pandocWarnings, pandocErrors, parseFrontMatter, rootRelativeImages, svgsAsPdf, traceToMarkdown } = await import('../src/services/markdownService.js');
+const { cjkFont, cslArgs, latexDiagnostics, latexWarnings, markdownToLatex, markdownToTypst, missingGlyphs, typstCjkFont, pandocDocx, pandocWarnings, pandocErrors, parseFrontMatter, rootRelativeImages, svgsAsPdf, traceToMarkdown } = await import('../src/services/markdownService.js');
 
 after(() => {
   process.env.PATH = realPath;
@@ -347,4 +357,67 @@ test('a TeX error in a generated file whose name has a space is still placed', (
 test('a YAML error is placed once, at the line pandoc gives in the .md', () => {
   const log = 'Error parsing YAML metadata at "main.md" (line 5, column 1):\nYAML parse exception at line 2, column 6,\nwhile parsing a flow sequence:\n';
   assert.deepEqual(pandocErrors(log, 'main.md').map((e) => [e.line, e.column]), [[5, 1]]);
+});
+
+test('pandoc gets the bundled APA 7 style unless the front matter names one', () => {
+  const [flag, file] = cslArgs({});
+  assert.equal(flag, '--csl');
+  assert.match(readFileSync(file, 'utf8'), /<title>APA Style 7th edition<\/title>/);
+  assert.deepEqual(cslArgs({ csl: 'ieee.csl' }), []);
+  assert.deepEqual(cslArgs({ 'citation-style': 'chicago.csl' }), []);
+});
+
+test('CJK text gets the bundled font: Simplified (or mixed) Noto Serif SC, Traditional TC, the front matter’s own font winning', () => {
+  assert.equal(cjkFont('本報告比較三棟建築。这份报告比较了。', {})?.id, 'noto-serif-sc');
+  assert.equal(cjkFont('本報告比較三棟建築的用水量。', {})?.id, 'noto-serif-tc');
+  assert.equal(cjkFont('三人水木', { lang: 'zh-Hant' })?.id, 'noto-serif-tc');
+  assert.equal(cjkFont('日本語の文章です。', {})?.id, 'noto-serif-sc');
+  assert.equal(cjkFont('本報告', { CJKmainfont: 'Songti TC' }), null);
+  assert.equal(cjkFont('本報告', { mainfont: 'Hiragino Mincho ProN' }), null);
+  assert.equal(cjkFont('Only English here.', {}), null);
+  assert.equal(typstCjkFont('Only English here.', {}), '');
+  assert.match(typstCjkFont('本報告', {}), /^#show regex\("\[\\p\{Han\}.*set text\(font: "Noto Serif TC"\)\n$/);
+  assert.match(typstCjkFont('本報告', { CJKmainfont: 'Songti TC' }), /font: "Songti TC"/);
+});
+
+test('LaTeX’s warnings from the last pass, at their generated line, and errors TeX writes without a file', () => {
+  const pass = (ref) => [
+    'This is XeTeX, Version 3.141592653-2.6-0.999998 (TeX Live 2026) (preloaded format=xelatex)',
+    `LaTeX Warning: Reference \`${ref}' on page 1 undefined on input line 103.`,
+    'Package natbib Warning: Citation `x\' on page 1 undefined on input line',
+    '(natbib)                 7.',
+    'Overfull \\hbox (12.5pt too wide) in paragraph at lines 108--109',
+    '! File ended while scanning use of \\frac.',
+    '<inserted text>',
+    'l.110 ',
+    'warning: main.md.tex:111: Something Tectonic located',
+    'warning: accessing absolute path `/x`; build may not be reproducible',
+    'Transcript written on main.md.log.'
+  ].join('\n');
+  assert.deepEqual(latexWarnings(pass('stale') + '\n' + pass('fig:none')), [
+    { severity: 'warning', message: 'Reference `fig:none\' on page 1 undefined.', line: 103 },
+    { severity: 'warning', message: 'Citation `x\' on page 1 undefined.', line: 7 },
+    { severity: 'warning', message: 'Overfull \\hbox (12.5pt too wide)', line: 108 },
+    { severity: 'error', message: 'File ended while scanning use of \\frac.', line: 110 },
+    { severity: 'warning', message: 'Something Tectonic located', line: 111 }
+  ]);
+});
+
+test('a .md with Chinese prints it in the bundled font and cites in APA 7, through pdfLaTeX’s place too', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
+  process.env.PATH = realPath;
+  if (!haveFonts) return t.skip('needs the bundled fonts (node scripts/desktop.mjs fonts)');
+  if (!(await pandocPath()) || !(await findExecutable('xelatex'))) return t.skip('needs pandoc and XeLaTeX');
+  const p = await projectWith('---\ntitle: 用水\n---\n\n# Heading\n\n本報告比較三棟建築的用水量 [@jones].\n\nSee Figure \\ref{fig:none} for the meters in this building.\n', {
+    'refs.bib': '@book{jones, author = {Jones, Peter}, title = {Building Services}, publisher = {Campus Press}, year = {2019}}\n'
+  });
+  const result = await runCompile({ projectId: p.id, mainFile: 'main.md', engine: 'pdflatex' });
+  assert.equal(result.ok, true, result.error || result.log);
+  assert.equal(result.engine, 'xelatex');
+  assert.match(result.log, /This compile used XeLaTeX/);
+  assert.doesNotMatch(result.log, /Missing character/);
+  const reference = result.errors.find((e) => /fig:none/.test(e.message));
+  assert.equal(reference?.line, 9);
+  const tex = await fs.readFile(path.join(process.env.SPECTRUM_DATA_DIR, 'cache', p.id, 'generated', 'main.md.tex'), 'utf8');
+  assert.match(tex, /\\setCJKmainfont\[BoldFont=NotoSerifTC-Bold\.otf\]\{NotoSerifTC-Regular\.otf\}/);
+  assert.match(tex, /Jones, P\. \(2019\)\. \\emph\{Building services\}/);
 });
