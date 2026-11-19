@@ -557,13 +557,14 @@ export default function SpectrumAgentTab({
     const owner = threadRef.current;
     const label = again ? 'Try again' : 'Continue';
     const { run } = owner ? await findAgentRun(latest.current.projectId, owner.id).catch(() => ({ run: null })) : { run: null };
-    const anew = () => void send(label, { context: { file: true, selection: false, log: false, todos: false } });
+    // a Plan turn goes on as one, while Plan is still on
+    const anew = () => void send(label, { ...ANSWER, plan: planRef.current });
     if (!owner || !run || runningRef.current) return anew();
     setEvents([]);
     setRunning(owner);
     runningRef.current = owner;
     try {
-      await continueAgentRun(run.id, turnSettings(owner));
+      await continueAgentRun(run.id, { ...turnSettings(owner), ...(planRef.current && { planFirst: true }) });
     } catch (err) {
       setRunning(null);
       runningRef.current = null;
@@ -716,7 +717,7 @@ export default function SpectrumAgentTab({
                 }
                 onClick={() => void openRules()}
               >
-                <Icon name="list.clipboard" /> {rules?.exists ? INSTRUCTIONS_FILE : `Add ${INSTRUCTIONS_FILE}`}
+                <Icon name="list.clipboard" /> {!rules?.exists ? `Add ${INSTRUCTIONS_FILE}` : rules.approved ? `Using ${INSTRUCTIONS_FILE}` : `${INSTRUCTIONS_FILE} not used`}
               </button>
             </>
           }

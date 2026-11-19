@@ -307,7 +307,7 @@ const STEPS: Record<string, [kind: string, alone: string, about?: string]> = {
 
 // steps with nothing to open, which the card under them or the plan strip already shows: no card unless one failed.
 // Nor for a change held back by the pause before the next file (paused), which the “Go on to …?” card stands for.
-const QUIET = ['ask_user', 'propose_plan', 'step_done'];
+const QUIET = ['ask_user', 'propose_plan', 'step_done', 'suggest_instruction'];
 const quiet = (step: { tool: string; ok?: boolean; status?: string; paused?: boolean }) => !!step.paused || (QUIET.includes(step.tool) && (step.status ? step.status !== 'failed' : step.ok !== false));
 
 /**
