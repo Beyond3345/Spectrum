@@ -184,7 +184,7 @@ export default function HunkList({
                     />
                     <div className="row">
                       <span className="field-hint grow">
-                        {h.base ? 'Your lines, then the agent’s: edit them into what the file should say.' : 'What you apply is written in place of the lines on the left.'}
+                        {h.base ? 'Your lines, then the agent’s: edit them into what the file should say.' : 'This text is written in place of the lines on the left.'}
                       </span>
                       <button className="btn small" onClick={closeEdit}>Cancel</button>
                       <button className="btn small primary" disabled={busy} onClick={applyEdit}>{applyLabel} edited</button>

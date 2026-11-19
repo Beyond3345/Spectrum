@@ -120,15 +120,26 @@ The assistant never writes into a file by itself. An action that changes text co
 
 #shot("figures/03-assistant/assistant-reply-changes.png", [A reply to #ui[Polish] with its changes waiting to be reviewed.], width: 85%) <fig-assistant-reply>
 
-#ui[Review] opens #ui[Review changes], a side-by-side comparison of each file with your text on the left and the suggestion on the right (@fig-assistant-review-changes). Changed words are marked inside each changed line, and unchanged stretches are folded away as "25 unchanged lines", while #ui[Show whole file] unfolds them. The changes are then accepted or rejected as follows,
+#ui[Review] opens #ui[Review changes], a side-by-side comparison of each file with your text on the left and the suggestion on the right (@fig-assistant-review-changes). Changed words are marked inside each changed line, and unchanged stretches are folded away as "16 unchanged lines", while #ui[Show whole file] unfolds them.
 
-+ Read the comparison of the first file in the list on the left
-+ Press #ui[Accept] or #ui[Reject] for that file
-+ Repeat for the other files, or press #ui[Accept all] or #ui[Reject all] at the foot
+A suggestion for a file is shown as its separate changes. Each change has its own bar, which says where it is ("Lines 20 to 21") and how many lines it adds and removes, and in a LaTeX, Typst or Markdown file the changes are grouped under the heading they come under, with a count. Each change can be settled by itself, so one good sentence can be kept from a rewrite that is otherwise not wanted. The changes are accepted or rejected as follows,
 
-#shot("figures/03-assistant/review-changes.png", [#ui[Review changes] for one file. Your text is on the left, the suggestion on the right, and the changed words are marked in each.]) <fig-assistant-review-changes>
++ Read the first change of the first file in the list on the left
++ Press #ui[Accept] to write that change into the file, or #ui[Reject] to drop it from the suggestion
++ Press #ui[Edit] to change the suggested text first (@fig-assistant-review-edit), and then #ui[Accept edited] to write your version
++ Repeat for the other changes, or press #ui[Accept] or #ui[Reject] at the top for the whole file, or #ui[Accept all] or #ui[Reject all] at the foot
 
-Before applying anything, Spectrum saves a "Before AI changes" checkpoint, so an accepted change can always be undone from #menu[Tools][Checkpoints] (@ch-references). The same review is used by #ui[Fix with AI] in the Logs and Review tabs, by Quick switch and by the Spectrum agent.
+#shot("figures/03-assistant/review-changes.png", [#ui[Review changes] for one file with three changes. Each change has its own #ui[Edit], #ui[Reject] and #ui[Accept], and the change in focus is marked in blue.]) <fig-assistant-review-changes>
+
+A change that is accepted is written at once, and what is left of the suggestion stays in the review against the file as it then is. The keys under the comparison do the same without the mouse: #key("J") and #key("K") move to the next and the previous change, #key("A") accepts the change in focus, #key("R") rejects it and #key("E") opens its editor. The keys are ignored while you type in a change's editor, where #key("Esc") closes the editor and #key("⌘", "Enter") accepts the edited text.
+
+#shot("figures/03-assistant/review-change-edit.png", [#ui[Edit] on one change. The box holds the suggested text, and what is typed there is written in place of the lines on the left.], width: 85%) <fig-assistant-review-edit>
+
+The switch at the top of the sheet, #ui[Source] and #ui[PDF before and after], shows what the changes do to the document instead of to its source (@fig-assistant-review-pdf). Spectrum compiles the project as it is and a copy of the project with every change still in review applied, and shows the two PDFs side by side. Both are compiled on copies inside the same isolation as an agent's draft (@sec-assistant-external), so nothing is written into the project and a LaTeX compile stays confined. A side that does not compile shows its log in the place of its PDF, which is a warning worth having before a change is accepted.
+
+#shot("figures/03-assistant/review-pdf.png", [#ui[PDF before and after] for the same three changes: the report as it is on the left, and as it would be on the right.]) <fig-assistant-review-pdf>
+
+Before writing anything, Spectrum saves a "Before AI changes" checkpoint, so an accepted change can always be undone from #menu[Tools][Checkpoints] (@ch-references). The same review is used by #ui[Fix with AI] in the Logs and Review tabs and by Quick switch, and the agents' review in the workspace works the same way (@sec-assistant-workspace). The tidying that follows a conversion to another format is still reviewed a file at a time.
 
 === Image to LaTeX
 
@@ -261,7 +272,24 @@ A run can end before its answer in three ways, and in each the work done so far 
 
 === Changes from an agent
 
-Changes from either agent wait in a tray above the message box, such as "3 files, +12 −4". The tray opens a review in the pane with each file's comparison, #ui[Apply] and #ui[Reject] for each file, #ui[Apply all], #ui[Reject all] and #ui[Preview PDF], which compiles the agent's copy of the project so you can see the result first. Closing the workspace does not stop a task, and a dot on the #ui[Agent] button shows a task that is running, waiting for an answer or has changes to review.
+Changes from either agent wait in a tray above the message box, such as "2 files, +6 −5". The tray opens a review in the pane (@fig-assistant-agent-review), which lists the files with the number of changes in each and shows the chosen file as its separate changes, exactly as #ui[Review changes] does (@sec-assistant-panel). A file the agent made is marked #ui[New] and one it removed #ui[Deleted], while a new file with the text of a deleted one is marked #ui[Moved].
+
+#shot("figures/03-assistant/agent-review.png", [The Spectrum agent's changes in review. `main.tex` has three changes, and the one in focus is under the Method heading.], width: 55%) <fig-assistant-agent-review>
+
+Each change has #ui[Edit], #ui[Reject] and #ui[Apply], and the keys are the same, with #key("A") for apply. #ui[Apply] and #ui[Reject] in the file's bar settle the whole file, and #ui[Apply all] and #ui[Reject all] the whole tray. A change that is applied is written into your file after a "Before AI changes" checkpoint, which appears in the conversation with #ui[Restore], and the rest of the agent's work on that file stays in the tray. A local agent is told on its next task which of its changes were applied, edited or rejected, and its copy of the file is brought into line.
+
+The comparison is always against your file as it is now, with the left side labelled #ui[Your file]. Edits you made while the agent worked are therefore kept: the agent's changes are moved onto your text where the two do not touch. Where you and the agent changed the same lines, the change is marked "You changed these lines too" and shows both versions, yours on the left and the agent's on the right (@fig-assistant-agent-overlap). Such a change is settled with one of four buttons,
+
+- #ui[Keep mine], which leaves your lines as they are,
+- #ui[Use the agent's], which replaces your lines with the agent's,
+- #ui[Take both], which keeps your lines and puts the agent's after them, and
+- #ui[Edit], which opens both versions in one box to be edited into what the file should say.
+
+#ui[Apply] for the file and #ui[Apply all] apply only the changes that do not overlap your own, and say how many are left for you to choose. If the agent also changed a file's line endings, a line above the comparison offers that as one more change with #ui[Keep mine] and #ui[Apply].
+
+#shot("figures/03-assistant/agent-review-overlap.png", [A sentence was added to line 34 in the editor while the agent rewrote the same line. Both versions are shown, with the four ways to settle them.], width: 55%) <fig-assistant-agent-overlap>
+
+#ui[PDF before and after] works as in #ui[Review changes]. For a local agent the page after is compiled from the agent's own copy of the project. Closing the workspace does not stop a task, and a dot on the #ui[Agent] button shows a task that is running, waiting for an answer or has changes to review.
 
 == External agents <sec-assistant-external>
 
