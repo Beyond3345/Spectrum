@@ -80,6 +80,20 @@ export function parseCompileLog(log: string, root = ''): CompileError[] {
     return file && /\.tex$/i.test(file) ? file : undefined;
   };
 
+  // "Undefined control sequence." names no command: TeX's "l.N …" line a few lines on ends with it
+  const named = (message: string, i: number) => {
+    if (!/^Undefined control sequence\.?$/.test(message.trim())) return message;
+    for (let j = i + 1; j < Math.min(i + 8, lines.length); j += 1) {
+      const cs = lines[j].match(/^l\.\d+ .*?(\\(?:[A-Za-z@]+|.))$/)?.[1];
+      if (cs) return message.trim().replace(/\.?$/, (dot) => ` ${cs}${dot}`);
+    }
+    return message;
+  };
+
+  // "==> Fatal error occurred", and "Emergency stop." once an error has been found, only repeat that error
+  const aftermath = (message: string) =>
+    /^\s*==> Fatal error occurred/.test(message) || (/^Emergency stop\.?\s*$/.test(message) && found.some((e) => e.severity === 'error'));
+
   const push = (severity: CompileError['severity'], message: string, raw: string, line?: number, file?: string) => {
     if (severity === 'warning' && earlyLine) return;
     message = message.trim();
@@ -118,7 +132,7 @@ export function parseCompileLog(log: string, root = ''): CompileError[] {
       const at = tect[2].match(TECTONIC_LOCATED);
       if (at) {
         const box = at[3].match(BOX);
-        push(severity, at[3], line, Number(box?.[1] || at[2]), at[1]);
+        push(severity, named(at[3], i), line, Number(box?.[1] || at[2]), at[1]);
       } else if (severity === 'error' && !/its output follows|^caused by/.test(tect[2])) {
         // "error: the XeTeX engine had an unrecoverable error": only useful when nothing better was found
         loose.push({ severity, message: tect[2].trim(), raw: line });
@@ -128,13 +142,15 @@ export function parseCompileLog(log: string, root = ''): CompileError[] {
 
     const at = line.match(LOCATED);
     if (at) {
-      push('error', at[3], line, Number(at[2]), at[1]);
+      // TeX giving up after an error already listed (a missing .sty) says so twice more: once is enough
+      if (aftermath(at[3])) continue;
+      push('error', named(at[3], i), line, Number(at[2]), at[1]);
       continue;
     }
 
     if (line.startsWith('!')) {
       const message = line.replace(/^!+\s*/, '');
-      if (/^==> Fatal error occurred/.test(message)) continue;
+      if (aftermath(message)) continue;
       let lineNo: number | undefined;
       for (let j = i + 1; j < Math.min(i + 8, lines.length); j += 1) {
         const m = lines[j].match(/^l\.(\d+)/);
@@ -143,7 +159,7 @@ export function parseCompileLog(log: string, root = ''): CompileError[] {
           break;
         }
       }
-      push('error', message, line, lineNo, texFile());
+      push('error', named(message, i), line, lineNo, texFile());
       continue;
     }
 
@@ -167,6 +183,14 @@ export function parseCompileLog(log: string, root = ''): CompileError[] {
     if (box) {
       push('warning', line, line, box[1] ? Number(box[1]) : undefined, texFile());
       echo = 'box';
+      continue;
+    }
+
+    // \include of a file that isn't there only says so in passing, and the chapter is simply missing from the PDF
+    // (.aux, .toc and the like are missing on a first run, as they should be)
+    const missing = line.match(/^No file (.+\.tex)\.$/);
+    if (missing) {
+      push('warning', `No file ${missing[1]}: \\include left it out of the PDF.`, line, undefined, texFile());
       continue;
     }
 

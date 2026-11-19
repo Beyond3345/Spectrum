@@ -149,9 +149,11 @@ function loadPrefs(): Prefs {
 
 type SheetState =
   // folder: the one a new project goes in
-  | { kind: 'new'; template: string; engine?: Engine; universe?: UniverseTemplate; folder?: string | null }
-  | { kind: 'gallery'; engine?: Engine; folder?: string | null }
-  | { kind: 'universe'; folder?: string | null }
+  // name: what was typed in New project, kept while the gallery or Typst Universe is open over it
+  | { kind: 'new'; template: string; engine?: Engine; universe?: UniverseTemplate; folder?: string | null; name?: string }
+  // back: the template New project had, set when the gallery was opened from it, so closing goes back there
+  | { kind: 'gallery'; engine?: Engine; folder?: string | null; name?: string; back?: string }
+  | { kind: 'universe'; folder?: string | null; name?: string }
   | { kind: 'arxiv' }
   | { kind: 'tags'; id: string }
   // items: projects ('p:<id>') and folders ('f:<id>')
@@ -1167,12 +1169,13 @@ export default function ProjectPage() {
           templates={templates}
           initialTemplate={sheet.template}
           initialEngine={sheet.engine}
+          initialName={sheet.name}
           universe={sheet.universe}
           defaultDir={projectLocation(settings.projectsDir || defaultDir, folderPath(folders, sheet.folder ?? null), IS_WINDOWS)}
           needsLocation={Boolean(sheet.folder)}
           onClose={() => setSheet(null)}
-          onBrowse={(engine) => setSheet({ kind: 'gallery', engine, folder: sheet.folder })}
-          onUniverse={() => setSheet({ kind: 'universe', folder: sheet.folder })}
+          onBrowse={(engine, name, template) => setSheet({ kind: 'gallery', engine, folder: sheet.folder, name, back: template })}
+          onUniverse={(name) => setSheet({ kind: 'universe', folder: sheet.folder, name })}
           onCreated={(id) => {
             if (sheet.folder) moveToFolder(id, sheet.folder);
             navigate(`/editor/${id}`);
@@ -1186,9 +1189,9 @@ export default function ProjectPage() {
           categories={categories}
           drafts={drafts}
           initialEngine={sheet.engine}
-          onClose={() => setSheet(null)}
-          onPick={(id) => setSheet({ kind: 'new', template: id, folder: sheet.folder })}
-          onUniverse={() => setSheet({ kind: 'universe', folder: sheet.folder })}
+          onClose={() => setSheet(sheet.back === undefined ? null : { kind: 'new', template: sheet.back, engine: sheet.engine, folder: sheet.folder, name: sheet.name })}
+          onPick={(id) => setSheet({ kind: 'new', template: id, folder: sheet.folder, name: sheet.name })}
+          onUniverse={() => setSheet({ kind: 'universe', folder: sheet.folder, name: sheet.name })}
           onEdit={(projectId) => navigate(`/editor/${projectId}`)}
           onChanged={reloadTemplates}
         />
@@ -1197,8 +1200,8 @@ export default function ProjectPage() {
       {sheet?.kind === 'universe' && (
         <UniverseSheet
           onClose={() => setSheet(null)}
-          onBack={() => setSheet({ kind: 'gallery', engine: 'typst', folder: sheet.folder })}
-          onPick={(t) => setSheet({ kind: 'new', template: '', universe: t, folder: sheet.folder })}
+          onBack={() => setSheet({ kind: 'gallery', engine: 'typst', folder: sheet.folder, name: sheet.name })}
+          onPick={(t) => setSheet({ kind: 'new', template: '', universe: t, folder: sheet.folder, name: sheet.name })}
         />
       )}
 
@@ -1342,6 +1345,7 @@ function NewProjectSheet({
   templates,
   initialTemplate,
   initialEngine,
+  initialName,
   universe: chosenUniverse,
   defaultDir,
   needsLocation,
@@ -1353,17 +1357,18 @@ function NewProjectSheet({
   templates: TemplateMeta[];
   initialTemplate: string;
   initialEngine?: Engine;
+  initialName?: string;
   /** a Typst Universe template in place of one of Spectrum's */
   universe?: UniverseTemplate;
   defaultDir: string;
   needsLocation: boolean;
   onClose: () => void;
   /** the gallery, showing this engine's templates */
-  onBrowse: (engine: Engine) => void;
-  onUniverse: () => void;
+  onBrowse: (engine: Engine, name: string, template: string) => void;
+  onUniverse: (name: string) => void;
   onCreated: (id: string) => void;
 }) {
-  const [name, setName] = useState('');
+  const [name, setName] = useState(initialName ?? '');
   const [template, setTemplate] = useState(initialTemplate);
   const [universe, setUniverse] = useState(chosenUniverse);
   const picked = templates.find((t) => t.id === initialTemplate);
@@ -1442,7 +1447,7 @@ function NewProjectSheet({
                 <Icon name="shippingbox" />
                 <span className="path-text">{universe.name} {universe.version}, from Typst Universe</span>
               </span>
-              <button className="btn" onClick={onUniverse}><Icon name="shippingbox" /> Browse…</button>
+              <button className="btn" onClick={() => onUniverse(name)}><Icon name="shippingbox" /> Browse…</button>
             </div>
             <div className="field-hint">
               Licence: {universe.license || 'none given'}. {universe.mitCompatible ? '' : LICENCE_NOTE + ' '}Creating the project downloads this template.
@@ -1457,11 +1462,11 @@ function NewProjectSheet({
             options={[['', 'Blank'], ...offered.map((t): [string, string] => [t.id, t.label])]}
             onChange={setTemplate}
           />
-          <button className="btn" onClick={() => onBrowse(engine)}><Icon name="square.grid.2x2" /> Browse…</button>
+          <button className="btn" onClick={() => onBrowse(engine, name, template)}><Icon name="square.grid.2x2" /> Browse…</button>
         </div>
         )}
         {engine === 'typst' && !universe && (
-          <button className="btn ghost small" onClick={onUniverse}><Icon name="shippingbox" /> More templates from Typst Universe…</button>
+          <button className="btn ghost small" onClick={() => onUniverse(name)}><Icon name="shippingbox" /> More templates from Typst Universe…</button>
         )}
       </div>
       <div className="field">

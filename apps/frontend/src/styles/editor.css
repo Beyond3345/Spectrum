@@ -404,7 +404,8 @@
   }
 }
 
-.editor-topbar > .compile-status:has(button) {
+.editor-topbar > .compile-status:has(button),
+.compile-status:has(> .errors) {
   flex: none;
 }
 

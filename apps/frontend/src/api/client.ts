@@ -112,12 +112,19 @@ export class ApiError extends Error {
   }
 }
 
+/** What a request says when Spectrum's own server can't be reached (it restarts, or the computer is busy). */
+export const UNREACHABLE = 'Spectrum’s server didn’t answer, so nothing was sent. Your text is kept here: try again in a moment.';
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { ...((options?.headers as Record<string, string>) || {}) };
   if (options?.body && typeof options.body === 'string') {
     headers['Content-Type'] = 'application/json';
   }
-  const res = await fetch(url, { ...options, headers });
+  const res = await fetch(url, { ...options, headers }).catch((err: unknown) => {
+    // the browser's "Failed to fetch" (or "Load failed" in WebKit) says nothing: the app's own server didn't answer
+    if (err instanceof TypeError) throw new Error(UNREACHABLE);
+    throw err;
+  });
   if (!res.ok) {
     let message = await res.text();
     let data = {};

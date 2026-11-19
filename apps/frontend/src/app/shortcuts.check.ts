@@ -1,7 +1,7 @@
 // Self-check for shortcut matching: `node apps/frontend/src/app/shortcuts.check.ts` (Node ≥ 23 strips the types).
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
-import { FIND_NEXT, FIND_PREVIOUS, IS_MAC, SHORTCUTS, canonical, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutFromEvent, shortcutKey, shortcutProblem } from './shortcuts.ts';
+import { EDITOR_SHORTCUTS, FIND_NEXT, FIND_PREVIOUS, IS_MAC, SHORTCUTS, canonical, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutFromEvent, shortcutKey, shortcutProblem } from './shortcuts.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -86,3 +86,8 @@ const adds = EditorState.create({ extensions: editorBasics }).facet(EditorView.c
 const click = (mods: object) => adds.some((test) => test({ metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...mods } as MouseEvent));
 eq([click({ altKey: true }), click(mod), click({})], [true, false, false], 'which click adds a cursor');
 console.log('shortcuts.check: ok');
+
+// the editor runs each of its shortcuts' command or an app command; the composer's plain tool keys (T, P, W…) are not
+// among them, as typing t in the source once threw "appCommands[s.id] is not a function"
+eq(EDITOR_SHORTCUTS.filter((s) => s.group === 'Diagram' || (!s.run && /^[a-z]$/.test(s.key))).map((s) => s.id), [], 'no plain-letter keys in the editor');
+eq(SHORTCUTS.filter((s) => s.group === 'Diagram').length > 0, true, 'the composer keeps its keys');

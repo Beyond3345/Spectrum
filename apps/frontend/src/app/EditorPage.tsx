@@ -76,7 +76,7 @@ import { FILE_MANAGER } from './platform';
 import { BIB_TOOLS, COMPILE_ENGINES, effectiveCompile, effectiveEffort, languageName, llmConfigFor, loadSettings, updateSettings, useProviders, useSettings } from './settings';
 import type { CompileDefaults, LiveOutputEngine } from './settings';
 import { PDF_PAGE_FILLS, PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
-import { FIND_NEXT, FIND_PREVIOUS, SHORTCUTS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
+import { EDITOR_SHORTCUTS, FIND_NEXT, FIND_PREVIOUS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
 import type { AppCommand } from './shortcuts';
 import { EditorContext } from '../editor/EditorContext';
 import type { CompileError, EditorApi, PendingChange } from '../editor/EditorContext';
@@ -913,7 +913,7 @@ function Editor({ projectId }: { projectId: string }) {
     const active = path === activeRef.current;
     try {
       if (held) {
-        const res = await saveVersion(projectId, { reason: 'manual', label: `${nameOf(path)} from another computer` });
+        const res = await saveVersion(projectId, { reason: 'manual', label: `${nameOf(path)} as changed on disk` });
         if (!res.ok) throw new Error('The checkpoint couldn’t be saved.');
         if (!res.unchanged) window.dispatchEvent(new Event(VERSIONS_CHANGED));
         hashesRef.current.set(path, held.hash);
@@ -2319,7 +2319,7 @@ function Editor({ projectId }: { projectId: string }) {
     // matched by hand rather than with keymap.of, which can't see ⌥ shortcuts on a Mac (⌥/ types "÷")
     const shortcuts = EditorView.domEventHandlers({
       keydown(e, view) {
-        for (const s of SHORTCUTS) {
+        for (const s of EDITOR_SHORTCUTS) {
           const hit = s.id === 'zoomIn' ? matchesZoomIn(shortcutsRef.current, e) : matchesShortcut(shortcutKey(shortcutsRef.current, s.id), e);
           if (!hit) continue;
           const handled = s.run ? s.run(view) : (appCommands[s.id as AppCommand](), true);
@@ -2356,6 +2356,8 @@ function Editor({ projectId }: { projectId: string }) {
       languageCompartment.of(languageFor('')),
       scopeGutter,
       EditorView.lineWrapping,
+      // a screen reader names the text box; the open file is the selected tab above it
+      EditorView.contentAttributes.of({ 'aria-label': 'Source' }),
       editorTheme,
       ghostField,
       jumpHighlight,
@@ -2416,6 +2418,15 @@ function Editor({ projectId }: { projectId: string }) {
           // the figure goes where it was dropped, as the drop cursor showed; a user 'select' counts as placing the cursor
           const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
           if (pos != null) view.dispatch({ selection: { anchor: pos }, userEvent: 'select.pointer' });
+          showFigure(file);
+          a().openFloats('figure');
+          return true;
+        },
+        // a pasted screenshot goes there too, at the cursor; text that comes with an image (from Word, say) pastes as text
+        paste(e) {
+          const file = e.clipboardData?.getData('text/plain') ? undefined : figureFile(e.clipboardData);
+          if (!file) return false;
+          e.preventDefault();
           showFigure(file);
           a().openFloats('figure');
           return true;
@@ -3183,6 +3194,11 @@ function Editor({ projectId }: { projectId: string }) {
         <button className="compile-status failed" onClick={() => openTools('logs')}>
           Failed — see Logs
         </button>
+      ) : compile.state === 'ok' && errorCount ? (
+        // TeX went on past an error and made a PDF: still say so, as the PDF may be missing what the error ate
+        <button className="compile-status failed errors" title={`${plural(errorCount, 'error')} — see Logs`} onClick={() => openTools('logs')}>
+          {plural(errorCount, 'error')}
+        </button>
       ) : (
         status
       )}
@@ -3391,7 +3407,7 @@ function Editor({ projectId }: { projectId: string }) {
                     tabIndex={0}
                     aria-selected={path === activePath}
                     className={`file-tab ${path === activePath ? 'active' : ''} ${heldRef.current.has(path) ? 'held' : ''} ${heldRef.current.get(path) === null ? 'gone' : ''}`}
-                    title={heldRef.current.get(path) === null ? `${path} · Deleted on disk` : heldRef.current.get(path) ? `${path} · Changed on another computer` : path}
+                    title={heldRef.current.get(path) === null ? `${path} · Deleted on disk` : heldRef.current.get(path) ? `${path} · Changed on disk` : path}
                     onClick={() => open(path)}
                     onKeyDown={(e) => e.key === 'Enter' && open(path)}
                     onAuxClick={(e) => e.button === 1 && closeTab(path).catch(() => undefined)}
@@ -3522,7 +3538,7 @@ function Editor({ projectId }: { projectId: string }) {
             {held && (
               <div className="review-banner template-banner" role="status">
                 <Icon name="exclamationmark.triangle" />
-                <span className="grow truncate">{nameOf(activePath)} was changed on another computer</span>
+                <span className="grow truncate">{nameOf(activePath)} was changed on disk, by another app or a pull</span>
                 <button className="btn small ghost" onClick={() => setComparing(true)}>
                   Compare
                 </button>
