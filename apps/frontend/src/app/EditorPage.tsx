@@ -681,12 +681,12 @@ function Editor({ projectId }: { projectId: string }) {
    * or saved, so a file changed or deleted on disk since (another computer, through a sync client) isn't written over.
    * create: only made if nothing (in any letter case) is there.
    */
-  const queueWrite = (path: string, content: string, create = false) => {
+  const queueWrite = (path: string, content: string, create = false, unseen = false) => {
     const queued = queuedRef.current;
     queued.set(path, (queued.get(path) ?? 0) + 1);
     const job = writeChain.current.then(async () => {
       try {
-        const { hash } = await writeFile(projectId, path, content, create ? { create } : { base: hashesRef.current.get(path) });
+        const { hash } = await writeFile(projectId, path, content, { ...(create ? { create } : { base: hashesRef.current.get(path) }), ...(unseen && { unseen }) });
         hashesRef.current.set(path, hash);
       } finally {
         queued.set(path, (queued.get(path) ?? 1) - 1);
@@ -905,10 +905,11 @@ function Editor({ projectId }: { projectId: string }) {
     setTabs(rest);
   };
 
-  const writeProjectFile = async (path: string, content: string) => {
+  /** unseen: an agent's change applied in the review, which is not the user's own text (it approves no AGENTS.md). */
+  const writeProjectFile = async (path: string, content: string, unseen = false) => {
     if (path === activeRef.current) markClean();
     try {
-      await queueWrite(path, content);
+      await queueWrite(path, content, false, unseen);
     } catch (err) {
       // changed or deleted on disk since it loaded: the open file's text is held as unsaved, another takes the disk's
       const disk = refusedFor(err);
@@ -1459,7 +1460,7 @@ function Editor({ projectId }: { projectId: string }) {
     const { version } = await createVersion('before-ai');
     for (const change of ready) {
       if (!isDeletion(change)) {
-        await writeProjectFile(change.filePath, change.proposed);
+        await writeProjectFile(change.filePath, change.proposed, true);
         continue;
       }
       // a proposed deletion: to the Bin where there is one; the checkpoint just saved has the file either way

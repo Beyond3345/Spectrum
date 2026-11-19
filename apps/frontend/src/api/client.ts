@@ -374,10 +374,11 @@ export function getFileIfChanged(id: string, filePath: string, base: string) {
  * one deleted since data { code: 'DELETED_ON_DISK' }. Without a base it's written whatever is there.
  */
 /** typed: a new file's name the user typed, refused when Windows or a sync app can't hold it. */
-export function writeFile(id: string, filePath: string, content: string, options: { create?: boolean; base?: string; typed?: boolean } = {}) {
+/** unseen: text the user did not type (an agent's change applied in the review), which approves no AGENTS.md. */
+export function writeFile(id: string, filePath: string, content: string, options: { create?: boolean; base?: string; typed?: boolean; unseen?: boolean } = {}) {
   return request<{ ok: boolean; hash: string }>(
     `/api/projects/${id}/file`,
-    json('PUT', { path: filePath, content, ...(options.create && { create: true }), ...(options.base && { base: options.base }), ...(options.typed && { typed: true }) })
+    json('PUT', { path: filePath, content, ...(options.create && { create: true }), ...(options.base && { base: options.base }), ...(options.typed && { typed: true }), ...(options.unseen && { unseen: true }) })
   );
 }
 

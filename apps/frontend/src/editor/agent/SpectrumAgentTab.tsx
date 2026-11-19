@@ -666,7 +666,7 @@ export default function SpectrumAgentTab({
         {!reviewing && <ChangesTray changes={trayChanges} onOpen={() => setReviewing(true)} />}
         {rules?.exists && !rules.approved && !reviewing && (
           <div className="composer-hint row">
-            <span className="grow">This project’s {INSTRUCTIONS_FILE} is not given to the agent yet: it came with the project, or changed outside Spectrum. Read it, then choose.</span>
+            <span className="grow">This project’s {INSTRUCTIONS_FILE} is not given to the agent yet: it came with the project, or was changed by an agent or outside Spectrum. Read it, then choose.</span>
             <button className="btn small" onClick={() => void openRules()}>
               Read it
             </button>

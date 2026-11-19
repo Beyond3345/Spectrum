@@ -770,7 +770,8 @@ export function registerProjectRoutes(fastify) {
     // sync client) isn't written over, and the answer carries its text; one deleted since isn't made again.
     // typed: a name the user typed, which must be one NTFS and the sync apps can hold; a name made from a file's own
     // (a conflicted copy, a restore) isn't checked, so the text it holds is never refused.
-    const { path: filePath, content, create, base, typed } = req.body || {};
+    // unseen: text the user did not type (an agent's change they applied in the review), which approves nothing.
+    const { path: filePath, content, create, base, typed, unseen } = req.body || {};
     if (!filePath) return { ok: false };
     if (create && typed && unfit(filePath)) throw httpError(UNFIT, 400);
     const root = await getProjectRoot(req.params.id);
@@ -801,8 +802,9 @@ export function registerProjectRoutes(fastify) {
     await touchProject(root).catch(() => {});
     // the project's Zotero collection follows the .bib a little after the saves stop, entries taken out included
     if (/\.bib$/i.test(filePath)) syncSoon(root, { remove: true, delay: 5000 });
-    // AGENTS.md saved here (the editor, or a change applied in the review) is the text the user has seen
-    if (path.relative(root, abs).toLowerCase() === 'agents.md') await savedInstructions(root, content ?? '').catch(() => {});
+    // AGENTS.md saved from the editor is the text the user wrote. An agent's change to it, applied in the review, is
+    // not: among the files of an Apply all it would become standing instructions unread, so it asks like a pull does
+    if (!unseen && path.relative(root, abs).toLowerCase() === 'agents.md') await savedInstructions(root, content ?? '').catch(() => {});
     return { ok: true, hash: sha256(content ?? '') };
   }));
 
