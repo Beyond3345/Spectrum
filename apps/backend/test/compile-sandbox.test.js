@@ -39,7 +39,8 @@ const { default: Fastify } = await import('fastify');
 
 const app = Fastify();
 registerCompileRoutes(app);
-const listener = createServer((socket) => socket.end('hello'));
+// a client that hangs up first (a confined program cut off part way) resets the socket: that is not this test's error
+const listener = createServer((socket) => { socket.on('error', () => {}); socket.end('hello'); });
 await new Promise((resolve) => listener.listen(0, '127.0.0.1', resolve));
 after(async () => {
   await app.close();
