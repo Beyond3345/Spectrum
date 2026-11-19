@@ -152,7 +152,7 @@ AI autocomplete writes a suggestion at the cursor with the quick model. It is as
 - #ui[Word] (#key("→")), which keeps the next word only and
 - #ui[Dismiss] (#key("Esc")), which removes it.
 
-Autocomplete is told the document's language, the nearest heading and, in a LaTeX file, the environment the cursor is in. It never uses the default instructions or a persona, and its key can be changed in #menu[Settings][Shortcuts]. Because it has to be quick, it asks a busy provider once only.
+Autocomplete is told the document's language, the nearest heading and, in a LaTeX file, the environment the cursor is in. It never uses the default instructions or a persona, and its key can be changed in #menu[Settings][Shortcuts]. Because it has to be quick, it asks a busy provider once only. Typing, moving the cursor or pressing #key("Esc") while a suggestion is being written cancels the request, so it is not paid for. After typing, a new request goes out once the keys have rested for a moment, and pressing #key("⌥", "/") again replaces the request with a new one at the cursor.
 
 == Personas and skills <sec-assistant-personas>
 
