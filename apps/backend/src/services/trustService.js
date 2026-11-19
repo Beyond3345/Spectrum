@@ -8,7 +8,7 @@ import { serialiser } from './projectService.js';
 // never in the project's own files, which could then arrive from someone else already trusted. Each by its id, the
 // folder it was in and that folder's own identity on the disk (device, file number, time made): a copy has another
 // id and folder, a folder moved or renamed another path, and one put in its place another file number, so none of
-// them inherits the trust
+// them inherits the trust. ponytail: a project removed from the list leaves its entry, which matches nothing else
 const FILE = path.join(DATA_DIR, 'trusted-projects.json');
 const lock = serialiser();
 

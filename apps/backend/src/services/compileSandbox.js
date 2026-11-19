@@ -29,11 +29,13 @@ let able;
 /**
  * Whether this process can confine what it starts: 'yes' on a Mac; 'inside' in an agent's isolation (its tools
  * server's compiles), where sandbox-exec is refused and the agent's own limits hold; 'no' on a Mac whose sandbox-exec
- * doesn't run, which a compile then says; false anywhere else.
+ * doesn't run or doesn't take the profile (tried once, with every rule a compile's has), which a compile then says
+ * and runs unconfined, as every compile did before; false anywhere else.
  */
 export function confinement() {
   if (process.platform !== 'darwin') return Promise.resolve(false);
-  able ??= run(SANDBOX_EXEC, ['-p', '(version 1)(allow default)', '/usr/bin/true']).then(({ error, stderr }) => (!error ? 'yes' : /sandbox_apply/.test(stderr) ? 'inside' : 'no'));
+  able ??= run(SANDBOX_EXEC, ['-p', profileOf({ home: os.homedir(), data: DATA_DIR, readable: [DATA_DIR], writable: [confinedCache()], made: ['^/nowhere$'], may: [], tectonic: true }), '/usr/bin/true'])
+    .then(({ error, stderr }) => (!error ? 'yes' : /sandbox_apply/.test(stderr) ? 'inside' : 'no'));
   return able;
 }
 
@@ -112,6 +114,40 @@ async function installation(searchPath) {
 const HOME_STORES = ['.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker', '.config/gh', '.config/gcloud', '.claude', '.codex', '.agents', '.netrc', '.npmrc', '.pypirc', '.git-credentials', '.claude.json', 'Library/Keychains', 'Library/Cookies'];
 const KEY_FILES = String.raw`/(\.env(\.[^/]*)?|id_(rsa|dsa|ecdsa|ed25519)[^/]*|[^/]+\.(pem|key|p12|pfx|keystore|jks|ppk|kdbx))$`;
 
+const subpaths = (list) => list.map((p) => `(subpath ${q(p)})`).join(' ');
+/** The profile's text: what is read (all but data and the stores, and `readable` inside data), written, run and reached. */
+const profileOf = ({ home, data, readable, writable, made, may, tectonic }) => `(version 1)
+(deny default)
+(allow process-fork sysctl-read file-map-executable)
+(allow process-info* (target same-sandbox))
+(allow signal (target same-sandbox))
+(allow process-exec (regex ${q(SYSTEM_TOOLS)}) ${may.join(' ')})
+(allow file-read*)
+(deny file-read* (subpath ${q(data)}))
+(allow file-read* ${subpaths(readable)})
+(deny file-read* ${subpaths(HOME_STORES.map((store) => path.join(home, store)))} (regex ${q(`^${quoted(home)}/.*${KEY_FILES}`)}))
+(allow file-read-metadata)
+(allow file-write* ${subpaths(writable)} ${made.map((re) => `(regex ${q(re)})`).join(' ')})
+(allow file-write-data file-ioctl (literal "/dev/null") (literal "/dev/zero") (literal "/dev/tty") (literal "/dev/dtracehelper") (subpath "/dev/fd"))
+(allow mach-lookup
+  (global-name "com.apple.system.opendirectoryd.libinfo")
+  (global-name "com.apple.system.opendirectoryd.membership")
+  (global-name "com.apple.bsd.dirhelper")
+  (global-name "com.apple.system.logger")
+  (global-name "com.apple.system.notification_center")
+  (global-name "com.apple.logd"))
+(allow ipc-posix-shm-read-data (ipc-posix-name "apple.shm.notification_center"))
+${tectonic ? `(allow mach-lookup
+  (global-name "com.apple.networkd")
+  (global-name "com.apple.trustd.agent")
+  (global-name "com.apple.TrustEvaluationAgent")
+  (global-name "com.apple.SystemConfiguration.DNSConfiguration")
+  (global-name "com.apple.SystemConfiguration.configd"))
+(allow system-socket (require-all (socket-domain AF_SYSTEM) (socket-protocol 2)))
+(allow network-outbound (require-all (remote tcp "*:443") (require-not (remote ip "localhost:*"))))
+(allow network-outbound (remote udp "*:53") (literal "/private/var/run/mDNSResponder"))` : ''}
+`;
+
 /**
  * A compile's confinement, or null where there is none (not a Mac, or inside an agent's isolation already):
  * { profile, env }. It reads what the user can but the stores above; writes only the build folder, the temp folder,
@@ -141,43 +177,20 @@ export async function compileSandbox({ build, tmp, searchPath = process.env.PATH
     await fs.mkdir(bundles[0], { recursive: true }).catch(() => {});
     writable.push(...(await Promise.all(bundles.map(real))));
   }
-  const subpaths = (list) => list.map((p) => `(subpath ${q(p)})`).join(' ');
   const own = [];
   for (const file of runs) if (file && path.isAbsolute(file)) own.push(...(await programFilter(await real(file), searchPath)));
   // Biber starts the copy of itself it unpacked into the cache
   const may = [...new Set([...filters, ...own]), `(subpath ${q(await real(caches[0]))})`];
   const made = root ? [String.raw`^${quoted(await real(root))}/(.*/)?[^/]+-eps-converted-to\.pdf$`] : [];
-  const profile = `(version 1)
-(deny default)
-(allow process-fork sysctl-read file-map-executable)
-(allow process-info* (target same-sandbox))
-(allow signal (target same-sandbox))
-(allow process-exec (regex ${q(SYSTEM_TOOLS)}) ${may.join(' ')})
-(allow file-read*)
-(deny file-read* (subpath ${q(data)}))
-(allow file-read* ${subpaths([path.join(data, 'cache'), path.join(data, 'engines'), await real(cache), ...(root ? [await real(root)] : [])])})
-(deny file-read* ${subpaths(HOME_STORES.map((store) => path.join(home, store)))} (regex ${q(`^${quoted(home)}/.*${KEY_FILES}`)}))
-(allow file-read-metadata)
-(allow file-write* ${subpaths(writable)} ${made.map((re) => `(regex ${q(re)})`).join(' ')})
-(allow file-write-data file-ioctl (literal "/dev/null") (literal "/dev/zero") (literal "/dev/tty") (literal "/dev/dtracehelper") (subpath "/dev/fd"))
-(allow mach-lookup
-  (global-name "com.apple.system.opendirectoryd.libinfo")
-  (global-name "com.apple.system.opendirectoryd.membership")
-  (global-name "com.apple.bsd.dirhelper")
-  (global-name "com.apple.system.logger")
-  (global-name "com.apple.system.notification_center")
-  (global-name "com.apple.logd"))
-(allow ipc-posix-shm-read-data (ipc-posix-name "apple.shm.notification_center"))
-${tectonic ? `(allow mach-lookup
-  (global-name "com.apple.networkd")
-  (global-name "com.apple.trustd.agent")
-  (global-name "com.apple.TrustEvaluationAgent")
-  (global-name "com.apple.SystemConfiguration.DNSConfiguration")
-  (global-name "com.apple.SystemConfiguration.configd"))
-(allow system-socket (require-all (socket-domain AF_SYSTEM) (socket-protocol 2)))
-(allow network-outbound (require-all (remote tcp "*:443") (require-not (remote ip "localhost:*"))))
-(allow network-outbound (remote udp "*:53") (literal "/private/var/run/mDNSResponder"))` : ''}
-`;
+  const profile = profileOf({
+    home,
+    data,
+    readable: [path.join(data, 'cache'), path.join(data, 'engines'), await real(cache), ...(root ? [await real(root)] : [])],
+    writable,
+    made,
+    may,
+    tectonic
+  });
   return {
     profile,
     env: {
