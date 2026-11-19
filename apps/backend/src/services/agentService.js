@@ -16,6 +16,7 @@ import { readItems } from '../routes/todos.js';
 import { TOOLS, buildErrors, checkedInput, projectMap, suggestedTodo, toolSpec } from '../mcp/tools.js';
 import { docLanguage, hasDocument } from '../utils/docLanguage.js';
 import { DATA_RULE, SKILL_RULE, skillText, untrusted } from '../utils/outsideText.js';
+import { INSTRUCTIONS_FILE, instructionsBlock } from './agentInstructions.js';
 
 const MAX_STEPS = 25;
 // what one read_file call returns unless it asks for less or more; a longer file is read on with offset
@@ -34,6 +35,12 @@ const MAX_SKILL_FILE = 192 * 1024;
 // load_skill answers with the whole description and the instructions
 const MAX_SKILL_LINE = 110;
 const MAX_SKILL_LIST = 6000;
+// a plan the user approves: its steps, each short enough for a line of the plan strip
+const MAX_PLAN_STEPS = 12;
+const MAX_PLAN_STEP = 300;
+// a line the agent suggests for AGENTS.md, and how many of them one turn may put forward
+const MAX_INSTRUCTION = 300;
+const MAX_SUGGESTED = 3;
 
 // chatCompletion already words its errors for people
 export function llmErrorMessage(error) {
@@ -182,6 +189,7 @@ export function replaceExact(text, old, next, all, name = 'the file') {
 
 const str = z.string();
 const count = z.coerce.number().int().min(0);
+const short = (max) => z.string().trim().min(1).max(max);
 
 // The tools that are the Spectrum agent's alone, in the registry's shape (mcp/tools.js): the project's files with the
 // run's proposals over them, which a local agent reads and changes with tools of its own. Their ctx is the registry's
@@ -265,8 +273,50 @@ const OWN_TOOLS = [
     schema: { id: str, path: str },
     readOnly: true,
     run: (ctx, { id, path: file }) => readSkillFile(ctx.skillOn(id), file, MAX_SKILL_FILE)
+  },
+  // The four below are a job's alone (a thread the user can answer in). The first two end the turn: what they show
+  // waits in the thread, with no model call open, and the user's next message is the answer.
+  {
+    name: 'ask_user',
+    description: 'Ask the user one question, when the request is unclear and a wrong guess would waste the work. options: up to 6 short answers to choose from. Your turn ends here: the answer is the user’s next message.',
+    schema: { question: short(600), options: z.array(short(120)).max(6).optional() },
+    readOnly: false,
+    run: (ctx, input) => ctx.ask({ kind: 'question', question: input.question, ...(input.options?.length && { options: input.options }) })
+  },
+  {
+    name: 'propose_plan',
+    description: `Show the user a plan before a larger task: up to ${MAX_PLAN_STEPS} short steps in the order you would do them, each naming its file. Change nothing before it is approved. Your turn ends here: the user approves the plan, changes it or asks for another.`,
+    schema: { steps: z.array(short(MAX_PLAN_STEP)).min(1).max(MAX_PLAN_STEPS) },
+    readOnly: false,
+    run: (ctx, { steps }) => ctx.ask({ kind: 'plan', steps })
+  },
+  {
+    name: 'step_done',
+    description: 'Tick off a step of the approved plan, by its number, when it is finished.',
+    schema: { step: z.coerce.number().int().min(1) },
+    readOnly: false,
+    run: (ctx, { step }) => ctx.stepDone(step),
+    show: (answer) => ({ text: answer })
+  },
+  {
+    name: 'suggest_instruction',
+    description: `Suggest one short line for the project’s ${INSTRUCTIONS_FILE}, when the user states a lasting rule or preference for this project (spelling, style, what never to touch). It is not added: the user sees it as a card and adds it if they want.`,
+    schema: { text: short(MAX_INSTRUCTION).refine((text) => !/[\r\n]/.test(text), 'one line') },
+    readOnly: false,
+    run: (ctx, { text }) => ctx.suggestInstruction(text)
   }
 ];
+// offered only where there is a thread to answer in
+const JOB_TOOLS = ['ask_user', 'propose_plan', 'step_done', 'suggest_instruction'];
+// what a Plan turn has besides the tools that only read
+const PLAN_TOOLS = ['ask_user', 'propose_plan'];
+
+/** A question, a plan or a pause before the next file, as the thread's text keeps it (and a later run reads it). */
+const askText = (ask, ready) => (ask.kind === 'plan'
+  ? `Plan:\n${ask.steps.map((step, i) => `${i + 1}. ${step}`).join('\n')}`
+  : ask.kind === 'next'
+    ? `${ready.length ? `The changes to ${ready.join(', ')} are ready to review. ` : ''}Next: ${ask.path}.`
+    : [ask.question, ...(ask.options || []).map((o) => `- ${o}`)].join('\n'));
 
 /** Every tool the Spectrum agent has: its own, then the registry's, which a local agent gets from the tools server. */
 export const agentTools = () => [...OWN_TOOLS, ...TOOLS];
@@ -290,8 +340,16 @@ const shownOf = (show) => show && {
  *   conversation       { messages, partial, key, ended, open }, kept by the job from turn to turn, so a later turn
  *                      has the earlier ones' tool calls and answers, and the provider's cache its prefix
  *   resume             Continue: goes on from the conversation as the last turn left it, with no new request
- * model and reasoningEffort are the turn's own; planFirst is taken and handed to the tools' ctx, for the plan card to
- * build on. verify (Fix with AI): a turn that changed something ends with a compile, in `build`.
+ * model and reasoningEffort are the turn's own. verify (Fix with AI): a turn that changed something ends with a
+ * compile, in `build`.
+ *
+ * Plans and questions (a job's): planFirst, the composer's Plan, gives the turn the tools that only read, with
+ * ask_user and propose_plan. Either of those ends the turn with `ask` ({ kind: 'question', question, options? } or
+ * { kind: 'plan', steps }): nothing waits in this process, and the user's next message is the answer. plan: the
+ * approved plan's steps ([{ content, status }]), which step_done ticks ('plan' { entries }, and `plan` in the result).
+ * eachFile (Approve, ask before each file): the turn ends before it changes a second new file, with
+ * ask { kind: 'next', path }, so the user reviews one file's changes before the agent builds on them.
+ * suggest_instruction puts a line forward for AGENTS.md ('instruction' { text }, and `instructions` in the result).
  */
 export async function runToolAgent({
   projectId,
@@ -314,6 +372,8 @@ export async function runToolAgent({
   compile: compileChoice,
   verify = false,
   planFirst = false,
+  plan: approved = null,
+  eachFile = false,
   conversation = null,
   resume = false,
   emit = null,
@@ -362,6 +422,15 @@ export async function runToolAgent({
       try { drafts.set(projectPath(d.path), { original: d.original ?? null, content: d.proposed, deleted: d.deleted === true }); } catch { /* a path outside the project */ }
     }
   }
+  // the files with a proposal open when the turn began
+  const before = new Set(drafts.keys());
+  // a job has a thread, where a question or a plan can wait for its answer
+  const interactive = !!conversation && !readOnly;
+  // what the turn ends with, for the user to answer: a question, a plan, or (eachFile) the next file
+  let asked = null;
+  const entries = (Array.isArray(approved) ? approved : []).filter((e) => typeof e?.content === 'string' && e.content.trim()).slice(0, MAX_PLAN_STEPS * 2)
+    .map((e) => ({ content: e.content.trim().slice(0, MAX_PLAN_STEP), status: e.status === 'completed' ? 'completed' : 'pending' }));
+  const suggested = [];
   const onDisk = (rel) => fs.readFile(safeJoin(projectRoot, rel), 'utf8');
   const current = async (rel) => {
     const draft = drafts.get(rel);
@@ -391,12 +460,20 @@ export async function runToolAgent({
     }
     return drafts.get(rel);
   };
+  // Ask before each file: once the turn has changed one file it had no proposal for, the next such file waits
+  const fileGate = (rel) => {
+    if (!eachFile || before.has(rel) || changed.has(rel) || ![...changed].some((c) => !before.has(c))) return;
+    asked ||= { kind: 'next', path: rel };
+    throw new Error(`The user reviews each file’s changes before the next file: ${rel} waits for their word. Your turn ends here.`);
+  };
   const propose = async (rel, next) => {
+    fileGate(rel);
     Object.assign(await draftOf(rel), { content: next, deleted: false });
     changed.add(rel);
     version += 1;
   };
   const remove = async (rel) => {
+    fileGate(rel);
     const draft = await draftOf(rel);
     if (draft.original === null) {
       // a file only the agent proposed: the proposal is taken back, as there is nothing to delete
@@ -482,7 +559,25 @@ export async function runToolAgent({
     loadSkill: (id) => loadSkill(ctx.skillOn(id)),
     compileOptions,
     signal,
-    planFirst,
+    ask: (ask) => {
+      if (asked) throw new Error('One question or plan at a time: this turn already ends with one.');
+      asked = ask;
+      return ask.kind === 'plan' ? 'The plan is shown to the user. Your turn ends here. Their next message approves it, changes it or asks for another.' : 'The question is shown to the user. Your turn ends here: their answer is the next message.';
+    },
+    stepDone: (n) => {
+      if (!entries.length) throw new Error('There is no approved plan to tick.');
+      if (n > entries.length) throw new Error(`The plan has ${entries.length} steps.`);
+      entries[n - 1].status = 'completed';
+      say('plan', { entries: entries.map((e) => ({ ...e })) });
+      const next = entries.findIndex((e) => e.status !== 'completed');
+      return `Step ${n} of ${entries.length} is ticked: ${entries[n - 1].content}${next < 0 ? '\nEvery step is done: finish with a short summary.' : `\nNext: ${next + 1}. ${entries[next].content}`}`;
+    },
+    suggestInstruction: (text) => {
+      if (suggested.length >= MAX_SUGGESTED) throw new Error(`At most ${MAX_SUGGESTED} suggestions a turn.`);
+      suggested.push(text);
+      say('instruction', { text });
+      return `Suggested. The user sees it as a card and adds it to ${INSTRUCTIONS_FILE} if they want.`;
+    },
     // the Spectrum agent's own side
     path: projectPath,
     current,
@@ -503,8 +598,13 @@ export async function runToolAgent({
     return { ok: false, reply: NO_API_KEY, ...none };
   }
 
-  const offered = agentTools().filter((t) => (readOnly ? READ_ONLY_TOOLS.includes(t.name) : t.name !== 'web_search' || searchConfig));
+  const mine = agentTools().filter((t) => (readOnly ? READ_ONLY_TOOLS.includes(t.name) : (t.name !== 'web_search' || searchConfig) && (interactive || !JOB_TOOLS.includes(t.name))));
+  // Plan: the turn reads, asks and plans, and can change nothing
+  const planning = interactive && planFirst;
+  const offered = planning ? mine.filter((t) => t.readOnly || PLAN_TOOLS.includes(t.name)) : mine;
   const toolSpecs = offered.map(toolSpec);
+  // the user's own file of standing instructions for this project, once they have approved it as it is
+  const projectRules = projectRoot && !readOnly ? await instructionsBlock(projectRoot).catch(() => '') : '';
   const system = [readOnly ? [
     'You are a helpful writing assistant in read-only chat mode. Answer normally; do not propose edits, patches or JSON.',
     hasDocument(activePath, mainFile) ? languageLine(language) : '',
@@ -525,11 +625,17 @@ export async function runToolAgent({
     'You can use literature_search and fetch_bibtex to find papers and their BibTeX; use bib_search before adding an entry.',
     searchConfig ? 'Use web_search for general web questions and cite its source links.' : '',
     'Use suggest_todo for follow-up work the user should do; it never adds anything by itself.',
+    ...(interactive ? [
+      'For a task that touches more than two files or rewrites a section, call propose_plan first and change nothing until the user approves it; do a smaller task straight away.',
+      'When the request is unclear and a wrong guess would waste the work, ask with ask_user; otherwise decide, and say what you assumed.',
+      'While you work from an approved plan, call step_done as each step is finished.',
+      `When the user states a lasting rule for this project, offer it with suggest_instruction, for their ${INSTRUCTIONS_FILE}.`
+    ] : []),
     'Be concise. Provide a short summary in the final response.',
     DATA_RULE,
     // said once: a skill picked with / brings the line with it
     skills.length && !instructions.includes(SKILL_RULE) ? SKILL_RULE : ''
-  ].filter(Boolean).join(' '), skillsList(skills), instructions].filter(Boolean).join('\n\n');
+  ].filter(Boolean).join(' '), skillsList(skills), instructions, projectRules].filter(Boolean).join('\n\n');
 
   // The conversation: the job's own from its earlier turns, while it is the same model's and still fits; else the
   // thread's last texts, as before there were jobs.
@@ -548,6 +654,10 @@ export async function runToolAgent({
     activePath ? `Active file: ${activePath}` : '',
     prompt ? `User prompt: ${prompt}` : '',
     skillBlock,
+    // said with the request, so the instructions stay the same from turn to turn
+    planning ? 'Plan is on for this request: you can only read in this turn. Find out what the task needs, then call propose_plan with the steps, or ask_user if you cannot plan without an answer. Change nothing, and do not write as if a change were made.' : '',
+    interactive && !planning && entries.some((e) => e.status !== 'completed') ? `The approved plan, which step_done ticks:\n${entries.map((e, i) => `${i + 1}. ${e.status === 'completed' ? '[done] ' : ''}${e.content}`).join('\n')}` : '',
+    interactive && eachFile ? 'The user asked to review each file’s changes before the next: finish one file, and the run pauses by itself before another.' : '',
     closed.length ? `Your earlier proposals for ${closed.join(', ')} are no longer open: the user applied or rejected them. Read a file again before you change it.` : '',
     project.text ? `Project:\n${untrusted('project outline', project.text)}` : '',
     selection ? `Selection:\n${untrusted('selection', selection)}` : '',
@@ -600,7 +710,10 @@ export async function runToolAgent({
       ...(incomplete && { incomplete }),
       ...(counted && { usage: total }),
       ...(built && { build: { ok: built.ok, errors: built.errors } }),
-      ...(unsent.length && { unsent })
+      ...(unsent.length && { unsent }),
+      ...(asked && !incomplete && { ask: asked }),
+      ...(entries.length && { plan: entries }),
+      ...(suggested.length && { instructions: suggested })
     };
   };
   // loses to no tool: a tool that does not hear the signal is left to finish by itself
@@ -682,7 +795,7 @@ export async function runToolAgent({
       say('step', { id: c.id, tool: c.name, ...(c.about && { about: c.about }), status: 'started' });
       let show;
       try {
-        if (!c.tool) throw new Error(`Unknown tool ${c.name}`);
+        if (!c.tool) throw new Error(planning && mine.some((t) => t.name === c.name) ? 'Plan is on: this turn only reads. Put this step in the plan (propose_plan).' : `Unknown tool ${c.name}`);
         if (c.bad) throw new Error(c.bad);
         const input = checkedInput(c.tool, c.input);
         const before = version;
@@ -715,6 +828,10 @@ export async function runToolAgent({
       messages.push({ role: 'tool', tool_call_id: c.call.id, content: marked });
     }
     if (signal?.aborted) return done(false, 'Stopped.', 'stopped');
+    // a question, a plan or the next file: the turn ends, and the user's next message goes on from it
+    if (asked) {
+      return done(true, askText(asked, [...changed]));
+    }
   }
 
   return done(true, `Stopped after ${MAX_STEPS} tool steps without a final answer.`, 'steps');

@@ -42,6 +42,7 @@ import { documentLabels, projectStats, typstDocumentLabels } from '../services/s
 import { readProjectSettings, updateProjectSettings } from '../services/projectSettings.js';
 import { BIB_TOOLS, SUPPORTED_ENGINES } from '../services/compileService.js';
 import { SKILL_ID } from '../services/skillService.js';
+import { savedInstructions } from '../services/agentInstructions.js';
 import { jyutpingProblem } from '../latex/jyutping.js';
 import { TYPST_EXPORTS, exportTypst } from '../services/typstService.js';
 import { knownMachineNames } from '../services/presenceService.js';
@@ -800,6 +801,8 @@ export function registerProjectRoutes(fastify) {
     await touchProject(root).catch(() => {});
     // the project's Zotero collection follows the .bib a little after the saves stop, entries taken out included
     if (/\.bib$/i.test(filePath)) syncSoon(root, { remove: true, delay: 5000 });
+    // AGENTS.md saved here (the editor, or a change applied in the review) is the text the user has seen
+    if (path.relative(root, abs).toLowerCase() === 'agents.md') await savedInstructions(root, content ?? '').catch(() => {});
     return { ok: true, hash: sha256(content ?? '') };
   }));
 

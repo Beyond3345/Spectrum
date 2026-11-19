@@ -15,14 +15,21 @@
 //           try given up is to be dropped
 //   usage   { input, output, cacheRead?, cacheWrite?, total, model }   one model call's tokens, and the turn's so far
 //   todo    { text, link? }              a to-do the agent suggests
+//   instruction { text }                 a line the agent suggests for the project's AGENTS.md
+//   plan    { entries }                  the approved plan's steps ([{ content, status }]) after one was ticked
 //   notice  { message }
-//   result  { turn, ok, reply, patches, changes, todos, steps, says?, incomplete?, usage?, unsent? }   the turn's
-//           whole outcome, as /api/agent/run answers; then the last `state`
+//   result  { turn, ok, reply, patches, changes, todos, steps, says?, incomplete?, usage?, unsent?, ask?, plan?,
+//           instructions? }   the turn's whole outcome, as /api/agent/run answers; then the last `state`
+//
+// A question or a plan (ask_user, propose_plan) ends its turn: `ask` in the result is what the thread shows, and the
+// user's answer is the next turn. So a turn that waits for the user holds nothing here: no model call, no timer but
+// the run's own hour, and nothing to stop; the page finds it again as it finds any turn that ended.
 import crypto from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { runToolAgent } from './agentService.js';
 import { cachePath, getProjectRoot, httpError } from './projectService.js';
+import { DATA_DIR } from '../config/constants.js';
 
 const KEEP_MS = 60 * 60 * 1000;
 const RUN_ID = /^[a-f0-9-]{36}$/;
@@ -60,7 +67,7 @@ function forget(run) {
 /**
  * Starts a turn: of the thread's run when it has one, else of a new run. body is what /api/agent/run takes for a
  * tools run (prompt, selection, activePath, compileLog, llmConfig, searchConfig, drafts, history, instructions,
- * skillBlock, compile), with threadId, and the turn's own model, reasoningEffort and planFirst. resume: Continue, on
+ * skillBlock, compile), with threadId, and the turn's own model, reasoningEffort, planFirst, plan and eachFile. resume: Continue, on
  * the run's conversation as it stands. Returns the run's snapshot at once; the turn is heard through its events.
  */
 export async function startTurn(body, { resume = false, runId } = {}) {
@@ -130,6 +137,15 @@ export function steerRun(run, text) {
 export function subscribeRun(run, listener) {
   run.listeners.add(listener);
   return () => run.listeners.delete(listener);
+}
+
+/**
+ * At the start: a run lives in its process only, so every run folder in the cache (a copy of the project with the
+ * proposals in it, a build) is one a crash or a kill left behind.
+ */
+export async function clearStaleRuns() {
+  const cache = path.join(DATA_DIR, 'cache');
+  for (const id of await fs.readdir(cache).catch(() => [])) await fs.rm(path.join(cache, id, 'agent-run'), { recursive: true, force: true }).catch(() => {});
 }
 
 /** Ends every run, when the app closes. */
