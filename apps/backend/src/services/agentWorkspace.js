@@ -134,7 +134,12 @@ export async function readCurrent(root, rel) {
   } catch (err) { if (err.code === 'ENOENT') return null; throw err; }
 }
 
-export async function applyWorkspaceChanges(run, selected, expected) {
+/**
+ * own, for a file the user settled in part: { [path]: { bytes, current } }, the text they chose (null: no file) in
+ * place of the whole proposal, made against the project's file when its hash was `current`; it is written only while
+ * the file is still that, and nothing is merged into it.
+ */
+export async function applyWorkspaceChanges(run, selected, expected, own = {}) {
   if (run.mode !== 'review' || run.busy) throw new Error('Finish the review run before applying changes.');
   const changes = await workspaceChanges(run);
   if (!Array.isArray(selected) || !selected.length || selected.some((rel) => !changes.some((c) => c.path === rel))) throw new Error('Choose changes from this run.');
@@ -148,8 +153,13 @@ export async function applyWorkspaceChanges(run, selected, expected) {
     const current = await readCurrent(run.root, rel);
     let proposed = change.afterHash === null ? null : await fs.readFile(safeJoin(path.join(run.dir, 'proposal'), rel));
     if (fileHash(proposed) !== change.afterHash) throw new Error(`The saved proposal for “${rel}” is damaged. Nothing was applied.`);
+    const chosen = Object.hasOwn(own, rel) ? own[rel] : null;
+    if (chosen) {
+      if (change.binary) throw new Error(`“${rel}” is not text. Apply or reject it whole.`);
+      if (fileHash(current) !== chosen.current) throw new Error(`“${rel}” changed in your project while you were reviewing it. Review it again.`);
+      proposed = chosen.bytes;
     // the user may have made the same change
-    if (fileHash(current) !== change.beforeHash && fileHash(current) !== change.afterHash) {
+    } else if (fileHash(current) !== change.beforeHash && fileHash(current) !== change.afterHash) {
       if (current === null || proposed === null || change.beforeHash === null) throw new Error(`“${rel}” changed in your project. Review the conflict before applying.`);
       const original = await fs.readFile(safeJoin(path.join(run.dir, 'baseline'), rel));
       proposed = mergeText(original, current, proposed);
@@ -191,19 +201,20 @@ export async function applyWorkspaceChanges(run, selected, expected) {
 /**
  * bytes (null: no file) become rel's baseline and proposal once the user applied or rejected its change, so the change
  * shows no more and the agent's next one to the file is measured from there. writeDraft puts them in the agent's copy
- * first, when they differ from what it holds; only isolation may write there.
+ * first, when they differ from what it holds; only isolation may write there. baseline, for a change settled in part:
+ * what the rest of it is measured from, the agent's copy holding bytes.
  */
-export async function rebaseChange(run, rel, bytes, writeDraft) {
+export async function rebaseChange(run, rel, bytes, writeDraft, baseline = bytes) {
   const manifest = async (name) => Object.assign(Object.create(null), JSON.parse(await fs.readFile(path.join(run.dir, name), 'utf8')));
   const proposal = await manifest('proposal.json');
   if ((proposal[rel] ?? null) !== fileHash(bytes)) await writeDraft(bytes);
-  for (const folder of ['proposal', 'baseline']) {
+  for (const [folder, held] of [['proposal', bytes], ['baseline', baseline]]) {
     const file = safeJoin(path.join(run.dir, folder), rel);
-    if (bytes === null) await fs.rm(file, { force: true });
-    else await writeFileAtomic(file, bytes);
+    if (held === null) await fs.rm(file, { force: true });
+    else await writeFileAtomic(file, held);
     const hashes = await manifest(`${folder}.json`);
-    if (bytes === null) delete hashes[rel];
-    else hashes[rel] = fileHash(bytes);
+    if (held === null) delete hashes[rel];
+    else hashes[rel] = fileHash(held);
     await writeJsonAtomic(path.join(run.dir, `${folder}.json`), hashes);
   }
 }

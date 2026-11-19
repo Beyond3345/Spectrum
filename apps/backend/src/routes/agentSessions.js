@@ -1,5 +1,5 @@
 import { listAgents, saveAgentConfig, importAgentLogin } from '../services/agentProfiles.js';
-import { changeAdapter, testAgent, getAgentRun, listAgentRuns, newAgentRun, previewDraft, promptAgent, readContext, stopAgentRun, answerAgentRequest, setAgentOption, reviewAgentChanges, pendingChanges, runSnapshot, subscribeAgent } from '../services/agentSessionService.js';
+import { changeAdapter, testAgent, getAgentRun, listAgentRuns, newAgentRun, previewDraft, previewProposal, promptAgent, readContext, stopAgentRun, answerAgentRequest, setAgentOption, reviewAgentChanges, pendingChanges, runSnapshot, subscribeAgent } from '../services/agentSessionService.js';
 import { agentRecoveries, recoverAgentApply } from '../services/agentWorkspace.js';
 import { mutateProjectRoot } from '../services/projectService.js';
 
@@ -41,6 +41,9 @@ export function registerAgentSessionRoutes(fastify) {
   fastify.post('/api/agent-sessions/:id/review', async (req) => ({ ok: true, changes: await reviewAgentChanges(await getAgentRun(req.params.id), req.body || {}) }));
   // the draft compiled on its own: { ok, pdf (base64, or null), log }; mainFile and engine default to the project's
   fastify.get('/api/agent-sessions/:id/preview', async (req) => previewDraft(await getAgentRun(req.params.id), { mainFile: req.query.mainFile || undefined, engine: req.query.engine || undefined }));
+  // a project with proposed files laid over it, compiled on a copy as a draft is: for the review of changes no session
+  // made (the Spectrum agent's, the assistant's), and with no files for the page before; body as previewProposal takes
+  fastify.post('/api/projects/:id/review-preview', async (req) => previewProposal(req.params.id, req.body || {}));
   fastify.get('/api/agent-sessions/:id/events', async (req, reply) => {
     const run = await getAgentRun(req.params.id);
     reply.hijack();
