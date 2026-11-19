@@ -296,10 +296,11 @@ eq(project([ev('terminal', { terminalId: 'x', command: 'latexmk', args: ['-pdf',
   const shape = (messages: Parameters<typeof threadItems>[0]) => threadItems(messages).map((i) => [i.type, 'text' in i ? i.text : i.type === 'plan' ? i.steps.join('|') : i.type === 'request' ? `${i.request.kind}:${i.request.params.toolCall?.title || i.request.params.message}:${i.answered}` : '']);
   const question = { kind: 'question' as const, question: 'Which voice?', options: ['We', 'Passive'] };
   const asked = [user('Fix the tone'), reply('Which voice?\n- We\n- Passive', { ask: question, steps: [{ tool: 'ask_user', ok: true }] })];
-  eq(shape(asked), [['user', 'Fix the tone'], ['tool', ''], ['request', 'permission:Which voice?:false']], 'a question waits as a card');
-  eq(threadItems(asked)[1].type === 'tool' && (threadItems(asked)[1] as any).call.title, 'Ask you a question', 'its step has words');
+  eq(shape(asked), [['user', 'Fix the tone'], ['request', 'permission:Which voice?:false']], 'a question waits as a card, and its step needs no card of its own');
+  eq(threadItems([reply('x', { steps: [{ tool: 'step_done', ok: true }, { tool: 'step_done', ok: false, show: { text: 'The plan has 2 steps.' } }] })]).map((i) => i.type === 'tool' && `${i.call.title}:${i.call.status}`), ['Tick off a step of the plan:failed', false], 'a tick that failed says so');
+  eq(runView([{ id: 1, type: 'step', data: { id: 'a', tool: 'propose_plan', status: 'started' }, at: '' }, { id: 2, type: 'step', data: { id: 'a', tool: 'propose_plan', status: 'done', ok: true }, at: '' }, { id: 3, type: 'step', data: { id: 'b', tool: 'ask_user', status: 'failed', ok: false }, at: '' }]).items.map((i) => i.type === 'tool' && i.call.title), ['Ask you a question'], 'the same while the turn happens');
   // answered: the question reads as the agent's text, and the answer is the user's next message
-  eq(shape([...asked, user('We')]).slice(2), [['assistant', 'Which voice?\n- We\n- Passive'], ['user', 'We']], 'answered, it is text');
+  eq(shape([...asked, user('We')]).slice(1), [['assistant', 'Which voice?\n- We\n- Passive'], ['user', 'We']], 'answered, it is text');
   eq(shape([user('x'), reply('Which voice?', { ask: { ...question, dismissed: true } })])[1], ['assistant', 'Which voice?'], 'closed unanswered, it is text');
   // the card local agents' questions use: options as buttons, or a box to type in
   eq(askRequest(question, 'q1').params.options, [{ optionId: 'We', name: 'We' }, { optionId: 'Passive', name: 'Passive' }], 'options are buttons');
@@ -324,6 +325,8 @@ eq(project([ev('terminal', { terminalId: 'x', command: 'latexmk', args: ['-pdf',
   const half = [{ content: 'Add refs', status: 'completed' }, { content: 'Rewrite 3.2', status: 'pending' }];
   const paused = [...approved, reply('The changes to refs.bib are ready to review. Next: method.tex.', { plan: half, ask: next })];
   eq(planOf(paused), { entries: half, open: true, eachFile: true }, 'as the last turn left them');
+  eq(threadItems([reply('Next: b.', { ask: next, steps: [{ tool: 'edit_file', about: 'b', ok: false, paused: true }] })]).map((i) => i.type), ['request'], 'the change held back shows no failed card');
+  eq(runView([{ id: 1, type: 'step', data: { id: 'a', tool: 'edit_file', about: 'b', status: 'started' }, at: '' }, { id: 2, type: 'step', data: { id: 'a', tool: 'edit_file', about: 'b', status: 'failed', ok: false, paused: true }, at: '' }]).items, [], 'nor while the turn happens');
   eq(shape(paused).slice(-1), [['request', 'permission:Go on to method.tex? The changes ready so far wait in the tray: review them first if you like.:false']], 'the pause before the next file');
   // Cancel on that card: the rest of the plan runs without stopping
   eq(planOf([...approved, reply('Next: method.tex.', { plan: half, ask: { ...next, dismissed: true } })]).eachFile, false, 'Cancel ends the pauses');

@@ -9,8 +9,9 @@
 //           ended: done, failed, stopped, steps (the step limit) or cut (the output limit)
 //   user    { text, steered? }           the turn's request; steered: a message handed over between steps
 //   text    { text }                     a piece of the model's words (the store joins the pieces: `first`)
-//   step    { id, tool, about?, status, ms?, ok?, show? }   status: started, done or failed; show: { text } or
-//           { diff: { path, oldText, newText } }, what the card opens to
+//   step    { id, tool, about?, status, ms?, ok?, show?, paused? }   status: started, done or failed; show: { text }
+//           or { diff: { path, oldText, newText } }, what the card opens to; paused: not done because the turn
+//           stops here for the user (ask before each file), which is no failure
 //   retry   { attempt, of, waitMs, streamed }   before a wait to try the provider again; streamed: the text of the
 //           try given up is to be dropped
 //   usage   { input, output, cacheRead?, cacheWrite?, total, model }   one model call's tokens, and the turn's so far

@@ -205,7 +205,8 @@ test('ask before each file: the turn ends before it changes a second new file, a
   assert.equal(first.result.reply, 'The changes to a.md are ready to review. Next: b.md.');
   assert.deepEqual(first.result.patches.map((x) => [x.path, x.content]), [['a.md', 'A again\n']]);
   assert.match(first.result.steps[2].show.text, /reviews each file’s changes before the next file: b\.md waits/);
-  assert.equal(first.result.steps[3].ok, false, 'nor the file after it');
+  assert.deepEqual(first.result.steps.map((s) => [s.ok, !!s.paused]), [[true, false], [true, false], [false, true], [false, true]], 'held back, which is no failure; nor the file after it');
+  assert.equal(first.events.find((e) => e.type === 'step' && e.data.status === 'failed').data.paused, true);
   assert.match(requests[0].messages.at(-1).content, /review each file’s changes before the next/);
   // Go on: a.md's proposal is still open, so changing it again is no new file; b.md is this turn's, and c.md waits
   scripts.each = [{ calls: [edit('b.md'), ['edit_file', { path: 'a.md', old: 'A again', new: 'A once more' }], ['delete_file', { path: 'c.md' }]] }, { say: 'never asked for' }];

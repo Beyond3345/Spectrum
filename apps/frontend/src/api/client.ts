@@ -1317,7 +1317,7 @@ export type Incomplete = 'failed' | 'steps' | 'cut' | 'stopped';
  * One of the Spectrum agent's tool calls: the tool, what it was about (a path, a query, an id), whether it worked, how
  * long it took, and what its card opens to (an output's text, or the two sides of an edit)
  */
-export type AgentStep = { tool: string; about?: string; ok: boolean; ms?: number; show?: { text?: string; diff?: { path: string; oldText: string; newText: string } } };
+export type AgentStep = { tool: string; about?: string; ok: boolean; ms?: number; show?: { text?: string; diff?: { path: string; oldText: string; newText: string } }; paused?: boolean };
 /** What was said before step `before` of a turn: the model's own words, or (user) a message steered in */
 export type AgentSaid = { before: number; text: string; user?: boolean };
 /** Tokens as the provider counted them: all it read (cacheRead and cacheWrite are part of input) and what it wrote */

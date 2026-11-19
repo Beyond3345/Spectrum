@@ -464,7 +464,8 @@ export async function runToolAgent({
   const fileGate = (rel) => {
     if (!eachFile || before.has(rel) || changed.has(rel) || ![...changed].some((c) => !before.has(c))) return;
     asked ||= { kind: 'next', path: rel };
-    throw new Error(`The user reviews each file’s changes before the next file: ${rel} waits for their word. Your turn ends here.`);
+    // a pause, not a failure: the step's card says nothing went wrong
+    throw Object.assign(new Error(`The user reviews each file’s changes before the next file: ${rel} waits for their word. Your turn ends here.`), { paused: true });
   };
   const propose = async (rel, next) => {
     fileGate(rel);
@@ -794,6 +795,7 @@ export async function runToolAgent({
       const at = Date.now();
       say('step', { id: c.id, tool: c.name, ...(c.about && { about: c.about }), status: 'started' });
       let show;
+      let paused = false;
       try {
         if (!c.tool) throw new Error(planning && mine.some((t) => t.name === c.name) ? 'Plan is on: this turn only reads. Put this step in the plan (propose_plan).' : `Unknown tool ${c.name}`);
         if (c.bad) throw new Error(c.bad);
@@ -808,8 +810,9 @@ export async function runToolAgent({
       } catch (err) {
         c.output = `Error: ${err.message}`;
         show = { text: err.message.slice(0, MAX_SHOWN) };
+        paused = err.paused === true;
       }
-      c.step = { tool: c.name, ...(c.about && { about: c.about }), ok: c.ok, ms: Date.now() - at, ...(show && { show }) };
+      c.step = { tool: c.name, ...(c.about && { about: c.about }), ok: c.ok, ms: Date.now() - at, ...(show && { show }), ...(paused && { paused }) };
       say('step', { id: c.id, ...c.step, status: c.ok ? 'done' : 'failed' });
     };
     // the calls of one turn in order, the read-only ones that follow each other at once

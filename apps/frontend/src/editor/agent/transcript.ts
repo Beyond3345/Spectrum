@@ -305,6 +305,11 @@ const STEPS: Record<string, [kind: string, alone: string, about?: string]> = {
 
 // ─── The Spectrum agent's questions and plans: what a turn ended with, which the user's next message answers ───
 
+// steps with nothing to open, which the card under them or the plan strip already shows: no card unless one failed.
+// Nor for a change held back by the pause before the next file (paused), which the “Go on to …?” card stands for.
+const QUIET = ['ask_user', 'propose_plan', 'step_done'];
+const quiet = (step: { tool: string; ok?: boolean; status?: string; paused?: boolean }) => !!step.paused || (QUIET.includes(step.tool) && (step.status ? step.status !== 'failed' : step.ok !== false));
+
 /**
  * A question, or the pause before the next file, as the card local agents' questions use (AgentQuestion) takes it:
  * the options as buttons with Cancel, or a box to type the answer in.
@@ -370,7 +375,7 @@ export function threadItems(messages: ChatThread['messages']): Item[] {
     // a question or a plan still waits for its answer while it is the thread's last word; after that it reads as text
     const ask = meta.ask && !meta.ask.dismissed && i === messages.length - 1 ? meta.ask : null;
     return [
-      ...steps.flatMap((step, j): Item[] => [...said(j), { type: 'tool', key: `s${i}-${j}`, call: stepCall(step, `${i}-${j}`) }]),
+      ...steps.flatMap((step, j): Item[] => [...said(j), ...(quiet(step) ? [] : [{ type: 'tool' as const, key: `s${i}-${j}`, call: stepCall(step, `${i}-${j}`) }])]),
       ...said(steps.length),
       m.role === 'user' ? { type: 'user', key: `u${i}`, text: m.content } : meta.error ? { type: 'notice', key: `n${i}`, text: m.content, error: true }
         : ask?.kind === 'plan' ? { type: 'plan', key: `p${i}`, steps: ask.steps }
@@ -441,6 +446,13 @@ export function runView(events: AgentEvent[]) {
     } else if (e.type === 'user') {
       if (d.steered) items.push({ type: 'user', key: `ru${e.id}`, text: String(d.text || '') });
     } else if (e.type === 'step') {
+      if (quiet(d)) {
+        // a change that started and was then held back: its card goes
+        const shown = calls.get(d.id);
+        if (shown) items.splice(items.indexOf(shown), 1);
+        calls.delete(d.id);
+        continue;
+      }
       const call = stepCall(d, `r${d.id}`);
       const held = calls.get(d.id);
       if (held) held.call = call;
