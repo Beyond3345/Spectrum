@@ -19,13 +19,20 @@ async function context(state) {
   return JSON.parse(await fs.readFile(path.join(state, 'context.json'), 'utf8').catch(() => '{}'));
 }
 
-/** The main document: the project's, else the first .tex with \documentclass at the top level, else the first .tex. */
+/**
+ * The main document: the project's, else the first .tex with \documentclass at the top level, else the first .tex, else
+ * a Typst or Markdown document (one named main first).
+ */
 async function mainFile(root, state) {
   const named = (await context(state)).mainFile;
   if (named && (await fs.stat(safeJoin(root, named)).catch(() => null))?.isFile()) return named;
   const tex = (await listFilesRecursive(root)).filter((f) => f.type === 'file' && /\.tex$/i.test(f.path)).map((f) => f.path).sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b));
   for (const file of tex) if (/\\documentclass\b/.test(withoutComments((await fs.readFile(path.join(root, file), 'utf8')).slice(0, 16384)))) return file;
-  return tex[0] || null;
+  if (tex[0]) return tex[0];
+  const others = (await listFilesRecursive(root)).filter((f) => f.type === 'file' && /\.(?:typ|md|markdown)$/i.test(f.path)).map((f) => f.path);
+  const depth = (f) => f.split('/').length;
+  const rank = (f) => (/^main\./i.test(path.posix.basename(f)) ? 0 : /\.typ$/i.test(f) ? 1 : /^readme\./i.test(path.posix.basename(f)) ? 3 : 2);
+  return others.sort((a, b) => depth(a) - depth(b) || rank(a) - rank(b) || a.localeCompare(b))[0] || null;
 }
 
 // \input, \include and \subfile, looked up from the main file's folder, then the root, as the compile's TEXINPUTS does
@@ -104,7 +111,7 @@ async function bibEntries(root, files) {
 /** The document's outline, labels, inputs, unresolved references and citations, main file and engine. */
 export async function projectMap(root, state) {
   const main = await mainFile(root, state);
-  if (!main) return { mainFile: null, note: 'This project has no .tex file.' };
+  if (!main) return { mainFile: null, note: 'This project has no LaTeX, Typst or Markdown document.' };
   const files = await documentFiles(root, main);
   const { bibs, entries } = await bibEntries(root, files);
   const outline = [], labels = [], refs = [], cites = [], atKeys = [];
@@ -174,7 +181,7 @@ export function logErrors(log) {
  */
 export async function compile(root, state, { main, engine } = {}) {
   const file = main || await mainFile(root, state);
-  if (!file) return { ok: false, error: 'This project has no .tex file.' };
+  if (!file) return { ok: false, error: 'This project has no LaTeX, Typst or Markdown document.' };
   const { typstVersion, markdownEngine, ...chosen } = await context(state);
   const result = await compileFolder({ root, mainFile: file, engine: engine || chosen.engine || 'auto', typstVersion, markdownEngine, buildDir: path.join(state, 'build') });
   const log = result.log || result.error || '';

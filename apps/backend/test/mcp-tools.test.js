@@ -99,6 +99,23 @@ test('project_map reads a Typst and a Markdown document too', async () => {
   assert.deepEqual(markdown.unresolvedCites.map((c) => c.key), ['nobody']);
 });
 
+test('with no main file named, a Typst or Markdown project still has a main document', async () => {
+  const bare = path.join(tmp, 'bare-state');
+  for (const [name, files, main] of [
+    ['typst', { 'notes.md': '# Notes\n', 'chapters/one.typ': '= One\n', 'thesis.typ': '= Thesis\n#include "chapters/one.typ"\n' }, 'thesis.typ'],
+    ['markdown', { 'README.md': '# Read me\n', 'main.md': '# Paper\n' }, 'main.md'],
+    ['latex-first', { 'main.typ': '= Typst\n', 'paper.tex': '\\documentclass{article}\n' }, 'paper.tex']
+  ]) {
+    const dir = path.join(tmp, name);
+    for (const [file, text] of Object.entries(files)) await write(path.join(dir, file), text);
+    assert.equal((await tools.projectMap(dir, bare)).mainFile, main, name);
+  }
+  const empty = path.join(tmp, 'empty');
+  await write(path.join(empty, 'refs.bib'), '');
+  assert.equal((await tools.projectMap(empty, bare)).note, 'This project has no LaTeX, Typst or Markdown document.');
+  assert.equal((await tools.compile(empty, bare)).error, 'This project has no LaTeX, Typst or Markdown document.');
+});
+
 test('the bibliography tools, the log reader, to-dos and skills', async () => {
   assert.deepEqual(await tools.listBibEntries(root, state), [{ key: 'known', type: 'article', title: 'A Known Paper', author: 'Smith, Ann and Jones, Bo', year: '2024', doi: '10.1/known', file: 'paper/refs.bib' }]);
   assert.equal((await tools.searchBibEntries(root, state, 'jones 2024')).length, 1);

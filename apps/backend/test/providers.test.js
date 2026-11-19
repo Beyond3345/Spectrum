@@ -186,6 +186,23 @@ test('errors read the same across providers', async () => {
   assert.equal(openrouter.error, 'Provider returned error');
 });
 
+test('a spent quota is not worded as a rate limit', async () => {
+  replies.push([429, { error: { message: 'You exceeded your current quota, please check your plan and billing details.', code: 'insufficient_quota' } }]);
+  assert.match((await call(undefined, { model: 'm' })).error, /no quota or credit left/);
+  replies.push([429, { error: { message: 'Rate limit reached for requests', type: 'rate_limit_error' } }]);
+  assert.equal((await call(undefined, { model: 'm' })).error, 'The provider is limiting requests. Try again shortly.');
+});
+
+test('a refusal on the Chat Completions format is the answer', async () => {
+  replies.push([200, { choices: [{ message: { role: 'assistant', content: null, refusal: 'I can’t help with that.' } }] }]);
+  assert.equal((await call(undefined, { model: 'm' })).message.content, 'I can’t help with that.');
+});
+
+test('thinking at the start of an answer, in <think> tags, is left out', async () => {
+  replies.push(chatReply('<think>\nfirst this, then that\n</think>\n\nThe answer, with <think> named in it.'));
+  assert.equal((await call(undefined, { model: 'm' })).message.content, 'The answer, with <think> named in it.');
+});
+
 test('a reply cut off part-way never runs its tool calls', async () => {
   const tools = [{ type: 'function', function: { name: 'propose_patch', description: 'Patch', parameters: { type: 'object' } } }];
   replies.push([200, { content: [{ type: 'tool_use', id: 'tu_1', name: 'propose_patch', input: { path: 'a.tex' } }], stop_reason: 'max_tokens' }]);

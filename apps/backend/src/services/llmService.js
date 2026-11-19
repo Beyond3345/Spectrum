@@ -115,7 +115,8 @@ export async function listLiveModels(preset, endpoint) {
 export function providerError(status, text) {
   if (status === 401 || status === 403) return 'The API key was rejected. Check it in Settings › Models.';
   if (status === 404) return 'The endpoint or model wasn’t found. Check Settings › Models.';
-  if (status === 429) return 'The provider is limiting requests. Try again shortly.';
+  // a 429 is also how providers say the account has run out, which waiting never mends
+  if (status === 429) return /quota|billing|credit|balance/i.test(text) ? 'The provider says this account has no quota or credit left. Check your plan and billing with the provider.' : 'The provider is limiting requests. Try again shortly.';
   let detail = '';
   try {
     // Gemini wraps the error in an array
@@ -152,7 +153,8 @@ const ADAPTERS = {
       ...(tools?.length && { tools }),
       ...extra
     }),
-    message: (data) => data?.choices?.[0]?.message && { ...data.choices[0].message, truncated: data.choices[0].finish_reason === 'length' }
+    // a refusal comes with no content and its reason beside it
+    message: (data) => data?.choices?.[0]?.message && { ...data.choices[0].message, ...(!data.choices[0].message.content && data.choices[0].message.refusal && { content: data.choices[0].message.refusal }), truncated: data.choices[0].finish_reason === 'length' }
   },
 
   // Anthropic Messages API
@@ -338,7 +340,8 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
     return { ok: false, error: data?.error?.message || 'The model provider returned no answer.' };
   }
   const { truncated, ...message } = reply;
-  const content = flattenContent(message.content);
+  // open and local reasoning models put their thinking at the start of the answer, in <think> tags
+  const content = flattenContent(message.content).replace(/^\s*<think>[\s\S]*?<\/think>\s*/, '');
   // a tool call cut off part-way has half its arguments, so it must never run
   if (truncated && (message.tool_calls?.length || !content)) {
     return { ok: false, error: 'The answer was cut off before it finished. Try a lower effort or a smaller request.' };

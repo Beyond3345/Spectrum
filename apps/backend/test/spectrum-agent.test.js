@@ -57,6 +57,13 @@ const DRAFTS = [
   ['read_file', { path: 'main.tex' }],
   ['apply_patch', { path: 'main.tex', patch: '--- main.tex\n+++ main.tex\n@@ -1,2 +1,3 @@\n line one\n line 2\n+line three\n' }]
 ];
+// "long" reads a file longer than one read, tries to rewrite it from that, reads on, then rewrites it whole
+const LONG = [
+  ['read_file', { path: 'long.tex' }],
+  ['propose_patch', { path: 'long.tex', content: 'only the start\n' }],
+  ['read_file', { path: 'long.tex', offset: 20000 }],
+  ['propose_patch', { path: 'long.tex', content: 'the whole file, rewritten\n' }]
+];
 // "secrets" asks for what no agent may read or write
 const SECRETS = [
   ['read_file', { path: '.env' }],
@@ -91,9 +98,9 @@ before(async () => {
       const payload = JSON.parse(body);
       calls.push(payload);
       const steps = payload.messages.filter((m) => m.role === 'tool').length;
-      const script = { drafts: DRAFTS, secrets: SECRETS }[payload.model] || SCRIPT;
+      const script = { drafts: DRAFTS, secrets: SECRETS, long: LONG }[payload.model] || SCRIPT;
       const message = payload.model === 'loop' ? call(`c${steps}`, 'list_todos', {})
-        : ['tools', 'drafts', 'secrets'].includes(payload.model) && steps < script.length ? call(`c${steps}`, ...script[steps])
+        : ['tools', 'drafts', 'secrets', 'long'].includes(payload.model) && steps < script.length ? call(`c${steps}`, ...script[steps])
           : { role: 'assistant', content: payload.model === 'direct' ? '{"reply":"ok","suggestion":"x"}' : 'done' };
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ choices: [{ message }] }));
@@ -194,6 +201,26 @@ test('the Spectrum agent canâ€™t read, list or propose .env files, keys, or gitâ
   assert.equal(outputs[15], 'text\n');
   assert.doesNotMatch(outputs.join('\n'), /sk-project-secret|token@|"secret"|private/);
   assert.deepEqual(json.changes, []);
+});
+
+test('a file longer than one read is read on by offset, and never rewritten from a cut-off read', async () => {
+  const p = await createProject({ name: 'Long file' });
+  const text = `${'x'.repeat(19990)}\n${'y'.repeat(9000)}\nTHE END\n`;
+  await write(path.join(p.path, 'long.tex'), text);
+  calls.length = 0;
+  const { json } = await run({ task: 'custom', prompt: 'tidy', mode: 'tools', projectId: p.id, llmConfig: llmConfig('long') });
+  const results = calls.at(-1).messages.filter((m) => m.role === 'tool').map((m) => m.content);
+  // the first read stops at 20,000 characters and says so
+  assert.equal(results[0].slice(0, 20000), text.slice(0, 20000));
+  assert.match(results[0], /\[Characters 0 to 20000 of 29000\. Read on with read_file \{ path, offset: 20000 \}/);
+  // a rewrite from that would have dropped the rest
+  assert.match(results[1], /^Error: You have read only the first 20000 characters of long\.tex/);
+  // the rest, with no note, and then the rewrite goes through
+  assert.equal(results[2], text.slice(20000));
+  assert.match(results[3], /^Change prepared/);
+  assert.deepEqual(json.steps.map((s) => s.ok), [true, false, true, true]);
+  assert.equal(json.patches[0].content, 'the whole file, rewritten\n');
+  assert.equal(json.patches[0].original, text);
 });
 
 test('instructions reach Ask, Edit and rewrites but never autocomplete, and the loop stops after 25 steps', async () => {

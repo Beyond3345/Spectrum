@@ -30,6 +30,8 @@ lines.on('line', async (line) => {
   else if (m.method === 'session/prompt') {
     promptId = m.id;
     if (m.params.prompt[0].text.includes('wait forever')) return;
+    // an agent that stops by itself mid-task, with a last word
+    if (m.params.prompt[0].text.includes('crash now')) { process.stderr.write('out of memory\n'); return setTimeout(() => process.exit(7), 20); }
     send({ id: 900, method: 'session/request_permission', params: { sessionId: 'test-session', toolCall: { toolCallId: 'edit', title: 'Edit project files', status: 'pending' }, options: [{ optionId: 'yes', name: 'Allow once', kind: 'allow_once' }, { optionId: 'no', name: 'Decline', kind: 'reject_once' }] } });
   } else if (m.id === 900 && m.result) {
     if (m.result.outcome?.optionId === 'yes') send({ id: 901, method: 'fs/write_text_file', params: { sessionId: 'test-session', path: path.join(workspace, 'main.tex'), content: 'agent draft\n' } });
