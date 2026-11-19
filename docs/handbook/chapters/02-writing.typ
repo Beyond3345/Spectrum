@@ -75,9 +75,10 @@ The LaTeX tab of #menu[Settings][Engines] holds the defaults for every project: 
 
 - #ui[Show live output while compiling], one switch for each engine, which shows the engine's output in the PDF's place while it runs, with a line saying what it is doing. Tectonic's is on by default, since it shows each package it downloads, which can take minutes on a first compile,
 - #ui[TeX folder], for a second TeX installation, whose programs are tried before the ones on the `PATH`, for example `/usr/local/texlive/2026/bin/universal-darwin`,
-- #ui[xjyutping folder], which uses your own copy of the xjyutping package in place of Spectrum's (@sec-writing-jyutping),
-- #ui[Biber for Tectonic], which downloads the Biber version that Tectonic's biblatex needs, since another Biber on the computer will not do. TeX Live and MiKTeX use their own and
-- #ui[Open Logs when a compile fails], which opens Tools › Logs in the PDF's place after a failed compile. Auto compile leaves it closed.
+- #ui[xjyutping folder], which uses your own copy of the xjyutping package in place of Spectrum's (@sec-writing-jyutping) and
+- #ui[Biber for Tectonic], which downloads the Biber version that Tectonic's biblatex needs, since another Biber on the computer will not do. TeX Live and MiKTeX use their own.
+
+Above the three tabs, #ui[Open Logs when a compile fails] opens Tools › Logs in the PDF's place after a failed compile of a LaTeX, Typst or Markdown document. Auto compile leaves it closed.
 
 === Typst
 
