@@ -48,7 +48,7 @@ test('a local agent on macOS gets Spectrum’s tools, which run inside its isola
     const map = answer('project_map');
     assert.equal(map.mainFile, 'main.tex');
     assert.deepEqual(map.unresolvedCites.map((c) => c.key), ['missing']);
-    assert.deepEqual(answer('list_todos'), [{ text: 'Write the method' }]);
+    assert.deepEqual(answer('list_todos'), { todos: [{ text: 'Write the method' }] });
     assert.match(answer('load_skill').body, /The compile loop/, 'the bundled skills were copied into the agent’s home');
     assert.deepEqual(run.events.filter((e) => e.type === 'todo').map((e) => e.data), [{ text: 'Cite the method', link: { file: 'main.tex', line: 3 } }]);
     if (hasTeX) {

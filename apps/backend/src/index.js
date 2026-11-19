@@ -22,6 +22,7 @@ import { registerAgentRoutes } from './routes/agent.js';
 import { registerAgentSessionRoutes } from './routes/agentSessions.js';
 import { registerSkillRoutes } from './routes/skills.js';
 import { shutdownAgents } from './services/agentSessionService.js';
+import { shutdownRuns } from './services/agentRunService.js';
 import { registerTransferRoutes } from './routes/transfer.js';
 import { registerConvertRoutes } from './routes/convert.js';
 import { registerSearchRoutes } from './routes/search.js';
@@ -205,6 +206,7 @@ async function quit() {
   quitting = true;
   // the backups still waiting are committed, and pushed at the next start
   await Promise.race([commitWaiting(), new Promise((resolve) => setTimeout(resolve, 3000))]);
+  shutdownRuns();
   await shutdownAgents();
   await stopTexlab();
   await stopTinymist();

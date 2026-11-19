@@ -1,29 +1,39 @@
-import { promises as fs } from 'fs';
+import { promises as fs, constants as fsConstants } from 'fs';
 import path from 'path';
+import crypto from 'crypto';
+import { z } from 'zod';
 import { applyPatch, createTwoFilesPatch } from 'diff';
-import { agentHidden, onDiskRel, safeJoin } from '../utils/pathUtils.js';
+import { agentHidden, inside, onDiskRel, safeJoin } from '../utils/pathUtils.js';
 import { listFilesRecursive } from '../utils/fsUtils.js';
 import { extractPathFromPatch } from '../utils/diffUtils.js';
 import { resolveLLMConfig, chatCompletion, missingKey, NO_API_KEY } from './llmService.js';
-import { getProjectRoot, httpError, readMeta } from './projectService.js';
-import { extractArxivId, fetchArxivEntry, buildArxivBibtex, searchArxiv } from './arxivService.js';
+import { cachePath, getProjectRoot, httpError, readMeta } from './projectService.js';
+import { readProjectSettings } from './projectSettings.js';
 import { searchWithFallback } from './searchService.js';
-import { fetchBibtex, literatureSearch } from './researchTools.js';
 import { listSkills, loadSkill, readSkillFile, SKILL_ID } from './skillService.js';
 import { fileHash } from './agentWorkspace.js';
 import { readItems } from '../routes/todos.js';
-import { projectMap } from '../mcp/tools.js';
+import { TOOLS, buildErrors, checkedInput, projectMap, suggestedTodo, toolSpec } from '../mcp/tools.js';
 import { docLanguage, hasDocument } from '../utils/docLanguage.js';
 import { DATA_RULE, SKILL_RULE, skillText, untrusted } from '../utils/outsideText.js';
 
 const MAX_STEPS = 25;
-// what one read_file call returns; a longer file is read on with offset
+// what one read_file call returns unless it asks for less or more; a longer file is read on with offset
 const MAX_READ = 20000;
+const MAX_READ_LIMIT = 60000;
+// what any one tool answer may add to the conversation (a skill's file has its own limit)
+const MAX_RESULT = 64000;
+// what a transcript card keeps of a step: a diff's two sides, an output's text
+const MAX_SHOWN = 4000;
+// ponytail: past this many characters of conversation (about 100,000 tokens) a run starts again from the thread's
+// text, as before 2.6, and says so; summarising the oldest part with the quick model is the step after
+const MAX_CONVERSATION = 400000;
 // a skill's supporting file, as the Spectrum agent reads one
 const MAX_SKILL_FILE = 192 * 1024;
-// the skills list in the agent's instructions: each description, and all of them
-const MAX_SKILL_DESCRIPTION = 1024;
-const MAX_SKILL_LIST = 16000;
+// the skills list in the agent's instructions: one line for each (its description's first sentence), and all of them;
+// load_skill answers with the whole description and the instructions
+const MAX_SKILL_LINE = 140;
+const MAX_SKILL_LIST = 6000;
 
 // chatCompletion already words its errors for people
 export function llmErrorMessage(error) {
@@ -57,28 +67,6 @@ export async function userInstructions({ instructions, skill, projectRoot } = {}
   return parts.join('\n\n');
 }
 
-const fn = (name, description, properties = {}, required = []) => ({
-  type: 'function',
-  function: { name, description, parameters: { type: 'object', properties, required } }
-});
-const str = { type: 'string' };
-
-const TOOL_SPECS = [
-  fn('web_search', 'Search the general web using the configured default and fallback connections. Returns source links and summaries. Input: { query }.', { query: str }, ['query']),
-  fn('read_file', `Read a UTF-8 file from the project, with the changes you proposed so far, ${MAX_READ} characters at a time: a longer file ends with a note saying where to read on. Input: { path, offset? } (path relative to project root; offset in characters, 0 by default).`, { path: str, offset: { type: 'number' } }, ['path']),
-  fn('list_files', 'List files under a directory. Input: { dir } (relative path, optional).', { dir: str }),
-  fn('propose_patch', 'Propose a full file rewrite. Input: { path, content }. This does NOT write. The user reviews it with your other changes. A file you have read only part of is refused: read the rest first, or use apply_patch.', { path: str, content: str }, ['path', 'content']),
-  fn('apply_patch', 'Apply a unified diff to a file (as you changed it so far) and propose the result. Input: { patch, path? }. This does NOT write.', { patch: str, path: str }, ['patch']),
-  fn('get_compile_log', 'Return the latest compile log from the client (read-only). Input: { }.'),
-  fn('arxiv_search', 'Search arXiv papers. Input: { query, maxResults? }.', { query: str, maxResults: { type: 'number' } }, ['query']),
-  fn('arxiv_bibtex', 'Generate BibTeX for an arXiv paper. Input: { arxivId }.', { arxivId: str }, ['arxivId']),
-  fn('literature_search', 'Search scholarly databases (OpenAlex, then Semantic Scholar, then arXiv) for papers. Returns titles, authors, years, venues, DOIs and summaries. Input: { query, limit? } (limit up to 10).', { query: str, limit: { type: 'number' } }, ['query']),
-  fn('fetch_bibtex', 'BibTeX for a DOI, an arXiv id or link, or else the best match for a title. Input: { id }.', { id: str }, ['id']),
-  fn('load_skill', 'Load a skill from the skills list: its full instructions and the files it has. Input: { id }.', { id: str }, ['id']),
-  fn('read_skill_file', 'Read one of a skill\'s files (up to 192 KB), by its path in the skill. Input: { id, path }.', { id: str, path: str }, ['id', 'path']),
-  fn('list_todos', 'List the project\'s open to-dos, with where each points. Input: { }.'),
-  fn('suggest_todo', 'Suggest a to-do for the user\'s list. It is not added: the user sees it as a card and adds it if they want. Input: { text, link? }, link being { file, line } for a source line, { doc, page } for a PDF page or { key } for a reference.', { text: str, link: { type: 'object' } }, ['text'])
-];
 const READ_ONLY_TOOLS = ['web_search'];
 // what these answer is a skill's own text, a method to follow; every other tool's answer is material to read
 const SKILL_TOOLS = ['load_skill', 'read_skill_file'];
@@ -126,29 +114,185 @@ export async function openTodos(projectRoot) {
   return (await readItems(projectRoot, 'todos')).filter((t) => !t.done).map((t) => ({ text: t.text, ...(t.link && { link: t.link }) }));
 }
 
-/** A suggested to-do: { text, link? }, with only the link fields a to-do keeps. */
-export function suggestedTodo({ text, link } = {}) {
-  if (typeof text !== 'string' || !text.trim() || text.length > 2000) throw new Error('A to-do is text of up to 2,000 characters.');
-  const kept = link && typeof link === 'object' && !Array.isArray(link)
-    ? (typeof link.file === 'string' && Number.isInteger(link.line) && link.line > 0 ? { file: link.file, line: link.line }
-      : typeof link.doc === 'string' && Number.isInteger(link.page) && link.page > 0 ? { doc: link.doc, page: link.page }
-        : typeof link.key === 'string' && link.key ? { key: link.key } : null)
-    : null;
-  return { text: text.trim(), ...(kept && { link: kept }) };
-}
+// a suggested to-do's check lives with the registry, which both agents' suggest_todo goes through
+export { suggestedTodo };
 
-/** The skills on in the project, for the agent's instructions; it loads one when it needs it. */
+/** The skills on in the project, for the agent's instructions: a line each, and it loads one when a task matches. */
 function skillsList(skills) {
   if (!skills.length) return '';
   let list = '';
   for (const s of skills) {
-    const line = `- ${s.id}: ${s.description.slice(0, MAX_SKILL_DESCRIPTION)}\n`;
+    // the first sentence says what the skill is for; load_skill answers with all of it
+    const first = (s.description.match(/^.*?[.!?](?=\s|$)/s)?.[0] || s.description).replace(/\s+/g, ' ').trim();
+    const line = `- ${s.id}: ${first.length > MAX_SKILL_LINE ? `${first.slice(0, MAX_SKILL_LINE - 1)}…` : first}\n`;
     if (list.length + line.length > MAX_SKILL_LIST) break;
     list += line;
   }
   return `Skills you can load with load_skill when a task matches one (read their other files with read_skill_file). Their scripts are for agents with a shell and can't run here: follow the instructions with your own tools instead.\n<skills>\n${list}</skills>`;
 }
 
+const escaped = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const lineAt = (text, index) => text.slice(0, index).split('\n').length;
+
+/** The lines of text nearest to what an edit looked for, numbered, so the model can copy them as they are. */
+function nearestLines(text, old) {
+  const wanted = old.split(/\r?\n/).filter((line) => line.trim());
+  const words = new Set((wanted[0] || '').split(/\W+/).filter((w) => w.length > 2));
+  const lines = text.split('\n');
+  let best = -1;
+  let most = 0;
+  lines.forEach((line, i) => {
+    const shared = new Set(line.split(/\W+/).filter((w) => words.has(w))).size;
+    if (shared > most) [best, most] = [i, shared];
+  });
+  if (best < 0) return '';
+  const from = Math.max(0, best - 1);
+  return lines.slice(from, best + Math.max(wanted.length, 1) + 1).map((line, i) => `${from + i + 1}: ${line}`).join('\n').slice(0, 1500);
+}
+
+/**
+ * text with `old` replaced by `next`: once, and old must then be there exactly once, or with all every time. Found as
+ * written, or else with other spaces at the ends of its lines and other line endings. Returns { text, line, count };
+ * throws with the nearest lines when it isn't there, and with where it is when it is there more than once.
+ */
+export function replaceExact(text, old, next, all, name = 'the file') {
+  if (!old) throw new Error('Give the text to replace in old. For a new file, or a full rewrite, use propose_patch.');
+  if (old === next) throw new Error('old and new are the same, so nothing would change.');
+  let spans = [];
+  for (let at = text.indexOf(old); at >= 0; at = text.indexOf(old, at + old.length)) spans.push([at, at + old.length]);
+  if (!spans.length) {
+    const loose = new RegExp(old.split(/\r?\n/).map((line) => escaped(line.replace(/[ \t]+$/, ''))).join('[ \\t]*\\r?\\n'), 'g');
+    spans = [...text.matchAll(loose)].filter((m) => m[0]).map((m) => [m.index, m.index + m[0].length]);
+  }
+  if (!spans.length) {
+    const near = nearestLines(text, old);
+    throw new Error(`The text in old was not found in ${name}, so nothing was changed.${near ? ` The nearest lines are:\n${near}\n` : ' '}Copy the text from the file as it is (read_file { path, line }), or give a shorter piece that is there once.`);
+  }
+  if (spans.length > 1 && !all) throw new Error(`The text in old is in ${name} ${spans.length} times (lines ${spans.slice(0, 8).map(([at]) => lineAt(text, at)).join(', ')}), so nothing was changed. Add the text around the one you mean so it is found once, or pass all: true to change every one.`);
+  // a file with Windows line endings keeps them
+  const put = text.includes('\r\n') ? next.replace(/\r?\n/g, '\r\n') : next;
+  let out = '';
+  let from = 0;
+  for (const [start, end] of spans) {
+    out += text.slice(from, start) + put;
+    from = end;
+  }
+  return { text: out + text.slice(from), line: lineAt(text, spans[0][0]), count: spans.length };
+}
+
+const str = z.string();
+const count = z.coerce.number().int().min(0);
+
+// The tools that are the Spectrum agent's alone, in the registry's shape (mcp/tools.js): the project's files with the
+// run's proposals over them, which a local agent reads and changes with tools of its own. Their ctx is the registry's
+// with the run's side of it: path, current, read, list, propose, remove, searchConfig and skillOn.
+const OWN_TOOLS = [
+  {
+    name: 'web_search',
+    description: 'Search the general web using the configured default and fallback connections. Returns source links and summaries. Input: { query }.',
+    schema: { query: str },
+    readOnly: true,
+    run: (ctx, { query }) => searchWithFallback({ query, searchConfig: ctx.searchConfig, purpose: 'chat', maxResults: 5 })
+  },
+  {
+    name: 'read_file',
+    description: `Read a text file of the project, with the changes you proposed so far. Returns ${MAX_READ} characters unless limit asks for fewer or more (up to ${MAX_READ_LIMIT}); a longer file ends with a note saying where to read on. Input: { path, offset?, line?, limit? } (offset in characters, or line to start at that line).`,
+    schema: { path: str, offset: count.optional(), line: count.optional(), limit: count.optional() },
+    readOnly: true,
+    run: (ctx, { path: file, ...range }) => ctx.read(ctx.path(file), range)
+  },
+  {
+    name: 'list_files',
+    description: 'List the files under a folder, with the ones you proposed. Input: { dir? }.',
+    schema: { dir: str.optional() },
+    readOnly: true,
+    run: (ctx, { dir }) => ctx.list(dir)
+  },
+  {
+    name: 'edit_file',
+    description: 'Change a file by replacing exact text: old must be in the file exactly once (copy it from read_file, with enough around it to be unique), or pass all: true to replace every one. The way to make any local change. This does NOT write: the user reviews it with your other changes. Input: { path, old, new, all? }.',
+    schema: { path: str, old: str, new: str, all: z.boolean().optional() },
+    readOnly: false,
+    run: async (ctx, input) => {
+      const rel = ctx.path(input.path);
+      const edit = replaceExact(await ctx.current(rel), input.old, input.new, input.all, rel);
+      await ctx.propose(rel, edit.text);
+      return `Changed ${rel} at line ${edit.line}${edit.count > 1 ? ` and ${edit.count - 1} more ${edit.count === 2 ? 'place' : 'places'}` : ''}. Awaiting user confirmation.`;
+    },
+    show: (result, input) => ({ diff: { path: input.path, oldText: input.old, newText: input.new } })
+  },
+  {
+    name: 'propose_patch',
+    description: 'Propose a whole file: a new file, or a full rewrite. Input: { path, content }. This does NOT write. A file you have read only part of is refused: read the rest first, or use edit_file.',
+    schema: { path: str, content: str },
+    readOnly: false,
+    run: async (ctx, { path: file, content }) => {
+      const rel = ctx.path(file);
+      if (ctx.partial.has(rel)) throw new Error(`You have read only the first ${ctx.partial.get(rel)} characters of ${rel}, so a rewrite would drop the rest. Read on with read_file and offset, or use edit_file for this change.`);
+      await ctx.propose(rel, content);
+      return `Change prepared for ${file}. Awaiting user confirmation.`;
+    }
+  },
+  {
+    name: 'apply_patch',
+    description: 'Apply a unified diff to a file as you changed it so far (edit_file is the surer way). Input: { patch, path? }. This does NOT write.',
+    schema: { patch: str, path: str.optional() },
+    readOnly: false,
+    run: async (ctx, { patch, path: given }) => {
+      const file = given || extractPathFromPatch(patch);
+      if (!file) throw new Error('Patch missing file path');
+      const rel = ctx.path(file);
+      const patched = applyPatch(await ctx.current(rel), patch);
+      if (patched === false) throw new Error('Failed to apply patch');
+      await ctx.propose(rel, patched);
+      return `Patch applied in memory for ${file}. Awaiting user confirmation.`;
+    },
+    show: (result, { patch }) => ({ text: patch })
+  },
+  {
+    name: 'delete_file',
+    description: 'Propose deleting a file. Input: { path }. This does NOT delete: the user reviews it with your other changes.',
+    schema: { path: str },
+    readOnly: false,
+    run: async (ctx, { path: file }) => {
+      await ctx.remove(ctx.path(file));
+      return `Deletion of ${file} prepared. Awaiting user confirmation.`;
+    }
+  },
+  {
+    name: 'read_skill_file',
+    description: 'Read one of a skill\'s files (up to 192 KB), by its path in the skill. Input: { id, path }.',
+    schema: { id: str, path: str },
+    readOnly: true,
+    run: (ctx, { id, path: file }) => readSkillFile(ctx.skillOn(id), file, MAX_SKILL_FILE)
+  }
+];
+
+/** Every tool the Spectrum agent has: its own, then the registry's, which a local agent gets from the tools server. */
+export const agentTools = () => [...OWN_TOOLS, ...TOOLS];
+
+const clip = (text, max = MAX_RESULT) => (text.length > max ? `${text.slice(0, max)}\n[The answer was ${text.length} characters: the first ${max} are shown. Ask for less at a time.]` : text);
+const shownOf = (show) => show && {
+  ...(typeof show.text === 'string' && { text: show.text.slice(0, MAX_SHOWN) }),
+  ...(show.diff && { diff: { path: String(show.diff.path), oldText: String(show.diff.oldText ?? '').slice(0, MAX_SHOWN), newText: String(show.diff.newText ?? '').slice(0, MAX_SHOWN) } })
+};
+
+/**
+ * One turn of the Spectrum agent: the model with its tools, until it answers. Returns { ok, reply, patches, changes,
+ * todos, steps, says?, incomplete?, usage?, build?, unsent? }.
+ *
+ * As a job (agentRunService.js) it is given:
+ *   emit(type, data)   hears the turn as it happens: 'text' { text }, 'step' { id, tool, about?, status, ms?, show? },
+ *                      'retry' { attempt, of, waitMs, streamed }, 'usage' { input, output, cacheRead?, cacheWrite?,
+ *                      total, model }, 'todo' { text, link? }, 'user' { text, steered }, 'notice' { message }
+ *   signal             Stop: aborts the model call and the tool running, and the turn returns with what it had done
+ *   steer()            → the messages the user sent to be read between steps, each given to the model once
+ *   conversation       { messages, partial, key, ended, open }, kept by the job from turn to turn, so a later turn
+ *                      has the earlier ones' tool calls and answers, and the provider's cache its prefix
+ *   resume             Continue: goes on from the conversation as the last turn left it, with no new request
+ * model and reasoningEffort are the turn's own; planFirst is taken and handed to the tools' ctx, for the plan card to
+ * build on. verify (Fix with AI): a turn that changed something ends with a compile, in `build`.
+ */
 export async function runToolAgent({
   projectId,
   activePath,
@@ -157,37 +301,53 @@ export async function runToolAgent({
   selection,
   compileLog,
   llmConfig,
+  model,
   reasoningEffort,
   searchConfig,
   readOnly = false,
   history = [],
   content = '',
   instructions = '',
-  drafts: open = []
+  // a skill picked with /, for this request: it goes with the request, so the instructions stay the same from turn to turn
+  skillBlock = '',
+  drafts: open = [],
+  compile: compileChoice,
+  verify = false,
+  planFirst = false,
+  conversation = null,
+  resume = false,
+  emit = null,
+  signal,
+  steer = () => [],
+  cacheKey,
+  stateDir
 }) {
+  const none = { patches: [], changes: [], todos: [], steps: [] };
   if (!projectId && !readOnly) {
-    return { ok: false, reply: 'Missing projectId, so tools mode is unavailable.', patches: [], changes: [], todos: [], steps: [] };
+    return { ok: false, reply: 'Missing projectId, so tools mode is unavailable.', ...none };
   }
+  const say = emit || (() => {});
 
   const projectRoot = projectId ? await getProjectRoot(projectId) : null;
   // the project's outline, which also finds the main file of a project that names none
-  const project = readOnly || !projectRoot ? { mainFile: await namedMainFile(projectRoot), text: '' } : await projectContext(projectRoot, await namedMainFile(projectRoot));
+  const kept = !readOnly && conversation?.messages?.length ? conversation : null;
+  const project = readOnly || !projectRoot || kept ? { mainFile: await namedMainFile(projectRoot), text: '' } : await projectContext(projectRoot, await namedMainFile(projectRoot));
   const { mainFile } = project;
   // of the open file, or else of the project's main file
   const language = docLanguage(activePath, mainFile);
   // only these can be loaded, as the tools server serves only those copied for a local agent
   const skills = readOnly ? [] : await skillsOn(projectRoot).catch(() => []);
-  const skillOn = (id) => {
-    if (!skills.some((s) => s.id === id)) throw offSkill();
-    return id;
-  };
   // each file the agent changed: as it was, and as it now proposes it, so later edits build on earlier ones; those this
   // run changed are its proposals
   const drafts = new Map();
   const changed = new Set();
+  // counts the proposals, so a copy of the project or a build is known to be of these ones
+  let version = 0;
   const todos = [];
-  // what each tool call was, for the transcript's cards: { tool, about, ok }
+  // what each tool call was, for the transcript's cards: { tool, about, ok, ms, show? }
   const steps = [];
+  // what was said between them: the model's own words before step `before`, and the user's (a steering message)
+  const says = [];
   const projectPath = (filePath) => {
     const abs = safeJoin(projectRoot, String(filePath || ''));
     const rel = path.relative(projectRoot, abs).split(path.sep).join('/');
@@ -195,87 +355,156 @@ export async function runToolAgent({
     if (agentHidden(rel) || agentHidden(onDiskRel(projectRoot, abs))) throw new Error('This path is not available to the agent.');
     return rel;
   };
-  // the thread's proposals not applied or rejected yet ({ path, original, proposed }), which this run goes on from
+  // the thread's proposals not applied or rejected yet ({ path, original, proposed, deleted? }), which this run goes on from
   if (!readOnly) {
     for (const d of Array.isArray(open) ? open.slice(0, 200) : []) {
       if (typeof d?.path !== 'string' || typeof d.proposed !== 'string' || (d.original != null && typeof d.original !== 'string')) continue;
-      try { drafts.set(projectPath(d.path), { original: d.original ?? null, content: d.proposed }); } catch { /* a path outside the project */ }
+      try { drafts.set(projectPath(d.path), { original: d.original ?? null, content: d.proposed, deleted: d.deleted === true }); } catch { /* a path outside the project */ }
     }
   }
-  const current = async (rel) => drafts.get(rel)?.content ?? fs.readFile(safeJoin(projectRoot, rel), 'utf8');
-  // how far this run has read each file it read only part of, so a rewrite from a cut-off read never drops the rest
-  const partial = new Map();
-  const read = async (rel, offset) => {
+  const onDisk = (rel) => fs.readFile(safeJoin(projectRoot, rel), 'utf8');
+  const current = async (rel) => {
+    const draft = drafts.get(rel);
+    if (draft?.deleted) throw new Error(`${rel} is deleted in your proposals.`);
+    return draft?.content ?? onDisk(rel);
+  };
+  // how far the run has read each file it read only part of, so a rewrite from a cut-off read never drops the rest
+  const partial = kept?.partial || new Map();
+  const read = async (rel, { offset, line, limit } = {}) => {
     const text = await current(rel);
-    const from = Math.min(text.length, Math.max(0, Math.floor(Number(offset) || 0)));
-    const to = Math.min(text.length, from + MAX_READ);
+    // a line to start at, as a search or a compile error names one
+    const start = line ? text.split('\n').slice(0, line - 1).join('\n').length + (line > 1 ? 1 : 0) : offset || 0;
+    const from = Math.min(text.length, Math.max(0, start));
+    const to = Math.min(text.length, from + Math.min(limit || MAX_READ, MAX_READ_LIMIT));
     // read in order from the start, the file is whole once its end is reached
     const seen = from <= (partial.get(rel) ?? 0) ? Math.max(to, partial.get(rel) ?? 0) : partial.get(rel) ?? 0;
     if (seen < text.length) partial.set(rel, seen);
     else partial.delete(rel);
-    const note = to < text.length ? `\n[Characters ${from} to ${to} of ${text.length}. Read on with read_file { path, offset: ${to} }. Until you have read it all, change this file with apply_patch, not propose_patch.]` : '';
+    const note = to < text.length ? `\n[Characters ${from} to ${to} of ${text.length}. Read on with read_file { path, offset: ${to} }. Until you have read it all, change this file with edit_file, not propose_patch.]` : '';
     return text.slice(from, to) + note;
   };
-  const propose = async (rel, next) => {
+  const draftOf = async (rel) => {
     if (!rel) throw new Error('Invalid path.');
     if (!drafts.has(rel)) {
-      const original = await fs.readFile(safeJoin(projectRoot, rel), 'utf8').catch((err) => (err.code === 'ENOENT' ? null : Promise.reject(err)));
+      const original = await onDisk(rel).catch((err) => (err.code === 'ENOENT' ? null : Promise.reject(err)));
       drafts.set(rel, { original, content: original ?? '' });
     }
-    drafts.get(rel).content = next;
+    return drafts.get(rel);
+  };
+  const propose = async (rel, next) => {
+    Object.assign(await draftOf(rel), { content: next, deleted: false });
     changed.add(rel);
+    version += 1;
+  };
+  const remove = async (rel) => {
+    const draft = await draftOf(rel);
+    if (draft.original === null) {
+      // a file only the agent proposed: the proposal is taken back, as there is nothing to delete
+      drafts.delete(rel);
+      if (draft.content === '' && !changed.has(rel)) throw new Error(`There is no file ${rel}.`);
+      changed.delete(rel);
+    } else {
+      Object.assign(draft, { content: '', deleted: true });
+      changed.add(rel);
+    }
+    version += 1;
+  };
+  const list = async (dir) => {
+    const base = dir ? projectPath(dir) : '';
+    const under = (rel) => !base || rel.startsWith(`${base}/`);
+    const files = new Set((await listFilesRecursive(base ? safeJoin(projectRoot, base) : projectRoot, '')).filter((item) => item.type === 'file').map((item) => (base ? `${base}/${item.path}` : item.path)).filter((rel) => !agentHidden(rel)));
+    for (const [rel, draft] of drafts) {
+      if (draft.deleted) files.delete(rel);
+      else if (draft.original === null && under(rel)) files.add(rel);
+    }
+    return { files: [...files].map((rel) => (base ? rel.slice(base.length + 1) : rel)) };
   };
 
-  const tools = {
-    web_search: async ({ query }) => JSON.stringify(await searchWithFallback({ query, searchConfig, purpose: 'chat', maxResults: 5 })),
-    read_file: async ({ path: filePath, offset }) => read(projectPath(filePath), offset),
-    list_files: async ({ dir }) => {
-      const root = dir ? safeJoin(projectRoot, projectPath(dir)) : projectRoot;
-      const items = await listFilesRecursive(root, '');
-      return JSON.stringify({ files: items.filter((item) => item.type === 'file' && !agentHidden(item.path)).map((item) => item.path) });
-    },
-    propose_patch: async ({ path: filePath, content }) => {
-      if (typeof content !== 'string') throw new Error('Give the file’s new content.');
-      const rel = projectPath(filePath);
-      if (partial.has(rel)) throw new Error(`You have read only the first ${partial.get(rel)} characters of ${rel}, so a rewrite would drop the rest. Read on with read_file and offset, or use apply_patch for this change.`);
-      await propose(rel, content);
-      return `Change prepared for ${filePath}. Awaiting user confirmation.`;
-    },
-    apply_patch: async ({ patch, path: providedPath }) => {
-      const filePath = providedPath || extractPathFromPatch(patch);
-      if (!filePath) throw new Error('Patch missing file path');
-      const rel = projectPath(filePath);
-      const patched = applyPatch(await current(rel), patch);
-      if (patched === false) throw new Error('Failed to apply patch');
-      await propose(rel, patched);
-      return `Patch applied in memory for ${filePath}. Awaiting user confirmation.`;
-    },
-    get_compile_log: async () => compileLog || 'No compile log provided.',
-    arxiv_search: async ({ query, maxResults }) => JSON.stringify({ papers: await searchArxiv(query, maxResults || 5) }),
-    arxiv_bibtex: async ({ arxivId }) => {
-      const id = extractArxivId(arxivId);
-      if (!id) throw new Error('Invalid arXiv ID');
-      const entry = await fetchArxivEntry(id);
-      if (!entry) throw new Error('No arXiv metadata found');
-      return buildArxivBibtex(entry);
-    },
-    literature_search: async ({ query, limit }) => JSON.stringify({ papers: await literatureSearch(query, limit) }),
-    fetch_bibtex: async ({ id }) => fetchBibtex(id),
-    load_skill: async ({ id }) => JSON.stringify(await loadSkill(skillOn(id))),
-    read_skill_file: async ({ id, path: file }) => readSkillFile(skillOn(id), file, MAX_SKILL_FILE),
-    list_todos: async () => JSON.stringify({ todos: await openTodos(projectRoot) }),
-    suggest_todo: async (input) => {
-      todos.push(suggestedTodo(input));
+  // This run's own folder in the project's cache: the build, the last log, and a copy of the project with the
+  // proposals written over it, which is what a compile, a search and the map read once there is a proposal.
+  const ownState = !stateDir && projectRoot && !readOnly ? path.join(await cachePath(projectRoot, 'agent-run'), crypto.randomUUID()) : null;
+  const state = stateDir || ownState;
+  let prepared = null;
+  const prepare = () => (prepared ||= (async () => {
+    const own = (await readProjectSettings(projectRoot)).compile || {};
+    await fs.mkdir(state, { recursive: true, mode: 0o700 });
+    await fs.writeFile(path.join(state, 'context.json'), JSON.stringify({ mainFile, engine: own.engine || 'auto', typstVersion: own.typstVersion || compileChoice?.typstVersion, markdownEngine: own.markdownEngine || compileChoice?.markdownEngine }));
+    // the log of the user's own last compile, which get_log answers with until the agent compiles
+    if (compileLog) {
+      await fs.writeFile(path.join(state, 'last.log'), String(compileLog));
+      await fs.rm(path.join(state, 'last.json'), { force: true });
+    }
+  })());
+  const work = state && path.join(state, 'work');
+  let copy = { version: -1, done: Promise.resolve() };
+  /**
+   * The project as the agent has it: the project's own folder while it has proposed nothing, else a copy with the
+   * proposals in it. The copy leaves out what no agent may read, and keeps a link a link.
+   * ponytail: copied again for each new proposal that is then compiled or searched (a clone on APFS, a real copy on
+   * Windows and other disks); copying only what changed is the step after, for a project with large figures
+   */
+  const syncCopy = async () => {
+    await fs.rm(work, { recursive: true, force: true });
+    await fs.cp(projectRoot, work, { recursive: true, mode: fsConstants.COPYFILE_FICLONE, verbatimSymlinks: true, filter: (src) => !agentHidden(path.relative(projectRoot, src)) });
+    const real = await fs.realpath(work);
+    for (const [rel, draft] of drafts) {
+      const file = path.join(work, rel);
+      // never through a link in the copy to somewhere else
+      const folder = await fs.mkdir(path.dirname(file), { recursive: true }).then(() => fs.realpath(path.dirname(file)));
+      if (!inside(real, folder)) continue;
+      await fs.rm(file, { force: true, recursive: true });
+      if (!draft.deleted) await fs.writeFile(file, draft.content);
+    }
+  };
+  const root = async () => {
+    await prepare();
+    if (!drafts.size) return projectRoot;
+    if (copy.version !== version) copy = { version, done: copy.done.catch(() => {}).then(syncCopy) };
+    await copy.done;
+    return work;
+  };
+  // Windows has no sandbox for a compile: the agent's draft is compiled with no shell escape and none of the Perl and
+  // Lua helpers TeX's own limits don't reach (Biber among them), as a local agent's preview is there
+  const windows = process.platform === 'win32';
+  const compileOptions = { signal, ...(windows && { untrusted: true, env: (await import('./agentSessionService.js')).PREVIEW_TEX_ENV }) };
+  // the last compile the agent ran: of which proposals, and how it went
+  let lastBuild = null;
+
+  const ctx = {
+    root,
+    state,
+    todos: () => openTodos(projectRoot),
+    suggestTodo: (todo) => {
+      todos.push(todo);
+      say('todo', todo);
       return 'Suggested. The user sees it as a card and adds it if they want.';
+    },
+    loadSkill: (id) => loadSkill(ctx.skillOn(id)),
+    compileOptions,
+    signal,
+    planFirst,
+    // the Spectrum agent's own side
+    path: projectPath,
+    current,
+    read,
+    list,
+    propose,
+    remove,
+    partial,
+    searchConfig,
+    skillOn: (id) => {
+      if (!skills.some((s) => s.id === id)) throw offSkill();
+      return id;
     }
   };
 
-  const resolved = resolveLLMConfig(llmConfig);
+  const resolved = resolveLLMConfig({ ...llmConfig, ...(typeof model === 'string' && model.trim() && { model }) });
   if (missingKey(resolved)) {
-    return { ok: false, reply: NO_API_KEY, patches: [], changes: [], todos: [], steps: [] };
+    return { ok: false, reply: NO_API_KEY, ...none };
   }
 
-  const toolSpecs = TOOL_SPECS.filter((t) => readOnly ? READ_ONLY_TOOLS.includes(t.function.name) : t.function.name !== 'web_search' || searchConfig);
+  const offered = agentTools().filter((t) => (readOnly ? READ_ONLY_TOOLS.includes(t.name) : t.name !== 'web_search' || searchConfig));
+  const toolSpecs = offered.map(toolSpec);
   const system = [readOnly ? [
     'You are a helpful writing assistant in read-only chat mode. Answer normally; do not propose edits, patches or JSON.',
     hasDocument(activePath, mainFile) ? languageLine(language) : '',
@@ -286,12 +515,15 @@ export async function runToolAgent({
     `You are a paper assistant for Spectrum, working on a ${language.name} project.`,
     languageLine(language),
     skills.some((s) => s.id === language.skill) ? `For fixing a compile and the rest of ${language.name} in Spectrum, load the skill ${language.skill}.` : '',
-    'You can read files and propose patches via tools, and you may call tools multiple times.',
+    'You work through tools and may call several at once: reads, searches and look-ups asked for together run together.',
+    'Find your way with project_map and search_text, and read with read_file (line or offset, and limit, for a long file).',
+    'Change a file with edit_file, which replaces exact text; use propose_patch only for a new file or a full rewrite, and delete_file to propose removing a file.',
+    'Nothing you do is written: the user reviews every change, so never say a change is applied.',
     'If a request affects multiple files (e.g., sections + bib), inspect and update all relevant files.',
-    'You can use literature_search and fetch_bibtex to find papers and their BibTeX, and arxiv_search and arxiv_bibtex for arXiv.',
+    'After changing a source file, compile. If it fails, fix the first error and compile again; stop after three tries and say what is left. Say in your answer whether the document builds.',
+    'Files can change between your turns: read a file again before changing it in a later turn.',
+    'You can use literature_search and fetch_bibtex to find papers and their BibTeX; use bib_search before adding an entry.',
     searchConfig ? 'Use web_search for general web questions and cite its source links.' : '',
-    'Never assume writes are applied; use propose_patch and wait for user confirmation.',
-    'Use apply_patch for localized edits; use propose_patch for full-file rewrites.',
     'Use suggest_todo for follow-up work the user should do; it never adds anything by itself.',
     'Be concise. Provide a short summary in the final response.',
     DATA_RULE,
@@ -299,67 +531,190 @@ export async function runToolAgent({
     skills.length && !instructions.includes(SKILL_RULE) ? SKILL_RULE : ''
   ].filter(Boolean).join(' '), skillsList(skills), instructions].filter(Boolean).join('\n\n');
 
+  // The conversation: the job's own from its earlier turns, while it is the same model's and still fits; else the
+  // thread's last texts, as before there were jobs.
+  const modelKey = `${resolved.endpoint}\n${resolved.model}`;
+  const size = (list) => list.reduce((sum, m) => sum + JSON.stringify(m).length, 0);
+  let earlier = kept && kept.key === modelKey ? kept.messages.slice(1) : null;
+  if (earlier && size(earlier) > MAX_CONVERSATION) {
+    earlier = null;
+    say('notice', { message: 'This conversation grew too long to send whole, so the agent goes on from its messages alone and may read some files again.' });
+  }
+  if (!earlier) partial.clear();
+  // the proposals of earlier turns the user has applied or rejected since
+  const closed = earlier ? [...(kept.open || [])].filter((rel) => !drafts.has(rel)) : [];
   const userInput = [
     `Task: ${task || 'polish'}`,
     activePath ? `Active file: ${activePath}` : '',
     prompt ? `User prompt: ${prompt}` : '',
+    skillBlock,
+    closed.length ? `Your earlier proposals for ${closed.join(', ')} are no longer open: the user applied or rejected them. Read a file again before you change it.` : '',
     project.text ? `Project:\n${untrusted('project outline', project.text)}` : '',
     selection ? `Selection:\n${untrusted('selection', selection)}` : '',
     readOnly && !selection && content ? `Current file (read-only):\n${untrusted(activePath || 'current file', content)}` : '',
     compileLog ? `Compile log:\n${untrusted('compile log', compileLog)}` : ''
   ].filter(Boolean).join('\n\n');
-
   const messages = [
     { role: 'system', content: system },
-    ...(Array.isArray(history) ? history : []).filter((m) => ['user', 'assistant'].includes(m?.role) && typeof m.content === 'string').slice(-12),
-    { role: 'user', content: userInput }
+    ...(earlier || (Array.isArray(history) ? history : []).filter((m) => ['user', 'assistant'].includes(m?.role) && typeof m.content === 'string').slice(-12))
   ];
+  if (!(resume && earlier)) messages.push({ role: 'user', content: userInput });
+  // Continue: the conversation is as the last turn left it, so a failed request is only sent again
+  else if (kept.ended === 'cut') messages.push({ role: 'user', content: 'Your answer was cut off by the output limit. Go on from where it stops, without repeating it.' });
+  else if (kept.ended !== 'failed') messages.push({ role: 'user', content: 'Continue from where you stopped.' });
+
+  if (state && !readOnly) await prepare();
+  const total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  let counted = false;
+  /** One compile of the proposals as they are, as a step: { ok, errors }. */
+  const build = async () => {
+    if (lastBuild?.version === version) return lastBuild;
+    const at = Date.now();
+    say('step', { id: 'build', tool: 'compile', status: 'started' });
+    const tool = TOOLS.find((t) => t.name === 'compile');
+    const result = await tool.run(ctx, {}).catch((err) => ({ ok: false, error: err.message }));
+    lastBuild = { version, ok: !!result.ok, errors: buildErrors(result).slice(0, 5) };
+    const step = { tool: 'compile', ok: lastBuild.ok, ms: Date.now() - at, show: shownOf(tool.show(result)) };
+    steps.push(step);
+    say('step', { id: 'build', ...step, status: lastBuild.ok ? 'done' : 'failed' });
+    return lastBuild;
+  };
   // patches: one per file as before; changes: the same, as local agents' changes tray lists them. incomplete: why the
   // run ended before its answer ('failed': a model call failed, 'steps': the step limit, 'cut': the answer stopped at
-  // the output limit); what it prepared until then is returned all the same, for the user to review and continue from
-  const done = (ok, reply, incomplete) => {
-    const final = [...drafts].filter(([rel, d]) => changed.has(rel) && d.content !== d.original);
+  // the output limit, 'stopped': the user stopped it); what it prepared until then is returned all the same, for the
+  // user to review and continue from
+  const done = async (ok, reply, incomplete) => {
+    const built = verify && changed.size && incomplete !== 'stopped' ? await build() : null;
+    const final = [...drafts].filter(([rel, d]) => changed.has(rel) && (d.deleted || d.content !== d.original));
+    if (conversation) Object.assign(conversation, { messages, partial, key: modelKey, ended: incomplete || null, open: new Set(drafts.keys()) });
+    if (ownState) await fs.rm(ownState, { recursive: true, force: true }).catch(() => {});
+    const unsent = waiting();
     return {
       ok,
       reply,
-      patches: final.map(([rel, d]) => ({ path: rel, original: d.original ?? '', content: d.content, diff: createTwoFilesPatch(rel, rel, d.original ?? '', d.content, 'current', 'proposed') })),
-      changes: final.map(([rel, d]) => ({ path: rel, kind: d.original === null ? 'created' : 'modified', binary: false, beforeHash: d.original === null ? null : fileHash(Buffer.from(d.original)), afterHash: fileHash(Buffer.from(d.content)), size: Buffer.byteLength(d.content), original: d.original ?? '', proposed: d.content })),
+      patches: final.map(([rel, d]) => ({ path: rel, original: d.original ?? '', content: d.content, ...(d.deleted && { deleted: true }), diff: createTwoFilesPatch(rel, rel, d.original ?? '', d.content, 'current', 'proposed') })),
+      changes: final.map(([rel, d]) => ({ path: rel, kind: d.deleted ? 'deleted' : d.original === null ? 'created' : 'modified', binary: false, beforeHash: d.original === null ? null : fileHash(Buffer.from(d.original)), afterHash: d.deleted ? null : fileHash(Buffer.from(d.content)), size: Buffer.byteLength(d.content), original: d.original ?? '', proposed: d.content })),
       todos,
       steps,
-      ...(incomplete && { incomplete })
+      ...(says.length && { says }),
+      ...(incomplete && { incomplete }),
+      ...(counted && { usage: total }),
+      ...(built && { build: { ok: built.ok, errors: built.errors } }),
+      ...(unsent.length && { unsent })
     };
+  };
+  // loses to no tool: a tool that does not hear the signal is left to finish by itself
+  const stopping = new Promise((resolve, reject) => signal?.addEventListener('abort', () => reject(new Error('Stopped by the user before this finished.')), { once: true }));
+  stopping.catch(() => {});
+  // the messages sent to be read between steps: the job's, and those that came while the model was answering
+  const held = [];
+  const waiting = () => [...held.splice(0), ...steer()];
+  const steered = () => {
+    for (const text of waiting()) {
+      messages.push({ role: 'user', content: text });
+      says.push({ before: steps.length, text, user: true });
+      say('user', { text, steered: true });
+    }
   };
 
   for (let step = 0; step < MAX_STEPS; step += 1) {
-    const result = await chatCompletion({ ...resolved, messages, tools: toolSpecs, reasoningEffort });
+    steered();
+    let heard = 0;
+    const result = await chatCompletion({
+      ...resolved,
+      messages,
+      tools: toolSpecs,
+      reasoningEffort,
+      signal,
+      // a tool loop sends its prefix again at every step
+      ...(!readOnly && { cache: cacheKey || path.basename(state || '') || undefined }),
+      ...(emit && {
+        onText: (text) => {
+          heard += text.length;
+          say('text', { text });
+        },
+        onRetry: (retry) => {
+          if (retry.streamed) heard = 0;
+          say('retry', retry);
+        }
+      })
+    });
+    if (result.usage) {
+      counted = true;
+      for (const key of Object.keys(total)) total[key] += result.usage[key] || 0;
+      say('usage', { ...result.usage, total: { ...total }, model: resolved.model });
+    }
+    if (result.stopped || signal?.aborted) return done(false, 'Stopped.', 'stopped');
     if (!result.ok) {
       return done(false, llmErrorMessage(result.error), 'failed');
     }
-    const { content, tool_calls: toolCalls } = result.message;
+    const { content: text, tool_calls: toolCalls } = result.message;
+    // a provider that sent its answer whole
+    if (emit && text && !heard) say('text', { text });
     if (!toolCalls?.length) {
-      return done(true, content || '', result.truncated && 'cut');
-    }
-    // the whole message goes back: DeepSeek, Kimi and Gemini need their reasoning fields in a tool loop
-    messages.push({ ...result.message, content: content || null });
-    for (const call of toolCalls) {
-      let output;
-      let input = {};
-      try {
-        const handler = toolSpecs.some((t) => t.function.name === call.function?.name) && tools[call.function?.name];
-        if (!handler) throw new Error(`Unknown tool ${call.function?.name}`);
-        input = JSON.parse(call.function.arguments || '{}');
-        output = await handler(input);
-      } catch (err) {
-        output = `Error: ${err.message}`;
+      // kept for the turns after this one
+      messages.push({ ...result.message, content: text || '' });
+      // a message sent while it was answering: the answer stands, and the run goes on to read the message
+      const more = steer();
+      if (more.length && !result.truncated) {
+        if (text) says.push({ before: steps.length, text });
+        held.push(...more);
+        continue;
       }
-      const about = [input?.path, input?.query, input?.id, input?.dir, input?.arxivId, input?.text].find((v) => typeof v === 'string' && v);
-      const name = String(call.function?.name || '');
-      const ok = !String(output).startsWith('Error: ');
-      steps.push({ tool: name, ...(about && { about: about.slice(0, 200) }), ok });
-      // every tool's answer is marked with where it came from: a file, a page, a paper and a skill are never the user speaking
-      const marked = ok && SKILL_TOOLS.includes(name) ? skillText(input?.id, output) : untrusted([name, about?.slice(0, 80)].filter(Boolean).join(' '), output);
-      messages.push({ role: 'tool', tool_call_id: call.id, content: marked });
+      return done(true, text || '', result.truncated && 'cut');
     }
+    if (text?.trim()) says.push({ before: steps.length, text });
+    // the whole message goes back: DeepSeek, Kimi and Gemini need their reasoning fields in a tool loop
+    messages.push({ ...result.message, content: text || null });
+    const calls = toolCalls.map((call, i) => {
+      const name = String(call.function?.name || '');
+      const c = { id: `s${step}-${i}`, call, name, tool: offered.find((t) => t.name === name), input: {}, output: null, ok: false };
+      try {
+        c.input = JSON.parse(call.function?.arguments || '{}');
+      } catch (err) {
+        c.bad = err.message;
+      }
+      c.about = [c.input?.path, c.input?.query, c.input?.id, c.input?.dir, c.input?.text, c.input?.main].find((v) => typeof v === 'string' && v)?.slice(0, 200);
+      return c;
+    });
+    const runCall = async (c) => {
+      const at = Date.now();
+      say('step', { id: c.id, tool: c.name, ...(c.about && { about: c.about }), status: 'started' });
+      let show;
+      try {
+        if (!c.tool) throw new Error(`Unknown tool ${c.name}`);
+        if (c.bad) throw new Error(c.bad);
+        const input = checkedInput(c.tool, c.input);
+        const before = version;
+        const answer = await Promise.race([c.tool.run(ctx, input), stopping]);
+        c.output = typeof answer === 'string' ? answer : JSON.stringify(answer);
+        if (!SKILL_TOOLS.includes(c.name)) c.output = clip(c.output);
+        c.ok = true;
+        show = shownOf(c.tool.show?.(answer, input));
+        if (c.name === 'compile') lastBuild = { version: before, ok: !!answer.ok, errors: buildErrors(answer).slice(0, 5) };
+      } catch (err) {
+        c.output = `Error: ${err.message}`;
+        show = { text: err.message.slice(0, MAX_SHOWN) };
+      }
+      c.step = { tool: c.name, ...(c.about && { about: c.about }), ok: c.ok, ms: Date.now() - at, ...(show && { show }) };
+      say('step', { id: c.id, ...c.step, status: c.ok ? 'done' : 'failed' });
+    };
+    // the calls of one turn in order, the read-only ones that follow each other at once
+    for (let i = 0; i < calls.length && !signal?.aborted;) {
+      let j = i + 1;
+      if (calls[i].tool?.readOnly) while (j < calls.length && calls[j].tool?.readOnly) j += 1;
+      await Promise.all(calls.slice(i, j).map(runCall));
+      i = j;
+    }
+    for (const c of calls) {
+      // every call gets its answer, so the conversation can go on after a Stop
+      const output = c.output ?? 'Error: Stopped by the user before this ran.';
+      steps.push(c.step || { tool: c.name, ...(c.about && { about: c.about }), ok: false });
+      // every tool's answer is marked with where it came from: a file, a page, a paper and a skill are never the user speaking
+      const marked = c.ok && SKILL_TOOLS.includes(c.name) ? skillText(c.input?.id, output) : untrusted([c.name, c.about?.slice(0, 80)].filter(Boolean).join(' '), output);
+      messages.push({ role: 'tool', tool_call_id: c.call.id, content: marked });
+    }
+    if (signal?.aborted) return done(false, 'Stopped.', 'stopped');
   }
 
   return done(true, `Stopped after ${MAX_STEPS} tool steps without a final answer.`, 'steps');
