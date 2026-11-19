@@ -209,7 +209,9 @@ const took = (ms?: number) => (ms === undefined || ms < 50 ? '' : `${(ms / 1000)
 export function ToolCard({ call, terminals }: { call: ToolCall; terminals: Record<string, string> }) {
   const [open, setOpen] = useState(false);
   const count = useMemo(() => {
-    const diffs = call.content.flatMap((c) => (c.type === 'diff' ? [countChanges(c.oldText || '', c.newText || '')] : []));
+    // an edit's pieces can end part-way through a line: counted as whole lines, or the last one counts as changed
+    const lines = (text?: string | null) => (text && !text.endsWith('\n') ? `${text}\n` : text || '');
+    const diffs = call.content.flatMap((c) => (c.type === 'diff' ? [countChanges(lines(c.oldText), lines(c.newText))] : []));
     return diffs.length ? diffs.reduce((a, b) => ({ added: a.added + b.added, removed: a.removed + b.removed })) : null;
   }, [call.content]);
   const hasBody = call.content.length > 0 || call.rawInput !== undefined || call.rawOutput !== undefined;
