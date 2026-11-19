@@ -2397,7 +2397,7 @@ function Editor({ projectId }: { projectId: string }) {
       scopeGutter,
       EditorView.lineWrapping,
       // a screen reader names the text box; the open file is the selected tab above it
-      EditorView.contentAttributes.of({ 'aria-label': 'Source' }),
+      EditorView.contentAttributes.of({ 'aria-label': 'Source', 'aria-describedby': 'source-leave-hint' }),
       editorTheme,
       ghostField,
       jumpHighlight,
@@ -3618,6 +3618,7 @@ function Editor({ projectId }: { projectId: string }) {
             )}
 
             <div className="editor-area" ref={areaRef}>
+              <span id="source-leave-hint" className="sr-only">Tab indents. To move focus out of the editor, press Escape, then Tab.</span>
               <div className="editor-host" ref={hostRef} style={{ '--editor-font-size': `${settings.editorFontSize}px` } as CSSProperties} />
               {!activePath && loaded && (
                 <div className="editor-empty">

@@ -178,6 +178,8 @@ export const FIXED_SHORTCUTS: [string, string][] = [
   ['Undo', 'Mod-z'],
   ['Redo', IS_MAC ? 'Shift-Mod-z' : 'Mod-y'],
   ['Settings', 'Mod-,'],
+  // Tab indents in the source, so Escape first lets the next Tab move on (CodeMirror's escape hatch); two keys in turn
+  ['Move focus out of the editor', 'Escape Tab'],
   // TexLab's and Tinymist's, while they run (editor/lsp/texlab.ts); go to definition is also ⌘ or Ctrl and a click
   ['Go to definition', 'F12'],
   ['Find references', 'Shift-F12'],
@@ -296,8 +298,9 @@ export function withShortcut(overrides: Record<string, string>, label: string, i
   return key ? `${label} (${key})` : label;
 }
 
-/** ⌃⌥⇧⌘K on a Mac, Ctrl+Alt+Shift+K elsewhere. */
-export function formatShortcut(binding: string) {
+/** ⌃⌥⇧⌘K on a Mac, Ctrl+Alt+Shift+K elsewhere; keys pressed in turn ('Escape Tab') as "⎋, then ⇥". */
+export function formatShortcut(binding: string): string {
+  if (binding.includes(' ')) return binding.split(' ').map(formatShortcut).join(', then ');
   const p = parse(binding);
   if (!p) return '';
   // elsewhere keys go by name (Ctrl+Enter), arrows aside
