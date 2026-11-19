@@ -1,8 +1,15 @@
 // The structure drawing: nodes, and the parts that hang on them (members, supports, loads and notes), all in the
 // drawing's length unit with y up. Parts refer to nodes and members by id, so everything follows when a node moves.
 import type { Pt } from '../circuitikz/model';
+import type { Thickness } from '../vectors/model';
 
-export type { Pt };
+export type { Pt, Thickness };
+
+/** A part's own colour (an xcolor name or mix, or '#rrggbb') and line thickness; left out, it draws as it always has. */
+export interface Look {
+  colour?: string;
+  width?: Thickness;
+}
 
 export interface SNode {
   id: string;
@@ -18,7 +25,7 @@ export interface SNode {
 
 export type SupportType = 'pin' | 'roller' | 'fixed' | 'guided' | 'spring' | 'rotspring';
 
-export interface Support {
+export interface Support extends Look {
   id: string;
   kind: 'support';
   node: string;
@@ -31,7 +38,7 @@ export interface Support {
   settle?: number;
 }
 
-export interface Member {
+export interface Member extends Look {
   id: string;
   kind: 'member';
   a: string;
@@ -48,7 +55,7 @@ export interface Member {
 /** Where a point load or moment acts: a node, or a distance along a member from its a end. */
 export type Place = { node: string } | { member: string; at: number };
 
-export interface Force {
+export interface Force extends Look {
   id: string;
   kind: 'force';
   on: Place;
@@ -60,7 +67,7 @@ export interface Force {
   label?: string;
 }
 
-export interface Moment {
+export interface Moment extends Look {
   id: string;
   kind: 'moment';
   on: Place;
@@ -70,7 +77,7 @@ export interface Moment {
 }
 
 /** A distributed load from `from` to `to` along its member, w1 there rising or falling linearly to w2. */
-export interface Dist {
+export interface Dist extends Look {
   id: string;
   kind: 'dist';
   member: string;
@@ -85,7 +92,7 @@ export interface Dist {
   label?: string;
 }
 
-export interface Dimension {
+export interface Dimension extends Look {
   id: string;
   kind: 'dim';
   a: string;
@@ -97,7 +104,7 @@ export interface Dimension {
   label?: string;
 }
 
-export interface Note {
+export interface Note extends Look {
   id: string;
   kind: 'label';
   at: Pt;
@@ -105,7 +112,7 @@ export interface Note {
 }
 
 /** An angle arc at a node, from one direction to another (degrees, anticlockwise). */
-export interface AngleArc {
+export interface AngleArc extends Look {
   id: string;
   kind: 'angle';
   node: string;
@@ -689,6 +696,32 @@ export function connect(model: StructureModel, tool: string, a: Pt, b: Pt, toler
   return null;
 }
 
+// ─── colour and thickness ───
+
+/** The parts that take a colour, and of those the ones drawn with a line that takes a thickness (a support's symbol and a label's text don't). */
+const COLOURED: Part['kind'][] = ['member', 'support', 'force', 'moment', 'dist', 'dim', 'label', 'angle'];
+const LINED: Part['kind'][] = ['member', 'force', 'moment', 'dist', 'dim', 'angle'];
+export const takesColour = (p: Part): p is Part & Look => COLOURED.includes(p.kind);
+export const takesWidth = (p: Part): p is Part & Look => LINED.includes(p.kind);
+
+/** Each picked part that takes a colour or a thickness given it; undefined gives it back its default. */
+export function restyleIds(model: StructureModel, ids: string[], patch: Look): StructureModel {
+  const picked = new Set(ids);
+  const keys = (Object.keys(patch) as (keyof Look)[]).filter((key) => key === 'colour' || key === 'width');
+  return {
+    ...model,
+    parts: model.parts.map((p) => {
+      if (!picked.has(p.id)) return p;
+      const next: Record<string, unknown> = { ...p };
+      for (const key of keys.filter((key) => (key === 'colour' ? takesColour(p) : takesWidth(p)))) {
+        if (patch[key] === undefined) delete next[key];
+        else next[key] = patch[key];
+      }
+      return next as unknown as Part;
+    })
+  };
+}
+
 // ─── units ───
 
 /** Each unit system's force in kN and length in m. */
@@ -739,10 +772,18 @@ export function convertUnits(model: StructureModel, from: Units, to: Units): Str
 
 // ─── the file ───
 
-/** The drawing has what Spectrum 2.5 added (a shear release, a settlement, a load on plan, the deflected shape, x labels): file version 5. */
+/**
+ * The drawing has what Spectrum 2.5 added (a shear release, a settlement, a load on plan, the deflected shape, x labels)
+ * or later (a part's colour or thickness): file version 5.
+ */
 export function structureNeedsVersion5(raw: unknown, style: Record<string, unknown>) {
   const model = asStructure(raw);
-  return style.deflection !== undefined || style.positions !== undefined || model.nodes.some((n) => n.shear) || model.parts.some((p) => (p.kind === 'support' && p.settle !== undefined) || (p.kind === 'dist' && p.projected !== undefined));
+  return (
+    style.deflection !== undefined ||
+    style.positions !== undefined ||
+    model.nodes.some((n) => n.shear) ||
+    model.parts.some((p) => (p.kind === 'support' && p.settle !== undefined) || (p.kind === 'dist' && p.projected !== undefined) || (p as Look).colour !== undefined || (p as Look).width !== undefined)
+  );
 }
 
 // ─── a starting drawing ───

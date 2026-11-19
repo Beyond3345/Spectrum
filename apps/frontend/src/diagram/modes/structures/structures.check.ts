@@ -3,7 +3,7 @@
 // npx esbuild apps/frontend/src/diagram/modes/structures/structures.check.ts --bundle --platform=node --log-level=warning | node
 import { axialForce, displacementAt, extremesInside, evalPoly, forcesAt, indeterminacy, solve } from './solve';
 import type { Solution } from './solve';
-import { centreOf, connect, convertUnits, copyIds, fitLoads, inBox, mirror, moveBy, nodeAt, nodesOf, pasteInto, placeTool, removeIds, sampleBeam, settleNode, snapOnMember, splitMember, turn } from './model';
+import { centreOf, connect, convertUnits, copyIds, fitLoads, inBox, mirror, moveBy, nodeAt, nodesOf, pasteInto, placeTool, removeIds, restyleIds, sampleBeam, settleNode, snapOnMember, splitMember, structureNeedsVersion5, turn } from './model';
 import type { Part, SNode, StructureModel, SupportType } from './model';
 import { buildScene, cutSection, extentOf, fitScale, formatValue, readStyle } from './draw';
 import * as templates from './templates';
@@ -833,6 +833,59 @@ function diagramsTitles(model: StructureModel, style: Record<string, unknown>) {
   eq(buildScene(model, solve(model), style, true, fitScale(model, style.width)).blocks.filter((b) => b.title !== 'Supports'), buildScene(model, solve(model), style).blocks.filter((b) => b.title !== 'Supports'), 'the canvas’s scene is the export’s');
 }
 
+// ─── colour and thickness for what's selected ───
+
+{
+  const plain = sampleBeam();
+  const all = plain.parts.map((p) => p.id);
+  const coloured = restyleIds(restyleIds(plain, ['n1', ...all], { colour: 'red' }), ['n1', ...all], { width: 'very thick' });
+  const kinds = (m: StructureModel) => m.parts.map((p) => [p.kind, 'colour' in p ? p.colour : null, 'width' in p ? p.width : null]);
+  eq(kinds(coloured), [['member', 'red', 'very thick'], ['support', 'red', null], ['support', 'red', null], ['dist', 'red', 'very thick'], ['dim', 'red', 'very thick']], 'a support takes a colour only; a joint neither');
+  eq(coloured.nodes, plain.nodes, 'joints unchanged');
+  eq(restyleIds(restyleIds(coloured, all, { colour: undefined }), all, { width: undefined }), plain, 'Default gives each its own again');
+  eq([structureNeedsVersion5(plain, {}), structureNeedsVersion5(restyleIds(plain, ['m1'], { colour: 'red' }), {}), structureNeedsVersion5(restyleIds(plain, ['p4'], { width: 2 }), {})], [false, true, true], 'a colour or a thickness makes it version 5');
+  // the solver never sees them: the same reactions and diagrams
+  eq(solve(coloured), solve(plain), 'the solution unchanged');
+  const lines = (m: StructureModel, view: string) => structureCode(m, { view }).body.split('\n');
+  const [before, after] = [lines(plain, 'loading'), lines(coloured, 'loading')];
+  eq(after.filter((l) => !before.includes(l)), [
+    '\\draw[struct member, draw=red, very thick] (0,0) -- (8,0);',
+    '\\pic[red] at (0,0) {spx/struct/pin};',
+    '\\pic[red] at (8,0) {spx/struct/roller};',
+    '\\draw[struct line, struct load fill, draw=red] (0,0.06) -- (8,0.06) -- (8,0.71) -- (0,0.71) -- cycle;',
+    ...Array.from({ length: 21 }, (_, i) => `\\draw[struct load, ->, draw=red, very thick] (${formatValue(i * 0.4, 6)},0.71) -- (${formatValue(i * 0.4, 6)},0.06);`),
+    '\\node[anchor=south, red] at (4,0.76) {$10$\\,kN/m};',
+    '\\draw[struct dimension, draw=red, very thick] (0,-1.783) -- (0,-2.233);',
+    '\\draw[struct dimension, draw=red, very thick] (8,-1.783) -- (8,-2.233);',
+    '\\draw[struct dimension, <->, draw=red, very thick] (0,-2.133) -- (8,-2.133);',
+    '\\node[anchor=north, red] at (4,-2.193) {$6$\\,m};'
+  ], 'the loading view: each part in its colour and thickness, after its own style so they win');
+  eq(after.length, before.length, 'and nothing else');
+  // the reactions and the force diagrams keep theirs
+  const [fbd, fbdColoured] = [lines(plain, 'diagrams'), lines(coloured, 'diagrams')];
+  const after2 = (body: string[]) => body.slice(body.indexOf('% Reactions'), body.indexOf('% Dimensions and labels')).concat(body.slice(body.indexOf('% Shear force')));
+  eq(after2(fbdColoured), after2(fbd), 'reactions and diagrams as before');
+  // each kind that takes them, and a picked colour or width in pt
+  const more: StructureModel = { nodes: plain.nodes, parts: [...plain.parts, { id: 'f', kind: 'force', on: { node: 'n2' }, value: 5, angle: -90 }, { id: 'mo', kind: 'moment', on: { node: 'n1' }, value: 3 }, { id: 'l', kind: 'label', at: { x: 3, y: 2 }, text: 'Beam' }, { id: 'an', kind: 'angle', node: 'n1', from: 0, to: 45, label: '$\\theta$' }] };
+  const picked = lines(restyleIds(restyleIds(more, ['f', 'mo', 'l', 'an'], { colour: '#336699' }), ['f', 'mo', 'l', 'an'], { width: 1.5 }), 'loading');
+  const [hex, drawHex] = ['color={rgb,255:red,51;green,102;blue,153}', 'draw={rgb,255:red,51;green,102;blue,153}'];
+  eq(picked.filter((l) => l.includes(hex.slice(6))).map((l) => l.replace(/ (at )?\(.*$/, '')), [
+    `\\draw[struct load, ->, ${drawHex}, line width=1.5pt]`,
+    `\\node[anchor=south, ${hex}]`,
+    `\\draw[struct load, ->, ${drawHex}, line width=1.5pt]`,
+    `\\node[anchor=south east, ${hex}]`,
+    `\\node[${hex}]`,
+    `\\draw[struct dimension, ->, ${drawHex}, line width=1.5pt]`,
+    `\\node[anchor=south, ${hex}]`
+  ], 'a force, a moment, a label and an angle arc, in a picked colour and a width in pt');
+  // a hand-edited file's colour or width the code can't write is left out
+  const odd = restyleIds(restyleIds(plain, ['m1'], { colour: 'red, line width=9pt' }), ['m1'], { width: 'thick]' as never });
+  eq(lines(odd, 'loading'), lines(plain, 'loading'), 'an unknown colour or thickness written as none');
+  // on the canvas: the same items carry them
+  const items = buildScene(coloured, solve(coloured), readStyle({ view: 'loading' }), true).blocks.flatMap((b) => b.items);
+  eq([...new Set(items.flatMap((i) => (i.t === 'dot' ? [] : [i.colour])))], ['red', undefined], 'the canvas draws them too (the node letters keep theirs)');
+}
+
 // ─── the file: a drawing round-trips through the diagram file (last: it waits for the hash) ───
 
 (async () => {
@@ -846,5 +899,8 @@ function diagramsTitles(model: StructureModel, style: Record<string, unknown>) {
   eq([physics, physics.includes('\\SI{')], [code.body.replace(/\\qty(?=\{)/g, '\\SI'), true], 'physics: \\SI');
   eq(back.edited, false, 'not edited');
   eq(structureCode(back.diagram!.model, back.diagram!.style), code, 'and writes the same code');
+  const red = { ...diagram, model: restyleIds(sampleBeam(), ['m1'], { colour: 'red' }) };
+  const again = await readDiagramFile(await diagramFileText(red, structureCode(red.model, red.style)));
+  eq([again.diagram?.version, again.diagram?.model], [5, red.model], 'a coloured member: version 5, and it comes back');
   console.log('structures.check: ok');
 })();

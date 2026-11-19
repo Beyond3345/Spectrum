@@ -5,15 +5,17 @@ import type { ReactNode } from 'react';
 import Icon from '../../../app/Icon';
 import Segmented from '../../../app/Segmented';
 import Select from '../../../app/Select';
-import { More, UnitsSwitch } from '../../controls';
+import { ColourField, More, UnitsSwitch } from '../../controls';
+import { COLOURS } from '../vectors/model';
+import { ThicknessField } from '../vectors/panels';
 import { useToolTitle } from '../../toolKeys';
 import type { ToolKey } from '../../toolKeys';
 import DiagramFields from './DiagramFields';
 import { VIEWS, formatValue, readStyle } from './draw';
 import type { StructStyle } from './draw';
 import { changedLooks } from './looks';
-import { UNITS, asStructure, convertUnits, fitLoads, frameOf, memberName, mirror, nodesOf, removeIds, turn } from './model';
-import type { AngleArc, Cut, Dimension, Dist, Force, Member, Moment, Note, Part, SNode, StructureModel, Support, SupportType, Units } from './model';
+import { UNITS, asStructure, convertUnits, fitLoads, frameOf, memberName, mirror, nodesOf, removeIds, restyleIds, takesColour, takesWidth, turn } from './model';
+import type { AngleArc, Cut, Dimension, Dist, Force, Look, Member, Moment, Note, Part, SNode, StructureModel, Support, SupportType, Units } from './model';
 import { solve } from './solve';
 import { getShown, useShown } from './store';
 import { symbolSvg } from './symbols';
@@ -230,6 +232,25 @@ function LabelField({ value, onChange }: { value?: string; onChange(v: string | 
   );
 }
 
+/** one value when every one is the same, else none */
+const common = <T,>(values: T[]) => (values.length && values.every((v) => JSON.stringify(v) === JSON.stringify(values[0])) ? values[0] : undefined);
+
+/**
+ * Colour and thickness for what's picked: the colour for every part that takes one (not joints, axes or cuts), the
+ * thickness for those drawn with a line (not a support's symbol or a label). The reactions and diagrams keep theirs.
+ */
+function LookFields({ model, ids, onChange }: { model: StructureModel; ids: string[]; onChange(m: StructureModel): void }) {
+  const picked = model.parts.filter((p) => ids.includes(p.id));
+  const [coloured, lined] = [picked.filter(takesColour), picked.filter(takesWidth)] as Look[][];
+  if (!coloured.length) return null;
+  return (
+    <>
+      <ColourField label="Colour" value={common(coloured.map((p) => p.colour))} fallback="Black" swatches={COLOURS} onChange={(colour) => onChange(restyleIds(model, ids, { colour }))} />
+      {lined.length > 0 && <ThicknessField value={common(lined.map((p) => p.width))} fallback="Default" onChange={(width) => onChange(restyleIds(model, ids, { width }))} />}
+    </>
+  );
+}
+
 /** Mirror and turn for what's picked (X and Y on the canvas mirror too), about the middle of it. */
 function GroupActions({ model, ids, onChange }: { model: StructureModel; ids: string[]; onChange(m: StructureModel): void }) {
   const [angle, setAngle] = useState(90);
@@ -284,6 +305,7 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
     return (
       <div className="ckt-inspector">
         <div className="ckt-inspector-title">{picked.length} items selected</div>
+        <LookFields model={model} ids={selection} onChange={onChange} />
         {group}
         {remove}
       </div>
@@ -562,6 +584,7 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
     <div className="ckt-inspector">
       <div className="ckt-inspector-title">{title}</div>
       {fields}
+      <LookFields model={model} ids={selection} onChange={onChange} />
       {group}
       {remove}
     </div>
